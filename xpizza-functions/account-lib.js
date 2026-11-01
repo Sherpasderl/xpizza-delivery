@@ -12,9 +12,11 @@ function accountDeleteUpdates(uid, phoneHash, tombstoneAt = null) {
   // Rewards Phase A: purge balances + ledger with the account, but NEVER null reward_welcome — that
   // per-phone_hash-per-brand tombstone must survive deletion so a delete+re-login can't re-earn the welcome.
   if (phoneHash) updates[`phone_index/${phoneHash}`] = null;
-  // H10 durability: user-initiated deletion writes a server-only tombstone so the still-valid custom-token
-  // session can't recreate the profile or re-accrue attribution. The inactivity sweep passes no tombstoneAt
-  // (2-arg) — its accounts are 6-month-dormant with no live session, and tombstoning would grow unbounded.
+  // H10 durability: deletion writes a server-only tombstone so a still-valid custom-token session can't recreate
+  // the profile or re-accrue attribution. BOTH deletion paths pass tombstoneAt (security backlog 2026-11-01): a dormant
+  // device can still hold a refresh token, and the sweep already keeps user_private/{uid} = {deleted_at} per swept
+  // account (BC2), so this is one more equal-size key per account, not a new unbounded class. The legacy 2-arg
+  // form (pruneUpdates) is kept for its tests only; no caller deletes through it.
   if (tombstoneAt != null) updates[`deleted_uids/${uid}`] = tombstoneAt;
   return updates;
 }

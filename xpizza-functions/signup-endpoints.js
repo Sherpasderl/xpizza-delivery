@@ -171,19 +171,52 @@ async function refreshActivity(db, uid, nowMs, deadlineMs = ACTIVITY_DEADLINE_MS
   } catch (_) { /* fail-open */ } finally { clearTimeout(timer); }
 }
 // ONE deletion core (deleteAccount AND the inactivity sweep): (i) the BC2 tombstone FIRST (the sweep's commits only while
-// last_active is still older than its cutoff); (ii) today's removals, unchanged (account-lib); (iii) every auth_links row by uid.
-// Returns false when the sweep's stale decision lost to a fresher login (nothing removed).
-async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff = null }) {
+// last_active is still older than its cutoff); (ii) today's removals (account-lib) WITH deleted_uids/{uid} on BOTH paths — the
+// ONE tombstone every server check reads (security backlog 2026-11-01: the sweep used to leave it unwritten, so a dormant
+// session passed every deleted_uids-only check); (iii) every auth_links row by uid; (iv) the account's refresh tokens revoked —
+// best-effort, deadline-bounded, FAIL-OPEN (the deletion is already complete), a failure LOGGED + ALERTED, never dropped. An
+// already-minted ID token stays valid until it expires (≤ 1 h): the tombstones remain the hard guard.
+// Returns false when the sweep's stale decision lost to a fresher login (nothing removed, nothing revoked).
+const REVOKE_DEADLINE_MS = 1500;
+const defaultRevoke = (uid) => require('firebase-admin/auth').getAuth().revokeRefreshTokens(uid);
+async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff = null, revoke = defaultRevoke, revokeDeadlineMs = REVOKE_DEADLINE_MS }) {
   const stands = await S.tombstone(db, uid, { now, staleBefore: sweepCutoff });
   if (!stands) return false;
-  await db.ref().update(sweepCutoff == null ? ACCOUNT.accountDeleteUpdates(uid, phoneHash, now) : ACCOUNT.accountDeleteUpdates(uid, phoneHash));
+  await db.ref().update(ACCOUNT.accountDeleteUpdates(uid, phoneHash, now));
   await S.removeLinks(db, uid);
+  await revokeSessions(db, uid, now, revoke, revokeDeadlineMs);
   return true;
+}
+async function revokeSessions(db, uid, now, revoke, deadlineMs) {
+  let timer = null; let reason = null;
+  try {
+    const r = await Promise.race([Promise.resolve().then(() => revoke(uid)).then(() => 'ok'), new Promise((res) => { timer = setTimeout(() => res('timeout'), deadlineMs); })]);
+    if (r !== 'ok') reason = `deadline ${deadlineMs}ms`;
+  } catch (e) { reason = (e && (e.code || e.message)) || 'error'; } finally { clearTimeout(timer); }
+  if (reason == null) return true;
+  console.error(`deleteAccountCore: revokeRefreshTokens FAILED for ${uid} (${reason}) — deletion complete; tombstones guard until the ID token expires`);
+  try {   // create-only: a retry never rewrites the first alert; the alert write itself is best-effort (the log line above stands)
+    await db.ref(`dispatcher_alerts/account_revoke_failed_${uid}`).transaction((cur) => (cur == null ? { type: 'account_revoke_failed', uid, reason: String(reason).slice(0, 200), created_at: now } : undefined));
+  } catch (e) { console.error(`deleteAccountCore: the revoke-failure alert for ${uid} failed`, e && e.message); }
+  return false;
 }
 // the periodic sweep's residual cleanup, run EVERY time (codex build r1 P2-10 — also when no profiles remain): links to
 // deleted accounts, expired challenges / tickets
 async function pruneResidual(db, now = Date.now()) {
-  return { deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now) };
+  return { deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db) };
+}
+// security backlog 2026-11-01: an account tombstoned in user_private BEFORE the sweep wrote deleted_uids gets it now (its OWN
+// deleted_at), create-if-absent — so every deleted_uids-only check refuses it too. Live accounts (no deleted_at) are never touched.
+async function backfillDeletedUids(db) {
+  const rows = (await db.ref('user_private').orderByChild('deleted_at').startAt(0).once('value')).val() || {};
+  let added = 0;
+  for (const [uid, row] of Object.entries(rows)) {
+    if (!row || typeof row.deleted_at !== 'number') continue;
+    let wrote = false;
+    await db.ref(`deleted_uids/${uid}`).transaction((cur) => { wrote = false; if (cur != null) return undefined; wrote = true; return row.deleted_at; });
+    if (wrote) added += 1;
+  }
+  return added;
 }
 // a link that raced a deletion points at a tombstoned uid — inert at login, removed here
 async function pruneDeadLinks(db) {
@@ -201,4 +234,4 @@ async function pruneDeadLinks(db) {
   return removed;
 }
 
-module.exports = { makeSignup, bindOtpTicket, redeemOtpTicket, refreshActivity, deleteAccountCore, pruneDeadLinks, pruneResidual, challengeIdOf, SIGNUP_RATE, ACTIVITY_DEADLINE_MS };
+module.exports = { makeSignup, bindOtpTicket, redeemOtpTicket, refreshActivity, deleteAccountCore, revokeSessions, backfillDeletedUids, REVOKE_DEADLINE_MS, pruneDeadLinks, pruneResidual, challengeIdOf, SIGNUP_RATE, ACTIVITY_DEADLINE_MS };

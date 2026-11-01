@@ -17,7 +17,7 @@
  *   5 BC3: the activity refresh — written on a phone login; a hung refresh never delays the login past its deadline nor
  *     changes the response; a tombstoned uid → the login proceeds exactly as today and the tombstone is untouched;
  *   6 the sweep race (BC3 + §3.6): a login between the sweep's read and its tombstone makes the sweep abort for that account
- *     (kept, logs in); an untouched stale account is tombstoned, removed and its links deleted; a link to a deleted account
+ *     (kept, logs in); an untouched stale account is tombstoned (BC2 + deleted_uids, sessions revoked), removed and its links deleted; a link to a deleted account
  *     is pruned;
  *   7 deleteAccount: tombstone {deleted_at}, today's removals + deleted_uids, every auth_links row; that Google identity is
  *     inert afterwards (a ticket, never the deleted uid); the old session's completeProfile / setPromos → refused;
@@ -67,11 +67,13 @@ const SENT = [];
   require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, tplOtp: ({ code }) => `CODE:${code}`, isEnabledForRestaurant: async () => false, sendMessage: async (to, body) => { SENT.push({ to, body }); return { ok: true }; } } };
 }
 const MINTED = [];
+const REVOKED = [];   // security backlog: deleteAccountCore revokes the account's refresh tokens through the SAME auth module
 {
   const p = require.resolve('firebase-admin/auth'); const real = require(p);
   require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, getAuth: () => ({
     createCustomToken: async (uid, claims) => { MINTED.push({ uid, claims }); return `tok:${uid}`; },
-    verifyIdToken: async (t) => { const m = /^idt:(u_[a-f0-9]{24})$/.exec(String(t)); if (!m) throw new Error('bad'); return { uid: m[1], customer: true }; } }) } };
+    verifyIdToken: async (t) => { const m = /^idt:(u_[a-f0-9]{24})$/.exec(String(t)); if (!m) throw new Error('bad'); return { uid: m[1], customer: true }; },
+    revokeRefreshTokens: async (uid) => { REVOKED.push(uid); } }) } };
 }
 const KEY = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 const CERTS = { kid1: KEY.publicKey.export({ type: 'spki', format: 'pem' }) };
@@ -257,7 +259,10 @@ const LEGAL = { terms_url: 'https://legal.test/terminos', privacy_url: 'https://
     assert.strictEqual(await uidOfPhone(PA), UA, 'A keeps its account');
     assert.ok(!(await rtdb.ref(`user_profiles/${UB}`).once('value')).exists() && !(await uidOfPhone(PB)), 'B (untouched) removed');
     assert.deepStrictEqual(Object.keys((await rtdb.ref(`user_private/${UB}`).once('value')).val()), ['deleted_at'], 'B tombstoned (BC2)');
-    assert.ok(!(await rtdb.ref(`deleted_uids/${UB}`).once('value')).exists(), 'the sweep still writes no deleted_uids (account-lib unchanged)');
+    // security backlog 2026-11-01 (advisor-approved behavior change): the sweep now writes THE tombstone every server check reads
+    assert.strictEqual((await rtdb.ref(`deleted_uids/${UB}`).once('value')).val(), (await rtdb.ref(`user_private/${UB}/deleted_at`).once('value')).val(), '🔴 the sweep writes deleted_uids (= its BC2 deleted_at)');
+    assert.ok(!(await rtdb.ref(`deleted_uids/${UA}`).once('value')).exists(), 'the kept account (A) gets no tombstone');
+    assert.ok(REVOKED.includes(UB) && !REVOKED.includes(UA), 'the swept account\'s sessions revoked; the kept account\'s never');
     assert.ok(!(await rtdb.ref('auth_links/google/2000001').once('value')).exists(), 'B\'s link removed');
     assert.ok(!(await rtdb.ref('auth_links/google/2000009').once('value')).exists(), 'the link to an earlier-deleted account pruned');
   }
@@ -278,6 +283,8 @@ const LEGAL = { terms_url: 'https://legal.test/terminos', privacy_url: 'https://
     const sp = await call(app.setPromos, { headers: { 'x-firebase-id-token': tokU1 }, body: { restaurant_id: 'la_musa', value: true } });
     assert.ok(cp.status === 401 && sp.status === 401, `the old session refused (${cp.status}/${sp.status})`);
     assert.deepStrictEqual(Object.keys((await rtdb.ref(`user_private/${U1}`).once('value')).val()), ['deleted_at']);
+    assert.deepStrictEqual(REVOKED.filter((u) => u === U1), [U1], 'security backlog: the account\'s refresh tokens revoked once, through the real export');
+    assert.ok(!(await rtdb.ref(`dispatcher_alerts/account_revoke_failed_${U1}`).once('value')).exists(), 'a successful revoke raises no alert');
   }
   ok('deleteAccount: tombstone (exactly {deleted_at}), today\'s removals + deleted_uids, every link by uid; the Google identity is inert afterwards; the old session\'s completeProfile / setPromos refused, the tombstone intact');
 
@@ -322,6 +329,7 @@ const LEGAL = { terms_url: 'https://legal.test/terminos', privacy_url: 'https://
     await app.pruneInactiveAccounts.run({});
     assert.ok(!(await rtdb.ref('auth_links/google/3000001').once('value')).exists(), '🔴 the dead link survives a run with no profiles');
     assert.ok(!(await rtdb.ref('link_tickets/stale_ticket_aaaaaaaa').once('value')).exists(), '🔴 the expired ticket survives');
+    assert.strictEqual((await rtdb.ref(`deleted_uids/${'u_' + 'e'.repeat(24)}`).once('value')).val(), 3, '🔴 security backlog: a legacy user_private tombstone gets deleted_uids (its own deleted_at) on the residual run');
   }
   ok('codex r1: completeProfile / setPromos answer 429 past the per-IP limit; with NO profiles left the scheduled run still removes a dead link and an expired ticket');
 
