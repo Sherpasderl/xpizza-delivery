@@ -26205,8 +26205,8 @@
     "slice": "route",
     "label": "hydration runs despite a payment return owning the boot",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "if (routing && !S.ret && !S.neutral) hydrate(); else reflect();",
-    "to": "if (routing) hydrate(); else reflect();",
+    "from": "    if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();",
+    "to": "    if (routing) hydrate(); else reflect();",
     "command": [
       "node",
       "--test",
@@ -26301,8 +26301,8 @@
     "slice": "route",
     "label": "a blocked device Back leaves the URL on the previous entry's path",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "    const onPopReflect = () => { if (!dead) reflect(); };",
-    "to": "    const onPopReflect = () => {};",
+    "from": "    const onPopReflect = () => { if (dead) return; cancelRoute(); reflect(); };",
+    "to": "    const onPopReflect = () => { if (dead) return; cancelRoute(); };",
     "command": [
       "node",
       "--test",
@@ -26365,6 +26365,78 @@
     ],
     "kills_with": [
       "adoption tore down a LOCKED mount"
+    ]
+  },
+  {
+    "id": "rt-11",
+    "slice": "route",
+    "label": "Codex D-4a r1 P1: a device Back does not cancel a held cold link",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "    const onPopReflect = () => { if (dead) return; cancelRoute(); reflect(); };",
+    "to": "    const onPopReflect = () => { if (dead) return; reflect(); };",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-4a",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "a Back did not cancel the held cold link"
+    ]
+  },
+  {
+    "id": "rt-12",
+    "slice": "route",
+    "label": "Codex D-4a r1 P2: a cold /pago on a presentation menu drops its intent",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "      if (step === 'pago' && !st.ui.orderable() && !(st.ui.lockedNow && st.ui.lockedNow())) return;\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-4a",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the fresh menu must run the pending /pago"
+    ]
+  },
+  {
+    "id": "rt-13",
+    "slice": "route",
+    "label": "Codex D-4a r1 P2: a locked cold dish opens on the old mount (stale prices)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "        if (st.adopt && st.ui.lockedNow && st.ui.lockedNow()) { pendingRoute = p; return; }\n        const cur = st.adopt ? adoptInto(st) : st;",
+    "to": "        const cur = st;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-4a",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the dish opened on the OLD mount"
+    ]
+  },
+  {
+    "id": "rt-14",
+    "slice": "route",
+    "label": "Codex D-4a r1 P2: hydration gated on UI flags (an ownerless resumed return hydrates)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "    if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();",
+    "to": "    if (routing && !S.ret && !S.neutral) hydrate(); else reflect();",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-4a",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "a resumed (ownerless) return let the deep link hydrate"
     ]
   }
 ]

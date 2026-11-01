@@ -1476,3 +1476,43 @@ test('D-4a §4: ADOPTION never discards a lock — a staged fresh body is NOT ad
   S.click('#cart-bar'); await flush(); S.click('#layer [data-act="checkout"]'); await flush(); await flush();
   assert.equal(S.ui.store().ui, ui0, '🔴 adoption tore down a LOCKED mount');
 });
+
+// ── Codex D-4a code r1 (the reviewer's repro sequences) ──
+test('D-4a r1 P1: a device Back while a cold link is HELD cancels it — a delayed directory never mounts the store (nor re-arms the sentinel)', async () => {
+  const late = deferred();
+  const S = routeShell('/r/x_pizza', { dirScript: [{ p: late.p }] }); await flush();
+  assert.equal(S.ui.store(), null, 'premise: held (the directory has not answered)');
+  S.w.history.back(); await flush(); await flush();
+  late.resolve(resp('complete')); await flush(); await flush();
+  assert.equal(S.ui.store(), null, '🔴 r1 P1: a Back did not cancel the held cold link');
+});
+
+test('D-4a r1 P2: a cold /pago on a PRESENTATION menu keeps its intent — the fresh menu arriving opens the checkout (never left on the store)', async () => {
+  const d = anyDish();
+  const S = routeShell('/r/x_pizza/pago', { envelope: 'hold', storage: memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key) }) }); await flush(); await flush();
+  const ui = S.ui.store() && S.ui.store().ui; assert.ok(ui, 'premise: mounted on the stored (presentation) menu');
+  assert.equal(ui.orderable(), false, 'premise: not orderable yet');
+  S.release('x_pizza'); await flush(); await flush();
+  assert.equal(S.ui.store().ui.state.screen, 'checkout', '🔴 r1 P2: the fresh menu must run the pending /pago');
+  assert.equal(where(S), '/r/x_pizza/pago');
+});
+
+test('D-4a r1 P2: a LOCKED cold dish with a staged CHANGED menu never opens on the old mount (stale prices) — it stays pending', async () => {
+  const t0 = T0, d = anyDish();
+  const storage = memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
+    'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_c', order: null, ts: t0 }),
+    'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, pay_pending: true, dispatched: 1, cart_gen: 'g_c', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) });
+  const apiFetch = async () => ({ status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) });
+  const S = routeShell(`/r/x_pizza/plato/${encodeURIComponent(d.key)}`, { envelope: 'hold', storage, apiFetch }); await flush(); await flush();
+  const ui0 = S.ui.store().ui;
+  S.release('x_pizza', repriced(d.name, 26)); await flush(); await flush();
+  assert.ok(S.ui.store().adopt && ui0.lockedNow(), 'premise: a changed fresh body staged + a held lock');
+  assert.equal(S.ui.store().ui.state.open, null, '🔴 r1 P2: the dish opened on the OLD mount (stale prices)');
+  assert.equal(where(S), `/r/x_pizza/plato/${encodeURIComponent(d.key)}`, 'still pending: the requested route kept');
+});
+
+test('D-4a r1 P2: hydration is gated on bootReturn.mode ∈ {none, invalid} — an OWNERLESS resumed handoff does not hydrate the linked store', async () => {
+  const storage = memStorage({ 'capp:return': JSON.stringify({ v: 1, pay: 'complete', order: ORDER, t: 'pt_9', owner: null, at: T0 }) });
+  const S = routeShell('/r/x_pizza', { storage }); await flush(); await flush();
+  assert.equal(S.ui.store(), null, '🔴 r1 P2: a resumed (ownerless) return let the deep link hydrate');
+});

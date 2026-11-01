@@ -51,7 +51,7 @@
     // ⇒ nothing here runs
     const CappRoutes = pick(o, 'CappRoutes', './capp-routes.js');
     const routing = o.routing === true && !!CappRoutes && !!win && !!win.history && !!win.location;
-    let pendingRoute = null, navGen = 0, hydrating = false, storeRoute = { step: 'store' }, booted = false;
+    let pendingRoute = null, navGen = 0, hydrating = false, storeRoute = { step: 'store' }, booted = false, bootMode = 'none';
     const bootPath = routing ? String(win.location.pathname || '/') : '/';   // read BEFORE any paint could reflect over it
     const CappView = pick(o, 'CappView', './capp-view.js');
     const view = CappView ? CappView.createView(win, { timers: T }) : null;
@@ -153,7 +153,7 @@
       // a mount NEVER reads location.search itself: only the store that OWNS a hosted-checkout return gets it, once
       const ret = S.ret && S.ret.rid === entry.rid && !freshBody ? S.ret : null; if (ret) S.ret = null;
       const ui = CappUI.mount(doc, { ...uo, ...(view ? { view } : {}),
-        onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); }, ...(S.member ? { member: S.member } : {}), search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
+        onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
         onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
@@ -386,10 +386,16 @@
         let has = false; try { has = !!CappMenu.adaptMenu(fresh).dish(p.r.dish); } catch (_) { has = false; }
         pendingRoute = null;
         if (!has) { storeRoute = { step: 'store' }; reflect(); return; }
-        const cur = st.adopt && !(st.ui.lockedNow && st.ui.lockedNow()) ? adoptInto(st) : st;
+        // Codex code r1 P2: a staged CHANGED body under a lock can't be adopted now ⇒ stay PENDING (never open on stale prices);
+        // retried on every store report / menu update until the lock resolves
+        if (st.adopt && st.ui.lockedNow && st.ui.lockedNow()) { pendingRoute = p; return; }
+        const cur = st.adopt ? adoptInto(st) : st;
         if (cur && cur.ui) cur.ui.resumeTo('plato', p.r.dish);
         reflect(); return;
       }
+      // Codex code r1 P2: /pago on a PRESENTATION menu (not orderable, no lock) can't run yet ⇒ keep the intent; the fresh menu
+      // (watchMenu ⇒ tryRoute) runs it. A lock runs now (recoverLocked needs no fresh menu)
+      if (step === 'pago' && !st.ui.orderable() && !(st.ui.lockedNow && st.ui.lockedNow())) return;
       pendingRoute = null;
       if (step === 'pedido' || step === 'pago') st.ui.resumeTo(step);
       reflect();
@@ -575,6 +581,7 @@
       const held = []; try { for (let i = 0; storage && i < storage.length; i++) { const m = /^capp:([^:]+):(pending_pay|pending_place)$/.exec(storage.key(i) || ''); if (m) held.push(m[1]); } } catch (_) {}
       const rids = [...new Set([...dir.view().rows.map((r) => r.rid), ...(readJ(LRU_KEY) || []), ...held])];
       let br = null; try { br = CappShell.bootReturn({ search, storage, rids, now: nowMs }); } catch (_) { br = null; }
+      bootMode = br ? br.mode : 'error';   // D-4a §3 (Codex code r1 P2): hydration is gated on THIS, never on UI flags
       if (br && br.strip && win && win.history && win.location) { try { win.history.replaceState(win.history.state, '', win.location.pathname + win.location.hash); } catch (_) {} }
       if (br && br.handoff && br.owner) {
         const h = br.handoff, q = new URLSearchParams({ pay: h.pay }); if (h.order) q.set('order', h.order); if (h.t) q.set('t', h.t);
@@ -595,10 +602,10 @@
     if (S.ret) enter(S.ret.rid, null);
     // D-4a §3: a payment return OWNS the boot (S.ret / S.neutral) — hydration runs only when the boot found NO return
     booted = true;
-    if (routing && !S.ret && !S.neutral) hydrate(); else reflect();
+    if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();   // ANY return (persisted / memory / resumed, owned or not) owns the boot
     // a device Back leaves the sentinel: the nav (its listener runs first) re-pushes it — inheriting the PREVIOUS entry's URL — and
     // a blocked back renders nothing; this listener re-reflects the screen actually shown (pathname only)
-    const onPopReflect = () => { if (!dead) reflect(); };
+    const onPopReflect = () => { if (dead) return; cancelRoute(); reflect(); };   // a device Back is a user navigation (Codex code r1 P1): it cancels a held cold link too
     if (routing && typeof win.addEventListener === 'function') win.addEventListener('popstate', onPopReflect);
     if (SU) raf(() => startAuth());   // G6: the Auth SDK after the first paint (never awaited by it)
 
