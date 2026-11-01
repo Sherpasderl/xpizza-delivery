@@ -1264,6 +1264,7 @@
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/form-bundle-splice.test.js",
     "xpizza-functions/menus.test.mjs",
+    "xpizza-functions/platform-runtime.test.js",
     "xpizza-functions/platform-sync.guard.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/test/capp-s2a.emulator.test.js",
