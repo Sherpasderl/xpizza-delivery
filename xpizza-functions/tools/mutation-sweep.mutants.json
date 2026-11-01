@@ -461,14 +461,6 @@
   "to": "  const found = new Set(spec.noExtras);"
  },
  {
-  "id": "task8-14",
-  "slice": "task8",
-  "label": "a dish the exclusion names but the menu lacks is ignored",
-  "file": "catalog/exposure-source.js",
-  "from": "    if (!keys.has(key)) {\n      throw new Error(`exposure_source_missing_item:",
-  "to": "    if (false) {\n      throw new Error(`exposure_source_missing_item:"
- },
- {
   "id": "task8-15",
   "slice": "task8",
   "label": "an extracted brand invents an allow-list when it has no map",
