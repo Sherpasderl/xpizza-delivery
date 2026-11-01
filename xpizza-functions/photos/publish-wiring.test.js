@@ -102,6 +102,24 @@ function photosDep({ active = null, prepareThrows = null, readFails = false } = 
     ok('prepare photo_unavailable → 409, photo_publish_failed → 503 retryable, an unreadable active map → 503; a commit lost to the sweeper → 409 photo_unavailable, nothing marked');
   }
 
+  // ── 5. advisor ruling A (portal-ui): a SAVED draft mixing a category rename with ANY photo change is refused at publish too ──
+  {
+    const P2 = '2'.repeat(32);
+    const KEY2 = base().items[1].key;
+    const renamed = base(); renamed.structure.categories.forEach((c, i) => { c.name = `TB Renamed ${i}`; });
+    const active = { [KEY]: { state: 'pid', pid: P1, card: 'c', hero: 'h' } };
+    const same = { ...clone(renamed), photos: { [KEY]: { state: 'pid', pid: P1 } } };
+    const alone = await run(same, { photos: photosDep({ active }).dep, token: tokenFor(same, { active }) });
+    assert.strictEqual(alone.r.status, 200, `PW-RENAME-WITH-UNCHANGED-PHOTOS-PUBLISHES ${JSON.stringify(alone.r.body).slice(0, 200)}`);
+    for (const [label, map] of [['swapped', { [KEY]: { state: 'pid', pid: P2 } }], ['added', { [KEY]: { state: 'pid', pid: P1 }, [KEY2]: { state: 'pid', pid: P2 } }], ['removed', { [KEY]: { state: 'removed' } }]]) {
+      const mixed = { ...clone(renamed), photos: map };
+      const { r, calls } = await run(mixed, { photos: photosDep({ active }).dep, token: tokenFor(mixed, { active }) });
+      assert.strictEqual(r.body.error, 'rename_not_alone', `PW-RENAME-PLUS-PHOTO ${label} (${r.status} ${r.body.error})`);
+      assert.strictEqual(calls.publish.length, 0, `PW-RENAME-PLUS-PHOTO-NOTHING-PUBLISHED ${label}`);
+    }
+    ok('ruling A at publish: a rename with the active photo map unchanged publishes; rename + a swapped / added / removed photo → rename_not_alone, nothing published');
+  }
+
   FINISHED = true;
   console.log(`publish-wiring: OK (${n})`);
 })().catch((e) => { console.error('publish-wiring: FAILED —', e && e.stack || e); process.exit(1); });

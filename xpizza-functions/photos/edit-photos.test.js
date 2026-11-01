@@ -151,6 +151,16 @@ const withPhotos = (map, src = base()) => ({ ...src, photos: map });
     }
     ok('a category rename with the active photo map unchanged → 200; rename + any photo change / removal / drop / legacy removal → rename_not_alone');
   }
+  // ── 7b. advisor ruling A (portal-ui): a rename + ADDING a photo to a legacy dish is a change too → rename_not_alone ──
+  {
+    const renamed = base(); renamed.structure.categories.forEach((c, i) => { c.name = `TB Renamed ${i}`; });
+    const activeSame = { [KEY]: { state: 'pid', pid: P1, card: 'c', hero: 'h' } };
+    const { r, db } = await save(withPhotos({ [KEY]: { state: 'pid', pid: P1 }, [KEY2]: { state: 'pid', pid: P2 } }, renamed), { photos: photosDep({ active: activeSame, registry: { [P1]: 'published', [P2]: 'draft' } }).dep });
+    assert.strictEqual(r.body.error, 'rename_not_alone', `EDIT-PHOTOS-RENAME-PLUS-PHOTO-ADDED (${r.status} ${r.body.error})`);
+    assert.strictEqual(db.state.writes, 0, 'EDIT-PHOTOS-RENAME-PLUS-PHOTO-ADDED-NOTHING-WRITTEN');
+    ok('ruling A: a category rename + a photo ADDED to a legacy dish → rename_not_alone, nothing written');
+  }
+
   // ── 8. the active photo map cannot be read → fail closed ──
   {
     const { r, db } = await save(withPhotos({ [KEY]: { state: 'removed' } }), { photos: photosDep({ readFails: true }).dep });
