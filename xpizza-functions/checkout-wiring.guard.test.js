@@ -95,4 +95,23 @@ ok('(ii-S3) placement: the s3a hand-offs are the first statement after each hand
 
 ok('(iii) sensitivity: missing / duplicated / shared-line / renamed markers refused; an edit outside the hunks is detected');
 
+// (iv) the MODULE line inverses (assembly restack): composed INNERMOST by the guards that byte-pin these modules (area-wiring,
+// s2tip-wiring). Exact: each removes ONLY this slice's whole inserted lines — the result is the restack parent's bytes with
+// every OTHER slice's lines intact; sensitivity: a byte inside, a duplicate or a missing block throws.
+{
+  const CI = require('./tools/checkout-charge-inputs-inverse'), PX = require('./tools/checkout-pixelpay-inverse');
+  for (const [M, fn, label] of [[CI, CI.unapplyCheckoutChargeInputs, 'checkout_ticket entry'], [PX, PX.unapplyCheckoutPixelpay, 'guestForeign blocks']]) {
+    const src = fs.readFileSync(path.join(__dirname, M.FILE), 'utf8');
+    const out = fn(src);
+    const blocks = M.BLOCKS || [M.LINE];
+    assert.strictEqual(src.split('\n').length - out.split('\n').length, blocks.reduce((k, b) => k + b.split('\n').length - 1, 0), `${M.FILE}: exactly the ${label} lines removed`);
+    assert.ok(!/checkout_ticket|guestForeign/.test(out), `${M.FILE}: nothing of the slice remains`);
+    assert.throws(() => fn(src.replace(blocks[0], blocks[0].replace(/[a-z]/, 'Z'))), /exactly once/, `${M.FILE}: a byte INSIDE a block`);
+    assert.throws(() => fn(src + blocks[0]), /exactly once/, `${M.FILE}: a DUPLICATED block`);
+    assert.throws(() => fn(out), /exactly once/, `${M.FILE}: a MISSING block`);
+  }
+  assert.ok(/^  entry_mode: /m.test(CI.unapplyCheckoutChargeInputs(fs.readFileSync(path.join(__dirname, CI.FILE), 'utf8'))) && /^  address_area: /m.test(CI.unapplyCheckoutChargeInputs(fs.readFileSync(path.join(__dirname, CI.FILE), 'utf8'))), 'the neighbours (entry_mode, address_area) stay');
+}
+ok('(iv) module line inverses: checkout_ticket (charge-inputs) and the guestForeign blocks (pixelpay-hosted-charge) removed exactly; inside / duplicated / missing each throw');
+
 console.log(`\ncheckout-wiring.guard: OK (${n})`);
