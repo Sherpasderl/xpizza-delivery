@@ -69,7 +69,9 @@ function validateManifest(m) {
     if (d.native !== undefined) {
       const nv = d.native;
       if (d.app !== 'orders' || d.context !== PLATFORM_CONTEXT) errs.push(`${tag}: native is only for the platform orders deployment`);
-      else if (!nv || typeof nv !== 'object' || Array.isArray(nv) || Object.keys(nv).some((k) => k !== 'origins')) errs.push(`${tag}: native must be { origins }`);
+      else if (!nv || typeof nv !== 'object' || Array.isArray(nv) || Object.keys(nv).some((k) => k !== 'deployment' && k !== 'origins')) errs.push(`${tag}: native must be { deployment, origins }`);
+      else if (typeof nv.deployment !== 'string' || !ID_RE.test(nv.deployment) || nv.deployment === d.id) errs.push(`${tag}: native.deployment must be its own deployment id`);
+      else if (deps.some((x) => x && x.id === nv.deployment)) errs.push(`${tag}: native.deployment ${JSON.stringify(nv.deployment)} collides with a deployment id`);
       else if (!Array.isArray(nv.origins) || !nv.origins.length) errs.push(`${tag}: native.origins must be a non-empty array`);
       else {
         for (const o of nv.origins) if (!NATIVE_ORIGINS.includes(o)) errs.push(`${tag}: native origin ${JSON.stringify(o)} is not one of ${NATIVE_ORIGINS.join(', ')}`);
@@ -119,10 +121,19 @@ function loadPlatform(sites = SITES, compat = COMPAT) {
   const errs = [...validateManifest(sites), ...validateCompat(compat, (sites && sites.apps) || [])];
   if (errs.length) throw new Error(`platform manifest invalid: ${errs.join('; ')}`);
   const byId = new Map(sites.deployments.map((d) => [d.id, d]));
+  // N1b (PLAN-capp-native-shell D1): the native shell is its OWN client deployment of the platform orders app — the id its stamp
+  // sends as X-Client-Deployment — declared in that deployment's `native` block (no folder, no site: it inherits app + context)
+  for (const d of sites.deployments) if (d.native) byId.set(d.native.deployment, { id: d.native.deployment, app: d.app, context: d.context });
+  // the customer APP's client deployments: the platform orders deployment + its native one. ONE predicate for every "is this the
+  // capp?" rule (the guest checkout's card-only + ticket gates key on it), so a declared native shell is the capp, never a form.
+  // No native block ⇒ exactly { the platform orders deployment } (today: 'orders-app').
+  const appIds = new Set(sites.deployments.filter((d) => d.app === 'orders' && d.context === PLATFORM_CONTEXT).flatMap((d) => (d.native ? [d.id, d.native.deployment] : [d.id])));
   return {
     sites, compat, ...deriveCorsLists(sites),
     // a heartbeat's (app, deployment, context) must be exactly a manifest combination
     isValidCombination: (app, deployment, context) => { const d = byId.get(deployment); return !!d && d.app === app && d.context === context; },
+    isAppDeployment: (id) => typeof id === 'string' && appIds.has(id),
+    nativeDeployment: () => { const d = sites.deployments.find((x) => x.app === 'orders' && x.context === PLATFORM_CONTEXT && x.native); return d ? d.native.deployment : null; },
     maxCompat: (app) => (Number.isInteger(compat.generations[app]) ? compat.generations[app] : 0),
     isKnownApp: (app) => sites.apps.includes(app),
   };
