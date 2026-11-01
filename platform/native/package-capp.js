@@ -90,7 +90,9 @@ function build({ sha, flags = [], root = ROOT, show, target = 'native', env } = 
   // APP-TRAIN OBLIGATION (advisor ruling 2026-11-01): 3a's capp-guest server refuses every capp guest that is not card + email + a
   // verified ticket; a bundle that can serve capp guests WITHOUT the client's guestCardOnly rules must never be built (web or native)
   if (!flags.includes('guestCardOnly')) {
-    let guestServer = true; try { S(GUEST_SERVER); } catch (_) { guestServer = false; }
+    let guestServer = true;   // presence only — silent (an absent path is the normal case; git's «fatal: path …» never reaches stderr)
+    if (typeof show === 'function') { try { S(GUEST_SERVER); } catch (_) { guestServer = false; } }
+    else { try { execFileSync('git', ['cat-file', '-e', `${full}:${GUEST_SERVER}`], { cwd: root, stdio: 'ignore' }); } catch (_) { guestServer = false; } }
     if (guestServer) throw new Error(`the capp-guest server (${GUEST_SERVER}) is in this commit: --flags guestCardOnly is required (owner 10-27: guests are card only)`);
   }
   const sites = JSON.parse(T('platform/sites.json')), compat = JSON.parse(T('platform/compat.json'));
