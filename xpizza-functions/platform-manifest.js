@@ -51,12 +51,32 @@ function validateManifest(m) {
     if (!Array.isArray(d.entrypoints) || !d.entrypoints.length
       || d.entrypoints.some((e) => typeof e !== 'string' || !/^[a-z0-9][a-z0-9_/-]*\.html$/.test(e) || e.includes('..'))) errs.push(`${tag}: bad entrypoints`);
     if (!(d.context === PLATFORM_CONTEXT || (typeof d.context === 'string' && RID_RE.test(d.context)))) errs.push(`${tag}: bad context`);
+    // S3b: the hosted-checkout RETURN routing (pixelpay-return-url.js) — only an `orders` deployment may carry it: the env key
+    // naming its base, and an optional exact https default (absent → fail-closed when the env is unset)
+    if (d.pay_return !== undefined) {
+      const pr = d.pay_return;
+      if (d.app !== 'orders') errs.push(`${tag}: pay_return is only for an orders deployment`);
+      else if (!pr || typeof pr !== 'object' || Array.isArray(pr) || Object.keys(pr).some((k) => k !== 'env' && k !== 'default')) errs.push(`${tag}: pay_return must be { env, default? }`);
+      else {
+        if (typeof pr.env !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(pr.env)) errs.push(`${tag}: pay_return.env must be an ENV_KEY`);
+        if (pr.default !== undefined && !isExactHttpsOrigin(pr.default)) errs.push(`${tag}: pay_return.default must be an exact https origin`);
+      }
+    }
     if (!Array.isArray(d.origins)) errs.push(`${tag}: origins must be an array`);
     else for (const o of d.origins) {
       if (!isExactHttpsOrigin(o)) errs.push(`${tag}: origin ${JSON.stringify(o)} is not an exact https origin`);
       if (origins.has(o)) errs.push(`${tag}: origin ${o} listed twice`);
       origins.add(o);
     }
+  }
+  // S2 P-A: the customer APP's orders deployment (context 'platform', never a rid's own) — at most ONE, and it must carry a
+  // pay_return whose default is one of its OWN declared origins (pixelpay-return-url.js only ever returns to a declared origin)
+  const appDeps = deps.filter((d) => d && d.app === 'orders' && d.context === PLATFORM_CONTEXT);
+  if (appDeps.length > 1) errs.push('at most one orders deployment may have context platform');
+  for (const d of appDeps) {
+    const pr = d.pay_return;
+    if (!pr || typeof pr !== 'object' || pr.default === undefined) errs.push(`${JSON.stringify(d.id)}: the platform orders deployment needs pay_return with a default`);
+    else if (!Array.isArray(d.origins) || !d.origins.includes(pr.default)) errs.push(`${JSON.stringify(d.id)}: pay_return.default must be one of its own origins`);
   }
   return errs;
 }

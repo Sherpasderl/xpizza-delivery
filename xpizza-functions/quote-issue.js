@@ -17,6 +17,7 @@
 // ---------------------------------------------------------------------------
 const crypto = require('node:crypto');
 const { computeServerNet } = require('./compute-server-net');
+const { tipCentsOf } = require('./delivery/delivery-pricing');   // S2-srv-tip
 const { cartFingerprint, normalizeCartForFingerprint, signQuoteToken } = require('./quote-token');
 
 /* Generous on purpose. The expiry is not a money control — the server reprices at the charge, so an
@@ -86,8 +87,8 @@ function issueQuote(args) {
   }
 }
 
-function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tables = null, customerId = null, nowMs = Date.now() }) {
-  const net = computeServerNet({ items, reward, rid, tables });
+function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tables = null, customerId = null, deliveryContext = null, nowMs = Date.now() }) {
+  const net = computeServerNet({ items, reward, deliveryContext, rid, tables });
   if (net.error) return { ok: false, error: net.error };
 
   const result = { ok: true, net_total_cents: net.net_total_cents, components: net.components, quote_token: null };
@@ -110,6 +111,11 @@ function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tabl
       net_total_cents: net.net_total_cents,
       components: net.components,
       redemption_ref: redemptionRef || null,
+      // S3a: the envío facts this net includes (mode, policy_version, delivery/promo, the priced PLACE and the promo customer —
+      // BINDINGS the gate enforces, codex S3a P2-3) — absent when the restaurant is
+      // not activated for envío, so every pre-S3 token payload is byte-identical.
+      ...(deliveryContext ? { delivery: { mode: deliveryContext.mode, policy_version: deliveryContext.policy_version, delivery_cents: deliveryContext.delivery_cents, promo_discount_cents: deliveryContext.promo_discount_cents, place: deliveryContext.place || null, customer: deliveryContext.customer || null,
+        ...(tipCentsOf(deliveryContext) > 0 ? { tip_cents: tipCentsOf(deliveryContext) } : {}) } } : {}),   // S2: the SIGNED tip (> 0 only — every no-tip payload and pre-S2 token is byte-identical); the gate binds it (deliveryBindingMismatch)
       issued_at: nowMs,
       expires_at: nowMs + EXPIRY_MS,
       quote_id: crypto.randomUUID(),             // a nonce, so two identical quotes are still two quotes

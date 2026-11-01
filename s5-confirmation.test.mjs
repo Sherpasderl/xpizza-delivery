@@ -22,6 +22,7 @@
 //      change): the map coords, the store label, Ayuda and Directions all come from that brand's own data
 import assert from 'node:assert';
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { readInlineConfig, configBlockLines } from './xpizza-functions/contract/capp/brand-config.mjs';
 import { counter, settle, stageSettle, envelope, loadForm, res, BRAND, closeAll } from './form-harness.mjs';
 
 const { ok, count } = counter();
@@ -35,8 +36,13 @@ const json = (status, body) => Promise.resolve({ ok: status >= 200 && status < 3
 const THIRD = 'node_modules/.s5-third-brand';
 {
   const src = readFileSync(new URL('./xpizza-orders/index.html', import.meta.url), 'utf8');
-  const lat = src.match(/const RESTAURANT_LAT = ([0-9.-]+);/)[1], lng = src.match(/const RESTAURANT_LNG = ([0-9.-]+);/)[1];
-  const out = src.replace(`const RESTAURANT_LAT = ${lat};`, 'const RESTAURANT_LAT = 14.0723;').replace(`const RESTAURANT_LNG = ${lng};`, 'const RESTAURANT_LNG = -87.1921;')
+  // S0-prod: the coordinates are DATA in the page's RESTAURANT-CONFIG block — the third brand's are swapped there (the block's
+  // own JSON payload, exactly once), never in code.
+  const { index, config } = readInlineConfig(src, 'xpizza-orders');
+  const plainCfg = JSON.parse(JSON.stringify(config));
+  const lines = src.split('\n');
+  lines[index] = configBlockLines({ ...plainCfg, map: { ...plainCfg.map, latitude: 14.0723, longitude: -87.1921 } })[1];
+  const out = lines.join('\n')
     .split('https://wa.me/50497952893').join('https://wa.me/50431112222');
   mkdirSync(new URL(`./${THIRD}/third-orders/`, import.meta.url), { recursive: true });
   writeFileSync(new URL(`./${THIRD}/third-orders/index.html`, import.meta.url), out);

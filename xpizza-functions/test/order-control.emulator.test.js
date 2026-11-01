@@ -25,6 +25,7 @@
 //     today's block; the manual release is refused without clearing a block; a stale releasing claim is held.
 require('./_emulator-required')('database', 'firestore');
 
+const DR = require('./_delivery-read');   // S3a: the declared envío config read
 const assert = require('assert');
 const http = require('http');
 const path = require('path');
@@ -480,8 +481,8 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
     const tx = r.ops.filter((o) => o.db === 'rtdb' && o.op === 'transaction' && o.path === `user_rewards/<uid>/${rid}`);
     assert.strictEqual(tx.length, 2, `🔴 ${key}: exactly the reserve + release transactions on the reward balance (got ${tx.length})`);
   };
-  const stripControl = (ops) => ops.filter((o) => !isControlRead(o) && !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o) && !isD12Read(o));
-  const goldOps = (ops) => ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o));
+  const stripControl = (ops, label) => DR.without(ops, label, { ignore: isTestOp, ...(/^SCHEDULED sweep release/.test(label) ? { expected: 0 } : {}) }).filter((o) => !isControlRead(o) && !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o) && !isD12Read(o));
+  const goldOps = (ops) => ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o));   // the frozen golden predates the envío read
   const tally = { same: 0, refused: 0 };
   for (const [key, r] of Object.entries(results)) {
     const [name, state] = key.split(' | ');
@@ -504,8 +505,8 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         const s3c = SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) });   // the content the route stamped (createOrder: posted; charge: posted + server reward lines)
         // codex r2 P2 — the mode is DECLARED from what the case IS (a changed cart / a vanished order stamps content it does not persist)
         const mode = /chang|VANISH/i.test(c.name) ? 'unbound' : 'bound';
-        const cs = SD.compareShape(stripControl(r.ops), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
-        if (JSON.stringify(stripControl(r.ops)) !== JSON.stringify(goldOps(g.ops))) S3_DIFF += 1;
+        const cs = SD.compareShape(stripControl(r.ops, key), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
+        if (JSON.stringify(stripControl(r.ops, key)) !== JSON.stringify(goldOps(g.ops))) S3_DIFF += 1;
         assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${key}: the call sequence changed beyond the control read`);
         const ch = SD.changedShape(r.changed, expectedChangedD12b(g.changed), { content: s3c, bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
         // §3 r3 (codex r3 P1): a card request that wrote its pending order PERSISTED the content keys of the content it stamped
@@ -574,7 +575,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
   // A GATE / CTX re-read is never set aside: it stays in the comparison and shows.
   let companion = { on: 0, ont: 0, probed: 0, bound: 0, mut: 0 };
   if (!CAPTURE) {
-    const NO = (ops) => RD.normOps(ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o)));
+    const NO = (ops) => RD.normOps(ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o)));   // inputs already through DR.without
     const REUSE_REF = 'card REUSE of a live checkout holding a reward (the hold stays)';
     const BOUND = new Set([REUSE_REF, 'RACE with a REUSED reward hold (kept)']);
     const compare = (pass, key, on, c, steady) => {
@@ -582,7 +583,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
       const off = results[key];
       const L = `${key} (render ON${steady ? '' : ', issued with render OFF'})`;
       assert.ok(off && on, `${L}: ran on both sides`);
-      const offOps = NO(FILL.strip(off.ops, rid, off, `${L} [render-OFF side]`, { ignore: isTestOp, cold: COLD_OF.get(off) })); const onOps = NO(FILL.strip(on.ops, rid, on, L, { ignore: isTestOp, cold: COLD_OF.get(on) }));
+      const offOps = NO(FILL.strip(DR.without(off.ops, `${L} [render-OFF side]`, { ignore: isTestOp }), rid, off, `${L} [render-OFF side]`, { ignore: isTestOp, cold: COLD_OF.get(off) })); const onOps = NO(FILL.strip(DR.without(on.ops, L, { ignore: isTestOp }), rid, on, L, { ignore: isTestOp, cold: COLD_OF.get(on) }));   // S3a: the declared envío read is set aside first (it leads the request)
       const reward = c.path === 'card' && isRewardCase(c);
       if (steady && BOUND.has(c.name)) {
         const ref = results[`${REUSE_REF} | ${state} | ${rid}`];

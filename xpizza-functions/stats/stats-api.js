@@ -175,7 +175,7 @@ function orderRow(o) {
   const mm = String(new Date(ms - T.TZ_OFFSET_MS).getUTCMinutes()).padStart(2, '0');
   const items = B.linesOf(o).filter((l) => l && typeof l === 'object').map((l) => `${Number(l.qty) || 0}x ${String(l.name == null ? '' : l.name)}`).join('; ');
   return [T.dateOf(ms), `${hh}:${mm}`, o.display_number == null ? '' : o.display_number, o.order_type || '', o.payment_method || '',
-    classifyOrder(o), L(Number(o.total_cents)), L(Number(o.subtotal_cents)), L(Number(o.tax_cents)), items];
+    classifyOrder(o), L(Number(o.total_cents) - B.envioNetCents(o) - B.tipCents(o)), L(Number(o.subtotal_cents)), L(Number(o.tax_cents)), items];
 }
 
 // ── the core ──────────────────────────────────────────────────────────────────────────────────────

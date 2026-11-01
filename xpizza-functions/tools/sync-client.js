@@ -8,9 +8,10 @@ const ROOT = path.join(__dirname, '..', '..');
 const SRC = path.join(ROOT, 'platform', 'client', 'sherpa-client.js');
 const folders = [...new Set(require(path.join(ROOT, 'platform', 'sites.json')).deployments.map((d) => d.folder))];
 for (const f of folders) fs.copyFileSync(SRC, path.join(ROOT, f, 'sherpa-client.js'));
-// the order-form adapter: only the `orders` deployments' folders
+// the order-form adapter: only the `orders` deployments' folders — the FORMS, not the customer app (context 'platform'), whose
+// own adapter is customer-app/capp-self-update.js (the forms' adapter depends on form globals; PLAN-capp-S2-r4 §2.2)
 const ORDER_SRC = path.join(ROOT, 'platform', 'client', 'order-self-update.js');
-const orderFolders = [...new Set(require(path.join(ROOT, 'platform', 'sites.json')).deployments.filter((d) => d.app === 'orders').map((d) => d.folder))];
+const orderFolders = [...new Set(require(path.join(ROOT, 'platform', 'sites.json')).deployments.filter((d) => d.app === 'orders' && d.context !== 'platform').map((d) => d.folder))];
 for (const f of orderFolders) fs.copyFileSync(ORDER_SRC, path.join(ROOT, f, 'order-self-update.js'));
 // D4-c4: the ONE pause-state interpretation (functions + CLI) → dispatch's committed copy (order-control-state-sync.guard.test.js)
 fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'order-control-state.js'), path.join(ROOT, 'xpizza-dispatch', 'order-control-state.js'));

@@ -20,6 +20,7 @@ const REAL_NOW = Date.now.bind(Date);
 let CLOCK_OFFSET = 0;
 Date.now = () => REAL_NOW() + CLOCK_OFFSET;
 
+const DR = require('./_delivery-read');   // S3a: the declared envío config read
 const assert = require('assert');
 const http = require('http');
 const path = require('path');
@@ -268,7 +269,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
       assertExtrasDeclared(out[rid][k], `${rid} ${k}`);
       assert.ok(floorCalls.every((e) => e.op === 'get'), `🔴 ${rid} ${k}: the floor path is only ever READ (got ${JSON.stringify(floorCalls)})`);
       assert.ok(floorCalls.length <= 1, `🔴 ${rid} ${k}: at most one floor read per request (cached) — got ${floorCalls.length}`);
-      assert.deepStrictEqual(out[rid][k].filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen ba29282 trace`);
+      assert.deepStrictEqual(DR.without(out[rid][k], `${rid} ${k}`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen ba29282 trace`);
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get)`);
     }
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());
@@ -287,7 +288,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
       assert.strictEqual(t.status, 200, 'post-TTL request premise');
       const fl = t.trace.filter(isFloorRead);
       assert.deepStrictEqual(fl.map((e) => e.op), ['get'], `🔴 after the TTL exactly ONE floor GET is made (got ${JSON.stringify(fl)})`);
-      assert.deepStrictEqual(t.trace.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), golden.x_pizza.b_quote_redemption, '🔴 the post-TTL request, minus its floor GET, equals the frozen golden');
+      assert.deepStrictEqual(DR.without(t.trace, 'post-TTL').filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), golden.x_pizza.b_quote_redemption, '🔴 the post-TTL request, minus its floor GET, equals the frozen golden');
       console.log(`  ✓ x_pizza post-TTL b_quote_redemption: exactly 1 allowlisted floor GET; the rest identical to the golden`);
     }
     // ── RENDER-ON COMPANION (1D add-product B, PB-2 ruling (A)) ─────────────────────────────────────────────────────
@@ -300,7 +301,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
     {
       const GATE_READ = (rid) => [{ db: 'fs', op: 'get', path: `restaurants/${rid}/meta/active_version` },
         { db: 'fs', op: 'getAll', paths: [`restaurants/${rid}/meta/active_version`], raw_order: 'ascending', count: 1 }];
-      const noFloor = (t) => t.trace.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e));
+      const noFloor = (t) => DR.without(t.trace, 'render companion').filter((e) => !isFloorRead(e) && !isExtrasModeRead(e));
       const side = async (on, rid, kind, refresh) => {
         if (refresh) CLOCK_OFFSET += 61000;   // past the verifier's 60 s, the context's 45 s, the gate pointer's 45 s, the floor's 30 s
         await rtdb.ref('rate_limits').remove();

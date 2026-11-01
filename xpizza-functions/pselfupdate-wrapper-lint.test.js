@@ -111,7 +111,7 @@ ok(`every remaining bare fetch( is allowlisted non-platform traffic: ${r.bare.ma
 // the order-form adapter: canonical copies + loaded after the form script
 {
   const canon = fs.readFileSync(path.join(ROOT, 'platform/client/order-self-update.js'));
-  for (const d of SITES.deployments.filter((x) => x.app === 'orders')) {
+  for (const d of SITES.deployments.filter((x) => x.app === 'orders' && x.context !== 'platform')) {   // the forms (the customer app has its own adapter)
     assert.ok(canon.equals(fs.readFileSync(path.join(ROOT, d.folder, 'order-self-update.js'))), `🔴 ${d.folder}/order-self-update.js drifted — npm run sync:client`);
     const html = read(`${d.folder}/index.html`);
     const at = html.indexOf('<script src="order-self-update.js"></script>');

@@ -1,0 +1,135 @@
+{
+  "asap-width": [
+    "OWNER RULED 2026-10-26: half width, as built (\"half as drawn now. We will not launch the app without the scheduling build anyway.\") — the drawn grid minus the hidden Programar card",
+    "intentional per ruling (S4 scheduling): no «Programar» card",
+    "see checkout-guest for the rest of the screen"
+  ],
+  "checkout-guest": [
+    "identical: flowbar «Entrega & Pago» with NO back control, Entrega head, Delivery/Pickup segment, ASAP card copy «≈ 30 min», drawn map chrome (pin, «TU UBICACIÓN» tag, «Ajustar pin»), Detalles field, Tus datos fields",
+    "intentional per ruling (S4): no «Programar» card",
+    "intentional per ruling (Maps fallback): schematic map — no Maps key in the fixture",
+    "intentional per ruling (R1/R3/R4): address row «Tu ubicación» — no reverse geocoding (the prototype's sample street)",
+    "identical: CTA as in P — a DETECTED GPS fix is a confirmed pin (OWNER 2026-10-21, DECISIONS:2072); only denied/failed geolocation needs the pin step"
+  ],
+  "checkout-guest-bottom": [
+    "identical: «¿Ya tenés cuenta? Entrá», Tu pedido summary row (logo chip, «X. Pizza · Los Próceres», «3 pizzas · …»), Subtotal L 1,029, Envío ⓘ L 45, Total L 1,074 (from the scripted quote), both payment options + copy",
+    "intentional per ruling (fiscal flag): «Agregar email / notas» — no «factura / »",
+    "intentional per ruling (R1/R3/R4): no «Creá tu cuenta y tu envío es gratis» line",
+    "intentional per ruling (footer held): no «¿Problemas con tu pedido? Escribinos al …»"
+  ],
+  "checkout-member": [
+    "identical: member «Ana Pérez · +504 9612-3344 · Cambiar» row, the member details row «Portón negro, segundo piso…» + «Cambiar»",
+    "intentional per ruling (fiscal flag): «Agregar email / notas» — no «factura / »",
+    "intentional per ruling (S4): no «Programar»",
+    "intentional per ruling (R6): the address row is the guest pin row «Tu ubicación» — the S2 member shape carries no address book (saved addresses = S7)",
+    "identical: CTA as in P — a DETECTED GPS fix is a confirmed pin (OWNER 2026-10-21, DECISIONS:2072); only denied/failed geolocation needs the pin step (the member fixture has a GPS fix)"
+  ],
+  "checkout-member-bottom": [
+    "identical: Envío struck «L 45» + «Gratis» (the quote's promo_discount_cents), Total L 1,029, the collapsed member payment row «Efectivo al entregar · Como tu último pedido · Cambiar», cash panel chips «Pago exacto» / «L 1,500», «Otro monto (L)»",
+    "intentional per ruling (R1/R3/R4): no «Envío gratis · promoción de lanzamiento» note (the quote carries no promo label)",
+    "intentional per ruling (footer held): no «Escribinos al …»",
+    "data-only: scroll offset (the build page is shorter by the footer)"
+  ],
+  "pickup": [
+    "identical: Pickup pressed, «Listo en ≈ 20 min», branch row «X. Pizza · Los Próceres» + address, «Te avisamos por WhatsApp cuando esté listo.», Nombre / WhatsApp, «¿Ya tenés cuenta? Entrá», CTA «Escribí tu nombre»",
+    "intentional per ruling (S4): no «Programar»",
+    "intentional per ruling (fiscal flag): no «factura / »"
+  ],
+  "closed": [
+    "identical: «Lo antes posible · No disponible · cerrado» disabled",
+    "intentional per ruling (S4 / G0, Q2): no «Programar» card, no day chips / slot grid; CTA «No disponible · cerrado» (G0) instead of «Elegí un horario»",
+    "intentional per ruling (R1/R3/R4): «Tu ubicación» row"
+  ],
+  "geo-denied": [
+    "identical: «PIN EN EL RESTAURANTE» tag, «Ubicación desactivada · Activar» row, «Mové el pin a tu puerta», CTA «Ajustá el pin a tu dirección»",
+    "intentional per ruling (S4): no «Programar»"
+  ],
+  "out-of-zone": [
+    "identical: map dimmed (.map.out), gate «X. Pizza no llega a esta dirección», «Entregamos hasta 7 km de Los Próceres. …», «Cambiar dirección» / «Recoger en tienda», CTA «Fuera de la zona de delivery»",
+    "intentional per ruling (S4): no «Programar»",
+    "intentional per ruling (R1/R3/R4): «Tu ubicación» row"
+  ],
+  "pin": [
+    "identical: full-screen pin step, close X, hint «Mové el mapa hasta que el pin quede en tu puerta», «Confirmá dónde entregamos», sub copy, «Listo»",
+    "intentional per ruling (brief): the prototype-only «Simulación (solo prototipo)» strip is dropped — so the foot is shorter and the map (and its centred pin) sit lower",
+    "intentional per ruling (Maps fallback): schematic map",
+    "a11y (S1 FOCUS note): the close X shows the focus ring only because the harness clicks synthetically (focus moves into the dialog)"
+  ],
+  "tip-empty": [
+    "identical: «←» topbar, rider, «Agregá una propina», chips «Sin propina · L 20 · L 40 · L 60 · Otro» (none pressed), «Propina —», Total L 1,074, disabled «Hacer pedido · L 1,074»"
+  ],
+  "tip-chosen": [
+    "identical: L 20 pressed, «Propina L 20», Total L 1,094 (the tip quote's net), «Hacer pedido · L 1,094»"
+  ],
+  "tip-other": [
+    "identical: «Otro monto» sheet, «Propina para tu repartidor», «L 150», keypad, «Guardar»"
+  ],
+  "placing": [
+    "identical: «Realizando pedido…», «Llega 7:35 p.m. – 7:50 p.m. · Delivery», «X. Pizza · Los Próceres», «3 pizzas · 1× Carnivora, 1× Carnivora, 1× Margherita», «Efectivo al entregar · Total L 1,094 · incluye propina L 20», «Se ve bien (0:02)», «Volver»",
+    "intentional per ruling (R1/R3/R4): the address line is the customer's «Detalles adicionales» («Portón negro») — no reverse geocoding",
+    "a11y (S1 FOCUS note): focus ring on «Se ve bien» (synthetic click)"
+  ],
+  "sending-spinner": [
+    "identical: promo background, live rider, «Enviando tu pedido…» + spinner, logo row, «Efectivo al entregar · L 1,094», «Incluye propina L 20», «Esto toma unos segundos»",
+    "intentional per ruling (R1/R3/R4): address row «Portón negro» (the details) instead of the sample street"
+  ],
+  "sending-check": [
+    "identical: the green check (CHECK_OK) replacing the spinner, every row as sending-spinner",
+    "intentional per ruling (R1/R3/R4): address row"
+  ],
+  "sending-confirming": [
+    "identical: the approved «Enviando tu pedido…» screen, spinner stays, no sheet, no button, only .shint changes",
+    "intentional per ruling (DECISIONS:2369): .shint «Estamos confirmando tu pago con el banco.» (the Q9 figure drew «…con tu banco. No hace falta pagar de nuevo.»)",
+    "data-only: Café Ocote · Trejo / L 485 (the mockup's sample) vs X. Pizza / L 1,094",
+    "intentional per ruling (R1/R3/R4): address row"
+  ],
+  "offline": [
+    "identical: over the tip screen (where the tap happened — P placeTap), warn icon, «Sin conexión», body copy, «Reintentar» / «Cerrar»",
+    "a11y (S1 FOCUS note): focus ring on «Reintentar»"
+  ],
+  "closure": [
+    "identical: over the tip screen (P placeTap), warn icon, title «X. Pizza cerró a las 7:45 p.m.», «Tu pedido no se envió.»",
+    "intentional per ruling (OWNER 2026-10-26, DECISIONS): no «Programar» button and no «Podés programarlo…» sentence; «Cerrar» alone keeps its drawn btn2 style",
+    "a11y (S1 FOCUS note): focus ring on «Cerrar»"
+  ],
+  "payfail": [
+    "identical: over «Entrega & Pago» (P pixelPay → back()), error icon, «Pago no completado», body, «Pagar en efectivo» / «Usar otra tarjeta»",
+    "intentional per ruling (S4 / R1/R3/R4): no «Programar» card, «Tu ubicación» row behind",
+    "a11y (S1 FOCUS note): focus ring on the primary"
+  ],
+  "price": [
+    "identical: the ported sheet byte-for-byte (capp-confirm-quote.js === the forms' form-confirm-quote.js): «El precio cambió», «L 1094.00 → L 999.00. Confirmá para continuar con el precio nuevo.», «Cancelar» / «Confirmar»",
+    "intentional (flow): in the app the sheet arrives while «Enviando tu pedido…» is on screen (place() in flight); the reference shows it over «Entrega & Pago». The reference sheet was moved inside the phone frame (position:absolute) only so it can be clipped at 390×844",
+    "a11y: «Confirmar» focused by the shared module (its own focus())"
+  ],
+  "refund": [
+    "identical (vs MOCKUP #mk-refunded): ok icon (.icon.ok), «Te reembolsamos tu pago», body shape, «L 485», one primary «Volver al inicio», sheet over «Entrega & Pago»",
+    "data-only: «Café Ocote» (the mockup's sample) vs «X. Pizza»; the ETA «≈ 25 min» vs «≈ 30 min»; tag «PIN CONFIRMADO» vs «TU UBICACIÓN» (a return lands on a fresh flow)",
+    "intentional per ruling (S4): no «Programar» card behind",
+    "a11y (S1 FOCUS note): focus ring on «Volver al inicio»"
+  ],
+  "exists": [
+    "identical (vs MOCKUP #mk-exists): calm icon (.icon.calm), «Necesitamos revisar tu pedido», body copy, «Referencia #XXXX» bold (.errsheet .note b), «Volver al pedido» (btn2 wide), sheet over «Entrega & Pago» with «PIN CONFIRMADO»",
+    "intentional per ruling (brief + the mockup's own caption): NO «Escribir a la tienda» (no public restaurant contact in the app data) — so the sheet is one button shorter",
+    "data-only: the reference id (#A7K2 vs the minted id's last 4)",
+    "a11y (S1 FOCUS note): focus ring on «Volver al pedido»"
+  ],
+  "paused": [
+    "identical (vs MOCKUP held-states #mk-paused): warn tint + clock (.icon.warn, IC.clock), title «{name} no está recibiendo pedidos en este momento», body «Tu pedido no se envió ni se cobró nada; está intacto para que lo intentés en unos minutos.», ONE primary «Entendido», sheet over «Entrega & Pago» with «PIN CONFIRMADO»",
+    "data-only: «Café Ocote» (the mockup's sample) vs «X. Pizza» (cfg.name); the ETA «≈ 25 min» vs «≈ 30 min»",
+    "intentional per ruling (S4 / R1/R3/R4): no «Programar» card, «Tu ubicación» row behind (no reverse geocoding; geo backlog S2b-geo)",
+    "a11y (S1 FOCUS note): focus ring on «Entendido»"
+  ],
+  "generic": [
+    "identical (vs MOCKUP held-states #mk-generic): default error icon (red ✕, IC.close), «No pudimos enviar tu pedido», «Intentá de nuevo en un momento; tu pedido está intacto.», primary «Reintentar» + «Cerrar» (btn2 wide), sheet over «Entrega & Pago» with «PIN CONFIRMADO»",
+    "data-only: the ETA «≈ 25 min» vs «≈ 30 min»",
+    "intentional per ruling (S4 / R1/R3/R4): no «Programar» card, «Tu ubicación» row behind",
+    "a11y (S1 FOCUS note): focus ring on «Reintentar»"
+  ],
+  "pending": [
+    "identical (vs MOCKUP held-states #mk-pending): calm tint + clock (.icon.calm, IC.clock), «Tu pago todavía está en verificación», body «Estamos confirmando tu pago con el banco. No hace falta pagar de nuevo; esperá un momento mientras termina.», ONE primary «Volver al pedido», sheet over «Entrega & Pago»",
+    "data-only: the ETA «≈ 25 min» vs «≈ 30 min»; tag «PIN CONFIRMADO» vs «TU UBICACIÓN» and row sub «Pin confirmado» vs «Ajustá el pin a tu dirección» (a return from PixelPay lands on a fresh flow — same as refund)",
+    "intentional per ruling (S4 / R1/R3/R4): no «Programar» card, «Tu ubicación» row behind",
+    "a11y (S1 FOCUS note): focus ring on «Volver al pedido»"
+  ]
+}

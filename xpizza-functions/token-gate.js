@@ -24,6 +24,7 @@ const { computeServerNet } = require('./compute-server-net');
 const { verifyQuoteToken, cartFingerprint, normalizeCartForFingerprint } = require('./quote-token');
 const { formatOf, FORMAT_LEGACY, canonicalQuoteFingerprint } = require('./catalog/canonical-binding');   // 1D D4-b §A/§B
 const { contextOf } = require('./catalog/pricing-tables');
+const { deliveryBindingMismatch } = require('./delivery/delivery-pricing');   // S3a
 
 /* 🔴 THE REQUEST→GATE MAPPING, IN ONE PLACE. This is nothing but field names, which is exactly why it
    needed extracting: the closing gate demonstrated that renaming body.expected_net_cents at the two
@@ -181,6 +182,10 @@ function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, rewar
   if (payload.rid !== rid) {
     return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'rid_mismatch', quoteId: payload.quote_id || null, degraded: false };
   }
+  // S3a (codex P2-3): the envío context the quote SIGNED (mode, priced place, promo customer) must be the one being charged —
+  // a pickup token must never authorise a delivery whose total happens to be no higher. Not activated → nothing to bind.
+  { const why = deliveryBindingMismatch(payload.delivery, deliveryContext);
+    if (why) return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: why, quoteId: payload.quote_id || null, degraded: false }; }
 
   const confirmed = Number(payload.net_total_cents);
   if (!Number.isSafeInteger(confirmed)) {
@@ -214,8 +219,9 @@ function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, rewar
  * strand a customer's loyalty points; an order that IS created must keep the hold, because completion
  * is what consumes it. Those are opposite mistakes and both are tested.
  */
-async function applyConfirmedNetGate({ gateInput, recordedTotalCents, releaseHold, orderId, log = console }) {
-  const result = gateConfirmedNet(gateInput);
+async function applyConfirmedNetGate({ gateInput, recordedTotalCents, releaseHold, orderId, log = console, deliveryContext = null }) {
+  // S3a: the SERVER's envío for this order (delivery/delivery-wire.js gateExtra) joins the recompute; absent → as before S3.
+  const result = gateConfirmedNet(deliveryContext ? { ...gateInput, deliveryContext } : gateInput);
   const refuse = async (status, body, event, detail) => {
     await releaseHold();
     try { log.warn(event, JSON.stringify({ orderId, ...detail })); } catch (_) {}

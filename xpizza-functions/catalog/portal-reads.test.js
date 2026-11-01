@@ -613,11 +613,22 @@ const TWO = {
     // and the account list is not widened to compensate — the point is that the two stay separate
     assert.ok(!/PORTAL_ORIGINS/.test(blockOf2('requestOtp')), 'the account endpoints did not inherit the portal list');
     // P-SELFUPDATE: ACCOUNT_ORIGINS is DERIVED from the bundled site manifest (the order sites only); the pin is on the
-    // derived VALUE — exactly the two customer order sites — and on index.js taking it from there.
+    // derived VALUE — exactly the customer order sites — and on index.js taking it from there. S2-srv-app (PLAN-capp-S2-r4
+    // §2.1): the customer APP is a customer order site too, so its origins (read from the manifest, never a host literal)
+    // follow the two frozen form literals; nothing else may join, and in particular never a portal origin.
     assert.ok(/const \{ ACCOUNT_ORIGINS \} = require\('\.\/platform-manifest'\)\.PLATFORM;/.test(CODE), 'index.js takes ACCOUNT_ORIGINS from the manifest');
-    assert.deepStrictEqual(require('../platform-manifest').PLATFORM.ACCOUNT_ORIGINS, ['https://orders.xpizza.hn', 'https://orders.lamusa.hn'],
-      'ACCOUNT_ORIGINS is unchanged — exactly the two customer order sites, never widened to reach the portal');
-    ok('the two write endpoints accept the portal origin and only it; ACCOUNT_ORIGINS is untouched');
+    const PM = require('../platform-manifest');
+    const ACCOUNT = PM.PLATFORM.ACCOUNT_ORIGINS;
+    const APP_ORIGINS = PM.PLATFORM.sites.deployments.filter((d) => d.app === 'orders' && d.context === PM.PLATFORM_CONTEXT).flatMap((d) => d.origins);
+    assert.ok(APP_ORIGINS.length >= 1, 'premise: the app deployment declares its origin(s)');
+    assert.deepStrictEqual(ACCOUNT, ['https://orders.xpizza.hn', 'https://orders.lamusa.hn', ...APP_ORIGINS],
+      'ACCOUNT_ORIGINS is exactly the customer order sites (the two forms + the app) — no origin beyond those');
+    const NON_CUSTOMER = PM.PLATFORM.sites.deployments.filter((d) => d.app !== 'orders').flatMap((d) => d.origins);
+    assert.deepStrictEqual(ACCOUNT.filter((o) => NON_CUSTOMER.includes(o)), [], 'no non-customer deployment\'s origin is in ACCOUNT_ORIGINS');
+    const PORTAL = require('../portal/origins').PORTAL_ORIGINS;
+    assert.ok(Array.isArray(PORTAL) && PORTAL.length > 0, 'premise: the portal list exists');
+    assert.deepStrictEqual(ACCOUNT.filter((o) => PORTAL.includes(o)), [], '🔴 no ACCOUNT_ORIGINS entry is a PORTAL_ORIGINS entry — never widened to reach the portal');
+    ok('the two write endpoints accept the portal origin and only it; ACCOUNT_ORIGINS = exactly the customer order sites (forms + app), none a portal or non-customer origin');
   }
 
   {

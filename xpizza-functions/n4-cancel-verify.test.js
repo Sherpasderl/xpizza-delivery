@@ -38,7 +38,10 @@ for (const [brand, { file, stash }] of Object.entries(FORMS)) {
   // accepted residual documented
   assert.ok(/self-heals on retry/.test(cancel), `[${brand}] accepted residual documented`);
   // uses the brand's stash key (byte-parallel-but-branded)
-  assert.ok(src.includes(`localStorage.getItem('${stash}'`), `[${brand}] reads its own stash`);
+  // S0-prod: the key is DATA — the code reads RESTAURANT_CONFIG.storage_keys.pending_pay, and the SHIPPED config of this form
+  // (its inline block, executed) must hold THIS brand's exact legacy key (§A4: a stash written before the deploy still resolves).
+  assert.strictEqual(require('./contract/capp/brand-config.mjs').readInlineConfig(src, brand).config.storage_keys.pending_pay, stash, `[${brand}] its config's stash key is the exact legacy string`);
+  assert.ok(src.includes('localStorage.getItem(RESTAURANT_CONFIG.storage_keys.pending_pay'), `[${brand}] reads its own stash`);
 
   ok(`${brand}: applyPollState reuse + cancel-verify (P1 single-check, P2 fail-safe, 4-paid-state override)`);
 }

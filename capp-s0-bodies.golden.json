@@ -1,0 +1,1788 @@
+{
+  "_about": "Customer App S0-test request-body goldens. Captured from the CURRENT forms by capp-s0-bodies.golden.test.mjs --write; never hand-edit.",
+  "cells": {
+    "x_pizza/A-cash-delivery": {
+      "requests": [
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "createOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "customer_email": "cliente@prueba.hn",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ],
+            "items_text": "2x Carnivora (L340) [Pizza 1: Salsa Roja]",
+            "total": 719,
+            "notes": "—",
+            "lat": 15.517489753573818,
+            "lng": -88.0298486953722,
+            "maps_link": "https://www.google.com/maps?q=15.517489753573818,-88.0298486953722",
+            "address_detected": "Lat: 15.51749, Lng: -88.02985",
+            "address_details": "Casa azul, portón negro",
+            "waze_link": "https://waze.com/ul?ll=15.517489753573818,-88.0298486953722&navigate=yes",
+            "payment_method": "cash",
+            "order_type": "delivery",
+            "pickup_time": null,
+            "scheduled_for": null,
+            "payment_status": "confirmed",
+            "timestamp": "<masked:timestamp>",
+            "razon_social": "",
+            "rtn_cliente": "",
+            "expected_net_cents": 71900
+          }
+        }
+      ]
+    },
+    "x_pizza/B-cash-pickup": {
+      "requests": [
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "createOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "customer_email": "cliente@prueba.hn",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ],
+            "items_text": "2x Carnivora (L340) [Pizza 1: Salsa Roja]",
+            "total": 719,
+            "notes": "—",
+            "lat": null,
+            "lng": null,
+            "maps_link": "https://www.google.com/maps?q=null,null",
+            "address_detected": "",
+            "address_details": "",
+            "waze_link": "https://waze.com/ul?ll=null,null&navigate=yes",
+            "payment_method": "cash",
+            "order_type": "pickup",
+            "pickup_time": "standard",
+            "scheduled_for": null,
+            "payment_status": "confirmed",
+            "timestamp": "<masked:timestamp>",
+            "razon_social": "",
+            "rtn_cliente": "",
+            "expected_net_cents": 71900
+          }
+        }
+      ]
+    },
+    "x_pizza/C-card-delivery": {
+      "requests": [
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "chargeOnlineOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "customer_email": "cliente@prueba.hn",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ],
+            "items_text": "2x Carnivora (L340) [Pizza 1: Salsa Roja]",
+            "total": 719,
+            "notes": "—",
+            "lat": 15.517489753573818,
+            "lng": -88.0298486953722,
+            "maps_link": "https://www.google.com/maps?q=15.517489753573818,-88.0298486953722",
+            "address_detected": "Lat: 15.51749, Lng: -88.02985",
+            "address_details": "Casa azul, portón negro",
+            "waze_link": "https://waze.com/ul?ll=15.517489753573818,-88.0298486953722&navigate=yes",
+            "payment_method": "online",
+            "order_type": "delivery",
+            "pickup_time": null,
+            "scheduled_for": null,
+            "payment_status": "pending",
+            "timestamp": "<masked:timestamp>",
+            "razon_social": "",
+            "rtn_cliente": "",
+            "expected_net_cents": 71900
+          }
+        }
+      ]
+    },
+    "x_pizza/D-rtn": {
+      "requests": [
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "createOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "customer_email": "cliente@prueba.hn",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ],
+            "items_text": "2x Carnivora (L340) [Pizza 1: Salsa Roja]",
+            "total": 719,
+            "notes": "—",
+            "lat": 15.517489753573818,
+            "lng": -88.0298486953722,
+            "maps_link": "https://www.google.com/maps?q=15.517489753573818,-88.0298486953722",
+            "address_detected": "Lat: 15.51749, Lng: -88.02985",
+            "address_details": "Casa azul, portón negro",
+            "waze_link": "https://waze.com/ul?ll=15.517489753573818,-88.0298486953722&navigate=yes",
+            "payment_method": "cash",
+            "order_type": "delivery",
+            "pickup_time": null,
+            "scheduled_for": null,
+            "payment_status": "confirmed",
+            "timestamp": "<masked:timestamp>",
+            "razon_social": "Empresa Prueba S. de R.L.",
+            "rtn_cliente": "08011999123456",
+            "expected_net_cents": 71900
+          }
+        }
+      ]
+    },
+    "x_pizza/E-scheduled": {
+      "requests": [
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "createOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "customer_email": "cliente@prueba.hn",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ],
+            "items_text": "2x Carnivora (L340) [Pizza 1: Salsa Roja]",
+            "total": 719,
+            "notes": "—",
+            "lat": 15.517489753573818,
+            "lng": -88.0298486953722,
+            "maps_link": "https://www.google.com/maps?q=15.517489753573818,-88.0298486953722",
+            "address_detected": "Lat: 15.51749, Lng: -88.02985",
+            "address_details": "Casa azul, portón negro",
+            "waze_link": "https://waze.com/ul?ll=15.517489753573818,-88.0298486953722&navigate=yes",
+            "payment_method": "cash",
+            "order_type": "delivery",
+            "pickup_time": null,
+            "scheduled_for": 1792631700000,
+            "payment_status": "confirmed",
+            "timestamp": "<masked:timestamp>",
+            "razon_social": "",
+            "rtn_cliente": "",
+            "expected_net_cents": 71900
+          }
+        }
+      ]
+    },
+    "x_pizza/F-email-blank": {
+      "requests": [
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "createOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "customer_email": "",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ],
+            "items_text": "2x Carnivora (L340) [Pizza 1: Salsa Roja]",
+            "total": 719,
+            "notes": "—",
+            "lat": 15.517489753573818,
+            "lng": -88.0298486953722,
+            "maps_link": "https://www.google.com/maps?q=15.517489753573818,-88.0298486953722",
+            "address_detected": "Lat: 15.51749, Lng: -88.02985",
+            "address_details": "Casa azul, portón negro",
+            "waze_link": "https://waze.com/ul?ll=15.517489753573818,-88.0298486953722&navigate=yes",
+            "payment_method": "cash",
+            "order_type": "delivery",
+            "pickup_time": null,
+            "scheduled_for": null,
+            "payment_status": "confirmed",
+            "timestamp": "<masked:timestamp>",
+            "razon_social": "",
+            "rtn_cliente": "",
+            "expected_net_cents": 71900
+          }
+        }
+      ]
+    },
+    "x_pizza/G-reward": {
+      "requests": [
+        {
+          "endpoint": "getsignupconfig",
+          "method": "GET",
+          "headers": {},
+          "body": null
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteRedemption",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "X-Firebase-ID-Token": "test-id-token"
+          },
+          "body": {
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ],
+            "redeem": {
+              "type": "free_pizza_choice",
+              "item_id": "Margherita",
+              "name": "Margherita"
+            },
+            "restaurant_id": "x_pizza"
+          }
+        },
+        {
+          "endpoint": "createOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>",
+            "X-Firebase-ID-Token": "test-id-token"
+          },
+          "body": {
+            "restaurant_id": "x_pizza",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "customer_email": "cliente@prueba.hn",
+            "items": [
+              {
+                "name": "Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [
+                  {
+                    "instance": 0,
+                    "name": "Salsa Roja",
+                    "price": 39,
+                    "extra_id": "GMAFVCBF8Z"
+                  }
+                ],
+                "extrasTotal": 39,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ],
+            "items_text": "2x Carnivora (L340) [Pizza 1: Salsa Roja]",
+            "total": 719,
+            "notes": "—",
+            "lat": 15.517489753573818,
+            "lng": -88.0298486953722,
+            "maps_link": "https://www.google.com/maps?q=15.517489753573818,-88.0298486953722",
+            "address_detected": "Lat: 15.51749, Lng: -88.02985",
+            "address_details": "Casa azul, portón negro",
+            "waze_link": "https://waze.com/ul?ll=15.517489753573818,-88.0298486953722&navigate=yes",
+            "payment_method": "cash",
+            "order_type": "delivery",
+            "pickup_time": null,
+            "scheduled_for": null,
+            "payment_status": "confirmed",
+            "timestamp": "<masked:timestamp>",
+            "razon_social": "",
+            "rtn_cliente": "",
+            "redeem": {
+              "type": "free_pizza_choice",
+              "item_id": "Margherita",
+              "name": "Margherita"
+            },
+            "expected_net_cents": 71900,
+            "quote_token": "<masked:quote_token>"
+          }
+        }
+      ]
+    },
+    "la_musa/A-cash-delivery": {
+      "requests": [
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 446,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "dimsum_01"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "createOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ],
+            "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
+            "total": 496,
+            "notes": "—",
+            "lat": 15.514137854561978,
+            "lng": -88.02848413956526,
+            "maps_link": "https://www.google.com/maps?q=15.514137854561978,-88.02848413956526",
+            "address_detected": "Lat: 15.51414, Lng: -88.02848",
+            "address_details": "Casa azul, portón negro",
+            "waze_link": "https://waze.com/ul?ll=15.514137854561978,-88.02848413956526&navigate=yes",
+            "payment_method": "cash",
+            "order_type": "delivery",
+            "pickup_time": null,
+            "scheduled_for": null,
+            "payment_status": "confirmed",
+            "timestamp": "<masked:timestamp>",
+            "customer_email": "cliente@prueba.hn",
+            "razon_social": "",
+            "rtn_cliente": "",
+            "expected_net_cents": 49600
+          }
+        }
+      ]
+    },
+    "la_musa/B-cash-pickup": {
+      "requests": [
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 446,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "dimsum_01"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "createOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ],
+            "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
+            "total": 496,
+            "notes": "—",
+            "lat": null,
+            "lng": null,
+            "maps_link": "https://www.google.com/maps?q=null,null",
+            "address_detected": "",
+            "address_details": "",
+            "waze_link": "https://waze.com/ul?ll=null,null&navigate=yes",
+            "payment_method": "cash",
+            "order_type": "pickup",
+            "pickup_time": "standard",
+            "scheduled_for": null,
+            "payment_status": "confirmed",
+            "timestamp": "<masked:timestamp>",
+            "customer_email": "cliente@prueba.hn",
+            "razon_social": "",
+            "rtn_cliente": "",
+            "expected_net_cents": 49600
+          }
+        }
+      ]
+    },
+    "la_musa/C-card-delivery": {
+      "requests": [
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 446,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "dimsum_01"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "chargeOnlineOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ],
+            "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
+            "total": 496,
+            "notes": "—",
+            "lat": 15.514137854561978,
+            "lng": -88.02848413956526,
+            "maps_link": "https://www.google.com/maps?q=15.514137854561978,-88.02848413956526",
+            "address_detected": "Lat: 15.51414, Lng: -88.02848",
+            "address_details": "Casa azul, portón negro",
+            "waze_link": "https://waze.com/ul?ll=15.514137854561978,-88.02848413956526&navigate=yes",
+            "payment_method": "online",
+            "order_type": "delivery",
+            "pickup_time": null,
+            "scheduled_for": null,
+            "payment_status": "pending",
+            "timestamp": "<masked:timestamp>",
+            "customer_email": "cliente@prueba.hn",
+            "razon_social": "",
+            "rtn_cliente": "",
+            "expected_net_cents": 49600
+          }
+        }
+      ]
+    },
+    "la_musa/D-rtn": {
+      "requests": [
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 446,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "dimsum_01"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "createOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ],
+            "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
+            "total": 496,
+            "notes": "—",
+            "lat": 15.514137854561978,
+            "lng": -88.02848413956526,
+            "maps_link": "https://www.google.com/maps?q=15.514137854561978,-88.02848413956526",
+            "address_detected": "Lat: 15.51414, Lng: -88.02848",
+            "address_details": "Casa azul, portón negro",
+            "waze_link": "https://waze.com/ul?ll=15.514137854561978,-88.02848413956526&navigate=yes",
+            "payment_method": "cash",
+            "order_type": "delivery",
+            "pickup_time": null,
+            "scheduled_for": null,
+            "payment_status": "confirmed",
+            "timestamp": "<masked:timestamp>",
+            "customer_email": "cliente@prueba.hn",
+            "razon_social": "Empresa Prueba S. de R.L.",
+            "rtn_cliente": "08011999123456",
+            "expected_net_cents": 49600
+          }
+        }
+      ]
+    },
+    "la_musa/E-scheduled": {
+      "requests": [
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 446,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "dimsum_01"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "createOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ],
+            "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
+            "total": 496,
+            "notes": "—",
+            "lat": 15.514137854561978,
+            "lng": -88.02848413956526,
+            "maps_link": "https://www.google.com/maps?q=15.514137854561978,-88.02848413956526",
+            "address_detected": "Lat: 15.51414, Lng: -88.02848",
+            "address_details": "Casa azul, portón negro",
+            "waze_link": "https://waze.com/ul?ll=15.514137854561978,-88.02848413956526&navigate=yes",
+            "payment_method": "cash",
+            "order_type": "delivery",
+            "pickup_time": null,
+            "scheduled_for": 1792631700000,
+            "payment_status": "confirmed",
+            "timestamp": "<masked:timestamp>",
+            "customer_email": "cliente@prueba.hn",
+            "razon_social": "",
+            "rtn_cliente": "",
+            "expected_net_cents": 49600
+          }
+        }
+      ]
+    },
+    "la_musa/F-email-blank": {
+      "requests": [
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 446,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "dimsum_01"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "createOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ],
+            "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
+            "total": 496,
+            "notes": "—",
+            "lat": 15.514137854561978,
+            "lng": -88.02848413956526,
+            "maps_link": "https://www.google.com/maps?q=15.514137854561978,-88.02848413956526",
+            "address_detected": "Lat: 15.51414, Lng: -88.02848",
+            "address_details": "Casa azul, portón negro",
+            "waze_link": "https://waze.com/ul?ll=15.514137854561978,-88.02848413956526&navigate=yes",
+            "payment_method": "cash",
+            "order_type": "delivery",
+            "pickup_time": null,
+            "scheduled_for": null,
+            "payment_status": "confirmed",
+            "timestamp": "<masked:timestamp>",
+            "customer_email": "pedidos@lamusa.hn",
+            "razon_social": "",
+            "rtn_cliente": "",
+            "expected_net_cents": 49600
+          }
+        }
+      ]
+    },
+    "la_musa/G-reward": {
+      "requests": [
+        {
+          "endpoint": "getsignupconfig",
+          "method": "GET",
+          "headers": {},
+          "body": null
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 446,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "dimsum_01"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "quoteRedemption",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "X-Firebase-ID-Token": "test-id-token"
+          },
+          "body": {
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ],
+            "redeem": {
+              "type": "points_ala_carte",
+              "items": [
+                {
+                  "id": "rice_white",
+                  "qty": 2,
+                  "name": "Arroz Blanco"
+                }
+              ]
+            },
+            "restaurant_id": "la_musa"
+          }
+        },
+        {
+          "endpoint": "createOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>",
+            "X-Firebase-ID-Token": "test-id-token"
+          },
+          "body": {
+            "restaurant_id": "la_musa",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "items": [
+              {
+                "id": "dimsum_01",
+                "name": "Sichuan Spicy Wonton",
+                "cat": "dim_sum",
+                "qty": 2,
+                "price": 223,
+                "subtotal": 496,
+                "extras": [
+                  {
+                    "id": "rice_white",
+                    "name": "Arroz Blanco",
+                    "price": 50,
+                    "qty": 1,
+                    "extra_id": "rice_white"
+                  }
+                ],
+                "extrasTotal": 50,
+                "dish_id": "dimsum_01"
+              }
+            ],
+            "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
+            "total": 496,
+            "notes": "—",
+            "lat": 15.514137854561978,
+            "lng": -88.02848413956526,
+            "maps_link": "https://www.google.com/maps?q=15.514137854561978,-88.02848413956526",
+            "address_detected": "Lat: 15.51414, Lng: -88.02848",
+            "address_details": "Casa azul, portón negro",
+            "waze_link": "https://waze.com/ul?ll=15.514137854561978,-88.02848413956526&navigate=yes",
+            "payment_method": "cash",
+            "order_type": "delivery",
+            "pickup_time": null,
+            "scheduled_for": null,
+            "payment_status": "confirmed",
+            "timestamp": "<masked:timestamp>",
+            "customer_email": "cliente@prueba.hn",
+            "razon_social": "",
+            "rtn_cliente": "",
+            "redeem": {
+              "type": "points_ala_carte",
+              "items": [
+                {
+                  "id": "rice_white",
+                  "qty": 2,
+                  "name": "Arroz Blanco"
+                }
+              ]
+            },
+            "expected_net_cents": 49600,
+            "quote_token": "<masked:quote_token>"
+          }
+        }
+      ]
+    },
+    "r3_synth/A-cash-delivery (PROVISIONAL)": {
+      "requests": [
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "r3_synth",
+            "items": [
+              {
+                "name": "R3 Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "createOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>"
+          },
+          "body": {
+            "restaurant_id": "r3_synth",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "customer_email": "cliente@prueba.hn",
+            "items": [
+              {
+                "name": "R3 Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ],
+            "items_text": "2x R3 Carnivora (L340)",
+            "total": 680,
+            "notes": "—",
+            "lat": 14.11,
+            "lng": -87.19,
+            "maps_link": "https://www.google.com/maps?q=14.11,-87.19",
+            "address_detected": "Lat: 14.11000, Lng: -87.19000",
+            "address_details": "Casa azul, portón negro",
+            "waze_link": "https://waze.com/ul?ll=14.11,-87.19&navigate=yes",
+            "payment_method": "cash",
+            "order_type": "delivery",
+            "pickup_time": null,
+            "scheduled_for": null,
+            "payment_status": "confirmed",
+            "timestamp": "<masked:timestamp>",
+            "razon_social": "",
+            "rtn_cliente": "",
+            "expected_net_cents": 68000
+          }
+        }
+      ]
+    },
+    "r3_synth/C-card-delivery (PROVISIONAL)": {
+      "requests": [
+        {
+          "endpoint": "quoteOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "restaurant_id": "r3_synth",
+            "items": [
+              {
+                "name": "R3 Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ]
+          }
+        },
+        {
+          "endpoint": "chargeOnlineOrder",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "<masked:order_secret>"
+          },
+          "body": {
+            "restaurant_id": "r3_synth",
+            "order_id": "<masked:order_id>",
+            "customer_name": "Cliente Prueba",
+            "customer_phone": "+504 9876-5432",
+            "customer_email": "cliente@prueba.hn",
+            "items": [
+              {
+                "name": "R3 Carnivora",
+                "qty": 2,
+                "price": 340,
+                "subtotal": 680,
+                "extras": [],
+                "extrasTotal": 0,
+                "dish_id": "D9XRZ89WJ6"
+              }
+            ],
+            "items_text": "2x R3 Carnivora (L340)",
+            "total": 680,
+            "notes": "—",
+            "lat": 14.11,
+            "lng": -87.19,
+            "maps_link": "https://www.google.com/maps?q=14.11,-87.19",
+            "address_detected": "Lat: 14.11000, Lng: -87.19000",
+            "address_details": "Casa azul, portón negro",
+            "waze_link": "https://waze.com/ul?ll=14.11,-87.19&navigate=yes",
+            "payment_method": "online",
+            "order_type": "delivery",
+            "pickup_time": null,
+            "scheduled_for": null,
+            "payment_status": "pending",
+            "timestamp": "<masked:timestamp>",
+            "razon_social": "",
+            "rtn_cliente": "",
+            "expected_net_cents": 68000
+          }
+        }
+      ]
+    }
+  },
+  "masks": [
+    {
+      "name": "order_id",
+      "path": "body.order_id",
+      "applies": "(ep) => isSend(ep)",
+      "why": "genOrderId(): PREFIX + Honduras date/time at the fixed clock + an 8-char CSPRNG suffix"
+    },
+    {
+      "name": "timestamp",
+      "path": "body.timestamp",
+      "applies": "(ep) => isSend(ep)",
+      "why": "new Date().toISOString() at the send, on the fixed clock (advances with real elapsed time)"
+    },
+    {
+      "name": "order_secret",
+      "path": "headers.Authorization",
+      "applies": "(ep) => isSend(ep)",
+      "why": "Bearer ORDER_SECRET: a constant in the public page, never written into a golden file"
+    },
+    {
+      "name": "quote_token",
+      "path": "body.quote_token",
+      "applies": "(ep, req) => isSend(ep) && req.body && req.body.redeem != null",
+      "why": "the reward quote token the real issuer signed (issued_at = the real clock); verified against the test secret"
+    }
+  ]
+}

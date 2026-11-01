@@ -123,7 +123,7 @@ async function resolveRedemptionForOrder(db, { redeem, items, restaurantId, orde
 // quoteRedemptionCore (read-only preview for the checkout review) — SAME flow as intake (uid-first gate → priced
 // cart → compute / 86 / price / paid-item guard) + a READ-ONLY available projection (balance − reserved ≥ Σcost).
 // NO reserve, NO write, NO side effects. Returns the v2 shape: free_items[] + total_cost + remaining + savings.
-async function quoteRedemptionCore(db, { redeem, items, restaurantId, customerUid, tables, eligible = null }) {
+async function quoteRedemptionCore(db, { redeem, items, restaurantId, customerUid, tables, eligible = null, deliveryContext = null }) {
   requireTables('quoteRedemptionCore', restaurantId, tables);   // GRILL-FIX #2
   if (!customerUid) return { ok: false, status: 401, body: { error: 'login_required' } };
   const { total, error: totalError } = computeServerTotal(items, restaurantId, tables);   // quote↔order parity: same source
@@ -145,14 +145,15 @@ async function quoteRedemptionCore(db, { redeem, items, restaurantId, customerUi
      twin. prep.redemption is the object the CHARGE path resolves too, and prep.redemptionFp is its
      stable reference; both go into the token so issuer and verifier bind the identical reward. */
   const issued = issueQuote({ items, reward: prep.redemption, redemptionRef: prep.redemptionFp,
-    rid: restaurantId, tables, customerId: customerUid, nowMs: Date.now() });
+    rid: restaurantId, tables, customerId: customerUid, deliveryContext, nowMs: Date.now() });   // S3a: envío (null = not activated)
 
   return { ok: true, discount_cents: p.discount_cents, total_cents: p.total_cents, subtotal_cents: p.subtotal_cents, tax_cents: p.tax_cents,
     free_items: prep.freeItems.map((fi) => ({ item_id: fi.item_id, qty: fi.qty, name: fi.name, price_cents: fi.price_cents })),
     free_item: { name: prep.freeName || null },   // back-compat singular (first item)
     total_cost: cost, remaining: available - cost, savings_cents,
     ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}),
-    ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}) };
+    ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}),
+    ...require('./delivery/delivery-wire').quoteFields(deliveryContext) };   // S3a envío block (absent when not activated); S2 §3.6: + the public { from_cents, max_km }, ONE builder with quoteOrder
 }
 
 module.exports = { prepareRedemption, resolveRedemptionForOrder, quoteRedemptionCore, fingerprintExtra };

@@ -19,7 +19,10 @@ for (const [brand, { file, stash }] of Object.entries(FORMS)) {
   // poll-loop terminal case: stops polling, clears the stash, shows the terminal screen
   has(new RegExp(`st==='scheduled_review'\\)\\{[\\s\\S]*?clearPendingPayFor\\(orderId\\)[\\s\\S]*?showPayReturn\\('scheduled_review'\\); return true;`), 'poll-loop scheduled_review case (clears stash + terminal showPayReturn + stops polling)');
   // S2: the terminal clear is clearPendingPayFor(orderId), which removes THIS brand's stash key (only when it is this order's)
-  has(new RegExp(`function clearPendingPayFor\\(orderId\\)\\{[\\s\\S]*?localStorage\\.removeItem\\('${stash}'\\)`), 'S2 helper removes this brand\'s stash key');
+  // S0-prod: the key is DATA — the code reads RESTAURANT_CONFIG.storage_keys.pending_pay, and the SHIPPED config of this form
+  // (its inline block, executed) must hold THIS brand's exact legacy key (§A4: a stash written before the deploy still resolves).
+  assert.strictEqual(require('./contract/capp/brand-config.mjs').readInlineConfig(src, brand).config.storage_keys.pending_pay, stash, `[${brand}] its config's stash key is the exact legacy string`);
+  has(/function clearPendingPayFor\(orderId\)\{[\s\S]*?localStorage\.removeItem\(RESTAURANT_CONFIG\.storage_keys\.pending_pay\)/, 'S2 helper removes this brand\'s stash key');
   // copy-map entry: terminal (mark:'ok', NOT wait:true) + verbatim message
   has(/scheduled_review:\s*\{mark:'ok'/, 'copy-map scheduled_review is terminal (mark:ok, not wait)');
   assert.ok(src.includes(VERBATIM), `[${brand}] verbatim owner-locked message present`);

@@ -280,7 +280,6 @@
   "R17:NUM": 5,
   "R17:PAYLIFE": 23,
   "R17:STATUS": 18,
-  "R18:BRAND": 2,
   "R18:ITEMS": 10,
   "R1:BRAND": 2,
   "R1:CASH": 5,
@@ -1826,12 +1825,10 @@
    "R": "R18",
    "output": "la-musa-orders/account.js#reorderFromEntry",
    "facts": [
-    "BRAND",
     "ITEMS"
    ],
-   "sites": 6,
+   "sites": 5,
    "assertions": [
-    "R3:R18:BRAND:#la-musa-orders/account.js#reorderFromEntry#restaurant_id#0",
     "R3:R18:ITEMS:#la-musa-orders/account.js#reorderFromEntry#items#0",
     "R3:R18:ITEMS:#la-musa-orders/account.js#reorderFromEntry#items#1",
     "R3:R18:ITEMS:#la-musa-orders/account.js#reorderFromEntry#items#2",
@@ -1843,12 +1840,10 @@
    "R": "R18",
    "output": "xpizza-orders/account.js#reorderFromEntry",
    "facts": [
-    "BRAND",
     "ITEMS"
    ],
-   "sites": 6,
+   "sites": 5,
    "assertions": [
-    "R3:R18:BRAND:#xpizza-orders/account.js#reorderFromEntry#restaurant_id#0",
     "R3:R18:ITEMS:#xpizza-orders/account.js#reorderFromEntry#items#0",
     "R3:R18:ITEMS:#xpizza-orders/account.js#reorderFromEntry#items#1",
     "R3:R18:ITEMS:#xpizza-orders/account.js#reorderFromEntry#items#2",
@@ -9306,10 +9301,6 @@
    "R3:R18:ITEMS:#xpizza-orders/account.js#reorderFromEntry#items#3",
    "R3:R18:ITEMS:#xpizza-orders/account.js#reorderFromEntry#items#4"
   ],
-  "R18:BRAND": [
-   "R3:R18:BRAND:#la-musa-orders/account.js#reorderFromEntry#restaurant_id#0",
-   "R3:R18:BRAND:#xpizza-orders/account.js#reorderFromEntry#restaurant_id#0"
-  ],
   "R15:PAYLIFE": [
    "R3:R15:PAYLIFE:#la-musa-orders/form-live-status.js#arrivalFor#status#0",
    "R3:R15:PAYLIFE:#la-musa-orders/form-live-status.js#liveRender#status#0",
@@ -9543,7 +9534,6 @@
 {"site":"la-musa-orders/account.js#reorderFromEntry#items#2","R":"R18","output":"la-musa-orders/account.js#reorderFromEntry","fact":"ITEMS","group":"R18:ITEMS","assertion":"R3:R18:ITEMS:#la-musa-orders/account.js#reorderFromEntry#items#2","applies":{"scenarios":["S12","S12b"],"brands":["la_musa"],"lps":["rebuilt_cart"]},"requiredCells":2},
 {"site":"la-musa-orders/account.js#reorderFromEntry#items#3","R":"R18","output":"la-musa-orders/account.js#reorderFromEntry","fact":"ITEMS","group":"R18:ITEMS","assertion":"R3:R18:ITEMS:#la-musa-orders/account.js#reorderFromEntry#items#3","applies":{"scenarios":["S12","S12b"],"brands":["la_musa"],"lps":["rebuilt_cart"]},"requiredCells":2},
 {"site":"la-musa-orders/account.js#reorderFromEntry#items#4","R":"R18","output":"la-musa-orders/account.js#reorderFromEntry","fact":"ITEMS","group":"R18:ITEMS","assertion":"R3:R18:ITEMS:#la-musa-orders/account.js#reorderFromEntry#items#4","applies":{"scenarios":["S12","S12b"],"brands":["la_musa"],"lps":["rebuilt_cart"]},"requiredCells":2},
-{"site":"la-musa-orders/account.js#reorderFromEntry#restaurant_id#0","R":"R18","output":"la-musa-orders/account.js#reorderFromEntry","fact":"BRAND","group":"R18:BRAND","assertion":"R3:R18:BRAND:#la-musa-orders/account.js#reorderFromEntry#restaurant_id#0","applies":{"scenarios":["S12","S12b"],"brands":["la_musa"],"lps":["rebuilt_cart"]},"requiredCells":2},
 {"site":"la-musa-orders/form-live-status.js#arrivalFor#status#0","R":"R15","output":"la-musa-orders/form-live-status.js#arrivalFor","fact":"PAYLIFE","group":"R15:PAYLIFE","assertion":"R3:R15:PAYLIFE:#la-musa-orders/form-live-status.js#arrivalFor#status#0","applies":{"scenarios":["S1","S11","S15","S1a-off","S1a-on","S2","S3","S4","S5"],"brands":["la_musa"],"lps":["confirmation","new","scheduled"]},"requiredCells":10},
 {"site":"la-musa-orders/form-live-status.js#draw#lat#0","R":"R15","output":"la-musa-orders/form-live-status.js#draw","fact":"PLACE","group":"R15:PLACE","assertion":"R3:R15:PLACE:#la-musa-orders/form-live-status.js#draw#lat#0","applies":{"scenarios":["S1","S11","S15","S1a-off","S1a-on","S2","S3","S4","S5"],"brands":["la_musa"],"lps":["confirmation","new","scheduled"]},"requiredCells":10},
 {"site":"la-musa-orders/form-live-status.js#draw#lng#0","R":"R15","output":"la-musa-orders/form-live-status.js#draw","fact":"PLACE","group":"R15:PLACE","assertion":"R3:R15:PLACE:#la-musa-orders/form-live-status.js#draw#lng#0","applies":{"scenarios":["S1","S11","S15","S1a-off","S1a-on","S2","S3","S4","S5"],"brands":["la_musa"],"lps":["confirmation","new","scheduled"]},"requiredCells":10},
@@ -11474,7 +11464,6 @@
 {"site":"xpizza-orders/account.js#reorderFromEntry#items#2","R":"R18","output":"xpizza-orders/account.js#reorderFromEntry","fact":"ITEMS","group":"R18:ITEMS","assertion":"R3:R18:ITEMS:#xpizza-orders/account.js#reorderFromEntry#items#2","applies":{"scenarios":["S12","S12b"],"brands":["x_pizza"],"lps":["rebuilt_cart"]},"requiredCells":2},
 {"site":"xpizza-orders/account.js#reorderFromEntry#items#3","R":"R18","output":"xpizza-orders/account.js#reorderFromEntry","fact":"ITEMS","group":"R18:ITEMS","assertion":"R3:R18:ITEMS:#xpizza-orders/account.js#reorderFromEntry#items#3","applies":{"scenarios":["S12","S12b"],"brands":["x_pizza"],"lps":["rebuilt_cart"]},"requiredCells":2},
 {"site":"xpizza-orders/account.js#reorderFromEntry#items#4","R":"R18","output":"xpizza-orders/account.js#reorderFromEntry","fact":"ITEMS","group":"R18:ITEMS","assertion":"R3:R18:ITEMS:#xpizza-orders/account.js#reorderFromEntry#items#4","applies":{"scenarios":["S12","S12b"],"brands":["x_pizza"],"lps":["rebuilt_cart"]},"requiredCells":2},
-{"site":"xpizza-orders/account.js#reorderFromEntry#restaurant_id#0","R":"R18","output":"xpizza-orders/account.js#reorderFromEntry","fact":"BRAND","group":"R18:BRAND","assertion":"R3:R18:BRAND:#xpizza-orders/account.js#reorderFromEntry#restaurant_id#0","applies":{"scenarios":["S12","S12b"],"brands":["x_pizza"],"lps":["rebuilt_cart"]},"requiredCells":2},
 {"site":"xpizza-orders/form-live-status.js#arrivalFor#status#0","R":"R15","output":"xpizza-orders/form-live-status.js#arrivalFor","fact":"PAYLIFE","group":"R15:PAYLIFE","assertion":"R3:R15:PAYLIFE:#xpizza-orders/form-live-status.js#arrivalFor#status#0","applies":{"scenarios":["S1","S11","S15","S1a-off","S1a-on","S2","S3","S4","S5"],"brands":["x_pizza"],"lps":["confirmation","new","scheduled"]},"requiredCells":10},
 {"site":"xpizza-orders/form-live-status.js#draw#lat#0","R":"R15","output":"xpizza-orders/form-live-status.js#draw","fact":"PLACE","group":"R15:PLACE","assertion":"R3:R15:PLACE:#xpizza-orders/form-live-status.js#draw#lat#0","applies":{"scenarios":["S1","S11","S15","S1a-off","S1a-on","S2","S3","S4","S5"],"brands":["x_pizza"],"lps":["confirmation","new","scheduled"]},"requiredCells":10},
 {"site":"xpizza-orders/form-live-status.js#draw#lng#0","R":"R15","output":"xpizza-orders/form-live-status.js#draw","fact":"PLACE","group":"R15:PLACE","assertion":"R3:R15:PLACE:#xpizza-orders/form-live-status.js#draw#lng#0","applies":{"scenarios":["S1","S11","S15","S1a-off","S1a-on","S2","S3","S4","S5"],"brands":["x_pizza"],"lps":["confirmation","new","scheduled"]},"requiredCells":10},
@@ -11955,6 +11944,20 @@
     "R3:R18:RECIPE:@la-musa-orders/account.js#applyReorderToCart"
    ],
    "reason": "RECIPE is derived from the history entry items (dish ids + options) and re-resolved against the live menu; no persisted field carries it as such",
+   "requiredCells": 4
+  },
+  {
+   "group": "R18:BRAND",
+   "kind": "output",
+   "outputs": [
+    "xpizza-orders/account.js#reorderFromEntry",
+    "la-musa-orders/account.js#reorderFromEntry"
+   ],
+   "assertions": [
+    "R3:R18:BRAND:@xpizza-orders/account.js#reorderFromEntry",
+    "R3:R18:BRAND:@la-musa-orders/account.js#reorderFromEntry"
+   ],
+   "reason": "S0-prod (Customer App): the reorder's brand fact is the page's RESTAURANT-CONFIG item_key (account.js CONFIG.ITEM_KEY) — restaurant DATA, not a persisted-order field read; the census attributed only the removed brand branch (CONFIG.restaurant_id === 'la_musa'). S1 deletes item_key with by-id pricing",
    "requiredCells": 4
   },
   {
@@ -22848,13 +22851,13 @@
 {"cell":"R3:R18:BRAND:S12:x_pizza:rebuilt_cart","R":"R18","fact":"BRAND","S":"S12","brand":"x_pizza","lp":"rebuilt_cart","kind":"agreement","status":"required","group":"R18:BRAND","sites":[1943]},
 {"cell":"R3:R18:RECIPE:S12:la_musa:rebuilt_cart","R":"R18","fact":"RECIPE","S":"S12","brand":"la_musa","lp":"rebuilt_cart","kind":"agreement","status":"required","group":"R18:RECIPE","sites":[],"outputs":["R3:R18:RECIPE:@la-musa-orders/account.js#reorderFromEntry","R3:R18:RECIPE:@la-musa-orders/account.js#applyReorderToCart"],"unsited":"output"},
 {"cell":"R3:R18:ITEMS:S12:la_musa:rebuilt_cart","R":"R18","fact":"ITEMS","S":"S12","brand":"la_musa","lp":"rebuilt_cart","kind":"agreement","status":"required","group":"R18:ITEMS","sites":[7,8,9,10,11]},
-{"cell":"R3:R18:BRAND:S12:la_musa:rebuilt_cart","R":"R18","fact":"BRAND","S":"S12","brand":"la_musa","lp":"rebuilt_cart","kind":"agreement","status":"required","group":"R18:BRAND","sites":[12]},
+{"cell":"R3:R18:BRAND:S12:la_musa:rebuilt_cart","R":"R18","fact":"BRAND","S":"S12","brand":"la_musa","lp":"rebuilt_cart","kind":"agreement","status":"required","group":"R18:BRAND","sites":[],"outputs":["R3:R18:BRAND:@la-musa-orders/account.js#reorderFromEntry"],"unsited":"output"},
 {"cell":"R3:R18:RECIPE:S12b:x_pizza:rebuilt_cart","R":"R18","fact":"RECIPE","S":"S12b","brand":"x_pizza","lp":"rebuilt_cart","kind":"agreement","status":"required","group":"R18:RECIPE","sites":[],"outputs":["R3:R18:RECIPE:@xpizza-orders/account.js#reorderFromEntry","R3:R18:RECIPE:@xpizza-orders/account.js#applyReorderToCart"],"unsited":"output"},
 {"cell":"R3:R18:ITEMS:S12b:x_pizza:rebuilt_cart","R":"R18","fact":"ITEMS","S":"S12b","brand":"x_pizza","lp":"rebuilt_cart","kind":"agreement","status":"required","group":"R18:ITEMS","sites":[1938,1939,1940,1941,1942]},
 {"cell":"R3:R18:BRAND:S12b:x_pizza:rebuilt_cart","R":"R18","fact":"BRAND","S":"S12b","brand":"x_pizza","lp":"rebuilt_cart","kind":"agreement","status":"required","group":"R18:BRAND","sites":[1943]},
 {"cell":"R3:R18:RECIPE:S12b:la_musa:rebuilt_cart","R":"R18","fact":"RECIPE","S":"S12b","brand":"la_musa","lp":"rebuilt_cart","kind":"agreement","status":"required","group":"R18:RECIPE","sites":[],"outputs":["R3:R18:RECIPE:@la-musa-orders/account.js#reorderFromEntry","R3:R18:RECIPE:@la-musa-orders/account.js#applyReorderToCart"],"unsited":"output"},
 {"cell":"R3:R18:ITEMS:S12b:la_musa:rebuilt_cart","R":"R18","fact":"ITEMS","S":"S12b","brand":"la_musa","lp":"rebuilt_cart","kind":"agreement","status":"required","group":"R18:ITEMS","sites":[7,8,9,10,11]},
-{"cell":"R3:R18:BRAND:S12b:la_musa:rebuilt_cart","R":"R18","fact":"BRAND","S":"S12b","brand":"la_musa","lp":"rebuilt_cart","kind":"agreement","status":"required","group":"R18:BRAND","sites":[12]},
+{"cell":"R3:R18:BRAND:S12b:la_musa:rebuilt_cart","R":"R18","fact":"BRAND","S":"S12b","brand":"la_musa","lp":"rebuilt_cart","kind":"agreement","status":"required","group":"R18:BRAND","sites":[],"outputs":["R3:R18:BRAND:@la-musa-orders/account.js#reorderFromEntry"],"unsited":"output"},
 {"cell":"R3:R19:ITEMS:S16:x_pizza:new","R":"R19","fact":"ITEMS","S":"S16","brand":"x_pizza","lp":"new","kind":"agreement","status":"required","group":"R19:ITEMS","sites":[],"outputs":["R3:R19:ITEMS:@xpizza-orders/form-group-picker.js#choiceRows"],"unsited":"output"},
 {"cell":"R3:R19:MONEY:S16:x_pizza:new","R":"R19","fact":"MONEY","S":"S16","brand":"x_pizza","lp":"new","kind":"agreement","status":"required","group":"R19:MONEY","sites":[],"outputs":["R3:R19:MONEY:@xpizza-orders/form-group-picker.js#priceText","R3:R19:MONEY:@xpizza-orders/form-group-picker.js#choiceRows"],"unsited":"output"},
 {"cell":"R3:R19:ITEMS:S16:la_musa:new","R":"R19","fact":"ITEMS","S":"S16","brand":"la_musa","lp":"new","kind":"agreement","status":"required","group":"R19:ITEMS","sites":[],"outputs":["R3:R19:ITEMS:@la-musa-orders/form-group-picker.js#choiceRows"],"unsited":"output"},

@@ -18,6 +18,8 @@
 // written (codex build r1 SF — recorded and composed like the other six).
 require('./_emulator-required')('database', 'firestore');
 
+const DR = require('./_delivery-read');   // S3a: the declared envío config read
+const OE_HARNESS = (e) => e.db === 'rtdb' && e.op === 'remove' && e.path === 'rate_limits';   // the suite's own cleanup, recorded ahead of the request
 const assert = require('assert');
 const http = require('http');
 const path = require('path');
@@ -370,9 +372,9 @@ async function pageSends(dir, c, firstStatus, firstBody) {
         // it does not persist (unbound); every other case is bound to the content it POSTED (the stamp's real input — e.g.
         // ACQUIRE FAILS stamps its qty-2 cart although the order keeps qty 1)
         const mode = (c.kind === 'refusal' || /chang|VANISH/i.test(c.name)) ? 'unbound' : 'bound';
-        const cs = SD.compareShape(r.ops, g.ops, { mode, content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
+        const cs = SD.compareShape(DR.without(r.ops, L, { ignore: OE_HARNESS }), g.ops, { mode, content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
         if (cs.bound) S3_BOUND += 1; else S3_UNBOUND += 1;
-        if (JSON.stringify(r.ops) !== JSON.stringify(g.ops)) S3_DIFF += 1;
+        if (JSON.stringify(DR.without(r.ops, L, { ignore: OE_HARNESS })) !== JSON.stringify(g.ops)) S3_DIFF += 1;
         assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${L}: the handler's database CALL SEQUENCE changed — a refusal must add no read and move no write`);
         const ch = SD.changedShape(r.changed, g.changed, { content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
         assert.deepStrictEqual(ch.actual, ch.expected, `🔴 ${L}: the set of database paths the request changed is not the base's (cleanup / writes must be identical)`);
@@ -424,7 +426,7 @@ async function pageSends(dir, c, firstStatus, firstBody) {
           // set aside on both sides, unrelated to render: the client floor's read (30 s, real clock, as the d4b / quote
           // companions do) and the process's ONE COLD catalog load per restaurant (test/_render-delta.js makeColdOnly);
           // under the R1c catalog clock no other catalog refill can be due, so any GATE / CTX re-read stays IN and shows
-          const noFill = (r, side) => FILL.strip(r.ops, rid, r, `${L}${side}`, { ignore: (e) => e.db === 'rtdb' && e.op === 'remove' && e.path === 'rate_limits', cold: COLD_OF.get(r) });
+          const noFill = (r, side) => FILL.strip(DR.without(r.ops, `${L}${side}`, { ignore: OE_HARNESS }), rid, r, `${L}${side}`, { ignore: (e) => e.db === 'rtdb' && e.op === 'remove' && e.path === 'rate_limits', cold: COLD_OF.get(r) });
           const offOps = RD.normOps(noFill(off, ' [render-OFF side]')); const onOps = RD.normOps(noFill(on, ''));
           if (c.path === 'card' && carriesReward(off, rid)) { RD.assertInserted(offOps, onOps, RD.afterUidCheck(offOps, L), RD.PROBE_ABSENT(), L); probed += 1; }
           else assert.deepStrictEqual(onOps, offOps, `🔴 ${L}: the call sequence must equal the render-OFF one`);

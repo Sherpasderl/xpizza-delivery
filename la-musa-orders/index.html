@@ -6,6 +6,9 @@
 <title>La Musa Gastropub — Pedido en línea</title>
 <script src="sherpa-client.js"></script>
 <script>
+/* RESTAURANT-CONFIG:BEGIN — this restaurant's DATA (PLAN-shared-order-form §5 S0-prod). Read by this page and account.js; validated by capp-s0prod-config.test.mjs. Data only: never code, never a factura flag (that is a server capability). */
+window.RESTAURANT_CONFIG = Object.freeze({schema:"sherpa-restaurant-config/1",rid:"la_musa",display_name:"La Musa",branding:Object.freeze({accent:"#B61218",palette:Object.freeze({screen:"#FFFDFA",tint:"#FBF6EE",tint2:"#F4EEE4",chip:"#F0E8DA",fillA:"#EFE7DA",line:"#EDE5D9",fillB:"#E7DFD3",mapbg:"#E4DAC7",line2:"#E2D8C8",line3:"#D8CBB8",dot:"#CFC2B1"})}),map:Object.freeze({latitude:15.504137854561979,longitude:-88.03848413956527,radius_km:9.66}),hours:Object.freeze({"0":Object.freeze({open:720,close:1185}),"1":null,"2":Object.freeze({open:1020,close:1245}),"3":Object.freeze({open:1020,close:1245}),"4":Object.freeze({open:1020,close:1245}),"5":Object.freeze({open:1020,close:1305}),"6":Object.freeze({open:1020,close:1305})}),min_order_lempiras:250,payment_methods:Object.freeze(["cash","online"]),rewards:Object.freeze({kind:"points",unit:"pts",perCents:3000,ptsPer:10,welcome:100,goal:300,redeemFrom:133,paneIntro:"Ganás puntos en cada pedido y los canjeás por comida gratis."}),order_id_prefix:"PZX-",storage_keys:Object.freeze({pending_pay:"lamusa_pending_pay",account_marker:"lamusa_acct",account_intent:"xpizza_acct_intent"}),empty_cart_noun:"un item",item_key:"id"});
+/* RESTAURANT-CONFIG:END */
 /* Track A (MF1): capture the profile-claim deep-link token from the URL FRAGMENT (#t=…) — a fragment is NEVER
    sent to servers or in Referer — and SCRUB it from the URL/history IMMEDIATELY, before any third-party
    resource (Fonts/Maps/Firebase) is even referenced. order_id stays in the query (not a capability).
@@ -1809,7 +1812,7 @@ const LA_MUSA_FALLBACK_EMAIL = 'pedidos@lamusa.hn';
 // Server-side createOrder uses this to route to the right kitchen,
 // driver pool, and WhatsApp template. X. Pizza will get its own
 // equivalent constant when its order form is forked next.
-const RESTAURANT_ID = 'la_musa';
+const RESTAURANT_ID = RESTAURANT_CONFIG.rid;
 
 // LA_MUSA_PREVIEW_MODE — dev/QA bypass for the open/closed schedule.
 // When true, isOpen() returns true regardless of actual hours so the
@@ -1960,19 +1963,11 @@ function badgeHtmlFor(p) {
   return b ? '<div class="menu-badge ' + b.cls + '">' + b.label + '</div>' : '';
 }
 
-const MIN_ORDER = 250;
+const MIN_ORDER = RESTAURANT_CONFIG.min_order_lempiras;
 
 // LA_MUSA_HOURS — Honduras local time, UTC-6, no DST.
 // null = closed for the day. open/close are minutes from midnight.
-const HOURS = {
-  0: { open: 12*60,    close: 19*60+45 }, // Sunday
-  1: null,                                // Monday   — CLOSED (only closed day)
-  2: { open: 17*60,    close: 20*60+45 }, // Tuesday
-  3: { open: 17*60,    close: 20*60+45 }, // Wednesday
-  4: { open: 17*60,    close: 20*60+45 }, // Thursday
-  5: { open: 17*60,    close: 21*60+45 }, // Friday
-  6: { open: 17*60,    close: 21*60+45 }, // Saturday
-};
+const HOURS = RESTAURANT_CONFIG.hours;   // 0=Sunday … 6=Saturday; null = closed; minutes from midnight, Honduras (UTC-6)
 
 // True when the restaurant is currently accepting orders.
 function isOpen() {
@@ -2201,9 +2196,9 @@ let pickupMarker = null;
 // the same radius — this client-side check exists for UX only (immediate
 // feedback when the customer drops a pin out of zone). A bypassed client
 // gets rejected by createOrder server-side.
-const RESTAURANT_LAT = 15.504137854561979;
-const RESTAURANT_LNG = -88.03848413956527;
-const DELIVERY_RADIUS_KM = 9.66;  // 6 mi
+const RESTAURANT_LAT = RESTAURANT_CONFIG.map.latitude;
+const RESTAURANT_LNG = RESTAURANT_CONFIG.map.longitude;
+const DELIVERY_RADIUS_KM = RESTAURANT_CONFIG.map.radius_km;
 
 // Haversine distance in km between two lat/lng coords.
 function haversineKm(lat1, lng1, lat2, lng2){
@@ -3196,7 +3191,7 @@ let cashExactMode=false;   // true while the cash "pay-with" equals the exact to
 
 function genOrderId(){
   const d=new Date();
-  const ts='PZX-'+d.getFullYear().toString().slice(-2)+
+  const ts=RESTAURANT_CONFIG.order_id_prefix+d.getFullYear().toString().slice(-2)+
     String(d.getMonth()+1).padStart(2,'0')+
     String(d.getDate()).padStart(2,'0')+'-'+
     String(d.getHours()).padStart(2,'0')+
@@ -4170,7 +4165,7 @@ function goToLocation(){
   const err=document.getElementById('err1');
   // Closed-hours no longer blocks Paso 1 — the customer proceeds to Checkout and schedules there
   // (Estándar disabled / Programar required). The server still fail-closed-rejects ASAP-while-closed.
-  if(!has){ err.style.display='block'; err.textContent='Seleccioná al menos un item.'; return; }
+  if(!has){ err.style.display='block'; err.textContent='Seleccioná al menos '+RESTAURANT_CONFIG.empty_cart_noun+'.'; return; }
   if(calcTotal()<MIN_ORDER){ err.style.display='block'; err.textContent='Agrega L '+(MIN_ORDER-calcTotal()).toFixed(0)+' más para alcanzar el mínimo de L '+MIN_ORDER+'.'; return; }
   const phoneDigits=phone.replace(/[^\d]/g,'');
   const needLen=phoneCountry().len;
@@ -5102,7 +5097,7 @@ async function processPixelPay(){
   // currentOrder.redeem) so the online-return success screen can show the discounted total even though the
   // in-memory quote is gone after the redirect. The paymentStatus summary is preferred on return; this is the fallback.
   try{ const __rq=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuoteTotalCents)?window.__ACCOUNT.getRedeemQuoteTotalCents():null; if(__rq!=null) currentOrder.redeem_total_cents=__rq; }catch(_){}
-  try { localStorage.setItem('lamusa_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder, form: snapshotForm(), ts: Date.now() })); } catch(_){}
+  try { localStorage.setItem(RESTAURANT_CONFIG.storage_keys.pending_pay, JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder, form: snapshotForm(), ts: Date.now() })); } catch(_){}
   setSending('Redirigiendo a pago seguro…');
   window.location.href = cfg.checkout_url;
 }
@@ -5118,12 +5113,12 @@ async function processPixelPay(){
 // not atomic (localStorage has no compare-and-delete) — an accepted residual.
 function clearPendingPayFor(orderId){
   try{
-    const raw = localStorage.getItem('lamusa_pending_pay');
+    const raw = localStorage.getItem(RESTAURANT_CONFIG.storage_keys.pending_pay);
     if(raw === null) return;                                              // absent → no-op
     let s; try{ s = JSON.parse(raw); }catch(_){ s = undefined; }         // unparseable → removed below
     const id = (s && typeof s === 'object') ? s.order_id : undefined;
     if(typeof id === 'string' && id !== '' && id !== orderId) return;     // ANOTHER order's stash → keep
-    localStorage.removeItem('lamusa_pending_pay');                                     // this order's, or malformed → today's removal
+    localStorage.removeItem(RESTAURANT_CONFIG.storage_keys.pending_pay);                                     // this order's, or malformed → today's removal
   }catch(_){}                                                            // storage unavailable → nothing (as today)
 }
 function applyPollState(st, j, orderId, stashedOrder){
@@ -5166,7 +5161,7 @@ async function handlePaymentReturn(){
   const pay = q.get('pay');
   if(!pay) return false;
   let orderId = q.get('order'), token = q.get('t'), stashedOrder = null;
-  try { const s = JSON.parse(localStorage.getItem('lamusa_pending_pay')||'null'); if(s){ orderId = orderId||s.order_id; token = token||s.t; stashedOrder = s.order || null; } } catch(_){}
+  try { const s = JSON.parse(localStorage.getItem(RESTAURANT_CONFIG.storage_keys.pending_pay)||'null'); if(s){ orderId = orderId||s.order_id; token = token||s.t; stashedOrder = s.order || null; } } catch(_){}
   // N4: a genuinely-PAID order can land on the cancel redirect (back-button after complete / double-redirect /
   // cancel-after-capture). Do ONE bounded paymentStatus check before asserting "Pago cancelado" — if it's
   // actually paid, show the REAL terminal screen. Can't verify (no id/token) → cancel (unchanged fallback).
@@ -5227,7 +5222,7 @@ function snapshotForm(){
 function restoreOrderForm(){
   __geoGen++; __geoResult = null;   // a GPS request pending from before the restore never applies, retries or records
   let snap = null;
-  try { const s = JSON.parse(localStorage.getItem('lamusa_pending_pay')||'null'); snap = s && s.form; if(s && s.ts && (Date.now()-s.ts) > 3600000){ snap=null; try{ localStorage.removeItem('lamusa_pending_pay'); }catch(_){} }   /* D/#6/#11(revise): CLEAR a STALE stash (>1h > hosted TTL), don't just ignore it — never restore a day-old order/reservation */ else if(s&&s.order_id){ window.__resumeOrderId = s.order_id;   /* D: a resumed retry REUSES the original order_id → the server reuses the ONE reservation (no double-reserve) */ } } catch(_){}
+  try { const s = JSON.parse(localStorage.getItem(RESTAURANT_CONFIG.storage_keys.pending_pay)||'null'); snap = s && s.form; if(s && s.ts && (Date.now()-s.ts) > 3600000){ snap=null; try{ localStorage.removeItem(RESTAURANT_CONFIG.storage_keys.pending_pay); }catch(_){} }   /* D/#6/#11(revise): CLEAR a STALE stash (>1h > hosted TTL), don't just ignore it — never restore a day-old order/reservation */ else if(s&&s.order_id){ window.__resumeOrderId = s.order_id;   /* D: a resumed retry REUSES the original order_id → the server reuses the ONE reservation (no double-reserve) */ } } catch(_){}
   if(!snap){ location.href='/'; return; }
   try {
     // R4: the snapshot holds this order's ACTUAL delivery data — suppress the logged-in account
@@ -5240,7 +5235,7 @@ function restoreOrderForm(){
     cartRestore(snap.cart);   // 1B Task 4 — rebuild the CART, not just the quantities
     /* §3 — a RESUMED order keeps the line order it was first sent with (its stashed payload), so a stash written by an
        older, menu-ordered page resumes byte-identically; a line the payload lacks follows in insertion order. */
-    try { const _ps = JSON.parse(localStorage.getItem('lamusa_pending_pay')||'null'); if (_ps && _ps.order_id && window.__resumeOrderId === _ps.order_id && _ps.order && Array.isArray(_ps.order.items)) SERIAL.resume(resolvedCartLines(), _ps.order.items); } catch(_){}
+    try { const _ps = JSON.parse(localStorage.getItem(RESTAURANT_CONFIG.storage_keys.pending_pay)||'null'); if (_ps && _ps.order_id && window.__resumeOrderId === _ps.order_id && _ps.order && Array.isArray(_ps.order.items)) SERIAL.resume(resolvedCartLines(), _ps.order.items); } catch(_){}
     const setV = (id,val)=>{ const el=document.getElementById(id); if(el) el.value = val||''; };
     setV('cname',snap.fields.cname);
     const _savedPhone = snap.fields.cphoneCC ? ('+'+snap.fields.cphoneCC+' '+(snap.fields.cphone||'')) : (snap.fields.cphone||'');

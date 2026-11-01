@@ -3,6 +3,12 @@
 // with the cart globals it touches (MENU, EXTRAS, qty, pizzaExtras, toast, soldOutById, reorderCartPrompt…).
 // runReorder() returns the resulting cart + every toast, so a scenario's outcome is one comparable value.
 import vm from 'node:vm';
+import { BRAND } from './form-harness.mjs';
+const itemKeyOf = (rid) => {
+  const b = Object.values(BRAND).find((x) => x.rid === rid);
+  if (!b) throw new Error(`d4b-reorder-reader: no order form carries restaurant ${rid}`);
+  return b.config.item_key;
+};
 
 export function liftReader(accountJs) {
   const start = accountJs.indexOf('  function reorderFromEntry(entry) {');
@@ -16,7 +22,9 @@ export function liftReader(accountJs) {
 export function runReorder(accountJs, { rid, menu, entry, cart = {}, soldOut = [], prompt = 'add' }) {
   const toasts = [], warns = [];
   const ctx = {
-    CONFIG: { restaurant_id: rid },
+    // ITEM_KEY from the forms' own RESTAURANT-CONFIG (S0-prod: account.js asks the data, not the brand); restaurant_id
+    // stays so a BASE-commit account.js text (which still compares the id) runs unchanged.
+    CONFIG: { restaurant_id: rid, ITEM_KEY: itemKeyOf(rid) },
     MENU: menu.dishes, EXTRAS: menu.extras,
     qty: JSON.parse(JSON.stringify(cart.qty || {})), pizzaExtras: JSON.parse(JSON.stringify(cart.pizzaExtras || {})),
     toast: (m) => toasts.push(m), closeSheet: () => {},

@@ -990,6 +990,14 @@
         "la-musa-orders/form-group-picker.js#choiceRows"
       ],
       "reason": "pre-order: the group picker renders menu prices"
+    },
+    "R18:BRAND": {
+      "kind": "output",
+      "outputs": [
+        "xpizza-orders/account.js#reorderFromEntry",
+        "la-musa-orders/account.js#reorderFromEntry"
+      ],
+      "reason": "S0-prod (Customer App): the reorder's brand fact is the page's RESTAURANT-CONFIG item_key (account.js CONFIG.ITEM_KEY) — restaurant DATA, not a persisted-order field read; the census attributed only the removed brand branch (CONFIG.restaurant_id === 'la_musa'). S1 deletes item_key with by-id pricing"
     }
   },
   "siteApplicability": {

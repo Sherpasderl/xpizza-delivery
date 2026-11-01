@@ -268,8 +268,8 @@ async function wipe() {
        not enough on its own — the current path's pricing / eligibility reads sit behind a 45 s pointer cache and could
        also reuse — so every cell below asserts the footprint too. */
     const footprint = async () => (await rtdb.ref('rate_limits').get()).val();
-    const sameUrl = async (label) => {
-      const r = await send('la_musa', 'apg_bd_C', 'online', PAID, { redeem: rdV });
+    const sameUrl = async (label, extra = {}) => {
+      const r = await send('la_musa', 'apg_bd_C', 'online', PAID, { redeem: rdV, ...extra });
       assert.deepStrictEqual([r.status, r.json && r.json.checkout_url], [200, urlC], `🔴 ${label}: the bound checkout is resumed (same URL) — ${r.text.slice(0, 200)}`);
       assert.strictEqual(await footprint(), null, `🔴 ${label}: answered by the BOUND fast path (its probe + reuse branch leave no rate-limit footprint)`);
       assert.strictEqual(await reservedNow(), heldC, `${label}: no second hold`);
@@ -285,6 +285,11 @@ async function wipe() {
     const inel = JSON.parse(JSON.stringify(repriced)); inel.structure.redeem_eligible_cats = inel.structure.redeem_eligible_cats.filter((c) => c !== 'noodles');
     await publishSource('la_musa', inel);
     await sameUrl('the reward made INELIGIBLE after issuance');
+    // colonia (PLAN-colonia r1 P1-1): address_area is a NON-charge field — present, then CHANGED, after the catalog changes above,
+    // the SAME bound checkout is resumed by the fast path; the stored order keeps its first-written area (none: never rewritten)
+    await sameUrl('the colonia label PRESENT after the catalog changes', { address_area: 'Colonia Trejo' });
+    await sameUrl('the colonia label CHANGED after the catalog changes', { address_area: 'Res. Los Castaños' });
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(await order('apg_bd_C'), 'address_area'), false, 'a bound reuse never rewrites the stored order (its area stays the first-written: absent)');
     // different options on a line / a different fee input → not the bound inputs → the CURRENT path answers (footprint)
     const ext = await send('la_musa', 'apg_bd_C', 'online', [{ ...PAID[0], extras: [{ id: 'rice_white', qty: 1 }] }], { redeem: rdV });
     // (its total differs, so the current path's classifier refuses it as a conflict before any bookkeeping write; the fast
@@ -308,7 +313,58 @@ async function wipe() {
     await rtdb.ref(`restaurants/la_musa/item_availability/${availKey('noodle_01')}`).remove();
     await publishSource('la_musa', lm);   // restore today's catalog
   }
-  ok('bound reuse (render ON): a choice-reward checkout resumes its URL — answered by the bound fast path (probe + reuse branch write-free: no rate-limit footprint) with no second hold — untouched and after a whole-dish 86, a re-price and an eligibility change; different options or fee input reach the current path; an expired one rotates through current enforcement (reward_unavailable); a fresh launcher reward whose preparation fails answers choice_required');
+  ok('bound reuse (render ON): a choice-reward checkout resumes its URL — answered by the bound fast path (probe + reuse branch write-free: no rate-limit footprint) with no second hold — untouched and after a whole-dish 86, a re-price and an eligibility change, and with the colonia label present or changed (non-charge; the stored order is not rewritten); different options or fee input reach the current path; an expired one rotates through current enforcement (reward_unavailable); a fresh launcher reward whose preparation fails answers choice_required');
+
+  // colonia (PLAN-colonia r1; codex colonia r1 P2-2): FRESH reward issuance with an area — two DELIVERY choice-reward checkouts
+  // identical except address_area are BOTH bound (redemption + charge_inputs_fp present), hold the same points, and carry
+  // fingerprints that are the area-free formulas over their OWN order id (each recomputed; the ids differ, so never compared raw)
+  {
+    const CI = require('../catalog/charge-inputs');
+    const rdV = { type: 'points_ala_carte', items: [{ id: 'noodle_01_pollo', qty: 1, name: 'Pad Thai - Pollo' }] };
+    const DLV = { order_type: 'delivery', lat: 14.11, lng: -87.19, address_detected: 'Calle Principal', address_details: 'portón negro' };
+    const fresh = async (oid, extra) => {
+      const b = body('la_musa', oid, 'online', PAID, { redeem: rdV, ...DLV, ...extra });
+      await clean(); const before = await reservedNow();
+      const r = await post(app.chargeOnlineOrder, b, { 'x-firebase-id-token': 'u_la_musa' });
+      return { r, b, held: (await reservedNow()) - before };
+    };
+    const A_ = await fresh('apg_ar_A', {}); const B_ = await fresh('apg_ar_B', { address_area: 'Colonia Trejo' });
+    assert.ok(A_.r.status === 200 && A_.r.json.checkout_url && B_.r.status === 200 && B_.r.json.checkout_url, `setup: two fresh reward checkouts — ${A_.r.text.slice(0, 160)} / ${B_.r.text.slice(0, 160)}`);
+    const [oa, ob] = [await order('apg_ar_A'), await order('apg_ar_B')];
+    assert.ok(oa.redemption && ob.redemption, 'both orders are BOUND to their reward (redemption present)');
+    assert.match(String(oa.charge_inputs_fp), /^[0-9a-f]{64}$/, 'A: charge_inputs_fp present');
+    assert.match(String(ob.charge_inputs_fp), /^[0-9a-f]{64}$/, 'B: charge_inputs_fp present');
+    assert.ok(typeof oa.payment_fingerprint === 'string' && typeof ob.payment_fingerprint === 'string', 'both carry a payment_fingerprint');
+    assert.strictEqual(ob.address_area, 'Colonia Trejo', 'B stores its area');
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(oa, 'address_area'), false, 'A stores none');
+    assert.strictEqual(B_.held, A_.held, `🔴 the same points are held (${A_.held} vs ${B_.held})`);
+    assert.ok(A_.held > 0, 'premise: a hold was taken');
+    for (const k of ['total', 'total_cents', 'subtotal_cents', 'tax_cents', 'items_text']) assert.deepStrictEqual(ob[k], oa[k], `🔴 ${k} differs`);
+    const rel = (o, oid) => JSON.parse(JSON.stringify(o.redemption).split(oid).join('<oid>'));
+    assert.deepStrictEqual(rel(ob, 'apg_ar_B'), rel(oa, 'apg_ar_A'), '🔴 the reward binding differs beyond the order id');
+    const noArea = (b) => { const c = { ...b }; delete c.address_area; return c; };
+    assert.strictEqual(ob.charge_inputs_fp, CI.chargeInputsFingerprint(B_.b), 'B: the stored charge-input fingerprint is its request\'s');
+    assert.strictEqual(ob.charge_inputs_fp, CI.chargeInputsFingerprint(noArea(B_.b)), '🔴 B: the charge-input fingerprint is AREA-FREE');
+    assert.strictEqual(ob.charge_inputs_fp, CI.chargeInputsFingerprint({ ...A_.b, order_id: 'apg_ar_B', customer_phone: B_.b.customer_phone }), '🔴 B: = A\'s request re-keyed to B\'s identity');
+    assert.strictEqual(oa.charge_inputs_fp, CI.chargeInputsFingerprint(A_.b), 'A: the stored charge-input fingerprint is its request\'s');
+    // payment_fingerprint, identity-aware: it hashes the order id + the reward SET (unrecoverable from storage — RTDB reorders
+    // nested keys and drops nulls), so each order is RETRIED with its OWN id and the area CHANGED (A gains one, B loses its own)
+    // with render OFF — the bound fast path cannot answer, so the current path resumes the SAME checkout only if the request's
+    // payment fingerprint EQUALS the stored one (a mismatch is a 409 conflict, never a second attempt)
+    Object.assign(CAPS, { render: false });
+    for (const [label, X, oid, retryBody] of [['A + an area', A_, 'apg_ar_A', { ...A_.b, address_area: 'Res. Los Castaños' }], ['B minus its area', B_, 'apg_ar_B', noArea(B_.b)]]) {
+      const att = (await order(oid)).active_attempt_id;
+      await clean();
+      const r = await post(app.chargeOnlineOrder, retryBody, { 'x-firebase-id-token': 'u_la_musa' });
+      assert.deepStrictEqual([r.status, r.json && r.json.checkout_url], [200, X.r.json.checkout_url], `🔴 ${label}: the same checkout resumes — the payment fingerprint is AREA-FREE (${r.text.slice(0, 160)})`);
+      assert.strictEqual((await order(oid)).active_attempt_id, att, `${label}: no new attempt`);
+      assert.strictEqual((await order(oid)).payment_fingerprint, oid === 'apg_ar_A' ? oa.payment_fingerprint : ob.payment_fingerprint, `${label}: the stored payment fingerprint is unchanged`);
+    }
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(await order('apg_ar_A'), 'address_area'), false, 'a resumed checkout never rewrites the stored order (A still has no area)');
+    assert.strictEqual((await order('apg_ar_B')).address_area, 'Colonia Trejo', 'a resumed checkout never rewrites the stored order (B keeps its area)');
+    Object.assign(CAPS, { render: true });
+  }
+  ok('colonia: FRESH reward issuance — two delivery choice-reward checkouts identical except address_area are both bound (redemption + charge_inputs_fp + payment_fingerprint present), hold the same points, equal totals / text / binding; the charge-input fingerprint is the area-free formula over its own id; a same-id retry with the area changed resumes the same checkout (the payment fingerprint is area-free)');
 
   assert.ok(WC.calls.some((c) => c.restaurantId === 'x_pizza' && c.isNow && c.day === 6), 'premise: the x_pizza orders above met the REAL weekend gate, on the controlled Saturday');
   FINISHED = true;

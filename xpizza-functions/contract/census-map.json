@@ -152,6 +152,38 @@
   {
    "key": "normEmail",
    "reason": "lib/driver-admin-ops.js exports its email normalizer (trim + lowercase of a driver INVITE email) by name in module.exports — a helper, not an order field; §1 \"no order email\" stands"
+  },
+  {
+   "key": "tip_cents",
+   "reason": "S2-srv-tip: tips ARE implemented (PLAN-capp-S2-r4 §3, owner Q7 TIP_MAX L 2,000): the order's tip_cents (written only when > 0 by the existing atomic order write — cash via the spread breakdown, card via the pending order) and the same key on the server envío ctx / the signed quote payload / computeServerNet components. §1's 'no tip' is superseded for this field only; covered by s2tip.test.js + delivery/tip-consumers.test.mjs. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tip",
+   "reason": "S2-srv-tip: deliveryFor's parameter key (the request's raw tip_cents, validated) — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tipCents",
+   "reason": "S2-srv-tip: the cash fingerprint context key (tip.js normTip output) feeding tipExtra — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tipCentsOf",
+   "reason": "S2-srv-tip: delivery-pricing's exported reader of a server ctx's tip (a module.exports key) — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tipExtra",
+   "reason": "S2-srv-tip: tip.js's exported fingerprint-component helper (a module.exports key) — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tipBindingConflict",
+   "reason": "S2-srv-tip: tip.js's exported direct stored-tip compare (a module.exports key) — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "validEmail",
+   "reason": "S2 P-C: payer-email.js exports its PixelPay payer-email VALIDATOR (a module.exports key) — the hosted charge's payer email, not an order-email sender; §1's 'no order email' stands (per-module entry, as normEmail's)"
+  },
+  {
+   "key": "payerEmail",
+   "reason": "S2 P-C: payer-email.js's exported PixelPay payer-email resolver (a module.exports key) — the hosted charge's payer email, not an order-email SENDER; §1's 'no order email' stands. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
   }
  ],
  "timerReview": {
@@ -258,7 +290,10 @@
   "prepstats": "S5 daily prep summary (prepStatsDaily) — reads order_timelines + exactly two order leaves per candidate (restaurant_id, customer_phone) for ATTRIBUTION and the ready-time EXCLUSIONS only; publishes per restaurant × bucket aggregates {median_min, p80_min, n} — never an order fact, an amount or a phone",
   "merchant": "merchant HANDHELD writer (H1a, PLAN-H1a r2 + amendment A-R1) — device-scoped order transitions on orders/{oid} (status CAS + prep + handheld_answered + handheld_ops receipts + reject_intent in ONE transaction), the reject executor (the EXISTING cancelOrderCore, injected) and its op-matched reject_outcome, the reject repair pass (reads persisted reject/cancel/payment state only to decide a dispatch notice — never displays or moves money), busy / pause / agotado; its reads only GATE its own writes — no customer display; persisted outputs covered as writer evidence (census writtenFields / opaqueWriteResolutions). PROPOSED by the handheld session for 2e review (D6).",
   "branches": "branch LIFECYCLE writer + Sherpa-admin CLI (ORCHESTRATION O1a) — identity / brand membership / reservations / op records; reads an order's STATUS only to COUNT live orders (the pin-move guard and the deactivation consequences) — never displayed as an order fact, never a writer of /orders",
-  "driverreport": "DRIVER F «Problema con este pedido» alert WRITER (alertOnDriverProblem) — reads exactly two order leaves (display_number, restaurant_id) only to LABEL an internal dispatcher_alerts row for the Torre; no customer surface, never a writer of /orders or /tasks"
+  "driverreport": "DRIVER F «Problema con este pedido» alert WRITER (alertOnDriverProblem) — reads exactly two order leaves (display_number, restaurant_id) only to LABEL an internal dispatcher_alerts row for the Torre; no customer surface, never a writer of /orders or /tasks",
+  "ratings": "S5 RATINGS WRITER (Customer App): reads ONE order (orders/{id} customer_uid / status / restaurant_id) for the VERIFIED signed-in customer who placed it (+ its deleted_uids tombstone) to decide whether it may be rated, and writes ONLY order_ratings/{order_id} (create-if-absent, no customer identity) — never an order field; `status` in its handler is the Express HTTP status; covered by ratings/rating-core.test.js + test/s5-ratings.emulator.test.js",
+  "delivery_pricing": "ENVÍO (Customer App S3a): derives the delivery fee + free-delivery promo for ONE request from Sherpa config (platform_config/delivery_pricing), the restaurant hub (identity hub_lat/hub_lng) and the request pin (lat/lng + pin_confirmed); on the card path ALSO reads the stored order (orders/{id} order_type / lat / lng / payment_status / active_attempt_id + its payment_attempts state) to keep a live checkout's stored economics or refuse a changed context; writes NOTHING itself — its result reaches the order only through the existing atomic order write (delivery_cents / promo_discount_cents / delivery_snapshot) and the confirmed-net gate; a refusal is an HTTP status on a refusal object, never an order status; covered by delivery/delivery-pricing.test.js + test/s3a-envio.emulator.test.js",
+  "driver_pay": "driver payable LEDGER writer (Customer App S8): reads a delivered order's protected attribution (delivered_by_driver_uid / delivered_at / order_type) through the bounded delivered_at range query and writes ONLY driver_ledger_weeks/{week} (one create-if-absent node per closed week, then .paid) — never an order field, never cash-to-remit; covered by test/driver-ledger.emulator.test.js"
  },
  "serverFunctions": {
   "alert-prune.js#alertOrderIds": "infra",
@@ -398,6 +433,9 @@
   "create-order-build.js#attachCustomerAttribution": "intake",
   "create-order-build.js#buildCreateOrderUpdates": "intake",
   "createorder-classify.js#classifyExistingOrder": "intake",
+  "tip.js#orderRefusal": "intake",
+  "tip.js#refuse": "intake",
+  "payer-email.js#refuse": "intake",
   "createorder-classify.js#computeCanonicalIncomingFingerprint": "intake",
   "createorder-classify.js#computeIncomingFingerprint": "intake",
   "driver-attribution.js#shouldBackstopAttribution": "dispatch",
@@ -662,6 +700,19 @@
   "signup-endpoints.js#getSignupConfig": "infra",
   "signup-endpoints.js#setPromos": "infra",
   "signup-endpoints.js#completeProfile": "infra",
+  "ratings/rate-order.js#rateOrderCore": "ratings",
+  "ratings/rate-order.js#<top>>anon": "ratings",
+  "ratings/rating-core.js#eligibility": "ratings",
+  "ratings/rating-core.js#parseRequest": "ratings",
+  "delivery/delivery-pricing.js#quoteDelivery": "delivery_pricing",
+  "delivery/delivery-pricing.js#placeOf": "delivery_pricing",
+  "delivery/delivery-wire.js#chargeContext": "delivery_pricing",
+  "delivery/delivery-wire.js#deliveryFor": "delivery_pricing",
+  "delivery/delivery-wire.js#orderPin": "delivery_pricing",
+  "delivery/delivery-wire.js#quotePin": "delivery_pricing",
+  "delivery/delivery-wire.js#withDelivery": "delivery_pricing",
+  "delivery/delivery-wire.js#quoteDeliveryFor": "delivery_pricing",
+  "driver-ledger/ledger-core.js#computeWeek": "driver_pay",
   "access/membership-admin-core.js#myRestaurants": "access",
   "access/membership-admin-core.js#census": "access",
   "access/membership-admin-core.js#expectedIndex": "access",
@@ -700,7 +751,8 @@
   "driver-problem-alert.js#alertOnDriverProblem": "driverreport",
   "whatsapp/instance-health.js#checkInstances>anon": "infra",
   "whatsapp/instance-health.js#checkInstances>anon>anon": "infra",
-  "whatsapp/instance-health.js#readAccountStatus": "infra"
+  "whatsapp/instance-health.js#readAccountStatus": "infra",
+  "driver-ledger/ledger-core.js#isAccruable": "driver_pay"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
@@ -902,6 +954,12 @@
    "class": "pointer",
    "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
   },
+  "address_area": {
+   "class": "fact",
+   "facts": [
+    "PLACE"
+   ]
+  },
   "address_details": {
    "class": "fact",
    "facts": [
@@ -1002,6 +1060,10 @@
    "class": "pointer",
    "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
   },
+  "delivery_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
+  "tip_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
+  "promo_discount_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
+  "delivery_snapshot": { "class": "pointer", "reason": "S3a envío provenance (mode, policy_version, km, band, promo id) — the pricing inputs the fee was computed from, kept for audit; never displayed as an order fact" },
   "desc_rebaja_cents": {
    "class": "fact",
    "facts": [
@@ -1522,6 +1584,8 @@
   }
  ],
  "moneyPathNonFactReads": {
+  "tip_cents@xpizza-functions/driver-ledger/ledger-core.js#computeWeek": "S2-srv-tip (PLAN-capp-S2-r4 §3.4, OWNER-CONFIRMED 2026-10-25): the S8 driver PAYABLE accrual — the order’s tip joins the driver’s base_cents (this week) / adjustments_cents (late) at delivered; never a customer-charged amount, a collection or a display (the charged total is total_cents, unchanged). Asserted by delivery/tip-consumers.test.mjs (6) + driver-ledger/ledger-core.test.js; the scope guard allows exactly this read. PROPOSED by the Customer App session for 2e review — ACCEPTED by 2e (review of 9757ac5c): the read IS the driver PAYABLE, asserted by delivery/tip-consumers.test.mjs; registering tip_cents in census FIELD_FACTS is a later 2e tooling chore, not this slice.",
+  "active_attempt_id@xpizza-functions/delivery/delivery-wire.js#chargeContext": "S3a envío: decides only WHETHER the card request is a live-checkout reuse (its STORED economics are kept) — the money effect is asserted through the OUTCOME (the reused checkout's stored total_cents, test/s3a-envio.emulator.test.js §3.3 / P1-2), never through this field",
   "cancelled_at@xpizza-functions/tracking/reconcile-core.js#windowOrders": "the order's terminal TIMESTAMP — selects the reconcile window (terminal within 24 h); never an amount, a collector or a selector of money",
   "completed_at@xpizza-functions/tracking/reconcile-core.js#windowOrders": "the order's terminal TIMESTAMP — selects the reconcile window (terminal within 24 h); never an amount, a collector or a selector of money",
   "_doc": "codex rebase-r1/r2 P1: every NON-FIELD_FACTS read on an order-ish object (dot, literal bracket, optional, destructuring) INSIDE A FUNCTION THAT READS MONEY / CASH / COLLECT is either a registered fact (census FIELD_FACTS) or reviewed HERE, per SITE (field@file#fn) — a review never extends to another function. A read that SELECTS which orders enter a displayed / collected amount names the agreement cells that would fail on a wrong selector. Reviewed at the rebase onto 239632b.",

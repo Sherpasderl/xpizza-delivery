@@ -23,7 +23,8 @@ const RID = 'tb_centro';
 const BIND = { $uid: UID, $driver_id: UID, $restaurant_id: RID, $order_id: 'O1', $task_id: 'O1_delivery', $token: 'tok1',
   $alert_id: 'a1', $msg_id: 'm1', $shift_id: 's1', $hash: 'h1', $key: 'k1', $rid: RID };
 const PUBLIC = ['/config/rewards_public/redemption_live', '/public/brands', '/order_tracking/$token',
-  '/restaurants/$restaurant_id/item_availability', '/restaurants/$restaurant_id/public', '/menus', '/menus/_meta'];   // S5: the status screen's public restaurant facts
+  '/restaurants/$restaurant_id/item_availability', '/restaurants/$restaurant_id/public', '/menus', '/menus/_meta',
+  '/public_stats'];   // S5 ratings (advisor ruling E): the public social-proof projection — read by everyone, written by no client   // S5: the status screen's public restaurant facts
 
 function readLeaves(n, p = '', out = []) {
   for (const [k, v] of Object.entries(n)) {

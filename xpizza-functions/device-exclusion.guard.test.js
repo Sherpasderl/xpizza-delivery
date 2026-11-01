@@ -23,6 +23,7 @@ const PUBLIC = Object.freeze([
   '/config/rewards_public/redemption_live/.read',
   '/public/brands/.read',
   '/order_tracking/$token/.read',
+  '/public_stats/.read',          // S5 (advisor ruling E): the public social-proof projection — read by every client, written by NO client (.write false)
   '/restaurants/$restaurant_id/item_availability/.read',
   '/restaurants/$restaurant_id/public/.read',   // S5: the live status screen's public restaurant facts (display name, branch, prep ETA / stats) — anonymous customers read it
   '/menus/.read',

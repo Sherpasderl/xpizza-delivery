@@ -1,0 +1,263 @@
+{
+  "_about": "Customer App S0-test brand configs, derived from the CURRENT running forms by capp-s0-config.test.mjs --write; never hand-edit.",
+  "configs": {
+    "x_pizza": {
+      "schema": "capp-restaurant-config/s0",
+      "restaurant_id": "x_pizza",
+      "form": {
+        "dir": "xpizza-orders",
+        "page_restaurant_id": "x_pizza",
+        "menu_rid": "x_pizza"
+      },
+      "identity": {
+        "display_name": "X. Pizza",
+        "title": "X Pizza — Pedido en línea",
+        "pickup_store_name": "X Pizza"
+      },
+      "branding": {
+        "accent": "#A9791A",
+        "palette": {
+          "screen": "#FCFCFB",
+          "tint": "#F6F6F4",
+          "tint2": "#F1F1EF",
+          "chip": "#EFEFEC",
+          "fillA": "#EDEDEA",
+          "line": "#ECECEA",
+          "fillB": "#E8E8E5",
+          "mapbg": "#E7E7E3",
+          "line2": "#E2E2DE",
+          "line3": "#D6D6D0",
+          "dot": "#CFCFC9"
+        }
+      },
+      "map": {
+        "lat": 15.507489753573818,
+        "lng": -88.0398486953722,
+        "radius_km": 7
+      },
+      "hours": {
+        "0": {
+          "open": 720,
+          "close": 1185
+        },
+        "1": {
+          "open": 720,
+          "close": 1185
+        },
+        "2": {
+          "open": 720,
+          "close": 1185
+        },
+        "3": {
+          "open": 720,
+          "close": 1185
+        },
+        "4": {
+          "open": 720,
+          "close": 1245
+        },
+        "5": {
+          "open": 720,
+          "close": 1245
+        },
+        "6": {
+          "open": 720,
+          "close": 1245
+        }
+      },
+      "min_order_lempiras": 250,
+      "payment_methods": [
+        "cash",
+        "online"
+      ],
+      "uses_platform_factura": null,
+      "rewards": {
+        "kind": "punch"
+      },
+      "order_id": {
+        "prefix": "PZX-"
+      },
+      "storage_keys": {
+        "pending_pay": "xpizza_pending_pay",
+        "account_marker": "xpizza_acct"
+      },
+      "copy": {
+        "error_noun": "pizza"
+      },
+      "contact": {
+        "whatsapp": "50497952893"
+      }
+    },
+    "la_musa": {
+      "schema": "capp-restaurant-config/s0",
+      "restaurant_id": "la_musa",
+      "form": {
+        "dir": "la-musa-orders",
+        "page_restaurant_id": "la_musa",
+        "menu_rid": "la_musa"
+      },
+      "identity": {
+        "display_name": "La Musa",
+        "title": "La Musa Gastropub — Pedido en línea",
+        "pickup_store_name": "La Musa Gastropub"
+      },
+      "branding": {
+        "accent": "#B61218",
+        "palette": {
+          "screen": "#FFFDFA",
+          "tint": "#FBF6EE",
+          "tint2": "#F4EEE4",
+          "chip": "#F0E8DA",
+          "fillA": "#EFE7DA",
+          "line": "#EDE5D9",
+          "fillB": "#E7DFD3",
+          "mapbg": "#E4DAC7",
+          "line2": "#E2D8C8",
+          "line3": "#D8CBB8",
+          "dot": "#CFC2B1"
+        }
+      },
+      "map": {
+        "lat": 15.504137854561979,
+        "lng": -88.03848413956527,
+        "radius_km": 9.66
+      },
+      "hours": {
+        "0": {
+          "open": 720,
+          "close": 1185
+        },
+        "1": null,
+        "2": {
+          "open": 1020,
+          "close": 1245
+        },
+        "3": {
+          "open": 1020,
+          "close": 1245
+        },
+        "4": {
+          "open": 1020,
+          "close": 1245
+        },
+        "5": {
+          "open": 1020,
+          "close": 1305
+        },
+        "6": {
+          "open": 1020,
+          "close": 1305
+        }
+      },
+      "min_order_lempiras": 250,
+      "payment_methods": [
+        "cash",
+        "online"
+      ],
+      "uses_platform_factura": null,
+      "rewards": {
+        "kind": "points"
+      },
+      "order_id": {
+        "prefix": "PZX-"
+      },
+      "storage_keys": {
+        "pending_pay": "lamusa_pending_pay",
+        "account_marker": "lamusa_acct"
+      },
+      "copy": {
+        "error_noun": "item"
+      },
+      "contact": {
+        "whatsapp": "50493736607"
+      }
+    },
+    "r3_synth (PROVISIONAL)": {
+      "schema": "capp-restaurant-config/s0",
+      "restaurant_id": "r3_synth",
+      "form": {
+        "dir": "<third-brand fork>",
+        "page_restaurant_id": "r3_synth",
+        "menu_rid": "r3_synth"
+      },
+      "identity": {
+        "display_name": "R3 Synthetic",
+        "title": "R3 Synthetic — Pedido en línea",
+        "pickup_store_name": "R3 Synthetic"
+      },
+      "branding": {
+        "accent": "#A9791A",
+        "palette": {
+          "screen": "#FCFCFB",
+          "tint": "#F6F6F4",
+          "tint2": "#F1F1EF",
+          "chip": "#EFEFEC",
+          "fillA": "#EDEDEA",
+          "line": "#ECECEA",
+          "fillB": "#E8E8E5",
+          "mapbg": "#E7E7E3",
+          "line2": "#E2E2DE",
+          "line3": "#D6D6D0",
+          "dot": "#CFCFC9"
+        }
+      },
+      "map": {
+        "lat": 14.1,
+        "lng": -87.2,
+        "radius_km": 8
+      },
+      "hours": {
+        "0": {
+          "open": 720,
+          "close": 1185
+        },
+        "1": {
+          "open": 720,
+          "close": 1185
+        },
+        "2": {
+          "open": 720,
+          "close": 1185
+        },
+        "3": {
+          "open": 720,
+          "close": 1185
+        },
+        "4": {
+          "open": 720,
+          "close": 1245
+        },
+        "5": {
+          "open": 720,
+          "close": 1245
+        },
+        "6": {
+          "open": 720,
+          "close": 1245
+        }
+      },
+      "min_order_lempiras": 250,
+      "payment_methods": [
+        "cash",
+        "online"
+      ],
+      "uses_platform_factura": null,
+      "rewards": {
+        "kind": "punch"
+      },
+      "order_id": {
+        "prefix": "RTS-"
+      },
+      "storage_keys": {
+        "pending_pay": "r3synth_pending_pay",
+        "account_marker": "r3synth_acct"
+      },
+      "copy": {
+        "error_noun": "pizza"
+      },
+      "contact": {
+        "whatsapp": "50497952893"
+      }
+    }
+  }
+}

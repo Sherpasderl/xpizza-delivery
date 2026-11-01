@@ -2,10 +2,17 @@
    beyond reading the localStorage marker. Firebase SDK is imported ONLY on login interaction (H8). */
 (function () {
   'use strict';
+  /* The restaurant's DATA comes from the page's RESTAURANT-CONFIG block (index.html), never from this file:
+     both forms ship this file byte-identical. A page that loads account.js without that block is broken,
+     so this fails LOUDLY instead of guessing a restaurant. The URLs and Firebase handle are platform-wide. */
+  const RC = window.RESTAURANT_CONFIG;
+  if (!RC || typeof RC !== 'object' || typeof RC.rid !== 'string' || !RC.storage_keys || !RC.branding || !RC.rewards) {
+    throw new Error('account.js: window.RESTAURANT_CONFIG is missing or malformed — the page must define its restaurant config block before account.js');
+  }
   const CONFIG = {
-    restaurant_id: 'x_pizza',                 // 'x_pizza' | 'la_musa'
-    brand: 'X. Pizza',
-    accent: '#A9791A',                        // gold (La Musa: rojo musa)
+    restaurant_id: RC.rid,
+    brand: RC.display_name,
+    accent: RC.branding.accent,
     OTP_URL:    'https://requestotp-m7syoovdsa-uc.a.run.app',
     VERIFY_URL: 'https://verifyotp-m7syoovdsa-uc.a.run.app',
     DELETE_URL: 'https://deleteaccount-m7syoovdsa-uc.a.run.app',
@@ -17,11 +24,11 @@
     fb: { apiKey:'AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU', authDomain:'xpizza-delivery.firebaseapp.com',
           databaseURL:'https://xpizza-delivery-default-rtdb.firebaseio.com', projectId:'xpizza-delivery',
           messagingSenderId:'185867271616', appId:'1:185867271616:web:84bb37552b40c1d517dc25' },
-    MARKER: 'xpizza_acct',                    // localStorage key (La Musa: 'lamusa_acct')
-    palette: { screen:'#FCFCFB', tint:'#F6F6F4', tint2:'#F1F1EF', chip:'#EFEFEC', fillA:'#EDEDEA', line:'#ECECEA', fillB:'#E8E8E5', mapbg:'#E7E7E3', line2:'#E2E2DE', line3:'#D6D6D0', dot:'#CFCFC9' },   // per-brand neutrals — X. Pizza NEAR-WHITE set (nearwhite-inventory.md); La Musa CONFIG carries the exact current literals (byte-identical)
-    // Rewards B2 — the ONLY brand difference in the rewards UI (everything past CONFIG is byte-identical).
-    // X. Pizza = punch card → free pizza; La Musa = points → free-item tiers. Earn rates mirror Phase A (live).
-    rewards: { kind:'punch', card_size:8, unit:'sello', unitPlural:'sellos', earnPerPizza:1, welcome:2, paneIntro:'Llená tu tarjeta de 8 y la próxima pizza es <b>gratis</b>. Empezaste con 2 sellos de regalo.' },
+    MARKER: RC.storage_keys.account_marker,     // localStorage key of the signed-in marker
+    INTENT_KEY: RC.storage_keys.account_intent, // localStorage key of the post-order save-address intent
+    ITEM_KEY: RC.item_key,                      // 'id' | 'name': how a reorder recipe line names its dish (S1 converges on id)
+    palette: RC.branding.palette,               // per-brand neutrals
+    rewards: RC.rewards,                        // the rewards DISPLAY model; the server owns redemption + eligibility
   };
 
   // Lazy Firebase — imported on first use only. Returns { auth, db-helpers } cached after first load.
@@ -2174,7 +2181,7 @@ ${phone ? `<div class="acct-su-facts"><div><span>Cuenta</span><b>${escapeHtml(ph
     try {
       if (!entry || !Array.isArray(entry.items) || !entry.items.length) return;
       if (typeof MENU === 'undefined' || typeof qty === 'undefined' || typeof pizzaExtras === 'undefined') { toast('No se pudo reordenar.'); return; }
-      const laMusa = CONFIG.restaurant_id === 'la_musa';
+      const byId = CONFIG.ITEM_KEY === 'id';
       /* 1D D4-b §D — the recipe's FORMAT (a sibling of its lines, written only from D4-c). Absent → today's matching,
          EXACTLY (the loop below, untouched). "canonical" → each line is first translated back to today's line shape by
          the SERVED canonical id per kind (MENU dish_id / EXTRAS extra_id), then runs through the same loop — so drops,
@@ -2186,14 +2193,14 @@ ${phone ? `<div class="acct-su-facts"><div><span>Cuenta</span><b>${escapeHtml(ph
           try { console.warn('reorder_recipe_format_invalid', JSON.stringify({ recipe_format: String(entry.recipe_format) })); } catch (_) {}
           lines = entry.items.map(() => null);
         } else {
-          lines = canonicalRecipeToLegacy(entry.items, laMusa);
+          lines = canonicalRecipeToLegacy(entry.items, byId);
         }
       }
       const resolved = [];
       let dropped = 0;
       for (const rl of lines) {
         if (!rl || rl.key == null) { dropped++; continue; }
-        const item = laMusa ? MENU.find((p) => p.id === rl.key) : MENU.find((p) => p.name === rl.key);   // la_musa by id / x_pizza by name (recipe key)
+        const item = byId ? MENU.find((p) => p.id === rl.key) : MENU.find((p) => p.name === rl.key);   // la_musa by id / x_pizza by name (recipe key)
         if (!item) { dropped++; continue; }                                   // not on today's menu → drop
         // 1D add-product B: a bare LAUNCHER (a legacy line from before its group) is never a cart line — dropped, and counted in the notice
         if (typeof itemIsLauncher === 'function' && itemIsLauncher(item)) { dropped++; continue; }
@@ -2214,7 +2221,7 @@ ${phone ? `<div class="acct-su-facts"><div><span>Cuenta</span><b>${escapeHtml(ph
             try { if (typeof CART !== 'undefined' && typeof CART.reset === 'function') CART.reset(); } catch (_) {}
           } catch (_) {}
         }
-        applyReorderToCart(resolved, laMusa);
+        applyReorderToCart(resolved, byId);
         closeSheet();
         notice();
         try { const cb = document.getElementById('cart-bar') || document.querySelector('.cart-bar'); if (cb) setTimeout(() => cb.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120); } catch (_) {}
@@ -2228,14 +2235,14 @@ ${phone ? `<div class="acct-su-facts"><div><span>Cuenta</span><b>${escapeHtml(ph
   /* 1D D4-b §B.5/§D — canonical recipe line → today's line shape. A ck is JSON ["c1", kind, cid]; the cid is matched
      against the SERVED identity (dish_id / extra_id). An unresolvable line becomes key-less (dropped by the loop, as an
      off-menu line is today); an unresolvable option is skipped (as an unknown option name is today). */
-  function canonicalRecipeToLegacy(items, laMusa) {
+  function canonicalRecipeToLegacy(items, byId) {
     const parse = (s) => { try { const a = JSON.parse(s); return (Array.isArray(a) && a.length === 3 && a[0] === 'c1' && typeof a[2] === 'string') ? { kind: a[1], cid: a[2] } : null; } catch (_) { return null; } };
     return items.map((rl) => {
       if (!rl) return rl;
       const k = parse(rl.key);
       const dish = (k && k.kind === 'dish' && typeof MENU !== 'undefined') ? MENU.find((p) => p.dish_id === k.cid) : null;
       if (!dish) return { ...rl, key: null };
-      const out = { ...rl, key: laMusa ? dish.id : dish.name };
+      const out = { ...rl, key: byId ? dish.id : dish.name };
       if (Array.isArray(rl.options)) {
         out.options = [];
         for (const o of rl.options) {
@@ -2263,14 +2270,14 @@ ${phone ? `<div class="acct-su-facts"><div><span>Cuenta</span><b>${escapeHtml(ph
     } catch (_) {}
   }
 
-  function applyReorderToCart(resolved, laMusa) {
+  function applyReorderToCart(resolved, byId) {
     for (const r of resolved) {
       const id = r.item.id;
       let base = 0; try { base = qty[id] || 0; } catch (_) {}   // pre-existing qty — captured BEFORE the increment so x_pizza extras seed onto the NEWLY-added instances, not instance 0 (codex R1 HIGH: an "Agregar" merge onto the same pizza collided on inst[0] → under-seeded → server under-charged)
       try { qty[id] = base + r.qty; } catch (_) {}
       if (r.options.length) {
         try {
-          if (laMusa) {
+          if (byId) {
             // flat per-line extras: pizzaExtras[id] = { extraId: qty }
             const bucket = pizzaExtras[id] || {};
             for (const o of r.options) {
@@ -2296,7 +2303,7 @@ ${phone ? `<div class="acct-su-facts"><div><span>Cuenta</span><b>${escapeHtml(ph
       // HOTFIX: extras first (captured as priced now), then the line itself into CART
       try {
         const sel = pizzaExtras[id] || {};
-        const eids = laMusa ? Object.keys(sel).filter((k) => sel[k] > 0)
+        const eids = byId ? Object.keys(sel).filter((k) => sel[k] > 0)
           : [...new Set(Object.values(sel).flatMap((inst) => (inst && typeof inst === 'object') ? Object.keys(inst).filter((k) => inst[k] > 0) : []))];
         noteReorderExtras(eids);
       } catch (_) {}
@@ -3511,8 +3518,8 @@ ${showCancel ? '<button type="button" class="acct-cancel-edit" id="acct-cancel-e
       // else the live flags (correct for a same-page CASH order). Consume the block ONCE so a later unrelated
       // confirmation can never replay it.
       let intent = null;
-      try { const raw = localStorage.getItem('xpizza_acct_intent'); if (raw) { const p = JSON.parse(raw); if (p && p.order_id === order.order_id) intent = p; } } catch (_) {}
-      try { localStorage.removeItem('xpizza_acct_intent'); } catch (_) {}
+      try { const raw = localStorage.getItem(CONFIG.INTENT_KEY); if (raw) { const p = JSON.parse(raw); if (p && p.order_id === order.order_id) intent = p; } } catch (_) {}
+      try { localStorage.removeItem(CONFIG.INTENT_KEY); } catch (_) {}
       const loggedIn = intent ? !!intent.uid : !!marker();
       if (!loggedIn) return;                       // guest — never save
       const oneOff = intent ? !!intent.oneOff : !!_acctAddrOneOff;
@@ -3537,13 +3544,13 @@ ${showCancel ? '<button type="button" class="acct-cancel-edit" id="acct-cancel-e
   // processPixelPay() (BEFORE the redirect) with the order_id. Guest/pickup → clear (nothing to persist).
   function captureDeliverySaveIntent(orderId) {
     try {
-      if (!orderId || !marker() || pageOrderType() !== 'delivery') { try { localStorage.removeItem('xpizza_acct_intent'); } catch (_) {} return; }
+      if (!orderId || !marker() || pageOrderType() !== 'delivery') { try { localStorage.removeItem(CONFIG.INTENT_KEY); } catch (_) {} return; }
       const m = marker() || {};
       const label = (_acctEditLabel && _acctEditLabel.trim())
         || (_acctData && _acctAddrId && _acctData.addresses && _acctData.addresses[_acctAddrId] && _acctData.addresses[_acctAddrId].label)
         || 'Dirección';
       const intent = { order_id: String(orderId), uid: m.uid || 1, oneOff: !!_acctAddrOneOff, addrId: _acctAddrId || null, isNew: !!_acctEditIsNew, label };
-      try { localStorage.setItem('xpizza_acct_intent', JSON.stringify(intent)); } catch (_) {}
+      try { localStorage.setItem(CONFIG.INTENT_KEY, JSON.stringify(intent)); } catch (_) {}
     } catch (_) {}
   }
 

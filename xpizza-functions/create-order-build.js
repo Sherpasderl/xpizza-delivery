@@ -67,7 +67,7 @@ function buildCreateOrderUpdates({
     orderRecord.lat = lat;
     orderRecord.lng = lng;
     orderRecord.address_detected = fields.address_detected;
-    orderRecord.address_details = fields.address_details;
+    orderRecord.address_details = fields.address_details; if (fields.address_area) orderRecord.address_area = fields.address_area;   // colonia (PLAN-colonia r1): only when kept
     orderRecord.maps_link = `https://www.google.com/maps?q=${lat},${lng}`;
     orderRecord.pickup_task_id = pickupTaskId;
     orderRecord.delivery_task_id = deliveryTaskId;
