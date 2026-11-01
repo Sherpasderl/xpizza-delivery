@@ -45,6 +45,28 @@ const reset = (db, extra = {}) => resetDraftToLiveCore({ db, authorize: owner, r
   assert.deepStrictEqual(db.state.data.photos, r.body.source.photos, 'RESET-PHOTOS-STORED');
   ok('the draft map is rebuilt from the ACTIVE meta/photos (pid + removed; URLs dropped; legacy = absent), stored and returned');
 
+  // ── 2b. codex r1 P1-3: the restored pids go through the SAME fenced attach before the CAS; a deleting/deleted pid refuses ──
+  {
+    const calls = [];
+    const db2 = stubDb(clone(src));
+    const active = async () => ({ [KEY]: { state: 'pid', pid: P1, card: 'c', hero: 'h' } });
+    const okR = await reset(db2, { readActivePhotos: active, attach: async (rid, pids) => { calls.push([rid, pids]); return { ok: true }; } });
+    assert.strictEqual(okR.status, 200, 'RESET-PHOTOS-ATTACHED-OK');
+    assert.deepStrictEqual(calls, [[RID, [P1]]], 'RESET-PHOTOS-ATTACHES-RESTORED-PIDS');
+    const db3 = stubDb(clone(src));
+    const refused = await reset(db3, { readActivePhotos: active, attach: async () => ({ ok: false, code: 'photo_unavailable', pid: P1 }) });
+    assert.deepStrictEqual([refused.status, refused.body.error], [409, 'photo_unavailable'], 'RESET-PHOTOS-DELETING-REFUSED');
+    assert.strictEqual(db3.state.updateTime, T0, 'RESET-PHOTOS-REFUSED-NOTHING-WRITTEN');
+    const db4 = stubDb(clone(src));
+    const down = await reset(db4, { readActivePhotos: active, attach: async () => { throw new Error('down'); } });
+    assert.deepStrictEqual([down.status, down.body.error], [503, 'store_unavailable'], 'RESET-PHOTOS-ATTACH-IO-FAILS-CLOSED');
+    assert.strictEqual(db4.state.updateTime, T0, 'RESET-PHOTOS-ATTACH-IO-NOTHING-WRITTEN');
+    const noPids = [];
+    await reset(stubDb(clone(src)), { readActivePhotos: async () => ({ [KEY2]: { state: 'removed' } }), attach: async (r, p) => { noPids.push(p); return { ok: true }; } });
+    assert.deepStrictEqual(noPids, [], 'RESET-PHOTOS-NO-PIDS-NO-ATTACH');
+    ok('reset attaches every restored pid through the fenced attach BEFORE its CAS: deleting/deleted → 409 photo_unavailable, attach I/O → 503, nothing written; no pids → no attach');
+  }
+
   // ── 3. the active map cannot be read → fail closed, nothing written ──
   const db3 = stubDb(clone(src));
   const f = await reset(db3, { readActivePhotos: async () => { throw new Error('down'); } });

@@ -31,7 +31,7 @@ exports.resetDraftToLive = withPreflightMaxAge(onRequest(
         db: getFirestore(),
         authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
         readActiveVersionId: (fs, rid) => getActiveVersionId(fs, rid),
-        previewVersion, readActivePhotos: (rid, vid) => require('../photos/edit-io').makePhotoEditIo({ fs: getFirestore(), enabled: async () => false }).readActive(rid, vid),   // DISH PHOTOS A2 step 11: the photo map comes back from the active meta/photos
+        previewVersion, readActivePhotos: (rid, vid) => require('../photos/edit-io').makePhotoEditIo({ fs: getFirestore(), enabled: async () => false }).readActive(rid, vid), attach: (rid, pids) => require('../photos/edit-io').makePhotoEditIo({ fs: getFirestore(), enabled: async () => false }).attach(rid, pids),   // DISH PHOTOS A2 step 11: the photo map comes back from the active meta/photos; codex r1 P1-3: its pids attached (fenced) before the CAS
         toPrecondition: decodeUpdateTime,
       }, req.body || {}, req);
       return res.status(out.status).json(out.body);
