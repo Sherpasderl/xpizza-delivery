@@ -30,6 +30,11 @@ const PATHS = {
   chargeOnlineOrder: section('chargeOnlineApp.all('),
   validateOrderPayload: fnBody(idx, 'validateOrderPayload'),
   gateInputFromRequest: fnBody(readFileSync(join(__dirname, '..', 'token-gate.js'), 'utf8'), 'gateInputFromRequest'),
+  // PLAN-guest-checkout-server S2: the capp-guest gate reads the placement body too (forms never reach past its discriminator)
+  createOrderRefusal: fnBody(readFileSync(join(__dirname, '..', 'checkout-guest-gate.js'), 'utf8'), 'createOrderRefusal'),
+  chargeGate: fnBody(readFileSync(join(__dirname, '..', 'checkout-guest-gate.js'), 'utf8'), 'chargeGate'),
+  guestBodyRefusal: fnBody(readFileSync(join(__dirname, '..', 'checkout-guest-lib.js'), 'utf8'), 'guestBodyRefusal'),
+  cartSigFieldsFromBody: fnBody(readFileSync(join(__dirname, '..', 'checkout-guest-lib.js'), 'utf8'), 'cartSigFieldsFromBody'),
 };
 const READ = new Set();
 for (const [name, src] of Object.entries(PATHS)) {

@@ -1,0 +1,86 @@
+'use strict';
+// PLAN-guest-checkout-server S1 + S2 — index.js wiring guard (the inverse-fold invariant). S1 appends ONE block to index.js
+// (`/* checkout:begin endpoints */ … /* checkout:end endpoints */`: the requestCheckoutCode / verifyCheckoutCode exports); S2
+// INSERTS whole-line named hunks (the capp-guest gate in createOrder + chargeOnlineOrder, the grant secret) and edits no base
+// line. tools/checkout-inverse.js removes exactly those hunks and is composed INNERMOST (newest slice first) into every index.js
+// fold guard. This guard proves:
+//   (i)   unapplyCheckoutIndex(index.js) === BASE:index.js BYTE-FOR-BYTE;
+//   (ii)  NON-VACUITY — the live file differs from the base and carries the block (dropping the inverse ⇒ RED);
+//   (iii) SENSITIVITY — a missing / duplicated marker or an edit OUTSIDE the block is refused or detected.
+// Run: node checkout-wiring.guard.test.js
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+const { unapplyCheckoutIndex } = require('./tools/checkout-inverse');
+
+let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+const BASE = '8a31e2a3';   // origin/main at the plan's code map
+const live = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
+const BEGIN = '/* checkout:begin endpoints */\n', END = '/* checkout:end endpoints */\n';
+
+assert.strictEqual(unapplyCheckoutIndex(live), base, `🔴 index.js minus the checkout block is not ${BASE}:index.js — something beyond the block changed`);
+ok(`(i) index.js minus the checkout block === ${BASE}:index.js byte-for-byte`);
+
+assert.notStrictEqual(live, base, 'non-vacuity: the live index.js differs from the base');
+const hunk = (name) => { const b = `/* checkout:begin ${name} */`, e = `/* checkout:end ${name} */`; return live.slice(live.indexOf(b), live.indexOf(e) + e.length); };
+const block = hunk('endpoints');
+assert.ok(/exports\.requestCheckoutCode = onRequest\(/.test(block) && /exports\.verifyCheckoutCode = onRequest\(/.test(block), 'both endpoints are exported INSIDE the block');
+assert.ok(/cors: ACCOUNT_ORIGINS/.test(block), 'the account CORS list (the capp origin is derived from the manifest)');
+assert.ok(live.endsWith(END), 'the endpoints block is the END of index.js');
+assert.ok(!/exports\.(requestOtp|verifyOtp)\b/.test(block), 'requestOtp / verifyOtp are never touched by this slice');
+ok('(ii) non-vacuity: the endpoints block is present at the end of index.js, exports both endpoints with ACCOUNT_ORIGINS, and touches no existing export');
+
+// S2 placement: each gate hunk sits inside ITS handler, after identity resolution and before the first write it guards
+const at = (t) => { const i = live.indexOf(t); assert.ok(i > 0, `premise: ${t.slice(0, 60)}`); return i; };
+const cStart = at('createOrderApp.all('), cEnd = live.indexOf('\nexports.', cStart);
+const gC = at('/* checkout:begin gate-create */');
+assert.ok(cStart < gC && gC < cEnd, 'gate-create is inside createOrder');
+assert.ok(at('treat as guest */ }\n  }\n  /* checkout:begin gate-create */') > 0, 'gate-create follows createOrder\'s identity resolution');
+assert.ok(gC < live.indexOf('const existing = await db.ref(`orders/${orderId}`).once', cStart), 'gate-create precedes the existence read');
+const chStart = at('chargeOnlineApp.all('), chEnd = live.indexOf('\nexports.', chStart);
+// gate-method (Codex r1 P2-4): after validation, IMMEDIATELY before the generic online-only refusal it pre-empts for capp guests
+{ const gm = live.indexOf('/* checkout:begin gate-method */', chStart);
+  assert.ok(gm > live.indexOf('validateOrderPayload(body, restaurantId, pricingTables);', chStart) && gm < chEnd, 'gate-method inside chargeOnlineOrder, after validation');
+  assert.ok(live.slice(live.indexOf('/* checkout:end gate-method */', gm)).startsWith('/* checkout:end gate-method */\n  // This endpoint is ONLY for online card payments. cash/card_delivery use createOrder.\n  if (fields.payment_method !== \'online\') {'), 'gate-method sits right above the online-only check');
+  assert.ok(gm < live.indexOf('/* checkout:begin gate-charge */', chStart), 'gate-method precedes the gate'); }
+const order = ['/* checkout:begin gate-charge */', '/* checkout:begin gate-verified */', 'const releaseHoldIfOwned = async', 'acq = await acquireHostedAttempt(',
+  '/* checkout:begin gate-bind */', "if (acq.outcome === 'item_unavailable')", '/* checkout:begin gate-grant */', 'if (flow.respond) return res.status(',
+  '/* checkout:begin gate-grant-field */'].map((t) => { const i = live.indexOf(t, chStart); assert.ok(i > chStart && i < chEnd, `inside chargeOnlineOrder: ${t}`); return i; });
+for (let k = 1; k < order.length; k++) assert.ok(order[k - 1] < order[k], 'chargeOnlineOrder hunk order');
+assert.ok(at("customer_uid = null; }   // any error → guest\n  }\n  /* checkout:begin gate-charge */") > 0, 'gate-charge follows chargeOnlineOrder\'s identity resolution');
+for (const first of ["db.ref(`recent_order_content/", 'reserveRedemption(']) { const w = live.indexOf(first, chStart); assert.ok(w < 0 || w > order[0], `gate-charge precedes ${first}`); }
+assert.ok(/secrets: \[SIGNUP_GRANT_SECRET\]/.test(hunk('grant-secret-bind')) && live.indexOf('/* checkout:begin grant-secret-bind */') > live.indexOf('exports.chargeOnlineOrder = onRequest('), 'the grant secret binds to chargeOnlineOrder only');
+assert.strictEqual(live.split('SIGNUP_GRANT_SECRET]').length - 1, 2, 'the grant secret binds to exactly chargeOnlineOrder + redeemSignupGrant');
+assert.ok(/exports\.redeemSignupGrant = onRequest\(\n  \{[^\n]*secrets: \[SIGNUP_GRANT_SECRET\] \}/.test(block), 'S3b: redeemSignupGrant (in the endpoints block) binds it');
+for (const [name, stmt] of [['gate-create', 'if (cappGuestRefusal) return res.status(400).json({ error: cappGuestRefusal });'],
+  ['gate-method', "&& (await require('./checkout-guest-gate').chargeUidOf(req, { getAuth, getDatabase, attributionUid })) === null) {\n    return res.status(400).json({ error: 'guest_cash_not_allowed' });"],
+  ['gate-charge', 'if (cappGuest && cappGuest.refuse) return res.status(400).json({ error: cappGuest.refuse });'],
+  ['gate-verified', 'pendingOrderRecord.guest_verified = { phone: cappGuest.guest.phone, phone_hash: cappGuest.guest.phone_hash };'],
+  ['gate-bind', "return res.status(400).json({ error: 'guest_ticket_invalid' });"], ['gate-grant', 'if (g.refuse) return res.status(400).json({ error: g.refuse });'],
+  ['gate-grant-field', '...(cappGrant ? { signup_grant: cappGrant } : {}),']]) assert.ok(hunk(name).includes(stmt), `🔴 the ${name} hunk lost its effect: ${stmt}`);
+ok('(ii-S2) placement: gate-create after createOrder identity + before its existence read; chargeOnlineOrder gate → verified (pre-CAS) → bind (post-CAS, before every outcome) → grant (before any answer); gate-method right above the generic online-only refusal; secret bound to chargeOnlineOrder');
+
+assert.throws(() => unapplyCheckoutIndex(live.replace(BEGIN, '/* checkout:BEGIN */\n')), /missing/, 'a missing begin');
+assert.throws(() => unapplyCheckoutIndex(live.replace(END, '/* checkout:END */\n')), /missing/, 'a missing end');
+assert.throws(() => unapplyCheckoutIndex(live + BEGIN + END), /more than once/, 'a duplicated block');
+assert.throws(() => unapplyCheckoutIndex(live.replace('  /* checkout:begin gate-create */\n', '  x; /* checkout:begin gate-create */\n')), /own lines/, 'a marker sharing a base line');
+assert.throws(() => unapplyCheckoutIndex(live.replace('/* checkout:end gate-bind */', '/* checkout:end gate-bindx */')), /missing|unknown/, 'a renamed S2 marker');
+assert.notStrictEqual(unapplyCheckoutIndex(live.replace('exports.verifyOtp', 'exports.verifyOtP')), base, 'an edit OUTSIDE the hunks is detected');
+// S3a placement: each platform hand-off is the FIRST statement after its handler's POST check (before any read / write); the
+// forms' path below it is byte-identical (proven by (i)); exactly the bodies carrying `context` leave
+for (const [fn, name, next] of [['exports.requestOtp = onRequest(', 's3a-request', 'const { phone, restaurant_id } = req.body || {};'], ['exports.verifyOtp = onRequest(', 's3a-verify', 'const { phone, code } = req.body || {};']]) {
+  const f = at(fn), e = live.indexOf('\nexports.', f + 1), h = live.indexOf(`/* checkout:begin ${name} */`, f);
+  assert.ok(h > f && h < e, `${name} is inside ${fn}`);
+  const before = live.slice(f, h);
+  assert.ok(/if \(req\.method !== 'POST'\) return res\.status\(405\)\.json\(\{ ok: false \}\);\n      $/.test(before), `${name} immediately follows the POST check`);
+  assert.ok(!/\b(getDatabase|db\.ref|\.transaction\(|sendMessage)\b/.test(before.slice(before.indexOf('async (req, res)'))), `${name}: no I/O above it`);
+  assert.ok(live.slice(h).split('\n')[1].includes("if ((req.body || {}).context !== undefined) return SIGNUP_PLATFORM."), `${name}: hands off ONLY a body carrying context`);
+  assert.ok(live.indexOf(next, h) === live.indexOf(`/* checkout:end ${name} */`, h) + `/* checkout:end ${name} */`.length + 7, `${name}: the forms' path resumes right after it`);
+}
+ok('(ii-S3) placement: the s3a hand-offs are the first statement after each handler\'s POST check, no I/O above them, only a `context` body leaves; redeemSignupGrant + chargeOnlineOrder are the only grant-secret bindings');
+
+ok('(iii) sensitivity: missing / duplicated / shared-line / renamed markers refused; an edit outside the hunks is detected');
+
+console.log(`\ncheckout-wiring.guard: OK (${n})`);

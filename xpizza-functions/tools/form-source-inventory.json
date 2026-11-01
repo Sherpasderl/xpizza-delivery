@@ -137,6 +137,7 @@
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
+    "xpizza-functions/checkout-guest-lib.test.js",
     "xpizza-functions/claim-address-capture.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -280,6 +281,7 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
+    "xpizza-functions/test/signup-platform.emulator.test.js",
     "xpizza-functions/test/stackseq-writers.emulator.test.js",
     "xpizza-functions/test/tracker-reconcile.emulator.test.js",
     "xpizza-functions/test/tracker-schedules.emulator.test.js",
@@ -501,6 +503,7 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
+    "xpizza-functions/test/signup-platform.emulator.test.js",
     "xpizza-functions/test/stackseq-writers.emulator.test.js",
     "xpizza-functions/test/tracker-reconcile.emulator.test.js",
     "xpizza-functions/test/tracker-schedules.emulator.test.js",
@@ -653,6 +656,7 @@
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
+    "xpizza-functions/checkout-guest-lib.test.js",
     "xpizza-functions/claim-address-capture.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -796,6 +800,7 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
+    "xpizza-functions/test/signup-platform.emulator.test.js",
     "xpizza-functions/test/stackseq-writers.emulator.test.js",
     "xpizza-functions/test/tracker-reconcile.emulator.test.js",
     "xpizza-functions/test/tracker-schedules.emulator.test.js",
@@ -1018,6 +1023,7 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
+    "xpizza-functions/test/signup-platform.emulator.test.js",
     "xpizza-functions/test/stackseq-writers.emulator.test.js",
     "xpizza-functions/test/tracker-reconcile.emulator.test.js",
     "xpizza-functions/test/tracker-schedules.emulator.test.js",
@@ -1909,12 +1915,14 @@
   "brands/brand-store.js",
   "brands/brands-admin-core.js",
   "cancel-order-core.js",
+  "cart-sig.js",
   "catalog/add-product.js",
   "catalog/bound-reuse.js",
   "catalog/bundle-compare.js",
   "catalog/canonical-binding.js",
   "catalog/catalog-edit-auth.js",
   "catalog/catalog-edit.js",
+  "catalog/charge-inputs.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
   "catalog/identity-record-verifier.js",
@@ -2004,6 +2012,7 @@
   "sequencing/writer.js",
   "signup-core.js",
   "signup-endpoints.js",
+  "signup-platform.js",
   "staff-push.js",
   "stats/stats-api.js",
   "stats/stats-build.js",
@@ -2182,6 +2191,12 @@
     "xpizza-functions/rewards-reversal-placement.test.js"
    ]
   },
+  "cart-sig.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/cart-sig-sync.guard.test.js"
+   ]
+  },
   "catalog/add-product.js": {
    "pins": [],
    "lifts": [
@@ -2213,6 +2228,12 @@
   "catalog/catalog-edit.js": {
    "pins": [],
    "lifts": []
+  },
+  "catalog/charge-inputs.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/addproduct-b-wiring.guard.test.js"
+   ]
   },
   "catalog/draft-assess.js": {
    "pins": [],
@@ -2433,6 +2454,7 @@
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -2465,6 +2487,7 @@
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -2505,6 +2528,7 @@
       "tools/addproduct-inverse.js",
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -2550,6 +2574,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -2570,6 +2595,7 @@
       "tools/addproduct-inverse.js",
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
@@ -2611,6 +2637,7 @@
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/d12b-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
@@ -2663,6 +2690,7 @@
     {
      "file": "xpizza-functions/drvc-wiring.guard.test.js",
      "inverses": [
+      "tools/checkout-inverse.js",
       "tools/drvc-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/s4hours-inverse.js",
@@ -2672,6 +2700,7 @@
     {
      "file": "xpizza-functions/drvf-wiring.guard.test.js",
      "inverses": [
+      "tools/checkout-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
@@ -2685,6 +2714,7 @@
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -2734,6 +2764,7 @@
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -2767,6 +2798,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -2796,6 +2828,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -2822,6 +2855,7 @@
     {
      "file": "xpizza-functions/membership-wiring.guard.test.js",
      "inverses": [
+      "tools/checkout-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
@@ -2837,6 +2871,7 @@
     {
      "file": "xpizza-functions/menu-warm-wiring.guard.test.js",
      "inverses": [
+      "tools/checkout-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
@@ -2850,6 +2885,7 @@
     {
      "file": "xpizza-functions/o1b-wiring.guard.test.js",
      "inverses": [
+      "tools/checkout-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
@@ -2866,6 +2902,7 @@
       "tools/addproduct-inverse.js",
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
@@ -2907,6 +2944,7 @@
       "tools/addproduct-inverse.js",
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
@@ -2945,6 +2983,7 @@
     {
      "file": "xpizza-functions/portalui-wiring.guard.test.js",
      "inverses": [
+      "tools/checkout-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
@@ -2962,6 +3001,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -2982,6 +3022,7 @@
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -3015,6 +3056,7 @@
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -3096,6 +3138,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -3136,6 +3179,7 @@
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -3170,6 +3214,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -3198,6 +3243,7 @@
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -3234,6 +3280,7 @@
     {
      "file": "xpizza-functions/stackseq-wiring.guard.test.js",
      "inverses": [
+      "tools/checkout-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
@@ -3295,6 +3342,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -3315,6 +3363,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -3337,6 +3386,7 @@
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/checkout-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -3371,6 +3421,7 @@
     {
      "file": "xpizza-functions/wahealth-wiring.guard.test.js",
      "inverses": [
+      "tools/checkout-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/wahealth-inverse.js"
@@ -3389,6 +3440,7 @@
     "xpizza-functions/catalog/restaurant-registry.test.js",
     "xpizza-functions/catalog/text-version.test.js",
     "xpizza-functions/charge-gate-placement.test.js",
+    "xpizza-functions/checkout-wiring.guard.test.js",
     "xpizza-functions/contract/census.negative.test.js",
     "xpizza-functions/contract/p1a-journey.emulator.test.mjs",
     "xpizza-functions/contract/scenario-state.js",
@@ -3841,6 +3893,10 @@
    "lifts": [
     "xpizza-functions/signup-wiring.guard.test.js"
    ]
+  },
+  "signup-platform.js": {
+   "pins": [],
+   "lifts": []
   },
   "staff-push.js": {
    "pins": [],

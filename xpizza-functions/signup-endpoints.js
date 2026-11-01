@@ -9,7 +9,11 @@
 //   googleSignIn     POST {restaurant_id, session_id, id_token}    → {ok, linked:true, token, name} | {ok, linked:false, ticket, email, name}
 //   completeProfile  POST {restaurant_id, email, accept_terms, promos}  (customer ID token) → {ok} | {ok:false, reason}
 //   setPromos        POST {restaurant_id, value}                         (customer ID token) → {ok} | {ok:false, reason}
+//                    platform: POST {context:'platform', value}          (customer ID token) → {ok, value} (the stored value) | {ok:false, reason}
 //   getSignupConfig  GET  ?restaurant_id=                           → {terms_url, privacy_url, legal_ready, google_enabled, email_login_enabled}
+// PLAN-guest-checkout-server S3a: every endpoint above takes EITHER restaurant_id (the forms, byte-identical) OR context:'platform'
+// (the customer app → consent/_platform, platform_config/legal, GOOGLE_OAUTH_AUDIENCES__PLATFORM); both / neither → 400.
+// ADDITIVE for the platform only: googleSignIn linked → + completion, profile; completeProfile accepts + name (both scopes).
 // Hooks (index.js): bindOtpTicket (requestOtp, only with a link_ticket), redeemOtpTicket (verifyOtp, only with a link_ticket),
 // refreshActivity (verifyOtp, BC3 — bounded, fail-open), deleteAccountCore (deleteAccount + the inactivity sweep), pruneDeadLinks.
 const crypto = require('crypto');
@@ -24,6 +28,15 @@ const challengeIdOf = (otp) => (otp && typeof otp.code_hash === 'string' && otp.
 
 function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = process.env, oauthClient = null, now = () => Date.now() }) {
   const signupRidOf = (raw) => { const r = resolveRid(raw); return r && !r.error && !r.defaulted && r.restaurantId ? r.restaurantId : null; };   // a KNOWN rid, explicitly sent — never a default brand
+  // PLAN-guest-checkout-server S3a: EITHER a known restaurant_id (the forms — today's exact path, the key `context` absent) OR
+  // context:'platform' (the customer app) — never both, never neither. → the scope (a rid or '_platform') | null (bad_request)
+  const scopeOf = (o) => {
+    const src = o || {};
+    if (!Object.prototype.hasOwnProperty.call(src, 'context')) return signupRidOf(src.restaurant_id);   // the forms: today's exact path
+    // Codex S3 r1 P2: EXACTLY one selector — the restaurant_id KEY at all (null included) refuses a platform request
+    return src.context === 'platform' && !Object.prototype.hasOwnProperty.call(src, 'restaurant_id') ? S.PLATFORM_SCOPE : null;
+  };
+  const isPlatform = (scope) => scope === S.PLATFORM_SCOPE;
   const ipOf = (req) => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
   const limited = async (db, family, req, res) => {
     const { allowed, retryAfterSec } = await checkRateLimit(db, `signup_${family}`, ipOf(req), SIGNUP_RATE);
@@ -50,7 +63,7 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
   const googleStart = async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
-      const b = req.body || {}; const db = getDatabase(); const rid = signupRidOf(b.restaurant_id);
+      const b = req.body || {}; const db = getDatabase(); const rid = scopeOf(b);
       if (!rid) return res.status(400).json({ ok: false, reason: 'bad_request' });
       if (await limited(db, 'google', req, res)) return;
       if (!S.audiencesFor(rid, env)) return res.status(200).json({ ok: false, reason: 'google_unconfigured' });
@@ -62,7 +75,7 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
   const googleSignIn = async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
-      const b = req.body || {}; const db = getDatabase(); const rid = signupRidOf(b.restaurant_id);
+      const b = req.body || {}; const db = getDatabase(); const rid = scopeOf(b);
       if (!rid) return res.status(400).json({ ok: false, reason: 'bad_request' });
       if (await limited(db, 'google', req, res)) return;
       if (!S.audiencesFor(rid, env)) return res.status(200).json({ ok: false, reason: 'google_unconfigured' });
@@ -71,6 +84,10 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
       if (r.linked) {
         const token = await getAuth().createCustomToken(r.uid, { customer: true });   // the SAME claim as verifyOtp's
         const name = (await db.ref(`user_profiles/${r.uid}/name`).once('value')).val() || null;
+        if (isPlatform(rid)) {   // S3a ADDITIVE (the app only; the forms' answer is byte-identical): no RTDB read needed after sign-in
+          const [completion, profile] = await Promise.all([S.completionState(db, r.uid, rid, env), S.profileOf(db, r.uid, rid)]);
+          return res.status(200).json({ ok: true, linked: true, token, name, completion, profile });
+        }
         return res.status(200).json({ ok: true, linked: true, token, name });
       }
       return res.status(200).json({ ok: true, linked: false, ticket: r.ticket, email: r.email, name: r.name });
@@ -80,11 +97,15 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
   const completeProfile = async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
-      const b = req.body || {}; const db = getDatabase(); const rid = signupRidOf(b.restaurant_id);
+      const b = req.body || {}; const db = getDatabase(); const rid = scopeOf(b);
       if (!rid) return res.status(400).json({ ok: false, reason: 'bad_request' });
       if (await limited(db, 'profile', req, res)) return;   // codex build r1 P2-9: like the other account endpoints
       const uid = await customerOf(req, db); if (!uid) return res.status(401).json({ ok: false, reason: 'unauthenticated' });
+      // S3a ADDITIVE `name` (1..80, trimmed): written server-side so the app needs no Database SDK; the forms never send it
+      const nm = b.name === undefined ? undefined : (typeof b.name === 'string' ? b.name.trim() : '');
+      if (nm !== undefined && !(nm.length >= 1 && nm.length <= 80)) return res.status(400).json({ ok: false, reason: 'bad_request' });
       const r = await S.completeProfile(db, { uid, rid, email: b.email, acceptTerms: b.accept_terms, promos: b.promos, now: now() });
+      if (r.ok && nm !== undefined) await db.ref(`user_profiles/${uid}/name`).set(nm);
       return res.status(r.ok ? 200 : (r.reason === 'deleted' ? 403 : 400)).json(r);
     } catch (e) { console.error('completeProfile', e && e.message); return res.status(500).json({ ok: false }); }
   };
@@ -92,11 +113,12 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
   const setPromos = async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
-      const b = req.body || {}; const db = getDatabase(); const rid = signupRidOf(b.restaurant_id);
+      const b = req.body || {}; const db = getDatabase(); const rid = scopeOf(b);
       if (!rid) return res.status(400).json({ ok: false, reason: 'bad_request' });
       if (await limited(db, 'profile', req, res)) return;
       const uid = await customerOf(req, db); if (!uid) return res.status(401).json({ ok: false, reason: 'unauthenticated' });
-      const r = await S.setPromos(db, { uid, rid, value: b.value, now: now() });
+      // the platform (the app's member Cuenta): + `value`, the stored choice read back from the committed record; the forms: unchanged
+      const r = isPlatform(rid) ? await S.setPromos(db, { uid, rid, value: b.value, now: now(), confirm: true }) : await S.setPromos(db, { uid, rid, value: b.value, now: now() });
       return res.status(r.ok ? 200 : (r.reason === 'deleted' ? 403 : 400)).json(r);
     } catch (e) { console.error('setPromos', e && e.message); return res.status(500).json({ ok: false }); }
   };
@@ -104,7 +126,7 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
   const getSignupConfig = async (req, res) => {
     try {
       if (req.method !== 'GET') return res.status(405).json({ ok: false });
-      const rid = signupRidOf(req.query && req.query.restaurant_id);
+      const rid = scopeOf(req.query);
       if (!rid) { res.set('Cache-Control', 'no-store'); return res.status(400).json({ ok: false, reason: 'bad_request' }); }
       const cfg = await S.signupConfig(getDatabase(), rid, env);
       res.set('Cache-Control', 'public, max-age=60');

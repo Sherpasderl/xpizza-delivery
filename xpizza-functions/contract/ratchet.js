@@ -24,7 +24,7 @@ const SHRINK = path.join(__dirname, 'p1-hits-shrink.json');
 const APPROVED_NONDETERMINISTIC = Object.freeze([
   Object.freeze({
     context: 'S1/x_pizza/new',
-    site: 'xpizza-functions/index.js#createOrderApp.all#status#25',
+    site: 'xpizza-functions/index.js#createOrderApp.all#status#26',   // was #25: renumbered by guest-checkout gate-create's res.status(400) (2e review 2026-10-27; same siteLine / justification / controlPath)
     scope: 'xpizza-functions/index.js#createOrderApp.all',
     justification: 'const shadowResult = (shadowCheck && shadowCheck.isSettled()) ? shadowCheck.value() : null;',
     siteLine: "outcome: shadowResult ? (shadowResult.status === 'ok' ? 'reported' : shadowResult.status) : 'dropped',",

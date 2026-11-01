@@ -184,9 +184,18 @@
   {
    "key": "payerEmail",
    "reason": "S2 P-C: payer-email.js's exported PixelPay payer-email resolver (a module.exports key) — the hosted charge's payer email, not an order-email SENDER; §1's 'no order email' stands. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tip_cents",
+   "sites": [{ "file": "cart-sig.js", "fn": "cartSigInput" }, { "file": "checkout-guest-lib.js", "fn": "cartSigFieldsFromBody" }],
+   "reason": "PLAN-guest-checkout-server §1.4 (3a, S2): the capp cart SIGNATURE's input key — cart-sig.js cartSigInput / checkout-guest-lib.js cartSigFieldsFromBody build the six-field object the capp signed (the ticket's cart_fp binding); a hash input, never an order field, a charge or a tip write. §1's 'no tip' is untouched by this slice. 2e REVIEWED 2026-10-27: ACCEPTED, SCOPED to these two sites (both verified: each returns the hashed six-field object, no order write). The same key anywhere else stays a §1 sentinel decision, e.g. a real tip write when the capp tip slice lands"
   }
  ],
  "timerReview": {
+  "xpizza-functions/checkout-guest-gate.js:chargeUidOf>anon:setTimeout": {
+   "class": "io-deadline",
+   "reason": "PLAN-guest-checkout-server, Codex S2 r1 P2-4 (3a): chargeUidOf races chargeOnlineOrder's own identity resolution (verifyIdToken + the tombstone read) against deadlineMs (default 1500, mirroring the handler's 1.5 s identity deadline); on expiry (or any error) it resolves UNDEFINED = unresolved, which FAILS CLOSED: the caller then takes the generic online-only 400, byte-identical to today, never the guest path (Codex r2 P2, 7ef9fb2d); only a VERIFIED null selects the typed guest_cash_not_allowed reason. Never delays an answer past 1.5 s; never writes. 2e REVIEWED 2026-10-31: io-deadline CONFIRMED; REAL"
+  },
   "xpizza-functions/sequencing/bounded.js:bounded>anon:setTimeout": {
    "class": "io-deadline",
    "reason": "BUILD-stacked-seq-server r5 (r4 P2-4): bounded() races each await of a stack decision (and the post-claim re-check) against the remaining decision budget (≤ 5 s planning, 3 s post-claim) — on expiry the writer goes single / rolls back; REAL"
@@ -703,6 +712,17 @@
   "merchant/merchant-push.js#stillPending": "merchant",
   "merchant/merchant-push.js#pendingOf": "merchant",
   "merchant/merchant-push.js#pendingOf>anon": "merchant",
+  "checkout-otp.js#common": "infra",
+  "checkout-otp.js#json": "infra",
+  "checkout-otp.js#requestCheckoutCode": "infra",
+  "checkout-otp.js#verifyCheckoutCode": "infra",
+  "checkout-otp.js#verifyCheckoutCode>anon": "infra",
+  "checkout-guest-lib.js#guestBodyRefusal": "intake",
+  "checkout-guest-lib.js#cartSigFieldsFromBody": "intake",
+  "cart-sig.js#cartSigInput": "intake",
+  "checkout-guest-lib.js#ticketValid": "intake",
+  "checkout-guest-lib.js#signGrant": "intake",
+  "checkout-guest-lib.js#verifyGrant": "infra",
   "signup-endpoints.js#googleStart": "infra",
   "signup-endpoints.js#googleSignIn": "infra",
   "signup-endpoints.js#limited": "infra",
@@ -722,6 +742,16 @@
   "delivery/delivery-wire.js#withDelivery": "delivery_pricing",
   "delivery/delivery-wire.js#quoteDeliveryFor": "delivery_pricing",
   "driver-ledger/ledger-core.js#computeWeek": "driver_pay",
+  "signup-endpoints.js#scopeOf": "infra",
+  "signup-platform.js#limited": "infra",
+  "signup-platform.js#bad": "infra",
+  "signup-platform.js#fail": "infra",
+  "signup-platform.js#uniform": "infra",
+  "signup-platform.js#requestOtp": "infra",
+  "signup-platform.js#verifyOtp": "infra",
+  "signup-platform.js#redeemSignupGrant": "infra",
+  "signup-platform.js#redeemSignupGrant>anon": "infra",
+  "signup-platform.js#getMyProfile": "infra",
   "access/membership-admin-core.js#myRestaurants": "access",
   "access/membership-admin-core.js#census": "access",
   "access/membership-admin-core.js#expectedIndex": "access",
@@ -1059,6 +1089,7 @@
    "class": "identity",
    "reason": "customer / restaurant identity (contact) — shown as-is, not a contract fact (§1)"
   },
+  "guest_verified": { "class": "identity", "reason": "PLAN-guest-checkout-server §2.3 (3a, S2): the capp guest's VERIFIED phone {phone, phone_hash} from the checkout ticket, written only for a capp guest in the same pending-order CAS write (acquireHostedAttempt) — customer identity (contact evidence) for the phone binding + the signup grant, not a contract fact (§1). 2e REVIEWED 2026-10-27: ACCEPTED as identity — written once (index.js chargeOnlineOrder pending-order CAS, capp guests only); read only by checkout-guest-gate.js to bind the order to the ticket\u0027s verified phone_hash (an access-control input, never priced / never a status / never an order output) and to sign the signup grant" },
   "customer_uid": {
    "class": "identity",
    "reason": "customer / restaurant identity (contact) — shown as-is, not a contract fact (§1)"

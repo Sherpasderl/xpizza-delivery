@@ -29693,5 +29693,617 @@
    "run",
    "test:pausa"
   ]
+ },
+ {
+  "id": "gsrv-1",
+  "slice": "gsrv",
+  "label": "capp guest: a body carrying scheduled_for is NOT refused (scheduling requires an account — owner rule)",
+  "file": "checkout-guest-lib.js",
+  "from": "  if (body.scheduled_for !== undefined && body.scheduled_for !== null && body.scheduled_for !== '') return 'guest_schedule_requires_account';\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-guest-lib.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-2",
+  "slice": "gsrv",
+  "label": "capp guest: cash / card at delivery accepted (guests are card-online only)",
+  "file": "checkout-guest-lib.js",
+  "from": "  if (body.payment_method !== 'online') return 'guest_cash_not_allowed';\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-guest-lib.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-3",
+  "slice": "gsrv",
+  "label": "capp guest: a missing / invalid email accepted",
+  "file": "checkout-guest-lib.js",
+  "from": "  if (typeof body.customer_email !== 'string' || !GUEST_EMAIL_RE.test(body.customer_email.trim())) return 'guest_email_required';\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-guest-lib.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-4",
+  "slice": "gsrv",
+  "label": "capp guest: the discriminator also fires for a member (uid present)",
+  "file": "checkout-guest-lib.js",
+  "from": "  return !!clientHdr && clientHdr.deployment === CAPP_DEPLOYMENT && uid === null;",
+  "to": "  return !!clientHdr && clientHdr.deployment === CAPP_DEPLOYMENT;",
+  "command": [
+   "node",
+   "checkout-guest-lib.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-5",
+  "slice": "gsrv",
+  "label": "capp guest: a ticket validates for ANOTHER order id",
+  "file": "checkout-guest-lib.js",
+  "from": "  return rec.rid === rid && rec.order_id === orderId && typeof cartFp === 'string'",
+  "to": "  return rec.rid === rid && typeof cartFp === 'string'",
+  "command": [
+   "node",
+   "checkout-guest-lib.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-6",
+  "slice": "gsrv",
+  "label": "capp guest: an EXISTING order under the id is not checked for THIS ticket's phone (Codex A/B: B reaches A's order)",
+  "file": "checkout-guest-gate.js",
+  "from": "  if (existing !== null && !(existing && existing.guest_verified && existing.guest_verified.phone_hash === rec.phone_hash)) return bad;\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-7",
+  "slice": "gsrv",
+  "label": "createOrder: a capp guest is NOT refused (createOrder could place a guest order)",
+  "file": "checkout-guest-gate.js",
+  "from": "  return present(body.checkout_ticket) ? 'guest_ticket_invalid' : 'guest_cash_not_allowed';",
+  "to": "  return null;",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-8",
+  "slice": "gsrv",
+  "label": "grant: issued without the stored order's phone binding",
+  "file": "checkout-guest-gate.js",
+  "from": "  if (!gv || gv.phone_hash !== guest.phone_hash) return { refuse: 'guest_ticket_invalid' };",
+  "to": "  if (!gv) return { refuse: 'guest_ticket_invalid' };",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-9",
+  "slice": "gsrv",
+  "label": "post-CAS: any stored order is treated as bound to this guest",
+  "file": "checkout-guest-gate.js",
+  "from": "  return o === null || !!(o && o.guest_verified && o.guest_verified.phone_hash === guest.phone_hash);",
+  "to": "  return true;",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-10",
+  "slice": "gsrv",
+  "label": "cart_fp: the wire's pin_confirmed is ignored (an unconfirmed-pin cart would match)",
+  "file": "checkout-guest-lib.js",
+  "from": "pin = { lat: body.lat, lng: body.lng, confirmed: body.pin_confirmed === true };",
+  "to": "pin = { lat: body.lat, lng: body.lng, confirmed: true };",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-11",
+  "slice": "gsrv",
+  "label": "cart_fp: an omitted tip_cents is not the capp's 0",
+  "file": "checkout-guest-lib.js",
+  "from": "  let tip = 0;\n",
+  "to": "  let tip = null;\n",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-12",
+  "slice": "gsrv",
+  "label": "index.js: createOrder's capp-guest refusal is computed but never answered",
+  "file": "index.js",
+  "from": "  if (cappGuestRefusal) return res.status(400).json({ error: cappGuestRefusal });\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-13",
+  "slice": "gsrv",
+  "label": "index.js: guest_verified is not written in the CAS record (no binding, no grant)",
+  "file": "index.js",
+  "from": "  if (cappGuest && cappGuest.guest) pendingOrderRecord.guest_verified = { phone: cappGuest.guest.phone, phone_hash: cappGuest.guest.phone_hash };   // §2.3: in the SAME CAS write, capp guests only\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-14",
+  "slice": "gsrv",
+  "label": "verify: an uncached first run (null) ABORTS again (Codex r1 P1-1: a valid code fails on another instance)",
+  "file": "checkout-otp.js",
+  "from": "        if (v === null) { outcome = 'code_expired'; return null; }",
+  "to": "        if (v === null) { outcome = 'code_expired'; return undefined; }",
+  "command": [
+   "node",
+   "checkout-otp.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-15",
+  "slice": "gsrv",
+  "label": "request: the sender config is no longer checked before the reservations (Codex r1 P2-3: budgets burned)",
+  "file": "checkout-otp.js",
+  "from": "      if (!platformSenderConfigured(deps.env || process.env)) {",
+  "to": "      if (false) {",
+  "command": [
+   "node",
+   "checkout-otp.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-16",
+  "slice": "gsrv",
+  "label": "acquire: the pre-read no longer refuses a foreign guest phone (Codex r1 P1-2)",
+  "file": "pixelpay-hosted-charge.js",
+  "from": "      if (guestForeign(order, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };   // S2: before ANY answer about it\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-17",
+  "slice": "gsrv",
+  "label": "acquire: the CAS lets a foreign guest phone mutate the order (Codex r1 P1-2)",
+  "file": "pixelpay-hosted-charge.js",
+  "from": "      if (guestForeign(c, pendingOrderRecord)) return c;                    // S2: a foreign guest phone never mutates the order (re-read refuses)\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-18",
+  "slice": "gsrv",
+  "label": "chargeOnlineOrder: the capp guest's typed non-online refusal is computed but never answered (Codex r1 P2-4)",
+  "file": "index.js",
+  "from": "    return res.status(400).json({ error: 'guest_cash_not_allowed' });\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-19",
+  "slice": "gsrv",
+  "label": "chargeUidOf: the tombstone is ignored (not the handler's identity rules)",
+  "file": "checkout-guest-gate.js",
+  "from": "          return attributionUid(dec, tomb.exists());",
+  "to": "          return attributionUid(dec, false);",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-20",
+  "slice": "gsrv",
+  "label": "chargeUidOf: a timed-out verification is treated as a GUEST (a slow member gets the guest refusal — not fail-closed)",
+  "file": "checkout-guest-gate.js",
+  "from": "      new Promise((resolve) => setTimeout(() => resolve(undefined), deadlineMs)),   // undecided — never \"a guest\"",
+  "to": "      new Promise((resolve) => setTimeout(() => resolve(null), deadlineMs)),",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-21",
+  "slice": "gsrv",
+  "label": "acquire: the authoritative post-CAS record is not re-checked (Codex r2 P1: a foreign recovery writes an attempt)",
+  "file": "pixelpay-hosted-charge.js",
+  "from": "    if (guestForeign(committed, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-22",
+  "slice": "gsrv",
+  "label": "chargeUidOf: an error is treated as a GUEST (Codex r2 P2: a member whose verify / tombstone read fails gets the guest refusal)",
+  "file": "checkout-guest-gate.js",
+  "from": "  } catch (_) { return undefined; }   // unresolved — never \"a guest\"",
+  "to": "  } catch (_) { return null; }",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-23",
+  "slice": "gsrv",
+  "label": "S3a: verifyConsume ignores the challenge scope (forms ⇄ platform cross-use)",
+  "file": "otp-lib.js",
+  "from": "  if (v && (v.scope === undefined ? undefined : v.scope) !== scope) return { next: v, outcome: 'fail' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-24",
+  "slice": "gsrv",
+  "label": "S3a: a platform code is issued without its scope (the forms could verify it)",
+  "file": "signup-platform.js",
+  "from": "return r.next ? { ...r.next, scope: P } : r.next; });",
+  "to": "return r.next; });",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-25",
+  "slice": "gsrv",
+  "label": "S3a: scopeOf accepts restaurant_id AND context together",
+  "file": "signup-endpoints.js",
+  "from": "return src.context === 'platform' && !Object.prototype.hasOwnProperty.call(src, 'restaurant_id') ? S.PLATFORM_SCOPE : null;",
+  "to": "return src.context === 'platform' ? S.PLATFORM_SCOPE : null;",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-26",
+  "slice": "gsrv",
+  "label": "S3b: the apply-once marker is ignored — a replay re-applies consent / email (a later member edit is overwritten)",
+  "file": "signup-platform.js",
+  "from": "        if (cur && cur.grants_applied && cur.grants_applied[v.payload.order_id] === true) { outcome = 'already'; return undefined; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-27",
+  "slice": "gsrv",
+  "label": "S3b: the phone is not re-derived from the order (OTP.phoneHash(guest_verified.phone) unchecked)",
+  "file": "signup-platform.js",
+  "from": " || OTP.phoneHash(gv.phone) !== gv.phone_hash) return bad(400, 'grant_invalid');",
+  "to": ") return bad(400, 'grant_invalid');",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-28",
+  "slice": "gsrv",
+  "label": "S3d: getMyProfile accepts extra query parameters (an identifier could ride along)",
+  "file": "signup-platform.js",
+  "from": "if (q.context !== 'platform' || Object.keys(q).length !== 1 || Object.keys(body).length)",
+  "to": "if (q.context !== 'platform' || Object.keys(body).length)",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-29",
+  "slice": "gsrv",
+  "label": "S3a: a LEGACY account (created before rollout_at) is routed into completion",
+  "file": "signup-core.js",
+  "from": "  if (created < cfg.rollout_at) return 'off';\n",
+  "to": "",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-30",
+  "slice": "gsrv",
+  "label": "S3c: the legal CLI writes without --apply (no dry run)",
+  "file": "tools/platform-legal.js",
+  "from": "  if (!apply) return { ok: true, dryRun: true, changes };\n",
+  "to": "",
+  "command": [
+   "node",
+   "tools/platform-legal.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-31",
+  "slice": "gsrv",
+  "label": "S3: promos is always present (absent consent would read as false, not inert)",
+  "file": "signup-core.js",
+  "from": "  if (pr && typeof pr.value === 'boolean') out.promos = pr.value;",
+  "to": "  out.promos = !!(pr && pr.value);",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-32",
+  "slice": "gsrv",
+  "label": "S3a: the platform sender config is checked after the reservations (budgets burned)",
+  "file": "signup-platform.js",
+  "from": "      if (!deps.senderConfigured(env, 'SIGNUP_OTP_TEMPLATE_PLATFORM')) {",
+  "to": "      if (false) {",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-33",
+  "slice": "gsrv",
+  "label": "S3b: a grant already used by ANOTHER uid is resumed",
+  "file": "signup-platform.js",
+  "from": "      if (!stored || stored.uid !== uid) return bad(400, 'grant_invalid');",
+  "to": "      if (!stored) return bad(400, 'grant_invalid');",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-34",
+  "slice": "gsrv",
+  "label": "S3b: the apply transaction ignores the tombstone (Codex S3 r1 P1: consent restored beside deleted_at)",
+  "file": "signup-platform.js",
+  "from": "        if (cur && cur.deleted_at != null) { outcome = 'deleted'; return undefined; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-35",
+  "slice": "gsrv",
+  "label": "S3b: no tombstone check immediately before the mint (Codex S3 r1 P1: a token for a deleted uid)",
+  "file": "signup-platform.js",
+  "from": "      if (await isDeleted(db, uid)) return bad(403, 'deleted');\n      const token = await deps.getAuth().createCustomToken(uid, { customer: true });\n      await SE.refreshActivity(db, uid, t);",
+  "to": "      const token = await deps.getAuth().createCustomToken(uid, { customer: true });\n      await SE.refreshActivity(db, uid, t);",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-36",
+  "slice": "gsrv",
+  "label": "S3b: the profile this call created is not undone when the deletion wins (resurrection)",
+  "file": "signup-platform.js",
+  "from": "        if (isNew) await undoCreatedProfile(db, uid, opId);\n        return bad(403, 'deleted');",
+  "to": "        return bad(403, 'deleted');",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-37",
+  "slice": "gsrv",
+  "label": "S3: the profile is overwritten instead of created-if-absent (Codex S3 r1 P2: a grant's name erased)",
+  "file": "signup-platform.js",
+  "from": "      return cur === null ? fresh : { ...cur, last_login: now };",
+  "to": "      return fresh;",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-38",
+  "slice": "gsrv",
+  "label": "S3b: the name write recreates a deleted profile",
+  "file": "signup-platform.js",
+  "from": "      await db.ref(`user_profiles/${uid}`).transaction((cur) => (cur === null ? null\n",
+  "to": "      await db.ref(`user_profiles/${uid}`).transaction((cur) => (cur === null ? { name: stored.inputs.name }\n",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-39",
+  "slice": "gsrv",
+  "label": "S3b: a retry after a failed name write never fills the recorded name (only the applying call writes it)",
+  "file": "signup-platform.js",
+  "from": "(typeof cur.name === 'string' && cur.name ? undefined : { ...cur, name: stored.inputs.name })",
+  "to": "(typeof cur.name === 'string' ? undefined : (outcome === 'applied' ? { ...cur, name: stored.inputs.name } : undefined))",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-40",
+  "slice": "gsrv",
+  "label": "S3: an explicit null restaurant_id passes the platform XOR (signup-platform)",
+  "file": "signup-platform.js",
+  "from": "b.context === 'platform' && !Object.prototype.hasOwnProperty.call(b, 'restaurant_id');",
+  "to": "b.context === 'platform' && (b.restaurant_id === undefined || b.restaurant_id === null);",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-41",
+  "slice": "gsrv",
+  "label": "S3: an explicit null restaurant_id passes the platform XOR (signup-endpoints scopeOf)",
+  "file": "signup-endpoints.js",
+  "from": "return src.context === 'platform' && !Object.prototype.hasOwnProperty.call(src, 'restaurant_id') ? S.PLATFORM_SCOPE : null;",
+  "to": "return src.context === 'platform' && (src.restaurant_id === undefined || src.restaurant_id === null) ? S.PLATFORM_SCOPE : null;",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-42",
+  "slice": "gsrv",
+  "label": "S3b: the rollback removes ANY profile at the uid, not only this call's (ruling 3: another call's profile deleted)",
+  "file": "signup-platform.js",
+  "from": "(cur === null ? null : (cur.created_by === opId ? null : undefined))",
+  "to": "(cur === null ? null : null)",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-43",
+  "slice": "gsrv",
+  "label": "S3b: a FAILED apply transaction leaves the created profile behind (ruling 2)",
+  "file": "signup-platform.js",
+  "from": "} catch (e) { outcome = 'failed'; if (isNew) await undoCreatedProfile(db, uid, opId).catch(() => {}); throw e; }",
+  "to": "} catch (e) { outcome = 'failed'; throw e; }",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-44",
+  "slice": "gsrv",
+  "label": "S3b: the name is written unconditionally (ruling 4: a delayed redemption overwrites a later member edit)",
+  "file": "signup-platform.js",
+  "from": "(typeof cur.name === 'string' && cur.name ? undefined : { ...cur, name: stored.inputs.name })",
+  "to": "({ ...cur, name: stored.inputs.name })",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-45",
+  "slice": "gsrv",
+  "label": "capp #4: the forms' setPromos also gets the read-back `value` (the forms' answer is no longer byte-identical)",
+  "file": "signup-endpoints.js",
+  "from": "confirm: true }) : await S.setPromos(db, { uid, rid, value: b.value, now: now() });",
+  "to": "confirm: true }) : await S.setPromos(db, { uid, rid, value: b.value, now: now(), confirm: true });",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-46",
+  "slice": "gsrv",
+  "label": "capp #4: the platform setPromos echoes the REQUESTED value instead of the stored one",
+  "file": "signup-core.js",
+  "from": "{ ok: true, value: stored.value }",
+  "to": "{ ok: true, value }",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-47",
+  "slice": "gsrv",
+  "label": "capp #4: the read-back ignores a tombstone on the committed record",
+  "file": "signup-core.js",
+  "from": "c && c.deleted_at == null && c.consent",
+  "to": "c && c.consent",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-48",
+  "slice": "gsrv",
+  "label": "capp #4: the platform setPromos never confirms (the app gets no stored value)",
+  "file": "signup-endpoints.js",
+  "from": "now: now(), confirm: true })",
+  "to": "now: now() })",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-49",
+  "slice": "gsrv",
+  "label": "setPromos r1 P2-1: no post-commit tombstone re-check (a deletion in the same batch answers ok)",
+  "file": "signup-core.js",
+  "from": "if (gone.exists() || del.val() != null) return { ok: false, reason: 'aborted' };",
+  "to": "/* no post-check */",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-50",
+  "slice": "gsrv",
+  "label": "setPromos r1 P2-1: the post-check ignores user_private deleted_at",
+  "file": "signup-core.js",
+  "from": "if (gone.exists() || del.val() != null) return { ok: false, reason: 'aborted' };",
+  "to": "if (gone.exists()) return { ok: false, reason: 'aborted' };",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "gsrv-51",
+  "slice": "gsrv",
+  "label": "setPromos r1 P2-1: the post-check ignores deleted_uids",
+  "file": "signup-core.js",
+  "from": "if (gone.exists() || del.val() != null) return { ok: false, reason: 'aborted' };",
+  "to": "if (del.val() != null) return { ok: false, reason: 'aborted' };",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
  }
 ]

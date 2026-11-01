@@ -100,7 +100,10 @@ const D = {
     'migrate-menu-structure',
     // S7a directory — the presentation writer: requireProject({ requireFlag: true }) before any client, then the RTDB target
     // is bound to the stated project (an inherited FB_DATABASE_URL naming another database REFUSES; directory.test cell 9)
-    'seed-presentation'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
+    'seed-presentation',
+    // PLAN-guest-checkout-server S3c — the owner/ops platform legal CLI (platform_config/legal; DRY RUN unless --apply):
+    // requireProject({ requireFlag: true }) before any client
+    'platform-legal'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
   [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/set-driver-enforcement-mode.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',

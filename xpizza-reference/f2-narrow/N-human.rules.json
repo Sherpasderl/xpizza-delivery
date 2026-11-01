@@ -930,6 +930,31 @@
       ".read": false,
       ".write": false
     },
+    "checkout_otp": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "expires_at"
+      ]
+    },
+    "otp_budget": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "last"
+      ]
+    },
+    "checkout_tickets": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "exp"
+      ]
+    },
+    "grants_used": {
+      ".read": false,
+      ".write": false
+    },
     "merchant_reject_notices": {
       ".read": false,
       ".write": false
