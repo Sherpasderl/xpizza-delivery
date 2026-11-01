@@ -2775,6 +2775,34 @@
   "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/stacked-view.js#contactRowHtml": {
    "status": "pending",
    "reason": "display-only: brandLabel labels the restaurant in the stacked contact row (contactRowHtml). Text-only, brand-agnostic; same class as the other brandLabel consumers, not a gate-A observable (adapter not built)."
+  },
+  "xpizza-dispatch/index.html<script@0>#initMap@xpizza-dispatch/index.html<script@0>#ensureMap>anon": {
+   "status": "pending",
+   "reason": "decoupled Maps-enhancement surface (PLAN-dispatch-maps-decouple; dispatch NOTE-dispatch-contract-metadata.md, reviewed from source): initMap builds the Google Map + restaurant marker only after loadGoogleMaps() resolves; the board is already live and stays live on map failure. Off the order matrix."
+  },
+  "xpizza-dispatch/index.html<script@0>#updateDriverMarkers@xpizza-dispatch/index.html<script@0>#onMapReady": {
+   "status": "pending",
+   "reason": "decoupled Maps-enhancement surface (PLAN-dispatch-maps-decouple; dispatch NOTE-dispatch-contract-metadata.md, reviewed from source): repaints driver pins from in-memory driver snapshots on the one-time onMapReady replay; order handling never depends on it."
+  },
+  "xpizza-dispatch/index.html<script@0>#updateCustomerMarkers@xpizza-dispatch/index.html<script@0>#onMapReady": {
+   "status": "pending",
+   "reason": "decoupled Maps-enhancement surface (PLAN-dispatch-maps-decouple; dispatch NOTE-dispatch-contract-metadata.md, reviewed from source): repaints customer destination pins on the onMapReady replay; same decoupled map surface."
+  },
+  "xpizza-dispatch/index.html<script@0>#refreshDeliveryEtas@xpizza-dispatch/index.html<script@0>#onMapReady": {
+   "status": "pending",
+   "reason": "decoupled Maps-enhancement surface (PLAN-dispatch-maps-decouple; dispatch NOTE-dispatch-contract-metadata.md, reviewed from source): recomputes DirectionsService ETAs for active deliveries on onMapReady; the board order state is independent of it."
+  },
+  "xpizza-dispatch/index.html<script@0>#showLastLocation@xpizza-dispatch/index.html<script@0>#action>anon": {
+   "status": "pending",
+   "reason": "decoupled Maps-enhancement surface (PLAN-dispatch-maps-decouple; dispatch NOTE-dispatch-contract-metadata.md, reviewed from source): operator action «Ver última ubicación» (last-known marker + InfoWindow + pan), guarded `if (!mapReady) return`; operator-initiated, off the order matrix."
+  },
+  "xpizza-dispatch/dispatch-maps-perf.mjs#evaluateGate@xpizza-dispatch/dispatch-maps-perf.mjs#runGate": {
+   "status": "pending",
+   "reason": "dev-only perf-gate harness (PLAN §6.4): runGate() spawns headless Chrome and evaluateGate(results) returns a pass/fail verdict; never deployed / never on an order path (dispatch NOTE). Assembly-only region (the assembly census file-set scans this .mjs)."
+  },
+  "xpizza-dispatch/index.html<script@0>#renderDispatcherAlerts>anon>anon>anon@self": {
+   "status": "pending",
+   "reason": "decoupled Maps-enhancement surface (PLAN-dispatch-maps-decouple; dispatch NOTE-dispatch-contract-metadata.md, reviewed from source): the runOnMap(() => { map.panTo(...); map.setZoom(...) }) callback 3 deep in renderDispatcherAlerts (alert card → click → runOnMap): a dispatcher map pan to the alert target; no order write / read. Assembly-only region (source byte-identical to bb387c42)."
   }
  }
 }

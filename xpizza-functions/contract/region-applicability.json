@@ -520,7 +520,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
+     "scopeSha": "4a71bd98ed388c1cfa99ab183a673134693ffd6ed7964e4a3e26913564a52491"
     },
     {
      "kind": "C",
@@ -534,7 +534,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -586,7 +589,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
+     "scopeSha": "4a71bd98ed388c1cfa99ab183a673134693ffd6ed7964e4a3e26913564a52491"
     },
     {
      "kind": "C",
@@ -600,7 +603,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -723,7 +729,7 @@
     "site": "<span class=\"av rd\" style=\"background:${driverColorVar(dObj)}\">${escapeHtml(String(r.name || '?').charAt(0).toUpperCase())}</span>",
     "siteSha": "9504fac0d0ecea6393fab75c5e3a2208addf67b45666b9e3d60a0c240e2a1d34",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#rowOf",
-    "scopeSha": "7acab7f8f9f79922746408fcd6a89907d309a53c3a7409aeb9ad73266d63e0c2"
+    "scopeSha": "7a70207d866d1578d939b32395d44fd1659a91eccf05a59295f7803de9d1e243"
    },
    "guards": [
     {
@@ -742,7 +748,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
+     "scopeSha": "4a71bd98ed388c1cfa99ab183a673134693ffd6ed7964e4a3e26913564a52491"
     },
     {
      "kind": "C",
@@ -756,7 +762,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -930,7 +939,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
+     "scopeSha": "4a71bd98ed388c1cfa99ab183a673134693ffd6ed7964e4a3e26913564a52491"
     },
     {
      "kind": "C",
@@ -944,7 +953,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -977,7 +989,7 @@
     "site": "(r) => {",
     "siteSha": "12d962f7ad91324fecd0ba221c0973dfbfd06de7b9aef8571ec489c7a97abd9d",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#rowOf",
-    "scopeSha": "7acab7f8f9f79922746408fcd6a89907d309a53c3a7409aeb9ad73266d63e0c2"
+    "scopeSha": "7a70207d866d1578d939b32395d44fd1659a91eccf05a59295f7803de9d1e243"
    },
    "guards": [
     {
@@ -996,7 +1008,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
+     "scopeSha": "4a71bd98ed388c1cfa99ab183a673134693ffd6ed7964e4a3e26913564a52491"
     },
     {
      "kind": "C",
@@ -1010,7 +1022,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -1079,7 +1094,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -1157,7 +1175,7 @@
     "site": "const list = driverPickList({ order, orderId, drivers:STORE.drivers, tasks:STORE.tasks, hub, now:Date.now(), isStale:XPD.isStalePing });",
     "siteSha": "c7158f71157aa2dde3c65c614284780e24504ff7c55605ff7ebfd1959d72eeb5",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
-    "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
+    "scopeSha": "4a71bd98ed388c1cfa99ab183a673134693ffd6ed7964e4a3e26913564a52491"
    },
    "guards": [
     {
@@ -1176,7 +1194,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
+     "scopeSha": "4a71bd98ed388c1cfa99ab183a673134693ffd6ed7964e4a3e26913564a52491"
     },
     {
      "kind": "C",
@@ -1190,7 +1208,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -1259,7 +1280,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
