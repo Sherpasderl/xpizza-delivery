@@ -29527,5 +29527,179 @@
    "node",
    "../boot-broken-latch.test.mjs"
   ]
+ },
+ {
+  "slice": "pausa",
+  "id": "pausa-pick",
+  "label": "the ranking offers a paused driver",
+  "file": "index.js",
+  "from": "    if (d.status === 'on_break') continue;   // Pausa",
+  "to": "    if (false) continue;   // Pausa",
+  "kills_with": [
+   "PAUSA-PICK",
+   "PAUSA-INV-BASE"
+  ],
+  "command": [
+   "node",
+   "pausa-wiring.guard.test.js"
+  ]
+ },
+ {
+  "slice": "pausa-emu",
+  "id": "pausa-reassert",
+  "label": "the pre-write recheck accepts a paused driver",
+  "file": "index.js",
+  "from": "  if (d.status === 'on_break') return { ok: false, reason: 'on_break' };",
+  "to": "  if (false) return { ok: false, reason: 'on_break' };",
+  "kills_with": [
+   "P7 q1: the paused selection is REFUSED at reassert",
+   "P7 q2: the paused selection is REFUSED at reassert"
+  ],
+  "command": [
+   "npm",
+   "run",
+   "test:pausa"
+  ],
+  "repointed": "Codex r1 P2-2: behavioural — the real auto-assign / sweep with the selected driver pausing before reassert"
+ },
+ {
+  "slice": "pausa",
+  "id": "pausa-start-clear",
+  "label": "a new shift keeps the old pause",
+  "file": "index.js",
+  "from": "    [`drivers/${uid}/break_since`]: null,   // Pausa: a new shift never starts paused",
+  "to": "",
+  "kills_with": [
+   "PAUSA-START",
+   "PAUSA-INV-BASE"
+  ],
+  "command": [
+   "node",
+   "pausa-wiring.guard.test.js"
+  ]
+ },
+ {
+  "slice": "pausa",
+  "id": "pausa-end-clear",
+  "label": "clocking off keeps break_since",
+  "file": "index.js",
+  "from": "    [`drivers/${uid}/break_since`]: null,   // Pausa: clocking off ends the pause\n",
+  "to": "",
+  "kills_with": [
+   "PAUSA-END",
+   "PAUSA-INV-BASE"
+  ],
+  "command": [
+   "node",
+   "pausa-wiring.guard.test.js"
+  ]
+ },
+ {
+  "slice": "pausa",
+  "id": "pausa-sdk-assign",
+  "label": "the Torre hand-assigns a paused driver",
+  "file": "../xpizza-dispatch/xpizza-delivery.js",
+  "from": "  if (await targetOnBreak(driverId)) return { ok: false, reason: 'on_break' };",
+  "to": "  if (false) return { ok: false, reason: 'on_break' };",
+  "kills_with": [
+   "PAUSA-ASSIGN-REFUSED"
+  ],
+  "command": [
+   "node",
+   "../xpizza-dispatch/dispatch-pausa-guard.test.mjs"
+  ]
+ },
+ {
+  "slice": "pausa",
+  "id": "pausa-sdk-reassign",
+  "label": "the Torre reassigns onto a paused driver",
+  "file": "../xpizza-dispatch/xpizza-delivery.js",
+  "from": "  if (await targetOnBreak(newDriverId)) return { ok: false, reason: 'on_break' };",
+  "to": "  if (false) return { ok: false, reason: 'on_break' };",
+  "kills_with": [
+   "PAUSA-REASSIGN-REFUSED"
+  ],
+  "command": [
+   "node",
+   "../xpizza-dispatch/dispatch-pausa-guard.test.mjs"
+  ]
+ },
+ {
+  "slice": "pausa",
+  "id": "pausa-sdk-status",
+  "label": "the guard compares the wrong status",
+  "file": "../xpizza-dispatch/xpizza-delivery.js",
+  "from": "=== DRIVER_STATUS.ON_BREAK;",
+  "to": "=== DRIVER_STATUS.OFF_SHIFT;",
+  "kills_with": [
+   "PAUSA-ASSIGN-REFUSED"
+  ],
+  "command": [
+   "node",
+   "../xpizza-dispatch/dispatch-pausa-guard.test.mjs"
+  ]
+ },
+ {
+  "slice": "pausa",
+  "id": "pausa-sdk-endshift",
+  "label": "the Torre's forced clock-out keeps the pause",
+  "file": "../xpizza-dispatch/xpizza-delivery.js",
+  "from": "    shift_ended_at: serverTimestamp(),\n    break_since: null   // Pausa",
+  "to": "    shift_ended_at: serverTimestamp()   // Pausa",
+  "kills_with": [
+   "PAUSA-ENDSHIFT-CLEAR"
+  ],
+  "command": [
+   "node",
+   "../xpizza-dispatch/dispatch-pausa-guard.test.mjs"
+  ]
+ },
+ {
+  "slice": "pausa-emu",
+  "id": "pausa-rule-svc-set",
+  "label": "svc-assigner can SET a pause",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "auth.uid === 'svc-assigner' && !newData.exists()\", \".validate\": \"newData.isNumber() && newData.val() === now\"",
+  "to": "auth.uid === 'svc-assigner'\", \".validate\": \"newData.isNumber() && newData.val() === now\"",
+  "kills_with": [
+   "svc-assigner may never SET break_since"
+  ],
+  "command": [
+   "npm",
+   "run",
+   "test:pausa"
+  ]
+ },
+ {
+  "slice": "pausa-emu",
+  "id": "pausa-rule-svc-clear",
+  "label": "svc-assigner cannot clear the pause (shift start denied)",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "auth.uid === 'svc-assigner' && !newData.exists()\", \".validate\": \"newData.isNumber() && newData.val() === now\"",
+  "to": "auth.uid === 'nobody' && !newData.exists()\", \".validate\": \"newData.isNumber() && newData.val() === now\"",
+  "kills_with": [
+   "the REAL startDriverShift batch is accepted"
+  ],
+  "command": [
+   "npm",
+   "run",
+   "test:pausa"
+  ]
+ },
+ {
+  "slice": "pausa-emu",
+  "id": "pausa-rule-now",
+  "label": "a client-chosen break_since is accepted",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\"break_since\": { \".write\": \"auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner' && !newData.exists()\", \".validate\": \"newData.isNumber() && newData.val() === now\" }",
+  "to": "\"break_since\": { \".write\": \"auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner' && !newData.exists()\", \".validate\": \"newData.isNumber()\" }",
+  "kills_with": [
+   "a non-now break_since is DENIED"
+  ],
+  "command": [
+   "npm",
+   "run",
+   "test:pausa"
+  ]
  }
 ]

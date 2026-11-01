@@ -21,6 +21,10 @@
         "shift_started_at": {
           ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'"
         },
+        "break_since": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner' && !newData.exists()",
+          ".validate": "newData.isNumber() && newData.val() === now"
+        },
         "last_ping": {
           ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'"
         },

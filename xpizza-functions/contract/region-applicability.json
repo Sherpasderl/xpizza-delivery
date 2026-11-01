@@ -1824,7 +1824,7 @@
     "site": "const newHub = resolvePickupHub(allTasks[`${orderId}_pickup`]);",
     "siteSha": "4c5117695686308367b67620c194b4a9491e5dcaf7f3e63d532d71dc35d11e7d",
     "scope": "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver",
-    "scopeSha": "53f69a95fa76233c04e26627465c6fe58cdce8f46c222b813ee6300df7bc0547"
+    "scopeSha": "8ccf1c428237c4ff2169625cc0994a2c9089776b17de900358c943ded01e03d9"
    },
    "guards": [
     {
@@ -1957,7 +1957,7 @@
     "site": "const h = resolvePickupHub(allTasks[`${t.order_id}_pickup`]);",
     "siteSha": "ba46ccb8fd3abdc4079cf2a748f45de5c339849a14d56f25ed2f1993c2d84fc7",
     "scope": "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver",
-    "scopeSha": "53f69a95fa76233c04e26627465c6fe58cdce8f46c222b813ee6300df7bc0547"
+    "scopeSha": "8ccf1c428237c4ff2169625cc0994a2c9089776b17de900358c943ded01e03d9"
    },
    "guards": [
     {
@@ -4059,7 +4059,7 @@
     "site": "const newHub = resolvePickupHub(allTasks[`${orderId}_pickup`]);",
     "siteSha": "4c5117695686308367b67620c194b4a9491e5dcaf7f3e63d532d71dc35d11e7d",
     "scope": "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver",
-    "scopeSha": "53f69a95fa76233c04e26627465c6fe58cdce8f46c222b813ee6300df7bc0547"
+    "scopeSha": "8ccf1c428237c4ff2169625cc0994a2c9089776b17de900358c943ded01e03d9"
    },
    "guards": [
     {
@@ -4164,7 +4164,7 @@
     "site": "const h = resolvePickupHub(allTasks[`${t.order_id}_pickup`]);",
     "siteSha": "ba46ccb8fd3abdc4079cf2a748f45de5c339849a14d56f25ed2f1993c2d84fc7",
     "scope": "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver",
-    "scopeSha": "53f69a95fa76233c04e26627465c6fe58cdce8f46c222b813ee6300df7bc0547"
+    "scopeSha": "8ccf1c428237c4ff2169625cc0994a2c9089776b17de900358c943ded01e03d9"
    },
    "guards": [
     {
