@@ -276,6 +276,7 @@
     "xpizza-functions/test/otp-brand.emulator.test.js",
     "xpizza-functions/test/paid-after-close-notify.emulator.test.js",
     "xpizza-functions/test/pausa.emulator.test.js",
+    "xpizza-functions/test/photos-a2.emulator.test.js",
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
     "xpizza-functions/test/portal-1b.emulator.test.js",
@@ -427,6 +428,12 @@
     "xpizza-functions/memory-floor.guard.test.js",
     "xpizza-functions/menus.test.mjs",
     "xpizza-functions/o1b-wiring.guard.test.js",
+    "xpizza-functions/photos-wiring.guard.test.js",
+    "xpizza-functions/photos/diff-photos.test.js",
+    "xpizza-functions/photos/edit-photos.test.js",
+    "xpizza-functions/photos/editable-wiring.test.js",
+    "xpizza-functions/photos/publish-wiring.test.js",
+    "xpizza-functions/photos/reset-photos.test.js",
     "xpizza-functions/portal/branch-lifecycle-core.test.js",
     "xpizza-functions/portal/e1-extend.test.js",
     "xpizza-functions/portal/ops-core.test.js",
@@ -502,6 +509,7 @@
     "xpizza-functions/test/otp-brand.emulator.test.js",
     "xpizza-functions/test/paid-after-close-notify.emulator.test.js",
     "xpizza-functions/test/pausa.emulator.test.js",
+    "xpizza-functions/test/photos-a2.emulator.test.js",
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
     "xpizza-functions/test/portal-1b.emulator.test.js",
@@ -812,6 +820,7 @@
     "xpizza-functions/test/otp-brand.emulator.test.js",
     "xpizza-functions/test/paid-after-close-notify.emulator.test.js",
     "xpizza-functions/test/pausa.emulator.test.js",
+    "xpizza-functions/test/photos-a2.emulator.test.js",
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
     "xpizza-functions/test/portal-1b.emulator.test.js",
@@ -964,6 +973,12 @@
     "xpizza-functions/memory-floor.guard.test.js",
     "xpizza-functions/menus.test.mjs",
     "xpizza-functions/o1b-wiring.guard.test.js",
+    "xpizza-functions/photos-wiring.guard.test.js",
+    "xpizza-functions/photos/diff-photos.test.js",
+    "xpizza-functions/photos/edit-photos.test.js",
+    "xpizza-functions/photos/editable-wiring.test.js",
+    "xpizza-functions/photos/publish-wiring.test.js",
+    "xpizza-functions/photos/reset-photos.test.js",
     "xpizza-functions/portal/branch-lifecycle-core.test.js",
     "xpizza-functions/portal/e1-extend.test.js",
     "xpizza-functions/portal/ops-core.test.js",
@@ -1039,6 +1054,7 @@
     "xpizza-functions/test/otp-brand.emulator.test.js",
     "xpizza-functions/test/paid-after-close-notify.emulator.test.js",
     "xpizza-functions/test/pausa.emulator.test.js",
+    "xpizza-functions/test/photos-a2.emulator.test.js",
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
     "xpizza-functions/test/portal-1b.emulator.test.js",
@@ -1996,6 +2012,7 @@
   "catalog/canonical-binding.js",
   "catalog/catalog-edit-auth.js",
   "catalog/catalog-edit.js",
+  "catalog/catalog-publish.js",
   "catalog/charge-inputs.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
@@ -2073,6 +2090,29 @@
   "phone/login-gate.js",
   "phone/match.js",
   "phone/wire.js",
+  "photos/branch-photos.js",
+  "photos/buckets.js",
+  "photos/crops.js",
+  "photos/edit-io.js",
+  "photos/editable-io.js",
+  "photos/editable-photos.js",
+  "photos/errors.js",
+  "photos/flag.js",
+  "photos/functions.js",
+  "photos/gcs-copy.js",
+  "photos/gcs-store.js",
+  "photos/legacy-encode.js",
+  "photos/photo-state.js",
+  "photos/pipeline.js",
+  "photos/process.js",
+  "photos/publish-io.js",
+  "photos/publish-photos.js",
+  "photos/served-photos.js",
+  "photos/signer.js",
+  "photos/sniff.js",
+  "photos/sweep-core.js",
+  "photos/sweep-io.js",
+  "photos/upload-start.js",
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
@@ -2081,6 +2121,7 @@
   "portal/branch-lifecycle-core.js",
   "portal/branch-phone.js",
   "portal/branch-read-model.js",
+  "portal/functions.js",
   "portal/location-name.js",
   "portal/ops-core.js",
   "portal/ops-functions.js",
@@ -2333,6 +2374,33 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/catalog-publish.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/context-guards.test.js",
+     "inverses": [
+      "tools/extras-module-inverse.js",
+      "tools/photos-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/catalog/identity-integrity-guards.test.js",
+     "inverses": [
+      "tools/extras-module-inverse.js",
+      "tools/photos-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/photos-module-wiring.guard.test.js",
+     "inverses": [
+      "tools/photos-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": [
+    "xpizza-functions/catalog/publish-paths.test.js"
+   ]
+  },
   "catalog/charge-inputs.js": {
    "pins": [],
    "lifts": [
@@ -2391,6 +2459,12 @@
      "file": "xpizza-functions/avail-identity-wiring.guard.test.js",
      "inverses": [
       "tools/avail-identity-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/photos-module-wiring.guard.test.js",
+     "inverses": [
+      "tools/photos-module-inverse.js"
      ]
     }
    ],
@@ -2650,6 +2724,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1b-inverse.js",
@@ -2694,6 +2769,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2742,6 +2818,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2804,6 +2881,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s2tip-inverse.js",
@@ -2845,6 +2923,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2891,6 +2970,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2930,6 +3010,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s2tip-inverse.js",
@@ -3040,6 +3121,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -3075,6 +3157,7 @@
       "tools/mem512-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
@@ -3130,6 +3213,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -3170,6 +3254,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s2app-inverse.js",
@@ -3206,6 +3291,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s2app-inverse.js",
@@ -3254,6 +3340,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s2tip-inverse.js",
@@ -3282,6 +3369,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
@@ -3347,6 +3435,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -3430,6 +3519,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -3468,6 +3558,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s2tip-inverse.js",
@@ -3499,6 +3590,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s2app-inverse.js",
@@ -3534,6 +3626,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -3575,6 +3668,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -3756,6 +3850,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s2app-inverse.js",
@@ -3819,6 +3914,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -3858,6 +3954,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s2app-inverse.js",
@@ -3900,6 +3997,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -4023,6 +4121,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s2app-inverse.js",
@@ -4056,6 +4155,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s2app-inverse.js",
@@ -4095,6 +4195,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/pausa-inverse.js",
+      "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -4374,6 +4475,100 @@
    "pins": [],
    "lifts": []
   },
+  "photos/branch-photos.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/buckets.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/crops.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/edit-io.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/editable-io.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/editable-photos.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/errors.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/flag.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/functions.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/gcs-copy.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/gcs-store.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/legacy-encode.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/photo-state.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/pipeline.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/photos/photos-split.test.js"
+   ]
+  },
+  "photos/process.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/publish-io.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/publish-photos.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/served-photos.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/signer.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/sniff.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/sweep-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/sweep-io.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/upload-start.js": {
+   "pins": [],
+   "lifts": []
+  },
   "pixelpay-charge.js": {
    "pins": [],
    "lifts": [
@@ -4425,6 +4620,14 @@
   "portal/branch-read-model.js": {
    "pins": [],
    "lifts": []
+  },
+  "portal/functions.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/portal/portal-split.test.js",
+    "xpizza-functions/stats/stats-guard.test.js",
+    "xpizza-functions/tools/portal-split.js"
+   ]
   },
   "portal/location-name.js": {
    "pins": [],
