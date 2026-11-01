@@ -355,5 +355,33 @@ t('reuse: summary A→B shows B\'s order + B\'s rate (the Tu-pago row never carr
   assert.equal((b.match(/Tu pago por esta entrega/g) || []).length, 1, 'exactly one Tu-pago row');
 });
 
+t('reuse P2a: cash→cashless interlude — B has NO cash line, nothing stale from A', () => {
+  const h = showHarness({ pagosLive: false });
+  h.api.showInterlude(ilInfo('A', 385, 115));                 // cash
+  h.api.showInterlude({ orderId: 'B', name: 'X' });           // cashless (no cash/vuelto → no .il-sub)
+  const b = h.il().innerHTML;
+  assert.ok(!b.includes('Cobraste') && !b.includes('385') && !b.includes('vuelto L 115'), 'cash→cashless: B has no cash line and no stale A data');
+  assert.ok(!b.includes('il-sub'), 'B (cashless, PAGOS off) renders no .il-sub at all');
+  // PAGOS on + a known rate: B (cashless) shows ONLY the created «+L 70» sub, still no stale cash
+  const BB2 = 1767225600000;
+  const h2 = showHarness({ pagosLive: true, rateEntries: { r: { cents: 7000, effective_from: BB2 } }, allOrders: { A: { delivered_at: BB2 + 1000, delivered_by_driver_uid: 'drv' }, B: { delivered_at: BB2 + 1000, delivered_by_driver_uid: 'drv' } } });
+  h2.api.showInterlude(ilInfo('A', 385, 115));
+  h2.api.showInterlude({ orderId: 'B', name: 'X' });
+  const b2 = h2.il().innerHTML;
+  assert.ok(b2.includes('+L 70') && b2.includes('class="il-sub"') && !b2.includes('Cobraste') && !b2.includes('385'), 'cash→cashless PAGOS on: B shows ONLY «+L 70» (created sub), no stale cash');
+});
+
+t('reuse P2b: summary late load + repeated refresh — «Tu pago» appears after the rate arrives, exactly ONE row after N refreshes', () => {
+  const BB3 = 1767225600000;
+  const h = showHarness({ pagosLive: true, rateEntries: null, allOrders: { A: { payment_method: 'cash', total: 385, delivered_at: BB3 + 1000, delivered_by_driver_uid: 'drv' } } });
+  h.api.showResumen({ orderId: 'A', name: 'X' });
+  assert.ok(!h.rs().innerHTML.includes('Tu pago por esta entrega'), 'no rate yet → no «Tu pago» row');
+  h.api.setRate({ r: { cents: 7000, effective_from: BB3 } });
+  h.api.refresh(); h.api.refresh(); h.api.refresh();          // late load + repeated refresh through refreshOpenCashSurfaces
+  const r = h.rs().innerHTML;
+  assert.ok(r.includes('Tu pago por esta entrega') && /\+ L 70/.test(r), 'after the rate arrives → the «Tu pago» row with + L 70');
+  assert.equal((r.match(/Tu pago por esta entrega/g) || []).length, 1, 'exactly ONE «Tu pago» row after 3 refreshes (idempotent)');
+});
+
 Date.now = realDateNow;   // restore the real clock
 console.log(`ganancias.test.js: ${passed} passed`);
