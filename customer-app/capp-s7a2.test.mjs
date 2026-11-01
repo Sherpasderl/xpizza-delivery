@@ -1516,3 +1516,33 @@ test('D-4a r1 P2: hydration is gated on bootReturn.mode ∈ {none, invalid} — 
   const S = routeShell('/r/x_pizza', { storage }); await flush(); await flush();
   assert.equal(S.ui.store(), null, '🔴 r1 P2: a resumed (ownerless) return let the deep link hydrate');
 });
+
+// ── Codex D-4a code r2 (NEW P2): a pending retry fires ONLY while the user has done nothing since hydration began ──
+test('D-4a r2: opening the store SEARCH while a cold /pago waits cancels it — the fresh menu never dismisses the search for the checkout', async () => {
+  const d = anyDish();
+  const S = routeShell('/r/x_pizza/pago', { envelope: 'hold', storage: memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key) }) }); await flush(); await flush();
+  const ui = S.ui.store().ui; assert.equal(ui.orderable(), false, 'premise: /pago is waiting for the fresh menu');
+  S.click('[data-act="ssearch"]'); await flush();
+  assert.equal(ui.state.layerKind, 'ssearch', 'premise: the store search is open');
+  S.release('x_pizza'); await flush(); await flush();
+  assert.equal(S.ui.store().ui.state.screen, 'store', '🔴 r2: the fresh menu opened the checkout over the user\'s search');
+  assert.equal(S.ui.store().ui.state.layerKind, 'ssearch', 'the search stays');
+});
+
+test('D-4a r2: an in-store action during a LOCKED dish hydration cancels it — the dish never opens later when the lock clears', async () => {
+  const t0 = T0, d = anyDish();
+  const storage = memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
+    'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_c', order: null, ts: t0 }),
+    'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, pay_pending: true, dispatched: 1, cart_gen: 'g_c', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) });
+  const apiFetch = async () => ({ status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) });
+  const S = routeShell(`/r/x_pizza/plato/${encodeURIComponent(d.key)}`, { envelope: 'hold', storage, apiFetch }); await flush(); await flush();
+  S.release('x_pizza', repriced(d.name, 26)); await flush(); await flush();
+  assert.ok(S.ui.store().adopt && S.ui.store().ui.lockedNow(), 'premise: pending behind a lock + a staged changed body');
+  const mode = S.q('[data-act="mode"][data-val="pickup"]'); assert.ok(mode, 'premise: the Delivery / Pickup toggle');
+  S.click(mode); await flush();   // the user acts inside the store WITHOUT changing the route (the step stays «store»)
+  assert.equal(S.ui.store().ui.state.open, null, 'premise: no sheet yet (the lock holds)');
+  storage.removeItem('capp:x_pizza:pending_place'); storage.removeItem('capp:x_pizza:pending_pay');   // later, the lock clears
+  S.ui.store().ui.render(); await flush(); await flush();
+  assert.equal(S.ui.store().ui.state.open, null, '🔴 r2: the cancelled dish link opened after the lock cleared');
+  assert.equal(where(S), '/r/x_pizza', 'the URL reflects the screen the user is on (the link was cancelled)');
+});

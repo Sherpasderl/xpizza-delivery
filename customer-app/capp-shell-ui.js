@@ -607,6 +607,12 @@
     // a blocked back renders nothing; this listener re-reflects the screen actually shown (pathname only)
     const onPopReflect = () => { if (dead) return; cancelRoute(); reflect(); };   // a device Back is a user navigation (Codex code r1 P1): it cancels a held cold link too
     if (routing && typeof win.addEventListener === 'function') win.addEventListener('popstate', onPopReflect);
+    // Codex code r2 (inverted, one check): a pending cold link is retried ONLY while the user has done NOTHING since hydration began
+    // — ANY gesture (a tap, a key, typing; in the store or the shell: its search, a category, a sheet, an in-app back, a blocked
+    // exit) cancels it through the same cancelRoute / navGen, BEFORE any retry can fire. The router itself dispatches no events
+    const USER_INTENT = ['pointerdown', 'click', 'keydown', 'input'];
+    const onUserIntent = () => { if (!dead && pendingRoute) cancelRoute(); };
+    if (routing && pendingRoute && typeof doc.addEventListener === 'function') for (const ev of USER_INTENT) doc.addEventListener(ev, onUserIntent, true);
     if (SU) raf(() => startAuth());   // G6: the Auth SDK after the first paint (never awaited by it)
 
     return {
@@ -614,7 +620,7 @@
       // §4c for the sign-in flow (G6): set the marker at sign-in; ONLY «Cerrar sesión y olvidar este teléfono» / deletion forgets it
       rememberAccount: (e164) => CappDeviceAccount.remember(storage, e164), forgetAccount: () => CappDeviceAccount.forget(storage),
       destroy() {
-        dead = true; unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect);
+        dead = true; unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
         doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('visibilitychange', onVisible); nav.destroy();
       },
     };

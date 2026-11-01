@@ -26276,7 +26276,9 @@
     ],
     "kills_with": [
       "a cancelled cold link entered"
-    ]
+    ],
+    "equivalent": true,
+    "why": "Codex D-4a r2: every user navigation now reaches onShow only AFTER a cancel — a DOM gesture (pointerdown/click/keydown/input) is cancelled by the capture-phase onUserIntent before any handler runs (rt-15), a device Back by onPopReflect (rt-11), a tap by enter() and menu-close by its own cancel; so no input can make this line differ. Kept as defence-in-depth for a future non-gesture navigation."
   },
   {
     "id": "rt-06",
@@ -26437,6 +26439,25 @@
     ],
     "kills_with": [
       "a resumed (ownerless) return let the deep link hydrate"
+    ]
+  },
+  {
+    "id": "rt-15",
+    "slice": "route",
+    "label": "Codex D-4a r2: a user gesture inside the store does not cancel a pending cold link",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "    const onUserIntent = () => { if (!dead && pendingRoute) cancelRoute(); };",
+    "to": "    const onUserIntent = () => {};",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-4a",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the fresh menu opened the checkout over the user's search",
+      "the cancelled dish link opened after the lock cleared"
     ]
   }
 ]
