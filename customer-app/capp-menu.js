@@ -67,6 +67,8 @@
     }
     return Object.freeze({
       rid: envelope.rid, representation_version: envelope.representation_version,
+      // PLAN-avail-identity (5f, marker 1d.3): the restaurant's availability identity — 'id' | 'name', else null (an older envelope)
+      availIdentity: envelope.avail_identity && (envelope.avail_identity.field === 'id' || envelope.avail_identity.field === 'name') ? envelope.avail_identity.field : null,
       dishes, extras, categories: list(m.categories).map((c) => Object.freeze({ id: c.id, name: c.name != null ? String(c.name) : null })),
       dish: (k) => dishByKey.get(String(k)) || null, extra: (k) => extraByKey.get(String(k)) || null, extrasFor,
       groups: Object.freeze(groups), pickupOnlyCats: new Set(list(m.pickup_only_cats).map(String)), weekendOnlyCats: new Set(list(m.weekend_only_cats).map(String)),

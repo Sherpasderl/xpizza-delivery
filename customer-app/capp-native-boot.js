@@ -13,9 +13,11 @@
 //   fetchDirectory(etag)       the directory endpoint, If-None-Match ⇒ { status, body?, etag? }; none configured ⇒ { status: 0 }
 //                              (the shell's drawn directory failure) — the endpoint is not wired yet (5f)
 //   fetchEnvelope(rid, etag)   getPublicMenu's /menu/<rid> (the rid in the PATH), If-None-Match ⇒ { status, body?, etag? }
-//   readAvailability()         null = FAIL-OPEN (every dish available; the server refuses a sold dish at intake). The RTDB →
-//                              dish-key mapping needs the restaurant's availability identity, which the menu envelope will
-//                              carry (advisor ruling; 5f) — until then this never guesses one. ⚠ LAUNCH BLOCKER (recorded).
+//   readAvailability(rid, menu) the RTDB restaurants/<rid>/item_availability node (no-store) mapped by CappAvailability onto the
+//                              menu's dish keys via the envelope's availability identity (menu.availIdentity, 5f marker 1d.3) and
+//                              the synced avail-key.js + availability-reducer.js — the forms' decision. An envelope WITHOUT the
+//                              identity (older), a failed read or an unreadable body ⇒ null = FAIL-OPEN (every dish available;
+//                              the server refuses a sold dish at intake). Never a guessed identity.
 //   loadSdk()                  the BUNDLED Firebase SDK (platform/native/vendor, sha-pinned) — never gstatic at runtime
 // auth: not passed — under runtime.signup the shell creates its own CappAuthState (capp-shell-ui startAuth); without it, the
 // shell's documented unresolved state (never assumed guest).
@@ -33,6 +35,8 @@
   const ORDER_ENDPOINTS = Object.freeze(['quoteOrder', 'createOrder', 'chargeOnlineOrder', 'paymentStatus', 'requestCheckoutCode', 'verifyCheckoutCode']);
   const g = typeof self !== 'undefined' ? self : {};
   const pick = (o, name) => o[name] || g[name];
+  const avail = (o) => { const A = pick(o, 'CappAvailability'), R = pick(o, 'availabilityReducer'), K = pick(o, 'availKey');
+    return A && R && typeof K === 'function' ? A.createAvailability({ availKey: K, decide: R.decide }) : null; };
 
   function runtimeFor(rt, CappSignupApi) {
     const base = rt.functions_base, f = rt.flags || {};
@@ -66,14 +70,22 @@
     const fetchFn = o.fetch || (typeof fetch === 'function' ? fetch.bind(g) : null);
     const importModule = o.importModule || ((p) => import(p));
     const sdk = String(rt.sdk_base || '');
-    const { runtime: _r, fetch: _f, importModule: _i, CappShellUI: _c, CappSignupApi: _s, ...pass } = o;
+    const { runtime: _r, fetch: _f, importModule: _i, CappShellUI: _c, CappSignupApi: _s, CappAvailability: _a, availabilityReducer: _ar, availKey: _ak, ...pass } = o;
+    const mapper = avail(o);
     return CappShellUI.mount(doc, {
       ...pass,
       runtime: runtimeFor(rt, CappSignupApi),
       fetchDirectory: (etag) => (typeof rt.directory_endpoint === 'string' && rt.directory_endpoint
         ? conditional(fetchFn, `${rt.functions_base}/${rt.directory_endpoint}`, etag) : Promise.resolve({ status: 0 })),
       fetchEnvelope: (rid, etag) => conditional(fetchFn, `${rt.functions_base}/${rt.menu_endpoint}/menu/${encodeURIComponent(rid)}`, etag),
-      readAvailability: async () => null,
+      readAvailability: async (rid, menu) => {
+        if (!mapper || !menu || !menu.availIdentity || typeof rid !== 'string' || !rid) return null;   // no identity ⇒ fail-open, no read
+        try {
+          const res = await fetchFn(`${rt.availability_base}/restaurants/${encodeURIComponent(rid)}/item_availability.json`, { method: 'GET', cache: 'no-store' });
+          if (!res || res.status !== 200) return null;
+          return mapper.soldKeys(menu, await res.json());
+        } catch (_) { return null; }
+      },
       loadSdk: () => Promise.all([importModule(`${sdk}firebase-app.js`), importModule(`${sdk}firebase-auth.js`)])
         .then(([app, authMod]) => ({ initializeApp: app.initializeApp, authMod })),
     });

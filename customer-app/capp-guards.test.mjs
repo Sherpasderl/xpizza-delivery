@@ -62,7 +62,11 @@ const SYNCED = 'sherpa-client.js';
 // capp-confirm-quote.js (S2a, PLAN-capp-S2-r4 §5.1 Q6) is a BYTE-IDENTICAL port of the forms' form-confirm-quote.js — its only
 // restaurant mention is a comment about the forms' chrome. Exempt ONLY while it stays identical to BOTH form copies.
 const PORTED = { 'capp-confirm-quote.js': ['xpizza-orders/form-confirm-quote.js', 'la-musa-orders/form-confirm-quote.js'] };
-const codeFiles = () => readdirSync(join(ROOT, 'customer-app')).filter((f) => /\.(m?js|html|css)$/.test(f) && !/\.test\.m?js$/.test(f) && f !== SYNCED && !(f in PORTED));
+// PLAN-avail-identity: EVERY file tools/sync-client.js writes into customer-app/ (sherpa-client.js, avail-key.js,
+// availability-reducer.js) is another surface's canonical copy — exempt from the literal scan, and pinned byte-identical to its
+// source by the range guard below (syncedIntoApp), so the exemption can never hide an edit. Read lazily (syncedIntoApp is below).
+const syncedNames = () => new Set(syncedIntoApp().map(({ dst }) => dst.replace(/^customer-app\//, '')));
+const codeFiles = () => { const sy = syncedNames(); return readdirSync(join(ROOT, 'customer-app')).filter((f) => /\.(m?js|html|css)$/.test(f) && !/\.test\.m?js$/.test(f) && f !== SYNCED && !sy.has(f) && !(f in PORTED)); };
 
 test('no restaurant id or name in customer-app/ code', () => {
   const files = codeFiles();

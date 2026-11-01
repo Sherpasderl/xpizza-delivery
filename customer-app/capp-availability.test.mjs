@@ -1,0 +1,114 @@
+// Customer app — readAvailability (PLAN-avail-identity; advisor ruling 2026-11-01): the app decides a dish's availability EXACTLY as
+// the live forms do. The served body is the REAL writer's (generateFormBundle + the identity overlay); the identity field comes
+// from the SERVER's one rule (menu-pricing availIdentityField — live once 5f's slice is assembled, else read from its approved commit
+// e024dc6f); the forms are the REAL pages (form-harness) answering the SAME RTDB fixture.
+// Run: node --test customer-app/capp-availability.test.mjs
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, '..');
+const require = createRequire(import.meta.url);
+const fnRequire = createRequire(join(ROOT, 'xpizza-functions/x.js'));
+const { loadForm, closeAll, settle, BRAND, serve, envelope } = await import(join(ROOT, 'form-harness.mjs'));
+const CappMenu = require('./capp-menu.js'), CappAvailability = require('./capp-availability.js'), Boot = require('./capp-native-boot.js');
+const { availKey } = require('./avail-key.js'), Reducer = require('./availability-reducer.js');
+const { generateFormBundle, catalogSnapshot } = fnRequire('./catalog/generate-form-bundle');
+const { applyIdentityToServedBody } = fnRequire('./catalog/identity-overlay');
+const { fullRegistry } = fnRequire('./catalog/identity-fixture');
+const M = fnRequire('./platform-manifest.js');
+
+// the server's ONE identity rule (5f): the live export when assembled, else the approved commit's line, verbatim
+const availIdentityField = (() => {
+  const live = fnRequire('./menu-pricing.js').availIdentityField;
+  if (typeof live === 'function') return live;
+  const src = execFileSync('git', ['show', 'e024dc6f:xpizza-functions/menu-pricing.js'], { cwd: ROOT, encoding: 'utf8' });
+  const m = src.match(/const availIdentityField = (\(rid\) => \(rid === 'la_musa' \? 'id' : 'name'\));/);
+  assert.ok(m, 'premise: 5f\'s approved rule is readable from e024dc6f');
+  return new Function(`return ${m[1]};`)();
+})();
+const servedBody = async (rid) => (await applyIdentityToServedBody(fullRegistry(rid), rid, generateFormBundle(rid, catalogSnapshot(rid)))).body;
+const cappEnvelope = (rid, body, field) => ({ ...envelope(rid, body, '1d.3'), ...(field ? { avail_identity: { field } } : {}) });
+const mapper = () => CappAvailability.createAvailability({ availKey, decide: Reducer.decide });
+const OFF = { available: false, updated_at: 1 }, ON = { available: true, updated_at: 2 };
+
+test('the synced modules are byte-identical to the canonical server copies (the forms / KDS / server rule)', () => {
+  for (const f of ['avail-key.js', 'availability-reducer.js'])
+    assert.ok(readFileSync(join(HERE, f)).equals(readFileSync(join(ROOT, 'xpizza-functions', f))), `🔴 customer-app/${f} drifted from xpizza-functions/${f}`);
+  const shell = readFileSync(join(HERE, 'shell.html'), 'utf8');
+  for (const f of ['avail-key.js', 'availability-reducer.js', 'capp-availability.js']) assert.ok(shell.indexOf(`src="${f}"`) > 0 && shell.indexOf(`src="${f}"`) < shell.indexOf('src="capp-shell-ui.js"'), `shell.html loads ${f} before the shell`);
+});
+
+for (const dir of ['xpizza-orders', 'la-musa-orders']) {
+  test(`EQUALITY with the live form (${dir}): the same RTDB node ⇒ the same sold dishes, under the served identity — a key under the OTHER identity sells nothing`, async () => {
+    const rid = BRAND[dir].rid, field = availIdentityField(rid), other = field === 'id' ? 'name' : 'id';
+    assert.deepEqual([rid, field], dir === 'xpizza-orders' ? ['x_pizza', 'name'] : ['la_musa', 'id'], 'premise: the server rule (x_pizza by NAME, la_musa by id)');
+    const body = await servedBody(rid);
+    const w = loadForm(dir); await settle();
+    try {
+    await serve(w, envelope(rid, body, '1d.2'));
+    const items = w.liveMenuGlobalGet('MENU');
+    assert.ok(items.length >= 6, 'premise: the form holds the served menu');
+    // the fixture: 3 sold under the served identity, 1 explicitly available, 1 decoy sold under the OTHER identity, the rest silent
+    const node = {};
+    for (const it of items.slice(0, 3)) node[availKey(it[field])] = OFF;
+    node[availKey(items[3][field])] = ON;
+    if (String(items[4][other]) !== String(items[4][field])) node[availKey(items[4][other])] = OFF;
+    const AVAIL = `${M.PLATFORM.appRuntime().availability_base}/restaurants/${rid}/item_availability.json`;
+    w.__respond = (u) => (String(u) === AVAIL ? Promise.resolve({ ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(node)) }) : new Promise(() => {}));
+    await w.loadAvailability(); await settle();
+    const formSold = items.filter((it) => w.ownSoldOut(it)).map((it) => String(it.id)).sort();
+    assert.ok(formSold.length === 3, `premise: the form sells exactly the three (${formSold.length})`);
+    const menu = CappMenu.adaptMenu(cappEnvelope(rid, body, field));
+    assert.equal(menu.availIdentity, field);
+    const cappSold = mapper().soldKeys(menu, node).map((k) => String(menu.dish(k).id)).sort();
+    assert.deepEqual(cappSold, formSold, `🔴 ${dir}: the app and the form disagree on what is sold`);
+    assert.ok(!cappSold.includes(String(items[4].id)) && !cappSold.includes(String(items[3].id)), 'the decoy and the explicitly-available dish stay available');
+    } finally { closeAll(); }   // a failing cell must still close the page (else the run never exits)
+  });
+}
+
+test('FAIL-OPEN on an older envelope (no avail_identity): null — never a guessed identity, never an RTDB read', async () => {
+  const body = await servedBody('x_pizza');
+  const old = CappMenu.adaptMenu(cappEnvelope('x_pizza', body, null));
+  assert.equal(old.availIdentity, null);
+  assert.equal(mapper().soldKeys(old, { anything: OFF }), null);
+  for (const bad of [{ field: 'slug' }, { field: '' }, 'name', null]) assert.equal(CappMenu.adaptMenu({ ...envelope('x_pizza', body, '1d.3'), avail_identity: bad }).availIdentity, null, `a malformed identity ${JSON.stringify(bad)} is no identity`);
+  let fetched = 0; let opts;
+  const S = { mount: (d, o) => { opts = o; return {}; } };
+  Boot.boot({}, { runtime: { ...M.PLATFORM.appRuntime(), flags: {}, sdk_base: './' }, CappShellUI: S, CappSignupApi: { ENDPOINTS: [] }, CappAvailability, availabilityReducer: Reducer, availKey, fetch: async () => { fetched++; return {}; } });
+  assert.equal(await opts.readAvailability('x_pizza', old), null); assert.equal(fetched, 0, '🔴 no read without an identity');
+});
+
+test('the boot: the RTDB node (no-store) mapped onto the dish keys; a failed / non-200 / unreadable read ⇒ null (fail-open)', async () => {
+  const body = await servedBody('la_musa'), menu = CappMenu.adaptMenu(cappEnvelope('la_musa', body, 'id'));
+  const d0 = menu.dishes[0], RT = M.PLATFORM.appRuntime();
+  const calls = []; let next; let opts;
+  const S = { mount: (d, o) => { opts = o; return {}; } };
+  Boot.boot({}, { runtime: { ...RT, flags: {}, sdk_base: './' }, CappShellUI: S, CappSignupApi: { ENDPOINTS: [] }, CappAvailability, availabilityReducer: Reducer, availKey, fetch: async (u, i) => { calls.push([u, i]); return next(); } });
+  next = () => ({ status: 200, json: async () => ({ [availKey(d0.id)]: OFF }) });
+  assert.deepEqual(await opts.readAvailability('la_musa', menu), [d0.key]);
+  assert.equal(calls[0][0], `${RT.availability_base}/restaurants/la_musa/item_availability.json`); assert.equal(calls[0][1].cache, 'no-store');
+  next = () => ({ status: 401, json: async () => ({}) }); assert.equal(await opts.readAvailability('la_musa', menu), null);
+  next = () => { throw new Error('offline'); }; assert.equal(await opts.readAvailability('la_musa', menu), null);
+  next = () => ({ status: 200, json: async () => { throw new Error('bad'); } }); assert.equal(await opts.readAvailability('la_musa', menu), null);
+  next = () => ({ status: 200, json: async () => null }); assert.deepEqual(await opts.readAvailability('la_musa', menu), [], 'an empty node sells nothing (the forms\' rule)');
+});
+
+test('key HISTORY (the forms\' availKeysFor): a dish renamed mid-session stays sold under the key it had (\'any_false\' over every key)', async () => {
+  const body = await servedBody('x_pizza'), A = mapper();
+  const m1 = CappMenu.adaptMenu(cappEnvelope('x_pizza', body, 'name')), d = m1.dishes.find((x) => x.name);
+  const node = { [availKey(d.name)]: OFF };
+  assert.deepEqual(A.soldKeys(m1, node), [d.key]);
+  const renamed = JSON.parse(JSON.stringify(body));
+  const walk = (o) => { if (Array.isArray(o)) o.forEach(walk); else if (o && typeof o === 'object') { if (String(o.id) === String(d.id) && o.name === d.name) o.name = `${d.name} (nuevo)`; Object.values(o).forEach(walk); } };
+  walk(renamed);
+  const m2 = CappMenu.adaptMenu(cappEnvelope('x_pizza', renamed, 'name'));
+  assert.equal(m2.dishes.find((x) => String(x.id) === String(d.id)).name, `${d.name} (nuevo)`, 'premise: renamed');
+  assert.ok(A.soldKeys(m2, node).includes(m2.dishes.find((x) => String(x.id) === String(d.id)).key), '🔴 a rename must not silently re-open a sold dish');
+  assert.deepEqual(mapper().soldKeys(m2, node).filter((k) => String(m2.dish(k).id) === String(d.id)), [], 'a FRESH session (no history) sees only the new key');
+});
