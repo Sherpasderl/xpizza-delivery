@@ -24042,8 +24042,8 @@
     "slice": "g6",
     "label": "the member token is the one read at sign-in, always (an expired token is sent)",
     "file": "../customer-app/capp-api.js",
-    "from": "      const token = await memberToken(memberOf());",
-    "to": "      const token = (memberOf() || {}).idToken || null;",
+    "from": "      const m = memberOf(), tok = await memberToken(m);",
+    "to": "      const m = memberOf(), tok = (m || {}).idToken || null;",
     "command": [
       "node",
       "--test",
@@ -24051,7 +24051,8 @@
     ],
     "kills_with": [
       "an expired sign-in token is never sent"
-    ]
+    ],
+    "repointed": "Codex promo r5: post() awaits memberToken(m) then rechecks the identity; the mutant still sends the sign-in token as read"
   },
   {
     "id": "g6-11",
@@ -26772,7 +26773,8 @@
       "../customer-app/capp-s7a2.test.mjs"
     ],
     "kills_with": [
-      "the signed-out member's token was sent"
+      "the signed-out member's token was sent",
+      "a token was ACCEPTED for a signed-out member"
     ]
   },
   {
@@ -26827,6 +26829,25 @@
     ],
     "kills_with": [
       "must be unusable"
+    ]
+  },
+  {
+    "id": "pf-21",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r5 reverted: post() sends memberToken's result without the post-await identity check",
+    "file": "../customer-app/capp-api.js",
+    "from": "      const token = memberOf() === m ? tok : null;",
+    "to": "      const token = tok;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo r5",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "Ana's token went out after her sign-out",
+      "Ana's token went out after the switch"
     ]
   }
 ]

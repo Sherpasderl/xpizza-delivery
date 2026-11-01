@@ -661,11 +661,12 @@ const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 const TOK = (uid, expMs = T0 + 3600e3) => `${b64u({ alg: 'RS256', typ: 'JWT' })}.${b64u({ sub: uid, user_id: uid, exp: Math.floor(expMs / 1000) })}.sig`;
 const WARNINGS = []; process.on('warning', (w) => WARNINGS.push(w));   // Codex promo r4 #5: no TimeoutOverflowWarning (asserted last)
 // failToken: the next N getIdToken() calls REJECT; failFrom: every call from index N on rejects; tokExp: the issued tokens' exp (ms)
-function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, tokExp } = {}) {
+// rotate: each getIdToken() issues a NEW token (exp + n s) — a fresh token that really changes ⇒ the setter's notifier fires
+function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, tokExp, rotate = false } = {}) {
   const calls = { load: 0, ct: [], out: 0 }; let listeners = [], user = persisted;
   // hold: { on, q } — while on, every token read waits for the test to release it (a slow SDK)
-  let tokN = 0;
-  const tok = (u) => { const n = tokN++; return failToken > 0 ? (failToken--, Promise.reject(new Error('network'))) : n >= failFrom ? Promise.reject(new Error('network')) : hold && hold.on ? new Promise((r) => hold.q.push(() => r(TOK(u, tokExp)))) : Promise.resolve(TOK(u, tokExp)); };
+  let tokN = 0; const rot = (n) => (rotate ? (tokExp ?? T0 + 3600e3) + n * 1000 : tokExp);
+  const tok = (u) => { const n = tokN++; return failToken > 0 ? (failToken--, Promise.reject(new Error('network'))) : n >= failFrom ? Promise.reject(new Error('network')) : hold && hold.on ? new Promise((r) => hold.q.push(() => r(TOK(u, rot(n))))) : Promise.resolve(TOK(u, rot(n))); };
   const auth = { get currentUser() { const u = user; return u ? { uid: u, getIdToken: () => tok(u) } : null; } };
   const emitU = () => { for (const l of listeners) l(user ? { uid: user } : null); };
   const authMod = { browserLocalPersistence: 'LOCAL', getAuth: () => auth, setPersistence: async () => {},
@@ -1818,15 +1819,17 @@ test('store promo r3: the token timers are HANDLES — none left after a sign-ou
 // Codex promo r4 — the last consolidated pass: the sign-out race, the early expiry callback, a real uid switch, no timer overflow
 test('store promo r4 #1: a held quote token RELEASED AFTER a sign-out — no member header, member null (identity rechecked after the await)', async () => {
   const hold = { on: false, q: [] }, quotes = [];
-  const fb = fakeFirebase({ persisted: 'u_ana', hold });
+  const fb = fakeFirebase({ persisted: 'u_ana', hold, rotate: true });   // the held token is a NEW one (the setter would really store it)
   const S = memberBoot({ fb, apiFetch: quoteLog(quotes) });
   await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
   await toShellCheckout(S);
   hold.on = true; S.click('#app [data-act="type"][data-val="pickup"]'); await flush();   // the quote waits on the token
+  const ana = S.ui.state.member, anaTok = ana.idToken;
   await fb.loadSdk().then(({ authMod }) => authMod.signOut()); await flush(); await flush();
   assert.equal(S.ui.state.member ?? null, null, 'premise: signed out while the quote waited');
   hold.on = false; for (const r of hold.q.splice(0)) r(); await until(() => quotes.length >= 1); await flush();
   assert.equal(quotes[quotes.length - 1], null, '🔴 store promo r4: the signed-out member\'s token was sent');
+  assert.equal(ana.idToken, anaTok, '🔴 store promo r4: a token was ACCEPTED for a signed-out member (the helper\'s identity guard)');
   assert.equal(S.ui.state.member ?? null, null);
 });
 test('store promo r4 #2: an expiry callback firing 1 ms EARLY re-arms — the claim stays until the cutoff, then is withdrawn', async () => {
@@ -1850,6 +1853,33 @@ test('store promo r4 #5: a real UID SWITCH cancels the old identity\'s token tim
   await fb.loadSdk().then(({ authMod }) => authMod.signInWithCustomToken({}, 'ct:u_bob')); await flush(); await flush();   // another uid's session
   assert.notEqual(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: u_ana is no longer the identity');
   assert.equal(L.pend.size, 0, '🔴 store promo r4: u_ana\'s token timer survived the uid switch');
+});
+// Codex promo r5 — the post-level identity check: after `await memberToken(…)` one more microtask opens before the send; a sign-out or a
+// uid switch queued from the token notifier lands there ⇒ post() compares the member AGAIN, with no await before the dispatch
+const subOf = (t) => { try { return t ? JSON.parse(Buffer.from(t.split('.')[1], 'base64url').toString()).sub : null; } catch (_) { return null; } };
+async function notifierRace(queue) {
+  const dispatches = []; let S = null;
+  const fb = fakeFirebase({ persisted: 'u_ana', rotate: true });
+  const apiFetch = (u, i) => { if (u.startsWith('/x/q')) { const m = S.ui.state.member; dispatches.push({ sub: subOf(i.headers['x-firebase-id-token']), current: m ? m.uid : null }); return quoteOk(u, i); } return new Promise(() => {}); };
+  S = memberBoot({ fb, apiFetch });
+  await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+  await toShellCheckout(S);
+  const m = S.ui.state.member, orig = m.onTokenChange, { authMod } = await fb.loadSdk();
+  m.onTokenChange = (x) => { orig(x); queueMicrotask(() => queue(authMod)); };   // queued FROM the notifier, inside the quote's token await
+  S.click('#app [data-act="type"][data-val="pickup"]'); await until(() => dispatches.length >= 1); await flush(); await flush();
+  return { S, dispatches };
+}
+test('store promo r5: a SIGN-OUT queued from the token notifier — no quote dispatch carries Ana\'s token while the member is null', async () => {
+  const { S, dispatches } = await notifierRace((A) => A.signOut());
+  assert.ok(dispatches.length >= 1, 'premise: the quote was dispatched'); assert.equal(S.ui.state.member ?? null, null, 'premise: signed out');
+  const bad = dispatches.filter((d) => d.sub === 'u_ana' && d.current !== 'u_ana');
+  assert.deepEqual(bad, [], `🔴 store promo r5: Ana's token went out after her sign-out: ${JSON.stringify(dispatches)}`);
+});
+test('store promo r5: a UID SWITCH queued from the token notifier — no quote dispatch carries Ana\'s token while she is not the identity', async () => {
+  const { S, dispatches } = await notifierRace((A) => A.signInWithCustomToken({}, 'ct:u_bob'));
+  assert.ok(dispatches.length >= 1, 'premise: the quote was dispatched'); assert.notEqual(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: Ana is no longer the identity');
+  const bad = dispatches.filter((d) => d.sub === 'u_ana' && d.current !== 'u_ana');
+  assert.deepEqual(bad, [], `🔴 store promo r5: Ana's token went out after the switch: ${JSON.stringify(dispatches)}`);
 });
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {

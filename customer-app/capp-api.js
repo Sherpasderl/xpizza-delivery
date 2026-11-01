@@ -285,7 +285,8 @@
     }
     const headersFor = (extra, token) => { const h = { 'Content-Type': 'application/json', ...(extra || {}) }; if (token) h['x-firebase-id-token'] = token; return h; };
     async function post(url, body, extraHeaders) {
-      const token = await memberToken(memberOf());
+      const m = memberOf(), tok = await memberToken(m);
+      const token = memberOf() === m ? tok : null;   // Codex promo r5: the identity AGAIN after the await, nothing awaited before the dispatch
       const r = await sfetch(url, { method: 'POST', headers: headersFor(extraHeaders, token), body: JSON.stringify(body) });
       let j = null; try { j = await r.json(); } catch (_) { j = null; }
       const parsed = !!j && typeof j === 'object';
