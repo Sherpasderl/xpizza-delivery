@@ -31749,5 +31749,41 @@
    "node",
    "../xpizza-driver/ganancias.test.js"
   ]
+ },
+ {
+  "id": "otps-1",
+  "slice": "otps",
+  "label": "guest train item: verifyCheckoutCode loses its OTP_SALT secret binding (a NEW function gets no plain env ⇒ 500 at launch)",
+  "file": "index.js",
+  "from": "exports.verifyCheckoutCode = onRequest(\n  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET] },",
+  "to": "exports.verifyCheckoutCode = onRequest(\n  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },",
+  "command": [
+   "node",
+   "otp-salt-secret.test.js"
+  ]
+ },
+ {
+  "id": "otps-2",
+  "slice": "otps",
+  "label": "guest train item: redeemSignupGrant loses its OTP_SALT secret binding",
+  "file": "index.js",
+  "from": "secrets: [OTP_SALT_SECRET, SIGNUP_GRANT_SECRET] },",
+  "to": "secrets: [SIGNUP_GRANT_SECRET] },",
+  "command": [
+   "node",
+   "otp-salt-secret.test.js"
+  ]
+ },
+ {
+  "id": "otps-3",
+  "slice": "otps",
+  "label": "guest train item: an EXISTING plain reader (chargeOnlineOrder) also binds OTP_SALT as a secret — the secret/plain overlap",
+  "file": "index.js",
+  "from": "    secrets: [SIGNUP_GRANT_SECRET],",
+  "to": "    secrets: [OTP_SALT_SECRET, SIGNUP_GRANT_SECRET],",
+  "command": [
+   "node",
+   "otp-salt-secret.test.js"
+  ]
  }
 ]
