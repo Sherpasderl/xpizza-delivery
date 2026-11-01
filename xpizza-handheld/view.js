@@ -3,6 +3,7 @@
 // the review harness renders fixture states through this very function.
 import * as M from './model.js';
 import { COPY } from './copy.js';
+import { readiness } from './readiness.js';
 
 const MIN = 60000;
 const REASONS = [['agotado', 'Se acabó un producto'], ['saturada', 'Cocina saturada'], ['cerrando', 'Estamos por cerrar'], ['otro', 'Otro motivo']];
@@ -30,6 +31,8 @@ export function buildVM(S, ctx) {
       : { blank: false, real: true, label: k, size: '22px', press: () => ctx.act.pinPress(k) }));
   const isKeypad = S.phase === 'pin' || (main && S.view === 'pinPrompt');
   const st = S.status || {};
+  const rd = readiness(st);
+  const row = (r, fix) => (r ? { title: r.title, text: r.text, btn: r.btn || '', hasBtn: !!r.btn, ok: r.state === 'ok', fix } : { title: '', text: '', btn: '', hasBtn: false, ok: false, fix: () => {} });
   const d = cur ? detail(S, ctx, cur, t, off, b) : { items: [] };
   const goneNames = cur ? M.orderView(cur).items.map((i) => i.name).filter((n) => S.gone[n]) : [];
   const strip = alertOrder ? M.ladderStrip(alertOrder) : null;
@@ -47,7 +50,12 @@ export function buildVM(S, ctx) {
     volText: st.alarmVolumeMax ? 'Máximo' : '—', volColor: st.alarmVolumeMax ? '#17633D' : '#9A1C12',
     batteryText: st.batteryExempt ? 'Apagado para esta app' : 'Tiene que estar apagado para esta app',
     batteryPending: !st.batteryExempt, batteryOk: !!st.batteryExempt, fixBattery: ctx.act.refreshStatus,
-    browserNote: st.note || '', checksBlocked: !!st.blocked, checksBtnCls: st.blocked ? 'dis' : '',
+    browserNote: st.note || '', checksBlocked: !rd.ex && !!st.blocked, checksBtnCls: st.blocked ? 'dis' : '',
+    // H1c readiness rows (statusEx only; OWNER APPROVED copy 2026-10-26): Sonido de pedidos and Alerta en pantalla bloqueada after
+    // Notificaciones, Conexión para pedidos last; one line under the card replaces the battery line
+    exRows: rd.ex, batteryRowStyle: rd.ex ? '' : 'border-bottom:none', exLine: rd.ex ? rd.line : '',
+    rdChannel: row(rd.channel, () => ctx.act.openSettings('channel')), rdFullScreen: row(rd.fullScreen, () => ctx.act.openSettings('fullScreen')),
+    rdPush: row(rd.push, () => ctx.act.doSignOut('session_lost')),
     testAlert: ctx.act.testAlert,
     goPinCreate: () => { if (!st.blocked) ctx.act.checksContinue(); },
     keypadTitle: S.phase === 'pin' ? (S.pinFirst ? COPY.pinRepeat : 'Creá el PIN del encargado') : 'PIN del encargado',

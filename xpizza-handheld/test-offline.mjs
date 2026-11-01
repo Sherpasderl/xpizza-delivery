@@ -110,6 +110,40 @@ try {
   assert.ok(text2.includes('Que no se pierda ningún pedido'), `a native shell without the plugin opens the checks screen:\n${text2}`);
   assert.ok(!text2.includes('En prep.'), 'and never the list (silent alarms)');
   console.log('  ok native-missing guard on a persisted pairing → the checks screen (P1-4)');
+
+  // codex b4 r1 P2: the REAL app with a fake SherpaHandheld plugin — the repair buttons reach the plugin with the exact kind, and
+  // the «Conectando…» poll unblocks «Continuar» on its own once registration lands (no resume, no hourly refresh)
+  const t3 = await send('Target.createTarget', { url: 'about:blank' });
+  const s3 = (await send('Target.attachToTarget', { targetId: t3.targetId, flatten: true })).sessionId;
+  await send('Page.enable', {}, s3);
+  const fake = `window.__opened=[];window.__ready=false;window.__reads=0;
+    const ok={remove(){}};
+    window.Capacitor={isNativePlatform:()=>true,Plugins:{SherpaHandheld:{
+      alarmStart:async()=>{},alarmStop:async()=>{},alarmAck:async()=>{},keepAwake:async()=>{},
+      status:async()=>({notifications:true,alarmVolumeMax:true,batteryExempt:true}),
+      statusEx:async()=>{window.__reads++;const r=window.__ready;return {notifications:true,fullScreen:r,channelOk:r,alarmVolumeMax:true,batteryExempt:true,pushReady:r,defaultHome:false,kiosk:false,pushSession:true};},
+      openSettings:async(a)=>{window.__opened.push(a&&a.kind);},
+      setDeviceCredential:async()=>{},endDeviceSession:async()=>{},pushToken:async()=>({token:null}),
+      addListener:()=>ok}}};`;
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: `try{localStorage.setItem('hh_session',JSON.stringify({uid:'hh_tb_norte_test',rid:'tb_norte',brand_id:'tb',location_name:'Norte',prep_default_min:18}));localStorage.setItem('hh_pin',JSON.stringify({v:1,iter:100000,salt:'AA==',hash:'AA=='}));}catch(e){} ${fake}` }, s3);
+  await send('Page.navigate', { url: `${base}/index.html` }, s3);
+  await new Promise((r) => setTimeout(r, 4000));
+  const ev3 = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, s3)).result.value;
+  const t3a = await ev3('document.body.innerText');
+  assert.ok(t3a.includes('Conectando…') && t3a.includes('Está silenciado para esta app'), `the waiting checks screen:\n${t3a}`);
+  await ev3(`(() => { const b = [...document.querySelectorAll('button')]; b.find((x) => x.textContent.trim() === 'Activar').click(); b.find((x) => x.textContent.trim() === 'Permitir').click(); return true; })()`);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.deepEqual(await ev3('window.__opened'), ['channel', 'fullScreen'], 'the buttons reach the plugin with the exact kind');
+  const before = await ev3('window.__reads');
+  await ev3('window.__ready = true');
+  await new Promise((r) => setTimeout(r, 4500));
+  const t3b = await ev3('document.body.innerText');
+  assert.ok(await ev3('window.__reads') > before, 'the poll re-read statusEx while «Conectando…» showed');
+  assert.ok(t3b.includes('Los pedidos llegan aunque la app esté cerrada') && !t3b.includes('Conectando…'), `ready without a resume:\n${t3b}`);
+  assert.equal(await ev3(`[...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Continuar').classList.contains('dis')`), false, '«Continuar» unblocked');
+  const settled = await ev3('window.__reads'); await new Promise((r) => setTimeout(r, 3500));
+  assert.equal(await ev3('window.__reads'), settled, 'ready → the poll stopped');
+  console.log('  ok readiness: repair buttons → plugin kinds; «Conectando…» polls and unblocks «Continuar» on its own (codex b4 r1)');
   console.log('test:offline: OK');
   exitCode = 0;
 } catch (e) {

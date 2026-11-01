@@ -29,3 +29,27 @@ export const ADVISOR = Object.freeze({
 export const KIOSK = Object.freeze({
   offlineDetail: 'Sin conexión no se puede pedir más tiempo. «Listo» se guarda y se envía al volver.',
 });
+// H1c readiness rows (OWNER APPROVED 2026-10-26, exactly as previewed at claude.ai/artifact/UXNLVVebyfxvHFmaLKksSv): the three
+// statusEx checks that have no board strings, the N-steps line and the kiosk line. Row order: Notificaciones, Sonido de pedidos,
+// Alerta en pantalla bloqueada, Volumen de alerta, Ahorro de batería, Conexión para pedidos.
+export const READINESS = Object.freeze({
+  channelTitle: 'Sonido de pedidos',
+  channelOk: 'Activado con prioridad alta',
+  channelTodo: 'Está silenciado para esta app',
+  channelBtn: 'Activar',
+  channelMissing: 'Falta activar el sonido de pedidos.',
+  fullScreenTitle: 'Alerta en pantalla bloqueada',
+  fullScreenOk: 'El pedido aparece aunque la pantalla esté bloqueada',
+  fullScreenTodo: 'Tiene que estar permitida para esta app',
+  fullScreenBtn: 'Permitir',
+  fullScreenMissing: 'Falta permitir la alerta en pantalla bloqueada.',
+  pushTitle: 'Conexión para pedidos',
+  pushOk: 'Los pedidos llegan aunque la app esté cerrada',
+  pushWait: 'Conectando…',
+  pushWaitMissing: 'Conectando el equipo para recibir pedidos…',
+  pushTodo: 'Hay que volver a vincular este equipo',
+  pushBtn: 'Vincular',
+  pushMissing: 'Falta conectar el equipo para recibir pedidos.',
+  kiosk: 'Avisale al dueño para que lo active.',
+  steps: (n) => `Faltan ${n} pasos para recibir pedidos.`,
+});

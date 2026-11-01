@@ -18,9 +18,10 @@ function baseState(over = {}) {
 }
 function ctxFor(S) {
   const calls = [];
-  const act = new Proxy({}, { get: (_t, k) => (...a) => { calls.push(String(k)); return undefined; } });
+  const log = [];
+  const act = new Proxy({}, { get: (_t, k) => (...a) => { calls.push(String(k)); log.push([String(k), ...a]); return undefined; } });
   const sets = [];
-  return { calls, sets, ctx: { now: T, online: true, orders: S.feed.orders, base: 18, sess: { uid: 'u', rid: 'tb_norte', brand_id: 'tb', location_name: 'Norte', prep_default_min: 18 },
+  return { calls, sets, log, ctx: { now: T, online: true, orders: S.feed.orders, base: 18, sess: { uid: 'u', rid: 'tb_norte', brand_id: 'tb', location_name: 'Norte', prep_default_min: 18 },
     driverOf: () => M.driverInfo(null), set: (p) => sets.push(p), act } };
 }
 function handlers(v, path = 'vm', out = []) {
@@ -81,4 +82,86 @@ test('«Entregado» (handed): a ready PICKUP card hands the exact order id to ac
   assert.deepEqual([pick.isPickup, del.isPickup], [true, false]);
   pick.handed();
   assert.deepEqual(handed, [['o1']], 'act.handed receives exactly the pickup order id');
+});
+
+// H1c readiness rows (OWNER APPROVED 2026-10-26): the REAL template rendered through buildVM, per state — row order, exact strings,
+// buttons → the right action, kiosk / no-session variants, and the frozen status() screen unchanged.
+import fs from 'node:fs';
+import { compile } from './tmpl.js';
+import { repairAction } from './readiness.js';
+const TPL = (() => { const h = fs.readFileSync(new URL('./index.html', import.meta.url), 'utf8'); return compile(h.slice(h.indexOf('<template id="screen">') + 22, h.indexOf('</template>'))); })();
+const EX = { notifications: true, fullScreen: true, channelOk: true, alarmVolumeMax: true, batteryExempt: true, pushReady: true, defaultHome: false, kiosk: false, pushSession: true, native: true, blocked: false };
+const checksOf = (status, actOver = null) => {
+  const S = baseState({ phase: 'checks', status }); const { ctx, calls, log } = ctxFor(S);
+  if (actOver) ctx.act = new Proxy(ctx.act, { get: (t, k) => (k in actOver ? actOver[k] : t[k]) });
+  const out = TPL.render(buildVM(S, ctx));
+  const body = out.html.slice(out.html.indexOf('Que no se pierda ningún pedido'));   // the whole screen, line under «Continuar» included
+  const text = body.replace(/<[^>]+>/g, '\n').split('\n').map((x) => x.trim()).filter(Boolean);
+  const press = (label) => { const m = body.match(new RegExp(`data-act="(\\d+)"[^>]*>${label}<`)); assert.ok(m, `button ${label}`); out.acts[m[1]](); };
+  return { text, body, calls, log, press, hasBtn: (label) => new RegExp(`>${label}<`).test(body) };
+};
+
+test('readiness: all green — the six rows in the approved order, the new ones with their ok text, no line', () => {
+  const { text } = checksOf(EX);
+  const titles = ['Notificaciones', 'Sonido de pedidos', 'Alerta en pantalla bloqueada', 'Volumen de alerta', 'Ahorro de batería', 'Conexión para pedidos'];
+  assert.deepEqual(titles.map((t) => text.indexOf(t)).every((i, k, a) => i >= 0 && (k === 0 || i > a[k - 1])), true, text.join(' | '));
+  for (const s of ['Activado con prioridad alta', 'El pedido aparece aunque la pantalla esté bloqueada', 'Los pedidos llegan aunque la app esté cerrada']) assert.ok(text.includes(s), s);
+  assert.ok(!text.some((s) => s.startsWith('Falta')), 'no line');
+});
+
+test('readiness: todo rows show the approved text + button, and each button runs its repair', () => {
+  const r = checksOf({ ...EX, channelOk: false, fullScreen: false, blocked: true });
+  assert.ok(r.text.includes('Está silenciado para esta app')); assert.ok(r.text.includes('Tiene que estar permitida para esta app'));
+  assert.ok(r.text.includes('Faltan 2 pasos para recibir pedidos.'));
+  r.press('Activar'); r.press('Permitir');
+  assert.deepEqual(r.log, [['openSettings', 'channel'], ['openSettings', 'fullScreen']], 'exact destinations');
+  // controller → bridge: the real repairAction behind the view's buttons
+  const got = [];
+  const w = checksOf({ ...EX, channelOk: false, fullScreen: false, blocked: true }, { openSettings: repairAction({ openSettings: async (k) => { got.push(k); } }) });
+  w.press('Permitir'); w.press('Activar');
+  assert.deepEqual(got, ['fullScreen', 'channel']);
+  const one = checksOf({ ...EX, fullScreen: false, blocked: true });
+  assert.ok(one.text.includes('Falta permitir la alerta en pantalla bloqueada.'));
+  assert.ok(!one.text.includes('Falta apagar el ahorro de batería.'), 'the board battery line does not show for another gap');
+});
+
+test('readiness: push registering → «Conectando…», no button; no native session → «Vincular» signs out to the login', () => {
+  const w = checksOf({ ...EX, pushReady: false, pushSession: true, blocked: true });
+  assert.ok(w.text.includes('Conectando…')); assert.ok(w.text.includes('Conectando el equipo para recibir pedidos…')); assert.ok(!w.hasBtn('Vincular'));
+  const r = checksOf({ ...EX, pushReady: false, pushSession: false, blocked: true });
+  assert.ok(r.text.includes('Hay que volver a vincular este equipo')); assert.ok(r.text.includes('Falta conectar el equipo para recibir pedidos.'));
+  r.press('Vincular'); assert.deepEqual(r.calls, ['doSignOut']);
+});
+
+test('readiness: kiosk — no Settings button, «Avisale al dueño para que lo active.» on each red Settings row', () => {
+  const k = checksOf({ ...EX, kiosk: true, channelOk: false, fullScreen: false, blocked: true });
+  assert.equal(k.text.filter((s) => s === 'Avisale al dueño para que lo active.').length, 2);
+  assert.ok(!k.hasBtn('Activar') && !k.hasBtn('Permitir'), 'no repair button can open Settings');
+  assert.ok(k.text.includes('Faltan 2 pasos para recibir pedidos.'));
+});
+
+test('readiness: the frozen status() (browser / older shell) renders the approved H1b screen exactly as before', () => {
+  const old = checksOf({ notifications: true, alarmVolumeMax: true, batteryExempt: false, native: true, blocked: true, note: '' });
+  for (const s of ['Sonido de pedidos', 'Alerta en pantalla bloqueada', 'Conexión para pedidos']) assert.ok(!old.text.includes(s), s);
+  assert.ok(old.text.includes('Falta apagar el ahorro de batería.'));
+  assert.match(old.body, /<div class="srow" style="border-bottom:none"><span><span style="display:block">Ahorro de batería/, 'battery stays the last row');
+});
+
+test('readiness (OWNER 2026-10-26, choice A): a green new row shows «Listo» on the right like the battery row; a red one does not', () => {
+  const g = checksOf(EX);
+  assert.equal(g.text.filter((s) => s === 'Listo').length, 4, 'battery + the three new rows');
+  for (const t of ['Sonido de pedidos', 'Alerta en pantalla bloqueada', 'Conexión para pedidos']) {
+    const i = g.text.indexOf(t); assert.equal(g.text[i + 2], 'Listo', `${t}: title, ok text, «Listo»`);
+  }
+  assert.ok(!/<svg/.test(g.body.slice(g.body.indexOf('Sonido de pedidos'))), 'no check icons (the srow style, not the preview icons)');
+  const r = checksOf({ ...EX, channelOk: false, fullScreen: false, pushReady: false, pushSession: true, blocked: true });
+  assert.equal(r.text.filter((s) => s === 'Listo').length, 1, 'only the green battery row');
+});
+
+test('readiness (codex b4 r1 P3): the line sits UNDER «Continuar», as approved', () => {
+  const r = checksOf({ ...EX, channelOk: false, fullScreen: false, blocked: true });
+  const btn = r.text.indexOf('Continuar'); const line = r.text.indexOf('Faltan 2 pasos para recibir pedidos.');
+  assert.ok(btn >= 0 && line > btn, r.text.join(' | '));
+  const one = checksOf({ ...EX, pushReady: false, pushSession: false, blocked: true });
+  assert.ok(one.text.indexOf('Falta conectar el equipo para recibir pedidos.') > one.text.indexOf('Continuar'));
 });
