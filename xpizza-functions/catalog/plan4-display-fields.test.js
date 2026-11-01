@@ -136,7 +136,7 @@ const refuses = (fn, re, label) => assert.throws(fn, (e) => re.test(String(e && 
   // ── 6. assertWholeBody refuses a body whose new facts would render nothing ──
   {
     const menu = { structure: { badges: {}, badge_priority: [] }, items: [] };
-    const base = () => ({ dishes: [{ id: 1, name: 'A', cat: 'c', price: 1 }], extras: [], categories: [{ id: 'c' }], badges: { a: { cls: 'x', label: 'A' } }, badge_priority: ['a'] });
+    const base = () => ({ dishes: [{ id: 1, name: 'A', cat: 'c', price: 1 }], extras: [], categories: [{ id: 'c' }], badges: { a: { cls: 'x', label: 'A' } }, badge_priority: ['a'], avail_identity: { field: require('../menu-pricing').availIdentityField('r') } });   // DRYRUN composition (2e): PLAN-avail-identity's BODY_CONTRACT requires avail_identity — set from the server's ONE rule
     assertWholeBody('r', base(), menu);
     const refused = (mut, re) => { const b = base(); mut(b); refuses(() => assertWholeBody('r', b, menu), re, String(re)); };
     refused((b) => { b.badge_priority = ['a', 'ghost']; }, /badge_priority names 1 key/);
