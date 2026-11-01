@@ -460,7 +460,7 @@ test('P1 cajón → P2 on a PHONE — the zone (and the row camera) expand in pl
   const input = [...d.querySelectorAll('input[type=file]')].pop();
   assert.equal(input.getAttribute('capture'), 'environment', '«Tomar foto»: the camera');
   // the row camera on a phone opens the drawer straight on P2
-  btnText(drawer(d), 'Cerrar').click();
+  closeBtn(drawer(d)).click();
   rowOf(d, 'Margarita').querySelector('button.thumb').click(); await settle();
   assert.ok(drawer(d).querySelector('.uploader.phph2'), 'the row camera: the drawer with the choice open');
   delete window.matchMedia;
@@ -697,7 +697,7 @@ test('ruling A — while a section rename is pending, the photo controls are off
   assert.equal(zoneBtn.disabled, true, 'the zone is off, like the price field');
   zoneBtn.click(); await settle();
   assert.equal(d.querySelectorAll('input[type=file]').length, 0, 'a dispatched click on the zone opens nothing');
-  btnText(drawer(d), 'Cerrar').click(); await settle();
+  closeBtn(drawer(d)).click(); await settle();
   // a dish WITH a photo: «Cambiar» / «Quitar» are off too
   await openDrawerFor(d, 'Margarita');
   const acts = [...drawer(d).querySelectorAll('.phacts button')];
@@ -743,7 +743,7 @@ test('codex ruleA r1 #1 — a photo held beside a pending name shows «Cancelar�
   await openDrawerFor(d, 'Margarita');
   const price = drawer(d).querySelector('input[aria-label="Precio"]');
   price.value = '290'; price.dispatchEvent(new window.Event('input')); await settle();
-  btnText(drawer(d), 'Cerrar').click(); await settle();
+  closeBtn(drawer(d)).click(); await settle();
   const release = fake.holdPut();
   await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
   await until(() => drawer(d).querySelector('.phbusy'), 'P4: the PUT is in flight');
@@ -787,4 +787,50 @@ test('5f review — the fake\'s rate limit is the server\'s: the 31st new start 
   assert.equal(r.body.error, 'rate_limited');
   assert.equal(r.body.retryable, true);
   assert.equal((await start('op:0')).status, 200, 'an existing op is a retry, never rate-charged');
+});
+
+// OWNER BUG (2026-11-01, «make it look perfect»): every drawer's top-right close is the APPROVED icon box — `.dwx` is a 32×32
+// icon box, drawn in every approved mockup (MOCKUP-portal-dish-photo, category-rename, ratelimit, the 09-07 editor mock) as the
+// X svg with aria-label «Cerrar» and NO text. The word «Cerrar» in that box overflowed it. Behaviour is unchanged: it closes.
+const strokes = (d) => d.split(/(?=M)/).map((s) => s.trim()).filter(Boolean).sort().join(' ');   // the X's two lines, in any order
+function assertCloseIcon(root, where) {
+  const x = root.querySelector('.dwh .dwx');
+  assert.ok(x, `${where}: the head has its .dwx`);
+  assert.equal(x.tagName, 'BUTTON'); assert.equal(x.type, 'button');
+  assert.equal(x.getAttribute('aria-label'), 'Cerrar', `${where}: named «Cerrar» for assistive tech`);
+  assert.equal(x.textContent, '', `${where}: no text in the icon box (it overflowed the 32×32 box)`);
+  const svg = x.querySelector('svg');
+  assert.ok(svg && svg.namespaceURI === 'http://www.w3.org/2000/svg', `${where}: a real SVG element`);
+  assert.equal(svg.getAttribute('viewBox'), '0 0 24 24'); assert.equal(svg.getAttribute('aria-hidden'), 'true');
+  assert.equal(strokes([...svg.querySelectorAll('path')].map((p) => p.getAttribute('d')).join('')), strokes('M18 6L6 18M6 6l12 12'), `${where}: the mockup's two strokes of the X`);
+  return x;
+}
+const closeBtn = (root) => root.querySelector('.dwh .dwx[aria-label="Cerrar"]');
+test('OWNER BUG — the item drawer, the «Nuevo producto» drawer and the crop step close with the approved X icon (no text), and still close', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, w, mods } = await boot(fake);
+  await openDrawerFor(d, 'Pepperoni');
+  assertCloseIcon(drawer(d), 'item drawer').click(); await settle();
+  assert.ok(!drawer(d).classList.contains('show'), 'item drawer: closed'); assert.equal(mods.app.state.drawerKey ?? null, null);
+  btnText(d.getElementById('detail'), 'Agregar producto').click(); await settle();
+  assert.ok(drawer(d).classList.contains('show'), 'premise: the add drawer is open');
+  assertCloseIcon(drawer(d), '«Nuevo producto» drawer').click(); await settle();
+  assert.ok(!drawer(d).classList.contains('show'), '«Nuevo producto» drawer: closed');
+  rowOf(d, 'Pepperoni').querySelector('button.thumb').click(); await settle();
+  await choose(d, w, mkFile(w));
+  await until(() => drawer(d).querySelector('.phcrop'), 'the crop step');
+  assertCloseIcon(drawer(d), 'crop step').click(); await settle();
+  assert.ok(!drawer(d).querySelector('.phcrop'), 'crop step: left — the file is discarded');
+  assert.equal(n(fake.calls || [], 'photoUploadStart'), 0, 'crop step close uploads nothing');
+});
+test('OWNER BUG — photos DARK (flag off): the item drawer and the «Nuevo producto» drawer still close with the approved X icon', async () => {
+  const fake = createPhotoFake({ items: ITEMS(), photosEnabled: false });
+  const { d } = await boot(fake);
+  await openDrawerFor(d, 'Pepperoni');
+  assert.ok(!drawer(d).querySelector('button.uploader'), 'premise: photos are dark — no «Foto» field');
+  assertCloseIcon(drawer(d), 'item drawer (dark)').click(); await settle();
+  assert.ok(!drawer(d).classList.contains('show'), 'item drawer (dark): closed');
+  btnText(d.getElementById('detail'), 'Agregar producto').click(); await settle();
+  assertCloseIcon(drawer(d), '«Nuevo producto» drawer (dark)').click(); await settle();
+  assert.ok(!drawer(d).classList.contains('show'), '«Nuevo producto» drawer (dark): closed');
 });

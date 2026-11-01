@@ -67,6 +67,8 @@ function showEmpty(title, detail) {
   $('detail').replaceChildren(e);
 }
 import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
+// a drawer's top-right close: the approved 32×32 X icon box (aria-label «Cerrar», no text) — ONE builder (ops-dom), shared with photo.js; availability.js's .adwx is the same button + icon('close')
+import { closeIcon } from './ops-dom.js';
 
 function renderSwitcher() {
   const cur = state.restaurants.find((r) => r.rid === state.currentRid);
@@ -1208,9 +1210,7 @@ function renderDrawer() {
   const title = document.createElement('div');
   title.className = 'dwt';
   title.textContent = (it.display && it.display.name) || it.key;   // textContent: a dish name is data
-  const close = document.createElement('button');
-  close.type = 'button'; close.className = 'dwx'; close.textContent = 'Cerrar';
-  close.addEventListener('click', () => { state.drawerKey = null; d.classList.remove('show'); });
+  const close = closeIcon(() => { state.drawerKey = null; d.classList.remove('show'); });
   head.append(title, close);
 
   const body = document.createElement('div');
@@ -1365,9 +1365,7 @@ function renderAddDrawer(d, it, keepScroll) {
   const head = mk('div', 'dwh');
   const title = mk('div', 'dwt', 'Nuevo producto');
   title.append(mk('span', 'newtag', 'Nuevo'));
-  const close = document.createElement('button');
-  close.type = 'button'; close.className = 'dwx'; close.textContent = 'Cerrar';
-  close.addEventListener('click', () => { state.drawerKey = null; d.classList.remove('show'); });
+  const close = closeIcon(() => { state.drawerKey = null; d.classList.remove('show'); });
   head.append(title, close);
 
   const body = mk('div', 'dwb');

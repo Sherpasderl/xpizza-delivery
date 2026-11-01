@@ -1182,6 +1182,12 @@ function registrations(src) {
     const head = raw.match(/^\s*'[^']+'\s*,/);
     out.push({ key: `${recv}::${ev}`, handler: raw.replace(/^\s*'[^']+'\s*,/, ''), start: open + 1 + (head ? head[0].length : 0), ...at(g.index) });
   }
+  // a drawer's top-right close (ops-dom closeIcon, owner bug 2026-11-01): its one argument IS the click handler — scanned as
+  // `close::click` exactly as the old `close.addEventListener('click', …)` was, so its writes stay judged by the same ruling
+  for (const g of m.matchAll(/\bcloseIcon\s*\(/g)) {
+    const open = g.index + g[0].length - 1, end = spanFrom(m, open);
+    out.push({ key: 'close::click', handler: src.slice(open + 1, end), start: open + 1, ...at(g.index) });
+  }
   for (const g of m.matchAll(/\brender(Rail|Detail|Attestation|Outcome)\s*\(/g)) {
     const open = g.index + g[0].length - 1, end = spanFrom(m, open);
     out.push({ key: `render${g[1]}::callback`, handler: src.slice(open + 1, end), start: open + 1, ...at(g.index) });

@@ -4,6 +4,7 @@
 // position is set through the CSSOM (the CSP forbids style attributes). The rules live in photo-logic.js.
 import * as P from './photo-logic.js';
 import { photoUploadStart, photoProcess, putSigned } from './api.js';
+import { closeIcon } from './ops-dom.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 // [tag, attrs] shapes, so a circle or a rect draws as the mockup's icons do
@@ -207,8 +208,7 @@ export function cropStep({ job, name, desc, priceText, onFrame, onView, onCancel
   const { W, H } = job;
   const frame = P.FRAMES[job.frame];
   const head = el('div', 'dwh');
-  const close = el('button', 'dwx', P.COPY.close); close.type = 'button';
-  close.addEventListener('click', onClose);
+  const close = closeIcon(onClose);
   head.append(el('div', 'dwt', P.COPY.cropTitle), close);
   const body = el('div', 'dwb');
 
