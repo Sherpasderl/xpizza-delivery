@@ -1,6 +1,7 @@
 'use strict';
 // DISH PHOTOS A1 step 7 (PLAN-dish-photos r2 §4.1; scope line DISH-PHOTOS-A1-NOTES "Step 7 PREP") — the photo cores against the REAL
-// Firestore emulator (transaction isolation the in-repo double cannot model) and the REAL Storage emulator (generations, 412s, rules),
+// Firestore emulator (transaction isolation the in-repo double cannot model) and the REAL Storage emulator (generations, rules — NOT the
+// create-only 412: the emulator ignores ifGenerationMatch, see E4 below),
 // through the production adapter photos/gcs-store.js. Storage is reached ONLY after 2e's prod-wipe guard (assertStorageTestTarget).
 // The V4 signed PUT/GET are NOT emulable (the emulator does not sign) — they are the §4.3 real-GCS gate.
 // Run (HEAVY, in a granted slot):
@@ -111,18 +112,14 @@ function rest(method, path) {   // the Firebase Storage REST surface the CLIENT 
     assert.strictEqual(decodes, 1, 'PHOTO-EMU-ONE-CLAIM the retry does not decode');
     ok('E3 PHOTO-EMU-ONE-CLAIM: 2 concurrent processPhoto calls → one decode, one success, the other in_progress/stored; a retry returns the stored pid');
   }
-  // ── E4: createIfAbsent on the emulator's 412 — SEQUENTIAL ──
-  // EMULATOR LIMITATION (heavy 2026-11-01): two CONCURRENT create-only saves BOTH succeeded (two generations), although the upload
-  // carries ifGenerationMatch=0 (pinned on the wire by photos/gcs-store.test.js GCS-REAL-SDK-UPLOAD-CARRIES-IF-GENERATION-MATCH-0).
-  // The emulator does not serialize the precondition; the concurrent guarantee is a deploy-time real-GCS acceptance item.
-  {
-    const path = `drafts/${RID}/e4-${newId('x')}-card.webp`;
-    const first = await store.createIfAbsent(path, Buffer.from('a'), { contentType: 'image/webp' });
-    const second = await store.createIfAbsent(path, Buffer.from('a'), { contentType: 'image/webp' });
-    assert.deepStrictEqual([first.created, second.created], [true, false], `PHOTO-EMU-CREATE-IF-ABSENT the second create meets the 412 ${JSON.stringify([first, second])}`);
-    assert.strictEqual(second.generation, first.generation, 'PHOTO-EMU-CREATE-IF-ABSENT the second reports the first\'s generation');
-    ok('E4 PHOTO-EMU-CREATE-IF-ABSENT: create-only then create-only → created, then the SAME generation via the emulator\'s 412 (concurrency: unit wire pin + real-GCS acceptance)');
-  }
+  // ── E4: NOT ON THE EMULATOR (advisor ruling (a), 2026-11-01). The Storage emulator ignores ifGenerationMatch=0 on uploads
+  // ENTIRELY: two create-only saves of one path both succeeded with distinct generations, CONCURRENT (heavy 2026-11-01, first
+  // run) and then SEQUENTIAL (b1c379c4, red ×2). It cannot hold the guarantee, so nothing is asserted about it here. Where the
+  // create-only guarantee IS proven:
+  //   · the wire — photos/gcs-store.test.js GCS-REAL-SDK-UPLOAD-CARRIES-IF-GENERATION-MATCH-0 (the real @google-cloud/storage upload
+  //     carries ifGenerationMatch=0) and GCS-REAL-SDK-412 (a 412 is read as created:false with the existing generation);
+  //   · real GCS — the owner's deploy-time acceptance tools/photo-create-only-check.js (two CONCURRENT create-only saves through the
+  //     real adapter → exactly one created, the other the 412 with the same generation; generation-scoped cleanup).
   // ── E5: an upload replaced between metadata and download is refused (generation pin) ──
   {
     const uploadId = await issueUpload('tb_uid_e5', await jpeg());
