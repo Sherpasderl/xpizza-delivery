@@ -734,6 +734,41 @@ t('M5 latch path: to-restaurant → «Ya estoy» tap opens the review step → t
   assert.ok(!r.active().includes('id="btn-at-restaurant"'), 'step 2: the «Ya estoy» slide is gone');
 });
 
+// M5-reset: the latch RESET companions to M5 (slice1ReviewLatchKey must drop on ANY discontinuity BEFORE it is read,
+// so a stale «Ya estoy en el restaurante» can never silently re-open review for a later board/phase/session). These
+// cover the three reset guards at index.html renderActiveAndQueue (the drv1-16/19/20 mutation targets):
+//   • length>1 (stacked board) and an emptied/fresh active slot drop the latch (the `orders.length !== 1 || activeSlot.innerHTML === ''` guard)
+//   • a phase change away from pickup drops it (the `… || soloOrder.phase !== 'pickup'` guard)
+t('M5-reset drv1-19: a STACKED board (length>1) drops the solo review latch — a later solo pickup needs a fresh «Ya estoy» tap', async () => {
+  const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 300 });  // far → step 1
+  const d = r.prep('btn-at-restaurant'); r.down(d); r.move(1000); await r.up(1000);   // swipe «Ya estoy» → latch '0:A' + review
+  assert.ok(r.active().includes('Número de pedido'), 'latch set: the review step is open');
+  assert.ok(r.api.getLatch(), 'the latch is held while solo-pickup review is open');
+  r.setOrders([pickup('A'), pickup('B')]); r.render();     // board becomes stacked (length 2)
+  assert.equal(r.api.getLatch(), null, 'the stacked board (length>1) dropped the latch');
+  r.setOrders([pickup('A')]); r.render();                  // back to solo A, still far (dist 300)
+  assert.ok(r.active().includes('id="btn-at-restaurant"'), 'solo A now shows the to-restaurant step (a fresh «Ya estoy» tap is required)');
+  assert.ok(!r.active().includes('Número de pedido'), 'review did NOT silently re-open from a stale latch (kills drv1-19)');
+});
+t('M5-reset drv1-20: a stale latch is dropped on a fresh board mount (empty active slot) — no silently-opened review', () => {
+  // The latch is a module-level var: it can survive into a fresh mount where the active slot starts empty. That first
+  // solo render MUST drop it (via `activeSlot.innerHTML === ''`), so an injected stale latch never auto-opens review.
+  const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 300, latchInit: '0:A', authGen: 0 });
+  assert.equal(r.api.getLatch(), null, 'the fresh mount (empty active slot) dropped the stale latch');
+  assert.ok(r.active().includes('id="btn-at-restaurant"'), 'solo A shows the to-restaurant step, not a silently-opened review');
+  assert.ok(!r.active().includes('Número de pedido'), 'the stale latch did NOT auto-open review (kills drv1-20)');
+});
+t('M5-reset drv1-16: the solo review latch is dropped when the order leaves pickup phase — a re-pickup needs a fresh tap', async () => {
+  const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 300 });
+  const d = r.prep('btn-at-restaurant'); r.down(d); r.move(1000); await r.up(1000);   // latch '0:A' + review at pickup
+  assert.ok(r.api.getLatch(), 'the latch is held at pickup');
+  r.setOrders([delivery('A')]); r.render();                // the SAME order A advances to delivery (phase != pickup)
+  assert.equal(r.api.getLatch(), null, 'leaving pickup phase dropped the latch');
+  r.setOrders([pickup('A')]); r.render();                  // A re-enters pickup (reassignment / re-pickup), still far
+  assert.ok(r.active().includes('id="btn-at-restaurant"'), 'the re-pickup needs a fresh «Ya estoy» tap (to-restaurant step)');
+  assert.ok(!r.active().includes('Número de pedido'), 'the stale pickup latch did NOT re-open review (kills drv1-16)');
+});
+
 // M10 ← slice-1 "(a) 1→2 while a drag is in progress → deferred, replayed on drag-end" (retuned to the stop card).
 t('M10 defer: 1→2 while a slide drag is in progress → render DEFERS (renderPending), replays to stacked on drag-end', async () => {
   const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 49 });
