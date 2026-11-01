@@ -115,8 +115,10 @@ async function photoProcessCore(deps, { uid, rid, uploadId, crops }) {
   // ── 5. the registry RESERVATION (codex r1 P1-2) — BEFORE any derivative is created or reused. One transaction: a live `deleting` claim →
   // in_progress; otherwise this processor takes ownership (`reserve: {id, until}`) and bumps last_ref_at, so a sweeper that scanned
   // earlier can no longer claim (its claim requires the scanned last_ref_at, and skips a live reservation). A new pid becomes `draft`;
-  // draft / published keep their state; a `deleted` (or expired-`deleting`) pid is REUSED as `draft` with its stale generations cleared —
-  // the objects are re-created below and only their live generations are ever recorded.
+  // draft / published keep their state; a `deleted` (or expired-`deleting`) pid is REUSED as `draft` with its live generations cleared —
+  // the objects are re-created below and only their live generations are ever recorded. codex r2: the OLD generations are never dropped —
+  // they move into cleanup_gens (appended), which completion RETAINS and the sweeper deletes first (generation-matched, so an object
+  // re-created at the same path survives), so an abandoned re-creation leaves nothing behind.
   try {
     const rsv = await db.runTransaction(async (tx) => {
       const rs = await tx.get(regRef); const r = rs.exists ? rs.data() : null; const t = now();
@@ -124,7 +126,7 @@ async function photoProcessCore(deps, { uid, rid, uploadId, crops }) {
       const reserve = { id: claimId, until: t + LEASE_MS };
       if (!r) tx.set(regRef, { state: 'draft', last_ref_at: t, generations: {}, created_at: t, reserve });
       else if (r.state === 'draft' || r.state === 'published') tx.set(regRef, { ...r, last_ref_at: t, reserve });
-      else tx.set(regRef, { ...without(r, 'claim'), state: 'draft', last_ref_at: t, generations: {}, reserve });
+      else tx.set(regRef, { ...without(r, 'claim'), state: 'draft', last_ref_at: t, generations: {}, cleanup_gens: [...(Array.isArray(r.cleanup_gens) ? r.cleanup_gens : []), ...Object.entries(r.generations || {}).map(([k, g]) => ({ k, g: String(g) }))], reserve });
       return {};
     });
     if (rsv.code) { await settle({ state: 'issued' }); return fail('in_progress'); }

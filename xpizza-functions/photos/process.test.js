@@ -253,6 +253,29 @@ const reg = async (h, pid, rid = 'tb_r1') => { const s = await h.db.collection('
     ok('codex r1 P1-2: the reservation (last_ref_at bump + reserve) lands BEFORE derivatives, so a sweeper that scanned earlier cannot claim; completion requires the reservation and live generations — a lost reservation or a vanished object never completes');
   }
 
+  // ── codex r2 (regression vs base): reusing an EXPIRED `deleting` pid never forgets its old objects — the reservation moves the old
+  //    generations into cleanup_gens; if the re-creation then fails and is abandoned, the sweep still removes every object ──
+  {
+    const S = require('./sweep-core');
+    const pid = `p4096x0`.padEnd(32, '0');
+    const h = harness(); await seedUpload(h);
+    for (const p of [`drafts/tb_r1/${pid}-card.webp`, `drafts/tb_r1/${pid}-hero.webp`, `photos/tb_r1/${pid}-card.webp`, `photos/tb_r1/${pid}-hero.webp`]) h.storage.put(p, Buffer.from('old'));
+    const g = (p) => h.storage.objects.get(p).generation;
+    await h.db.collection('photo_registry').doc('tb_r1').collection('pids').doc(pid).set({ state: 'deleting', last_ref_at: 1, created_at: 1,
+      claim: { id: 'dead-sweeper', lease_until: T0 - 3600e3 },
+      generations: { draft_card: g(`drafts/tb_r1/${pid}-card.webp`), draft_hero: g(`drafts/tb_r1/${pid}-hero.webp`), pub_card: g(`photos/tb_r1/${pid}-card.webp`), pub_hero: g(`photos/tb_r1/${pid}-hero.webp`) } });
+    h.storage.failNext('create', new Error('ECONNRESET'));
+    const r = await photoProcessCore(h.deps, REQ);
+    assert.strictEqual(r.status, 503, `premise: the first object op failed ${JSON.stringify(r.body)}`);
+    const deleter = { async deleteIfGeneration(path, gen) { const o = h.storage.objects.get(path); if (!o) return 'missing'; if (o.generation !== String(gen)) return 'other_generation'; h.storage.objects.delete(path); return 'deleted'; },
+      async deleteAny(path) { return h.storage.objects.delete(path) ? 'deleted' : 'missing'; } };
+    const sw = await S.sweepRid({ fs: h.db, priv: deleter, pub: deleter, now: () => T0 + 8 * 86400e3, newClaimId: () => 'swB', log: { info: () => {}, warn: () => {} }, mode: 'live', activeVersionId: async () => null }, 'tb_r1');
+    assert.ok(sw.deleted.includes(pid) || sw.recovered.includes(pid), `premise: the sweeper took the pid ${JSON.stringify(sw)}`);
+    const left = [...h.storage.objects.keys()].filter((k) => k.startsWith('drafts/') || k.startsWith('photos/'));
+    assert.deepStrictEqual(left, [], `PROC-REUSE-NEVER-FORGETS-OLD-OBJECTS (left: ${left.join(', ')})`);
+    ok('codex r2: expired deleting → reserved → the first object op fails → abandoned → the sweep removes all 4 old objects (cleanup_gens), as at base');
+  }
+
   console.log(`process: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('process: FAILED —', e && e.stack || e); process.exit(1); });
