@@ -40,7 +40,7 @@ ok('sensitivity: a byte inside a hunk, a duplicated hunk and a missing hunk are 
   const baseWa = show(BASE);
   assert.deepStrictEqual([...FILES], ['whatsapp.js'], 'S3C-MOD-FILES: whatsapp.js only');
   assert.strictEqual(unapplyS3cModule('whatsapp.js', show('72ba5a0d')), baseWa, '🔴 S3C-MOD-GEN: the S3c tip\'s whatsapp.js minus the S3c hunks is not 786a328a:whatsapp.js');
-  const wa = unapplyS2tipModule('whatsapp.js', fs.readFileSync(path.join(__dirname, 'whatsapp.js'), 'utf8'));   // the fold order: s2tip (newer) FIRST
+  const wa = unapplyS2tipModule('whatsapp.js', require('./tools/drvc-inverse').unapplyDrvcModule('whatsapp.js', fs.readFileSync(path.join(__dirname, 'whatsapp.js'), 'utf8')));   // the fold order: s2tip (newer) FIRST; DRYRUN R-WIRE (2e): main's DRIVER C whatsapp.js hunks innermost (disjoint; both orders == 786a328a)
   assert.strictEqual(unapplyS3cModule('whatsapp.js', wa), baseWa, '🔴 S3C-MOD-BASE: whatsapp.js minus s2tip\'s, then S3c\'s hunks, is not 786a328a:whatsapp.js — something beyond the stated seams changed');
   assert.notStrictEqual(wa, baseWa, 'S3C-MOD-NONVACUOUS: the S3c hunks are present');
   for (const h of MH) assert.ok(wa.indexOf(h.now) > -1 && wa.indexOf(h.now, wa.indexOf(h.now) + 1) === -1, `S3C-MOD-ONCE: ${h.now.slice(0, 50)}`);
