@@ -151,15 +151,13 @@ const S1 = makeCheckoutOtp({ getDatabase: () => rtdb, registry: () => ({ ready: 
 async function s1(fn, body) { const r = { status(c) { r.code = c; return r; }, json(b) { r.body = b; return r; } }; await S1[fn]({ method: 'POST', body, ip: '7.7.7.7' }, r); return r; }
 async function ticketFor(c, phoneE164) {
   const cart_fp = await CAPP.cartSig(c.f, c.ctx, subtle);
-  clock += G.BUDGET.WINDOW + 1;
-  // heavy run 1 (23aa4a12): `clock = Date.now()` below moves the clock BACK, so a second ticket for the same phone landed inside the
-  // durable per-phone MIN_GAP (429 rate_limited) — the budget is not under test here (S1's checkout-otp cells own it): clear it
-  await rtdb.ref('otp_ip').remove(); await rtdb.ref('otp_budget').remove();
+  clock += G.BUDGET.WINDOW + 1;   // the logical OTP clock only moves FORWARD (heavy run 1: a rewind put a same-phone send inside MIN_GAP)
+  await rtdb.ref('otp_ip').remove();
   const a = await s1('requestCheckoutCode', { phone_e164: phoneE164, restaurant_id: c.ctx.restaurantId, cart_fp });
   assert.strictEqual(a.code, 200, JSON.stringify(a.body));
   const v = await s1('verifyCheckoutCode', { phone_e164: phoneE164, restaurant_id: c.ctx.restaurantId, cart_fp, order_id: c.ctx.orderId, code: SENT[SENT.length - 1] });
   assert.strictEqual(v.code, 200, JSON.stringify(v.body));
-  clock = Date.now();   // the handlers' gate uses the real clock; the ticket was issued at ~now
+  clock = Math.max(clock, Date.now());   // monotonic, NEVER rewound: the real budget path stays exercised across restaurants (the gate checks the ticket's exp against the real clock)
   return v.body.checkout_ticket;
 }
 const charge = (body, h = APP_H) => post(app.chargeOnlineOrder, body, h);
@@ -177,14 +175,14 @@ const is400 = (r, reason, label) => { assert.strictEqual(r.status, 400, `${label
       env: { ULTRAMSG_INSTANCE_ID_PLATFORM: 'i', ULTRAMSG_TOKEN_PLATFORM: 't', CHECKOUT_OTP_TEMPLATE: '{code}' }, fetchImpl: async () => ({ ok: true, json: async () => ({ sent: 'true' }) }) });
     const c = capp('x_pizza', 'u_sdk', { phone: '9955-0005' });
     const cart_fp = await CAPP.cartSig(c.f, c.ctx, subtle);
-    clock += G.BUDGET.WINDOW + 1; await rtdb.ref('otp_ip').remove(); await rtdb.ref('otp_budget').remove();
+    clock += G.BUDGET.WINDOW + 1; await rtdb.ref('otp_ip').remove();
     assert.strictEqual((await s1('requestCheckoutCode', { phone_e164: '+50499550005', restaurant_id: 'x_pizza', cart_fp })).code, 200);
     const r = { status(x) { r.code = x; return r; }, json(b) { r.body = b; return r; } };
     await S1b.verifyCheckoutCode({ method: 'POST', body: { phone_e164: '+50499550005', restaurant_id: 'x_pizza', cart_fp, order_id: 'u_sdk', code: SENT[SENT.length - 1] }, ip: '7.7.7.7' }, r);
     assert.strictEqual(r.code, 200, `🔴 a valid code verified on another SDK instance (${JSON.stringify(r.body)})`);
     assert.ok((await rtdb.ref(`checkout_tickets/${G.ticketKey(r.body.checkout_ticket)}`).get()).exists(), 'the ticket is written');
     await second.delete();
-    clock = Date.now();
+    clock = Math.max(clock, Date.now());
   }
   ok('U issuance on one SDK instance, verification on a SECOND uncached one ⇒ 200 + ticket (Codex r1 P1-1)');
 
