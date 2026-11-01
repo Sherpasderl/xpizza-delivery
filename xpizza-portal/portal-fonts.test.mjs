@@ -105,6 +105,28 @@ test('preconnects: www.gstatic.com + the Functions origin (tied to their source 
   }
 });
 
+// P2 — the §4 rendered-font census (portal-fonts.cdp.mjs, heavy slot; FF-same at the first view×theme, every repeat identical): gate (b)
+// has a verdict for EVERY primary declaration × every weight a --disp rule requests, none is FAIL, the latin subset is COVERED at both
+// requested weights, and every §4 state is in it (P-crop only with the dish-photos B tip)
+test('the committed census (platform/fonts/census/portal.census.json): gate (b) per declaration × requested weight, every state', () => {
+  const c = JSON.parse(readFileSync(join(DIR, '..', 'platform/fonts/census/portal.census.json'), 'utf8'));
+  assert.ok(c.repeats >= 3 && c.repeatsAgree === true, 'three repeats, identical');
+  const weights = new Set();
+  for (const f of SHEETS) for (const m of read(f).matchAll(/\{([^{}]*font-family\s*:\s*var\(--disp\)[^{}]*)\}/g)) for (const x of m[1].matchAll(/font-weight\s*:\s*(\d{3})/g)) weights.add(Number(x[1]));
+  assert.deepEqual([...weights].sort(), [750, 800], 'the weights --disp rules request (the census is keyed on exactly these)');
+  const subsets = parseBaseline(loadBaseline('portal', man).css);
+  for (const s of subsets) for (const w of weights) {
+    const v = c.gateB.filter((x) => x.weight === w && s.unicodeRange.startsWith(x.raw.slice(0, 12)));
+    assert.equal(v.length, 1, `${s.subset} × ${w}: one verdict`);
+    assert.ok(!/^FAIL/.test(v[0].verdict), `${s.subset} × ${w}: ${v[0].verdict}`);
+  }
+  for (const w of weights) assert.ok(c.gateB.some((x) => x.weight === w && x.verdict === 'covered' && /^U\+0000-00FF/.test(x.raw)), `latin × ${w} is covered by a painted codepoint`);
+  const want = ['L-login', 'L-error', 'I-email', 'I-busy', 'I-busy-retry', 'I-busy-fallback', 'I-password', 'I-reset-sent', 'I-error', 'I-invalid',
+    'P-editor', 'P-drawer', 'P-review', 'P-receipt', 'P-conflict', 'P-readonly', 'A-drawer', 'S-list', 'S-detail', 'Z-pause', 'E-devices', 'E-unlink',
+    'V-ventas', 'T-team', 'T-invite', 'T-edit', 'T-sent', 'T-remove', ...(existsSync(join(DIR, 'photo.js')) ? ['P-crop'] : [])];
+  assert.deepEqual(Object.keys(c.states).sort(), want.sort(), 'every §4 state is in the census');
+});
+
 // P2 — the §3.1 real-SDK origin trace (portal-origins.cdp.mjs --write, heavy slot) recorded perf/portal.origins.json: the preconnect
 // set IS its admitted set, it ran the SDK firebase.js imports from the pinned bytes, and nothing it admitted is an excluded origin.
 test('the trace-ratified preconnect set (perf/portal.origins.json)', () => {
