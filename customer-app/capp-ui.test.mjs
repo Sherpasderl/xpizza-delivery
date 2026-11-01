@@ -2606,3 +2606,102 @@ test('Codex S4 r1 #5: row 10 stays retryable when the generator no longer offers
   await b.click('#cta'); await settle();
   const s = b.srv.of('createOrder'); assert.equal(s.length, 2, '🔴 the retry dispatches'); assert.deepEqual(J(s[1].body), J(s[0].body));
 });
+test('S4 row 10 (advisor ruling (a), Codex S4 r2): the TENDER of a retained scheduled send is fixed with its slot — the other tender disabled, a forced tap changes nothing, «Reintentar» re-sends to the recorded tender', async () => {
+  const b = bootS4({ script: { createOrder: ['network', (body) => ({ status: 200, json: { ok: true, idempotent: true, scheduled: true, order_id: body.order_id, scheduled_for: body.scheduled_for } })], chargeOnlineOrder: [CHECKOUT] } });
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]'); await b.click('.slotgrid .chip');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  await b.click('#layer [data-act="lclose"]');
+  assert.equal(b.ui.state.flow.pay, 'cash', 'premise: a cash send retained');
+  const change = b.q('[data-act="showpay"]');
+  if (change) { assert.ok(change.disabled, '🔴 S4-tender: «Cambiar» disabled while confirming'); change.dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle(); }
+  const card = b.q('[data-act="pay"][data-val="online"]');
+  if (card) { assert.ok(card.disabled, '🔴 S4-tender: the other tender disabled'); card.dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle(); }
+  b.ui.state.flow.pay = 'online'; b.ui.render(); await settle();   // a flow edited behind the lock (a restore): the render puts the recorded tender back
+  assert.equal(b.ui.state.flow.pay, 'cash', '🔴 S4-tender: the recorded tender stands');
+  await b.click('#cta'); await settle();
+  assert.deepEqual([b.srv.of('createOrder').length, b.srv.of('chargeOnlineOrder').length], [2, 0], '🔴 S4-tender: re-sent to the recorded tender, never charged');
+});
+// ── Codex G7 r1 #1 (advisor ruling, 2026-10-31): the lock AND the dispatch endpoint come from the RETAINED RECORD only — never from the
+// current flow. The record names its owner (owner); only that member sees the lock and replays it. A non-owner (a guest after
+// the sign-out, member B) gets a clean flow and a LOCAL refusal (no network, the record untouched) until the record resolves or
+// expires; the owner signing in again restores the lock.
+const S4_PLACE_KEY = 'capp:rid_a:pending_place';
+const S4_REPLAY_OK = (body) => ({ status: 200, json: { ok: true, idempotent: true, scheduled: true, order_id: body.order_id, scheduled_for: body.scheduled_for } });
+async function retainCash(b) {   // an unresolved scheduled CASH send (the network dropped), its «Sin conexión» closed — the real writer
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]'); await b.click('.slotgrid .chip');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  await b.click('#layer [data-act="lclose"]');
+  const rec = JSON.parse(b.storage.getItem(S4_PLACE_KEY) || 'null');
+  assert.ok(rec && rec.sched_pending === true && Number(rec.dispatched) === 1, 'premise: a retained, unresolved scheduled send');
+  return rec;
+}
+const heldSheet = (b) => b.text('#layer .errsheet h2, #layer .errsheet .t, #layer .errsheet b');
+test('Codex G7 r1 #1 (remount): a retained scheduled CASH send locks the remounted checkout from the RECORD — a flow edited to ASAP + card still replays the recorded body to createOrder, never chargeOnlineOrder', async () => {
+  const a = bootS4({ script: { createOrder: ['network'] } }); const rec = await retainCash(a);
+  const sent0 = a.srv.of('createOrder')[0].body;
+  const b = bootS4({ storage: a.storage, script: { createOrder: [S4_REPLAY_OK], chargeOnlineOrder: [CHECKOUT] } });
+  await toCheckout(b); await schedFill(b, 'online');
+  assert.equal(cta(b), 'Reintentar', '🔴 S4-owner: the remounted checkout is locked from the record');
+  assert.equal(b.ui.state.flow.pay, 'cash', '🔴 S4-owner: the recorded tender'); assert.equal(b.ui.state.flow.time, 'schedule');
+  b.ui.state.flow.time = 'asap'; b.ui.state.flow.pay = 'online'; b.ui.render(); await settle();   // a flow edited behind the lock
+  await b.click('#cta'); await settle();
+  assert.deepEqual([b.srv.of('createOrder').length, b.srv.of('chargeOnlineOrder').length], [1, 0], '🔴 S4-owner: the recorded CASH body goes to createOrder, never to the card endpoint');
+  assert.deepEqual(J(b.srv.of('createOrder')[0].body), J(sent0), 'the exact recorded bytes'); assert.equal(sent0.order_id, rec.order_id);
+});
+test('Codex G7 r1 #1 (sign-out → guest): the guest gets a clean card-only flow and a LOCAL refusal — no network, the record untouched; the owner signing in again restores the lock', async () => {
+  const b = bootS4({ config: GUEST, script: { createOrder: ['network', S4_REPLAY_OK], ...CODE_OK } }); await retainCash(b);
+  const before = b.storage.getItem(S4_PLACE_KEY), calls0 = b.srv.calls ? b.srv.calls.length : null;
+  b.ui.setMember(null); await settle();
+  assert.equal(b.ui.state.flow.pay, 'online', '🔴 S4-owner: a guest is card-only internally too (never cash-locked)');
+  assert.notEqual(b.ui.state.flow.time, 'schedule'); assert.notEqual(cta(b), 'Reintentar', '🔴 S4-owner: no lock for a non-owner');
+  if (b.q('#f-email')) await b.type('#f-email', 'otra@correo.test');
+  await b.click('#cta'); await settle();
+  const sub = b.q('[data-act="tip-place"]'); if (sub) { await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await settle(); }
+  assert.equal(heldSheet(b), 'Hay un pedido de otra cuenta confirmándose en este teléfono', '🔴 S4-held: the local refusal');
+  assert.deepEqual(b.qa('#layer .errsheet [data-act]').map((x) => [x.dataset.act, b.text(x)]), [['lclose', 'Entendido']], '🔴 S4-held: ONE action, «Entendido» — no retry');
+  assert.deepEqual([b.srv.of('requestCheckoutCode').length, b.srv.of('createOrder').length, b.srv.of('chargeOnlineOrder').length], [0, 1, 0], '🔴 S4-held: no network call');
+  assert.equal(b.storage.getItem(S4_PLACE_KEY), before, '🔴 S4-held: the record untouched');
+  await b.click('#layer [data-act="lclose"]');
+  b.ui.setMember(S4_MEMBER); await settle();
+  assert.equal(cta(b), 'Reintentar', '🔴 S4-owner: the owner signing in again restores the lock'); assert.equal(b.ui.state.flow.pay, 'cash');
+  if (calls0 !== null) assert.ok(b.srv.calls.length >= calls0);
+});
+test('Codex G7 r1 #1 (member B): another member gets a clean flow and the local refusal; once A\'s record EXPIRES, B places normally on a NEW identity', async () => {
+  const b = bootS4({ script: { createOrder: ['network', { status: 200, json: { ok: true, order_id: 'x', tracking_token: 't' } }] } }); const rec = await retainCash(b);
+  const before = b.storage.getItem(S4_PLACE_KEY);
+  b.ui.setMember({ uid: 'u2', name: 'Bea', phone: '99991111', email: 'bea@b.co', idToken: 'tok2' }); await settle();
+  assert.notEqual(cta(b), 'Reintentar', '🔴 S4-owner: no lock for member B');
+  await b.click('[data-act="time"][data-val="asap"]').catch(() => {}); await settle();
+  await b.click('#cta'); await settle();
+  const sub = b.q('[data-act="tip-place"]'); if (sub) { await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await settle(); }
+  if (b.q('#layer [data-act="placing-go"]')) await b.click('#layer [data-act="placing-go"]');
+  assert.equal(heldSheet(b), 'Hay un pedido de otra cuenta confirmándose en este teléfono', '🔴 S4-held: member B is refused locally');
+  assert.equal(b.srv.of('createOrder').length, 1, '🔴 S4-held: no network call'); assert.equal(b.storage.getItem(S4_PLACE_KEY), before, 'the record untouched');
+  await b.click('#layer [data-act="lclose"]');
+  b.storage.setItem(S4_PLACE_KEY, JSON.stringify({ ...JSON.parse(before), expires_at: 1 }));   // A's record expires
+  await b.click('#cta'); await settle();
+  if (b.q('[data-act="tip-place"]')) { await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await settle(); }
+  if (b.q('#layer [data-act="placing-go"]')) await b.click('#layer [data-act="placing-go"]');
+  const s = b.srv.of('createOrder');
+  assert.equal(s.length, 2, '🔴 S4-expiry: B places once A\'s record expired'); assert.notEqual(s[1].body.order_id, rec.order_id, '🔴 S4-expiry: B\'s own identity');
+});
+// Codex G7 r3 (P2, regression of the r2 ASAP ownership): an owned ASAP retained send has NO slot — lockedSlot() is null for it (ONE
+// null-safe predicate, hasSlotLock), so the checkout never draws a slot lock («NaN:NaN») nor a dead «Reintentar»; the tender stays locked
+test('Codex G7 r3: an unresolved ASAP cash send, its error closed — back on the checkout no «NaN», no slot lock, the retry SENDS; the owner\'s tender stays fixed', async () => {
+  const b = bootS4({ script: { createOrder: ['network', { status: 200, json: { ok: true, order_id: 'x', tracking_token: 't' } }] } });
+  await toCheckout(b); await schedFill(b);
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.srv.of('createOrder').length, 1, 'premise: the ASAP cash send went out (and was lost)');
+  await b.click('#layer [data-act="lclose"]'); await settle();
+  await b.click('[data-act="back"]'); await settle();   // back to the checkout (the Codex repro)
+  assert.equal(b.ui.state.screen, 'checkout', 'premise: on the checkout');
+  assert.ok(!/NaN/.test(b.text('#flow') || ''), '🔴 R3-asap: no «NaN» slot text for an ASAP send');
+  assert.notEqual(b.ui.state.flow.time, 'schedule', '🔴 R3-asap: an ASAP send never turns into a slot lock');
+  const pay = b.q('[data-act="showpay"]') || b.q('[data-act="pay"][data-val="online"]');
+  assert.ok(pay && pay.disabled, '🔴 R3-asap: the owner\'s tender stays fixed');
+  await b.click('#cta'); await settle();
+  if (b.q('[data-act="tip-place"]')) { await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); }
+  if (b.q('#layer [data-act="placing-go"]')) await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.srv.of('createOrder').length, 2, '🔴 R3-asap: the retry SENDS');
+  assert.deepEqual(b.srv.of('createOrder')[1].body, b.srv.of('createOrder')[0].body, 'the exact recorded bytes');
+});

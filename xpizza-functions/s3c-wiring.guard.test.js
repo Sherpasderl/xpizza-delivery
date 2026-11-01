@@ -31,4 +31,24 @@ assert.throws(() => unapplyS3cIndex(live + HUNKS[HUNKS.length - 1][0]), /exactly
 assert.throws(() => unapplyS3cIndex(live.replace(HUNKS[HUNKS.length - 1][0], '')), /exactly once/, 'a MISSING hunk');
 ok('sensitivity: a byte inside a hunk, a duplicated hunk and a missing hunk are each detected');
 
+// the MODULE inverse (assembly dry run STOP 3): S3c's whatsapp.js hunks — the «Envío» receipt line — reversed exactly, so the
+// guards that pin whatsapp.js (main's DRIVER C: drvc-wiring, brand-server-wiring) reverse s2tip's hunks, THEN these, then C's
+{
+  const { unapplyS3cModule, HUNKS: MH, FILES } = require('./tools/s3c-module-inverse');
+  const { unapplyS2tipModule } = require('./tools/s2tip-module-inverse');
+  const show = (rev) => execFileSync('git', ['show', `${rev}:xpizza-functions/whatsapp.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
+  const baseWa = show(BASE);
+  assert.deepStrictEqual([...FILES], ['whatsapp.js'], 'S3C-MOD-FILES: whatsapp.js only');
+  assert.strictEqual(unapplyS3cModule('whatsapp.js', show('72ba5a0d')), baseWa, '🔴 S3C-MOD-GEN: the S3c tip\'s whatsapp.js minus the S3c hunks is not 786a328a:whatsapp.js');
+  const wa = unapplyS2tipModule('whatsapp.js', fs.readFileSync(path.join(__dirname, 'whatsapp.js'), 'utf8'));   // the fold order: s2tip (newer) FIRST
+  assert.strictEqual(unapplyS3cModule('whatsapp.js', wa), baseWa, '🔴 S3C-MOD-BASE: whatsapp.js minus s2tip\'s, then S3c\'s hunks, is not 786a328a:whatsapp.js — something beyond the stated seams changed');
+  assert.notStrictEqual(wa, baseWa, 'S3C-MOD-NONVACUOUS: the S3c hunks are present');
+  for (const h of MH) assert.ok(wa.indexOf(h.now) > -1 && wa.indexOf(h.now, wa.indexOf(h.now) + 1) === -1, `S3C-MOD-ONCE: ${h.now.slice(0, 50)}`);
+  assert.throws(() => unapplyS3cModule('whatsapp.js', wa.replace('🛵 Envío: Gratis', '🛵 Envío: gratis')), /exactly once/, 'S3C-MOD-EDIT: a byte inside a hunk');
+  assert.throws(() => unapplyS3cModule('whatsapp.js', wa + MH[MH.length - 1].now), /exactly once/, 'S3C-MOD-DUP: a duplicated hunk');
+  assert.throws(() => unapplyS3cModule('whatsapp.js', wa.replace(MH[MH.length - 1].now, '')), /exactly once/, 'S3C-MOD-MISSING: a missing hunk');
+  assert.strictEqual(unapplyS3cModule('index.js', 'x'), 'x', 'S3C-MOD-PASSTHROUGH: other files pass through');
+  ok(`unapplyS3cModule(whatsapp.js): 72ba5a0d → ${BASE} and (after s2tip) the live file → ${BASE} byte-for-byte (${MH.length} hunks); edited / duplicated / missing hunks refused; other files pass through`);
+}
+
 console.log(`\ns3c-wiring.guard: OK (${n})`);

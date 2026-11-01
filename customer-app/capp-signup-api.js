@@ -2,10 +2,11 @@
 // the order forms' own endpoints, scoped to the platform — never a restaurant id; additive fields only). UMD, brand-agnostic. DARK.
 //
 //   createSignupApi({ endpoints, fetch?, timeoutMs?, timers? }) → { config, requestOtp, verifyOtp, googleStart, googleSignIn,
-//   completeProfile, redeemSignupGrant }. Every call is BOUNDED (timeoutMs) and returns a plain result — never throws:
+//   completeProfile, redeemSignupGrant, setPromos }. Every call is BOUNDED (timeoutMs) and returns a plain result — never throws:
 //     { ok:true, … } | { ok:false, reason } with reason ∈ the contract's codes, or 'offline' (network / timeout / unparsable).
-//   endpoints: { requestOtp, verifyOtp, getSignupConfig, googleStart, googleSignIn, completeProfile, redeemSignupGrant } — the app
-//   runtime's (the same deployed functions the forms call; the app's web origin is already in their CORS list).
+//   endpoints: one URL per key of ENDPOINTS (below) — the app runtime's (the same deployed functions the forms call; the app's web
+//   origin is already in their CORS list). ENDPOINTS is the ONE source of the set: the host that builds runtime.signup builds its
+//   endpoints from it, and a guard holds every call here to a key in it.
 (function (root, factory) {
   const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -15,6 +16,8 @@
 
   const CONTEXT = 'platform';
   const TIMEOUT_MS = 12000;
+  // the runtime.signup endpoint set — every call below uses one of these keys (capp-signup.test.mjs guard)
+  const ENDPOINTS = Object.freeze(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant', 'setPromos']);
 
   function createSignupApi(opts) {
     const o = opts || {};
@@ -36,7 +39,8 @@
     const COMPLETION = new Set(['complete', 'needed', 'off']);
     const signedIn = (j) => ({ ok: true, token: j.token, isNew: j.is_new === true, name: typeof j.name === 'string' ? j.name : null,
       completion: COMPLETION.has(j.completion) ? j.completion : 'needed',   // an old server without the field ⇒ ask (never skip consent)
-      profile: j.profile && typeof j.profile === 'object' ? { name: typeof j.profile.name === 'string' ? j.profile.name : null, email: typeof j.profile.email === 'string' ? j.profile.email : null } : null });
+      profile: j.profile && typeof j.profile === 'object' ? { name: typeof j.profile.name === 'string' ? j.profile.name : null, email: typeof j.profile.email === 'string' ? j.profile.email : null,
+        ...(typeof j.profile.promos === 'boolean' ? { promos: j.profile.promos } : {}) } : null });   // Codex G7 r1 #3: the stored consent (omitted when none is stored)
 
     return {
       CONTEXT,
@@ -75,6 +79,12 @@
         const r = await call(E.completeProfile, { idToken, body: { context: CONTEXT, email, accept_terms: true, promos: promos === true, name } });
         return r.status === 200 && r.json && r.json.ok === true ? { ok: true } : { ok: false, reason: reasonOf(r) };
       },
+      // G7 (CONTRACT-capp-signup-platform-wire §6): the member's promotions choice — {context:'platform', value}, the member's ID token
+      async setPromos({ idToken, value }) {
+        const r = await call(E.setPromos, { idToken, body: { context: CONTEXT, value: value === true } });
+        // the platform answer reads the committed value back ({ok:true, value}, contract §6) — adopted when present
+        return r.status === 200 && r.json && r.json.ok === true ? { ok: true, ...(typeof r.json.value === 'boolean' ? { value: r.json.value } : {}) } : { ok: false, reason: reasonOf(r) };
+      },
       async redeemSignupGrant({ grant, email, name, promos }) {
         const r = await call(E.redeemSignupGrant, { body: { grant, context: CONTEXT, email, name, accept_terms: true, promos: promos === true } });
         const j = r.json;
@@ -84,5 +94,5 @@
     };
   }
 
-  return { createSignupApi, CONTEXT, TIMEOUT_MS };
+  return { createSignupApi, CONTEXT, TIMEOUT_MS, ENDPOINTS };
 });

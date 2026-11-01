@@ -155,6 +155,12 @@
     return w.__cappMapsP;
   }
 
+  // the app's error sheet (.errsheet) — also the shell's (S7a-2 frame 15)
+  function errSheetHtml(e) {
+    const acts = e.acts.map((a) => `<button class="${a.primary ? 'primary' : 'btn2 wide'}" data-act="${a.act}"${a.disabled ? ' disabled' : ''}${a.id ? ` id="${a.id}"` : ''}>${esc(a.label)}</button>`).join('');
+    const ic = e.ic ? IC[e.ic] : e.icon === 'ok' ? IC.check : e.icon === 'warn' || e.icon === 'calm' ? IC.alert : IC.close;
+    return `<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="${esc(e.title)}"><div class="grab"></div><div class="errsheet"><div class="icon${e.icon ? ' ' + e.icon : ''}">${ic}</div><h2>${esc(e.title)}</h2><p>${e.bodyHtml != null ? e.bodyHtml : esc(e.body)}</p>${e.note ? `<p class="note">${e.note}</p>` : ''}<div class="acts">${acts}</div></div></div>`;
+  }
   function mount(doc, opts) {
     const CappMenu = opts.CappMenu || (typeof self !== 'undefined' && self.CappMenu) || require('./capp-menu.js');
     const CappCart = opts.CappCart || (typeof self !== 'undefined' && self.CappCart) || require('./capp-cart.js');
@@ -575,13 +581,22 @@
     const schedDays = () => schedMod().days(servedSched(), now().getTime(), S.flow ? S.flow.mode : 'delivery');
     const anySlotNow = () => schedDays().some((d) => d.slots.length > 0);
     // row 10: a RETAINED scheduled identity (dispatched, its body recorded) — its slot is fixed until the send resolves
-    function lockedSlot() {
-      if (!sched() || !api || !S.flow || S.flow.time !== 'schedule') return null;
-      let r = null; try { r = api.readPlace(); } catch (_) { r = null; }
-      if (!r || !(Number(r.dispatched) > 0) || r.sched_pending !== true || typeof r.sent_body !== 'string') return null;   // only an UNCERTAIN send
-      let b = null; try { b = JSON.parse(r.sent_body); } catch (_) { b = null; }
-      return b && Number.isFinite(b.scheduled_for) ? b.scheduled_for : null;
+    // Codex G7 r1 #1: from the RECORD only (capp-api's retainedSend), never from the current flow — and only for the member who sent it
+    // (owner); a guest or another member sees no lock (and is refused locally at the send, heldByOther)
+    function lockedBody() {
+      if (!sched() || !api || !S.flow) return null;
+      let rs = null; try { rs = api.retainedSend(); } catch (_) { rs = null; }
+      const m = member();
+      return rs && m && typeof m.uid === 'string' && rs.owner === m.uid ? rs.body : null;
     }
+    const heldByOther = () => { try { return !!(sched() && api && api.retainedByOther()); } catch (_) { return false; } };
+    // Codex G7 r3: the retained send's slot — null whenever the record has none (an owned ASAP send keeps its tender lock, never a slot
+    // lock); hasSlotLock() is the ONE predicate every consumer reads
+    function lockedSlot() { const b = lockedBody(); return b && Number.isFinite(b.scheduled_for) ? b.scheduled_for : null; }
+    const hasSlotLock = () => lockedSlot() !== null;
+    // advisor ruling (a), Codex S4 r2: the TENDER of a retained send is fixed with its slot — the recorded one (the replay re-sends
+    // those bytes to that tender's endpoint); null ⇒ not locked
+    function lockedPay() { const b = lockedBody(); return b ? (b.payment_method === 'online' ? 'online' : 'cash') : null; }
     // Codex S4 r1 #1 (owner G=B): scheduling requires an account — the ONE guard every scheduling entry (the cards, the closed
     // preselect, the closure sheet's «Programar», the Inicio cue, a restore) and the dispatch go through; a non-member gets frame G
     // (the order stays ASAP, so a closed store's closure refusal stands)
@@ -666,11 +681,11 @@
     // new copy: the line carries the drawn «Agotado» mark; the CTA stays as labelled, disabled)
     const soldLines = (has = soldOf) => cart.lines().filter((l) => isSoldBy(find(l.key), has));
     const soldBlock = () => soldLines().length > 0;
-    const gateCtx = () => ({ open: isOpen(), closedRefused: S.closedRefused, ...(sched() ? { anySlot: lockedSlot() !== null || anySlotNow() } : {}), pickupOnlyCount: poLines().length, outZone: S.outZone, member: member(), unavailableLines: soldLines().length,
+    const gateCtx = () => ({ open: isOpen(), closedRefused: S.closedRefused, ...(sched() ? { anySlot: hasSlotLock() || anySlotNow() } : {}), pickupOnlyCount: poLines().length, outZone: S.outZone, member: member(), unavailableLines: soldLines().length,
       ...(cardOnlyGuest() ? { guestEmail: true, emailRefused: S.emailRefused === true } : {}) });
     const need = () => C.missingStep(S.flow, gateCtx());
     function ctaLabel(T) {
-      if (lockedSlot() !== null) return 'Reintentar';   // row 10b: the drawn «Reintentar» re-sends the SAME order
+      if (hasSlotLock()) return 'Reintentar';   // row 10b: the drawn «Reintentar» re-sends the SAME order
       const n = need(); if (n) return n;
       if (S.flow.mode === 'delivery') return 'Continuar';   // delivery continues to the tip step
       const amt = T.ready ? ' · ' + moneyC(T.total) : '';   // pickup places from here (no tip); no amount until the quote is ready
@@ -755,18 +770,18 @@
     // disabled .45; the pressed «Programar» card and the chosen slot stay as drawn; the window note, then note A) — taps are refused by
     // the handler (lockedSlot), not by the markup
     function schedCards(f, open, del) {
-      const K = schedMod(), s = servedSched(), t0 = now().getTime(), lk = lockedSlot();
-      if (lk !== null) { f.time = 'schedule'; f.slot = lk; f.slotDay = K.dayKey(s, lk); }
+      const K = schedMod(), s = servedSched(), t0 = now().getTime(), on = hasSlotLock(), lk = on ? lockedSlot() : null;
+      if (on) { f.time = 'schedule'; f.slot = lk; f.slotDay = K.dayKey(s, lk); }
       const ds = schedDays(), first = ds.find((d) => d.slots.length), sdayKey = f.slotDay || (first ? first.key : null), sd = ds.find((d) => d.key === sdayKey) || null;
-      const dis = lk !== null ? ' disabled' : '';
-      const cards = `<div class="opts"><button class="opt" aria-pressed="${f.time === 'asap'}" data-act="time" data-val="asap"${open && lk === null ? '' : ' disabled'}><b>Lo antes posible</b><span>${open ? esc(etaTxt(del ? 'delivery' : 'pickup')) : 'No disponible · cerrado'}</span></button>
+      const dis = on ? ' disabled' : '';
+      const cards = `<div class="opts"><button class="opt" aria-pressed="${f.time === 'asap'}" data-act="time" data-val="asap"${open && !on ? '' : ' disabled'}><b>Lo antes posible</b><span>${open ? esc(etaTxt(del ? 'delivery' : 'pickup')) : 'No disponible · cerrado'}</span></button>
       <button class="opt" aria-pressed="${f.time === 'schedule'}" data-act="time" data-val="schedule"><b>Programar</b><span>${Number.isFinite(f.slot) ? esc(K.slotWhen(s, t0, f.slot)) : 'Hasta 7 días'}</span></button></div>`;
       if (f.time !== 'schedule') return cards;
-      const chips = `<div class="daychips" role="group" aria-label="Día">${ds.map((d) => `<button class="daychip" aria-pressed="${d.key === sdayKey}" data-act="slotday" data-val="${d.key}"${d.slots.length && lk === null ? '' : ' disabled'}><b>${esc(K.chipDay(d))}</b><span>${esc(K.chipSub(d))}</span></button>`).join('')}</div>`;
+      const chips = `<div class="daychips" role="group" aria-label="Día">${ds.map((d) => `<button class="daychip" aria-pressed="${d.key === sdayKey}" data-act="slotday" data-val="${d.key}"${d.slots.length && !on ? '' : ' disabled'}><b>${esc(K.chipDay(d))}</b><span>${esc(K.chipSub(d))}</span></button>`).join('')}</div>`;
       // Codex S4 r1 #5: the retained send's slot is shown as recorded even when the generator no longer offers it (the server decides)
-      const daySlots = lk !== null ? [...new Set([...(sd && sd.key === K.dayKey(s, lk) ? sd.slots : []), lk])].sort((x, y) => x - y) : sd ? sd.slots : [];
+      const daySlots = on ? [...new Set([...(sd && sd.key === K.dayKey(s, lk) ? sd.slots : []), lk])].sort((x, y) => x - y) : sd ? sd.slots : [];
       const grid = daySlots.length
-        ? `<div class="chips slotgrid" role="group" aria-label="Horario">${daySlots.map((ms) => `<button class="chip" aria-pressed="${f.slot === ms}" data-act="slot" data-val="${ms}"${f.slot === ms ? '' : dis}>${esc(K.slotTime(s, ms))}</button>`).join('')}</div><span class="note">Cada horario es una ventana de 30 minutos.</span>${lk !== null ? '<span class="note">Estamos confirmando este horario; no se puede cambiar mientras tanto.</span>' : ''}`
+        ? `<div class="chips slotgrid" role="group" aria-label="Horario">${daySlots.map((ms) => `<button class="chip" aria-pressed="${f.slot === ms}" data-act="slot" data-val="${ms}"${f.slot === ms ? '' : dis}>${esc(K.slotTime(s, ms))}</button>`).join('')}</div><span class="note">Cada horario es una ventana de 30 minutos.</span>${on ? '<span class="note">Estamos confirmando este horario; no se puede cambiar mientras tanto.</span>' : ''}`
         : `<div class="gate"><b>${sd && sd.off === 0 ? 'Hoy ya no hay horarios' : 'Sin horarios disponibles'}</b><span class="note">Elegí otro día.</span></div>`;
       return cards + chips + grid;
     }
@@ -826,16 +841,18 @@
       const pedido = `<section class="fsec" aria-label="Resumen del pedido"><h2>Tu pedido</h2>
     <div class="osum flat">${sumRow}${sumBody}
       <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : ''}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
-      // Pago
+      // Pago — row 10: a retained scheduled send fixes its tender (the other option in the drawn disabled .45, as the other slots)
+      const lp = lockedPay(); if (lp !== null) f.pay = lp;
+      const payOff = (v) => (lp !== null && lp !== v ? ' disabled' : '');
       const payOpts = `<div class="optrow" role="radiogroup" aria-label="Forma de pago">
-      <button class="opt" aria-pressed="${f.pay === 'online'}" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea<span class="rec">Recomendado</span></b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).</span></span></button>
-      <button class="opt" aria-pressed="${f.pay === 'cash'}" data-act="pay" data-val="cash"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Efectivo ${del ? 'al entregar' : 'al recoger'}</b><span>${del ? 'Pagás cuando llegue tu pedido.' : 'Pagás en tienda al recoger.'}</span></span></button></div>`;
+      <button class="opt" aria-pressed="${f.pay === 'online'}" data-act="pay" data-val="online"${payOff('online')}><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea<span class="rec">Recomendado</span></b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).</span></span></button>
+      <button class="opt" aria-pressed="${f.pay === 'cash'}" data-act="pay" data-val="cash"${payOff('cash')}><span class="radio" aria-hidden="true"></span><span class="txt"><b>Efectivo ${del ? 'al entregar' : 'al recoger'}</b><span>${del ? 'Pagás cuando llegue tu pedido.' : 'Pagás en tienda al recoger.'}</span></span></button></div>`;
       // §3.1 (frame 1): a guest has ONE option — card, already selected (cash ABSENT, not dimmed) — and the fixed line with the why
       const pagoGuest = `<section class="fsec" aria-label="Pago"><h2>Pago</h2><div class="optrow" role="radiogroup" aria-label="Forma de pago">
       <button class="opt" aria-pressed="true" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).</span></span></button></div>
       <p class="paynote">Pagás con tarjeta. <button class="lnk" data-act="signin" data-ctx="paynote">Creá una cuenta</button> para pagar en efectivo y sumar recompensas.</p></section>`;
       const pago = g ? pagoGuest : `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
-        ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D Secure'}</span></span><button class="act" data-act="showpay">Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
+        ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D Secure'}</span></span><button class="act" data-act="showpay"${lp !== null ? ' disabled' : ''}>Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
       const bar = `<div class="paybar"><button class="primary" id="cta" data-act="confirm"${ctaOff(T) ? ' disabled' : ''}>${esc(ctaLabel(T))}</button></div>`;
       // the prototype's footer «¿Problemas con tu pedido? Escribinos al …» (:1886) is omitted — pending a ruling
       return `<div class="flow" id="flow"><div class="flowbar plain"><h1>Entrega &amp; Pago</h1></div>
@@ -891,6 +908,7 @@
       // known-unavailable line never starts a countdown (Codex perf-core r1 #7); the button-level gates stay as well
       if (dead) return;
       if (soldBlock()) { openLayer('cart'); return; }   // never silently nothing: the cart shows which dish sold out (frame 14)
+      if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther()); return; }   // Codex G7 r1 #1 (a): before the code sheet, the countdown or any request
       if (guestCashBlocked()) return;   // §3.2: refused locally, frame 6
       if (guestNeedsCode()) { if (intakeOk() && S.flow && !need() && C.tipChosen(S.flow) && totalsNow().ready) openCode(); return; }   // §4: the WhatsApp code BEFORE anything is sent (frame 2)
       if (!intakeOk() || !S.flow || need() || !C.tipChosen(S.flow) || !totalsNow().ready) return;
@@ -1046,9 +1064,10 @@
     async function send() {
       const f = S.flow, T = totalsNow();
       if (dead || !intakeOk() || !T.ready || !mods()) return;
+      if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther()); return; }   // Codex G7 r1 #1 (a): no request, the record untouched
       if (sched() && f && f.time === 'schedule' && !canSchedule()) { backTo('checkout'); scheduleGate(); return; }   // G=B: never sent
       // Codex S4 r1 #4: the NEWEST received schedule decides (a held P2 revalidation included; painting stays deferred until here)
-      if (sched() && f && f.time === 'schedule' && lockedSlot() === null && !schedMod().offered(S.schedHeld || servedSched(), now().getTime(), f.mode, f.slot)) {
+      if (sched() && f && f.time === 'schedule' && !hasSlotLock() && !schedMod().offered(S.schedHeld || servedSched(), now().getTime(), f.mode, f.slot)) {
         applyHeldSched(); f.slot = null; backTo('checkout'); return;   // the picker shows «Elegí un horario»; nothing was sent
       }
       if (guestCashBlocked()) return;   // no key ⇒ nothing is sent (the record stays clean)
@@ -1111,6 +1130,9 @@
       refunded: (cents) => ({ title: 'Te reembolsamos tu pago', body: `${cfg.name || ''} ya había cerrado cuando se confirmó tu pago. Te devolvimos el total completo${Number.isFinite(cents) ? ', ' + moneyC(cents) : ''}; no se te cobrará.`, icon: 'ok', acts: [{ act: 'home', label: 'Volver al inicio', primary: true }] }),
       // the approved Q9 mockup #mk-exists — «Escribir a la tienda» hidden (no public restaurant contact in the app data)
       // the owner-approved held-states mockup (MOCKUP-capp-S2b-held-states.html #mk-paused / #mk-generic / #mk-pending)
+      // Codex G7 r1 #1, advisor ruling (a) 2026-10-31 — OWNER-PENDING copy (DECISIONS.md 2026-10-31): another account's scheduled send
+      // is still confirming on this device; ONE action (a retry would only refuse again)
+      heldOther: () => ({ title: 'Hay un pedido de otra cuenta confirmándose en este teléfono', body: 'Entrá con esa cuenta o esperá unos minutos.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }),
       paused: () => ({ title: `${cfg.name || ''} no está recibiendo pedidos en este momento`, body: 'Tu pedido no se envió ni se cobró nada; está intacto para que lo intentés en unos minutos.', icon: 'warn', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }),
       generic: (retry = 'err-retry') => ({ title: 'No pudimos enviar tu pedido', body: 'Intentá de nuevo en un momento; tu pedido está intacto.', acts: [{ act: retry, label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
       pending: () => ({ title: 'Tu pago todavía está en verificación', body: 'Estamos confirmando tu pago con el banco. No hace falta pagar de nuevo; esperá un momento mientras termina.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Volver al pedido', primary: true }], held: true }),
@@ -1155,6 +1177,7 @@
       if (k === 'guest_cash_not_allowed') { if (S.flow && cardOnlyGuest()) S.flow.pay = 'online'; backTo('checkout'); showErr(ERR.guestCash()); return; }   // §3.3 server refusal ⇒ frame 6
       if (k === 'guest_ticket_invalid') { S.ticket = null; backTo(); openCode(); return; }   // §4: re-verify (expired / consumed / missing) — the code sheet over the screen of the tap
       if (k === 'guest_email_required') { S.emailRefused = true; backTo('checkout'); return; }   // §4b ⇒ frame 1b: the email field red, CTA «Revisá tu correo»
+      if (k === 'held_other_account') { backTo('checkout'); showErr(ERR.heldOther()); return; }   // capp-api's backstop: nothing was sent
       if (k === 'schedule_needs_account') { backTo('checkout'); scheduleGate(); return; }   // capp-api's wire guard (G=B): nothing was sent
       if (k === 'offline') { backTo(sched() && S.flow && S.flow.time === 'schedule' ? 'checkout' : undefined); showErr(ERR.offline()); return; }   // S4 frame 10a: over «Entrega & Pago» (its picker becomes row 10b)
       if (k === 'closed') { S.closedRefused = true; backTo(); showErr(ERR.closed()); return; }   // over the screen of the tap (P placeTap :1975)
@@ -1177,11 +1200,7 @@
       // update_required (426) is the shared self-update module's «Actualización pendiente»; price_declined: the ported sheet was answered
       backTo();
     }
-    function errSheet(e) {
-      const acts = e.acts.map((a) => `<button class="${a.primary ? 'primary' : 'btn2 wide'}" data-act="${a.act}"${a.disabled ? ' disabled' : ''}${a.id ? ` id="${a.id}"` : ''}>${esc(a.label)}</button>`).join('');
-      const ic = e.ic ? IC[e.ic] : e.icon === 'ok' ? IC.check : e.icon === 'warn' || e.icon === 'calm' ? IC.alert : IC.close;
-      return `<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="${esc(e.title)}"><div class="grab"></div><div class="errsheet"><div class="icon${e.icon ? ' ' + e.icon : ''}">${ic}</div><h2>${esc(e.title)}</h2><p>${e.bodyHtml != null ? e.bodyHtml : esc(e.body)}</p>${e.note ? `<p class="note">${e.note}</p>` : ''}<div class="acts">${acts}</div></div></div>`;
-    }
+    const errSheet = errSheetHtml;
     const feeInfoHtml = () => { const d = S.lastDelivery || {}; return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Envío"><div class="grab"></div><div class="errsheet"><h2>Envío</h2><p>Sherpa calcula el envío según la distancia entre la sucursal y tu dirección. Desde ${moneyC(d.from_cents)}; zona de entrega hasta ${esc(d.max_km)} km de ${storeLine()}.</p><div class="acts"><button class="btn2 wide" data-act="lclose">Entendido</button></div></div></div>`; };
     // ── the full-screen pin step (prototype pinStepHtml :2186-2190; the prototype-only «Simulación» strip dropped) ──
     function pinStepHtml() {
@@ -1276,7 +1295,7 @@
       if (a === 'rm-po') { for (const l of poLines()) mutate(() => cart.setQty(l.key, 0)); if (!cart.count()) toStore(); else render(); return true; }
       if (a === 'editwho') { f.editWho = true; render(); return true; }
       if (sched() && (a === 'time' || a === 'slotday' || a === 'slot')) {
-        if (lockedSlot() !== null) return true;   // row 10: fixed while the send is unresolved
+        if (hasSlotLock()) return true;   // row 10: fixed while the send is unresolved
         applyHeldSched();   // P2: a revalidated schedule lands on a USER action, never under a finger
         if (a === 'time' && v === 'schedule' && !canSchedule()) { scheduleGate(); return true; }   // frame G: the order stays ASAP
         if (a === 'time') { f.time = v === 'schedule' ? 'schedule' : 'asap'; if (f.time === 'asap') f.slot = null; }
@@ -1288,6 +1307,7 @@
       if (a === 'more') { S.more = true; render(); return true; }
       if (a === 'editdetails') { S.editDetails = true; render(); return true; }
       if (a === 'sumtoggle') { S.sumOpen = !S.sumOpen; render(); return true; }
+      if ((a === 'pay' || a === 'showpay') && lockedPay() !== null) return true;   // row 10: the tender is fixed while the send is unresolved
       if (a === 'pay') { f.pay = v === 'online' || cardOnlyGuest() ? 'online' : 'cash'; S.showPay = false; render(); return true; }
       if (a === 'showpay') { S.showPay = true; render(); return true; }
       if (a === 'tender') { f.tendered = v; render(); return true; }
@@ -1299,7 +1319,7 @@
       // §4c: the cart and this checkout step are kept (the host returns here); the returning row PRE-FILLS the full number
       if (a === 'signin') { const ctx = t.dataset.ctx || 'checkout'; let dev = null; if (ctx === 'checkout-returning') { try { dev = opts.deviceAccount(); } catch (_) { dev = null; } }
         emit('signin', { ctx, ...(dev && dev.e164 ? { prefill: dev.e164 } : {}) }); return true; }
-      if (a === 'confirm' && lockedSlot() !== null) { if (!ctaOff(totalsNow())) send(); return true; }   // S4 row 10b: «Reintentar» re-sends the SAME order (its tip already chosen)
+      if (a === 'confirm' && hasSlotLock()) { if (!ctaOff(totalsNow())) send(); return true; }   // S4 row 10b: «Reintentar» re-sends the SAME order (its tip already chosen)
       if (a === 'confirm') { if (ctaOff(totalsNow())) return true; if (f.mode === 'delivery') go('tip'); else placeTap(); return true; }
       return false;
     }
@@ -1556,7 +1576,8 @@
         memberCtx = m && typeof m === 'object' ? m : null;
         if (!memberCtx) S.schedAfterSignin = false;
         const f = S.flow;
-        if (!memberCtx && f && sched() && f.time === 'schedule' && lockedSlot() === null) { f.time = 'asap'; f.slot = null; }   // signed out ⇒ no scheduling (G=B)
+        if (!memberCtx && f && sched() && f.time === 'schedule' && !hasSlotLock()) { f.time = 'asap'; f.slot = null; }   // signed out ⇒ no scheduling (G=B)
+        if (!memberCtx && f && cardOnlyGuest()) f.pay = 'online';   // Codex G7 r1 #1: a guest is card-only in the state, not only on screen
         if (f && memberCtx) {
           if (!String(f.name || '').trim() && memberCtx.name) f.name = String(memberCtx.name);
           let unread = false;
@@ -1605,5 +1626,5 @@
       <button class="cta" type="button" data-act="offer-create">Crear mi cuenta</button><button class="lnk" type="button" data-act="offer-skip">Ahora no</button></div></div>`;
   }
 
-  return { mount, viewSections, loadMapsFor, MAP_SVG, FULL_CART, accountOfferHtml };
+  return { mount, viewSections, loadMapsFor, MAP_SVG, FULL_CART, accountOfferHtml, errSheetHtml };
 });

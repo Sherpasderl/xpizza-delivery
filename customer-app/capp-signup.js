@@ -23,7 +23,7 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
   const I = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
-  const IC = { close: I('<path d="M6 6l12 12"/><path d="M18 6L6 18"/>'), back: I('<path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/>'), check: I('<path d="m5 12.5 4.5 4.5L19 7.5"/>'), alert: I('<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/>') };
+  const IC = { down: I('<path d="m6 9 6 6 6-6"/>'), close: I('<path d="M6 6l12 12"/><path d="M18 6L6 18"/>'), back: I('<path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/>'), check: I('<path d="m5 12.5 4.5 4.5L19 7.5"/>'), alert: I('<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/>') };
   // the Sola compass (Sherpa-owned surfaces only)
   const SOLA = `<svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 9.2A14.8 14.8 0 1 1 24 38.8A14.8 14.8 0 1 1 24 9.2" stroke="currentColor" stroke-width="3.4" fill="none"/><path d="M24 12.6L27.3 24L20.7 24Z" fill="var(--acc)"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="currentColor"/><circle cx="24" cy="24" r="1.7" fill="var(--bg)"/></svg>`;
   const GOOGLE_G = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
@@ -48,8 +48,17 @@
     const emit = (n, d) => { try { (o.onEvent || (() => {}))(n, d); } catch (_) {} };
     // gen: every async continuation belongs to ONE opening of the sheet — closing makes it stale (nothing lands after a close)
     const S = { open: false, gen: 0, pane: 'phone', stack: [], path: 'phone', memberOnly: false, phone: '', email: '', name: '', promos: false, terms: false,
-      google: null, uid: null, isNew: false, completion: null, busy: false, err: '', code: '', resendAt: 0, cfg: null, existing: false };
+      google: null, uid: null, isNew: false, completion: null, confPromos: null, busy: false, err: '', code: '', resendAt: 0, cfg: null, existing: false };
     let tick = null;
+    // MOCKUP-capp-member-cuenta-APPROVED-2026-10-27 part B, option (b) (advisor): under runtime.intlPhone the .cc is a BUTTON and the country
+    // list is a PANE inside this sheet (its ← Atrás via the pane stack); the national length / local format per country; E.164 on the wire.
+    // Absent ⇒ the «+504» span and the 8-digit field, byte for byte
+    const INTL = o.intlPhone === true && !!o.CappPhone, P = o.CappPhone || null;
+    const ccNow = () => (INTL && S.cc && P.byCc(S.cc) ? S.cc : (P ? P.DEFAULT_CC : '504'));
+    const natLen = () => (INTL ? P.byCc(ccNow()).len : 8);
+    const fmtNat = (d) => (INTL ? P.format(ccNow(), d) : fmtLocal(d));
+    const wire = () => (INTL ? '+' + ccNow() + digits() : '+504' + digits());
+    const shown = () => (INTL ? P.display(ccNow(), fmtNat(digits())) : '+504 ' + fmtLocal(digits()));
 
     // ── rendering: the approved app prototype v6 signupInner (P:2196-2217) — the shell port of the approved signup prototype ──
     const digits = () => S.phone.replace(/\D/g, '');
@@ -62,13 +71,17 @@
       // checkout to continue as a guest (the prototype draws it only for an order) — never from Cuenta, never under a member-only gate
       const alts = viaGoogle ? '' : `${g ? `<div class="or">o</div><button class="alt" data-su="google">${GOOGLE_G}Continuar con Google</button>` : ''}${!S.memberOnly && (GUEST_CTX.has(S.ctx) || S.scheduleGate) ? '<button class="lnk" data-su="guest">Prefiero seguir como invitado</button>' : ''}`;
       return `<div class="h1">${viaGoogle ? 'Tu teléfono' : 'Entrá a tu cuenta'}</div><p class="sub">${viaGoogle ? 'Lo necesitamos para la entrega y para avisarte por WhatsApp.' : S.scheduleGate ? 'Para programar tu pedido necesitás una cuenta.' : 'Guardá tus datos y pedí más rápido la próxima vez.'}</p>
-    <span class="ml">Teléfono</span><div class="phonerow"><span class="cc">+504</span><input class="inp" id="su-phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="9999-9999" value="${esc(S.phone)}" aria-label="Teléfono"></div>
-    <button class="cta" data-su="phone-go"${digits().length === 8 && !S.busy ? '' : ' disabled'}>Continuar</button><p class="fine">Te enviaremos un código de verificación por WhatsApp.</p>${err()}
+    <span class="ml">Teléfono</span><div class="phonerow">${INTL ? `<button type="button" class="cc" data-su="cc" aria-label="País del número: ${esc(P.byCc(ccNow()).name)} +${ccNow()}">+${ccNow()} ${IC.down}</button>` : '<span class="cc">+504</span>'}<input class="inp" id="su-phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="${INTL ? esc(P.byCc(ccNow()).ph) : '9999-9999'}" value="${esc(S.phone)}" aria-label="Teléfono"></div>
+    <button class="cta" data-su="phone-go"${digits().length === natLen() && !S.busy ? '' : ' disabled'}>Continuar</button><p class="fine">Te enviaremos un código de verificación por WhatsApp.</p>${err()}
     ${alts}`;
+    }
+    function countryPane() {
+      const cur = ccNow();
+      return `<div class="h1">País del número</div><p class="sub">Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.</p><div class="clist">${P.COUNTRIES.map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-su="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
     }
     function codePane() {
       const left = Math.max(0, Math.ceil((S.resendAt - Date.now()) / 1000));
-      return `<div class="h1">Ingresá el código</div><p class="sub">Te lo enviamos por WhatsApp al <b>+504 ${esc(fmtLocal(digits()))}</b>.</p>
+      return `<div class="h1">Ingresá el código</div><p class="sub">Te lo enviamos por WhatsApp al <b>${esc(shown())}</b>.</p>
     <div class="otp" role="group" aria-label="Código de 6 dígitos">${[0, 1, 2, 3, 4, 5].map((i) => `<input inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="${S.code[i] ? 'f' : ''}" value="${esc(S.code[i] || '')}" data-su-otp="${i}" aria-label="Dígito ${i + 1}">`).join('')}</div>${err()}
     <button class="cta" data-su="verify"${S.code.length === 6 && !S.busy ? '' : ' disabled'}>Verificar</button><div class="rowx">${left > 0 ? `<span data-su-left>Reenviar en 0:${left < 10 ? '0' : ''}${left}</span>` : '<button data-su="resend">Reenviar código</button>'}</div>`;
     }
@@ -87,14 +100,14 @@
       // advisor ruling (e): no per-store rewards row; the existing account = greeting + Cuenta (+ Google) + «Listo»
       if (S.existing) {
         const ge = S.google && S.google.email;
-        return `<div class="ok">${IC.check}</div><div class="h1" style="text-align:center">¡Hola de nuevo${firstName(S.name) ? ', ' + esc(firstName(S.name)) : ''}!</div><p class="sub" style="text-align:center;max-width:none">${ge ? 'Entraste con Google a tu misma cuenta (la próxima vez podés usar cualquiera de los dos).' : 'Entraste con tu número.'} Tus recompensas y pedidos siguen aquí.</p><div class="facts"><div><span>Cuenta</span><span>+504 ${esc(fmtLocal(digits()))}</span></div>${ge ? `<div><span>Google</span><span>${esc(ge)}</span></div>` : ''}</div><button class="cta" data-su="finish">Listo</button>`;
+        return `<div class="ok">${IC.check}</div><div class="h1" style="text-align:center">¡Hola de nuevo${firstName(S.name) ? ', ' + esc(firstName(S.name)) : ''}!</div><p class="sub" style="text-align:center;max-width:none">${ge ? 'Entraste con Google a tu misma cuenta (la próxima vez podés usar cualquiera de los dos).' : 'Entraste con tu número.'} Tus recompensas y pedidos siguen aquí.</p><div class="facts"><div><span>Cuenta</span><span>${esc(shown())}</span></div>${ge ? `<div><span>Google</span><span>${esc(ge)}</span></div>` : ''}</div><button class="cta" data-su="finish">Listo</button>`;
       }
-      return `<div class="ok">${IC.check}</div><div class="h1" style="text-align:center">¡Perfil creado!</div><p class="sub" style="text-align:center;max-width:none">Ya podés pedir más rápido la próxima vez.</p><div class="facts"><div><span>Nombre</span><span>${esc(S.name)}</span></div><div><span>Teléfono</span><span>+504 ${esc(fmtLocal(digits()))}</span></div><div><span>Correo</span><span>${esc(S.email || 'Sin correo')}</span></div><div><span>Promociones</span><span>${S.promos ? 'Sí' : 'No'}</span></div></div><button class="cta" data-su="finish">Listo</button>`;
+      return `<div class="ok">${IC.check}</div><div class="h1" style="text-align:center">¡Perfil creado!</div><p class="sub" style="text-align:center;max-width:none">Ya podés pedir más rápido la próxima vez.</p><div class="facts"><div><span>Nombre</span><span>${esc(S.name)}</span></div><div><span>Teléfono</span><span>${esc(shown())}</span></div><div><span>Correo</span><span>${esc(S.email || 'Sin correo')}</span></div><div><span>Promociones</span><span>${S.promos ? 'Sí' : 'No'}</span></div></div><button class="cta" data-su="finish">Listo</button>`;
     }
     function render() {
       if (!S.open) { host.innerHTML = ''; return; }
       const ae = doc.activeElement, keep = ae && host.contains(ae) && ae.id ? [ae.id, ae.selectionStart, ae.selectionEnd] : null;
-      const pane = S.pane === 'code' ? codePane() : S.pane === 'email' ? emailPane() : S.pane === 'name' ? namePane() : S.pane === 'done' ? donePane() : phonePane();
+      const pane = S.pane === 'country' && INTL ? countryPane() : S.pane === 'code' ? codePane() : S.pane === 'email' ? emailPane() : S.pane === 'name' ? namePane() : S.pane === 'done' ? donePane() : phonePane();
       host.innerHTML = `<div class="scrim" data-su="close"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Tu cuenta" style="max-height:92%"><div class="grab"></div><div class="sg">${topb()}${pane}</div></div>`;
       if (keep) { const el = doc.getElementById(keep[0]); if (el) { try { el.focus({ preventScroll: true }); if (el.setSelectionRange && keep[1] != null) el.setSelectionRange(keep[1], keep[2]); } catch (_) {} } }
     }
@@ -108,7 +121,7 @@
       const g = S.gen; S.busy = true; S.code = ''; S.resendAt = Date.now() + 29000;
       if (S.pane !== 'code') go('code'); else render();
       tickStart();
-      await api.requestOtp({ phone: '+504' + digits(), ...(S.google && S.google.ticket ? { linkTicket: S.google.ticket, sessionId: S.google.session } : {}) });
+      await api.requestOtp({ phone: wire(), ...(S.google && S.google.ticket ? { linkTicket: S.google.ticket, sessionId: S.google.session } : {}) });
       if (!live(g)) return; S.busy = false; render();   // the pane advances regardless (the forms' uniform no-enumeration response)
     }
     async function signedIn(g, r) {
@@ -118,10 +131,11 @@
       if (!uid) { S.busy = false; S.err = COPY.codeGeneric; render(); return; }
       // Codex G6 r1 #4: another account than the one verified before (Back to the phone, a new number) starts from ITS data only —
       // nothing of the previous account's name / email / consent carries over (a Google link in progress belongs to this phone)
-      if (S.uid && S.uid !== uid) Object.assign(S, { name: '', email: '', promos: false, terms: false, existing: false, completion: null, google: S.google && S.google.ticket ? S.google : null });
-      S.uid = uid; S.isNew = r.isNew === true; S.completion = r.completion; S.vphone = '+504' + digits();   // the VERIFIED number (Back can edit the field)
+      if (S.uid && S.uid !== uid) Object.assign(S, { name: '', email: '', promos: false, terms: false, existing: false, completion: null, confPromos: null, google: S.google && S.google.ticket ? S.google : null });
+      S.uid = uid; S.isNew = r.isNew === true; S.completion = r.completion; S.vphone = wire();   // the VERIFIED number (Back can edit the field)
       if (r.profile) { if (r.profile.name && !S.name) S.name = r.profile.name; if (r.profile.email && !S.email) S.email = r.profile.email; }
       if (r.name && !S.name) S.name = r.name;
+      S.confPromos = r.profile && typeof r.profile.promos === 'boolean' ? r.profile.promos : null;   // Codex G7 r1 #3: the server's stored consent (none ⇒ null)
       S.busy = false;
       if (r.completion === 'needed') { S.existing = false; if (S.google && S.google.email) { S.email = S.google.email; go('name'); } else go('email'); return; }
       S.existing = true; go('done');
@@ -129,7 +143,7 @@
     async function verify() {
       if (S.busy || S.code.length !== 6) return;
       const g = S.gen; S.busy = true; S.err = ''; render();
-      const r = await api.verifyOtp({ phone: '+504' + digits(), code: S.code, ...(S.google && S.google.ticket ? { linkTicket: S.google.ticket, sessionId: S.google.session } : {}) });
+      const r = await api.verifyOtp({ phone: wire(), code: S.code, ...(S.google && S.google.ticket ? { linkTicket: S.google.ticket, sessionId: S.google.session } : {}) });
       if (!live(g)) return;
       if (!r.ok) {
         S.busy = false; S.code = '';
@@ -163,6 +177,7 @@
       S.busy = false;
       if (!r.ok) { S.err = COPY.saveErr; render(); return; }
       S.completion = 'complete';   // the server holds the profile + the Términos: from here every exit is «Listo»
+      S.confPromos = S.promos === true;   // Codex G7 r1 #3: the choice completeProfile just stored
       go('done');
     }
     // Codex G6 r4: ONE finalization latch — once the sheet is closed or finalized, exit / finish / close / guest are no-ops; the flag is
@@ -185,7 +200,7 @@
     const COMPLETE = new Set(['complete', 'off']);
     const isComplete = () => !!S.uid && COMPLETE.has(S.completion);
     const exit = () => (finalized() ? undefined : isComplete() ? finish() : close('close'));
-    function finish() { if (finalized()) return; S.final = true; const d = { uid: S.uid, name: S.name.trim(), phone: S.vphone || '+504' + digits(), email: S.email.trim() || null, isNew: !S.existing }; S.completion = 'complete'; emit('signed-in', d); close('done'); }
+    function finish() { if (finalized()) return; S.final = true; const d = { uid: S.uid, name: S.name.trim(), phone: S.vphone || wire(), email: S.email.trim() || null, isNew: !S.existing, ...(typeof S.confPromos === 'boolean' ? { promos: S.confPromos } : {}) }; S.completion = 'complete'; emit('signed-in', d); close('done'); }
 
     // ── controls ──
     host.addEventListener('click', (ev) => {
@@ -194,6 +209,8 @@
       if (a === 'close') return void exit();   // ✕ / the scrim: «Listo» for a complete account, otherwise the incomplete sign-in is undone
       if (a === 'guest') return void close('guest');
       if (a === 'back') { if (S.stack.length && !S.busy) { S.pane = S.stack.pop(); S.err = ''; if (S.pane === 'phone' && S.path === 'google' && !S.stack.length) S.path = 'phone'; render(); } return; }
+      if (a === 'cc' && INTL && !S.busy) return void go('country');
+      if (a === 'cc-pick' && INTL && S.pane === 'country') { const c = t.dataset.cc; if (P.byCc(c)) { S.cc = c; S.phone = fmtNat(digits().slice(0, natLen())); } S.pane = S.stack.pop() || 'phone'; S.err = ''; render(); return; }
       if (a === 'phone-go') return void sendCode();
       if (a === 'resend') return void sendCode();
       if (a === 'verify') return void verify();
@@ -205,7 +222,7 @@
     });
     host.addEventListener('input', (ev) => {
       const el = ev.target; if (!el || !S.open) return;
-      if (el.id === 'su-phone') { const d = el.value.replace(/\D/g, '').slice(0, 8); S.phone = fmtLocal(d); el.value = S.phone; const b = host.querySelector('[data-su="phone-go"]'); if (b) b.disabled = d.length !== 8 || S.busy; return; }
+      if (el.id === 'su-phone') { const d = el.value.replace(/\D/g, '').slice(0, natLen()); S.phone = fmtNat(d); el.value = S.phone; const b = host.querySelector('[data-su="phone-go"]'); if (b) b.disabled = d.length !== natLen() || S.busy; return; }
       if (el.id === 'su-email') { S.email = el.value; render(); return; }
       if (el.id === 'su-name') { S.name = el.value; const b = host.querySelector('[data-su="save"]'); if (b) b.disabled = !(S.name.trim() && S.terms) || S.busy; return; }
       if (el.dataset && el.dataset.suOtp !== undefined) {
@@ -224,8 +241,9 @@
       state: S,
       // ctx: where it was opened from; prefill: the device marker's full E.164 («Entrá de nuevo»); memberOnly: no guest path (a gate)
       open({ ctx, prefill, memberOnly, scheduleGate } = {}) {
-        S.gen++; Object.assign(S, { open: true, pane: 'phone', stack: [], path: 'phone', memberOnly: memberOnly === true, phone: prefill ? fmtLocal(localOf(prefill)) : '', email: '', name: '', promos: false, terms: false,
-          google: null, uid: null, isNew: false, completion: null, busy: false, err: '', code: '', resendAt: 0, existing: false, vphone: null, final: false, ctx: ctx || null, scheduleGate: scheduleGate === true });
+        S.gen++; Object.assign(S, { open: true, pane: 'phone', stack: [], path: 'phone', memberOnly: memberOnly === true, cc: null, phone: prefill ? fmtLocal(localOf(prefill)) : '', email: '', name: '', promos: false, terms: false,
+          google: null, uid: null, isNew: false, completion: null, confPromos: null, busy: false, err: '', code: '', resendAt: 0, existing: false, vphone: null, final: false, ctx: ctx || null, scheduleGate: scheduleGate === true });
+        if (INTL && prefill) { const q = P.parseE164(prefill); if (q) { S.cc = q.cc; S.phone = P.format(q.cc, q.national); } }
         render();
         const g = S.gen;
         if (!S.cfg) api.config().then((c) => { if (c && c.ok) S.cfg = c; if (live(g) && S.pane === 'phone') render(); });   // the platform's Google / legal — never awaited by the paint

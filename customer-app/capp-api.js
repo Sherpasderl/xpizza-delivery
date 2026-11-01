@@ -193,6 +193,24 @@
     const schedSettled = new Set();
     // the record as the UI sees it: a definitive answer held only in memory reads as closed
     function readPlaceView() { const r = readPlace(); return r && schedSettled.has(r.order_id) && r.sched_pending === true ? { ...r, sched_pending: false } : r; }
+    // Codex G7 r1 #1 / r2: a RETAINED send — dispatched, its answer still uncertain, its exact body recorded (every send under
+    // schedulingLive, ASAP included) — with its OWNER (the member uid, or GUEST_OWNER). The lock, the replay and its endpoint come from
+    // THIS record only, never from the current flow; null ⇒ none
+    function retainedSend() {
+      if (cfg.schedulingLive !== true) return null;
+      const r = readPlace();
+      if (!r || !(Number(r.dispatched) > 0) || r.sched_pending !== true || schedSettled.has(r.order_id) || typeof r.sent_body !== 'string') return null;
+      let b = null; try { b = JSON.parse(r.sent_body); } catch (_) { b = null; }
+      if (!b || typeof b !== 'object' || b.order_id !== r.order_id) return null;
+      return { order_id: r.order_id, body: b, owner: typeof r.owner === 'string' ? r.owner : null, method: methodOf(b) };
+    }
+    const uidNow = () => { const m = memberOf(); return m && typeof m.uid === 'string' ? m.uid : null; };
+    const GUEST_OWNER = '_guest';   // a guest's own retained send (card-only) — its guest retry is the owner's
+    const ownerNow = () => uidNow() || GUEST_OWNER;
+    // Codex G7 r2: the ONE tender rule — the endpoint is a function of the exact bytes sent (createOrder ⇔ cash, chargeOnlineOrder ⇔ online)
+    const methodOf = (body) => (body && body.payment_method === 'online' ? 'online' : 'cash');
+    // the retained send belongs to someone else (a guest now, or another member): never replayed, never re-identified — a local refusal
+    function retainedByOther() { const rs = retainedSend(); return !!rs && rs.owner !== ownerNow(); }
     // the economics a placement stands behind: the cart signature (cart / mode / pin / tip / auth) and the agreed net
     const sameEconomics = (r, p) => r.body_sig === (p.sig == null ? null : String(p.sig)) && r.expected_net_cents === num(p.expectedNetCents);
 
@@ -418,7 +436,10 @@
       return null;
     }
     async function place(p) {
-      const method = p.flow.pay === 'online' ? 'online' : 'cash';
+      // Codex G7 r1 #1 / r2 (advisor (a)): another account's unresolved send (scheduled or ASAP) is on this device ⇒ refused HERE — before any gate,
+      // record write or request; it places normally once that record resolves or expires
+      if (retainedByOther()) return { kind: 'held_other_account', local: true };
+      let method = p.flow.pay === 'online' ? 'online' : 'cash';
       // PLAN-capp-signin-required §3.2: an app GUEST (cfg.guestCardOnly, no member NOW) never maps to cash — refused before any record,
       // lock or send (and re-checked before EVERY dispatch below, Codex guest r1 #1)
       { const g0 = guestGate(p, { ticket: false }); if (g0) return g0; }
@@ -484,10 +505,14 @@
             // Codex S4 r2 (G=B): the account rule on the OUTGOING / replayed body BEFORE anything is recorded for this send (no
             // dispatched++, no card / unresolved lock, no cart freeze) — an earlier uncertain send keeps its record exactly as it was
             if (body.scheduled_for != null && !memberOf()) return { kind: 'schedule_needs_account', order_id: rec.order_id, local: true };
+            // Codex G7 r2: the tender is the OUTGOING body's — first send, replay, healed or accepted-price retry alike — and a cash body
+            // never leaves without a member (guestCardOnly): refused before anything is recorded for this send
+            method = methodOf(body);
+            if (cfg.guestCardOnly === true && !memberOf() && method === 'cash') return { kind: 'guest_cash_not_allowed', local: true };
             if (replay) { if (num(body.expected_net_cents) !== null) expected = body.expected_net_cents; }   // the replayed bytes' ceiling is what this send stands behind
             else {
-              try { rec = patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true }); } catch (_) { return { kind: 'offline', order_id: rec.order_id }; }
-              if (rec.sent_body !== JSON.stringify(body) || rec.sched_pending !== true) return { kind: 'offline', order_id: rec.order_id };
+              try { rec = patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true, owner: ownerNow() }); } catch (_) { return { kind: 'offline', order_id: rec.order_id }; }
+              if (rec.sent_body !== JSON.stringify(body) || rec.sched_pending !== true || rec.owner !== ownerNow()) return { kind: 'offline', order_id: rec.order_id };
               schedSettled.delete(rec.order_id);
             }
           }
@@ -515,7 +540,8 @@
           if (cfg.guestCardOnly === true && !memberOf() && p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;   // §4 (consumed at placement by the server)
           cq.send(body, p.sig, expected);
         } else if (cfg.guestCardOnly === true && !memberOf() && p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;   // S4: the ticket is read NOW, never replayed
-        const r = method === 'cash' ? await dispatchOrder(p, E.createOrder, body) : await sendCard(id, body, p);
+        method = methodOf(body);   // (the flag-absent body is the flow's — the same tender; one rule either way)
+        const r = method === 'cash' ? await dispatchBody(p, body) : await sendCard(id, body, p);
         if (r && r.stop) return r.stop;
         if (!definitive(method, r)) return method === 'cash' ? { kind: 'offline', order_id: id } : resolveExisting(id);   // rule ii
         if (cfg.schedulingLive === true) { schedSettled.add(id); try { patchPlace(id, { sched_pending: false }); } catch (_) {} }   // S4: a definitive answer ends the replay window (memory first)
@@ -566,7 +592,11 @@
     // dispatch (rule i); exhausted ⇒ the 202 stands (unresolved ⇒ recovery)
     // THE order dispatch (Codex guest r2 #1): every network send of an order — the first, a resend, and sendCard's own in-progress
     // re-sends — goes through here, and the guest rules (identity, tender, ticket, read NOW) are checked at the wire
-    async function dispatchOrder(p, url, body) {
+    // Codex G7 r2: the ONLY path to the order endpoints — the URL is a function of the exact body being sent (methodOf), never of a
+    // caller's tender; a cash body without a member (guestCardOnly) is refused here as well (the backstop of place()'s check)
+    async function dispatchBody(p, body) {
+      const url = methodOf(body) === 'online' ? E.chargeOnlineOrder : E.createOrder;
+      if (methodOf(body) === 'cash' && cfg.guestCardOnly === true && !memberOf()) return { stop: { kind: 'guest_cash_not_allowed', order_id: body.order_id, local: true } };
       // S4 (Codex r1 #1; owner G=B): scheduling requires an account — a non-member's body carrying scheduled_for is never sent
       if (cfg.schedulingLive === true && body.scheduled_for != null && !memberOf()) return { stop: { kind: 'schedule_needs_account', order_id: body.order_id, local: true } };
       const g = guestGate(p, { ticket: true, id: body.order_id }); if (g) return { stop: g };
@@ -578,7 +608,7 @@
         if (i > 0 && typeof alive === 'function' && !alive()) return { stop: { kind: 'superseded', order_id: id } };   // r3 P2-3: a torn-down page never re-sends (the record keeps its 202: admitted)
         if (i > 0) { const g = guestGate(p, { ticket: true, id }); if (g) return { stop: g }; }   // before the re-send is even recorded
         if (i > 0) { try { confirmSend(id, 'online'); } catch (e) { return { stop: placeErr(e, id) || await resolveExisting(id) }; } }
-        const r = await dispatchOrder(p, E.chargeOnlineOrder, body);
+        const r = await dispatchBody(p, body);
         if (r.network || r.status !== 202 || !r.parsed) return r;
         try { patchPlace(id, { admitted: true }); } catch (e) { return { stop: placeErr(e, id) || await resolveExisting(id) }; }
         await sleep(BACKOFF_MS(Math.min(i + 1, 2)));   // never poll without a token, never mint — re-send
@@ -687,7 +717,7 @@
 
     return { quote, latestQuote, place, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
-      confirmQuote: cq, PLACE_KEY };
+      confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
   }
 
   return { createApi, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };

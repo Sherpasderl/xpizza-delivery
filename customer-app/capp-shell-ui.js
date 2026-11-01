@@ -223,9 +223,57 @@
       if (!u || u.uid !== uid) return;
       // getIdToken: the transport asks the SDK at send time (cached while valid, refreshed once expired); idToken = the fallback
       // S-picker: with the runtime intlPhone the member's number stays E.164 (its own country); off ⇒ the local 8 digits, as before
-      S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', idToken, getIdToken: () => fbAuth.idToken() };
+      S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', ...(typeof p.promos === 'boolean' ? { promos: p.promos } : {}), idToken, getIdToken: () => fbAuth.idToken() };
       if (S.store) S.store.ui.setMember(S.member);   // §4c: back on the SAME checkout step, filled in
       schedule();
+    }
+    // ── G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27): the MEMBER's Cuenta, in the shell, under runtime.signup (G6's flag; absent ⇒
+    //    the member's Cuenta stays the host's event, byte for byte) ──
+    let suApi = null;
+    const promosOv = { uid: null, v: null };   // frame 1b: the optimistic value while setPromos is in flight
+    let signingOut = false;
+    const phoneShown = (ph) => { const P = typeof CappPhone !== 'undefined' ? CappPhone : (o.CappPhone || null); const raw = String(ph || ''); if (!raw || !P) return raw;
+      const q = P.parseE164(raw.startsWith('+') ? raw : '+' + P.DEFAULT_CC + P.digits(raw)); return q ? P.display(q.cc, P.format(q.cc, q.national)) : raw; };
+    // the Cuenta's data: a member (S.member — the cached profile at once, frame 4a; a uid only ⇒ the placeholders, frame 4b), or, while the
+    // session resolves, the profile on this device (decision 7: no height change on resolving); otherwise null ⇒ the guest's Cuenta
+    // Codex G7 r1 #2 (privacy) + #5: cached data is SHOWN only for the uid the SDK's auth state names (with that uid's completion mark),
+    // independent of the ID token; before the SDK answers, a profile on this device draws only the member GEOMETRY as neutral
+    // placeholders (78 px, ruling A — no reflow). The switch is live only for the APPLIED member; a settled member with no stored
+    // consent draws it OFF + dimmed (ruling (ii), OWNER-PENDING); while loading, frame 4b's ON-dimmed placeholder
+    function acctVm() {
+      if (!SU || signingOut) return null;
+      const st = authNow(); let p = null, applied = false;
+      if (st === 'member') {
+        const u = auth && auth.user ? auth.user() : null, uid = u && u.uid;
+        if (uid && completeUid() === uid) {
+          applied = !!S.member && S.member.uid === uid;
+          p = applied ? S.member : CappDeviceAccount.readProfile(storage, uid) || { uid };
+        }
+      } else if (st === 'unresolved') { const pk = CappDeviceAccount.peekProfile(storage); if (pk) p = { uid: pk.uid }; }
+      if (!p) return null;
+      const placeholder = !(p.name || p.phone || p.email);
+      const ov = promosOv.uid && promosOv.uid === p.uid ? promosOv.v : null;
+      return { placeholder, name: p.name || '', phone: phoneShown(p.phone), email: p.email || '', promos: applied && typeof p.promos === 'boolean' ? (typeof ov === 'boolean' ? ov : p.promos) : null,
+        settled: applied, version: typeof CAPP_SYSTEM_VERSION !== 'undefined' ? CAPP_SYSTEM_VERSION : (o.version || '') };
+    }
+    async function togglePromos() {
+      const m = S.member; if (!m || typeof m.promos !== 'boolean' || !suApi || promosOv.uid) return;
+      const v = !m.promos, uid = m.uid; promosOv.uid = uid; promosOv.v = v; renderNow();   // optimistic
+      let ok = false, got = v; try { const tok = await fbAuth.idToken(); const r = tok ? await suApi.setPromos({ idToken: tok, value: v }) : null; ok = !!r && r.ok === true; if (ok && typeof r.value === 'boolean') got = r.value; } catch (_) { ok = false; }
+      promosOv.uid = null; promosOv.v = null;
+      if (dead || !S.member || S.member.uid !== uid) return;
+      // the committed value read back by the server (contract §6) is what the switch and the cache keep
+      if (ok) { S.member.promos = got; const c = CappDeviceAccount.readProfile(storage, uid); if (c) CappDeviceAccount.rememberProfile(storage, { ...c, promos: got }); }
+      renderNow(); if (!ok) toast('No se guardó el cambio. Intentá de nuevo.');   // frame 1b: back to its value
+    }
+    // «Cerrar sesión» (no confirm) / «Olvidar este teléfono» (frame 2, then also the device marker): the guest's Cuenta at once (frame 3);
+    // the 'guest' callback clears the profile cache + the completion mark once the SDK confirms; a rejected sign-out restores the member
+    async function signOutNow({ forget = false } = {}) {
+      if (!fbAuth) return;
+      if (forget) CappDeviceAccount.forget(storage);
+      signingOut = true; dropMember(); renderNow();
+      try { await fbAuth.signOut(); } catch (_) { signingOut = false; const u = auth && auth.user ? auth.user() : null; if (u && u.uid) applyMember(CappDeviceAccount.readProfile(storage, u.uid) || { uid: u.uid }); renderNow(); return; }
+      signingOut = false; renderNow();
     }
     function startAuth() {
       if (!SU || fbAuth || dead) return;
@@ -236,6 +284,8 @@
         if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearComplete(); }   // a CONFIRMED sign-out: no personal data stays on show
         if (st !== 'member') { dropMember(); schedule(); return; }
         const u = auth.user && auth.user();
+        // Codex G7 r1 #2: a cached profile of ANOTHER uid than the session's is purged (never shown, never kept)
+        { const pk = CappDeviceAccount.peekProfile(storage); if (pk && u && u.uid && pk.uid !== u.uid) CappDeviceAccount.forgetProfile(storage); }
         // the sheet in progress owns its outcome: a member only at «Listo» (its 'signed-in'), never by the SDK's callback mid-flow
         if (signup && signup.state.open) { schedule(); return; }
         // a RESTORED session without THIS uid's completion mark: never a member; signed out (a rejected sign-out is retried at the next
@@ -250,7 +300,8 @@
       (app.parentNode || doc.body).appendChild(host);
       const syncDark = () => host.classList.toggle('dark', app.classList.contains('dark'));
       signup = CappSignup.createSignup({ doc, host: { addEventListener: (...a) => host.addEventListener(...a), contains: (n) => host.contains(n), querySelector: (q) => host.querySelector(q), set innerHTML(v) { syncDark(); host.classList.toggle('open', !!v); host.innerHTML = v; }, get innerHTML() { return host.innerHTML; } },
-        api: CappSignupApi.createSignupApi({ endpoints: SU.endpoints, fetch: o.signupFetch }), auth: fbAuth, google: o.google || null, timers: T,
+        api: (suApi = CappSignupApi.createSignupApi({ endpoints: SU.endpoints, fetch: o.signupFetch })), auth: fbAuth, google: o.google || null, timers: T,
+        ...(runtime.intlPhone === true ? { intlPhone: true, CappPhone: typeof CappPhone !== 'undefined' ? CappPhone : o.CappPhone } : {}),   // part B (b): the in-sheet country pane
         onEvent: (n, d) => { if (n === 'signed-in') signedIn(d); } });
     }
     function settleRet(rid, out) {
@@ -277,6 +328,7 @@
     function enter(rid, dish) {
       if (dir.state(rid) === 'gone') return;
       S.held = { rid, dish: dish || null }; S.heldErr = false;
+      { const pe = cache.peek(rid); if (pe && pe.state === 'failed') cache.get(rid); }   // frame 15: a failed menu is re-fetched before its sheet is ever shown
       if (checkHeld()) return;
       renderNow();   // the drawn pressed state
       if (dir.state(rid) !== 'enterable') dir.revalidate();
@@ -293,6 +345,9 @@
         nav.go({ name: 'store', rid: h.rid, dish: h.dish }, saveScreen());
         return true;
       }
+      // S7a-2 frame 15: an enterable store whose menu did not load (no load in flight) ⇒ the app's error sheet over Inicio, the row
+      // kept in its pressed state; «Reintentar» re-fetches (the hold stays), «Cerrar» releases it
+      if (st === 'enterable' && e && e.state === 'failed' && !cache.pending(h.rid)) { if (S.layer !== 'menuerr') openLayer('menuerr'); return false; }
       const v = dir.view();
       if (st !== 'enterable' && v.failed && !v.pending) { S.held = null; S.heldErr = true; schedule(); }   // r3.3-F1: frame 7 for the held tap
       return false;
@@ -309,7 +364,7 @@
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
       return { phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), cuisine: S.cuisine, filters: S.filters,
-        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }, locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent };
+        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }, locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
     function saveScreen() {
@@ -332,7 +387,7 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && runtime.guestCardOnly === true ? CappHome.accountGuestHtml(v) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
@@ -342,7 +397,7 @@
     function renderLayer() {
       const L = $('layer'); if (!L) return;
       pinGen++; pinMap = null;   // any open pin map is obsolete
-      L.innerHTML = S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
+      L.innerHTML = S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
       if (S.layer !== 'pin') return;
       const firstHub = dir.view().rows.map((r) => r.entry).find((e) => Number.isFinite(e.hub_lat) && Number.isFinite(e.hub_lng));
       pinDraft = S.loc ? { lat: S.loc.lat, lng: S.loc.lng } : null;   // the editor's VIEW starts on the city when there is no location — never a pin
@@ -356,6 +411,11 @@
         pinMap = { gen, m };
         m.addListener('idle', () => { if (gen !== pinGen || dead) return; const c = m.getCenter(); if (c) pinDraft = { lat: c.lat(), lng: c.lng() }; });
       }).catch(() => {});
+    }
+    function menuErrHtml() {
+      const h = S.held, row = h ? dir.view().rows.find((r) => r.rid === h.rid) : null;   // the name is data (the directory's, as on the row)
+      return CappUI.errSheetHtml({ title: `No pudimos abrir ${row ? CappHome.storeOf(row).name : ''}`, body: 'Su menú no cargó. Revisá tu conexión e intentá de nuevo.', icon: 'warn',
+        acts: [{ act: 'menu-retry', label: 'Reintentar', primary: true }, { act: 'menu-close', label: 'Cerrar' }] });
     }
     function openLayer(k) { S.layer = k; renderLayer(); }
     function closeLayer() { S.layer = null; renderLayer(); }
@@ -371,16 +431,23 @@
       const a = t.dataset.act;
       // the Cuenta tab: with the guest rules ON (runtime.guestCardOnly), a guest's (and an unresolved) is frame 5b; a member's is a
       // later slice. Flag absent ⇒ exactly the S7a-2 behaviour: a host event (Codex guest r1 #3)
-      if (a === 'tab') { const id = t.dataset.tab; if (id === 'account' && (runtime.guestCardOnly !== true || authNow() === 'member')) { emit('tab', { tab: id }); return; }
+      if (a === 'tab') { const id = t.dataset.tab; if (id === 'account' && !SU && (runtime.guestCardOnly !== true || authNow() === 'member')) { emit('tab', { tab: id }); return; }   // G7: under runtime.signup the Cuenta is the shell's
         if (id === 'home' || id === 'search' || id === 'account') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
       if (a === 'signin') { openSignin({ ctx: t.dataset.ctx || 'account' }); return; }
       if (a === 'help') { emit('help', {}); return; }
+      if (a === 'promos') { if (t.getAttribute('aria-disabled') !== 'true') togglePromos(); return; }   // G7 frame 1 / 1b
+      if (a === 'signout') return void signOutNow();
+      if (a === 'forget') return openLayer('forget');   // G7 frame 2
+      if (a === 'forget-confirm') { closeLayer(); return void signOutNow({ forget: true }); }
       if (a === 'open-store') return enter(t.dataset.rid, null);
       if (a === 'open-dish') return enter(t.dataset.rid, t.dataset.id);
       if (a === 'cuisine') { S.cuisine = t.dataset.val || ''; return renderNow(); }
       if (a === 'filter') { const k = t.dataset.val; if (S.filters.has(k)) S.filters.delete(k); else S.filters.add(k); return renderNow(); }
       if (a === 'clearfilters') { S.cuisine = ''; S.filters.clear(); return renderNow(); }
       if (a === 'rownext') { const row = t.closest('.hsec') && t.closest('.hsec').querySelector('.hrow'); if (row && row.scrollBy) row.scrollBy({ left: Math.round(row.clientWidth * 0.8), behavior: 'smooth' }); return; }
+      if (a === 'menu-retry') { closeLayer(); if (S.held) cache.get(S.held.rid); return; }   // frame 15: the row stays held until the menu answers
+      if (a === 'menu-close') { S.held = null; closeLayer(); return renderNow(); }
+      if (a === 'menus-retry') { loadMenus(); return renderNow(); }   // frame 16
       if (a === 'dir-retry') { S.heldErr = false; dir.revalidate(); return renderNow(); }
       if (a === 'recent') { S.q = t.dataset.q; return renderNow(); }
       if (a === 'clearq') { S.q = ''; renderNow(); const i = $('gq'); if (i) i.focus(); return; }

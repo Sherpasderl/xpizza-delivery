@@ -246,7 +246,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   const w = dom.window;
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -612,7 +612,10 @@ test('stamp: shell.html is stamped as orders-app; on the stamped shell SherpaCli
   const tmp = mkdtempSync(join(tmpdir(), 'capp-stamp-')), dir = join(tmp, 'customer-app');
   cpSync(HERE, dir, { recursive: true, filter: (src) => !/node_modules/.test(src) });
   try {
-    const r = Stamp.stamp(dir, { siteName: 'sherpa-pedir', commit: 'c0ffee', env: 'preview' });
+    // the site name from the manifest (config), never a literal — platform-domain-swap scans tests too
+    const site = (JSON.parse(readFileSync(join(ROOT, 'platform/sites.json'), 'utf8')).deployments.find((d) => d.folder === 'customer-app') || {}).netlify_site;
+    assert.ok(typeof site === 'string' && site.length > 0, 'premise: the manifest names the app\'s Netlify site');
+    const r = Stamp.stamp(dir, { siteName: site, commit: 'c0ffee', env: 'preview' });
     assert.ok(r.ok, r.error); assert.equal(r.deployment, 'orders-app');
     assert.ok(r.files.includes('shell.html'), '🔴 shell.html is stamped');
     assert.ok(readFileSync(join(dir, 'shell.html'), 'utf8').includes('<meta name="sherpa-deployment" content="orders-app">'));
@@ -663,7 +666,7 @@ function fakeFirebase({ persisted = null, hold = null, failSignOut = 0 } = {}) {
     signOut: async () => { calls.out++; if (failSignOut > 0) { failSignOut--; throw new Error('network'); } user = null; emitU(); } };
   return { calls, loadSdk: async () => { calls.load++; return { initializeApp: () => ({}), authMod }; } };
 }
-const SU_EP = Object.fromEntries(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant'].map((k) => [k, `https://fn.test/${k}`]));
+const SU_EP = Object.fromEntries(require('./capp-signup-api.js').ENDPOINTS.map((k) => [k, `https://fn.test/${k}`]));   // the ONE source of the set
 const SU_RUNTIME = { ...RUNTIME, guestCardOnly: true, signup: { firebase: { apiKey: 'k_test', projectId: 'p' }, endpoints: SU_EP } };
 function signupServer(verify) {
   const sent = [];
@@ -707,7 +710,7 @@ test('G6 shell: the SDK after the first paint; «Entrá» opens the sheet; a ver
   assert.deepEqual(J(S.ui.state.member), { uid: 'u_ana', name: 'Ana Pérez', phone: '99990000', email: 'ana@gmail.com', idToken: 'id:u_ana' });
   assert.equal(await S.ui.state.member.getIdToken(), 'id:u_ana', 'the transport\'s send-time token comes from the SDK');
   S.click('.tabbar [data-tab="account"]'); await flush();
-  assert.deepEqual(S.events.filter((e) => e[0] === 'tab').pop(), ['tab', { tab: 'account' }], 'a member\'s Cuenta is the host\'s');
+  assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', 'G7: a member\'s Cuenta is the shell\'s (under runtime.signup)'); assert.equal(S.events.filter((e) => e[0] === 'tab').length, 0);
   await fb.loadSdk().then(({ authMod }) => authMod.signOut()); await flush();
   assert.equal(storage.getItem('capp:member_profile'), null, '🔴 an ordinary sign-out clears the cached profile');
   assert.ok(storage.getItem('capp:device_account'), 'the device marker is kept (§4c)');
@@ -723,6 +726,13 @@ test('G6 shell: a RESTORED session autofills from the cached profile of THAT uid
   const O = bootShell({ auth: 'unresolved', storage: memStorage({ 'capp:member_profile': prof, 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_other' }) }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb2.loadSdk, signupFetch: signupServer(ANA).fetch } });
   await flush(); await flush();
   assert.deepEqual(J(O.ui.state.member ?? null), { uid: 'u_other', name: '', phone: '', email: '', idToken: 'id:u_other' }, '🔴 another member\'s cached profile is never shown');
+  // Codex G7 r1 #2 purges a mismatched cache first; when that removal FAILS, the read itself still refuses another uid's profile
+  const stuck = memStorage({ 'capp:member_profile': prof, 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_other' }) }); stuck.removeItem = () => { throw new Error('denied'); };
+  const fb3 = fakeFirebase({ persisted: 'u_other' });
+  const P = bootShell({ auth: 'unresolved', storage: stuck, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb3.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  await flush(); await flush();
+  assert.equal(stuck.getItem('capp:member_profile'), prof, 'premise: the purge could not remove the cache');
+  assert.deepEqual(J(P.ui.state.member ?? null), { uid: 'u_other', name: '', phone: '', email: '', idToken: 'id:u_other' }, '🔴 another member\'s cached profile is never shown (the purge failed)');
 });
 
 // ── Codex G6 r1 (#1 / #2 / #3): the member never outlives its session in the mounted checkout ──
@@ -853,4 +863,277 @@ test('S4 frame G in the shell (schedulingLive + G6): a guest\'s «Programar» in
   assert.equal(txt(h.querySelector('[data-su="guest"]')), 'Prefiero seguir como invitado');
   S.click(h.querySelector('[data-su="guest"]')); await flush();
   assert.equal(ui.state.flow.time, 'asap', 'the order stays ASAP');
+});
+
+// ── S7a-2 follow-up (MOCKUP-capp-S7a-states frames 15–18, approved) ──
+test('S7a-2 frames 16 / 17 / 18: every menu down ⇒ «No pudimos buscar platos» + [Reintentar] under the directory\'s matches; no city ⇒ «{N} restaurantes»; no recents ⇒ the search .empty (no button)', () => {
+  const allDown = rowsOf(SC.complete.body, { x_pizza: 'failed', la_musa: 'failed' });
+  const down = dom(CappHome.searchHtml(VM({ tab: 'search', q: 'camarones', rows: allDown })));
+  assert.equal(txt(down.querySelector('#results')), 'No pudimos buscar platos Ningún menú cargó. Revisá tu conexión e intentá de nuevo. Reintentar', '🔴 F16: the drawn all-menus-down block');
+  assert.equal(down.querySelector('.empty .btn2').dataset.act, 'menus-retry');
+  const nm = CappHome.storeOf(allDown[0]).name;
+  const withStore = dom(CappHome.searchHtml(VM({ tab: 'search', q: nm, rows: allDown })));
+  assert.deepEqual([...withStore.querySelectorAll('#results > h3, #results > .empty > b')].map((x) => x.textContent), ['Restaurantes', 'No pudimos buscar platos'], 'F16: the directory\'s matches above');
+  const one = txt(dom(CappHome.searchHtml(VM({ tab: 'search', q: 'camarones', rows: rowsOf(SC.complete.body, { x_pizza: 'failed', la_musa: 'fresh' }) }))).querySelector('#results'));
+  assert.ok(!/No pudimos buscar platos/.test(one), 'F16 premise: one menu answered ⇒ not frame 16');
+  const noCity = { ...SC.complete.body.platform }; delete noCity.city_label;
+  const home = dom(CappHome.homeHtml(VM({ platform: noCity })));
+  assert.equal(txt(home.querySelector('.hsec[aria-label="Todos los restaurantes"] .hd p')), '2 restaurantes', '🔴 F17: «{N} restaurantes», never a bare number');
+  assert.equal(txt(dom(CappHome.homeHtml(VM())).querySelector('.hsec[aria-label="Todos los restaurantes"] .hd p')), '2 en San Pedro Sula', 'F17 premise: with a city, as before');
+  const empty = dom(CappHome.searchHtml(VM({ tab: 'search' })));
+  assert.equal(txt(empty.querySelector('#results')), 'Buscá restaurantes o platos Tus búsquedas recientes van a aparecer aquí.', '🔴 F18: no recents ⇒ the drawn .empty');
+  assert.ok(empty.querySelector('#results .empty svg') && !empty.querySelector('#results .empty button'), 'F18: the search icon, no button');
+  const rec = dom(CappHome.searchHtml(VM({ tab: 'search', recent: ['pizza'] })));
+  assert.equal(rec.querySelector('#results .empty'), null); assert.equal(rec.querySelector('#results h3').textContent, 'Búsquedas recientes');
+});
+test('S7a-2 frame 15: a held tap whose MENU does not load ⇒ «No pudimos abrir {restaurante}» over Inicio, the row still pressed; «Reintentar» re-fetches and enters; «Cerrar» releases the row', async () => {
+  let mode = 'fail';
+  const S = bootShell({ envelope: (rid) => (rid === 'la_musa' ? mode : 'ok') });
+  await flush();
+  const nm = S.q('.rlist .rcard[data-rid="la_musa"]') && CappHome.storeOf({ rid: 'la_musa', entry: SC.complete.body.restaurants.find((r) => r.restaurant_id === 'la_musa'), cfg: {} }).name;
+  const before = S.envCalls.filter((r) => r === 'la_musa').length;
+  mode = 'hold'; S.click('.rlist .rcard[data-rid="la_musa"]'); await flush();
+  assert.ok(S.envCalls.filter((r) => r === 'la_musa').length > before, 'F15: the tap re-fetches the failed menu');
+  assert.equal(S.q('#layer .errsheet'), null, '🔴 F15-refetch: no sheet while the re-fetch is in flight (the row pressed)');
+  while ((S.pend.la_musa || []).length) { S.pend.la_musa.shift().resolve({ status: 500 }); await flush(); }   // the re-fetch (and its one retry) fails
+  mode = 'fail';
+  assert.equal(S.q('#layer .errsheet h2') && S.q('#layer .errsheet h2').textContent, `No pudimos abrir ${nm}`, '🔴 F15: the sheet over Inicio');
+  assert.equal(S.q('#layer .errsheet p').textContent, 'Su menú no cargó. Revisá tu conexión e intentá de nuevo.');
+  assert.deepEqual(S.qa('#layer .errsheet button').map((b) => b.textContent), ['Reintentar', 'Cerrar']);
+  assert.ok(S.q('#layer .errsheet .icon.warn'), 'the .warn tint («Sin conexión»\'s)');
+  assert.ok(S.q('.rlist .rcard[data-rid="la_musa"]').classList.contains('held'), '🔴 F15-held: the row stays pressed under the sheet');
+  assert.equal(S.ui.store(), null);
+  S.click('#layer [data-act="menu-close"]'); await flush();
+  assert.equal(S.q('#layer .errsheet'), null); assert.ok(!S.q('.rlist .rcard[data-rid="la_musa"]').classList.contains('held'), 'F15: «Cerrar» releases the row');
+  S.click('.rlist .rcard[data-rid="la_musa"]'); await flush();
+  assert.ok(S.q('#layer .errsheet'), 'premise: the sheet again');
+  mode = 'ok'; S.click('#layer [data-act="menu-retry"]'); await flush();
+  assert.equal(S.ui.store() && S.ui.store().rid, 'la_musa', '🔴 F15-retry: «Reintentar» re-fetches and enters');
+});
+
+// ── G7 member Cuenta (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27: frames 1 / 1b / 2 / 3 / 4a / 4b) — under runtime.signup ──
+const G7_RUNTIME = SU_RUNTIME;   // the endpoint set (ENDPOINTS) carries setPromos
+const G7_PROFILE = (o = {}) => ({ uid: 'u_ana', name: 'Ana Pérez', phone: '+50496123344', email: 'ana.perez@gmail.com', ...o });
+const g7Store = (profile) => { const st = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }) }); DA.remember(st, '+50496123344'); if (profile) DA.rememberProfile(st, profile); return st; };
+// Codex G7 r1 #4 / r2: the setPromos fake mirrors 3a's REAL platform handler EXACTLY (wip/guest-s3 deb1594b: signup-endpoints.js setPromos +
+// scopeOf, signup-core.js setPromos with confirm): the same checks in the same order and the same answers. ASSEMBLY OBLIGATION (train):
+// a contract test against that real handler (TRAIN-NEXT-INVENTORY.md). state: 'ok' | 'not_completed' | 'legal_unconfigured' | 'deleted' | 'aborted'
+function setPromosHandler(i, state = 'ok') {
+  if (state === true) state = 'ok'; if (state === false) state = 'not_completed';
+  if (!i || i.method !== 'POST') return [405, { ok: false }];
+  let b = null; try { b = JSON.parse(i.body); } catch (_) { b = null; } b = b && typeof b === 'object' ? b : {};
+  const has = (k) => Object.prototype.hasOwnProperty.call(b, k);
+  // scopeOf: no `context` key ⇒ the forms' path (a known restaurant_id — none here); else EXACTLY context:'platform' and no restaurant_id key
+  const scope = !has('context') ? null : b.context === 'platform' && !has('restaurant_id') ? '_platform' : null;
+  if (!scope) return [400, { ok: false, reason: 'bad_request' }];
+  if (!(i.headers && i.headers['x-firebase-id-token'])) return [401, { ok: false, reason: 'unauthenticated' }];
+  if (typeof b.value !== 'boolean') return [400, { ok: false, reason: 'bad_request' }];
+  if (state === 'legal_unconfigured' || state === 'not_completed' || state === 'aborted') return [400, { ok: false, reason: state }];
+  if (state === 'deleted') return [403, { ok: false, reason: 'deleted' }];
+  return [200, { ok: true, value: b.value }];   // the committed value read back
+}
+function g7Server(promosOk = true) {
+  const sent = [];
+  const fetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); sent.push([ep, i && i.body ? JSON.parse(i.body) : null, i && i.headers ? i.headers['x-firebase-id-token'] : null]);
+    const [status, j] = ep === 'setPromos' ? setPromosHandler(i, promosOk) : [200, ep === 'getSignupConfig' ? { ok: true, terms_url: 'https://legal.test/t', privacy_url: 'https://legal.test/p', legal_ready: true, google_enabled: false } : { ok: true }];
+    return { status, json: async () => j }; };
+  return { fetch, sent };
+}
+test('G7 setPromos fake (Codex G7 r1 #4): as strict as the real handler — today\'s restaurant_id shape, a tokenless call, a non-boolean value and a GET are refused; the client\'s request passes', async () => {
+  const P = (body, headers = { 'x-firebase-id-token': 't' }, method = 'POST') => setPromosHandler({ method, headers, body: JSON.stringify(body) }, true);
+  assert.deepEqual(P({ restaurant_id: 'r1', value: true }), [400, { ok: false, reason: 'bad_request' }], '🔴 G7-fake: no context ⇒ bad_request, as the handler without restaurant_id');
+  assert.deepEqual(P({ context: 'platform', restaurant_id: null, value: true }), [400, { ok: false, reason: 'bad_request' }], '🔴 G7-fake: both selectors ⇒ bad_request (deb1594b scopeOf: the restaurant_id KEY at all)');
+  assert.deepEqual(setPromosHandler({ method: 'POST', headers: { 'x-firebase-id-token': 't' }, body: JSON.stringify({ context: 'platform', value: true }) }, 'deleted'), [403, { ok: false, reason: 'deleted' }], 'a tombstone ⇒ 403, as the handler');
+  assert.deepEqual(P({ context: 'platform', value: true }, {}), [401, { ok: false, reason: 'unauthenticated' }], '🔴 G7-fake: no ID token ⇒ unauthenticated');
+  assert.deepEqual(P({ context: 'platform', value: 'yes' }), [400, { ok: false, reason: 'bad_request' }], '🔴 G7-fake: a non-boolean value ⇒ bad_request');
+  assert.deepEqual(P({ context: 'platform', value: true }, undefined, 'GET'), [405, { ok: false }]);
+  const srv = g7Server(), api = require('./capp-signup-api.js').createSignupApi({ endpoints: { setPromos: 'https://ep.test/setPromos' }, fetch: srv.fetch });
+  assert.deepEqual(await api.setPromos({ idToken: 'id:u_ana', value: false }), { ok: true, value: false }, '🔴 G7-fake: the client\'s real request is accepted (the value read back)');
+  assert.deepEqual(await api.setPromos({ idToken: null, value: false }), { ok: false, reason: 'unauthenticated' }, 'a tokenless client call is refused, as in production');
+});
+async function g7Boot({ profile = G7_PROFILE({ promos: true }), srv = g7Server(), fbOpts = {} } = {}) {
+  const fb = fakeFirebase({ persisted: 'u_ana', ...fbOpts });
+  const store = g7Store(profile);
+  const S = bootShell({ auth: 'unresolved', storage: store, runtime: G7_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch } });
+  await flush(); await flush();
+  S.click('.tabbar [data-tab="account"]'); await flush();
+  return { S, fb, srv, store };
+}
+const g7Rows = (S) => S.qa('.flow .rows .rowbtn').map((b) => txt(b));
+test('G7 frame 1 / 4a: the member\'s Cuenta from the cached profile — the initial, name / phone / email on three lines, Pedidos · Promociones (on) · Ayuda, the session group, «v0.1.0»; never the host\'s tab event', async () => {
+  const { S } = await g7Boot();
+  assert.equal(S.events.filter((e) => e[0] === 'tab').length, 0, '🔴 G7-shell: the member\'s Cuenta is the shell\'s (no host event)');
+  assert.equal(txt(S.q('.acct-hero .av')), 'A');
+  assert.deepEqual([...S.qa('.acct-hero .t > *')].map((x) => x.textContent), ['Ana Pérez', '+504 9612-3344', 'ana.perez@gmail.com'], '🔴 G7-hero: name, phone, email on three lines');
+  assert.deepEqual(g7Rows(S), ['Pedidos', 'Promociones Ofertas por correo y WhatsApp', 'Ayuda', 'Cerrar sesión', 'Olvidar este teléfono Cierra tu sesión y deja de recordar tu número']);
+  assert.equal(S.qa('.flow .rows').length, 2); assert.ok(S.q('.flow .rows.sess'));
+  const sw = S.q('[data-act="promos"] .switch');
+  assert.equal(sw.getAttribute('aria-checked'), 'true', '🔴 G7-promos: the cached value'); assert.equal(S.q('[data-act="promos"]').getAttribute('aria-disabled'), null);
+  assert.equal(S.q('.flow .credit.ver').textContent, 'v0.1.0', '🔴 G7-version: SYSTEM_VERSION');
+  assert.ok(!/recompens/i.test(txt(S.q('.flow'))), 'no rewards row (decision 1)');
+});
+test('G7 frame 1b: Promociones flips at once and calls setPromos (context platform, the member token); success keeps it and updates the cache; failure reverts + «No se guardó el cambio. Intentá de nuevo.»', async () => {
+  const ok = await g7Boot();
+  ok.S.click('[data-act="promos"]');
+  assert.equal(ok.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'false', '🔴 G7-optimistic: the new value at once');
+  await flush();
+  const call = ok.srv.sent.find((x) => x[0] === 'setPromos');
+  assert.deepEqual([call[1], call[2]], [{ context: 'platform', value: false }, 'id:u_ana'], '🔴 G7-setPromos: contract §6');
+  assert.equal(ok.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'false');
+  assert.equal(JSON.parse(ok.store.getItem('capp:member_profile')).promos, false, 'the cache follows a confirmed change');
+  const bad = await g7Boot({ srv: g7Server(false) });
+  bad.S.click('[data-act="promos"]'); await flush();
+  assert.equal(bad.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'true', '🔴 G7-revert: back to its value');
+  assert.equal(bad.S.q('#toast').textContent, 'No se guardó el cambio. Intentá de nuevo.', '🔴 G7-toast');
+  assert.equal(JSON.parse(bad.store.getItem('capp:member_profile')).promos, true);
+});
+test('G7 frame 4b: no served promotions value ⇒ the switch INERT (aria-disabled, the .45); a uid without a cached profile ⇒ the placeholder bars, the rows usable', async () => {
+  const noVal = await g7Boot({ profile: G7_PROFILE() });
+  assert.equal(noVal.S.q('[data-act="promos"]').getAttribute('aria-disabled'), 'true', '🔴 G7-inert: no value served ⇒ inert');
+  noVal.S.click('[data-act="promos"]'); await flush();
+  assert.equal(noVal.srv.sent.filter((x) => x[0] === 'setPromos').length, 0, 'an inert switch sends nothing');
+  const bare = await g7Boot({ profile: null });
+  assert.equal(bare.S.qa('.acct-hero .t .bar').length, 3, '🔴 G7-placeholder: three static bars'); assert.ok(bare.S.q('.acct-hero .av.ph'));
+  assert.ok(bare.S.q('[data-act="signout"]') && bare.S.q('[data-act="tab"][data-tab="orders"]'));
+});
+// Codex G7 r1 #3: the promotions consent rides the REAL sign-in — the server's profile.promos (an existing account), or the value a
+// successful completeProfile stored (a new one) — into «Listo», the cache and the Cuenta switch; none stored (a legacy account,
+// completion 'off') ⇒ the switch stays INERT and a tap sends nothing (contract §5: promos OMITTED when no consent is stored)
+async function g7SignIn(verify, { complete } = {}) {
+  const fb = fakeFirebase(); const srv = signupServer(verify); const storage = memStorage();
+  const S = bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch } }); await flush(); await flush();
+  await signInViaSheet(S);
+  const h = suHost(S);
+  if (complete) {
+    const em = h.querySelector('#su-email'); em.value = 'ana@gmail.com'; em.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+    S.click(h.querySelector('[data-su="email-go"]')); await flush();
+    const nm = h.querySelector('#su-name'); nm.value = 'Ana Pérez'; nm.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+    for (const id of ['su-terms', ...(complete.promos ? ['su-promos'] : [])]) { const c = h.querySelector('#' + id); c.checked = true; c.dispatchEvent(new S.w.Event('change', { bubbles: true })); await flush(); }
+    S.click(h.querySelector('[data-su="save"]')); await flush(); await flush();
+  }
+  S.click(h.querySelector('[data-su="finish"]')); await flush(); await flush();
+  S.click('.tabbar [data-tab="account"]'); await flush();
+  const row = S.q('[data-act="promos"]'), sw = row && row.querySelector('.switch');
+  return { S, srv, storage, row, live: !!row && row.getAttribute('aria-disabled') === null, on: sw ? sw.getAttribute('aria-checked') : null };
+}
+test('G7 Codex r1 #3: an EXISTING account\'s stored consent (verifyOtp profile.promos) reaches the Cuenta — the switch LIVE at the server\'s value, cached', async () => {
+  const r = await g7SignIn({ ...ANA, profile: { ...ANA.profile, promos: false } });
+  assert.deepEqual([r.live, r.on], [true, 'false'], '🔴 G7-consent: the server\'s value, live');
+  assert.equal(JSON.parse(r.storage.getItem('capp:member_profile')).promos, false, '🔴 G7-consent: cached with the profile');
+});
+test('G7 Codex r1 #3: a NEW account\'s promotions choice, saved by completeProfile, reaches the Cuenta — the switch LIVE at that value', async () => {
+  const r = await g7SignIn({ ...ANA, is_new: true, completion: 'needed', profile: null }, { complete: { promos: true } });
+  const cp = r.srv.sent.find((x) => x[0] === 'completeProfile');
+  assert.equal(cp && cp[1].promos, true, 'premise: the choice was sent');
+  assert.deepEqual([r.live, r.on], [true, 'true'], '🔴 G7-consent: the saved choice, live');
+  assert.equal(JSON.parse(r.storage.getItem('capp:member_profile')).promos, true);
+});
+test('G7 Codex r1 #3: a LEGACY account (completion \'off\', no consent stored ⇒ no profile.promos) — the switch INERT and a tap sends nothing (setPromos would answer not_completed)', async () => {
+  const r = await g7SignIn({ ...ANA, completion: 'off', profile: { name: 'Ana Pérez', email: 'ana@gmail.com' } });
+  assert.equal(r.live, false, '🔴 G7-legacy: no stored consent ⇒ the switch is never live');
+  assert.equal(r.on, 'false', '🔴 G7-legacy: settled with no stored consent ⇒ OFF + dimmed (ruling (ii), OWNER-PENDING) — never «ON» without consent');
+  r.S.click('[data-act="promos"]'); await flush();
+  assert.equal(r.srv.sent.filter((x) => x[0] === 'setPromos').length, 0, '🔴 G7-legacy: a tap sends nothing');
+});
+test('G7 Codex r1 #3 / contract §6: the switch and the cache keep the value setPromos READ BACK from the committed record, not the one sent', async () => {
+  const srv = g7Server(); const f0 = srv.fetch;
+  srv.fetch = async (u, i) => (u.split('?')[0].endsWith('/setPromos') ? (srv.sent.push(['setPromos', JSON.parse(i.body), i.headers['x-firebase-id-token']]), { status: 200, json: async () => ({ ok: true, value: true }) }) : f0(u, i));
+  const r = await g7Boot({ srv });
+  r.S.click('[data-act="promos"]'); await flush(); await flush();
+  assert.equal(srv.sent.find((x) => x[0] === 'setPromos')[1].value, false, 'premise: the tap sent «off»');
+  assert.equal(r.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'true', '🔴 G7-readback: the committed value wins');
+  assert.equal(JSON.parse(r.store.getItem('capp:member_profile')).promos, true, '🔴 G7-readback: cached as committed');
+});
+// Codex G7 r1 #2 (P1 privacy) + #5, advisor ruling 2026-10-31: a cached profile is SHOWN only once the SDK's first auth state names
+// its uid (local persistence restore, no network wait); until then neutral placeholders at the reserved 78 px (ruling A — no reflow);
+// a mismatch or a guest PURGES that cache. Once the SDK says member U (U's mark), U's cache is shown at once, independent of the ID
+// token; the switch is live only once the member is applied. Ruling (ii), OWNER-PENDING: a SETTLED member with no stored consent ⇒
+// the switch OFF + dimmed (never «ON» without consent); while loading it keeps frame 4b's ON-dimmed placeholder.
+const anaText = (S) => /Ana|ana\.perez|9612/.test(S.q('#app') ? S.q('#app').textContent : '');
+test('G7 decision 7 / Codex r1 #2: while the session RESOLVES, a profile on this device draws the member GEOMETRY with neutral placeholders — never its name, phone or email; none ⇒ the guest\'s', async () => {
+  const fb = fakeFirebase({ persisted: 'u_ana' });
+  const S = bootShell({ auth: 'unresolved', storage: g7Store(G7_PROFILE({ promos: true })), runtime: G7_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: g7Server().fetch } });
+  S.click('.tabbar [data-tab="account"]');
+  assert.equal(S.qa('.acct-hero .t .bar').length, 3, '🔴 G7-privacy: the member geometry, as placeholders, before the SDK answers');
+  assert.equal(anaText(S), false, '🔴 G7-privacy: no cached personal data before the SDK names the uid');
+  assert.deepEqual([S.q('[data-act="promos"]').getAttribute('aria-disabled'), S.q('[data-act="promos"] .switch').getAttribute('aria-checked')], ['true', 'true'], 'loading ⇒ frame 4b\'s ON-dimmed placeholder');
+  await flush(); await flush();
+  assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', 'the SDK named u_ana ⇒ her cached profile');
+  const G = bootShell({ auth: 'unresolved', storage: memStorage(), runtime: G7_RUNTIME, mountExtra: { loadSdk: fakeFirebase({}).loadSdk, signupFetch: g7Server().fetch } });
+  G.click('.tabbar [data-tab="account"]');
+  assert.equal(G.q('.acct-hero'), null); assert.ok(G.q('.guestcard'), 'no profile ⇒ the guest\'s geometry');
+});
+test('G7 Codex r1 #2: ANOTHER account restores on this device — the previous account\'s cached profile is never shown and is purged', async () => {
+  const st = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_bob' }) }); DA.rememberProfile(st, G7_PROFILE({ promos: true }));
+  const S = bootShell({ auth: 'unresolved', storage: st, runtime: G7_RUNTIME, mountExtra: { loadSdk: fakeFirebase({ persisted: 'u_bob' }).loadSdk, signupFetch: g7Server().fetch } });
+  S.click('.tabbar [data-tab="account"]');
+  assert.equal(anaText(S), false, '🔴 G7-privacy: not before the SDK answers');
+  await flush(); await flush();
+  assert.equal(anaText(S), false, '🔴 G7-privacy: not after another uid restored');
+  assert.equal(st.getItem('capp:member_profile'), null, '🔴 G7-privacy: the mismatched cache is purged');
+});
+test('G7 Codex r1 #2: a SIGNED-OUT device — the cached profile is never shown; the guest\'s Cuenta once the SDK answers; the cache purged', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const S = bootShell({ auth: 'unresolved', storage: st, runtime: G7_RUNTIME, mountExtra: { loadSdk: fakeFirebase({ persisted: null }).loadSdk, signupFetch: g7Server().fetch } });
+  S.click('.tabbar [data-tab="account"]');
+  assert.equal(anaText(S), false, '🔴 G7-privacy: not before the SDK answers');
+  await flush(); await flush();
+  assert.ok(S.q('.guestcard'), 'the guest\'s Cuenta'); assert.equal(anaText(S), false);
+  assert.equal(st.getItem('capp:member_profile'), null, '🔴 G7-privacy: purged on a confirmed guest');
+});
+test('G7 Codex r1 #5: auth says member, the ID token still pending — the Cuenta draws the member\'s cached profile at once (never the guest card), the switch live once the member is applied', async () => {
+  const hold = { on: true, q: [] };
+  const fb = fakeFirebase({ persisted: 'u_ana', hold });
+  const S = bootShell({ auth: 'unresolved', storage: g7Store(G7_PROFILE({ promos: true })), runtime: G7_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: g7Server().fetch } });
+  await flush(); await flush();
+  assert.ok(hold.q.length > 0, 'premise: the token read is pending');
+  S.click('.tabbar [data-tab="account"]'); await flush();
+  assert.equal(S.q('.guestcard'), null, '🔴 G7-pending: never the guest card for a member whose token is pending');
+  assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', '🔴 G7-pending: the uid-validated cache at once');
+  assert.equal(S.q('[data-act="promos"]').getAttribute('aria-disabled'), 'true', 'the switch waits for the applied member');
+  const hero0 = S.q('.acct-hero');
+  hold.on = false; hold.q.splice(0).forEach((f) => f()); await flush(); await flush();
+  assert.equal(S.q('.guestcard'), null); assert.equal(S.q('.acct-hero .t b').textContent, 'Ana Pérez');
+  assert.equal(S.q('[data-act="promos"]').getAttribute('aria-disabled'), null, '🔴 G7-pending: live once applied');
+  assert.ok(hero0, 'the member geometry throughout');
+});
+test('G7 frame 3: «Cerrar sesión» — no confirmation; the guest\'s Cuenta at once; the profile cache cleared on the confirmed sign-out; the device marker KEPT', async () => {
+  const { S, fb, store } = await g7Boot();
+  S.click('[data-act="signout"]');
+  assert.ok(S.q('.guestcard'), '🔴 G7-signout: the guest\'s Cuenta at once'); assert.equal(S.q('#layer .errsheet'), null, 'no confirmation');
+  await flush();
+  assert.equal(fb.calls.out, 1); assert.equal(store.getItem('capp:member_profile'), null, 'no personal data stays on show');
+  assert.ok(store.getItem('capp:device_account'), '🔴 G7-marker: an ordinary sign-out keeps the device marker');
+});
+test('G7 frame 2: «Olvidar este teléfono» asks first («¿Olvidar este teléfono?» + the body, [Olvidar este teléfono][Cancelar]); Cancelar changes nothing; confirming forgets the marker and signs out', async () => {
+  const { S, fb, store } = await g7Boot();
+  S.click('[data-act="forget"]');
+  assert.equal(S.q('#layer .errsheet h2') && S.q('#layer .errsheet h2').textContent, '¿Olvidar este teléfono?', '🔴 G7-forget-sheet');
+  assert.equal(S.q('#layer .errsheet p').textContent, 'Cerramos tu sesión y este teléfono deja de recordar tu número: la próxima vez lo escribís de nuevo. Tu cuenta y tus pedidos no se borran.');
+  assert.deepEqual(S.qa('#layer .errsheet button').map((b) => b.textContent), ['Olvidar este teléfono', 'Cancelar']); assert.ok(S.q('#layer .errsheet .icon.calm'));
+  S.click('#layer [data-act="lclose"]'); await flush();
+  assert.equal(S.q('#layer .errsheet'), null); assert.equal(fb.calls.out, 0); assert.ok(store.getItem('capp:device_account'), 'Cancelar keeps everything');
+  S.click('[data-act="forget"]'); S.click('#layer [data-act="forget-confirm"]'); await flush();
+  assert.equal(store.getItem('capp:device_account'), null, '🔴 G7-forget: the device marker removed'); assert.equal(fb.calls.out, 1); assert.ok(S.q('.guestcard'));
+});
+test('G7 a REJECTED sign-out restores the member (nothing pretends to be signed out)', async () => {
+  const { S, fb } = await g7Boot({ fbOpts: { failSignOut: 1 } });
+  S.click('[data-act="signout"]'); await flush(); await flush();
+  assert.equal(fb.calls.out, 1); assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', '🔴 G7-reject: still the member');
+  // the Cuenta alone cannot tell (it reads the cache of the uid auth names): the SESSION is the member's again — checkout included
+  assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', '🔴 G7-reject: the member is restored, not only drawn');
+});
+test('G7 flag absent: without runtime.signup a member\'s Cuenta stays the HOST\'s tab event, as before', async () => {
+  const S = bootShell({ auth: 'member', runtime: { ...RUNTIME, guestCardOnly: true } }); await flush();
+  S.click('.tabbar [data-tab="account"]'); await flush();
+  assert.deepEqual(S.events.filter((e) => e[0] === 'tab').pop(), ['tab', { tab: 'account' }]); assert.equal(S.q('.acct-hero'), null);
+});
+
+test('Part B (b) in the shell: runtime.intlPhone reaches the sign-in sheet (the .cc button); absent ⇒ the «+504» span', async () => {
+  const on = bootShell({ auth: 'unresolved', runtime: { ...SU_RUNTIME, intlPhone: true }, mountExtra: { loadSdk: fakeFirebase({}).loadSdk, signupFetch: signupServer(ANA).fetch } });
+  await flush(); await flush(); on.click('.tabbar [data-tab="account"]'); await flush(); on.click('.guestcard .primary'); await flush();
+  assert.ok(suHost(on).querySelector('.phonerow button.cc'), '🔴 SP-shell: the flag reaches the sheet');
+  const off = bootShell({ auth: 'unresolved', runtime: SU_RUNTIME, mountExtra: { loadSdk: fakeFirebase({}).loadSdk, signupFetch: signupServer(ANA).fetch } });
+  await flush(); await flush(); off.click('.tabbar [data-tab="account"]'); await flush(); off.click('.guestcard .primary'); await flush();
+  assert.equal(suHost(off).querySelector('.phonerow button.cc'), null); assert.ok(suHost(off).querySelector('.phonerow span.cc'));
 });

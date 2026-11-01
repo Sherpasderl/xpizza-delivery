@@ -85,7 +85,7 @@ function sheet(o = {}) {
   const w = new JSDOM('<!doctype html><body><div id="h"></div></body>', { pretendToBeVisual: true }).window;
   const host = w.document.getElementById('h'); const api = fakeApi(o); const auth = fakeAuth(); const events = [];
   if (o.holdSignIn) { const real = auth.signInWithCustomToken; auth.signInWithCustomToken = (t) => new Promise((r) => { o.holdSignIn.release = () => r(real(t)); }); }
-  const su = createSignup({ doc: w.document, host, api, auth, google: o.google || null, timers: { setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {} }, onEvent: (n, d) => events.push([n, d]) });
+  const su = createSignup({ doc: w.document, host, api, auth, google: o.google || null, ...(o.intl ? { intlPhone: true, CappPhone: require('./capp-phone.js') } : {}), timers: { setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {} }, onEvent: (n, d) => events.push([n, d]) });
   const q = (s) => host.querySelector(s), qa = (s) => [...host.querySelectorAll(s)];
   const txt = (s) => { const el = q(s); return el ? el.textContent.replace(/\s+/g, ' ').trim() : null; };
   const click = async (s) => { const el = q(s); assert.ok(el, `premise: ${s}`); assert.ok(!el.disabled, `premise: ${s} enabled`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await settle(); };
@@ -119,7 +119,7 @@ test('G6 sheet — a NEW phone account: phone → code → email → name + Tér
   assert.deepEqual(b.api.of('completeProfile'), [{ idToken: 'id:u_new', email: 'ana@gmail.com', name: 'Ana Pérez', promos: false }]);
   assert.equal(b.txt('.sg .h1'), '¡Perfil creado!');
   await b.click('[data-su="finish"]');
-  assert.deepEqual(b.events, [['signed-in', { uid: 'u_new', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com', isNew: true }], ['done', {}]]);
+  assert.deepEqual(b.events, [['signed-in', { uid: 'u_new', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com', isNew: true, promos: false }], ['done', {}]]);
   assert.equal(b.host.innerHTML, '', 'closed'); assert.equal(b.auth.calls.out, 0, 'a completed account stays signed in');
 });
 test('G6 sheet — an EXISTING complete account: «¡Hola de nuevo, Ana!» (no completion panes); ✕ on that pane = «Listo» (the member is applied)', async () => {
@@ -213,7 +213,7 @@ test('Codex G6 r1 #4 — A verified, Back ×2, then B: nothing of A (name / emai
   assert.equal(b.q('#su-terms').checked, false, 'nor A\'s consent');
   await b.type('#su-name', 'Beto'); await b.check('su-terms'); await b.click('[data-su="save"]'); await b.click('[data-su="finish"]');
   assert.deepEqual(b.api.of('completeProfile'), [{ idToken: 'id:u_b', email: 'beto@correo.com', name: 'Beto', promos: false }]);
-  assert.deepEqual(b.events.filter((e) => e[0] === 'signed-in'), [['signed-in', { uid: 'u_b', name: 'Beto', phone: '+50488880000', email: 'beto@correo.com', isNew: true }]], 'B\'s profile only');
+  assert.deepEqual(b.events.filter((e) => e[0] === 'signed-in'), [['signed-in', { uid: 'u_b', name: 'Beto', phone: '+50488880000', email: 'beto@correo.com', isNew: true, promos: false }]], 'B\'s profile only');
 });
 test('Codex G6 r3 — a COMPLETE account leaves the sheet as «Listo» by any exit: done → Back → ✕ (phone and Google), the profile saved → Back → ✕; an incomplete one is still undone', async () => {
   const A = { ok: true, token: 'ct:u_a', isNew: false, name: 'Ana Pérez', completion: 'complete', profile: { name: 'Ana Pérez', email: 'ana@gmail.com' } };
@@ -274,4 +274,93 @@ test('S4 frame G = B (only with the host\'s scheduleGate, i.e. schedulingLive): 
   await g.click('[data-su="guest"]'); assert.deepEqual(g.events, [['guest', {}]]);
   const o = sheet(); o.su.open({ ctx: 'schedule', memberOnly: true }); await settle();
   assert.equal(o.txt('.sg .sub'), 'Guardá tus datos y pedí más rápido la próxima vez.'); assert.equal(o.q('[data-su="guest"]'), null, 'G6 unchanged without the gate');
+});
+
+// ── the sign-in sheet's country picker (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27 part B, option (b)) — under runtime.intlPhone ──
+test('Part B (b): under intlPhone the .cc is a BUTTON; the country list is a PANE inside the sheet (← Atrás back to the phone); the approved rows, Honduras checked', async () => {
+  const b = sheet({ intl: true }); b.su.open({ ctx: 'account' }); await settle();
+  const cc = b.q('.phonerow button.cc');
+  assert.ok(cc, '🔴 SP-cc: the .cc is a button'); assert.equal(cc.textContent.trim(), '+504'); assert.equal(cc.getAttribute('aria-label'), 'País del número: Honduras +504'); assert.ok(cc.querySelector('svg'));
+  await b.click('.phonerow button.cc');
+  assert.equal(b.txt('.sg .h1'), 'País del número', '🔴 SP-pane: the country list is a pane of THIS sheet');
+  assert.equal(b.txt('.sg .sub'), 'Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.');
+  assert.equal(b.qa('.sg .clist .crow').length, 10); assert.deepEqual([b.txt('.crow.on .nm'), b.txt('.crow.on .code')], ['Honduras', '+504']); assert.ok(b.q('.crow.on svg'));
+  assert.ok(b.q('[data-su="back"]'), 'the sheet\'s own ← Atrás'); assert.equal(b.w.document.querySelectorAll('.sheet').length, 1, 'never a second sheet');
+  await b.click('[data-su="back"]');
+  assert.equal(b.txt('.sg .h1'), 'Entrá a tu cuenta', 'Atrás ⇒ the phone pane');
+});
+test('Part B (b): picking a country returns to the phone pane with its code, its length and format; E.164 on the wire (request, verify, the signed-in phone)', async () => {
+  const b = sheet({ intl: true, verify: { ok: true, token: 'ct:u_us', isNew: false, name: 'Ann', completion: 'complete', profile: { name: 'Ann', email: 'a@b.co' } } }); b.su.open({ ctx: 'account' }); await settle();
+  await b.click('.phonerow button.cc'); await b.click('.crow[data-cc="1"]');
+  assert.equal(b.txt('.sg .h1'), 'Entrá a tu cuenta', '🔴 SP-pick: back on the phone pane');
+  assert.equal(b.q('.phonerow button.cc').textContent.trim(), '+1', '🔴 SP-pick: the chosen code'); assert.equal(b.q('#su-phone').getAttribute('placeholder'), '(555) 123-4567');
+  await b.type('#su-phone', '30555512349'); assert.equal(b.q('#su-phone').value, '(305) 555-1234', '🔴 SP-len: the country\'s length and format');
+  await b.click('[data-su="phone-go"]');
+  assert.deepEqual(b.api.of('requestOtp'), [{ phone: '+13055551234' }], '🔴 SP-wire: E.164 of the chosen country');
+  assert.match(b.txt('.sg .sub'), /\+1 \(305\) 555-1234/);
+  await b.code('482913'); await b.click('[data-su="verify"]');
+  assert.deepEqual(b.api.of('verifyOtp'), [{ phone: '+13055551234', code: '482913' }]);
+  await b.click('[data-su="finish"]');
+  assert.equal(b.events.find((e) => e[0] === 'signed-in')[1].phone, '+13055551234');
+});
+test('Part B (b): a device marker\'s full E.164 pre-fills ITS country; without intlPhone the sheet keeps the «+504» span and the 8-digit field, byte for byte', async () => {
+  const b = sheet({ intl: true }); b.su.open({ ctx: 'checkout-returning', prefill: '+13055551234' }); await settle();
+  assert.equal(b.q('.phonerow button.cc').textContent.trim(), '+1', '🔴 SP-prefill: the marker\'s country'); assert.equal(b.q('#su-phone').value, '(305) 555-1234');
+  const off = sheet(); off.su.open({ ctx: 'account' }); await settle();
+  assert.equal(off.q('.phonerow button.cc'), null); assert.equal(off.q('.phonerow span.cc').textContent, '+504');
+});
+
+// Codex G7 r1 #6 / r2: EVERY transport call site, PARSED (acorn — a regex is bypassed by `call ('…')`): each use of the transport's
+// `call` (or any alias of it) must be a direct call whose first argument is E.<a listed key> or a template that begins with exactly
+// one; a literal URL, a computed E[...], an unlisted key, an alias call or any other use of `call` (passed, .call/.apply) is a violation.
+const acorn = createRequire(join(ROOT, 'xpizza-functions/x.js'))('acorn');
+function endpointViolations(src, listed) {
+  const ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'script' });
+  const kids = (n) => Object.values(n).flatMap((v) => (Array.isArray(v) ? v : [v])).filter((v) => v && typeof v.type === 'string');
+  const all = []; (function walk(n, parent, key) { all.push({ n, parent, key }); for (const [k, v] of Object.entries(n)) for (const c of (Array.isArray(v) ? v : [v])) if (c && typeof c.type === 'string') walk(c, n, k); })(ast, null, null);
+  const names = new Set(['call']);   // the transport's function and every alias bound to it, transitively
+  for (let grew = true; grew;) { grew = false; for (const { n } of all) if (n.type === 'VariableDeclarator' && n.id.type === 'Identifier' && n.init && n.init.type === 'Identifier' && names.has(n.init.name) && !names.has(n.id.name)) { names.add(n.id.name); grew = true; } }
+  const isE = (x) => x && x.type === 'MemberExpression' && x.object.type === 'Identifier' && x.object.name === 'E';
+  const keyOf = (a) => (a && isE(a) && !a.computed && a.property.type === 'Identifier' ? a.property.name
+    : a && a.type === 'TemplateLiteral' && a.quasis[0].value.cooked === '' && a.expressions.length && isE(a.expressions[0]) && !a.expressions[0].computed ? a.expressions[0].property.name : null);
+  const bad = [], called = new Set();
+  for (const { n, parent, key } of all) {
+    if (isE(n) && n.computed) bad.push('computed E[...]');
+    if (isE(n) && !n.computed && !listed.includes(n.property.name)) bad.push('unlisted E.' + n.property.name);
+    if (n.type !== 'Identifier' || !names.has(n.name)) continue;
+    if (parent && parent.type === 'FunctionDeclaration' && key === 'id') continue;                        // async function call(…)
+    if (parent && parent.type === 'VariableDeclarator') continue;                                        // an alias binding (its uses are checked)
+    if (parent && parent.type === 'CallExpression' && key === 'callee') {
+      const k = keyOf(parent.arguments[0]);
+      if (k === null) bad.push('call(' + src.slice(parent.arguments[0] ? parent.arguments[0].start : parent.start, (parent.arguments[0] || parent).end).slice(0, 40) + ')');
+      else if (listed.includes(k)) called.add(k);
+      continue;
+    }
+    bad.push('other use of ' + n.name);                                                                  // passed as a value, .call / .apply, …
+  }
+  for (const k of listed) if (!called.has(k)) bad.push('never called: ' + k);
+  return bad;
+}
+test('runtime.signup endpoints: ENDPOINTS is the ONE source — every transport call site sends to an E.<listed key>, every key is called (G7 setPromos included); bypasses FAIL the guard', async () => {
+  const { ENDPOINTS, createSignupApi } = require('./capp-signup-api.js');
+  const src = readFileSync(join(HERE, 'capp-signup-api.js'), 'utf8');
+  assert.deepEqual(endpointViolations(src, ENDPOINTS), [], '🔴 SU-endpoints: every call site uses a listed endpoint');
+  assert.ok(ENDPOINTS.includes('setPromos'));
+  // negative controls: the guard SEES a bypass (a literal URL, a computed key, an unlisted key)
+  const inject = (line) => src.replace('return {\n      CONTEXT,', `async function bypass() { return ${line}; }\n    return {\n      CONTEXT,`);
+  assert.notEqual(inject('x'), src, 'premise: the injection point exists');
+  assert.ok(endpointViolations(inject("call('https://outside.test')"), ENDPOINTS).length > 0, 'control: a literal URL fails the guard');
+  assert.ok(endpointViolations(inject("call(E['unlisted'])"), ENDPOINTS).length > 0, 'control: a computed key fails the guard');
+  assert.ok(endpointViolations(inject('call(E.unlisted)'), ENDPOINTS).length > 0, 'control: an unlisted key fails the guard');
+  assert.ok(endpointViolations(inject("call ('https://outside.test')"), ENDPOINTS).length > 0, '🔴 SU-endpoints control: the SPACED literal form fails the guard');
+  assert.ok(endpointViolations(inject("call(E[ENDPOINTS[0]])"), ENDPOINTS).length > 0, 'control: a computed member fails the guard');
+  assert.ok(endpointViolations(inject("(() => { const c = call; return c('https://outside.test'); })()"), ENDPOINTS).length > 0, '🔴 SU-endpoints control: an ALIASED call fails the guard');
+  assert.ok(endpointViolations(inject("call.call(null, 'https://outside.test')"), ENDPOINTS).length > 0, 'control: call.call fails the guard');
+  // runtime: every method, driven against a recording fetch, requests ONLY the listed endpoints
+  const seen = [], EP = Object.fromEntries(ENDPOINTS.map((k) => [k, 'https://ep.test/' + k]));
+  const a = createSignupApi({ endpoints: EP, fetch: async (u) => { seen.push(String(u).split('?')[0]); return { status: 200, json: async () => ({ ok: true }) }; } });
+  await a.config(); await a.requestOtp({ phone: '+50496123344' }); await a.verifyOtp({ phone: '+50496123344', code: '123456' }); await a.googleStart({ sessionId: 's' });
+  await a.googleSignIn({ sessionId: 's', idToken: 't' }); await a.completeProfile({ idToken: 't', email: 'a@b.test', name: 'A', promos: true }); await a.setPromos({ idToken: 't', value: true });
+  await a.redeemSignupGrant({ grant: 'g', email: 'a@b.test', name: 'A', promos: false });
+  assert.deepEqual([...new Set(seen)].sort(), Object.values(EP).sort(), '🔴 SU-endpoints: the requests are exactly the listed endpoints');
 });

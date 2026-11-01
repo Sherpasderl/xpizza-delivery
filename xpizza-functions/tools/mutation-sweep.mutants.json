@@ -24217,8 +24217,8 @@
   "slice": "s2a",
   "label": "r2 P1#4: createOrder auto-retried",
   "file": "../customer-app/capp-api.js",
-  "from": "await dispatchOrder(p, E.createOrder, body)",
-  "to": "await withRetry(() => post(E.createOrder, body, p.ctx.headers))",
+  "from": "? await dispatchBody(p, body) :",
+  "to": "? await withRetry(() => post(E.createOrder, body, p.ctx.headers)) :",
   "command": [
    "node",
    "--test",
@@ -26040,7 +26040,9 @@
   "kills_with": [
    "✗ F4-warm: the faces are LOADED",
    "✗ F4-warm: a heading at weight"
-  ]
+  ],
+  "equivalent": true,
+  "why": "equivalent against this harness (advisor ruling (1), 2026-10-27): F4-cold measures a FRESH profile, so re-adding setCacheDisabled changes nothing it observes; non-vacuity is proven by F4-ctrl (255/451 boxes moved under the old swap policy). Killable once a warm from-cache cell exists (follow-up)"
  },
  {
   "id": "perf-core-1",
@@ -27656,7 +27658,7 @@
   "slice": "g6",
   "label": "Codex G6 r1 #4: a new verified uid keeps the previous account's fields",
   "file": "../customer-app/capp-signup.js",
-  "from": "      if (S.uid && S.uid !== uid) Object.assign(S, { name: '', email: '', promos: false, terms: false, existing: false, completion: null, google: S.google && S.google.ticket ? S.google : null });\n",
+  "from": "      if (S.uid && S.uid !== uid) Object.assign(S, { name: '', email: '', promos: false, terms: false, existing: false, completion: null, confPromos: null, google: S.google && S.google.ticket ? S.google : null });\n",
   "to": "",
   "command": [
    "node",
@@ -28083,7 +28085,7 @@
   "slice": "s4",
   "label": "no pre-dispatch re-check (a stale slot is sent)",
   "file": "../customer-app/capp-ui.js",
-  "from": "      if (sched() && f && f.time === 'schedule' && lockedSlot() === null && !schedMod().offered(S.schedHeld || servedSched(), now().getTime(), f.mode, f.slot)) {",
+  "from": "      if (sched() && f && f.time === 'schedule' && !hasSlotLock() && !schedMod().offered(S.schedHeld || servedSched(), now().getTime(), f.mode, f.slot)) {",
   "to": "      if (false) {",
   "command": [
    "node",
@@ -28135,7 +28137,7 @@
   "slice": "s4",
   "label": "row 10: the picker stays editable while the send is unresolved",
   "file": "../customer-app/capp-ui.js",
-  "from": "      if (!r || !(Number(r.dispatched) > 0) || r.sched_pending !== true || typeof r.sent_body !== 'string') return null;   // only an UNCERTAIN send",
+  "from": "      return rs && m && typeof m.uid === 'string' && rs.owner === m.uid ? rs.body : null;",
   "to": "      return null;",
   "command": [
    "node",
@@ -28291,8 +28293,8 @@
   "slice": "s4",
   "label": "a failed sent_body write is swallowed and the send goes out",
   "file": "../customer-app/capp-api.js",
-  "from": "              try { rec = patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true }); } catch (_) { return { kind: 'offline', order_id: rec.order_id }; }\n              if (rec.sent_body !== JSON.stringify(body) || rec.sched_pending !== true) return { kind: 'offline', order_id: rec.order_id };\n",
-  "to": "              try { patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true }); } catch (_) {}\n",
+  "from": "              try { rec = patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true, owner: ownerNow() }); } catch (_) { return { kind: 'offline', order_id: rec.order_id }; }\n              if (rec.sent_body !== JSON.stringify(body) || rec.sched_pending !== true || rec.owner !== ownerNow()) return { kind: 'offline', order_id: rec.order_id };\n",
+  "to": "              try { patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true, owner: ownerNow() }); } catch (_) {}\n",
   "command": [
    "node",
    "--test",
@@ -28413,7 +28415,7 @@
   "slice": "s4",
   "label": "row 10's CTA depends on fresh-slot availability",
   "file": "../customer-app/capp-ui.js",
-  "from": "anySlot: lockedSlot() !== null || anySlotNow()",
+  "from": "anySlot: hasSlotLock() || anySlotNow()",
   "to": "anySlot: anySlotNow()",
   "command": [
    "node",
@@ -28431,7 +28433,7 @@
   "slice": "s4",
   "label": "row 10 hides the retained slot once the generator drops it",
   "file": "../customer-app/capp-ui.js",
-  "from": "const daySlots = lk !== null ? [...new Set([...(sd && sd.key === K.dayKey(s, lk) ? sd.slots : []), lk])].sort((x, y) => x - y) : sd ? sd.slots : [];",
+  "from": "const daySlots = on ? [...new Set([...(sd && sd.key === K.dayKey(s, lk) ? sd.slots : []), lk])].sort((x, y) => x - y) : sd ? sd.slots : [];",
   "to": "const daySlots = sd ? sd.slots : [];",
   "command": [
    "node",
@@ -30614,6 +30616,1039 @@
   "command": [
    "node",
    "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "s4-30",
+  "slice": "s4",
+  "label": "the retained send's tender is not re-applied at render (a restored / edited flow switches tender)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const lp = lockedPay(); if (lp !== null) f.pay = lp;",
+  "to": "const lp = lockedPay();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^S4 row 10",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "S4-tender: the recorded tender stands"
+  ]
+ },
+ {
+  "id": "s4-31",
+  "slice": "s4",
+  "label": "the pay handlers stay live while a scheduled send is retained",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if ((a === 'pay' || a === 'showpay') && lockedPay() !== null) return true;   // row 10: the tender is fixed while the send is unresolved\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^S4 row 10",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "S4-tender"
+  ],
+  "equivalent": true,
+  "why": "layered defence: the tender buttons and «Cambiar» carry the disabled attribute while a scheduled send is retained (a disabled control never dispatches its click), and the render re-applies the recorded tender (s4-30) — the handler guard is unobservable from the UI"
+ },
+ {
+  "id": "s7a2-20",
+  "slice": "s7a2",
+  "label": "frame 15: a held tap whose menu failed shows no sheet (the row stays stuck)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (st === 'enterable' && e && e.state === 'failed' && !cache.pending(h.rid)) { if (S.layer !== 'menuerr') openLayer('menuerr'); return false; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=S7a-2 frame",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "F15: the sheet over Inicio"
+  ]
+ },
+ {
+  "id": "s7a2-21",
+  "slice": "s7a2",
+  "label": "frame 15: pending() never sees the load land (the sheet never opens)",
+  "file": "../customer-app/capp-menu-cache.js",
+  "from": "entries.set(rid, next); landed.add(rid); notify(rid);",
+  "to": "entries.set(rid, next); notify(rid);",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=S7a-2 frame",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "F15: the sheet over Inicio"
+  ]
+ },
+ {
+  "id": "s7a2-22",
+  "slice": "s7a2",
+  "label": "frame 15: a failed menu is not re-fetched on the tap",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      { const pe = cache.peek(rid); if (pe && pe.state === 'failed') cache.get(rid); }",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=S7a-2 frame",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "F15-refetch"
+  ]
+ },
+ {
+  "id": "s7a2-23",
+  "slice": "s7a2",
+  "label": "frame 15: «Reintentar» does not re-fetch",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "closeLayer(); if (S.held) cache.get(S.held.rid); return; }",
+  "to": "closeLayer(); return; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=S7a-2 frame",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "F15-retry"
+  ]
+ },
+ {
+  "id": "s7a2-24",
+  "slice": "s7a2",
+  "label": "frame 15: «Cerrar» keeps the row held",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (a === 'menu-close') { S.held = null; closeLayer();",
+  "to": "if (a === 'menu-close') { closeLayer();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=S7a-2 frame",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "«Cerrar» releases the row"
+  ]
+ },
+ {
+  "id": "s7a2-25",
+  "slice": "s7a2",
+  "label": "frame 16: every menu down falls to the partial note",
+  "file": "../customer-app/capp-home.js",
+  "from": "} else if (m.all.length && m.all.every((r) => r.menuState === 'failed')) {",
+  "to": "} else if (false) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=S7a-2 frame",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "F16"
+  ]
+ },
+ {
+  "id": "s7a2-26",
+  "slice": "s7a2",
+  "label": "frame 17: no city ⇒ a bare number",
+  "file": "../customer-app/capp-home.js",
+  "from": "`${nLive} restaurantes`)",
+  "to": "`${nLive}`)",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=S7a-2 frame",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "F17"
+  ]
+ },
+ {
+  "id": "s7a2-27",
+  "slice": "s7a2",
+  "label": "frame 18: no recents ⇒ an empty Buscar",
+  "file": "../customer-app/capp-home.js",
+  "from": "      : emptyHtml('search', 'Buscá restaurantes o platos', 'Tus búsquedas recientes van a aparecer aquí.');   // frame 18",
+  "to": "      : '';",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=S7a-2 frame",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "F18"
+  ]
+ },
+ {
+  "id": "g7-01",
+  "slice": "g7",
+  "label": "a member's Cuenta under runtime.signup goes back to the host's event",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (id === 'account' && !SU && (runtime.guestCardOnly",
+  "to": "if (id === 'account' && (runtime.guestCardOnly",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-shell"
+  ]
+ },
+ {
+  "id": "g7-02",
+  "slice": "g7",
+  "label": "the hero drops the email line",
+  "file": "../customer-app/capp-home.js",
+  "from": "<span>${esc(a.phone)}</span><span>${esc(a.email)}</span>",
+  "to": "<span>${esc(a.phone)}</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-hero"
+  ]
+ },
+ {
+  "id": "g7-03",
+  "slice": "g7",
+  "label": "Promociones waits for the server before showing the new value",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "promosOv.uid = uid; promosOv.v = v; renderNow();   // optimistic",
+  "to": "promosOv.uid = uid; promosOv.v = v;   // optimistic",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-optimistic"
+  ]
+ },
+ {
+  "id": "g7-04",
+  "slice": "g7",
+  "label": "setPromos always sends true",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "body: { context: CONTEXT, value: value === true } });",
+  "to": "body: { context: CONTEXT, value: true } });",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-setPromos"
+  ]
+ },
+ {
+  "id": "g7-05",
+  "slice": "g7",
+  "label": "a failed setPromos keeps the new value",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (ok) { S.member.promos = got;",
+  "to": "if (true) { S.member.promos = got;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-revert"
+  ]
+ },
+ {
+  "id": "g7-06",
+  "slice": "g7",
+  "label": "a failed setPromos says nothing",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "renderNow(); if (!ok) toast('No se guardó el cambio. Intentá de nuevo.');",
+  "to": "renderNow();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-toast"
+  ]
+ },
+ {
+  "id": "g7-07",
+  "slice": "g7",
+  "label": "no served promotions value ⇒ an active switch with an invented value",
+  "file": "../customer-app/capp-home.js",
+  "from": "const a = vm.acct || {}, inert = typeof a.promos !== 'boolean';",
+  "to": "const a = vm.acct || {}, inert = false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-inert"
+  ]
+ },
+ {
+  "id": "g7-08",
+  "slice": "g7",
+  "label": "a uid-only member shows an empty hero instead of the placeholders",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const placeholder = !(p.name || p.phone || p.email);",
+  "to": "const placeholder = false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-placeholder"
+  ]
+ },
+ {
+  "id": "g7-09",
+  "slice": "g7",
+  "label": "an unresolved session draws the guest geometry despite a cached profile",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (pk) p = { uid: pk.uid }; }",
+  "to": "}",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-privacy"
+  ]
+ },
+ {
+  "id": "g7-10",
+  "slice": "g7",
+  "label": "«Cerrar sesión» waits for the SDK before the guest Cuenta",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "signingOut = true; dropMember(); renderNow();",
+  "to": "signingOut = true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-signout"
+  ]
+ },
+ {
+  "id": "g7-11",
+  "slice": "g7",
+  "label": "«Olvidar este teléfono» keeps the device marker",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (forget) CappDeviceAccount.forget(storage);\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-forget:"
+  ]
+ },
+ {
+  "id": "g7-12",
+  "slice": "g7",
+  "label": "«Olvidar este teléfono» acts without asking",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (a === 'forget') return openLayer('forget');",
+  "to": "if (a === 'forget') return void signOutNow({ forget: true });",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-forget-sheet"
+  ]
+ },
+ {
+  "id": "g7-13",
+  "slice": "g7",
+  "label": "a rejected sign-out leaves the Cuenta signed out",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (u && u.uid) applyMember(CappDeviceAccount.readProfile(storage, u.uid) || { uid: u.uid }); renderNow(); return; }",
+  "to": "renderNow(); return; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-reject"
+  ]
+ },
+ {
+  "id": "g7-14",
+  "slice": "g7",
+  "label": "the version line loses SYSTEM_VERSION",
+  "file": "../customer-app/capp-home.js",
+  "from": "<div class=\"credit ver\">v${esc(a.version || '')}</div>",
+  "to": "<div class=\"credit ver\">v</div>",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-version"
+  ]
+ },
+ {
+  "id": "g7-15",
+  "slice": "g7",
+  "label": "the cached promotions value is ignored",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "(typeof ov === 'boolean' ? ov : p.promos)",
+  "to": "(typeof ov === 'boolean' ? ov : false)",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-promos"
+  ]
+ },
+ {
+  "id": "picker-14",
+  "slice": "picker",
+  "label": "the sign-in sheet ignores runtime.intlPhone (the .cc stays a span)",
+  "file": "../customer-app/capp-signup.js",
+  "from": "const INTL = o.intlPhone === true && !!o.CappPhone,",
+  "to": "const INTL = false,",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Part B",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "SP-cc"
+  ]
+ },
+ {
+  "id": "picker-15",
+  "slice": "picker",
+  "label": "the .cc button opens nothing",
+  "file": "../customer-app/capp-signup.js",
+  "from": "      if (a === 'cc' && INTL && !S.busy) return void go('country');\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Part B",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "SP-pane"
+  ]
+ },
+ {
+  "id": "picker-16",
+  "slice": "picker",
+  "label": "a picked country is not applied",
+  "file": "../customer-app/capp-signup.js",
+  "from": "if (P.byCc(c)) { S.cc = c; S.phone",
+  "to": "if (P.byCc(c)) { S.phone",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Part B",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "SP-pick"
+  ]
+ },
+ {
+  "id": "picker-17",
+  "slice": "picker",
+  "label": "the wire keeps +504 under intlPhone",
+  "file": "../customer-app/capp-signup.js",
+  "from": "const wire = () => (INTL ? '+' + ccNow() + digits() : '+504' + digits());",
+  "to": "const wire = () => ('+504' + digits());",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Part B",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "SP-wire"
+  ]
+ },
+ {
+  "id": "picker-18",
+  "slice": "picker",
+  "label": "the national length stays 8 for every country",
+  "file": "../customer-app/capp-signup.js",
+  "from": "const natLen = () => (INTL ? P.byCc(ccNow()).len : 8);",
+  "to": "const natLen = () => 8;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Part B",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "SP-len"
+  ]
+ },
+ {
+  "id": "picker-19",
+  "slice": "picker",
+  "label": "a device marker's country is not pre-filled",
+  "file": "../customer-app/capp-signup.js",
+  "from": "        if (INTL && prefill) { const q = P.parseE164(prefill); if (q) { S.cc = q.cc; S.phone = P.format(q.cc, q.national); } }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Part B",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "SP-prefill"
+  ]
+ },
+ {
+  "id": "picker-20",
+  "slice": "picker",
+  "label": "the shell does not pass runtime.intlPhone to the sheet",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "...(runtime.intlPhone === true ? { intlPhone: true, CappPhone: typeof CappPhone !== 'undefined' ? CappPhone : o.CappPhone } : {}),",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=Part B",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SP-shell"
+  ]
+ },
+ {
+  "id": "picker-21",
+  "slice": "picker",
+  "label": "picking a country leaves the list open",
+  "file": "../customer-app/capp-signup.js",
+  "from": "S.pane = S.stack.pop() || 'phone'; S.err = ''; render(); return; }",
+  "to": "S.err = ''; render(); return; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Part B",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "SP-pick"
+  ]
+ },
+ {
+  "id": "g7-16",
+  "slice": "g7",
+  "label": "the runtime.signup endpoint set drops setPromos (the host never builds its URL)",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos']);",
+  "to": "'completeProfile', 'redeemSignupGrant']);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=runtime.signup endpoints",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "SU-endpoints"
+  ]
+ },
+ {
+  "id": "g7-17",
+  "slice": "g7",
+  "label": "a transport call bypasses ENDPOINTS (setPromos posts to a literal URL)",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "const r = await call(E.setPromos, { idToken,",
+  "to": "const r = await call('https://outside.test/setPromos', { idToken,",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=runtime.signup endpoints",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "SU-endpoints"
+  ]
+ },
+ {
+  "id": "s4-33",
+  "slice": "s4",
+  "label": "place() no longer refuses a non-owner's placement (another account's retained send)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (retainedByOther()) return { kind: 'held_other_account', local: true };\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex G7 r1 #1",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "S4-held"
+  ]
+ },
+ {
+  "id": "s4-34",
+  "slice": "s4",
+  "label": "(superseded by Codex G7 r2: ONE tender rule) a replay's tender is no longer the outgoing body's",
+  "file": "../customer-app/capp-api.js",
+  "from": "            method = methodOf(body);\n            if (cfg.guestCardOnly",
+  "to": "            if (cfg.guestCardOnly",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex G7 r2",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "R2-P1b",
+   "R2-prop"
+  ]
+ },
+ {
+  "id": "s4-35",
+  "slice": "s4",
+  "label": "the record no longer names its owner",
+  "file": "../customer-app/capp-api.js",
+  "from": "sched_pending: true, owner: ownerNow() });",
+  "to": "sched_pending: true });",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex G7 r1 #1",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "S4-owner",
+   "S4-held"
+  ]
+ },
+ {
+  "id": "s4-36",
+  "slice": "s4",
+  "label": "the UI lock ignores the owner (member B sees A's lock)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "return rs && m && typeof m.uid === 'string' && rs.owner === m.uid ? rs.body : null;",
+  "to": "return rs ? rs.body : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex G7 r1 #1",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "S4-owner"
+  ]
+ },
+ {
+  "id": "s4-37",
+  "slice": "s4",
+  "label": "placeTap no longer refuses a non-owner (the guest reaches the code sheet)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther()); return; }   // Codex G7 r1 #1 (a): before the code sheet",
+  "to": "      // (mutant) before the code sheet",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex G7 r1 #1",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "S4-held"
+  ]
+ },
+ {
+  "id": "s4-38",
+  "slice": "s4",
+  "label": "a signed-out card-only guest keeps the member's cash tender in the state",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        if (!memberCtx && f && cardOnlyGuest()) f.pay = 'online';",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex G7 r1 #1",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "S4-owner: a guest is card-only"
+  ]
+ },
+ {
+  "id": "s4-39",
+  "slice": "s4",
+  "label": "the UI lock reads the current flow's time again (a remounted ASAP flow loses the lock)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (!sched() || !api || !S.flow) return null;\n      let rs = null;",
+  "to": "      if (!sched() || !api || !S.flow || S.flow.time !== 'schedule') return null;\n      let rs = null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex G7 r1 #1",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "S4-owner"
+  ]
+ },
+ {
+  "id": "g7-18",
+  "slice": "g7",
+  "label": "the transport drops the stored consent from the sign-in profile",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "        ...(typeof j.profile.promos === 'boolean' ? { promos: j.profile.promos } : {}) } : null });",
+  "to": "        } : null });",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r1 #3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-consent"
+  ]
+ },
+ {
+  "id": "g7-19",
+  "slice": "g7",
+  "label": "a new account's saved promotions choice is not carried to «Listo»",
+  "file": "../customer-app/capp-signup.js",
+  "from": "      S.confPromos = S.promos === true;   // Codex G7 r1 #3",
+  "to": "      // (mutant) Codex G7 r1 #3",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r1 #3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-consent"
+  ]
+ },
+ {
+  "id": "g7-20",
+  "slice": "g7",
+  "label": "«Listo» no longer emits the confirmed consent",
+  "file": "../customer-app/capp-signup.js",
+  "from": "isNew: !S.existing, ...(typeof S.confPromos === 'boolean' ? { promos: S.confPromos } : {}) };",
+  "to": "isNew: !S.existing };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r1 #3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-consent"
+  ]
+ },
+ {
+  "id": "g7-21",
+  "slice": "g7",
+  "label": "the switch keeps the SENT value, not the one setPromos read back",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (ok && typeof r.value === 'boolean') got = r.value;",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=READ BACK",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-readback"
+  ]
+ },
+ {
+  "id": "g7-22",
+  "slice": "g7",
+  "label": "before the SDK answers, the device's cached profile is SHOWN again (privacy)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (pk) p = { uid: pk.uid }; }",
+  "to": "if (pk) p = pk; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r1 #2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-privacy"
+  ]
+ },
+ {
+  "id": "g7-23",
+  "slice": "g7",
+  "label": "another uid's cached profile is kept (not purged)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (pk && u && u.uid && pk.uid !== u.uid) CappDeviceAccount.forgetProfile(storage); }",
+  "to": "}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r1 #2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-privacy"
+  ]
+ },
+ {
+  "id": "g7-24",
+  "slice": "g7",
+  "label": "auth says member but the token is pending ⇒ the guest card again",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "p = applied ? S.member : CappDeviceAccount.readProfile(storage, uid) || { uid };",
+  "to": "p = applied ? S.member : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r1 #5",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-pending"
+  ]
+ },
+ {
+  "id": "g7-25",
+  "slice": "g7",
+  "label": "the switch is live before the member is applied",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "promos: applied && typeof p.promos === 'boolean'",
+  "to": "promos: typeof p.promos === 'boolean'",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r1 #5",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the switch waits"
+  ]
+ },
+ {
+  "id": "g7-26",
+  "slice": "g7",
+  "label": "a settled member with no stored consent draws the switch «ON»",
+  "file": "../customer-app/capp-home.js",
+  "from": "aria-checked=\"${inert ? !a.settled : a.promos}\"",
+  "to": "aria-checked=\"${inert ? true : a.promos}\"",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=LEGACY",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G7-legacy"
+  ]
+ },
+ {
+  "id": "s4-40",
+  "slice": "s4",
+  "label": "the one dispatch path sends every body to createOrder (the URL no longer follows the body)",
+  "file": "../customer-app/capp-api.js",
+  "from": "const url = methodOf(body) === 'online' ? E.chargeOnlineOrder : E.createOrder;",
+  "to": "const url = E.createOrder;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex G7 r2",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "R2-P1b",
+   "R2-prop"
+  ]
+ },
+ {
+  "id": "s4-41",
+  "slice": "s4",
+  "label": "an ASAP retained send is no longer owned (ownership back to scheduled sends only)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (!b || typeof b !== 'object' || b.order_id !== r.order_id) return null;",
+  "to": "      if (!b || typeof b !== 'object' || b.order_id !== r.order_id || !Number.isFinite(b.scheduled_for)) return null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex G7 r2",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "R2-P1a",
+   "R2-prop"
+  ]
+ },
+ {
+  "id": "s4-42",
+  "slice": "s4",
+  "label": "a guest's own retained send counts as «another account»",
+  "file": "../customer-app/capp-api.js",
+  "from": "return !!rs && rs.owner !== ownerNow(); }",
+  "to": "return !!rs && rs.owner !== uidNow(); }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex G7 r2",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "R2-guest-own"
+  ]
+ },
+ {
+  "id": "s4-43",
+  "slice": "s4",
+  "label": "the tender is the caller's again, not the outgoing body's (the finalized body's method dropped)",
+  "file": "../customer-app/capp-api.js",
+  "from": "            method = methodOf(body);\n            if (cfg.guestCardOnly",
+  "to": "            if (cfg.guestCardOnly",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex G7 r2",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "R2-P1b",
+   "R2-prop"
+  ]
+ },
+ {
+  "id": "g7-27",
+  "slice": "g7",
+  "label": "a transport call bypasses ENDPOINTS with the SPACED form (setPromos → call ('literal URL'))",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "const r = await call(E.setPromos, { idToken,",
+  "to": "const r = await call ('https://outside.test/setPromos', { idToken,",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=runtime.signup endpoints",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "SU-endpoints"
+  ]
+ },
+ {
+  "id": "s4-44",
+  "slice": "s4",
+  "label": "lockedSlot() is no longer null for a slot-less (ASAP) retained send — «NaN:NaN» and a dead «Reintentar»",
+  "file": "../customer-app/capp-ui.js",
+  "from": "return b && Number.isFinite(b.scheduled_for) ? b.scheduled_for : null; }",
+  "to": "return b ? b.scheduled_for : null; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex G7 r3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "R3-asap"
+  ]
+ },
+ {
+  "id": "s3cm-01",
+  "slice": "s3c-mod",
+  "label": "S3c whatsapp.js hunk 1 edited (the free-envío line «Gratis» reworded) — the module inverse no longer reverses it",
+  "file": "whatsapp.js",
+  "from": "return [net === 0 ? '🛵 Envío: Gratis' :",
+  "to": "return [net === 0 ? '🛵 Envío: gratis' :",
+  "command": [
+   "node",
+   "s3c-wiring.guard.test.js"
+  ],
+  "kills_with": [
+   "s3c-module-inverse"
+  ]
+ },
+ {
+  "id": "s3cm-02",
+  "slice": "s3c-mod",
+  "label": "S3c whatsapp.js hunk 2 edited (the receipt drops the «Envío» line) — the module fold no longer reconstructs the base",
+  "file": "whatsapp.js",
+  "from": "    ...envioLines(envio),\n",
+  "to": "",
+  "command": [
+   "node",
+   "s3c-wiring.guard.test.js"
+  ],
+  "kills_with": [
+   "s3c-module-inverse",
+   "s2tip-module-inverse"
   ]
  }
 ]
