@@ -94,6 +94,9 @@ test('W on, owner: the v2 detail renders the editors + the approved truths (§2f
 // import / the harness's app transform), so whenever one differs from the base the ORACLE side loads the base copy too, and the
 // byte-identical render then also proves the composed module renders today's 1a screen exactly when W is off (for photos-B:
 // «no photo data ⇒ today's rows»). Every module WITHOUT such a seam must still be unchanged (asserted, as before).
+// ops-dom.js (2026-11-01, the owner's «Cerrar» fix adds closeIcon to it): every module of the base graph that imports it —
+// shell / branches-view / availability / pausas / equipos (base app.js does not) — is loaded from its BASE copy with that
+// import pointed at the BASE ops-dom, so the oracle is 1a's own DOM helpers and the render proves the composed ones paint 1a.
 const BASE_SHA = '76f3a160';
 const gitShow = (f) => execFileSync('git', ['show', `${BASE_SHA}:xpizza-portal/${f}`], { cwd: dirname(fileURLToPath(import.meta.url)), encoding: 'utf8', maxBuffer: 1 << 26 });
 async function openWith(P, transforms) {
@@ -104,21 +107,32 @@ async function openWith(P, transforms) {
   return mods;
 }
 test('W OFF: the portal renders BYTE-IDENTICALLY to the base 1a implementation (76f3a160) — list, detail and chrome', async () => {
-  for (const f of ['branch-logic.js', 'ops-dom.js', 'pausas.js', 'equipos.js', 'ventas.js', 'auth-errors.js']) {
+  for (const f of ['branch-logic.js', 'pausas.js', 'equipos.js', 'ventas.js', 'auth-errors.js']) {
     assert.equal(readFileSync(new URL(`./${f}`, import.meta.url), 'utf8'), gitShow(f), `${f} unchanged since the base (the oracle composes it)`);
   }
   const differs = (f) => readFileSync(new URL(`./${f}`, import.meta.url), 'utf8') !== gitShow(f);
   const dir = dirname(fileURLToPath(import.meta.url));
   const tag = `${process.pid}.${Date.now()}`;
-  const baseView = join(dir, `__base-branches-view.${tag}.mjs`);
-  const baseAvail = join(dir, `__base-availability.${tag}.mjs`);
-  writeFileSync(baseView, gitShow('branches-view.js'));
-  const swapAvail = differs('availability.js');
-  if (swapAvail) writeFileSync(baseAvail, gitShow('availability.js'));
+  const swapAvail = differs('availability.js'), swapOps = differs('ops-dom.js');
+  const OPS = /from '\.\/ops-dom\.js'/g;
+  const baseOf = (f) => `./__base-${f.replace(/\.js$/, '')}.${tag}.mjs`;
+  const viaBaseOps = (f, src) => {
+    if (!swapOps) return src;
+    assert.equal((src.match(OPS) || []).length, 1, `premise: base ${f} imports ops-dom.js once (the seam)`);
+    return src.replace(OPS, `from '${baseOf('ops-dom.js')}'`);
+  };
+  // the base copies the oracle loads: branches-view always; availability when it or ops-dom differs; pausas / equipos when ops-dom does
+  const copies = ['branches-view.js', ...(swapAvail || swapOps ? ['availability.js'] : []), ...(swapOps ? ['pausas.js', 'equipos.js'] : [])];
+  const written = [];
+  const put = (f, src) => { const p = join(dir, baseOf(f)); writeFileSync(p, src); written.push(p); };
+  if (swapOps) {
+    put('ops-dom.js', gitShow('ops-dom.js'));
+    assert.ok(!/from '\.\/ops-dom\.js'/.test(gitShow('app.js')), 'premise: base app.js does not import ops-dom.js (no seam needed there)');
+  }
+  for (const f of copies) put(f, viaBaseOps(f, gitShow(f)));
   const baseShell = gitShow('shell.js');
-  assert.equal((baseShell.match(/from '\.\/availability\.js'/g) || []).length, 1, 'premise: the base shell imports availability.js once (the seam)');
-  const asBase = { shell: () => baseShell.replace(/from '\.\/branches-view\.js'/, `from './__base-branches-view.${tag}.mjs'`)
-    .replace(/from '\.\/availability\.js'/, swapAvail ? `from './__base-availability.${tag}.mjs'` : "from './availability.js'"),
+  for (const f of copies) assert.equal((baseShell.match(new RegExp(`from '\\./${f.replace('.', '\\.')}'`, 'g')) || []).length, 1, `premise: the base shell imports ${f} once (the seam)`);
+  const asBase = { shell: () => copies.reduce((src, f) => src.replace(`from './${f}'`, `from '${baseOf(f)}'`), viaBaseOps('shell.js', baseShell)),
   ...(differs('app.js') ? { app: () => gitShow('app.js') } : {}) };
   const e1 = E1([row('r_a'), row('r_b', { lifecycle: 'inactive', control: { state: 'inactive', paused_until: null, pause_reason: null, pause_since: null } })], { w: false,
     brands: [{ brand_id: 'marca_s', name: 'Marca S', caps: ['brand.locations'], activation: 'on', drafts: [{ rid: 'r_d', brand_id: 'marca_s', lifecycle: 'draft', profile: { location_name: 'Borrador', phone: '+50433905521', hours: WEEK, prep_default_min: 20 }, location: null, pending_location: true, version: 'd.x.1.1' }] }] });
@@ -155,7 +169,7 @@ test('W OFF: the portal renders BYTE-IDENTICALLY to the base 1a implementation (
     const baseAv = await snapAvail(asBase);
     assert.equal(await snapAvail({}), baseAv, 'W off, manager read-only menu (availability.js): identical to 1a');
     assert.ok(baseAv.includes('Margarita') && baseAv.includes('Solo lectura') && baseAv.includes('"thumb"'), 'non-vacuity: the 1a read-only rows rendered, each with its square');
-  } finally { for (const f of [baseView, baseAvail]) { try { unlinkSync(f); } catch (_) { /* best effort */ } } }
+  } finally { for (const f of written) { try { unlinkSync(f); } catch (_) { /* best effort */ } } }
 });
 
 test('single writer: W on, a prep-only save is ONE updateBranchProfile and ZERO updateBranch; W off it is the reverse', async () => {
