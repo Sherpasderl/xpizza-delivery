@@ -1761,6 +1761,7 @@
   "catalog/publish-request.js",
   "catalog/reset-draft.js",
   "catalog/text-version.js",
+  "client-floor.js",
   "compute-server-net.js",
   "create-order-build.js",
   "createorder-classify.js",
@@ -1959,6 +1960,12 @@
    "pins": [],
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js"
+   ]
+  },
+  "client-floor.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/pselfupdate-cli.test.js"
    ]
   },
   "compute-server-net.js": {
