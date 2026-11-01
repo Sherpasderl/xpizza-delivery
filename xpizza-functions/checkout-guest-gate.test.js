@@ -2,7 +2,7 @@
 // PLAN-guest-checkout-server r4 §1.4 + §2 — S2: the capp-guest gate, the one-source cart signature, and the manifest premise.
 // Pure + an in-memory RTDB (the S1 test's transaction-faithful fake + once()); the TICKET comes from the REAL writer (S1's
 // verifyCheckoutCode), the cart signature from the capp's REAL capp-checkout.js (pinned fixture), and the manifest premise from
-// f838eaa7's EXACT orders-app line (pinned fixture) through the REAL platform-manifest loader. The emulator cells (both handlers,
+// the REAL merged platform/sites.json through the REAL platform-manifest loader. The emulator cells (both handlers,
 // the CAS race, createOrder's zero-write trace, the forms differential) are the S2 heavy suite.
 // Run: node checkout-guest-gate.test.js
 process.env.OTP_SALT = process.env.OTP_SALT || 'test-salt-'.padEnd(40, 'x');
@@ -61,40 +61,25 @@ const ctxOf = (o = {}) => ({ restaurantId: RID, items: ITEMS, itemsText: '2x NY 
 const wire = (b) => JSON.parse(JSON.stringify(b));   // as the wire delivers it
 
 (async () => {
-  // ── 1. the fixtures are the EXACT upstream bytes ──
+  // ── 1. the capp writer fixture is the EXACT upstream bytes ──
   assert.strictEqual(blobId(CAPP_SRC), '0a87683205829b1a089c4a55e650b44a6722491a', '🔴 the capp-checkout fixture drifted from ed70fed8:customer-app/capp-checkout.js');
-  const SITES_F838 = fs.readFileSync(path.join(FIX, 'sites.f838eaa7.json'));
-  assert.strictEqual(blobId(SITES_F838), 'ce603dec901bbd417f41ca7d6d153611e7e67014', '🔴 the sites fixture drifted from f838eaa7:platform/sites.json');
-  ok('fixtures pinned to their git blobs: ed70fed8:customer-app/capp-checkout.js and f838eaa7:platform/sites.json');
+  ok('fixture pinned to its git blob: ed70fed8:customer-app/capp-checkout.js');
 
-  // ── 2. the manifest premise: main's REAL sites.json + f838eaa7's EXACT orders-app entry, through the REAL loader ──
+  // ── 2. the manifest premise: the REAL merged platform/sites.json through the REAL loader (ASSEMBLY OBLIGATION 2, ruling C:
+  //    f838eaa7 has landed, so the frozen sites fixture is gone — the app's host lives in config only, platform-domain-swap
+  //    cell 6). The S2-relevant fields are asserted STRUCTURALLY: the discriminator id + app + context; its origins are
+  //    exact https origins and pay_return.default is one of them (never a literal host here). A moved field ⇒ RED ⇒ re-review S2.
   {
-    const f838 = JSON.parse(SITES_F838.toString('utf8'));
-    const appEntry = f838.deployments.filter((d) => d.id === G.CAPP_DEPLOYMENT);
-    assert.strictEqual(appEntry.length, 1, 'f838eaa7 carries exactly one orders-app entry');
-    const line = SITES_F838.toString('utf8').split('\n').find((l) => l.includes('"id": "orders-app"'));
-    assert.deepStrictEqual(JSON.parse(line.trim().replace(/,$/, '')), appEntry[0], 'the entry IS the line (no hand-built object)');
     const mainSites = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'platform', 'sites.json'), 'utf8'));
     const compat = require('./platform/compat.json');
     const landed = mainSites.deployments.filter((d) => d.id === G.CAPP_DEPLOYMENT);
-    let P, entry, formsOrigins;
-    if (landed.length) {
-      // ASSEMBLY OBLIGATION (ruling C, DECISIONS 2026-10-27): f838eaa7 has LANDED — the S2 cells now run on the REAL merged
-      // manifest. The landed entry must carry f838eaa7's S2-relevant fields (the discriminator id + app + context, the CORS
-      // origins); other fields (entrypoints) are the app shell's. A moved S2 field ⇒ RED ⇒ re-review S2 against it.
-      assert.strictEqual(landed.length, 1, 'exactly one orders-app entry landed');
-      const s2 = (d) => ({ id: d.id, app: d.app, context: d.context, origins: d.origins });
-      assert.deepStrictEqual(s2(landed[0]), s2(appEntry[0]), '🔴 the LANDED orders-app entry moved an S2-relevant field vs f838eaa7 — re-review S2');
-      entry = landed[0];
-      P = PM.loadPlatform(mainSites, compat);
-      formsOrigins = PM.loadPlatform({ ...mainSites, deployments: mainSites.deployments.filter((d) => d.id !== G.CAPP_DEPLOYMENT) }, compat).ACCOUNT_ORIGINS;
-    } else {
-      // a pre-landing base: main's REAL sites.json + f838eaa7's EXACT line spliced in (S2 inert in prod until it lands)
-      const at = mainSites.deployments.findIndex((d) => d.id === 'orders-lamusa');
-      entry = appEntry[0];
-      P = PM.loadPlatform({ ...mainSites, deployments: [...mainSites.deployments.slice(0, at + 1), entry, ...mainSites.deployments.slice(at + 1)] }, compat);
-      formsOrigins = PM.PLATFORM.ACCOUNT_ORIGINS;
-    }
+    assert.strictEqual(landed.length, 1, 'premise: exactly one orders-app entry in the merged manifest');
+    const entry = landed[0];
+    assert.deepStrictEqual({ app: entry.app, context: entry.context }, { app: 'orders', context: PM.PLATFORM_CONTEXT }, '🔴 the app entry moved an S2-relevant field — re-review S2');
+    assert.ok(Array.isArray(entry.origins) && entry.origins.length > 0 && entry.origins.every((o) => PM.isExactHttpsOrigin(o)), '🔴 the app origins are exact https origins');
+    assert.ok(entry.pay_return && entry.origins.includes(entry.pay_return.default), 'pay_return.default is one of its own origins');
+    const P = PM.loadPlatform(mainSites, compat);
+    const formsOrigins = PM.loadPlatform({ ...mainSites, deployments: mainSites.deployments.filter((d) => d.id !== G.CAPP_DEPLOYMENT) }, compat).ACCOUNT_ORIGINS;
     const platformOrders = P.sites.deployments.filter((d) => d.app === 'orders' && d.context === PM.PLATFORM_CONTEXT);
     assert.deepStrictEqual(platformOrders.map((d) => d.id), [G.CAPP_DEPLOYMENT], '🔴 the discriminator names THE platform orders deployment');
     assert.ok(entry.origins.every((o) => P.ACCOUNT_ORIGINS.includes(o)), 'its origins join ACCOUNT_ORIGINS by derivation (the checkout endpoints\' CORS)');
@@ -103,7 +88,7 @@ const wire = (b) => JSON.parse(JSON.stringify(b));   // as the wire delivers it
     const hdr = CF.readClientHeaders({ headers: { 'x-client-app': 'orders', 'x-client-deployment': entry.id } });
     assert.strictEqual(G.isCappGuest(hdr, null), true);
   }
-  ok('manifest (the REAL merged sites.json once f838eaa7 landed — its S2 fields == f838eaa7\'s line; else the exact line spliced in) through the real loader; it is THE platform orders deployment, its id is the discriminator, its origin joins ACCOUNT_ORIGINS, form origins unchanged');
+  ok('manifest (the REAL merged sites.json, no frozen fixture) through the real loader: the app entry is THE platform orders deployment with exact https origins, its id is the discriminator, its origins join ACCOUNT_ORIGINS, form origins unchanged');
 
   // ── 3. cart_fp equivalence FROM THE REAL WRITER: capp cartSig(f) === server recompute(the capp's own order body, over the wire) ──
   try {
