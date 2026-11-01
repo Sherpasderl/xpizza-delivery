@@ -2247,12 +2247,56 @@
 #screen-cuenta .set-row.set-static { cursor: default; }
 </style>
 <!-- ===== SLICE3:CUENTA-CARD:END ===== -->
+<!-- ===== SLICE3:GANANCIAS-CSS:START — earnings screen (#31/#32) styles, EXACT to prototype S.ganancias/S.gananciasSemana (.pseg/.big/.bars/.card/.row/.sub/.lbl). Own trailing stylesheet, new gn-* classes only, zero frozen bytes. Light-only (driver app has no dark theme). ===== -->
+<style>
+#screen-ganancias{display:flex;flex-direction:column;height:100%;background:var(--bg,#F5F7FA);color:var(--text,#0D1424)}
+.gn-hdr{flex:none;display:flex;align-items:center;padding:14px 16px 10px}
+.gn-ttl{font-family:'Red Hat Display',sans-serif;font-weight:800;font-size:20px;letter-spacing:-.02em;color:var(--text,#0D1424)}
+.gn-body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:4px 16px 16px;display:flex;flex-direction:column;gap:12px;overscroll-behavior:contain}
+.gn-seg{display:flex;background:var(--surface-2,#E7ECF4);border-radius:11px;padding:3px;gap:3px}
+.gn-seg span{flex:1;text-align:center;font-weight:700;font-size:13px;padding:9px 0;border-radius:9px;color:var(--text-soft,#546078);cursor:pointer}
+.gn-seg span.on{background:var(--surface,#fff);color:var(--text,#0D1424);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.gn-card{background:var(--surface,#fff);border-radius:14px;box-shadow:0 1px 2px rgba(13,20,36,.05),0 6px 18px rgba(13,20,36,.06);padding:14px}
+.gn-earn{text-align:center;padding:18px 14px}
+.gn-flat{padding:4px 14px;background:var(--surface-2,#E7ECF4);box-shadow:none}
+.gn-lbl{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-dim,#8A95AB)}
+.gn-lbl-in{padding:10px 0 2px}
+.gn-sub{font-size:13px;color:var(--text-soft,#546078);margin-top:4px}
+.gn-big{font-family:'Red Hat Display',sans-serif;font-weight:800;font-size:46px;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums;color:var(--success,#15803D);margin-top:6px}
+.gn-cur{font-size:22px;color:var(--text-dim,#8A95AB);font-weight:700;vertical-align:top;margin-right:3px;line-height:1.6}
+.gn-row{display:flex;gap:11px;align-items:flex-start;padding:10px 0}
+.gn-ic{width:30px;height:30px;border-radius:9px;background:var(--surface-2,#E7ECF4);color:var(--text-soft,#546078);display:grid;place-items:center;flex:none}
+.gn-ic svg{width:17px;height:17px}
+.gn-rtx{min-width:0;flex:1}
+.gn-rt{font-weight:700;font-size:14px;line-height:1.3;color:var(--text,#0D1424)}
+.gn-rd{font-size:12.5px;color:var(--text-soft,#546078);margin-top:1px}
+.gn-rv{font-family:'Red Hat Display',sans-serif;font-weight:700;font-variant-numeric:tabular-nums;flex:none;color:var(--text,#0D1424)}
+.gn-drow{display:flex;gap:11px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--border,#DCE2EC)}
+.gn-dic{width:30px;height:30px;border-radius:9px;background:var(--green-bg,#E3F3E9);color:var(--success,#15803D);display:grid;place-items:center;flex:none}
+.gn-dic svg{width:17px;height:17px}
+.gn-dtx{min-width:0;flex:1}
+.gn-dt{font-weight:600;font-size:14px;line-height:1.3;color:var(--text,#0D1424)}
+.gn-dd{font-size:12.5px;color:var(--text-soft,#546078);margin-top:1px}
+.gn-dv{font-family:'Red Hat Display',sans-serif;font-weight:700;font-variant-numeric:tabular-nums;flex:none;color:var(--success,#15803D);align-self:center}
+.gn-empty{padding:10px 0;font-size:13px;color:var(--text-soft,#546078)}
+.gn-bars{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.gn-bar{display:grid;grid-template-columns:34px 1fr 58px;gap:10px;align-items:center;font-size:12.5px}
+.gn-blb{font-weight:700;color:var(--text-soft,#546078)}
+.gn-btr{height:10px;border-radius:5px;background:var(--surface-2,#E7ECF4);overflow:hidden}
+.gn-btr i{display:block;height:100%;background:var(--success,#15803D);border-radius:5px}
+.gn-bv{text-align:right;font-family:'Red Hat Display',sans-serif;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text,#0D1424)}
+.gn-tiny{font-size:11.5px;color:var(--text-soft,#546078)}
+</style>
+<!-- ===== SLICE3:GANANCIAS-CSS:END ===== -->
 <div id="screen-companion" class="hidden" style="height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;"></div>
 
 <!-- SLICE2:NAV-SCREENS:START — Cuenta + «App de navegación» screen shells (R7); filled by renderCuenta/renderNavApp. Pure insert. -->
 <div id="screen-cuenta" class="hidden"></div>
 <div id="screen-navApp" class="hidden"></div>
 <!-- SLICE2:NAV-SCREENS:END -->
+<!-- ===== SLICE3:GANANCIAS-DOM:START — the earnings screen shell (#31/#32), filled by renderGanancias. Dark until Pagos ships (TAB_SHOW_GANANCIAS = PAGOS_LIVE). ===== -->
+<div id="screen-ganancias" class="hidden"></div>
+<!-- ===== SLICE3:GANANCIAS-DOM:END ===== -->
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -3083,6 +3127,7 @@ function mountTabBar(screenEl, active, visible) {
       const tab = btn.getAttribute('data-tab');
       if (tab === 'cuenta') openCuenta();
       else if (tab === 'pedidos') openHistoryModal();   // Pedidos → the daily-history modal (moved off the header «Hoy» button)
+      else if (tab === 'ganancias') openGanancias();   // Ganancias → the earnings screen (dark: TAB_SHOW_GANANCIAS = PAGOS_LIVE, so the tab never renders yet)
       else if (tab === 'inicio') render();   // route home (render() → offshift when off-shift, the board when on-shift)
     });
   }
@@ -3183,6 +3228,7 @@ function syncTabBarForScreen(name) {
   }
   mountTabBar($('screen-offshift'), 'inicio', name === 'offshift' && !hasWork);
   mountTabBar($('screen-cuenta'), 'cuenta', name === 'cuenta' && !hasWork);
+  mountTabBar($('screen-ganancias'), 'ganancias', name === 'ganancias' && !hasWork);   // O6 bar on the earnings screen (dark: TAB_SHOW_GANANCIAS=PAGOS_LIVE)
 }
 
 // REUSABLE prototype .row builder (copied verbatim): icon tile + bold label + optional desc + optional chevron and/or
@@ -3649,6 +3695,86 @@ function renderDisponible() {
     }
   }
 }
+// ============================================================
+// GANANCIAS (#31/#32) — the driver earnings screen (prototype S.ganancias + S.gananciasSemana): ONE screen, a
+// Hoy/Semana toggle. ALL earnings read window.PayRate (the ONE carried rate reader) — NO hardcoded rate. A figure
+// renders only when a platform rate is seeded AND covers every delivery (shiftEarningsCents → null otherwise, and
+// the amount is then BLANK, never an invented number / never a «—» that looks like data). DARK: the Ganancias tab is
+// gated TAB_SHOW_GANANCIAS = PAGOS_LIVE, so this screen is unreachable until Pagos ships. Brand-agnostic (brandLabel).
+function gananciasWeekStartMs() {   // Monday 00:00 (local) of the current week — same local-midnight basis as todayMidnightMs
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  const back = (d.getDay() === 0) ? 6 : d.getDay() - 1;   // getDay: 0=Sun; days back to Monday
+  d.setDate(d.getDate() - back);
+  return d.getTime();
+}
+function openGanancias() { renderGanancias('hoy'); showScreen('ganancias'); }
+function renderGanancias(view) {
+  const host = $('screen-ganancias'); if (!host) return;
+  const v = (view === 'semana') ? 'semana' : 'hoy';
+  const uid = currentUser && currentUser.uid;
+  const PR = (typeof window !== 'undefined' && window.PayRate) || null;   // the ONE reader, loaded by PAYRATE-SCRIPT
+  const entries = driverRateEntries;
+  const lemp = (cents) => (cents == null) ? '' : (cents / 100).toLocaleString('es-HN');   // cents → Lempiras string; '' when unknown
+  const curRate = PR ? PR.rateCentsInEffect(entries, Date.now()) : null;   // display rate for «× L {rate}» + the tariff line
+  const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  const CASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9.5v5M18 9.5v5"/></svg>';
+  const big = (cents) => `<div class="gn-big"><span class="gn-cur">L</span>${lemp(cents)}</div>`;   // amount BLANK when the rate is unknown (render NOTHING)
+  const seg = `<div class="gn-seg"><span class="${v === 'hoy' ? 'on' : ''}" data-gn="hoy" role="button" tabindex="0">Hoy</span><span class="${v === 'semana' ? 'on' : ''}" data-gn="semana" role="button" tabindex="0">Esta semana</span></div>`;
+  let body;
+  if (v === 'hoy') {
+    const resolved = shiftDeliveries(allOrders, uid, todayMidnightMs(), driverIdentityCutoverMs).resolved;
+    const n = resolved.length;
+    const earnCents = PR ? PR.shiftEarningsCents(resolved.map((d) => d.order), entries) : null;
+    const cashOwed = computeShiftCash(allOrders, uid, todayMidnightMs(), driverIdentityCutoverMs).cashOwed;   // Lempiras (money-grade, same as the cuadre)
+    const earnSub = (curRate != null)
+      ? `${n} ${n === 1 ? 'entrega' : 'entregas'} × L ${lemp(curRate)} · se paga aparte del efectivo`
+      : 'Se paga aparte del efectivo';
+    const list = resolved.map((d) => {
+      const o = d.order || {};
+      const col = coloniaOf(d);                                   // privacy-safe locality (coloniaOf reads the WRAPPER's .order.address_area); '' omits the line
+      const meta = [readyTimeHHMM(o.delivered_at), brandLabel(o)].filter(Boolean).join(' · ');   // «8:52 · La Musa» (brand from data)
+      const rc = PR ? PR.rateCentsInEffect(entries, d.at) : null;   // THIS delivery's own in-effect rate (d.at = delivered_at)
+      const top = col || meta, btm = col ? meta : '';
+      return `<div class="gn-drow"><span class="gn-dic">${CHECK}</span><div class="gn-dtx"><div class="gn-dt">${escapeHtml(top)}</div>${btm ? `<div class="gn-dd">${escapeHtml(btm)}</div>` : ''}</div>${rc != null ? `<span class="gn-dv">+ L ${lemp(rc)}</span>` : ''}</div>`;
+    }).join('');
+    body = `${seg}
+      <div class="gn-card gn-earn"><div class="gn-lbl">Ganado hoy · informativo</div>${big(earnCents)}<div class="gn-sub">${escapeHtml(earnSub)}</div></div>
+      <div class="gn-card gn-flat"><div class="gn-row"><span class="gn-ic">${CASH}</span><div class="gn-rtx"><div class="gn-rt">Efectivo a entregar hoy</div><div class="gn-rd">Esto NO es tuyo: va al cuadre al terminar</div></div><span class="gn-rv">L ${Number(cashOwed || 0).toLocaleString('es-HN')}</span></div></div>
+      <div class="gn-card"><div class="gn-lbl gn-lbl-in">Entregas de hoy</div>${list || '<div class="gn-empty">Todavía no hay entregas hoy.</div>'}</div>`;
+  } else {
+    const resolved = shiftDeliveries(allOrders, uid, gananciasWeekStartMs(), driverIdentityCutoverMs).resolved;
+    const n = resolved.length;
+    const earnCents = PR ? PR.shiftEarningsCents(resolved.map((d) => d.order), entries) : null;
+    const dayIdx = (ms) => { const g = new Date(ms).getDay(); return (g === 0) ? 6 : g - 1; };   // 0=Mon … 6=Sun
+    const days = [[], [], [], [], [], [], []];
+    for (const d of resolved) days[dayIdx(d.at)].push(d);
+    const maxN = Math.max(1, ...days.map((a) => a.length));
+    const DOW = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+    const bars = days.map((a, i) => {
+      const dayCents = PR ? PR.shiftEarningsCents(a.map((d) => d.order), entries) : null;
+      const vv = (a.length === 0) ? '—' : (dayCents != null ? 'L ' + lemp(dayCents) : '');
+      return `<div class="gn-bar"><span class="gn-blb">${DOW[i]}</span><span class="gn-btr"><i style="width:${a.length / maxN * 100}%"></i></span><span class="gn-bv">${vv}</span></div>`;
+    }).join('');
+    const ws = gananciasWeekStartMs();
+    const fmt = (ms) => { const d = new Date(ms); return `${CUADRE_WD[d.getDay()].toLowerCase()} ${d.getDate()}`; };   // «lun 13»
+    const range = `${fmt(ws)} a ${fmt(ws + 6 * 86400000)}`;
+    const rangeSub = (n > 0) ? `${n} ${n === 1 ? 'entrega' : 'entregas'} · ${range}` : range;
+    const tarifa = (curRate != null)
+      ? `Tarifa: L ${lemp(curRate)} por entrega, fija por la plataforma. Sin propinas ni bonos en el app.`
+      : 'La tarifa la fija la plataforma. Sin propinas ni bonos en el app.';
+    body = `${seg}
+      <div class="gn-card gn-earn"><div class="gn-lbl">Ganado esta semana</div>${big(earnCents)}<div class="gn-sub">${escapeHtml(rangeSub)}</div></div>
+      <div class="gn-card"><div class="gn-lbl gn-lbl-in">Por día</div><div class="gn-bars">${bars}</div></div>
+      <div class="gn-tiny">${escapeHtml(tarifa)}</div>`;
+  }
+  host.innerHTML = `<header class="gn-hdr"><div class="gn-ttl">Ganancias</div></header><div class="gn-body">${body}</div>`;
+  host.querySelectorAll('[data-gn]').forEach((el) => {
+    const go = () => renderGanancias(el.getAttribute('data-gn'));
+    el.addEventListener('click', go);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  });
+  if (typeof syncTabBarForScreen === 'function') syncTabBarForScreen('ganancias');   // (re)mount the O6 bar after overwriting innerHTML
+}
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
    drivers/{uid}/nav_app (own-uid, enum) with a localStorage mirror; «Cerrar sesión» reuses driverSignOut. ===== */
@@ -3912,6 +4038,9 @@ function showScreen(name) {
   ['config', 'login', 'offshift', 'onshift', 'companion', 'cuenta', 'navApp'].forEach(s => {
     $(`screen-${s}`).classList.toggle('hidden', s !== name);
   });
+  /* ===== SLICE3:GANANCIAS-SHOW:START — toggle the earnings screen; its id is NOT in the frozen baseline array above, so it is handled here (insert, not a replace of the frozen line). ===== */
+  { const gn = $('screen-ganancias'); if (gn) gn.classList.toggle('hidden', name !== 'ganancias'); }
+  /* ===== SLICE3:GANANCIAS-SHOW:END ===== */
   // Refresh notification banner state on screen change
   if (name === 'offshift' || name === 'onshift') {
     updateNotifBanners();

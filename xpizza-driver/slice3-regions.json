@@ -581,6 +581,18 @@
   {
    "name": "PAYRATE-SCRIPT",
    "kind": "insert"
+  },
+  {
+   "name": "GANANCIAS-CSS",
+   "kind": "insert"
+  },
+  {
+   "name": "GANANCIAS-DOM",
+   "kind": "insert"
+  },
+  {
+   "name": "GANANCIAS-SHOW",
+   "kind": "insert"
   }
  ],
  "deps": [
