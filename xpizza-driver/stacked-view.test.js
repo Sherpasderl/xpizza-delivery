@@ -554,6 +554,21 @@ t('cancelBannerHtml: «Pedido #N (name) cancelado» + no-cobrés + bag return + 
   assert.ok(html.includes('devolvé la bolsa a X. Pizza') && html.includes('id="btn-cancel-ack"'));
 });
 
+// ---------- queueHtml (PRIVACY / drv2-27): a NON-accepted queued row never leaks name/address ----------
+t('queueHtml (PRIVACY): an awaiting_acceptance queued row shows «Nuevo pedido» and NO name/address; an accepted row shows them', () => {
+  const orders = [
+    deepFreeze({ orderId: 'A', phase: 'delivery', deliveryTask: {}, order: { customer_name: 'Daniela Núñez', display_number: 47, address_detected: 'Col. Palmira, casa 12', total: 385, payment_method: 'cash' } }),
+    deepFreeze({ orderId: 'B', phase: 'awaiting_acceptance', deliveryTask: {}, order: { customer_name: 'Secreta', display_number: 12, address_detected: 'Col. Oculta, #4', total: 70 } }),
+  ];
+  const html = queueHtml(orders, DEPS);
+  // accepted row: name + address DO render (proves the gate both ways, not just by absence)
+  assert.ok(html.includes('Daniela Núñez') && html.includes('Col. Palmira, casa 12'), 'the accepted queued row shows the customer name + address');
+  // non-accepted row: «Nuevo pedido», and the identity NEVER leaks — kills drv2-27 (accepted→true)
+  assert.ok(html.includes('Nuevo pedido'), 'the awaiting_acceptance queued row renders «Nuevo pedido»');
+  assert.ok(!html.includes('Secreta'), 'the awaiting_acceptance queued row NEVER renders the customer name (drv2-27 privacy)');
+  assert.ok(!html.includes('Col. Oculta'), 'the awaiting_acceptance queued row NEVER renders the address');
+});
+
 // ---------- offerScreenHtml (apOferta / S18 — R4 privacy: colonia only, NO name) ----------
 t('offerScreenHtml: colonia only (NO customer name), lock chip, rchip/#, pickup line, one accept slide; +L140 absent', () => {
   const offers = [
