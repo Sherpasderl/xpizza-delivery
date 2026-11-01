@@ -20685,8 +20685,8 @@
     "slice": "s2a",
     "label": "r2 P1#4: createOrder auto-retried",
     "file": "../customer-app/capp-api.js",
-    "from": "await dispatchOrder(p, E.createOrder, body)",
-    "to": "await withRetry(() => post(E.createOrder, body, p.ctx.headers))",
+    "from": "? await dispatchBody(p, body) :",
+    "to": "? await withRetry(() => post(E.createOrder, body, p.ctx.headers)) :",
     "command": [
       "node",
       "--test",
@@ -24126,7 +24126,7 @@
     "slice": "g6",
     "label": "Codex G6 r1 #4: a new verified uid keeps the previous account's fields",
     "file": "../customer-app/capp-signup.js",
-    "from": "      if (S.uid && S.uid !== uid) Object.assign(S, { name: '', email: '', promos: false, terms: false, existing: false, completion: null, google: S.google && S.google.ticket ? S.google : null });\n",
+    "from": "      if (S.uid && S.uid !== uid) Object.assign(S, { name: '', email: '', promos: false, terms: false, existing: false, completion: null, confPromos: null, google: S.google && S.google.ticket ? S.google : null });\n",
     "to": "",
     "command": [
       "node",
@@ -24605,7 +24605,7 @@
     "slice": "s4",
     "label": "row 10: the picker stays editable while the send is unresolved",
     "file": "../customer-app/capp-ui.js",
-    "from": "      if (!r || !(Number(r.dispatched) > 0) || r.sched_pending !== true || typeof r.sent_body !== 'string') return null;   // only an UNCERTAIN send",
+    "from": "      return rs && m && typeof m.uid === 'string' && rs.owner === m.uid ? rs.body : null;",
     "to": "      return null;",
     "command": [
       "node",
@@ -24761,8 +24761,8 @@
     "slice": "s4",
     "label": "a failed sent_body write is swallowed and the send goes out",
     "file": "../customer-app/capp-api.js",
-    "from": "              try { rec = patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true }); } catch (_) { return { kind: 'offline', order_id: rec.order_id }; }\n              if (rec.sent_body !== JSON.stringify(body) || rec.sched_pending !== true) return { kind: 'offline', order_id: rec.order_id };\n",
-    "to": "              try { patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true }); } catch (_) {}\n",
+    "from": "              try { rec = patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true, owner: ownerNow() }); } catch (_) { return { kind: 'offline', order_id: rec.order_id }; }\n              if (rec.sent_body !== JSON.stringify(body) || rec.sched_pending !== true || rec.owner !== ownerNow()) return { kind: 'offline', order_id: rec.order_id };\n",
+    "to": "              try { patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true, owner: ownerNow() }); } catch (_) {}\n",
     "command": [
       "node",
       "--test",
@@ -25207,8 +25207,8 @@
     "slice": "g7",
     "label": "a failed setPromos keeps the new value",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "if (ok) { S.member.promos = v;",
-    "to": "if (true) { S.member.promos = v;",
+    "from": "if (ok) { S.member.promos = got;",
+    "to": "if (true) { S.member.promos = got;",
     "command": [
       "node",
       "--test",
@@ -25279,8 +25279,8 @@
     "slice": "g7",
     "label": "an unresolved session draws the guest geometry despite a cached profile",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "else if (st === 'unresolved') p = CappDeviceAccount.peekProfile(storage); ",
-    "to": "",
+    "from": "if (pk) p = { uid: pk.uid }; }",
+    "to": "}",
     "command": [
       "node",
       "--test",
@@ -25289,7 +25289,7 @@
       "../customer-app/capp-s7a2.test.mjs"
     ],
     "kills_with": [
-      "G7-predict"
+      "G7-privacy"
     ]
   },
   {
@@ -25591,18 +25591,19 @@
   {
     "id": "s4-34",
     "slice": "s4",
-    "label": "a replay goes to the CURRENT flow's endpoint again (not the recorded tender's)",
+    "label": "(superseded by Codex G7 r2: ONE tender rule) a replay's tender is no longer the outgoing body's",
     "file": "../customer-app/capp-api.js",
-    "from": "if (replay) { method = body.payment_method === 'online' ? 'online' : 'cash'; if",
-    "to": "if (replay) { if",
+    "from": "            method = methodOf(body);\n            if (cfg.guestCardOnly",
+    "to": "            if (cfg.guestCardOnly",
     "command": [
       "node",
       "--test",
-      "--test-name-pattern=Codex G7 r1 #1",
+      "--test-name-pattern=Codex G7 r2",
       "../customer-app/capp-api.test.mjs"
     ],
     "kills_with": [
-      "S4-owner"
+      "R2-P1b",
+      "R2-prop"
     ]
   },
   {
@@ -25610,7 +25611,7 @@
     "slice": "s4",
     "label": "the record no longer names its owner",
     "file": "../customer-app/capp-api.js",
-    "from": "sched_pending: true, sched_owner: uidNow() });",
+    "from": "sched_pending: true, owner: ownerNow() });",
     "to": "sched_pending: true });",
     "command": [
       "node",
@@ -25842,6 +25843,77 @@
     ],
     "kills_with": [
       "G7-legacy"
+    ]
+  },
+  {
+    "id": "s4-40",
+    "slice": "s4",
+    "label": "the one dispatch path sends every body to createOrder (the URL no longer follows the body)",
+    "file": "../customer-app/capp-api.js",
+    "from": "const url = methodOf(body) === 'online' ? E.chargeOnlineOrder : E.createOrder;",
+    "to": "const url = E.createOrder;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G7 r2",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "R2-P1b",
+      "R2-prop"
+    ]
+  },
+  {
+    "id": "s4-41",
+    "slice": "s4",
+    "label": "an ASAP retained send is no longer owned (ownership back to scheduled sends only)",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (!b || typeof b !== 'object' || b.order_id !== r.order_id) return null;",
+    "to": "      if (!b || typeof b !== 'object' || b.order_id !== r.order_id || !Number.isFinite(b.scheduled_for)) return null;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G7 r2",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "R2-P1a",
+      "R2-prop"
+    ]
+  },
+  {
+    "id": "s4-42",
+    "slice": "s4",
+    "label": "a guest's own retained send counts as «another account»",
+    "file": "../customer-app/capp-api.js",
+    "from": "return !!rs && rs.owner !== ownerNow(); }",
+    "to": "return !!rs && rs.owner !== uidNow(); }",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G7 r2",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "R2-guest-own"
+    ]
+  },
+  {
+    "id": "s4-43",
+    "slice": "s4",
+    "label": "the tender is the caller's again, not the outgoing body's (the finalized body's method dropped)",
+    "file": "../customer-app/capp-api.js",
+    "from": "            method = methodOf(body);\n            if (cfg.guestCardOnly",
+    "to": "            if (cfg.guestCardOnly",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G7 r2",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "R2-P1b",
+      "R2-prop"
     ]
   }
 ]

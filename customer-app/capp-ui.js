@@ -582,7 +582,7 @@
     const anySlotNow = () => schedDays().some((d) => d.slots.length > 0);
     // row 10: a RETAINED scheduled identity (dispatched, its body recorded) — its slot is fixed until the send resolves
     // Codex G7 r1 #1: from the RECORD only (capp-api's retainedSend), never from the current flow — and only for the member who sent it
-    // (sched_owner); a guest or another member sees no lock (and is refused locally at the send, heldByOther)
+    // (owner); a guest or another member sees no lock (and is refused locally at the send, heldByOther)
     function lockedBody() {
       if (!sched() || !api || !S.flow) return null;
       let rs = null; try { rs = api.retainedSend(); } catch (_) { rs = null; }

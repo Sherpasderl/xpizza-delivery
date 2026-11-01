@@ -2622,7 +2622,7 @@ test('S4 row 10 (advisor ruling (a), Codex S4 r2): the TENDER of a retained sche
   assert.deepEqual([b.srv.of('createOrder').length, b.srv.of('chargeOnlineOrder').length], [2, 0], '🔴 S4-tender: re-sent to the recorded tender, never charged');
 });
 // ── Codex G7 r1 #1 (advisor ruling, 2026-10-31): the lock AND the dispatch endpoint come from the RETAINED RECORD only — never from the
-// current flow. The record names its owner (sched_owner); only that member sees the lock and replays it. A non-owner (a guest after
+// current flow. The record names its owner (owner); only that member sees the lock and replays it. A non-owner (a guest after
 // the sign-out, member B) gets a clean flow and a LOCAL refusal (no network, the record untouched) until the record resolves or
 // expires; the owner signing in again restores the lock.
 const S4_PLACE_KEY = 'capp:rid_a:pending_place';

@@ -816,7 +816,7 @@ test('Codex G7 r1 #1: the retained record decides — its owner\'s ASAP + card f
   const R = srig({ member: m, script: { createOrder: ['network', OK_CASH], chargeOnlineOrder: [CHECKOUT] } });
   assert.equal((await R.api.place(sArgs())).kind, 'offline', 'premise: the response lost');
   const before = placeRec(R.storage);
-  assert.equal(before.sched_owner, MEMBER.uid, '🔴 S4-owner: the record names the member who sent it');
+  assert.equal(before.owner, MEMBER.uid, '🔴 S4-owner: the record names the member who sent it');
   const calls = () => R.srv.of('createOrder').length + R.srv.of('chargeOnlineOrder').length;
   for (const who of [{ ...MEMBER, uid: 'u_other' }, null]) {
     m.cur = who; const n0 = calls();
@@ -844,4 +844,65 @@ test('S4 + guest: under schedulingLive a guest\'s ASAP card send still carries i
   const out = await R.api.place({ ...a, checkoutTicket: await ticketFor(R, a) });
   assert.equal(out.kind, 'redirect', 'premise: placed');
   assert.equal(R.srv.of('chargeOnlineOrder')[0].body.checkout_ticket, 'tk_1', '🔴 S4-ticket: the guest ticket rides the flag path');
+});
+
+// ── Codex G7 r2 (P1a / P1b), advisor ruling 2026-10-31: ONE dispatch path — the endpoint is a function of the exact bytes sent, every
+// time (first send, replay, healed retry, accepted-price retry); a cash body with no member (guestCardOnly) is refused locally; the
+// record's owner rules EVERY retained send (ASAP included) ──
+const r2rig = (m, script) => grig({ member: m, extra: { schedulingLive: true }, script });
+const asap = (pay, x = {}) => ({ flow: flowOf(pay), ctx: { ...CTX, appCash: true }, sig: 'sig1', expectedNetCents: 31500, ...x });
+const sched = (pay, x = {}) => { const a = asap(pay, x); a.flow.time = 'schedule'; a.flow.slot = SLOT; return a; };
+const CONFLICT = { status: 409, json: { error: 'order_conflict' } }, PRICE = { status: 409, json: { error: 'price_increased', net_total_cents: 32500 } };
+const endpointsMatchBodies = (srv) => srv.calls.filter((c) => c.ep === 'createOrder' || c.ep === 'chargeOnlineOrder').every((c) => c.body && c.body.payment_method === (c.ep === 'createOrder' ? 'cash' : 'online'));
+test('Codex G7 r2 P1a: an unresolved ASAP CASH send, then a sign-out — a guest card flow with a valid ticket never sends the recorded cash body (no unauthenticated createOrder)', async () => {
+  const m = { cur: MEMBER };
+  const R = r2rig(m, { createOrder: ['network', OK_CASH], chargeOnlineOrder: [CHECKOUT] });
+  assert.equal((await R.api.place(asap('cash'))).kind, 'offline', 'premise: the ASAP cash response lost');
+  const before = placeRec(R.storage);
+  m.cur = null;
+  const g = asap('online'); const tk = await ticketFor(R, g);
+  const out = await R.reload().place({ ...g, checkoutTicket: tk });
+  assert.equal(R.srv.of('createOrder').length, 1, '🔴 R2-P1a: a guest never re-sends the recorded cash body');
+  assert.equal(R.srv.of('chargeOnlineOrder').length, 0, 'nor charges against the member\'s retained identity');
+  assert.deepEqual([out.kind, out.local], ['held_other_account', true], '🔴 R2-P1a: the member\'s retained ASAP send is the member\'s — a local refusal');
+  assert.deepEqual(placeRec(R.storage), before, 'the record untouched');
+});
+test('Codex G7 r2 P1b: an unresolved ASAP cash send, then card chosen — a replay answered order_conflict / an accepted price_increased never sends an ONLINE body to createOrder', async () => {
+  for (const second of [CONFLICT, PRICE]) {
+    const R = r2rig({ cur: MEMBER }, { createOrder: ['network', second, OK_CASH], chargeOnlineOrder: [CHECKOUT] });
+    assert.equal((await R.api.place(asap('cash'))).kind, 'offline', 'premise');
+    await R.reload().place(asap('online', { sheet: async () => true }));
+    assert.ok(endpointsMatchBodies(R.srv), `🔴 R2-P1b: every request goes to the endpoint its body names (${second.json.error}) — ${JSON.stringify(R.srv.calls.filter((c) => c.body && c.body.payment_method).map((c) => [c.ep, c.body.payment_method]))}`);
+    const last = R.srv.calls.filter((c) => c.ep === 'createOrder' || c.ep === 'chargeOnlineOrder').pop();
+    const rec = placeRec(R.storage);
+    if (last && last.ep === 'chargeOnlineOrder') assert.equal(rec && rec.card, true, `🔴 R2-P1b: the record's bookkeeping follows the body sent (a charge ⇒ card) (${second.json.error})`);
+  }
+});
+test('Codex G7 r2: a GUEST\'s own unresolved card send is the guest\'s — the same guest is never refused as «another account»', async () => {
+  const m = { cur: null };
+  const R = r2rig(m, { chargeOnlineOrder: ['network', CHECKOUT], paymentStatus: [{ status: 200, json: { ok: true, state: 'pending' } }] });
+  const g = asap('online'); await R.api.place({ ...g, checkoutTicket: await ticketFor(R, g) });
+  assert.equal(placeRec(R.storage).owner, '_guest', 'premise: the guest owns it');
+  const g2 = asap('online'); const out = await R.reload().place({ ...g2, checkoutTicket: await ticketFor(R, g2) });
+  assert.notEqual(out.kind, 'held_other_account', '🔴 R2-guest-own: the guest\'s own send is never «another account»');
+});
+test('Codex G7 r2 property: for every first send × second actor × tender × time × answer, the endpoint matches the body, a guest never sends cash, and a non-owner sends nothing', async () => {
+  const U2 = { uid: 'u2', idToken: 'tok2' }; let combos = 0;
+  for (const t1 of [asap, sched]) for (const who of ['owner', 'other', 'guest']) for (const pay of ['cash', 'online']) for (const t2 of [asap, sched]) for (const ans of ['ok', 'conflict', 'price']) {
+    const m = { cur: MEMBER };
+    const R = r2rig(m, { createOrder: ['network', ...(ans === 'conflict' ? [CONFLICT] : ans === 'price' ? [PRICE] : []), OK_CASH], chargeOnlineOrder: [...(ans === 'price' ? [PRICE] : []), CHECKOUT] });
+    assert.equal((await R.api.place(t1('cash'))).kind, 'offline', 'premise: a retained cash send');
+    const n1 = R.srv.calls.length, rec = placeRec(R.storage);
+    m.cur = who === 'owner' ? MEMBER : who === 'other' ? U2 : null;
+    let args = t2(pay, { sheet: async () => true });
+    if (who === 'guest' && pay === 'online') args = { ...args, checkoutTicket: await ticketFor(R, args) };
+    await R.reload().place(args);
+    const step2 = R.srv.calls.slice(n1).filter((c) => c.ep === 'createOrder' || c.ep === 'chargeOnlineOrder');
+    const tag = `[${t1.name}→${who} ${pay} ${t2.name} ${ans}]`;
+    assert.ok(endpointsMatchBodies(R.srv), `🔴 R2-prop: endpoint ≠ body ${tag}`);
+    if (who === 'guest') assert.equal(step2.filter((c) => c.ep === 'createOrder').length, 0, `🔴 R2-prop: a guest sent cash ${tag}`);
+    if (who !== 'owner') { assert.equal(step2.length, 0, `🔴 R2-prop: a non-owner sent ${tag}`); assert.deepEqual(placeRec(R.storage), rec, `the record untouched ${tag}`); }
+    combos++;
+  }
+  assert.equal(combos, 72, 'premise: every combination ran');
 });
