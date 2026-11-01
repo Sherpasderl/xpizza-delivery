@@ -1,7 +1,8 @@
 'use strict';
 // PLAN-avail-identity r1 — the INVERSE for the availability-identity slice: SAME-LINE hunks only (no line shifts) in menu-pricing.js
 // (the one rule as a helper on the itemPricingKey line, the raw line reading through it, the export) and catalog/public-menu.js (the
-// helper import, the 1d.3 marker, the declared body field, the field set from the normalized rid). Older slices pin menu-pricing.js
+// helper import, the declared body field, the field set from the normalized rid; NOT the representation marker — PLAN 4 owns the 1d.3
+// bump, and avail-identity ships WITH or AFTER PLAN 4: STOP 8 ruling (i), 2026-11-01). Older slices pin menu-pricing.js
 // byte-for-byte (extras-wiring.guard: minus the extras hunks == 537bbbc; catalog/identity-record-guards: the sha after every newer
 // inverse); those fold sites apply unapplyAvailIdentity INNERMOST (newest first). avail-identity-wiring.guard.test.js proves this
 // inverse reproduces 8a31e2a3 for each file byte-for-byte; each `now` occurs exactly once.
@@ -11,7 +12,6 @@ const HUNKS = Object.freeze([
  {"file": "menu-pricing.js", "now": "  const raw = item && item[availIdentityField(restaurantId)];\n", "was": "  const raw = restaurantId === 'la_musa' ? (item && item.id) : (item && item.name);\n"},
  {"file": "menu-pricing.js", "now": "module.exports = { PRICING_KEY_STAMP, availIdentityField,\n", "was": "module.exports = { PRICING_KEY_STAMP,\n"},
  {"file": "catalog/public-menu.js", "now": "const { photosFor } = require('./public-photos'); const { availIdentityField } = require('../menu-pricing');\n", "was": "const { photosFor } = require('./public-photos');\n"},
- {"file": "catalog/public-menu.js", "now": "const REPRESENTATION_VERSION = '1d.3';   /* PLAN-avail-identity r1: bumped — the served body now carries avail_identity */\n", "was": "const REPRESENTATION_VERSION = '1d.2';\n"},
  {"file": "catalog/public-menu.js", "now": "  photos: { type: 'object' }, avail_identity: { required: true, type: 'object' },   // PLAN-avail-identity r1: { field } — the restaurant's availability identity, from the server's ONE rule\n", "was": "  photos: { type: 'object' },\n"},
  {"file": "catalog/public-menu.js", "now": "    if (menu.eligibility) body.extras_eligibility = menu.eligibility; body.avail_identity = { field: availIdentityField(restaurantId) };   // the NORMALIZED rid (codex P1)\n", "was": "    if (menu.eligibility) body.extras_eligibility = menu.eligibility;\n"}
 ]);

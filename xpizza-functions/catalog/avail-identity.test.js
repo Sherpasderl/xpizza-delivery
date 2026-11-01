@@ -90,10 +90,12 @@ function formAvailField(rel) {
   assert.strictEqual(formAvailField('la-musa-orders/index.html'), MP.availIdentityField('la_musa'), 'AVAIL-ID-ENVELOPE-EQ-FORMS la_musa');
   ok("each form's AVAIL_IDENTITY (the exact `return item.<f>;` shape, else fail closed) == the envelope's field for its restaurant");
 
-  // ── 4. declared + the representation bump ──
+  // ── 4. declared; the representation marker is NOT this slice's (STOP 8 ruling (i): PLAN 4 owns the 1d.3 bump; avail-identity ships WITH or AFTER it) ──
   assert.deepStrictEqual(BODY_CONTRACT.avail_identity, { required: true, type: 'object' }, 'AVAIL-ID-DECLARED-REQUIRED');
-  assert.strictEqual(REPRESENTATION_VERSION, '1d.3', 'AVAIL-ID-REPRESENTATION-BUMP (the served body gained a field)');
-  ok('declared in the body contract as required; representation 1d.3');
+  assert.ok(!require('../tools/avail-identity-inverse').HUNKS.some((h) => /REPRESENTATION_VERSION/.test(h.now + h.was)), 'AVAIL-ID-REPRESENTATION-UNCHANGED (no avail-identity hunk owns the version line)');
+  const markerN = (v) => { const m = /^1d\.(\d+)$/.exec(String(v)); assert.ok(m, `AVAIL-ID-REPRESENTATION-SHAPE ${v}`); return Number(m[1]); };
+  assert.ok(markerN(REPRESENTATION_VERSION) >= markerN('1d.2'), `AVAIL-ID-REPRESENTATION-NOT-LOWERED (${REPRESENTATION_VERSION} ≥ the 8a31e2a3 base 1d.2)`);
+  ok('declared in the body contract as required; the representation marker is not owned by this slice and never lowered below the base 1d.2');
 
   FINISHED = true;
   console.log(`avail-identity: OK (${n})`);

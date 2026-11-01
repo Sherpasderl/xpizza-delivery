@@ -41,7 +41,7 @@ const { photosFor } = require('./public-photos'); const { availIdentityField } =
    change that is supposed to be additive-and-immediate would instead be invisible for a TTL. */
 /* PLAN-public-menu-display r2 (D3 RULED): bumped because the served body can now carry `photos`. The forms keep their own
    '1d.1' marker (they stay byte-identical) and log menu_representation_changed on a mismatch — a console warning only. */
-const REPRESENTATION_VERSION = '1d.3';   /* PLAN-avail-identity r1: bumped — the served body now carries avail_identity */
+const REPRESENTATION_VERSION = '1d.2';
 
 // EVERY field this endpoint serves, and what has to be true of it. One table, because the list of
 // what may appear and the rules for what must appear are the same fact — kept apart they drift, and

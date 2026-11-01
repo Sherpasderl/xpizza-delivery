@@ -88,7 +88,7 @@ const BETA = { items: [item('b_01', { id: 'b_01', name: 'B1' }, true), item('b_0
   // ── 4. served by buildPublicMenu: declared, covered by the etag, and degrade-only ───────────────────────────────
   {
     assert.deepStrictEqual(BODY_CONTRACT.photos, { type: 'object' }, 'declared, optional, never fromSource-required');
-    assert.strictEqual(REPRESENTATION_VERSION, '1d.3', 'the served marker is 1d.3 (1d.2 = D3 RULED for photos; 1d.3 = PLAN-avail-identity)');
+    assert.strictEqual(REPRESENTATION_VERSION, '1d.2', 'the served marker is 1d.2 (D3 RULED)');
     const known = new Set(['x_pizza', 'la_musa']);
     const seeded = async (rid) => {
       const db = makeDb();
@@ -99,7 +99,7 @@ const BETA = { items: [item('b_01', { id: 'b_01', name: 'B1' }, true), item('b_0
     for (const rid of ['x_pizza', 'la_musa']) {
       const db = await seeded(rid);
       const live = await buildPublicMenu(db, rid, { known, isActive: async () => true });
-      assert.strictEqual(live.representation_version, '1d.3');
+      assert.strictEqual(live.representation_version, '1d.2');
       assert.ok(live.body.photos && Object.keys(live.body.photos).length > 0, `${rid}: the default (the platform manifest) serves photos`);
       // dish records are untouched: no dish carries a photo field it did not carry before
       assert.ok(live.body.dishes.every((d) => !('photo' in d) && !('photos' in d)), `${rid}: dish records unchanged`);
@@ -114,7 +114,7 @@ const BETA = { items: [item('b_01', { id: 'b_01', name: 'B1' }, true), item('b_0
       const h = await buildPublicMenu(db, rid, { known, isActive: async () => true, sites: hostile });
       assert.ok(!('photos' in h.body), `${rid}: a throwing manifest → photos omitted, menu served`);
     }
-    ok('buildPublicMenu: photos served by default (marker 1d.3), dish records untouched; no base or a throwing manifest → omitted, rest byte-equal; etag moves with it');
+    ok('buildPublicMenu: photos served by default (marker 1d.2), dish records untouched; no base or a throwing manifest → omitted, rest byte-equal; etag moves with it');
   }
 
   // ── 5. CENSUS: every URL the live catalogs emit is a committed file of that brand's order site ─────────────────

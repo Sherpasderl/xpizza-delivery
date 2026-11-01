@@ -1,8 +1,8 @@
-// PLAN-avail-identity r1 — THE LIVE FORMS ARE UNTOUCHED BY body.avail_identity (and the 1d.3 marker).
+// PLAN-avail-identity r1 — THE LIVE FORMS ARE UNTOUCHED BY body.avail_identity.
 // Run: node avail-identity-forms-noop.test.mjs
 //
-// Same method as public-menu-display-noop.test.mjs: each REAL form page is served today's body (marker 1d.2) and the new body
-// (+ avail_identity, marker 1d.3) through the real chain, and everything the page holds afterwards is compared — the committed
+// Same method as public-menu-display-noop.test.mjs: each REAL form page is served today's body and the new body (+ avail_identity),
+// under the SAME marker (STOP 8 ruling (i): the marker is PLAN 4's, not this slice's — only the field differs), through the real chain, and everything the page holds afterwards is compared — the committed
 // live-menu globals, the painted page, the createOrder / quoteOrder request bodies of the same cart, the quote fingerprint. A
 // renamed dish (the sensitivity partner) must move the same comparisons. And neither form file differs from the slice's base.
 import assert from 'node:assert';
@@ -70,7 +70,7 @@ async function run(dir, body, marker) {
     const b1 = { ...clone(b0), avail_identity: { field: availIdentityField(rid) } };
     assert.notDeepStrictEqual(b1, b0, `${dir}: non-vacuity — the bodies differ`);
     const r0 = await run(dir, b0, '1d.2'); closeAll();
-    const r1 = await run(dir, b1, '1d.3'); closeAll();
+    const r1 = await run(dir, b1, '1d.2'); closeAll();
     assert.deepStrictEqual(r1.globals, r0.globals, `🔴 AVAIL-ID-FORMS-NOOP ${dir}: avail_identity changed a committed live-menu global`);
     assert.strictEqual(r1.dom, r0.dom, `🔴 AVAIL-ID-FORMS-NOOP ${dir}: avail_identity changed the painted page`);
     assert.deepStrictEqual(r1.createOrder, r0.createOrder, `🔴 AVAIL-ID-FORMS-NOOP ${dir}: avail_identity changed the createOrder body`);
@@ -81,7 +81,7 @@ async function run(dir, body, marker) {
     assert.notDeepStrictEqual(rs.globals, r0.globals, `${dir}: sensitivity — a renamed dish moves the globals`);
     assert.notStrictEqual(rs.dom, r0.dom, `${dir}: sensitivity — and the painted page`);
     assert.notDeepStrictEqual(rs.createOrder, r0.createOrder, `${dir}: sensitivity — and the createOrder body`);
-    ok(`${dir}: + avail_identity (marker 1d.3) the REAL page commits the same globals, paints the same page, sends the same createOrder/quote and fingerprint; a renamed dish moves them`);
+    ok(`${dir}: + avail_identity (same marker) the REAL page commits the same globals, paints the same page, sends the same createOrder/quote and fingerprint; a renamed dish moves them`);
   }
   for (const dir of DIRS) {
     const was = execFileSync('git', ['show', `${BASE}:${dir}/index.html`], { cwd: new URL('.', import.meta.url).pathname, encoding: 'utf8', maxBuffer: 1 << 27 });
