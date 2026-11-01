@@ -55,7 +55,11 @@ test('r3.4-2: where a form carries the helper in THIS base, exactly one extracta
 });
 
 test('r3.4-2 NEGATIVE CONTROLS (Codex perf-core r1 #8): a present helper with the WRONG COPY, or one that cannot be extracted, FAILS', () => {
-  const base = readFileSync(join(ROOT, 'xpizza-orders/index.html'), 'utf8');
+  // the controls inject into a form WITHOUT the helper: on a base that already carries Plan 5 (main's b8ba8467 composed in), the
+  // form's own priceNoticeText is removed first — otherwise every injection trips «exactly one» before the check under test
+  const src = readFileSync(join(ROOT, 'xpizza-orders/index.html'), 'utf8');
+  const base = src.replace(/function\s+priceNoticeText\s*\([^)]*\)\s*\{[^}]*\}/g, '');
+  assert.equal((base.match(PRESENT) || []).length, 0, 'premise: the control base carries no priceNoticeText');
   const wrong = base + "\nfunction priceNoticeText(e) { return 'WRONG COPY'; }\n";
   assert.throws(() => checkForm('wrong-copy', wrong), /differs from the fixture/, '🔴 a WRONG COPY injection is caught (any spacing)');
   const odd = base + "\nfunction priceNoticeText (e, x) { return 'x'; }\n";
