@@ -237,6 +237,19 @@ const reg = async (h, pid, rid = 'tb_r1') => { const s = await h.db.collection('
     assert.notStrictEqual(gone.status, 200, 'PROC-COMPLETION-VERIFIES-GENERATIONS');
     const g3 = await reg(h3, pid);
     assert.ok(!g3 || !g3.generations || !g3.generations.draft_card, `PROC-NO-DEAD-GENERATION-RECORDED ${JSON.stringify(g3)}`);
+    // the reservation EXPIRED mid-processing and a sweeper claimed (state deleting, our stale reserve still on the doc) → never resurrected
+    const h4 = harness(); await seedUpload(h4);
+    const orig4 = h4.storage.createIfAbsent.bind(h4.storage);
+    let swept = null;
+    h4.storage.createIfAbsent = async (...a) => {
+      const x = await orig4(...a);
+      if (swept === null) { const d = (await regRef(h4).get()).data(); swept = await SW.claim({ fs: h4.db, now: () => T0 + 3600e3, newClaimId: () => 'sweepY' }, 'tb_r1', { pid, last_ref_at: d.last_ref_at }); }
+      return x;
+    };
+    const late = await photoProcessCore(h4.deps, REQ);
+    assert.ok(swept && swept.id === 'sweepY', 'premise: the sweeper claimed after the reservation expired');
+    assert.notStrictEqual(late.status, 200, `PROC-DELETING-NEVER-RESURRECTED ${JSON.stringify(late.body)}`);
+    assert.deepStrictEqual([(await reg(h4, pid)).state, (await reg(h4, pid)).claim.id], ['deleting', 'sweepY'], 'PROC-DELETING-NEVER-RESURRECTED registry kept');
     ok('codex r1 P1-2: the reservation (last_ref_at bump + reserve) lands BEFORE derivatives, so a sweeper that scanned earlier cannot claim; completion requires the reservation and live generations — a lost reservation or a vanished object never completes');
   }
 
