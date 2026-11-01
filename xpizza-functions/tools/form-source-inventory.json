@@ -1176,6 +1176,7 @@
     "xpizza-functions/contract/token.guard.test.js",
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/order-control-wiring.guard.test.js",
+    "xpizza-functions/pselfupdate-wrapper-lint.test.js",
     "xpizza-functions/test/driver-assignment-parity.emulator.test.js",
     "xpizza-functions/test/driver-cash-subscription.emulator.test.js",
     "xpizza-functions/test/h0-dismiss-rules.emulator.test.js",
@@ -1682,6 +1683,7 @@
    "surfaces": [
     "xpizza-orders",
     "la-musa-orders",
+    "xpizza-dispatch",
     "xpizza-dispatch-mobile"
    ]
   },

@@ -62,7 +62,7 @@
   },
   "clocks": {
    "display": 39,
-   "business-sample": 182,
+   "business-sample": 179,
    "persisted-stamp": 61,
    "business-comparison": 14,
    "io-deadline": 4
@@ -51192,7 +51192,7 @@
   },
   {
    "key": "xpizza-functions/phone/flag.js:_withTimeout>anon:setTimeout",
-   "line": 36,
+   "line": 39,
    "delay": "ms",
    "class": "io-deadline"
   },
@@ -52397,23 +52397,8 @@
    "class": "business-sample"
   },
   {
-   "key": "xpizza-functions/phone/flag.js:phoneWireStrict:Date.now()",
-   "line": 39,
-   "class": "business-sample"
-  },
-  {
-   "key": "xpizza-functions/phone/flag.js:phoneWireStrict>anon:Date.now()",
-   "line": 46,
-   "class": "business-sample"
-  },
-  {
-   "key": "xpizza-functions/phone/flag.js:phoneWireStrict>anon:Date.now()",
-   "line": 51,
-   "class": "business-sample"
-  },
-  {
-   "key": "xpizza-functions/phone/flag.js:phoneWireStrictNow:Date.now()",
-   "line": 61,
+   "key": "xpizza-functions/phone/flag.js:_clock:Date.now()",
+   "line": 37,
    "class": "business-sample"
   },
   {
