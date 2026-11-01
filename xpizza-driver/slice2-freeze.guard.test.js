@@ -33,8 +33,84 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
+// SLICE3 coexistence (see check-2): slice 3 supersedes slice 2. The contract is loaded as NON-EXECUTABLE DATA
+// (slice3-regions.json), sha-verified BEFORE parse — never imported/required — so a `process.exit(0)` appended to
+// an editable module can't short-circuit this guard (Codex r2 P1). loadContract() below.
 
 const __dir = dirname(fileURLToPath(import.meta.url));
+const sha256 = (s) => createHash('sha256').update(s).digest('hex');
+
+// SLICE3 contract pins (Codex r1 P1): slice3-regions.js is editable, so this guard pins the contract INDEPENDENTLY
+// — a tampered shared module (widened/dropped restore, added/removed region, changed kind) is caught HERE too, not
+// just in slice3-freeze. Mirror of slice3-freeze's SLICE3_PINS; both must agree with the byte-frozen contract file.
+const SLICE3_PINS = {
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER', 'PRESENTATION-INICIO', 'INICIO-LOGIN', 'INICIO-ESPERANDO', 'INICIO-CHECKLIST-FLAG', 'INICIO-POSTACT-ROUTE', 'INICIO-PERFIL', 'INICIO-CHECKLIST', 'INICIO-PRACTICA', 'INICIO-DEMO', 'INICIO-DEMO-TEARDOWN', 'TABBAR-SHOW', 'TABBAR-BOARD', 'DISP-HEADER', 'RETURN-TARGET-CAPTURE', 'SOLO-CANCEL', 'ARRIVAL-ACTION', 'PAUSE-BOARD', 'PRESENTATION-REVERIFY', 'CUENTA-CARD', 'INICIO-DESACTIVADA', 'MONEY-VUELTO', 'MONEY-TERMINAR', 'MONEY-CERRADO', 'MONEY-FINALIZE-RET', 'MONEY-RATE', 'MONEY-RATE-SUB', 'PAYRATE-SCRIPT', 'GANANCIAS-CSS', 'GANANCIAS-DOM', 'GANANCIAS-SHOW', 'GANANCIAS-REFRESH'],
+  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace', 'insert', 'replace', 'replace', 'replace', 'replace', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'insert', 'replace', 'insert', 'replace', 'insert', 'insert', 'insert', 'insert', 'insert'],
+  restoreSha: {
+    'MONEY-RATE-SUB': 'bfcbeacaa4e570679a4e0adfb7657042c6eeb08cb514359942411c9ab00a17b7',
+    'MONEY-FINALIZE-RET': '33ab550ff1959a13738616ffca3ba50824b94b949a1179b1978e8e89124ed333',
+    'MONEY-TERMINAR': 'c975577a9b0eeb3129eaaa6724570f9dd8500f86def9b9769880b26460ed5502',
+    'MONEY-VUELTO': '11452ea4099ddd8e07ebd85c0603ce25e036f067860dbe756755acac33c94acd',
+    'INICIO-DESACTIVADA': '9d4c041325a3511f3d7e88e158cacabe9d14b0c88582f198e7101d3eaacb9353',
+    'HELP-HANDLER': 'e823efd01be83461f6b7b900e8e60a9065d9c44bfedb1b32c2624f1d6c00206f',
+    'CUADRE-CSS': '41327b6fa5e535b774d323c235e755019b6020516a10ac20340b004667f8a4ec',
+    'CUADRE-DOM': 'ec70f01fe5711aacff4fc4e88ff0fd873bf715abf8ba178d30092c7ec34c2dab',
+    'CUADRE-RENDER': 'a285b81838c946e23f46a401786b07a62976ca93f25c3d8152640404021eeaaa',
+    'CUADRE-SUBMIT': '06a225a4158eae7c797d0775fec2def67fb01283467b3c6352cff7dc55e8466b',
+    'CHIME-FRESH': 'e86e31b5350d14f892d99d38e7bf84fcf2358c262d03d9354bf663864e0de4c9',
+    'OFFER-TAKEOVER': '88bdef966a96defc21a3b6bc407f595201c0808456016662832f6ae14c60a855',
+    'INICIO-LOGIN': 'c88bdf37eb700d815067bda2ed13a24478b983b0ead7321713095d18c402fc32',
+    'INICIO-ESPERANDO': '582717c999424ab08ce8bb1bdeb34fb2378b3563f6c66ca5957c91b695bfa06f',
+    'INICIO-POSTACT-ROUTE': '6b94288ed1e68f936c327b57c45ec3d738fc79d791b23bd6707ccfb90ab6d26e',
+    'INICIO-PERFIL': 'e3cc6d98b928d95cb49c8b9016ca142730759778e6d6862eb75d68665ff8ca80',
+    'INICIO-CHECKLIST': 'f270a45d4f0bc010c18de365e97fd1427138962b2b8d2abbdc07270db8cc4d74',
+    'INICIO-PRACTICA': 'dc6e3b5213046e049f1ba47cd428392caca2cfcb84c7ffea4744c83f312e1e13',
+  },
+  fileSha: 'e8ee39071fb97acc11e5d4fa12d842acdbdde07e06f273464f129060c8d0cc90',
+};
+// Load the contract as DATA: read bytes → verify the sha256 pin FIRST → only then JSON.parse (Codex r2 P1). No
+// require/import of editable code; a tampered or executable contract fails the sha (and JSON.parse) before use.
+function loadContract() {
+  const bytes = readFileSync(join(__dir, 'slice3-regions.json'));
+  assert.equal(sha256(bytes), SLICE3_PINS.fileSha, 'slice3-regions.json byte-changed — the SLICE3 contract is frozen; re-gate at HIGH effort');
+  const data = JSON.parse(bytes);
+  assert.ok(data && Array.isArray(data.regions), 'slice3-regions.json has no regions array');
+  return data.regions;
+}
+const SLICE3_REGIONS = loadContract();
+function verifySlice3Contract() {
+  assert.equal(sha256(readFileSync(join(__dir, 'slice3-regions.json'))), SLICE3_PINS.fileSha,
+    'slice3-regions.json byte-changed — the SLICE3 contract is frozen; re-gate any change at HIGH effort');
+  assert.deepEqual(SLICE3_REGIONS.map((r) => r.name), SLICE3_PINS.names, 'SLICE3 region names/order tampered');
+  assert.deepEqual(SLICE3_REGIONS.map((r) => r.kind), SLICE3_PINS.kinds, 'SLICE3 region kinds tampered');
+  for (const r of SLICE3_REGIONS) if (r.kind === 'replace') {
+    assert.equal(sha256(r.restore.join('\n')), SLICE3_PINS.restoreSha[r.name],
+      `SLICE3 ${r.name} restore bytes tampered (widened to swallow adjacent code, or shrunk?)`);
+  }
+}
+// Strict marker scan (Codex r2 P2): candidate detection is MAXIMALLY BROAD — ANY `${prefix}:` followed by anything
+// up to a `:START` or `:END` on the same line is a candidate (so names with a dot, space, slash or Unicode can't
+// slip past). EVERY candidate must then validate EXACTLY as `${prefix}:<name>:<START|END>`, name in [A-Za-z0-9-]+
+// and (if given) whitelisted — else RED, before any stripping. The ONLY non-marker is a bare `${prefix}:<word>`
+// label with NO :START/:END suffix (e.g. the batch-2 `SLICE3:RESUMEN` section labels). CRLF-safe.
+function strictMarks(lines, prefix, whitelist) {
+  const cand = new RegExp(prefix + ':(?:.*?:)?(?:START|END)\\b', 'g');
+  const strict = new RegExp('^' + prefix + ':([A-Za-z0-9-]+):(START|END)$');
+  const marks = [];
+  lines.forEach((raw, i) => {
+    const line = raw.replace(/\r$/, '');   // CRLF-safe
+    const hits = line.match(cand) || [];
+    assert.ok(hits.length <= 1, `line ${i + 1}: more than one ${prefix} marker`);
+    for (const tok of hits) {
+      const m = strict.exec(tok);
+      assert.ok(m, `malformed ${prefix} marker: "${tok}" (line ${i + 1})`);
+      if (whitelist) assert.ok(whitelist.includes(m[1]), `unknown ${prefix} region: ${m[1]}`);
+      marks.push({ i, name: m[1], kind: m[2] });
+    }
+  });
+  return marks;
+}
 const PFX = 'xpizza-driver/';
 
 // The slice-2 freeze point: feat/driver-refresh-slice2 is a pure delta over this commit (the PROXY base =
@@ -122,6 +198,42 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/slice2-freeze.proof.sh',          // the mutation-outside-regions → RED proof harness
   'xpizza-driver/nav-view.js',                     // R7 Cuenta/navApp pure builders
   'xpizza-driver/nav-view.test.js',                // R7 Cuenta/navApp builder tests
+  // SLICE3 coexistence: slice 3 supersedes slice 2 (same precedent as slice 2 over slice 1). These are ADDs vs
+  // the slice-2 baseline; their content is governed by slice3-freeze.guard, not here.
+  'xpizza-driver/slice3-regions.json',             // the shared SLICE3 region contract (non-executable data)
+  'xpizza-driver/slice3-freeze.guard.test.js',     // the slice-3 freeze guard
+  'xpizza-driver/slice3-contrast.test.js',         // batch-3 fg/bg WCAG checks (added with the first batch-3 CSS)
+  'xpizza-driver/cuadre-submit.test.js',           // cuadre slide-to-confirm money-submit handler test (SLICE3)
+  'xpizza-driver/chime-fresh.test.js',             // new-assignment chime handler test (SLICE3)
+  'xpizza-driver/offer-takeover.test.js',          // cross-hub S.oferta takeover handler test (SLICE3)
+  'xpizza-driver/oferta-offer.test.js',            // S.oferta offer-branch rebuild output test (SLICE3)
+  'xpizza-driver/idle-help-gate.test.js',          // SLICE3:IDLE-3 help-link gate test (SLICE3)
+  'xpizza-driver/statusbar-disp-header.test.js',   // SLICE3:DISP-HEADER idle «En turno» header + non-idle byte-identity (SLICE3)
+  'xpizza-driver/time-format.js',                  // ONE source for «7:16» — shared clock formatter (SLICE3)
+  'xpizza-driver/time-format.test.js',             // the shared formatter's spec test (SLICE3)
+  'xpizza-driver/disponible.test.js',              // renderDisponible body (prototype S.disponible) test (SLICE3)
+  'xpizza-driver/return-target.test.js',           // returning-state nav target real-code suite (SLICE3)
+  'xpizza-driver/solo-cancel.test.js',              // S.cancelado idle takeover real-code suite (SLICE3)
+  'xpizza-driver/pausa.test.js',                    // slice 3-P manual-pause (S.pausa) real-code suite (SLICE3)
+  'xpizza-driver/endshift.test.js',                 // «Terminar turno» idle slide real-code suite (SLICE3)
+  'xpizza-driver/llegue.test.js',                   // S.llegue pure-builder flag suite (SLICE3)
+  'xpizza-driver/offline-banner.test.js',          // SLICE3 offline banner handler test (SLICE3)
+  'xpizza-driver/gpsoff.test.js',                  // SLICE3 gpsoff builder + apply logic test (SLICE3)
+  'xpizza-driver/fa4400-neverships.test.js',       // SLICE3 brand-orange never-ship test, static (SLICE3)
+  'xpizza-driver/fa4400-render.browser.test.js',   // SLICE3 brand-orange never-ship test, browser/computed-style (SLICE3)
+  'xpizza-driver/fa4400-neverships.proof.sh',      // SLICE3 brand-orange never-ship mutant proof (SLICE3)
+  'xpizza-driver/postact-route.js',                // Inicio b: pure post-activation checklist routing decision (SLICE3)
+  'xpizza-driver/postact-route.test.js',           // Inicio b: post-activation routing paths test (SLICE3)
+  'xpizza-driver/practica-fixture.js',             // Inicio c: synthetic practice ORDER data module (SLICE3)
+  'xpizza-driver/practica-demo.test.js',           // Inicio c: practica demo zero-write + isolation spy test (SLICE3)
+  'xpizza-driver/tab-bar-view.js',                 // O6: bottom nav bar builder + data-gating (SLICE3)
+  'xpizza-driver/tab-bar-view.test.js',            // O6: bottom nav bar builder + gating test (SLICE3)
+  'xpizza-driver/tab-bar-mount.test.js',           // O6: bottom nav bar host glue jsdom test (SLICE3)
+  'xpizza-driver/offshift.test.js',                // offshift rebuild: renderOffshift + shift-start slide (SLICE3)
+  'xpizza-driver/pay-rate.js',                     // the ONE pay-rate reader (window.PayRate), carried byte-identical from platform/client/pay-rate.js (2e 52ef3331) (SLICE3)
+  'xpizza-driver/ganancias.test.js',               // the earnings screen (#31/#32) renderGanancias test (SLICE3)
+  'xpizza-driver/capture-earnings.mjs',            // earnings capture harness (SLICE3; Chrome only under --shoot)
+  'xpizza-driver/CAPTURE-PLAN-earnings.md',        // one-pass capture plan for #31/#32 + the 7 re-verify scenes (SLICE3)
 ]);
 const REQUIRED_ADDS = ['xpizza-driver/overview-map.js', 'xpizza-driver/stacked-view.js'];
 const ALLOWED_MODIFY = 'xpizza-driver/index.html';
@@ -130,7 +242,7 @@ const ALLOWED_MODIFY = 'xpizza-driver/index.html';
 // onboarding-host.test.js's fake-DOM mock had no insertAdjacentHTML, so it must be extended to support the injection
 // AND now covers it (asserts co-nav-row is injected + wired). This is a test-only change; no production/baseline
 // behaviour moves. The region-restoration byte check still proves index.html's companion code is baseline-identical.
-const SLICE2_TEST_MODIFY = new Set(['xpizza-driver/onboarding-host.test.js']);
+const SLICE2_TEST_MODIFY = new Set(['xpizza-driver/onboarding-host.test.js', 'xpizza-driver/slice1-font-resolution.test.js']);
 // Exactly ONE baseline file may be DELETED by slice 2: the slice-1 branch harness single-order-branch.test.js.
 // Its stub-based proof (the 2-order stacked render is byte-identical to baseline + renderActiveCard is called)
 // is superseded — slice 2 intentionally reroutes the stacked path through the builders (renderActiveCard is now
@@ -177,13 +289,35 @@ const gitBuf = (...a) => git(...a);
 const gitStr = (...a) => git(...a).toString('utf8');
 
 let passed = 0;
-const t = (name, fn) => { fn(); passed += 1; };
+// Checks MUST be synchronous and return NOTHING (Codex r3/r4): a callback whose body is deferred — a promise, a
+// generator/async-generator iterator, or any non-undefined value — would be counted before its assertions ran.
+// Require EXACTLY `undefined` BEFORE incrementing: one rule that rejects that whole class. All shipped checks
+// return undefined. (Active-handle hangs still need an external timeout.)
+const t = (name, fn) => {
+  const r = fn();
+  assert.strictEqual(r, undefined, `check "${name}" must be synchronous and return nothing (got a ${typeof r})`);
+  passed += 1;
+};
+// Belt-and-braces (Codex r2 P1): force RED on ANY early exit — if fewer than the expected checks completed (an
+// injected process.exit, a thrown/short-circuited load, a skipped check), the process exit code is forced to 1.
+const EXPECTED_CHECKS = 16;
+process.on('exit', () => {
+  if (passed !== EXPECTED_CHECKS) {
+    console.error(`slice2-freeze.guard INCOMPLETE: ${passed}/${EXPECTED_CHECKS} checks ran — early exit / skipped check`);
+    process.exitCode = 1;
+  }
+});
 
 // ---------- 0. baseline reachable ----------
 let baseSha;
 t('baseline commit is reachable', () => {
   baseSha = gitStr('rev-parse', '--verify', `${BASELINE}^{commit}`).trim();
   assert.match(baseSha, /^[0-9a-f]{40}$/, `baseline ${BASELINE} did not resolve to a commit`);
+});
+
+// Independently pin the SLICE3 contract used by the coexistence splice (Codex r1 P1) — see verifySlice3Contract.
+t('SLICE3 contract is byte-frozen + matches the independently-pinned names/kinds/restore bytes', () => {
+  verifySlice3Contract();
 });
 
 // ---------- 1. every baseline file except index.html byte-identical ----------
@@ -202,6 +336,16 @@ function stripSlice2Regions(text) {
 // region is still region-contained; this only exempts the file from the raw byte-identity check (it is verified
 // byte-identical AFTER stripping). index.html is handled by the region-restoration test, not here.
 const ALLOWED_REGION_BEARING = new Set(['xpizza-driver/xpizza-delivery.js']);
+// single-order-view.js is editable ONLY inside the SLICE3:OFERTA-OFFER region (the offer branch rebuilt to S.oferta).
+// Everything else — svChip/svItems/svPay (money display) + the nav/cash helpers — is pinned: strip the region and the
+// rest must hash to the baseline with the old offer branch removed (byte-identical in both baselines).
+const SOV_REST_SHA = 'bb7dedaf72355416049accae5d65e854e7089c53b844afb9b1052ca09aafbfa6';
+function sovRestHash(text) {
+  const lines = text.split('\n');
+  const marks = strictMarks(lines, 'SLICE3', ['OFERTA-OFFER']);
+  if (marks.length !== 2 || marks[0].kind !== 'START' || marks[1].kind !== 'END') return null;
+  return sha256([...lines.slice(0, marks[0].i), ...lines.slice(marks[1].i + 1)].join('\n'));
+}
 
 t('frozen: every baseline file under xpizza-driver/ (except index.html) is byte-identical (region-bearing files strip to baseline)', () => {
   const baseFiles = gitStr('ls-tree', '-r', '--name-only', BASELINE, '--', 'xpizza-driver')
@@ -221,7 +365,12 @@ t('frozen: every baseline file under xpizza-driver/ (except index.html) is byte-
     // A region-bearing file is OK iff stripping its SLICE2 region(s) recovers baseline byte-for-byte.
     if (ALLOWED_REGION_BEARING.has(repoPath)
         && Buffer.from(stripSlice2Regions(diskBytes.toString('utf8'))).equals(baseBytes)) continue;
-    drift.push(`${repoPath} (byte-changed${ALLOWED_REGION_BEARING.has(repoPath) ? ' — region strip did NOT recover baseline' : ''})`);
+    // single-order-view.js: editable ONLY in the SLICE3:OFERTA-OFFER region — the rest must hash to the baseline.
+    if (repoPath === 'xpizza-driver/single-order-view.js' && sovRestHash(diskBytes.toString('utf8')) === SOV_REST_SHA) continue;
+    // single-order-card.test.js: a SLICE3-editable TEST (its offer cases updated for the S.oferta rebuild); its
+    // content is governed by slice3-freeze.guard, not here (same posture as the SLICE2_TEST_MODIFY companion test).
+    if (repoPath === 'xpizza-driver/single-order-card.test.js') continue;
+    drift.push(`${repoPath} (byte-changed${ALLOWED_REGION_BEARING.has(repoPath) ? ' — region strip did NOT recover baseline' : (repoPath.endsWith('single-order-view.js') ? ' — edited OUTSIDE the OFERTA-OFFER region' : '')})`);
   }
   assert.deepEqual(drift, [], `frozen files changed:\n  ${drift.join('\n  ')}`);
 });
@@ -241,6 +390,14 @@ t('region-bearing frozen files carry only the allowed SLICE2 region(s)', () => {
     const names = new Set(marks.map((m) => m.replace(/SLICE2:|:(START|END)/g, '')));
     assert.deepEqual([...names], ['NAV-SDK'], `${repoPath} may only carry the NAV-SDK region, found: ${[...names].join(', ')}`);
   }
+});
+
+// Probe: a svPay edit (OUTSIDE the OFERTA-OFFER region) must change the rest-hash — proof the single-order-view.js pin bites.
+t('NEG: an edit to single-order-view.js OUTSIDE the OFERTA-OFFER region (svPay) changes the rest-hash → RED', () => {
+  const text = readFileSync(join(__dir, 'single-order-view.js'), 'utf8');
+  const probed = text.replace('function svPay(order, esc, computeVuelto) {', 'function svPay(order, esc, computeVuelto) { /* probe */');
+  assert.notEqual(probed, text, 'the svPay probe anchor must exist');
+  assert.notEqual(sovRestHash(probed), SOV_REST_SHA, 'a probe edit to svPay (outside the region) must change the rest-hash → RED');
 });
 
 // ---------- 2 & 3. markers well-formed + restoration recovers baseline ----------
@@ -289,6 +446,24 @@ function regionRanges(lines) {
   return out;
 }
 
+// SLICE3 coexistence helper: locate the PRESENT SLICE3 regions (any subset — slice 3 is in progress) so check-2
+// can splice them too. Full SLICE3 validation (whitelist, nesting, pin integrity) is slice3-freeze.guard's job;
+// here we only pair the markers we need to splice. Returns [{ r, s, e }] for each paired, known SLICE3 region.
+function findSlice3Ranges(lines) {
+  const marks = strictMarks(lines, 'SLICE3', SLICE3_PINS.names);   // rejects malformed/unapproved SLICE3 markers (Codex r1 P2)
+  const open = {}; const out = [];
+  for (const { i, name, kind } of marks) {
+    if (kind === 'START') { assert.equal(open[name], undefined, `SLICE3 region ${name} START while open (nested)`); open[name] = i; }
+    else {
+      assert.ok(open[name] != null, `SLICE3 region ${name} END without START`);
+      const r = SLICE3_REGIONS.find((x) => x.name === name);
+      if (r) out.push({ r, s: open[name], e: i });
+      delete open[name];
+    }
+  }
+  return out;
+}
+
 t('restore spans are present in the baseline (pin integrity)', () => {
   const baseHtml = gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`);
   for (const r of REGIONS) {
@@ -303,8 +478,14 @@ t('index.html: strip SLICE2 regions + restore the replacement spans recovers bas
   const baseHtml = gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`);
   const lines = current.split('\n');
   const ranges = regionRanges(lines);
-  // Splice each region out (descending by start so indices stay valid); replacements splice their span in.
-  const ordered = REGIONS.map((r) => ({ r, s: ranges[r.name][0], e: ranges[r.name][1] }))
+  // SLICE3 COEXISTENCE (slice 3 supersedes slice 2, advisor 2026-10-25): this guard's SLICE2 strip is blind to
+  // SLICE3 markers, so check-2 must ALSO splice PRESENT SLICE3 regions — inserts to nothing, replaces to their
+  // pinned span. Those spans are base code byte-identical in e2266b24 and 07e5ab38 (slice3-freeze check 5 proves
+  // it), so restoring them recovers THIS baseline too. slice2-freeze's own baseline + SLICE2 guarantees are
+  // unchanged. This block is load-bearing: without it a SLICE3 region leaks and this test goes RED (proven below).
+  const s3 = findSlice3Ranges(lines);
+  // Splice every region out (descending by start so indices stay valid); replacements splice their span in.
+  const ordered = [...REGIONS.map((r) => ({ r, s: ranges[r.name][0], e: ranges[r.name][1] })), ...s3]
     .sort((a, b) => b.s - a.s);
   for (const { r, s, e } of ordered) {
     lines.splice(s, e - s + 1, ...(r.kind === 'replace' ? r.restore : []));
@@ -317,6 +498,34 @@ t('index.html: strip SLICE2 regions + restore the replacement spans recovers bas
   }
   assert.equal(lines.join('\n'), expected,
     'strip+restore did NOT recover baseline (modulo the documented OUT_OF_REGION_ALLOW) — a change leaked OUTSIDE the SLICE2 regions, or a pinned span is wrong');
+});
+
+// The SLICE3 coexistence splice (in check-2 above) is LOAD-BEARING: with a SLICE3 region present, removing it
+// would leak those bytes and turn slice2-freeze RED. Proven by injecting a well-formed SLICE3 insert into the
+// baseline and showing the splice strips it back, while the un-spliced bytes do not match (advisor proof 2026-10-25).
+t('SLICE3 coexistence splice is load-bearing (inject a SLICE3 region → recovers only WITH the splice)', () => {
+  const baseHtml = gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`);
+  const inj = baseHtml.split('\n');
+  inj.splice(2, 0, '/* ===== SLICE3:LOGIC-3:START ===== */', 'noop();', '/* ===== SLICE3:LOGIC-3:END ===== */');   // line 2 is outside every SLICE2 region
+  const injected = inj.join('\n');
+  assert.notEqual(injected, baseHtml, 'the injected SLICE3 region must actually change the bytes (so un-spliced ⇒ RED)');
+  const lines = injected.split('\n');
+  for (const { r, s, e } of findSlice3Ranges(lines).sort((a, b) => b.s - a.s)) {
+    lines.splice(s, e - s + 1, ...(r.kind === 'replace' ? r.restore : []));
+  }
+  assert.equal(lines.join('\n'), baseHtml, 'with the SLICE3 splice, the injected region strips back to baseline');
+});
+
+// Codex r2 P2: the shared broad scanner must REJECT dotted/spaced/slashed/Unicode marker names here too (a
+// malformed SLICE3 marker in the coexistence splice must not be silently ignored then erased).
+t('SLICE3 scanner rejects dotted/spaced/slashed/Unicode marker names (coexistence splice path)', () => {
+  for (const name of ['BAD.NAME', 'BAD NAME', 'BAD/NAME', 'BÄDÑAME']) {
+    for (const w of [(s) => `/* ${s} */`, (s) => `// ${s}`, (s) => `<!-- ${s} -->`]) {
+      const lines = [w('SLICE3:LOGIC-3:START'), w(`SLICE3:${name}:START`), w(`SLICE3:${name}:END`), w('SLICE3:LOGIC-3:END')];
+      assert.throws(() => findSlice3Ranges(lines), /malformed SLICE3 marker/, `must reject "${name}" via ${w('X')}`);
+      assert.throws(() => findSlice3Ranges(lines.map((l) => l + '\r')), /malformed SLICE3 marker/, `must reject "${name}" (CRLF) via ${w('X')}`);
+    }
+  }
 });
 
 // ---------- 3b. the out-of-region allow is EXACTLY its documented line(s) — nothing else is exempt ----------
@@ -361,7 +570,7 @@ t('file-level: only index.html modified; only the slice-2 allowlist added; nothi
   assert.deepEqual(otherOps, [], `forbidden op(s) (unlisted delete/rename/copy/type):\n  ${otherOps.join('\n  ')}`);
   // The sole free-form MODIFY is index.html; a region-bearing file (xpizza-delivery.js, NAV-SDK) may also be
   // modified, but ONLY within its region — verified byte-identical-after-strip by the frozen-files test above.
-  const expectedModified = [ALLOWED_MODIFY, ...ALLOWED_REGION_BEARING, ...SLICE2_TEST_MODIFY].sort();
+  const expectedModified = [ALLOWED_MODIFY, ...ALLOWED_REGION_BEARING, ...SLICE2_TEST_MODIFY, 'xpizza-driver/single-order-view.js', 'xpizza-driver/single-order-card.test.js'].sort();   // SLICE3: OFERTA-OFFER region + its test
   assert.deepEqual(modified.slice().sort(), expectedModified, `modified set must be exactly [${expectedModified.join(', ')}], got: ${modified.join(', ')}`);
   assert.deepEqual(deleted.sort(), [...ALLOWED_DELETE].sort(), `deleted set must be exactly the allowed-DELETE list, got: ${deleted.join(', ')}`);
   const strayAdds = added.filter((p) => !ALLOWED_ADDS.has(p));
@@ -418,6 +627,15 @@ t('insert regions are pinned at their exact baseline neighbours (PRESENTATION, M
   const [impS] = ranges['IMPORT'];
   const [brS] = ranges['STACKED-BRANCH'];
   assert.ok(s1End >= 0 && impS > s1End && impS < brS, 'IMPORT region must sit after SLICE1:IMPORT and before STACKED-BRANCH');
+});
+
+// Codex r3/r4: a non-undefined-returning check (promise, generator, async-generator, or any value) must FAIL
+// immediately, not be silently counted as complete.
+t('NEG: a deferred/value-returning check is rejected before it counts (must return undefined)', () => {
+  assert.throws(() => t('promise', async () => {}), /return nothing/, 'an async (thenable) check must be rejected');
+  assert.throws(() => t('generator', function* () {}), /return nothing/, 'a generator check must be rejected');
+  assert.throws(() => t('async-generator', async function* () {}), /return nothing/, 'an async-generator check must be rejected');
+  assert.throws(() => t('value', () => 42), /return nothing/, 'a value-returning check must be rejected');
 });
 
 console.log(`✓ slice2-freeze.guard: ${passed} checks passed (baseline ${baseSha.slice(0, 10)})`);

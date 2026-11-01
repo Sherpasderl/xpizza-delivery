@@ -19,12 +19,20 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { singleOrderCardHtml } from './single-order-view.js';
+import { tabBarHtml } from './tab-bar-view.js';   // O6: renderActiveAndQueue now calls mountTabBar (TABBAR-BOARD)
 import {
   incomingBannerHtml, activeCardHtml, queueHtml, queueDetailHtml,
   phaseStripHtml, stopNavInfo, resolveVisibleLabels,
-  navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
+  navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
+  pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM,
+  contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml,
 } from './stacked-view.js';
 import { overviewMapSvg, isStaleFix } from './overview-map.js';
+// REAL money-grade day total — the resumen stat REUSES computeShiftCash().cashOwed (never a stub), so a mutation
+// that re-derives the figure instead of reusing the cuadre's own computation goes red.
+import { computeShiftCash } from './cash-helpers.js';
+// REAL displayOrderLabel — the observer's offer-expiry snapshot computes the banner's «#N» from it.
+import { displayOrderLabel } from './order-helpers.js';
 // Firebase-FREE real modules → imported REAL (not lifted): the writers' pure cores + the task/order constants.
 import { buildCompleteTaskUpdates, DRIVER_STATUS, ORDER_STATUS, TASK_STATUS, TASK_TYPE } from './driver-complete.js';
 import { stackedTasksToAccept } from './stacking-helpers.js';
@@ -294,8 +302,17 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     + 'function ensureSlice2MapAgeTimer(){ _rec.mapTimerEnsured++; }\n'
     + 'function stopSlice2MapAgeTimer(){ _rec.mapTimerStopped++; }\n'
     + 'const DRV2_CAN_NOTIFY_ARRIVAL=false; const DRV2_CAN_REPORT_PROBLEM=false;\n'
+    // SLICE3:RESUMEN money-grade readiness — the lets drv2ShowResumen gates on. Default money-ready so the day
+    // stat renders; a cell flips them via setFeed to prove the stat HIDES (never a false L0) when the feed is
+    // settling. driverIdentityCutoverMs=null is the legit pre-cutover mode computeShiftCash accepts.
+    + 'let feedReady=true, cutoverLoaded=true, driverFeed=null, driverIdentityCutoverMs=null;\n'
     + NAV_BLOCK + '\n'   // REAL drv2ReadNavPref/drv2WriteNavPref (not a Waze stub) — server-truth + per-uid hydration (Codex r1 P2-10)
     + DRV2_BLOCK + '\n'
+    + 'let drv2SoloCancel = null; function drv2ClearReturnTarget(){} function drv2SessionTeardown(){} function drv2ArrivalAck(){ return false; } const DRV2_PAUSE_ENABLED = false;\n'
+    + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate (reads driverState) — the resumen reuses it
+    + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null,offerConnHandler=null; function readyTimeLabel(){ return ""; } function mountOfferTakeover(){} function stopOfferTakeover(){} function applyOfflineBanner(){}\n'
+    + liftConst(MY_SCRIPT, 'PAGOS_LIVE') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_PEDIDOS') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_GANANCIAS') + '\n'   // O6: the REAL production gating constants (lifted)
+    + liftFn(MY_SCRIPT, 'mountTabBar') + '\n'                       // O6: the REAL tab helper renderActiveAndQueue calls (TABBAR-BOARD)
     + liftFn(MY_SCRIPT, 'renderActiveAndQueue') + '\n'
     + liftFn(MY_SCRIPT, 'attachActiveCardHandlers') + '\n'
     + liftFn(MY_SCRIPT, 'attachSlideConfirm') + '\n'
@@ -306,20 +323,23 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     + liftFn(MY_SCRIPT, 'attachIncomingBannerHandlers') + '\n'   // REAL banner handler (Codex r2 P2-3)
     // expose the lifted mutable state so a cell can feed the observer the LIVE mock + flip the session (P2-10)
     + 'return { render: renderActiveAndQueue, setDriver:(d)=>{driverState=d;}, syncState:(t,o)=>{allTasks=t;allOrders=o;}, bumpAuth:()=>{authGen++;},'
-    + ' getDoneRun:()=>drv2DoneRun, getInterlude:()=>drv2Interlude, getCancel:()=>drv2Cancel };';
+    + ' setFeed:(f)=>{ if("feedReady" in f) feedReady=f.feedReady; if("cutoverLoaded" in f) cutoverLoaded=f.cutoverLoaded; if("driverFeed" in f) driverFeed=f.driverFeed; },'
+    + ' getDoneRun:()=>drv2DoneRun, getInterlude:()=>drv2Interlude, getCancel:()=>drv2Cancel, getOfferExpired:()=>drv2OfferExpired };';
   const names = ['document', 'window', '$', 'XPD', 'currentUser', 'allTasks', 'allOrders', 'escapeHtml', 'ICONS', 'localStorage',
     'computeVuelto', 'scheduledBadge', 'singleOrderCardHtml', 'incomingBannerHtml', 'activeCardHtml', 'queueHtml',
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
-    'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml',
-    'renderIdleState', 'toast', 'resolveCompleteErrorMessage', 'CSS', '_driverState', '_rec'];
+    'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml', 'pickupSubLabel',
+    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash', 'contactRowHtml', 'waTemplatesHtml', 'offerExpiredBannerHtml', 'displayOrderLabel',
+    'renderIdleState', 'toast', 'resolveCompleteErrorMessage', 'CSS', '_driverState', '_rec', 'tabBarHtml'];
   const CSS = dom.window.CSS || { escape: (s) => String(s).replace(/[^\w-]/g, '\\$&') };
   const lsStore = {};   // per-harness in-memory localStorage (the real drv2ReadNavPref per-uid mirror)
   const localStorage = { getItem: (k) => (k in lsStore ? lsStore[k] : null), setItem: (k, v) => { lsStore[k] = String(v); }, removeItem: (k) => { delete lsStore[k]; } };
   const api = (new Function(...names, body))(document, dom.window, $, XPD, { uid: 'drv' }, {}, {}, escapeHtml, ICONS, localStorage,
     computeVuelto, scheduledBadge, singleOrderCardHtml, incomingBannerHtml, activeCardHtml, queueHtml,
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
-    navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
-    renderIdleState, toast, resolveCompleteErrorMessage, CSS, driverState, rec);
+    navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
+    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash, contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml, displayOrderLabel,
+    renderIdleState, toast, resolveCompleteErrorMessage, CSS, driverState, rec, tabBarHtml);
   // Feed the observer the SAME live mock state getDriverOrders reads BEFORE every render (prod's allTasks/
   // allOrders are the live listener state; a captured ref would go stale when completeTask deletes the task legs).
   // Also merge the mock's drivers/{uid} record into driverState — in prod driverState IS that record, so
@@ -372,7 +392,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     getDriverOrders: () => ctx.orders,
     RESTAURANT: { lat: 15.5, lng: -88.03 },
     haversineDistance: () => dist,                                 // per-run distance (m) for the <50 m arrived threshold
-    emitDiag: () => {}, getDiagConnState: () => true, isActingDispatcher: () => false,
+    emitDiag: () => {}, getDiagConnState: () => true, getDb: () => ({}), isActingDispatcher: () => false,
     acceptTask: () => (writes.accept = deferred()).promise,
     pickupComplete: (uid, taskId) => { writes.pickup = { taskId, ...deferred() }; return writes.pickup.promise; },
     completeTask: (uid, taskId) => { writes.complete = { taskId, ...deferred() }; return writes.complete.promise; },
@@ -395,7 +415,21 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     // dep-D capability gates + nav pref (R7): render reads these. The recent-completion machinery is lifted REAL.
     + 'const DRV2_CAN_NOTIFY_ARRIVAL=false; const DRV2_CAN_REPORT_PROBLEM=false;\n'
     + 'const drv2ReadNavPref=()=>\'Waze\';\n'
+    // SLICE3:RESUMEN money-grade readiness (see block 1): default money-ready; a cell flips via setFeed.
+    + 'let feedReady=true, cutoverLoaded=true, driverFeed=null, driverIdentityCutoverMs=null;\n'
     + DRV2_BLOCK + '\n'
+    + 'let drv2SoloCancel = null; function drv2ClearReturnTarget(){} function drv2SessionTeardown(){} function drv2ArrivalAck(){ return false; } const DRV2_PAUSE_ENABLED = false;\n'
+    + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate the resumen reuses
+    // REAL offer-takeover wiring so the cross-hub 2nd-order accept drives the REAL acceptSecondOrder over the mock;
+    // only the 5 s repeat is stubbed (its own interval is tested in offer-takeover.test.js).
+    + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null,offerConnHandler=null,offerConnUnsub=null; function readyTimeLabel(){ return ""; } let soundOn=false; function startOfferRepeat(){} function applyOfflineBanner(){}\n'
+    + 'const fbRef=(db,path)=>({db,path}); const fbOnValue=(ref,cb)=>{ cb(); return ()=>{}; };\n'   // .info/connected subscribe stub (connected by default via getDiagConnState)
+    + liftConst(MY_SCRIPT, 'PAGOS_LIVE') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_PEDIDOS') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_GANANCIAS') + '\n'   // O6: the REAL production gating constants (lifted)
+    + liftFn(MY_SCRIPT, 'mountTabBar') + '\n'                       // O6: the REAL tab helper renderActiveAndQueue calls (TABBAR-BOARD)
+    + liftFn(MY_SCRIPT, 'offerIsOffline') + '\n'
+    + liftFn(MY_SCRIPT, 'applyOfferSlideConn') + '\n'
+    + liftFn(MY_SCRIPT, 'mountOfferTakeover') + '\n'
+    + liftFn(MY_SCRIPT, 'stopOfferTakeover') + '\n'
     + liftFn(MY_SCRIPT, 'renderActiveAndQueue') + '\n'
     + liftFn(MY_SCRIPT, 'attachActiveCardHandlers') + '\n'
     + liftFn(MY_SCRIPT, 'attachSlideConfirm') + '\n'
@@ -406,20 +440,23 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     + 'return { render: renderActiveAndQueue, setDriver:(d)=>{driverState=d;}, getQueued:()=>queuedOrders,'
     + ' getLatch:()=>slice1ReviewLatchKey, getSliding:()=>slidingEl, getRenderPending:()=>renderPending, bumpAuth:()=>{ authGen+=1; },'
     + ' syncState:(t,o)=>{allTasks=t;allOrders=o;}, setPtr:(id)=>{ if(driverState) driverState.current_task_id=id; },'
+    + ' setFeed:(f)=>{ if("feedReady" in f) feedReady=f.feedReady; if("cutoverLoaded" in f) cutoverLoaded=f.cutoverLoaded; if("driverFeed" in f) driverFeed=f.driverFeed; },'
     + ' getDoneRun:()=>drv2DoneRun, getInterlude:()=>drv2Interlude, getCancel:()=>drv2Cancel };';
   const params = ['document', 'window', '$', 'XPD', 'currentUser', 'allTasks', 'allOrders', 'escapeHtml', 'ICONS',
     'computeVuelto', 'scheduledBadge', 'singleOrderCardHtml', 'incomingBannerHtml', 'activeCardHtml', 'queueHtml',
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
-    'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml',
-    'attachIncomingBannerHandlers', 'renderIdleState', 'toast', 'resolveCompleteErrorMessage', '_driverState', '_rec',
-    '_latchInit', '_authGen'];
+    'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml', 'pickupSubLabel',
+    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash', 'contactRowHtml', 'waTemplatesHtml', 'offerExpiredBannerHtml', 'displayOrderLabel',
+    'attachIncomingBannerHandlers', 'renderIdleState', 'toast', 'resolveCompleteErrorMessage', 'navigator', '_driverState', '_rec',
+    '_latchInit', '_authGen', 'tabBarHtml'];
   const fn = new Function(...params, body);
   const api = fn(document, dom.window, $, XPD, { uid: 'drv' }, {}, {}, escapeHtml, ICONS,
     computeVuelto, scheduledBadge, singleOrderCardHtml, incomingBannerHtml, activeCardHtml, queueHtml,
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
-    navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
-    attachIncomingBannerHandlers, renderIdleState, toast, resolveCompleteErrorMessage, driverState, rec,
-    latchInit, authGen);
+    navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
+    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash, contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml, displayOrderLabel,
+    attachIncomingBannerHandlers, renderIdleState, toast, resolveCompleteErrorMessage, dom.window.navigator, driverState, rec,
+    latchInit, authGen, tabBarHtml);
 
   // Live observer state (Codex r1 P2-10): drv2Observe must see the SAME board state getDriverOrders reports, plus
   // the affirmative terminal status of any stop that LEFT the board. `terminal` persists a vanished order's
@@ -518,6 +555,24 @@ t('stacked (2 orders): real builders render stop-header + strip + map + active c
   assert.ok(a.includes('<span class="bagtag b">2</span>'), 'preview bag tag 2');
   assert.equal(r.queue(), '', 'queue-slot empty with only 2 stops (stop 2 is the in-card preview)');
   assert.equal(r.rec.mapTimerEnsured >= 1, true, 'map-age lifecycle timer armed on mount');
+});
+
+// 1a-tab. O6: the on-shift bottom nav bar is mounted by the REAL renderActiveAndQueue (TABBAR-BOARD) ONLY when the
+// board is idle (orders.length===0); an active order removes it. Uses the REAL mountTabBar + the LIFTED production
+// TAB_SHOW constants. Kills: dropping the idle check (active keeps the bar), dropping the board mount (idle has none),
+// flipping the Pedidos flag (a dormant tab appears).
+t('O6 tab bar: the real board render mounts it only when idle; an active order removes it; data-gated to Inicio·Pedidos·Cuenta', () => {
+  const r = run({ orders: [delivery('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH } });
+  const onshift = () => r.document.getElementById('screen-onshift');
+  assert.equal(onshift().querySelector(':scope > .tabs'), null, 'an active order → NO bar (board render removed it)');
+  r.setOrders([]); r.render();
+  const bar = onshift().querySelector(':scope > .tabs');
+  assert.ok(bar, 'idle board → the bar is mounted');
+  assert.equal(bar.querySelectorAll('.tab-btn').length, 3, 'data-gated: Inicio + Pedidos + Cuenta (Pedidos live → history; Ganancias dormant)');
+  assert.ok(bar.querySelector('.tab-btn.on[data-tab="inicio"]'), 'Inicio active on the board');
+  assert.ok(bar.querySelector('[data-tab="pedidos"]') && !bar.querySelector('[data-tab="ganancias"]'), 'Pedidos shown, Ganancias dormant');
+  r.setOrders([delivery('A')]); r.render();
+  assert.equal(onshift().querySelector(':scope > .tabs'), null, 'a new active order removes it again');
 });
 
 // 1b. A THIRD stop lands in #queue-slot as an after-card with its identity hook (the in-card preview is stop 2).
@@ -636,27 +691,40 @@ t('M2 gate: 0 orders → idle path (renderIdleState), no .solo, slots cleared', 
   assert.equal(r.active(), ''); assert.equal(r.banner(), ''); assert.equal(r.queue(), '');
 });
 
-// M3/M4 ← slice-1 geofence cells, RETUNED to the stop card (Codex r2): the pickup stop card shows the arrived
-// note when inside the geofence, else the nav button — both with the Recogí slide. The slice-1 «Ya estoy en el
-// restaurante» review latch is GONE (unified stop card; the latch was client-only, no server write).
-t('M3 arrived: pickup @ 49 m → ARRIVED → «Has llegado al restaurante» note + the Recogí slide', () => {
+// M3/M4 ← slice-1 geofence cells, RETUNED to the owner-approved SOLO-PICKUP two-step (advisor ruling 2026-10-24,
+// which supersedes the r2 unified card FOR THE PICKUP PHASE): arrival (or the «Ya estoy en el restaurante» tap)
+// opens the enRestaurante REVIEW (btn-pickup; no «Has llegado» note, no map), and not-arrived shows the
+// alRestaurante to-restaurant step (the nav button + the «Ya estoy» slide, btn-at-restaurant). Both the latch and
+// the geofence open review (the same OR the slice-1 card used) — arrival is never a regression.
+t('M3 arrived: pickup @ 49 m → ARRIVED opens the review step (btn-pickup; no «Has llegado» note, not the «Ya estoy» step)', () => {
   const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 49 });
-  assert.ok(r.active().includes('Has llegado al restaurante'), 'the geofence arrived note on the stop card');
+  assert.ok(r.active().includes('Número de pedido'), 'the enRestaurante review card (number protagonist)');
   assert.ok(r.active().includes('id="btn-pickup"'), 'the Recogí slide');
-  assert.ok(!r.active().includes('id="btn-at-restaurant"'), 'no review toggle (latch removed)');
+  assert.ok(!r.active().includes('Has llegado'), 'the review card carries no geofence arrived note');
+  assert.ok(!r.active().includes('id="btn-at-restaurant"'), 'already at review → not the to-restaurant step');
 });
-t('M4 threshold: pickup @ 51 m → NOT arrived → the nav button + the Recogí slide (no arrived note, no review toggle)', () => {
+t('M4 threshold: pickup @ 51 m → NOT arrived → the to-restaurant step (nav + «Ya estoy en el restaurante»), not the Recogí slide', () => {
   const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 51 });
-  assert.ok(r.active().includes('Navegar con'), 'the nav button renders when not arrived');
-  assert.ok(r.active().includes('id="btn-pickup"'), 'the Recogí slide');
+  assert.ok(r.active().includes('Navegar con'), 'the nav button renders at the to-restaurant step');
+  assert.ok(r.active().includes('id="btn-at-restaurant"'), 'the «Ya estoy en el restaurante» slide');
+  assert.ok(!r.active().includes('id="btn-pickup"'), 'not the review step yet → no Recogí slide');
   assert.ok(!r.active().includes('Has llegado'), 'not arrived → no arrived note');
-  assert.ok(!r.active().includes('id="btn-at-restaurant"'), 'the review latch is gone (unified stop card)');
 });
 
-// M5–M9 RETIRED (Codex r2 confirmed 2026-10-24): the slice-1 «Ya estoy en el restaurante» review latch
-// (slice1ReviewLatchKey + btn-at-restaurant) is dropped by unifying the single stop on the prototype stop card.
-// It was CLIENT-ONLY (no server write) so nothing is lost; the server-side arriveAtRestaurant / geofence
-// at_restaurant paths are separate and remain byte-unchanged (proven by the freeze guard on xpizza-delivery.js).
+// M5 RESTORED (advisor ruling 2026-10-24): the owner-approved solo-pickup two-step brings back the «Ya estoy en
+// el restaurante» review latch (slice1ReviewLatchKey + btn-at-restaurant) as the NEW v2 flow, superseding the r2
+// unified card for the pickup phase. The tap is CLIENT-ONLY (no server write); the server pickupComplete still
+// fires only from the review step's btn-pickup, with the swipe-END pointer revalidation byte-unchanged. This cell
+// drives the full latch path the advisor asked for: to-restaurant → «Ya estoy» tap → review → Recogí.
+t('M5 latch path: to-restaurant → «Ya estoy» tap opens the review step → the Recogí slide (restored two-step)', async () => {
+  const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 300 });  // far → step 1
+  assert.ok(r.active().includes('id="btn-at-restaurant"'), 'step 1: the «Ya estoy en el restaurante» slide');
+  assert.ok(!r.active().includes('id="btn-pickup"'), 'step 1: no Recogí slide yet');
+  const d = r.prep('btn-at-restaurant'); r.down(d); r.move(1000); await r.up(1000);   // swipe «Ya estoy» → latch + re-render
+  assert.ok(r.active().includes('Número de pedido'), 'the enRestaurante review opened on the tap latch (no geofence)');
+  assert.ok(r.active().includes('id="btn-pickup"'), 'step 2: the server Recogí slide');
+  assert.ok(!r.active().includes('id="btn-at-restaurant"'), 'step 2: the «Ya estoy» slide is gone');
+});
 
 // M10 ← slice-1 "(a) 1→2 while a drag is in progress → deferred, replayed on drag-end" (retuned to the stop card).
 t('M10 defer: 1→2 while a slide drag is in progress → render DEFERS (renderPending), replays to stacked on drag-end', async () => {
@@ -666,10 +734,10 @@ t('M10 defer: 1→2 while a slide drag is in progress → render DEFERS (renderP
   assert.ok(r.api.getSliding(), 'slidingEl set during the drag');
   r.setOrders([delivery('A'), delivery('B')]); r.render();  // 2 orders arrive mid-drag
   assert.equal(r.api.getRenderPending(), true, 'render DEFERRED (not applied mid-drag)');
-  assert.ok(r.active().includes('Única parada'), 'DOM still shows the SINGLE stop during the drag');
+  assert.ok(r.active().includes('Número de pedido'), 'DOM still shows the SINGLE pickup review during the drag');
   r.move(20); await r.up(20);                               // release below threshold → reset + replay
   assert.equal(r.api.getSliding(), null, 'slidingEl cleared on drag-end');
-  assert.ok(r.active().includes('Parada 1 de 2') && !r.active().includes('Única parada'), 'the deferred render replayed into the stacked builder');
+  assert.ok(r.active().includes('Parada 1 de 2') && !r.active().includes('Número de pedido'), 'the deferred render replayed into the stacked builder');
 });
 
 // M11 ← slice-1 "(b) 2→1 while an action write is pending → deferred, replayed when the write settles".
@@ -897,17 +965,19 @@ t('inventory guard (r3-2): an ALIASED import of an unimplemented export, called 
     'a mention without a call () is not flagged');
 });
 
-// ── P2-3 the REAL incoming-banner handler drives a real acceptSecondOrder ──
-t('runReal banner accept: the REAL attachIncomingBannerHandlers slide → real acceptSecondOrder over the mock', async () => {
+// ── a cross-hub 2nd order (status 'assigned') over the REAL board renders the S.oferta TAKEOVER, not the legacy banner ──
+// (the takeover slide → acceptSecondOrder, its exclusivity, offline-disable and 5 s repeat are proven in
+// offer-takeover.test.js; acceptSecondOrder committing over the real mock is proven by runReal (b) above.)
+t('runReal cross-hub takeover: an in-progress order + a cross-hub offer renders the S.oferta takeover (banner gone)', () => {
   const r = runReal({ seed: seed([
-    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1 },
-    { id: 'B', pickup: TASK_STATUS.ASSIGNED, delivery: TASK_STATUS.ASSIGNED, hub: HUBM, created: 2 },   // awaiting cross-hub → banner
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1 },  // in-progress delivery
+    { id: 'B', pickup: TASK_STATUS.ASSIGNED, delivery: TASK_STATUS.ASSIGNED, hub: HUBM, created: 2 },   // awaiting cross-hub → S.oferta TAKEOVER
   ]) });
   r.read('drivers/drv').current_task_id = 'A_d';
-  assert.ok(r.banner().includes('btn-accept-inc-B'), 'B surfaces as an incoming banner');
-  const d = r.prep('btn-accept-inc-B'); r.down(d); r.move(1000); await r.up(1000); await tick();
-  assert.equal(r.read('tasks/B_p').status, TASK_STATUS.ACCEPTED, 'the REAL banner handler accepted B via real acceptSecondOrder');
-  assert.equal(r.read('drivers/drv').current_task_id, 'A_d', 'current task unchanged (cross-hub 2nd order keeps the in-progress hub)');
+  r.render();
+  assert.ok(r.active().includes('id="btn-accept"'), 'B surfaces as the full-screen S.oferta takeover (reused offer card)');
+  assert.ok(!r.banner().includes('btn-accept-inc-B'), 'the legacy incoming «otro hub» banner is gone');
+  assert.ok(!r.active().includes('btn-delivered') && !r.active().includes('btn-pickup'), 'the in-progress active stop is not reachable underneath the takeover');
 });
 
 // ── P3 REAL map-lifecycle regression (lifts the real timer fns + visibilitychange handler + cleanupShift) ──
@@ -943,6 +1013,9 @@ function runLifecycle() {
     + 'function drv2ResetRun(){ _spies.runReset += 1; drv2DoneRun = []; }\n'
     + liftFn(MY_SCRIPT, 'ensureSlice2MapAgeTimer') + '\n'
     + liftFn(MY_SCRIPT, 'stopSlice2MapAgeTimer') + '\n'
+    + 'let shiftSessionGen = 0;\n'   // the OFFLINE-TEARDOWN-3 splice bumps this (cleanupShift); the offline banner's own tests cover it
+    + 'function stopOfflineBanner(){ _spies.offlineTeardown = (_spies.offlineTeardown||0) + 1; }\n'   // the OFFLINE-TEARDOWN-3 splice in cleanupShift (its own behaviour is covered in offline-banner.test.js)
+    + 'function drv2SessionTeardown(){ _spies.sessionTeardown = (_spies.sessionTeardown||0) + 1; }\n'   // Codex r2 P2-3: cleanupShift now also drops per-session UI state (proven in return-target.test.js)
     + liftFn(MY_SCRIPT, 'cleanupShift') + '\n'
     + liftVisibilityHandler(MY_SCRIPT) + '\n'
     + 'return { ensure: ensureSlice2MapAgeTimer, stop: stopSlice2MapAgeTimer, cleanup: cleanupShift, timerSet: () => slice2MapAgeTimer != null, doneRun: () => drv2DoneRun };';
@@ -1091,6 +1164,152 @@ t('P1-2 delivered: the active stop delivered through the real writer → recorde
   assert.ok(r.api.getInterlude() && r.api.getInterlude().orderId === 'A', 'the interlude is armed for the delivered active stop');
 });
 
+// SLICE3:RESUMEN R1 — the FINAL «Entregado» of a run (no next stop) mounts the resumen sheet (S16), affirmative
+// only, dismissible with «Listo», and NEVER re-opens after dismiss. The apAvance interlude must NOT appear here.
+t('R1 resumen: the final delivery of a run mounts the resumen sheet (affirmative), «Listo» dismisses, no re-open', async () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Daniela' },
+  ]), dist: 10 });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();                  // A active + observed
+  const d = r.prep('btn-delivered'); r.down(d); r.move(1000); await r.up(1000);  // REAL completeTask(A_d)
+  assert.equal(r.read('orders/A').status, ORDER_STATUS.DELIVERED, 'A delivered through the real writer');
+  r.render();                                                                 // board now empty → end of run
+  const ov = r.document.getElementById('drv2-resumen');
+  assert.ok(ov && ov.classList.contains('open'), 'the resumen sheet is mounted + open after the final delivery');
+  const html = ov.innerHTML;
+  assert.ok(/Entregado/.test(html) && /Daniela/.test(html), 'affirmative «Entregado a Daniela» header');
+  assert.ok(/Cobraste/.test(html), 'a cash delivery → affirmative «Cobraste», never a negative instruction');
+  assert.ok(!/No cobr|Sin cobro|Pendiente/.test(html), 'no negative/pending cobro copy on a terminal cash delivery');
+  assert.ok(!r.document.querySelector('#drv2-interlude.open'), 'the apAvance interlude is NOT shown at the end of a run');
+  const done = ov.querySelector('#btn-resumen-done');
+  assert.ok(done, '«Listo» present');
+  done.dispatchEvent(new r.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  assert.ok(!ov.classList.contains('open'), '«Listo» closes the resumen → back to disponible');
+  assert.ok(!r.api.getInterlude(), 'the run terminal state is consumed on dismiss');
+  r.render();
+  assert.ok(!r.document.getElementById('drv2-resumen').classList.contains('open'), 'a re-render does NOT re-open the dismissed resumen (P2-8)');
+});
+
+// SLICE3:RESUMEN R2 — a delivery with a next stop behind it shows the apAvance INTERLUDE, never the resumen.
+// The resumen is strictly the end-of-run surface; it must never appear between stops.
+t('R2 resumen: a delivery with a next stop shows the apAvance interlude, NOT the resumen (never between stops)', async () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Ana' },
+    { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2, name: 'Beto' },
+  ]), dist: 10 });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();
+  const d = r.prep('btn-delivered'); r.down(d); r.move(1000); await r.up(1000);
+  r.render();
+  assert.ok(r.document.querySelector('#drv2-interlude.open'), 'the apAvance interlude mounts between stops');
+  assert.ok(!r.document.querySelector('#drv2-resumen.open'), 'the resumen does NOT appear while a next stop remains');
+});
+
+// SLICE3:RESUMEN R3 — the day stat «Efectivo a entregar hoy» REUSES the money-grade computeShiftCash().cashOwed
+// (the exact figure the cuadre submits), never a re-derived number, and is GATED exactly like the cuadre: a
+// settling feed HIDES the stat rather than show a false L0 — while the per-delivery cobro (this order's own
+// collectionFor) still shows. MUTATION-RED: swap the stat source off computeShiftCash().cashOwed, or drop the
+// readiness gate, and these go red.
+t('R3 resumen money-grade: the day stat equals computeShiftCash().cashOwed, hidden (no false L0) while the feed settles', async () => {
+  const shiftStart = Date.now() - 3600000;
+  const ds = () => ({ lat: 15.47, lng: -88.015, active: true, last_location_ts: Date.now(),
+    current_shift_id: 's1', shift_started_at: shiftStart });
+  // money-grade-ready at the moment of the final delivery → the stat shows the real cashOwed
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Daniela' },
+  ]), driverState: ds(), dist: 10 });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();   // A active + observed (the merge takes the mock pointer)
+  const d = r.prep('btn-delivered'); r.down(d); r.move(1000); await r.up(1000);
+  // The real writer stamps delivered_at with a serverTimestamp() sentinel; the server RESOLVES it to an epoch
+  // before the driver's feed carries it back — model that resolution so computeShiftCash sees a numeric ts.
+  r.read('orders/A').delivered_at = shiftStart + 60000;
+  r.render();
+  const expected = computeShiftCash(r.read('orders'), 'drv', shiftStart, null).cashOwed;
+  assert.ok(expected > 0, 'the delivered cash order yields a real money-grade cashOwed');
+  const stat = r.document.querySelector('#drv2-resumen .rs-stat');
+  assert.ok(stat, 'the day stat renders when money-grade-ready (feed + cutover + shift identity)');
+  assert.ok(stat.textContent.includes('L ' + expected.toLocaleString('es-HN')), 'the stat shows exactly computeShiftCash().cashOwed — never a re-derived figure');
+  assert.ok(/Efectivo a entregar hoy/.test(stat.textContent), 'labelled «Efectivo a entregar hoy»');
+
+  // a SECOND run whose feed is still settling at the final delivery → the stat HIDES (never a false L0)
+  const r2 = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Daniela' },
+  ]), driverState: ds(), dist: 10 });
+  r2.read('drivers/drv').current_task_id = 'A_d'; r2.render();
+  r2.api.setFeed({ feedReady: false });
+  const d2 = r2.prep('btn-delivered'); r2.down(d2); r2.move(1000); await r2.up(1000);
+  r2.read('orders/A').delivered_at = shiftStart + 60000;   // resolved server ts (as above)
+  r2.render();
+  const ov2 = r2.document.getElementById('drv2-resumen');
+  assert.ok(ov2 && ov2.classList.contains('open'), 'the resumen still shows the delivery itself while the feed settles');
+  assert.ok(!r2.document.querySelector('#drv2-resumen .rs-stat'), 'a settling feed HIDES the day stat — never a false L0');
+  assert.ok(/Cobraste/.test(ov2.innerHTML), 'the per-delivery cobro still shows — this order’s own collectionFor, not a day aggregate');
+});
+
+// SLICE3:WHATSAPP R4 — tapping «WhatsApp» on an accepted stop opens the phase-template sheet (not a direct
+// wa.me jump); a template opens wa.me with the session driver name + order brand woven in, then the sheet closes.
+t('R4 whatsapp: «WhatsApp» opens the template sheet; a template opens wa.me (504 + text) and closes; the card holds no wa.me link', () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Daniela' },
+  ]), driverState: { lat: 15.47, lng: -88.015, active: true, last_location_ts: Date.now(), name: 'Marvin' } });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();
+  assert.ok(!r.active().includes('wa.me/'), 'the active card embeds NO wa.me link — WhatsApp opens the sheet');
+  const waBtn = r.document.querySelector('#active-order-slot .recipient-whatsapp');
+  assert.ok(waBtn && waBtn.tagName === 'BUTTON', 'the accepted stop shows a WhatsApp button');
+  const opened = [];
+  r.window.open = (url) => { opened.push(url); return null; };   // capture the wa.me launch
+  waBtn.dispatchEvent(new r.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  const sheet = r.document.getElementById('drv2-whatsapp');
+  assert.ok(sheet && sheet.classList.contains('open'), 'the phase-template sheet opens');
+  const tpls = sheet.querySelectorAll('.wa-tpl');
+  assert.equal(tpls.length, 4, '3 phase templates + 1 free message');
+  assert.ok(sheet.innerHTML.includes('soy Marvin'), 'the session driver name is woven into the draft');
+  tpls[0].dispatchEvent(new r.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  assert.equal(opened.length, 1, 'tapping a template opens WhatsApp once');
+  assert.ok(/^https:\/\/wa\.me\/504\d+\?text=/.test(opened[0]), 'wa.me with a 504-normalized number + prefilled editable text');
+  assert.ok(!sheet.classList.contains('open'), 'the sheet closes after launching WhatsApp');
+});
+
+// SLICE3:OFERTA-EXPIRADA — observer detection. renderIdleState is STUBBED in this harness, so these assert the
+// DETECTION state (drv2OfferExpired) the real renderIdleState then renders; the banner HTML is covered in
+// stacked-view.test.js. Truthful + client-only: a banner ONLY when an offer left un-accepted AFTER its deadline.
+const OE_PAST = Date.now() - 5000, OE_FUTURE = Date.now() + 60000;
+function offerRun(deadline) {
+  const r = runReal({ seed: seed([{ id: 'A', pickup: TASK_STATUS.ASSIGNED, delivery: TASK_STATUS.ASSIGNED, hub: HUBX, created: 1, name: 'Daniela' }]) });
+  r.read('tasks/A_p').assignment_deadline = deadline;
+  r.read('orders/A').display_number = 47;
+  r.render();   // the offer is on the board → the observer snapshots it (deadline + «#47»)
+  return r;
+}
+function leaveUnaccepted(r) {   // dispatch reassigns the offer away → it leaves MY board un-accepted
+  r.read('tasks/A_p').assigned_driver_id = 'other';
+  r.read('tasks/A_d').assigned_driver_id = 'other';
+  r.render();
+}
+t('E1 ofertaExpirada: an offer that leaves un-accepted AFTER its deadline → the expiry banner is raised («#47»)', () => {
+  const r = offerRun(OE_PAST);
+  assert.ok(!r.api.getOfferExpired(), 'no banner while the offer is still on the board');
+  leaveUnaccepted(r);
+  const oe = r.api.getOfferExpired();
+  assert.ok(oe && oe.num === '#47', 'the expiry banner is set for the gone-after-deadline offer, labelled «#47»');
+});
+t('E2 ofertaExpirada: an offer the driver ACCEPTS (becomes a live stop) raises NO banner', () => {
+  const r = offerRun(OE_PAST);
+  r.read('tasks/A_p').status = TASK_STATUS.ACCEPTED;   // accepted → phase pickup, stays on my board
+  r.render();
+  assert.ok(!r.api.getOfferExpired(), 'accepting the offer is never an expiry');
+});
+t('E3 ofertaExpirada: an offer that leaves BEFORE its deadline raises NO banner (pulled early, not expired)', () => {
+  const r = offerRun(OE_FUTURE);
+  leaveUnaccepted(r);
+  assert.ok(!r.api.getOfferExpired(), 'left before the deadline → not an expiry');
+});
+t('E4 ofertaExpirada: a CANCELLED offer raises NO banner even after the deadline', () => {
+  const r = offerRun(OE_PAST);
+  r.read('orders/A').status = ORDER_STATUS.CANCELLED;
+  leaveUnaccepted(r);
+  assert.ok(!r.api.getOfferExpired(), 'cancelled, not expired → no banner');
+});
+
 // P2-6 nav-pref hydration (kills the Waze stub / an un-hydrated read): driverState.nav_app = 'maps' → the lone
 // stop's nav button reads «Navegar con Maps», not the Waze default.
 t('P2-6 nav hydration: driverState.nav_app = "maps" surfaces «Navegar con Maps» (server truth, not a Waze stub)', () => {
@@ -1153,9 +1372,11 @@ t('P1-1 startup order: drv2RunAuthGen + authGen in source order do NOT TDZ-crash
 // P1-3 cross-hub (kills failing closed on a NULL pointer): after a cross-hub delivery current_task_id is cleared
 // while the next order is still at PICKUP — that pickup must stay ARMED (baseline), never gated.
 t('P1-3 cross-hub: a NULL pointer behaves as baseline — the next pickup is ARMED, not gated', () => {
-  const r = runReal({ seed: seed([{ id: 'B', pickup: TASK_STATUS.ACCEPTED, delivery: TASK_STATUS.ACCEPTED, hub: HUBM, created: 2, name: 'Beto' }]) });
+  // dist:10 → arrived → the enRestaurante review step, where the server Recogí slide (btn-pickup) renders; the
+  // gating safety assertion (null pointer = baseline, not fail-closed) is unchanged by the two-step restructure.
+  const r = runReal({ seed: seed([{ id: 'B', pickup: TASK_STATUS.ACCEPTED, delivery: TASK_STATUS.ACCEPTED, hub: HUBM, created: 2, name: 'Beto' }]), dist: 10 });
   r.read('drivers/drv').current_task_id = null; r.render();
-  assert.ok(r.active().includes('class="active-card"'), 'B renders the stop card');
+  assert.ok(r.active().includes('class="active-card"'), 'B renders the review stop card');
   const slide = r.activeEl().querySelector('#btn-pickup');
   assert.ok(slide && !slide.classList.contains('is-gated'), 'the Recogí slide is ARMED (null pointer = baseline, not fail-closed)');
 });
