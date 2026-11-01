@@ -3,7 +3,7 @@
 // against its own loopback server (the generation-scoped wire shape). The CLI is tools/photo-create-only-check.js.
 // Run: node tools/photo-create-only-check-core.test.js
 const assert = require('assert');
-const { parseArgs, refuseEmulatorEnv, dotenvLines, readBucketParams, dryRunMessage, resolveTargets, checkTarget, makeGenerationOps, runCheck, acceptancePath } = require('./photo-create-only-check-core');
+const { parseArgs, refuseEmulatorEnv, dotenvLines, readBucketParams, dryRunMessage, resolveTargets, checkTarget, makeGenerationOps, runCheck, acceptancePath, pinPath, runPinCheck, combineExit } = require('./photo-create-only-check-core');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -186,6 +186,95 @@ const run = (b) => runCheck({ store: b.store, gens: b.gens, randomHex: () => HEX
     } finally { if (saved !== undefined) process.env.STORAGE_EMULATOR_HOST = saved; srv.close(); }
   }
   ok('the real SDK: generation-scoped GET and DELETE carry generation=<g> on the wire; a 404 → gone / missing');
+
+  // ── 7. E5 the GENERATION PIN (advisor 2026-11-01): create-only v1 → plain overwrite v2 → a read pinned to v1 ──
+  {
+    const PP = pinPath(HEX);
+    assert.strictEqual(PP, `drafts/__acceptance__/e5-${HEX}-card.webp`, 'E5CLI-PATH');
+    assert.throws(() => pinPath('xyz'), /16 random hex/, 'E5CLI-PATH-NEEDS-HEX');
+    // `mode`: how the bucket answers a read pinned to a non-live generation — 'unversioned' (gone → 404), 'versioned' (the noncurrent
+    // bytes), 'ignored' (the live bytes: the emulator, probe e5-probe/RESULT.md); `versioning`: what versioningEnabled() says (or throws)
+    const pinBucket = ({ mode, versioning, preexisting = false, sameGen = false }) => {
+      const objs = new Map(); let gen = 500; const live = new Map(); const calls = [];
+      if (preexisting) live.set(PP, String(++gen));
+      const put = (p, buf) => { const g = sameGen && live.has(p) ? live.get(p) : String(++gen); objs.set(`${p}#${g}`, buf); live.set(p, g); return g; };
+      const store = {
+        async metadata(p) { return live.has(p) ? { generation: live.get(p), size: 1 } : null; },
+        async createIfAbsent(p, buf) { if (live.has(p)) return { generation: live.get(p), created: false }; return { generation: put(p, buf), created: true }; },
+        async download(p, { generation }) {
+          calls.push(['download', p, generation]);
+          if (mode === 'ignored') return objs.get(`${p}#${live.get(p)}`);
+          if (live.get(p) === String(generation) || (mode === 'versioned' && objs.has(`${p}#${generation}`))) return objs.get(`${p}#${generation}`);
+          throw Object.assign(new Error('object gone or replaced'), { code: 'generation_mismatch' });
+        },
+      };
+      const gens = {
+        async overwrite(p, buf) { const old = live.get(p); const g = put(p, buf); if (mode === 'unversioned' && old !== g) objs.delete(`${p}#${old}`); return g; },
+        async versioningEnabled() { if (versioning instanceof Error) throw versioning; return versioning; },
+        async deleteGeneration(p, g) { calls.push(['deleteGeneration', p, g]); const had = objs.delete(`${p}#${g}`); if (live.get(p) === String(g)) live.delete(p); return had ? 'deleted' : 'missing'; },
+        async generationExists(p, g) { return objs.has(`${p}#${g}`); },
+      };
+      return { store, gens, objs, live, calls };
+    };
+    const pin = (b) => runPinCheck({ store: b.store, gens: b.gens, randomHex: () => HEX, ...quiet });
+    let b = pinBucket({ mode: 'unversioned', versioning: false }); let r = await pin(b);
+    assert.deepStrictEqual([r.verdict, r.outcome, r.exitCode], ['PASS', 'refused', 0], `E5CLI-UNVERSIONED-REFUSED-PASS ${JSON.stringify(r)}`);
+    assert.ok(b.calls.some((c) => c[0] === 'download' && c[2] === '501'), 'E5CLI-READ-PINNED-TO-THE-FIRST-GENERATION');
+    assert.ok(r.cleanup.ok && b.objs.size === 0 && !b.live.has(PP), `E5CLI-CLEANUP-BOTH-GENERATIONS ${JSON.stringify(r.cleanup)}`);
+    b = pinBucket({ mode: 'versioned', versioning: true }); r = await pin(b);
+    assert.deepStrictEqual([r.verdict, r.outcome, r.exitCode], ['PASS', 'pinned_old_bytes', 0], `E5CLI-VERSIONED-OLD-BYTES-PASS ${JSON.stringify(r)}`);
+    assert.ok(r.cleanup.ok && b.objs.size === 0, `E5CLI-VERSIONED-CLEANUP-NONCURRENT-TOO ${JSON.stringify(r.cleanup)} ${[...b.objs.keys()]}`);
+    b = pinBucket({ mode: 'ignored', versioning: false }); r = await pin(b);
+    assert.deepStrictEqual([r.verdict, r.outcome, r.exitCode], ['FAIL', 'new_bytes', 1], `E5CLI-PIN-IGNORED-FAILS ${JSON.stringify(r)}`);
+    assert.ok(r.cleanup.ok && b.objs.size === 0, 'E5CLI-FAIL-STILL-CLEANS');
+    b = pinBucket({ mode: 'versioned', versioning: false }); r = await pin(b);
+    assert.deepStrictEqual([r.verdict, r.exitCode], ['FAIL', 1], `E5CLI-INCONSISTENT-WITH-VERSIONING-FAILS (old bytes on an unversioned bucket) ${JSON.stringify(r)}`);
+    b = pinBucket({ mode: 'unversioned', versioning: true }); r = await pin(b);
+    assert.deepStrictEqual([r.verdict, r.exitCode], ['FAIL', 1], `E5CLI-INCONSISTENT-WITH-VERSIONING-FAILS (refused on a versioned bucket) ${JSON.stringify(r)}`);
+    for (const mode of ['unversioned', 'versioned']) {
+      b = pinBucket({ mode, versioning: new Error('403 storage.buckets.get') }); r = await pin(b);
+      assert.deepStrictEqual([r.verdict, r.versioning, r.exitCode], ['PASS', null, 0], `E5CLI-VERSIONING-UNKNOWN-ACCEPTS-EITHER ${mode} ${JSON.stringify(r)}`);
+    }
+    b = pinBucket({ mode: 'ignored', versioning: new Error('403') }); r = await pin(b);
+    assert.strictEqual(r.verdict, 'FAIL', 'E5CLI-VERSIONING-UNKNOWN-STILL-FAILS-NEW-BYTES');
+    b = pinBucket({ mode: 'unversioned', versioning: false, sameGen: true }); r = await pin(b);
+    assert.deepStrictEqual([r.verdict, r.exitCode], ['FAIL', 1], `E5CLI-OVERWRITE-SAME-GENERATION-FAILS ${JSON.stringify(r)}`);
+    b = pinBucket({ mode: 'unversioned', versioning: false, preexisting: true }); r = await pin(b);
+    assert.deepStrictEqual([r.verdict, r.exitCode], ['REFUSED', 2], 'E5CLI-PREEXISTING-REFUSED');
+    assert.ok(!b.calls.length, 'E5CLI-PREEXISTING-NOTHING-TOUCHED');
+    assert.deepStrictEqual([combineExit(0, 0), combineExit(1, 0), combineExit(0, 2), combineExit(1, 2), combineExit(3, 0), combineExit(2, 3)], [0, 1, 2, 2, 3, 3], 'E5CLI-EXIT-COMBINE (3 > 2 > 1 > 0)');
+  }
+  ok('generation pin: unversioned → refused PASS; versioned → the old bytes PASS; the new bytes (pin ignored) FAIL; an outcome inconsistent with the versioning FAIL; versioning unknown → either correct outcome passes, new bytes still FAIL; both generations cleaned; a pre-existing path REFUSED untouched; exit = the worse of the two checks');
+
+  // ── 8. the pin's ops over the REAL @google-cloud/storage, against its OWN loopback server: a PLAIN upload and the bucket's versioning ──
+  {
+    const http = require('http');
+    const { Storage, CRC32C } = require('@google-cloud/storage');
+    const V2 = Buffer.from('v2'); const crc = new CRC32C(); crc.update(V2);
+    const V2_HASHES = { crc32c: crc.toString(), md5Hash: require('crypto').createHash('md5').update(V2).digest('base64') };
+    const seen = [];
+    const srv = http.createServer((rq, rs) => {
+      rq.resume();
+      rq.on('end', () => {
+        seen.push([rq.method, rq.url]);
+        const u = new URL(rq.url, 'http://x');
+        rs.writeHead(200, { 'content-type': 'application/json' });
+        if (u.pathname.startsWith('/upload/')) return rs.end(JSON.stringify({ name: P, bucket: 'tb-bucket', generation: '777', ...V2_HASHES }));   // the SDK validates the upload against these
+        return rs.end(JSON.stringify({ name: 'tb-bucket', versioning: { enabled: true } }));
+      });
+    });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const saved = process.env.STORAGE_EMULATOR_HOST; delete process.env.STORAGE_EMULATOR_HOST;
+    try {
+      const ops = makeGenerationOps(new Storage({ projectId: 'demo-xpizza', apiEndpoint: `http://127.0.0.1:${srv.address().port}` }).bucket('tb-bucket'));
+      assert.strictEqual(await ops.overwrite(P, V2, { contentType: 'image/webp' }), '777', 'E5CLI-REAL-SDK-OVERWRITE-GENERATION');
+      const up = seen.find((x) => x[0] === 'POST' && x[1].startsWith('/upload/'));
+      assert.ok(up && !/ifGenerationMatch/.test(up[1]), `E5CLI-REAL-SDK-OVERWRITE-IS-PLAIN (no precondition) ${JSON.stringify(seen)}`);
+      assert.strictEqual(await ops.versioningEnabled(), true, 'E5CLI-REAL-SDK-VERSIONING');
+      assert.ok(seen.some((x) => x[0] === 'GET' && new URL(x[1], 'http://x').pathname.endsWith('/b/tb-bucket')), `E5CLI-REAL-SDK-VERSIONING-READS-THE-BUCKET ${JSON.stringify(seen)}`);
+    } finally { if (saved !== undefined) process.env.STORAGE_EMULATOR_HOST = saved; srv.close(); }
+  }
+  ok('the real SDK: the overwrite is a plain upload (no ifGenerationMatch) returning the new generation; versioning is read from the bucket resource');
 
   FINISHED = true;
   console.log(`photo-create-only-check-core: OK (${n})`);

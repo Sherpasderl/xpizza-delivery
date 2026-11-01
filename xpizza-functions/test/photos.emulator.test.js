@@ -1,7 +1,7 @@
 'use strict';
 // DISH PHOTOS A1 step 7 (PLAN-dish-photos r2 §4.1; scope line DISH-PHOTOS-A1-NOTES "Step 7 PREP") — the photo cores against the REAL
 // Firestore emulator (transaction isolation the in-repo double cannot model) and the REAL Storage emulator (generations, rules — NOT the
-// create-only 412: the emulator ignores ifGenerationMatch, see E4 below),
+// create-only 412 nor the generation pin: the emulator ignores ifGenerationMatch and `generation`, see E4 / E5 below),
 // through the production adapter photos/gcs-store.js. Storage is reached ONLY after 2e's prod-wipe guard (assertStorageTestTarget).
 // The V4 signed PUT/GET are NOT emulable (the emulator does not sign) — they are the §4.3 real-GCS gate.
 // Run (HEAVY, in a granted slot):
@@ -120,16 +120,13 @@ function rest(method, path) {   // the Firebase Storage REST surface the CLIENT 
   //     carries ifGenerationMatch=0) and GCS-REAL-SDK-412 (a 412 is read as created:false with the existing generation);
   //   · real GCS — the owner's deploy-time acceptance tools/photo-create-only-check.js (two CONCURRENT create-only saves through the
   //     real adapter → exactly one created, the other the 412 with the same generation; generation-scoped cleanup).
-  // ── E5: an upload replaced between metadata and download is refused (generation pin) ──
-  {
-    const uploadId = await issueUpload('tb_uid_e5', await jpeg());
-    let decodes = 0;
-    const racing = { ...store, async metadata(p) { const m = await store.metadata(p); await bucket.file(p).save(await jpeg(1100, 900), { resumable: false }); return m; } };
-    const r = await photoProcessCore(processDeps({ storage: racing, processImage: async (b, c) => { decodes++; return processImage(b, c); } }), { uid: 'tb_uid_e5', rid: RID, uploadId, crops: CROPS });
-    assert.strictEqual(decodes, 0, 'PHOTO-EMU-GENERATION-PIN nothing decoded');
-    assert.notStrictEqual(r.status, 200, `PHOTO-EMU-GENERATION-PIN refused (${JSON.stringify(r.body)})`);
-    ok(`E5 PHOTO-EMU-GENERATION-PIN: the object replaced after the metadata read → ${r.body && r.body.error}, nothing decoded`);
-  }
+  // ── E5: NOT ON THE EMULATOR (advisor ruling, 2026-11-01). The Storage emulator ignores `generation` on media reads: after save v1 /
+  // overwrite v2, a read pinned to v1's generation returns v2's bytes, through the production adapter AND a raw GET ?generation=<v1>
+  // &alt=media (HTTP 200) — probe xpizza-D4c-grill/dish-photos-heavy-dce03b96/e5-probe/RESULT.md (eb014771, red ×2 here before).
+  // Where the generation pin IS proven:
+  //   · the wire — photos/gcs-store.test.js GCS-DOWNLOAD-PINNED-GENERATION (the download reads bucket.file(path, {generation}));
+  //   · real GCS — the owner's deploy-time acceptance tools/photo-create-only-check.js (its generation-pin step: create, overwrite,
+  //     read pinned to the first generation → unversioned bucket: refused; versioned: the OLD bytes — both correct; new bytes FAIL).
   // ── E6: the streamed byte cap aborts (an 11 MiB object never buffers whole) ──
   {
     const path = `uploads/${RID}/e6-${newId('x')}`;

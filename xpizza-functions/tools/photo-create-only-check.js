@@ -8,7 +8,10 @@
 //
 // Two CONCURRENT create-only saves of ONE throwaway object drafts/__acceptance__/e4-<random>-card.webp through the real adapter
 // (photos/gcs-store.js) → PASS iff exactly one creates and the other meets the 412 with the same generation; then ONLY the generations
-// this run created are deleted, generation-scoped, and verified gone. Logic, refusals and exit codes: tools/photo-create-only-check-core.js.
+// this run created are deleted, generation-scoped, and verified gone. THEN the E5 generation pin on a second throwaway object
+// drafts/__acceptance__/e5-<random>-card.webp: created, overwritten once, read pinned to its first generation → unversioned bucket:
+// refused; versioned: the old bytes (both correct); the new bytes = FAIL. Its generations are cleaned the same way.
+// Exit = the worse of the two (3 cleanup > 2 REFUSED > 1 FAIL > 0 PASS). Logic, refusals and exit codes: tools/photo-create-only-check-core.js.
 // REFUSED (exit 2, nothing touched) before any client: no --project (require-project); a storage-emulator variable; a private or public
 // bucket identity that cannot be resolved (photos/buckets.js over the project's dotenv params — never the operator's shell); the two equal;
 // --bucket not the private one. There is deliberately NO privacy probe (bucket IAM alone cannot prove privacy; see the core's header).
@@ -40,7 +43,11 @@ const bucket = admin.storage().bucket(args.bucket);
 const { makeGcsStore } = require('../photos/gcs-store');
 
 (async () => {
-  const r = await C.runCheck({ store: makeGcsStore(bucket), gens: C.makeGenerationOps(bucket), randomHex: () => crypto.randomBytes(8).toString('hex') });
-  console.log(JSON.stringify({ project: PROJECT_ID, bucket: args.bucket, path: r.path, verdict: r.verdict, results: r.results, reason: r.reason, cleanup: r.cleanup }, null, 1));
-  process.exit(r.exitCode);
+  const deps = { store: makeGcsStore(bucket), gens: C.makeGenerationOps(bucket), randomHex: () => crypto.randomBytes(8).toString('hex') };
+  const r = await C.runCheck(deps);
+  const pin = await C.runPinCheck(deps);
+  console.log(JSON.stringify({ project: PROJECT_ID, bucket: args.bucket,
+    createOnly: { path: r.path, verdict: r.verdict, results: r.results, reason: r.reason, cleanup: r.cleanup },
+    generationPin: { path: pin.path, verdict: pin.verdict, outcome: pin.outcome, versioning: pin.versioning, reason: pin.reason, cleanup: pin.cleanup } }, null, 1));
+  process.exit(C.combineExit(r.exitCode, pin.exitCode));
 })().catch((e) => { console.error(`photo-create-only-check: ERROR — ${String((e && e.message) || e).slice(0, 200)}`); process.exit(3); });

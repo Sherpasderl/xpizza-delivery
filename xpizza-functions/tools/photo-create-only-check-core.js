@@ -14,6 +14,13 @@
 //     noncurrent copy; codex r1) — and verify each generation is gone (generation-scoped metadata → 404); an object left live whose
 //     generation this run does not hold (a create that threw after writing) is NEVER deleted — it is reported.
 // exitCode: 0 PASS + clean · 1 FAIL + clean · 2 REFUSED · 3 cleanup not confirmed (loud, with the path)
+// E5 — the GENERATION PIN (advisor 2026-11-01; the Storage emulator ignores `generation` on media reads — probe
+// xpizza-D4c-grill/dish-photos-heavy-dce03b96/e5-probe/RESULT.md — so only real GCS can show it). A second throwaway object
+// drafts/__acceptance__/e5-<16 random hex>-card.webp: create-only v1 → a plain overwrite v2 (a new generation) → a read through the
+// real adapter PINNED to v1's generation. The correct outcome depends on the bucket's object versioning:
+//   unversioned → the old generation is gone → REFUSED (generation_mismatch);  versioned → it survives noncurrent → v1's OLD bytes
+//   (still correct: exactly the bytes the metadata described). v2's bytes = the pin ignored → FAIL. Versioning unreadable → either
+//   correct outcome passes and the report says it was unknown. Cleanup as E4: only this run's generations, generation-scoped, verified.
 const { privateBucketName, publicBucketName } = require('../photos/buckets');
 const RE_HEX16 = /^[0-9a-f]{16}$/;
 const PARAM_KEYS = Object.freeze(['PHOTOS_PRIVATE_BUCKET', 'PHOTOS_PUBLIC_BUCKET']);
@@ -23,6 +30,11 @@ const is404 = (e) => e && (e.code === 404 || e.code === '404');
 function acceptancePath(hex) {
   if (!RE_HEX16.test(String(hex))) throw new Error('acceptancePath needs 16 random hex characters');
   return `drafts/__acceptance__/e4-${hex}-card.webp`;
+}
+
+function pinPath(hex) {
+  if (!RE_HEX16.test(String(hex))) throw new Error('pinPath needs 16 random hex characters');
+  return `drafts/__acceptance__/e5-${hex}-card.webp`;
 }
 
 function parseArgs(argv) {
@@ -79,7 +91,7 @@ function readBucketParams(functionsDir, projectId, { lines = dotenvLines } = {})
 
 // the dry-run plan: the resolved bucket NAMES (not secrets — they let the owner confirm the target) and nothing else from the dotenv
 function dryRunMessage({ projectId, privateBucket, publicBucket, bucket }) {
-  return `photo-create-only-check: DRY — project ${projectId}; private ${privateBucket}, public ${publicBucket}. With --yes: write ONE throwaway object drafts/__acceptance__/e4-<random>-card.webp to gs://${bucket} twice, concurrently, create-only; then delete only the generation(s) it created, generation-scoped, and verify them gone.`;
+  return `photo-create-only-check: DRY — project ${projectId}; private ${privateBucket}, public ${publicBucket}. With --yes: write ONE throwaway object drafts/__acceptance__/e4-<random>-card.webp to gs://${bucket} twice, concurrently, create-only; then ONE more, drafts/__acceptance__/e5-<random>-card.webp, created, overwritten once, and read pinned to its first generation (unversioned → refused; versioned → the old bytes); then delete only the generations it created, generation-scoped, and verify them gone.`;
 }
 
 // the private + public identities through photos/buckets.js (production's resolvers), from the dotenv params and the stated project only
@@ -109,19 +121,17 @@ function makeGenerationOps(bucket) {
     async generationExists(path, gen) {
       try { await bucket.file(path, { generation: gen }).getMetadata(); return true; } catch (e) { if (is404(e)) return false; throw e; }
     },
+    // E5: a PLAIN save (no precondition) → the new live generation
+    async overwrite(path, buf, { contentType } = {}) {
+      const f = bucket.file(path); await f.save(buf, { resumable: false, contentType }); return String(f.metadata.generation);
+    },
+    // E5: the bucket's object versioning → true / false (the caller treats a failed read as unknown)
+    async versioningEnabled() { const [m] = await bucket.getMetadata(); return !!(m && m.versioning && m.versioning.enabled === true); },
   };
 }
 
-async function runCheck({ store, gens, randomHex, log = console }) {
-  const path = acceptancePath(randomHex());
-  if (await store.metadata(path)) return { verdict: 'REFUSED', reason: `${path} already exists`, path, exitCode: 2 };
-  // allSettled never throws: a failed create is a result, and cleanup below always runs
-  const settled = await Promise.allSettled([0, 1].map(() => store.createIfAbsent(path, Buffer.from('e4'), { contentType: 'image/webp' })));
-  const held = new Set(settled.filter((s) => s.status === 'fulfilled' && s.value && s.value.created === true).map((s) => String(s.value.generation)));
-  const results = settled.map((s) => (s.status === 'fulfilled' ? { created: s.value.created, generation: String(s.value.generation) } : { error: String((s.reason && s.reason.message) || s.reason).slice(0, 160) }));
-  const ok = results.length === 2 && results.every((r) => !r.error) && results.map((r) => r.created).sort().join() === 'false,true' && results[0].generation === results[1].generation;
-  const verdict = ok ? 'PASS' : 'FAIL';
-
+// delete ONLY the generations `held` (this run's), generation-scoped, verify each gone, and report anything else left live
+async function cleanupHeld(path, held, { store, gens }) {
   const cleanup = { ok: true, deleted: [], detail: '' };
   const problems = [];
   try {
@@ -135,9 +145,60 @@ async function runCheck({ store, gens, randomHex, log = console }) {
     problems.push(`CLEANUP-FAILED: ${path} — ${String((e && e.message) || e).slice(0, 160)}`);
   }
   if (problems.length) { cleanup.ok = false; cleanup.detail = problems.join('; '); }
+  return cleanup;
+}
+
+async function runCheck({ store, gens, randomHex, log = console }) {
+  const path = acceptancePath(randomHex());
+  if (await store.metadata(path)) return { verdict: 'REFUSED', reason: `${path} already exists`, path, exitCode: 2 };
+  // allSettled never throws: a failed create is a result, and cleanup below always runs
+  const settled = await Promise.allSettled([0, 1].map(() => store.createIfAbsent(path, Buffer.from('e4'), { contentType: 'image/webp' })));
+  const held = new Set(settled.filter((s) => s.status === 'fulfilled' && s.value && s.value.created === true).map((s) => String(s.value.generation)));
+  const results = settled.map((s) => (s.status === 'fulfilled' ? { created: s.value.created, generation: String(s.value.generation) } : { error: String((s.reason && s.reason.message) || s.reason).slice(0, 160) }));
+  const ok = results.length === 2 && results.every((r) => !r.error) && results.map((r) => r.created).sort().join() === 'false,true' && results[0].generation === results[1].generation;
+  const verdict = ok ? 'PASS' : 'FAIL';
+
+  const cleanup = await cleanupHeld(path, held, { store, gens });
   log.log(`photo-create-only-check: ${verdict} ${JSON.stringify(results)}`);
   if (!cleanup.ok) log.log(cleanup.detail);
   return { verdict, results, path, cleanup, exitCode: !cleanup.ok ? 3 : ok ? 0 : 1 };
 }
 
-module.exports = { parseArgs, refuseEmulatorEnv, dotenvLines, readBucketParams, dryRunMessage, resolveTargets, checkTarget, makeGenerationOps, runCheck, acceptancePath };
+// E5 — see the header. Never throws: every failure is a FAIL result, and cleanup always runs over what this run created.
+async function runPinCheck({ store, gens, randomHex, log = console }) {
+  const path = pinPath(randomHex());
+  if (await store.metadata(path)) return { verdict: 'REFUSED', reason: `${path} already exists`, path, exitCode: 2 };
+  const V1 = Buffer.from('e5-v1'), V2 = Buffer.from('e5-v2-replaced');
+  const held = new Set();
+  let outcome = null, versioning = null, reason = '', pass = false;
+  try {
+    const c = await store.createIfAbsent(path, V1, { contentType: 'image/webp' });
+    if (c && c.created === true) held.add(String(c.generation));
+    if (!c || c.created !== true) reason = 'the create-only save did not create';
+    else {
+      const g2 = String(await gens.overwrite(path, V2, { contentType: 'image/webp' }));
+      held.add(g2);
+      if (g2 === String(c.generation)) reason = 'the overwrite kept the generation';
+      else {
+        try {
+          const b = await store.download(path, { generation: String(c.generation), maxBytes: 1024 });
+          outcome = b.equals(V1) ? 'pinned_old_bytes' : b.equals(V2) ? 'new_bytes' : 'other_bytes';
+        } catch (e) { outcome = e && e.code === 'generation_mismatch' ? 'refused' : `error:${String((e && (e.code || e.message)) || e).slice(0, 60)}`; }
+        try { versioning = await gens.versioningEnabled(); } catch (_) { versioning = null; }
+        const want = versioning === true ? ['pinned_old_bytes'] : versioning === false ? ['refused'] : ['refused', 'pinned_old_bytes'];
+        pass = want.includes(outcome);
+        if (!pass) reason = `the read pinned to the first generation → ${outcome}; expected ${want.join(' or ')} (versioning ${versioning === null ? 'unknown' : versioning ? 'on' : 'off'})`;
+      }
+    }
+  } catch (e) { reason = String((e && e.message) || e).slice(0, 160); }
+  const verdict = pass ? 'PASS' : 'FAIL';
+  const cleanup = await cleanupHeld(path, held, { store, gens });
+  log.log(`photo-create-only-check (generation pin): ${verdict} ${JSON.stringify({ outcome, versioning })}${reason ? ` — ${reason}` : ''}`);
+  if (!cleanup.ok) log.log(cleanup.detail);
+  return { verdict, outcome, versioning, reason, path, cleanup, exitCode: !cleanup.ok ? 3 : pass ? 0 : 1 };
+}
+
+// the CLI's exit code over both checks: cleanup trouble (3) > REFUSED (2) > FAIL (1) > PASS (0)
+const combineExit = (...codes) => [3, 2, 1].find((c) => codes.includes(c)) || 0;
+
+module.exports = { parseArgs, refuseEmulatorEnv, dotenvLines, readBucketParams, dryRunMessage, resolveTargets, checkTarget, makeGenerationOps, runCheck, acceptancePath, pinPath, runPinCheck, combineExit, cleanupHeld };
