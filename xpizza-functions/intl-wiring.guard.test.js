@@ -26,7 +26,7 @@ const foldOthers = (src) => {
   }
   return out;
 };
-const real = foldOthers(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));
+const real = foldOthers(require('./tools/photos-inverse').unapplyPhotosIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))   /* DRYRUN R-WIRE (2e): photos A1/A2 (newest) innermost */ );
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // ── 1. the inverse ──

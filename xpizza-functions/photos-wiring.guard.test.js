@@ -14,7 +14,8 @@ const { HUNKS, BASE, unapplyPhotosIndex, unapplyPhotosFold } = require('./tools/
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
-const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
+const GBASE = 'd03f8828';   // DRYRUN R-WIRE (2e): the assembly state just before the photos A1+A2 layer (the train's older layers sit under it); re-point at the real assembly
+const baseIdx = execFileSync('git', ['show', `${GBASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // ── 1. the inverse ──
 assert.strictEqual(unapplyPhotosIndex(real), baseIdx, `🔴 index.js minus the photos hunks is not ${BASE}:index.js`);

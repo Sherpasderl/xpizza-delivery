@@ -18,7 +18,7 @@ for (const m of Object.keys(HUNKS)) {
   const real = fs.readFileSync(path.join(__dirname, m), 'utf8');
   const base = git(['show', `${BASE}:xpizza-functions/${m}`]);
   assert.notStrictEqual(real, base, `non-vacuity: ${m} carries the directory hunks`);
-  assert.strictEqual(require('./tools/formbake-module-inverse').unapplyFormbakeModule(m, unapplyDirectoryModule(m, require('./tools/avail-identity-inverse').unapplyAvailIdentity(m, real))), base,   // DRYRUN R-WIRE (2e): avail-identity (newest) innermost, then directory, then PLAN 4's module hunks
+  assert.strictEqual(require('./tools/formbake-module-inverse').unapplyFormbakeModule(m, unapplyDirectoryModule(m, require('./tools/avail-identity-inverse').unapplyAvailIdentity(m, require('./tools/photos-module-inverse').unapplyPhotosModule(m, real)))), base,   // DRYRUN R-WIRE (2e): photos A2 (newest) innermost, then avail-identity, then directory, then PLAN 4's module hunks
     `🔴 ${m} minus the directory hunks is not ${BASE}:${m}`);
   assert.throws(() => unapplyDirectoryModule(m, base), /not found exactly once/, `a missing hunk is detected (${m})`);
 }

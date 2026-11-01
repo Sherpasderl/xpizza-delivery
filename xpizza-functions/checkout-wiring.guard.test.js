@@ -16,7 +16,7 @@ const { unapplyCheckoutIndex } = require('./tools/checkout-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const BASE = '8a31e2a3';   // origin/main at the plan's code map
-const live = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const live = require('./tools/photos-inverse').unapplyPhotosIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))   /* DRYRUN R-WIRE (2e): photos A1/A2 (newest) innermost */ ;
 const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 const BEGIN = '/* checkout:begin endpoints */\n', END = '/* checkout:end endpoints */\n';
 // R-WIRE (assembly restack onto f75e5cf9): this slice is the NEWEST, so its inverse runs FIRST (innermost); the tip's slices that

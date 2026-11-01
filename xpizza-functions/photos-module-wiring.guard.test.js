@@ -12,7 +12,8 @@ const { unapplyPhotosModule, FILES, HUNKS, BASE } = require('./tools/photos-modu
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
+const GBASE = 'd03f8828';   // DRYRUN R-WIRE (2e): the assembly state just before the photos A1+A2 layer (the train's older layers sit under it); re-point at the real assembly
+const baseOf = (f) => execFileSync('git', ['show', `${GBASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.deepStrictEqual([...FILES], ['catalog/catalog-publish.js', 'catalog/public-menu.js'], 'PHOTOS-MODULE-FILES');
 for (const f2 of FILES) {

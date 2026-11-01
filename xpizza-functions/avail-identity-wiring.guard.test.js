@@ -16,7 +16,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${GBASE}:xpizza-functions/${
 
 assert.deepStrictEqual([...FILES].sort(), ['catalog/public-menu.js', 'menu-pricing.js'], 'AVAIL-ID-WIRING-FILES');
 for (const f of FILES) {
-  const real = read(f);
+  const real = require('./tools/photos-module-inverse').unapplyPhotosModule(f, read(f));   // DRYRUN R-WIRE (2e): photos A2 (newest) innermost
   assert.notStrictEqual(unapplyAvailIdentity(f, real), real, `AVAIL-ID-WIRING non-vacuity ${f}`);
   assert.strictEqual(unapplyAvailIdentity(f, real), baseOf(f), `🔴 AVAIL-ID-WIRING ${f} minus the avail-identity hunks is not ${GBASE}:${f}`);
   assert.strictEqual(real.split('\n').length, baseOf(f).split('\n').length, `AVAIL-ID-WIRING-NO-LINE-SHIFT ${f}`);
