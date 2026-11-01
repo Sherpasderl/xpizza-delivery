@@ -11,19 +11,20 @@ const { BASE, HUNKS, FILES, unapplyAvailIdentity } = require('./tools/avail-iden
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
+const GBASE = '69b045de';   // DRYRUN R-WIRE (2e): the assembly state just before the avail-identity layer (the train's older layers sit under it); re-point at the real assembly
+const baseOf = (f) => execFileSync('git', ['show', `${GBASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.deepStrictEqual([...FILES].sort(), ['catalog/public-menu.js', 'menu-pricing.js'], 'AVAIL-ID-WIRING-FILES');
 for (const f of FILES) {
   const real = read(f);
   assert.notStrictEqual(unapplyAvailIdentity(f, real), real, `AVAIL-ID-WIRING non-vacuity ${f}`);
-  assert.strictEqual(unapplyAvailIdentity(f, real), baseOf(f), `🔴 AVAIL-ID-WIRING ${f} minus the avail-identity hunks is not ${BASE}:${f}`);
+  assert.strictEqual(unapplyAvailIdentity(f, real), baseOf(f), `🔴 AVAIL-ID-WIRING ${f} minus the avail-identity hunks is not ${GBASE}:${f}`);
   assert.strictEqual(real.split('\n').length, baseOf(f).split('\n').length, `AVAIL-ID-WIRING-NO-LINE-SHIFT ${f}`);
 }
 for (const h of HUNKS) {
   assert.ok(h.now.endsWith('\n') && h.was.endsWith('\n') && h.now.indexOf('\n') === h.now.length - 1 && h.was.indexOf('\n') === h.was.length - 1, `AVAIL-ID-WIRING-SAME-LINE ${JSON.stringify(h.now.slice(0, 60))}`);
 }
-ok(`${FILES.join(' + ')} minus the ${HUNKS.length} same-line hunks == ${BASE}, byte-for-byte; no line moved`);
+ok(`${FILES.join(' + ')} minus the ${HUNKS.length} same-line hunks == ${GBASE} (inverse BASE ${BASE}), byte-for-byte; no line moved`);
 
 const f = 'menu-pricing.js'; const real = read(f);
 assert.throws(() => unapplyAvailIdentity(f, real.replace("item[availIdentityField(restaurantId)]", "item[availIdentityField(restaurantId) ]")), /occurs 0 times/, 'AVAIL-ID-WIRING an edit INSIDE a hunk');

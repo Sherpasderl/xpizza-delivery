@@ -21,7 +21,7 @@ const SITES = require('./platform/sites.json');
 
 const { ok, count } = counter();
 const DIRS = ['xpizza-orders', 'la-musa-orders'];
-const BASE = '8a31e2a3';
+const BASE = '69b045de';   // DRYRUN R-WIRE (2e): was 8a31e2a3 — the assembly state just before the avail-identity layer (older train layers change the forms); re-point at the real assembly
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
 // today's served body: the generator, the identity overlay, photos
