@@ -723,6 +723,13 @@ test('G6 shell: a RESTORED session autofills from the cached profile of THAT uid
   const O = bootShell({ auth: 'unresolved', storage: memStorage({ 'capp:member_profile': prof, 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_other' }) }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb2.loadSdk, signupFetch: signupServer(ANA).fetch } });
   await flush(); await flush();
   assert.deepEqual(J(O.ui.state.member ?? null), { uid: 'u_other', name: '', phone: '', email: '', idToken: 'id:u_other' }, '🔴 another member\'s cached profile is never shown');
+  // Codex G7 r1 #2 purges a mismatched cache first; when that removal FAILS, the read itself still refuses another uid's profile
+  const stuck = memStorage({ 'capp:member_profile': prof, 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_other' }) }); stuck.removeItem = () => { throw new Error('denied'); };
+  const fb3 = fakeFirebase({ persisted: 'u_other' });
+  const P = bootShell({ auth: 'unresolved', storage: stuck, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb3.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  await flush(); await flush();
+  assert.equal(stuck.getItem('capp:member_profile'), prof, 'premise: the purge could not remove the cache');
+  assert.deepEqual(J(P.ui.state.member ?? null), { uid: 'u_other', name: '', phone: '', email: '', idToken: 'id:u_other' }, '🔴 another member\'s cached profile is never shown (the purge failed)');
 });
 
 // ── Codex G6 r1 (#1 / #2 / #3): the member never outlives its session in the mounted checkout ──
@@ -1110,6 +1117,8 @@ test('G7 a REJECTED sign-out restores the member (nothing pretends to be signed 
   const { S, fb } = await g7Boot({ fbOpts: { failSignOut: 1 } });
   S.click('[data-act="signout"]'); await flush(); await flush();
   assert.equal(fb.calls.out, 1); assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', '🔴 G7-reject: still the member');
+  // the Cuenta alone cannot tell (it reads the cache of the uid auth names): the SESSION is the member's again — checkout included
+  assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', '🔴 G7-reject: the member is restored, not only drawn');
 });
 test('G7 flag absent: without runtime.signup a member\'s Cuenta stays the HOST\'s tab event, as before', async () => {
   const S = bootShell({ auth: 'member', runtime: { ...RUNTIME, guestCardOnly: true } }); await flush();

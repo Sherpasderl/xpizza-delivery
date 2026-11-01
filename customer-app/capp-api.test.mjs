@@ -794,6 +794,14 @@ test('Codex S4 r1 #3: an uncertain send replays the EXACT outgoing bytes (its qu
   await api2.place({ ...b, sig: q2.record.sig, expectedNetCents: 32500 });
   assert.deepEqual(R.srv.of('createOrder')[1].body, first, '🔴 S4-bytes: the same token, ceiling and slot');
 });
+test('Codex S4 r2 / G7 r1: a NON-member\'s FIRST scheduled send is refused before the record — no sent_body, no sched_pending, no dispatch', async () => {
+  const R = srig({ member: { cur: null }, script: { createOrder: [OK_CASH], chargeOnlineOrder: [CHECKOUT] } });
+  assert.equal(R.api.retainedByOther(), false, 'premise: nothing retained (the held-other refusal does not apply)');
+  const out = await R.api.place(sArgs());
+  assert.deepEqual([out.kind, R.srv.calls.length], ['schedule_needs_account', 0], 'premise: refused, never sent');
+  const r = placeRec(R.storage) || {};
+  assert.deepEqual([r.sent_body ?? null, r.sched_pending ?? null, Number(r.dispatched) || 0, r.card === true], [null, null, 0, false], '🔴 S4-r2-norecord: the refusal recorded nothing for the first send');
+});
 test('Codex S4 r2: the account refusal records NOTHING — an uncertain scheduled cash send, a signed-out reload choosing card (refused, 0 charges), then sign-in ⇒ the retry dispatches (no false card lock)', async () => {
   const m = { cur: MEMBER };
   const R = srig({ member: m, script: { createOrder: ['network', OK_CASH], chargeOnlineOrder: [CHECKOUT] } });
