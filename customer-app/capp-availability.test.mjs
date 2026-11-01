@@ -27,8 +27,11 @@ const availIdentityField = (() => {
   const live = fnRequire('./menu-pricing.js').availIdentityField;
   if (typeof live === 'function') return live;
   const src = execFileSync('git', ['show', 'e024dc6f:xpizza-functions/menu-pricing.js'], { cwd: ROOT, encoding: 'utf8' });
-  const m = src.match(/const availIdentityField = (\(rid\) => \(rid === 'la_musa' \? 'id' : 'name'\));/);
-  assert.ok(m, 'premise: 5f\'s approved rule is readable from e024dc6f');
+  // INTERIM (until menu-pricing exports it at assembly — then this branch is dead and is removed): the line must occur EXACTLY
+  // once, else RED with a label — a re-anchor or a merge can never turn the equality cells vacuous through a silent default (5f)
+  const all = [...src.matchAll(/const availIdentityField = (\(rid\) => \(rid === 'la_musa' \? 'id' : 'name'\));/g)];
+  assert.equal(all.length, 1, `🔴 5f's availIdentityField line must occur exactly once in e024dc6f:xpizza-functions/menu-pricing.js (found ${all.length})`);
+  const m = all[0];
   return new Function(`return ${m[1]};`)();
 })();
 const servedBody = async (rid) => (await applyIdentityToServedBody(fullRegistry(rid), rid, generateFormBundle(rid, catalogSnapshot(rid)))).body;
