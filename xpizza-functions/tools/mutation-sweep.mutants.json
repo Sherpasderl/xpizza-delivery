@@ -26022,7 +26022,7 @@
     "slice": "desk",
     "label": "syncPill no longer refreshes the desk aside (an item edit leaves it stale)",
     "file": "../customer-app/capp-ui.js",
-    "from": " const dc = app.querySelector('.deskcart'); if (dc) dc.innerHTML = cartInner(true); }   // v6 :1726",
+    "from": " const dc = app.querySelector('.deskcart'); if (dc) { dc.innerHTML = cartInner(true); applyOrderable(); } }   // v6 :1726",
     "to": " }   // v6 :1726",
     "command": [
       "node",
@@ -26059,8 +26059,8 @@
     "slice": "desk",
     "label": "a breakpoint crossing never reaches the mounted store (setView a no-op)",
     "file": "../customer-app/capp-ui.js",
-    "from": "if (d === S.desk) return; S.desk = d; render(); },",
-    "to": "if (d === S.desk) return; },",
+    "from": "        S.desk = d; render();\n",
+    "to": "        S.desk = d;\n",
     "command": [
       "node",
       "--test",
@@ -26125,6 +26125,60 @@
     ],
     "kills_with": [
       "ONE notification"
+    ]
+  },
+  {
+    "id": "dsk-09",
+    "slice": "desk",
+    "label": "Codex D-2 r1 #1: a crossing drops the aside's focus to BODY (no visible equivalent)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if (!d && fromAside) focusTo($('cart-bar'));",
+    "to": "if (!d && fromAside) void 0;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-2",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "focus dropped to BODY"
+    ]
+  },
+  {
+    "id": "dsk-10",
+    "slice": "desk",
+    "label": "Codex D-2 r1 #2: the aside «Editar» returns focus to the hidden cart bar",
+    "file": "../customer-app/capp-ui.js",
+    "from": "returnTo = fromAside ? descOf(t) : { elId: 'cart-bar', ds: { act: 'pill' } };",
+    "to": "returnTo = { elId: 'cart-bar', ds: { act: 'pill' } };",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-2",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "focus returned to"
+    ]
+  },
+  {
+    "id": "dsk-11",
+    "slice": "desk",
+    "label": "Codex D-2 r1 #3: the aside is left out of the browse-only disabled state",
+    "file": "../customer-app/capp-ui.js",
+    "from": "    const CART_HOSTS = ['#layer', '.deskcart'];",
+    "to": "    const CART_HOSTS = ['#layer'];",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-2",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "enabled aside controls in browse-only"
     ]
   }
 ]

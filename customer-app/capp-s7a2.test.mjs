@@ -1269,3 +1269,46 @@ test('D-2 the signup surface follows the breakpoint (its .app host carries desk 
   media.set(false); await flush(DESK_SETTLE);
   assert.equal(host.classList.contains('desk'), false);
 });
+
+// ── Codex D-2 r1 (3 P2s) ──
+test('D-2 r1 #1: desktop → phone with an ASIDE control focused ⇒ focus moves to the visible phone equivalent (the cart bar) and the menu scroll is kept; phone → desktop with the cart bar focused ⇒ focus moves into the aside', async () => {
+  const { S, media } = await deskStore(true, 2);
+  const plus = S.q('.deskcart .cstep button[data-rev="1"]'); assert.ok(plus, 'premise: an aside stepper'); plus.focus();
+  assert.equal(S.w.document.activeElement, plus, 'premise: focused');
+  S.q('#scroller').scrollTop = 300;
+  media.set(false); await flush(DESK_SETTLE);
+  assert.equal(S.q('.deskcart'), null, 'premise: the phone view');
+  assert.equal(S.w.document.activeElement, S.q('#cart-bar'), '🔴 r1 #1: focus dropped to BODY instead of the visible cart bar');
+  assert.equal(S.q('#scroller').scrollTop, 300, '🔴 r1 #1: the menu scroll was reset');
+  media.set(true); await flush(DESK_SETTLE);
+  assert.ok(S.q('.deskcart').contains(S.w.document.activeElement), '🔴 r1 #1: from the (now hidden) cart bar, focus moves into the aside');
+  assert.equal(S.q('#scroller').scrollTop, 300);
+});
+
+test('D-2 r1 #2: the aside «Editar» returns focus to THAT aside control when the dish sheet closes (never the hidden cart bar)', async () => {
+  const { S, ui } = await deskStore(true, 0);
+  const dressed = ui.menu.dishes.find((d) => !d.launcher && !d.variantOf && ui.menu.extrasFor(d.key).length);
+  assert.ok(dressed, 'premise: a dish with extras (its cart line is editable)');
+  ui.cart.add(dressed.key, [], 1); ui.render();
+  const ed = S.q(`.deskcart [data-act="edit"][data-key="${dressed.key}"]`); assert.ok(ed, 'premise: the aside line «Editar»');
+  ed.focus(); S.click(ed); await flush();
+  assert.ok(ui.state.open, 'premise: the dish sheet opened for editing');
+  S.click('#detail-overlay'); await flush();
+  assert.equal(ui.state.open, null, 'premise: closed');
+  const back = S.w.document.activeElement;
+  assert.ok(back && S.q('.deskcart') && S.q('.deskcart').contains(back) && back.dataset.act === 'edit' && back.dataset.key === dressed.key, `🔴 r1 #2: focus returned to ${back && (back.id || back.className || back.tagName)} instead of the aside «Editar»`);
+});
+
+test('D-2 r1 #3: browse-only ⇒ the ASIDE\'s ordering controls are disabled like the cart sheet\'s (ONE selector source), also after a syncPill refresh', async () => {
+  const media = fakeMedia(true);
+  const S = bootShell({ envelope: 'hold', storage: memStorage(storedMenu('x_pizza')), media }); await flush();
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  const ui = S.ui.store().ui; assert.equal(ui.orderable(), false, 'premise: browse-only (a stored, unverified menu)');
+  ui.cart.add(ui.menu.dishes.find((d) => !d.launcher && !d.variantOf).key, [], 1); ui.render();   // a cart carried from an earlier visit
+  const ctl = S.qa('.deskcart .cstep button, .deskcart [data-act="checkout"]');
+  assert.ok(ctl.length >= 3, 'premise: the aside shows a line and its checkout');
+  assert.ok(ctl.every((b) => b.disabled && b.getAttribute('aria-disabled') === 'true'), `🔴 r1 #3: enabled aside controls in browse-only: ${ctl.filter((b) => !b.disabled).map((b) => b.dataset.act + (b.dataset.rev || '')).join(', ')}`);
+  S.click(`.txtbtn[data-id="${ui.cart.lines()[0].key}"]`); await flush();
+  const after = S.qa('.deskcart .cstep button, .deskcart [data-act="checkout"]');
+  assert.ok(after.every((b) => b.disabled), '🔴 r1 #3: a re-rendered aside re-enabled its controls');
+});

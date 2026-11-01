@@ -357,7 +357,10 @@
     function dialogEl() { if (S.open) return $('detail-modal'); const L = $('layer'); return S.layerKind && L ? L : null; }
     // the browse-only pass: the ordering controls not ALREADY disabled for their own reason get the existing disabled attribute,
     // marked data-ord so setOrderable(true) can release exactly them, in place (runs after every render / layer / sheet paint)
-    const ORDERING = '.qty-add-btn, .qty-ctrl-btn, .detail-step-btn, #detail-cta, #layer .cstep button, #layer [data-act="checkout"]';
+    // the cart's ordering controls live in the cart SHEET (#layer) and, on desktop, the deskcart aside (D-2) — ONE list of hosts
+    // (Codex D-2 r1 #3: a browse-only aside never offers an enabled control without effect)
+    const CART_HOSTS = ['#layer', '.deskcart'];
+    const ORDERING = ['.qty-add-btn', '.qty-ctrl-btn', '.detail-step-btn', '#detail-cta', ...CART_HOSTS.flatMap((h) => [`${h} .cstep button`, `${h} [data-act="checkout"]`])].join(', ');
     function applyOrderable() {
       if (orderable || dead) return;
       for (const el of app.querySelectorAll(ORDERING)) if (!el.disabled) { el.disabled = true; el.setAttribute('aria-disabled', 'true'); el.dataset.ord = '1'; }
@@ -449,7 +452,7 @@
       if (!mutate(() => cart.edit(o.key, o.g, Object.keys(o.staged.ex), target))) { renderDetail(); return; }   // refused: the sheet stays open, the reason shown in it
       closeDetail();
     }
-    function syncPill() { const p = $('cart-bar'); if (!p) return; const n = cart.count(); p.querySelectorAll('.cart-pill-text')[0].textContent = n ? unitOf(n) : 'Tu pedido'; p.querySelectorAll('.cart-pill-text')[1].textContent = money(cartTotal()); const dc = app.querySelector('.deskcart'); if (dc) dc.innerHTML = cartInner(true); }   // v6 :1726 — the desk aside follows every edit
+    function syncPill() { const p = $('cart-bar'); if (!p) return; const n = cart.count(); p.querySelectorAll('.cart-pill-text')[0].textContent = n ? unitOf(n) : 'Tu pedido'; p.querySelectorAll('.cart-pill-text')[1].textContent = money(cartTotal()); const dc = app.querySelector('.deskcart'); if (dc) { dc.innerHTML = cartInner(true); applyOrderable(); } }   // v6 :1726 — the desk aside follows every edit (and keeps browse-only)
     function bumpPill() { const p = $('cart-bar'); if (!p) return; p.classList.remove('bump'); void p.offsetWidth; p.classList.add('bump'); }
 
     // ── CART SHEET (Subtotal only in S1: the fee rows are S2/S3) ──
@@ -1468,7 +1471,8 @@
       if (act === 'cartclose') { back(); return; }   // closing the cart is a back step → the menu (P :2297)
       if (act === 'lclose') { closeLayer(); return; }
       if (act === 'rev') { const k = t.dataset.key, g = t.dataset.grp || '', d = descOf(t); if (Number(t.dataset.rev) > 0 && isSold(find(k))) return; mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(k, g) : cart.lineDec(k, g))); renderStoreKeep(); renderLayer(); focusTo(refind(d) || [...$('layer').querySelectorAll(FOCUSABLE)].find(reachable)); return; }
-      if (act === 'edit') { S.layerKind = null; renderLayer(); returnTo = { elId: 'cart-bar', ds: { act: 'pill' } }; openEdit(t.dataset.key, t.dataset.grp || ''); return; }
+      // the sheet's «Editar» closes the sheet ⇒ focus comes back to the cart bar; the desk aside's stays put ⇒ back to ITSELF (Codex D-2 r1 #2)
+      if (act === 'edit') { const fromAside = !!t.closest('.deskcart'); S.layerKind = null; renderLayer(); returnTo = fromAside ? descOf(t) : { elId: 'cart-bar', ds: { act: 'pill' } }; openEdit(t.dataset.key, t.dataset.grp || ''); return; }
       if (act === 'mode') { if (frozenNow()) return; S.mode = t.dataset.val; notifyCart(); renderStoreKeep(); return; }
       if (act === 'jump') { jumpTo(t.dataset.jump); return; }
       if (act === 'menu') { openLayer('menu'); return; }
@@ -1564,7 +1568,19 @@
       cart, menu, render, state: S, openCheckout, returning,
       // D-2: the viewport crossed the breakpoint — re-render THIS screen in the other view; every piece of state (cart, screen, flow,
       // open layer, locks, refusals) lives in S / the records and is untouched; render() keeps focus, caret and the checkout scroll
-      setView(desk) { if (dead || !view) return; const d = desk === true; if (d === S.desk) return; S.desk = d; render(); },
+      // Codex D-2 r1 #1: the store's menu scroll is kept, and a focused control that has no twin in the other view lands on its
+      // VISIBLE equivalent — the aside ⇄ the cart bar (render() itself restores every control that exists in both views)
+      setView(desk) {
+        if (dead || !view) return; const d = desk === true; if (d === S.desk) return;
+        const sc = $('scroller'), y = sc ? sc.scrollTop : null, ae = doc.activeElement;
+        const fromAside = !!(ae && ae.closest && ae.closest('.deskcart')), fromPill = !!(ae && ae.id === 'cart-bar');
+        S.desk = d; render();
+        const sc2 = $('scroller'); if (sc2 && y !== null) sc2.scrollTop = y;
+        if (lost() && !dialogEl()) {
+          if (!d && fromAside) focusTo($('cart-bar'));
+          else if (d && fromPill) { const a = app.querySelector('.deskcart'); focusTo(a && ([...a.querySelectorAll('button:not([disabled])')].find(reachable) || a)); }
+        }
+      },
       deviceBack,
       // the host's AUTHORITATIVE availability has been re-read (its Set / function now reflects it): a dispatch refusal yields to it
       availabilityUpdated() { if (dead) return; refused.clear(); render(); },
