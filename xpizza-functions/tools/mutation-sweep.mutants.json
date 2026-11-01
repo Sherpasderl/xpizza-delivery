@@ -30309,8 +30309,8 @@
   "slice": "sec",
   "label": "security backlog: the inactivity sweep writes no deleted_uids again (the gap: deleted_uids-only checks miss swept accounts)",
   "file": "signup-endpoints.js",
-  "from": "await db.ref().update(ACCOUNT.accountDeleteUpdates(uid, phoneHash, now));",
-  "to": "await db.ref().update(sweepCutoff == null ? ACCOUNT.accountDeleteUpdates(uid, phoneHash, now) : ACCOUNT.accountDeleteUpdates(uid, phoneHash));",
+  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at } });",
+  "to": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, sweepCutoff == null ? at : null), [`user_private/${uid}`]: { deleted_at: at } });",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -30333,8 +30333,8 @@
   "slice": "sec",
   "label": "security backlog: a sweep that LOST to a fresher login still revokes the live account's sessions",
   "file": "signup-endpoints.js",
-  "from": "  if (!stands) return false;\n  await db.ref().update(ACCOUNT.accountDeleteUpdates(uid, phoneHash, now));",
-  "to": "  if (!stands) { await revokeSessions(db, uid, now, revoke, revokeDeadlineMs); return false; }\n  await db.ref().update(ACCOUNT.accountDeleteUpdates(uid, phoneHash, now));",
+  "from": "    if ((await S.sweepClaim(db, uid, sweepCutoff, now)) !== 'claimed') return false;\n",
+  "to": "    if ((await S.sweepClaim(db, uid, sweepCutoff, now)) !== 'claimed') { await revokeSessions(db, uid, now, revoke, revokeDeadlineMs); return false; }\n",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -30345,8 +30345,8 @@
   "slice": "sec",
   "label": "security backlog: a revoke failure is NOT alerted (silently dropped but for a log line)",
   "file": "signup-endpoints.js",
-  "from": "    await db.ref(`dispatcher_alerts/account_revoke_failed_${uid}`).transaction(",
-  "to": "    await (async () => ({}))(`dispatcher_alerts/account_revoke_failed_${uid}`, ",
+  "from": ".transaction((cur) => (cur == null ? { type: 'account_revoke_failed', uid, reason, created_at: now } : undefined))",
+  "to": ".once('value')",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -30369,8 +30369,8 @@
   "slice": "sec",
   "label": "security backlog: a revoke that HANGS past the deadline is treated as success (no log, no alert)",
   "file": "signup-endpoints.js",
-  "from": "    if (r !== 'ok') reason = `deadline ${deadlineMs}ms`;\n",
-  "to": "",
+  "from": "  try { if ((await withDeadline(Promise.resolve().then(() => revoke(uid)), deadlineMs)) !== 'ok') reason = 'timeout'; } catch (e) { reason = reasonOf(e); }",
+  "to": "  try { await withDeadline(Promise.resolve().then(() => revoke(uid)), deadlineMs); } catch (e) { reason = reasonOf(e); }",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -30381,8 +30381,8 @@
   "slice": "sec",
   "label": "security backlog: the revoke-failure alert is overwritten on a retry (not create-only)",
   "file": "signup-endpoints.js",
-  "from": "(cur == null ? { type: 'account_revoke_failed', uid, reason: String(reason).slice(0, 200), created_at: now } : undefined)",
-  "to": "({ type: 'account_revoke_failed', uid, reason: String(reason).slice(0, 200), created_at: now })",
+  "from": "(cur == null ? { type: 'account_revoke_failed', uid, reason, created_at: now } : undefined)",
+  "to": "({ type: 'account_revoke_failed', uid, reason, created_at: now })",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -30419,6 +30419,162 @@
   "file": "signup-endpoints.js",
   "from": "wrote = true; return row.deleted_at; });",
   "to": "wrote = true; return Date.now(); });",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-11",
+  "slice": "sec",
+  "label": "security backlog: r2 P1-c: the two tombstones written in TWO steps (a failure between them leaves user_private.deleted_at without deleted_uids)",
+  "file": "signup-endpoints.js",
+  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at } });",
+  "to": "await db.ref(`user_private/${uid}`).set({ deleted_at: at }); await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at) });",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-12",
+  "slice": "sec",
+  "label": "security backlog: r2 P1-b: the sweep deletes without CLAIMING the account (a fresh login loses to it)",
+  "file": "signup-endpoints.js",
+  "from": "    if ((await S.sweepClaim(db, uid, sweepCutoff, now)) !== 'claimed') return false;\n",
+  "to": "",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-13",
+  "slice": "sec",
+  "label": "security backlog: r2 P1-b: the login gate ignores a sweep claim (a claimed uid is handed to a login)",
+  "file": "signup-core.js",
+  "from": "    if (cur.deleting_at != null) { out = 'claimed'; return undefined; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-14",
+  "slice": "sec",
+  "label": "security backlog: r2 P1-b: the sweep claim ignores a fresh last_login",
+  "file": "signup-core.js",
+  "from": "    if (!(last && last < cutoff)) { out = 'fresh'; return undefined; }   // a login (or no timestamp: fail-safe) — never swept\n",
+  "to": "",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-15",
+  "slice": "sec",
+  "label": "security backlog: r2 P1-a: a tombstoned uid with no profile is handed to a login (the revival)",
+  "file": "signup-endpoints.js",
+  "from": "    if (g === 'absent' && !(await S.isTombstoned(db, cur))) return cur;",
+  "to": "    if (g === 'absent') return cur;",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-16",
+  "slice": "sec",
+  "label": "security backlog: r2 ruling 2: a LIVE (revived) profile is moved to a fresh uid (loses its post-revival orders)",
+  "file": "signup-endpoints.js",
+  "from": "    if (g === 'live') return cur;\n",
+  "to": "",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-17",
+  "slice": "sec",
+  "label": "security backlog: r2: the deletion removes phone_index unconditionally (clobbers a login's repoint to a fresh uid)",
+  "file": "signup-endpoints.js",
+  "from": "  if (phoneHash) await db.ref(`phone_index/${phoneHash}`).transaction((cur) => (cur === null ? null : (cur === uid ? null : undefined)));",
+  "to": "  if (phoneHash) await db.ref(`phone_index/${phoneHash}`).set(null);",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-18",
+  "slice": "sec",
+  "label": "security backlog: r2 P1-a: the backfill tombstones a REVIVED account (profile present)",
+  "file": "signup-endpoints.js",
+  "from": "    if ((await db.ref(`user_profiles/${uid}`).once('value')).exists()) continue;\n",
+  "to": "",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-19",
+  "slice": "sec",
+  "label": "security backlog: r2 P2: the persisted / logged reason carries e.message (PII)",
+  "file": "signup-endpoints.js",
+  "from": "const reasonOf = (e) => (e && typeof e === 'object' ? (REVOKE_REASON_CODES.has(e.code) ? e.code : 'revoke_failed') : 'unknown');",
+  "to": "const reasonOf = (e) => (e && e.message) || 'unknown';",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-20",
+  "slice": "sec",
+  "label": "security backlog: r2 P2: the alert write is UNBOUNDED (a hanging alert blocks the deletion)",
+  "file": "signup-endpoints.js",
+  "from": "    const w = await withDeadline(db.ref(`dispatcher_alerts/account_revoke_failed_${uid}`)",
+  "to": "    const w = await (async (x) => { await x; return 'ok'; })(db.ref(`dispatcher_alerts/account_revoke_failed_${uid}`)",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-21",
+  "slice": "sec",
+  "label": "security backlog: r2 P1-b: Google (L3) skips the lifecycle gate (a claimed profile gets a Google login)",
+  "file": "signup-core.js",
+  "from": "    if ((await loginTouch(db, link.uid, now)) !== 'live') return { ok: false, reason: 'account_unavailable' };",
+  "to": "    await loginTouch(db, link.uid, now);",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-22",
+  "slice": "sec",
+  "label": "security backlog: r2 migration: clears a tombstone WITHOUT later activity / with a claim",
+  "file": "tools/repair-revived-tombstones.js",
+  "from": "    if (!prof || prof.deleting_at != null || !(isNum(prof.last_login) && prof.last_login > row.deleted_at)) continue;",
+  "to": "    if (!prof) continue;",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-23",
+  "slice": "sec",
+  "label": "security backlog: r2 migration: the DRY RUN writes",
+  "file": "tools/repair-revived-tombstones.js",
+  "from": "  if (!apply) return { ok: true, dryRun: true, count: list.length, uids: list.map((c) => c.uid) };\n",
+  "to": "",
   "command": [
    "node",
    "deletion-tombstone.test.js"

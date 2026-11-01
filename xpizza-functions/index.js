@@ -7311,6 +7311,12 @@ exports.verifyOtp = onRequest(
       const idxRef = db.ref('phone_index/' + pHash);
       let uid = (await idxRef.get()).val();
       if (!uid) { uid = 'u_' + require('crypto').randomBytes(12).toString('hex'); await idxRef.set(uid); }
+      /* lifecycle:begin login-uid */
+      // security r2 (Codex P1-a/P1-b): THE lifecycle gate — a profile a sweep claimed, or a tombstoned uid with no profile, is never
+      // handed to this login: a FRESH uid, phone_index CAS-repointed; a live profile's last_login bumped (linearized with the sweep's
+      // claim on user_profiles/{uid}). FAIL-CLOSED: a failure lands in the catch below (the generic retryable answer), no mint.
+      uid = await SE.loginUid(db, { pHash, uid, now: Date.now(), newUid: () => 'u_' + require('crypto').randomBytes(12).toString('hex') });
+      /* lifecycle:end login-uid */
       const now2 = Date.now();
       const profRef = db.ref('user_profiles/' + uid);
       const prof = (await profRef.get()).val();

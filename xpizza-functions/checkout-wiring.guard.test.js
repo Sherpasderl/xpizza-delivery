@@ -4,7 +4,7 @@
 // INSERTS whole-line named hunks (the capp-guest gate in createOrder + chargeOnlineOrder, the grant secret) and edits no base
 // line. tools/checkout-inverse.js removes exactly those hunks and is composed INNERMOST (newest slice first) into every index.js
 // fold guard. This guard proves:
-//   (i)   unapplyCheckoutIndex(index.js) === BASE:index.js BYTE-FOR-BYTE;
+//   (i)   unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(index.js)) === BASE:index.js BYTE-FOR-BYTE;
 //   (ii)  NON-VACUITY — the live file differs from the base and carries the block (dropping the inverse ⇒ RED);
 //   (iii) SENSITIVITY — a missing / duplicated marker or an edit OUTSIDE the block is refused or detected.
 // Run: node checkout-wiring.guard.test.js
@@ -27,7 +27,7 @@ const M512 = require('./tools/mem512-inverse');
 const FS5 = M512.HUNKS.find((h) => h.fn === 'formSignal');
 const once = (src, from, to, label) => { const k = src.split(from).length - 1; if (k !== 1) throw new Error(`checkout-wiring: ${label} occurs ${k} times (expected exactly 1)`); return src.replace(from, () => to); };
 const toBase = (src) => {
-  let out = unapplyCheckoutIndex(src);
+  let out = unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(src));
   for (const t of TIP_LAYERS) { const m = require(`./tools/${t}-inverse`); out = m[Object.keys(m).find((k) => /^unapply\w*Index$/.test(k))](out); if (t === 'mem512') out = once(out, FS5.was, FS5.now, 'the 8a31e2a3 formSignal line'); }
   return out;
 };
@@ -74,11 +74,11 @@ for (const [name, stmt] of [['gate-create', 'if (cappGuestRefusal) return res.st
   ['gate-grant-field', '...(cappGrant ? { signup_grant: cappGrant } : {}),']]) assert.ok(hunk(name).includes(stmt), `🔴 the ${name} hunk lost its effect: ${stmt}`);
 ok('(ii-S2) placement: gate-create after createOrder identity + before its existence read; chargeOnlineOrder gate → verified (pre-CAS) → bind (post-CAS, before every outcome) → grant (before any answer); gate-method right above the generic online-only refusal; secret bound to chargeOnlineOrder');
 
-assert.throws(() => unapplyCheckoutIndex(live.replace(BEGIN, '/* checkout:BEGIN */\n')), /missing/, 'a missing begin');
-assert.throws(() => unapplyCheckoutIndex(live.replace(END, '/* checkout:END */\n')), /missing/, 'a missing end');
-assert.throws(() => unapplyCheckoutIndex(live + BEGIN + END), /more than once/, 'a duplicated block');
-assert.throws(() => unapplyCheckoutIndex(live.replace('  /* checkout:begin gate-create */\n', '  x; /* checkout:begin gate-create */\n')), /own lines/, 'a marker sharing a base line');
-assert.throws(() => unapplyCheckoutIndex(live.replace('/* checkout:end gate-bind */', '/* checkout:end gate-bindx */')), /missing|unknown/, 'a renamed S2 marker');
+assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(live.replace(BEGIN, '/* checkout:BEGIN */\n'))), /missing/, 'a missing begin');
+assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(live.replace(END, '/* checkout:END */\n'))), /missing/, 'a missing end');
+assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(live + BEGIN + END)), /more than once/, 'a duplicated block');
+assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(live.replace('  /* checkout:begin gate-create */\n', '  x; /* checkout:begin gate-create */\n'))), /own lines/, 'a marker sharing a base line');
+assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(live.replace('/* checkout:end gate-bind */', '/* checkout:end gate-bindx */'))), /missing|unknown/, 'a renamed S2 marker');
 assert.notStrictEqual(toBase(live.replace('exports.verifyOtp', 'exports.verifyOtP')), base, 'an edit OUTSIDE the hunks is detected');
 // S3a placement: each platform hand-off is the FIRST statement after its handler's POST check (before any read / write); the
 // forms' path below it is byte-identical (proven by (i)); exactly the bodies carrying `context` leave

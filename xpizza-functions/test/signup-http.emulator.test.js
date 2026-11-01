@@ -248,12 +248,15 @@ const LEGAL = { terms_url: 'https://legal.test/terminos', privacy_url: 'https://
     await rtdb.ref('auth_links/google/2000001').set({ uid: UB, at: 1 });
     await rtdb.ref('auth_links/google/2000009').set({ uid: 'u_' + 'f'.repeat(24), at: 1 });
     await rtdb.ref(`user_private/${'u_' + 'f'.repeat(24)}`).set({ deleted_at: 7 });   // a link that raced an earlier deletion
-    // interleave: A logs in AFTER the sweep's read (pruneCandidates) and BEFORE A's tombstone transaction
-    const realCandidates = ACCOUNT.pruneCandidates; const realTomb = S.tombstone;
+    // interleave: A logs in AFTER the sweep's read (pruneCandidates) and BEFORE A's CLAIM (security r2: the decision point is the
+    // claim txn on user_profiles/{uid}); Codex r1 P1-b's repro — the login's last_active refresh FAILS, so only the lifecycle gate's
+    // authoritative last_login can save A
+    const realCandidates = ACCOUNT.pruneCandidates; const realClaim = S.sweepClaim; const realTouch = S.touchActivity;
     let interleaved = false, loginDone = null;
-    ACCOUNT.pruneCandidates = (profiles, cutoff) => { const c = realCandidates(profiles, cutoff); loginDone = phoneLogin(PA, 'x_pizza'); return c; };
-    S.tombstone = async (db, uid, opts) => { if (uid === UA && !interleaved) { interleaved = true; await loginDone; } return realTomb(db, uid, opts); };
-    try { await app.pruneInactiveAccounts.run({}); } finally { ACCOUNT.pruneCandidates = realCandidates; S.tombstone = realTomb; }
+    ACCOUNT.pruneCandidates = (profiles, cutoff) => { const c = realCandidates(profiles, cutoff); S.touchActivity = async () => false; loginDone = phoneLogin(PA, 'x_pizza'); return c; };
+    S.sweepClaim = async (db, uid, ...rest) => { if (uid === UA && !interleaved) { interleaved = true; await loginDone; } return realClaim(db, uid, ...rest); };
+    try { await app.pruneInactiveAccounts.run({}); } finally { ACCOUNT.pruneCandidates = realCandidates; S.sweepClaim = realClaim; S.touchActivity = realTouch; }
+    assert.strictEqual((await rtdb.ref(`user_private/${UA}/last_active`).once('value')).val(), OLD, 'premise: A\'s last_active refresh FAILED (stayed old)');
     assert.ok(interleaved, 'premise: the login interleaved');
     assert.ok((await rtdb.ref(`user_profiles/${UA}`).once('value')).exists() && !(await rtdb.ref(`user_private/${UA}/deleted_at`).once('value')).exists(), '🔴 the sweep removed an account that logged in after its read');
     assert.strictEqual(await uidOfPhone(PA), UA, 'A keeps its account');
@@ -332,6 +335,43 @@ const LEGAL = { terms_url: 'https://legal.test/terminos', privacy_url: 'https://
     assert.strictEqual((await rtdb.ref(`deleted_uids/${'u_' + 'e'.repeat(24)}`).once('value')).val(), 3, '🔴 security backlog: a legacy user_private tombstone gets deleted_uids (its own deleted_at) on the residual run');
   }
   ok('codex r1: completeProfile / setPromos answer 429 past the per-IP limit; with NO profiles left the scheduled run still removes a dead link and an expired ticket');
+
+  // ── 10. security r2 — L1 (forms verifyOtp) through the REAL export: the lifecycle gate ──
+  {
+    const SEc = require('../signup-endpoints'); const Sc = require('../signup-core');
+    // (a) a deleted account whose phone_index was RETAINED (the legacy shape) ⇒ the next login lands on a FRESH uid, never the dead one
+    const P = '+50498880001';
+    let v = await phoneLogin(P, 'x_pizza'); assert.ok(v.json.ok, v.text); const A = await uidOfPhone(P);
+    assert.ok((await call(app.deleteAccount, { headers: { 'x-firebase-id-token': `idt:${A}` } })).json.ok);
+    assert.strictEqual(await uidOfPhone(P), null, 'the deletion removed phone_index (CAS: it still named the deleted uid)');
+    await rtdb.ref(`phone_index/${require('../otp-lib').phoneHash(P)}`).set(A);   // the legacy RETAINED index
+    v = await phoneLogin(P, 'x_pizza'); assert.ok(v.json.ok && v.json.is_new === true, v.text);
+    const A2 = await uidOfPhone(P);
+    assert.ok(A2 && A2 !== A, '🔴 Codex P1-a: never the tombstoned uid — a FRESH one, phone_index repointed');
+    assert.ok(MINTED.some((m) => m.uid === A2) && !MINTED.slice(-1).some((m) => m.uid === A), 'the token is for the fresh uid');
+    assert.ok((await rtdb.ref(`user_profiles/${A2}`).once('value')).exists() && !(await rtdb.ref(`user_profiles/${A}`).once('value')).exists(), 'the dead uid stays dead');
+    // (b) a REVIVED account (profile present + stale tombstones) keeps its uid and its orders (advisor ruling 2)
+    const P2 = '+50498880002';
+    v = await phoneLogin(P2, 'x_pizza'); const R = await uidOfPhone(P2);
+    await rtdb.ref(`deleted_uids/${R}`).set(1); await rtdb.ref(`user_private/${R}`).set({ deleted_at: 1 }); await rtdb.ref(`user_orders/${R}/o_after`).set(true);
+    v = await phoneLogin(P2, 'x_pizza'); assert.ok(v.json.ok && v.json.is_new === false, v.text);
+    assert.strictEqual(await uidOfPhone(P2), R, '🔴 a revived account keeps its uid');
+    assert.ok((await rtdb.ref(`user_orders/${R}/o_after`).once('value')).exists(), 'and its post-revival orders');
+    // (c) a profile a sweep CLAIMED ⇒ the login lands on a fresh uid (the claim linearizes ahead of it)
+    const P3 = '+50498880003';
+    v = await phoneLogin(P3, 'x_pizza'); const C = await uidOfPhone(P3);
+    await rtdb.ref(`user_profiles/${C}/deleting_at`).set(Date.now());
+    v = await phoneLogin(P3, 'x_pizza'); assert.ok(v.json.ok, v.text);
+    assert.notStrictEqual(await uidOfPhone(P3), C, '🔴 a claimed uid is never handed to a login');
+    // (d) the gate's cost (advisor ruling 1: measured; inside the seamless budget) — one txn on the profile node, emulator p50 / p95
+    const live = await uidOfPhone(P2); const ms = [];
+    for (let i = 0; i < 60; i += 1) { const t0 = process.hrtime.bigint(); assert.strictEqual(await Sc.loginTouch(rtdb, live, Date.now()), 'live'); ms.push(Number(process.hrtime.bigint() - t0) / 1e6); }
+    ms.sort((x, y) => x - y); const p50 = ms[Math.floor(ms.length * 0.5)], p95 = ms[Math.floor(ms.length * 0.95)];
+    console.log(`  · lifecycle gate (loginTouch) emulator latency: p50 ${p50.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms (n=${ms.length})`);
+    assert.ok(p95 < 250, `the gate stays cheap on the emulator (p95 ${p95.toFixed(1)} ms)`);
+    void SEc;
+  }
+  ok('security r2 L1 through the REAL verifyOtp: a deleted uid with a retained phone_index ⇒ a FRESH uid (token for it, the dead uid stays dead); a revived account keeps its uid + orders; a claimed profile ⇒ a fresh uid; the gate measured (p50/p95 logged)');
 
   clearTimeout(WATCHDOG);
   console.log(`\nsignup-http.emulator: OK (${n})`);

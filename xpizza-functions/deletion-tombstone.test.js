@@ -12,6 +12,10 @@ const SE = require('./signup-endpoints');
 const ACCOUNT = require('./account-lib');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+// a hanging await empties the event loop and Node exits rc 0 WITHOUT finishing — that is a FAILURE, never a silent pass
+let FINISHED = false;
+process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('deletion-tombstone: FAILED — exited without completing (a hang)'); process.exitCode = 1; } });
+const within = (p, ms, label) => { let t; return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(new Error(`${label}: not done within ${ms} ms`)), ms); })]).finally(() => clearTimeout(t)); };
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 function fakeDb() {
   const tree = {};
@@ -240,7 +244,7 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
     const db = fakeDb(); seedAccount(db);
     const realRef = db.ref; db.ref = (p) => (String(p).startsWith('dispatcher_alerts/') ? { transaction: () => new Promise(() => {}) } : realRef(p));
     const t0 = Date.now();
-    const { r, logs } = await quietly(() => SE.deleteAccountCore(db, ACCOUNT, { uid: UID, phoneHash: PH, now: 800, revoke: async () => { throw new Error('x'); }, revokeDeadlineMs: 50 }));
+    const { r, logs } = await within(quietly(() => SE.deleteAccountCore(db, ACCOUNT, { uid: UID, phoneHash: PH, now: 800, revoke: async () => { throw new Error('x'); }, revokeDeadlineMs: 50 })), 3000, '🔴 a hanging alert write blocked the deletion');
     assert.strictEqual(r, true, '🔴 a HANGING alert write never blocks the deletion'); assert.ok(Date.now() - t0 < 2000, 'bounded');
     assert.ok(logs.some((l) => /alert/i.test(l) && /timeout/i.test(l) && l.includes(UID)), 'the alert timeout is logged');
     const db2 = fakeDb(); seedAccount(db2);
@@ -291,5 +295,6 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
   }
   ok('L3 Google (linked): the lifecycle gate bumps user_profiles.last_login; a claimed profile ⇒ account_unavailable');
 
+  FINISHED = true;
   console.log(`\ndeletion-tombstone: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });
