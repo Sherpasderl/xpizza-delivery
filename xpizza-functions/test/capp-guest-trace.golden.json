@@ -1,0 +1,149 @@
+{
+ "create_refusal": [],
+ "charge_refusal": [
+  {
+   "op": "once",
+   "path": "checkout_tickets/fee1d3224c6daf5821fe092ef8d20ce6987629fac8a7500d88300958687e9a71"
+  }
+ ],
+ "charge_fresh": [
+  {
+   "op": "once",
+   "path": "checkout_tickets/<ticketKey>"
+  },
+  {
+   "op": "once",
+   "path": "orders/<oid>"
+  },
+  {
+   "op": "once",
+   "path": "orders/<oid>"
+  },
+  {
+   "op": "once",
+   "path": "recent_order_content/6c6a35031fb945e474fd6227c81e6103/58ac14cf3c0bd82407ad7334cc599034"
+  },
+  {
+   "op": "set",
+   "path": "recent_order_content/6c6a35031fb945e474fd6227c81e6103/58ac14cf3c0bd82407ad7334cc599034",
+   "keys": [
+    "at",
+    "order_id",
+    "payment_method"
+   ]
+  },
+  {
+   "op": "once",
+   "path": "recent_order_content/6c6a35031fb945e474fd6227c81e6103"
+  },
+  {
+   "op": "transaction",
+   "path": "rate_limits/ip/12ca17b49af2289436f303e0166030a2"
+  },
+  {
+   "op": "transaction",
+   "path": "rate_limits/phone/6c6a35031fb945e474fd6227c81e6103"
+  },
+  {
+   "op": "once",
+   "path": "orders/<oid>"
+  },
+  {
+   "op": "once",
+   "path": "orders/<oid>"
+  },
+  {
+   "op": "transaction",
+   "path": "orders/<oid>"
+  },
+  {
+   "op": "update",
+   "path": "payment_attempts/<active_attempt_id>",
+   "keys": [
+    "hosted_created_at",
+    "hosted_expires_at",
+    "hosted_order_id",
+    "hosted_state",
+    "order_id",
+    "poll_token",
+    "total_cents"
+   ]
+  },
+  {
+   "op": "once",
+   "path": "orders/<oid>"
+  },
+  {
+   "op": "update",
+   "path": "payment_attempts/<active_attempt_id>",
+   "keys": [
+    "hosted_checkout_url",
+    "hosted_state",
+    "updated_at"
+   ]
+  },
+  {
+   "op": "once",
+   "path": "orders/<oid>"
+  }
+ ],
+ "charge_replay": [
+  {
+   "op": "once",
+   "path": "checkout_tickets/<ticketKey>"
+  },
+  {
+   "op": "once",
+   "path": "orders/<oid>"
+  },
+  {
+   "op": "once",
+   "path": "orders/<oid>"
+  },
+  {
+   "op": "once",
+   "path": "payment_attempts/<active_attempt_id>"
+  },
+  {
+   "op": "once",
+   "path": "recent_order_content/6c6a35031fb945e474fd6227c81e6103/58ac14cf3c0bd82407ad7334cc599034"
+  },
+  {
+   "op": "set",
+   "path": "recent_order_content/6c6a35031fb945e474fd6227c81e6103/58ac14cf3c0bd82407ad7334cc599034",
+   "keys": [
+    "at",
+    "order_id",
+    "payment_method"
+   ]
+  },
+  {
+   "op": "once",
+   "path": "recent_order_content/6c6a35031fb945e474fd6227c81e6103"
+  },
+  {
+   "op": "transaction",
+   "path": "rate_limits/ip/12ca17b49af2289436f303e0166030a2"
+  },
+  {
+   "op": "once",
+   "path": "orders/<oid>"
+  },
+  {
+   "op": "once",
+   "path": "orders/<oid>"
+  },
+  {
+   "op": "once",
+   "path": "payment_attempts/<active_attempt_id>"
+  },
+  {
+   "op": "once",
+   "path": "orders/<oid>"
+  },
+  {
+   "op": "once",
+   "path": "orders/<oid>"
+  }
+ ]
+}
