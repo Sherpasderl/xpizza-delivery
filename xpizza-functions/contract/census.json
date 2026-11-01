@@ -50250,6 +50250,18 @@
    "class": "io-deadline"
   },
   {
+   "key": "xpizza-functions/phone/flag.js:_withTimeout>anon:setTimeout",
+   "line": 36,
+   "delay": "ms",
+   "class": "io-deadline"
+  },
+  {
+   "key": "xpizza-functions/phone/login-gate.js:allowedCountries>anon:setTimeout",
+   "line": 50,
+   "delay": "TIMEOUT_MS",
+   "class": "io-deadline"
+  },
+  {
    "key": "xpizza-functions/pickup-label.js:readLiveBrand>anon:setTimeout",
    "line": 40,
    "delay": "READ_TIMEOUT_MS",
@@ -51440,6 +51452,36 @@
   {
    "key": "xpizza-functions/merchant/merchant-wiring.js:newOpId:Date.now()",
    "line": 28,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/phone/flag.js:phoneWireStrict:Date.now()",
+   "line": 39,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/phone/flag.js:phoneWireStrict>anon:Date.now()",
+   "line": 46,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/phone/flag.js:phoneWireStrict>anon:Date.now()",
+   "line": 51,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/phone/flag.js:phoneWireStrictNow:Date.now()",
+   "line": 61,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/phone/login-gate.js:allowedCountries:Date.now()",
+   "line": 42,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/phone/login-gate.js:otpLoginAllowed:Date.now()",
+   "line": 64,
    "class": "business-sample"
   },
   {

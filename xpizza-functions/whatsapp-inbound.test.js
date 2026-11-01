@@ -106,12 +106,13 @@ assert.strictEqual(resolveMuteWindowMs(0), WMS); ok('window: 0 → default');
 assert.strictEqual(resolveMuteWindowMs(-5), WMS); ok('window: negative → default');
 assert.strictEqual(resolveMuteWindowMs('nope'), WMS); ok('window: NaN → default');
 
-// muteKeyFor — same last-8 suffix as order-matching; inbound-from & outbound-to → one leaf
-assert.strictEqual(muteKeyFor('50499887766@c.us'), '99887766'); ok('key: strips @c.us + last-8');
-assert.strictEqual(muteKeyFor('50499887766'), '99887766'); ok('key: bare 504 number → last-8');
-assert.strictEqual(muteKeyFor('+50499887766'), '99887766'); ok('key: +504 → last-8');
-assert.strictEqual(muteKeyFor('99887766'), '99887766'); ok('key: 8-digit local → itself');
+// muteKeyFor — INTL S-match: the FULL identity digits (an intentionally replaced suffix key, plan r1 §9); inbound-from & outbound-to → one leaf
+assert.strictEqual(muteKeyFor('50499887766@c.us'), '50499887766'); ok('key: strips @c.us → the identity digits');
+assert.strictEqual(muteKeyFor('50499887766'), '50499887766'); ok('key: bare 504 number → itself');
+assert.strictEqual(muteKeyFor('+50499887766'), '50499887766'); ok('key: +504 → the identity digits');
+assert.strictEqual(muteKeyFor('99887766'), '50499887766'); ok('key: 8-digit local → +504 identity');
 assert.strictEqual(muteKeyFor('50499887766@c.us'), muteKeyFor('+50499887766')); ok('key: inbound-from == outbound-to leaf (PARITY)');
+assert.notStrictEqual(muteKeyFor('50299887766'), muteKeyFor('50499887766')); ok('key: +502 / +504 with the same last 8 → different leaves (no cross-country mute)');
 assert.strictEqual(muteKeyFor(''), ''); ok('key: empty → empty (caller skips the write)');
 assert.strictEqual(muteKeyFor(null), ''); ok('key: null → empty');
 

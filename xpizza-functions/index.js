@@ -827,7 +827,7 @@ createOrderApp.all('*', async (req, res) => {
   const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP });
   reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
 
-  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [create]
   if (errors.length > 0) {
     return badRequest(res, errors.join('; '));
   }
@@ -1539,7 +1539,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP });
   reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
 
-  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [charge]
   if (errors.length > 0) return badRequest(res, errors.join('; '));
 
   /* checkout:begin gate-method */
@@ -5841,7 +5841,7 @@ exports.onIncomingWhatsApp = onRequest(
     try {
       const mdb = getDatabase();
       const windowMs = inbound.resolveMuteWindowMs((await mdb.ref('config/whatsapp_mute_window_ms').once('value')).val());
-      const muteRec = (await mdb.ref(`whatsapp_mute/${restaurantId}/${inbound.muteKeyFor(fromPhoneRaw)}`).once('value')).val();
+      const muteRec = await require('./phone/match').readMute(mdb, restaurantId, fromPhoneRaw);   // INTL S-match (codex r1 #4): the identity leaf + the legacy last-8 leaf, latest wins — no mute lost at deploy
       if (inbound.shouldSuppressAutoReply(muteRec, Date.now(), windowMs)) {
         await mdb.ref('incoming_messages').push({
           from: data.from, restaurant_id: restaurantId, body,
@@ -5888,9 +5888,9 @@ exports.onIncomingWhatsApp = onRequest(
           // wrong restaurant's number falls through to tplStatusCheckNotFound (no cross-restaurant leak).
           if ((o.restaurant_id || 'x_pizza') !== restaurantId) return false;
           const orderPhoneDigits = String(o.customer_phone).replace(/[^\d]/g, '');
-          // Match by suffix (handles +504, 504, or just 8-digit local)
-          if (!orderPhoneDigits.endsWith(fromPhoneRaw.slice(-8))
-              && !fromPhoneRaw.endsWith(orderPhoneDigits.slice(-8))) {
+          // Match the FULL number (handles +504, 504, or just 8-digit local) — INTL S-match: phone/match.js samePhone
+          if (!require('./phone/match').samePhone(o.customer_phone, fromPhoneRaw)) {   // null / invalid never matches
+            // (was a two-way last-8 suffix match, which let +502 9795-0000 see +504 9795-0000's order)
             return false;
           }
           // Active = not delivered, not cancelled
@@ -7253,7 +7253,7 @@ exports.requestOtp = onRequest(
       const { phone, restaurant_id } = req.body || {};
       const { restaurantId } = resolveRestaurantId(restaurant_id, restaurantRegistry().known());
       const pHash = OTP.phoneHash(phone);
-      if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration
+      if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 }); if (!(await require('./phone/login-gate').otpLoginAllowed({ db: getDatabase(), phone, restaurantId, strict: () => require('./phone/flag').phoneWireStrictNow(getDatabase()) }))) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration (INTL S-core step 4: the per-sender login gate refuses uniformly)
       const now = Date.now();
       const db = getDatabase();
       // per-IP soft cap (secondary; req.ip is the Cloud Run-trusted peer, NOT spoofable XFF — H4)
