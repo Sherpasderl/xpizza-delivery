@@ -21,6 +21,11 @@
 //   unversioned → the old generation is gone → REFUSED (generation_mismatch);  versioned → it survives noncurrent → v1's OLD bytes
 //   (still correct: exactly the bytes the metadata described). v2's bytes = the pin ignored → FAIL. Versioning unreadable → either
 //   correct outcome passes and the report says it was unknown. Cleanup as E4: only this run's generations, generation-scoped, verified.
+// A2-E4 — the DELETE PRECONDITION the photo sweeper relies on (advisor 2026-11-01; the emulator ignores it too — probe
+// xpizza-D4c-grill/dish-photos-heavy-dce03b96/e4-delete-probe/RESULT.md). A third throwaway object drafts/__acceptance__/del-<16 hex>-card.webp:
+// create-only v1 → a plain overwrite v2 → the PRODUCTION sweeper deleter (photos/sweep-io.js deleteIfGeneration) pinned to v1's
+// generation → PASS iff it answers other_generation and v2 is still the live object; a delete that removed v2 = FAIL (the sweeper
+// would destroy a re-created object). Cleanup as above.
 const { privateBucketName, publicBucketName } = require('../photos/buckets');
 const RE_HEX16 = /^[0-9a-f]{16}$/;
 const PARAM_KEYS = Object.freeze(['PHOTOS_PRIVATE_BUCKET', 'PHOTOS_PUBLIC_BUCKET']);
@@ -35,6 +40,11 @@ function acceptancePath(hex) {
 function pinPath(hex) {
   if (!RE_HEX16.test(String(hex))) throw new Error('pinPath needs 16 random hex characters');
   return `drafts/__acceptance__/e5-${hex}-card.webp`;
+}
+
+function deletePinPath(hex) {
+  if (!RE_HEX16.test(String(hex))) throw new Error('deletePinPath needs 16 random hex characters');
+  return `drafts/__acceptance__/del-${hex}-card.webp`;
 }
 
 function parseArgs(argv) {
@@ -91,7 +101,7 @@ function readBucketParams(functionsDir, projectId, { lines = dotenvLines } = {})
 
 // the dry-run plan: the resolved bucket NAMES (not secrets — they let the owner confirm the target) and nothing else from the dotenv
 function dryRunMessage({ projectId, privateBucket, publicBucket, bucket }) {
-  return `photo-create-only-check: DRY — project ${projectId}; private ${privateBucket}, public ${publicBucket}. With --yes: write ONE throwaway object drafts/__acceptance__/e4-<random>-card.webp to gs://${bucket} twice, concurrently, create-only; then ONE more, drafts/__acceptance__/e5-<random>-card.webp, created, overwritten once, and read pinned to its first generation (unversioned → refused; versioned → the old bytes); then delete only the generations it created, generation-scoped, and verify them gone.`;
+  return `photo-create-only-check: DRY — project ${projectId}; private ${privateBucket}, public ${publicBucket}. With --yes: write ONE throwaway object drafts/__acceptance__/e4-<random>-card.webp to gs://${bucket} twice, concurrently, create-only; then ONE more, drafts/__acceptance__/e5-<random>-card.webp, created, overwritten once, and read pinned to its first generation (unversioned → refused; versioned → the old bytes); then a third, drafts/__acceptance__/del-<random>-card.webp, created, overwritten once, and deleted by the photo sweeper's deleter pinned to its first generation (must be refused, the new object kept); then delete only the generations it created, generation-scoped, and verify them gone.`;
 }
 
 // the private + public identities through photos/buckets.js (production's resolvers), from the dotenv params and the stated project only
@@ -198,7 +208,36 @@ async function runPinCheck({ store, gens, randomHex, log = console }) {
   return { verdict, outcome, versioning, reason, path, cleanup, exitCode: !cleanup.ok ? 3 : pass ? 0 : 1 };
 }
 
-// the CLI's exit code over both checks: cleanup trouble (3) > REFUSED (2) > FAIL (1) > PASS (0)
+// A2-E4 — see the header. Never throws: every failure is a FAIL result, and cleanup always runs over what this run created.
+async function runDeletePinCheck({ store, gens, deleter, randomHex, log = console }) {
+  const path = deletePinPath(randomHex());
+  if (await store.metadata(path)) return { verdict: 'REFUSED', reason: `${path} already exists`, path, exitCode: 2 };
+  const held = new Set();
+  let result = null, reason = '', pass = false;
+  try {
+    const c = await store.createIfAbsent(path, Buffer.from('del-v1'), { contentType: 'image/webp' });
+    if (c && c.created === true) held.add(String(c.generation));
+    if (!c || c.created !== true) reason = 'the create-only save did not create';
+    else {
+      const g2 = String(await gens.overwrite(path, Buffer.from('del-v2-recreated'), { contentType: 'image/webp' }));
+      held.add(g2);
+      if (g2 === String(c.generation)) reason = 'the overwrite kept the generation';
+      else {
+        try { result = await deleter.deleteIfGeneration(path, String(c.generation)); } catch (e) { result = `error:${String((e && (e.code || e.message)) || e).slice(0, 60)}`; }
+        const liveNow = await store.metadata(path);
+        pass = result === 'other_generation' && !!liveNow && String(liveNow.generation) === g2;
+        if (!pass) reason = `the delete pinned to the first generation → ${result}; the re-created object is ${liveNow ? `live at ${liveNow.generation}` : 'GONE'} (expected other_generation and the re-created object live at ${g2})`;
+      }
+    }
+  } catch (e) { reason = String((e && e.message) || e).slice(0, 160); }
+  const verdict = pass ? 'PASS' : 'FAIL';
+  const cleanup = await cleanupHeld(path, held, { store, gens });
+  log.log(`photo-create-only-check (delete precondition): ${verdict} ${JSON.stringify({ result })}${reason ? ` — ${reason}` : ''}`);
+  if (!cleanup.ok) log.log(cleanup.detail);
+  return { verdict, result, reason, path, cleanup, exitCode: !cleanup.ok ? 3 : pass ? 0 : 1 };
+}
+
+// the CLI's exit code over every check: cleanup trouble (3) > REFUSED (2) > FAIL (1) > PASS (0)
 const combineExit = (...codes) => [3, 2, 1].find((c) => codes.includes(c)) || 0;
 
-module.exports = { parseArgs, refuseEmulatorEnv, dotenvLines, readBucketParams, dryRunMessage, resolveTargets, checkTarget, makeGenerationOps, runCheck, acceptancePath, pinPath, runPinCheck, combineExit, cleanupHeld };
+module.exports = { parseArgs, refuseEmulatorEnv, dotenvLines, readBucketParams, dryRunMessage, resolveTargets, checkTarget, makeGenerationOps, runCheck, acceptancePath, pinPath, runPinCheck, combineExit, cleanupHeld, deletePinPath, runDeletePinCheck };

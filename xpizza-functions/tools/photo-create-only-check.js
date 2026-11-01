@@ -11,7 +11,9 @@
 // this run created are deleted, generation-scoped, and verified gone. THEN the E5 generation pin on a second throwaway object
 // drafts/__acceptance__/e5-<random>-card.webp: created, overwritten once, read pinned to its first generation → unversioned bucket:
 // refused; versioned: the old bytes (both correct); the new bytes = FAIL. Its generations are cleaned the same way.
-// Exit = the worse of the two (3 cleanup > 2 REFUSED > 1 FAIL > 0 PASS). Logic, refusals and exit codes: tools/photo-create-only-check-core.js.
+// THEN the A2-E4 delete precondition on a third, drafts/__acceptance__/del-<random>-card.webp: created, overwritten once, deleted by the
+// photo sweeper's own deleter (photos/sweep-io.js) pinned to its first generation → must be refused, the re-created object kept.
+// Exit = the worst of the three (3 cleanup > 2 REFUSED > 1 FAIL > 0 PASS). Logic, refusals and exit codes: tools/photo-create-only-check-core.js.
 // REFUSED (exit 2, nothing touched) before any client: no --project (require-project); a storage-emulator variable; a private or public
 // bucket identity that cannot be resolved (photos/buckets.js over the project's dotenv params — never the operator's shell); the two equal;
 // --bucket not the private one. There is deliberately NO privacy probe (bucket IAM alone cannot prove privacy; see the core's header).
@@ -41,13 +43,16 @@ const admin = require('firebase-admin');
 admin.initializeApp({ projectId: PROJECT_ID });
 const bucket = admin.storage().bucket(args.bucket);
 const { makeGcsStore } = require('../photos/gcs-store');
+const { makeGcsDeleter } = require('../photos/sweep-io');
 
 (async () => {
   const deps = { store: makeGcsStore(bucket), gens: C.makeGenerationOps(bucket), randomHex: () => crypto.randomBytes(8).toString('hex') };
   const r = await C.runCheck(deps);
   const pin = await C.runPinCheck(deps);
+  const del = await C.runDeletePinCheck({ ...deps, deleter: makeGcsDeleter(bucket) });
   console.log(JSON.stringify({ project: PROJECT_ID, bucket: args.bucket,
     createOnly: { path: r.path, verdict: r.verdict, results: r.results, reason: r.reason, cleanup: r.cleanup },
-    generationPin: { path: pin.path, verdict: pin.verdict, outcome: pin.outcome, versioning: pin.versioning, reason: pin.reason, cleanup: pin.cleanup } }, null, 1));
-  process.exit(C.combineExit(r.exitCode, pin.exitCode));
+    generationPin: { path: pin.path, verdict: pin.verdict, outcome: pin.outcome, versioning: pin.versioning, reason: pin.reason, cleanup: pin.cleanup },
+    deletePrecondition: { path: del.path, verdict: del.verdict, result: del.result, reason: del.reason, cleanup: del.cleanup } }, null, 1));
+  process.exit(C.combineExit(r.exitCode, pin.exitCode, del.exitCode));
 })().catch((e) => { console.error(`photo-create-only-check: ERROR — ${String((e && e.message) || e).slice(0, 200)}`); process.exit(3); });

@@ -118,10 +118,15 @@ const edit = makePhotoEditIo({ fs: db, enabled: async () => true });
   const sw = await S.sweepRid({ fs: db, priv: makeGcsDeleter(priv), pub: makeGcsDeleter(pub), now: Date.now, newClaimId: () => `sw${Date.now()}`, log: { info: () => {}, warn: () => {} }, mode: 'live', activeVersionId: (r) => getActiveVersionId(db, r) }, RID);
   assert.ok(sw.deleted.includes(P3), 'A2-E4-SWEPT');
   const [cardLeft] = await priv.file(`drafts/${RID}/${P3}-card.webp`).exists();
-  const [heroLeft] = await priv.file(`drafts/${RID}/${P3}-hero.webp`).exists();
-  assert.deepStrictEqual([cardLeft, heroLeft], [false, true], 'A2-E4-GENERATION-MATCHED (the re-created hero survives)');
+  assert.strictEqual(cardLeft, false, 'A2-E4-MATCHING-GENERATION-DELETED (the card, still at its recorded generation)');
+  // NOT ON THE EMULATOR (advisor ruling, 2026-11-01): "a RE-CREATED object survives" — the emulator ignores ifGenerationMatch on
+  // DELETE (probe xpizza-D4c-grill/dish-photos-heavy-dce03b96/e4-delete-probe/RESULT.md: the production deleter's delete pinned to
+  // the old generation removed the new object), so the re-created hero is NOT asserted here. Where it IS proven:
+  //   · the wire — photos/sweep-io.test.js SWEEP-GCS-GENERATION-MATCHED (delete carries ifGenerationMatch = the recorded generation;
+  //     a 412 → 'other_generation', never deleted);
+  //   · real GCS — the owner's deploy-time acceptance tools/photo-create-only-check.js (its delete-precondition step).
   assert.ok(!sw.deleted.includes(P1), 'A2-E4-RETAINED-VERSION-REFERENCE-PROTECTS (P1 is in v2, still retained)');
-  ok('A2-E4 the live sweeper deletes by recorded generation (a re-created object survives) and never touches a pid a retained version references');
+  ok('A2-E4 the live sweeper deletes the swept pid at its recorded generation and never touches a pid a retained version references (the re-created-object guarantee: real GCS + the wire pin)');
 
   // ── A2-E6 the public copy fails → photo_publish_failed, the pointer never moves ──
   const before = await getActiveVersionId(db, RID);

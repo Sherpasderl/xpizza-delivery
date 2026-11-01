@@ -3,7 +3,7 @@
 // against its own loopback server (the generation-scoped wire shape). The CLI is tools/photo-create-only-check.js.
 // Run: node tools/photo-create-only-check-core.test.js
 const assert = require('assert');
-const { parseArgs, refuseEmulatorEnv, dotenvLines, readBucketParams, dryRunMessage, resolveTargets, checkTarget, makeGenerationOps, runCheck, acceptancePath, pinPath, runPinCheck, combineExit } = require('./photo-create-only-check-core');
+const { parseArgs, refuseEmulatorEnv, dotenvLines, readBucketParams, dryRunMessage, resolveTargets, checkTarget, makeGenerationOps, runCheck, acceptancePath, pinPath, runPinCheck, combineExit, deletePinPath, runDeletePinCheck } = require('./photo-create-only-check-core');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -280,6 +280,57 @@ const run = (b) => runCheck({ store: b.store, gens: b.gens, randomHex: () => HEX
     } finally { if (saved !== undefined) process.env.STORAGE_EMULATOR_HOST = saved; srv.close(); }
   }
   ok('the real SDK: the overwrite is a plain upload (no ifGenerationMatch) returning the new generation; versioning is read from the bucket resource');
+
+  // ── 9. A2-E4 the DELETE precondition (advisor 2026-11-01; the emulator ignores it, e4-delete-probe/RESULT.md): create v1 → plain
+  //       overwrite v2 → the PRODUCTION sweeper deleter's deleteIfGeneration(path, v1) must answer other_generation and leave v2 live ──
+  {
+    const DP = deletePinPath(HEX);
+    assert.strictEqual(DP, `drafts/__acceptance__/del-${HEX}-card.webp`, 'DELCLI-PATH');
+    assert.throws(() => deletePinPath('nope'), /16 random hex/, 'DELCLI-PATH-NEEDS-HEX');
+    // `honours`: the bucket answers a delete pinned to a non-live generation with 412 (real GCS) — false = deletes the live one (emulator)
+    const delBucket = ({ honours = true, preexisting = false, deleteThrows = false, versioned = false }) => {
+      const objs = new Map(); const live = new Map(); let gen = 900; const calls = [];
+      if (preexisting) { const g = String(++gen); live.set(DP, g); objs.set(`${DP}#${g}`, 'x'); }
+      const put = (p, buf) => { const old = live.get(p); const g = String(++gen); objs.set(`${p}#${g}`, buf); live.set(p, g); if (old && !versioned) objs.delete(`${p}#${old}`); return g; };
+      const store = {
+        async metadata(p) { return live.has(p) ? { generation: live.get(p), size: 1 } : null; },
+        async createIfAbsent(p, buf) { if (live.has(p)) return { generation: live.get(p), created: false }; return { generation: put(p, buf), created: true }; },
+      };
+      const gens = {
+        async overwrite(p, buf) { return put(p, buf); },
+        async deleteGeneration(p, g) { calls.push(['deleteGeneration', p, g]); const had = objs.delete(`${p}#${g}`); if (live.get(p) === String(g)) live.delete(p); return had ? 'deleted' : 'missing'; },
+        async generationExists(p, g) { return objs.has(`${p}#${g}`); },
+      };
+      const deleter = {
+        async deleteIfGeneration(p, g) {
+          calls.push(['deleteIfGeneration', p, g]);
+          if (deleteThrows) throw Object.assign(new Error('gcs 503'), { code: 503 });
+          if (!live.has(p)) return 'missing';
+          if (live.get(p) !== String(g) && honours) return 'other_generation';
+          const lg = live.get(p); objs.delete(`${p}#${lg}`); live.delete(p); return 'deleted';
+        },
+      };
+      return { store, gens, deleter, objs, live, calls };
+    };
+    const del = (b) => runDeletePinCheck({ store: b.store, gens: b.gens, deleter: b.deleter, randomHex: () => HEX, ...quiet });
+    let b = delBucket({ honours: true }); let r = await del(b);
+    assert.deepStrictEqual([r.verdict, r.result, r.exitCode], ['PASS', 'other_generation', 0], `DELCLI-HONOURED-PASS ${JSON.stringify(r)}`);
+    assert.ok(b.calls.some((c) => c[0] === 'deleteIfGeneration' && c[2] === '901'), 'DELCLI-DELETE-PINNED-TO-THE-FIRST-GENERATION');
+    assert.ok(r.cleanup.ok && b.objs.size === 0 && !b.live.has(DP), `DELCLI-CLEANUP ${JSON.stringify(r.cleanup)}`);
+    b = delBucket({ honours: true, versioned: true }); r = await del(b);
+    assert.ok(r.verdict === 'PASS' && r.cleanup.ok && b.objs.size === 0, `DELCLI-VERSIONED-CLEANUP-NONCURRENT-TOO ${JSON.stringify(r)} ${[...b.objs.keys()]}`);
+    b = delBucket({ honours: false }); r = await del(b);
+    assert.deepStrictEqual([r.verdict, r.result, r.exitCode], ['FAIL', 'deleted', 1], `DELCLI-PRECONDITION-IGNORED-FAILS (the re-created object was deleted) ${JSON.stringify(r)}`);
+    assert.ok(/re-created/.test(r.reason), `DELCLI-FAIL-SAYS-WHY ${r.reason}`);
+    assert.ok(r.cleanup.ok && b.objs.size === 0, 'DELCLI-FAIL-STILL-CLEANS');
+    b = delBucket({ deleteThrows: true }); r = await del(b);
+    assert.deepStrictEqual([r.verdict, r.exitCode], ['FAIL', 1], `DELCLI-DELETE-ERROR-FAILS ${JSON.stringify(r)}`);
+    assert.ok(r.cleanup.ok && b.objs.size === 0, 'DELCLI-DELETE-ERROR-STILL-CLEANS');
+    b = delBucket({ preexisting: true }); r = await del(b);
+    assert.deepStrictEqual([r.verdict, r.exitCode], ['REFUSED', 2], 'DELCLI-PREEXISTING-REFUSED');
+    assert.ok(!b.calls.length, 'DELCLI-PREEXISTING-NOTHING-TOUCHED');
+  }
+  ok('delete precondition: the sweeper deleter pinned to the first generation → other_generation and the re-created object stays live → PASS; a delete that removed it (the emulator) or a delete error → FAIL; both generations cleaned (noncurrent too); a pre-existing path REFUSED untouched');
 
   FINISHED = true;
   console.log(`photo-create-only-check-core: OK (${n})`);
