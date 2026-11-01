@@ -23,9 +23,9 @@ function fakeDb() {
   const get = (p) => parts(p).reduce((o, k) => (o == null ? undefined : o[k]), tree);
   const set = (p, v) => { const ks = parts(p); if (!ks.length) throw new Error('root set'); let o = tree; for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } if (v === null || v === undefined) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = clone(v); };
   const snap = (v) => ({ exists: () => v != null, val: () => (v == null ? null : clone(v)) });
-  const FAIL = { at: null };   // inject a failure: a path prefix whose next write throws once
-  const HOOK = { after: null, fn: null };   // run fn ONCE right after the next transaction on a path with this prefix (a race interleaving)
-  const guard = (p) => { if (FAIL.at && String(p).startsWith(FAIL.at)) { FAIL.at = null; throw new Error(`injected failure at ${p}`); } };
+  const FAIL = { at: null, skip: 0 };   // inject a failure: a path prefix whose next write throws once (after `skip` matching writes)
+  const HOOK = { after: null, fn: null, skip: 0 };   // run fn ONCE right after the next transaction on a path with this prefix (after `skip` matching ones)
+  const guard = (p) => { if (FAIL.at && String(p).startsWith(FAIL.at)) { if (FAIL.skip > 0) { FAIL.skip -= 1; return; } FAIL.at = null; throw new Error(`injected failure at ${p}`); } };
   const ref = (p = '') => ({
     get: async () => snap(get(p)), once: async () => snap(get(p)),
     set: async (v) => { guard(p); set(p, v); },
@@ -35,7 +35,7 @@ function fakeDb() {
     transaction: async (fn) => {
       guard(p); const next = fn(clone(get(p)) ?? null);
       const out = next === undefined ? { committed: false, snapshot: snap(get(p)) } : (set(p, next), { committed: true, snapshot: snap(get(p)) });
-      if (HOOK.after && String(p).startsWith(HOOK.after)) { const f = HOOK.fn; HOOK.after = null; HOOK.fn = null; await f(); }
+      if (HOOK.after && String(p).startsWith(HOOK.after)) { if (HOOK.skip > 0) HOOK.skip -= 1; else { const f = HOOK.fn; HOOK.after = null; HOOK.fn = null; await f(); } }
       return out;
     },
   });
@@ -202,18 +202,27 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
     const t3 = harness({ legal: false }); const g3 = await grantSetup(t3);
     assert.deepStrictEqual((await t3.call('redeemSignupGrant', redeemBody(g3))).body, { ok: false, reason: 'legal_unconfigured' });
     const t4 = harness(); const g4 = await grantSetup(t4); t4.db.set(`phone_index/${PH}`, 'u_' + 'a'.repeat(24)); t4.db.set('deleted_uids/u_' + 'a'.repeat(24), 1);
-    const d = await t4.call('redeemSignupGrant', redeemBody(g4)); assert.deepStrictEqual([d.statusCode, d.body], [403, { ok: false, reason: 'deleted' }]);
+    // security r2 (advisor ruling 2): a tombstoned uid with NO profile is never revived — the redemption lands on a FRESH uid
+    const d = await t4.call('redeemSignupGrant', redeemBody(g4));
+    assert.strictEqual(d.statusCode, 200, JSON.stringify(d.body));
+    const fresh = t4.db.get(`phone_index/${PH}`);
+    assert.ok(fresh !== 'u_' + 'a'.repeat(24) && /^u_[a-f0-9]{24}$/.test(fresh) && d.body.token === `tok:${fresh}`, '🔴 a FRESH uid, phone_index CAS-repointed, the token for it');
+    // a REVIVED account (profile present + a stale tombstone; the owner migration repairs it) stays refused until repaired
+    const t4b = harness(); const g4b = await grantSetup(t4b); const RV = 'u_' + 'a'.repeat(24);
+    t4b.db.set(`phone_index/${PH}`, RV); t4b.db.set(`deleted_uids/${RV}`, 1); t4b.db.set(`user_profiles/${RV}`, { phone: '50499990000', phone_hash: PH, created_at: 1, last_login: 5 });
+    const d2 = await t4b.call('redeemSignupGrant', redeemBody(g4b)); assert.deepStrictEqual([d2.statusCode, d2.body], [403, { ok: false, reason: 'deleted' }]);
     // a grant already used by ANOTHER uid
     const t5 = harness(); const g5 = await grantSetup(t5); t5.db.set('grants_used/XPZ-G1', { uid: 'u_' + 'b'.repeat(24), at: 1, inputs: {}, legal: {} });
     assert.deepStrictEqual((await t5.call('redeemSignupGrant', redeemBody(g5))).body, { ok: false, reason: 'grant_invalid' });
   }
-  ok('redeemSignupGrant refusals: tampered / foreign-secret / expired / lost or mismatched guest_verified ⇒ grant_invalid (one reason); fields ⇒ bad_request / bad_email; legal_unconfigured; deleted ⇒ 403; another uid\'s use ⇒ grant_invalid; nothing consumed');
+  ok('redeemSignupGrant refusals: tampered / foreign-secret / expired / lost or mismatched guest_verified ⇒ grant_invalid (one reason); fields ⇒ bad_request / bad_email; legal_unconfigured; a tombstoned uid with no profile ⇒ a FRESH uid (security r2), a revived stale-tombstone account ⇒ 403; another uid\'s use ⇒ grant_invalid; nothing consumed');
 
   // ── 7. failure injected after each step, then a retry: one uid, one profile, consent once ──
   for (const at of ['grants_used', 'user_profiles', 'user_private', 'never']) {
     const t = harness();
     const grant = await grantSetup(t);
     if (at !== 'never') t.db.FAIL.at = at;
+    if (at === 'user_profiles') t.db.FAIL.skip = 1;   // security r2: the lifecycle gate's txn touches user_profiles FIRST — fail the PROFILE CREATION step this cell targets
     const first = await t.call('redeemSignupGrant', redeemBody(grant));
     if (at !== 'never') assert.strictEqual(first.statusCode, 500, `${at}: the injected failure surfaces`);
     if (at === 'user_private') assert.strictEqual(Object.keys(t.db.get('user_profiles') || {}).length, 0, '🔴 ruling 2: a FAILED apply undoes the profile this call created');
@@ -294,12 +303,13 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
   // ── 11. Codex S3 r1 P1: a deletion racing a redemption never resurrects the account and never gets a token ──
   {
     const ACCOUNT = require('./account-lib');
-    // the REAL deletion sequence (signup-endpoints deleteAccountCore): the BC2 tombstone FIRST, then today's removals
-    const deleteNow = (t, uid) => async () => { await S.tombstone(t.db, uid, { now: t.now() }); await t.db.ref().update(ACCOUNT.accountDeleteUpdates(uid, PH, t.now())); };
+    // the REAL deletion write (signup-endpoints deleteAccountCore, security r2): BOTH tombstones + the removals in ONE update
+    const deleteNow = (t, uid) => async () => { await t.db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, PH, t.now()), [`user_private/${uid}`]: { deleted_at: t.now() } }); };
     for (const after of ['grants_used', 'user_profiles', 'user_private']) {
       const t = harness();
       const grant = await grantSetup(t);
       t.db.HOOK.after = after;
+      if (after === 'user_profiles') t.db.HOOK.skip = 1;   // security r2: skip the lifecycle gate's txn — race the PROFILE CREATION step
       t.db.HOOK.fn = async () => deleteNow(t, t.db.get(`phone_index/${PH}`) || Object.keys(t.db.get('user_profiles') || {})[0])();
       const r = await t.call('redeemSignupGrant', redeemBody(grant));
       const uid = t.db.get('grants_used/XPZ-G1/uid');
@@ -377,10 +387,11 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
     const ACCOUNT = require('./account-lib');
     const grant = await grantSetup(t);
     t.db.HOOK.after = 'user_profiles';   // right after the redemption's create-if-absent
+    t.db.HOOK.skip = 1;   // security r2: the lifecycle gate's txn touches user_profiles first — race the create-if-absent this cell targets
     t.db.HOOK.fn = async () => {
       const uid = t.db.get(`phone_index/${PH}`);
       const mine = t.db.get(`user_profiles/${uid}`);
-      await S.tombstone(t.db, uid, { now: t.now() }); await t.db.ref().update(ACCOUNT.accountDeleteUpdates(uid, PH, t.now()));
+      await t.db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, PH, t.now()), [`user_private/${uid}`]: { deleted_at: t.now() } });   // the r2 deletion write
       // another call's profile at the same uid with the SAME created_at + phone_hash (no marker of this redemption)
       t.db.set(`user_profiles/${uid}`, { phone: mine.phone, phone_hash: mine.phone_hash, created_at: mine.created_at, last_login: mine.created_at });
     };

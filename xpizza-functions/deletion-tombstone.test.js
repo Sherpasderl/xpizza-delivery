@@ -275,5 +275,21 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
   }
   ok('migration repair-revived-tombstones: dry run (default) lists ONLY revived accounts and writes nothing; --apply clears their stale tombstones; deleted / claimed / inactive accounts untouched; idempotent');
 
+  // ── 11. L3 (Google, linked): the gate bumps the authoritative last_login; a CLAIMED profile is refused ──
+  {
+    const RID = 'x_pizza', SID = 's'.repeat(24);
+    const google = async (db) => {
+      const st = await S.startGoogle(db, { rid: RID, sessionId: SID, now: 1000 });
+      return S.googleSignIn(db, { idToken: 'x', sessionId: SID, rid: RID, now: 1001, verify: async () => ({ ok: true, sub: 'g1', nonce: st.nonce, email: 'a@x.hn', name: 'Ana' }) });
+    };
+    const db = fakeDb(); seedAccount(db);
+    const r = await google(db);
+    assert.deepStrictEqual([r.ok, r.linked, r.uid], [true, true, UID]);
+    assert.strictEqual(db.get(`user_profiles/${UID}/last_login`), 1001, 'the gate wrote the AUTHORITATIVE last_login (the sweep reads it)');
+    const db2 = fakeDb(); seedAccount(db2); db2.set(`user_profiles/${UID}/deleting_at`, 999);
+    assert.deepStrictEqual(await google(db2), { ok: false, reason: 'account_unavailable' }, '🔴 a profile a sweep CLAIMED never gets a Google login');
+  }
+  ok('L3 Google (linked): the lifecycle gate bumps user_profiles.last_login; a claimed profile ⇒ account_unavailable');
+
   console.log(`\ndeletion-tombstone: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

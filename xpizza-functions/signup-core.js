@@ -143,6 +143,9 @@ async function googleSignIn(db, { idToken, sessionId, rid, now, verify }) {
     // the activity transaction is the LAST liveness check: a deletion that committed after isLive() makes it abort → REFUSE
     // (codex build r1 P1-1 — never a token for a uid whose tombstone the transaction saw)
     if (!(await touchActivity(db, link.uid, now))) return { ok: false, reason: 'account_unavailable' };
+    // security r2 (Codex P1-b): THE lifecycle gate — the authoritative last_login on user_profiles, linearized with the sweep's
+    // claim; a claimed profile is refused. FAIL-CLOSED: an infra failure propagates (the handler's generic 500), no token.
+    if ((await loginTouch(db, link.uid, now)) !== 'live') return { ok: false, reason: 'account_unavailable' };
     return { ok: true, linked: true, uid: link.uid, name: peek.name };
   }
   const id = randomId();
