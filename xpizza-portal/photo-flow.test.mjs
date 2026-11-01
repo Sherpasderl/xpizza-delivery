@@ -823,3 +823,14 @@ test('OWNER BUG — the item drawer, the «Nuevo producto» drawer and the crop 
   assert.ok(!drawer(d).querySelector('.phcrop'), 'crop step: left — the file is discarded');
   assert.equal(n(fake.calls || [], 'photoUploadStart'), 0, 'crop step close uploads nothing');
 });
+test('OWNER BUG — photos DARK (flag off): the item drawer and the «Nuevo producto» drawer still close with the approved X icon', async () => {
+  const fake = createPhotoFake({ items: ITEMS(), photosEnabled: false });
+  const { d } = await boot(fake);
+  await openDrawerFor(d, 'Pepperoni');
+  assert.ok(!drawer(d).querySelector('button.uploader'), 'premise: photos are dark — no «Foto» field');
+  assertCloseIcon(drawer(d), 'item drawer (dark)').click(); await settle();
+  assert.ok(!drawer(d).classList.contains('show'), 'item drawer (dark): closed');
+  btnText(d.getElementById('detail'), 'Agregar producto').click(); await settle();
+  assertCloseIcon(drawer(d), '«Nuevo producto» drawer (dark)').click(); await settle();
+  assert.ok(!drawer(d).classList.contains('show'), '«Nuevo producto» drawer (dark): closed');
+});

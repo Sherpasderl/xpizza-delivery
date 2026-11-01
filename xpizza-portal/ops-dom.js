@@ -48,6 +48,9 @@ export function button(cls, label, onClick, { aria, iconName } = {}) {
   return b;
 }
 
+// a drawer's top-right close (.dwx): the approved X icon box — aria-label «Cerrar», no text (the word overflowed the 32×32 box)
+export function closeIcon(onClick, cls = 'dwx') { return button(cls, null, onClick, { aria: 'Cerrar', iconName: 'close' }); }
+
 // a toggle switch (aria-pressed = available)
 export function toggle(on, aria, onClick) {
   const b = el('button', `tog${on ? '' : ' off'}`);
