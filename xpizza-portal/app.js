@@ -896,7 +896,8 @@ function holdDrawerForRename() {
   if (!renamesPending()) return;
   for (const c of $('drawer').querySelectorAll('input, textarea, select')) lockControl(c, true);
   // ruling A — the «Foto» field's controls too (zone, Cambiar / Quitar, Reintentar, Deshacer); a photo is content like a price
-  for (const c of $('drawer').querySelectorAll('button.uploader, .phph2b button, .phacts:not(.phheld) button, .pherr button, .phrm button')) lockControl(c, true);
+  // …except a held upload's «Cancelar» (data-held): its way out (Codex r1 #1)
+  for (const c of $('drawer').querySelectorAll('button.uploader, .phph2b button, .phacts button, .pherr button, .phrm button')) if (!c.closest('[data-held]')) lockControl(c, true);
 }
 const categoryName = (id) => { const c = categoriesOf().find((x) => x && String(x.id) === String(id)); return (c && typeof c.name === 'string' && c.name.trim()) ? c.name : String(id); };
 // What a NEW product inherits from its section — said in the review so the owner knows before publishing.
@@ -1182,9 +1183,10 @@ export function openDrawer(key) {
 // Re-rendered on every group toggle, so it PRESERVES the body's scroll position. Without that, opening
 // a group three down the list snaps the drawer back to the top and the merchant loses the row they
 // were reading — on a menu with a dozen option groups that makes the panel unusable.
-// ruling A (Codex r1 #2) — EVERY drawer render carries the rename lock (renewal, image-error and picker redraws included)
-function renderDrawer() { drawDrawer(); holdDrawerForRename(); }
-function drawDrawer() {
+function renderDrawer() {
+  // ruling A (Codex r1 #2) — EVERY drawer render carries the rename lock (renewal, image-error and picker redraws included),
+  // whichever return it leaves by
+  try {
   const d = $('drawer');
   const scroller = d.querySelector('.dwb');
   const keepScroll = scroller ? scroller.scrollTop : 0;
@@ -1261,6 +1263,7 @@ function drawDrawer() {
   // listeners were all correctly attached to a panel nobody could see.
   d.classList.add('show');
   body.scrollTop = keepScroll;
+  } finally { holdDrawerForRename(); }
 }
 
 // ── A PUBLISHED group's choices, price-only (advisor ruling on portal A) ──────────────────────────────────────────────

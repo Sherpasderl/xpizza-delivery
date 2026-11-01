@@ -138,10 +138,11 @@ export function photoField({ name, view, job, enabled, expanded = false, held = 
   }
   if (job && job.phase === 'ready' && held) {
     // ruling A (Codex r1 #1) — uploaded, but HELD beside a pending section name: the cropped photo with the busy state's own
-    // «Cancelar» (.phheld: the rename lock leaves it on), so the merchant's way out is never «discard everything»
+    // «Cancelar» (data-held: the rename lock leaves it on), so the merchant's way out is never «discard everything»
     const u = el('div', 'uphoto');
     u.append(img('gimg', job.url, P.COPY.alt(name)));
-    const a = el('div', 'phacts phheld');
+    const a = el('div', 'phacts');
+    a.dataset.held = '1';
     const stop = el('button', 'uprm', P.COPY.cancel); stop.type = 'button';
     stop.addEventListener('click', onCancel);
     a.append(stop);

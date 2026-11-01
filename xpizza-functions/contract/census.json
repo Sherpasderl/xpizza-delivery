@@ -4,7 +4,7 @@
   "units": 465,
   "sites": 4124,
   "mapped": 1723,
-  "exempt": 2399,
+  "exempt": 2401,
   "byR": {
    "R9": 66,
    "R8": 131,
@@ -40,7 +40,7 @@
    "server seed": 2,
    "server fixtures": 5,
    "unreachable-on-surface": 337,
-   "page-fn": 427,
+   "page-fn": 429,
    "form-account-profile": 14,
    "form-composer": 55
   },
@@ -45139,7 +45139,7 @@
   },
   {
    "id": "xpizza-portal/app.js#describeAddition#items#0",
-   "line": 913,
+   "line": 914,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45149,7 +45149,7 @@
   },
   {
    "id": "xpizza-portal/app.js#onAddProduct#items#0",
-   "line": 960,
+   "line": 961,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45158,26 +45158,28 @@
    "exempt": true
   },
   {
-   "id": "xpizza-portal/app.js#drawDrawer#items#0",
-   "line": 1196,
+   "id": "xpizza-portal/app.js#renderDrawer#items#0",
+   "line": 1198,
    "kind": "member",
    "facts": [
     "ITEMS"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
-   "id": "xpizza-portal/app.js#drawDrawer#items#1",
-   "line": 1197,
+   "id": "xpizza-portal/app.js#renderDrawer#items#1",
+   "line": 1199,
    "kind": "member",
    "facts": [
     "ITEMS"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/app.js#renderAddDrawer>anon#items#0",
-   "line": 1416,
+   "line": 1419,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45187,7 +45189,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#0",
-   "line": 1565,
+   "line": 1568,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45197,7 +45199,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#1",
-   "line": 1600,
+   "line": 1603,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45207,7 +45209,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#2",
-   "line": 1618,
+   "line": 1621,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45217,7 +45219,7 @@
   },
   {
    "id": "xpizza-portal/app.js#showOutcome>anon#items#0",
-   "line": 2203,
+   "line": 2206,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45227,7 +45229,7 @@
   },
   {
    "id": "xpizza-portal/app.js#showOutcome>anon#items#1",
-   "line": 2208,
+   "line": 2211,
    "kind": "member",
    "facts": [
     "ITEMS"
