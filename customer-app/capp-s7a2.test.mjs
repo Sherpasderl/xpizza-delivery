@@ -914,7 +914,7 @@ function setPromosHandler(i, promosOk) {
   if (b.context !== 'platform') return [400, { ok: false, reason: 'bad_request' }];
   if (!(i.headers && i.headers['x-firebase-id-token'])) return [401, { ok: false, reason: 'unauthenticated' }];
   if (typeof b.value !== 'boolean') return [400, { ok: false, reason: 'bad_request' }];
-  return promosOk ? [200, { ok: true }] : [400, { ok: false, reason: 'not_completed' }];
+  return promosOk ? [200, { ok: true, value: b.value }] : [400, { ok: false, reason: 'not_completed' }];   // the platform answer: the committed value read back (contract §6, 3a 6c513450)
 }
 function g7Server(promosOk = true) {
   const sent = [];
@@ -930,7 +930,7 @@ test('G7 setPromos fake (Codex G7 r1 #4): as strict as the real handler — toda
   assert.deepEqual(P({ context: 'platform', value: 'yes' }), [400, { ok: false, reason: 'bad_request' }], '🔴 G7-fake: a non-boolean value ⇒ bad_request');
   assert.deepEqual(P({ context: 'platform', value: true }, undefined, 'GET'), [405, { ok: false }]);
   const srv = g7Server(), api = require('./capp-signup-api.js').createSignupApi({ endpoints: { setPromos: 'https://ep.test/setPromos' }, fetch: srv.fetch });
-  assert.deepEqual(await api.setPromos({ idToken: 'id:u_ana', value: false }), { ok: true }, '🔴 G7-fake: the client\'s real request is accepted');
+  assert.deepEqual(await api.setPromos({ idToken: 'id:u_ana', value: false }), { ok: true, value: false }, '🔴 G7-fake: the client\'s real request is accepted (the value read back)');
   assert.deepEqual(await api.setPromos({ idToken: null, value: false }), { ok: false, reason: 'unauthenticated' }, 'a tokenless client call is refused, as in production');
 });
 async function g7Boot({ profile = G7_PROFILE({ promos: true }), srv = g7Server(), fbOpts = {} } = {}) {
@@ -977,6 +977,53 @@ test('G7 frame 4b: no served promotions value ⇒ the switch INERT (aria-disable
   const bare = await g7Boot({ profile: null });
   assert.equal(bare.S.qa('.acct-hero .t .bar').length, 3, '🔴 G7-placeholder: three static bars'); assert.ok(bare.S.q('.acct-hero .av.ph'));
   assert.ok(bare.S.q('[data-act="signout"]') && bare.S.q('[data-act="tab"][data-tab="orders"]'));
+});
+// Codex G7 r1 #3: the promotions consent rides the REAL sign-in — the server's profile.promos (an existing account), or the value a
+// successful completeProfile stored (a new one) — into «Listo», the cache and the Cuenta switch; none stored (a legacy account,
+// completion 'off') ⇒ the switch stays INERT and a tap sends nothing (contract §5: promos OMITTED when no consent is stored)
+async function g7SignIn(verify, { complete } = {}) {
+  const fb = fakeFirebase(); const srv = signupServer(verify); const storage = memStorage();
+  const S = bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch } }); await flush(); await flush();
+  await signInViaSheet(S);
+  const h = suHost(S);
+  if (complete) {
+    const em = h.querySelector('#su-email'); em.value = 'ana@gmail.com'; em.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+    S.click(h.querySelector('[data-su="email-go"]')); await flush();
+    const nm = h.querySelector('#su-name'); nm.value = 'Ana Pérez'; nm.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+    for (const id of ['su-terms', ...(complete.promos ? ['su-promos'] : [])]) { const c = h.querySelector('#' + id); c.checked = true; c.dispatchEvent(new S.w.Event('change', { bubbles: true })); await flush(); }
+    S.click(h.querySelector('[data-su="save"]')); await flush(); await flush();
+  }
+  S.click(h.querySelector('[data-su="finish"]')); await flush(); await flush();
+  S.click('.tabbar [data-tab="account"]'); await flush();
+  const row = S.q('[data-act="promos"]'), sw = row && row.querySelector('.switch');
+  return { S, srv, storage, row, live: !!row && row.getAttribute('aria-disabled') === null, on: sw ? sw.getAttribute('aria-checked') : null };
+}
+test('G7 Codex r1 #3: an EXISTING account\'s stored consent (verifyOtp profile.promos) reaches the Cuenta — the switch LIVE at the server\'s value, cached', async () => {
+  const r = await g7SignIn({ ...ANA, profile: { ...ANA.profile, promos: false } });
+  assert.deepEqual([r.live, r.on], [true, 'false'], '🔴 G7-consent: the server\'s value, live');
+  assert.equal(JSON.parse(r.storage.getItem('capp:member_profile')).promos, false, '🔴 G7-consent: cached with the profile');
+});
+test('G7 Codex r1 #3: a NEW account\'s promotions choice, saved by completeProfile, reaches the Cuenta — the switch LIVE at that value', async () => {
+  const r = await g7SignIn({ ...ANA, is_new: true, completion: 'needed', profile: null }, { complete: { promos: true } });
+  const cp = r.srv.sent.find((x) => x[0] === 'completeProfile');
+  assert.equal(cp && cp[1].promos, true, 'premise: the choice was sent');
+  assert.deepEqual([r.live, r.on], [true, 'true'], '🔴 G7-consent: the saved choice, live');
+  assert.equal(JSON.parse(r.storage.getItem('capp:member_profile')).promos, true);
+});
+test('G7 Codex r1 #3: a LEGACY account (completion \'off\', no consent stored ⇒ no profile.promos) — the switch INERT and a tap sends nothing (setPromos would answer not_completed)', async () => {
+  const r = await g7SignIn({ ...ANA, completion: 'off', profile: { name: 'Ana Pérez', email: 'ana@gmail.com' } });
+  assert.equal(r.live, false, '🔴 G7-legacy: no stored consent ⇒ the switch is never live');
+  r.S.click('[data-act="promos"]'); await flush();
+  assert.equal(r.srv.sent.filter((x) => x[0] === 'setPromos').length, 0, '🔴 G7-legacy: a tap sends nothing');
+});
+test('G7 Codex r1 #3 / contract §6: the switch and the cache keep the value setPromos READ BACK from the committed record, not the one sent', async () => {
+  const srv = g7Server(); const f0 = srv.fetch;
+  srv.fetch = async (u, i) => (u.split('?')[0].endsWith('/setPromos') ? (srv.sent.push(['setPromos', JSON.parse(i.body), i.headers['x-firebase-id-token']]), { status: 200, json: async () => ({ ok: true, value: true }) }) : f0(u, i));
+  const r = await g7Boot({ srv });
+  r.S.click('[data-act="promos"]'); await flush(); await flush();
+  assert.equal(srv.sent.find((x) => x[0] === 'setPromos')[1].value, false, 'premise: the tap sent «off»');
+  assert.equal(r.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'true', '🔴 G7-readback: the committed value wins');
+  assert.equal(JSON.parse(r.store.getItem('capp:member_profile')).promos, true, '🔴 G7-readback: cached as committed');
 });
 test('G7 decision 7: while the session RESOLVES, a profile on this device draws the member\'s Cuenta (no height change on resolving); none ⇒ the guest\'s', async () => {
   const fb = fakeFirebase({ persisted: 'u_ana' });

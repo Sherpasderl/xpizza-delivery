@@ -48,7 +48,7 @@
     const emit = (n, d) => { try { (o.onEvent || (() => {}))(n, d); } catch (_) {} };
     // gen: every async continuation belongs to ONE opening of the sheet — closing makes it stale (nothing lands after a close)
     const S = { open: false, gen: 0, pane: 'phone', stack: [], path: 'phone', memberOnly: false, phone: '', email: '', name: '', promos: false, terms: false,
-      google: null, uid: null, isNew: false, completion: null, busy: false, err: '', code: '', resendAt: 0, cfg: null, existing: false };
+      google: null, uid: null, isNew: false, completion: null, confPromos: null, busy: false, err: '', code: '', resendAt: 0, cfg: null, existing: false };
     let tick = null;
     // MOCKUP-capp-member-cuenta-APPROVED-2026-10-27 part B, option (b) (advisor): under runtime.intlPhone the .cc is a BUTTON and the country
     // list is a PANE inside this sheet (its ← Atrás via the pane stack); the national length / local format per country; E.164 on the wire.
@@ -131,10 +131,11 @@
       if (!uid) { S.busy = false; S.err = COPY.codeGeneric; render(); return; }
       // Codex G6 r1 #4: another account than the one verified before (Back to the phone, a new number) starts from ITS data only —
       // nothing of the previous account's name / email / consent carries over (a Google link in progress belongs to this phone)
-      if (S.uid && S.uid !== uid) Object.assign(S, { name: '', email: '', promos: false, terms: false, existing: false, completion: null, google: S.google && S.google.ticket ? S.google : null });
+      if (S.uid && S.uid !== uid) Object.assign(S, { name: '', email: '', promos: false, terms: false, existing: false, completion: null, confPromos: null, google: S.google && S.google.ticket ? S.google : null });
       S.uid = uid; S.isNew = r.isNew === true; S.completion = r.completion; S.vphone = wire();   // the VERIFIED number (Back can edit the field)
       if (r.profile) { if (r.profile.name && !S.name) S.name = r.profile.name; if (r.profile.email && !S.email) S.email = r.profile.email; }
       if (r.name && !S.name) S.name = r.name;
+      S.confPromos = r.profile && typeof r.profile.promos === 'boolean' ? r.profile.promos : null;   // Codex G7 r1 #3: the server's stored consent (none ⇒ null)
       S.busy = false;
       if (r.completion === 'needed') { S.existing = false; if (S.google && S.google.email) { S.email = S.google.email; go('name'); } else go('email'); return; }
       S.existing = true; go('done');
@@ -176,6 +177,7 @@
       S.busy = false;
       if (!r.ok) { S.err = COPY.saveErr; render(); return; }
       S.completion = 'complete';   // the server holds the profile + the Términos: from here every exit is «Listo»
+      S.confPromos = S.promos === true;   // Codex G7 r1 #3: the choice completeProfile just stored
       go('done');
     }
     // Codex G6 r4: ONE finalization latch — once the sheet is closed or finalized, exit / finish / close / guest are no-ops; the flag is
@@ -198,7 +200,7 @@
     const COMPLETE = new Set(['complete', 'off']);
     const isComplete = () => !!S.uid && COMPLETE.has(S.completion);
     const exit = () => (finalized() ? undefined : isComplete() ? finish() : close('close'));
-    function finish() { if (finalized()) return; S.final = true; const d = { uid: S.uid, name: S.name.trim(), phone: S.vphone || wire(), email: S.email.trim() || null, isNew: !S.existing }; S.completion = 'complete'; emit('signed-in', d); close('done'); }
+    function finish() { if (finalized()) return; S.final = true; const d = { uid: S.uid, name: S.name.trim(), phone: S.vphone || wire(), email: S.email.trim() || null, isNew: !S.existing, ...(typeof S.confPromos === 'boolean' ? { promos: S.confPromos } : {}) }; S.completion = 'complete'; emit('signed-in', d); close('done'); }
 
     // ── controls ──
     host.addEventListener('click', (ev) => {
@@ -240,7 +242,7 @@
       // ctx: where it was opened from; prefill: the device marker's full E.164 («Entrá de nuevo»); memberOnly: no guest path (a gate)
       open({ ctx, prefill, memberOnly, scheduleGate } = {}) {
         S.gen++; Object.assign(S, { open: true, pane: 'phone', stack: [], path: 'phone', memberOnly: memberOnly === true, cc: null, phone: prefill ? fmtLocal(localOf(prefill)) : '', email: '', name: '', promos: false, terms: false,
-          google: null, uid: null, isNew: false, completion: null, busy: false, err: '', code: '', resendAt: 0, existing: false, vphone: null, final: false, ctx: ctx || null, scheduleGate: scheduleGate === true });
+          google: null, uid: null, isNew: false, completion: null, confPromos: null, busy: false, err: '', code: '', resendAt: 0, existing: false, vphone: null, final: false, ctx: ctx || null, scheduleGate: scheduleGate === true });
         if (INTL && prefill) { const q = P.parseE164(prefill); if (q) { S.cc = q.cc; S.phone = P.format(q.cc, q.national); } }
         render();
         const g = S.gen;

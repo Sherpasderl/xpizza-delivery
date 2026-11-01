@@ -119,7 +119,7 @@ test('G6 sheet — a NEW phone account: phone → code → email → name + Tér
   assert.deepEqual(b.api.of('completeProfile'), [{ idToken: 'id:u_new', email: 'ana@gmail.com', name: 'Ana Pérez', promos: false }]);
   assert.equal(b.txt('.sg .h1'), '¡Perfil creado!');
   await b.click('[data-su="finish"]');
-  assert.deepEqual(b.events, [['signed-in', { uid: 'u_new', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com', isNew: true }], ['done', {}]]);
+  assert.deepEqual(b.events, [['signed-in', { uid: 'u_new', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com', isNew: true, promos: false }], ['done', {}]]);
   assert.equal(b.host.innerHTML, '', 'closed'); assert.equal(b.auth.calls.out, 0, 'a completed account stays signed in');
 });
 test('G6 sheet — an EXISTING complete account: «¡Hola de nuevo, Ana!» (no completion panes); ✕ on that pane = «Listo» (the member is applied)', async () => {
@@ -213,7 +213,7 @@ test('Codex G6 r1 #4 — A verified, Back ×2, then B: nothing of A (name / emai
   assert.equal(b.q('#su-terms').checked, false, 'nor A\'s consent');
   await b.type('#su-name', 'Beto'); await b.check('su-terms'); await b.click('[data-su="save"]'); await b.click('[data-su="finish"]');
   assert.deepEqual(b.api.of('completeProfile'), [{ idToken: 'id:u_b', email: 'beto@correo.com', name: 'Beto', promos: false }]);
-  assert.deepEqual(b.events.filter((e) => e[0] === 'signed-in'), [['signed-in', { uid: 'u_b', name: 'Beto', phone: '+50488880000', email: 'beto@correo.com', isNew: true }]], 'B\'s profile only');
+  assert.deepEqual(b.events.filter((e) => e[0] === 'signed-in'), [['signed-in', { uid: 'u_b', name: 'Beto', phone: '+50488880000', email: 'beto@correo.com', isNew: true, promos: false }]], 'B\'s profile only');
 });
 test('Codex G6 r3 — a COMPLETE account leaves the sheet as «Listo» by any exit: done → Back → ✕ (phone and Google), the profile saved → Back → ✕; an incomplete one is still undone', async () => {
   const A = { ok: true, token: 'ct:u_a', isNew: false, name: 'Ana Pérez', completion: 'complete', profile: { name: 'Ana Pérez', email: 'ana@gmail.com' } };

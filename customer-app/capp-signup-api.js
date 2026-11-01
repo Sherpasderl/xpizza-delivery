@@ -39,7 +39,8 @@
     const COMPLETION = new Set(['complete', 'needed', 'off']);
     const signedIn = (j) => ({ ok: true, token: j.token, isNew: j.is_new === true, name: typeof j.name === 'string' ? j.name : null,
       completion: COMPLETION.has(j.completion) ? j.completion : 'needed',   // an old server without the field ⇒ ask (never skip consent)
-      profile: j.profile && typeof j.profile === 'object' ? { name: typeof j.profile.name === 'string' ? j.profile.name : null, email: typeof j.profile.email === 'string' ? j.profile.email : null } : null });
+      profile: j.profile && typeof j.profile === 'object' ? { name: typeof j.profile.name === 'string' ? j.profile.name : null, email: typeof j.profile.email === 'string' ? j.profile.email : null,
+        ...(typeof j.profile.promos === 'boolean' ? { promos: j.profile.promos } : {}) } : null });   // Codex G7 r1 #3: the stored consent (omitted when none is stored)
 
     return {
       CONTEXT,
@@ -81,7 +82,8 @@
       // G7 (CONTRACT-capp-signup-platform-wire §6): the member's promotions choice — {context:'platform', value}, the member's ID token
       async setPromos({ idToken, value }) {
         const r = await call(E.setPromos, { idToken, body: { context: CONTEXT, value: value === true } });
-        return r.status === 200 && r.json && r.json.ok === true ? { ok: true } : { ok: false, reason: reasonOf(r) };
+        // the platform answer reads the committed value back ({ok:true, value}, contract §6) — adopted when present
+        return r.status === 200 && r.json && r.json.ok === true ? { ok: true, ...(typeof r.json.value === 'boolean' ? { value: r.json.value } : {}) } : { ok: false, reason: reasonOf(r) };
       },
       async redeemSignupGrant({ grant, email, name, promos }) {
         const r = await call(E.redeemSignupGrant, { body: { grant, context: CONTEXT, email, name, accept_terms: true, promos: promos === true } });

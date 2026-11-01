@@ -248,10 +248,11 @@
     async function togglePromos() {
       const m = S.member; if (!m || typeof m.promos !== 'boolean' || !suApi || promosOv.uid) return;
       const v = !m.promos, uid = m.uid; promosOv.uid = uid; promosOv.v = v; renderNow();   // optimistic
-      let ok = false; try { const tok = await fbAuth.idToken(); ok = !!tok && (await suApi.setPromos({ idToken: tok, value: v })).ok === true; } catch (_) { ok = false; }
+      let ok = false, got = v; try { const tok = await fbAuth.idToken(); const r = tok ? await suApi.setPromos({ idToken: tok, value: v }) : null; ok = !!r && r.ok === true; if (ok && typeof r.value === 'boolean') got = r.value; } catch (_) { ok = false; }
       promosOv.uid = null; promosOv.v = null;
       if (dead || !S.member || S.member.uid !== uid) return;
-      if (ok) { S.member.promos = v; const c = CappDeviceAccount.readProfile(storage, uid); if (c) CappDeviceAccount.rememberProfile(storage, { ...c, promos: v }); }
+      // the committed value read back by the server (contract §6) is what the switch and the cache keep
+      if (ok) { S.member.promos = got; const c = CappDeviceAccount.readProfile(storage, uid); if (c) CappDeviceAccount.rememberProfile(storage, { ...c, promos: got }); }
       renderNow(); if (!ok) toast('No se guardó el cambio. Intentá de nuevo.');   // frame 1b: back to its value
     }
     // «Cerrar sesión» (no confirm) / «Olvidar este teléfono» (frame 2, then also the device marker): the guest's Cuenta at once (frame 3);

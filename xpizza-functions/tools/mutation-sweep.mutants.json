@@ -25690,5 +25690,73 @@
     "kills_with": [
       "S4-owner"
     ]
+  },
+  {
+    "id": "g7-18",
+    "slice": "g7",
+    "label": "the transport drops the stored consent from the sign-in profile",
+    "file": "../customer-app/capp-signup-api.js",
+    "from": "        ...(typeof j.profile.promos === 'boolean' ? { promos: j.profile.promos } : {}) } : null });",
+    "to": "        } : null });",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex r1 #3",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-consent"
+    ]
+  },
+  {
+    "id": "g7-19",
+    "slice": "g7",
+    "label": "a new account's saved promotions choice is not carried to «Listo»",
+    "file": "../customer-app/capp-signup.js",
+    "from": "      S.confPromos = S.promos === true;   // Codex G7 r1 #3",
+    "to": "      // (mutant) Codex G7 r1 #3",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex r1 #3",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-consent"
+    ]
+  },
+  {
+    "id": "g7-20",
+    "slice": "g7",
+    "label": "«Listo» no longer emits the confirmed consent",
+    "file": "../customer-app/capp-signup.js",
+    "from": "isNew: !S.existing, ...(typeof S.confPromos === 'boolean' ? { promos: S.confPromos } : {}) };",
+    "to": "isNew: !S.existing };",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex r1 #3",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-consent"
+    ]
+  },
+  {
+    "id": "g7-21",
+    "slice": "g7",
+    "label": "the switch keeps the SENT value, not the one setPromos read back",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "if (ok && typeof r.value === 'boolean') got = r.value;",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=READ BACK",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-readback"
+    ]
   }
 ]
