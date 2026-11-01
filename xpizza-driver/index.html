@@ -5569,7 +5569,7 @@ function subscribeDriverRate() {
   try {
     driverRateUnsub = fbOnValue(fbRef(XPD.getDb(), 'platform_rates/driver_per_delivery'),
       (snap) => { driverRateEntries = (snap && snap.val()) || null; if (typeof render === 'function') render(); if (typeof refreshOpenCashSurfaces === 'function') refreshOpenCashSurfaces(); },
-      () => { driverRateEntries = null; if (typeof render === 'function') render(); if (typeof refreshOpenCashSurfaces === 'function') refreshOpenCashSurfaces(); });   // error/cancel: clear an already-shown amount off-screen too, not just the cache
+      () => { driverRateEntries = null; driverRateUnsub = null; if (typeof render === 'function') render(); if (typeof refreshOpenCashSurfaces === 'function') refreshOpenCashSurfaces(); });   // error/cancel: the listener is dead — blank the amount + re-render, AND drop the handle so a later boot can re-subscribe (the `if (driverRateUnsub) return` guard won't block it)
   } catch (_) { driverRateEntries = null; driverRateUnsub = null; }
 }
 // Tear down the platform-rate listener (sign-out / uid change / before a re-subscribe). Called from the auth-transition

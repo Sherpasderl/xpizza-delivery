@@ -31,9 +31,11 @@ function liftFn(name) {
 function mount({ seedEntries = null } = {}) {
   const env = { live: 0, onValueCalls: 0, render: 0, refresh: 0, onNext: null, onError: null };
   const fbOnValue = (ref, onNext, onError) => {
-    env.onValueCalls += 1; env.live += 1; env.onNext = onNext; env.onError = onError;
+    env.onValueCalls += 1; env.live += 1; env.onNext = onNext;
     let alive = true;
-    return () => { if (alive) { alive = false; env.live -= 1; } };   // idempotent unsub (Firebase's returned fn)
+    const kill = () => { if (alive) { alive = false; env.live -= 1; } };   // one live listener removed
+    env.onError = (e) => { kill(); if (onError) onError(e); };   // Firebase cancels the listener when its error callback fires, THEN runs it
+    return () => kill();   // the returned unsubscribe (idempotent)
   };
   const fbRef = (db, path) => ({ db, path });
   const XPD = { getDb: () => ({}) };
@@ -115,6 +117,21 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   api.subscribe();
   assert.equal(env.live, 1, 're-login re-subscribes a single listener');
   ok('sign-out → no listener (idempotent teardown); re-login re-subscribes exactly one');
+}
+
+// ── (4) a cancelled listener must NOT block a later re-subscribe (the error callback drops the handle) ──────────────
+{
+  const { env, api } = mount();
+  api.subscribe();
+  assert.equal(env.live, 1); assert.equal(api.hasHandle(), true);
+  env.onError(new Error('PERMISSION_DENIED'));   // the listener is cancelled/dead
+  assert.equal(api.hasHandle(), false, 'the error callback clears driverRateUnsub (a dead listener leaves no handle)');
+  assert.equal(env.live, 0, 'the cancelled listener is not counted live');
+  // a later boot re-subscribes — the `if (driverRateUnsub) return` guard must NOT block it
+  api.subscribe();
+  assert.equal(env.onValueCalls, 2, 're-subscribe after a cancel actually registers a fresh listener');
+  assert.equal(env.live, 1, 'exactly one live listener after the recovery subscribe');
+  ok('a cancelled listener clears its handle → a later boot re-subscribes (not blocked by the guard)');
 }
 
 console.log(`\nrate-subscription: OK (${n})`);
