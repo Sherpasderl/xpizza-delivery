@@ -11,7 +11,7 @@
 // this run created are deleted, generation-scoped, and verified gone. Logic, refusals and exit codes: tools/photo-create-only-check-core.js.
 // REFUSED (exit 2, nothing touched) before any client: no --project (require-project); a storage-emulator variable; a private or public
 // bucket identity that cannot be resolved (photos/buckets.js over the project's dotenv params — never the operator's shell); the two equal;
-// --bucket not the private one. With --yes, before any write: the bucket's IAM policy grants anything to the public.
+// --bucket not the private one. There is deliberately NO privacy probe (bucket IAM alone cannot prove privacy; see the core's header).
 const path = require('path');
 const crypto = require('crypto');
 const { requireProject } = require('./require-project');
@@ -30,7 +30,7 @@ const why = C.checkTarget({ bucket: args.bucket, privateBucket, publicBucket });
 if (why) refuse(why);
 
 if (!args.yes) {
-  console.log(`photo-create-only-check: DRY — project ${PROJECT_ID}; private ${privateBucket}, public ${publicBucket}. With --yes: verify gs://${args.bucket} grants nothing to the public, then write ONE throwaway object drafts/__acceptance__/e4-<random>-card.webp twice, concurrently, create-only; then delete only the generation(s) it created, generation-scoped, and verify them gone.`);
+  console.log(C.dryRunMessage({ projectId: PROJECT_ID, privateBucket, publicBucket, bucket: args.bucket }));
   process.exit(0);
 }
 
@@ -40,10 +40,6 @@ const bucket = admin.storage().bucket(args.bucket);
 const { makeGcsStore } = require('../photos/gcs-store');
 
 (async () => {
-  let policy = null;
-  try { [policy] = await bucket.iam.getPolicy({ requestedPolicyVersion: 3 }); } catch (_) { policy = null; }
-  const open = C.verifyPrivatePolicy(policy);
-  if (open) refuse(open);
   const r = await C.runCheck({ store: makeGcsStore(bucket), gens: C.makeGenerationOps(bucket), randomHex: () => crypto.randomBytes(8).toString('hex') });
   console.log(JSON.stringify({ project: PROJECT_ID, bucket: args.bucket, path: r.path, verdict: r.verdict, results: r.results, reason: r.reason, cleanup: r.cleanup }, null, 1));
   process.exit(r.exitCode);

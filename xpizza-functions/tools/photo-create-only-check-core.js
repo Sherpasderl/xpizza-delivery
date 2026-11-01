@@ -4,7 +4,10 @@
 // processPhoto's draft writes rely on. One throwaway object: drafts/__acceptance__/e4-<16 random hex>-card.webp in the PRIVATE bucket.
 //   0 REFUSALS before any client (codex r1): a storage-emulator override in the environment; a private or public bucket identity that
 //     cannot be resolved from what production reads (photos/buckets.js over the project's own deploy dotenv params — the operator's shell
-//     never decides them); the two being equal; --bucket not the private one; then, live, a bucket whose IAM policy is public.
+//     never decides them); the two being equal; --bucket not the private one.
+//     NO privacy probe (advisor ruling, codex r2): bucket IAM alone cannot prove privacy (inherited grants, object ACLs), so a partial
+//     probe would only add false assurance. The target is pinned to production's private-bucket identity, and the object is a 2-byte
+//     throwaway at a random path, deleted by generation.
 //   1 the path must not exist (else REFUSED, nothing touched)
 //   2 two concurrent createIfAbsent through the real adapter → PASS iff exactly one created:true and the other created:false, SAME generation
 //   3 cleanup: delete ONLY the generations this run's results hold as created — GENERATION-SCOPED (a versioned bucket would otherwise keep a
@@ -15,7 +18,6 @@ const { privateBucketName, publicBucketName } = require('../photos/buckets');
 const RE_HEX16 = /^[0-9a-f]{16}$/;
 const PARAM_KEYS = Object.freeze(['PHOTOS_PRIVATE_BUCKET', 'PHOTOS_PUBLIC_BUCKET']);
 const EMULATOR_VARS = Object.freeze(['FIREBASE_STORAGE_EMULATOR_HOST', 'STORAGE_EMULATOR_HOST']);
-const PUBLIC_MEMBERS = Object.freeze(['allUsers', 'allAuthenticatedUsers']);
 const is404 = (e) => e && (e.code === 404 || e.code === '404');
 
 function acceptancePath(hex) {
@@ -43,19 +45,41 @@ function refuseEmulatorEnv(env) {
   return set.length ? `${set.join(' and ')} ${set.length > 1 ? 'are' : 'is'} set — this check must run against real GCS, never an emulator` : null;
 }
 
+// a dotenv file, ONE LINE AT A TIME (codex r2): read in small chunks; each complete line is handed out and then dropped — the file is
+// never buffered whole. ENOENT surfaces on the first iteration (the caller treats it as "no such file").
+function* dotenvLines(file, { fsImpl = require('fs'), chunk = 4096 } = {}) {
+  const fd = fsImpl.openSync(file, 'r');
+  try {
+    const buf = Buffer.alloc(chunk); let rest = '';
+    for (;;) {
+      const nRead = fsImpl.readSync(fd, buf, 0, chunk, null);
+      if (nRead === 0) break;
+      const parts = (rest + buf.toString('utf8', 0, nRead)).split(/\r?\n/);
+      rest = parts.pop();
+      for (const line of parts) yield line;
+    }
+    if (rest) yield rest;
+  } finally { fsImpl.closeSync(fd); }
+}
+
 // the two photo bucket params from the project's deploy dotenv files — the files the deployed functions' params are read from
-// (.env, then .env.<projectId> overriding it). ONLY these two keys are parsed; nothing else in the files is read into memory as a value.
-function readBucketParams(functionsDir, projectId, { readFile = require('fs').readFileSync } = {}) {
+// (.env, then .env.<projectId> overriding it). ONLY these two keys are RETAINED; every other line is scanned and discarded unstored.
+function readBucketParams(functionsDir, projectId, { lines = dotenvLines } = {}) {
   const out = {};
   for (const name of ['.env', `.env.${projectId}`]) {
-    let text;
-    try { text = readFile(require('path').join(functionsDir, name), 'utf8'); } catch (e) { if (e && e.code === 'ENOENT') continue; throw e; }
-    for (const line of String(text).split(/\r?\n/)) {
-      const m = /^\s*(PHOTOS_PRIVATE_BUCKET|PHOTOS_PUBLIC_BUCKET)\s*=\s*(.*?)\s*$/.exec(line);
-      if (m) out[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2').trim();
-    }
+    try {
+      for (const line of lines(require('path').join(functionsDir, name))) {
+        const m = /^\s*(PHOTOS_PRIVATE_BUCKET|PHOTOS_PUBLIC_BUCKET)\s*=\s*(.*?)\s*$/.exec(line);
+        if (m) out[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2').trim();
+      }
+    } catch (e) { if (e && e.code === 'ENOENT') continue; throw e; }
   }
   return out;
+}
+
+// the dry-run plan: the resolved bucket NAMES (not secrets — they let the owner confirm the target) and nothing else from the dotenv
+function dryRunMessage({ projectId, privateBucket, publicBucket, bucket }) {
+  return `photo-create-only-check: DRY — project ${projectId}; private ${privateBucket}, public ${publicBucket}. With --yes: write ONE throwaway object drafts/__acceptance__/e4-<random>-card.webp to gs://${bucket} twice, concurrently, create-only; then delete only the generation(s) it created, generation-scoped, and verify them gone.`;
 }
 
 // the private + public identities through photos/buckets.js (production's resolvers), from the dotenv params and the stated project only
@@ -74,13 +98,6 @@ function checkTarget({ bucket, privateBucket, publicBucket }) {
   if (bucket === publicBucket) return `--bucket ${bucket} is the PUBLIC photo bucket — this check only ever writes to the private one`;
   if (bucket !== privateBucket) return `--bucket ${bucket} is not the private photo bucket (${privateBucket})`;
   return null;
-}
-
-// → null when the bucket's IAM policy grants nothing to the public, else the refusal (a private bucket must actually be private)
-function verifyPrivatePolicy(policy) {
-  if (!policy || !Array.isArray(policy.bindings)) return 'the bucket IAM policy could not be read — refusing';
-  const open = policy.bindings.filter((b) => Array.isArray(b.members) && b.members.some((m) => PUBLIC_MEMBERS.includes(m))).map((b) => b.role);
-  return open.length ? `the bucket grants ${open.join(', ')} to the public — it is not the private photo bucket` : null;
 }
 
 // generation-SCOPED operations over a @google-cloud/storage Bucket: one exact generation, live or noncurrent
@@ -123,4 +140,4 @@ async function runCheck({ store, gens, randomHex, log = console }) {
   return { verdict, results, path, cleanup, exitCode: !cleanup.ok ? 3 : ok ? 0 : 1 };
 }
 
-module.exports = { parseArgs, refuseEmulatorEnv, readBucketParams, resolveTargets, checkTarget, verifyPrivatePolicy, makeGenerationOps, runCheck, acceptancePath };
+module.exports = { parseArgs, refuseEmulatorEnv, dotenvLines, readBucketParams, dryRunMessage, resolveTargets, checkTarget, makeGenerationOps, runCheck, acceptancePath };
