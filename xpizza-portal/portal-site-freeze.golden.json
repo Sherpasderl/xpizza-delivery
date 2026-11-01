@@ -45,6 +45,12 @@
   "package.json",
   "pausas.js",
   "perf/portal.origins.json",
+  "photo-contract-fake.mjs",
+  "photo-flow.test.mjs",
+  "photo-logic.js",
+  "photo-logic.test.mjs",
+  "photo.js",
+  "photos-b-fold.mjs",
   "portal-fonts.css",
   "portal-fonts.test.mjs",
   "portal-logic.js",
@@ -112,8 +118,8 @@
    "bytes": 11491
   },
   "netlify.toml": {
-   "sha256": "3ba308669f7d2d17d0a0048cf4c0a97f069deed22f6cad384caf0863bf49704a",
-   "bytes": 2862
+   "sha256": "6398e8dec6883e51292f9754d59d4eb97a378ac957b9deaffd5a1970fc79b520",
+   "bytes": 3704
   },
   "package-lock.json": {
    "sha256": "2a0d35b67d76dd7ddc912326272387f6e960371c9a490ad009e7c8d091de7a7f",
@@ -136,8 +142,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "828de49c22a9138519b8e010ff092ea9f0b53a2b79a72a0ac8953db2316c5c6f",
-   "bytes": 102840
+   "sha256": "1e8e44041ff227b4d254942703ddc1198e08413cad1509b03f0eef910dcb9c3e",
+   "bytes": 108666
   }
  },
  "diff_aid": {
