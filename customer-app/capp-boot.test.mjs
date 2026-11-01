@@ -112,3 +112,10 @@ test('N2: the REAL shell.html modules + the boot (auto-run on CAPP_RUNTIME) pain
   assert.ok(requests >= 1, 'premise: the directory request went out (and is still pending)');
   dom.window.close();
 });
+
+test('D-4a: the boot turns URL routing on for the WEBSITE only — native keeps today\'s navigation (no routing option)', () => {
+  const w = capture(); Boot.boot({}, { runtime: RT({ mode: 'web' }), CappShellUI: w.CappShellUI, CappSignupApi });
+  assert.equal(w.c.opts.routing, true, '🔴 the web boot must enable routing');
+  const n = capture(); Boot.boot({}, { runtime: RT({ mode: 'native' }), CappShellUI: n.CappShellUI, CappSignupApi });
+  assert.equal('routing' in n.c.opts, false, '🔴 native must not route');
+});
