@@ -11,25 +11,46 @@
 //   forms or xpizza-functions/ re-points CAPP_TIP to itself. Fails closed: both resolve, BASE ⊑ CAPP_TIP ⊑ HEAD, git answers.
 //   SELF-ENFORCING (Codex capp-tail r1 P2): any commit after CAPP_TIP that touches customer-app/ FAILS the range until CAPP_TIP is
 //   re-pointed — a later capp commit can never escape the scope checks. This file alone is exempt (a re-pin cannot name itself);
-//   a commit touching it AND anything else under customer-app/ is still caught.
+//   a commit touching it AND anything else under customer-app/ is still caught. At an assembled tip (advisor ruling, 2e dry run):
+//   MERGE commits are not capp commits (--no-merges), and the files tools/sync-client.js WRITES into customer-app/ are another
+//   lane's synced copies — excluded, their list derived by running sync-client itself against a recording fs (never a hand list),
+//   and each is asserted BYTE-IDENTICAL to its source, so the exclusion can never hide an edit.
 // Run: node --test customer-app/capp-guards.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
+import * as nodePath from 'node:path';
+import { createRequire } from 'node:module';
+import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = '2ce3198d';
 const CAPP_TIP = '097471a4';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 const isAncestor = (a, b) => { try { git('merge-base', '--is-ancestor', a, b); return true; } catch (_) { return false; } };
+// the files tools/sync-client.js copies INTO customer-app/ — read from sync-client itself (run against a recording fs; nothing written)
+const syncedIntoApp = () => {
+  const tool = join(ROOT, 'xpizza-functions', 'tools', 'sync-client.js'), real = createRequire(tool), copies = [];
+  const fsRec = { copyFileSync: (src, dst) => copies.push([String(src), String(dst)]) };
+  vm.runInNewContext(readFileSync(tool, 'utf8'), { require: (id) => (id === 'fs' || id === 'node:fs' ? fsRec : id === 'path' || id === 'node:path' ? nodePath : real(id)),
+    __dirname: dirname(tool), __filename: tool, module: { exports: {} }, exports: {}, console: { log() {} } }, { filename: tool });
+  const rel = (p) => relative(ROOT, p).split(sep).join('/');
+  assert.ok(copies.length > 0, 'premise: sync-client was read (it copies files)');
+  const into = copies.map(([s, d]) => ({ src: rel(s), dst: rel(d) })).filter(({ dst }) => dst.startsWith('customer-app/'));
+  assert.ok(into.some(({ dst }) => dst === 'customer-app/sherpa-client.js'), 'non-vacuity: sync-client writes customer-app/sherpa-client.js');
+  return into;
+};
 const capRange = () => {
   for (const sha of [BASE, CAPP_TIP]) assert.equal(git('cat-file', '-t', sha).trim(), 'commit', `🔴 ${sha} is not a commit`);
   assert.ok(isAncestor(BASE, CAPP_TIP), `🔴 ${BASE} is not an ancestor of ${CAPP_TIP} — not the capp range`);
   assert.ok(isAncestor(CAPP_TIP, 'HEAD'), `🔴 ${CAPP_TIP} is not in HEAD's history — the capp range is not part of this tree`);
-  const later = git('log', '--format=%h %s', `${CAPP_TIP}..HEAD`, '--', 'customer-app/', ':(exclude)customer-app/capp-guards.test.mjs').trim();
+  const synced = syncedIntoApp();
+  for (const { src, dst } of synced) assert.ok(readFileSync(join(ROOT, dst)).equals(readFileSync(join(ROOT, src))), `🔴 ${dst} is a sync-client copy but differs from its source ${src} — an edit hidden in a synced file`);
+  const later = git('log', '--no-merges', '--format=%h %s', `${CAPP_TIP}..HEAD`, '--', 'customer-app/', ':(exclude)customer-app/capp-guards.test.mjs',
+    ...synced.map(({ dst }) => `:(exclude)${dst}`)).trim();
   assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP ${CAPP_TIP} — re-point CAPP_TIP to the newest of them:\n${later}`);
   return [BASE, CAPP_TIP];
 };
