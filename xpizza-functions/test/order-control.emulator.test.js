@@ -148,6 +148,32 @@ function assertExtrasDeclared(key, ops) {
 // release's hours read. checkD12 asserts that shape where it is due and its absence everywhere else; only then are they
 // stripped, so nothing else can hide behind the declaration.
 const isD12Read = (o) => o.db === 'rtdb' && o.op === 'once' && /^restaurants\/[^/]+\/identity\/(display_name|name)$/.test(o.path);
+// ORCHESTRATION O1a §5 (DECLARED, exact): the scheduled-release sweep reads restaurants/<rid>/identity/active ONCE (the INACTIVE
+// hold), after the pause return and before the release's hours read. The frozen baseline (5e1d0002, 2026-10-08) predates O1a, so the
+// read is asserted where it is due — exactly one plain read, for THIS restaurant, before the hours read — and absent on every other
+// admitted case; only then is it stripped, so nothing else can hide behind the declaration (the golden is NOT re-captured).
+const isO1aActiveRead = (o) => o.db === 'rtdb' && o.op === 'once' && /^restaurants\/[^/]+\/identity\/active$/.test(o.path);
+function checkO1a(key, ops) {
+  const rid = key.split(' | ')[2];
+  const found = ops.filter((o) => /\/identity\/active$/.test(String(o.path || '')));
+  if (!/^SCHEDULED sweep release \|/.test(key)) { assert.deepStrictEqual(found.map((o) => o.path), [], `🔴 ${key}: an identity/active read where O1a makes none`); return; }
+  assert.strictEqual(found.length, 1, `🔴 ${key}: O1a's INACTIVE-hold read — exactly one (got ${found.length})`);
+  assert.deepStrictEqual([found[0].db, found[0].op, found[0].path], ['rtdb', 'once', `restaurants/${rid}/identity/active`], `🔴 ${key}: O1a's INACTIVE-hold read — ONE plain read of THIS restaurant's identity/active`);
+  const at = ops.indexOf(found[0]), hrs = ops.findIndex((o) => o.path === `restaurants/${rid}/identity/hours`);
+  assert.ok(hrs === -1 || at < hrs, `🔴 ${key}: O1a's read precedes the release's hours read`);
+}
+// sensitivity (pure): a missing / doubled / foreign-restaurant / non-plain / misplaced O1a read, and one on another case, are each caught
+{
+  const act = (rid, op = 'once') => ({ db: 'rtdb', op, path: `restaurants/${rid}/identity/active` });
+  const hours = { db: 'rtdb', op: 'once', path: 'restaurants/x_pizza/identity/hours' };
+  const K = 'SCHEDULED sweep release | open | x_pizza';
+  assert.doesNotThrow(() => checkO1a(K, [act('x_pizza'), hours]));
+  for (const [label, bad] of [['missing', [hours]], ['doubled', [act('x_pizza'), act('x_pizza'), hours]], ['foreign rid', [act('la_musa'), hours]],
+    ['not a plain read', [act('x_pizza', 'transaction'), hours]], ['after hours', [hours, act('x_pizza')]]]) {
+    assert.throws(() => checkO1a(K, bad), /O1a/, `O1a sensitivity: ${label}`);
+  }
+  assert.throws(() => checkO1a('createOrder ok | open | x_pizza', [act('x_pizza')]), /O1a makes none/, 'O1a sensitivity: a read on another case');
+}
 // codex D12 r1 P2-2: a REFUSED request (paused / unavailable / race / a refused scheduled release) makes NO brand read either
 function assertNoD12(key, ops) {
   assert.deepStrictEqual(ops.filter(isD12Read).map((o) => o.path), [], `🔴 ${key}: an identity brand read where D12 makes none`);
@@ -481,9 +507,10 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
     const tx = r.ops.filter((o) => o.db === 'rtdb' && o.op === 'transaction' && o.path === `user_rewards/<uid>/${rid}`);
     assert.strictEqual(tx.length, 2, `🔴 ${key}: exactly the reserve + release transactions on the reward balance (got ${tx.length})`);
   };
-  const stripControl = (ops, label) => DR.without(ops, label, { ignore: isTestOp, ...(/^SCHEDULED sweep release/.test(label) ? { expected: 0 } : {}) }).filter((o) => !isControlRead(o) && !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o) && !isD12Read(o));
+  const stripControl = (ops, label) => DR.without(ops, label, { ignore: isTestOp, ...(/^SCHEDULED sweep release/.test(label) ? { expected: 0 } : {}) }).filter((o) => !isControlRead(o) && !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o) && !isD12Read(o) && !isO1aActiveRead(o));   // DRYRUN (2e): + 5f's O1a INACTIVE-hold read (b85245ef) on S3a's DR.without form
   const goldOps = (ops) => ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o));   // the frozen golden predates the envío read
   const tally = { same: 0, refused: 0 };
+  let O1A_SEEN = 0;   // O1a §5: the six declared cells, counted
   for (const [key, r] of Object.entries(results)) {
     const [name, state] = key.split(' | ');
     const c = CASES.find((x) => x.name === name) || { name, expect: 'scheduled' };
@@ -502,12 +529,20 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         assert.deepStrictEqual(r.body, g.body, `🔴 ${key}: body changed`);
         assert.deepStrictEqual(r.headers, g.headers, `🔴 ${key}: headers changed`);
         checkD12(key, r.ops, g.ops);
+        checkO1a(key, r.ops);
         const s3c = SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) });   // the content the route stamped (createOrder: posted; charge: posted + server reward lines)
         // codex r2 P2 — the mode is DECLARED from what the case IS (a changed cart / a vanished order stamps content it does not persist)
         const mode = /chang|VANISH/i.test(c.name) ? 'unbound' : 'bound';
         const cs = SD.compareShape(stripControl(r.ops, key), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
         if (JSON.stringify(stripControl(r.ops, key)) !== JSON.stringify(goldOps(g.ops))) S3_DIFF += 1;
         assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${key}: the call sequence changed beyond the control read`);
+        if (/^SCHEDULED sweep release \|/.test(key)) {
+          O1A_SEEN += 1;
+          // NEGATIVE (in-suite, O1a §5): the declaration strips exactly O1a's read — an unexpected extra read on the same cell is still a diff
+          const planted = [...r.ops, { db: 'rtdb', op: 'once', path: `restaurants/${key.split(' | ')[2]}/identity/unexpected` }];
+          const neg = SD.compareShape(stripControl(planted, key), goldOps(g.ops),   /* DRYRUN (2e): S3a's stripControl(ops, label) — the label sets DR.without's expected:0 on SCHEDULED cells; without it the negative THROWS instead of diffing */ { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: `${key} (negative)` });
+          assert.notDeepStrictEqual(neg.actual, neg.expected, `🔴 ${key}: NEGATIVE — an unexpected extra read must still turn the cell RED`);
+        }
         const ch = SD.changedShape(r.changed, expectedChangedD12b(g.changed), { content: s3c, bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
         // §3 r3 (codex r3 P1): a card request that wrote its pending order PERSISTED the content keys of the content it stamped
         const post = POST_OF.get(r) || {};
@@ -555,6 +590,8 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
       tally.refused += 1;
     });
   }
+
+  if (!CAPTURE) check(() => assert.strictEqual(O1A_SEEN, 6, `🔴 O1a §5: exactly the 6 SCHEDULED sweep release cells (absent/open/expired × x_pizza/la_musa) were compared (got ${O1A_SEEN})`));
 
   // ── RENDER-ON COMPANION (1D add-product B, PB-2 ruling (A)) ─────────────────────────────────────────────────────────
   // Each render-ON result is compared with the render-OFF result of the SAME case, state and restaurant in THIS process
