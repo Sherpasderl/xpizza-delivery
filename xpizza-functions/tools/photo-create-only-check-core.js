@@ -2,12 +2,21 @@
 // DISH PHOTOS E4 (3) — the owner's real-GCS create-only check, CORE (pure over injected stores; the CLI is tools/photo-create-only-check.js).
 // Why: the Storage emulator lets two CONCURRENT create-only saves both win (heavy 2026-11-01), so only real GCS can prove the guarantee
 // processPhoto's draft writes rely on. One throwaway object: drafts/__acceptance__/e4-<16 random hex>-card.webp in the PRIVATE bucket.
+//   0 REFUSALS before any client (codex r1): a storage-emulator override in the environment; a private or public bucket identity that
+//     cannot be resolved from what production reads (photos/buckets.js over the project's own deploy dotenv params — the operator's shell
+//     never decides them); the two being equal; --bucket not the private one; then, live, a bucket whose IAM policy is public.
 //   1 the path must not exist (else REFUSED, nothing touched)
 //   2 two concurrent createIfAbsent through the real adapter → PASS iff exactly one created:true and the other created:false, SAME generation
-//   3 finally: delete ONLY the generations this run's results hold as created (generation-matched), then confirm the path is gone. An
-//     object left behind whose generation this run does not hold (a create that threw after writing) is NEVER deleted — it is reported.
+//   3 cleanup: delete ONLY the generations this run's results hold as created — GENERATION-SCOPED (a versioned bucket would otherwise keep a
+//     noncurrent copy; codex r1) — and verify each generation is gone (generation-scoped metadata → 404); an object left live whose
+//     generation this run does not hold (a create that threw after writing) is NEVER deleted — it is reported.
 // exitCode: 0 PASS + clean · 1 FAIL + clean · 2 REFUSED · 3 cleanup not confirmed (loud, with the path)
+const { privateBucketName, publicBucketName } = require('../photos/buckets');
 const RE_HEX16 = /^[0-9a-f]{16}$/;
+const PARAM_KEYS = Object.freeze(['PHOTOS_PRIVATE_BUCKET', 'PHOTOS_PUBLIC_BUCKET']);
+const EMULATOR_VARS = Object.freeze(['FIREBASE_STORAGE_EMULATOR_HOST', 'STORAGE_EMULATOR_HOST']);
+const PUBLIC_MEMBERS = Object.freeze(['allUsers', 'allAuthenticatedUsers']);
+const is404 = (e) => e && (e.code === 404 || e.code === '404');
 
 function acceptancePath(hex) {
   if (!RE_HEX16.test(String(hex))) throw new Error('acceptancePath needs 16 random hex characters');
@@ -28,15 +37,65 @@ function parseArgs(argv) {
   return out;
 }
 
-// → null when the target is THE configured private bucket, else the refusal reason
-function checkTarget({ bucket, expectedBucket, publicBucket = null }) {
-  if (publicBucket && bucket === publicBucket) return `--bucket ${bucket} is the PUBLIC photo bucket — this check only ever writes to the private one`;
-  if (!expectedBucket) return 'the private photo bucket could not be resolved for this project';
-  if (bucket !== expectedBucket) return `--bucket ${bucket} is not the private photo bucket (${expectedBucket})`;
+// → the refusal when the environment points Storage at an emulator (the evidence must be real GCS), else null
+function refuseEmulatorEnv(env) {
+  const set = EMULATOR_VARS.filter((k) => typeof env[k] === 'string' && env[k].trim() !== '');
+  return set.length ? `${set.join(' and ')} ${set.length > 1 ? 'are' : 'is'} set — this check must run against real GCS, never an emulator` : null;
+}
+
+// the two photo bucket params from the project's deploy dotenv files — the files the deployed functions' params are read from
+// (.env, then .env.<projectId> overriding it). ONLY these two keys are parsed; nothing else in the files is read into memory as a value.
+function readBucketParams(functionsDir, projectId, { readFile = require('fs').readFileSync } = {}) {
+  const out = {};
+  for (const name of ['.env', `.env.${projectId}`]) {
+    let text;
+    try { text = readFile(require('path').join(functionsDir, name), 'utf8'); } catch (e) { if (e && e.code === 'ENOENT') continue; throw e; }
+    for (const line of String(text).split(/\r?\n/)) {
+      const m = /^\s*(PHOTOS_PRIVATE_BUCKET|PHOTOS_PUBLIC_BUCKET)\s*=\s*(.*?)\s*$/.exec(line);
+      if (m) out[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2').trim();
+    }
+  }
+  return out;
+}
+
+// the private + public identities through photos/buckets.js (production's resolvers), from the dotenv params and the stated project only
+function resolveTargets({ projectId, params }) {
+  let priv = null;
+  try { priv = privateBucketName({ param: () => params.PHOTOS_PRIVATE_BUCKET || '', env: { GCLOUD_PROJECT: projectId } }); } catch (_) { priv = null; }
+  const pub = publicBucketName({ param: () => params.PHOTOS_PUBLIC_BUCKET || '' });
+  return { privateBucket: priv, publicBucket: pub };
+}
+
+// → null when --bucket is THE private bucket and both identities are resolved and distinct, else the refusal reason
+function checkTarget({ bucket, privateBucket, publicBucket }) {
+  if (!privateBucket) return 'the private photo bucket could not be resolved for this project';
+  if (!publicBucket) return 'the public photo bucket (PHOTOS_PUBLIC_BUCKET) could not be resolved for this project — both identities are required';
+  if (privateBucket === publicBucket) return `the private and public photo buckets resolve to the SAME bucket (${privateBucket}) — refusing`;
+  if (bucket === publicBucket) return `--bucket ${bucket} is the PUBLIC photo bucket — this check only ever writes to the private one`;
+  if (bucket !== privateBucket) return `--bucket ${bucket} is not the private photo bucket (${privateBucket})`;
   return null;
 }
 
-async function runCheck({ store, deleter, randomHex, log = console }) {
+// → null when the bucket's IAM policy grants nothing to the public, else the refusal (a private bucket must actually be private)
+function verifyPrivatePolicy(policy) {
+  if (!policy || !Array.isArray(policy.bindings)) return 'the bucket IAM policy could not be read — refusing';
+  const open = policy.bindings.filter((b) => Array.isArray(b.members) && b.members.some((m) => PUBLIC_MEMBERS.includes(m))).map((b) => b.role);
+  return open.length ? `the bucket grants ${open.join(', ')} to the public — it is not the private photo bucket` : null;
+}
+
+// generation-SCOPED operations over a @google-cloud/storage Bucket: one exact generation, live or noncurrent
+function makeGenerationOps(bucket) {
+  return {
+    async deleteGeneration(path, gen) {
+      try { await bucket.file(path, { generation: gen }).delete(); return 'deleted'; } catch (e) { if (is404(e)) return 'missing'; throw e; }
+    },
+    async generationExists(path, gen) {
+      try { await bucket.file(path, { generation: gen }).getMetadata(); return true; } catch (e) { if (is404(e)) return false; throw e; }
+    },
+  };
+}
+
+async function runCheck({ store, gens, randomHex, log = console }) {
   const path = acceptancePath(randomHex());
   if (await store.metadata(path)) return { verdict: 'REFUSED', reason: `${path} already exists`, path, exitCode: 2 };
   // allSettled never throws: a failed create is a result, and cleanup below always runs
@@ -47,22 +106,21 @@ async function runCheck({ store, deleter, randomHex, log = console }) {
   const verdict = ok ? 'PASS' : 'FAIL';
 
   const cleanup = { ok: true, deleted: [], detail: '' };
+  const problems = [];
   try {
-    for (const g of [...held].sort().reverse()) cleanup.deleted.push([g, await deleter.deleteIfGeneration(path, g)]);
-    const left = await store.metadata(path);
-    if (left) {
-      cleanup.ok = false;
-      cleanup.detail = held.has(String(left.generation))
-        ? `CLEANUP-FAILED: ${path} generation ${left.generation} (created by this run) is still there`
-        : `CLEANUP-FAILED: ${path} generation ${left.generation} remains — not created by a result this run holds, so it was NOT deleted; remove it by hand`;
+    for (const g of [...held].sort()) {
+      cleanup.deleted.push([g, await gens.deleteGeneration(path, g)]);
+      if (await gens.generationExists(path, g)) problems.push(`CLEANUP-FAILED: ${path} generation ${g} (created by this run) still exists`);
     }
+    const left = await store.metadata(path);
+    if (left && !held.has(String(left.generation))) problems.push(`CLEANUP-FAILED: ${path} generation ${left.generation} remains — not created by a result this run holds, so it was NOT deleted; remove it by hand`);
   } catch (e) {
-    cleanup.ok = false;
-    cleanup.detail = `CLEANUP-FAILED: ${path} — ${String((e && e.message) || e).slice(0, 160)}`;
+    problems.push(`CLEANUP-FAILED: ${path} — ${String((e && e.message) || e).slice(0, 160)}`);
   }
+  if (problems.length) { cleanup.ok = false; cleanup.detail = problems.join('; '); }
   log.log(`photo-create-only-check: ${verdict} ${JSON.stringify(results)}`);
   if (!cleanup.ok) log.log(cleanup.detail);
   return { verdict, results, path, cleanup, exitCode: !cleanup.ok ? 3 : ok ? 0 : 1 };
 }
 
-module.exports = { parseArgs, checkTarget, runCheck, acceptancePath };
+module.exports = { parseArgs, refuseEmulatorEnv, readBucketParams, resolveTargets, checkTarget, verifyPrivatePolicy, makeGenerationOps, runCheck, acceptancePath };

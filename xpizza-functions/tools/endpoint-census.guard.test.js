@@ -134,6 +134,8 @@ const D = {
   [F('tools/verify-first-group.test.js')]: 'unit: drives the CLI\'s require-project + argument refusals before any client (no data I/O); its spawned CLI points at a dead loopback RTDB port with void credentials',
   [F('test/kds-writer-capture.mjs')]: 'unit: a STUB initializeApp (returns {})', [F('portal/portal-split.test.js')]: 'unit: fold-guard text',
   [F('portal/ops-split.test.js')]: 'unit: static require closure + module-load checks only — no handler is invoked; its emulator hosts are DELETED or set to the dead loopback 127.0.0.1:1 (no data I/O)',
+  [F('tools/photo-create-only-check-core.js')]: 'lib: PURE core of the owner create-only check — names the storage-emulator variables only to REFUSE them (codex r1); no client, no I/O of its own (the CLI injects the bucket)',
+  [F('tools/photo-create-only-check-core.test.js')]: 'unit: fake buckets + ONE real-SDK cell against its OWN loopback server (127.0.0.1, ephemeral port; STORAGE_EMULATOR_HOST deleted for the cell and restored) — no data I/O, no egress (green under tools/egress-guard.js)',
   [F('photos/gcs-store.test.js')]: 'unit: fake buckets + ONE real-SDK cell against its OWN loopback server (127.0.0.1, ephemeral port; STORAGE_EMULATOR_HOST deleted for the cell and restored) — no data I/O, no egress (green under tools/egress-guard.js)',
   [F('photos/photos-split.test.js')]: 'unit: child index.js loads + a static require closure only — no handler is invoked; every emulator host var is DELETED in the children (no data I/O)',
   [F('pselfupdate-client.test.js')]: 'unit: injected fetch, no network', [F('pselfupdate-wrapper-lint.test.js')]: 'unit: lints source text',
