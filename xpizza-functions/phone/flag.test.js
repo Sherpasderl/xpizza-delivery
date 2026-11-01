@@ -113,7 +113,7 @@ const dbOf = (fn) => ({ ref: (p) => ({ once: async () => { assert.strictEqual(p,
       assert.strictEqual(reads.length, n0, 'FLAG-WARM-WAITS-FOR-INFLIGHT (no fresh read while the earlier refresh is still open)');
       release();
       assert.strictEqual(await w, false, 'FLAG-WARM-VALUE');
-      assert.strictEqual(reads.length - n0, 1, 'FLAG-WARM-ONE-FRESH-READ');
+      assert.strictEqual(reads.length - n0, 1, 'FLAG-WARM-ONE-FRESH-READ (after the in-flight refresh settled: never the old promise handed back)');
       const n1 = reads.length; F.phoneWireStrictNow(db); F.phoneWireStrictNow(db); await settle();
       assert.strictEqual(reads.length, n1, 'FLAG-WARM-NEXT-REQUEST-ZERO-READS (a recorded request after the warm reads no flag)');
       v += 29999; F.phoneWireStrictNow(db); await settle();
