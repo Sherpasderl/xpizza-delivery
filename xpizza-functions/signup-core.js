@@ -251,7 +251,14 @@ async function setPromos(db, { uid, rid, value, now, confirm = false }) {
   if (!confirm) return { ok: true };
   const c = r.snapshot && r.snapshot.val();
   const stored = c && c.deleted_at == null && c.consent && c.consent[rid] && c.consent[rid].promos;
-  return stored && typeof stored.value === 'boolean' ? { ok: true, value: stored.value } : { ok: false, reason: 'aborted' };
+  if (!(stored && typeof stored.value === 'boolean')) return { ok: false, reason: 'aborted' };
+  // Codex setPromos r1 P2-1: a retried transaction's snapshot can carry a deletion committed in the same SDK batch — re-read BOTH
+  // tombstones after the commit; either present ⇒ never a success. Otherwise the answer is THIS call's committed value (a later
+  // toggle is its own call's answer). RESIDUAL (as S3's mint): a deletion landing after this post-check is accepted — the consent
+  // write it races is not resurrected (the tombstone REPLACES user_private) and the deleted session can no longer read it.
+  const [gone, del] = await Promise.all([db.ref(`deleted_uids/${uid}`).once('value'), db.ref(`user_private/${uid}/deleted_at`).once('value')]);
+  if (gone.exists() || del.val() != null) return { ok: false, reason: 'aborted' };
+  return { ok: true, value: stored.value };
 }
 
 // ── S3a: the server-side completion state (the forms' account.js suCompletionState, computed here so the app needs no RTDB

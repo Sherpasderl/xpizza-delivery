@@ -23435,5 +23435,41 @@
    "node",
    "signup-platform.test.js"
   ]
+ },
+ {
+  "id": "guest-49",
+  "slice": "guest",
+  "label": "setPromos r1 P2-1: no post-commit tombstone re-check (a deletion in the same batch answers ok)",
+  "file": "signup-core.js",
+  "from": "if (gone.exists() || del.val() != null) return { ok: false, reason: 'aborted' };",
+  "to": "/* no post-check */",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-50",
+  "slice": "guest",
+  "label": "setPromos r1 P2-1: the post-check ignores user_private deleted_at",
+  "file": "signup-core.js",
+  "from": "if (gone.exists() || del.val() != null) return { ok: false, reason: 'aborted' };",
+  "to": "if (gone.exists()) return { ok: false, reason: 'aborted' };",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-51",
+  "slice": "guest",
+  "label": "setPromos r1 P2-1: the post-check ignores deleted_uids",
+  "file": "signup-core.js",
+  "from": "if (gone.exists() || del.val() != null) return { ok: false, reason: 'aborted' };",
+  "to": "if (del.val() != null) return { ok: false, reason: 'aborted' };",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
  }
 ]

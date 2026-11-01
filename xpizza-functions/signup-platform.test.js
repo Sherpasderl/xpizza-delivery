@@ -478,7 +478,42 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
       assert.deepStrictEqual(await S.setPromos(stub(v), { uid: U, rid: '_platform', value: true, now: 1, confirm: true }), { ok: false, reason: 'aborted' }, JSON.stringify(v));
     assert.deepStrictEqual(await S.setPromos(stub(null), { uid: U, rid: '_platform', value: true, now: 1 }), { ok: true }, 'without confirm: today\'s answer');
   }
-  ok('Codex capp batch r1 #4: platform setPromos — own uid only (a body uid ignored), exactly one selector, boolean only, 401 without a customer token; consent/_platform/promos (what profileOf reads) with the platform copy version, terms kept; → {ok, value} READ BACK from the committed record; not_completed / legal_unconfigured; deleted_uids ⇒ 401 and deleted_at ⇒ 403 with nothing written; the forms\' {ok:true} unchanged');
+  {
+    // Codex setPromos r1 P2-1: a deletion that lands with / right after the commit is never a success — both tombstones are re-read
+    const legal = { terms_url: 'u', privacy_url: 'p', terms_version: 't1', privacy_version: 'p1', promos_copy_version: 'c1' };
+    const live = () => ({ email: 'a@x.hn', consent: { _platform: { terms: { version: 't1', at: 1 }, promos: { value: false, copy_version: 'c1', at: 1 } } } });
+    const A = 'u_' + 'j'.repeat(24);
+    const setup = () => { const db = fakeDb(); db.set('platform_config/legal', legal); db.set(`user_private/${A}`, live()); return db; };
+    const sp = (db, value) => S.setPromos(db, { uid: A, rid: '_platform', value, now: 5, confirm: true });
+    // (a) the full deletion (tombstone REPLACES user_private + deleted_uids) commits right after this call's transaction
+    let db = setup(); db.HOOK.after = `user_private/${A}`; db.HOOK.fn = async () => { db.set(`user_private/${A}`, { deleted_at: 9 }); db.set(`deleted_uids/${A}`, 1); };
+    assert.deepStrictEqual(await sp(db, true), { ok: false, reason: 'aborted' }, '🔴 deletion after the commit ⇒ never ok');
+    assert.deepStrictEqual(db.get(`user_private/${A}`), { deleted_at: 9 }, 'the tombstone stands');
+    // (b) each tombstone alone is enough (deletion order: either may land first)
+    db = setup(); db.HOOK.after = `user_private/${A}`; db.HOOK.fn = async () => { db.set(`deleted_uids/${A}`, 1); };
+    assert.deepStrictEqual(await sp(db, true), { ok: false, reason: 'aborted' }, 'deleted_uids alone');
+    db = setup(); db.HOOK.after = `user_private/${A}`; db.HOOK.fn = async () => { db.set(`user_private/${A}`, { ...db.get(`user_private/${A}`), deleted_at: 9 }); };   // a NEW node: the committed snapshot stays this call's
+    assert.deepStrictEqual(await sp(db, true), { ok: false, reason: 'aborted' }, 'deleted_at alone');
+    // (c) a FORCED retry (the SDK's uncached null first, then the server's record) whose committed batch carries the deletion
+    const retryDb = (committedVal, uidsGone) => ({ ref: (p) => ({
+      once: async () => { const v = p === 'platform_config/legal' ? legal : p === `deleted_uids/${A}` ? (uidsGone ? 1 : null) : p === `user_private/${A}/deleted_at` ? (committedVal && committedVal.deleted_at) ?? null : null;
+        return { val: () => v, exists: () => v != null }; },
+      transaction: async (fn) => { const calls = [fn(null), fn(live())]; assert.strictEqual(calls[0], null, 'the uncached first run returns null'); return { committed: true, snapshot: { val: () => committedVal } }; } }) });
+    const ours = { ...live(), consent: { _platform: { terms: { version: 't1', at: 1 }, promos: { value: true, copy_version: 'c1', at: 5 } } } };
+    assert.deepStrictEqual(await sp(retryDb(ours, true), true), { ok: false, reason: 'aborted' }, '🔴 retry: our write committed, deleted_uids in the same batch');
+    assert.deepStrictEqual(await sp(retryDb({ deleted_at: 9 }, true), true), { ok: false, reason: 'aborted' }, 'retry: the batch ends tombstoned');
+    assert.deepStrictEqual(await sp(retryDb(ours, false), true), { ok: true, value: true }, 'retry, no deletion ⇒ the committed value');
+    // (d) concurrent toggles: each call answers ITS OWN committed value; the store holds the last commit
+    db = setup(); let second = null;
+    db.HOOK.after = `user_private/${A}`; db.HOOK.fn = async () => { second = await sp(db, false); };
+    assert.deepStrictEqual(await sp(db, true), { ok: true, value: true }, 'the first call: its own commit');
+    assert.deepStrictEqual(second, { ok: true, value: false }, 'the interleaved second call: its own commit');
+    assert.strictEqual(db.get(`user_private/${A}/consent/_platform/promos/value`), false, 'the last commit stands');
+    db = setup();
+    const both = await Promise.all([sp(db, true), sp(db, false), sp(db, true)]);
+    assert.deepStrictEqual(both.map((x) => x.value), [true, false, true]); assert.strictEqual(db.get(`user_private/${A}/consent/_platform/promos/value`), true);
+  }
+  ok('Codex capp batch r1 #4: platform setPromos — own uid only (a body uid ignored), exactly one selector, boolean only, 401 without a customer token; consent/_platform/promos (what profileOf reads) with the platform copy version, terms kept; → {ok, value} READ BACK from the committed record; not_completed / legal_unconfigured; deleted_uids ⇒ 401 and deleted_at ⇒ 403 with nothing written; a deletion with / after the commit (either tombstone, forced retry) ⇒ aborted, never ok; concurrent toggles answer their own commit; the forms\' {ok:true} unchanged');
 
   console.log(`\nsignup-platform: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

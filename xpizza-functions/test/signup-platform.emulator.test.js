@@ -10,11 +10,16 @@
 //      apply once; 2 concurrent redemptions ⇒ one uid, both mint; refusals
 //   M  getMyProfile: own data only (cross-user, deleted, non-customer); promos omitted / present
 //   S  setPromos(platform) (Codex capp batch r1 #4): the member's own uid, exactly one selector, consent/_platform/promos read back
-//      by getMyProfile, → {ok, value} (the stored value); tombstones write nothing; the forms' {ok:true} unchanged
+//      by getMyProfile, → {ok, value} (the stored value); tombstones write nothing; the forms' {ok:true} unchanged; Codex setPromos r1
+//      P2-2: the REAL database.rules.json through the client SDK — the member reads its own consent/_platform; unauthenticated /
+//      another uid / a handheld token are denied; every client write to consent/_platform is denied
 require('./_emulator-required')('database', 'firestore');
 const assert = require('assert');
 const http = require('http');
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 process.env.OTP_SALT = process.env.OTP_SALT || 'test-salt-'.padEnd(40, 'x');
 process.env.SIGNUP_GRANT_SECRET = 's'.repeat(40);
@@ -174,6 +179,29 @@ const reset = async () => { await rtdb.ref('otp_ip').remove(); await rtdb.ref('r
     assert.deepStrictEqual((await rtdb.ref(`user_private/${B}`).once('value')).val(), snapB, '🔴 a body uid never redirects the write');
     r = await call(app.getMyProfile, { method: 'GET', query: '?context=platform', headers: { 'x-firebase-id-token': `cust:${A}` } });
     assert.strictEqual(r.json.promos, true, 'getMyProfile reads what setPromos wrote');
+    // Codex setPromos r1 P2-2: the Admin SDK above bypasses rules — now the REAL rules, through the client SDK, on the handlers' namespace
+    {
+      const HOST = process.env.FIREBASE_DATABASE_EMULATOR_HOST;
+      const NS = new URL(require('../catalog/mirror-rtdb').RTDB_URL).hostname.split('.')[0];
+      const RULES = fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-reference', 'database.rules.json'), 'utf8');
+      const put = await realFetch(`http://${HOST}/.settings/rules.json?ns=${NS}`, { method: 'PUT', headers: { Authorization: 'Bearer owner' }, body: RULES });
+      assert.ok(put.ok, `rules load failed: ${put.status}`);
+      const env = await initializeTestEnvironment({ projectId: 'demo-xpizza', database: { rules: RULES } });
+      const cdb = (ctx) => ctx.database(`http://${HOST}?ns=${NS}`);
+      const own = cdb(env.authenticatedContext(A, { customer: true }));
+      const other = cdb(env.authenticatedContext('u_' + 's'.repeat(24), { customer: true }));
+      const handheld = cdb(env.authenticatedContext(A, { handheld: true, rid: 'x_pizza' }));
+      const anon = cdb(env.unauthenticatedContext());
+      const CP = `user_private/${A}/consent/_platform`;
+      const mine = await assertSucceeds(own.ref(CP).once('value'));
+      assert.strictEqual(mine.val().promos.value, true, 'the member reads its OWN platform consent — the value setPromos stored');
+      for (const [who, d] of [['unauthenticated', anon], ['another uid', other], ['a handheld token', handheld]]) await assertFails(d.ref(CP).once('value')).catch((e) => { throw new Error(`🔴 ${who} read: ${e.message}`); });
+      for (const [who, d] of [['the member', own], ['another uid', other], ['unauthenticated', anon]])
+        for (const [p, v] of [[`${CP}/promos`, { value: false, copy_version: 'c1', at: 1 }], [`${CP}/promos/value`, false], [CP, { terms: { version: 't1' } }]])
+          await assertFails(d.ref(p).set(v)).catch((e) => { throw new Error(`🔴 ${who} write ${p}: ${e.message}`); });
+      assert.strictEqual((await rtdb.ref(`${CP}/promos/value`).once('value')).val(), true, 'no client write landed');
+      await env.cleanup();
+    }
     for (const b of [{ context: 'platform', restaurant_id: 'x_pizza', value: false }, { context: 'platform', restaurant_id: null, value: false }, { context: 'platform', value: 'false' }])
       assert.deepStrictEqual([(r = await sp(b, `cust:${A}`)).status, r.json], [400, { ok: false, reason: 'bad_request' }], JSON.stringify(b));
     for (const tok of [null, `staff:${A}`]) assert.strictEqual((await sp({ context: 'platform', value: false }, tok)).status, 401, String(tok));
@@ -190,7 +218,7 @@ const reset = async () => { await rtdb.ref('otp_ip').remove(); await rtdb.ref('r
     assert.deepStrictEqual([r.status, r.json], [200, { ok: true }], 'forms: byte-identical answer');
     assert.strictEqual((await rtdb.ref(`user_private/${A}/consent/x_pizza/promos/value`).once('value')).val(), true);
   }
-  ok('S setPromos(platform) through the REAL export: own uid only, one selector, consent/_platform/promos read back by getMyProfile, → {ok, value}; deleted_uids ⇒ 401, deleted_at ⇒ 403, nothing written; the forms\' {ok:true} unchanged');
+  ok('S setPromos(platform) through the REAL export: own uid only, one selector, consent/_platform/promos read back by getMyProfile, → {ok, value}; deleted_uids ⇒ 401, deleted_at ⇒ 403, nothing written; the forms\' {ok:true} unchanged; the REAL rules (client SDK): own read only (anon / other uid / handheld denied), every client write to consent/_platform denied');
 
   FINISHED = true;
   console.log(`\nsignup-platform(emulator): OK (${n})`);
