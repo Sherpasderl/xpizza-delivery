@@ -34,9 +34,9 @@ function canRequestPublish(a, rid) {
   return !!(a && a.ok === true) && f.owner !== true && usesPlatformFactura(rid) && f.manager === true && f.manager_menu === true && a.state === 'member';
 }
 
-// → { status, body }. deps: { fs, db, now, readActiveBuilt(rid), readDraft(rid) }; ctx = the VERIFIED caller { uid, token }.
+// → { status, body }. deps: { fs, db, now, readActiveBuilt(rid), readDraft(rid), photos? {readActive} }; ctx = the VERIFIED caller { uid, token }.
 async function requestPublishCore(deps, ctx, body) {
-  const { fs, db, now = () => Date.now(), readActiveBuilt, readDraft } = deps;
+  const { fs, db, now = () => Date.now(), readActiveBuilt, readDraft, photos = null } = deps;
   const refused = refuseContext(ctx); if (refused) return reply(403, { error: 'forbidden' });
   const rid = body && body.restaurantId;
   const token = body && body.token;
@@ -59,10 +59,17 @@ async function requestPublishCore(deps, ctx, body) {
   } catch (_) { return reply(503, { error: 'store_unavailable', retryable: true }); }
   if (!draft || typeof draft !== 'object') return reply(409, { error: 'source_missing' });
   try { validateSource(draft, rid); } catch (e) { return reply(400, { error: 'invalid_source' }); }
+  /* DISH PHOTOS A2 step 10 — when wired, the SAME photo maps publishEdited / editCatalog put in the diff (so the token re-matches and a
+     photo-only draft is a real change, never nothing_to_publish). Without it: today's diff. */
+  let draftPhotos = null, activePhotos = null;
+  if (photos) {
+    draftPhotos = draft.photos && typeof draft.photos === 'object' && !Array.isArray(draft.photos) && Object.keys(draft.photos).length ? draft.photos : null;
+    try { activePhotos = await photos.readActive(rid, baseActiveVersionId); } catch (_) { return reply(503, { error: 'store_unavailable', retryable: true }); }
+  }
   let diff, sameStructure;
   try {
     const { inputs, built } = buildSourceCandidate(rid, draft);
-    diff = catalogDiff(live, { ...built, extras: inputs.extras });
+    diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, { ...built, extras: inputs.extras, ...(photos ? { photos: draftPhotos } : {}) });
     sameStructure = JSON.stringify(canonicalize(built.structure || null)) === JSON.stringify(canonicalize((live && live.structure) || null));
   } catch (_) { return reply(500, { error: 'draft_build_failed' }); }
   const sourceHash = sha256(draft);

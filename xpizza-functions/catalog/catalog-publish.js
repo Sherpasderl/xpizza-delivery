@@ -1589,7 +1589,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
       db, rid, { ...input, stamps: draftStamps, baseline: baselineAtBuild, stampsResolvedAgainst: partitionBaseline }, nowServer);
     // VERIFY by re-reading via the REAL reader path (proves counts + BOTH hashes + structure BEFORE the flip).
     await readVersionDocs(db, rid, versionId);        // throws on completeness fail (counts + both hashes)
-    await verifyVersionStructure(db, rid, versionId); // throws on a broken menu_structure bijection
+    await verifyVersionStructure(db, rid, versionId); if (input && input.photos) await input.photos.commit(db, rid, versionId); // throws on a broken menu_structure bijection; DISH PHOTOS A2 step 10: meta/photos + registry refs in ONE transaction, BEFORE the flip
     const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable);
     /* READ ONCE, OUTSIDE THE TRANSACTION (identity-flags.js explains why once). */
     const renameOn = await renameEnabled(db, rid);
@@ -1772,7 +1772,7 @@ async function deleteVersion(db, rid, versionId) {
   const [items, extras] = await Promise.all([vref.collection('menu_items').get(), vref.collection('extras').get()]);
   const ops = [];
   items.forEach((d) => ops.push((b) => b.delete(d.ref)));
-  extras.forEach((d) => ops.push((b) => b.delete(d.ref)));
+  extras.forEach((d) => ops.push((b) => b.delete(d.ref))); ops.push((b) => b.delete(vref.collection('meta').doc('photos')));   // DISH PHOTOS A2: meta/photos is deleted with its version
   ops.push((b) => b.delete(vref.collection('meta').doc('menu_structure')));
   ops.push((b) => b.delete(vref.collection('meta').doc('extras_eligibility')));   // per-product extras: deleted with its version
   ops.push((b) => b.delete(vref));

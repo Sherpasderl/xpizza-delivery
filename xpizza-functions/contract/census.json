@@ -1889,7 +1889,7 @@
   },
   {
    "id": "xpizza-functions/catalog/catalog-edit.js#gateFlagsOf#items#0",
-   "line": 52,
+   "line": 53,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -1899,7 +1899,7 @@
   },
   {
    "id": "xpizza-functions/catalog/catalog-edit.js#itemsByKey#items#0",
-   "line": 70,
+   "line": 71,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -2217,7 +2217,7 @@
   },
   {
    "id": "xpizza-functions/catalog/edit-catalog-handler.js#refusal#status#0",
-   "line": 53,
+   "line": 54,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -2230,7 +2230,7 @@
   },
   {
    "id": "xpizza-functions/catalog/edit-catalog-handler.js#editCatalogCore#status#0",
-   "line": 62,
+   "line": 63,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -2243,7 +2243,7 @@
   },
   {
    "id": "xpizza-functions/catalog/edit-catalog-handler.js#editCatalogCore#items#0",
-   "line": 87,
+   "line": 88,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -2253,7 +2253,7 @@
   },
   {
    "id": "xpizza-functions/catalog/edit-catalog-handler.js#editCatalogCore#items#1",
-   "line": 90,
+   "line": 91,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -2263,7 +2263,7 @@
   },
   {
    "id": "xpizza-functions/catalog/edit-catalog-handler.js#editCatalogCore#items#2",
-   "line": 90,
+   "line": 91,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -2273,7 +2273,7 @@
   },
   {
    "id": "xpizza-functions/catalog/edit-catalog-handler.js#editCatalogCore#items#3",
-   "line": 114,
+   "line": 115,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -2283,7 +2283,7 @@
   },
   {
    "id": "xpizza-functions/catalog/edit-catalog-handler.js#editCatalogCore#items#4",
-   "line": 123,
+   "line": 124,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -2293,7 +2293,7 @@
   },
   {
    "id": "xpizza-functions/catalog/edit-catalog-handler.js#editCatalogCore#items#5",
-   "line": 328,
+   "line": 152,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -2303,7 +2303,27 @@
   },
   {
    "id": "xpizza-functions/catalog/edit-catalog-handler.js#editCatalogCore#items#6",
-   "line": 329,
+   "line": 152,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/catalog/edit-catalog-handler.js#editCatalogCore#items#7",
+   "line": 360,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/catalog/edit-catalog-handler.js#editCatalogCore#items#8",
+   "line": 361,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3223,7 +3243,7 @@
   },
   {
    "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#status#0",
-   "line": 75,
+   "line": 76,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -3236,7 +3256,7 @@
   },
   {
    "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#items#0",
-   "line": 133,
+   "line": 123,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3246,7 +3266,7 @@
   },
   {
    "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#items#1",
-   "line": 134,
+   "line": 143,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3256,7 +3276,7 @@
   },
   {
    "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#items#2",
-   "line": 140,
+   "line": 144,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3266,16 +3286,6 @@
   },
   {
    "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#items#3",
-   "line": 141,
-   "kind": "member",
-   "facts": [
-    "ITEMS"
-   ],
-   "rule": "server:catalog",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#items#4",
    "line": 150,
    "kind": "member",
    "facts": [
@@ -3285,7 +3295,7 @@
    "exempt": true
   },
   {
-   "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#items#5",
+   "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#items#4",
    "line": 151,
    "kind": "member",
    "facts": [
@@ -3295,8 +3305,28 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#items#5",
+   "line": 160,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#items#6",
+   "line": 161,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#status#1",
-   "line": 158,
+   "line": 168,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -3308,8 +3338,8 @@
    "exempt": true
   },
   {
-   "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#items#6",
-   "line": 222,
+   "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#items#7",
+   "line": 243,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3339,7 +3369,7 @@
   },
   {
    "id": "xpizza-functions/catalog/publish-request.js#readActiveBuiltFrom#items#0",
-   "line": 134,
+   "line": 141,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3369,7 +3399,7 @@
   },
   {
    "id": "xpizza-functions/catalog/reset-draft.js#resetDraftToLiveCore#status#0",
-   "line": 25,
+   "line": 26,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -3382,7 +3412,7 @@
   },
   {
    "id": "xpizza-functions/catalog/reset-draft.js#resetDraftToLiveCore#items#0",
-   "line": 39,
+   "line": 46,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -16358,6 +16388,160 @@
    ],
    "rule": "server-reader:payment-poll-state.js",
    "r": "R16"
+  },
+  {
+   "id": "xpizza-functions/photos/editable-io.js#fieldsFor#items#0",
+   "line": 40,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/photos/editable-io.js#fieldsFor#items#1",
+   "line": 40,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/photos/editable-photos.js#editablePhotoFields#items#0",
+   "line": 34,
+   "kind": "destructure",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/photos/functions.js#sendPhotoReply#status#0",
+   "line": 25,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/photos/functions.js#sendPhotoReply#status#1",
+   "line": 25,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/photos/functions.js#fail#status#0",
+   "line": 26,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/photos/functions.js#authorize#status#0",
+   "line": 32,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/photos/functions.js#authorize#status#1",
+   "line": 32,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/photos/functions.js#handle#status#0",
+   "line": 39,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/photos/process.js#fail#status#0",
+   "line": 29,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/photos/served-photos.js#overlay#items#0",
+   "line": 24,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/photos/served-photos.js#overlay#items#1",
+   "line": 24,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/photos/upload-start.js#fail#status#0",
+   "line": 22,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
   },
   {
    "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund#status#0",
@@ -49119,6 +49303,14 @@
    "rule": "server:intake"
   },
   {
+   "file": "xpizza-functions/photos/process.js",
+   "fn": "without",
+   "base": "o",
+   "line": 34,
+   "how": "spread",
+   "rule": "server:catalog"
+  },
+  {
    "file": "xpizza-functions/pixelpay-confirm.js",
    "fn": "confirmAndMaterialize>anon",
    "base": "o",
@@ -49658,7 +49850,7 @@
    "file": "xpizza-functions/catalog/edit-catalog-handler.js",
    "alias": "activeItems",
    "field": "items",
-   "line": 123,
+   "line": 124,
    "round": 1
   },
   {
@@ -49674,7 +49866,7 @@
    "file": "xpizza-functions/catalog/publish-edited-handler.js",
    "alias": "activeItems",
    "field": "items",
-   "line": 151,
+   "line": 161,
    "round": 1
   },
   {

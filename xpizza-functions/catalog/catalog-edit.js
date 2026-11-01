@@ -20,6 +20,7 @@
 // ---------------------------------------------------------------------------
 const crypto = require('crypto');
 const { canonicalize } = require('./source-store');
+const PS = require('../photos/photo-state');   // DISH PHOTOS A2: the three-state photo vocabulary (pure)
 
 const SWING_LIMIT = 0.50;          // |new-old|/old — a price moving by more than half is worth a human's attention
 const MIN_SECRET_LEN = 32;
@@ -152,6 +153,11 @@ function catalogDiff(liveBuilt, draftBuilt) {
     const o = lc.name === undefined ? null : lc.name, nx = dc.name === undefined ? null : dc.name;
     if (o !== nx) changed.push({ key: lc.id, surface: 'category', field: 'name', old: o, new: nx });
   }
+
+  // DISH PHOTOS A2 step 9 (§2.1): the photo state per item — read from an OPTIONAL `photos` on each side (the active version's
+  // meta/photos entries; the draft map). Absent on both ⇒ no lines ⇒ this diff (HASHED into the token) is byte-identical to before.
+  // Same field order as every other `changed` line. Never in largeChangeSet.
+  for (const l of PS.photoDiffLines(liveBuilt.photos, draftBuilt.photos)) changed.push({ key: l.key, surface: l.surface, field: l.field, old: l.old, new: l.new });
 
   const itemPairs = pairRenames(rawRemovedItems, rawAddedItems, 'item');
   const extraPairs = pairRenames(rawRemovedEx, rawAddedEx, 'extra');

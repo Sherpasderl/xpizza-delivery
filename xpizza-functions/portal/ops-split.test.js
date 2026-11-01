@@ -90,6 +90,7 @@ const EXPECTED = [
   'portal/branch-lifecycle-core.js', 'portal/branch-phone.js', 'brands/brand-store.js', 'brands/brand-projection.js',
   /* S4 C′: branch-ops.js now requires the ONE hours grammar (hours7Errors MOVED there, re-exported); a pure leaf, no requires */
   'schedule/hours-grammar.js',
+  'photos/branch-photos.js', 'photos/served-photos.js',   // DISH PHOTOS A2 step 12 (E-P4): the branch's published photo cards (pure + one Firestore read)
 ].sort();
 const CONDITIONAL = ['lib/emulator-endpoint.js'];   // reached via lib/admin.js only when an emulator env var is set
 const FORBIDDEN = /^(catalog\/catalog-publish\.js|catalog\/portal-reads\.js|stats\/.*|factura\/.*|index\.js|merchant\/merchant-location\.js|merchant\/merchant-orders\.js|portal\/functions\.js)$/;

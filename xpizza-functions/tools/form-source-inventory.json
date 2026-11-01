@@ -183,6 +183,12 @@
     "xpizza-functions/n4-cancel-verify.test.js",
     "xpizza-functions/o1b-wiring.guard.test.js",
     "xpizza-functions/order-form-location-escape.test.js",
+    "xpizza-functions/photos-wiring.guard.test.js",
+    "xpizza-functions/photos/diff-photos.test.js",
+    "xpizza-functions/photos/edit-photos.test.js",
+    "xpizza-functions/photos/editable-wiring.test.js",
+    "xpizza-functions/photos/publish-wiring.test.js",
+    "xpizza-functions/photos/reset-photos.test.js",
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
     "xpizza-functions/portal/branch-lifecycle-core.test.js",
@@ -714,6 +720,12 @@
     "xpizza-functions/n4-cancel-verify.test.js",
     "xpizza-functions/o1b-wiring.guard.test.js",
     "xpizza-functions/order-form-location-escape.test.js",
+    "xpizza-functions/photos-wiring.guard.test.js",
+    "xpizza-functions/photos/diff-photos.test.js",
+    "xpizza-functions/photos/edit-photos.test.js",
+    "xpizza-functions/photos/editable-wiring.test.js",
+    "xpizza-functions/photos/publish-wiring.test.js",
+    "xpizza-functions/photos/reset-photos.test.js",
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
     "xpizza-functions/portal/branch-lifecycle-core.test.js",
@@ -2073,6 +2085,7 @@
   "portal/ops-core.js",
   "portal/ops-functions.js",
   "portal/pause-reasons.js",
+  "portal/reset-draft.js",
   "portal/reset-list.js",
   "prep-stats.js",
   "quote-issue.js",
@@ -3383,6 +3396,12 @@
      ]
     },
     {
+     "file": "xpizza-functions/photos-wiring.guard.test.js",
+     "inverses": [
+      "tools/photos-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/portal/portal-split.test.js",
      "inverses": [
       "tools/a1-inverse.js",
@@ -4422,6 +4441,10 @@
    "lifts": []
   },
   "portal/pause-reasons.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "portal/reset-draft.js": {
    "pins": [],
    "lifts": []
   },

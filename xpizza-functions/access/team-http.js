@@ -14,7 +14,7 @@ const deps = () => ({
   // catalogRequestPublish (G3): the catalog store + the two reads its edit token is bound to (lazy: only that route uses them)
   get fs() { return require('firebase-admin/firestore').getFirestore(); },
   readActiveBuilt: (rid) => require('../catalog/publish-request').readActiveBuiltFrom(require('firebase-admin/firestore').getFirestore(), rid),
-  readDraft: (rid) => require('../catalog/publish-request').readDraftFrom(require('firebase-admin/firestore').getFirestore(), rid),
+  readDraft: (rid) => require('../catalog/publish-request').readDraftFrom(require('firebase-admin/firestore').getFirestore(), rid), photos: { readActive: (rid, vid) => require('../photos/edit-io').makePhotoEditIo({ fs: require('firebase-admin/firestore').getFirestore(), enabled: async () => false }).readActive(rid, vid) },   // DISH PHOTOS A2 step 10: the request diff carries the photo lines (lazy)
   verifyIdToken: (t) => getAuth().verifyIdToken(t),
   now: () => Date.now(),
   randomToken: () => crypto.randomBytes(16).toString('base64url'),   // 128-bit invite id (22 chars)

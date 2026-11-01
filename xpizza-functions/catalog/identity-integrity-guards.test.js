@@ -42,7 +42,8 @@ try {
   // S7a directory core (merged newest in this assembly): its exact module inverse (tools/directory-module-inverse.js, proven by
   // directory-wiring.guard) is applied FIRST (innermost), returning restaurant-registry.js / public-menu.js to the pre-S7a bytes
   const { unapplyDirectoryModule, FILES: DIR_FILES } = require('../tools/directory-module-inverse');
-  const dirRead = (f) => (DIR_FILES.includes(f) ? unapplyDirectoryModule(f, read(f)) : read(f));
+  const phRead = (f) => require('../tools/photos-module-inverse').unapplyPhotosModule(f, read(f));   // DRYRUN R-WIRE (2e): DISH PHOTOS A2 (newest) innermost
+  const dirRead = (f) => (DIR_FILES.includes(f) ? unapplyDirectoryModule(f, phRead(f)) : phRead(f));
   // PLAN 4 (bake from published) landed after public-menu-display: its exact module inverse (tools/formbake-module-inverse.js,
   // proven by formbake-module-wiring.guard) is reversed next — source-store.js gains badge_priority / reward_icon
   const { unapplyFormbakeModule, FILES: FB_FILES } = require('../tools/formbake-module-inverse');

@@ -18,7 +18,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 assert.deepStrictEqual([...FILES].sort(), ['catalog/form-menu-source.js', 'catalog/public-menu.js', 'catalog/source-store.js']);
 for (const f of FILES) {
   const DM = require('./tools/directory-module-inverse');   // DRYRUN R-WIRE (2e): S7a directory (newest) first, on the modules it lists
-  const aiSrc = require('./tools/avail-identity-inverse').unapplyAvailIdentity(f, read(f));   // DRYRUN R-WIRE (2e): PLAN-avail-identity (newest) innermost
+  const aiSrc = require('./tools/avail-identity-inverse').unapplyAvailIdentity(f, require('./tools/photos-module-inverse').unapplyPhotosModule(f, read(f)));   // DRYRUN R-WIRE (2e): photos A2 (newest) innermost, then avail-identity   // DRYRUN R-WIRE (2e): PLAN-avail-identity (newest) innermost
   const src = Object.prototype.hasOwnProperty.call(DM.HUNKS, f) ? DM.unapplyDirectoryModule(f, aiSrc) : aiSrc;
   assert.notStrictEqual(unapplyFormbakeModule(f, src), src, `non-vacuity: ${f} carries the hunks`);
   assert.strictEqual(unapplyFormbakeModule(f, src), baseOf(f), `🔴 ${f} minus the plan-4 hunks is not ${BASE}:${f}`);
