@@ -133,7 +133,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
   console.log(`    §3b measured record bytes: ${JSON.stringify(bytes)} → 4 × ${largest} = ${4 * largest}; RECORD_BOUND_BYTES = ${R.RECORD_BOUND_BYTES}; node cap ${R.NODE_CAP_BYTES}`);
   // 🔴 PINNED: the measured numbers (any catalog growth that moves them fails here and forces a re-measure) and the
   // constant derived from them (4 × the larger, rounded UP to the next KiB).
-  const MEASURED = { x_pizza_certified: 12211, la_musa_uncertified: 19949, la_musa_certified: 21787 };
+  const MEASURED = { x_pizza_certified: 12677, la_musa_uncertified: 21098, la_musa_certified: 22936 };   // re-measured 2026-11-01 (PLAN 4 fields; was 12211 / 19949 / 21787)
   assert.deepStrictEqual(bytes, MEASURED, '🔴 the §3b measurement moved — re-measure and re-pin RECORD_BOUND_BYTES');
   assert.strictEqual(R.RECORD_BOUND_BYTES, 4 * largest, 'RECORD_BOUND_BYTES = EXACTLY 4 × the larger record (advisor amendment: no rounding)');
   assert.strictEqual(R.NODE_CAP_BYTES, 8 * R.RECORD_BOUND_BYTES + 4096);
