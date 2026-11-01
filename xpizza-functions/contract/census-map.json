@@ -155,7 +155,8 @@
   },
   {
    "key": "tip_cents",
-   "reason": "S2-srv-tip: tips ARE implemented (PLAN-capp-S2-r4 §3, owner Q7 TIP_MAX L 2,000): the order's tip_cents (written only when > 0 by the existing atomic order write — cash via the spread breakdown, card via the pending order) and the same key on the server envío ctx / the signed quote payload / computeServerNet components. §1's 'no tip' is superseded for this field only; covered by s2tip.test.js + delivery/tip-consumers.test.mjs. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+   "sites": [{"file": "index.js", "fn": "createOrderApp.all"}, {"file": "index.js", "fn": "chargeOnlineApp.all"}, {"file": "compute-server-net.js", "fn": "computeServerNet"}, {"file": "delivery/delivery-pricing.js", "fn": "storedCtx"}, {"file": "delivery/delivery-pricing.js", "fn": "withTip"}, {"file": "delivery/delivery-wire.js", "fn": "withDelivery"}, {"file": "delivery/delivery-wire.js", "fn": "orderFields"}, {"file": "quote-issue.js", "fn": "issueQuoteInner"}],   
+   "reason": "S2-srv-tip (SCOPED by 2e at assembly, obligation 3: exactly the reviewed write / object-key sites; a NEW tip_cents write elsewhere is a §1 decision): tips ARE implemented (PLAN-capp-S2-r4 §3, owner Q7 TIP_MAX L 2,000): the order's tip_cents (written only when > 0 by the existing atomic order write — cash via the spread breakdown, card via the pending order) and the same key on the server envío ctx / the signed quote payload / computeServerNet components. §1's 'no tip' is superseded for this field only; covered by s2tip.test.js + delivery/tip-consumers.test.mjs. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
   },
   {
    "key": "tip",
