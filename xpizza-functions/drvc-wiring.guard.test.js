@@ -8,7 +8,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { unapplyDrvcIndex, BEGIN, END } = require('./tools/drvc-inverse');
 
-const src = require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))));   // R-WIRE train re-point: the newer slices reversed first (formsignal innermost → wahealth)
+const src = require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(require('./tools/s2app-inverse').unapplyS2appIndex(require('./tools/area-inverse').unapplyAreaIndex(require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/pausa-inverse').unapplyPausaIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))))))))) /* DRYRUN R-WIRE (2e): 10 cross-side layers innermost */)));   // R-WIRE train re-point: the newer slices reversed first (formsignal innermost → wahealth)
 const a = src.indexOf(BEGIN); const b = src.indexOf(END);
 assert.ok(a > 0 && b > a, 'DRVC-WIRE-BLOCK the drvc block exists');
 const block = src.slice(a, b);
@@ -41,7 +41,7 @@ console.log(`  ✓ drvc inverse: index.js minus the block === base (${BASE}) byt
 // the module inverse: whatsapp.js minus C's hunks === the pre-C file; every hunk once; a duplicated or edited hunk is refused
 const { unapplyDrvcModule, MODULE_HUNKS, FILES } = require('./tools/drvc-inverse');
 assert.deepStrictEqual([...FILES], ['whatsapp.js'], 'DRVC-MOD-FILES');
-const wa = fs.readFileSync(path.join(__dirname, 'whatsapp.js'), 'utf8');
+const wa = require('./tools/s2tip-module-inverse').unapplyS2tipModule('whatsapp.js', fs.readFileSync(path.join(__dirname, 'whatsapp.js'), 'utf8'));   // DRYRUN R-WIRE (2e): capp S2-srv-tip's whatsapp.js hunks reversed FIRST
 const preWa = git(['show', `${BASE}:xpizza-functions/whatsapp.js`]);
 assert.strictEqual(unapplyDrvcModule('whatsapp.js', wa), preWa, 'DRVC-MOD-BASE whatsapp.js minus the C hunks is not the pre-C file');
 assert.notStrictEqual(wa, preWa, 'DRVC-MOD-NONVACUOUS');

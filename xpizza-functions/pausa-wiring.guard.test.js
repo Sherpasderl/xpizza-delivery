@@ -12,7 +12,7 @@ const { execFileSync } = require('child_process');
 const { unapplyPausaIndex, INDEX_HUNKS } = require('./tools/pausa-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const src = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const src = require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(require('./tools/s2app-inverse').unapplyS2appIndex(require('./tools/area-inverse').unapplyAreaIndex(require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))))))))))))))))) /* DRYRUN R-WIRE (2e): 17 cross-side layers innermost */;
 const BASE = execFileSync('git', ['show', 'acf32fc8:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 const fnText = (head) => { const a = src.indexOf(head); assert.ok(a >= 0, `${head} present`); return src.slice(a, src.indexOf('\n}\n', a)); };

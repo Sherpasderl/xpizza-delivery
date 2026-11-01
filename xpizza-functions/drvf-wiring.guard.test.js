@@ -6,7 +6,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-const src = require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))));   // the newer slices reversed first: formsignal innermost → wahealth → DRIVER C (R-WIRE train re-point)
+const src = require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(require('./tools/s2app-inverse').unapplyS2appIndex(require('./tools/area-inverse').unapplyAreaIndex(require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/pausa-inverse').unapplyPausaIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))))))))) /* DRYRUN R-WIRE (2e): 10 cross-side layers innermost */))));   // the newer slices reversed first: formsignal innermost → wahealth → DRIVER C (R-WIRE train re-point)
 const a = src.indexOf('/* drvf:begin */'); const b = src.indexOf('/* drvf:end */');
 assert.ok(a > 0 && b > a, 'DRVF-WIRE-BLOCK the drvf block exists exactly once');
 assert.strictEqual(src.indexOf('/* drvf:begin */', a + 1), -1, 'DRVF-WIRE-ONCE');
