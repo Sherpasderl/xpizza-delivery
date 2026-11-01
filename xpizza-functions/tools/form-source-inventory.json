@@ -162,6 +162,7 @@
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/createorder-selfheal-client.test.js",
+    "xpizza-functions/directory/directory.test.js",
     "xpizza-functions/f2-client.test.js",
     "xpizza-functions/form-bundle-splice.test.js",
     "xpizza-functions/form-load-execution.test.js",
@@ -233,6 +234,7 @@
     "xpizza-functions/test/d4p1-money-noop.emulator.test.js",
     "xpizza-functions/test/d4p1-save-publish.emulator.test.js",
     "xpizza-functions/test/d4p1-stamp-write.emulator.test.js",
+    "xpizza-functions/test/directory-house-ids.emulator.test.js",
     "xpizza-functions/test/display-number.emulator.test.js",
     "xpizza-functions/test/driver-freshness.emulator.test.js",
     "xpizza-functions/test/driver-return-shift.emulator.test.js",
@@ -400,6 +402,7 @@
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
+    "xpizza-functions/directory/directory.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -453,6 +456,7 @@
     "xpizza-functions/test/d4p1-money-noop.emulator.test.js",
     "xpizza-functions/test/d4p1-save-publish.emulator.test.js",
     "xpizza-functions/test/d4p1-stamp-write.emulator.test.js",
+    "xpizza-functions/test/directory-house-ids.emulator.test.js",
     "xpizza-functions/test/display-number.emulator.test.js",
     "xpizza-functions/test/driver-freshness.emulator.test.js",
     "xpizza-functions/test/driver-return-shift.emulator.test.js",
@@ -673,6 +677,7 @@
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/createorder-selfheal-client.test.js",
+    "xpizza-functions/directory/directory.test.js",
     "xpizza-functions/f2-client.test.js",
     "xpizza-functions/form-bundle-splice.test.js",
     "xpizza-functions/form-load-execution.test.js",
@@ -743,6 +748,7 @@
     "xpizza-functions/test/d4p1-money-noop.emulator.test.js",
     "xpizza-functions/test/d4p1-save-publish.emulator.test.js",
     "xpizza-functions/test/d4p1-stamp-write.emulator.test.js",
+    "xpizza-functions/test/directory-house-ids.emulator.test.js",
     "xpizza-functions/test/display-number.emulator.test.js",
     "xpizza-functions/test/driver-freshness.emulator.test.js",
     "xpizza-functions/test/driver-return-shift.emulator.test.js",
@@ -911,6 +917,7 @@
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
+    "xpizza-functions/directory/directory.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -964,6 +971,7 @@
     "xpizza-functions/test/d4p1-money-noop.emulator.test.js",
     "xpizza-functions/test/d4p1-save-publish.emulator.test.js",
     "xpizza-functions/test/d4p1-stamp-write.emulator.test.js",
+    "xpizza-functions/test/directory-house-ids.emulator.test.js",
     "xpizza-functions/test/display-number.emulator.test.js",
     "xpizza-functions/test/driver-freshness.emulator.test.js",
     "xpizza-functions/test/driver-return-shift.emulator.test.js",
@@ -1447,6 +1455,7 @@
   "xpizza-functions/contract/timer-bounds.js",
   "xpizza-functions/contract/tracer.js",
   "xpizza-functions/contract/version-witness.js",
+  "xpizza-functions/directory/directory-deps.js",
   "xpizza-functions/index.js",
   "xpizza-functions/menu-extract.mjs",
   "xpizza-functions/portal/branch-lifecycle-core.js",
@@ -1908,6 +1917,7 @@
   "catalog/publish-edited-handler.js",
   "catalog/publish-request.js",
   "catalog/reset-draft.js",
+  "catalog/restaurant-registry.js",
   "catalog/snapshot-fallback.js",
   "catalog/source-store.js",
   "catalog/text-version.js",
@@ -2252,6 +2262,17 @@
   },
   "catalog/reset-draft.js": {
    "pins": [],
+   "lifts": []
+  },
+  "catalog/restaurant-registry.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/identity-integrity-guards.test.js",
+     "inverses": [
+      "tools/directory-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": []
   },
   "catalog/snapshot-fallback.js": {
