@@ -61,6 +61,9 @@ const meta = (fs, vid) => fs.collection('restaurants').doc(RID).collection('vers
     await assert.rejects(() => mk({ publicBucket: () => '' }).prepare(RID, { tb_a: { state: 'pid', pid: P1 } }), (e) => e.code === 'photo_publish_failed', 'PUB-NO-BUCKET-FAILS-CLOSED');
     s.fail.add(`photos/${RID}/${P1}-hero.webp`);
     await assert.rejects(() => mk().prepare(RID, { tb_a: { state: 'pid', pid: P1 } }), (e) => e.code === 'photo_publish_failed', 'PUB-COPY-FAILURE-FAILS-CLOSED');
+    // codex r1 P2-4: the card copy that DID succeed is recorded at once, so an abandoned change leaves nothing the sweeper cannot remove
+    const g = (await reg(fs, P1).get()).data().generations || {};
+    assert.ok(g.pub_card && !g.pub_hero, `PUB-PARTIAL-COPY-GENERATION-PERSISTED ${JSON.stringify(g)}`);
     assert.strictEqual(await mk({ publicBucket: () => '' }).prepare(RID, { tb_c: { state: 'removed' } }).then((p) => p.doc.entries.tb_c.state), 'removed', 'PUB-REMOVED-ONLY-NEEDS-NO-BUCKET');
     assert.strictEqual(await mk().prepare(RID, null), null, 'PUB-NO-MAP-NULL');
     ok('prepare: a deleting pid → photo_unavailable; no public bucket or a copy failure → photo_publish_failed; a removed-only map needs no bucket; no map → null');

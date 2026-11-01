@@ -38,6 +38,16 @@ function makePublishPhotos({ fs, store, publicBucket, now = Date.now }) {
         for (const kind of ['card', 'hero']) {
           try { gens[pid][kind] = (await store.copyIfAbsent(`drafts/${rid}/${pid}-${kind}.webp`, bucket, `photos/${rid}/${pid}-${kind}.webp`)).generation; }
           catch (e) { throw err('photo_publish_failed', `copying ${pid}-${kind} failed: ${String((e && e.message) || e).slice(0, 120)}`); }
+          // codex r1 P2-4: record THIS public copy's generation at once (not only in the pre-flip hook) — if the publish then fails or is
+          // abandoned, the sweeper still knows the object exists and removes it with the pid. Only onto an attachable doc; a failure here
+          // fails the publish closed (the copy stays recorded nowhere new, and the change does not go live).
+          try {
+            await fs.runTransaction(async (tx) => {
+              const r = regRef(rid, pid); const s = await tx.get(r);
+              if (!s.exists || !ATTACHABLE.has((s.data() || {}).state)) throw err('photo_unavailable', `photo ${pid} became unavailable`);
+              tx.update(r, { [`generations.pub_${kind}`]: String(gens[pid][kind]) });
+            });
+          } catch (e) { if (e && e.code === 'photo_unavailable') throw e; throw err('photo_publish_failed', `recording ${pid}-${kind} failed: ${String((e && e.message) || e).slice(0, 120)}`); }
         }
       }
       const doc = PS.versionPhotosDoc(map, (pid, kind) => (bucket ? publicUrl(bucket, rid, pid, kind) : null));
