@@ -19664,7 +19664,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#scopeOf#restaurant_id#0",
-   "line": 34,
+   "line": 35,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -19674,7 +19674,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#limited#status#0",
-   "line": 43,
+   "line": 44,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19687,7 +19687,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#googleStart#status#0",
-   "line": 64,
+   "line": 65,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19700,7 +19700,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#googleStart#status#1",
-   "line": 66,
+   "line": 67,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19713,7 +19713,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#googleStart#status#2",
-   "line": 68,
+   "line": 69,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19726,19 +19726,6 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#googleStart#status#3",
-   "line": 70,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "server:infra",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/signup-endpoints.js#googleStart#status#4",
    "line": 71,
    "kind": "member",
    "facts": [
@@ -19751,8 +19738,21 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/signup-endpoints.js#googleStart#status#4",
+   "line": 72,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:infra",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/signup-endpoints.js#googleSignIn#status#0",
-   "line": 76,
+   "line": 77,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19765,7 +19765,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#googleSignIn#status#1",
-   "line": 78,
+   "line": 79,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19778,7 +19778,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#googleSignIn#status#2",
-   "line": 80,
+   "line": 81,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19791,7 +19791,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#googleSignIn#status#3",
-   "line": 82,
+   "line": 83,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19804,7 +19804,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#googleSignIn#status#4",
-   "line": 88,
+   "line": 89,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19817,7 +19817,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#googleSignIn#status#5",
-   "line": 90,
+   "line": 91,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19830,19 +19830,6 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#googleSignIn#status#6",
-   "line": 92,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "server:infra",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/signup-endpoints.js#googleSignIn#status#7",
    "line": 93,
    "kind": "member",
    "facts": [
@@ -19855,8 +19842,21 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/signup-endpoints.js#googleSignIn#status#7",
+   "line": 94,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:infra",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/signup-endpoints.js#completeProfile#status#0",
-   "line": 98,
+   "line": 99,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19869,7 +19869,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#completeProfile#status#1",
-   "line": 100,
+   "line": 101,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19882,7 +19882,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#completeProfile#status#2",
-   "line": 102,
+   "line": 103,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19895,7 +19895,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#completeProfile#status#3",
-   "line": 105,
+   "line": 106,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19908,19 +19908,6 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#completeProfile#status#4",
-   "line": 108,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "server:infra",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/signup-endpoints.js#completeProfile#status#5",
    "line": 109,
    "kind": "member",
    "facts": [
@@ -19933,8 +19920,21 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/signup-endpoints.js#completeProfile#status#5",
+   "line": 110,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:infra",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/signup-endpoints.js#setPromos#status#0",
-   "line": 114,
+   "line": 115,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19947,7 +19947,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#setPromos#status#1",
-   "line": 116,
+   "line": 117,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19960,7 +19960,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#setPromos#status#2",
-   "line": 118,
+   "line": 119,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19973,7 +19973,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#setPromos#status#3",
-   "line": 120,
+   "line": 122,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19986,7 +19986,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#setPromos#status#4",
-   "line": 121,
+   "line": 123,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19999,19 +19999,6 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#getSignupConfig#status#0",
-   "line": 126,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "server:infra",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/signup-endpoints.js#getSignupConfig#status#1",
    "line": 128,
    "kind": "member",
    "facts": [
@@ -20024,8 +20011,21 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/signup-endpoints.js#getSignupConfig#status#1",
+   "line": 130,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:infra",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/signup-endpoints.js#getSignupConfig#status#2",
-   "line": 131,
+   "line": 133,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -20038,7 +20038,7 @@
   },
   {
    "id": "xpizza-functions/signup-endpoints.js#getSignupConfig#status#3",
-   "line": 132,
+   "line": 134,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48688,7 +48688,7 @@
    "file": "xpizza-functions/signup-core.js",
    "fn": "<top>",
    "key": "normEmail",
-   "line": 324,
+   "line": 330,
    "how": "object-key",
    "exempt": true
   },
@@ -48696,7 +48696,7 @@
    "file": "xpizza-functions/signup-core.js",
    "fn": "<top>",
    "key": "validEmail",
-   "line": 324,
+   "line": 330,
    "how": "object-key",
    "exempt": true
   }
@@ -48946,7 +48946,7 @@
   },
   {
    "key": "xpizza-functions/signup-endpoints.js:refreshActivity>anon:setTimeout",
-   "line": 168,
+   "line": 170,
    "delay": "deadlineMs",
    "class": "io-deadline"
   },
@@ -50256,12 +50256,12 @@
   },
   {
    "key": "xpizza-functions/signup-endpoints.js:makeSignup>anon:Date.now()",
-   "line": 28,
+   "line": 29,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/signup-endpoints.js:pruneResidual:Date.now()",
-   "line": 183,
+   "line": 185,
    "class": "business-sample"
   },
   {
