@@ -180,6 +180,7 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     const soldOutById = () => false, registerOutsideClick = () => {}, refreshCardExtrasIndicator = () => {};
     const updateDetailModal = () => {}, updateDetailCta = () => {}, updateTotal = () => {}, updateCart = () => {};
     const refreshPickupGate = () => {}, itemIsLauncher = () => false;
+    const _MENU_BROKEN = false;   // PLAN 4 r2: the boot latch — this harness models a page whose bundle booted whole
     // 1D add-product B: the REAL shared group rules (cartLines / cartRestore / buildOrder ask them); no groups in this menu
     const GroupPicker = ctx.GroupPicker, VARIANT_ITEMS = {};
     const OrderExists = ctx.OrderExists;   // G2: the send entry resets the order_exists recovery screen (form-order-exists.js)

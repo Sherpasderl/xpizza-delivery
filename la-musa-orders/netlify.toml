@@ -1,9 +1,11 @@
 [build]
   publish = "."
-  # P-SELFUPDATE §1 stamp (/version.json + identity <meta>; never fails the build), THEN the baked-menu check: this form's baked
-  # menu must equal its brand's published catalog or the build FAILS and the previous deploy stays live (owner 2026-10-25,
-  # DECISIONS.md; docs/runbooks/form-deploy.md). Every registered form must carry it (form-bundle-live-check.test.js).
-  command = "node ../platform/stamp-version.js && node ../xpizza-functions/tools/form-bundle-live-check.js --this-form"
+  # PLAN 4 §3: BAKE this form's menu from its brand's PUBLISHED catalog (a refusal fails the build, nothing written), THEN the
+  # P-SELFUPDATE §1 stamp (/version.json + identity <meta>; never fails the build — after the bake, so the hash covers the bytes
+  # served), THEN the baked-menu check: this form's baked menu must equal its brand's published catalog or the build FAILS and
+  # the previous deploy stays live (owner 2026-10-25, DECISIONS.md; docs/runbooks/form-deploy.md). Every registered form must
+  # carry it (form-bundle-live-check.test.js).
+  command = "node ../xpizza-functions/tools/bake-form-bundle.js --this-form && node ../platform/stamp-version.js && node ../xpizza-functions/tools/form-bundle-live-check.js --this-form"
 [build.environment]
   # Netlify secrets scanning (it runs because of the build command above) flags these PUBLIC client keys — the Firebase web
   # config and Google Maps keys already committed in this site's JS. Omit EXACTLY these values; scanning stays ON for
@@ -16,3 +18,10 @@
   for = "/*"
   [headers.values]
     Referrer-Policy = "strict-origin-when-cross-origin"
+
+# PLAN-forms-fonts-preconnect r6.1: the self-hosted font FILES are content-hashed (a new file = a new name), so they are cached
+# forever. ONLY the hashed .woff2 — fonts/OFL.txt is not hashed and keeps Netlify's normal headers (Codex r1 P3).
+[[headers]]
+  for = "/fonts/*.woff2"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

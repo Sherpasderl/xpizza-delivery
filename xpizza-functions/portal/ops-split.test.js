@@ -82,7 +82,8 @@ const EXPECTED = [
   'restaurant-config.js', 'pickup-label.js',
   'merchant/merchant-control.js', 'tools/order-control-core.js', 'order-control-state.js', 'scheduled-orders.js', 'avail-key.js', 'availability-reset.js',
   'catalog/catalog-firestore.js', 'catalog/catalog-menu.js', 'catalog/catalog-transform.js', 'catalog/catalog-integrity.js', 'catalog/content-hash.js', 'catalog/canonical-json.js',
-  'catalog/form-menu-source.js', 'catalog/redeem-source.js', 'catalog/exposure-source.js', 'catalog/extras-exposure.js', 'menu-pricing.js', 'price-valid.js', 'rewards-redeem-config.js',
+  'catalog/form-menu-source.js', 'catalog/menu-structure-rows.js', 'tools/migrations/2026-10-26-menu-structure.json',   // plan 4 GATED (G1): the reviewed rows + their data file (pure / data)
+  'catalog/redeem-source.js', 'catalog/exposure-source.js', 'catalog/extras-exposure.js', 'menu-pricing.js', 'price-valid.js', 'rewards-redeem-config.js',
   /* ORCHESTRATION O1b T8: E1+'s additive read model (readiness via the O1a writers' own facts + planner) */
   'portal/branch-read-model.js', 'branches/branch-ops.js', 'branches/branch-store.js', 'branches/drafts.js', 'branches/readiness-readers.js', 'branches/rid-alloc.js', 'sweep-pending.js',
   /* ORCHESTRATION O1b T7/T9: the lifecycle endpoints E6 / E7 / E8 / E10 (cores, Q10 phone, the fenced publish) */

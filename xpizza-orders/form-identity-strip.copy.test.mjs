@@ -131,7 +131,8 @@ test('both forms project at EVERY raw-items signature, and no longer strip at th
     /* 🔴 D2 INVERTS D1 AT THE BOUNDARIES. The id must now REACH the cart, so neither boundary strips —
        and the old wrapper is gone entirely rather than left unused, so nobody re-wires it. */
     assert.ok(!/_stripIdentityOrFail/.test(html), `${dir}: 🔴 the D1 boundary strip is still present — the id cannot reach the cart`);
-    assert.ok(/let MENU = _okDishes\(_BUNDLE\.dishes\) \? _BUNDLE\.dishes : FALLBACK_MENU;/.test(html),
+    // PLAN 4: the boot select reads the bundle only (`_bootSelect('dishes', _okDishes, [], true)` returns _BUNDLE.dishes as is)
+    assert.ok(/let MENU = _bootSelect\('dishes', _okDishes, \[\], true\);/.test(html) && /if \(ok\(v\)\) return v;/.test(html),
       `${dir}: 🔴 the initial bundle boundary must pass records through un-stripped`);
     assert.ok(/MENU: dishes,\s*\n\s*EXTRAS: extras,/.test(html),
       `${dir}: 🔴 the live refresh boundary must pass both collections through un-stripped`);

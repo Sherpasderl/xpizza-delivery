@@ -298,6 +298,9 @@
  "serverFunctions": {
   "alert-prune.js#alertOrderIds": "infra",
   "alert-prune.js#orderStillFlagged": "infra",
+  "catalog/form-rebake.js#postHook": "infra",
+  "index.js#post>anon": "infra",
+  "index.js#getText>anon": "infra",
   "assign-hub.js#resolveAssignHub": "dispatch",
   "assign-hub.js#hubOf": "dispatch",
   "availability-reset.js#resetRestaurant": "infra",
@@ -325,6 +328,7 @@
   "branches/branch-store.js#setBranchActive>anon": "branches",
   "branches/branches-admin-core.js#locationInput": "branches",
   "catalog/add-product-io.js#syncKds": "catalog",
+  "catalog/menu-structure-rows.js#applyBootstrapRows": "catalog",
   "catalog/add-product.js#allocateAdditions": "catalog",
   "catalog/add-product.js#changesNothingElse": "catalog",
   "catalog/add-product.js#classifyItems": "catalog",

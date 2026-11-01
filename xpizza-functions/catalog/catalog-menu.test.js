@@ -22,6 +22,8 @@ const { publishVersion } = require('./catalog-publish');
 const { getRestaurantMenu, readVersionMenu, readFlatMenu } = require('./catalog-menu');
 const { seedCatalog } = require('./seed-catalog-core');
 const { catalogSnapshot, generateFormBundle, generateKdsManifest, serialize } = require('./generate-form-bundle');
+// PLAN 4 (gap resolution A): the committed bundle is the PUBLISHED shape — the ONE composer getPublicMenu serves
+const { composeServedMenu } = require('./public-menu');
 const { contentHash } = require('./content-hash');
 const { makeDb } = require('./firestore-fake');
 
@@ -485,13 +487,17 @@ const inputsFor = (rid, over = {}) => {
     const fromStore = await getRestaurantMenu(db, rid);
     const fromBootstrap = catalogSnapshot(rid);
     const committed = readFileSync(BUNDLE_PATH[rid], 'utf8');
-    assert.strictEqual(serialize(generateFormBundle(rid, fromStore)), committed,
+    assert.strictEqual(serialize(composeServedMenu(rid, fromStore)), committed,
       `🔴 ${rid}: the bundle generated off the PUBLISHED VERSION is not the committed artifact`);
-    assert.strictEqual(serialize(generateFormBundle(rid, fromBootstrap)), committed,
+    assert.strictEqual(serialize(composeServedMenu(rid, fromBootstrap)), committed,
       `${rid}: ...nor is the bootstrap one`);
     const bundle = generateFormBundle(rid, fromStore);
-    assert.deepStrictEqual(bundle.extras, readLiteral(formSource(rid), 'EXTRAS'),
-      `${rid}: the generated extras equal the form's own EXTRAS, field for field AND in order`);
+    // PLAN 4 GATED (G1): the form's EXTRAS plus the post-migration rows of the ONE reviewed data file (la_musa's reward icons)
+    const litExtras = readLiteral(formSource(rid), 'EXTRAS');
+    const FMS = require('./form-menu-source');
+    require('./menu-structure-rows').applyBootstrapRows(rid, { items: readLiteral(formSource(rid), 'MENU').map((d) => ({ key: FMS.pricingKeyOf(rid, d), display: d })), extras: litExtras.map((e) => ({ key: FMS.extrasKeyOf(rid, e), display: e })) });
+    assert.deepStrictEqual(bundle.extras, litExtras,
+      `${rid}: the generated extras equal the form's own EXTRAS (+ the reviewed rows), field for field AND in order`);
     assert.strictEqual(`${JSON.stringify(generateKdsManifest(rid, fromStore), null, 2)}\n`,
       readFileSync(join(REPO_ROOT, 'menus', `${rid}.json`), 'utf8'),
       `${rid}: the KDS manifest off the published version == the committed manifest`);

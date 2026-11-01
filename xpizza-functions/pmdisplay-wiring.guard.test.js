@@ -12,7 +12,9 @@ const { unapplyPmdisplayModule, FILES, HUNKS } = require('./tools/pmdisplay-modu
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const BASE = '68a64ff9';   // R-WIRE train re-point: M5^1, the train state just before pmdisplay merged (the slice's own base was acf32fc8; its modules byte-equal there)
-const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
+// PLAN 4 (bake from published) landed later: its exact module inverse (proven by formbake-module-wiring.guard) is reversed FIRST
+const { unapplyFormbakeModule } = require('./tools/formbake-module-inverse');
+const read = (f) => unapplyFormbakeModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));
 const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.deepStrictEqual([...FILES].sort(), ['catalog/source-store.js']);

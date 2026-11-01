@@ -172,8 +172,10 @@ export const envelope = (rid, menu, representationVersion = '1b.1') => ({ rid, r
    modelled explicitly by `omit`, and a module-script renderer needs a real loader before it can be tested
    here, so both cases now throw, naming the script. `preamble` is extra script that runs right after the
    rig's own stubs and before any page script (e.g. a fixed clock); it adds input, never removes code. */
-export function loadForm(dir, { omit = [], transforms = {}, clock = null, preamble: extra = '' } = {}) {   // DRYRUN (2e): main's `clock` + capp's `preamble`, both opt-in
-  let html = readFileSync(new URL(`./${dir}/index.html`, import.meta.url), 'utf8');
+/* `html` (PLAN 4) boots a page OTHER than the committed one — the BAKED index.html a build produces — while the form's local
+   scripts are still inlined from `dir`, exactly as the deployed site serves them beside it. */
+export function loadForm(dir, { omit = [], transforms = {}, clock = null, preamble: extra = '', html: pageHtml = null } = {}) {   // DRYRUN (2e): main's `clock` + capp's `preamble` + PLAN 4's `html`, all opt-in
+  let html = pageHtml !== null ? pageHtml : readFileSync(new URL(`./${dir}/index.html`, import.meta.url), 'utf8');
   html = html.replace(/<script src="(?!https?:)([^"]+)"><\/script>/g, (m, src) => {
     if (omit.indexOf(src) !== -1) return '';
     let code;
@@ -281,11 +283,19 @@ export const BRAND = Object.fromEntries(ORDER_FORM_DIRS.map((dir) => {
     config,
     containers: null,
     menu: (w) => {
+      const live = w.liveMenuGlobalGet('MENU');
       const out = {
-        dishes: w.liveMenuGlobalGet('MENU').map((d) => ({ ...d })),
+        dishes: live.map((d) => ({ ...d })),
         extras: w.liveMenuGlobalGet('EXTRAS').map((e) => ({ ...e })),
       };
       if (w.eval('LIVE_MENU_GLOBALS').includes('CATEGORIES')) out.categories = w.liveMenuGlobalGet('CATEGORIES').map((c) => ({ ...c }));
+      else {
+        // PLAN 4 r2: the categories the published x_pizza body always carries (the composer emits them; the one menu contract
+        // requires them) — first appearance in MENU, exactly as the catalog derives them. A body without them is laxer than prod.
+        // DRYRUN (2e): composed with the data-driven BRAND builder — a form without a CATEGORIES global derives them this way.
+        const cats = []; for (const d of live) if (!cats.includes(d.cat)) cats.push(d.cat);
+        out.categories = cats.map((id) => ({ id }));
+      }
       return out;
     },
   }];

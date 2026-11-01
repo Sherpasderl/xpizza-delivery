@@ -302,6 +302,10 @@
     "form_signals":          { ".read": false, ".write": false },
     "form_signal_limits":    { ".read": false, ".write": false, ".indexOn": ["window_start"] },
 
+    "form_rebake": {
+      ".read": false,
+      ".write": false
+    },
     "payment_attempts": { ".read": false, ".write": false, ".indexOn": ["paid_at", "uncertain_at"] },
     "pending_paid_alerts": { ".read": false, ".write": false, ".indexOn": ["at"] },
     "webhook_events":   { ".read": false, ".write": false },

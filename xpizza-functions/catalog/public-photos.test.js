@@ -88,7 +88,7 @@ const BETA = { items: [item('b_01', { id: 'b_01', name: 'B1' }, true), item('b_0
   // ── 4. served by buildPublicMenu: declared, covered by the etag, and degrade-only ───────────────────────────────
   {
     assert.deepStrictEqual(BODY_CONTRACT.photos, { type: 'object' }, 'declared, optional, never fromSource-required');
-    assert.strictEqual(REPRESENTATION_VERSION, '1d.2', 'the served marker is 1d.2 (D3 RULED)');
+    assert.strictEqual(REPRESENTATION_VERSION, '1d.3', 'the served marker is 1d.3 (D3 RULED 1d.2 for photos; plan 4 r3 §8.1 advanced it for badge_priority / reward_icon)');
     const known = new Set(['x_pizza', 'la_musa']);
     const seeded = async (rid) => {
       const db = makeDb();
@@ -99,7 +99,7 @@ const BETA = { items: [item('b_01', { id: 'b_01', name: 'B1' }, true), item('b_0
     for (const rid of ['x_pizza', 'la_musa']) {
       const db = await seeded(rid);
       const live = await buildPublicMenu(db, rid, { known, isActive: async () => true });
-      assert.strictEqual(live.representation_version, '1d.2');
+      assert.strictEqual(live.representation_version, '1d.3');
       assert.ok(live.body.photos && Object.keys(live.body.photos).length > 0, `${rid}: the default (the platform manifest) serves photos`);
       // dish records are untouched: no dish carries a photo field it did not carry before
       assert.ok(live.body.dishes.every((d) => !('photo' in d) && !('photos' in d)), `${rid}: dish records unchanged`);
