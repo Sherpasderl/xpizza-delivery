@@ -802,13 +802,34 @@ test('Codex S4 r2: the account refusal records NOTHING — an uncertain schedule
   m.cur = null;
   const card = sArgs(); card.flow.pay = 'online';
   const out = await R.reload().place(card);
-  assert.deepEqual([out.kind, R.srv.of('chargeOnlineOrder').length], ['schedule_needs_account', 0], 'premise: refused, never charged');
+  // Codex G7 r1 #1 (advisor (a)): the record is the member's — a signed-out device is refused LOCALLY as a non-owner (before frame G)
+  assert.deepEqual([out.kind, R.srv.of('chargeOnlineOrder').length], ['held_other_account', 0], 'premise: refused, never charged');
   const after = placeRec(R.storage);
   assert.deepEqual([after.card, after.unresolved, after.dispatched, after.sent_body, after.sched_pending], [before.card, before.unresolved, before.dispatched, before.sent_body, true], '🔴 S4-r2-norecord: the refusal recorded nothing');
   m.cur = MEMBER;
   const re = await R.reload().place(sArgs());
   assert.equal(re.kind, 'placed', '🔴 S4-r2-retry: the signed-in retry dispatches (never «Necesitamos revisar tu pedido»)');
   const s = R.srv.of('createOrder'); assert.equal(s.length, 2); assert.deepEqual(s[1].body, s[0].body, 'the uncertain send replayed exactly');
+});
+test('Codex G7 r1 #1: the retained record decides — its owner\'s ASAP + card flow replays the recorded CASH body to createOrder; member B and a guest are refused with ZERO requests and the record untouched', async () => {
+  const m = { cur: MEMBER };
+  const R = srig({ member: m, script: { createOrder: ['network', OK_CASH], chargeOnlineOrder: [CHECKOUT] } });
+  assert.equal((await R.api.place(sArgs())).kind, 'offline', 'premise: the response lost');
+  const before = placeRec(R.storage);
+  assert.equal(before.sched_owner, MEMBER.uid, '🔴 S4-owner: the record names the member who sent it');
+  const calls = () => R.srv.of('createOrder').length + R.srv.of('chargeOnlineOrder').length;
+  for (const who of [{ ...MEMBER, uid: 'u_other' }, null]) {
+    m.cur = who; const n0 = calls();
+    const out = await R.reload().place(sArgs());
+    assert.deepEqual([out.kind, out.local, calls() - n0], ['held_other_account', true, 0], `🔴 S4-held: ${who ? 'member B' : 'a guest'} is refused locally, no request`);
+    assert.deepEqual(placeRec(R.storage), before, '🔴 S4-held: the record untouched');
+  }
+  m.cur = MEMBER;
+  const card = sArgs(); card.flow.pay = 'online'; card.flow.time = 'asap';
+  const re = await R.reload().place(card);
+  assert.deepEqual([R.srv.of('createOrder').length, R.srv.of('chargeOnlineOrder').length], [2, 0], '🔴 S4-owner: the endpoint is the RECORDED tender\'s, never the flow\'s');
+  assert.equal(re && re.kind, 'placed', 'S4-owner: the replay placed');
+  assert.deepEqual(R.srv.of('createOrder')[1].body, R.srv.of('createOrder')[0].body, 'the exact recorded bytes');
 });
 test('Codex S4 r2: the WIRE guard holds where only it can — a scheduled card admitted (202) whose member signs out during the backoff is never re-sent', async () => {
   const m = { cur: MEMBER };

@@ -193,6 +193,19 @@
     const schedSettled = new Set();
     // the record as the UI sees it: a definitive answer held only in memory reads as closed
     function readPlaceView() { const r = readPlace(); return r && schedSettled.has(r.order_id) && r.sched_pending === true ? { ...r, sched_pending: false } : r; }
+    // Codex G7 r1 #1: a RETAINED scheduled send — dispatched, its answer still uncertain, its exact body recorded — with the member who
+    // sent it (sched_owner). The lock, the replay and its endpoint come from THIS record only, never from the current flow; null ⇒ none
+    function retainedSend() {
+      if (cfg.schedulingLive !== true) return null;
+      const r = readPlace();
+      if (!r || !(Number(r.dispatched) > 0) || r.sched_pending !== true || schedSettled.has(r.order_id) || typeof r.sent_body !== 'string') return null;
+      let b = null; try { b = JSON.parse(r.sent_body); } catch (_) { b = null; }
+      if (!b || typeof b !== 'object' || b.order_id !== r.order_id || !Number.isFinite(b.scheduled_for)) return null;
+      return { order_id: r.order_id, body: b, owner: typeof r.sched_owner === 'string' ? r.sched_owner : null, method: b.payment_method === 'online' ? 'online' : 'cash' };
+    }
+    const uidNow = () => { const m = memberOf(); return m && typeof m.uid === 'string' ? m.uid : null; };
+    // the retained send belongs to someone else (a guest now, or another member): never replayed, never re-identified — a local refusal
+    function retainedByOther() { const rs = retainedSend(); return !!rs && (rs.owner === null || rs.owner !== uidNow()); }
     // the economics a placement stands behind: the cart signature (cart / mode / pin / tip / auth) and the agreed net
     const sameEconomics = (r, p) => r.body_sig === (p.sig == null ? null : String(p.sig)) && r.expected_net_cents === num(p.expectedNetCents);
 
@@ -418,7 +431,10 @@
       return null;
     }
     async function place(p) {
-      const method = p.flow.pay === 'online' ? 'online' : 'cash';
+      // Codex G7 r1 #1 (advisor (a)): another account's unresolved scheduled send is on this device ⇒ refused HERE — before any gate,
+      // record write or request; it places normally once that record resolves or expires
+      if (retainedByOther()) return { kind: 'held_other_account', local: true };
+      let method = p.flow.pay === 'online' ? 'online' : 'cash';
       // PLAN-capp-signin-required §3.2: an app GUEST (cfg.guestCardOnly, no member NOW) never maps to cash — refused before any record,
       // lock or send (and re-checked before EVERY dispatch below, Codex guest r1 #1)
       { const g0 = guestGate(p, { ticket: false }); if (g0) return g0; }
@@ -484,10 +500,10 @@
             // Codex S4 r2 (G=B): the account rule on the OUTGOING / replayed body BEFORE anything is recorded for this send (no
             // dispatched++, no card / unresolved lock, no cart freeze) — an earlier uncertain send keeps its record exactly as it was
             if (body.scheduled_for != null && !memberOf()) return { kind: 'schedule_needs_account', order_id: rec.order_id, local: true };
-            if (replay) { if (num(body.expected_net_cents) !== null) expected = body.expected_net_cents; }   // the replayed bytes' ceiling is what this send stands behind
+            if (replay) { method = body.payment_method === 'online' ? 'online' : 'cash'; if (num(body.expected_net_cents) !== null) expected = body.expected_net_cents; }   // Codex G7 r1 #1: the RECORDED tender's endpoint, never the current flow's   // the replayed bytes' ceiling is what this send stands behind
             else {
-              try { rec = patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true }); } catch (_) { return { kind: 'offline', order_id: rec.order_id }; }
-              if (rec.sent_body !== JSON.stringify(body) || rec.sched_pending !== true) return { kind: 'offline', order_id: rec.order_id };
+              try { rec = patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true, sched_owner: uidNow() }); } catch (_) { return { kind: 'offline', order_id: rec.order_id }; }
+              if (rec.sent_body !== JSON.stringify(body) || rec.sched_pending !== true || rec.sched_owner !== uidNow()) return { kind: 'offline', order_id: rec.order_id };
               schedSettled.delete(rec.order_id);
             }
           }
@@ -687,7 +703,7 @@
 
     return { quote, latestQuote, place, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
-      confirmQuote: cq, PLACE_KEY };
+      confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
   }
 
   return { createApi, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };

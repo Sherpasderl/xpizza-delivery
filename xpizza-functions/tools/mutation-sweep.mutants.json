@@ -25570,5 +25570,125 @@
     "kills_with": [
       "SU-endpoints"
     ]
+  },
+  {
+    "id": "s4-33",
+    "slice": "s4",
+    "label": "place() no longer refuses a non-owner's placement (another account's retained send)",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (retainedByOther()) return { kind: 'held_other_account', local: true };\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G7 r1 #1",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "S4-held"
+    ]
+  },
+  {
+    "id": "s4-34",
+    "slice": "s4",
+    "label": "a replay goes to the CURRENT flow's endpoint again (not the recorded tender's)",
+    "file": "../customer-app/capp-api.js",
+    "from": "if (replay) { method = body.payment_method === 'online' ? 'online' : 'cash'; if",
+    "to": "if (replay) { if",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G7 r1 #1",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "S4-owner"
+    ]
+  },
+  {
+    "id": "s4-35",
+    "slice": "s4",
+    "label": "the record no longer names its owner",
+    "file": "../customer-app/capp-api.js",
+    "from": "sched_pending: true, sched_owner: uidNow() });",
+    "to": "sched_pending: true });",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G7 r1 #1",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "S4-owner",
+      "S4-held"
+    ]
+  },
+  {
+    "id": "s4-36",
+    "slice": "s4",
+    "label": "the UI lock ignores the owner (member B sees A's lock)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "return rs && m && typeof m.uid === 'string' && rs.owner === m.uid ? rs.body : null;",
+    "to": "return rs ? rs.body : null;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G7 r1 #1",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "S4-owner"
+    ]
+  },
+  {
+    "id": "s4-37",
+    "slice": "s4",
+    "label": "placeTap no longer refuses a non-owner (the guest reaches the code sheet)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther()); return; }   // Codex G7 r1 #1 (a): before the code sheet",
+    "to": "      // (mutant) before the code sheet",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G7 r1 #1",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "S4-held"
+    ]
+  },
+  {
+    "id": "s4-38",
+    "slice": "s4",
+    "label": "a signed-out card-only guest keeps the member's cash tender in the state",
+    "file": "../customer-app/capp-ui.js",
+    "from": "        if (!memberCtx && f && cardOnlyGuest()) f.pay = 'online';",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G7 r1 #1",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "S4-owner: a guest is card-only"
+    ]
+  },
+  {
+    "id": "s4-39",
+    "slice": "s4",
+    "label": "the UI lock reads the current flow's time again (a remounted ASAP flow loses the lock)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (!sched() || !api || !S.flow) return null;\n      let rs = null;",
+    "to": "      if (!sched() || !api || !S.flow || S.flow.time !== 'schedule') return null;\n      let rs = null;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G7 r1 #1",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "S4-owner"
+    ]
   }
 ]

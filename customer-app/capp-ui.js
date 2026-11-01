@@ -581,13 +581,15 @@
     const schedDays = () => schedMod().days(servedSched(), now().getTime(), S.flow ? S.flow.mode : 'delivery');
     const anySlotNow = () => schedDays().some((d) => d.slots.length > 0);
     // row 10: a RETAINED scheduled identity (dispatched, its body recorded) — its slot is fixed until the send resolves
+    // Codex G7 r1 #1: from the RECORD only (capp-api's retainedSend), never from the current flow — and only for the member who sent it
+    // (sched_owner); a guest or another member sees no lock (and is refused locally at the send, heldByOther)
     function lockedBody() {
-      if (!sched() || !api || !S.flow || S.flow.time !== 'schedule') return null;
-      let r = null; try { r = api.readPlace(); } catch (_) { r = null; }
-      if (!r || !(Number(r.dispatched) > 0) || r.sched_pending !== true || typeof r.sent_body !== 'string') return null;   // only an UNCERTAIN send
-      let b = null; try { b = JSON.parse(r.sent_body); } catch (_) { b = null; }
-      return b && Number.isFinite(b.scheduled_for) ? b : null;
+      if (!sched() || !api || !S.flow) return null;
+      let rs = null; try { rs = api.retainedSend(); } catch (_) { rs = null; }
+      const m = member();
+      return rs && m && typeof m.uid === 'string' && rs.owner === m.uid ? rs.body : null;
     }
+    const heldByOther = () => { try { return !!(sched() && api && api.retainedByOther()); } catch (_) { return false; } };
     function lockedSlot() { const b = lockedBody(); return b ? b.scheduled_for : null; }
     // advisor ruling (a), Codex S4 r2: the TENDER of a retained send is fixed with its slot — the recorded one (the replay re-sends
     // those bytes to that tender's endpoint); null ⇒ not locked
@@ -903,6 +905,7 @@
       // known-unavailable line never starts a countdown (Codex perf-core r1 #7); the button-level gates stay as well
       if (dead) return;
       if (soldBlock()) { openLayer('cart'); return; }   // never silently nothing: the cart shows which dish sold out (frame 14)
+      if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther()); return; }   // Codex G7 r1 #1 (a): before the code sheet, the countdown or any request
       if (guestCashBlocked()) return;   // §3.2: refused locally, frame 6
       if (guestNeedsCode()) { if (intakeOk() && S.flow && !need() && C.tipChosen(S.flow) && totalsNow().ready) openCode(); return; }   // §4: the WhatsApp code BEFORE anything is sent (frame 2)
       if (!intakeOk() || !S.flow || need() || !C.tipChosen(S.flow) || !totalsNow().ready) return;
@@ -1058,6 +1061,7 @@
     async function send() {
       const f = S.flow, T = totalsNow();
       if (dead || !intakeOk() || !T.ready || !mods()) return;
+      if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther()); return; }   // Codex G7 r1 #1 (a): no request, the record untouched
       if (sched() && f && f.time === 'schedule' && !canSchedule()) { backTo('checkout'); scheduleGate(); return; }   // G=B: never sent
       // Codex S4 r1 #4: the NEWEST received schedule decides (a held P2 revalidation included; painting stays deferred until here)
       if (sched() && f && f.time === 'schedule' && lockedSlot() === null && !schedMod().offered(S.schedHeld || servedSched(), now().getTime(), f.mode, f.slot)) {
@@ -1123,6 +1127,9 @@
       refunded: (cents) => ({ title: 'Te reembolsamos tu pago', body: `${cfg.name || ''} ya había cerrado cuando se confirmó tu pago. Te devolvimos el total completo${Number.isFinite(cents) ? ', ' + moneyC(cents) : ''}; no se te cobrará.`, icon: 'ok', acts: [{ act: 'home', label: 'Volver al inicio', primary: true }] }),
       // the approved Q9 mockup #mk-exists — «Escribir a la tienda» hidden (no public restaurant contact in the app data)
       // the owner-approved held-states mockup (MOCKUP-capp-S2b-held-states.html #mk-paused / #mk-generic / #mk-pending)
+      // Codex G7 r1 #1, advisor ruling (a) 2026-10-31 — OWNER-PENDING copy (DECISIONS.md 2026-10-31): another account's scheduled send
+      // is still confirming on this device; ONE action (a retry would only refuse again)
+      heldOther: () => ({ title: 'Hay un pedido de otra cuenta confirmándose en este teléfono', body: 'Entrá con esa cuenta o esperá unos minutos.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }),
       paused: () => ({ title: `${cfg.name || ''} no está recibiendo pedidos en este momento`, body: 'Tu pedido no se envió ni se cobró nada; está intacto para que lo intentés en unos minutos.', icon: 'warn', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }),
       generic: (retry = 'err-retry') => ({ title: 'No pudimos enviar tu pedido', body: 'Intentá de nuevo en un momento; tu pedido está intacto.', acts: [{ act: retry, label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
       pending: () => ({ title: 'Tu pago todavía está en verificación', body: 'Estamos confirmando tu pago con el banco. No hace falta pagar de nuevo; esperá un momento mientras termina.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Volver al pedido', primary: true }], held: true }),
@@ -1167,6 +1174,7 @@
       if (k === 'guest_cash_not_allowed') { if (S.flow && cardOnlyGuest()) S.flow.pay = 'online'; backTo('checkout'); showErr(ERR.guestCash()); return; }   // §3.3 server refusal ⇒ frame 6
       if (k === 'guest_ticket_invalid') { S.ticket = null; backTo(); openCode(); return; }   // §4: re-verify (expired / consumed / missing) — the code sheet over the screen of the tap
       if (k === 'guest_email_required') { S.emailRefused = true; backTo('checkout'); return; }   // §4b ⇒ frame 1b: the email field red, CTA «Revisá tu correo»
+      if (k === 'held_other_account') { backTo('checkout'); showErr(ERR.heldOther()); return; }   // capp-api's backstop: nothing was sent
       if (k === 'schedule_needs_account') { backTo('checkout'); scheduleGate(); return; }   // capp-api's wire guard (G=B): nothing was sent
       if (k === 'offline') { backTo(sched() && S.flow && S.flow.time === 'schedule' ? 'checkout' : undefined); showErr(ERR.offline()); return; }   // S4 frame 10a: over «Entrega & Pago» (its picker becomes row 10b)
       if (k === 'closed') { S.closedRefused = true; backTo(); showErr(ERR.closed()); return; }   // over the screen of the tap (P placeTap :1975)
@@ -1566,6 +1574,7 @@
         if (!memberCtx) S.schedAfterSignin = false;
         const f = S.flow;
         if (!memberCtx && f && sched() && f.time === 'schedule' && lockedSlot() === null) { f.time = 'asap'; f.slot = null; }   // signed out ⇒ no scheduling (G=B)
+        if (!memberCtx && f && cardOnlyGuest()) f.pay = 'online';   // Codex G7 r1 #1: a guest is card-only in the state, not only on screen
         if (f && memberCtx) {
           if (!String(f.name || '').trim() && memberCtx.name) f.name = String(memberCtx.name);
           let unread = false;
