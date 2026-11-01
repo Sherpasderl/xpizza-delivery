@@ -49,6 +49,11 @@ const quiet = async (fn) => { const e = console.error, w = console.warn; console
   { G._resetForTest(); let reads = 0; const noisy = { ref: () => { reads++; throw new Error('no read expected'); } };
     assert.strictEqual(await G.otpLoginAllowed({ db: noisy, phone: '+504 9795-0000', restaurantId: 'tb_brand_a', strict: true, now: T, resolve }), true, 'GATE-HN-ZERO-READS allowed');
     assert.strictEqual(reads, 0, 'GATE-HN-ZERO-READS (today\'s path adds no RTDB read)'); }
+  // a '00'-prefixed HN number misses today's reading (normalizePhone keeps the 00) and reaches HN only through the STRICT parse —
+  // that path must also add no RTDB read (the HN guarantee holds on both readings, not only the fast path)
+  { G._resetForTest(); let reads = 0; const noisy = { ref: () => { reads++; throw new Error('no read expected'); } };
+    assert.strictEqual(await G.otpLoginAllowed({ db: noisy, phone: '00504 9795-0000', restaurantId: 'tb_brand_a', strict: true, now: T, resolve }), true, 'GATE-HN-00-STRICT-ZERO-READS allowed');
+    assert.strictEqual(reads, 0, 'GATE-HN-00-STRICT-ZERO-READS (the strict HN path adds no RTDB read)'); }
   assert.strictEqual(await ask('9795-0000', 'tb_nocreds', false), true, 'GATE-HN-EVEN-UNRESOLVED-SENDER');
   assert.strictEqual(await ask('+1 219 795 0000', 'tb_brand_a', false), true, 'GATE-US-ENABLED-ON-111');
   assert.strictEqual(await ask('+52 55 1234 5678', 'tb_brand_a', false), false, 'GATE-MX-NOT-ENABLED');
