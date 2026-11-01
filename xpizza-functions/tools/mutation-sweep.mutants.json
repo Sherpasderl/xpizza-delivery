@@ -30303,5 +30303,125 @@
    "node",
    "signup-platform.test.js"
   ]
+ },
+ {
+  "id": "sec-1",
+  "slice": "sec",
+  "label": "security backlog: the inactivity sweep writes no deleted_uids again (the gap: deleted_uids-only checks miss swept accounts)",
+  "file": "signup-endpoints.js",
+  "from": "await db.ref().update(ACCOUNT.accountDeleteUpdates(uid, phoneHash, now));",
+  "to": "await db.ref().update(sweepCutoff == null ? ACCOUNT.accountDeleteUpdates(uid, phoneHash, now) : ACCOUNT.accountDeleteUpdates(uid, phoneHash));",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-2",
+  "slice": "sec",
+  "label": "security backlog: deletion never revokes the account's refresh tokens",
+  "file": "signup-endpoints.js",
+  "from": "  await revokeSessions(db, uid, now, revoke, revokeDeadlineMs);\n  return true;",
+  "to": "  return true;",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-3",
+  "slice": "sec",
+  "label": "security backlog: a sweep that LOST to a fresher login still revokes the live account's sessions",
+  "file": "signup-endpoints.js",
+  "from": "  if (!stands) return false;\n  await db.ref().update(ACCOUNT.accountDeleteUpdates(uid, phoneHash, now));",
+  "to": "  if (!stands) { await revokeSessions(db, uid, now, revoke, revokeDeadlineMs); return false; }\n  await db.ref().update(ACCOUNT.accountDeleteUpdates(uid, phoneHash, now));",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-4",
+  "slice": "sec",
+  "label": "security backlog: a revoke failure is NOT alerted (silently dropped but for a log line)",
+  "file": "signup-endpoints.js",
+  "from": "    await db.ref(`dispatcher_alerts/account_revoke_failed_${uid}`).transaction(",
+  "to": "    await (async () => ({}))(`dispatcher_alerts/account_revoke_failed_${uid}`, ",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-5",
+  "slice": "sec",
+  "label": "security backlog: a revoke failure is NOT logged",
+  "file": "signup-endpoints.js",
+  "from": "  console.error(`deleteAccountCore: revokeRefreshTokens FAILED for ${uid} (${reason}) — deletion complete; tombstones guard until the ID token expires`);\n",
+  "to": "",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-6",
+  "slice": "sec",
+  "label": "security backlog: a revoke that HANGS past the deadline is treated as success (no log, no alert)",
+  "file": "signup-endpoints.js",
+  "from": "    if (r !== 'ok') reason = `deadline ${deadlineMs}ms`;\n",
+  "to": "",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-7",
+  "slice": "sec",
+  "label": "security backlog: the revoke-failure alert is overwritten on a retry (not create-only)",
+  "file": "signup-endpoints.js",
+  "from": "(cur == null ? { type: 'account_revoke_failed', uid, reason: String(reason).slice(0, 200), created_at: now } : undefined)",
+  "to": "({ type: 'account_revoke_failed', uid, reason: String(reason).slice(0, 200), created_at: now })",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-8",
+  "slice": "sec",
+  "label": "security backlog: the backfill overwrites an existing deleted_uids tombstone",
+  "file": "signup-endpoints.js",
+  "from": "wrote = false; if (cur != null) return undefined; wrote = true;",
+  "to": "wrote = true;",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-9",
+  "slice": "sec",
+  "label": "security backlog: the sweep residual never backfills deleted_uids for legacy user_private tombstones",
+  "file": "signup-endpoints.js",
+  "from": "tombstones: await backfillDeletedUids(db) };",
+  "to": "tombstones: 0 };",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-10",
+  "slice": "sec",
+  "label": "security backlog: the backfill stamps the sweep's clock instead of the account's own deleted_at",
+  "file": "signup-endpoints.js",
+  "from": "wrote = true; return row.deleted_at; });",
+  "to": "wrote = true; return Date.now(); });",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
  }
 ]
