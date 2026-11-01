@@ -344,6 +344,15 @@ const PINNED_LITERALS = [
   ['.oav', 'color', '#fff'], ['.sealbadge', 'color', '#1c1608'],
   ['.tog i', 'background', '#fff'], ['.motog i', 'background', '#fff'],
   ['.scrim', 'background', 'rgba(8,7,6,.6)'], ['.dscrim', 'background', 'rgba(8,7,6,.5)'],
+  // DISH PHOTOS B (MOCKUP-portal-dish-photo.html, owner-approved): the upload veil + bar OVER a photo (same family as the
+  // .uphoto .uprm pins: dark in both themes, because the ground is the picture), the crop grid, and the order page's OWN
+  // card + shades in the P3 preview («Así se ve en la página de pedidos» — the customer's tokens, not the portal theme)
+  ['.phov', 'background', 'rgba(10,10,11,.62)'], ['.phov', 'color', '#fff'],
+  ['.phbar', 'background', 'rgba(255,255,255,.3)'], ['.phbar i', 'background', '#fff'],
+  ['.phgrid', 'background', 'linear-gradient(to right,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px)),linear-gradient(to right,transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px)),linear-gradient(to bottom,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px)),linear-gradient(to bottom,transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px))'],
+  ['.phocard', 'background', '#fff'], ['.phocard', 'color', '#1E1B18'], ['.phodesc', 'color', '#5A4F47'], ['.phoprice', 'color', '#7A5A08'],
+  ['.phshc', 'background', 'linear-gradient(to bottom,transparent 40%,rgba(0,0,0,.35) 100%)'],
+  ['.phshh', 'background', 'linear-gradient(to bottom,transparent 50%,rgba(0,0,0,.25) 100%)'],
 ];
 const PINNED_ICON_RULES = {
   top: [':root[data-theme="dark"] .tbtn .moon,:root[data-theme="dark"] .miconbtn .moon', ':root[data-theme="dark"] .tbtn .sun,:root[data-theme="dark"] .miconbtn .sun'],

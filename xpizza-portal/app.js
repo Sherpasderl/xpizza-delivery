@@ -13,11 +13,43 @@ import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, remove
 import { groupByCategory, renderRail, renderDetail } from './render.js';
 import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
+// DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
+import * as PL from './photo-logic.js';
+import { createUploader, photoField, cropStep, rowThumb, rowTag, decodeFile, openPicker } from './photo.js';
+import { setPhoto, draftPhotos, origPhotos, pendingPhotos, canEditDraft } from './editor.js';
 
 const $ = (id) => document.getElementById(id);
 const REMEMBERED = 'sherpa.portal.rid';
 
 export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set(), settle: null, savedRenames: [], savedOther: false };
+
+// ── DISH PHOTOS B — per-load photo facts (getEditableCatalog E-P3) and the upload controller ─────────────────────────────
+//   enabled   photosEnabled === true (the server's PHOTOS_UPLOADS): the uploader is drawn only then (no control without effect)
+//   previews  photoPreviews {[pid]: {card, hero, expiresAt?}} — every pid the draft OR the active version references
+//   legacy    legacyPreviews {[itemKey]: {card}} — the image the public menu serves today for a dish with no entry
+// A photo upload belongs to a TENANT WORLD (photoWorld), not to an operation generation: opening the review bumps the
+// generation, and must not kill an upload; a tenant switch / reload / sign-out ends it.
+// Module-private, NOT on the exported `state`: nothing outside this module reads or writes them (portal-wiring's census).
+const emptyPhotoFacts = () => ({ enabled: false, previews: {}, legacy: {}, broken: new Set(), retried: new Set(), stale: new Set(), renewTimer: null });
+let photo = emptyPhotoFacts();
+let photoWorld = 0;
+const uploader = createUploader({
+  rid: () => state.draftRid,
+  token,
+  gen: () => photoWorld,
+  alive: (w) => w === photoWorld,
+  // the ONE write of an uploaded pid, through the guarded editor; refused (→ held, applied on the next repaint) while owned
+  apply: (key, pid, preview) => {
+    if (!state.draft || !canEditDraft(state.draft)) return false;
+    if (preview && typeof preview === 'object') photo.previews[pid] = preview;
+    setPhoto(state.draft, key, { 'state': 'pid', pid });   // a quoted key: the census reads a bare `state:` as the state object
+    scheduleRenew();
+    return true;
+  },
+  changed: (key, what) => photoChanged(key, what),
+  decode: decodeFile,
+  newOpId: () => `op:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`,
+});
 
 export { pickRid, messageFor } from './portal-logic.js';
 
@@ -369,7 +401,7 @@ function syncUi() {
   const rev = $('review');
   if (rev) {
     const valid = !!state.draft && isPublishable(state.draft);
-    rev.disabled = owned || state.menuLoading === true || !state.draft || !valid;
+    rev.disabled = owned || state.menuLoading === true || !state.draft || !valid || uploader.busy();
     rev.title = (state.draft && !valid) ? 'Hay un precio sin valor válido' : '';
   }
   // "Listo" on the receipt is not pressable while the post-publish reload is owed (derived, like every other control)
@@ -410,6 +442,7 @@ export async function loadMenu(rid) {
   const gen = opGeneration;
   state.renameEdit = null;                    // PLAN-public-menu-display T1 — the section title being edited, if any
   closeNameAll();
+  endPhotoWorld();                            // DISH PHOTOS B — uploads and previews belong to the tenant world that is ending
   $('detail').replaceChildren();
   showEmpty('Cargando tu menú…', 'Un momento.');
   let data;
@@ -442,10 +475,11 @@ export async function loadMenu(rid) {
   // The draft carries the boundary: it may be edited only while nobody owns it for a review or a
   // publish. Every mutator asks this, so a retained or detached listener is refused at the state
   // rather than at the DOM.
-  state.draft = createDraft((data && data.source) || { items: [], extras: [], structure: {} },
+  state.draft = createDraft(withPhotos((data && data.source) || { items: [], extras: [], structure: {} }, data),
     { canEdit: () => editLockHolder === null, held: savedHold });
   state.sourceUpdateTime = (data && data.sourceUpdateTime) || null;
   state.usesPlatformFactura = (data && data.usesPlatformFactura) === true;
+  applyPhotoFacts(data);                    // DISH PHOTOS B — behind the same generation check
   applyAddProductFacts(data);
   applyPublishRequestFacts(data);           // T-d — behind the same generation check
   // WHICH TENANT THIS DRAFT IS. Recorded with the draft, from the rid the request was made for — so
@@ -460,6 +494,7 @@ export async function loadMenu(rid) {
 // keeps the count, the marks and the values from drifting apart: there is one source of truth and one
 // pass that reads it.
 function repaintFromDraft() {
+  uploader.flush();                           // DISH PHOTOS B — an upload that finished while the draft was owned lands now
   const src = draftSource(state.draft);
   // 1D add-product B — a product's options belong under it (its drawer, its review row, its nested lines in the list —
   // portal mockup screen 2), not in the list as products of their own: they are folded out here, NEW and PUBLISHED groups
@@ -501,6 +536,202 @@ function applyPublishRequestFacts(data) {
   $('review').textContent = state.publishViaRequest ? 'Enviar al dueño para publicar' : 'Revisar y publicar';
   const request = data && data.publish_request && typeof data.publish_request === 'object' ? data.publish_request : null;
   document.dispatchEvent(new CustomEvent('portal:publish-request', { detail: { request } }));
+}
+// ── DISH PHOTOS B (PLAN-dish-photos r2 §2.2 E-P3 + amendments 2026-10-27) — the photo facts and their surfaces ─────────
+const objOrEmpty = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+// The draft map arrives as E-P3 `photos` and lives IN the document as `source.photos`, so every save sends it back whole
+// (an unchanged stored map always passes with uploads off). Empty or absent: the source is left exactly as it came.
+function withPhotos(source, data) {
+  const map = objOrEmpty(data && data.photos);
+  if (Object.keys(map).length && source && typeof source === 'object') source.photos = JSON.parse(JSON.stringify(map));
+  return source;
+}
+function applyPhotoFacts(data) {
+  if (photo.renewTimer) clearTimeout(photo.renewTimer);
+  photo = emptyPhotoFacts();
+  photo.enabled = !!(data && data.photosEnabled === true);
+  photo.previews = { ...objOrEmpty(data && data.photoPreviews) };
+  photo.legacy = { ...objOrEmpty(data && data.legacyPreviews) };
+  scheduleRenew();
+}
+// A tenant world ends (switch, reload, sign-out): its uploads are aborted and its previews forgotten.
+function endPhotoWorld() {
+  photoWorld += 1;
+  uploader.abortAll();
+  if (photo.renewTimer) clearTimeout(photo.renewTimer);
+  photo = emptyPhotoFacts();
+}
+// The row's photo as the screen shows it; an image that failed to load (after its one renewal) is a missing preview —
+// visible as such, never a broken image.
+function photoViewOf(key) {
+  // legacy images are shown (row / drawer) only with uploads ON: E-P3 sends legacyPreviews whatever the flag, and the dark
+  // portal must look exactly as today; the review still reads them (a stored map's lines need the true «nueva / cambiada»)
+  const v = PL.photoView(key, { photos: draftPhotos(state.draft), orig: origPhotos(state.draft), previews: photo.previews, legacy: photo.enabled ? photo.legacy : {} });
+  // a picture that cannot be shown: a legacy image, or an upload whose renewal had nothing newer (codex r1 #2: an unsaved pid
+  // is not in E-P3), keeps the NEUTRAL frame — still a photo; a pid the server no longer serves is MISSING (P5, a new upload)
+  if (v.url && (photo.broken.has(v.url) || (v.pid && photo.stale.has(v.pid) && previewExpired(v.pid)))) {
+    if (v.kind !== 'photo') return { ...v, url: null };
+    return v.legacy || (v.pid && photo.stale.has(v.pid)) ? { ...v, url: null, neutral: true, missing: false } : { ...v, url: null, missing: true };
+  }
+  return v;
+}
+const previewExpired = (pid) => { const e = PL.expiryMs(photo.previews[pid] && photo.previews[pid].expiresAt); return e !== null && Date.now() >= e; };
+// A photo's STABLE identity for its picture URL(s) — the pid, or the legacy dish key — so "one retry" is per photo, not per
+// signed URL (each renewal mints a new one; codex r1 #3)
+function photoIdOfUrl(url) {
+  for (const [pid, p] of Object.entries(photo.previews)) if (p && (p.card === url || p.hero === url)) return `pid:${pid}`;
+  for (const [k, l] of Object.entries(photo.legacy)) if (l && l.card === url) return `legacy:${k}`;
+  return `url:${url}`;
+}
+function urlOfPhotoId(id) {
+  if (id.startsWith('pid:')) { const pid = id.slice(4); const p = photo.previews[pid]; const u = p && typeof p.card === 'string' ? p.card : null; return u && !photo.broken.has(u) && !(photo.stale.has(pid) && previewExpired(pid)) ? u : null; }
+  if (id.startsWith('legacy:')) { const l = photo.legacy[id.slice(7)]; const u = l && typeof l.card === 'string' ? l.card : null; return u && !photo.broken.has(u) ? u : null; }
+  return null;
+}
+const photoNameOf = (key) => {
+  const it = ((draftSource(state.draft) || {}).items || []).find((i) => i && rowId(i) === key);
+  const n = it && it.display && typeof it.display.name === 'string' && it.display.name.trim() ? it.display.name : null;
+  return n || (typeof key === 'string' && key.startsWith('tmp:') ? 'Nuevo producto' : String(key));
+};
+// render.js asks per row: today's placeholder (null) unless uploads are on or the dish has a photo to show
+function rowPhoto(it, { name, open, upload }) {
+  const v = photoViewOf(rowId(it));
+  if (!photo.enabled && !(v.kind === 'photo' && (v.url || v.neutral))) return null;
+  return { thumb: rowThumb({ view: v, name, enabled: photo.enabled, onOpen: open, onUpload: upload, onImgError: onPhotoImgError }), tag: rowTag(v) };
+}
+// P2 — choosing a photo for one product. `capture` null = the zone / the row camera: on a phone that EXPANDS the zone in place
+// into «Tomar foto» / «Elegir de la galería» (the mockup's P1 cajón → P2 at 390); elsewhere it opens the system picker.
+// true / false = those two buttons. Synchronous from the click, so the browser treats the picker as the user's gesture.
+let photoExpandedKey = null;
+const isPhone = () => !!(typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 560px)').matches);
+function pickPhoto(key, capture) {
+  if (!photo.enabled || !state.draft || !canEditDraft(state.draft)) return;
+  if (capture === null && isPhone() && photoExpandedKey !== key) { photoExpandedKey = key; renderDrawer(); return; }
+  openPicker((file) => { photoExpandedKey = null; uploader.take(key, file); }, { capture: capture === true });
+}
+// The controller's "something changed for this product": the bar in place for progress (no rebuild under the pointer),
+// otherwise the open drawer, the rows and the bar from the draft.
+function photoChanged(key, what) {
+  if (what === 'progress') {
+    const job = uploader.jobOf(key);
+    const bar = state.drawerKey === key ? $('drawer').querySelector('.phbar') : null;
+    if (job && bar) { const pct = Math.round((job.progress || 0) * 100); bar.setAttribute('aria-valuenow', String(pct)); const i = bar.querySelector('i'); if (i) i.style.width = `${pct}%`; }
+    return;
+  }
+  if (state.drawerKey === key && $('drawer').classList.contains('show')) renderDrawer();
+  if (state.draft) { paint(); refreshBar(); }
+}
+// The drawer's «Foto» field for a product, or null (uploads off and no photo: the drawer exactly as today).
+function photoFieldFor(it) {
+  const key = rowId(it);
+  const name = photoNameOf(key);
+  const job = uploader.jobOf(key);
+  return photoField({
+    name, view: photoViewOf(key), job, enabled: photo.enabled, expanded: photoExpandedKey === key && isPhone(),
+    onPick: bound((capture) => pickPhoto(key, capture)),
+    onRemove: bound(() => {
+      uploader.clear(key);
+      setPhoto(state.draft, key, PL.removedEntry(key, { orig: origPhotos(state.draft), legacy: photo.legacy }));
+      photoChanged(key);
+    }),
+    onUndo: bound(() => { setPhoto(state.draft, key, PL.undoEntry(key, { orig: origPhotos(state.draft) })); photoChanged(key); }),
+    // P5: the same upload again; a preview the server could not give (a pid it cannot show) needs a new file
+    onRetry: bound(() => { const j = uploader.jobOf(key); if (j && j.phase === 'failed') uploader.retry(key); else pickPhoto(key, null); }),
+    onCancel: bound(() => uploader.cancel(key)),
+    onImgError: onPhotoImgError,
+  });
+}
+// P3 — «Ajustar foto», the drawer's own step: Cancelar / Cerrar discard the file and upload nothing; Listo uploads.
+function renderCropDrawer(d, it, job) {
+  const key = rowId(it);
+  const disp = it.display || {};
+  const { head, body, foot } = cropStep({
+    job, name: photoNameOf(key), desc: typeof disp.desc === 'string' ? disp.desc : '',
+    priceText: Number.isInteger(it.price) && it.price > 0 ? `L ${it.price}` : '',
+    onFrame: bound((id) => uploader.setFrame(key, id)),
+    onView: (id, v) => uploader.setView(key, id, v),
+    onCancel: bound(() => uploader.cancel(key)),
+    onDone: bound(() => uploader.upload(key)),
+    onClose: bound(() => { state.drawerKey = null; uploader.cancel(key); d.classList.remove('show'); d.replaceChildren(); }),
+  });
+  d.replaceChildren(head, body, foot);
+  d.classList.add('show');
+}
+// What the review (P8) and the seal need to show a photo line: the dish's name, the card URL of a state, and which dishes
+// have a legacy image (that decides «Foto nueva» vs «Foto cambiada»).
+function photoReviewOpts() {
+  return {
+    nameOf: photoNameOf,
+    legacy: photo.legacy,
+    urlOf: (st, key) => urlOfPhotoId(st && st.kind === 'pid' ? `pid:${st.pid}` : `legacy:${key}`),
+    onImgError: onPhotoImgError,
+  };
+}
+// ── preview renewal (§2.2 E-P3): a background re-read, never on the paint path. It merges PREVIEWS only — the draft on screen
+// is the merchant's and is never replaced by a renewal.
+function scheduleRenew() {
+  if (photo.renewTimer) { clearTimeout(photo.renewTimer); photo.renewTimer = null; }
+  if (!state.draft) return;
+  // a pid a renewal could not extend is never scheduled again (codex r1 #2: no zero-delay loop); it falls back to the frame
+  const pids = Object.values(draftPhotos(state.draft)).filter((e) => e && e.state === 'pid' && !photo.stale.has(e.pid)).map((e) => e.pid);
+  const ms = PL.renewIn(photo.previews, pids, Date.now());
+  if (ms === null) return;
+  const w = photoWorld;
+  const t = setTimeout(() => { if (w === photoWorld) refreshPreviews(); }, Math.min(ms, 2147483647));
+  if (t && typeof t.unref === 'function') t.unref();
+  photo.renewTimer = t;
+}
+async function refreshPreviews() {
+  const rid = state.draftRid;
+  const w = photoWorld;
+  if (!rid) return;
+  let fresh = null;
+  try { fresh = await apiFetch('getEditableCatalog', { rid, token }); } catch (_) { fresh = null; }
+  if (w !== photoWorld || rid !== state.draftRid || !fresh) return;
+  const got = objOrEmpty(fresh.photoPreviews);
+  // E-P3's `photos` is the SAVED draft map: it says which pids the server knows (codex r2 #3)
+  const saved = new Set(Object.values(objOrEmpty(fresh.photos)).filter((e) => e && e.state === 'pid').map((e) => e.pid));
+  const now = Date.now();
+  for (const e of Object.values(draftPhotos(state.draft))) {
+    if (!e || e.state !== 'pid') continue;
+    const g = got[e.pid];
+    const exp = g ? PL.expiryMs(g.expiresAt) : null;
+    if (!g && saved.has(e.pid)) {
+      // a SAVED pid the server no longer serves (§2.2 E-P3: deleting / deleted): MISSING — P5 and its re-upload, never the frame
+      delete photo.previews[e.pid];
+      photo.stale.delete(e.pid);
+    } else if (!g || (exp !== null && exp - PL.RENEW_EARLY_MS <= now)) {
+      // an UNSAVED upload (E-P3 knows only the saved draft), or a preview the read did not extend: STALE — no more renewals,
+      // the neutral frame once its picture fails or expires (codex r1 #2)
+      photo.stale.add(e.pid);
+    } else photo.stale.delete(e.pid);
+  }
+  Object.assign(photo.previews, got);
+  photo.legacy = { ...photo.legacy, ...objOrEmpty(fresh.legacyPreviews) };
+  photo.broken.clear();
+  scheduleRenew();
+  if (state.draft) paint();
+  if (state.drawerKey && $('drawer').classList.contains('show')) renderDrawer();
+  renewReviewThumbs();
+}
+// codex r1 #4 — the OPEN review (P8) keeps its nodes, its record and the fiscal acknowledgement: only each thumbnail's picture
+// is replaced in place (matched by its photo identity, data-ph), with a fresh one-shot error listener; no URL → the frame.
+function renewReviewThumbs() {
+  for (const img of $('mbody').querySelectorAll('img[data-ph]')) {
+    const u = urlOfPhotoId(img.dataset.ph);
+    if (!u) { img.remove(); continue; }
+    if (img.getAttribute('src') !== u) img.setAttribute('src', u);   // its one identity-bound handler (review.js) stays
+  }
+}
+// An image that fails to load: ONE renewal read PER PHOTO (its pid / legacy key — codex r1 #3); a second failure of the same
+// photo, whatever its URL, re-reads nothing and leaves it shown as missing / the frame.
+function onPhotoImgError(url, identity) {
+  if (!url || photo.broken.has(url)) return;
+  const id = identity || photoIdOfUrl(url);
+  photo.broken.add(url);
+  if (photo.retried.has(id)) { if (state.draft) paint(); if (state.drawerKey && $('drawer').classList.contains('show')) renderDrawer(); renewReviewThumbs(); return; }
+  photo.retried.add(id);
+  refreshPreviews();
 }
 // A NEW product: still unsaved (a temporary reference), or saved but not yet published (the server said so).
 const isTmpRow = (it) => !!(it && typeof it.ref === 'string' && it.ref.startsWith('tmp:') && !('key' in it));
@@ -796,6 +1027,9 @@ function refreshBar() {
   $('rbtxt').textContent = n === 0
     ? 'Revisá si hay algo sin publicar'
     : (n === 1 ? '1 cambio sin publicar' : `${n} cambios sin publicar`) + (renames && renames === n ? (n === 1 ? ' · nombre de sección' : ' · nombres de sección') : '');
+  // DISH PHOTOS B (P7) — «1 cambio sin publicar · 1 foto»: the photo share of the count, said where the count is
+  const nPhotos = state.draft ? pendingPhotos(state.draft).length : 0;
+  if (nPhotos) { const sfx = document.createElement('span'); sfx.textContent = PL.COPY.barSuffix(nPhotos); $('rbtxt').append(sfx); }
   // T-d (mockup v8 D2): who publishes, said where the merchant decides — text only
   if (state.publishViaRequest) { const note = document.createElement('span'); note.textContent = ' · el dueño confirma y publica con la autorización fiscal'; $('rbtxt').append(note); }
   // Nothing typed, nothing to throw away. The review is the way forward here; discard would be a
@@ -877,6 +1111,8 @@ function paint() {
     canAdd: canAddTo,
     onAdd: bound(onAddProduct),
     groupOf: listGroupOf,          // 1D add-product B (a group's option rows are folded out in repaintFromDraft)
+    photoOf: rowPhoto,             // DISH PHOTOS B — null with uploads off and no photo: today's placeholder
+    onPhoto: bound((id) => { photoExpandedKey = null; openDrawer(id); pickPhoto(id, null); }),   // the camera: the drawer with the picker open
   });
   if (state.draftUnpublishable && state.draftRid) offerResetToLive($('detail'), state.draftRid, state.sourceUpdateTime);
 }
@@ -957,6 +1193,8 @@ function renderDrawer() {
   const it = (src.items || []).find((i) => i && rowId(i) === state.drawerKey);
   d.replaceChildren();
   if (!it) { d.classList.remove('show'); return; }
+  const pjob = uploader.jobOf(rowId(it));
+  if (pjob && pjob.phase === 'crop') { renderCropDrawer(d, it, pjob); return; }   // DISH PHOTOS B — P3, a step of the drawer
   if (isAddition(it)) { renderAddDrawer(d, it, keepScroll); return; }   // 1D add-product A
 
   const head = document.createElement('div');
@@ -975,6 +1213,8 @@ function renderDrawer() {
   // A PUBLISHED product with a required choice: its price IS its choices' prices (the launcher's own is legacy and never
   // charged), so the drawer shows the choice block in price-only mode instead of a "Precio" field (advisor ruling on
   // portal A — the list shows the choices read-only, so this is where a published choice's price is changed).
+  const pf = photoFieldFor(it);            // DISH PHOTOS B — «Foto» first (P1), or nothing (uploads off, no photo: today)
+  if (pf) body.append(pf);
   const pg = choiceGroup(state.draft, rowId(it));
   if (pg && pg.options.length) {
     body.append(publishedChoiceBlock(rowId(it), pg));
@@ -1124,7 +1364,8 @@ function renderAddDrawer(d, it, keepScroll) {
   head.append(title, close);
 
   const body = mk('div', 'dwb');
-  body.append(field('Foto', mk('div', 'fotosoon', 'Foto: próximamente — por ahora se muestra el emoji de la sección.')));
+  // DISH PHOTOS B — the approved «Agregar producto» hole becomes the zone (P1 inset); uploads off: today's note, exactly
+  body.append(photoFieldFor(it) || field('Foto', mk('div', 'fotosoon', 'Foto: próximamente — por ahora se muestra el emoji de la sección.')));
 
   const name = document.createElement('input');
   name.type = 'text'; name.value = typeof disp.name === 'string' ? disp.name : ''; name.setAttribute('aria-label', 'Nombre');
@@ -1215,6 +1456,7 @@ function renderAddDrawer(d, it, keepScroll) {
   const quitar = document.createElement('button');
   quitar.type = 'button'; quitar.className = 'btn delx'; quitar.textContent = 'Quitar';
   quitar.addEventListener('click', bound(() => {
+    uploader.cancel(id);                      // DISH PHOTOS B — an upload for a product being removed has nowhere to land
     removeAddition(state.draft, id, state.additionKeys);
     state.drawerError = null;
     closeDrawer(); repaintFromDraft();
@@ -1489,6 +1731,7 @@ document.addEventListener('portal:restaurant', (e) => { loadMenu(e.detail && e.d
 // The review bar's own controls. Wired here, not inline: the CSP has no 'unsafe-inline', so an
 // onclick attribute would be inert and the button would look enabled while doing nothing.
 $('discard').addEventListener('click', () => {
+  if (canEditDraft(state.draft)) uploader.abortAll();   // DISH PHOTOS B — an upload in flight belongs to the edits thrown away
   discard(state.draft);
   $('drawer').classList.remove('show');
   repaintFromDraft();
@@ -1560,7 +1803,7 @@ async function openReviewFlow() {
     // Computed BEFORE the record is minted, because the record is immutable once it exists — the whole
     // evidence set is fixed at the moment it is created, rather than assembled field by field
     // afterwards where anything could join in.
-    const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura });
+    const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura, legacy: photo.legacy });
     const minted = mintReview({
       diff,
       editToken: res && res.token,
@@ -1578,7 +1821,7 @@ async function openReviewFlow() {
     // 🔴 RENDERED FROM THE MINTED RECORD, not from the locals it was built out of. What the merchant
     // reads must be the same object the publish will send — rendering from the pre-freeze originals
     // would leave a second, mutable copy of the evidence alive for as long as this scope is.
-    renderReview($('mbody'), reviewModel(state.review.diff), { describe: describeAddition });
+    renderReview($('mbody'), reviewModel(state.review.diff), { describe: describeAddition, photos: photoReviewOpts() });
     const attBox = document.createElement('div');
     $('mbody').append(attBox);
     // BOUND to this review and this world. Dispatching A's checkbox after B opened must acknowledge
@@ -1589,7 +1832,7 @@ async function openReviewFlow() {
     renderAttestation(attBox, state.review.attestation, bound((v) => {
       minted.acknowledge(v);
       syncUi();
-    }), { describe: describeAddition });
+    }), { describe: describeAddition, photos: photoReviewOpts() });
     syncPublishButton();
     restorePublishFooter();
     // The drawer is z-index 26; the review scrim is 20. An open drawer therefore sits OVER the
@@ -1789,7 +2032,7 @@ async function runPublish() {
   // the merchant no longer has.
   $('revFoot').replaceChildren(PUBBACK);
   PUBBACK.textContent = 'Listo';
-  renderReceipt($('mbody'), receiptFor(out.res, captured));
+  renderReceipt($('mbody'), receiptFor(out.res, captured, { nameOf: photoNameOf }));
   clearReview();
   // 1D add-product A §3 — RELOAD the authoritative source and revision before editing resumes: a certified publish
   // writes identity stamps back to the source (so "publish doesn't change the revision" no longer holds), and the
@@ -1815,9 +2058,10 @@ async function settlePublish() {
     syncUi();
     return;
   }
-  state.draft = createDraft(fresh.source, { canEdit: () => editLockHolder === null, held: savedHold });
+  state.draft = createDraft(withPhotos(fresh.source, fresh), { canEdit: () => editLockHolder === null, held: savedHold });
   state.sourceUpdateTime = fresh.sourceUpdateTime || null;
   state.usesPlatformFactura = fresh.usesPlatformFactura === true;
+  applyPhotoFacts(fresh);                   // DISH PHOTOS B — the published photos' previews (public URLs) replace the draft ones
   applyAddProductFacts(fresh);
   applyPublishRequestFacts(fresh);          // T-d — a publish retires the owner's banner / badge (the request is no longer fresh)
   state.settle = null;
@@ -2010,6 +2254,7 @@ document.addEventListener('portal:auth', (e) => {
   // window between these two lines; the only thing that ever mattered was which came first.
   if (state.uid && state.uid !== uid) { state.draft = null; state.groups = []; state.currentRid = null; }
   state.uid = uid;
+  if (state.draft === null) endPhotoWorld();   // DISH PHOTOS B — a different person: their uploads are not this one's
   invalidateReview();                       // bumps: whatever this event means, the old session is over
   // A re-authentication for the SAME person keeps the draft — but the generation moved, so the controls
   // rendered under the old session are inert. Rebuild them, or a token refresh silently freezes the
@@ -2026,7 +2271,7 @@ document.addEventListener('portal:auth', (e) => {
 // merchant is told once, plainly: "Nueva versión: guardá tus cambios para actualizar".
 function portalReloadFacts() {
   const a = document.activeElement;
-  return { pendingWrite: !!pendingWrite, publishing: !!publisher.busy || !!state.settle, review: !!state.review, reviewLock: !!state.reviewLock,
+  return { pendingWrite: !!pendingWrite || uploader.busy(), publishing: !!publisher.busy || !!state.settle, review: !!state.review, reviewLock: !!state.reviewLock,
     pendingCount: state.draft ? pendingCount(state.draft, state.additionKeys) + pendingRenames(state.draft).length : 0, focusedTag: a ? a.tagName : null };
 }
 try {

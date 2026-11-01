@@ -22,9 +22,14 @@
     #   connect-src  identitytoolkit = sign-in, securetoken = token refresh, cloudfunctions = our reads.
     #                A stolen token is useless off-origin anyway (the server checks ownership), but this
     #                also means a compromised dependency cannot exfiltrate one to an arbitrary host.
+    #   DISH PHOTOS B (PLAN-dish-photos §3, P2-10) — PATH-SCOPED Storage, nothing wider: img-src = blob: (the crop step's
+    #                own file) + the PUBLIC photo bucket's photos/ prefix + the default bucket's drafts/ prefix (1 h signed GETs);
+    #                connect-src = the default bucket's uploads/ prefix (E-P1's signed create-only PUT). Path-style URLs only.
+    #                ⚠️ The public bucket name `xpizza-delivery-photos` is a PLACEHOLDER (A0 has not created it): one constant
+    #                here + its pin in portal-wiring.test.mjs; A0's real name is a one-line change at merge.
     #   frame-ancestors 'none'  the portal edits prices in later slices; it must never be framed
     #   base-uri / object-src / form-action  close the usual redirection and injection routes
-    Content-Security-Policy = "default-src 'none'; script-src 'self' https://www.gstatic.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://us-central1-xpizza-delivery.cloudfunctions.net; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'"
+    Content-Security-Policy = "default-src 'none'; script-src 'self' https://www.gstatic.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://us-central1-xpizza-delivery.cloudfunctions.net https://storage.googleapis.com/xpizza-delivery.firebasestorage.app/uploads/; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://storage.googleapis.com/xpizza-delivery-photos/photos/ https://storage.googleapis.com/xpizza-delivery.firebasestorage.app/drafts/; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'"
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     # No full URL — and no restaurant id — leaks to a cross-origin third party.

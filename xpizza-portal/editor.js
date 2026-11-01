@@ -222,6 +222,10 @@ export function removeAddition(draft, id, savedAdditions = new Set()) {
   if (g) dropGroup(draft.state, g);
   items.splice(items.indexOf(row), 1);
   dropFromOrder(draft.state, id);
+  // DISH PHOTOS B (codex r1 #1) — its photo goes with it: a `source.photos` key with no matching item fails editCatalog's
+  // validation (the amended tmp-ref rule), so an orphan here would make the next save unsavable
+  const pm = draft.state.photos && typeof draft.state.photos === 'object' ? draft.state.photos : null;
+  if (pm && Object.prototype.hasOwnProperty.call(pm, id)) { delete pm[id]; if (!Object.keys(pm).length) delete draft.state.photos; }
   return draft;
 }
 
@@ -313,7 +317,38 @@ function foldNewGroups(draft, entries, saved) {
   return out;
 }
 
-export const pendingCount = (draft, savedAdditions) => pendingChanges(draft, savedAdditions).length;
+// DISH PHOTOS B — a photo change is a change like any other (mockup P7: «1 cambio sin publicar · 1 foto"), counted here and
+// nowhere in pendingChanges, whose entries light PRICE cells by key.
+export const pendingCount = (draft, savedAdditions) => pendingChanges(draft, savedAdditions).length + pendingPhotos(draft).length;
+
+// ── DISH PHOTOS B (PLAN-dish-photos §2.1 / §2.2) — THE DRAFT PHOTO MAP ────────────────────────────────────────────────
+// `source.photos` = {[itemKey]: {state:'pid', pid} | {state:'removed'}}; an absent key is LEGACY. It is part of the document
+// editCatalog saves (the whole map every save), and it is ABSENT when empty — a photo-less draft is byte-identical to
+// today's. A key is a row's id: its pricing key, or its `tmp:` reference while unsaved (editCatalog re-keys that entry to
+// the allocated key in the canonical source it returns — §2.2 amendment 2026-10-27). The entry is written ONLY from a pid
+// E-P2 / E-P3 returned (the caller's), or the removed / restored states below.
+const photoMap = (src) => (src && src.photos && typeof src.photos === 'object' && !Array.isArray(src.photos) ? src.photos : null);
+export const draftPhotos = (draft) => photoMap(draft && draft.state) || {};
+export const origPhotos = (draft) => photoMap(draft && draft.orig) || {};
+// One mutator: `entry` null = back to absent (legacy). Refused while the draft is owned, for a row that is not in the draft,
+// and for any entry that is not one of the two states.
+export function setPhoto(draft, id, entry) {
+  if (!canEditDraft(draft)) return draft;
+  if (!rowsOf(draft.state, 'item').some((r) => r && rowId(r) === id)) return draft;
+  const ok = entry === null || (entry && entry.state === 'removed' && Object.keys(entry).length === 1)
+    || (entry && entry.state === 'pid' && typeof entry.pid === 'string' && entry.pid && Object.keys(entry).length === 2);
+  if (!ok) return draft;
+  const map = { ...draftPhotos(draft) };
+  if (entry === null) delete map[id]; else map[id] = entry.state === 'pid' ? { state: 'pid', pid: entry.pid } : { state: 'removed' };
+  if (Object.keys(map).length) draft.state.photos = map; else delete draft.state.photos;
+  return draft;
+}
+// Keys whose photo differs from what was loaded (the bar's «· N fotos").
+export function pendingPhotos(draft) {
+  const a = draftPhotos(draft); const b = origPhotos(draft);
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  return [...keys].filter((k) => JSON.stringify(a[k] || null) !== JSON.stringify(b[k] || null)).sort();
+}
 
 // Rows whose current value is not a price. The value is HELD rather than discarded — a field that
 // snapped back mid-keystroke would fight the merchant — so the draft can legitimately be in this
