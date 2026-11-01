@@ -26459,5 +26459,96 @@
       "the fresh menu opened the checkout over the user's search",
       "the cancelled dish link opened after the lock cleared"
     ]
+  },
+  {
+    "id": "pf-01",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: the guest promo pill guard inverted (a member sees it, a guest does not)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "cfg.promoFree === true && a && a !== 'member' ?",
+    "to": "cfg.promoFree === true && a && a === 'member' ?",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the guest pill is missing"
+    ]
+  },
+  {
+    "id": "pf-02",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: the member «Envío gratis» branch removed (a member on a promo store reads «Envío desde»)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "${cfg.promoFree === true && authOf() === 'member' ? '<span class=\"free\">Envío gratis</span>'",
+    "to": "${false ? '<span class=\"free\">Envío gratis</span>'",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the member's «Envío gratis» is missing"
+    ]
+  },
+  {
+    "id": "pf-03",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: the feeinfo DIRECTORY fallback removed (the store ⓘ prints «undefined km»)",
+    "file": "../customer-app/capp-ui.js",
+    "from": ": { from_cents: cfg.feeFromCents, max_km: cfg.zoneKm };",
+    "to": ": q;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the feeinfo sheet must fall back to the directory"
+    ]
+  },
+  {
+    "id": "pf-04",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: the unresolved RESERVATION removed (the pill pops in when the guest resolves)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "a && a !== 'member' ? `<div class=\"pills hdpills\">",
+    "to": "a === 'guest' ? `<div class=\"pills hdpills\">",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the unresolved pill must be reserved"
+    ]
+  },
+  {
+    "id": "pf-05",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: authChanged is a no-op (a resolved auth never reaches the mounted store's header)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "        if (dead) return;\n        const top = $('top'), info = top && top.querySelector('.info'); if (!info) return;",
+    "to": "        return;\n        const top = $('top'), info = top && top.querySelector('.info'); if (!info) return;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the guest pill is now shown",
+      "a resolved member drops the pill"
+    ]
   }
 ]

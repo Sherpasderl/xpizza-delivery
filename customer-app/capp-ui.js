@@ -284,15 +284,32 @@
       return `<div class="row${isSold(it) ? ' sold-out' : ''}" id="dish-${esc(it.id)}"><button class="txtbtn" ${open}>${marks}<span class="nm">${esc(it.n)}</span>${it.d ? `<span class="ds">${esc(it.d)}</span>` : ''}<span class="prrow"><span class="pr">${esc(price)}</span></span></button>
     ${it.img ? `<div class="thumb"><button class="openimg" ${open} aria-label="Ver ${esc(it.n)}" tabindex="-1"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div>` : `<div class="ovl-inline">${overlayHtml(it)}</div>`}</div>`;
     }
-    function storeHtml() {
+    // PLAN-capp-store-promo-feeinfo r0 — the store header as v6: the guest promo pill (:1617; reserved, hidden, while auth is
+    // unresolved — home's rule, no pop-in), the member's «Envío gratis» (:1609 feeFree) and the fee ⓘ (only with a priced fee AND a
+    // zone: no control without effect). The auth tri-state is the HOST's (opts.authState); no getter ⇒ no promo UI at all
+    function authOf() {
+      if (typeof opts.authState !== 'function') return null;
+      let v; try { v = opts.authState(); } catch (_) { v = null; }
+      return v === 'guest' || v === 'member' ? v : 'unresolved';
+    }
+    function pillsHtml() {
+      const a = authOf();
+      return cfg.promoFree === true && a && a !== 'member' ? `<div class="pills hdpills"><span class="pill deal"${a === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true"'}>Envío gratis con tu cuenta</span></div>` : '';
+    }
+    function factsHtml() {
       const mode = S.mode, open = isOpen();
-      const house = sections.flatMap((s) => s.items).filter((x) => x.img && (x.tags || []).some((t) => ['signature_special', 'chefs_pick', 'must_try'].includes(t))).slice(0, 5);
-      const feeTxt = cfg.feeFromCents != null ? `<span>· Envío desde ${money(cfg.feeFromCents / 100)}</span>` : '';
-      const facts = open
+      const ib = Number.isFinite(cfg.zoneKm) ? `<button class="infobtn" data-act="feeinfo" aria-label="Detalle del envío">${IC.info}</button>` : '';
+      const feeTxt = cfg.feeFromCents != null ? `<span>· ${cfg.promoFree === true && authOf() === 'member' ? '<span class="free">Envío gratis</span>' : `Envío desde ${money(cfg.feeFromCents / 100)}`}${ib}</span>` : '';
+      return open
         ? `<span class="full"><span class="dot"></span><strong>Abierto</strong> · cierra ${esc(closesText())}</span>` + (mode === 'delivery'
           ? `${etaTxt('delivery') ? `<span>${esc(etaTxt('delivery'))}</span>` : ''}${feeTxt}`
           : `${etaTxt('pickup') ? `<span>${esc(etaTxt('pickup'))}</span>` : ''}${cfg.addr ? `<span class="mute full">Recogé en ${esc(cfg.addr)}</span>` : ''}`)
         : `<span class="full"><span class="dot off"></span><strong>Cerrado</strong> · ${esc(opensText())}</span>`;
+    }
+    function storeHtml() {
+      const mode = S.mode, open = isOpen();
+      const house = sections.flatMap((s) => s.items).filter((x) => x.img && (x.tags || []).some((t) => ['signature_special', 'chefs_pick', 'must_try'].includes(t))).slice(0, 5);
+      const facts = factsHtml();
       const fs = !open && !sched() ? firstSlot() : null;
       const sfd = !open && sched() ? schedDays().find((d) => d.slots.length) || null : null;
       const dayWord = (off) => (off === 0 ? 'hoy' : off === 1 ? 'mañana' : DAYS[(clock().day + off) % 7]);
@@ -305,7 +322,7 @@
       const pill = `<button class="cart-bar" id="cart-bar" data-act="pill" aria-label="Tu pedido"><span class="cart-icon">${CART_ICON}</span><span class="cart-pill-text">${n ? unitOf(n) : 'Tu pedido'}</span><span class="cart-pill-dot">·</span><span class="cart-pill-text">${money(cartTotal())}</span></button>`;
       const nav = `<div class="store-nav">${S.entry === 'app' ? `<button class="iconbtn" data-act="back" aria-label="Cerrar">${IC.close}</button>` : '<span></span>'}<span></span></div>`;
       const hero = cfg.hero ? `<img class="hero" id="hero" src="${esc(cfg.hero)}" alt="">` : '<div class="hero" id="hero"></div>';
-      const scroller = `<div class="scroller" id="scroller">${nav}<header id="top">${hero}<div class="info"><div class="idrow">${avatar}<div class="idtxt"><h1 class="brandname">${esc(cfg.name || '')}</h1>${cfg.kicker ? `<div class="kicker">${esc(cfg.kicker)}</div>` : ''}</div></div><div class="facts">${facts}</div>${closednote}
+      const scroller = `<div class="scroller" id="scroller">${nav}<header id="top">${hero}<div class="info"><div class="idrow">${avatar}<div class="idtxt"><h1 class="brandname">${esc(cfg.name || '')}</h1>${cfg.kicker ? `<div class="kicker">${esc(cfg.kicker)}</div>` : ''}</div></div>${pillsHtml()}<div class="facts">${facts}</div>${closednote}
       <div class="seg" role="group" aria-label="Tipo de pedido"><button aria-pressed="${mode === 'delivery'}" data-act="mode" data-val="delivery">${IC.bike}Delivery</button><button aria-pressed="${mode === 'pickup'}" data-act="mode" data-val="pickup">${IC.bag}Pickup</button></div></div></header>
     <div class="stick" id="stick"><div class="slim">${S.entry === 'app' ? `<button class="iconbtn" data-act="back" aria-label="Cerrar">${IC.close}</button>` : '<span class="sp"></span>'}<b>${esc(cfg.name || '')}</b><button class="iconbtn" data-act="ssearch" aria-label="Buscar en el menú">${IC.search}</button></div>
       <div class="tabsbar"><button class="iconbtn" data-act="menu" aria-label="Ver todo el menú">${IC.menu}</button><nav class="tabs" id="tabs" aria-label="Categorías">${sections.map((s, i) => `<button class="tab" data-act="jump" data-jump="${esc(s.id)}" aria-current="${i === 0}">${esc(s.name)}</button>`).join('')}</nav>${S.entry === 'app' ? '' : `<button class="iconbtn" data-act="ssearch" aria-label="Buscar en el menú">${IC.search}</button>`}</div></div>
@@ -1223,7 +1240,8 @@
       backTo();
     }
     const errSheet = errSheetHtml;
-    const feeInfoHtml = () => { const d = S.lastDelivery || {}; return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Envío"><div class="grab"></div><div class="errsheet"><h2>Envío</h2><p>Sherpa calcula el envío según la distancia entre la sucursal y tu dirección. Desde ${moneyC(d.from_cents)}; zona de entrega hasta ${esc(d.max_km)} km de ${storeLine()}.</p><div class="acts"><button class="btn2 wide" data-act="lclose">Entendido</button></div></div></div>`; };
+    // the quote's values when it carries both; before a quote (the store header's ⓘ) the DIRECTORY's — never «undefined km»
+    const feeInfoHtml = () => { const q = S.lastDelivery || {}, d = Number.isFinite(q.from_cents) && Number.isFinite(q.max_km) ? q : { from_cents: cfg.feeFromCents, max_km: cfg.zoneKm }; return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Envío"><div class="grab"></div><div class="errsheet"><h2>Envío</h2><p>Sherpa calcula el envío según la distancia entre la sucursal y tu dirección. Desde ${moneyC(d.from_cents)}; zona de entrega hasta ${esc(d.max_km)} km de ${storeLine()}.</p><div class="acts"><button class="btn2 wide" data-act="lclose">Entendido</button></div></div></div>`; };
     // ── the full-screen pin step (prototype pinStepHtml :2186-2190; the prototype-only «Simulación» strip dropped) ──
     function pinStepHtml() {
       const zoneKm = (S.lastDelivery && Number.isFinite(S.lastDelivery.max_km) ? S.lastDelivery.max_km : cfg.zoneKm);
@@ -1490,6 +1508,7 @@
       if (act === 'badge') { S.expanded.add(id); renderStoreKeep(); return; }
       if (act === 'open') { returnTo = descOf(t); openDetail(id); return; }
       if (act === 'pill') { openLayer('cart'); return; }
+      if (act === 'feeinfo' && S.screen === 'store' && !S.layerKind) { returnTo = descOf(t); openLayer('feeinfo'); return; }   // the store header's ⓘ (v6 :1609): the directory's values
       if (act === 'cartclose') { back(); return; }   // closing the cart is a back step → the menu (P :2297)
       if (act === 'lclose') { closeLayer(); return; }
       if (act === 'rev') { const k = t.dataset.key, g = t.dataset.grp || '', d = descOf(t); if (Number(t.dataset.rev) > 0 && isSold(find(k))) return; mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(k, g) : cart.lineDec(k, g))); renderStoreKeep(); renderLayer(); focusTo(refind(d) || [...$('layer').querySelectorAll(FOCUSABLE)].find(reachable)); return; }
@@ -1624,6 +1643,15 @@
         for (const el of app.querySelectorAll('[data-ord]')) { el.disabled = false; el.removeAttribute('aria-disabled'); delete el.dataset.ord; }
       },
       orderable: () => orderable,
+      // PLAN-capp-store-promo-feeinfo r0: the host's auth tri-state moved — the store header's pill and fee line update IN PLACE
+      // (no store re-render: an open sheet, the scroll and focus stay); a reserved pill becomes the guest's without a reflow
+      authChanged() {
+        if (dead) return;
+        const top = $('top'), info = top && top.querySelector('.info'); if (!info) return;
+        const old = info.querySelector('.hdpills'), html = pillsHtml();
+        if (old) { if (html) old.outerHTML = html; else old.remove(); } else if (html) { const id = info.querySelector('.idrow'); if (id) id.insertAdjacentHTML('afterend', html); }
+        const f = info.querySelector('.facts'); if (f) f.innerHTML = factsHtml();
+      },
       openCart() { if (dead || S.screen !== 'store') return false; openLayer('cart'); return true; },
       // G6 §4c: a sign-in on THIS checkout — the member's details fill «Tus datos» (name, phone, email; never over what the customer
       // typed differently), the step and the cart stay; the tender is the customer's (a guest's card stays card)

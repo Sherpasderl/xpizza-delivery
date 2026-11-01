@@ -146,7 +146,7 @@
   // fees (Sherpa data): a PRICED fee only; the promotion is the member's price (P feeFree), never assumed while auth is unresolved
   const priced = (r) => !!r.fee && r.fee.state === 'priced' && Number.isInteger(r.fee.from_cents) && r.fee.from_cents >= 0;
   // a promotional claim needs a PRICED fee too (Codex s7a2 r1 #7): no verified price ⇒ no «Envío gratis» of any kind
-  const promoOn = (r) => priced(r) && !!(r.promo && r.promo.free_delivery);
+  const promoOn = (r) => !!(r.cfg && r.cfg.promoFree === true);   // the ONE predicate: CappShell.configFor's (the store page reads it too)
   const feeFree = (r, auth) => promoOn(r) && auth === 'member';
   const feeHtml = (r, auth) => (feeFree(r, auth) ? '<span class="free">Envío gratis</span>' : priced(r) ? 'Envío desde ' + money(r.fee.from_cents / 100) : '');
   const dishPrice = (it) => (it.group ? 'desde ' + money(Math.min(...it.group.choices.map((c) => c.p))) : money(it.p));

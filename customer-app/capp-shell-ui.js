@@ -63,6 +63,9 @@
     const SU = runtime.signup && runtime.signup.firebase && runtime.signup.endpoints ? runtime.signup : null;
     let auth = o.auth || null, fbAuth = null, signup = null;
     const authNow = () => { try { return auth ? auth.state() : 'unresolved'; } catch (_) { return 'unresolved'; } };
+    // PLAN-capp-store-promo-feeinfo r0: a MOUNTED store reads the same tri-state (its header's promo pill / «Envío gratis») and is
+    // told when it changes — the shell's own repaint never reaches a store's #app
+    const storeAuth = () => { if (S.store && typeof S.store.ui.authChanged === 'function') S.store.ui.authChanged(); };
     const emit = (name, detail) => { try { (o.onEvent || (() => {}))(name, detail); } catch (_) {} };
     const $ = (id) => doc.getElementById(id);
     const app = $('app');
@@ -153,7 +156,7 @@
       // a mount NEVER reads location.search itself: only the store that OWNS a hosted-checkout return gets it, once
       const ret = S.ret && S.ret.rid === entry.rid && !freshBody ? S.ret : null; if (ret) S.ret = null;
       const ui = CappUI.mount(doc, { ...uo, ...(view ? { view } : {}),
-        onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
+        onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: authNow, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
         onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
@@ -301,6 +304,7 @@
       fbAuth = CappAuthFirebase.createFirebaseAuth({ config: SU.firebase, loadSdk: o.loadSdk });
       auth = CappAuthState.createAuthState({ subscribe: fbAuth.subscribe, timers: T });
       auth.onChange((st) => {
+        storeAuth();
         if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearComplete(); }   // a CONFIRMED sign-out: no personal data stays on show
         if (st !== 'member') { dropMember(); schedule(); return; }
         const u = auth.user && auth.user();
@@ -566,7 +570,7 @@
     doc.addEventListener('input', onInput);
     doc.addEventListener('visibilitychange', onVisible);
     const dirTimer = T.setInterval(() => { if (!S.store && doc.visibilityState !== 'hidden') dir.revalidate(); }, DIR_EVERY_MS);
-    const unAuth = auth && typeof auth.onChange === 'function' ? auth.onChange(() => schedule()) : null;
+    const unAuth = auth && typeof auth.onChange === 'function' ? auth.onChange(() => { storeAuth(); schedule(); }) : null;
 
     // ── boot: paint from storage (presentation) at once; then every read ──
     dir.boot();

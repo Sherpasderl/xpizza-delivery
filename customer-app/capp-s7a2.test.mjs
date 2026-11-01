@@ -1546,3 +1546,67 @@ test('D-4a r2: an in-store action during a LOCKED dish hydration cancels it — 
   assert.equal(S.ui.store().ui.state.open, null, '🔴 r2: the cancelled dish link opened after the lock cleared');
   assert.equal(where(S), '/r/x_pizza', 'the URL reflects the screen the user is on (the link was cancelled)');
 });
+
+// ── PLAN-capp-store-promo-feeinfo r0 (APPROVED 2026-11-01): the store header as v6 (:1609 the fee ⓘ + member «Envío gratis»,
+// :1615-1617 the guest promo pill) — the ONE promoFree predicate (home's), the auth tri-state (a reserved pill while unresolved:
+// no pop-in), the ⓘ only when fee + zone are finite, the feeinfo sheet falling back to the DIRECTORY values (never «undefined km»)
+const liveAuth = (st) => { const fns = new Set(); return { a: { state: () => st, onChange: (f) => { fns.add(f); return () => fns.delete(f); } }, set(v) { st = v; for (const f of [...fns]) f(v); } }; };
+async function promoStore(opts = {}, rid = 'x_pizza') { const S = bootShell(opts); await flush(); S.click(`.rlist .rcard[data-rid="${rid}"]`); await flush(); assert.ok(S.q('.info'), `premise: the ${rid} store header`); return S; }
+const bare = (html) => html.replace(/<span class="pill deal" style="visibility:hidden" aria-hidden="true">/g, '<span class="pill deal">');   // the reserved pill's two attributes only
+
+test('store promo: a GUEST on a promo store — the «Envío gratis con tu cuenta» pill between the name and the facts, «Envío desde L 45» and the fee ⓘ', async () => {
+  const S = await promoStore({ auth: 'guest' });
+  const pill = S.q('.info .hdpills .pill.deal');
+  assert.ok(pill, '🔴 store promo: the guest pill is missing');
+  assert.equal(pill.textContent, 'Envío gratis con tu cuenta');
+  assert.equal(pill.getAttribute('aria-hidden'), null); assert.ok(!/visibility/.test(pill.getAttribute('style') || ''), 'shown, not reserved');
+  assert.ok(pill.parentElement.previousElementSibling && pill.parentElement.previousElementSibling.classList.contains('idrow'), 'after the id row (v6 :1622)');
+  assert.ok(pill.parentElement.nextElementSibling && pill.parentElement.nextElementSibling.classList.contains('facts'), 'before the facts');
+  assert.ok(txt(S.q('.info .facts')).includes('Envío desde L 45'), txt(S.q('.info .facts')));
+  const ib = S.q('.info .facts .infobtn[data-act="feeinfo"]');
+  assert.ok(ib, '🔴 store promo: the fee ⓘ is missing'); assert.equal(ib.getAttribute('aria-label'), 'Detalle del envío');
+});
+
+test('store promo: a MEMBER on a promo store — no pill, «Envío gratis» in place of «Envío desde», the ⓘ kept', async () => {
+  const S = await promoStore({ auth: 'member' });
+  assert.equal(S.q('.info .pill.deal'), null, '🔴 store promo: a member never sees the guest pill');
+  const f = S.q('.info .facts');
+  assert.ok(f.querySelector('.free') && f.querySelector('.free').textContent === 'Envío gratis', `🔴 store promo: the member's «Envío gratis» is missing: ${txt(f)}`);
+  assert.ok(!txt(f).includes('Envío desde'), txt(f));
+  assert.ok(f.querySelector('.infobtn[data-act="feeinfo"]'), 'the ⓘ stays');
+});
+
+test('store promo: while auth is UNRESOLVED the pill is RESERVED (hidden, aria-hidden, same markup ⇒ same box); it resolves IN PLACE — guest shows it, member swaps it for «Envío gratis»', async () => {
+  const la = liveAuth('unresolved');
+  const S = await promoStore({ mountExtra: { auth: la.a } });
+  const pill = S.q('.info .pill.deal');
+  assert.ok(pill, '🔴 store promo: the unresolved pill must be reserved (no pop-in when the guest resolves)');
+  assert.equal(pill.getAttribute('aria-hidden'), 'true'); assert.ok(/visibility:hidden/.test(pill.getAttribute('style') || ''));
+  assert.ok(txt(S.q('.info .facts')).includes('Envío desde L 45'), 'neither variant claims «gratis» while unresolved');
+  const info = S.q('.info'), sc = S.q('#scroller'), reserved = bare(info.outerHTML);
+  la.set('guest'); await flush();
+  assert.equal(S.q('.info'), info, '🔴 store promo: the header resolves IN PLACE (no store re-render)'); assert.equal(S.q('#scroller'), sc);
+  assert.equal(S.q('.info .pill.deal').getAttribute('aria-hidden'), null, 'the guest pill is now shown');
+  assert.equal(info.outerHTML, reserved, '🔴 store promo: the reserved header IS the guest header (no reflow when it resolves)');
+  const G = await promoStore({ auth: 'guest' }); assert.equal(G.q('.info').outerHTML, info.outerHTML, 'identical to a guest boot');
+  la.set('member'); await flush();
+  assert.equal(S.q('.info'), info); assert.equal(S.q('.info .pill.deal'), null, '🔴 store promo: a resolved member drops the pill');
+  assert.ok(S.q('.info .facts .free'), '🔴 store promo: a resolved member sees «Envío gratis»');
+});
+
+test('store promo: nothing invented — an unpriced store draws no pill, no fee text, no ⓘ; a priced store without a zone draws no ⓘ', async () => {
+  const S = await promoStore({ auth: 'guest', dirScript: ['fee_none'] }, 'la_musa');
+  assert.equal(S.q('.info .pill.deal'), null); assert.ok(!/Envío/.test(txt(S.q('.info .facts'))), txt(S.q('.info .facts')));
+  assert.equal(S.q('.info .infobtn'), null, '🔴 store promo: no ⓘ without a priced fee');
+  const r = J(resp('complete')); r.body.restaurants.find((x) => x.restaurant_id === 'x_pizza').coverage_km = null;
+  const Z = await promoStore({ auth: 'guest', dirScript: [r] });
+  assert.ok(txt(Z.q('.info .facts')).includes('Envío desde L 45')); assert.equal(Z.q('.info .infobtn'), null, '🔴 store promo: no ⓘ without a zone (no control without effect)');
+});
+
+test('store promo: the store ⓘ opens the feeinfo sheet with the DIRECTORY values (no quote yet) — never «undefined» / «NaN»', async () => {
+  const S = await promoStore({ auth: 'guest' });
+  S.click('.info [data-act="feeinfo"]'); await flush();
+  const p = txt(S.q('#layer .errsheet p'));
+  assert.ok(p && p.includes('Desde L 45; zona de entrega hasta 7 km de'), `🔴 store promo: the feeinfo sheet must fall back to the directory: ${p}`);
+  assert.ok(!/undefined|NaN|null/.test(p), p);
+});
