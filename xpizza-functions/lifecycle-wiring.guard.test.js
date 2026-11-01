@@ -19,10 +19,11 @@ const H = HUNKS.find((h) => h.name === 'login-uid');
 const out = unapplyLifecycleIndex(live);
 assert.notStrictEqual(out, live, 'non-vacuity: the hunk is present');
 const block = live.slice(live.lastIndexOf('\n', live.indexOf(H.begin)) + 1, live.indexOf(H.end) + H.end.length + 1);
-assert.strictEqual(live.split('\n').length - out.split('\n').length, block.split('\n').length - 1, 'exactly the hunk\'s whole lines removed');
+const lines = (h) => { const b = live.slice(live.lastIndexOf('\n', live.indexOf(h.begin)) + 1, live.indexOf(h.end) + h.end.length + 1); return b.split('\n').length - 1; };
+assert.strictEqual(live.split('\n').length - out.split('\n').length, HUNKS.reduce((k, h) => k + lines(h), 0), 'exactly the hunks\' whole lines removed');
 assert.strictEqual(out.split(block).join(''), out, 'nothing of the hunk remains');
-assert.ok(!/lifecycle:(begin|end) /.test(out) && !/SE\.loginUid\(/.test(out), 'no lifecycle marker or loginUid call outside the hunk');
-ok('inverse: index.js minus the login-uid hunk removes exactly its whole lines; no marker or loginUid call remains outside it');
+assert.ok(!/lifecycle:(begin|end) /.test(out) && !/SE\.(loginUid|claimPhoneUid)\(/.test(out), 'no lifecycle marker or lifecycle call outside the hunks');
+ok('inverse: index.js minus the login-claim + login-uid hunks removes exactly their whole lines; no marker or lifecycle call remains outside them');
 
 const vStart = live.indexOf('exports.verifyOtp = onRequest(');
 const vEnd = live.indexOf('\n);', vStart);
@@ -35,8 +36,14 @@ assert.ok(i("if (!uid) { uid = 'u_' + require('crypto').randomBytes(12).toString
 for (const t of ["const prof = (await profRef.get()).val();", 'await getAuth().createCustomToken(uid', 'await creditWelcome(db,']) assert.ok(hunkAt < i(t), `BEFORE ${t.slice(0, 40)}`);
 ok('placement: inside verifyOtp, after the phone_index resolution and before the profile read, the mint and the welcome credit');
 
-assert.ok(block.includes("uid = await SE.loginUid(db, { pHash, uid, now: Date.now(), newUid: () => 'u_' + require('crypto').randomBytes(12).toString('hex') });"), 'the gate call, with the resolution\'s uid shape');
-ok('the call: uid = await SE.loginUid(db, { pHash, uid, now, newUid: u_ + 24 hex }) — the same uid shape as the resolution');
+assert.ok(block.includes("uid = await SE.loginUid(db, { pHash, uid: lcUid, now: Date.now(), newUid: () => 'u_' + require('crypto').randomBytes(12).toString('hex') });"), 'the gate call, on the CLAIM\'s winner, with the resolution\'s uid shape');
+// Codex r2 P2: the create-if-absent claim sits BETWEEN idxRef and the base read, so the base `if (!uid)` set never fires on a live entry
+const C = HUNKS.find((h) => h.name === 'login-claim');
+const cAt = body.indexOf(C.begin);
+assert.ok(i("const idxRef = db.ref('phone_index/' + pHash);") < cAt && cAt < i('let uid = (await idxRef.get()).val();'), 'the claim: after idxRef, BEFORE the base phone_index read');
+const cBlock = live.slice(live.lastIndexOf('\n', live.indexOf(C.begin)) + 1, live.indexOf(C.end) + C.end.length + 1);
+assert.ok(cBlock.includes("const lcUid = await SE.claimPhoneUid(db, pHash, () => 'u_' + require('crypto').randomBytes(12).toString('hex'));"), 'the claim call');
+ok('the calls: lcUid = SE.claimPhoneUid(create-if-absent) BEFORE the base read; uid = SE.loginUid(on lcUid) after it — the same uid shape as the resolution');
 
 assert.throws(() => unapplyLifecycleIndex(live.replace(H.begin, '/* lifecycle:BEGIN login-uid */')), /missing/, 'a missing begin');
 assert.throws(() => unapplyLifecycleIndex(live + `${H.begin}\n${H.end}\n`), /more than once/, 'a duplicated hunk');

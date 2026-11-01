@@ -2,8 +2,9 @@
 // SECURITY BACKLOG r2 (advisor rulings 2026-11-01) — the index.js INVERSE of the account-lifecycle slice: removes EXACTLY the named
 // `/* lifecycle:begin NAME */ … /* lifecycle:end NAME */` whole-line hunks (each marker exactly once, each on its OWN line). Every
 // hunk is INSERTED whole lines — no base line is edited. The NEWEST layer: composed INNERMOST (inside unapplyCheckoutIndex) in every
-// index.js chain.   login-uid: forms verifyOtp's lifecycle gate (SE.loginUid) right after the phone_index resolution.
-const NAMES = ['login-uid'];
+// index.js chain.   login-claim: forms verifyOtp's create-if-absent phone_index claim (SE.claimPhoneUid) BEFORE the base read (Codex r2 P2);
+//   login-uid: its lifecycle gate (SE.loginUid on the claim's winner) right after the phone_index resolution.
+const NAMES = ['login-claim', 'login-uid'];
 const HUNKS = NAMES.map((n) => ({ name: n, begin: `/* lifecycle:begin ${n} */`, end: `/* lifecycle:end ${n} */` }));
 const count = (s, t) => s.split(t).length - 1;
 function unapplyLifecycleIndex(src) {

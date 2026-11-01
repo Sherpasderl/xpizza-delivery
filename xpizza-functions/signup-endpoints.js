@@ -210,6 +210,15 @@ async function revokeSessions(db, uid, now, revoke, deadlineMs) {
   } catch (e) { console.error(`deleteAccountCore: the revoke-failure alert for ${uid} failed (${reasonOf(e)})`); }
   return false;
 }
+// Codex r2 P2: the phone's uid CLAIM, create-if-absent in ONE transaction (the same contract as signup-platform's claimUid) —
+// a concurrent first login on another path converges on the winner's uid; an existing entry is adopted, never overwritten.
+async function claimPhoneUid(db, pHash, newUid) {
+  const cand = newUid();
+  const tx = await db.ref(`phone_index/${pHash}`).transaction((cur) => (typeof cur === 'string' && cur ? undefined : cand));
+  const uid = tx.committed ? cand : tx.snapshot.val();
+  if (typeof uid !== 'string' || !uid) throw new Error('claimPhoneUid: phone_index unreadable');
+  return uid;
+}
 // THE login uid (security backlog r2, Codex r1 P1-a, advisor ruling 2), for every phone login path (forms verifyOtp, platform
 // verifyOtp, redeemSignupGrant): the uid phone_index names is used ONLY if it is live — the gate (S.loginTouch) bumps last_login on
 // a live profile; a profile a sweep CLAIMED, or a TOMBSTONED uid with NO profile, is never handed to a login: a FRESH uid is
@@ -268,4 +277,4 @@ async function pruneDeadLinks(db) {
   return removed;
 }
 
-module.exports = { makeSignup, bindOtpTicket, redeemOtpTicket, refreshActivity, deleteAccountCore, revokeSessions, loginUid, backfillDeletedUids, REVOKE_DEADLINE_MS, REVOKE_REASON_CODES, pruneDeadLinks, pruneResidual, challengeIdOf, SIGNUP_RATE, ACTIVITY_DEADLINE_MS };
+module.exports = { makeSignup, bindOtpTicket, redeemOtpTicket, refreshActivity, deleteAccountCore, revokeSessions, claimPhoneUid, loginUid, backfillDeletedUids, REVOKE_DEADLINE_MS, REVOKE_REASON_CODES, pruneDeadLinks, pruneResidual, challengeIdOf, SIGNUP_RATE, ACTIVITY_DEADLINE_MS };

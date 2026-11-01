@@ -30573,8 +30573,44 @@
   "slice": "sec",
   "label": "security backlog: r2 migration: the DRY RUN writes",
   "file": "tools/repair-revived-tombstones.js",
-  "from": "  if (!apply) return { ok: true, dryRun: true, count: list.length, uids: list.map((c) => c.uid) };\n",
+  "from": "  if (!apply) return { ok: true, dryRun: true, count: list.length, uids: list.map((c) => c.uid), withDeletedUids };\n",
   "to": "",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-24",
+  "slice": "sec",
+  "label": "security backlog: r2 fix P2: the phone uid claim OVERWRITES an existing entry (orphans a concurrent first login)",
+  "file": "signup-endpoints.js",
+  "from": "  const tx = await db.ref(`phone_index/${pHash}`).transaction((cur) => (typeof cur === 'string' && cur ? undefined : cand));\n  const uid = tx.committed ? cand : tx.snapshot.val();\n  if (typeof uid !== 'string' || !uid) throw new Error('claimPhoneUid: phone_index unreadable');",
+  "to": "  const tx = await db.ref(`phone_index/${pHash}`).transaction(() => cand);\n  const uid = tx.committed ? cand : tx.snapshot.val();\n  if (typeof uid !== 'string' || !uid) throw new Error('claimPhoneUid: phone_index unreadable');",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-25",
+  "slice": "sec",
+  "label": "security backlog: r2 fix P1: the migration ALSO clears deleted_uids (a mid-repair sweep re-deletion is erased; the uid becomes reusable)",
+  "file": "tools/repair-revived-tombstones.js",
+  "from": "    if (!tx.committed) continue;\n    cleared += 1;",
+  "to": "    if (!tx.committed) continue;\n    await rtdb.ref(`deleted_uids/${c.uid}`).remove();\n    cleared += 1;",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-26",
+  "slice": "sec",
+  "label": "security backlog: r2 fix P1: the dry run hides the revived accounts that still carry deleted_uids",
+  "file": "tools/repair-revived-tombstones.js",
+  "from": "  const withDeletedUids = list.filter((c) => c.deletedUids).map((c) => c.uid);",
+  "to": "  const withDeletedUids = [];",
   "command": [
    "node",
    "deletion-tombstone.test.js"
