@@ -1013,6 +1013,7 @@ test('G7 Codex r1 #3: a NEW account\'s promotions choice, saved by completeProfi
 test('G7 Codex r1 #3: a LEGACY account (completion \'off\', no consent stored ⇒ no profile.promos) — the switch INERT and a tap sends nothing (setPromos would answer not_completed)', async () => {
   const r = await g7SignIn({ ...ANA, completion: 'off', profile: { name: 'Ana Pérez', email: 'ana@gmail.com' } });
   assert.equal(r.live, false, '🔴 G7-legacy: no stored consent ⇒ the switch is never live');
+  assert.equal(r.on, 'false', '🔴 G7-legacy: settled with no stored consent ⇒ OFF + dimmed (ruling (ii), OWNER-PENDING) — never «ON» without consent');
   r.S.click('[data-act="promos"]'); await flush();
   assert.equal(r.srv.sent.filter((x) => x[0] === 'setPromos').length, 0, '🔴 G7-legacy: a tap sends nothing');
 });
@@ -1025,15 +1026,58 @@ test('G7 Codex r1 #3 / contract §6: the switch and the cache keep the value set
   assert.equal(r.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'true', '🔴 G7-readback: the committed value wins');
   assert.equal(JSON.parse(r.store.getItem('capp:member_profile')).promos, true, '🔴 G7-readback: cached as committed');
 });
-test('G7 decision 7: while the session RESOLVES, a profile on this device draws the member\'s Cuenta (no height change on resolving); none ⇒ the guest\'s', async () => {
+// Codex G7 r1 #2 (P1 privacy) + #5, advisor ruling 2026-10-31: a cached profile is SHOWN only once the SDK's first auth state names
+// its uid (local persistence restore, no network wait); until then neutral placeholders at the reserved 78 px (ruling A — no reflow);
+// a mismatch or a guest PURGES that cache. Once the SDK says member U (U's mark), U's cache is shown at once, independent of the ID
+// token; the switch is live only once the member is applied. Ruling (ii), OWNER-PENDING: a SETTLED member with no stored consent ⇒
+// the switch OFF + dimmed (never «ON» without consent); while loading it keeps frame 4b's ON-dimmed placeholder.
+const anaText = (S) => /Ana|ana\.perez|9612/.test(S.q('#app') ? S.q('#app').textContent : '');
+test('G7 decision 7 / Codex r1 #2: while the session RESOLVES, a profile on this device draws the member GEOMETRY with neutral placeholders — never its name, phone or email; none ⇒ the guest\'s', async () => {
   const fb = fakeFirebase({ persisted: 'u_ana' });
   const S = bootShell({ auth: 'unresolved', storage: g7Store(G7_PROFILE({ promos: true })), runtime: G7_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: g7Server().fetch } });
   S.click('.tabbar [data-tab="account"]');
-  assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', '🔴 G7-predict: the member geometry before the SDK answers');
-  assert.equal(S.q('[data-act="promos"]').getAttribute('aria-disabled'), 'true', 'unresolved ⇒ the switch waits');
+  assert.equal(S.qa('.acct-hero .t .bar').length, 3, '🔴 G7-privacy: the member geometry, as placeholders, before the SDK answers');
+  assert.equal(anaText(S), false, '🔴 G7-privacy: no cached personal data before the SDK names the uid');
+  assert.deepEqual([S.q('[data-act="promos"]').getAttribute('aria-disabled'), S.q('[data-act="promos"] .switch').getAttribute('aria-checked')], ['true', 'true'], 'loading ⇒ frame 4b\'s ON-dimmed placeholder');
+  await flush(); await flush();
+  assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', 'the SDK named u_ana ⇒ her cached profile');
   const G = bootShell({ auth: 'unresolved', storage: memStorage(), runtime: G7_RUNTIME, mountExtra: { loadSdk: fakeFirebase({}).loadSdk, signupFetch: g7Server().fetch } });
   G.click('.tabbar [data-tab="account"]');
   assert.equal(G.q('.acct-hero'), null); assert.ok(G.q('.guestcard'), 'no profile ⇒ the guest\'s geometry');
+});
+test('G7 Codex r1 #2: ANOTHER account restores on this device — the previous account\'s cached profile is never shown and is purged', async () => {
+  const st = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_bob' }) }); DA.rememberProfile(st, G7_PROFILE({ promos: true }));
+  const S = bootShell({ auth: 'unresolved', storage: st, runtime: G7_RUNTIME, mountExtra: { loadSdk: fakeFirebase({ persisted: 'u_bob' }).loadSdk, signupFetch: g7Server().fetch } });
+  S.click('.tabbar [data-tab="account"]');
+  assert.equal(anaText(S), false, '🔴 G7-privacy: not before the SDK answers');
+  await flush(); await flush();
+  assert.equal(anaText(S), false, '🔴 G7-privacy: not after another uid restored');
+  assert.equal(st.getItem('capp:member_profile'), null, '🔴 G7-privacy: the mismatched cache is purged');
+});
+test('G7 Codex r1 #2: a SIGNED-OUT device — the cached profile is never shown; the guest\'s Cuenta once the SDK answers; the cache purged', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const S = bootShell({ auth: 'unresolved', storage: st, runtime: G7_RUNTIME, mountExtra: { loadSdk: fakeFirebase({ persisted: null }).loadSdk, signupFetch: g7Server().fetch } });
+  S.click('.tabbar [data-tab="account"]');
+  assert.equal(anaText(S), false, '🔴 G7-privacy: not before the SDK answers');
+  await flush(); await flush();
+  assert.ok(S.q('.guestcard'), 'the guest\'s Cuenta'); assert.equal(anaText(S), false);
+  assert.equal(st.getItem('capp:member_profile'), null, '🔴 G7-privacy: purged on a confirmed guest');
+});
+test('G7 Codex r1 #5: auth says member, the ID token still pending — the Cuenta draws the member\'s cached profile at once (never the guest card), the switch live once the member is applied', async () => {
+  const hold = { on: true, q: [] };
+  const fb = fakeFirebase({ persisted: 'u_ana', hold });
+  const S = bootShell({ auth: 'unresolved', storage: g7Store(G7_PROFILE({ promos: true })), runtime: G7_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: g7Server().fetch } });
+  await flush(); await flush();
+  assert.ok(hold.q.length > 0, 'premise: the token read is pending');
+  S.click('.tabbar [data-tab="account"]'); await flush();
+  assert.equal(S.q('.guestcard'), null, '🔴 G7-pending: never the guest card for a member whose token is pending');
+  assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', '🔴 G7-pending: the uid-validated cache at once');
+  assert.equal(S.q('[data-act="promos"]').getAttribute('aria-disabled'), 'true', 'the switch waits for the applied member');
+  const hero0 = S.q('.acct-hero');
+  hold.on = false; hold.q.splice(0).forEach((f) => f()); await flush(); await flush();
+  assert.equal(S.q('.guestcard'), null); assert.equal(S.q('.acct-hero .t b').textContent, 'Ana Pérez');
+  assert.equal(S.q('[data-act="promos"]').getAttribute('aria-disabled'), null, '🔴 G7-pending: live once applied');
+  assert.ok(hero0, 'the member geometry throughout');
 });
 test('G7 frame 3: «Cerrar sesión» — no confirmation; the guest\'s Cuenta at once; the profile cache cleared on the confirmed sign-out; the device marker KEPT', async () => {
   const { S, fb, store } = await g7Boot();

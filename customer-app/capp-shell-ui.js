@@ -236,14 +236,25 @@
       const q = P.parseE164(raw.startsWith('+') ? raw : '+' + P.DEFAULT_CC + P.digits(raw)); return q ? P.display(q.cc, P.format(q.cc, q.national)) : raw; };
     // the Cuenta's data: a member (S.member — the cached profile at once, frame 4a; a uid only ⇒ the placeholders, frame 4b), or, while the
     // session resolves, the profile on this device (decision 7: no height change on resolving); otherwise null ⇒ the guest's Cuenta
+    // Codex G7 r1 #2 (privacy) + #5: cached data is SHOWN only for the uid the SDK's auth state names (with that uid's completion mark),
+    // independent of the ID token; before the SDK answers, a profile on this device draws only the member GEOMETRY as neutral
+    // placeholders (78 px, ruling A — no reflow). The switch is live only for the APPLIED member; a settled member with no stored
+    // consent draws it OFF + dimmed (ruling (ii), OWNER-PENDING); while loading, frame 4b's ON-dimmed placeholder
     function acctVm() {
       if (!SU || signingOut) return null;
-      const st = authNow(); let p = null;
-      if (st === 'member' && S.member) p = S.member; else if (st === 'unresolved') p = CappDeviceAccount.peekProfile(storage); if (!p) return null;
+      const st = authNow(); let p = null, applied = false;
+      if (st === 'member') {
+        const u = auth && auth.user ? auth.user() : null, uid = u && u.uid;
+        if (uid && completeUid() === uid) {
+          applied = !!S.member && S.member.uid === uid;
+          p = applied ? S.member : CappDeviceAccount.readProfile(storage, uid) || { uid };
+        }
+      } else if (st === 'unresolved') { const pk = CappDeviceAccount.peekProfile(storage); if (pk) p = { uid: pk.uid }; }
+      if (!p) return null;
       const placeholder = !(p.name || p.phone || p.email);
       const ov = promosOv.uid && promosOv.uid === p.uid ? promosOv.v : null;
-      return { placeholder, name: p.name || '', phone: phoneShown(p.phone), email: p.email || '', promos: st === 'member' && typeof p.promos === 'boolean' ? (typeof ov === 'boolean' ? ov : p.promos) : null,
-        version: typeof CAPP_SYSTEM_VERSION !== 'undefined' ? CAPP_SYSTEM_VERSION : (o.version || '') };
+      return { placeholder, name: p.name || '', phone: phoneShown(p.phone), email: p.email || '', promos: applied && typeof p.promos === 'boolean' ? (typeof ov === 'boolean' ? ov : p.promos) : null,
+        settled: applied, version: typeof CAPP_SYSTEM_VERSION !== 'undefined' ? CAPP_SYSTEM_VERSION : (o.version || '') };
     }
     async function togglePromos() {
       const m = S.member; if (!m || typeof m.promos !== 'boolean' || !suApi || promosOv.uid) return;
@@ -273,6 +284,8 @@
         if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearComplete(); }   // a CONFIRMED sign-out: no personal data stays on show
         if (st !== 'member') { dropMember(); schedule(); return; }
         const u = auth.user && auth.user();
+        // Codex G7 r1 #2: a cached profile of ANOTHER uid than the session's is purged (never shown, never kept)
+        { const pk = CappDeviceAccount.peekProfile(storage); if (pk && u && u.uid && pk.uid !== u.uid) CappDeviceAccount.forgetProfile(storage); }
         // the sheet in progress owns its outcome: a member only at «Listo» (its 'signed-in'), never by the SDK's callback mid-flow
         if (signup && signup.state.open) { schedule(); return; }
         // a RESTORED session without THIS uid's completion mark: never a member; signed out (a rejected sign-out is retried at the next

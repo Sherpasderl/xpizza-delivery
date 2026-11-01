@@ -25758,5 +25758,90 @@
     "kills_with": [
       "G7-readback"
     ]
+  },
+  {
+    "id": "g7-22",
+    "slice": "g7",
+    "label": "before the SDK answers, the device's cached profile is SHOWN again (privacy)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "if (pk) p = { uid: pk.uid }; }",
+    "to": "if (pk) p = pk; }",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex r1 #2",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-privacy"
+    ]
+  },
+  {
+    "id": "g7-23",
+    "slice": "g7",
+    "label": "another uid's cached profile is kept (not purged)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "if (pk && u && u.uid && pk.uid !== u.uid) CappDeviceAccount.forgetProfile(storage); }",
+    "to": "}",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex r1 #2",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-privacy"
+    ]
+  },
+  {
+    "id": "g7-24",
+    "slice": "g7",
+    "label": "auth says member but the token is pending ⇒ the guest card again",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "p = applied ? S.member : CappDeviceAccount.readProfile(storage, uid) || { uid };",
+    "to": "p = applied ? S.member : null;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex r1 #5",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-pending"
+    ]
+  },
+  {
+    "id": "g7-25",
+    "slice": "g7",
+    "label": "the switch is live before the member is applied",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "promos: applied && typeof p.promos === 'boolean'",
+    "to": "promos: typeof p.promos === 'boolean'",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex r1 #5",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the switch waits"
+    ]
+  },
+  {
+    "id": "g7-26",
+    "slice": "g7",
+    "label": "a settled member with no stored consent draws the switch «ON»",
+    "file": "../customer-app/capp-home.js",
+    "from": "aria-checked=\"${inert ? !a.settled : a.promos}\"",
+    "to": "aria-checked=\"${inert ? true : a.promos}\"",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=LEGACY",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-legacy"
+    ]
   }
 ]
