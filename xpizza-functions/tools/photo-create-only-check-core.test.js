@@ -204,6 +204,7 @@ const run = (b) => runCheck({ store: b.store, gens: b.gens, randomHex: () => HEX
         async download(p, { generation }) {
           calls.push(['download', p, generation]);
           if (mode === 'ignored') return objs.get(`${p}#${live.get(p)}`);
+          if (mode === 'readError') throw Object.assign(new Error('gcs 503'), { code: 503 });
           if (live.get(p) === String(generation) || (mode === 'versioned' && objs.has(`${p}#${generation}`))) return objs.get(`${p}#${generation}`);
           throw Object.assign(new Error('object gone or replaced'), { code: 'generation_mismatch' });
         },
@@ -237,6 +238,9 @@ const run = (b) => runCheck({ store: b.store, gens: b.gens, randomHex: () => HEX
     }
     b = pinBucket({ mode: 'ignored', versioning: new Error('403') }); r = await pin(b);
     assert.strictEqual(r.verdict, 'FAIL', 'E5CLI-VERSIONING-UNKNOWN-STILL-FAILS-NEW-BYTES');
+    b = pinBucket({ mode: 'readError', versioning: false }); r = await pin(b);
+    assert.deepStrictEqual([r.verdict, r.outcome, r.exitCode], ['FAIL', 'error:503', 1], `E5CLI-READ-ERROR-IS-NOT-A-REFUSAL (only generation_mismatch is the refusal) ${JSON.stringify(r)}`);
+    assert.ok(r.cleanup.ok && b.objs.size === 0, 'E5CLI-READ-ERROR-STILL-CLEANS');
     b = pinBucket({ mode: 'unversioned', versioning: false, sameGen: true }); r = await pin(b);
     assert.deepStrictEqual([r.verdict, r.exitCode], ['FAIL', 1], `E5CLI-OVERWRITE-SAME-GENERATION-FAILS ${JSON.stringify(r)}`);
     assert.ok(/kept the generation/.test(r.reason) && r.outcome === null && !b.calls.some((c) => c[0] === 'download'), `E5CLI-OVERWRITE-SAME-GENERATION-NO-READ (refused before any pinned read) ${JSON.stringify(r)}`);
