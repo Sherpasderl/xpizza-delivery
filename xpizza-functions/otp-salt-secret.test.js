@@ -52,8 +52,7 @@ ok(`secret OTP_SALT is declared by EXACTLY ${BOUND.join(', ')}; none of the exis
 
 // 3. the readers: process.env.OTP_SALT read by otp-lib at ITS load; every require of otp-lib is lazy (never at a module's top level)
 {
-  const lib = fs.readFileSync(path.join(FN, 'otp-lib.js'), 'utf8');
-  assert.ok(/^const SALT = process\.env\.OTP_SALT \|\| '';$/m.test(lib), 'premise: otp-lib reads process.env.OTP_SALT (a bound secret arrives there)');
+  // (no source-text read of otp-lib: the env path is proven BEHAVIOURALLY below — it loads from an injected salt, the codebase without one)
   // the whole codebase loads with OTP_SALT ABSENT (otp-lib throws at its own load on a missing salt): no module reads it eagerly
   const env0 = { ...env, FUNCTIONS_MANIFEST_OUTPUT_PATH: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tb-otp-salt-nosalt-')), 'm.json') };
   delete env0.OTP_SALT;
