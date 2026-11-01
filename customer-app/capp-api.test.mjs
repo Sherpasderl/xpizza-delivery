@@ -722,16 +722,25 @@ test('G6 member token: a token past its expiry ⇒ the send carries the REFRESHE
       now: () => at(12), sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {}, ...(timeout ? { timeout } : {}) });
     return { api, srv }; };
   // the SDK's own rule: the cached token while valid, a refreshed one after its 1 h life
-  let clock = 0; const sdk = { getIdToken: async () => (clock < 3600e3 ? 'id:signin' : 'id:refreshed') };
-  const M = { uid: 'u1', idToken: 'id:signin', getIdToken: () => sdk.getIdToken() };
+  // tokens in the REAL writer's shape (JWTs; the client reads only exp): the sign-in one valid for an hour at the api's clock, the refreshed
+  // one for two; EXPIRED = already past its exp (Codex promo r3: never sent)
+  const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const JWT = (tag, expMs) => `${b64u({ alg: 'RS256' })}.${b64u({ sub: 'u1', tag, exp: Math.floor(expMs / 1000) })}.sig`;
+  const SIGNIN = JWT('signin', at(12) + 3600e3), REFRESHED = JWT('refreshed', at(12) + 7200e3), EXPIRED = JWT('signin', at(12) - 1000);
+  let clock = 0; const sdk = { getIdToken: async () => (clock < 3600e3 ? SIGNIN : REFRESHED) };
+  const M = { uid: 'u1', idToken: EXPIRED, getIdToken: () => sdk.getIdToken() };
   clock = 3600e3 + 1;
   const R = mk({ member: M });
   assert.equal((await R.api.place(placeArgs('cash'))).kind, 'placed', 'premise');
-  assert.equal(R.srv.of('createOrder')[0].headers['x-firebase-id-token'], 'id:refreshed', '🔴 an expired sign-in token is never sent: the refreshed one is');
+  assert.equal(R.srv.of('createOrder')[0].headers['x-firebase-id-token'], REFRESHED, '🔴 an expired sign-in token is never sent: the refreshed one is');
+  assert.equal(M.idToken, REFRESHED, 'the refreshed token entered through the ONE setter');
   let asked = 0;
-  const H = mk({ member: { uid: 'u1', idToken: 'id:signin', getIdToken: () => { asked++; return new Promise(() => {}); } }, timeout: async () => {} });
+  const H = mk({ member: { uid: 'u1', idToken: SIGNIN, getIdToken: () => { asked++; return new Promise(() => {}); } }, timeout: async () => {} });
   assert.equal((await H.api.place(placeArgs('cash'))).kind, 'placed', 'a hung refresh never blocks the send');
-  assert.equal(H.srv.of('createOrder')[0].headers['x-firebase-id-token'], 'id:signin', 'bounded ⇒ the sign-in token as the fallback'); assert.equal(asked, 1);
+  assert.equal(H.srv.of('createOrder')[0].headers['x-firebase-id-token'], SIGNIN, 'bounded ⇒ the still-valid sign-in token as the fallback'); assert.equal(asked, 1);
+  const X = mk({ member: { uid: 'u1', idToken: EXPIRED, getIdToken: () => new Promise(() => {}) }, timeout: async () => {} });
+  await X.api.place(placeArgs('cash'));
+  assert.equal('x-firebase-id-token' in X.srv.of('createOrder')[0].headers, false, '🔴 Codex promo r3: an EXPIRED fallback is never sent (a hung refresh ⇒ no member header)');
   const G = mk({ member: null });
   await G.api.place(placeArgs('cash'));
   assert.equal('x-firebase-id-token' in G.srv.of('createOrder')[0].headers, false, 'a guest sends no member token');

@@ -68,10 +68,12 @@
     // the ADMITTED identity's tri-state (Codex promo r1 #1 + the advisor's home ruling): 'member' only once S.member is applied — the
     // identity the checkout sends with — never the raw session; a session not (yet) admitted claims nothing. ONE rule: Inicio's promo
     // (vm.promoAuth) and a mounted store's header (its authState) both read it
-    // Codex promo r2 P2-A: 'member' needs a USABLE token by the TRANSPORT's own predicate (CappApi.tokenOf — what x-firebase-id-token
+    // Codex promo r2 P2-A: 'member' needs a USABLE token by the TRANSPORT's own predicate (CappApi.tokenUsable — what x-firebase-id-token
     // is built from); an admitted member without one is 'unresolved' (reserved, nothing claimed) until the token arrives
-    const tokenOf = (m) => { const A = pick(o, 'CappApi', './capp-api.js'); return A && typeof A.tokenOf === 'function' ? A.tokenOf(m) : null; };
-    const admittedAuth = () => (S.member ? (tokenOf(S.member) ? 'member' : 'unresolved') : authNow() === 'guest' ? 'guest' : 'unresolved');
+    // Codex promo r3: the ONE predicate WITH expiry (CappApi.tokenUsable — the transport's own header rule) at the shell's clock
+    const apiMod = () => pick(o, 'CappApi', './capp-api.js');
+    const usable = (m) => { const A = apiMod(); return A && typeof A.tokenUsable === 'function' ? A.tokenUsable(m, nowMs()) : null; };
+    const admittedAuth = () => (S.member ? (usable(S.member) ? 'member' : 'unresolved') : authNow() === 'guest' ? 'guest' : 'unresolved');
     const storeAuth = () => { if (S.store && typeof S.store.ui.authChanged === 'function') S.store.ui.authChanged(); };
     const emit = (name, detail) => { try { (o.onEvent || (() => {}))(name, detail); } catch (_) {} };
     const $ = (id) => doc.getElementById(id);
@@ -241,34 +243,55 @@
     // Codex G6 r1 #1: EVERY non-member transition (a sign-out, a close mid-completion, a switch) reaches the mounted checkout — its
     // member context (and so its token) never outlives the session
     let memberGen = 0;
-    function dropMember() { memberGen++; S.member = null; if (S.store) S.store.ui.setMember(null); }
+    function dropMember() { memberGen++; clearTokenTimers(); S.member = null; if (S.store) S.store.ui.setMember(null); }
     // the member the store mounts / fills from: the profile + the member token the transport sends
     async function applyMember(p) {
       // Codex G6 r1 #3: applied only if, after the token's await, nothing has changed — no sign-out / switch in between, and the
       // session is still THIS uid's
-      const gen = ++memberGen, uid = p.uid;
+      const gen = ++memberGen, uid = p.uid; clearTokenTimers();   // a new identity: the old one's token timers are cancelled
       let idToken = null; try { idToken = await fbAuth.idToken(); } catch (_) { idToken = null; }
       if (dead || gen !== memberGen) return;
       const u = auth && auth.state() === 'member' && auth.user ? auth.user() : null;
       if (!u || u.uid !== uid) return;
       // getIdToken: the transport asks the SDK at send time (cached while valid, refreshed once expired); idToken = the fallback
       // S-picker: with the runtime intlPhone the member's number stays E.164 (its own country); off ⇒ the local 8 digits, as before
-      S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', ...(typeof p.promos === 'boolean' ? { promos: p.promos } : {}), idToken, getIdToken: () => fbAuth.idToken() };
+      S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', ...(typeof p.promos === 'boolean' ? { promos: p.promos } : {}), idToken: null, getIdToken: () => fbAuth.idToken(), onTokenChange: onMemberToken };
+      { const A = apiMod(); if (A && typeof A.acceptToken === 'function') A.acceptToken(S.member, idToken, nowMs()); }   // the ONE setter (an unusable token is refused)
       if (S.store) S.store.ui.setMember(S.member);   // §4c: back on the SAME checkout step, filled in
       schedule();
-      if (!idToken) retryToken(gen, uid, 0);
+      if (usable(S.member)) armExpiry(); else retryToken(gen, uid, 0);
+    }
+    // Codex promo r3: the member's identity-guarded token notifier — fired ONLY by CappApi.acceptToken (the transport's fresh token, the
+    // retry's, admission's): the claim follows in place on Inicio (a repaint) and a mounted store (patchAuth), and the expiry re-arms
+    function onMemberToken(m) {
+      if (dead || !m || S.member !== m) return;
+      armExpiry(); storeAuth(); schedule();
+    }
+    let tokTimer = null, expTimer = null;   // HANDLES (Codex promo r3): cancelled on a sign-out, a new identity and destroy()
+    function clearTokenTimers() { if (tokTimer !== null) { T.clearTimeout(tokTimer); tokTimer = null; } if (expTimer !== null) { T.clearTimeout(expTimer); expTimer = null; } }
+    // when the usable token reaches exp − skew the claim is withdrawn in place (reserved) and a refresh is tried
+    function armExpiry() {
+      if (expTimer !== null) { T.clearTimeout(expTimer); expTimer = null; }
+      const A = apiMod(), m = S.member, t = usable(m); if (!A || !t) return;
+      const gen = memberGen, uid = m.uid, at = A.tokenExpMs(t) - A.TOKEN_SKEW_MS;
+      expTimer = T.setTimeout(() => {
+        expTimer = null; if (dead || gen !== memberGen || !S.member || S.member.uid !== uid) return;
+        storeAuth(); schedule(); if (!usable(S.member)) retryToken(gen, uid, 0);
+      }, Math.max(0, at - nowMs()));
     }
     // Codex promo r2 P2-A: an admitted member whose token failed is retried (bounded); when it arrives, the SAME identity is re-handed to
     // the store (setMember, same uid ⇒ the header patched in place) and Inicio repaints — the claim upgrades, nothing re-renders
     const TOKEN_RETRY_MS = [2000, 10000, 30000];
     function retryToken(gen, uid, i) {
-      T.setTimeout(async () => {
+      if (tokTimer !== null) T.clearTimeout(tokTimer);
+      tokTimer = T.setTimeout(async () => {
+        tokTimer = null;
         const live = () => !dead && gen === memberGen && S.member && S.member.uid === uid;
-        if (!live() || tokenOf(S.member)) return;
+        if (!live() || usable(S.member)) return;
         let t = null; try { t = await fbAuth.idToken(); } catch (_) { t = null; }
-        if (!live() || tokenOf(S.member)) return;
-        if (typeof t === 'string' && t) { S.member.idToken = t; if (S.store) S.store.ui.setMember(S.member); schedule(); }
-        else if (i + 1 < TOKEN_RETRY_MS.length) retryToken(gen, uid, i + 1);
+        if (!live() || usable(S.member)) return;
+        const A = apiMod();
+        if (!(A && A.acceptToken(S.member, t, nowMs())) && i + 1 < TOKEN_RETRY_MS.length) retryToken(gen, uid, i + 1);   // accepted ⇒ the notifier patches
       }, TOKEN_RETRY_MS[i]);
     }
     // ── G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27): the MEMBER's Cuenta, in the shell, under runtime.signup (G6's flag; absent ⇒
@@ -645,7 +668,7 @@
       // §4c for the sign-in flow (G6): set the marker at sign-in; ONLY «Cerrar sesión y olvidar este teléfono» / deletion forgets it
       rememberAccount: (e164) => CappDeviceAccount.remember(storage, e164), forgetAccount: () => CappDeviceAccount.forget(storage),
       destroy() {
-        dead = true; unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
+        dead = true; clearTokenTimers(); unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
         doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('visibilitychange', onVisible); nav.destroy();
       },
     };

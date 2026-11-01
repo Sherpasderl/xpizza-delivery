@@ -656,10 +656,15 @@ test('stamp: shell.html is stamped as orders-app; on the stamped shell SherpaCli
 });
 
 // ── G6: the in-app sign-in, owned by the shell when the runtime carries the signup config (DARK: absent ⇒ exactly as before) ──
-function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0 } = {}) {   // failToken: the next N getIdToken() calls REJECT (no usable token)
+// a Firebase ID token in the REAL writer's shape (a JWT; only `exp` is read by the client, never the signature) — far-future by default
+const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+const TOK = (uid, expMs = Date.UTC(2100, 0, 1)) => `${b64u({ alg: 'RS256', typ: 'JWT' })}.${b64u({ sub: uid, user_id: uid, exp: Math.floor(expMs / 1000) })}.sig`;
+// failToken: the next N getIdToken() calls REJECT; failFrom: every call from index N on rejects; tokExp: the issued tokens' exp (ms)
+function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, tokExp } = {}) {
   const calls = { load: 0, ct: [], out: 0 }; let listeners = [], user = persisted;
   // hold: { on, q } — while on, every token read waits for the test to release it (a slow SDK)
-  const tok = (u) => (failToken > 0 ? (failToken--, Promise.reject(new Error('network'))) : hold && hold.on ? new Promise((r) => hold.q.push(() => r(`id:${u}`))) : Promise.resolve(`id:${u}`));
+  let tokN = 0;
+  const tok = (u) => { const n = tokN++; return failToken > 0 ? (failToken--, Promise.reject(new Error('network'))) : n >= failFrom ? Promise.reject(new Error('network')) : hold && hold.on ? new Promise((r) => hold.q.push(() => r(TOK(u, tokExp)))) : Promise.resolve(TOK(u, tokExp)); };
   const auth = { get currentUser() { const u = user; return u ? { uid: u, getIdToken: () => tok(u) } : null; } };
   const emitU = () => { for (const l of listeners) l(user ? { uid: user } : null); };
   const authMod = { browserLocalPersistence: 'LOCAL', getAuth: () => auth, setPersistence: async () => {},
@@ -709,8 +714,8 @@ test('G6 shell: the SDK after the first paint; «Entrá» opens the sheet; a ver
   assert.equal(suHost(S).classList.contains('open'), false, 'closed');
   assert.deepEqual(JSON.parse(storage.getItem('capp:device_account')), { v: 1, account: true, e164: '+50499990000' });
   assert.deepEqual(JSON.parse(storage.getItem('capp:member_profile')), { v: 1, uid: 'u_ana', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com' });
-  assert.deepEqual(J(S.ui.state.member), { uid: 'u_ana', name: 'Ana Pérez', phone: '99990000', email: 'ana@gmail.com', idToken: 'id:u_ana' });
-  assert.equal(await S.ui.state.member.getIdToken(), 'id:u_ana', 'the transport\'s send-time token comes from the SDK');
+  assert.deepEqual(J(S.ui.state.member), { uid: 'u_ana', name: 'Ana Pérez', phone: '99990000', email: 'ana@gmail.com', idToken: TOK('u_ana') });
+  assert.equal(await S.ui.state.member.getIdToken(), TOK('u_ana'), 'the transport\'s send-time token comes from the SDK');
   S.click('.tabbar [data-tab="account"]'); await flush();
   assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', 'G7: a member\'s Cuenta is the shell\'s (under runtime.signup)'); assert.equal(S.events.filter((e) => e[0] === 'tab').length, 0);
   await fb.loadSdk().then(({ authMod }) => authMod.signOut()); await flush();
@@ -723,18 +728,18 @@ test('G6 shell: a RESTORED session autofills from the cached profile of THAT uid
   const fb = fakeFirebase({ persisted: 'u_ana' });
   const S = bootShell({ auth: 'unresolved', storage: memStorage({ 'capp:member_profile': prof, 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }) }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
   await flush(); await flush();
-  assert.deepEqual(J(S.ui.state.member ?? null), { uid: 'u_ana', name: 'Ana Pérez', phone: '99990000', email: 'ana@gmail.com', idToken: 'id:u_ana' }, '🔴 restored ⇒ autofilled from the cache');
+  assert.deepEqual(J(S.ui.state.member ?? null), { uid: 'u_ana', name: 'Ana Pérez', phone: '99990000', email: 'ana@gmail.com', idToken: TOK('u_ana') }, '🔴 restored ⇒ autofilled from the cache');
   const fb2 = fakeFirebase({ persisted: 'u_other' });
   const O = bootShell({ auth: 'unresolved', storage: memStorage({ 'capp:member_profile': prof, 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_other' }) }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb2.loadSdk, signupFetch: signupServer(ANA).fetch } });
   await flush(); await flush();
-  assert.deepEqual(J(O.ui.state.member ?? null), { uid: 'u_other', name: '', phone: '', email: '', idToken: 'id:u_other' }, '🔴 another member\'s cached profile is never shown');
+  assert.deepEqual(J(O.ui.state.member ?? null), { uid: 'u_other', name: '', phone: '', email: '', idToken: TOK('u_other') }, '🔴 another member\'s cached profile is never shown');
   // Codex G7 r1 #2 purges a mismatched cache first; when that removal FAILS, the read itself still refuses another uid's profile
   const stuck = memStorage({ 'capp:member_profile': prof, 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_other' }) }); stuck.removeItem = () => { throw new Error('denied'); };
   const fb3 = fakeFirebase({ persisted: 'u_other' });
   const P = bootShell({ auth: 'unresolved', storage: stuck, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb3.loadSdk, signupFetch: signupServer(ANA).fetch } });
   await flush(); await flush();
   assert.equal(stuck.getItem('capp:member_profile'), prof, 'premise: the purge could not remove the cache');
-  assert.deepEqual(J(P.ui.state.member ?? null), { uid: 'u_other', name: '', phone: '', email: '', idToken: 'id:u_other' }, '🔴 another member\'s cached profile is never shown (the purge failed)');
+  assert.deepEqual(J(P.ui.state.member ?? null), { uid: 'u_other', name: '', phone: '', email: '', idToken: TOK('u_other') }, '🔴 another member\'s cached profile is never shown (the purge failed)');
 });
 
 // ── Codex G6 r1 (#1 / #2 / #3): the member never outlives its session in the mounted checkout ──
@@ -762,7 +767,7 @@ test('Codex G6 r1 #1: a sign-out — and a close mid-completion — reaches the 
   assert.equal(fb.calls.out, 0, '🔴 mid-sheet the SDK callback never signs the sheet\'s own session out (the sheet owns its outcome)');
   S.click(suHost(S).querySelector('[data-su="finish"]')); await flush(); await flush();
   S.click('#app [data-act="type"][data-val="pickup"]'); await flush(); await flush();
-  assert.equal(quotes[quotes.length - 1], 'id:u_ana', 'premise: the member\'s quote carries the member token');
+  assert.equal(quotes[quotes.length - 1], TOK('u_ana'), 'premise: the member\'s quote carries the member token');
   await fb.loadSdk().then(({ authMod }) => authMod.signOut()); await flush(); await flush();
   const n = quotes.length; S.click('#app [data-act="type"][data-val="delivery"]'); await flush(); S.click('#app [data-act="type"][data-val="pickup"]'); await flush(); await flush();   // pickup as a guest: never quoted yet
   assert.ok(quotes.length > n, 'premise: a new send'); assert.equal(quotes[quotes.length - 1], null, '🔴 after a sign-out the mounted checkout sends no member token');
@@ -981,7 +986,7 @@ test('G7 frame 1b: Promociones flips at once and calls setPromos (context platfo
   assert.equal(ok.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'false', '🔴 G7-optimistic: the new value at once');
   await flush();
   const call = ok.srv.sent.find((x) => x[0] === 'setPromos');
-  assert.deepEqual([call[1], call[2]], [{ context: 'platform', value: false }, 'id:u_ana'], '🔴 G7-setPromos: contract §6');
+  assert.deepEqual([call[1], call[2]], [{ context: 'platform', value: false }, TOK('u_ana')], '🔴 G7-setPromos: contract §6');
   assert.equal(ok.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'false');
   assert.equal(JSON.parse(ok.store.getItem('capp:member_profile')).promos, false, 'the cache follows a confirmed change');
   const bad = await g7Boot({ srv: g7Server(false) });
@@ -1552,7 +1557,7 @@ test('D-4a r2: an in-store action during a LOCKED dish hydration cancels it — 
 // no pop-in), the ⓘ only when fee + zone are finite, the feeinfo sheet falling back to the DIRECTORY values (never «undefined km»)
 const liveAuth = (st) => { const fns = new Set(); return { a: { state: () => st, onChange: (f) => { fns.add(f); return () => fns.delete(f); } }, set(v) { st = v; for (const f of [...fns]) f(v); } }; };
 // bounded wait for a boot condition (load-robust: a fixed flush count flaked at load1 ≈ 12); the cell's own asserts still decide
-const until = async (f, ms = 4000) => { const t0 = Date.now(); while (!f() && Date.now() - t0 < ms) await flush(); };
+const until = async (f, ms = 4000) => { const t0 = Date.now(); while (!f()) { if (Date.now() - t0 >= ms) throw new Error(`until: timed out after ${ms} ms — ${String(f).slice(0, 120)}`); await flush(); } };
 async function promoStore(opts = {}, rid = 'x_pizza') { const S = bootShell(opts); await until(() => S.q(`.rlist .rcard[data-rid="${rid}"]`)); S.click(`.rlist .rcard[data-rid="${rid}"]`); await flush(); assert.ok(S.q('.info'), `premise: the ${rid} store header`); return S; }
 const bare = (html) => html.replace(/<span class="pill deal" style="visibility:hidden" aria-hidden="true">/g, '<span class="pill deal">');   // the reserved pill's two attributes only
 
@@ -1713,14 +1718,14 @@ test('store promo r2 P2-A: an admitted member with NO usable token — no «Env�
   assert.ok(T.S.q('.info .facts .free'), '🔴 store promo r2: … and on the store');
   T.S.click('#app [data-act="back"], #app .store-nav [aria-label="Cerrar"]'); await flush(); await flush();
   await toShellCheckout(T.S); T.S.click('#app [data-act="type"][data-val="pickup"]'); await flush(); await flush();
-  assert.equal(T.quotes[T.quotes.length - 1], 'id:u_ana', 'and the quote carries the member token');
+  assert.equal(T.quotes[T.quotes.length - 1], TOK('u_ana'), 'and the quote carries the member token');
 });
 test('store promo r2 P2-A: a token that ARRIVES LATER upgrades the claim in place (the same header node, «Envío gratis» shown)', async () => {
   const U = await tokenBoot(1);
   U.S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
   assert.equal(U.S.q('.info .facts .free'), null, 'premise: no token yet ⇒ no claim');
   const info = U.S.q('.info');
-  await flush(2300);
+  await until(() => U.S.q('.info .facts .free'), 8000).catch(() => {});   // the real 2 s retry, load-robust; the named asserts below decide
   assert.equal(U.S.q('.info'), info, '🔴 store promo r2: the upgrade re-rendered the store');
   assert.ok(U.S.q('.info .facts .free'), '🔴 store promo r2: the token that arrived later never upgraded the claim');
 });
@@ -1730,4 +1735,80 @@ test('store promo r2 P2-B: a focused «Detalle del envío» survives the real un
   assert.equal(R.S.w.document.activeElement, R.btn, `🔴 store promo r2: the focused ⓘ was destroyed (focus on ${R.S.w.document.activeElement && R.S.w.document.activeElement.tagName})`);
   assert.equal(R.sc.scrollTop, 250);
   assert.equal(R.S.q('.info .pill.deal').getAttribute('aria-hidden'), null, 'the guest pill shown');
+});
+
+// Codex promo r3 — the WHOLE token class: ONE predicate with expiry (CappApi.tokenUsable: a JWT whose exp > now + skew) for the claim AND
+// the header; fresh tokens enter ONLY through CappApi.acceptToken, which fires the member's identity-guarded onTokenChange ⇒ the shell
+// patches Inicio + the store in place; the shell's token timers are handles, cleared on sign-out / a uid change / destroy
+const longTimers = () => { const pend = new Map(); let id = 0;
+  return { pend, T: { setTimeout: (f, ms) => { if (ms >= 1000) { const h = { long: ++id, ms }; pend.set(h, f); return h; } return setTimeout(f, ms); }, clearTimeout: (h) => { if (h && h.long) pend.delete(h); else clearTimeout(h); }, setInterval: () => 0, clearInterval: () => {} },
+    fire() { const all = [...pend.entries()]; pend.clear(); for (const [, f] of all) f(); } }; };
+const memberBoot = ({ fb, apiFetch = null, now = null, timers = null }) => bootShell({ auth: 'unresolved', apiFetch, now, storage: memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF) }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch, ...(timers ? { timers } : {}) } });
+const quoteLog = (quotes) => (u, i) => { if (u.startsWith('/x/q')) { quotes.push(i.headers['x-firebase-id-token'] || null); return quoteOk(u, i); } return new Promise(() => {}); };
+
+test('until(): a condition still false at the deadline REJECTS with a descriptive error (never a silent pass)', async () => {
+  await assert.rejects(until(() => false, 50), /until: timed out after 50 ms/);
+});
+
+test('store promo r3: token RECOVERY mid-quote — the quote\'s member header and the store\'s «Envío gratis» appear TOGETHER (the notifier patches in place)', async () => {
+  const hold = { on: false, q: [] }, quotes = [];
+  const fb = fakeFirebase({ persisted: 'u_ana', failToken: 1, hold });
+  const S = memberBoot({ fb, apiFetch: quoteLog(quotes) });
+  await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+  assert.equal(S.q('#app .free'), null, 'premise: the admission token failed ⇒ no claim');
+  await toShellCheckout(S);
+  hold.on = true; S.click('#app [data-act="type"][data-val="pickup"]'); await flush();   // the quote waits on the SDK token
+  S.w.history.back(); await until(() => S.ui.store() && S.ui.store().ui.state.screen === 'store'); await flush();   // the device Back
+  assert.equal(S.ui.store().ui.state.screen, 'store', 'premise: back on the delivery store while the quote waits');
+  S.click('.seg [data-val="delivery"]'); await flush();   // the quote was a Pickup one; the store's fee line shows only in Delivery
+  assert.ok(txt(S.q('.info .facts')).includes('Envío desde L 45'), 'premise: guest pricing while the token is missing');
+  assert.equal(S.q('.info .facts .free'), null, 'premise: no claim yet');
+  const info = S.q('.info');
+  hold.on = false; for (const r of hold.q.splice(0)) r(); await until(() => quotes.length >= 1); await flush(); await flush();
+  assert.equal(quotes[quotes.length - 1], TOK('u_ana'), 'premise: the quote carried the recovered member token');
+  assert.equal(S.q('.info'), info, '🔴 store promo r3: the recovery re-rendered the store');
+  assert.ok(S.q('.info .facts .free'), '🔴 store promo r3: the token recovered (the header went out) but the store still shows guest pricing');
+});
+
+test('store promo r3: an EXPIRED cached token with the refresh REJECTED — no «Envío gratis» AND no member header on the quote', async () => {
+  const clock = { t: T0 }, quotes = [];
+  const fb = fakeFirebase({ persisted: 'u_ana', failFrom: 1, tokExp: T0 + 120e3 });   // admission gets a 2-minute token; every refresh fails
+  const S = memberBoot({ fb, apiFetch: quoteLog(quotes), now: clock });
+  await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+  assert.ok(S.q('.rlist .rcard[data-rid="x_pizza"] .free'), 'premise: a usable token ⇒ the claim');
+  clock.t = T0 + 10 * 60e3;   // ten minutes later: the cached token has expired
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  assert.equal(S.q('.info .facts .free'), null, '🔴 store promo r3: an EXPIRED token still authorizes «Envío gratis»');
+  S.click('#app [data-act="back"], #app .store-nav [aria-label="Cerrar"]'); await flush(); await flush();
+  await toShellCheckout(S); S.click('#app [data-act="type"][data-val="pickup"]'); await until(() => quotes.length >= 1); await flush();
+  assert.equal(quotes[quotes.length - 1], null, '🔴 store promo r3: an expired token was sent (the server would price a guest anyway)');
+});
+
+test('store promo r3: a token EXPIRING while the page is open withdraws the claim IN PLACE (Inicio + the store), the pill reserved', async () => {
+  const clock = { t: T0 }, L = longTimers();
+  const fb = fakeFirebase({ persisted: 'u_ana', failFrom: 1, tokExp: T0 + 120e3 });
+  const S = memberBoot({ fb, now: clock, timers: L.T });
+  await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  assert.ok(S.q('.info .facts .free'), 'premise: claimed while the token is usable');
+  assert.ok(L.pend.size >= 1, 'premise: the expiry is armed');
+  const info = S.q('.info'); clock.t = T0 + 120e3; L.fire(); await flush(); await flush();
+  assert.equal(S.q('.info'), info, '🔴 store promo r3: the expiry re-rendered the store');
+  assert.equal(S.q('.info .facts .free'), null, '🔴 store promo r3: an expired token keeps claiming «Envío gratis» on the open store');
+  assert.equal(S.q('.info .pill.deal').getAttribute('aria-hidden'), 'true', 'withdrawn ⇒ reserved');
+});
+
+test('store promo r3: the token timers are HANDLES — none left after a sign-out, a uid change or destroy', async () => {
+  const L = longTimers();
+  const fb = fakeFirebase({ persisted: 'u_ana', failToken: 99 });
+  const S = memberBoot({ fb, timers: L.T });
+  await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+  assert.ok(L.pend.size >= 1, 'premise: a token retry is pending');
+  await fb.loadSdk().then(({ authMod }) => authMod.signOut()); await flush(); await flush();
+  assert.equal(L.pend.size, 0, '🔴 store promo r3: a token timer survived the sign-out');
+  const L2 = longTimers(), fb2 = fakeFirebase({ persisted: 'u_ana', failToken: 99 });
+  const D = memberBoot({ fb: fb2, timers: L2.T });
+  await until(() => D.ui.state.member); await flush();
+  assert.ok(L2.pend.size >= 1, 'premise: pending again'); D.ui.destroy();
+  assert.equal(L2.pend.size, 0, '🔴 store promo r3: a token timer survived destroy()');
 });

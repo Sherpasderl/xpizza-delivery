@@ -290,8 +290,8 @@
     function authOf() {
       if (typeof opts.authState !== 'function') return null;
       // the ADMITTED identity — the one the checkout sends with (Codex promo r1 #1) — AND a usable token by the transport's own predicate
-      // (Codex promo r2 P2-A, CappApi.tokenOf): no token ⇒ the server prices a guest ⇒ 'unresolved', nothing claimed
-      if (memberCtx) { let A = null; try { A = opts.CappApi || (typeof self !== 'undefined' && self.CappApi) || (typeof require === 'function' ? require('./capp-api.js') : null); } catch (_) { A = null; } return A && typeof A.tokenOf === 'function' && A.tokenOf(memberCtx) ? 'member' : 'unresolved'; }
+      // (Codex promo r2 P2-A + r3, CappApi.tokenUsable: unexpired): no usable token ⇒ the server prices a guest ⇒ 'unresolved', nothing claimed
+      if (memberCtx) { let A = null; try { A = opts.CappApi || (typeof self !== 'undefined' && self.CappApi) || (typeof require === 'function' ? require('./capp-api.js') : null); } catch (_) { A = null; } return A && typeof A.tokenUsable === 'function' && A.tokenUsable(memberCtx, now().getTime()) ? 'member' : 'unresolved'; }
       let v; try { v = opts.authState(); } catch (_) { v = null; }
       return v === 'guest' ? 'guest' : 'unresolved';   // a session not (yet) admitted — restoring, or an incomplete one being signed out — claims nothing
     }

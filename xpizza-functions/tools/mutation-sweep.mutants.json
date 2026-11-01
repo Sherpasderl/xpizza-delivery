@@ -24074,8 +24074,8 @@
     "slice": "g6",
     "label": "Codex G6 r1 #1: a sign-out leaves the mounted checkout's member (and token)",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "function dropMember() { memberGen++; S.member = null; if (S.store) S.store.ui.setMember(null); }",
-    "to": "function dropMember() { memberGen++; S.member = null; }",
+    "from": "function dropMember() { memberGen++; clearTokenTimers(); S.member = null; if (S.store) S.store.ui.setMember(null); }",
+    "to": "function dropMember() { memberGen++; clearTokenTimers(); S.member = null; }",
     "command": [
       "node",
       "--test",
@@ -24084,7 +24084,8 @@
     ],
     "kills_with": [
       "after a sign-out the mounted checkout sends no member token"
-    ]
+    ],
+    "repointed": "Codex promo r3: dropMember also cancels the token timers (clearTokenTimers); the mutant still drops only the store hand-off"
   },
   {
     "id": "g6-13",
@@ -26631,7 +26632,7 @@
     "slice": "promo",
     "label": "PLAN-capp-store-promo-feeinfo: Codex promo r2 P2-A reverted in the SHELL: the claim ignores the token (Inicio claims «Envío gratis» for a member whose requests carry none)",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "(S.member ? (tokenOf(S.member) ? 'member' : 'unresolved') :",
+    "from": "(S.member ? (usable(S.member) ? 'member' : 'unresolved') :",
     "to": "(S.member ? 'member' :",
     "command": [
       "node",
@@ -26642,14 +26643,15 @@
     ],
     "kills_with": [
       "Inicio claims «Envío gratis» for a member whose requests carry no token"
-    ]
+    ],
+    "repointed": "Codex promo r3: the shell's predicate is usable() (CappApi.tokenUsable, with expiry)"
   },
   {
     "id": "pf-11",
     "slice": "promo",
     "label": "PLAN-capp-store-promo-feeinfo: Codex promo r2 P2-A reverted in CappUI: the store claim ignores the token",
     "file": "../customer-app/capp-ui.js",
-    "from": "return A && typeof A.tokenOf === 'function' && A.tokenOf(memberCtx) ? 'member' : 'unresolved'; }",
+    "from": "return A && typeof A.tokenUsable === 'function' && A.tokenUsable(memberCtx, now().getTime()) ? 'member' : 'unresolved'; }",
     "to": "return 'member'; }",
     "command": [
       "node",
@@ -26660,7 +26662,8 @@
     ],
     "kills_with": [
       "an admitted member WITHOUT a usable token claims nothing"
-    ]
+    ],
+    "repointed": "Codex promo r3: CappUI reads CappApi.tokenUsable (with expiry)"
   },
   {
     "id": "pf-12",
@@ -26685,8 +26688,8 @@
     "slice": "promo",
     "label": "PLAN-capp-store-promo-feeinfo: Codex promo r2 P2-A: the token retry removed (a token that arrives later never upgrades the claim)",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "      if (!idToken) retryToken(gen, uid, 0);\n",
-    "to": "",
+    "from": "      if (usable(S.member)) armExpiry(); else retryToken(gen, uid, 0);",
+    "to": "      if (usable(S.member)) armExpiry();",
     "command": [
       "node",
       "--test",
@@ -26696,6 +26699,61 @@
     ],
     "kills_with": [
       "the token that arrived later never upgraded the claim"
+    ],
+    "repointed": "Codex promo r3: admission arms the expiry when usable, else the retry"
+  },
+  {
+    "id": "pf-14",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r3 reverted: tokenUsable ignores exp (an EXPIRED token claims «Envío gratis» and is sent)",
+    "file": "../customer-app/capp-api.js",
+    "from": "    return e !== null && e > n + TOKEN_SKEW_MS ? t : null;",
+    "to": "    return t;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo r3",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "an EXPIRED token still authorizes «Envío gratis»"
+    ]
+  },
+  {
+    "id": "pf-15",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r3 reverted: the ONE setter never notifies (a recovered token leaves guest pricing on screen)",
+    "file": "../customer-app/capp-api.js",
+    "from": "    if (typeof m.onTokenChange === 'function') { try { m.onTokenChange(m); } catch (_) {} }\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo r3",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the token recovered (the header went out) but the store still shows guest pricing"
+    ]
+  },
+  {
+    "id": "pf-16",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r3 reverted: a sign-out leaves the token timers pending",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "    function dropMember() { memberGen++; clearTokenTimers();",
+    "to": "    function dropMember() { memberGen++;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo r3",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "a token timer survived the sign-out"
     ]
   }
 ]

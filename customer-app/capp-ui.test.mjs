@@ -2715,6 +2715,6 @@ test('store promo (CappUI host): a raw «member» authState with nothing admitte
   assert.equal(raw.q('.info .pill.deal').getAttribute('aria-hidden'), 'true', 'not admitted ⇒ reserved');
   const noTok = boot('x_pizza', { config: cfg, mount: { CappApi: require('./capp-api.js'), authState: () => 'member', member: { uid: 'u_1', name: 'Ana', phone: '99990000', email: '', idToken: null } } });
   assert.equal(noTok.q('.info .facts .free'), null, '🔴 store promo (host): an admitted member WITHOUT a usable token claims nothing (Codex promo r2 P2-A)');
-  const adm = boot('x_pizza', { config: cfg, mount: { CappApi: require('./capp-api.js'), authState: () => 'member', member: { uid: 'u_1', name: 'Ana', phone: '99990000', email: '', idToken: 't_1' } } });
+  const adm = boot('x_pizza', { config: cfg, mount: { CappApi: require('./capp-api.js'), authState: () => 'member', member: { uid: 'u_1', name: 'Ana', phone: '99990000', email: '', idToken: `${Buffer.from('{"alg":"RS256"}').toString('base64url')}.${Buffer.from(JSON.stringify({ sub: 'u_1', exp: 4102444800 })).toString('base64url')}.sig` } } });   // a JWT (the real writer's shape) the clock (NOON) finds unexpired
   assert.ok(adm.q('.info .facts .free'), '🔴 store promo (host): the admitted member\'s «Envío gratis»'); assert.equal(adm.q('.info .pill.deal'), null);
 });

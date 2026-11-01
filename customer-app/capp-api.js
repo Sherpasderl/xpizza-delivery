@@ -47,10 +47,36 @@
 })(typeof self !== 'undefined' ? self : this, function (root) {
   'use strict';
 
-  // the member's USABLE token as the transport will attach it (memberToken's fallback — x-firebase-id-token): ONE predicate. The promo
-  // claim («Envío gratis», the member state of the pill) reads it too (Codex promo r2 P2-A): no usable token ⇒ the server prices a guest
-  // ⇒ the screen claims nothing
-  const tokenOf = (m) => (m && typeof m.idToken === 'string' && m.idToken ? m.idToken : null);
+  // ── the member token: ONE predicate, ONE setter (Codex promo r2 P2-A + r3) ──
+  // tokenUsable(m, now) — the token the transport attaches as x-firebase-id-token, or null: a non-empty JWT whose `exp` is later than
+  //   now + TOKEN_SKEW_MS (only the exp claim is read; never the signature — the server verifies). The promo claim («Envío gratis», the
+  //   member state of the pill) reads THE SAME function, so the screen and the header can never disagree; no usable token ⇒ the server
+  //   prices a guest ⇒ the screen claims nothing.
+  // acceptToken(m, t, now) — the ONLY way a fresh token reaches a member: a usable one is stored and the member's identity-guarded
+  //   onTokenChange(m) fires (the shell patches Inicio + the store in place); an unusable one is refused.
+  const TOKEN_SKEW_MS = 60 * 1000;
+  function tokenExpMs(t) {
+    if (typeof t !== 'string' || !t) return null;
+    const seg = t.split('.')[1]; if (!seg) return null;
+    try {
+      const b = seg.replace(/-/g, '+').replace(/_/g, '/'), pad = b + '==='.slice((b.length + 3) % 4);
+      const json = typeof atob === 'function' ? atob(pad) : Buffer.from(pad, 'base64').toString('binary');
+      const exp = JSON.parse(json).exp;
+      return Number.isFinite(exp) ? exp * 1000 : null;
+    } catch (_) { return null; }
+  }
+  function tokenUsable(m, now) {
+    const t = m && typeof m.idToken === 'string' && m.idToken ? m.idToken : null; if (!t) return null;
+    const e = tokenExpMs(t), n = typeof now === 'number' && Number.isFinite(now) ? now : Date.now();
+    return e !== null && e > n + TOKEN_SKEW_MS ? t : null;
+  }
+  function acceptToken(m, t, now) {
+    if (!m || typeof m !== 'object' || !tokenUsable({ idToken: t }, now)) return false;
+    if (m.idToken === t) return true;
+    try { m.idToken = t; } catch (_) { return false; }
+    if (typeof m.onTokenChange === 'function') { try { m.onTokenChange(m); } catch (_) {} }
+    return true;
+  }
 
   const HOSTED_CHECKOUT_MS = 45 * 60 * 1000;             // the server's hosted-checkout window (HOSTED_TTL_MS, pinned by a test)
   const CAPP_SEND_GRACE_MS = HOSTED_CHECKOUT_MS + 15 * 60 * 1000;
@@ -239,10 +265,11 @@
     const TOKEN_WAIT_MS = 2000;
     async function memberToken(m) {
       if (!m) return null;
-      if (typeof m.getIdToken !== 'function') return tokenOf(m);
-      const fresh = await Promise.race([Promise.resolve().then(() => m.getIdToken()).then((t) => (typeof t === 'string' && t ? t : null), () => null), timeout(TOKEN_WAIT_MS).then(() => null)]);
-      if (fresh && m.idToken !== fresh) { try { m.idToken = fresh; } catch (_) {} }   // the usable token the next send — and the promo claim (tokenOf) — see
-      return fresh || tokenOf(m);
+      if (typeof m.getIdToken === 'function') {
+        const fresh = await Promise.race([Promise.resolve().then(() => m.getIdToken()).then((t) => (typeof t === 'string' && t ? t : null), () => null), timeout(TOKEN_WAIT_MS).then(() => null)]);
+        if (fresh) acceptToken(m, fresh, now());   // the ONE setter: stored only if usable, and the screen is told
+      }
+      return tokenUsable(m, now());   // never an expired token (Codex promo r3): usable, or no header at all
     }
     const headersFor = (extra, token) => { const h = { 'Content-Type': 'application/json', ...(extra || {}) }; if (token) h['x-firebase-id-token'] = token; return h; };
     async function post(url, body, extraHeaders) {
@@ -726,5 +753,5 @@
       confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
   }
 
-  return { createApi, tokenOf, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
+  return { createApi, tokenUsable, acceptToken, tokenExpMs, TOKEN_SKEW_MS, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
 });
