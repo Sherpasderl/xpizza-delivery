@@ -685,7 +685,7 @@
         const A = opts.CappApi || (typeof self !== 'undefined' && self.CappApi) || require('./capp-api.js');
         api = opts.api || A.createApi({ config: { restaurantId: cfg.restaurantId, orderIdPrefix: cfg.orderIdPrefix, pendingPayKey: cfg.pendingPayKey, endpoints: cfg.endpoints, hours: cfg.hours,
           cartKey: cfg.cartKey, placedKey: cfg.placedKey, guestCardOnly: cfg.guestCardOnly === true, ...(cfg.schedulingLive === true ? { schedulingLive: true } : {}) },   // S7a-1: hosted by the shell (both absent ⇒ the S2 path, unchanged); §3.2 the guest tender rule
-          CappCheckout: C, member, ...(opts.apiOpts || {}) });
+          CappCheckout: C, member, ...(opts.apiOpts || {}), now: () => now().getTime() });   // Codex promo r4 #3: ONE clock — the transport judges the token at the UI's time (the claim's), never a second apiOpts.now
         return true;
       } catch (_) { C = null; api = null; return false; }
     }

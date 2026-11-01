@@ -923,3 +923,28 @@ test('Codex G7 r2 property: for every first send × second actor × tender × ti
   }
   assert.equal(combos, 72, 'premise: every combination ran');
 });
+
+// Codex promo r4 #4 — a malformed token FAILS CLOSED (tokenUsable ⇒ null): exactly three non-empty base64url segments, header AND payload
+// JSON objects, exp a finite integer, exp*1000 finite and ≤ now + 48 h
+test('member token r4: tokenUsable fails CLOSED on every malformed / implausible token (table)', () => {
+  const now = Date.UTC(2026, 9, 20, 19, 5), b = (o) => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).toString('base64url');
+  const H = b({ alg: 'RS256' }), P = (exp) => b({ sub: 'u1', exp }), ok = `${H}.${P(Math.floor((now + 3600e3) / 1000))}.sig`;
+  assert.equal(A.tokenUsable({ idToken: ok }, now), ok, 'premise: a well-formed, unexpired token is usable');
+  const rows = [
+    ['missing signature', `${H}.${P(Math.floor((now + 3600e3) / 1000))}`],
+    ['empty signature', `${H}.${P(Math.floor((now + 3600e3) / 1000))}.`],
+    ['empty header', `.${P(Math.floor((now + 3600e3) / 1000))}.sig`],
+    ['extra segment', `${ok}.x`],
+    ['non-base64url segment', `${H}.${P(Math.floor((now + 3600e3) / 1000))}.s+g/`],
+    ['header not JSON', `${b('not json')}.${P(Math.floor((now + 3600e3) / 1000))}.sig`],
+    ['payload not JSON', `${H}.${b('{exp:')}.sig`],
+    ['payload not an object', `${H}.${b('42')}.sig`],
+    ['exp 1e308', `${H}.${P(1e308)}.sig`],
+    ['exp a string', `${H}.${b({ exp: String(Math.floor((now + 3600e3) / 1000)) })}.sig`],
+    ['exp fractional', `${H}.${P((now + 3600e3) / 1000 + 0.5)}.sig`],
+    ['exp beyond now + 48 h', `${H}.${P(Math.floor((now + 49 * 3600e3) / 1000))}.sig`],
+    ['exp within the 60 s skew', `${H}.${P(Math.floor((now + 30e3) / 1000))}.sig`],
+  ];
+  for (const [why, t] of rows) assert.equal(A.tokenUsable({ idToken: t }, now), null, `🔴 member token r4: «${why}» must be unusable`);
+  assert.equal(A.acceptToken({ idToken: null }, `${H}.${P(1e308)}.sig`, now), false, 'the ONE setter refuses it too');
+});

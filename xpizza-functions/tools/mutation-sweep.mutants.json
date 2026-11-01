@@ -26707,8 +26707,8 @@
     "slice": "promo",
     "label": "PLAN-capp-store-promo-feeinfo: Codex promo r3 reverted: tokenUsable ignores exp (an EXPIRED token claims «Envío gratis» and is sent)",
     "file": "../customer-app/capp-api.js",
-    "from": "    return e !== null && e > n + TOKEN_SKEW_MS ? t : null;",
-    "to": "    return t;",
+    "from": "    return e !== null && e > n + TOKEN_SKEW_MS && e <= n + TOKEN_MAX_AHEAD_MS ? t : null;",
+    "to": "    return e !== null ? t : null;",
     "command": [
       "node",
       "--test",
@@ -26718,7 +26718,8 @@
     ],
     "kills_with": [
       "an EXPIRED token still authorizes «Envío gratis»"
-    ]
+    ],
+    "repointed": "Codex promo r4: tokenUsable also caps at now + 48 h; the mutant still ignores the expiry (and the cap)"
   },
   {
     "id": "pf-15",
@@ -26754,6 +26755,78 @@
     ],
     "kills_with": [
       "a token timer survived the sign-out"
+    ]
+  },
+  {
+    "id": "pf-17",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r4 #1 reverted: the identity is never rechecked after the token await (a signed-out member's token is accepted and SENT)",
+    "file": "../customer-app/capp-api.js",
+    "from": "      const current = () => memberOf() === m;",
+    "to": "      const current = () => true;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo r4",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the signed-out member's token was sent"
+    ]
+  },
+  {
+    "id": "pf-18",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r4 #2 reverted: an early expiry callback withdraws at once (no re-arm)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "        if (usable(S.member)) { armExpiry(); return; }",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo r4",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the early callback did not re-arm",
+      "an early expiry callback withdrew a still-usable claim"
+    ]
+  },
+  {
+    "id": "pf-19",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r4 #3 reverted: the transport keeps a SECOND clock (apiOpts.now)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "...(opts.apiOpts || {}), now: () => now().getTime() });",
+    "to": "...(opts.apiOpts || {}) });",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=ONE CLOCK",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the transport reads a SECOND clock"
+    ]
+  },
+  {
+    "id": "pf-20",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r4 #4 reverted: the JWT structure check is skipped (malformed tokens pass)",
+    "file": "../customer-app/capp-api.js",
+    "from": "if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null;",
+    "to": "if (parts.length < 2) return null;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=member token r4",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "must be unusable"
     ]
   }
 ]

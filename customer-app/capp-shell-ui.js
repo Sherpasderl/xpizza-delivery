@@ -276,7 +276,8 @@
       const gen = memberGen, uid = m.uid, at = A.tokenExpMs(t) - A.TOKEN_SKEW_MS;
       expTimer = T.setTimeout(() => {
         expTimer = null; if (dead || gen !== memberGen || !S.member || S.member.uid !== uid) return;
-        storeAuth(); schedule(); if (!usable(S.member)) retryToken(gen, uid, 0);
+        if (usable(S.member)) { armExpiry(); return; }   // Codex promo r4 #2: fired EARLY (timer drift) ⇒ re-arm for the remaining time
+        storeAuth(); schedule(); retryToken(gen, uid, 0);
       }, Math.max(0, at - nowMs()));
     }
     // Codex promo r2 P2-A: an admitted member whose token failed is retried (bounded); when it arrives, the SAME identity is re-handed to

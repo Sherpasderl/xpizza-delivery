@@ -259,7 +259,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   };
   const clock = now || { t: T0 };
   const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), fetchDirectory, fetchEnvelope, readAvailability: async () => [], onEvent: (n, d) => events.push([n, J(d)]), runtime, storage: storage || memStorage(), now: () => clock.t,
-    auth: { state: () => auth }, geolocation, search, timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, ...mountExtra });
+    auth: { state: () => auth }, geolocation, search, timers: { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, ...mountExtra });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
   const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const release = (rid, body) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: body || J(PROV[rid].envelope), etag: body ? '"changed"' : PROV[rid].etag }); };
@@ -656,9 +656,10 @@ test('stamp: shell.html is stamped as orders-app; on the stamped shell SherpaCli
 });
 
 // ── G6: the in-app sign-in, owned by the shell when the runtime carries the signup config (DARK: absent ⇒ exactly as before) ──
-// a Firebase ID token in the REAL writer's shape (a JWT; only `exp` is read by the client, never the signature) — far-future by default
+// a Firebase ID token in the REAL writer's shape (a JWT; only `exp` is read by the client, never the signature) — one hour past T0 by default
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
-const TOK = (uid, expMs = Date.UTC(2100, 0, 1)) => `${b64u({ alg: 'RS256', typ: 'JWT' })}.${b64u({ sub: uid, user_id: uid, exp: Math.floor(expMs / 1000) })}.sig`;
+const TOK = (uid, expMs = T0 + 3600e3) => `${b64u({ alg: 'RS256', typ: 'JWT' })}.${b64u({ sub: uid, user_id: uid, exp: Math.floor(expMs / 1000) })}.sig`;
+const WARNINGS = []; process.on('warning', (w) => WARNINGS.push(w));   // Codex promo r4 #5: no TimeoutOverflowWarning (asserted last)
 // failToken: the next N getIdToken() calls REJECT; failFrom: every call from index N on rejects; tokExp: the issued tokens' exp (ms)
 function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, tokExp } = {}) {
   const calls = { load: 0, ct: [], out: 0 }; let listeners = [], user = persisted;
@@ -1740,8 +1741,9 @@ test('store promo r2 P2-B: a focused «Detalle del envío» survives the real un
 // Codex promo r3 — the WHOLE token class: ONE predicate with expiry (CappApi.tokenUsable: a JWT whose exp > now + skew) for the claim AND
 // the header; fresh tokens enter ONLY through CappApi.acceptToken, which fires the member's identity-guarded onTokenChange ⇒ the shell
 // patches Inicio + the store in place; the shell's token timers are handles, cleared on sign-out / a uid change / destroy
+// long timers are held for the test to fire; short ones are real but unref'd, so a failed cell's 1 ms re-arm never pins the process
 const longTimers = () => { const pend = new Map(); let id = 0;
-  return { pend, T: { setTimeout: (f, ms) => { if (ms >= 1000) { const h = { long: ++id, ms }; pend.set(h, f); return h; } return setTimeout(f, ms); }, clearTimeout: (h) => { if (h && h.long) pend.delete(h); else clearTimeout(h); }, setInterval: () => 0, clearInterval: () => {} },
+  return { pend, T: { setTimeout: (f, ms) => { if (ms >= 1000) { const h = { long: ++id, ms }; pend.set(h, f); return h; } const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (h) => { if (h && h.long) pend.delete(h); else clearTimeout(h); }, setInterval: () => 0, clearInterval: () => {} },
     fire() { const all = [...pend.entries()]; pend.clear(); for (const [, f] of all) f(); } }; };
 const memberBoot = ({ fb, apiFetch = null, now = null, timers = null }) => bootShell({ auth: 'unresolved', apiFetch, now, storage: memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF) }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch, ...(timers ? { timers } : {}) } });
 const quoteLog = (quotes) => (u, i) => { if (u.startsWith('/x/q')) { quotes.push(i.headers['x-firebase-id-token'] || null); return quoteOk(u, i); } return new Promise(() => {}); };
@@ -1792,7 +1794,7 @@ test('store promo r3: a token EXPIRING while the page is open withdraws the clai
   S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
   assert.ok(S.q('.info .facts .free'), 'premise: claimed while the token is usable');
   assert.ok(L.pend.size >= 1, 'premise: the expiry is armed');
-  const info = S.q('.info'); clock.t = T0 + 120e3; L.fire(); await flush(); await flush();
+  const info = S.q('.info'); clock.t = T0 + 120e3 - 60e3; L.fire(); await flush(); await flush();   // AT the cutoff: exp − 60 s skew
   assert.equal(S.q('.info'), info, '🔴 store promo r3: the expiry re-rendered the store');
   assert.equal(S.q('.info .facts .free'), null, '🔴 store promo r3: an expired token keeps claiming «Envío gratis» on the open store');
   assert.equal(S.q('.info .pill.deal').getAttribute('aria-hidden'), 'true', 'withdrawn ⇒ reserved');
@@ -1811,4 +1813,46 @@ test('store promo r3: the token timers are HANDLES — none left after a sign-ou
   await until(() => D.ui.state.member); await flush();
   assert.ok(L2.pend.size >= 1, 'premise: pending again'); D.ui.destroy();
   assert.equal(L2.pend.size, 0, '🔴 store promo r3: a token timer survived destroy()');
+});
+
+// Codex promo r4 — the last consolidated pass: the sign-out race, the early expiry callback, a real uid switch, no timer overflow
+test('store promo r4 #1: a held quote token RELEASED AFTER a sign-out — no member header, member null (identity rechecked after the await)', async () => {
+  const hold = { on: false, q: [] }, quotes = [];
+  const fb = fakeFirebase({ persisted: 'u_ana', hold });
+  const S = memberBoot({ fb, apiFetch: quoteLog(quotes) });
+  await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+  await toShellCheckout(S);
+  hold.on = true; S.click('#app [data-act="type"][data-val="pickup"]'); await flush();   // the quote waits on the token
+  await fb.loadSdk().then(({ authMod }) => authMod.signOut()); await flush(); await flush();
+  assert.equal(S.ui.state.member ?? null, null, 'premise: signed out while the quote waited');
+  hold.on = false; for (const r of hold.q.splice(0)) r(); await until(() => quotes.length >= 1); await flush();
+  assert.equal(quotes[quotes.length - 1], null, '🔴 store promo r4: the signed-out member\'s token was sent');
+  assert.equal(S.ui.state.member ?? null, null);
+});
+test('store promo r4 #2: an expiry callback firing 1 ms EARLY re-arms — the claim stays until the cutoff, then is withdrawn', async () => {
+  const clock = { t: T0 }, L = longTimers();
+  const fb = fakeFirebase({ persisted: 'u_ana', failFrom: 1, tokExp: T0 + 120e3 });
+  const S = memberBoot({ fb, now: clock, timers: L.T });
+  await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  const cutoff = T0 + 120e3 - 60e3;
+  clock.t = cutoff - 1; L.fire(); await flush();   // the timer fires 1 ms early (the re-armed 1 ms timer is a real one)
+  assert.ok(S.q('.info .facts .free'), '🔴 store promo r4: an early expiry callback withdrew a still-usable claim');
+  clock.t = cutoff; await until(() => !S.q('.info .facts .free'), 2000).catch(() => {});
+  assert.equal(S.q('.info .facts .free'), null, '🔴 store promo r4: the early callback did not re-arm (the claim outlives the cutoff)');
+});
+test('store promo r4 #5: a real UID SWITCH cancels the old identity\'s token timers', async () => {
+  const L = longTimers();
+  const fb = fakeFirebase({ persisted: 'u_ana', failToken: 99 });
+  const S = memberBoot({ fb, timers: L.T });
+  await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+  assert.ok(L.pend.size >= 1, 'premise: u_ana\'s token retry is pending');
+  await fb.loadSdk().then(({ authMod }) => authMod.signInWithCustomToken({}, 'ct:u_bob')); await flush(); await flush();   // another uid's session
+  assert.notEqual(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: u_ana is no longer the identity');
+  assert.equal(L.pend.size, 0, '🔴 store promo r4: u_ana\'s token timer survived the uid switch');
+});
+// LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
+test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {
+  const over = WARNINGS.filter((w) => w && w.name === 'TimeoutOverflowWarning');
+  assert.equal(over.length, 0, `🔴 store promo r4: ${over.length} TimeoutOverflowWarning(s): ${over.map((w) => w.message).join(' | ').slice(0, 200)}`);
 });

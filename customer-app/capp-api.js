@@ -55,20 +55,29 @@
   // acceptToken(m, t, now) — the ONLY way a fresh token reaches a member: a usable one is stored and the member's identity-guarded
   //   onTokenChange(m) fires (the shell patches Inicio + the store in place); an unusable one is refused.
   const TOKEN_SKEW_MS = 60 * 1000;
+  const TOKEN_MAX_AHEAD_MS = 48 * 3600 * 1000;   // plausibility (Codex promo r4 #4): an ID token lives 1 h; anything past now + 48 h is refused
+  const B64URL = /^[A-Za-z0-9_-]+$/;
+  const segJson = (seg) => {
+    const b = seg.replace(/-/g, '+').replace(/_/g, '/'), pad = b + '==='.slice((b.length + 3) % 4);
+    const v = JSON.parse(typeof atob === 'function' ? atob(pad) : Buffer.from(pad, 'base64').toString('binary'));
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+  };
+  // the exp of a STRUCTURALLY valid JWT, ms — FAIL CLOSED: exactly three non-empty base64url segments, header and payload JSON objects,
+  // exp a finite integer whose ms value is finite; anything else ⇒ null (unusable)
   function tokenExpMs(t) {
     if (typeof t !== 'string' || !t) return null;
-    const seg = t.split('.')[1]; if (!seg) return null;
+    const parts = t.split('.'); if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null;
     try {
-      const b = seg.replace(/-/g, '+').replace(/_/g, '/'), pad = b + '==='.slice((b.length + 3) % 4);
-      const json = typeof atob === 'function' ? atob(pad) : Buffer.from(pad, 'base64').toString('binary');
-      const exp = JSON.parse(json).exp;
-      return Number.isFinite(exp) ? exp * 1000 : null;
+      if (!segJson(parts[0])) return null;
+      const pl = segJson(parts[1]); if (!pl) return null;
+      const exp = pl.exp;
+      return typeof exp === 'number' && Number.isInteger(exp) && Number.isFinite(exp * 1000) ? exp * 1000 : null;
     } catch (_) { return null; }
   }
   function tokenUsable(m, now) {
     const t = m && typeof m.idToken === 'string' && m.idToken ? m.idToken : null; if (!t) return null;
     const e = tokenExpMs(t), n = typeof now === 'number' && Number.isFinite(now) ? now : Date.now();
-    return e !== null && e > n + TOKEN_SKEW_MS ? t : null;
+    return e !== null && e > n + TOKEN_SKEW_MS && e <= n + TOKEN_MAX_AHEAD_MS ? t : null;
   }
   function acceptToken(m, t, now) {
     if (!m || typeof m !== 'object' || !tokenUsable({ idToken: t }, now)) return false;
@@ -265,10 +274,13 @@
     const TOKEN_WAIT_MS = 2000;
     async function memberToken(m) {
       if (!m) return null;
+      const current = () => memberOf() === m;   // Codex promo r4 #1: the identity, revalidated after EVERY await
       if (typeof m.getIdToken === 'function') {
         const fresh = await Promise.race([Promise.resolve().then(() => m.getIdToken()).then((t) => (typeof t === 'string' && t ? t : null), () => null), timeout(TOKEN_WAIT_MS).then(() => null)]);
+        if (!current()) return null;   // signed out / switched during the await ⇒ no token is accepted or sent
         if (fresh) acceptToken(m, fresh, now());   // the ONE setter: stored only if usable, and the screen is told
       }
+      if (!current()) return null;
       return tokenUsable(m, now());   // never an expired token (Codex promo r3): usable, or no header at all
     }
     const headersFor = (extra, token) => { const h = { 'Content-Type': 'application/json', ...(extra || {}) }; if (token) h['x-firebase-id-token'] = token; return h; };
@@ -753,5 +765,5 @@
       confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
   }
 
-  return { createApi, tokenUsable, acceptToken, tokenExpMs, TOKEN_SKEW_MS, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
+  return { createApi, tokenUsable, acceptToken, tokenExpMs, TOKEN_SKEW_MS, TOKEN_MAX_AHEAD_MS, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
 });

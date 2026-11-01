@@ -2715,6 +2715,17 @@ test('store promo (CappUI host): a raw «member» authState with nothing admitte
   assert.equal(raw.q('.info .pill.deal').getAttribute('aria-hidden'), 'true', 'not admitted ⇒ reserved');
   const noTok = boot('x_pizza', { config: cfg, mount: { CappApi: require('./capp-api.js'), authState: () => 'member', member: { uid: 'u_1', name: 'Ana', phone: '99990000', email: '', idToken: null } } });
   assert.equal(noTok.q('.info .facts .free'), null, '🔴 store promo (host): an admitted member WITHOUT a usable token claims nothing (Codex promo r2 P2-A)');
-  const adm = boot('x_pizza', { config: cfg, mount: { CappApi: require('./capp-api.js'), authState: () => 'member', member: { uid: 'u_1', name: 'Ana', phone: '99990000', email: '', idToken: `${Buffer.from('{"alg":"RS256"}').toString('base64url')}.${Buffer.from(JSON.stringify({ sub: 'u_1', exp: 4102444800 })).toString('base64url')}.sig` } } });   // a JWT (the real writer's shape) the clock (NOON) finds unexpired
+  const adm = boot('x_pizza', { config: cfg, mount: { CappApi: require('./capp-api.js'), authState: () => 'member', member: { uid: 'u_1', name: 'Ana', phone: '99990000', email: '', idToken: `${Buffer.from('{"alg":"RS256"}').toString('base64url')}.${Buffer.from(JSON.stringify({ sub: 'u_1', exp: Math.floor((NOON().getTime() + 3600e3) / 1000) })).toString('base64url')}.sig` } } });   // a JWT (the real writer's shape): one hour past the mount clock (NOON)
   assert.ok(adm.q('.info .facts .free'), '🔴 store promo (host): the admitted member\'s «Envío gratis»'); assert.equal(adm.q('.info .pill.deal'), null);
+});
+
+// Codex promo r4 #3 — ONE CLOCK: CappUI hands the transport ITS OWN clock (the one the promo claim reads); an apiOpts.now that disagrees is
+// overridden, so the claim and the header can never be judged at two different times
+test('store promo r4 ONE CLOCK: the transport reads the UI\'s clock — an apiOpts.now skewed 120 s is overridden (one source)', async () => {
+  let seen = null; const spy = { ...CA, createApi: (o) => { seen = o; return CA.createApi(o); } };
+  const uiNow = () => new Date(NOON().getTime() + 120e3);   // the UI clock; bootCo's apiOpts.now stays at NOON (a second, skewed clock)
+  const b = bootCo({ mountOpts: { CappApi: spy, now: uiNow } });
+  await toCheckout(b);
+  assert.ok(seen && typeof seen.now === 'function', 'premise: the transport was created');
+  assert.equal(seen.now(), uiNow().getTime(), '🔴 promo r4: the transport reads a SECOND clock (apiOpts.now), not the UI\'s');
 });
