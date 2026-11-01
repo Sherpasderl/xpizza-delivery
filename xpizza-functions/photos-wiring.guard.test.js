@@ -15,10 +15,13 @@ const { HUNKS, BASE, unapplyPhotosIndex, unapplyPhotosFold } = require('./tools/
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const GBASE = 'd03f8828';   // DRYRUN R-WIRE (2e): the assembly state just before the photos A1+A2 layer (the train's older layers sit under it); re-point at the real assembly
-const baseIdx = execFileSync('git', ['show', `${GBASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
+// DRYRUN R-WIRE (2e): the security row (0fda02b3, NEWER than photos) edits only INSIDE the /* checkout:begin endpoints */ block, which
+// checkout-inverse removes whole (proven by checkout-wiring.guard) → both sides are compared with that block stripped
+const CO = (x) => require('./tools/checkout-inverse').unapplyCheckoutIndex(x);
+const baseIdx = CO(execFileSync('git', ['show', `${GBASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 }));
 
 // ── 1. the inverse ──
-assert.strictEqual(unapplyPhotosIndex(real), baseIdx, `🔴 index.js minus the photos hunks is not ${BASE}:index.js`);
+assert.strictEqual(CO(unapplyPhotosIndex(real)), baseIdx, `🔴 index.js minus the photos hunks is not ${BASE}:index.js`);
 assert.notStrictEqual(real, baseIdx, 'non-vacuity: the slice is present');
 assert.strictEqual(HUNKS.length, 2);
 for (const h of HUNKS) {
@@ -32,12 +35,12 @@ for (const h of HUNKS) {
 {
   const outside = real.replace('exports.quoteOrder = onRequest(', 'exports.quoteOrder  = onRequest(');
   assert.notStrictEqual(outside, real, 'premise');
-  assert.notStrictEqual(unapplyPhotosIndex(outside), baseIdx, 'a byte OUTSIDE every hunk survives and fails the base pin');
+  assert.notStrictEqual(CO(unapplyPhotosIndex(outside)), baseIdx, 'a byte OUTSIDE every hunk survives and fails the base pin');
 }
 ok(`PROOF: unapplyPhotosIndex(index.js) === ${BASE}:index.js byte-for-byte (${HUNKS.length} hunks, each once); inside / outside / duplicated / missing each detected`);
 
 // ── 2. same-line hunks ──
-const rl = real.split('\n'), bl = baseIdx.split('\n');
+const rl = CO(real).split('\n'), bl = baseIdx.split('\n');
 assert.strictEqual(rl.length, bl.length, '🔴 index.js gained or lost a line — the hunks must be SAME-LINE (R3 binds call sites by line)');
 const differing = rl.map((l, i) => (l === bl[i] ? null : i)).filter((i) => i !== null);
 assert.deepStrictEqual(differing.map((i) => `${rl[i]}\n`), HUNKS.map((h) => h.now), 'exactly the two hunk lines differ, in order');
