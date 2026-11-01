@@ -12870,32 +12870,30 @@
   "id": "r3p0-98",
   "slice": "r3p0",
   "file": "../xpizza-driver/single-order-view.js",
-  "from": "<span class=\"sv-onum\">${label}</span>${ring}</div>",
-  "to": "<span class=\"sv-onum\">${label}</span>${ring}<span class=\"sv-name\">${esc(order.customer_name)}</span></div>",
+  "from": "<div class=\"of2-chiprow\">${svChip(order, esc)}<span class=\"of2-onum\">${label}</span>${kmChip}</div>",
+  "to": "<div class=\"of2-chiprow\">${svChip(order, esc)}<span class=\"of2-onum\">${label}</span>${kmChip}<span class=\"sv-name\">${esc(order.customer_name)}</span></div>",
   "label": "R4 privacy: the driver OFFER card (awaiting_acceptance) renders the customer name",
   "kills_with": [
    "PRIVACY — the customer's name is rendered while pg_cash is still an OFFER"
   ],
   "command": [
-   "npm",
-   "run",
-   "test:r3-p0-pages"
+   "node",
+   "../xpizza-driver/oferta-offer.test.js"
   ]
  },
  {
   "id": "r3p0-99",
   "slice": "r3p0",
   "file": "../xpizza-driver/single-order-view.js",
-  "from": "<span class=\"sv-onum\">${label}</span>${ring}</div>",
-  "to": "<span class=\"sv-onum\">${label}</span>${ring}<span>${esc(order.customer_phone)}</span></div>",
+  "from": "<div class=\"of2-chiprow\">${svChip(order, esc)}<span class=\"of2-onum\">${label}</span>${kmChip}</div>",
+  "to": "<div class=\"of2-chiprow\">${svChip(order, esc)}<span class=\"of2-onum\">${label}</span>${kmChip}<span>${esc(order.customer_phone)}</span></div>",
   "label": "R4 privacy: the driver OFFER card (awaiting_acceptance) renders the customer phone as plain text (codex r1 P2)",
   "kills_with": [
    "PRIVACY — the customer's phone is rendered while pg_cash is still an OFFER"
   ],
   "command": [
-   "npm",
-   "run",
-   "test:r3-p0-pages"
+   "node",
+   "../xpizza-driver/oferta-offer.test.js"
   ]
  },
  {
@@ -15379,10 +15377,10 @@
   "file": "../xpizza-driver/index.html",
   "command": [
    "node",
-   "../xpizza-driver/onboarding-host.test.js"
+   "../xpizza-driver/practica-demo.test.js"
   ],
-  "from": "companionWriteDraft({ practiceDone: true, practiceStep: 0 });",
-  "to": "XPD.completeTask('x','y'); companionWriteDraft({ practiceDone: true, practiceStep: 0 });",
+  "from": "if (companionDemoAlive()) companionWriteProgress(self.uid, { practiceDone: true });",
+  "to": "XPD.completeTask('x','y'); if (companionDemoAlive()) companionWriteProgress(self.uid, { practiceDone: true });",
   "label": "the practice flow calls a real operational writer (operational practice write)"
  },
  {
@@ -19185,8 +19183,8 @@
   "id": "drv1-10",
   "slice": "drv1",
   "file": "../xpizza-driver/single-order-view.js",
-  "from": "if (c.kind === 'cash') {",
-  "to": "if (c.kind === 'cash' && false) {",
+  "from": "let vuelto = '';\n  if (c.kind === 'cash') {",
+  "to": "let vuelto = '';\n  if (c.kind === 'cash' && false) {",
   "label": "cash vuelto line suppressed — driver loses the declared-tender/change display",
   "command": [
    "node",
@@ -19269,8 +19267,8 @@
   "id": "drv1-17",
   "slice": "drv1",
   "file": "../xpizza-driver/single-order-view.js",
-  "from": "OFFER_RING_SECS - remaining",
-  "to": "0",
+  "from": "Math.max(0, Math.round((Number(dl) - nowMs) / 1000))",
+  "to": "OFFER_RING_SECS",
   "label": "offer ring ignores elapsed (P2-2) — a re-render restarts the drain at full instead of resuming from the deadline",
   "command": [
    "node",
@@ -20996,8 +20994,8 @@
   "slice": "drv2",
   "label": "PRIVACY (Codex r2/r3): the incoming banner re-shows the customer address in its sub-line before acceptance",
   "file": "../xpizza-driver/stacked-view.js",
-  "from": "<div class=\"ib-sub\">${total} · otro hub</div>",
-  "to": "<div class=\"ib-sub\">${total} · ${esc(order.address_detected || '')} · otro hub</div>",
+  "from": "<div class=\"ib-sub\">${total}</div>",
+  "to": "<div class=\"ib-sub\">${total} · ${esc(order.address_detected || '')}</div>",
   "command": [
    "node",
    "../xpizza-driver/stacked-view.test.js"

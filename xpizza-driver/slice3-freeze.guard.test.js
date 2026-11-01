@@ -104,7 +104,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = 'b43483c6ed13d3244d6a5072051c3f49c9a1267317d69153fd3f899e99c065eb';
+const SLICE2_GUARD_SHA = 'f6c3bb66d5be6596cf2e2276b5eb151884384f4760cecde80794e9d57f63f99b';
 const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
@@ -204,6 +204,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/ganancias.test.js',            // the earnings screen (#31/#32) renderGanancias test — Hoy/Semana over window.PayRate (lift idiom)
   'xpizza-driver/capture-earnings.mjs',         // earnings capture harness (CAPTURE-PLAN-earnings.md); Chrome ONLY under --shoot
   'xpizza-driver/CAPTURE-PLAN-earnings.md',     // one-pass capture plan (scene list + fixtures + computed-style diff list) for #31/#32 + the 7 re-verify scenes
+  'xpizza-driver/rate-subscription.test.js',    // subscribeDriverRate/unsubscribeDriverRate lifecycle: error→blank+re-render, double-boot→one listener, sign-out→none (lift-real idiom)
 ]);
 
 const REPO = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: __dir }).toString('utf8').trim();

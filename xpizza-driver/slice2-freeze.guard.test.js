@@ -234,6 +234,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/ganancias.test.js',               // the earnings screen (#31/#32) renderGanancias test (SLICE3)
   'xpizza-driver/capture-earnings.mjs',            // earnings capture harness (SLICE3; Chrome only under --shoot)
   'xpizza-driver/CAPTURE-PLAN-earnings.md',        // one-pass capture plan for #31/#32 + the 7 re-verify scenes (SLICE3)
+  'xpizza-driver/rate-subscription.test.js',       // subscribeDriverRate/unsubscribeDriverRate lifecycle test (SLICE3)
 ]);
 const REQUIRED_ADDS = ['xpizza-driver/overview-map.js', 'xpizza-driver/stacked-view.js'];
 const ALLOWED_MODIFY = 'xpizza-driver/index.html';
