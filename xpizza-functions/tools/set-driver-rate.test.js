@@ -15,12 +15,18 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   const good = C.parseArgs(['--project', 'x', '--cents', '7000', '--effective-from', '2026-11-03']);
   assert.deepStrictEqual(good, { cents: 7000, effectiveFrom: Date.parse('2026-11-03T06:00:00Z'), apply: false, allowPast: false }, 'a date alone = 00:00 Honduras time = 06:00Z; dry run by default');
   assert.strictEqual(C.parseArgs(['--cents=7000', '--effective-from=2026-11-03T06:00', '--apply']).effectiveFrom, Date.parse('2026-11-03T12:00:00Z'), 'a time without zone is Honduras time');
-  assert.strictEqual(C.parseArgs(['--cents', '1', '--effective-from', '2026-11-03T12:00Z']).effectiveFrom, Date.parse('2026-11-03T12:00:00Z'), 'an explicit Z is honoured');
-  assert.strictEqual(C.parseArgs(['--cents', '1', '--effective-from', '2026-11-03T00:00-06:00']).effectiveFrom, Date.parse('2026-11-03T06:00:00Z'), 'an explicit offset is honoured');
-  for (const c of ['0', '-5', '70.5', '7e3', '07000', 'abc', '', '99999999999999999999']) {
+  assert.strictEqual(C.parseArgs(['--cents', '100', '--effective-from', '2026-11-03T12:00Z']).effectiveFrom, Date.parse('2026-11-03T12:00:00Z'), 'an explicit Z is honoured');
+  assert.strictEqual(C.parseArgs(['--cents', '100', '--effective-from', '2026-11-03T00:00-06:00']).effectiveFrom, Date.parse('2026-11-03T06:00:00Z'), 'an explicit offset is honoured');
+  for (const c of ['0', '-5', '70.5', '7e3', '07000', 'abc', '', '1', '99', '100001', '9007199254740991', '9007199254740993', '99999999999999999999']) {
     const r = C.parseArgs(['--cents', c, '--effective-from', '2026-11-03']);
-    assert.ok(r.error && /positive integer/.test(r.error), `🔴 --cents ${JSON.stringify(c)} was accepted`);
+    assert.ok(r.error && /positive integer from 100 to 100000/.test(r.error), `🔴 --cents ${JSON.stringify(c)} was accepted`);
   }
+  for (const c of ['100', '7000', '100000']) assert.strictEqual(C.parseArgs(['--cents', c, '--effective-from', '2026-11-03']).cents, Number(c), `--cents ${c} (inside L 1 – L 1,000) is accepted`);
+  for (const d of ['2025-12-31T23:59:59Z', '2025-12-31', '1970-01-01T00:00Z', '0001-01-01']) {
+    const r = C.parseArgs(['--cents', '7000', '--effective-from', d]);
+    assert.ok(r.error && /on or after 2026-01-01T00:00:00.000Z/.test(r.error), `🔴 --effective-from ${d} (before 2026-01-01 UTC) was accepted`);
+  }
+  assert.strictEqual(C.parseArgs(['--cents', '7000', '--effective-from', '2026-01-01T00:00Z']).effectiveFrom, Date.parse('2026-01-01T00:00:00Z'), 'exactly 2026-01-01T00:00Z is accepted');
   for (const d of ['2026-02-31', '2026-13-01', 'tomorrow', '2026/11/03', '2026-11-03T25:00', '']) {
     const r = C.parseArgs(['--cents', '7000', '--effective-from', d]);
     assert.ok(r.error, `🔴 --effective-from ${JSON.stringify(d)} was accepted`);
@@ -28,7 +34,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   assert.match(C.parseArgs(['--effective-from', '2026-11-03']).error, /--cents is required/);
   assert.match(C.parseArgs(['--cents', '7000']).error, /--effective-from is required/);
   assert.match(C.parseArgs(['--cents', '7000', '--effective-from', '2026-11-03', '--force']).error, /unknown argument/);
-  ok('args: --cents a positive integer only (0, negative, fractional, exponent, leading zero, text, unsafe refused); --effective-from ISO (no zone = Honduras UTC-6; Z / offset honoured; overflow dates refused); unknown flags refused; dry run by default');
+  ok('args: --cents an integer 100–100000 only (0, 1, 99, 100001, MAX_SAFE_INTEGER, negative, fractional, exponent, leading zero, text, unsafe refused); --effective-from ≥ 2026-01-01Z; --effective-from ISO (no zone = Honduras UTC-6; Z / offset honoured; overflow dates refused); unknown flags refused; dry run by default');
 
   // ── plan ──
   const NOW = Date.parse('2026-11-01T00:00:00Z');
@@ -45,17 +51,32 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   assert.deepStrictEqual(C.planRate(EX, { ...fut, effectiveFrom: NOW - 1, allowPast: true }, NOW).refusals, [], '--allow-past permits a deliberate backdate');
   assert.deepStrictEqual(C.planRate(null, fut, NOW).refusals, [], 'the first entry on an empty node');
   assert.ok(C.planRate({ ...EX, bad: { cents: 'x' } }, fut, NOW).notes.some((x) => /malformed/.test(x)), 'an existing malformed entry is reported');
-  ok('plan: one new entry; refuses a duplicate effective_from and a past one (unless --allow-past); reports the rate in effect now and any malformed existing entry');
+  assert.ok(C.planRate({ ...EX, neg: { cents: 7000, effective_from: -1 }, huge: { cents: 9007199254740991, effective_from: NOW } }, fut, NOW).notes.some((x) => /malformed.*huge.*neg|malformed.*neg/.test(x)), 'existing out-of-bounds entries are reported as malformed (ignored by every reader)');
+  // the plan is the gate even if parseArgs were bypassed (the core is a library): out-of-bounds requests are refused
+  const AHEAD = 366 * 86400000;
+  assert.deepStrictEqual(C.planRate(EX, { ...fut, effectiveFrom: NOW + AHEAD }, NOW).refusals, [], 'exactly 366 days ahead is allowed');
+  p = C.planRate(EX, { ...fut, effectiveFrom: NOW + AHEAD + 1 }, NOW);
+  assert.ok(p.refusals.some((r) => /more than 366 days ahead/.test(r)), '🔴 an effective_from more than 366 days ahead was accepted');
+  for (const bad of [{ cents: 9007199254740991 }, { cents: 99 }, { cents: 100001 }, { cents: 70.5 }, { effectiveFrom: -1, allowPast: true }, { effectiveFrom: 0, allowPast: true }, { effectiveFrom: NOW + 0.5 }, { effectiveFrom: Date.parse('2025-12-31T23:59:59.999Z'), allowPast: true }]) {
+    p = C.planRate(EX, { ...fut, ...bad }, NOW);
+    assert.ok(p.refusals.some((r) => /out of bounds/.test(r)), `🔴 ${JSON.stringify(bad)} was not refused as out of bounds`);
+  }
+  ok('plan: one new entry; refuses out-of-bounds cents / effective_from (even with --allow-past), more than 366 days ahead, a duplicate effective_from and a past one (unless --allow-past); reports the rate in effect now and any malformed existing entry');
 
   // ── append (in-memory fake) ──
   const db = fakeRtdb({ platform_rates: { driver_per_delivery: { ...EX } } });
-  const key = await C.appendRate(db, { cents: 8000, effective_from: fut.effectiveFrom }, () => '-Nnew');
+  const key = await C.appendRate(db, { cents: 8000, effective_from: fut.effectiveFrom }, () => '-Nnew', NOW);
   assert.strictEqual(key, '-Nnew');
   assert.deepStrictEqual(db.get('platform_rates/driver_per_delivery'), { ...EX, '-Nnew': { cents: 8000, effective_from: fut.effectiveFrom } }, 'the old entry is untouched; the new one is added');
   assert.deepStrictEqual(db.writes.map((w) => [w[0], w[1]]), [['set', 'platform_rates/driver_per_delivery/-Nnew']], '🔴 APPEND-ONLY: exactly one set, at a NEW child (never the node, never an existing entry)');
-  await assert.rejects(C.appendRate(db, { cents: 1, effective_from: 1 }, () => '-Na'), /already exists/, '🔴 an existing key is never overwritten');
+  await assert.rejects(C.appendRate(db, { cents: 9000, effective_from: fut.effectiveFrom + 1 }, () => '-Na', NOW), /already exists/, '🔴 an existing key is never overwritten');
+  const before = db.writes.length;
+  for (const [bad, now] of [[{ cents: 9007199254740991, effective_from: fut.effectiveFrom }, NOW], [{ cents: 9000, effective_from: -1 }, NOW], [{ cents: 9000, effective_from: NOW + 366 * 86400000 + 1 }, NOW], [{ cents: 9000, effective_from: fut.effectiveFrom }, undefined]]) {
+    await assert.rejects(C.appendRate(db, bad, () => '-Nbad', now), /outside the pay-rate bounds/, `🔴 appendRate wrote ${JSON.stringify(bad)} (now=${now})`);
+  }
+  assert.strictEqual(db.writes.length, before, '🔴 an out-of-bounds append reached the database');
   assert.deepStrictEqual(db.get('platform_rates/driver_per_delivery/-Na'), EX['-Na'], 'and stays as it was');
-  ok('append: ONE set at a new push key (old entries untouched), read back; an existing key is refused, never overwritten');
+  ok('append: ONE set at a new push key (old entries untouched), read back; an existing key is refused, never overwritten; an out-of-bounds entry (or no clock) is refused before any write');
 
   // ── the CLI's project guard (it can NEVER reach a real database: dead local RTDB port, credentials pointing nowhere) ──
   const env = { ...process.env, FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:1', GOOGLE_APPLICATION_CREDENTIALS: '/nonexistent/creds.json' };
@@ -75,7 +96,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   // a stated --project with NO emulator signal passes the guard; the bad --cents must then refuse BEFORE initializeApp (credentials still point nowhere)
   const envProd = { ...env }; delete envProd.FIREBASE_DATABASE_EMULATOR_HOST;
   const r3 = spawnSync(process.execPath, [cli, '--project', expected, '--cents', '0', '--effective-from', '2030-01-01'], { env: envProd, encoding: 'utf8', timeout: 20000 });
-  assert.strictEqual(r3.status, 2, 'a bad --cents refuses with exit 2'); assert.match(r3.stderr, /positive integer/); assert.ok(!/DRY RUN/.test(r3.stdout), 'before any read');
+  assert.strictEqual(r3.status, 2, 'a bad --cents refuses with exit 2'); assert.match(r3.stderr, /positive integer from 100 to 100000/); assert.ok(!/DRY RUN/.test(r3.stdout), 'before any read');
   ok('the CLI refuses without a stated --project (an inherited GOOGLE_CLOUD_PROJECT / GCLOUD_PROJECT is not enough), and a bad --cents refuses before any read');
 
   console.log(`\nset-driver-rate: OK (${n})`);
