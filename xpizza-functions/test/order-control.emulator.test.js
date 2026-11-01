@@ -301,6 +301,7 @@ async function traced(oid, rid, request) {
   const before = await tree();
   const pre = (await rtdb.ref(`orders/${oid}`).get()).val() || {};
   FAIL_PREFIX = prevFail;
+  await require('./_catalog-clock').warmPhoneFlag(rtdb);   // the phone flag (30 s, never-awaited refresh) freshly read with the recorder OFF — no refresh lands inside the recording (advisor ruling B, 2026-11-01)
   const mark = CLOCK.loads().length;   // R1c: which rids THIS request cold-loads — observed, not inferred from the trace's shape
   REC = [];
   const r = await request();
@@ -535,7 +536,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         const mode = /chang|VANISH/i.test(c.name) ? 'unbound' : 'bound';
         const cs = SD.compareShape(stripControl(r.ops, key), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
         if (JSON.stringify(stripControl(r.ops, key)) !== JSON.stringify(goldOps(g.ops))) S3_DIFF += 1;
-        assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${key}: the call sequence changed beyond the control read`);
+        assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${key}: the call sequence changed beyond the control read — ${RD.opsDiff(cs.expected, cs.actual)}`);
         if (/^SCHEDULED sweep release \|/.test(key)) {
           O1A_SEEN += 1;
           // NEGATIVE (in-suite, O1a §5): the declaration strips exactly O1a's read — an unexpected extra read on the same cell is still a diff
@@ -641,7 +642,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
       if (wroteBinding) assert.strictEqual(typeof (on.orderAfter && on.orderAfter.charge_inputs_fp), 'string', `${L}: premise — the order carries its bound charge-input fingerprint`);
       const wantChanged = [...off.changed, ...(wroteBinding ? ['orders/<oid>/charge_inputs_fp'] : [])].map(RD.contentHash).sort();
       assert.deepStrictEqual(on.changed.map(RD.contentHash).sort(), wantChanged, `🔴 ${L}: the changed-path set`);
-      if (!reward) { assert.deepStrictEqual(onOps, offOps, `🔴 ${L}: the call sequence must equal the render-OFF one`); return; }
+      if (!reward) { RD.assertSameOps(offOps, onOps, L); return; }
       const probe = steady && isHoldRelease(c) ? RD.PROBE_FULL(rid) : RD.PROBE_ABSENT();
       RD.assertInserted(offOps, onOps, RD.afterUidCheck(offOps, L), probe, L);
       companion.probed += 1;

@@ -34,17 +34,31 @@ function afterUidCheck(off, label) {
   return i + 1;
 }
 
+// ONE LINE naming the actual divergence of `got` from `want` (the suites keep only a failure's first line — advisor
+// 2026-11-01: the intl red printed only the declared delta): the first differing index and the ops only one side has
+function opsDiff(want, got) {
+  const k = (o) => JSON.stringify(o);
+  let i = 0; while (i < want.length && i < got.length && k(want[i]) === k(got[i])) i++;
+  const left = new Map(); for (const o of want) left.set(k(o), (left.get(k(o)) || 0) + 1);
+  const onOnly = []; for (const o of got) { const c = left.get(k(o)) || 0; if (c > 0) left.set(k(o), c - 1); else onOnly.push(k(o)); }
+  const offOnly = []; for (const [s, c] of left) for (let j = 0; j < c; j++) offOnly.push(s);
+  return `first divergence at ${i} (want ${i < want.length ? k(want[i]) : '<end>'}, got ${i < got.length ? k(got[i]) : '<end>'}); ON-only [${onOnly.join(', ')}]; OFF-only [${offOnly.join(', ')}]`;
+}
+// ON == OFF exactly
+function assertSameOps(off, on, label) {
+  assert.deepStrictEqual(on, off, `🔴 ${label}: the call sequence must equal the render-OFF one — ${opsDiff(off, on)}`);
+}
 // ON == OFF with `ops` inserted before off[at] — nothing else (the delta must be non-empty: a sensitivity of the pin)
 function assertInserted(off, on, at, ops, label) {
   assert.ok(ops.length > 0, `${label}: the declared delta is non-empty`);
   const want = [...off.slice(0, at), ...ops, ...off.slice(at)];
-  assert.deepStrictEqual(on, want, `🔴 ${label}: the render-ON trace is not the render-OFF trace + exactly ${JSON.stringify(ops)} at ${at}`);
+  assert.deepStrictEqual(on, want, `🔴 ${label}: the render-ON trace is not the render-OFF trace + exactly ${JSON.stringify(ops)} at ${at} — ${opsDiff(want, on)}`);
 }
 // ON == OFF's first `at` calls, then exactly `ops`, and the request ends there (the bound reuse answers)
 function assertShortCircuit(off, on, at, ops, label) {
   const want = [...off.slice(0, at), ...ops];
   assert.ok(off.length > want.length, `${label}: premise — the render-OFF path continues past the probe`);
-  assert.deepStrictEqual(on, want, `🔴 ${label}: the render-ON trace is not the render-OFF prefix + exactly the probe ${JSON.stringify(ops)}, ending there`);
+  assert.deepStrictEqual(on, want, `🔴 ${label}: the render-ON trace is not the render-OFF prefix + exactly the probe ${JSON.stringify(ops)}, ending there — ${opsDiff(want, on)}`);
 }
 
 // ── CATALOG CACHE TRAFFIC under the R1c CATALOG CLOCK (test/_catalog-clock.js) — the COLD load, once, and nothing else ──
@@ -131,4 +145,4 @@ function makeColdOnly(rids, clock) {
 const contentHash = (s) => String(s).replace(/(recent_order_content\/[^/]+\/)[0-9a-f]{32}/g, '$1<content>');
 const normOps = (ops) => ops.map((e) => (typeof e.path === 'string' ? { ...e, path: contentHash(e.path) } : e));
 
-module.exports = { PROBE_ABSENT, PROBE_FULL, afterUidCheck, assertInserted, assertShortCircuit, makeColdOnly, refillShapes, contentHash, normOps, CLOCKED };
+module.exports = { PROBE_ABSENT, PROBE_FULL, afterUidCheck, assertInserted, assertShortCircuit, assertSameOps, opsDiff, makeColdOnly, refillShapes, contentHash, normOps, CLOCKED };

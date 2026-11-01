@@ -174,6 +174,7 @@ function bodyFor(rid, oid, phone) {
 // one handler call, recorded; request-local ids normalised AFTER the call (the attempt id / poll token are read back)
 async function traced(rid, oid, uid, phone) {
   await rtdb.ref('rate_limits').remove();   // every test request is 127.0.0.1 — the per-IP limit is reset between charges (test env only)
+  await require('./_catalog-clock').warmPhoneFlag(rtdb);   // the phone flag (30 s, never-awaited refresh) freshly read with the recorder OFF — no refresh lands inside the recording (advisor ruling B, 2026-11-01)
   REC = [];
   const r = await post(app.chargeOnlineOrder, bodyFor(rid, oid, phone), { 'x-firebase-id-token': uid });
   await Q.quiescent();   // R1b: every fire-and-forget write the handler issued has SETTLED inside the recording (was a fixed wait(300))
@@ -279,7 +280,7 @@ async function traced(rid, oid, uid, phone) {
       // codex r2 P2: every d4b case is a charge that persists its own content → DECLARED bound (never inferred from the trace)
       const s3 = (ops, content, label) => SD.compareShape(ops, [], { mode: 'bound', content, route: 'chargeOnlineOrder', label }).actual;
       assert.ok(CONTENT[rid][k], `${rid} ${k}: premise — the request persisted its order (the content-key delta is content-bound)`);
-      assert.deepStrictEqual(s3(DR.without(rest, `${rid} ${k}`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), CONTENT[rid][k], `${rid} ${k}`), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen 717f97e trace`);
+      { const got = s3(DR.without(rest, `${rid} ${k}`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), CONTENT[rid][k], `${rid} ${k}`); assert.deepStrictEqual(got, golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen 717f97e trace — ${RD.opsDiff(golden[rid][k], got)}`); }
       if (JSON.stringify(DR.without(rest, `${rid} ${k}`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))) !== JSON.stringify(golden[rid][k])) S3_DELTA_SEEN += 1;
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to 717f97e (+${floorCalls.length} allowlisted floor get)`);
     }
