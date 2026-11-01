@@ -26,6 +26,7 @@ const SDK_DIR = path.join(ROOT, 'platform/perf/sdk/firebasejs', SDK_VER);
 const SDK_PIN = path.join(SDK_DIR, 'sdk.pin.json');
 const SDK_BASE = `https://www.gstatic.com/firebasejs/${SDK_VER}/`;
 const REPEATS = Number(process.env.ORIGINS_REPEATS || 3);
+if (!Number.isInteger(REPEATS) || REPEATS < 1) { console.error(`portal-origins.cdp: refused — ORIGINS_REPEATS must be an integer ≥ 1 (got ${JSON.stringify(process.env.ORIGINS_REPEATS)})`); process.exit(2); }
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 
 // ── one-time capture of the exact SDK files (read-only; like the fonts pin) ──
@@ -143,7 +144,9 @@ const STATES = {
   T4: { page: `aceptar.html?invite=${INVITE_ID}&mode=signIn&oobCode=fixture&apiKey=fixture&lang=es`, session: null, marker: 'invite', admits: true },
 };
 
-async function trace(name) {
+// Codex r1 P2-2 NEGATIVE CONTROL: a page exception thrown AFTER the marker (inside the recorded window) must fail the trace
+const THROW_AFTER_MARKER = `(() => { const t = setInterval(() => { if (window.__marker) { clearInterval(t); setTimeout(() => { throw new Error('ORIGINS_CONTROL: thrown after the marker'); }, 200); } }, 20); })();`;
+async function trace(name, { throwAfterMarker = false } = {}) {
   const st = STATES[name];
   const srv = await serveDir(ROOT);
   const cdp = await launch({ width: 1280, height: 900, dpr: 1 });   // a fresh profile per state ⇒ cold caches
@@ -158,6 +161,7 @@ async function trace(name) {
       await cdp.ev(SEED(sessionRecord(st.session)));
     }
     await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: MARK(MARKERS[st.marker]) });
+    if (throwAfterMarker) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: THROW_AFTER_MARKER });
     const navWall = Date.now();
     await cdp.s('Page.navigate', { url: `${srv.base}/${SITE}/${st.page}` });
     let marker = null;
@@ -183,6 +187,14 @@ for (let rep = 1; rep <= REPEATS; rep++) for (const name of Object.keys(STATES))
   console.log(`[${name} #${rep}] marker ${r.markerMs} ms · ${r.origins.map((o) => `${o.beforeMarker ? '<' : '>'} ${o.origin} @${o.startMs}`).join(' · ')}${r.errors.length ? ` · ${r.errors.length} page error(s)` : ''}`);
 }
 const fails = [];
+// any page exception in any state × repeat fails the trace: the boot graph the preconnects are derived from must have run cleanly
+const pageErrorFails = (byState) => Object.entries(byState).flatMap(([n, rs]) => rs.flatMap((r, i) => r.errors.map((e) => `${n} #${i + 1}: page ${e}`)));
+fails.push(...pageErrorFails(runs));
+{ const ctrl = await trace('T1', { throwAfterMarker: true });
+  const seen = pageErrorFails({ T1: [ctrl] });
+  const ok = seen.some((e) => /ORIGINS_CONTROL/.test(e));
+  console.log(`${ok ? '✓' : '✗'} page-exception control: an exception thrown after the marker FAILS the trace (${seen.length} recorded${ok ? '' : ' — the check is blind'})`);
+  if (!ok) fails.push('page-exception control: an exception thrown after the marker was NOT recorded — the page-error check is blind'); }
 if (unexpected.length) fails.push(`unexpected request(s), fulfilled empty: ${[...new Set(unexpected.map((u) => u.replace(/([?&]key=)[^&]+/, '$1<apiKey>')))].join(', ')}`);
 const early = (name) => runs[name].map((r) => new Set(r.origins.filter((o) => o.beforeMarker).map((o) => o.origin)));
 for (const name of Object.keys(STATES)) {

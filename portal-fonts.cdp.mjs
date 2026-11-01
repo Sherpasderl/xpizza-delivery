@@ -37,6 +37,15 @@ const CELLS = arg('cells', ['fast', 'clsctrl', 'slow', 'failed', 'ctrl', 'typing
 const VIEWS = arg('views', ['1280', '390']).map(Number);
 const THEMES = arg('themes', ['light', 'dark']);
 const REPEATS = Number(process.env.FONTS_REPEATS || 3);
+// Codex r1 P2-1: an argument that selects NOTHING (FONTS_REPEATS=0, an unknown or empty --cells, a bad view/theme/state) must never pass
+// vacuously — every one is refused HERE, before any Chrome is launched; and OK additionally requires > 0 completed checks (end of file)
+const KNOWN_CELLS = ['fast', 'clsctrl', 'slow', 'failed', 'ctrl', 'typing', 'same'];
+const refuse = (msg) => { console.error(`portal-fonts.cdp: refused — ${msg}`); process.exit(2); };
+if (!Number.isInteger(REPEATS) || REPEATS < 1) refuse(`FONTS_REPEATS must be an integer ≥ 1 (got ${JSON.stringify(process.env.FONTS_REPEATS)})`);
+if (!CELLS.length || CELLS.some((c) => !c)) refuse('--cells selects no cell');
+for (const c of CELLS) if (!KNOWN_CELLS.includes(c)) refuse(`unknown cell ${JSON.stringify(c)} (known: ${KNOWN_CELLS.join(', ')})`);
+if (!VIEWS.length || VIEWS.some((v) => !Number.isInteger(v) || v < 320 || v > 3840)) refuse(`--views must be integer widths 320..3840 (got ${arg('views', ['1280', '390']).join(',')})`);
+if (!THEMES.length || THEMES.some((t) => !['light', 'dark'].includes(t))) refuse(`--themes must be light and/or dark (got ${THEMES.join(',')})`);
 const OUT = path.join(os.tmpdir(), `portal-fonts-cdp-${process.pid}`); fs.mkdirSync(OUT, { recursive: true });
 const RANGE = [600, 800];                       // the pinned baseline's ONE range descriptor per subset (no discrete faces)
 const HOSTED = ['Archivo'];
@@ -433,7 +442,8 @@ function gateD(r) {
 }
 const hostedPainted = (nodes) => nodes.some((n) => n.fonts.some((f) => hostedOf(f.familyName) && f.glyphCount > 0));
 const moved = (a, b) => (a.length === b.length ? a.filter((g, i) => g !== b[i]).length : -1);
-const fails = []; const check = (ok, msg) => { console.log(`  ${ok ? '✓' : '✗'} ${msg}`); if (!ok) fails.push(msg); };
+const fails = []; let CHECKS = 0; const check = (ok, msg) => { CHECKS++; console.log(`  ${ok ? '✓' : '✗'} ${msg}`); if (!ok) fails.push(msg); };
+{ const st = arg('states'); if (st) { if (!st.length || st.some((x) => !x)) refuse('--states selects no state'); for (const x of st) if (!STATES[x]) refuse(`unknown state ${JSON.stringify(x)}`); } }
 const fidelity = (r, label) => { const bad = r.after.nodes.flatMap((n) => runsOf(n, r.probe).fidelity.map((f) => `${n.path.slice(-40)} ${f}`)); check(!bad.length, `${label}: probe fidelity (${bad.length ? bad.slice(0, 3).join('; ') : 'every node'})`); };
 const expectedErr = (e, r) => typeof e === 'object' && /^Failed to load resource/.test(e.log) && (isFontUrl(e.url) || r.after.refused.includes(e.url));
 
@@ -564,5 +574,6 @@ if (APPEAR_LOG.length) console.log(`\nboxes appearing after first paint, logged 
 if (SHELL_LOG.length) console.log(`\nshell-content CLS logged against FINDING-portal-shell-late-shift.md (not failed, advisor ruling 2026-10-31): ${SHELL_LOG.map((x) => `${x.page} ${x.view}px r${x.rep} ${+x.cls.toFixed(4)}`).join(' · ')}`);
 console.log(`\nmax 1-min load at a run start: ${LOAD_MAX.toFixed(2)} (limit 45)`);
 console.log(`\nartifacts: ${OUT}`);
-console.log(fails.length ? `\nportal-fonts.cdp: ${fails.length} FAILED` : '\nportal-fonts.cdp: OK');
+if (!fails.length && CHECKS === 0) { console.log('\nportal-fonts.cdp: VACUOUS — 0 checks completed (refusing OK)'); process.exit(1); }
+console.log(fails.length ? `\nportal-fonts.cdp: ${fails.length} FAILED (${CHECKS} checks)` : `\nportal-fonts.cdp: OK (${CHECKS} checks)`);
 process.exit(fails.length ? 1 : 0);
