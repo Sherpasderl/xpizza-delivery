@@ -12,7 +12,8 @@ const P_OLD = 'a'.repeat(32), P_REF = 'b'.repeat(32), P_NEW = 'c'.repeat(32), P_
 function objStore() {
   const objs = new Map(); const deletes = [];
   return { objs, deletes,
-    async deleteIfGeneration(path, gen) { deletes.push(path); const g = objs.get(path); if (g === undefined) return 'missing'; if (g !== String(gen)) return 'other_generation'; objs.delete(path); return 'deleted'; } };
+    async deleteIfGeneration(path, gen) { deletes.push(path); const g = objs.get(path); if (g === undefined) return 'missing'; if (g !== String(gen)) return 'other_generation'; objs.delete(path); return 'deleted'; },
+    async deleteAny(path) { deletes.push(path); return objs.delete(path) ? 'deleted' : 'missing'; } };
 }
 async function world() {
   const fs = makeDb(); const priv = objStore(); const pub = objStore();
@@ -145,6 +146,18 @@ const state = async (w, pid) => (await w.reg(pid).get()).data();
     const c = await S.claim(w.deps, RID, cand);
     assert.ok(c && c.id, 'SWEEP-EXPIRED-RESERVE-CLAIMABLE');
     ok('claim: a live processing reservation (reserve.until > now) is respected; once it expires the pid is claimable again');
+  }
+  // ── 4d. codex r2: pending_public (an intended copy, generation never recorded) is deleted unconditionally — but ONLY this pid's own paths ──
+  {
+    const w = await world();
+    const mine = `photos/${RID}/${P_OLD}-card.webp`, other = `photos/${RID}/${P_REF}-card.webp`;
+    w.pub.objs.set(mine, '77'); w.pub.objs.set(other, '78');
+    await w.reg(P_OLD).set({ ...(await state(w, P_OLD)), pending_public: [mine, other] });
+    await S.sweepRid({ ...w.deps, mode: 'live' }, RID);
+    assert.ok(!w.pub.objs.has(mine), 'SWEEP-PENDING-DELETED');
+    assert.strictEqual(w.pub.objs.get(other), '78', 'SWEEP-PENDING-OWN-PATHS-ONLY (another pid\'s public object survives)');
+    assert.deepStrictEqual([(await state(w, P_OLD)).state, (await state(w, P_OLD)).pending_public], ['deleted', []], 'SWEEP-PENDING-CLEARED-ON-DELETED');
+    ok('pending_public: this pid\'s intended public paths are deleted unconditionally, a foreign path never; cleared when marked deleted');
   }
   console.log(`sweep-core: OK (${n})`);
   process.exit(0);
