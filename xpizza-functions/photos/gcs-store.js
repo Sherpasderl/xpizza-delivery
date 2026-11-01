@@ -1,6 +1,6 @@
 'use strict';
 // DISH PHOTOS A1 step 6 (PLAN-dish-photos r2 §2.2 E-P2) — the ONE adapter from photoProcessCore's storage interface to a
-// @google-cloud/storage Bucket (the caller passes `getStorage().bucket()`; nothing here requires the library):
+// @google-cloud/storage Bucket (the caller passes getStorage().bucket(<the NAMED private bucket>, photos/buckets.js); nothing here requires the library):
 //   metadata(path)                       → {generation, size} | null on 404
 //   download(path, {generation, maxBytes}) → Buffer, streamed from THAT generation with a byte counter that aborts past maxBytes
 //                                           (code too_large); 404 / another generation → code generation_mismatch

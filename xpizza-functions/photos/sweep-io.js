@@ -37,4 +37,12 @@ async function runSweep({ mode, listRids, sweepRid, log = console, ...deps }) {
   return { mode, results, failed };
 }
 
-module.exports = { modeOf, makeGcsDeleter, runSweep };
+// codex r1 P1-1 — photoSweep's entry: the mode is read FIRST; when it is off NOTHING else is constructed (no Firestore handle, no bucket —
+// an unconfigured bucket can never fail an idle sweep). Otherwise `build()` makes the run's dependencies once and runSweep runs.
+async function sweepEntry({ readMode, build }) {
+  const mode = await readMode();
+  if (mode !== 'dry_run' && mode !== 'live') return { mode: 'off' };
+  return runSweep({ ...build(), mode });
+}
+
+module.exports = { modeOf, makeGcsDeleter, runSweep, sweepEntry };

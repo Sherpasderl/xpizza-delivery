@@ -11,7 +11,7 @@ const err = (code) => Object.assign(new Error(`gcs ${code}`), { code });
 
 function fakeStorage() {
   const objs = new Map(); let gen = 900; const calls = [];
-  const bucket = (name = 'tb-default') => ({ name, file: (path) => ({ bucket: name, name: path,
+  const bucket = (name) => { assert.ok(typeof name === 'string' && name, 'COPY-BUCKET-NAMED (codex r1 P1-1)'); return ({ name, file: (path) => ({ bucket: name, name: path,
     async copy(dst, opts) {
       calls.push({ from: `${name}/${path}`, to: `${dst.bucket}/${dst.name}`, opts });
       if (!objs.has(`${name}/${path}`)) throw err(404);
@@ -19,12 +19,12 @@ function fakeStorage() {
       objs.set(`${dst.bucket}/${dst.name}`, String(++gen));
     },
     async getMetadata() { const g = objs.get(`${name}/${path}`); if (!g) throw err(404); return [{ generation: g }]; },
-  }) });
+  }) }); };
   return { objs, calls, bucket };
 }
 
 (async () => {
-  const s = fakeStorage(); const C = makeGcsCopy(s);
+  const s = fakeStorage(); const C = makeGcsCopy(s, 'tb-default');
   s.objs.set('tb-default/drafts/r/p-card.webp', '1');
   const a = await C.copyIfAbsent('drafts/r/p-card.webp', 'tb-public', 'photos/r/p-card.webp');
   assert.deepStrictEqual(a, { generation: s.objs.get('tb-public/photos/r/p-card.webp'), created: true }, 'COPY-CREATED');

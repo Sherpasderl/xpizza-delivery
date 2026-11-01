@@ -6,12 +6,12 @@
 // Any other error propagates (publish fails closed). `storage` is a @google-cloud/storage client (getStorage() in production).
 const is412 = (e) => e && (e.code === 412 || e.code === '412');
 
-function makeGcsCopy(storage) {
+function makeGcsCopy(storage, privateBucket) {   // codex r1 P1-1: the private (source) bucket is NAMED
   return {
     async copyIfAbsent(srcPath, dstBucket, dstPath) {
       const dst = storage.bucket(dstBucket).file(dstPath);
       try {
-        await storage.bucket().file(srcPath).copy(dst, { preconditionOpts: { ifGenerationMatch: 0 }, contentType: 'image/webp', cacheControl: 'public, max-age=31536000, immutable' });
+        await storage.bucket(privateBucket).file(srcPath).copy(dst, { preconditionOpts: { ifGenerationMatch: 0 }, contentType: 'image/webp', cacheControl: 'public, max-age=31536000, immutable' });
         const [m] = await dst.getMetadata();
         return { generation: String(m.generation), created: true };
       } catch (e) {

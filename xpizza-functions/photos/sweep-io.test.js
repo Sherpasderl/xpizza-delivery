@@ -29,6 +29,14 @@ const err = (code) => Object.assign(new Error(`gcs ${code}`), { code });
   assert.deepStrictEqual(r.failed, ['tb_b'], 'SWEEP-RUN-ONE-FAILURE-ISOLATED');
   assert.deepStrictEqual(await runSweep({ mode: 'off', listRids: async () => { throw new Error('should not list'); } }), { mode: 'off' }, 'SWEEP-RUN-OFF-READS-NOTHING');
   ok('runSweep: every registry rid in turn; one rid failing is logged and never stops the others; off lists nothing');
+  // codex r1 P1-1: photoSweep reads the mode FIRST and builds NO Storage / Firestore dependency when it is off
+  const { sweepEntry } = require('./sweep-io');
+  let built = 0;
+  assert.deepStrictEqual(await sweepEntry({ readMode: async () => 'off', build: () => { built++; throw new Error('must not build'); } }), { mode: 'off' }, 'SWEEP-ENTRY-OFF-BUILDS-NOTHING');
+  assert.strictEqual(built, 0, 'SWEEP-ENTRY-OFF-NO-BUILD');
+  const ran = await sweepEntry({ readMode: async () => 'dry_run', build: () => { built++; return { listRids: async () => ['tb_a'], sweepRid: async (d, rid) => ({ rid, mode: d.mode }) }; } });
+  assert.deepStrictEqual([built, ran.mode, ran.results], [1, 'dry_run', [{ rid: 'tb_a', mode: 'dry_run' }]], 'SWEEP-ENTRY-ON-BUILDS-ONCE');
+  ok('sweepEntry: off → returns before building any dependency (no bucket constructed); on → builds once and runs');
   console.log(`sweep-io: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('sweep-io: FAILED —', e && e.stack || e); process.exit(1); });

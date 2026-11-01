@@ -3,9 +3,7 @@
 //   the active version's meta/photos (via photos/edit-io readActive), the registry state of every referenced pid, and — only while in use
 //   (flag on or photo data present) — the legacy-copy records photo_registry/{rid}/legacy/{hash}. Firestore only; Storage is touched
 //   solely to SIGN a draft preview URL (no object read). Dark + no data ⇒ {} with no registry / legacy reads.
-// PHOTOS_PUBLIC_BUCKET (advisor ruling #2): a NON-SECRET defineString with default '' — '' means unset (A0 not done): no public URL is
-// emitted anywhere. The default avoids a deploy-time prompt for a param nobody has set yet.
-const { defineString } = require('firebase-functions/params');
+// PHOTOS_PUBLIC_BUCKET (advisor ruling #2) is defined in photos/buckets.js (the one bucket source) and re-exported here.
 const { makePhotoEditIo } = require('./edit-io');
 const { editablePhotoFields, legacyUrlFor, legacyHashOf } = require('./editable-photos');
 const PS = require('./photo-state');
@@ -15,7 +13,7 @@ const { makeGcsStore } = require('./gcs-store');
 const { assetBaseFor } = require('../catalog/public-photos');
 const { PLATFORM } = require('../platform-manifest');
 
-const PHOTOS_PUBLIC_BUCKET = defineString('PHOTOS_PUBLIC_BUCKET', { default: '', description: 'Public dish-photo bucket (A0 runbook); empty = not configured' });
+const { PHOTOS_PUBLIC_BUCKET, privateBucketName } = require('./buckets');   // codex r1 P1-1: the ONE bucket source
 
 function makeEditableIo({ fs, enabled, publicBucket, legacyBase, signRead, now = Date.now }) {
   const edit = makePhotoEditIo({ fs, enabled });
@@ -53,7 +51,7 @@ function editableIoForPortal() {
   const { getStorage } = require('firebase-admin/storage');
   return makeEditableIo({
     fs: getFirestore(), enabled: () => photosUploadsEnabled(getDatabase()), publicBucket: () => PHOTOS_PUBLIC_BUCKET.value(),
-    legacyBase: (rid) => assetBaseFor(rid, PLATFORM.sites), signRead: (p, e) => makeGcsStore(getStorage().bucket()).signRead(p, e),
+    legacyBase: (rid) => assetBaseFor(rid, PLATFORM.sites), signRead: (p, e) => makeGcsStore(getStorage().bucket(privateBucketName())).signRead(p, e),
   });
 }
 

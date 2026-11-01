@@ -6,18 +6,18 @@
 const { makePhotoEditIo } = require('./edit-io');
 const { makePublishPhotos } = require('./publish-photos');
 const { makeGcsCopy } = require('./gcs-copy');
-const { PHOTOS_PUBLIC_BUCKET } = require('./editable-io');
+const { PHOTOS_PUBLIC_BUCKET, privateBucketName } = require('./buckets');   // codex r1 P1-1: the ONE bucket source
 
-function makePublishIo({ fs, storage, publicBucket, now = Date.now }) {
+function makePublishIo({ fs, storage, publicBucket, privateBucket, now = Date.now }) {
   const edit = makePhotoEditIo({ fs, enabled: async () => false });
-  const pub = makePublishPhotos({ fs, store: makeGcsCopy(storage), publicBucket, now });
+  const pub = makePublishPhotos({ fs, store: makeGcsCopy(storage, privateBucket), publicBucket, now });
   return { readActive: (rid, vid) => edit.readActive(rid, vid), prepare: pub.prepare, hook: pub.hook, markPublished: pub.markPublished };
 }
 
 function photoPublishIoForEdit() {
   const { getFirestore } = require('firebase-admin/firestore');
   const { getStorage } = require('firebase-admin/storage');
-  return makePublishIo({ fs: getFirestore(), storage: getStorage(), publicBucket: () => PHOTOS_PUBLIC_BUCKET.value() });
+  return makePublishIo({ fs: getFirestore(), storage: getStorage(), publicBucket: () => PHOTOS_PUBLIC_BUCKET.value(), privateBucket: privateBucketName() });
 }
 
 module.exports = { makePublishIo, photoPublishIoForEdit };

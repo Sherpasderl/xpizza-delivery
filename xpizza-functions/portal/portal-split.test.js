@@ -80,7 +80,7 @@ const PORTAL_GRAPH_LOCAL = [
   'menu-pricing.js',
   // DISH PHOTOS A2 steps 8–9: editCatalog's photos dependency (registry attach, meta/photos read, PHOTOS_UPLOADS flag) and
   // getEditableCatalog's photo reads (E-P3) + the draft-preview signer; photo-state = the pure three-state vocabulary
-  'photos/edit-io.js', 'photos/editable-io.js', 'photos/editable-photos.js', 'photos/flag.js', 'photos/gcs-copy.js', 'photos/gcs-store.js', 'photos/photo-state.js', 'photos/publish-io.js', 'photos/publish-photos.js',
+  'photos/buckets.js', 'photos/edit-io.js', 'photos/editable-io.js', 'photos/editable-photos.js', 'photos/flag.js', 'photos/gcs-copy.js', 'photos/gcs-store.js', 'photos/photo-state.js', 'photos/publish-io.js', 'photos/publish-photos.js',
   'pickup-label.js',                        // PLAN-portal-membership r3: brandText, via brands/brand-model.js → restaurant-config.js (pure)
   'platform-manifest.js', 'platform/compat.json', 'platform/sites.json',   // DISH PHOTOS A2 step 9: the legacy image base (public-photos assetBaseFor; config + data)
   'portal/functions.js', 'portal/origins.js', 'portal/preflight-max-age.js', 'price-valid.js',

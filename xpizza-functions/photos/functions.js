@@ -20,6 +20,7 @@ const { photoProcessCore } = require('./process');
 const { makeGcsSigner } = require('./signer');
 const { makeGcsStore } = require('./gcs-store');
 const { errorBody, ERRORS } = require('./errors');
+const { privateBucketName, publicBucketName } = require('./buckets');   // codex r1 P1-1: every bucket is NAMED (lib/admin has no default bucket)
 
 const sendPhotoReply = (res, out) => res.status(out.status).json(out.body);
 const fail = (code) => ({ status: ERRORS[code].status, body: errorBody(code) });
@@ -51,7 +52,7 @@ async function handle(req, res, run) {
 exports.photoUploadStart = onRequest(
   { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 30, memory: '256MiB', maxInstances: 4 },
   (req, res) => handle(req, res, (body, uid, photosEnabled) => photoUploadStartCore({
-    db: getFirestore(), bucket: getStorage().bucket().name, now: Date.now, newUploadId: randomId, photosEnabled,
+    db: getFirestore(), bucket: privateBucketName(), now: Date.now, newUploadId: randomId, photosEnabled,
     authorize: async () => ({ ok: true }),   // authorized above, on THIS request
     signer: makeGcsSigner({ bucket: (name) => getStorage().bucket(name) }),
   }, { uid, rid: body.rid, op_id: body.op_id, contentType: body.contentType, bytes: body.bytes })),
@@ -61,7 +62,7 @@ exports.photoProcess = onRequest(
   // PLAN §2.2 (P2-9): concurrency 1, 1 GiB, 60 s, capped instances — tuned later from measured peak memory only
   { region: 'us-central1', cors: PORTAL_ORIGINS, concurrency: 1, memory: '1GiB', timeoutSeconds: 60, maxInstances: 4 },
   (req, res) => handle(req, res, (body, uid, photosEnabled) => {
-    const store = makeGcsStore(getStorage().bucket());
+    const store = makeGcsStore(getStorage().bucket(privateBucketName()));
     return photoProcessCore({
       db: getFirestore(), storage: store, now: Date.now, newClaimId: randomId, photosEnabled,
       authorize: async () => ({ ok: true }),
@@ -77,19 +78,21 @@ exports.photoProcess = onRequest(
 exports.photoSweep = onSchedule(
   { schedule: 'every day 04:30', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 540, memory: '512MiB', maxInstances: 1 },
   async () => {
-    const { modeOf, makeGcsDeleter, runSweep } = require('./sweep-io');
-    const { sweepRid } = require('./sweep-core');
-    const { PHOTOS_PUBLIC_BUCKET } = require('./editable-io');
-    const { getActiveVersionId } = require('../catalog/catalog-firestore');
-    const fs = getFirestore();
-    const pubName = (PHOTOS_PUBLIC_BUCKET.value() || '').trim();
-    const mode = await modeOf(getDatabase(), pubName);
-    const r = await runSweep({
-      mode, sweepRid, fs, now: Date.now, newClaimId: randomId, log: console,
-      listRids: async () => (await fs.collection('photo_registry').listDocuments()).map((d) => d.id),
-      priv: makeGcsDeleter(getStorage().bucket()), pub: pubName ? makeGcsDeleter(getStorage().bucket(pubName)) : null,
-      activeVersionId: (rid) => getActiveVersionId(fs, rid),
+    const { modeOf, makeGcsDeleter, sweepEntry } = require('./sweep-io');
+    const pubName = publicBucketName();
+    // codex r1 P1-1: the mode FIRST — off returns before ANY Storage / Firestore dependency is built
+    const r = await sweepEntry({
+      readMode: () => modeOf(getDatabase(), pubName || ''),
+      build: () => {
+        const { sweepRid } = require('./sweep-core');
+        const { getActiveVersionId } = require('../catalog/catalog-firestore');
+        const fs = getFirestore();
+        return { sweepRid, fs, now: Date.now, newClaimId: randomId, log: console,
+          listRids: async () => (await fs.collection('photo_registry').listDocuments()).map((d) => d.id),
+          priv: makeGcsDeleter(getStorage().bucket(privateBucketName())), pub: pubName ? makeGcsDeleter(getStorage().bucket(pubName)) : null,
+          activeVersionId: (rid) => getActiveVersionId(fs, rid) };
+      },
     });
-    console.log('photo_sweep_done', JSON.stringify({ mode, rids: (r.results || []).length, failed: r.failed || [] }));
+    console.log('photo_sweep_done', JSON.stringify({ mode: r.mode, rids: (r.results || []).length, failed: r.failed || [] }));
   },
 );
