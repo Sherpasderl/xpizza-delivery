@@ -601,13 +601,31 @@ t('offerScreenHtml: NEVER renders the of-area line today — coloniaOf is "" unc
 // delivered order's delivered_at), gated + blank when unknown. Until it lands, driver payments MUST NOT go live
 // with a fixed rate: if PAGOS_LIVE is ever flipped true while stacked-view.js still carries a hardcoded «+L 70»
 // earnings literal, this FAILS — nobody can turn payments on with a frozen rate left behind.
-t('PAGOS_LIVE precondition: no hardcoded «L 70» earnings literal in stacked-view.js once payments go live', () => {
-  const indexHtml = readFileSync(join(__dir, 'index.html'), 'utf8');
-  const stackedSrc = readFileSync(join(__dir, 'stacked-view.js'), 'utf8');
-  const pagosLive = /const\s+PAGOS_LIVE\s*=\s*true\b/.test(indexHtml);   // the master driver-earnings flag
-  const hardcodedEarnings = /\+ ?L ?\d/.test(stackedSrc);                // «+L 70» / «+ L 70» — gone once rewired to «+L ${…}»
-  assert.ok(!(pagosLive && hardcodedEarnings),
-    'PAGOS_LIVE is true but stacked-view.js still has a hardcoded «L 70» earnings literal — wire the interlude/summary chips to window.PayRate.rateCentsInEffect(driverRateEntries, delivered_at) BEFORE turning driver payments live (STRUCTURAL-DELTAS: OWED interlude/summary rate rewire)');
+// The RENDERED-earnings surfaces (Codex r1 #5): a FIXED rate literal in EITHER file blocks PAGOS_LIVE. Comments are
+// stripped first so the gate targets what RENDERS, not documentation; templates («L ${…}») and plain cash amounts
+// («L 1,430», no earnings marker) are NOT flagged. stacked-view.js still carries the DEFERRED interlude/summary «+L 70»
+// (the OWED rewire is a precondition of PAGOS) — so this correctly stays armed until that rewire lands.
+const stripComments = (s) => s
+  .replace(/<!--[\s\S]*?-->/g, '')          // HTML comments
+  .replace(/\/\*[\s\S]*?\*\//g, '')         // JS/CSS block comments
+  .replace(/([^:])\/\/[^\n]*/g, '$1');      // JS line comments (not the // in a URL after a ':')
+const EARN_LITERAL = /[+×]\s?L\s?\d|L\s?\d[\d,]*\s?(?:\/|\s*por\s+)entrega/i;   // chip «+L 70» / sub «× L 70» / tariff «L 70 por entrega» with a FIXED digit
+t('PAGOS_LIVE precondition: no hardcoded earnings-rate literal in stacked-view.js OR index.html once payments go live', () => {
+  const idx = stripComments(readFileSync(join(__dir, 'index.html'), 'utf8'));
+  const sv = stripComments(readFileSync(join(__dir, 'stacked-view.js'), 'utf8'));
+  const pagosLive = /const\s+PAGOS_LIVE\s*=\s*true\b/.test(idx);   // the master driver-earnings flag
+  assert.ok(!(pagosLive && (EARN_LITERAL.test(sv) || EARN_LITERAL.test(idx))),
+    'PAGOS_LIVE is true but a hardcoded earnings-rate literal remains in stacked-view.js or index.html — derive every rendered earnings amount from window.PayRate (blank when unknown) BEFORE turning driver payments live (STRUCTURAL-DELTAS: OWED interlude/summary rate rewire)');
+});
+t('NEG: a planted fixed-rate literal is caught in either file; templates + plain cash are not', () => {
+  assert.ok(EARN_LITERAL.test("bits.push('+L 70')"), 'per-delivery chip «+L 70» caught');
+  assert.ok(EARN_LITERAL.test('<span class="rs-pos">+ L 70</span>'), 'chip «+ L 70» caught');
+  assert.ok(EARN_LITERAL.test('6 entregas × L 90'), 'sub «× L 90» caught');
+  assert.ok(EARN_LITERAL.test('Tarifa: L 70 por entrega'), 'tariff «L 70 por entrega» caught');
+  assert.ok(!EARN_LITERAL.test('+ L ${lemp(rc)}'), 'a dynamic template is NOT flagged');
+  assert.ok(!EARN_LITERAL.test('<span class="gn-rv">L 1,430</span>'), 'a plain cash amount is NOT flagged');
+  assert.ok(!EARN_LITERAL.test(stripComments("const x = 1; // legacy note: the old «+L 70» chip")), 'a «+L 70» inside a line comment is stripped before the scan');
+  assert.ok(!EARN_LITERAL.test(stripComments('/** the «+ L 70» chip (JSDoc) */ function f(){}')), 'a «+ L 70» inside a block comment is stripped');
 });
 
 console.log(`stacked-view.test.js: ${passed} passed`);

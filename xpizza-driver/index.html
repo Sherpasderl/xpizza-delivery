@@ -2263,6 +2263,7 @@
 .gn-lbl-in{padding:10px 0 2px}
 .gn-sub{font-size:13px;color:var(--text-soft,#546078);margin-top:4px}
 .gn-big{font-family:'Red Hat Display',sans-serif;font-weight:800;font-size:46px;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums;color:var(--success,#15803D);margin-top:6px}
+.gn-big:empty{display:none}   /* rate unknown ⇒ no figure, no bare «L» (calm UI) */
 .gn-cur{font-size:22px;color:#8A95AB;font-weight:700;vertical-align:top;margin-right:3px;line-height:1.6}
 .gn-row{display:flex;gap:11px;align-items:flex-start;padding:10px 0}
 .gn-ic{width:30px;height:30px;border-radius:9px;background:#E7ECF4;color:var(--text-soft,#546078);display:grid;place-items:center;flex:none}
@@ -3701,62 +3702,77 @@ function renderDisponible() {
 // renders only when a platform rate is seeded AND covers every delivery (shiftEarningsCents → null otherwise, and
 // the amount is then BLANK, never an invented number / never a «—» that looks like data). DARK: the Ganancias tab is
 // gated TAB_SHOW_GANANCIAS = PAGOS_LIVE, so this screen is unreachable until Pagos ships. Brand-agnostic (brandLabel).
-function gananciasWeekStartMs() {   // Monday 00:00 (local) of the current week — same local-midnight basis as todayMidnightMs
-  const d = new Date(); d.setHours(0, 0, 0, 0);
-  const back = (d.getDay() === 0) ? 6 : d.getDay() - 1;   // getDay: 0=Sun; days back to Monday
-  d.setDate(d.getDate() - back);
-  return d.getTime();
+// Explicit Honduras time (UTC−6, no DST) for every ganancias cutoff / bucket / label — NEVER the device TZ (Codex r1 #2).
+const HN_OFFSET_MS = -6 * 3600000;
+function hnDayStartMs(ms) { return Math.floor((ms + HN_OFFSET_MS) / 86400000) * 86400000 - HN_OFFSET_MS; }   // 00:00 HN of the HN day containing ms → real epoch
+function hnDow(ms) { return new Date(ms + HN_OFFSET_MS).getUTCDay(); }   // 0=Sun … 6=Sat, HN calendar (UTC getters on the shifted instant = TZ-independent)
+function gananciasWeekStartMs(nowMs) {   // Monday 00:00 HN of the week containing nowMs
+  const dayStart = hnDayStartMs(nowMs);
+  const dow = hnDow(dayStart);
+  return dayStart - ((dow === 0) ? 6 : dow - 1) * 86400000;
 }
+let drv2GananciasView = 'hoy';   // the open Hoy/Semana view, so refreshOpenCashSurfaces can re-render it on a readiness flip
 function openGanancias() { renderGanancias('hoy'); showScreen('ganancias'); }
 function renderGanancias(view) {
   const host = $('screen-ganancias'); if (!host) return;
   const v = (view === 'semana') ? 'semana' : 'hoy';
+  drv2GananciasView = v;
+  const now = Date.now();
   const uid = currentUser && currentUser.uid;
   const PR = (typeof window !== 'undefined' && window.PayRate) || null;   // the ONE reader, loaded by PAYRATE-SCRIPT
   const entries = driverRateEntries;
+  // Money-readiness gate (Codex r1 #1; the SAME rule as drv2ShowResumen §6/BC3): never show an AUTHORITATIVE figure
+  // over a loading / reconnecting / reconciling feed — a partial feed yields a false L0. Blank until feed + cutover +
+  // a valid identity are all ready and no handoff reconcile is in flight; treated exactly like the unseeded state.
+  // The feed re-emits readiness on reconnect → refreshOpenCashSurfaces re-renders this open screen.
+  const ident = (typeof shiftIdentity === 'function') ? shiftIdentity() : { valid: true, start: null };
+  const moneyReady = feedReady && cutoverLoaded && !!driverState && !(driverFeed && driverFeed.hasPendingHandoff()) && ident.valid;
   const lemp = (cents) => (cents == null) ? '' : (cents / 100).toLocaleString('es-HN');   // cents → Lempiras string; '' when unknown
-  const curRate = PR ? PR.rateCentsInEffect(entries, Date.now()) : null;   // display rate for «× L {rate}» + the tariff line
+  const curRate = PR ? PR.rateCentsInEffect(entries, now) : null;   // display rate for the tariff line
   const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
   const CASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9.5v5M18 9.5v5"/></svg>';
-  const big = (cents) => `<div class="gn-big"><span class="gn-cur">L</span>${lemp(cents)}</div>`;   // amount BLANK when the rate is unknown (render NOTHING)
+  const big = (cents) => `<div class="gn-big">${cents == null ? '' : `<span class="gn-cur">L</span>${lemp(cents)}`}</div>`;   // rate unknown / not ready ⇒ render NOTHING: empty .gn-big (collapses via :empty), no number AND no bare «L» mark (calm UI)
   const seg = `<div class="gn-seg"><span class="${v === 'hoy' ? 'on' : ''}" data-gn="hoy" role="button" tabindex="0">Hoy</span><span class="${v === 'semana' ? 'on' : ''}" data-gn="semana" role="button" tabindex="0">Esta semana</span></div>`;
   let body;
   if (v === 'hoy') {
-    const resolved = shiftDeliveries(allOrders, uid, todayMidnightMs(), driverIdentityCutoverMs).resolved;
+    const resolved = moneyReady ? shiftDeliveries(allOrders, uid, hnDayStartMs(now), driverIdentityCutoverMs).resolved : [];   // HN midnight cutoff
     const n = resolved.length;
-    const earnCents = PR ? PR.shiftEarningsCents(resolved.map((d) => d.order), entries) : null;
-    const cashOwed = computeShiftCash(allOrders, uid, todayMidnightMs(), driverIdentityCutoverMs).cashOwed;   // Lempiras (money-grade, same as the cuadre)
-    const earnSub = (curRate != null)
-      ? `${n} ${n === 1 ? 'entrega' : 'entregas'} × L ${lemp(curRate)} · se paga aparte del efectivo`
-      : 'Se paga aparte del efectivo';
-    const list = resolved.map((d) => {
+    const earnCents = (moneyReady && PR) ? PR.shiftEarningsCents(resolved.map((d) => d.order), entries) : null;
+    const cashOwed = moneyReady ? computeShiftCash(allOrders, uid, hnDayStartMs(now), driverIdentityCutoverMs).cashOwed : null;   // Lempiras; null (blank) until ready — no false L0
+    const perRates = resolved.map((d) => PR ? PR.rateCentsInEffect(entries, d.at) : null);   // each delivery's own in-effect rate
+    const uniform = perRates.length > 0 && perRates.every((r) => r != null && r === perRates[0]);   // #3: «× L R» only when every delivery is the SAME known rate
+    const earnSub = uniform
+      ? `${n} ${n === 1 ? 'entrega' : 'entregas'} × L ${lemp(perRates[0])} · se paga aparte del efectivo`
+      : (n > 0 ? `${n} ${n === 1 ? 'entrega' : 'entregas'} · se paga aparte del efectivo` : 'Se paga aparte del efectivo');
+    const list = resolved.map((d, i) => {
       const o = d.order || {};
       const col = coloniaOf(d);                                   // privacy-safe locality (coloniaOf reads the WRAPPER's .order.address_area); '' omits the line
       const meta = [readyTimeHHMM(o.delivered_at), brandLabel(o)].filter(Boolean).join(' · ');   // «8:52 · La Musa» (brand from data)
-      const rc = PR ? PR.rateCentsInEffect(entries, d.at) : null;   // THIS delivery's own in-effect rate (d.at = delivered_at)
+      const rc = perRates[i];
       const top = col || meta, btm = col ? meta : '';
       return `<div class="gn-drow"><span class="gn-dic">${CHECK}</span><div class="gn-dtx"><div class="gn-dt">${escapeHtml(top)}</div>${btm ? `<div class="gn-dd">${escapeHtml(btm)}</div>` : ''}</div>${rc != null ? `<span class="gn-dv">+ L ${lemp(rc)}</span>` : ''}</div>`;
     }).join('');
+    const cashVal = (cashOwed == null) ? '' : 'L ' + Number(cashOwed).toLocaleString('es-HN');   // blank while not ready (never a false L0)
     body = `${seg}
       <div class="gn-card gn-earn"><div class="gn-lbl">Ganado hoy · informativo</div>${big(earnCents)}<div class="gn-sub">${escapeHtml(earnSub)}</div></div>
-      <div class="gn-card gn-flat"><div class="gn-row"><span class="gn-ic">${CASH}</span><div class="gn-rtx"><div class="gn-rt">Efectivo a entregar hoy</div><div class="gn-rd">Esto NO es tuyo: va al cuadre al terminar</div></div><span class="gn-rv">L ${Number(cashOwed || 0).toLocaleString('es-HN')}</span></div></div>
+      <div class="gn-card gn-flat"><div class="gn-row"><span class="gn-ic">${CASH}</span><div class="gn-rtx"><div class="gn-rt">Efectivo a entregar hoy</div><div class="gn-rd">Esto NO es tuyo: va al cuadre al terminar</div></div><span class="gn-rv">${cashVal}</span></div></div>
       <div class="gn-card"><div class="gn-lbl gn-lbl-in">Entregas de hoy</div>${list || '<div class="gn-empty">Todavía no hay entregas hoy.</div>'}</div>`;
   } else {
-    const resolved = shiftDeliveries(allOrders, uid, gananciasWeekStartMs(), driverIdentityCutoverMs).resolved;
+    const resolved = moneyReady ? shiftDeliveries(allOrders, uid, gananciasWeekStartMs(now), driverIdentityCutoverMs).resolved : [];
     const n = resolved.length;
-    const earnCents = PR ? PR.shiftEarningsCents(resolved.map((d) => d.order), entries) : null;
-    const dayIdx = (ms) => { const g = new Date(ms).getDay(); return (g === 0) ? 6 : g - 1; };   // 0=Mon … 6=Sun
+    const earnCents = (moneyReady && PR) ? PR.shiftEarningsCents(resolved.map((d) => d.order), entries) : null;
+    const dayIdx = (ms) => { const g = hnDow(ms); return (g === 0) ? 6 : g - 1; };   // 0=Mon … 6=Sun, HN calendar
     const days = [[], [], [], [], [], [], []];
     for (const d of resolved) days[dayIdx(d.at)].push(d);
     const maxN = Math.max(1, ...days.map((a) => a.length));
     const DOW = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
     const bars = days.map((a, i) => {
-      const dayCents = PR ? PR.shiftEarningsCents(a.map((d) => d.order), entries) : null;
+      const dayCents = (moneyReady && PR) ? PR.shiftEarningsCents(a.map((d) => d.order), entries) : null;
       const vv = (a.length === 0) ? '—' : (dayCents != null ? 'L ' + lemp(dayCents) : '');
       return `<div class="gn-bar"><span class="gn-blb">${DOW[i]}</span><span class="gn-btr"><i style="width:${a.length / maxN * 100}%"></i></span><span class="gn-bv">${vv}</span></div>`;
     }).join('');
-    const ws = gananciasWeekStartMs();
-    const fmt = (ms) => { const d = new Date(ms); return `${CUADRE_WD[d.getDay()].toLowerCase()} ${d.getDate()}`; };   // «lun 13»
+    const ws = gananciasWeekStartMs(now);
+    const fmt = (ms) => { const d = new Date(ms + HN_OFFSET_MS); return `${CUADRE_WD[d.getUTCDay()].toLowerCase()} ${d.getUTCDate()}`; };   // «lun 13», HN calendar
     const range = `${fmt(ws)} a ${fmt(ws + 6 * 86400000)}`;
     const rangeSub = (n > 0) ? `${n} ${n === 1 ? 'entrega' : 'entregas'} · ${range}` : range;
     const tarifa = (curRate != null)
@@ -4341,7 +4357,7 @@ function companionRenderOnboarding() {
           ${prow(ICONS.bell || '', '1 · Te llega una oferta', 'Tenés 36 s para aceptar deslizando')}
           ${prow(ICONS.store || '', '2 · Vas al restaurante', 'Revisá el número de pedido y las bebidas')}
           ${prow(ICONS.cash || '', '3 · Cobrás y das vuelto', 'Solo en pedidos en efectivo')}
-          ${prow(ICONS.check || '', '4 · Deslizás "Entregado"', 'Ves tu resumen y tu +L 70')}
+          ${prow(ICONS.check || '', '4 · Deslizás "Entregado"', 'Ves el resumen del pedido')}
         </div>
         <div style="flex:1"></div>`,
         `<button class="big-btn primary co-onb-btn" id="co-practica-start"${canStart ? '' : ' disabled'}>Empezar práctica</button>`);
@@ -5002,6 +5018,9 @@ function shiftIdentity() {
 // always equals what a confirm would record. NEVER while a close is in flight — the amount being saved must
 // not shift under the driver mid-operation (and re-rendering would reset the in-progress confirm button).
 function refreshOpenCashSurfaces() {
+  /* ===== SLICE3:GANANCIAS-REFRESH:START — re-render the OPEN earnings screen when the feed re-emits (readiness flip / reconnect / reconcile), so its gated amounts fill in without a manual re-open (Codex r1 #1). Insert, not a frozen-line change. ===== */
+  { const gn = $('screen-ganancias'); if (gn && !gn.classList.contains('hidden') && typeof renderGanancias === 'function') renderGanancias(drv2GananciasView); }
+  /* ===== SLICE3:GANANCIAS-REFRESH:END ===== */
   if (closeInFlight) return;
   if ($('cuadre-screen').classList.contains('open')) showCuadre();
   if ($('history-modal').classList.contains('shown')) renderHistoryModal();
