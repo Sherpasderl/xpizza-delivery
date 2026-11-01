@@ -905,13 +905,34 @@ test('S7a-2 frame 15: a held tap whose MENU does not load ⇒ «No pudimos abrir
 const G7_RUNTIME = SU_RUNTIME;   // the endpoint set (ENDPOINTS) carries setPromos
 const G7_PROFILE = (o = {}) => ({ uid: 'u_ana', name: 'Ana Pérez', phone: '+50496123344', email: 'ana.perez@gmail.com', ...o });
 const g7Store = (profile) => { const st = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }) }); DA.remember(st, '+50496123344'); if (profile) DA.rememberProfile(st, profile); return st; };
+// Codex G7 r1 #4: the setPromos fake is NEVER laxer than the real handler (xpizza-functions/signup-endpoints.js setPromos + signup-core
+// setPromos): the same checks in the same order and the same answers, with the platform contract's context:'platform' standing where
+// today's handler reads restaurant_id (CONTRACT-capp-signup-platform-wire §6; the server half is 3a's)
+function setPromosHandler(i, promosOk) {
+  if (!i || i.method !== 'POST') return [405, { ok: false }];
+  let b = null; try { b = JSON.parse(i.body); } catch (_) { b = null; } b = b && typeof b === 'object' ? b : {};
+  if (b.context !== 'platform') return [400, { ok: false, reason: 'bad_request' }];
+  if (!(i.headers && i.headers['x-firebase-id-token'])) return [401, { ok: false, reason: 'unauthenticated' }];
+  if (typeof b.value !== 'boolean') return [400, { ok: false, reason: 'bad_request' }];
+  return promosOk ? [200, { ok: true }] : [400, { ok: false, reason: 'not_completed' }];
+}
 function g7Server(promosOk = true) {
   const sent = [];
   const fetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); sent.push([ep, i && i.body ? JSON.parse(i.body) : null, i && i.headers ? i.headers['x-firebase-id-token'] : null]);
-    const j = ep === 'setPromos' ? (promosOk ? { ok: true } : { ok: false, reason: 'aborted' }) : ep === 'getSignupConfig' ? { ok: true, terms_url: 'https://legal.test/t', privacy_url: 'https://legal.test/p', legal_ready: true, google_enabled: false } : { ok: true };
-    return { status: ep === 'setPromos' && !promosOk ? 400 : 200, json: async () => j }; };
+    const [status, j] = ep === 'setPromos' ? setPromosHandler(i, promosOk) : [200, ep === 'getSignupConfig' ? { ok: true, terms_url: 'https://legal.test/t', privacy_url: 'https://legal.test/p', legal_ready: true, google_enabled: false } : { ok: true }];
+    return { status, json: async () => j }; };
   return { fetch, sent };
 }
+test('G7 setPromos fake (Codex G7 r1 #4): as strict as the real handler — today\'s restaurant_id shape, a tokenless call, a non-boolean value and a GET are refused; the client\'s request passes', async () => {
+  const P = (body, headers = { 'x-firebase-id-token': 't' }, method = 'POST') => setPromosHandler({ method, headers, body: JSON.stringify(body) }, true);
+  assert.deepEqual(P({ restaurant_id: 'r1', value: true }), [400, { ok: false, reason: 'bad_request' }], '🔴 G7-fake: no context ⇒ bad_request, as the handler without restaurant_id');
+  assert.deepEqual(P({ context: 'platform', value: true }, {}), [401, { ok: false, reason: 'unauthenticated' }], '🔴 G7-fake: no ID token ⇒ unauthenticated');
+  assert.deepEqual(P({ context: 'platform', value: 'yes' }), [400, { ok: false, reason: 'bad_request' }], '🔴 G7-fake: a non-boolean value ⇒ bad_request');
+  assert.deepEqual(P({ context: 'platform', value: true }, undefined, 'GET'), [405, { ok: false }]);
+  const srv = g7Server(), api = require('./capp-signup-api.js').createSignupApi({ endpoints: { setPromos: 'https://ep.test/setPromos' }, fetch: srv.fetch });
+  assert.deepEqual(await api.setPromos({ idToken: 'id:u_ana', value: false }), { ok: true }, '🔴 G7-fake: the client\'s real request is accepted');
+  assert.deepEqual(await api.setPromos({ idToken: null, value: false }), { ok: false, reason: 'unauthenticated' }, 'a tokenless client call is refused, as in production');
+});
 async function g7Boot({ profile = G7_PROFILE({ promos: true }), srv = g7Server(), fbOpts = {} } = {}) {
   const fb = fakeFirebase({ persisted: 'u_ana', ...fbOpts });
   const store = g7Store(profile);
