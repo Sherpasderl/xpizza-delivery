@@ -165,8 +165,16 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   const sb = {}; new Function('self', Wb.files.get('capp-runtime.js').toString('utf8'))(sb); assert.strictEqual(sb.CAPP_RUNTIME.mode, 'web');
   assert.strictEqual(Wb.csp, B.csp, 'ONE CSP for web and native');
   const differ = [...new Set([...Wb.files.keys(), ...B.files.keys()])].filter((k) => !(Wb.files.has(k) && B.files.has(k) && Wb.files.get(k).equals(B.files.get(k)))).sort();
-  assert.deepStrictEqual(differ, ['build-manifest.json', 'capp-runtime.js', P.ENTRY, 'version.json'].sort(), '🔴 web and native must differ ONLY in the stamp page, the runtime mode, the manifest and version.json');
-  const strip = (b) => b.toString('utf8').replace(/<!-- sherpa-stamp:begin -->[\s\S]*?<!-- sherpa-stamp:end -->\n/, '');
+  assert.deepStrictEqual(differ, ['_redirects', 'build-manifest.json', 'capp-runtime.js', P.ENTRY, 'version.json'].sort(), '🔴 web and native must differ ONLY in the stamp page (+ <base>), the runtime mode, the manifest, version.json and _redirects');
+  // D-4a §6: deep links — <base href="/"> right after the charset, BEFORE every relative reference; a non-forced SPA rewrite; native has neither
+  const wi = Wb.files.get(P.ENTRY).toString('utf8');
+  assert.equal(wi.split('<base href="/">').length - 1, 1, 'web: exactly one <base>');
+  assert.ok(wi.indexOf('<meta charset="utf-8">') < wi.indexOf('<base href="/">') && wi.indexOf('<base href="/">') < wi.indexOf('<meta http-equiv="Content-Security-Policy"'), '🔴 web: <base> right after the charset block (only the URL-free stamp metas between), before the CSP');
+  const firstRel = wi.search(/(?:href|src)="(?!\/|https?:|data:)[^"]+"/);
+  assert.ok(wi.indexOf('<base href="/">') > -1 && wi.indexOf('<base href="/">') < firstRel, '🔴 web: <base> precedes every relative reference');
+  assert.equal(Wb.files.get('_redirects').toString('utf8'), '/* /index.html 200\n', 'the non-forced rewrite');
+  assert.ok(!/<base /.test(B.files.get(P.ENTRY).toString('utf8')) && !B.files.has('_redirects'), 'native: no <base>, no _redirects');
+  const strip = (b) => b.toString('utf8').replace(/<!-- sherpa-stamp:begin -->[\s\S]*?<!-- sherpa-stamp:end -->\n/, '').replace('<base href="/">\n', '');
   assert.strictEqual(strip(Wb.files.get(P.ENTRY)), strip(B.files.get(P.ENTRY)), 'the entry pages differ only inside the stamp block');
   const Pv = P.build({ sha: HEAD, target: 'web', env: 'deploy-preview' });
   const pid = mod.exports.readIdentity(new JSDOM(Pv.files.get(P.ENTRY).toString('utf8')).window.document);

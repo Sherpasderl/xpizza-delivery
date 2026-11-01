@@ -78,6 +78,8 @@
     return CappShellUI.mount(doc, {
       ...pass,
       runtime: runtimeFor(rt, CappSignupApi),
+      // D-4a Phase 1: the WEBSITE reflects / hydrates URLs; the native shell keeps today's navigation exactly (mode native ⇒ off)
+      ...(rt.mode === 'web' ? { routing: true } : {}),
       fetchDirectory: (etag) => (typeof rt.directory_endpoint === 'string' && rt.directory_endpoint
         ? conditional(fetchFn, `${rt.functions_base}/${rt.directory_endpoint}`, etag) : Promise.resolve({ status: 0 })),
       fetchEnvelope: (rid, etag) => conditional(fetchFn, `${rt.functions_base}/${rt.menu_endpoint}/menu/${encodeURIComponent(rid)}`, etag),

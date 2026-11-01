@@ -379,8 +379,8 @@
     const instTotal = (inst) => Object.keys(inst || {}).reduce((a, k) => a + (EX[k] ? EX[k].p : 0), 0);
     function openDetail(id) { const it = find(id); if (!it) return; S.open = it.group ? { id, kind: 'launcher', staged: { choice: null, ex: {}, qty: 1 } } : { id, kind: 'dish', staged: { qty: 1 } }; openDetailDom(); }
     function openEdit(key, g = '') { const l = cart.lines().find((x) => x.key === key); if (!l) return; const it = find(key); const n = l.ex.filter((inst) => CappCart.sigOf(inst) === g).length; S.open = { id: it.parent ? it.parent.id : it.id, kind: 'edit', key, g, n, staged: { choice: it.parent ? it.id : null, ex: Object.fromEntries(g ? g.split(',').map((k) => [k, 1]) : []) } }; openDetailDom(); }
-    function openDetailDom() { if (!S.open) return; returnTo = returnTo || descOf(doc.activeElement); renderDetail(); $('detail-overlay').classList.add('open'); $('detail-modal').classList.add('open'); syncInert(); focusTo($('detail-close')); }
-    function closeDetail() { $('detail-overlay').classList.remove('open'); $('detail-modal').classList.remove('open'); S.open = null; S.refusal = null; renderStoreKeep(); syncInert(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar')); }
+    function openDetailDom() { if (!S.open) return; T_report(); returnTo = returnTo || descOf(doc.activeElement); renderDetail(); $('detail-overlay').classList.add('open'); $('detail-modal').classList.add('open'); syncInert(); focusTo($('detail-close')); }
+    function closeDetail() { $('detail-overlay').classList.remove('open'); $('detail-modal').classList.remove('open'); S.open = null; S.refusal = null; renderStoreKeep(); syncInert(); reportRoute(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar')); }
     function extraRow(e, q, act, attrs) {
       const sel = q > 0;
       return `<div class="detail-extras-row" data-act="${act}" ${attrs} role="checkbox" aria-checked="${sel}" tabindex="0"><span class="xrow-main"><span class="detail-extras-name">${esc(e.n)}</span><span class="xrow-price">+${money(e.p)}</span></span><div class="detail-extras-toggle ${sel ? 'selected' : ''}">${IC.check.replace('class="i"', '')}</div></div>`;
@@ -515,7 +515,9 @@
       if (S.layerKind === 'placing') placingStop(); layerTeardown(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
     // a quote that failed while another layer was open: its sheet once that layer closes (still the same failed state)
     function closeLayerThen() { if (S.quoteErrSheet && !S.layerKind && (S.screen === 'checkout' || S.screen === 'tip')) { S.quoteErrSheet = false; if (S.quoteErr && S.quoteErr === stateKey()) showErr(ERR.generic('err-requote')); } }
-    function renderLayer(fresh) {
+    const T_report = () => { if (typeof queueMicrotask === 'function') queueMicrotask(reportRoute); else reportRoute(); };   // after the sheet's state is set
+    function renderLayer(fresh) { T_report(); return renderLayerNow(fresh); }
+    function renderLayerNow(fresh) {
       if (dead) return;
       const L = $('layer'); if (!L) return; const k = S.layerKind;
       if (!k) { L.innerHTML = ''; syncInert(); return; }
@@ -1147,11 +1149,25 @@
     let attemptSeq = 0;
     // frame 10's «Ver estado del pedido»: the frozen placement's state through the existing reader (no send, no new identity)
     let statusBusy = false;
-    async function frozenStatus() {
-      if (statusBusy || !mods() || !api.hosted) return;
-      const fz = api.cartFreeze(); if (!fz.frozen) { renderLayer(); return; }
-      statusBusy = true;
-      let out; try { out = fz.unknown || !fz.order_id ? { kind: 'offline' } : await api.resolveStatus(fz.order_id); } catch (_) { out = { kind: 'offline' }; } finally { statusBusy = false; }
+    // PLAN-capp-desktop-D4a-routing r2 §4 (Codex r2 #4): ONE non-placement recovery for EVERY case lockedHere() can report — the
+    // «Ver estado del pedido» button and a URL-driven entry into /pago under a lock. Status reads only, never a send:
+    //   modules / hosted api unavailable · reconcile failure · unknown freeze · an unreadable pending record ⇒ «Sin conexión» (its
+    //   «Reintentar» re-runs THIS) · a frozen cart ⇒ resolveStatus(its order) · a held lock (memLock / pay_pending) ⇒
+    //   resolveStatus(id) ⇒ lockedOutcome (no credentials ⇒ the recovery / pending sheet; a definitive state releases it)
+    async function frozenStatus() { return recoverLocked(); }
+    async function recoverLocked() {
+      if (statusBusy) return;
+      let id = null, out = null;
+      if (!mods() || !api.hosted) out = { kind: 'offline' };
+      else if (!api.reconcile().ok) out = { kind: 'offline' };
+      else {
+        const fz = api.cartFreeze();
+        if (fz.unknown) out = { kind: 'offline' };
+        else if (fz.frozen) { id = fz.order_id || null; if (!id) out = { kind: 'offline' }; }
+        else if (typeof api.holdsLock === 'function' && api.holdsLock()) { const live = api.readPlace(); id = live && typeof live.order_id === 'string' ? live.order_id : null; if (!id) out = { kind: 'offline' }; }
+        else { renderLayer(); return; }   // nothing locked (any more): nothing to resolve
+      }
+      if (!out) { statusBusy = true; try { out = await api.resolveStatus(id); } catch (_) { out = { kind: 'offline' }; } finally { statusBusy = false; } }
       if (dead) return;
       closeLayer();
       // over the STORE (no checkout to go back to): the held sheets as drawn; any other outcome takes the normal path with a flow
@@ -1216,6 +1232,8 @@
     <div class="foot"><b>Confirmá dónde entregamos</b><span class="sub">${out && Number.isFinite(zoneKm) && cfg.branch ? `${esc(cfg.name || '')} entrega hasta ${esc(zoneKm)} km de ${esc(cfg.branch)}; este punto queda fuera.` : 'Las direcciones aquí se describen con referencias: el pin es la dirección, los detalles son la referencia.'}</span><button class="primary" data-act="pin-done">Listo</button></div></div>`;
     }
 
+    // «Ir al checkout»: THE path into the checkout — a tap, and (D-4a) a URL-driven entry through resumeTo('pago')
+    function checkoutTap() { if (!orderable || soldBlock()) return false; if (typeof opts.beforeCheckout === 'function' && opts.beforeCheckout() === false) return true; let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return false; } emit('checkout', { body, mode: S.mode }); openCheckout(); return true; }
     // ── navigation ──
     function openCheckout() {
       if (!mods()) return false;
@@ -1276,6 +1294,10 @@
     // a cart frozen for an order whose record still exists (a held recovery, an unresolved send), or an UNKNOWN freeze state
     // (fail closed). A frozen-but-NOT-live cart (§1.4, the lock expired with no marker) may be left: its freeze and evidence are
     // fully persisted, so leaving loses nothing — it re-mounts frozen
+    // D-4a: the step this mount shows, for the host's URL reflection (the checkout flow — tip, sending, outcome — is ONE URL)
+    function routeNow() { if (S.screen !== 'store') return { step: 'pago' }; if (S.open && S.open.id != null) return { step: 'plato', dish: String(S.open.id) }; if (S.layerKind === 'cart') return { step: 'pedido' }; return { step: 'store' }; }
+    function reportRoute() { if (dead || typeof opts.onRoute !== 'function') return; try { opts.onRoute(routeNow()); } catch (_) { /* never breaks the UI */ } }
+    const lockedNow = () => lockedHere() || frozenNow();
     function lockedHere() {
       if (!hostedKeys()) return false;
       if (!mods() || !api.hosted) return true;
@@ -1445,7 +1467,7 @@
       if (S.screen === 'checkout' && flowY !== null && prevScreen === 'checkout' && $('flow')) $('flow').scrollTop = flowY;
       renderLayer();
       if (S.open) { renderDetail(); $('detail-overlay').classList.add('open'); $('detail-modal').classList.add('open'); }
-      syncInert();
+      syncInert(); reportRoute();
       if (had && lost()) { focusTo(refind(had)); if (caret && doc.activeElement && doc.activeElement.id === caret[0]) { try { doc.activeElement.setSelectionRange(caret[1], caret[2]); } catch (_) {} } }
       if (S.screen === 'checkout') wireMaps();
       if (S.screen === 'checkout' || S.screen === 'tip') requote();
@@ -1480,7 +1502,7 @@
       if (act === 'ssearch') { openLayer('ssearch'); return; }
       if (act === 'back') { emit('back'); return; }
       // S7a-2: the host may adopt a newer verified menu first (opts.beforeCheckout() === false ⇒ it took over: not opened here)
-      if (act === 'checkout') { if (!orderable || soldBlock()) return; if (typeof opts.beforeCheckout === 'function' && opts.beforeCheckout() === false) return; let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return; } emit('checkout', { body, mode: S.mode }); openCheckout(); return; }
+      if (act === 'checkout') { checkoutTap(); return; }
       if (act === 'closed-sched' && sched()) {
         if (!cart.count()) { toast('Agregá platos y programá al final'); return; }
         if (!S.flow) S.flow = newFlow();
@@ -1570,6 +1592,17 @@
       // open layer, locks, refusals) lives in S / the records and is untouched; render() keeps focus, caret and the checkout scroll
       // Codex D-2 r1 #1: the store's menu scroll is kept, and a focused control that has no twin in the other view lands on its
       // VISIBLE equivalent — the aside ⇄ the cart bar (render() itself restores every control that exists in both views)
+      // D-4a §4: the ONE URL-driven entry into a step — never a placement, never a BROWSER history entry (in-app steps count as a
+      // tap's). 'pago': the lock FIRST (every lockedHere case ⇒ recoverLocked, status only), else the «Ir al checkout» tap path
+      resumeTo(step, dish) {
+        if (dead || S.screen !== 'store') return false;
+        if (step === 'pedido') { if (!cart.count()) return false; openLayer('cart'); return true; }
+        if (step === 'plato') { if (dish == null || !find(String(dish))) return false; openDetail(String(dish)); return true; }
+        if (step === 'pago') { if (lockedNow()) { recoverLocked(); return true; } if (!cart.count()) return false; return checkoutTap(); }
+        return step === 'store';
+      },
+      lockedNow: () => !dead && lockedNow(),
+      route: () => routeNow(),
       setView(desk) {
         if (dead || !view) return; const d = desk === true; if (d === S.desk) return;
         const sc = $('scroller'), y = sc ? sc.scrollTop : null, ae = doc.activeElement;

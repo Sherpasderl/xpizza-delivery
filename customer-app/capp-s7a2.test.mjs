@@ -239,15 +239,15 @@ function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }
 const flush = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 // stampedDir: a copy of customer-app/ stamped by the REAL platform/stamp-version.js — the page's own sherpa-client.js runs on its
 // stamped identity and capp-api.js runs in the page realm (its SherpaClient.fetch arm), the network = pageFetch (window.fetch)
-function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null } = {}) {
+function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(stampedDir || HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
-  const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://app.test/' });
+  const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: url || 'https://app.test/' });
   const w = dom.window;
   if (media) w.matchMedia = media.matchMedia;   // D-2: the viewport the shell reads at mount (a controllable matchMedia)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-view.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -1311,4 +1311,168 @@ test('D-2 r1 #3: browse-only ⇒ the ASIDE\'s ordering controls are disabled lik
   S.click(`.txtbtn[data-id="${ui.cart.lines()[0].key}"]`); await flush();
   const after = S.qa('.deskcart .cstep button, .deskcart [data-act="checkout"]');
   assert.ok(after.every((b) => b.disabled), '🔴 r1 #3: a re-rendered aside re-enabled its controls');
+});
+
+
+// ── PLAN-capp-desktop-D4a-routing r2 (APPROVED, Phase 1 = URL REFLECTION): the URL follows the screen by replaceState (the sentinel
+// state and the search kept), cold-link / reload hydration through the shared non-placement entry, a payment return always owns
+// the boot, unverified ≠ absent, one hydration generation. The REAL shell, a real jsdom URL; routing on = the web boot's flag.
+const routeShell = (path, x = {}) => bootShell({ ...x, url: `https://app.test${path}${x.search || ''}`, mountExtra: { ...(x.mountExtra || {}), routing: true } });
+const where = (S) => S.w.location.pathname;
+const anyDish = (rid = 'x_pizza') => CappMenu.adaptMenu(PROV[rid].envelope).dishes.find((d) => !d.launcher && !d.variantOf);
+const cartOf = (rid, key, qty = 1) => ({ [`capp:${rid}:cart`]: JSON.stringify({ v: 2, lines: [{ key, qty, ex: [{}], added: 1 }], rid, mode: 'delivery', cart_gen: 'g_c' }) });
+
+test('D-4a reflection: every screen change REPLACES the pathname — the sentinel state, history.length and the search untouched', async () => {
+  const S = routeShell('/', { search: '?utm=a', runtime: { ...RUNTIME, guestCardOnly: true } }); await flush();   // Cuenta is the shell's
+  const len0 = S.w.history.length, st0 = JSON.stringify(S.w.history.state);
+  assert.equal(where(S), '/');
+  S.click('.tabbar [data-tab="search"]'); await flush(); assert.equal(where(S), '/buscar', '🔴 the URL does not follow Buscar');
+  S.click('.tabbar [data-tab="account"]'); await flush(); assert.equal(where(S), '/cuenta');
+  S.click('.tabbar [data-tab="home"]'); await flush(); assert.equal(where(S), '/');
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); assert.equal(where(S), '/r/x_pizza');
+  const ui = S.ui.store().ui, d = ui.menu.dishes.find((x) => !x.launcher && !x.variantOf);
+  S.click(`.txtbtn[data-id="${d.key}"]`); await flush(); assert.equal(where(S), `/r/x_pizza/plato/${encodeURIComponent(d.key)}`);
+  S.click('#detail-overlay'); await flush(); assert.equal(where(S), '/r/x_pizza');
+  S.click(`.qty-add-btn[data-id="${d.key}"]`); S.click('#cart-bar'); await flush(); assert.equal(where(S), '/r/x_pizza/pedido');
+  S.click('[data-act="checkout"]'); await flush(); assert.equal(where(S), '/r/x_pizza/pago');
+  assert.equal(S.w.location.search, '?utm=a', '🔴 the search must survive every reflection');
+  assert.equal(S.w.history.length, len0, '🔴 reflection must never add history entries');
+  assert.equal(JSON.stringify(S.w.history.state), st0, 'the sentinel state is kept');
+});
+
+test('D-4a sentinel unchanged: a device Back runs ONE in-app back; a BLOCKED back («Enviando…») changes nothing and the URL keeps the locked path', async () => {
+  const S = routeShell('/'); await flush();
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  const ui = S.ui.store().ui, d = ui.menu.dishes.find((x) => !x.launcher && !x.variantOf);
+  S.click(`.qty-add-btn[data-id="${d.key}"]`); S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush();
+  ui.state.screen = 'sending'; ui.render(); await flush();
+  S.w.history.back(); await flush(); await flush();   // a REAL device Back: the browser leaves the sentinel, popstate fires
+  assert.equal(ui.state.screen, 'sending', 'premise: blocked — nothing changed');
+  assert.equal(where(S), '/r/x_pizza/pago', '🔴 a blocked back must leave the URL on the locked screen');
+  assert.equal(JSON.stringify(S.w.history.state), '{"capp_shell":1}', 'the sentinel re-armed');
+  ui.state.screen = 'checkout'; ui.render(); await flush();
+  S.w.history.back(); await flush(); await flush();   // unblocked: ONE in-app back (checkout ⇒ the cart, as today)
+  assert.notEqual(ui.state.screen, 'checkout', 'one in-app back ran'); assert.equal(where(S), '/r/x_pizza/pedido');
+});
+
+test('D-4a precedence: a payment RETURN owns the boot — the owner store resolves it, the deep-linked store is never entered; persisted ⇒ the boot strips the query, memory ⇒ the query survives every reflection', async () => {
+  const t0 = T0, ret = `?pay=cancel&order=${ORDER}&t=pt_9`;
+  const recs = () => ({ ...frozenCart(), 'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1', order: null, ts: t0 }),
+    'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, dispatched: 1, cart_gen: 'g_1', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) });
+  const apiFetch = async () => ({ status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) });
+  // the deep-linked store is READY first (its menu answers) while the owner's menu is held: only the precedence rule keeps it out
+  const ownerLate = (rid) => (rid === 'x_pizza' ? 'hold' : 'ok');
+  const P = routeShell('/r/la_musa/pago', { storage: memStorage(recs()), search: ret, apiFetch, envelope: ownerLate }); await flush(); await flush();
+  assert.ok(!P.ui.store() || P.ui.store().rid !== 'la_musa', '🔴 the deep-linked store was entered while a return owns the boot');
+  P.release('x_pizza'); await flush(); await flush();
+  assert.equal(P.ui.store() && P.ui.store().rid, 'x_pizza', '🔴 the return owner handles the boot (never the deep-linked store)');
+  assert.equal(P.w.location.search, '', 'persisted ⇒ the boot (not the router) stripped the query');
+  const st = memStorage(recs()), real = st.setItem; st.setItem = (k, v) => { if (k === 'capp:return') throw new Error('quota'); real(k, v); };
+  const M = routeShell('/r/la_musa/pago', { storage: st, search: ret, apiFetch }); await flush(); await flush();
+  assert.equal(M.ui.store() && M.ui.store().rid, 'x_pizza', 'memory mode: still the owner');
+  assert.equal(M.w.location.search, ret, '🔴 memory mode: the return query is the ONLY evidence — it must survive the reflections');
+});
+
+test('D-4a cold entry: /r/{rid} ⇒ that store; /pedido ⇒ the cart; /pago ⇒ the checkout through the tap path; the URL kept', async () => {
+  const d = anyDish();
+  const A = routeShell('/r/x_pizza'); await flush(); await flush();
+  assert.equal(A.ui.store() && A.ui.store().rid, 'x_pizza', '🔴 a cold store link must enter that store'); assert.equal(where(A), '/r/x_pizza');
+  const B = routeShell('/r/x_pizza/pedido', { storage: memStorage(cartOf('x_pizza', d.key)) }); await flush(); await flush();
+  assert.equal(B.ui.store().ui.state.layerKind, 'cart', '🔴 /pedido opens the cart'); assert.equal(where(B), '/r/x_pizza/pedido');
+  const C = routeShell('/r/x_pizza/pago', { storage: memStorage(cartOf('x_pizza', d.key)) }); await flush(); await flush();
+  assert.equal(C.ui.store().ui.state.screen, 'checkout', '🔴 /pago opens the checkout'); assert.equal(where(C), '/r/x_pizza/pago');
+  const E = routeShell('/r/x_pizza/pago'); await flush(); await flush();
+  assert.equal(E.ui.store().ui.state.screen, 'store', 'an empty cart ⇒ the store'); assert.equal(where(E), '/r/x_pizza');
+});
+
+test('D-4a cold /pago under a LOCK: the lock is checked FIRST and resolved by status only — frozen ⇒ «Necesitamos revisar», a live card send ⇒ its status poll — ZERO sends', async () => {
+  const sends = [];
+  const F = routeShell('/r/x_pizza/pago', { storage: memStorage(frozenCart()), fetchLog: sends }); await flush(); await flush();
+  assert.equal(F.ui.store().ui.state.screen, 'store', 'no checkout over a lock');
+  assert.match(txt(F.q('#layer')), /Necesitamos revisar tu pedido/, '🔴 a frozen cart ⇒ the recovery sheet');
+  const t0 = T0, polls = [];
+  const live = { ...frozenCart(), 'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1', order: null, ts: t0 }),
+    'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, pay_pending: true, dispatched: 1, cart_gen: 'g_1', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) };
+  const apiFetch = async (u) => { polls.push(u.split('?')[0]); return { status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) }; };
+  const L = routeShell('/r/x_pizza/pago', { storage: memStorage(live), apiFetch }); await flush(); await flush();
+  assert.ok(polls.length >= 1 && polls.every((u) => u === '/x/s'), `🔴 only status reads (${polls.join(',')})`);
+  assert.equal(L.ui.store().ui.state.screen, 'store'); assert.ok(L.q('#layer .errsheet'), 'a held sheet, never the checkout');
+  assert.deepEqual(sends.filter((x) => /createOrder|chargeOnlineOrder|\/x\/c|\/x\/p/.test(String(x))), [], '🔴 zero sends');
+});
+
+test('D-4a cold dish: resolved against the VERIFIED FRESH body — waits on a presentation body, opens on the fresh one; absent from the fresh body ⇒ the store', async () => {
+  const d = anyDish();
+  const W = routeShell(`/r/x_pizza/plato/${encodeURIComponent(d.key)}`, { envelope: 'hold', storage: memStorage(storedMenu('x_pizza')) }); await flush(); await flush();
+  const ui = W.ui.store() && W.ui.store().ui;
+  assert.ok(ui, 'premise: the store mounts on its stored (presentation) menu');
+  assert.equal(ui.state.open, null, '🔴 never opened on the unverified presentation body');
+  W.release('x_pizza'); await flush(); await flush();
+  assert.ok(W.ui.store().ui.state.open, '🔴 the fresh body confirmed the dish ⇒ its sheet opens');
+  assert.equal(where(W), `/r/x_pizza/plato/${encodeURIComponent(d.key)}`);
+  const N = routeShell('/r/x_pizza/plato/no_such_dish'); await flush(); await flush();
+  assert.equal(N.ui.store().ui.state.open, null); assert.equal(where(N), '/r/x_pizza', '🔴 absent from the fresh body ⇒ the store, URL replaced');
+});
+
+test('D-4a unverified ≠ absent: offline / 503 / partial keep the link PENDING (URL kept, nothing entered); only a fresh COMPLETE directory without the store ⇒ silent Inicio', async () => {
+  for (const sc of ['unavailable_503', 'partial_unavailable']) {
+    const S = routeShell('/r/la_musa', { dirScript: [sc] }); await flush(); await flush();
+    assert.equal(S.ui.store(), null, `${sc}: nothing entered`); assert.equal(where(S), '/r/la_musa', `🔴 ${sc}: unverified must keep the requested route`);
+  }
+  const G = routeShell('/r/la_musa', { dirScript: ['tombstone'] }); await flush(); await flush();
+  assert.equal(G.ui.store(), null); assert.equal(where(G), '/', '🔴 confirmed absent (complete, not listed) ⇒ silent Inicio');
+  assert.equal(G.q('.errsheet'), null, 'silent: no new copy, no sheet');
+  const U = routeShell('/no/such/path'); await flush(); assert.equal(where(U), '/', 'an unknown path ⇒ Inicio');
+});
+
+test('D-4a generation: a user navigation CANCELS a pending cold link — a late verification never enters the old target', async () => {
+  const late = deferred();
+  const S = routeShell('/r/x_pizza', { dirScript: [{ p: late.p }] }); await flush();
+  assert.equal(S.ui.store(), null, 'premise: the directory has not answered (pending)');
+  S.click('.tabbar [data-tab="search"]'); await flush();
+  late.resolve(resp('complete')); await flush(); await flush();
+  assert.equal(S.ui.store(), null, '🔴 a cancelled cold link entered its store after the user left');
+  assert.equal(where(S), '/buscar');
+});
+
+test('D-4a native / routing off: no replaceState from the router and no hydration (byte-identical boot)', async () => {
+  const S = bootShell({ url: 'https://app.test/r/x_pizza' });
+  let calls = 0; const real = S.w.history.replaceState.bind(S.w.history); S.w.history.replaceState = (...a) => { calls++; return real(...a); };
+  await flush(); await flush();
+  S.click('.tabbar [data-tab="search"]'); await flush();
+  assert.equal(S.ui.store(), null, 'no hydration without routing'); assert.equal(calls, 0, 'no reflection without routing');
+});
+
+test('D-4a cold /pago, every UNREADABLE lock case (Codex r2 #4): the marker (reconcile fails), the freeze state (unknown), the pending record ⇒ «Sin conexión» with a status-only retry — never the checkout, ZERO sends', async () => {
+  const d = anyDish();
+  for (const key of ['capp:x_pizza:placed', 'capp:x_pizza:cart', 'capp:x_pizza:pending_place']) {
+    const st = memStorage(cartOf('x_pizza', d.key)), real = st.getItem;
+    let armed = false; st.getItem = (k) => { if (armed && k === key) throw new Error('unreadable'); return real(k); };
+    const sends = [];
+    const S = routeShell('/r/x_pizza/pago', { storage: st, fetchLog: sends });
+    armed = true;   // the boot's own reads (directory, menus) are fine; the store's lock reads are not
+    await flush(); await flush();
+    const ui = S.ui.store() && S.ui.store().ui;
+    assert.ok(ui, `${key}: premise: the store mounted`);
+    assert.notEqual(ui.state.screen, 'checkout', `🔴 ${key}: never the checkout over an unreadable lock`);
+    assert.equal(ui.state.layerKind, 'err', `🔴 ${key}: the offline sheet must show`);
+    assert.match(txt(S.q('#layer')), /Sin conexión/, `${key}: the offline sheet`);
+    assert.ok(S.q('#layer [data-act="frozen-status"]'), `${key}: «Reintentar» re-reads the STATUS (recoverLocked), never a send`);
+    assert.deepEqual(sends.filter((x) => /\/x\/c|\/x\/p/.test(String(x))), [], `🔴 ${key}: zero sends`);
+  }
+});
+
+test('D-4a §4: ADOPTION never discards a lock — a staged fresh body is NOT adopted (the mount is not torn down) while a payment lock is held, on the TAP path too', async () => {
+  const t0 = T0, d = anyDish();
+  const storage = memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
+    'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_c', order: null, ts: t0 }),
+    'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, pay_pending: true, dispatched: 1, cart_gen: 'g_c', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) });
+  const apiFetch = async () => ({ status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) });
+  const S = bootShell({ envelope: 'hold', storage, apiFetch }); await flush();
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  const ui0 = S.ui.store().ui;
+  S.release('x_pizza', repriced(d.name, 26)); await flush(); await flush();
+  assert.ok(S.ui.store().adopt, 'premise: a CHANGED fresh body is staged for adoption');
+  assert.equal(ui0.lockedNow(), true, 'premise: the payment lock is held');
+  S.click('#cart-bar'); await flush(); S.click('#layer [data-act="checkout"]'); await flush(); await flush();
+  assert.equal(S.ui.store().ui, ui0, '🔴 adoption tore down a LOCKED mount');
 });

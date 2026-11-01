@@ -45,6 +45,14 @@
     const runtime = o.runtime || {};
     // PLAN-capp-desktop-website r2 D-2: the ONE breakpoint (capp-view.js, ≥ 1024 px ⇒ the APPROVED v6 desktop). Read synchronously
     // HERE so `.desk` is on #app before the first paint; a settled crossing re-renders the mounted store in place (state kept)
+    // PLAN-capp-desktop-D4a-routing r2 (APPROVED, Phase 1 = URL REFLECTION): with o.routing (the web boot) the URL FOLLOWS the
+    // screen by replaceState (the history STATE and the search kept — the single sentinel stays the sentinel, return evidence is
+    // never stripped) and a cold / reloaded / new-tab URL is HYDRATED once; never a pushState, never Forward. Off (native, tests)
+    // ⇒ nothing here runs
+    const CappRoutes = pick(o, 'CappRoutes', './capp-routes.js');
+    const routing = o.routing === true && !!CappRoutes && !!win && !!win.history && !!win.location;
+    let pendingRoute = null, navGen = 0, hydrating = false, storeRoute = { step: 'store' }, booted = false;
+    const bootPath = routing ? String(win.location.pathname || '/') : '/';   // read BEFORE any paint could reflect over it
     const CappView = pick(o, 'CappView', './capp-view.js');
     const view = CappView ? CappView.createView(win, { timers: T }) : null;
     // G6: with the runtime's signup config (runtime.signup = { firebase, endpoints }) the shell owns the auth: the Firebase adapter
@@ -107,7 +115,7 @@
     function loadMenus() {
       for (const r of dir.view().rows) {
         if (r.gone) continue;
-        if (!subscribed.has(r.rid)) { subscribed.add(r.rid); cache.seed(r.rid, readJ(MENU_KEY(r.rid))); cache.subscribe(r.rid, () => { schedule(); checkHeld(); }); }   // a stored menu seeds once its row is known (a no-op when held in memory)
+        if (!subscribed.has(r.rid)) { subscribed.add(r.rid); cache.seed(r.rid, readJ(MENU_KEY(r.rid))); cache.subscribe(r.rid, () => { schedule(); checkHeld(); tryRoute(); }); }   // a stored menu seeds once its row is known (a no-op when held in memory)
         cache.get(r.rid);   // directory order = visible stores first; the cache's global concurrency (3) and dedupe apply
       }
     }
@@ -144,7 +152,8 @@
       const apiOpts = { storage, ...(uo.apiOpts || {}) };   // the store's records live in the shell's storage (one device store)
       // a mount NEVER reads location.search itself: only the store that OWNS a hosted-checkout return gets it, once
       const ret = S.ret && S.ret.rid === entry.rid && !freshBody ? S.ret : null; if (ret) S.ret = null;
-      const ui = CappUI.mount(doc, { ...uo, ...(view ? { view } : {}), ...(S.member ? { member: S.member } : {}), search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
+      const ui = CappUI.mount(doc, { ...uo, ...(view ? { view } : {}),
+        onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); }, ...(S.member ? { member: S.member } : {}), search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
         onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
@@ -167,17 +176,25 @@
     function watchMenu(st) {
       const check = async () => {
         const e = cache.peek(st.rid);
-        if (S.store !== st || !e || !e.body || e.state !== 'fresh' || e.body === st.body) { if (S.store === st && e && e.body === st.body && e.state === 'fresh') st.ui.setOrderable(true); return; }
+        if (S.store !== st || !e || !e.body || e.state !== 'fresh' || e.body === st.body) { if (S.store === st && e && e.body === st.body && e.state === 'fresh') { st.ui.setOrderable(true); tryRoute(); } return; }
         const [a, b] = await Promise.all([st.fp || (st.fp = fpOf(st.body)), fpOf(e.body)]);
         if (S.store !== st) return;
         st.adopt = a && b && a === b ? null : e.body;   // same content ⇒ nothing to adopt
-        st.ui.setOrderable(true);
+        st.ui.setOrderable(true); tryRoute();
       };
       st.unwatch = cache.subscribe(st.rid, () => { check(); });
       check();
     }
     function adoptBeforeCheckout() {
       const st = S.store; if (!st || !st.adopt) return true;
+      // D-4a §4 (Codex r1 P1-4): adoption never discards a lock — a locked mount is never torn down here (its lock path runs)
+      if (st.ui.lockedNow && st.ui.lockedNow()) return true;
+      if (!adoptInto(st)) return true;
+      S.store.ui.openCart();
+      return false;
+    }
+    // the staged fresh body adopted: the mount rebuilt on it, carrying the cart AS IT IS NOW → the new store record (or null)
+    function adoptInto(st) {
       const body = st.adopt;
       // the cart (with its last-seen prices) is carried onto the fresh body; the cart sheet discloses any changed line (frame 13)
       // BEFORE the quote — the customer continues from there (continuing is acceptance)
@@ -185,9 +202,8 @@
       if (typeof st.unwatch === 'function') st.unwatch();
       const carried = st.ui.snapshot();   // the cart as it is NOW (never only the stored copy: a failed persistence must lose nothing)
       st.ui.destroy(); S.store = null;
-      if (!mountStore(st.entry, body, carried)) return true;
-      S.store.ui.openCart();
-      return false;
+      if (!mountStore(st.entry, body, carried)) return null;
+      return S.store;
     }
     // ── G6: the in-app sign-in ──
     function openSignin(d) {
@@ -320,10 +336,69 @@
       availSeq++; if (typeof st.unwatch === 'function') st.unwatch(); st.ui.destroy(); S.store = null; rebuild = true;   // #app holds the store's markup: the next shell paint rebuilds it
     }
 
+    // ── D-4a: reflection (pathname only) + one cold hydration, cancelled by any user navigation (Codex r2 #5) ──
+    function replacePath(path) {
+      if (!routing || typeof path !== 'string') return;
+      try { if (path !== win.location.pathname) win.history.replaceState(win.history.state, '', path + win.location.search + win.location.hash); } catch (_) { /* never breaks the app */ }
+    }
+    function pathNow() {
+      try {
+        if (S.store) return CappRoutes.format({ name: 'store', rid: S.store.rid, ...storeRoute });
+        if (S.neutral) return '/';
+        return CappRoutes.format({ name: S.tab === 'search' ? 'search' : S.tab === 'account' ? 'account' : 'home' });
+      } catch (_) { return null; }   // an id outside the ONE domain is never written: the URL stays as it is
+    }
+    function reflect() { if (routing && booted && !pendingRoute) replacePath(pathNow()); }   // never before the boot's hydration decision
+    function cancelRoute() { if (pendingRoute) { pendingRoute = null; navGen++; } }
+    function subscribeMenu(rid) { if (!subscribed.has(rid)) { subscribed.add(rid); cache.seed(rid, readJ(MENU_KEY(rid))); cache.subscribe(rid, () => { schedule(); checkHeld(); tryRoute(); }); } }
+    function hydrate() {
+      const r = CappRoutes.parse(bootPath);
+      if (!r) { replacePath('/'); return; }   // unknown ⇒ Inicio, silently (no new copy)
+      if (r.name === 'search' || r.name === 'account') { nav.tab({ name: r.name }); return; }
+      if (r.name !== 'store') return;
+      pendingRoute = { r, gen: ++navGen, mounted: false };
+      subscribeMenu(r.rid); cache.get(r.rid);
+      tryRoute();
+    }
+    // every async continuation re-checks the generation: a stale directory / menu / adoption result never acts
+    function tryRoute() {
+      const p = pendingRoute; if (!p || p.gen !== navGen || dead) return;
+      if (p.mounted) { continueRoute(p); return; }
+      const rid = p.r.rid, st = dir.state(rid), v = dir.view(), e = cache.peek(rid);
+      // CONFIRMED absence only: tombstoned, or a fresh COMPLETE directory that does not list it; offline / 503 / partial / cold /
+      // expired eligibility / the missing endpoint are unverified ⇒ the link stays pending (and retries with every update)
+      if (st === 'gone' || (st === 'unknown' && v.verified && !v.partial && !v.pending)) { pendingRoute = null; replacePath('/'); if (!S.store) renderNow(); return; }
+      if (st === 'enterable' && e && e.body) {
+        p.mounted = true; hydrating = true;
+        let ok = false; try { ok = nav.go({ name: 'store', rid, dish: null }, saveScreen()); } finally { hydrating = false; }
+        if (!ok || !S.store || S.store.rid !== rid || p.gen !== navGen) { if (pendingRoute === p) pendingRoute = null; reflect(); return; }
+        continueRoute(p);
+      }
+    }
+    function continueRoute(p) {
+      const st = S.store; if (!st || st.rid !== p.r.rid || p.gen !== navGen) { if (pendingRoute === p) pendingRoute = null; return; }
+      const step = p.r.step;
+      if (step === 'plato') {
+        // Codex r2 NEW P2: the dish is resolved against the VERIFIED FRESH body — the staged adoption body, else the mounted one once
+        // orderable; only a presentation body so far ⇒ wait (watchMenu calls back)
+        const fresh = st.adopt || (st.ui.orderable() ? st.body : null);
+        if (!fresh) return;
+        let has = false; try { has = !!CappMenu.adaptMenu(fresh).dish(p.r.dish); } catch (_) { has = false; }
+        pendingRoute = null;
+        if (!has) { storeRoute = { step: 'store' }; reflect(); return; }
+        const cur = st.adopt && !(st.ui.lockedNow && st.ui.lockedNow()) ? adoptInto(st) : st;
+        if (cur && cur.ui) cur.ui.resumeTo('plato', p.r.dish);
+        reflect(); return;
+      }
+      pendingRoute = null;
+      if (step === 'pedido' || step === 'pago') st.ui.resumeTo(step);
+      reflect();
+    }
     // ── the shell navigation (one history owner) ──
     const nav = CappShellNav.createShellNav({ win, home: { name: 'home' },
       onShow: (entry, x) => {
-        if (entry.name === 'store') { if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); return; }
+        if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link
+        if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); reflect(); return; }
         S.tab = entry.name; dir.visit(); dir.revalidate(); loadMenus();
         renderNow(x && x.restored ? x.restored : null);
       },
@@ -331,6 +406,7 @@
 
     // a store / dish tap: in now when eligible with a menu in hand; otherwise HELD until both (or released by a tombstone / failure)
     function enter(rid, dish) {
+      cancelRoute();   // a tap is a user navigation
       if (dir.state(rid) === 'gone') return;
       S.held = { rid, dish: dish || null }; S.heldErr = false;
       { const pe = cache.peek(rid); if (pe && pe.state === 'failed') cache.get(rid); }   // frame 15: a failed menu is re-fetched before its sheet is ever shown
@@ -357,7 +433,7 @@
       if (st !== 'enterable' && v.failed && !v.pending) { S.held = null; S.heldErr = true; schedule(); }   // r3.3-F1: frame 7 for the held tap
       return false;
     }
-    dir.subscribe(() => { loadMenus(); checkHeld(); schedule(); });
+    dir.subscribe(() => { loadMenus(); checkHeld(); schedule(); tryRoute(); });
     function remember(q) { const t = String(q).trim(); if (!t) return; S.recent = [t, ...S.recent.filter((x) => x !== t)].slice(0, RECENT_MAX); writeJ(RECENT_KEY, S.recent); }
 
     // ── render: the shell screens (a mounted store owns #app) ──
@@ -396,6 +472,7 @@
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
+      reflect();
     }
     // ── the location layers ──
     let pinGen = 0, pinMap = null, pinDraft = null;
@@ -451,7 +528,7 @@
       if (a === 'clearfilters') { S.cuisine = ''; S.filters.clear(); return renderNow(); }
       if (a === 'rownext') { const row = t.closest('.hsec') && t.closest('.hsec').querySelector('.hrow'); if (row && row.scrollBy) row.scrollBy({ left: Math.round(row.clientWidth * 0.8), behavior: 'smooth' }); return; }
       if (a === 'menu-retry') { closeLayer(); if (S.held) cache.get(S.held.rid); return; }   // frame 15: the row stays held until the menu answers
-      if (a === 'menu-close') { S.held = null; closeLayer(); return renderNow(); }
+      if (a === 'menu-close') { S.held = null; cancelRoute(); closeLayer(); return renderNow(); }
       if (a === 'menus-retry') { loadMenus(); return renderNow(); }   // frame 16
       if (a === 'dir-retry') { S.heldErr = false; dir.revalidate(); return renderNow(); }
       if (a === 'recent') { S.q = t.dataset.q; return renderNow(); }
@@ -516,6 +593,13 @@
     dir.revalidate();
     loadMenus();
     if (S.ret) enter(S.ret.rid, null);
+    // D-4a §3: a payment return OWNS the boot (S.ret / S.neutral) — hydration runs only when the boot found NO return
+    booted = true;
+    if (routing && !S.ret && !S.neutral) hydrate(); else reflect();
+    // a device Back leaves the sentinel: the nav (its listener runs first) re-pushes it — inheriting the PREVIOUS entry's URL — and
+    // a blocked back renders nothing; this listener re-reflects the screen actually shown (pathname only)
+    const onPopReflect = () => { if (!dead) reflect(); };
+    if (routing && typeof win.addEventListener === 'function') win.addEventListener('popstate', onPopReflect);
     if (SU) raf(() => startAuth());   // G6: the Auth SDK after the first paint (never awaited by it)
 
     return {
@@ -523,7 +607,7 @@
       // §4c for the sign-in flow (G6): set the marker at sign-in; ONLY «Cerrar sesión y olvidar este teléfono» / deletion forgets it
       rememberAccount: (e164) => CappDeviceAccount.remember(storage, e164), forgetAccount: () => CappDeviceAccount.forget(storage),
       destroy() {
-        dead = true; unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy();
+        dead = true; unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect);
         doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('visibilitychange', onVisible); nav.destroy();
       },
     };

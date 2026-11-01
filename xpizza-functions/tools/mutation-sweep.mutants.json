@@ -23082,8 +23082,8 @@
     "slice": "perf-core",
     "label": "frame 14: the checkout handler proceeds with a sold line",
     "file": "../customer-app/capp-ui.js",
-    "from": "if (act === 'checkout') { if (!orderable || soldBlock()) return;",
-    "to": "if (act === 'checkout') { if (!orderable) return;",
+    "from": "function checkoutTap() { if (!orderable || soldBlock()) return false;",
+    "to": "function checkoutTap() { if (!orderable) return false;",
     "command": [
       "node",
       "--test",
@@ -23476,8 +23476,8 @@
     "slice": "s7a2",
     "label": "a store entered without verified eligibility",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "      if (st === 'enterable' && e && e.body) {",
-    "to": "      if (e && e.body) {",
+    "from": "      if (st === 'enterable' && e && e.body) {\n        S.held = null;",
+    "to": "      if (e && e.body) {\n        S.held = null;",
     "command": [
       "node",
       "--test",
@@ -25063,8 +25063,8 @@
     "slice": "s7a2",
     "label": "frame 15: «Cerrar» keeps the row held",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "if (a === 'menu-close') { S.held = null; closeLayer();",
-    "to": "if (a === 'menu-close') { closeLayer();",
+    "from": "if (a === 'menu-close') { S.held = null; cancelRoute(); closeLayer();",
+    "to": "if (a === 'menu-close') { cancelRoute(); closeLayer();",
     "command": [
       "node",
       "--test",
@@ -26179,6 +26179,192 @@
     ],
     "kills_with": [
       "enabled aside controls in browse-only"
+    ]
+  },
+  {
+    "id": "rt-01",
+    "slice": "route",
+    "label": "the reflection drops the search (strips return evidence)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "win.history.replaceState(win.history.state, '', path + win.location.search + win.location.hash);",
+    "to": "win.history.replaceState(win.history.state, '', path);",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-4a",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the search must survive",
+      "memory mode"
+    ]
+  },
+  {
+    "id": "rt-02",
+    "slice": "route",
+    "label": "hydration runs despite a payment return owning the boot",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "if (routing && !S.ret && !S.neutral) hydrate(); else reflect();",
+    "to": "if (routing) hydrate(); else reflect();",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-4a",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the deep-linked store was entered while a return owns the boot",
+      "the return owner handles the boot",
+      "memory mode"
+    ]
+  },
+  {
+    "id": "rt-03",
+    "slice": "route",
+    "label": "a cold /pago skips the lock check (straight to the checkout tap)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if (step === 'pago') { if (lockedNow()) { recoverLocked(); return true; }",
+    "to": "if (step === 'pago') {",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-4a",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "no checkout over a lock",
+      "never the checkout over an unreadable lock",
+      "a frozen cart",
+      "only status reads"
+    ]
+  },
+  {
+    "id": "rt-04",
+    "slice": "route",
+    "label": "unverified is treated as absent (any not-enterable store ⇒ Inicio)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "if (st === 'gone' || (st === 'unknown' && v.verified && !v.partial && !v.pending)) {",
+    "to": "if (st !== 'enterable') {",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-4a",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "unverified must keep the requested route",
+      "a cold store link must enter that store"
+    ]
+  },
+  {
+    "id": "rt-05",
+    "slice": "route",
+    "label": "a user navigation does not cancel a pending cold link",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "        if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-4a",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "a cancelled cold link entered"
+    ]
+  },
+  {
+    "id": "rt-06",
+    "slice": "route",
+    "label": "a cold dish is resolved against the mounted presentation body",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "const fresh = st.adopt || (st.ui.orderable() ? st.body : null);",
+    "to": "const fresh = st.adopt || st.body;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-4a",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "never opened on the unverified presentation body"
+    ]
+  },
+  {
+    "id": "rt-07",
+    "slice": "route",
+    "label": "a blocked device Back leaves the URL on the previous entry's path",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "    const onPopReflect = () => { if (!dead) reflect(); };",
+    "to": "    const onPopReflect = () => {};",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-4a",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "a blocked back must leave the URL on the locked screen"
+    ]
+  },
+  {
+    "id": "rt-08",
+    "slice": "route",
+    "label": "format lets an id containing '/' through (two id domains)",
+    "file": "../customer-app/capp-routes.js",
+    "from": "s !== '..' && !s.includes('/') && !BAD.test(s);",
+    "to": "s !== '..' && !BAD.test(s);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-routes.test.mjs"
+    ],
+    "kills_with": [
+      "Missing expected exception",
+      "a decoded"
+    ]
+  },
+  {
+    "id": "rt-09",
+    "slice": "route",
+    "label": "the reflection pushes history entries",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "win.history.replaceState(win.history.state, '', path + win.location.search + win.location.hash);",
+    "to": "win.history.pushState(win.history.state, '', path + win.location.search + win.location.hash);",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-4a",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "reflection must never add history entries"
+    ]
+  },
+  {
+    "id": "rt-10",
+    "slice": "route",
+    "label": "adoption tears down a LOCKED mount",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "      if (st.ui.lockedNow && st.ui.lockedNow()) return true;\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-4a",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "adoption tore down a LOCKED mount"
     ]
   }
 ]

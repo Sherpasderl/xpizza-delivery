@@ -133,9 +133,12 @@ function build({ sha, flags = [], root = ROOT, show, target = 'native', env } = 
   const styleHash = `sha256-${crypto.createHash('sha256').update(styles[0][1], 'utf8').digest('base64')}`;
   const csp = cspFor(rt, styleHash);
   const cspTag = `<meta http-equiv="Content-Security-Policy" content="${csp}">\n`;
+  // D-4a §6 (web only): the site serves the shell at nested paths (/r/{rid}/plato/{id}), so every relative reference resolves from
+  // the ROOT — <base> right after the charset, BEFORE every relative URL; native (capacitor://localhost/index.html) gets none
+  const baseTag = target === 'web' ? '<base href="/">\n' : '';
   const cs = html.match(/<meta charset="utf-8">\n/);
   if (!cs) throw new Error('shell.html has no charset <meta>');
-  html = html.slice(0, cs.index + cs[0].length) + cspTag + html.slice(cs.index + cs[0].length);
+  html = html.slice(0, cs.index + cs[0].length) + baseTag + cspTag + html.slice(cs.index + cs[0].length);
   files.set(ENTRY, Buffer.from(html, 'utf8'));
   const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'capp-native-'));
   try {
@@ -146,6 +149,8 @@ function build({ sha, flags = [], root = ROOT, show, target = 'native', env } = 
     files.set(ENTRY, Buffer.from(Stamp.injectBlock(html, Stamp.metaBlock(d, buildId, gen, env)), 'utf8'));
     // the web deployment's /version.json — stamp-version.js's exact shape, the SAME build + compat as the stamp (sherpa-client
     // compares them); generated metadata is excluded from computeBuild, so writing it never moves the build id
+    // D-4a §6: deep links serve the shell (non-forced: real files are served first)
+    if (target === 'web') files.set('_redirects', Buffer.from('/* /index.html 200\n', 'utf8'));
     if (target === 'web') files.set('version.json', Buffer.from(`${JSON.stringify({ app: d.app, deployment: d.id, build: buildId, compat: gen, commit: full.slice(0, 64) })}\n`, 'utf8'));
     const manifest = { sha: full, target, env, deployment: d.id, build: buildId, compat: gen, flags: [...flags].sort(), sdk: lock.version,
       files: Object.fromEntries([...files.keys()].sort().map((k) => [k, sha256(files.get(k))])) };
