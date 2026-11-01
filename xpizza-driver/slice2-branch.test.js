@@ -82,6 +82,11 @@ const DRV2_BLOCK = liftSpan(MY_SCRIPT, 'let drv2DoneRun', '/* ===== SLICE2:IMPOR
 // The REAL R7 nav-preference helpers (DRV2_NAV_PREF_PREFIX … drv2WriteNavPref), lifted verbatim — so the harness
 // drives the REAL server-truth/per-uid hydration, not a `() => 'Waze'` stub (Codex r1 P2-10).
 const NAV_BLOCK = liftSpan(MY_SCRIPT, 'const DRV2_NAV_PREF_PREFIX', 'let drv2DoneRun');
+// The SLICE3DEPS interlude/resumen earnings injects that drv2ShowInterlude / drv2ShowResumen (in DRV2_BLOCK) now call,
+// lifted verbatim (SLICE3:LOGIC-3, outside the SLICE2:IMPORT span). PAGOS_LIVE is the REAL const (false) in this
+// harness and there is no window.PayRate, so drv2EarnRateFor short-circuits to null and the injects no-op — exactly
+// what a normal session renders with Pagos off. Lifting the real fns (not a stub) keeps the suite's fail-closed ethos.
+const EARN_INJECT = liftFn(MY_SCRIPT, 'drv2EarnRateFor') + '\n' + liftFn(MY_SCRIPT, 'drv2InjectInterludeEarn') + '\n' + liftFn(MY_SCRIPT, 'drv2InjectResumenEarn');
 
 const escapeHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 const ICONS = Object.fromEntries(['bell', 'cash', 'check', 'close', 'nav', 'phone', 'pin', 'store', 'warn', 'whatsapp'].map((k) => [k, `<svg data-ic="${k}"></svg>`]));
@@ -308,6 +313,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     + 'let feedReady=true, cutoverLoaded=true, driverFeed=null, driverIdentityCutoverMs=null;\n'
     + NAV_BLOCK + '\n'   // REAL drv2ReadNavPref/drv2WriteNavPref (not a Waze stub) — server-truth + per-uid hydration (Codex r1 P2-10)
     + DRV2_BLOCK + '\n'
+    + EARN_INJECT + '\n'
     + 'let drv2SoloCancel = null; function drv2ClearReturnTarget(){} function drv2SessionTeardown(){} function drv2ArrivalAck(){ return false; } const DRV2_PAUSE_ENABLED = false;\n'
     + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate (reads driverState) — the resumen reuses it
     + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null,offerConnHandler=null; function readyTimeLabel(){ return ""; } function mountOfferTakeover(){} function stopOfferTakeover(){} function applyOfflineBanner(){}\n'
@@ -418,6 +424,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     // SLICE3:RESUMEN money-grade readiness (see block 1): default money-ready; a cell flips via setFeed.
     + 'let feedReady=true, cutoverLoaded=true, driverFeed=null, driverIdentityCutoverMs=null;\n'
     + DRV2_BLOCK + '\n'
+    + EARN_INJECT + '\n'
     + 'let drv2SoloCancel = null; function drv2ClearReturnTarget(){} function drv2SessionTeardown(){} function drv2ArrivalAck(){ return false; } const DRV2_PAUSE_ENABLED = false;\n'
     + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate the resumen reuses
     // REAL offer-takeover wiring so the cross-hub 2nd-order accept drives the REAL acceptSecondOrder over the mock;
