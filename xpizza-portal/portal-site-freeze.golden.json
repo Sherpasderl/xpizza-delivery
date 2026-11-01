@@ -108,8 +108,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "67ffcd530791858e83c585ace7eb573d08ef1bdcfc5e224d920854aaaac34b52",
-   "bytes": 11195
+   "sha256": "007259874002903a744f0d7dc68710edd963fc75520bd9fb80c19d5fe4c15617",
+   "bytes": 11491
   },
   "netlify.toml": {
    "sha256": "3ba308669f7d2d17d0a0048cf4c0a97f069deed22f6cad384caf0863bf49704a",
@@ -136,8 +136,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "59ab9f9cd68b60fae3b0501958b4147baa3986e30f24d656f16db7b32d0f01ad",
-   "bytes": 93316
+   "sha256": "828de49c22a9138519b8e010ff092ea9f0b53a2b79a72a0ac8953db2316c5c6f",
+   "bytes": 102840
   }
  },
  "diff_aid": {
@@ -236,6 +236,102 @@
     "#seccall",
     "background",
     "var(--card)"
+   ],
+   [
+    "",
+    "#sucmodal .callout",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    "#sucmodal .callout",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b.chipon1b",
+    "background",
+    "var(--tint)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b.chipon1b",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b.chipon1b",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    "#sucmodal .ferr1b",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    "#sucmodal .fld .lab",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    "#sucmodal .fnote",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    "#sucmodal .step .val span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    "#sucmodal .stepb",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    "#sucmodal .stepb",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    "#sucmodal .tel1b",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    "#sucmodal .tel1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    "#sucmodal .telbad1b",
+    "border-color",
+    "var(--red)"
    ],
    [
     "",
