@@ -5,6 +5,7 @@
   "xpizza-orders": {
    "tests": [
     "agotado-failopen.test.mjs",
+    "avail-identity-forms-noop.test.mjs",
     "avail-key.test.mjs",
     "cart-decoupling.test.mjs",
     "cart-extras-money.test.mjs",
@@ -68,6 +69,7 @@
     "xpizza-functions/catalog/add-product-groups.test.js",
     "xpizza-functions/catalog/add-product-io.test.js",
     "xpizza-functions/catalog/add-product.test.js",
+    "xpizza-functions/catalog/avail-identity.test.js",
     "xpizza-functions/catalog/built-candidate.test.js",
     "xpizza-functions/catalog/catalog-context.test.js",
     "xpizza-functions/catalog/catalog-edit.test.js",
@@ -472,6 +474,7 @@
   "la-musa-orders": {
    "tests": [
     "agotado-failopen.test.mjs",
+    "avail-identity-forms-noop.test.mjs",
     "avail-key.test.mjs",
     "cart-decoupling.test.mjs",
     "cart-extras-money.test.mjs",
@@ -533,6 +536,7 @@
     "xpizza-functions/catalog/add-product-groups.test.js",
     "xpizza-functions/catalog/add-product-io.test.js",
     "xpizza-functions/catalog/add-product.test.js",
+    "xpizza-functions/catalog/avail-identity.test.js",
     "xpizza-functions/catalog/built-candidate.test.js",
     "xpizza-functions/catalog/catalog-context.test.js",
     "xpizza-functions/catalog/catalog-edit.test.js",
@@ -2090,7 +2094,14 @@
    ]
   },
   "catalog/public-menu.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/avail-identity-wiring.guard.test.js",
+     "inverses": [
+      "tools/avail-identity-inverse.js"
+     ]
+    }
+   ],
    "lifts": []
   },
   "catalog/public-photos.js": {
@@ -3003,8 +3014,15 @@
   "menu-pricing.js": {
    "pins": [
     {
+     "file": "xpizza-functions/avail-identity-wiring.guard.test.js",
+     "inverses": [
+      "tools/avail-identity-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
+      "tools/avail-identity-inverse.js",
       "tools/extras-module-inverse.js",
       "tools/price-sync-inverse.js"
      ]

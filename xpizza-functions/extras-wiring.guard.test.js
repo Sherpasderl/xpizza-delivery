@@ -42,7 +42,7 @@ const baseOf = (f, at = BASE) => execFileSync('git', ['show', `${at}:xpizza-func
   // PLAN-public-menu-display landed later: its exact module inverse (proven by pmdisplay-wiring.guard) is reversed FIRST
   // (train assembly: the newer train inverse innermost, then main's price-sync, then extras)
   const { unapplyPmdisplayModule } = require('./tools/pmdisplay-module-inverse');
-  const pmdRead = (f) => unapplyPmdisplayModule(f, read(f));
+  const pmdRead = (f) => unapplyPmdisplayModule(f, require('./tools/avail-identity-inverse').unapplyAvailIdentity(f, read(f)));   // PLAN-avail-identity: its inverse INNERMOST (newest)
   for (const f of FILES) assert.strictEqual(unapplyExtrasModule(f, unapplyPriceSync(f, pmdRead(f))), baseOf(f), `🔴 ${f} minus the pmdisplay, price-sync and extras hunks is not ${BASE}:${f}`);
   const f = 'catalog/source-store.js'; const src = pmdRead(f);
   const h = HUNKS.find((x) => x.file === f && x.now.includes('deny_extras'));

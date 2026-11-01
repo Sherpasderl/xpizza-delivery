@@ -30,7 +30,7 @@ const { getRestaurantMenu } = require('./catalog-menu');
 const { generateFormBundle } = require('./generate-form-bundle');
 const { canonicalJson } = require('./canonical-json');
 const { applyIdentityToServedBody } = require('./identity-overlay');
-const { photosFor } = require('./public-photos');
+const { photosFor } = require('./public-photos'); const { availIdentityField } = require('../menu-pricing');
 
 // Bumped whenever THIS module's projection changes — a field added, a shape altered, a generator
 // change that moves the bundle. It is inside the etag, so a redeploy that changes the body also
@@ -41,7 +41,7 @@ const { photosFor } = require('./public-photos');
    change that is supposed to be additive-and-immediate would instead be invisible for a TTL. */
 /* PLAN-public-menu-display r2 (D3 RULED): bumped because the served body can now carry `photos`. The forms keep their own
    '1d.1' marker (they stay byte-identical) and log menu_representation_changed on a mismatch — a console warning only. */
-const REPRESENTATION_VERSION = '1d.2';
+const REPRESENTATION_VERSION = '1d.3';   /* PLAN-avail-identity r1: bumped — the served body now carries avail_identity */
 
 // EVERY field this endpoint serves, and what has to be true of it. One table, because the list of
 // what may appear and the rules for what must appear are the same fact — kept apart they drift, and
@@ -76,7 +76,7 @@ const BODY_CONTRACT = Object.freeze({
   extras_eligibility: { type: 'object', fromSource: (menu) => menu.eligibility != null },
   // PLAN-public-menu-display r2 T2: absolute dish photo URLs, { [String(dish.id)]: { card, hero } }. Declared but NEVER
   // required — a decoration omitted on any trouble (catalog/public-photos.js), so its absence is not a half-menu.
-  photos: { type: 'object' },
+  photos: { type: 'object' }, avail_identity: { required: true, type: 'object' },   // PLAN-avail-identity r1: { field } — the restaurant's availability identity, from the server's ONE rule
 });
 const PUBLIC_MENU_BODY_FIELDS = Object.freeze(Object.keys(BODY_CONTRACT));
 
@@ -191,7 +191,7 @@ async function buildPublicMenu(db, rid, deps = {}) {
     for (const f of CARRIED_FROM_STRUCTURE) {
       if (menu.structure[f] !== undefined) body[f] = menu.structure[f];
     }
-    if (menu.eligibility) body.extras_eligibility = menu.eligibility;
+    if (menu.eligibility) body.extras_eligibility = menu.eligibility; body.avail_identity = { field: availIdentityField(restaurantId) };   // the NORMALIZED rid (codex P1)
   } catch (e) {
     fail('public_menu_unavailable', `${restaurantId}: the live catalog does not project to a servable menu — ${String((e && e.message) || e).slice(0, 160)}`);
   }
