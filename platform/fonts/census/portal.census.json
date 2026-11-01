@@ -1,7 +1,7 @@
 {
  "plan": "PLAN-portal-fonts r1.1 §4",
  "harness": "portal-fonts.cdp.mjs",
- "runAt": "5f4f20ff1adef766a061b02a070e4c26cc0df51e",
+ "runAt": "3c2a581d79889a8e0877f38247f4bee31a82391e",
  "repeats": 3,
  "repeatsAgree": true,
  "view": 1280,
@@ -954,7 +954,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -1660,7 +1660,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -2421,7 +2421,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -3270,7 +3270,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -4053,7 +4053,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -4836,7 +4836,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -5344,7 +5344,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -5918,7 +5918,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -6089,7 +6089,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 67
+      "cps": 164
      }
     ]
    },
@@ -6122,7 +6122,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 5
+      "cps": 4
      }
     ]
    },
@@ -6232,7 +6232,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 5
+      "cps": 4
      }
     ]
    },
@@ -6342,7 +6342,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 5
+      "cps": 4
      }
     ]
    },
@@ -6420,6 +6420,83 @@
      {
       "font": "Helvetica Neue",
       "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewsuc>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewsuc>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 43
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewsuc>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 34
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewsuc>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 34
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewsuc>div>b",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewsuc>div>b",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewsuc>div>b",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 8
      }
     ]
    },
@@ -6514,7 +6591,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -6723,6 +6800,28 @@
     ]
    },
    {
+    "path": ">html>body>div#app>main#viewsuc>div>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 31
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewsuc>div>div>b",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 33
+     }
+    ]
+   },
+   {
     "path": ">html>body>div#app>main#viewsuc>div>div>h3",
     "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
     "weight": "800",
@@ -6730,17 +6829,6 @@
      {
       "font": "Archivo SemiBold",
       "cps": 5
-     }
-    ]
-   },
-   {
-    "path": ">html>body>div#app>main#viewsuc>div>div>h3>span",
-    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
-    "weight": "600",
-    "runs": [
-     {
-      "font": "Helvetica Neue",
-      "cps": 11
      }
     ]
    },
@@ -6767,6 +6855,17 @@
     ]
    },
    {
+    "path": ">html>body>div#app>main#viewsuc>div>div>div>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 31
+     }
+    ]
+   },
+   {
     "path": ">html>body>div#app>main#viewsuc>div>div>h3",
     "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
     "weight": "800",
@@ -6784,7 +6883,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 11
+      "cps": 17
      }
     ]
    },
@@ -6800,6 +6899,50 @@
     ]
    },
    {
+    "path": ">html>body>div#app>main#viewsuc>div>div>div>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewsuc>div>div>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 38
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewsuc>div>div>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewsuc>div>div>span>b",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 18
+     }
+    ]
+   },
+   {
     "path": ">html>body>div#app>main#viewsuc>div>div>h3",
     "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
     "weight": "800",
@@ -6817,7 +6960,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 11
+      "cps": 29
      }
     ]
    },
@@ -6839,7 +6982,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 7
+      "cps": 10
      }
     ]
    },
@@ -6861,7 +7004,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 7
+      "cps": 10
      }
     ]
    },
@@ -6883,7 +7026,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 7
+      "cps": 10
      }
     ]
    },
@@ -6905,7 +7048,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 7
+      "cps": 10
      }
     ]
    },
@@ -6927,7 +7070,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 7
+      "cps": 10
      }
     ]
    },
@@ -6949,7 +7092,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 7
+      "cps": 10
      }
     ]
    },
@@ -6971,7 +7114,29 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 7
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewsuc>div>div>div>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewsuc>div>div>div>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 18
      }
     ]
    },
@@ -6982,7 +7147,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 111
+      "cps": 155
      }
     ]
    },
@@ -7021,23 +7186,12 @@
    },
    {
     "path": ">html>body>div#app>main#viewsuc>div>div>div>div>div",
-    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
-    "weight": "800",
-    "runs": [
-     {
-      "font": "Archivo SemiBold",
-      "cps": 2
-     }
-    ]
-   },
-   {
-    "path": ">html>body>div#app>main#viewsuc>div>div>div>div>div>span",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
-    "weight": "600",
+    "weight": "700",
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 3
+      "cps": 5
      }
     ]
    },
@@ -7103,7 +7257,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 12
+      "cps": 1
      }
     ]
    },
@@ -7191,7 +7345,7 @@
     "runs": [
      {
       "font": "Helvetica Neue",
-      "cps": 1
+      "cps": 49
      }
     ]
    },
@@ -7286,7 +7440,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -7838,7 +7992,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -8401,7 +8555,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -9041,7 +9195,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -11067,7 +11221,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -11685,7 +11839,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -12512,7 +12666,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -13295,7 +13449,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -14012,7 +14166,7 @@
     ]
    },
    {
-    "path": ">html>body>div#app>aside>div",
+    "path": ">html>body>div#app>aside>div#navmenulabel",
     "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "750",
     "runs": [
@@ -14613,6 +14767,921 @@
      {
       "font": "Helvetica Neue",
       "cps": 7
+     }
+    ]
+   }
+  ],
+  "P-crop": [
+   {
+    "path": ">html>body>div#app>aside>div>div",
+    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Archivo SemiBold",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>div",
+    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Archivo SemiBold",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>button#switcher>div>b#shopname",
+    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Archivo SemiBold",
+      "cps": 16
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>button#switcher>div>span#shopsub",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 18
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#scopewrap>button#scopebtn>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 18
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#scopewrap>button#scopebtn>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": ".SF NS",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#navmenulabel",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navprod",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#navopslabel",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navsuc>span#navsuctext",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navsuc>span#navsuccount",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navpausas>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 13
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navequipos>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navequipos>span#navequiposcount",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#navbiz",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navventas",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>div#avatar",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>div>b#whoami",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 18
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>div>span#whorole",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 5
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div>h1",
+    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Archivo SemiBold",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div>p#menulede",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 28
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div#availstrip>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 13
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div#availstrip>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div#availstrip>button>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div#availstrip>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div#availstrip>button>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div#availstrip>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div#availstrip>button>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#rail>button>div>b",
+    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Archivo SemiBold",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#rail>button>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#rail>button>div>b",
+    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Archivo SemiBold",
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#rail>button>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#rail>button>div>b",
+    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Archivo SemiBold",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#rail>button>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div",
+    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Archivo SemiBold",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 13
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>span>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 94
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div",
+    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Archivo SemiBold",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 13
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>input>div",
+    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Archivo SemiBold",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div",
+    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Archivo SemiBold",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 32
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>input>div",
+    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Archivo SemiBold",
+      "cps": 3
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div",
+    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Archivo SemiBold",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 20
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>input>div",
+    "family": "Archivo, \"Archivo Fallback\", \"Archivo Fallback Roboto\", Söhne, \"Helvetica Neue\", system-ui, sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Archivo SemiBold",
+      "cps": 3
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div>div>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main#viewmenu>div>div#detail>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>div#sucbar>div>button#sucdiscard",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>div#sucbar>div>button#sucsave",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>div#rbar>span#rbtxt",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 26
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>div#rbar>div>button#review",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 16
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div>label",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 12
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 14
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 86
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div>div>span",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div>label",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 26
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div>div>div>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div>div>div>div>div>div",
+    "family": "\"DM Sans\", system-ui, sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": ".SF NS",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div>div>div>div>div>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 20
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div>div>div>div>div>div",
+    "family": "\"DM Sans\", system-ui, sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": ".SF NS",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div>div>div>div",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 13
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div>div>div>div>div>div",
+    "family": "\"Playfair Display\", Georgia, serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Georgia",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>div>div>div>div>div>div",
+    "family": "\"DM Sans\", system-ui, sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": ".SF NS",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside#drawer>div>button",
+    "family": "Söhne, \"Helvetica Neue\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Helvetica Neue",
+      "cps": 5
      }
     ]
    }
