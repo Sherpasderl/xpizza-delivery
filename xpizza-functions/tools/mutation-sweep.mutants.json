@@ -25553,5 +25553,22 @@
     "kills_with": [
       "SU-endpoints"
     ]
+  },
+  {
+    "id": "g7-17",
+    "slice": "g7",
+    "label": "a transport call bypasses ENDPOINTS (setPromos posts to a literal URL)",
+    "file": "../customer-app/capp-signup-api.js",
+    "from": "const r = await call(E.setPromos, { idToken,",
+    "to": "const r = await call('https://outside.test/setPromos', { idToken,",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=runtime.signup endpoints",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "SU-endpoints"
+    ]
   }
 ]

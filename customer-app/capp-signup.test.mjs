@@ -310,10 +310,36 @@ test('Part B (b): a device marker\'s full E.164 pre-fills ITS country; without i
   assert.equal(off.q('.phonerow button.cc'), null); assert.equal(off.q('.phonerow span.cc').textContent, '+504');
 });
 
-test('runtime.signup endpoints: ENDPOINTS is the ONE source — every call in the transport uses a key in it, and every key is called (G7 setPromos included)', () => {
-  const { ENDPOINTS } = require('./capp-signup-api.js');
+// Codex G7 r1 #6: EVERY transport call site — its first argument must be E.<a listed key> (or the template that wraps exactly one);
+// a literal URL, a computed E[...] or an unlisted key is a violation. The rule is a function so its negative controls run too.
+function endpointViolations(src, listed) {
+  const bad = [], called = new Set();
+  if (/\bE\s*\[/.test(src)) bad.push('computed E[...]');
+  for (const m of src.matchAll(/\bcall\(/g)) {
+    if (/function\s+$/.test(src.slice(Math.max(0, m.index - 9), m.index))) continue;   // the definition itself
+    const arg = src.slice(m.index + 5).match(/^\s*(?:`\$\{E\.([A-Za-z]+)\}[^`]*`|E\.([A-Za-z]+))\s*[,)]/);
+    const k = arg && (arg[1] || arg[2]);
+    if (!k) bad.push('call(' + src.slice(m.index + 5, m.index + 45).split('\n')[0]); else if (!listed.includes(k)) bad.push('unlisted E.' + k); else called.add(k);
+  }
+  for (const k of listed) if (!called.has(k)) bad.push('never called: ' + k);
+  return bad;
+}
+test('runtime.signup endpoints: ENDPOINTS is the ONE source — every transport call site sends to an E.<listed key>, every key is called (G7 setPromos included); bypasses FAIL the guard', async () => {
+  const { ENDPOINTS, createSignupApi } = require('./capp-signup-api.js');
   const src = readFileSync(join(HERE, 'capp-signup-api.js'), 'utf8');
-  const used = [...new Set([...src.matchAll(/\bE\.([A-Za-z]+)/g)].map((m) => m[1]))].sort();
-  assert.deepEqual(used, [...ENDPOINTS].sort(), '🔴 SU-endpoints: the calls and the endpoint set agree');
+  assert.deepEqual(endpointViolations(src, ENDPOINTS), [], '🔴 SU-endpoints: every call site uses a listed endpoint');
   assert.ok(ENDPOINTS.includes('setPromos'));
+  // negative controls: the guard SEES a bypass (a literal URL, a computed key, an unlisted key)
+  const inject = (line) => src.replace('return {\n      CONTEXT,', `async function bypass() { return ${line}; }\n    return {\n      CONTEXT,`);
+  assert.notEqual(inject('x'), src, 'premise: the injection point exists');
+  assert.ok(endpointViolations(inject("call('https://outside.test')"), ENDPOINTS).length > 0, 'control: a literal URL fails the guard');
+  assert.ok(endpointViolations(inject("call(E['unlisted'])"), ENDPOINTS).length > 0, 'control: a computed key fails the guard');
+  assert.ok(endpointViolations(inject('call(E.unlisted)'), ENDPOINTS).length > 0, 'control: an unlisted key fails the guard');
+  // runtime: every method, driven against a recording fetch, requests ONLY the listed endpoints
+  const seen = [], EP = Object.fromEntries(ENDPOINTS.map((k) => [k, 'https://ep.test/' + k]));
+  const a = createSignupApi({ endpoints: EP, fetch: async (u) => { seen.push(String(u).split('?')[0]); return { status: 200, json: async () => ({ ok: true }) }; } });
+  await a.config(); await a.requestOtp({ phone: '+50496123344' }); await a.verifyOtp({ phone: '+50496123344', code: '123456' }); await a.googleStart({ sessionId: 's' });
+  await a.googleSignIn({ sessionId: 's', idToken: 't' }); await a.completeProfile({ idToken: 't', email: 'a@b.test', name: 'A', promos: true }); await a.setPromos({ idToken: 't', value: true });
+  await a.redeemSignupGrant({ grant: 'g', email: 'a@b.test', name: 'A', promos: false });
+  assert.deepEqual([...new Set(seen)].sort(), Object.values(EP).sort(), '🔴 SU-endpoints: the requests are exactly the listed endpoints');
 });
