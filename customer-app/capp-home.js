@@ -195,7 +195,7 @@
 
   // ── INICIO ──
   function rcardHtml(r, vm) {
-    const now = vm.now, auth = vm.auth, open = !r.gone && isOpen(r.cfg, now);
+    const now = vm.now, auth = vm.promoAuth, open = !r.gone && isOpen(r.cfg, now);   // the promo's ADMITTED identity (the shell's)
     // the guest-only pill is reserved (hidden) while auth is unresolved, so its line never appears under a finger
     const deal = promoOn(r) && auth !== 'member' ? `<span class="pill deal"${auth === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true"'}>Envío gratis con tu cuenta</span>` : '';
     const pills = open ? [isValue(r, vm.platform) ? '<span class="pill value">Buen precio</span>' : '', deal].filter(Boolean).join('') : '';
@@ -213,10 +213,10 @@
     const open = !r.gone && isOpen(r.cfg, vm.now), pickup = vm.filters.has('pickup');
     const eta = open ? (pickup ? (r.etaPick ? `Listo en ≈ ${r.etaPick[1]} min` : '') : (r.etaDel ? `${r.etaDel[0]}–${r.etaDel[1]} min` : '')) : '';
     // a store with no drawable fee keeps its line box (a zero-width space), so a fee that arrives later never grows the card
-    const fee = feeHtml(r, vm.auth);
+    const fee = feeHtml(r, vm.promoAuth);
     const line = open ? `<span>${fee || '​'}</span>` : `<span>Cerrado · ${esc(opensText(r.cfg, vm.now))}</span>`;
     const pills = [isValue(r, vm.platform) ? '<span class="pill value">Buen precio</span>' : '', !open && vm.schedulingLive && !r.gone && hasSlot(r.cfg, vm.now) ? '<span class="pill sched">Programar pedido</span>' : ''].filter(Boolean).join('');
-    const deal = promoOn(r) && vm.auth === 'guest' ? '<span class="tag-deal">Envío gratis con tu cuenta</span>' : '';
+    const deal = promoOn(r) && vm.promoAuth === 'guest' ? '<span class="tag-deal">Envío gratis con tu cuenta</span>' : '';
     return `<div class="scard${open ? '' : ' closed'}${rowCls(r)}"><button class="ph" data-act="open-store" data-rid="${esc(r.id)}" aria-label="${esc(r.name)}${open ? '' : ', cerrado'}"${rowAttrs(r)}>${heroImg(r, true)}${deal}${logoChip(r, 'logo')}</button>
       <button class="rt" data-act="open-store" data-rid="${esc(r.id)}"${rowAttrs(r)}><span class="nm">${esc(r.name)}</span>${eta ? `<span class="eta">${eta}</span>` : ''}</button><div class="ln">${line}</div>${pills ? `<div class="pills">${pills}</div>` : ''}</div>`;
   }
@@ -244,7 +244,7 @@
     if (vm.outOfZone) return page(emptyHtml('pin', 'Ningún restaurante entrega en esta dirección', 'Probá otra dirección o recogé en tienda.', ['addr', 'Cambiar dirección']));   // frame 4
     const live = all.filter((r) => !r.gone);
     const cuisine = vm.cuisine || '', F = vm.filters;
-    const vis = all.filter((r) => (!cuisine || r.cuisines.includes(cuisine)) && (!F.has('open') || (!r.gone && isOpen(r.cfg, vm.now))) && (!F.has('free') || feeFree(r, vm.auth))
+    const vis = all.filter((r) => (!cuisine || r.cuisines.includes(cuisine)) && (!F.has('open') || (!r.gone && isOpen(r.cfg, vm.now))) && (!F.has('free') || feeFree(r, vm.promoAuth))
       && (!F.has('pickup') || r.pickup) && (!F.has('fast') || (r.etaDel && r.etaDel[0] <= 30)));
     const notes = [];
     if (vm.partial) notes.push(`<div class="closednote hnote">${IC.info}<span>Algunos restaurantes no cargaron.</span><button class="lnk" data-act="dir-retry">Reintentar</button></div>`);   // frame 9
@@ -252,7 +252,7 @@
     const tax = vm.platform && Array.isArray(vm.platform.cuisines) ? vm.platform.cuisines : [];
     const cuisineIds = tax.filter((x) => CUIS[x.id] && live.some((r) => r.cuisines.includes(x.id)));
     const cuisRow = cuisineIds.length ? `<div class="cuisrow" role="group" aria-label="Tipo de comida"><button class="cuis" aria-pressed="${!cuisine}" data-act="cuisine" data-val="">${CUIS.todo.icon}<span>Todo</span></button>${cuisineIds.map((x) => `<button class="cuis" aria-pressed="${cuisine === x.id}" data-act="cuisine" data-val="${esc(x.id)}">${CUIS[x.id].icon}<span>${esc(x.label)}</span></button>`).join('')}</div>` : '';
-    const chips = [['open', 'Abierto ahora', IC.store, live.some((r) => isOpen(r.cfg, vm.now))], ['free', 'Envío gratis', IC.bike, live.some((r) => feeFree(r, vm.auth))],
+    const chips = [['open', 'Abierto ahora', IC.store, live.some((r) => isOpen(r.cfg, vm.now))], ['free', 'Envío gratis', IC.bike, live.some((r) => feeFree(r, vm.promoAuth))],
       ['pickup', 'Pickup', IC.bag, live.some((r) => r.pickup && r.etaPick)], ['fast', 'Menos de 30 min', IC.clock, live.some((r) => r.etaDel && r.etaDel[0] <= 30)]].filter((x) => x[3]);   // only chips the data supports
     const fchips = chips.length ? `<div class="fchips" role="group" aria-label="Filtros">${chips.map(([k, l, ic]) => `<button class="fchip" aria-pressed="${F.has(k)}" data-act="filter" data-val="${k}">${ic}${l}</button>`).join('')}</div>` : '';
     const open = (r) => !r.gone && isOpen(r.cfg, vm.now);

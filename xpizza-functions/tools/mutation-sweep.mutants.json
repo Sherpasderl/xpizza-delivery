@@ -26564,12 +26564,12 @@
       "--test",
       "--test-timeout=120000",
       "--test-name-pattern=store promo",
-      "../customer-app/capp-s7a2.test.mjs"
+      "../customer-app/capp-ui.test.mjs"
     ],
     "kills_with": [
-      "«Envío gratis» from a session the checkout does not admit",
-      "a raw session the checkout does not admit gets no «Envío gratis»"
-    ]
+      "«Envío gratis» from an unadmitted session"
+    ],
+    "repointed": "advisor home ruling: the shell's getter became the admitted one (admittedAuth), so the module's own guard is killed by a direct CappUI host cell"
   },
   {
     "id": "pf-07",
@@ -26606,6 +26606,24 @@
     "kills_with": [
       "the scroll was reset when the member arrived",
       "the real auth callback re-rendered the store"
+    ]
+  },
+  {
+    "id": "pf-09",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo (advisor home ruling): Inicio's promo reads the RAW session (an unadmitted session gets «Envío gratis» on the home cards)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "promoAuth: admittedAuth(),",
+    "to": "promoAuth: authNow(),",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=home promo",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "«Envío gratis» on Inicio for a session the checkout does not admit"
     ]
   }
 ]

@@ -35,7 +35,7 @@ function boot(rid, extra = {}) {
   const w = dom.window;
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const events = [];
-  const ui = w.CappUI.mount(w.document, { envelope: extra.envelope || PROV[rid].envelope, config: { ...CONFIG[rid], ...(extra.config || {}) }, now: NOON, unavailable: extra.unavailable, onEvent: (n, d) => events.push([n, d]) });
+  const ui = w.CappUI.mount(w.document, { envelope: extra.envelope || PROV[rid].envelope, config: { ...CONFIG[rid], ...(extra.config || {}) }, now: NOON, unavailable: extra.unavailable, onEvent: (n, d) => events.push([n, d]), ...(extra.mount || {}) });
   const q = (sel) => w.document.querySelector(sel); const qa = (sel) => [...w.document.querySelectorAll(sel)];
   const click = (sel) => { const el = typeof sel === 'string' ? q(sel) : sel; assert.ok(el, `premise: ${sel} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   // the visible text: every text node, trimmed, joined by one space (spans are spaced by CSS, not by literal spaces)
@@ -2704,4 +2704,15 @@ test('Codex G7 r3: an unresolved ASAP cash send, its error closed — back on th
   if (b.q('#layer [data-act="placing-go"]')) await b.click('#layer [data-act="placing-go"]');
   assert.equal(b.srv.of('createOrder').length, 2, '🔴 R3-asap: the retry SENDS');
   assert.deepEqual(b.srv.of('createOrder')[1].body, b.srv.of('createOrder')[0].body, 'the exact recorded bytes');
+});
+
+// PLAN-capp-store-promo-feeinfo / Codex promo r1 #1 — the MODULE's own rule, for ANY host of CappUI (not only the shell, whose getter is
+// already the admitted one): a host saying «member» with no admitted identity (opts.member / setMember) claims nothing
+test('store promo (CappUI host): a raw «member» authState with nothing admitted ⇒ no «Envío gratis», the pill reserved; an admitted member ⇒ «Envío gratis»', () => {
+  const cfg = { feeFromCents: 4500, zoneKm: 7, promoFree: true };
+  const raw = boot('x_pizza', { config: cfg, mount: { authState: () => 'member' } });
+  assert.equal(raw.q('.info .facts .free'), null, `🔴 store promo (host): «Envío gratis» from an unadmitted session: ${raw.text('.info .facts')}`);
+  assert.equal(raw.q('.info .pill.deal').getAttribute('aria-hidden'), 'true', 'not admitted ⇒ reserved');
+  const adm = boot('x_pizza', { config: cfg, mount: { authState: () => 'member', member: { uid: 'u_1', name: 'Ana', phone: '99990000', email: '' } } });
+  assert.ok(adm.q('.info .facts .free'), '🔴 store promo (host): the admitted member\'s «Envío gratis»'); assert.equal(adm.q('.info .pill.deal'), null);
 });

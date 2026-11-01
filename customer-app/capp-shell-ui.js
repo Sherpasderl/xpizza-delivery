@@ -65,6 +65,10 @@
     const authNow = () => { try { return auth ? auth.state() : 'unresolved'; } catch (_) { return 'unresolved'; } };
     // PLAN-capp-store-promo-feeinfo r0: a MOUNTED store reads the same tri-state (its header's promo pill / «Envío gratis») and is
     // told when it changes — the shell's own repaint never reaches a store's #app
+    // the ADMITTED identity's tri-state (Codex promo r1 #1 + the advisor's home ruling): 'member' only once S.member is applied — the
+    // identity the checkout sends with — never the raw session; a session not (yet) admitted claims nothing. ONE rule: Inicio's promo
+    // (vm.promoAuth) and a mounted store's header (its authState) both read it
+    const admittedAuth = () => (S.member ? 'member' : authNow() === 'guest' ? 'guest' : 'unresolved');
     const storeAuth = () => { if (S.store && typeof S.store.ui.authChanged === 'function') S.store.ui.authChanged(); };
     const emit = (name, detail) => { try { (o.onEvent || (() => {}))(name, detail); } catch (_) {} };
     const $ = (id) => doc.getElementById(id);
@@ -156,7 +160,7 @@
       // a mount NEVER reads location.search itself: only the store that OWNS a hosted-checkout return gets it, once
       const ret = S.ret && S.ret.rid === entry.rid && !freshBody ? S.ret : null; if (ret) S.ret = null;
       const ui = CappUI.mount(doc, { ...uo, ...(view ? { view } : {}),
-        onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: authNow, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
+        onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
         onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
@@ -454,7 +458,7 @@
         return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid };
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
-      return { phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), cuisine: S.cuisine, filters: S.filters,
+      return { phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
         schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }, locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)

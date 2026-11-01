@@ -132,7 +132,7 @@ function rowsOf(body, menus = { x_pizza: 'fresh', la_musa: 'fresh' }) {
   });
 }
 const VM = (over = {}) => ({ phase: 'ready', partial: false, rows: rowsOf(SC.complete.body), platform: SC.complete.body.platform, now: new Date(T0), auth: 'guest', cuisine: '', filters: new Set(),
-  schedulingLive: false, outOfZone: false, tab: 'home', cartN: 0, q: '', recent: [], ...over });
+  schedulingLive: false, outOfZone: false, tab: 'home', cartN: 0, q: '', recent: [], ...over, promoAuth: over.promoAuth || over.auth || 'guest' });   // the shell's admitted tri-state (= auth in these pure cells)
 const dom = (html) => new JSDOM(`<div id="x">${html}</div>`).window.document;
 // the visible text: every text node, trimmed, joined by one space (spans are spaced by CSS, not by literal spaces)
 const txt = (el) => { if (!el) return null; const tw = el.ownerDocument.createTreeWalker(el, 4); const out = []; for (let n = tw.nextNode(); n; n = tw.nextNode()) { const t = n.nodeValue.replace(/\s+/g, ' ').trim(); if (t) out.push(t); } return out.join(' '); };
@@ -1657,4 +1657,29 @@ test('store promo r1 #2: an ADMITTED member arriving (a restored complete sessio
   assert.equal(R.S.q('.info .pill.deal'), null);
   assert.equal(R.S.q('#scroller').scrollTop, 250, '🔴 store promo r1: the scroll was reset when the member arrived');
   assert.equal(R.S.w.document.activeElement && R.S.w.document.activeElement.dataset.val, 'pickup', '🔴 store promo r1: focus was lost when the member arrived');
+});
+
+// advisor ruling (promo r1 follow-up): HOME follows the same ADMITTED identity — no «Envío gratis» unless the checkout would send as
+// that member. Through the REAL Firebase callback path
+async function realAuthHome({ persisted = null, failSignOut = 0, complete = null, prof = null } = {}) {
+  const fb = fakeFirebase({ persisted, failSignOut });
+  const st = memStorage({ ...(complete ? { 'capp:member_complete': JSON.stringify({ v: 1, uid: complete }) } : {}), ...(prof ? { 'capp:member_profile': JSON.stringify(prof) } : {}) });
+  const S = bootShell({ auth: 'unresolved', storage: st, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  await flush(); await flush(); await flush();
+  assert.ok(S.q('.rlist .rcard[data-rid="x_pizza"]'), 'premise: Inicio with the x_pizza card');
+  return { S, fb };
+}
+test('home promo: an INCOMPLETE restored account whose sign-out is rejected — not admitted ⇒ no «Envío gratis» on the home cards, the guest pill reserved', async () => {
+  const { S, fb } = await realAuthHome({ persisted: 'u_inc', failSignOut: 9 });
+  assert.ok(fb.calls.out >= 1, 'premise: the sign-out was tried (and rejected)'); assert.equal(S.ui.state.member ?? null, null, 'premise: not admitted');
+  assert.equal(S.q('#app .free'), null, `🔴 home promo: «Envío gratis» on Inicio for a session the checkout does not admit: ${txt(S.q('.rlist .rcard[data-rid="x_pizza"]'))}`);
+  const pill = S.q('.rlist .rcard[data-rid="x_pizza"] .pill.deal');
+  assert.ok(pill && pill.getAttribute('aria-hidden') === 'true', '🔴 home promo: not admitted ⇒ the guest pill stays reserved');
+});
+test('home promo: an ADMITTED member (a restored complete session) ⇒ «Envío gratis» on the promo store\'s card, no guest pill', async () => {
+  const { S } = await realAuthHome({ persisted: 'u_ana', complete: 'u_ana', prof: { v: 1, uid: 'u_ana', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com' } });
+  assert.ok(S.ui.state.member && S.ui.state.member.uid === 'u_ana', 'premise: admitted');
+  const card = S.q('.rlist .rcard[data-rid="x_pizza"]');
+  assert.ok(card.querySelector('.free') && card.querySelector('.free').textContent === 'Envío gratis', `🔴 home promo: the admitted member's «Envío gratis»: ${txt(card)}`);
+  assert.equal(card.querySelector('.pill.deal'), null);
 });
