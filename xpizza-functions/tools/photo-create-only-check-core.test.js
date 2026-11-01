@@ -239,6 +239,7 @@ const run = (b) => runCheck({ store: b.store, gens: b.gens, randomHex: () => HEX
     assert.strictEqual(r.verdict, 'FAIL', 'E5CLI-VERSIONING-UNKNOWN-STILL-FAILS-NEW-BYTES');
     b = pinBucket({ mode: 'unversioned', versioning: false, sameGen: true }); r = await pin(b);
     assert.deepStrictEqual([r.verdict, r.exitCode], ['FAIL', 1], `E5CLI-OVERWRITE-SAME-GENERATION-FAILS ${JSON.stringify(r)}`);
+    assert.ok(/kept the generation/.test(r.reason) && r.outcome === null && !b.calls.some((c) => c[0] === 'download'), `E5CLI-OVERWRITE-SAME-GENERATION-NO-READ (refused before any pinned read) ${JSON.stringify(r)}`);
     b = pinBucket({ mode: 'unversioned', versioning: false, preexisting: true }); r = await pin(b);
     assert.deepStrictEqual([r.verdict, r.exitCode], ['REFUSED', 2], 'E5CLI-PREEXISTING-REFUSED');
     assert.ok(!b.calls.length, 'E5CLI-PREEXISTING-NOTHING-TOUCHED');
