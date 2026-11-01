@@ -271,13 +271,32 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
     const before = JSON.stringify(db.tree);
     let r = await M.repair({ rtdb: db });
     assert.ok(r.dryRun); assert.deepStrictEqual(r.uids, [Rv], 'ONLY the revived account (profile present, no claim, last_login > deleted_at)');
+    assert.deepStrictEqual(r.withDeletedUids, [Rv], 'the dry run LISTS revived accounts that still carry deleted_uids (the owner handles them manually)');
     assert.strictEqual(JSON.stringify(db.tree), before, 'DRY RUN writes nothing');
     r = await M.repair({ rtdb: db, apply: true });
-    assert.deepStrictEqual([r.cleared, db.get(`user_private/${Rv}`), db.get(`deleted_uids/${Rv}`)], [1, undefined, undefined], '--apply clears BOTH stale tombstones of the revived account');
+    assert.deepStrictEqual([r.cleared, db.get(`user_private/${Rv}`)], [1, undefined], '--apply clears the STALE user_private.deleted_at');
+    assert.strictEqual(db.get(`deleted_uids/${Rv}`), 7, '🔴 Codex r2 P1 (ruling): deleted_uids is NEVER cleared by the migration — the untouched source of truth');
     assert.deepStrictEqual([db.get(`deleted_uids/${Dd}`), db.get(`user_private/${Cl}/deleted_at`), db.get(`user_private/${Od}/deleted_at`)], [8, 9, 50], 'deleted / claimed / no-later-activity untouched');
     assert.deepStrictEqual((await M.repair({ rtdb: db })).uids, [], 'idempotent');
   }
-  ok('migration repair-revived-tombstones: dry run (default) lists ONLY revived accounts and writes nothing; --apply clears their stale tombstones; deleted / claimed / inactive accounts untouched; idempotent');
+  {
+    // Codex r2 P1: repair READS → a sweep RE-DELETES the account → repair APPLIES — the authoritative tombstone survives, the uid is
+    // never reusable (worst case: the sweep lands after the apply-time profile re-check, right before the user_private txn)
+    const M = require('./tools/repair-revived-tombstones');
+    const db = fakeDb(); const Rv = 'u_' + '7'.repeat(24), PHr = 'ph_rv';
+    db.set(`user_private/${Rv}`, { deleted_at: 7 }); db.set(`deleted_uids/${Rv}`, 7);
+    db.set(`user_profiles/${Rv}`, { phone: '1', phone_hash: PHr, created_at: 1, last_login: 900 }); db.set(`phone_index/${PHr}`, Rv);
+    const real = db.ref; let fired = false;
+    db.ref = (p) => { const r = real(p); if (p === `user_private/${Rv}` && !fired) { const t = r.transaction; r.transaction = async (fn) => { fired = true; await SE.deleteAccountCore(db, ACCOUNT, { uid: Rv, phoneHash: PHr, now: 5000, sweepCutoff: 1000, revoke: recorder() }); return t(fn); }; } return r; };
+    const r = await M.repair({ rtdb: db, apply: true });
+    db.ref = real;
+    assert.ok(fired, 'premise: the sweep re-deleted between the re-check and the apply');
+    assert.strictEqual(db.get(`deleted_uids/${Rv}`), 7, '🔴 the AUTHORITATIVE tombstone survives the race');
+    assert.strictEqual(db.get(`user_profiles/${Rv}`), undefined, 'the sweep removed the profile');
+    assert.notStrictEqual(await SE.loginUid(db, { pHash: PHr, uid: Rv, now: 6000, newUid: newUids(F1) }), Rv, '🔴 the uid is NOT reusable: a login lands on a fresh uid');
+    void r;
+  }
+  ok('migration repair-revived-tombstones: dry run (default) lists ONLY revived accounts (+ separately those still carrying deleted_uids) and writes nothing; --apply clears ONLY the stale user_private.deleted_at (deleted_uids never); a sweep re-deleting mid-repair keeps the authoritative tombstone and the uid unreusable; deleted / claimed / inactive accounts untouched; idempotent');
 
   // ── 11. L3 (Google, linked): the gate bumps the authoritative last_login; a CLAIMED profile is refused ──
   {
@@ -294,6 +313,25 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
     assert.deepStrictEqual(await google(db2), { ok: false, reason: 'account_unavailable' }, '🔴 a profile a sweep CLAIMED never gets a Google login');
   }
   ok('L3 Google (linked): the lifecycle gate bumps user_profiles.last_login; a claimed profile ⇒ account_unavailable');
+
+  // ── 12. Codex r2 P2: the forms first-login claim is CREATE-IF-ABSENT — a concurrent platform first login converges, nothing orphaned ──
+  {
+    const db = fakeDb(); const P = 'ph_new';
+    // the forms L1 sequence: its claim txn, the base get (+ set only if absent), the gate — interleaved with a platform claim
+    const platformClaim = async () => { const cand = F2; const tx = await db.ref(`phone_index/${P}`).transaction((cur) => (typeof cur === 'string' && cur ? undefined : cand)); return tx.committed ? cand : tx.snapshot.val(); };
+    let platformUid = null;
+    db.HOOK.after = `phone_index/${P}`; db.HOOK.fn = async () => { platformUid = await platformClaim(); };
+    const claimed = await SE.claimPhoneUid(db, P, () => F1);
+    let uid = db.get(`phone_index/${P}`); if (!uid) { uid = 'u_' + '9'.repeat(24); db.set(`phone_index/${P}`, uid); }   // the base lines (never fire on a live entry)
+    const formsUid = await SE.loginUid(db, { pHash: P, uid: claimed, now: 1, newUid: newUids('u_' + '8'.repeat(24)) });
+    assert.strictEqual(formsUid, platformUid, '🔴 forms + platform first logins converge on ONE uid');
+    assert.strictEqual(db.get(`phone_index/${P}`), formsUid, 'phone_index names it (nothing orphaned)');
+    // and the other order: the platform claims first, the forms claim adopts it
+    const db2 = fakeDb(); db2.set(`phone_index/${P}`, F2);
+    assert.strictEqual(await SE.claimPhoneUid(db2, P, () => F1), F2, 'an existing entry is adopted, never overwritten');
+    assert.strictEqual(db2.get(`phone_index/${P}`), F2);
+  }
+  ok('Codex r2 P2: the forms first-login claim is create-if-absent — a concurrent platform first login converges on ONE uid; an existing entry is adopted, never overwritten');
 
   FINISHED = true;
   console.log(`\ndeletion-tombstone: OK (${n})`);
