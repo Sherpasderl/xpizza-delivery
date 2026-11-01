@@ -205,9 +205,11 @@ function baselineRoot() {   // today's portal, exported from the base (independe
 
 // ── in-page instruments (the forms harness's) ──
 const PAINT_SNAP = `(() => { const DESC = () => [...document.querySelectorAll('body *')].filter((e) => !/^(SCRIPT|STYLE|LINK|META|NOSCRIPT|TEMPLATE)$/.test(e.tagName)).map((e) => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (e.classList.length ? '.' + [...e.classList].slice(0, 2).join('.') : '') + (e.offsetParent === null && getComputedStyle(e).position !== 'fixed' ? ' [not rendered]' : '') + ' «' + (e.textContent || '').trim().slice(0, 24) + '»');
+  // RENDERED at the snapshot (advisor ruling 2026-10-31): a non-zero box AND (offsetParent ≠ null OR position:fixed)
+  const VIS = () => [...document.querySelectorAll('body *')].filter((e) => !/^(SCRIPT|STYLE|LINK|META|NOSCRIPT|TEMPLATE)$/.test(e.tagName)).map((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && (e.offsetParent !== null || getComputedStyle(e).position === 'fixed'); });
   const GEO = () => [...document.querySelectorAll('body *')].filter((e) => !/^(SCRIPT|STYLE|LINK|META|NOSCRIPT|TEMPLATE)$/.test(e.tagName)).map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map((v) => v.toFixed(2)).join(','); });
   try { new PerformanceObserver((l, obs) => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint' && !window.__paintSnap) { obs.disconnect();
-    requestAnimationFrame(() => { window.__paintSnap = { t: performance.now(), fcp: e.startTime, geo: GEO(), desc: DESC(), loaded: [...document.fonts].filter((f) => f.family.replace(/["']/g, '') === 'Archivo' && f.status === 'loaded').map((f) => 'Archivo ' + f.weight + ' ' + f.unicodeRange.slice(0, 12)) }; }); } }).observe({ type: 'paint', buffered: true }); } catch (_) {} })();`;
+    requestAnimationFrame(() => { window.__paintSnap = { t: performance.now(), fcp: e.startTime, geo: GEO(), desc: DESC(), vis: VIS(), loaded: [...document.fonts].filter((f) => f.family.replace(/["']/g, '') === 'Archivo' && f.status === 'loaded').map((f) => 'Archivo ' + f.weight + ' ' + f.unicodeRange.slice(0, 12)) }; }); } }).observe({ type: 'paint', buffered: true }); } catch (_) {} })();`;
 // per shift: when, how much, WHICH nodes moved (prev → current rect), and what each source is (text-bearing? its first family / weight),
 // plus the page's FONT TIMELINE from document start (FontFaceSet loading / loadingdone / loadingerror per face) — the advisor's ruling
 // (2026-10-31) classifies each entry from these; the hosted-font resource windows are read from Resource Timing at the end of the run
@@ -435,11 +437,17 @@ const fails = []; const check = (ok, msg) => { console.log(`  ${ok ? '✓' : '�
 const fidelity = (r, label) => { const bad = r.after.nodes.flatMap((n) => runsOf(n, r.probe).fidelity.map((f) => `${n.path.slice(-40)} ${f}`)); check(!bad.length, `${label}: probe fidelity (${bad.length ? bad.slice(0, 3).join('; ') : 'every node'})`); };
 const expectedErr = (e, r) => typeof e === 'object' && /^Failed to load resource/.test(e.log) && (isFontUrl(e.url) || r.after.refused.includes(e.url));
 
+// FF-fast's geometry rule: only boxes RENDERED at the first-paint snapshot are compared ("0 moved" strict for every one of them); boxes
+// that were not rendered then and appear later are LOGGED against FINDING-portal-shell-late-shift.md; a changed box COUNT still fails
+const visMoved = (r) => { const a = r.after.paintSnap.geo, b = r.after.geo, v = r.after.paintSnap.vis, d = r.after.paintSnap.desc;
+  if (a.length !== b.length) return { countChanged: true, moved: [], appeared: [], visible: v.filter(Boolean).length };
+  const moved = [], appeared = []; a.forEach((g, i) => { if (g !== b[i]) (v[i] ? moved : appeared).push(`${d[i]}  ${g} → ${b[i]}`); });
+  return { countChanged: false, moved, appeared, visible: v.filter(Boolean).length }; };
 const showMoved = (r) => { const a = r.after.paintSnap.geo, b = r.after.geo, d = r.after.paintSnap.desc;
   if (a.length !== b.length) { console.log(`      box count changed ${a.length} → ${b.length} (content inserted/removed after first paint)`); return; }
   a.forEach((g, i) => { if (g !== b[i]) console.log(`      moved: ${d[i]}  ${g} → ${b[i]}`); })
   console.log(`      FCP ${Math.round(r.after.paintSnap.fcp)} ms, snapshot ${Math.round(r.after.paintSnap.t)} ms; Archivo loaded at the snapshot: ${JSON.stringify(r.after.paintSnap.loaded)}; font events: ${(r.after.fontEv || []).map((e) => `${e.type} ${e.face} @${Math.round(e.t)}`).join(' · ') || 'none after document start'}; font bytes: ${(r.after.fontRes || []).map((x) => `${x.name} ${Math.round(x.start)}–${Math.round(x.end)} ms`).join(' · ')}`); };
-const SHELL_LOG = [];
+const SHELL_LOG = [], APPEAR_LOG = [];
 let LOAD_MAX = 0;
 const CELL_STATES = { index: 'P-editor', aceptar: 'I-email' };
 for (let rep = 1; rep <= REPEATS; rep++) {
@@ -452,12 +460,24 @@ for (let rep = 1; rep <= REPEATS; rep++) {
         check(!!r.after.paintSnap && r.after.paintGeo.length > 20, `[${page}] FF-fast premise: geometry captured in-page at FCP + 1 rAF (FCP ${r.after.paintSnap && Math.round(r.after.paintSnap.fcp)} ms; Archivo loaded then: ${r.after.paintSnap ? r.after.paintSnap.loaded.length : '?'})`);
         const m = moved(r.after.paintGeo, r.after.geo);
         if (stateName === 'P-editor') console.log(`    · P-editor's rows arrive after the shell's discovery — boxes added after FCP are content, not reflow; the FIRST-PAINT comparison is recorded (${m}), the settled comparison is FF-slow's`);
-        else check(r.after.geo.length > 20 && m === 0, `[${page}] FF-fast: 0 of ${r.after.geo.length} boxes moved from FIRST PAINT to settled (${m})`);
-        if (m !== 0 && r.after.paintSnap) showMoved(r);
+        else {
+          const g = visMoved(r);
+          check(!g.countChanged, `[${page}] FF-fast: the box count is unchanged from FIRST PAINT to settled (${r.after.paintGeo.length} → ${r.after.geo.length})`);
+          check(g.visible > 0 && g.moved.length === 0, `[${page}] FF-fast: 0 of ${g.visible} boxes RENDERED at first paint moved by settled (${g.moved.length})`);   // non-vacuity: ≥ 1 rendered box here; that the rule SEES a move is GEO-ctrl's proof
+          for (const x of g.moved.slice(0, 15)) console.log(`      moved (visible at first paint): ${x}`);
+          if (g.appeared.length) { console.log(`    · logged against FINDING-portal-shell-late-shift.md: ${g.appeared.length} box(es) not rendered at first paint appeared later`); for (const x of g.appeared.slice(0, 15)) console.log(`      appeared: ${x}`); APPEAR_LOG.push({ page, view, rep, n: g.appeared.length }); }
+        }
+        if (m === -1 && stateName !== 'P-editor' && r.after.paintSnap) showMoved(r);
         const cls = classifyShifts(r.after.shifts, r.after.fontEv, r.after.fontRes), fontCls = cls.filter((x) => x.font).reduce((a, x) => a + x.v, 0), shellCls = cls.filter((x) => !x.font).reduce((a, x) => a + x.v, 0);
         check(fontCls === 0, `[${page}] FF-fast: FONT-ATTRIBUTED CLS 0 over the whole window from navigation start (${+fontCls.toPrecision(3)}; total ${r.after.cls})`);
         if (shellCls) { console.log(`    · logged against FINDING-portal-shell-late-shift.md: shell-content CLS ${+shellCls.toFixed(4)}`); SHELL_LOG.push({ page, view, rep, cls: shellCls }); }
         if (cls.length) showShifts(cls);
+      }
+      if (CELLS.includes('clsctrl') && page === 'aceptar') {   // NEGATIVE CONTROL for the geometry rule: old policy ⇒ a box VISIBLE at first paint moves ⇒ FAIL
+        const r = await run({ stateName, view, fontGate: 'hold', holdMs: 2500, oldPolicy: true });
+        const g = visMoved(r);
+        check(!hostedPainted(r.before.nodes) && hostedPainted(r.after.nodes) && g.visible > 20, `[${page}] GEO-ctrl premise: first paint on the fallback with ${g.visible} rendered boxes; the old policy swapped at release (${r.after.heldMs} ms)`);
+        check(!g.countChanged && g.moved.length > 0, `[${page}] GEO-ctrl: boxes RENDERED at first paint MOVE under the swap, so the FF-fast geometry rule FAILS it (${g.moved.length} moved; e.g. ${(g.moved[0] || '').slice(0, 90)})`);
       }
       if (CELLS.includes('clsctrl') && page === 'index') {   // NEGATIVE CONTROL for the ruling: a deliberate font SWAP inside #viewmenu must FAIL it
         const r = await run({ stateName, view, fontGate: 'hold', holdMs: 2500, oldPolicy: true });
@@ -540,6 +560,7 @@ for (let rep = 1; rep <= REPEATS; rep++) {
     }
   }
 }
+if (APPEAR_LOG.length) console.log(`\nboxes appearing after first paint, logged against FINDING-portal-shell-late-shift.md (not failed, advisor ruling 2026-10-31): ${APPEAR_LOG.map((x) => `${x.page} ${x.view}px r${x.rep} ${x.n}`).join(' · ')}`);
 if (SHELL_LOG.length) console.log(`\nshell-content CLS logged against FINDING-portal-shell-late-shift.md (not failed, advisor ruling 2026-10-31): ${SHELL_LOG.map((x) => `${x.page} ${x.view}px r${x.rep} ${+x.cls.toFixed(4)}`).join(' · ')}`);
 console.log(`\nmax 1-min load at a run start: ${LOAD_MAX.toFixed(2)} (limit 45)`);
 console.log(`\nartifacts: ${OUT}`);
