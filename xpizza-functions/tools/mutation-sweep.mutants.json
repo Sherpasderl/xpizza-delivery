@@ -25949,5 +25949,36 @@
     "kills_with": [
       "R3-asap"
     ]
+  },
+  {
+    "id": "s3cm-01",
+    "slice": "s3c-mod",
+    "label": "S3c whatsapp.js hunk 1 edited (the free-envío line «Gratis» reworded) — the module inverse no longer reverses it",
+    "file": "whatsapp.js",
+    "from": "return [net === 0 ? '🛵 Envío: Gratis' :",
+    "to": "return [net === 0 ? '🛵 Envío: gratis' :",
+    "command": [
+      "node",
+      "s3c-wiring.guard.test.js"
+    ],
+    "kills_with": [
+      "s3c-module-inverse"
+    ]
+  },
+  {
+    "id": "s3cm-02",
+    "slice": "s3c-mod",
+    "label": "S3c whatsapp.js hunk 2 edited (the receipt drops the «Envío» line) — the module fold no longer reconstructs the base",
+    "file": "whatsapp.js",
+    "from": "    ...envioLines(envio),\n",
+    "to": "",
+    "command": [
+      "node",
+      "s3c-wiring.guard.test.js"
+    ],
+    "kills_with": [
+      "s3c-module-inverse",
+      "s2tip-module-inverse"
+    ]
   }
 ]
