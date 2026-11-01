@@ -24,8 +24,14 @@ const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
    The tables come from menu-pricing.js — the same module resolvePriceTables() itself falls back to —
    rather than being written out here, so the suite cannot drift from the prices it is asserting
    against. Its own arithmetic pins this: Margherita 299 + Anchovies 418 = the 717 it declares, and
-   la_musa dimsum_01 = the 223 it declares. */
+   la_musa dimsum_01 = the 223 it declared. That literal went RED when main's f7f11266 synced la_musa prices (dimsum_01
+   223 → 249): every la_musa price and points cost below is now DERIVED from the same tables through the production
+   costPtsFor (rewards-redeem.js), so a price sync can never strand a constant here again. */
 const tablesFor = (rid) => ({ restaurantId: rid, menu: MENU_BY_RESTAURANT[rid], extras: EXTRAS_BY_RESTAURANT[rid] || {} });
+const { costPtsFor } = require('../rewards-redeem');
+const LA_L = (id) => { const v = MENU_BY_RESTAURANT.la_musa[id]; if (!Number.isFinite(v)) throw new Error(`premise: la_musa ${id} has no catalog price`); return v; };
+const LA_COST = (id) => costPtsFor(LA_L(id) * 100);   // the points cost the intake computes for a free la_musa item
+const DIMSUM_L = LA_L('dimsum_01');
 const { reserveRedemption, releaseRedemption, attachAttempt } = require('../rewards-reserve');
 const { REDEMPTION_CONFIG_VERSION } = require('../rewards-redeem-config');
 const { orderFingerprint } = require('../pixelpay-charge');
@@ -86,7 +92,7 @@ const XP = { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita
 
     // 7 — La Musa free item 86'd → 409 reward_unavailable, no reserve
     await seedPts('uI', 5000, 'la_musa');
-    const laCall = (redeem, orderId, over = {}) => resolveRedemptionForOrder(db, { restaurantId: 'la_musa', tables: tablesFor('la_musa'), items: [{ id: 'dimsum_01', qty: 1 }], itemsText: 'dimsum x1', totalLempiras: 223, schedExtra: '', now: NOW, redeem, orderId, customerUid: 'uI', ...over });
+    const laCall = (redeem, orderId, over = {}) => resolveRedemptionForOrder(db, { restaurantId: 'la_musa', tables: tablesFor('la_musa'), items: [{ id: 'dimsum_01', qty: 1 }], itemsText: 'dimsum x1', totalLempiras: DIMSUM_L, schedExtra: '', now: NOW, redeem, orderId, customerUid: 'uI', ...over });
     await db.ref(`restaurants/la_musa/item_availability/${availKey('soft_01')}`).set({ available: false, updated_at: NOW });
     r = await laCall({ type: 'points_ala_carte', items: [{ id: 'soft_01', qty: 1, name: 'Coca-Cola' }] }, 'OU');
     assert.deepStrictEqual({ ok: r.ok, status: r.status, err: r.body.error }, { ok: false, status: 409, err: 'reward_unavailable' }); assert.ok(r.body.blocked.length > 0);
@@ -95,17 +101,18 @@ const XP = { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita
     // 8 — La Musa valid single → items_text appended (0-price line), no platform factura, aggregate reserve = cost_pts
     await db.ref(`restaurants/la_musa/item_availability/${availKey('soft_01')}`).set({ available: true, updated_at: NOW });
     r = await laCall({ type: 'points_ala_carte', items: [{ id: 'soft_01', qty: 1, name: 'Coca-Cola' }] }, 'OL');
-    assert.strictEqual(r.ok, true); assert.strictEqual(r.priced.factura_items, null); assert.strictEqual(r.priced.total_cents, 22300); assert.strictEqual(r.priced.discount_cents, 0);
+    assert.strictEqual(r.ok, true); assert.strictEqual(r.priced.factura_items, null); assert.strictEqual(r.priced.total_cents, DIMSUM_L * 100); assert.strictEqual(r.priced.discount_cents, 0);
     assert.ok(/ \| 1x Coca-Cola \(Recompensa\)/.test(r.itemsText)); assert.deepStrictEqual(r.priced.free_lines, [{ item_id: 'soft_01', qty: 1, price_cents: 0, added: true }]);
-    assert.strictEqual((await resv('uI', 'OL', 'la_musa')).state, 'reserved'); assert.strictEqual(await rsv('uI', 'la_musa'), 133); ok('La Musa single → items_text appended, factura skipped, total unchanged, reserved = cost_pts 133');
+    assert.strictEqual((await resv('uI', 'OL', 'la_musa')).state, 'reserved'); assert.strictEqual(await rsv('uI', 'la_musa'), LA_COST('soft_01')); ok(`La Musa single → items_text appended, factura skipped, total unchanged, reserved = cost_pts ${LA_COST('soft_01')}`);
 
     // 9 — La Musa MULTISET (2 dishes, qty-aware) → aggregate reserve = Σ, N free lines, N items_text appends
     r = await laCall({ type: 'points_ala_carte', items: [{ id: 'soft_01', qty: 2, name: 'Coca-Cola' }, { id: 'dimsum_01', qty: 1, name: 'Wonton' }] }, 'OM');
     assert.strictEqual(r.ok, true);
-    assert.strictEqual(await rsv('uI', 'la_musa'), 133 + (133 * 2 + 743));   // OL's 133 still held + OM's Σ = 133×2 + 743 = 1009
-    assert.strictEqual((await resv('uI', 'OM', 'la_musa')).cost, 133 * 2 + 743);
+    const OM_SUM = LA_COST('soft_01') * 2 + LA_COST('dimsum_01');   // OM's Σ (qty-aware), from the catalog
+    assert.strictEqual(await rsv('uI', 'la_musa'), LA_COST('soft_01') + OM_SUM);   // OL's single cost still held + OM's Σ
+    assert.strictEqual((await resv('uI', 'OM', 'la_musa')).cost, OM_SUM);
     assert.strictEqual(r.priced.free_lines.length, 2);
-    assert.ok(/2x Coca-Cola \(Recompensa\)/.test(r.itemsText) && /1x Wonton \(Recompensa\)/.test(r.itemsText)); ok('La Musa MULTISET → ONE aggregate reservation cost Σ=1009, 2 free lines, 2 items_text appends (qty-aware)');
+    assert.ok(/2x Coca-Cola \(Recompensa\)/.test(r.itemsText) && /1x Wonton \(Recompensa\)/.test(r.itemsText)); ok(`La Musa MULTISET → ONE aggregate reservation cost Σ=${OM_SUM}, 2 free lines, 2 items_text appends (qty-aware)`);
 
     // 10 — the free-item display NAME is sanitized (money-safe: display only)
     r = await laCall({ type: 'points_ala_carte', items: [{ id: 'soup_01', qty: 1, name: '<script>x</script>Sopa' }] }, 'ON');
@@ -139,7 +146,7 @@ const XP = { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita
     await seedPts('uFp', 5000, 'la_musa');
     const setA = { type: 'points_ala_carte', items: [{ id: 'soft_01', qty: 1, name: 'Coca-Cola' }] };
     const setB = { type: 'points_ala_carte', items: [{ id: 'soft_01', qty: 1, name: 'Coca-Cola' }, { id: 'dimsum_01', qty: 1, name: 'Wonton' }] };
-    const laFp = (redeem, orderId) => resolveRedemptionForOrder(db, { restaurantId: 'la_musa', tables: tablesFor('la_musa'), items: [{ id: 'dimsum_01', qty: 1 }], itemsText: 'dimsum x1', totalLempiras: 223, schedExtra: '', now: NOW, redeem, orderId, customerUid: 'uFp' });
+    const laFp = (redeem, orderId) => resolveRedemptionForOrder(db, { restaurantId: 'la_musa', tables: tablesFor('la_musa'), items: [{ id: 'dimsum_01', qty: 1 }], itemsText: 'dimsum x1', totalLempiras: DIMSUM_L, schedExtra: '', now: NOW, redeem, orderId, customerUid: 'uFp' });
     assert.strictEqual((await laFp(setA, 'OFP')).ok, true);                                   // reserve order OFP bound to SET A
     const mism = await laFp(setB, 'OFP');                                                     // SAME order, DIFFERENT set → fp changes
     assert.deepStrictEqual({ ok: mism.ok, err: mism.body.error, reason: mism.body.reason }, { ok: false, err: 'redemption_reserve_failed', reason: 'reservation_conflict' }); ok('§1e-2: same order, CHANGED redeemed set → payment-fingerprint mismatch → reservation_conflict (the set is bound, can\'t be swapped)');
