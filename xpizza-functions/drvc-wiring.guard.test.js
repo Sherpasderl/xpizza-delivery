@@ -41,7 +41,7 @@ console.log(`  ✓ drvc inverse: index.js minus the block === base (${BASE}) byt
 // the module inverse: whatsapp.js minus C's hunks === the pre-C file; every hunk once; a duplicated or edited hunk is refused
 const { unapplyDrvcModule, MODULE_HUNKS, FILES } = require('./tools/drvc-inverse');
 assert.deepStrictEqual([...FILES], ['whatsapp.js'], 'DRVC-MOD-FILES');
-const wa = require('./tools/s2tip-module-inverse').unapplyS2tipModule('whatsapp.js', fs.readFileSync(path.join(__dirname, 'whatsapp.js'), 'utf8'));   // DRYRUN R-WIRE (2e): capp S2-srv-tip's whatsapp.js hunks reversed FIRST
+const wa = require('./tools/s3c-module-inverse').unapplyS3cModule('whatsapp.js', require('./tools/s2tip-module-inverse').unapplyS2tipModule('whatsapp.js', fs.readFileSync(path.join(__dirname, 'whatsapp.js'), 'utf8')));   // DRYRUN R-WIRE (2e): capp S2-srv-tip's whatsapp.js hunks reversed FIRST, then capp S3c's (the «Envío» line)
 const preWa = git(['show', `${BASE}:xpizza-functions/whatsapp.js`]);
 assert.strictEqual(unapplyDrvcModule('whatsapp.js', wa), preWa, 'DRVC-MOD-BASE whatsapp.js minus the C hunks is not the pre-C file');
 assert.notStrictEqual(wa, preWa, 'DRVC-MOD-NONVACUOUS');

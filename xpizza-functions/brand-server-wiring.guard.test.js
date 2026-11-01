@@ -54,7 +54,8 @@ assert.strictEqual(unapplyBrandServerModule('unlisted-module.js', 'x'), 'x', 'an
   const { unapplyDrvcModule } = require('./tools/drvc-inverse');
   const live = fs.readFileSync(path.join(__dirname, 'whatsapp.js'), 'utf8');
   const preC = execFileSync('git', ['show', 'c8b08cf1:xpizza-functions/whatsapp.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
-  assert.strictEqual(unapplyBrandServerModule('whatsapp.js', unapplyDrvcModule('whatsapp.js', live)), preC, '🔴 whatsapp.js minus the DRIVER C hunks is not the pre-C whatsapp.js');
+  const capp = require('./tools/s3c-module-inverse').unapplyS3cModule('whatsapp.js', require('./tools/s2tip-module-inverse').unapplyS2tipModule('whatsapp.js', live));   // R-WIRE: the capp hunks (s2tip, then S3c) reversed FIRST
+  assert.strictEqual(unapplyBrandServerModule('whatsapp.js', unapplyDrvcModule('whatsapp.js', capp)), preC, '🔴 whatsapp.js minus the DRIVER C hunks is not the pre-C whatsapp.js');
 }
 ok(`PROOF (iii): unapplyBrandServerModule restores df4a1bdb byte-for-byte for ${FILES.join(', ')}; a duplicated hunk is refused; an unlisted module passes through`);
 console.log(`brand-server-wiring.guard: OK (${n} cases)`);
