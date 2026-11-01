@@ -1421,7 +1421,7 @@ exports.createOrder = onRequest(
     region: 'us-central1',
     cors: true,            // browser-callable — order form posts directly (no Make.com relay)
     timeoutSeconds: 30,
-    memory: '256MiB',
+    memory: '512MiB',
     minInstances: 1,       // keep one warm — the cash order path is customer-facing; avoid cold-start lag
     maxInstances: 10       // blast-radius cap: the intake secret is public, so bound
                            // how much concurrent order-spam can fan out. Tune up if
@@ -2303,7 +2303,7 @@ exports.chargeOnlineOrder = onRequest(
     region: 'us-central1',
     cors: true,
     timeoutSeconds: 30,
-    memory: '256MiB',
+    memory: '512MiB',
     maxInstances: 10
   },
   chargeOnlineApp
@@ -7117,7 +7117,7 @@ const sendJson = (res, status, payload) => {
 };
 
 exports.getPublicMenu = onRequest(
-  { region: 'us-central1', cors: PUBLIC_MENU_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 20, minInstances: 1 },   // PLAN 2: one warm instance — the live menu must not wait on a cold start
+  { region: 'us-central1', cors: PUBLIC_MENU_ORIGINS, timeoutSeconds: 20, memory: '512MiB', maxInstances: 20, minInstances: 1 },   // PLAN 2: one warm instance — the live menu must not wait on a cold start
   async (req, res) => {
     // Two headers on EVERY response, including the failures: a cache that varies by origin must be
     // told so even when the answer is an error, and a browser cannot read the validator it is
@@ -7298,7 +7298,7 @@ exports.verifyOtp = onRequest(
 // what is DISPLAYED. Correspondingly it fails SOFT: a bad cart returns ok:false with HTTP 200 so the
 // client can silently fall back to its own total rather than blocking checkout.
 exports.quoteOrder = onRequest(
-  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '512MiB', maxInstances: 10 },
   async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });

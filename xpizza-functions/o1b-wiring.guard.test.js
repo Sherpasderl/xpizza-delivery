@@ -2,7 +2,7 @@
 // ORCHESTRATION O1b (PLAN-orch-o1b r3 T9) — index.js's O1b footprint is EXACTLY the stated hunks (the four lifecycle names in the
 // ops early branch's PORTAL_OPS_TARGETS and their re-exports on the portal-ops export line):
 //   (i)  unapplyO1bIndex(index.js) === acf32fc8:index.js byte-for-byte; inside / outside / duplicated / missing each detected;
-//   (ii) unapplyO1bFold(foldPortalSplit()) === foldPortalSplit(acf32fc8:index.js) (the fold consumes the early branch);
+//   (ii) unapplyO1bFold(require('./tools/mem512-inverse').unapplyMem512Index(foldPortalSplit())) === foldPortalSplit(acf32fc8:index.js) (the fold consumes the early branch);
 //   (iii) the ops group exports exactly the 11 names (index.js's same-object re-export: portal/ops-split.test.js cell 5).
 // Run: node o1b-wiring.guard.test.js
 const assert = require('assert');
@@ -14,7 +14,7 @@ const BASE = 'ffdbc1e1';   // R-WIRE train re-point: M6^1, the train state just 
 const { foldPortalSplit } = require('./tools/portal-split');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(require('./tools/s2app-inverse').unapplyS2appIndex(require('./tools/area-inverse').unapplyAreaIndex(require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/pausa-inverse').unapplyPausaIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))))))))) /* DRYRUN R-WIRE (2e): 10 cross-side layers innermost */))))));   // R-WIRE train re-point: the newer train slices reversed first (formsignal innermost → wahealth → drvc → drvf → stackseq)
+const real = require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(require('./tools/s2app-inverse').unapplyS2appIndex(require('./tools/area-inverse').unapplyAreaIndex(require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/pausa-inverse').unapplyPausaIndex(require('./tools/mem512-inverse').unapplyMem512Index(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))))))))))) /* DRYRUN R-WIRE (2e): 10 cross-side layers innermost */))))));   // R-WIRE train re-point: the newer train slices reversed first (formsignal innermost → wahealth → drvc → drvf → stackseq)
 const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.notStrictEqual(real, base, 'non-vacuity: the slice is present');
