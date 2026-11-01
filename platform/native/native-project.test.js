@@ -14,7 +14,9 @@ const readme = fs.readFileSync(path.join(P, 'README.md'), 'utf8');
 assert.deepStrictEqual(Object.keys(cfg).sort(), ['appId', 'appName', 'webDir']);
 assert.strictEqual(cfg.webDir, 'www'); assert.match(cfg.appId, /^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$/);
 assert.ok(readme.includes('## OWNER-PENDING') && readme.includes(`\`${cfg.appId}\``), '🔴 the bundle id must stay marked OWNER-PENDING until the owner confirms');
-ok(`capacitor.config: webDir www, appId ${cfg.appId} (OWNER-PENDING in the README), no extra keys`);
+assert.ok(!(cfg.server && 'appStartPath' in cfg.server), 'the start path is Capacitor\'s default /index.html — the packaged shell (appStartPath would APPEND a path)');
+assert.strictEqual(require('./package-capp').ENTRY, 'index.html', 'the packager writes the entry Capacitor starts at');
+ok(`capacitor.config: webDir www, appId ${cfg.appId} (OWNER-PENDING in the README), no extra keys; the start = the default /index.html = the packaged shell`);
 
 const ign = fs.readFileSync(path.join(P, '.gitignore'), 'utf8').split('\n');
 assert.ok(ign.includes('www/'), '🔴 www/ must never be committed (it is generated)');

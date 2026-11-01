@@ -110,6 +110,11 @@ function createFloorReader({ getDb, ttlMs = FLOOR_TTL_MS, timeoutMs = FLOOR_READ
 // header-less, an unknown id — keeps exactly today's app floor. A FORGED native header can at most dodge a compatibility floor,
 // which only hurts the forger (an incompatible client fails on its own); it can never dodge the guest checkout's rules, because
 // PLATFORM.isAppDeployment counts the native id as the capp (card-only + ticket apply to it exactly as to orders-app).
+// ⚠ HARD OBLIGATION c2 (Codex N1–N4 r1 P1; advisor ruling (ii) — TRAIN-NEXT-INVENTORY «NATIVE RELEASE TRAIN OBLIGATIONS» N1):
+// the native's OWN floor is not yet ENFORCED — index.js's 4 floor sites (createOrder, chargeOnlineOrder, quoteOrder,
+// quoteRedemption; locate by `floorFor('orders')`) must switch to floorForRequest + isBelowFloorFor, with tools/native-floor-inverse.js
+// registered in every guard that sha-pins index.js, BEFORE the first store build is published (else a broken native can never
+// be force-upgraded). Until then a native is exempt from the app floor and bound by no floor.
 const nativeIdOf = (platform) => { try { return (platform || require('./platform-manifest').PLATFORM).nativeDeployment(); } catch (_) { return null; } };
 const isNativeRequest = (h, platform) => { const id = nativeIdOf(platform); return !!id && !!h && h.deployment === id; };
 // → { floor, scope: 'app' | 'native' }

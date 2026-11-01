@@ -10,9 +10,13 @@
 // reference + their licence), the bootstrap (capp-native-boot.js), a generated capp-native-config.js (the platform orders
 // deployment's `runtime` block from platform/sites.json + the build's flags; absent flag ⇒ dark) and the vendored Firebase SDK
 // (platform/native/vendor, hash-checked against its lock; ONE asserted rewrite: firebase-auth's absolute gstatic import of
-// firebase-app → ./firebase-app.js). Into the PACKAGED shell.html only (the web file is untouched) it injects:
-//   • the native CSP <meta> (plan §1.2: every origin named, no wildcard, frame-src 'none'; style-src needs 'unsafe-inline' —
-//     the shell carries inline style attributes and one <style> block),
+// firebase-app → ./firebase-app.js). The web customer-app/shell.html is packaged AS www/index.html — the entry Capacitor loads
+// (its CLI requires webDir/index.html; the start path stays Capacitor's default /index.html, appStartPath unset — Codex N1-N4 r1
+// #1) — one file, so the stamp and the CSP sit on the page that actually boots. Into that packaged copy only (the web file is
+// untouched) it injects:
+//   • the native CSP <meta> (plan §1.2: every origin named, no wildcard, frame-src 'none'; Codex r1 #3: style-src has NO
+//     'unsafe-inline' — the shell's one fixed <style> block is allowed by its sha256, and the inline style ATTRIBUTES the shell
+//     renders by style-src-attr 'unsafe-inline' only),
 //   • the boot <script>s after capp-shell-ui.js,
 //   • the identity stamp — the web stamp's OWN metaBlock / injectBlock / computeBuild (platform/stamp-version.js): app orders,
 //     deployment = the manifest's native id, context platform, app-build = the content hash of the packaged runtime files,
@@ -29,13 +33,15 @@ const ROOT = path.join(__dirname, '..', '..');
 const APP = 'customer-app';
 const FLAGS = ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive'];
 const BOOT = ['capp-native-config.js', 'capp-native-boot.js'];
+const ENTRY = 'index.html';   // the packaged web shell.html (Capacitor's entry)
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/, BUILD_RE = /^[A-Za-z0-9._-]{1,80}$/;   // sherpa-client.js readIdentity's own rules
 const sha256 = (b) => crypto.createHash('sha256').update(b).digest('hex');
 
 function gitShow(sha, rel, root = ROOT) { return execFileSync('git', ['show', `${sha}:${rel}`], { cwd: root, maxBuffer: 1 << 28 }); }
 
 // the plan §1.2 CSP, from the runtime DATA (no host literal here beyond Google's fixed API hosts the plan names)
-function cspFor(rt) {
+function cspFor(rt, styleHash) {
+  if (!/^sha256-[A-Za-z0-9+/]+=*$/.test(String(styleHash || ''))) throw new Error('the shell <style> hash is required for the CSP');
   const rtdb = new URL(rt.availability_base).host;
   const d = [
     ["default-src", ["'self'"]],
@@ -43,7 +49,8 @@ function cspFor(rt) {
     ["connect-src", ["'self'", rt.functions_base, rt.availability_base, `wss://${rtdb}`, 'https://identitytoolkit.googleapis.com', 'https://securetoken.googleapis.com', 'https://maps.googleapis.com']],
     ["img-src", ["'self'", 'data:', 'https://maps.googleapis.com', 'https://storage.googleapis.com']],
     ["font-src", ["'self'"]],
-    ["style-src", ["'self'", "'unsafe-inline'"]],
+    ["style-src", ["'self'", `'${styleHash}'`]],
+    ["style-src-attr", ["'unsafe-inline'"]],
     ["frame-src", ["'none'"]],
   ];
   return d.map(([k, v]) => `${k} ${v.join(' ')}`).join('; ');
@@ -74,6 +81,11 @@ function build({ sha, flags = [], root = ROOT, show } = {}) {
   const dep = sites.deployments.find((d) => d.app === 'orders' && d.context === 'platform');
   if (!dep || !dep.native || !ID_RE.test(String(dep.native.deployment || ''))) throw new Error('the manifest declares no native deployment id — refusing to ship an inert build');
   if (!dep.runtime) throw new Error('the manifest carries no app runtime block');
+  // Codex r1 #2: the COMPLETE manifest — every runtime key, by type — through the functions' own validator (one source) before
+  // anything is written; a missing or malformed functions_base / menu_endpoint / availability_base / intake_key / maps_key /
+  // firebase fails packaging
+  const errs = require('../../xpizza-functions/platform-manifest').validateManifest(sites);
+  if (errs.length) throw new Error(`the manifest at ${full.slice(0, 12)} is invalid — ${errs.join('; ')}`);
   const gen = compat.generations && compat.generations[dep.app];
   if (!Number.isInteger(gen) || gen < 1) throw new Error('no compat generation for the orders app — refusing to ship an inert build');
   const lock = JSON.parse(T('platform/native/vendor/firebasejs.lock.json'));
@@ -107,22 +119,26 @@ function build({ sha, flags = [], root = ROOT, show } = {}) {
   const lastScript = '<script src="capp-shell-ui.js"></script>';
   if (html.split(lastScript).length !== 2) throw new Error('shell.html must load capp-shell-ui.js exactly once');
   html = html.replace(lastScript, `${lastScript}\n${BOOT.map((b) => `<script src="${b}"></script>`).join('\n')}`);
-  const cspTag = `<meta http-equiv="Content-Security-Policy" content="${cspFor(rt)}">\n`;
+  const styles = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)];
+  if (styles.length !== 1) throw new Error('shell.html must carry exactly one <style> block (its hash is in the CSP)');
+  const styleHash = `sha256-${crypto.createHash('sha256').update(styles[0][1], 'utf8').digest('base64')}`;
+  const csp = cspFor(rt, styleHash);
+  const cspTag = `<meta http-equiv="Content-Security-Policy" content="${csp}">\n`;
   const cs = html.match(/<meta charset="utf-8">\n/);
   if (!cs) throw new Error('shell.html has no charset <meta>');
   html = html.slice(0, cs.index + cs[0].length) + cspTag + html.slice(cs.index + cs[0].length);
-  files.set('shell.html', Buffer.from(html, 'utf8'));
+  files.set(ENTRY, Buffer.from(html, 'utf8'));
   const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'capp-native-'));
   try {
     writeTree(tmp, files);
-    const buildId = Stamp.computeBuild(tmp, ['shell.html']);
+    const buildId = Stamp.computeBuild(tmp, [ENTRY]);
     const d = { app: dep.app, id: dep.native.deployment, context: dep.context };
     if (!ID_RE.test(d.app) || !ID_RE.test(d.context) || !BUILD_RE.test(buildId)) throw new Error('stamp inputs invalid — refusing to ship an inert build');
-    files.set('shell.html', Buffer.from(Stamp.injectBlock(html, Stamp.metaBlock(d, buildId, gen, 'native')), 'utf8'));
+    files.set(ENTRY, Buffer.from(Stamp.injectBlock(html, Stamp.metaBlock(d, buildId, gen, 'native')), 'utf8'));
     const manifest = { sha: full, deployment: d.id, build: buildId, compat: gen, flags: [...flags].sort(), sdk: lock.version,
       files: Object.fromEntries([...files.keys()].sort().map((k) => [k, sha256(files.get(k))])) };
     files.set('native-manifest.json', Buffer.from(JSON.stringify(manifest, null, 2) + '\n', 'utf8'));
-    return { files, manifest, csp: cspFor(rt) };
+    return { files, manifest, csp, styleHash };
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 
@@ -161,4 +177,4 @@ if (require.main === module) {
     } else { const m = pack(opts); console.log(`package-capp: ${m.deployment} build ${m.build} compat ${m.compat} sdk ${m.sdk} flags [${m.flags}] → ${opts.out} (${Object.keys(m.files).length} files)`); }
   } catch (e) { console.error(`package-capp: FAILED — ${e.message}`); process.exit(1); }
 }
-module.exports = { build, pack, verify, cspFor, shellFiles, FLAGS };
+module.exports = { build, pack, verify, cspFor, shellFiles, FLAGS, ENTRY };
