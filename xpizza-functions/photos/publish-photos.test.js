@@ -98,6 +98,31 @@ const meta = (fs, vid) => fs.collection('restaurants').doc(RID).collection('vers
     ok('markPublished: draft → published; deleting / published / missing untouched');
   }
 
+  // ── codex r2 (r1 #4): a copy that SUCCEEDS then fails to be recorded is still found — the intent record (pending_public) is durable
+  //    BEFORE the copy, so an abandoned publish + a later sweep leaves ZERO public objects ──
+  {
+    const S = require('./sweep-core');
+    const fs = makeDb(); const s = store();
+    for (const k of ['card', 'hero']) s.put('default', `drafts/${RID}/${P1}-${k}.webp`);
+    const dg = { draft_card: s.objs.get(`default/drafts/${RID}/${P1}-card.webp`), draft_hero: s.objs.get(`default/drafts/${RID}/${P1}-hero.webp`) };
+    await reg(fs, P1).set({ state: 'draft', last_ref_at: 1, generations: dg, created_at: 1 });
+    const realTx = fs.runTransaction.bind(fs); let thrown = false;
+    const flaky = { ...fs, collection: fs.collection, runTransaction: async (fn) => {
+      if (!thrown && s.objs.has(`${PUB}/photos/${RID}/${P1}-card.webp`)) { thrown = true; throw new Error('firestore down after the copy'); }
+      return realTx(fn); } };
+    await assert.rejects(() => makePublishPhotos({ fs: flaky, store: s, publicBucket: () => PUB, now: () => T }).prepare(RID, { tb_a: { state: 'pid', pid: P1 } }),
+      (e) => e.code === 'photo_publish_failed', 'premise: the publish failed after its copy');
+    assert.ok(thrown && s.objs.has(`${PUB}/photos/${RID}/${P1}-card.webp`), 'premise: the public card exists, its generation unrecorded');
+    const deleter = (b) => ({
+      async deleteIfGeneration(path, gen) { const k = `${b}/${path}`; const g = s.objs.get(k); if (g === undefined) return 'missing'; if (g !== String(gen)) return 'other_generation'; s.objs.delete(k); return 'deleted'; },
+      async deleteAny(path) { return s.objs.delete(`${b}/${path}`) ? 'deleted' : 'missing'; } });
+    const sw = await S.sweepRid({ fs, priv: deleter('default'), pub: deleter(PUB), now: () => T + 8 * 86400e3, newClaimId: () => 'swA', log: { info: () => {}, warn: () => {} }, mode: 'live', activeVersionId: async () => null }, RID);
+    assert.deepStrictEqual(sw.deleted, [P1], 'premise: the sweeper took the abandoned pid');
+    const left = [...s.objs.keys()].filter((k) => k.startsWith(`${PUB}/`));
+    assert.deepStrictEqual(left, [], `PUB-ABANDONED-COPY-SWEPT (public objects left: ${left.join(', ')})`);
+    assert.deepStrictEqual([...s.objs.keys()].filter((k) => k.startsWith('default/drafts/')), [], 'PUB-ABANDONED-DRAFTS-SWEPT');
+    ok('codex r2 (r1 #4): copy ok → registry write throws → publish abandoned → the sweep leaves zero public objects (pending_public intent record)');
+  }
   console.log(`publish-photos: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('publish-photos: FAILED —', e && e.stack || e); process.exit(1); });

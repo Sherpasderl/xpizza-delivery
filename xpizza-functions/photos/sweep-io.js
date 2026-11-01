@@ -23,6 +23,10 @@ function makeGcsDeleter(bucket) {
       try { await bucket.file(path).delete({ ifGenerationMatch: gen }); return 'deleted'; }
       catch (e) { if (code(e) === 404) return 'missing'; if (code(e) === 412) return 'other_generation'; throw e; }
     },
+    async deleteAny(path) {   // codex r2: a pending_public path (no generation was ever recorded) — 404 → 'missing'
+      try { await bucket.file(path).delete(); return 'deleted'; }
+      catch (e) { if (code(e) === 404) return 'missing'; throw e; }
+    },
   };
 }
 

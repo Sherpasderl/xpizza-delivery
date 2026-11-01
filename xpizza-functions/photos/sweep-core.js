@@ -75,12 +75,22 @@ async function takeOver({ fs, now, newClaimId }, rid, pid, seenClaimId) {
 async function deleteObjects({ priv, pub, now }, rid, doc, c) {
   const g = (doc && doc.generations) || {};
   const pid = doc.pid || doc._pid;
-  const jobs = [[priv, `drafts/${rid}/${pid}-card.webp`, g.draft_card], [priv, `drafts/${rid}/${pid}-hero.webp`, g.draft_hero],
-    [pub, `photos/${rid}/${pid}-card.webp`, g.pub_card], [pub, `photos/${rid}/${pid}-hero.webp`, g.pub_hero]];
-  for (const [store, path, gen] of jobs) {
+  const OBJ = { draft_card: [priv, `drafts/${rid}/${pid}-card.webp`], draft_hero: [priv, `drafts/${rid}/${pid}-hero.webp`],
+    pub_card: [pub, `photos/${rid}/${pid}-card.webp`], pub_hero: [pub, `photos/${rid}/${pid}-hero.webp`] };
+  // codex r2: the OLD generations a reuse moved aside (cleanup_gens) first, then the recorded ones — all generation-matched
+  const gjobs = [...(Array.isArray(doc.cleanup_gens) ? doc.cleanup_gens : []).filter((e) => isObj(e) && OBJ[e.k]).map((e) => [e.k, e.g]),
+    ...['draft_card', 'draft_hero', 'pub_card', 'pub_hero'].map((k) => [k, g[k]])];
+  for (const [k, gen] of gjobs) {
     if (gen === undefined || gen === null) continue;
     if (now() > c.lease_until - STOP_BEFORE_LEASE_END_MS) return false;
-    await store.deleteIfGeneration(path, gen);   // 'deleted' | 'missing' | 'other_generation' — all count as done
+    await OBJ[k][0].deleteIfGeneration(OBJ[k][1], gen);   // 'deleted' | 'missing' | 'other_generation' — all count as done
+  }
+  // codex r2 (r1 #4): every public path a publish INTENDED to copy (pending_public, recorded before the copy) — its generation may never
+  // have been recorded, so it is deleted unconditionally; only this pid's own public paths qualify
+  for (const path of Array.isArray(doc.pending_public) ? doc.pending_public : []) {
+    if (path !== OBJ.pub_card[1] && path !== OBJ.pub_hero[1]) continue;
+    if (now() > c.lease_until - STOP_BEFORE_LEASE_END_MS) return false;
+    await pub.deleteAny(path);   // 'deleted' | 'missing' — both count as done
   }
   return true;
 }
@@ -91,7 +101,7 @@ async function markDeleted({ fs, now }, rid, pid, claimId) {
     const s = await tx.get(ref);
     const d = s.exists ? s.data() : null;
     if (!d || d.state !== 'deleting' || !isObj(d.claim) || d.claim.id !== claimId) return false;   // fenced out
-    tx.update(ref, { state: 'deleted', claim: null, deleted_at: now() });
+    tx.update(ref, { state: 'deleted', claim: null, deleted_at: now(), cleanup_gens: [], pending_public: [] });
     return true;
   });
 }

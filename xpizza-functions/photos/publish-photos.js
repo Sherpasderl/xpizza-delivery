@@ -36,6 +36,17 @@ function makePublishPhotos({ fs, store, publicBucket, now = Date.now }) {
         if (states[pid] === 'published') continue;
         gens[pid] = {};
         for (const kind of ['card', 'hero']) {
+          const dst = `photos/${rid}/${pid}-${kind}.webp`;
+          // codex r2 (r1 #4): the INTENT record — the target path is durable on the registry doc BEFORE the copy, so a copy whose generation
+          // is never recorded (the next write fails, the publish is abandoned) is still deleted by the sweeper with the pid
+          try {
+            await fs.runTransaction(async (tx) => {
+              const r = regRef(rid, pid); const s = await tx.get(r); const d = s.exists ? (s.data() || {}) : {};
+              if (!s.exists || !ATTACHABLE.has(d.state)) throw err('photo_unavailable', `photo ${pid} became unavailable`);
+              const pend = Array.isArray(d.pending_public) ? d.pending_public : [];
+              if (!pend.includes(dst)) tx.update(r, { pending_public: [...pend, dst] });
+            });
+          } catch (e) { if (e && e.code === 'photo_unavailable') throw e; throw err('photo_publish_failed', `recording the intent for ${pid}-${kind} failed: ${String((e && e.message) || e).slice(0, 120)}`); }
           try { gens[pid][kind] = (await store.copyIfAbsent(`drafts/${rid}/${pid}-${kind}.webp`, bucket, `photos/${rid}/${pid}-${kind}.webp`)).generation; }
           catch (e) { throw err('photo_publish_failed', `copying ${pid}-${kind} failed: ${String((e && e.message) || e).slice(0, 120)}`); }
           // codex r1 P2-4: record THIS public copy's generation at once (not only in the pre-flip hook) — if the publish then fails or is
@@ -43,9 +54,9 @@ function makePublishPhotos({ fs, store, publicBucket, now = Date.now }) {
           // fails the publish closed (the copy stays recorded nowhere new, and the change does not go live).
           try {
             await fs.runTransaction(async (tx) => {
-              const r = regRef(rid, pid); const s = await tx.get(r);
-              if (!s.exists || !ATTACHABLE.has((s.data() || {}).state)) throw err('photo_unavailable', `photo ${pid} became unavailable`);
-              tx.update(r, { [`generations.pub_${kind}`]: String(gens[pid][kind]) });
+              const r = regRef(rid, pid); const s = await tx.get(r); const d = s.exists ? (s.data() || {}) : {};
+              if (!s.exists || !ATTACHABLE.has(d.state)) throw err('photo_unavailable', `photo ${pid} became unavailable`);
+              tx.update(r, { [`generations.pub_${kind}`]: String(gens[pid][kind]), pending_public: (Array.isArray(d.pending_public) ? d.pending_public : []).filter((p) => p !== dst) });
             });
           } catch (e) { if (e && e.code === 'photo_unavailable') throw e; throw err('photo_publish_failed', `recording ${pid}-${kind} failed: ${String((e && e.message) || e).slice(0, 120)}`); }
         }

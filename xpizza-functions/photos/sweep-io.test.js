@@ -20,7 +20,11 @@ const err = (code) => Object.assign(new Error(`gcs ${code}`), { code });
   assert.deepStrictEqual([await D.deleteIfGeneration('x', '7'), await D.deleteIfGeneration('gone', '7'), await D.deleteIfGeneration('moved', '7')], ['deleted', 'missing', 'other_generation'], 'SWEEP-GCS-DELETE');
   assert.deepStrictEqual(calls[0], ['x', { ifGenerationMatch: '7' }], 'SWEEP-GCS-GENERATION-MATCHED');
   await assert.rejects(() => D.deleteIfGeneration('boom', '7'), (e) => e.code === 503, 'SWEEP-GCS-OTHER-ERRORS-PROPAGATE');
-  ok('gcs deleter: ifGenerationMatch; 404 → missing, 412 → other_generation (done, never deleted); other errors propagate');
+  calls.length = 0;
+  assert.deepStrictEqual([await D.deleteAny('x'), await D.deleteAny('gone')], ['deleted', 'missing'], 'SWEEP-GCS-DELETE-ANY (codex r2: a pending_public path)');
+  assert.deepStrictEqual(calls.map(([p, o]) => [p, o]), [['x', undefined], ['gone', undefined]], 'SWEEP-GCS-DELETE-ANY-UNCONDITIONAL');
+  await assert.rejects(() => D.deleteAny('boom'), (e) => e.code === 503, 'SWEEP-GCS-DELETE-ANY-OTHER-ERRORS-PROPAGATE');
+  ok('gcs deleter: ifGenerationMatch; 404 → missing, 412 → other_generation (done, never deleted); other errors propagate; deleteAny (pending_public paths) unconditional, 404 → missing');
 
   const seen = []; const warns = [];
   const r = await runSweep({ mode: 'live', listRids: async () => ['tb_a', 'tb_b', 'tb_c'], log: { warn: (x) => warns.push(x), info: () => {} },
