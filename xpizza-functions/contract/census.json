@@ -48688,7 +48688,7 @@
    "file": "xpizza-functions/signup-core.js",
    "fn": "<top>",
    "key": "normEmail",
-   "line": 330,
+   "line": 337,
    "how": "object-key",
    "exempt": true
   },
@@ -48696,7 +48696,7 @@
    "file": "xpizza-functions/signup-core.js",
    "fn": "<top>",
    "key": "validEmail",
-   "line": 330,
+   "line": 337,
    "how": "object-key",
    "exempt": true
   }
