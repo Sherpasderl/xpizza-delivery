@@ -59,6 +59,9 @@ function buildHost({ dom, XPD, currentUser, controller, store, storageThrows = f
     liftFn('companionReadProgress'), liftFn('companionWriteProgress'), liftFn('companionSetChecklistPending'),
     liftFn('companionChecklistPending'), liftFn('companionClearChecklistPending'), liftFn('companionPostActStep'),
     liftFn('render'),
+    // The practica intro card's pay-hint helper the SHIPPED companionRenderOnboarding now calls (earnings slice).
+    // Lifted real: no window.PayRate here, so it returns the base «Ves tu resumen» hint — the Pagos-off session view.
+    liftFn('drv2PracticaPayHint'),
   ].join('\n');
   const localStorage = {
     getItem: (k) => (k in store ? store[k] : null),
