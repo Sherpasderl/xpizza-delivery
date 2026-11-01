@@ -1,6 +1,6 @@
 // Customer app — the native shell's bootstrap (PLAN-capp-native-shell §1.2; BUILD-ORDER N2). The runtime comes from the REAL
 // manifest (platform/sites.json → PLATFORM.appRuntime(), the D3 block); the shell is the REAL shell.html's own module list.
-// Key values are never printed (assert.ok on equality). Run: node --test customer-app/capp-native-boot.test.mjs
+// Key values are never printed (assert.ok on equality). Run: node --test customer-app/capp-boot.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -11,12 +11,12 @@ import { dirname, join } from 'node:path';
 const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, '..');
 const require = createRequire(import.meta.url);
 const { JSDOM } = createRequire(join(ROOT, 'xpizza-functions/x.js'))('jsdom');
-const Boot = require('./capp-native-boot.js');
+const Boot = require('./capp-boot.js');
 const CappSignupApi = require('./capp-signup-api.js');
 const M = require(join(ROOT, 'xpizza-functions/platform-manifest.js'));
 const LOCK = JSON.parse(readFileSync(join(ROOT, 'platform/native/vendor/firebasejs.lock.json'), 'utf8'));
 const RT0 = M.PLATFORM.appRuntime();
-const RT = (x = {}) => ({ ...RT0, sdk_base: `./vendor/firebasejs/${LOCK.version}/`, flags: {}, ...x });
+const RT = (x = {}) => ({ mode: 'native', ...RT0, sdk_base: `./vendor/firebasejs/${LOCK.version}/`, flags: {}, ...x });
 const res = (status, body, etag) => ({ status, headers: { get: (h) => (h === 'ETag' ? etag || null : null) }, json: async () => { if (body === 'bad') throw new Error('not json'); return body; } });
 // a fake CappShellUI that captures the mount options (the unit cells); the integration cell mounts the REAL one
 const capture = () => { const c = {}; return { c, CappShellUI: { mount: (doc, opts) => { c.doc = doc; c.opts = opts; return { fake: true }; } } }; };
@@ -89,10 +89,13 @@ test('N2: other mount options pass through unchanged; no runtime ⇒ no mount', 
   assert.equal(c.opts.storage, storage); assert.equal(c.opts.onEvent, onEvent); assert.equal(c.opts.now(), 5); assert.deepEqual(c.doc, { d: 1 });
   for (const k of ['fetch', 'importModule', 'CappShellUI', 'CappSignupApi']) assert.equal(k in c.opts, false, `${k} is the boot's, not the shell's`);
   let mounted = 0; const none = { mount: () => { mounted++; } };
-  assert.equal(Boot.boot({}, { CappShellUI: none, CappSignupApi }), null); assert.equal(Boot.boot({}, { runtime: { flags: {} }, CappShellUI: none, CappSignupApi }), null); assert.equal(mounted, 0);
+  assert.equal(Boot.boot({}, { CappShellUI: none, CappSignupApi }), null); assert.equal(Boot.boot({}, { runtime: { flags: {} }, CappShellUI: none, CappSignupApi }), null);
+  for (const mode of [undefined, '', 'desktop', 'Web']) assert.equal(Boot.boot({}, { runtime: RT({ mode }), CappShellUI: none, CappSignupApi }), null, `an invalid mode ${JSON.stringify(mode)} never mounts (never a guessed mode)`);
+  assert.equal(mounted, 0);
+  for (const mode of ['web', 'native']) assert.ok(Boot.boot({}, { runtime: RT({ mode }), CappShellUI: { mount: () => ({ ok: mode }) }, CappSignupApi }), `${mode} mounts`);
 });
 
-test('N2: the REAL shell.html modules + the boot (auto-run on CAPP_NATIVE_RUNTIME) paint the shell with EVERY request still pending — no awaited network at boot', () => {
+test('N2: the REAL shell.html modules + the boot (auto-run on CAPP_RUNTIME) paint the shell with EVERY request still pending — no awaited network at boot', () => {
   const shell = readFileSync(join(HERE, 'shell.html'), 'utf8');
   const scripts = [...shell.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
   assert.ok(scripts.includes('capp-shell-ui.js') && scripts.at(-1) === 'capp-shell-ui.js', 'premise: shell.html loads the shell last');
@@ -101,9 +104,9 @@ test('N2: the REAL shell.html modules + the boot (auto-run on CAPP_NATIVE_RUNTIM
   w.fetch = () => { requests++; return new Promise(() => {}); };   // the network never answers
   w.setInterval = () => 0;
   for (const f of scripts) w.eval(readFileSync(join(HERE, f), 'utf8'));
-  w.CAPP_NATIVE_RUNTIME = RT({ directory_endpoint: 'dirX' });
-  w.eval(readFileSync(join(HERE, 'capp-native-boot.js'), 'utf8'));
-  assert.ok(w.CappNativeBoot && w.CappNativeBoot.instance, '🔴 the boot did not mount the shell');
+  w.CAPP_RUNTIME = RT({ directory_endpoint: 'dirX' });
+  w.eval(readFileSync(join(HERE, 'capp-boot.js'), 'utf8'));
+  assert.ok(w.CappBoot && w.CappBoot.instance, '🔴 the boot did not mount the shell');
   assert.ok(w.document.querySelector('.tabbar'), 'the shell painted (its tab bar) before any response');
   assert.ok(w.document.querySelector('#app').innerHTML.length > 100);
   assert.ok(requests >= 1, 'premise: the directory request went out (and is still pending)');

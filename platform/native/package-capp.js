@@ -1,13 +1,19 @@
 #!/usr/bin/env node
 'use strict';
-// ── PLAN-capp-native-shell §1.2 / §1.3 (BUILD-ORDER N3) — the NATIVE shell packager ──────────────────────────────────────────
+// ── PLAN-capp-native-shell §1.2 / §1.3 (BUILD-ORDER N3) + PLAN-capp-desktop-website r2 D-1 — the shell packager, WEB and NATIVE ──
 //
-//   node platform/native/package-capp.js --sha <commit> --out <dir> [--flags signup,intlPhone,guestCardOnly,schedulingLive]
-//   node platform/native/package-capp.js --sha <commit> --out <dir> [--flags …] --verify     (re-derive; any drift ⇒ exit 1)
+//   node platform/native/package-capp.js --target web|native --env <environment> --sha <commit> --out <dir> [--flags signup,…]
+//   … the same + --verify     (re-derive; any drift ⇒ exit 1)
+//
+// ONE builder, two targets (D-1): the SAME files, CSP, SDK and boot (capp-boot.js); they differ ONLY in the stamp's deployment id
+// (web = the platform orders deployment itself, e.g. orders-app; native = its declared native id, orders-app-native) and
+// runtime.mode ('web' | 'native'). The environment is the DEPLOYMENT ENVIRONMENT (sherpa-env: 'production' for live builds —
+// heartbeats and version checks run only there; Netlify passes its CONTEXT for previews) and is never used to mean web vs native
+// (D-1, Codex P1-1). The web target also writes a /version.json that matches its stamp (stamp-version.js's own shape).
 //
 // ONE SOURCE: every file comes from git AT THE NAMED COMMIT (never the working tree, never a hand-copied www/ — the driver
 // app's stale-www lesson). It packages EXACTLY what customer-app/shell.html loads (its scripts, stylesheets, the fonts those
-// reference + their licence), the bootstrap (capp-native-boot.js), a generated capp-native-config.js (the platform orders
+// reference + their licence), the bootstrap (capp-boot.js), a generated capp-runtime.js (the platform orders
 // deployment's `runtime` block from platform/sites.json + the build's flags; absent flag ⇒ dark) and the vendored Firebase SDK
 // (platform/native/vendor, hash-checked against its lock; ONE asserted rewrite: firebase-auth's absolute gstatic import of
 // firebase-app → ./firebase-app.js). The web customer-app/shell.html is packaged AS www/index.html — the entry Capacitor loads
@@ -22,7 +28,7 @@
 //     deployment = the manifest's native id, context platform, app-build = the content hash of the packaged runtime files,
 //     app-compat = platform/compat.json's orders generation, sherpa-env native.
 // A missing or invalid stamp input FAILS packaging (exit 1) — a native build never ships inert (§1.3). It writes
-// <out>/native-manifest.json: { sha, deployment, build, compat, flags, sdk, files: { path: sha256 } }.
+// <out>/build-manifest.json: { sha, deployment, build, compat, flags, sdk, files: { path: sha256 } }.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -32,7 +38,8 @@ const Stamp = require('../stamp-version');
 const ROOT = path.join(__dirname, '..', '..');
 const APP = 'customer-app';
 const FLAGS = ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive'];
-const BOOT = ['capp-native-config.js', 'capp-native-boot.js'];
+const BOOT = ['capp-runtime.js', 'capp-boot.js'];
+const TARGETS = ['web', 'native'];
 const ENTRY = 'index.html';   // the packaged web shell.html (Capacitor's entry)
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/, BUILD_RE = /^[A-Za-z0-9._-]{1,80}$/;   // sherpa-client.js readIdentity's own rules
 const sha256 = (b) => crypto.createHash('sha256').update(b).digest('hex');
@@ -72,7 +79,9 @@ function shellFiles(shellHtml, readText) {
 }
 
 // `show(rel)` → Buffer reads a file AT the commit (default: git show); tests overlay edits on it, never on the repo
-function build({ sha, flags = [], root = ROOT, show } = {}) {
+function build({ sha, flags = [], root = ROOT, show, target = 'native', env } = {}) {
+  if (!TARGETS.includes(target)) throw new Error(`--target must be one of ${TARGETS.join(', ')}`);
+  if (typeof env !== 'string' || !ID_RE.test(env)) throw new Error('--env is required (the deployment environment, e.g. production) — never guessed');
   if (typeof sha !== 'string' || !/^[0-9a-f]{7,40}$/.test(sha)) throw new Error('--sha must be a commit');
   const full = execFileSync('git', ['rev-parse', '--verify', `${sha}^{commit}`], { cwd: root, encoding: 'utf8' }).trim();
   for (const f of flags) if (!FLAGS.includes(f)) throw new Error(`unknown flag ${f} (known: ${FLAGS.join(', ')})`);
@@ -94,7 +103,7 @@ function build({ sha, flags = [], root = ROOT, show } = {}) {
   const readText = (rel) => T(`${APP}/${rel}`);
   const shell = readText('shell.html');
   const { scripts, sheets, assets } = shellFiles(shell, readText);
-  for (const f of [...scripts, ...sheets, ...assets, 'capp-native-boot.js']) files.set(f, S(`${APP}/${f}`));
+  for (const f of [...scripts, ...sheets, ...assets, 'capp-boot.js']) files.set(f, S(`${APP}/${f}`));
 
   // the vendored SDK: hash-checked, ONE asserted rewrite
   const sdkDir = `vendor/firebasejs/${lock.version}/`;
@@ -111,8 +120,8 @@ function build({ sha, flags = [], root = ROOT, show } = {}) {
 
   // the runtime: the manifest block (minus its note) + the build's flags; the SDK base
   const { note: _note, ...rt } = dep.runtime;
-  const runtime = { ...rt, sdk_base: `./${sdkDir}`, flags: Object.fromEntries(flags.map((f) => [f, true])) };
-  files.set('capp-native-config.js', Buffer.from(`// GENERATED by platform/native/package-capp.js at ${full} — never edit; the source is platform/sites.json (runtime)\nself.CAPP_NATIVE_RUNTIME = Object.freeze(${JSON.stringify(runtime)});\n`, 'utf8'));
+  const runtime = { mode: target, ...rt, sdk_base: `./${sdkDir}`, flags: Object.fromEntries(flags.map((f) => [f, true])) };
+  files.set('capp-runtime.js', Buffer.from(`// GENERATED by platform/native/package-capp.js at ${full} — never edit; the source is platform/sites.json (runtime)\nself.CAPP_RUNTIME = Object.freeze(${JSON.stringify(runtime)});\n`, 'utf8'));
 
   // the packaged shell.html: CSP first in <head>, the boot after the shell, then the identity stamp over the content hash
   let html = shell;
@@ -132,12 +141,15 @@ function build({ sha, flags = [], root = ROOT, show } = {}) {
   try {
     writeTree(tmp, files);
     const buildId = Stamp.computeBuild(tmp, [ENTRY]);
-    const d = { app: dep.app, id: dep.native.deployment, context: dep.context };
+    const d = { app: dep.app, id: target === 'native' ? dep.native.deployment : dep.id, context: dep.context };
     if (!ID_RE.test(d.app) || !ID_RE.test(d.context) || !BUILD_RE.test(buildId)) throw new Error('stamp inputs invalid — refusing to ship an inert build');
-    files.set(ENTRY, Buffer.from(Stamp.injectBlock(html, Stamp.metaBlock(d, buildId, gen, 'native')), 'utf8'));
-    const manifest = { sha: full, deployment: d.id, build: buildId, compat: gen, flags: [...flags].sort(), sdk: lock.version,
+    files.set(ENTRY, Buffer.from(Stamp.injectBlock(html, Stamp.metaBlock(d, buildId, gen, env)), 'utf8'));
+    // the web deployment's /version.json — stamp-version.js's exact shape, the SAME build + compat as the stamp (sherpa-client
+    // compares them); generated metadata is excluded from computeBuild, so writing it never moves the build id
+    if (target === 'web') files.set('version.json', Buffer.from(`${JSON.stringify({ app: d.app, deployment: d.id, build: buildId, compat: gen, commit: full.slice(0, 64) })}\n`, 'utf8'));
+    const manifest = { sha: full, target, env, deployment: d.id, build: buildId, compat: gen, flags: [...flags].sort(), sdk: lock.version,
       files: Object.fromEntries([...files.keys()].sort().map((k) => [k, sha256(files.get(k))])) };
-    files.set('native-manifest.json', Buffer.from(JSON.stringify(manifest, null, 2) + '\n', 'utf8'));
+    files.set('build-manifest.json', Buffer.from(JSON.stringify(manifest, null, 2) + '\n', 'utf8'));
     return { files, manifest, csp, styleHash };
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
@@ -158,9 +170,9 @@ function verify(out, built) {
   for (const r of have) if (!built.files.has(r)) drift.push(`extra ${r}`);
   return drift;
 }
-function pack({ sha, out, flags = [], root = ROOT } = {}) {
+function pack({ sha, out, flags = [], root = ROOT, target, env } = {}) {
   if (!out) throw new Error('--out is required');
-  const built = build({ sha, flags, root });
+  const built = build({ sha, flags, root, target, env });
   if (fs.existsSync(out)) { const extra = listTree(out); if (extra.length) throw new Error(`--out ${out} is not empty — refusing to mix builds`); }
   writeTree(out, built.files);
   return built.manifest;
@@ -169,12 +181,13 @@ function pack({ sha, out, flags = [], root = ROOT } = {}) {
 if (require.main === module) {
   const a = process.argv.slice(2), arg = (k) => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : undefined; };
   try {
-    const opts = { sha: arg('--sha'), out: arg('--out'), flags: (arg('--flags') || '').split(',').filter(Boolean) };
+    const opts = { sha: arg('--sha'), out: arg('--out'), target: arg('--target'), env: arg('--env'), flags: (arg('--flags') || '').split(',').filter(Boolean) };
+    if (!opts.target) throw new Error('--target web|native is required');
     if (a.includes('--verify')) {
       const drift = verify(opts.out, build(opts));
       if (drift.length) { console.error(`package-capp --verify: DRIFT\n  ${drift.join('\n  ')}`); process.exit(1); }
       console.log(`package-capp --verify: ${opts.out} is exactly the build of ${opts.sha}`);
-    } else { const m = pack(opts); console.log(`package-capp: ${m.deployment} build ${m.build} compat ${m.compat} sdk ${m.sdk} flags [${m.flags}] → ${opts.out} (${Object.keys(m.files).length} files)`); }
+    } else { const m = pack(opts); console.log(`package-capp: ${m.target} ${m.deployment} (${m.env}) build ${m.build} compat ${m.compat} sdk ${m.sdk} flags [${m.flags}] → ${opts.out} (${Object.keys(m.files).length} files)`); }
   } catch (e) { console.error(`package-capp: FAILED — ${e.message}`); process.exit(1); }
 }
-module.exports = { build, pack, verify, cspFor, shellFiles, FLAGS, ENTRY };
+module.exports = { build, pack, verify, cspFor, shellFiles, FLAGS, ENTRY, TARGETS };

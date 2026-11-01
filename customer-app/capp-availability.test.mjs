@@ -15,7 +15,7 @@ const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, '..');
 const require = createRequire(import.meta.url);
 const fnRequire = createRequire(join(ROOT, 'xpizza-functions/x.js'));
 const { loadForm, closeAll, settle, BRAND, serve, envelope } = await import(join(ROOT, 'form-harness.mjs'));
-const CappMenu = require('./capp-menu.js'), CappAvailability = require('./capp-availability.js'), Boot = require('./capp-native-boot.js');
+const CappMenu = require('./capp-menu.js'), CappAvailability = require('./capp-availability.js'), Boot = require('./capp-boot.js');
 const { availKey } = require('./avail-key.js'), Reducer = require('./availability-reducer.js');
 const { generateFormBundle, catalogSnapshot } = fnRequire('./catalog/generate-form-bundle');
 const { applyIdentityToServedBody } = fnRequire('./catalog/identity-overlay');
@@ -83,7 +83,7 @@ test('FAIL-OPEN on an older envelope (no avail_identity): null — never a guess
   for (const bad of [{ field: 'slug' }, { field: '' }, 'name', null]) assert.equal(CappMenu.adaptMenu({ ...envelope('x_pizza', body, '1d.3'), avail_identity: bad }).availIdentity, null, `a malformed identity ${JSON.stringify(bad)} is no identity`);
   let fetched = 0; let opts;
   const S = { mount: (d, o) => { opts = o; return {}; } };
-  Boot.boot({}, { runtime: { ...M.PLATFORM.appRuntime(), flags: {}, sdk_base: './' }, CappShellUI: S, CappSignupApi: { ENDPOINTS: [] }, CappAvailability, availabilityReducer: Reducer, availKey, fetch: async () => { fetched++; return {}; } });
+  Boot.boot({}, { runtime: { mode: 'native', ...M.PLATFORM.appRuntime(), flags: {}, sdk_base: './' }, CappShellUI: S, CappSignupApi: { ENDPOINTS: [] }, CappAvailability, availabilityReducer: Reducer, availKey, fetch: async () => { fetched++; return {}; } });
   assert.equal(await opts.readAvailability('x_pizza', old), null); assert.equal(fetched, 0, '🔴 no read without an identity');
 });
 
@@ -92,7 +92,7 @@ test('the boot: the RTDB node (no-store) mapped onto the dish keys; a failed / n
   const d0 = menu.dishes[0], RT = M.PLATFORM.appRuntime();
   const calls = []; let next; let opts;
   const S = { mount: (d, o) => { opts = o; return {}; } };
-  Boot.boot({}, { runtime: { ...RT, flags: {}, sdk_base: './' }, CappShellUI: S, CappSignupApi: { ENDPOINTS: [] }, CappAvailability, availabilityReducer: Reducer, availKey, fetch: async (u, i) => { calls.push([u, i]); return next(); } });
+  Boot.boot({}, { runtime: { mode: 'native', ...RT, flags: {}, sdk_base: './' }, CappShellUI: S, CappSignupApi: { ENDPOINTS: [] }, CappAvailability, availabilityReducer: Reducer, availKey, fetch: async (u, i) => { calls.push([u, i]); return next(); } });
   next = () => ({ status: 200, json: async () => ({ [availKey(d0.id)]: OFF }) });
   assert.deepEqual(await opts.readAvailability('la_musa', menu), [d0.key]);
   assert.equal(calls[0][0], `${RT.availability_base}/restaurants/la_musa/item_availability.json`); assert.equal(calls[0][1].cache, 'no-store');
@@ -132,7 +132,7 @@ test('REGRESSION (Codex r1 P2): failed read → rename → old key false + new k
     const oldName = d.name, newName = `${d.name} (nuevo)`;
     // the app: the REAL boot with a scripted network
     let next; let opts;
-    Boot.boot({}, { runtime: { ...RT, flags: {}, sdk_base: './' }, CappShellUI: { mount: (x, o) => { opts = o; return {}; } }, CappSignupApi: { ENDPOINTS: [] },
+    Boot.boot({}, { runtime: { mode: 'native', ...RT, flags: {}, sdk_base: './' }, CappShellUI: { mount: (x, o) => { opts = o; return {}; } }, CappSignupApi: { ENDPOINTS: [] },
       CappAvailability, availabilityReducer: Reducer, availKey, fetch: async (u) => { assert.equal(u, AVAIL); return next(); } });
     // 1. the first read FAILS — on both
     w.__respond = (u) => (String(u) === AVAIL ? Promise.resolve({ ok: false, status: 503, json: async () => ({}) }) : new Promise(() => {}));

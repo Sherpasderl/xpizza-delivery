@@ -23,7 +23,8 @@ const show = (rel) => execFileSync('git', ['show', `${HEAD}:${rel}`], { cwd: ROO
 const SITES = JSON.parse(show('platform/sites.json')), COMPAT = JSON.parse(show('platform/compat.json'));
 const DEP = SITES.deployments.find((d) => d.app === 'orders' && d.context === 'platform');
 const LOCK = JSON.parse(show('platform/native/vendor/firebasejs.lock.json'));
-const B = P.build({ sha: HEAD });
+const NAT = { target: 'native', env: 'production' }, WEB = { target: 'web', env: 'production' };
+const B = P.build({ sha: HEAD, ...NAT });
 const txt = (rel) => B.files.get(rel).toString('utf8');
 
 // 1. the stamp, through the real reader
@@ -33,10 +34,10 @@ const txt = (rel) => B.files.get(rel).toString('utf8');
   const doc = new JSDOM(txt(P.ENTRY)).window.document;
   const id = SC.readIdentity(doc);
   assert.ok(id, '🔴 the packaged shell is INERT (readIdentity === null)');
-  assert.deepStrictEqual([id.app, id.deployment, id.context, id.compat, id.env], ['orders', DEP.native.deployment, 'platform', COMPAT.generations.orders, 'native']);
+  assert.deepStrictEqual([id.app, id.deployment, id.context, id.compat, id.env], ['orders', DEP.native.deployment, 'platform', COMPAT.generations.orders, 'production']);
   assert.strictEqual(id.build, B.manifest.build); assert.match(id.build, /^[0-9a-f]{20}$/);
   assert.ok(sha256Of(txt('sherpa-client.js')) === sha256Of(show('customer-app/sherpa-client.js').toString('utf8')), 'the shared module is the committed copy');
-  ok(`the packaged shell is stamped: readIdentity → orders / ${id.deployment} / platform, compat ${id.compat} (compat.json), env native, build = the content hash`);
+  ok(`the packaged shell is stamped: readIdentity → orders / ${id.deployment} / platform, compat ${id.compat} (compat.json), env production (the ENVIRONMENT — never the host mode), build = the content hash`);
 }
 function sha256Of(s) { return require('crypto').createHash('sha256').update(s).digest('hex'); }
 
@@ -45,15 +46,15 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   const web = show('customer-app/shell.html').toString('utf8');
   const { scripts, sheets, assets } = P.shellFiles(web, (r) => show(`customer-app/${r}`).toString('utf8'));
   assert.strictEqual(P.ENTRY, 'index.html', 'Capacitor\'s entry'); assert.ok(!B.files.has('shell.html'), 'the shell is packaged AS index.html (one file)');
-  const want = [...scripts, ...sheets, ...assets, 'capp-native-boot.js', 'capp-native-config.js', P.ENTRY, 'native-manifest.json',
+  const want = [...scripts, ...sheets, ...assets, 'capp-boot.js', 'capp-runtime.js', P.ENTRY, 'build-manifest.json',
     ...Object.keys(LOCK.files).map((f) => `vendor/firebasejs/${LOCK.version}/${f}`)].sort();
   assert.deepStrictEqual([...B.files.keys()].sort(), want);
   for (const k of B.files.keys()) assert.ok(!/\.test\.|fixtures\/|MOCKUP|netlify\.toml|node_modules/.test(k), `🔴 not runtime: ${k}`);
   assert.ok(!/capp-shell-ui\.js/.test(show('customer-app/index.html').toString('utf8')) && /<script src="capp-shell-ui\.js">/.test(txt(P.ENTRY)), 'the entry is the SHELL (it loads capp-shell-ui.js), never the web single-store index.html');
   assert.ok(assets.includes('fonts/OFL.txt') && assets.filter((a) => a.endsWith('.woff2')).length === 4, 'the four fonts and their licence');
-  for (const f of [...scripts, ...sheets, ...assets, 'capp-native-boot.js']) assert.ok(B.files.get(f).equals(show(`customer-app/${f}`)), `${f} is byte-identical to the committed source`);
+  for (const f of [...scripts, ...sheets, ...assets, 'capp-boot.js']) assert.ok(B.files.get(f).equals(show(`customer-app/${f}`)), `${f} is byte-identical to the committed source`);
   const s = txt(P.ENTRY);
-  assert.strictEqual(s.replace(/<!-- sherpa-stamp:begin -->[\s\S]*?<!-- sherpa-stamp:end -->\n/, '').replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\n/, '').replace('<script src="capp-native-config.js"></script>\n<script src="capp-native-boot.js"></script>\n', ''), web, 'the packaged shell = the web shell + ONLY the stamp, the CSP and the two boot scripts');
+  assert.strictEqual(s.replace(/<!-- sherpa-stamp:begin -->[\s\S]*?<!-- sherpa-stamp:end -->\n/, '').replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\n/, '').replace('<script src="capp-runtime.js"></script>\n<script src="capp-boot.js"></script>\n', ''), web, 'the packaged shell = the web shell + ONLY the stamp, the CSP and the two boot scripts');
   assert.ok(s.indexOf('Content-Security-Policy') < s.indexOf('<script'), 'the CSP precedes every script');
   ok(`exactly ${want.length} files: shell.html's ${scripts.length} scripts + ${sheets.length} stylesheets + ${assets.length} font assets, the boot, the config, the 2 SDK files, the manifest — all byte-identical to the commit; www/index.html = the web shell.html + stamp + CSP + boot only`);
 }
@@ -73,7 +74,7 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   const dir = Object.fromEntries(B.csp.split('; ').map((d) => { const [k, ...v] = d.split(' '); return [k, v]; }));
   const allowed = new Set([...dir['connect-src'], ...dir['script-src'], ...dir['img-src']].filter((x) => /^(https|wss):/.test(x)));
   const EXEMPT = { 'capp-auth-firebase.js': ['https://www.gstatic.com'] };   // the WEB default SDK; the boot always passes loadSdk
-  assert.match(txt('capp-native-boot.js'), /loadSdk: \(\) => Promise\.all\(\[importModule\(`\$\{sdk\}firebase-app\.js`\)/, 'premise of the exemption: the boot overrides the SDK loader');
+  assert.match(txt('capp-boot.js'), /loadSdk: \(\) => Promise\.all\(\[importModule\(`\$\{sdk\}firebase-app\.js`\)/, 'premise of the exemption: the boot overrides the SDK loader');
   const misses = [];
   for (const [f, b] of B.files) {
     if (f.startsWith('vendor/') || !/\.(js|css|html)$/.test(f)) continue;
@@ -90,12 +91,12 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   const auth = txt(`vendor/firebasejs/${LOCK.version}/firebase-auth.js`);
   assert.strictEqual(auth.split('from"./firebase-app.js"').length - 1, 1, 'the one import rewritten'); assert.ok(!auth.includes(`from"${LOCK.source}`), '🔴 a gstatic import left in the bundle');
   assert.ok(B.files.get(`vendor/firebasejs/${LOCK.version}/firebase-app.js`).equals(show(`platform/native/vendor/firebasejs/${LOCK.version}/firebase-app.js`)));
-  const cfg = txt('capp-native-config.js'); const sb = {}; new Function('self', cfg)(sb);
-  const R = sb.CAPP_NATIVE_RUNTIME;
-  assert.ok(Object.isFrozen(R) && !('note' in R)); assert.deepStrictEqual(R.flags, {}); assert.strictEqual(R.sdk_base, `./vendor/firebasejs/${LOCK.version}/`);
-  for (const k of Object.keys(DEP.runtime).filter((k) => k !== 'note')) assert.ok(JSON.stringify(R[k]) === JSON.stringify(DEP.runtime[k]), `the runtime's ${k} is the manifest's`);
-  const F = P.build({ sha: HEAD, flags: ['signup', 'intlPhone'] }); const sf = {}; new Function('self', F.files.get('capp-native-config.js').toString('utf8'))(sf);
-  assert.deepStrictEqual(sf.CAPP_NATIVE_RUNTIME.flags, { signup: true, intlPhone: true }); assert.deepStrictEqual(F.manifest.flags, ['intlPhone', 'signup']);
+  const cfg = txt('capp-runtime.js'); const sb = {}; new Function('self', cfg)(sb);
+  const R = sb.CAPP_RUNTIME;
+  assert.ok(Object.isFrozen(R) && !('note' in R)); assert.deepStrictEqual(R.flags, {}); assert.strictEqual(R.mode, 'native'); assert.strictEqual(R.sdk_base, `./vendor/firebasejs/${LOCK.version}/`);
+  for (const k of Object.keys(DEP.runtime).filter((k) => k !== 'note' && k !== 'mode')) assert.ok(JSON.stringify(R[k]) === JSON.stringify(DEP.runtime[k]), `the runtime's ${k} is the manifest's`);
+  const F = P.build({ sha: HEAD, ...NAT, flags: ['signup', 'intlPhone'] }); const sf = {}; new Function('self', F.files.get('capp-runtime.js').toString('utf8'))(sf);
+  assert.deepStrictEqual(sf.CAPP_RUNTIME.flags, { signup: true, intlPhone: true }); assert.deepStrictEqual(F.manifest.flags, ['intlPhone', 'signup']);
   assert.notStrictEqual(F.manifest.build, B.manifest.build, 'a different flag set is a different build');
   ok('firebase-auth\'s one gstatic import → ./firebase-app.js (firebase-app byte-identical); the runtime = the manifest block minus its note + sdk_base; flags dark unless named; a flag set changes the build id');
 }
@@ -104,7 +105,7 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
 {
   const over = (edits) => (rel) => (rel in edits ? Buffer.from(typeof edits[rel] === 'string' ? edits[rel] : JSON.stringify(edits[rel])) : show(rel));
   const sitesWith = (mut) => { const c = JSON.parse(JSON.stringify(SITES)); mut(c.deployments.find((d) => d.app === 'orders' && d.context === 'platform')); return c; };
-  const refuse = (opts, re) => assert.throws(() => P.build({ sha: HEAD, ...opts }), re);
+  const refuse = (opts, re) => assert.throws(() => P.build({ sha: HEAD, ...NAT, ...opts }), re);
   refuse({ show: over({ 'platform/sites.json': sitesWith((d) => { delete d.native; }) }) }, /no native deployment id — refusing to ship an inert build/);
   refuse({ show: over({ 'platform/sites.json': sitesWith((d) => { delete d.runtime; }) }) }, /no app runtime block/);
   for (const k of ['functions_base', 'menu_endpoint', 'availability_base', 'intake_key', 'maps_key', 'firebase', 'note'])
@@ -117,6 +118,7 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   refuse({ show: over({ 'customer-app/shell.html': show('customer-app/shell.html').toString('utf8').replace('<script src="capp-ui.js"></script>', '<script src="https://cdn.example/x.js"></script>') }) }, /non-local or nested file/);
   refuse({ flags: ['payments'] }, /unknown flag payments/);
   refuse({ sha: 'not-a-sha' }, /--sha must be a commit/);
+  refuse({ env: undefined }, /--env is required .* never guessed/); refuse({ env: 'Prod uction' }, /--env is required/); refuse({ target: 'desktop' }, /--target must be one of web, native/);
   ok('refused: no native id / no runtime / any one runtime key missing / a malformed base / an incomplete firebase config / no compat generation (never an inert build), a second <style> block, a tampered vendored file, a remote script in shell.html, an unknown flag, a non-commit');
 }
 
@@ -124,12 +126,12 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
 {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'capp-native-test-'));
   try {
-    const m = P.pack({ sha: HEAD, out: path.join(out, 'www') });
+    const m = P.pack({ sha: HEAD, ...NAT, out: path.join(out, 'www') });
     assert.deepStrictEqual(P.verify(path.join(out, 'www'), B), []); assert.strictEqual(m.build, B.manifest.build, 'deterministic: two builds of one commit agree');
     const f = path.join(out, 'www', 'capp-ui.js'); fs.appendFileSync(f, ' ');
     fs.writeFileSync(path.join(out, 'www', 'stray.js'), 'x'); fs.rmSync(path.join(out, 'www', 'capp.css'));
     assert.deepStrictEqual(P.verify(path.join(out, 'www'), B).sort(), ['differs capp-ui.js', 'extra stray.js', 'missing capp.css']);
-    assert.throws(() => P.pack({ sha: HEAD, out: path.join(out, 'www') }), /not empty — refusing to mix builds/);
+    assert.throws(() => P.pack({ sha: HEAD, ...NAT, out: path.join(out, 'www') }), /not empty — refusing to mix builds/);
   } finally { fs.rmSync(out, { recursive: true, force: true }); }
   ok('pack writes the build (deterministic per commit); --verify names a changed byte, an extra file and a missing file; pack refuses a non-empty --out');
 }
@@ -137,15 +139,42 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
 {
   const page = txt(P.ENTRY);
   const srcs = [...page.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
-  assert.deepStrictEqual(srcs.slice(-3), ['capp-shell-ui.js', 'capp-native-config.js', 'capp-native-boot.js'], 'the boot runs last, after the config');
+  assert.deepStrictEqual(srcs.slice(-3), ['capp-shell-ui.js', 'capp-runtime.js', 'capp-boot.js'], 'the boot runs last, after the config');
   for (const f of srcs) assert.ok(B.files.has(f), `index.html loads a packaged file: ${f}`);
   const dom = new JSDOM(page.replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, ''), { runScripts: 'outside-only', pretendToBeVisual: true, url: 'capacitor://localhost/index.html' });
   const w = dom.window; let requests = 0;
   w.fetch = () => { requests++; return new Promise(() => {}); }; w.setInterval = () => 0;
   for (const f of srcs) w.eval(txt(f));
-  assert.ok(w.CAPP_NATIVE_RUNTIME && w.CappNativeBoot && w.CappNativeBoot.instance, '🔴 the packaged entry did not boot the shell');
+  assert.ok(w.CAPP_RUNTIME && w.CappBoot && w.CappBoot.instance, '🔴 the packaged entry did not boot the shell');
   assert.ok(w.document.querySelector('.tabbar'), 'the shell painted from www/index.html');
   w.close();
   ok('www/index.html (the entry Capacitor loads) runs its packaged scripts in order — the config, then the boot — and paints the shell');
+}
+// 8. D-1 — the WEB target: the SAME build as native except its stamp (deployment = the platform orders deployment itself),
+//    runtime.mode 'web', and a /version.json matching the stamp (stamp-version.js's shape)
+{
+  const Wb = P.build({ sha: HEAD, ...WEB });
+  const mod = { exports: {} }; new Function('module', 'exports', Wb.files.get('sherpa-client.js').toString('utf8'))(mod, mod.exports);
+  const id = mod.exports.readIdentity(new JSDOM(Wb.files.get(P.ENTRY).toString('utf8')).window.document);
+  assert.ok(id, '🔴 the web build is INERT');
+  assert.deepStrictEqual([id.app, id.deployment, id.context, id.compat, id.env], ['orders', DEP.id, 'platform', COMPAT.generations.orders, 'production']);
+  assert.notStrictEqual(DEP.id, DEP.native.deployment, 'premise: web and native are distinct deployments');
+  const vj = JSON.parse(Wb.files.get('version.json').toString('utf8'));
+  assert.deepStrictEqual(vj, { app: 'orders', deployment: DEP.id, build: id.build, compat: id.compat, commit: HEAD }, '🔴 /version.json must match the web stamp');
+  assert.ok(!B.files.has('version.json'), 'the native build carries no version.json (it updates through the store)');
+  const sb = {}; new Function('self', Wb.files.get('capp-runtime.js').toString('utf8'))(sb); assert.strictEqual(sb.CAPP_RUNTIME.mode, 'web');
+  assert.strictEqual(Wb.csp, B.csp, 'ONE CSP for web and native');
+  const differ = [...new Set([...Wb.files.keys(), ...B.files.keys()])].filter((k) => !(Wb.files.has(k) && B.files.has(k) && Wb.files.get(k).equals(B.files.get(k)))).sort();
+  assert.deepStrictEqual(differ, ['build-manifest.json', 'capp-runtime.js', P.ENTRY, 'version.json'].sort(), '🔴 web and native must differ ONLY in the stamp page, the runtime mode, the manifest and version.json');
+  const strip = (b) => b.toString('utf8').replace(/<!-- sherpa-stamp:begin -->[\s\S]*?<!-- sherpa-stamp:end -->\n/, '');
+  assert.strictEqual(strip(Wb.files.get(P.ENTRY)), strip(B.files.get(P.ENTRY)), 'the entry pages differ only inside the stamp block');
+  const Pv = P.build({ sha: HEAD, target: 'web', env: 'deploy-preview' });
+  const pid = mod.exports.readIdentity(new JSDOM(Pv.files.get(P.ENTRY).toString('utf8')).window.document);
+  assert.strictEqual(pid.env, 'deploy-preview', 'a preview stamps its environment (heartbeats off by design)');
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'capp-web-test-'));
+  try { P.pack({ sha: HEAD, ...WEB, out: path.join(out, 'dist') }); assert.deepStrictEqual(P.verify(path.join(out, 'dist'), Wb), []);
+    fs.writeFileSync(path.join(out, 'dist', 'version.json'), '{}'); assert.deepStrictEqual(P.verify(path.join(out, 'dist'), Wb), ['differs version.json']); }
+  finally { fs.rmSync(out, { recursive: true, force: true }); }
+  ok(`the WEB target: stamped orders / ${DEP.id} / production (readIdentity), /version.json = the stamp's build + compat, runtime.mode web, the SAME CSP; it differs from native ONLY in the stamp block, the mode, the manifest and version.json; a preview stamps its environment; --verify covers it`);
 }
 console.log(`package-capp: OK (${n})`);

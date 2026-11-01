@@ -1,12 +1,14 @@
-// Customer app — the NATIVE shell's bootstrap (PLAN-capp-native-shell §1.2, APPROVED; BUILD-ORDER N2). The packaged shell.html
-// (platform/native/package-capp.js) loads the SAME customer-app modules as the web, then this file, then a generated
-// CAPP_NATIVE_RUNTIME (the platform orders deployment's `runtime` block from platform/sites.json + the build's flags). It builds
-// the shell's transports and runtime from that DATA and calls CappShellUI.mount(document, opts). Brand-agnostic (no restaurant id,
-// name or host in this file — guarded). Not loaded by any web page: only the packaged native shell carries it.
+// Customer app — THE ONE HOST of the multi-store shell, for the WEB site and the NATIVE app alike (PLAN-capp-desktop-website r2
+// D-1; was the native shell's bootstrap, PLAN-capp-native-shell §1.2 / N2). The packaged shell (platform/native/package-capp.js,
+// --target web | native: shell.html published AS index.html) loads the SAME customer-app modules, a generated CAPP_RUNTIME (the
+// platform orders deployment's `runtime` block from platform/sites.json + the build's flags + its mode), then this file. It
+// builds the shell's transports and runtime from that DATA and calls CappShellUI.mount(document, opts). Brand-agnostic (no
+// restaurant id, name or host in this file — guarded). The web and native builds differ only in their stamp (deployment id,
+// env) and runtime.mode; native-only behaviour (Preferences, the store-update UX) keys on runtime.mode === 'native'.
 //
-// boot(doc, opts) → the CappShellUI instance (or null with no runtime)
-//   opts.runtime  { functions_base, menu_endpoint, availability_base, intake_key, maps_key, firebase, directory_endpoint?,
-//                   sdk_base, flags: { signup?, intlPhone?, guestCardOnly?, schedulingLive? } }   absent flag ⇒ dark
+// boot(doc, opts) → the CappShellUI instance (or null with no / an invalid runtime)
+//   opts.runtime  { mode: 'web' | 'native', functions_base, menu_endpoint, availability_base, intake_key, maps_key, firebase,
+//                   directory_endpoint?, sdk_base, flags: { signup?, intlPhone?, guestCardOnly?, schedulingLive? } }   absent flag ⇒ dark
 //   opts.fetch, opts.importModule (the dynamic import; tests inject), opts.CappShellUI, opts.CappSignupApi, and every other
 //   CappShellUI.mount option (storage, now, timers, win, uiOpts, onEvent) passed through unchanged
 // Transports (the CappShellUI contract):
@@ -25,13 +27,14 @@
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
   else {
-    root.CappNativeBoot = api;
-    if (root.CAPP_NATIVE_RUNTIME && root.document) root.CappNativeBoot.instance = api.boot(root.document, { runtime: root.CAPP_NATIVE_RUNTIME });
+    root.CappBoot = api;
+    if (root.CAPP_RUNTIME && root.document) root.CappBoot.instance = api.boot(root.document, { runtime: root.CAPP_RUNTIME });
   }
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  // the order endpoints the app calls (capp-api.js's E.*) — capp-native-boot.test.mjs pins this list EQUAL to capp-api's
+  // the order endpoints the app calls (capp-api.js's E.*) — capp-boot.test.mjs pins this list EQUAL to capp-api's
+  const MODES = Object.freeze(['web', 'native']);
   const ORDER_ENDPOINTS = Object.freeze(['quoteOrder', 'createOrder', 'chargeOnlineOrder', 'paymentStatus', 'requestCheckoutCode', 'verifyCheckoutCode']);
   const g = typeof self !== 'undefined' ? self : {};
   const pick = (o, name) => o[name] || g[name];
@@ -65,7 +68,7 @@
 
   function boot(doc, opts) {
     const o = opts || {}, rt = o.runtime;
-    if (!rt || typeof rt.functions_base !== 'string' || !rt.functions_base) return null;
+    if (!rt || typeof rt.functions_base !== 'string' || !rt.functions_base || !MODES.includes(rt.mode)) return null;   // never a guessed mode
     const CappShellUI = pick(o, 'CappShellUI'), CappSignupApi = pick(o, 'CappSignupApi');
     const fetchFn = o.fetch || (typeof fetch === 'function' ? fetch.bind(g) : null);
     const importModule = o.importModule || ((p) => import(p));
@@ -92,5 +95,5 @@
     });
   }
 
-  return { boot, runtimeFor, ORDER_ENDPOINTS };
+  return { boot, runtimeFor, ORDER_ENDPOINTS, MODES };
 });

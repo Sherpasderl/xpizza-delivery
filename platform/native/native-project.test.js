@@ -20,7 +20,7 @@ ok(`capacitor.config: webDir www, appId ${cfg.appId} (OWNER-PENDING in the READM
 
 const ign = fs.readFileSync(path.join(P, '.gitignore'), 'utf8').split('\n');
 assert.ok(ign.includes('www/'), '🔴 www/ must never be committed (it is generated)');
-assert.match(pkg.scripts.package, /^node \.\.\/platform\/native\/package-capp\.js --out www --sha$/); assert.match(pkg.scripts.verify, /--verify/);
+assert.match(pkg.scripts.package, /^node \.\.\/platform\/native\/package-capp\.js --target native --env production --out www --sha$/); assert.match(pkg.scripts.verify, /--target native --env production .*--verify/);
 const sites = JSON.parse(fs.readFileSync(path.join(ROOT, 'platform', 'sites.json'), 'utf8'));
 assert.ok(!sites.deployments.some((d) => d.folder === 'customer-app-native'), 'not a Netlify site folder');
 ok('www/ is gitignored and only ever written by the packager (npm run package / verify); the project is not a deployed site');
