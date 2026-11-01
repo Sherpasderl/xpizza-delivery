@@ -114,10 +114,11 @@ await t('structure: greeting (natural case), status chip, «Efectivo a entregar�
 
 // seed REAL resolved deliveries for this driver (uid 'drv'): orders delivered today (delivered_at ≥ 0) with the
 // money-grade stamp — shiftDeliveries().resolved then drives shiftEarningsCents per delivery.
-const ordersFor = (times) => { const m = {}; times.forEach((at, i) => { m['o' + i] = { delivered_at: at, delivered_by_driver_uid: 'drv' }; }); return m; };
+const B = 1767225600000, DAY = 86400000;   // 2026-01-01; real 2026 epochs so the bounds reader (2e f781917a) accepts the entries (todayMidnightMs is stubbed to 0, so delivered_at ≥ 0 still resolves)
+const ordersFor = (times) => { const m = {}; times.forEach((at, i) => { m['o' + i] = { delivered_at: B + at, delivered_by_driver_uid: 'drv' }; }); return m; };
 
 await t('PAGOS_LIVE → «Ganado hoy» = the SUM of each delivery\'s platform rate (seeded orders + one rate entry)', () => {
-  const h = boot({ pagosLive: true, allOrders: ordersFor([100, 200, 300, 400, 500, 600, 700]), rateEntries: { r1: { cents: 7000, effective_from: 0 } } });
+  const h = boot({ pagosLive: true, allOrders: ordersFor([100, 200, 300, 400, 500, 600, 700]), rateEntries: { r1: { cents: 7000, effective_from: B } } });
   h.api.renderOffshift();
   const html = h.host().innerHTML;
   assert.ok(/Ganado hoy/.test(html) && /L 490/.test(html), '7 deliveries × 7000¢ = L 490 (N × cents/100, no hardcoded 70)');
@@ -126,7 +127,7 @@ await t('PAGOS_LIVE → «Ganado hoy» = the SUM of each delivery\'s platform ra
 
 await t('PAGOS_LIVE → a mid-day rate change applies PER DELIVERY (two entries; never retro-applied)', () => {
   // 2 deliveries at 7000¢ (before the change) + 2 at 9000¢ (after effective_from 1000)
-  const h = boot({ pagosLive: true, allOrders: ordersFor([100, 100, 5000, 5000]), rateEntries: { a: { cents: 7000, effective_from: 0 }, b: { cents: 9000, effective_from: 1000 } } });
+  const h = boot({ pagosLive: true, allOrders: ordersFor([100, 100, 5000, 5000]), rateEntries: { a: { cents: 7000, effective_from: B }, b: { cents: 9000, effective_from: B + 1000 } } });
   h.api.renderOffshift();
   assert.ok(/Ganado hoy/.test(h.host().innerHTML) && /L 320/.test(h.host().innerHTML), '2×7000 + 2×9000 = 32000¢ = L 320 (not 4×70, not 4×90)');
 });

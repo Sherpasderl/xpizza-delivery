@@ -331,33 +331,39 @@ await t('REAL showCerrado: modal (focus+Tab trap), «Listo» → render (not off
   assert.equal(api.getDismiss(), null, 'the dismiss hook is cleared after teardown');
 });
 
-await t('pay-rate reader = window.PayRate (carried byte-identical from platform/client/pay-rate.js, 2e 52ef3331) + byte-parity', () => {
+await t('pay-rate reader = window.PayRate (carried byte-identical from platform/client/pay-rate.js, 2e f781917a) + bounds + byte-parity', () => {
   const _g = {}; new Function('self', readFileSync(join(__dir, 'pay-rate.js'), 'utf8'))(_g);   // load the classic pay-rate script (self.PayRate), exactly as the browser's PAYRATE-SCRIPT <script> does (the driver dir is type:module → it can't be require()d as CJS)
   const { rateCentsInEffect, shiftEarningsCents } = _g.PayRate;
+  const B = 1767225600000;   // 2026-01-01T00:00:00Z — MIN_EFFECTIVE_FROM; entries + instants are real 2026 epochs so the bounds reader accepts them
   // rateCentsInEffect — the greatest effective_from ≤ t (versioned; never retro-apply)
-  assert.equal(rateCentsInEffect(null, 100), null, 'no entries → null');
-  assert.equal(rateCentsInEffect({}, 100), null, 'empty entries → null');
-  const E = { a: { cents: 7000, effective_from: 0 }, b: { cents: 8000, effective_from: 1000 } };
-  assert.equal(rateCentsInEffect(E, 500), 7000, 'before the 2nd entry → the 1st rate');
-  assert.equal(rateCentsInEffect(E, 1000), 8000, 'at the 2nd effective_from → the new rate');
-  assert.equal(rateCentsInEffect(E, 5000), 8000, 'after → the latest rate');
-  assert.equal(rateCentsInEffect({ a: { cents: 7000, effective_from: 2000 } }, 1000), null, 'a delivery BEFORE the earliest entry → null (never retro-apply a later rate)');
-  assert.equal(rateCentsInEffect({ a: { cents: 'x', effective_from: 0 } }, 100), null, 'malformed entry skipped');
+  assert.equal(rateCentsInEffect(null, B + 100), null, 'no entries → null');
+  assert.equal(rateCentsInEffect({}, B + 100), null, 'empty entries → null');
+  const E = { a: { cents: 7000, effective_from: B }, b: { cents: 8000, effective_from: B + 1000 } };
+  assert.equal(rateCentsInEffect(E, B + 500), 7000, 'before the 2nd entry → the 1st rate');
+  assert.equal(rateCentsInEffect(E, B + 1000), 8000, 'at the 2nd effective_from → the new rate');
+  assert.equal(rateCentsInEffect(E, B + 5000), 8000, 'after → the latest rate');
+  assert.equal(rateCentsInEffect({ a: { cents: 7000, effective_from: B + 2000 } }, B + 1000), null, 'a delivery BEFORE the earliest entry → null (never retro-apply a later rate)');
+  assert.equal(rateCentsInEffect({ a: { cents: 'x', effective_from: B } }, B + 100), null, 'non-numeric cents skipped');
+  // BOUNDS CONTRACT (2e f781917a): an out-of-range entry is SKIPPED, never thrown.
+  assert.equal(rateCentsInEffect({ a: { cents: 50, effective_from: B } }, B + 100), null, 'cents < MIN_CENTS (L1) skipped');
+  assert.equal(rateCentsInEffect({ a: { cents: 100001, effective_from: B } }, B + 100), null, 'cents > MAX_CENTS (L1,000) skipped');
+  assert.equal(rateCentsInEffect({ a: { cents: 7000, effective_from: B - 1 } }, B + 100), null, 'effective_from before 2026-01-01 skipped');
+  assert.equal(rateCentsInEffect({ a: { cents: 7000.5, effective_from: B } }, B + 100), null, 'non-integer cents skipped');
+  assert.equal(rateCentsInEffect({ a: { cents: 100, effective_from: B } }, B + 100), 100, 'cents at MIN_CENTS (L1) accepted');
   // shiftEarningsCents — over ORDER objects ({ delivered_at }); the shape renderOffshift passes (resolved.map(d=>d.order)).
-  // sum of per-delivery rates; null when the rate is unknown or ANY delivery is uncovered.
   assert.equal(shiftEarningsCents([], null), null, 'rate unknown (no entries) → null');
   assert.equal(shiftEarningsCents([], E), 0, 'no deliveries + a known rate → 0');
-  assert.equal(shiftEarningsCents([{ delivered_at: 500 }, { delivered_at: 1500 }], E), 7000 + 8000, 'each delivery at its OWN in-effect rate (a mid-period change is counted, not retro-applied)');
-  assert.equal(shiftEarningsCents([{ delivered_at: 500 }, { delivered_at: -1 }], E), null, 'any uncovered delivery → null (never a partial/invented total)');
+  assert.equal(shiftEarningsCents([{ delivered_at: B + 500 }, { delivered_at: B + 1500 }], E), 7000 + 8000, 'each delivery at its OWN in-effect rate (a mid-period change is counted, not retro-applied)');
+  assert.equal(shiftEarningsCents([{ delivered_at: B + 500 }, { delivered_at: B - 1 }], E), null, 'any uncovered delivery → null (never a partial/invented total)');
   assert.equal(shiftEarningsCents([{}], E), null, 'an order with no delivered_at → null');
   // ONE source: the driver copy is byte-identical to the canonical platform/client copy, and both ARE the 2e-reviewed
-  // blob 52ef3331. EXPECTED_BLOB = `git rev-parse 52ef3331:xpizza-driver/pay-rate.js` (== platform/client's blob).
+  // blob f781917a (the bounds fix). EXPECTED_BLOB = `git rev-parse f781917a:xpizza-driver/pay-rate.js` (== platform/client's blob).
   const DRV = join(__dir, 'pay-rate.js'), CANON = join(__dir, '..', 'platform', 'client', 'pay-rate.js');
   assert.equal(Buffer.compare(readFileSync(DRV), readFileSync(CANON)), 0, 'xpizza-driver/pay-rate.js drifted from the canonical platform/client/pay-rate.js — re-carry/sync');
-  const EXPECTED_BLOB = 'cce3755df6f3f65006b62cf118d2380e4fb34f0f';
+  const EXPECTED_BLOB = '1afb0be7c4c30f02d1410c3dd1d02a0a122d1a5b';
   const gitHash = (p) => execFileSync('git', ['hash-object', p], { cwd: __dir }).toString().trim();
-  assert.equal(gitHash(DRV), EXPECTED_BLOB, 'driver copy diverged from the 2e 52ef3331 reviewed blob');
-  assert.equal(gitHash(CANON), EXPECTED_BLOB, 'platform/client copy diverged from the 2e 52ef3331 reviewed blob');
+  assert.equal(gitHash(DRV), EXPECTED_BLOB, 'driver copy diverged from the 2e f781917a reviewed blob');
+  assert.equal(gitHash(CANON), EXPECTED_BLOB, 'platform/client copy diverged from the 2e f781917a reviewed blob');
 });
 
 console.log(`✓ cuadre-submit: ${passed} checks passed`);
