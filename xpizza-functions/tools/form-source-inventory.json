@@ -3055,7 +3055,7 @@
   "platform-manifest.js": {
    "pins": [],
    "lifts": [
-    "customer-app/capp-native-boot.test.mjs"
+    "customer-app/capp-boot.test.mjs"
    ]
   },
   "portal/location-name.js": {
