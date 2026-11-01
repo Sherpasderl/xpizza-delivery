@@ -392,7 +392,7 @@ function showHarness({ pagosLive = true, rateEntries = null, allOrders = {} } = 
     liftConst('HN_OFFSET_MS') + '\n' + liftFn('hnDayStartMs') + '\n' + liftFn('drv2DayEarned') + '\n' +   // the «Ganado hoy» one source drv2InjectResumenEarn now calls
     liftFn('drv2EarnRateFor') + '\n' + liftFn('drv2InjectInterludeEarn') + '\n' + liftFn('drv2InjectResumenEarn') + '\n' +
     liftFn('refreshOpenCashSurfaces') + '\n' + liftFn('drv2DismissResumen') + '\n' + liftFn('drv2ShowResumen') + '\n' + liftFn('drv2ShowInterlude') + '\n' +
-    'return { showInterlude: (info) => { drv2Interlude = info; drv2ShowInterlude(); }, showResumen: (info) => drv2ShowResumen(info), refresh: () => refreshOpenCashSurfaces(), setRate: (e) => { driverRateEntries = e; }, setOrders: (o) => { allOrders = o; } };';
+    'return { showInterlude: (info) => { drv2Interlude = info; drv2ShowInterlude(); }, showResumen: (info) => drv2ShowResumen(info), refresh: () => refreshOpenCashSurfaces(), setRate: (e) => { driverRateEntries = e; }, setOrders: (o) => { allOrders = o; }, setReady: (b) => { feedReady = b; cutoverLoaded = b; driverState = b ? { active: true } : null; } };';
   const names = ['document', 'window', '$', 'PAGOS_LIVE', 'ICONS', 'escapeHtml', 'coloniaOf', 'interludeHtml', 'deliverySummaryHtml', 'readyTimeHHMM', 'XPD', 'currentUser', 'allTasks', 'shiftIdentity', 'computeShiftCash', 'shiftDeliveries', 'clearTimeout', 'setTimeout', '_allOrders', '_rateEntries'];
   const api = (new Function(...names, body))(doc, win, $, pagosLive, IC, ESC, coloniaOf, interludeHtml, deliverySummaryHtml, readyTimeHHMM, XPD, { uid: 'drv' }, {}, shiftIdentity, computeShiftCash, shiftDeliveries, () => 0, () => 0, allOrders, rateEntries);
   return { api, il: () => $('drv2-interlude'), rs: () => $('drv2-resumen') };
@@ -451,6 +451,30 @@ t('reuse: summary A→B shows B\'s order + B\'s rate (the Tu-pago row never carr
   const b = h.rs().innerHTML;
   assert.ok(b.includes('L 777') && /\+ L 90/.test(b) && !b.includes('385') && !/\+ L 70/.test(b), 'B: total 777 + pay L 90, no stale A');
   assert.equal((b.match(/Tu pago por esta entrega/g) || []).length, 1, 'exactly one Tu-pago row');
+});
+
+t('reuse resumen «Ganado hoy» readiness transition (Codex r2 P2): shown → not-ready HIDES → ready REAPPEARS, via the refresh hook', () => {
+  const RATE = { r: { cents: 7000, effective_from: Date.UTC(2026, 0, 1) } };
+  const h = showHarness({ pagosLive: true, rateEntries: RATE, allOrders: { a: DLV(), b: DLV(Date.now() - 1500) } });
+  h.api.showResumen({ orderId: 'a', name: 'X' });
+  assert.ok(h.rs().querySelector('.rs-stat.rs-earned') && /Ganado hoy · 2 entregas/.test(h.rs().innerHTML), 'ready → «Ganado hoy · 2 entregas» shown');
+  h.api.setReady(false); h.api.refresh();   // feed goes not-ready → refreshOpenCashSurfaces re-injects the OPEN resumen
+  assert.ok(!h.rs().querySelector('.rs-stat.rs-earned'), 'not ready → card hidden (no false figure)');
+  h.api.setReady(true); h.api.refresh();     // readiness returns
+  assert.ok(h.rs().querySelector('.rs-stat.rs-earned') && /Ganado hoy · 2 entregas/.test(h.rs().innerHTML), 'ready again → card reappears via the refresh hook (no manual re-open)');
+  assert.equal(h.rs().querySelectorAll('.rs-stat.rs-earned').length, 1, 'exactly one card after the transitions');
+});
+
+t('reuse resumen «Ganado hoy» added-delivery (Codex r2 P2): a 2nd delivery lands while open → the figure updates on refresh', () => {
+  const RATE = { r: { cents: 7000, effective_from: Date.UTC(2026, 0, 1) } };
+  const h = showHarness({ pagosLive: true, rateEntries: RATE, allOrders: { a: DLV() } });
+  h.api.showResumen({ orderId: 'a', name: 'X' });
+  assert.ok(/Ganado hoy · 1 entrega\b/.test(h.rs().innerHTML), 'starts at 1 delivery');
+  assert.deepEqual(cardFigure(h.rs()), { cents: 7000, count: 1 }, 'L 70 · 1 entrega');
+  h.api.setOrders({ a: DLV(), b: DLV(Date.now() - 1500) });   // a 2nd delivery lands while the resumen is open
+  h.api.refresh();
+  assert.deepEqual(cardFigure(h.rs()), { cents: 14000, count: 2 }, 'after the refresh → L 140 · 2 entregas (figure updated live)');
+  assert.equal(h.rs().querySelectorAll('.rs-stat.rs-earned').length, 1, 'still exactly one card');
 });
 
 t('reuse P2a: cash→cashless interlude — B has NO cash line, nothing stale from A', () => {

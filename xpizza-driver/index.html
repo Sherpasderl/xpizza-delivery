@@ -5094,6 +5094,7 @@ function shiftIdentity() {
 function refreshOpenCashSurfaces() {
   /* ===== SLICE3:GANANCIAS-REFRESH:START — re-render the OPEN earnings screen when the feed re-emits (readiness flip / reconnect / reconcile), so its gated amounts fill in without a manual re-open (Codex r1 #1). Also re-inject the interlude/summary per-delivery pay on a LATE rate load (Codex money #3), idempotently. Insert, not a frozen-line change. ===== */
   { const gn = $('screen-ganancias'); if (gn && !gn.classList.contains('hidden') && typeof renderGanancias === 'function') renderGanancias(drv2GananciasView);
+    const os = $('screen-offshift'); if (os && !os.classList.contains('hidden') && typeof renderOffshift === 'function') renderOffshift();   // the offshift landing «Ganado hoy»/«Efectivo» read the same drv2DayEarned/computeShiftCash — refresh it too on a readiness flip (Codex r2 P2)
     const il = $('drv2-interlude'); if (il && il.classList.contains('open') && typeof drv2InjectInterludeEarn === 'function') drv2InjectInterludeEarn(il);
     const rs = $('drv2-resumen'); if (rs && rs.classList.contains('open') && typeof drv2InjectResumenEarn === 'function') drv2InjectResumenEarn(rs); }
   /* ===== SLICE3:GANANCIAS-REFRESH:END ===== */

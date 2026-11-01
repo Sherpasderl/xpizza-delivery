@@ -34,7 +34,7 @@ function liftConst(name) {
 
 const _realNow = Date.now;   // captured before any boot() fixes it; restored at file end
 function boot({ pagosLive = false, startImpl, suspended = false, dispatch = '+504 9999 8888', allOrders = {}, rateEntries = null, now = 1767225660000 } = {}) {
-  const dom = new JSDOM('<!doctype html><html><body><div id="screen-offshift" class="with-header hidden"></div></body></html>', { pretendToBeVisual: true });
+  const dom = new JSDOM('<!doctype html><html><body><div id="screen-offshift" class="with-header hidden"></div><div id="cuadre-screen"></div><div id="history-modal"></div></body></html>', { pretendToBeVisual: true });
   const { document, window } = dom.window;
   Date.now = () => now;   // fixed instant within the HN day of the seeded B-epoch orders, so the REAL hnDayStartMs (via drv2DayEarned) resolves them (restored at file end)
   new Function('self', readFileSync(join(__dir, 'pay-rate.js'), 'utf8'))(window);   // load the classic pay-rate script into the jsdom window → window.PayRate, exactly as the PAYRATE-SCRIPT <script> does (driver dir is type:module → not require()able as CJS); renderOffshift reads it (one source)
@@ -75,10 +75,12 @@ function boot({ pagosLive = false, startImpl, suspended = false, dispatch = '+50
     'const driverFeed = { hasPendingHandoff: () => false };\n' +
     'function shiftIdentity(){ return { valid: true, start: 0 }; }\n' +
     liftConst('HN_OFFSET_MS') + '\n' + liftFn('hnDayStartMs') + '\n' + liftFn('drv2DayEarned') + '\n' +   // THE «Ganado hoy» one source renderOffshift now calls (same as Ganancias + the resumen)
+    'let closeInFlight = false;\n' +
     liftFn('attachSlideConfirm') + '\n' +
     liftFn('driverRow') + '\n' +
     liftFn('renderOffshift') + '\n' +
-    'return { renderOffshift, getShiftBusy: () => shiftBusy, getOptimistic: () => optimisticShift, de: () => drv2DayEarned() };';
+    liftFn('refreshOpenCashSurfaces') + '\n' +   // the ONE readiness hook — must re-render the visible offshift landing too (Codex r2 P2)
+    'return { renderOffshift, refresh: () => refreshOpenCashSurfaces(), setReady: (b) => { feedReady = b; cutoverLoaded = b; driverState = b ? { name: "Marvin", active: false } : null; }, getShiftBusy: () => shiftBusy, getOptimistic: () => optimisticShift, de: () => drv2DayEarned() };';
   const names = ['document', '$', 'computeShiftCash', 'allOrders', 'SYSTEM_VERSION', 'toast', 'ICONS', 'fbOnValue', 'fbRef', 'XPD', '_suspended', '_driverState', '_currentUser', '_calls', '_startImpl', 'shiftDeliveries', 'window'];
   const api = (new Function(...names, body))(
     document, $, computeShiftCash, allOrders, '2.5.3', () => {}, ICONS, fbOnValue, fbRef, XPD, suspended,
@@ -146,6 +148,17 @@ await t('PAGOS_LIVE but NO rate entry → «Ganado hoy» renders NOTHING (never 
   const h = boot({ pagosLive: true, allOrders: ordersFor([100, 200]), rateEntries: null });
   h.api.renderOffshift();
   assert.ok(!/Ganado hoy/.test(h.host().innerHTML), 'no rate seeded → no «Ganado hoy» stat');
+});
+
+await t('offshift «Ganado hoy» refreshes on a readiness flip via the ONE hook (Codex r2 P2): ready → L70, not-ready → hidden, ready → reappears — while ON the offshift screen', () => {
+  const h = boot({ pagosLive: true, allOrders: ordersFor([100]), rateEntries: { r1: { cents: 7000, effective_from: B } } });
+  h.host().classList.remove('hidden');   // the driver is ON the offshift landing
+  h.api.renderOffshift();
+  assert.ok(/Ganado hoy/.test(h.host().innerHTML) && /L 70/.test(h.host().innerHTML), 'ready → «Ganado hoy» L 70 shown');
+  h.api.setReady(false); h.api.refresh();   // the feed goes not-ready → refreshOpenCashSurfaces (the one hook) re-renders the visible offshift
+  assert.ok(!/Ganado hoy/.test(h.host().innerHTML), 'not ready → «Ganado hoy» hidden (no false L0), via the refresh hook');
+  h.api.setReady(true); h.api.refresh();     // readiness returns
+  assert.ok(/Ganado hoy/.test(h.host().innerHTML) && /L 70/.test(h.host().innerHTML), 'ready again → L 70 reappears via refreshOpenCashSurfaces — no manual re-open');
 });
 
 await t('the «Iniciar turno» slide drives the REAL handleStartShift down to the XPD.startShift clock-in (P2.5)', async () => {
