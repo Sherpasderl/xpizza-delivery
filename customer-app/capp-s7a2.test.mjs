@@ -4131,3 +4131,45 @@ test('C-2 r2 re-read: after a write the sheet and the entry show the SERVER\'s r
     assert.equal(S.qa('#layer .stars button.on').length, 4);
   } finally { S.w.close(); }
 });
+// ── C-5 r2 / C-2 (Codex C-5 r1): the help and rating sheets are CONTAINED modals ──
+const key = (S, k, shift = false) => S.w.document.dispatchEvent(new S.w.KeyboardEvent('keydown', { key: k, shiftKey: shift, bubbles: true }));
+function trapCells(S, label) {
+  const scr = S.q('.app > .screen'); assert.ok(scr.hasAttribute('inert') && scr.getAttribute('aria-hidden') === 'true', `🔴 MD-1 ${label}: the screen behind is inert`);
+  const f = S.qa('#layer button:not([disabled]),#layer textarea:not([disabled])'), first = f[0], last = f[f.length - 1];
+  last.focus(); key(S, 'Tab'); assert.equal(S.w.document.activeElement, first, `🔴 MD-2 ${label}: Tab from the last control wraps to the first`);
+  S.q('#layer h2').focus(); key(S, 'Tab', true); assert.equal(S.w.document.activeElement, last, `🔴 MD-2 ${label}: Shift+Tab from the heading wraps to the last`);
+  S.q('.app > .screen button') && S.q('.app > .screen button').focus(); key(S, 'Tab');
+  assert.ok(S.q('#layer').contains(S.w.document.activeElement), `🔴 MD-2 ${label}: focus outside ⇒ Tab brings it in`);
+}
+test('C-5 r2 help sheet: contained (the screen inert, Tab cycles inside) and EVERY close — scrim, Escape, the WhatsApp jump — gives focus back to «Ayuda»', async () => {
+  const { S } = await helpOrder();
+  try {
+    const opener = () => S.q('[data-act="order-help"]');
+    for (const [how, close] of [['scrim', () => S.click('#layer .scrim[data-act="help-close"]')], ['Escape', () => key(S, 'Escape')], ['WhatsApp', () => S.click('#layer [data-act="help-wa"]')]]) {
+      opener().focus(); S.click(opener()); await flush();
+      trapCells(S, `help/${how}`);
+      close(); await flush();
+      assert.equal(S.q('#layer .helpsheet'), null, `closed by ${how}`);
+      assert.ok(!S.q('.app > .screen').hasAttribute('inert'), `🔴 MD-1 help/${how}: the screen live again`);
+      assert.equal(S.w.document.activeElement, opener(), `🔴 MD-3 help/${how}: focus back on «Ayuda»`);
+    }
+    opener().blur(); assert.notEqual(S.w.document.activeElement, opener(), 'premise: nothing focused'); S.click(opener()); await flush(); key(S, 'Escape'); await flush();   // a click that did not focus it (Safari)
+    assert.equal(S.w.document.activeElement, opener(), '🔴 MD-3: the tapped control is the opener even when the click did not focus it');
+  } finally { S.w.close(); }
+});
+test('C-5 r2 rating sheet: contained too, and «Ahora no» / Escape / «Enviar» give focus back to its entry', async () => {
+  const { S } = await memberDelivered();
+  try {
+    await until(() => S.q('.mk-sheet .rate-cta') && S.q('.mk-sheet .rate-cta').style.visibility !== 'hidden');
+    const opener = () => S.q('.mk-sheet .rate-cta');
+    for (const [how, close] of [['Ahora no', () => S.click('#layer [data-act="rate-later"]')], ['Escape', () => key(S, 'Escape')]]) {
+      opener().focus(); S.click(opener()); await until(() => S.q('#layer .rate'));
+      trapCells(S, `rate/${how}`);
+      close(); await flush();
+      assert.equal(S.q('#layer .rate'), null, `closed by ${how}`); assert.equal(S.w.document.activeElement, opener(), `🔴 MD-3 rate/${how}: focus back on the entry`);
+    }
+    opener().focus(); S.click(opener()); await until(() => S.q('#layer .rate'));
+    S.click('#layer [data-act="rate-star"][data-val="5"]'); await flush(); S.click('#layer [data-act="rate-send"]'); await until(() => !S.q('#layer .rate'));
+    assert.equal(S.w.document.activeElement, opener(), '🔴 MD-3 rate/Enviar: focus back on the (re-rendered) entry');
+  } finally { S.w.close(); }
+});

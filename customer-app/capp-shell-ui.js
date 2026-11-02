@@ -686,6 +686,7 @@
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
+      containLayer();   // C-5 r2: a rebuilt screen behind an open sheet stays inert
       reflect();
       if (S.tab === 'home' && !S.store && !S.neutral) { askLegal(); rowArrows(); askRateNudge(); }
     }
@@ -1022,7 +1023,7 @@
       const row = dir.view().rows.find((r) => r.rid === ctx.rid), storeName = row ? CappHome.storeOf(row).name : '';
       const dishes = CappRate.dishesOf(ctx.dishIds, (id) => { const d = menu && menu.dish(id); return d ? d.name : null; });
       S.rate = { ctx, storeName, dishes, initial: e.rating, value: CappRate.fromRating(e.rating), editable: e.canRate === true, sending: false, error: null };
-      openLayer('rate');
+      openLayer('rate'); if (nudge) layerOpener = null;   // a nudge has no opener: nothing to give focus back to
       const h = doc.getElementById('rate-h'); if (h) h.focus();
       return true;
     }
@@ -1041,7 +1042,7 @@
       const b = $('layer') && $('layer').querySelector('[data-act="rate-send"]'); if (!b || !S.rate) return;
       b.disabled = !(S.rate.editable && !S.rate.sending && Object.keys(CappRate.fieldsToSend(S.rate.initial, S.rate.value, S.rate.dishes.map((d) => d.id))).length);
     }
-    function closeRate() { const oid = S.rate && S.rate.ctx.oid; S.rate = null; closeLayer(); if (oid) markRateDone(oid); if ((S.tab === 'orders' || S.tab === 'order') && !S.store) renderNow(); }
+    function closeRate() { const oid = S.rate && S.rate.ctx.oid; S.rate = null; closeLayer(false); if (oid) markRateDone(oid); if ((S.tab === 'orders' || S.tab === 'order') && !S.store) renderNow(); restoreOpener(); }   // focus back AFTER the screen re-render
     const RATE_ERR = { window_closed: 'Ya no se puede calificar este pedido.', not_fulfilled: 'Todavía no podés calificar este pedido.' };   // OWNER-PENDING
     async function sendRate() {
       const R = S.rate, uid = rateUid(); if (!R || !uid || R.sending || !R.editable) return;
@@ -1266,8 +1267,24 @@
       return CappUI.errSheetHtml({ title: `No pudimos abrir ${row ? CappHome.storeOf(row).name : ''}`, body: 'Su menú no cargó. Revisá tu conexión e intentá de nuevo.', icon: 'warn',
         acts: [{ act: 'menu-retry', label: 'Reintentar', primary: true }, { act: 'menu-close', label: 'Cerrar' }] });
     }
-    function openLayer(k) { S.layer = k; renderLayer(); }
-    function closeLayer() { S.layer = null; renderLayer(); }
+    // C-5 r2 (Codex C-5 r1): the help and rating sheets are CONTAINED modals — the screen behind is inert while one is open, Tab stays
+    // inside (onKey), and every close path gives focus back to the control that opened it (the opener, refound in the current DOM)
+    const MODAL = new Set(['help', 'rate']);
+    let layerOpener = null, lastTap = null;   // lastTap: the control a click came from (a click does not always focus it — Safari)
+    function containLayer() {
+      const scr = app.querySelector(':scope > .screen'); if (!scr) return;
+      if (MODAL.has(S.layer)) { scr.setAttribute('inert', ''); scr.setAttribute('aria-hidden', 'true'); } else { scr.removeAttribute('inert'); scr.removeAttribute('aria-hidden'); }
+    }
+    function restoreOpener() {
+      const op = layerOpener; layerOpener = null; if (!op || dead) return;
+      const el = app.querySelector(`[data-act="${op.act}"]${op.oid ? `[data-oid="${CSS_ESC(op.oid)}"]` : ''}`);
+      if (el && typeof el.focus === 'function') el.focus();
+    }
+    function openLayer(k) {
+      if (MODAL.has(k) && !MODAL.has(S.layer)) { const ae = doc.activeElement; layerOpener = (ae && ae.dataset && ae.dataset.act ? { act: ae.dataset.act, oid: ae.dataset.oid || null } : null) || lastTap; }
+      S.layer = k; renderLayer(); containLayer();
+    }
+    function closeLayer(restore = true) { const was = S.layer; S.layer = null; renderLayer(); containLayer(); if (restore && MODAL.has(was)) restoreOpener(); }
     let pending = null;
     const raf = win && typeof win.requestAnimationFrame === 'function' ? (f) => win.requestAnimationFrame(f) : (f) => T.setTimeout(f, 16);
     function schedule() { if (pending || dead) return; pending = true; raf(() => { pending = null; renderNow(); }); }
@@ -1279,6 +1296,7 @@
       if (!t || !app.contains(t) || t.disabled) return;
       if (S.store && !t.closest('.desknav')) return;   // a mounted store owns its page — except the shell's own top bar (C-6c)
       const a = t.dataset.act;
+      if (!t.closest('#layer')) lastTap = { act: a, oid: t.dataset.oid || null };   // C-5 r2: where a sheet's focus returns
       if (a && a.startsWith('rate-') && rateAct(a, t)) return;   // C-2: the rating sheet and the Pedidos rows' entries
       if (a === 'addr' && S.store) { nav.tab({ name: 'home' }); if (!S.store && S.tab === 'home') openLayer('addr'); return; }   // the address is the shell's: Inicio, with its sheet up
       // the Cuenta tab: with the guest rules ON (runtime.guestCardOnly), a guest's (and an unresolved) is frame 5b; a member's is a
@@ -1355,7 +1373,17 @@
     doc.addEventListener('click', onClick);
     doc.addEventListener('input', onInput);
     // C-2 / C-5: Escape dismisses the rating sheet («Ahora no») and the help sheet
-    const onKey = (ev) => { if (dead || ev.key !== 'Escape') return; if (S.layer === 'rate' && S.rate) closeRate(); else if (S.layer === 'help') { S.help = null; closeLayer(); } };
+    const onKey = (ev) => {
+      if (dead || !MODAL.has(S.layer)) return;
+      if (ev.key === 'Escape') { if (S.layer === 'rate' && S.rate) closeRate(); else { S.help = null; closeLayer(); } return; }
+      if (ev.key !== 'Tab') return;   // C-5 r2: Tab cycles INSIDE the open sheet
+      const L = $('layer'), f = L ? [...L.querySelectorAll('button:not([disabled]),textarea:not([disabled]),input:not([disabled]),a[href]')] : [];
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1], ae = doc.activeElement, atStart = ae === first || (ae && (ae.id === 'help-h' || ae.id === 'rate-h'));
+      if (!L.contains(ae)) { ev.preventDefault(); first.focus(); }
+      else if (ev.shiftKey && atStart) { ev.preventDefault(); last.focus(); }
+      else if (!ev.shiftKey && ae === last) { ev.preventDefault(); first.focus(); }
+    };
     doc.addEventListener('keydown', onKey);
     doc.addEventListener('visibilitychange', onVisible);
     const dirTimer = T.setInterval(() => { if (!S.store && doc.visibilityState !== 'hidden') dir.revalidate(); }, DIR_EVERY_MS);
