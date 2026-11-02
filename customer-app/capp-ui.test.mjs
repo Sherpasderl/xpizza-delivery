@@ -2399,9 +2399,9 @@ const hnT = (d, h, mi = 0) => new Date(Date.UTC(2026, 9, d, h + 6, mi));   // Ho
 const S4_QUOTE = (body) => (body.schedule_only ? { status: 200, json: { ok: true, schedule: S4_ENTRY.schedule } } : QUOTE(body));
 const S4_MEMBER = { uid: 'u1', name: 'Ana', phone: '99990000', email: 'a@b.co', idToken: 'tok' };
 const loadSched = (w) => w.eval(readFileSync(join(HERE, 'capp-schedule.js'), 'utf8'));   // shell.html loads it, as here
-function bootS4({ at = hnT(20, 13, 1), member = S4_MEMBER, script = {}, config = {}, clock = null, storage, search = '' } = {}) {
+function bootS4({ at = hnT(20, 13, 1), member = S4_MEMBER, script = {}, config = {}, clock = null, storage, search = '', geo, priceSheet } = {}) {
   const c = clock || { t: at.getTime() };
-  const b = bootCo({ member, config: { ...S4_CFG, ...config }, script: { quoteOrder: [S4_QUOTE], ...script }, pre: loadSched, mountOpts: { now: () => new Date(c.t) }, ...(storage ? { storage } : {}), search });
+  const b = bootCo({ member, config: { ...S4_CFG, ...config }, script: { quoteOrder: [S4_QUOTE], ...script }, pre: loadSched, mountOpts: { now: () => new Date(c.t) }, ...(storage ? { storage } : {}), ...(geo !== undefined ? { geo } : {}), ...(priceSheet ? { priceSheet } : {}), search });
   b.clock = c; return b;
 }
 const schedFill = async (b, pay = 'cash') => { await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]'); await b.type('#f-details', 'Portón negro'); if (b.q('#f-name')) { await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000'); } if (b.q(`[data-act="pay"][data-val="${pay}"]`)) await b.click(`[data-act="pay"][data-val="${pay}"]`); };
@@ -2621,6 +2621,55 @@ test('S4 row 10 (advisor ruling (a), Codex S4 r2): the TENDER of a retained sche
   await b.click('#cta'); await settle();
   assert.deepEqual([b.srv.of('createOrder').length, b.srv.of('chargeOnlineOrder').length], [2, 0], '🔴 S4-tender: re-sent to the recorded tender, never charged');
 });
+// ── Codex cash-chips r1 (advisor ruling 2026-11-01: a RETAINED REPLAY sends ONLY the recorded body — it never rebuilds from, and never
+// depends on, the live flow) ──
+async function remount10b(a, extra = {}) {   // A's unresolved scheduled CASH send, remounted on the same device (the real writer)
+  const b = bootS4({ storage: a.storage, ...extra }); await toCheckout(b); await settle();
+  assert.equal(cta(b), 'Reintentar', 'premise: the remounted checkout is frame 10b'); return b;
+}
+for (const [name, refusal] of [['quote_invalid', { status: 409, json: { error: 'quote_invalid' } }], ['price_increased', { status: 409, json: { error: 'price_increased', net_total_cents: 99900 } }]]) {
+  test(`cash-chips r1 P1-1 (${name}): a replay the server refuses on its quote is NOT rebuilt from the live flow — one request (the recorded bytes), the lock released, back on «Entrega & Pago» to re-confirm`, async () => {
+    const a = bootS4({ script: { createOrder: ['network'] } }); await retainCash(a); const sent0 = a.srv.of('createOrder')[0].body;
+    const sheets = [];   // an ACCEPTING price sheet: the accepted-price recovery must not rebuild either
+    const b = await remount10b(a, { priceSheet: (o) => { sheets.push(o); return Promise.resolve(true); }, script: { createOrder: [refusal, S4_REPLAY_OK, S4_REPLAY_OK] } });
+    await b.click('#cta'); await settle(); await settle();
+    const s = b.srv.of('createOrder');
+    assert.equal(s.length, 1, `🔴 CC-r1-1: ${name} on a replay ⇒ no second (rebuilt) send`);
+    assert.deepEqual(J(s[0].body), J(sent0), 'the one request carried the recorded bytes');
+    assert.equal(b.ui.state.screen, 'checkout', '🔴 CC-r1-1: back on «Entrega & Pago»');
+    assert.notEqual(cta(b), 'Reintentar', '🔴 CC-r1-1: the lock is released (the customer re-confirms a validated checkout)');
+    assert.equal(sheets.length, 0, '🔴 CC-r1-1: no price sheet over a replay (nothing is re-sent from it)');
+  });
+}
+test('cash-chips r1 P1-2: a remounted 10b with geolocation DENIED (no pin, no quote) still re-sends the recorded body on «Reintentar»', async () => {
+  const a = bootS4({ script: { createOrder: ['network'] } }); await retainCash(a); const sent0 = a.srv.of('createOrder')[0].body;
+  const b = await remount10b(a, { geo: GEO_NO, script: { createOrder: [S4_REPLAY_OK] } });
+  assert.equal(b.q('#cta') ? b.q('#cta').disabled : null, false, 'premise: «Reintentar» enabled');
+  await b.click('#cta'); await settle(); await settle();
+  const s = b.srv.of('createOrder');
+  assert.equal(s.length, 1, '🔴 CC-r1-2: the replay is sent without a fresh pin / quote');
+  assert.deepEqual(s.length ? J(s[0].body) : null, J(sent0), '🔴 CC-r1-2: the recorded bytes');
+});
+test('cash-chips r1 P2-3/4: on 10b every flow field ignores INPUT events — «Otro monto» and editors opened BEFORE the send (details, email/notes, name/phone) render disabled and keep the flow', async () => {
+  const b = bootS4({ script: { createOrder: ['network'] } });
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]'); await b.click('.slotgrid .chip');
+  if (b.q('[data-act="editwho"]')) await b.click('[data-act="editwho"]');
+  if (b.q('[data-act="more"]')) await b.click('[data-act="more"]');
+  if (b.q('[data-act="editdetails"]')) await b.click('[data-act="editdetails"]');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  await b.click('#layer [data-act="lclose"]'); await settle();
+  assert.equal(cta(b), 'Reintentar', 'premise: frame 10b');
+  const f0 = J(b.ui.state.flow);
+  const FIELDS = ['#f-tender', '#f-details', '#f-email', '#f-notes', '#f-name', '#f-phone'];
+  for (const s of FIELDS) {
+    const e = b.q(s); if (!e) continue;
+    assert.equal(e.disabled, true, `🔴 CC-r1-4: ${s} disabled on 10b`);
+    assert.equal(b.w.getComputedStyle(e).opacity, '0.45', `🔴 CC-r1-4: ${s} at the drawn .45`);
+    e.value = '9999'; e.dispatchEvent(new b.w.Event('input', { bubbles: true })); await settle();
+  }
+  assert.ok(['#f-tender', '#f-details', '#f-email'].every((s) => b.q(s)), 'premise: the cash amount, the details and the email editors are drawn');
+  assert.deepEqual(J(b.ui.state.flow), f0, '🔴 CC-r1-3: an input event changes nothing in the flow');
+});
 // ── Codex G7 r1 #1 (advisor ruling, 2026-10-31): the lock AND the dispatch endpoint come from the RETAINED RECORD only — never from the
 // current flow. The record names its owner (owner); only that member sees the lock and replays it. A non-owner (a guest after
 // the sign-out, member B) gets a clean flow and a LOCAL refusal (no network, the record untouched) until the record resolves or
@@ -2648,7 +2697,7 @@ test('cash-chips lock (frame 10b): the cash amount, «Tus datos», Delivery/Pick
   for (const s of LOCKED) {
     const els = b.qa(s);
     assert.ok(els.length > 0, `premise: ${s} is drawn on 10b`);
-    for (const e of els) assert.equal(e ? e.disabled : null, true, `🔴 CC-lock: ${s} disabled on 10b`);
+    for (const e of els) { assert.equal(e ? e.disabled : null, true, `🔴 CC-lock: ${s} disabled on 10b`); assert.equal(b.w.getComputedStyle(e).opacity, '0.45', `🔴 CC-lock: ${s} at the drawn .45`); }
   }
   for (const s of LOCKED) for (const e of b.qa(s)) { e.dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle(); }
   assert.deepEqual(J(b.ui.state.flow), f0, '🔴 CC-lock: a forced tap changes nothing in the flow');

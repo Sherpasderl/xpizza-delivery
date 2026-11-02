@@ -22880,8 +22880,8 @@
     "slice": "perf-core",
     "label": "r3.3-F2 r2-2: «Confirmar pedido» (pickup) can place an unavailable line",
     "file": "../customer-app/capp-ui.js",
-    "from": "const ctaOff = (T) => !!need() || soldBlock() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));",
-    "to": "const ctaOff = (T) => !!need() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));",
+    "from": "const ctaOff = (T) => (!hasSlotLock() && !!need()) || soldBlock() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));",
+    "to": "const ctaOff = (T) => (!hasSlotLock() && !!need()) || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));",
     "command": [
       "node",
       "--test",

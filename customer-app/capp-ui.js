@@ -587,9 +587,9 @@
       const P = phoneMod(), cc = ccOf(f), c = P.byCc(cc); if (cc === P.DEFAULT_CC) return '';
       return `${esc(c.name)} · <b>${c.len} dígitos</b>${P.valid(cc, f.phone) ? ` · se guarda como <b>${esc(P.display(cc, f.phone))}</b>` : ''}`;
     }
-    function phoneFld(f, extra) {
+    function phoneFld(f, extra, off) {   // off: frame 10b's fixed variant (the cash-chips lock)
       const P = phoneMod(), cc = ccOf(f), c = P.byCc(cc), open = S.layerKind === 'cc', note = ccNote(f);
-      return `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><div class="phonerow"><button type="button" class="cc${open ? ' focus' : ''}" data-act="cc" aria-label="País del número: ${esc(c.name)} +${cc}" aria-haspopup="dialog">+${cc} ${open ? IC.up : IC.down}</button><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(P.format(cc, f.phone))}" placeholder="${esc(c.ph)}" autocomplete="tel"></div><div class="note" id="f-phone-cc"${note ? '' : ' hidden'}>${note}</div>${extra}</div>`;
+      return `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><div class="phonerow"><button type="button" class="cc${open ? ' focus' : ''}" data-act="cc" aria-label="País del número: ${esc(c.name)} +${cc}" aria-haspopup="dialog"${off ? ' disabled' : ''}>+${cc} ${open ? IC.up : IC.down}</button><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(P.format(cc, f.phone))}" placeholder="${esc(c.ph)}" autocomplete="tel"${off ? ' disabled' : ''}></div><div class="note" id="f-phone-cc"${note ? '' : ' hidden'}>${note}</div>${extra}</div>`;
     }
     function ccSheetHtml() {
       const P = phoneMod(), cur = ccOf(S.flow);
@@ -855,7 +855,7 @@
       // pending, superseded) keeps today's copy byte for byte
       const geoLine = C.addrLine(f);
       const addrRow = `<button class="urow" data-act="pin"${fxOff}>${IC.pin}<span class="t"><b data-addr>${geoLine ? esc(geoLine) : geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
-      const detailsFld = `<div class="fld"><label for="f-details">Detalles adicionales <span class="req">*</span></label><input id="f-details" data-field="details" value="${esc(f.details)}" placeholder="Colonia, portón, piso, referencia…" autocomplete="off"></div>`;
+      const detailsFld = `<div class="fld"><label for="f-details">Detalles adicionales <span class="req">*</span></label><input id="f-details" data-field="details" value="${esc(f.details)}" placeholder="Colonia, portón, piso, referencia…" autocomplete="off"${fxOff}></div>`;
       const detailsRow = m && !S.editDetails && (f.details || '').trim().length >= 3 ? `<div class="urow">${IC.home}<span class="t"><b>${esc(f.details)}</b><span>Detalles adicionales</span></span><button class="act" data-act="editdetails"${fxOff}>Cambiar</button></div>` : '';
       const entrega = `<section class="fsec" aria-label="Entrega"><h2>Entrega</h2>
     <div class="seg" role="group" aria-label="Tipo de pedido"><button aria-pressed="${del}" data-act="type" data-val="delivery"${fxOff}>Delivery</button><button aria-pressed="${!del}" data-act="type" data-val="pickup"${fxOff}>Pickup</button></div>
@@ -864,8 +864,8 @@
     ${del ? `${mapBlock}<div class="urows">${addrRow}${detailsRow}</div>${detailsRow ? '' : detailsFld}` : `<div class="urows"><div class="urow">${IC.store}<span class="t"><b>${storeLine()}</b><span>${esc(cfg.addr || '')}</span></span></div></div><div class="note">Te avisamos por WhatsApp cuando esté listo.</div>`}</section>`;
       // Tus datos — TODO(fiscal flag): «factura / » + the RTN fields render ONLY behind a server flag; no such config key exists yet
       const moreRow = `<button class="urow" data-act="more"${fxOff}>${IC.plus}<span class="t"><b>Agregar email / notas</b></span>${chev}</button>`;
-      const moreFields = `<div class="fld"><label for="f-email">Correo <span class="mute">(opcional · para tu recibo)</span></label><input id="f-email" data-field="email" type="email" value="${esc(f.email)}" placeholder="tu@correo.com" autocomplete="email"></div>
-       <div class="fld"><label for="f-notes">Notas para el restaurante</label><textarea id="f-notes" data-field="notes" placeholder="Sin cebolla, extra salsa… (opcional)">${esc(f.notes)}</textarea></div>`;
+      const moreFields = `<div class="fld"><label for="f-email">Correo <span class="mute">(opcional · para tu recibo)</span></label><input id="f-email" data-field="email" type="email" value="${esc(f.email)}" placeholder="tu@correo.com" autocomplete="email"${fxOff}></div>
+       <div class="fld"><label for="f-notes">Notas para el restaurante</label><textarea id="f-notes" data-field="notes" placeholder="Sin cebolla, extra salsa… (opcional)"${fxOff}>${esc(f.notes)}</textarea></div>`;
       // §3.1 / §4b / §4c (frames 1, 1b, 1c): the guest's «Tus datos» opens with the sign-in ROW (replacing the small link), the phone
       // carries the WhatsApp code + consent note, the EMAIL is its own required field, and the more-row is «Agregar notas»
       const g = cardOnlyGuest();
@@ -883,8 +883,8 @@
          ${S.more ? `<div class="fld"><label for="f-notes">Notas para el restaurante</label><textarea id="f-notes" data-field="notes" placeholder="Sin cebolla, extra salsa… (opcional)">${esc(f.notes)}</textarea></div>` : `<div class="urows"><button class="urow" data-act="more">${IC.plus}<span class="t"><b>Agregar notas</b></span>${chev}</button></div>`}</section>`;
       const datos = g ? datosGuest : `<section class="fsec" aria-label="Tus datos"><h2>Tus datos</h2>
     ${m && !f.editWho ? `<div class="urows"><div class="urow">${IC.user}<span class="t"><b>${esc(m.name)}</b><span>${esc(intl() ? phoneShown(newFlow()) : C.fullPhone(m.phone))}</span></span><button class="act" data-act="editwho"${fxOff}>Cambiar</button></div>${S.more ? '' : moreRow}</div>`
-      : `<div class="fld"><label for="f-name">Nombre <span class="req">*</span></label><input id="f-name" data-field="name" value="${esc(f.name)}" placeholder="Tu nombre" autocomplete="name"></div>
-         ${intl() ? phoneFld(f, '') : `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(f.phone)}" placeholder="+504 9999-9999" autocomplete="tel"></div>`}
+      : `<div class="fld"><label for="f-name">Nombre <span class="req">*</span></label><input id="f-name" data-field="name" value="${esc(f.name)}" placeholder="Tu nombre" autocomplete="name"${fxOff}></div>
+         ${intl() ? phoneFld(f, '', fx) : `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(f.phone)}" placeholder="+504 9999-9999" autocomplete="tel"${fxOff}></div>`}
          ${!m ? `<div class="line" style="font-size:14px"><span class="mute">¿Ya tenés cuenta?</span><button class="lnk" data-act="signin" data-ctx="checkout">Entrá</button></div>` : ''}${S.more ? '' : `<div class="urows">${moreRow}</div>`}`}
     ${S.more ? moreFields : ''}</section>`;
       // Tu pedido (the redeem / «Descuento» row is pending a ruling — not rendered)
@@ -1116,8 +1116,9 @@
       backTo('checkout'); showErr(ERR.guestCash()); return true;
     }
     async function send() {
-      const f = S.flow, T = totalsNow();
-      if (dead || !intakeOk() || !T.ready || !mods()) return;
+      const f = S.flow, T = totalsNow(), rb = lockedSlot() !== null ? lockedBody() : null;   // rb: the retained replay's recorded body
+      // Codex cash-chips r1 P1-2: a replay sends the RECORDED body — it never waits on a fresh pin / quote (geolocation denied included)
+      if (dead || !intakeOk() || (!T.ready && !rb) || !mods()) return;
       if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther()); return; }   // Codex G7 r1 #1 (a): no request, the record untouched
       if (sched() && f && f.time === 'schedule' && !canSchedule()) { backTo('checkout'); scheduleGate(); return; }   // G=B: never sent
       // Codex S4 r1 #4: the NEWEST received schedule decides (a held P2 revalidation included; painting stays deferred until here)
@@ -1127,7 +1128,7 @@
       if (guestCashBlocked()) return;   // no key ⇒ nothing is sent (the record stays clean)
       let c; try { c = { ...ctxBase(), headers: intakeHeaders() }; } catch (_) { return; }   // the key only where the server requires it
       const attempt = ++attemptSeq; S.terminal = null;   // Codex r4 #2: THIS attempt's settled outcome only
-      S.screen = 'sending'; S.sendHint = null; S.sendTotals = { total: T.total, tip: T.tip }; render();
+      S.screen = 'sending'; S.sendHint = null; S.sendTotals = rb ? { total: Number.isFinite(rb.expected_net_cents) ? rb.expected_net_cents : null, tip: Number.isFinite(rb.tip_cents) ? rb.tip_cents : 0 } : { total: T.total, tip: T.tip }; render();
       let has = soldOf;
       if (typeof opts.readAvailability === 'function') {
         const fresh = await recheckAvailability(attempt);   // the FRESH read decides (a stale sold-out is cleared on failure, never trusted)
@@ -1141,7 +1142,7 @@
       // S2b r1 P2-7: an accepted price change ⇒ «Enviando» shows the ceiling actually sent
       const onExpected = (cents) => { if (dead || !Number.isFinite(cents)) return; S.sendTotals = { total: cents, tip: T.tip }; if (S.screen === 'sending') render(); };
       let out;
-      try { out = await api.place({ flow: f, ctx: c, sig: S.q.sig, checkoutTicket: cardOnlyGuest() ? S.ticket : undefined, expectedNetCents: T.total, totals: T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: api.hosted ? { ...cart.snapshot(), cart_gen: genNow() } : cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
+      try { out = await api.place({ flow: f, ctx: c, sig: rb ? (S.q ? S.q.sig : null) : S.q.sig, checkoutTicket: cardOnlyGuest() ? S.ticket : undefined, expectedNetCents: rb ? rb.expected_net_cents : T.total, totals: rb && !T.ready ? null : T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: api.hosted ? { ...cart.snapshot(), cart_gen: genNow() } : cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
       if (!dead) onOutcome(out, attempt);
     }
     // the 600 ms happy beat: the spinner becomes the green check, then the host takes over (S5)
@@ -1252,6 +1253,9 @@
       if (k === 'slot_refused') { backTo('checkout'); showErr(ERR.slotRefused()); return; }   // S4 N1
       if (k === 'scheduled_review') { backTo('checkout'); showErr(ERR.schedReview()); return; }   // S4 row 9: paid, the slot under review
       if (k === 'out_of_zone') { S.outZone = true; backTo('checkout'); return; }
+      // Codex cash-chips r1 P1-1: the replayed bytes were refused on their quote — the lock is released; «Entrega & Pago» quotes again
+      // and the customer re-confirms (its own notices: the price note, the CTA), nothing was rebuilt or re-sent
+      if (k === 'replay_requote') { backTo('checkout'); S.askedKey = null; S.quoteErr = null; requote(); return; }
       if (k === 'payment_failed') {
         backTo('checkout');   // P pixelPay :2016 — back() to «Entrega & Pago», then the sheet
         if (out.clearable === false) { showErr(ERR.pending()); return; }   // a cancel return the server still calls pending: the order stays locked
@@ -1366,7 +1370,7 @@
     }
     function checkoutAct(t) {
       const f = S.flow, a = t.dataset.act, v = t.dataset.val;
-      if (hasSlotLock() && (a === 'type' || a === 'editwho' || a === 'more' || a === 'editdetails' || a === 'tender' || a === 'pin')) return true;   // frame 10b: fixed (cash-chips lock)
+      if (hasSlotLock() && (a === 'type' || a === 'editwho' || a === 'more' || a === 'editdetails' || a === 'tender' || a === 'pin' || a === 'cc')) return true;   // frame 10b: fixed (cash-chips lock)
       if (a === 'type') { if (frozenNow()) return true; S.mode = v === 'pickup' ? 'pickup' : 'delivery'; C.setMode(f, S.mode); notifyCart(); if (S.mode === 'delivery' && !finitePin(f.pin) && S.geo === null) requestGeo(); render(); return true; }
       if (a === 'rm-po') { for (const l of poLines()) mutate(() => cart.setQty(l.key, 0)); if (!cart.count()) toStore(); else render(); return true; }
       if (a === 'editwho') { f.editWho = true; render(); return true; }
@@ -1568,6 +1572,7 @@
       const fld = t.dataset.field;
       if (fld === 'otp') { otpInput(t); return; }
       if (fld === 'sq') { S.searchQ = t.value; runStoreSearch(t.value); return; }
+      if (S.flow && FLOW_FIELDS.includes(fld) && hasSlotLock()) return;   // Codex cash-chips r1 P2-3: frame 10b's fields are fixed (inputs too)
       if (fld === 'tipOther') { S.tipDraft = capDraft(t.value, S.tipDraft || ''); t.value = S.tipDraft || '0'; t.style.width = `calc(${Math.max(1, t.value.length)}ch + 6px)`; return; }
       if (S.flow && fld === 'phone' && intl()) {
         // the country's local format as they type, never past its national length

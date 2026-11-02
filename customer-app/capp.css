@@ -1006,7 +1006,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .cline.frozen button[disabled]{opacity:.45}
 /* MOCKUP-capp-cash-chips-lock (owner-approved): frame 10b's controls the replay ignores, at the drawn .45 — the cash amount, «Tus datos»'s
    rows and (question 2) Delivery / Pickup, the pin and its row */
-.chips .chip:disabled,.fld input:disabled,.urow[disabled],.seg button:disabled,.map:disabled{opacity:.45;cursor:default}
+.chips .chip:disabled,.fld input:disabled,.fld textarea:disabled,.phonerow .cc:disabled,.urow[disabled],.seg button:disabled,.map:disabled{opacity:.45;cursor:default}
 /* frame 11 (APPROVED 2026-10-27): the neutral return surface's block, as drawn */
 .empty.neutral{padding-top:120px}
 /* frame 12 (APPROVED 2026-10-27, D1 (a)): a sold dish's «Agotado» in the price slot, muted */

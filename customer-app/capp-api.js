@@ -613,6 +613,10 @@
         if (cr) return { ...cr, order_id: id };
         // r3 P2-3: a late answer after teardown is PERSISTED above (settle / issue / clear) but never rendered — no price sheet
         if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded', order_id: id };
+        // advisor ruling (Codex cash-chips r1 P1-1): a RETAINED REPLAY sends ONLY the recorded body — a quote refusal (stale /
+        // invalid / a higher price) of the replayed bytes is never rebuilt from the live flow nor re-priced over it: the definitive
+        // answer above already ended the replay window (the lock is released), so the customer re-confirms a validated checkout
+        if (replay && cq.classify(j)) return { kind: 'replay_requote', order_id: id };
         const rj = await cq.handleRejection({ err: j, shownCents: expected, hasReward: false, retried: silentRetried, sheet: p.sheet });
         if (rj && rj.handled) {
           if (!rj.resend) return { kind: rj.declined ? 'price_declined' : 'error', order_id: id };
