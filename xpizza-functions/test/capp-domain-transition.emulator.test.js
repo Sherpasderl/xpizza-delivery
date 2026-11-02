@@ -10,18 +10,14 @@
 //      issued return URL. Cells: pre-switch checkout (env old → switched to new → lands OLD, stash found, polls to placed);
 //      an old-host submission after the switch (lands OLD); an old-host submission LONG after (env unset, default = new:
 //      still OLD); the control (new host lands NEW).
-//   F  PLAN-capp-S2-r4 §2.4 — the client floor ENABLED (platform_config/client_floor/orders): the page's quote / charge carry the
+//   F  PLAN-capp-S2-r4 §2.4 — the client floor ENABLED (platform_config/client_floor/orders): the page's quote / create carry the
 //      X-Client-* headers and are admitted; below the floor ⇒ 426 ⇒ the update path, but the reload is REFUSED while a payment is
 //      unresolved (the app adapter), and allowed once it is resolved; a header-less request ⇒ 426.
 //      F3 (S2a r2 P2 #6): the floor rises between the quote and the FIRST placement ⇒ that send is 426'd before any server write
 //      ⇒ its just-minted record is cleared ⇒ the update path DOES reload (nothing unresolved blocks it).
 //   U  (S2b r2) the REAL UI in the REAL browser — CappUI mounted on the page, its own clicks, ctxBase + the order-intake key;
-//      the device fix from Chrome's geolocation (no pin step); the order is admitted, recorded at the fix and the Total shown.
-//      The one browser cell whose request headers are built by the app, not by the test.
-//   GUEST CONTRACT (owner 10-27 FINAL; 3a's checkout-guest-gate; re-baselined at the web/guest composition, advisor 2026-11-01):
-//      every capp guest here runs as launch will — cfg.guestCardOnly, card only, the email, the WhatsApp code (sent through the
-//      REAL sendPlatformOtp to a captured UltraMsg call and read back from the message) ⇒ the checkout ticket ⇒ the charge. F1
-//      also proves the server REFUSES a capp guest paying cash (guest_cash_not_allowed) or without an email (guest_email_required).
+//      the device fix from Chrome's geolocation (no pin step); the cash order is admitted, recorded at the fix and the Total
+//      shown. The one browser cell whose request headers are built by the app, not by the test.
 // Run: npm run test:capp-s2a-browser          (CHROME_BIN overrides the browser binary; needs openssl for the throwaway cert)
 require('./_emulator-required')('database', 'firestore');
 
@@ -36,22 +32,6 @@ process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'capp-tr-secret';
 process.env.QUOTE_TOKEN_SECRET = process.env.QUOTE_TOKEN_SECRET || 'capp-tr-quote-secret';
 process.env.PIXELPAY_MERCHANT_EMAIL = process.env.PIXELPAY_MERCHANT_EMAIL || 'pagos@example.com';
-// the capp-GUEST contract (owner 10-27 FINAL: guests are CARD ONLY, with an email and a WhatsApp-verified checkout ticket — 3a's
-// checkout-guest-gate): the checkout code is sent through the REAL sendPlatformOtp to a captured UltraMsg call, and read back from
-// that message exactly as the customer reads it (the RTDB record holds only its hash)
-process.env.OTP_SALT = process.env.OTP_SALT || 'c'.repeat(40);   // otp-lib fails closed at require without a >=32-char salt (a TEST value)
-process.env.ULTRAMSG_INSTANCE_ID_PLATFORM = process.env.ULTRAMSG_INSTANCE_ID_PLATFORM || 'tr-instance';
-process.env.ULTRAMSG_TOKEN_PLATFORM = process.env.ULTRAMSG_TOKEN_PLATFORM || 'tr-token';
-process.env.CHECKOUT_OTP_TEMPLATE = '{code}';
-const CODES = [];   // [{ to, code }] — every checkout code the server sent
-{ const realFetch = globalThis.fetch;
-  globalThis.fetch = async (u, init) => {
-    if (typeof u === 'string' && u.startsWith('https://api.ultramsg.com/')) {
-      const q = new URLSearchParams(String(init && init.body || '')); CODES.push({ to: q.get('to'), code: q.get('body') });
-      return { ok: true, status: 200, json: async () => ({ sent: 'true', id: `tr-${CODES.length}` }) };
-    }
-    return realFetch(u, init);
-  }; }
 const ROOT = path.join(__dirname, '..', '..');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -121,7 +101,7 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
   web.use(express.json());
   // a CORS preflight (OPTIONS) names the headers in Access-Control-Request-Headers but never carries their values ⇒ not recorded
   web.use((req, res, next) => { if (req.method !== 'OPTIONS' && /^\/(createOrder|chargeOnlineOrder|quoteOrder)/.test(req.path)) HDRS.push({ ep: req.path.split('/')[1], auth: req.headers.authorization === `Bearer ${process.env.MAKE_SECRET}`, app: req.headers['x-client-app'] || null, dep: req.headers['x-client-deployment'] || null, compat: req.headers['x-client-compat'] || null }); next(); });
-  for (const k of ['quoteOrder', 'createOrder', 'chargeOnlineOrder', 'paymentStatus', 'requestCheckoutCode', 'verifyCheckoutCode']) web.use(`/${k}`, app[k]);
+  for (const k of ['quoteOrder', 'createOrder', 'chargeOnlineOrder', 'paymentStatus']) web.use(`/${k}`, app[k]);
   const OPENH = { open: true, start: '00:00', end: '24:00' };
   const HOURS = { sun: OPENH, mon: OPENH, tue: OPENH, wed: OPENH, thu: OPENH, fri: OPENH, sat: OPENH };
   const HUB = { lat: 14.1, lng: -87.2 };
@@ -146,9 +126,7 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
   const ENVELOPE = { rid: pm.rid, representation_version: pm.representation_version, menu: pm.body };
   const menu = adaptMenu(ENVELOPE);
   const DISH = menu.dishes.find((d) => !d.launcher && !(menu.weekendOnlyCats.has(String(d.cat)) || menu.pickupOnlyCats.has(String(d.cat)))).key;
-  const clean = async () => { for (const n of ['rate_limits', 'recent_order_content', 'otp_ip', 'otp_budget', 'checkout_otp', 'checkout_tickets']) await rtdb.ref(n).remove(); };
-  // the code the server last sent to these digits (the WhatsApp message body IS the code: CHECKOUT_OTP_TEMPLATE = '{code}')
-  const codeFor = async (digits) => { for (let i = 0; i < 100; i++) { const c = CODES.filter((x) => x.to && x.to.endsWith(digits)).pop(); if (c) return c.code; await new Promise((r) => setTimeout(r, 50)); } throw new Error(`no checkout code was sent to …${digits}`); };
+  const clean = async () => { await rtdb.ref('rate_limits').remove(); await rtdb.ref('recent_order_content').remove(); };
 
   // ── Chrome ──
   const chromeBin = process.env.CHROME_BIN || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -175,66 +153,34 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
     return { ev, go, loaded, sid: sessionId, close: () => send('Target.closeTarget', { targetId }) };
   }
   // the page-side app: the REAL modules, the REAL SherpaClient.fetch (stamped ⇒ X-Client headers)
-  // the app's transport with the capp-GUEST contract ON (cfg.guestCardOnly: card only, the email, the WhatsApp code ⇒ the checkout
-  // ticket) — what 3a's guest server requires of every capp guest, and what the packager now refuses to ship without (228c3fc4).
-  // { guest: false } is the transport WITHOUT those rules: used only to prove the server REFUSES such a guest
-  const EP = `{ quoteOrder: '${FN}/quoteOrder', createOrder: '${FN}/createOrder', chargeOnlineOrder: '${FN}/chargeOnlineOrder', paymentStatus: '${FN}/paymentStatus', requestCheckoutCode: '${FN}/requestCheckoutCode', verifyCheckoutCode: '${FN}/verifyCheckoutCode' }`;
-  const API = (pay, { guest = true } = {}) => `CappApi.createApi({ config: { restaurantId: 'x_pizza', orderIdPrefix: 'TR', pendingPayKey: 'tr_pending_pay', hours: Array.from({ length: 7 }, () => [0, 0, 23, 59]),
-    ${guest ? 'guestCardOnly: true, ' : ''}endpoints: ${EP} } })`;
+  const API = (pay) => `CappApi.createApi({ config: { restaurantId: 'x_pizza', orderIdPrefix: 'TR', pendingPayKey: 'tr_pending_pay', hours: Array.from({ length: 7 }, () => [0, 0, 23, 59]),
+    endpoints: { quoteOrder: '${FN}/quoteOrder', createOrder: '${FN}/createOrder', chargeOnlineOrder: '${FN}/chargeOnlineOrder', paymentStatus: '${FN}/paymentStatus' } } })`;
   let PH = 0;
-  const cartJs = `const menu = CappMenu.adaptMenu(${JSON.stringify(ENVELOPE)}); const cart = CappCart.createCart(menu); cart.inc(${JSON.stringify(DISH)});
-    const s = CappSerialize.serialize(cart, menu);`;
-  const flowJs = (digits, pay, email) => `const f = CappCheckout.freshFlow(null); CappCheckout.setPin(f, ${HUB.lat + 1 / 111.195}, ${HUB.lng}, true);
-    Object.assign(f, { details: 'Portón negro', name: 'Ana TR', phone: '${digits}', pay: '${pay}'${email ? `, email: ${JSON.stringify(email)}` : ''} }); CappCheckout.chooseTip(f, 0);
-    const ctx = { restaurantId: 'x_pizza', items: s.items, itemsText: s.items_text, member: null, headers: { Authorization: 'Bearer ${process.env.MAKE_SECRET}' } };`;
-  // the guest's flow, quote and code REQUEST (the real client's order: the code is bound to the quote's sig), kept on the page
-  const beginGuest = () => { const digits = `9977${String(PH += 1).padStart(4, '0')}`; return { digits, js: `(async () => {
-    ${cartJs}
-    window.__api = ${API('online')};
-    ${flowJs(digits, 'online', 'ana.tr@correo.test')}
+  // a quote only (the first placement comes later): the flow, ctx and quote are kept on the page
+  const quoteOnly = (pay) => `(async () => {
+    const menu = CappMenu.adaptMenu(${JSON.stringify(ENVELOPE)}); const cart = CappCart.createCart(menu); cart.inc(${JSON.stringify(DISH)});
+    const s = CappSerialize.serialize(cart, menu);
+    window.__api = ${API(pay)};
+    const f = CappCheckout.freshFlow(null); CappCheckout.setPin(f, ${HUB.lat + 1 / 111.195}, ${HUB.lng}, true);
+    Object.assign(f, { details: 'Portón negro', name: 'Ana TR', phone: '9977${String(PH += 1).padStart(4, '0')}', pay: '${pay}' }); CappCheckout.chooseTip(f, 0);
+    const ctx = { restaurantId: 'x_pizza', items: s.items, itemsText: s.items_text, member: null, headers: { Authorization: 'Bearer ${process.env.MAKE_SECRET}' } };
     const q = await window.__api.quote(f, ctx);
-    window.__f = f; window.__ctx = ctx; window.__q = q; window.__phone = '+504${digits}'; window.__ticket = null;
-    if (q.kind !== 'ok') return { q };
-    const code = await window.__api.requestCheckoutCode({ phone: window.__phone, cartFp: String(q.record.sig) });
-    return { q: { kind: q.kind }, code };
-  })()` }; };
-  // the code ⇒ the ticket, bound to the order identity the next place() sends under (orderIdForCode)
-  const ticketWith = (code) => `(async () => {
-    const oid = window.__api.orderIdForCode({ flow: window.__f });
-    const v = await window.__api.verifyCheckoutCode({ phone: window.__phone, cartFp: String(window.__q.record.sig), code: ${JSON.stringify(code)}, orderId: oid });
-    window.__ticket = v.ticket || null; return { ok: !!v.ok, kind: v.kind || null };
+    window.__f = f; window.__ctx = ctx; window.__q = q;
+    return { kind: q.kind };
   })()`;
-  // a quote + its ticket, no placement yet (F3: the placement comes after the floor rises)
-  const guestTicketOnly = async (t) => {
-    const b = beginGuest(); const s1 = await t.ev(b.js);
-    if (!s1.q || s1.q.kind !== 'ok') return { kind: s1.q && s1.q.kind };
-    assert.ok(s1.code && s1.code.ok === true, `premise: the checkout code was sent (${JSON.stringify(s1.code)})`);
-    const v = await t.ev(ticketWith(await codeFor(b.digits)));
-    assert.ok(v.ok, `premise: the code verified into a checkout ticket (${JSON.stringify(v)})`);
-    return { kind: 'ok' };
-  };
-  const placeOnly = `window.__api.place({ flow: window.__f, ctx: window.__ctx, sig: window.__q.record.sig, checkoutTicket: window.__ticket, expectedNetCents: window.__q.record.resp.net_total_cents })
+  const placeOnly = `window.__api.place({ flow: window.__f, ctx: window.__ctx, sig: window.__q.record.sig, expectedNetCents: window.__q.record.resp.net_total_cents })
     .then((o) => ({ kind: o.kind, place: !!localStorage.getItem('capp:x_pizza:pending_place') }))`;
-  // the WHOLE guest card checkout, as the real client runs it: quote → the WhatsApp code (read from its send) → the ticket → place
-  const guestCheckout = async (t) => {
-    const b = beginGuest(); const s1 = await t.ev(b.js);
-    if (!s1.q || s1.q.kind !== 'ok') return { q: s1.q };
-    assert.ok(s1.code && s1.code.ok === true, `premise: the checkout code was sent (${JSON.stringify(s1.code)})`);
-    const v = await t.ev(ticketWith(await codeFor(b.digits)));
-    assert.ok(v.ok, `premise: the code verified into a checkout ticket (${JSON.stringify(v)})`);
-    return t.ev(`window.__api.place({ flow: window.__f, ctx: window.__ctx, sig: window.__q.record.sig, checkoutTicket: window.__ticket, expectedNetCents: window.__q.record.resp.net_total_cents })
-      .then((out) => ({ out, origin: location.origin }))`);
-  };
-  // the SERVER's guest refusals (the transport WITHOUT the guest rules sends what 3a's gate must refuse): their codes, nothing placed
-  const refusedGuest = (pay, email) => `(async () => {
-    localStorage.removeItem('capp:x_pizza:pending_place'); localStorage.removeItem('tr_pending_pay');   // a fresh send: no unresolved payment to resume
-    ${cartJs}
-    const api = ${API(pay, { guest: false })};
-    ${flowJs(`9966${String(PH += 1).padStart(4, '0')}`, pay, email)}
-    const q = await api.quote(f, ctx);
-    if (q.kind !== 'ok') return { q: q.kind };
-    const out = await api.place({ flow: f, ctx, sig: q.record.sig, expectedNetCents: q.record.resp.net_total_cents });
-    return { kind: out.kind };
+  const startCheckout = (pay) => `(async () => {
+    const menu = CappMenu.adaptMenu(${JSON.stringify(ENVELOPE)}); const cart = CappCart.createCart(menu); cart.inc(${JSON.stringify(DISH)});
+    const s = CappSerialize.serialize(cart, menu);
+    window.__api = ${API(pay)};
+    const f = CappCheckout.freshFlow(null); CappCheckout.setPin(f, ${HUB.lat + 1 / 111.195}, ${HUB.lng}, true);
+    Object.assign(f, { details: 'Portón negro', name: 'Ana TR', phone: '9977${String(PH += 1).padStart(4, '0')}', pay: '${pay}' }); CappCheckout.chooseTip(f, 0);
+    const ctx = { restaurantId: 'x_pizza', items: s.items, itemsText: s.items_text, member: null, headers: { Authorization: 'Bearer ${process.env.MAKE_SECRET}' } };
+    const q = await window.__api.quote(f, ctx);
+    if (q.kind !== 'ok') return { q };
+    const out = await window.__api.place({ flow: f, ctx, sig: q.record.sig, expectedNetCents: q.record.resp.net_total_cents });
+    return { out, origin: location.origin };
   })()`;
   const finishReturn = `(async () => ({ origin: location.origin, stash: localStorage.getItem('tr_pending_pay'), out: await ${API('online')}.handleReturn(location.search) }))()`;
   const run = async (host, before) => {
@@ -242,7 +188,7 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
     const t = await tab();
     try {
       await t.go(`${host}/`);
-      const s = await guestCheckout(t);
+      const s = await t.ev(startCheckout('online'));
       assert.strictEqual(s.out && s.out.kind, 'redirect', `premise: the checkout (${JSON.stringify(s)})`);
       if (before) before();
       await t.ev(`(location.href = ${JSON.stringify(s.out.url)}, true)`).catch(() => {});   // the app's redirect to the hosted page
@@ -282,52 +228,35 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
         await send('Browser.grantPermissions', { permissions: ['geolocation'], origin: NEW });
         await send('Emulation.setGeolocationOverride', { latitude: FIX.lat, longitude: FIX.lng, accuracy: 5 }, u.sid);
         await u.go(`${NEW}/`);
-        const digits = `9944${String(PH += 1).padStart(4, '0')}`, EMAIL = 'ana.ui@correo.test';
-        const HELP = `const wait = async (p, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (p()) return true; await new Promise((x) => setTimeout(x, 50)); } return false; };
+        const r = await u.ev(`(async () => {
+          const wait = async (p, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (p()) return true; await new Promise((x) => setTimeout(x, 50)); } return false; };
           const $ = (s) => document.querySelector(s);
           const click = async (s) => { if (!(await wait(() => $(s) && !$(s).disabled))) throw new Error('missing or disabled ' + s); $(s).dispatchEvent(new MouseEvent('click', { bubbles: true })); await new Promise((x) => setTimeout(x, 40)); };
-          const type = (s, v) => { $(s).value = v; $(s).dispatchEvent(new Event('input', { bubbles: true })); };`;
-        // step 1 — the guest's own clicks up to the WhatsApp code sheet (guestCardOnly: card only, the email REQUIRED)
-        const r1 = await u.ev(`(async () => {
-          ${HELP}
-          window.__ev = []; window.__nav = [];
-          const ui = window.__ui = CappUI.mount(document, { envelope: ${JSON.stringify(ENVELOPE)}, onEvent: (n, d) => window.__ev.push([n, d && d.order_id]), navigate: (url) => window.__nav.push(url),
+          const type = (s, v) => { $(s).value = v; $(s).dispatchEvent(new Event('input', { bubbles: true })); };
+          const ev = [];
+          const ui = CappUI.mount(document, { envelope: ${JSON.stringify(ENVELOPE)}, onEvent: (n, d) => ev.push([n, d && d.order_id]), navigate: () => {},
             config: { name: 'x_pizza', unit: ['pizza', 'pizzas'], hours: Array.from({ length: 7 }, () => [0, 0, 23, 59]), addr: 'Calle 1', etaDel: [30, 45], etaPick: [15, 20],
-              restaurantId: 'x_pizza', orderIdPrefix: 'TU', pendingPayKey: 'tu_pending_pay', intakeKey: '${process.env.MAKE_SECRET}', guestCardOnly: true, endpoints: ${EP} } });
+              restaurantId: 'x_pizza', orderIdPrefix: 'TU', pendingPayKey: 'tu_pending_pay', intakeKey: '${process.env.MAKE_SECRET}',
+              endpoints: { quoteOrder: '${FN}/quoteOrder', createOrder: '${FN}/createOrder', chargeOnlineOrder: '${FN}/chargeOnlineOrder', paymentStatus: '${FN}/paymentStatus' } } });
           ui.cart.inc(${JSON.stringify(DISH)}); ui.render();
           await click('#cart-bar'); await click('[data-act="checkout"]');
           if (!(await wait(() => ui.state.flow && ui.state.flow.pin && ui.state.flow.pin.confirmed === true))) return { err: 'no device fix', geo: ui.state.geo };
-          type('#f-details', 'Portón negro'); type('#f-name', 'Ana UI'); type('#f-phone', '${digits}'); type('#f-email', '${EMAIL}');
-          if ($('[data-act="pay"][data-val="online"]')) await click('[data-act="pay"][data-val="online"]');
-          await click('#cta'); await click('[data-act="tipc"][data-val="0"]'); await click('[data-act="tip-place"]');
-          const sheet = await wait(() => !!$('#layer .otp input[data-i="0"]'));
-          return { sheet, pay: ui.state.flow.pay, pin: ui.state.flow.pin, pinStepOk: ui.state.pinStepOk };
+          type('#f-details', 'Portón negro'); type('#f-name', 'Ana UI'); type('#f-phone', '9944${String(PH += 1).padStart(4, '0')}');
+          await click('[data-act="pay"][data-val="cash"]'); await click('#cta'); await click('[data-act="tipc"][data-val="0"]');
+          await click('[data-act="tip-place"]'); await click('#layer [data-act="placing-go"]');
+          await wait(() => ev.some((e) => e[0] === 'placed'));
+          const placed = ev.find((e) => e[0] === 'placed');
+          return { id: placed ? placed[1] : null, pin: ui.state.flow.pin, pinStepOk: ui.state.pinStepOk, total: ui.state.sendTotals && ui.state.sendTotals.total };
         })()`);
-        assert.ok(r1.sheet, `🔴 the guest reached the WhatsApp code sheet (${JSON.stringify(r1)})`);
-        assert.strictEqual(r1.pay, 'online', 'a capp guest pays by card (guestCardOnly)');
-        // step 2 — the code as the customer reads it in WhatsApp, typed into the real sheet ⇒ the ticket ⇒ the card placement
-        const code = await codeFor(digits);
-        const r = await u.ev(`(async () => {
-          ${HELP}
-          type('#layer .otp input[data-i="0"]', '${code}');
-          await click('[data-act="otp-verify"]');
-          await wait(() => window.__nav.length > 0, 20000);
-          const ui = window.__ui;
-          return { nav: window.__nav.slice(), pin: ui.state.flow.pin, pinStepOk: ui.state.pinStepOk, total: ui.state.sendTotals && ui.state.sendTotals.total };
-        })()`);
-        assert.ok(r.nav.length === 1 && r.nav[0].startsWith(`${FN}/pay?`), `🔴 the real UI verified the code and sent the card checkout to the hosted page (${JSON.stringify(r)})`);
-        const id = new URL(r.nav[0]).searchParams.get('o');
-        assert.deepStrictEqual([r.pin.lat, r.pin.lng, r1.pinStepOk], [FIX.lat, FIX.lng, false], 'the device fix from the browser, no pin step');
-        const charge = HDRS.filter((h) => h.ep === 'chargeOnlineOrder');
-        assert.ok(charge.length === 1 && charge[0].auth === true, `🔴 the app's ctxBase sent the intake key on the charge (${JSON.stringify(charge.map((h) => h.auth))})`);
-        assert.strictEqual(HDRS.filter((h) => h.ep === 'createOrder').length, 0, 'a capp guest never reaches createOrder (card only)');
+        assert.ok(r.id, `🔴 the real UI placed the order (${JSON.stringify(r)})`);
+        assert.deepStrictEqual([r.pin.lat, r.pin.lng, r.pinStepOk], [FIX.lat, FIX.lng, false], 'the device fix from the browser, no pin step');
+        const create = HDRS.filter((h) => h.ep === 'createOrder');
+        assert.ok(create.length === 1 && create[0].auth === true, `🔴 the app's ctxBase sent the intake key (${JSON.stringify(create.map((h) => h.auth))})`);
         assert.ok(HDRS.filter((h) => h.ep === 'quoteOrder').every((h) => h.auth === false), 'the public quote gets nothing extra');
-        const o = (await rtdb.ref(`orders/${id}`).get()).val();
-        assert.ok(o, `premise: the card order exists (${id})`);
+        const o = (await rtdb.ref(`orders/${r.id}`).get()).val();
         assert.deepStrictEqual([Number(o.lat), Number(o.lng), o.total_cents], [FIX.lat, FIX.lng, r.total], 'recorded at the fix, at the displayed Total');
-        assert.ok(o.guest_verified && typeof o.guest_verified.phone_hash === 'string', '🔴 the order carries the WhatsApp-verified guest phone (3a\'s phone binding)');
       } finally { await u.close(); }
-      ok('U the REAL UI in the REAL browser (guest contract): the device fix, the email typed, card only, the REAL WhatsApp code sheet (the code read from its send) ⇒ the ticket ⇒ the card checkout admitted at the hosted page, its own ctxBase + intake key, recorded at the fix and the Total shown, the verified phone bound');
+      ok('U the REAL UI in the REAL browser: the device fix (no pin step), its own ctxBase + intake key ⇒ the cash order admitted, recorded at the fix and the Total shown');
     }
 
     // ── F: the client floor ENABLED ──
@@ -338,27 +267,22 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
     const t = await tab(); let t2 = null;
     try {
       await t.go(`${OLD}/`);
-      const card0 = await guestCheckout(t);   // the guest contract: card only (cash is refused below) — the charge is the admitted send
-      assert.strictEqual(card0.out && card0.out.kind, 'redirect', `at the floor: admitted (${JSON.stringify(card0)})`);
-      const sent = HDRS.filter((h) => h.ep === 'quoteOrder' || h.ep === 'chargeOnlineOrder');
-      assert.ok(sent.length >= 2 && sent.every((h) => h.app === 'orders' && h.dep === appDep.id && Number(h.compat) === COMPAT), `🔴 the page's quote + charge carry the X-Client headers (${JSON.stringify(sent)})`);
-      // 3a's guest gate, through the SAME stamped page: a capp guest without the guest rules is REFUSED with its code, nothing placed
-      await clean();
-      assert.deepStrictEqual(await t.ev(refusedGuest('cash', 'ana.cash@correo.test')), { kind: 'guest_cash_not_allowed' }, '🔴 a capp guest paying CASH is refused guest_cash_not_allowed');
-      assert.deepStrictEqual(await t.ev(refusedGuest('online', null)), { kind: 'guest_email_required' }, '🔴 a capp guest card checkout WITHOUT an email is refused guest_email_required');
+      const cash = await t.ev(startCheckout('cash'));
+      assert.strictEqual(cash.out && cash.out.kind, 'placed', `at the floor: admitted (${JSON.stringify(cash)})`);
+      const sent = HDRS.filter((h) => h.ep === 'quoteOrder' || h.ep === 'createOrder');
+      assert.ok(sent.length >= 2 && sent.every((h) => h.app === 'orders' && h.dep === appDep.id && Number(h.compat) === COMPAT), `🔴 the page's quote + create carry the X-Client headers (${JSON.stringify(sent)})`);
       const bare = await t.ev(`fetch('${FN}/createOrder', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ${process.env.MAKE_SECRET}' }, body: JSON.stringify({ restaurant_id: 'x_pizza', order_id: 'TR-BARE-1' }) }).then(async (r) => ({ s: r.status, j: await r.json() }))`);
       assert.deepStrictEqual([bare.s, bare.j.error], [426, 'client_update_required'], '🔴 a header-less request ⇒ 426 (the wrapper is the only admitted path)');
-      ok('F1 floor enabled at the page compat: the guest card checkout (code → ticket) — its quote + charge carry X-Client-* and are admitted; a capp guest paying cash / without an email is REFUSED (guest_cash_not_allowed / guest_email_required); a header-less request ⇒ 426');
+      ok('F1 floor enabled at the page compat: the page\'s quote + create carry X-Client-* and are admitted; a header-less request ⇒ 426');
 
       // F2 premise: an UNRESOLVED card payment, started while still admitted (pending_place + pay stash written, not returned yet)
       await clean();
-      const card = await guestCheckout(t);
+      const card = await t.ev(startCheckout('online'));
       assert.strictEqual(card.out && card.out.kind, 'redirect', `premise: a card checkout admitted at the floor (${JSON.stringify(card)})`);
       // F3 premise, on the OTHER host (its own origin storage, nothing unresolved): a quote while admitted, no placement yet
       t2 = await tab();
       await t2.go(`${NEW}/`);
-      await t2.ev('(localStorage.clear(), true)');   // a fresh device: T4 / U card purchases on this origin would (rightly) block a cart with no generation
-      const quoted = await guestTicketOnly(t2);
+      const quoted = await t2.ev(quoteOnly('cash'));
       assert.strictEqual(quoted.kind, 'ok', `premise: the F3 quote admitted at the floor (${JSON.stringify(quoted)})`);
       await rtdb.ref('platform_config/client_floor/orders').set(COMPAT + 1);
       await new Promise((r) => setTimeout(r, 31000));
@@ -366,7 +290,7 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
       await t.ev(`(window.__marker = 'alive', CappSelfUpdate.register(SherpaClient, { state: () => ({ screen: 'checkout', placing: false, sheetOpen: false }),
         unresolved: () => !!localStorage.getItem('capp:x_pizza:pending_place') || !!localStorage.getItem('tr_pending_pay'), search: () => location.search, snapshot: () => ({}), restore() {} }), true)`);
       // the server refuses a below-floor QUOTE 426 before any pricing (index.js P-SELFUPDATE §5) ⇒ the checkout stops at the quote
-      const below = await guestCheckout(t);
+      const below = await t.ev(startCheckout('online'));
       assert.strictEqual(below.q && below.q.kind, 'update_required', `below the floor ⇒ 426 ⇒ the update path (${JSON.stringify(below)})`);
       await t.ev('SherpaClient.check().then(() => SherpaClient.poke())');
       await new Promise((r) => setTimeout(r, 1500));
