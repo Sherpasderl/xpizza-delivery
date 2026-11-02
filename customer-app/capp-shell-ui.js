@@ -439,7 +439,8 @@
       } catch (_) { return null; }   // an id outside the ONE domain is never written: the URL stays as it is
     }
     function reflect() { if (routing && booted && !pendingRoute) replacePath(pathNow()); }   // never before the boot's hydration decision
-    function cancelRoute() { if (pendingRoute) { pendingRoute = null; navGen++; } }
+    // a user navigation cancels BOTH held intents — the cold link (pendingRoute) and the deferred /pago (awaitOrderRoute, Codex Pedidos r3)
+    function cancelRoute() { if (pendingRoute || awaitOrderRoute) { pendingRoute = null; awaitOrderRoute = null; navGen++; } }
     function subscribeMenu(rid) { if (!subscribed.has(rid)) { subscribed.add(rid); cache.seed(rid, readJ(MENU_KEY(rid))); cache.subscribe(rid, () => { schedule(); checkHeld(); tryRoute(); }); } }
     function hydrate() {
       const r = CappRoutes.parse(bootPath);
@@ -450,7 +451,7 @@
       if (r.step === 'pago' && activeOrder() && S.order.rid === r.rid) { if (nav.tab({ name: 'orders' })) nav.go({ name: 'order' }); return; }
       // Codex Pedidos r2: the device's record for THIS store whose owner is not resolved yet (a member session restoring) ⇒ the route
       // decision WAITS for the identity (identityChanged), then lands on the order or falls back to the store
-      if (r.step === 'pago' && S.order && S.order.rid === r.rid && ownerNow() === null && !CappOrder.FINAL.has(S.order.status)) { awaitOrderRoute = r; return; }
+      if (r.step === 'pago' && S.order && S.order.rid === r.rid && ownerNow() === null && !CappOrder.FINAL.has(S.order.status)) { awaitOrderRoute = { r, gen: navGen }; return; }
       pendingRoute = { r, gen: ++navGen, mounted: false };
       subscribeMenu(r.rid); cache.get(r.rid);
       tryRoute();
@@ -729,9 +730,12 @@
       }
       if (S.tab === 'order' && !activeOrder()) { if (S.order && CappOrder.FINAL.has(S.order.status) && S.order.owner === who) { /* its final screen stays */ } else nav.tab({ name: 'home' }); }
       if (awaitOrderRoute && who !== null) {   // the deferred /r/{rid}/pago: its order now (owned), else the store as a cold link
-        const rr = awaitOrderRoute; awaitOrderRoute = null;
-        if (activeOrder() && S.order.rid === rr.rid) { if (nav.tab({ name: 'orders' })) nav.go({ name: 'order' }); return; }
-        pendingRoute = { r: rr, gen: ++navGen, mounted: false }; subscribeMenu(rr.rid); cache.get(rr.rid); tryRoute();
+        const aw = awaitOrderRoute, rr = aw.r; awaitOrderRoute = null;
+        // Codex Pedidos r3: the intent carries its navigation generation — any navigation since it was deferred voids it
+        if (aw.gen === navGen) {
+          if (activeOrder() && S.order.rid === rr.rid) { if (nav.tab({ name: 'orders' })) nav.go({ name: 'order' }); return; }
+          pendingRoute = { r: rr, gen: ++navGen, mounted: false }; subscribeMenu(rr.rid); cache.get(rr.rid); tryRoute();
+        }
       }
       // Codex Pedidos r2: the admitted owner's order resumes its live stream where it is shown (Pedidos / its screen)
       if ((S.tab === 'orders' || S.tab === 'order') && activeOrder()) resumeOrder();
@@ -945,8 +949,8 @@
     // — ANY gesture (a tap, a key, typing; in the store or the shell: its search, a category, a sheet, an in-app back, a blocked
     // exit) cancels it through the same cancelRoute / navGen, BEFORE any retry can fire. The router itself dispatches no events
     const USER_INTENT = ['pointerdown', 'click', 'keydown', 'input'];
-    const onUserIntent = () => { if (!dead && pendingRoute) cancelRoute(); };
-    if (routing && pendingRoute && typeof doc.addEventListener === 'function') for (const ev of USER_INTENT) doc.addEventListener(ev, onUserIntent, true);
+    const onUserIntent = () => { if (!dead && (pendingRoute || awaitOrderRoute)) cancelRoute(); };
+    if (routing && (pendingRoute || awaitOrderRoute) && typeof doc.addEventListener === 'function') for (const ev of USER_INTENT) doc.addEventListener(ev, onUserIntent, true);
     if (SU) raf(() => startAuth());   // G6: the Auth SDK after the first paint (never awaited by it)
 
     return {

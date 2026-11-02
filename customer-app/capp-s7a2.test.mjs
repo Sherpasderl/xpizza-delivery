@@ -2540,6 +2540,29 @@ test('Pedidos r3 regressions: a member\'s /r/{rid}/pago reload waits for her adm
   const { S: P } = await pedidosBoot(db, { storage: st, url: 'https://app.test/pedidos', routing: true, noFlush: true, runtime: { ...G7_RUNTIME, rtdbBase: 'https://rtdb.test' }, readPublic: async () => ({ ok: false }), mountExtra: { EventSource: ES } });
   try { await flush(); await flush(); await flush(); assert.ok(P.q('.ocard.active'), 'premise: her card'); assert.equal(made.filter((e) => !e.closed).length, 1, '🔴 PED-r3-5: her live stream resumed after admission'); } finally { P.w.close(); }
 });
+test('Pedidos r3 P2 (Codex r3): the deferred /r/{rid}/pago is a held intent — any user navigation or gesture before the admission voids it (never yanked back to «Pedido recibido»); untouched, it still lands', async () => {
+  const db = { u_ana: {} }; const st = g7Store(G7_PROFILE({ promos: true }));
+  const { S } = await pedidosBoot(db, { storage: st, runtime: { ...G7_RUNTIME, guestCardOnly: undefined }, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: GEO_OK2 });
+  try { await shellPlaceTolerant(S); assert.equal(JSON.parse(st.getItem('capp:active_order')).order.owner, 'u:u_ana', 'premise: Ana owns it'); } finally { S.w.close(); }
+  const reload = async (act) => {
+    const hold = { on: true, q: [] };
+    const { S: R } = await pedidosBoot(db, { storage: st, url: 'https://app.test/r/x_pizza/pago', routing: true, noFlush: true, fbOpts: { hold } });
+    try {
+      await flush(); await flush(); await flush();
+      assert.equal(R.q('.mk-title'), null, 'premise: the admission is held (the intent is deferred)');
+      await act(R);
+      hold.on = false; for (const f of hold.q.splice(0)) f(); await flush(); await flush(); await flush();
+      return { title: R.q('.mk-title') ? txt(R.q('.mk-title')) : null, path: new URL(R.w.location.href).pathname, gq: R.q('#gq') ? R.q('#gq').value : null };
+    } finally { R.w.close(); }
+  };
+  const nav = await reload(async (R) => { R.click('.tabbar [data-tab="search"]'); await flush(); const i = R.q('#gq'); i.focus(); i.value = 'pad'; i.dispatchEvent(new R.w.Event('input', { bubbles: true })); await flush(); });
+  assert.equal(nav.title, null, '🔴 PED-r3-P2a: Buscar + typing, then the admission ⇒ NOT yanked to «Pedido recibido»');
+  assert.equal(nav.gq, 'pad', '🔴 PED-r3-P2a: still on Buscar with her query');
+  const key = await reload(async (R) => { R.w.document.body.dispatchEvent(new R.w.KeyboardEvent('keydown', { bubbles: true, key: 'a' })); await flush(); });
+  assert.equal(key.title, null, '🔴 PED-r3-P2b: a gesture with no navigation (a key) also voids the deferred intent');
+  const none = await reload(async () => {});
+  assert.equal(none.title, 'Pedido recibido', 'control: untouched, the held intent still lands on her order after admission');
+});
 // Pagination (advisor ruling 2026-11-01): ONE page of 20 — v6 draws no «load more»; next_cursor is deliberately not followed (not a defect)
 test('capp-dark §3: the SHELL\'s own live map (the Inicio pin editor) is built in the OS theme and restyled in place on a flip; destroy detaches', async () => {
   let dark = true; const ls = new Set();
