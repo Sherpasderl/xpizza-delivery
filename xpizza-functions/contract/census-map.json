@@ -1147,6 +1147,10 @@
    "class": "lifecycle",
    "reason": "lifecycle bookkeeping (reasons, holds, active-drop flag, driver location snapshot) — not a contract fact"
   },
+  "extra_payment_review": {
+   "class": "lifecycle",
+   "reason": "manual-review FLAG (owner 2026-11-02): a second distinct verified payment on the order was recorded for a person to refund in PixelPay — lifecycle bookkeeping like paid_during_resolve; the money facts stay on the payment attempt's extra_payments record; not a contract fact"
+  },
   "paid_strand_seen_at": {
    "class": "stamp",
    "reason": "audit / notification timestamp — bookkeeping"
