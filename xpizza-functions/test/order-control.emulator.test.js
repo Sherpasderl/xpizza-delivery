@@ -64,6 +64,10 @@ const RD = require('./_render-delta');
 // §3 serialization r1 (codex): the DECLARED delta (test/_serial3-delta.js) — the order-independent content key (bound to
 // the content the request persisted, else the declared unbound mode) and (the factura's item_order comes from the gate reader's cached snapshot — no new read)
 const SD = require('./_serial3-delta');
+// FINDING-hosted-charge-recover-race: the claim fix's ONE declared I/O delta (catalog/_hosted-claim-delta.js) — mapped for CARD
+// cases only, counted, pinned (non-vacuous).
+const { preExclusiveClaimOps } = require('../catalog/_hosted-claim-delta');
+const CLAIM_DELTA = { n: 0 };
 let S3_KEYS = 0, S3_PROV = 0;   // §3 r3: card cases whose pending order's persisted content keys were checked
 const POST_OF = new WeakMap();
 const SENT_OF = new WeakMap();   // recorded result → the body the request POSTED (what the content stamp hashed)
@@ -534,14 +538,14 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         const s3c = SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) });   // the content the route stamped (createOrder: posted; charge: posted + server reward lines)
         // codex r2 P2 — the mode is DECLARED from what the case IS (a changed cart / a vanished order stamps content it does not persist)
         const mode = /chang|VANISH/i.test(c.name) ? 'unbound' : 'bound';
-        const cs = SD.compareShape(stripControl(r.ops, key), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
+        const cs = SD.compareShape(c.path === 'card' ? preExclusiveClaimOps(stripControl(r.ops, key), CLAIM_DELTA) : stripControl(r.ops, key), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
         if (JSON.stringify(stripControl(r.ops, key)) !== JSON.stringify(goldOps(g.ops))) S3_DIFF += 1;
         assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${key}: the call sequence changed beyond the control read — ${RD.opsDiff(cs.expected, cs.actual)}`);
         if (/^SCHEDULED sweep release \|/.test(key)) {
           O1A_SEEN += 1;
           // NEGATIVE (in-suite, O1a §5): the declaration strips exactly O1a's read — an unexpected extra read on the same cell is still a diff
           const planted = [...r.ops, { db: 'rtdb', op: 'once', path: `restaurants/${key.split(' | ')[2]}/identity/unexpected` }];
-          const neg = SD.compareShape(stripControl(planted, key), goldOps(g.ops),   /* DRYRUN (2e): S3a's stripControl(ops, label) — the label sets DR.without's expected:0 on SCHEDULED cells; without it the negative THROWS instead of diffing */ { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: `${key} (negative)` });
+          const neg = SD.compareShape(c.path === 'card' ? preExclusiveClaimOps(stripControl(planted, key), CLAIM_DELTA) : stripControl(planted, key), goldOps(g.ops),   /* DRYRUN (2e): S3a's stripControl(ops, label) — the label sets DR.without's expected:0 on SCHEDULED cells; without it the negative THROWS instead of diffing */ { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: `${key} (negative)` });
           assert.notDeepStrictEqual(neg.actual, neg.expected, `🔴 ${key}: NEGATIVE — an unexpected extra read must still turn the cell RED`);
         }
         const ch = SD.changedShape(r.changed, expectedChangedD12b(g.changed), { content: s3c, bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
@@ -766,6 +770,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
     console.log(`order-control: baseline written to ${CAPTURE} (${Object.keys(out.cases).length} cases)`);
   } else {
     check(() => assert.deepStrictEqual(Object.keys(results).sort(), Object.keys(golden.cases).sort(), 'the same cases as the baseline'));
+    if (!CAPTURE) check(() => assert.ok(CLAIM_DELTA.n > 0, `non-vacuity: the declared exclusive-claim delta was applied (${CLAIM_DELTA.n} mapping(s))`));
   }
   // collected (not thrown) so it never masks the per-cell failures that would explain it
   if (!CAPTURE) check(() => assert.ok(S3_DIFF > 0, 'non-vacuity: WITHOUT the §3 declared delta at least one UNCHANGED case differs from the baseline'));

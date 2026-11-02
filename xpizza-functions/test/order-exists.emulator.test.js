@@ -51,6 +51,10 @@ const RD = require('./_render-delta');
 // §3 serialization r1 (codex): the DECLARED delta (test/_serial3-delta.js) — the order-independent content key, bound to the
 // content the request persisted where it did, else the declared unbound mode; (the factura's item_order comes from the gate reader's cached snapshot — no new read)
 const SD = require('./_serial3-delta');
+// FINDING-hosted-charge-recover-race: the claim fix's ONE declared I/O delta (catalog/_hosted-claim-delta.js) — the hosted attempt
+// claim is an exclusive `transaction` where the base did an `update` of the same fields; mapped for CARD cases only, counted, pinned.
+const { preExclusiveClaimOps } = require('../catalog/_hosted-claim-delta');
+const CLAIM_DELTA = { n: 0 };
 const POST_OF = new WeakMap();
 const SENT_OF = new WeakMap();   // recorded result → the body the request POSTED (what the content stamp hashed)   // recorded result → the order record after the request (the content a stamp may bind to)
 let S3_BOUND = 0, S3_UNBOUND = 0, S3_DIFF = 0;
@@ -373,7 +377,8 @@ async function pageSends(dir, c, firstStatus, firstBody) {
         // it does not persist (unbound); every other case is bound to the content it POSTED (the stamp's real input — e.g.
         // ACQUIRE FAILS stamps its qty-2 cart although the order keeps qty 1)
         const mode = (c.kind === 'refusal' || /chang|VANISH/i.test(c.name)) ? 'unbound' : 'bound';
-        const cs = SD.compareShape(DR.without(r.ops, L, { ignore: OE_HARNESS }), g.ops, { mode, content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
+        const rOps = c.path === 'card' ? preExclusiveClaimOps(r.ops, CLAIM_DELTA) : r.ops;   // the claim fix's declared delta (card only), then S3a's declared strip
+        const cs = SD.compareShape(DR.without(rOps, L, { ignore: OE_HARNESS }), g.ops, { mode, content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
         if (cs.bound) S3_BOUND += 1; else S3_UNBOUND += 1;
         if (JSON.stringify(DR.without(r.ops, L, { ignore: OE_HARNESS })) !== JSON.stringify(g.ops)) S3_DIFF += 1;
         assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${L}: the handler's database CALL SEQUENCE changed — a refusal must add no read and move no write — ${RD.opsDiff(cs.expected, cs.actual)}`);
@@ -437,6 +442,7 @@ async function pageSends(dir, c, firstStatus, firstBody) {
     check(() => assert.ok(probed > 0, 'render-ON companion: premise — at least one card request carries a reward (the delta is exercised)'));
     check(() => { fill = FILL.assertBounded('render-ON companion'); });
   }
+  if (!CAPTURE) check(() => assert.ok(CLAIM_DELTA.n > 0, `non-vacuity: the declared exclusive-claim delta was applied (${CLAIM_DELTA.n} mapping(s)) — the ROTATE cases claim a fresh attempt`));
   if (!CAPTURE) { check(() => assert.ok(S3_DIFF > 0, 'non-vacuity: WITHOUT the §3 declared delta at least one case differs from the base')); console.log(`  ✓ §3 r1 declared delta: ${S3_DIFF} case(s) differ only by the declared delta — ${S3_BOUND} content-bound, ${S3_UNBOUND} unbound (one key per request)`); }
   const caseFails = FAILS.length;
   const kinds = (k) => CASES.filter((c) => c.kind === k).length * 2;
