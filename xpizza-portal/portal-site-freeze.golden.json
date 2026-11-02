@@ -104,8 +104,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "464364016fe46baefd14fc5b33ae682fe75a51e9a1a664d6322d70c5291143b7",
-   "bytes": 99097
+   "sha256": "6e9bc679195996be086fec2449405380ce915120f3830c9b7802a7369debd975",
+   "bytes": 99498
   }
  },
  "diff_aid": {
@@ -2124,6 +2124,12 @@
     ".phshh",
     "background",
     "linear-gradient(to bottom,transparent 50%,rgba(0,0,0,.25) 100%)"
+   ],
+   [
+    "",
+    ".phwait",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
