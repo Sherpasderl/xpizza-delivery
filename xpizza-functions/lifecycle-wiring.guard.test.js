@@ -16,7 +16,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const live = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const H = HUNKS.find((h) => h.name === 'login-uid');
 
-const pre = require('./tools/sd-inverse').unapplySdIndex(live);   // S-D (newer) stripped first: the line count below is lifecycle's own
+const pre = require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(live));   // S-D (newer) stripped first: the line count below is lifecycle's own
 const out = unapplyLifecycleIndex(pre);
 assert.notStrictEqual(out, live, 'non-vacuity: the hunk is present');
 const block = live.slice(live.lastIndexOf('\n', live.indexOf(H.begin)) + 1, live.indexOf(H.end) + H.end.length + 1);
@@ -46,9 +46,9 @@ const cBlock = live.slice(live.lastIndexOf('\n', live.indexOf(C.begin)) + 1, liv
 assert.ok(cBlock.includes("const lcUid = await SE.claimPhoneUid(db, pHash, () => 'u_' + require('crypto').randomBytes(12).toString('hex'));"), 'the claim call');
 ok('the calls: lcUid = SE.claimPhoneUid(create-if-absent) BEFORE the base read; uid = SE.loginUid(on lcUid) after it — the same uid shape as the resolution');
 
-assert.throws(() => unapplyLifecycleIndex(require('./tools/sd-inverse').unapplySdIndex(live.replace(H.begin, '/* lifecycle:BEGIN login-uid */'))), /missing/, 'a missing begin');
-assert.throws(() => unapplyLifecycleIndex(require('./tools/sd-inverse').unapplySdIndex(live + `${H.begin}\n${H.end}\n`)), /more than once/, 'a duplicated hunk');
-assert.throws(() => unapplyLifecycleIndex(require('./tools/sd-inverse').unapplySdIndex(live.replace(`      ${H.begin}`, `      x; ${H.begin}`))), /own lines/, 'a marker sharing a base line');
+assert.throws(() => unapplyLifecycleIndex(require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(live.replace(H.begin, '/* lifecycle:BEGIN login-uid */')))), /missing/, 'a missing begin');
+assert.throws(() => unapplyLifecycleIndex(require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(live + `${H.begin}\n${H.end}\n`))), /more than once/, 'a duplicated hunk');
+assert.throws(() => unapplyLifecycleIndex(require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(live.replace(`      ${H.begin}`, `      x; ${H.begin}`)))), /own lines/, 'a marker sharing a base line');
 ok('sensitivity: missing / duplicated / shared-line markers throw');
 
 console.log(`\nlifecycle-wiring.guard: OK (${n})`);
