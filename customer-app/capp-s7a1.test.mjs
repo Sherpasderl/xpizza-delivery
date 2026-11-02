@@ -389,3 +389,32 @@ test('S7a-1 + VP r2 #2: a placement whose page is torn down WHILE it waits for t
   const r = await pr;
   assert.deepEqual([r.kind, R.srv.sends(), J(R.storage, K.cart).frozen_for], ['superseded', 0, undefined], '🔴 VP-20b: superseded — no freeze, ZERO sends');
 });
+// Codex VP r3 (money): null → active → null — a placement that SUCCEEDS while the second one waits for the section; the second must
+// reconcile (the cart is purchased), never mint a NEW id for the same cart. Base: 2 sends / 1 id (the server dedupes); now: 1 send
+const queuedLocks = () => { const q = []; return { q, request: (n, o, cb) => new Promise((res, rej) => q.push(async () => { try { res(await cb()); } catch (e) { rej(e); } })) }; };
+test('S7a-1 + VP r3 (money): two placements; the first is granted and SUCCEEDS, then the second ⇒ ONE send, ONE id, frozen once — never a second purchase of the same cart', async () => {
+  const lm = queuedLocks(), R = rig({ script: { createOrder: [OK_CASH] }, locks: lm }); seedCart(R.storage);
+  const pa = R.api.place(args()), pb = R.api.place(args());
+  for (let i = 0; i < 50 && lm.q.length < 2; i++) await Promise.resolve();
+  assert.equal(lm.q.length, 2, 'premise: both wait for the cart\'s section');
+  await lm.q.shift()(); const a = await pa;
+  assert.equal(a.kind, 'placed', 'premise: the first SUCCEEDED (its record cleared: null → active → null)');
+  const freezes = []; const set = R.storage.setItem; R.storage.setItem = (k, v) => { if (k === K.cart && /frozen_for/.test(v)) freezes.push(JSON.parse(v).frozen_for); return set(k, v); };
+  while (lm.q.length) await lm.q.shift()();
+  for (let i = 0; i < 50 && lm.q.length === 0; i++) await Promise.resolve();
+  while (lm.q.length) await lm.q.shift()();
+  const b = await pb;
+  const ids = new Set(R.srv.calls.filter((c) => c.ep === 'createOrder').map((c) => c.body.order_id));
+  assert.deepEqual([R.srv.sends(), ids.size, freezes.length], [1, 1, 0], `🔴 VP-23: one send, one id, no second freeze (the second: ${b.kind})`);
+  assert.notEqual(b.kind, 'placed_new', 'the second never mints');
+});
+test('S7a-1 + VP r3 (P2): admissions that keep finding the state changed are BOUNDED — after the cap the placement fails SAFE (the drawn retry), nothing sent, nothing minted', async () => {
+  const R = rig({ script: { createOrder: [OK_CASH] } }); seedCart(R.storage);
+  let turns = 0;
+  // every grant: an equivalent cart in DIFFERENT bytes (another tab's rewrite) lands just before the section runs
+  const lm = { request: (n, o, cb) => { turns++; const c = J(R.storage, K.cart); R.storage.setItem(K.cart, JSON.stringify(c, null, turns % 3)); return Promise.resolve().then(() => cb()); } };
+  const S = rig({ script: { createOrder: [OK_CASH] }, storage: R.storage, locks: lm });
+  const r = await S.api.place(args());
+  assert.deepEqual([r.kind, r.contended, S.srv.sends(), J(R.storage, K.place)], ['offline', true, 0, null], '🔴 VP-24: starved ⇒ offline (retryable), ZERO sends, nothing minted');
+  assert.equal(turns, 4, 'one admission + exactly 3 restarts (the cap)');
+});

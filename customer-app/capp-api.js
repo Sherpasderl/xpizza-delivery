@@ -124,6 +124,11 @@
     const randomBytes = o.randomBytes || ((n) => { const b = new Uint8Array(n); cryptoApi.getRandomValues(b); return b; });
     const memberOf = typeof o.member === 'function' ? o.member : () => o.member || null;
     const locks = o.locks !== undefined ? o.locks : (root && root.navigator && root.navigator.locks) || null;   // Web Locks (cross-tab), when the host has them
+    // Codex VP r3: the admission's re-validation — every persisted fact place()'s guards read (raw, so another tab's rewrite counts);
+    // a re-admission that keeps finding change is bounded
+    const rawOf = (k) => { try { return k && storage ? storage.getItem(k) : null; } catch (_) { return '\u0000unreadable'; } };
+    const stateSig = () => JSON.stringify([rawOf(PLACE_KEY), rawOf(PLACED_KEY), rawOf(CART_KEY), rawOf(PAY_KEY)]);
+    const RESTARTS = Symbol('capp-admission-restarts'), MAX_RESTARTS = 3;
     const lockInterruptedCard = typeof o.lockInterruptedCard === 'boolean' ? o.lockInterruptedCard : LOCK_INTERRUPTED_CARD;
     const cq = o.confirmQuote || CQ({ now, setInterval: o.setInterval, clearInterval: o.clearInterval, requote: o.requote });
     const PLACE_KEY = `capp:${cfg.restaurantId}:pending_place`;
@@ -505,7 +510,7 @@
         // r3 §1.4: a frozen cart whose lock expired with no marker NEVER unlocks — the drawn recovery sheet, never a new placement
         if (fz.frozen && !fz.live) return recoverySheet(fz.order_id);
       }
-      const live = readPlace();
+      const live = readPlace(), stateAt = HOSTED && locks ? stateSig() : null;   // Codex VP r3: what the guards below decide on, ALL of it (no Web Locks ⇒ no wait ⇒ the base's reads exactly)
       if (memLock) return lockedOutcome(memLock);                                         // this page's lock (even if its write failed)
       if (live && live.pay_pending === true) return lockedOutcome(live.order_id);   // locked: zero writes until a definitive poll
       if (live && live.card === true && live.unresolved && (method === 'online' || lockInterruptedCard)) return resolveExisting(live.order_id);   // rule ii: never charged again
@@ -538,12 +543,19 @@
         // Codex VP r2 #2: the ADMISSION — the freeze of the purchased cart AND the dispatch record (confirmSend) — is ONE synchronous
         // decision, exactly as before the cart lock: hosted, it runs INSIDE the cart's critical section (shared with «Volver a pedir»'s
         // writers across tabs), re-validating everything there (the page alive, the record as it is NOW); link mode runs it directly
-        const waited = HOSTED && !!locks, liveAt = guard === 0 ? JSON.stringify(live || null) : null;
+        const waited = HOSTED && !!locks;
         const admit = () => {
           if (typeof p.alive === 'function' && !p.alive()) return { ret: { kind: 'superseded' } };   // torn down while queued ⇒ never sends
           // another placement admitted / locked while this one waited for the section ⇒ this one starts over, so place()'s own guards
           // (the page lock, pay_pending, an unresolved / issued card) decide on the state AS IT IS NOW — the base's second call exactly
-          if (waited && guard === 0 && (memLock || JSON.stringify(readPlace() || null) !== liveAt)) return { ret: place(p) };
+          // Codex VP r3 (money): compared as a WHOLE — the record, the PLACED marker, the cart (its freeze / generation), the pay record,
+          // raw: a placement that SUCCEEDED meanwhile (null → active → null: its marker, the purchased cart) is a change, never «the same».
+          // Every admission writes the placement record, so this tab's own admissions are seen the same way
+          if (waited && guard === 0 && (memLock || stateSig() !== stateAt)) {
+            const n = (p[RESTARTS] || 0) + 1;
+            if (n > MAX_RESTARTS) return { ret: { kind: 'offline', order_id: null, contended: true } };   // starved: fail SAFE — nothing sent, the drawn retry
+            return { ret: place({ ...p, [RESTARTS]: n }) };
+          }
           try {
             rec = readPlace() || mintPlace(method, p);
             priorSends = Number(rec.dispatched) || 0;   // S4: a retained identity (already dispatched by an earlier attempt)
