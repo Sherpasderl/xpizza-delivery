@@ -21,14 +21,23 @@ const HTML = readFileSync(join(DIR, 'index.html'), 'utf8');
 const WAIT = 'Abriendo tu portal…';
 
 // ── boot.js over the real page ────────────────────────────────────────────────────────────────────────────────────────
-// boot.js's own imports: auth.js → a stub that hands the test the watchAuth callback; the five feature modules → empty.
-async function bootPage({ hint = false } = {}) {
-  const dom = new JSDOM(HTML, { url: 'https://portal.test/', pretendToBeVisual: true });
+// The real index.html + the real styles.css (inlined, so visibility is the CSS's own verdict) + gate-early.js run as the page
+// runs it (a classic script, before the module graph). boot.js's imports: auth.js → a stub that hands the test the watchAuth
+// callback; the five feature modules → empty. Timers are node:test's mock timers (the deadlines are proven, not assumed).
+const CSS = readFileSync(join(DIR, 'styles.css'), 'utf8');
+const EARLY = (() => { try { return readFileSync(join(DIR, 'gate-early.js'), 'utf8'); } catch (_) { return ''; } })();   // RED-first: absent → assertions fail, not the load
+function pageDom({ hint = false } = {}) {
+  const dom = new JSDOM(HTML.replace('<link rel="stylesheet" href="./styles.css">', `<style>${CSS}</style>`), { url: 'https://portal.test/', pretendToBeVisual: true, runScripts: 'outside-only' });
   const w = dom.window;
   for (const k of ['window', 'document', 'CustomEvent', 'Event', 'HTMLElement', 'Node', 'localStorage', 'sessionStorage']) {
     Object.defineProperty(globalThis, k, { value: k === 'window' ? w : w[k], configurable: true, writable: true });
   }
   if (hint) w.localStorage.setItem('sherpa.portal.session', '1');
+  w.setTimeout = (fn, ms) => globalThis.setTimeout(fn, ms);   // the page's timers are the (mocked) node ones
+  w.eval(EARLY);                                                // <head>: before the module graph, before the first paint
+  return { dom, w, d: w.document };
+}
+async function loadBoot(w) {
   const tag = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
   const files = [];
   const put = (name, src) => { const p = join(DIR, `__sw-${name}.${tag}.mjs`); writeFileSync(p, src); files.push(p); return `./__sw-${name}.${tag}.mjs`; };
@@ -43,69 +52,156 @@ async function bootPage({ hint = false } = {}) {
   }
   const bootFile = put('boot', src);
   try { await import(`${pathToFileURL(join(DIR, bootFile.slice(2))).href}?t=${tag}`); } finally { for (const f of files) { try { unlinkSync(f); } catch (_) { /* best effort */ } } }
-  const d = w.document;
-  return { w, d, signIn: (email = 'duena@ejemplo.test') => globalThis.__authCb({ uid: 'u1', email }), signOut: () => globalThis.__authCb(null) };
 }
-const shown = (d, id) => !d.getElementById(id).classList.contains('hidden');
-const lede = (d) => d.querySelector('#gate .gatecard .lede');
+async function bootPage(opts) {
+  const p = pageDom(opts);
+  await loadBoot(p.w);
+  return { ...p, signIn: (email = 'duena@ejemplo.test') => globalThis.__authCb({ uid: 'u1', email }), signOut: () => globalThis.__authCb(null) };
+}
+// shown = the element and every ancestor render (no display:none from the stylesheet, no [hidden])
+const shown = (d, id) => { for (let n = d.getElementById(id); n && n.nodeType === 1; n = n.parentElement) { if (n.hidden || d.defaultView.getComputedStyle(n).display === 'none') return false; } return true; };
+const ready = (d) => d.dispatchEvent(new d.defaultView.CustomEvent('portal:ready'));
+function assertWaitCard(d) {
+  assert.ok(shown(d, 'gate'), 'the card stays');
+  assert.ok(!shown(d, 'loginform'), 'the form is gone');
+  assert.ok(!shown(d, 'gatelede'), 'the sign-in lede gives way…');
+  assert.ok(shown(d, 'gatewait'), '…to the one quiet line');
+  assert.equal(d.getElementById('gatewait').textContent, WAIT);
+  assert.equal(d.getElementById('gatewait').getAttribute('role'), 'status');
+  assert.ok(d.getElementById('gatewait').classList.contains('wait') && d.getElementById('gatewait').classList.contains('lede'), 'the mockup\'s .lede.wait');
+  assert.ok(!shown(d, 'app'), 'nothing of the portal paints before it is final');
+  assert.ok(!shown(d, 'gatefail'));
+}
+function assertFormCard(d) {
+  assert.ok(shown(d, 'gate') && shown(d, 'loginform') && shown(d, 'gatelede'));
+  assert.ok(!shown(d, 'gatewait') && !shown(d, 'gatefail') && !shown(d, 'app'));
+}
 
 test('A — signed in, discovery pending: the card holds with «Abriendo tu portal…» (role=status, form hidden); the portal is not shown', async () => {
   const { d, signIn } = await bootPage();
-  assert.ok(shown(d, 'loginform') && !shown(d, 'app'), 'premise: a first visit shows the sign-in form');
+  assertFormCard(d);   // a first visit: today's card
   signIn();
-  assert.ok(shown(d, 'gate'), 'the card stays');
-  assert.ok(!shown(d, 'loginform'), 'the form is gone');
-  assert.equal(lede(d).textContent, WAIT);
-  assert.equal(lede(d).getAttribute('role'), 'status');
-  assert.ok(lede(d).classList.contains('wait'));
-  assert.ok(!shown(d, 'app'), 'nothing of the portal paints before it is final');
+  assertWaitCard(d);
 });
 
-test('A — `portal:ready` reveals the portal ONCE, in the same task: the card goes, the app shows', async () => {
+test('A — `portal:ready` reveals the portal ONCE, in the same task: the card goes, the app shows; a second one is a no-op', async () => {
   const { d, signIn } = await bootPage();
-  signIn();
-  d.dispatchEvent(new d.defaultView.CustomEvent('portal:ready'));
+  signIn(); ready(d);
   assert.ok(!shown(d, 'gate') && shown(d, 'app'));
-  d.dispatchEvent(new d.defaultView.CustomEvent('portal:ready'));   // a second one is a no-op
+  ready(d);
   assert.ok(!shown(d, 'gate') && shown(d, 'app'));
 });
 
-test('A — sign-out puts the form back exactly as it was (today\'s card), and hides the portal', async () => {
+test('A — sign-out puts today\'s card back (form, lede) and hides the portal', async () => {
   const { d, signIn, signOut } = await bootPage();
-  const before = lede(d).textContent;
-  signIn(); d.dispatchEvent(new d.defaultView.CustomEvent('portal:ready'));
-  signOut();
-  assert.ok(shown(d, 'gate') && shown(d, 'loginform') && !shown(d, 'app'));
-  assert.equal(lede(d).textContent, before);
-  assert.equal(lede(d).getAttribute('role'), null);
-  assert.ok(!lede(d).classList.contains('wait'));
+  signIn(); ready(d); signOut();
+  assertFormCard(d);
 });
 
 test('A — `portal:ready` before any sign-in (or after a sign-out) never reveals the portal', async () => {
   const { d, signIn, signOut } = await bootPage();
-  d.dispatchEvent(new d.defaultView.CustomEvent('portal:ready'));
-  assert.ok(shown(d, 'gate') && !shown(d, 'app'));
-  signIn(); signOut();
-  d.dispatchEvent(new d.defaultView.CustomEvent('portal:ready'));
-  assert.ok(shown(d, 'gate') && shown(d, 'loginform') && !shown(d, 'app'));
+  ready(d);
+  assertFormCard(d);
+  signIn(); signOut(); ready(d);
+  assertFormCard(d);
 });
 
-test('R5 — a reload that HAD a session never paints the login form: the card opens in the wait state before auth answers', async () => {
-  const { d, signIn } = await bootPage({ hint: true });
-  assert.ok(!shown(d, 'loginform'), 'no form before the auth decision');
-  assert.equal(lede(d).textContent, WAIT);
-  assert.ok(!shown(d, 'app'));
-  signIn();
-  assert.equal(lede(d).textContent, WAIT);
+test('R5 / P2 first paint — a page that HAD a session is in the wait state from gate-early.js, BEFORE the module graph runs', () => {
+  const { d } = pageDom({ hint: true });   // boot.js has not run (nor loaded)
+  assertWaitCard(d);
+  const fresh = pageDom();
+  assertFormCard(fresh.d);
 });
 
 test('R5 — the hint is set on sign-in and cleared on sign-out; a stale hint falls back to the form when auth says signed-out', async () => {
   const { w, d, signIn, signOut } = await bootPage({ hint: true });
-  signOut();   // the stored session was gone after all
-  assert.ok(shown(d, 'loginform') && !shown(d, 'app'));
+  signOut();
+  assertFormCard(d);
   assert.equal(w.localStorage.getItem('sherpa.portal.session'), null);
   signIn();
   assert.equal(w.localStorage.getItem('sherpa.portal.session'), '1');
+});
+
+test('P1 deadline — a stale hint whose auth NEVER answers gives the form back after AUTH_DEADLINE_MS (and focuses the email)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { d } = await bootPage({ hint: true });
+  assertWaitCard(d);
+  t.mock.timers.tick(5999);
+  assertWaitCard(d);
+  t.mock.timers.tick(1);
+  assertFormCard(d);
+  assert.equal(d.activeElement, d.getElementById('email'));
+});
+
+test('P1 deadline — signed in, discovery NEVER ends: after DISCOVERY_DEADLINE_MS `portal:deadline` asks the shell for its retry state', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { d, signIn } = await bootPage();
+  const asked = [];
+  d.addEventListener('portal:deadline', () => asked.push(1));
+  signIn();
+  t.mock.timers.tick(19999);
+  assert.equal(asked.length, 0);
+  t.mock.timers.tick(1);
+  assert.equal(asked.length, 1);
+  ready(d);   // the shell answers with its retry box → the reveal
+  assert.ok(shown(d, 'app'));
+  t.mock.timers.tick(60000);
+  assert.equal(asked.length, 1, 'only once');
+});
+
+test('P1 deadline — a reveal in time cancels both deadlines', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { d, signIn } = await bootPage({ hint: true });
+  const asked = [];
+  d.addEventListener('portal:deadline', () => asked.push(1));
+  signIn(); ready(d);
+  t.mock.timers.tick(60000);
+  assert.equal(asked.length, 0);
+  assert.ok(shown(d, 'app') && !shown(d, 'gate'));
+});
+
+test('P2 bootstrap failure — if the module graph never starts, gate-early.js shows the recovery card after BOOT_DEADLINE_MS; never an unwired form', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  for (const hint of [true, false]) {
+    const { w, d } = pageDom({ hint });   // boot.js never runs: a module / CDN failure
+    t.mock.timers.tick(9999);
+    assert.ok(!shown(d, 'gatefail'));
+    t.mock.timers.tick(1);
+    assert.ok(shown(d, 'gatefail'), `hint=${hint}: the recovery card`);
+    assert.ok(!shown(d, 'loginform') && !shown(d, 'gatewait'), 'never the unwired form');
+    const btn = d.getElementById('gatefailbtn');
+    assert.equal(d.activeElement, btn, 'focus on «Reintentar»');
+    let reloaded = 0;
+    w.__portalReload = () => { reloaded += 1; };   // jsdom cannot stub location.reload: gate-early.js's one seam
+    btn.click();
+    assert.equal(reloaded, 1, '«Reintentar» reloads the page');
+  }
+});
+
+test('P2 bootstrap — once boot.js runs, the boot deadline never fires', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { d } = await bootPage();
+  t.mock.timers.tick(60000);
+  assert.ok(!shown(d, 'gatefail'));
+  assertFormCard(d);
+});
+
+test('P2 focus — the reveal focuses a deliberate target: the error box\'s «Reintentar», else the view heading; the restore focuses the email', async () => {
+  const { d, signIn, signOut } = await bootPage();
+  signIn();
+  const box = d.createElement('div'); box.className = 'errbox';
+  const retry = d.createElement('button'); retry.textContent = 'Reintentar'; box.append(retry);
+  d.getElementById('detail').replaceChildren(box);
+  ready(d);
+  assert.equal(d.activeElement, retry, 'an error state: its «Reintentar»');
+  signOut();
+  assert.equal(d.activeElement, d.getElementById('email'), 'the restored form: the email');
+  signIn();
+  d.getElementById('detail').replaceChildren();
+  ready(d);
+  const h = d.querySelector('#viewmenu h1');
+  assert.equal(d.activeElement, h, 'the portal: the view heading');
+  assert.equal(h.getAttribute('tabindex'), '-1', 'focusable without entering the tab order');
 });
 
 // ── shell.js: `portal:ready` on every terminal outcome ───────────────────────────────────────────────────────────────
@@ -181,4 +277,41 @@ test('shell — a LATER sign-in whose reload is held by unsaved work reveals the
   assert.equal(seen.length, 2, 'the held reload reveals');
   mods.shell._shellState.dirty.delete('unsaved');
   if (mods.shell._shellState.waitTimer) { clearInterval(mods.shell._shellState.waitTimer); mods.shell._shellState.waitTimer = null; }
+});
+
+test('P1 shell — an exception ANYWHERE in boot (a malformed E1 that throws while rendering) still ends in the retry box + ONE reveal', async () => {
+  const bad = E1([row('r_a')]);
+  Object.defineProperty(bad.brands[0], 'name', { get() { throw new Error('render boom'); }, enumerable: true });
+  const errs = []; const ce = console.error; console.error = (...a) => errs.push(a.join(' '));
+  try {
+    const { seen, byId } = await shellRun(okJson(bad));
+    assert.equal(seen.length, 1, 'revealed — never stuck on the card');
+    assert.ok(seen[0].detail > 0, 'a usable recovery state is in #detail before the reveal');
+    const box = byId.get('detail').children[0];
+    assert.ok(box && /errbox/.test(box._class), 'the retry box');
+  } finally { console.error = ce; }
+  assert.ok(errs.some((e) => /render boom/.test(e)), 'the exception is logged, not swallowed');
+});
+
+test('P1 shell — `portal:deadline` before discovery ends: the retry box + the reveal; the late answer is dropped', async () => {
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const { seen, byId } = await shellRun(() => held.then(() => okJson(E1([row('r_a')]))));
+  assert.equal(seen.length, 0, 'premise: discovery is still pending');
+  document.dispatchEvent(new CustomEvent('portal:deadline'));
+  await settle(5);
+  assert.equal(seen.length, 1, 'the deadline reveals');
+  assert.ok(/errbox/.test(byId.get('detail').children[0]._class), 'with the retry box');
+  release(); await settle(25);
+  assert.equal(seen.length, 1, 'the late answer never reveals again');
+  assert.ok(/errbox/.test(byId.get('detail').children[0]._class), 'nor repaints over the box');
+});
+
+test('P1 shell — `portal:deadline` after the reveal is a no-op', async () => {
+  const { seen, byId } = await shellRun(okJson(E1([row('r_a')])));
+  const before = byId.get('shopname').textContent;
+  document.dispatchEvent(new CustomEvent('portal:deadline'));
+  await settle(5);
+  assert.equal(seen.length, 1);
+  assert.equal(byId.get('shopname').textContent, before);
 });
