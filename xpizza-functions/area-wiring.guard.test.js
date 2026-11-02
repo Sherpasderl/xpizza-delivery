@@ -20,7 +20,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 
 // ── (i) the inverse ──
 {
-  const live = require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(require('./tools/pausa-inverse').unapplyPausaIndex(require('./tools/mem512-inverse').unapplyMem512Index(require('./tools/checkout-inverse').unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(read('index.js')))))))))))))); const baseIdx = baseOf('index.js');   // DRYRUN R-WIRE (2e): 10 cross-side layers innermost (the line-67 AST read stays raw)
+  const live = require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(require('./tools/pausa-inverse').unapplyPausaIndex(require('./tools/mem512-inverse').unapplyMem512Index(require('./tools/checkout-inverse').unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(require('./tools/sd-inverse').unapplySdIndex(read('index.js'))))))))))))))); const baseIdx = baseOf('index.js');   // DRYRUN R-WIRE (2e): 10 cross-side layers innermost (the line-67 AST read stays raw)
   assert.strictEqual(unapplyAreaIndex(live), baseIdx, `🔴 index.js minus the colonia hunks is not ${BASE}:index.js`);
   assert.notStrictEqual(live, baseIdx, 'non-vacuity: the slice is present in index.js');
   assert.strictEqual(live.split('\n').length, baseIdx.split('\n').length, 'index.js same-line: no line inserted');
@@ -32,7 +32,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 
   assert.deepStrictEqual([...FILES], ['create-order-build.js']);
   for (const f of FILES) {
-    const src = read(f); const base = baseOf(f);
+    const src = require('./tools/sd-inverse').unapplySdModuleIfAny(f, read(f)); const base = baseOf(f);   // S-D (newest) reversed first
     assert.strictEqual(unapplyAreaModule(f, src), base, `🔴 ${f} minus the colonia hunks is not ${BASE}:${f}`);
     assert.notStrictEqual(src, base, `non-vacuity: ${f} carries the slice`);
     assert.strictEqual(src.split('\n').length, base.split('\n').length, `${f} same-line: no line inserted`);
