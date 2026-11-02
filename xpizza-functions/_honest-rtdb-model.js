@@ -88,7 +88,9 @@ function makeHonestDb(initial = {}, hooks = {}) {
     };
     return r;
   };
-  Object.assign(api, { ref, getAt, setAt, get root() { return clone(root); } });
+  Object.assign(api, { ref, getAt, setAt });
+  // a LIVE getter: Object.assign would copy a getter's value once, at creation, and every later db.root would be stale
+  Object.defineProperty(api, 'root', { get: () => clone(root) || {}, enumerable: true });
   return api;
 }
 
