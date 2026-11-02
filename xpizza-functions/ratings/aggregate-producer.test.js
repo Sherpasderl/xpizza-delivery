@@ -88,7 +88,7 @@ const orderReads = (db, from = 0) => db.reads.slice(from).filter((r) => /^orders
     }
     await rateOrderCore(db, { body: { order_id: ids[11], action: 'withdraw' }, idToken: `tok-u_${String(11).padStart(24, 'a')}`, now: Y0 + 23 * 3600e3, verifyIdToken });   // withdrawn
     db.set(`deleted_uids/u_${String(10).padStart(24, 'a')}`, 5);                  // owner tombstoned
-    const out = await P.aggregateRestaurant(deps(db), R);
+    const out = await P.aggregateRestaurant(deps(db), R).catch((e) => assert.fail(`🔴 the producer threw on real data: ${e.message}`));
     assert.deepStrictEqual(out.closed, [YDAY], 'the first run closes YESTERDAY only (counts begin at deploy)');
     const doc = db.get(`public_stats/${R}`);
     assert.strictEqual(doc.rating_count, 10, '🔴 only countable ratings (withdrawn + tombstoned-owner excluded)'); assert.strictEqual(doc.rating_avg, 5);
