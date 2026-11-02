@@ -167,3 +167,18 @@ test('shell — a cached E1 reveals at once from the cache; the fresh answer rep
   const { seen } = await shellRun(okJson(E1([row('r_a'), row('r_b')])), { seed: { 'sherpa.portal.branches.uSw': JSON.stringify(cached) } });
   assert.equal(seen.length, 1);
 });
+
+test('shell — a LATER sign-in whose reload is held by unsaved work reveals the portal (its notice lives there); never a stuck card', async () => {
+  const { seen, mods } = await shellRun(okJson(E1([row('r_a')])));
+  assert.equal(seen.length, 1, 'premise: the first boot revealed once');
+  let reloads = 0;
+  globalThis.window.location = { reload: () => { reloads += 1; } };
+  mods.shell._shellState.dirty.add('unsaved');   // unsaved work holds the reload
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'uSw' } }));
+  document.dispatchEvent(new CustomEvent('portal:signed-in'));
+  await settle(5);
+  assert.equal(reloads, 0, 'premise: the reload is held');
+  assert.equal(seen.length, 2, 'the held reload reveals');
+  mods.shell._shellState.dirty.delete('unsaved');
+  if (mods.shell._shellState.waitTimer) { clearInterval(mods.shell._shellState.waitTimer); mods.shell._shellState.waitTimer = null; }
+});

@@ -43,7 +43,7 @@ export function startAceptar(deps) {
   const later = deps.setTimeout || setTimeout;
   const cancel = deps.clearTimeout || clearTimeout;
   const $ = (id) => doc.getElementById(id);
-  const STAGES = ['st-email', 'st-busy', 'st-password', 'st-error', 'st-invalid'];
+  const STAGES = ['st-loading', 'st-email', 'st-busy', 'st-password', 'st-error', 'st-invalid'];   // st-loading: R4, until the first decision
   const show = (id) => { for (const s of STAGES) $(s).hidden = s !== id; };
   // gen: every async continuation captures it and drops its result once it moved (an auth change, a newer acceptance)
   const st = { gen: 0, inviteId: null, preview: null, retryTimer: null, autoRetried: false, member: null, cardAction: null, acceptUid: null, accepting: false };

@@ -12,6 +12,33 @@
 
   const $ = (id) => document.getElementById(id);
   const gate = $('gate'), app = $('app'), err = $('loginerr'), btn = $('loginbtn');
+
+  // PLAN-portal-shell-no-shift R1 + R5 — owner-approved MOCKUP-portal-shell-wait.html, option A: while the session opens, the
+  // sign-in card holds with one quiet line instead of the form; the portal is revealed ONCE, on shell.js's `portal:ready`
+  // (dispatched when the chrome is rendered, or discovery ended in its empty / error state), already in its final shape.
+  // R5: a page that had a session (the hint, set on sign-in and cleared on sign-out) opens in that wait state, so a reload —
+  // e.g. a brand switch — never paints the login form before auth answers. A stale hint falls back to the form on sign-out.
+  const SESSION_HINT = 'sherpa.portal.session';
+  const hint = {
+    get() { try { return localStorage.getItem(SESSION_HINT) === '1'; } catch (_) { return false; } },
+    set(on) { try { if (on) localStorage.setItem(SESSION_HINT, '1'); else localStorage.removeItem(SESSION_HINT); } catch (_) { /* private mode: no hint, today's form */ } },
+  };
+  const lede = gate.querySelector('.gatecard .lede');
+  const LEDE = lede.textContent;
+  const cardWait = (on) => {
+    $('loginform').classList.toggle('hidden', on);
+    lede.textContent = on ? 'Abriendo tu portal…' : LEDE;
+    lede.classList.toggle('wait', on);
+    if (on) lede.setAttribute('role', 'status'); else lede.removeAttribute('role');
+  };
+  let signedIn = false, revealed = false;
+  if (hint.get()) cardWait(true);
+  document.addEventListener('portal:ready', () => {
+    if (!signedIn || revealed) return;
+    revealed = true;
+    gate.classList.add('hidden');                // one task: the card goes and the finished portal shows
+    app.classList.remove('hidden');
+  });
   const showError = (msg) => { err.textContent = msg; err.classList.toggle('on', !!msg); };
 
   $('loginform').addEventListener('submit', async (e) => {
@@ -42,8 +69,10 @@
     // app.js invalidates any in-flight review on this: an acknowledgement is a person's signature and
     // must not survive the person changing.
     document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: user ? user.uid : null } }));
-    gate.classList.toggle('hidden', inn);
-    app.classList.toggle('hidden', !inn);
+    signedIn = inn;
+    hint.set(inn);
+    if (!inn) revealed = false;
+    if (!revealed) { gate.classList.remove('hidden'); app.classList.add('hidden'); cardWait(inn); }
     if (inn) {
       showError('');
       $('pass').value = '';                   // do not leave a password sitting in the DOM

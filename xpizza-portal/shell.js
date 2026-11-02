@@ -108,8 +108,18 @@ document.addEventListener('portal:auth', (e) => {
 
 document.addEventListener('portal:signed-in', () => {
   if (S.bootedUid === null) { boot(); return; }
-  requestReload();                                    // a later sign-in on this page: the NEW page reselects (A1)
+  // a later sign-in on this page: the NEW page reselects (A1); a reload held by unsaved work shows its notice IN the portal
+  if (!requestReload()) document.dispatchEvent(new CustomEvent('portal:ready'));
 });
+
+// PLAN-portal-shell-no-shift R1 (option A): boot.js reveals the portal ONCE, on this event — fired when the chrome is rendered,
+// or when discovery ended in its empty / error state. Exactly once per page; later E1 answers repaint in place.
+let readied = false;
+function ready() {
+  if (readied) return;
+  readied = true;
+  document.dispatchEvent(new CustomEvent('portal:ready'));
+}
 
 // ── boot ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const decisionOf = (sel) => {
@@ -182,6 +192,7 @@ function apply(e1, { persist = true } = {}) {
     renderChrome();
     renderViews();
     goto('suc');
+    ready();
     return;
   }
   const remembered = store.get(EDITOR_KEY(S.uid, sel.brand_id));
@@ -195,15 +206,16 @@ function apply(e1, { persist = true } = {}) {
     openEditor(rid, { name: b ? b.name : rid, sales: S.sales });   // ONCE per page (apply runs once; a later E1 only repaints)
   }
   renderViews();
+  ready();
 }
 
 function showBootError(err) {
   $('shopname').textContent = '—';
   $('shopsub').textContent = '';
   const d = $('detail');
-  if (!d) return;
   const isOutage = !err || err.kind === 'Unavailable' || err.status === 0 || err.status >= 500;
-  d.replaceChildren(isOutage ? errBox(OFFLINE[0], OFFLINE[1], reload) : errBox('No tenés acceso a este portal', 'Si esperabas ver tu restaurante, escribinos y lo revisamos.'));
+  if (d) d.replaceChildren(isOutage ? errBox(OFFLINE[0], OFFLINE[1], reload) : errBox('No tenés acceso a este portal', 'Si esperabas ver tu restaurante, escribinos y lo revisamos.'));
+  ready();   // every terminal outcome reveals — the card never waits forever
 }
 function showNoBranches() {
   $('shopname').textContent = '—';
@@ -215,6 +227,7 @@ function showNoBranches() {
     d.replaceChildren(e);
   }
   hideOpsChrome();
+  ready();
 }
 
 // ── chrome: switcher, scope, nav ──────────────────────────────────────────────────────────────────────────────────────
