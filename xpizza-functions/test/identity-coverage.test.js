@@ -105,11 +105,56 @@ async function cell(name, fn) { try { await fn(); console.log(`  ✓ ${name}`); 
     const L = 'COV-CLI-ARGS';
     assert.deepStrictEqual(T.parseCliArgs(['--project', 'p']), { mode: 'check' }, `${L}: no mode flag → the existing check`);
     assert.deepStrictEqual(T.parseCliArgs(['--project', 'p', '--capture', 'a.json']), { mode: 'capture', file: 'a.json' }, `${L}: --capture <file>`);
-    assert.deepStrictEqual(T.parseCliArgs(['--project=p', '--against', 'a.json']), { mode: 'against', file: 'a.json' }, `${L}: --against <file>`);
+    assert.deepStrictEqual(T.parseCliArgs(['--project=p', '--against', 'a.json', '--rid', 'la_musa']), { mode: 'against', file: 'a.json', rids: ['la_musa'] }, `${L}: --against <file> --rid <rid>`);
+    assert.deepStrictEqual(T.parseCliArgs(['--project=p', '--against', 'a.json', '--rid', 'la_musa', '--rid', 'x_pizza']).rids, ['la_musa', 'x_pizza'], `${L}: --rid repeats for distinct rids`);
+    assert.ok(T.parseCliArgs(['--project=p', '--against', 'a.json']).refused, `${L}: --against WITHOUT --rid is refused (Codex cert r1 #2)`);
+    assert.ok(T.parseCliArgs(['--project=p', '--against', 'a.json', '--rid', 'la_musa', '--rid', 'la_musa']).refused, `${L}: a repeated identical --rid is refused`);
+    assert.ok(T.parseCliArgs(['--project=p', '--capture', 'a.json', '--rid', 'la_musa']).refused, `${L}: --rid with --capture is refused`);
     for (const bad of [['--capture=a.json'], ['--capture'], ['--capture', '--against'], ['--capture', 'a', '--against', 'b'], ['--rid', 'x'], ['--capture', 'a', '--capture', 'b']]) {
       assert.ok(T.parseCliArgs(['--project', 'p', ...bad]).refused, `${L}: ${JSON.stringify(bad)} is refused`);
     }
   });
+  // ── Codex cert r1 #2 / #3: a capture is BOUND (project, rids, age) and never written empty ──
+  await cell('COV-CAPTURE-RECORDS-PROJECT', async () => {
+    const L = 'COV-CAPTURE-RECORDS-PROJECT';
+    const c = await T.captureCatalog({ db: {}, verifier: {}, project: 'tb-proj', listIds: async () => ['tb_dark'], build: builder({ tb_dark: built(CAT, { usable: false }) }), now: () => 0 });
+    assert.strictEqual(c.project, 'tb-proj', `${L}: the capture records the project it was taken from (got ${c.project})`);
+  });
+  await cell('COV-CAPTURE-PROBLEMS', async () => {
+    const L = 'COV-CAPTURE-PROBLEMS';
+    const NOW = Date.parse('2026-11-02T12:00:00Z');
+    const good = { ...capture, project: 'tb-proj', captured_at: new Date(NOW - 3600e3).toISOString() };
+    const opts = { project: 'tb-proj', rids: ['tb_dark'], now: NOW };
+    assert.deepStrictEqual(T.captureProblems(good, opts), [], `${L}: a fresh capture of the right project holding the rid passes`);
+    const bad = [
+      [{ ...good, project: 'other' }, opts, /project/],
+      [good, { ...opts, rids: ['la_musa'] }, /la_musa/],
+      [good, { ...opts, rids: [] }, /--rid/],
+      [{ ...good, captured_at: '1970-01-01T00:00:00.000Z' }, opts, /old|age/],
+      [{ ...good, captured_at: new Date(NOW + 3600e3).toISOString() }, opts, /future/],
+      [{ ...good, captured_at: 'yesterday' }, opts, /captured_at/],
+      [{ ...good, restaurants: {} }, opts, /valid/],
+    ];
+    for (const [c, o, re] of bad) {
+      const p = T.captureProblems(c, o);
+      assert.ok(p.length && p.some((x) => re.test(x)), `${L}: refused with a matching reason (${re}) — got ${JSON.stringify(p)}`);
+    }
+  });
+  await cell('COV-AGAINST-ONLY-NAMED-RIDS', async () => {
+    const L = 'COV-AGAINST-ONLY-NAMED-RIDS';
+    const two = await T.captureCatalog({ db: {}, verifier: {}, listIds: async () => ['tb_a', 'tb_b'], build: builder({ tb_a: built(CAT, { usable: false }), tb_b: built(CAT, { usable: false }) }), now: () => 0 });
+    const r = await T.checkAgainstCapture({ db: {}, verifier: {}, capture: two, rids: ['tb_a'], build: builder({ tb_a: built(CAT, { usable: true }), tb_b: built(CAT, { usable: false }) }) });
+    assert.deepStrictEqual(r.rows.map((x) => x.rid), ['tb_a'], `${L}: only the named rid is judged (got ${JSON.stringify(r.rows.map((x) => x.rid))})`);
+    assert.strictEqual(r.rows[0].pass, true, `${L}: and it passes`);
+  });
+  await cell('COV-CAPTURE-EMPTY-NOT-VALID', async () => {
+    const L = 'COV-CAPTURE-EMPTY-NOT-VALID';
+    const empty = await T.captureCatalog({ db: {}, verifier: {}, listIds: async () => [], now: () => 0 });
+    assert.strictEqual(T.validCapture(empty), false, `${L}: an empty roster yields a capture that is NOT valid (so it is never written)`);
+    const noObjects = await T.captureCatalog({ db: {}, verifier: {}, listIds: async () => ['tb_dark'], build: builder({ tb_dark: built([], { usable: false }) }), now: () => 0 });
+    assert.strictEqual(T.validCapture(noObjects), false, `${L}: a restaurant with no objects is NOT valid`);
+  });
+
   await cell('COV-CAPTURE-FILE-WRITE-ONCE', async () => {
     const L = 'COV-CAPTURE-FILE-WRITE-ONCE';
     const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cov-')), 'cap.json');
@@ -131,7 +176,8 @@ async function cell(name, fn) { try { await fn(); console.log(`  ✓ ${name}`); 
     const junk = path.join(dir, 'junk.json'); fs.writeFileSync(junk, JSON.stringify({ kind: 'identity-coverage-capture', v: 1, restaurants: {} }));
     for (const [args, re] of [
       [['--capture=x.json'], /--capture= is not accepted/],
-      [['--rid', 'tb_x'], /unrecognised argument/],
+      [['--rid', 'tb_x'], /--rid applies only to --against/],
+      [['--against', junk], /not a valid identity coverage capture|--rid/],
       [['--capture', existing], /already exists/],
       [['--against', path.join(dir, 'absent.json')], /cannot be read/],
       [['--against', junk], /not a valid identity coverage capture/],
