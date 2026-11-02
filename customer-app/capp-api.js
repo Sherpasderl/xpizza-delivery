@@ -535,6 +535,9 @@
         try {
           rec = readPlace() || mintPlace(method, p);
           priorSends = Number(rec.dispatched) || 0;   // S4: a retained identity (already dispatched by an earlier attempt)
+          // Codex cash-chips r2 P1-1: the caller's no-quote allowance (freshOk:false) is for a REPLAY of the recorded body only — anything
+          // that would build a FRESH body is refused here, before any freeze / dispatch is recorded for this send
+          if (p.freshOk === false && !(cfg.schedulingLive === true && !fresh && priorSends > 0 && rec.sched_pending === true && !schedSettled.has(rec.order_id) && typeof rec.sent_body === 'string')) return { kind: 'replay_requote', order_id: rec.order_id, local: true };
           // Codex amendment r1 P2: the ticket ↔ order-id binding BEFORE anything is recorded for this identity (the freeze, confirmSend) —
           // a refused attempt leaves the record un-dispatched, so the re-verify binds to THIS id and the next place() sends it
           { const g = guestGate(p, { ticket: true, id: rec.order_id }); if (g) return g; }
@@ -602,6 +605,7 @@
         if (method === 'cash') {
           if (r.status === 200) { const ok = resolvePlace(id, 'placed'); return { ...grantOf(j), kind: 'placed', order_id: j.order_id || id, tracking_token: j.tracking_token || null, idempotent: !!j.idempotent, ...scheduledOf(j, body), ...settledOf(ok) }; }
           if (r.status === 409 && j.error === 'order_conflict') {
+            if (replay) return { kind: 'replay_requote', order_id: id };   // Codex cash-chips r2 P1-1: a replay is never healed onto a rebuilt body
             if (healed) return { kind: 'error', order_id: id, error: 'order_conflict' };
             healed = true; clearPlace(id); continue;   // (S1): proven terminal-safe — ONE resend on a fresh id
           }

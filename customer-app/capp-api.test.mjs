@@ -948,3 +948,14 @@ test('member token r4: tokenUsable fails CLOSED on every malformed / implausible
   for (const [why, t] of rows) assert.equal(A.tokenUsable({ idToken: t }, now), null, `🔴 member token r4: «${why}» must be unusable`);
   assert.equal(A.acceptToken({ idToken: null }, `${H}.${P(1e308)}.sig`, now), false, 'the ONE setter refuses it too');
 });
+
+// Codex cash-chips r2 P1-1 (advisor ruling: a retained replay sends ONLY the recorded body): the UI's no-quote allowance exists for a
+// REPLAY only — a FRESH send built from the flow requires a ready quote. freshOk:false ⇒ nothing built, nothing sent, nothing recorded
+test('cash-chips r2: a fresh (non-replay) send is refused when the caller says the quote is not ready (freshOk:false) — no request, no record', async () => {
+  const R = rig({ script: { createOrder: [OK_CASH] } });
+  const out = await R.api.place({ ...placeArgs('cash'), freshOk: false });
+  assert.equal(out && out.kind, 'replay_requote', '🔴 CC-r2-fresh: refused locally');
+  assert.equal(R.srv.of('createOrder').length, 0, '🔴 CC-r2-fresh: no request');
+  const rec = placeRec(R.storage); assert.ok(!rec || !(Number(rec.dispatched) > 0), '🔴 CC-r2-fresh: nothing dispatched on record');
+});
+

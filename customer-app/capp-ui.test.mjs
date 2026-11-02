@@ -2399,9 +2399,9 @@ const hnT = (d, h, mi = 0) => new Date(Date.UTC(2026, 9, d, h + 6, mi));   // Ho
 const S4_QUOTE = (body) => (body.schedule_only ? { status: 200, json: { ok: true, schedule: S4_ENTRY.schedule } } : QUOTE(body));
 const S4_MEMBER = { uid: 'u1', name: 'Ana', phone: '99990000', email: 'a@b.co', idToken: 'tok' };
 const loadSched = (w) => w.eval(readFileSync(join(HERE, 'capp-schedule.js'), 'utf8'));   // shell.html loads it, as here
-function bootS4({ at = hnT(20, 13, 1), member = S4_MEMBER, script = {}, config = {}, clock = null, storage, search = '', geo, priceSheet } = {}) {
+function bootS4({ at = hnT(20, 13, 1), member = S4_MEMBER, script = {}, config = {}, clock = null, storage, search = '', geo, priceSheet, intl = false } = {}) {
   const c = clock || { t: at.getTime() };
-  const b = bootCo({ member, config: { ...S4_CFG, ...config }, script: { quoteOrder: [S4_QUOTE], ...script }, pre: loadSched, mountOpts: { now: () => new Date(c.t) }, ...(storage ? { storage } : {}), ...(geo !== undefined ? { geo } : {}), ...(priceSheet ? { priceSheet } : {}), search });
+  const b = bootCo({ member, config: { ...S4_CFG, ...config }, script: { quoteOrder: [S4_QUOTE], ...script }, pre: intl ? (w) => { loadSched(w); loadPhone(w); } : loadSched, mountOpts: { now: () => new Date(c.t) }, ...(storage ? { storage } : {}), ...(geo !== undefined ? { geo } : {}), ...(priceSheet ? { priceSheet } : {}), search });
   b.clock = c; return b;
 }
 const schedFill = async (b, pay = 'cash') => { await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]'); await b.type('#f-details', 'Portón negro'); if (b.q('#f-name')) { await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000'); } if (b.q(`[data-act="pay"][data-val="${pay}"]`)) await b.click(`[data-act="pay"][data-val="${pay}"]`); };
@@ -2641,6 +2641,29 @@ for (const [name, refusal] of [['quote_invalid', { status: 409, json: { error: '
     assert.equal(sheets.length, 0, '🔴 CC-r1-1: no price sheet over a replay (nothing is re-sent from it)');
   });
 }
+for (const [label, geo] of [['geolocation denied', GEO_NO], ['a fresh quote ready', undefined]]) test(`cash-chips r2 P1-1 (order_conflict, ${label}): a replay answered 409 order_conflict is NOT healed onto a rebuilt body under a new id — one request, the lock released, back on «Entrega & Pago»`, async () => {
+  const a = bootS4({ script: { createOrder: ['network'] } }); await retainCash(a); const sent0 = a.srv.of('createOrder')[0].body;
+  const b = await remount10b(a, { geo, script: { createOrder: [{ status: 409, json: { error: 'order_conflict' } }, S4_REPLAY_OK, S4_REPLAY_OK] } });
+  await b.click('#cta'); await settle(); await settle();
+  const s = b.srv.of('createOrder');
+  assert.equal(s.length, 1, '🔴 CC-r2-1: no healed resend from a replay');
+  assert.deepEqual(J(s[0].body), J(sent0), 'the one request carried the recorded bytes');
+  assert.equal(b.ui.state.screen, 'checkout'); assert.notEqual(cta(b), 'Reintentar', '🔴 CC-r2-1: the lock released');
+});
+test('cash-chips r2 #3: «Enviando» shows the RECORDED economics on a replay — never the live quote (a remount whose fresh quote differs)', async () => {
+  const a = bootS4({ script: { createOrder: ['network'] } }); await retainCash(a);
+  const rec = JSON.parse(a.storage.getItem(S4_PLACE_KEY)); const body0 = JSON.parse(rec.sent_body);
+  assert.ok(Number.isFinite(body0.expected_net_cents), 'premise: the recorded ceiling');
+  const live = (body) => { const r = S4_QUOTE(body); return r.json && Number.isFinite(r.json.net_total_cents) ? { ...r, json: { ...r.json, net_total_cents: r.json.net_total_cents + 12300 } } : r; };   // the live quote moved
+  let go; const gate = new Promise((r) => { go = r; });
+  const b = await remount10b(a, { script: { quoteOrder: [live], createOrder: [(body) => gate.then(() => S4_REPLAY_OK(body))] } });
+  await b.click('#cta'); await settle();
+  assert.equal(b.ui.state.screen, 'sending', 'premise: «Enviando» while the replay is in flight');
+  assert.deepEqual(J(b.ui.state.sendTotals), { total: body0.expected_net_cents, tip: Number.isFinite(body0.tip_cents) ? body0.tip_cents : 0 }, '🔴 CC-r2-3: the recorded ceiling + tip');
+  const shown = b.text('.sndcard') || ''; const want = (body0.expected_net_cents / 100).toLocaleString('en-US');
+  assert.ok(shown.includes('L ' + want), `🔴 CC-r2-3: «Enviando» shows the recorded L ${want} (${shown})`);
+  go(); await settle();
+});
 test('cash-chips r1 P1-2: a remounted 10b with geolocation DENIED (no pin, no quote) still re-sends the recorded body on «Reintentar»', async () => {
   const a = bootS4({ script: { createOrder: ['network'] } }); await retainCash(a); const sent0 = a.srv.of('createOrder')[0].body;
   const b = await remount10b(a, { geo: GEO_NO, script: { createOrder: [S4_REPLAY_OK] } });
@@ -2649,6 +2672,25 @@ test('cash-chips r1 P1-2: a remounted 10b with geolocation DENIED (no pin, no qu
   const s = b.srv.of('createOrder');
   assert.equal(s.length, 1, '🔴 CC-r1-2: the replay is sent without a fresh pin / quote');
   assert.deepEqual(s.length ? J(s[0].body) : null, J(sent0), '🔴 CC-r1-2: the recorded bytes');
+});
+test('cash-chips r2 P2-2 (intl): a country picker ALREADY OPEN when the send leaves it locked — its rows disabled + unfocusable, a pick refused; the phone blur never rewrites flow.phone', async () => {
+  const b = bootS4({ config: { intlPhone: true }, intl: true, script: { createOrder: ['network'] } });
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]'); await b.click('.slotgrid .chip');
+  if (b.q('[data-act="editwho"]')) await b.click('[data-act="editwho"]');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  await b.click('#layer [data-act="lclose"]'); await settle();
+  assert.equal(cta(b), 'Reintentar', 'premise: frame 10b');
+  const f0 = J(b.ui.state.flow);
+  b.ui.state.layerKind = 'cc'; b.ui.render(); await settle();   // the picker as it stood when opened before the send
+  const rows = b.qa('#layer [data-act="cc-pick"]');
+  assert.ok(rows.length > 1, 'premise: the picker rows are drawn');
+  for (const r of rows) { assert.equal(r.disabled, true, '🔴 CC-r2-2: a picker row disabled'); assert.equal(r.getAttribute('tabindex'), '-1', '🔴 CC-r2-2: unfocusable'); }
+  const other = rows.find((r) => r.dataset.cc !== String(f0.cc || '504')); other.disabled = false; other.dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle();
+  assert.deepEqual(J(b.ui.state.flow), f0, '🔴 CC-r2-2: a stale pick changes nothing');
+  b.ui.state.layerKind = null; b.ui.render(); await settle();
+  const ph = b.q('#f-phone'); assert.ok(ph, 'premise: the phone field');
+  ph.disabled = false; ph.value = '+999'; ph.dispatchEvent(new b.w.FocusEvent('focusout', { bubbles: true })); await settle();
+  assert.equal(b.ui.state.flow.phone, f0.phone, '🔴 CC-r2-2: the blur never rewrites the locked phone');
 });
 test('cash-chips r1 P2-3/4: on 10b every flow field ignores INPUT events — «Otro monto» and editors opened BEFORE the send (details, email/notes, name/phone) render disabled and keep the flow', async () => {
   const b = bootS4({ script: { createOrder: ['network'] } });

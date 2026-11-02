@@ -595,7 +595,7 @@
       const P = phoneMod(), cur = ccOf(S.flow);
       return `<div class="scrim" data-act="lclose"></div><div class="sheet ccsheet" role="dialog" aria-label="País del número"><div class="grab"></div>
         <div class="sheethead"><h2>País del número <small>Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.</small></h2><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div>
-        ${P.COUNTRIES.map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-act="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
+        ${P.COUNTRIES.map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-act="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"${hasSlotLock() ? ' disabled tabindex="-1"' : ''}><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
     }
 
     // ═══ S2b: CHECKOUT ═══
@@ -1142,7 +1142,7 @@
       // S2b r1 P2-7: an accepted price change ⇒ «Enviando» shows the ceiling actually sent
       const onExpected = (cents) => { if (dead || !Number.isFinite(cents)) return; S.sendTotals = { total: cents, tip: T.tip }; if (S.screen === 'sending') render(); };
       let out;
-      try { out = await api.place({ flow: f, ctx: c, sig: rb ? (S.q ? S.q.sig : null) : S.q.sig, checkoutTicket: cardOnlyGuest() ? S.ticket : undefined, expectedNetCents: rb ? rb.expected_net_cents : T.total, totals: rb && !T.ready ? null : T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: api.hosted ? { ...cart.snapshot(), cart_gen: genNow() } : cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
+      try { out = await api.place({ flow: f, ctx: c, freshOk: !!T.ready, sig: rb ? (S.q ? S.q.sig : null) : S.q.sig, checkoutTicket: cardOnlyGuest() ? S.ticket : undefined, expectedNetCents: rb ? rb.expected_net_cents : T.total, totals: rb && !T.ready ? null : T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: api.hosted ? { ...cart.snapshot(), cart_gen: genNow() } : cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
       if (!dead) onOutcome(out, attempt);
     }
     // the 600 ms happy beat: the spinner becomes the green check, then the host takes over (S5)
@@ -1413,6 +1413,7 @@
     function layerAct(t) {
       // S-picker: a country picked ⇒ the sheet closes, the digits stay (capped to the new length), the phone focused
       if (t.dataset.act === 'cc-pick' && S.layerKind === 'cc' && intl() && S.flow) {
+        if (hasSlotLock()) return true;   // Codex cash-chips r2 P2-2: frame 10b's phone is fixed (an already-open picker too)
         const f = S.flow, cc = t.dataset.cc; if (!phoneMod().byCc(cc)) return true;
         if (cc !== ccOf(f)) { f.cc = cc; f.phone = phoneMod().format(cc, f.phone); }
         S.layerKind = null; renderLayer(); returnTo = null; render(); const ph = $('f-phone'); if (ph) focusTo(ph); syncCta(); return true;
@@ -1629,7 +1630,7 @@
     doc.addEventListener('keydown', onKey);
     // S-picker: leaving the WhatsApp field with a qualified number that never parsed ⇒ it is cleared (the CTA's «Escribí tu WhatsApp»)
     function onPhoneOut(ev) {
-      const t = ev.target; if (!t || t.id !== 'f-phone' || !S.flow || !intl()) return;
+      const t = ev.target; if (!t || t.id !== 'f-phone' || !S.flow || !intl() || hasSlotLock()) return;   // frame 10b: never rewrites the fixed phone
       if (/^\s*(\+|00)/.test(String(t.value || '')) && !phoneMod().parseE164(String(t.value).trim().replace(/^00/, '+'))) { t.value = ''; S.flow.phone = ''; syncCta(); }
     }
     if (intl()) doc.addEventListener('focusout', onPhoneOut);
