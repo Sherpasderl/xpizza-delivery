@@ -181,12 +181,13 @@ const THIRD = { whatsapp_copy: { items_emoji: '🌮', ready_line: '¡Tu pedido e
     for (const bad of ['seed --project p --rid=x_pizza', 'seed --project p', 'generate --project p --all', 'drift --project p --all --rid x', 'drift --project p --rid x --apply',
       'seed --project p --rid', 'wipe --project p --rid x', '', 'seed --project p --rid x --force', 'seed --project=p --rid x', 'seed --project p --rid ../x'])
       assert.strictEqual(P(bad).ok, false, `🔴 refused: "${bad}"`);
+    assert.match(P('seed --project p --rid=x_pizza').why, /space form/, '🔴 `--rid=` is refused BY NAME (the boundary-tool fan-out trap), not by accident');
     const fs = makeFs(); const db = fakeRtdb();
     assert.deepStrictEqual(await A.seed({ fs, apply: false }, 'x_pizza'), { rid: 'x_pizza', state: 'would_seed' });
     assert.strictEqual(await SRC.readPlatformSource(fs, 'x_pizza'), null, 'a dry run writes nothing');
     assert.deepStrictEqual(await A.seed({ fs, apply: true, now: 1 }, 'x_pizza'), { rid: 'x_pizza', state: 'seeded', version: 1 });
     assert.deepStrictEqual((await SRC.readPlatformSource(fs, 'x_pizza')).fields, X, 'the seed is exactly the golden');
-    assert.deepStrictEqual(await A.seed({ fs, apply: true }, 'x_pizza'), { rid: 'x_pizza', state: 'refused_source_exists' }, '🔴 never an overwrite');
+    assert.deepStrictEqual(await A.seed({ fs, apply: true }, 'x_pizza').catch((e) => assert.fail(`🔴 the seed must REFUSE an existing source, not attempt the write: ${e.message}`)), { rid: 'x_pizza', state: 'refused_source_exists' }, '🔴 never an overwrite');
     assert.deepStrictEqual(await A.seed({ fs, apply: true }, 'tb_tercera'), { rid: 'tb_tercera', state: 'refused_no_legacy_seed' }, '🔴 no code-derived seed for a non-founding restaurant');
     assert.deepStrictEqual(await A.generate({ fs, db, apply: false }, 'x_pizza'), { rid: 'x_pizza', state: 'not_projected' }, 'a generate dry run reports, writes nothing');
     assert.strictEqual(db.get('restaurants/x_pizza/platform_config'), undefined);
