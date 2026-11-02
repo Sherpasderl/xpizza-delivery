@@ -279,8 +279,8 @@
     // C-6b (f1a/f1b): the page heading Google indexes + the guest's approved promo card (only where sign-up exists; the member's
     // sample card has no data ⇒ absent). Desktop only (CSS)
     const promo = vm.auth === 'guest' && vm.signupOn ? `<div class="promo"><span class="ic">${IC.user}</span><span class="t"><b>Creá tu cuenta y pagá en efectivo</b><span>Recompensas, promos y envío gratis</span></span></div>` : '';
-    const h1row = `<div class="h1row"><div><h1>${c ? `Pedí a domicilio en ${esc(c)}` : 'Pedí a domicilio'}</h1><p>Restaurantes de tu zona, con envío por Sherpa. Entregamos solo en Honduras.</p></div>${promo}</div>`;
-    const page = (body, credit) => shellWrap(vm, `<div class="scroller">${head}${h1row}<div class="home-body">${body}</div>${credit || ''}</div>`);
+    const h1row = !vm.desk ? '' : `<div class="h1row"><div><h1>${c ? `Pedí a domicilio en ${esc(c)}` : 'Pedí a domicilio'}</h1><p>Restaurantes de tu zona, con envío por Sherpa. Entregamos solo en Honduras.</p></div>${promo}</div>`;
+    const page = (body, credit) => shellWrap(vm, `<div class="scroller">${head}${h1row}<div class="home-body">${body}${footHtml(vm)}</div>${credit || ''}</div>`);   // the footer on EVERY Inicio state (Codex C-6a r1 #5)
     if (!all.length) {
       if (vm.phase === 'error') return page(emptyHtml('alert', 'No pudimos cargar los restaurantes', 'Revisá tu conexión e intentá de nuevo.', ['dir-retry', 'Reintentar']));   // frame 7
       if (vm.phase !== 'ready') return page('<p class="note hload">Cargando restaurantes…</p>');   // frame 1
@@ -313,7 +313,7 @@
         + sec('La casa recomienda', [...new Set(houseList.map((x) => x.r.name))].join(' · '), houseList.map(dcard))
         + meals.map(([title, d]) => sec(title, [...new Set(d.map((x) => x.r.name))].join(' · '), d.map(dcard))).join('')
         + `<section class="hsec" aria-label="Todos los restaurantes"><div class="hd"><div><h2>Todos los restaurantes</h2><p>${vis.length === all.length ? (c ? `${nLive} en ${esc(c)}` : `${nLive} restaurantes`) : `${vis.filter((r) => !r.gone).length} de ${nLive}`}</p></div></div><div class="rlist" style="padding-top:0">${vis.map((r) => rcardHtml(r, vm)).join('')}</div></section>`;
-    return page(notes.join('') + cuisRow + fchips + rows + footHtml(vm), `<div class="credit">${nLive} restaurantes${c ? ` en ${esc(c)}` : ''}</div>`);
+    return page(notes.join('') + cuisRow + fchips + rows, `<div class="credit">${nLive} restaurantes${c ? ` en ${esc(c)}` : ''}</div>`);
   }
 
   // ── BUSCAR (P searchHtml): store hits from the directory at once; dish hits over the LOADED menus' DISPLAYED items (launchers
@@ -388,12 +388,16 @@
   // email on three lines; the initial in the avatar), Pedidos / Promociones (.switch) / Ayuda, the session group, the muted version.
   // vm.acct = { placeholder, name, phone, email, promos: true | false | null (no served value ⇒ inert, frame 4b), settled, version } — inert and
   // still loading ⇒ frame 4b's ON-dimmed placeholder; inert and SETTLED (no stored consent) ⇒ OFF + dimmed (ruling (ii), OWNER-PENDING)
-  // C-6a (D-3 r3, DECIDED «Footer at launch: Ayuda · Términos · Privacidad only»): the desktop site footer, last in the Inicio body.
-  // Desktop only (CSS). Ayuda = Cuenta's own help action; Términos / Privacidad only once the platform's legal URLs are known
-  // (vm.legal — never a dead link). Its own class: the pin sheets already use .foot
+  // C-6a (D-3 r3, DECIDED «Footer at launch: Ayuda · Términos · Privacidad only»): the desktop site footer, last in every Inicio state.
+  // Desktop only (CSS). Ayuda = the platform's support chat (vm.helpOk — none configured ⇒ no Ayuda); Términos / Privacidad = the
+  // platform's legal URLs once known (https only; never a dead link). While they may still arrive (vm.legalPending) their slots are
+  // RESERVED invisibly, so nothing in the row moves when they land (Codex C-6a r1 #2). Its own class: the pin sheets own .foot
   function footHtml(vm) {
+    if (!vm.desk) return '';   // desktop only: the phone DOM stays exactly as before
     const l = vm.legal || {}, url = (u) => typeof u === 'string' && /^https:\/\//.test(u);
-    return `<footer class="dfoot"><span class="lock">${SOLA(18)}Sherpa</span><ul><li><button data-act="help">Ayuda</button></li>${url(l.terms) ? `<li><a href="${esc(l.terms)}" target="_blank" rel="noopener">Términos</a></li>` : ''}${url(l.privacy) ? `<li><a href="${esc(l.privacy)}" target="_blank" rel="noopener">Privacidad</a></li>` : ''}</ul></footer>`;
+    const link = (u, label) => (url(u) ? `<li><a href="${esc(u)}" target="_blank" rel="noopener">${label}</a></li>` : vm.legalPending ? `<li class="rsv" aria-hidden="true">${label}</li>` : '');
+    const items = `${vm.helpOk ? '<li><button data-act="site-help">Ayuda</button></li>' : ''}${link(l.terms, 'Términos')}${link(l.privacy, 'Privacidad')}`;
+    return `<footer class="dfoot"><span class="lock">${SOLA(18)}Sherpa</span><ul>${items}</ul></footer>`;
   }
   // C-6a (D-3 r3 §0, «Thing — what it is · Sherpa»; the city is DATA): the browser tab title of each screen. Order states the
   // mockup does not draw read «Tu pedido · Sherpa» (OWNER-PENDING)

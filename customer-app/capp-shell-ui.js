@@ -642,7 +642,7 @@
         return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid };
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
-      return { ...updateVm(), legal: legalVm(), memberInitial: authNow() === 'member' && S.member && S.member.name ? String(S.member.name).trim().charAt(0).toUpperCase() || null : null, signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
+      return { ...updateVm(), desk: !!(view && view.desk()), legal: legalVm(), legalPending: legalPending(), memberInitial: authNow() === 'member' && S.member && S.member.name ? String(S.member.name).trim().charAt(0).toUpperCase() || null : null, signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
         schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }, locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
@@ -844,21 +844,28 @@
     // screen draws AT ONCE from the row (store, status, items_text, total); the receipt read (getMyOrders ?order_id, NOTE-getMyOrders-
     // receipt) fills the lines, the envío / descuento / propina, the tender and the address. Bound to the identity like the history
     // read; kept per identity for an instant reopen. A refused / failed read leaves the row's screen (no new copy)
-    // C-6a: the footer's Términos / Privacidad — the platform's legal URLs (getSignupConfig, the sign-in sheet's own source), kept on the
-    // device so the footer draws them at once; asked ONCE per session, at idle, only while the desktop Inicio shows (no other cost)
+    // C-6a: the footer's Términos / Privacidad — the platform's legal URLs (getSignupConfig, the sign-in sheet's own source): held in
+    // MEMORY once known and persisted opportunistically (a failed write never loses them — Codex C-6a r1 #4); asked ONCE per session at
+    // idle, and only if — at that moment — the desktop Inicio still shows and the shell is alive (r1 #3)
     const LEGAL_KEY = 'capp:legal';
-    let legalAsked = false;
-    const legalVm = () => { const l = readJ(LEGAL_KEY); return l && typeof l === 'object' ? { terms: l.terms, privacy: l.privacy } : null; };
+    let legalAsked = false, legalMem = null, legalSettled = false;
+    const legalVm = () => { if (legalMem) return legalMem; const l = readJ(LEGAL_KEY); return l && typeof l === 'object' ? { terms: l.terms, privacy: l.privacy } : null; };
+    const legalPending = () => !!suApi && typeof suApi.config === 'function' && !legalSettled && !legalVm();
+    const onDeskHome = () => !dead && S.tab === 'home' && !S.store && !S.neutral && !!view && view.desk();
     function askLegal() {
-      if (legalAsked || dead || !suApi || typeof suApi.config !== 'function' || !view || !view.desk()) return;
+      if (legalAsked || !suApi || typeof suApi.config !== 'function' || !onDeskHome()) return;
       legalAsked = true;
       const later = (f) => (win && typeof win.requestIdleCallback === 'function' ? win.requestIdleCallback(f, { timeout: 2000 }) : T.setTimeout(f, 200));
-      later(() => { suApi.config().then((c) => {
-        if (dead || !c || c.ok !== true || c.legalReady !== true) return;
-        const next = { terms: c.termsUrl, privacy: c.privacyUrl };
-        if (JSON.stringify(readJ(LEGAL_KEY)) === JSON.stringify(next)) return;
-        writeJ(LEGAL_KEY, next); if (S.tab === 'home' && !S.store) renderNow();
-      }, () => {}); });
+      later(() => {
+        if (!onDeskHome()) { legalAsked = false; return; }   // left Inicio / the desk before idle: nothing dispatched; asked again on return
+        suApi.config().then((c) => {
+          legalSettled = true;
+          if (dead || !c || c.ok !== true || c.legalReady !== true) { if (!dead && onDeskHome()) renderNow(); return; }   // no legal ⇒ the reserved slots go
+          const next = { terms: c.termsUrl, privacy: c.privacyUrl }, changed = JSON.stringify(legalVm()) !== JSON.stringify(next);
+          legalMem = next; writeJ(LEGAL_KEY, next);
+          if (changed && onDeskHome()) renderNow();
+        }, () => { legalSettled = true; if (!dead && onDeskHome()) renderNow(); });
+      });
     }
     let receiptGen = 0; const receiptCache = new Map(), receiptInflight = new Map();
     function openReceipt(oid) {
@@ -1091,6 +1098,7 @@
       if (a === 'offer-skip') { if (S.order) { S.order.offerDone = true; renderNow(); } return; }
       if (a === 'signin') { openSignin({ ctx: t.dataset.ctx || 'account' }); return; }
       if (a === 'help') { emit('help', {}); return; }
+      if (a === 'site-help') { const n = supportWa(); if (n) openExternal(`https://wa.me/${n}`); return; }   // C-6a: the footer's Ayuda — the platform's support chat (Codex C-6a r1 #1)
       if (a === 'promos') { if (t.getAttribute('aria-disabled') !== 'true') togglePromos(); return; }   // G7 frame 1 / 1b
       if (a === 'signout') return void signOutNow();
       if (a === 'forget') return openLayer('forget');   // G7 frame 2

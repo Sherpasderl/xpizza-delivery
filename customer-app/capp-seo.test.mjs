@@ -55,16 +55,24 @@ test('C-6a: the tab title of each screen — «Thing — what it is · Sherpa» 
 });
 test('C-6a: the footer (desktop only, DECIDED «Ayuda · Términos · Privacidad only») and the 600–1023 px column (frame 7b, CSS only — no .desk, nothing below 600)', () => {
   const H = require('./capp-home.js');
-  const full = H.footHtml({ legal: { terms: 'https://legal.test/t', privacy: 'https://legal.test/p' } }), bare = H.footHtml({}), bad = H.footHtml({ legal: { terms: 'javascript:x', privacy: 'http://x' } });
+  const L = { terms: 'https://legal.test/t', privacy: 'https://legal.test/p' };
+  const full = H.footHtml({ desk: true, helpOk: true, legal: L }), bare = H.footHtml({ desk: true, helpOk: true }), bad = H.footHtml({ desk: true, helpOk: true, legal: { terms: 'javascript:x', privacy: 'http://x' } });
   const labels = (h) => [...h.matchAll(/<li>(?:<button[^>]*>|<a [^>]*>)([^<]+)/g)].map((m) => m[1]);
   assert.deepEqual(labels(full), ['Ayuda', 'Términos', 'Privacidad'], '🔴 SEO-foot: exactly the three decided links');
   assert.deepEqual(labels(bare), ['Ayuda'], '🔴 SEO-foot: no legal URL ⇒ no dead Términos / Privacidad');
   assert.deepEqual(labels(bad), ['Ayuda'], 'only https legal URLs');
-  assert.ok(/href="https:\/\/legal\.test\/t" target="_blank" rel="noopener"/.test(full) && /data-act="help"/.test(full), 'the links and the help action');
+  assert.deepEqual(labels(H.footHtml({ desk: true, legal: L })), ['Términos', 'Privacidad'], '🔴 SEO-foot: no support chat configured ⇒ no Ayuda (never a dead control — Codex C-6a r1 #1)');
+  assert.ok(/href="https:\/\/legal\.test\/t" target="_blank" rel="noopener"/.test(full) && /data-act="site-help"/.test(full), 'the links and the support action');
+  const pend = H.footHtml({ desk: true, helpOk: true, legalPending: true });
+  assert.deepEqual([...pend.matchAll(/<li class="rsv" aria-hidden="true">([^<]+)/g)].map((m) => m[1]), ['Términos', 'Privacidad'], '🔴 SEO-foot: while the legal URLs may still arrive, their slots are RESERVED (no shift when they land — r1 #2)');
+  assert.ok(/\.app\.desk \.dfoot li\.rsv\{visibility:hidden\}/.test(CSS), 'the reserved slots are invisible (and aria-hidden)');
   assert.ok(!/Registrá tu restaurante|Repartí con Sherpa/.test(full), 'the two recruiting links wait for their pages (DECIDED)');
+  assert.equal(H.footHtml({ helpOk: true, legal: L }), '', '🔴 SEO-foot: the phone renders NO footer (its DOM unchanged)');
   assert.ok(/(^|\n)\.dfoot\{display:none\}/.test(CSS) && /\.app\.desk \.dfoot\{[^}]*display:flex/.test(CSS), '🔴 SEO-foot: hidden on the phone, shown on the desk');
   const m = CSS.match(/@media \(min-width:600px\) and \(max-width:1023\.98px\)\{([\s\S]*?)\n\}/);
   assert.ok(m, '🔴 SEO-col: the 600–1023 px rule');
-  assert.equal(m[1].trim(), '.app:not(.desk){background:var(--surf)}\n  .app:not(.desk) .screen{left:50%;right:auto;width:600px;transform:translateX(-50%);background:var(--bg);box-shadow:0 0 0 1px var(--line)}', '🔴 SEO-col: exactly the mockup\'s rule, on the phone shell only');
+  const lines = m[1].trim().split('\n').map((x) => x.trim());
+  assert.deepEqual(lines.slice(0, 2), ['.app:not(.desk){background:var(--surf)}', '.app:not(.desk) .screen{left:50%;right:auto;width:600px;transform:translateX(-50%);background:var(--bg);box-shadow:0 0 0 1px var(--line)}'], '🔴 SEO-col: exactly the mockup\'s rule, on the phone shell only');
+  assert.ok(/^\.app:not\(\.desk\) \.sheet,\.app:not\(\.desk\) \.detail-modal\{left:calc\(50% - 300px\);right:auto;width:600px\}/.test(lines[2] || ''), '🔴 SEO-col: the sheets JOIN the 600 px column (advisor ruling; Codex C-6a r1 #6)');
   assert.equal((CSS.match(/max-width:1023\.98px/g) || []).length, 1, 'one rule in that range (nothing else changes there)');
 });

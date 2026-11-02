@@ -2314,7 +2314,7 @@ async function pedidosBoot(db, opts = {}) {
   const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 3600e3, ...(opts.fbOpts || {}) });
   const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation, ...(opts.envelope ? { envelope: opts.envelope } : {}), ...(opts.preMount ? { preMount: opts.preMount } : {}) });
   if (!opts.noFlush) { await flush(); await flush(); }
-  return { S, mo, fb };
+  return { S, mo, fb, g };
 }
 test('Pedidos (member): the rows from getMyOrders (the real writer\'s entries) — the active order\'s card (status, «Orden #N» only when numbered, no tracking without its token), the past rows (store, «Sáb 11 oct · L 340», items_text AS GIVEN); the token only in the header; «Volver a pedir» hidden (interim)', async () => {
   const db = { u_ana: {
@@ -3147,7 +3147,7 @@ test('C-6a titles: the tab follows every screen — Inicio (the directory\'s cit
 });
 test('C-6a footer: on the DESKTOP Inicio, last in the body — Ayuda at once; Términos / Privacidad once the platform\'s legal URLs arrive (fetched ONCE at idle, kept on the device); hidden on the phone', async () => {
   const st = g7Store(G7_PROFILE({ promos: true }));
-  const { S } = await pedidosBoot({}, { storage: st, preMount: (w) => { w.matchMedia = fakeMedia(true).matchMedia; } });
+  const { S } = await pedidosBoot({}, { storage: st, runtime: { ...G7_RUNTIME, supportWhatsapp: '50497952893' }, preMount: (w) => { w.matchMedia = fakeMedia(true).matchMedia; } });
   try {
     await new Promise((r) => setTimeout(r, 400)); await flush();
     const f = S.q('.home-body > footer.dfoot'); assert.ok(f, '🔴 SEO-foot: the footer, in the Inicio body');
@@ -3156,8 +3156,38 @@ test('C-6a footer: on the DESKTOP Inicio, last in the body — Ayuda at once; T�
     assert.deepEqual(JSON.parse(st.getItem('capp:legal')), { terms: 'https://legal.test/t', privacy: 'https://legal.test/p' }, 'kept on the device (cached-first next time)');
   } finally { S.w.close(); }
   const P = bootShell(); await flush();
-  try { const f = P.q('footer.dfoot'); assert.ok(f, 'premise: the same DOM on the phone'); assert.equal(P.w.getComputedStyle(f).display, 'none', '🔴 SEO-foot: hidden on the phone'); assert.deepEqual([...f.querySelectorAll('li')].map((x) => x.textContent), ['Ayuda'], 'no signup config ⇒ no legal links (never dead)'); } finally { P.w.close(); }
+  try { assert.equal(P.q('footer.dfoot'), null, '🔴 SEO-foot: the phone renders no footer (its DOM unchanged)'); } finally { P.w.close(); }
 });
+test('C-6a r2 (Codex r1 #1-#5): the footer\'s Ayuda opens the platform support chat; the legal slots are reserved until they land (no shift); nothing is fetched once Inicio was left before idle; a failing storage write never loses the links; the footer is on every Inicio state', async () => {
+  const RT = { ...G7_RUNTIME, supportWhatsapp: '50497952893' }, desk = (w) => { w.matchMedia = fakeMedia(true).matchMedia; };
+  { const { S } = await pedidosBoot({}, { runtime: RT, preMount: desk });
+    try {
+      const li = () => [...S.q('footer.dfoot').querySelectorAll('li')].map((x) => [x.textContent, x.className]);
+      assert.deepEqual(li(), [['Ayuda', ''], ['Términos', 'rsv'], ['Privacidad', 'rsv']], '🔴 C6A-2: the slots reserved before the fetch (the same row composition)');
+      await new Promise((r) => setTimeout(r, 400)); await flush();
+      assert.deepEqual(li(), [['Ayuda', ''], ['Términos', ''], ['Privacidad', '']], 'the real links in the same slots');
+      const opened = []; S.w.open = (u) => opened.push(u);
+      S.click('footer.dfoot [data-act="site-help"]'); await flush();
+      assert.deepEqual(opened, ['https://wa.me/50497952893'], '🔴 C6A-1: Ayuda = the platform support chat');
+    } finally { S.w.close(); } }
+  { const { S, g } = await pedidosBoot({}, { runtime: RT, preMount: desk, noFlush: true });
+    const cfg = () => g.sent.filter((x) => x[0] === 'getSignupConfig').length;
+    try {
+      await flush(); S.click('.desknav [data-tab="orders"]'); await flush();   // left Inicio before the idle fired
+      await new Promise((r) => setTimeout(r, 400)); await flush();
+      assert.equal(S.q('footer.dfoot'), null, 'premise: off Inicio');
+      assert.equal(cfg(), 0, '🔴 C6A-3: nothing fetched once Inicio was left before idle');
+      S.click('.desknav [data-tab="home"]'); await flush(); await new Promise((r) => setTimeout(r, 400)); await flush();
+      assert.equal(cfg(), 1, 'asked again on return — once');
+    } finally { S.w.close(); } }
+  { const st = g7Store(G7_PROFILE({ promos: true })); const set = st.setItem.bind(st); st.setItem = (k, v) => { if (k === 'capp:legal') throw new Error('quota'); return set(k, v); };
+    const { S } = await pedidosBoot({}, { runtime: RT, storage: st, preMount: desk });
+    try { await new Promise((r) => setTimeout(r, 400)); await flush();
+      assert.deepEqual([...S.q('footer.dfoot').querySelectorAll('a')].map((a) => a.textContent), ['Términos', 'Privacidad'], '🔴 C6A-4: a failed storage write never loses the links (kept in memory)'); } finally { S.w.close(); } }
+  { const E = bootShell({ media: fakeMedia(true), dirScript: ['fail'] }); await flush(); await flush();
+    try { assert.ok(E.q('.home-body footer.dfoot'), '🔴 C6A-5: the footer on Inicio\'s error state too'); } finally { E.w.close(); } }
+});
+
 test('C-6a «Direcciones» (D-3 r3 frame 6, DECIDED): the member\'s Cuenta row after «Pedidos», its address line, opening the approved location sheet', async () => {
   const { S } = await pedidosBoot({});
   try {
@@ -3205,7 +3235,7 @@ test('C-6b heading: the desktop Inicio H1 «Pedí a domicilio en {the directory\
   const { S: M } = await pedidosBoot({}, { preMount: (w) => { w.matchMedia = fakeMedia(true).matchMedia; } });
   try { assert.equal(M.q('.h1row .promo'), null, '🔴 DN-6: a member\'s sample card has no data ⇒ absent'); } finally { M.w.close(); }
   const P = bootShell(); await flush();
-  try { assert.equal(P.w.getComputedStyle(P.q('.h1row')).display, 'none', '🔴 DN-7: the phone: no H1 row'); assert.notEqual(P.w.getComputedStyle(P.q('.home-head .addr-btn')).display, 'none', 'the phone keeps its addr-btn'); } finally { P.w.close(); }
+  try { assert.equal(P.q('.h1row'), null, '🔴 DN-7: the phone: no H1 row (its DOM unchanged)'); assert.notEqual(P.w.getComputedStyle(P.q('.home-head .addr-btn')).display, 'none', 'the phone keeps its addr-btn'); } finally { P.w.close(); }
 });
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {

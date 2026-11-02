@@ -1092,11 +1092,13 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .app.desk .dfoot .lock svg{width:18px;height:18px}
 .app.desk .dfoot ul{list-style:none;margin:0;padding:0;display:flex;gap:18px}
 .app.desk .dfoot li button,.app.desk .dfoot li a{border:0;background:transparent;padding:0;color:inherit;font:inherit;text-decoration:none}
+.app.desk .dfoot li.rsv{visibility:hidden}   /* a legal link that may still arrive: its slot held, nothing moves when it lands */
 /* frame 7b (DECIDED): 600–1023 px — the unchanged phone shell in a centred 600 px column on the --surf wash with a hairline; below
    600 px byte-identical to before. CSS only: no DOM, no behaviour */
 @media (min-width:600px) and (max-width:1023.98px){
   .app:not(.desk){background:var(--surf)}
   .app:not(.desk) .screen{left:50%;right:auto;width:600px;transform:translateX(-50%);background:var(--bg);box-shadow:0 0 0 1px var(--line)}
+  .app:not(.desk) .sheet,.app:not(.desk) .detail-modal{left:calc(50% - 300px);right:auto;width:600px}   /* the sheets JOIN the column (advisor ruling; Codex C-6a r1 #6) — no transform: the dish sheet animates with one */
 }
 
 /* ── C-6b (MOCKUP-capp-desktop-D3 r3 frames f1a/f1b, approved — its DESK-R2 rules verbatim) ── the r2 top bar = the v6 desknav +
