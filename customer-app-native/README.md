@@ -39,6 +39,8 @@ It writes (sources in `native-assets/`; patches anchored on Capacitor 8.4.0's ow
   the splash marks (`drawable-xxxhdpi` / `drawable-night-xxxhdpi`); `MainActivity.java` (the WebView painted with `page_bg` in
   onCreate / onConfigurationChanged / onResume).
 - iOS: the `PageBackground` / `SplashBackground` colour assets (Any / Dark); `ThemedBridgeViewController.swift` (add it to the App
-  target in Xcode) set as Main.storyboard's bridge controller; the launch image, light + dark.
+  target in Xcode) set as Main.storyboard's bridge controller; the launch screen = the 104 pt mark (1x/2x/3x, light + dark) centred
+  over `SplashBackground`. All-or-nothing: every destination is checked (template or already-applied bytes, inside the project, no
+  symlinks) before anything is written.
 
 The status bar's icon style follows the theme from the shell (CappTheme.barStyle → StatusBar.setStyle); its background is never set.

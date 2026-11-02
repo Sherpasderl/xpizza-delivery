@@ -3127,10 +3127,9 @@ test('capp-dark §4: the INSTALLED app\'s status-bar icons follow the theme — 
     dark = false; for (const f of [...ls]) f(); await flush();
     assert.deepEqual(calls, ['DARK', 'LIGHT'], '🔴 DK-bar: ONE call on the flip');
     for (const f of [...ls]) f(); await flush(); assert.equal(calls.length, 2, 'no call without a real change');
-    dark = true;   // the media event is LOST while backgrounded: only the resume re-read can reconcile
-    Object.defineProperty(S.w.document, 'visibilityState', { configurable: true, get: () => 'visible' });
-    S.w.document.dispatchEvent(new S.w.Event('visibilitychange')); await flush();
-    assert.deepEqual(calls, ['DARK', 'LIGHT', 'DARK'], '🔴 DK-bar: the resume re-read reconciles with exactly one call');
+    dark = true;   // the media event is LOST while backgrounded: only the NATIVE resume (Capacitor's `resume` document event) reconciles
+    S.w.document.dispatchEvent(new S.w.Event('resume')); await flush();
+    assert.deepEqual(calls, ['DARK', 'LIGHT', 'DARK'], '🔴 DK-bar: the native resume re-reads — exactly one call, no visibilitychange (Codex dark r1 #2)');
     S.ui.destroy(); dark = false; for (const f of [...ls]) f(); await flush();
     assert.equal(calls.length, 3, '🔴 DK-bar: destroy detaches');
   } finally { S.w.close(); }

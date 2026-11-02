@@ -26,8 +26,9 @@ function rulesOf(src) {
       if (i >= t.length || t[i] === '}') { i++; return out; }
       const open = t.indexOf('{', i); if (open < 0) { i = t.length; return out; }
       const head = t.slice(i, open).trim(); i = open + 1;
-      if (head.startsWith('@media')) { out.push({ media: head.slice(6).trim(), rules: list('}') }); continue; }
-      if (head.startsWith('@')) { let d = 1; while (i < t.length && d) { d += (t[i] === '{') - (t[i] === '}'); i++; } continue; }   // @font-face / @keyframes: not theme rules
+      // a GROUPING at-rule keeps its rules (and its head, for the ancestry — Codex dark r1 #6); @font-face / @keyframes are not theme rules
+      if (/^@(media|supports|container|layer|document)\b/.test(head)) { out.push({ at: head.replace(/\s+/g, ' '), rules: list('}') }); continue; }
+      if (head.startsWith('@')) { let d = 1; while (i < t.length && d) { d += (t[i] === '{') - (t[i] === '}'); i++; } continue; }
       const close = t.indexOf('}', i); out.push({ selector: head, body: t.slice(i, close).trim().replace(/;\s*$/, '') }); i = close + 1;
     }
     return out;
@@ -39,21 +40,24 @@ const split = (sel) => sel.split(',').map((x) => x.trim()).filter(Boolean);
 export function pairsOf(cssText) {
   const pairs = new Map(), stray = [];
   const put = (suffix, form, d, where) => { const e = pairs.get(suffix) || {}; if (e[form] !== undefined) stray.push(`${form} twice: ${suffix || '(the tokens)'}`); e[form] = d; e[`${form}At`] = where; pairs.set(suffix, e); };
-  const visit = (rules, media) => {
+  // the plan's EXACT placement (Codex dark r1 #6): the forced / attr forms at the top level; the media form inside exactly ONE at-rule,
+  // `@media (prefers-color-scheme: dark)` — any other ancestry (an outer @media(min-width:…), an @supports, a nested group) is refused
+  const AUTO = '@media (prefers-color-scheme: dark)';
+  const visit = (rules, anc) => {
     for (const r of rules) {
-      if (r.rules) { visit(r.rules, r.media); continue; }   // @media
-      const d = r.body;
+      if (r.rules) { visit(r.rules, [...anc, r.at]); continue; }
+      const d = r.body, where = anc.length ? anc.join(' > ') : 'the top level';
       for (const s of split(r.selector)) {
-        if (s.startsWith(FORCED) && !/^\.app\.dark[\w-]/.test(s)) { if (media) stray.push(`forced form inside @media: ${s}`); else put(s.slice(FORCED.length), 'forced', d, s); continue; }
-        if (s.startsWith(ATTR)) { if (media) stray.push(`attr form inside @media: ${s}`); else put(s.slice(ATTR.length), 'attr', d, s); continue; }
-        if (s.startsWith(MEDIA)) { if (!media || !/prefers-color-scheme:\s*dark/.test(media)) stray.push(`media form outside @media (prefers-color-scheme: dark): ${s}`); else put(s.slice(MEDIA.length), 'media', d, s); continue; }
+        if (s.startsWith(FORCED) && !/^\.app\.dark[\w-]/.test(s)) { if (anc.length) stray.push(`forced form inside ${where}: ${s}`); else put(s.slice(FORCED.length), 'forced', d, s); continue; }
+        if (s.startsWith(ATTR)) { if (anc.length) stray.push(`attr form inside ${where}: ${s}`); else put(s.slice(ATTR.length), 'attr', d, s); continue; }
+        if (s.startsWith(MEDIA)) { if (anc.length !== 1 || anc[0] !== AUTO) stray.push(`media form outside @media (prefers-color-scheme: dark) [it is in ${where}]: ${s}`); else put(s.slice(MEDIA.length), 'media', d, s); continue; }
         // a theme selector in any OTHER shape (a bare «.dark X» descendant) can never follow the OS — refused; the .btn2.dark button
         // variant and the review page's own chrome (.dark-sys, :root[data-theme] .dec) are not theme rules of the app
         if (/(^|\s)\.dark(\s|$|[.:#[])/.test(s) && !/\.btn2\.dark/.test(s)) stray.push(`a theme selector outside the three forms: ${s}`);
       }
     }
   };
-  visit(rulesOf(cssText), null);
+  visit(rulesOf(cssText), []);
   return { pairs, stray };
 }
 function problems(cssText) {
@@ -82,6 +86,12 @@ test('capp-dark §2.1 controls: the guard SEES drift (Codex r2: only the auto .o
   const moved = CSS.replace(/@media \(prefers-color-scheme: dark\)\{(:root:not\(\[data-theme="light"\]\) \.app \.order-map\{[^}]*\})\}/, '$1');
   assert.notEqual(moved, CSS); assert.ok(problems(moved).some((p) => /media form outside @media/.test(p)), '🔴 control: a form moved out of its @media');
   assert.ok(problems(CSS + '\n.dark .newthing{color:#fff}').some((p) => /outside the three forms/.test(p)), '🔴 control: a bare .dark rule');
+  // Codex dark r1 #6: the AUTO token block wrapped in an outer @media(min-width:2000px) — phones would stay light
+  const wide = CSS.replace(/@media \(prefers-color-scheme: dark\)\{(:root:not\(\[data-theme="light"\]\) \.app\{[^}]*\})\}/, '@media(min-width:2000px){@media (prefers-color-scheme: dark){$1}}');
+  assert.notEqual(wide, CSS, 'premise: the auto token block exists');
+  assert.ok(problems(wide).some((p) => /media form outside @media \(prefers-color-scheme: dark\) \[it is in @media\(min-width:2000px\) > @media \(prefers-color-scheme: dark\)\]/.test(p)), '🔴 control: the outer media ancestry is SEEN');
+  const sup = CSS.replace('.app.dark .okbtn .fill', '@supports (color:red){.app.dark .okbtn .fill{background:red}}\n.app.dark .okbtn .fill');
+  assert.ok(problems(sup).some((p) => /forced form inside @supports/.test(p)), '🔴 control: a dark form inside @supports is SEEN (never skipped)');
 });
 test('capp-dark §2.2/§2.3: the canvas (--page-bg on html.capp-shell) and the theme-color metas equal the app\'s own backgrounds, light and dark; shell.html declares color-scheme', () => {
   const light = /\.app\{[^}]*--bg:(#[0-9A-Fa-f]{6})/.exec(CSS)[1], dark = /\.app\.dark,:root\[data-theme="dark"\] \.app\{[^}]*?--bg:(#[0-9A-Fa-f]{6})/.exec(CSS)[1];
@@ -108,10 +118,10 @@ test('capp-dark §3: the schematic maps (the checkout map\'s fallback, the order
 });
 // ── §2.5 CappTheme: the one theme source for the JS surfaces ──
 function fakeWin(dark, attr = null) {
-  const ls = new Set(), vis = new Set(); let d = dark;
+  const ls = new Set(), vis = new Set(), res = new Set(); let d = dark;
   const mq = { get matches() { return d; }, addEventListener: (t, f) => { if (t === 'change') ls.add(f); }, removeEventListener: (t, f) => ls.delete(f) };
-  const doc = { visibilityState: 'visible', documentElement: { getAttribute: (k) => (k === 'data-theme' ? attr : null) }, addEventListener: (t, f) => { if (t === 'visibilitychange') vis.add(f); }, removeEventListener: (t, f) => vis.delete(f) };
-  return { win: { matchMedia: () => mq, document: doc }, flip: (v) => { d = v; for (const f of [...ls]) f(); }, silentFlip: (v) => { d = v; }, wake: () => { for (const f of [...vis]) f(); }, ls, vis };
+  const doc = { visibilityState: 'visible', documentElement: { getAttribute: (k) => (k === 'data-theme' ? attr : null) }, addEventListener: (t, f) => { if (t === 'visibilitychange') vis.add(f); if (t === 'resume') res.add(f); }, removeEventListener: (t, f) => { vis.delete(f); res.delete(f); } };
+  return { win: { matchMedia: () => mq, document: doc }, flip: (v) => { d = v; for (const f of [...ls]) f(); }, silentFlip: (v) => { d = v; }, wake: () => { for (const f of [...vis]) f(); }, resume: () => { for (const f of [...res]) f(); }, ls, vis, res };
 }
 test('CappTheme: the OS preference (fail-safe light), an explicit data-theme wins, change notifies ONCE per real change, a wake re-reads, unsubscribe detaches', () => {
   const require = createRequire(import.meta.url), T = require('./capp-theme.js');
@@ -123,7 +133,9 @@ test('CappTheme: the OS preference (fail-safe light), an explicit data-theme win
   f.flip(true); f.flip(true); f.flip(false);
   assert.deepEqual(seen, [true, false], '🔴 DK-theme: one call per real change');
   f.silentFlip(true); f.wake(); assert.deepEqual(seen, [true, false, true], '🔴 DK-theme: a wake (the media event lost while backgrounded) re-reads');
-  un(); assert.equal(f.ls.size + f.vis.size, 0, '🔴 DK-theme: unsubscribe detaches both listeners');
+  f.silentFlip(false); f.resume(); assert.deepEqual(seen, [true, false, true, false], '🔴 DK-theme: the NATIVE resume (no visibilitychange) re-reads (Codex dark r1 #2)');
+  f.resume(); assert.equal(seen.length, 4, 'deduplicated: no call without a change');
+  un(); assert.equal(f.ls.size + f.vis.size + f.res.size, 0, '🔴 DK-theme: unsubscribe detaches every listener (media, visibility, native resume)');
   assert.equal(T.mapStyles(fakeWin(true).win), T.MAP_DARK); assert.equal(T.mapStyles(fakeWin(false).win), null);
   assert.deepEqual([T.barStyle(fakeWin(true).win), T.barStyle(fakeWin(false).win)], ['DARK', 'LIGHT'], '🔴 DK-bar: Style.Dark (light icons) on dark, Style.Light on light');
 });
@@ -168,10 +180,23 @@ test('capp-dark §5: each disposition holds — a theme-pair has both sides in a
 });
 
 test('capp-dark §5 controls: the scan SEES a new rule, an SVG attribute, a template style, cssText after «:», a CSSOM rgb() — and ignores token blocks, comments, HTML entities', () => {
-  const base = { css: '.app{--bg:#FFFFFF}\n.app.dark{--bg:#0A0F1C}\n:root[data-theme="dark"] .app{--bg:#0A0F1C}\n@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app{--bg:#0A0F1C}}\n/* .x{color:#999} */\n', js: { 'a.js': "// fill=\"#888\"\nconst q = '&#039;';\n/* '#777' */\n" } };
+  const base = { css: '.app{--bg:#FFFFFF}\n.app.dark,:root[data-theme="dark"] .app{--bg:#0A0F1C}\n@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app{--bg:#0A0F1C}}\n/* .x{color:#999} */\n', js: { 'a.js': "// fill=\"#888\"\nconst q = '&#039;';\n/* '#777' */\n" } };
   assert.deepEqual(inventory(base), [], '🔴 DK-lit control: token blocks (light + the three dark forms), comments and entities are not sites');
   const plus = { css: base.css + '.newx{color:#123456;box-shadow:0 1px 2px rgba(0,0,0,.2)}', js: { 'a.js': base.js['a.js'] + 'const svg = `<path fill="#ABCDEF"/>`; el.style.cssText = \'background:#abc;color:#111\'; s.color = \'rgb(1, 2, 3)\'; const h = `<b style="color:#C0FFEE">`;' } };
-  assert.deepEqual(inventory(plus), ['css .newx | box-shadow rgba(0,0,0,.2)', 'css .newx | color #123456', 'js a.js #111', 'js a.js #ABCDEF', 'js a.js #C0FFEE', 'js a.js #abc', 'js a.js rgb(1,2,3)'], '🔴 DK-lit control: every new literal is a site');
+  assert.deepEqual(inventory(plus), ['css .newx | box-shadow rgba(0,0,0,.2)', 'css .newx | color #123456', 'js a.js @svg #111 ×1', 'js a.js @svg #ABCDEF ×1', 'js a.js @svg #C0FFEE ×1', 'js a.js @svg #abc ×1', 'js a.js @svg rgb(1,2,3) ×1'], '🔴 DK-lit control: every new literal is a site');
+  // Codex dark r1 #5 — each verified bypass is now a site:
+  const CSSX = (extra) => inventory({ css: base.css + extra, js: {} });
+  assert.deepEqual(CSSX('.new{color:red;background:white}'), ['css .new | background white', 'css .new | color red'], '🔴 DK-lit: a NAMED colour is a literal');
+  assert.deepEqual(CSSX('.app .new{--gap:1px;color:#123456;--ink2:#222}'), ['css .app .new | --ink2 #222', 'css .app .new | color #123456'], '🔴 DK-lit: a token-LOOKING rule is not a token home (only the six exact homes are)');
+  assert.deepEqual(CSSX('.app{--x:1px;color:#123456}'), ['css .app | color #123456'], '🔴 DK-lit: inside a real home, only its custom properties are the theme');
+  assert.deepEqual(CSSX('@supports (display:grid){.g{color:#123456}}'), ['css @supports (display:grid) .g | color #123456'], '🔴 DK-lit: literals inside @supports are scanned (never skipped)');
+  assert.deepEqual(CSSX('.f{font-family:Red Hat Display;grid-area:white}'), [], 'a colour WORD outside a colour property is not a colour');
+  const SRV = servedSources(), home = SRV.js['capp-home.js'];
+  const extraFn = home + '\nfunction promoBadge() { return `<b style="background:#FFFFFF">x</b>`; }\n';
+  assert.ok(inventory({ css: SRV.css, js: { ...SRV.js, 'capp-home.js': extraFn } }).includes('js capp-home.js @promoBadge #FFFFFF ×1'), '🔴 DK-lit: another inline #FFFFFF in an exempted file is a NEW site (per-site, never file-wide)');
+  const pal = home.replace("white: '#FFFFFF'", "white: '#FFFFFF', white2: '#FFFFFF'");
+  assert.notEqual(pal, home, 'premise: the palette entry');
+  assert.ok(inventory({ css: SRV.css, js: { ...SRV.js, 'capp-home.js': pal } }).includes('js capp-home.js @CUIS_PAL #FFFFFF ×2'), '🔴 DK-lit: one more occurrence at a listed site changes its count');
   const all = servedSources(), first = Object.keys(ALLOW).find((k) => k.startsWith('css .qty-add-btn | background'));
   assert.ok(first, 'premise: the qty-add-btn background is listed');
   const cut = { ...all, css: all.css.replace('.qty-add-btn{width:36px;height:36px;border-radius:50%;background:#fff;', '.qty-add-btn{width:36px;height:36px;border-radius:50%;background:var(--surf2);') };

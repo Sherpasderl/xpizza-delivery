@@ -65,10 +65,10 @@ assert.strictEqual(launchParent, 'Theme.SplashScreen');
 for (const it of ['<item name="windowSplashScreenBackground">@color/splash_bg</item>', '<item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>', '<item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>'])
   assert.ok(launchBody.includes(it), `🔴 the Android 12+ launch theme: ${it}`);
 assert.ok(!/forceDark|ForceDark/.test(st), 'no algorithmic darkening (we declare color-scheme)');
-assert.strictEqual(A.patchStyles(st), st, 'idempotent');
+assert.throws(() => A.patchStyles(st), /anchor occurs 0×/, 'the patch applies to the TEMPLATE bytes only (re-running is apply()\'s job: it recognises its own applied bytes)');
 assert.throws(() => A.patchStyles(T('android/styles.xml').replace('<item name="android:background">@null</item>', '')), /anchor occurs 0×/, '🔴 a drifted template is REFUSED, never patched by guess');
 assert.ok(/android:configChanges="[^"]*\buiMode\b/.test(T('android/AndroidManifest.xml')), '🔴 the template keeps uiMode in configChanges (a theme switch reaches onConfigurationChanged)');
-ok('styles.xml (the real 8.4.0 template, patched): DayNight kept, window = page_bg, the bars from values-night, the 12+ splash Celeste / Noche + the mark; idempotent; a drifted template refused; the manifest keeps uiMode');
+ok('styles.xml (the real 8.4.0 template, patched): DayNight kept, window = page_bg, the bars from values-night, the 12+ splash Celeste / Noche + the mark; a drifted template refused; the manifest keeps uiMode');
 
 const ma = A.mainActivity(cfg.appId);
 assert.ok(ma.startsWith(`package ${cfg.appId};`) && /class MainActivity extends BridgeActivity/.test(ma));
@@ -89,21 +89,68 @@ assert.ok(/class ThemedBridgeViewController: CAPBridgeViewController/.test(sw) &
 const sb = A.patchStoryboard(T('ios/Main.storyboard'));
 assert.ok(sb.includes('customClass="ThemedBridgeViewController" customModule="App" customModuleProvider="target"') && !sb.includes('customClass="CAPBridgeViewController"'), '🔴 Main.storyboard uses the themed controller');
 const sc = A.splashContents();
-assert.deepStrictEqual([sc.images.filter((i) => !i.appearances).length, sc.images.filter((i) => i.appearances).length], [3, 3], 'the launch image: light + dark, 1x/2x/3x');
-ok('iOS: PageBackground (= --page-bg) and SplashBackground (Celeste / Noche) Any/Dark; the themed bridge controller set in Main.storyboard; the launch image light + dark');
+assert.deepEqual(sc.images.filter((i) => !i.appearances).map((i) => [i.filename, i.scale]), [['splash-mark-light-104.png', '1x'], ['splash-mark-light-208.png', '2x'], ['splash-mark-light-312.png', '3x']], '🔴 the launch image = the approved 104 pt mark (1x/2x/3x), light');
+assert.deepEqual(sc.images.filter((i) => i.appearances).map((i) => i.filename), ['splash-mark-dark-104.png', 'splash-mark-dark-208.png', 'splash-mark-dark-312.png'], '🔴 … and its dark appearance');
+for (const f of [...A.MARKS.light, ...A.MARKS.dark]) assert.deepEqual(BA.files().find(([k]) => k === f.replace(/\.png$/, '.svg'))[2], { w: +f.match(/-(\d+)\.png$/)[1], h: +f.match(/-(\d+)\.png$/)[1], alpha: true }, `${f}: the generator's own size, transparent (the colour shows through)`);
+const ls = A.patchLaunchScreen(T('ios/LaunchScreen.storyboard'));
+const iv = (ls.match(/<imageView key="view"[^>]*>/) || [''])[0];
+assert.ok(/contentMode="center"/.test(iv) && /image="Splash"/.test(iv), '🔴 Codex dark r1 #1: the mark is CENTRED at its own size (never scaleAspectFill — the 2732 square drew a ~225 pt mark at 390×844)');
+assert.ok(ls.includes('<color key="backgroundColor" name="SplashBackground"/>') && ls.includes('<image name="Splash" width="104" height="104"/>'), '🔴 over the SplashBackground colour asset; the mark is 104 pt');
+const [r, g, b] = (ls.match(/<namedColor name="SplashBackground">\s*<color red="([\d.]+)" green="([\d.]+)" blue="([\d.]+)"/) || []).slice(1).map(Number);
+assert.deepEqual([r, g, b].map((v) => Math.round(v * 255)), [0x8E, 0xC0, 0xFF], 'the storyboard\'s design-time colour = Celeste');
+ok('iOS: PageBackground (= --page-bg) and SplashBackground (Celeste / Noche) Any/Dark; the themed bridge controller; the launch screen = the 104 pt mark centred over SplashBackground, light + dark');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'capp-native-'));
-try {
-  const put = (rel, src) => { const p = path.join(tmp, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, src); };
-  assert.throws(() => A.apply(tmp, { appId: cfg.appId, android: true, ios: false, png: false }), /absent — run `npx cap add` first/, '🔴 nothing is applied onto a project that does not exist');
-  put('android/app/src/main/res/values/styles.xml', T('android/styles.xml')); put('ios/App/App/Base.lproj/Main.storyboard', T('ios/Main.storyboard'));
-  const done = A.apply(tmp, { appId: cfg.appId, android: true, ios: true, png: false });
-  assert.ok(done.includes(`android/app/src/main/java/${cfg.appId.split('.').join('/')}/MainActivity.java`) && done.includes('ios/App/App/ThemedBridgeViewController.swift'));
-  assert.strictEqual(fs.readFileSync(path.join(tmp, 'android/app/src/main/res/values/styles.xml'), 'utf8'), st, 'the applied styles = the patch of the real template');
-  const again = A.apply(tmp, { appId: cfg.appId, android: true, ios: true, png: false });
-  assert.deepStrictEqual(again, done, 'a second run rewrites the same set (idempotent)');
-  assert.strictEqual(fs.readFileSync(path.join(tmp, 'android/app/src/main/res/values/styles.xml'), 'utf8'), st, 'and the same bytes');
-} finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+// apply() — onto a scratch project laid out EXACTLY as `cap add` generates it (the vendored template files at their real paths)
+const MAIN_REL = `android/app/src/main/java/${cfg.appId.split('.').join('/')}/MainActivity.java`;
+function scratch() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capp-native-'));
+  const put = (rel, src) => { const p = path.join(dir, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, src); };
+  put('android/app/src/main/res/values/styles.xml', T('android/styles.xml')); put('android/app/src/main/AndroidManifest.xml', T('android/AndroidManifest.xml'));
+  put(MAIN_REL, A.generatedMainActivity(cfg.appId));
+  put('ios/App/App/Base.lproj/Main.storyboard', T('ios/Main.storyboard')); put('ios/App/App/Base.lproj/LaunchScreen.storyboard', T('ios/LaunchScreen.storyboard'));
+  put('ios/App/App/Assets.xcassets/Splash.imageset/Contents.json', T('ios/Splash.imageset.Contents.json'));
+  for (const f of ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png']) put(`ios/App/App/Assets.xcassets/Splash.imageset/${f}`, 'png');
+  return dir;
+}
+const tree = (dir) => { const out = {}; const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isSymbolicLink()) out[path.relative(dir, p)] = 'link'; else if (e.isDirectory()) walk(p); else out[path.relative(dir, p)] = fs.readFileSync(p, 'utf8'); } }; walk(dir); return out; };
+const RUN = { appId: cfg.appId, android: true, ios: true, png: false };
+// ALL-OR-NOTHING (Codex dark r1 #3): a drifted / customized / missing file refuses BEFORE any write — the whole tree unchanged
+for (const [label, spoil, re] of [
+  ['the activity theme re-parented DayNight → Light', (d) => { const p = path.join(d, 'android/app/src/main/res/values/styles.xml'); fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace('Theme.AppCompat.DayNight.NoActionBar', 'Theme.AppCompat.Light.NoActionBar')); }, /styles\.xml: neither/],
+  ['styles.xml missing', (d) => fs.rmSync(path.join(d, 'android/app/src/main/res/values/styles.xml')), /styles\.xml absent/],
+  ['a customized MainActivity', (d) => fs.appendFileSync(path.join(d, MAIN_REL), '// a hand edit\n'), /MainActivity\.java: neither/],
+  ['a customized LaunchScreen', (d) => { const p = path.join(d, 'ios/App/App/Base.lproj/LaunchScreen.storyboard'); fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace('scaleAspectFill', 'scaleAspectFit')); }, /LaunchScreen\.storyboard: neither/],
+]) {
+  const dir = scratch();
+  try { spoil(dir); const before = tree(dir); assert.throws(() => A.apply(dir, RUN), re, `🔴 ${label}: refused`); assert.deepStrictEqual(tree(dir), before, `🔴 ${label}: NOTHING written (preflight before any write)`); }
+  finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+{
+  const dir = scratch();
+  try {
+    const done = A.apply(dir, RUN);
+    assert.ok(done.includes(MAIN_REL) && done.includes('ios/App/App/ThemedBridgeViewController.swift') && done.includes('- ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png'), 'the applied set (incl. the template splash PNGs removed)');
+    const t1 = tree(dir);
+    assert.strictEqual(t1['android/app/src/main/res/values/styles.xml'], st, 'the applied styles = the patch of the real template');
+    assert.strictEqual(t1[MAIN_REL], A.mainActivity(cfg.appId)); assert.strictEqual(t1['ios/App/App/Base.lproj/LaunchScreen.storyboard'], ls);
+    A.apply(dir, RUN); assert.deepStrictEqual(tree(dir), t1, 'idempotent: a second run leaves every byte as it was');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+// a destination that resolves OUTSIDE the project through a symlink (Codex dark r1 #4): refused, the outside untouched, nothing written
+{
+  const dir = scratch(), out = fs.mkdtempSync(path.join(os.tmpdir(), 'capp-outside-'));
+  try {
+    const vals = path.join(dir, 'android/app/src/main/res/values');
+    fs.writeFileSync(path.join(out, 'styles.xml'), T('android/styles.xml')); fs.rmSync(vals, { recursive: true }); fs.symlinkSync(out, vals);
+    const before = tree(dir), outside = tree(out);
+    assert.throws(() => A.apply(dir, RUN), /resolves outside the native project/, '🔴 a symlinked directory escaping the project is refused');
+    assert.deepStrictEqual(tree(out), outside, '🔴 the outside directory untouched'); assert.deepStrictEqual(tree(dir), before, '🔴 nothing written inside either');
+    const f = path.join(dir, MAIN_REL); fs.rmSync(vals); fs.mkdirSync(vals); fs.writeFileSync(path.join(vals, 'styles.xml'), T('android/styles.xml'));
+    fs.writeFileSync(path.join(out, 'Main.java'), A.generatedMainActivity(cfg.appId)); fs.rmSync(f); fs.symlinkSync(path.join(out, 'Main.java'), f);
+    assert.throws(() => A.apply(dir, RUN), /symlink|outside/, '🔴 a symlinked destination file is refused');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(out, { recursive: true, force: true }); }
+}
+assert.throws(() => A.apply(fs.mkdtempSync(path.join(os.tmpdir(), 'capp-empty-')), RUN), /absent — run `npx cap add` first/, 'nothing is applied onto a project that does not exist');
 assert.strictEqual(deps['@capacitor/status-bar'] && deps['@capacitor/status-bar'].split('.')[0], deps['@capacitor/core'].split('.')[0], '🔴 @capacitor/status-bar on the core\'s major (style only — §4)');
-ok('apply() onto a scratch copy of the REAL template layout: refused before `cap add`, then every resource written, idempotent; @capacitor/status-bar pinned on the core major');
+ok('apply() onto the REAL template layout: all-or-nothing preflight (a re-parented theme, a missing / customized file ⇒ refused, NO file changed), containment (a symlink escape ⇒ refused, the outside untouched), idempotent; status-bar pinned');
 console.log(`native-project: OK (${n})`);

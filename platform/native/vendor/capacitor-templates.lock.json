@@ -22,6 +22,10 @@
     "android/AndroidManifest.xml": {
       "from": "app/src/main/AndroidManifest.xml",
       "sha256": "b642d0f51d088301d0107c9b94c85994fbc612e0a7b6a9cb1754113ae1be90cd"
+    },
+    "ios/LaunchScreen.storyboard": {
+      "from": "App/App/Base.lproj/LaunchScreen.storyboard",
+      "sha256": "87a42e842164d75f39cca56a2cf743652f4d8e858f2eba12ae21a8ddcd9a21c6"
     }
   }
 }

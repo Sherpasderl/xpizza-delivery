@@ -1,8 +1,8 @@
 // Customer app — capp-dark (PLAN-capp-dark-mode r2 §2.5, APPROVED): THE theme source for what CSS cannot reach (the Google maps' styles,
 // the native status bar). CSS itself follows the OS through the stylesheet's media query (first paint, no script); this module only
 // tells the JS surfaces. isDark: the document's explicit data-theme (a future manual choice) wins, else the OS preference; any failure
-// ⇒ light (fail-safe). subscribe: the media `change` + a re-read when the page becomes visible again (a WebView may drop `change`
-// while backgrounded) — `fn` fires only on a real change; returns the unsubscribe. Pure, UMD, brand-agnostic.
+// ⇒ light (fail-safe). subscribe: the media `change` + a re-read when the page becomes visible again or the native app resumes (a
+// WebView may drop `change` while backgrounded) — `fn` fires only on a real change; returns the unsubscribe. Pure, UMD, brand-agnostic.
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -27,9 +27,13 @@
     try { mq = typeof win.matchMedia === 'function' ? win.matchMedia(QUERY) : null; } catch (_) { mq = null; }
     try { if (mq && typeof mq.addEventListener === 'function') mq.addEventListener('change', check); else if (mq && typeof mq.addListener === 'function') mq.addListener(check); } catch (_) {}
     try { if (win.document) win.document.addEventListener('visibilitychange', onVis); } catch (_) {}
+    // Codex dark r1 #2: the installed app's NATIVE resume — Capacitor's bridge dispatches a `resume` document event (iOS on
+    // willEnterForeground, Android through its Cordova-compat web view on onResume), which may come with no visibilitychange
+    try { if (win.document) win.document.addEventListener('resume', check); } catch (_) {}
     return () => {
       try { if (mq && typeof mq.removeEventListener === 'function') mq.removeEventListener('change', check); else if (mq && typeof mq.removeListener === 'function') mq.removeListener(check); } catch (_) {}
       try { if (win.document) win.document.removeEventListener('visibilitychange', onVis); } catch (_) {}
+      try { if (win.document) win.document.removeEventListener('resume', check); } catch (_) {}
     };
   }
 

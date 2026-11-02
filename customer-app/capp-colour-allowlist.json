@@ -315,163 +315,175 @@
   "disposition": "theme-pair",
   "why": "the dark map backdrop (v6 .dark rule), in the three forms"
  },
- "js capp-confirm-quote.js #111": {
+ "js capp-confirm-quote.js @cancel #ccc ×1": {
   "disposition": "ported",
   "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
  },
- "js capp-confirm-quote.js #ccc": {
+ "js capp-confirm-quote.js @cancel #fff ×1": {
   "disposition": "ported",
   "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
  },
- "js capp-confirm-quote.js #fff": {
+ "js capp-confirm-quote.js @card #111 ×1": {
   "disposition": "ported",
   "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
  },
- "js capp-confirm-quote.js rgba(0,0,0,.25)": {
+ "js capp-confirm-quote.js @card #fff ×1": {
   "disposition": "ported",
   "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
  },
- "js capp-confirm-quote.js rgba(0,0,0,.45)": {
+ "js capp-confirm-quote.js @card rgba(0,0,0,.25) ×1": {
   "disposition": "ported",
   "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
  },
- "js capp-home.js #000": {
+ "js capp-confirm-quote.js @confirm #111 ×1": {
+  "disposition": "ported",
+  "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
+ },
+ "js capp-confirm-quote.js @confirm #fff ×1": {
+  "disposition": "ported",
+  "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
+ },
+ "js capp-confirm-quote.js @wrap rgba(0,0,0,.45) ×1": {
+  "disposition": "ported",
+  "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
+ },
+ "js capp-home.js @CUIS_PAL #4A4541 ×1": {
   "disposition": "v6-parity",
   "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
  },
- "js capp-home.js #2F5FB8": {
+ "js capp-home.js @CUIS_PAL #6E7B8B ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #6F4E3A ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #7D5A46 ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #8E9B72 ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #A3AFBC ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #A9BCD0 ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #C68F64 ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #D4836D ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #D9B35D ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #E2C47F ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #F4ECDC ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #FFFFFF ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @SOLA #2F5FB8 ×1": {
   "disposition": "fixed",
   "why": "the Sola mark's brand fill (§5 fixed)"
  },
- "js capp-home.js #4A4541": {
+ "js capp-home.js @cuisPart #000 ×1": {
   "disposition": "v6-parity",
   "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
  },
- "js capp-home.js #6E7B8B": {
-  "disposition": "v6-parity",
-  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
- },
- "js capp-home.js #6F4E3A": {
-  "disposition": "v6-parity",
-  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
- },
- "js capp-home.js #7D5A46": {
-  "disposition": "v6-parity",
-  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
- },
- "js capp-home.js #8E9B72": {
-  "disposition": "v6-parity",
-  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
- },
- "js capp-home.js #A3AFBC": {
-  "disposition": "v6-parity",
-  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
- },
- "js capp-home.js #A9BCD0": {
-  "disposition": "v6-parity",
-  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
- },
- "js capp-home.js #C68F64": {
-  "disposition": "v6-parity",
-  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
- },
- "js capp-home.js #D4836D": {
-  "disposition": "v6-parity",
-  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
- },
- "js capp-home.js #D9B35D": {
-  "disposition": "v6-parity",
-  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
- },
- "js capp-home.js #E2C47F": {
-  "disposition": "v6-parity",
-  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
- },
- "js capp-home.js #F4ECDC": {
-  "disposition": "v6-parity",
-  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
- },
- "js capp-home.js #FFFFFF": {
-  "disposition": "v6-parity",
-  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
- },
- "js capp-signup.js #1976D2": {
+ "js capp-signup.js @GOOGLE_G #1976D2 ×1": {
   "disposition": "fixed",
   "why": "Google's «G» mark: its brand colours, never themed"
  },
- "js capp-signup.js #4CAF50": {
+ "js capp-signup.js @GOOGLE_G #4CAF50 ×1": {
   "disposition": "fixed",
   "why": "Google's «G» mark: its brand colours, never themed"
  },
- "js capp-signup.js #FF3D00": {
+ "js capp-signup.js @GOOGLE_G #FF3D00 ×1": {
   "disposition": "fixed",
   "why": "Google's «G» mark: its brand colours, never themed"
  },
- "js capp-signup.js #FFC107": {
+ "js capp-signup.js @GOOGLE_G #FFC107 ×1": {
   "disposition": "fixed",
   "why": "Google's «G» mark: its brand colours, never themed"
  },
- "js capp-theme.js #17263c": {
+ "js capp-theme.js @MAP_DARK #17263c ×2": {
   "disposition": "external",
   "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
  },
- "js capp-theme.js #1f2835": {
+ "js capp-theme.js @MAP_DARK #1f2835 ×1": {
   "disposition": "external",
   "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
  },
- "js capp-theme.js #212a37": {
+ "js capp-theme.js @MAP_DARK #212a37 ×1": {
   "disposition": "external",
   "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
  },
- "js capp-theme.js #242f3e": {
+ "js capp-theme.js @MAP_DARK #242f3e ×2": {
   "disposition": "external",
   "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
  },
- "js capp-theme.js #263c3f": {
+ "js capp-theme.js @MAP_DARK #263c3f ×1": {
   "disposition": "external",
   "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
  },
- "js capp-theme.js #2f3948": {
+ "js capp-theme.js @MAP_DARK #2f3948 ×1": {
   "disposition": "external",
   "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
  },
- "js capp-theme.js #38414e": {
+ "js capp-theme.js @MAP_DARK #38414e ×1": {
   "disposition": "external",
   "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
  },
- "js capp-theme.js #515c6d": {
+ "js capp-theme.js @MAP_DARK #515c6d ×1": {
   "disposition": "external",
   "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
  },
- "js capp-theme.js #6b9a76": {
+ "js capp-theme.js @MAP_DARK #6b9a76 ×1": {
   "disposition": "external",
   "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
  },
- "js capp-theme.js #746855": {
+ "js capp-theme.js @MAP_DARK #746855 ×2": {
   "disposition": "external",
   "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
  },
- "js capp-theme.js #9ca5b3": {
+ "js capp-theme.js @MAP_DARK #9ca5b3 ×1": {
   "disposition": "external",
   "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
  },
- "js capp-theme.js #d59563": {
+ "js capp-theme.js @MAP_DARK #d59563 ×3": {
   "disposition": "external",
   "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
  },
- "js capp-theme.js #f3d19c": {
+ "js capp-theme.js @MAP_DARK #f3d19c ×1": {
   "disposition": "external",
   "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
  },
- "js form-live-status.js #1E1B18": {
+ "js form-live-status.js @add #1E1B18 ×1": {
   "disposition": "ported",
   "why": "byte copy; the capp uses only its window math, never this polyline"
  },
- "js sherpa-client.js #1f2937": {
+ "js sherpa-client.js @s #1f2937 ×1": {
   "disposition": "fixed",
   "why": "the shared update notice: a dark chip readable on both themes (§5 fixed; driver app too)"
  },
- "js sherpa-client.js #ffffff": {
+ "js sherpa-client.js @s #ffffff ×1": {
   "disposition": "fixed",
   "why": "the shared update notice: a dark chip readable on both themes (§5 fixed; driver app too)"
  }
