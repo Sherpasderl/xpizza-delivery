@@ -58,21 +58,46 @@ function withoutFs(src) {
   }
   return out;
 }
-// ── PLAN-portal-shell-no-shift (Codex r2 P1): app.js gains EXACTLY this one listener (portal:abandon → invalidateReview), appended at
-// the end. Folded out FIRST (the newest layer), so every older pin below judges exactly what it judged before.
-const SW_HUNK = `
-// PLAN-portal-shell-no-shift (Codex r2 P1): shell.js presents its recovery box after a boot failure / the discovery deadline;
-// whatever the editor still has in flight (a held catalog load) belongs to an abandoned world and must not repaint over it.
-document.addEventListener('portal:abandon', () => { invalidateReview(); });
-`;
+// ── PLAN-portal-shell-no-shift (Codex r2 P1 + r3): app.js gains EXACTLY these named hunks — the catalog READ's own generation
+// (readGeneration, captured and checked by loadMenu) and the portal:abandon listener that bumps ONLY it (writes always settle).
+// Folded out FIRST (the newest layer), so every older pin below judges exactly what it judged before. Generated from the slice
+// diff against its base 1e81a7f2 and pinned: an edit outside these hunks, or inside one, fails.
+const SW_HUNKS = [
+ [
+  "// PLAN-portal-shell-no-shift (Codex r3): the catalog READ's own generation — shell.js's recovery (portal:abandon) cancels an\n// abandoned load and nothing else; a save / publish in flight always settles, reconciles and runs its authoritative reload.\nlet readGeneration = 0;\n",
+  ""
+ ],
+ [
+  "  const gen = opGeneration, rgen = readGeneration;\n",
+  "  const gen = opGeneration;\n"
+ ],
+ [
+  "    if (gen !== opGeneration || rgen !== readGeneration) return;\n",
+  "    if (gen !== opGeneration) return;\n"
+ ],
+ [
+  "  if (gen !== opGeneration || rgen !== readGeneration) return;        // a newer switch won; this response is for a tenant the merchant left\n",
+  "  if (gen !== opGeneration) return;        // a newer switch won; this response is for a tenant the merchant left\n"
+ ],
+ [
+  "\n// PLAN-portal-shell-no-shift (Codex r2 P1): shell.js presents its recovery box after a boot failure / the discovery deadline;\n// the editor's held catalog LOAD belongs to an abandoned world and must not repaint over it — reads only (Codex r3).\ndocument.addEventListener('portal:abandon', () => { readGeneration += 1; });\n",
+  ""
+ ]
+];
 function withoutSw(src) {
-  assert.ok(src.endsWith(SW_HUNK), 'app.js ends with exactly the shell-wait listener');
-  return src.slice(0, -SW_HUNK.length);
+  let out = src;
+  for (const [now, was] of SW_HUNKS) {
+    assert.equal(out.split(now).length - 1, 1, `shell-wait hunk occurs exactly once: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
 }
-test('shell-wait (Codex r2 P1): app.js gains exactly the portal:abandon listener, appended; nothing else', () => {
-  assert.notEqual(withoutSw(read('app.js')), read('app.js'), 'non-vacuity: the fold changes something');
-  assert.equal(read('app.js').split('portal:abandon').length - 1, 1, 'one listener');
-  assert.throws(() => withoutSw(read('app.js').replace('invalidateReview(); });\n', 'invalidateReview(); state.x = 1; });\n')));
+test('shell-wait (Codex r2 P1 + r3): app.js gains exactly the read-generation hunks + the portal:abandon listener; nothing else', () => {
+  const was = execFileSync('git', ['show', '1e81a7f2:xpizza-portal/app.js'], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+  assert.equal(withoutSw(read('app.js')), was, 'app.js minus the shell-wait hunks ≠ its base 1e81a7f2');
+  assert.notEqual(withoutSw(read('app.js') + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+  assert.equal(read('app.js').split("addEventListener('portal:abandon'").length - 1, 1, 'one listener');
+  assert.ok(/addEventListener\('portal:abandon', \(\) => \{ readGeneration \+= 1; \}\)/.test(read('app.js')), 'it bumps ONLY the read generation (never invalidateReview: writes settle)');
 });
 const appJs = () => withoutFs(withoutSw(read('app.js')));
 test('app.js field state (train-3 follow-up): exactly the four named lines; no field toggles the global .err block', () => {

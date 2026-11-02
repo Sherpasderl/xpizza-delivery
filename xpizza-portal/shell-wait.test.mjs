@@ -399,3 +399,18 @@ test('r2 P2 — the boot deadline firing before the button exists still gives a 
   btn.click();
   assert.equal(reloaded, 1);
 });
+
+test('r3 P1 — a held catalog read that FAILS after a render failure never paints its message over the retry box either', async () => {
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const fresh = E1([row('r_a')]);
+  Object.defineProperty(fresh.brands[0], 'name', { get() { throw new Error('render boom'); }, enumerable: true });
+  const ce = console.error; console.error = () => {};
+  try {
+    const { byId } = await shellRun(okJson(fresh), { seed: { 'sherpa.portal.branches.uSw': JSON.stringify(E1([row('r_a')])) }, catalog: () => held.then(() => errJson(503, { error: 'unavailable' })) });
+    const box = () => byId.get('detail').children.find((c) => /errbox/.test(c._class));
+    assert.ok(box(), 'premise: the retry box');
+    release(); await settle(30);
+    assert.ok(box(), 'the late failure is dropped too: the retry box stays');
+  } finally { console.error = ce; }
+});

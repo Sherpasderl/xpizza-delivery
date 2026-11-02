@@ -17,8 +17,9 @@
   // sign-in card holds with one quiet line instead of the form (html.sw-wait; gate-early.js sets it before the first paint on a
   // page that had a session); the portal is revealed ONCE per signed-in interval, on shell.js's `portal:ready`, in its final shape.
   // Codex r1: the card can NEVER be the end state —
-  //   • AUTH_DEADLINE_MS (6 s): a stale hint whose auth never answers gives the form back. Auth restores from local storage (no
-  //     network), well under a second in every lab run; 6 s ≫ that, and short enough that a signed-out visitor is not left waiting.
+  //   • AUTH_DEADLINE_MS (6 s): a hint whose auth never answers → the recovery card (outage box + «Reintentar»), NEVER the form
+  //     (a deadline is not a signed-out answer — Codex r3). Auth restores from local storage, well under a second in every lab
+  //     run; the real answer, whenever it comes, still decides (a user → the wait card, signed out → the form).
   //   • DISCOVERY_DEADLINE_MS (20 s): signed in, discovery never ends (a token / fetch / parse that never settles) → the shell's
   //     retry box via `portal:deadline`; if the shell does not answer, the portal is revealed as it stands. The slowest lab boot
   //     painted at ≈ 3.7 s (Slow 4G + 4× CPU); a cold Cloud Functions start adds seconds — 20 s covers both with margin. There is
@@ -64,7 +65,14 @@
   document.addEventListener('portal:ready', reveal);
   if (tookOver) focusGate();                     // focus leaves the hidden «Reintentar»
   if (html.classList.contains('sw-wait')) {
-    authTimer = setTimeout(() => { authTimer = null; if (!signedIn && !revealed) cardWait(false); }, AUTH_DEADLINE_MS);
+    // Codex r3 ruling: an elapsed auth deadline is NOT a signed-out answer — the gate's recovery card (the outage box +
+    // «Reintentar»), never the form; the wait state is kept underneath, and the real answer, when it comes, decides
+    authTimer = setTimeout(() => {
+      authTimer = null;
+      if (signedIn || revealed) return;
+      html.classList.add('sw-fail');
+      $('gatefailbtn').focus();
+    }, AUTH_DEADLINE_MS);
   }
 
   const showError = (msg) => { err.textContent = msg; err.classList.toggle('on', !!msg); };
@@ -98,12 +106,15 @@
     // must not survive the person changing.
     document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: user ? user.uid : null } }));
     const wasRevealed = revealed;
+    const wasFail = html.classList.contains('sw-fail');
+    html.classList.remove('sw-fail');            // a real auth answer ends the recovery card
     signedIn = inn;
     hint.set(inn);
     stopDeadlines();
     if (!inn) revealed = false;
     if (!revealed) {
       gate.classList.remove('hidden'); app.classList.add('hidden'); cardWait(inn);
+      if (wasFail) focusGate();                  // focus leaves the hidden «Reintentar»
       if (!inn && wasRevealed) $('email').focus();   // signed out of the portal: back to the form, focused
       if (inn) {
         discoveryTimer = setTimeout(() => {
