@@ -194,7 +194,7 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
   const at = typeof prior === 'number' ? prior : now;
   // S-A1 r3 (Codex r2): the DURABLE redaction obligation rides the SAME atomic update as the tombstone (a failed deletion leaves no trace);
   // the inline redaction is best-effort — a failure is drained by pruneResidual's drainRatingRedactions via the owner_uid index
-  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}`]: { at: now } });
+  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}/at`]: now });   // r4: `at` only — a fence's version v is never clobbered
   try { await redactRatings(db, uid, historyIds); } catch (e) { console.error(`deleteAccountCore: inline rating redaction for ${uid} failed (${e && e.code ? e.code : 'error'}) — the journal drains it`); }
   if (phoneHash) await db.ref(`phone_index/${phoneHash}`).transaction((cur) => (cur === null ? null : (cur === uid ? null : undefined)));
   await S.removeLinks(db, uid);
@@ -218,22 +218,27 @@ async function redactRatings(db, uid, historyIds = null) {
   }
   return ids.length;
 }
-// S-A1 r3 (Codex r2): DRAIN the durable redaction journal ratings_redact_pending/{uid} = {at}. For each entry: redact every rating the
-// owner_uid index still names for that uid, then REMOVE the entry only when (a) none remains AND (b) the grace has passed since the
-// deletion — a rateOrder paused across it (≤ its 20 s function timeout) has then committed, and is either found here by the index or
-// redacted by its own post-commit fence (which re-creates the entry). Idempotent; a failing uid is retried on the next run.
-const REDACT_GRACE_MS = 10 * 60 * 1000;
+// S-A1 r3/r4 (Codex r2/r3): DRAIN the durable redaction journal ratings_redact_pending/{uid} = {at, v?}. For each entry: read {at, v}
+// FIRST, redact every rating the owner_uid index still names for that uid, then REMOVE the entry only when (a) none remains, (b) the
+// grace has passed since the deletion, AND (c) the entry is UNCHANGED since the read — a rateOrder fence that touched it meanwhile
+// (v + 1: a late commit) keeps it for the next run. Idempotent; a failing uid is retried on the next run.
+// GRACE (r4 P1): Cloud Run's request timeout does not cancel execution, so it is sized from the HARD ceiling — ≥ 2× the largest
+// timeoutSeconds of ANY ratings_v2 writer (rateOrder, stampRatingFulfilment); ratings/ratings-grace.guard.test.js reads their DEPLOYED
+// options from the discovery manifest and fails if one is raised past grace / 2.
+const REDACT_GRACE_MS = 2 * 60 * 60 * 1000;
 const REDACT_BATCH = 50;
 async function drainRatingRedactions(db, now = Date.now(), { graceMs = REDACT_GRACE_MS, batch = REDACT_BATCH } = {}) {
   const pending = (await db.ref('ratings_redact_pending').orderByChild('at').limitToFirst(batch).once('value')).val() || {};
   let redacted = 0, cleared = 0, failed = 0;
   for (const [uid, entry] of Object.entries(pending)) {
     try {
+      const at = entry && typeof entry.at === 'number' ? entry.at : 0;
+      const v = entry && Number.isInteger(entry.v) ? entry.v : 0;   // read BEFORE the pass + the check (r4 P1-2)
       redacted += await redactRatings(db, uid, []);
       const left = (await db.ref('ratings_v2').orderByChild('owner_uid').equalTo(uid).once('value')).val() || {};
-      const at = entry && typeof entry.at === 'number' ? entry.at : 0;
       if (Object.keys(left).length === 0 && now - at >= graceMs) {
-        const tx = await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => (cur && cur.at === at ? null : cur));   // only the entry we judged
+        // remove ONLY the exact version judged: a concurrent fence (v moved) or a re-deletion (at moved) keeps the entry
+        const tx = await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => (cur && cur.at === at && (Number.isInteger(cur.v) ? cur.v : 0) === v ? null : cur));
         if (tx.committed && !tx.snapshot.exists()) cleared += 1;
       }
     } catch (e) { failed += 1; console.error(`drainRatingRedactions: ${uid} (${e && e.code ? e.code : 'error'}) — retried next run`); }
@@ -294,7 +299,11 @@ async function loginUid(db, { pHash, uid, now, newUid }) {
 // the periodic sweep's residual cleanup, run EVERY time (codex build r1 P2-10 — also when no profiles remain): links to
 // deleted accounts, expired challenges / tickets
 async function pruneResidual(db, now = Date.now()) {
-  return { deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db), ratings: await drainRatingRedactions(db, now) };
+  // r4 P2: the rating-redaction drain runs FIRST and ISOLATED — a failing link / expiry / backfill cleanup can never starve it (it also
+  // has its own schedule, drainRatingRedactions in index.js)
+  let ratings;
+  try { ratings = await drainRatingRedactions(db, now); } catch (e) { ratings = { error: true }; console.error('pruneResidual: rating drain failed', e && e.code ? e.code : 'error'); }
+  return { ratings, deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db) };
 }
 // security backlog 2026-11-01: an account tombstoned in user_private BEFORE the sweep wrote deleted_uids gets it now (its OWN
 // deleted_at), create-if-absent — so every deleted_uids-only check refuses it too. Live / revived accounts are never touched.

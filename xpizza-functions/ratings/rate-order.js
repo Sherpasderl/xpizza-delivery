@@ -51,9 +51,15 @@ async function purchasedDishIds(db, { uid, orderId, rid, resolveContext }) {
 // Codex r2: on a tombstone it FIRST ensures the durable redaction journal entry (idempotent create-if-absent), THEN redacts — so a failed
 // redaction here is still drained by pruneResidual. (If even the tombstone read fails, the deletion's own journal entry — kept past
 // the grace that outlasts this function's timeout — drains it.)
+// r4 P1-2: CREATE-OR-TOUCH the journal entry — v + 1 (created at {at: now, v: 1} if absent). A drain that judged the entry before this
+// touch sees v moved and keeps it, so this late commit is still drained even if the redaction below fails.
+async function touchRedactJournal(db, uid, now) {
+  await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => ({
+    at: cur && typeof cur.at === 'number' ? cur.at : now, v: (cur && Number.isInteger(cur.v) ? cur.v : 0) + 1 }));
+}
 async function fencedAfterWrite(db, uid, ref, now) {
   if (!(await db.ref(`deleted_uids/${uid}`).get()).exists()) return false;
-  await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => (cur && typeof cur.at === 'number' ? cur : { at: now }));
+  await touchRedactJournal(db, uid, now);
   await ref.transaction(V2.deletionUpdater({}));
   return true;
 }
@@ -95,7 +101,9 @@ async function rateOrderCore(db, { body, idToken, now, verifyIdToken, resolveCon
   return { httpStatus: 409, body: { ok: false, error: out.outcome } };   // not_fulfilled | window_closed
 }
 
-const rateOrder = onRequest({ region: 'us-central1', cors: true, timeoutSeconds: 20, memory: '256MiB', maxInstances: 5 }, async (req, res) => {
+// the writer's timeout is a NAMED constant: ratings-grace.guard pins REDACT_GRACE_MS ≥ 2× it (read from the deployed manifest)
+const RATE_ORDER_TIMEOUT_S = 20;
+const rateOrder = onRequest({ region: 'us-central1', cors: true, timeoutSeconds: RATE_ORDER_TIMEOUT_S, memory: '256MiB', maxInstances: 5 }, async (req, res) => {
   try {
     if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
     const r = await rateOrderCore(getDatabase(), { body: req.body, idToken: req.get('x-firebase-id-token'), now: Date.now(), verifyIdToken: (t) => getAuth().verifyIdToken(t) });
@@ -106,4 +114,4 @@ const rateOrder = onRequest({ region: 'us-central1', cors: true, timeoutSeconds:
   }
 });
 
-module.exports = { rateOrder, rateOrderCore, configure, purchasedDishIds };
+module.exports = { rateOrder, rateOrderCore, configure, purchasedDishIds, touchRedactJournal, RATE_ORDER_TIMEOUT_S };

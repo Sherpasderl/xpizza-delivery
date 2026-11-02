@@ -30309,8 +30309,8 @@
   "slice": "sec",
   "label": "security backlog: the inactivity sweep writes no deleted_uids again (the gap: deleted_uids-only checks miss swept accounts)",
   "file": "signup-endpoints.js",
-  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}`]: { at: now } });",
-  "to": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, sweepCutoff == null ? at : null), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}`]: { at: now } });",
+  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}/at`]: now });",
+  "to": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, sweepCutoff == null ? at : null), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}/at`]: now });",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -30405,8 +30405,8 @@
   "slice": "sec",
   "label": "security backlog: the sweep residual never backfills deleted_uids for legacy user_private tombstones",
   "file": "signup-endpoints.js",
-  "from": "tombstones: await backfillDeletedUids(db), ratings:",
-  "to": "tombstones: 0, ratings:",
+  "from": "tombstones: await backfillDeletedUids(db) };",
+  "to": "tombstones: 0 };",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -30429,8 +30429,8 @@
   "slice": "sec",
   "label": "security backlog: r2 P1-c: the two tombstones written in TWO steps (a failure between them leaves user_private.deleted_at without deleted_uids)",
   "file": "signup-endpoints.js",
-  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}`]: { at: now } });",
-  "to": "await db.ref(`user_private/${uid}`).set({ deleted_at: at }); await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`ratings_redact_pending/${uid}`]: { at: now } });",
+  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}/at`]: now });",
+  "to": "await db.ref(`user_private/${uid}`).set({ deleted_at: at }); await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`ratings_redact_pending/${uid}/at`]: now });",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -31065,8 +31065,8 @@
   "slice": "sa",
   "label": "S-A1 ratings v2: the fulfilment trigger listens on the wrong path",
   "file": "index.js",
-  "from": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true },",
-  "to": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}', region: 'us-central1', retry: true },",
+  "from": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true, timeoutSeconds: 60 },",
+  "to": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}', region: 'us-central1', retry: true, timeoutSeconds: 60 },",
   "command": [
    "node",
    "checkout-wiring.guard.test.js"
@@ -31113,8 +31113,8 @@
   "slice": "sa",
   "label": "S-A1 ratings v2 (r2): the fulfilment trigger has retry OFF",
   "file": "index.js",
-  "from": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true },",
-  "to": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1' },",
+  "from": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true, timeoutSeconds: 60 },",
+  "to": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1', timeoutSeconds: 60 },",
   "command": [
    "node",
    "checkout-wiring.guard.test.js"
@@ -31161,7 +31161,7 @@
   "slice": "sa",
   "label": "S-A1 ratings v2 (r3): the redaction journal is NOT in the deletion's atomic update",
   "file": "signup-endpoints.js",
-  "from": ", [`ratings_redact_pending/${uid}`]: { at: now } });",
+  "from": ", [`ratings_redact_pending/${uid}/at`]: now });",
   "to": " });",
   "command": [
    "node",
@@ -31197,7 +31197,7 @@
   "slice": "sa",
   "label": "S-A1 ratings v2 (r3): the post-commit fence does not ensure the journal entry",
   "file": "ratings/rate-order.js",
-  "from": "  await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => (cur && typeof cur.at === 'number' ? cur : { at: now }));\n",
+  "from": "  await touchRedactJournal(db, uid, now);\n",
   "to": "",
   "command": [
    "node",
@@ -31221,8 +31221,8 @@
   "slice": "sa",
   "label": "S-A1 ratings v2 (r3): pruneResidual does not drain the journal",
   "file": "signup-endpoints.js",
-  "from": ", ratings: await drainRatingRedactions(db, now) };",
-  "to": " };",
+  "from": "  try { ratings = await drainRatingRedactions(db, now); }",
+  "to": "  try { ratings = null; }",
   "command": [
    "node",
    "ratings/rating-v2.test.js"
@@ -31238,6 +31238,90 @@
   "command": [
    "node",
    "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-29",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): the grace is sized from a soft 20 s deadline, not the writers' hard ceiling",
+  "file": "signup-endpoints.js",
+  "from": "const REDACT_GRACE_MS = 2 * 60 * 60 * 1000;",
+  "to": "const REDACT_GRACE_MS = 60 * 1000;",
+  "command": [
+   "node",
+   "ratings/ratings-grace.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-30",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): the fence only creates the journal entry (no touch / version bump)",
+  "file": "ratings/rate-order.js",
+  "from": "    at: cur && typeof cur.at === 'number' ? cur.at : now, v: (cur && Number.isInteger(cur.v) ? cur.v : 0) + 1 }));",
+  "to": "    at: cur && typeof cur.at === 'number' ? cur.at : now, v: (cur && Number.isInteger(cur.v) ? cur.v : 0) }));",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-31",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): the drain removes the entry without checking its version",
+  "file": "signup-endpoints.js",
+  "from": "(cur) => (cur && cur.at === at && (Number.isInteger(cur.v) ? cur.v : 0) === v ? null : cur));",
+  "to": "(cur) => (cur && cur.at === at ? null : cur));",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-32",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): the drain runs AFTER the other cleanups (a failing link cleanup starves it)",
+  "file": "signup-endpoints.js",
+  "from": "  let ratings;\n  try { ratings = await drainRatingRedactions(db, now); } catch (e) { ratings = { error: true }; console.error('pruneResidual: rating drain failed', e && e.code ? e.code : 'error'); }\n  return { ratings, deadLinks: await pruneDeadLinks(db),",
+  "to": "  return { deadLinks: await pruneDeadLinks(db), ratings: await drainRatingRedactions(db, now),",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-33",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): the drain has no schedule of its own",
+  "file": "index.js",
+  "from": "exports.drainRatingRedactions = onSchedule(",
+  "to": "exports.drainRatingRedactionsUnused = onSchedule(",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-34",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): the reader predicate ignores a tombstoned owner",
+  "file": "ratings/rating-v2.js",
+  "from": "node.state === STATES.LIVE && ownerTombstoned !== true;",
+  "to": "node.state === STATES.LIVE;",
+  "command": [
+   "node",
+   "ratings/ratings-reader-contract.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-35",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): a writer's timeout raised past grace / 2",
+  "file": "ratings/rate-order.js",
+  "from": "const RATE_ORDER_TIMEOUT_S = 20;",
+  "to": "const RATE_ORDER_TIMEOUT_S = 3601;",
+  "command": [
+   "node",
+   "ratings/ratings-grace.guard.test.js"
   ]
  }
 ]

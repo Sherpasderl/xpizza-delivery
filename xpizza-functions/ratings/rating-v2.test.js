@@ -8,7 +8,7 @@ const assert = require('assert');
 const path = require('path');
 const FN = path.join(__dirname, '..');
 const V2 = require('./rating-v2');
-const { rateOrderCore } = require('./rate-order');
+const { rateOrderCore, touchRedactJournal } = require('./rate-order');
 const { stampRatingFulfilment } = require('./rating-fulfilment');
 const { buildCreateOrderUpdates, attachCustomerAttribution } = require(path.join(FN, 'create-order-build'));
 const { MENU_BY_RESTAURANT } = require(path.join(FN, 'menu-pricing'));
@@ -315,6 +315,39 @@ const node = (db, id) => V2.normalize(db.get(`ratings_v2/${id}`));
     assert.deepStrictEqual([node(db, 'XPZ-late').state, db.get(`ratings_redact_pending/${A}`)], ['deleted', undefined], 'the next run redacts it and clears the entry');
   }
   ok('drain race: a rating landing between the redaction pass and the "none left" check keeps the entry (even past the grace); the next run redacts and clears');
+
+  // ── 16b. Codex r3 P1-2 — its EXACT interleaving: the drain's empty check passes → a late commit lands → its fence TOUCHES the journal
+  //     (v + 1) → its inline redaction FAILS → the drain's removal (judged on v before) is REFUSED; the next run redacts and clears ──
+  {
+    const db = fakeDb(); db.set(`deleted_uids/${A}`, 1); db.set(`ratings_redact_pending/${A}`, { at: 7000 });
+    let late = false;
+    const rdb = { ...db, ref: (p) => { const r = db.ref(p); if (p !== `ratings_redact_pending/${A}`) return r; return { ...r, transaction: async (fn) => {
+      if (!late) {
+        late = true;
+        db.set('ratings_v2/XPZ-late2', { rating_format: 2, state: 'live', owner_uid: A, comment: 'tarde', restaurant_id: 'x_pizza', rev: 1 });   // the late commit
+        await touchRedactJournal(db, A, 7000 + SE.REDACT_GRACE_MS + 5);                                                                       // its fence's touch
+        // … and its inline redaction FAILS (nothing redacts XPZ-late2 here)
+      }
+      return r.transaction(fn); } }; } };
+    const r = await SE.drainRatingRedactions(rdb, 7000 + SE.REDACT_GRACE_MS + 10);
+    assert.ok(late, 'premise: the late commit + touch happened between the empty check and the removal');
+    assert.strictEqual(r.cleared, 0, '🔴 the removal is REFUSED: the entry moved (v) since the drain judged it');
+    assert.deepStrictEqual(db.get(`ratings_redact_pending/${A}`), { at: 7000, v: 1 }, 'the entry is kept, touched (v = 1), its at unchanged');
+    assert.strictEqual(node(db, 'XPZ-late2').state, 'live', 'premise: the failed inline redaction left it live');
+    const r2 = await SE.drainRatingRedactions(db, 7000 + SE.REDACT_GRACE_MS + 20);
+    assert.deepStrictEqual([node(db, 'XPZ-late2').state, node(db, 'XPZ-late2').owner_uid, db.get(`ratings_redact_pending/${A}`), r2.cleared], ['deleted', null, undefined, 1], 'the next run redacts it and clears the (unchanged) entry');
+  }
+  ok('Codex r3 P1-2 exact interleaving: empty check → late commit → its fence touches (v+1) → its inline redaction fails ⇒ the drain\'s removal is REFUSED (v moved); the next run redacts and clears');
+
+  // ── 17. Codex r3 P2: the drain runs FIRST and ISOLATED in pruneResidual — a failing link cleanup cannot starve it ──
+  {
+    const db = fakeDb(); await place(db, A, 'XPZ-i'); await fulfil(db, 'XPZ-i'); await rate(db, A, { order_id: 'XPZ-i', store: 3, comment: 'x' });
+    db.set(`deleted_uids/${A}`, 1); db.set(`ratings_redact_pending/${A}`, { at: 8000 });
+    const fdb = { ...db, ref: (p) => { const r = db.ref(p); if (!String(p).startsWith('auth_links')) return r; return { ...r, once: async () => { throw new Error('link cleanup failed'); } }; } };
+    await assert.rejects(SE.pruneResidual(fdb, 8000 + SE.REDACT_GRACE_MS), /link cleanup failed/, 'premise: the link cleanup failed');
+    assert.deepStrictEqual([node(db, 'XPZ-i').state, db.get(`ratings_redact_pending/${A}`)], ['deleted', undefined], '🔴 the drain still ran (FIRST, isolated): redacted and cleared');
+  }
+  ok('Codex r3 P2: pruneResidual runs the drain FIRST and isolated — a failing link cleanup still leaves the journal drained');
 
   FINISHED = true;
   console.log(`\nrating-v2: OK (${n})`);

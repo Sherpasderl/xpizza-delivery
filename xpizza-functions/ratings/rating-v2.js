@@ -122,5 +122,9 @@ function deletionUpdater(out) {
   };
 }
 
-module.exports = { ORDER_ID_RE, V1_THUMB, WINDOW_MS, COMMENT_MAX, DISHES_MAX, STATES, FULFILLED, parseRequest, freshNode, normalize,
+// THE reader rule (Codex S-A1 r2/r3, NOTE §5): a rating counts / is shown ONLY when its node is live AND its owner is not tombstoned.
+// Every ratings_v2 READER (S-A3 merchant comments, S-B aggregates) must call this — ratings/ratings-reader-contract.guard enforces it.
+const countable = (node, ownerTombstoned) => !!node && typeof node === 'object' && node.state === STATES.LIVE && ownerTombstoned !== true;
+
+module.exports = { countable, ORDER_ID_RE, V1_THUMB, WINDOW_MS, COMMENT_MAX, DISHES_MAX, STATES, FULFILLED, parseRequest, freshNode, normalize,
   v1Updater, v2Updater, withdrawUpdater, fulfilmentUpdater, deletionUpdater };
