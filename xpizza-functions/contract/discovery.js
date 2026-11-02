@@ -135,6 +135,14 @@ function factoryCtor(absModule, chain) {
       seen += 1; target = right.type === 'Identifier' ? right.name : (/Function/.test(right.type) ? right : null);
     }
   }
+  // codex r2 P2 — FAIL CLOSED on any overwritten / spread export surface (no attempt to resolve a final binding):
+  const modAssigns = ast.body.filter((st) => st.type === 'ExpressionStatement' && st.expression.type === 'AssignmentExpression' && isModExports(st.expression.left));
+  if (modAssigns.length > 1) return { why: `module.exports is assigned ${modAssigns.length}× in ${path.basename(file)}` };
+  const lit = modAssigns[0] && modAssigns[0].expression.right.type === 'ObjectExpression' ? modAssigns[0].expression.right : null;
+  if (lit && lit.properties.some((pr) => pr.type === 'SpreadElement')) return { why: `module.exports literal contains a spread in ${path.basename(file)}` };
+  if (lit) { const keys = lit.properties.filter((pr) => pr.type === 'Property' && !pr.computed).map((pr) => (pr.key.type === 'Identifier' ? pr.key.name : pr.key.value)); if (new Set(keys).size !== keys.length) return { why: `module.exports literal repeats a key in ${path.basename(file)}` }; }
+  const viaExports = ast.body.some((st) => st.type === 'ExpressionStatement' && st.expression.type === 'AssignmentExpression' && st.expression.left.type === 'MemberExpression' && st.expression.left.object.type === 'Identifier' && st.expression.left.object.name === 'exports');
+  if (modAssigns.length && viaExports) return { why: `module.exports is reassigned while exports.* is also used in ${path.basename(file)}` };
   if (!seen) return { why: `${fname} is not exported by ${path.basename(file)}` };
   if (seen > 1) return { why: `${fname} is exported more than once in ${path.basename(file)}` };
   const fnNode = target && typeof target === 'object' ? target : (typeof target === 'string' ? fns.get(target) : null);

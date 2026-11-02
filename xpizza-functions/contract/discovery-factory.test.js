@@ -72,5 +72,25 @@ assert.ok(wah && wah.how === 'factory' && wah.category === 'schedule', 'the real
 assert.deepStrictEqual(real.unclassified, [], `the real index.js leaves no export unclassified: ${JSON.stringify(real.unclassified)}`);
 ok('the real index.js: whatsappInstanceHealth → schedule via makeHealthFunction; 0 unclassified');
 
+// codex r2 P2 counterexamples — overwritten / spread export surfaces fail closed (each module alone, so its shape is the only variable)
+const CX = {
+  overwritten: "const { onSchedule } = require('firebase-functions/v2/scheduler');\nfunction otherFactory() { return onSchedule({ schedule: 's' }, async () => {}); }\nmodule.exports = { f: otherFactory };\nmodule.exports = {}; // f no longer exported",
+  spread: "const { onSchedule } = require('firebase-functions/v2/scheduler');\nfunction otherFactory() { return onSchedule({ schedule: 's' }, async () => {}); }\nmodule.exports = { f: otherFactory, ...{ f: 42 } };",
+  dupkey: "const { onSchedule } = require('firebase-functions/v2/scheduler');\nfunction a() { return onSchedule({ schedule: 's' }, async () => {}); }\nmodule.exports = { f: a, f: 42 };",
+  twiceExports: "const { onSchedule } = require('firebase-functions/v2/scheduler');\nfunction a() { return onSchedule({ schedule: 's' }, async () => {}); }\nexports.f = a;\nexports.f = 42;",
+  mixedSurface: "const { onSchedule } = require('firebase-functions/v2/scheduler');\nfunction a() { return onSchedule({ schedule: 's' }, async () => {}); }\nexports.f = a;\nmodule.exports = {};",
+};
+const CXRE = { overwritten: /assigned 2×/, spread: /spread/, dupkey: /repeats a key/, twiceExports: /more than once/, mixedSurface: /reassigned while exports/ };
+for (const [nm, src] of Object.entries(CX)) {
+  const d2 = fs.mkdtempSync(path.join(os.tmpdir(), `disc-cx-${nm}-`));
+  fs.writeFileSync(path.join(d2, 'm.js'), src); fs.writeFileSync(path.join(d2, 'index.js'), "exports.x = require('./m').f();");
+  const iv = D.sourceInventory(path.join(d2, 'index.js'));
+  assert.ok(!iv.entries.find((e) => e.name === 'x'), `🔴 ${nm}: an overwritten / spread export must NOT be classified`);
+  const u = iv.unclassified.find((e) => e.name === 'x');
+  assert.ok(u && CXRE[nm].test(u.why), `${nm}: unclassified with the right reason (got ${u && u.why})`);
+  fs.rmSync(d2, { recursive: true, force: true });
+}
+ok(`FAIL CLOSED on the export SURFACE: module.exports reassigned (codex r2 #1), a spread (codex r2 #2), a repeated key, exports.f twice, module.exports + exports.* mixed (${Object.keys(CX).length} counterexamples)`);
+
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(`\ndiscovery-factory: OK (${n})`);
