@@ -4,6 +4,7 @@
 //   /                          Inicio                       { name: 'home' }
 //   /buscar                    Buscar                       { name: 'search' }
 //   /cuenta                    Cuenta                       { name: 'account' }
+//   /pedidos                   Pedidos                      { name: 'orders' }   (owner-approved D-3 r3 URL table, frame 9.3)
 //   /r/{rid}                   a store                      { name: 'store', rid, step: 'store' }
 //   /r/{rid}/plato/{dishId}    the dish sheet open          { name: 'store', rid, step: 'plato', dish }
 //   /r/{rid}/pedido            the cart open                { name: 'store', rid, step: 'pedido' }
@@ -19,7 +20,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const WORDS = Object.freeze({ store: 'r', search: 'buscar', account: 'cuenta', dish: 'plato', cart: 'pedido', checkout: 'pago' });   // OWNER-PENDING
+  const WORDS = Object.freeze({ store: 'r', search: 'buscar', account: 'cuenta', orders: 'pedidos', dish: 'plato', cart: 'pedido', checkout: 'pago' });   // OWNER-PENDING
   const RID_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;   // the platform's restaurant id rule (the functions' platform-manifest RID_RE)
   const DISH_MAX = 128;
   const BAD = /[\u0000-\u001f\u007f]/;
@@ -41,6 +42,7 @@
     if (!parts.length) return { name: 'home' };
     if (parts.length === 1 && parts[0] === WORDS.search) return { name: 'search' };
     if (parts.length === 1 && parts[0] === WORDS.account) return { name: 'account' };
+    if (parts.length === 1 && parts[0] === WORDS.orders) return { name: 'orders' };
     if (parts[0] !== WORDS.store || parts.length < 2 || !RID_RE.test(parts[1])) return null;
     const rid = parts[1];
     if (parts.length === 2) return { name: 'store', rid, step: 'store' };
@@ -56,6 +58,7 @@
     if (r.name === 'home') return '/';
     if (r.name === 'search') return `/${WORDS.search}`;
     if (r.name === 'account') return `/${WORDS.account}`;
+    if (r.name === 'orders') return `/${WORDS.orders}`;
     if (r.name !== 'store' || typeof r.rid !== 'string' || !RID_RE.test(r.rid)) throw new TypeError('capp-routes: bad store route');
     const base = `/${WORDS.store}/${encodeURIComponent(r.rid)}`;
     if (!r.step || r.step === 'store') return base;

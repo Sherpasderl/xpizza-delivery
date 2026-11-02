@@ -30,6 +30,7 @@
   // ── icons (the prototype's IC, verbatim) ──
   const I = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
   const IC = {
+    wa: I('<path d="M4 20l1.3-3.9A8 8 0 1 1 8.2 19z"/><path d="M9.5 9.5c0 3 2 5 5 5l1-1.5-2-1-1 1a4 4 0 0 1-1.5-1.5l1-1-1-2z"/>'),   // v6 P:1204
     update: I('<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>'),   // MOCKUP-capp-native-store-update
     chev: I('<path d="M9 6l6 6-6 6"/>'), down: I('<path d="M6 9l6 6 6-6"/>'), search: I('<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>'),
     home: I('<path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/>'), bag: I('<path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>'),
@@ -180,7 +181,32 @@
   // «Pedidos» (PLAN-capp-desktop-website r2 D-3 / Gates, advisor ruling): NO approved orders-list screen exists, so no control may
   // lead to one — the tab, the desknav entry and both Cuenta rows are left out (a control without effect is never shipped). An
   // orders screen = an owner mockup + a handler, and then this flips (the controls come back exactly as drawn)
-  const ORDERS_SCREEN = false;
+  const ORDERS_SCREEN = true;   // owner 2026-11-01: «Pedidos» is in launch scope
+  // ── «PEDIDOS» (v6 ordersHtml P:2131-2145; owner 2026-11-01: in launch scope) — from a view model the shell builds: the member's
+  // orders (getMyOrders, NOTE-getMyOrders) and this device's active order (its local record). INTERIM (advisor 11-01): the rows show the
+  // server's items_text as given and «Volver a pedir» (the tab, the pills) stays hidden until each recipe line carries a canonical dish_id;
+  // «Orden #N» only where a number exists. While the read is loading or failed, no empty state is claimed (nothing untrue).
+  const ORDERS_ART = `<svg viewBox="0 0 220 120" aria-hidden="true"><rect x="10" y="28" width="200" height="74" rx="16" fill="var(--il-sky-a)"/><ellipse cx="112" cy="109" rx="72" ry="5" fill="var(--ink)" opacity=".08"/>
+    <path d="M70 46 H150 L158 106 H62 Z" fill="var(--acc)"/><path d="M62 106 H158 L156 92 H64 Z" fill="var(--il-jacket)" opacity=".4"/>
+    <path d="M88 46 C88 28 132 28 132 46" fill="none" stroke="var(--ink)" stroke-width="4" stroke-linecap="round"/>
+    <rect x="86" y="64" width="48" height="20" rx="6" fill="var(--surf2)"/><rect x="94" y="71" width="32" height="6" rx="3" fill="var(--il-sky-b)"/>
+    <circle cx="176" cy="84" r="17" fill="var(--surf2)"/><circle cx="176" cy="84" r="11" fill="var(--pop-bg)"/><circle cx="176" cy="84" r="4" fill="var(--pop-fill)"/>
+    <circle cx="44" cy="88" r="12" fill="var(--surf2)"/><circle cx="44" cy="88" r="7" fill="var(--value-bg)"/></svg>`;
+  function ordersHtml(vm) {
+    const o = vm.orders || { phase: 'loading', active: [], past: [] }, again = o.againReady === true;
+    const card = (c) => `<div class="ocard active"><div class="hd">${logoChip(c.store, 'lg')}<div class="t"><b>${esc(c.store.name)}</b><span>${[c.numText, c.whenText, c.total != null ? money(c.total) : null].filter(Boolean).map(esc).join(' · ')}</span></div></div>${c.itemsLine ? `<div class="items">${esc(c.itemsLine)}</div>` : ''}
+      <div class="st"><span class="dot"></span>${esc(c.statusText)}</div><div class="acts">${c.trackable ? `<button class="btn2 dark" data-act="go-order" data-oid="${esc(c.oid)}">Ver seguimiento</button>` : ''}${vm.helpOk ? `<button class="btn2" data-act="orders-help" data-oid="${esc(c.oid)}">${IC.wa}Ayuda</button>` : ''}</div></div>`;
+    const row = (r) => `<div class="orow"><button class="orow-main" data-act="go-receipt" data-oid="${esc(r.oid)}" aria-label="Ver el recibo de ${esc(r.store.name)} · ${esc(r.dateText)}">${logoChip(r.store, 'lg big')}<span class="t"><b>${esc(r.store.name)}</b><span class="m">${esc(r.dateText)}${r.total != null ? ' · ' + money(r.total) : ''}</span>${r.itemsLine ? `<span class="s">${esc(r.itemsLine)}</span>` : ''}</span></button>${again ? `<button class="btn2 again-pill" data-act="reorder" data-oid="${esc(r.oid)}">Volver a pedir</button>` : ''}</div>`;
+    const tabKey = again ? (vm.ordersTab || 'past') : 'past';
+    const tabs = again ? `<div class="otabs" role="tablist"><button role="tab" aria-selected="${tabKey === 'past'}" data-act="otab" data-val="past">Pedidos anteriores</button><button role="tab" aria-selected="${tabKey === 'again'}" data-act="otab" data-val="again">Volver a pedir</button></div>` : '';
+    const empty = `<div class="oempty">${ORDERS_ART}<b>Todavía no tenés pedidos</b><span>Tus pedidos y tus favoritos para repetir aparecen aquí.</span><button class="primary" data-act="tab" data-tab="home">Explorar restaurantes</button></div>`;
+    const act = o.active || [], past = o.past || [];
+    const settled = o.phase === 'ready';
+    const body = settled && !act.length && !past.length ? empty
+      : `<div class="olist">${act.map(card).join('')}${past.length ? tabs + `<div class="orows">${past.map(row).join('')}</div>` : ''}</div>`;
+    return shellWrap(vm, `<div class="scroller"><div class="pagehead"><h1>Pedidos</h1></div>${body}</div>`);
+  }
+
   // ── the shell chrome (P tabbarHtml / desknavHtml; entry 'app') ──
   function tabbarHtml(vm) {
     const cur = (id) => vm.tab === id;
@@ -372,5 +398,5 @@
   // frame 4 only when EVERY listed store answers «outside» (an unknown coverage is never counted as outside)
   const allOutOfZone = (rows, loc) => { const live = (rows || []).filter((r) => !r.gone); return !!loc && live.length > 0 && live.every((r) => covers(r.entry, loc) === false); };
 
-  return { homeHtml, searchHtml, tabbarHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
+  return { homeHtml, searchHtml, ordersHtml, tabbarHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
 });

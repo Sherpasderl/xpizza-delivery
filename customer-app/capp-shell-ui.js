@@ -418,7 +418,9 @@
       try {
         if (S.store) return CappRoutes.format({ name: 'store', rid: S.store.rid, ...storeRoute });
         if (S.neutral) return '/';
-        return CappRoutes.format({ name: S.tab === 'search' ? 'search' : S.tab === 'account' ? 'account' : 'home' });
+        // the order screen lives on its order flow's URL (D-3 r3 table: «Checkout, tip, outcome and tracker» = /r/{rid}/pago)
+        if (S.tab === 'order' && S.order) return CappRoutes.format({ name: 'store', rid: S.order.rid, step: 'pago' });
+        return CappRoutes.format({ name: S.tab === 'search' ? 'search' : S.tab === 'account' ? 'account' : S.tab === 'orders' ? 'orders' : 'home' });
       } catch (_) { return null; }   // an id outside the ONE domain is never written: the URL stays as it is
     }
     function reflect() { if (routing && booted && !pendingRoute) replacePath(pathNow()); }   // never before the boot's hydration decision
@@ -427,8 +429,10 @@
     function hydrate() {
       const r = CappRoutes.parse(bootPath);
       if (!r) { replacePath('/'); return; }   // unknown ⇒ Inicio, silently (no new copy)
-      if (r.name === 'search' || r.name === 'account') { nav.tab({ name: r.name }); return; }
+      if (r.name === 'search' || r.name === 'account' || r.name === 'orders') { nav.tab({ name: r.name }); return; }
       if (r.name !== 'store') return;
+      // a reload on an active order's own URL ⇒ its order screen (the device's record), never a fresh checkout
+      if (r.step === 'pago' && S.order && S.order.rid === r.rid && !CappOrder.FINAL.has(S.order.status)) { if (nav.tab({ name: 'orders' })) nav.go({ name: 'order' }); return; }
       pendingRoute = { r, gen: ++navGen, mounted: false };
       subscribeMenu(r.rid); cache.get(r.rid);
       tryRoute();
@@ -478,7 +482,8 @@
       onShow: (entry, x) => {
         if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link
         if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; S.store.ui.openCart(); } reflect(); return; }
-        if (entry.name === 'order') { S.tab = 'order'; renderNow(); return; }
+        if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
+        if (entry.name === 'orders') { S.tab = 'orders'; loadOrders(); resumeOrder(); dir.visit(); renderNow(); return; }
         S.tab = entry.name; dir.visit(); dir.revalidate(); loadMenus();
         renderNow(x && x.restored ? x.restored : null);
       },
@@ -517,6 +522,46 @@
     function remember(q) { const t = String(q).trim(); if (!t) return; S.recent = [t, ...S.recent.filter((x) => x !== t)].slice(0, RECENT_MAX); writeJ(RECENT_KEY, S.recent); }
 
     // ── render: the shell screens (a mounted store owns #app) ──
+    // ── «PEDIDOS» (v6 ordersHtml; NOTE-capp-pedidos-build + the advisor's rulings): the member's orders from getMyOrders (member-only,
+    // the token in its header; a guest has none) + THIS device's active order (S.order, its local record). One read per visit, newest
+    // first, generation-guarded (a sign-out / switch mid-read never paints another member's rows) ──
+    let ordersGen = 0;
+    async function loadOrders() {
+      const gen = ++ordersGen;
+      if (!S.member || !suApi || !fbAuth) { S.ordersRead = { phase: 'ready', active: [], past: [] }; return; }
+      S.ordersRead = { phase: 'loading', active: [], past: [] };
+      let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+      const r = tok ? await suApi.getMyOrders({ idToken: tok, limit: 20 }) : { ok: false, reason: 'unauthenticated' };
+      if (dead || gen !== ordersGen) return;
+      S.ordersRead = r.ok ? { phase: 'ready', active: r.active, past: r.past } : { phase: 'error', active: [], past: [] };
+      if (S.tab === 'orders' && !S.store) renderNow();
+    }
+    const DAYS3 = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'], MON3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    function hnParts(ms) {
+      try { const p = {}; for (const x of new Intl.DateTimeFormat('en-US', { timeZone: 'America/Tegucigalpa', year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'short', hour: 'numeric', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms))) p[x.type] = x.value;
+        return { y: +p.year, mo: +p.month, d: +p.day, wd: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday), h: +p.hour % 24, mi: +p.minute }; } catch (_) { return null; }
+    }
+    // v6's own formats: fmtT «7:05 p.m.» (P:1187), an order's `when` «hoy · 7:05 p.m.» / «sáb 11 oct · …», a row's date «Sáb 11 oct»
+    const fmtT = (h, m) => `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'a.m.' : 'p.m.'}`;
+    const dayText = (p) => `${DAYS3[p.wd]} ${p.d} ${MON3[p.mo - 1]}`;
+    function whenOf(ms) { const p = hnParts(ms), n = hnParts(Number(nowMs())); if (!p) return null; return `${n && p.y === n.y && p.mo === n.mo && p.d === n.d ? 'hoy' : dayText(p)} · ${fmtT(p.h, p.mi)}`; }
+    function dateOf(ms) { const p = hnParts(ms); if (!p) return null; const t = dayText(p); return t[0].toUpperCase() + t.slice(1); }
+    function ordersVm(rows) {
+      const storeOfRid = (rid) => { const r = rows.find((x) => x.rid === rid); return r ? CappHome.storeOf(r) : null; };
+      const rd = S.ordersRead || { phase: 'loading', active: [], past: [] };
+      const local = S.order && !CappOrder.FINAL.has(S.order.status) ? S.order : null;
+      const statusText = (status, mode) => { const v = CappOrder.fromTracking({ status }, mode); return v ? CappOrder.statusCopy({ status: v.status, mode, storeName: '' }).t || '' : ''; };
+      const active = [];
+      if (local) { const st = storeOfRid(local.rid); if (st) active.push({ store: st, oid: local.order_id, numText: local.display_number ? `Orden #${local.display_number}` : null, whenText: whenOf(local.placedAt),
+        total: local.total, itemsLine: (local.lines || []).map((d) => `${d.n}× ${d.name}`).join(', '), statusText: local.scheduled ? CappOrder.SCHED.C.t : CappOrder.statusCopy({ status: local.status || 'new', mode: local.mode, driver: local.driver, stacked: local.stacked, storeName: local.storeName }).t, trackable: true }); }
+      for (const r of rd.active) {
+        if (local && r.order_id === local.order_id) continue;
+        const st = storeOfRid(r.restaurant); if (!st) continue;   // a store the directory no longer lists: not drawn (reported)
+        active.push({ store: st, oid: r.order_id, numText: r.display_number ? `Orden #${r.display_number}` : null, whenText: whenOf(r.ts), total: r.total, itemsLine: r.items_text, statusText: statusText(r.status, r.order_type || 'delivery'), trackable: false });
+      }
+      const past = rd.past.map((r) => { const st = storeOfRid(r.restaurant); return st ? { store: st, oid: r.order_id, dateText: dateOf(r.ts), total: r.total, itemsLine: r.items_text } : null; }).filter(Boolean);
+      return { phase: rd.phase, active, past, againReady: false };
+    }
     // MOCKUP-capp-native-store-update state 1 (owner: A + B): the INSTALLED app with a store, when the host says a newer store build
     // exists (o.updateAvailable — the «latest native build» signal; none wired yet ⇒ never shown). A (Inicio line): hidden by the
     // customer's tap until the next local day; B (Cuenta row): while the update exists
@@ -535,7 +580,7 @@
         return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid };
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
-      return { ...updateVm(), phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
+      return { ...updateVm(), orders: ordersVm(v.rows), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
         schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }, locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
@@ -559,7 +604,7 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
@@ -592,7 +637,7 @@
         if (!m || typeof m !== 'object' || typeof m.path !== 'string') return;
         rec = applyRtdb(rec, ev.type, m.path, m.data);
         const v = CappOrder.fromTracking(rec, od.mode); if (!v) return;
-        Object.assign(od, v);
+        Object.assign(od, v); saveActive();
         if (CappOrder.FINAL.has(v.status)) closeStream();
         if (S.tab === 'order' && !S.store) renderNow();
       };
@@ -618,6 +663,21 @@
     const OrderNumberMod = () => (typeof OrderNumber !== 'undefined' ? OrderNumber : o.OrderNumber);
     const trackBaseOf = (rid) => { const b = runtime.trackBases && runtime.trackBases[rid]; return typeof b === 'string' && /^https:\/\/[a-z0-9.-]+$/.test(b) ? b : null; };
     const supportWa = () => (typeof runtime.supportWhatsapp === 'string' && /^\d{8,15}$/.test(runtime.supportWhatsapp) ? runtime.supportWhatsapp : null);
+    // THE DEVICE'S ACTIVE ORDER (advisor ruling 2: token + the sent snapshot, device-only, until final or 24 h — not «history»): written
+    // at placement and on every live change, restored at boot (the Pedidos active card, a reload of its URL), dropped when final / expired
+    const ACTIVE_KEY = 'capp:active_order', ACTIVE_MS = 24 * 3600e3;
+    function saveActive() {
+      const od = S.order; if (!storage) return;
+      try { if (!od || CappOrder.FINAL.has(od.status)) { storage.removeItem(ACTIVE_KEY); return; }
+        storage.setItem(ACTIVE_KEY, JSON.stringify({ v: 1, order: { ...od, grant: null }, exp: od.placedAt + ACTIVE_MS })); } catch (_) {}
+    }
+    function restoreActive() {
+      let r = null; try { r = storage ? JSON.parse(storage.getItem(ACTIVE_KEY) || 'null') : null; } catch (_) { r = null; }
+      const ok = r && r.v === 1 && r.order && typeof r.order === 'object' && typeof r.order.rid === 'string' && typeof r.order.order_id === 'string' && Number.isFinite(r.exp) && Number(nowMs()) < r.exp && !CappOrder.FINAL.has(r.order.status);
+      if (!ok) { try { if (storage && r) storage.removeItem(ACTIVE_KEY); } catch (_) {} return; }
+      S.order = { ...r.order, offerDone: true };
+    }
+    function resumeOrder() { const od = S.order; if (!od || CappOrder.FINAL.has(od.status) || orderStream) return; if (!od.windowText) windowOrder(od); streamOrder(od); }
     function stopOrder() { orderGen++; closeStream(); if (orderNum) { try { orderNum.stop(); } catch (_) {} } orderNum = null; if (orderFlipT !== null) { T.clearTimeout(orderFlipT); orderFlipT = null; } }
     function showOrder(rid, d) {
       stopOrder();
@@ -626,12 +686,12 @@
         storeName: e.name || '', branch: e.branch || '', storeAddr: e.pickup_addr || '', display_number: null,
         grant: d.signup_grant && typeof d.signup_grant.token === 'string' ? { token: d.signup_grant.token, expires_at: d.signup_grant.expires_at } : null, offerDone: false,
         placedAt: Number(nowMs()), windowText: null, driver: null, stacked: false, doneAt: null };
-      windowOrder(S.order); streamOrder(S.order);
+      windowOrder(S.order); streamOrder(S.order); saveActive();
       const ON = OrderNumberMod(), base = typeof runtime.rtdbBase === 'string' ? runtime.rtdbBase : null;
       if (ON && base && typeof o.readPublic === 'function' && !S.order.scheduled) {
         const mine = S.order;
         orderNum = ON.createOrderNumber({ base, read: (u) => o.readPublic(u), setTimeout: T.setTimeout, clearTimeout: T.clearTimeout,
-          paint: (state, n) => { if (dead || S.order !== mine) return; mine.display_number = state === 'number' ? n : null; if (S.tab === 'order' && !S.store) renderNow(); } });
+          paint: (state, n) => { if (dead || S.order !== mine) return; mine.display_number = state === 'number' ? n : (mine.display_number || null); saveActive(); if (S.tab === 'order' && !S.store) renderNow(); } });
         orderNum.start(S.order.token);
       }
       if (S.order.scheduled && Number.isFinite(S.order.scheduledFor)) {
@@ -666,7 +726,10 @@
     }
     function orderAct(a) {
       const od = S.order; if (!od) return false;
-      if (a === 'order-close' || a === 'order-again') { stopOrder(); nav.tab({ name: 'home' }); return true; }
+      // v6: the app's close ⇒ «Pedidos» (data-tab="orders"); «Hacer otro pedido» ⇒ Inicio. The order stays ACTIVE (its record kept);
+      // only the live work pauses — reopening it resumes the stream
+      if (a === 'order-close') { stopOrder(); nav.tab({ name: 'orders' }); return true; }
+      if (a === 'order-again') { stopOrder(); nav.tab({ name: 'home' }); return true; }
       if (a === 'order-receipt') { S.orderReceipt = !S.orderReceipt; renderNow(); return true; }
       if (a === 'order-help') { const n = supportWa(); if (n) { const msg = 'Hola, tengo un problema con mi pedido' + (od.display_number ? ' #' + od.display_number : ''); openExternal(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`); } return true; }
       if (a === 'order-share') {
@@ -718,8 +781,10 @@
       // the Cuenta tab: with the guest rules ON (runtime.guestCardOnly), a guest's (and an unresolved) is frame 5b; a member's is a
       // later slice. Flag absent ⇒ exactly the S7a-2 behaviour: a host event (Codex guest r1 #3)
       if (a === 'tab') { const id = t.dataset.tab; if (id === 'account' && !SU && (runtime.guestCardOnly !== true || authNow() === 'member')) { emit('tab', { tab: id }); return; }   // G7: under runtime.signup the Cuenta is the shell's
-        if (id === 'home' || id === 'search' || id === 'account') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
+        if (id === 'home' || id === 'search' || id === 'account' || id === 'orders') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
       if (a.startsWith('order-') && orderAct(a)) return;
+      if (a === 'go-order' && S.order && t.dataset.oid === S.order.order_id) { nav.go({ name: 'order' }); return; }   // the device's active order ⇒ its live screen
+      if (a === 'orders-help') { const n = supportWa(); if (n) { const od = S.order && S.order.order_id === t.dataset.oid ? S.order : null; const msg = 'Hola, tengo un problema con mi pedido' + (od && od.display_number ? ' #' + od.display_number : ''); openExternal(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`); } return; }
       if ((a === 'app-update' || a === 'app-update-row') && updateOn()) {
         if (a === 'app-update') { try { const d = dayOf(Number(nowMs())); if (d && storage) storage.setItem(UPD_KEY, d); } catch (_) {} }
         openExternal(runtime.store.url); renderNow(); return;
@@ -807,6 +872,7 @@
     if (S.ret) enter(S.ret.rid, null);
     // D-4a §3: a payment return OWNS the boot (S.ret / S.neutral) — hydration runs only when the boot found NO return
     booted = true;
+    restoreActive();   // the device's active order, before the boot's route decision (a reload of /r/{rid}/pago lands on it)
     if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();
     // back from the store on a NEW build (state 4): the store left for, its cart open — never on a payment return (that owns the boot)
     if (appUpdated && !S.ret && !S.neutral) { const rid = takeHandoff(); if (rid) { S.reopenCart = rid; enter(rid); } }   // ANY return (persisted / memory / resumed, owned or not) owns the boot

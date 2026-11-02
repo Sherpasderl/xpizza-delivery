@@ -362,5 +362,6 @@ test('runtime.signup endpoints: ENDPOINTS is the ONE source — every transport 
   await a.config(); await a.requestOtp({ phone: '+50496123344' }); await a.verifyOtp({ phone: '+50496123344', code: '123456' }); await a.googleStart({ sessionId: 's' });
   await a.googleSignIn({ sessionId: 's', idToken: 't' }); await a.completeProfile({ idToken: 't', email: 'a@b.test', name: 'A', promos: true }); await a.setPromos({ idToken: 't', value: true });
   await a.redeemSignupGrant({ grant: 'g', email: 'a@b.test', name: 'A', promos: false });
+  await a.getMyOrders({ idToken: 't', limit: 20 });   // «Pedidos» (NOTE-getMyOrders): the member's history read
   assert.deepEqual([...new Set(seen)].sort(), Object.values(EP).sort(), '🔴 SU-endpoints: the requests are exactly the listed endpoints');
 });

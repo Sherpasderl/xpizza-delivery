@@ -17,7 +17,7 @@
   const CONTEXT = 'platform';
   const TIMEOUT_MS = 12000;
   // the runtime.signup endpoint set — every call below uses one of these keys (capp-signup.test.mjs guard)
-  const ENDPOINTS = Object.freeze(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant', 'setPromos']);
+  const ENDPOINTS = Object.freeze(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders']);
 
   function createSignupApi(opts) {
     const o = opts || {};
@@ -27,10 +27,12 @@
     // the forms' canonical wrapper (pselfupdate-wrapper-lint): the page loads sherpa-client.js first
     function sherpaFetch(u, o){ var S = root && root.SherpaClient; return (S && typeof S.fetch === 'function') ? S.fetch(u, o) : fetch(u, o); }
     const doFetch = typeof o.fetch === 'function' ? o.fetch : sherpaFetch;
-    async function call(url, { method = 'POST', body = null, idToken = null } = {}) {
-      if (!url) return { status: 0, json: null };
+    async function call(base, { method = 'POST', body = null, idToken = null, query = null } = {}) {
+      if (!base) return { status: 0, json: null };
+      const url = query ? `${base}?${query}` : base;   // a GET's query is built by the caller from fixed keys (getMyOrders)
       const headers = { 'Content-Type': 'application/json', ...(idToken ? { 'x-firebase-id-token': idToken } : {}) };
-      const req = Promise.resolve().then(() => doFetch(url, method === 'GET' ? { method } : { method, headers, body: JSON.stringify(body) }))
+      // a GET carries no body; the member's token still rides its header (getMyOrders — never in the URL, NOTE-getMyOrders §1)
+      const req = Promise.resolve().then(() => doFetch(url, method === 'GET' ? (idToken ? { method, headers: { 'x-firebase-id-token': idToken } } : { method }) : { method, headers, body: JSON.stringify(body) }))
         .then(async (r) => { let j = null; try { j = await r.json(); } catch (_) { j = null; } return { status: r.status, json: j && typeof j === 'object' ? j : null }; }, () => ({ status: 0, json: null }));
       return new Promise((res) => { const t = T.setTimeout(() => res({ status: 0, json: null }), timeoutMs); req.then((v) => { T.clearTimeout(t); res(v); }); });
     }
@@ -85,6 +87,18 @@
         // the platform answer reads the committed value back ({ok:true, value}, contract §6) — adopted when present
         return r.status === 200 && r.json && r.json.ok === true ? { ok: true, ...(typeof r.json.value === 'boolean' ? { value: r.json.value } : {}) } : { ok: false, reason: reasonOf(r) };
       },
+      // «Pedidos» (NOTE-getMyOrders, 3a, APPROVED): the member's own orders, newest first, paged by an opaque cursor. ONLY the contract's
+      // Row whitelist is kept (a field the server never promised is dropped; a malformed row is dropped, never guessed)
+      async getMyOrders({ idToken, limit, cursor } = {}) {
+        if (!idToken) return { ok: false, reason: 'unauthenticated' };
+        const q = ['context=platform'];
+        if (Number.isInteger(limit) && limit >= 1 && limit <= 50) q.push(`limit=${limit}`);
+        if (typeof cursor === 'string' && /^[A-Za-z0-9_-]{1,512}$/.test(cursor)) q.push(`cursor=${cursor}`);
+        const r = await call(E.getMyOrders, { method: 'GET', idToken, query: q.join('&') });
+        const j = r.json;
+        if (r.status !== 200 || !j || j.ok !== true || !Array.isArray(j.active) || !Array.isArray(j.past)) return { ok: false, reason: r.status === 403 ? 'deleted' : reasonOf(r) };
+        return { ok: true, active: j.active.map(rowOf).filter(Boolean), past: j.past.map(rowOf).filter(Boolean), next_cursor: typeof j.next_cursor === 'string' && j.next_cursor ? j.next_cursor : null };
+      },
       async redeemSignupGrant({ grant, email, name, promos }) {
         const r = await call(E.redeemSignupGrant, { body: { grant, context: CONTEXT, email, name, accept_terms: true, promos: promos === true } });
         const j = r.json;
@@ -94,5 +108,14 @@
     };
   }
 
-  return { createSignupApi, CONTEXT, TIMEOUT_MS, ENDPOINTS };
+  // the contract's Row (NOTE-getMyOrders §3), field by field — nothing else survives
+  const ORDER_ID_RE = /^[A-Za-z0-9_-]{4,64}$/, RID_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
+  function rowOf(x) {
+    if (!x || typeof x !== 'object' || typeof x.order_id !== 'string' || !ORDER_ID_RE.test(x.order_id) || !Number.isFinite(x.ts) || typeof x.restaurant !== 'string' || !RID_RE.test(x.restaurant)) return null;
+    return { order_id: x.order_id, ts: x.ts, total: Number.isFinite(x.total) ? x.total : null, order_type: x.order_type === 'pickup' ? 'pickup' : x.order_type === 'delivery' ? 'delivery' : null,
+      restaurant: x.restaurant, status: typeof x.status === 'string' ? x.status : null, items_text: typeof x.items_text === 'string' ? x.items_text : null, items: Array.isArray(x.items) ? x.items : [],
+      ...(typeof x.recipe_format === 'string' ? { recipe_format: x.recipe_format } : {}),
+      ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}) };   // advisor 11-01: 3a adds it to the whitelist
+  }
+  return { createSignupApi, CONTEXT, TIMEOUT_MS, ENDPOINTS, rowOf };
 });

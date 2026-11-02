@@ -15,14 +15,14 @@ const fnRequire = createRequire(join(ROOT, 'xpizza-functions/x.js'));
 
 test('every scheme row parses and formats canonically', () => {
   const rows = [
-    ['/', { name: 'home' }], ['/buscar', { name: 'search' }], ['/cuenta', { name: 'account' }],
+    ['/', { name: 'home' }], ['/buscar', { name: 'search' }], ['/cuenta', { name: 'account' }], ['/pedidos', { name: 'orders' }],   // owner 11-01 + the D-3 r3 table
     ['/r/x_pizza', { name: 'store', rid: 'x_pizza', step: 'store' }],
     ['/r/x_pizza/pedido', { name: 'store', rid: 'x_pizza', step: 'pedido' }],
     ['/r/x_pizza/pago', { name: 'store', rid: 'x_pizza', step: 'pago' }],
     ['/r/la_musa/plato/dimsum_01', { name: 'store', rid: 'la_musa', step: 'plato', dish: 'dimsum_01' }],
   ];
   for (const [p, r] of rows) { assert.deepEqual(R.parse(p), r, p); assert.equal(R.format(r), p, `format ${p}`); }
-  assert.deepEqual(Object.keys(R.WORDS).sort(), ['account', 'cart', 'checkout', 'dish', 'search', 'store'], 'the OWNER-PENDING words, one place');
+  assert.deepEqual(Object.keys(R.WORDS).sort(), ['account', 'cart', 'checkout', 'dish', 'orders', 'search', 'store'], 'the OWNER-PENDING words, one place');
 });
 
 test('normalisation: a trailing slash and repeated slashes are tolerated; case is exact; unknown shapes ⇒ null', () => {
