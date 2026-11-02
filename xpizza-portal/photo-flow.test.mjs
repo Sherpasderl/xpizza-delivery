@@ -834,3 +834,57 @@ test('OWNER BUG — photos DARK (flag off): the item drawer and the «Nuevo prod
   assertCloseIcon(drawer(d), '«Nuevo producto» drawer (dark)').click(); await settle();
   assert.ok(!drawer(d).classList.contains('show'), '«Nuevo producto» drawer (dark): closed');
 });
+
+// OWNER-APPROVED MOCKUP-portal-dish-photo-ratelimit.html (P5-L, option B, 2026-11-01): the server's upload limit (30 new starts
+// per person per hour, 200 per branch per day → 429 `rate_limited`, photos/errors.js) is NOT a failure of the merchant's: a
+// NEUTRAL note (grey, a clock, role=status) «Subiste muchas fotos seguidas. Probá de nuevo más tarde.» and NO «Reintentar»
+// (it would fail again until the window passes). Only this code; every other failure keeps P5. The fake answers exactly as the
+// server does once its 30 starts are used (fake.starts, the same counter the 5f-review test pins).
+const LIMITED = 'Subiste muchas fotos seguidas. Probá de nuevo más tarde.';
+function assertLimitedNote(root) {
+  const note = root.querySelector('.phwait');
+  assert.ok(note, 'the neutral note');
+  assert.equal(note.getAttribute('role'), 'status', 'a status, not an alert');
+  assert.equal(note.querySelector('span').textContent, LIMITED);
+  const svg = note.querySelector('svg');
+  assert.ok(svg && svg.querySelector('circle') && svg.querySelector('path').getAttribute('d') === 'M12 7v5l3 2', 'the clock');
+  assert.ok(!root.querySelector('.phferr'), 'not the red error line');
+  assert.ok(!btnText(root, 'Reintentar'), 'no «Reintentar»: it would fail again until the limit passes');
+}
+test('P5-L — no photo before: the upload limit shows the neutral note under the zone (no red border), no «Reintentar»', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, w, calls } = await boot(fake);
+  fake.starts = 30;                                   // the 30 new starts of this hour are used
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => drawer(d).querySelector('.phwait'), 'P5-L');
+  assertLimitedNote(drawer(d));
+  assert.ok(drawer(d).querySelector('button.uploader.phdesk'), 'the zone stays, ready for later');
+  assert.ok(!drawer(d).querySelector('button.uploader.phinv'), 'without the red «invalid» border: nothing is wrong with the file');
+  assert.ok(!drawer(d).querySelector('.fld.invalid'));
+  assert.equal(n(calls, 'photoProcess'), 0, 'premise: refused at the start (E-P1)');
+});
+test('P5-L — a photo before: it stays, with the neutral note under it and no «Reintentar»; the draft is unchanged', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, w, mods } = await boot(fake);
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => drawer(d).querySelector('.uphoto:not(.phbusy) .phacts'), 'a first photo');
+  const before = JSON.stringify(mods.app.state.draft.state.photos);
+  fake.starts = 30;
+  btnText(drawer(d), 'Cambiar').click(); await settle();
+  await choose(d, w, mkFile(w, { name: 'otra.jpg' }));
+  await until(() => drawer(d).querySelector('.phcrop'), 'the crop step');
+  btnText(drawer(d), 'Listo').click();
+  await until(() => drawer(d).querySelector('.phwait'), 'P5-L over the photo');
+  assertLimitedNote(drawer(d));
+  assert.ok(drawer(d).querySelector('.uphoto .gimg'), 'the photo stays');
+  assert.equal(JSON.stringify(mods.app.state.draft.state.photos), before, 'nothing changed in the draft');
+});
+test('P5-L is ONLY the limit: a transient failure is still P5 «No se pudo subir la foto.» + «Reintentar»', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, w } = await boot(fake);
+  fake.failNext('photoProcess', 503, { error: 'unavailable', retryable: true });
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => drawer(d).querySelector('.ferr'), 'P5');
+  assert.ok(!drawer(d).querySelector('.phwait'));
+  assert.ok(btnText(drawer(d), 'Reintentar'));
+});

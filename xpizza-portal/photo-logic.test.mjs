@@ -191,3 +191,9 @@ test('editor — setPhoto: the canEdit boundary, absent when empty, only the two
   discard(d);
   assert.ok(!('photos' in d.state), 'Descartar restores the loaded document');
 });
+
+test('P5-L (owner-approved ratelimit mockup, option B): `rate_limited` maps to the neutral limit note; every other non-file code stays P5', () => {
+  assert.deepEqual(L.errorCopy('rate_limited'), { kind: 'limited', text: 'Subiste muchas fotos seguidas. Probá de nuevo más tarde.' });
+  for (const c of ['unavailable', 'in_progress', 'upload_missing', 'bad_crop', 'photo_unavailable', null]) assert.deepEqual(L.errorCopy(c), { kind: 'failed', text: 'No se pudo subir la foto.' }, String(c));
+  assert.equal(L.errorCopy('too_large').kind, 'invalid');
+});
