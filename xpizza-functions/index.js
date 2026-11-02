@@ -85,7 +85,7 @@ const whatsapp = require('./whatsapp');
 const { resolvePixelPayConfig, pixelPayCallbackUrl, pixelPayChargeAmountLempiras } = require('./pixelpay-config');
 const pixelpayClient = require('./pixelpay-client');
 const ppCrypto = require('./pixelpay');
-const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
+const { confirmOnlinePayment, confirmAndMaterialize, escalateStaleCapture } = require('./pixelpay-confirm');
 const N2 = require('./n2-paid-strand-decision');   // N2: sweep re-drives a stranded PAID hosted order (paid attempt + still-pending order)
 const { buildMaterializeUpdates } = require('./materialize');
 const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
@@ -2395,7 +2395,7 @@ confirmOnlineApp.all('*', async (req, res) => {
     return res.status(200).json({ ok: true, payment_status: 'manual_reconciliation', order_id: orderId });
   }
   if (o === 'capture_failed' || o === 'failed' || o === 'mismatch_voided') {
-    return res.status(200).json({ ok: false, payment_status: o === 'mismatch_voided' ? 'failed' : 'failed', order_id: orderId, detail: result.message || result.reason || 'payment not completed' });
+    return res.status(200).json({ ok: false, payment_status: o === 'mismatch_voided' && result.voided !== true ? 'refund_pending' : 'failed', order_id: orderId, detail: result.message || result.reason || 'payment not completed' });
   }
   if (o === 'cancelled' || o === 'cancelled_during_confirm') {
     return res.status(200).json({ ok: false, payment_status: 'cancelled', order_id: orderId });
@@ -2896,7 +2896,7 @@ exports.sweepStalePending = onSchedule(
       const attempt = order.active_attempt_id
         ? (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val()
         : null;
-      if (!attempt) { left++; continue; }
+      if (!attempt) { left++; continue; } if (attempt.status === 'capturing') { if (await escalateStaleCapture(confirmDeps(db), { orderId, attemptId: order.active_attempt_id, now })) flagged++; else left++; continue; }   // a lost/crashed SDK capture → durable manual escalation (never re-captured, never declined)
       if (attempt.hosted_state === 'paid') {
         // N2: a paid hosted attempt whose ORDER is still pending_payment (not confirmed/materialized) is STRANDED
         // — the webhook captured the money but confirmAndMaterialize threw before the confirm-claim committed →
@@ -3602,7 +3602,7 @@ exports.refundReconciler = onSchedule(
       if (!a.payment_uuid) { await H0.parkReconcilerNoUuid(db, attemptId, now); continue; }
       /* h0:end reconciler-no-uuid */
       const r = await voidOrRefund(deps, { orderId: a.order_id, attemptId, pixelpayOrderId, paymentUuid: a.payment_uuid, reason: 'xpizza_refund_retry', now });
-      retried++;
+      retried++; if (r.voided) { try { const ro = (await db.ref(`orders/${a.order_id}`).once('value')).val(); if (ro) await reverseRedemptionForOrder(db, { orderId: a.order_id, order: ro, disposition: 'refund', now }); } catch (e) { console.warn(`refundReconciler: hold release failed for ${a.order_id}`, e && e.message); } }   // the refund CONFIRMED → release the hold kept secured while it was pending (idempotent)
       if (!r.voided) {
         stillPending++;
         const age = now - (Number(a.refunded_at || a.cancel_claimed_at || a.captured_at) || now);

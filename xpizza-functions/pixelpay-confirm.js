@@ -162,8 +162,8 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
     // Disambiguate via getStatus: manual_reconciliation ONLY if PixelPay shows it paid;
     // otherwise it's a plain failure (no money moved).
     const recheck = deps.client.interpretStatus(await deps.client.getStatus({ payment_uuid: uuid }));
-    if (recheck.paid) {
-      await routeManualReconciliation(deps, { orderId, attemptId, uuid, now });
+    if (recheck.paid || !recheck.status) {   // paid → settled-but-lost; NO status at all → not evidence of "no money moved"
+      await routeManualReconciliation(deps, { orderId, attemptId, uuid, now, reason: recheck.paid ? undefined : 'capture_412_status_unknown' });
       return { outcome: 'manual_reconciliation' };
     }
     await attemptRef.update({ status: 'declined', failed_at: now, decline_message: cap.message || 'capture_not_found' });
@@ -188,6 +188,7 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
       const vd = await deps.client.voidTransaction({ payment_uuid: uuid, pixelpayOrderId, voidReason: 'xpizza_mismatch_void' });
       voided = !!vd.ok;
     } catch (_) { /* void failed → refund_pending below */ }
+    if (!voided) await holdRedemptionForManual(db, { orderId, order, now, alert: deps.alert });   // unconfirmed void → money may still be held → secure the hold
     await attemptRef.update({ status: voided ? 'voided' : 'refund_pending', mismatch_reason: v.reason, failed_at: now });
     await orderRef.update({ payment_status: voided ? 'failed' : 'refund_pending' });
     deps.alert && deps.alert('capture_mismatch', { orderId, attemptId, uuid, reason: v.reason, voided });
@@ -359,11 +360,11 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
 }
 
 // Route a paid-but-unverifiable capture to the audited manual-reconciliation queue.
-async function routeManualReconciliation(deps, { orderId, attemptId, uuid, now }) {
+async function routeManualReconciliation(deps, { orderId, attemptId, uuid, now, reason }) {
   await deps.db.ref(`payment_attempts/${attemptId}`).update({
     status: 'capture_unverified',
     payment_uuid: uuid,
-    manual_reason: 'paid_lost_capture_response',
+    manual_reason: reason || 'paid_lost_capture_response',
     flagged_at: now
   });
   // [B] paid-but-unverifiable capture → POSSIBLY paid → secure the redemption as held_paid BEFORE advertising
@@ -375,4 +376,29 @@ async function routeManualReconciliation(deps, { orderId, attemptId, uuid, now }
   deps.alert && deps.alert('manual_reconciliation', { orderId, attemptId, uuid });
 }
 
-module.exports = { confirmOnlinePayment, confirmAndMaterialize, routeManualReconciliation };
+// A capturing claim nobody finished (the capture response was lost, or the confirm crashed mid-capture) past this
+// age is ESCALATED to manual reconciliation — never re-captured from the sweep, never declined. Far above the
+// confirm's own stale window and function timeout, so an in-flight confirm is never touched.
+const STALE_CAPTURE_ESCALATE_MS = 15 * 60 * 1000;
+
+// Sweep entry: CAS the attempt capturing → capture_unverified (only if it is still the SAME stale claim), secure the
+// redemption hold, then advertise manual_reconciliation. Returns true when it escalated.
+async function escalateStaleCapture(deps, { orderId, attemptId, now, staleMs = STALE_CAPTURE_ESCALATE_MS }) {
+  const ref = deps.db.ref(`payment_attempts/${attemptId}`);
+  const pre = (await ref.once('value')).val();
+  if (!pre || pre.status !== 'capturing') return false;
+  if (now - (Number(pre.capturing_started_at) || 0) <= staleMs) return false;   // a missing start time counts as stale
+  const tx = await ref.transaction((cur) => {
+    if (cur === null) return null;                                               // null-first-safe
+    if (!cur || cur.status !== 'capturing' || cur.capturing_started_at !== pre.capturing_started_at) return;
+    return { ...cur, status: 'capture_unverified', manual_reason: 'stale_capturing_unrecovered', flagged_at: now };
+  });
+  if (!tx.committed) return false;
+  const order = (await deps.db.ref(`orders/${orderId}`).once('value')).val();
+  await holdRedemptionForManual(deps.db, { orderId, order, now, alert: deps.alert });
+  await deps.db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });
+  deps.alert && deps.alert('manual_reconciliation', { orderId, attemptId, uuid: pre.payment_uuid || null, reason: 'stale_capturing_unrecovered' });
+  return true;
+}
+
+module.exports = { confirmOnlinePayment, confirmAndMaterialize, routeManualReconciliation, escalateStaleCapture, STALE_CAPTURE_ESCALATE_MS };

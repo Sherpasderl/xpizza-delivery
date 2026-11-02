@@ -13,7 +13,7 @@ const { execFileSync } = require('child_process');
 const { unapplyWaHealthIndex, BEGIN, END } = require('./tools/wahealth-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = require('./tools/formsignal-inverse').unapplyFormSignalIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // R-WIRE train re-point: the newer formsignal block reversed first
+const real = require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/p5a-inverse').unapplyP5aIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')));   // R-WIRE train re-point: the newer formsignal block reversed first
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 const BASE = '71180dfe';   // R-WIRE train re-point: M12^1, the train state just before wahealth merged (git log -S must not be used on the train branch)
 const base = git(['show', `${BASE}:xpizza-functions/index.js`]);

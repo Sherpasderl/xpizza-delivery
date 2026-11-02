@@ -128,14 +128,14 @@ function assertNotDeclined(db, label) {
   const a = db.getAt('payment_attempts/A');
   assert.notStrictEqual(a.status, 'declined', `${label}: attempt must NOT be declined`);
   assert.notStrictEqual(db.getAt('orders/TB-1').payment_status, 'failed', `${label}: order must NOT be marked payment failed`);
-  assert.strictEqual(holdState(db), 'reserved', `${label}: the reward hold must NOT be released`);
+  assert.ok(['reserved', 'held_paid'].includes(holdState(db)), `${label}: the reward hold must NOT be released (got ${holdState(db)})`);
 }
 
 let pass = 0;
 const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 const fails = [];
 // each cell runs independently: one failing cell never hides another
-async function cell(name, fn) { try { await fn(); } catch (e) { fails.push(name); console.error(`  ✗ ${String((e && e.message) || e).split('\n')[0]}`); } }
+async function cell(name, fn) { const before = pass; try { await fn(); if (pass === before) { console.log(`  ✓ ${name}`); pass++; } } catch (e) { fails.push(name); console.error(`  ✗ ${String((e && e.message) || e).split('\n')[0]}`); } }
 
 (async () => {
   // POU-CAPTURE-BODY-LOST: capture 200, the body drops → the existing "capture may have landed" path.

@@ -1843,6 +1843,7 @@
   "pixelpay-client.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
+  "pixelpay-hosted-webhook.js",
   "portal/branch-lifecycle-core.js",
   "portal/branch-phone.js",
   "portal/branch-read-model.js",
@@ -2010,12 +2011,14 @@
      "file": "xpizza-functions/h0-wiring.guard.test.js",
      "inverses": [
       "tools/h0-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/stackseq-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/stackseq-wiring.guard.test.js",
      "inverses": [
+      "tools/p5a-inverse.js",
       "tools/stackseq-module-inverse.js"
      ]
     },
@@ -2206,6 +2209,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1b-inverse.js",
@@ -2235,6 +2239,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2268,6 +2273,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2293,6 +2299,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
@@ -2319,6 +2326,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2350,6 +2358,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2374,6 +2383,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
@@ -2384,6 +2394,7 @@
      "inverses": [
       "tools/drvc-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     },
@@ -2393,6 +2404,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     },
@@ -2412,6 +2424,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2428,7 +2441,8 @@
     {
      "file": "xpizza-functions/formsignal-wiring.guard.test.js",
      "inverses": [
-      "tools/formsignal-inverse.js"
+      "tools/formsignal-inverse.js",
+      "tools/p5a-inverse.js"
      ]
     },
     {
@@ -2446,6 +2460,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2471,6 +2486,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
@@ -2492,6 +2508,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
@@ -2510,6 +2527,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
@@ -2523,6 +2541,7 @@
       "tools/formsignal-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2534,6 +2553,7 @@
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2558,6 +2578,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2570,6 +2591,12 @@
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
       "tools/wahealth-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/p5a-wiring.guard.test.js",
+     "inverses": [
+      "tools/p5a-inverse.js"
      ]
     },
     {
@@ -2593,6 +2620,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2616,6 +2644,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
@@ -2632,6 +2661,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/stackseq-inverse.js",
@@ -2652,6 +2682,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2678,6 +2709,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2703,6 +2735,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s5-inverse.js",
@@ -2728,6 +2761,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2752,6 +2786,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
@@ -2779,6 +2814,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2799,6 +2835,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2828,6 +2865,12 @@
      ]
     },
     {
+     "file": "xpizza-functions/tools/p5a-inverse.js",
+     "inverses": [
+      "tools/p5a-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/tools/s5-inverse.js",
      "inverses": [
       "tools/s5-inverse.js"
@@ -2850,6 +2893,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/stackseq-inverse.js",
@@ -2868,6 +2912,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/stackseq-inverse.js",
@@ -2892,6 +2937,7 @@
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2910,6 +2956,7 @@
      "file": "xpizza-functions/wahealth-wiring.guard.test.js",
      "inverses": [
       "tools/formsignal-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     }
@@ -2986,6 +3033,12 @@
   "materialize.js": {
    "pins": [
     {
+     "file": "xpizza-functions/brand-server-wiring.guard.test.js",
+     "inverses": [
+      "tools/brand-server-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/d12-wiring.guard.test.js",
      "inverses": [
       "tools/brand-server-inverse.js",
@@ -3001,9 +3054,7 @@
      ]
     }
    ],
-   "lifts": [
-    "xpizza-functions/brand-server-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "menu-pricing.js": {
    "pins": [
@@ -3100,16 +3151,29 @@
   "pixelpay-confirm.js": {
    "pins": [
     {
+     "file": "xpizza-functions/brand-server-wiring.guard.test.js",
+     "inverses": [
+      "tools/brand-server-inverse.js",
+      "tools/p5a-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/d12-wiring.guard.test.js",
      "inverses": [
       "tools/brand-server-inverse.js",
-      "tools/d12-inverse.js"
+      "tools/d12-inverse.js",
+      "tools/p5a-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/p5a-wiring.guard.test.js",
+     "inverses": [
+      "tools/p5a-inverse.js"
      ]
     }
    ],
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js",
-    "xpizza-functions/brand-server-wiring.guard.test.js",
     "xpizza-functions/materialize-hub.test.js"
    ]
   },
@@ -3120,6 +3184,24 @@
     "xpizza-functions/addproduct-wiring.guard.test.js",
     "xpizza-functions/extras-wiring.guard.test.js"
    ]
+  },
+  "pixelpay-hosted-webhook.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/h0-wiring.guard.test.js",
+     "inverses": [
+      "tools/h0-inverse.js",
+      "tools/p5a-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/p5a-wiring.guard.test.js",
+     "inverses": [
+      "tools/p5a-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
   },
   "portal/branch-lifecycle-core.js": {
    "pins": [],
@@ -3167,24 +3249,38 @@
   "resolve-manual.js": {
    "pins": [
     {
+     "file": "xpizza-functions/brand-server-wiring.guard.test.js",
+     "inverses": [
+      "tools/brand-server-inverse.js",
+      "tools/p5a-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/d12-wiring.guard.test.js",
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/d12-inverse.js",
-      "tools/h0-inverse.js"
+      "tools/h0-inverse.js",
+      "tools/p5a-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/h0-wiring.guard.test.js",
      "inverses": [
       "tools/brand-server-inverse.js",
-      "tools/h0-inverse.js"
+      "tools/h0-inverse.js",
+      "tools/p5a-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/p5a-wiring.guard.test.js",
+     "inverses": [
+      "tools/p5a-inverse.js"
      ]
     }
    ],
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js",
-    "xpizza-functions/brand-server-wiring.guard.test.js",
     "xpizza-functions/materialize-hub.test.js",
     "xpizza-functions/recon-close-fulfilled.test.js",
     "xpizza-functions/rewards-reversal-placement.test.js"

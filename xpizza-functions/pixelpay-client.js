@@ -28,6 +28,13 @@ const ppCrypto = require('./pixelpay');
 const REQUEST_TIMEOUT_MS = 30000;
 
 // The response was lost after PixelPay may have acted: callers treat this exactly like a network/abort reject.
+// What a 2xx must carry to count as an answer for that action: capture / void must say `success` (anulada or
+// declined); a status must name the state (its body is data-only — `success` is not required there).
+function hasActionEvidence(action, json) {
+  if (action === 'status') return !!(json.data && typeof json.data.status === 'string' && json.data.status);
+  return typeof json.success === 'boolean';
+}
+
 function outcomeUnknown(httpStatus, reason, cause) {
   return Object.assign(new Error(`PIXELPAY_OUTCOME_UNKNOWN: ${reason} (HTTP ${httpStatus})`), { code: 'PIXELPAY_OUTCOME_UNKNOWN', httpStatus, reason, cause });
 }
@@ -70,6 +77,7 @@ async function ppPost(action, body, extraHeaders = {}) {
   if (res.ok && !(json && typeof json === 'object' && !Array.isArray(json))) {
     throw outcomeUnknown(res.status, text ? 'body_unparseable' : 'body_empty');
   }
+  if (res.ok && !hasActionEvidence(action, json)) throw outcomeUnknown(res.status, 'envelope_incomplete');
 
   return {
     ok: res.ok && !!(json && json.success),

@@ -16,7 +16,7 @@
 const MR = require('./manual-resolve');
 const C = require('./cancel-order');
 const { reverseEarnForOrder } = require('./rewards-earn');   // Rewards Phase A — earn clawback on cancel (idempotent, fail-open)
-const { reverseRedemptionForOrder } = require('./rewards-reserve');   // Phase B1 — redemption hold reversal on cancel (single helper, idempotent)
+const { reverseRedemptionForOrder, holdRedemptionForManual } = require('./rewards-reserve');   // Phase B1 — redemption hold reversal on cancel (single helper, idempotent)
 const H0 = require('./superseded-capture');   // PLAN-H0 §4 — never auto-close over unresolved money on the order (read-only)
 
 // Idempotent, best-effort task-cancel + driver release (NON-money). onOrderCancelled is the durable backstop.
@@ -196,7 +196,10 @@ async function cancelOrderCore(deps, { orderId, actor, reason, now, claimId }) {
   // sweepStalePending retry (retryRewardLedgerRepair) re-runs both — idempotent, so it heals without double-reversing.
   let earnRes = { ok: false }, redRes = { ok: false };
   try { earnRes = await reverseEarnForOrder(db, { orderId, order, now }); } catch (e) { earnRes = { ok: false }; console.warn(`cancelOrder reverse-earn failed for ${orderId}`, e && e.message); }
-  try { redRes = await reverseRedemptionForOrder(db, { orderId, order, disposition: 'refund', now }); } catch (e) { redRes = { ok: false }; console.warn(`cancelOrder reverse-redemption failed for ${orderId}`, e && e.message); }
+  // An UNCONFIRMED reversal (refund_pending) keeps the hold secured instead of releasing it — the reconciler releases it
+  // when the refund confirms. The secure step alerts on its own failure; it is not journaled as a refund repair.
+  if (fin.payment_status === 'refund_pending') { try { await holdRedemptionForManual(db, { orderId, order, now, alert }); } catch (e) { console.warn(`cancelOrder hold-redemption failed for ${orderId}`, e && e.message); } redRes = { ok: true, skipped: true }; }
+  else try { redRes = await reverseRedemptionForOrder(db, { orderId, order, disposition: 'refund', now }); } catch (e) { redRes = { ok: false }; console.warn(`cancelOrder reverse-redemption failed for ${orderId}`, e && e.message); }
   const earnFailed = !earnRes || earnRes.ok === false;
   const redFailed = !!redRes && redRes.ok === false && redRes.skipped !== true;   // skipped = non-redeemed order (legit no-op), NOT a failure
   if (earnFailed || redFailed) {

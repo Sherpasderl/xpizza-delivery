@@ -14,7 +14,7 @@ const { execFileSync } = require('child_process');
 const { unapplyBrandServerIndex, unapplyBrandServerModule, INDEX_HUNKS, MODULE_HUNKS, FILES } = require('./tools/brand-server-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const idx = require('./tools/dlite-push-inverse').unapplyDlitePushIndex(require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))))))))));   // DISPATCH-LITE PUSH (newer layer) reversed first
+const idx = require('./tools/dlite-push-inverse').unapplyDlitePushIndex(require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/p5a-inverse').unapplyP5aIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))))))))));   // DISPATCH-LITE PUSH (newer layer) reversed first
 const BASE = execFileSync('git', ['show', 'df4a1bdb:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.strictEqual(unapplyBrandServerIndex(idx), BASE, '🔴 index.js minus the brand-server hunks is not df4a1bdb:index.js');
@@ -41,7 +41,7 @@ ok('PROOF (ii): the live index.js differs from df4a1bdb; every hunk is present o
 // (iii) the pinned materialize modules (r3 §E): each restores df4a1bdb byte-for-byte; non-vacuous; inside / duplicated detected
 assert.deepStrictEqual([...FILES].sort(), ['materialize.js', 'pixelpay-confirm.js', 'resolve-manual.js']);
 for (const f of FILES) {
-  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+  const src = require('./tools/p5a-inverse').unapplyP5aModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));   // P5a (newest) reversed first
   const base = execFileSync('git', ['show', `df4a1bdb:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
   assert.notStrictEqual(src, base, `non-vacuity: ${f} carries the slice`);
   assert.strictEqual(unapplyBrandServerModule(f, src), base, `🔴 ${f} minus the brand-server hunks is not df4a1bdb:${f}`);
