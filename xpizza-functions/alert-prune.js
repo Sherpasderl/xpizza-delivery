@@ -41,7 +41,7 @@ function orderStillFlagged(order, alert) {
 // Non-order-scoped alerts (no detail orderId/breaches) are never auto-dismissed here.
 // An extra-payment alert is a MONEY obligation, not an order flag: it stays until the person who reviews / returns the second
 // payment dismisses it, whatever the order's state (on a cancelled order by design).
-const NEVER_AUTO_PRUNE = new Set(['payment_extra_payment_received']);
+const NEVER_AUTO_PRUNE = new Set(['payment_extra_payment_received', 'payment_extra_payment_quarantined']);
 function alertsToPrune(alerts, orders) {
   const prune = [];
   for (const [key, alert] of Object.entries(alerts || {})) {
