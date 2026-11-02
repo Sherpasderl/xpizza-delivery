@@ -1836,6 +1836,7 @@
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
   "pixelpay-charge.js",
+  "pixelpay-client.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
   "portal/branch-lifecycle-core.js",
@@ -3085,6 +3086,10 @@
    "lifts": []
   },
   "pixelpay-charge.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "pixelpay-client.js": {
    "pins": [],
    "lifts": []
   },
