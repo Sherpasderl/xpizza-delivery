@@ -16,6 +16,7 @@ function makeDirectoryDeps({ rtdb, registry, pricingView }) {
     loadSchedule: (rid) => loadSchedule(rtdb, rid),
     readPresentation: async (rid) => (await rtdb.ref(`restaurants/${rid}/presentation`).once('value')).val(),
     pricingView,
+    readStats: async (rid) => (await rtdb.ref(`public_stats/${rid}`).once('value')).val(),   // S-B step 4: the store's published counts
   };
 }
 

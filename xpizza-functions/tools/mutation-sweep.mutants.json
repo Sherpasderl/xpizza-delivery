@@ -32331,5 +32331,65 @@
    "node",
    "support/support-tickets.test.js"
   ]
+ },
+ {
+  "id": "sb-26",
+  "slice": "sb",
+  "label": "S-B step 4: a stats outage makes the directory PARTIAL (de-validates its ETag)",
+  "file": "directory/directory.js",
+  "from": "catch (_) { row.ratings = null; degraded.push('ratings'); }",
+  "to": "catch (_) { row.ratings = null; degraded.push('ratings'); partial = true; }",
+  "command": [
+   "node",
+   "directory/directory-ratings.test.js"
+  ]
+ },
+ {
+  "id": "sb-27",
+  "slice": "sb",
+  "label": "S-B step 4: a stats outage fails the whole entry",
+  "file": "directory/directory.js",
+  "from": "    try { row.ratings = ratingsOf(await deps.readStats(rid)); } catch (_) { row.ratings = null; degraded.push('ratings'); }",
+  "to": "    row.ratings = ratingsOf(await deps.readStats(rid));",
+  "command": [
+   "node",
+   "directory/directory-ratings.test.js"
+  ]
+ },
+ {
+  "id": "sb-28",
+  "slice": "sb",
+  "label": "S-B step 4: the published doc passes through raw (dish_stats / unknown fields surface)",
+  "file": "directory/directory.js",
+  "from": "  if (!doc || typeof doc !== 'object') return null;\n  const out = {};",
+  "to": "  if (!doc || typeof doc !== 'object') return null;\n  const out = { ...doc };",
+  "command": [
+   "node",
+   "directory/directory-ratings.test.js"
+  ]
+ },
+ {
+  "id": "sb-29",
+  "slice": "sb",
+  "label": "S-B step 4: a below-threshold rating surfaces (the directory trusts the doc blindly)",
+  "file": "directory/directory.js",
+  "from": "if (Number.isInteger(doc.rating_count) && doc.rating_count >= 10 &&",
+  "to": "if (Number.isInteger(doc.rating_count) &&",
+  "command": [
+   "node",
+   "directory/directory-ratings.test.js"
+  ]
+ },
+ {
+  "id": "sb-30",
+  "slice": "sb",
+  "label": "S-B step 4: the version is not bumped",
+  "file": "directory/directory.js",
+  "from": "const REPRESENTATION_VERSION = 'directory-2';",
+  "to": "const REPRESENTATION_VERSION = 'directory-1';",
+  "command": [
+   "node",
+   "directory/directory-ratings.test.js"
+  ]
  }
 ]
