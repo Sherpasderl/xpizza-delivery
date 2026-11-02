@@ -74,6 +74,10 @@ const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
 const { rateLimitKey } = require('../order-dedup');
 
 const GOLDEN = path.join(__dirname, '..', 'catalog', 'd4b-charge-trace.golden.json');
+// FINDING-hosted-charge-recover-race: the claim fix's ONE declared I/O delta (catalog/_hosted-claim-delta.js) — the attempt claim is an
+// exclusive `transaction` where the frozen trace has an `update` of the same fields; mapped, counted, pinned (non-vacuous).
+const { preExclusiveClaimOps } = require('../catalog/_hosted-claim-delta');
+const CLAIM_DELTA = { n: 0 };
 const CAPTURE = process.env.D4B_TRACE_CAPTURE || '';
 let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('d4b-charge-trace(emulator): FAILED — exited without completing'); process.exitCode = 1; } });
@@ -278,10 +282,11 @@ async function traced(rid, oid, uid, phone) {
       // codex r2 P2: every d4b case is a charge that persists its own content → DECLARED bound (never inferred from the trace)
       const s3 = (ops, content, label) => SD.compareShape(ops, [], { mode: 'bound', content, route: 'chargeOnlineOrder', label }).actual;
       assert.ok(CONTENT[rid][k], `${rid} ${k}: premise — the request persisted its order (the content-key delta is content-bound)`);
-      assert.deepStrictEqual(s3(rest.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), CONTENT[rid][k], `${rid} ${k}`), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen 717f97e trace`);
+      assert.deepStrictEqual(s3(preExclusiveClaimOps(rest.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), CLAIM_DELTA), CONTENT[rid][k], `${rid} ${k}`), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen 717f97e trace`);
       if (JSON.stringify(rest.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))) !== JSON.stringify(golden[rid][k])) S3_DELTA_SEEN += 1;
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to 717f97e (+${floorCalls.length} allowlisted floor get)`);
     }
+    assert.ok(CLAIM_DELTA.n > 0, `non-vacuity: the declared exclusive-claim delta was applied (${CLAIM_DELTA.n} mapping(s))`);
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());
     assert.ok(S3_DELTA_SEEN > 0, 'non-vacuity: WITHOUT the §3 declared delta at least one case differs from the golden (the content key really changed)');
     { // sensitivity: a content binding of DIFFERENT content does not map — the comparison stays RED
