@@ -30,7 +30,7 @@ const MODULE_HUNKS = [
   },
   {
     "file": "materialize.js",
-    "now": "      ...(order.recipe_format !== undefined ? { recipe_format: order.recipe_format } : {}),\n      // S-D: the reorder price snapshot (captured at chargeOnlineOrder from the committed prices) travels with its recipe, ONLY IF\n      // PRESENT and VERBATIM — never re-priced here; a legacy pending order without one keeps today's entry byte-identical.\n      ...(order.reorder_price_snapshot !== undefined ? { price_snapshot: order.reorder_price_snapshot } : {}),\n",
+    "now": "      ...(order.recipe_format !== undefined ? { recipe_format: order.recipe_format } : {}),\n      // S-D: the reorder price snapshot (captured at the online charge from the committed prices) travels with its recipe, ONLY IF\n      // PRESENT and VERBATIM — never re-priced here; a legacy pending order without one keeps today's entry byte-identical.\n      ...(order.reorder_price_snapshot !== undefined ? { price_snapshot: order.reorder_price_snapshot } : {}),\n",
     "was": "      ...(order.recipe_format !== undefined ? { recipe_format: order.recipe_format } : {}),\n"
   },
   {

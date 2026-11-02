@@ -2,7 +2,7 @@
 // S-F (PLAN §S-F; NOTE-S-F-support-tickets-build) — createSupportTicket: the customer's «Ayuda» ticket for an order it OWNS.
 //   POST { order_id, reason: missing|wrong|late|other, text?, channel: inapp|whatsapp[, tracking_token] }
 //   proof: member — header x-firebase-id-token → rate-order.customerUidOf (the ONE customer predicate: verified, not tombstoned, never
-//          a handheld) ∧ orders/{id}.customer_uid === uid;  guest — body.tracking_token === orders/{id}.tracking_token (the claimOrder
+//          a handheld) ∧ orders/{id}.customer_uid === uid;  guest — body.tracking_token === orders/{id}.tracking_token (the guest-claim
 //          capability, bound to exactly one order), compared in CONSTANT time. Any failure ⇒ ONE generic 403, nothing written.
 //   → 200 { ok, status:'received' } | 400 bad_request | 403 not_allowed | 405 | 429 rate_limited
 // support_tickets/{id} = { order_id, restaurant_id, reason, text|null, channel, created_at, status:'received', via } — NO identity (Central

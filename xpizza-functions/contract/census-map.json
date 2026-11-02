@@ -303,6 +303,7 @@
   "driverpay": "DRIVER PAY-RATE reader (pay-rate.js, PROPOSAL-driver-pay-rate-reader r2) — reads a delivery's delivered_at ONLY to pick the platform rate in effect (platform_rates/driver_per_delivery, admin-written) and sums driver earnings; never a customer amount, an order status or a selector of an order write. PROPOSED by 2e for advisor review; the ledger slice re-reviews when it reads it",
   "driverreport": "DRIVER F «Problema con este pedido» alert WRITER (alertOnDriverProblem) — reads exactly two order leaves (display_number, restaurant_id) only to LABEL an internal dispatcher_alerts row for the Torre; no customer surface, never a writer of /orders or /tasks",
   "ratings": "S5 RATINGS WRITER (Customer App): reads ONE order (orders/{id} customer_uid / status / restaurant_id) for the VERIFIED signed-in customer who placed it (+ its deleted_uids tombstone) to decide whether it may be rated, and writes ONLY order_ratings/{order_id} (create-if-absent, no customer identity) — never an order field; `status` in its handler is the Express HTTP status; covered by ratings/rating-core.test.js + test/s5-ratings.emulator.test.js S-A1 (ratings_v2): + the fulfilment stamp's orders/{id}/status + restaurant_id (the status trigger) and the member's OWN user_orders/{uid}/{id}.items recipe keys (dish-vote validation through the one resolver) — never an amount or a collector.",
+  "support": "S-F support tickets (NOTE-S-F-support-tickets-build): the createSupportTicket validator + owner check + ticket / alert writer. It reads the order's customer_uid / tracking_token (ownership) and restaurant_id (copied onto the ticket), never as a displayed order fact; the ticket and its dispatcher alert carry order_id + reason only",
   "delivery_pricing": "ENVÍO (Customer App S3a): derives the delivery fee + free-delivery promo for ONE request from Sherpa config (platform_config/delivery_pricing), the restaurant hub (identity hub_lat/hub_lng) and the request pin (lat/lng + pin_confirmed); on the card path ALSO reads the stored order (orders/{id} order_type / lat / lng / payment_status / active_attempt_id + its payment_attempts state) to keep a live checkout's stored economics or refuse a changed context; writes NOTHING itself — its result reaches the order only through the existing atomic order write (delivery_cents / promo_discount_cents / delivery_snapshot) and the confirmed-net gate; a refusal is an HTTP status on a refusal object, never an order status; covered by delivery/delivery-pricing.test.js + test/s3a-envio.emulator.test.js",
   "driver_pay": "driver payable LEDGER writer (Customer App S8): reads a delivered order's protected attribution (delivered_by_driver_uid / delivered_at / order_type) through the bounded delivered_at range query and writes ONLY driver_ledger_weeks/{week} (one create-if-absent node per closed week, then .paid) — never an order field, never cash-to-remit; covered by test/driver-ledger.emulator.test.js"
  },
@@ -740,6 +741,19 @@
   "ratings/rating-v2.js#parseRequest": "ratings",
   "ratings/rating-v2.js#freshNode": "ratings",
   "ratings/rating-v2.js#normalize": "ratings",
+  "platform-config/schema.js#checkRewards": "infra",
+  "platform-config/schema.js#exact": "infra",
+  "ratings/aggregate.js#bucketFromOrders": "ratings",
+  "ratings/aggregate.js#publish": "ratings",
+  "ratings/merchant-comments.js#merchantRatingCommentsCore": "ratings",
+  "ratings/merchant-comments.js#getMerchantRatingComments": "ratings",
+  "ratings/my-rating.js#myRatingCore": "ratings",
+  "ratings/my-rating.js#getMyRating": "ratings",
+  "ratings/rating-v2.js#indexNode": "ratings",
+  "reorder-normalize.js#normalizeReorderItemsWithPrices": "intake",
+  "support/support-tickets.js#parse": "support",
+  "support/support-tickets.js#createSupportTicketCore": "support",
+  "support/support-tickets.js#createSupportTicket": "support",
   "ratings/rating-v2.js#v1Updater": "ratings",
   "ratings/rating-v2.js#fulfilmentUpdater": "ratings",
   "delivery/delivery-pricing.js#quoteDelivery": "delivery_pricing",
@@ -1362,6 +1376,14 @@
    "class": "pointer",
    "reason": "the reorder RECIPE carried on the pending order to materialize, which copies it into user_orders/{uid}.items at confirm (asserted S12 / S12b) — never read as an order fact"
   },
+  "reorder_price_snapshot": {
+   "class": "pointer",
+   "reason": "S-D: the reorder price snapshot carried on the online pending order to materialize, which copies it VERBATIM into user_orders/{uid}.price_snapshot (asserted reorder-price-snapshot.test) — never read as an order fact, never re-priced"
+  },
+  "dish_qty": {
+   "class": "pointer",
+   "reason": "S-B ruling F1: the order's canonical dish snapshot {canonicalDishId: qty}, stamped at intake (cash held / immediate / the online pending record) through the ONE identity resolver — the aggregate producer's input (a ratings/aggregate-producer leaf read), never displayed or charged as an order fact"
+  },
   "resolution": {
    "class": "claim",
    "reason": "atomic-claim / resolution bookkeeping — state-machine internals (F-PAYLIFE derives from status + payment_status)"
@@ -1640,6 +1662,60 @@
    "fields": [],
    "reason": "BUILD-stacked-seq-server r5 T5: sweepPendingOrders's finalize merges stackCopies(decision, uid) — its keys are always `tasks/<oid>_delivery/stack_plus_min` for the two stack members (sequencing/plan-stack.js stackCopies is the only producer), never an /orders path, so no order field is written. A new producer or a new key shape makes this resolution stale and the census RED until reviewed",
    "count": 1
+  },
+  {
+   "file": "xpizza-functions/ratings/aggregate.js",
+   "fn": "publish",
+   "how": "unmodelled-member-base",
+   "detail": "ds(id).orders_30d",
+   "fields": [],
+   "reason": "S-B: an IN-MEMORY aggregate object (the public_stats doc / the summed 30-90-day bucket accumulator `acc` and its `orders` COUNT) — pure computation in ratings/aggregate.js, never an /orders path; the producer writes only stats_buckets/{rid}/{day} and public_stats/{rid}",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ratings/aggregate.js",
+   "fn": "publish>anon",
+   "how": "unmodelled-member-base",
+   "detail": "ds(id).top_rank",
+   "fields": [],
+   "reason": "S-B: an IN-MEMORY aggregate object (the public_stats doc / the summed 30-90-day bucket accumulator `acc` and its `orders` COUNT) — pure computation in ratings/aggregate.js, never an /orders path; the producer writes only stats_buckets/{rid}/{day} and public_stats/{rid}",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ratings/aggregate.js",
+   "fn": "publish",
+   "how": "unmodelled-member-base",
+   "detail": "ds(id).pairs",
+   "fields": [],
+   "reason": "S-B: an IN-MEMORY aggregate object (the public_stats doc / the summed 30-90-day bucket accumulator `acc` and its `orders` COUNT) — pure computation in ratings/aggregate.js, never an /orders path; the producer writes only stats_buckets/{rid}/{day} and public_stats/{rid}",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ratings/aggregate.js",
+   "fn": "sumBuckets",
+   "how": "write-above-orders",
+   "detail": "orders: acc.orders += Number.isInteger(b.orders) ? b.orders : 0 — unmodelled-assign-+=",
+   "fields": [],
+   "reason": "S-B: an IN-MEMORY aggregate object (the public_stats doc / the summed 30-90-day bucket accumulator `acc` and its `orders` COUNT) — pure computation in ratings/aggregate.js, never an /orders path; the producer writes only stats_buckets/{rid}/{day} and public_stats/{rid}",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ratings/aggregate.js",
+   "fn": "sumBuckets",
+   "how": "computed-key-at-root",
+   "detail": "f",
+   "fields": [],
+   "reason": "S-B: an IN-MEMORY aggregate object (the public_stats doc / the summed 30-90-day bucket accumulator `acc` and its `orders` COUNT) — pure computation in ratings/aggregate.js, never an /orders path; the producer writes only stats_buckets/{rid}/{day} and public_stats/{rid}",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ratings/rating-v2.js",
+   "fn": "indexNode",
+   "how": "dynamic-root-path",
+   "detail": "*/*/*",
+   "fields": [],
+   "reason": "S-A(d): `${INDEX_ROOT}/${rid}/${key}` with INDEX_ROOT = 'rating_index' — the server-only merchant comment index (value = an order id), never an /orders path",
+   "count": 1
   }
  ],
  "moneyPathNonFactReads": {
@@ -1825,6 +1901,7 @@
   "razon_social@xpizza-functions/resolve-manual.js#resolveManualReconciliationCore": "customer fiscal identity printed on the factura cliente line — not an amount, tax or eligibility",
   "ready_at@xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard": "a lifecycle timestamp projected onto the KDS card for display — not an amount or a money selector",
   "recipe_format@xpizza-functions/materialize.js#buildMaterializeUpdates": "recipe snapshot format flag for Reordenar — RECIPE plumbing asserted in S12 (P2), not money",
+  "reorder_price_snapshot@xpizza-functions/materialize.js#buildMaterializeUpdates": "S-D: the reorder price snapshot copied VERBATIM into the history entry's price_snapshot (only if present) — RECIPE display data for the client's per-line delta, asserted in reorder-price-snapshot.test (sd-1 / sd-13); never a charged amount, a collection or an order total",
   "recipient_name@xpizza-functions/index.js#autoAssignOnOrderCreate": "the task's customer label for the driver push — display only",
   "recipient_name@xpizza-functions/index.js#monitorAssignmentTimeout": "the task's customer label for the driver push — display only",
   "recipient_name@xpizza-functions/index.js#releaseAndAlert": "the customer label for the dispatcher SIN ASIGNAR alert body — display only",
