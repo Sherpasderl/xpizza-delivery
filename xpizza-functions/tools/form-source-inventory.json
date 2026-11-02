@@ -1839,6 +1839,7 @@
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
+  "pixelpay-hosted-webhook.js",
   "portal/branch-lifecycle-core.js",
   "portal/branch-phone.js",
   "portal/branch-read-model.js",
@@ -1942,7 +1943,9 @@
   },
   "alert-prune.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/hostedrace-wiring.guard.test.js"
+   ]
   },
   "arrived-notify.js": {
    "pins": [],
@@ -3115,6 +3118,20 @@
     "xpizza-functions/addproduct-b-wiring.guard.test.js",
     "xpizza-functions/addproduct-wiring.guard.test.js",
     "xpizza-functions/extras-wiring.guard.test.js"
+   ]
+  },
+  "pixelpay-hosted-webhook.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/h0-wiring.guard.test.js",
+     "inverses": [
+      "tools/h0-inverse.js",
+      "tools/hostedrace-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": [
+    "xpizza-functions/hostedrace-wiring.guard.test.js"
    ]
   },
   "portal/branch-lifecycle-core.js": {
