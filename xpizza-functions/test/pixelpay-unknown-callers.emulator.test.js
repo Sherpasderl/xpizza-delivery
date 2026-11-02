@@ -26,12 +26,14 @@ if (!process.env.FIREBASE_DATABASE_EMULATOR_HOST) {
 // With no injection armed the wrapper is the real function, byte-for-byte behaviour.
 const inject = { reverseRedemption: 0, reverseEarn: 0, noteRefundRetry: 0 };
 {
-  const CO = require('../cancel-order-core'); const realNote = CO.noteRefundRetry;
-  CO.noteRefundRetry = async (...a) => { if (inject.noteRefundRetry > 0) { inject.noteRefundRetry--; throw new Error('injected review-marker write failure'); } return typeof realNote === 'function' ? realNote(...a) : undefined; };
   const RR = require('../rewards-reserve'); const realRev = RR.reverseRedemptionForOrder;
   RR.reverseRedemptionForOrder = async (...a) => { if (inject.reverseRedemption > 0) { inject.reverseRedemption--; return { ok: false, error: true }; } return realRev(...a); };
   const RE = require('../rewards-earn'); const realEarn = RE.reverseEarnForOrder;
   RE.reverseEarnForOrder = async (...a) => { if (inject.reverseEarn > 0) { inject.reverseEarn--; return { ok: false, error: true }; } return realEarn(...a); };
+  // cancel-order-core DESTRUCTURES rewards-earn / rewards-reserve at load, so it is required only AFTER they are patched
+  // (requiring it first made the reverseEarn injection inert from d5e45f87 on — the earn failure was never injected).
+  const CO = require('../cancel-order-core'); const realNote = CO.noteRefundRetry;
+  CO.noteRefundRetry = async (...a) => { if (inject.noteRefundRetry > 0) { inject.noteRefundRetry--; throw new Error('injected review-marker write failure'); } return typeof realNote === 'function' ? realNote(...a) : undefined; };
 }
 const app = require('../index.js');            // initializes admin against the emulator + registers the exports
 const { getDatabase } = require('firebase-admin/database');
