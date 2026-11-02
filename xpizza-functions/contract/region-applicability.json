@@ -10761,14 +10761,14 @@
     "site": "try { await sendPaidAfterCloseRefund(db, { orderId, order: o }); notifyRecovered++; } catch (_) {}",
     "siteSha": "89061984e006b424b14d86cb5113e77b3e903f44c68f838d2ec3e8cfb50b2800",
     "scope": "xpizza-functions/index.js#refundReconciler",
-    "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+    "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
     }
    ],
    "cases": {
@@ -10799,20 +10799,20 @@
     "site": "try { await sendPaidAfterCloseRefund(db, { orderId, order: o }); } catch (_) {}",
     "siteSha": "b380c4b5d362470c21afb81b9dc9ed29173bcf18033e59bf198a790a98ed025a",
     "scope": "xpizza-functions/index.js#refundReconciler",
-    "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+    "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (!isPac) continue;",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (dec.action === 'finalize_refunded') {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
     }
    ],
    "cases": {
@@ -10919,14 +10919,14 @@
     "site": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
     "siteSha": "cebf5cdd793a080b49b30e8c96304fa4acf25d87a8aed2618c4304063c654e83",
     "scope": "xpizza-functions/index.js#refundReconciler",
-    "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+    "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
     }
    ],
    "cases": {
@@ -11699,13 +11699,13 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (dec.action === 'finalize_refunded') {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
     },
     {
      "kind": "S",
@@ -11864,13 +11864,13 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (dec.action === 'finalize_refunded') {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
     },
     {
      "kind": "S",
