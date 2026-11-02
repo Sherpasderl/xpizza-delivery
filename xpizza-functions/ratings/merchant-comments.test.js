@@ -183,11 +183,6 @@ const FORBIDDEN = /order|XPZ|LMS|owner|uid|delivery|token|dish|rated|edited|fulf
       perCall.push(rs.filter((x) => x.path.startsWith('ratings_v2/')).length);
       assert.ok(r.body.comments.length <= MC.PAGE, 'at most PAGE comments');
       seen.push(...r.body.comments.map((c) => c.comment));
-      if (r.body.cursor) {
-        const plain = Buffer.from(r.body.cursor, 'base64url').toString('latin1');
-        assert.ok(!plain.includes('XPZ-') && !plain.includes('"k"') && !/\d{13}-/.test(plain), '🔴 the cursor reveals no order id / index key (sealed)');
-        assert.ok(!r.body.cursor.includes('XPZ'));
-      }
       cursor = r.body.cursor;
       assert.ok(calls < 40, '🔴 the cursor must terminate');
     } while (cursor);
@@ -227,6 +222,40 @@ const FORBIDDEN = /order|XPZ|LMS|owner|uid|delivery|token|dish|rated|edited|fulf
     assert.ok(V2.INDEX_KEY_RE.test(key) && key.length === 13 + 1 + 'XPZ-ix'.length);
   }
   ok('the index writer: the fulfilment stamp indexes from the COMMITTED node; a retry (kept) heals a lost entry under the ORIGINAL key; idempotent; a deleted node is never indexed');
+
+  // ── 6. Codex run 3: the cursor, DETERMINISTICALLY — sealed (not an encoding), bound, tamper-evident, and sized for the largest payload ──
+  {
+    const { deriveKey, seal, open } = MC._cursor;
+    const key = deriveKey(process.env.OTP_SALT), other = deriveKey('another-salt-'.padEnd(40, 'z'));
+    const k = `${'1'.repeat(13)}-XPZ-00042`;
+    const c = seal(key, { v: 1, rid: 'x_pizza', uid: 'ownerX', k });
+    assert.strictEqual(open(key, c, 'x_pizza', 'ownerX'), k, 'round-trip');
+    const raw = Buffer.from(c, 'base64url');
+    const plainBytes = Buffer.from(JSON.stringify({ v: 1, rid: 'x_pizza', uid: 'ownerX', k }), 'utf8');
+    assert.notDeepStrictEqual(raw.subarray(28), plainBytes, '🔴 the body is CIPHERTEXT, not the plaintext encoding');
+    assert.notStrictEqual(c, plainBytes.toString('base64url')); assert.ok(raw.subarray(28).indexOf(Buffer.from('XPZ-00042')) < 0, 'the order id bytes do not appear in clear');
+    for (const [why, args] of [['the wrong key', [other, c, 'x_pizza', 'ownerX']], ['the wrong rid', [key, c, 'la_musa', 'ownerX']], ['the wrong uid', [key, c, 'x_pizza', 'mgrX']]])
+      assert.strictEqual(open(...args), null, `🔴 ${why} ⇒ refused`);
+    for (let i = 0; i < raw.length; i += 7) { const t = Buffer.from(raw); t[i] ^= 1; assert.strictEqual(open(key, t.toString('base64url'), 'x_pizza', 'ownerX'), null, `🔴 a tampered byte at ${i} ⇒ refused`); }
+    assert.notStrictEqual(seal(key, { v: 1, rid: 'x_pizza', uid: 'ownerX', k }), c, 'a fresh IV each seal');
+    // the BOUNDARY: the longest rid, a 128-char uid (worst-case JSON escaping too) and a 64-char order id ⇒ accepted by CURSOR_RE and round-trips
+    const longK = `${'9'.repeat(13)}-${'O'.repeat(64)}`;
+    for (const uid of ['U'.repeat(128), '\u0001'.repeat(128)]) {
+      const big = seal(key, { v: 1, rid: 'r'.repeat(40), uid, k: longK });
+      assert.ok(MC.CURSOR_RE.test(big), `🔴 the largest cursor (${big.length} chars) is accepted (bound ${MC.MAX_CURSOR_CHARS})`);
+      assert.strictEqual(open(key, big, 'r'.repeat(40), uid), longK, 'and round-trips');
+    }
+    assert.ok(!MC.CURSOR_RE.test('A'.repeat(MC.MAX_CURSOR_CHARS + 1)), 'one char beyond the derived bound is refused');
+    // and through the HANDLER: a 128-char member uid gets page 2 (Codex: page 2 returned 400 before)
+    const UIDL = 'Q'.repeat(128);
+    const db = fakeDb({ ...SEED, brand_members: { ...SEED.brand_members, x_pizza: { owners: { ownerX: g, [UIDL]: g }, managers: SEED.brand_members.x_pizza.managers } } });
+    for (let i = 0; i < 70; i++) db.set(`rating_index/x_pizza/${V2.indexKey(50000 - i, `XPZ-${'z'.repeat(50)}${String(i).padStart(4, '0')}`)}`, `XPZ-${'z'.repeat(50)}${String(i).padStart(4, '0')}`);
+    const p1 = await call(handler(db), { token: UIDL, query: { rid: 'x_pizza' } });
+    assert.strictEqual(p1.code, 200, JSON.stringify(p1.body)); assert.ok(p1.body.cursor, 'premise: a continuation');
+    const p2 = await call(handler(db), { token: UIDL, query: { rid: 'x_pizza', cursor: p1.body.cursor } });
+    assert.strictEqual(p2.code, 200, `🔴 page 2 for a 128-char uid + long order ids ⇒ ${p2.code} ${JSON.stringify(p2.body)}`);
+  }
+  ok('Codex run 3: the cursor — round-trips; its body is ciphertext (≠ the plaintext encoding, no order-id bytes in clear); the wrong key / rid / uid ⇒ refused; EVERY tampered byte position ⇒ refused; a fresh IV per seal; the length bound is DERIVED from the largest payload (128-char uid at worst-case escaping, 40-char rid, 64-char order id) and page 2 works through the handler for such a caller');
 
   FINISHED = true;
   console.log(`merchant-comments: OK (${n})`);

@@ -26,7 +26,12 @@ const CONCURRENCY = 8;     // authoritative node reads in flight
 // an EXPLICIT limiter policy — checkRateLimit requires it (without one it throws inside its transaction and fails OPEN; Codex S-F r1 #1)
 const RATE = Object.freeze({ windowMs: 60 * 1000, max: 30 });
 const RID_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;   // platform-manifest RID_RE
-const CURSOR_RE = /^[A-Za-z0-9_-]{40,400}$/;
+// the cursor's length bound is DERIVED from the largest payload it can seal (Codex run 3 #1: a fixed 400 refused a valid 408-char
+// cursor): the longest rid (40), the longest caller uid the access layer admits (128 chars, membership isPathUid) at WORST-CASE JSON
+// escaping (6 bytes per char — a control char as \u00XX), and the longest index key (13 + 1 + 64) → iv 12 + tag 16 + ciphertext.
+const MAX_SEALED_BYTES = 12 + 16 + Buffer.byteLength(JSON.stringify({ v: 1, rid: 'r'.repeat(40), uid: '\u0001'.repeat(128), k: `${'9'.repeat(13)}-${'O'.repeat(64)}` }), 'utf8');
+const MAX_CURSOR_CHARS = Math.ceil((MAX_SEALED_BYTES * 4) / 3);
+const CURSOR_RE = new RegExp(`^[A-Za-z0-9_-]{40,${MAX_CURSOR_CHARS}}$`);
 const HKDF_INFO = 'sherpa/rating-comments-cursor/v1';
 const AAD = Buffer.from('rating-comments-cursor/v1');
 
@@ -120,4 +125,5 @@ function makeMerchantRatingComments({ getDatabase, getAuth, checkRateLimit, salt
   };
 }
 
-module.exports = { makeMerchantRatingComments, merchantRatingCommentsCore, CANDIDATES, PAGE, CONCURRENCY, CAP, RATE };
+module.exports = { makeMerchantRatingComments, merchantRatingCommentsCore, CANDIDATES, PAGE, CONCURRENCY, CAP, RATE, MAX_CURSOR_CHARS, CURSOR_RE,
+  _cursor: { deriveKey, seal, open } };   // the sealing primitives, exported for the deterministic cursor cells (no runtime caller)

@@ -32631,5 +32631,17 @@
    "node",
    "ratings/merchant-comments.test.js"
   ]
+ },
+ {
+  "id": "sad-15",
+  "slice": "sad",
+  "label": "S-A(d) run 3: a FIXED cursor bound (400) refuses a valid long cursor ⇒ page 2 400s",
+  "file": "ratings/merchant-comments.js",
+  "from": "const CURSOR_RE = new RegExp(`^[A-Za-z0-9_-]{40,${MAX_CURSOR_CHARS}}$`);",
+  "to": "const CURSOR_RE = /^[A-Za-z0-9_-]{40,400}$/;",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
  }
 ]
