@@ -19,7 +19,7 @@ const built = (spec, { usable, versionId = 'v1', seq = 3 } = {}) => ({ ok: true,
 const builder = (byRid) => async ({ rid }) => (typeof byRid[rid] === 'function' ? byRid[rid]() : byRid[rid]);
 
 let pass = 0; const fails = [];
-async function cell(name, fn) { try { await fn(); console.log(`  ✓ ${name}`); pass++; } catch (e) { fails.push(name); console.error(`  ✗ ${String((e && e.message) || e).split('\n')[0]}`); } }
+async function cell(name, fn) { try { await fn(); console.log(`  ✓ ${name}`); pass++; } catch (e) { fails.push(name); console.error(`  ✗ ${name}: ${String((e && e.message) || e).split('\n')[0]}`); } }
 
 (async () => {
   // before the cut-over: the dark restaurant is uncertified — the capture records it anyway (that is the point)
@@ -47,6 +47,12 @@ async function cell(name, fn) { try { await fn(); console.log(`  ✓ ${name}`); 
     const L = 'COV-FAIL-NOT-CERTIFIED';
     const r = row(await against({ tb_dark: built(CAT, { usable: false }) }));
     assert.ok(r.pass === false && r.covered === 0 && r.eligible === false, `${L}: no ids → FAIL (got ${JSON.stringify(r)})`);
+  });
+  await cell('COV-FAIL-INELIGIBLE-EVEN-WITH-IDS', async () => {
+    const L = 'COV-FAIL-INELIGIBLE-EVEN-WITH-IDS';
+    const b = built(CAT, { usable: true }); b.usableAsIdentity = false;   // ids present but the judgement says not usable
+    const r = row(await against({ tb_dark: b }));
+    assert.ok(r.pass === false && r.eligible === false, `${L}: eligibility is required on its own, not inferred from the ids (got ${JSON.stringify(r)})`);
   });
   await cell('COV-FAIL-OBJECT-MISSING', async () => {
     const L = 'COV-FAIL-OBJECT-MISSING';
