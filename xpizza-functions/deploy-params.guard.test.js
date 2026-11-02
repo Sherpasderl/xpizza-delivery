@@ -20,7 +20,9 @@ const PROBE = "process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-
 function declared(preload = []) {
   const env = { ...process.env }; delete env.NODE_OPTIONS;
   for (const k of Object.keys(env)) if (/_EMULATOR_HOST$/.test(k)) delete env[k];   // a plain offline load, as cors-preflight.test.js does
-  const r = spawnSync(process.execPath, [...preload.flatMap((f) => ['-r', f]), '-e', PROBE], { cwd: __dirname, env, encoding: 'utf8', timeout: 60000 });
+  // tools/egress-guard.js FIRST: loopback-only, so loading index.js here can never reach a real endpoint (endpoint census)
+  const r = spawnSync(process.execPath, ['-r', path.join(__dirname, 'tools', 'egress-guard.js'), ...preload.flatMap((f) => ['-r', f]), '-e', PROBE], { cwd: __dirname, env, encoding: 'utf8', timeout: 60000 });
+  assert.ok(!/r3-egress: .*REFUSED/.test(r.stderr || ''), `DEPLOY-PARAMS-NO-EGRESS loading index.js attempted a non-loopback connection\n${(r.stderr || '').slice(-800)}`);
   const line = (r.stdout || '').split('\n').find((l) => l.startsWith('PARAMS '));
   assert.ok(r.status === 0 && line, `premise — index.js loads in a fresh child and the registry is read (status ${r.status})\n${(r.stderr || '').slice(-800)}`);
   return JSON.parse(line.slice('PARAMS '.length));
