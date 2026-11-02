@@ -123,7 +123,8 @@ test('three states — what a row / the drawer shows, from the draft map, the lo
 
 test('errors map by `error` to the approved copy; Reintentar redoes E-P2 only when the bytes are stored and the failure was transient', () => {
   for (const c of ['too_large', 'bad_type', 'too_small']) assert.deepEqual(L.errorCopy(c), { kind: 'invalid', text: L.COPY.invalid[c] });
-  for (const c of ['unavailable', 'upload_missing', 'in_progress', 'rate_limited', 'bad_crop', 'op_conflict', 'photos_disabled', 'not_authorized', null, 'something_new']) {
+  // rate_limited left this list for P5-L (owner-approved ratelimit mockup, 2026-11-01) — pinned by its own test below
+  for (const c of ['unavailable', 'upload_missing', 'in_progress', 'bad_crop', 'op_conflict', 'photos_disabled', 'not_authorized', null, 'something_new']) {
     assert.deepEqual(L.errorCopy(c), { kind: 'failed', text: 'No se pudo subir la foto.' }, String(c));
   }
   assert.equal(L.retryPlan({ uploaded: false, code: 'unavailable' }), 'restart', 'nothing stored: a new upload (new op_id)');

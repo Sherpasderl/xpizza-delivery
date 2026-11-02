@@ -1105,6 +1105,9 @@
   .phferr svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;flex:none;margin-top:1px}
   .pherr{display:flex;align-items:center;justify-content:space-between;gap:12px}
   .pherr.phright{justify-content:flex-end;margin-top:-2px}
+  /* P5-L (owner-approved MOCKUP-portal-dish-photo-ratelimit.html): the upload limit — neutral, a clock, no «Reintentar» */
+  .phwait{display:flex;align-items:flex-start;gap:6px;font-size:12.5px;line-height:1.45;color:var(--mute);margin-top:8px}
+  .phwait svg{width:14px;height:14px;flex:none;margin-top:1px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
   .phrm{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--mute)}
   .btn.ptext.sm{padding:6px 8px}
   .phpval{display:flex;align-items:center;gap:0}
