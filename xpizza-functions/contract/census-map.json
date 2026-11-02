@@ -743,6 +743,8 @@
   "ratings/rating-v2.js#normalize": "ratings",
   "platform-config/schema.js#checkRewards": "infra",
   "platform-config/schema.js#exact": "infra",
+  "platform-config/rtdb-encoding.js#encodeFields": "infra",
+  "platform-config/rtdb-encoding.js#decodeFields": "infra",
   "ratings/aggregate.js#bucketFromOrders": "ratings",
   "ratings/aggregate.js#publish": "ratings",
   "ratings/merchant-comments.js#merchantRatingCommentsCore": "ratings",
