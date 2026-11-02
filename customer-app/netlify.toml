@@ -20,3 +20,10 @@
   for = "/fonts/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+# C-6a (PLAN-capp-website-and-leader-features §C-6; D-3 r3 DECIDED): NOT indexed until Phase S (server HTML, sitemap, the slug layer)
+# opens the site to crawlers — the header AND shell.html's <meta name="robots" content="noindex"> (customer-app/capp-seo.test.mjs)
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Robots-Tag = "noindex"

@@ -450,7 +450,22 @@
         return CappRoutes.format({ name: S.tab === 'search' ? 'search' : S.tab === 'account' ? 'account' : S.tab === 'orders' ? 'orders' : 'home' });
       } catch (_) { return null; }   // an id outside the ONE domain is never written: the URL stays as it is
     }
-    function reflect() { if (routing && booted && !pendingRoute) replacePath(pathNow()); }   // never before the boot's hydration decision
+    function reflect() { setTitle(); if (routing && booted && !pendingRoute) replacePath(pathNow()); }   // never before the boot's hydration decision
+    // C-6a (D-3 r3 §0): the tab title follows the screen, with the URL — «Thing — what it is · Sherpa» (CappHome.titleOf, the copy)
+    function titleNow() {
+      const platform = dir.view().platform;
+      if (S.store) {
+        const row = dir.view().rows.find((r) => r.rid === S.store.rid), st = storeRoute || {};
+        let dish = null; if (st.step === 'plato' && st.dish) { try { const d = S.store.ui.menu.dish(st.dish); dish = d ? d.name : null; } catch (_) { dish = null; } }
+        return CappHome.titleOf({ screen: 'store', step: st.step, store: (row && row.entry && row.entry.name) || '', dish, platform });
+      }
+      if (S.tab === 'order' && S.order) return CappHome.titleOf({ screen: 'order', status: S.order.status });
+      if (S.tab === 'orders' || S.tab === 'receipt') return CappHome.titleOf({ screen: 'orders' });
+      if (S.tab === 'search') return CappHome.titleOf({ screen: 'search', q: S.q || '' });
+      if (S.tab === 'account') return CappHome.titleOf({ screen: 'account' });
+      return CappHome.titleOf({ screen: 'home', platform });
+    }
+    function setTitle() { try { const t = titleNow(); if (doc && typeof t === 'string' && doc.title !== t) doc.title = t; } catch (_) {} }
     // a user navigation cancels BOTH held intents — the cold link (pendingRoute) and the deferred /pago (awaitOrderRoute, Codex Pedidos r3)
     function cancelRoute() { if (pendingRoute || awaitOrderRoute) { pendingRoute = null; awaitOrderRoute = null; navGen++; } }
     function subscribeMenu(rid) { if (!subscribed.has(rid)) { subscribed.add(rid); cache.seed(rid, readJ(MENU_KEY(rid))); cache.subscribe(rid, () => { schedule(); checkHeld(); tryRoute(); }); } }
@@ -627,7 +642,7 @@
         return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid };
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
-      return { ...updateVm(), orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
+      return { ...updateVm(), legal: legalVm(), orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
         schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }, locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
@@ -656,6 +671,7 @@
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
       reflect();
+      if (S.tab === 'home' && !S.store && !S.neutral) askLegal();
     }
     // ── «PEDIDO RECIBIDO» (v6 orderHtml via CappOrder; owner 2026-11-01: build what v6 draws) ──
     // A placed order leaves «Enviando» for this SHELL screen: the store mount is left (Inicio under it, so back ⇒ Inicio), the order
@@ -828,6 +844,22 @@
     // screen draws AT ONCE from the row (store, status, items_text, total); the receipt read (getMyOrders ?order_id, NOTE-getMyOrders-
     // receipt) fills the lines, the envío / descuento / propina, the tender and the address. Bound to the identity like the history
     // read; kept per identity for an instant reopen. A refused / failed read leaves the row's screen (no new copy)
+    // C-6a: the footer's Términos / Privacidad — the platform's legal URLs (getSignupConfig, the sign-in sheet's own source), kept on the
+    // device so the footer draws them at once; asked ONCE per session, at idle, only while the desktop Inicio shows (no other cost)
+    const LEGAL_KEY = 'capp:legal';
+    let legalAsked = false;
+    const legalVm = () => { const l = readJ(LEGAL_KEY); return l && typeof l === 'object' ? { terms: l.terms, privacy: l.privacy } : null; };
+    function askLegal() {
+      if (legalAsked || dead || !suApi || typeof suApi.config !== 'function' || !view || !view.desk()) return;
+      legalAsked = true;
+      const later = (f) => (win && typeof win.requestIdleCallback === 'function' ? win.requestIdleCallback(f, { timeout: 2000 }) : T.setTimeout(f, 200));
+      later(() => { suApi.config().then((c) => {
+        if (dead || !c || c.ok !== true || c.legalReady !== true) return;
+        const next = { terms: c.termsUrl, privacy: c.privacyUrl };
+        if (JSON.stringify(readJ(LEGAL_KEY)) === JSON.stringify(next)) return;
+        writeJ(LEGAL_KEY, next); if (S.tab === 'home' && !S.store) renderNow();
+      }, () => {}); });
+    }
     let receiptGen = 0; const receiptCache = new Map(), receiptInflight = new Map();
     function openReceipt(oid) {
       const who = ownerNow(), rd = S.ordersRead && S.ordersRead.who === who ? S.ordersRead : null;

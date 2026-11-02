@@ -976,7 +976,7 @@ test('G7 frame 1 / 4a: the member\'s Cuenta from the cached profile — the init
   assert.equal(txt(S.q('.acct-hero .av')), 'A');
   assert.deepEqual([...S.qa('.acct-hero .t > *')].map((x) => x.textContent), ['Ana Pérez', '+504 9612-3344', 'ana.perez@gmail.com'], '🔴 G7-hero: name, phone, email on three lines');
   // owner 11-01: «Pedidos» in scope ⇒ its row first (v6)
-  assert.deepEqual(g7Rows(S), ['Pedidos', 'Promociones Ofertas por correo y WhatsApp', 'Ayuda', 'Cerrar sesión', 'Olvidar este teléfono Cierra tu sesión y deja de recordar tu número']);
+  assert.deepEqual(g7Rows(S), ['Pedidos', 'Direcciones Agregá tu dirección', 'Promociones Ofertas por correo y WhatsApp', 'Ayuda', 'Cerrar sesión', 'Olvidar este teléfono Cierra tu sesión y deja de recordar tu número']);   // + «Direcciones» (C-6a, D-3 r3 DECIDED)
   assert.equal(S.qa('.flow .rows').length, 2); assert.ok(S.q('.flow .rows.sess'));
   const sw = S.q('[data-act="promos"] .switch');
   assert.equal(sw.getAttribute('aria-checked'), 'true', '🔴 G7-promos: the cached value'); assert.equal(S.q('[data-act="promos"]').getAttribute('aria-disabled'), null);
@@ -3123,6 +3123,50 @@ test('capp-dark §4: the INSTALLED app\'s status-bar icons follow the theme — 
   } finally { S.w.close(); }
   const W = bootShell({ media });   // the web: no Capacitor bridge
   try { await flush(); dark = !dark; for (const f of [...ls]) f(); await flush(); assert.ok(W.q('.app'), 'the web shell runs with no plugin'); } finally { W.w.close(); }
+});
+// ── C-6a (D-3 r3): the tab titles across the REAL navigation; the desktop footer; the member's «Direcciones» row ──
+test('C-6a titles: the tab follows every screen — Inicio (the directory\'s city), Buscar with its query, the store, a dish, the cart, Entrega & Pago, Pedidos, Cuenta', async () => {
+  const S = bootShell(); await flush();
+  const CITY = SC.complete.body.platform.city_label, NAME = SC.complete.body.restaurants.find((r) => r.restaurant_id === 'x_pizza').name;
+  assert.equal(S.w.document.title, CITY ? `Sherpa — Pedí a domicilio en ${CITY}` : 'Sherpa — Pedí a domicilio', '🔴 SEO-title: Inicio');
+  S.click('.tabbar [data-tab="search"]'); await flush();
+  const i = S.q('#gq'); i.value = 'pizza'; i.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+  assert.equal(S.w.document.title, '«pizza» — Buscar · Sherpa', '🔴 SEO-title: Buscar');
+  S.click('.tabbar [data-tab="home"]'); await flush();
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  assert.equal(S.w.document.title, `${NAME} — menú y pedidos a domicilio · Sherpa`, '🔴 SEO-title: the store');
+  const ui = S.ui.store().ui, d = ui.menu.dishes.find((x) => !x.launcher && !x.variantOf);
+  assert.ok(ui.openDetail(d.key), 'premise: the dish sheet'); await flush();
+  assert.equal(S.w.document.title, `${d.name} · ${NAME} · Sherpa`, '🔴 SEO-title: a dish');
+  S.click('#detail-overlay[data-act="dclose"]'); await flush();   // the sheet's own close (the overlay)
+  ui.cart.inc(d.key); ui.openCart(); await flush();
+  assert.equal(S.w.document.title, `Tu pedido · ${NAME} · Sherpa`, '🔴 SEO-title: the cart');
+  S.w.close();
+  const A = bootShell(); await flush(); A.click('.tabbar [data-tab="orders"]'); await flush();
+  try { assert.equal(A.w.document.title, 'Pedidos · Sherpa', '🔴 SEO-title: Pedidos'); } finally { A.w.close(); }
+});
+test('C-6a footer: on the DESKTOP Inicio, last in the body — Ayuda at once; Términos / Privacidad once the platform\'s legal URLs arrive (fetched ONCE at idle, kept on the device); hidden on the phone', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const { S } = await pedidosBoot({}, { storage: st, preMount: (w) => { w.matchMedia = fakeMedia(true).matchMedia; } });
+  try {
+    await new Promise((r) => setTimeout(r, 400)); await flush();
+    const f = S.q('.home-body > footer.dfoot'); assert.ok(f, '🔴 SEO-foot: the footer, in the Inicio body');
+    assert.deepEqual([...f.querySelectorAll('li')].map((x) => x.textContent), ['Ayuda', 'Términos', 'Privacidad'], '🔴 SEO-foot: the legal links once known');
+    assert.equal(f.querySelector('a').getAttribute('href'), 'https://legal.test/t', 'the platform\'s own URL');
+    assert.deepEqual(JSON.parse(st.getItem('capp:legal')), { terms: 'https://legal.test/t', privacy: 'https://legal.test/p' }, 'kept on the device (cached-first next time)');
+  } finally { S.w.close(); }
+  const P = bootShell(); await flush();
+  try { const f = P.q('footer.dfoot'); assert.ok(f, 'premise: the same DOM on the phone'); assert.equal(P.w.getComputedStyle(f).display, 'none', '🔴 SEO-foot: hidden on the phone'); assert.deepEqual([...f.querySelectorAll('li')].map((x) => x.textContent), ['Ayuda'], 'no signup config ⇒ no legal links (never dead)'); } finally { P.w.close(); }
+});
+test('C-6a «Direcciones» (D-3 r3 frame 6, DECIDED): the member\'s Cuenta row after «Pedidos», its address line, opening the approved location sheet', async () => {
+  const { S } = await pedidosBoot({});
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); await flush();
+    const rows = S.qa('.rows .rowbtn').map((b) => b.querySelector('.t').firstChild.textContent);
+    assert.deepEqual(rows.slice(0, 3), ['Pedidos', 'Direcciones', 'Promociones'], '🔴 SEO-dir: the row, between Pedidos and Promociones');
+    S.click('.rowbtn[data-act="addr"]'); await flush();
+    assert.ok(S.q('#layer .sheet, #layer [role="dialog"]'), '🔴 SEO-dir: the location sheet opens');
+  } finally { S.w.close(); }
 });
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {

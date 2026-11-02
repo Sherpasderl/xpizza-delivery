@@ -1083,3 +1083,18 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .sg button.cc svg.i{width:16px;height:16px;color:var(--mute)}
 .sg button.cc.focus{border-color:var(--ink)}
 .sg .clist{display:flex;flex-direction:column;margin:0 -20px -6px;border-bottom:1px solid var(--line)}
+
+/* ── C-6a (MOCKUP-capp-desktop-D3 r3, approved; PLAN-capp-website-and-leader-features §C-6) ──
+   the desktop site footer, last in the Inicio body (the mockup's .foot — renamed: the pin sheets already use .foot); phone: none */
+.dfoot{display:none}
+.app.desk .dfoot{max-width:1040px;margin:24px auto 0;width:100%;padding:24px 24px 28px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:24px;font-size:13px;color:var(--mute)}
+.app.desk .dfoot .lock{display:flex;align-items:center;gap:8px;font:700 16px var(--rhd);color:var(--ink)}
+.app.desk .dfoot .lock svg{width:18px;height:18px}
+.app.desk .dfoot ul{list-style:none;margin:0;padding:0;display:flex;gap:18px}
+.app.desk .dfoot li button,.app.desk .dfoot li a{border:0;background:transparent;padding:0;color:inherit;font:inherit;text-decoration:none}
+/* frame 7b (DECIDED): 600–1023 px — the unchanged phone shell in a centred 600 px column on the --surf wash with a hairline; below
+   600 px byte-identical to before. CSS only: no DOM, no behaviour */
+@media (min-width:600px) and (max-width:1023.98px){
+  .app:not(.desk){background:var(--surf)}
+  .app:not(.desk) .screen{left:50%;right:auto;width:600px;transform:translateX(-50%);background:var(--bg);box-shadow:0 0 0 1px var(--line)}
+}

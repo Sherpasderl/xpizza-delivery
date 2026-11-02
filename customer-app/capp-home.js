@@ -302,7 +302,7 @@
         + sec('La casa recomienda', [...new Set(houseList.map((x) => x.r.name))].join(' · '), houseList.map(dcard))
         + meals.map(([title, d]) => sec(title, [...new Set(d.map((x) => x.r.name))].join(' · '), d.map(dcard))).join('')
         + `<section class="hsec" aria-label="Todos los restaurantes"><div class="hd"><div><h2>Todos los restaurantes</h2><p>${vis.length === all.length ? (c ? `${nLive} en ${esc(c)}` : `${nLive} restaurantes`) : `${vis.filter((r) => !r.gone).length} de ${nLive}`}</p></div></div><div class="rlist" style="padding-top:0">${vis.map((r) => rcardHtml(r, vm)).join('')}</div></section>`;
-    return page(notes.join('') + cuisRow + fchips + rows, `<div class="credit">${nLive} restaurantes${c ? ` en ${esc(c)}` : ''}</div>`);
+    return page(notes.join('') + cuisRow + fchips + rows + footHtml(vm), `<div class="credit">${nLive} restaurantes${c ? ` en ${esc(c)}` : ''}</div>`);
   }
 
   // ── BUSCAR (P searchHtml): store hits from the directory at once; dish hits over the LOADED menus' DISPLAYED items (launchers
@@ -377,6 +377,29 @@
   // email on three lines; the initial in the avatar), Pedidos / Promociones (.switch) / Ayuda, the session group, the muted version.
   // vm.acct = { placeholder, name, phone, email, promos: true | false | null (no served value ⇒ inert, frame 4b), settled, version } — inert and
   // still loading ⇒ frame 4b's ON-dimmed placeholder; inert and SETTLED (no stored consent) ⇒ OFF + dimmed (ruling (ii), OWNER-PENDING)
+  // C-6a (D-3 r3, DECIDED «Footer at launch: Ayuda · Términos · Privacidad only»): the desktop site footer, last in the Inicio body.
+  // Desktop only (CSS). Ayuda = Cuenta's own help action; Términos / Privacidad only once the platform's legal URLs are known
+  // (vm.legal — never a dead link). Its own class: the pin sheets already use .foot
+  function footHtml(vm) {
+    const l = vm.legal || {}, url = (u) => typeof u === 'string' && /^https:\/\//.test(u);
+    return `<footer class="dfoot"><span class="lock">${SOLA(18)}Sherpa</span><ul><li><button data-act="help">Ayuda</button></li>${url(l.terms) ? `<li><a href="${esc(l.terms)}" target="_blank" rel="noopener">Términos</a></li>` : ''}${url(l.privacy) ? `<li><a href="${esc(l.privacy)}" target="_blank" rel="noopener">Privacidad</a></li>` : ''}</ul></footer>`;
+  }
+  // C-6a (D-3 r3 §0, «Thing — what it is · Sherpa»; the city is DATA): the browser tab title of each screen. Order states the
+  // mockup does not draw read «Tu pedido · Sherpa» (OWNER-PENDING)
+  function titleOf(t) {
+    const S_ = (x) => `${x} · Sherpa`, c = city(t.platform);
+    if (t.screen === 'store') {
+      if (t.step === 'pago') return S_('Entrega & Pago');
+      if (t.step === 'pedido') return S_(`Tu pedido · ${t.store || ''}`);
+      if (t.step === 'plato' && t.dish) return S_(`${t.dish} · ${t.store || ''}`);
+      return `${t.store || ''} — menú y pedidos a domicilio · Sherpa`;
+    }
+    if (t.screen === 'order') return S_(t.status === 'out' || t.status === 'arriving' ? 'Tu pedido va en camino' : t.status === 'delivered' || t.status === 'collected' ? 'Entregado' : 'Tu pedido');
+    if (t.screen === 'orders') return S_('Pedidos');
+    if (t.screen === 'search') return t.q ? `«${t.q}» — Buscar · Sherpa` : S_('Buscar');
+    if (t.screen === 'account') return S_('Cuenta');
+    return c ? `Sherpa — Pedí a domicilio en ${c}` : 'Sherpa — Pedí a domicilio';
+  }
   function accountMemberHtml(vm) {
     const a = vm.acct || {}, inert = typeof a.promos !== 'boolean';
     const hero = a.placeholder
@@ -385,6 +408,7 @@
     return shellWrap(vm, `<div class="flow"><div class="flowbar plain"><h1>Cuenta</h1></div>
     <div style="height:12px"></div>${hero}<div class="rows">
       ${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>` : ''}
+      <button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>
       <button class="rowbtn" data-act="promos"${inert ? ' aria-disabled="true"' : ''}>${IC.bell}<span class="t">Promociones<span>Ofertas por correo y WhatsApp</span></span><span class="switch" role="switch" aria-checked="${inert ? !a.settled : a.promos}"${inert ? ' aria-disabled="true"' : ''}></span></button>
       <button class="rowbtn" data-act="help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>
       ${vm.updateRow ? `<button class="rowbtn" data-act="app-update-row">${IC.update}<span class="t">Actualizar la app<span>Hay una versión nueva en ${esc(vm.updateRow)}</span></span>${IC.chev}</button>` : ''}</div>
@@ -405,5 +429,5 @@
   // frame 4 only when EVERY listed store answers «outside» (an unknown coverage is never counted as outside)
   const allOutOfZone = (rows, loc) => { const live = (rows || []).filter((r) => !r.gone); return !!loc && live.length > 0 && live.every((r) => covers(r.entry, loc) === false); };
 
-  return { homeHtml, searchHtml, ordersHtml, tabbarHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
+  return { homeHtml, titleOf, footHtml, searchHtml, ordersHtml, tabbarHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
 });
