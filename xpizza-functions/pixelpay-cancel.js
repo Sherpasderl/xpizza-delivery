@@ -154,4 +154,8 @@ async function voidOrRefund(deps, { orderId, attemptId, pixelpayOrderId, payment
   return { outcome: voided ? 'refunded' : 'refund_pending', voided, message, code };
 }
 
-module.exports = { voidOrRefund, VOID_MESSAGES, PROVIDER_CODES };
+// A capture decline's FIXED text and code (the decision itself is the caller's and does not change).
+const CAPTURE_MESSAGES = Object.freeze({ capture_declined: 'capture declined by the provider', capture_not_found: 'capture not found' });
+function captureDecline(code, cap) { return { decline_message: CAPTURE_MESSAGES[code], decline_code: code, provider_code: providerCode(cap && cap.code) }; }
+
+module.exports = { voidOrRefund, VOID_MESSAGES, PROVIDER_CODES, CAPTURE_MESSAGES, captureDecline };

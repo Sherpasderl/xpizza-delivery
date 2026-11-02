@@ -1,5 +1,5 @@
 'use strict';
-// fix/payment-alert-sanitize — the wiring guard for tools/alertsan-module-inverse.js: the inverse returns pixelpay-cancel.js to
+// fix/payment-alert-sanitize — the wiring guard for tools/alertsan-module-inverse.js: the inverse returns pixelpay-cancel.js and pixelpay-confirm.js to
 // 8a31e2a3 byte-for-byte; a byte inside a hunk, a duplicated hunk and a byte outside every hunk are each caught; an unowned file
 // passes through.
 const assert = require('assert');
@@ -8,7 +8,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyAlertSanModule } = require('./tools/alertsan-module-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-assert.deepStrictEqual([...FILES].sort(), ['pixelpay-cancel.js'], 'the slice owns exactly this file');
+assert.deepStrictEqual([...FILES].sort(), ['pixelpay-cancel.js', 'pixelpay-confirm.js'], 'the slice owns exactly these files');
 for (const f of FILES) {
   const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });

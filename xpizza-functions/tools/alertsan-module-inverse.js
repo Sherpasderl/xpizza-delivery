@@ -1,5 +1,5 @@
 'use strict';
-// The payment-alert sanitize slice (fix/payment-alert-sanitize) — the test-only INVERSE for its edits to pixelpay-cancel.js,
+// The payment-alert sanitize slice (fix/payment-alert-sanitize) — the test-only INVERSE for its edits to pixelpay-cancel.js and pixelpay-confirm.js,
 // which older fold guards pin byte-for-byte. Generated from `git diff -U1 8a31e2a3` (each hunk carries one line of context each
 // side, so it is unique); applying it returns the file to 8a31e2a3 byte-for-byte (alertsan-wiring.guard). NEWEST layer: applied
 // FIRST (innermost) at every per-file fold; it passes every file it does not own through untouched.
@@ -42,8 +42,18 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "pixelpay-cancel.js",
-  "now": "  if (!voided) {\n    deps.alert && deps.alert('refund_pending', { orderId, attemptId, payment_uuid: paymentUuid, message, code, provider_code: pcode });\n  }\n  return { outcome: voided ? 'refunded' : 'refund_pending', voided, message, code };\n}\n\nmodule.exports = { voidOrRefund, VOID_MESSAGES, PROVIDER_CODES };\n",
+  "now": "  if (!voided) {\n    deps.alert && deps.alert('refund_pending', { orderId, attemptId, payment_uuid: paymentUuid, message, code, provider_code: pcode });\n  }\n  return { outcome: voided ? 'refunded' : 'refund_pending', voided, message, code };\n}\n\n// A capture decline's FIXED text and code (the decision itself is the caller's and does not change).\nconst CAPTURE_MESSAGES = Object.freeze({ capture_declined: 'capture declined by the provider', capture_not_found: 'capture not found' });\nfunction captureDecline(code, cap) { return { decline_message: CAPTURE_MESSAGES[code], decline_code: code, provider_code: providerCode(cap && cap.code) }; }\n\nmodule.exports = { voidOrRefund, VOID_MESSAGES, PROVIDER_CODES, CAPTURE_MESSAGES, captureDecline };\n",
   "was": "  if (!voided) {\n    deps.alert && deps.alert('refund_pending', { orderId, attemptId, payment_uuid: paymentUuid, message });\n  }\n  return { outcome: voided ? 'refunded' : 'refund_pending', voided, message };\n}\n\nmodule.exports = { voidOrRefund };\n"
+ },
+ {
+  "file": "pixelpay-confirm.js",
+  "now": "    }\n    await attemptRef.update({ status: 'declined', failed_at: now, ...require('./pixelpay-cancel').captureDecline('capture_not_found', cap) });\n    await orderRef.update({ payment_status: 'failed' });\n    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly\n    return { outcome: 'capture_failed', message: require('./pixelpay-cancel').CAPTURE_MESSAGES.capture_not_found };\n  }\n",
+  "was": "    }\n    await attemptRef.update({ status: 'declined', failed_at: now, decline_message: cap.message || 'capture_not_found' });\n    await orderRef.update({ payment_status: 'failed' });\n    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly\n    return { outcome: 'capture_failed', message: cap.message || 'capture not found' };\n  }\n"
+ },
+ {
+  "file": "pixelpay-confirm.js",
+  "now": "    // Declined / amount>auth / etc. — no money moved. Open for COD fallback.\n    await attemptRef.update({ status: 'declined', failed_at: now, ...require('./pixelpay-cancel').captureDecline('capture_declined', cap) });\n    await orderRef.update({ payment_status: 'failed' });\n    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly\n    return { outcome: 'capture_failed', message: require('./pixelpay-cancel').CAPTURE_MESSAGES.capture_declined };\n  }\n",
+  "was": "    // Declined / amount>auth / etc. — no money moved. Open for COD fallback.\n    await attemptRef.update({ status: 'declined', failed_at: now, decline_message: cap.message || null });\n    await orderRef.update({ payment_status: 'failed' });\n    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly\n    return { outcome: 'capture_failed', message: cap.message };\n  }\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);
