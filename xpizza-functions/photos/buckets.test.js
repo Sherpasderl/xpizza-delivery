@@ -20,7 +20,7 @@ const code = (fn) => { try { fn(); return 'ok'; } catch (e) { return e && e.code
 
 // projectOf
 assert.strictEqual(code(() => B.projectOf({ env: {} })), 'photos_project_unknown', 'BUCKETS-PROJECT-NONE');
-assert.strictEqual(B.projectOf({ explicit: P, env: {} }), P, 'BUCKETS-PROJECT-EXPLICIT');
+assert.strictEqual(code(() => B.projectOf({ explicit: P, env: {} })) === 'ok' ? B.projectOf({ explicit: P, env: {} }) : `refused ${code(() => B.projectOf({ explicit: P, env: {} }))}`, P, 'BUCKETS-PROJECT-EXPLICIT');
 assert.strictEqual(B.projectOf({ env: { GCLOUD_PROJECT: P, FIREBASE_CONFIG: FC({ projectId: P }) } }), P, 'BUCKETS-PROJECT-AGREE');
 assert.strictEqual(code(() => B.projectOf({ env: { GCLOUD_PROJECT: P, FIREBASE_CONFIG: FC({ projectId: 'tb-proj-b' }) } })), 'photos_project_conflict', 'BUCKETS-PROJECT-CONFLICT (FIREBASE_CONFIG vs GCLOUD_PROJECT)');
 assert.strictEqual(code(() => B.projectOf({ explicit: P, env: { GOOGLE_CLOUD_PROJECT: 'tb-proj-b' } })), 'photos_project_conflict', 'BUCKETS-PROJECT-CONFLICT (explicit vs env)');

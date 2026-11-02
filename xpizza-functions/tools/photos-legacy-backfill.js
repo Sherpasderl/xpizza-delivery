@@ -16,7 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const { requireProject } = require('./require-project');
 const PROJECT_ID = requireProject({ requireFlag: true });   // before any client
-const { backfillRid } = require('./photos-legacy-backfill-core');
+const { backfillRid, backfillBucketGate } = require('./photos-legacy-backfill-core');
 
 function parseArgs(argv) {
   const out = { rids: [], apply: false, out: null };
@@ -34,6 +34,10 @@ function parseArgs(argv) {
 }
 const args = parseArgs(process.argv.slice(2));
 if (args.error) { console.error(`photos-legacy-backfill: REFUSED — ${args.error}`); process.exit(2); }
+// the bucket gate BEFORE any client or read, in BOTH modes (PLAN-photos-public-bucket-config r5; codex r1 #1): the committed photos config
+// must resolve for --project; a public bucket that is merely not configured is fine for the dry run (the contact sheet)
+const gate = backfillBucketGate(() => require('../photos/buckets').photoBuckets({ explicit: PROJECT_ID }));
+if (!gate.ok) { console.error(`photos-legacy-backfill: REFUSED — the committed photos config refused this project (${gate.reason})`); process.exit(2); }
 
 const admin = require('firebase-admin');
 admin.initializeApp({ projectId: PROJECT_ID });
@@ -57,13 +61,7 @@ async function fetchFrom(origin, url) {
 }
 
 (async () => {
-  // the PUBLIC bucket from the committed photos config for --project (PLAN-photos-public-bucket-config r5; never an env var). Not configured
-  // ('' / absent) is fine for the contact sheet; --apply then refuses in the core. A config REFUSAL with --apply stops here, untouched.
-  let bucketName = '';
-  try { bucketName = require('../photos/buckets').photoBuckets({ explicit: PROJECT_ID }).public || ''; } catch (e) {
-    if (!(e && e.photosConfig)) throw e;
-    if (args.apply) { console.error(`photos-legacy-backfill: REFUSED — the committed photos config refused this project (${e.code})`); process.exit(2); }
-  }
+  const bucketName = gate.bucket;   // '' = not configured (the dry run proceeds; --apply refuses in backfillRid)
   const outDir = args.out || path.join(process.cwd(), `legacy-backfill-${Date.now()}`);
   const summary = [];
   for (const rid of args.rids) {

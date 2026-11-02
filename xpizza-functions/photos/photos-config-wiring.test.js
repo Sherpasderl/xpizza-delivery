@@ -128,8 +128,18 @@ ok('production boundary: loading index.js loads no test module, the loader reads
   assert.strictEqual(bf.r.status, 2, `CLI-BACKFILL --apply with no committed entry for the project → refused (exit ${bf.r.status})\n${bf.r.stderr}`);
   assert.ok(/refused this project \(photos_private_bucket_unknown\)/.test(bf.r.stderr || ''), `CLI-BACKFILL names the refusal: ${bf.r.stderr}`);
   assert.deepStrictEqual(bf.seen, [], `🔴 CLI-BACKFILL-NO-DOTENV opened ${JSON.stringify(bf.seen)}`);
+  // codex photos-config r1 #1: the DRY RUN refuses too (before any client or read)
+  const bfDry = child({ file: 'tools/photos-legacy-backfill.js', args: ['--project', 'xpizza-delivery', '--rid', 'x_pizza'], fixture: demoCfg(), env: POISON, spy: true });
+  assert.strictEqual(bfDry.r.status, 2, `🔴 CLI-BACKFILL-DRY-REFUSES a config refusal in the dry run too (exit ${bfDry.r.status})\n${bfDry.r.stderr}`);
+  assert.ok(/refused this project \(photos_private_bucket_unknown\)/.test(bfDry.r.stderr || ''), `CLI-BACKFILL-DRY names the refusal: ${bfDry.r.stderr}`);
+  // codex photos-config r1 #2: the census refuses an UNREADABLE committed config before any read (never public "")
+  for (const mode of ['garbage', 'missing']) {
+    const cz = child({ file: 'tools/photos-config-census.js', args: ['--project', 'xpizza-delivery', '--storage-bucket', 'xpizza-delivery.firebasestorage.app', '--legacy-private', '<unset>', '--legacy-public', '<unset>'], mode });
+    assert.strictEqual(cz.r.status, 2, `🔴 CLI-CENSUS-UNREADABLE-CONFIG-REFUSED (${mode}) exit ${cz.r.status}\n${cz.r.stdout}${cz.r.stderr}`);
+    assert.ok(/not usable/.test(cz.r.stderr || '') && !/public_bucket/.test(cz.r.stdout || ''), `CLI-CENSUS (${mode}) refuses before the census: ${cz.r.stderr}`);
+  }
 }
-ok('both CLI entrypoints (spawned, poisoned PHOTOS_* env, a dotenv-open spy): the create-only CLI refuses until a public name is committed, and with one its dry run names exactly the committed buckets; the backfill --apply refuses a project with no committed entry; neither ever opens a dotenv');
+ok('both CLI entrypoints (spawned, poisoned PHOTOS_* env, a dotenv-open spy): the create-only CLI refuses until a public name is committed, and with one its dry run names exactly the committed buckets; the backfill refuses a project with no committed entry in --apply AND the dry run; the census refuses an unreadable committed config before any read; no dotenv is ever opened');
 
 // 6. the scheduled SWEEPER (the only path that DELETES; advisor 2026-11-01): driven offline through its real handler (photoSweep.run) with a
 //    REFUSING config → it stays OFF: zero deleters built, zero sweep entries, zero storage use, the refusal logged. Premise: with a resolving

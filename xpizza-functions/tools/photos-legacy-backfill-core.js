@@ -38,4 +38,14 @@ async function backfillRid(rid, { apply }, d) {
   return { rid, counts, rows: rows.map(({ before, after, ...r }) => r) };   // eslint-disable-line no-unused-vars
 }
 
-module.exports = { backfillRid };
+// the bucket GATE, before ANY read, in BOTH modes (codex photos-config r1 #1): the committed photos config must RESOLVE for the project —
+// any refusal (no private entry, a project conflict, an unusable config) → { ok: false, reason } and the CLI refuses. Only a resolved
+// config whose public bucket is simply NOT configured yields bucket '' (fine for the dry run; --apply then refuses in backfillRid).
+function backfillBucketGate(resolve) {
+  try { return { ok: true, bucket: resolve().public || '' }; } catch (e) {
+    if (e && e.photosConfig) return { ok: false, reason: e.code };
+    throw e;
+  }
+}
+
+module.exports = { backfillRid, backfillBucketGate };

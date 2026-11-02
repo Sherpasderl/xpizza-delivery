@@ -5,7 +5,7 @@
 // recorded; a before/after contact sheet is written for the owner to review. --apply (owner) is create-only and idempotent.
 // Run: node tools/photos-legacy-backfill-core.test.js
 const assert = require('assert');
-const { backfillRid } = require('./photos-legacy-backfill-core');
+const { backfillRid, backfillBucketGate } = require('./photos-legacy-backfill-core');
 const { legacyHashOf } = require('../photos/editable-photos');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -65,6 +65,15 @@ const hA = legacyHashOf(`${BASE}pics/a.jpg`), hH = legacyHashOf(`${BASE}images/t
     const r3 = await backfillRid(RID, { apply: true }, d3);
     assert.deepStrictEqual([st3.uploads.length, r3.counts.unresolvable], [0, 3], 'LEGACY-UNDECODABLE-UNRESOLVABLE');
     ok('no order-site base → refused; --apply without a public bucket → refused; an undecodable image is unresolvable, never uploaded');
+  }
+  // the bucket GATE (codex photos-config r1 #1): before any read, in BOTH modes
+  {
+    const refusal = (code) => () => { throw Object.assign(new Error(code), { code, photosConfig: true }); };
+    assert.deepStrictEqual(backfillBucketGate(() => ({ private: 'tb-priv', public: null })), { ok: true, bucket: '' }, 'BACKFILL-GATE-PUBLIC-UNCONFIGURED-OK (dry run proceeds; --apply refuses later)');
+    assert.deepStrictEqual(backfillBucketGate(() => ({ private: 'tb-priv', public: 'tb-pub' })), { ok: true, bucket: 'tb-pub' }, 'BACKFILL-GATE-RESOLVED');
+    for (const c of ['photos_private_bucket_unknown', 'photos_project_conflict', 'photos_config_invalid']) assert.deepStrictEqual(backfillBucketGate(refusal(c)), { ok: false, reason: c }, `BACKFILL-GATE-REFUSES ${c}`);
+    assert.throws(() => backfillBucketGate(() => { throw new Error('boom'); }), /boom/, 'BACKFILL-GATE-OTHER-ERRORS-PROPAGATE');
+    ok('bucket gate: a resolved config → its public bucket (unconfigured = \'\', the dry run proceeds); ANY photos-config refusal → refused; other errors propagate');
   }
   console.log(`photos-legacy-backfill-core: OK (${n})`);
   process.exit(0);

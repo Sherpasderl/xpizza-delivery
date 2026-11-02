@@ -18,6 +18,7 @@ const dep = (o = {}) => ({ storageBucket: S, legacyPrivate: false, legacyPublic:
   assert.deepStrictEqual(parseDeployed({ storageBucket: S, legacyPrivate: '<unset>', legacyPublic: '<unset>' }), dep(), 'CENSUS-PARSE-STEP1');
   assert.deepStrictEqual(parseDeployed({ storageBucket: '<absent>', legacyPrivate: '<present:>', legacyPublic: '<present:tb-x>' }), { storageBucket: null, legacyPrivate: true, legacyPublic: true }, 'CENSUS-PARSE-PRESENT-EVEN-EMPTY');
   assert.throws(() => parseDeployed({ storageBucket: S, legacyPrivate: 'maybe', legacyPublic: '<unset>' }), /step-1 token/, 'CENSUS-PARSE-REFUSES-UNKNOWN-TOKEN');
+  for (const bad of ['gs://bad', '<absent> ', 'TB-UPPER', 'a/b', '']) assert.throws(() => parseDeployed({ storageBucket: bad, legacyPrivate: '<unset>', legacyPublic: '<unset>' }), /step-1 token/, `CENSUS-PARSE-REFUSES-MALFORMED-BUCKET ${JSON.stringify(bad)} (codex r1 #3)`);
   ok('step-1 tokens: <unset> / <present:…> (empty or not) / <absent> / a bucket name; anything else refused');
 
   // decide — one cell per table row
@@ -29,6 +30,9 @@ const dep = (o = {}) => ({ storageBucket: S, legacyPrivate: false, legacyPublic:
   assert.deepStrictEqual(decide({ deployed: dep(), census: { ...none, publicHosts: ['tb-pub'] }, committedPublic: '' }), { stop: true, row: 6, reason: 'public_host_mismatch' }, 'CENSUS-ROW6 a host with public "" → STOP');
   assert.deepStrictEqual(decide({ deployed: dep(), census: { ...none, publicHosts: ['tb-pub'] }, committedPublic: 'tb-other' }).row, 6, 'CENSUS-ROW6 host ≠ committed → STOP');
   assert.deepStrictEqual(decide({ deployed: dep(), census: { ...none, publicHosts: ['tb-pub', 'tb-pub-2'] }, committedPublic: 'tb-pub' }).row, 6, 'CENSUS-ROW6 two hosts → STOP');
+  assert.deepStrictEqual(decide({ deployed: dep({ storageBucket: 'gs://bad' }), census: none }), { stop: true, row: 3, reason: 'private_identity_invalid' }, 'CENSUS-ROW3-PRIVATE-VALIDATED (the shared validator; codex r1 #3)');
+  assert.deepStrictEqual(decide({ deployed: dep(), census: none, committedPublic: 'TB BAD' }).reason, 'committed_public_invalid', 'CENSUS-COMMITTED-PUBLIC-VALIDATED');
+  assert.deepStrictEqual(decide({ deployed: dep(), census: { ...none, publicHosts: ['gs://x'] }, committedPublic: '' }).reason, 'public_host_invalid', 'CENSUS-HOST-VALIDATED');
   ok('decide: (1) any legacy name present → STOP; (2) no storageBucket → STOP; (3) explicit private = storageBucket; (4) no host → public ""; (5) hosts = committed → kept; (6) a mismatch or two hosts → STOP');
 
   // census over a fake Firestore: counts, and public hosts ONLY from stored URLs

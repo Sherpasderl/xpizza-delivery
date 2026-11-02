@@ -4,10 +4,11 @@
 // paths are bucket-RELATIVE (photos/process.js, photos/sweep-core.js), so they never give an identity. decide() is the ONE decision table:
 //   1 any legacy PHOTOS_* env name present on a deployed photos function (empty or not) → STOP (the code ignores them since bfe87a9e)
 //   2 storageBucket absent → STOP (no verified private identity; never guess)
-//   3 otherwise → private_bucket = storageBucket, ALWAYS explicit
+//   3 otherwise → private_bucket = storageBucket, ALWAYS explicit — only if it passes the SHARED bucket validator (codex r1 #3), else STOP
 //   4 no public host → public_bucket = '' (until the owner names it at launch)
 //   5 every host equals the committed public value → kept
 //   6 a host ≠ the committed public value (incl. ''), or more than one host → STOP
+const { BUCKET_RE } = require('../photos/photos-config');   // the ONE bucket-name rule (loader + predeploy + this census)
 const GCS_URL = /^https:\/\/storage\.googleapis\.com\/([a-z0-9][a-z0-9._-]{1,61}[a-z0-9])\//;
 const hostOf = (u) => { const m = typeof u === 'string' ? GCS_URL.exec(u) : null; return m ? m[1] : null; };
 
@@ -18,14 +19,17 @@ function parseDeployed({ storageBucket, legacyPrivate, legacyPublic }) {
     if (typeof t === 'string' && t.startsWith('<present:') && t.endsWith('>')) return true;
     throw new Error(`${name}: not a step-1 token (<unset> | <present:…>)`);
   };
-  if (typeof storageBucket !== 'string' || !storageBucket) throw new Error('storageBucket: not a step-1 token (<absent> | a bucket name)');
+  if (typeof storageBucket !== 'string' || !(storageBucket === '<absent>' || BUCKET_RE.test(storageBucket))) throw new Error('storageBucket: not a step-1 token (exactly <absent> | a valid bucket name)');
   return { storageBucket: storageBucket === '<absent>' ? null : storageBucket, legacyPrivate: legacy(legacyPrivate, 'legacyPrivate'), legacyPublic: legacy(legacyPublic, 'legacyPublic') };
 }
 
 function decide({ deployed, census: c, committedPublic = '' }) {
   if (deployed.legacyPrivate || deployed.legacyPublic) return { stop: true, row: 1, reason: 'legacy_env_present' };
   if (!deployed.storageBucket) return { stop: true, row: 2, reason: 'storage_bucket_absent' };
+  if (!BUCKET_RE.test(deployed.storageBucket)) return { stop: true, row: 3, reason: 'private_identity_invalid' };
+  if (committedPublic !== '' && !BUCKET_RE.test(String(committedPublic))) return { stop: true, row: 5, reason: 'committed_public_invalid' };
   const hosts = c.publicHosts || [];
+  if (hosts.some((h) => !BUCKET_RE.test(String(h)))) return { stop: true, row: 6, reason: 'public_host_invalid' };
   if (!hosts.length) return { stop: false, plan: { private_bucket: deployed.storageBucket, public_bucket: committedPublic || '' }, rows: [3, 4] };
   if (hosts.length > 1 || hosts[0] !== committedPublic) return { stop: true, row: 6, reason: 'public_host_mismatch' };
   return { stop: false, plan: { private_bucket: deployed.storageBucket, public_bucket: committedPublic }, rows: [3, 5] };

@@ -25,11 +25,14 @@ for (let i = 0; i < argv.length; i++) {
 let deployed;
 try { deployed = parseDeployed({ storageBucket: flags['storage-bucket'], legacyPrivate: flags['legacy-private'], legacyPublic: flags['legacy-public'] }); } catch (e) { refuse(e.message); }
 
+// the committed config FIRST (codex r1 #2): an unreadable / invalid one is REFUSED before any read — it must never read as public ""
+const committed = require('../photos/photos-config').loadPhotosConfig();
+if (!committed.ok) refuse(`the committed photos config is not usable (${committed.reason}) — fix it before the census`);
+const committedPublic = Object.prototype.hasOwnProperty.call(committed.config.public_bucket, PROJECT_ID) ? committed.config.public_bucket[PROJECT_ID] : '';
+
 const admin = require('firebase-admin');
 admin.initializeApp({ projectId: PROJECT_ID });
 (async () => {
-  const committed = require('../photos/photos-config').loadPhotosConfig();
-  const committedPublic = committed.ok && Object.prototype.hasOwnProperty.call(committed.config.public_bucket, PROJECT_ID) ? committed.config.public_bucket[PROJECT_ID] : '';
   const c = await census(admin.firestore());
   const d = decide({ deployed, census: c, committedPublic });
   console.log(JSON.stringify({ project: PROJECT_ID, counts: c.counts, publicHosts: c.publicHosts, decision: d }, null, 1));
