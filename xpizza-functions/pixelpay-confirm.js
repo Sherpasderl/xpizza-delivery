@@ -401,11 +401,19 @@ async function escalateStaleCapture(deps, { orderId, attemptId, now, staleMs = S
 
 // The order half of an escalation — idempotent, so a sweep that finds the attempt already capture_unverified completes
 // it: secure the hold, then advertise manual_reconciliation. A no-op (false) once the order is already there.
+// Only an order still waiting on its payment may be escalated — never one a resolver, a refund or a cancel has touched.
+const escalatable = (o) => !!o && o.status === 'pending_payment' && (o.payment_status == null || o.payment_status === 'pending');
 async function finishEscalation(deps, { orderId, attemptId, now, uuid }) {
-  const order = (await deps.db.ref(`orders/${orderId}`).once('value')).val();
-  if (!order || order.payment_status === 'manual_reconciliation') return false;
-  await holdRedemptionForManual(deps.db, { orderId, order, now, alert: deps.alert });
-  await deps.db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });
+  const ref = deps.db.ref(`orders/${orderId}`);
+  const order = (await ref.once('value')).val();
+  if (!escalatable(order)) return false;
+  await holdRedemptionForManual(deps.db, { orderId, order, now, alert: deps.alert });   // secure first; it never re-acquires a freed hold
+  const tx = await ref.transaction((cur) => {
+    if (cur === null) return null;                                     // null-first-safe
+    if (!escalatable(cur)) return;                                     // settled meanwhile (resolver / refund / cancel) → refuse
+    return { ...cur, payment_status: 'manual_reconciliation' };
+  });
+  if (!tx.committed) return false;
   deps.alert && deps.alert('manual_reconciliation', { orderId, attemptId, uuid, reason: 'stale_capturing_unrecovered' });
   return true;
 }

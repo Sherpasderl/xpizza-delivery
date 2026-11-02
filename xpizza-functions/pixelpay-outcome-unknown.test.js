@@ -347,7 +347,7 @@ async function cell(name, fn) { const before = pass; try { await fn(); if (pass 
     init.orders['TB-1'].payment_status = 'pending';
     const db = makeDb(init);
     let failOrderUpdate = 1;
-    const flaky = { ...db, ref: (path) => { const r = db.ref(path); if (path === 'orders/TB-1') return { ...r, update: async (v) => { if (failOrderUpdate > 0) { failOrderUpdate--; throw new Error('injected order-update failure'); } return r.update(v); } }; return r; } };
+    const flaky = { ...db, ref: (path) => { const r = db.ref(path); if (path === 'orders/TB-1') return { ...r, update: async (v) => { if (failOrderUpdate > 0) { failOrderUpdate--; throw new Error('injected order-update failure'); } return r.update(v); }, transaction: async (fn) => { if (failOrderUpdate > 0) { failOrderUpdate--; throw new Error('injected order-write failure'); } return r.transaction(fn); } }; return r; } };   // the order write (update or transaction) fails once
     const { escalateStaleCapture } = require('./pixelpay-confirm');
     const d = { db: flaky, alert: () => {} };
     const first = await settle(escalateStaleCapture(d, { orderId: 'TB-1', attemptId: 'A', now: 10 * 60 * 60000 }));

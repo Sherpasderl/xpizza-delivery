@@ -178,7 +178,7 @@ const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineS
 const { computeFreshnessAlerts } = require('./driver-freshness');   // Driver Tracking C1: freshness-alarm reconcile core
 const MR = require('./manual-resolve');   // atomic-claim money state machine (RECON_ATOMIC_CLAIM_PLAN rev-5)
 const { resolveManualReconciliationCore, recoverStaleResolve } = require('./resolve-manual');   // the resolver core + sweep recovery (emulator-driven)
-const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, isReconcilerRetryable, releaseHoldAfterConfirmedRefund } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5) + [A] ledger-repair retry
+const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, isReconcilerRetryable, noteRefundRetry, escalateConfirmedRefunds } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5) + [A] ledger-repair retry
 const { runPrediction, runLabelAndUpdate } = require('./ready-time-predict-core');   // Phase-1 Step-3 shadow predictor + prediction-logging (PURE SHADOW)
 const { computeGraduation, buildGraduationRows } = require('./ready-time-graduation');   // Phase 1b-i graduation core (writes ONLY ready_time_graduation)
 const { hashConfig } = require('./ready-time-quality-run');          // reuse the signed-config hash (extended to cover graduation_thresholds)
@@ -3601,15 +3601,15 @@ exports.refundReconciler = onSchedule(
       // park the attempt for staff; the H0 sweep alerts it as reversal_uncertain.
       if (!a.payment_uuid) { await H0.parkReconcilerNoUuid(db, attemptId, now); continue; }
       /* h0:end reconciler-no-uuid */
-      const r = await voidOrRefund(deps, { orderId: a.order_id, attemptId, pixelpayOrderId, paymentUuid: a.payment_uuid, reason: 'xpizza_refund_retry', now });
-      retried++; if (r.voided) { try { await releaseHoldAfterConfirmedRefund({ db, alert: (k, d) => paymentAlert(db, k, d) }, { orderId: a.order_id, attemptId, now }); } catch (e) { console.warn(`refundReconciler: hold release deferred for ${a.order_id}`, e && e.message); } }   // the refund CONFIRMED → journal + release the hold kept secured while pending (gated on the paying attempt; the sweep retries)
+      try { await noteRefundRetry(db, { attemptId, orderId: a.order_id, now }); } catch (e) { console.warn(`refundReconciler: review marker failed for ${attemptId} — void deferred`, e && e.message); continue; } const r = await voidOrRefund(deps, { orderId: a.order_id, attemptId, pixelpayOrderId, paymentUuid: a.payment_uuid, reason: 'xpizza_refund_retry', now });   // the durable to-do BEFORE the void
+      retried++;
       if (!r.voided) {
         stillPending++;
         const age = now - (Number(a.refunded_at || a.cancel_claimed_at || a.captured_at) || now);
         if (age > 24 * 3600 * 1000) await paymentAlert(db, 'aged_refund_pending', { orderId: a.order_id, attemptId });
       }
     }
-    console.log(`refundReconciler: retried=${retried} stillPending=${stillPending}`);
+    let escalated = 0; try { escalated = await escalateConfirmedRefunds({ db }, { now }); } catch (e) { console.warn('refundReconciler: escalation pass failed (retried next run)', e && e.message); } console.log(`refundReconciler: retried=${retried} stillPending=${stillPending} escalated=${escalated}`);   // confirmed refunds → staff release the points (never automatic)
 
     // REVISE-5: stale-refunding recovery — an order stuck at 'refunding_paid_after_close' (a crash between the
     // guard's voidOrRefund and its order-update; money already safe via the attempt's own CAS/idempotency).

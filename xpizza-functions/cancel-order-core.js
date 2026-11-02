@@ -252,9 +252,8 @@ async function retryRewardLedgerRepair(deps, { now }) {
 }
 
 // One ledger-repair record. The redemption leg honours the record's restriction:
-//   redemption_mode 'hold'     → the refund is UNCONFIRMED: re-secure the hold (idempotent), never release it;
-//   release_attempt_id present → release only while that attempt is still the one the order's payment rests on;
-//   otherwise                  → reverse, as before.
+//   redemption_mode 'hold' (or no mode on an online / missing order) → re-secure the hold, never release it;
+//   redemption_mode 'reverse' (or no mode on a cash order)           → reverse, as before.
 // The earn leg runs unless the record says it never failed (earn_failed === false). Returns 'healed' | 'pending'.
 async function healLedgerRepair(deps, orderId, rec, now) {
   const { db, alert } = deps;
@@ -270,12 +269,14 @@ async function healLedgerRepair(deps, orderId, rec, now) {
     const ord = order || { customer_uid: uid, restaurant_id: rid, redemption: rec.has_redemption ? true : null };
     let earn = { ok: true, skipped: true }, red = { ok: false };
     if (rec.earn_failed !== false) { try { earn = await reverseEarnForOrder(db, { orderId, order: ord, now }); } catch (_) { earn = { ok: false }; } }
-    if (rec.redemption_mode === 'hold') {
+    // No automatic release of a hold whose money may have moved. A record without a mode (written before this rule) on
+    // an ONLINE order — or on an order that is gone — is treated as 'hold'; a refunded online order is ESCALATED to staff.
+    const online = order ? order.payment_method === 'online' : true;
+    const mode = rec.redemption_mode || (online ? 'hold' : 'reverse');
+    if (mode === 'hold') {
       try { await holdRedemptionForManual(db, { orderId, order: ord, now, alert }); } catch (_) {}
-      red = { ok: true, skipped: true };
-    } else if (rec.release_attempt_id && !(order && order.active_attempt_id === rec.release_attempt_id)) {
-      if (!order) await alert('reward_release_unverifiable', { orderId });   // the order is gone: which attempt paid can't be proven → never release
-      red = { ok: true, skipped: true };
+      if (order && order.payment_status === 'refunded') await alert('refund_confirmed_release_points', { orderId });
+      red = order ? { ok: true, skipped: true } : { ok: false };   // an order that is gone stays pending (stuck cadence), never "healed"
     } else {
       try { red = await reverseRedemptionForOrder(db, { orderId, order: ord, disposition: rec.disposition || 'refund', now }); } catch (_) { red = { ok: false }; }
     }
@@ -289,19 +290,31 @@ async function healLedgerRepair(deps, orderId, rec, now) {
   }
 }
 
-// A refund the reconciler just CONFIRMED: the obligation to release the redemption hold (kept secured while the refund
-// was pending) is JOURNALED FIRST, then healed at once; any failure leaves the record for the sweep's retry. The release
-// is gated on the refunded attempt still being the one the order's payment rests on — an older attempt's refund never
-// restores points a newer captured sale consumed. The earn leg is untouched unless an earlier failure journaled it.
-async function releaseHoldAfterConfirmedRefund(deps, { orderId, attemptId, now }) {
-  const { db } = deps;
-  const ref = db.ref(`reward_ledger_repair/${orderId}`);
-  await ref.transaction((cur) => {
-    const base = cur || { order_id: orderId, disposition: 'refund', earn_failed: false, reason: 'refund_confirmed_release', first_failed_at: now, attempts: 0 };
-    return { ...base, redemption_mode: 'reverse', release_attempt_id: attemptId, redemption_failed: true, updated_at: now };
-  });
-  const rec = (await ref.once('value')).val() || {};
-  return healLedgerRepair(deps, orderId, rec, now);
+// The refund reconciler's durable to-do (ruling, codex P5a r3): a per-ATTEMPT review marker is written BEFORE the void is
+// retried, so a refund can never become terminal without a record. Once the attempt is refunded, the marker is
+// ESCALATED to staff — a durable, idempotent dispatcher alert «refund confirmed — release points» — and NOTHING is
+// released automatically: the points stay secured until a person releases them.
+async function noteRefundRetry(db, { attemptId, orderId, now }) {
+  await db.ref(`refund_hold_review/${attemptId}`).update({ order_id: orderId || null, attempt_id: attemptId, last_retry_at: now });
 }
 
-module.exports = { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, healLedgerRepair, releaseHoldAfterConfirmedRefund, isReconcilerRetryable: C.isReconcilerRetryable };
+async function escalateConfirmedRefunds(deps, { now }) {
+  const { db } = deps;
+  const marks = (await db.ref('refund_hold_review').once('value')).val() || {};
+  let escalated = 0;
+  for (const attemptId of Object.keys(marks)) {
+    const m = marks[attemptId] || {};
+    if (m.escalated_at) continue;
+    const att = (await db.ref(`payment_attempts/${attemptId}`).once('value')).val();
+    if (att && att.status !== 'refunded') continue;                    // not confirmed yet → a later run escalates it
+    const orderId = m.order_id || (att && att.order_id) || null;
+    const order = orderId ? (await db.ref(`orders/${orderId}`).once('value')).val() : null;
+    if (order && !order.redemption) { await db.ref(`refund_hold_review/${attemptId}`).remove(); continue; }   // no points involved
+    await db.ref(`dispatcher_alerts/refund_points_${attemptId}`).set({ type: 'payment_refund_confirmed_release_points', detail: { orderId, attemptId }, created_at: now });
+    await db.ref(`refund_hold_review/${attemptId}`).update({ escalated_at: now });
+    escalated++;
+  }
+  return escalated;
+}
+
+module.exports = { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, healLedgerRepair, noteRefundRetry, escalateConfirmedRefunds, isReconcilerRetryable: C.isReconcilerRetryable };
