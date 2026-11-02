@@ -205,6 +205,15 @@ async function cell(name, fn) { CURRENT = name; resetProvider(); try { await fn(
     assert.ok(extra(db, 'PAY_2') && extra(db, 'PAY_2').uuid === 'PAY_2', `${L}: PAY_2 has its own record (no collision)`);
   });
 
+  await cell('XP-KEY-HOLDING-ANOTHER-UUID-REFUSED', async () => {
+    const L = 'XP-KEY-HOLDING-ANOTHER-UUID-REFUSED';
+    const db = makeDb(cancelled({ extra_payments: { [xkey('PAY-2')]: { uuid: 'NOT-PAY-2', amount_cents: 100, at: 1 } } }));
+    const r = await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
+    assert.ok(r.code >= 500, `${L}: a record under this key for ANOTHER payment id is never written over (got ${r.code} ${r.outcome})`);
+    assert.deepStrictEqual(extra(db, 'PAY-2'), { uuid: 'NOT-PAY-2', amount_cents: 100, at: 1 }, `${L}: the existing record is untouched`);
+    assert.ok(!extraAlert(db, 'PAY-2') && voidCalls.length === 0, `${L}: nothing alerted under it, nothing voided`);
+  });
+
   await cell('XP-ALERT-NOT-PRUNED', async () => {
     const L = 'XP-ALERT-NOT-PRUNED';
     const db = makeDb(cancelled());
