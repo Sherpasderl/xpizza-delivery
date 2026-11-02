@@ -1,0 +1,26 @@
+{
+  "_source": "C-2's fake server bodies — copied VERBATIM from 3a's real tests/contract @ 1958b8ed (feat/security-lifecycle): getMyRating = xpizza-functions/ratings/my-rating.test.js §1 (the generic 403), §2 (400/405/429) and §3 (every state the sheet renders, through the real writers); rateOrder = xpizza-functions/ratings/rate-order.js's header contract + its returns. W = rating-v2.WINDOW_MS = 604800000; fulfilled_at = 1000 ⇒ editable_until = 604801000. DISH = 3a's test-context canonical id 'x_pizza-dish-<index of Margherita>' (7 on this branch's menu-pricing; only its SHAPE matters here).",
+  "getMyRating": {
+    "not_fulfilled": { "status": 200, "body": { "ok": true, "rating": null, "can_rate": false, "editable_until": null } },
+    "unrated": { "status": 200, "body": { "ok": true, "rating": null, "can_rate": true, "editable_until": 604801000 } },
+    "rated": { "status": 200, "body": { "ok": true, "rating": { "store": 4, "dishes": { "x_pizza-dish-7": 1 }, "delivery": -1, "comment": "Rica", "legacy_thumb": null, "rated_at": 2000, "edited_at": null }, "can_rate": true, "editable_until": 604801000 } },
+    "edited": { "status": 200, "body": { "ok": true, "rating": { "store": 4, "dishes": { "x_pizza-dish-7": 1 }, "delivery": -1, "comment": "Riquísima", "legacy_thumb": null, "rated_at": 2000, "edited_at": 3000 }, "can_rate": true, "editable_until": 604801000 } },
+    "past_window": { "status": 200, "body": { "ok": true, "rating": { "store": 4, "dishes": { "x_pizza-dish-7": 1 }, "delivery": -1, "comment": "Riquísima", "legacy_thumb": null, "rated_at": 2000, "edited_at": 3000 }, "can_rate": false, "editable_until": 604801000 } },
+    "withdrawn": { "status": 200, "body": { "ok": true, "rating": null, "can_rate": true, "editable_until": 604801000 } },
+    "deleted": { "status": 200, "body": { "ok": true, "rating": null, "can_rate": false, "editable_until": null } },
+    "v1_thumb": { "status": 200, "body": { "ok": true, "rating": { "store": null, "dishes": {}, "delivery": null, "comment": null, "legacy_thumb": 1, "rated_at": 2000, "edited_at": null }, "can_rate": false, "editable_until": null } },
+    "generic_403": { "status": 403, "body": { "ok": false, "error": "not_allowed" } },
+    "bad_request": { "status": 400, "body": { "ok": false, "error": "bad_request" } },
+    "rate_limited": { "status": 429, "body": { "ok": false, "error": "rate_limited", "retry_after": 5 } }
+  },
+  "rateOrder": {
+    "recorded": { "status": 200, "body": { "ok": true } },
+    "dishes_unavailable": { "status": 200, "body": { "ok": true, "dishes": "unavailable" } },
+    "window_closed": { "status": 409, "body": { "ok": false, "error": "window_closed" } },
+    "not_fulfilled": { "status": 409, "body": { "ok": false, "error": "not_fulfilled" } },
+    "not_rated": { "status": 409, "body": { "ok": false, "error": "not_rated" } },
+    "dish_not_purchased": { "status": 400, "body": { "ok": false, "error": "dish_not_purchased" } },
+    "generic_403": { "status": 403, "body": { "ok": false, "error": "not_allowed" } },
+    "unavailable": { "status": 503, "body": { "ok": false, "error": "unavailable" } }
+  }
+}

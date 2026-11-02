@@ -351,3 +351,44 @@ test('Codex r3 #5: an UNREADABLE placement record is UNKNOWN in the lock and fre
   assert.equal(N.api.holdsLock(), true, '🔴 an unreadable record holds the lock even with no frozen cart');
   assert.equal(N.api.readPlace(), null, 'readPlace (S2) still reads a failure as absence');
 });
+
+// «Volver a pedir» advisor ruling 2026-11-02: placement is the BASE, byte for byte (no cart lock). This cell PROVES it on behaviour: the
+// base capp-api.js (blob 543d9d71~1, before any «Volver a pedir» change) is compiled here and both modules run the same scenarios on a
+// TRACED storage — every read / write / remove, every request body, every outcome identical
+async function baseApiModule() {
+  const { execFileSync } = await import('node:child_process'); const Module = (await import('node:module')).default; const pathM = await import('node:path');
+  const here = pathM.dirname(new URL(import.meta.url).pathname), file = pathM.join(here, 'capp-api.base-blob.js');
+  const src = execFileSync('git', ['show', '543d9d71~1:customer-app/capp-api.js'], { cwd: here, encoding: 'utf8' });
+  const m = new Module(file); m.filename = file; m.paths = Module._nodeModulePaths(here); m._compile(src, file); return { exports: m.exports, src };
+}
+test('placement = the BASE module (543d9d71~1): identical storage traces, request bodies and outcomes — success, failure + retry, refusal, overlap, expiry, an in-memory ABA, cash and card', async () => {
+  const B = await baseApiModule();
+  const { readFileSync } = await import('node:fs');
+  assert.equal(readFileSync(new URL('./capp-api.js', import.meta.url), 'utf8'), B.src, '🔴 VP-base: capp-api.js IS the base blob, byte for byte');
+  const OK_CARD = { status: 200, json: { ok: true, order_id: 'X', checkout_url: 'https://pay.test/c', poll_token: 'pt' } };
+  const run = async (Mod, scenario) => {
+    const trace = [], st = memStorage(), clock = { t: T0 }; let rng = 0;
+    const tr = { getItem: (k) => { const v = st.getItem(k); trace.push(['get', k, v]); return v; }, setItem: (k, v) => { trace.push(['set', k, v]); st.setItem(k, v); }, removeItem: (k) => { trace.push(['del', k]); st.removeItem(k); } };
+    const srv = server(JSON.parse(JSON.stringify(scenario.script)));   // each run its own script (server() consumes it)
+    const api = Mod.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: K.pay, endpoints: E, hours: OPEN_ALL, cartKey: K.cart, placedKey: K.placed }, fetch: srv.fetch, storage: tr, now: () => clock.t, sleep: async () => {},
+      randomBytes: (k) => Uint8Array.from({ length: k }, () => (rng++ * 13) % 256), setInterval: () => 0, clearInterval: () => {} });
+    const out = await scenario.go(api, tr, clock);
+    return { trace, bodies: srv.calls.map((c) => [c.ep, c.body]), out: JSON.parse(JSON.stringify(out)) };
+  };
+  const seed = (tr, extra) => tr.setItem(K.cart, JSON.stringify({ v: 2, rid: 'rid_a', mode: 'delivery', lines: SNAP.lines, cart_gen: 'GEN_A', ...(extra || {}) }));
+  const SC = {
+    'cash success': { script: { createOrder: [OK_CASH] }, go: async (a, tr) => { seed(tr); return a.place(args()); } },
+    'cash network failure, then the retry': { script: { createOrder: ['network', OK_CASH] }, go: async (a, tr) => { seed(tr); return [await a.place(args()), await a.place(args())]; } },
+    'card success (the checkout redirect)': { script: { chargeOnlineOrder: [OK_CARD] }, go: async (a, tr) => { seed(tr); return a.place(args('online')); } },
+    'a refused freeze (the cart write fails)': { script: { createOrder: [OK_CASH] }, go: async (a, tr) => { seed(tr); const set = tr.setItem; tr.setItem = (k, v) => { if (k === K.cart && /frozen_for/.test(v)) throw new Error('quota'); return set(k, v); }; return a.place(args()); } },
+    'a frozen cart from an expired lock (recovery, no send)': { script: { createOrder: [OK_CASH] }, go: async (a, tr) => { seed(tr, { frozen_for: 'TA_OLD' }); return a.place(args()); } },
+    'overlapping cash placements': { script: { createOrder: [OK_CASH] }, go: async (a, tr) => { seed(tr); return Promise.all([a.place(args()), a.place(args())]); } },
+    'overlapping card placements': { script: { chargeOnlineOrder: [OK_CARD] }, go: async (a, tr) => { seed(tr); return Promise.all([a.place(args('online')), a.place(args('online'))]); } },
+    'a retry after the record expired': { script: { createOrder: ['network', OK_CASH] }, go: async (a, tr, clock) => { seed(tr); const x = await a.place(args()); clock.t += 3 * 3600e3; return [x, await a.place(args())]; } },
+    'an in-memory cart, no persisted cart (null → X → null)': { script: { createOrder: [OK_CASH] }, go: async (a) => Promise.all([a.place(args()), a.place(args())]) },
+  };
+  for (const [name, sc] of Object.entries(SC)) {
+    const base = await run(B.exports, sc), head = await run(A, sc);
+    assert.deepEqual(head, base, `🔴 VP-base: «${name}» — storage trace, request bodies and outcome identical to the base`);
+  }
+});

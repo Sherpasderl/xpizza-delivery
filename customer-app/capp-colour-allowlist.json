@@ -1,0 +1,522 @@
+{
+ "css .app.dark .map,:root[data-theme=\"dark\"] .app .map | background #1F2A22": {
+  "disposition": "theme-pair",
+  "why": "the dark map backdrop (v6 .dark rule), in the three forms"
+ },
+ "css .app.dark .order-map,:root[data-theme=\"dark\"] .app .order-map | background #1F2A22": {
+  "disposition": "theme-pair",
+  "why": "the dark map backdrop (v6 .dark rule), in the three forms"
+ },
+ "css .app.dark .pinstep .mapwrap,:root[data-theme=\"dark\"] .app .pinstep .mapwrap | background #1F2A22": {
+  "disposition": "theme-pair",
+  "why": "the dark map backdrop (v6 .dark rule), in the three forms"
+ },
+ "css .app.desk .icard:hover | box-shadow rgba(0,0,0,.05)": {
+  "disposition": "fixed",
+  "why": "the item card's hover lift, near edge (D-3 r3 desktop mockup frames 2a/3, approved; C-6c): a dark 5 % shadow, readable on both themes"
+ },
+ "css .app.desk .icard:hover | box-shadow rgba(0,0,0,.28)": {
+  "disposition": "fixed",
+  "why": "the item card's hover lift, soft drop (D-3 r3 desktop mockup frames 2a/3, approved; C-6c): a dark shadow, readable on both themes"
+ },
+ "css .app.desk .rcard:hover .ph | box-shadow rgba(0,0,0,.06)": {
+  "disposition": "fixed",
+  "why": "the store card's hover hairline (D-3 r3 desktop mockup, approved): a dark 6 % inset, readable on both themes"
+ },
+ "css .app.desk .shero .avatar | box-shadow rgba(0,0,0,.18)": {
+  "disposition": "fixed",
+  "why": "the store logo's plate over the hero edge (D-3 r3 desktop mockup frames 2a/3, approved; C-6c); the .avatar plate's own shadow family (v6 dark keeps it)"
+ },
+ "css .app.desk .storecard .lg | background #fff": {
+  "disposition": "fixed",
+  "why": "logo backplate on the checkout's store card (D-3 r3 desktop checkout frame 4a, approved; C-6d): restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .app.desk .storecard .lg | color #1B2A24": {
+  "disposition": "fixed",
+  "why": "the text-logo's ink on its white plate (D-3 r3 desktop checkout frame 4a, approved; C-6d): fixed with its plate (as .avatar.txt)"
+ },
+ "css .avatar | background #FFFFFF": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .avatar | box-shadow rgba(0,0,0,.12)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .avatar.txt | color #1B2A24": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .cart-bar | box-shadow rgba(0,0,0,.22)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .dcard .ph .lg | background #fff": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .dcard .ph .lg | box-shadow rgba(0,0,0,.22)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .dcard .ph .lg.txt | color #1B2A24": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .dec li .tag.conv | background #E6F4EC": {
+  "disposition": "unused",
+  "why": "v6 review chrome carried by the byte-identical CSS; never rendered by the app"
+ },
+ "css .detail-extras-add-btn | box-shadow rgba(0,0,0,.12)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .detail-extras-pill | box-shadow rgba(0,0,0,.12)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .detail-photo::after | background rgba(0,0,0,.25)": {
+  "disposition": "v6-parity",
+  "why": "the photo's scrim gradient (v6)"
+ },
+ "css .device .frame | background #fff": {
+  "disposition": "unused",
+  "why": "v6 review chrome carried by the byte-identical CSS; never rendered by the app"
+ },
+ "css .device | background #0B0B0D": {
+  "disposition": "unused",
+  "why": "v6 review chrome carried by the byte-identical CSS; never rendered by the app"
+ },
+ "css .device | box-shadow #2A2A2E": {
+  "disposition": "unused",
+  "why": "v6 review chrome carried by the byte-identical CSS; never rendered by the app"
+ },
+ "css .device | box-shadow rgba(0,0,0,.45)": {
+  "disposition": "unused",
+  "why": "v6 review chrome carried by the byte-identical CSS; never rendered by the app"
+ },
+ "css .helpchip | box-shadow rgba(0,0,0,.18)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .map .adj | background rgba(20,18,16,.66)": {
+  "disposition": "fixed",
+  "why": "white text on a .66 dark scrim: readable on both themes (§5 fixed, accepted 2026-11-01)"
+ },
+ "css .map .adj | color #FFFFFF": {
+  "disposition": "fixed",
+  "why": "white text on a .66 dark scrim: readable on both themes (§5 fixed, accepted 2026-11-01)"
+ },
+ "css .map .pin | filter rgba(0,0,0,.25)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .map .tag | background rgba(255,255,255,.88)": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B)"
+ },
+ "css .map .tag | color #3F4A3A": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B)"
+ },
+ "css .map | background #E8EDE4": {
+  "disposition": "theme-pair",
+  "why": "the light map backdrop; its dark pair is the three-form #1F2A22 rule (v6 .dark .map)"
+ },
+ "css .mk-sheet | box-shadow rgba(0,0,0,.08)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .ocard .lg | background #fff": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .ocard .lg.txt | color #1B2A24": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .olist .lg.big | background #fff": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .olist .lg.big.txt | color #1B2A24": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .order-map .iconbtn | box-shadow rgba(0,0,0,.18)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .order-map .mk-driver | border #fff": {
+  "disposition": "v6-parity",
+  "why": "the driver marker's white ring (v6), on the themed map"
+ },
+ "css .order-map .mk-driver | box-shadow rgba(0,0,0,.25)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .order-map .mk-home | box-shadow rgba(0,0,0,.18)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .order-map .mk-label | box-shadow rgba(0,0,0,.18)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .order-map | background #E8EDE4": {
+  "disposition": "theme-pair",
+  "why": "the light map backdrop; its dark pair is the three-form #1F2A22 rule (v6 .dark .map)"
+ },
+ "css .pinstep .hint | background rgba(20,18,16,.66)": {
+  "disposition": "fixed",
+  "why": "white text on a .66 dark scrim: readable on both themes (§5 fixed, accepted 2026-11-01)"
+ },
+ "css .pinstep .hint | color #fff": {
+  "disposition": "fixed",
+  "why": "white text on a .66 dark scrim: readable on both themes (§5 fixed, accepted 2026-11-01)"
+ },
+ "css .pinstep .mapwrap | background #E8EDE4": {
+  "disposition": "theme-pair",
+  "why": "the light map backdrop; its dark pair is the three-form #1F2A22 rule (v6 .dark .map)"
+ },
+ "css .pinstep .pin | filter rgba(0,0,0,.25)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .promo .ic | box-shadow rgba(0,0,0,.08)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .qty-add-btn | background #fff": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B)"
+ },
+ "css .qty-add-btn | box-shadow rgba(0,0,0,.25)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .qty-add-btn | color #0D1424": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B)"
+ },
+ "css .qty-badge | background #fff": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B)"
+ },
+ "css .qty-badge | box-shadow rgba(0,0,0,.25)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .qty-badge | color #0D1424": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B)"
+ },
+ "css .qty-controls | background #fff": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B)"
+ },
+ "css .qty-controls | box-shadow rgba(0,0,0,.25)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .qty-ctrl-btn | color #0D1424": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B)"
+ },
+ "css .qty-ctrl-btn:active | background rgba(0,0,0,.06)": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B)"
+ },
+ "css .qty-ctrl-num | color #0D1424": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B)"
+ },
+ "css .rcard .ph .logo | background #fff": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .rcard .ph .logo | box-shadow rgba(0,0,0,.2)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .rcard .ph .logo.txt | color #1B2A24": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .scard .ph .logo | background #fff": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .scard .ph .logo | box-shadow rgba(0,0,0,.2)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .scard .ph .logo.txt | color #1B2A24": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .segbar .sg.active .fill::after | background rgba(255,255,255,.65)": {
+  "disposition": "v6-parity",
+  "why": "the progress shimmer highlight over the accent fill (v6)"
+ },
+ "css .segs button[aria-pressed=\"true\"] | box-shadow rgba(0,0,0,.12)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .sheet | box-shadow rgba(0,0,0,.14)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .sndcard .lg | background #fff": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .sndcard .lg.txt | color #1B2A24": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .sndcard | box-shadow rgba(0,0,0,.06)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .sndcard | box-shadow rgba(0,0,0,.28)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .store-nav .iconbtn | background rgba(255,255,255,.92)": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B)"
+ },
+ "css .store-nav .iconbtn | box-shadow rgba(0,0,0,.18)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .store-nav .iconbtn | color #0D1424": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B)"
+ },
+ "css .switch::after | background #fff": {
+  "disposition": "v6-parity",
+  "why": "the switch knob is white on both themes (v6)"
+ },
+ "css .switch::after | box-shadow rgba(0,0,0,.25)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .tabbar button | box-shadow rgba(0,0,0,.08)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .tabbar button | box-shadow rgba(0,0,0,.26)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6)"
+ },
+ "css .urow .lg | background #fff": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .urow .lg.txt | color #1B2A24": {
+  "disposition": "fixed",
+  "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css :root[data-theme=\"dark\"] .dec li .tag.conv,.dark-sys .dec li .tag.conv | background #173626": {
+  "disposition": "unused",
+  "why": "v6 review chrome carried by the byte-identical CSS; never rendered by the app"
+ },
+ "css :root[data-theme=\"dark\"] .dec li .tag.conv,.dark-sys .dec li .tag.conv | color #7ED6A0": {
+  "disposition": "unused",
+  "why": "v6 review chrome carried by the byte-identical CSS; never rendered by the app"
+ },
+ "css @media (min-width:1100px) .app.desk .detail-modal.wide .dphoto .lgtag | background rgba(255,255,255,.92)": {
+  "disposition": "fixed",
+  "why": "the store-name tag ON the dish photo (D-3 r3 desktop mockup frames 2a/3, approved; C-6c): a white chip over a photo, the same in both themes"
+ },
+ "css @media (min-width:1100px) .app.desk .detail-modal.wide .dphoto .lgtag | color #0D1424": {
+  "disposition": "fixed",
+  "why": "the store-name tag's ink on its white chip (D-3 r3 desktop mockup frames 2a/3, approved; C-6c): fixed with its chip"
+ },
+ "css @media (prefers-color-scheme: dark) :root:not([data-theme=\"light\"]) .app .map | background #1F2A22": {
+  "disposition": "theme-pair",
+  "why": "the dark map backdrop (v6 .dark rule), in the three forms"
+ },
+ "css @media (prefers-color-scheme: dark) :root:not([data-theme=\"light\"]) .app .order-map | background #1F2A22": {
+  "disposition": "theme-pair",
+  "why": "the dark map backdrop (v6 .dark rule), in the three forms"
+ },
+ "css @media (prefers-color-scheme: dark) :root:not([data-theme=\"light\"]) .app .pinstep .mapwrap | background #1F2A22": {
+  "disposition": "theme-pair",
+  "why": "the dark map backdrop (v6 .dark rule), in the three forms"
+ },
+ "js capp-confirm-quote.js @cancel #ccc ×1": {
+  "disposition": "ported",
+  "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
+ },
+ "js capp-confirm-quote.js @cancel #fff ×1": {
+  "disposition": "ported",
+  "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
+ },
+ "js capp-confirm-quote.js @card #111 ×1": {
+  "disposition": "ported",
+  "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
+ },
+ "js capp-confirm-quote.js @card #fff ×1": {
+  "disposition": "ported",
+  "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
+ },
+ "js capp-confirm-quote.js @card rgba(0,0,0,.25) ×1": {
+  "disposition": "ported",
+  "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
+ },
+ "js capp-confirm-quote.js @confirm #111 ×1": {
+  "disposition": "ported",
+  "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
+ },
+ "js capp-confirm-quote.js @confirm #fff ×1": {
+  "disposition": "ported",
+  "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
+ },
+ "js capp-confirm-quote.js @wrap rgba(0,0,0,.45) ×1": {
+  "disposition": "ported",
+  "why": "the «El precio cambió» sheet, byte-identical to form-confirm-quote.js; known dark gap — follow-up: CSS variables with these literals as fallbacks, forms lane (advisor 2026-11-01)"
+ },
+ "js capp-home.js @CUIS_PAL #4A4541 ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #6E7B8B ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #6F4E3A ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #7D5A46 ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #8E9B72 ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #A3AFBC ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #A9BCD0 ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #C68F64 ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #D4836D ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #D9B35D ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #E2C47F ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #F4ECDC ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @CUIS_PAL #FFFFFF ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-home.js @SOLA #2F5FB8 ×1": {
+  "disposition": "fixed",
+  "why": "the Sola mark's brand fill (§5 fixed)"
+ },
+ "js capp-home.js @cuisPart #000 ×1": {
+  "disposition": "v6-parity",
+  "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
+ },
+ "js capp-signup.js @GOOGLE_G #1976D2 ×1": {
+  "disposition": "fixed",
+  "why": "Google's «G» mark: its brand colours, never themed"
+ },
+ "js capp-signup.js @GOOGLE_G #4CAF50 ×1": {
+  "disposition": "fixed",
+  "why": "Google's «G» mark: its brand colours, never themed"
+ },
+ "js capp-signup.js @GOOGLE_G #FF3D00 ×1": {
+  "disposition": "fixed",
+  "why": "Google's «G» mark: its brand colours, never themed"
+ },
+ "js capp-signup.js @GOOGLE_G #FFC107 ×1": {
+  "disposition": "fixed",
+  "why": "Google's «G» mark: its brand colours, never themed"
+ },
+ "js capp-theme.js @MAP_DARK #17263c ×2": {
+  "disposition": "external",
+  "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
+ },
+ "js capp-theme.js @MAP_DARK #1f2835 ×1": {
+  "disposition": "external",
+  "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
+ },
+ "js capp-theme.js @MAP_DARK #212a37 ×1": {
+  "disposition": "external",
+  "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
+ },
+ "js capp-theme.js @MAP_DARK #242f3e ×2": {
+  "disposition": "external",
+  "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
+ },
+ "js capp-theme.js @MAP_DARK #263c3f ×1": {
+  "disposition": "external",
+  "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
+ },
+ "js capp-theme.js @MAP_DARK #2f3948 ×1": {
+  "disposition": "external",
+  "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
+ },
+ "js capp-theme.js @MAP_DARK #38414e ×1": {
+  "disposition": "external",
+  "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
+ },
+ "js capp-theme.js @MAP_DARK #515c6d ×1": {
+  "disposition": "external",
+  "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
+ },
+ "js capp-theme.js @MAP_DARK #6b9a76 ×1": {
+  "disposition": "external",
+  "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
+ },
+ "js capp-theme.js @MAP_DARK #746855 ×2": {
+  "disposition": "external",
+  "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
+ },
+ "js capp-theme.js @MAP_DARK #9ca5b3 ×1": {
+  "disposition": "external",
+  "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
+ },
+ "js capp-theme.js @MAP_DARK #d59563 ×3": {
+  "disposition": "external",
+  "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
+ },
+ "js capp-theme.js @MAP_DARK #f3d19c ×1": {
+  "disposition": "external",
+  "why": "MAP_DARK: Google's documented night-mode map style (data handed to the Maps API)"
+ },
+ "js form-live-status.js @add #1E1B18 ×1": {
+  "disposition": "ported",
+  "why": "byte copy; the capp uses only its window math, never this polyline"
+ },
+ "js sherpa-client.js @s #1f2937 ×1": {
+  "disposition": "fixed",
+  "why": "the shared update notice: a dark chip readable on both themes (§5 fixed; driver app too)"
+ },
+ "js sherpa-client.js @s #ffffff ×1": {
+  "disposition": "fixed",
+  "why": "the shared update notice: a dark chip readable on both themes (§5 fixed; driver app too)"
+ }
+}

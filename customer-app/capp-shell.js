@@ -15,7 +15,7 @@
   'use strict';
 
   const RETURN_KEY = 'capp:return';
-  const keysFor = (rid) => ({ place: `capp:${rid}:pending_place`, pay: `capp:${rid}:pending_pay`, cart: `capp:${rid}:cart`, placed: `capp:${rid}:placed` });
+  const keysFor = (rid) => ({ place: `capp:${rid}:pending_place`, pay: `capp:${rid}:pending_pay`, cart: `capp:${rid}:cart`, placed: `capp:${rid}:placed`, sent: `capp:${rid}:sent_order` });
 
   // ── r2 §1.1: the config split ──
   // dirEntry: the directory's allowlisted public entry; runtime: { endpoints, intakeKey, mapsKey } (the app deployment's)
@@ -37,9 +37,12 @@
       // the served schedule (C′, validated) ⇒ the store config's [h1,m1,h2,m2] per weekday; unavailable ⇒ every day closed (never assumed open)
       hours: sched ? days.map((dk) => range(sched[dk])) : Array(7).fill(null),
       feeFromCents: d.fee && d.fee.state === 'priced' && Number.isFinite(d.fee.from_cents) ? d.fee.from_cents : null,
+      // the ONE free-delivery predicate (home's, Codex s7a2 r1 #7: a promotional claim needs a PRICED fee) — home and the store page
+      // both read it (PLAN-capp-store-promo-feeinfo r0); the price itself is the server's (delivery-pricing: members only)
+      promoFree: !!d.fee && d.fee.state === 'priced' && Number.isInteger(d.fee.from_cents) && d.fee.from_cents >= 0 && !!(d.promo && d.promo.free_delivery),
       orderIdPrefix: typeof d.order_id_prefix === 'string' ? d.order_id_prefix : undefined,
       endpoints: rt.endpoints, intakeKey: rt.intakeKey, mapsKey: rt.mapsKey || undefined,
-      pendingPayKey: k.pay, cartKey: k.cart, placedKey: k.placed, entry: 'app',
+      pendingPayKey: k.pay, placeKey: k.place, cartKey: k.cart, placedKey: k.placed, sentKey: k.sent, entry: 'app', ...(rt && rt.store ? { store: rt.store } : {}),
       // PLAN-capp-signin-required r5.4: the app's guest rules (card only, email, WhatsApp code) — the RUNTIME's switch, off until it ships
       ...(rt.guestCardOnly === true ? { guestCardOnly: true } : {}),
       // PLAN-intl-phone r2.3 (S-picker): the WhatsApp country picker + E.164 on the wire — the RUNTIME's switch. FLIP PRECONDITION

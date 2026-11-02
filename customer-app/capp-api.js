@@ -47,6 +47,46 @@
 })(typeof self !== 'undefined' ? self : this, function (root) {
   'use strict';
 
+  // ── the member token: ONE predicate, ONE setter (Codex promo r2 P2-A + r3) ──
+  // tokenUsable(m, now) — the token the transport attaches as x-firebase-id-token, or null: a non-empty JWT whose `exp` is later than
+  //   now + TOKEN_SKEW_MS (only the exp claim is read; never the signature — the server verifies). The promo claim («Envío gratis», the
+  //   member state of the pill) reads THE SAME function, so the screen and the header can never disagree; no usable token ⇒ the server
+  //   prices a guest ⇒ the screen claims nothing.
+  // acceptToken(m, t, now) — the ONLY way a fresh token reaches a member: a usable one is stored and the member's identity-guarded
+  //   onTokenChange(m) fires (the shell patches Inicio + the store in place); an unusable one is refused.
+  const TOKEN_SKEW_MS = 60 * 1000;
+  const TOKEN_MAX_AHEAD_MS = 48 * 3600 * 1000;   // plausibility (Codex promo r4 #4): an ID token lives 1 h; anything past now + 48 h is refused
+  const B64URL = /^[A-Za-z0-9_-]+$/;
+  const segJson = (seg) => {
+    const b = seg.replace(/-/g, '+').replace(/_/g, '/'), pad = b + '==='.slice((b.length + 3) % 4);
+    const v = JSON.parse(typeof atob === 'function' ? atob(pad) : Buffer.from(pad, 'base64').toString('binary'));
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+  };
+  // the exp of a STRUCTURALLY valid JWT, ms — FAIL CLOSED: exactly three non-empty base64url segments, header and payload JSON objects,
+  // exp a finite integer whose ms value is finite; anything else ⇒ null (unusable)
+  function tokenExpMs(t) {
+    if (typeof t !== 'string' || !t) return null;
+    const parts = t.split('.'); if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null;
+    try {
+      if (!segJson(parts[0])) return null;
+      const pl = segJson(parts[1]); if (!pl) return null;
+      const exp = pl.exp;
+      return typeof exp === 'number' && Number.isInteger(exp) && Number.isFinite(exp * 1000) ? exp * 1000 : null;
+    } catch (_) { return null; }
+  }
+  function tokenUsable(m, now) {
+    const t = m && typeof m.idToken === 'string' && m.idToken ? m.idToken : null; if (!t) return null;
+    const e = tokenExpMs(t), n = typeof now === 'number' && Number.isFinite(now) ? now : Date.now();
+    return e !== null && e > n + TOKEN_SKEW_MS && e <= n + TOKEN_MAX_AHEAD_MS ? t : null;
+  }
+  function acceptToken(m, t, now) {
+    if (!m || typeof m !== 'object' || !tokenUsable({ idToken: t }, now)) return false;
+    if (m.idToken === t) return true;
+    try { m.idToken = t; } catch (_) { return false; }
+    if (typeof m.onTokenChange === 'function') { try { m.onTokenChange(m); } catch (_) {} }
+    return true;
+  }
+
   const HOSTED_CHECKOUT_MS = 45 * 60 * 1000;             // the server's hosted-checkout window (HOSTED_TTL_MS, pinned by a test)
   const CAPP_SEND_GRACE_MS = HOSTED_CHECKOUT_MS + 15 * 60 * 1000;
   // POLICY (advisor ruling 2026-10-26, Codex r4): an interrupted card payment LOCKS its order in the app — no card AND no cash
@@ -196,6 +236,8 @@
     // Codex G7 r1 #1 / r2: a RETAINED send — dispatched, its answer still uncertain, its exact body recorded (every send under
     // schedulingLive, ASAP included) — with its OWNER (the member uid, or GUEST_OWNER). The lock, the replay and its endpoint come from
     // THIS record only, never from the current flow; null ⇒ none
+    // a record's sent_body is replayable: it parses to an object carrying THIS record's order_id (the replay's own acceptance test)
+    function replayable(r) { if (!r || typeof r.sent_body !== 'string') return false; try { const b = JSON.parse(r.sent_body); return !!b && typeof b === 'object' && b.order_id === r.order_id; } catch (_) { return false; } }
     function retainedSend() {
       if (cfg.schedulingLive !== true) return null;
       const r = readPlace();
@@ -234,13 +276,19 @@
     const TOKEN_WAIT_MS = 2000;
     async function memberToken(m) {
       if (!m) return null;
-      if (typeof m.getIdToken !== 'function') return m.idToken || null;
-      const fresh = await Promise.race([Promise.resolve().then(() => m.getIdToken()).then((t) => (typeof t === 'string' && t ? t : null), () => null), timeout(TOKEN_WAIT_MS).then(() => null)]);
-      return fresh || m.idToken || null;
+      const current = () => memberOf() === m;   // Codex promo r4 #1: the identity, revalidated after EVERY await
+      if (typeof m.getIdToken === 'function') {
+        const fresh = await Promise.race([Promise.resolve().then(() => m.getIdToken()).then((t) => (typeof t === 'string' && t ? t : null), () => null), timeout(TOKEN_WAIT_MS).then(() => null)]);
+        if (!current()) return null;   // signed out / switched during the await ⇒ no token is accepted or sent
+        if (fresh) acceptToken(m, fresh, now());   // the ONE setter: stored only if usable, and the screen is told
+      }
+      if (!current()) return null;
+      return tokenUsable(m, now());   // never an expired token (Codex promo r3): usable, or no header at all
     }
     const headersFor = (extra, token) => { const h = { 'Content-Type': 'application/json', ...(extra || {}) }; if (token) h['x-firebase-id-token'] = token; return h; };
     async function post(url, body, extraHeaders) {
-      const token = await memberToken(memberOf());
+      const m = memberOf(), tok = await memberToken(m);
+      const token = memberOf() === m ? tok : null;   // Codex promo r5: the identity AGAIN after the await, nothing awaited before the dispatch
       const r = await sfetch(url, { method: 'POST', headers: headersFor(extraHeaders, token), body: JSON.stringify(body) });
       let j = null; try { j = await r.json(); } catch (_) { j = null; }
       const parsed = !!j && typeof j === 'object';
@@ -489,6 +537,11 @@
         try {
           rec = readPlace() || mintPlace(method, p);
           priorSends = Number(rec.dispatched) || 0;   // S4: a retained identity (already dispatched by an earlier attempt)
+          // Codex cash-chips r2 P1-1: the caller's no-quote allowance (freshOk:false) is for a REPLAY of the recorded body only — anything
+          // that would build a FRESH body is refused here, before any freeze / dispatch is recorded for this send
+          // (Codex cash-chips r3) granted ONLY when sent_body PARSES to an object whose order_id is this record's — the same test the replay
+          // itself applies — so an unreadable / "null" / foreign body can never fall through to a fresh build under the retained id
+          if (p.freshOk === false && !(cfg.schedulingLive === true && !fresh && priorSends > 0 && rec.sched_pending === true && !schedSettled.has(rec.order_id) && replayable(rec))) return { kind: 'replay_requote', order_id: rec.order_id, local: true };
           // Codex amendment r1 P2: the ticket ↔ order-id binding BEFORE anything is recorded for this identity (the freeze, confirmSend) —
           // a refused attempt leaves the record un-dispatched, so the re-verify binds to THIS id and the next place() sends it
           { const g = guestGate(p, { ticket: true, id: rec.order_id }); if (g) return g; }
@@ -556,6 +609,7 @@
         if (method === 'cash') {
           if (r.status === 200) { const ok = resolvePlace(id, 'placed'); return { ...grantOf(j), kind: 'placed', order_id: j.order_id || id, tracking_token: j.tracking_token || null, idempotent: !!j.idempotent, ...scheduledOf(j, body), ...settledOf(ok) }; }
           if (r.status === 409 && j.error === 'order_conflict') {
+            if (replay) return { kind: 'replay_requote', order_id: id };   // Codex cash-chips r2 P1-1: a replay is never healed onto a rebuilt body
             if (healed) return { kind: 'error', order_id: id, error: 'order_conflict' };
             healed = true; clearPlace(id); continue;   // (S1): proven terminal-safe — ONE resend on a fresh id
           }
@@ -567,6 +621,10 @@
         if (cr) return { ...cr, order_id: id };
         // r3 P2-3: a late answer after teardown is PERSISTED above (settle / issue / clear) but never rendered — no price sheet
         if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded', order_id: id };
+        // advisor ruling (Codex cash-chips r1 P1-1): a RETAINED REPLAY sends ONLY the recorded body — a quote refusal (stale /
+        // invalid / a higher price) of the replayed bytes is never rebuilt from the live flow nor re-priced over it: the definitive
+        // answer above already ended the replay window (the lock is released), so the customer re-confirms a validated checkout
+        if (replay && cq.classify(j)) return { kind: 'replay_requote', order_id: id };
         const rj = await cq.handleRejection({ err: j, shownCents: expected, hasReward: false, retried: silentRetried, sheet: p.sheet });
         if (rj && rj.handled) {
           if (!rj.resend) return { kind: rj.declined ? 'price_declined' : 'error', order_id: id };
@@ -720,5 +778,5 @@
       confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
   }
 
-  return { createApi, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
+  return { createApi, tokenUsable, acceptToken, tokenExpMs, TOKEN_SKEW_MS, TOKEN_MAX_AHEAD_MS, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
 });

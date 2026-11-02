@@ -34,11 +34,14 @@ const wire = (list) => JSON.stringify(list.map((o) => (o instanceof RegExp ? { r
 const APP_DEPS = M.PLATFORM.sites.deployments.filter((d) => d.app === 'orders' && d.context === M.PLATFORM_CONTEXT);
 assert.strictEqual(APP_DEPS.length, 1, 'premise: exactly one platform orders deployment');
 const APP_ORIGINS = APP_DEPS[0].origins;
+// PLAN-capp-native-shell §1.1: the native shell's WebView origins come LAST (after every site origin), from the app's `native` block
+const NATIVE = (APP_DEPS[0].native && APP_DEPS[0].native.origins) || [];
+assert.deepStrictEqual(NATIVE, [...M.NATIVE_ORIGINS], 'premise: the app deployment declares both native origins');
 assert.ok(APP_ORIGINS.length >= 1 && APP_ORIGINS.every((o) => !LITERAL_ACCOUNT_ORIGINS.includes(o)), 'the app declares its own origin(s), none a form origin');
-assert.strictEqual(wire(M.PLATFORM.ACCOUNT_ORIGINS), wire([...LITERAL_ACCOUNT_ORIGINS, ...APP_ORIGINS]), '🔴 ACCOUNT_ORIGINS changed — the form origins must be unchanged, plus only the app origins');
-assert.strictEqual(wire(M.PLATFORM.PUBLIC_MENU_ORIGINS), wire([...LITERAL_PUBLIC_MENU_ORIGINS, ...APP_ORIGINS]), '🔴 PUBLIC_MENU_ORIGINS changed — the form origins must be unchanged, plus only the app origins');
+assert.strictEqual(wire(M.PLATFORM.ACCOUNT_ORIGINS), wire([...LITERAL_ACCOUNT_ORIGINS, ...APP_ORIGINS, ...NATIVE]), '🔴 ACCOUNT_ORIGINS changed — the form origins must be unchanged, plus only the app origins, then the native ones');
+assert.strictEqual(wire(M.PLATFORM.PUBLIC_MENU_ORIGINS), wire([...LITERAL_PUBLIC_MENU_ORIGINS, ...APP_ORIGINS, ...NATIVE]), '🔴 PUBLIC_MENU_ORIGINS changed — the form origins must be unchanged, plus only the app origins, then the native ones');
 assert.strictEqual(wire(M.PLATFORM.ACCOUNT_ORIGINS.slice(0, 2)), wire(LITERAL_ACCOUNT_ORIGINS), 'the two form origins stay first, byte-identical');
-ok('derived ACCOUNT_ORIGINS / PUBLIC_MENU_ORIGINS = the ba29282 literals (members AND order) + the app deployment\'s manifest origins');
+ok('derived ACCOUNT_ORIGINS / PUBLIC_MENU_ORIGINS = the ba29282 literals (members AND order) + the app deployment\'s manifest origins + its native origins');
 
 // 4. index.js CONSUMES the derived lists (no literal list left behind)
 const src = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
@@ -51,8 +54,8 @@ ok('index.js takes both lists from the manifest; no literal list remains');
 const synth = JSON.parse(JSON.stringify(M.PLATFORM.sites));
 synth.deployments.push({ id: 'orders-synth', app: 'orders', folder: 'synth-orders', entrypoints: ['index.html'], context: 'synthetic_3', origins: ['https://orders.synthetic.test'] });
 const P3 = M.loadPlatform(synth, M.PLATFORM.compat);
-assert.deepStrictEqual(P3.ACCOUNT_ORIGINS, [...LITERAL_ACCOUNT_ORIGINS, ...APP_ORIGINS, 'https://orders.synthetic.test']);
-assert.strictEqual(wire(P3.PUBLIC_MENU_ORIGINS), wire([...LITERAL_PUBLIC_MENU_ORIGINS, ...APP_ORIGINS, 'https://orders.synthetic.test']));
+assert.deepStrictEqual(P3.ACCOUNT_ORIGINS, [...LITERAL_ACCOUNT_ORIGINS, ...APP_ORIGINS, 'https://orders.synthetic.test', ...NATIVE]);
+assert.strictEqual(wire(P3.PUBLIC_MENU_ORIGINS), wire([...LITERAL_PUBLIC_MENU_ORIGINS, ...APP_ORIGINS, 'https://orders.synthetic.test', ...NATIVE]));
 assert.ok(P3.isValidCombination('orders', 'orders-synth', 'synthetic_3') && !P3.isValidCombination('orders', 'orders-synth', 'x_pizza'));
 ok('a synthetic third orders deployment adds its origin to BOTH lists and is a valid heartbeat combination');
 

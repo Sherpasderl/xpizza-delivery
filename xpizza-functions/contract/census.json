@@ -4224,7 +4224,7 @@
   },
   {
    "id": "xpizza-functions/client-floor.js#updateRequired#status#0",
-   "line": 105,
+   "line": 140,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -4237,7 +4237,7 @@
   },
   {
    "id": "xpizza-functions/client-floor.js#liveCheckoutProbe#payment_status#0",
-   "line": 123,
+   "line": 158,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -50454,9 +50454,17 @@
   },
   {
    "file": "xpizza-functions/platform-manifest.js",
+   "fn": "keysOk",
+   "base": "o",
+   "line": 88,
+   "how": "Object.keys",
+   "rule": "server:infra"
+  },
+  {
+   "file": "xpizza-functions/platform-manifest.js",
    "fn": "deriveCorsLists",
    "base": "o",
-   "line": 99,
+   "line": 144,
    "how": "spread",
    "rule": "server:infra"
   },
@@ -50464,7 +50472,7 @@
    "file": "xpizza-functions/platform-manifest.js",
    "fn": "deriveCorsLists",
    "base": "o",
-   "line": 99,
+   "line": 144,
    "how": "spread",
    "rule": "server:infra"
   },
@@ -52526,7 +52534,7 @@
   },
   {
    "key": "xpizza-functions/client-floor.js:read>anon>anon:setTimeout",
-   "line": 69,
+   "line": 70,
    "delay": "timeoutMs",
    "class": "io-deadline"
   },

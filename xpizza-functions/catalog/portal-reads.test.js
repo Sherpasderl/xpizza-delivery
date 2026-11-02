@@ -621,8 +621,15 @@ const TWO = {
     const ACCOUNT = PM.PLATFORM.ACCOUNT_ORIGINS;
     const APP_ORIGINS = PM.PLATFORM.sites.deployments.filter((d) => d.app === 'orders' && d.context === PM.PLATFORM_CONTEXT).flatMap((d) => d.origins);
     assert.ok(APP_ORIGINS.length >= 1, 'premise: the app deployment declares its origin(s)');
-    assert.deepStrictEqual(ACCOUNT, ['https://orders.xpizza.hn', 'https://orders.lamusa.hn', ...APP_ORIGINS],
-      'ACCOUNT_ORIGINS is exactly the customer order sites (the two forms + the app) — no origin beyond those');
+    // …and the INSTALLED app (the approved native shell, PLAN-capp-native-shell §1.1; advisor 11-02): it is the same customer app, so it
+    // must reach the account endpoints too. Read from the app deployment's own `native` block (the manifest admits ONLY these two):
+    //   capacitor://localhost — the iOS shell's WKWebView origin (the Capacitor scheme);
+    //   https://localhost     — the Android shell's WebView origin (Capacitor's https scheme).
+    // An origin is not authentication: every account endpoint still requires the verified ID token.
+    const NATIVE = PM.PLATFORM.sites.deployments.filter((d) => d.app === 'orders' && d.context === PM.PLATFORM_CONTEXT && d.native).flatMap((d) => d.native.origins);
+    assert.deepStrictEqual([...NATIVE].sort(), ['capacitor://localhost', 'https://localhost'], 'the native shell\'s origins are exactly the iOS and Android WebView origins');
+    assert.deepStrictEqual(ACCOUNT, ['https://orders.xpizza.hn', 'https://orders.lamusa.hn', ...APP_ORIGINS, ...NATIVE],
+      'ACCOUNT_ORIGINS is exactly the customer order sites (the two forms + the app, web and native) — no origin beyond those');
     const NON_CUSTOMER = PM.PLATFORM.sites.deployments.filter((d) => d.app !== 'orders').flatMap((d) => d.origins);
     assert.deepStrictEqual(ACCOUNT.filter((o) => NON_CUSTOMER.includes(o)), [], 'no non-customer deployment\'s origin is in ACCOUNT_ORIGINS');
     const PORTAL = require('../portal/origins').PORTAL_ORIGINS;

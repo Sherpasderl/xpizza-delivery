@@ -722,16 +722,25 @@ test('G6 member token: a token past its expiry ⇒ the send carries the REFRESHE
       now: () => at(12), sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {}, ...(timeout ? { timeout } : {}) });
     return { api, srv }; };
   // the SDK's own rule: the cached token while valid, a refreshed one after its 1 h life
-  let clock = 0; const sdk = { getIdToken: async () => (clock < 3600e3 ? 'id:signin' : 'id:refreshed') };
-  const M = { uid: 'u1', idToken: 'id:signin', getIdToken: () => sdk.getIdToken() };
+  // tokens in the REAL writer's shape (JWTs; the client reads only exp): the sign-in one valid for an hour at the api's clock, the refreshed
+  // one for two; EXPIRED = already past its exp (Codex promo r3: never sent)
+  const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const JWT = (tag, expMs) => `${b64u({ alg: 'RS256' })}.${b64u({ sub: 'u1', tag, exp: Math.floor(expMs / 1000) })}.sig`;
+  const SIGNIN = JWT('signin', at(12) + 3600e3), REFRESHED = JWT('refreshed', at(12) + 7200e3), EXPIRED = JWT('signin', at(12) - 1000);
+  let clock = 0; const sdk = { getIdToken: async () => (clock < 3600e3 ? SIGNIN : REFRESHED) };
+  const M = { uid: 'u1', idToken: EXPIRED, getIdToken: () => sdk.getIdToken() };
   clock = 3600e3 + 1;
   const R = mk({ member: M });
   assert.equal((await R.api.place(placeArgs('cash'))).kind, 'placed', 'premise');
-  assert.equal(R.srv.of('createOrder')[0].headers['x-firebase-id-token'], 'id:refreshed', '🔴 an expired sign-in token is never sent: the refreshed one is');
+  assert.equal(R.srv.of('createOrder')[0].headers['x-firebase-id-token'], REFRESHED, '🔴 an expired sign-in token is never sent: the refreshed one is');
+  assert.equal(M.idToken, REFRESHED, 'the refreshed token entered through the ONE setter');
   let asked = 0;
-  const H = mk({ member: { uid: 'u1', idToken: 'id:signin', getIdToken: () => { asked++; return new Promise(() => {}); } }, timeout: async () => {} });
+  const H = mk({ member: { uid: 'u1', idToken: SIGNIN, getIdToken: () => { asked++; return new Promise(() => {}); } }, timeout: async () => {} });
   assert.equal((await H.api.place(placeArgs('cash'))).kind, 'placed', 'a hung refresh never blocks the send');
-  assert.equal(H.srv.of('createOrder')[0].headers['x-firebase-id-token'], 'id:signin', 'bounded ⇒ the sign-in token as the fallback'); assert.equal(asked, 1);
+  assert.equal(H.srv.of('createOrder')[0].headers['x-firebase-id-token'], SIGNIN, 'bounded ⇒ the still-valid sign-in token as the fallback'); assert.equal(asked, 1);
+  const X = mk({ member: { uid: 'u1', idToken: EXPIRED, getIdToken: () => new Promise(() => {}) }, timeout: async () => {} });
+  await X.api.place(placeArgs('cash'));
+  assert.equal('x-firebase-id-token' in X.srv.of('createOrder')[0].headers, false, '🔴 Codex promo r3: an EXPIRED fallback is never sent (a hung refresh ⇒ no member header)');
   const G = mk({ member: null });
   await G.api.place(placeArgs('cash'));
   assert.equal('x-firebase-id-token' in G.srv.of('createOrder')[0].headers, false, 'a guest sends no member token');
@@ -914,3 +923,55 @@ test('Codex G7 r2 property: for every first send × second actor × tender × ti
   }
   assert.equal(combos, 72, 'premise: every combination ran');
 });
+
+// Codex promo r4 #4 — a malformed token FAILS CLOSED (tokenUsable ⇒ null): exactly three non-empty base64url segments, header AND payload
+// JSON objects, exp a finite integer, exp*1000 finite and ≤ now + 48 h
+test('member token r4: tokenUsable fails CLOSED on every malformed / implausible token (table)', () => {
+  const now = Date.UTC(2026, 9, 20, 19, 5), b = (o) => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).toString('base64url');
+  const H = b({ alg: 'RS256' }), P = (exp) => b({ sub: 'u1', exp }), ok = `${H}.${P(Math.floor((now + 3600e3) / 1000))}.sig`;
+  assert.equal(A.tokenUsable({ idToken: ok }, now), ok, 'premise: a well-formed, unexpired token is usable');
+  const rows = [
+    ['missing signature', `${H}.${P(Math.floor((now + 3600e3) / 1000))}`],
+    ['empty signature', `${H}.${P(Math.floor((now + 3600e3) / 1000))}.`],
+    ['empty header', `.${P(Math.floor((now + 3600e3) / 1000))}.sig`],
+    ['extra segment', `${ok}.x`],
+    ['non-base64url segment', `${H}.${P(Math.floor((now + 3600e3) / 1000))}.s+g/`],
+    ['header not JSON', `${b('not json')}.${P(Math.floor((now + 3600e3) / 1000))}.sig`],
+    ['payload not JSON', `${H}.${b('{exp:')}.sig`],
+    ['payload not an object', `${H}.${b('42')}.sig`],
+    ['exp 1e308', `${H}.${P(1e308)}.sig`],
+    ['exp a string', `${H}.${b({ exp: String(Math.floor((now + 3600e3) / 1000)) })}.sig`],
+    ['exp fractional', `${H}.${P((now + 3600e3) / 1000 + 0.5)}.sig`],
+    ['exp beyond now + 48 h', `${H}.${P(Math.floor((now + 49 * 3600e3) / 1000))}.sig`],
+    ['exp within the 60 s skew', `${H}.${P(Math.floor((now + 30e3) / 1000))}.sig`],
+  ];
+  for (const [why, t] of rows) assert.equal(A.tokenUsable({ idToken: t }, now), null, `🔴 member token r4: «${why}» must be unusable`);
+  assert.equal(A.acceptToken({ idToken: null }, `${H}.${P(1e308)}.sig`, now), false, 'the ONE setter refuses it too');
+});
+
+// Codex cash-chips r2 P1-1 (advisor ruling: a retained replay sends ONLY the recorded body): the UI's no-quote allowance exists for a
+// REPLAY only — a FRESH send built from the flow requires a ready quote. freshOk:false ⇒ nothing built, nothing sent, nothing recorded
+test('cash-chips r2: a fresh (non-replay) send is refused when the caller says the quote is not ready (freshOk:false) — no request, no record', async () => {
+  const R = rig({ script: { createOrder: [OK_CASH] } });
+  const out = await R.api.place({ ...placeArgs('cash'), freshOk: false });
+  assert.equal(out && out.kind, 'replay_requote', '🔴 CC-r2-fresh: refused locally');
+  assert.equal(R.srv.of('createOrder').length, 0, '🔴 CC-r2-fresh: no request');
+  const rec = placeRec(R.storage); assert.ok(!rec || !(Number(rec.dispatched) > 0), '🔴 CC-r2-fresh: nothing dispatched on record');
+});
+// Codex cash-chips r3 P1: the no-quote exception is granted ONLY to a replayable record — sent_body PARSES to an object whose order_id
+// is the retained record's. An unreadable / "null" / foreign body ⇒ replay_requote before anything is built or recorded (no request)
+for (const [label, bad] of [['invalid JSON', () => '{not json'], ['"null"', () => 'null'], ['a mismatched order id', (rec) => JSON.stringify({ ...JSON.parse(rec.sent_body), order_id: 'TA-OTHER' })]]) {
+  test(`cash-chips r3: freshOk:false with a retained record whose sent_body is ${label} ⇒ replay_requote, no request`, async () => {
+    const storage = memStorage(), srv = server({ createOrder: ['network', OK_CASH] }, storage);
+    const mk = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, schedulingLive: true },
+      fetch: srv.fetch, storage, now: () => at(12), sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} });
+    const first = await mk().place(placeArgs('cash'));
+    assert.equal(first.kind, 'offline', 'premise: the first send was lost (retained)');
+    const rec = placeRec(storage); assert.ok(rec && rec.sched_pending === true && typeof rec.sent_body === 'string', 'premise: a retained record');
+    storage.setItem('capp:rid_a:pending_place', JSON.stringify({ ...rec, sent_body: bad(rec) }));
+    const out = await mk().place({ ...placeArgs('cash'), freshOk: false });
+    assert.equal(out && out.kind, 'replay_requote', `🔴 CC-r3: ${label} ⇒ refused locally`);
+    assert.equal(srv.of('createOrder').length, 1, `🔴 CC-r3: ${label} ⇒ no second request`);
+  });
+}
+

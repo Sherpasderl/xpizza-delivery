@@ -30,7 +30,9 @@
   // ── icons (the prototype's IC, verbatim) ──
   const I = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
   const IC = {
-    chev: I('<path d="M9 6l6 6-6 6"/>'), down: I('<path d="M6 9l6 6 6-6"/>'), search: I('<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>'),
+    wa: I('<path d="M4 20l1.3-3.9A8 8 0 1 1 8.2 19z"/><path d="M9.5 9.5c0 3 2 5 5 5l1-1.5-2-1-1 1a4 4 0 0 1-1.5-1.5l1-1-1-2z"/>'),   // v6 P:1204
+    update: I('<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>'),   // MOCKUP-capp-native-store-update
+    chev: I('<path d="M9 6l6 6-6 6"/>'), left: I('<path d="M15 6l-6 6 6 6"/>'), right: I('<path d="M9 6l6 6-6 6"/>'), down: I('<path d="M6 9l6 6 6-6"/>'), search: I('<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>'),
     home: I('<path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/>'), bag: I('<path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>'),
     user: I('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'), receipt: I('<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6"/><path d="M9 12h6"/>'),
     pin: I('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/>'),
@@ -146,7 +148,7 @@
   // fees (Sherpa data): a PRICED fee only; the promotion is the member's price (P feeFree), never assumed while auth is unresolved
   const priced = (r) => !!r.fee && r.fee.state === 'priced' && Number.isInteger(r.fee.from_cents) && r.fee.from_cents >= 0;
   // a promotional claim needs a PRICED fee too (Codex s7a2 r1 #7): no verified price ⇒ no «Envío gratis» of any kind
-  const promoOn = (r) => priced(r) && !!(r.promo && r.promo.free_delivery);
+  const promoOn = (r) => !!(r.cfg && r.cfg.promoFree === true);   // the ONE predicate: CappShell.configFor's (the store page reads it too)
   const feeFree = (r, auth) => promoOn(r) && auth === 'member';
   const feeHtml = (r, auth) => (feeFree(r, auth) ? '<span class="free">Envío gratis</span>' : priced(r) ? 'Envío desde ' + money(r.fee.from_cents / 100) : '');
   const dishPrice = (it) => (it.group ? 'desde ' + money(Math.min(...it.group.choices.map((c) => c.p))) : money(it.p));
@@ -176,22 +178,65 @@
   const rowAttrs = (r) => `${r.gone ? ' disabled aria-disabled="true"' : ''}`;
   const rowCls = (r) => `${r.gone ? ' gone' : ''}${r.held ? ' held' : ''}`;
 
+  // «Pedidos» (PLAN-capp-desktop-website r2 D-3 / Gates, advisor ruling): NO approved orders-list screen exists, so no control may
+  // lead to one — the tab, the desknav entry and both Cuenta rows are left out (a control without effect is never shipped). An
+  // orders screen = an owner mockup + a handler, and then this flips (the controls come back exactly as drawn)
+  const ORDERS_SCREEN = true;   // owner 2026-11-01: «Pedidos» is in launch scope
+  // ── «PEDIDOS» (v6 ordersHtml P:2131-2145; owner 2026-11-01: in launch scope) — from a view model the shell builds: the member's
+  // orders (getMyOrders, NOTE-getMyOrders) and this device's active order (its local record). INTERIM (advisor 11-01): the rows show the
+  // server's items_text as given and «Volver a pedir» (the tab, the pills) stays hidden until each recipe line carries a canonical dish_id;
+  // «Orden #N» only where a number exists. While the read is loading or failed, no empty state is claimed (nothing untrue).
+  const ORDERS_ART = `<svg viewBox="0 0 220 120" aria-hidden="true"><rect x="10" y="28" width="200" height="74" rx="16" fill="var(--il-sky-a)"/><ellipse cx="112" cy="109" rx="72" ry="5" fill="var(--ink)" opacity=".08"/>
+    <path d="M70 46 H150 L158 106 H62 Z" fill="var(--acc)"/><path d="M62 106 H158 L156 92 H64 Z" fill="var(--il-jacket)" opacity=".4"/>
+    <path d="M88 46 C88 28 132 28 132 46" fill="none" stroke="var(--ink)" stroke-width="4" stroke-linecap="round"/>
+    <rect x="86" y="64" width="48" height="20" rx="6" fill="var(--surf2)"/><rect x="94" y="71" width="32" height="6" rx="3" fill="var(--il-sky-b)"/>
+    <circle cx="176" cy="84" r="17" fill="var(--surf2)"/><circle cx="176" cy="84" r="11" fill="var(--pop-bg)"/><circle cx="176" cy="84" r="4" fill="var(--pop-fill)"/>
+    <circle cx="44" cy="88" r="12" fill="var(--surf2)"/><circle cx="44" cy="88" r="7" fill="var(--value-bg)"/></svg>`;
+  function ordersHtml(vm) {
+    const o = vm.orders || { phase: 'loading', active: [], past: [] }, again = o.againReady === true;
+    const card = (c) => `<div class="ocard active"><div class="hd">${logoChip(c.store, 'lg')}<div class="t"><b>${esc(c.store.name)}</b><span>${[c.numText, c.whenText, c.total != null ? money(c.total) : null].filter(Boolean).map(esc).join(' · ')}</span></div></div>${c.itemsLine ? `<div class="items">${esc(c.itemsLine)}</div>` : ''}
+      <div class="st"><span class="dot"></span>${esc(c.statusText)}</div><div class="acts">${c.trackable ? `<button class="btn2 dark" data-act="go-order" data-oid="${esc(c.oid)}">Ver seguimiento</button>` : ''}${vm.helpOk ? `<button class="btn2" data-act="orders-help" data-oid="${esc(c.oid)}">${IC.wa}Ayuda</button>` : ''}</div></div>`;
+    // v6's row opens its receipt (the receipt read, NOTE-getMyOrders-receipt) — a control only where the shell can read it (vm.receiptOk:
+    // a member with the sign-in API); otherwise the row body is NOT a control (Codex Pedidos r1 #6: never a button without effect)
+    const rowBody = (r) => `${logoChip(r.store, 'lg big')}<span class="t"><b>${esc(r.store.name)}</b><span class="m">${esc(r.dateText)}${r.total != null ? ' · ' + money(r.total) : ''}</span>${r.itemsLine ? `<span class="s">${esc(r.itemsLine)}</span>` : ''}</span>`;
+    const row = (r) => `<div class="orow">${vm.receiptOk ? `<button class="orow-main" data-act="go-receipt" data-oid="${esc(r.oid)}" aria-label="Ver el recibo de ${esc(r.store.name)} · ${esc(r.dateText)}">${rowBody(r)}</button>` : `<div class="orow-main">${rowBody(r)}</div>`}${r.rateHtml || ''}${again && r.again ? `<button class="btn2 again-pill" data-act="reorder" data-oid="${esc(r.oid)}">Volver a pedir</button>` : ''}</div>`;
+    const tabKey = again ? (vm.ordersTab || 'past') : 'past';
+    const tabs = again ? `<div class="otabs" role="tablist"><button role="tab" aria-selected="${tabKey === 'past'}" data-act="otab" data-val="past">Pedidos anteriores</button><button role="tab" aria-selected="${tabKey === 'again'}" data-act="otab" data-val="again">Volver a pedir</button></div>` : '';
+    const empty = `<div class="oempty">${ORDERS_ART}<b>Todavía no tenés pedidos</b><span>Tus pedidos y tus favoritos para repetir aparecen aquí.</span><button class="primary" data-act="tab" data-tab="home">Explorar restaurantes</button></div>`;
+    const act = o.active || [], past = o.past || [];
+    const settled = o.phase === 'ready';
+    // v6's «Volver a pedir» tab (P ordersHtml): per store, the past dishes its live menu still serves; «+» adds one (add-past). A store
+    // whose recipe carries no canonical dish has no section (advisor 11-01: by data)
+    const againSec = (g) => { const r = g.store; return `<section class="again-sec" aria-label="${esc(r.name)}"><button class="urow" data-act="open-store" data-rid="${esc(r.id)}">${logoChip(r, 'lg big')}<span class="t"><b>${esc(r.name)}</b><span>${isOpen(r.cfg, vm.now) ? (r.etaDel ? `${r.etaDel[0]}–${r.etaDel[1]} min` : '') : 'Cerrado · ' + esc(opensText(r.cfg, vm.now))}</span></span>${IC.chev.replace('class="i"', 'class="i chev"')}</button>
+    <div class="hrow">${g.items.map((it) => `<div class="dcard"><div class="ph"><button class="openimg" data-act="open-dish" data-rid="${esc(r.id)}" data-id="${esc(it.id)}" aria-label="Ver ${esc(it.n)}" tabindex="-1">${it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy">` : `<span class="noph">${esc(it.n[0] || '')}</span>`}</button><div class="qty-overlay"><button class="qty-add-btn" data-act="add-past" data-rid="${esc(r.id)}" data-id="${esc(it.id)}" aria-label="Agregar ${esc(it.n)}">+</button></div></div><button class="txtbtn" data-act="open-dish" data-rid="${esc(r.id)}" data-id="${esc(it.id)}"><span class="nm">${esc(it.n)}</span><span class="prrow"><span class="pr">${esc(dishPrice(it))}</span></span></button></div>`).join('')}</div></section>`; };
+    const body = settled && !act.length && !past.length ? empty
+      : `<div class="olist">${act.map(card).join('')}${past.length ? tabs + (tabKey === 'again' ? `<div class="agains">${(o.again || []).map(againSec).join('')}</div>` : `<div class="orows">${past.map(row).join('')}</div>`) : ''}</div>`;
+    return shellWrap(vm, `<div class="scroller"><div class="pagehead"><h1>Pedidos</h1></div>${body}</div>`);
+  }
+
   // ── the shell chrome (P tabbarHtml / desknavHtml; entry 'app') ──
   function tabbarHtml(vm) {
     const cur = (id) => vm.tab === id;
     const t = (id, label, ic, extra = '') => `<button data-act="tab" data-tab="${id}" aria-current="${cur(id)}" aria-label="${label}">${ic}<span>${label}</span>${extra}</button>`;
     const badge = vm.cartN ? `<i class="badge" aria-hidden="true">${vm.cartN}</i>` : vm.live ? '<i class="badge dot" aria-hidden="true"></i>' : '';
-    return `<nav class="tabbar" aria-label="Navegación">${t('home', 'Inicio', IC.home)}<button class="search" data-act="tab" data-tab="search" aria-current="${cur('search')}">${IC.search}<span>Buscar</span></button>${t('orders', 'Pedidos', IC.receipt, badge)}${t('account', 'Cuenta', IC.user)}</nav>`;
+    return `<nav class="tabbar" aria-label="Navegación">${t('home', 'Inicio', IC.home)}<button class="search" data-act="tab" data-tab="search" aria-current="${cur('search')}">${IC.search}<span>Buscar</span></button>${ORDERS_SCREEN ? t('orders', 'Pedidos', IC.receipt, badge) : ''}${t('account', 'Cuenta', IC.user)}</nav>`;
   }
+  // C-6b (MOCKUP-capp-desktop-D3 r3 frames f1a/f1b, approved): the desktop top bar — brand · the «Entregar en» address pill (the
+  // location sheet, like the phone addr-btn) · a centred search field that IS Buscar · Inicio · Pedidos · Cuenta (the member's initial)
   function desknavHtml(vm) {
     const t = (id, label) => `<button class="nb" data-act="tab" data-tab="${id}" aria-current="${vm.tab === id}">${label}</button>`;
-    return `<div class="desknav"><span class="lock">${SOLA(22, 'var(--acc)')}Sherpa</span>${t('home', 'Inicio')}${t('search', 'Buscar')}${t('orders', 'Pedidos')}${t('account', 'Cuenta')}<span class="sp"></span><span class="mute" style="font-size:13px">${esc(city(vm.platform))}</span></div>`;
+    const short = vm.addr && vm.addr.short ? vm.addr.short : 'Tu ubicación', line = vm.addr && vm.addr.line ? vm.addr.line : 'Agregá tu dirección';
+    const q = vm.tab === 'search' && vm.q ? vm.q : '';
+    return `<div class="desknav">${brandLockHtml()}`
+      + `<button class="dn-addr" data-act="addr" aria-label="Dirección de entrega: ${esc(line)}">${IC.pin}<span class="v"><span class="k">Entregar en</span> ${esc(short)}</span>${IC.down}</button>`
+      + `<button class="dn-search${vm.tab === 'search' ? ' live' : ''}" data-act="tab" data-tab="search" aria-label="Buscar">${IC.search}${esc(q || 'Buscá restaurantes o platos')}</button>`
+      + `<span class="right">${t('home', 'Inicio')}${ORDERS_SCREEN ? t('orders', 'Pedidos') : ''}<button class="nb acct" data-act="tab" data-tab="account" aria-current="${vm.tab === 'account'}">${vm.memberInitial ? `<span class="av">${esc(vm.memberInitial)}</span>` : IC.user}Cuenta</button></span></div>`;
   }
   const shellWrap = (vm, inner) => `${desknavHtml(vm)}${inner}${tabbarHtml(vm)}`;
 
   // ── INICIO ──
   function rcardHtml(r, vm) {
-    const now = vm.now, auth = vm.auth, open = !r.gone && isOpen(r.cfg, now);
+    const now = vm.now, auth = vm.promoAuth, open = !r.gone && isOpen(r.cfg, now);   // the promo's ADMITTED identity (the shell's)
     // the guest-only pill is reserved (hidden) while auth is unresolved, so its line never appears under a finger
     const deal = promoOn(r) && auth !== 'member' ? `<span class="pill deal"${auth === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true"'}>Envío gratis con tu cuenta</span>` : '';
     const pills = open ? [isValue(r, vm.platform) ? '<span class="pill value">Buen precio</span>' : '', deal].filter(Boolean).join('') : '';
@@ -209,10 +254,10 @@
     const open = !r.gone && isOpen(r.cfg, vm.now), pickup = vm.filters.has('pickup');
     const eta = open ? (pickup ? (r.etaPick ? `Listo en ≈ ${r.etaPick[1]} min` : '') : (r.etaDel ? `${r.etaDel[0]}–${r.etaDel[1]} min` : '')) : '';
     // a store with no drawable fee keeps its line box (a zero-width space), so a fee that arrives later never grows the card
-    const fee = feeHtml(r, vm.auth);
+    const fee = feeHtml(r, vm.promoAuth);
     const line = open ? `<span>${fee || '​'}</span>` : `<span>Cerrado · ${esc(opensText(r.cfg, vm.now))}</span>`;
     const pills = [isValue(r, vm.platform) ? '<span class="pill value">Buen precio</span>' : '', !open && vm.schedulingLive && !r.gone && hasSlot(r.cfg, vm.now) ? '<span class="pill sched">Programar pedido</span>' : ''].filter(Boolean).join('');
-    const deal = promoOn(r) && vm.auth === 'guest' ? '<span class="tag-deal">Envío gratis con tu cuenta</span>' : '';
+    const deal = promoOn(r) && vm.promoAuth === 'guest' ? '<span class="tag-deal">Envío gratis con tu cuenta</span>' : '';
     return `<div class="scard${open ? '' : ' closed'}${rowCls(r)}"><button class="ph" data-act="open-store" data-rid="${esc(r.id)}" aria-label="${esc(r.name)}${open ? '' : ', cerrado'}"${rowAttrs(r)}>${heroImg(r, true)}${deal}${logoChip(r, 'logo')}</button>
       <button class="rt" data-act="open-store" data-rid="${esc(r.id)}"${rowAttrs(r)}><span class="nm">${esc(r.name)}</span>${eta ? `<span class="eta">${eta}</span>` : ''}</button><div class="ln">${line}</div>${pills ? `<div class="pills">${pills}</div>` : ''}</div>`;
   }
@@ -228,10 +273,16 @@
     </div>`;
   }
   function homeHtml(vm) {
-    const head = homeHead(vm);
+    // Codex C-6b r1 #4: on the desk the bar holds the address ⇒ the head renders only for the location-denied message
+    const head = vm.desk && !vm.locDenied ? '' : homeHead(vm);
     const all = (vm.rows || []).map(storeOf);
-    const page = (body, credit) => shellWrap(vm, `<div class="scroller">${head}<div class="home-body">${body}</div>${credit || ''}</div>`);
     const c = city(vm.platform);
+    // C-6b (f1a/f1b): the page heading Google indexes + the guest's approved promo card (only where sign-up exists; the member's
+    // sample card has no data ⇒ absent). Desktop only (CSS)
+    // Codex C-6b r1 #3: while auth is unresolved its footprint is RESERVED (invisible) — the H1 row never shifts when a guest resolves
+    const promo = vm.signupOn && vm.auth !== 'member' ? `<div class="promo"${vm.auth === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true"'}><span class="ic">${IC.user}</span><span class="t"><b>Creá tu cuenta y pagá en efectivo</b><span>Recompensas, promos y envío gratis</span></span></div>` : '';
+    const h1row = !vm.desk ? '' : `<div class="h1row"><div><h1>${c ? `Pedí a domicilio en ${esc(c)}` : 'Pedí a domicilio'}</h1><p>Restaurantes de tu zona, con envío por Sherpa. Entregamos solo en Honduras.</p></div>${promo}</div>`;
+    const page = (body, credit) => shellWrap(vm, `<div class="scroller">${head}${h1row}<div class="home-body">${body}${footHtml(vm)}</div>${credit || ''}</div>`);   // the footer on EVERY Inicio state (Codex C-6a r1 #5)
     if (!all.length) {
       if (vm.phase === 'error') return page(emptyHtml('alert', 'No pudimos cargar los restaurantes', 'Revisá tu conexión e intentá de nuevo.', ['dir-retry', 'Reintentar']));   // frame 7
       if (vm.phase !== 'ready') return page('<p class="note hload">Cargando restaurantes…</p>');   // frame 1
@@ -240,15 +291,18 @@
     if (vm.outOfZone) return page(emptyHtml('pin', 'Ningún restaurante entrega en esta dirección', 'Probá otra dirección o recogé en tienda.', ['addr', 'Cambiar dirección']));   // frame 4
     const live = all.filter((r) => !r.gone);
     const cuisine = vm.cuisine || '', F = vm.filters;
-    const vis = all.filter((r) => (!cuisine || r.cuisines.includes(cuisine)) && (!F.has('open') || (!r.gone && isOpen(r.cfg, vm.now))) && (!F.has('free') || feeFree(r, vm.auth))
+    const vis = all.filter((r) => (!cuisine || r.cuisines.includes(cuisine)) && (!F.has('open') || (!r.gone && isOpen(r.cfg, vm.now))) && (!F.has('free') || feeFree(r, vm.promoAuth))
       && (!F.has('pickup') || r.pickup) && (!F.has('fast') || (r.etaDel && r.etaDel[0] <= 30)));
     const notes = [];
+    // MOCKUP-capp-native-store-update state 1 A (owner: both A + B; A hidden by the customer until the next day): the INSTALLED app
+    // has a newer store build — first in the Inicio body
+    if (vm.updateLine) notes.push(`<div class="closednote hnote">${IC.info}<span>Hay una versión nueva de la app.</span><button class="lnk" data-act="app-update">Actualizar</button></div>`);
     if (vm.partial) notes.push(`<div class="closednote hnote">${IC.info}<span>Algunos restaurantes no cargaron.</span><button class="lnk" data-act="dir-retry">Reintentar</button></div>`);   // frame 9
     if (live.length && !live.some((r) => isOpen(r.cfg, vm.now))) notes.push(`<div class="closednote hnote">${IC.clock}<span>Ahora no hay restaurantes abiertos.${vm.schedulingLive ? ' Podés programar tu pedido.' : ''}</span></div>`);   // frame 3 B
     const tax = vm.platform && Array.isArray(vm.platform.cuisines) ? vm.platform.cuisines : [];
     const cuisineIds = tax.filter((x) => CUIS[x.id] && live.some((r) => r.cuisines.includes(x.id)));
     const cuisRow = cuisineIds.length ? `<div class="cuisrow" role="group" aria-label="Tipo de comida"><button class="cuis" aria-pressed="${!cuisine}" data-act="cuisine" data-val="">${CUIS.todo.icon}<span>Todo</span></button>${cuisineIds.map((x) => `<button class="cuis" aria-pressed="${cuisine === x.id}" data-act="cuisine" data-val="${esc(x.id)}">${CUIS[x.id].icon}<span>${esc(x.label)}</span></button>`).join('')}</div>` : '';
-    const chips = [['open', 'Abierto ahora', IC.store, live.some((r) => isOpen(r.cfg, vm.now))], ['free', 'Envío gratis', IC.bike, live.some((r) => feeFree(r, vm.auth))],
+    const chips = [['open', 'Abierto ahora', IC.store, live.some((r) => isOpen(r.cfg, vm.now))], ['free', 'Envío gratis', IC.bike, live.some((r) => feeFree(r, vm.promoAuth))],
       ['pickup', 'Pickup', IC.bag, live.some((r) => r.pickup && r.etaPick)], ['fast', 'Menos de 30 min', IC.clock, live.some((r) => r.etaDel && r.etaDel[0] <= 30)]].filter((x) => x[3]);   // only chips the data supports
     const fchips = chips.length ? `<div class="fchips" role="group" aria-label="Filtros">${chips.map(([k, l, ic]) => `<button class="fchip" aria-pressed="${F.has(k)}" data-act="filter" data-val="${k}">${ic}${l}</button>`).join('')}</div>` : '';
     const open = (r) => !r.gone && isOpen(r.cfg, vm.now);
@@ -256,11 +310,27 @@
     const houseList = houseDishes(vis.filter((r) => !r.gone));
     const meals = vm.platform && vm.platform.meals ? Object.entries(vm.platform.meals).map(([k, title]) => [title, mealDishes(vis.filter((r) => !r.gone), k)]).filter(([, d]) => d.length >= 2) : [];
     const nLive = live.length;
-    const rows = !vis.length ? `<div class="empty">${IC.search}<b>Nada con esos filtros</b><span>Probá con otro tipo de comida o quitá un filtro.</span><button class="btn2" data-act="clearfilters">Quitar filtros</button></div>`
+    const rowsPhone = !vis.length ? `<div class="empty">${IC.search}<b>Nada con esos filtros</b><span>Probá con otro tipo de comida o quitá un filtro.</span><button class="btn2" data-act="clearfilters">Quitar filtros</button></div>`
       : sec('Destacados', 'Abiertos ahora y para pedir hoy', featured.map((r) => scard(r, vm)))
         + sec('La casa recomienda', [...new Set(houseList.map((x) => x.r.name))].join(' · '), houseList.map(dcard))
         + meals.map(([title, d]) => sec(title, [...new Set(d.map((x) => x.r.name))].join(' · '), d.map(dcard))).join('')
         + `<section class="hsec" aria-label="Todos los restaurantes"><div class="hd"><div><h2>Todos los restaurantes</h2><p>${vis.length === all.length ? (c ? `${nLive} en ${esc(c)}` : `${nLive} restaurantes`) : `${vis.filter((r) => !r.gone).length} de ${nLive}`}</p></div></div><div class="rlist" style="padding-top:0">${vis.map((r) => rcardHtml(r, vm)).join('')}</div></section>`;
+    // C-6b (D-3 r3 f1a/f1b; advisor rulings 2026-11-02): the DESKTOP Inicio rows — «Destacados» a 4-card grid paged by 4 (‹ › only
+    // when there is more than one page), «Ver todo» on store rows (→ «Todos los restaurantes»), the REAL dish rows in the row-of-dishes
+    // style with ‹ › scrolling them («Platos populares» needs order statistics ⇒ absent), «Todos los restaurantes» the 3-column grid.
+    // The phone keeps its rows exactly (rowsPhone)
+    const hdD = (title, sub, acts) => `<div class="hd"><div><h2>${esc(title)}</h2>${sub ? `<p>${esc(sub)}</p>` : ''}</div>${acts ? `<div class="acts">${acts}</div>` : ''}</div>`;
+    const arrowsD = (prev, next, prevOff, nextOff, title) => `<button class="nxt" data-act="${prev}" aria-label="Anterior · ${esc(title)}"${prevOff ? ' disabled' : ''}>${IC.left}</button><button class="nxt" data-act="${next}" aria-label="Siguiente · ${esc(title)}"${nextOff ? ' disabled' : ''}>${IC.right}</button>`;
+    const PAGE = 4, pages = Math.max(1, Math.ceil(featured.length / PAGE)), pg = Math.min(Math.max(vm.featPage | 0, 0), pages - 1);
+    const featD = featured.length < 2 ? '' : `<section class="hsec" aria-label="Destacados">${hdD('Destacados', 'Abiertos ahora y para pedir hoy', `<button class="seeall" data-act="seeall">Ver todo</button>${pages > 1 ? arrowsD('feat-prev', 'feat-next', pg === 0, pg >= pages - 1, 'Destacados') : ''}`)}<div class="rgrid rgrid4">${featured.slice(pg * PAGE, pg * PAGE + PAGE).map((r) => rcardHtml(r, vm)).join('')}</div></section>`;
+    const dishD = (title, sub, cards) => (cards.length < 2 ? '' : `<section class="hsec" aria-label="${esc(title)}">${hdD(title, sub, arrowsD('rowprev', 'rownext', true, false, title))}<div class="hrow dishes">${cards.join('')}</div></section>`);
+    const allSub = vis.length === all.length ? (c ? `${nLive} en ${c}` : `${nLive} restaurantes`) : `${vis.filter((r) => !r.gone).length} de ${nLive}`;
+    const rowsDesk = !vis.length ? rowsPhone
+      : featD
+        + dishD('La casa recomienda', [...new Set(houseList.map((x) => x.r.name))].join(' · '), houseList.map(dcard))
+        + meals.map(([title, d]) => dishD(title, [...new Set(d.map((x) => x.r.name))].join(' · '), d.map(dcard))).join('')
+        + `<section class="hsec" aria-label="Todos los restaurantes">${hdD('Todos los restaurantes', allSub)}<div class="rgrid">${vis.map((r) => rcardHtml(r, vm)).join('')}</div></section>`;
+    const rows = vm.desk ? rowsDesk : rowsPhone;
     return page(notes.join('') + cuisRow + fchips + rows, `<div class="credit">${nLive} restaurantes${c ? ` en ${esc(c)}` : ''}</div>`);
   }
 
@@ -329,13 +399,44 @@
     <div class="guestcard"${known ? '' : ' style="visibility:hidden" aria-hidden="true"'}><h2>Tu cuenta</h2>
       <ul><li>${IC.check}<span>Efectivo al entregar o al recoger</span></li><li>${IC.check}<span>Recompensas, promos y envío gratis</span></li><li>${IC.check}<span>Programá pedidos y guardá tu dirección</span></li></ul>
       ${known ? '<button class="primary" data-act="signin" data-ctx="account">Entrá o creá tu cuenta</button>' : '<span class="primary" aria-hidden="true">Entrá o creá tu cuenta</span>'}</div>
-    <div class="rows"><button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button><button class="rowbtn" data-act="help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button></div></div>`);
+    <div class="rows">${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button>` : ''}${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}</div></div>`);
   }
 
   // G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27, frames 1 / 1b / 4a / 4b): the MEMBER's Cuenta — .acct-hero (name, phone and
   // email on three lines; the initial in the avatar), Pedidos / Promociones (.switch) / Ayuda, the session group, the muted version.
   // vm.acct = { placeholder, name, phone, email, promos: true | false | null (no served value ⇒ inert, frame 4b), settled, version } — inert and
   // still loading ⇒ frame 4b's ON-dimmed placeholder; inert and SETTLED (no stored consent) ⇒ OFF + dimmed (ruling (ii), OWNER-PENDING)
+  // C-6a (D-3 r3, DECIDED «Footer at launch: Ayuda · Términos · Privacidad only»): the desktop site footer, last in every Inicio state.
+  // Desktop only (CSS). Ayuda = the platform's support chat (vm.helpOk — none configured ⇒ no Ayuda); Términos / Privacidad = the
+  // platform's legal URLs once known (https only; never a dead link). While they may still arrive (vm.legalPending) their slots are
+  // RESERVED invisibly, so nothing in the row moves when they land (Codex C-6a r1 #2). Its own class: the pin sheets own .foot
+  // a platform legal URL is drawn only when it is https (never a dead or unsafe link) — ONE rule for the footer and the checkout (C-6d)
+  const legalUrl = (u) => typeof u === 'string' && /^https:\/\//.test(u);
+  // the Sherpa lock (the platform's mark + name) — the top bar's, and the desktop checkout's centred brand (C-6d)
+  const brandLockHtml = () => `<span class="lock">${SOLA(22)}Sherpa</span>`;
+  function footHtml(vm) {
+    if (!vm.desk) return '';   // desktop only: the phone DOM stays exactly as before
+    const l = vm.legal || {}, url = legalUrl;
+    const link = (u, label) => (url(u) ? `<li><a href="${esc(u)}" target="_blank" rel="noopener">${label}</a></li>` : vm.legalPending ? `<li class="rsv" aria-hidden="true">${label}</li>` : '');
+    const items = `${vm.helpOk ? '<li><button data-act="site-help">Ayuda</button></li>' : ''}${link(l.terms, 'Términos')}${link(l.privacy, 'Privacidad')}`;
+    return `<footer class="dfoot"><span class="lock">${SOLA(18)}Sherpa</span><ul>${items}</ul></footer>`;
+  }
+  // C-6a (D-3 r3 §0, «Thing — what it is · Sherpa»; the city is DATA): the browser tab title of each screen. Order states the
+  // mockup does not draw read «Tu pedido · Sherpa» (OWNER-PENDING)
+  function titleOf(t) {
+    const S_ = (x) => `${x} · Sherpa`, c = city(t.platform);
+    if (t.screen === 'store') {
+      if (t.step === 'pago') return S_('Entrega & Pago');
+      if (t.step === 'pedido') return S_(`Tu pedido · ${t.store || ''}`);
+      if (t.step === 'plato' && t.dish) return S_(`${t.dish} · ${t.store || ''}`);
+      return `${t.store || ''} — menú y pedidos a domicilio · Sherpa`;
+    }
+    if (t.screen === 'order') return S_(t.status === 'out' || t.status === 'arriving' ? 'Tu pedido va en camino' : t.status === 'delivered' || t.status === 'collected' ? 'Entregado' : 'Tu pedido');
+    if (t.screen === 'orders') return S_('Pedidos');
+    if (t.screen === 'search') return t.q ? `«${t.q}» — Buscar · Sherpa` : S_('Buscar');
+    if (t.screen === 'account') return S_('Cuenta');
+    return c ? `Sherpa — Pedí a domicilio en ${c}` : 'Sherpa — Pedí a domicilio';
+  }
   function accountMemberHtml(vm) {
     const a = vm.acct || {}, inert = typeof a.promos !== 'boolean';
     const hero = a.placeholder
@@ -343,9 +444,11 @@
       : `<div class="acct-hero"><span class="av" aria-hidden="true">${esc(String(a.name || '').trim().charAt(0).toUpperCase())}</span><div class="t"><b>${esc(a.name)}</b><span>${esc(a.phone)}</span><span>${esc(a.email)}</span></div></div>`;
     return shellWrap(vm, `<div class="flow"><div class="flowbar plain"><h1>Cuenta</h1></div>
     <div style="height:12px"></div>${hero}<div class="rows">
-      <button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>
+      ${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>` : ''}
+      <button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>
       <button class="rowbtn" data-act="promos"${inert ? ' aria-disabled="true"' : ''}>${IC.bell}<span class="t">Promociones<span>Ofertas por correo y WhatsApp</span></span><span class="switch" role="switch" aria-checked="${inert ? !a.settled : a.promos}"${inert ? ' aria-disabled="true"' : ''}></span></button>
-      <button class="rowbtn" data-act="help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button></div>
+      ${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}
+      ${vm.updateRow ? `<button class="rowbtn" data-act="app-update-row">${IC.update}<span class="t">Actualizar la app<span>Hay una versión nueva en ${esc(vm.updateRow)}</span></span>${IC.chev}</button>` : ''}</div>
     <div class="rows sess">
       <button class="rowbtn" data-act="signout">${IC.out}<span class="t">Cerrar sesión</span></button>
       <button class="rowbtn" data-act="forget">${IC.phone}<span class="t">Olvidar este teléfono<span>Cierra tu sesión y deja de recordar tu número</span></span></button></div>
@@ -363,5 +466,5 @@
   // frame 4 only when EVERY listed store answers «outside» (an unknown coverage is never counted as outside)
   const allOutOfZone = (rows, loc) => { const live = (rows || []).filter((r) => !r.gone); return !!loc && live.length > 0 && live.every((r) => covers(r.entry, loc) === false); };
 
-  return { homeHtml, searchHtml, tabbarHtml, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
+  return { homeHtml, titleOf, footHtml, legalUrl, brandLockHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
 });

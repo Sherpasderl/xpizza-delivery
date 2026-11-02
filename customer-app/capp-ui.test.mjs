@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { trackDigests, digestsInFlight, digestsSettled } from './capp-test-digests.mjs';
 
 const require = createRequire(import.meta.url);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -35,7 +36,7 @@ function boot(rid, extra = {}) {
   const w = dom.window;
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const events = [];
-  const ui = w.CappUI.mount(w.document, { envelope: extra.envelope || PROV[rid].envelope, config: { ...CONFIG[rid], ...(extra.config || {}) }, now: NOON, unavailable: extra.unavailable, onEvent: (n, d) => events.push([n, d]) });
+  const ui = w.CappUI.mount(w.document, { envelope: extra.envelope || PROV[rid].envelope, config: { ...CONFIG[rid], ...(extra.config || {}) }, now: NOON, unavailable: extra.unavailable, onEvent: (n, d) => events.push([n, d]), ...(extra.mount || {}) });
   const q = (sel) => w.document.querySelector(sel); const qa = (sel) => [...w.document.querySelectorAll(sel)];
   const click = (sel) => { const el = typeof sel === 'string' ? q(sel) : sel; assert.ok(el, `premise: ${sel} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   // the visible text: every text node, trimmed, joined by one space (spans are spaced by CSS, not by literal spaces)
@@ -413,7 +414,16 @@ function scripted(script) {
 }
 function fakeTimers() { let id = 0; const q = new Map(); const ms = new Map(); return { ms, setTimeout: (f, d) => { q.set(++id, f); ms.set(id, d); return id; }, clearTimeout: (h) => q.delete(h), setInterval: () => ++id, clearInterval: () => {}, flush() { const fs = [...q.values()]; q.clear(); for (const f of fs) f(); }, get size() { return q.size; } }; }
 const tick = () => new Promise((r) => setImmediate(r));
-const settle = async (n = 25) => { for (let i = 0; i < n; i++) await tick(); };
+// a fixed tick count races WebCrypto (libuv's threadpool) under load — settle() also waits for the digests in flight (capp-test-digests)
+trackDigests();
+const settle = async (n = 25) => {
+  for (let round = 0; round < 50; round++) {
+    for (let i = 0; i < n; i++) await tick();
+    if (!digestsInFlight()) return;
+    await digestsSettled();
+  }
+  throw new Error('settle: WebCrypto digests kept starting (50 rounds)');
+};
 const GEO_OK = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) };
 const GEO_NO = { getCurrentPosition: (_ok, no) => no({ code: 1 }) };
 let RB = 0;
@@ -1017,6 +1027,30 @@ function gmaps(w, gc) {
   if (gc) w.google.maps.Geocoder = class { geocode(req, cb) { gc.push({ at: J(req.location), reply: (results, status = 'OK') => cb(results, status) }); } };   // S2b-geo: the test releases each reply
   return maps;
 }
+// capp-dark §3 (PLAN r2): the live Google maps follow the OS — built with the theme's styles, restyled IN PLACE on a change (the same
+// instance: camera / pin untouched), never a render, never a requote
+test('capp-dark §3: the checkout map is built with the OS theme\'s styles and restyled in place on a flip — the same instance, the same DOM, no new map, no requote', async () => {
+  let maps, flip, listeners;
+  const b = bootCo({ config: { mapsKey: 'k_test' }, pre: (w) => {
+    maps = gmaps(w); const Map0 = w.google.maps.Map;
+    w.google.maps.Map = class extends Map0 { constructor(el, o) { super(el, o); this.styles = o.styles; this.sets = []; } setOptions(o) { this.sets.push(o); if ('styles' in o) this.styles = o.styles; } };
+    let dark = true; const ls = new Set(); listeners = ls;
+    w.matchMedia = (q) => ({ get matches() { return q === '(prefers-color-scheme: dark)' && dark; }, addEventListener: (t, f) => ls.add(f), removeEventListener: (t, f) => ls.delete(f) });
+    flip = (v) => { dark = v; for (const f of [...ls]) f(); };
+    w.eval(readFileSync(join(HERE, 'capp-theme.js'), 'utf8'));
+  } });
+  await toCheckout(b); await settle(); await settle();
+  const T = b.w.CappTheme, m = maps.at(-1);
+  assert.ok(m, 'premise: the checkout map'); assert.equal(m.styles, T.MAP_DARK, '🔴 DK-map: built dark on a dark OS');
+  const n0 = maps.length, flow0 = b.q('#flow'), quotes0 = b.srv.of('quoteOrder').length;
+  flip(false); await settle();
+  assert.equal(m.styles, null, '🔴 DK-map: light after the flip'); assert.equal(m.sets.length, 1, 'one setOptions');
+  flip(true); await settle();
+  assert.equal(m.styles, T.MAP_DARK, '🔴 DK-map: dark again');
+  assert.equal(maps.length, n0, '🔴 DK-map: no new map instance'); assert.equal(b.q('#flow'), flow0, '🔴 DK-map: the same DOM (no render)');
+  assert.equal(b.srv.of('quoteOrder').length, quotes0, '🔴 DK-map: no requote');
+  b.ui.destroy(); assert.equal(listeners.size, 0, '🔴 DK-map: destroy DETACHES the theme listener (never a leak)'); flip(false); await settle(); assert.equal(m.sets.length, 2, 'after destroy nothing restyles');
+});
 test('S2b r1 P1-2: «Listo» confirms the ACTIVE map\'s centre at the tap (no idle yet); an obsolete map\'s late idle never moves the pin or the preview', async () => {
   let maps;
   const b = bootCo({ config: { mapsKey: 'k_test' }, pre: (w) => { maps = gmaps(w); } });
@@ -2178,6 +2212,71 @@ test('G4 frame 4: a member\'s order refused by the GUEST gate (token not verifie
 });
 
 const CU = createRequire(import.meta.url)('./capp-ui.js');   // the pure renderers, in this realm
+// ── store-update r2 (Codex store-update r1 #1): capp-api.js:605 answers a 426 on a kept identity with the EXISTING outcome +
+// update_required — incl. {kind:'confirming'} when its credentials poll pending. The store sheet (state 3) must win over «confirming»,
+// while a CONFIRMED order (placed / paid) still wins over the sheet. The real capp-api, its place() answering that exact shape ──
+const STORE = { name: 'App Store', url: 'https://apps.apple.com/app/id1234567890' };
+const withPlace = (outcome) => ({ ...CA, createApi: (o) => { const a = CA.createApi(o); a.place = async () => ({ ...outcome }); return a; } });
+async function toPlace(b) {
+  await toCheckout(b); await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
+  await b.type('#f-details', 'Portón negro'); await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000'); await b.click('[data-act="pay"][data-val="cash"]');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]'); await settle();
+}
+test('store-update r2: {kind:"confirming", update_required:true} (capp-api.js:605 with live credentials) ⇒ the state-3 sheet, never a silent «Enviando»; a placed order with update_required still beats', async () => {
+  const b = bootCo({ config: { store: STORE }, mountOpts: { CappApi: withPlace({ kind: 'confirming', order_id: 'TA-1', state: 'pending', update_required: true }) } });
+  await toPlace(b);
+  assert.equal(b.text('#layer .errsheet h2'), 'Actualizá la app para seguir', '🔴 SU-r2-1: confirming + update_required ⇒ state 3');
+  const c = bootCo({ config: { store: STORE }, mountOpts: { CappApi: withPlace({ kind: 'placed', order_id: 'TA-2', update_required: true }) } });
+  await toPlace(c);
+  assert.equal(c.q('#layer .errsheet'), null, '🔴 SU-r2-1: a confirmed order wins — no store sheet'); assert.ok(c.q('#sspin .sok'), 'the placed beat');
+});
+
+// ── «Pedido recibido» (owner 11-01): the order AS SENT reaches the host with 'placed' — on the same page (cash) and ACROSS the hosted
+// checkout redirect (card: a new page load), bound to that order's id; its money lines are the sent body's, never a recomputation ──
+const SENT_KEY = 'capp:rid_a:sent_order';
+test('Pedido recibido: a cash placement hands the host the order AS SENT — lines, Envío, Propina and the Total = the body\'s expected_net_cents', async () => {
+  const b = bootCo({ config: { sentKey: SENT_KEY }, script: { createOrder: [{ status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt_12345678' } }] } });
+  await toCheckout(b); await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
+  await b.type('#f-details', 'Portón negro'); await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000'); await b.click('[data-act="pay"][data-val="cash"]');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="20"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]'); await settle();
+  b.timers.flush();
+  const ev = b.events.filter((e) => e[0] === 'placed').at(-1); assert.ok(ev, 'premise: placed');
+  const o = J(ev[1].order), body = b.srv.of('createOrder')[0].body;
+  assert.ok(o && Array.isArray(o.lines), '🔴 PR-snap: the order rides the placed event');
+  assert.deepEqual(o.lines.map((l) => [l.n, l.name]), [[1, b.plain.name]], '🔴 PR-snap: the sent lines');
+  assert.equal(o.total * 100, body.expected_net_cents, '🔴 PR-money: the Total = the body\'s expected_net_cents (the as-sent ceiling)');
+  assert.equal(o.tip, 20, '🔴 PR-money: the chosen tip'); assert.equal(o.fee * 100, FEE, '🔴 PR-money: the quoted Envío');
+  assert.deepEqual([o.mode, o.pay, o.details, o.whenText], ['delivery', 'cash', 'Portón negro', 'Lo antes posible']);
+  assert.equal(b.storage.getItem(SENT_KEY), null, 'nothing kept for a same-page placement');
+});
+test('Pedido recibido: a guest CARD order — the snapshot kept at the redirect (bound to its order id) reaches the host on the paid return, with the grant; a snapshot of ANOTHER order id is never used', async () => {
+  const storage = memStore();
+  const grant = { token: 'sg_1', expires_at: NOON().getTime() + 15 * 60e3 };
+  const a = bootCo({ storage, config: { ...GUEST, sentKey: SENT_KEY }, script: { ...CODE_OK, chargeOnlineOrder: [{ status: 200, json: { ...CHECKOUT.json, signup_grant: grant } }] } });
+  await guestFilled(a); await a.click('#cta'); await a.click('[data-act="tipc"][data-val="0"]'); await a.click('[data-act="tip-place"]'); await viaCode(a); await settle();
+  const charge = a.srv.of('chargeOnlineOrder')[0].body, id = charge.order_id; const snap = J(a.ui.cart.snapshot()); a.ui.destroy();
+  const kept = JSON.parse(storage.getItem(SENT_KEY) || 'null');
+  assert.ok(kept && kept.order_id === id, '🔴 PR-redirect: the snapshot kept, bound to the order id');
+  const c = bootCo({ storage, config: { ...GUEST, sentKey: SENT_KEY }, search: RET('complete', id), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'paid' } }] } });
+  c.ui.restore(snap); await c.ui.returning; await settle(); c.timers.flush();
+  const ev = c.events.filter((e) => e[0] === 'placed').at(-1); assert.ok(ev, 'premise: placed after the return');
+  const o = J(ev[1].order);
+  assert.ok(o && o.lines && o.lines.length === 1, '🔴 PR-redirect: the as-sent order reaches the host after the reload');
+  assert.equal(o.total * 100, charge.expected_net_cents, '🔴 PR-money: the Total = the charged body\'s expected_net_cents');
+  assert.equal(o.pay, 'online'); assert.deepEqual(J(ev[1].signup_grant), grant, 'the grant rides the same event (frame 7)');
+  assert.equal(storage.getItem(SENT_KEY), null, 'cleared once handed over');
+  // identity: a kept snapshot of ANOTHER order is never shown for this one
+  const s2 = memStore();
+  const a2 = bootCo({ storage: s2, config: { ...GUEST, sentKey: SENT_KEY }, script: { ...CODE_OK, chargeOnlineOrder: [{ status: 200, json: { ...CHECKOUT.json } }] } });
+  await guestFilled(a2); await a2.click('#cta'); await a2.click('[data-act="tipc"][data-val="0"]'); await a2.click('[data-act="tip-place"]'); await viaCode(a2); await settle();
+  const id2 = a2.srv.of('chargeOnlineOrder')[0].body.order_id; const snap2 = J(a2.ui.cart.snapshot()); a2.ui.destroy();
+  s2.setItem(SENT_KEY, JSON.stringify({ ...JSON.parse(s2.getItem(SENT_KEY)), order_id: 'TA-SOMEONE-ELSE' }));
+  const c2 = bootCo({ storage: s2, config: { ...GUEST, sentKey: SENT_KEY }, search: RET('complete', id2), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'paid' } }] } });
+  c2.ui.restore(snap2); await c2.ui.returning; await settle(); c2.timers.flush();
+  const ev2 = c2.events.filter((e) => e[0] === 'placed').at(-1); assert.ok(ev2, 'premise: placed');
+  assert.equal(ev2[1].order, null, '🔴 PR-identity: another order\'s snapshot is never used');
+});
+
 // ── G5 frame 7 (approved): the SIGNUP GRANT rides on the placed outcome; the account offer card renders only while it is live ──
 test('G5: a guest\'s paid card return carries the signup grant on its placed outcome (frame 7\'s input); a member\'s never does', async () => {
   const storage = memStore();
@@ -2399,9 +2498,9 @@ const hnT = (d, h, mi = 0) => new Date(Date.UTC(2026, 9, d, h + 6, mi));   // Ho
 const S4_QUOTE = (body) => (body.schedule_only ? { status: 200, json: { ok: true, schedule: S4_ENTRY.schedule } } : QUOTE(body));
 const S4_MEMBER = { uid: 'u1', name: 'Ana', phone: '99990000', email: 'a@b.co', idToken: 'tok' };
 const loadSched = (w) => w.eval(readFileSync(join(HERE, 'capp-schedule.js'), 'utf8'));   // shell.html loads it, as here
-function bootS4({ at = hnT(20, 13, 1), member = S4_MEMBER, script = {}, config = {}, clock = null, storage, search = '' } = {}) {
+function bootS4({ at = hnT(20, 13, 1), member = S4_MEMBER, script = {}, config = {}, clock = null, storage, search = '', geo, priceSheet, intl = false } = {}) {
   const c = clock || { t: at.getTime() };
-  const b = bootCo({ member, config: { ...S4_CFG, ...config }, script: { quoteOrder: [S4_QUOTE], ...script }, pre: loadSched, mountOpts: { now: () => new Date(c.t) }, ...(storage ? { storage } : {}), search });
+  const b = bootCo({ member, config: { ...S4_CFG, ...config }, script: { quoteOrder: [S4_QUOTE], ...script }, pre: intl ? (w) => { loadSched(w); loadPhone(w); } : loadSched, mountOpts: { now: () => new Date(c.t) }, ...(storage ? { storage } : {}), ...(geo !== undefined ? { geo } : {}), ...(priceSheet ? { priceSheet } : {}), search });
   b.clock = c; return b;
 }
 const schedFill = async (b, pay = 'cash') => { await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]'); await b.type('#f-details', 'Portón negro'); if (b.q('#f-name')) { await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000'); } if (b.q(`[data-act="pay"][data-val="${pay}"]`)) await b.click(`[data-act="pay"][data-val="${pay}"]`); };
@@ -2621,6 +2720,97 @@ test('S4 row 10 (advisor ruling (a), Codex S4 r2): the TENDER of a retained sche
   await b.click('#cta'); await settle();
   assert.deepEqual([b.srv.of('createOrder').length, b.srv.of('chargeOnlineOrder').length], [2, 0], '🔴 S4-tender: re-sent to the recorded tender, never charged');
 });
+// ── Codex cash-chips r1 (advisor ruling 2026-11-01: a RETAINED REPLAY sends ONLY the recorded body — it never rebuilds from, and never
+// depends on, the live flow) ──
+async function remount10b(a, extra = {}) {   // A's unresolved scheduled CASH send, remounted on the same device (the real writer)
+  const b = bootS4({ storage: a.storage, ...extra }); await toCheckout(b); await settle();
+  assert.equal(cta(b), 'Reintentar', 'premise: the remounted checkout is frame 10b'); return b;
+}
+for (const [name, refusal] of [['quote_invalid', { status: 409, json: { error: 'quote_invalid' } }], ['price_increased', { status: 409, json: { error: 'price_increased', net_total_cents: 99900 } }]]) {
+  test(`cash-chips r1 P1-1 (${name}): a replay the server refuses on its quote is NOT rebuilt from the live flow — one request (the recorded bytes), the lock released, back on «Entrega & Pago» to re-confirm`, async () => {
+    const a = bootS4({ script: { createOrder: ['network'] } }); await retainCash(a); const sent0 = a.srv.of('createOrder')[0].body;
+    const sheets = [];   // an ACCEPTING price sheet: the accepted-price recovery must not rebuild either
+    const b = await remount10b(a, { priceSheet: (o) => { sheets.push(o); return Promise.resolve(true); }, script: { createOrder: [refusal, S4_REPLAY_OK, S4_REPLAY_OK] } });
+    await b.click('#cta'); await settle(); await settle();
+    const s = b.srv.of('createOrder');
+    assert.equal(s.length, 1, `🔴 CC-r1-1: ${name} on a replay ⇒ no second (rebuilt) send`);
+    assert.deepEqual(J(s[0].body), J(sent0), 'the one request carried the recorded bytes');
+    assert.equal(b.ui.state.screen, 'checkout', '🔴 CC-r1-1: back on «Entrega & Pago»');
+    assert.notEqual(cta(b), 'Reintentar', '🔴 CC-r1-1: the lock is released (the customer re-confirms a validated checkout)');
+    assert.equal(sheets.length, 0, '🔴 CC-r1-1: no price sheet over a replay (nothing is re-sent from it)');
+  });
+}
+for (const [label, geo] of [['geolocation denied', GEO_NO], ['a fresh quote ready', undefined]]) test(`cash-chips r2 P1-1 (order_conflict, ${label}): a replay answered 409 order_conflict is NOT healed onto a rebuilt body under a new id — one request, the lock released, back on «Entrega & Pago»`, async () => {
+  const a = bootS4({ script: { createOrder: ['network'] } }); await retainCash(a); const sent0 = a.srv.of('createOrder')[0].body;
+  const b = await remount10b(a, { geo, script: { createOrder: [{ status: 409, json: { error: 'order_conflict' } }, S4_REPLAY_OK, S4_REPLAY_OK] } });
+  await b.click('#cta'); await settle(); await settle();
+  const s = b.srv.of('createOrder');
+  assert.equal(s.length, 1, '🔴 CC-r2-1: no healed resend from a replay');
+  assert.deepEqual(J(s[0].body), J(sent0), 'the one request carried the recorded bytes');
+  assert.equal(b.ui.state.screen, 'checkout'); assert.notEqual(cta(b), 'Reintentar', '🔴 CC-r2-1: the lock released');
+});
+test('cash-chips r2 #3: «Enviando» shows the RECORDED economics on a replay — never the live quote (a remount whose fresh quote differs)', async () => {
+  const a = bootS4({ script: { createOrder: ['network'] } }); await retainCash(a);
+  const rec = JSON.parse(a.storage.getItem(S4_PLACE_KEY)); const body0 = JSON.parse(rec.sent_body);
+  assert.ok(Number.isFinite(body0.expected_net_cents), 'premise: the recorded ceiling');
+  const live = (body) => { const r = S4_QUOTE(body); return r.json && Number.isFinite(r.json.net_total_cents) ? { ...r, json: { ...r.json, net_total_cents: r.json.net_total_cents + 12300 } } : r; };   // the live quote moved
+  let go; const gate = new Promise((r) => { go = r; });
+  const b = await remount10b(a, { script: { quoteOrder: [live], createOrder: [(body) => gate.then(() => S4_REPLAY_OK(body))] } });
+  await b.click('#cta'); await settle();
+  assert.equal(b.ui.state.screen, 'sending', 'premise: «Enviando» while the replay is in flight');
+  assert.deepEqual(J(b.ui.state.sendTotals), { total: body0.expected_net_cents, tip: Number.isFinite(body0.tip_cents) ? body0.tip_cents : 0 }, '🔴 CC-r2-3: the recorded ceiling + tip');
+  const shown = b.text('.sndcard') || ''; const want = (body0.expected_net_cents / 100).toLocaleString('en-US');
+  assert.ok(shown.includes('L ' + want), `🔴 CC-r2-3: «Enviando» shows the recorded L ${want} (${shown})`);
+  go(); await settle();
+});
+test('cash-chips r1 P1-2: a remounted 10b with geolocation DENIED (no pin, no quote) still re-sends the recorded body on «Reintentar»', async () => {
+  const a = bootS4({ script: { createOrder: ['network'] } }); await retainCash(a); const sent0 = a.srv.of('createOrder')[0].body;
+  const b = await remount10b(a, { geo: GEO_NO, script: { createOrder: [S4_REPLAY_OK] } });
+  assert.equal(b.q('#cta') ? b.q('#cta').disabled : null, false, 'premise: «Reintentar» enabled');
+  await b.click('#cta'); await settle(); await settle();
+  const s = b.srv.of('createOrder');
+  assert.equal(s.length, 1, '🔴 CC-r1-2: the replay is sent without a fresh pin / quote');
+  assert.deepEqual(s.length ? J(s[0].body) : null, J(sent0), '🔴 CC-r1-2: the recorded bytes');
+});
+test('cash-chips r2 P2-2 (intl): a country picker ALREADY OPEN when the send leaves it locked — its rows disabled + unfocusable, a pick refused; the phone blur never rewrites flow.phone', async () => {
+  const b = bootS4({ config: { intlPhone: true }, intl: true, script: { createOrder: ['network'] } });
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]'); await b.click('.slotgrid .chip');
+  if (b.q('[data-act="editwho"]')) await b.click('[data-act="editwho"]');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  await b.click('#layer [data-act="lclose"]'); await settle();
+  assert.equal(cta(b), 'Reintentar', 'premise: frame 10b');
+  const f0 = J(b.ui.state.flow);
+  b.ui.state.layerKind = 'cc'; b.ui.render(); await settle();   // the picker as it stood when opened before the send
+  const rows = b.qa('#layer [data-act="cc-pick"]');
+  assert.ok(rows.length > 1, 'premise: the picker rows are drawn');
+  for (const r of rows) { assert.equal(r.disabled, true, '🔴 CC-r2-2: a picker row disabled'); assert.equal(r.getAttribute('tabindex'), '-1', '🔴 CC-r2-2: unfocusable'); }
+  const other = rows.find((r) => r.dataset.cc !== String(f0.cc || '504')); other.disabled = false; other.dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle();
+  assert.deepEqual(J(b.ui.state.flow), f0, '🔴 CC-r2-2: a stale pick changes nothing');
+  b.ui.state.layerKind = null; b.ui.render(); await settle();
+  const ph = b.q('#f-phone'); assert.ok(ph, 'premise: the phone field');
+  ph.disabled = false; ph.value = '+999'; ph.dispatchEvent(new b.w.FocusEvent('focusout', { bubbles: true })); await settle();
+  assert.equal(b.ui.state.flow.phone, f0.phone, '🔴 CC-r2-2: the blur never rewrites the locked phone');
+});
+test('cash-chips r1 P2-3/4: on 10b every flow field ignores INPUT events — «Otro monto» and editors opened BEFORE the send (details, email/notes, name/phone) render disabled and keep the flow', async () => {
+  const b = bootS4({ script: { createOrder: ['network'] } });
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]'); await b.click('.slotgrid .chip');
+  if (b.q('[data-act="editwho"]')) await b.click('[data-act="editwho"]');
+  if (b.q('[data-act="more"]')) await b.click('[data-act="more"]');
+  if (b.q('[data-act="editdetails"]')) await b.click('[data-act="editdetails"]');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  await b.click('#layer [data-act="lclose"]'); await settle();
+  assert.equal(cta(b), 'Reintentar', 'premise: frame 10b');
+  const f0 = J(b.ui.state.flow);
+  const FIELDS = ['#f-tender', '#f-details', '#f-email', '#f-notes', '#f-name', '#f-phone'];
+  for (const s of FIELDS) {
+    const e = b.q(s); if (!e) continue;
+    assert.equal(e.disabled, true, `🔴 CC-r1-4: ${s} disabled on 10b`);
+    assert.equal(b.w.getComputedStyle(e).opacity, '0.45', `🔴 CC-r1-4: ${s} at the drawn .45`);
+    e.value = '9999'; e.dispatchEvent(new b.w.Event('input', { bubbles: true })); await settle();
+  }
+  assert.ok(['#f-tender', '#f-details', '#f-email'].every((s) => b.q(s)), 'premise: the cash amount, the details and the email editors are drawn');
+  assert.deepEqual(J(b.ui.state.flow), f0, '🔴 CC-r1-3: an input event changes nothing in the flow');
+});
 // ── Codex G7 r1 #1 (advisor ruling, 2026-10-31): the lock AND the dispatch endpoint come from the RETAINED RECORD only — never from the
 // current flow. The record names its owner (owner); only that member sees the lock and replays it. A non-owner (a guest after
 // the sign-out, member B) gets a clean flow and a LOCAL refusal (no network, the record untouched) until the record resolves or
@@ -2636,11 +2826,44 @@ async function retainCash(b) {   // an unresolved scheduled CASH send (the netwo
   return rec;
 }
 const heldSheet = (b) => b.text('#layer .errsheet h2, #layer .errsheet .t, #layer .errsheet b');
+// MOCKUP-capp-cash-chips-lock (owner-approved 2026-11-01, both questions «sí»): while a scheduled send is unresolved (frame 10b) the
+// replay re-sends the SAME body, so every control it ignores is fixed at the drawn .45 and stops responding — the cash amount
+// («Pago exacto», the rounded chip, «Otro monto»), «Tus datos» («Cambiar», «Agregar email / notas») and (question 2) Delivery /
+// Pickup, the pin («Ajustar pin», «Tu ubicación») and the «Cambiar» of «Detalles adicionales»; all back once the record is gone
+test('cash-chips lock (frame 10b): the cash amount, «Tus datos», Delivery/Pickup, the pin and «Detalles adicionales» are fixed while the scheduled send is unresolved — forced taps change nothing; back once the record is gone', async () => {
+  const b = bootS4({ script: { createOrder: ['network'] } }); await retainCash(b);
+  assert.equal(cta(b), 'Reintentar', 'premise: frame 10b');
+  const f0 = J(b.ui.state.flow);
+  const LOCKED = ['[data-act="tender"]', '#f-tender', '[data-act="editwho"]', '[data-act="more"]', '[data-act="type"][data-val="delivery"]', '[data-act="type"][data-val="pickup"]', '.map[data-act="pin"]', '.urow[data-act="pin"]', '[data-act="editdetails"]'];
+  for (const s of LOCKED) {
+    const els = b.qa(s);
+    assert.ok(els.length > 0, `premise: ${s} is drawn on 10b`);
+    for (const e of els) { assert.equal(e ? e.disabled : null, true, `🔴 CC-lock: ${s} disabled on 10b`); assert.equal(b.w.getComputedStyle(e).opacity, '0.45', `🔴 CC-lock: ${s} at the drawn .45`); }
+  }
+  for (const s of LOCKED) for (const e of b.qa(s)) { e.dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle(); }
+  assert.deepEqual(J(b.ui.state.flow), f0, '🔴 CC-lock: a forced tap changes nothing in the flow');
+  assert.deepEqual([b.ui.state.flow.editWho || false, b.ui.state.more || false, b.ui.state.editDetails || false, b.ui.state.layerKind || null], [false, false, false, null], '🔴 CC-lock: no edit mode opened, no pin layer');
+  assert.equal(b.ui.state.flow.tendered, f0.tendered, '🔴 CC-lock: the cash amount stands');
+  // a stale node (the attribute stripped): the HANDLER refuses too — the same predicate, not only the markup
+  for (const s of ['[data-act="tender"]', '[data-act="editwho"]', '[data-act="more"]', '[data-act="type"][data-val="pickup"]', '.map[data-act="pin"]', '[data-act="editdetails"]']) {
+    const e = b.q(s); if (!e) continue; e.disabled = false; e.dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle();
+  }
+  assert.deepEqual(J(b.ui.state.flow), f0, '🔴 CC-handler: a stale tap changes nothing in the flow');
+  assert.deepEqual([b.ui.state.flow.editWho || false, b.ui.state.more || false, b.ui.state.editDetails || false, b.ui.state.layerKind || null], [false, false, false, null], '🔴 CC-handler: no edit mode, no pin layer');
+  b.ui.render(); await settle();
+  // the record EXPIRES (discarded) ⇒ the lock lifts and every control answers again
+  b.storage.setItem(S4_PLACE_KEY, JSON.stringify({ ...JSON.parse(b.storage.getItem(S4_PLACE_KEY)), expires_at: 1 })); b.ui.render(); await settle();
+  assert.notEqual(cta(b), 'Reintentar', 'premise: the lock is gone');
+  for (const s of ['[data-act="tender"]', '#f-tender', '[data-act="type"][data-val="pickup"]', '.map[data-act="pin"]', '[data-act="editdetails"]']) {
+    const e = b.q(s); assert.equal(e ? e.disabled : null, false, `🔴 CC-unlock: ${s} enabled again`);
+  }
+});
 test('Codex G7 r1 #1 (remount): a retained scheduled CASH send locks the remounted checkout from the RECORD — a flow edited to ASAP + card still replays the recorded body to createOrder, never chargeOnlineOrder', async () => {
   const a = bootS4({ script: { createOrder: ['network'] } }); const rec = await retainCash(a);
   const sent0 = a.srv.of('createOrder')[0].body;
   const b = bootS4({ storage: a.storage, script: { createOrder: [S4_REPLAY_OK], chargeOnlineOrder: [CHECKOUT] } });
-  await toCheckout(b); await schedFill(b, 'online');
+  await toCheckout(b);   // the cash-chips lock: on 10b the pin / details are fixed (nothing to fill) — the edit goes through the flow below
+  assert.equal(b.q('.map[data-act="pin"]')?.disabled ?? null, true, 'the pin is fixed on the remounted 10b');
   assert.equal(cta(b), 'Reintentar', '🔴 S4-owner: the remounted checkout is locked from the record');
   assert.equal(b.ui.state.flow.pay, 'cash', '🔴 S4-owner: the recorded tender'); assert.equal(b.ui.state.flow.time, 'schedule');
   b.ui.state.flow.time = 'asap'; b.ui.state.flow.pay = 'online'; b.ui.render(); await settle();   // a flow edited behind the lock
@@ -2704,4 +2927,43 @@ test('Codex G7 r3: an unresolved ASAP cash send, its error closed — back on th
   if (b.q('#layer [data-act="placing-go"]')) await b.click('#layer [data-act="placing-go"]');
   assert.equal(b.srv.of('createOrder').length, 2, '🔴 R3-asap: the retry SENDS');
   assert.deepEqual(b.srv.of('createOrder')[1].body, b.srv.of('createOrder')[0].body, 'the exact recorded bytes');
+});
+
+// PLAN-capp-store-promo-feeinfo / Codex promo r1 #1 — the MODULE's own rule, for ANY host of CappUI (not only the shell, whose getter is
+// already the admitted one): a host saying «member» with no admitted identity (opts.member / setMember) claims nothing
+test('store promo (CappUI host): a raw «member» authState with nothing admitted ⇒ no «Envío gratis», the pill reserved; an admitted member WITHOUT a token ⇒ none; WITH a token ⇒ «Envío gratis»', () => {
+  const cfg = { feeFromCents: 4500, zoneKm: 7, promoFree: true };
+  const raw = boot('x_pizza', { config: cfg, mount: { authState: () => 'member' } });
+  assert.equal(raw.q('.info .facts .free'), null, `🔴 store promo (host): «Envío gratis» from an unadmitted session: ${raw.text('.info .facts')}`);
+  assert.equal(raw.q('.info .pill.deal').getAttribute('aria-hidden'), 'true', 'not admitted ⇒ reserved');
+  const noTok = boot('x_pizza', { config: cfg, mount: { CappApi: require('./capp-api.js'), authState: () => 'member', member: { uid: 'u_1', name: 'Ana', phone: '99990000', email: '', idToken: null } } });
+  assert.equal(noTok.q('.info .facts .free'), null, '🔴 store promo (host): an admitted member WITHOUT a usable token claims nothing (Codex promo r2 P2-A)');
+  const adm = boot('x_pizza', { config: cfg, mount: { CappApi: require('./capp-api.js'), authState: () => 'member', member: { uid: 'u_1', name: 'Ana', phone: '99990000', email: '', idToken: `${Buffer.from('{"alg":"RS256"}').toString('base64url')}.${Buffer.from(JSON.stringify({ sub: 'u_1', exp: Math.floor((NOON().getTime() + 3600e3) / 1000) })).toString('base64url')}.sig` } } });   // a JWT (the real writer's shape): one hour past the mount clock (NOON)
+  assert.ok(adm.q('.info .facts .free'), '🔴 store promo (host): the admitted member\'s «Envío gratis»'); assert.equal(adm.q('.info .pill.deal'), null);
+});
+
+// Codex promo r4 #3 — ONE CLOCK: CappUI hands the transport ITS OWN clock (the one the promo claim reads); an apiOpts.now that disagrees is
+// overridden, so the claim and the header can never be judged at two different times
+test('store promo r4 ONE CLOCK: the transport reads the UI\'s clock — an apiOpts.now skewed 120 s is overridden (one source)', async () => {
+  let seen = null; const spy = { ...CA, createApi: (o) => { seen = o; return CA.createApi(o); } };
+  const uiNow = () => new Date(NOON().getTime() + 120e3);   // the UI clock; bootCo's apiOpts.now stays at NOON (a second, skewed clock)
+  const b = bootCo({ mountOpts: { CappApi: spy, now: uiNow } });
+  await toCheckout(b);
+  assert.ok(seen && typeof seen.now === 'function', 'premise: the transport was created');
+  assert.equal(seen.now(), uiNow().getTime(), '🔴 promo r4: the transport reads a SECOND clock (apiOpts.now), not the UI\'s');
+});
+
+// Codex VP r5 #1: the cart core takes the store's RESOLVED deps (never globals) — an injected serializer that rejects the text cap keeps
+// the base behaviour (nothing added), and the core loads under CommonJS with no browser globals
+test('cart core (advisor 11-02): the store\'s INJECTED deps reach its cart path — a serializer that rejects the text cap ⇒ «+» adds nothing (the base); the core runs under CommonJS', () => {
+  const tooLongSer = { serialize: () => { const e = new Error('too long'); e.code = 'cart_text_too_long'; throw e; } };
+  const { ui, click, q } = boot('x_pizza', { mount: { CappSerialize: tooLongSer } });
+  const btn = q('[data-act="inc"]'); assert.ok(btn, 'premise: a «+»');
+  click(btn);
+  assert.equal(ui.cart.count(), 0, '🔴 VP-deps: the injected serializer rejected ⇒ nothing added (base count 0)');
+  const CJS = require('./capp-ui.js'), menu = require('./capp-menu.js').adaptMenu(PROV.x_pizza.envelope), d = menu.dishes.find((x) => !x.launcher && !x.variantOf);
+  const core = CJS.createCartCore({ menu, cfg: {}, api: () => null, mods: () => false });
+  assert.equal(core.mutate((c) => c.inc(d.key), true).ok, true, '🔴 VP-deps: the core works under CommonJS (no CappCart global)');
+  const rej = CJS.createCartCore({ menu, cfg: {}, api: () => null, mods: () => false, CappSerialize: tooLongSer });
+  assert.deepEqual([rej.mutate((c) => c.inc(d.key), true), rej.cart.count()], [{ ok: false, tooLong: true }, 0], '🔴 VP-deps: an injected serializer is the one used');
 });

@@ -50,6 +50,7 @@
     menu: I('<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/>'), check: I('<path d="m5 12.5 4.5 4.5L19 7.5"/>'),
     bag: I('<path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>'), clock: I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
     info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>'), alert: I('<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/>'),
+    update: I('<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>'),   // MOCKUP-capp-native-store-update (owner-approved): an arrow into a tray
     bike: I('<circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="17" r="2.5"/><path d="M8.5 17h7"/><path d="M14 6h3l2.5 8.5"/><path d="M4 11h7l2 6"/>'),
     // S2b (the prototype's IC, verbatim)
     back: I('<path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/>'), chev: I('<path d="M9 6l6 6-6 6"/>'), down: I('<path d="M6 9l6 6 6-6"/>'), up: I('<path d="m18 15-6-6-6 6"/>'),
@@ -104,13 +105,15 @@
     .replace('<!-- rear wheel -->', '<g class="speed" aria-hidden="true"><path d="M14 118h40"/><path d="M4 136h30"/><path d="M20 152h44"/></g><g class="mover">')
     .replace('</svg>', '</g></svg>');
   const CHECK_OK = `<span class="sok">${IC.check}</span>`;
-  // the schematic map (prototype mapSvg :1796-1806, light theme; S1 ships no dark toggle) — the fallback when no Maps key is configured
+  // the schematic map (prototype mapSvg :1796-1806) — the fallback when no Maps key is configured. capp-dark (PLAN §3): its colours are
+  // the --map-* tokens (light = v6's light values, dark = v6 mapSvg's dark branch; capp.css), via inline style so the OS theme flips it
+  // live — never a hex literal here
   const MAP_SVG = (() => {
-    const road = '#FFFFFF', minor = '#F4F6F1', park = '#DCE6D4', water = '#D6E4EA';
+    const road = 'var(--map-road)', minor = 'var(--map-minor)', park = 'var(--map-park)', water = 'var(--map-water)';
     return `<svg class="mapsvg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-    <rect x="62" y="56" width="30" height="26" rx="3" fill="${park}"/><path d="M-5 92 C 20 80, 40 96, 70 86 S 100 76, 110 84 L110 110 L-5 110 Z" fill="${water}"/>
-    <g stroke="${minor}" stroke-width="1.6" stroke-linecap="round" vector-effect="non-scaling-stroke">${[10, 34, 56, 78].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}${[10, 36, 62, 86].map((x) => `<path d="M${x} -5V105"/>`).join('')}</g>
-    <g stroke="${road}" stroke-width="3.4" stroke-linecap="round" fill="none">${[22, 50, 74].map((x) => `<path d="M${x} -5V105"/>`).join('')}${[22, 42, 64].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}<path d="M-5 100 L45 60 L105 20"/></g></svg>`;
+    <rect x="62" y="56" width="30" height="26" rx="3" style="fill:${park}"/><path d="M-5 92 C 20 80, 40 96, 70 86 S 100 76, 110 84 L110 110 L-5 110 Z" style="fill:${water}"/>
+    <g style="stroke:${minor}" stroke-width="1.6" stroke-linecap="round" vector-effect="non-scaling-stroke">${[10, 34, 56, 78].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}${[10, 36, 62, 86].map((x) => `<path d="M${x} -5V105"/>`).join('')}</g>
+    <g style="stroke:${road}" stroke-width="3.4" stroke-linecap="round" fill="none">${[22, 50, 74].map((x) => `<path d="M${x} -5V105"/>`).join('')}${[22, 42, 64].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}<path d="M-5 100 L45 60 L105 20"/></g></svg>`;
   })();
   // the «confirming» line on the approved «Enviando tu pedido…» screen (Q9, no sheet, no button)
   const CONFIRMING_HINT = 'Estamos confirmando tu pago con el banco.';
@@ -122,6 +125,77 @@
 
   // ── the view model: the served menu as the prototype's item shape (S7a-2: shared with the shell's Inicio / Buscar, so a search hit
   //    is exactly an item the store displays — launchers priced «desde», never a raw variant child; `dish` = the canonical dish id) ──
+  // «Volver a pedir» (advisor ruling 2026-11-02): THE store's cart-write path, ONE implementation. The mounted store edits its cart
+  // through these functions and guards, and the shell's «+» / reorder (no store on screen) go through the very same ones — so their
+  // safety is by construction a customer's tap inside the store. No new cross-tab guarantee is claimed beyond that.
+  // apiConfigOf: the store's transport config (the ONE source — the store's own api and the shell's are built from it)
+  function apiConfigOf(cfg) {
+    return { restaurantId: cfg.restaurantId, orderIdPrefix: cfg.orderIdPrefix, pendingPayKey: cfg.pendingPayKey, endpoints: cfg.endpoints, hours: cfg.hours,
+      cartKey: cfg.cartKey, placedKey: cfg.placedKey, guestCardOnly: cfg.guestCardOnly === true, ...(cfg.schedulingLive === true ? { schedulingLive: true } : {}) };   // S7a-1: hosted by the shell (both absent ⇒ the S2 path, unchanged); §3.2 the guest tender rule
+  }
+  // the cart, its generation and every guard on it: o = { menu, cfg, api: () => the store's api, mods: () => true once it exists,
+  // CappCart, CappSerialize } — the deps are the CALLER's resolved ones (Codex VP r5 #1: never globals), else the same resolution
+  function createCartCore(o) {
+    const { menu, cfg } = o, api = () => o.api(), mods = () => o.mods();
+    const CappCart = o.CappCart || (typeof self !== 'undefined' && self.CappCart) || require('./capp-cart.js');
+    const CappSerialize = o.CappSerialize || (typeof self !== 'undefined' && self.CappSerialize) || require('./capp-serialize.js');
+    const hosted = !!(cfg.cartKey && cfg.placedKey);
+    // S7a r3.4-1: a HOSTED cart (the shell's per-store keys) records each instance's last-seen prices, so a cart restored onto a
+    // re-priced menu is DISCLOSED (frame 13); the S2 / link path keeps today's byte-identical snapshots
+    const cart = CappCart.createCart(menu, hosted ? { provenance: true } : undefined);
+    // S7a-1 (PLAN-capp-S7a r2 §1.4; Codex r2 New 1): hosted ⇒ the cart's GENERATION — re-minted whenever the cart starts empty (or a
+    // restore found it purchased and cleared), restored with a snapshot, carried with every placement and every persisted snapshot
+    let gen = null;
+    const genNow = () => { const a = api(); if (!gen && a && typeof a.newGen === 'function') gen = a.newGen(); return gen; };
+    // S7a-1 r3 §1.1 (Codex r1 P2-7): hosted ⇒ a cart frozen for a placement — or whose freeze state is unknown — is READ-ONLY
+    function frozenNow() {
+      if (!hosted) return false;
+      if (!mods() || !api().hosted) return true;
+      const rc = api().reconcile(); if (!rc.ok) return true;
+      return api().cartFreeze().frozen === true;
+    }
+    function lockedHere() {
+      if (!hosted) return false;
+      if (!mods() || !api().hosted) return true;
+      const a = api(), rc = a.reconcile(); if (!rc.ok) return true;
+      const fz = a.cartFreeze();
+      return !!(fz.unknown || (fz.frozen && fz.live) || (typeof a.holdsLock === 'function' && a.holdsLock()));
+    }
+    // a mutation: refused when not orderable or frozen; a write the cart refuses changes nothing; one that would push the order text past
+    // the server's cap is REVERTED ({ tooLong }) — the caller draws the owner-approved line
+    function mutate(fn, orderable) {
+      if (!orderable || frozenNow()) return { ok: false };
+      const before = cart.snapshot();
+      try { fn(cart); } catch (_) { return { ok: false }; }
+      if (cart.count()) {
+        try { CappSerialize.serialize(cart, menu); } catch (e) {
+          if (e && e.code === 'cart_text_too_long') { cart.hydrate(before); return { ok: false, tooLong: true }; }
+        }
+      }
+      if (!cart.count()) gen = null;   // an emptied cart: the next one is a NEW cart (a new generation)
+      return { ok: true };
+    }
+    // what is persisted (the shell's onCartChange) and what the store's snapshot() returns
+    const snapshotFor = (mode) => ({ ...cart.snapshot(), rid: cfg.restaurantId, mode, ...(hosted ? { cart_gen: cart.count() ? genNow() : null } : {}) });
+    // S7a-1 r3 §1.3 (hosted): reconcile FIRST — blocked until it completes; a purchased (cleared) cart is never restored
+    function restore(snapshot) {
+      let mode = null;
+      if (hosted && mods() && api().hosted) {
+        const rc = api().reconcile(); if (!rc.ok) return { blocked: true, step: rc.step };
+        if (rc.done === 'placed' && snapshot && snapshot.cart_gen && snapshot.cart_gen === rc.cart_gen) {
+          // Codex r3 #1: the PURCHASED lines are cleared from memory too, BEFORE the generation is released — a new generation is
+          // only ever minted for an empty cart, so purchased lines can never be disguised as a new cart
+          cart.hydrate({ v: 2, lines: [] }); gen = null; return { cleared: true };
+        }
+        gen = snapshot && typeof snapshot.cart_gen === 'string' && snapshot.cart_gen ? snapshot.cart_gen : null;   // the restored cart keeps its generation
+        // Codex r1 P2-7: the persisted mode is restored with the lines (a frozen pickup cart is never re-shown as delivery)
+        if (snapshot && (snapshot.mode === 'pickup' || snapshot.mode === 'delivery')) mode = snapshot.mode;
+      }
+      return { hydrated: cart.hydrate(snapshot), mode };
+    }
+    return { cart, genNow, frozenNow, lockedHere, mutate, snapshotFor, restore, hosted };
+  }
+
   function viewSections(menu, cfg) {
     const photo = (d) => (d && d.img && cfg.assetBase ? cfg.assetBase.replace(/\/?$/, '/') + String(d.img).replace(/^\.?\//, '') : '');
     const exOf = (k) => menu.extrasFor(k).filter((e) => e.supported).map((e) => e.key);
@@ -183,19 +257,17 @@
     const emit = (name, detail) => { if (dead) return; try { (opts.onEvent || (() => {}))(name, detail); } catch (_) {} };
     // S7a-1 (PLAN-capp-S7a r2 §1.6): the shell's per-store cart persistence hook — after a SUCCESSFUL mutation, a restore and a
     // delivery/pickup change; a throwing hook never affects the UI; absent ⇒ nothing is called
-    const notifyCart = () => { if (dead || typeof opts.onCartChange !== 'function' || frozenNow()) return; try { opts.onCartChange({ ...cart.snapshot(), rid: cfg.restaurantId, mode: S.mode, ...(hostedKeys() ? { cart_gen: cart.count() ? genNow() : null } : {}) }); } catch (_) {} };
-    // S7a-1 (PLAN-capp-S7a r2 §1.4; Codex r2 New 1): hosted ⇒ the cart's GENERATION is the UI's — re-minted whenever the cart starts
-    // empty (or a restore found it purchased and cleared), restored with a snapshot, carried with every placement and every
-    // onCartChange; the purchase latch binds to it, so a purchased cart is never re-sent while a NEW cart places normally
+    const notifyCart = () => { if (dead || typeof opts.onCartChange !== 'function' || frozenNow()) return; try { opts.onCartChange(core.snapshotFor(S.mode)); } catch (_) {} };
     const hostedKeys = () => !!(cfg.cartKey && cfg.placedKey);
-    let cartGen = null;
-    const genNow = () => { if (!cartGen && api && typeof api.newGen === 'function') cartGen = api.newGen(); return cartGen; };
-    // S7a r3.4-1: a HOSTED cart (the shell's per-store keys) records each instance's last-seen prices, so a cart restored onto a
-    // re-priced menu is DISCLOSED (frame 13); the S2 / link path keeps today's byte-identical snapshots
-    const cart = CappCart.createCart(menu, cfg.cartKey && cfg.placedKey ? { provenance: true } : undefined);
+    // the cart, its generation and its guards: the ONE cart-write path (createCartCore — the shell's «+» / reorder use it too)
+    const core = createCartCore({ menu, cfg, api: () => api, mods: () => mods(), CappCart, CappSerialize });
+    const cart = core.cart, genNow = () => core.genNow();
     const $ = (id) => doc.getElementById(id);
     const app = $('app');
-    const S = { mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link',
+    // PLAN-capp-desktop-website r2 D-2: the host's viewport (capp-view.js) — DESKTOP ⇒ the APPROVED v6 desk view's DOM (the store's
+    // deskcart aside, the checkout's col-b); no view handed over (the single-store page, every phone) ⇒ byte-identical to before
+    const view = opts.view && typeof opts.view.desk === 'function' ? opts.view : null;
+    const S = { desk: view ? !!view.desk() : false, mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link',
       // S2b
       screen: 'store', stack: [], flow: null, q: null, qKey: null, askedKey: null, outZone: false, closedRefused: false, geo: null, err: null, tipDraft: '',
       backScreen: null, sendHint: null, sendTotals: null, pinDraft: null, pinToast: false, pinStepOk: false, lastDelivery: null };
@@ -232,24 +304,12 @@
     // S7a-1 r3 §1.1 (Codex r1 P2-7): hosted ⇒ a cart frozen for a placement — or whose freeze state is unknown — is READ-ONLY:
     // every mutation and mode change is refused before it lands. Reconciliation runs first, so a finished placement unfreezes it.
     // Absent the hosted keys ⇒ never frozen (the S2 path)
-    function frozenNow() {
-      if (!(cfg.cartKey && cfg.placedKey)) return false;
-      if (!mods() || !api.hosted) return true;
-      const rc = api.reconcile(); if (!rc.ok) return true;
-      return api.cartFreeze().frozen === true;
-    }
+    function frozenNow() { return core.frozenNow(); }
     function mutate(fn) {
-      if (!orderable || frozenNow()) return false;
-      const before = cart.snapshot();
-      try { fn(); } catch (_) { return false; }
-      if (cart.count()) {
-        try { CappSerialize.serialize(cart, menu); } catch (e) {
-          if (e && e.code === 'cart_text_too_long') { cart.hydrate(before); S.refusal = FULL_CART; showRefusal(); return false; }
-        }
-      }
+      const m = core.mutate(fn, orderable);
+      if (!m.ok) { if (m.tooLong) { S.refusal = FULL_CART; showRefusal(); } return false; }
       S.refusal = null;
       if (refused.size) { const inCart = new Set(cart.lines().map((l) => l.key)); for (const k of [...refused]) if (!inCart.has(k)) refused.delete(k); }   // removed ⇒ the refusal clears
-      if (!cart.count()) cartGen = null;   // an emptied cart: the next one is a NEW cart (a new generation)
       notifyCart();
       return true;
     }
@@ -281,33 +341,150 @@
       return `<div class="row${isSold(it) ? ' sold-out' : ''}" id="dish-${esc(it.id)}"><button class="txtbtn" ${open}>${marks}<span class="nm">${esc(it.n)}</span>${it.d ? `<span class="ds">${esc(it.d)}</span>` : ''}<span class="prrow"><span class="pr">${esc(price)}</span></span></button>
     ${it.img ? `<div class="thumb"><button class="openimg" ${open} aria-label="Ver ${esc(it.n)}" tabindex="-1"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div>` : `<div class="ovl-inline">${overlayHtml(it)}</div>`}</div>`;
     }
-    function storeHtml() {
+    // PLAN-capp-store-promo-feeinfo r0 — the store header as v6: the guest promo pill (:1617; reserved, hidden, while auth is
+    // unresolved — home's rule, no pop-in), the member's «Envío gratis» (:1609 feeFree) and the fee ⓘ (only with a priced fee AND a
+    // zone: no control without effect). The auth tri-state is the HOST's (opts.authState); no getter ⇒ no promo UI at all
+    function authOf() {
+      if (typeof opts.authState !== 'function') return null;
+      // the ADMITTED identity — the one the checkout sends with (Codex promo r1 #1) — AND a usable token by the transport's own predicate
+      // (Codex promo r2 P2-A + r3, CappApi.tokenUsable: unexpired): no usable token ⇒ the server prices a guest ⇒ 'unresolved', nothing claimed
+      if (memberCtx) { let A = null; try { A = opts.CappApi || (typeof self !== 'undefined' && self.CappApi) || (typeof require === 'function' ? require('./capp-api.js') : null); } catch (_) { A = null; } return A && typeof A.tokenUsable === 'function' && A.tokenUsable(memberCtx, now().getTime()) ? 'member' : 'unresolved'; }
+      let v; try { v = opts.authState(); } catch (_) { v = null; }
+      return v === 'guest' ? 'guest' : 'unresolved';   // a session not (yet) admitted — restoring, or an incomplete one being signed out — claims nothing
+    }
+    function pillsHtml() {
+      const a = authOf();
+      return cfg.promoFree === true && a && a !== 'member' ? `<div class="pills hdpills"><span class="pill deal"${a === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true"'}>Envío gratis con tu cuenta</span></div>` : '';
+    }
+    function factsHtml() {
       const mode = S.mode, open = isOpen();
-      const house = sections.flatMap((s) => s.items).filter((x) => x.img && (x.tags || []).some((t) => ['signature_special', 'chefs_pick', 'must_try'].includes(t))).slice(0, 5);
-      const feeTxt = cfg.feeFromCents != null ? `<span>· Envío desde ${money(cfg.feeFromCents / 100)}</span>` : '';
-      const facts = open
+      const ib = Number.isFinite(cfg.zoneKm) ? `<button class="infobtn" data-act="feeinfo" aria-label="Detalle del envío">${IC.info}</button>` : '';
+      const feeTxt = cfg.feeFromCents != null ? `<span>· ${cfg.promoFree === true && authOf() === 'member' ? '<span class="free">Envío gratis</span>' : `Envío desde ${money(cfg.feeFromCents / 100)}`}${ib}</span>` : '';
+      return open
         ? `<span class="full"><span class="dot"></span><strong>Abierto</strong> · cierra ${esc(closesText())}</span>` + (mode === 'delivery'
           ? `${etaTxt('delivery') ? `<span>${esc(etaTxt('delivery'))}</span>` : ''}${feeTxt}`
           : `${etaTxt('pickup') ? `<span>${esc(etaTxt('pickup'))}</span>` : ''}${cfg.addr ? `<span class="mute full">Recogé en ${esc(cfg.addr)}</span>` : ''}`)
         : `<span class="full"><span class="dot off"></span><strong>Cerrado</strong> · ${esc(opensText())}</span>`;
+    }
+    function patchAuth() {
+      if (S.desk) { patchDeskAuth(); return; }
+      const top = $('top'), info = top && top.querySelector('.info'); if (!info) return;
+      const old = info.querySelector('.hdpills'), html = pillsHtml();
+      if (old) { if (html) old.outerHTML = html; else old.remove(); } else if (html) { const id = info.querySelector('.idrow'); if (id) id.insertAdjacentHTML('afterend', html); }
+      const f = info.querySelector('.facts'); if (f) patchFacts(f);
+    }
+    // Codex promo r2 P2-B: the fee line changes IN PLACE — the live «Detalle del envío» node is kept (a focused ⓘ stays focused); only
+    // the nodes before it are swapped. Without an ⓘ on both sides: the whole line, focus restored by descriptor
+    function patchFacts(f) {
+      const tpl = doc.createElement('div'); tpl.innerHTML = factsHtml();
+      const ib = f.querySelector('.infobtn'), nib = tpl.querySelector('.infobtn');
+      if (ib && nib && ib.parentElement && nib.parentElement) {
+        const fs = ib.parentElement, nfs = nib.parentElement;
+        while (fs.firstChild && fs.firstChild !== ib) fs.removeChild(fs.firstChild);
+        for (const n of [...nfs.childNodes]) if (n !== nib) fs.insertBefore(n, ib);
+        return;
+      }
+      const fd = f.contains(doc.activeElement) ? descOf(doc.activeElement) : null;
+      f.innerHTML = tpl.innerHTML;
+      if (fd) { const el = refind(fd); if (el) el.focus({ preventScroll: true }); }
+    }
+    // the store page's shared pieces (the phone header and the C-6c desk page draw the SAME ones)
+    const houseItems = () => sections.flatMap((s) => s.items).filter((x) => x.img && (x.tags || []).some((t) => ['signature_special', 'chefs_pick', 'must_try'].includes(t))).slice(0, 5);
+    function closedNoteHtml(open) {
       const fs = !open && !sched() ? firstSlot() : null;
       const sfd = !open && sched() ? schedDays().find((d) => d.slots.length) || null : null;
       const dayWord = (off) => (off === 0 ? 'hoy' : off === 1 ? 'mañana' : DAYS[(clock().day + off) % 7]);
-      const closednote = !open && sched() ? `<div class="closednote">${IC.clock}<span>${sfd ? `Podés programar un pedido para ${sfd.off === 0 ? 'hoy' : esc(schedMod().slotWhen(servedSched(), now().getTime(), sfd.slots[0]).split(' · ')[0].toLowerCase())}, desde las ${esc(schedMod().slotTime(servedSched(), sfd.slots[0]))}` : 'Sin horarios disponibles · ' + esc(opensText()).toLowerCase()}</span>${sfd ? '<button class="lnk" data-act="closed-sched">Programar</button>' : ''}</div>`
+      return !open && sched() ? `<div class="closednote">${IC.clock}<span>${sfd ? `Podés programar un pedido para ${sfd.off === 0 ? 'hoy' : esc(schedMod().slotWhen(servedSched(), now().getTime(), sfd.slots[0]).split(' · ')[0].toLowerCase())}, desde las ${esc(schedMod().slotTime(servedSched(), sfd.slots[0]))}` : 'Sin horarios disponibles · ' + esc(opensText()).toLowerCase()}</span>${sfd ? '<button class="lnk" data-act="closed-sched">Programar</button>' : ''}</div>`
         : !open ? `<div class="closednote">${IC.clock}<span>${fs ? `Podés programar un pedido para ${esc(dayWord(fs.off))}, desde las ${esc(fmtMin(fs.t))}` : 'Sin horarios disponibles · ' + esc(opensText()).toLowerCase()}</span>${fs ? '<button class="lnk" data-act="closed-sched">Programar</button>' : ''}</div>` : '';
-      const avatar = cfg.logo ? `<div class="avatar${cfg.logoWide ? ' wide' : ''}"><img src="${esc(cfg.logo)}" alt="${esc(cfg.name)}"></div>` : `<div class="avatar txt" aria-hidden="true">${esc(String(cfg.name || '').split(' ').map((x) => x[0]).join('').slice(0, 2))}</div>`;
-      let content = house.length ? `<section class="toprow" aria-label="La casa recomienda"><h2>La casa recomienda</h2><div class="cards">${house.map((it) => `<div class="card"><div class="ph"><button class="openimg" data-act="open" data-id="${esc(it.id)}" aria-label="Ver ${esc(it.n)}" tabindex="-1" style="border-radius:14px"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div><button class="txtbtn" data-act="open" data-id="${esc(it.id)}"><span class="nm">${esc(it.n)}</span><span class="prrow"><span class="mute" style="font-size:14px">${money(it.p)}</span></span></button></div>`).join('')}</div></section>` : '';
-      for (const s of sections) content += `<section class="sec" id="sec-${esc(s.id)}" data-sec="${esc(s.id)}"><div class="sechead"><h2>${esc(s.name)}</h2><span>${esc(s.items.length + (s.items.length === 1 ? ' plato' : ' platos'))}</span></div>${s.note ? `<div class="secnote">${esc(s.note)}</div>` : ''}${s.pickupOnly && mode === 'delivery' ? '<div class="secflag">Solo para Pickup · cambiá a Pickup arriba para pedirlas</div>' : ''}<div>${s.items.map(rowHtml).join('')}</div></section>`;
+    }
+    const avatarHtml = () => (cfg.logo ? `<div class="avatar${cfg.logoWide ? ' wide' : ''}"><img src="${esc(cfg.logo)}" alt="${esc(cfg.name)}"></div>` : `<div class="avatar txt" aria-hidden="true">${esc(String(cfg.name || '').split(' ').map((x) => x[0]).join('').slice(0, 2))}</div>`);
+    function cartPillHtml() {
       const n = cart.count();
-      const pill = `<button class="cart-bar" id="cart-bar" data-act="pill" aria-label="Tu pedido"><span class="cart-icon">${CART_ICON}</span><span class="cart-pill-text">${n ? unitOf(n) : 'Tu pedido'}</span><span class="cart-pill-dot">·</span><span class="cart-pill-text">${money(cartTotal())}</span></button>`;
+      return `<button class="cart-bar" id="cart-bar" data-act="pill" aria-label="Tu pedido"><span class="cart-icon">${CART_ICON}</span><span class="cart-pill-text">${n ? unitOf(n) : 'Tu pedido'}</span><span class="cart-pill-dot">·</span><span class="cart-pill-text">${money(cartTotal())}</span></button>`;
+    }
+    function storeHtml() {
+      if (S.desk) return storeDeskHtml();
+      const mode = S.mode, open = isOpen();
+      const house = houseItems();
+      const facts = factsHtml();
+      const closednote = closedNoteHtml(open);
+      const avatar = avatarHtml();
+      // advisor 11-02: a sold house dish reads like a sold category row (frame 12: «Agotado» in the price slot, muted; P's inert +)
+      let content = house.length ? `<section class="toprow" aria-label="La casa recomienda"><h2>La casa recomienda</h2><div class="cards">${house.map((it) => { const so = isSold(it); return `<div class="card${so ? ' sold-out' : ''}"><div class="ph"><button class="openimg" data-act="open" data-id="${esc(it.id)}" aria-label="Ver ${esc(it.n)}" tabindex="-1" style="border-radius:14px"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div><button class="txtbtn" data-act="open" data-id="${esc(it.id)}"><span class="nm">${esc(it.n)}</span><span class="prrow"><span class="mute" style="font-size:14px">${so ? 'Agotado' : money(it.p)}</span></span></button></div>`; }).join('')}</div></section>` : '';
+      for (const s of sections) content += `<section class="sec" id="sec-${esc(s.id)}" data-sec="${esc(s.id)}"><div class="sechead"><h2>${esc(s.name)}</h2><span>${esc(s.items.length + (s.items.length === 1 ? ' plato' : ' platos'))}</span></div>${s.note ? `<div class="secnote">${esc(s.note)}</div>` : ''}${s.pickupOnly && mode === 'delivery' ? '<div class="secflag">Solo para Pickup · cambiá a Pickup arriba para pedirlas</div>' : ''}<div>${s.items.map(rowHtml).join('')}</div></section>`;
+      const pill = cartPillHtml();
       const nav = `<div class="store-nav">${S.entry === 'app' ? `<button class="iconbtn" data-act="back" aria-label="Cerrar">${IC.close}</button>` : '<span></span>'}<span></span></div>`;
       const hero = cfg.hero ? `<img class="hero" id="hero" src="${esc(cfg.hero)}" alt="">` : '<div class="hero" id="hero"></div>';
-      const scroller = `<div class="scroller" id="scroller">${nav}<header id="top">${hero}<div class="info"><div class="idrow">${avatar}<div class="idtxt"><h1 class="brandname">${esc(cfg.name || '')}</h1>${cfg.kicker ? `<div class="kicker">${esc(cfg.kicker)}</div>` : ''}</div></div><div class="facts">${facts}</div>${closednote}
+      const scroller = `<div class="scroller" id="scroller">${nav}<header id="top">${hero}<div class="info"><div class="idrow">${avatar}<div class="idtxt"><h1 class="brandname">${esc(cfg.name || '')}</h1>${cfg.kicker ? `<div class="kicker">${esc(cfg.kicker)}</div>` : ''}</div></div>${pillsHtml()}<div class="facts">${facts}</div>${closednote}
       <div class="seg" role="group" aria-label="Tipo de pedido"><button aria-pressed="${mode === 'delivery'}" data-act="mode" data-val="delivery">${IC.bike}Delivery</button><button aria-pressed="${mode === 'pickup'}" data-act="mode" data-val="pickup">${IC.bag}Pickup</button></div></div></header>
     <div class="stick" id="stick"><div class="slim">${S.entry === 'app' ? `<button class="iconbtn" data-act="back" aria-label="Cerrar">${IC.close}</button>` : '<span class="sp"></span>'}<b>${esc(cfg.name || '')}</b><button class="iconbtn" data-act="ssearch" aria-label="Buscar en el menú">${IC.search}</button></div>
       <div class="tabsbar"><button class="iconbtn" data-act="menu" aria-label="Ver todo el menú">${IC.menu}</button><nav class="tabs" id="tabs" aria-label="Categorías">${sections.map((s, i) => `<button class="tab" data-act="jump" data-jump="${esc(s.id)}" aria-current="${i === 0}">${esc(s.name)}</button>`).join('')}</nav>${S.entry === 'app' ? '' : `<button class="iconbtn" data-act="ssearch" aria-label="Buscar en el menú">${IC.search}</button>`}</div></div>
     <main class="content" id="content">${content}</main></div>`;
-      return `<div class="storewrap">${scroller}</div>${pill}`;
+      return `<div class="storewrap">${scroller}${S.desk ? `<aside class="deskcart" aria-label="Tu pedido">${cartInner(true)}</aside>` : ''}</div>${pill}`;   // v6 :1628
+    }
+    // C-6c (MOCKUP-capp-desktop-D3 r3 frames 2a/2b, approved; advisor calls 1–7): the desktop store page — the host's top bar
+    // (opts.deskChrome), the wide hero with the logo over it, identity + tools (Delivery/Pickup, the fee and ETA cells, «Buscar en»),
+    // the sticky category rail beside two-column item cards, the v6 cart aside. The SAME acts, cart and overlays as the phone page
+    function deskFactsHtml() {
+      const open = isOpen();
+      return (open ? `<span><span class="dot"></span><strong>Abierto</strong></span>${closesText() ? `<span>cierra ${esc(closesText())}</span>` : ''}` : `<span><span class="dot off"></span><strong>Cerrado</strong></span><span>${esc(opensText())}</span>`)
+        + (cfg.addr ? `<span>·</span><span>${esc(cfg.addr)}</span>` : '');
+    }
+    // the delivery window «a–b min» (rule 11: a window, never one straight-line minute) — the store cell's and the checkout card's
+    const etaWindow = () => { const e = cfg.etaDel; return e && Number.isFinite(e[0]) ? `${Number.isFinite(e[1]) && e[1] > e[0] ? `${e[0]}–${e[1]}` : e[0]} min` : ''; };
+    function deskCellsHtml() {
+      if (!isOpen()) return '';
+      const cells = [];
+      if (S.mode === 'delivery') {
+        if (cfg.feeFromCents != null) {
+          const ib = Number.isFinite(cfg.zoneKm) ? `<button class="infobtn" data-act="feeinfo" aria-label="Detalle del envío">${IC.info}</button>` : '';
+          cells.push(cfg.promoFree === true && authOf() === 'member' ? `<div><b class="free">Envío gratis${ib}</b><span>por ser miembro</span></div>` : `<div><b>Envío desde ${money(cfg.feeFromCents / 100)}${ib}</b><span>según tu dirección</span></div>`);
+        }
+        if (etaWindow()) cells.push(`<div><b>${etaWindow()}</b><span>llega aprox.</span></div>`);
+      } else {
+        if (etaTxt('pickup')) cells.push(`<div><b>${esc(etaTxt('pickup'))}</b></div>`);
+        if (cfg.addr) cells.push(`<div><b>Recogé en</b><span>${esc(cfg.addr)}</span></div>`);
+      }
+      return cells.length ? `<div class="cells${cells.length === 1 ? ' one' : ''}">${cells.join('')}</div>` : '';
+    }
+    function deskCardHtml(it) {
+      const b = badgeOf(it), sold = isSold(it);
+      const price = sold ? 'Agotado' : it.group ? 'desde ' + money(Math.min(...it.group.choices.map((c) => c.p))) : money(it.p);
+      const open = `data-act="open" data-id="${esc(it.id)}"`;
+      return `<div class="icard${sold ? ' sold-out' : ''}" id="dish-${esc(it.id)}"><button class="txtbtn txt" ${open}><span class="nm">${esc(it.n)}</span>${it.d ? `<span class="ds">${esc(it.d)}</span>` : ''}<span class="pr">${esc(price)}</span>${b ? `<span class="pills"><span class="mark" style="color:${b.color}">${esc(b.text)}</span></span>` : ''}</button>`
+        + `${it.img ? `<div class="thumb"><button class="openimg" ${open} aria-label="Ver ${esc(it.n)}" tabindex="-1"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div>` : `<div class="thumb noimg">${overlayHtml(it)}</div>`}</div>`;
+    }
+    function storeDeskHtml() {
+      const mode = S.mode, open = isOpen();
+      const house = houseItems();
+      const closednote = closedNoteHtml(open);
+      // the logo is the page's own avatar (its white plate), laid over the hero's lower edge — outside the clipped hero so it overlaps
+      const logo = avatarHtml();
+      const hero = `<div class="hero" id="hero">${cfg.hero ? `<img src="${esc(cfg.hero)}" alt="">` : ''}</div>${logo}`;
+      const today = range(clock().day);
+      const cur = S.activeSec && sections.some((s) => s.id === S.activeSec) ? S.activeSec : (sections[0] || {}).id;
+      const rail = `<nav class="catnav" aria-label="Categorías del menú"><h3>Menú</h3>${today ? `<div class="hours">Hoy ${esc(fmtMin(today[0]))} – ${esc(fmtMin(today[1]))}</div>` : ''}${sections.map((s) => `<button data-act="jump" data-jump="${esc(s.id)}" aria-current="${s.id === cur}">${esc(s.name)}</button>`).join('')}</nav>`;
+      let content = house.length ? `<section class="hfeat" aria-label="La casa recomienda"><div class="sechead"><h2>La casa recomienda</h2></div><div class="featured">${house.map((it) => { const so = isSold(it); return `<div class="card${so ? ' sold-out' : ''}"><div class="ph"><button class="openimg" data-act="open" data-id="${esc(it.id)}" aria-label="Ver ${esc(it.n)}" tabindex="-1" style="border-radius:12px"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div><button class="txtbtn" data-act="open" data-id="${esc(it.id)}"><span class="nm">${esc(it.n)}</span><span class="pr">${so ? 'Agotado' : money(it.p)}</span></button></div>`; }).join('')}</div></section>` : '';
+      for (const s of sections) content += `<section class="sec" id="sec-${esc(s.id)}" data-sec="${esc(s.id)}"><div class="sechead"><h2>${esc(s.name)}</h2>${s.note ? `<span>${esc(s.note)}</span>` : ''}</div>${s.pickupOnly && mode === 'delivery' ? '<div class="secflag">Solo para Pickup · cambiá a Pickup arriba para pedirlas</div>' : ''}<div class="icards">${s.items.map(deskCardHtml).join('')}</div></section>`;
+      const pill = cartPillHtml();
+      const chrome = typeof opts.deskChrome === 'function' ? String(opts.deskChrome() || '') : '';
+      const scroller = `<div class="scroller store-main" id="scroller"><div class="shero">${hero}</div>
+    <div class="sinfo"><div>${cfg.kicker ? `<div class="kicker">${esc(cfg.kicker)}</div>` : ''}<h1 class="brandname">${esc(cfg.name || '')}</h1>${pillsHtml()}<div class="facts">${deskFactsHtml()}</div>${closednote}</div>
+      <div class="tools"><div class="toolrow"><div class="seg" role="group" aria-label="Tipo de pedido"><button aria-pressed="${mode === 'delivery'}" data-act="mode" data-val="delivery">${IC.bike}Delivery</button><button aria-pressed="${mode === 'pickup'}" data-act="mode" data-val="pickup">${IC.bag}Pickup</button></div>${deskCellsHtml()}</div><button class="ssearch" data-act="ssearch">${IC.search}Buscar en ${esc(cfg.name || '')}</button></div></div>
+    <div class="sgrid">${rail}<main class="scontent" id="content">${content}</main></div></div>`;
+      return `${chrome}<div class="storewrap">${scroller}<aside class="deskcart" aria-label="Tu pedido">${cartInner(true)}</aside></div>${pill}`;
+    }
+    // the auth tri-state changed on the desk page: its promo pill and fee cell in place (a focused ⓘ refound by descriptor)
+    function patchDeskAuth() {
+      const info = app.querySelector('.sinfo'); if (!info) return;
+      const dc = app.querySelector('.deskcart');
+      const fd = info.contains(doc.activeElement) || (dc && dc.contains(doc.activeElement)) ? descOf(doc.activeElement) : null;
+      if (dc) { dc.innerHTML = cartInner(true); applyOrderable(); }   // Codex C-6c r1 #4: the guest's card-only note follows the auth
+      const old = info.querySelector('.hdpills'), html = pillsHtml();
+      if (old) { if (html) old.outerHTML = html; else old.remove(); } else if (html) { const b = info.querySelector('.brandname'); if (b) b.insertAdjacentHTML('afterend', html); }
+      const row = info.querySelector('.toolrow'), c = row && row.querySelector('.cells'), nc = deskCellsHtml();
+      if (c) { if (nc) c.outerHTML = nc; else c.remove(); } else if (row && nc) row.insertAdjacentHTML('beforeend', nc);
+      if (fd && lost()) { const el = refind(fd); if (el) el.focus({ preventScroll: true }); }
     }
     let sectionEls = [];
     function wireStore() {
@@ -315,7 +492,9 @@
       sectionEls = [...sc.querySelectorAll('.sec')];
       let lastActive = '';
       const onScroll = () => {
-        if (!sc.isConnected || !$('top') || !$('stick')) return;
+        if (!sc.isConnected) return;
+        if (S.desk) { deskSpy(sc); return; }
+        if (!$('top') || !$('stick')) return;
         const y = sc.scrollTop;
         const hero = $('hero'); if (hero) { hero.style.transform = `translateY(${Math.min(y, 150) * 0.35}px) scale(${1 + Math.min(y, 150) / 900})`; hero.style.opacity = String(Math.max(0.35, 1 - y / 260)); }
         const collapseAt = $('top').offsetHeight - 4; $('stick').classList.toggle('collapsed', y > collapseAt);
@@ -326,7 +505,17 @@
       };
       sc.addEventListener('scroll', onScroll, { passive: true }); onScroll();
     }
-    function jumpTo(id) { const el = $('sec-' + id), sc = $('scroller'); if (!el || !sc) return; const extra = $('stick').classList.contains('collapsed') ? 0 : 56; if (sc.scrollTo) sc.scrollTo({ top: el.offsetTop - ($('stick').offsetHeight + extra) + 8, behavior: 'smooth' }); }
+    function deskSpy(sc) {
+      if (!sectionEls.length) return;
+      const top = sc.getBoundingClientRect().top + 24;
+      let active = sectionEls[0].dataset.sec;
+      for (const el of sectionEls) if (el.getBoundingClientRect().top <= top) active = el.dataset.sec;
+      if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 4 && sc.scrollTop > 0) active = sectionEls[sectionEls.length - 1].dataset.sec;
+      if (active === S.activeSec) return;
+      S.activeSec = active;
+      for (const b of sc.querySelectorAll('.catnav [data-jump]')) b.setAttribute('aria-current', String(b.dataset.jump === active));
+    }
+    function jumpTo(id) { const el = $('sec-' + id), sc = $('scroller'); if (!el || !sc) return; if (S.desk) { if (sc.scrollTo) sc.scrollTo({ top: sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 16, behavior: 'smooth' }); return; } const extra = $('stick').classList.contains('collapsed') ? 0 : 56; if (sc.scrollTo) sc.scrollTo({ top: el.offsetTop - ($('stick').offsetHeight + extra) + 8, behavior: 'smooth' }); }
     function renderStoreKeep() { const sc = $('scroller'); const y = sc ? sc.scrollTop : 0; render(); const sc2 = $('scroller'); if (sc2) sc2.scrollTop = y; }
 
     // ── focus (sheets are dialogs: focus moves in, Tab stays in, the background and a closed sheet are inert, focus returns) ──
@@ -354,7 +543,10 @@
     function dialogEl() { if (S.open) return $('detail-modal'); const L = $('layer'); return S.layerKind && L ? L : null; }
     // the browse-only pass: the ordering controls not ALREADY disabled for their own reason get the existing disabled attribute,
     // marked data-ord so setOrderable(true) can release exactly them, in place (runs after every render / layer / sheet paint)
-    const ORDERING = '.qty-add-btn, .qty-ctrl-btn, .detail-step-btn, #detail-cta, #layer .cstep button, #layer [data-act="checkout"]';
+    // the cart's ordering controls live in the cart SHEET (#layer) and, on desktop, the deskcart aside (D-2) — ONE list of hosts
+    // (Codex D-2 r1 #3: a browse-only aside never offers an enabled control without effect)
+    const CART_HOSTS = ['#layer', '.deskcart'];
+    const ORDERING = ['.qty-add-btn', '.qty-ctrl-btn', '.detail-step-btn', '#detail-cta', ...CART_HOSTS.flatMap((h) => [`${h} .cstep button`, `${h} [data-act="checkout"]`])].join(', ');
     function applyOrderable() {
       if (orderable || dead) return;
       for (const el of app.querySelectorAll(ORDERING)) if (!el.disabled) { el.disabled = true; el.setAttribute('aria-disabled', 'true'); el.dataset.ord = '1'; }
@@ -368,13 +560,13 @@
     }
 
     // ── ITEM SHEET (per-instance extras; S1: toggles) ──
-    const detailSkeleton = () => `<div class="detail-overlay" id="detail-overlay" data-act="dclose"></div><div class="detail-modal" id="detail-modal" aria-hidden="true" role="dialog" aria-labelledby="detail-header-title"><div class="detail-drag-handle" aria-hidden="true"></div><div class="detail-header"><button class="detail-close" id="detail-close" data-act="dclose" aria-label="Cerrar">${IC.close}</button><div class="detail-header-title" id="detail-header-title"></div><div class="detail-header-spacer"></div></div><div class="detail-scroll" id="detail-scroll"></div><div class="detail-cta-bar"><div class="detail-step" id="detail-step" role="group" aria-label="Cantidad"></div><button class="detail-cta" id="detail-cta" data-act="dcta"></button></div></div>`;
+    const detailSkeleton = () => `<div class="detail-overlay" id="detail-overlay" data-act="dclose"></div><div class="detail-modal${S.desk ? ' wide' : ''}" id="detail-modal" aria-hidden="true" role="dialog" aria-labelledby="${S.desk ? 'detail-name' : 'detail-header-title'}"><div class="detail-drag-handle" aria-hidden="true"></div><div class="detail-header">${S.desk ? '<span class="detail-close-slot" aria-hidden="true"></span>' : `<button class="detail-close" id="detail-close" data-act="dclose" aria-label="Cerrar">${IC.close}</button>`}<div class="detail-header-title" id="detail-header-title"></div><div class="detail-header-spacer"></div></div>${S.desk ? '<div class="dbody" id="detail-dbody"><div class="dphoto" id="detail-dphoto"></div><div class="detail-scroll dscroll" id="detail-scroll"></div></div>' : '<div class="detail-scroll" id="detail-scroll"></div>'}<div class="detail-cta-bar"><div class="detail-step" id="detail-step" role="group" aria-label="Cantidad"></div><button class="detail-cta" id="detail-cta" data-act="dcta"></button></div></div>`;
     const extrasByCat = (ids) => { const out = []; for (const id of ids) { const e = EX[id]; if (!e) continue; let g = out.find((x) => x.cat === e.c); if (!g) out.push(g = { cat: e.c, list: [] }); g.list.push({ id, ...e }); } return out; };
     const instTotal = (inst) => Object.keys(inst || {}).reduce((a, k) => a + (EX[k] ? EX[k].p : 0), 0);
     function openDetail(id) { const it = find(id); if (!it) return; S.open = it.group ? { id, kind: 'launcher', staged: { choice: null, ex: {}, qty: 1 } } : { id, kind: 'dish', staged: { qty: 1 } }; openDetailDom(); }
     function openEdit(key, g = '') { const l = cart.lines().find((x) => x.key === key); if (!l) return; const it = find(key); const n = l.ex.filter((inst) => CappCart.sigOf(inst) === g).length; S.open = { id: it.parent ? it.parent.id : it.id, kind: 'edit', key, g, n, staged: { choice: it.parent ? it.id : null, ex: Object.fromEntries(g ? g.split(',').map((k) => [k, 1]) : []) } }; openDetailDom(); }
-    function openDetailDom() { if (!S.open) return; returnTo = returnTo || descOf(doc.activeElement); renderDetail(); $('detail-overlay').classList.add('open'); $('detail-modal').classList.add('open'); syncInert(); focusTo($('detail-close')); }
-    function closeDetail() { $('detail-overlay').classList.remove('open'); $('detail-modal').classList.remove('open'); S.open = null; S.refusal = null; renderStoreKeep(); syncInert(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar')); }
+    function openDetailDom() { if (!S.open) return; T_report(); returnTo = returnTo || descOf(doc.activeElement); renderDetail(); $('detail-overlay').classList.add('open'); $('detail-modal').classList.add('open'); syncInert(); focusTo((S.desk && $('detail-name')) || $('detail-close')); }
+    function closeDetail() { $('detail-overlay').classList.remove('open'); $('detail-modal').classList.remove('open'); S.open = null; S.refusal = null; renderStoreKeep(); syncInert(); reportRoute(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar')); }
     function extraRow(e, q, act, attrs) {
       const sel = q > 0;
       return `<div class="detail-extras-row" data-act="${act}" ${attrs} role="checkbox" aria-checked="${sel}" tabindex="0"><span class="xrow-main"><span class="detail-extras-name">${esc(e.n)}</span><span class="xrow-price">+${money(e.p)}</span></span><div class="detail-extras-toggle ${sel ? 'selected' : ''}">${IC.check.replace('class="i"', '')}</div></div>`;
@@ -383,16 +575,26 @@
     let detailHad = null;
     function renderDetailBody() {
       const o = S.open, it = find(o.id);
-      $('detail-header-title').textContent = o.kind === 'edit' ? 'Editar' : it.n;
       const src = it.hero || it.img;
-      let html = `<div class="detail-photo${src ? '' : ' empty'}">${src ? `<img class="detail-photo-img" src="${esc(src)}" alt="${esc(it.n)}">` : ''}</div>`;
-      const body = (price) => `<div class="detail-body"><div class="detail-name">${esc(it.n)}</div><div class="detail-price">${price}</div>${it.d ? `<div class="detail-desc">${esc(it.d)}</div>` : ''}</div>`;
+      const desk = S.desk && !!$('detail-dbody');
+      $('detail-header-title').textContent = o.kind === 'edit' ? 'Editar' : desk ? cfg.name || '' : it.n;
+      let html = desk ? '' : `<div class="detail-photo${src ? '' : ' empty'}">${src ? `<img class="detail-photo-img" src="${esc(src)}" alt="${esc(it.n)}">` : ''}</div>`;
+      if (desk) {   // the photo pane (decorative; the heading names the dish) — no photo ⇒ one column, no empty well
+        const ph = $('detail-dphoto'), was = ph.dataset.src || '';
+        if (was !== (src || '')) { ph.dataset.src = src || ''; ph.innerHTML = src ? `<div class="detail-photo"><img class="detail-photo-img" src="${esc(src)}" alt=""></div><span class="lgtag">${esc(cfg.name || '')}</span>` : ''; }
+        $('detail-dbody').classList.toggle('nophoto', !src);
+      }
+      // the desk dialog (advisor 11-02, frame 3 a11y): ✕ is the NEXT Tab stop after the focused heading — it follows the h2 in the DOM
+      // and is drawn in the header's slot by CSS (.detail-close-slot keeps the header's layout)
+      const nameEl = desk ? `<h2 class="detail-name" id="detail-name" tabindex="-1">${esc(it.n)}</h2><button class="detail-close" id="detail-close" data-act="dclose" aria-label="Cerrar">${IC.close}</button>` : `<div class="detail-name">${esc(it.n)}</div>`;
+      const body = (price) => (desk ? `<div class="detail-body">${nameEl}${it.d ? `<p class="detail-desc">${esc(it.d)}</p>` : ''}<div class="detail-price">${price}</div></div>`   // D-3 r3 frame 3: name, description, price
+        : `<div class="detail-body">${nameEl}<div class="detail-price">${price}</div>${it.d ? `<div class="detail-desc">${esc(it.d)}</div>` : ''}</div>`);
       const groupLabel = (g) => `<div class="detail-cat-label"><span>${esc(g.label)}</span><span class="grp-status ${o.staged.choice ? 'done' : 'req'}">${o.staged.choice ? IC.check.replace('class="i"', '') + 'Requerido' : IC.alert.replace('class="i"', '') + 'Elegí 1 · Requerido'}</span></div>`;
       const variantRows = (g, min) => `<div class="detail-extras-list">${g.choices.map((c) => { const sel = o.staged.choice === c.id, delta = c.p - min > 0 ? c.p - min : null, off = soldOf(c.id); return `<div class="detail-variant-row${sel ? ' sel' : ''}${off ? ' sold-out' : ''}" data-act="variant" data-id="${esc(c.id)}" role="radio" aria-checked="${sel}"${off ? ' aria-disabled="true" style="opacity:.45"' : ''} tabindex="0"><div><span class="detail-extras-name">${esc(c.choice)}</span>${off ? '<span class="detail-extras-price">Agotado</span>' : delta !== null ? `<span class="detail-extras-price">+${money(delta)}</span>` : ''}</div><span class="detail-variant-radio"></span></div>`; }).join('')}</div>`;
       const optLabel = (cat) => `<div class="detail-cat-label"><span>${esc(cat)}</span><span class="grp-status optional">Opcional</span></div>`;
       const exOfChoice = () => { const c = o.staged.choice ? find(o.staged.choice) : null; return c ? c.ex : (it.group ? [] : it.ex); };
       if (o.kind === 'edit') {
-        html += `<div class="detail-body"><div class="detail-name">${esc(it.n)}</div>${o.n > 1 ? `<div class="detail-desc">Se aplica a ${o.n === 2 ? 'las' : 'los'} ${o.n} ${unit[1]} de esta línea.</div>` : ''}</div>`;
+        html += `<div class="detail-body">${nameEl}${o.n > 1 ? `<div class="detail-desc">Se aplica a ${o.n === 2 ? 'las' : 'los'} ${o.n} ${unit[1]} de esta línea.</div>` : ''}</div>`;
         if (it.group) { const min = Math.min(...it.group.choices.map((c) => c.p)); html += groupLabel(it.group) + variantRows(it.group, min); }
         for (const grp of extrasByCat(it.group ? exOfChoice() : it.ex)) html += optLabel(grp.cat) + `<div class="detail-extras-list">${grp.list.map((e) => extraRow(e, o.staged.ex[e.id] || 0, 'staged', `data-eid="${esc(e.id)}"`)).join('')}</div>`;
       } else if (o.kind === 'launcher') {
@@ -410,7 +612,7 @@
       if (S.refusal) html += `<div class="cartnote">${IC.info}<span>${esc(S.refusal)}</span></div>`;
       html += '<div style="height:12px"></div>';
       detailHad = $('detail-modal').contains(doc.activeElement) ? descOf(doc.activeElement) : null;
-      const keep = $('detail-scroll').scrollTop; $('detail-scroll').innerHTML = html; $('detail-scroll').scrollTop = keep;
+      const keep = $('detail-scroll').scrollTop, db = desk ? $('detail-dbody') : null, keepB = db ? db.scrollTop : 0; $('detail-scroll').innerHTML = html; $('detail-scroll').scrollTop = keep; if (db) db.scrollTop = keepB;
       const step = $('detail-step'), cta = $('detail-cta'); cta.disabled = false; cta.className = 'detail-cta';
       const stepper = (n, minusOk, plusOk = true) => `<button class="detail-step-btn" data-act="qty" data-delta="-1" aria-label="Quitar una"${minusOk ? '' : ' disabled'}>−</button><span class="detail-step-num" aria-live="polite">${n}</span><button class="detail-step-btn" data-act="qty" data-delta="1" aria-label="Agregar una"${plusOk ? '' : ' disabled aria-disabled="true"'}>+</button>`;
       const label = (verb, amount) => `<span>${verb}</span><span class="detail-cta-divider">·</span><span>${money(amount)}</span>`;
@@ -446,7 +648,7 @@
       if (!mutate(() => cart.edit(o.key, o.g, Object.keys(o.staged.ex), target))) { renderDetail(); return; }   // refused: the sheet stays open, the reason shown in it
       closeDetail();
     }
-    function syncPill() { const p = $('cart-bar'); if (!p) return; const n = cart.count(); p.querySelectorAll('.cart-pill-text')[0].textContent = n ? unitOf(n) : 'Tu pedido'; p.querySelectorAll('.cart-pill-text')[1].textContent = money(cartTotal()); }
+    function syncPill() { const p = $('cart-bar'); if (!p) return; const n = cart.count(); p.querySelectorAll('.cart-pill-text')[0].textContent = n ? unitOf(n) : 'Tu pedido'; p.querySelectorAll('.cart-pill-text')[1].textContent = money(cartTotal()); const dc = app.querySelector('.deskcart'); if (dc) { dc.innerHTML = cartInner(true); applyOrderable(); } }   // v6 :1726 — the desk aside follows every edit (and keeps browse-only)
     function bumpPill() { const p = $('cart-bar'); if (!p) return; p.classList.remove('bump'); void p.offsetWidth; p.classList.add('bump'); }
 
     // ── CART SHEET (Subtotal only in S1: the fee rows are S2/S3) ──
@@ -454,7 +656,7 @@
       ? `<button class="lnedit ${cls}" data-act="edit" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Editar ${esc(d.item.n)}"><span class="ln-n">${esc(d.item.n)}</span>${d.extras ? `<span class="ln-x">+ ${esc(d.extras)}</span>` : ''}<span class="ln-ed">Editar</span></button>`
       : `<div class="lnstatic ${cls}"><span class="ln-n">${esc(d.item.n)}</span>${d.extras ? `<span class="ln-x">+ ${esc(d.extras)}</span>` : ''}</div>`);
     const lineStep = (d, sold = false) => `<div class="cstep"><button data-act="rev" data-rev="-1" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Quitar uno de ${esc(d.item.n)}">${d.n <= 1 ? TRASH(14) : '−'}</button><span>${d.n}</span><button data-act="rev" data-rev="1" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Agregar otro igual: ${esc(d.item.n)}"${sold ? ' disabled aria-disabled="true"' : ''}>+</button></div>`;
-    function cartInner() {
+    function cartInner(desk = false) {   // v6 :1743 — desk ⇒ the aside: no close button, no «Ver el menú» on the empty state
       const lines = displayLines(), mode = S.mode;
       // the owner's frame 14 (MOCKUP-capp-S7a-states.html, approved 2026-10-27): a line whose dish is unavailable NOW — after a
       // dispatch refusal, or known before — keeps its row: «Agotado» in the price slot (muted, frame 12), the name block .45,
@@ -464,17 +666,21 @@
       const soldOfLine = (d) => isSold(find(d.key));
       const soldDishes = [...new Map(lines.filter(soldOfLine).map((d) => [d.key, d.item.n])).values()];
       const total = lines.reduce((a, d) => a + (soldOfLine(d) ? 0 : d.total), 0);
-      const head = `<div class="sheethead"><div><h2>Tu pedido</h2><small>${lines.length ? unitOf(cart.count()) + ' · ' : ''}${mode === 'delivery' ? 'Delivery' : 'Pickup'}</small></div><button class="iconbtn" data-act="cartclose" aria-label="Cerrar el carrito">${IC.close}</button></div>`;
+      const head = `<div class="sheethead"><div><h2>Tu pedido</h2><small>${desk && S.desk ? esc(cfg.name || '') + (lines.length ? ' · ' + unitOf(cart.count()) : '') : (lines.length ? unitOf(cart.count()) + ' · ' : '') + (mode === 'delivery' ? 'Delivery' : 'Pickup')}</small></div>${desk ? '' : `<button class="iconbtn" data-act="cartclose" aria-label="Cerrar el carrito">${IC.close}</button>`}</div>`;
+      // C-6c (advisor call 7): the guest's card-only note — true copy, drawn only while the guest rules are ON (runtime.guestCardOnly)
+      const cnote = desk && S.desk && opts.guestCardOnly === true && authOf() === 'guest' ? '<div class="cnote"><b>Pagás con tarjeta.</b> Creá una cuenta para pagar en efectivo y sumar recompensas.</div>' : '';
+      const upd = appUpdated() && lines.length > 0;   // state 4: only over a cart that survived the update
+      const updNote = upd ? `<div class="cartnote" role="status">${IC.info}<span>App actualizada. Tu carrito sigue aquí.</span></div>` : '';
       const note = S.cartNote ? `<div class="cartnote">${IC.info}<span>${S.cartNote === 1 ? '1 plato ya no está disponible' : S.cartNote + ' platos ya no están disponibles'}</span></div>` : '';
       const over = tooLong();
       const refusal = S.refusal || over ? `<div class="cartnote">${IC.info}<span>${esc(over ? FULL_CART : S.refusal)}</span></div>` : '';
-      if (!lines.length) return head + note + `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span><button class="btn2" data-act="cartclose">Ver el menú</button></div>`;
+      if (!lines.length) return head + note + (desk && S.desk ? `<div class="empty">${IC.bag}<b>Tu pedido está vacío</b><span>Agregá platos del menú y aparecen aquí.</span></div>` : `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span>${desk ? '' : '<button class="btn2" data-act="cartclose">Ver el menú</button>'}</div>`);
       const soldNote = soldDishes.length ? `<div class="cartnote" role="status">${IC.info}<span>${soldDishes.map((n) => `<span class="cn-l">${esc(n)} se agotó. Quitalo para enviar tu pedido.</span>`).join('')}</span></div>` : '';
       // the owner's frame 10 (approved 2026-10-27): a cart FROZEN for a placement (S7a-1 r3 §1.1) is read-only — one calm note,
       // the lines' controls at the drawn .45 (disabled), and «Ver estado del pedido»: the placement's STATUS (poll with its stored
       // credentials, else «Necesitamos revisar tu pedido») — never a send. No other exit (ruling: no «Empezar un pedido nuevo»)
       if (frozenNow()) {
-        return head + `<div class="cartnote">${IC.info}<span>Tu pedido se está confirmando; no se puede cambiar mientras tanto.</span></div>` + lines.map((d) => `<div class="cline frozen">${lineName(d, 'cl-txt').replace(/^<button /, '<button disabled aria-disabled="true" ')}${lineStep(d).replace(/<button /g, '<button disabled aria-disabled="true" ')}<span class="cl-p">${money(d.total)}</span></div>`).join('')
+        return head + `<div class="cartnote"${upd ? ' role="status"' : ''}>${IC.info}<span>${upd ? '<span class="cn-l">App actualizada. Estamos revisando tu pedido.</span><span class="cn-l">Tu pedido se está confirmando; no se puede cambiar mientras tanto.</span>' : 'Tu pedido se está confirmando; no se puede cambiar mientras tanto.'}</span></div>` + lines.map((d) => `<div class="cline frozen">${lineName(d, 'cl-txt').replace(/^<button /, '<button disabled aria-disabled="true" ')}${lineStep(d).replace(/<button /g, '<button disabled aria-disabled="true" ')}<span class="cl-p">${money(d.total)}</span></div>`).join('')
           + `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>`
           + '<div class="sheetbar"><button class="primary" data-act="frozen-status">Ver estado del pedido</button></div>';
       }
@@ -487,9 +693,9 @@
       const confName = (c) => c.name + (c.sig ? ' + ' + c.sig.split(',').map((k) => (menu.extra(k) || { name: k }).name).join(', ') : '');
       const priceNote = changes.length && mods() ? `<div class="cartnote" role="status">${IC.info}<span>${changes.map((c) => `<span class="cn-l">${esc(C.priceNoticeText({ name: confName(c), from: c.fromCents / 100, to: c.toCents / 100 }))}</span>`).join('')}</span></div>` : '';
       const oldOf = (d) => { const cs = changes.filter((c) => c.key === d.key && c.sig === d.g); return cs.length ? d.total - cs.reduce((a, c) => a + (c.newSubtotalCents - c.oldSubtotalCents) / 100, 0) : null; };
-      return head + note + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
+      return head + updNote + note + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
         return `<div class="cline${so ? ' sold-out' : ''}">${lineName(d, 'cl-txt')}${lineStep(d, so)}<span class="cl-p">${so ? 'Agotado' : old !== null ? `<s class="cl-old">${money(old)}</s>${money(d.total)}` : money(d.total)}</span></div>`; }).join('')
-        + `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>`
+        + cnote + `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>`
         + `<div class="sheetbar"><button class="primary${soldDishes.length ? ' sold-wait' : ''}" data-act="checkout"${off ? ' disabled aria-disabled="true"' : ''}>Ir al checkout</button></div>`;
     }
     function runStoreSearch(q) {
@@ -506,10 +712,12 @@
       if (k === 'pin') dropPinMap();
     }
     function closeLayer() {
-      if (S.layerKind === 'placing') placingStop(); layerTeardown(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
+      if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'cart') appUpdatedSeen(); layerTeardown(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
     // a quote that failed while another layer was open: its sheet once that layer closes (still the same failed state)
     function closeLayerThen() { if (S.quoteErrSheet && !S.layerKind && (S.screen === 'checkout' || S.screen === 'tip')) { S.quoteErrSheet = false; if (S.quoteErr && S.quoteErr === stateKey()) showErr(ERR.generic('err-requote')); } }
-    function renderLayer(fresh) {
+    const T_report = () => { if (typeof queueMicrotask === 'function') queueMicrotask(reportRoute); else reportRoute(); };   // after the sheet's state is set
+    function renderLayer(fresh) { T_report(); return renderLayerNow(fresh); }
+    function renderLayerNow(fresh) {
       if (dead) return;
       const L = $('layer'); if (!L) return; const k = S.layerKind;
       if (!k) { L.innerHTML = ''; syncInert(); return; }
@@ -538,15 +746,15 @@
       const P = phoneMod(), cc = ccOf(f), c = P.byCc(cc); if (cc === P.DEFAULT_CC) return '';
       return `${esc(c.name)} · <b>${c.len} dígitos</b>${P.valid(cc, f.phone) ? ` · se guarda como <b>${esc(P.display(cc, f.phone))}</b>` : ''}`;
     }
-    function phoneFld(f, extra) {
+    function phoneFld(f, extra, off) {   // off: frame 10b's fixed variant (the cash-chips lock)
       const P = phoneMod(), cc = ccOf(f), c = P.byCc(cc), open = S.layerKind === 'cc', note = ccNote(f);
-      return `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><div class="phonerow"><button type="button" class="cc${open ? ' focus' : ''}" data-act="cc" aria-label="País del número: ${esc(c.name)} +${cc}" aria-haspopup="dialog">+${cc} ${open ? IC.up : IC.down}</button><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(P.format(cc, f.phone))}" placeholder="${esc(c.ph)}" autocomplete="tel"></div><div class="note" id="f-phone-cc"${note ? '' : ' hidden'}>${note}</div>${extra}</div>`;
+      return `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><div class="phonerow"><button type="button" class="cc${open ? ' focus' : ''}" data-act="cc" aria-label="País del número: ${esc(c.name)} +${cc}" aria-haspopup="dialog"${off ? ' disabled' : ''}>+${cc} ${open ? IC.up : IC.down}</button><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(P.format(cc, f.phone))}" placeholder="${esc(c.ph)}" autocomplete="tel"${off ? ' disabled' : ''}></div><div class="note" id="f-phone-cc"${note ? '' : ' hidden'}>${note}</div>${extra}</div>`;
     }
     function ccSheetHtml() {
       const P = phoneMod(), cur = ccOf(S.flow);
       return `<div class="scrim" data-act="lclose"></div><div class="sheet ccsheet" role="dialog" aria-label="País del número"><div class="grab"></div>
         <div class="sheethead"><h2>País del número <small>Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.</small></h2><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div>
-        ${P.COUNTRIES.map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-act="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
+        ${P.COUNTRIES.map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-act="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"${hasSlotLock() ? ' disabled tabindex="-1"' : ''}><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
     }
 
     // ═══ S2b: CHECKOUT ═══
@@ -634,9 +842,8 @@
       try {
         C = opts.CappCheckout || (typeof self !== 'undefined' && self.CappCheckout) || require('./capp-checkout.js');
         const A = opts.CappApi || (typeof self !== 'undefined' && self.CappApi) || require('./capp-api.js');
-        api = opts.api || A.createApi({ config: { restaurantId: cfg.restaurantId, orderIdPrefix: cfg.orderIdPrefix, pendingPayKey: cfg.pendingPayKey, endpoints: cfg.endpoints, hours: cfg.hours,
-          cartKey: cfg.cartKey, placedKey: cfg.placedKey, guestCardOnly: cfg.guestCardOnly === true, ...(cfg.schedulingLive === true ? { schedulingLive: true } : {}) },   // S7a-1: hosted by the shell (both absent ⇒ the S2 path, unchanged); §3.2 the guest tender rule
-          CappCheckout: C, member, ...(opts.apiOpts || {}) });
+        api = opts.api || A.createApi({ config: apiConfigOf(cfg),
+          CappCheckout: C, member, ...(opts.apiOpts || {}), now: () => now().getTime() });   // Codex promo r4 #3: ONE clock — the transport judges the token at the UI's time (the claim's), never a second apiOpts.now
         return true;
       } catch (_) { C = null; api = null; return false; }
     }
@@ -691,7 +898,9 @@
       const amt = T.ready ? ' · ' + moneyC(T.total) : '';   // pickup places from here (no tip); no amount until the quote is ready
       return S.flow.pay === 'online' ? 'Pagar' + amt : 'Confirmar pedido' + amt;
     }
-    const ctaOff = (T) => !!need() || soldBlock() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));   // pickup places from here
+    // cash-chips lock: on 10b the fields need() reads are FIXED and the replay re-sends the recorded body — they never block «Reintentar»
+    // (a remounted 10b with an empty flow would otherwise be a dead end)
+    const ctaOff = (T) => (!hasSlotLock() && !!need()) || soldBlock() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));   // pickup places from here
     function syncCta() { const b = $('cta'); if (!b || !S.flow) return; const T = totalsNow(); b.disabled = ctaOff(T); b.textContent = ctaLabel(T); }
 
     // ── the map: the drawn chrome; a real Google map inside it when a key is configured, else the schematic SVG ──
@@ -701,6 +910,14 @@
     let pinGen = 0, pinMap = null;   // S2b r1 P1-2: the ACTIVE pin map; an obsolete instance's callbacks are dropped
     // the pin step closing — «Listo», «Cancelar», device back — makes its map obsolete: a late idle never reaches the checkout
     function dropPinMap() { pinGen++; pinMap = null; S.pinDraft = null; }
+    // capp-dark §3 (PLAN r2): the live maps follow the OS — ONE subscription per mount restyles every live instance IN PLACE
+    // (setOptions on the same map: camera, pin draft and listeners untouched); never a render. Absent CappTheme ⇒ light, no subscription
+    const Theme = opts.CappTheme || (typeof self !== 'undefined' && self.CappTheme) || null;
+    const themeStyles = () => (Theme ? Theme.mapStyles(doc.defaultView) : null);
+    const unTheme = Theme && doc.defaultView ? Theme.subscribe(doc.defaultView, () => {
+      if (dead) return;
+      for (const el of app.querySelectorAll('[data-gmap]')) if (el.__map && typeof el.__map.setOptions === 'function') { try { el.__map.setOptions({ styles: themeStyles() }); } catch (_) {} }
+    }) : null;
     function wireMaps() {
       const els = [...app.querySelectorAll('[data-gmap]')]; if (!els.length) return;
       const p = loadMaps(); if (!p) return;
@@ -708,7 +925,7 @@
         for (const el of els) {
           const c = mapCenter(); if (!el.isConnected || el.__map || !c) continue;
           const big = el.dataset.gmap === 'pin';
-          const m = new gm.Map(el, { center: c, zoom: 17, disableDefaultUI: true, clickableIcons: false, gestureHandling: big ? 'greedy' : 'none', keyboardShortcuts: big });
+          const m = new gm.Map(el, { center: c, zoom: 17, disableDefaultUI: true, clickableIcons: false, gestureHandling: big ? 'greedy' : 'none', keyboardShortcuts: big, styles: themeStyles() });   // capp-dark §3: the theme read at CONSTRUCTION (a late load is never stale)
           el.__map = m;
           if (big) { const gen = ++pinGen; pinMap = { gen, m, el }; m.addListener('idle', () => { if (gen !== pinGen || dead) return; const cc = m.getCenter(); if (cc) S.pinDraft = { lat: cc.lat(), lng: cc.lng() }; }); }
         }
@@ -785,33 +1002,58 @@
         : `<div class="gate"><b>${sd && sd.off === 0 ? 'Hoy ya no hay horarios' : 'Sin horarios disponibles'}</b><span class="note">Elegí otro día.</span></div>`;
       return cards + chips + grid;
     }
+    // C-6d (MOCKUP-capp-desktop-D3 r3 frames 4a/4b, approved; advisor calls 1–6): the desktop checkout — its own bar («Volver a la
+    // tienda» = the existing back-to-the-menu, the Sherpa lock, «Pago seguro»), column A = the approved sections under the page H1,
+    // column B (sticky) = the store card → the SAME CTA (#cta: label, act and disabled state unchanged) → the guest's next step →
+    // «Tu pedido» (open by default) with the totals → the fine print. Presentation only: every value is the phone checkout's
+    function checkoutDeskHtml({ entrega, datos, pago, ctaBtn, T, tip, del, g, lines, nItems }) {
+      const brand = typeof opts.deskBrand === 'function' ? String(opts.deskBrand() || '') : '';
+      let terms = null; try { terms = typeof opts.deskTerms === 'function' ? opts.deskTerms() : null; } catch (_) { terms = null; }
+      const bar = `<div class="ckbar"><button class="backtxt" data-act="addmore">${IC.back}Volver a la tienda</button>${brand}<span class="sec-lock">${IC.lock}Pago seguro</span></div>`;
+      const when = del ? (etaWindow() ? 'llega en ' + etaWindow() : '') : etaTxt('pickup');
+      const card = `<div class="storecard">${logoChip('lg')}<span class="t"><b>${storeLine()}</b>${cfg.addr || when ? `<span>${[cfg.addr ? esc(cfg.addr) : '', esc(when)].filter(Boolean).join(' · ')}</span>` : ''}</span></div>`;
+      // advisor call 5: only the true half of the drawn line (the hosted payment charges when paid — never a claim about «no se cobra»)
+      const next = g ? '<div class="guestline"><b>Después del código de WhatsApp</b> se abre el pago seguro con tarjeta.</div>' : '';
+      const open = S.sumOpen !== false;   // frame 4a: open by default on the desk
+      const tipRow = tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : del ? '<div class="sumrow"><span>Propina</span><span class="r mute">Se elige en el siguiente paso</span></div>' : '';   // call 3
+      const pedido = `<section class="fsec" aria-label="Resumen del pedido"><div class="osum box"><button class="toggle" data-act="sumtoggle" aria-expanded="${open}"><span class="tt">Tu pedido<span> · ${esc(unitOf(nItems))}</span></span>${open ? IC.up : IC.down}</button>
+      ${open ? `<div class="lines">${lines.map((d) => `<div class="osline">${lineName(d, 'n')}${lineStep(d)}<span class="p">${money(d.total)}</span></div>`).join('')}<button class="addmore" data-act="addmore">${IC.plus}Agregar más platos</button></div>` : ''}
+      <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${tipRow}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
+      // call 6: the Terms sentence only with the platform's real (https) Terms link; «Sherpa lo entrega» only on a delivery
+      const fine = [terms ? `Al continuar aceptás los <a href="${esc(terms)}" target="_blank" rel="noopener">Términos de Sherpa</a>.` : '', del ? 'El restaurante prepara tu pedido; Sherpa lo entrega.' : ''].filter(Boolean).join(' ');
+      return `<div class="flow" id="flow">${bar}<div class="col-a"><h1 class="flowtitle">Entrega &amp; Pago</h1>${entrega}${datos}${pago}</div>
+    <div class="col-b">${card}${ctaBtn}${next}${pedido}${fine ? `<p class="finenote">${fine}</p>` : ''}</div></div>`;
+    }
     function checkoutHtml() {
       const f = S.flow, del = f.mode === 'delivery', m = member(), open = isOpen(), po = poLines(), T = totalsNow();
       const poNames = [...new Set(po.map((l) => { const s = sectionOfKey(l.key); return s ? s.name : l.key; }))].join(', ');
       const geoDenied = S.geo === 'denied' && !m;
+      // MOCKUP-capp-cash-chips-lock (owner-approved): on frame 10b the replay re-sends the SAME body — every control it ignores is
+      // fixed at the drawn .45 (disabled), back once the record is gone
+      const fx = hasSlotLock(), fxOff = fx ? ' disabled' : '';
       const pinOk = S.pinStepOk === true;   // the drawn «Pin confirmado» = confirmed ON THE PIN STEP (P f.pinOk), not a detected fix
       const chev = IC.chev.replace('class="i"', 'class="i chev"');
       const zoneKm = (S.lastDelivery && Number.isFinite(S.lastDelivery.max_km) ? S.lastDelivery.max_km : cfg.zoneKm);
       // Entrega — ASAP only (scheduling, the «Programar» card, is S4)
       const timeCards = sched() ? schedCards(f, open, del) : `<div class="opts"><button class="opt" aria-pressed="${open}" data-act="time" data-val="asap"${open ? '' : ' disabled'}><b>Lo antes posible</b><span>${open ? esc(etaTxt(del ? 'delivery' : 'pickup')) : 'No disponible · cerrado'}</span></button></div>`;
-      const mapBlock = `<button class="map${S.outZone && del ? ' out' : ''}" data-act="pin" aria-label="Ajustar el pin en el mapa">${MAP_SVG}${gmapBox('preview')}<span class="pin">${IC.pinfill}</span><span class="tag">${geoDenied ? 'Pin en el restaurante' : pinOk ? 'Pin confirmado' : 'Tu ubicación'}</span><span class="adj">Ajustar pin</span></button>
+      const mapBlock = `<button class="map${S.outZone && del ? ' out' : ''}" data-act="pin" aria-label="Ajustar el pin en el mapa"${fxOff}>${MAP_SVG}${gmapBox('preview')}<span class="pin">${IC.pinfill}</span><span class="tag">${geoDenied ? 'Pin en el restaurante' : pinOk ? 'Pin confirmado' : 'Tu ubicación'}</span><span class="adj">Ajustar pin</span></button>
     ${geoDenied ? `<div class="locrow">${IC.locoff}<span>Ubicación desactivada</span><button data-act="loc-on">Activar</button></div>` : ''}
     ${S.outZone && del ? `<div class="gate" role="alert"><b>${esc(cfg.name || '')} no llega a esta dirección</b><span class="note">${Number.isFinite(zoneKm) && cfg.branch ? `Entregamos hasta ${esc(zoneKm)} km de ${esc(cfg.branch)}. ` : ''}Mové el pin a una dirección dentro de la zona, o recogé en tienda.</span><div class="row2"><button class="btn2" data-act="pin">Cambiar dirección</button><button class="btn2 dark" data-act="type" data-val="pickup">Recoger en tienda</button></div></div>` : ''}`;
       // a guest's address line (S2b-geo, MOCKUP-capp-S2b-geo-address.html A1 / b / b2): the confirmed pin's reverse-geocode; c (none,
       // pending, superseded) keeps today's copy byte for byte
       const geoLine = C.addrLine(f);
-      const addrRow = `<button class="urow" data-act="pin">${IC.pin}<span class="t"><b data-addr>${geoLine ? esc(geoLine) : geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
-      const detailsFld = `<div class="fld"><label for="f-details">Detalles adicionales <span class="req">*</span></label><input id="f-details" data-field="details" value="${esc(f.details)}" placeholder="Colonia, portón, piso, referencia…" autocomplete="off"></div>`;
-      const detailsRow = m && !S.editDetails && (f.details || '').trim().length >= 3 ? `<div class="urow">${IC.home}<span class="t"><b>${esc(f.details)}</b><span>Detalles adicionales</span></span><button class="act" data-act="editdetails">Cambiar</button></div>` : '';
+      const addrRow = `<button class="urow" data-act="pin"${fxOff}>${IC.pin}<span class="t"><b data-addr>${geoLine ? esc(geoLine) : geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
+      const detailsFld = `<div class="fld"><label for="f-details">Detalles adicionales <span class="req">*</span></label><input id="f-details" data-field="details" value="${esc(f.details)}" placeholder="Colonia, portón, piso, referencia…" autocomplete="off"${fxOff}></div>`;
+      const detailsRow = m && !S.editDetails && (f.details || '').trim().length >= 3 ? `<div class="urow">${IC.home}<span class="t"><b>${esc(f.details)}</b><span>Detalles adicionales</span></span><button class="act" data-act="editdetails"${fxOff}>Cambiar</button></div>` : '';
       const entrega = `<section class="fsec" aria-label="Entrega"><h2>Entrega</h2>
-    <div class="seg" role="group" aria-label="Tipo de pedido"><button aria-pressed="${del}" data-act="type" data-val="delivery">Delivery</button><button aria-pressed="${!del}" data-act="type" data-val="pickup">Pickup</button></div>
+    <div class="seg" role="group" aria-label="Tipo de pedido"><button aria-pressed="${del}" data-act="type" data-val="delivery"${fxOff}>Delivery</button><button aria-pressed="${!del}" data-act="type" data-val="pickup"${fxOff}>Pickup</button></div>
     ${del && po.length ? `<div class="gate"><b>«${esc(poNames)}» es solo para Pickup</b><div class="row2"><button class="btn2" data-act="rm-po">Quitar del pedido</button><button class="btn2 dark" data-act="type" data-val="pickup">Cambiar a Pickup</button></div></div>` : ''}
     ${timeCards}
     ${del ? `${mapBlock}<div class="urows">${addrRow}${detailsRow}</div>${detailsRow ? '' : detailsFld}` : `<div class="urows"><div class="urow">${IC.store}<span class="t"><b>${storeLine()}</b><span>${esc(cfg.addr || '')}</span></span></div></div><div class="note">Te avisamos por WhatsApp cuando esté listo.</div>`}</section>`;
       // Tus datos — TODO(fiscal flag): «factura / » + the RTN fields render ONLY behind a server flag; no such config key exists yet
-      const moreRow = `<button class="urow" data-act="more">${IC.plus}<span class="t"><b>Agregar email / notas</b></span>${chev}</button>`;
-      const moreFields = `<div class="fld"><label for="f-email">Correo <span class="mute">(opcional · para tu recibo)</span></label><input id="f-email" data-field="email" type="email" value="${esc(f.email)}" placeholder="tu@correo.com" autocomplete="email"></div>
-       <div class="fld"><label for="f-notes">Notas para el restaurante</label><textarea id="f-notes" data-field="notes" placeholder="Sin cebolla, extra salsa… (opcional)">${esc(f.notes)}</textarea></div>`;
+      const moreRow = `<button class="urow" data-act="more"${fxOff}>${IC.plus}<span class="t"><b>Agregar email / notas</b></span>${chev}</button>`;
+      const moreFields = `<div class="fld"><label for="f-email">Correo <span class="mute">(opcional · para tu recibo)</span></label><input id="f-email" data-field="email" type="email" value="${esc(f.email)}" placeholder="tu@correo.com" autocomplete="email"${fxOff}></div>
+       <div class="fld"><label for="f-notes">Notas para el restaurante</label><textarea id="f-notes" data-field="notes" placeholder="Sin cebolla, extra salsa… (opcional)"${fxOff}>${esc(f.notes)}</textarea></div>`;
       // §3.1 / §4b / §4c (frames 1, 1b, 1c): the guest's «Tus datos» opens with the sign-in ROW (replacing the small link), the phone
       // carries the WhatsApp code + consent note, the EMAIL is its own required field, and the more-row is «Agregar notas»
       const g = cardOnlyGuest();
@@ -828,9 +1070,9 @@
          <div class="fld${emailBad ? ' bad' : ''}"><label for="f-email">Correo <span class="req">*</span> <span class="mute">· para tu recibo</span></label><input id="f-email" data-field="email" type="email" value="${esc(f.email)}" placeholder="tu@correo.com" autocomplete="email"></div>
          ${S.more ? `<div class="fld"><label for="f-notes">Notas para el restaurante</label><textarea id="f-notes" data-field="notes" placeholder="Sin cebolla, extra salsa… (opcional)">${esc(f.notes)}</textarea></div>` : `<div class="urows"><button class="urow" data-act="more">${IC.plus}<span class="t"><b>Agregar notas</b></span>${chev}</button></div>`}</section>`;
       const datos = g ? datosGuest : `<section class="fsec" aria-label="Tus datos"><h2>Tus datos</h2>
-    ${m && !f.editWho ? `<div class="urows"><div class="urow">${IC.user}<span class="t"><b>${esc(m.name)}</b><span>${esc(intl() ? phoneShown(newFlow()) : C.fullPhone(m.phone))}</span></span><button class="act" data-act="editwho">Cambiar</button></div>${S.more ? '' : moreRow}</div>`
-      : `<div class="fld"><label for="f-name">Nombre <span class="req">*</span></label><input id="f-name" data-field="name" value="${esc(f.name)}" placeholder="Tu nombre" autocomplete="name"></div>
-         ${intl() ? phoneFld(f, '') : `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(f.phone)}" placeholder="+504 9999-9999" autocomplete="tel"></div>`}
+    ${m && !f.editWho ? `<div class="urows"><div class="urow">${IC.user}<span class="t"><b>${esc(m.name)}</b><span>${esc(intl() ? phoneShown(newFlow()) : C.fullPhone(m.phone))}</span></span><button class="act" data-act="editwho"${fxOff}>Cambiar</button></div>${S.more ? '' : moreRow}</div>`
+      : `<div class="fld"><label for="f-name">Nombre <span class="req">*</span></label><input id="f-name" data-field="name" value="${esc(f.name)}" placeholder="Tu nombre" autocomplete="name"${fxOff}></div>
+         ${intl() ? phoneFld(f, '', fx) : `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(f.phone)}" placeholder="+504 9999-9999" autocomplete="tel"${fxOff}></div>`}
          ${!m ? `<div class="line" style="font-size:14px"><span class="mute">¿Ya tenés cuenta?</span><button class="lnk" data-act="signin" data-ctx="checkout">Entrá</button></div>` : ''}${S.more ? '' : `<div class="urows">${moreRow}</div>`}`}
     ${S.more ? moreFields : ''}</section>`;
       // Tu pedido (the redeem / «Descuento» row is pending a ruling — not rendered)
@@ -853,19 +1095,21 @@
       <p class="paynote">Pagás con tarjeta. <button class="lnk" data-act="signin" data-ctx="paynote">Creá una cuenta</button> para pagar en efectivo y sumar recompensas.</p></section>`;
       const pago = g ? pagoGuest : `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
         ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D Secure'}</span></span><button class="act" data-act="showpay"${lp !== null ? ' disabled' : ''}>Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
-      const bar = `<div class="paybar"><button class="primary" id="cta" data-act="confirm"${ctaOff(T) ? ' disabled' : ''}>${esc(ctaLabel(T))}</button></div>`;
+      const ctaBtn = `<button class="primary" id="cta" data-act="confirm"${ctaOff(T) ? ' disabled' : ''}>${esc(ctaLabel(T))}</button>`;
+      const bar = `<div class="paybar">${ctaBtn}</div>`;
+      if (S.desk) return checkoutDeskHtml({ entrega, datos, pago, ctaBtn, T, tip, del, g, lines, nItems });
       // the prototype's footer «¿Problemas con tu pedido? Escribinos al …» (:1886) is omitted — pending a ruling
       return `<div class="flow" id="flow"><div class="flowbar plain"><h1>Entrega &amp; Pago</h1></div>
-    <div class="col-a">${entrega}${datos}${pedido}${pago}</div>${bar}</div>`;
+    <div class="col-a">${entrega}${datos}${S.desk ? pago : pedido + pago}</div>${S.desk ? `<div class="col-b">${pedido}</div>` : ''}${bar}</div>`;   // v6 :1886-1887 — desk MOVES «Tu pedido» to col-b
     }
     // the cash panel: chips + the change line against the QUOTED Total (no chips until that Total exists)
     const tenderNote = (T) => { const f = S.flow; if (!T.ready || !f.tendered) return ''; const ch = C.changeCents(f, T.total); return ch === null ? 'Ese monto es menor que el total (' + moneyC(T.total) + ').' : ch > 0 ? 'Tu cambio: ' + moneyC(ch) : 'Pago exacto, sin cambio.'; };
     function cashPanel(T) {
       const f = S.flow; if (f.pay !== 'cash') return '';
       const tot = T.ready ? T.total / 100 : null; let base = tot === null ? null : Math.ceil(tot / 500) * 500; if (base !== null && base <= tot) base += 500;
-      const tender = Number(f.tendered);
-      const chips = tot === null ? '' : `<div class="chips">${[{ l: 'Pago exacto', v: tot }, { l: money(base), v: base }].map((c) => `<button class="chip" aria-pressed="${tender === c.v}" data-act="tender" data-val="${c.v}">${c.l}</button>`).join('')}</div>`;
-      return `<div class="fld"><label for="f-tender">¿Con cuánto vas a pagar? <span class="mute">(para llevarte el cambio exacto)</span></label>${chips}<input id="f-tender" data-field="tendered" inputmode="numeric" value="${esc(f.tendered)}" placeholder="Otro monto (L)"><span class="note" id="tender-note">${esc(tenderNote(T))}</span></div>`;
+      const tender = Number(f.tendered), fxOff = hasSlotLock() ? ' disabled' : '';   // frame 10b: the amount is fixed (cash-chips lock)
+      const chips = tot === null ? '' : `<div class="chips">${[{ l: 'Pago exacto', v: tot }, { l: money(base), v: base }].map((c) => `<button class="chip" aria-pressed="${tender === c.v}" data-act="tender" data-val="${c.v}"${fxOff}>${c.l}</button>`).join('')}</div>`;
+      return `<div class="fld"><label for="f-tender">¿Con cuánto vas a pagar? <span class="mute">(para llevarte el cambio exacto)</span></label>${chips}<input id="f-tender" data-field="tendered" inputmode="numeric" value="${esc(f.tendered)}" placeholder="Otro monto (L)"${fxOff}><span class="note" id="tender-note">${esc(tenderNote(T))}</span></div>`;
     }
 
     // ── the tip step (prototype tipHtml :1954-1961) ──
@@ -1062,8 +1306,9 @@
       backTo('checkout'); showErr(ERR.guestCash()); return true;
     }
     async function send() {
-      const f = S.flow, T = totalsNow();
-      if (dead || !intakeOk() || !T.ready || !mods()) return;
+      const f = S.flow, T = totalsNow(), rb = lockedSlot() !== null ? lockedBody() : null;   // rb: the retained replay's recorded body
+      // Codex cash-chips r1 P1-2: a replay sends the RECORDED body — it never waits on a fresh pin / quote (geolocation denied included)
+      if (dead || !intakeOk() || (!T.ready && !rb) || !mods()) return;
       if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther()); return; }   // Codex G7 r1 #1 (a): no request, the record untouched
       if (sched() && f && f.time === 'schedule' && !canSchedule()) { backTo('checkout'); scheduleGate(); return; }   // G=B: never sent
       // Codex S4 r1 #4: the NEWEST received schedule decides (a held P2 revalidation included; painting stays deferred until here)
@@ -1073,7 +1318,8 @@
       if (guestCashBlocked()) return;   // no key ⇒ nothing is sent (the record stays clean)
       let c; try { c = { ...ctxBase(), headers: intakeHeaders() }; } catch (_) { return; }   // the key only where the server requires it
       const attempt = ++attemptSeq; S.terminal = null;   // Codex r4 #2: THIS attempt's settled outcome only
-      S.screen = 'sending'; S.sendHint = null; S.sendTotals = { total: T.total, tip: T.tip }; render();
+      S.sentOrder = sentOrderOf(f, T, rb);   // «Pedido recibido»: what THIS send stands behind, handed to the host with 'placed'
+      S.screen = 'sending'; S.sendHint = null; S.sendTotals = rb ? { total: Number.isFinite(rb.expected_net_cents) ? rb.expected_net_cents : null, tip: Number.isFinite(rb.tip_cents) ? rb.tip_cents : 0 } : { total: T.total, tip: T.tip }; render();
       let has = soldOf;
       if (typeof opts.readAvailability === 'function') {
         const fresh = await recheckAvailability(attempt);   // the FRESH read decides (a stale sold-out is cleared on failure, never trusted)
@@ -1087,14 +1333,43 @@
       // S2b r1 P2-7: an accepted price change ⇒ «Enviando» shows the ceiling actually sent
       const onExpected = (cents) => { if (dead || !Number.isFinite(cents)) return; S.sendTotals = { total: cents, tip: T.tip }; if (S.screen === 'sending') render(); };
       let out;
-      try { out = await api.place({ flow: f, ctx: c, sig: S.q.sig, checkoutTicket: cardOnlyGuest() ? S.ticket : undefined, expectedNetCents: T.total, totals: T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: api.hosted ? { ...cart.snapshot(), cart_gen: genNow() } : cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
+      try { out = await api.place({ flow: f, ctx: c, freshOk: !!T.ready, sig: rb ? (S.q ? S.q.sig : null) : S.q.sig, checkoutTicket: cardOnlyGuest() ? S.ticket : undefined, expectedNetCents: rb ? rb.expected_net_cents : T.total, totals: rb && !T.ready ? null : T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: api.hosted ? { ...cart.snapshot(), cart_gen: genNow() } : cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
       if (!dead) onOutcome(out, attempt);
+    }
+    // «Pedido recibido» (v6 orderHtml): the order as SENT — the lines, the economics (the recorded body's on a replay), the
+    // delivery details, the tender and when — so the host's order screen never reads the live cart or flow after the send
+    function sentOrderOf(f, T, rb) {
+      const m = member(), del = f.mode === 'delivery', cents = (c) => (Number.isFinite(c) ? c / 100 : null);
+      const tot = rb ? rb.expected_net_cents : T.total, tip = rb ? rb.tip_cents : T.tip, fee = rb ? null : (T.envioFree ? 0 : T.envio);
+      const slot = sched() && f.time === 'schedule' && Number.isFinite(f.slot) ? f.slot : null;
+      return { mode: del ? 'delivery' : 'pickup', pay: f.pay === 'online' ? 'online' : 'cash',
+        // C-2: each line's canonical dish id (the cart key's served dish_id) — the rating sheet's purchased dishes, never matched by name
+        lines: displayLines().map((d) => ({ n: d.n, name: d.item.n, extras: d.extras || '', total: d.total, dish_id: typeof d.item.dish === 'string' && d.item.dish ? d.item.dish : null })),
+        fee: del ? cents(fee) : null, tip: cents(tip) || 0, total: cents(tot),
+        addr: C.addrLine(f) || 'Tu ubicación', details: (f.details || '').trim(), notes: (f.notes || '').trim(),
+        scheduled: slot !== null, scheduledFor: slot, whenText: slot !== null ? schedMod().slotWhen(servedSched(), now().getTime(), slot) : 'Lo antes posible',
+        phoneText: phoneShown(f) || (m ? C.fullPhone(m.phone) : ''), phone: phoneShown(f) || '', email: (f.email || '').trim(), name: (f.name || '').trim(),
+        phoneWire: f.cc && intl() ? phoneMod().toE164(f.cc, f.phone) : (C.fullPhone(f.phone) ? '+' + C.fullPhone(f.phone).replace(/\D/g, '') : '') };
+    }
+    // the sent order survives the hosted-checkout redirect: stored under the per-store key, bound to its order id, read back only for
+    // THAT order's outcome, cleared once handed over (device storage, best-effort: a failed write ⇒ the screen shows no sent lines)
+    const devStore = opts.apiOpts && opts.apiOpts.storage;
+    function keepSent(orderId) {
+      if (!cfg.sentKey || !devStore || typeof orderId !== 'string' || !S.sentOrder) return;
+      try { devStore.setItem(cfg.sentKey, JSON.stringify({ v: 1, order_id: orderId, order: S.sentOrder })); } catch (_) {}
+    }
+    function takeSent(orderId) {
+      if (!cfg.sentKey || !devStore) return null;
+      let r = null; try { r = JSON.parse(devStore.getItem(cfg.sentKey) || 'null'); } catch (_) { r = null; }
+      try { devStore.removeItem(cfg.sentKey); } catch (_) {}
+      return r && r.v === 1 && r.order_id === orderId && r.order && typeof r.order === 'object' ? r.order : null;
     }
     // the 600 ms happy beat: the spinner becomes the green check, then the host takes over (S5)
     function beat(out) {
       const sp = $('sspin'); if (sp) { sp.innerHTML = CHECK_OK; sp.classList.add('done'); }
       if (beatT !== null) T_.clearTimeout(beatT);
-      beatT = T_.setTimeout(() => { beatT = null; emit('placed', out); }, 600);
+      const stored = takeSent(out.order_id);   // a hosted return: this page never ran send() — the snapshot kept before the redirect
+      beatT = T_.setTimeout(() => { beatT = null; emit('placed', { ...out, order: S.sentOrder || stored || null }); }, 600);
     }
     // back to where the customer tapped (closure / out-of-zone: to «Entrega & Pago», where those gates live)
     function backTo(screen) {
@@ -1104,6 +1379,12 @@
       S.screen = target; render();
     }
     function showErr(e) { S.err = e; openLayer('err'); }
+    // MOCKUP-capp-native-store-update state 4 (owner: ONE cart line, no sheet): back from the store on a new build, the cart says so
+    // once — gone when the cart is closed (the host owns the one-shot)
+    const appUpdated = () => { try { return typeof opts.appUpdated === 'function' && opts.appUpdated() === true; } catch (_) { return false; } };
+    const appUpdatedSeen = () => { try { if (appUpdated() && typeof opts.onAppUpdatedSeen === 'function') opts.onAppUpdatedSeen(); } catch (_) {} };
+    // the store this INSTALLED app updates from (the host's: native + its platform's runtime.store_urls entry); null ⇒ no store sheet
+    const storeNow = () => (cfg.store && typeof cfg.store.url === 'string' && typeof cfg.store.name === 'string' ? cfg.store : null);
     function quoteFailed() {
       if (S.screen !== 'checkout' && S.screen !== 'tip') return;
       if (S.layerKind) { S.quoteErrSheet = true; return; }   // shown when the open layer closes
@@ -1132,6 +1413,12 @@
       // the owner-approved held-states mockup (MOCKUP-capp-S2b-held-states.html #mk-paused / #mk-generic / #mk-pending)
       // Codex G7 r1 #1, advisor ruling (a) 2026-10-31 — OWNER-PENDING copy (DECISIONS.md 2026-10-31): another account's scheduled send
       // is still confirming on this device; ONE action (a retry would only refuse again)
+      // MOCKUP-capp-native-store-update (owner 2026-11-01): the INSTALLED app below the compatibility floor (426) — the calm sheet,
+      // «Abrir {tienda}» + «Ahora no»; state 3 (a placement / payment still in flight) without the order reference (owner)
+      storeUpdate: (store) => ({ title: 'Actualizá la app para hacer pedidos', body: 'Esta versión ya no puede enviar pedidos. Tu carrito se guarda tal cual y te espera cuando volvás.', icon: 'calm', ic: 'update',
+        acts: [{ act: 'store-open', label: `Abrir ${store}`, primary: true }, { act: 'lclose', label: 'Ahora no' }] }),
+      storeUpdatePending: (store) => ({ title: 'Actualizá la app para seguir', body: 'Tu pedido en curso está a salvo y no hace falta pagar de nuevo. Cuando volvás con la app actualizada, revisamos cómo quedó.', note: 'Tu carrito también se guarda.', icon: 'calm', ic: 'clock',
+        acts: [{ act: 'store-open', label: `Abrir ${store}`, primary: true }, { act: 'lclose', label: 'Ahora no' }] }),
       heldOther: () => ({ title: 'Hay un pedido de otra cuenta confirmándose en este teléfono', body: 'Entrá con esa cuenta o esperá unos minutos.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }),
       paused: () => ({ title: `${cfg.name || ''} no está recibiendo pedidos en este momento`, body: 'Tu pedido no se envió ni se cobró nada; está intacto para que lo intentés en unos minutos.', icon: 'warn', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }),
       generic: (retry = 'err-retry') => ({ title: 'No pudimos enviar tu pedido', body: 'Intentá de nuevo en un momento; tu pedido está intacto.', acts: [{ act: retry, label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
@@ -1141,11 +1428,25 @@
     let attemptSeq = 0;
     // frame 10's «Ver estado del pedido»: the frozen placement's state through the existing reader (no send, no new identity)
     let statusBusy = false;
-    async function frozenStatus() {
-      if (statusBusy || !mods() || !api.hosted) return;
-      const fz = api.cartFreeze(); if (!fz.frozen) { renderLayer(); return; }
-      statusBusy = true;
-      let out; try { out = fz.unknown || !fz.order_id ? { kind: 'offline' } : await api.resolveStatus(fz.order_id); } catch (_) { out = { kind: 'offline' }; } finally { statusBusy = false; }
+    // PLAN-capp-desktop-D4a-routing r2 §4 (Codex r2 #4): ONE non-placement recovery for EVERY case lockedHere() can report — the
+    // «Ver estado del pedido» button and a URL-driven entry into /pago under a lock. Status reads only, never a send:
+    //   modules / hosted api unavailable · reconcile failure · unknown freeze · an unreadable pending record ⇒ «Sin conexión» (its
+    //   «Reintentar» re-runs THIS) · a frozen cart ⇒ resolveStatus(its order) · a held lock (memLock / pay_pending) ⇒
+    //   resolveStatus(id) ⇒ lockedOutcome (no credentials ⇒ the recovery / pending sheet; a definitive state releases it)
+    async function frozenStatus() { return recoverLocked(); }
+    async function recoverLocked() {
+      if (statusBusy) return;
+      let id = null, out = null;
+      if (!mods() || !api.hosted) out = { kind: 'offline' };
+      else if (!api.reconcile().ok) out = { kind: 'offline' };
+      else {
+        const fz = api.cartFreeze();
+        if (fz.unknown) out = { kind: 'offline' };
+        else if (fz.frozen) { id = fz.order_id || null; if (!id) out = { kind: 'offline' }; }
+        else if (typeof api.holdsLock === 'function' && api.holdsLock()) { const live = api.readPlace(); id = live && typeof live.order_id === 'string' ? live.order_id : null; if (!id) out = { kind: 'offline' }; }
+        else { renderLayer(); return; }   // nothing locked (any more): nothing to resolve
+      }
+      if (!out) { statusBusy = true; try { out = await api.resolveStatus(id); } catch (_) { out = { kind: 'offline' }; } finally { statusBusy = false; } }
       if (dead) return;
       closeLayer();
       // over the STORE (no checkout to go back to): the held sheets as drawn; any other outcome takes the normal path with a flow
@@ -1162,6 +1463,7 @@
       if (k === 'redirect') {
         // a RESUMED checkout shows the STORED economics (never the current quote), then leaves for the stored URL
         if (out.resumed) { const t = out.totals || {}; S.sendTotals = { total: Number.isFinite(out.expected_net_cents) ? out.expected_net_cents : (Number.isFinite(t.total) ? t.total : null), tip: Number.isFinite(t.tip) ? t.tip : 0 }; S.screen = 'sending'; render(); }
+        if (!out.resumed) keepSent(out.order_id);   // «Pedido recibido» after the hosted return (a new page load) shows THIS order as sent
         navigate(out.url); return;
       }
       // r3 §1.7 (Codex r3 #3): a SETTLED success is recorded — the one exception to «never leave while sending», honoured only once
@@ -1170,6 +1472,10 @@
       // carries no attempt: its own outcome)
       if ((k === 'placed' || k === 'paid_unverified') && out.unsettled !== true && typeof out.order_id === 'string' && (attempt === undefined || attempt === attemptSeq)) S.terminal = { order_id: out.order_id };
       if (k === 'placed' || k === 'paid_unverified') { if (S.screen !== 'sending') { S.screen = 'sending'; render(); } beat(out); return; }
+      // the native app below the floor, with a store to send it to (runtime.store_urls; else today's shared notice): state 2, or state 3
+      // when the identity is kept in flight (capp-api returns the existing outcome — confirming / existing_order — with update_required)
+      // — AFTER placed / paid (a confirmed order always wins), BEFORE every other outcome (Codex store-update r1 #1)
+      if (storeNow() && (k === 'update_required' || out.update_required === true)) { backTo('checkout'); showErr(out.update_required === true ? ERR.storeUpdatePending(storeNow().name) : ERR.storeUpdate(storeNow().name)); return; }
       if (k === 'confirming') { S.screen = 'sending'; S.sendHint = CONFIRMING_HINT; render(); return; }
       // §3.3 / frame 4: a MEMBER whose order met the GUEST gate — the server could not verify the session (token expired / SDK failure,
       // uid:null). Never a silent cash guest: the member stays a member, nothing was sent or charged, and is asked to sign in again
@@ -1184,6 +1490,9 @@
       if (k === 'slot_refused') { backTo('checkout'); showErr(ERR.slotRefused()); return; }   // S4 N1
       if (k === 'scheduled_review') { backTo('checkout'); showErr(ERR.schedReview()); return; }   // S4 row 9: paid, the slot under review
       if (k === 'out_of_zone') { S.outZone = true; backTo('checkout'); return; }
+      // Codex cash-chips r1 P1-1: the replayed bytes were refused on their quote — the lock is released; «Entrega & Pago» quotes again
+      // and the customer re-confirms (its own notices: the price note, the CTA), nothing was rebuilt or re-sent
+      if (k === 'replay_requote') { backTo('checkout'); S.askedKey = null; S.quoteErr = null; requote(); return; }
       if (k === 'payment_failed') {
         backTo('checkout');   // P pixelPay :2016 — back() to «Entrega & Pago», then the sheet
         if (out.clearable === false) { showErr(ERR.pending()); return; }   // a cancel return the server still calls pending: the order stays locked
@@ -1201,7 +1510,8 @@
       backTo();
     }
     const errSheet = errSheetHtml;
-    const feeInfoHtml = () => { const d = S.lastDelivery || {}; return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Envío"><div class="grab"></div><div class="errsheet"><h2>Envío</h2><p>Sherpa calcula el envío según la distancia entre la sucursal y tu dirección. Desde ${moneyC(d.from_cents)}; zona de entrega hasta ${esc(d.max_km)} km de ${storeLine()}.</p><div class="acts"><button class="btn2 wide" data-act="lclose">Entendido</button></div></div></div>`; };
+    // the quote's values when it carries both; before a quote (the store header's ⓘ) the DIRECTORY's — never «undefined km»
+    const feeInfoHtml = () => { const q = S.lastDelivery || {}, d = Number.isFinite(q.from_cents) && Number.isFinite(q.max_km) ? q : { from_cents: cfg.feeFromCents, max_km: cfg.zoneKm }; return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Envío"><div class="grab"></div><div class="errsheet"><h2>Envío</h2><p>Sherpa calcula el envío según la distancia entre la sucursal y tu dirección. Desde ${moneyC(d.from_cents)}; zona de entrega hasta ${esc(d.max_km)} km de ${storeLine()}.</p><div class="acts"><button class="btn2 wide" data-act="lclose">Entendido</button></div></div></div>`; };
     // ── the full-screen pin step (prototype pinStepHtml :2186-2190; the prototype-only «Simulación» strip dropped) ──
     function pinStepHtml() {
       const zoneKm = (S.lastDelivery && Number.isFinite(S.lastDelivery.max_km) ? S.lastDelivery.max_km : cfg.zoneKm);
@@ -1210,6 +1520,8 @@
     <div class="foot"><b>Confirmá dónde entregamos</b><span class="sub">${out && Number.isFinite(zoneKm) && cfg.branch ? `${esc(cfg.name || '')} entrega hasta ${esc(zoneKm)} km de ${esc(cfg.branch)}; este punto queda fuera.` : 'Las direcciones aquí se describen con referencias: el pin es la dirección, los detalles son la referencia.'}</span><button class="primary" data-act="pin-done">Listo</button></div></div>`;
     }
 
+    // «Ir al checkout»: THE path into the checkout — a tap, and (D-4a) a URL-driven entry through resumeTo('pago')
+    function checkoutTap() { if (!orderable || soldBlock()) return false; if (typeof opts.beforeCheckout === 'function' && opts.beforeCheckout() === false) return true; let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return false; } emit('checkout', { body, mode: S.mode }); openCheckout(); return true; }
     // ── navigation ──
     function openCheckout() {
       if (!mods()) return false;
@@ -1270,13 +1582,11 @@
     // a cart frozen for an order whose record still exists (a held recovery, an unresolved send), or an UNKNOWN freeze state
     // (fail closed). A frozen-but-NOT-live cart (§1.4, the lock expired with no marker) may be left: its freeze and evidence are
     // fully persisted, so leaving loses nothing — it re-mounts frozen
-    function lockedHere() {
-      if (!hostedKeys()) return false;
-      if (!mods() || !api.hosted) return true;
-      const rc = api.reconcile(); if (!rc.ok) return true;
-      const fz = api.cartFreeze();
-      return !!(fz.unknown || (fz.frozen && fz.live) || (typeof api.holdsLock === 'function' && api.holdsLock()));
-    }
+    // D-4a: the step this mount shows, for the host's URL reflection (the checkout flow — tip, sending, outcome — is ONE URL)
+    function routeNow() { if (S.screen !== 'store') return { step: 'pago' }; if (S.open && S.open.id != null) return { step: 'plato', dish: String(S.open.id) }; if (S.layerKind === 'cart') return { step: 'pedido' }; return { step: 'store' }; }
+    function reportRoute() { if (dead || typeof opts.onRoute !== 'function') return; try { opts.onRoute(routeNow()); } catch (_) { /* never breaks the UI */ } }
+    const lockedNow = () => lockedHere() || frozenNow();
+    function lockedHere() { return core.lockedHere(); }
     // Codex r2 New 3: a SHELL exit (a tab, the shell's own back, a shell screen opened over the store) asks with intent 'leave' —
     // answered without acting: blocked while sending, over a held sheet, or under a lock; otherwise pass (destroy() then cancels
     // a «Realizando pedido…» countdown: zero sends)
@@ -1291,6 +1601,7 @@
     }
     function checkoutAct(t) {
       const f = S.flow, a = t.dataset.act, v = t.dataset.val;
+      if (hasSlotLock() && (a === 'type' || a === 'editwho' || a === 'more' || a === 'editdetails' || a === 'tender' || a === 'pin' || a === 'cc')) return true;   // frame 10b: fixed (cash-chips lock)
       if (a === 'type') { if (frozenNow()) return true; S.mode = v === 'pickup' ? 'pickup' : 'delivery'; C.setMode(f, S.mode); notifyCart(); if (S.mode === 'delivery' && !finitePin(f.pin) && S.geo === null) requestGeo(); render(); return true; }
       if (a === 'rm-po') { for (const l of poLines()) mutate(() => cart.setQty(l.key, 0)); if (!cart.count()) toStore(); else render(); return true; }
       if (a === 'editwho') { f.editWho = true; render(); return true; }
@@ -1306,7 +1617,7 @@
       if (a === 'cc' && intl()) { openLayer('cc'); render(); return true; }
       if (a === 'more') { S.more = true; render(); return true; }
       if (a === 'editdetails') { S.editDetails = true; render(); return true; }
-      if (a === 'sumtoggle') { S.sumOpen = !S.sumOpen; render(); return true; }
+      if (a === 'sumtoggle') { S.sumOpen = S.desk ? S.sumOpen === false : !S.sumOpen; render(); return true; }
       if ((a === 'pay' || a === 'showpay') && lockedPay() !== null) return true;   // row 10: the tender is fixed while the send is unresolved
       if (a === 'pay') { f.pay = v === 'online' || cardOnlyGuest() ? 'online' : 'cash'; S.showPay = false; render(); return true; }
       if (a === 'showpay') { S.showPay = true; render(); return true; }
@@ -1333,6 +1644,7 @@
     function layerAct(t) {
       // S-picker: a country picked ⇒ the sheet closes, the digits stay (capped to the new length), the phone focused
       if (t.dataset.act === 'cc-pick' && S.layerKind === 'cc' && intl() && S.flow) {
+        if (hasSlotLock()) return true;   // Codex cash-chips r2 P2-2: frame 10b's phone is fixed (an already-open picker too)
         const f = S.flow, cc = t.dataset.cc; if (!phoneMod().byCc(cc)) return true;
         if (cc !== ccOf(f)) { f.cc = cc; f.phone = phoneMod().format(cc, f.phone); }
         S.layerKind = null; renderLayer(); returnTo = null; render(); const ph = $('f-phone'); if (ph) focusTo(ph); syncCta(); return true;
@@ -1355,6 +1667,7 @@
         }
         closeLayer(); render(); return true;
       }
+      if (a === 'store-open') { if (storeNow()) emit('store-open', { url: storeNow().url }); return true; }   // the host leaves for the store; the sheet stays
       if (a === 'err-retry') { closeLayer(); send(); return true; }   // the SAME placement (capp-api keeps the id)
       if ((a === 'err-sched' || a === 'err-slot') && sched() && S.flow && !canSchedule()) { closeLayer(); backTo('checkout'); scheduleGate(); return true; }   // frame G
       if (a === 'err-sched' && sched() && S.flow) { closeLayer(); S.closedRefused = false; applyHeldSched(); S.flow.time = 'schedule'; S.flow.slot = null; backTo('checkout'); return true; }   // P:2287: the picker
@@ -1422,6 +1735,7 @@
     function render() {
       if (dead) return;
       app.classList.toggle('narrow', app.clientWidth > 0 && app.clientWidth < 375);
+      if (view) app.classList.toggle('desk', S.desk);   // D-2 (v6 :1384); never touched without a view
       const keepSearch = S.layerKind === 'ssearch' && $('layer') && $('layer').querySelector('#sq') ? $('layer') : null;
       const ae = doc.activeElement;
       const had = app.contains(ae) ? descOf(ae) : null;
@@ -1438,7 +1752,7 @@
       if (S.screen === 'checkout' && flowY !== null && prevScreen === 'checkout' && $('flow')) $('flow').scrollTop = flowY;
       renderLayer();
       if (S.open) { renderDetail(); $('detail-overlay').classList.add('open'); $('detail-modal').classList.add('open'); }
-      syncInert();
+      syncInert(); reportRoute();
       if (had && lost()) { focusTo(refind(had)); if (caret && doc.activeElement && doc.activeElement.id === caret[0]) { try { doc.activeElement.setSelectionRange(caret[1], caret[2]); } catch (_) {} } }
       if (S.screen === 'checkout') wireMaps();
       if (S.screen === 'checkout' || S.screen === 'tip') requote();
@@ -1461,10 +1775,12 @@
       if (act === 'badge') { S.expanded.add(id); renderStoreKeep(); return; }
       if (act === 'open') { returnTo = descOf(t); openDetail(id); return; }
       if (act === 'pill') { openLayer('cart'); return; }
+      if (act === 'feeinfo' && S.screen === 'store' && !S.layerKind) { returnTo = descOf(t); openLayer('feeinfo'); return; }   // the store header's ⓘ (v6 :1609): the directory's values
       if (act === 'cartclose') { back(); return; }   // closing the cart is a back step → the menu (P :2297)
       if (act === 'lclose') { closeLayer(); return; }
       if (act === 'rev') { const k = t.dataset.key, g = t.dataset.grp || '', d = descOf(t); if (Number(t.dataset.rev) > 0 && isSold(find(k))) return; mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(k, g) : cart.lineDec(k, g))); renderStoreKeep(); renderLayer(); focusTo(refind(d) || [...$('layer').querySelectorAll(FOCUSABLE)].find(reachable)); return; }
-      if (act === 'edit') { S.layerKind = null; renderLayer(); returnTo = { elId: 'cart-bar', ds: { act: 'pill' } }; openEdit(t.dataset.key, t.dataset.grp || ''); return; }
+      // the sheet's «Editar» closes the sheet ⇒ focus comes back to the cart bar; the desk aside's stays put ⇒ back to ITSELF (Codex D-2 r1 #2)
+      if (act === 'edit') { const fromAside = !!t.closest('.deskcart'); S.layerKind = null; renderLayer(); returnTo = fromAside ? descOf(t) : { elId: 'cart-bar', ds: { act: 'pill' } }; openEdit(t.dataset.key, t.dataset.grp || ''); return; }
       if (act === 'mode') { if (frozenNow()) return; S.mode = t.dataset.val; notifyCart(); renderStoreKeep(); return; }
       if (act === 'jump') { jumpTo(t.dataset.jump); return; }
       if (act === 'menu') { openLayer('menu'); return; }
@@ -1472,7 +1788,7 @@
       if (act === 'ssearch') { openLayer('ssearch'); return; }
       if (act === 'back') { emit('back'); return; }
       // S7a-2: the host may adopt a newer verified menu first (opts.beforeCheckout() === false ⇒ it took over: not opened here)
-      if (act === 'checkout') { if (!orderable || soldBlock()) return; if (typeof opts.beforeCheckout === 'function' && opts.beforeCheckout() === false) return; let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return; } emit('checkout', { body, mode: S.mode }); openCheckout(); return; }
+      if (act === 'checkout') { checkoutTap(); return; }
       if (act === 'closed-sched' && sched()) {
         if (!cart.count()) { toast('Agregá platos y programá al final'); return; }
         if (!S.flow) S.flow = newFlow();
@@ -1489,6 +1805,7 @@
       const fld = t.dataset.field;
       if (fld === 'otp') { otpInput(t); return; }
       if (fld === 'sq') { S.searchQ = t.value; runStoreSearch(t.value); return; }
+      if (S.flow && FLOW_FIELDS.includes(fld) && hasSlotLock()) return;   // Codex cash-chips r1 P2-3: frame 10b's fields are fixed (inputs too)
       if (fld === 'tipOther') { S.tipDraft = capDraft(t.value, S.tipDraft || ''); t.value = S.tipDraft || '0'; t.style.width = `calc(${Math.max(1, t.value.length)}ch + 6px)`; return; }
       if (S.flow && fld === 'phone' && intl()) {
         // the country's local format as they type, never past its national length
@@ -1545,7 +1862,7 @@
     doc.addEventListener('keydown', onKey);
     // S-picker: leaving the WhatsApp field with a qualified number that never parsed ⇒ it is cleared (the CTA's «Escribí tu WhatsApp»)
     function onPhoneOut(ev) {
-      const t = ev.target; if (!t || t.id !== 'f-phone' || !S.flow || !intl()) return;
+      const t = ev.target; if (!t || t.id !== 'f-phone' || !S.flow || !intl() || hasSlotLock()) return;   // frame 10b: never rewrites the fixed phone
       if (/^\s*(\+|00)/.test(String(t.value || '')) && !phoneMod().parseE164(String(t.value).trim().replace(/^00/, '+'))) { t.value = ''; S.flow.phone = ''; syncCta(); }
     }
     if (intl()) doc.addEventListener('focusout', onPhoneOut);
@@ -1558,6 +1875,33 @@
     const returning = /[?&]pay=/.test(search || '') ? handlePayReturn(search) : null;
     return {
       cart, menu, render, state: S, openCheckout, returning,
+      // D-2: the viewport crossed the breakpoint — re-render THIS screen in the other view; every piece of state (cart, screen, flow,
+      // open layer, locks, refusals) lives in S / the records and is untouched; render() keeps focus, caret and the checkout scroll
+      // Codex D-2 r1 #1: the store's menu scroll is kept, and a focused control that has no twin in the other view lands on its
+      // VISIBLE equivalent — the aside ⇄ the cart bar (render() itself restores every control that exists in both views)
+      // D-4a §4: the ONE URL-driven entry into a step — never a placement, never a BROWSER history entry (in-app steps count as a
+      // tap's). 'pago': the lock FIRST (every lockedHere case ⇒ recoverLocked, status only), else the «Ir al checkout» tap path
+      resumeTo(step, dish) {
+        if (dead || S.screen !== 'store') return false;
+        if (step === 'pedido') { if (!cart.count()) return false; openLayer('cart'); return true; }
+        if (step === 'plato') { if (dish == null || !find(String(dish))) return false; openDetail(String(dish)); return true; }
+        if (step === 'pago') { if (lockedNow()) { recoverLocked(); return true; } if (!cart.count()) return false; return checkoutTap(); }
+        return step === 'store';
+      },
+      lockedNow: () => !dead && lockedNow(),
+      route: () => routeNow(),
+      setView(desk) {
+        if (dead || !view) return; const d = desk === true; if (d === S.desk) return;
+        const sc = $('scroller'), y = sc ? sc.scrollTop : null, ae = doc.activeElement;
+        const fromAside = !!(ae && ae.closest && ae.closest('.deskcart')), fromPill = !!(ae && ae.id === 'cart-bar');
+        S.desk = d; render();
+        const sc2 = $('scroller'); if (sc2 && y !== null) sc2.scrollTop = y;
+        if (S.open && lost()) focusTo((d && $('detail-name')) || $('detail-close'));   // Codex C-6c r1 #2: the heading is gone ⇒ the sheet's ✕
+        if (lost() && !dialogEl()) {
+          if (!d && fromAside) focusTo($('cart-bar'));
+          else if (d && fromPill) { const a = app.querySelector('.deskcart'); focusTo(a && ([...a.querySelectorAll('button:not([disabled])')].find(reachable) || a)); }
+        }
+      },
       deviceBack,
       // the host's AUTHORITATIVE availability has been re-read (its Set / function now reflects it): a dispatch refusal yields to it
       availabilityUpdated() { if (dead) return; refused.clear(); render(); },
@@ -1568,11 +1912,18 @@
         for (const el of app.querySelectorAll('[data-ord]')) { el.disabled = false; el.removeAttribute('aria-disabled'); delete el.dataset.ord; }
       },
       orderable: () => orderable,
+      // PLAN-capp-store-promo-feeinfo r0: the host's auth tri-state moved — the store header's pill and fee line update IN PLACE
+      // (no store re-render: an open sheet, the scroll and focus stay); a reserved pill becomes the guest's without a reflow
+      authChanged() { if (!dead) patchAuth(); },
       openCart() { if (dead || S.screen !== 'store') return false; openLayer('cart'); return true; },
+      // the store round trip (Codex store-update r2 #1): back on a new build, an UNRESOLVED placement's verification is started
+      // explicitly — the same status read «Ver estado del pedido» runs (recoverLocked); nothing locked ⇒ nothing to verify
+      resumeVerification() { if (dead || !mods()) return false; const locked = frozenNow() || (typeof api.holdsLock === 'function' && api.holdsLock()); if (locked) frozenStatus(); return locked; },
       // G6 §4c: a sign-in on THIS checkout — the member's details fill «Tus datos» (name, phone, email; never over what the customer
       // typed differently), the step and the cart stay; the tender is the customer's (a guest's card stays card)
       setMember(m) {
         if (dead) return;
+        const prevCtx = memberCtx;
         memberCtx = m && typeof m === 'object' ? m : null;
         if (!memberCtx) S.schedAfterSignin = false;
         const f = S.flow;
@@ -1586,28 +1937,34 @@
           f.editWho = unread; S.emailRefused = false;   // an unreadable member number stays in edit (intl)
           if (S.schedAfterSignin && sched()) { f.time = 'schedule'; f.slot = null; }   // frame G: signed in ⇒ the picker opens
         }
+        // Codex promo r1 #2: on the STORE page the production auth path (dropMember / applyMember → here) keeps the page — the same
+        // admitted identity (none → none, the same uid) patches the header in place; a new one re-renders keeping scroll and focus
+        if (S.screen === 'store') {
+          if ((!prevCtx && !memberCtx) || (prevCtx && memberCtx && prevCtx.uid != null && prevCtx.uid === memberCtx.uid)) { patchAuth(); return; }
+          const fd = descOf(doc.activeElement); renderStoreKeep(); const el = refind(fd); if (el && el !== doc.activeElement) el.focus({ preventScroll: true });
+          return;
+        }
         render();
       },
       // Codex s7a2 r1 #1: the cart AS IT IS IN MEMORY (the same shape onCartChange persists) — a remount carries this, never only the
       // stored copy, so a failed persistence can never lose an edit
-      snapshot() { return { ...cart.snapshot(), rid: cfg.restaurantId, mode: S.mode, ...(hostedKeys() ? { cart_gen: cart.count() ? genNow() : null } : {}) }; },
+      snapshot() { return core.snapshotFor(S.mode); },
       // S7a-2: a Buscar / Inicio dish result opens THAT dish's sheet on this store (P open-dish :2253) — false when it is not here
       openDetail(key) { if (dead || S.screen !== 'store' || !find(key)) return false; openDetail(key); return true; },
       restore(snapshot) {
-        // S7a-1 r3 §1.3 (hosted): reconcile FIRST — blocked until it completes; a purchased (cleared) cart is never restored
-        if (cfg.cartKey && cfg.placedKey && mods() && api.hosted) { const rc = api.reconcile(); if (!rc.ok) return { blocked: true, step: rc.step }; if (rc.done === 'placed' && snapshot && snapshot.cart_gen && snapshot.cart_gen === rc.cart_gen) {
-            // Codex r3 #1: the PURCHASED lines are cleared from memory too, BEFORE the generation is released — a new generation is
-            // only ever minted for an empty cart, so purchased lines can never be disguised as a new cart
-            cart.hydrate({ v: 2, lines: [] }); cartGen = null; render(); return { cleared: true };
-          }
-          cartGen = snapshot && typeof snapshot.cart_gen === 'string' && snapshot.cart_gen ? snapshot.cart_gen : null;   // the restored cart keeps its generation
-          // Codex r1 P2-7: the persisted mode is restored with the lines (a frozen pickup cart is never re-shown as delivery)
-          if (snapshot && (snapshot.mode === 'pickup' || snapshot.mode === 'delivery')) { S.mode = snapshot.mode; if (S.flow && C) C.setMode(S.flow, S.mode); } }
-        const r = cart.hydrate(snapshot); notifyCart(); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
+        const rr = core.restore(snapshot);   // the ONE path (reconcile first; a purchased cart cleared, never restored)
+        if (rr.blocked) return { blocked: true, step: rr.step };
+        if (rr.cleared) { render(); return { cleared: true }; }
+        if (rr.mode) { S.mode = rr.mode; if (S.flow && C) C.setMode(S.flow, S.mode); }
+        const r = rr.hydrated; notifyCart(); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
+      // «Volver a pedir»: replace the cart through the SAME restore path — refused exactly where the store refuses an edit (its lock /
+      // freeze predicate), never over a cart mid-placement
+      replaceCart(snapshot) { if (dead || lockedNow()) return { locked: true }; return this.restore(snapshot); },
       destroy() {
         dead = true; placingStop(); otpTickStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }
         S.layerKind = null; const L = $('layer'); if (L) L.innerHTML = '';
         for (const el of [...doc.querySelectorAll('.cq-sheet')]) el.remove();   // the ported «El precio cambió» sheet (capp-confirm-quote)
+        if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} }
         doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); doc.removeEventListener('focusout', onPhoneOut); if (!H && doc.defaultView) doc.defaultView.removeEventListener('popstate', onPop); if (typeof unsubBack === 'function') { try { unsubBack(); } catch (_) {} } },
     };
   }
@@ -1626,5 +1983,5 @@
       <button class="cta" type="button" data-act="offer-create">Crear mi cuenta</button><button class="lnk" type="button" data-act="offer-skip">Ahora no</button></div></div>`;
   }
 
-  return { mount, viewSections, loadMapsFor, MAP_SVG, FULL_CART, accountOfferHtml, errSheetHtml };
+  return { mount, viewSections, loadMapsFor, MAP_SVG, FULL_CART, accountOfferHtml, errSheetHtml, createCartCore, apiConfigOf };
 });

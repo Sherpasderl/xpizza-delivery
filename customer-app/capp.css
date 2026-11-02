@@ -83,6 +83,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
   --sans:var(--rht); --head:var(--rhd); --head-style:normal; --head-weight:700; --name:var(--rhd); --name-weight:700;
   /* palette: Cuadra, light. Roles keep the v11 store semantics (bg = page, surf = soft tinted fill, surf2 = white/elevated fill) so the
      approved store → checkout → confirmation screens keep their surface structure; the shell uses the same three values. */
+  --map-road:#FFFFFF; --map-minor:#F4F6F1; --map-park:#DCE6D4; --map-water:#D6E4EA;   /* the schematic maps (v6 mapSvg light) */
   --bg:#FFFFFF; --surf:#F2F3F5; --surf2:#FFFFFF; --ink:#0D1424; --mute:#5A6272; --line:#E8E9EC; --line2:#D2D5DB;
   --acc:#2F5FB8; --acc-ink:#FFFFFF; --price:#0D1424; --pill:#0D1424; --pill-ink:#FFFFFF; --rad:12px;
   --ok:#2F7A55; --ok-bg:#EAF4EF; --warn:#8A5A00; --warn-bg:#FFF1D6; --err:#B9323A; --err-bg:#FCEBEB; --scrim:rgba(13,20,36,.45); --shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px -12px rgba(0,0,0,.18);
@@ -99,7 +100,13 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
   /* v4 tip-step illustration (flat shapes; Cuadra tints + the green box, never a restaurant colour) */
   --il-sky-a:#E2EBFA; --il-sky-b:#C5D8F2; --il-sky-c:#D3ECE9; --il-jacket:#1D3F85; --il-pants:#2A3550; --il-skin:#D9A77B; --il-tyre:#1B2537;
   --a-warm:#F6F1E8; --a-cool:#EDF1F5; --a-green:#EEF2E9; --a-rose:#F7EEEA}
-.app.dark{--bg:#0A0F1C;--surf:#121A2C;--surf2:#1A2439;--ink:#EDF1F8;--mute:#9AA6BD;--line:#24304A;--line2:#34415C;--acc:#8EC0FF;--acc-ink:#0A0F1C;--price:#EDF1F8;--pill:#EDF1F8;--pill-ink:#0A0F1C;
+/* capp-dark (PLAN-capp-dark-mode §2.2): the CANVAS before #app parses is the app's own background, in the same three forms as the
+   tokens — html.capp-shell (shell.html) only, so the review pages keep their --pg-* chrome */
+:root{--page-bg:#FFFFFF}
+:root[data-theme="dark"]{--page-bg:#0A0F1C}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--page-bg:#0A0F1C}}
+.capp-shell,.capp-shell body{background:var(--page-bg)}
+.app.dark,:root[data-theme="dark"] .app{--map-road:#2E3A30;--map-minor:#283329;--map-park:#243227;--map-water:#1C2A33;--bg:#0A0F1C;--surf:#121A2C;--surf2:#1A2439;--ink:#EDF1F8;--mute:#9AA6BD;--line:#24304A;--line2:#34415C;--acc:#8EC0FF;--acc-ink:#0A0F1C;--price:#EDF1F8;--pill:#EDF1F8;--pill-ink:#0A0F1C;
   --ok:#5BD08E;--ok-bg:#153324;--warn:#F2BE4B;--warn-bg:#3A2B06;--err:#FF8C92;--err-bg:#3B1518;--scrim:rgba(0,0,0,.6);--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.6);
   --pop:#6FD79A;--pop-bg:#143322;--pop-fill:#6FD79A;--pop-fill-ink:#0A0F1C;
   --deal:#FF8FB8;--deal-bg:#3F1A2B;--deal-fill:#FF8FB8;--deal-fill-ink:#0A0F1C;
@@ -107,6 +114,14 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
   --promo-bg:linear-gradient(135deg,#182A52 0%,#133640 100%);--promo-ink:#EDF1F8;--promo-mute:#A9B8D6;--promo-line:#2B3F66;
   --il-sky-a:#182A52;--il-sky-b:#24427E;--il-sky-c:#17424C;--il-jacket:#4A82E0;--il-pants:#95A3BE;--il-skin:#D9A77B;--il-tyre:#3A4761;
   --a-warm:#1C2230;--a-cool:#172033;--a-green:#182226;--a-rose:#211D25}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app{--map-road:#2E3A30;--map-minor:#283329;--map-park:#243227;--map-water:#1C2A33;--bg:#0A0F1C;--surf:#121A2C;--surf2:#1A2439;--ink:#EDF1F8;--mute:#9AA6BD;--line:#24304A;--line2:#34415C;--acc:#8EC0FF;--acc-ink:#0A0F1C;--price:#EDF1F8;--pill:#EDF1F8;--pill-ink:#0A0F1C;
+  --ok:#5BD08E;--ok-bg:#153324;--warn:#F2BE4B;--warn-bg:#3A2B06;--err:#FF8C92;--err-bg:#3B1518;--scrim:rgba(0,0,0,.6);--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.6);
+  --pop:#6FD79A;--pop-bg:#143322;--pop-fill:#6FD79A;--pop-fill-ink:#0A0F1C;
+  --deal:#FF8FB8;--deal-bg:#3F1A2B;--deal-fill:#FF8FB8;--deal-fill-ink:#0A0F1C;
+  --value:#F3C86C;--value-bg:#3B2D0A;
+  --promo-bg:linear-gradient(135deg,#182A52 0%,#133640 100%);--promo-ink:#EDF1F8;--promo-mute:#A9B8D6;--promo-line:#2B3F66;
+  --il-sky-a:#182A52;--il-sky-b:#24427E;--il-sky-c:#17424C;--il-jacket:#4A82E0;--il-pants:#95A3BE;--il-skin:#D9A77B;--il-tyre:#3A4761;
+  --a-warm:#1C2230;--a-cool:#172033;--a-green:#182226;--a-rose:#211D25}}
 /* v2 had one token set per world (.app[data-world="xp"|"lm"|"cf"]: their own accent, warm inks, Special Elite / Playfair / Fraunces).
    v3 removes them: every restaurant uses the tokens above. */
 
@@ -546,7 +561,8 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .map .adj{position:absolute;right:10px;top:10px;font-size:13px;font-weight:600;color:#FFFFFF;background:rgba(20,18,16,.66);padding:7px 12px;border-radius:999px}
 .map.out{filter:saturate(.4)}
 .map.big{height:100%;border-radius:0}
-.dark .map{background:#1F2A22}
+.app.dark .map,:root[data-theme="dark"] .app .map{background:#1F2A22}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app .map{background:#1F2A22}}
 .line{display:flex;align-items:flex-start;gap:10px;font-size:15px;line-height:1.4}
 .line svg.i{width:18px;height:18px;margin-top:1px;color:var(--mute);flex:none}
 .line .lnk{margin-left:auto;color:var(--acc);font-weight:600;white-space:nowrap;border:0;background:transparent;padding:0;font-size:14px;min-height:24px}
@@ -608,7 +624,8 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 
 /* ── ORDER: confirmation (S5) + live tracker (F4 v4 language) ── */
 .order-map{position:relative;height:260px;flex:none;background:#E8EDE4;overflow:hidden}
-.dark .order-map{background:#1F2A22}
+.app.dark .order-map,:root[data-theme="dark"] .app .order-map{background:#1F2A22}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app .order-map{background:#1F2A22}}
 .order-map svg.mapsvg{position:absolute;inset:0;width:100%;height:100%}
 .order-map .mk-label{position:absolute;transform:translate(-50%,-100%);background:var(--bg);color:var(--ink);font-size:12px;font-weight:600;padding:5px 9px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.18);white-space:nowrap;margin-top:-10px}
 .order-map .mk-label::after{content:"";position:absolute;left:50%;bottom:-5px;width:8px;height:8px;background:var(--bg);transform:translateX(-50%) rotate(45deg)}
@@ -848,7 +865,8 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 /* ── Full-screen pin step ── */
 .pinstep{position:absolute;inset:0;z-index:62;background:var(--bg);display:flex;flex-direction:column}
 .pinstep .mapwrap{flex:1;position:relative;overflow:hidden;background:#E8EDE4}
-.dark .pinstep .mapwrap{background:#1F2A22}
+.app.dark .pinstep .mapwrap,:root[data-theme="dark"] .app .pinstep .mapwrap{background:#1F2A22}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app .pinstep .mapwrap{background:#1F2A22}}
 .pinstep .mapwrap svg.mapsvg{position:absolute;inset:0;width:100%;height:100%}
 .pinstep .pin{position:absolute;left:50%;top:50%;transform:translate(-50%,-100%);color:var(--acc);filter:drop-shadow(0 2px 3px rgba(0,0,0,.25))}
 .pinstep .pin svg{width:44px;height:44px;display:block}
@@ -946,7 +964,8 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .placing .acts{display:flex;flex-direction:column;gap:8px;margin-top:10px}
 .okbtn{position:relative;overflow:hidden}
 .okbtn .fill{position:absolute;inset:0;background:color-mix(in srgb,var(--acc) 72%,var(--pill));transform-origin:left center;transform:scaleX(0);animation:okfill 2s linear forwards;pointer-events:none}
-.app.dark .okbtn .fill{background:color-mix(in srgb,var(--acc) 55%,var(--pill))}
+.app.dark .okbtn .fill,:root[data-theme="dark"] .app .okbtn .fill{background:color-mix(in srgb,var(--acc) 55%,var(--pill))}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app .okbtn .fill{background:color-mix(in srgb,var(--acc) 55%,var(--pill))}}
 @keyframes okfill{to{transform:scaleX(1)}}
 @media (prefers-reduced-motion:reduce){.okbtn .fill{display:none}}
 .okbtn>span{position:relative;font-variant-numeric:tabular-nums}
@@ -1004,6 +1023,9 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .cline .cl-p .cl-old{display:block;color:var(--mute);font-weight:400;font-size:13px}
 /* frame 10 (APPROVED 2026-10-27): a frozen cart's line controls at the drawn .45 */
 .cline.frozen button[disabled]{opacity:.45}
+/* MOCKUP-capp-cash-chips-lock (owner-approved): frame 10b's controls the replay ignores, at the drawn .45 — the cash amount, «Tus datos»'s
+   rows and (question 2) Delivery / Pickup, the pin and its row */
+.chips .chip:disabled,.fld input:disabled,.fld textarea:disabled,.phonerow .cc:disabled,.urow[disabled],.seg button:disabled,.map:disabled{opacity:.45;cursor:default}
 /* frame 11 (APPROVED 2026-10-27): the neutral return surface's block, as drawn */
 .empty.neutral{padding-top:120px}
 /* frame 12 (APPROVED 2026-10-27, D1 (a)): a sold dish's «Agotado» in the price slot, muted */
@@ -1061,3 +1083,234 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .sg button.cc svg.i{width:16px;height:16px;color:var(--mute)}
 .sg button.cc.focus{border-color:var(--ink)}
 .sg .clist{display:flex;flex-direction:column;margin:0 -20px -6px;border-bottom:1px solid var(--line)}
+
+/* ── C-6a (MOCKUP-capp-desktop-D3 r3, approved; PLAN-capp-website-and-leader-features §C-6) ──
+   the desktop site footer, last in the Inicio body (the mockup's .foot — renamed: the pin sheets already use .foot); phone: none */
+.dfoot{display:none}
+.app.desk .dfoot{max-width:1040px;margin:24px auto 0;width:100%;padding:24px 24px 28px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:24px;font-size:13px;color:var(--mute)}
+.app.desk .dfoot .lock{display:flex;align-items:center;gap:8px;font:700 16px var(--rhd);color:var(--ink)}
+.app.desk .dfoot .lock svg{width:18px;height:18px}
+.app.desk .dfoot ul{list-style:none;margin:0;padding:0;display:flex;gap:18px}
+.app.desk .dfoot li button,.app.desk .dfoot li a{border:0;background:transparent;padding:0;color:inherit;font:inherit;text-decoration:none}
+.app.desk .dfoot li.rsv{visibility:hidden}   /* a legal link that may still arrive: its slot held, nothing moves when it lands */
+/* frame 7b (DECIDED): 600–1023 px — the unchanged phone shell in a centred 600 px column on the --surf wash with a hairline; below
+   600 px byte-identical to before. CSS only: no DOM, no behaviour */
+@media (min-width:600px) and (max-width:1023.98px){
+  .app:not(.desk){background:var(--surf)}
+  .app:not(.desk) .screen{left:50%;right:auto;width:600px;transform:translateX(-50%);background:var(--bg);box-shadow:0 0 0 1px var(--line)}
+  .app:not(.desk) .sheet,.app:not(.desk) .detail-modal{left:calc(50% - 300px);right:auto;width:600px}   /* the sheets JOIN the column (advisor ruling; Codex C-6a r1 #6) — no transform: the dish sheet animates with one */
+}
+
+/* ── C-6b (MOCKUP-capp-desktop-D3 r3 frames f1a/f1b, approved — its DESK-R2 rules verbatim) ── the r2 top bar = the v6 desknav +
+   the leaders' anatomy (brand · address pill · search field · account), one 60 px row */
+.app.desk .desknav{gap:10px;padding:0 24px}
+.app.desk .desknav .lock{margin-right:8px}
+.app.desk .dn-addr{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px 0 10px;border-radius:999px;border:0;background:var(--surf);color:var(--ink);font:600 14px var(--sans);max-width:300px;min-width:0}
+.app.desk .dn-addr svg.i{width:18px;height:18px;color:var(--ink)}
+.app.desk .dn-addr .k{color:var(--mute);font-weight:500}
+.app.desk .dn-addr .v{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app.desk .dn-search{flex:0 1 520px;min-width:200px;height:40px;display:flex;align-items:center;gap:10px;padding:0 14px;border-radius:999px;background:var(--surf);color:var(--mute);font:500 14px var(--sans);margin:0 auto;border:0}
+.app.desk .dn-search svg.i{width:18px;height:18px}
+.app.desk .dn-search.live{background:var(--bg);box-shadow:0 0 0 2px var(--acc);color:var(--ink)}
+.app.desk .desknav .right{display:flex;align-items:center;gap:4px;margin-left:auto}
+.app.desk .desknav .nb.acct{display:inline-flex;align-items:center;gap:8px;color:var(--ink)}
+.app.desk .desknav .nb.acct svg.i{width:20px;height:20px}
+.app.desk .desknav .nb.acct .av{width:28px;height:28px;border-radius:50%;background:var(--surf);display:inline-flex;align-items:center;justify-content:center;font:700 12px var(--rhd);box-shadow:0 0 0 1px var(--line)}
+/* home: the one-line page heading (the H1 Google indexes); the phone's own addr-btn yields to the bar's pill on the desk */
+.h1row{display:none}
+.app.desk .home-head .addr-btn{display:none}
+.app.desk .h1row{max-width:1040px;margin:0 auto;width:100%;padding:28px 24px 4px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
+.app.desk .h1row h1{font:800 30px/1.1 var(--rhd);letter-spacing:-.025em}
+.app.desk .h1row p{font-size:14.5px;color:var(--mute);margin-top:6px}
+.app.desk .h1row .promo{max-width:380px;flex:none}
+.app.desk .cuisrow{padding:8px 24px 0;gap:10px}
+.app.desk .fchips{padding:0 24px}
+/* C-6b part 2: the leaders' rows — a «Ver todo» link + the arrow pair, the 4-up «Destacados» grid, the 3-up full grid, the dish row */
+.app.desk .hsec .hd{padding:0 24px}
+.app.desk .hsec .hd .acts{display:flex;align-items:center;gap:8px}
+.app.desk .hsec .hd .nxt[disabled]{opacity:.35;cursor:default}
+.app.desk .hsec .hd .seeall{border:0;background:transparent;color:var(--acc);font:600 14px var(--sans);padding:0 6px;min-height:36px}
+.app.desk .rgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;padding:0 24px}
+.app.desk .rgrid4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.app.desk .rcard .ph{aspect-ratio:16/8}
+.app.desk .rcard:hover .ph{box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}
+.app.desk .hrow.dishes{padding:0 24px}
+.app.desk .dcard{width:168px}
+/* ── C-6c (MOCKUP-capp-desktop-D3 r3 frames 2a/2b/3, approved; advisor calls 1–8) ── the store page: the wide hero with the logo over
+   its edge, identity + tools (Delivery/Pickup, fee/ETA cells, «Buscar en»), the sticky category rail beside two-column cards, the
+   v6 cart aside with the leaders' header; the item dialog in two panes from 1100 px (the v6 520 px one below) */
+.app.desk .store-main{overflow-y:auto;min-height:0}
+.app.desk .shero{position:relative;max-width:1040px;margin:16px auto 0;width:100%;padding:0 24px}
+.app.desk .shero .hero{height:240px;aspect-ratio:auto;border-radius:16px;overflow:hidden;position:relative}
+.app.desk .shero .hero img{width:100%;height:100%;object-fit:cover;object-position:center;display:block}
+.app.desk .shero .avatar{position:absolute;left:48px;bottom:-26px;width:72px;height:72px;box-shadow:0 0 0 4px var(--bg),0 1px 4px rgba(0,0,0,.18)}
+.app.desk .sinfo{max-width:1040px;margin:0 auto;width:100%;padding:36px 24px 0;display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:12px 32px;align-items:start}
+.app.desk .sinfo .brandname{font-size:30px;letter-spacing:-.02em}
+.app.desk .sinfo .facts{font-size:14px;margin-top:6px}
+.app.desk .sinfo .closednote{margin-top:10px}
+.app.desk .sinfo .tools{display:flex;flex-direction:column;gap:10px}
+.app.desk .sinfo .toolrow{display:flex;align-items:center;gap:10px}
+.app.desk .sinfo .seg{width:200px;flex:none}
+.app.desk .cells{flex:1;display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.app.desk .cells.one{grid-template-columns:1fr}
+.app.desk .cells div{padding:10px 14px;text-align:center}
+.app.desk .cells div+div{border-left:1px solid var(--line)}
+.app.desk .cells b{display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.app.desk .cells span{font-size:12px;color:var(--mute)}
+.app.desk .cells .free{color:var(--pop)}
+.app.desk .cells .infobtn{margin:-8px -8px -8px -2px}
+.app.desk .ssearch{height:40px;display:flex;align-items:center;gap:10px;padding:0 14px;border:0;border-radius:999px;background:var(--surf);color:var(--mute);font:500 14px var(--sans);text-align:left;width:100%}
+.app.desk .ssearch svg.i{width:18px;height:18px}
+.app.desk .sgrid{max-width:1040px;margin:20px auto 0;width:100%;padding:0 24px 40px;display:grid;grid-template-columns:220px minmax(0,1fr);gap:0 32px;align-items:start}
+.app.desk .catnav{position:sticky;top:16px;display:flex;flex-direction:column;gap:2px;padding-top:4px}
+.app.desk .catnav h3{margin:0;font:700 13px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--mute);padding:8px 12px 10px}
+.app.desk .catnav button{height:40px;border:0;background:transparent;text-align:left;padding:0 12px;font:500 15px var(--sans);color:var(--mute);border-left:3px solid transparent;border-radius:0 10px 10px 0}
+.app.desk .catnav button[aria-current="true"]{background:var(--surf);color:var(--ink);font-weight:600;border-left-color:var(--ink)}
+.app.desk .catnav .hours{padding:0 12px 8px;font-size:13px;color:var(--mute);line-height:1.4}
+.app.desk .scontent{min-width:0;display:flex;flex-direction:column;gap:28px;padding-bottom:40px}
+.app.desk .scontent .sec{padding:0}
+.app.desk .icards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding-top:10px}
+.app.desk .icard{position:relative;display:flex;gap:12px;min-height:128px;border:1px solid var(--line);border-radius:14px;padding:14px 0 14px 16px;background:var(--bg);color:var(--ink);overflow:hidden}
+.app.desk .icard:hover{box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px -14px rgba(0,0,0,.28)}
+.app.desk .icard .txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;padding-right:16px;cursor:pointer}
+.app.desk .icard .nm{font-size:15.5px}
+.app.desk .icard .ds{font-size:13.5px;-webkit-line-clamp:2}
+.app.desk .icard .pr{font-size:14.5px}
+.app.desk .icard .thumb{width:128px;height:auto;align-self:stretch;margin:-14px 0}
+.app.desk .icard .thumb .openimg{display:block;width:100%;height:100%;padding:0;border:0;background:transparent}
+.app.desk .icard .thumb img{border-radius:0;height:100%}
+.app.desk .icard .thumb.noimg{width:0}
+.app.desk .icard .qty-overlay{right:10px;bottom:10px}
+.app.desk .icard.sold-out{opacity:.55}
+.app.desk .icard.sold-out .qty-add-btn{display:none}
+.app.desk .icard .pills{display:flex;gap:6px;margin-top:2px}
+/* Codex C-6c r1 #5: the five cards share the width (≤ 150 px each); where they cannot (≥ 110 px), the row scrolls — never clipped */
+.app.desk .hfeat .featured{display:flex;gap:12px;padding-top:10px;overflow-x:auto;scrollbar-width:none;scroll-snap-type:x proximity}
+.app.desk .hfeat .featured::-webkit-scrollbar{display:none}
+.app.desk .featured .card{flex:1 1 0px;min-width:110px;width:auto;max-width:150px;scroll-snap-align:start}
+.app.desk .featured .card.sold-out{opacity:.55}
+.app.desk .featured .card.sold-out .qty-add-btn{display:none}
+.app.desk .featured .card .ph{border-radius:12px}
+.app.desk .featured .card .pr{font-size:14px;font-weight:500;color:var(--mute);margin-top:0}
+/* Codex C-6c r1 #1: 1024–1279 px (the 380 px aside leaves ~600 px): the identity row stacks, the rail narrows, the cards go one column */
+@media (max-width:1279.98px){
+.app.desk .sinfo{grid-template-columns:minmax(0,1fr)}
+.app.desk .sgrid{grid-template-columns:180px minmax(0,1fr);gap:0 24px}
+.app.desk .icards{grid-template-columns:minmax(0,1fr)}
+}
+.app.desk .deskcart{border-left:0}
+.app.desk .deskcart .sheethead{padding:20px 20px 10px}
+.app.desk .deskcart .sheethead h2{font-size:22px}
+.app.desk .deskcart .empty{padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;color:var(--mute);font-size:14.5px;line-height:1.45}
+.app.desk .deskcart .empty b{color:var(--ink);font-size:16px}
+.app.desk .deskcart .cnote{margin:0 20px;padding:12px 14px;border-radius:12px;background:var(--surf);font-size:13.5px;line-height:1.4;color:var(--mute)}
+.app.desk .deskcart .cnote b{color:var(--ink);font-weight:600}
+.app.desk .detail-modal h2.detail-name,.app.desk .detail-modal p.detail-desc{margin:0}
+.app.desk .detail-modal.wide .dbody{flex:1;min-height:0;overflow-y:auto}
+.app.desk .detail-modal.wide .dscroll{flex:none;overflow:visible}
+.app.desk .detail-modal.wide .lgtag{display:none}
+/* ✕ follows the heading in the DOM (the next Tab stop) and sits in the header's slot: below the v6 drag handle (8+5+8 px) here, at the
+   header's own 8 px from 1100 px (no handle) */
+.detail-close-slot{width:36px;height:36px;flex-shrink:0}
+.app.desk .detail-modal.wide .detail-body .detail-close{position:absolute;left:16px;top:21px;z-index:6}
+@media (min-width:1100px){
+.app.desk .detail-modal.wide{width:880px;top:40px;bottom:40px;display:grid;grid-template-rows:auto minmax(0,1fr) auto}
+.app.desk .detail-modal.wide .detail-drag-handle{display:none}
+.app.desk .detail-modal.wide .detail-body .detail-close{top:8px}
+.app.desk .detail-modal.wide .detail-header{grid-row:1}
+.app.desk .detail-modal.wide .dbody{grid-row:2;display:grid;grid-template-columns:380px minmax(0,1fr);min-height:0;overflow:hidden}
+.app.desk .detail-modal.wide .dbody.nophoto{grid-template-columns:minmax(0,1fr)}
+.app.desk .detail-modal.wide .dbody.nophoto .dphoto{display:none}
+.app.desk .detail-modal.wide .dphoto{background:var(--surf);position:relative;border-right:1px solid var(--line)}
+.app.desk .detail-modal.wide .dphoto .detail-photo{position:absolute;inset:0;aspect-ratio:auto}
+.app.desk .detail-modal.wide .dphoto .lgtag{display:block;position:absolute;left:16px;top:16px;padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.92);color:#0D1424;font:700 12px var(--rhd)}
+.app.desk .detail-modal.wide .dscroll{overflow-y:auto;min-height:0}
+.app.desk .detail-modal.wide .detail-body{padding:22px 24px 18px}
+.app.desk .detail-modal.wide .detail-name{font-size:26px}
+.app.desk .detail-modal.wide .detail-cat-label{margin:18px 24px 0}
+.app.desk .detail-modal.wide .detail-extras-list{padding:0 24px}
+.app.desk .detail-modal.wide .detail-cta-bar{grid-row:3;justify-content:flex-end}
+.app.desk .detail-modal.wide .detail-cta{flex:0 0 300px}
+}
+/* ── C-6d (MOCKUP-capp-desktop-D3 r3 frames 4a/4b, approved; advisor calls 1–6) ── the desktop checkout: its own bar («Volver a la
+   tienda» · the centred Sherpa lock · «Pago seguro»), the page H1 in column A, column B (sticky) = store card → CTA → the guest's next
+   step → «Tu pedido» (a box, open by default) → the fine print */
+.app.desk .ckbar{grid-column:1/-1;height:60px;display:flex;align-items:center;border-bottom:1px solid var(--line);margin:0 -24px;padding-inline:24px;position:relative}
+.app.desk .ckbar .backtxt{min-height:44px;padding:0 12px 0 6px;border:0;background:transparent;color:var(--ink);display:inline-flex;align-items:center;gap:2px;font:600 15px var(--sans)}
+.app.desk .ckbar .lock{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;font:700 19px/1 var(--rhd);letter-spacing:-.02em}
+.app.desk .ckbar .lock svg{width:22px;height:22px}
+.app.desk .ckbar .sec-lock{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--mute)}
+.app.desk .ckbar .sec-lock svg.i{width:16px;height:16px}
+.app.desk .flow .col-a .fsec{padding-inline:0}
+.app.desk .flow .col-a .fsec:first-of-type{padding-top:28px}
+.app.desk .flow .col-a>.flowtitle{margin:28px 0 0;font:700 28px/1.15 var(--rhd);letter-spacing:-.02em}
+.app.desk .flow .col-b{padding-top:28px;display:flex;flex-direction:column;gap:14px}
+.app.desk .flow .col-b>.fsec{padding:0}
+.app.desk .storecard{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:14px}
+.app.desk .storecard .lg{width:40px;height:40px;border-radius:50%;background:#fff;box-shadow:0 0 0 1px var(--line);display:flex;align-items:center;justify-content:center;font:700 14px var(--rhd);color:#1B2A24;flex:none;overflow:hidden}
+.app.desk .storecard .lg img{width:28px;height:auto;display:block}
+.app.desk .storecard .t{flex:1;min-width:0}
+.app.desk .storecard .t b{display:block;font-size:15px;font-weight:600}
+.app.desk .storecard .t span{display:block;font-size:13px;color:var(--mute)}
+.app.desk .osum.box{border:1px solid var(--line);border-radius:14px;padding:4px 16px 8px}
+.app.desk .osum .toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;border:0;padding:12px 0;background:transparent;font:600 15px var(--sans);color:var(--ink);text-align:left}
+.app.desk .osum .toggle .tt span{font-weight:500;color:var(--mute);font-size:14px}
+.app.desk .osum .toggle svg.i{width:18px;height:18px;color:var(--mute)}
+.app.desk .osum .lines{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.app.desk .osum .lines .osline{padding:10px 0}
+.app.desk .osum.box .ostot{border-top:1px solid var(--line);margin-top:4px;padding-top:8px}
+.app.desk .flow .col-b .finenote{font-size:12.5px;color:var(--mute);line-height:1.45;padding:0 2px;margin:0}
+.app.desk .flow .col-b .finenote a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.app.desk .guestline{padding:12px 14px;border-radius:12px;background:var(--surf);font-size:13.5px;line-height:1.45;color:var(--mute)}
+.app.desk .guestline b{color:var(--ink);font-weight:600}
+/* C-6d (frame 5): the desktop order panel reads left-aligned (the phone centres its title because its sheet is narrow); the «new»
+   status line carries an inline centre from the shared renderer, hence the one !important */
+.app.desk .mk-sheet .mk-title,.app.desk .mk-sheet .mk-window{text-align:left}
+.app.desk .mk-sheet .mk-status{text-align:left!important}
+/* ── C-2 (MOCKUP-capp-desktop-D3 r3 §9.2, approved; advisor rulings 11-02): the post-delivery rating sheet (phone) / 520 px modal (desk) —
+   the restaurant 1–5, each purchased dish's thumbs, the delivery thumbs, an optional comment; its entries on the delivered order
+   screen and the Pedidos past rows */
+.rate{display:flex;flex-direction:column;gap:16px;padding:4px 20px 8px}
+.rate h2{font:700 24px/1.15 var(--rhd);letter-spacing:-.01em;margin:0;outline:none}
+.rate .sub{font-size:14.5px;color:var(--mute);line-height:1.45;margin:-8px 0 0}
+.rate .lbl{display:block;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.rate .lbl .opt{font-weight:500;letter-spacing:0;text-transform:none}
+.stars{display:flex;gap:6px}
+.stars button{width:44px;height:44px;border:0;background:transparent;color:var(--line2);padding:0;display:flex;align-items:center;justify-content:center}
+.stars button svg{width:32px;height:32px;fill:currentColor}
+.stars button.on{color:var(--warn)}
+.app.dark .stars button.on,:root[data-theme="dark"] .app .stars button.on{color:var(--value)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app .stars button.on{color:var(--value)}}
+.stars .word{align-self:center;font-size:14px;font-weight:600;margin-left:6px}
+.rrows{display:flex;flex-direction:column}
+.rrow2{display:flex;align-items:center;gap:12px;min-height:52px;border-top:1px solid var(--line)}
+.rrow2:first-child{border-top:0}
+.rrow2 .t{flex:1;min-width:0;font-size:15px;font-weight:500}
+.thumbs{display:flex;gap:6px}
+.thumbs button{width:40px;height:40px;border-radius:50%;border:1.5px solid var(--line2);background:transparent;color:var(--ink);display:flex;align-items:center;justify-content:center;padding:0}
+.thumbs button svg.i{width:18px;height:18px}
+.thumbs button.on{background:var(--pill);color:var(--pill-ink);border-color:var(--pill)}
+.rate textarea{min-height:76px;border:1px solid var(--line);border-radius:12px;background:var(--surf);padding:10px 14px;font:500 15px var(--sans);color:var(--ink);outline:none;width:100%;resize:none;font-family:inherit;margin-top:8px}
+.rate .fine{font-size:12.5px;color:var(--mute);line-height:1.45;margin:0}
+.rate .acts{display:flex;flex-direction:column;gap:8px}
+.rate .rate-err{margin:0;font-size:14px;color:var(--err)}
+.rate .rate-note{margin:0;font-size:14px;color:var(--mute)}
+.app.desk .sheet.rate-modal{width:520px}
+.rate-cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:54px}   /* the reserved box, «Valorar…» and «Ver tu calificación» share ONE height (Codex C-2 r1 #5) */
+.rate-cta svg{width:18px;height:18px;fill:currentColor}
+.orow{flex-wrap:wrap}
+.orow .rate-line{order:3;flex:1 0 100%;min-height:22px;padding-left:60px;display:flex;align-items:center}
+.orow .rate-line .rate-go{border:0;background:transparent;padding:0;font:600 13px var(--sans);color:var(--acc);display:inline-flex;align-items:center;gap:6px}
+.orow .rate-line .rate-go.mine{color:var(--mute);font-weight:500}
+.orow .rate-line .rating{display:inline-flex;align-items:center;gap:3px;color:var(--ink);font-weight:600}
+.orow .rate-line .rating svg{width:13px;height:13px;fill:currentColor}
+.orow .rate-line .mute{font-size:13px;color:var(--mute)}
+/* ── C-5 (MOCKUP-capp-desktop-D3 r3 §9.6, approved; advisor 11-02): the help sheet, contextual to the order — WhatsApp to the platform's
+   support number (the ticket reasons stay OFF until their states are drawn and Central can show them) */
+.helpsheet{padding:4px 20px 8px;display:flex;flex-direction:column;gap:12px}
+.helpsheet h2{font:700 24px/1.15 var(--rhd);margin:0;outline:none}
+.helpsheet .ctx{font-size:14px;color:var(--mute);margin:0}
+.helpsheet .ctx b{color:var(--ink);font-weight:600}
+.helpsheet .wa{min-height:52px;border-radius:999px;border:0;background:var(--pill);color:var(--pill-ink);font:700 16px var(--sans);display:flex;align-items:center;justify-content:center;gap:8px}
+.helpsheet .wa svg.i{width:20px;height:20px}
+.helpsheet .fine{font-size:12.5px;color:var(--mute);line-height:1.45;margin:0}

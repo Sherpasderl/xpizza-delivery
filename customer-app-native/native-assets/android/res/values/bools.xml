@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PLAN-capp-dark-mode §4: the system bars' icons before any JS — dark icons on the light page; values-night/ flips them -->
+<resources>
+    <bool name="light_bars">true</bool>
+</resources>

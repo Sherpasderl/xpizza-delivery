@@ -59,6 +59,13 @@ function readToml(folder) {
   return { text, tables };
 }
 const mask = (k) => `${k.slice(0, 8)}…${k.slice(-4)}`;
+// the AIza values in the `runtime` block of the deployment(s) published from this folder — what the web build writes into dist/
+const runtimeKeys = (folder) => {
+  const s = new Set();
+  for (const d of JSON.parse(fs.readFileSync(path.join(ROOT, 'platform/sites.json'), 'utf8')).deployments)
+    if (d.folder === folder && d.runtime) for (const m of JSON.stringify(d.runtime).matchAll(KEY_RE)) s.add(m[0]);
+  return [...s].sort();
+};
 
 const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'platform/sites.json'), 'utf8'));
 const folders = [...new Set(manifest.deployments.map((d) => d.folder))];
@@ -71,7 +78,10 @@ for (const folder of folders) {
   const command = t && t.tables.build && t.tables.build.command;
   if (!command) continue;                                   // no build command → Netlify does not scan this site
   scanned += 1;
-  const present = keysIn(tracked(folder).filter((f) => f !== `${folder}/netlify.toml`));
+  // PLAN-capp-desktop-website D-1: a site built by the shell packager's WEB target publishes a GENERATED dist/ that also carries the
+  // app runtime's keys (platform/sites.json `runtime` → capp-runtime.js) — so those values are in the scanned output too
+  const generated = /platform\/native\/package-capp\.js\b.*--target web\b/.test(command) ? runtimeKeys(folder) : [];
+  const present = [...new Set([...keysIn(tracked(folder).filter((f) => f !== `${folder}/netlify.toml`)), ...generated])].sort();
   const env = t.tables['build.environment'] || {};
   const listed = env[SETTING] === undefined ? [] : env[SETTING].split(',').map((s) => s.trim()).filter(Boolean);
   if (EXCEPTIONS[folder]) {
@@ -107,6 +117,12 @@ ok(`no netlify.toml (${tomls.length}) disables scanning or omits by path/key`);
   assert.throws(() => assert.deepStrictEqual([...present, 'AIzaSyC' + '3'.repeat(32)].sort(), present), 'an extra value is caught');
   const t = readToml('xpizza-kitchen');
   assert.ok(t.tables['build.environment'] && t.tables['build.environment'][SETTING], 'the parser reads the real setting');
-  ok('non-vacuity: a planted key is detected; a missing or extra value fails the comparison; the real setting is parsed');
+  // the web-target branch is live, not vacuous: the customer-app site's list includes the runtime keys its dist/ carries
+  const ca = readToml('customer-app');
+  if (ca && /--target web\b/.test((ca.tables.build || {}).command || '')) {
+    const rk = runtimeKeys('customer-app'), listed = ((ca.tables['build.environment'] || {})[SETTING] || '').split(',').filter(Boolean);
+    assert.ok(rk.length >= 1 && rk.every((k) => listed.includes(k)), 'the web-built site omits exactly what its generated dist/ carries');
+  }
+  ok('non-vacuity: a planted key is detected; a missing or extra value fails the comparison; the real setting is parsed; the web-built site\'s generated keys are counted');
 }
 console.log(`secrets-scan-omit: OK (${n})`);

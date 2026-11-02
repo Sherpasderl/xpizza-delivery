@@ -25529,8 +25529,8 @@
   "slice": "s7a1",
   "label": "P2-7: a frozen cart accepts mutations",
   "file": "../customer-app/capp-ui.js",
-  "from": "    function mutate(fn) {\n      if (!orderable || frozenNow()) return false;\n",
-  "to": "    function mutate(fn) {\n      if (!orderable) return false;\n",
+  "from": "      if (!orderable || frozenNow()) return { ok: false };",
+  "to": "      if (!orderable) return { ok: false };",
   "command": [
    "node",
    "--test",
@@ -25539,15 +25539,15 @@
   "kills_with": [
    "a frozen cart rejects «+»"
   ],
-  "repointed": "S7a-2 (2026-10-27): the same guard, re-anchored on the line S7a-2 extended (orderable / frame 13)"
+  "repointed": "S7a-2 (2026-10-27): the same guard, re-anchored on the line S7a-2 extended (orderable / frame 13) · 2026-11-02 (capp, the full light chain): «Volver a pedir» (advisor 11-02) extracted the store's cart writes into createCartCore: the same choke point is now its mutate(fn, orderable), returning { ok:false }"
  },
  {
   "id": "s7a1-36",
   "slice": "s7a1",
   "label": "P2-7: hosted restore drops the persisted mode",
   "file": "../customer-app/capp-ui.js",
-  "from": "if (snapshot && (snapshot.mode === 'pickup' || snapshot.mode === 'delivery')) { S.mode = snapshot.mode;",
-  "to": "if (false) { S.mode = snapshot.mode;",
+  "from": "if (snapshot && (snapshot.mode === 'pickup' || snapshot.mode === 'delivery')) mode = snapshot.mode;",
+  "to": "if (false) mode = snapshot.mode;",
   "command": [
    "node",
    "--test",
@@ -25555,7 +25555,8 @@
   ],
   "kills_with": [
    "the persisted mode is restored"
-  ]
+  ],
+  "repointed": "2026-11-02 (capp, the full light chain): createCartCore's restore returns the mode (mode = snapshot.mode) instead of setting S.mode — the same restore, one owner"
  },
  {
   "id": "s7a1-37",
@@ -25790,8 +25791,8 @@
   "slice": "s7a1",
   "label": "r2 P2-6: a frozen-for-order (recovery) cart is not a lock",
   "file": "../customer-app/capp-ui.js",
-  "from": "return !!(fz.unknown || (fz.frozen && fz.live) || (typeof api.holdsLock",
-  "to": "return !!(fz.unknown || false || (typeof api.holdsLock",
+  "from": "return !!(fz.unknown || (fz.frozen && fz.live) || (typeof a.holdsLock",
+  "to": "return !!(fz.unknown || false || (typeof a.holdsLock",
   "command": [
    "node",
    "--test",
@@ -25799,7 +25800,8 @@
   ],
   "kills_with": [
    "a recovery lock never passes to the shell"
-  ]
+  ],
+  "repointed": "2026-11-02 (capp, the full light chain): createCartCore reads the transport as `a` (the core's api()) instead of the mount's `api`"
  },
  {
   "id": "s7a1-45",
@@ -25918,8 +25920,8 @@
   "slice": "s7a1",
   "label": "r3 #1: a purchased restore keeps the purchased lines in memory",
   "file": "../customer-app/capp-ui.js",
-  "from": "cart.hydrate({ v: 2, lines: [] }); cartGen = null; render(); return { cleared: true };",
-  "to": "cartGen = null; render(); return { cleared: true };",
+  "from": "cart.hydrate({ v: 2, lines: [] }); gen = null; return { cleared: true };",
+  "to": "gen = null; return { cleared: true };",
   "command": [
    "node",
    "--test",
@@ -25927,7 +25929,8 @@
   ],
   "kills_with": [
    "the purchased lines are cleared from memory"
-  ]
+  ],
+  "repointed": "2026-11-02 (capp, the full light chain): createCartCore's restore: the generation is the core's `gen`, the render moved to the caller"
  },
  {
   "id": "s7a1-54",
@@ -26412,8 +26415,8 @@
   "slice": "perf-core",
   "label": "r3.3-F2 r2-2: «Confirmar pedido» (pickup) can place an unavailable line",
   "file": "../customer-app/capp-ui.js",
-  "from": "const ctaOff = (T) => !!need() || soldBlock() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));",
-  "to": "const ctaOff = (T) => !!need() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));",
+  "from": "const ctaOff = (T) => (!hasSlotLock() && !!need()) || soldBlock() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));",
+  "to": "const ctaOff = (T) => (!hasSlotLock() && !!need()) || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));",
   "command": [
    "node",
    "--test",
@@ -26614,8 +26617,8 @@
   "slice": "perf-core",
   "label": "frame 14: the checkout handler proceeds with a sold line",
   "file": "../customer-app/capp-ui.js",
-  "from": "if (act === 'checkout') { if (!orderable || soldBlock()) return;",
-  "to": "if (act === 'checkout') { if (!orderable) return;",
+  "from": "function checkoutTap() { if (!orderable || soldBlock()) return false;",
+  "to": "function checkoutTap() { if (!orderable) return false;",
   "command": [
    "node",
    "--test",
@@ -26926,8 +26929,8 @@
   "slice": "s7a2",
   "label": "browse-only: mutate no longer refuses",
   "file": "../customer-app/capp-ui.js",
-  "from": "      if (!orderable || frozenNow()) return false;",
-  "to": "      if (frozenNow()) return false;",
+  "from": "      if (!orderable || frozenNow()) return { ok: false };",
+  "to": "      if (frozenNow()) return { ok: false };",
   "command": [
    "node",
    "--test",
@@ -26935,7 +26938,8 @@
   ],
   "kills_with": [
    "the handler refuses too (mutate is the choke point)"
-  ]
+  ],
+  "repointed": "2026-11-02 (capp, the full light chain): the same createCartCore move as s7a1-35: browse-only's refusal now lives in the core's mutate(fn, orderable)"
  },
  {
   "id": "s7a2-11",
@@ -27008,8 +27012,8 @@
   "slice": "s7a2",
   "label": "a store entered without verified eligibility",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      if (st === 'enterable' && e && e.body) {",
-  "to": "      if (e && e.body) {",
+  "from": "      if (st === 'enterable' && e && e.body) {\n        S.held = null;",
+  "to": "      if (e && e.body) {\n        S.held = null;",
   "command": [
    "node",
    "--test",
@@ -27574,8 +27578,8 @@
   "slice": "g6",
   "label": "the member token is the one read at sign-in, always (an expired token is sent)",
   "file": "../customer-app/capp-api.js",
-  "from": "      const token = await memberToken(memberOf());",
-  "to": "      const token = (memberOf() || {}).idToken || null;",
+  "from": "      const m = memberOf(), tok = await memberToken(m);",
+  "to": "      const m = memberOf(), tok = (m || {}).idToken || null;",
   "command": [
    "node",
    "--test",
@@ -27583,7 +27587,8 @@
   ],
   "kills_with": [
    "an expired sign-in token is never sent"
-  ]
+  ],
+  "repointed": "Codex promo r5: post() awaits memberToken(m) then rechecks the identity; the mutant still sends the sign-in token as read"
  },
  {
   "id": "g6-11",
@@ -27606,8 +27611,8 @@
   "slice": "g6",
   "label": "Codex G6 r1 #1: a sign-out leaves the mounted checkout's member (and token)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "function dropMember() { memberGen++; S.member = null; if (S.store) S.store.ui.setMember(null); }",
-  "to": "function dropMember() { memberGen++; S.member = null; }",
+  "from": "function dropMember() { memberGen++; clearTokenTimers(); S.member = null; if (S.store) S.store.ui.setMember(null); identityChanged(); }",
+  "to": "function dropMember() { memberGen++; clearTokenTimers(); S.member = null; identityChanged(); }",
   "command": [
    "node",
    "--test",
@@ -27616,7 +27621,8 @@
   ],
   "kills_with": [
    "after a sign-out the mounted checkout sends no member token"
-  ]
+  ],
+  "repointed": "Codex promo r3: dropMember also cancels the token timers (clearTokenTimers); the mutant still drops only the store hand-off · 2026-11-02 (capp, the full light chain): Pedidos r1 added identityChanged() to dropMember; the mutation still drops ONLY the mounted store's setMember(null)"
  },
  {
   "id": "g6-13",
@@ -30733,8 +30739,8 @@
   "slice": "s7a2",
   "label": "frame 15: «Cerrar» keeps the row held",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (a === 'menu-close') { S.held = null; closeLayer();",
-  "to": "if (a === 'menu-close') { closeLayer();",
+  "from": "if (a === 'menu-close') { S.held = null; S.reorder = null; S.carry = null; cancelRoute(); closeLayer();",
+  "to": "if (a === 'menu-close') { S.reorder = null; S.carry = null; cancelRoute(); closeLayer();",
   "command": [
    "node",
    "--test",
@@ -30744,7 +30750,8 @@
   ],
   "kills_with": [
    "«Cerrar» releases the row"
-  ]
+  ],
+  "repointed": "2026-11-02 (capp, the full light chain): «Volver a pedir» (Codex VP r1 #2) also clears S.reorder / S.carry on «Cerrar»; the mutation still drops ONLY S.held"
  },
  {
   "id": "s7a2-25",
@@ -30769,8 +30776,8 @@
   "slice": "s7a2",
   "label": "frame 17: no city ⇒ a bare number",
   "file": "../customer-app/capp-home.js",
-  "from": "`${nLive} restaurantes`)",
-  "to": "`${nLive}`)",
+  "from": "(c ? `${nLive} en ${esc(c)}` : `${nLive} restaurantes`)",
+  "to": "(c ? `${nLive} en ${esc(c)}` : `${nLive}`)",
   "command": [
    "node",
    "--test",
@@ -30780,7 +30787,8 @@
   ],
   "kills_with": [
    "F17"
-  ]
+  ],
+  "repointed": "2026-11-02 (capp, the full light chain): C-6b's desk «Todos» sub repeats the text (without esc), making the old anchor ambiguous (2x): the phone line, uniquely, by its esc(c) arm"
  },
  {
   "id": "s7a2-27",
@@ -31212,8 +31220,8 @@
   "slice": "g7",
   "label": "the runtime.signup endpoint set drops setPromos (the host never builds its URL)",
   "file": "../customer-app/capp-signup-api.js",
-  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos']);",
-  "to": "'completeProfile', 'redeemSignupGrant']);",
+  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder']);",
+  "to": "'completeProfile', 'redeemSignupGrant', 'getMyOrders', 'getMyRating', 'rateOrder']);",
   "command": [
    "node",
    "--test",
@@ -31222,7 +31230,8 @@
   ],
   "kills_with": [
    "SU-endpoints"
-  ]
+  ],
+  "repointed": "2026-11-02 (capp, the full light chain): ENDPOINTS grew getMyOrders (Pedidos) and getMyRating / rateOrder (C-2); the mutation still drops ONLY setPromos"
  },
  {
   "id": "g7-17",
@@ -33800,6 +33809,890 @@
   "command": [
    "node",
    "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "dsk-01",
+  "slice": "desk",
+  "label": "the desktop class is set only on a later crossing, not at mount (pop-in)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    if (view) app.classList.toggle('desk', view.desk());   // D-2: BEFORE the first paint (no pop-in)\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "desk not set synchronously at mount"
+  ]
+ },
+ {
+  "id": "dsk-02",
+  "slice": "desk",
+  "label": "the store's deskcart aside is never emitted (the cart unreachable on desktop)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "${S.desk ? `<aside class=\"deskcart\" aria-label=\"Tu pedido\">${cartInner(true)}</aside>` : ''}</div>${pill}`;   // v6 :1628",
+  "to": "</div>${pill}`;   // v6 :1628",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "no deskcart aside on the desktop store"
+  ]
+ },
+ {
+  "id": "dsk-03",
+  "slice": "desk",
+  "label": "syncPill no longer refreshes the desk aside (an item edit leaves it stale)",
+  "file": "../customer-app/capp-ui.js",
+  "from": " const dc = app.querySelector('.deskcart'); if (dc) { dc.innerHTML = cartInner(true); applyOrderable(); } }   // v6 :1726",
+  "to": " }   // v6 :1726",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the dish sheet's edit must refresh the aside"
+  ]
+ },
+ {
+  "id": "dsk-04",
+  "slice": "desk",
+  "label": "desktop checkout DUPLICATES «Tu pedido» (col-b added, not moved)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "${S.desk ? pago : pedido + pago}</div>",
+  "to": "${pedido + pago}</div>",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "not also in col-a",
+   "exactly once"
+  ]
+ },
+ {
+  "id": "dsk-05",
+  "slice": "desk",
+  "label": "a breakpoint crossing never reaches the mounted store (setView a no-op)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        S.desk = d; render();\n",
+  "to": "        S.desk = d;\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the aside is gone",
+   "desktop again"
+  ]
+ },
+ {
+  "id": "dsk-06",
+  "slice": "desk",
+  "label": "«Pedidos» dropped again (the owner put it in launch scope, 11-01) — the orders screen and its entries vanish",
+  "file": "../customer-app/capp-home.js",
+  "from": "  const ORDERS_SCREEN = true;   // owner 2026-11-01: «Pedidos» is in launch scope",
+  "to": "  const ORDERS_SCREEN = false;   // owner 2026-11-01: «Pedidos» is in launch scope",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6b bar: brand",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DN-1: Inicio · Pedidos · Cuenta"
+  ],
+  "repointed": "2026-11-02 (capp, the full light chain): the original bug (offering Pedidos with NO orders screen) cannot exist since the owner put «Pedidos» in launch scope (ORDERS_SCREEN true, 11-01) — re-pointed to its inverse: dropping the in-scope screen must be caught by the Pedidos cells"
+ },
+ {
+  "id": "dsk-07",
+  "slice": "desk",
+  "label": "the signup sheet's host ignores the viewport",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": " host.classList.toggle('desk', app.classList.contains('desk')); };",
+  "to": " };",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the signup host misses desk"
+  ]
+ },
+ {
+  "id": "dsk-08",
+  "slice": "desk",
+  "label": "the view reports every raw crossing (no debounce / settle)",
+  "file": "../customer-app/capp-view.js",
+  "from": "timer = T.setTimeout(settle, settleMs); };",
+  "to": "settle(); };",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "ONE notification"
+  ]
+ },
+ {
+  "id": "dsk-09",
+  "slice": "desk",
+  "label": "Codex D-2 r1 #1: a crossing drops the aside's focus to BODY (no visible equivalent)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!d && fromAside) focusTo($('cart-bar'));",
+  "to": "if (!d && fromAside) void 0;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "focus dropped to BODY"
+  ]
+ },
+ {
+  "id": "dsk-10",
+  "slice": "desk",
+  "label": "Codex D-2 r1 #2: the aside «Editar» returns focus to the hidden cart bar",
+  "file": "../customer-app/capp-ui.js",
+  "from": "returnTo = fromAside ? descOf(t) : { elId: 'cart-bar', ds: { act: 'pill' } };",
+  "to": "returnTo = { elId: 'cart-bar', ds: { act: 'pill' } };",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "focus returned to"
+  ]
+ },
+ {
+  "id": "dsk-11",
+  "slice": "desk",
+  "label": "Codex D-2 r1 #3: the aside is left out of the browse-only disabled state",
+  "file": "../customer-app/capp-ui.js",
+  "from": "    const CART_HOSTS = ['#layer', '.deskcart'];",
+  "to": "    const CART_HOSTS = ['#layer'];",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "enabled aside controls in browse-only"
+  ]
+ },
+ {
+  "id": "rt-01",
+  "slice": "route",
+  "label": "the reflection drops the search (strips return evidence)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "win.history.replaceState(win.history.state, '', path + win.location.search + win.location.hash);",
+  "to": "win.history.replaceState(win.history.state, '', path);",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the search must survive",
+   "memory mode"
+  ]
+ },
+ {
+  "id": "rt-02",
+  "slice": "route",
+  "label": "hydration runs despite a payment return owning the boot",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();",
+  "to": "    if (routing) hydrate(); else reflect();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the deep-linked store was entered while a return owns the boot",
+   "the return owner handles the boot",
+   "memory mode"
+  ]
+ },
+ {
+  "id": "rt-03",
+  "slice": "route",
+  "label": "a cold /pago skips the lock check (straight to the checkout tap)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (step === 'pago') { if (lockedNow()) { recoverLocked(); return true; }",
+  "to": "if (step === 'pago') {",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "no checkout over a lock",
+   "never the checkout over an unreadable lock",
+   "a frozen cart",
+   "only status reads"
+  ]
+ },
+ {
+  "id": "rt-04",
+  "slice": "route",
+  "label": "unverified is treated as absent (any not-enterable store ⇒ Inicio)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (st === 'gone' || (st === 'unknown' && v.verified && !v.partial && !v.pending)) {",
+  "to": "if (st !== 'enterable') {",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "unverified must keep the requested route",
+   "a cold store link must enter that store"
+  ]
+ },
+ {
+  "id": "rt-05",
+  "slice": "route",
+  "label": "a user navigation does not cancel a pending cold link",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "a cancelled cold link entered"
+  ],
+  "equivalent": true,
+  "why": "Codex D-4a r2: every user navigation now reaches onShow only AFTER a cancel — a DOM gesture (pointerdown/click/keydown/input) is cancelled by the capture-phase onUserIntent before any handler runs (rt-15), a device Back by onPopReflect (rt-11), a tap by enter() and menu-close by its own cancel; so no input can make this line differ. Kept as defence-in-depth for a future non-gesture navigation."
+ },
+ {
+  "id": "rt-06",
+  "slice": "route",
+  "label": "a cold dish is resolved against the mounted presentation body",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const fresh = st.adopt || (st.ui.orderable() ? st.body : null);",
+  "to": "const fresh = st.adopt || st.body;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "never opened on the unverified presentation body"
+  ]
+ },
+ {
+  "id": "rt-07",
+  "slice": "route",
+  "label": "a blocked device Back leaves the URL on the previous entry's path",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    const onPopReflect = () => { if (dead) return; cancelRoute(); reflect(); };",
+  "to": "    const onPopReflect = () => { if (dead) return; cancelRoute(); };",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "a blocked back must leave the URL on the locked screen"
+  ]
+ },
+ {
+  "id": "rt-08",
+  "slice": "route",
+  "label": "format lets an id containing '/' through (two id domains)",
+  "file": "../customer-app/capp-routes.js",
+  "from": "s !== '..' && !s.includes('/') && !BAD.test(s);",
+  "to": "s !== '..' && !BAD.test(s);",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-routes.test.mjs"
+  ],
+  "kills_with": [
+   "Missing expected exception",
+   "a decoded"
+  ]
+ },
+ {
+  "id": "rt-09",
+  "slice": "route",
+  "label": "the reflection pushes history entries",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "win.history.replaceState(win.history.state, '', path + win.location.search + win.location.hash);",
+  "to": "win.history.pushState(win.history.state, '', path + win.location.search + win.location.hash);",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "reflection must never add history entries"
+  ]
+ },
+ {
+  "id": "rt-10",
+  "slice": "route",
+  "label": "adoption tears down a LOCKED mount",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (st.ui.lockedNow && st.ui.lockedNow()) return true;\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "adoption tore down a LOCKED mount"
+  ]
+ },
+ {
+  "id": "rt-11",
+  "slice": "route",
+  "label": "Codex D-4a r1 P1: a device Back does not cancel a held cold link",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    const onPopReflect = () => { if (dead) return; cancelRoute(); reflect(); };",
+  "to": "    const onPopReflect = () => { if (dead) return; reflect(); };",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "a Back did not cancel the held cold link"
+  ]
+ },
+ {
+  "id": "rt-12",
+  "slice": "route",
+  "label": "Codex D-4a r1 P2: a cold /pago on a presentation menu drops its intent",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (step === 'pago' && !st.ui.orderable() && !(st.ui.lockedNow && st.ui.lockedNow())) return;\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the fresh menu must run the pending /pago"
+  ]
+ },
+ {
+  "id": "rt-13",
+  "slice": "route",
+  "label": "Codex D-4a r1 P2: a locked cold dish opens on the old mount (stale prices)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        if (st.adopt && st.ui.lockedNow && st.ui.lockedNow()) { pendingRoute = p; return; }\n        const cur = st.adopt ? adoptInto(st) : st;",
+  "to": "        const cur = st;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the dish opened on the OLD mount"
+  ]
+ },
+ {
+  "id": "rt-14",
+  "slice": "route",
+  "label": "Codex D-4a r1 P2: hydration gated on UI flags (an ownerless resumed return hydrates)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();",
+  "to": "    if (routing && !S.ret && !S.neutral) hydrate(); else reflect();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "a resumed (ownerless) return let the deep link hydrate"
+  ]
+ },
+ {
+  "id": "rt-15",
+  "slice": "route",
+  "label": "Codex D-4a r2: a user gesture inside the store does not cancel a pending cold link",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    const onUserIntent = () => { if (!dead && (pendingRoute || awaitOrderRoute)) cancelRoute(); };",
+  "to": "    const onUserIntent = () => {};",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=D-4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the fresh menu opened the checkout over the user's search",
+   "the cancelled dish link opened after the lock cleared"
+  ],
+  "repointed": "2026-11-02 (capp, the full light chain): Pedidos r3 P2 extended the cancel to the deferred /r/{rid}/pago intent (awaitOrderRoute); the mutation still removes the whole gesture cancel"
+ },
+ {
+  "id": "pf-01",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: the guest promo pill guard inverted (a member sees it, a guest does not)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "cfg.promoFree === true && a && a !== 'member' ?",
+  "to": "cfg.promoFree === true && a && a === 'member' ?",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the guest pill is missing"
+  ]
+ },
+ {
+  "id": "pf-02",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: the member «Envío gratis» branch removed (a member on a promo store reads «Envío desde»)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "${cfg.promoFree === true && authOf() === 'member' ? '<span class=\"free\">Envío gratis</span>'",
+  "to": "${false ? '<span class=\"free\">Envío gratis</span>'",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the member's «Envío gratis» is missing"
+  ]
+ },
+ {
+  "id": "pf-03",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: the feeinfo DIRECTORY fallback removed (the store ⓘ prints «undefined km»)",
+  "file": "../customer-app/capp-ui.js",
+  "from": ": { from_cents: cfg.feeFromCents, max_km: cfg.zoneKm };",
+  "to": ": q;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the feeinfo sheet must fall back to the directory"
+  ]
+ },
+ {
+  "id": "pf-04",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: the unresolved RESERVATION removed (the pill pops in when the guest resolves)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "a && a !== 'member' ? `<div class=\"pills hdpills\">",
+  "to": "a === 'guest' ? `<div class=\"pills hdpills\">",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the unresolved pill must be reserved"
+  ]
+ },
+ {
+  "id": "pf-05",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: the in-place header patch is a no-op (a resolved auth never reaches the mounted store's header)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      const top = $('top'), info = top && top.querySelector('.info'); if (!info) return;\n      const old = info.querySelector('.hdpills'), html = pillsHtml();",
+  "to": "      return;\n      const old = null, html = '';",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the guest pill is now shown",
+   "the guest pill is shown"
+  ],
+  "repointed": "Codex promo r1: authChanged's body moved into patchAuth (shared with setMember's same-identity path)"
+ },
+ {
+  "id": "pf-06",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r1 #1 reverted: the RAW session counts as the member (an unadmitted session gets «Envío gratis»)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      return v === 'guest' ? 'guest' : 'unresolved';",
+  "to": "      return v === 'guest' || v === 'member' ? v : 'unresolved';",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "«Envío gratis» from an unadmitted session"
+  ],
+  "repointed": "advisor home ruling: the shell's getter became the admitted one (admittedAuth), so the module's own guard is killed by a direct CappUI host cell"
+ },
+ {
+  "id": "pf-07",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r1 #2 reverted: the same identity re-renders the store (dropMember on unresolved → guest resets the page)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if ((!prevCtx && !memberCtx) || (prevCtx && memberCtx && prevCtx.uid != null && prevCtx.uid === memberCtx.uid)) { patchAuth(); return; }",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the real auth callback re-rendered the store"
+  ]
+ },
+ {
+  "id": "pf-08",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r1 #2 reverted: a new identity on the store page re-renders WITHOUT keeping scroll / focus",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        if (S.screen === 'store') {\n          if ((!prevCtx",
+  "to": "        if (false) {\n          if ((!prevCtx",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the scroll was reset when the member arrived",
+   "the real auth callback re-rendered the store"
+  ]
+ },
+ {
+  "id": "pf-09",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo (advisor home ruling): Inicio's promo reads the RAW session (an unadmitted session gets «Envío gratis» on the home cards)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "promoAuth: admittedAuth(),",
+  "to": "promoAuth: authNow(),",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=home promo",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "«Envío gratis» on Inicio for a session the checkout does not admit"
+  ]
+ },
+ {
+  "id": "pf-10",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r2 P2-A reverted in the SHELL: the claim ignores the token (Inicio claims «Envío gratis» for a member whose requests carry none)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "(S.member ? (usable(S.member) ? 'member' : 'unresolved') :",
+  "to": "(S.member ? 'member' :",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo r2 P2-A",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "Inicio claims «Envío gratis» for a member whose requests carry no token"
+  ],
+  "repointed": "Codex promo r3: the shell's predicate is usable() (CappApi.tokenUsable, with expiry)"
+ },
+ {
+  "id": "pf-11",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r2 P2-A reverted in CappUI: the store claim ignores the token",
+  "file": "../customer-app/capp-ui.js",
+  "from": "return A && typeof A.tokenUsable === 'function' && A.tokenUsable(memberCtx, now().getTime()) ? 'member' : 'unresolved'; }",
+  "to": "return 'member'; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "an admitted member WITHOUT a usable token claims nothing"
+  ],
+  "repointed": "Codex promo r3: CappUI reads CappApi.tokenUsable (with expiry)"
+ },
+ {
+  "id": "pf-12",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r2 P2-B reverted: the fee line is replaced wholesale (the focused ⓘ node is destroyed)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (ib && nib && ib.parentElement && nib.parentElement) {",
+  "to": "      if (false) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo r2 P2-B",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the focused ⓘ was destroyed"
+  ]
+ },
+ {
+  "id": "pf-13",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r2 P2-A: the token retry removed (a token that arrives later never upgrades the claim)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (usable(S.member)) armExpiry(); else retryToken(gen, uid, 0);",
+  "to": "      if (usable(S.member)) armExpiry();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo r2 P2-A",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the token that arrived later never upgraded the claim"
+  ],
+  "repointed": "Codex promo r3: admission arms the expiry when usable, else the retry"
+ },
+ {
+  "id": "pf-14",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r3 reverted: tokenUsable ignores exp (an EXPIRED token claims «Envío gratis» and is sent)",
+  "file": "../customer-app/capp-api.js",
+  "from": "    return e !== null && e > n + TOKEN_SKEW_MS && e <= n + TOKEN_MAX_AHEAD_MS ? t : null;",
+  "to": "    return e !== null ? t : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo r3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "an EXPIRED token still authorizes «Envío gratis»"
+  ],
+  "repointed": "Codex promo r4: tokenUsable also caps at now + 48 h; the mutant still ignores the expiry (and the cap)"
+ },
+ {
+  "id": "pf-15",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r3 reverted: the ONE setter never notifies (a recovered token leaves guest pricing on screen)",
+  "file": "../customer-app/capp-api.js",
+  "from": "    if (typeof m.onTokenChange === 'function') { try { m.onTokenChange(m); } catch (_) {} }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo r3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the token recovered (the header went out) but the store still shows guest pricing"
+  ]
+ },
+ {
+  "id": "pf-16",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r3 reverted: a sign-out leaves the token timers pending",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    function dropMember() { memberGen++; clearTokenTimers();",
+  "to": "    function dropMember() { memberGen++;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo r3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "a token timer survived the sign-out"
+  ]
+ },
+ {
+  "id": "pf-17",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r4 #1 reverted: the identity is never rechecked after the token await (a signed-out member's token is accepted and SENT)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const current = () => memberOf() === m;",
+  "to": "      const current = () => true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo r4",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the signed-out member's token was sent",
+   "a token was ACCEPTED for a signed-out member"
+  ]
+ },
+ {
+  "id": "pf-18",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r4 #2 reverted: an early expiry callback withdraws at once (no re-arm)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        if (usable(S.member)) { armExpiry(); return; }",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo r4",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the early callback did not re-arm",
+   "an early expiry callback withdrew a still-usable claim"
+  ]
+ },
+ {
+  "id": "pf-19",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r4 #3 reverted: the transport keeps a SECOND clock (apiOpts.now)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "...(opts.apiOpts || {}), now: () => now().getTime() });",
+  "to": "...(opts.apiOpts || {}) });",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=ONE CLOCK",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "the transport reads a SECOND clock"
+  ]
+ },
+ {
+  "id": "pf-20",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r4 #4 reverted: the JWT structure check is skipped (malformed tokens pass)",
+  "file": "../customer-app/capp-api.js",
+  "from": "if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null;",
+  "to": "if (parts.length < 2) return null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=member token r4",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "must be unusable"
+  ]
+ },
+ {
+  "id": "pf-21",
+  "slice": "promo",
+  "label": "PLAN-capp-store-promo-feeinfo: Codex promo r5 reverted: post() sends memberToken's result without the post-await identity check",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const token = memberOf() === m ? tok : null;",
+  "to": "      const token = tok;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=store promo r5",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "Ana's token went out after her sign-out",
+   "Ana's token went out after the switch"
+  ]
+ },
+ {
+  "id": "ng-01",
+  "slice": "native",
+  "label": "APP-TRAIN obligation reverted: the packager builds a capp bundle without guestCardOnly although 3a's capp-guest server is in the commit",
+  "file": "../platform/native/package-capp.js",
+  "from": "    if (guestServer) throw new Error(",
+  "to": "    if (false) throw new Error(",
+  "command": [
+   "node",
+   "../platform/native/package-capp.test.js"
+  ],
+  "kills_with": [
+   "packaging must REFUSE"
   ]
  }
 ]

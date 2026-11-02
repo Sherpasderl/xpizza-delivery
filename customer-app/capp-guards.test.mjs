@@ -7,7 +7,8 @@
 //      package.json test chain (whose dependencies stay identical)
 // 3 and 4 are proven over the capp lane's OWN commit range, never the live tree (the portal/slice2-untouched precedent): at an
 // assembled tip, other approved slices legitimately change those files, and that is not this lane's change.
-//   RANGE: BASE 2ce3198d → CAPP_TIP 097471a4 (capp G7 batch + the S3c module inverse + its regenerated form-source inventory). A later capp commit that touches the live
+//   RANGE: BASE 2ce3198d → CAPP_TIP 927acf22 (capp G7 batch + the S3c module inverse + its regenerated form-source inventory + the
+//   native shell N1–N2 + readAvailability). A later capp commit that touches the live
 //   forms or xpizza-functions/ re-points CAPP_TIP to itself. Fails closed: both resolve, BASE ⊑ CAPP_TIP ⊑ HEAD, git answers.
 //   SELF-ENFORCING (Codex capp-tail r1 P2): any commit after CAPP_TIP that touches customer-app/ FAILS the range until CAPP_TIP is
 //   re-pointed — a later capp commit can never escape the scope checks. This file alone is exempt (a re-pin cannot name itself);
@@ -28,7 +29,7 @@ import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = '2ce3198d';
-const CAPP_TIP = '6e9f6e93';
+const CAPP_TIP = 'd17a5a4a';   // DRYRUN (2e): the native line's own pin; OPEN for capp — main's 5 capp commits (6e9f6e93 line) are not ⊂ d17a5a4a
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 const isAncestor = (a, b) => { try { git('merge-base', '--is-ancestor', a, b); return true; } catch (_) { return false; } };
 // the files tools/sync-client.js copies INTO customer-app/ — read from sync-client itself (run against a recording fs; nothing written)
@@ -60,8 +61,16 @@ const LEAK = /x_pizza|la_musa|xpizza|lamusa|X\.? ?Pizza|La Musa/i;
 const SYNCED = 'sherpa-client.js';
 // capp-confirm-quote.js (S2a, PLAN-capp-S2-r4 §5.1 Q6) is a BYTE-IDENTICAL port of the forms' form-confirm-quote.js — its only
 // restaurant mention is a comment about the forms' chrome. Exempt ONLY while it stays identical to BOTH form copies.
-const PORTED = { 'capp-confirm-quote.js': ['xpizza-orders/form-confirm-quote.js', 'la-musa-orders/form-confirm-quote.js'] };
-const codeFiles = () => readdirSync(join(ROOT, 'customer-app')).filter((f) => /\.(m?js|html|css)$/.test(f) && !/\.test\.m?js$/.test(f) && f !== SYNCED && !(f in PORTED));
+// «Pedido recibido» (advisor rulings 2026-11-01, one source): the tracker's words and S5's window / order number, byte copies
+const PORTED = { 'capp-confirm-quote.js': ['xpizza-orders/form-confirm-quote.js', 'la-musa-orders/form-confirm-quote.js'],
+  'status-view.js': ['xpizza-track/status-view.js', 'xpizza-orders/status-view.js', 'la-musa-orders/status-view.js'],
+  'form-live-status.js': ['xpizza-orders/form-live-status.js', 'la-musa-orders/form-live-status.js'],
+  'form-order-number.js': ['xpizza-orders/form-order-number.js', 'la-musa-orders/form-order-number.js'] };
+// PLAN-avail-identity: EVERY file tools/sync-client.js writes into customer-app/ (sherpa-client.js, avail-key.js,
+// availability-reducer.js) is another surface's canonical copy — exempt from the literal scan, and pinned byte-identical to its
+// source by the range guard below (syncedIntoApp), so the exemption can never hide an edit. Read lazily (syncedIntoApp is below).
+const syncedNames = () => new Set(syncedIntoApp().map(({ dst }) => dst.replace(/^customer-app\//, '')));
+const codeFiles = () => { const sy = syncedNames(); return readdirSync(join(ROOT, 'customer-app')).filter((f) => /\.(m?js|html|css)$/.test(f) && !/\.test\.m?js$/.test(f) && f !== SYNCED && !sy.has(f) && !(f in PORTED)); };
 
 test('no restaurant id or name in customer-app/ code', () => {
   const files = codeFiles();
@@ -93,7 +102,12 @@ test('customer-app/ is the one platform orders deployment, with exactly the appr
   assert.ok(d.origins.includes(d.pay_return.default), 'pay_return.default is one of its own origins');
   assert.ok(typeof d.netlify_site === 'string' && d.netlify_site.length > 0, 'names its Netlify site (the stamp keys on it)');
   assert.ok(existsSync(join(ROOT, 'customer-app', 'netlify.toml')), 'the build stamp is wired (netlify.toml)');
-  assert.match(readFileSync(join(ROOT, 'customer-app', 'netlify.toml'), 'utf8'), /command = "node \.\.\/platform\/stamp-version\.js"/);
+  // PLAN-capp-desktop-website D-1 (advisor ruling 2026-11-01): the site is built by the ONE shell packager's WEB target (it stamps
+  // + writes version.json itself), fail-closed, published from dist/. assert.ok (never assert.match): the toml carries the public
+  // key omit list, and a failure must not dump it
+  const toml = readFileSync(join(ROOT, 'customer-app', 'netlify.toml'), 'utf8');
+  assert.ok(/command = "node \.\.\/platform\/native\/package-capp\.js --target web --env \$CONTEXT --sha \$COMMIT_REF --out dist"/.test(toml), '🔴 customer-app/netlify.toml must build with the shell packager\'s web target');
+  assert.ok(/^\s*publish = "dist"$/m.test(toml), '🔴 customer-app/netlify.toml must publish dist/');
 });
 
 test(`the live forms are byte-unchanged by the capp range ${BASE}..${CAPP_TIP}`, () => {
@@ -110,13 +124,17 @@ test(`the live forms are byte-unchanged by the capp range ${BASE}..${CAPP_TIP}`,
 // Colonia (PLAN-colonia r1, recomposed onto S2b-geo; added on top): the privacy filter module, the order writer's same-line hunk,
 // the census FIELD_FACTS entry and the slice's test-only inverse (charge-inputs / index.js / census JSON are already listed).
 // S3c module inverse (capp G7, added on top): the slice's test-only inverse of whatsapp.js (tools/s3c-module-inverse.js).
+// Native shell N1/N1b/D3 (PLAN-capp-native-shell §1.1, advisor D1–D3; added on top): the manifest validator + its native / runtime
+// blocks (platform-manifest.js, platform/sites.json — already listed) and the per-deployment version floor (client-floor.js).
+// The FULL light chain's guard debts (advisor 11-02, added on top): the R3 applicability pin contract/region-applicability.json — a
+// comment re-pin of chargeOnlineOrder's count in client-floor.js (its sibling contract/regions.json is already listed).
 const S2TIP_SERVER = new Set(['address-area.js', 'create-order-build.js', 'contract/census.js', 'tools/area-inverse.js', 'tools/area-charge-inputs-inverse.js', 'catalog/charge-inputs.js', 'compute-server-net.js', 'createorder-classify.js', 'delivery/delivery-pricing.js',
   'delivery/delivery-wire.js', 'driver-ledger/ledger-core.js', 'factura/build-record.js', 'index.js', 'order-exists.js', 'payer-email.js',
   'pixelpay-hosted-charge.js', 'quote-issue.js', 'rewards-redeem-intake.js', 'stats/stats-api.js', 'stats/stats-build.js', 'tip.js', 'whatsapp.js',
   'tools/s2tip-inverse.js', 'tools/s2tip-module-inverse.js', 'tools/mutation-sweep.mutants.json',
   'contract/census-map.json', 'contract/census.json', 'contract/regions.json',
   'platform/sites.json', 'platform-manifest.js', 'pixelpay-return-url.js', 'tools/sync-client.js', 'tools/s2app-inverse.js',
-  'tools/s3c-module-inverse.js'].map((f) => `xpizza-functions/${f}`));
+  'tools/s3c-module-inverse.js', 'client-floor.js', 'contract/region-applicability.json'].map((f) => `xpizza-functions/${f}`));
 test(`no server change beyond S2-srv-tip + S2-srv-app + colonia: the capp range ${BASE}..${CAPP_TIP} changes xpizza-functions/ only in tests, fixtures, generated inventories, the test chain and the slices' allowlist`, () => {
   const range = capRange();
   const changed = git('diff', '--name-only', ...range, '--', 'xpizza-functions').trim().split('\n').filter(Boolean)

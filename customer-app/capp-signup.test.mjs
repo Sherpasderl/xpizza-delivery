@@ -362,5 +362,55 @@ test('runtime.signup endpoints: ENDPOINTS is the ONE source — every transport 
   await a.config(); await a.requestOtp({ phone: '+50496123344' }); await a.verifyOtp({ phone: '+50496123344', code: '123456' }); await a.googleStart({ sessionId: 's' });
   await a.googleSignIn({ sessionId: 's', idToken: 't' }); await a.completeProfile({ idToken: 't', email: 'a@b.test', name: 'A', promos: true }); await a.setPromos({ idToken: 't', value: true });
   await a.redeemSignupGrant({ grant: 'g', email: 'a@b.test', name: 'A', promos: false });
+  await a.getMyOrders({ idToken: 't', limit: 20 });   // «Pedidos» (NOTE-getMyOrders): the member's history read
+  await a.getMyRating({ idToken: 't', orderId: 'XPZ-1234' }); await a.rateOrder({ idToken: 't', orderId: 'XPZ-1234', fields: { store: 5 } });   // C-2
   assert.deepEqual([...new Set(seen)].sort(), Object.values(EP).sort(), '🔴 SU-endpoints: the requests are exactly the listed endpoints');
+});
+// ── C-2 (PLAN §C-2; 3a's getMyRating 1958b8ed + the S-A1 writer rateOrder): the member transport's two rating calls, against the REAL
+// servers' bodies copied verbatim into fixtures/c2/rating-contract.json (rule 29 — never hand-made shapes) ──
+const RC = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures/c2/rating-contract.json'), 'utf8'));
+const rateApi = (reply, seen = []) => createSignupApi({ endpoints: { getMyRating: 'https://ep.test/getMyRating', rateOrder: 'https://ep.test/rateOrder' },
+  fetch: async (u, init) => { seen.push({ u: String(u), init }); const r = typeof reply === 'function' ? reply(u, init) : reply; return { status: r.status, json: async () => JSON.parse(JSON.stringify(r.body)) }; } });
+test('C-2 getMyRating: every state the sheet renders maps field by field (3a\'s real bodies) — not fulfilled / unrated / rated / edited / past window / withdrawn / deleted / a v1 thumb', async () => {
+  const G = RC.getMyRating, want = {
+    not_fulfilled: { rating: null, canRate: false, editableUntil: null },
+    unrated: { rating: null, canRate: true, editableUntil: 604801000 },
+    rated: { rating: { store: 4, dishes: { 'x_pizza-dish-7': 1 }, delivery: -1, comment: 'Rica', legacyThumb: null, ratedAt: 2000, editedAt: null }, canRate: true, editableUntil: 604801000 },
+    edited: { rating: { store: 4, dishes: { 'x_pizza-dish-7': 1 }, delivery: -1, comment: 'Riquísima', legacyThumb: null, ratedAt: 2000, editedAt: 3000 }, canRate: true, editableUntil: 604801000 },
+    past_window: { rating: { store: 4, dishes: { 'x_pizza-dish-7': 1 }, delivery: -1, comment: 'Riquísima', legacyThumb: null, ratedAt: 2000, editedAt: 3000 }, canRate: false, editableUntil: 604801000 },
+    withdrawn: { rating: null, canRate: true, editableUntil: 604801000 },
+    deleted: { rating: null, canRate: false, editableUntil: null },
+    v1_thumb: { rating: { store: null, dishes: {}, delivery: null, comment: null, legacyThumb: 1, ratedAt: 2000, editedAt: null }, canRate: false, editableUntil: null },
+  };
+  for (const [k, w] of Object.entries(want)) assert.deepEqual(await rateApi(G[k]).getMyRating({ idToken: 't', orderId: 'XPZ-1234' }), { ok: true, ...w }, `🔴 RT-1: ${k}`);
+});
+test('C-2 getMyRating: GET ?order_id ALONE (the endpoint refuses any other key), the token in its header, no body; 403 ⇒ not_allowed, 429 ⇒ rate_limited, 400 / a malformed 200 ⇒ failed — never a guess', async () => {
+  const seen = []; await rateApi(RC.getMyRating.unrated, seen).getMyRating({ idToken: 'tok', orderId: 'XPZ-1234' });
+  assert.equal(seen.length, 1); assert.equal(seen[0].u, 'https://ep.test/getMyRating?order_id=XPZ-1234', '🔴 RT-2: the exact query');
+  assert.deepEqual(seen[0].init, { method: 'GET', headers: { 'x-firebase-id-token': 'tok' } }, '🔴 RT-2: the token in the header, no body');
+  assert.deepEqual(await rateApi(RC.getMyRating.generic_403).getMyRating({ idToken: 't', orderId: 'XPZ-1234' }), { ok: false, reason: 'not_allowed' });
+  assert.deepEqual(await rateApi(RC.getMyRating.rate_limited).getMyRating({ idToken: 't', orderId: 'XPZ-1234' }), { ok: false, reason: 'rate_limited' });
+  assert.deepEqual(await rateApi(RC.getMyRating.bad_request).getMyRating({ idToken: 't', orderId: 'XPZ-1234' }), { ok: false, reason: 'failed' });
+  const r = RC.getMyRating.rated.body;
+  for (const [why, body] of [['can_rate missing', { ...r, can_rate: undefined }], ['a store of 6', { ...r, rating: { ...r.rating, store: 6 } }], ['dishes as an array', { ...r, rating: { ...r.rating, dishes: [1] } }],
+    ['a vote of 0', { ...r, rating: { ...r.rating, dishes: { a: 0 } } }], ['a 501-char comment', { ...r, rating: { ...r.rating, comment: 'x'.repeat(501) } }], ['a negative until', { ...r, editable_until: -5 }]])
+    assert.deepEqual(await rateApi({ status: 200, body: body }).getMyRating({ idToken: 't', orderId: 'XPZ-1234' }), { ok: false, reason: 'failed' }, `🔴 RT-2: ${why} ⇒ failed, never a guess`);
+  const none = []; const a = rateApi(RC.getMyRating.unrated, none);
+  assert.equal((await a.getMyRating({ orderId: 'XPZ-1234' })).reason, 'unauthenticated'); assert.equal((await a.getMyRating({ idToken: 't', orderId: '../x' })).reason, 'bad_request');
+  assert.equal(none.length, 0, 'nothing sent without a token or with a bad id');
+});
+test('C-2 rateOrder: POST { order_id, …fields } with the token; 3a\'s every answer mapped; a body the writer would refuse is refused HERE, never sent', async () => {
+  const seen = []; const a = rateApi(RC.rateOrder.recorded, seen);
+  assert.deepEqual(await a.rateOrder({ idToken: 'tok', orderId: 'XPZ-1234', fields: { store: 5, dishes: { 'x_pizza-dish-7': 1 }, comment: 'Rica' } }), { ok: true, dishesUnavailable: false });
+  assert.equal(seen[0].u, 'https://ep.test/rateOrder'); assert.equal(seen[0].init.method, 'POST'); assert.equal(seen[0].init.headers['x-firebase-id-token'], 'tok');
+  assert.deepEqual(JSON.parse(seen[0].init.body), { order_id: 'XPZ-1234', store: 5, dishes: { 'x_pizza-dish-7': 1 }, comment: 'Rica' }, '🔴 RT-3: exactly the set fields');
+  const R = RC.rateOrder, call = (k) => rateApi(R[k]).rateOrder({ idToken: 't', orderId: 'XPZ-1234', fields: { store: 4 } });
+  assert.deepEqual(await call('dishes_unavailable'), { ok: true, dishesUnavailable: true });
+  for (const k of ['window_closed', 'not_fulfilled', 'not_rated', 'dish_not_purchased']) assert.deepEqual(await call(k), { ok: false, reason: k }, `🔴 RT-3: ${k}`);
+  assert.deepEqual(await call('generic_403'), { ok: false, reason: 'not_allowed' }); assert.equal((await call('unavailable')).ok, false);
+  const none = []; const b = rateApi(R.recorded, none);
+  for (const [why, f] of [['no field', {}], ['a store of 6', { store: 6 }], ['a 0.5 store', { store: 4.5 }], ['an unknown key', { stars: 5 }], ['a vote of 0', { dishes: { a: 0 } }], ['a 501-char comment', { comment: 'x'.repeat(501) }],
+    ['a bad dish id', { dishes: { 'a/b': 1 } }], ['31 dishes', { dishes: Object.fromEntries(Array.from({ length: 31 }, (_, i) => [`d${i}`, 1])) }], ['a delivery of 2', { delivery: 2 }]])
+    assert.deepEqual(await b.rateOrder({ idToken: 't', orderId: 'XPZ-1234', fields: f }), { ok: false, reason: 'bad_request' }, `🔴 RT-3: ${why} refused locally`);
+  assert.equal(none.length, 0, '🔴 RT-3: no refusable body ever reaches the server');
 });
