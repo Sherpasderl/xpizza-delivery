@@ -176,5 +176,15 @@
     return `<div class="scroller"><div class="orderwrap">${map}${sheet}</div></div>`;
   }
 
-  return { orderHtml, textLines, statusCopy, schedPhase, routePoint, fromTracking, clockText, FINAL, SCHED, REVIEW_AFTER_MS };
+  // C-5 (PLAN §C-5; MOCKUP-capp-desktop-D3 r3 §9.6; advisor 11-02): the help sheet, contextual to ONE order — «Escribinos por WhatsApp»
+  // to the platform's support number with the order number written in (the shell builds the link; no number configured ⇒ no sheet).
+  // The ticket reasons are NOT drawn here: their states are undrawn and their Central surface (X-1) is not built (advisor: tickets OFF)
+  function helpSheetHtml(h) {
+    const ctx = [h.num ? `Orden #${esc(h.num)}` : null, h.storeName ? esc(h.storeName) : null].filter(Boolean).join(' · ');
+    return `<div class="scrim" data-act="help-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="help-h"><div class="grab"></div>
+    <div class="helpsheet"><h2 id="help-h" tabindex="-1">Ayuda con tu pedido</h2>${ctx ? `<p class="ctx"><b>${ctx}</b>${h.windowText ? ` · llega ${esc(h.windowText)}` : ''}</p>` : ''}
+      <button class="wa" data-act="help-wa">${IC.wa}Escribinos por WhatsApp</button><p class="fine">${h.num ? 'Abre WhatsApp con el número de tu orden ya escrito. ' : ''}Central de despacho responde en minutos mientras tu pedido está activo.</p></div></div>`;
+  }
+
+  return { orderHtml, helpSheetHtml, textLines, statusCopy, schedPhase, routePoint, fromTracking, clockText, FINAL, SCHED, REVIEW_AFTER_MS };
 });

@@ -742,6 +742,9 @@
     const OrderNumberMod = () => (typeof OrderNumber !== 'undefined' ? OrderNumber : o.OrderNumber);
     const trackBaseOf = (rid) => { const b = runtime.trackBases && runtime.trackBases[rid]; return typeof b === 'string' && /^https:\/\/[a-z0-9.-]+$/.test(b) ? b : null; };
     const supportWa = () => (typeof runtime.supportWhatsapp === 'string' && /^\d{8,15}$/.test(runtime.supportWhatsapp) ? runtime.supportWhatsapp : null);
+    // C-5: the ONE «tengo un problema con mi pedido» link — the platform's support number (config), the order number when known
+    const helpWaUrl = (num) => { const n = supportWa(); return n ? `https://wa.me/${n}?text=${encodeURIComponent('Hola, tengo un problema con mi pedido' + (num ? ' #' + num : ''))}` : null; };
+    function openHelp(h) { if (!supportWa()) return; S.help = { num: h.num || null, storeName: h.storeName || '', windowText: h.windowText || null }; openLayer('help'); const el = doc.getElementById('help-h'); if (el) el.focus(); }
     // THE DEVICE'S ACTIVE ORDER (advisor ruling 2: token + the sent snapshot, device-only, until final or 24 h — not «history»): written
     // at placement and on every live change, restored at boot (the Pedidos active card, a reload of its URL), dropped when final / expired
     const ACTIVE_KEY = 'capp:active_order', ACTIVE_MS = 24 * 3600e3;
@@ -849,7 +852,7 @@
       if (a === 'order-rate') { if (od.order_id) openRate(od.order_id); return true; }   // C-2: «Valorar tu pedido» / «Ver tu calificación»
       if (a === 'order-again') { stopOrder(); nav.tab({ name: 'home' }); return true; }
       if (a === 'order-receipt') { S.orderReceipt = !S.orderReceipt; renderNow(); return true; }
-      if (a === 'order-help') { const n = supportWa(); if (n) { const msg = 'Hola, tengo un problema con mi pedido' + (od.display_number ? ' #' + od.display_number : ''); openExternal(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`); } return true; }
+      if (a === 'order-help') { openHelp({ num: od.display_number, storeName: od.storeName, windowText: CappOrder.FINAL.has(od.status) ? null : od.windowText }); return true; }   // C-5
       if (a === 'order-share') {
         const b = trackBaseOf(od.rid); if (!b || !od.token) return true;
         const url = `${b}/${encodeURIComponent(od.token)}`, nv = win && win.navigator;
@@ -1123,7 +1126,7 @@
       const rc = S.receipt; if (!rc) return;
       if (a === 'order-close') { nav.back(); return; }               // v6: the close ⇒ «Pedidos»
       if (a === 'order-again') { nav.tab({ name: 'home' }); return; }  // «Hacer otro pedido» ⇒ Inicio
-      if (a === 'order-help') { const n = supportWa(), num = receiptVm(rc).display_number; if (n) openExternal(`https://wa.me/${n}?text=${encodeURIComponent('Hola, tengo un problema con mi pedido' + (num ? ' #' + num : ''))}`); }
+      if (a === 'order-help') { const v = receiptVm(rc); openHelp({ num: v.display_number, storeName: v.storeName, windowText: null }); }   // C-5
       // 'order-receipt': a past order's summary stays open (v6)
     }
     // ── «Volver a pedir» (v6 Pedidos; advisor 11-01: enabled BY DATA, never by brand). A past row is reorderable when its recipe lines
@@ -1228,7 +1231,7 @@
     function renderLayer() {
       const L = $('layer'); if (!L) return;
       pinGen++; pinMap = null;   // any open pin map is obsolete
-      L.innerHTML = S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
+      L.innerHTML = S.layer === 'help' && S.help ? CappOrder.helpSheetHtml(S.help) : S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
       if (S.layer !== 'pin') return;
       const firstHub = dir.view().rows.map((r) => r.entry).find((e) => Number.isFinite(e.hub_lat) && Number.isFinite(e.hub_lng));
       pinDraft = S.loc ? { lat: S.loc.lat, lng: S.loc.lng } : null;   // the editor's VIEW starts on the city when there is no location — never a pin
@@ -1274,7 +1277,12 @@
       if (a === 'add-past') return addPast(t.dataset.rid, t.dataset.id);
       if (a === 'go-receipt') { if (t.dataset.oid) nav.go({ name: 'receipt', oid: t.dataset.oid }); return; }   // v6: a past row opens its receipt
       if (a === 'go-order') { const od = activeOrder(); if (od && t.dataset.oid === od.order_id) nav.go({ name: 'order' }); return; }   // the device's active order ⇒ its live screen
-      if (a === 'orders-help') { const n = supportWa(); if (n) { const od = S.order && S.order.order_id === t.dataset.oid ? S.order : null; const msg = 'Hola, tengo un problema con mi pedido' + (od && od.display_number ? ' #' + od.display_number : ''); openExternal(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`); } return; }
+      if (a === 'orders-help') {   // C-5: the active card's order — this device's, else the server's row
+        const od = S.order && S.order.order_id === t.dataset.oid ? S.order : null, rd = S.ordersRead, row = !od && rd && rd.active ? rd.active.find((r) => r.order_id === t.dataset.oid) : null;
+        const st = row ? (dir.view().rows.find((x) => x.rid === row.restaurant) || null) : null;
+        openHelp({ num: od ? od.display_number : row ? row.display_number : null, storeName: od ? od.storeName : st ? CappHome.storeOf(st).name : '', windowText: od && !CappOrder.FINAL.has(od.status) ? od.windowText : null }); return; }
+      if (a === 'help-wa') { const u = helpWaUrl(S.help && S.help.num); S.help = null; closeLayer(); if (u) openExternal(u); return; }
+      if (a === 'help-close') { S.help = null; closeLayer(); return; }
       if ((a === 'app-update' || a === 'app-update-row') && updateOn()) {
         if (a === 'app-update') { try { const d = dayOf(Number(nowMs())); if (d && storage) storage.setItem(UPD_KEY, d); } catch (_) {} }
         openExternal(runtime.store.url); renderNow(); return;
@@ -1331,6 +1339,9 @@
     function onVisible() { if (doc.visibilityState === 'visible' && !S.store) { dir.revalidate(); loadMenus(); } }
     doc.addEventListener('click', onClick);
     doc.addEventListener('input', onInput);
+    // C-2 / C-5: Escape dismisses the rating sheet («Ahora no») and the help sheet
+    const onKey = (ev) => { if (dead || ev.key !== 'Escape') return; if (S.layer === 'rate' && S.rate) closeRate(); else if (S.layer === 'help') { S.help = null; closeLayer(); } };
+    doc.addEventListener('keydown', onKey);
     doc.addEventListener('visibilitychange', onVisible);
     const dirTimer = T.setInterval(() => { if (!S.store && doc.visibilityState !== 'hidden') dir.revalidate(); }, DIR_EVERY_MS);
     const unAuth = auth && typeof auth.onChange === 'function' ? auth.onChange(() => { storeAuth(); schedule(); }) : null;
@@ -1392,7 +1403,7 @@
       rememberAccount: (e164) => CappDeviceAccount.remember(storage, e164), forgetAccount: () => CappDeviceAccount.forget(storage),
       destroy() {
         dead = true; clearTokenTimers(); stopOrder(); if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} } unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
-        doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('visibilitychange', onVisible); if (app && typeof app.removeEventListener === 'function') app.removeEventListener('scroll', onRowScroll, true); nav.destroy();
+        doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); doc.removeEventListener('visibilitychange', onVisible); if (app && typeof app.removeEventListener === 'function') app.removeEventListener('scroll', onRowScroll, true); nav.destroy();
       },
     };
   }

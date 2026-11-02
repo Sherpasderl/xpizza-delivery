@@ -1945,7 +1945,9 @@ test('Pedido recibido: «Ayuda» opens wa.me/<runtime.supportWhatsapp> with the 
     Object.defineProperty(S.w.navigator, 'clipboard', { value: { writeText: (t) => { copied.push(t); return Promise.resolve(); } }, configurable: true });
     await flush(); await placeShellCash(S); await flush(900);
     assert.equal(txt(S.q('.mk-num')), 'Orden #47 · Te avisamos por WhatsApp', 'premise: the number landed');
-    S.click('[data-act="order-help"]'); await flush();
+    S.click('[data-act="order-help"]'); await flush();   // C-5 (advisor 11-02): «Ayuda» opens the help sheet; its WhatsApp button is the link
+    assert.ok(S.q('#layer .helpsheet'), '🔴 PR-help: the help sheet'); assert.deepEqual(opened, [], 'nothing opened until the customer chooses WhatsApp');
+    S.click('#layer [data-act="help-wa"]'); await flush();
     assert.deepEqual(opened, ['https://wa.me/50497952893?text=' + encodeURIComponent('Hola, tengo un problema con mi pedido #47')], '🔴 PR-help: the link derives from the one key + the order number');
     S.click('[data-act="order-share"]'); await flush();
     assert.deepEqual(copied, ['https://xpizzatrack.netlify.app/tok_abcdefgh12'], '🔴 PR-share: the context\'s tracker + the token');
@@ -3979,4 +3981,63 @@ test('C-2 pickup: a PICKUP order\'s sheet has no «La entrega» row (the deliver
     assert.equal(S.q('#layer [data-act="rate-del"]'), null, '🔴 C2-12: no delivery thumbs on a pickup');
     assert.ok(!/La entrega/.test(S.q('#layer .rate').textContent), 'no «La entrega» section');
   } finally { S.w.close(); }
+});
+// ── C-5 · the help sheet (PLAN §C-5; MOCKUP D-3 r3 §9.6; advisor 11-02: WhatsApp only, the ticket reasons OFF) ──
+async function helpOrder(supportWhatsapp = '50490000001') {
+  const opened = [];
+  const S = bootShell({ runtime: { ...RUNTIME, rtdbBase: 'https://rtdb.test', supportWhatsapp }, readPublic: async () => ({ ok: true, json: async () => 47 }),
+    apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
+  S.w.open = (u) => { opened.push(u); return null; };
+  await flush(); await placeShellCash(S); await until(() => S.q('.mk-num'), 6000);
+  return { S, opened };
+}
+test('C-5 sheet (frame 9.6): «Ayuda» on the order screen ⇒ «Ayuda con tu pedido», its order («Orden #N · store · llega …»), «Escribinos por WhatsApp» and the fine print — and NOTHING of tickets (no reasons, no «Otra cosa»)', async () => {
+  const { S } = await helpOrder();
+  try {
+    S.click('[data-act="order-help"]'); await flush();
+    const L = S.q('#layer .helpsheet'); assert.ok(L, '🔴 H-1: the sheet');
+    assert.equal(txt(L.querySelector('h2')), 'Ayuda con tu pedido'); assert.equal(S.w.document.activeElement, L.querySelector('#help-h'), 'focus on its heading');
+    const store = S.q('.mk-label') ? txt(S.q('.mk-label')).split(' · ')[0] : '';
+    assert.ok(new RegExp(`^Orden #47 · ${store.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}( · llega .+)?$`).test(txt(L.querySelector('.ctx'))), `🔴 H-1: the order's context (${txt(L.querySelector('.ctx'))})`);
+    assert.equal(txt(L.querySelector('[data-act="help-wa"]')), 'Escribinos por WhatsApp');
+    assert.equal(txt(L.querySelector('.fine')), 'Abre WhatsApp con el número de tu orden ya escrito. Central de despacho responde en minutos mientras tu pedido está activo.');
+    assert.ok(!/Falta algo|Me llegó otro pedido|Va tarde|Otra cosa/.test(L.textContent), '🔴 H-1: the ticket reasons are OFF — nothing of them renders');
+  } finally { S.w.close(); }
+});
+test('C-5 link: «Escribinos por WhatsApp» opens wa.me to the CONFIGURED support number (never another) with «#N»; the sheet closes; scrim and Escape close it too', async () => {
+  const { S, opened } = await helpOrder('50490000001');
+  try {
+    S.click('[data-act="order-help"]'); await flush();
+    S.click('#layer [data-act="help-wa"]'); await flush();
+    assert.deepEqual(opened, ['https://wa.me/50490000001?text=' + encodeURIComponent('Hola, tengo un problema con mi pedido #47')], '🔴 H-2: the configured number + the order number');
+    assert.equal(S.q('#layer .helpsheet'), null, 'closed after the jump');
+    S.click('[data-act="order-help"]'); await flush(); S.click('#layer .scrim[data-act="help-close"]'); await flush();
+    assert.equal(S.q('#layer .helpsheet'), null, '🔴 H-2: the scrim closes it');
+    S.click('[data-act="order-help"]'); await flush(); S.w.document.dispatchEvent(new S.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await flush();
+    assert.equal(S.q('#layer .helpsheet'), null, '🔴 H-2: Escape closes it');
+  } finally { S.w.close(); }
+});
+test('C-5 entries: the Pedidos active card\'s «Ayuda» opens the SAME sheet for its order; a past receipt\'s «Ayuda» too (no arrival line once done)', async () => {
+  const { S, opened } = await helpOrder();
+  try {
+    S.click('[data-act="order-close"]'); await flush(); await flush();
+    const b = S.q('.ocard.active [data-act="orders-help"]'); assert.ok(b, 'premise: the active card with «Ayuda»');
+    S.click(b); await flush();
+    assert.ok(S.q('#layer .helpsheet') && /^Orden #47/.test(txt(S.q('#layer .helpsheet .ctx'))), '🔴 H-3: the card\'s order in the sheet');
+    S.click('#layer [data-act="help-wa"]'); await flush();
+    assert.equal(opened.at(-1), 'https://wa.me/50490000001?text=' + encodeURIComponent('Hola, tengo un problema con mi pedido #47'), '🔴 H-3: its link');
+  } finally { S.w.close(); }
+  const db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-H1', { ts: T0 - 3600e3, display_number: 61 });
+  const { S: R } = await pedidosBoot(db, { orders, runtime: { ...G7_RUNTIME, supportWhatsapp: '50490000001' } });
+  try {
+    const op = []; R.w.open = (u) => { op.push(u); return null; };
+    R.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    R.click('.orow [data-act="go-receipt"][data-oid="XP-H1"]'); await until(() => R.q('[data-act="order-help"]'));
+    R.click('[data-act="order-help"]'); await flush();
+    assert.ok(R.q('#layer .helpsheet'), '🔴 H-4: the receipt\'s «Ayuda» opens the sheet');
+    assert.ok(!/llega/.test(txt(R.q('#layer .helpsheet .ctx')) || ''), '🔴 H-4: no arrival line on a done order');
+    R.click('#layer [data-act="help-wa"]'); await flush();
+    assert.equal(op.length, 1); assert.ok(op[0].startsWith('https://wa.me/50490000001?text='), '🔴 H-4: the configured number');
+  } finally { R.w.close(); }
 });
