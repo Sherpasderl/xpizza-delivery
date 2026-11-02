@@ -896,8 +896,8 @@ function renameNote(text) {
 }
 // R3b — the drawer follows the list: while a name change waits, its fields are off too (Cerrar stays).
 function holdDrawerForRename() {
-  // the held-state mockup: the hold's locked controls are DIMMED like the list's prices (styles.css #drawer.namehold …:disabled)
-  $('drawer').classList.toggle('namehold', renamesPending());
+  // the held-state mockup: the hold's locked controls are DIMMED like the list's prices (styles.css #drawer.namehold …:disabled);
+  // the class itself is synced in ONE place, paint() (Codex r1)
   if (!renamesPending()) return;
   for (const c of $('drawer').querySelectorAll('input, textarea, select')) lockControl(c, true);
   // ruling A — the «Foto» field's controls too (zone, Cambiar / Quitar, Reintentar, Deshacer); a photo is content like a price
@@ -1082,6 +1082,9 @@ function cellChanged(changed, k) {
 }
 
 function paint() {
+  // the held-state mockup (Codex r1): the drawer's hold follows the pending name on EVERY paint — publish, discard and undo all
+  // repaint — not only on a drawer render, so it can never outlive the name change it marks
+  $('drawer').classList.toggle('namehold', renamesPending());
   renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; if (state.renameEdit && state.renameEdit.catId !== id) state.renameEdit = null; paint(); });
   const changed = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
   paintNameCall();
