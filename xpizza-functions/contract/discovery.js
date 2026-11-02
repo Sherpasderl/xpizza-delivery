@@ -135,11 +135,19 @@ function factoryCtor(absModule, chain) {
       seen += 1; target = right.type === 'Identifier' ? right.name : (/Function/.test(right.type) ? right : null);
     }
   }
+  // advisor verify of 94f8a213 — an export assignment anywhere but a TOP-LEVEL statement (inside an if / a function / an
+  // expression) cannot be resolved statically ⇒ fail closed. The whole AST is walked, not just ast.body.
+  const isExportLhs = (l) => isModExports(l) || (l.type === 'MemberExpression' && !l.computed && ((l.object.type === 'Identifier' && l.object.name === 'exports') || isModExports(l.object)));
+  const topLevel = new Set(ast.body.filter((st) => st.type === 'ExpressionStatement').map((st) => st.expression));
+  let nested = 0;
+  (function walkX(n) { if (!n || typeof n.type !== 'string') return; if (n.type === 'AssignmentExpression' && isExportLhs(n.left) && !topLevel.has(n)) nested += 1; for (const k of Object.keys(n)) { const v = n[k]; if (Array.isArray(v)) v.forEach(walkX); else if (v && typeof v === 'object' && typeof v.type === 'string') walkX(v); } })(ast);
+  if (nested) return { why: `an export assignment is not a top-level statement (${nested}×) in ${path.basename(file)}` };
   // codex r2 P2 — FAIL CLOSED on any overwritten / spread export surface (no attempt to resolve a final binding):
   const modAssigns = ast.body.filter((st) => st.type === 'ExpressionStatement' && st.expression.type === 'AssignmentExpression' && isModExports(st.expression.left));
   if (modAssigns.length > 1) return { why: `module.exports is assigned ${modAssigns.length}× in ${path.basename(file)}` };
   const lit = modAssigns[0] && modAssigns[0].expression.right.type === 'ObjectExpression' ? modAssigns[0].expression.right : null;
   if (lit && lit.properties.some((pr) => pr.type === 'SpreadElement')) return { why: `module.exports literal contains a spread in ${path.basename(file)}` };
+  if (lit && lit.properties.some((pr) => pr.type === 'Property' && pr.computed)) return { why: `module.exports literal has a computed key in ${path.basename(file)}` };
   if (lit) { const keys = lit.properties.filter((pr) => pr.type === 'Property' && !pr.computed).map((pr) => (pr.key.type === 'Identifier' ? pr.key.name : pr.key.value)); if (new Set(keys).size !== keys.length) return { why: `module.exports literal repeats a key in ${path.basename(file)}` }; }
   const viaExports = ast.body.some((st) => st.type === 'ExpressionStatement' && st.expression.type === 'AssignmentExpression' && st.expression.left.type === 'MemberExpression' && st.expression.left.object.type === 'Identifier' && st.expression.left.object.name === 'exports');
   if (modAssigns.length && viaExports) return { why: `module.exports is reassigned while exports.* is also used in ${path.basename(file)}` };
