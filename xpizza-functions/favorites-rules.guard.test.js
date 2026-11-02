@@ -33,7 +33,8 @@ ok('$uid .validate: the whole node must be an object — no scalar replacement')
 const r = u.$rid;
 assert.ok(r && r['.validate'].includes(`$rid.matches(${RID_RE.toString()})`), `🔴 $rid must match the platform RID_RE ${RID_RE}`);
 assert.ok(r['.validate'].includes("newData.hasChildren(['createdAt'])"), 'a favorite carries createdAt');
-// Codex S-C r1 #2: bounded to REAL restaurants — the rid must have the server-side identity the directory's activity reads
+// Codex S-C r1 #2 (advisor-ACCEPTED 2026-11-02; documented in xpizza-reference/SCHEMA.md — the rules file is pure JSON, no comments):
+// bounded to REAL restaurants — the rid must have the server-side identity the directory's activity reads
 // (catalog/public-menu.js activityWithSource → restaurant-config getIdentity → restaurants/{rid}/identity), so the node is bounded
 // by the number of restaurants
 assert.ok(r['.validate'].includes("root.child('restaurants').child($rid).child('identity').exists()"), '🔴 $rid must name a real restaurant (restaurants/{rid}/identity exists)');

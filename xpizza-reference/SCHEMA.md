@@ -144,6 +144,21 @@ Full order record. Same shape as the Make.com webhook payload, plus task referen
 
 ---
 
+## /user_favorites/{uid}/{rid}
+
+Customer-app favorites (PLAN §S-C). `{ createdAt: number ≤ now + 60 s }`, nothing else. Read / write by the member OWNER only
+(customer claim, uid match, never a handheld), and refused under any tombstone or the sweep claim (`deleted_uids/{uid}`,
+`user_private/{uid}/deleted_at`, `user_profiles/{uid}/deleting_at`). The whole `{uid}` node must be an object (no scalar
+replacement); account deletion nulls it (`account-lib.accountDeleteUpdates`).
+
+**`{rid}` is bounded to REAL restaurants:** it must match the platform RID_RE AND `restaurants/{rid}/identity` must exist. That
+is the RTDB node the customer directory's activity check reads (`catalog/public-menu.activityWithSource` →
+`restaurant-config.getIdentity`). The directory's restaurant LIST itself is the Firestore registry, which RTDB rules cannot read,
+and `public/brands` is keyed by brandId, not rid, so identity is the rid-keyed server node that exists exactly for real
+restaurants. The node therefore holds at most one entry per restaurant (advisor ruling 2026-11-02, Codex S-C r1 #2).
+
+---
+
 ## Indexing notes
 
 For query performance, add these `.indexOn` rules in `database.rules.json`:
