@@ -649,7 +649,9 @@
         "census:BRAND",
         "census:PAYLIFE",
         "census:NUM",
-        "census:FULFIL"
+        "census:FULFIL",
+        "census:PLACE",
+        "census:TENDER"
       ],
       "shows": {
         "*form": [
@@ -657,7 +659,8 @@
           "completed"
         ]
       },
-      "_p1a": "P1-a (reviewed): census:PLACE removed — its only reader was the legacy renderConfirmCard, now census-exempt as unreachable on the account surface (referenced only in comments)"
+      "_p1a": "P1-a (reviewed): census:PLACE removed — its only reader was the legacy renderConfirmCard, now census-exempt as unreachable on the account surface (referenced only in comments)",
+      "_receipt": "REINSTATED (advisor ruling 2026-11-02): census:PLACE + census:TENDER — the getMyOrders RECEIPT (my-orders.js#projectReceipt; D4c-grill/NOTE-getMyOrders-receipt.md §3, approved) is a REAL account-surface reader of the customer's OWN delivery address (address_detected / details / area — never coordinates) and cash tender (cash_tendered_cents), returned only to the verified owner"
     },
     "R18": {
       "name": "Reordenar",
