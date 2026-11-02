@@ -163,6 +163,68 @@ async function cell(name, fn) { CURRENT = name; resetProvider(); try { await fn(
     assert.strictEqual(voidCalls.length, 0, `${L}: and nothing is voided`);
   });
 
+  // ── Codex r4 P1: a crash between the claim and the alert, then a re-delivery the endpoint dedupes WITHOUT running the
+  //    handler — the alert must still land. A durable pending marker (before the claim) + the sweep's repair complete it. ──
+  const marker = (db, uuid) => db.getAt(`extra_payment_pending/${xkey(uuid)}`);
+  const repairMod = () => require('./extra-payment-repair');
+  const repairPendingExtraPayments = (a) => repairMod().repairPendingExtraPayments(a);
+  await cell('XP-R4-CRASH-THEN-DEDUPE-SWEEP-LANDS-ALERT', async () => {
+    const L = 'XP-R4-CRASH-THEN-DEDUPE-SWEEP-LANDS-ALERT';
+    let fail = 1;
+    const db = makeDb(cancelled(), { beforeWrite: async (p, v) => { if (p === '' && v && Object.keys(v).some((k) => k.startsWith('dispatcher_alerts/extra_payment_')) && fail > 0) { fail -= 1; throw new Error('injected crash after the claim'); } } });
+    const r = await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
+    assert.ok(r.code >= 500 && extra(db, 'PAY-2') && !extraAlert(db, 'PAY-2'), `${L}: PREMISE — 5xx, record committed, alert absent (Codex's repro; the re-delivery is then deduped without the handler)`);
+    assert.deepStrictEqual(marker(db, 'PAY-2'), { attempt_id: AID, order_id: OID, at: 2000 }, `${L}: the durable pending marker survives the crash (got ${JSON.stringify(marker(db, 'PAY-2'))})`);
+    const out = await repairPendingExtraPayments({ db, now: 2000 + 60 * 1000 });
+    assert.strictEqual(out.completed, 1, `${L}: the sweep completes it (got ${JSON.stringify(out)})`);
+    recorded(L, db, 'PAY-2', 2000);
+    assert.strictEqual(extraAlert(db, 'PAY-2').created_at, 2000, `${L}: from the COMMITTED record (first sighting)`);
+    assert.strictEqual(marker(db, 'PAY-2'), null, `${L}: and removes the marker`);
+    assert.strictEqual(voidCalls.length, 0, `${L}: nothing voided`);
+  });
+  await cell('XP-R4-HAPPY-PATH-LEAVES-NO-MARKER', async () => {
+    const L = 'XP-R4-HAPPY-PATH-LEAVES-NO-MARKER';
+    const db = makeDb(cancelled());
+    await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
+    assert.ok(extraAlert(db, 'PAY-2') && marker(db, 'PAY-2') === null && db.getAt('extra_payment_pending') === null, `${L}: the marker is removed in the same write as the alert + flag`);
+  });
+  await cell('XP-R4-RECORDLESS-MARKER-GRACE', async () => {
+    const L = 'XP-R4-RECORDLESS-MARKER-GRACE';
+    const db = makeDb({ ...cancelled(), extra_payment_pending: { [xkey('PAY-9')]: { attempt_id: AID, order_id: OID, at: 1000 } } });
+    const young = await repairPendingExtraPayments({ db, now: 1000 + repairMod().REPAIR_GRACE_MS - 1 });
+    assert.ok(young.kept === 1 && marker(db, 'PAY-9'), `${L}: a record-less marker younger than the grace is KEPT (a delivery may be between its marker and its claim) — got ${JSON.stringify(young)}`);
+    const old = await repairPendingExtraPayments({ db, now: 1000 + repairMod().REPAIR_GRACE_MS + 1 });
+    assert.ok(old.removed === 1 && marker(db, 'PAY-9') === null, `${L}: past the grace it is removed (got ${JSON.stringify(old)})`);
+    assert.ok(!extraAlert(db, 'PAY-9') && db.getAt(`orders/${OID}/extra_payment_review`) == null, `${L}: and nothing else is written`);
+    assert.ok(repairMod().REPAIR_GRACE_MS >= 10 * 60 * 1000, `${L}: the grace exceeds the function's 300 s timeout (got ${repairMod().REPAIR_GRACE_MS})`);
+  });
+  await cell('XP-R4-REPAIR-IDEMPOTENT', async () => {
+    const L = 'XP-R4-REPAIR-IDEMPOTENT';
+    let fail = 1;
+    const db = makeDb(cancelled(), { beforeWrite: async (p, v) => { if (p === '' && v && Object.keys(v).some((k) => k.startsWith('dispatcher_alerts/extra_payment_')) && fail > 0) { fail -= 1; throw new Error('crash'); } } });
+    await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
+    await repairPendingExtraPayments({ db, now: 9000 });
+    const once = db.root;
+    const again = await repairPendingExtraPayments({ db, now: 99000 });
+    assert.deepStrictEqual(db.root, once, `${L}: a second sweep changes nothing (got ${JSON.stringify(again)})`);
+    assert.ok(again.completed === 0 && again.removed === 0, `${L}: and reports no work`);
+  });
+  await cell('XP-R4-SWEEP-HOOK-WIRED', async () => {
+    const L = 'XP-R4-SWEEP-HOOK-WIRED';
+    const src = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
+    const a = src.indexOf('exports.sweepStalePending = onSchedule('); const b = src.indexOf('\nexports.', a + 10);
+    const body = src.slice(a, b);
+    const calls = body.split('repairPendingExtraPayments(').length - 1;
+    assert.strictEqual(calls, 1, `${L}: sweepStalePending calls the repair exactly once (got ${calls})`);
+    assert.match(body, /try \{ await require\('\.\/extra-payment-repair'\)\.repairPendingExtraPayments\(\{ db, now \}\); \} catch \(e\) \{/, `${L}: inside its own try/catch (a repair failure never breaks the payments sweep)`);
+  });
+  await cell('XP-R4-PENDING-NODE-SERVER-ONLY', async () => {
+    const L = 'XP-R4-PENDING-NODE-SERVER-ONLY';
+    const rules = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, 'database.rules.json'), 'utf8')).rules;
+    assert.deepStrictEqual(rules.extra_payment_pending, { '.read': false, '.write': false }, `${L}: declared server-only (got ${JSON.stringify(rules.extra_payment_pending)})`);
+    assert.ok(rules['.read'] === undefined && rules['.write'] === undefined, `${L}: and the root grants nothing`);
+  });
+
   // ── Codex r2 P1 #1 / #3 / P2 #4 — interleavings that produced a second (or post-withdrawal) void: impossible by construction ──
   await cell('XP-CODEX-R2-INTERLEAVINGS-NO-VOID', async () => {
     const L = 'XP-CODEX-R2-INTERLEAVINGS-NO-VOID';
