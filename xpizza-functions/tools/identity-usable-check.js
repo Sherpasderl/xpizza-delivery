@@ -225,7 +225,7 @@ const CAPTURE_KIND = 'identity-coverage-capture';
 const objectHash = (kind, key) => crypto.createHash('sha256').update(`${kind}\0${key}`).digest('hex');
 const HEX64 = /^[0-9a-f]{64}$/;
 
-async function captureCatalog({ db, listIds, verifier, build, now = Date.now }) {
+async function captureCatalog({ db, listIds, verifier, build, project = null, now = Date.now }) {
   const builder = build || require('../catalog/identity-manifest').buildIdentityManifest;
   const ids = await listIds();
   const rids = (Array.isArray(ids) ? ids : []).filter((r) => typeof r === 'string' && RID_RE.test(r)).sort();
@@ -236,7 +236,7 @@ async function captureCatalog({ db, listIds, verifier, build, now = Date.now }) 
     if (!r || r.ok !== true || !r.node || !Array.isArray(r.node.rows)) { failed.push({ rid, reason: REASONS.has(r && r.reason) ? r.reason : 'other' }); continue; }
     restaurants[rid] = { versionId: r.node.versionId, seq: r.node.seq, objects: r.node.rows.map((x) => objectHash(x.kind, x.key)).sort() };
   }
-  return { kind: CAPTURE_KIND, v: 1, captured_at: new Date(now()).toISOString(), restaurants, failed };
+  return { kind: CAPTURE_KIND, v: 1, project, captured_at: new Date(now()).toISOString(), restaurants, failed };
 }
 
 function validCapture(c) {
@@ -250,12 +250,30 @@ function validCapture(c) {
   });
 }
 
-async function checkAgainstCapture({ db, verifier, build, capture }) {
+// Codex cert r1 #2: a capture is evidence only for THIS project, THESE restaurants and a recent capture — anything else is
+// refused before any client. Returns the list of problems (empty = usable).
+const CAPTURE_MAX_AGE_MS = 24 * 3600 * 1000;
+const CAPTURE_SKEW_MS = 5 * 60 * 1000;
+function captureProblems(c, { project, rids, now = Date.now(), maxAgeMs = CAPTURE_MAX_AGE_MS } = {}) {
+  const p = [];
+  if (!validCapture(c)) return ['the capture file is not a valid identity coverage capture'];
+  if (c.project !== project) p.push(`the capture was taken for project ${JSON.stringify(c.project)}, not ${JSON.stringify(project)}`);
+  if (!Array.isArray(rids) || !rids.length) p.push('name the restaurant(s) to verify with --rid <rid>');
+  for (const rid of rids || []) if (!c.restaurants[rid]) p.push(`the capture holds no ${rid}`);
+  const at = typeof c.captured_at === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(c.captured_at) ? Date.parse(c.captured_at) : NaN;
+  if (!Number.isFinite(at)) p.push('the capture has no valid captured_at');
+  else if (at > now + CAPTURE_SKEW_MS) p.push('the capture is dated in the future');
+  else if (now - at > maxAgeMs) p.push(`the capture is too old (taken ${c.captured_at}; at most ${Math.round(maxAgeMs / 3600000)} h)`);
+  return p;
+}
+
+async function checkAgainstCapture({ db, verifier, build, capture, rids = null }) {
   if (!validCapture(capture)) throw Object.assign(new Error('capture_invalid'), { iucStage: 'capture', iucClass: 'CAPTURE_INVALID' });
   const builder = build || require('../catalog/identity-manifest').buildIdentityManifest;
   const rows = [];
-  for (const rid of Object.keys(capture.restaurants).sort()) {
+  for (const rid of (rids ? [...rids] : Object.keys(capture.restaurants)).sort()) {
     const cap = capture.restaurants[rid];
+    if (!cap) throw Object.assign(new Error('capture_missing_rid'), { iucStage: 'capture', iucClass: 'CAPTURE_INVALID' });
     const total = cap.objects.length;
     let r;
     try { r = await builder({ db, rid, verifier }); } catch (e) { rows.push({ rid, pass: false, reason: 'error', total }); continue; }
@@ -284,9 +302,10 @@ function renderCoverage({ rows }) {
 // Written ONCE: the capture is the pre-cut-over evidence, so an existing file is never replaced.
 function writeCapture(file, capture) { fs.writeFileSync(file, `${JSON.stringify(capture, null, 1)}\n`, { flag: 'wx' }); }
 
-// The CLI's arguments: { mode: 'check' } | { mode: 'capture'|'against', file } | { refused }. --project is the guard's.
+// The CLI's arguments: { mode: 'check' } | { mode: 'capture', file } | { mode: 'against', file, rids } | { refused }.
+// --project is the guard's. --against REQUIRES --rid <rid> (repeatable for distinct rids); --rid belongs to --against only.
 function parseCliArgs(argv) {
-  let mode = 'check'; let file = null; let modes = 0;
+  let mode = 'check'; let file = null; let modes = 0; const rids = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--project') { i += 1; continue; }
@@ -296,14 +315,22 @@ function parseCliArgs(argv) {
       if (typeof v !== 'string' || v === '' || v.startsWith('-')) return { refused: `${a} needs a file (write "${a} <file>")` };
       modes += 1; mode = a.slice(2); file = v; continue;
     }
+    if (a === '--rid') {
+      const v = argv[i + 1]; i += 1;
+      if (typeof v !== 'string' || !RID_RE.test(v)) return { refused: '--rid needs a restaurant id (write "--rid <rid>")' };
+      if (rids.includes(v)) return { refused: `--rid ${v} was given more than once` };
+      rids.push(v); continue;
+    }
     if (a.startsWith('--capture=') || a.startsWith('--against=')) return { refused: `${a.split('=')[0]}= is not accepted — write "${a.split('=')[0]} <file>"` };
     return { refused: `unrecognised argument "${a}"` };
   }
   if (modes > 1) return { refused: 'give ONE of --capture / --against' };
-  return mode === 'check' ? { mode } : { mode, file };
+  if (rids.length && mode !== 'against') return { refused: '--rid applies only to --against' };
+  if (mode === 'against' && !rids.length) return { refused: '--against needs the restaurant(s) to verify: --rid <rid>' };
+  return mode === 'check' ? { mode } : mode === 'capture' ? { mode, file } : { mode, file, rids };
 }
 
-module.exports = { checkIdentityUsable, captureCatalog, checkAgainstCapture, renderCoverage, writeCapture, parseCliArgs, denyAllWrites, readOnlyFirestore, restrictEgress, refuseEmulatorConfig, googleHost, egressAllowed, noteResolved, hostClass, classifyError, failureLine, render };
+module.exports = { checkIdentityUsable, captureCatalog, checkAgainstCapture, captureProblems, validCapture, CAPTURE_MAX_AGE_MS, renderCoverage, writeCapture, parseCliArgs, denyAllWrites, readOnlyFirestore, restrictEgress, refuseEmulatorConfig, googleHost, egressAllowed, noteResolved, hostClass, classifyError, failureLine, render };
 
 if (require.main === module) {
   try { refuseEmulatorConfig(); restrictEgress(); denyAllWrites(); }                 // BEFORE the project guard touches any client
@@ -319,7 +346,8 @@ if (require.main === module) {
   if (args.mode === 'capture' && fs.existsSync(args.file)) stop('the capture file already exists — it is the pre-cut-over evidence and is never overwritten');
   if (args.mode === 'against') {
     try { capture = JSON.parse(fs.readFileSync(args.file, 'utf8')); } catch (_) { stop('the capture file cannot be read as JSON'); }
-    if (!validCapture(capture)) stop('the capture file is not a valid identity coverage capture');
+    const probs = captureProblems(capture, { project: PROJECT_ID, rids: args.rids });
+    if (probs.length) stop(probs.join('; '));
   }
   const admin = require('firebase-admin');
   const { createCatalogVerifier } = require('../catalog/catalog-verifier');
@@ -331,17 +359,18 @@ if (require.main === module) {
     verifier = createCatalogVerifier({ db, log: () => {} });   // the verifier's own diagnostics are silenced (they can name ids)
   } catch (e) { console.error(failureLine(e, 'init')); process.exit(1); }
   if (args.mode === 'capture') {
-    captureCatalog({ db, listIds: makeFirestoreRegistryReader(db), verifier })
+    captureCatalog({ db, listIds: makeFirestoreRegistryReader(db), verifier, project: PROJECT_ID })
       .then((c) => {
         for (const f of c.failed) console.error(`${f.rid}: NOT captured — ${f.reason}`);
         if (c.failed.length) { console.error('nothing written: every registered restaurant must build before a capture is taken (exit 1)'); process.exit(1); }
+        if (!validCapture(c)) { console.error('nothing written: the capture would be empty (no registered restaurant, or a restaurant with no objects) (exit 1)'); process.exit(1); }
         writeCapture(args.file, c);
         for (const [rid, x] of Object.entries(c.restaurants)) console.log(`${rid}: captured ${x.objects.length} objects (seq ${x.seq})`);
         process.exit(0);
       })
       .catch((e) => { console.error(failureLine(e, 'capture')); process.exit(1); });
   } else if (args.mode === 'against') {
-    checkAgainstCapture({ db, verifier, capture })
+    checkAgainstCapture({ db, verifier, capture, rids: args.rids })
       .then((r) => { console.log(renderCoverage(r)); process.exit(r.rows.every((x) => x.pass) ? 0 : 1); })
       .catch((e) => { console.error(failureLine(e, 'coverage')); process.exit(1); });
   } else {

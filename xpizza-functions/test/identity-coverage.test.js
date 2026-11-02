@@ -173,14 +173,16 @@ async function cell(name, fn) { try { await fn(); console.log(`  ✓ ${name}`); 
     for (const k of ['FIRESTORE_EMULATOR_HOST', 'FIREBASE_DATABASE_EMULATOR_HOST', 'FIREBASE_AUTH_EMULATOR_HOST', 'FIREBASE_STORAGE_EMULATOR_HOST', 'STORAGE_EMULATOR_HOST', 'FIREBASE_EMULATOR_HUB']) delete env[k];
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cov-cli-'));
     const existing = path.join(dir, 'exists.json'); fs.writeFileSync(existing, '{}');
+    const otherProject = path.join(dir, 'other.json'); fs.writeFileSync(otherProject, JSON.stringify({ ...capture, project: 'tb-other', captured_at: new Date().toISOString() }));
     const junk = path.join(dir, 'junk.json'); fs.writeFileSync(junk, JSON.stringify({ kind: 'identity-coverage-capture', v: 1, restaurants: {} }));
     for (const [args, re] of [
       [['--capture=x.json'], /--capture= is not accepted/],
       [['--rid', 'tb_x'], /--rid applies only to --against/],
       [['--against', junk], /not a valid identity coverage capture|--rid/],
       [['--capture', existing], /already exists/],
-      [['--against', path.join(dir, 'absent.json')], /cannot be read/],
-      [['--against', junk], /not a valid identity coverage capture/],
+      [['--against', path.join(dir, 'absent.json'), '--rid', 'la_musa'], /cannot be read/],
+      [['--against', junk, '--rid', 'la_musa'], /not a valid identity coverage capture/],
+      [['--against', otherProject, '--rid', 'tb_dark'], /taken for project "tb-other"/],
     ]) {
       const r = spawnSync(process.execPath, [cli, '--project', 'xpizza-delivery', ...args], { env, encoding: 'utf8', timeout: 30000 });
       assert.strictEqual(r.status, 2, `${L}: ${JSON.stringify(args)} exits 2 (got ${r.status}) ${String(r.stderr).replace(/\s+/g, ' ').slice(0, 160)}`);
