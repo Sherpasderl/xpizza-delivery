@@ -2244,7 +2244,18 @@ function projectReceipt(id, entry, o) {
     lines, items_text: str(o.items_text), totals, tender: { method, ...(method === 'cash' && isInt(o.cash_tendered_cents) ? { cash_tendered_cents: o.cash_tendered_cents } : {}) },
     ...(type === 'delivery' ? { address: { detected: str(o.address_detected), details: str(o.address_details), area: str(o.address_area) } } : {}) };
 }
-function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null, rdelay = 0 } = {}) {
+// «Volver a pedir» (getMyOrders' approved delta): each recipe line gains dish_id = the store's canonical dish id for its stored key,
+// from the REAL resolver (canonical-binding identityMap) over a D4-a context — here built from the SERVED menu (each dish's legacy key
+// by the real itemPricingKey → its served dish_id); no context ⇒ null on every line (the server's own rule)
+const CBND = FN_REQ('./catalog/canonical-binding'), MPRC = FN_REQ('./menu-pricing');
+function servedCtx(rid, { drop = [] } = {}) {
+  const m = PROV[rid].envelope.menu;
+  return { availability: 'available', attached: true, usableAsIdentity: true,
+    objects: m.dishes.filter((d) => d.dish_id && !drop.includes(MPRC.itemPricingKey(d, rid))).map((d) => ({ kind: 'dish', legacyKey: MPRC.itemPricingKey(d, rid), canonicalId: String(d.dish_id) })) };
+}
+const withDishIds = (items, ctx) => { const map = ctx ? CBND.identityMap(ctx) : null;   // my-orders.js@75eed212 withDishIds, verbatim
+  return items.map((l) => (l && typeof l === 'object' && !Array.isArray(l) ? { ...l, dish_id: (map && typeof l.key === 'string' && map.dish.get(l.key)) || null } : l)); };
+function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null, rdelay = 0, contextFor = () => null } = {}) {
   const calls = [], rx = { inflight: 0, max: 0 };
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const handler = (u, i = {}) => {
@@ -2273,7 +2284,7 @@ function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rga
     const all = Object.entries(db[uid] || {}).map(([id, e]) => ({ id, e })).sort((a, b) => (a.e.ts - b.e.ts) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));   // orderByChild('ts'), key tie-break
     const before = cur ? all.filter((x) => x.e.ts < cur.ts || (x.e.ts === cur.ts && x.id < cur.id)) : all;   // endBefore(ts, id)
     const page = before.slice(-(limit + 1)), more = page.length > limit, rows = (more ? page.slice(1) : page).reverse();   // limitToLast(limit + 1), newest first
-    const proj = ({ id, e }) => ({ order_id: id, ts: e.ts, total: e.total, order_type: e.order_type, restaurant: e.restaurant, status: e.status ?? null, items_text: typeof e.items_text === 'string' ? e.items_text : null, items: Array.isArray(e.items) ? e.items : [], ...(e.recipe_format !== undefined ? { recipe_format: e.recipe_format } : {}),
+    const proj = ({ id, e }) => ({ order_id: id, ts: e.ts, total: e.total, order_type: e.order_type, restaurant: e.restaurant, status: e.status ?? null, items_text: typeof e.items_text === 'string' ? e.items_text : null, items: Array.isArray(e.items) ? withDishIds(e.items, contextFor(e.restaurant)) : [], ...(e.recipe_format !== undefined ? { recipe_format: e.recipe_format } : {}),
       // the approved delta: display_number read from orders/{id} for the page's rows, present only when stamped (a finite number)
       ...(orders[id] && Number.isFinite(orders[id].display_number) ? { display_number: orders[id].display_number } : {}) });
     const R = rows.map(proj), oldest = rows[rows.length - 1];
@@ -2803,6 +2814,131 @@ test('Receipt overlap across identities (Codex r1 #3): Ana\'s read A held → Bo
     G.q[0](); await flush(); await flush();
     S.click('[data-act="order-close"]'); await flush(); await openPastReceipt(S, 'XP-X1');
     assert.ok(/portón verde/.test(txt(S.q('.mk-card'))), '🔴 RC-17: the late OLD read never overwrote the kept receipt');
+  } finally { S.w.close(); }
+});
+// ── «Volver a pedir» (advisor 11-01: BY DATA — a line is reorderable when it carries the canonical dish_id; an all-null store has
+// no pill and no section). Recipes from the REAL writer (attachCustomerAttribution → normalizeReorderItems), dish_id from the REAL
+// resolver over the served menu (x_pizza eligible; la_musa: no context ⇒ every line null — the owner-run identity check)
+const AGAIN_CTX = (rid) => (rid === 'x_pizza' ? servedCtx('x_pizza') : null);
+const cartOfSt = (st, rid) => { try { return JSON.parse(st.getItem(`capp:${rid}:cart`)); } catch (_) { return null; } };
+async function againBoot(extra = {}) {
+  const db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-V1', { ts: T0 - 86400e3 });   // 2× Margherita, Mozzarella on one (the real recipe)
+  placeReal(db, orders, 'u_ana', 'LM-V2', { rid: 'la_musa', type: 'pickup', pay: 'card_delivery', ts: T0 - 2 * 86400e3, items_text: '1x Pad Thai (L210)' });
+  const st = extra.storage || g7Store(G7_PROFILE({ promos: true }));
+  if (extra.seed) extra.seed(st);
+  const { S, mo, fb } = await pedidosBoot(db, { orders, storage: st, contextFor: extra.contextFor || AGAIN_CTX });
+  return { S, mo, fb, st, orders, db };
+}
+test('Volver a pedir — by data: the eligible store\'s row has the pill, the all-null store\'s has none; the tabs appear; «Volver a pedir» lists ONLY the eligible store with its past dish (live menu)', async () => {
+  const { S, mo } = await againBoot();
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    assert.ok(S.q('.orow [data-act="reorder"][data-oid="XP-V1"]'), '🔴 VP-1: the x_pizza row (dish_id present) carries «Volver a pedir»');
+    assert.equal(S.q('.orow [data-act="reorder"][data-oid="LM-V2"]'), null, '🔴 VP-1: the la_musa row (every dish_id null) has NO pill');
+    assert.deepEqual(S.qa('.otabs [role="tab"]').map(txt), ['Pedidos anteriores', 'Volver a pedir'], '🔴 VP-1: v6\'s two tabs');
+    S.click('.otabs [data-val="again"]'); await flush(); await flush();
+    const secs = S.qa('.agains .again-sec');
+    const NAME = (rid) => SC.complete.body.restaurants.find((r) => r.restaurant_id === rid).name;
+    assert.deepEqual(secs.map((x) => x.getAttribute('aria-label')), [NAME('x_pizza')], '🔴 VP-2: only the eligible store has a section');
+    const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
+    assert.ok(marg && S.q(`.agains .dcard [data-act="add-past"][data-id="${marg.dish_id}"]`), '🔴 VP-2: its past dish, by its served dish_id, with «+»');
+  } finally { S.w.close(); }
+});
+test('Volver a pedir — no eligible store at all ⇒ no tabs, no pill (v6 «Pedidos anteriores» only)', async () => {
+  const { S } = await againBoot({ contextFor: () => null });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    assert.equal(S.q('.otabs'), null, '🔴 VP-3: no tabs without a reorderable row'); assert.equal(S.q('[data-act="reorder"]'), null, '🔴 VP-3: no pill');
+    assert.equal(S.qa('.orows .orow').length, 2, 'the rows themselves');
+  } finally { S.w.close(); }
+});
+test('Volver a pedir — the pill REPLACES that store\'s cart with the order (same dishes, same options), opens the store and its cart, «Pedido cargado en tu carrito»', async () => {
+  const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
+  const other = PROV.x_pizza.envelope.menu.dishes.find((d) => d.dish_id && d.name !== 'Margherita' && !d.variantOf);
+  const { S, st } = await againBoot({ seed: (st) => st.setItem('capp:x_pizza:cart', JSON.stringify({ v: 2, lines: [{ key: String(other.dish_id), qty: 3, ex: [{}, {}, {}], added: 1 }], rid: 'x_pizza', mode: 'delivery' })) });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    S.click('.orow [data-act="reorder"][data-oid="XP-V1"]'); await flush(); await flush(); await flush();
+    const ui = S.ui.store(); assert.ok(ui && ui.rid === 'x_pizza', '🔴 VP-4: the store opened');
+    const lines = ui.ui.cart.lines();
+    const moz = ui.ui.menu.extrasFor(String(marg.dish_id)).find((e) => e.name === 'Mozzarella');
+    assert.ok(moz, 'premise: Mozzarella is offered to Margherita on the live menu');
+    assert.deepEqual(JSON.parse(JSON.stringify(lines.map((l) => [l.key, l.qty, l.ex]))), [[String(marg.dish_id), 2, [{ [moz.key]: 1 }, {}]]], '🔴 VP-4: the order\'s dishes + options — the previous cart REPLACED (v6)');
+    assert.equal(ui.ui.state.layerKind, 'cart', '🔴 VP-4: its cart is open');
+    assert.equal(S.q('#toast') && S.q('#toast').textContent, 'Pedido cargado en tu carrito', '🔴 VP-4: v6\'s «Pedido cargado en tu carrito»');
+    assert.deepEqual(cartOfSt(st, 'x_pizza').lines.map((l) => l.key), [String(marg.dish_id)], 'the stored cart is the reorder');
+  } finally { S.w.close(); }
+});
+test('Volver a pedir — MIXED nulls within one order: the resolvable line is rebuilt, the null one is dropped AND disclosed («1 plato ya no está disponible»)', async () => {
+  const db = {}, orders = {};
+  const { o, e } = placeReal(db, orders, 'u_ana', 'XP-V3', { ts: T0 - 86400e3 });
+  const pep = Object.keys(MPRC.MENU_BY_RESTAURANT.x_pizza).find((k) => k !== 'Margherita' && PROV.x_pizza.envelope.menu.dishes.some((d) => d.name === k && d.dish_id));
+  e.items.push({ key: pep, qty: 1 }); void o;   // a second recipe line (what normalizeReorderItems stores for a second dish)
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const { S } = await pedidosBoot(db, { orders, storage: st, contextFor: (rid) => (rid === 'x_pizza' ? servedCtx('x_pizza', { drop: [pep] }) : null) });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    S.click('.orow [data-act="reorder"][data-oid="XP-V3"]'); await flush(); await flush(); await flush();
+    const ui = S.ui.store().ui;
+    assert.deepEqual(JSON.parse(JSON.stringify(ui.cart.lines().map((l) => l.qty))), [2], '🔴 VP-5: the resolvable line only');
+    assert.equal(txt(S.q('.cartnote')), '1 plato ya no está disponible', '🔴 VP-5: the null line DISCLOSED (never silent)');
+  } finally { S.w.close(); }
+});
+test('Volver a pedir — a cart MID-PLACEMENT (a pending placement record / a frozen cart) is NEVER overwritten: the store opens on its own state', async () => {
+  for (const seed of [(st) => st.setItem('capp:x_pizza:pending_place', JSON.stringify({ order_id: 'XP-PEND', expires_at: T0 + 3600e3 })),
+    (st) => st.setItem('capp:x_pizza:cart', JSON.stringify({ ...JSON.parse(frozenCart()['capp:x_pizza:cart']) }))]) {
+    const { S, st } = await againBoot({ seed });
+    const before = st.getItem('capp:x_pizza:cart');
+    try {
+      S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+      S.click('.orow [data-act="reorder"][data-oid="XP-V1"]'); await flush(); await flush(); await flush();
+      assert.equal(st.getItem('capp:x_pizza:cart'), before, '🔴 VP-6: the stored cart untouched');
+      assert.notEqual(S.q('#toast') && S.q('#toast').textContent, 'Pedido cargado en tu carrito', '🔴 VP-6: no «cargado» claim');
+    } finally { S.w.close(); }
+  }
+});
+test('Volver a pedir — «+» on a past dish adds ONE to that store\'s cart, stays on «Pedidos», «Agregado · {store}»', async () => {
+  const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
+  const { S, st } = await againBoot();
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    S.click('.otabs [data-val="again"]'); await flush(); await flush();
+    S.click(`.agains [data-act="add-past"][data-id="${marg.dish_id}"]`); await flush();
+    S.click(`.agains [data-act="add-past"][data-id="${marg.dish_id}"]`); await flush();
+    const c = cartOfSt(st, 'x_pizza');
+    assert.deepEqual(c.lines.map((l) => [l.key, l.qty]), [[String(marg.dish_id), 2]], '🔴 VP-7: one more per tap, in THAT store\'s cart');
+    assert.equal(txt(S.q('.pagehead h1')), 'Pedidos', '🔴 VP-7: still on «Pedidos»');
+    const NAME = SC.complete.body.restaurants.find((r) => r.restaurant_id === 'x_pizza').name;
+    assert.equal(S.q('#toast').textContent, `Agregado · ${NAME}`);
+  } finally { S.w.close(); }
+});
+test('Volver a pedir — «+» never writes over an UNRECONCILED placed cart (a placed marker): the store opens and reconciles it itself; the stored cart untouched', async () => {
+  const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
+  const seed = (st) => { st.setItem('capp:x_pizza:cart', JSON.stringify({ v: 2, lines: [{ key: String(marg.dish_id), qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery', cart_gen: 'g_9' }));
+    st.setItem('capp:x_pizza:placed', JSON.stringify({ order_id: 'XP-DONE', cart_gen: 'g_9', outcome: 'placed', at: T0 })); };
+  const { S, st } = await againBoot({ seed });
+  try {
+    const before = st.getItem('capp:x_pizza:cart');
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    S.click('.otabs [data-val="again"]'); await flush(); await flush();
+    S.click(`.agains [data-act="add-past"][data-id="${marg.dish_id}"]`); await flush(); await flush();
+    assert.notEqual(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado'), true, '🔴 VP-9: no «Agregado» onto purchased lines');
+    const after = cartOfSt(st, 'x_pizza');
+    assert.ok(st.getItem('capp:x_pizza:cart') === before || !after || after.lines.length === 0, '🔴 VP-9: never more lines on the purchased cart (untouched, or cleared by the store\'s reconcile)');
+  } finally { S.w.close(); }
+});
+test('Volver a pedir — a held reorder is VOID once the customer goes elsewhere: a later plain visit of the store keeps its own cart', async () => {
+  const other = PROV.x_pizza.envelope.menu.dishes.find((d) => d.dish_id && d.name !== 'Margherita' && !d.variantOf);
+  const { S, st } = await againBoot({ seed: (st) => st.setItem('capp:x_pizza:cart', JSON.stringify({ v: 2, lines: [{ key: String(other.dish_id), qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery' })) });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    const rd = S.ui.state; void rd;
+    S.w.document.querySelector('.orow [data-act="reorder"][data-oid="XP-V1"]');
+    // the reorder is armed but the customer leaves for Buscar before any store mounts (the tab is a user navigation)
+    S.ui.state.reorder = { rid: 'x_pizza', lines: [] };
+    S.click('.tabbar [data-tab="search"]'); await flush();
+    assert.equal(S.ui.state.reorder, null, '🔴 VP-8: leaving voids the held reorder');
   } finally { S.w.close(); }
 });
 test('Receipt API (capp-signup-api.getReceipt): the contract whitelist — injected fields never survive; a malformed line ⇒ lines null; absent totals stay absent; a bad id is refused with NO request; a receipt for another id ⇒ failed', async () => {

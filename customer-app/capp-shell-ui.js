@@ -206,7 +206,10 @@
         onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) { keepHandoff(entry.rid); openExternal(runtime.store.url); } return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
       S.store = { rid: entry.rid, ui, entry, body: e.body, fp: null, adopt: null };
       watchMenu(S.store);
-      const snap = carried || readJ(cfg.cartKey); if (snap) ui.restore(snap);   // an adoption carries the IN-MEMORY cart (Codex s7a2 r1 #1)
+      let snap = carried || readJ(cfg.cartKey);
+      const ro = !carried && S.reorder && S.reorder.rid === entry.rid ? S.reorder : null;
+      if (ro) { S.reorder = null; if (!cartLocked(cfg)) { snap = { ...reorderSnap(ui.menu, ro.lines, snap), rid: entry.rid }; S.reorderOpen = entry.rid; } }   // «Volver a pedir»: replaces the cart (v6)
+      if (snap) ui.restore(snap);   // an adoption carries the IN-MEMORY cart (Codex s7a2 r1 #1)
       if (entry.dish) ui.openDetail(entry.dish);
       // the return's AUTHORITATIVE outcome settles the stored handoff (S7a-1 r3 §2 / r3.1 N3: never on anything else)
       // …and the association is KEPT: a LATER terminal outcome of this store (a status read, a recovery) settles it too (Codex s7a2 r1 #4)
@@ -501,7 +504,8 @@
     const nav = CappShellNav.createShellNav({ win, home: { name: 'home' },
       onShow: (entry, x) => {
         if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link
-        if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } reflect(); return; }
+        if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } else if (S.reorderOpen === entry.rid && S.store) { S.reorderOpen = null; S.store.ui.openCart(); toast('Pedido cargado en tu carrito'); } reflect(); return; }
+        if (entry.name !== 'store') S.reorder = null;   // the customer went elsewhere: a held «Volver a pedir» is void
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
         if (entry.name === 'receipt') { if (!openReceipt(entry.oid)) { T.setTimeout(() => nav.tab({ name: 'orders' }), 0); return; } S.tab = 'receipt'; renderNow(); return; }
         if (entry.name === 'orders') { S.tab = 'orders'; loadOrders(); resumeOrder(); dir.visit(); renderNow(); return; }
@@ -513,6 +517,7 @@
     // a store / dish tap: in now when eligible with a menu in hand; otherwise HELD until both (or released by a tombstone / failure)
     function enter(rid, dish) {
       cancelRoute();   // a tap is a user navigation
+      if (S.reorder && S.reorder.rid !== rid) S.reorder = null;   // «Volver a pedir» belongs to ITS store's tap only
       if (dir.state(rid) === 'gone') return;
       S.held = { rid, dish: dish || null }; S.heldErr = false;
       { const pe = cache.peek(rid); if (pe && pe.state === 'failed') cache.get(rid); }   // frame 15: a failed menu is re-fetched before its sheet is ever shown
@@ -591,8 +596,9 @@
         const st = storeOfRid(r.restaurant); if (!st) continue;   // a store the directory no longer lists: not drawn (reported)
         active.push({ store: st, oid: r.order_id, numText: r.display_number ? `Orden #${r.display_number}` : null, whenText: whenOf(r.ts), total: r.total, itemsLine: r.items_text, statusText: statusText(r.status, r.order_type || 'delivery'), trackable: false });
       }
-      const past = rd.past.map((r) => { const st = storeOfRid(r.restaurant); return st ? { store: st, oid: r.order_id, dateText: dateOf(r.ts), total: r.total, itemsLine: r.items_text } : null; }).filter(Boolean);
-      return { phase: rd.phase, active, past, againReady: false };
+      const past = rd.past.map((r) => { const st = storeOfRid(r.restaurant); return st ? { store: st, oid: r.order_id, dateText: dateOf(r.ts), total: r.total, itemsLine: r.items_text, again: reorderable(recipeOf(r.items)) } : null; }).filter(Boolean);
+      const again = rd.phase === 'ready' ? againGroups(rows, rd.past) : [];
+      return { phase: rd.phase, active, past, againReady: past.some((p) => p.again), again };
     }
     // MOCKUP-capp-native-store-update state 1 (owner: A + B): the INSTALLED app with a store, when the host says a newer store build
     // exists (o.updateAvailable — the «latest native build» signal; none wired yet ⇒ never shown). A (Inicio line): hidden by the
@@ -889,6 +895,95 @@
       if (a === 'order-help') { const n = supportWa(), num = receiptVm(rc).display_number; if (n) openExternal(`https://wa.me/${n}?text=${encodeURIComponent('Hola, tengo un problema con mi pedido' + (num ? ' #' + num : ''))}`); }
       // 'order-receipt': a past order's summary stays open (v6)
     }
+    // ── «Volver a pedir» (v6 Pedidos; advisor 11-01: enabled BY DATA, never by brand). A past row is reorderable when its recipe lines
+    // carry the store's canonical dish_id (getMyOrders' approved delta; null = not resolvable ⇒ disclosed, never guessed). The pill
+    // replaces that store's cart with the order (v6 reorder: same dishes, same options; what no longer fits the live menu is dropped
+    // and COUNTED — the cart's «N platos ya no están disponibles»), opens the store and its cart. The tab lists, per store, the past
+    // dishes still on its live menu; «+» adds one to that store's cart. A store whose lines are all null has no pill and no section.
+    // A cart mid-placement (a pending placement / payment record, a frozen or unreadable cart) is NEVER overwritten.
+    const RECIPE_MAX = 100;
+    function recipeOf(items) {
+      const out = [];
+      for (const l of Array.isArray(items) ? items.slice(0, RECIPE_MAX) : []) {
+        if (!l || typeof l !== 'object' || !Number.isInteger(l.qty) || l.qty < 1 || l.qty > 50) continue;
+        const dish = typeof l.dish_id === 'string' && l.dish_id ? l.dish_id : null;
+        const options = [];
+        let ok = true;
+        for (const op of Array.isArray(l.options) ? l.options : []) {
+          if (op && typeof op.name === 'string' && Number.isInteger(op.count)) options.push({ name: op.name, n: op.count });
+          else if (op && typeof op.id === 'string' && Number.isInteger(op.qty)) options.push({ id: op.id, n: op.qty });
+          else ok = false;   // a malformed option: the line cannot be rebuilt faithfully ⇒ unavailable (counted)
+        }
+        out.push({ dish_id: ok ? dish : null, qty: l.qty, options });
+      }
+      return out;
+    }
+    const reorderable = (lines) => lines.some((l) => l.dish_id);
+    const UNKNOWN = '\u0000';   // a key no menu serves: hydrate drops the line and COUNTS it (the one disclosure path)
+    function reorderSnap(menu, lines, prev) {
+      const out = lines.map((l, i) => {
+        const ex = Array.from({ length: l.qty }, () => ({}));
+        let key = l.dish_id || UNKNOWN;
+        if (l.dish_id) {
+          const offered = menu.extrasFor(l.dish_id);
+          for (const op of l.options) {
+            const e = offered.find((x) => (op.name != null ? x.name === op.name || String(x.id) === op.name : String(x.id) === op.id));
+            if (!e || op.n < 1 || op.n > l.qty) { key = UNKNOWN; break; }   // an option the menu no longer offers / cannot carry ⇒ unavailable
+            for (let k = 0; k < op.n; k++) ex[k][e.key] = 1;
+          }
+        }
+        return { key, qty: l.qty, ex, added: i + 1 };
+      });
+      return { v: 2, lines: out, ...(prev && (prev.mode === 'pickup' || prev.mode === 'delivery') ? { mode: prev.mode } : {}) };
+    }
+    function cartLocked(cfg) {
+      const has = (k) => { if (!k) return false; try { return storage.getItem(k) != null; } catch (_) { return true; } };
+      if (!cfg.placeKey || has(cfg.placeKey) || has(cfg.pendingPayKey)) return true;   // the keys: capp-shell keysFor (ONE source)
+      if (!has(cfg.cartKey)) return false;
+      const snap = readJ(cfg.cartKey);
+      return !snap || typeof snap !== 'object' || snap.frozen_for != null;   // unreadable or frozen for a placement
+    }
+    function pastRow(oid) { const rd = S.ordersRead && S.ordersRead.who === ownerNow() ? S.ordersRead : null; return rd ? rd.past.find((r) => r.order_id === oid) || null : null; }
+    function reorder(oid) {
+      const r = pastRow(oid); if (!r) return;
+      const lines = recipeOf(r.items); if (!reorderable(lines)) return;
+      S.reorder = { rid: r.restaurant, lines };
+      enter(r.restaurant, null);
+    }
+    // the tab: per store (the past rows' order), the distinct past dishes its LIVE menu still serves (a variant line ⇒ its launcher)
+    function againGroups(rows, past) {
+      const groups = [];
+      for (const r of past) {
+        const lines = recipeOf(r.items); if (!reorderable(lines)) continue;
+        const row = rows.find((x) => x.rid === r.restaurant); if (!row) continue;
+        const view = viewOf(row.rid, row.entry); if (!view) continue;
+        let g = groups.find((x) => x.rid === row.rid);
+        if (!g) groups.push(g = { rid: row.rid, store: CappHome.storeOf({ ...row, cfg: cfgOf(row.entry) || {}, view }), items: [] });
+        for (const l of lines) {
+          if (!l.dish_id) continue;
+          let hit = null;
+          for (const sec of view.sections) for (const it of sec.items) if (!hit && (it.id === l.dish_id || (it.group && it.group.choices.some((c) => c.id === l.dish_id)))) hit = it;
+          if (hit && !g.items.some((x) => x.id === hit.id)) g.items.push(hit);
+        }
+      }
+      return groups.filter((g) => g.items.length);
+    }
+    // «+» on a past dish (v6 add-past): one more of it in THAT store's cart, the customer stays on «Pedidos» («Agregado · {store}»)
+    function addPast(rid, key) {
+      const row = dir.view().rows.find((x) => x.rid === rid), cfg = row && cfgOf(row.entry), view = row && viewOf(rid, row.entry);
+      // locked, no menu, or a PLACED marker still unreconciled (the stored lines may be the purchased ones — only the store's own
+      // reconcile may clear them): the store itself decides
+      const placed = (() => { try { return !!cfg && !!cfg.placedKey && storage.getItem(cfg.placedKey) != null; } catch (_) { return true; } })();
+      if (!cfg || !view || !cfg.cartKey || placed || cartLocked(cfg)) return enter(rid, key);
+      const CappCart = pick(o, 'CappCart', './capp-cart.js');
+      try {
+        const prev = readJ(cfg.cartKey), cart = CappCart.createCart(view.menu, cfg.placedKey ? { provenance: true } : undefined);   // as the store builds it
+        cart.hydrate(prev && prev.v === 2 ? prev : { v: 2, lines: [] });
+        cart.inc(key);   // the menu card's «+»: one plain instance
+        writeJ(cfg.cartKey, { ...cart.snapshot(), rid, ...(prev && (prev.mode === 'pickup' || prev.mode === 'delivery') ? { mode: prev.mode } : {}), ...(prev && typeof prev.cart_gen === 'string' ? { cart_gen: prev.cart_gen } : {}) });
+      } catch (_) { return enter(rid, key); }   // not addable as is (a launcher, an unknown dish): its sheet
+      toast(`Agregado · ${row.entry.name || ''}`); renderNow();
+    }
     function openExternal(url) { try { if (win && typeof win.open === 'function') win.open(url, '_blank', 'noopener'); } catch (_) {} }
     // ── the location layers ──
     let pinGen = 0, pinMap = null, pinDraft = null;
@@ -934,6 +1029,9 @@
         if (id === 'home' || id === 'search' || id === 'account' || id === 'orders') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
       if (S.tab === 'receipt' && a.startsWith('order-')) return void receiptAct(a);
       if (a.startsWith('order-') && orderAct(a)) return;
+      if (a === 'otab') { S.ordersTab = t.dataset.val === 'again' ? 'again' : 'past'; return renderNow(); }   // v6 Pedidos tabs
+      if (a === 'reorder') return reorder(t.dataset.oid);
+      if (a === 'add-past') return addPast(t.dataset.rid, t.dataset.id);
       if (a === 'go-receipt') { if (t.dataset.oid) nav.go({ name: 'receipt', oid: t.dataset.oid }); return; }   // v6: a past row opens its receipt
       if (a === 'go-order') { const od = activeOrder(); if (od && t.dataset.oid === od.order_id) nav.go({ name: 'order' }); return; }   // the device's active order ⇒ its live screen
       if (a === 'orders-help') { const n = supportWa(); if (n) { const od = S.order && S.order.order_id === t.dataset.oid ? S.order : null; const msg = 'Hola, tengo un problema con mi pedido' + (od && od.display_number ? ' #' + od.display_number : ''); openExternal(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`); } return; }
@@ -956,7 +1054,7 @@
       if (a === 'clearfilters') { S.cuisine = ''; S.filters.clear(); return renderNow(); }
       if (a === 'rownext') { const row = t.closest('.hsec') && t.closest('.hsec').querySelector('.hrow'); if (row && row.scrollBy) row.scrollBy({ left: Math.round(row.clientWidth * 0.8), behavior: 'smooth' }); return; }
       if (a === 'menu-retry') { closeLayer(); if (S.held) cache.get(S.held.rid); return; }   // frame 15: the row stays held until the menu answers
-      if (a === 'menu-close') { S.held = null; cancelRoute(); closeLayer(); return renderNow(); }
+      if (a === 'menu-close') { S.held = null; S.reorder = null; cancelRoute(); closeLayer(); return renderNow(); }
       if (a === 'menus-retry') { loadMenus(); return renderNow(); }   // frame 16
       if (a === 'dir-retry') { S.heldErr = false; dir.revalidate(); return renderNow(); }
       if (a === 'recent') { S.q = t.dataset.q; return renderNow(); }

@@ -199,14 +199,18 @@
     // v6's row opens its receipt (the receipt read, NOTE-getMyOrders-receipt) — a control only where the shell can read it (vm.receiptOk:
     // a member with the sign-in API); otherwise the row body is NOT a control (Codex Pedidos r1 #6: never a button without effect)
     const rowBody = (r) => `${logoChip(r.store, 'lg big')}<span class="t"><b>${esc(r.store.name)}</b><span class="m">${esc(r.dateText)}${r.total != null ? ' · ' + money(r.total) : ''}</span>${r.itemsLine ? `<span class="s">${esc(r.itemsLine)}</span>` : ''}</span>`;
-    const row = (r) => `<div class="orow">${vm.receiptOk ? `<button class="orow-main" data-act="go-receipt" data-oid="${esc(r.oid)}" aria-label="Ver el recibo de ${esc(r.store.name)} · ${esc(r.dateText)}">${rowBody(r)}</button>` : `<div class="orow-main">${rowBody(r)}</div>`}${again ? `<button class="btn2 again-pill" data-act="reorder" data-oid="${esc(r.oid)}">Volver a pedir</button>` : ''}</div>`;
+    const row = (r) => `<div class="orow">${vm.receiptOk ? `<button class="orow-main" data-act="go-receipt" data-oid="${esc(r.oid)}" aria-label="Ver el recibo de ${esc(r.store.name)} · ${esc(r.dateText)}">${rowBody(r)}</button>` : `<div class="orow-main">${rowBody(r)}</div>`}${again && r.again ? `<button class="btn2 again-pill" data-act="reorder" data-oid="${esc(r.oid)}">Volver a pedir</button>` : ''}</div>`;
     const tabKey = again ? (vm.ordersTab || 'past') : 'past';
     const tabs = again ? `<div class="otabs" role="tablist"><button role="tab" aria-selected="${tabKey === 'past'}" data-act="otab" data-val="past">Pedidos anteriores</button><button role="tab" aria-selected="${tabKey === 'again'}" data-act="otab" data-val="again">Volver a pedir</button></div>` : '';
     const empty = `<div class="oempty">${ORDERS_ART}<b>Todavía no tenés pedidos</b><span>Tus pedidos y tus favoritos para repetir aparecen aquí.</span><button class="primary" data-act="tab" data-tab="home">Explorar restaurantes</button></div>`;
     const act = o.active || [], past = o.past || [];
     const settled = o.phase === 'ready';
+    // v6's «Volver a pedir» tab (P ordersHtml): per store, the past dishes its live menu still serves; «+» adds one (add-past). A store
+    // whose recipe carries no canonical dish has no section (advisor 11-01: by data)
+    const againSec = (g) => { const r = g.store; return `<section class="again-sec" aria-label="${esc(r.name)}"><button class="urow" data-act="open-store" data-rid="${esc(r.id)}">${logoChip(r, 'lg big')}<span class="t"><b>${esc(r.name)}</b><span>${isOpen(r.cfg, vm.now) ? (r.etaDel ? `${r.etaDel[0]}–${r.etaDel[1]} min` : '') : 'Cerrado · ' + esc(opensText(r.cfg, vm.now))}</span></span>${IC.chev.replace('class="i"', 'class="i chev"')}</button>
+    <div class="hrow">${g.items.map((it) => `<div class="dcard"><div class="ph"><button class="openimg" data-act="open-dish" data-rid="${esc(r.id)}" data-id="${esc(it.id)}" aria-label="Ver ${esc(it.n)}" tabindex="-1">${it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy">` : `<span class="noph">${esc(it.n[0] || '')}</span>`}</button><div class="qty-overlay"><button class="qty-add-btn" data-act="add-past" data-rid="${esc(r.id)}" data-id="${esc(it.id)}" aria-label="Agregar ${esc(it.n)}">+</button></div></div><button class="txtbtn" data-act="open-dish" data-rid="${esc(r.id)}" data-id="${esc(it.id)}"><span class="nm">${esc(it.n)}</span><span class="prrow"><span class="pr">${esc(dishPrice(it))}</span></span></button></div>`).join('')}</div></section>`; };
     const body = settled && !act.length && !past.length ? empty
-      : `<div class="olist">${act.map(card).join('')}${past.length ? tabs + `<div class="orows">${past.map(row).join('')}</div>` : ''}</div>`;
+      : `<div class="olist">${act.map(card).join('')}${past.length ? tabs + (tabKey === 'again' ? `<div class="agains">${(o.again || []).map(againSec).join('')}</div>` : `<div class="orows">${past.map(row).join('')}</div>`) : ''}</div>`;
     return shellWrap(vm, `<div class="scroller"><div class="pagehead"><h1>Pedidos</h1></div>${body}</div>`);
   }
 
