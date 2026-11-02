@@ -508,7 +508,7 @@
       onShow: (entry, x) => {
         if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link
         if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } reflect(); return; }
-        if (entry.name !== 'store') S.reorder = null;   // the customer went elsewhere: a held «Volver a pedir» is void
+        if (entry.name !== 'store') { S.reorder = null; S.held = null; }   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
         if (entry.name === 'receipt') { if (!openReceipt(entry.oid)) { T.setTimeout(() => nav.tab({ name: 'orders' }), 0); return; } S.tab = 'receipt'; renderNow(); return; }
         if (entry.name === 'orders') { S.tab = 'orders'; loadOrders(); resumeOrder(); dir.visit(); renderNow(); return; }
@@ -1000,9 +1000,13 @@
           if (h && h.dropped) return 'store';
           try { cart.inc(key); } catch (_) { return 'store'; }   // a launcher / unknown dish: its sheet
           const next = { ...cart.snapshot(), rid, ...(prev && (prev.mode === 'pickup' || prev.mode === 'delivery') ? { mode: prev.mode } : {}), ...(prev && typeof prev.cart_gen === 'string' ? { cart_gen: prev.cart_gen } : {}) };
-          if (!writeJ(cfg.cartKey, next)) { try { if (raw == null) storage.removeItem(cfg.cartKey); else storage.setItem(cfg.cartKey, raw); } catch (_) {} return 'fail'; }   // #7
+          // #7 + Codex VP r2 #1: a failed / unverified write is rolled back ONLY while the stored bytes are still exactly OURS
+          // (compare-then-restore) — another tab's freeze that landed in between is never written over: the store decides
+          const mine = JSON.stringify(next), ours = () => { try { return storage.getItem(cfg.cartKey) === mine; } catch (_) { return false; } };
+          const restore = () => { try { if (raw == null) storage.removeItem(cfg.cartKey); else storage.setItem(cfg.cartKey, raw); } catch (_) {} };
+          if (!writeJ(cfg.cartKey, next)) { if (!ours()) return 'store'; restore(); return 'fail'; }
           if (!locks && (placedOf(cfg) || cartLocked(cfg))) {   // no Web Locks: a placement appeared meanwhile ⇒ the cart as it was
-            try { if (storage.getItem(cfg.cartKey) === JSON.stringify(next)) { if (raw == null) storage.removeItem(cfg.cartKey); else storage.setItem(cfg.cartKey, raw); } } catch (_) {}
+            if (ours()) restore();
             return 'store';
           }
           return 'ok';

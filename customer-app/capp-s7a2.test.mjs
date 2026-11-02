@@ -3070,6 +3070,48 @@ test('Volver a pedir r2 (Codex VP r1 #6): the rebuilt cart records the prices ON
     assert.deepEqual(JSON.parse(JSON.stringify(ui.cart.priceChanges())), [], 'nothing changed yet');
   } finally { S.w.close(); }
 });
+test('Volver a pedir r3 (Codex VP r2 #1, the repro): no Web Locks — the other tab\'s REAL freeze lands between «+»\'s write and its verify ⇒ «+» never restores over it (compare-then-restore): frozen_for kept', async () => {
+  const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
+  const RAW = JSON.stringify({ v: 2, lines: [{ key: String(marg.dish_id), qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery', cart_gen: 'GEN_R' });
+  // the REAL placement's bytes: run place() on a copy of the device storage and take what its freeze wrote (the cart + its record)
+  const copy = memStorage({ 'capp:x_pizza:cart': RAW }); void placingTab(copy, null);
+  for (let i = 0; i < 50 && !JSON.parse(copy.getItem('capp:x_pizza:cart')).frozen_for; i++) await flush();
+  const FROZEN = copy.getItem('capp:x_pizza:cart'), PLACE = copy.getItem('capp:x_pizza:pending_place');
+  assert.ok(JSON.parse(FROZEN).frozen_for && PLACE, 'premise: the real freeze bytes and placement record');
+  let armed = false;
+  const { S, st } = await againBoot({ seed: (st) => { st.setItem('capp:x_pizza:cart', RAW); const set = st.setItem.bind(st);
+    st.setItem = (k, v) => { set(k, v); if (armed && k === 'capp:x_pizza:cart' && v !== RAW) { armed = false; set('capp:x_pizza:pending_place', PLACE); set('capp:x_pizza:cart', FROZEN); } }; } });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    S.click('.otabs [data-val="again"]'); await flush(); await flush();
+    armed = true;
+    S.click(`.agains [data-act="add-past"][data-id="${marg.dish_id}"]`); await flush(); await flush();
+    assert.equal(JSON.parse(st.getItem('capp:x_pizza:cart')).frozen_for, JSON.parse(FROZEN).frozen_for, '🔴 VP-19: the other tab\'s freeze is KEPT (never restored over)');
+    assert.equal(st.getItem('capp:x_pizza:pending_place'), PLACE, 'its placement record kept');
+    assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-19: no «Agregado»');
+  } finally { S.w.close(); }
+});
+test('Volver a pedir r3 (Codex VP r2 #3): a pill held on a loading menu, then the customer goes to Buscar ⇒ the late menu opens NOTHING (the held tap is void with the reorder)', async () => {
+  const { S } = await againBoot({ envelope: (rid) => (rid === 'x_pizza' ? 'hold' : 'ok') });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    S.click('.orow [data-act="reorder"][data-oid="XP-V1"]'); await flush();
+    assert.equal(S.ui.store(), null, 'premise: held');
+    S.click('.tabbar [data-tab="search"]'); await flush();
+    while (S.pend.x_pizza && S.pend.x_pizza.length) S.release('x_pizza');
+    await flush(); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 VP-21: the abandoned store never opens');
+    assert.ok(S.q('#gq'), 'still on Buscar');
+  } finally { S.w.close(); }
+});
+test('cart lock (Codex VP r2 #4): a holder must be SYNCHRONOUS — an async one is refused (no acquisition timeout exists, so a hung holder could stall placement)', async () => {
+  for (const lm of [null, sharedLocks()]) {
+    const p = CAPI.cartLock(lm, 'k', async () => 1);
+    if (lm) await lm.grant(0);
+    await assert.rejects(p, new RegExp(CAPI.CART_LOCK_SYNC_ONLY), `🔴 VP-22: async holder refused (${lm ? 'Web Locks' : 'no Web Locks'})`);
+    const q = CAPI.cartLock(lm, 'k', () => 7); if (lm) await lm.grant(0); assert.equal(await q, 7, 'a synchronous holder\'s result');
+  }
+});
 test('Volver a pedir — a held reorder is VOID once the customer goes elsewhere: a later plain visit of the store keeps its own cart', async () => {
   const other = PROV.x_pizza.envelope.menu.dishes.find((d) => d.dish_id && d.name !== 'Margherita' && !d.variantOf);
   const { S, st } = await againBoot({ seed: (st) => st.setItem('capp:x_pizza:cart', JSON.stringify({ v: 2, lines: [{ key: String(other.dish_id), qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery' })) });

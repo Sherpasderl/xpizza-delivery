@@ -535,48 +535,54 @@
         // payments were resolved above first (polls, locks, resume never need a ticket)
         { const g = guestGate(p, { ticket: true }); if (g) return g; }
         let rec;
-        try {
-          rec = readPlace() || mintPlace(method, p);
-          priorSends = Number(rec.dispatched) || 0;   // S4: a retained identity (already dispatched by an earlier attempt)
-          // Codex cash-chips r2 P1-1: the caller's no-quote allowance (freshOk:false) is for a REPLAY of the recorded body only — anything
-          // that would build a FRESH body is refused here, before any freeze / dispatch is recorded for this send
-          // (Codex cash-chips r3) granted ONLY when sent_body PARSES to an object whose order_id is this record's — the same test the replay
-          // itself applies — so an unreadable / "null" / foreign body can never fall through to a fresh build under the retained id
-          if (p.freshOk === false && !(cfg.schedulingLive === true && !fresh && priorSends > 0 && rec.sched_pending === true && !schedSettled.has(rec.order_id) && replayable(rec))) return { kind: 'replay_requote', order_id: rec.order_id, local: true };
-          // Codex amendment r1 P2: the ticket ↔ order-id binding BEFORE anything is recorded for this identity (the freeze, confirmSend) —
-          // a refused attempt leaves the record un-dispatched, so the re-verify binds to THIS id and the next place() sends it
-          { const g = guestGate(p, { ticket: true, id: rec.order_id }); if (g) return g; }
-          // S4 r1 §3.4 (under schedulingLive): a retained identity whose earlier send is UNCERTAIN (sched_pending, no definitive answer)
-          // re-sends the EXACT bytes it first sent (`sent_body`: the quote token and ceiling included — no refresh mid-uncertainty, Codex
-          // r1 #3); otherwise the FINAL outgoing body (after cq.send) is persisted and VERIFIED before anything is dispatched — a failed
-          // write sends nothing (the drawn «Sin conexión», Codex r1 #2). The accepted-price resend is the one refresh
-          body = null; replay = false;
-          if (cfg.schedulingLive === true) {
-            if (!fresh && priorSends > 0 && rec.sched_pending === true && !schedSettled.has(rec.order_id) && typeof rec.sent_body === 'string') {
-              try { const b = JSON.parse(rec.sent_body); if (b && typeof b === 'object' && b.order_id === rec.order_id) { body = b; replay = true; } } catch (_) { /* unreadable ⇒ the rebuilt body */ }
+        // Codex VP r2 #2: the ADMISSION — the freeze of the purchased cart AND the dispatch record (confirmSend) — is ONE synchronous
+        // decision, exactly as before the cart lock: hosted, it runs INSIDE the cart's critical section (shared with «Volver a pedir»'s
+        // writers across tabs), re-validating everything there (the page alive, the record as it is NOW); link mode runs it directly
+        const waited = HOSTED && !!locks, liveAt = guard === 0 ? JSON.stringify(live || null) : null;
+        const admit = () => {
+          if (typeof p.alive === 'function' && !p.alive()) return { ret: { kind: 'superseded' } };   // torn down while queued ⇒ never sends
+          // another placement admitted / locked while this one waited for the section ⇒ this one starts over, so place()'s own guards
+          // (the page lock, pay_pending, an unresolved / issued card) decide on the state AS IT IS NOW — the base's second call exactly
+          if (waited && guard === 0 && (memLock || JSON.stringify(readPlace() || null) !== liveAt)) return { ret: place(p) };
+          try {
+            rec = readPlace() || mintPlace(method, p);
+            priorSends = Number(rec.dispatched) || 0;   // S4: a retained identity (already dispatched by an earlier attempt)
+            // Codex cash-chips r2 P1-1: the caller's no-quote allowance (freshOk:false) is for a REPLAY of the recorded body only — anything
+            // that would build a FRESH body is refused here, before any freeze / dispatch is recorded for this send
+            // (Codex cash-chips r3) granted ONLY when sent_body PARSES to an object whose order_id is this record's — the same test the replay
+            // itself applies — so an unreadable / "null" / foreign body can never fall through to a fresh build under the retained id
+            if (p.freshOk === false && !(cfg.schedulingLive === true && !fresh && priorSends > 0 && rec.sched_pending === true && !schedSettled.has(rec.order_id) && replayable(rec))) return { ret: { kind: 'replay_requote', order_id: rec.order_id, local: true } };
+            // Codex amendment r1 P2: the ticket ↔ order-id binding BEFORE anything is recorded for this identity (the freeze, confirmSend) —
+            // a refused attempt leaves the record un-dispatched, so the re-verify binds to THIS id and the next place() sends it
+            { const g = guestGate(p, { ticket: true, id: rec.order_id }); if (g) return { ret: g }; }
+            // S4 r1 §3.4 (under schedulingLive): a retained identity whose earlier send is UNCERTAIN (sched_pending, no definitive answer)
+            // re-sends the EXACT bytes it first sent (`sent_body`: the quote token and ceiling included — no refresh mid-uncertainty, Codex
+            // r1 #3); otherwise the FINAL outgoing body (after cq.send) is persisted and VERIFIED before anything is dispatched — a failed
+            // write sends nothing (the drawn «Sin conexión», Codex r1 #2). The accepted-price resend is the one refresh
+            body = null; replay = false;
+            if (cfg.schedulingLive === true) {
+              if (!fresh && priorSends > 0 && rec.sched_pending === true && !schedSettled.has(rec.order_id) && typeof rec.sent_body === 'string') {
+                try { const b = JSON.parse(rec.sent_body); if (b && typeof b === 'object' && b.order_id === rec.order_id) { body = b; replay = true; } } catch (_) { /* unreadable ⇒ the rebuilt body */ }
+              }
+              if (!replay) { body = C.orderBody(p.flow, { ...p.ctx, orderId: rec.order_id }); cq.send(body, p.sig, expected); }
+              // Codex S4 r2 (G=B): the account rule on the OUTGOING / replayed body BEFORE anything is recorded for this send (no
+              // dispatched++, no card / unresolved lock, no cart freeze) — an earlier uncertain send keeps its record exactly as it was
+              if (body.scheduled_for != null && !memberOf()) return { ret: { kind: 'schedule_needs_account', order_id: rec.order_id, local: true } };
+              // Codex G7 r2: the tender is the OUTGOING body's — first send, replay, healed or accepted-price retry alike — and a cash body
+              // never leaves without a member (guestCardOnly): refused before anything is recorded for this send
+              method = methodOf(body);
+              if (cfg.guestCardOnly === true && !memberOf() && method === 'cash') return { ret: { kind: 'guest_cash_not_allowed', local: true } };
+              if (replay) { if (num(body.expected_net_cents) !== null) expected = body.expected_net_cents; }   // the replayed bytes' ceiling is what this send stands behind
+              else {
+                try { rec = patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true, owner: ownerNow() }); } catch (_) { return { ret: { kind: 'offline', order_id: rec.order_id } }; }
+                if (rec.sent_body !== JSON.stringify(body) || rec.sched_pending !== true || rec.owner !== ownerNow()) return { ret: { kind: 'offline', order_id: rec.order_id } };
+                schedSettled.delete(rec.order_id);
+              }
             }
-            if (!replay) { body = C.orderBody(p.flow, { ...p.ctx, orderId: rec.order_id }); cq.send(body, p.sig, expected); }
-            // Codex S4 r2 (G=B): the account rule on the OUTGOING / replayed body BEFORE anything is recorded for this send (no
-            // dispatched++, no card / unresolved lock, no cart freeze) — an earlier uncertain send keeps its record exactly as it was
-            if (body.scheduled_for != null && !memberOf()) return { kind: 'schedule_needs_account', order_id: rec.order_id, local: true };
-            // Codex G7 r2: the tender is the OUTGOING body's — first send, replay, healed or accepted-price retry alike — and a cash body
-            // never leaves without a member (guestCardOnly): refused before anything is recorded for this send
-            method = methodOf(body);
-            if (cfg.guestCardOnly === true && !memberOf() && method === 'cash') return { kind: 'guest_cash_not_allowed', local: true };
-            if (replay) { if (num(body.expected_net_cents) !== null) expected = body.expected_net_cents; }   // the replayed bytes' ceiling is what this send stands behind
-            else {
-              try { rec = patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true, owner: ownerNow() }); } catch (_) { return { kind: 'offline', order_id: rec.order_id }; }
-              if (rec.sent_body !== JSON.stringify(body) || rec.sched_pending !== true || rec.owner !== ownerNow()) return { kind: 'offline', order_id: rec.order_id };
-              schedSettled.delete(rec.order_id);
-            }
-          }
-          // S7a-1 r3.1 N7: hosted ⇒ a VERIFIED freeze of the purchased cart is a precondition of the FIRST dispatch of an identity;
-          // a failure stops here (zero sends; the drawn «Sin conexión» retry) and the retry reuses THIS identity
-          if (HOSTED && !(Number(rec.dispatched) > 0)) {
-            // Codex VP r1 #1 (money): the freeze is a read-modify-write of the stored cart — ONE exclusive section per cart key, shared
-            // with every other cart writer across tabs («Volver a pedir»'s replace and «+»), so neither can land between its read and write
-            const fz = await cartLock(locks, CART_KEY, () => {
-              const sr = readStrict(CART_KEY); if (!sr.ok) return { stop: { kind: 'offline', order_id: rec.order_id, freeze_failed: true } };   // P1-3
+            // S7a-1 r3.1 N7: hosted ⇒ a VERIFIED freeze of the purchased cart is a precondition of the FIRST dispatch of an identity;
+            // a failure stops here (zero sends; the drawn «Sin conexión» retry) and the retry reuses THIS identity
+            if (HOSTED && !(Number(rec.dispatched) > 0)) {
+              const sr = readStrict(CART_KEY); if (!sr.ok) return { ret: { kind: 'offline', order_id: rec.order_id, freeze_failed: true } };   // P1-3
               const snap = sr.value && typeof sr.value === 'object' ? sr.value : {};
               const cs = p.cartSnapshot && Array.isArray(p.cartSnapshot.lines) ? p.cartSnapshot : null;
               // the cart's own generation unless it is bound to ANOTHER order (never borrowed across orders)
@@ -584,17 +590,17 @@
               // ANOTHER order (never borrowed across orders), else a new one
               const gen = rec.cart_gen || (cs && typeof cs.cart_gen === 'string' && cs.cart_gen) || ((!snap.frozen_for || snap.frozen_for === rec.order_id) && typeof snap.cart_gen === 'string' && snap.cart_gen) || newGen();
               // Codex r1 P2-8: the supplied snapshot's own version (v2 — CappCart.hydrate accepts only v2), never a v1 default
-              if (!writeStrict(CART_KEY, { ...snap, v: cs ? cs.v : snap.v, rid: cfg.restaurantId, mode: p.flow && p.flow.mode, lines: cs ? cs.lines : snap.lines, cart_gen: gen, frozen_for: rec.order_id })) return { stop: { kind: 'offline', order_id: rec.order_id, freeze_failed: true } };
-              return { gen };
-            });
-            if (fz.stop) return fz.stop;
-            const gen = fz.gen;
-            if (rec.cart_gen !== gen) rec = patchPlace(rec.order_id, { cart_gen: gen });
-          }
-          // an un-issued identity carries the economics of the body actually sent (an issued one keeps its checkout's, and a cash
-          // attempt never overwrites a charge's); the method is the record's first one once a charge was ever dispatched (`card` is sticky)
-          rec = confirmSend(rec.order_id, method, rec.issued || (rec.card && method !== 'online') ? {} : { ...(rec.card ? {} : { method }), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(expected), totals: p.totals || rec.totals || null });
-        } catch (e) { const pe = placeErr(e, rec && rec.order_id); return pe || (rec ? resolveExisting(rec.order_id) : { kind: 'error', error: 'placement_lost' }); }
+              if (!writeStrict(CART_KEY, { ...snap, v: cs ? cs.v : snap.v, rid: cfg.restaurantId, mode: p.flow && p.flow.mode, lines: cs ? cs.lines : snap.lines, cart_gen: gen, frozen_for: rec.order_id })) return { ret: { kind: 'offline', order_id: rec.order_id, freeze_failed: true } };
+              if (rec.cart_gen !== gen) rec = patchPlace(rec.order_id, { cart_gen: gen });
+            }
+            // an un-issued identity carries the economics of the body actually sent (an issued one keeps its checkout's, and a cash
+            // attempt never overwrites a charge's); the method is the record's first one once a charge was ever dispatched (`card` is sticky)
+            rec = confirmSend(rec.order_id, method, rec.issued || (rec.card && method !== 'online') ? {} : { ...(rec.card ? {} : { method }), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(expected), totals: p.totals || rec.totals || null });
+          } catch (e) { const pe = placeErr(e, rec && rec.order_id); return { ret: pe || (rec ? resolveExisting(rec.order_id) : { kind: 'error', error: 'placement_lost' }) }; }
+          return null;
+        };
+        const adm = HOSTED && locks ? await cartLock(locks, CART_KEY, admit) : admit();   // no Web Locks ⇒ synchronous, byte-for-byte the base
+        if (adm && adm.ret) return adm.ret;
         const id = rec.order_id;
         if (body === null) {   // the flag absent: today's build, byte for byte
           body = C.orderBody(p.flow, { ...p.ctx, orderId: id });
@@ -788,9 +794,13 @@
 
   // Codex VP r1 #1: THE cart-mutation critical section — an exclusive Web Lock per cart key (every tab of this origin); without Web
   // Locks the section runs synchronously (no await inside it: nothing of this tab can interleave). fn is synchronous; its result resolves
+  // Codex VP r2 #4: every holder is SYNCHRONOUS (no await inside) — there is no acquisition timeout, so an async holder that hangs would
+  // stall every placement; a thenable result is refused outright
+  const SYNC_ONLY = 'capp-cart lock holders must be synchronous';
+  const held = (fn) => { const r = fn(); if (r && typeof r.then === 'function') throw new Error(SYNC_ONLY); return r; };
   function cartLock(locks, key, fn) {
-    if (locks && typeof locks.request === 'function') return locks.request(`capp-cart:${key}`, { mode: 'exclusive' }, () => fn());
-    try { return Promise.resolve(fn()); } catch (e) { return Promise.reject(e); }
+    if (locks && typeof locks.request === 'function') return locks.request(`capp-cart:${key}`, { mode: 'exclusive' }, () => held(fn));
+    try { return Promise.resolve(held(fn)); } catch (e) { return Promise.reject(e); }
   }
-  return { createApi, cartLock, tokenUsable, acceptToken, tokenExpMs, TOKEN_SKEW_MS, TOKEN_MAX_AHEAD_MS, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
+  return { createApi, cartLock, CART_LOCK_SYNC_ONLY: SYNC_ONLY, tokenUsable, acceptToken, tokenExpMs, TOKEN_SKEW_MS, TOKEN_MAX_AHEAD_MS, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
 });
