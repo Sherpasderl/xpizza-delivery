@@ -1,0 +1,85 @@
+{
+  "source": "MOCKUP-capp-native-icon-splash (option A «Celeste», owner 2026-11-01)",
+  "colors": {
+    "icon_background": "#8EC0FF",
+    "splash_background": "#8EC0FF",
+    "splash_background_night": "#0D1B3E"
+  },
+  "files": {
+    "ios-icon-1024.svg": {
+      "w": 1024,
+      "h": 1024,
+      "alpha": false
+    },
+    "ios-icon-dark-1024.svg": {
+      "w": 1024,
+      "h": 1024,
+      "alpha": false
+    },
+    "ios-icon-tinted-1024.svg": {
+      "w": 1024,
+      "h": 1024,
+      "alpha": true
+    },
+    "android-foreground-432.svg": {
+      "w": 432,
+      "h": 432,
+      "alpha": true
+    },
+    "android-monochrome-432.svg": {
+      "w": 432,
+      "h": 432,
+      "alpha": true
+    },
+    "android-legacy-192.svg": {
+      "w": 192,
+      "h": 192,
+      "alpha": false
+    },
+    "play-store-512.svg": {
+      "w": 512,
+      "h": 512,
+      "alpha": false
+    },
+    "splash-mark-light-104.svg": {
+      "w": 104,
+      "h": 104,
+      "alpha": true
+    },
+    "splash-mark-light-208.svg": {
+      "w": 208,
+      "h": 208,
+      "alpha": true
+    },
+    "splash-mark-light-312.svg": {
+      "w": 312,
+      "h": 312,
+      "alpha": true
+    },
+    "splash-mark-dark-104.svg": {
+      "w": 104,
+      "h": 104,
+      "alpha": true
+    },
+    "splash-mark-dark-208.svg": {
+      "w": 208,
+      "h": 208,
+      "alpha": true
+    },
+    "splash-mark-dark-312.svg": {
+      "w": 312,
+      "h": 312,
+      "alpha": true
+    },
+    "android-splash-icon-light-960.svg": {
+      "w": 960,
+      "h": 960,
+      "alpha": true
+    },
+    "android-splash-icon-dark-960.svg": {
+      "w": 960,
+      "h": 960,
+      "alpha": true
+    }
+  }
+}
