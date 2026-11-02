@@ -3490,7 +3490,12 @@ test('C-6c dialog (frame 3): the desk dish dialog = two panes (photo | options) 
     assert.equal(S.q('#detail-scroll .detail-photo'), null, '🔴 SD-1: the options pane has no second photo');
     assert.ok(!db.classList.contains('nophoto'));
     const order = [...S.q('#detail-scroll .detail-body').children].map((c) => c.className); assert.equal(order[0], 'detail-name', 'name first');
-    const focusables = [...m.querySelectorAll('button:not([disabled]),[tabindex="0"]')]; assert.ok(focusables.indexOf(S.q('#detail-close')) === 0, '✕ is the dialog\'s first stop (Shift+Tab from the heading)');
+    // advisor 11-02: ✕ is the NEXT Tab stop after the heading (frame 3), still drawn in the header's slot
+    const tabs = [...m.querySelectorAll('#detail-name, button:not([disabled]), [tabindex="0"], input, a[href]')];
+    assert.equal(tabs[tabs.indexOf(h) + 1], S.q('#detail-close'), '🔴 SD-4: Tab from the heading reaches ✕ first');
+    assert.equal(S.q('.detail-header button'), null, '🔴 SD-4: no ✕ left in the header DOM (it would come before the heading)');
+    assert.ok(S.q('.detail-header > .detail-close-slot[aria-hidden="true"]'), 'the header keeps its slot (its layout unchanged)');
+    const cs = S.w.getComputedStyle(S.q('#detail-close')); assert.equal(cs.position, 'absolute', '🔴 SD-4: ✕ is drawn in the header slot by CSS'); assert.equal(cs.left, '16px');
     S.click('#detail-close'); await flush();
     assert.ok(!S.q('#detail-modal').classList.contains('open'), 'closed');
     assert.equal(S.w.document.activeElement, S.q(`#dish-${a.key} .txt`), '🔴 SD-1: focus returns to the opener');
@@ -3532,4 +3537,13 @@ test('C-6c featured + badges: house-tagged dishes ⇒ «La casa recomienda» in 
       const mk = pills.querySelector('.mark'); assert.ok(mk && mk.textContent.length > 0 && /^var\(--/.test(mk.style.color), `the badge's own text and colour token (${mk && mk.getAttribute('style')})`);
     } finally { S.w.close(); }
   } finally { PROV.x_pizza.envelope = orig; }
+});
+test('C-6c dialog ✕ (advisor 11-02): the PHONE dish sheet keeps its ✕ in the header, before the title (its DOM unchanged)', async () => {
+  const { S, plain } = await deskStore(false, 0);
+  try {
+    S.click(`#dish-${plain[0].key} .txtbtn, #dish-${plain[0].key} [data-act="open"]`); await flush();
+    assert.ok(S.q('#detail-modal').classList.contains('open') && !S.q('#detail-modal').classList.contains('wide'), 'premise: the phone sheet');
+    assert.equal(S.q('.detail-header > #detail-close'), S.q('.detail-header').firstElementChild, '🔴 SD-5: the phone ✕ stays the header\'s first child');
+    assert.equal(S.q('.detail-close-slot'), null);
+  } finally { S.w.close(); }
 });
