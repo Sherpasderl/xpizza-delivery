@@ -32391,5 +32391,149 @@
    "node",
    "directory/directory-ratings.test.js"
   ]
+ },
+ {
+  "id": "pc-1",
+  "slice": "pc",
+  "label": "config plane: the reader accepts an OLDER source_version (a stale downgrade)",
+  "file": "platform-config/reader.js",
+  "from": "    if (prev && raw.source_version < prev.source_version) return fromLkg(rid);   // older than accepted ⇒ rejected\n",
+  "to": "",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-2",
+  "slice": "pc",
+  "label": "config plane: last-known-good never expires (no TTL ⇒ never closed)",
+  "file": "platform-config/reader.js",
+  "from": "    return age <= ttlMs ? {",
+  "to": "    return true ? {",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-3",
+  "slice": "pc",
+  "label": "config plane: requireFresh accepts last-known-good (money / fiscal on stale config)",
+  "file": "platform-config/reader.js",
+  "from": "const requireFresh = (r) => (r && r.ok && r.fresh ? r :",
+  "to": "const requireFresh = (r) => (r && r.ok ? r :",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-4",
+  "slice": "pc",
+  "label": "config plane: a malformed projection is trusted",
+  "file": "platform-config/reader.js",
+  "from": "      fields = S.validateFields(raw.fields);\n    } catch (_) { return fromLkg(rid); }",
+  "to": "      fields = raw.fields;\n    } catch (_) { return fromLkg(rid); }",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-5",
+  "slice": "pc",
+  "label": "config plane: the generator downgrades a projection ahead of its source",
+  "file": "platform-config/generate.js",
+  "from": "    if (v > next.source_version) { out.outcome = 'stale_refused'; return raw; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-6",
+  "slice": "pc",
+  "label": "config plane: the generator overwrites a same-version conflict",
+  "file": "platform-config/generate.js",
+  "from": "'unchanged' : 'conflict';\n      return raw;",
+  "to": "'unchanged' : 'conflict';\n      return next;",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-7",
+  "slice": "pc",
+  "label": "config plane: the source writer has no compare-and-set",
+  "file": "platform-config/source.js",
+  "from": "    if ((expectedVersion ?? null) !== curV) {",
+  "to": "    if (false) {",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-8",
+  "slice": "pc",
+  "label": "config plane: the source writer skips validation",
+  "file": "platform-config/source.js",
+  "from": "  const clean = S.validateFields(fields);                       // throws platform_config_invalid — nothing written",
+  "to": "  const clean = fields;",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-9",
+  "slice": "pc",
+  "label": "config plane: the schema accepts an unknown section",
+  "file": "platform-config/schema.js",
+  "from": "  if (!exact(f, SECTIONS)) throw bad('sections');",
+  "to": "  if (!isObj(f)) throw bad('sections');",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-10",
+  "slice": "pc",
+  "label": "config plane: the break-glass seed overwrites an existing source",
+  "file": "platform-config/admin-core.js",
+  "from": "  if (await SRC.readPlatformSource(fs, rid).catch(() => 'invalid')) return { rid, state: 'refused_source_exists' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-11",
+  "slice": "pc",
+  "label": "config plane: the CLI accepts --rid= (the boundary-tool fan-out trap)",
+  "file": "platform-config/admin-core.js",
+  "from": "    else if (t.startsWith('--rid=') || t.startsWith('--project=')) return refuse(",
+  "to": "    else if (false) return refuse(",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-12",
+  "slice": "pc",
+  "label": "config plane: earn and redemption kinds may differ (the hand-synced unit split)",
+  "file": "platform-config/schema.js",
+  "from": "  if (!isObj(d) || d.kind !== e.kind) throw bad('rewards.redemption.kind');",
+  "to": "  if (!isObj(d)) throw bad('rewards.redemption.kind');",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
  }
 ]

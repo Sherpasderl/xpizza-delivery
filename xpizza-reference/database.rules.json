@@ -342,6 +342,7 @@
     "restaurants": {
       "$restaurant_id": {
         "factura_config": { ".read": false, ".write": false },
+        "platform_config": { ".read": false, ".write": false },
         "legal": { ".read": false, ".write": false },
         "identity": {
           ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true",
