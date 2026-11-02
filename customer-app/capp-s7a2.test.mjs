@@ -3228,7 +3228,7 @@ test('C-6b heading: the desktop Inicio H1 «Pedí a domicilio en {the directory\
     assert.equal(D.q('.h1row h1').textContent, CITY ? `Pedí a domicilio en ${CITY}` : 'Pedí a domicilio', '🔴 DN-5: the H1 from the data');
     assert.equal(D.q('.h1row p').textContent, 'Restaurantes de tu zona, con envío por Sherpa. Entregamos solo en Honduras.');
     assert.equal(D.q('.h1row .promo'), null, '🔴 DN-6: no sign-up ⇒ no «Creá tu cuenta» card');
-    assert.equal(D.w.getComputedStyle(D.q('.home-head .addr-btn')).display, 'none', 'the desk: the bar\'s pill replaces the phone addr-btn');
+    assert.equal(D.q('.home-head'), null, 'the desk: the bar\'s pill replaces the phone head — no empty header above the H1 (Codex C-6b r1 #4)');
   } finally { D.w.close(); }
   const G = bootShell({ media: fakeMedia(true), auth: 'unresolved', runtime: SU_RUNTIME, mountExtra: { loadSdk: fakeFirebase({}).loadSdk } }); await flush(); await flush(); await flush();
   try { assert.ok(/Creá tu cuenta y pagá en efectivo/.test(G.q('.h1row .promo') ? G.q('.h1row .promo').textContent : ''), '🔴 DN-6: the guest\'s approved promo card where sign-up exists'); } finally { G.w.close(); }
@@ -3253,7 +3253,7 @@ test('Cuenta «Ayuda» (advisor 11-02: it was a DEAD control — the host never 
 // ── C-6b part 2 (D-3 r3 f1a/f1b; advisor rulings 11-02): the desktop Inicio rows ──
 const SIX = (() => { const base = SC.complete.body, xp = base.restaurants[0]; const extra = [3, 4, 5, 6].map((k) => ({ ...xp, restaurant_id: `tienda_${k}`, name: `Tienda ${k}`, order_id_prefix: `T${k}` }));
   return { status: SC.complete.status, body: { ...base, restaurants: [...base.restaurants, ...extra] }, etag: '"six"' }; })();
-const deskSix = async () => { const S = bootShell({ media: fakeMedia(true), dirScript: [SIX], envelope: (rid) => (PROV[rid] ? 'ok' : 'fail') }); await flush(); await flush(); return S; };
+const deskSix = async (media = fakeMedia(true)) => { const S = bootShell({ media, dirScript: [SIX], envelope: (rid) => (PROV[rid] ? 'ok' : 'fail') }); await flush(); await flush(); return S; };
 test('C-6b rows: the desk Inicio = «Destacados» a 4-up grid («Ver todo» + ‹ ›) · the REAL dish rows (row of dishes, ‹ ›) · «Todos los restaurantes» the 3-up grid — no «Platos populares»; the phone rows unchanged', async () => {
   const S = await deskSix();
   try {
@@ -3300,4 +3300,54 @@ test('C-6b rows: a dish row\'s ‹ › follow its scroll — ‹ off at the star
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {
   const over = WARNINGS.filter((w) => w && w.name === 'TimeoutOverflowWarning');
   assert.equal(over.length, 0, `🔴 store promo r4: ${over.length} TimeoutOverflowWarning(s): ${over.map((w) => w.message).join(' | ').slice(0, 200)}`);
+});
+// ── C-6b r2 (Codex C-6b r1 #1–#4) ──
+test('C-6b r2 crossing: the shell\'s desk-only DOM follows the breakpoint BOTH ways — phone→desk gains the H1 row + grids, desk→phone drops them; the page, the paging and the query survive', async () => {
+  const media = fakeMedia(true), S = await deskSix(media);
+  try {
+    const page = () => S.qa('.hsec[aria-label="Destacados"] .rcard').map((c) => c.dataset.rid);
+    assert.ok(S.q('.h1row') && S.q('.rgrid4'), 'premise: the desk Inicio');
+    S.click(S.q('.hsec[aria-label="Destacados"] [data-act="feat-next"]')); await flush(); const p2 = page(); assert.equal(p2.length, 2, 'premise: page 2');
+    media.set(false); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    assert.ok(!S.q('.app').classList.contains('desk'), 'premise: the phone now');
+    assert.equal(S.q('.h1row'), null, '🔴 XB-1: desk→phone drops the H1 row');
+    assert.equal(S.q('.rgrid'), null, '🔴 XB-1: desk→phone drops the desk grids');
+    assert.equal(S.q('[data-act="seeall"]'), null, '🔴 XB-1: … and «Ver todo»');
+    assert.equal(S.q('footer.dfoot'), null, 'and the desk footer');
+    assert.ok(S.q('.home-head .addr-btn') && S.q('.hrow'), '🔴 XB-1: the phone\'s own head and rows');
+    media.set(true); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    assert.ok(S.q('.h1row') && S.q('.rgrid4'), '🔴 XB-2: phone→desk gains the H1 row and the grids');
+    assert.deepEqual(page(), p2, '🔴 XB-2: the paging survives the round trip');
+    S.click('.desknav .dn-search'); await flush(); const i = S.q('#gq'); i.value = 'pizza'; i.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+    media.set(false); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    assert.equal(S.q('#gq') && S.q('#gq').value, 'pizza', '🔴 XB-3: Buscar keeps its query across the crossing');
+    media.set(true); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    assert.ok(/pizza/.test(S.q('.desknav .dn-search').textContent), '🔴 XB-3: … and the bar shows it again on the desk');
+  } finally { S.w.close(); }
+});
+test('C-6b r2 arrows: a disabled ‹ › LOOKS disabled on the desk (D-3 r3: opacity .35, default cursor) — the style, not only the property', async () => {
+  const S = await deskSix();
+  try {
+    const prev = S.q('.hsec[aria-label="Destacados"] [data-act="feat-prev"]'), next = S.q('.hsec[aria-label="Destacados"] [data-act="feat-next"]');
+    assert.ok(prev && prev.disabled && next && !next.disabled, 'premise: ‹ off, › on at page 1');
+    const cs = S.w.getComputedStyle(prev), on = S.w.getComputedStyle(next);
+    assert.equal(cs.opacity, '0.35', '🔴 AR-1: the disabled arrow is dimmed'); assert.equal(cs.cursor, 'default', '🔴 AR-1: … with the default cursor');
+    assert.notEqual(on.opacity, '0.35', 'the enabled arrow is not');
+  } finally { S.w.close(); }
+});
+test('C-6b r2 promo: while auth is UNRESOLVED (sign-up on) the guest card\'s footprint is reserved — same markup, invisible, aria-hidden; a guest sees it; a member has none (no H1-row shift when a guest resolves)', () => {
+  const html = (auth) => { const d = dom(CappHome.homeHtml(VM({ desk: true, signupOn: true, auth }))); return d.querySelector('.h1row .promo'); };
+  const u = html('unresolved'), g = html('guest'), m = html('member');
+  assert.ok(u, '🔴 PR-1: the slot is there while unresolved');
+  assert.equal(u.style.visibility, 'hidden', '🔴 PR-1: invisible'); assert.equal(u.getAttribute('aria-hidden'), 'true', 'and out of the a11y tree');
+  assert.ok(g && g.style.visibility === '' && !g.hasAttribute('aria-hidden'), '🔴 PR-1: the guest sees it');
+  assert.equal(u.innerHTML, g.innerHTML, '🔴 PR-1: the SAME content ⇒ the same footprint (resolving to guest never moves the row)');
+  assert.equal(m, null, 'a member: no card');
+  assert.equal(dom(CappHome.homeHtml(VM({ desk: true, signupOn: false, auth: 'unresolved' }))).querySelector('.h1row .promo'), null, 'no sign-up ⇒ no slot at all');
+});
+test('C-6b r2 head: the desk renders NO empty header above the H1 (the bar has the address) — only the location-denied message keeps it; the phone keeps its head', () => {
+  const q = (over, sel) => dom(CappHome.homeHtml(VM(over))).querySelector(sel);
+  assert.equal(q({ desk: true }, '.home-head'), null, '🔴 HH-1: no empty desk header (the H1 sits where D-3 r3 draws it)');
+  assert.ok(q({ desk: true, locDenied: true }, '.home-head .locrow'), '🔴 HH-1: the location-denied message stays on the desk');
+  assert.ok(q({}, '.home-head .addr-btn'), 'the phone keeps its head');
 });

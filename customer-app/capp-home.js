@@ -273,12 +273,14 @@
     </div>`;
   }
   function homeHtml(vm) {
-    const head = homeHead(vm);
+    // Codex C-6b r1 #4: on the desk the bar holds the address ⇒ the head renders only for the location-denied message
+    const head = vm.desk && !vm.locDenied ? '' : homeHead(vm);
     const all = (vm.rows || []).map(storeOf);
     const c = city(vm.platform);
     // C-6b (f1a/f1b): the page heading Google indexes + the guest's approved promo card (only where sign-up exists; the member's
     // sample card has no data ⇒ absent). Desktop only (CSS)
-    const promo = vm.auth === 'guest' && vm.signupOn ? `<div class="promo"><span class="ic">${IC.user}</span><span class="t"><b>Creá tu cuenta y pagá en efectivo</b><span>Recompensas, promos y envío gratis</span></span></div>` : '';
+    // Codex C-6b r1 #3: while auth is unresolved its footprint is RESERVED (invisible) — the H1 row never shifts when a guest resolves
+    const promo = vm.signupOn && vm.auth !== 'member' ? `<div class="promo"${vm.auth === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true"'}><span class="ic">${IC.user}</span><span class="t"><b>Creá tu cuenta y pagá en efectivo</b><span>Recompensas, promos y envío gratis</span></span></div>` : '';
     const h1row = !vm.desk ? '' : `<div class="h1row"><div><h1>${c ? `Pedí a domicilio en ${esc(c)}` : 'Pedí a domicilio'}</h1><p>Restaurantes de tu zona, con envío por Sherpa. Entregamos solo en Honduras.</p></div>${promo}</div>`;
     const page = (body, credit) => shellWrap(vm, `<div class="scroller">${head}${h1row}<div class="home-body">${body}${footHtml(vm)}</div>${credit || ''}</div>`);   // the footer on EVERY Inicio state (Codex C-6a r1 #5)
     if (!all.length) {

@@ -1185,6 +1185,7 @@
       app.classList.toggle('desk', d);
       const h = $('su-host'); if (h) h.classList.toggle('desk', d);
       if (S.store && S.store.ui && typeof S.store.ui.setView === 'function') S.store.ui.setView(d);   // the store's view-conditional DOM
+      else renderNow();   // Codex C-6b r1 #1: the shell's desk-only DOM (H1 row, grids, footer) follows the crossing — state + scroll kept
     }) : null;
     renderNow();
     dir.revalidate();
