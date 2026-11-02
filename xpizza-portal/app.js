@@ -1853,3 +1853,7 @@ export function openEditor(rid, { name = rid, sales } = {}) {
 }
 // The self-update guard, reused verbatim to block a branch switch while the merchant has unsaved work or an operation open.
 export const editorCanLeave = () => portalCanReload(portalReloadFacts());
+
+// PLAN-portal-shell-no-shift (Codex r2 P1): shell.js presents its recovery box after a boot failure / the discovery deadline;
+// whatever the editor still has in flight (a held catalog load) belongs to an abandoned world and must not repaint over it.
+document.addEventListener('portal:abandon', () => { invalidateReview(); });

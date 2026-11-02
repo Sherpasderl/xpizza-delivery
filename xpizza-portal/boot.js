@@ -26,7 +26,8 @@
   // On reveal, focus moves to a deliberate target (the error box's «Reintentar», else the view heading); back to the form, to the email.
   window.__portalBooted = true;                  // gate-early.js's boot deadline: the module graph did start
   const html = document.documentElement;
-  html.classList.remove('sw-fail');              // a late start takes over from the recovery card
+  const tookOver = html.classList.contains('sw-fail');
+  html.classList.remove('sw-fail');              // a late start takes over from the recovery card, into the state the page was in
   const SESSION_HINT = 'sherpa.portal.session';
   const AUTH_DEADLINE_MS = 6000, DISCOVERY_DEADLINE_MS = 20000;
   const hint = {
@@ -42,10 +43,14 @@
     if (!t.matches('button, a[href], input, select, textarea')) t.setAttribute('tabindex', '-1');
     t.focus();
   }
+  // focus follows the card's state explicitly (Codex r2): the wait line (a status, focusable but not in the tab order), or the email
+  function focusGate() {
+    if (html.classList.contains('sw-wait')) { const w = $('gatewait'); w.setAttribute('tabindex', '-1'); w.focus(); } else $('email').focus();
+  }
   function cardWait(on) {
     const was = html.classList.contains('sw-wait');
     html.classList.toggle('sw-wait', on);
-    if (was && !on) $('email').focus();          // the form comes back: focus where the merchant types
+    if (was !== on) focusGate();
   }
   function reveal() {
     if (!signedIn || revealed) return;
@@ -57,6 +62,7 @@
     focusPortal();
   }
   document.addEventListener('portal:ready', reveal);
+  if (tookOver) focusGate();                     // focus leaves the hidden «Reintentar»
   if (html.classList.contains('sw-wait')) {
     authTimer = setTimeout(() => { authTimer = null; if (!signedIn && !revealed) cardWait(false); }, AUTH_DEADLINE_MS);
   }

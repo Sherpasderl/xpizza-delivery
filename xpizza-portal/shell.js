@@ -125,9 +125,15 @@ function ready() {
 // boot.js's DISCOVERY deadline (Codex r1): discovery never ended → drop it (a late answer is ignored) and show the retry box.
 document.addEventListener('portal:deadline', () => {
   if (readied) return;
-  S.gen += 1;
+  abandon();
   showBootError({ kind: 'Unavailable' });
 });
+// Codex r2 P1: before ANY recovery box, end every in-flight continuation — the shell's own discovery (S.gen) and the editor's
+// (app.js's portal:abandon bumps its generation) — so a late success can never repaint over the box.
+function abandon() {
+  S.gen += 1;
+  document.dispatchEvent(new CustomEvent('portal:abandon'));
+}
 
 // ── boot ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const decisionOf = (sel) => {
@@ -141,7 +147,7 @@ const decisionOf = (sel) => {
 async function boot() {
   try { await bootSteps(); } catch (e) {
     console.error('portal boot', e && e.message);
-    S.gen += 1;
+    abandon();
     showBootError({ kind: 'Unavailable' });
   }
 }

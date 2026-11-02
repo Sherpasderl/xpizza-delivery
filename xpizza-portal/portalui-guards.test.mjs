@@ -58,7 +58,23 @@ function withoutFs(src) {
   }
   return out;
 }
-const appJs = () => withoutFs(read('app.js'));
+// ── PLAN-portal-shell-no-shift (Codex r2 P1): app.js gains EXACTLY this one listener (portal:abandon → invalidateReview), appended at
+// the end. Folded out FIRST (the newest layer), so every older pin below judges exactly what it judged before.
+const SW_HUNK = `
+// PLAN-portal-shell-no-shift (Codex r2 P1): shell.js presents its recovery box after a boot failure / the discovery deadline;
+// whatever the editor still has in flight (a held catalog load) belongs to an abandoned world and must not repaint over it.
+document.addEventListener('portal:abandon', () => { invalidateReview(); });
+`;
+function withoutSw(src) {
+  assert.ok(src.endsWith(SW_HUNK), 'app.js ends with exactly the shell-wait listener');
+  return src.slice(0, -SW_HUNK.length);
+}
+test('shell-wait (Codex r2 P1): app.js gains exactly the portal:abandon listener, appended; nothing else', () => {
+  assert.notEqual(withoutSw(read('app.js')), read('app.js'), 'non-vacuity: the fold changes something');
+  assert.equal(read('app.js').split('portal:abandon').length - 1, 1, 'one listener');
+  assert.throws(() => withoutSw(read('app.js').replace('invalidateReview(); });\n', 'invalidateReview(); state.x = 1; });\n')));
+});
+const appJs = () => withoutFs(withoutSw(read('app.js')));
 test('app.js field state (train-3 follow-up): exactly the four named lines; no field toggles the global .err block', () => {
   assert.ok(withoutFs(read('app.js')) !== read('app.js'), 'non-vacuity: the fold changes something');
   assert.ok(!/classList\.(add|toggle)\('err'/.test(read('app.js')), 'no app.js element is given the global .err class');

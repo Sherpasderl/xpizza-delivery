@@ -7,17 +7,20 @@
 // harness's throttled cell (Slow 4G + 4× CPU): the portal's ~750 KB module graph incl. the Firebase SDK had run and the shell
 // painted by ≈ 3.7 s. 10 s ≈ 2.7× that: a slow but working connection is never cut off; a dead one is told within seconds.
 (function () {
-  const $ = (id) => document.getElementById(id);
   var html = document.documentElement;
   try { if (window.localStorage.getItem('sherpa.portal.session') === '1') html.classList.add('sw-wait'); } catch (e) { /* no storage: today's form */ }
+  // Codex r2: «Reintentar» is DELEGATED (bound here, before the body exists) — the deadline can fire before the button is parsed
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (html.classList.contains('sw-fail') && t && t.closest && t.closest('#gatefailbtn')) (window.__portalReload || function () { window.location.reload(); })();
+  });
   var BOOT_DEADLINE_MS = 10000;
   window.setTimeout(function () {
     if (window.__portalBooted) return;
-    html.classList.remove('sw-wait');
+    // sw-wait is KEPT (a deadline is not a signed-out answer): the fail card wins in CSS, and a late boot.js takes over from
+    // the state the page really was in — the wait card for a page with a session, else the form
     html.classList.add('sw-fail');
-    const b = $('gatefailbtn');
-    if (!b) return;
-    b.addEventListener('click', function () { (window.__portalReload || function () { window.location.reload(); })(); });
-    b.focus();
+    var focus = function () { var b = document.getElementById('gatefailbtn'); if (b && html.classList.contains('sw-fail')) b.focus(); };
+    if (document.getElementById('gatefailbtn')) focus(); else document.addEventListener('DOMContentLoaded', focus);   // the body may not be parsed yet
   }, BOOT_DEADLINE_MS);
 })();
