@@ -10,12 +10,14 @@
  * Pure of Firebase specifics: `deps` (db + confirmDeps extras) injected so it's unit-tested
  * against an in-memory mock. `deps` = confirmDeps(db) + { genToken }.
  */
+const crypto = require('crypto');
 const ppCrypto = require('./pixelpay');
 const { resolvePixelPayConfig } = require('./pixelpay-config');
 const { toCents } = require('./pixelpay-hosted');
 const { confirmAndMaterialize } = require('./pixelpay-confirm');
 const MR = require('./manual-resolve');   // atomic-claim predicate (rev-5): paid-evidence capture in manual-flow states
 const { holdRedemptionForManual, reverseRedemptionForOrder } = require('./rewards-reserve');   // [B] HOLD at a manual entry (alerts on a lost race); [C/#18] reverse the hold when a late paid callback voids a cancelled order
+const XP = require('./extra-payment-repair');   // the second-payment record key, marker and completion write (one source with the sweep's repair)
 
 const ATTEMPT_SUFFIX = /-[0-9a-f]{16}$/;             // hosted_order_id = `${orderId}-${attemptId}` (16-hex)
 const HOSTED_ORDER_RE = /^[A-Za-z0-9_-]{1,96}$/;
@@ -62,15 +64,30 @@ async function handleHostedCallback(deps, body, now) {
 
   if (!bindingOk || !hashOk || !amountOk) {
     // PERMANENT verification failure → manual_reconciliation + alert, then 2xx (won't change on retry, I8/R2-3).
+    // An UNVERIFIED callback never writes the attempt's payment binding (payment_uuid / paid_amount_cents): the hash covers
+    // only the order id, so its payment id and amount are claims. They are kept apart, once per claimed payment.
+    const claimedCents = toCents(amount);
+    const evKey = crypto.createHash('sha256').update(JSON.stringify([uuid || '', Number.isFinite(claimedCents) ? claimedCents : null])).digest('hex');
+    const evidence = { uuid: uuid || null, amount_cents: Number.isFinite(claimedCents) ? claimedCents : null, transaction_id: txnRef || null, at: now, binding_ok: bindingOk, hash_ok: hashOk, amount_ok: amountOk };
+    await db.ref(`payment_attempts/${attemptId}/unverified_callbacks/${evKey}`).transaction((cur) => (cur == null ? evidence : undefined));
     await db.ref(`payment_attempts/${attemptId}`).update({
       hosted_state: 'manual_reconciliation',
       manual_reason: `verify_fail binding=${bindingOk} hash=${hashOk} amount=${amountOk}`,
-      payment_uuid: uuid, paid_amount_cents: toCents(amount), flagged_at: now
+      flagged_at: now
     });
     await holdRedemptionForManual(db, { orderId, order, now, alert: deps.alert });   // [B] a 'paid' callback that failed verify → POSSIBLY paid → secure held_paid BEFORE advertising manual_reconciliation (alerts if a release-sweep race already freed it → possible mint)
     await db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });
     deps.alert && deps.alert('hosted_verify_fail', { orderId, attemptId, bindingOk, hashOk, amountOk });
     return { code: 200, outcome: 'manual_reconciliation' };
+  }
+
+  // ONE payment per attempt, bound ATOMICALLY (absent → this payment id). A re-delivery of the bound payment passes on; any
+  // OTHER payment id — including the loser of two concurrent first callbacks — is an extra payment: recorded and alerted for
+  // a person to refund, never voided automatically, and it never touches this attempt's payment or reversal fields.
+  if (uuid) {
+    const bind = await db.ref(`payment_attempts/${attemptId}/payment_uuid`).transaction((cur) => (cur == null ? uuid : undefined));
+    const bound = bind.committed ? uuid : (bind.snapshot && bind.snapshot.val());
+    if (bound !== uuid) return handleExtraPayment(deps, { orderId, attemptId, uuid, amount, now });
   }
 
   // CANCEL race (I9): cancelled before this paid callback → auto-void, NEVER materialize.
@@ -96,10 +113,9 @@ async function handleHostedCallback(deps, body, now) {
       [`payment_attempts/${attemptId}/paid_amount_cents`]: toCents(amount),
       [`payment_attempts/${attemptId}/hosted_callback_verified`]: true,
       [`payment_attempts/${attemptId}/payment_hash_verified`]: true,
-      [`payment_attempts/${attemptId}/payment_reference`]: txnRef || uuid,
-      [`payment_attempts/${attemptId}/paid_at`]: now,
       [`orders/${orderId}/paid_during_resolve`]: true,
     });
+    await setPaidOnce(db, attemptId, { paidAt: now, reference: txnRef || uuid });
     await holdRedemptionForManual(db, { orderId, order, now, alert: deps.alert });   // paid evidence in manual-flow → HOLD the points (alerts if a race already freed the hold → possible mint)
     deps.alert && deps.alert('paid_during_manual_resolve', { orderId, attemptId, payment_status: order.payment_status });
     return { code: 200, outcome: 'paid_evidence_recorded' };
@@ -109,9 +125,9 @@ async function handleHostedCallback(deps, body, now) {
   // confirm + materialize idempotently (reuses the tested confirmAndMaterialize claim).
   await db.ref(`payment_attempts/${attemptId}`).update({
     hosted_state: 'paid', payment_uuid: uuid, paid_amount_cents: toCents(amount),
-    hosted_callback_verified: true, payment_hash_verified: true,
-    payment_reference: txnRef || uuid, paid_at: now
+    hosted_callback_verified: true, payment_hash_verified: true
   });
+  await setPaidOnce(db, attemptId, { paidAt: now, reference: txnRef || uuid });   // immutable once written: a re-delivery never moves them
 
   let r;
   try {
@@ -125,6 +141,37 @@ async function handleHostedCallback(deps, body, now) {
     return voidPaid(deps, { orderId, attemptId, hostedOrderId, uuid, amount, now, reason: 'cancelled_during_confirm' });
   }
   return { code: 200, outcome: r.outcome };
+}
+
+// The bound payment's paid_at / payment_reference are written ONCE (absent → value); a re-delivery leaves them as they were.
+async function setPaidOnce(db, attemptId, { paidAt, reference }) {
+  await db.ref(`payment_attempts/${attemptId}/paid_at`).transaction((cur) => (cur == null ? paidAt : undefined));
+  await db.ref(`payment_attempts/${attemptId}/payment_reference`).transaction((cur) => (cur == null ? reference : undefined));
+}
+
+// A SECOND distinct verified payment on one attempt (owner 2026-11-02): it is NEVER voided automatically — on a live or a
+// cancelled order alike — a person refunds it in PixelPay. It is recorded ONCE under a collision-resistant key (sha256 of the
+// exact payment id, which is kept inside the record). The record is CLAIMED absent-only (a transaction: an existing record for
+// the same payment is a no-op, one for another payment id is refused), so its first sighting is never rewritten; the durable
+// alert and the order's manual-review flag are then written from the COMMITTED record, so a late or concurrent re-delivery
+// writes byte-identical values. Any failure answers 5xx so PixelPay re-delivers and the next delivery completes the alert and
+// flag. A pending marker written BEFORE the claim (and removed in the same update as the alert + flag) lets the payments sweep
+// complete the alert when a crash is followed by re-deliveries the endpoint dedupes. The first payment's binding, reference
+// and paid_at are never touched, and no provider text is copied anywhere.
+async function handleExtraPayment(deps, { orderId, attemptId, uuid, amount, now }) {
+  const { db } = deps;
+  const key = XP.extraKey(uuid);
+  try { await db.ref(`extra_payment_pending/${key}`).set(XP.pendingMarker({ attemptId, orderId, now })); }
+  catch (_) { return { code: 500, outcome: 'extra_payment_marker_failed' }; }
+  let rec;
+  try {
+    const claim = await db.ref(XP.extraRecordPath(attemptId, key)).transaction((cur) => (cur == null ? { uuid, amount_cents: toCents(amount), at: now } : undefined));
+    rec = claim.snapshot && claim.snapshot.val();
+  } catch (_) { return { code: 500, outcome: 'extra_payment_claim_failed' }; }
+  if (!rec || rec.uuid !== uuid) return { code: 500, outcome: 'extra_payment_key_mismatch' };   // never write over another payment's record
+  try { await db.ref().update(XP.extraCompletionUpdate(key, rec, { orderId, attemptId })); }
+  catch (_) { return { code: 500, outcome: 'extra_payment_write_failed' }; }
+  return { code: 200, outcome: 'extra_payment_recorded' };
 }
 
 // Auto-void a paid hosted charge for a cancelled order; never leaves money on a cancelled order.

@@ -13,18 +13,7 @@ const RESTAURANT = { lat: 15.5, lng: -88.0, name: 'X Pizza', phone: '+5049795289
 const NOW = 1700000000000;
 const A = 'a1b2c3d4e5f6a7b8';   // 16-hex attempt id
 
-function makeDb(initial = {}) {
-  const root = JSON.parse(JSON.stringify(initial));
-  const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
-  const getAt = (p) => { if (!p) return root; let n = root; for (const k of p.split('/')) { if (n == null) return null; n = n[k]; } return n === undefined ? null : n; };
-  const setAt = (p, val) => { const a = p.split('/'); let n = root; for (let i = 0; i < a.length - 1; i++) { if (n[a[i]] == null || typeof n[a[i]] !== 'object') n[a[i]] = {}; n = n[a[i]]; } const l = a[a.length - 1]; if (val === null) delete n[l]; else n[l] = val; };
-  const ref = (p = '') => ({
-    async once() { return { val: () => clone(getAt(p)) }; },
-    async transaction(fn) { fn(null); const cur = clone(getAt(p)); const nx = fn(cur); if (nx === undefined) return { committed: false, snapshot: { val: () => cur } }; setAt(p, clone(nx)); return { committed: true, snapshot: { val: () => clone(getAt(p)) } }; },
-    async update(patch) { if (!p) { for (const [k, v] of Object.entries(patch)) setAt(k, clone(v)); return; } setAt(p, Object.assign({}, getAt(p) || {}, clone(patch))); }
-  });
-  return { ref, getAt };
-}
+const { makeHonestDb: makeDb } = require('./_honest-rtdb-model');
 const deps = (db, voidImpl) => ({ db, restaurant: RESTAURANT, buildMaterializeUpdates, alert: () => {}, genToken: () => 'TOK', client: {}, voidOrRefund: voidImpl || (async () => ({ voided: true })) });
 const seed = (over = {}, attOver = {}) => ({
   orders: { O1: { order_id: 'O1', order_type: 'pickup', payment_method: 'online', payment_status: 'pending', status: 'pending_payment', total: 299, total_cents: 29900, customer_name: 'Test', items_text: 'Margherita', active_attempt_id: A, ...over } },

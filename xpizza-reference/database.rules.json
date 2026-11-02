@@ -323,6 +323,7 @@
     "payment_attempts": { ".read": false, ".write": false, ".indexOn": ["paid_at", "uncertain_at"] },
     "pending_paid_alerts": { ".read": false, ".write": false, ".indexOn": ["at"] },
     "webhook_events":   { ".read": false, ".write": false },
+    "extra_payment_pending": { ".read": false, ".write": false },
     "outbox":           { ".read": false, ".write": false },
     "refund_attempts":  { ".read": false, ".write": false },
     "payment_audit":    { ".read": false, ".write": false },

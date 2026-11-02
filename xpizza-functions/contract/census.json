@@ -14444,7 +14444,7 @@
   },
   {
    "id": "xpizza-functions/manual-resolve.js#hasCapturedMoneyEvidence#payment_status#0",
-   "line": 81,
+   "line": 82,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -14457,7 +14457,7 @@
   },
   {
    "id": "xpizza-functions/manual-resolve.js#recoveryDecision#payment_status#0",
-   "line": 107,
+   "line": 108,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -17416,7 +17416,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-hosted-webhook.js#handleHostedCallback#status#0",
-   "line": 38,
+   "line": 40,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17429,7 +17429,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-hosted-webhook.js#handleHostedCallback#total_cents#0",
-   "line": 61,
+   "line": 63,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -17441,7 +17441,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-hosted-webhook.js#handleHostedCallback#status#1",
-   "line": 83,
+   "line": 100,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17454,7 +17454,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-hosted-webhook.js#handleHostedCallback#payment_status#0",
-   "line": 92,
+   "line": 109,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -17467,7 +17467,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-hosted-webhook.js#handleHostedCallback#payment_status#1",
-   "line": 92,
+   "line": 109,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -17480,7 +17480,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-hosted-webhook.js#handleHostedCallback#payment_status#2",
-   "line": 104,
+   "line": 120,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -51470,6 +51470,11 @@
  ],
  "clocks": [
   {
+   "key": "xpizza-functions/_honest-rtdb-model.js:setAt:Date.now()",
+   "line": 52,
+   "class": "business-sample"
+  },
+  {
    "key": "xpizza-functions/access/access-census-core.js:runAccessCensus>anon:new Date()",
    "line": 125,
    "class": "display"
@@ -53059,6 +53064,9 @@
    "key": "xpizza-functions/driver-attribution.js#writeDeliveryAttribution#delivered_by_name#set"
   },
   {
+   "key": "xpizza-functions/extra-payment-repair.js#repairPendingExtraPayments#extra_payment_review#update"
+  },
+  {
    "key": "xpizza-functions/factura/factura-helpers.js#allocateFacturaNumber#factura_status#set"
   },
   {
@@ -53411,6 +53419,9 @@
   },
   {
    "key": "xpizza-functions/pixelpay-hosted-webhook.js#handleHostedCallback#paid_during_resolve#update"
+  },
+  {
+   "key": "xpizza-functions/pixelpay-hosted-webhook.js#handleExtraPayment#extra_payment_review#update"
   },
   {
    "key": "xpizza-functions/pixelpay-hosted-webhook.js#voidPaid#status#update"
@@ -53917,6 +53928,10 @@
   {
    "field": "earn_preview",
    "class": "fact"
+  },
+  {
+   "field": "extra_payment_review",
+   "class": "lifecycle"
   },
   {
    "field": "factura_items",

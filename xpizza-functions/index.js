@@ -3011,7 +3011,7 @@ exports.sweepStalePending = onSchedule(
     // reversal failed): re-run both reversals (idempotent), clear when consistent. Fail-open — never breaks the sweep.
     let repair = { healed: 0, pending: 0 };
     try { repair = await retryRewardLedgerRepair({ db, alert: (k, d) => paymentAlert(db, k, d) }, { now }); }
-    catch (e) { console.error('sweepStalePending: ledger-repair retry failed', e && e.message); }
+    catch (e) { console.error('sweepStalePending: ledger-repair retry failed', e && e.message); } try { await require('./extra-payment-repair').repairPendingExtraPayments({ db, now }); } catch (e) { console.warn('sweepStalePending: extra-payment repair failed', e && e.message); }
     console.log(`sweepStalePending: manual_flagged=${flagged} left=${left} paid_strand_recovered=${recovered} ledger_healed=${repair.healed} ledger_pending=${repair.pending}`);
   }
 );

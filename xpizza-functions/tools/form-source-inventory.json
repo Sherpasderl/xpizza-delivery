@@ -1980,6 +1980,7 @@
  ],
  "seed_problems": [],
  "server_modules_edited": [
+  "_honest-rtdb-model.js",
   "access/access-census-core.js",
   "access/invites.js",
   "access/legacy-readers.js",
@@ -2064,6 +2065,7 @@
   "lib/driver-callable-guard.js",
   "lib/emulator-endpoint.js",
   "lib/hn-date.js",
+  "manual-resolve.js",
   "materialize.js",
   "menu-pricing.js",
   "merchant/_fake-db.js",
@@ -2188,6 +2190,10 @@
   "whatsapp_inbound.js"
  ],
  "server": {
+  "_honest-rtdb-model.js": {
+   "pins": [],
+   "lifts": []
+  },
   "access/access-census-core.js": {
    "pins": [],
    "lifts": [
@@ -2246,7 +2252,9 @@
   },
   "alert-prune.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/hostedrace-wiring.guard.test.js"
+   ]
   },
   "arrived-notify.js": {
    "pins": [],
@@ -4301,6 +4309,7 @@
     "xpizza-functions/driver-callable-guard-coverage.guard.test.js",
     "xpizza-functions/factura-catalog-cutover.test.js",
     "xpizza-functions/fail-closed-reject.test.js",
+    "xpizza-functions/hostedrace-wiring.guard.test.js",
     "xpizza-functions/identity-shadow-placement.test.js",
     "xpizza-functions/intake-gate-placement.test.js",
     "xpizza-functions/intl-intake-wire-sync.test.js",
@@ -4309,6 +4318,7 @@
     "xpizza-functions/n2-paid-strand-decision.test.js",
     "xpizza-functions/order-creators.guard.test.js",
     "xpizza-functions/order-exists-census.guard.test.js",
+    "xpizza-functions/pixelpay-hosted-extra-payment.test.js",
     "xpizza-functions/platform-sync.guard.test.js",
     "xpizza-functions/portal/ops-helpers.guard.test.js",
     "xpizza-functions/portal/ops-split.test.js",
@@ -4351,6 +4361,12 @@
    "pins": [],
    "lifts": [
     "xpizza-functions/portal/ops-helpers.guard.test.js"
+   ]
+  },
+  "manual-resolve.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/hostedrace-wiring.guard.test.js"
    ]
   },
   "materialize.js": {

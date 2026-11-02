@@ -643,6 +643,10 @@
       ".read": false,
       ".write": false
     },
+    "extra_payment_pending": {
+      ".read": false,
+      ".write": false
+    },
     "outbox": {
       ".read": false,
       ".write": false
