@@ -59,8 +59,9 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
     flags: { uploads: photosEnabled },
     usesPlatformFactura,
     // the published version and the draft (a source document, as editCatalog stores it; photos stored beside it)
-    active: { vid: 'v1', items: clone(items), photos: {} },
-    draft: { items: clone(items), photos: {} },
+    // section names (PLAN-public-menu-display T1), so a rename travels like the real server's: the draft's names vs the published
+    active: { vid: 'v1', items: clone(items), photos: {}, categories: [{ id: 'cl', name: 'Clásicas' }] },
+    draft: { items: clone(items), photos: {}, categories: [{ id: 'cl', name: 'Clásicas' }] },
     sourceUpdateTime: 'T1',
     legacy: { ...legacy },            // itemKey → true (the dish has a legacy image the public menu serves)
     uploads: new Map(),               // uploadId → doc
@@ -68,6 +69,7 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
     registry: new Map(),              // pid → {state}
     byOp: new Map(),                  // `${uid}|${rid}|${op_id}` → uploadId
     starts: 0,
+    pendingRenames: [],   // the saved draft's unpublished section names, as catalog/portal-reads.js sends them (T1): present only when some
     calls: [],
     puts: [],
     _fail: new Map(),
@@ -144,7 +146,7 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
     // the caller must hold the read's capability
     getEditableCatalog(q) {
       if (q.restaurantId !== fake.rid || !fake.caps.has('catalog.read_editor')) return err(403, 'not_authorized');
-      const out = { source: { restaurant_id: fake.rid, schema_version: 1, items: clone(fake.draft.items), extras: [], structure: { schema_version: 2, item_order: fake.draft.items.map((r) => keyOf(r)), categories: [{ id: 'cl', name: 'Clásicas' }] } },
+      const out = { source: { restaurant_id: fake.rid, schema_version: 1, items: clone(fake.draft.items), extras: [], structure: { schema_version: 2, item_order: fake.draft.items.map((r) => keyOf(r)), categories: clone(fake.draft.categories) } },
         sourceUpdateTime: fake.sourceUpdateTime, activeVersionId: fake.active.vid, usesPlatformFactura: fake.usesPlatformFactura, renderedCategories: ['cl'] };
       if (Object.keys(fake.draft.photos).length) out.photos = clone(fake.draft.photos);
       const pids = new Set([...Object.values(fake.draft.photos), ...Object.values(fake.active.photos)].filter((e) => e.state === 'pid').map((e) => e.pid));
@@ -155,6 +157,9 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
       for (const k of Object.keys(fake.legacy)) if (fake.legacy[k]) lg[k] = fake.legacy[k] === 'nourl' ? {} : { card: legacyCard(k) };
       if (Object.keys(lg).length) out.legacyPreviews = lg;
       if (fake.flags.uploads) out.photosEnabled = true;
+      // portal-reads.js: the saved draft's unpublished section names, `...(pendingRenames ? { pendingRenames } : {})`
+      const renames = [...renamesOf(), ...clone(fake.pendingRenames)];
+      if (renames.length) out.pendingRenames = renames;
       return answer(200, out);
     },
     editCatalog(b) {
@@ -173,12 +178,13 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
         if (e.state === 'pid') { const r = fake.registry.get(e.pid); if (!r || r.state === 'deleting' || r.state === 'deleted') return err(409, 'photo_unavailable'); }
       }
       if (!fake.flags.uploads && JSON.stringify(rk.photos) !== JSON.stringify(fake.draft.photos)) return err(409, 'photo_change_disabled');
-      fake.draft = { items: canon, photos: rk.photos };
+      const cats = src.structure && Array.isArray(src.structure.categories) ? src.structure.categories.filter((c) => c && typeof c.id === 'string').map((c) => ({ id: c.id, name: c.name })) : clone(fake.draft.categories);
+      fake.draft = { items: canon, photos: rk.photos, categories: cats };
       fake.sourceUpdateTime = `T${++fake.versions}`;
       const diff = diffOf();
       const token = nid('tok');
       fake.tokens.set(token, JSON.stringify(fake.draft));
-      const source = { restaurant_id: fake.rid, schema_version: 1, items: clone(canon), extras: [], structure: { schema_version: 2, item_order: canon.map(keyOf), categories: [{ id: 'cl', name: 'Clásicas' }] } };
+      const source = { restaurant_id: fake.rid, schema_version: 1, items: clone(canon), extras: [], structure: { schema_version: 2, item_order: canon.map(keyOf), categories: clone(fake.draft.categories) } };
       if (Object.keys(rk.photos).length) source.photos = clone(rk.photos);
       return answer(200, { diff, token, updateTime: fake.sourceUpdateTime, source });
     },
@@ -187,7 +193,7 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
       if (fake.tokens.get(b.token) !== JSON.stringify(fake.draft)) return err(409, 'edit_superseded');
       if (fake.usesPlatformFactura && b.fiscalAck !== true) return err(403, 'fiscal_ack_required');
       for (const e of Object.values(fake.draft.photos)) if (e.state === 'pid') fake.registry.get(e.pid).state = 'published';
-      fake.active = { vid: `v${++fake.versions}`, items: clone(fake.draft.items), photos: clone(fake.draft.photos) };
+      fake.active = { vid: `v${++fake.versions}`, items: clone(fake.draft.items), photos: clone(fake.draft.photos), categories: clone(fake.draft.categories) };
       fake.tokens.clear();
       return answer(200, { ok: true, versionId: fake.active.vid });
     },
@@ -231,7 +237,13 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
       const o = st(fake.active.photos, k), n = st(fake.draft.photos, k);
       if (!sameSt(o, n)) changed.push({ surface: 'item', key: k, field: 'photo', old: o, new: n });
     }
+    // a section's display name, as the server's diff carries it (app.js reads surface 'category', field 'name', key, old, new)
+    for (const r of renamesOf()) changed.push({ surface: 'category', key: r.id, field: 'name', old: r.from, new: r.to });
     return { changed, added, removed: [], renamed: [], largeChangeSet: added.map((a) => ({ surface: 'item', key: a.key })) };
+  }
+  function renamesOf() {
+    const was = new Map(fake.active.categories.map((c) => [c.id, c.name]));
+    return fake.draft.categories.filter((c) => was.has(c.id) && was.get(c.id) !== c.name).map((c) => ({ id: c.id, from: was.get(c.id), to: c.name }));
   }
 
   // ── fetch: the Functions host ──

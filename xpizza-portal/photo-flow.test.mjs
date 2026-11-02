@@ -877,3 +877,67 @@ test('HELD dimming — styles.css dims every control the name hold locks, exactl
     assert.ok(sels.includes(`#drawer.namehold ${s}`), `dims ${s}`);
   }
 });
+
+// Codex held r1: the hold must CLEAR on the same drawer element when the pending name goes (discard / publish), and the
+// dimming must be the stylesheet's computed verdict — the locked controls dimmed, the held photo's «Cancelar» enabled and not.
+const withCss = (d) => { const st = d.createElement('style'); st.textContent = readFileSync(join(DIR, 'styles.css'), 'utf8'); d.head.append(st); };
+const look = (d, n) => { const cs = d.defaultView.getComputedStyle(n); return `${cs.opacity}|${cs.cursor}`; };
+test('HELD r1 — Descartar clears the hold on the SAME drawer element (no sticky namehold)', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d } = await boot(fake);
+  await renameSection(d, 'Pizzas de la casa');
+  await openDrawerFor(d, 'Pepperoni');
+  const dw = drawer(d);
+  assert.ok(dw.classList.contains('namehold'), 'premise: held');
+  d.getElementById('discard').click(); await settle();
+  assert.equal(secnote(d), null, 'premise: the name change is gone');
+  assert.ok(!dw.classList.contains('namehold'), 'the hold cleared with it');
+});
+test('HELD r1 — publishing the name clears the hold on the SAME drawer element', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, calls } = await boot(fake);
+  await renameSection(d, 'Pizzas de la casa');
+  await openDrawerFor(d, 'Pepperoni');
+  const dw = drawer(d);
+  assert.ok(dw.classList.contains('namehold'), 'premise: held');
+  d.getElementById('review').click();
+  await until(() => !d.getElementById('pubbtn').disabled, 'the review is ready');
+  d.getElementById('pubbtn').click();
+  await until(() => d.querySelector('#mbody .receipt'), 'published');
+  await until(() => n(calls, 'getEditableCatalog') >= 2, 'the post-publish reload'); await settle(40);
+  assert.ok(!dw.classList.contains('namehold'), 'the hold cleared once the name is published');
+});
+test('HELD r1 — computed: every locked control is dimmed exactly like the list prices (0.5 / not-allowed); the price list itself too', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d } = await boot(fake);
+  withCss(d);
+  await renameSection(d, 'Pizzas de la casa');
+  const listPrice = d.querySelector('#detail .price input');
+  assert.ok(listPrice.disabled, 'premise: the list prices are locked');
+  assert.equal(look(d, listPrice), '0.5|not-allowed');
+  await openDrawerFor(d, 'Pepperoni');
+  const dw = drawer(d);
+  for (const n of [dw.querySelector('button.uploader'), ...dw.querySelectorAll('input')]) {
+    assert.ok(n.disabled, `premise: ${n.tagName}.${n.className} locked`);
+    assert.equal(look(d, n), '0.5|not-allowed', `${n.tagName}.${n.className} dimmed`);
+  }
+});
+test('HELD r1 — computed: the held photo\'s «Cancelar» stays ENABLED and UNDIMMED inside the dimmed drawer', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, w, mods } = await boot(fake);
+  withCss(d);
+  const release = fake.holdPut();
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => drawer(d).querySelector('.phbusy'), 'P4');
+  // the server's saved name lands (as ruleA r1 #1) — and the server keeps reporting it on every read, as portal-reads.js does
+  fake.pendingRenames = [{ id: 'cl', from: 'Clásicas', to: 'Pizzas' }];
+  mods.app.state.savedRenames = [{ id: 'cl', from: 'Clásicas', to: 'Pizzas' }];
+  release();
+  await until(() => drawer(d).querySelector('.uphoto:not(.phbusy)') && btnText(drawer(d), 'Cancelar'), 'the held photo (not P4\'s own «Cancelar»)');
+  const dw = drawer(d);
+  assert.ok(dw.classList.contains('namehold'), 'premise: the drawer is held');
+  const cancel = btnText(dw, 'Cancelar');
+  assert.equal(cancel.disabled, false);
+  assert.notEqual(d.defaultView.getComputedStyle(cancel).opacity, '0.5', 'undimmed: its way out looks available');
+  assert.notEqual(d.defaultView.getComputedStyle(cancel).cursor, 'not-allowed');
+});
