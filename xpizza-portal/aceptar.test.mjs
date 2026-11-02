@@ -277,3 +277,33 @@ test('codex T-c build r1 P2s: authority / scope codes → inactive; not_found �
   const exit = rs.$('reset-sent').querySelector('a.btn');
   assert.ok(!rs.$('reset-sent').hidden && exit && exit.textContent === 'Ir al portal' && exit.getAttribute('href') === './');
 });
+
+// PLAN-portal-shell-no-shift R4 — owner-approved option A (MOCKUP-portal-shell-wait.html): until the invitation is checked the
+// page shows the brand and «Cargando tu invitación…» (role=status) — never an almost empty card; the first stage replaces it.
+test('R4: before the preview resolves, «Cargando tu invitación…» is the ONE visible stage; the email stage then replaces it', async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const r = rig({});
+  const load = r.$('st-loading');
+  assert.ok(load && !load.hidden, 'the loading stage is visible from the first paint');
+  assert.strictEqual(load.textContent.trim(), 'Cargando tu invitación…');
+  assert.strictEqual(load.querySelector('[role=status]').textContent, 'Cargando tu invitación…');
+  assert.deepStrictEqual(r.visible(), [], 'no other stage paints before the decision');
+  const orig = r.deps.api.preview;
+  r.deps.api.preview = async () => { await gate; return orig(); };
+  const run = r.start();
+  await tick();
+  assert.ok(!load.hidden, 'still loading while the preview is in flight');
+  release(); await run;
+  assert.ok(load.hidden, 'replaced');
+  assert.deepStrictEqual(r.visible(), ['st-email']);
+});
+
+test('R4: every first stage replaces the loading line — invalid link, error card, restored session (busy / password)', async () => {
+  for (const opts of [{ href: 'https://portal.test/aceptar.html' }, { preview: notFound }, { user: { email: 'jorge@m.hn', emailVerified: true }, link: false }]) {
+    const r = rig(opts);
+    await r.start();
+    assert.ok(r.$('st-loading').hidden, `${JSON.stringify(opts).slice(0, 60)}: the loading line is gone`);
+    assert.strictEqual(r.visible().length, 1, 'exactly one stage shows');
+  }
+});
