@@ -23,11 +23,13 @@ function makeDb(initial = {}) {
   const setAt = (p, val) => { const a = p.split('/'); let n = root; for (let i = 0; i < a.length - 1; i++) { if (n[a[i]] == null || typeof n[a[i]] !== 'object') n[a[i]] = {}; n = n[a[i]]; } const l = a[a.length - 1]; if (val === null) delete n[l]; else n[l] = val; };
   const ref = (p = '') => ({
     async once() { return { val: () => clone(getAt(p)) }; },
+    // Admin-SDK null-first semantics, honestly: the uncached call sees null; returning undefined there ABORTS (no retry);
+    // a value is sent, and only a mismatch with the server re-runs fn with the real value (a stub never laxer than RTDB).
     async transaction(fn) {
-      fn(null);
       const cur = clone(getAt(p));
-      const nx = fn(cur);
+      let nx = fn(null);
       if (nx === undefined) return { committed: false, snapshot: { val: () => cur } };
+      if (cur !== null) { nx = fn(clone(cur)); if (nx === undefined) return { committed: false, snapshot: { val: () => cur } }; }
       setAt(p, clone(nx));
       return { committed: true, snapshot: { val: () => clone(getAt(p)) } };
     },

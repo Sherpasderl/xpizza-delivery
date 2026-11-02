@@ -352,7 +352,7 @@ const canonicalToken = (payload) => signQuoteToken({ rid: payload.rid, customer_
   assert.strictEqual(Object.keys(CALLSEQ.scenarios).length, 13);
   const claimDelta = { n: 0 };
   for (const [k, want] of Object.entries(CALLSEQ.scenarios)) assert.deepStrictEqual(JSON.parse(JSON.stringify(preExclusiveClaim(k, cur[k], claimDelta))), want, `🔴 ${k}: the legacy read/transaction sequence, result or stored data changed`);
-  assert.strictEqual(claimDelta.n, 2, `the exclusive-claim delta is PINNED: hosted.acquire.create + no_fp_install claim through a transaction (mapped ${claimDelta.n})`);
+  assert.deepStrictEqual(claimDelta.byLabel, { 'hosted.acquire.create': 1, 'hosted.acquire.no_fp_install': 1 }, `the exclusive-claim delta is PINNED per scenario (got ${JSON.stringify(claimDelta.byLabel)})`);
   assert.ok(CALLSEQ.scenarios['reserve.released_re_reserve'].data.user_rewards.u1.x_pizza.reservations.o1.fp_format === undefined, 'premise — a legacy re-reserve writes no tag');
   ok('call-sequence golden: 13 legacy scenarios (hosted acquire/classify, direct acquire, reserve fresh/reused/re-reserve/conflict) perform the SAME ordered reads, transactions and writes, return the same results and leave the same data as the 717f97e modules');
 

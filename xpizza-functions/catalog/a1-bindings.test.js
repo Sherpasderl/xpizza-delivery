@@ -79,7 +79,8 @@ const attExpired = { ...attCreated, hosted_expires_at: NOW - 1 };
     for (const [label, initial, f] of extra) {
       assert.deepStrictEqual(preExclusiveClaim(label, await run(initial, f({ hosted, direct, reserve })), claimDelta), await run(initial, f(base)), `🔴 ${label} differs from ${BASE}`);
     }
-    assert.ok(claimDelta.n >= 3, `the exclusive-claim delta is PINNED: today's hosted claims use a transaction (mapped ${claimDelta.n})`);
+    assert.deepStrictEqual(claimDelta.byLabel, { 'hosted.acquire.create': 1, 'hosted.acquire.no_fp_install': 1, 'hosted.rotate_expired': 1, 'hosted.canonical_ok': 1 },
+      `the exclusive-claim delta is PINNED per scenario: exactly one claim transaction on each claiming path (got ${JSON.stringify(claimDelta.byLabel)})`);
     // the reservation lifecycle beyond d4b's four: consumed / held_paid reuse, insufficient, a cash (no expiry) reserve
     const canonical = { restaurant_id: 'x_pizza', model: 'add_free', type: 'free_pizza_choice', config_version: REDEMPTION_CONFIG_VERSION, cost: 8, discount_cents: 0, free_item_key: 'Margherita' };
     const args = { uid: 'u1', rid: 'x_pizza', orderId: 'o1', cost: 8, canonical, orderFingerprint: FP, configVersion: REDEMPTION_CONFIG_VERSION, now: NOW };

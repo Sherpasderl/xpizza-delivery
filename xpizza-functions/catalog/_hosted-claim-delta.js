@@ -11,7 +11,7 @@ function preExclusiveClaim(label, rec, counter) {
   return { ...rec, calls: rec.calls.map((c) => {
     const m = String(c).match(RE);
     if (!m) return c;
-    if (counter) counter.n += 1;
+    if (counter) { counter.n += 1; counter.byLabel = counter.byLabel || {}; counter.byLabel[label] = (counter.byLabel[label] || 0) + 1; }
     return `update ${m[1]}`;
   }) };
 }
