@@ -12,6 +12,11 @@
 
 export const INVITE_ID_RE = /^[A-Za-z0-9_-]{22,64}$/;
 export const RETRY_MS = 31000;   // the server's in-flight window is 30 s
+// Codex r1 P1 (PLAN-portal-shell-no-shift R4): the «Cargando tu invitación…» line is never the end state. An auth restore or a
+// preview that never settles ends in the could-not-complete card («Reintentar» starts over). 20 s: the slowest lab boot
+// (Slow 4G + 4× CPU) painted at ≈ 3.7 s and a cold Cloud Functions start adds seconds — the same budget as the portal's
+// discovery deadline (boot.js). No field timing exists for the page; re-derive from the Chrome-slot trace.
+export const LOAD_DEADLINE_MS = 20000;
 export const ERR = Object.freeze({
   used: { title: 'Este enlace ya se usó o venció', text: 'Pedile al dueño que te reenvíe la invitación.', portal: true },
   mismatch: { title: 'Ese correo no coincide con la invitación', text: 'Escribí el correo exacto donde te llegó el enlace.', action: 'Probar otra vez' },
@@ -78,6 +83,13 @@ export function startAceptar(deps) {
     invalidate();
     const gen = st.gen;
     st.failedRetry = init;
+    if (st.loadTimer) cancel(st.loadTimer);
+    st.loadTimer = later(() => {
+      st.loadTimer = null;
+      if (gen !== st.gen || $('st-loading').hidden) return;   // a stage already replaced the loading line
+      invalidate();                                           // the late answer is dropped
+      card('failed');
+    }, LOAD_DEADLINE_MS);
     const user = await auth.ready();   // the restored session (resolved FIRST: absent ≠ malformed)
     if (gen !== st.gen) return;
     if (inviteId == null) return user ? goPortal() : invalid();   // a signed-in visit without an invite → the portal

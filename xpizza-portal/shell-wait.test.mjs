@@ -143,7 +143,8 @@ test('P1 deadline — signed in, discovery NEVER ends: after DISCOVERY_DEADLINE_
   assert.equal(asked.length, 0);
   t.mock.timers.tick(1);
   assert.equal(asked.length, 1);
-  ready(d);   // the shell answers with its retry box → the reveal
+  assert.ok(shown(d, 'app') && !shown(d, 'gate'), 'nothing answered (the shell is stubbed here): boot.js reveals the portal as it stands — never stuck');
+  ready(d);
   assert.ok(shown(d, 'app'));
   t.mock.timers.tick(60000);
   assert.equal(asked.length, 1, 'only once');
@@ -314,4 +315,15 @@ test('P1 shell — `portal:deadline` after the reveal is a no-op', async () => {
   await settle(5);
   assert.equal(seen.length, 1);
   assert.equal(byId.get('shopname').textContent, before);
+});
+
+test('one source — the boot-failure card is the portal\'s own outage box: OFFLINE copy (ops-dom) and «Reintentar», verbatim', async () => {
+  const { OFFLINE } = await import('./ops-dom.js');
+  const { d } = pageDom();
+  const box = d.getElementById('gatefail');
+  assert.ok(box.classList.contains('errbox'));
+  assert.equal(box.querySelector('b').textContent, OFFLINE[0]);
+  assert.equal(box.querySelector('p').textContent, OFFLINE[1]);
+  assert.equal(d.getElementById('gatefailbtn').textContent, 'Reintentar');
+  assert.equal(box.getAttribute('role'), 'alert');
 });

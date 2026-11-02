@@ -655,6 +655,9 @@
   .gatecard h1{font-size:20px;margin-bottom:5px}
   .gatecard .lede{margin-bottom:22px}
   .gatecard .lede.wait{margin-bottom:0}   /* option A (MOCKUP-portal-shell-wait): the card's one quiet line while the session opens */
+  /* the card's three states, driven by a class on <html> so gate-early.js can set the first one before the first paint */
+  html:not(.sw-wait) #gatewait, html:not(.sw-fail) #gatefail{display:none}
+  html.sw-wait #gatelede, html.sw-wait #loginform, html.sw-fail #gatelede, html.sw-fail #gatewait, html.sw-fail #loginform{display:none}
   .field{display:block;margin-bottom:13px}
   .field span{display:block;font-size:12px;font-weight:650;color:var(--mute);margin-bottom:6px}
   .field input{width:100%;background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px;color:var(--ink);transition:border-color .15s}

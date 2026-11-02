@@ -108,9 +108,10 @@ test('A2b: pending → busy + ONE auto-retry after the 30 s window → the fallb
   const r = rig({ user: { email: 'j@m.hn' }, accept: [{ ok: false, code: 'pending' }, { ok: false, code: 'pending' }, { ok: true, outcome: 'granted', password_set: true }] });
   await r.start();
   assert.deepStrictEqual(r.visible(), ['st-busy']);
-  assert.strictEqual(r.calls.timers.length, 1, 'pending: ONE auto-retry scheduled'); assert.strictEqual(r.calls.timers[0].ms, RETRY_MS);
+  const retries = r.calls.timers.filter((t) => t.ms === RETRY_MS);   // (the R4 load deadline is the other timer)
+  assert.strictEqual(retries.length, 1, 'pending: ONE auto-retry scheduled');
   assert.ok(RETRY_MS > 30000, 'past the server in-flight window');
-  r.calls.timers[0].fn(); await tick();
+  retries[0].fn(); await tick();
   assert.ok(!r.$('busy-fallback').hidden && r.$('busy-live').hidden, 'still pending → «Todavía no pudimos activar tu acceso»');
   await r.click('retry2');
   assert.strictEqual(r.calls.portal, 1);

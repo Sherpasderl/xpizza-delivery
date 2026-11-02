@@ -112,14 +112,22 @@ document.addEventListener('portal:signed-in', () => {
   if (!requestReload()) document.dispatchEvent(new CustomEvent('portal:ready'));
 });
 
-// PLAN-portal-shell-no-shift R1 (option A): boot.js reveals the portal ONCE, on this event — fired when the chrome is rendered,
-// or when discovery ended in its empty / error state. Exactly once per page; later E1 answers repaint in place.
+// PLAN-portal-shell-no-shift R1 (option A): boot.js reveals the portal on this event — fired when the chrome is rendered, or
+// when discovery ended in its empty / error state (including an exception anywhere in boot, Codex r1). ready() fires it once
+// per page boot (later E1 answers repaint in place); the held-reload path above and boot.js's own deadline fallback may
+// dispatch it again — boot.js reveals once per signed-in interval regardless.
 let readied = false;
 function ready() {
   if (readied) return;
   readied = true;
   document.dispatchEvent(new CustomEvent('portal:ready'));
 }
+// boot.js's DISCOVERY deadline (Codex r1): discovery never ended → drop it (a late answer is ignored) and show the retry box.
+document.addEventListener('portal:deadline', () => {
+  if (readied) return;
+  S.gen += 1;
+  showBootError({ kind: 'Unavailable' });
+});
 
 // ── boot ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const decisionOf = (sel) => {
@@ -128,7 +136,16 @@ const decisionOf = (sel) => {
   return JSON.stringify({ rid, sales: L.salesFor(sel, rid), b: sel.brand.branches.map((x) => [x.rid, x.caps]) });
 };
 
+// Codex r1 P1: an exception ANYWHERE in boot (a cached / fresh apply, renderChrome / renderViews) ends in the retry box and
+// the reveal — the card is never the end state. It is logged, not swallowed.
 async function boot() {
+  try { await bootSteps(); } catch (e) {
+    console.error('portal boot', e && e.message);
+    S.gen += 1;
+    showBootError({ kind: 'Unavailable' });
+  }
+}
+async function bootSteps() {
   S.bootedUid = S.uid;
   const gen = S.gen;
   const uid = S.uid;
@@ -210,24 +227,26 @@ function apply(e1, { persist = true } = {}) {
 }
 
 function showBootError(err) {
-  $('shopname').textContent = '—';
-  $('shopsub').textContent = '';
-  const d = $('detail');
-  const isOutage = !err || err.kind === 'Unavailable' || err.status === 0 || err.status >= 500;
-  if (d) d.replaceChildren(isOutage ? errBox(OFFLINE[0], OFFLINE[1], reload) : errBox('No tenés acceso a este portal', 'Si esperabas ver tu restaurante, escribinos y lo revisamos.'));
-  ready();   // every terminal outcome reveals — the card never waits forever
+  try {
+    $('shopname').textContent = '—';
+    $('shopsub').textContent = '';
+    const d = $('detail');
+    const isOutage = !err || err.kind === 'Unavailable' || err.status === 0 || err.status >= 500;
+    if (d) d.replaceChildren(isOutage ? errBox(OFFLINE[0], OFFLINE[1], reload) : errBox('No tenés acceso a este portal', 'Si esperabas ver tu restaurante, escribinos y lo revisamos.'));
+  } finally { ready(); }   // every terminal outcome reveals — the card never waits forever
 }
 function showNoBranches() {
-  $('shopname').textContent = '—';
-  $('shopsub').textContent = '';
-  const d = $('detail');
-  if (d) {
-    const e = el('div', 'empty');
-    e.append(el('b', null, 'Tu cuenta no administra ningún local todavía'), el('span', null, 'Si esperabas ver uno, escribinos y lo revisamos.'));
-    d.replaceChildren(e);
-  }
-  hideOpsChrome();
-  ready();
+  try {
+    $('shopname').textContent = '—';
+    $('shopsub').textContent = '';
+    const d = $('detail');
+    if (d) {
+      const e = el('div', 'empty');
+      e.append(el('b', null, 'Tu cuenta no administra ningún local todavía'), el('span', null, 'Si esperabas ver uno, escribinos y lo revisamos.'));
+      d.replaceChildren(e);
+    }
+    hideOpsChrome();
+  } finally { ready(); }
 }
 
 // ── chrome: switcher, scope, nav ──────────────────────────────────────────────────────────────────────────────────────
