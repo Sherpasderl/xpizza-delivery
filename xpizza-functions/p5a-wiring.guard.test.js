@@ -12,13 +12,16 @@ const { BASE, HUNKS, FILES, unapplyP5aModule, unapplyP5aIndex } = require('./too
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
+// DRYRUN (2e, next-train assembly): compare against the REAL pre-P5a assembly commit, not the lane base 8a31e2a3 (which lacks the
+// whole last train). Re-point again at the real assembly (TRAIN-NEXT2 obligation A4).
+const ASM_BASE = 'f1077a76';
+const baseOf = (f) => execFileSync('git', ['show', `${ASM_BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.deepStrictEqual([...FILES].sort(), ['cancel-order-core.js', 'index.js', 'pixelpay-client.js', 'pixelpay-confirm.js', 'pixelpay-hosted-webhook.js', 'resolve-manual.js'], 'the slice owns exactly these files');
 for (const f of FILES) {
   const src = read(f); const b = baseOf(f);
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
-  assert.strictEqual(unapplyP5aModule(f, src), b, `🔴 ${f} minus the P5a hunks is not ${BASE}:${f}`);
+  assert.strictEqual(unapplyP5aModule(f, src), b, `🔴 ${f} minus the P5a hunks is not ${ASM_BASE}:${f}`);
   for (const h of HUNKS.filter((x) => x.file === f)) {
     const k = h.now.search(/[A-Za-z]/);
     assert.throws(() => unapplyP5aModule(f, src.replace(h.now, h.now.slice(0, k) + '#' + h.now.slice(k + 1))), /occurs 0 times/, `${f}: a byte INSIDE a hunk`);

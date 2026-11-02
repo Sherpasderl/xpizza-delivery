@@ -7,13 +7,17 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyHostedRaceModule } = require('./tools/hostedrace-module-inverse');
+// DRYRUN (2e, next-train assembly): the module guard compares against the REAL pre-layer assembly commit, not the lane's base
+// {'}}8a31e2a3{{'} (which lacks the whole last train). Re-point again at the real assembly (TRAIN-NEXT2 obligation A4).
+const ASM_BASE = '51dc55ab';
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['alert-prune.js', 'index.js', 'manual-resolve.js', 'pixelpay-hosted-webhook.js'], 'the slice owns exactly these files');
 for (const f of FILES) {
-  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
-  const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
+  // DRYRUN R-WIRE (2e): P5a (newer) innermost
+  const src = require('./tools/p5a-inverse').unapplyP5aModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));
+  const b = execFileSync('git', ['show', `${ASM_BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
-  assert.strictEqual(unapplyHostedRaceModule(f, src), b, `🔴 ${f} minus the hosted-race hunks is not ${BASE}:${f}`);
+  assert.strictEqual(unapplyHostedRaceModule(f, src), b, `🔴 ${f} minus the hosted-race hunks is not ${ASM_BASE}:${f}`);
   for (const h of HUNKS.filter((x) => x.file === f)) {
     const k = h.now.search(/[A-Za-z]/);
     assert.throws(() => unapplyHostedRaceModule(f, src.replace(h.now, h.now.slice(0, k) + '#' + h.now.slice(k + 1))), /occurs 0 times/, `${f}: a byte INSIDE a hunk`);
