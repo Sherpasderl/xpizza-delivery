@@ -17,7 +17,7 @@
   const CONTEXT = 'platform';
   const TIMEOUT_MS = 12000;
   // the runtime.signup endpoint set — every call below uses one of these keys (capp-signup.test.mjs guard)
-  const ENDPOINTS = Object.freeze(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders']);
+  const ENDPOINTS = Object.freeze(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder']);
 
   function createSignupApi(opts) {
     const o = opts || {};
@@ -112,6 +112,27 @@
         if (rc && rc.order_id === orderId) return { ok: true, receipt: rc };
         return { ok: false, reason: r.status === 404 ? 'not_found' : r.status === 403 ? 'deleted' : r.status === 200 ? 'failed' : reasonOf(r) };
       },
+      // C-2 (PLAN §C-2; 3a's getMyRating 1958b8ed): the member's OWN rating of one order — GET ?order_id alone (the endpoint refuses any
+      // other key), the token in its header. Only the contract's fields survive (myRatingOf); 403 is the ONE generic refusal
+      async getMyRating({ idToken, orderId } = {}) {
+        if (!idToken) return { ok: false, reason: 'unauthenticated' };
+        if (!(typeof orderId === 'string' && ORDER_ID_RE.test(orderId))) return { ok: false, reason: 'bad_request' };
+        const r = await call(E.getMyRating, { method: 'GET', idToken, query: `order_id=${orderId}` });
+        const v = r.status === 200 && r.json && r.json.ok === true ? myRatingOf(r.json) : null;
+        if (v) return { ok: true, ...v };
+        return { ok: false, reason: r.status === 403 ? 'not_allowed' : r.status === 200 ? 'failed' : reasonOf(r) };
+      },
+      // C-2 (the S-A1 writer rateOrder, v2): ONLY the fields the customer set — a body the server would refuse is refused HERE (never sent)
+      async rateOrder({ idToken, orderId, fields } = {}) {
+        if (!idToken) return { ok: false, reason: 'unauthenticated' };
+        if (!(typeof orderId === 'string' && ORDER_ID_RE.test(orderId)) || !rateFieldsOk(fields)) return { ok: false, reason: 'bad_request' };
+        const r = await call(E.rateOrder, { body: { order_id: orderId, ...fields }, idToken });
+        const j = r.json || {};
+        if (r.status === 200 && j.ok === true) return { ok: true, dishesUnavailable: j.dishes === 'unavailable' };
+        if (r.status === 409 && RATE_409.has(j.error)) return { ok: false, reason: j.error };
+        if (r.status === 400 && j.error === 'dish_not_purchased') return { ok: false, reason: 'dish_not_purchased' };
+        return { ok: false, reason: r.status === 403 ? 'not_allowed' : reasonOf(r) };
+      },
       async redeemSignupGrant({ grant, email, name, promos }) {
         const r = await call(E.redeemSignupGrant, { body: { grant, context: CONTEXT, email, name, accept_terms: true, promos: promos === true } });
         const j = r.json;
@@ -148,5 +169,35 @@
       tender: { method, ...(method === 'cash' && isInt(tn.cash_tendered_cents) ? { cash_tendered_cents: tn.cash_tendered_cents } : {}) },
       ...(a ? { address: { detected: str(a.detected), details: str(a.details), area: str(a.area) } } : {}) };
   }
-  return { createSignupApi, CONTEXT, TIMEOUT_MS, ENDPOINTS, rowOf, receiptOf };
+  // C-2: getMyRating's 200 body, field by field (the S-A(d) contract) — a malformed body is a failure, never a guess
+  const ts = (v) => (Number.isSafeInteger(v) && v >= 0 ? v : null);
+  const thumbOk = (v) => v === 1 || v === -1;
+  const DISH_ID_RE = /^[A-Za-z0-9_-]{1,64}$/, COMMENT_MAX = 500, DISHES_MAX = 30;
+  const RATE_409 = new Set(['window_closed', 'not_fulfilled', 'not_rated']);
+  function myRatingOf(j) {
+    if (typeof j.can_rate !== 'boolean') return null;
+    const until = j.editable_until === null ? null : ts(j.editable_until);
+    if (j.editable_until !== null && until === null) return null;
+    let rating = null;
+    if (j.rating !== null) {
+      const x = j.rating; if (!x || typeof x !== 'object' || Array.isArray(x)) return null;
+      const store = x.store === null ? null : Number.isInteger(x.store) && x.store >= 1 && x.store <= 5 ? x.store : undefined;
+      const d = x.dishes; if (!d || typeof d !== 'object' || Array.isArray(d) || Object.entries(d).some(([k, v]) => !DISH_ID_RE.test(k) || !thumbOk(v))) return null;
+      if (store === undefined || !(x.delivery === null || thumbOk(x.delivery)) || !(x.legacy_thumb === null || thumbOk(x.legacy_thumb))) return null;
+      if (!(x.comment === null || (typeof x.comment === 'string' && x.comment.length <= COMMENT_MAX))) return null;
+      rating = { store, dishes: { ...d }, delivery: x.delivery, comment: x.comment, legacyThumb: x.legacy_thumb, ratedAt: ts(x.rated_at), editedAt: ts(x.edited_at) };
+    }
+    return { rating, canRate: j.can_rate, editableUntil: until };
+  }
+  // the writer's parseRequest, mirrored: at least one of store / dishes / delivery / comment, each in its shape
+  function rateFieldsOk(f) {
+    if (!f || typeof f !== 'object' || Array.isArray(f)) return false;
+    const keys = Object.keys(f); if (!keys.length || keys.some((k) => !['store', 'dishes', 'delivery', 'comment'].includes(k))) return false;
+    if ('store' in f && !(f.store === null || (Number.isInteger(f.store) && f.store >= 1 && f.store <= 5))) return false;
+    if ('delivery' in f && !(f.delivery === null || thumbOk(f.delivery))) return false;
+    if ('comment' in f && !(f.comment === null || (typeof f.comment === 'string' && f.comment.length <= COMMENT_MAX))) return false;
+    if ('dishes' in f) { const d = f.dishes; if (!d || typeof d !== 'object' || Array.isArray(d)) return false; const ids = Object.keys(d); if (ids.length > DISHES_MAX || ids.some((k) => !DISH_ID_RE.test(k) || !thumbOk(d[k]))) return false; }
+    return true;
+  }
+  return { createSignupApi, CONTEXT, TIMEOUT_MS, ENDPOINTS, rowOf, receiptOf, myRatingOf };
 });

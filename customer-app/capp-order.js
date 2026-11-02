@@ -172,7 +172,7 @@
     ${deskOrder ? num : ''}${share}<button class="btn2 again" data-act="order-again">Hacer otro pedido</button>${c.entry === 'link' ? '<div class="credit">Enviado por <b>Sherpa</b></div>' : ''}`;
     if (c.past && c.tailOnly) return tail;   // past-only (Codex rcpt r2): the live screen ignores hold / tailOnly
     const sheet = `<div class="mk-sheet"><div class="mk-handle"></div><div class="mk-title${cc.ok && !sc ? ' success' : ''}${cc.danger && !sc ? ' danger' : ''}">${esc(title)}</div>${windowLine}
-    ${deskOrder ? '' : num}${segbar}${statusrow}${driverCard}${c.offerHtml || ''}${del ? '' : details}${c.past && c.hold ? '<div data-rc-tail></div>' : tail}</div>`;
+    ${deskOrder ? '' : num}${segbar}${statusrow}${driverCard}${c.rateHtml || ''}${c.offerHtml || ''}${del ? '' : details}${c.past && c.hold ? '<div data-rc-tail></div>' : tail}</div>`;
     return `<div class="scroller"><div class="orderwrap">${map}${sheet}</div></div>`;
   }
 

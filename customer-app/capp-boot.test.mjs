@@ -32,14 +32,14 @@ test('N2: the runtime from the REAL manifest block — every endpoint on the ONE
   assert.deepEqual(Object.keys(r.endpoints).sort(), [...Boot.ORDER_ENDPOINTS].sort());
   for (const [n, u] of Object.entries(r.endpoints)) assert.equal(u, `${RT0.functions_base}/${n}`);
   assert.ok(r.intakeKey === RT0.intake_key && r.mapsKey === RT0.maps_key, 'the intake and Maps keys come from the manifest');
-  for (const k of ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive']) assert.equal(k in r, false, `🔴 ${k} must be absent (dark) without its flag`);
-  const on = Boot.runtimeFor(RT({ flags: { signup: true, intlPhone: true, guestCardOnly: true, schedulingLive: true } }), CappSignupApi);
-  assert.deepEqual([on.intlPhone, on.guestCardOnly, on.schedulingLive], [true, true, true]);
+  for (const k of ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive', 'ratings']) assert.equal(k in r, false, `🔴 ${k} must be absent (dark) without its flag`);
+  const on = Boot.runtimeFor(RT({ flags: { signup: true, intlPhone: true, guestCardOnly: true, schedulingLive: true, ratings: true } }), CappSignupApi);
+  assert.deepEqual([on.intlPhone, on.guestCardOnly, on.schedulingLive, on.ratings], [true, true, true, true]);
   assert.deepEqual(Object.keys(on.signup.endpoints), [...CappSignupApi.ENDPOINTS], 'signup endpoints = CappSignupApi.ENDPOINTS');
   for (const [n, u] of Object.entries(on.signup.endpoints)) assert.equal(u, `${RT0.functions_base}/${n}`);
   assert.ok(on.signup.firebase === RT0.firebase, 'the Firebase web config is the manifest\'s');
-  const truthy = Boot.runtimeFor(RT({ flags: { signup: 'yes', intlPhone: 1 } }), CappSignupApi);
-  assert.equal('signup' in truthy || 'intlPhone' in truthy, false, 'only a literal true flips a flag');
+  const truthy = Boot.runtimeFor(RT({ flags: { signup: 'yes', intlPhone: 1, ratings: 'true' } }), CappSignupApi);
+  assert.equal('signup' in truthy || 'intlPhone' in truthy || 'ratings' in truthy, false, 'only a literal true flips a flag');
 });
 
 test('Pedido recibido: the help WhatsApp derives from the ONE manifest key (runtime.support_whatsapp, E.164) — digits only, malformed ⇒ absent; the tracker links pass through only as exact https origins; the RTDB base is availability_base', () => {

@@ -1343,7 +1343,8 @@
       const tot = rb ? rb.expected_net_cents : T.total, tip = rb ? rb.tip_cents : T.tip, fee = rb ? null : (T.envioFree ? 0 : T.envio);
       const slot = sched() && f.time === 'schedule' && Number.isFinite(f.slot) ? f.slot : null;
       return { mode: del ? 'delivery' : 'pickup', pay: f.pay === 'online' ? 'online' : 'cash',
-        lines: displayLines().map((d) => ({ n: d.n, name: d.item.n, extras: d.extras || '', total: d.total })),
+        // C-2: each line's canonical dish id (the cart key's served dish_id) — the rating sheet's purchased dishes, never matched by name
+        lines: displayLines().map((d) => ({ n: d.n, name: d.item.n, extras: d.extras || '', total: d.total, dish_id: typeof d.item.dish === 'string' && d.item.dish ? d.item.dish : null })),
         fee: del ? cents(fee) : null, tip: cents(tip) || 0, total: cents(tot),
         addr: C.addrLine(f) || 'Tu ubicación', details: (f.details || '').trim(), notes: (f.notes || '').trim(),
         scheduled: slot !== null, scheduledFor: slot, whenText: slot !== null ? schedMod().slotWhen(servedSched(), now().getTime(), slot) : 'Lo antes posible',

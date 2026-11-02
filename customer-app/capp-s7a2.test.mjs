@@ -248,7 +248,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   if (preMount) preMount(w);   // a host object present BEFORE the shell mounts (the installed app's Capacitor bridge)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -2310,7 +2310,9 @@ test('getMyOrders fake: as strict as the note — 401 without / with a non-custo
 async function pedidosBoot(db, opts = {}) {
   const mo = myOrdersServer(db, opts);
   const g = g7Server();
-  const fetch = async (u, i) => (u.split('?')[0].endsWith('/getMyOrders') ? mo.handler(u, i) : g.fetch(u, i));
+  const fetch = async (u, i) => { const pth = u.split('?')[0];   // C-2: the rating endpoints go to the test's rating server (opts.rate)
+    if (opts.rate && (pth.endsWith('/getMyRating') || pth.endsWith('/rateOrder'))) return opts.rate.handler(u, i);
+    return pth.endsWith('/getMyOrders') ? mo.handler(u, i) : g.fetch(u, i); };
   const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 3600e3, ...(opts.fbOpts || {}) });
   const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation, ...(opts.envelope ? { envelope: opts.envelope } : {}), ...(opts.preMount ? { preMount: opts.preMount } : {}) });
   if (!opts.noFlush) { await flush(); await flush(); }
@@ -3735,4 +3737,246 @@ test('phone house row: a sold house dish shows «Agotado» in the price slot wit
       assert.equal(S.q('.app').classList.contains('desk'), false, 'the phone shell');
     } finally { S.w.close(); }
   } finally { T.restore(); }
+});
+// ── C-2 · the post-delivery rating sheet (PLAN §C-2; MOCKUP D-3 r3 §9.2; advisor rulings 11-02) ──
+// THE RATING SERVER: 3a's real semantics @ 1958b8ed, line for line where the client can observe them — myRatingCore (the generic 403 for
+// a non-customer token / not the order's customer / an unknown order; strict ?order_id; the payload only for a LIVE node owned by the
+// caller; the window from fulfilled_at) and rateOrderCore + rating-v2 (parseRequest: an invalid body ⇒ the generic 403; dish votes ⊆ the
+// order's purchased dishes ⇒ else 400 dish_not_purchased; v2Updater: not_fulfilled / deleted ⇒ closed / window_closed; absent fields
+// kept, `dishes` replaced WHOLE). Bodies = fixtures/c2/rating-contract.json's shapes (3a's own tests).
+const RATE_W = 604800000;
+function ratingServer({ now = () => T0 } = {}) {
+  const orders = {}, nodes = {}, purchased = {}, calls = [], rx = { inflight: 0, max: 0 };
+  const GEN = { ok: false, error: 'not_allowed' };
+  const out = (status, json) => ({ status, ok: status === 200, json: async () => JSON.parse(JSON.stringify(json)) });
+  const uidOf = (tok) => { try { const pl = JSON.parse(Buffer.from(String(tok).split('.')[1], 'base64url').toString()); return pl && typeof pl.user_id === 'string' && pl.customer === true ? pl.user_id : null; } catch (_) { return null; } };
+  const OID = /^[A-Za-z0-9_-]{1,64}$/, thumb = (v) => v === 1 || v === -1, own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  function parse(b) {   // rating-v2.parseRequest, the v2 kind (the only one this client sends)
+    if (!b || typeof b !== 'object' || Array.isArray(b) || typeof b.order_id !== 'string' || !OID.test(b.order_id)) return null;
+    const keys = Object.keys(b).filter((k) => k !== 'order_id');
+    if (!keys.length || keys.some((k) => !['store', 'dishes', 'delivery', 'comment'].includes(k))) return null;
+    const f = {};
+    if (own(b, 'store')) { if (!(b.store === null || (Number.isInteger(b.store) && b.store >= 1 && b.store <= 5))) return null; f.store = b.store; }
+    if (own(b, 'delivery')) { if (!(b.delivery === null || thumb(b.delivery))) return null; f.delivery = b.delivery; }
+    if (own(b, 'comment')) { if (b.comment === null) f.comment = null; else if (typeof b.comment === 'string' && b.comment.length <= 500) f.comment = b.comment.trim() || null; else return null; }
+    if (own(b, 'dishes')) { const d = b.dishes; if (!d || typeof d !== 'object' || Array.isArray(d)) return null; const ids = Object.keys(d); if (ids.length > 30 || ids.some((id) => !/^[A-Za-z0-9_-]{1,64}$/.test(id) || !thumb(d[id]))) return null; f.dishes = { ...d }; }
+    return { orderId: b.order_id, fields: f };
+  }
+  async function handler(u, i = {}) {
+    const url = new URL(u, 'https://fn.test'), pth = url.pathname, method = i.method || 'GET';
+    calls.push({ path: pth.split('/').pop(), url: url.toString(), method, headers: i.headers || {}, body: i.body == null ? null : JSON.parse(i.body) });
+    rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); await new Promise((r) => setTimeout(r, 5)); rx.inflight--;
+    const uid = uidOf((i.headers || {})['x-firebase-id-token']);
+    if (pth.endsWith('/getMyRating')) {
+      if (method !== 'GET') return out(405, { ok: false, error: 'method_not_allowed' });
+      const keys = [...url.searchParams.keys()], oid = url.searchParams.get('order_id');
+      if (keys.some((k) => k !== 'order_id') || keys.length !== 1 || !OID.test(oid || '')) return out(400, { ok: false, error: 'bad_request' });
+      if (!uid || !orders[oid] || orders[oid].customer_uid !== uid) return out(403, GEN);
+      const n = nodes[oid], mine = n && n.state === 'live' && n.owner_uid === uid ? n : null;
+      const until = n && n.state !== 'deleted' && Number.isFinite(n.fulfilled_at) ? n.fulfilled_at + RATE_W : null;
+      return out(200, { ok: true, rating: mine ? { store: mine.store ?? null, dishes: mine.dishes || {}, delivery: mine.delivery ?? null, comment: mine.comment ?? null, legacy_thumb: mine.legacy_thumb ?? null, rated_at: mine.rated_at ?? null, edited_at: mine.edited_at ?? null } : null,
+        can_rate: until != null && now() <= until, editable_until: until });
+    }
+    if (method !== 'POST') return out(405, { ok: false, error: 'method_not_allowed' });
+    let b = null; try { b = JSON.parse(i.body); } catch (_) { b = null; }
+    const req = parse(b); if (!req) return out(403, GEN);
+    if (!uid || !orders[req.orderId] || orders[req.orderId].customer_uid !== uid) return out(403, GEN);
+    if (req.fields.dishes && Object.keys(req.fields.dishes).some((id) => !(purchased[req.orderId] || new Set()).has(id))) return out(400, { ok: false, error: 'dish_not_purchased' });
+    const cur = nodes[req.orderId];
+    if (!cur || !Number.isFinite(cur.fulfilled_at)) return out(409, { ok: false, error: 'not_fulfilled' });
+    if (cur.state === 'deleted') return out(403, GEN);
+    if (now() > cur.fulfilled_at + RATE_W) return out(409, { ok: false, error: 'window_closed' });
+    const first = cur.rated_at == null || (cur.store == null && !Object.keys(cur.dishes || {}).length && cur.delivery == null && cur.comment == null);
+    nodes[req.orderId] = { ...cur, ...req.fields, ...(req.fields.dishes ? { dishes: req.fields.dishes } : {}), state: 'live', rated_at: cur.rated_at ?? now(), ...(first ? {} : { edited_at: now() }), owner_uid: cur.owner_uid ?? uid };
+    return out(200, { ok: true });
+  }
+  return { handler, calls, rx, nodes,
+    own: (oid, uid, dishIds = []) => { orders[oid] = { customer_uid: uid }; purchased[oid] = new Set(dishIds); },
+    fulfil: (oid, at = now()) => { const n = nodes[oid]; if (n && (n.state === 'deleted' || Number.isFinite(n.fulfilled_at))) return; nodes[oid] = { ...(n || { store: null, dishes: {}, delivery: null, comment: null, legacy_thumb: null, rated_at: null, state: 'live', owner_uid: null }), fulfilled_at: at }; } };
+}
+const RATE_RT = (extra = {}) => ({ ...G7_RUNTIME, rtdbBase: 'https://rtdb.test', ratings: true, ...extra });
+// a member (Ana) places a real cash delivery on THIS device; the server learns the order and its purchased dishes FROM THE BODY SENT
+async function memberDelivered({ storage, runtime = RATE_RT(), rate = ratingServer(), deliver = true } = {}) {
+  const { ES, made } = fakeES(); let placed = null;
+  const { S, mo, fb } = await pedidosBoot({}, { runtime, rate, storage, mountExtra: { EventSource: ES }, geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) },
+    apiFetch: ORDER_FETCH((b) => { placed = b; rate.own(b.order_id, 'u_ana', [...new Set(b.items.map((it) => it.dish_id).filter(Boolean))]); return { ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' }; }) });
+  await shellPlaceTolerant(S);
+  assert.ok(placed && S.q('.mk-sheet'), 'premise: the member\'s order was placed and its screen shows');
+  if (deliver) { const es = made[0]; es.emit('put', '/', trackingRecordOf('tok_abcdefgh12')); rate.fulfil(placed.order_id); es.emit('put', '/status', 'delivered'); await flush(); }
+  return { S, mo, fb, rate, placed, ES, made };
+}
+const menuName = (rid, id) => (PROV[rid].envelope.menu.dishes.find((d) => String(d.dish_id) === id) || {}).name;
+test('C-2 entry before delivery: a member\'s order that is NOT yet delivered has no rating entry and makes no rating read', async () => {
+  const { S, rate } = await memberDelivered({ deliver: false });
+  try {
+    await flush(400);
+    assert.equal(S.q('.rate-cta'), null, '🔴 C2-13: no entry before the order is delivered'); assert.equal(rate.calls.length, 0, '🔴 C2-13: no read');
+  } finally { S.w.close(); }
+});
+test('C-2 entry (frame 9.2): a member\'s DELIVERED order screen reserves «Valorar tu pedido» while its rating is read (no reflow), then draws it; the sheet: «¿Cómo estuvo tu pedido?», the store, 5 stars + word, the PURCHASED dishes by name, «Tu repartidor de Sherpa», the comment, «Enviar» only once something is set', async () => {
+  const { S, rate, placed } = await memberDelivered();
+  try {
+    const cta = () => S.q('.mk-sheet .rate-cta');
+    assert.ok(cta() && cta().style.visibility === 'hidden' && cta().getAttribute('aria-hidden') === 'true', '🔴 C2-1: the button\'s box is reserved while the read is in flight');
+    await until(() => cta() && cta().style.visibility !== 'hidden');
+    assert.equal(txt(cta()), 'Valorar tu pedido', '🔴 C2-1: the entry'); assert.equal(rate.calls.filter((c) => c.path === 'getMyRating').length, 1, 'ONE read');
+    const g = rate.calls.find((c) => c.path === 'getMyRating'); assert.equal(g.url, `https://fn.test/getMyRating?order_id=${placed.order_id}`); assert.equal(g.headers['x-firebase-id-token'], TOK('u_ana'), 'the member\'s token');
+    S.click(cta()); await until(() => S.q('#layer .rate'));
+    const L = S.q('#layer');
+    assert.equal(txt(L.querySelector('h2')), '¿Cómo estuvo tu pedido?'); assert.equal(S.w.document.activeElement, L.querySelector('#rate-h'), 'focus on the heading');
+    assert.equal(L.querySelectorAll('.stars [data-act="rate-star"]').length, 5);
+    const bought = [...new Set(placed.items.map((it) => it.dish_id).filter(Boolean))];
+    assert.deepEqual([...L.querySelectorAll('[data-act="rate-dish"][data-val="1"]')].map((b) => b.dataset.id), bought, '🔴 C2-2: one row per distinct PURCHASED dish (the sent lines\' dish ids)');
+    assert.deepEqual([...L.querySelectorAll('.rrow2 .t')].map(txt).slice(0, bought.length), bought.map((id) => menuName('x_pizza', id)), '🔴 C2-2: named from the store\'s menu');
+    assert.ok([...L.querySelectorAll('.rrow2 .t')].some((t) => txt(t) === 'Tu repartidor de Sherpa'), '🔴 C2-2: the delivery row, no name');
+    assert.ok(L.querySelector('[data-act="rate-send"]').disabled, '🔴 C2-2: nothing set ⇒ «Enviar» off');
+    S.click(L.querySelector('[data-act="rate-star"][data-val="4"]')); await flush();
+    assert.equal(txt(S.q('#layer .stars .word')), 'Muy bueno'); assert.equal(S.qa('#layer .stars button.on').length, 4);
+    assert.ok(!S.q('#layer [data-act="rate-send"]').disabled, 'something set ⇒ «Enviar» on');
+  } finally { S.w.close(); }
+});
+test('C-2 send: «Enviar» sends EXACTLY what was set (rateOrder v2) with the member\'s token; the sheet closes, the screen says «Ver tu calificación»; reopening shows it', async () => {
+  const { S, rate, placed } = await memberDelivered();
+  try {
+    await until(() => S.q('.mk-sheet .rate-cta') && S.q('.mk-sheet .rate-cta').style.visibility !== 'hidden');
+    S.click('.mk-sheet .rate-cta'); await until(() => S.q('#layer .rate'));
+    const bought = [...new Set(placed.items.map((it) => it.dish_id).filter(Boolean))];
+    S.click('#layer [data-act="rate-star"][data-val="5"]'); await flush();
+    S.click(`#layer [data-act="rate-dish"][data-id="${bought[0]}"][data-val="1"]`); await flush();
+    S.click('#layer [data-act="rate-del"][data-val="-1"]'); await flush();
+    const ta = S.q('#rate-comment'); ta.value = '  Muy rica  '; ta.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+    S.click('#layer [data-act="rate-send"]'); await until(() => !S.q('#layer .rate'));
+    const w = rate.calls.filter((c) => c.path === 'rateOrder');
+    assert.equal(w.length, 1, 'ONE write'); assert.equal(w[0].headers['x-firebase-id-token'], TOK('u_ana'));
+    assert.deepEqual(w[0].body, { order_id: placed.order_id, store: 5, dishes: { [bought[0]]: 1 }, delivery: -1, comment: 'Muy rica' }, '🔴 C2-3: exactly the set fields');
+    assert.equal(rate.nodes[placed.order_id].store, 5, 'the server recorded it');
+    assert.equal(txt(S.q('.mk-sheet .rate-cta')), 'Ver tu calificación', '🔴 C2-3: the entry follows');
+    S.click('.mk-sheet .rate-cta'); await until(() => S.q('#layer .rate'));
+    assert.equal(S.qa('#layer .stars button.on').length, 5, 'reopened with its stars'); assert.equal(S.q('#rate-comment').value, 'Muy rica');
+    assert.ok(S.q('#layer [data-act="rate-send"]').disabled, 'unchanged ⇒ nothing to send');
+  } finally { S.w.close(); }
+});
+test('C-2 Pedidos (frame 9.3): delivered rows inside the window read their rating — AT MOST 5 per view, ONE at a time, the line reserved — «Valorar» · «★ n tu calificación» · «Sin calificar»; older rows nothing; an EDIT from the row opens prefilled (getMyRating) and sends only the change', async () => {
+  const rate = ratingServer(), db = {}, orders = {};
+  const D = 86400e3, ids = ['XP-R1', 'XP-R2', 'XP-R3', 'XP-R4', 'XP-R5', 'XP-R6', 'XP-OLD'];
+  ids.forEach((id, k) => placeReal(db, orders, 'u_ana', id, { ts: id === 'XP-OLD' ? T0 - 9 * D : T0 - (k + 1) * 3600e3 }));
+  const marg = String(PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita').dish_id);
+  for (const id of ids) { rate.own(id, 'u_ana', [marg]); rate.fulfil(id, T0 - 2 * D); }
+  rate.fulfil('XP-R2', T0 - 2 * D); rate.nodes['XP-R2'] = { ...rate.nodes['XP-R2'], store: 5, dishes: { [marg]: 1 }, comment: 'Rica', rated_at: T0 - D, owner_uid: 'u_ana' };   // as the writer leaves it
+  rate.nodes['XP-R3'] = { ...rate.nodes['XP-R3'], fulfilled_at: T0 - 8 * D };   // fulfilled 8 days ago, never rated: the window is over
+  const { S } = await pedidosBoot(db, { orders, rate, runtime: RATE_RT(), contextFor: AGAIN_CTX });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    await until(() => rate.calls.filter((c) => c.path === 'getMyRating').length >= 5, 8000); await flush(300);
+    assert.equal(rate.rx.max, 1, '🔴 C2-4: one at a time');
+    const reads = rate.calls.filter((c) => c.path === 'getMyRating').map((c) => new URL(c.url).searchParams.get('order_id'));
+    assert.equal(reads.length, 5, `🔴 C2-4: the cap — 5 reads for the view (${reads.join(',')})`);
+    await until(() => !S.q('.orow .rate-line[aria-hidden="true"]'), 4000);
+    assert.ok(!reads.includes('XP-OLD'), 'an order older than the window is never read');
+    const line = (id) => { const r = S.q(`.orow [data-oid="${id}"]`) ? S.q(`.orow [data-oid="${id}"]`).closest('.orow') : null; const l = r && r.querySelector('.rate-line'); return l ? txt(l) : null; };
+    assert.equal(line('XP-R1'), 'Valorar', '🔴 C2-4: unrated, open'); assert.equal(line('XP-R2'), '5 tu calificación', '🔴 C2-4: rated (stars)'); assert.equal(line('XP-R3'), 'Sin calificar', '🔴 C2-4: past the window');
+    assert.equal(line('XP-R6'), null, 'beyond the cap: nothing'); assert.equal(line('XP-OLD'), null, 'older: nothing');
+    S.click(S.q('.orow .rate-go[data-oid="XP-R2"]')); await until(() => S.q('#layer .rate'));
+    assert.equal(S.qa('#layer .stars button.on').length, 5, '🔴 C2-5: prefilled from getMyRating'); assert.equal(S.q('#rate-comment').value, 'Rica');
+    assert.ok(S.q(`#layer [data-act="rate-dish"][data-id="${marg}"][data-val="1"]`).classList.contains('on'), 'its dish vote');
+    const ta = S.q('#rate-comment'); ta.value = 'Riquísima'; ta.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+    S.click('#layer [data-act="rate-send"]'); await until(() => !S.q('#layer .rate'));
+    assert.deepEqual(rate.calls.filter((c) => c.path === 'rateOrder').map((c) => c.body), [{ order_id: 'XP-R2', comment: 'Riquísima' }], '🔴 C2-5: an edit sends ONLY the change');
+    assert.equal(rate.nodes['XP-R2'].store, 5, 'the server kept the rest');
+  } finally { S.w.close(); }
+});
+test('C-2 nudge: the delivered order THIS device placed opens the sheet ONCE on the next app open (at idle, over Inicio); «Ahora no» retires it for good; a rated order never nudges', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })), rate = ratingServer();
+  const A = await memberDelivered({ storage: st, rate }); A.S.w.close();
+  const open = async () => { const { S } = await pedidosBoot({}, { runtime: RATE_RT(), rate, storage: st }); await flush(); await flush(400); return S; };
+  const B = await open();
+  try {
+    await until(() => B.q('#layer .rate'), 4000);
+    assert.equal(B.ui.state.tab, 'home', '🔴 C2-6: over Inicio'); assert.equal(B.ui.store(), null);
+    B.click('#layer [data-act="rate-later"]'); await flush();
+    assert.equal(B.q('#layer .rate'), null, 'closed');
+  } finally { B.w.close(); }
+  const C = await open();
+  try { await flush(600); assert.equal(C.q('#layer .rate'), null, '🔴 C2-6: «Ahora no» ⇒ never again'); } finally { C.w.close(); }
+  const st2 = g7Store(G7_PROFILE({ promos: true })), r2 = ratingServer();
+  const D = await memberDelivered({ storage: st2, rate: r2 });
+  D.rate.nodes[D.placed.order_id] = { ...D.rate.nodes[D.placed.order_id], store: 3, rated_at: T0, owner_uid: 'u_ana' }; D.S.w.close();   // rated elsewhere meanwhile
+  const { S: E } = await pedidosBoot({}, { runtime: RATE_RT(), rate: r2, storage: st2 });
+  try { await flush(); await flush(800); assert.equal(E.q('#layer .rate'), null, '🔴 C2-6: an already-rated order never nudges'); } finally { E.w.close(); }
+  const before = r2.calls.filter((c) => c.path === 'getMyRating').length;
+  const { S: F } = await pedidosBoot({}, { runtime: RATE_RT(), rate: r2, storage: st2 });
+  try { await flush(); await flush(800); assert.equal(r2.calls.filter((c) => c.path === 'getMyRating').length, before, '🔴 C2-6: a rated candidate is RETIRED — never read again on later opens'); } finally { F.w.close(); }
+});
+test('C-2 gates: the flag OFF ⇒ no entry and ZERO rating reads; a GUEST\'s delivered order ⇒ no entry (no server path); the dish rows are ONLY the purchased ones (never the whole menu)', async () => {
+  const off = await memberDelivered({ runtime: RATE_RT({ ratings: undefined }) });
+  try { await flush(400); assert.equal(off.S.q('.rate-cta'), null, '🔴 C2-7: flag off ⇒ no entry'); assert.equal(off.rate.calls.length, 0, '🔴 C2-7: no read at all'); } finally { off.S.w.close(); }
+  const { S, rate, placed } = await memberDelivered();
+  try {
+    await until(() => S.q('.mk-sheet .rate-cta') && S.q('.mk-sheet .rate-cta').style.visibility !== 'hidden');
+    S.click('.mk-sheet .rate-cta'); await until(() => S.q('#layer .rate'));
+    const shown = S.qa('#layer [data-act="rate-dish"][data-val="1"]').map((b) => b.dataset.id), bought = new Set(placed.items.map((it) => it.dish_id).filter(Boolean));
+    assert.ok(shown.length >= 1 && shown.every((id) => bought.has(id)), '🔴 C2-8: only the purchased dishes are offered');
+    assert.ok(PROV.x_pizza.envelope.menu.dishes.length > shown.length, 'premise: the menu has more dishes than the order');
+  } finally { S.w.close(); }
+});
+test('C-2 read-only + errors: past the window a rating is SHOWN, not editable («Cerrar», no «Enviar», controls off, no «Podés cambiarla»); a send the server answers window_closed keeps the sheet with its message', async () => {
+  const rate = ratingServer(), db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-L1', { ts: T0 - 3600e3 });
+  const marg = String(PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita').dish_id);
+  rate.own('XP-L1', 'u_ana', [marg]); rate.fulfil('XP-L1', T0 - 8 * 86400e3);
+  rate.nodes['XP-L1'] = { ...rate.nodes['XP-L1'], store: 2, rated_at: T0 - 7.5 * 86400e3, owner_uid: 'u_ana' };
+  const { S } = await pedidosBoot(db, { orders, rate, runtime: RATE_RT(), contextFor: AGAIN_CTX });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await until(() => S.q('.orow .rate-go[data-oid="XP-L1"]'));
+    S.click('.orow .rate-go[data-oid="XP-L1"]'); await until(() => S.q('#layer .rate'));
+    assert.equal(S.q('#layer [data-act="rate-send"]'), null, '🔴 C2-9: no «Enviar» past the window');
+    assert.equal(txt(S.q('#layer [data-act="rate-later"]')), 'Cerrar');
+    assert.ok(S.qa('#layer [data-act="rate-star"]').every((b) => b.disabled) && S.q('#rate-comment').disabled, '🔴 C2-9: read-only');
+    assert.equal(S.qa('#layer .stars button.on').length, 2, 'its stars shown');
+    assert.equal(txt(S.q('#layer .fine')), 'Tu calificación es anónima para el restaurante.', '🔴 C2-9: no «Podés cambiarla» once it cannot change');
+  } finally { S.w.close(); }
+  let t = T0; const r2 = ratingServer({ now: () => t });
+  const { S: E, placed } = await memberDelivered({ rate: r2 });
+  try {
+    await until(() => E.q('.mk-sheet .rate-cta') && E.q('.mk-sheet .rate-cta').style.visibility !== 'hidden');
+    E.click('.mk-sheet .rate-cta'); await until(() => E.q('#layer .rate'));
+    E.click('#layer [data-act="rate-star"][data-val="3"]'); await flush();
+    t = T0 + RATE_W + 1;   // the window closes while the sheet is open
+    E.click('#layer [data-act="rate-send"]'); await until(() => E.q('#layer .rate-err'));
+    assert.equal(txt(E.q('#layer .rate-err')), 'Ya no se puede calificar este pedido.', '🔴 C2-10: the server\'s answer, in words');
+    assert.ok(E.q('#layer .rate'), 'the sheet stays'); assert.equal(r2.nodes[placed.order_id].store, null, 'nothing recorded');
+  } finally { E.w.close(); }
+});
+test('C-2 guests: a GUEST\'s delivered order has NO rating entry and makes ZERO rating reads (no guest server path)', async () => {
+  const { ES, made } = fakeES(), rate = ratingServer();
+  const S = bootShell({ auth: 'guest', runtime: { ...RUNTIME, rtdbBase: 'https://rtdb.test', ratings: true, signup: SU_RUNTIME.signup }, mountExtra: { EventSource: ES, loadSdk: fakeFirebase({}).loadSdk, signupFetch: (u, i) => (/\/(getMyRating|rateOrder)$/.test(u.split('?')[0]) ? rate.handler(u, i) : signupServer(ANA).fetch(u, i)) },
+    apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
+  try {
+    await flush(); await placeShellCash(S);
+    made[0].emit('put', '/', trackingRecordOf('tok_abcdefgh12')); made[0].emit('put', '/status', 'delivered'); await flush(); await flush(400);
+    assert.equal(txt(S.q('.mk-title')), '¡Pedido entregado!', 'premise: delivered');
+    assert.equal(S.q('.rate-cta'), null, '🔴 C2-11: no entry for a guest'); assert.equal(rate.calls.length, 0, '🔴 C2-11: zero rating reads');
+  } finally { S.w.close(); }
+});
+test('C-2 the send diff (capp-rate): a first rating sends only what is set; an edit only what changed — `dishes` WHOLE (the writer replaces it), earlier votes the sheet could not show KEPT; a cleared thumb ⇒ null; the five words', () => {
+  const R = require('./capp-rate.js');
+  assert.deepEqual(R.WORDS, ['Malo', 'Regular', 'Bueno', 'Muy bueno', 'Excelente']);
+  assert.deepEqual(R.fieldsToSend(null, { store: null, dishes: { a: 1, x: 1 }, delivery: null, comment: '   ' }, ['a']), { dishes: { a: 1 } }, '🔴 RD-1: only set fields, only offered dishes, a blank comment dropped');
+  const ini = { store: 4, dishes: { a: 1, hidden: -1 }, delivery: 1, comment: 'Rica' };
+  assert.deepEqual(R.fieldsToSend(ini, R.fromRating(ini), ['a']), {}, '🔴 RD-1: unchanged ⇒ nothing');
+  assert.deepEqual(R.fieldsToSend(ini, { ...R.fromRating(ini), dishes: { a: -1 } }, ['a']), { dishes: { hidden: -1, a: -1 } }, '🔴 RD-1: the WHOLE map, the unshown vote kept');
+  assert.deepEqual(R.fieldsToSend(ini, { ...R.fromRating(ini), delivery: null, comment: ' Riquísima ' }, ['a']), { delivery: null, comment: 'Riquísima' }, 'a cleared thumb ⇒ null; the comment trimmed');
+  assert.deepEqual(R.dishesOf(['a', 'a', 'b', 'c', 'z'], (id) => ({ a: 'Pizza', c: 'Pan' })[id] || null), [{ id: 'a', name: 'Pizza' }, { id: 'c', name: 'Pan' }], '🔴 RD-2: distinct, nameable only');
+});
+test('C-2 pickup: a PICKUP order\'s sheet has no «La entrega» row (the delivery thumbs exist only for a delivery)', async () => {
+  const rate = ratingServer(), db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-P1', { ts: T0 - 3600e3, type: 'pickup' });
+  rate.own('XP-P1', 'u_ana', []); rate.fulfil('XP-P1', T0 - 3600e3);
+  const { S } = await pedidosBoot(db, { orders, rate, runtime: RATE_RT(), contextFor: AGAIN_CTX });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await until(() => S.q('.orow .rate-go[data-oid="XP-P1"]'));
+    S.click('.orow .rate-go[data-oid="XP-P1"]'); await until(() => S.q('#layer .rate'));
+    assert.equal(S.q('#layer [data-act="rate-del"]'), null, '🔴 C2-12: no delivery thumbs on a pickup');
+    assert.ok(!/La entrega/.test(S.q('#layer .rate').textContent), 'no «La entrega» section');
+  } finally { S.w.close(); }
 });

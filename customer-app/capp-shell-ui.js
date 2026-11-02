@@ -37,6 +37,7 @@
     const CappUI = pick(o, 'CappUI', './capp-ui.js'), CappShell = pick(o, 'CappShell', './capp-shell.js');
     const CappShellNav = pick(o, 'CappShellNav', './capp-shell-nav.js'), CappHome = pick(o, 'CappHome', './capp-home.js');
     const CappOrder = pick(o, 'CappOrder', './capp-order.js');   // «Pedido recibido» (the host's order screen)
+    const CappRate = pick(o, 'CappRate', './capp-rate.js');   // C-2: the post-delivery rating sheet (presenter)
     // the native store-update: an INSTALLED app with a store to update from never reloads its bundled assets (that cannot update it)
     // and the store sheet replaces the shared «Actualización pendiente» notice — a no-reload adapter for the shared coordinator
     if (o.runtime && o.runtime.store) { try { const SC = o.SherpaClient || g.SherpaClient; if (SC && !SC.inert && typeof SC.registerAdapter === 'function') SC.registerAdapter({ canReload: () => false, notice: () => {} }); } catch (_) {} }
@@ -601,7 +602,7 @@
       if (dead || gen !== ordersGen || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid) return;   // another identity now: not theirs
       S.ordersRead = r.ok ? { phase: 'ready', active: r.active, past: r.past, who } : { phase: 'error', active: [], past: [], who };
       if (S.tab === 'orders' && !S.store) renderNow();
-      if (r.ok) prefetchReceipts();
+      if (r.ok) { prefetchReceipts(); readPedidosRatings(); }
     }
     const DAYS3 = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'], MON3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
     function hnParts(ms) {
@@ -630,7 +631,7 @@
         const st = storeOfRid(r.restaurant); if (!st) continue;   // a store the directory no longer lists: not drawn (reported)
         active.push({ store: st, oid: r.order_id, numText: r.display_number ? `Orden #${r.display_number}` : null, whenText: whenOf(r.ts), total: r.total, itemsLine: r.items_text, statusText: statusText(r.status, r.order_type || 'delivery'), trackable: false });
       }
-      const past = rd.past.map((r) => { const st = storeOfRid(r.restaurant); return st ? { store: st, oid: r.order_id, dateText: dateOf(r.ts), total: r.total, itemsLine: r.items_text, again: reorderable(recipeOf(r.items, r.recipe_format)) } : null; }).filter(Boolean);
+      const past = rd.past.map((r) => { const st = storeOfRid(r.restaurant); return st ? { store: st, oid: r.order_id, dateText: dateOf(r.ts), total: r.total, itemsLine: r.items_text, again: reorderable(recipeOf(r.items, r.recipe_format)), rateHtml: rowRateHtml(r) } : null; }).filter(Boolean);
       const again = rd.phase === 'ready' ? againGroups(rows, rd.past) : [];
       return { phase: rd.phase, active, past, againReady: past.some((p) => p.again), again };
     }
@@ -686,7 +687,7 @@
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
       reflect();
-      if (S.tab === 'home' && !S.store && !S.neutral) { askLegal(); rowArrows(); }
+      if (S.tab === 'home' && !S.store && !S.neutral) { askLegal(); rowArrows(); askRateNudge(); }
     }
     // ── «PEDIDO RECIBIDO» (v6 orderHtml via CappOrder; owner 2026-11-01: build what v6 draws) ──
     // A placed order leaves «Enviando» for this SHELL screen: the store mount is left (Inicio under it, so back ⇒ Inicio), the order
@@ -716,7 +717,7 @@
         rec = applyRtdb(rec, ev.type, m.path, m.data);
         const v = CappOrder.fromTracking(rec, od.mode); if (!v) return;
         Object.assign(od, v); saveActive();
-        if (CappOrder.FINAL.has(v.status)) closeStream();
+        if (CappOrder.FINAL.has(v.status)) { closeStream(); rememberRateCandidate(od); }
         if ((S.tab === 'order' || S.tab === 'orders') && !S.store) renderNow();   // a final status also clears the Pedidos card (Codex r1)
       };
       es.addEventListener('put', apply); es.addEventListener('patch', apply);
@@ -771,6 +772,7 @@
     }
     function identityChanged() {
       ordersGen++; S.ordersRead = null;   // any in-flight history read is void; nothing of the previous identity is shown
+      rateGen++; rateCache.clear(); if (S.layer === 'rate') { S.rate = null; closeLayer(); }   // C-2: nothing of the previous identity's ratings
       S.held = null; S.reorder = null; S.carry = null;   // Codex VP r1 #2: a held tap / «Volver a pedir» of the previous identity never lands
       receiptGen++; prefetchGen++; S.receipt = null; receiptCache.clear(); receiptInflight.clear(); if (S.tab === 'receipt' && !S.store) nav.tab({ name: 'orders' });   // nor a receipt of hers
       const od = S.order, who = ownerNow();
@@ -818,7 +820,7 @@
     function orderScreenHtml(v) {
       const od = S.order;
       return CappHome.shellWrap(v, CappOrder.orderHtml(od, { entry: 'app', now: Number(nowMs()), dark: app.classList.contains('dark'), helpOk: !!supportWa(), desk: !!v.desk,
-        shareOk: !!(od.token && trackBaseOf(od.rid)), receiptOpen: !!S.orderReceipt, offerHtml: offerHtml(od) }));
+        shareOk: !!(od.token && trackBaseOf(od.rid)), receiptOpen: !!S.orderReceipt, offerHtml: offerHtml(od), rateHtml: orderRateHtml(od) }));
     }
     // MOCKUP-capp-guest-checkout frame 7 (owner 10-27) in v6's .rw slot: a GUEST whose card order returned a live signup grant (the
     // phone already verified — no second code), under the shell's own sign-in (runtime.signup); «Ahora no» hides it for this order
@@ -844,6 +846,7 @@
       // v6: the app's close ⇒ «Pedidos» (data-tab="orders"); «Hacer otro pedido» ⇒ Inicio. The order stays ACTIVE (its record kept);
       // only the live work pauses — reopening it resumes the stream
       if (a === 'order-close') { stopOrder(); nav.tab({ name: 'orders' }); return true; }
+      if (a === 'order-rate') { if (od.order_id) openRate(od.order_id); return true; }   // C-2: «Valorar tu pedido» / «Ver tu calificación»
       if (a === 'order-again') { stopOrder(); nav.tab({ name: 'home' }); return true; }
       if (a === 'order-receipt') { S.orderReceipt = !S.orderReceipt; renderNow(); return true; }
       if (a === 'order-help') { const n = supportWa(); if (n) { const msg = 'Hola, tengo un problema con mi pedido' + (od.display_number ? ' #' + od.display_number : ''); openExternal(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`); } return true; }
@@ -923,6 +926,170 @@
     const PREFETCH_MAX = 5;
     const idle = (f) => (win && typeof win.requestIdleCallback === 'function' ? win.requestIdleCallback(f, { timeout: 2000 }) : T.setTimeout(f, 200));
     let prefetchGen = 0;
+    // ── C-2 · THE RATING SHEET (PLAN §C-2; MOCKUP-capp-desktop-D3 r3 §9.2; advisor rulings 11-02) ── an ADMITTED member's own orders only
+    // (the server has no guest path), behind runtime.ratings (dark until the owner turns it on). Reads: getMyRating per order, cached per
+    // uid; the Pedidos rows read at most RATE_READS per view, sequentially at idle, their line's box reserved; the delivered order screen
+    // reads its order at idle with the button's box reserved. The ONE nudge: the newest delivered order THIS device placed, once per order
+    // id ever, at idle on Inicio — never over a store / checkout or an open sheet. «Ahora no» / Enviar retire the order from the nudge.
+    const RATE_READS = 5, RATE_WINDOW_MS = 7 * 24 * 3600e3, RATE_SEEN_MS = 8 * 24 * 3600e3;
+    const RATE_NUDGE_KEY = 'capp:rate_nudge', RATE_DONE_KEY = 'capp:rate_done', RATE_DONE_MAX = 20;
+    const rateCache = new Map(); let rateGen = 0, rateNudgeTried = false;
+    const rateUid = () => (runtime.ratings === true && !!CappRate && !!suApi && !!fbAuth && S.member && S.member.uid ? S.member.uid : null);
+    const doneOf = (st) => st === 'delivered' || st === 'collected';
+    // ONE read per order per uid: a read in flight is shared (its promise); 'queued' reserves an entry's box before its read starts
+    function readRating(oid) {
+      const uid = rateUid(); if (!uid) return Promise.resolve(null);
+      const hit = rateCache.get(oid);
+      if (hit && hit.who === uid) { if (hit.phase === 'ready') return Promise.resolve(hit); if (hit.phase === 'pending') return hit.p; }   // failed / queued ⇒ read
+      const gen = rateGen;
+      const p = (async () => {
+        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        const r = tok ? await suApi.getMyRating({ idToken: tok, orderId: oid }) : { ok: false };
+        if (dead || gen !== rateGen || rateUid() !== uid) return null;
+        rateCache.set(oid, r.ok ? { phase: 'ready', who: uid, canRate: r.canRate, rating: r.rating, editableUntil: r.editableUntil } : { phase: 'failed', who: uid });
+        return r.ok ? rateCache.get(oid) : null;
+      })();
+      rateCache.set(oid, { phase: 'pending', who: uid, p });
+      return p;
+    }
+    // the entry state of one order: null (nothing drawn) | 'pending' | 'rate' | 'rated' | 'late'
+    function rateState(oid) {
+      const e = rateCache.get(oid); if (!e || e.who !== rateUid()) return null;
+      if (e.phase === 'pending' || e.phase === 'queued') return 'pending';
+      if (e.phase !== 'ready') return null;
+      if (e.rating) return 'rated';
+      if (e.canRate) return 'rate';
+      return Number.isFinite(e.editableUntil) ? 'late' : null;   // fulfilled, window over, never rated; not fulfilled / closed ⇒ nothing
+    }
+    function orderRateHtml(od) {
+      const uid = rateUid();
+      if (!uid || !od || od.owner !== `u:${uid}` || !doneOf(od.status) || !od.order_id) return '';
+      const e = rateCache.get(od.order_id);
+      if (!e || e.who !== uid) {   // its read at idle; the button's box reserved meanwhile
+        rateCache.set(od.order_id, { phase: 'queued', who: uid });
+        idle(async () => { await readRating(od.order_id); if (!dead && S.tab === 'order' && S.order === od && !S.store) renderNow(); });
+      }
+      return CappRate.ctaHtml(rateState(od.order_id));
+    }
+    // a past row inside the window (by its placement time — the server decides) gets a line; beyond the read cap, nothing
+    const rowRateable = (r) => doneOf((CappOrder.fromTracking({ status: r.status }, r.order_type || 'delivery') || {}).status) && Number(nowMs()) - r.ts < RATE_SEEN_MS;
+    function rowRateHtml(r) {
+      if (!rateUid() || !rowRateable(r)) return '';
+      const st = rateState(r.order_id), e = rateCache.get(r.order_id);
+      return st ? CappRate.lineHtml(st, r.order_id, e && e.rating && Number.isInteger(e.rating.store) ? e.rating.store : null) : '';
+    }
+    function readPedidosRatings() {
+      const rd = S.ordersRead; if (!rateUid() || !rd || rd.phase !== 'ready') return;
+      const ids = rd.past.filter((r) => rowRateable(r) && !rateCache.has(r.order_id)).slice(0, RATE_READS).map((r) => r.order_id);
+      if (!ids.length) return;
+      const gen = rateGen, uid = rateUid(); for (const id of ids) rateCache.set(id, { phase: 'queued', who: uid });
+      if (S.tab === 'orders' && !S.store) renderNow();   // the lines' boxes reserved before any read lands
+      idle(async () => {
+        for (const id of ids) {
+          if (dead || gen !== rateGen) return;
+          await readRating(id);
+          if (!dead && gen === rateGen && S.tab === 'orders' && !S.store) renderNow();
+        }
+      });
+    }
+    // what the sheet needs of an order: its store (names its dishes from the store's own menu), number, mode, purchased dish ids
+    function rateCtxOf(oid) {
+      const od = S.order;
+      if (od && od.order_id === oid) return { oid, rid: od.rid, num: od.display_number || null, mode: od.mode, dishIds: (od.lines || []).map((l) => l && l.dish_id) };
+      const rd = S.ordersRead, row = rd && rd.past ? rd.past.concat(rd.active).find((r) => r.order_id === oid) : null;
+      if (row) return { oid, rid: row.restaurant, num: row.display_number || null, mode: row.order_type === 'pickup' ? 'pickup' : 'delivery', dishIds: (row.items || []).map((l) => l && l.dish_id) };
+      const c = rateCandidate();
+      return c && c.order_id === oid ? { oid, rid: c.rid, num: c.num || null, mode: c.mode, dishIds: c.dish_ids || [] } : null;
+    }
+    async function openRate(oid, { nudge = false } = {}) {
+      const uid = rateUid(), ctx = rateCtxOf(oid); if (!uid || !ctx) return false;
+      const gen = rateGen;
+      const pk = cache.peek(ctx.rid);   // the store's menu names its dishes: the cached one, else its load
+      const [e, ent] = await Promise.all([readRating(oid), Promise.resolve(pk && pk.body ? pk : cache.get(ctx.rid)).catch(() => null)]);
+      if (dead || gen !== rateGen || rateUid() !== uid || !e) { if (!nudge && !dead) toast('No pudimos abrir tu calificación. Intentá de nuevo.'); return false; }
+      if (nudge && (e.rating || !e.canRate)) return false;
+      if (!e.rating && !e.canRate) return false;
+      if (nudge && (S.store || S.layer || S.tab !== 'home' || S.neutral)) return false;   // never over a store / checkout or an open sheet
+      let menu = null; try { menu = ent && ent.body ? CappMenu.adaptMenu(ent.body) : null; } catch (_) { menu = null; }
+      const row = dir.view().rows.find((r) => r.rid === ctx.rid), storeName = row ? CappHome.storeOf(row).name : '';
+      const dishes = CappRate.dishesOf(ctx.dishIds, (id) => { const d = menu && menu.dish(id); return d ? d.name : null; });
+      S.rate = { ctx, storeName, dishes, initial: e.rating, value: CappRate.fromRating(e.rating), editable: e.canRate === true, sending: false, error: null };
+      openLayer('rate');
+      const h = doc.getElementById('rate-h'); if (h) h.focus();
+      return true;
+    }
+    const rateVm = () => ({ storeName: S.rate.storeName, num: S.rate.ctx.num, dishes: S.rate.dishes, delivery: S.rate.ctx.mode === 'delivery', value: S.rate.value, initial: S.rate.initial, editable: S.rate.editable, sending: S.rate.sending, error: S.rate.error });
+    // a tap re-renders the sheet and keeps focus on the same control (the comment keeps its caret)
+    function rerenderRate() {
+      const ae = doc.activeElement, ds = ae && ae.dataset ? { act: ae.dataset.act, id: ae.dataset.id, val: ae.dataset.val, field: ae.dataset.field } : null;
+      const caret = ae && ae.id === 'rate-comment' ? [ae.selectionStart, ae.selectionEnd] : null;
+      renderLayer();
+      const L = $('layer'); if (!L || !ds) return;
+      const sel = ds.field ? `[data-field="${ds.field}"]` : ds.act ? `[data-act="${ds.act}"]${ds.id ? `[data-id="${CSS_ESC(ds.id)}"]` : ''}${ds.val ? `[data-val="${ds.val}"]` : ''}` : null;
+      const el = sel ? L.querySelector(sel) : null; if (el) { el.focus(); if (caret) try { el.setSelectionRange(caret[0], caret[1]); } catch (_) {} }
+    }
+    const CSS_ESC = (v) => String(v).replace(/["\\]/g, '\\$&');
+    function syncRateSend() {
+      const b = $('layer') && $('layer').querySelector('[data-act="rate-send"]'); if (!b || !S.rate) return;
+      b.disabled = !(S.rate.editable && !S.rate.sending && Object.keys(CappRate.fieldsToSend(S.rate.initial, S.rate.value, S.rate.dishes.map((d) => d.id))).length);
+    }
+    function closeRate() { const oid = S.rate && S.rate.ctx.oid; S.rate = null; closeLayer(); if (oid) markRateDone(oid); if ((S.tab === 'orders' || S.tab === 'order') && !S.store) renderNow(); }
+    const RATE_ERR = { window_closed: 'Ya no se puede calificar este pedido.', not_fulfilled: 'Todavía no podés calificar este pedido.' };   // OWNER-PENDING
+    async function sendRate() {
+      const R = S.rate, uid = rateUid(); if (!R || !uid || R.sending || !R.editable) return;
+      const fields = CappRate.fieldsToSend(R.initial, R.value, R.dishes.map((d) => d.id)); if (!Object.keys(fields).length) return;
+      R.sending = true; R.error = null; rerenderRate();
+      const gen = rateGen;
+      let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+      const r = tok ? await suApi.rateOrder({ idToken: tok, orderId: R.ctx.oid, fields }) : { ok: false, reason: 'unauthenticated' };
+      if (dead || gen !== rateGen || S.rate !== R) return;
+      R.sending = false;
+      if (!r.ok) { R.error = RATE_ERR[r.reason] || 'No pudimos enviar tu calificación. Intentá de nuevo.'; rerenderRate(); return; }   // OWNER-PENDING
+      const prev = rateCache.get(R.ctx.oid), base = R.initial || { store: null, dishes: {}, delivery: null, comment: null };
+      const rating = { ...base, ...fields, dishes: fields.dishes || base.dishes || {} };   // the writer's merge: absent fields kept, dishes whole
+      rateCache.set(R.ctx.oid, { phase: 'ready', who: uid, canRate: true, rating, editableUntil: prev && prev.phase === 'ready' ? prev.editableUntil : null });
+      closeRate(); toast('Gracias por tu calificación');   // OWNER-PENDING
+    }
+    function rateAct(a, t) {
+      if (a === 'rate-open') { if (t.dataset.oid) openRate(t.dataset.oid); return true; }
+      if (!S.rate || S.layer !== 'rate') return false;
+      const v = S.rate.value, n = Number(t.dataset.val);
+      if (a === 'rate-star' && S.rate.editable && n >= 1 && n <= 5) { v.store = n; rerenderRate(); return true; }
+      if (a === 'rate-dish' && S.rate.editable && (n === 1 || n === -1) && t.dataset.id) { const id = t.dataset.id; if (v.dishes[id] === n) delete v.dishes[id]; else v.dishes[id] = n; rerenderRate(); return true; }
+      if (a === 'rate-del' && S.rate.editable && (n === 1 || n === -1)) { v.delivery = v.delivery === n ? null : n; rerenderRate(); return true; }
+      if (a === 'rate-later') { closeRate(); return true; }
+      if (a === 'rate-send') { sendRate(); return true; }
+      return false;
+    }
+    // the nudge's record: the newest delivered order THIS device placed for a member (order id + what the sheet needs; no personal data)
+    function rememberRateCandidate(od) {
+      if (!storage || !od || !doneOf(od.status) || typeof od.owner !== 'string' || !od.owner.startsWith('u:') || !od.order_id || rateDone().includes(od.order_id)) return;
+      try { storage.setItem(RATE_NUDGE_KEY, JSON.stringify({ v: 1, owner: od.owner, order_id: od.order_id, rid: od.rid, mode: od.mode, num: od.display_number || null,
+        dish_ids: (od.lines || []).map((l) => l && l.dish_id).filter((x) => typeof x === 'string'), at: Number(nowMs()) })); } catch (_) {}
+    }
+    function rateCandidate() {
+      let c = null; try { c = storage ? JSON.parse(storage.getItem(RATE_NUDGE_KEY) || 'null') : null; } catch (_) { c = null; }
+      return c && c.v === 1 && typeof c.order_id === 'string' && typeof c.rid === 'string' && typeof c.owner === 'string' && Number.isFinite(c.at) ? c : null;
+    }
+    function rateDone() { let d = null; try { d = storage ? JSON.parse(storage.getItem(RATE_DONE_KEY) || '[]') : []; } catch (_) { d = []; } return Array.isArray(d) ? d.filter((x) => typeof x === 'string') : []; }
+    function markRateDone(oid) {
+      if (!storage) return;
+      try { const d = rateDone().filter((x) => x !== oid); d.push(oid); storage.setItem(RATE_DONE_KEY, JSON.stringify(d.slice(-RATE_DONE_MAX)));
+        const c = rateCandidate(); if (c && c.order_id === oid) storage.removeItem(RATE_NUDGE_KEY); } catch (_) {}
+    }
+    function askRateNudge() {
+      if (rateNudgeTried) return;
+      const uid = rateUid(); if (!uid) return;   // tried again once the member is admitted
+      rateNudgeTried = true;
+      const c = rateCandidate();
+      if (!c || c.owner !== `u:${uid}` || rateDone().includes(c.order_id) || Number(nowMs()) - c.at > RATE_SEEN_MS) return;
+      idle(async () => {
+        if (dead || rateUid() !== uid) return;
+        const e = await readRating(c.order_id);
+        if (e && (e.rating || !e.canRate)) { markRateDone(c.order_id); return; }   // rated already / closed: never nudged again
+        if (e) openRate(c.order_id, { nudge: true });
+      });
+    }
     function prefetchReceipts() {
       const rd = S.ordersRead, gen = ++prefetchGen, rg = receiptGen;
       if (!rd || rd.phase !== 'ready' || !S.member || !suApi || !fbAuth) return;
@@ -1061,7 +1228,7 @@
     function renderLayer() {
       const L = $('layer'); if (!L) return;
       pinGen++; pinMap = null;   // any open pin map is obsolete
-      L.innerHTML = S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
+      L.innerHTML = S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
       if (S.layer !== 'pin') return;
       const firstHub = dir.view().rows.map((r) => r.entry).find((e) => Number.isFinite(e.hub_lat) && Number.isFinite(e.hub_lng));
       pinDraft = S.loc ? { lat: S.loc.lat, lng: S.loc.lng } : null;   // the editor's VIEW starts on the city when there is no location — never a pin
@@ -1094,6 +1261,7 @@
       if (!t || !app.contains(t) || t.disabled) return;
       if (S.store && !t.closest('.desknav')) return;   // a mounted store owns its page — except the shell's own top bar (C-6c)
       const a = t.dataset.act;
+      if (a && a.startsWith('rate-') && rateAct(a, t)) return;   // C-2: the rating sheet and the Pedidos rows' entries
       if (a === 'addr' && S.store) { nav.tab({ name: 'home' }); if (!S.store && S.tab === 'home') openLayer('addr'); return; }   // the address is the shell's: Inicio, with its sheet up
       // the Cuenta tab: with the guest rules ON (runtime.guestCardOnly), a guest's (and an unresolved) is frame 5b; a member's is a
       // later slice. Flag absent ⇒ exactly the S7a-2 behaviour: a host event (Codex guest r1 #3)
@@ -1155,7 +1323,9 @@
     }
     function onInput(ev) {
       if (dead || S.store) return;
-      const el = ev.target; if (!el || !el.dataset || el.dataset.field !== 'q') return;
+      const el = ev.target; if (!el || !el.dataset) return;
+      if (el.dataset.field === 'rate-comment' && S.rate) { S.rate.value.comment = el.value; syncRateSend(); return; }   // C-2: typed in place
+      if (el.dataset.field !== 'q') return;
       S.q = el.value; renderNow();
     }
     function onVisible() { if (doc.visibilityState === 'visible' && !S.store) { dir.revalidate(); loadMenus(); } }
