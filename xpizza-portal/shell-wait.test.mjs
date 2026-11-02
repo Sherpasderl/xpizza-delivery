@@ -122,15 +122,16 @@ test('R5 — the hint is set on sign-in and cleared on sign-out; a stale hint fa
   assert.equal(w.localStorage.getItem('sherpa.portal.session'), '1');
 });
 
-test('P1 deadline — a stale hint whose auth NEVER answers gives the form back after AUTH_DEADLINE_MS (and focuses the email)', async (t) => {
+test('P1 deadline (Codex r3 ruling) — a hint whose auth NEVER answers → after AUTH_DEADLINE_MS the RECOVERY card, never the form', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const { d } = await bootPage({ hint: true });
   assertWaitCard(d);
   t.mock.timers.tick(5999);
   assertWaitCard(d);
   t.mock.timers.tick(1);
-  assertFormCard(d);
-  assert.equal(d.activeElement, d.getElementById('email'));
+  assert.ok(shown(d, 'gatefail'), 'the outage box + «Reintentar»');
+  assert.ok(!shown(d, 'loginform') && !shown(d, 'gatewait') && !shown(d, 'app'), 'never the form: a deadline is not a signed-out answer');
+  assert.equal(d.activeElement, d.getElementById('gatefailbtn'));
 });
 
 test('P1 deadline — signed in, discovery NEVER ends: after DISCOVERY_DEADLINE_MS `portal:deadline` asks the shell for its retry state', async (t) => {
@@ -347,14 +348,19 @@ test('r2 P1 — a held catalog that answers AFTER a render failure never repaint
   } finally { console.error = ce; }
 });
 
-test('r2 P2 — the auth deadline is not «signed out»: a late valid user takes over into the wait state, focus on the wait line', async (t) => {
+test('r2/r3 P2 — after the auth deadline the REAL answer decides: a valid user → the wait card (focus on the wait line); signed out → the form', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const { d, signIn } = await bootPage({ hint: true });
+  const late = await bootPage({ hint: true });
   t.mock.timers.tick(6000);
-  assertFormCard(d);
-  signIn();
-  assertWaitCard(d);
-  assert.equal(d.activeElement, d.getElementById('gatewait'), 'focus is not left on a hidden field');
+  assert.ok(shown(late.d, 'gatefail'), 'premise: the recovery card');
+  late.signIn();
+  assertWaitCard(late.d);
+  assert.equal(late.d.activeElement, late.d.getElementById('gatewait'), 'focus is not left on the hidden «Reintentar»');
+  const out = await bootPage({ hint: true });
+  t.mock.timers.tick(6000);
+  out.signOut();
+  assertFormCard(out.d);
+  assert.equal(out.d.activeElement, out.d.getElementById('email'));
 });
 
 test('r2 P2 — a boot that starts AFTER the boot deadline takes over cleanly: a page with a session goes to the wait card, not the form; focus follows', async (t) => {
