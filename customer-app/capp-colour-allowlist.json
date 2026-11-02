@@ -11,6 +11,10 @@
   "disposition": "theme-pair",
   "why": "the dark map backdrop (v6 .dark rule), in the three forms"
  },
+ "css .app.desk .rcard:hover .ph | box-shadow rgba(0,0,0,.06)": {
+  "disposition": "fixed",
+  "why": "the store card's hover hairline (D-3 r3 desktop mockup, approved): a dark 6 % inset, readable on both themes"
+ },
  "css .avatar | background #FFFFFF": {
   "disposition": "fixed",
   "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"

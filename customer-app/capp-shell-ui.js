@@ -465,6 +465,16 @@
       if (S.tab === 'account') return CappHome.titleOf({ screen: 'account' });
       return CappHome.titleOf({ screen: 'home', platform });
     }
+    // C-6b: a dish row's ‹ › follow its scroll — ‹ off at the start, › off at the end (or with nothing to scroll): never a dead arrow
+    function rowArrows(row) {
+      for (const r of row ? [row] : [...app.querySelectorAll('.hsec .hrow.dishes')]) {
+        const sec = r.closest('.hsec'), prev = sec && sec.querySelector('[data-act="rowprev"]'), next = sec && sec.querySelector('[data-act="rownext"]');
+        if (prev) prev.disabled = !(r.scrollLeft > 0);
+        if (next) next.disabled = !(r.scrollLeft + r.clientWidth < r.scrollWidth - 1);
+      }
+    }
+    const onRowScroll = (e) => { const r = e.target; if (r && r.classList && r.classList.contains('hrow') && r.classList.contains('dishes')) rowArrows(r); };
+    if (app && typeof app.addEventListener === 'function') app.addEventListener('scroll', onRowScroll, true);
     function setTitle() { try { const t = titleNow(); if (doc && typeof t === 'string' && doc.title !== t) doc.title = t; } catch (_) {} }
     // a user navigation cancels BOTH held intents — the cold link (pendingRoute) and the deferred /pago (awaitOrderRoute, Codex Pedidos r3)
     function cancelRoute() { if (pendingRoute || awaitOrderRoute) { pendingRoute = null; awaitOrderRoute = null; navGen++; } }
@@ -642,7 +652,7 @@
         return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid };
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
-      return { ...updateVm(), desk: !!(view && view.desk()), legal: legalVm(), legalPending: legalPending(), memberInitial: authNow() === 'member' && S.member && S.member.name ? String(S.member.name).trim().charAt(0).toUpperCase() || null : null, signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
+      return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: authNow() === 'member' && S.member && S.member.name ? String(S.member.name).trim().charAt(0).toUpperCase() || null : null, signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
         schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }, locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
@@ -671,7 +681,7 @@
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
       reflect();
-      if (S.tab === 'home' && !S.store && !S.neutral) askLegal();
+      if (S.tab === 'home' && !S.store && !S.neutral) { askLegal(); rowArrows(); }
     }
     // ── «PEDIDO RECIBIDO» (v6 orderHtml via CappOrder; owner 2026-11-01: build what v6 draws) ──
     // A placed order leaves «Enviando» for this SHELL screen: the store mount is left (Inicio under it, so back ⇒ Inicio), the order
@@ -1105,9 +1115,13 @@
       if (a === 'forget-confirm') { closeLayer(); return void signOutNow({ forget: true }); }
       if (a === 'open-store') return enter(t.dataset.rid, null);
       if (a === 'open-dish') return enter(t.dataset.rid, t.dataset.id);
-      if (a === 'cuisine') { S.cuisine = t.dataset.val || ''; return renderNow(); }
-      if (a === 'filter') { const k = t.dataset.val; if (S.filters.has(k)) S.filters.delete(k); else S.filters.add(k); return renderNow(); }
-      if (a === 'clearfilters') { S.cuisine = ''; S.filters.clear(); return renderNow(); }
+      if (a === 'cuisine') { S.cuisine = t.dataset.val || ''; S.featPage = 0; return renderNow(); }
+      if (a === 'filter') { const k = t.dataset.val; if (S.filters.has(k)) S.filters.delete(k); else S.filters.add(k); S.featPage = 0; return renderNow(); }
+      if (a === 'clearfilters') { S.cuisine = ''; S.filters.clear(); S.featPage = 0; return renderNow(); }
+      // C-6b: the desktop Inicio rows — «Destacados» paged by 4, «Ver todo» → «Todos los restaurantes», ‹ on the dish rows
+      if (a === 'feat-prev' || a === 'feat-next') { S.featPage = Math.max(0, (S.featPage || 0) + (a === 'feat-next' ? 1 : -1)); return renderNow(); }
+      if (a === 'seeall') { const el = app.querySelector('section[aria-label="Todos los restaurantes"]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+      if (a === 'rowprev') { const row = t.closest('.hsec') && t.closest('.hsec').querySelector('.hrow'); if (row && row.scrollBy) row.scrollBy({ left: -Math.round(row.clientWidth * 0.8), behavior: 'smooth' }); return; }
       if (a === 'rownext') { const row = t.closest('.hsec') && t.closest('.hsec').querySelector('.hrow'); if (row && row.scrollBy) row.scrollBy({ left: Math.round(row.clientWidth * 0.8), behavior: 'smooth' }); return; }
       if (a === 'menu-retry') { closeLayer(); if (S.held) cache.get(S.held.rid); return; }   // frame 15: the row stays held until the menu answers
       if (a === 'menu-close') { S.held = null; S.reorder = null; S.carry = null; cancelRoute(); closeLayer(); return renderNow(); }
@@ -1200,7 +1214,7 @@
       rememberAccount: (e164) => CappDeviceAccount.remember(storage, e164), forgetAccount: () => CappDeviceAccount.forget(storage),
       destroy() {
         dead = true; clearTokenTimers(); stopOrder(); if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} } unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
-        doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('visibilitychange', onVisible); nav.destroy();
+        doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('visibilitychange', onVisible); if (app && typeof app.removeEventListener === 'function') app.removeEventListener('scroll', onRowScroll, true); nav.destroy();
       },
     };
   }

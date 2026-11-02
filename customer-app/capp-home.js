@@ -32,7 +32,7 @@
   const IC = {
     wa: I('<path d="M4 20l1.3-3.9A8 8 0 1 1 8.2 19z"/><path d="M9.5 9.5c0 3 2 5 5 5l1-1.5-2-1-1 1a4 4 0 0 1-1.5-1.5l1-1-1-2z"/>'),   // v6 P:1204
     update: I('<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>'),   // MOCKUP-capp-native-store-update
-    chev: I('<path d="M9 6l6 6-6 6"/>'), down: I('<path d="M6 9l6 6 6-6"/>'), search: I('<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>'),
+    chev: I('<path d="M9 6l6 6-6 6"/>'), left: I('<path d="M15 6l-6 6 6 6"/>'), right: I('<path d="M9 6l6 6-6 6"/>'), down: I('<path d="M6 9l6 6 6-6"/>'), search: I('<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>'),
     home: I('<path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/>'), bag: I('<path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>'),
     user: I('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'), receipt: I('<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6"/><path d="M9 12h6"/>'),
     pin: I('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/>'),
@@ -308,11 +308,27 @@
     const houseList = houseDishes(vis.filter((r) => !r.gone));
     const meals = vm.platform && vm.platform.meals ? Object.entries(vm.platform.meals).map(([k, title]) => [title, mealDishes(vis.filter((r) => !r.gone), k)]).filter(([, d]) => d.length >= 2) : [];
     const nLive = live.length;
-    const rows = !vis.length ? `<div class="empty">${IC.search}<b>Nada con esos filtros</b><span>Probá con otro tipo de comida o quitá un filtro.</span><button class="btn2" data-act="clearfilters">Quitar filtros</button></div>`
+    const rowsPhone = !vis.length ? `<div class="empty">${IC.search}<b>Nada con esos filtros</b><span>Probá con otro tipo de comida o quitá un filtro.</span><button class="btn2" data-act="clearfilters">Quitar filtros</button></div>`
       : sec('Destacados', 'Abiertos ahora y para pedir hoy', featured.map((r) => scard(r, vm)))
         + sec('La casa recomienda', [...new Set(houseList.map((x) => x.r.name))].join(' · '), houseList.map(dcard))
         + meals.map(([title, d]) => sec(title, [...new Set(d.map((x) => x.r.name))].join(' · '), d.map(dcard))).join('')
         + `<section class="hsec" aria-label="Todos los restaurantes"><div class="hd"><div><h2>Todos los restaurantes</h2><p>${vis.length === all.length ? (c ? `${nLive} en ${esc(c)}` : `${nLive} restaurantes`) : `${vis.filter((r) => !r.gone).length} de ${nLive}`}</p></div></div><div class="rlist" style="padding-top:0">${vis.map((r) => rcardHtml(r, vm)).join('')}</div></section>`;
+    // C-6b (D-3 r3 f1a/f1b; advisor rulings 2026-11-02): the DESKTOP Inicio rows — «Destacados» a 4-card grid paged by 4 (‹ › only
+    // when there is more than one page), «Ver todo» on store rows (→ «Todos los restaurantes»), the REAL dish rows in the row-of-dishes
+    // style with ‹ › scrolling them («Platos populares» needs order statistics ⇒ absent), «Todos los restaurantes» the 3-column grid.
+    // The phone keeps its rows exactly (rowsPhone)
+    const hdD = (title, sub, acts) => `<div class="hd"><div><h2>${esc(title)}</h2>${sub ? `<p>${esc(sub)}</p>` : ''}</div>${acts ? `<div class="acts">${acts}</div>` : ''}</div>`;
+    const arrowsD = (prev, next, prevOff, nextOff, title) => `<button class="nxt" data-act="${prev}" aria-label="Anterior · ${esc(title)}"${prevOff ? ' disabled' : ''}>${IC.left}</button><button class="nxt" data-act="${next}" aria-label="Siguiente · ${esc(title)}"${nextOff ? ' disabled' : ''}>${IC.right}</button>`;
+    const PAGE = 4, pages = Math.max(1, Math.ceil(featured.length / PAGE)), pg = Math.min(Math.max(vm.featPage | 0, 0), pages - 1);
+    const featD = featured.length < 2 ? '' : `<section class="hsec" aria-label="Destacados">${hdD('Destacados', 'Abiertos ahora y para pedir hoy', `<button class="seeall" data-act="seeall">Ver todo</button>${pages > 1 ? arrowsD('feat-prev', 'feat-next', pg === 0, pg >= pages - 1, 'Destacados') : ''}`)}<div class="rgrid rgrid4">${featured.slice(pg * PAGE, pg * PAGE + PAGE).map((r) => rcardHtml(r, vm)).join('')}</div></section>`;
+    const dishD = (title, sub, cards) => (cards.length < 2 ? '' : `<section class="hsec" aria-label="${esc(title)}">${hdD(title, sub, arrowsD('rowprev', 'rownext', true, false, title))}<div class="hrow dishes">${cards.join('')}</div></section>`);
+    const allSub = vis.length === all.length ? (c ? `${nLive} en ${c}` : `${nLive} restaurantes`) : `${vis.filter((r) => !r.gone).length} de ${nLive}`;
+    const rowsDesk = !vis.length ? rowsPhone
+      : featD
+        + dishD('La casa recomienda', [...new Set(houseList.map((x) => x.r.name))].join(' · '), houseList.map(dcard))
+        + meals.map(([title, d]) => dishD(title, [...new Set(d.map((x) => x.r.name))].join(' · '), d.map(dcard))).join('')
+        + `<section class="hsec" aria-label="Todos los restaurantes">${hdD('Todos los restaurantes', allSub)}<div class="rgrid">${vis.map((r) => rcardHtml(r, vm)).join('')}</div></section>`;
+    const rows = vm.desk ? rowsDesk : rowsPhone;
     return page(notes.join('') + cuisRow + fchips + rows, `<div class="credit">${nLive} restaurantes${c ? ` en ${esc(c)}` : ''}</div>`);
   }
 

@@ -1163,7 +1163,7 @@ const DESK_SETTLE = 300;   // > the view's resize debounce
 async function deskStore(desk, items = 1) {
   const media = fakeMedia(desk);
   const S = bootShell({ media }); await flush();
-  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  S.click('.hsec[aria-label="Todos los restaurantes"] .rcard[data-rid="x_pizza"]'); await flush();   // the desk: «Todos» is the D-3 r3 grid (.rgrid); the phone: .rlist
   const ui = S.ui.store().ui;
   const plain = ui.menu.dishes.filter((d) => !d.launcher && !d.variantOf);
   for (let i = 0; i < items; i++) S.click(`.qty-add-btn[data-id="${plain[i].key}"]`);
@@ -1312,7 +1312,7 @@ test('D-2 r1 #2: the aside «Editar» returns focus to THAT aside control when t
 test('D-2 r1 #3: browse-only ⇒ the ASIDE\'s ordering controls are disabled like the cart sheet\'s (ONE selector source), also after a syncPill refresh', async () => {
   const media = fakeMedia(true);
   const S = bootShell({ envelope: 'hold', storage: memStorage(storedMenu('x_pizza')), media }); await flush();
-  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  S.click('.hsec[aria-label="Todos los restaurantes"] .rcard[data-rid="x_pizza"]'); await flush();
   const ui = S.ui.store().ui; assert.equal(ui.orderable(), false, 'premise: browse-only (a stored, unverified menu)');
   ui.cart.add(ui.menu.dishes.find((d) => !d.launcher && !d.variantOf).key, [], 1); ui.render();   // a cart carried from an earlier visit
   const ctl = S.qa('.deskcart .cstep button, .deskcart [data-act="checkout"]');
@@ -3249,6 +3249,52 @@ test('Cuenta «Ayuda» (advisor 11-02: it was a DEAD control — the host never 
     M.click('.rowbtn[data-act="site-help"]'); await flush(); assert.deepEqual(opened, ['https://wa.me/50497952893'], '🔴 AY-1 member: the support chat'); } finally { M.w.close(); }
   const N = bootShell({ auth: 'guest', runtime: GR }); await flush();
   try { N.click('.tabbar [data-tab="account"]'); await flush(); assert.equal(N.qa('.rowbtn').some((b) => /Ayuda/.test(b.textContent)), false, '🔴 AY-2: no support number ⇒ no «Ayuda» row'); assert.equal(N.q('[data-act="help"]'), null, 'never the dead host event'); } finally { N.w.close(); }
+});
+// ── C-6b part 2 (D-3 r3 f1a/f1b; advisor rulings 11-02): the desktop Inicio rows ──
+const SIX = (() => { const base = SC.complete.body, xp = base.restaurants[0]; const extra = [3, 4, 5, 6].map((k) => ({ ...xp, restaurant_id: `tienda_${k}`, name: `Tienda ${k}`, order_id_prefix: `T${k}` }));
+  return { status: SC.complete.status, body: { ...base, restaurants: [...base.restaurants, ...extra] }, etag: '"six"' }; })();
+const deskSix = async () => { const S = bootShell({ media: fakeMedia(true), dirScript: [SIX], envelope: (rid) => (PROV[rid] ? 'ok' : 'fail') }); await flush(); await flush(); return S; };
+test('C-6b rows: the desk Inicio = «Destacados» a 4-up grid («Ver todo» + ‹ ›) · the REAL dish rows (row of dishes, ‹ ›) · «Todos los restaurantes» the 3-up grid — no «Platos populares»; the phone rows unchanged', async () => {
+  const S = await deskSix();
+  try {
+    const secs = S.qa('.home-body > .hsec').map((x) => x.getAttribute('aria-label'));
+    assert.equal(secs[0], 'Destacados'); assert.equal(secs[secs.length - 1], 'Todos los restaurantes'); assert.ok(!secs.includes('Platos populares'), '🔴 RW-1: no row without its data');
+    const feat = S.q('.hsec[aria-label="Destacados"]');
+    assert.ok(feat.querySelector('.rgrid.rgrid4'), '🔴 RW-1: the 4-up grid'); assert.equal(feat.querySelectorAll('.rgrid4 .rcard').length, 4, '🔴 RW-1: four per page');
+    assert.ok(feat.querySelector('.acts [data-act="seeall"]') && /Ver todo/.test(feat.querySelector('.seeall').textContent), '🔴 RW-1: «Ver todo» on the store row');
+    const [prev, next] = feat.querySelectorAll('.acts .nxt'); assert.ok(prev.disabled && !next.disabled, 'page 1: ‹ off, › on');
+    assert.ok(S.q('.hsec[aria-label="Todos los restaurantes"] .rgrid'), '🔴 RW-1: «Todos» the 3-up grid'); assert.equal(S.qa('.hsec[aria-label="Todos los restaurantes"] .rcard').length, 6);
+    for (const d of S.qa('.home-body > .hsec').filter((x) => x.querySelector('.hrow'))) { assert.ok(d.querySelector('.hrow.dishes'), `${d.getAttribute('aria-label')}: the row of dishes`); assert.equal(d.querySelector('[data-act="seeall"]'), null, '🔴 RW-1: no «Ver todo» on a dish row (no «all dishes» page)'); }
+  } finally { S.w.close(); }
+  const P = bootShell({ dirScript: [SIX], envelope: (rid) => (PROV[rid] ? 'ok' : 'fail') }); await flush(); await flush();
+  try { assert.equal(P.q('.rgrid'), null, '🔴 RW-2: the phone keeps its own rows'); assert.ok(P.q('.rlist'), 'the phone list'); assert.equal(P.q('[data-act="seeall"]'), null); } finally { P.w.close(); }
+});
+test('C-6b rows: «Destacados» pages by 4 (‹ › follow the page; a filter starts over at page 1); «Ver todo» scrolls to «Todos los restaurantes»', async () => {
+  const S = await deskSix();
+  try {
+    const page = () => S.qa('.hsec[aria-label="Destacados"] .rcard').map((c) => c.dataset.rid), btn = (a) => S.q(`.hsec[aria-label="Destacados"] [data-act="${a}"]`);
+    const p1 = page(); S.click(btn('feat-next')); await flush();
+    const p2 = page(); assert.equal(p2.length, 2, '🔴 RW-3: page 2 = the remaining two'); assert.ok(p2.every((r) => !p1.includes(r)), 'no repeats');
+    assert.ok(btn('feat-next').disabled && !btn('feat-prev').disabled, '🔴 RW-3: the last page: › off, ‹ on');
+    S.click(btn('feat-prev')); await flush(); assert.deepEqual(page(), p1, 'back to page 1');
+    S.click(btn('feat-next')); await flush(); const chip = S.q('.fchip[data-act="filter"]');
+    assert.ok(chip, 'premise: a filter chip'); S.click(chip); await flush(); S.click(S.q('.fchip[data-act="filter"]')); await flush();
+    assert.ok(btn('feat-prev') && btn('feat-prev').disabled && page().length === 4, '🔴 RW-3: a filter starts the grid over at page 1');
+    let scrolled = null; S.w.HTMLElement.prototype.scrollIntoView = function () { scrolled = this.getAttribute('aria-label'); };
+    S.click(S.q('[data-act="seeall"]')); await flush(); assert.equal(scrolled, 'Todos los restaurantes', '🔴 RW-4: «Ver todo» ⇒ the full grid');
+  } finally { S.w.close(); }
+});
+test('C-6b rows: a dish row\'s ‹ › follow its scroll — ‹ off at the start, › off at the end or with nothing to scroll (never a dead arrow)', async () => {
+  const S = await deskSix();
+  try {
+    const sec = S.qa('.home-body > .hsec').find((x) => x.querySelector('.hrow.dishes')); assert.ok(sec, 'premise: a real dish row (the fixture\'s house dishes)');
+    const row = sec.querySelector('.hrow.dishes'), prev = sec.querySelector('[data-act="rowprev"]'), next = sec.querySelector('[data-act="rownext"]');
+    assert.ok(prev.disabled && next.disabled, '🔴 RW-5: jsdom has no overflow ⇒ both arrows off (nothing to scroll)');
+    let left = 0; Object.defineProperties(row, { scrollWidth: { configurable: true, get: () => 1000 }, clientWidth: { configurable: true, get: () => 400 }, scrollLeft: { configurable: true, get: () => left } });
+    row.dispatchEvent(new S.w.Event('scroll')); assert.ok(prev.disabled && !next.disabled, '🔴 RW-5: overflow at the start: › on');
+    left = 300; row.dispatchEvent(new S.w.Event('scroll')); assert.ok(!prev.disabled && !next.disabled, 'mid-row: both on');
+    left = 600; row.dispatchEvent(new S.w.Event('scroll')); assert.ok(!prev.disabled && next.disabled, '🔴 RW-5: the end: › off');
+  } finally { S.w.close(); }
 });
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {
