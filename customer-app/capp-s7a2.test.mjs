@@ -2244,8 +2244,8 @@ function projectReceipt(id, entry, o) {
     lines, items_text: str(o.items_text), totals, tender: { method, ...(method === 'cash' && isInt(o.cash_tendered_cents) ? { cash_tendered_cents: o.cash_tendered_cents } : {}) },
     ...(type === 'delivery' ? { address: { detected: str(o.address_detected), details: str(o.address_details), area: str(o.address_area) } } : {}) };
 }
-function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null } = {}) {
-  const calls = [];
+function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null, rdelay = 0 } = {}) {
+  const calls = [], rx = { inflight: 0, max: 0 };
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const handler = (u, i = {}) => {
     const url = new URL(u, 'https://fn.test'); calls.push({ url: url.toString(), headers: i.headers || {}, method: i.method || 'GET', body: i.body });
@@ -2264,19 +2264,23 @@ function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rga
       if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || url.searchParams.has('limit') || url.searchParams.has('cursor')) return out(400, { ok: false, reason: 'bad_request' });
       const entry = (db[uid] || {})[id], order = orders[id];
       const res = !entry || typeof entry !== 'object' || !order || typeof order !== 'object' || order.customer_uid !== uid ? out(404, { ok: false, reason: 'not_found' }) : out(200, { ok: true, receipt: projectReceipt(id, entry, order) });
-      return rgate ? rgate.then(() => res) : res;
+      if (rdelay) { rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); return new Promise((ok) => setTimeout(() => { rx.inflight--; ok(res); }, rdelay)); }   // a SLOW server: the prefetch cells count concurrency
+      const g = typeof rgate === 'function' ? rgate(id) : rgate;   // a function ⇒ one gate per call (the overlapping-read cells)
+      return g ? g.then(() => res) : res;
     }
     let limit = 20; if (url.searchParams.has('limit')) { const n = Number(url.searchParams.get('limit')); if (!Number.isInteger(n) || n < 1 || n > 50) return out(400, { ok: false, reason: 'bad_request' }); limit = n; }
     let cur = null; if (url.searchParams.has('cursor')) { try { cur = JSON.parse(Buffer.from(url.searchParams.get('cursor'), 'base64url').toString()); } catch (_) { cur = null; } if (!cur || !Number.isFinite(cur.ts) || typeof cur.id !== 'string' || !MO_ID_RE.test(cur.id)) return out(400, { ok: false, reason: 'bad_request' }); }
     const all = Object.entries(db[uid] || {}).map(([id, e]) => ({ id, e })).sort((a, b) => (a.e.ts - b.e.ts) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));   // orderByChild('ts'), key tie-break
     const before = cur ? all.filter((x) => x.e.ts < cur.ts || (x.e.ts === cur.ts && x.id < cur.id)) : all;   // endBefore(ts, id)
     const page = before.slice(-(limit + 1)), more = page.length > limit, rows = (more ? page.slice(1) : page).reverse();   // limitToLast(limit + 1), newest first
-    const proj = ({ id, e }) => ({ order_id: id, ts: e.ts, total: e.total, order_type: e.order_type, restaurant: e.restaurant, status: e.status ?? null, items_text: typeof e.items_text === 'string' ? e.items_text : null, items: Array.isArray(e.items) ? e.items : [], ...(e.recipe_format !== undefined ? { recipe_format: e.recipe_format } : {}) });
+    const proj = ({ id, e }) => ({ order_id: id, ts: e.ts, total: e.total, order_type: e.order_type, restaurant: e.restaurant, status: e.status ?? null, items_text: typeof e.items_text === 'string' ? e.items_text : null, items: Array.isArray(e.items) ? e.items : [], ...(e.recipe_format !== undefined ? { recipe_format: e.recipe_format } : {}),
+      // the approved delta: display_number read from orders/{id} for the page's rows, present only when stamped (a finite number)
+      ...(orders[id] && Number.isFinite(orders[id].display_number) ? { display_number: orders[id].display_number } : {}) });
     const R = rows.map(proj), oldest = rows[rows.length - 1];
     const res = out(200, { ok: true, active: R.filter((r) => typeof r.status === 'string' && !TERMINAL.has(r.status)), past: R.filter((r) => typeof r.status !== 'string' || TERMINAL.has(r.status)), next_cursor: more ? b64({ ts: oldest.e.ts, id: oldest.id }) : null });
     return gate ? gate.then(() => res) : res;   // a DELAYED answer (the identity-switch cells)
   };
-  return { handler, calls };
+  return { handler, calls, rx };
 }
 test('getMyOrders fake: as strict as the note — 401 without / with a non-customer token, 403 for a tombstone, 400 for an extra key / a body / a bad limit or cursor, paging exact across 45 rows (no dup, no gap), the projection a whitelist', async () => {
   const db = { u_ana: {} }; for (let k = 0; k < 45; k++) db.u_ana[`XP-${String(k).padStart(3, '0')}`] = { ...userOrderEntry('u_ana', `XP-${k}`, { ts: T0 - (k % 7) * 1000, total: 340, status: 'delivered' }), secret_internal: 'x' };
@@ -2587,9 +2591,9 @@ test('Pedidos r3 P2 (Codex r3): the deferred /r/{rid}/pago is a held intent — 
 // ── the RECEIPT (NOTE-getMyOrders-receipt, 3a 75eed212 APPROVED): a past row opens v6's order screen in its past state. The orders come
 // from the REAL intake chain, as 3a's own cells build them: storedCtx (a minted envío ctx) → DW.withDelivery → pricedLineItems (x_pizza's
 // factura lines) → buildCreateOrderUpdates → attachCustomerAttribution
-const RC = { P: FN_REQ('./delivery/delivery-pricing'), DW: FN_REQ('./delivery/delivery-wire'), FP: FN_REQ('./factura/pricing'), MP: FN_REQ('./menu-pricing'), CB: FN_REQ('./create-order-build') };
+const RC = { P: FN_REQ('./delivery/delivery-pricing'), DW: FN_REQ('./delivery/delivery-wire'), FP: FN_REQ('./factura/pricing'), MP: FN_REQ('./menu-pricing'), CB: FN_REQ('./create-order-build'), MZ: FN_REQ('./materialize') };
 function placeReal(db, orders, uid, id, { rid = 'x_pizza', type = 'delivery', pay = 'cash', tip = 0, promo = 0, ts = T0 - 86400e3, items_text = '2x Margherita (L324) [+ 1x Mozzarella]', status = 'delivered', display_number } = {}) {
-  const ctx = type === 'delivery' ? RC.P.storedCtx({ delivery_snapshot: { mode: 'delivery', policy_version: 1, km: 3.2, band: 1, promo: null }, delivery_cents: 4000, ...(promo ? { promo_discount_cents: promo } : {}), ...(tip ? { tip_cents: tip } : {}) }) : null;
+  const ctx = type === 'delivery' ? RC.P.storedCtx({ delivery_snapshot: { mode: 'delivery', policy_version: 1, km: 3.2, band: 1, promo: null }, delivery_cents: 4000, promo_discount_cents: promo, ...(tip ? { tip_cents: tip } : {}) }) : null;   // Codex rcpt r1 #2: promo EXPLICIT (an absent key ⇒ storedCtx null ⇒ no envío / tip)
   const bd = RC.DW.withDelivery({ ctx }, { total_cents: 64800, subtotal_cents: 56348, tax_cents: 8452 });
   const body = rid === 'x_pizza' ? [{ name: 'Margherita', qty: 2, extras: [{ name: 'Mozzarella' }] }] : [{ id: Object.keys(RC.MP.MENU_BY_RESTAURANT.la_musa)[0], name: 'x', qty: 1 }];
   const fp = rid === 'x_pizza' ? RC.FP.pricedLineItems(body, RC.MP.MENU_BY_RESTAURANT.x_pizza, RC.MP.EXTRAS_BY_RESTAURANT.x_pizza) : { items: null, error: null };
@@ -2597,6 +2601,12 @@ function placeReal(db, orders, uid, id, { rid = 'x_pizza', type = 'delivery', pa
     fields: { customer_name: 'Ana', customer_phone: '50499990000', items_text, notes: 'sin cebolla', payment_method: pay, ...(type === 'delivery' ? { address_detected: 'Col. Palmira, Tegucigalpa', address_details: 'casa azul', address_area: 'Palmira' } : { pickup_time: 'asap' }) },
     hubSnap: { hub_lat: 1, hub_lng: 2, restaurant_name: 'R', restaurant_phone: '1' }, restaurantId: rid, priceBreakdown: bd, facturaPriced: fp, cashTenderedCents: pay === 'cash' ? 100000 : null });
   RC.CB.attachCustomerAttribution(u, id, uid, { now: ts, total: bd.total_cents / 100, orderType: type, items_text, restaurantId: rid, items: body });
+  // Codex rcpt r1 #2: the fixture's economics, asserted BEFORE anything renders (the base 648.00 + envío 40 + tip − promo)
+  if (type === 'delivery') assert.deepEqual([bd.subtotal_cents, bd.delivery_cents, bd.tip_cents || 0, bd.promo_discount_cents, bd.total_cents], [56348, 4000, tip, promo, 64800 + 4000 + tip - promo], 'premise: the real breakdown');
+  else assert.equal(bd.total_cents, 64800, 'premise: a pickup carries no envío');
+  // the ONLINE card charge: the same pending record + the REAL confirm patch (buildMaterializeUpdates), field paths applied in place
+  if (pay === 'online') { const mz = RC.MZ.buildMaterializeUpdates({ orderId: id, order: { ...u[`orders/${id}`] }, trackingToken: 'tk_' + id, now: ts + 1, restaurant: rid, paymentMethod: 'online' });
+    for (const [k, v] of Object.entries(mz)) { const m = k.match(/^orders\/([^/]+)\/([^/]+)$/); if (m && m[1] === id) u[`orders/${id}`][m[2]] = v; else if (k === `user_orders/${uid}/${id}`) u[k] = v; } }
   const o = u[`orders/${id}`], e = u[`user_orders/${uid}/${id}`];
   o.status = status; e.status = status;   // the status trigger keeps the entry in step (P3)
   if (display_number) o.display_number = display_number;
@@ -2624,7 +2634,8 @@ test('Receipt (x_pizza delivery, cash): the past row is v6\'s «Ver el recibo» 
     assert.equal(S.q('.receipt .rbody[hidden]'), null);
     const L = o.items[0];
     assert.deepEqual(rrows(S).slice(0, 5), [`${L.qty}× ${L.description} L ${Math.round(L.line_gross_cents / 100)}`, 'Envío L 40', 'Descuento − L 5', 'Propina L 20', `Total L ${Math.round(o.total_cents / 100)}`], '🔴 RC-3: the real writer\'s priced line, then v6\'s rows from the present totals');
-    assert.deepEqual(rrows(S).slice(5), ['Pago Efectivo al entregar', 'Estado Se cobra al entregar'], '🔴 RC-4: the cash tender (v6 copy); no «Cuándo» (the receipt has no slot — never guessed), no WhatsApp row');
+    assert.deepEqual(rrows(S).slice(5), ['Pago Efectivo al entregar'], '🔴 RC-4: the cash tender; NO «Estado» on a past cash order (advisor 11-01: «Se cobra al entregar» is false once done), no «Cuándo» (no slot — never guessed), no WhatsApp row');
+    assert.ok(!/1,000|1000/.test(S.q('.mk-sheet').textContent), '🔴 RC-4: cash_tendered_cents is read, never drawn (advisor 11-01)');
     assert.equal(txt(S.q('.mk-card')), 'Detalles de entrega Col. Palmira, Tegucigalpa casa azul', '🔴 RC-5: her own address + details (never coordinates)');
     assert.equal(S.q('[data-act="order-share"]'), null, 'no «Compartir seguimiento» on a past order');
     assert.ok(!/14\.07|sin cebolla|50499990000|tk_XP/.test(S.q('.mk-sheet').textContent), '🔴 RC-5: no coordinates / notes / phone / token on the screen');
@@ -2633,6 +2644,18 @@ test('Receipt (x_pizza delivery, cash): the past row is v6\'s «Ver el recibo» 
     const n = mo.calls.length; await openPastReceipt(S, 'XP-R1');
     assert.equal(mo.calls.filter((c) => c.url.includes('order_id')).length, 1, '🔴 RC-6: a reopen is instant from the kept receipt (ONE read)'); assert.ok(mo.calls.length >= n);
     S.click('[data-act="order-again"]'); await flush(); assert.ok(S.q('.tabbar [data-tab="home"][aria-current="true"]'), '🔴 RC-6: «Hacer otro pedido» ⇒ Inicio');
+  } finally { S.w.close(); }
+});
+test('Receipt (x_pizza delivery, ONLINE card through the real confirm patch, no promo): Envío + Propina + Total from the real breakdown (promo 0 draws no row); «Tarjeta» + «Confirmado» on a delivered card order; no reference anywhere', async () => {
+  const db = {}, orders = {};
+  const { o } = placeReal(db, orders, 'u_ana', 'XP-ON1', { pay: 'online', tip: 2000, promo: 0 });
+  assert.equal(o.customer_uid, 'u_ana', 'premise: the confirm patch keeps the owner'); assert.equal(o.payment_method, 'online');
+  const { S } = await pedidosBoot(db, { orders });
+  try {
+    await openPastReceipt(S, 'XP-ON1');
+    const L = o.items[0];
+    assert.deepEqual(rrows(S), [`${L.qty}× ${L.description} L ${Math.round(L.line_gross_cents / 100)}`, 'Envío L 40', 'Propina L 20', 'Total L 708', 'Pago Tarjeta', 'Estado Confirmado'], '🔴 RC-15: the online charge\'s receipt (no «Descuento» for a 0 promo)');
+    assert.ok(!/PixelPay|referenc|tk_XP/i.test(S.q('.mk-sheet').textContent), 'no processor / reference / token');
   } finally { S.w.close(); }
 });
 test('Receipt (la_musa pickup, card): no priced lines ⇒ v6\'s rows from the items_text lines WITHOUT amounts + the totals; «Tarjeta» with NO digits; «Recoger en» the store', async () => {
@@ -2658,7 +2681,7 @@ test('Receipt: a refused read (another account\'s id ⇒ the uniform 404) or off
     assert.deepEqual([await call('?context=platform&order_id=XP-R3'), await call('?context=platform&order_id=NOPE'), await call('?context=platform&order_id=XP-R3&limit=5'), await call('?context=platform&order_id=a%20b')], [404, 404, 400, 400], 'the fake: uniform 404, order_id alone, the id rule');
     await openPastReceipt(S, 'XP-R3');
     assert.equal(txt(S.q('.mk-title')), '¡Pedido entregado!', 'the row\'s status');
-    assert.deepEqual(rrows(S), ['1× Carnivora', 'Total L 648'], '🔴 RC-8: the row\'s items_text + total only; no Pago / Estado (the tender is unknown — never «Efectivo» by default)');
+    assert.deepEqual(rrows(S), ['1× Carnivora', 'Total L 688'], '🔴 RC-8: the row\'s items_text + total only; no Pago / Estado (the tender is unknown — never «Efectivo» by default)');
     assert.equal(txt(S.q('.mk-card .v')), '', 'no address guessed');
   } finally { S.w.close(); }
 });
@@ -2674,6 +2697,110 @@ test('Receipt identity: Ana\'s receipt read in flight when the SDK signs her out
     assert.equal(S.q('.mk-title'), null, '🔴 RC-9: off the receipt screen after the identity change');
     assert.equal(txt(S.q('.pagehead h1')), 'Pedidos', '🔴 RC-9: the identity hook lands on «Pedidos» (never a blank / Inicio fallback under the receipt tab)');
     assert.ok(!/Palmira|#52/.test(S.w.document.body.textContent), '🔴 RC-9: nothing of Ana\'s receipt painted after she left');
+  } finally { S.w.close(); }
+});
+test('Receipt NO REFLOW (advisor 11-01, option A): on a miss the screen ENDS before the first block that needs the receipt — no address card, no summary, no CTA, no spinner; the fill goes IN PLACE: every node drawn before is the same node with the same text', async () => {
+  const db = {}, orders = {}; let release; const rgate = new Promise((r) => { release = r; });
+  placeReal(db, orders, 'u_ana', 'XP-R5', { display_number: 61 });
+  const { S } = await pedidosBoot(db, { orders, rgate });
+  try {
+    await openPastReceipt(S, 'XP-R5');
+    const sheet = S.q('.mk-sheet'); assert.ok(sheet, 'premise: the past screen');
+    assert.equal(S.q('.mk-card'), null, '🔴 RC-11: a delivery\'s address card waits (it needs the receipt)');
+    assert.equal(S.q('.receipt'), null, '🔴 RC-11: no summary yet'); assert.equal(S.q('[data-act="order-again"]'), null, '🔴 RC-11: the CTA is never drawn above a late block');
+    assert.ok(!/Cargando|spinner|skeleton/i.test(sheet.outerHTML), 'no spinner / skeleton');
+    const before = [...sheet.children].filter((n) => !n.hasAttribute('data-rc-tail')).map((n) => [n, n.textContent]);
+    const mapEl = S.q('.order-map'), mapTxt = mapEl.textContent;
+    release(); await flush(); await flush(); await flush();
+    assert.equal(S.q('.mk-sheet'), sheet, '🔴 RC-11: the sheet itself is kept (no re-render)');
+    for (const [n, t] of before) { assert.ok(n.isConnected && n.parentNode === sheet, `🔴 RC-11: ${n.className} still the same node`); assert.equal(n.textContent, t, `🔴 RC-11: ${n.className} text unchanged`); }
+    assert.equal(S.q('.order-map'), mapEl, 'the map is the same node'); assert.equal(mapEl.textContent, mapTxt);
+    assert.deepEqual([...sheet.children].slice(0, before.length), before.map(([n]) => n), '🔴 RC-11: the tail is APPENDED after them, in order');
+    assert.ok(S.q('.mk-card') && S.q('.receipt') && S.q('[data-act="order-again"]'), 'the tail landed');
+    assert.equal(S.q('[data-rc-tail]'), null, 'the marker is gone');
+  } finally { S.w.close(); }
+});
+test('Receipt: a FAILED read on a miss fills the row\'s own tail in place (items_text lines + total, no tender) — never stuck held', async () => {
+  const db = {}, orders = {}; let release; const rgate = new Promise((r) => { release = r; });
+  placeReal(db, orders, 'u_ana', 'XP-R6', { items_text: '1x Carnivora (L340)' }); orders['XP-R6'].customer_uid = 'u_bob';
+  const { S } = await pedidosBoot(db, { orders, rgate });
+  try {
+    await openPastReceipt(S, 'XP-R6'); assert.ok(S.q('[data-rc-tail]'), 'premise: held'); release(); await flush(); await flush(); await flush();
+    assert.equal(S.q('[data-rc-tail]'), null, '🔴 RC-12: released on a refusal');
+    assert.deepEqual(rrows(S), ['1× Carnivora', 'Total L 688'], '🔴 RC-12: the row\'s own tail'); assert.ok(S.q('[data-act="order-again"]'));
+  } finally { S.w.close(); }
+});
+test('Receipt PREFETCH (advisor 11-01, 3a): after «Pedidos» paints, at idle, the first ≤ 5 past rows\' receipts — ONE at a time; a prefetched receipt opens complete at once (no hold, no second read); the 6th+ are never read ahead', async () => {
+  const db = {}, orders = {};
+  for (let k = 0; k < 7; k++) placeReal(db, orders, 'u_ana', `XP-P${k}`, { ts: T0 - (k + 1) * 86400e3 });
+  const { S, mo } = await pedidosBoot(db, { orders, rdelay: 20 });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    await new Promise((r) => setTimeout(r, 600)); await flush();
+    const rq = () => mo.calls.filter((c) => c.url.includes('order_id=')).map((c) => new URL(c.url).searchParams.get('order_id'));
+    assert.deepEqual(rq(), ['XP-P0', 'XP-P1', 'XP-P2', 'XP-P3', 'XP-P4'], '🔴 RC-13: exactly the first 5 visible past rows, in order');
+    assert.equal(mo.rx.max, 1, '🔴 RC-13: ONE at a time (never a fan-out)');
+    S.click(S.q('.orow-main[data-oid="XP-P2"]')); await flush();
+    assert.equal(S.q('[data-rc-tail]'), null, '🔴 RC-13: a prefetched receipt opens complete (no hold)'); assert.ok(S.q('.receipt'));
+    const sheet = S.q('.mk-sheet'); await flush(); await flush();
+    assert.equal(S.q('.mk-sheet'), sheet, '🔴 RC-13: and is never re-rendered after it opens (no second paint)');
+    assert.equal(rq().length, 5, 'no second read');
+  } finally { S.w.close(); }
+});
+test('Receipt PREFETCH stops on an identity change: an SDK switch Ana → Bob mid-prefetch ⇒ none of Ana\'s remaining receipts is requested (never with Bob\'s token)', async () => {
+  const db = { u_bob: {} }, orders = {};
+  for (let k = 0; k < 5; k++) placeReal(db, orders, 'u_ana', `XP-Q${k}`, { ts: T0 - (k + 1) * 86400e3 });
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const { S, mo, fb } = await pedidosBoot(db, { orders, rdelay: 60, storage: st });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    const rq = () => mo.calls.filter((c) => c.url.includes('order_id=')).length;
+    for (let i = 0; i < 40 && rq() < 1; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.ok(rq() >= 1, 'premise: the prefetch started');
+    st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush();
+    const at = rq(); await new Promise((r) => setTimeout(r, 500)); await flush();
+    assert.ok(at < 5, 'premise: switched before the end');
+    assert.equal(rq(), at, '🔴 RC-14: no receipt of Ana\'s requested after the switch');
+  } finally { S.w.close(); }
+});
+// Codex rcpt r1 #3: overlapping reads — a late answer is never painted on (or cached over) a newer one
+const gates = () => { const q = []; return { q, fn: () => new Promise((r) => q.push(r)) }; };
+test('Receipt overlap: A held, back, B opened and held; A lands first ⇒ NOT drawn on B\'s screen; B lands ⇒ B\'s tail', async () => {
+  const db = {}, orders = {}, G = gates();
+  placeReal(db, orders, 'u_ana', 'XP-A1', { ts: T0 - 86400e3, items_text: '1x Carnivora (L340)' });
+  placeReal(db, orders, 'u_ana', 'XP-B1', { ts: T0 - 2 * 86400e3, type: 'pickup', pay: 'card_delivery', items_text: '1x Crispy Bacon (L210)' });
+  const { S } = await pedidosBoot(db, { orders, rgate: G.fn });
+  try {
+    await openPastReceipt(S, 'XP-A1'); S.click('[data-act="order-close"]'); await flush();
+    await openPastReceipt(S, 'XP-B1'); const n = G.q.length; assert.ok(n >= 2, 'premise: both reads held');
+    G.q[0](); await flush(); await flush();
+    assert.ok(S.q('[data-rc-tail]'), '🔴 RC-16: B is still held — A\'s answer filled nothing here');
+    assert.ok(!/Palmira/.test(S.q('.mk-sheet').textContent), '🔴 RC-16: A\'s address never on B\'s screen');
+    for (const r of G.q.slice(1)) r(); await flush(); await flush();
+    assert.deepEqual(rrows(S).slice(-2), ['Pago Tarjeta', 'Estado Confirmado'], 'B\'s own tail');
+  } finally { S.w.close(); }
+});
+test('Receipt overlap across identities (Codex r1 #3): Ana\'s read A held → Bob → Ana again; her NEW read B (updated details) lands, THEN the old A ⇒ a reopen shows B\'s details (A never overwrites the kept receipt)', async () => {
+  const db = { u_bob: {} }, orders = {}, G = gates();
+  placeReal(db, orders, 'u_ana', 'XP-X1', {});
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const { S, fb, mo } = await pedidosBoot(db, { orders, rgate: G.fn, storage: st });
+  try {
+    await openPastReceipt(S, 'XP-X1'); assert.equal(G.q.length, 1, 'premise: read A held');
+    const { authMod } = await fb.loadSdk();
+    st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' })); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush(); await flush();
+    st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_ana' })); await authMod.signInWithCustomToken(null, 'ct:u_ana'); await flush(); await flush(); await flush();
+    assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: Ana admitted again');
+    orders['XP-X1'].address_details = 'portón verde (actualizado)';
+    await openPastReceipt(S, 'XP-X1');
+    const reads = () => mo.calls.filter((c) => c.url.includes('order_id=XP-X1')).length;
+    assert.ok(reads() >= 2 && G.q.length >= 2, 'premise: a NEW read B (the identity change voided A\'s in-flight entry)');
+    for (const r of G.q.slice(1)) r(); await flush(); await flush();
+    assert.ok(/portón verde/.test(txt(S.q('.mk-card'))), 'premise: B drawn');
+    G.q[0](); await flush(); await flush();
+    S.click('[data-act="order-close"]'); await flush(); await openPastReceipt(S, 'XP-X1');
+    assert.ok(/portón verde/.test(txt(S.q('.mk-card'))), '🔴 RC-17: the late OLD read never overwrote the kept receipt');
   } finally { S.w.close(); }
 });
 test('Receipt API (capp-signup-api.getReceipt): the contract whitelist — injected fields never survive; a malformed line ⇒ lines null; absent totals stay absent; a bad id is refused with NO request; a receipt for another id ⇒ failed', async () => {

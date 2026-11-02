@@ -562,6 +562,7 @@
       if (dead || gen !== ordersGen || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid) return;   // another identity now: not theirs
       S.ordersRead = r.ok ? { phase: 'ready', active: r.active, past: r.past, who } : { phase: 'error', active: [], past: [], who };
       if (S.tab === 'orders' && !S.store) renderNow();
+      if (r.ok) prefetchReceipts();
     }
     const DAYS3 = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'], MON3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
     function hnParts(ms) {
@@ -724,7 +725,7 @@
     }
     function identityChanged() {
       ordersGen++; S.ordersRead = null;   // any in-flight history read is void; nothing of the previous identity is shown
-      receiptGen++; S.receipt = null; receiptCache.clear(); if (S.tab === 'receipt' && !S.store) nav.tab({ name: 'orders' });   // nor a receipt of hers
+      receiptGen++; prefetchGen++; S.receipt = null; receiptCache.clear(); receiptInflight.clear(); if (S.tab === 'receipt' && !S.store) nav.tab({ name: 'orders' });   // nor a receipt of hers
       const od = S.order, who = ownerNow();
       if (od && who !== null && od.owner !== who) {
         if (od.owner === 'guest' && who && who.startsWith('u:') && od.claimedBy === who) { od.owner = who; saveActive(); }   // claimed via the offer
@@ -811,25 +812,57 @@
     // screen draws AT ONCE from the row (store, status, items_text, total); the receipt read (getMyOrders ?order_id, NOTE-getMyOrders-
     // receipt) fills the lines, the envío / descuento / propina, the tender and the address. Bound to the identity like the history
     // read; kept per identity for an instant reopen. A refused / failed read leaves the row's screen (no new copy)
-    let receiptGen = 0; const receiptCache = new Map();
+    let receiptGen = 0; const receiptCache = new Map(), receiptInflight = new Map();
     function openReceipt(oid) {
       const who = ownerNow(), rd = S.ordersRead && S.ordersRead.who === who ? S.ordersRead : null;
       const row = rd && typeof oid === 'string' ? rd.past.find((r) => r.order_id === oid) : null;
       if (!row || !S.member) return false;
-      S.receipt = { oid, who, row, data: receiptCache.get(oid) || null };
+      S.receipt = { oid, who, row, data: receiptCache.get(oid) || null, failed: false };
       if (!S.receipt.data) loadReceipt(S.receipt);
       return true;
     }
+    // ONE read per order per identity: the open and the idle prefetch share it (in flight or kept); null = refused / failed / stale
+    function readReceipt(oid) {
+      if (receiptCache.has(oid)) return Promise.resolve(receiptCache.get(oid));
+      if (receiptInflight.has(oid)) return receiptInflight.get(oid);
+      const gen = receiptGen, uid = S.member && S.member.uid;
+      if (!uid || !suApi || !fbAuth) return Promise.resolve(null);
+      const p = (async () => {
+        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        const r = tok ? await suApi.getReceipt({ idToken: tok, orderId: oid }) : { ok: false, reason: 'unauthenticated' };
+        const cur = auth && auth.user ? auth.user() : null;
+        if (dead || gen !== receiptGen || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid) return null;   // another identity now: not theirs
+        if (!r.ok) return null;
+        receiptCache.set(oid, r.receipt); return r.receipt;
+      })();
+      receiptInflight.set(oid, p); p.then(() => { if (receiptInflight.get(oid) === p) receiptInflight.delete(oid); });
+      return p;
+    }
     async function loadReceipt(rc) {
-      const gen = ++receiptGen, uid = S.member && S.member.uid;
-      if (!uid || !suApi || !fbAuth) return;
-      let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
-      const r = tok ? await suApi.getReceipt({ idToken: tok, orderId: rc.oid }) : { ok: false, reason: 'unauthenticated' };
-      const cur = auth && auth.user ? auth.user() : null;
-      if (dead || gen !== receiptGen || S.receipt !== rc || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid) return;   // another receipt / identity now
-      if (!r.ok) return;
-      receiptCache.set(rc.oid, r.receipt); rc.data = r.receipt;
-      if (S.tab === 'receipt' && !S.store) renderNow();
+      const d = await readReceipt(rc.oid);
+      if (dead || S.receipt !== rc) return;
+      if (d) rc.data = d; else rc.failed = true;   // a refused / failed read: the row's own tail (nothing guessed)
+      if (S.tab !== 'receipt' || S.store) return;
+      // the held tail goes IN PLACE of its marker — nothing already drawn is touched (advisor 11-01, option A)
+      const mark = app.querySelector('[data-rc-tail]');
+      if (mark) { const tpl = doc.createElement('template'); tpl.innerHTML = CappOrder.orderHtml(receiptVm(rc), { ...receiptCtx(), tailOnly: true }); mark.replaceWith(tpl.content); }
+      else renderNow();
+    }
+    // advisor 11-01 (3a): once «Pedidos» has painted, at idle, the first ≤ 5 past rows' receipts — ONE at a time, the same kept
+    // receipts, void on any identity change — so the usual first open is complete at once. Bounded: never the whole list
+    const PREFETCH_MAX = 5;
+    const idle = (f) => (win && typeof win.requestIdleCallback === 'function' ? win.requestIdleCallback(f, { timeout: 2000 }) : T.setTimeout(f, 200));
+    let prefetchGen = 0;
+    function prefetchReceipts() {
+      const rd = S.ordersRead, gen = ++prefetchGen, rg = receiptGen;
+      if (!rd || rd.phase !== 'ready' || !S.member || !suApi || !fbAuth) return;
+      const ids = rd.past.slice(0, PREFETCH_MAX).map((r) => r.order_id);
+      idle(async () => {
+        for (const id of ids) {
+          if (dead || gen !== prefetchGen || rg !== receiptGen) return;
+          await readReceipt(id);
+        }
+      });
     }
     function receiptVm(rc) {
       const d = rc.data, row = rc.row, tt = d ? d.totals : {}, c = (k) => (Number.isSafeInteger(tt[k]) ? tt[k] / 100 : null);
@@ -839,13 +872,15 @@
       const a = d && d.address ? d.address : null;
       return { mode, status: live ? live.status : mode === 'delivery' ? 'delivered' : 'collected',   // v6: a past order with no status ⇒ its done state
         storeName: e.name || '', branch: e.branch || '', storeAddr: e.pickup_addr || '',
-        display_number: d && d.display_number != null ? d.display_number : row.display_number != null ? row.display_number : null,
+        display_number: row.display_number != null ? row.display_number : d && d.display_number != null ? d.display_number : null,   // the row's first: the head is drawn before the receipt lands
         lines: d && d.lines ? d.lines.map((l) => ({ n: l.qty, name: l.description, extras: '', total: l.line_cents / 100 })) : CappOrder.textLines(d ? d.items_text : row.items_text),
         fee: c('delivery_cents'), redeem: c('promo_discount_cents'), tip: c('tip_cents'), total: c('total_cents') != null ? c('total_cents') : row.total,
         pay: d ? d.tender.method : null, addr: a ? a.detected || a.area || '' : '', details: a && a.details ? a.details : '' };
     }
+    const receiptCtx = () => ({ entry: 'app', past: true, now: Number(nowMs()), dark: app.classList.contains('dark'), helpOk: !!supportWa() });
     function receiptScreenHtml(v) {
-      return CappHome.shellWrap(v, CappOrder.orderHtml(receiptVm(S.receipt), { entry: 'app', past: true, now: Number(nowMs()), dark: app.classList.contains('dark'), helpOk: !!supportWa() }));
+      const rc = S.receipt;
+      return CappHome.shellWrap(v, CappOrder.orderHtml(receiptVm(rc), { ...receiptCtx(), hold: !rc.data && !rc.failed }));
     }
     function receiptAct(a) {
       const rc = S.receipt; if (!rc) return;

@@ -130,3 +130,48 @@ test('receipt textLines = the forms\' parseOrderItems (la-musa-orders + xpizza-o
   }
   assert.deepEqual(C.textLines('1x Pad Thai (L210) [+ 1x Huevo]'), [{ n: '1', name: 'Pad Thai', extras: '1× Huevo', total: null }], 'the shape the receipt draws');
 });
+
+// advisor 11-01 (receipt ruling 1): a PAST order's «Estado» states only what is known — dropped on every cash order (delivered or
+// cancelled: «Se cobra al …» would be false) and on a cancelled card order (the refund is not ours to guess); a card order that was
+// delivered / collected keeps «Confirmado»
+test('past receipt «Estado»: cash delivered / cash cancelled / card cancelled ⇒ none; card delivered / collected ⇒ «Confirmado»', () => {
+  const past = { ...ORDER, pay: null, whenText: null, phoneText: null };
+  const pay = (o) => [...dom(CappOrder.orderHtml(o, { ...CTX, past: true })).querySelectorAll('.receipt:last-of-type .rrow')].map((row) => [...row.children].map(txt).join(' '));
+  assert.deepEqual(pay({ ...past, status: 'delivered', pay: 'cash' }), ['Pago Efectivo al entregar'], '🔴 RC-E1: cash delivered — no Estado');
+  assert.deepEqual(pay({ ...past, status: 'cancelled', pay: 'cash' }), ['Pago Efectivo al entregar'], '🔴 RC-E2: cash cancelled — no Estado');
+  assert.deepEqual(pay({ ...past, status: 'cancelled', pay: 'card' }), ['Pago Tarjeta'], '🔴 RC-E3: card cancelled — no Estado (refund not guessed)');
+  assert.deepEqual(pay({ ...past, status: 'delivered', pay: 'card' }), ['Pago Tarjeta', 'Estado Confirmado'], '🔴 RC-E4: card delivered — «Confirmado»');
+  assert.deepEqual(pay({ ...past, mode: 'pickup', status: 'collected', pay: 'card' }), ['Pago Tarjeta', 'Estado Confirmado'], 'card collected — «Confirmado»');
+  assert.deepEqual(pay({ ...past, status: 'delivered', pay: null }), [], 'an unknown tender: no Pago / Estado');
+  const live = [...dom(CappOrder.orderHtml({ ...ORDER, status: 'preparing', pay: 'cash' }, CTX)).querySelectorAll('.receipt:last-of-type .rrow')].map((row) => [...row.children].map(txt).join(' '));
+  assert.deepEqual(live.slice(0, 2), ['Pago Efectivo al entregar', 'Estado Se cobra al entregar'], 'the LIVE screen is unchanged (not past)');
+});
+test('past receipt hold (option A): c.hold ends the sheet before the first receipt block with an empty marker; c.tailOnly = exactly that tail', () => {
+  const o = { ...ORDER, status: 'delivered', pay: 'cash', whenText: null, phoneText: null };
+  const held = dom(CappOrder.orderHtml(o, { ...CTX, past: true, hold: true }));
+  assert.ok(held.querySelector('[data-rc-tail]') && !held.querySelector('.mk-card') && !held.querySelector('.receipt') && !held.querySelector('[data-act="order-again"]'), '🔴 RC-H: a delivery holds from its address card');
+  const tail = CappOrder.orderHtml(o, { ...CTX, past: true, tailOnly: true });
+  const heldStr = CappOrder.orderHtml(o, { ...CTX, past: true, hold: true }), fullStr = CappOrder.orderHtml(o, { ...CTX, past: true });
+  assert.equal(heldStr.split('<div data-rc-tail></div>').length, 2, 'premise: ONE marker');
+  assert.equal(heldStr.replace('<div data-rc-tail></div>', tail), fullStr, '🔴 RC-H: marker → tail = the full screen, byte for byte');
+  const pk = { ...o, mode: 'pickup', status: 'collected' }, hp = dom(CappOrder.orderHtml(pk, { ...CTX, past: true, hold: true }));
+  assert.ok(hp.querySelector('.mk-card') && !hp.querySelector('.receipt'), 'a pickup\'s «Recoger en» (the directory\'s) is drawn; the summary waits');
+});
+
+// Codex rcpt r1 #1: the LIVE screen (not past) is byte-identical to the pre-receipt CappOrder — the base module is loaded from its
+// git blob (c6719256, the commit before the receipt) and both render the same grid: redeem × tender × mode × status × hold flags absent
+test('the live order screen = the pre-receipt CappOrder byte for byte (base blob c6719256), across redeem 0/5 × cash/card/online/unknown × delivery/pickup × statuses', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const src = execFileSync('git', ['show', 'c6719256:customer-app/capp-order.js'], { cwd: ROOT, encoding: 'utf8' });
+  assert.ok(src.includes('function orderHtml(o, c)') && !src.includes('c.past'), 'premise: the base blob is the pre-receipt module');
+  const mod = { exports: {} }; new Function('module', 'exports', 'require', 'self', src)(mod, mod.exports, require, globalThis);
+  const BASE = mod.exports; assert.equal(typeof BASE.orderHtml, 'function');
+  let n = 0;
+  for (const redeem of [0, 5]) for (const pay of ['cash', 'card', 'online', undefined]) for (const mode of ['delivery', 'pickup'])
+    for (const status of ['new', 'preparing', 'ready', 'out', 'delivered', 'collected', 'cancelled']) for (const receiptOpen of [false, true]) {
+      const o = { ...ORDER, redeem, pay, mode, status, driver: status === 'out' ? 'Carlos' : null, lines: [...ORDER.lines, { n: '', name: 'Sin cantidad', extras: '', total: null }] };
+      const c = { ...CTX, receiptOpen };
+      assert.equal(CappOrder.orderHtml(o, c), BASE.orderHtml(o, c), `🔴 RC-base: live render drifted (redeem ${redeem}, ${pay}, ${mode}, ${status}, open ${receiptOpen})`); n++;
+    }
+  assert.equal(n, 224);
+});

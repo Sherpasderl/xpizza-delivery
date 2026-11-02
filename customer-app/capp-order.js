@@ -144,13 +144,17 @@
     ${typeof o.pin === 'string' && /^\d{4,6}$/.test(o.pin) ? `<div class="pincard"><span class="pin">${o.pin.split('').join(' ')}</span><span class="t">Dale este código a tu repartidor al recibir tu pedido.</span></div>` : ''}` : '';
     const details = del ? `<div class="mk-card"><span class="k">Detalles de entrega</span><span class="v">${esc(o.addr)}</span>${o.details ? `<span class="n">${esc(o.details)}</span>` : ''}${o.notes ? `<span class="n">Nota: ${esc(o.notes)}</span>` : ''}</div>`
       : `<div class="mk-card"><span class="k">Recoger en</span><span class="v">${esc(o.storeName)}${o.branch ? ' · ' + esc(o.branch) : ''}</span><span class="n">${esc(o.storeAddr || '')}</span></div>`;
-    const lineRows = (o.lines || []).map((d) => `<div class="rrow"><span>${d.n === '' ? '' : `${esc(d.n)}× `}${esc(d.name)}${d.extras ? `<span class="note" style="display:block">+ ${esc(d.extras)}</span>` : ''}</span><span>${d.total == null && c.past ? '' : money(d.total || 0)}</span></div>`).join('')
-      + `${del && o.fee != null ? `<div class="rrow"><span class="k">Envío</span><span>${o.fee ? money(o.fee) : '<span class="free">Gratis</span>'}</span></div>` : ''}${o.redeem ? `<div class="rrow"><span class="k">Descuento</span><span class="free">− ${money(o.redeem)}</span></div>` : ''}${o.tip ? `<div class="rrow"><span class="k">Propina</span><span>${money(o.tip)}</span></div>` : ''}${Number.isFinite(o.total) ? `<div class="rrow tot"><span>Total</span><span>${money(o.total)}</span></div>` : ''}`;
+    const lineRows = (o.lines || []).map((d) => `<div class="rrow"><span>${c.past ? (d.n === '' ? '' : `${esc(d.n)}× `) : `${d.n}× `}${esc(d.name)}${d.extras ? `<span class="note" style="display:block">+ ${esc(d.extras)}</span>` : ''}</span><span>${d.total == null && c.past ? '' : money(d.total || 0)}</span></div>`).join('')
+      + `${del && o.fee != null ? `<div class="rrow"><span class="k">Envío</span><span>${o.fee ? money(o.fee) : '<span class="free">Gratis</span>'}</span></div>` : ''}${c.past && o.redeem ? `<div class="rrow"><span class="k">Descuento</span><span class="free">− ${money(o.redeem)}</span></div>` : ''}${o.tip ? `<div class="rrow"><span class="k">Propina</span><span>${money(o.tip)}</span></div>` : ''}${Number.isFinite(o.total) ? `<div class="rrow tot"><span>Total</span><span>${money(o.total)}</span></div>` : ''}`;
+    // EVERY receipt addition is gated on c.past (Codex rcpt r1 #1): the live screen renders byte-identical to the base (a cell compares).
     // a past order's receipt (NOTE-getMyOrders-receipt): the tender is cash / card only — «Tarjeta», never digits (advisor 11-01); an
     // unknown tender or slot is not drawn (never guessed)
     const payKnown = !c.past || o.pay === 'cash' || o.pay === 'card' || o.pay === 'online';
-    const payText = o.pay === 'online' ? 'Pagado en línea · PixelPay' : o.pay === 'card' ? 'Tarjeta' : 'Efectivo ' + (del ? 'al entregar' : 'al recoger');
-    const payLines = `${payKnown ? `<div class="rrow"><span class="k">Pago</span><span>${payText}</span></div><div class="rrow"><span class="k">Estado</span><span>${o.pay === 'online' || o.pay === 'card' ? 'Confirmado' : 'Se cobra al ' + (del ? 'entregar' : 'recoger')}</span></div>` : ''}${c.past && !o.whenText ? '' : `<div class="rrow"><span class="k">Cuándo</span><span>${esc(o.whenText || 'Lo antes posible')}</span></div>`}${o.phoneText ? `<div class="rrow"><span class="k">WhatsApp</span><span>${esc(o.phoneText)}</span></div>` : ''}`;
+    const payText = o.pay === 'online' ? 'Pagado en línea · PixelPay' : c.past && o.pay === 'card' ? 'Tarjeta' : 'Efectivo ' + (del ? 'al entregar' : 'al recoger');
+    // advisor 11-01: a past order states no payment status it cannot know — «Se cobra al …» is false once done, and a cancelled card
+    // order's refund is not ours to guess ⇒ Estado only for a card order that was delivered / collected («Confirmado»)
+    const estado = !c.past || ((o.pay === 'card' || o.pay === 'online') && (st === 'delivered' || st === 'collected'));
+    const payLines = `${payKnown ? `<div class="rrow"><span class="k">Pago</span><span>${payText}</span></div>${estado ? `<div class="rrow"><span class="k">Estado</span><span>${o.pay === 'online' || (c.past && o.pay === 'card') ? 'Confirmado' : 'Se cobra al ' + (del ? 'entregar' : 'recoger')}</span></div>` : ''}` : ''}${c.past && !o.whenText ? '' : `<div class="rrow"><span class="k">Cuándo</span><span>${esc(o.whenText || 'Lo antes posible')}</span></div>`}${o.phoneText ? `<div class="rrow"><span class="k">WhatsApp</span><span>${esc(o.phoneText)}</span></div>` : ''}`;
     // the confirmation («new», C, R) carries the receipt blocks in the open; the live tracker folds them (v6)
     const open = sc || st === 'new';
     const receipt = open ? `<div class="receipt2"><h3>Tu pedido</h3>${lineRows}</div>`
@@ -158,9 +162,14 @@
     const payrows = open ? `<div class="receipt2"><h3>Pago y entrega</h3>${payLines}</div>`
       : `<div class="receipt"><div class="toggle" style="cursor:default">Pago y entrega</div><div class="rbody">${payLines}</div></div>`;
     const share = !sc && !FINAL.has(st) && del && c.shareOk ? `<button class="shareline" data-act="order-share">${IC.share}Compartir seguimiento</button>` : '';
+    // a past receipt still being read (c.hold — advisor 11-01, no reflow): the screen ENDS before the first block that needs it (a
+    // delivery's address card; else «Resumen del pedido») — an empty marker holds the place; the shell then puts the tail (c.tailOnly)
+    // IN PLACE of the marker, so nothing already drawn moves. The CTA belongs to the tail: never pushed down by a late block
+    const tail = `${del ? details : ''}${receipt}${payrows}
+    ${share}<button class="btn2 again" data-act="order-again">Hacer otro pedido</button>${c.entry === 'link' ? '<div class="credit">Enviado por <b>Sherpa</b></div>' : ''}`;
+    if (c.tailOnly) return tail;
     const sheet = `<div class="mk-sheet"><div class="mk-handle"></div><div class="mk-title${cc.ok && !sc ? ' success' : ''}${cc.danger && !sc ? ' danger' : ''}">${esc(title)}</div>${windowLine}
-    ${num}${segbar}${statusrow}${driverCard}${c.offerHtml || ''}${details}${receipt}${payrows}
-    ${share}<button class="btn2 again" data-act="order-again">Hacer otro pedido</button>${c.entry === 'link' ? '<div class="credit">Enviado por <b>Sherpa</b></div>' : ''}</div>`;
+    ${num}${segbar}${statusrow}${driverCard}${c.offerHtml || ''}${del ? '' : details}${c.hold ? '<div data-rc-tail></div>' : tail}</div>`;
     return `<div class="scroller"><div class="orderwrap">${map}${sheet}</div></div>`;
   }
 
