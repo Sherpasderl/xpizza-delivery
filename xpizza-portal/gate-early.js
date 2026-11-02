@@ -7,6 +7,7 @@
 // harness's throttled cell (Slow 4G + 4× CPU): the portal's ~750 KB module graph incl. the Firebase SDK had run and the shell
 // painted by ≈ 3.7 s. 10 s ≈ 2.7× that: a slow but working connection is never cut off; a dead one is told within seconds.
 (function () {
+  const $ = (id) => document.getElementById(id);
   var html = document.documentElement;
   try { if (window.localStorage.getItem('sherpa.portal.session') === '1') html.classList.add('sw-wait'); } catch (e) { /* no storage: today's form */ }
   var BOOT_DEADLINE_MS = 10000;
@@ -14,7 +15,7 @@
     if (window.__portalBooted) return;
     html.classList.remove('sw-wait');
     html.classList.add('sw-fail');
-    var b = document.getElementById('gatefailbtn');
+    const b = $('gatefailbtn');
     if (!b) return;
     b.addEventListener('click', function () { (window.__portalReload || function () { window.location.reload(); })(); });
     b.focus();
