@@ -130,17 +130,36 @@ async function cell(name, fn) { CURRENT = name; resetProvider(); try { await fn(
     assert.strictEqual(Object.keys(db.getAt('dispatcher_alerts') || {}).filter((k) => k.startsWith('extra_payment_')).length, 1, `${L}: one alert`);
   });
 
-  await cell('XP-ATOMIC-WRITE-FAILURE-SURFACED', async () => {
-    const L = 'XP-ATOMIC-WRITE-FAILURE-SURFACED';
+  // Codex r3: a concurrent re-delivery must never overwrite the committed record's `at` or the alert's created_at.
+  await cell('XP-CONCURRENT-REDELIVERY-NEVER-OVERWRITES', async () => {
+    const L = 'XP-CONCURRENT-REDELIVERY-NEVER-OVERWRITES';
+    let release; const gate = new Promise((res) => { release = res; }); let held = false;
+    // A reaches the record's write first and is held there; B runs to completion; then A resumes
+    const db = makeDb(cancelled(), { beforeTx: async (p) => { if (!held && p.endsWith(`/extra_payments/${xkey('PAY-2')}`)) { held = true; await gate; } },
+      beforeWrite: async (p, v) => { if (!held && p === '' && v && Object.keys(v).some((k) => k.includes(`/extra_payments/${xkey('PAY-2')}`))) { held = true; await gate; } } });
+    const a = handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
+    await new Promise((res) => setTimeout(res, 0));
+    const rb = await handleHostedCallback(depsFor(db), cb('PAY-2'), 3000);
+    const recB = extra(db, 'PAY-2'), alertB = extraAlert(db, 'PAY-2');
+    assert.ok(rb.code === 200 && recB && alertB, `${L}: PREMISE — B completed (got ${rb.code}; ${JSON.stringify(recB)})`);
+    release(); const ra = await a;
+    assert.strictEqual(ra.code, 200, `${L}: A completes too (got ${ra.code} ${ra.outcome})`);
+    assert.deepStrictEqual(extra(db, 'PAY-2'), recB, `${L}: the committed record is unchanged by the late delivery (was ${JSON.stringify(recB)}, now ${JSON.stringify(extra(db, 'PAY-2'))})`);
+    assert.deepStrictEqual(extraAlert(db, 'PAY-2'), alertB, `${L}: and so is the alert, created_at included`);
+    assert.strictEqual(voidCalls.length, 0, `${L}: nothing voided`);
+  });
+
+  await cell('XP-ALERT-WRITE-FAILURE-RESUMES', async () => {
+    const L = 'XP-ALERT-WRITE-FAILURE-RESUMES';
     let fail = 1;
     const db = makeDb(cancelled(), { beforeWrite: async (p, v) => { if (p === '' && v && Object.keys(v).some((k) => k.startsWith('dispatcher_alerts/extra_payment_')) && fail > 0) { fail -= 1; throw new Error('injected write failure'); } } });
     const r = await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
-    assert.ok(r.code >= 500, `${L}: a failed write answers 5xx so PixelPay re-delivers (got ${r.code} ${r.outcome})`);
-    assert.ok(!extraAlert(db, 'PAY-2') && db.getAt(`orders/${OID}/extra_payment_review`) == null && !(extra(db, 'PAY-2') || {}).uuid,
-      `${L}: ALL OR NOTHING — no record without its alert and flag (record ${JSON.stringify(extra(db, 'PAY-2'))}, alert ${JSON.stringify(extraAlert(db, 'PAY-2'))})`);
+    assert.ok(r.code >= 500, `${L}: a failed alert/flag write answers 5xx so PixelPay re-delivers (got ${r.code} ${r.outcome})`);
+    assert.ok(extra(db, 'PAY-2') && extra(db, 'PAY-2').at === 2000, `${L}: the payment record (the refund's evidence) is already durable, first sighting kept`);
     const r2 = await handleHostedCallback(depsFor(db), cb('PAY-2'), 3000);
     assert.strictEqual(r2.code, 200, `${L}: the re-delivery completes`);
-    recorded(L, db, 'PAY-2', 3000);
+    recorded(L, db, 'PAY-2', 2000);
+    assert.strictEqual(extraAlert(db, 'PAY-2').created_at, 2000, `${L}: the alert carries the FIRST sighting, not the re-delivery's time`);
     assert.strictEqual(voidCalls.length, 0, `${L}: and nothing is voided`);
   });
 
