@@ -3717,3 +3717,22 @@ test('C-6d order panel through the SHELL: a placed order\'s screen on the desk c
     const k = kids(); assert.ok(k.indexOf('mk-num') > k.indexOf('segbar'), `🔴 OD-3: the shell draws the desk order (${k.join(', ')})`);
   } finally { S.w.close(); }
 });
+// ── advisor 11-02: the PHONE «La casa recomienda» row presents a sold dish like a sold category row (an intended phone DOM delta) ──
+test('phone house row: a sold house dish shows «Agotado» in the price slot with P\'s inert «+» (.sold-out), like the category rows; the add is refused; an available one is unchanged', async () => {
+  const T = tagHouse();
+  try {
+    const sold = T.ds[0].id;
+    const S = await promoStore({ mountExtra: { readAvailability: async (rid, menu) => menu.dishes.filter((d) => String(d.id) === String(sold)).map((d) => d.key) } });
+    try {
+      await until(() => S.q('.content .row.sold-out'));   // the availability landed (the category row shows it)
+      const cards = S.qa('.toprow .card'); assert.equal(cards.length, 2, 'premise: the two tagged house dishes');
+      const so = S.q('.toprow .card.sold-out'); assert.ok(so, '🔴 PH-1: the sold house card is marked');
+      assert.equal(so.querySelector('.prrow .mute').textContent, 'Agotado', '🔴 PH-1: «Agotado» in the price slot');
+      const add = so.querySelector('.qty-add-btn'), cs = S.w.getComputedStyle(add);
+      assert.equal(cs.pointerEvents, 'none', '🔴 PH-1: the + is inert (P\'s .sold-out)'); assert.equal(cs.opacity, '0.4');
+      const live = S.q('.toprow .card:not(.sold-out)'); assert.ok(live && /^L /.test(live.querySelector('.prrow .mute').textContent), 'the available house dish keeps its price');
+      S.click(add); await flush(); assert.ok(/Tu pedido/.test(S.q('#cart-bar').textContent), '🔴 PH-1: the add is refused (the cart stays empty)');
+      assert.equal(S.q('.app').classList.contains('desk'), false, 'the phone shell');
+    } finally { S.w.close(); }
+  } finally { T.restore(); }
+});
