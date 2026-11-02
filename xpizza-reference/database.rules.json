@@ -176,7 +176,7 @@
 
     "order_ratings": { ".read": false, ".write": false },
     "ratings_v2": { ".read": false, ".write": false, ".indexOn": ["owner_uid"] },
-    "ratings_redact_pending": { ".read": false, ".write": false, ".indexOn": ["at"] },
+    "ratings_redact_pending": { ".read": false, ".write": false, ".indexOn": ["at", "last_attempt"] },
     "public_stats": { ".read": true, ".write": false },
     "order_tracking": {
       "$token": {

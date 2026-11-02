@@ -209,35 +209,38 @@ async function redactRatings(db, uid, historyIds = null) {
   // (claim-order writes it best-effort), so it is never the only discovery (Codex r1 P1-3). Runs AFTER deletion's atomic update: its
   // deleted_uids/{uid} is the fence (Codex r1 P1-2) — a rating write committing after this scan sees it and redacts itself.
   const hist = historyIds || Object.keys((await db.ref(`user_orders/${uid}`).once('value')).val() || {});
-  const owned = (await db.ref('ratings_v2').orderByChild('owner_uid').equalTo(uid).once('value')).val() || {};
-  const ids = [...new Set([...hist, ...Object.keys(owned)])];
   const V2 = require('./ratings/rating-v2');
+  const ids = [...new Set([...hist, ...(await V2.ownedRatingIds(db, uid))])];
   for (const id of ids) {
     if (!V2.ORDER_ID_RE.test(id)) continue;
-    await db.ref(`ratings_v2/${id}`).transaction(V2.deletionUpdater({}));
+    await V2.ratingRef(db, id).transaction(V2.deletionUpdater({}));
   }
   return ids.length;
 }
-// S-A1 r3/r4 (Codex r2/r3): DRAIN the durable redaction journal ratings_redact_pending/{uid} = {at, v?}. For each entry: read {at, v}
-// FIRST, redact every rating the owner_uid index still names for that uid, then REMOVE the entry only when (a) none remains, (b) the
-// grace has passed since the deletion, AND (c) the entry is UNCHANGED since the read — a rateOrder fence that touched it meanwhile
-// (v + 1: a late commit) keeps it for the next run. Idempotent; a failing uid is retried on the next run.
-// GRACE (r4 P1): Cloud Run's request timeout does not cancel execution, so it is sized from the HARD ceiling — ≥ 2× the largest
-// timeoutSeconds of ANY ratings_v2 writer (rateOrder, stampRatingFulfilment); ratings/ratings-grace.guard.test.js reads their DEPLOYED
-// options from the discovery manifest and fails if one is raised past grace / 2.
-const REDACT_GRACE_MS = 2 * 60 * 60 * 1000;
+// S-A1 r3–r5 (Codex r2–r4): DRAIN the durable redaction journal ratings_redact_pending/{uid} = {at, v?, last_attempt?, attempts?}.
+// DESIGN CLOSURE (Codex r4): no timeout margin bounds a paused execution (Cloud Run does not cancel it), so EXPOSURE is prevented on the
+// READ side — every reader goes through rating-v2.readCountable (live AND owner not tombstoned; deleted_uids is permanent) — and this
+// drain is best-effort cleanup behind it: every entry is re-checked on every run for REDACT_RETAIN_MS (30 days) after the deletion and
+// only then retired, with the {at, v} CAS (a concurrent fence touch, v + 1, keeps it). FAIRNESS (r4 #3): entries are taken by OLDEST
+// last_attempt (never-attempted first — RTDB orders a missing child first), and each attempt is recorded BEFORE the work, so failing
+// entries cannot starve the rest. REDACT_GRACE_FLOOR_MS stays only as a sanity floor (ratings-grace.guard: ≥ 2× every writer's timeout).
+const REDACT_RETAIN_MS = 30 * 24 * 60 * 60 * 1000;
+const REDACT_GRACE_FLOOR_MS = 2 * 60 * 60 * 1000;
 const REDACT_BATCH = 50;
-async function drainRatingRedactions(db, now = Date.now(), { graceMs = REDACT_GRACE_MS, batch = REDACT_BATCH } = {}) {
-  const pending = (await db.ref('ratings_redact_pending').orderByChild('at').limitToFirst(batch).once('value')).val() || {};
+async function drainRatingRedactions(db, now = Date.now(), { retainMs = REDACT_RETAIN_MS, batch = REDACT_BATCH } = {}) {
+  const V2 = require('./ratings/rating-v2');
+  const pending = (await db.ref('ratings_redact_pending').orderByChild('last_attempt').limitToFirst(batch).once('value')).val() || {};
   let redacted = 0, cleared = 0, failed = 0;
   for (const [uid, entry] of Object.entries(pending)) {
+    const at = entry && typeof entry.at === 'number' ? entry.at : 0;
+    const v = entry && Number.isInteger(entry.v) ? entry.v : 0;   // read BEFORE the attempt, the pass and the check (r4 P1-2)
     try {
-      const at = entry && typeof entry.at === 'number' ? entry.at : 0;
-      const v = entry && Number.isInteger(entry.v) ? entry.v : 0;   // read BEFORE the pass + the check (r4 P1-2)
+      // record the attempt FIRST (fairness) — never re-creates a removed entry, never touches at / v
+      await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => (cur && typeof cur === 'object' ? { ...cur, last_attempt: now, attempts: (Number.isInteger(cur.attempts) ? cur.attempts : 0) + 1 } : cur));
       redacted += await redactRatings(db, uid, []);
-      const left = (await db.ref('ratings_v2').orderByChild('owner_uid').equalTo(uid).once('value')).val() || {};
-      if (Object.keys(left).length === 0 && now - at >= graceMs) {
-        // remove ONLY the exact version judged: a concurrent fence (v moved) or a re-deletion (at moved) keeps the entry
+      const left = await V2.ownedRatingIds(db, uid);
+      if (left.length === 0 && now - at >= retainMs) {
+        // retire ONLY the exact version judged: a concurrent fence (v moved) or a re-deletion (at moved) keeps the entry
         const tx = await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => (cur && cur.at === at && (Number.isInteger(cur.v) ? cur.v : 0) === v ? null : cur));
         if (tx.committed && !tx.snapshot.exists()) cleared += 1;
       }
@@ -338,4 +341,4 @@ async function pruneDeadLinks(db) {
   return removed;
 }
 
-module.exports = { redactRatings, drainRatingRedactions, REDACT_GRACE_MS, makeSignup, bindOtpTicket, redeemOtpTicket, refreshActivity, deleteAccountCore, revokeSessions, claimPhoneUid, loginUid, backfillDeletedUids, REVOKE_DEADLINE_MS, REVOKE_REASON_CODES, pruneDeadLinks, pruneResidual, challengeIdOf, SIGNUP_RATE, ACTIVITY_DEADLINE_MS };
+module.exports = { redactRatings, drainRatingRedactions, REDACT_RETAIN_MS, REDACT_GRACE_FLOOR_MS, makeSignup, bindOtpTicket, redeemOtpTicket, refreshActivity, deleteAccountCore, revokeSessions, claimPhoneUid, loginUid, backfillDeletedUids, REVOKE_DEADLINE_MS, REVOKE_REASON_CODES, pruneDeadLinks, pruneResidual, challengeIdOf, SIGNUP_RATE, ACTIVITY_DEADLINE_MS };

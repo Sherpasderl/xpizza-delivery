@@ -31089,7 +31089,7 @@
   "slice": "sa",
   "label": "S-A1 ratings v2 (r2): deletion discovers ratings by the history ONLY (no owner_uid index)",
   "file": "signup-endpoints.js",
-  "from": "  const ids = [...new Set([...hist, ...Object.keys(owned)])];",
+  "from": "  const ids = [...new Set([...hist, ...(await V2.ownedRatingIds(db, uid))])];",
   "to": "  const ids = [...new Set([...hist])];",
   "command": [
    "node",
@@ -31173,8 +31173,8 @@
   "slice": "sa",
   "label": "S-A1 ratings v2 (r3): the drain clears an entry whose uid still has a live rating",
   "file": "signup-endpoints.js",
-  "from": "      if (Object.keys(left).length === 0 && now - at >= graceMs) {",
-  "to": "      if (now - at >= graceMs) {",
+  "from": "      if (left.length === 0 && now - at >= retainMs) {",
+  "to": "      if (now - at >= retainMs) {",
   "command": [
    "node",
    "ratings/rating-v2.test.js"
@@ -31183,10 +31183,10 @@
  {
   "id": "sa-24",
   "slice": "sa",
-  "label": "S-A1 ratings v2 (r3): the drain ignores the grace (a paused write can land after the entry is gone)",
+  "label": "S-A1 ratings v2 (r4): the drain retires an entry before its retention has passed",
   "file": "signup-endpoints.js",
-  "from": "      if (Object.keys(left).length === 0 && now - at >= graceMs) {",
-  "to": "      if (Object.keys(left).length === 0) {",
+  "from": "      if (left.length === 0 && now - at >= retainMs) {",
+  "to": "      if (left.length === 0) {",
   "command": [
    "node",
    "ratings/rating-v2.test.js"
@@ -31245,8 +31245,8 @@
   "slice": "sa",
   "label": "S-A1 ratings v2 (r4): the grace is sized from a soft 20 s deadline, not the writers' hard ceiling",
   "file": "signup-endpoints.js",
-  "from": "const REDACT_GRACE_MS = 2 * 60 * 60 * 1000;",
-  "to": "const REDACT_GRACE_MS = 60 * 1000;",
+  "from": "const REDACT_GRACE_FLOOR_MS = 2 * 60 * 60 * 1000;",
+  "to": "const REDACT_GRACE_FLOOR_MS = 60 * 1000;",
   "command": [
    "node",
    "ratings/ratings-grace.guard.test.js"
@@ -31319,6 +31319,78 @@
   "file": "ratings/rate-order.js",
   "from": "const RATE_ORDER_TIMEOUT_S = 20;",
   "to": "const RATE_ORDER_TIMEOUT_S = 3601;",
+  "command": [
+   "node",
+   "ratings/ratings-grace.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-36",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r5): the journal is retired after 2 h (no 30-day re-check)",
+  "file": "signup-endpoints.js",
+  "from": "const REDACT_RETAIN_MS = 30 * 24 * 60 * 60 * 1000;",
+  "to": "const REDACT_RETAIN_MS = 2 * 60 * 60 * 1000;",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-37",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r5): a writer builds the ratings_v2 ref itself (bypassing rating-v2.js)",
+  "file": "ratings/rate-order.js",
+  "from": "  const ref = V2.ratingRef(db, req.orderId);",
+  "to": "  const ref = db.ref('ratings' + '_v2/' + req.orderId);",
+  "command": [
+   "node",
+   "ratings/ratings-reader-contract.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-38",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r5): the single reader ignores a tombstoned owner",
+  "file": "ratings/rating-v2.js",
+  "from": "  return countable(node, tomb) ? node : null;",
+  "to": "  return countable(node, false) ? node : null;",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-39",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r5): the drain takes entries by deletion time (failing entries starve the rest)",
+  "file": "signup-endpoints.js",
+  "from": "orderByChild('last_attempt').limitToFirst(batch)",
+  "to": "orderByChild('at').limitToFirst(batch)",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-40",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r5): the drain does not record its attempts",
+  "file": "signup-endpoints.js",
+  "from": "      await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => (cur && typeof cur === 'object' ? { ...cur, last_attempt: now, attempts: (Number.isInteger(cur.attempts) ? cur.attempts : 0) + 1 } : cur));\n",
+  "to": "",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-41",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r5): a DERIVED writer's timeout (deleteAccount) raised past the floor / 2",
+  "file": "index.js",
+  "from": "exports.deleteAccount = onRequest(\n  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },",
+  "to": "exports.deleteAccount = onRequest(\n  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 3601, memory: '256MiB', maxInstances: 10 },",
   "command": [
    "node",
    "ratings/ratings-grace.guard.test.js"

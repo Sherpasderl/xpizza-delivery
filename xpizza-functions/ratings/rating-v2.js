@@ -122,9 +122,27 @@ function deletionUpdater(out) {
   };
 }
 
-// THE reader rule (Codex S-A1 r2/r3, NOTE §5): a rating counts / is shown ONLY when its node is live AND its owner is not tombstoned.
-// Every ratings_v2 READER (S-A3 merchant comments, S-B aggregates) must call this — ratings/ratings-reader-contract.guard enforces it.
+// THE reader rule (Codex S-A1 r2–r4, NOTE §5): a rating counts / is shown ONLY when its node is live AND its owner is not tombstoned
+// (deleted_uids is PERMANENT). Codex r4 moved the exposure guarantee to the READ side, so this module is the ONLY place a ratings_v2
+// reference is built (ratings/ratings-reader-contract.guard bans the path segment everywhere else): writers / redactors use ratingRef
+// + ownedRatingIds; readers can ONLY obtain a node through readCountable, which applies countable().
 const countable = (node, ownerTombstoned) => !!node && typeof node === 'object' && node.state === STATES.LIVE && ownerTombstoned !== true;
+const ROOT = 'ratings_v2';
+function ratingRef(db, orderId) {
+  if (typeof orderId !== 'string' || !ORDER_ID_RE.test(orderId)) throw new Error('ratingRef: bad order id');
+  return db.ref(`${ROOT}/${orderId}`);
+}
+// the order ids whose node names this owner (the server-only owner_uid index) — for redaction / the drain, never for display
+async function ownedRatingIds(db, uid) {
+  return Object.keys((await db.ref(ROOT).orderByChild('owner_uid').equalTo(uid).once('value')).val() || {});
+}
+// THE reader: the node ONLY if countable (live, its owner not tombstoned) — else null
+async function readCountable(db, orderId) {
+  const node = normalize((await ratingRef(db, orderId).once('value')).val());
+  if (!node) return null;
+  const tomb = typeof node.owner_uid === 'string' && node.owner_uid ? (await db.ref(`deleted_uids/${node.owner_uid}`).once('value')).exists() : false;
+  return countable(node, tomb) ? node : null;
+}
 
-module.exports = { countable, ORDER_ID_RE, V1_THUMB, WINDOW_MS, COMMENT_MAX, DISHES_MAX, STATES, FULFILLED, parseRequest, freshNode, normalize,
+module.exports = { countable, ratingRef, ownedRatingIds, readCountable, ORDER_ID_RE, V1_THUMB, WINDOW_MS, COMMENT_MAX, DISHES_MAX, STATES, FULFILLED, parseRequest, freshNode, normalize,
   v1Updater, v2Updater, withdrawUpdater, fulfilmentUpdater, deletionUpdater };

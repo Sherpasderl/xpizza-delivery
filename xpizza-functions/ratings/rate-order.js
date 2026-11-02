@@ -54,7 +54,7 @@ async function purchasedDishIds(db, { uid, orderId, rid, resolveContext }) {
 // r4 P1-2: CREATE-OR-TOUCH the journal entry — v + 1 (created at {at: now, v: 1} if absent). A drain that judged the entry before this
 // touch sees v moved and keeps it, so this late commit is still drained even if the redaction below fails.
 async function touchRedactJournal(db, uid, now) {
-  await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => ({
+  await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => ({ ...(cur && typeof cur === 'object' ? cur : {}),   // keeps last_attempt / attempts
     at: cur && typeof cur.at === 'number' ? cur.at : now, v: (cur && Number.isInteger(cur.v) ? cur.v : 0) + 1 }));
 }
 async function fencedAfterWrite(db, uid, ref, now) {
@@ -71,7 +71,7 @@ async function rateOrderCore(db, { body, idToken, now, verifyIdToken, resolveCon
   if (!uid) return GENERIC;
   const order = (await db.ref(`orders/${req.orderId}`).get()).val();
   if (!order || order.customer_uid !== uid) return GENERIC;            // not theirs / unknown — never revealing which
-  const ref = db.ref(`ratings_v2/${req.orderId}`);
+  const ref = V2.ratingRef(db, req.orderId);
   const out = {};
   if (req.kind === 'v1') {
     const why = R.eligibility(order, uid);                                // status-based, exactly as before
