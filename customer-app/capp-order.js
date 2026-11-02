@@ -82,6 +82,20 @@
     return { status, driver: name, stacked: status === 'out' && rec.is_active_drop === false, doneAt: clockText(Number(rec.delivered_at)) };
   }
 
+  // a receipt with no priced lines (NOTE-getMyOrders-receipt: lines null ⇒ the items_text lines): v6's rows WITHOUT an amount. The split
+  // and the patterns are the forms' own history parser (la-musa-orders/account.js parseOrderItems — capp-order.test.mjs runs both
+  // on the same inputs): «Nx Name (L###) [+ extras]» joined by « | »; the unit price is dropped (it would not sum); unrecognized ⇒ raw
+  function textLines(txt) {
+    return String(txt || '').split(' | ').map((seg) => {
+      seg = seg.trim(); if (!seg) return null;
+      let m = seg.match(/^(\d+)x\s+([\s\S]+?)\s*\(L[\d.,]+\)\s*(?:\[\+\s*([\s\S]+?)\])?\s*$/);
+      if (m) return { n: m[1], name: m[2].trim(), extras: (m[3] || '').replace(/(\d+)x\s/g, '$1× ').trim(), total: null };
+      m = seg.match(/^(\d+)x\s+([\s\S]+)$/);
+      if (m) return { n: m[1], name: m[2].trim(), extras: '', total: null };
+      return { n: '', name: seg, extras: '', total: null };
+    }).filter(Boolean);
+  }
+
   // ── the illustrated map (v6 mapSvg P:1791; the colours are the map tokens so it follows the theme) ──
   const ROUTE = [[22, 64], [22, 42], [50, 42], [50, 34], [74, 34]];   // store → home, in % of the box
   function routePoint(p) {
@@ -130,13 +144,17 @@
     ${typeof o.pin === 'string' && /^\d{4,6}$/.test(o.pin) ? `<div class="pincard"><span class="pin">${o.pin.split('').join(' ')}</span><span class="t">Dale este código a tu repartidor al recibir tu pedido.</span></div>` : ''}` : '';
     const details = del ? `<div class="mk-card"><span class="k">Detalles de entrega</span><span class="v">${esc(o.addr)}</span>${o.details ? `<span class="n">${esc(o.details)}</span>` : ''}${o.notes ? `<span class="n">Nota: ${esc(o.notes)}</span>` : ''}</div>`
       : `<div class="mk-card"><span class="k">Recoger en</span><span class="v">${esc(o.storeName)}${o.branch ? ' · ' + esc(o.branch) : ''}</span><span class="n">${esc(o.storeAddr || '')}</span></div>`;
-    const lineRows = (o.lines || []).map((d) => `<div class="rrow"><span>${d.n}× ${esc(d.name)}${d.extras ? `<span class="note" style="display:block">+ ${esc(d.extras)}</span>` : ''}</span><span>${money(d.total || 0)}</span></div>`).join('')
-      + `${del && o.fee != null ? `<div class="rrow"><span class="k">Envío</span><span>${o.fee ? money(o.fee) : '<span class="free">Gratis</span>'}</span></div>` : ''}${o.tip ? `<div class="rrow"><span class="k">Propina</span><span>${money(o.tip)}</span></div>` : ''}${Number.isFinite(o.total) ? `<div class="rrow tot"><span>Total</span><span>${money(o.total)}</span></div>` : ''}`;
-    const payLines = `<div class="rrow"><span class="k">Pago</span><span>${o.pay === 'online' ? 'Pagado en línea · PixelPay' : 'Efectivo ' + (del ? 'al entregar' : 'al recoger')}</span></div><div class="rrow"><span class="k">Estado</span><span>${o.pay === 'online' ? 'Confirmado' : 'Se cobra al ' + (del ? 'entregar' : 'recoger')}</span></div><div class="rrow"><span class="k">Cuándo</span><span>${esc(o.whenText || 'Lo antes posible')}</span></div>${o.phoneText ? `<div class="rrow"><span class="k">WhatsApp</span><span>${esc(o.phoneText)}</span></div>` : ''}`;
+    const lineRows = (o.lines || []).map((d) => `<div class="rrow"><span>${d.n === '' ? '' : `${esc(d.n)}× `}${esc(d.name)}${d.extras ? `<span class="note" style="display:block">+ ${esc(d.extras)}</span>` : ''}</span><span>${d.total == null && c.past ? '' : money(d.total || 0)}</span></div>`).join('')
+      + `${del && o.fee != null ? `<div class="rrow"><span class="k">Envío</span><span>${o.fee ? money(o.fee) : '<span class="free">Gratis</span>'}</span></div>` : ''}${o.redeem ? `<div class="rrow"><span class="k">Descuento</span><span class="free">− ${money(o.redeem)}</span></div>` : ''}${o.tip ? `<div class="rrow"><span class="k">Propina</span><span>${money(o.tip)}</span></div>` : ''}${Number.isFinite(o.total) ? `<div class="rrow tot"><span>Total</span><span>${money(o.total)}</span></div>` : ''}`;
+    // a past order's receipt (NOTE-getMyOrders-receipt): the tender is cash / card only — «Tarjeta», never digits (advisor 11-01); an
+    // unknown tender or slot is not drawn (never guessed)
+    const payKnown = !c.past || o.pay === 'cash' || o.pay === 'card' || o.pay === 'online';
+    const payText = o.pay === 'online' ? 'Pagado en línea · PixelPay' : o.pay === 'card' ? 'Tarjeta' : 'Efectivo ' + (del ? 'al entregar' : 'al recoger');
+    const payLines = `${payKnown ? `<div class="rrow"><span class="k">Pago</span><span>${payText}</span></div><div class="rrow"><span class="k">Estado</span><span>${o.pay === 'online' || o.pay === 'card' ? 'Confirmado' : 'Se cobra al ' + (del ? 'entregar' : 'recoger')}</span></div>` : ''}${c.past && !o.whenText ? '' : `<div class="rrow"><span class="k">Cuándo</span><span>${esc(o.whenText || 'Lo antes posible')}</span></div>`}${o.phoneText ? `<div class="rrow"><span class="k">WhatsApp</span><span>${esc(o.phoneText)}</span></div>` : ''}`;
     // the confirmation («new», C, R) carries the receipt blocks in the open; the live tracker folds them (v6)
     const open = sc || st === 'new';
     const receipt = open ? `<div class="receipt2"><h3>Tu pedido</h3>${lineRows}</div>`
-      : `<div class="receipt"><button class="toggle" data-act="order-receipt" aria-expanded="${!!c.receiptOpen}">Resumen del pedido <span>· ${esc(o.storeName)}</span>${IC.down}</button><div class="rbody"${c.receiptOpen ? '' : ' hidden'}>${lineRows}</div></div>`;
+      : `<div class="receipt"><button class="toggle" data-act="order-receipt" aria-expanded="${!!(c.past || c.receiptOpen)}">Resumen del pedido <span>· ${esc(o.storeName)}</span>${IC.down}</button><div class="rbody"${c.past || c.receiptOpen ? '' : ' hidden'}>${lineRows}</div></div>`;
     const payrows = open ? `<div class="receipt2"><h3>Pago y entrega</h3>${payLines}</div>`
       : `<div class="receipt"><div class="toggle" style="cursor:default">Pago y entrega</div><div class="rbody">${payLines}</div></div>`;
     const share = !sc && !FINAL.has(st) && del && c.shareOk ? `<button class="shareline" data-act="order-share">${IC.share}Compartir seguimiento</button>` : '';
@@ -146,5 +164,5 @@
     return `<div class="scroller"><div class="orderwrap">${map}${sheet}</div></div>`;
   }
 
-  return { orderHtml, statusCopy, schedPhase, routePoint, fromTracking, clockText, FINAL, SCHED, REVIEW_AFTER_MS };
+  return { orderHtml, textLines, statusCopy, schedPhase, routePoint, fromTracking, clockText, FINAL, SCHED, REVIEW_AFTER_MS };
 });

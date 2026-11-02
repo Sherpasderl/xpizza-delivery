@@ -435,6 +435,7 @@
         if (S.neutral) return '/';
         // the order screen lives on its order flow's URL (D-3 r3 table: «Checkout, tip, outcome and tracker» = /r/{rid}/pago)
         if (S.tab === 'order' && S.order) return CappRoutes.format({ name: 'store', rid: S.order.rid, step: 'pago' });
+        if (S.tab === 'receipt') return CappRoutes.format({ name: 'orders' });   // a past order's receipt is a step of «Pedidos» (no URL of its own)
         return CappRoutes.format({ name: S.tab === 'search' ? 'search' : S.tab === 'account' ? 'account' : S.tab === 'orders' ? 'orders' : 'home' });
       } catch (_) { return null; }   // an id outside the ONE domain is never written: the URL stays as it is
     }
@@ -502,6 +503,7 @@
         if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link
         if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } reflect(); return; }
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
+        if (entry.name === 'receipt') { if (!openReceipt(entry.oid)) { T.setTimeout(() => nav.tab({ name: 'orders' }), 0); return; } S.tab = 'receipt'; renderNow(); return; }
         if (entry.name === 'orders') { S.tab = 'orders'; loadOrders(); resumeOrder(); dir.visit(); renderNow(); return; }
         S.tab = entry.name; dir.visit(); dir.revalidate(); loadMenus();
         renderNow(x && x.restored ? x.restored : null);
@@ -609,7 +611,7 @@
         return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid };
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
-      return { ...updateVm(), orders: ordersVm(v.rows), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
+      return { ...updateVm(), orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
         schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }, locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
@@ -633,7 +635,7 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
@@ -722,6 +724,7 @@
     }
     function identityChanged() {
       ordersGen++; S.ordersRead = null;   // any in-flight history read is void; nothing of the previous identity is shown
+      receiptGen++; S.receipt = null; receiptCache.clear(); if (S.tab === 'receipt' && !S.store) nav.tab({ name: 'orders' });   // nor a receipt of hers
       const od = S.order, who = ownerNow();
       if (od && who !== null && od.owner !== who) {
         if (od.owner === 'guest' && who && who.startsWith('u:') && od.claimedBy === who) { od.owner = who; saveActive(); }   // claimed via the offer
@@ -804,6 +807,53 @@
       }
       return false;
     }
+    // ── a past order's RECEIPT (v6: a Pedidos past row opens the order screen in its past state, its «Resumen del pedido» open). The
+    // screen draws AT ONCE from the row (store, status, items_text, total); the receipt read (getMyOrders ?order_id, NOTE-getMyOrders-
+    // receipt) fills the lines, the envío / descuento / propina, the tender and the address. Bound to the identity like the history
+    // read; kept per identity for an instant reopen. A refused / failed read leaves the row's screen (no new copy)
+    let receiptGen = 0; const receiptCache = new Map();
+    function openReceipt(oid) {
+      const who = ownerNow(), rd = S.ordersRead && S.ordersRead.who === who ? S.ordersRead : null;
+      const row = rd && typeof oid === 'string' ? rd.past.find((r) => r.order_id === oid) : null;
+      if (!row || !S.member) return false;
+      S.receipt = { oid, who, row, data: receiptCache.get(oid) || null };
+      if (!S.receipt.data) loadReceipt(S.receipt);
+      return true;
+    }
+    async function loadReceipt(rc) {
+      const gen = ++receiptGen, uid = S.member && S.member.uid;
+      if (!uid || !suApi || !fbAuth) return;
+      let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+      const r = tok ? await suApi.getReceipt({ idToken: tok, orderId: rc.oid }) : { ok: false, reason: 'unauthenticated' };
+      const cur = auth && auth.user ? auth.user() : null;
+      if (dead || gen !== receiptGen || S.receipt !== rc || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid) return;   // another receipt / identity now
+      if (!r.ok) return;
+      receiptCache.set(rc.oid, r.receipt); rc.data = r.receipt;
+      if (S.tab === 'receipt' && !S.store) renderNow();
+    }
+    function receiptVm(rc) {
+      const d = rc.data, row = rc.row, tt = d ? d.totals : {}, c = (k) => (Number.isSafeInteger(tt[k]) ? tt[k] / 100 : null);
+      const mode = (d ? d.order_type : row.order_type) === 'pickup' ? 'pickup' : 'delivery';
+      const live = CappOrder.fromTracking({ status: d ? d.status : row.status }, mode);
+      const e = (dir.view().rows.find((x) => x.rid === row.restaurant) || {}).entry || {};
+      const a = d && d.address ? d.address : null;
+      return { mode, status: live ? live.status : mode === 'delivery' ? 'delivered' : 'collected',   // v6: a past order with no status ⇒ its done state
+        storeName: e.name || '', branch: e.branch || '', storeAddr: e.pickup_addr || '',
+        display_number: d && d.display_number != null ? d.display_number : row.display_number != null ? row.display_number : null,
+        lines: d && d.lines ? d.lines.map((l) => ({ n: l.qty, name: l.description, extras: '', total: l.line_cents / 100 })) : CappOrder.textLines(d ? d.items_text : row.items_text),
+        fee: c('delivery_cents'), redeem: c('promo_discount_cents'), tip: c('tip_cents'), total: c('total_cents') != null ? c('total_cents') : row.total,
+        pay: d ? d.tender.method : null, addr: a ? a.detected || a.area || '' : '', details: a && a.details ? a.details : '' };
+    }
+    function receiptScreenHtml(v) {
+      return CappHome.shellWrap(v, CappOrder.orderHtml(receiptVm(S.receipt), { entry: 'app', past: true, now: Number(nowMs()), dark: app.classList.contains('dark'), helpOk: !!supportWa() }));
+    }
+    function receiptAct(a) {
+      const rc = S.receipt; if (!rc) return;
+      if (a === 'order-close') { nav.back(); return; }               // v6: the close ⇒ «Pedidos»
+      if (a === 'order-again') { nav.tab({ name: 'home' }); return; }  // «Hacer otro pedido» ⇒ Inicio
+      if (a === 'order-help') { const n = supportWa(), num = receiptVm(rc).display_number; if (n) openExternal(`https://wa.me/${n}?text=${encodeURIComponent('Hola, tengo un problema con mi pedido' + (num ? ' #' + num : ''))}`); }
+      // 'order-receipt': a past order's summary stays open (v6)
+    }
     function openExternal(url) { try { if (win && typeof win.open === 'function') win.open(url, '_blank', 'noopener'); } catch (_) {} }
     // ── the location layers ──
     let pinGen = 0, pinMap = null, pinDraft = null;
@@ -847,7 +897,9 @@
       // later slice. Flag absent ⇒ exactly the S7a-2 behaviour: a host event (Codex guest r1 #3)
       if (a === 'tab') { const id = t.dataset.tab; if (id === 'account' && !SU && (runtime.guestCardOnly !== true || authNow() === 'member')) { emit('tab', { tab: id }); return; }   // G7: under runtime.signup the Cuenta is the shell's
         if (id === 'home' || id === 'search' || id === 'account' || id === 'orders') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
+      if (S.tab === 'receipt' && a.startsWith('order-')) return void receiptAct(a);
       if (a.startsWith('order-') && orderAct(a)) return;
+      if (a === 'go-receipt') { if (t.dataset.oid) nav.go({ name: 'receipt', oid: t.dataset.oid }); return; }   // v6: a past row opens its receipt
       if (a === 'go-order') { const od = activeOrder(); if (od && t.dataset.oid === od.order_id) nav.go({ name: 'order' }); return; }   // the device's active order ⇒ its live screen
       if (a === 'orders-help') { const n = supportWa(); if (n) { const od = S.order && S.order.order_id === t.dataset.oid ? S.order : null; const msg = 'Hola, tengo un problema con mi pedido' + (od && od.display_number ? ' #' + od.display_number : ''); openExternal(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`); } return; }
       if ((a === 'app-update' || a === 'app-update-row') && updateOn()) {

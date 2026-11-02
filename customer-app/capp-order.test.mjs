@@ -116,3 +116,17 @@ test('fromTracking: the tracker\'s statuses onto v6\'s — ready is still prepar
   assert.equal(CappOrder.fromTracking({ status: 'out_for_delivery', driver_name: 'C' }, 'delivery').stacked, false, 'absent ⇒ not stacked (fail-safe)');
 });
 
+
+// the receipt's items_text lines (NOTE-getMyOrders-receipt: lines null) parse EXACTLY as the forms' own history parser — the function is
+// read from BOTH forms' account.js (byte-identical there) and run on the same inputs, so a change on either side is red here
+test('receipt textLines = the forms\' parseOrderItems (la-musa-orders + xpizza-orders account.js), input by input', () => {
+  const C = require('./capp-order.js');
+  const IN = ['1x Pad Thai (L210) [+ 1x Huevo] | 2x Spring Rolls (L90)', '2x Margherita (L324) [+ 1x Mozzarella, 2x Albahaca]', '3x Agua', 'Promo especial', ' | 1x A (L1,000.50) | ', '', null, '1x Nombre (con paréntesis) (L99)'];
+  for (const f of ['la-musa-orders/account.js', 'xpizza-orders/account.js']) {
+    const src = readFileSync(join(ROOT, f), 'utf8'), m = src.match(/ {2}function parseOrderItems\(txt\) \{[\s\S]*?\n {2}\}\n/);
+    assert.ok(m, `premise: ${f} carries parseOrderItems`);
+    const parse = new Function(`${m[0]}; return parseOrderItems;`)();
+    for (const t of IN) assert.deepEqual(C.textLines(t), parse(t).map((x) => ({ n: x.qty, name: x.name, extras: x.extras, total: null })), `🔴 RC-drift: ${f} vs textLines on ${JSON.stringify(t)}`);
+  }
+  assert.deepEqual(C.textLines('1x Pad Thai (L210) [+ 1x Huevo]'), [{ n: '1', name: 'Pad Thai', extras: '1× Huevo', total: null }], 'the shape the receipt draws');
+});

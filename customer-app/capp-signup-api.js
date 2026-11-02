@@ -102,6 +102,16 @@
         if (r.status !== 200 || !j || j.ok !== true || !Array.isArray(j.active) || !Array.isArray(j.past)) return { ok: false, reason: r.status === 403 ? 'deleted' : reasonOf(r) };
         return { ok: true, active: j.active.map(rowOf).filter(Boolean), past: j.past.map(rowOf).filter(Boolean), next_cursor: typeof j.next_cursor === 'string' && j.next_cursor ? j.next_cursor : null };
       },
+      // the RECEIPT detail mode (NOTE-getMyOrders-receipt, 3a 75eed212, APPROVED): ONE order of the member's own, ?order_id alone with the
+      // same header auth; a uniform 404 for anything not hers ⇒ 'not_found'. Only the contract's receipt whitelist survives (receiptOf)
+      async getReceipt({ idToken, orderId } = {}) {
+        if (!idToken) return { ok: false, reason: 'unauthenticated' };
+        if (!(typeof orderId === 'string' && ORDER_ID_RE.test(orderId))) return { ok: false, reason: 'bad_request' };
+        const r = await call(E.getMyOrders, { method: 'GET', idToken, query: `context=platform&order_id=${orderId}` });
+        const j = r.json, rc = r.status === 200 && j && j.ok === true ? receiptOf(j.receipt) : null;
+        if (rc && rc.order_id === orderId) return { ok: true, receipt: rc };
+        return { ok: false, reason: r.status === 404 ? 'not_found' : r.status === 403 ? 'deleted' : r.status === 200 ? 'failed' : reasonOf(r) };
+      },
       async redeemSignupGrant({ grant, email, name, promos }) {
         const r = await call(E.redeemSignupGrant, { body: { grant, context: CONTEXT, email, name, accept_terms: true, promos: promos === true } });
         const j = r.json;
@@ -120,5 +130,23 @@
       ...(typeof x.recipe_format === 'string' ? { recipe_format: x.recipe_format } : {}),
       ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}) };   // advisor 11-01: 3a adds it to the whitelist
   }
-  return { createSignupApi, CONTEXT, TIMEOUT_MS, ENDPOINTS, rowOf };
+  // the contract's receipt (NOTE-getMyOrders-receipt §3), field by field: lines only when EVERY line is well-formed (else null ⇒ the
+  // items_text lines), totals = the present integer keys only (never 0-filled), the tender as cash / card with no digits, the address
+  // for a delivery only — anything else the server might add never survives
+  const isInt = (v) => Number.isSafeInteger(v), str = (v) => (typeof v === 'string' ? v : null);
+  const TOTAL_KEYS = ['subtotal_cents', 'tax_cents', 'delivery_cents', 'promo_discount_cents', 'tip_cents', 'total_cents'];
+  function receiptOf(x) {
+    if (!x || typeof x !== 'object' || typeof x.order_id !== 'string' || !ORDER_ID_RE.test(x.order_id) || typeof x.restaurant !== 'string' || !RID_RE.test(x.restaurant)) return null;
+    const type = x.order_type === 'pickup' ? 'pickup' : x.order_type === 'delivery' ? 'delivery' : null;
+    const lines = Array.isArray(x.lines) && x.lines.length && x.lines.every((l) => l && typeof l === 'object' && isInt(l.qty) && l.qty >= 1 && typeof l.description === 'string' && isInt(l.line_cents))
+      ? x.lines.map((l) => ({ qty: l.qty, description: l.description, line_cents: l.line_cents })) : null;
+    const totals = {}; const t = x.totals && typeof x.totals === 'object' ? x.totals : {}; for (const k of TOTAL_KEYS) if (isInt(t[k])) totals[k] = t[k];
+    const tn = x.tender && typeof x.tender === 'object' ? x.tender : {}, method = tn.method === 'cash' || tn.method === 'card' ? tn.method : null;
+    const a = type === 'delivery' && x.address && typeof x.address === 'object' ? x.address : null;
+    return { order_id: x.order_id, ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}),
+      ts: Number.isFinite(x.ts) ? x.ts : null, restaurant: x.restaurant, order_type: type, status: str(x.status), lines, items_text: str(x.items_text), totals,
+      tender: { method, ...(method === 'cash' && isInt(tn.cash_tendered_cents) ? { cash_tendered_cents: tn.cash_tendered_cents } : {}) },
+      ...(a ? { address: { detected: str(a.detected), details: str(a.details), area: str(a.area) } } : {}) };
+  }
+  return { createSignupApi, CONTEXT, TIMEOUT_MS, ENDPOINTS, rowOf, receiptOf };
 });

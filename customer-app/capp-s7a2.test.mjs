@@ -2230,7 +2230,21 @@ function userOrderEntry(uid, orderId, { ts, total, orderType = 'delivery', items
   attachCustomerAttribution(u, orderId, uid, { now: ts, total, orderType, items_text, restaurantId, items, tables: null });   // the REAL writer
   return u[`user_orders/${uid}/${orderId}`];
 }
-function myOrdersServer(db, { deleted = new Set(), gate = null } = {}) {
+// the RECEIPT detail mode, as 3a's my-orders.js@75eed212 (APPROVED) projects it — verbatim logic: priced lines only when every one is
+// well-formed, present integer totals only, the tender cash / card (never a reference), the address for a delivery only
+const RCPT_TOTALS = ['subtotal_cents', 'tax_cents', 'delivery_cents', 'promo_discount_cents', 'tip_cents', 'total_cents'];
+const RCPT_TENDER = { cash: 'cash', card_delivery: 'card', online: 'card' };
+function projectReceipt(id, entry, o) {
+  const isInt = (v) => Number.isSafeInteger(v), str = (v) => (typeof v === 'string' ? v : null), num = (v) => (Number.isFinite(v) ? v : null);
+  let lines = null;
+  if (Array.isArray(o.items) && o.items.length) { lines = []; for (const l of o.items) { if (!l || typeof l !== 'object' || !isInt(l.qty) || l.qty < 1 || typeof l.description !== 'string' || !isInt(l.line_gross_cents)) { lines = null; break; } lines.push({ qty: l.qty, description: l.description, line_cents: l.line_gross_cents }); } }
+  const totals = {}; for (const k of RCPT_TOTALS) if (isInt(o[k])) totals[k] = o[k];
+  const method = RCPT_TENDER[o.payment_method] || null, type = str(o.order_type);
+  return { order_id: id, ...(Number.isFinite(o.display_number) ? { display_number: o.display_number } : {}), ts: num(entry.ts), restaurant: str(entry.restaurant), order_type: type, status: str(o.status),
+    lines, items_text: str(o.items_text), totals, tender: { method, ...(method === 'cash' && isInt(o.cash_tendered_cents) ? { cash_tendered_cents: o.cash_tendered_cents } : {}) },
+    ...(type === 'delivery' ? { address: { detected: str(o.address_detected), details: str(o.address_details), area: str(o.address_area) } } : {}) };
+}
+function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null } = {}) {
   const calls = [];
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const handler = (u, i = {}) => {
@@ -2244,7 +2258,14 @@ function myOrdersServer(db, { deleted = new Set(), gate = null } = {}) {
     if (!uid) return out(401, { ok: false, reason: 'unauthenticated' });
     if (deleted.has(uid)) return out(403, { ok: false, reason: 'deleted' });
     const keys = [...url.searchParams.keys()];
-    if (keys.some((k) => !['context', 'limit', 'cursor'].includes(k)) || new Set(keys).size !== keys.length || url.searchParams.get('context') !== 'platform') return out(400, { ok: false, reason: 'bad_request' });
+    if (keys.some((k) => !['context', 'limit', 'cursor', 'order_id'].includes(k)) || new Set(keys).size !== keys.length || url.searchParams.get('context') !== 'platform') return out(400, { ok: false, reason: 'bad_request' });
+    if (url.searchParams.has('order_id')) {   // the detail mode: order_id ALONE, the createOrder id rule; 2 point reads; ONE uniform 404
+      const id = url.searchParams.get('order_id');
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || url.searchParams.has('limit') || url.searchParams.has('cursor')) return out(400, { ok: false, reason: 'bad_request' });
+      const entry = (db[uid] || {})[id], order = orders[id];
+      const res = !entry || typeof entry !== 'object' || !order || typeof order !== 'object' || order.customer_uid !== uid ? out(404, { ok: false, reason: 'not_found' }) : out(200, { ok: true, receipt: projectReceipt(id, entry, order) });
+      return rgate ? rgate.then(() => res) : res;
+    }
     let limit = 20; if (url.searchParams.has('limit')) { const n = Number(url.searchParams.get('limit')); if (!Number.isInteger(n) || n < 1 || n > 50) return out(400, { ok: false, reason: 'bad_request' }); limit = n; }
     let cur = null; if (url.searchParams.has('cursor')) { try { cur = JSON.parse(Buffer.from(url.searchParams.get('cursor'), 'base64url').toString()); } catch (_) { cur = null; } if (!cur || !Number.isFinite(cur.ts) || typeof cur.id !== 'string' || !MO_ID_RE.test(cur.id)) return out(400, { ok: false, reason: 'bad_request' }); }
     const all = Object.entries(db[uid] || {}).map(([id, e]) => ({ id, e })).sort((a, b) => (a.e.ts - b.e.ts) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));   // orderByChild('ts'), key tie-break
@@ -2562,6 +2583,115 @@ test('Pedidos r3 P2 (Codex r3): the deferred /r/{rid}/pago is a held intent — 
   assert.equal(key.title, null, '🔴 PED-r3-P2b: a gesture with no navigation (a key) also voids the deferred intent');
   const none = await reload(async () => {});
   assert.equal(none.title, 'Pedido recibido', 'control: untouched, the held intent still lands on her order after admission');
+});
+// ── the RECEIPT (NOTE-getMyOrders-receipt, 3a 75eed212 APPROVED): a past row opens v6's order screen in its past state. The orders come
+// from the REAL intake chain, as 3a's own cells build them: storedCtx (a minted envío ctx) → DW.withDelivery → pricedLineItems (x_pizza's
+// factura lines) → buildCreateOrderUpdates → attachCustomerAttribution
+const RC = { P: FN_REQ('./delivery/delivery-pricing'), DW: FN_REQ('./delivery/delivery-wire'), FP: FN_REQ('./factura/pricing'), MP: FN_REQ('./menu-pricing'), CB: FN_REQ('./create-order-build') };
+function placeReal(db, orders, uid, id, { rid = 'x_pizza', type = 'delivery', pay = 'cash', tip = 0, promo = 0, ts = T0 - 86400e3, items_text = '2x Margherita (L324) [+ 1x Mozzarella]', status = 'delivered', display_number } = {}) {
+  const ctx = type === 'delivery' ? RC.P.storedCtx({ delivery_snapshot: { mode: 'delivery', policy_version: 1, km: 3.2, band: 1, promo: null }, delivery_cents: 4000, ...(promo ? { promo_discount_cents: promo } : {}), ...(tip ? { tip_cents: tip } : {}) }) : null;
+  const bd = RC.DW.withDelivery({ ctx }, { total_cents: 64800, subtotal_cents: 56348, tax_cents: 8452 });
+  const body = rid === 'x_pizza' ? [{ name: 'Margherita', qty: 2, extras: [{ name: 'Mozzarella' }] }] : [{ id: Object.keys(RC.MP.MENU_BY_RESTAURANT.la_musa)[0], name: 'x', qty: 1 }];
+  const fp = rid === 'x_pizza' ? RC.FP.pricedLineItems(body, RC.MP.MENU_BY_RESTAURANT.x_pizza, RC.MP.EXTRAS_BY_RESTAURANT.x_pizza) : { items: null, error: null };
+  const u = RC.CB.buildCreateOrderUpdates({ orderId: id, orderType: type, now: ts, trackingToken: 'tk_' + id, total: bd.total_cents / 100, lat: type === 'delivery' ? 14.07 : null, lng: type === 'delivery' ? -87.19 : null,
+    fields: { customer_name: 'Ana', customer_phone: '50499990000', items_text, notes: 'sin cebolla', payment_method: pay, ...(type === 'delivery' ? { address_detected: 'Col. Palmira, Tegucigalpa', address_details: 'casa azul', address_area: 'Palmira' } : { pickup_time: 'asap' }) },
+    hubSnap: { hub_lat: 1, hub_lng: 2, restaurant_name: 'R', restaurant_phone: '1' }, restaurantId: rid, priceBreakdown: bd, facturaPriced: fp, cashTenderedCents: pay === 'cash' ? 100000 : null });
+  RC.CB.attachCustomerAttribution(u, id, uid, { now: ts, total: bd.total_cents / 100, orderType: type, items_text, restaurantId: rid, items: body });
+  const o = u[`orders/${id}`], e = u[`user_orders/${uid}/${id}`];
+  o.status = status; e.status = status;   // the status trigger keeps the entry in step (P3)
+  if (display_number) o.display_number = display_number;
+  (db[uid] = db[uid] || {})[id] = e; orders[id] = o;
+  return { o, e, bd };
+}
+const rrows = (R) => R.qa('.receipt .rbody .rrow, .receipt2 .rrow').map(txt);
+async function openPastReceipt(S, oid) {
+  S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+  const b = S.q(`.orow-main[data-act="go-receipt"][data-oid="${oid}"]`); assert.ok(b && b.tagName === 'BUTTON', `premise: the past row ${oid} is v6's control`);
+  S.click(b); await flush(); await flush();
+}
+test('Receipt (x_pizza delivery, cash): the past row is v6\'s «Ver el recibo» control; the screen = the PAST order screen — its priced lines, Envío / Descuento / Propina / Total, «Efectivo», her own address; the read is ?context=platform&order_id alone, the token in its header', async () => {
+  const db = {}, orders = {};
+  const { o } = placeReal(db, orders, 'u_ana', 'XP-R1', { tip: 2000, promo: 500, display_number: 47 });
+  const { S, mo } = await pedidosBoot(db, { orders });
+  try {
+    await openPastReceipt(S, 'XP-R1');
+    const row = mo.calls.at(-1), url = new URL(row.url);
+    assert.deepEqual([...url.searchParams.entries()], [['context', 'platform'], ['order_id', 'XP-R1']], '🔴 RC-1: exactly the detail query');
+    assert.ok((row.headers['x-firebase-id-token'] || '').split('.').length === 3 && !row.url.includes('eyJ'), '🔴 RC-1: the token in its header, never the URL');
+    assert.equal(txt(S.q('.mk-title')), '¡Pedido entregado!', '🔴 RC-2: v6\'s past state (the done title)');
+    assert.equal(txt(S.q('.mk-num')), 'Orden #47 · Te avisamos por WhatsApp');
+    const tg = S.q('.receipt .toggle[data-act="order-receipt"]'); assert.equal(tg && tg.getAttribute('aria-expanded'), 'true', '🔴 RC-2: «Resumen del pedido» OPEN on a past order (v6)');
+    assert.equal(S.q('.receipt .rbody[hidden]'), null);
+    const L = o.items[0];
+    assert.deepEqual(rrows(S).slice(0, 5), [`${L.qty}× ${L.description} L ${Math.round(L.line_gross_cents / 100)}`, 'Envío L 40', 'Descuento − L 5', 'Propina L 20', `Total L ${Math.round(o.total_cents / 100)}`], '🔴 RC-3: the real writer\'s priced line, then v6\'s rows from the present totals');
+    assert.deepEqual(rrows(S).slice(5), ['Pago Efectivo al entregar', 'Estado Se cobra al entregar'], '🔴 RC-4: the cash tender (v6 copy); no «Cuándo» (the receipt has no slot — never guessed), no WhatsApp row');
+    assert.equal(txt(S.q('.mk-card')), 'Detalles de entrega Col. Palmira, Tegucigalpa casa azul', '🔴 RC-5: her own address + details (never coordinates)');
+    assert.equal(S.q('[data-act="order-share"]'), null, 'no «Compartir seguimiento» on a past order');
+    assert.ok(!/14\.07|sin cebolla|50499990000|tk_XP/.test(S.q('.mk-sheet').textContent), '🔴 RC-5: no coordinates / notes / phone / token on the screen');
+    S.click('[data-act="order-close"]'); await flush();
+    assert.equal(txt(S.q('.pagehead h1')), 'Pedidos', '🔴 RC-6: the close returns to «Pedidos» (v6)');
+    const n = mo.calls.length; await openPastReceipt(S, 'XP-R1');
+    assert.equal(mo.calls.filter((c) => c.url.includes('order_id')).length, 1, '🔴 RC-6: a reopen is instant from the kept receipt (ONE read)'); assert.ok(mo.calls.length >= n);
+    S.click('[data-act="order-again"]'); await flush(); assert.ok(S.q('.tabbar [data-tab="home"][aria-current="true"]'), '🔴 RC-6: «Hacer otro pedido» ⇒ Inicio');
+  } finally { S.w.close(); }
+});
+test('Receipt (la_musa pickup, card): no priced lines ⇒ v6\'s rows from the items_text lines WITHOUT amounts + the totals; «Tarjeta» with NO digits; «Recoger en» the store', async () => {
+  const db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'LM-R2', { rid: 'la_musa', type: 'pickup', pay: 'card_delivery', items_text: '1x Pad Thai (L210) [+ 1x Huevo] | 2x Spring Rolls (L90)', status: 'completed' });
+  const { S } = await pedidosBoot(db, { orders });
+  try {
+    await openPastReceipt(S, 'LM-R2');
+    assert.equal(txt(S.q('.mk-title')), '¡Gracias por tu compra!', 'a pickup\'s done state');
+    assert.deepEqual(rrows(S), ['1× Pad Thai + 1× Huevo', '2× Spring Rolls', 'Total L 648', 'Pago Tarjeta', 'Estado Confirmado'], '🔴 RC-7: the items_text lines (no amount, no L 0), no Envío on a pickup, «Tarjeta» only');
+    assert.ok(!/\d{4}/.test(S.q('.receipt:last-of-type').textContent), '🔴 RC-7: no card digits');
+    const NAME = SC.complete.body.restaurants.find((r) => r.restaurant_id === 'la_musa').name;
+    assert.ok(txt(S.q('.mk-card')).startsWith(`Recoger en ${NAME}`), '🔴 RC-7: the directory\'s store');
+  } finally { S.w.close(); }
+});
+test('Receipt: a refused read (another account\'s id ⇒ the uniform 404) or offline leaves the row\'s own screen — no tender / address guessed, no crash; the fake is as strict as the contract', async () => {
+  const db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-R3', { status: 'delivered', items_text: '1x Carnivora (L340)' });
+  orders['XP-R3'].customer_uid = 'u_bob';   // the order record is not hers ⇒ 404, like an unknown id
+  const { S, mo } = await pedidosBoot(db, { orders });
+  try {
+    const call = async (q) => { const r = await mo.handler(`https://fn.test/getMyOrders${q}`, { method: 'GET', headers: { 'x-firebase-id-token': TOK('u_ana') } }); return r.status; };
+    assert.deepEqual([await call('?context=platform&order_id=XP-R3'), await call('?context=platform&order_id=NOPE'), await call('?context=platform&order_id=XP-R3&limit=5'), await call('?context=platform&order_id=a%20b')], [404, 404, 400, 400], 'the fake: uniform 404, order_id alone, the id rule');
+    await openPastReceipt(S, 'XP-R3');
+    assert.equal(txt(S.q('.mk-title')), '¡Pedido entregado!', 'the row\'s status');
+    assert.deepEqual(rrows(S), ['1× Carnivora', 'Total L 648'], '🔴 RC-8: the row\'s items_text + total only; no Pago / Estado (the tender is unknown — never «Efectivo» by default)');
+    assert.equal(txt(S.q('.mk-card .v')), '', 'no address guessed');
+  } finally { S.w.close(); }
+});
+test('Receipt identity: Ana\'s receipt read in flight when the SDK signs her out ⇒ it NEVER paints; the receipt screen is left for «Pedidos»', async () => {
+  const db = {}, orders = {}; let release; const rgate = new Promise((r) => { release = r; });
+  placeReal(db, orders, 'u_ana', 'XP-R4', { display_number: 52 });
+  const { S, fb } = await pedidosBoot(db, { orders, rgate });
+  try {
+    await openPastReceipt(S, 'XP-R4');
+    assert.ok(S.q('.mk-title'), 'premise: the receipt screen (from the row) while the read is held');
+    await fb.loadSdk().then(({ authMod }) => authMod.signOut()); await flush(); await flush();
+    release(); await flush(); await flush();
+    assert.equal(S.q('.mk-title'), null, '🔴 RC-9: off the receipt screen after the identity change');
+    assert.equal(txt(S.q('.pagehead h1')), 'Pedidos', '🔴 RC-9: the identity hook lands on «Pedidos» (never a blank / Inicio fallback under the receipt tab)');
+    assert.ok(!/Palmira|#52/.test(S.w.document.body.textContent), '🔴 RC-9: nothing of Ana\'s receipt painted after she left');
+  } finally { S.w.close(); }
+});
+test('Receipt API (capp-signup-api.getReceipt): the contract whitelist — injected fields never survive; a malformed line ⇒ lines null; absent totals stay absent; a bad id is refused with NO request; a receipt for another id ⇒ failed', async () => {
+  const A = require('./capp-signup-api.js'); const sent = [];
+  const mk = (json, status = 200) => A.createSignupApi({ endpoints: { getMyOrders: 'https://fn.test/getMyOrders' }, fetch: async (u, i) => { sent.push([u, i]); return { status, json: async () => json }; } });
+  const base = { order_id: 'XP-9', ts: 1, restaurant: 'x_pizza', order_type: 'delivery', status: 'delivered', lines: [{ qty: 1, description: 'A', line_cents: 100, cost: 1 }], items_text: '1x A', totals: { total_cents: 100, tip_cents: 'x' },
+    tender: { method: 'card', last4: '4242', reference: 'R' }, address: { detected: 'D', details: 'X', area: 'P', lat: 14 }, tracking_token: 'tk', customer_phone: '5049', payment_reference: 'ref', lat: 14 };
+  const r = await mk({ ok: true, receipt: base }).getReceipt({ idToken: 't', orderId: 'XP-9' });
+  assert.deepEqual(r, { ok: true, receipt: { order_id: 'XP-9', ts: 1, restaurant: 'x_pizza', order_type: 'delivery', status: 'delivered', lines: [{ qty: 1, description: 'A', line_cents: 100 }], items_text: '1x A', totals: { total_cents: 100 }, tender: { method: 'card' }, address: { detected: 'D', details: 'X', area: 'P' } } }, '🔴 RC-10: the whitelist, field by field');
+  assert.equal((await mk({ ok: true, receipt: { ...base, lines: [{ qty: 1, description: 'A', line_cents: 100 }, { qty: 0, description: 'B', line_cents: 1 }] } }).getReceipt({ idToken: 't', orderId: 'XP-9' })).receipt.lines, null, '🔴 RC-10: one malformed line ⇒ null (the items_text lines)');
+  assert.equal('address' in (await mk({ ok: true, receipt: { ...base, order_type: 'pickup' } }).getReceipt({ idToken: 't', orderId: 'XP-9' })).receipt, false, 'no address on a pickup');
+  const cash = await mk({ ok: true, receipt: { ...base, tender: { method: 'cash', cash_tendered_cents: 50000 } } }).getReceipt({ idToken: 't', orderId: 'XP-9' }); assert.deepEqual(cash.receipt.tender, { method: 'cash', cash_tendered_cents: 50000 });
+  assert.deepEqual(await mk({ ok: true, receipt: base }).getReceipt({ idToken: 't', orderId: 'XP-8' }), { ok: false, reason: 'failed' }, '🔴 RC-10: a receipt for ANOTHER id is never used');
+  assert.deepEqual(await mk({ ok: false, reason: 'not_found' }, 404).getReceipt({ idToken: 't', orderId: 'XP-9' }), { ok: false, reason: 'not_found' });
+  const n = sent.length;
+  for (const id of ['', 'a b', 'x'.repeat(65), null, 'XP/9']) assert.deepEqual(await mk({}).getReceipt({ idToken: 't', orderId: id }), { ok: false, reason: 'bad_request' }, String(id));
+  assert.deepEqual(await mk({}).getReceipt({ orderId: 'XP-9' }), { ok: false, reason: 'unauthenticated' });
+  assert.equal(sent.length, n, '🔴 RC-10: a refused argument sends NOTHING');
 });
 // Pagination (advisor ruling 2026-11-01): ONE page of 20 — v6 draws no «load more»; next_cursor is deliberately not followed (not a defect)
 test('capp-dark §3: the SHELL\'s own live map (the Inicio pin editor) is built in the OS theme and restyled in place on a flip; destroy detaches', async () => {
