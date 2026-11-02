@@ -179,6 +179,8 @@
     "rating_index": { ".read": false, ".write": false },
     "stats_buckets": { ".read": false, ".write": false },
     "stats_agg": { ".read": false, ".write": false },
+    "support_tickets": { ".read": false, ".write": false },
+    "support_ticket_counts": { ".read": false, ".write": false },
     "ratings_redact_pending": { ".read": false, ".write": false, ".indexOn": ["at", "last_attempt"] },
     "public_stats": { ".read": true, ".write": false },
     "order_tracking": {

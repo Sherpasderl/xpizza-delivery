@@ -32235,5 +32235,77 @@
    "node",
    "sb-wiring.guard.test.js"
   ]
+ },
+ {
+  "id": "sf-1",
+  "slice": "sf",
+  "label": "S-F: the member path drops the order-ownership check",
+  "file": "support/support-tickets.js",
+  "from": "    if (uid && order && order.customer_uid === uid) via = 'member';",
+  "to": "    if (uid && order) via = 'member';",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-2",
+  "slice": "sf",
+  "label": "S-F: a guest token PREFIX matches",
+  "file": "support/support-tickets.js",
+  "from": "  return crypto.timingSafeEqual(x, y) && a.length === b.length;",
+  "to": "  return b.startsWith(a);",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-3",
+  "slice": "sf",
+  "label": "S-F: identity written into the ticket",
+  "file": "support/support-tickets.js",
+  "from": "created_at: now(), status: 'received', via });",
+  "to": "created_at: now(), status: 'received', via, phone: order.customer_phone || null });",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-4",
+  "slice": "sf",
+  "label": "S-F: no per-order cap",
+  "file": "support/support-tickets.js",
+  "from": "    return k >= MAX_PER_ORDER ? undefined : k + 1;",
+  "to": "    return k + 1;",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-5",
+  "slice": "sf",
+  "label": "S-F: reason other accepted without text",
+  "file": "support/support-tickets.js",
+  "from": "  if (reason === 'other' && !text) return null;\n",
+  "to": "",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-6",
+  "slice": "sf",
+  "label": "S-F: a non-customer predicate (a handheld / tombstoned token accepted)",
+  "file": "support/support-tickets.js",
+  "from": "    const uid = await require('../ratings/rate-order').customerUidOf(db, idToken, verifyIdToken);",
+  "to": "    let uid = null; try { uid = (await verifyIdToken(idToken)).uid; } catch (_) {}",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
  }
 ]

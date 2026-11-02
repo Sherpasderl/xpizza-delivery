@@ -7894,6 +7894,12 @@ exports.publishRatingAggregates = onSchedule(
     console.log('publishRatingAggregates', JSON.stringify({ ok: out.ok.length, failed: out.failed.length }));
   },
 );
+// S-F (NOTE-S-F-support-tickets-build): the customer's «Ayuda» ticket for an order it OWNS (member: the ONE customer predicate; guest: the
+// order's tracking_token, constant-time); no identity in the ticket; ≤ 5 per order; server-only (Central's surface is X-1)
+exports.createSupportTicket = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  require('./support/support-tickets').makeSupportTickets({ getDatabase, getAuth, checkRateLimit }).createSupportTicket,
+);
 // S-A1: rateOrder's dish votes resolve through the ONE resolver (the expression getMyOrders and the live displayLabel path use)
 require('./ratings/rate-order').configure({ resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) });
 /* checkout:end endpoints */
