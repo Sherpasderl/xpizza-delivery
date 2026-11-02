@@ -34,5 +34,26 @@ for (const tool of ['backfill-identities.js', 'bootstrap-identity.js', 'rollback
   });
 }
 
+// Codex cert r1 #1: a repeated --rid= silently picked the FIRST; unknown flags were ignored, so `--apply --dry-run` WROTE and
+// rollback `--to=v2 --dry-run` moved the pointer. Every unknown argument, a repeated option and an empty value are refused
+// (exit 1 — exit 2 stays the project guard's alone in these tools) BEFORE any client.
+for (const [tool, extra] of [['backfill-identities.js', []], ['bootstrap-identity.js', []], ['rollback-version.js', ['--to=v2']]]) {
+  cell(`RF-STRICT-ARGS-${tool}`, () => {
+    for (const args of [['--rid=la_musa', '--rid=x_pizza'], ['--rid=la_musa', '--apply', '--dry-run'], ['--rid=la_musa', '--dryrun'], ['--rid=la_musa', '--to=v2', '--to=v3'],
+                        ['--rid=', '--apply'], ['--rid=la_musa', 'positional'], ['--rid=la_musa', '--apply', '--apply']]) {
+      const a = tool === 'rollback-version.js' ? args.filter((x) => x !== '--apply') : args.filter((x) => !x.startsWith('--to='));
+      if (tool === 'rollback-version.js' && a.length === args.length && args.includes('--apply')) continue;
+      const r = cli(tool, [...a, ...(tool === 'rollback-version.js' && !a.some((x) => x.startsWith('--to=')) ? extra : []), '--project', expectedProject()]);
+      assert.strictEqual(r.code, 1, `${JSON.stringify(a)}: exit 1 (got ${r.code}) — ${r.out.replace(/\s+/g, ' ').slice(0, 200)}`);
+      assert.match(r.out, /REFUSED — /, `${JSON.stringify(a)}: a REFUSED line`);
+      assert.ok(!/credential/i.test(r.out), `${JSON.stringify(a)}: refused BEFORE any client`);
+    }
+  });
+}
+cell('RF-STRICT-ARGS-APPLY-NOT-ACCEPTED-BY-ROLLBACK', () => {
+  const r = cli('rollback-version.js', ['--rid=la_musa', '--to=v2', '--apply', '--project', expectedProject()]);
+  assert.ok(r.code === 1 && /REFUSED — /.test(r.out), `rollback has no --apply: refused (got ${r.code})`);
+});
+
 console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\ncert-rid-form: OK (${pass})`);
 process.exit(fails.length ? 1 : 0);
