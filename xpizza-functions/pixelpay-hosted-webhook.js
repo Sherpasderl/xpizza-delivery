@@ -150,22 +150,25 @@ async function setPaidOnce(db, attemptId, { paidAt, reference }) {
 
 // A SECOND distinct verified payment on one attempt (owner 2026-11-02): it is NEVER voided automatically — on a live or a
 // cancelled order alike — a person refunds it in PixelPay. It is recorded ONCE under a collision-resistant key (sha256 of the
-// exact payment id, which is kept inside the record), and the record, the durable alert and the order's manual-review flag are
-// ONE atomic multi-location write: all land or none does, and a failure answers 5xx so PixelPay re-delivers. The first
-// payment's binding, reference and paid_at are never touched, and no provider text is copied anywhere.
+// exact payment id, which is kept inside the record). The record is CLAIMED absent-only (a transaction: an existing record for
+// the same payment is a no-op, one for another payment id is refused), so its first sighting is never rewritten; the durable
+// alert and the order's manual-review flag are then written from the COMMITTED record, so a late or concurrent re-delivery
+// writes byte-identical values. Any failure answers 5xx so PixelPay re-delivers and the next delivery completes the alert and
+// flag. The first payment's binding, reference and paid_at are never touched, and no provider text is copied anywhere.
 const extraKey = (uuid) => crypto.createHash('sha256').update(String(uuid)).digest('hex');
 async function handleExtraPayment(deps, { orderId, attemptId, uuid, amount, now }) {
   const { db } = deps;
   const key = extraKey(uuid);
   const recPath = `payment_attempts/${attemptId}/extra_payments/${key}`;
-  let existing;
-  try { existing = (await db.ref(recPath).once('value')).val(); } catch (_) { return { code: 500, outcome: 'extra_payment_read_failed' }; }
-  if (existing && existing.uuid !== uuid) return { code: 500, outcome: 'extra_payment_key_mismatch' };   // never write over another payment's record
-  const at = existing && Number.isFinite(existing.at) ? existing.at : now;
+  let rec;
+  try {
+    const claim = await db.ref(recPath).transaction((cur) => (cur == null ? { uuid, amount_cents: toCents(amount), at: now } : undefined));
+    rec = claim.snapshot && claim.snapshot.val();
+  } catch (_) { return { code: 500, outcome: 'extra_payment_claim_failed' }; }
+  if (!rec || rec.uuid !== uuid) return { code: 500, outcome: 'extra_payment_key_mismatch' };   // never write over another payment's record
   try {
     await db.ref().update({
-      [recPath]: { uuid, amount_cents: toCents(amount), at },
-      [`dispatcher_alerts/extra_payment_${key}`]: { type: 'payment_extra_payment_received', detail: { orderId, attemptId }, created_at: at },
+      [`dispatcher_alerts/extra_payment_${key}`]: { type: 'payment_extra_payment_received', detail: { orderId, attemptId }, created_at: rec.at },
       [`orders/${orderId}/extra_payment_review`]: true,
     });
   } catch (_) { return { code: 500, outcome: 'extra_payment_write_failed' }; }
