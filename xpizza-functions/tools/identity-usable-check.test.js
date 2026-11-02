@@ -89,6 +89,40 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.throws(() => net.connect(9, '127.0.0.1'), /egress refused/, 'IUC-EGRESS: a local / IP-literal connect throws');
     assert.throws(() => require('tls').connect({ host: 'example.com', port: 443 }), /egress refused/, 'IUC-EGRESS: a non-Google TLS connect throws');
     ok('egress: Google API / Firebase hosts only; others (incl. local and IP literals) refused');
+    // gRPC resolves a Google host and connects to the ADDRESS: an IP is allowed only once resolved from a Google NAME
+    assert.ok(!T.egressAllowed('142.250.1.1'), 'IUC-EGRESS-RESOLVED-IP: an unresolved IP is refused');
+    T.noteResolved([{ address: '142.250.1.1' }]);
+    assert.ok(T.egressAllowed('142.250.1.1'), 'IUC-EGRESS-RESOLVED-IP: an IP resolved from a Google name is allowed (the gRPC path)');
+    await require('dns').promises.lookup('127.0.0.1');
+    assert.ok(!T.egressAllowed('127.0.0.1'), 'IUC-EGRESS-RESOLVED-IP: looking up an IP literal never makes it connectable');
+    await assert.rejects(require('dns').promises.lookup('example.com'), (e) => T.classifyError(e) === 'EGRESS_REFUSED:other', 'IUC-EGRESS-RESOLVED-IP: a non-Google name is refused at DNS, class EGRESS_REFUSED:other');
+    ok('egress: an IP is connectable only after this process resolved it from a Google name (gRPC); non-Google names refused at DNS');
+  }
+  {
+    const SECRET = 'tb_SECRET_catalog_id';
+    const table = [
+      [{ message: `Could not load the default credentials. ${SECRET}` }, 'ADC_MISSING'],
+      [{ message: `invalid_grant: reauth related error (${SECRET})` }, 'ADC_EXPIRED'],
+      [{ message: `Failed to read credentials from file /x/${SECRET}.json` }, 'ADC_MISSING'],   // measured: GOOGLE_APPLICATION_CREDENTIALS → a missing file
+      [{ message: 'Failed to initialize Google Cloud Firestore client with the available credentials. Must initialize the SDK with a certificate credential or application default credentials to use Cloud Firestore API.' }, 'ADC_MISSING'],   // measured: no usable ADC at firestore()
+      [{ code: 2, message: `2 UNKNOWN: Getting metadata from plugin failed with error: invalid_client ${SECRET}` }, 'ADC_INVALID'],   // measured: a void ADC file through the real gRPC + oauth path
+      [{ code: 7, message: `7 PERMISSION_DENIED: ${SECRET}` }, 'PERMISSION_DENIED'],
+      [{ code: 16, message: 'UNAUTHENTICATED' }, 'UNAUTHENTICATED'],
+      [{ code: 14, message: `14 UNAVAILABLE: ${SECRET}` }, 'FIRESTORE_UNAVAILABLE'],
+      [{ message: 'identity-usable-check: refused Firestore DocumentReference.set — this tool is read-only' }, 'GUARD_TRIPPED:DocumentReference.set'],
+      [{ message: SECRET }, 'UNKNOWN'],
+    ];
+    for (const [e, want] of table) assert.strictEqual(T.classifyError(e), want, `IUC-ERROR-CLASS: ${want}`);
+    assert.strictEqual(T.hostClass('169.254.169.254'), 'metadata', 'IUC-ERROR-CLASS: the metadata server has its own class');
+    const reg = await T.checkIdentityUsable({ db: {}, verifier: {}, build: async () => ({}), listIds: async () => { throw Object.assign(new Error(`7 PERMISSION_DENIED ${SECRET}`), { code: 7 }); } }).then(() => null, (e) => e);
+    const line = T.failureLine(reg, 'builder');
+    assert.ok(/stage=registry-list class=PERMISSION_DENIED/.test(line), `IUC-ERROR-CLASS: a registry failure names its stage + class (got ${line})`);
+    assert.ok(!line.includes(SECRET) && !line.includes('7 PERMISSION_DENIED'), 'IUC-ERROR-CLASS: the failure line carries no message text');
+    const rows = await T.checkIdentityUsable({ db: {}, verifier: {}, build: async () => { throw new Error(`Could not load the default credentials ${SECRET}`); }, listIds: async () => ['tb_a'] });
+    assert.strictEqual(rows.rows[0].error_class, 'ADC_MISSING', 'IUC-ERROR-CLASS: a per-restaurant error carries its class');
+    assert.ok(!T.render(rows).includes(SECRET), 'IUC-ERROR-CLASS: no message text in the rendered rows');
+    assert.ok(/application-default login/.test(T.failureLine({ message: 'Could not load the default credentials' }, 'init')), 'IUC-ERROR-CLASS: ADC_MISSING prints its fixed remedy');
+    ok('error classes: ADC_MISSING / ADC_EXPIRED / PERMISSION_DENIED / UNAUTHENTICATED / FIRESTORE_UNAVAILABLE / GUARD_TRIPPED / EGRESS_REFUSED / UNKNOWN + stage; no message text');
   }
   {
     const cli = path.join(__dirname, 'identity-usable-check.js');

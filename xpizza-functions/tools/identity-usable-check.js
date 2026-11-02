@@ -16,6 +16,7 @@
 // Any restaurant whose check errors makes the run exit 1.
 const net = require('net');
 const tls = require('tls');
+const dns = require('dns');
 
 const REASONS = new Set(['no_active_version', 'active_version_missing', 'content_integrity', 'row_invalid']);
 const RID_RE = /^[a-z][a-z0-9_]{0,40}$/;
@@ -30,8 +31,29 @@ function refuseEmulatorConfig(env = process.env) {
 }
 
 function googleHost(host) { return typeof host === 'string' && GOOGLE_HOSTS.some((re) => re.test(host.toLowerCase().replace(/\.$/, ''))); }
+const isIp = (h) => typeof h === 'string' && net.isIP(h) !== 0;
+// gRPC (Firestore) resolves a Google host itself and then connects to the ADDRESS: an IP is allowed only if THIS process
+// resolved it from an allowed Google host name.
+const RESOLVED = new Set();
+const noteResolved = (addrs) => { for (const a of [].concat(addrs || [])) { const ip = typeof a === 'string' ? a : a && a.address; if (isIp(ip)) RESOLVED.add(ip); } };
+function egressAllowed(host) { return googleHost(host) || (isIp(host) && RESOLVED.has(host)); }
+// A fixed CLASS for a refused destination — never the destination itself.
+function hostClass(host) {
+  if (typeof host !== 'string' || !host) return 'none';
+  const h = host.toLowerCase();
+  if (/(^|\.)googleapis\.com$/.test(h)) return 'googleapis';
+  if (/\.firebaseio\.com$|\.firebasedatabase\.app$/.test(h)) return 'firebaseio';
+  if (h === 'metadata.google.internal' || h === '169.254.169.254') return 'metadata';
+  if (isIp(h)) return 'ip';
+  return 'other';
+}
+const lastRefusal = { hostClass: null, guard: null };
+function egressError(host) {
+  lastRefusal.hostClass = hostClass(host);
+  return Object.assign(new Error('identity-usable-check: egress refused (only Google API / Firebase hosts are allowed)'), { iucClass: `EGRESS_REFUSED:${lastRefusal.hostClass}` });
+}
 
-// Refuse any outbound socket to a non-Google host (hostname-level; an IP literal or a missing host is refused).
+// Refuse any outbound socket / name resolution outside the Google API / Firebase domains.
 function restrictEgress() {
   const hostOf = (args) => {
     const a0 = args[0];
@@ -40,26 +62,63 @@ function restrictEgress() {
     if (typeof args[1] === 'string') return args[1];
     return null;
   };
+  const origLookup = dns.lookup;
+  dns.lookup = function guardedLookup(hostname, options, cb) {
+    const callback = typeof options === 'function' ? options : cb;
+    if (!googleHost(hostname) && !isIp(hostname)) { const e = egressError(hostname); return process.nextTick(() => callback(e)); }
+    return origLookup.call(dns, hostname, typeof options === 'function' ? {} : options, (err, address, family) => { if (!err && googleHost(hostname)) noteResolved(Array.isArray(address) ? address : [address]); callback(err, address, family); });   // only a Google NAME's addresses become connectable
+  };
+  const origPLookup = dns.promises.lookup;
+  dns.promises.lookup = async function guardedPLookup(hostname, options) {
+    if (!googleHost(hostname) && !isIp(hostname)) throw egressError(hostname);
+    const r = await origPLookup.call(dns.promises, hostname, options);
+    if (googleHost(hostname)) noteResolved(Array.isArray(r) ? r : [r]);   // only a Google NAME's addresses become connectable
+    return r;
+  };
   const origConnect = net.Socket.prototype.connect;
   net.Socket.prototype.connect = function guardedConnect(...args) {
     const h = hostOf(args);
-    if (!googleHost(h)) throw new Error('identity-usable-check: egress refused (only Google API / Firebase hosts are allowed)');
+    if (!egressAllowed(h)) throw egressError(h);
     return origConnect.apply(this, args);
   };
   const origTls = tls.connect;
   tls.connect = function guardedTls(...args) {
     const h = hostOf(args);
-    if (!googleHost(h)) throw new Error('identity-usable-check: egress refused (only Google API / Firebase hosts are allowed)');
+    if (!egressAllowed(h)) throw egressError(h);
     return origTls.apply(this, args);
   };
 }
+
+// A FIXED error class for a failure — the message itself is never printed (it could carry ids). Allowlisted outputs only.
+function classifyError(e) {
+  if (!e) return 'UNKNOWN';
+  if (typeof e.iucClass === 'string' && /^(EGRESS_REFUSED:(googleapis|firebaseio|metadata|ip|other|none)|GUARD_TRIPPED:[A-Za-z.()-]+)$/.test(e.iucClass)) return e.iucClass;
+  const m = String(e.message || '');
+  const code = e.code;
+  if (/egress refused/.test(m)) return `EGRESS_REFUSED:${lastRefusal.hostClass || 'none'}`;
+  if (/this tool is read-only/.test(m)) { const g = m.match(/refused (?:Firestore )?([A-Za-z]+\.[A-Za-z]+)/); return `GUARD_TRIPPED:${g ? g[1] : 'unknown'}`; }
+  if (/Could not load the default credentials|could not find default credentials|ENOENT.*application_default_credentials|Failed to read credentials from file|Failed to initialize Google Cloud Firestore client with the available credentials/i.test(m)) return 'ADC_MISSING';
+  if (/invalid_grant|invalid_rapt|reauth|expired/i.test(m)) return 'ADC_EXPIRED';
+  if (/invalid_client|unauthorized_client|Getting metadata from plugin failed/.test(m)) return 'ADC_INVALID';
+  if (code === 7 || /PERMISSION_DENIED/.test(m)) return 'PERMISSION_DENIED';
+  if (code === 16 || /UNAUTHENTICATED/.test(m)) return 'UNAUTHENTICATED';
+  if (code === 14 || code === 4 || /UNAVAILABLE|DEADLINE_EXCEEDED|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EAI_AGAIN/.test(m) || /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EAI_AGAIN/.test(String(code))) return 'FIRESTORE_UNAVAILABLE';
+  return 'UNKNOWN';
+}
+const REMEDY = {
+  ADC_MISSING: 'run: gcloud auth application-default login   (this tool uses Application Default Credentials, not the gcloud user token)',
+  ADC_EXPIRED: 'run: gcloud auth application-default login   (the stored ADC grant expired or needs re-auth)',
+  ADC_INVALID: 'run: gcloud auth application-default login   (the Application Default Credentials file is not a valid credential)',
+  PERMISSION_DENIED: 'the ADC identity lacks Firestore read access on xpizza-delivery',
+  UNAUTHENTICATED: 'the ADC credential was rejected — re-run gcloud auth application-default login',
+};
 
 function patch(cls, methods, label) {
   if (!cls || !cls.prototype) throw new Error(`identity-usable-check: ${label} class missing — refusing to run unguarded`);
   const out = [];
   for (const m of methods) {
     if (typeof cls.prototype[m] !== 'function') continue;
-    cls.prototype[m] = function denied() { throw refused(`${label}.${m}`); };
+    cls.prototype[m] = function denied() { throw Object.assign(refused(`${label}.${m}`), { iucClass: `GUARD_TRIPPED:${label}.${m}` }); };
     out.push(`${label}.${m}`);
   }
   return out;
@@ -109,13 +168,14 @@ function readOnlyFirestore(db) {
 // Pure core: one row of booleans/counts per restaurant. `build` defaults to the real manifest builder.
 async function checkIdentityUsable({ db, listIds, verifier, build }) {
   const builder = build || require('../catalog/identity-manifest').buildIdentityManifest;
-  const ids = await listIds();
+  let ids;
+  try { ids = await listIds(); } catch (e) { throw Object.assign(new Error('registry listing failed'), { iucStage: 'registry-list', iucClass: classifyError(e) }); }
   const rids = (Array.isArray(ids) ? ids : []).filter((r) => typeof r === 'string' && RID_RE.test(r)).sort();
   const skipped = (Array.isArray(ids) ? ids.length : 0) - rids.length;
   const rows = [];
   for (const rid of rids) {
     let r;
-    try { r = await builder({ db, rid, verifier }); } catch (_) { rows.push({ rid, ok: false, reason: 'error', eligible: false }); continue; }
+    try { r = await builder({ db, rid, verifier }); } catch (e) { rows.push({ rid, ok: false, reason: 'error', error_class: classifyError(e), eligible: false }); continue; }
     if (!r || r.ok !== true) {
       rows.push({ rid, ok: false, reason: REASONS.has(r && r.reason) ? r.reason : 'other', eligible: false });
       continue;
@@ -134,7 +194,7 @@ async function checkIdentityUsable({ db, listIds, verifier, build }) {
 function render({ rows, skipped_ids, errored }) {
   const lines = ['rid                      ok     identity_eligible  dish_rows  extra_rows  rows_with_cid  reason'];
   for (const r of rows) {
-    lines.push(`${r.rid.padEnd(24)} ${String(r.ok).padEnd(6)} ${String(r.eligible).padEnd(18)} ${String(r.dish_rows ?? '-').padEnd(10)} ${String(r.extra_rows ?? '-').padEnd(11)} ${String(r.rows_with_cid ?? '-').padEnd(14)} ${r.reason || '-'}`);
+    lines.push(`${r.rid.padEnd(24)} ${String(r.ok).padEnd(6)} ${String(r.eligible).padEnd(18)} ${String(r.dish_rows ?? '-').padEnd(10)} ${String(r.extra_rows ?? '-').padEnd(11)} ${String(r.rows_with_cid ?? '-').padEnd(14)} ${r.reason || '-'}${r.error_class ? ` (${r.error_class})` : ''}`);
   }
   if (skipped_ids) lines.push(`(${skipped_ids} registry id(s) skipped: not a valid restaurant id)`);
   if (errored) lines.push(`(${errored} restaurant(s) could not be checked — exit 1)`);
@@ -143,7 +203,14 @@ function render({ rows, skipped_ids, errored }) {
   return lines.join('\n');
 }
 
-module.exports = { checkIdentityUsable, denyAllWrites, readOnlyFirestore, restrictEgress, refuseEmulatorConfig, googleHost, render };
+// The one line printed on a whole-run failure: a fixed stage + a fixed class (+ a fixed remedy). Nothing else.
+function failureLine(e, stage) {
+  const cls = (e && e.iucClass) || classifyError(e);
+  const st = (e && e.iucStage) || stage || 'unknown';
+  return `identity-usable-check FAILED — stage=${st} class=${cls}${REMEDY[cls] ? ` — ${REMEDY[cls]}` : ''}`;
+}
+
+module.exports = { checkIdentityUsable, denyAllWrites, readOnlyFirestore, restrictEgress, refuseEmulatorConfig, googleHost, egressAllowed, noteResolved, hostClass, classifyError, failureLine, render };
 
 if (require.main === module) {
   try { refuseEmulatorConfig(); restrictEgress(); denyAllWrites(); }                 // BEFORE the project guard touches any client
@@ -153,10 +220,13 @@ if (require.main === module) {
   const admin = require('firebase-admin');
   const { createCatalogVerifier } = require('../catalog/catalog-verifier');
   const { makeFirestoreRegistryReader } = require('../catalog/restaurant-registry');
-  admin.initializeApp({ credential: admin.credential.applicationDefault(), projectId: PROJECT_ID });
-  const db = readOnlyFirestore(admin.firestore());
-  const verifier = createCatalogVerifier({ db, log: () => {} });   // the verifier's own diagnostics are silenced (they can name ids)
+  let db, verifier;
+  try {
+    admin.initializeApp({ credential: admin.credential.applicationDefault(), projectId: PROJECT_ID });
+    db = readOnlyFirestore(admin.firestore());
+    verifier = createCatalogVerifier({ db, log: () => {} });   // the verifier's own diagnostics are silenced (they can name ids)
+  } catch (e) { console.error(failureLine(e, 'init')); process.exit(1); }
   checkIdentityUsable({ db, listIds: makeFirestoreRegistryReader(db), verifier })
     .then((r) => { console.log(render(r)); process.exit(r.errored ? 1 : 0); })
-    .catch(() => { console.error('identity-usable-check FAILED (no details printed: they could carry catalog ids)'); process.exit(1); });
+    .catch((e) => { console.error(failureLine(e, 'builder')); process.exit(1); });   // a fixed stage + class only — never the message
 }
