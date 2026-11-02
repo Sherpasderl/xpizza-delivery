@@ -60,7 +60,7 @@
   },
   "clocks": {
    "display": 37,
-   "business-sample": 164,
+   "business-sample": 165,
    "persisted-stamp": 61,
    "business-comparison": 14,
    "io-deadline": 4
@@ -52276,6 +52276,11 @@
   {
    "key": "xpizza-functions/signup-endpoints.js:makeSignup>anon:Date.now()",
    "line": 29,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/signup-endpoints.js:drainRatingRedactions:Date.now()",
+   "line": 227,
    "class": "business-sample"
   },
   {
