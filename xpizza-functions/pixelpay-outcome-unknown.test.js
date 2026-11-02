@@ -257,6 +257,87 @@ async function cell(name, fn) { try { await fn(); } catch (e) { fails.push(name)
     ok(`${label} → confirmed`);
   });
 
+  // ── codex P5a r1 #1: a complete-looking 2xx that does not carry the action's evidence is UNKNOWN ──
+  // POU-CAPTURE-NO-SUCCESS-200: an approved capture body WITHOUT `success` must not decline + release.
+  for (const [label, body] of [['POU-CAPTURE-NO-SUCCESS-200', { data: { response_approved: true, transaction_approved_amount: 385, payment_hash: HASH } }], ['POU-CAPTURE-EMPTY-OBJECT-200', {}]]) {
+    await cell(label, async () => {
+      const db = makeDb(redeemedOrder());
+      installFetch({ status: [STATUS_OK('authorized')], capture: [json(200, body)] });
+      const r = await confirmOnlinePayment(deps(db), { orderId: 'TB-1', paymentUuid: 'S-tb', now: 1000 });
+      assert.strictEqual(r.outcome, 'capture_error_retryable', `${label}: outcome must be capture_error_retryable, got ${r.outcome}`);
+      assert.ok(String(r.error).includes('envelope_incomplete'), `${label}: classified envelope_incomplete, got ${r.error}`);
+      assertNotDeclined(db, label);
+    });
+  }
+
+  // POU-412-STATUS-EMPTY: capture 412, the disambiguating status says nothing ({}) → never a decline / release.
+  await cell('POU-412-STATUS-EMPTY', async () => {
+    const label = 'POU-412-STATUS-EMPTY';
+    const db = makeDb(redeemedOrder());
+    installFetch({ status: [STATUS_OK('authorized'), json(200, {})], capture: [json(412, { success: false, message: 'Error al encontrar el cobro' })] });
+    const { r, e } = await settle(confirmOnlinePayment(deps(db), { orderId: 'TB-1', paymentUuid: 'S-tb', now: 1000 }));
+    if (e) assert.strictEqual(e.code, 'PIXELPAY_OUTCOME_UNKNOWN', `${label}: a rejection must carry the unknown-outcome code, got ${e.code} ${e.message}`);
+    else assert.notStrictEqual(r.outcome, 'capture_failed', `${label}: must not resolve as capture_failed`);
+    assertNotDeclined(db, label);
+  });
+
+  // POU-412-STATUS-NON2XX: capture 412, the status lookup itself fails (HTTP 500, no status) → insufficient
+  // evidence to call it "not paid" → manual reconciliation, never a decline / release.
+  await cell('POU-412-STATUS-NON2XX', async () => {
+    const label = 'POU-412-STATUS-NON2XX';
+    const db = makeDb(redeemedOrder());
+    installFetch({ status: [STATUS_OK('authorized'), json(500, { success: false, message: 'err' })], capture: [json(412, { success: false, message: 'Error al encontrar el cobro' })] });
+    const r = await confirmOnlinePayment(deps(db), { orderId: 'TB-1', paymentUuid: 'S-tb', now: 1000 });
+    assert.strictEqual(r.outcome, 'manual_reconciliation', `${label}: an unknown status after a 412 → manual_reconciliation, got ${r.outcome}`);
+    assertNotDeclined(db, label);
+  });
+
+  // POU-STALE-RETRY-NO-RECAPTURE: lost capture body, then a stale re-drive whose status pre-check says nothing ({})
+  // must NOT send a second capture.
+  await cell('POU-STALE-RETRY-NO-RECAPTURE', async () => {
+    const label = 'POU-STALE-RETRY-NO-RECAPTURE';
+    const db = makeDb(redeemedOrder());
+    const calls = installFetch({ status: [STATUS_OK('authorized'), json(200, {})], capture: [{ kind: 'bodyLost' }, CAPTURE_OK] });
+    await confirmOnlinePayment(deps(db), { orderId: 'TB-1', paymentUuid: 'S-tb', now: 1000 });
+    await settle(confirmOnlinePayment(deps(db), { orderId: 'TB-1', paymentUuid: 'S-tb', now: 1000 + 90001 }));
+    assert.strictEqual(calls.capture, 1, `${label}: an empty status on the re-drive must not lead to a second capture (got ${calls.capture})`);
+    assertNotDeclined(db, label);
+  });
+
+  // POU-STATUS-COMPAT-NO-SUCCESS (compatibility control): a status body WITHOUT `success` but WITH data.status is a
+  // real answer — "paid" must still be honoured (→ manual reconciliation for an unverified capture), never unknown.
+  await cell('POU-STATUS-COMPAT-NO-SUCCESS', async () => {
+    const label = 'POU-STATUS-COMPAT-NO-SUCCESS';
+    installFetch({ status: [json(200, { data: { status: 'paid', attemps: 1 } })] });
+    const { r, e } = await settle(realClient.getStatus({ payment_uuid: 'S-tb' }));
+    assert.ok(!e, `${label}: a status body with data.status must not throw, got ${e && e.message}`);
+    assert.strictEqual(realClient.interpretStatus(r).paid, true, `${label}: data.status "paid" is honoured`);
+  });
+
+  // POU-VOID-NO-SUCCESS-200: a void 200 without `success` is not an "anulada" → refund_pending, never voided.
+  await cell('POU-VOID-NO-SUCCESS-200', async () => {
+    const label = 'POU-VOID-NO-SUCCESS-200';
+    const db = makeDb({ payment_attempts: { A: { order_id: 'TB-1', status: 'captured', payment_uuid: 'S-tb' } } });
+    installFetch({ void: [json(200, {})] });
+    const r = await voidOrRefund({ db, client: realClient, alert: () => {} }, { orderId: 'TB-1', attemptId: 'A', pixelpayOrderId: 'TB-1-A', paymentUuid: 'S-tb', reason: 'cancel', now: 1000 });
+    assert.strictEqual(r.outcome, 'refund_pending', `${label}: refund_pending, got ${r.outcome}`);
+    assert.ok(/envelope_incomplete/.test(String(r.message)), `${label}: the void message names envelope_incomplete, got ${r.message}`);
+  });
+
+  // POU-MISMATCH-VOID-UNKNOWN (codex P5a r1 #4): a captured-but-mismatched payment whose void outcome is unknown →
+  // reported as not voided, refund_pending, and the reward hold is SECURED (held_paid), never left to expire.
+  await cell('POU-MISMATCH-VOID-UNKNOWN', async () => {
+    const label = 'POU-MISMATCH-VOID-UNKNOWN';
+    const db = makeDb(redeemedOrder());
+    const bad = json(200, { success: true, data: { response_approved: true, transaction_approved_amount: 385, payment_hash: 'deadbeef', transaction_reference: 'R' } });
+    installFetch({ status: [STATUS_OK('authorized')], capture: [bad], void: [{ kind: 'bodyLost' }] });
+    const r = await confirmOnlinePayment(deps(db), { orderId: 'TB-1', paymentUuid: 'S-tb', now: 1000 });
+    assert.strictEqual(r.outcome, 'mismatch_voided', `${label}: outcome mismatch_voided, got ${r.outcome}`);
+    assert.strictEqual(r.voided, false, `${label}: voided:false on an unknown void`);
+    assert.strictEqual(db.getAt('orders/TB-1').payment_status, 'refund_pending', `${label}: order refund_pending`);
+    assert.strictEqual(holdState(db), 'held_paid', `${label}: the reward hold is secured held_paid (got ${holdState(db)})`);
+  });
+
   if (fails.length) { console.error(`\nFAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }
   console.log(`\nAll ${pass} outcome-unknown tests passed.`);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
