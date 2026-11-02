@@ -313,6 +313,10 @@
       ".read": false,
       ".write": false
     },
+    "ratings_v2": {
+      ".read": false,
+      ".write": false
+    },
     "public_stats": {
       ".read": true,
       ".write": false
