@@ -324,6 +324,14 @@
       ".read": false,
       ".write": false
     },
+    "stats_buckets": {
+      ".read": false,
+      ".write": false
+    },
+    "stats_agg": {
+      ".read": false,
+      ".write": false
+    },
     "ratings_redact_pending": {
       ".read": false,
       ".write": false,
