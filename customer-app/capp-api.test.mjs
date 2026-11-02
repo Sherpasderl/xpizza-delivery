@@ -958,4 +958,20 @@ test('cash-chips r2: a fresh (non-replay) send is refused when the caller says t
   assert.equal(R.srv.of('createOrder').length, 0, '🔴 CC-r2-fresh: no request');
   const rec = placeRec(R.storage); assert.ok(!rec || !(Number(rec.dispatched) > 0), '🔴 CC-r2-fresh: nothing dispatched on record');
 });
+// Codex cash-chips r3 P1: the no-quote exception is granted ONLY to a replayable record — sent_body PARSES to an object whose order_id
+// is the retained record's. An unreadable / "null" / foreign body ⇒ replay_requote before anything is built or recorded (no request)
+for (const [label, bad] of [['invalid JSON', () => '{not json'], ['"null"', () => 'null'], ['a mismatched order id', (rec) => JSON.stringify({ ...JSON.parse(rec.sent_body), order_id: 'TA-OTHER' })]]) {
+  test(`cash-chips r3: freshOk:false with a retained record whose sent_body is ${label} ⇒ replay_requote, no request`, async () => {
+    const storage = memStorage(), srv = server({ createOrder: ['network', OK_CASH] }, storage);
+    const mk = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, schedulingLive: true },
+      fetch: srv.fetch, storage, now: () => at(12), sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} });
+    const first = await mk().place(placeArgs('cash'));
+    assert.equal(first.kind, 'offline', 'premise: the first send was lost (retained)');
+    const rec = placeRec(storage); assert.ok(rec && rec.sched_pending === true && typeof rec.sent_body === 'string', 'premise: a retained record');
+    storage.setItem('capp:rid_a:pending_place', JSON.stringify({ ...rec, sent_body: bad(rec) }));
+    const out = await mk().place({ ...placeArgs('cash'), freshOk: false });
+    assert.equal(out && out.kind, 'replay_requote', `🔴 CC-r3: ${label} ⇒ refused locally`);
+    assert.equal(srv.of('createOrder').length, 1, `🔴 CC-r3: ${label} ⇒ no second request`);
+  });
+}
 

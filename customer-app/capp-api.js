@@ -236,6 +236,8 @@
     // Codex G7 r1 #1 / r2: a RETAINED send — dispatched, its answer still uncertain, its exact body recorded (every send under
     // schedulingLive, ASAP included) — with its OWNER (the member uid, or GUEST_OWNER). The lock, the replay and its endpoint come from
     // THIS record only, never from the current flow; null ⇒ none
+    // a record's sent_body is replayable: it parses to an object carrying THIS record's order_id (the replay's own acceptance test)
+    function replayable(r) { if (!r || typeof r.sent_body !== 'string') return false; try { const b = JSON.parse(r.sent_body); return !!b && typeof b === 'object' && b.order_id === r.order_id; } catch (_) { return false; } }
     function retainedSend() {
       if (cfg.schedulingLive !== true) return null;
       const r = readPlace();
@@ -537,7 +539,9 @@
           priorSends = Number(rec.dispatched) || 0;   // S4: a retained identity (already dispatched by an earlier attempt)
           // Codex cash-chips r2 P1-1: the caller's no-quote allowance (freshOk:false) is for a REPLAY of the recorded body only — anything
           // that would build a FRESH body is refused here, before any freeze / dispatch is recorded for this send
-          if (p.freshOk === false && !(cfg.schedulingLive === true && !fresh && priorSends > 0 && rec.sched_pending === true && !schedSettled.has(rec.order_id) && typeof rec.sent_body === 'string')) return { kind: 'replay_requote', order_id: rec.order_id, local: true };
+          // (Codex cash-chips r3) granted ONLY when sent_body PARSES to an object whose order_id is this record's — the same test the replay
+          // itself applies — so an unreadable / "null" / foreign body can never fall through to a fresh build under the retained id
+          if (p.freshOk === false && !(cfg.schedulingLive === true && !fresh && priorSends > 0 && rec.sched_pending === true && !schedSettled.has(rec.order_id) && replayable(rec))) return { kind: 'replay_requote', order_id: rec.order_id, local: true };
           // Codex amendment r1 P2: the ticket ↔ order-id binding BEFORE anything is recorded for this identity (the freeze, confirmSend) —
           // a refused attempt leaves the record un-dispatched, so the re-verify binds to THIS id and the next place() sends it
           { const g = guestGate(p, { ticket: true, id: rec.order_id }); if (g) return g; }
