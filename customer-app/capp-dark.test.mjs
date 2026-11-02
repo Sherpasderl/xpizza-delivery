@@ -125,6 +125,7 @@ test('CappTheme: the OS preference (fail-safe light), an explicit data-theme win
   f.silentFlip(true); f.wake(); assert.deepEqual(seen, [true, false, true], '🔴 DK-theme: a wake (the media event lost while backgrounded) re-reads');
   un(); assert.equal(f.ls.size + f.vis.size, 0, '🔴 DK-theme: unsubscribe detaches both listeners');
   assert.equal(T.mapStyles(fakeWin(true).win), T.MAP_DARK); assert.equal(T.mapStyles(fakeWin(false).win), null);
+  assert.deepEqual([T.barStyle(fakeWin(true).win), T.barStyle(fakeWin(false).win)], ['DARK', 'LIGHT'], '🔴 DK-bar: Style.Dark (light icons) on dark, Style.Light on light');
 });
 
 // ── §5 the LITERAL-COLOUR guard: every colour literal outside the token blocks (capp.css rule by rule, every served module's SVG

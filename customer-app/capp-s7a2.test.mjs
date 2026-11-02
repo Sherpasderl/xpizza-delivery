@@ -239,12 +239,13 @@ function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }
 const flush = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 // stampedDir: a copy of customer-app/ stamped by the REAL platform/stamp-version.js — the page's own sherpa-client.js runs on its
 // stamped identity and capp-api.js runs in the page realm (its SherpaClient.fetch arm), the network = pageFetch (window.fetch)
-function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null, readPublic = null } = {}) {
+function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null, readPublic = null, preMount = null } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(stampedDir || HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: url || 'https://app.test/' });
   const w = dom.window;
   if (media) w.matchMedia = media.matchMedia;   // D-2: the viewport the shell reads at mount (a controllable matchMedia)
+  if (preMount) preMount(w);   // a host object present BEFORE the shell mounts (the installed app's Capacitor bridge)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
     'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
@@ -2973,6 +2974,27 @@ test('capp-dark §3: the SHELL\'s own live map (the Inicio pin editor) is built 
     flip(false); await flush(); assert.equal(m.styles, null, '🔴 DK-pinmap: restyled light in place'); assert.equal(made.length, 1, 'no new map');
     S.ui.destroy(); flip(true); await flush(); assert.equal(m.sets, 1, '🔴 DK-pinmap: destroy detaches the subscription');
   } finally { S.w.close(); }
+});
+test('capp-dark §4: the INSTALLED app\'s status-bar icons follow the theme — once at boot, then exactly ONE native call per real flip (the media event, or the resume re-read when that event was lost); the web (no plugin) is a no-op; destroy detaches', async () => {
+  let dark = true; const ls = new Set();
+  const media = { matchMedia: (q) => ({ get matches() { return q === '(prefers-color-scheme: dark)' ? dark : false; }, addEventListener: (t, f) => ls.add(f), removeEventListener: (t, f) => ls.delete(f), addListener: (f) => ls.add(f), removeListener: (f) => ls.delete(f) }) };
+  const calls = [];
+  const S = bootShell({ media, preMount: (w) => { w.Capacitor = { getPlatform: () => 'android', Plugins: { StatusBar: { setStyle: (o) => { calls.push(o.style); return Promise.resolve(); } } } }; } });
+  try {
+    await flush();
+    assert.deepEqual(calls, ['DARK'], '🔴 DK-bar: at boot, light icons on the dark page (Style.Dark)');
+    dark = false; for (const f of [...ls]) f(); await flush();
+    assert.deepEqual(calls, ['DARK', 'LIGHT'], '🔴 DK-bar: ONE call on the flip');
+    for (const f of [...ls]) f(); await flush(); assert.equal(calls.length, 2, 'no call without a real change');
+    dark = true;   // the media event is LOST while backgrounded: only the resume re-read can reconcile
+    Object.defineProperty(S.w.document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    S.w.document.dispatchEvent(new S.w.Event('visibilitychange')); await flush();
+    assert.deepEqual(calls, ['DARK', 'LIGHT', 'DARK'], '🔴 DK-bar: the resume re-read reconciles with exactly one call');
+    S.ui.destroy(); dark = false; for (const f of [...ls]) f(); await flush();
+    assert.equal(calls.length, 3, '🔴 DK-bar: destroy detaches');
+  } finally { S.w.close(); }
+  const W = bootShell({ media });   // the web: no Capacitor bridge
+  try { await flush(); dark = !dark; for (const f of [...ls]) f(); await flush(); assert.ok(W.q('.app'), 'the web shell runs with no plugin'); } finally { W.w.close(); }
 });
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {

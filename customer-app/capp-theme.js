@@ -56,6 +56,9 @@
     { featureType: 'water', elementType: 'labels.text.stroke', stylers: [{ color: '#17263c' }] },
   ]);
   const mapStyles = (win) => (isDark(win) ? MAP_DARK : null);
+  // §4: the native status bar's ICON style (@capacitor/status-bar Style): 'DARK' = light text for a dark page, 'LIGHT' = dark text.
+  // Style only — never a bar background (edge-to-edge; the page draws under the bars)
+  const barStyle = (win) => (isDark(win) ? 'DARK' : 'LIGHT');
 
-  return { isDark, subscribe, mapStyles, MAP_DARK, QUERY };
+  return { isDark, subscribe, mapStyles, barStyle, MAP_DARK, QUERY };
 });

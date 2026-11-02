@@ -1,0 +1,27 @@
+{
+  "source": "@capacitor/cli@8.4.0 (npm) \u2014 assets/android-template.tar.gz + assets/ios-pods-template.tar.gz",
+  "version": "8.4.0",
+  "why": "PLAN-capp-dark-mode \u00a74: the files apply-native-assets.js patches at `cap add`, byte-for-byte as Capacitor generates them, so its test runs against the REAL generator's output. Never edited in place.",
+  "files": {
+    "android/styles.xml": {
+      "from": "app/src/main/res/values/styles.xml",
+      "sha256": "18ebba36575e9461347ee67361b23caf095f158ee85dbefe1b83a4669ba5bd6c"
+    },
+    "android/MainActivity.java": {
+      "from": "app/src/main/java/com/getcapacitor/myapp/MainActivity.java",
+      "sha256": "f588f79852d3c2d19580611d997be24d47958d1f6c33aacb0ee76538598fb036"
+    },
+    "ios/Main.storyboard": {
+      "from": "App/App/Base.lproj/Main.storyboard",
+      "sha256": "7b7dc7acc67134bfaa80e5ce9c9068ba53db5369b9b70248aa7439fc2b09daae"
+    },
+    "ios/Splash.imageset.Contents.json": {
+      "from": "App/App/Assets.xcassets/Splash.imageset/Contents.json",
+      "sha256": "041481917eb249533ac6dd63d283bc6190b2d0642a93deda11b2ed0f6f7b605a"
+    },
+    "android/AndroidManifest.xml": {
+      "from": "app/src/main/AndroidManifest.xml",
+      "sha256": "b642d0f51d088301d0107c9b94c85994fbc612e0a7b6a9cb1754113ae1be90cd"
+    }
+  }
+}

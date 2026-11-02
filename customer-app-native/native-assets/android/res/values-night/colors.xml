@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PLAN-capp-dark-mode §4: the dark pair — page_bg = capp.css --page-bg (dark); splash_bg = «Noche» (the approved splash table) -->
+<resources>
+    <color name="page_bg">#0A0F1C</color>
+    <color name="splash_bg">#0D1B3E</color>
+</resources>

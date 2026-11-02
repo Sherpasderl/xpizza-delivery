@@ -46,7 +46,11 @@
     const Theme = o.CappTheme || g.CappTheme || null;
     const themeStyles = () => (Theme && win ? Theme.mapStyles(win) : null);
     let pinMapRef = () => null;
-    const unTheme = Theme && win ? Theme.subscribe(win, () => { const pm = pinMapRef(); if (pm && pm.m && typeof pm.m.setOptions === 'function') { try { pm.m.setOptions({ styles: themeStyles() }); } catch (_) {} } }) : null;
+    // §4: the installed app's status-bar icons follow the theme — once at boot, then on every REAL change (the subscription's media
+    // event or its resume re-read): exactly one native call per flip. The web has no such plugin (no-op)
+    const syncBar = () => { try { const sb = win && win.Capacitor && win.Capacitor.Plugins ? win.Capacitor.Plugins.StatusBar : null; if (!Theme || !sb || typeof sb.setStyle !== 'function') return; const p = sb.setStyle({ style: Theme.barStyle(win) }); if (p && typeof p.catch === 'function') p.catch(() => {}); } catch (_) {} };
+    const unTheme = Theme && win ? Theme.subscribe(win, () => { syncBar(); const pm = pinMapRef(); if (pm && pm.m && typeof pm.m.setOptions === 'function') { try { pm.m.setOptions({ styles: themeStyles() }); } catch (_) {} } }) : null;
+    syncBar();
     const storage = o.storage !== undefined ? o.storage : (() => { try { return win.localStorage; } catch (_) { return null; } })();
     // state 4 (MOCKUP-capp-native-store-update): the INSTALLED app on a NEW build (its stamp vs the last build this device ran) ⇒ the
     // cart says «App actualizada…» once (closed ⇒ gone); the device's build is recorded at once (a reopen is never «updated» again)
