@@ -1294,8 +1294,9 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .rate .fine{font-size:12.5px;color:var(--mute);line-height:1.45;margin:0}
 .rate .acts{display:flex;flex-direction:column;gap:8px}
 .rate .rate-err{margin:0;font-size:14px;color:var(--err)}
+.rate .rate-note{margin:0;font-size:14px;color:var(--mute)}
 .app.desk .sheet.rate-modal{width:520px}
-.rate-cta{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.rate-cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:54px}   /* the reserved box, «Valorar…» and «Ver tu calificación» share ONE height (Codex C-2 r1 #5) */
 .rate-cta svg{width:18px;height:18px;fill:currentColor}
 .orow{flex-wrap:wrap}
 .orow .rate-line{order:3;flex:1 0 100%;min-height:22px;padding-left:60px;display:flex;align-items:center}

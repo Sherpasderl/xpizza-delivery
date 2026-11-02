@@ -172,7 +172,11 @@
   // C-2: getMyRating's 200 body, field by field (the S-A(d) contract) — a malformed body is a failure, never a guess
   const ts = (v) => (Number.isSafeInteger(v) && v >= 0 ? v : null);
   const thumbOk = (v) => v === 1 || v === -1;
-  const DISH_ID_RE = /^[A-Za-z0-9_-]{1,64}$/, COMMENT_MAX = 500, DISHES_MAX = 30;
+  // the SERVER's dish-id rule, mirrored (Codex C-2 r1 #3): rating-v2.dishIdOk = catalog/identity-registry.validIdShape ∧ ¬RTDB_KEY_UNSAFE
+  // — a copy guarded against the server's own rule (capp-signup.test «C-2 r2 dish ids»); capp-rate uses THIS one
+  const RTDB_KEY_UNSAFE = /[.$#[\]/\u0000-\u001f\u007f]/;
+  const dishIdOk = (id) => typeof id === 'string' && id.length > 0 && id.length <= 200 && id.indexOf('/') === -1 && id !== '.' && id !== '..' && !/^__.*__$/.test(id) && !RTDB_KEY_UNSAFE.test(id);
+  const COMMENT_MAX = 500, DISHES_MAX = 30;
   const RATE_409 = new Set(['window_closed', 'not_fulfilled', 'not_rated']);
   function myRatingOf(j) {
     if (typeof j.can_rate !== 'boolean') return null;
@@ -182,7 +186,7 @@
     if (j.rating !== null) {
       const x = j.rating; if (!x || typeof x !== 'object' || Array.isArray(x)) return null;
       const store = x.store === null ? null : Number.isInteger(x.store) && x.store >= 1 && x.store <= 5 ? x.store : undefined;
-      const d = x.dishes; if (!d || typeof d !== 'object' || Array.isArray(d) || Object.entries(d).some(([k, v]) => !DISH_ID_RE.test(k) || !thumbOk(v))) return null;
+      const d = x.dishes; if (!d || typeof d !== 'object' || Array.isArray(d) || Object.entries(d).some(([k, v]) => !dishIdOk(k) || !thumbOk(v))) return null;
       if (store === undefined || !(x.delivery === null || thumbOk(x.delivery)) || !(x.legacy_thumb === null || thumbOk(x.legacy_thumb))) return null;
       if (!(x.comment === null || (typeof x.comment === 'string' && x.comment.length <= COMMENT_MAX))) return null;
       rating = { store, dishes: { ...d }, delivery: x.delivery, comment: x.comment, legacyThumb: x.legacy_thumb, ratedAt: ts(x.rated_at), editedAt: ts(x.edited_at) };
@@ -196,8 +200,8 @@
     if ('store' in f && !(f.store === null || (Number.isInteger(f.store) && f.store >= 1 && f.store <= 5))) return false;
     if ('delivery' in f && !(f.delivery === null || thumbOk(f.delivery))) return false;
     if ('comment' in f && !(f.comment === null || (typeof f.comment === 'string' && f.comment.length <= COMMENT_MAX))) return false;
-    if ('dishes' in f) { const d = f.dishes; if (!d || typeof d !== 'object' || Array.isArray(d)) return false; const ids = Object.keys(d); if (ids.length > DISHES_MAX || ids.some((k) => !DISH_ID_RE.test(k) || !thumbOk(d[k]))) return false; }
+    if ('dishes' in f) { const d = f.dishes; if (!d || typeof d !== 'object' || Array.isArray(d)) return false; const ids = Object.keys(d); if (ids.length > DISHES_MAX || ids.some((k) => !dishIdOk(k) || !thumbOk(d[k]))) return false; }
     return true;
   }
-  return { createSignupApi, CONTEXT, TIMEOUT_MS, ENDPOINTS, rowOf, receiptOf, myRatingOf };
+  return { createSignupApi, CONTEXT, TIMEOUT_MS, ENDPOINTS, rowOf, receiptOf, myRatingOf, dishIdOk, RTDB_KEY_UNSAFE };
 });

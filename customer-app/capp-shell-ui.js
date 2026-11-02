@@ -936,7 +936,7 @@
     // id ever, at idle on Inicio — never over a store / checkout or an open sheet. «Ahora no» / Enviar retire the order from the nudge.
     const RATE_READS = 5, RATE_WINDOW_MS = 7 * 24 * 3600e3, RATE_SEEN_MS = 8 * 24 * 3600e3;
     const RATE_NUDGE_KEY = 'capp:rate_nudge', RATE_DONE_KEY = 'capp:rate_done', RATE_DONE_MAX = 20;
-    const rateCache = new Map(); let rateGen = 0, rateNudgeTried = false;
+    const rateCache = new Map(); let rateGen = 0, rateNudgeTried = false, pedidosGen = 0, pedidosRun = Promise.resolve();
     const rateUid = () => (runtime.ratings === true && !!CappRate && !!suApi && !!fbAuth && S.member && S.member.uid ? S.member.uid : null);
     const doneOf = (st) => st === 'delivered' || st === 'collected';
     // ONE read per order per uid: a read in flight is shared (its promise); 'queued' reserves an entry's box before its read starts
@@ -983,17 +983,22 @@
     }
     function readPedidosRatings() {
       const rd = S.ordersRead; if (!rateUid() || !rd || rd.phase !== 'ready') return;
-      const ids = rd.past.filter((r) => rowRateable(r) && !rateCache.has(r.order_id)).slice(0, RATE_READS).map((r) => r.order_id);
+      // a row still unread (never read, or queued by a view that was left) — at most RATE_READS for THIS view
+      const unread = (id) => { const e = rateCache.get(id); return !e || e.phase === 'queued'; };
+      const ids = rd.past.filter((r) => rowRateable(r) && unread(r.order_id)).slice(0, RATE_READS).map((r) => r.order_id);
       if (!ids.length) return;
-      const gen = rateGen, uid = rateUid(); for (const id of ids) rateCache.set(id, { phase: 'queued', who: uid });
+      const gen = rateGen, view = ++pedidosGen, uid = rateUid(); for (const id of ids) rateCache.set(id, { phase: 'queued', who: uid });
       if (S.tab === 'orders' && !S.store) renderNow();   // the lines' boxes reserved before any read lands
-      idle(async () => {
+      // Codex C-2 r1 #2: ONE chain for every view — a new view's batch starts only after the previous one's read in flight, and a
+      // superseded view's batch stops (its unread rows stay queued for the next view, inside that view's cap)
+      pedidosRun = pedidosRun.then(() => new Promise((done) => idle(async () => {
         for (const id of ids) {
-          if (dead || gen !== rateGen) return;
+          if (dead || gen !== rateGen || view !== pedidosGen || S.tab !== 'orders' || S.store) break;
           await readRating(id);
-          if (!dead && gen === rateGen && S.tab === 'orders' && !S.store) renderNow();
+          if (!dead && gen === rateGen && view === pedidosGen && S.tab === 'orders' && !S.store) renderNow();
         }
-      });
+        done();
+      })));
     }
     // what the sheet needs of an order: its store (names its dishes from the store's own menu), number, mode, purchased dish ids
     function rateCtxOf(oid) {
@@ -1021,7 +1026,7 @@
       const h = doc.getElementById('rate-h'); if (h) h.focus();
       return true;
     }
-    const rateVm = () => ({ storeName: S.rate.storeName, num: S.rate.ctx.num, dishes: S.rate.dishes, delivery: S.rate.ctx.mode === 'delivery', value: S.rate.value, initial: S.rate.initial, editable: S.rate.editable, sending: S.rate.sending, error: S.rate.error });
+    const rateVm = () => ({ storeName: S.rate.storeName, num: S.rate.ctx.num, dishes: S.rate.dishes, delivery: S.rate.ctx.mode === 'delivery', value: S.rate.value, initial: S.rate.initial, editable: S.rate.editable, sending: S.rate.sending, error: S.rate.error, note: S.rate.note || null });
     // a tap re-renders the sheet and keeps focus on the same control (the comment keeps its caret)
     function rerenderRate() {
       const ae = doc.activeElement, ds = ae && ae.dataset ? { act: ae.dataset.act, id: ae.dataset.id, val: ae.dataset.val, field: ae.dataset.field } : null;
@@ -1041,16 +1046,26 @@
     async function sendRate() {
       const R = S.rate, uid = rateUid(); if (!R || !uid || R.sending || !R.editable) return;
       const fields = CappRate.fieldsToSend(R.initial, R.value, R.dishes.map((d) => d.id)); if (!Object.keys(fields).length) return;
-      R.sending = true; R.error = null; rerenderRate();
+      R.sending = true; R.error = null; R.note = null; rerenderRate();
       const gen = rateGen;
       let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
       const r = tok ? await suApi.rateOrder({ idToken: tok, orderId: R.ctx.oid, fields }) : { ok: false, reason: 'unauthenticated' };
       if (dead || gen !== rateGen || S.rate !== R) return;
       R.sending = false;
       if (!r.ok) { R.error = RATE_ERR[r.reason] || 'No pudimos enviar tu calificación. Intentá de nuevo.'; rerenderRate(); return; }   // OWNER-PENDING
-      const prev = rateCache.get(R.ctx.oid), base = R.initial || { store: null, dishes: {}, delivery: null, comment: null };
-      const rating = { ...base, ...fields, dishes: fields.dishes || base.dishes || {} };   // the writer's merge: absent fields kept, dishes whole
-      rateCache.set(R.ctx.oid, { phase: 'ready', who: uid, canRate: true, rating, editableUntil: prev && prev.phase === 'ready' ? prev.editableUntil : null });
+      // Codex C-2 r1 #1: the SERVER's record is the truth — re-read it (a write may have dropped the dish votes: dishes:'unavailable')
+      const prev = rateCache.get(R.ctx.oid); rateCache.delete(R.ctx.oid);
+      const fresh = await readRating(R.ctx.oid);
+      if (dead || gen !== rateGen || S.rate !== R) return;
+      if (!fresh) {   // the re-read failed: the writer's own merge, WITHOUT any vote it said it did not keep
+        const base = R.initial || { store: null, dishes: {}, delivery: null, comment: null };
+        rateCache.set(R.ctx.oid, { phase: 'ready', who: uid, canRate: true, rating: { ...base, ...fields, dishes: r.dishesUnavailable ? base.dishes || {} : fields.dishes || base.dishes || {} }, editableUntil: prev && prev.phase === 'ready' ? prev.editableUntil : null });
+      }
+      if (r.dishesUnavailable && fields.dishes) {   // disclosed IN the sheet: the rest is saved, the dish votes are not (OWNER-PENDING)
+        const e = rateCache.get(R.ctx.oid);
+        R.initial = e && e.rating; R.value = CappRate.fromRating(R.initial); R.error = null; R.note = 'Guardamos tu calificación, pero no pudimos guardar tu opinión de los platos.';
+        rerenderRate(); if ((S.tab === 'orders' || S.tab === 'order') && !S.store) renderNow(); return;
+      }
       closeRate(); toast('Gracias por tu calificación');   // OWNER-PENDING
     }
     function rateAct(a, t) {

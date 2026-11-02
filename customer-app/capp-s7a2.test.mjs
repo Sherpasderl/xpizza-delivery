@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -3747,11 +3748,12 @@ test('phone house row: a sold house dish shows «Agotado» in the price slot wit
 // order's purchased dishes ⇒ else 400 dish_not_purchased; v2Updater: not_fulfilled / deleted ⇒ closed / window_closed; absent fields
 // kept, `dishes` replaced WHOLE). Bodies = fixtures/c2/rating-contract.json's shapes (3a's own tests).
 const RATE_W = 604800000;
-function ratingServer({ now = () => T0 } = {}) {
-  const orders = {}, nodes = {}, purchased = {}, calls = [], rx = { inflight: 0, max: 0 };
+function ratingServer({ now = () => T0, delay = 5 } = {}) {
+  const orders = {}, nodes = {}, purchased = {}, calls = [], rx = { inflight: 0, max: 0 }, tomb = new Set(), unresolvable = new Set();
   const GEN = { ok: false, error: 'not_allowed' };
   const out = (status, json) => ({ status, ok: status === 200, json: async () => JSON.parse(JSON.stringify(json)) });
-  const uidOf = (tok) => { try { const pl = JSON.parse(Buffer.from(String(tok).split('.')[1], 'base64url').toString()); return pl && typeof pl.user_id === 'string' && pl.customer === true ? pl.user_id : null; } catch (_) { return null; } };
+  // rate-order.customerUidOf: a verified CUSTOMER token, never a handheld, the uid not tombstoned (deleted_uids) — else the generic 403
+  const uidOf = (tok) => { try { const pl = JSON.parse(Buffer.from(String(tok).split('.')[1], 'base64url').toString()); return pl && typeof pl.user_id === 'string' && pl.customer === true && pl.handheld !== true && !tomb.has(pl.user_id) ? pl.user_id : null; } catch (_) { return null; } };
   const OID = /^[A-Za-z0-9_-]{1,64}$/, thumb = (v) => v === 1 || v === -1, own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
   function parse(b) {   // rating-v2.parseRequest, the v2 kind (the only one this client sends)
     if (!b || typeof b !== 'object' || Array.isArray(b) || typeof b.order_id !== 'string' || !OID.test(b.order_id)) return null;
@@ -3767,14 +3769,14 @@ function ratingServer({ now = () => T0 } = {}) {
   async function handler(u, i = {}) {
     const url = new URL(u, 'https://fn.test'), pth = url.pathname, method = i.method || 'GET';
     calls.push({ path: pth.split('/').pop(), url: url.toString(), method, headers: i.headers || {}, body: i.body == null ? null : JSON.parse(i.body) });
-    rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); await new Promise((r) => setTimeout(r, 5)); rx.inflight--;
+    rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); await new Promise((r) => setTimeout(r, delay)); rx.inflight--;
     const uid = uidOf((i.headers || {})['x-firebase-id-token']);
     if (pth.endsWith('/getMyRating')) {
       if (method !== 'GET') return out(405, { ok: false, error: 'method_not_allowed' });
       const keys = [...url.searchParams.keys()], oid = url.searchParams.get('order_id');
       if (keys.some((k) => k !== 'order_id') || keys.length !== 1 || !OID.test(oid || '')) return out(400, { ok: false, error: 'bad_request' });
       if (!uid || !orders[oid] || orders[oid].customer_uid !== uid) return out(403, GEN);
-      const n = nodes[oid], mine = n && n.state === 'live' && n.owner_uid === uid ? n : null;
+      const n = nodes[oid], mine = n && n.state === 'live' && n.owner_uid === uid && !tomb.has(n.owner_uid) ? n : null;   // readCountable: live, owner not tombstoned
       const until = n && n.state !== 'deleted' && Number.isFinite(n.fulfilled_at) ? n.fulfilled_at + RATE_W : null;
       return out(200, { ok: true, rating: mine ? { store: mine.store ?? null, dishes: mine.dishes || {}, delivery: mine.delivery ?? null, comment: mine.comment ?? null, legacy_thumb: mine.legacy_thumb ?? null, rated_at: mine.rated_at ?? null, edited_at: mine.edited_at ?? null } : null,
         can_rate: until != null && now() <= until, editable_until: until });
@@ -3783,16 +3785,21 @@ function ratingServer({ now = () => T0 } = {}) {
     let b = null; try { b = JSON.parse(i.body); } catch (_) { b = null; }
     const req = parse(b); if (!req) return out(403, GEN);
     if (!uid || !orders[req.orderId] || orders[req.orderId].customer_uid !== uid) return out(403, GEN);
-    if (req.fields.dishes && Object.keys(req.fields.dishes).some((id) => !(purchased[req.orderId] || new Set()).has(id))) return out(400, { ok: false, error: 'dish_not_purchased' });
+    let dishesUnavailable = false;   // purchasedDishIds: an unusable identity context ⇒ the dish votes DROPPED, the rest recorded
+    if (req.fields.dishes && Object.keys(req.fields.dishes).length) {
+      if (unresolvable.has(req.orderId)) { delete req.fields.dishes; dishesUnavailable = true; }
+      else if (Object.keys(req.fields.dishes).some((id) => !(purchased[req.orderId] || new Set()).has(id))) return out(400, { ok: false, error: 'dish_not_purchased' });
+    }
+    if (!Object.keys(req.fields).length) return out(200, { ok: true, dishes: 'unavailable' });
     const cur = nodes[req.orderId];
     if (!cur || !Number.isFinite(cur.fulfilled_at)) return out(409, { ok: false, error: 'not_fulfilled' });
     if (cur.state === 'deleted') return out(403, GEN);
     if (now() > cur.fulfilled_at + RATE_W) return out(409, { ok: false, error: 'window_closed' });
     const first = cur.rated_at == null || (cur.store == null && !Object.keys(cur.dishes || {}).length && cur.delivery == null && cur.comment == null);
     nodes[req.orderId] = { ...cur, ...req.fields, ...(req.fields.dishes ? { dishes: req.fields.dishes } : {}), state: 'live', rated_at: cur.rated_at ?? now(), ...(first ? {} : { edited_at: now() }), owner_uid: cur.owner_uid ?? uid };
-    return out(200, { ok: true });
+    return out(200, { ok: true, ...(dishesUnavailable ? { dishes: 'unavailable' } : {}) });
   }
-  return { handler, calls, rx, nodes,
+  return { handler, calls, rx, nodes, tombstone: (uid) => tomb.add(uid), unresolvable: (oid) => unresolvable.add(oid),
     own: (oid, uid, dishIds = []) => { orders[oid] = { customer_uid: uid }; purchased[oid] = new Set(dishIds); },
     fulfil: (oid, at = now()) => { const n = nodes[oid]; if (n && (n.state === 'deleted' || Number.isFinite(n.fulfilled_at))) return; nodes[oid] = { ...(n || { store: null, dishes: {}, delivery: null, comment: null, legacy_thumb: null, rated_at: null, state: 'live', owner_uid: null }), fulfilled_at: at }; } };
 }
@@ -4040,4 +4047,87 @@ test('C-5 entries: the Pedidos active card\'s «Ayuda» opens the SAME sheet for
     R.click('#layer [data-act="help-wa"]'); await flush();
     assert.equal(op.length, 1); assert.ok(op[0].startsWith('https://wa.me/50490000001?text='), '🔴 H-4: the configured number');
   } finally { R.w.close(); }
+});
+// ── C-2 r2 (Codex C-2 r1 #1–#5) ──
+test('C-2 r2 server truth: a write whose dish votes the server could NOT keep (dishes:\'unavailable\') is DISCLOSED in the sheet, and the votes are not shown as saved — reopening shows the server\'s record', async () => {
+  const { S, rate, placed } = await memberDelivered();
+  try {
+    rate.unresolvable(placed.order_id);   // the store's identity context is unusable right now
+    await until(() => S.q('.mk-sheet .rate-cta') && S.q('.mk-sheet .rate-cta').style.visibility !== 'hidden');
+    S.click('.mk-sheet .rate-cta'); await until(() => S.q('#layer .rate'));
+    const dish = S.q('#layer [data-act="rate-dish"][data-val="1"]'); assert.ok(dish, 'premise: a dish row');
+    S.click('#layer [data-act="rate-star"][data-val="4"]'); await flush(); S.click(S.q('#layer [data-act="rate-dish"][data-val="1"]')); await flush();   // re-queried: a tap re-renders the sheet
+    S.click('#layer [data-act="rate-send"]'); await until(() => rate.calls.filter((c) => c.path === 'getMyRating').length >= 2); await flush(200);   // the write + the re-read
+    assert.ok(rate.calls.some((c) => c.path === 'rateOrder' && c.body.dishes), 'premise: the dish vote WAS sent');
+    assert.ok(S.q('#layer .rate'), '🔴 R2-1: the sheet stays open to disclose');
+    assert.equal(S.q('#layer .rate-note') && txt(S.q('#layer .rate-note')), 'Guardamos tu calificación, pero no pudimos guardar tu opinión de los platos.', '🔴 R2-1: disclosed in the sheet');
+    assert.deepEqual(rate.nodes[placed.order_id].dishes, {}, 'premise: the server kept no dish vote');
+    assert.equal(S.q('#layer [data-act="rate-dish"].on'), null, '🔴 R2-1: the sheet shows the SERVER\'s record (no vote)');
+    assert.equal(S.qa('#layer .stars button.on').length, 4, 'the stars were saved');
+    S.click('#layer [data-act="rate-later"]'); await flush();
+    S.click('.mk-sheet .rate-cta'); await until(() => S.q('#layer .rate'));
+    assert.equal(S.q('#layer [data-act="rate-dish"].on'), null, '🔴 R2-1: reopened — still the server\'s record');
+  } finally { S.w.close(); }
+});
+test('C-2 r2 Pedidos views: leaving and re-entering never runs two batches — ONE read at a time across views, no order read twice, ≤ 5 per view', async () => {
+  const rate = ratingServer({ delay: 400 }), db = {}, orders = {};   // a SLOW server: a left view's read is still in flight when the next view starts
+  const ids = ['XP-V1', 'XP-V2', 'XP-V3', 'XP-V4', 'XP-V5', 'XP-V6', 'XP-V7'];
+  ids.forEach((id, k) => placeReal(db, orders, 'u_ana', id, { ts: T0 - (k + 1) * 3600e3 }));
+  for (const id of ids) { rate.own(id, 'u_ana', []); rate.fulfil(id, T0 - 3600e3); }
+  const { S } = await pedidosBoot(db, { orders, rate, runtime: RATE_RT(), contextFor: AGAIN_CTX });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await until(() => rate.calls.some((c) => c.path === 'getMyRating'));
+    S.click('.tabbar [data-tab="home"]'); await flush();
+    const atLeave = rate.calls.filter((c) => c.path === 'getMyRating').length;
+    await flush(900);
+    assert.equal(rate.calls.filter((c) => c.path === 'getMyRating').length, atLeave, '🔴 R2-2: a LEFT view starts no further read');
+    S.click('.tabbar [data-tab="orders"]'); await flush();
+    await until(() => rate.rx.inflight === 1, 4000);   // a read in flight — now leave and come back AT ONCE
+    S.click('.tabbar [data-tab="home"]'); S.click('.tabbar [data-tab="orders"]'); await flush();
+    await until(() => !S.q('.orow .rate-line[aria-hidden="true"]'), 15000); await flush(300);
+    const reads = rate.calls.filter((c) => c.path === 'getMyRating').map((c) => new URL(c.url).searchParams.get('order_id'));
+    assert.equal(rate.rx.max, 1, '🔴 R2-2: one read at a time, across views');
+    assert.equal(new Set(reads).size, reads.length, `🔴 R2-2: no order read twice (${reads.join(',')})`);
+    assert.ok(reads.length <= 10 && reads.length >= 5, 'within two views\' caps');
+  } finally { S.w.close(); }
+});
+test('C-2 r2 dish ids: the client\'s rule IS the server\'s (rating-v2.dishIdOk = identity-registry.validIdShape ∧ ¬RTDB_KEY_UNSAFE) — the same answer for every edge id; the RTDB rule\'s source byte-equal', () => {
+  const A = require('./capp-signup-api.js'), R = require('./capp-rate.js'), { validIdShape } = FN_REQ('./catalog/identity-registry');
+  const local = join(ROOT, 'xpizza-functions/ratings/rating-v2.js');
+  let src = null; try { src = readFileSync(local, 'utf8'); } catch (_) { src = execFileSync('git', ['show', '1958b8ed:xpizza-functions/ratings/rating-v2.js'], { cwd: ROOT, encoding: 'utf8' }); }   // 3a's, until it lands here
+  const lit = (src.match(/const RTDB_KEY_UNSAFE = (\/.*\/);/) || [])[1]; assert.ok(lit, 'premise: the server\'s RTDB key rule');
+  assert.equal(String(A.RTDB_KEY_UNSAFE), lit, '🔴 R2-3: the RTDB key rule, byte-equal to the server\'s');
+  const UNSAFE = new Function(`return ${lit};`)(), server = (id) => validIdShape(id) && !UNSAFE.test(id);
+  const corpus = ['D9XRZ89WJ6', 'dish:one', 'a'.repeat(64), 'a'.repeat(65), 'a'.repeat(200), 'a'.repeat(201), '__reserved__', '__x', 'x__', '_', '.', '..', '...', 'a.b', 'a$b', 'a#b', 'a[b', 'a]b', 'a/b', '\u0000', 'a\u001fb', 'a\u007fb', 'plato-ñ', 'con espacio', '', 'x_pizza-dish-7'];
+  for (const id of corpus) { assert.equal(A.dishIdOk(id), server(id), `🔴 R2-3: «${id.slice(0, 24)}» — the transport answers like the server`); assert.equal(R.dishIdOk(id), server(id), `🔴 R2-3: «${id.slice(0, 24)}» — the sheet too`); }
+});
+test('C-2 r2 the fake is contract-strict (rule 29): a HANDHELD customer token and a TOMBSTONED caller get the generic 403; a tombstoned owner\'s node is never shown', async () => {
+  const rate = ratingServer(); rate.own('XP-F1', 'u_ana'); rate.fulfil('XP-F1'); rate.nodes['XP-F1'] = { ...rate.nodes['XP-F1'], store: 4, rated_at: T0, owner_uid: 'u_ana' };
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url'), tok = (pl) => `${b64({ alg: 'RS256' })}.${b64(pl)}.sig`;
+  const get = async (t) => { const r = await rate.handler('https://fn.test/getMyRating?order_id=XP-F1', { method: 'GET', headers: { 'x-firebase-id-token': t } }); return [r.status, await r.json()]; };
+  assert.deepEqual(await get(tok({ user_id: 'u_ana', customer: true, handheld: true })), [403, { ok: false, error: 'not_allowed' }], '🔴 R2-4: a handheld token is never a customer');
+  assert.equal((await get(TOK('u_ana')))[1].rating.store, 4, 'premise: shown to its owner');
+  rate.tombstone('u_ana');
+  assert.deepEqual(await get(TOK('u_ana')), [403, { ok: false, error: 'not_allowed' }], '🔴 R2-4: a tombstoned caller ⇒ the generic 403');
+});
+test('C-2 r2 geometry: the reserved entry, «Valorar tu pedido» and «Ver tu calificación» have ONE height — whichever state lands, nothing moves', async () => {
+  const { S } = await memberDelivered();
+  try {
+    const h = (html) => { const d = S.w.document.createElement('div'); d.className = 'mk-sheet'; d.innerHTML = html; S.q('.screen').appendChild(d); const v = S.w.getComputedStyle(d.firstElementChild).minHeight; d.remove(); return v; };
+    const R = require('./capp-rate.js');
+    assert.deepEqual([h(R.ctaHtml('pending')), h(R.ctaHtml('rate')), h(R.ctaHtml('rated'))], ['54px', '54px', '54px'], '🔴 R2-5: one height for every state');
+  } finally { S.w.close(); }
+});
+test('C-2 r2 re-read: after a write the sheet and the entry show the SERVER\'s record (another device\'s comment, written meanwhile, appears) — never the local guess', async () => {
+  const { S, rate, placed } = await memberDelivered();
+  try {
+    await until(() => S.q('.mk-sheet .rate-cta') && S.q('.mk-sheet .rate-cta').style.visibility !== 'hidden');
+    S.click('.mk-sheet .rate-cta'); await until(() => S.q('#layer .rate'));
+    rate.nodes[placed.order_id] = { ...rate.nodes[placed.order_id], comment: 'Desde la otra app', rated_at: T0, owner_uid: 'u_ana' };   // another device, meanwhile
+    S.click('#layer [data-act="rate-star"][data-val="4"]'); await flush();
+    S.click('#layer [data-act="rate-send"]'); await until(() => !S.q('#layer .rate'));
+    S.click('.mk-sheet .rate-cta'); await until(() => S.q('#layer .rate'));
+    assert.equal(S.q('#rate-comment').value, 'Desde la otra app', '🔴 R2-6: the server\'s record (re-read), not the local merge');
+    assert.equal(S.qa('#layer .stars button.on').length, 4);
+  } finally { S.w.close(); }
 });

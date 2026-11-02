@@ -22,14 +22,16 @@
   // «Muy bueno» is the mockup's; the other four are OWNER-PENDING (advisor 11-02: standard words, reviewed at the side-by-side)
   const WORDS = ['Malo', 'Regular', 'Bueno', 'Muy bueno', 'Excelente'];
   const COMMENT_MAX = 500, DISHES_MAX = 30;
-  const DISH_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+  // the server's dish-id rule — the ONE client copy lives in the member transport (loaded first in the page; required in Node)
+  const SA = (typeof self !== 'undefined' && self.CappSignupApi) || (typeof require === 'function' ? require('./capp-signup-api.js') : null);
+  const dishIdOk = (id) => !!SA && SA.dishIdOk(id);
   const thumb = (v) => (v === 1 || v === -1 ? v : null);
 
   // the dishes the sheet offers: the order's DISTINCT canonical dish ids, in order, that the store's menu NAMES (`nameOf(id)` → string|null)
   function dishesOf(ids, nameOf) {
     const out = [], seen = new Set();
     for (const id of Array.isArray(ids) ? ids : []) {
-      if (typeof id !== 'string' || !DISH_ID_RE.test(id) || seen.has(id)) continue;
+      if (!dishIdOk(id) || seen.has(id)) continue;
       seen.add(id);
       const name = typeof nameOf === 'function' ? nameOf(id) : null;
       if (typeof name === 'string' && name.trim()) out.push({ id, name: name.trim() });
@@ -65,7 +67,7 @@
     return f;
   }
 
-  // vm: { storeName, num, dishes:[{id,name}], delivery:bool, value, initial, editable, sending, error }
+  // vm: { storeName, num, dishes:[{id,name}], delivery:bool, value, initial, editable, sending, error, note }
   function sheetHtml(vm) {
     const v = vm.value || blank(), ed = vm.editable === true, off = ed ? '' : ' disabled';
     const s = Number.isInteger(v.store) ? v.store : 0;
@@ -80,7 +82,7 @@
     <div><div class="lbl">El restaurante</div><div class="stars" role="radiogroup" aria-label="Calificación del restaurante">${stars}<span class="word">${s ? WORDS[s - 1] : ''}</span></div></div>
     ${dishes}${delivery}
     <div><label class="lbl" for="rate-comment">Comentario <span class="opt">· opcional, lo lee el restaurante</span></label><textarea id="rate-comment" data-field="rate-comment" maxlength="${COMMENT_MAX}" placeholder="¿Algo que el restaurante deba saber?"${off}>${esc(v.comment || '')}</textarea></div>
-    ${vm.error ? `<p class="rate-err" role="alert">${esc(vm.error)}</p>` : ''}
+    ${vm.error ? `<p class="rate-err" role="alert">${esc(vm.error)}</p>` : ''}${vm.note ? `<p class="rate-note" role="status">${esc(vm.note)}</p>` : ''}
     <div class="acts">${ed ? `<button class="primary" data-act="rate-send"${sendable ? '' : ' disabled'}${vm.sending ? ' aria-busy="true"' : ''}>Enviar</button>` : ''}<button class="btn2 wide" data-act="rate-later">${ed ? 'Ahora no' : 'Cerrar'}</button></div>
     <p class="fine">Tu calificación es anónima para el restaurante.${ed ? ' Podés cambiarla durante 7 días desde Pedidos.' : ''}</p></div></div>`;
   }
@@ -101,5 +103,5 @@
     return '';
   }
 
-  return { WORDS, COMMENT_MAX, DISHES_MAX, dishesOf, blank, fromRating, fieldsToSend, sheetHtml, ctaHtml, lineHtml };
+  return { WORDS, COMMENT_MAX, DISHES_MAX, dishesOf, blank, fromRating, fieldsToSend, sheetHtml, ctaHtml, lineHtml, dishIdOk };
 });
