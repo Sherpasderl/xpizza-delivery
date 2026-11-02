@@ -52,6 +52,17 @@ test('Pedido recibido: the help WhatsApp derives from the ONE manifest key (runt
   const { support_whatsapp: _s, ...noHelp } = RT0;
   assert.equal('supportWhatsapp' in Boot.runtimeFor({ ...RT(), ...noHelp, support_whatsapp: undefined }, CappSignupApi), false, 'absent ⇒ no help control');
 });
+test('store-update: the installed app\'s store = runtime.store_urls by ITS platform (native only; https + the platform\'s store host) — the website, an unknown platform or a bad URL ⇒ none', () => {
+  const SU = { ios: 'https://apps.apple.com/app/id1234567890', android: 'https://play.google.com/store/apps/details?id=hn.sherpa.app' };
+  assert.deepEqual(Boot.storeFor({ mode: 'native', store_urls: SU }, 'ios'), { name: 'App Store', url: SU.ios }, '🔴 SU-boot: iOS ⇒ App Store');
+  assert.deepEqual(Boot.storeFor({ mode: 'native', store_urls: SU }, 'android'), { name: 'Google Play', url: SU.android }, '🔴 SU-boot: Android ⇒ Google Play');
+  assert.equal(Boot.storeFor({ mode: 'web', store_urls: SU }, 'ios'), null, 'the website never');
+  assert.equal(Boot.storeFor({ mode: 'native', store_urls: SU }, null), null, 'no platform ⇒ none');
+  assert.equal(Boot.storeFor({ mode: 'native', store_urls: { ios: 'http://apps.apple.com/x' } }, 'ios'), null, 'http ⇒ none');
+  assert.equal(Boot.storeFor({ mode: 'native', store_urls: { ios: 'https://evil.test/x' } }, 'ios'), null, 'a foreign host ⇒ none');
+  assert.equal(Boot.storeFor({ mode: 'native', store_urls: { android: SU.android } }, 'ios'), null, 'no entry for this platform ⇒ none');
+  assert.equal(Boot.runtimeFor(RT({ mode: 'native' }), CappSignupApi).native, true); assert.equal('native' in Boot.runtimeFor(RT({ mode: 'web' }), CappSignupApi), false);
+});
 test('N2: fetchEnvelope — getPublicMenu with the rid in the PATH, If-None-Match, 200 / 304 / 5xx / network / bad JSON', async () => {
   const calls = []; let next;
   const { c, CappShellUI } = capture();

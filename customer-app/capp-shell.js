@@ -42,7 +42,7 @@
       promoFree: !!d.fee && d.fee.state === 'priced' && Number.isInteger(d.fee.from_cents) && d.fee.from_cents >= 0 && !!(d.promo && d.promo.free_delivery),
       orderIdPrefix: typeof d.order_id_prefix === 'string' ? d.order_id_prefix : undefined,
       endpoints: rt.endpoints, intakeKey: rt.intakeKey, mapsKey: rt.mapsKey || undefined,
-      pendingPayKey: k.pay, cartKey: k.cart, placedKey: k.placed, sentKey: k.sent, entry: 'app',
+      pendingPayKey: k.pay, cartKey: k.cart, placedKey: k.placed, sentKey: k.sent, entry: 'app', ...(rt && rt.store ? { store: rt.store } : {}),
       // PLAN-capp-signin-required r5.4: the app's guest rules (card only, email, WhatsApp code) — the RUNTIME's switch, off until it ships
       ...(rt.guestCardOnly === true ? { guestCardOnly: true } : {}),
       // PLAN-intl-phone r2.3 (S-picker): the WhatsApp country picker + E.164 on the wire — the RUNTIME's switch. FLIP PRECONDITION

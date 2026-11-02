@@ -2064,6 +2064,110 @@ test('Pedido recibido · live: a claim with no driver name says the tracker\'s c
   const N = bootShell({ runtime: { ...RUNTIME, rtdbBase: 'https://rtdb.test' }, readPublic: async () => ({ ok: false }), mountExtra: { EventSource: ES2 }, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: TOKEN })), geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
   try { await flush(); await placeShellCash(N); await flush(); N.click('[data-act="order-close"]'); await flush(); assert.equal(m2[0].closed, true, '🔴 PR-live: close ⇒ the stream closed'); } finally { N.w.close(); }
 });
+// ── MOCKUP-capp-native-store-update (owner 2026-11-01: A + B, «Ahora no», state 3 without a reference, state 4 = one cart line) —
+// the INSTALLED app; the signals are INJECTED here (runtime.store from runtime.store_urls; the «latest native build» signal) ──
+const STORE_RT = { ...RUNTIME, native: true, store: { name: 'App Store', url: 'https://apps.apple.com/app/id1234567890' } };
+const F426 = (script) => (u, i) => { if (u.startsWith('/x/q')) return quoteOk(u, i); if (u.startsWith('/x/c')) { const n = script.shift(); return n === 'network' ? Promise.reject(new TypeError('Failed to fetch')) : Promise.resolve({ status: n.status, ok: n.status === 200, json: async () => n.json }); } return Promise.resolve({ status: 200, ok: true, json: async () => ({ ok: false }) }); };
+async function toShellPlace(S) {
+  await toShellCheckout(S);
+  const type = (sel, v) => { const el = S.q(sel); assert.ok(el, `premise: ${sel}`); el.value = v; el.dispatchEvent(new S.w.Event('input', { bubbles: true })); };
+  S.click('[data-act="pin"]'); await flush(); S.click('[data-act="pin-done"]'); await flush();
+  type('#f-details', 'Portón negro'); type('#f-name', 'Ana'); type('#f-phone', '9999 0000'); await flush();
+  S.click('[data-act="pay"][data-val="cash"]'); await flush();
+  S.click('#cta'); await flush(); S.click('[data-act="tipc"][data-val="0"]'); await flush(); S.click('[data-act="tip-place"]'); await flush();
+  S.click('#layer [data-act="placing-go"]'); await flush(); await flush();
+}
+const GEO_OK2 = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) };
+test('store-update state 2: the installed app\'s 426 on a send ⇒ the calm sheet «Actualizá la app para hacer pedidos» + «Abrir App Store» (opens the store URL) + «Ahora no» (closes; nothing re-sent)', async () => {
+  const opened = [];
+  const S = bootShell({ runtime: STORE_RT, apiFetch: F426([{ status: 426, json: { error: 'client_update_required', app: 'orders', required_compat: 3 } }]), geolocation: GEO_OK2 });
+  try {
+    S.w.open = (u) => { opened.push(u); return null; };
+    await flush(); await toShellPlace(S);
+    assert.equal(txt(S.q('#layer .errsheet h2')), 'Actualizá la app para hacer pedidos', '🔴 SU-2: the drawn sheet');
+    assert.equal(txt(S.q('#layer .errsheet p')), 'Esta versión ya no puede enviar pedidos. Tu carrito se guarda tal cual y te espera cuando volvás.');
+    assert.deepEqual(S.qa('#layer .errsheet .acts button').map((b) => b.textContent), ['Abrir App Store', 'Ahora no'], '🔴 SU-2: the drawn actions');
+    assert.ok(S.q('#layer .errsheet .icon.calm'), 'the calm icon, never the error red');
+    S.click('#layer [data-act="store-open"]'); await flush();
+    assert.deepEqual(opened, ['https://apps.apple.com/app/id1234567890'], '🔴 SU-2: «Abrir App Store» opens the store URL');
+    S.click('#layer [data-act="lclose"]'); await flush();
+    assert.equal(S.q('#layer .errsheet'), null, '«Ahora no» closes'); assert.equal(S.ui.store().ui.state.screen, 'checkout', 'back on the checkout as it was');
+  } finally { S.w.close(); }
+});
+test('store-update state 3: a 426 while the identity is kept in flight ⇒ «Actualizá la app para seguir» + «Tu carrito también se guarda.» — no order reference', async () => {
+  const S = bootShell({ runtime: STORE_RT, apiFetch: F426(['network', { status: 426, json: { error: 'client_update_required', app: 'orders', required_compat: 3 } }]), geolocation: GEO_OK2 });
+  try {
+    await flush(); await toShellPlace(S);
+    assert.ok(S.q('#layer [data-act="err-retry"]'), 'premise: the lost send ⇒ «Sin conexión» with «Reintentar»');
+    S.click('#layer [data-act="err-retry"]'); await flush(); await flush(); await flush();
+    assert.equal(txt(S.q('#layer .errsheet h2')), 'Actualizá la app para seguir', '🔴 SU-3: the in-flight sheet');
+    assert.equal(txt(S.q('#layer .errsheet .note')), 'Tu carrito también se guarda.');
+    assert.ok(!/Referencia/.test(txt(S.q('#layer .errsheet')) || ''), '🔴 SU-3: no order reference (owner)');
+    assert.deepEqual(S.qa('#layer .errsheet .acts button').map((b) => b.textContent), ['Abrir App Store', 'Ahora no']);
+  } finally { S.w.close(); }
+});
+test('store-update: WITHOUT a store (no runtime.store_urls yet, or the website) a 426 shows NO store sheet — today\'s shared behaviour stays (advisor ruling (i))', async () => {
+  const S = bootShell({ runtime: { ...RUNTIME, native: true }, apiFetch: F426([{ status: 426, json: { error: 'client_update_required', app: 'orders', required_compat: 3 } }]), geolocation: GEO_OK2 });
+  try { await flush(); await toShellPlace(S); assert.ok(!/Actualizá la app/.test(txt(S.q('#layer')) || ''), '🔴 SU-none: no store sheet without a store'); assert.equal(S.q('[data-act="store-open"]'), null); } finally { S.w.close(); }
+});
+test('store-update: with a store, the shared coordinator gets a NO-RELOAD adapter (a bundled app cannot reload itself newer; the store sheet replaces its notice)', async () => {
+  const reg = []; const SCstub = { inert: false, registerAdapter: (a) => reg.push(a), identity: { build: 'b2' } };
+  const S = bootShell({ runtime: STORE_RT, mountExtra: { SherpaClient: SCstub } });
+  try { await flush(); assert.equal(reg.length, 1, '🔴 SU-adapter: registered'); assert.equal(reg[0].canReload({ mode: 'checkout' }), false, '🔴 SU-adapter: never reloads'); assert.equal(typeof reg[0].notice, 'function'); } finally { S.w.close(); }
+  const reg2 = []; const N = bootShell({ runtime: { ...RUNTIME, native: true }, mountExtra: { SherpaClient: { inert: false, registerAdapter: (a) => reg2.push(a), identity: { build: 'b2' } } } });
+  try { await flush(); assert.equal(reg2.length, 0, 'no store ⇒ no adapter (today\'s behaviour)'); } finally { N.w.close(); }
+});
+test('store-update state 4: back from the store on a NEW build ⇒ the cart says «App actualizada. Tu carrito sigue aquí.» once; closed ⇒ gone; the same build ⇒ never', async () => {
+  const storage = memStorage({ 'capp:app_build': 'b1' });
+  const S = bootShell({ storage, runtime: { ...RUNTIME, native: true }, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b2' } } } });
+  try {
+    await flush();
+    assert.equal(storage.getItem('capp:app_build'), 'b2', 'the device records the new build at once');
+    S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); await flush();
+    const ui = S.ui.store().ui; const plain = ui.menu.dishes.find((d) => !d.launcher && !d.variantOf && !ui.menu.pickupOnlyCats.has(String(d.cat)));
+    ui.cart.inc(plain.key); ui.render(); S.click('#cart-bar'); await flush();
+    assert.equal(txt(S.q('#layer .cartnote')), 'App actualizada. Tu carrito sigue aquí.', '🔴 SU-4: the one cart line');
+    S.click('#layer [data-act="cartclose"]'); await flush(); S.click('#cart-bar'); await flush();
+    assert.ok(!S.qa('#layer .cartnote').some((n) => /App actualizada/.test(n.textContent)), '🔴 SU-4: gone once the cart was closed');
+  } finally { S.w.close(); }
+  const s2 = memStorage({ 'capp:app_build': 'b2' });
+  const N = bootShell({ storage: s2, runtime: { ...RUNTIME, native: true }, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b2' } } } });
+  try {
+    await flush(); N.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); await flush();
+    const ui = N.ui.store().ui; const plain = ui.menu.dishes.find((d) => !d.launcher && !d.variantOf && !ui.menu.pickupOnlyCats.has(String(d.cat)));
+    ui.cart.inc(plain.key); ui.render(); N.click('#cart-bar'); await flush();
+    assert.ok(!N.qa('#layer .cartnote').some((n) => /App actualizada/.test(n.textContent)), 'the same build ⇒ no line');
+  } finally { N.w.close(); }
+});
+test('store-update state 1: with a store AND the «newer build» signal — the Inicio line A «Hay una versión nueva de la app.» + «Actualizar» (opens the store, hidden until the next day); the Cuenta row B; no signal ⇒ neither', async () => {
+  const opened = [], clock = { t: T0 };
+  const S = bootShell({ now: clock, runtime: STORE_RT, mountExtra: { updateAvailable: () => true } });
+  try {
+    S.w.open = (u) => { opened.push(u); return null; };
+    await flush();
+    assert.equal(txt(S.q('.home-body .closednote.hnote span')), 'Hay una versión nueva de la app.', '🔴 SU-1A: the Inicio line');
+    S.click('[data-act="app-update"]'); await flush();
+    assert.deepEqual(opened, ['https://apps.apple.com/app/id1234567890'], '🔴 SU-1A: «Actualizar» opens the store');
+    assert.equal(S.q('[data-act="app-update"]'), null, '🔴 SU-1A: hidden after the tap');
+    clock.t = T0 + 30 * 3600e3; S.click('.tabbar [data-tab="search"]'); await flush(); S.click('.tabbar [data-tab="home"]'); await flush();
+    assert.ok(S.q('[data-act="app-update"]'), '🔴 SU-1A: back the next day');
+  } finally { S.w.close(); }
+  const row = dom(CappHome.accountMemberHtml(VM({ tab: 'account', acct: { name: 'Ana', phone: '+504 9999-0000', email: 'a@b.hn', promos: true, settled: true }, updateRow: 'App Store' })));
+  assert.equal(txt(row.querySelector('[data-act="app-update-row"]')), 'Actualizar la app Hay una versión nueva en App Store', '🔴 SU-1B: the Cuenta row');
+  const N = bootShell({ runtime: STORE_RT });
+  try { await flush(); assert.equal(N.q('[data-act="app-update"]'), null, 'no signal ⇒ no line (fail closed)'); } finally { N.w.close(); }
+  const F = bootShell({ runtime: STORE_RT, mountExtra: { updateAvailable: () => false } });
+  try { await flush(); assert.equal(F.q('[data-act="app-update"]'), null, '🔴 SU-1: the signal says no newer build ⇒ no line'); } finally { F.w.close(); }
+});
+test('store-update state 4 (frozen): back on a new build with a cart FROZEN for a placement ⇒ «App actualizada. Estamos revisando tu pedido.» above frame 10\'s line, its controls still disabled', async () => {
+  const S = bootShell({ storage: memStorage({ ...frozenCart(), 'capp:app_build': 'b1' }), runtime: { ...RUNTIME, native: true }, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b2' } } } });
+  try {
+    await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); S.click('#cart-bar'); await flush();
+    assert.deepEqual(S.qa('#layer .cartnote .cn-l').map((x) => x.textContent), ['App actualizada. Estamos revisando tu pedido.', 'Tu pedido se está confirmando; no se puede cambiar mientras tanto.'], '🔴 SU-4b: the two drawn lines');
+    assert.ok(S.qa('#layer .cline.frozen button').every((b) => b.disabled), 'frame 10 unchanged');
+    assert.equal(txt(S.q('#layer [data-act="frozen-status"]')), 'Ver estado del pedido');
+  } finally { S.w.close(); }
+});
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {
   const over = WARNINGS.filter((w) => w && w.name === 'TimeoutOverflowWarning');

@@ -41,16 +41,27 @@
   const avail = (o) => { const A = pick(o, 'CappAvailability'), R = pick(o, 'availabilityReducer'), K = pick(o, 'availKey');
     return A && R && typeof K === 'function' ? A.createAvailability({ availKey: K, decide: R.decide }) : null; };
 
+  const STORE = Object.freeze({ ios: { host: 'apps.apple.com', name: 'App Store' }, android: { host: 'play.google.com', name: 'Google Play' } });
+  function platformOf() { try { const C = g.Capacitor, p = C && typeof C.getPlatform === 'function' ? C.getPlatform() : null; return STORE[p] ? p : null; } catch (_) { return null; } }
+  function storeFor(rt, plat = platformOf()) {
+    if (rt.mode !== 'native' || !plat || !rt.store_urls || typeof rt.store_urls !== 'object') return null;
+    const u = rt.store_urls[plat]; let ok = false; try { const x = new URL(u); ok = x.protocol === 'https:' && x.hostname === STORE[plat].host; } catch (_) { ok = false; }
+    return ok ? { name: STORE[plat].name, url: u } : null;
+  }
   function runtimeFor(rt, CappSignupApi) {
     const base = rt.functions_base, f = rt.flags || {};
     const url = (name) => `${base}/${name}`;
     return {
       endpoints: Object.fromEntries(ORDER_ENDPOINTS.map((n) => [n, url(n)])),
       intakeKey: rt.intake_key, mapsKey: rt.maps_key || undefined,
+      ...(rt.mode === 'native' ? { native: true } : {}),   // the INSTALLED app (store-update state 4: a build change on this device)
       // «Pedido recibido»: the public tracking reads (order number) on the RTDB base; the per-context tracker links; the help WhatsApp
       ...(typeof rt.availability_base === 'string' && rt.availability_base ? { rtdbBase: rt.availability_base } : {}),
       ...(rt.track_bases && typeof rt.track_bases === 'object' && !Array.isArray(rt.track_bases) ? { trackBases: Object.fromEntries(Object.entries(rt.track_bases).filter(([, v]) => typeof v === 'string' && /^https:\/\/[a-z0-9.-]+$/.test(v))) } : {}),
       ...(typeof rt.support_whatsapp === 'string' && /^\+[1-9]\d{7,14}$/.test(rt.support_whatsapp) ? { supportWhatsapp: rt.support_whatsapp.slice(1) } : {}),
+      // the native store-update (MOCKUP-capp-native-store-update): the INSTALLED app's own store, from runtime.store_urls by its
+      // platform — absent (web, no listing yet, an unknown platform) ⇒ no store sheet (today's shared notice stays)
+      ...(storeFor(rt) ? { store: storeFor(rt) } : {}),
       ...(f.schedulingLive === true ? { schedulingLive: true } : {}),
       ...(f.intlPhone === true ? { intlPhone: true } : {}),
       ...(f.guestCardOnly === true ? { guestCardOnly: true } : {}),
@@ -102,5 +113,5 @@
     });
   }
 
-  return { boot, runtimeFor, ORDER_ENDPOINTS, MODES };
+  return { boot, runtimeFor, storeFor, ORDER_ENDPOINTS, MODES };
 });

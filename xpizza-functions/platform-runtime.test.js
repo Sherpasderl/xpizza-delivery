@@ -57,6 +57,12 @@ bad((c) => { appOf(c).runtime.support_whatsapp = '97952893'; }, /support_whatsap
 bad((c) => { appOf(c).runtime.support_whatsapp = '+504 9795 2893'; }, /support_whatsapp must be E\.164/);
 bad((c) => { appOf(c).runtime.support_whatsapp = 50497952893; }, /support_whatsapp must be E\.164/);
 { const c2 = clone(); delete appOf(c2).runtime.support_whatsapp; assert.deepStrictEqual(M.validateManifest(c2), [], 'absent ⇒ still valid (optional)'); }
+// store_urls (advisor-approved; the owner fills it at listing time): optional; https on the platform's own store host only
+{ const c3 = clone(); appOf(c3).runtime.store_urls = { ios: 'https://apps.apple.com/app/id1234567890', android: 'https://play.google.com/store/apps/details?id=x.y' }; assert.deepStrictEqual(M.validateManifest(c3), [], 'valid store_urls'); }
+bad((c) => { appOf(c).runtime.store_urls = { ios: 'http://apps.apple.com/app/id1' }; }, /store_urls must be/);
+bad((c) => { appOf(c).runtime.store_urls = { ios: 'https://play.google.com/x' }; }, /store_urls must be/);
+bad((c) => { appOf(c).runtime.store_urls = { windows: 'https://apps.apple.com/x' }; }, /store_urls must be/);
+bad((c) => { appOf(c).runtime.store_urls = {}; }, /store_urls must be/);
 ok('runtime.support_whatsapp = the owner\'s E.164 number; malformed refused; absent allowed (optional)');
 
 // 4. absent ⇒ appRuntime() is null (nothing invented)

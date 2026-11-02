@@ -37,9 +37,21 @@
     const CappUI = pick(o, 'CappUI', './capp-ui.js'), CappShell = pick(o, 'CappShell', './capp-shell.js');
     const CappShellNav = pick(o, 'CappShellNav', './capp-shell-nav.js'), CappHome = pick(o, 'CappHome', './capp-home.js');
     const CappOrder = pick(o, 'CappOrder', './capp-order.js');   // «Pedido recibido» (the host's order screen)
+    // the native store-update: an INSTALLED app with a store to update from never reloads its bundled assets (that cannot update it)
+    // and the store sheet replaces the shared «Actualización pendiente» notice — a no-reload adapter for the shared coordinator
+    if (o.runtime && o.runtime.store) { try { const SC = o.SherpaClient || g.SherpaClient; if (SC && !SC.inert && typeof SC.registerAdapter === 'function') SC.registerAdapter({ canReload: () => false, notice: () => {} }); } catch (_) {} }
     const CappCheckout = pick(o, 'CappCheckout', './capp-checkout.js'), CappDeviceAccount = pick(o, 'CappDeviceAccount', './capp-device-account.js');
     const win = o.win || doc.defaultView;
     const storage = o.storage !== undefined ? o.storage : (() => { try { return win.localStorage; } catch (_) { return null; } })();
+    // state 4 (MOCKUP-capp-native-store-update): the INSTALLED app on a NEW build (its stamp vs the last build this device ran) ⇒ the
+    // cart says «App actualizada…» once (closed ⇒ gone); the device's build is recorded at once (a reopen is never «updated» again)
+    let appUpdated = false;
+    if (o.runtime && o.runtime.native === true) {
+      try {
+        const SC = o.SherpaClient || g.SherpaClient, b = SC && SC.identity && typeof SC.identity.build === 'string' ? SC.identity.build : null, st = storage;
+        if (b && st) { const last = st.getItem('capp:app_build'); if (last && last !== b) appUpdated = true; if (last !== b) st.setItem('capp:app_build', b); }
+      } catch (_) { appUpdated = false; }
+    }
     const nowMs = typeof o.now === 'function' ? o.now : () => Date.now();
     const clock = () => new Date(nowMs());
     const T = o.timers || { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: (f, ms) => setInterval(f, ms), clearInterval: (t) => clearInterval(t) };
@@ -162,14 +174,15 @@
       // or STALE body mounts BROWSE-ONLY, its revalidation is started, and the fresh one turns it live in place
       const orderable = e.state === 'fresh';
       if (!orderable) cache.get(entry.rid);
-      const apiOpts = { storage, ...(uo.apiOpts || {}) };   // the store's records live in the shell's storage (one device store)
+      const apiOpts = { storage, ...(uo.apiOpts || {}) };
+      const updOpts = { appUpdated: () => appUpdated, onAppUpdatedSeen: () => { appUpdated = false; } };   // the store's records live in the shell's storage (one device store)
       // a mount NEVER reads location.search itself: only the store that OWNS a hosted-checkout return gets it, once
       const ret = S.ret && S.ret.rid === entry.rid && !freshBody ? S.ret : null; if (ret) S.ret = null;
-      const ui = CappUI.mount(doc, { ...uo, ...(view ? { view } : {}),
+      const ui = CappUI.mount(doc, { ...uo, ...updOpts, ...(view ? { view } : {}),
         onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
-        onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
+        onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) openExternal(runtime.store.url); return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
       S.store = { rid: entry.rid, ui, entry, body: e.body, fp: null, adopt: null };
       watchMenu(S.store);
       const snap = carried || readJ(cfg.cartKey); if (snap) ui.restore(snap);   // an adoption carries the IN-MEMORY cart (Codex s7a2 r1 #1)
@@ -494,6 +507,17 @@
     function remember(q) { const t = String(q).trim(); if (!t) return; S.recent = [t, ...S.recent.filter((x) => x !== t)].slice(0, RECENT_MAX); writeJ(RECENT_KEY, S.recent); }
 
     // ── render: the shell screens (a mounted store owns #app) ──
+    // MOCKUP-capp-native-store-update state 1 (owner: A + B): the INSTALLED app with a store, when the host says a newer store build
+    // exists (o.updateAvailable — the «latest native build» signal; none wired yet ⇒ never shown). A (Inicio line): hidden by the
+    // customer's tap until the next local day; B (Cuenta row): while the update exists
+    const UPD_KEY = 'capp:update_hidden_day';
+    const dayOf = (ms) => { try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Tegucigalpa', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms)); } catch (_) { return null; } };
+    const updateOn = () => { try { return !!runtime.store && typeof o.updateAvailable === 'function' && o.updateAvailable() === true; } catch (_) { return false; } };
+    function updateVm() {
+      if (!updateOn()) return { updateLine: false, updateRow: null };
+      let hidden = null; try { hidden = storage && storage.getItem(UPD_KEY); } catch (_) { hidden = null; }
+      return { updateLine: hidden !== dayOf(Number(nowMs())), updateRow: runtime.store.name };
+    }
     function vm() {
       const v = dir.view();
       const rows = S.heldErr ? [] : v.rows.map((r) => {
@@ -501,7 +525,7 @@
         return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid };
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
-      return { phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
+      return { ...updateVm(), phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
         schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }, locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
@@ -686,6 +710,10 @@
       if (a === 'tab') { const id = t.dataset.tab; if (id === 'account' && !SU && (runtime.guestCardOnly !== true || authNow() === 'member')) { emit('tab', { tab: id }); return; }   // G7: under runtime.signup the Cuenta is the shell's
         if (id === 'home' || id === 'search' || id === 'account') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
       if (a.startsWith('order-') && orderAct(a)) return;
+      if ((a === 'app-update' || a === 'app-update-row') && updateOn()) {
+        if (a === 'app-update') { try { const d = dayOf(Number(nowMs())); if (d && storage) storage.setItem(UPD_KEY, d); } catch (_) {} }
+        openExternal(runtime.store.url); renderNow(); return;
+      }
       if (a === 'offer-create') { offerCreate(); return; }
       if (a === 'offer-skip') { if (S.order) { S.order.offerDone = true; renderNow(); } return; }
       if (a === 'signin') { openSignin({ ctx: t.dataset.ctx || 'account' }); return; }

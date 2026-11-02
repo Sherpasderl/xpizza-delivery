@@ -50,6 +50,7 @@
     menu: I('<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/>'), check: I('<path d="m5 12.5 4.5 4.5L19 7.5"/>'),
     bag: I('<path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>'), clock: I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
     info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>'), alert: I('<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/>'),
+    update: I('<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>'),   // MOCKUP-capp-native-store-update (owner-approved): an arrow into a tray
     bike: I('<circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="17" r="2.5"/><path d="M8.5 17h7"/><path d="M14 6h3l2.5 8.5"/><path d="M4 11h7l2 6"/>'),
     // S2b (the prototype's IC, verbatim)
     back: I('<path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/>'), chev: I('<path d="M9 6l6 6-6 6"/>'), down: I('<path d="M6 9l6 6 6-6"/>'), up: I('<path d="m18 15-6-6-6 6"/>'),
@@ -512,6 +513,8 @@
       const soldDishes = [...new Map(lines.filter(soldOfLine).map((d) => [d.key, d.item.n])).values()];
       const total = lines.reduce((a, d) => a + (soldOfLine(d) ? 0 : d.total), 0);
       const head = `<div class="sheethead"><div><h2>Tu pedido</h2><small>${lines.length ? unitOf(cart.count()) + ' · ' : ''}${mode === 'delivery' ? 'Delivery' : 'Pickup'}</small></div>${desk ? '' : `<button class="iconbtn" data-act="cartclose" aria-label="Cerrar el carrito">${IC.close}</button>`}</div>`;
+      const upd = appUpdated() && lines.length > 0;   // state 4: only over a cart that survived the update
+      const updNote = upd ? `<div class="cartnote" role="status">${IC.info}<span>App actualizada. Tu carrito sigue aquí.</span></div>` : '';
       const note = S.cartNote ? `<div class="cartnote">${IC.info}<span>${S.cartNote === 1 ? '1 plato ya no está disponible' : S.cartNote + ' platos ya no están disponibles'}</span></div>` : '';
       const over = tooLong();
       const refusal = S.refusal || over ? `<div class="cartnote">${IC.info}<span>${esc(over ? FULL_CART : S.refusal)}</span></div>` : '';
@@ -521,7 +524,7 @@
       // the lines' controls at the drawn .45 (disabled), and «Ver estado del pedido»: the placement's STATUS (poll with its stored
       // credentials, else «Necesitamos revisar tu pedido») — never a send. No other exit (ruling: no «Empezar un pedido nuevo»)
       if (frozenNow()) {
-        return head + `<div class="cartnote">${IC.info}<span>Tu pedido se está confirmando; no se puede cambiar mientras tanto.</span></div>` + lines.map((d) => `<div class="cline frozen">${lineName(d, 'cl-txt').replace(/^<button /, '<button disabled aria-disabled="true" ')}${lineStep(d).replace(/<button /g, '<button disabled aria-disabled="true" ')}<span class="cl-p">${money(d.total)}</span></div>`).join('')
+        return head + `<div class="cartnote"${upd ? ' role="status"' : ''}>${IC.info}<span>${upd ? '<span class="cn-l">App actualizada. Estamos revisando tu pedido.</span><span class="cn-l">Tu pedido se está confirmando; no se puede cambiar mientras tanto.</span>' : 'Tu pedido se está confirmando; no se puede cambiar mientras tanto.'}</span></div>` + lines.map((d) => `<div class="cline frozen">${lineName(d, 'cl-txt').replace(/^<button /, '<button disabled aria-disabled="true" ')}${lineStep(d).replace(/<button /g, '<button disabled aria-disabled="true" ')}<span class="cl-p">${money(d.total)}</span></div>`).join('')
           + `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>`
           + '<div class="sheetbar"><button class="primary" data-act="frozen-status">Ver estado del pedido</button></div>';
       }
@@ -534,7 +537,7 @@
       const confName = (c) => c.name + (c.sig ? ' + ' + c.sig.split(',').map((k) => (menu.extra(k) || { name: k }).name).join(', ') : '');
       const priceNote = changes.length && mods() ? `<div class="cartnote" role="status">${IC.info}<span>${changes.map((c) => `<span class="cn-l">${esc(C.priceNoticeText({ name: confName(c), from: c.fromCents / 100, to: c.toCents / 100 }))}</span>`).join('')}</span></div>` : '';
       const oldOf = (d) => { const cs = changes.filter((c) => c.key === d.key && c.sig === d.g); return cs.length ? d.total - cs.reduce((a, c) => a + (c.newSubtotalCents - c.oldSubtotalCents) / 100, 0) : null; };
-      return head + note + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
+      return head + updNote + note + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
         return `<div class="cline${so ? ' sold-out' : ''}">${lineName(d, 'cl-txt')}${lineStep(d, so)}<span class="cl-p">${so ? 'Agotado' : old !== null ? `<s class="cl-old">${money(old)}</s>${money(d.total)}` : money(d.total)}</span></div>`; }).join('')
         + `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>`
         + `<div class="sheetbar"><button class="primary${soldDishes.length ? ' sold-wait' : ''}" data-act="checkout"${off ? ' disabled aria-disabled="true"' : ''}>Ir al checkout</button></div>`;
@@ -553,7 +556,7 @@
       if (k === 'pin') dropPinMap();
     }
     function closeLayer() {
-      if (S.layerKind === 'placing') placingStop(); layerTeardown(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
+      if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'cart') appUpdatedSeen(); layerTeardown(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
     // a quote that failed while another layer was open: its sheet once that layer closes (still the same failed state)
     function closeLayerThen() { if (S.quoteErrSheet && !S.layerKind && (S.screen === 'checkout' || S.screen === 'tip')) { S.quoteErrSheet = false; if (S.quoteErr && S.quoteErr === stateKey()) showErr(ERR.generic('err-requote')); } }
     const T_report = () => { if (typeof queueMicrotask === 'function') queueMicrotask(reportRoute); else reportRoute(); };   // after the sheet's state is set
@@ -1188,6 +1191,12 @@
       S.screen = target; render();
     }
     function showErr(e) { S.err = e; openLayer('err'); }
+    // MOCKUP-capp-native-store-update state 4 (owner: ONE cart line, no sheet): back from the store on a new build, the cart says so
+    // once — gone when the cart is closed (the host owns the one-shot)
+    const appUpdated = () => { try { return typeof opts.appUpdated === 'function' && opts.appUpdated() === true; } catch (_) { return false; } };
+    const appUpdatedSeen = () => { try { if (appUpdated() && typeof opts.onAppUpdatedSeen === 'function') opts.onAppUpdatedSeen(); } catch (_) {} };
+    // the store this INSTALLED app updates from (the host's: native + its platform's runtime.store_urls entry); null ⇒ no store sheet
+    const storeNow = () => (cfg.store && typeof cfg.store.url === 'string' && typeof cfg.store.name === 'string' ? cfg.store : null);
     function quoteFailed() {
       if (S.screen !== 'checkout' && S.screen !== 'tip') return;
       if (S.layerKind) { S.quoteErrSheet = true; return; }   // shown when the open layer closes
@@ -1216,6 +1225,12 @@
       // the owner-approved held-states mockup (MOCKUP-capp-S2b-held-states.html #mk-paused / #mk-generic / #mk-pending)
       // Codex G7 r1 #1, advisor ruling (a) 2026-10-31 — OWNER-PENDING copy (DECISIONS.md 2026-10-31): another account's scheduled send
       // is still confirming on this device; ONE action (a retry would only refuse again)
+      // MOCKUP-capp-native-store-update (owner 2026-11-01): the INSTALLED app below the compatibility floor (426) — the calm sheet,
+      // «Abrir {tienda}» + «Ahora no»; state 3 (a placement / payment still in flight) without the order reference (owner)
+      storeUpdate: (store) => ({ title: 'Actualizá la app para hacer pedidos', body: 'Esta versión ya no puede enviar pedidos. Tu carrito se guarda tal cual y te espera cuando volvás.', icon: 'calm', ic: 'update',
+        acts: [{ act: 'store-open', label: `Abrir ${store}`, primary: true }, { act: 'lclose', label: 'Ahora no' }] }),
+      storeUpdatePending: (store) => ({ title: 'Actualizá la app para seguir', body: 'Tu pedido en curso está a salvo y no hace falta pagar de nuevo. Cuando volvás con la app actualizada, revisamos cómo quedó.', note: 'Tu carrito también se guarda.', icon: 'calm', ic: 'clock',
+        acts: [{ act: 'store-open', label: `Abrir ${store}`, primary: true }, { act: 'lclose', label: 'Ahora no' }] }),
       heldOther: () => ({ title: 'Hay un pedido de otra cuenta confirmándose en este teléfono', body: 'Entrá con esa cuenta o esperá unos minutos.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }),
       paused: () => ({ title: `${cfg.name || ''} no está recibiendo pedidos en este momento`, body: 'Tu pedido no se envió ni se cobró nada; está intacto para que lo intentés en unos minutos.', icon: 'warn', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }),
       generic: (retry = 'err-retry') => ({ title: 'No pudimos enviar tu pedido', body: 'Intentá de nuevo en un momento; tu pedido está intacto.', acts: [{ act: retry, label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
@@ -1293,6 +1308,9 @@
         showErr(S.returning && !contextRestored() ? ERR.generic() : cardOnlyGuest() ? ERR.payFailedGuest() : ERR.payFailed()); return;
       }
       if (k === 'refunded') { backTo('checkout'); showErr(ERR.refunded(out.refunded_total_cents)); return; }
+      // the native app below the floor, with a store to send it to (runtime.store_urls; else today's shared notice): state 2, or state 3
+      // when the identity is kept in flight (capp-api returns the existing outcome with update_required: true)
+      if (storeNow() && (k === 'update_required' || out.update_required === true)) { backTo('checkout'); showErr(out.update_required === true ? ERR.storeUpdatePending(storeNow().name) : ERR.storeUpdate(storeNow().name)); return; }
       if (k === 'existing_order') { backTo('checkout'); showErr(ERR.exists(out.reference)); return; }   // also a kept identity after a 426 (update_required: true)
       // the held-states mockup draws both sheets over «Entrega & Pago» (#mk-paused / #mk-generic)
       if (k === 'paused') { backTo('checkout'); showErr(ERR.paused()); return; }
@@ -1466,6 +1484,7 @@
         }
         closeLayer(); render(); return true;
       }
+      if (a === 'store-open') { if (storeNow()) emit('store-open', { url: storeNow().url }); return true; }   // the host leaves for the store; the sheet stays
       if (a === 'err-retry') { closeLayer(); send(); return true; }   // the SAME placement (capp-api keeps the id)
       if ((a === 'err-sched' || a === 'err-slot') && sched() && S.flow && !canSchedule()) { closeLayer(); backTo('checkout'); scheduleGate(); return true; }   // frame G
       if (a === 'err-sched' && sched() && S.flow) { closeLayer(); S.closedRefused = false; applyHeldSched(); S.flow.time = 'schedule'; S.flow.slot = null; backTo('checkout'); return true; }   // P:2287: the picker
