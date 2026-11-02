@@ -66,6 +66,9 @@ for (const first of ["db.ref(`recent_order_content/", 'reserveRedemption(']) { c
 assert.ok(/secrets: \[SIGNUP_GRANT_SECRET\]/.test(hunk('grant-secret-bind')) && live.indexOf('/* checkout:begin grant-secret-bind */') > live.indexOf('exports.chargeOnlineOrder = onRequest('), 'the grant secret binds to chargeOnlineOrder only');
 assert.strictEqual(live.split('SIGNUP_GRANT_SECRET]').length - 1, 2, 'the grant secret binds to exactly chargeOnlineOrder + redeemSignupGrant');
 assert.ok(/exports\.redeemSignupGrant = onRequest\(\n  \{[^\n]*secrets: \[OTP_SALT_SECRET, SIGNUP_GRANT_SECRET\] \}/.test(block), 'S3b: redeemSignupGrant (in the endpoints block) binds it (+ OTP_SALT, the guest-server train item; exact list)');
+// NOTE-getMyOrders (approved delta): the export resolves dish ids through the SAME expression index.js's live displayLabel path uses
+assert.ok(block.includes("require('./my-orders').makeMyOrders({ getDatabase, getAuth, checkRateLimit, resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) }).getMyOrders,"), '🔴 getMyOrders (in the endpoints block) resolves its context via contextOfTables(await resolvePricingTables(rid))');
+assert.ok(live.includes('contextOfTables(await resolvePricingTables(order.restaurant_id))'), 'premise: the live displayLabel path uses that expression');
 for (const [name, stmt] of [['gate-create', 'if (cappGuestRefusal) return res.status(400).json({ error: cappGuestRefusal });'],
   ['gate-method', "&& (await require('./checkout-guest-gate').chargeUidOf(req, { getAuth, getDatabase, attributionUid })) === null) {\n    return res.status(400).json({ error: 'guest_cash_not_allowed' });"],
   ['gate-charge', 'if (cappGuest && cappGuest.refuse) return res.status(400).json({ error: cappGuest.refuse });'],

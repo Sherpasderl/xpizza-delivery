@@ -30771,5 +30771,53 @@
    "node",
    "my-orders.test.js"
   ]
+ },
+ {
+  "id": "mo-9",
+  "slice": "mo",
+  "label": "getMyOrders: an unmapped line GUESSES its dish id from the stored key",
+  "file": "my-orders.js",
+  "from": "dish_id: (map && typeof l.key === 'string' && map.dish.get(l.key)) || null }",
+  "to": "dish_id: (map && typeof l.key === 'string' && map.dish.get(l.key)) || l.key || null }",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-10",
+  "slice": "mo",
+  "label": "getMyOrders: an unstamped order shows the long id as its number",
+  "file": "my-orders.js",
+  "from": "...(dns[i] !== null ? { display_number: dns[i] } : {})",
+  "to": "display_number: dns[i] !== null ? dns[i] : row.order_id",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-11",
+  "slice": "mo",
+  "label": "getMyOrders: every row resolves through the FIRST restaurant's context (a la_musa line mapped by x_pizza's)",
+  "file": "my-orders.js",
+  "from": "items: withDishIds(row.items, mapBy.get(row.restaurant) || null)",
+  "to": "items: withDishIds(row.items, maps[0] || null)",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-12",
+  "slice": "mo",
+  "label": "getMyOrders: the export's context resolver returns nothing (every dish_id silently null in prod)",
+  "file": "index.js",
+  "from": "resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) }).getMyOrders,",
+  "to": "resolveContext: async () => undefined }).getMyOrders,",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
  }
 ]

@@ -11,6 +11,7 @@ const { attachCustomerAttribution } = require('./create-order-build');
 const { buildMaterializeUpdates } = require('./materialize');
 const { claimOrderCore } = require('./claim-order');
 const { decideStatusMirror } = require('./status-mirror');
+const { MENU_BY_RESTAURANT } = require('./menu-pricing');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -58,17 +59,24 @@ function fakeDb() {
 const A = 'u_' + 'a'.repeat(24), B = 'u_' + 'b'.repeat(24);
 const TOK = { [`tok-${A}`]: { uid: A, customer: true }, [`tok-${B}`]: { uid: B, customer: true }, 'tok-staff': { uid: 'staff1' } };
 const auth = { verifyIdToken: async (t) => { if (!TOK[t]) throw new Error('bad token'); return TOK[t]; } };
-function harness(db, { limitedFor = () => false } = {}) {
-  const rl = [];
+// the D4-a context, in the shape the context source produces, whose legacyKeys are each brand's REAL menu keys (itemPricingKey:
+// the dish NAME for x_pizza, the dish ID for la_musa) — so the per-brand key shape is exercised, never hand-guessed
+const cidOf = (rid, k) => `${rid}-dish-${Object.keys(MENU_BY_RESTAURANT[rid]).indexOf(k)}`;
+const usableCtx = (rid) => ({ availability: 'available', attached: true, usableAsIdentity: true,
+  objects: Object.keys(MENU_BY_RESTAURANT[rid]).map((k) => ({ kind: 'dish', legacyKey: k, canonicalId: cidOf(rid, k) })) });
+const withIds = (rid, items) => items.map((l) => ({ ...l, dish_id: cidOf(rid, l.key) }));
+function harness(db, { limitedFor = () => false, contextFor = usableCtx } = {}) {
+  const rl = []; const ctxCalls = [];
   const { getMyOrders } = makeMyOrders({ getDatabase: () => db, getAuth: () => auth,
-    checkRateLimit: async (_db, bucket, key) => { rl.push({ bucket, key }); return limitedFor(key) ? { allowed: false, retryAfterSec: 7 } : { allowed: true, retryAfterSec: 0 }; } });
+    checkRateLimit: async (_db, bucket, key) => { rl.push({ bucket, key }); return limitedFor(key) ? { allowed: false, retryAfterSec: 7 } : { allowed: true, retryAfterSec: 0 }; },
+    resolveContext: async (rid) => { ctxCalls.push(rid); return contextFor(rid); } });
   const call = async ({ method = 'GET', token, query = { context: 'platform' }, body } = {}) => {
     const headers = token ? { 'x-firebase-id-token': token } : {};
     const req = { method, query, body, headers, ip: '9.9.9.9', get: (h) => headers[String(h).toLowerCase()] };
     const res = { h: {}, set(k, v) { res.h[k] = v; return res; }, status(c) { res.code = c; return res; }, json(b) { res.body = b; return res; } };
     await getMyOrders(req, res); return res;
   };
-  return { call, rl };
+  return { call, rl, ctxCalls };
 }
 // the REAL writers
 const intake = async (db, uid, id, { now, items = [{ name: 'Margherita', qty: 1 }], status = 'new', rid = 'x_pizza', total = 250 } = {}) => {
@@ -143,9 +151,9 @@ const mirror = async (db, uid, id, status) => { const d = decideStatusMirror(id,
     for (const row of [...r.body.active, ...r.body.past]) {
       const e = db.get(`user_orders/${A}/${row.order_id}`);
       assert.deepStrictEqual(Object.keys(row).sort(), KEYS, `🔴 ${row.order_id}: the projection is exactly the whitelist`);
-      assert.deepStrictEqual(row, { order_id: row.order_id, ts: e.ts, total: e.total, order_type: e.order_type, restaurant: e.restaurant, status: e.status, items_text: e.items_text, items: e.items }, `${row.order_id}: the stored values`);
+      assert.deepStrictEqual(row, { order_id: row.order_id, ts: e.ts, total: e.total, order_type: e.order_type, restaurant: e.restaurant, status: e.status, items_text: e.items_text, items: withIds(e.restaurant, e.items || []) }, `${row.order_id}: the stored values (+ each line's dish_id)`);
     }
-    assert.deepStrictEqual(r.body.active.find((x) => x.order_id === 'XPZ-onl').items, [{ key: 'Margherita', qty: 2 }], 'the confirm-time recipe');
+    assert.deepStrictEqual(r.body.active.find((x) => x.order_id === 'XPZ-onl').items, [{ key: 'Margherita', qty: 2, dish_id: cidOf('x_pizza', 'Margherita') }], 'the confirm-time recipe');
     assert.strictEqual(r.body.active.find((x) => x.order_id === 'XPZ-clm').restaurant, 'la_musa', 'each row names its store (multi-restaurant)');
   }
   ok('real writers (intake / confirm / claim + the status mirror): active = new / preparing / scheduled / out_for_delivery, past = delivered / cancelled / completed, newest first; each row is EXACTLY the whitelist with the stored values');
@@ -191,9 +199,10 @@ const mirror = async (db, uid, id, status) => { const d = decideStatusMirror(id,
     assert.strictEqual(qs.length, 1, '🔴 exactly one query');
     assert.deepStrictEqual({ path: qs[0].path, child: qs[0].child, last: qs[0].last }, { path: `user_orders/${A}`, child: 'ts', last: 11 }, '🔴 orderByChild(ts).limitToLast(limit + 1)');
     const gets = db.reads.filter((x) => x.kind === 'get').map((x) => x.path).sort();
-    assert.deepStrictEqual(gets, [`deleted_uids/${A}`, `user_private/${A}/deleted_at`].sort(), '🔴 no other read (no orders/, no menu, no per-row lookup)');
+    const rows = Array.from({ length: 10 }, (_, i) => `orders/XPZ-q${29 - i}/display_number`);
+    assert.deepStrictEqual(gets, [`deleted_uids/${A}`, `user_private/${A}/deleted_at`, ...rows].sort(), '🔴 no other read: the tombstone checks + ONE display_number point read per RETURNED row (never the probe row, never a whole order)');
   }
-  ok('one bounded query: orderByChild(ts).limitToLast(limit + 1) on the caller\'s node; the only other reads are the two tombstone checks — no fan-out');
+  ok('bounded reads: ONE orderByChild(ts).limitToLast(limit + 1) query on the caller\'s node; then only the two tombstone checks and one display_number point read per returned row (≤ limit)');
 
   // ── 7. the projection is a WHITELIST (an internal field never leaves); S-D forward-compat: additive recipe fields pass through ──
   {
@@ -204,7 +213,7 @@ const mirror = async (db, uid, id, status) => { const d = decideStatusMirror(id,
     const row = (await call({ token: `tok-${A}` })).body.active[0];
     assert.ok(!('customer_phone' in row) && !('internal_note' in row), '🔴 an internal field leaked');
     assert.strictEqual(row.recipe_format, 2, 'recipe_format passes through when present');
-    assert.deepStrictEqual(row.items[0], { key: 'Margherita', qty: 1, unit_cents: 15000, priced: true }, 'S-D: an additive per-line field reaches the capp unchanged');
+    assert.deepStrictEqual(row.items[0], { key: 'Margherita', qty: 1, unit_cents: 15000, priced: true, dish_id: cidOf('x_pizza', 'Margherita') }, 'S-D: an additive per-line field reaches the capp unchanged');
     db.set(`user_orders/${A}/XPZ-w/items`, 'not-an-array'); db.set(`user_orders/${A}/XPZ-w/items_text`, 7);
     const r2 = (await call({ token: `tok-${A}` })).body.active[0];
     assert.deepStrictEqual(r2.items, []); assert.strictEqual(r2.items_text, null, 'malformed fields normalize, never pass through');
@@ -234,6 +243,41 @@ const mirror = async (db, uid, id, status) => { const d = decideStatusMirror(id,
     assert.strictEqual((await harness(fakeDb(), { limitedFor: () => true }).call({})).code, 401, 'auth first: an unauthenticated call is 401, never charged to a bucket');
   }
   ok('rate limit: per verified uid in its own my_orders bucket ⇒ 429 + Retry-After with no history read; unauthenticated calls are 401 first');
+
+  // ── 10. approved delta (1): each line's CANONICAL dish id, from the server's one resolver, for BOTH brands (name-keyed / id-keyed) ──
+  {
+    const db = fakeDb(); const { call, ctxCalls } = harness(db);
+    const xKey = Object.keys(MENU_BY_RESTAURANT.x_pizza)[1], lKey = Object.keys(MENU_BY_RESTAURANT.la_musa)[1];
+    await intake(db, A, 'XPZ-x', { now: 20, rid: 'x_pizza', items: [{ name: xKey, qty: 2 }] });
+    await intake(db, A, 'LMS-l', { now: 30, rid: 'la_musa', items: [{ id: lKey, name: 'anything', qty: 1 }] });
+    await intake(db, A, 'XPZ-y', { now: 10, rid: 'x_pizza', items: [{ name: 'Margherita', qty: 1 }] });
+    const r = (await call({ token: `tok-${A}` })).body;
+    const by = Object.fromEntries(r.active.map((x) => [x.order_id, x]));
+    assert.deepStrictEqual(by['XPZ-x'].items, [{ key: xKey, qty: 2, dish_id: cidOf('x_pizza', xKey) }], '🔴 x_pizza (name-keyed): the canonical id, the stored key kept');
+    assert.deepStrictEqual(by['LMS-l'].items, [{ key: lKey, qty: 1, dish_id: cidOf('la_musa', lKey) }], '🔴 la_musa (id-keyed): the canonical id, the stored key kept');
+    assert.deepStrictEqual(ctxCalls.slice().sort(), ['la_musa', 'x_pizza'], 'ONE context resolution per DISTINCT restaurant on the page');
+    // a key the context does not map ⇒ null; an unusable context / a throwing resolver ⇒ every line null (never guessed, never the key)
+    db.set(`user_orders/${A}/XPZ-y/items/0/key`, 'Gone From The Menu');
+    const r2 = (await harness(db).call({ token: `tok-${A}` })).body.active.find((x) => x.order_id === 'XPZ-y');
+    assert.strictEqual(r2.items[0].dish_id, null, '🔴 an unmapped key ⇒ dish_id null');
+    for (const contextFor of [(rid) => ({ ...usableCtx(rid), usableAsIdentity: false }), () => { throw new Error('ctx'); }, () => undefined]) {
+      const r3 = (await harness(db, { contextFor }).call({ token: `tok-${A}` })).body;
+      assert.ok([...r3.active, ...r3.past].every((x) => x.items.every((l) => l.dish_id === null)), '🔴 an unusable / failing context ⇒ dish_id null on every line');
+    }
+  }
+  ok('canonical dish ids (approved delta): x_pizza name-keys and la_musa id-keys both resolve through the ONE identity map to the store\'s canonical id, the stored key kept; unmapped key / unusable / throwing context ⇒ null; one resolution per restaurant');
+
+  // ── 11. approved delta (2): display_number from orders/{id}, only when stamped (a finite number) — never the long id ──
+  {
+    const db = fakeDb(); const { call } = harness(db);
+    await intake(db, A, 'XPZ-d1', { now: 3 }); await intake(db, A, 'XPZ-d2', { now: 2 }); await intake(db, A, 'XPZ-d3', { now: 1 });
+    db.set('orders/XPZ-d1/display_number', 47); db.set('orders/XPZ-d3/display_number', '48');
+    const rows = Object.fromEntries((await call({ token: `tok-${A}` })).body.active.map((x) => [x.order_id, x]));
+    assert.strictEqual(rows['XPZ-d1'].display_number, 47, 'a stamped number');
+    assert.ok(!('display_number' in rows['XPZ-d2']), '🔴 unstamped ⇒ absent (never the long id)');
+    assert.ok(!('display_number' in rows['XPZ-d3']), 'a non-number stamp ⇒ absent');
+  }
+  ok('display_number (approved delta): present only when orders/{id}/display_number is a finite number; absent when unstamped or malformed — never the long id');
 
   FINISHED = true;
   console.log(`\nmy-orders: OK (${n})`);

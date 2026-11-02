@@ -9,6 +9,7 @@
 // through as stored, so 31's S-D additive price snapshot reaches the capp with no change here. active = a status outside the
 // terminal set; a stale non-terminal status (status-mirror is fail-open) stays active — the stored truth (backlog: a reconciler).
 const S = require('./signup-core');
+const CB = require('./catalog/canonical-binding');   // identityMap: the ONE legacy-key → canonical-id resolver (via the pricing envelope's D4-a context)
 const { HEAL_TERMINAL_STATUSES: TERMINAL } = require('./sweep-pending');   // {cancelled, delivered, completed} — one source
 
 const ORDER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;   // the createOrder order_id rule
@@ -47,7 +48,18 @@ function projectRow(id, e) {
 }
 const isActive = (status) => typeof status === 'string' && status !== '' && !TERMINAL.has(status);
 
-// deps: { getDatabase, getAuth, checkRateLimit }
+// approved delta 2026-11-01: (1) each recipe line gains `dish_id` — the store's canonical dish id for the line's stored key, from the
+// SAME resolver the server uses (CB.identityMap over contextOf(resolvePricingTables(rid)), as index.js's live displayLabel path) — or
+// null when unresolvable / the context is not usable (the client discloses it, never guesses); the stored key is kept as-is. Brand-
+// agnostic: the context maps itemPricingKey (whatever the brand keys by) → id. (2) `display_number`, read from orders/{id} for the
+// page's rows only (≤ limit point reads, in parallel), present only when stamped (a finite number) — never the long id.
+// Reads per call: 1 query + ≤ limit display_number reads + 1 context resolution per DISTINCT restaurant on the page (cached).
+function withDishIds(items, map) {
+  return items.map((l) => (l && typeof l === 'object' && !Array.isArray(l)
+    ? { ...l, dish_id: (map && typeof l.key === 'string' && map.dish.get(l.key)) || null } : l));
+}
+
+// deps: { getDatabase, getAuth, checkRateLimit, resolveContext(rid) → the pricing envelope's context }
 function makeMyOrders(deps) {
   async function getMyOrders(req, res) {
     res.set('Cache-Control', 'no-store');
@@ -79,7 +91,15 @@ function makeMyOrders(deps) {
       const page = (more ? asc.slice(asc.length - limit) : asc).reverse();   // newest first
       const oldest = page[page.length - 1];
       const out = { ok: true, active: [], past: [], next_cursor: more && oldest ? encodeCursor(oldest.ts, oldest.order_id) : null };
-      for (const row of page) (isActive(row.status) ? out.active : out.past).push(row);
+      const rids = [...new Set(page.map((r) => r.restaurant).filter((r) => typeof r === 'string' && r))];
+      const ctxOf = async (rid) => { try { return CB.identityMap(await deps.resolveContext(rid)); } catch (_) { return null; } };
+      const dnOf = async (id) => { try { const v = (await db.ref(`orders/${id}/display_number`).once('value')).val(); return Number.isFinite(v) ? v : null; } catch (_) { return null; } };
+      const [maps, dns] = await Promise.all([Promise.all(rids.map(ctxOf)), Promise.all(page.map((r) => dnOf(r.order_id)))]);
+      const mapBy = new Map(rids.map((r, i) => [r, maps[i]]));
+      page.forEach((row, i) => {
+        const full = { ...row, items: withDishIds(row.items, mapBy.get(row.restaurant) || null), ...(dns[i] !== null ? { display_number: dns[i] } : {}) };
+        (isActive(row.status) ? out.active : out.past).push(full);
+      });
       return res.status(200).json(out);
     } catch (e) {
       console.error('getMyOrders', e && e.message);

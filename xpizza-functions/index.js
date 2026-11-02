@@ -7826,6 +7826,6 @@ exports.getMyProfile = onRequest(
 // NOTE-getMyOrders: the capp «Pedidos» history read — member-only (x-firebase-id-token), ONE bounded user_orders query, a whitelist projection
 exports.getMyOrders = onRequest(
   { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
-  require('./my-orders').makeMyOrders({ getDatabase, getAuth, checkRateLimit }).getMyOrders,
+  require('./my-orders').makeMyOrders({ getDatabase, getAuth, checkRateLimit, resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) }).getMyOrders,
 );
 /* checkout:end endpoints */
