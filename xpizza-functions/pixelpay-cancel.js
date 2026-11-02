@@ -17,10 +17,34 @@
  * → the refundReconciler + dispatcher queue handle it.
  */
 
+// The provider's own words never leave this module: every record, alert and result carries a FIXED message and a short code
+// derived from what was observed. PixelPay's own `code` passes only through this allowlist — empty until its codes are
+// confirmed from PixelPay's documentation; anything else reads 'unknown' (absent: 'none').
+const PROVIDER_CODES = Object.freeze({});
+const VOID_MESSAGES = Object.freeze({
+  voided: 'void confirmed',
+  provider_declined: 'void declined by the provider',
+  provider_http_error: 'void request failed at the provider',
+  provider_unreachable: 'void request did not complete',
+  no_payment_to_void: 'no payment to void',
+});
+function providerCode(raw) {
+  if (raw === undefined || raw === null || raw === '') return 'none';
+  const k = String(raw);
+  return Object.prototype.hasOwnProperty.call(PROVIDER_CODES, k) ? PROVIDER_CODES[k] : 'unknown';
+}
+function classifyVoid(vd) {
+  if (vd && vd.ok) return { code: 'voided', provider_code: providerCode(vd.code) };
+  const http = vd && Number(vd.httpStatus);
+  return { code: Number.isFinite(http) && (http < 200 || http >= 300) ? 'provider_http_error' : 'provider_declined', provider_code: providerCode(vd && vd.code) };
+}
+
 async function voidOrRefund(deps, { orderId, attemptId, pixelpayOrderId, paymentUuid, reason, now }) {
   const { db, client } = deps;
   let voided = false;
   let message = null;
+  let code = null;
+  let pcode = 'none';
 
   if (paymentUuid) {
     // [Fix B / B-r2 / B-r3] Reversal machine — mutual exclusion + PHASE-AWARE recovery so the void is never
@@ -86,15 +110,16 @@ async function voidOrRefund(deps, { orderId, attemptId, pixelpayOrderId, payment
     try {
       const vd = await client.voidTransaction({ payment_uuid: paymentUuid, pixelpayOrderId, voidReason: reason || 'xpizza_cancel' });
       voided = !!vd.ok;
-      message = vd.message || (vd.errors ? JSON.stringify(vd.errors) : null);
-    } catch (e) {
-      message = (e && e.message) || 'void_error';
+      ({ code, provider_code: pcode } = classifyVoid(vd));
+    } catch (_) {
+      code = 'provider_unreachable';
     }
   } else {
     // No payment to reverse (auth never captured / nothing charged) → nothing owed.
     voided = true;
-    message = 'no_payment_to_void';
+    code = 'no_payment_to_void';
   }
+  message = VOID_MESSAGES[code];
 
   // Immutable audit record (write-once; never updated).
   try {
@@ -106,24 +131,27 @@ async function voidOrRefund(deps, { orderId, attemptId, pixelpayOrderId, payment
       reason: reason || null,
       voided,
       message,
+      code,
+      provider_code: pcode,
       at: now
     });
   } catch (e) {
     // The audit write failing must not strand the void result; log via alert.
-    deps.alert && deps.alert('refund_audit_write_failed', { orderId, attemptId, error: e && e.message });
+    deps.alert && deps.alert('refund_audit_write_failed', { orderId, attemptId, error: 'audit_write_failed' });
   }
 
   await db.ref(`payment_attempts/${attemptId}`).update({
     status: voided ? 'refunded' : 'refund_pending',
     refunded_at: voided ? now : null,
     refund_message: message,
+    refund_code: code,
     reversing_phase: null                                            // clear the phase marker on the terminal write
   });
 
   if (!voided) {
-    deps.alert && deps.alert('refund_pending', { orderId, attemptId, payment_uuid: paymentUuid, message });
+    deps.alert && deps.alert('refund_pending', { orderId, attemptId, payment_uuid: paymentUuid, message, code, provider_code: pcode });
   }
-  return { outcome: voided ? 'refunded' : 'refund_pending', voided, message };
+  return { outcome: voided ? 'refunded' : 'refund_pending', voided, message, code };
 }
 
-module.exports = { voidOrRefund };
+module.exports = { voidOrRefund, VOID_MESSAGES, PROVIDER_CODES };

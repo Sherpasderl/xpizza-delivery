@@ -1837,6 +1837,7 @@
   "merchant/merchant-transitions.js",
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
+  "pixelpay-cancel.js",
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
@@ -3093,6 +3094,13 @@
   "merchant/merchant-wiring.js": {
    "pins": [],
    "lifts": []
+  },
+  "pixelpay-cancel.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/alertsan-wiring.guard.test.js",
+    "xpizza-functions/order-control-wiring.guard.test.js"
+   ]
   },
   "pixelpay-charge.js": {
    "pins": [],
