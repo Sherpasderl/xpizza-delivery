@@ -32307,5 +32307,29 @@
    "node",
    "support/support-tickets.test.js"
   ]
+ },
+ {
+  "id": "sf-7",
+  "slice": "sf",
+  "label": "S-F F3: the ticket is never raised to the Central (no dispatcher alert)",
+  "file": "support/support-tickets.js",
+  "from": "    [`dispatcher_alerts/support_ticket_${id}`]: { type: 'support_ticket_received', order_id: p.orderId, reason: p.reason, created_at: at },\n",
+  "to": "",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-8",
+  "slice": "sf",
+  "label": "S-F F3: the Central alert carries the customer text (beyond order_id + reason)",
+  "file": "support/support-tickets.js",
+  "from": "order_id: p.orderId, reason: p.reason, created_at: at },",
+  "to": "order_id: p.orderId, reason: p.reason, text: p.text, created_at: at },",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
  }
 ]

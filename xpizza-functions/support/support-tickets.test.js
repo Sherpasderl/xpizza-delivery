@@ -78,6 +78,7 @@ const tickets = (db) => Object.values(db.get('support_tickets') || {});
     db.set(`deleted_uids/${A}`, 5);
     assert.strictEqual((await call(fn, { token: `tok-${A}`, body: { order_id: 'XPZ-m', reason: 'late', channel: 'inapp' } })).code, 403, '🔴 a tombstoned member');
     assert.strictEqual(tickets(db).length, 2, '🔴 no refusal wrote anything');
+    assert.strictEqual(Object.keys(db.get('dispatcher_alerts') || {}).length, 2, '🔴 one alert per accepted ticket, none for a refusal');
   }
   ok('ownership: the member (customerUidOf + customer_uid) and the guest (the order\'s tracking_token) file; another member, a member on a guest order, a wrong / prefix / foreign token, no proof, a handheld, staff, an unknown order and a tombstoned member ⇒ ONE generic 403, nothing written');
 
@@ -88,6 +89,10 @@ const tickets = (db) => Object.values(db.get('support_tickets') || {});
     const [t] = tickets(db);
     assert.deepStrictEqual(t, { order_id: 'XPZ-m', restaurant_id: 'x_pizza', reason: 'other', text: 'Faltó la salsa', channel: 'inapp', created_at: 5000, status: 'received', via: 'member' });
     assert.ok(!/u_a|5049|Ana|trk_/.test(JSON.stringify(db.get('support_tickets'))), '🔴 no uid / phone / name / token in the ticket');
+    // ruling F3: raised to the Central at once through the existing dispatcher_alerts channel — order_id + reason only
+    const alerts = db.get('dispatcher_alerts') || {};
+    assert.deepStrictEqual(Object.values(alerts), [{ type: 'support_ticket_received', order_id: 'XPZ-m', reason: 'other', created_at: 5000 }], '🔴 the Central alert: order_id + reason only');
+    assert.deepStrictEqual(Object.keys(alerts), [`support_ticket_${Object.keys(db.get('support_tickets'))[0]}`], 'keyed by the ticket');
   }
   ok('the ticket: { order_id, restaurant_id, reason, text, channel, created_at, status:received, via } — no uid, phone, name or token');
 

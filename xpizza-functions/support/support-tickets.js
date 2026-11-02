@@ -7,7 +7,8 @@
 //   → 200 { ok, status:'received' } | 400 bad_request | 403 not_allowed | 405 | 429 rate_limited
 // support_tickets/{id} = { order_id, restaurant_id, reason, text|null, channel, created_at, status:'received', via } — NO identity (Central
 // reaches the customer through the order). ≤ MAX_PER_ORDER tickets per order, counted in a transaction (support_ticket_counts).
-// Server-only (rules .read/.write false); Central's surface + status write-back is X-1.
+// Server-only (rules .read/.write false). Each ticket is raised at once as dispatcher_alerts/support_ticket_<id> = { type:
+// 'support_ticket_received', order_id, reason, created_at } (ruling F3); its dedicated rendering + status write-back is X-1.
 const crypto = require('crypto');
 
 const ORDER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -61,8 +62,14 @@ async function createSupportTicketCore({ db, verifyIdToken, checkRateLimit, now,
     return k >= MAX_PER_ORDER ? undefined : k + 1;
   });
   if (!cnt || !cnt.committed) return reply(429, { ok: false, error: 'rate_limited', retry_after: 3600 });
-  await db.ref(`support_tickets/${newId()}`).set({ order_id: p.orderId, restaurant_id: typeof order.restaurant_id === 'string' ? order.restaurant_id : null,
-    reason: p.reason, text: p.text, channel: p.channel, created_at: now(), status: 'received', via });
+  // ruling F3: the ticket is raised to the Central NOW through the EXISTING dispatcher_alerts channel (order_id + reason only), in
+  // the SAME atomic multi-path update as the ticket — never a ticket without its alert, never an alert without its ticket
+  const id = newId(); const at = now();
+  await db.ref().update({
+    [`support_tickets/${id}`]: { order_id: p.orderId, restaurant_id: typeof order.restaurant_id === 'string' ? order.restaurant_id : null,
+      reason: p.reason, text: p.text, channel: p.channel, created_at: at, status: 'received', via },
+    [`dispatcher_alerts/support_ticket_${id}`]: { type: 'support_ticket_received', order_id: p.orderId, reason: p.reason, created_at: at },
+  });
   return reply(200, { ok: true, status: 'received' });
 }
 
