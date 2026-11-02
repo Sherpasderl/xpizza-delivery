@@ -332,6 +332,14 @@
       ".read": false,
       ".write": false
     },
+    "support_tickets": {
+      ".read": false,
+      ".write": false
+    },
+    "support_ticket_counts": {
+      ".read": false,
+      ".write": false
+    },
     "ratings_redact_pending": {
       ".read": false,
       ".write": false,
