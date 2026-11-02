@@ -8,7 +8,7 @@
 const S = require('./schema');
 const { readPlatformSource } = require('./source');
 const { projectionRef, canonical } = require('./projection');
-const { encodeFields, decodeFields } = require('./rtdb-encoding');   // Codex run 5 P1: RTDB drops null / [] — ONE encoding
+const { decodeFields } = require('./rtdb-encoding');   // Codex run 5 P1: RTDB drops null / [] — the stored node is DECODED before any compare
 
 function projectionUpdater(next, out) {
   return (raw) => {
@@ -16,7 +16,7 @@ function projectionUpdater(next, out) {
     const v = raw && Number.isSafeInteger(raw.source_version) ? raw.source_version : -1;
     if (v > next.source_version) { out.outcome = 'stale_refused'; return raw; }
     if (v === next.source_version) {
-      out.outcome = canonical(decodeFields(raw.fields)) === canonical(decodeFields(next.fields)) && raw.schema_version === next.schema_version ? 'unchanged' : 'conflict';
+      out.outcome = canonical(decodeFields(raw.fields)) === canonical(next.fields) && raw.schema_version === next.schema_version ? 'unchanged' : 'conflict';
       return raw;
     }
     out.outcome = 'written'; return next;
@@ -27,7 +27,7 @@ function projectionUpdater(next, out) {
 async function generatePlatformConfig({ fs, db, now = Date.now() }, rid) {
   const src = await readPlatformSource(fs, rid);              // a malformed source THROWS — nothing is projected
   if (!src) return { rid, outcome: 'no_source' };
-  const next = { schema_version: S.SCHEMA_VERSION, source_version: src.version, generated_at: now, fields: encodeFields(src.fields) };
+  const next = { schema_version: S.SCHEMA_VERSION, source_version: src.version, generated_at: now, fields: src.fields };   // RTDB itself omits the empty values (rtdb-encoding documents the wire form)
   const out = {};
   await projectionRef(db, rid).transaction(projectionUpdater(next, out));
   return { rid, outcome: out.outcome, source_version: src.version };

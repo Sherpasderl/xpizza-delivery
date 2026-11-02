@@ -104,7 +104,7 @@ const THIRD = { whatsapp_copy: { items_emoji: '🌮', ready_line: '¡Tu pedido e
     assert.deepStrictEqual(await G.generatePlatformConfig({ fs, db, now: 5 }, 'x_pizza'), { rid: 'x_pizza', outcome: 'no_source' });
     await SRC.writePlatformSource(fs, 'x_pizza', X, { expectedVersion: null, by: 'o' });
     assert.strictEqual((await G.generatePlatformConfig({ fs, db, now: 5 }, 'x_pizza')).outcome, 'written');
-    assert.deepStrictEqual(db.get('restaurants/x_pizza/platform_config'), { schema_version: 1, source_version: 1, generated_at: 5, fields: require('./rtdb-encoding').encodeFields(X) });
+    assert.deepStrictEqual(db.get('restaurants/x_pizza/platform_config'), { schema_version: 1, source_version: 1, generated_at: 5, fields: require('./rtdb-encoding').encodeFields(X) }, 'stored in the RTDB wire form');
     assert.strictEqual((await G.generatePlatformConfig({ fs, db, now: 9 }, 'x_pizza')).outcome, 'unchanged');
     assert.strictEqual(db.get('restaurants/x_pizza/platform_config').generated_at, 5, 'an unchanged run rewrites nothing');
     await SRC.writePlatformSource(fs, 'x_pizza', { ...X, ready_time: { cold_start_min: 19, has_items_schema: true } }, { expectedVersion: 1, by: 'o' });

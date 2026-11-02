@@ -4,7 +4,8 @@
 // schema values that can be "empty" are OMITTED on the wire and RESTORED on the way back:
 //   rewards: null           ⇔  no `rewards` child
 //   redemption.exclude: []  ⇔  no `exclude` child (points redemption only)
-// decode(encode(f)) === f for every valid f (asserted), and decode() is what validateFields sees — never the raw node.
+// RTDB applies encodeFields' omission itself on write; decodeFields is applied to EVERY stored node before validation or comparison
+// (the reader, the generator's unchanged/conflict check, drift). decode(encode(f)) === f for every valid f (asserted).
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
