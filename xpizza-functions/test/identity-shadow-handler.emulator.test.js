@@ -27,10 +27,6 @@ const http = require('http');
 const express = require('express');
 
 process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'harness-secret';
-// the hosted charge's payer email (payer-email.js:14 / index.js:2205): PRODUCTION sets PIXELPAY_MERCHANT_EMAIL (the merchant's registered
-// PixelPay user — present in the functions env), so a fresh card checkout there is never refused; without it the S2 P-C rule refuses 503
-// payer_email_unconfigured BEFORE the gateway. The fixture supplies a valid test address so these cells exercise what they test.
-process.env.PIXELPAY_MERCHANT_EMAIL = process.env.PIXELPAY_MERCHANT_EMAIL || 'merchant@pagos.test';
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 const SECRET = process.env.MAKE_SECRET;
 
