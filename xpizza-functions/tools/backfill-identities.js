@@ -49,6 +49,8 @@ const arg = (name) => {
 };
 const RID = arg('rid');
 const APPLY = process.argv.includes('--apply');
+// The space form is record-evidence-boundary's spelling; here it would leave RID unset. Refused before any client.
+if (process.argv.includes('--rid')) { console.error('backfill-identities: REFUSED — "--rid <rid>" is not this tool\'s form: use --rid=<rid>'); process.exit(1); }
 
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),

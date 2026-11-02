@@ -34,6 +34,8 @@ const TO = arg('to');
 // THE PROJECT GUARD, before anything resolves a credential or constructs a client: a refusal
 // here cannot have read or written a byte. See tools/require-project.js.
 const PROJECT_ID = requireProject();
+// The space form is record-evidence-boundary's spelling; here it would leave RID unset. Refused before any client.
+if (process.argv.includes('--rid')) { console.error('rollback-version: REFUSED — "--rid <rid>" is not this tool\'s form: use --rid=<rid>'); process.exit(1); }
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
   projectId: PROJECT_ID,   // NEVER the ambient gcloud default — that is what nearly wrote a catalog into another project
