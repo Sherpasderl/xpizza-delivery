@@ -81,12 +81,12 @@ async function handleHostedCallback(deps, body, now) {
   }
 
   // ONE payment per attempt, bound ATOMICALLY (absent → this payment id). A re-delivery of the bound payment passes on; any
-  // OTHER payment id — including the loser of two concurrent first callbacks — is an extra payment with its own state
-  // machine (handleExtraPayment) and never touches this attempt's payment or reversal fields.
+  // OTHER payment id — including the loser of two concurrent first callbacks — is an extra payment: recorded and alerted for
+  // a person to refund, never voided automatically, and it never touches this attempt's payment or reversal fields.
   if (uuid) {
     const bind = await db.ref(`payment_attempts/${attemptId}/payment_uuid`).transaction((cur) => (cur == null ? uuid : undefined));
     const bound = bind.committed ? uuid : (bind.snapshot && bind.snapshot.val());
-    if (bound !== uuid) return handleExtraPayment(deps, { orderId, attemptId, hostedOrderId, uuid, amount, now });
+    if (bound !== uuid) return handleExtraPayment(deps, { orderId, attemptId, uuid, amount, now });
   }
 
   // CANCEL race (I9): cancelled before this paid callback → auto-void, NEVER materialize.
@@ -148,62 +148,28 @@ async function setPaidOnce(db, attemptId, { paidAt, reference }) {
   await db.ref(`payment_attempts/${attemptId}/payment_reference`).transaction((cur) => (cur == null ? reference : undefined));
 }
 
-// ── AN EXTRA PAYMENT: a second distinct verified payment on an attempt that already has one (two payable checkouts paid) ──
-// Its OWN record under payment_attempts/{aaid}/extra_payments/{sha256(uuid)} (server-only; the exact uuid is stored inside and
-// checked on every read), its OWN phases, and its OWN reversal, scoped to its payment id — the attempt-level payment fields and
-// reversal state (status / refund_*) are never read or written for it, so the first payment's refund machinery is untouched.
-//   recorded → (durable alert + order flag) → held_for_review         live order: a person reviews it; never voided here
-//                                         → reversal_claimed → side_effect_started → voided | manual     cancelled order
-// Re-delivery resumes: an unwritten alert/flag is written; a held extra whose order is now cancelled is reversed; a claimed
-// but never-started reversal is started; a STARTED but unrecorded one is uncertain → manual, never re-sent. An unconfirmed void
-// is manual-only (no automatic retry). A failed alert / flag write answers 5xx so PixelPay re-delivers. No provider text is
-// ever copied into a record or an alert.
+// A SECOND distinct verified payment on one attempt (owner 2026-11-02): it is NEVER voided automatically — on a live or a
+// cancelled order alike — a person refunds it in PixelPay. It is recorded ONCE under a collision-resistant key (sha256 of the
+// exact payment id, which is kept inside the record), and the record, the durable alert and the order's manual-review flag are
+// ONE atomic multi-location write: all land or none does, and a failure answers 5xx so PixelPay re-delivers. The first
+// payment's binding, reference and paid_at are never touched, and no provider text is copied anywhere.
 const extraKey = (uuid) => crypto.createHash('sha256').update(String(uuid)).digest('hex');
-const orderCancelled = (o, att) => !!((att && att.cancel_pending) || (o && (o.status === 'cancelled' || (o.resolving_action === 'cancel' && o.cancel_claim_id))));
-async function handleExtraPayment(deps, { orderId, attemptId, hostedOrderId, uuid, amount, now }) {
+async function handleExtraPayment(deps, { orderId, attemptId, uuid, amount, now }) {
   const { db } = deps;
   const key = extraKey(uuid);
-  const ref = db.ref(`payment_attempts/${attemptId}/extra_payments/${key}`);
-  const done = { code: 200, outcome: 'extra_payment_recorded' };
-  await ref.transaction((cur) => (cur == null ? { uuid, amount_cents: toCents(amount), at: now, phase: 'recorded' } : undefined));
-  const rec = (await ref.once('value')).val();
-  if (!rec || rec.uuid !== uuid) return { code: 500, outcome: 'extra_payment_key_mismatch' };   // never act on another payment's record
+  const recPath = `payment_attempts/${attemptId}/extra_payments/${key}`;
+  let existing;
+  try { existing = (await db.ref(recPath).once('value')).val(); } catch (_) { return { code: 500, outcome: 'extra_payment_read_failed' }; }
+  if (existing && existing.uuid !== uuid) return { code: 500, outcome: 'extra_payment_key_mismatch' };   // never write over another payment's record
+  const at = existing && Number.isFinite(existing.at) ? existing.at : now;
   try {
-    await db.ref(`dispatcher_alerts/extra_payment_${key}`).set({ type: 'payment_extra_payment_received', detail: { orderId, attemptId }, created_at: rec.at });
-    await db.ref(`orders/${orderId}`).update({ extra_payment_review: true });
-  } catch (_) { return { code: 500, outcome: 'extra_payment_alert_failed' }; }   // surfaced: PixelPay re-delivers and this resumes
-
-  if (rec.phase === 'voided' || rec.phase === 'manual') return done;
-  if (rec.phase === 'side_effect_started') {   // a crash after the provider call may have started → uncertain → a person decides
-    await ref.update({ phase: 'manual', outcome: 'void_uncertain_manual' });
-    return done;
-  }
-  const [order, att] = (await Promise.all([db.ref(`orders/${orderId}`).once('value'), db.ref(`payment_attempts/${attemptId}`).once('value')])).map((x) => x.val());
-  if (!orderCancelled(order, att)) {
-    if (rec.phase !== 'held_for_review' && rec.phase !== 'reversal_claimed') await ref.update({ phase: 'held_for_review' });
-    if (rec.phase !== 'reversal_claimed') return done;
-  }
-  // Cancelled (or a claimed reversal to finish): CAS into side_effect_started IMMEDIATELY before the provider call, so exactly
-  // one delivery ever sends it; the claim step is separate so a crash before the call is provably "not started".
-  const claim = await ref.transaction((cur) => {
-    if (cur === null) return null;                                       // null-first-safe
-    if (!cur || cur.uuid !== uuid || !['recorded', 'held_for_review', 'reversal_claimed'].includes(cur.phase)) return;
-    return { ...cur, phase: 'reversal_claimed', claimed_at: cur.claimed_at || now };
-  });
-  if (!claim.committed) return done;
-  const start = await ref.transaction((cur) => {
-    if (cur === null) return null;
-    if (!cur || cur.uuid !== uuid || cur.phase !== 'reversal_claimed') return;
-    return { ...cur, phase: 'side_effect_started', started_at: now };
-  });
-  if (!start.committed) return done;
-  let voided = false;
-  try {
-    const vd = await deps.client.voidTransaction({ payment_uuid: uuid, pixelpayOrderId: hostedOrderId, voidReason: 'cancelled_before_payment' });
-    voided = !!(vd && vd.ok);
-  } catch (_) { voided = false; }
-  await ref.update(voided ? { phase: 'voided', outcome: 'auto_voided', finished_at: now } : { phase: 'manual', outcome: 'void_unconfirmed_manual', finished_at: now });
-  return done;
+    await db.ref().update({
+      [recPath]: { uuid, amount_cents: toCents(amount), at },
+      [`dispatcher_alerts/extra_payment_${key}`]: { type: 'payment_extra_payment_received', detail: { orderId, attemptId }, created_at: at },
+      [`orders/${orderId}/extra_payment_review`]: true,
+    });
+  } catch (_) { return { code: 500, outcome: 'extra_payment_write_failed' }; }
+  return { code: 200, outcome: 'extra_payment_recorded' };
 }
 
 // Auto-void a paid hosted charge for a cancelled order; never leaves money on a cancelled order.

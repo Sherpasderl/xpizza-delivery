@@ -3143,7 +3143,8 @@
     }
    ],
    "lifts": [
-    "xpizza-functions/hostedrace-wiring.guard.test.js"
+    "xpizza-functions/hostedrace-wiring.guard.test.js",
+    "xpizza-functions/pixelpay-hosted-extra-payment.test.js"
    ]
   },
   "portal/branch-lifecycle-core.js": {
