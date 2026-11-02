@@ -73,6 +73,9 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
       'auth(ns) createUser': () => app.auth().createUser({}), 'auth(mod) setCustomUserClaims': () => getAuth(app).setCustomUserClaims('u', {}), 'auth deleteUser': () => getAuth(app).deleteUser('u'),
     };
     for (const [k, fn] of Object.entries(attempts)) assert.throws(fn, /read-only/, `IUC-WRITE-REFUSED: ${k} must throw synchronously`);
+    // the REAL SDK's readOnly transaction still runs under the class guards (the read path is not blocked)
+    const ranRO = await fsM.runTransaction(async () => 'ran', { readOnly: true });
+    assert.strictEqual(ranRO, 'ran', 'IUC-WRITE-REFUSED: a REAL readOnly transaction runs through the guarded SDK');
     await app.delete().catch(() => {});
     ok(`write refusal: ${Object.keys(attempts).length} write paths across Firestore / RTDB / Storage / Auth throw (namespaced + modular), before any network`);
   }
