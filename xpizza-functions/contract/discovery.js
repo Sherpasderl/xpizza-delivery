@@ -61,6 +61,14 @@ function sourceInventory(file = INDEX) {
           let ref = null;
           if (opts && opts.type === 'ObjectExpression') { const p = opts.properties.find((q) => q.key && (q.key.name === 'ref' || q.key.value === 'ref')); if (p && p.value.type === 'Literal') ref = p.value.value; }
           out.push({ name, line, how: 'direct', category: CTOR_CATEGORY[ctor], kind: DB_KIND[ctor] || null, ref: ref ? normRef(ref) : null });
+        } else if (r.type === 'CallExpression' && r.callee.type === 'MemberExpression' && !r.callee.computed && requireChain(r.callee.object)) {
+          // 2e 11-01 (r3-p0-scheduler D0): a FACTORY-CALL export, `exports.X = require('./m').f(…)` — classified STATICALLY by the
+          // constructor f RETURNS in ./m (e.g. whatsappInstanceHealth: instance-health.js makeHealthFunction → return onSchedule(…)).
+          // Any other shape is pushed to `unclassified` with a reason — never silently dropped.
+          const mod = requireChain(r.callee.object); const fname = r.callee.property.name;
+          const f = factoryCtor(path.resolve(path.dirname(file), mod.module), [...mod.chain, fname]);
+          if (f.ctor) out.push({ name, line, how: 'factory', module: mod.module, factory: fname, category: CTOR_CATEGORY[f.ctor], kind: DB_KIND[f.ctor] || null, ref: f.ref ? normRef(f.ref) : null });
+          else unclassified.push({ name, line, type: 'factory-call', module: mod.module, factory: fname, why: f.why });
         } else {
           let rc = requireChain(r);
           const base = rc ? null : baseOf(r);
@@ -92,6 +100,32 @@ function sourceInventory(file = INDEX) {
 }
 
 const normRef = (r) => String(r).replace(/^\/+/, '');
+
+// a factory's RETURNED constructor, statically: module file + export chain [name] → { ctor, ref } | { why }. Only a single-level
+// export (module.exports.f / exports.f / module.exports = { f }) naming a top-level function (declaration, or const = function / arrow)
+// whose EVERY top-level return is the same constructor call. Anything else → { why } (the caller records it as unclassified).
+function factoryCtor(absModule, chain) {
+  if (chain.length !== 1) return { why: `nested export chain ${chain.join('.')}` };
+  const fname = chain[0];
+  let file = absModule; if (!/\.m?js$/.test(file)) file = fs.existsSync(`${file}.js`) ? `${file}.js` : path.join(file, 'index.js');
+  if (!fs.existsSync(file)) return { why: `module not found: ${path.relative(path.dirname(INDEX), file)}` };
+  const ast = parse(file);
+  let fnNode = null;
+  for (const st of ast.body) {
+    if (st.type === 'FunctionDeclaration' && st.id && st.id.name === fname) fnNode = st;
+    if (st.type === 'VariableDeclaration') for (const d of st.declarations) if (d.id.type === 'Identifier' && d.id.name === fname && d.init && /Function/.test(d.init.type)) fnNode = d.init;
+  }
+  if (!fnNode) return { why: `no top-level function ${fname} in ${path.basename(file)}` };
+  if (fnNode.body.type !== 'BlockStatement') { const c = fnNode.body; return c.type === 'CallExpression' && CTOR_CATEGORY[calleeName(c.callee)] ? { ctor: calleeName(c.callee), ref: refOf(c.arguments[0]) } : { why: `${fname}: expression body is not a constructor call` }; }
+  const rets = [];
+  (function walkR(n) { if (!n || typeof n.type !== 'string') return; if (n !== fnNode && /Function/.test(n.type)) return; if (n.type === 'ReturnStatement') rets.push(n.argument); for (const k of Object.keys(n)) { const v = n[k]; if (Array.isArray(v)) v.forEach(walkR); else if (v && typeof v === 'object' && typeof v.type === 'string') walkR(v); } })(fnNode.body);
+  if (!rets.length) return { why: `${fname}: no return` };
+  const ctors = rets.map((x) => (x && x.type === 'CallExpression' && CTOR_CATEGORY[calleeName(x.callee)] ? calleeName(x.callee) : null));
+  if (ctors.some((c) => !c)) return { why: `${fname}: a return is not a constructor call` };
+  if (new Set(ctors.map((c) => CTOR_CATEGORY[c])).size !== 1) return { why: `${fname}: returns mixed endpoint categories (${[...new Set(ctors)].join(', ')})` };
+  return { ctor: ctors[0], ref: refOf(rets[0].arguments[0]) };
+}
+function refOf(opts) { if (!opts || opts.type !== 'ObjectExpression') return null; const p = opts.properties.find((q) => q.key && (q.key.name === 'ref' || q.key.value === 'ref')); return p && p.value.type === 'Literal' ? p.value.value : null; }
 
 // (a) one runtime export → { category, kind, ref } or null when it is not a Cloud Function
 function classifyRuntime(fn) {

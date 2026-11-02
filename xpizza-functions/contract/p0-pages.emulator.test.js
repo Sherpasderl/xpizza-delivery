@@ -188,9 +188,9 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
         const vis = text.replace(/\s+/g, ' ').trim().slice(0, 700);
         assert.strictEqual((await rtdb.ref('tasks/pg_cash_pickup/status').get()).val(), 'assigned', FAIL(cell, 'premise — pg_cash is still in the offer phase (pickup task assigned, not accepted)'));
         const slot = p.doc.getElementById('active-order-slot');
-        const offer = slot && slot.querySelector('.sv-offer');
+        const offer = slot && slot.querySelector('.offer-card');   // the approved offer rebuild 1cd1f44f (SLICE3:OFERTA-OFFER, single-order-view.js:268) renamed .sv-offer → .offer-card.of2-card
         assert.ok(offer, FAIL(cell, `${dir}: the real order is rendered after the barrier (the single-order OFFER card in #active-order-slot) — visible text: ${vis}`));
-        const onum = offer.querySelector('.sv-onum');
+        const onum = offer.querySelector('.of2-onum');   // 1cd1f44f: .sv-onum → .of2-onum inside the offer card (single-order-view.js:269)
         assert.strictEqual(onum && onum.textContent.trim(), LABEL.cash, FAIL(cell, `${dir}: the offer card names pg_cash by its display label ${JSON.stringify(LABEL.cash)} — visible text: ${vis}`));
         assert.ok(offer.textContent.includes(ITEM), FAIL(cell, `${dir}: the offer card shows pg_cash's item line (${ITEM}) — visible text: ${vis}`));
         assert.ok(!text.includes('Pages Cash'), FAIL(cell, `${dir}: PRIVACY — the customer's name is rendered while pg_cash is still an OFFER — visible text: ${vis}`));
@@ -203,7 +203,7 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
         const contact = [...slot.querySelectorAll('a[href^="tel:"], a[href*="wa.me"]')].map((a) => a.getAttribute('href'));
         assert.deepStrictEqual(contact, [], FAIL(cell, `${dir}: PRIVACY — a customer contact link is rendered while pg_cash is still an OFFER`));
         // S6 without the name: the offer card never shows one, so the pending order's absence is proven by its LABEL too
-        const nums = [...p.doc.querySelectorAll('.sv-onum, .order-num')].map((e) => e.textContent.trim());
+        const nums = [...p.doc.querySelectorAll('.sv-onum, .of2-onum, .order-num')].map((e) => e.textContent.trim());
         assert.ok(!nums.includes(LABEL.pend) && !labelIn(text, LABEL.pend), FAIL(cell, `${dir}: the PENDING online order (S6) is rendered by its label ${JSON.stringify(LABEL.pend)} (order labels: ${JSON.stringify(nums)})`));
       } else assert.ok(text.includes('Pages Cash'), FAIL(cell, `${dir}: the real order is rendered after the barrier (customer name) — visible text: ${text.replace(/\s+/g, ' ').trim().slice(0, 700)}`));
       if (['R1', 'R4'].includes(cell)) assert.ok(!OBS[cell].pendShown, FAIL(cell, `${dir}: the PENDING online order (S6) is rendered — it must be absent`));
