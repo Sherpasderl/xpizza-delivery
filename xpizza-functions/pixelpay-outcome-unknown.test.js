@@ -338,6 +338,30 @@ async function cell(name, fn) { const before = pass; try { await fn(); if (pass 
     assert.strictEqual(holdState(db), 'held_paid', `${label}: the reward hold is secured held_paid (got ${holdState(db)})`);
   });
 
+  // POU-ESCALATE-RESUMES (codex P5a r2 #3): the escalation's order update fails AFTER the attempt CAS committed → the next
+  // call completes it (order → manual_reconciliation, hold secured), idempotently; a third call changes nothing.
+  await cell('POU-ESCALATE-RESUMES', async () => {
+    const label = 'POU-ESCALATE-RESUMES';
+    const init = redeemedOrder();
+    init.payment_attempts.A = { ...init.payment_attempts.A, status: 'capturing', capturing_started_at: 0, payment_uuid: 'S-tb' };
+    init.orders['TB-1'].payment_status = 'pending';
+    const db = makeDb(init);
+    let failOrderUpdate = 1;
+    const flaky = { ...db, ref: (path) => { const r = db.ref(path); if (path === 'orders/TB-1') return { ...r, update: async (v) => { if (failOrderUpdate > 0) { failOrderUpdate--; throw new Error('injected order-update failure'); } return r.update(v); } }; return r; } };
+    const { escalateStaleCapture } = require('./pixelpay-confirm');
+    const d = { db: flaky, alert: () => {} };
+    const first = await settle(escalateStaleCapture(d, { orderId: 'TB-1', attemptId: 'A', now: 10 * 60 * 60000 }));
+    assert.ok(first.e, `${label}: PREMISE — the injected failure interrupts the first escalation`);
+    assert.strictEqual(db.getAt('payment_attempts/A').status, 'capture_unverified', `${label}: PREMISE — the attempt CAS committed`);
+    assert.strictEqual(db.getAt('orders/TB-1').payment_status, 'pending', `${label}: PREMISE — the order was not updated`);
+    const second = await escalateStaleCapture(d, { orderId: 'TB-1', attemptId: 'A', now: 10 * 60 * 60000 + 1 });
+    assert.strictEqual(second, true, `${label}: the next call RESUMES the incomplete escalation (got ${second})`);
+    assert.strictEqual(db.getAt('orders/TB-1').payment_status, 'manual_reconciliation', `${label}: the order completes to manual_reconciliation`);
+    assert.ok(['held_paid'].includes(holdState(db)), `${label}: the hold is secured (got ${holdState(db)})`);
+    const third = await escalateStaleCapture(d, { orderId: 'TB-1', attemptId: 'A', now: 10 * 60 * 60000 + 2 });
+    assert.strictEqual(third, false, `${label}: a completed escalation is not redone (got ${third})`);
+  });
+
   if (fails.length) { console.error(`\nFAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }
   console.log(`\nAll ${pass} outcome-unknown tests passed.`);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });

@@ -21,6 +21,16 @@ if (!process.env.FIREBASE_DATABASE_EMULATOR_HOST) {
   process.exit(1);
 }
 
+// ---- TEST-OWNED failure-injection seam (codex P5a r2): the reward-ledger helpers are wrapped in require.cache BEFORE
+// index.js loads, so every module that destructures them (cancel-order-core, resolve-manual, index.js, …) gets the wrapper.
+// With no injection armed the wrapper is the real function, byte-for-byte behaviour.
+const inject = { reverseRedemption: 0, reverseEarn: 0 };
+{
+  const RR = require('../rewards-reserve'); const realRev = RR.reverseRedemptionForOrder;
+  RR.reverseRedemptionForOrder = async (...a) => { if (inject.reverseRedemption > 0) { inject.reverseRedemption--; return { ok: false, error: true }; } return realRev(...a); };
+  const RE = require('../rewards-earn'); const realEarn = RE.reverseEarnForOrder;
+  RE.reverseEarnForOrder = async (...a) => { if (inject.reverseEarn > 0) { inject.reverseEarn--; return { ok: false, error: true }; } return realEarn(...a); };
+}
 const app = require('../index.js');            // initializes admin against the emulator + registers the exports
 const { getDatabase } = require('firebase-admin/database');
 const db = getDatabase();
@@ -222,6 +232,72 @@ function postConfirm(body) {
     assert.strictEqual(calls.capture, 1, `${L}: PREMISE — one capture reached (${JSON.stringify(calls)}, body ${JSON.stringify(r.body)})`);
     assert.strictEqual(r.body.payment_status, 'refund_pending', `${L}: an unconfirmed mismatch void is reported refund_pending, got ${JSON.stringify(r.body)}`);
     assert.strictEqual(await holdState(), 'held_paid', `${L}: the hold is secured held_paid (got ${await holdState()})`);
+  });
+
+  // ── codex P5a r2 #1: refunding an OLDER attempt never restores points a newer captured sale consumed ──
+  await cell('POU-E-RECON-OLDER-ATTEMPT-NO-RELEASE', async () => {
+    const L = 'POU-E-RECON-OLDER-ATTEMPT-NO-RELEASE';
+    await clearAll();
+    const BID = 'b1b2c3d4e5f6a7b8';
+    await seed({ order: { status: 'new', payment_status: 'confirmed', active_attempt_id: BID }, attempt: { payment_uuid: 'S-A', status: 'refund_pending', refunded_at: NOW - 3600000 } });
+    await db.ref(`payment_attempts/${BID}`).set({ order_id: OID, status: 'captured', payment_uuid: 'S-B' });
+    await db.ref(`user_rewards/${UID}/${RID}`).set({ balance: 92, reserved: 0, reservations: { [OID]: { state: 'consumed', cost: 8, debit_applied: 8, seq: 1, created_at: 0 } } });
+    useScript({ void: [json(200, { success: true, message: 'anulada' })] });
+    await app.refundReconciler.run({});
+    assert.strictEqual((await aVal()).status, 'refunded', `${L}: PREMISE — the older attempt's refund confirmed`);
+    assert.strictEqual((await db.ref(`user_rewards/${UID}/${RID}/balance`).once('value')).val(), 92, `${L}: the live sale's consumed points are NOT restored (balance stays 92)`);
+    assert.strictEqual(await holdState(), 'consumed', `${L}: the reservation stays consumed (got ${await holdState()})`);
+  });
+
+  // ── codex P5a r2 #4: a confirmed refund whose hold release FAILS is journaled and healed by the sweep ──
+  await cell('POU-E-RECON-RELEASE-FAILURE-JOURNALED', async () => {
+    const L = 'POU-E-RECON-RELEASE-FAILURE-JOURNALED';
+    await clearAll();
+    await seed({ order: { status: 'cancelled', payment_status: 'refund_pending' }, attempt: { payment_uuid: 'S-1', status: 'refund_pending', refunded_at: NOW - 3600000 }, resv: 'held_paid' });
+    useScript({ void: [json(200, { success: true, message: 'anulada' })] });
+    inject.reverseRedemption = 1;
+    await app.refundReconciler.run({});
+    inject.reverseRedemption = 0;
+    assert.strictEqual((await aVal()).status, 'refunded', `${L}: PREMISE — the refund confirmed`);
+    assert.strictEqual(await holdState(), 'held_paid', `${L}: PREMISE — the injected failure left the hold held`);
+    const rec = (await db.ref(`reward_ledger_repair/${OID}`).once('value')).val();
+    assert.ok(rec, `${L}: the failed release is JOURNALED (reward_ledger_repair/${OID}), never dropped`);
+    await app.sweepStalePending.run({});
+    assert.strictEqual(await holdState(), 'released', `${L}: the sweep's ledger-repair retry releases the hold (got ${await holdState()})`);
+    assert.strictEqual((await db.ref(`reward_ledger_repair/${OID}`).once('value')).val(), null, `${L}: the journal clears once healed`);
+  });
+
+  // ── codex P5a r2 #2: an UNCONFIRMED cancel refund + an earn-reversal failure → the repair retry keeps the hold ──
+  await cell('POU-E-CANCEL-UNKNOWN-REPAIR-KEEPS-HOLD', async () => {
+    const L = 'POU-E-CANCEL-UNKNOWN-REPAIR-KEEPS-HOLD';
+    await clearAll();
+    await seed({ order: { status: 'new', payment_status: 'confirmed' }, attempt: { payment_uuid: 'S-1', status: 'captured', captured_at: NOW - 60000 } });
+    useScript({ void: [{ kind: 'bodyLost' }] });
+    inject.reverseEarn = 1;
+    const { alert } = alertsDeps();
+    await cancelOrderCore({ db, client: realClient, voidOrRefund, alert, serverTimestamp: 111 }, { orderId: OID, actor: 'A', reason: 'x', now: NOW, claimId: 'CID' });
+    inject.reverseEarn = 0;
+    assert.strictEqual((await oVal()).payment_status, 'refund_pending', `${L}: PREMISE — refund_pending`);
+    assert.ok((await db.ref(`reward_ledger_repair/${OID}`).once('value')).val(), `${L}: PREMISE — the earn failure was journaled`);
+    assert.strictEqual(await holdState(), 'held_paid', `${L}: PREMISE — the hold was secured`);
+    await app.sweepStalePending.run({});
+    assert.strictEqual(await holdState(), 'held_paid', `${L}: the repair retry must NOT release a hold whose refund is unconfirmed (got ${await holdState()})`);
+    assert.strictEqual((await db.ref(`user_rewards/${UID}/${RID}/reserved`).once('value')).val(), 8, `${L}: reserved stays 8`);
+  });
+
+  // ── codex P5a r2 #3: an escalation interrupted after its attempt CAS (attempt capture_unverified, order still pending)
+  //    is RESUMED by the next sweep, idempotently ──
+  await cell('POU-E-SWEEP-RESUMES-PARTIAL-ESCALATION', async () => {
+    const L = 'POU-E-SWEEP-RESUMES-PARTIAL-ESCALATION';
+    await clearAll();
+    await seed({ order: { status: 'pending_payment', payment_status: 'pending' }, attempt: { payment_uuid: 'S-1', status: 'capture_unverified', manual_reason: 'stale_capturing_unrecovered', capturing_started_at: Date.now() - 20 * 60000 } });
+    useScript({});
+    await app.sweepStalePending.run({});
+    assert.strictEqual(calls.capture + calls.status + calls.void, 0, `${L}: no PixelPay call`);
+    assert.strictEqual((await oVal()).payment_status, 'manual_reconciliation', `${L}: the order completes to manual_reconciliation (got ${(await oVal()).payment_status})`);
+    assert.strictEqual(await holdState(), 'held_paid', `${L}: the hold is secured (got ${await holdState()})`);
+    await app.sweepStalePending.run({});
+    assert.strictEqual((await oVal()).payment_status, 'manual_reconciliation', `${L}: a second sweep is a no-op`);
   });
 
   if (fails.length) { console.error(`\nFAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }
