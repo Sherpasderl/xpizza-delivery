@@ -102,11 +102,17 @@ ok(`a seeded generated corpus (${carts} carts — every dish, every extra, then 
   for (const bad of [null, undefined, 'x', {}, []]) assert.deepStrictEqual(RN.normalizeReorderItemsWithPrices(bad, 'x_pizza'), { items: [], snapshot: null }, `${JSON.stringify(bad)} ⇒ no recipe, no snapshot`);
   const big = Array.from({ length: 101 }, () => ({ name: x[0], qty: 1 }));
   const rb = RN.normalizeReorderItemsWithPrices(big, 'x_pizza');
-  assert.ok(rb.items.length === 100 && rb.snapshot.lines.length === 100, 'the MAX_LINES cap applies to both');
+  assert.strictEqual(rb.items.length, 100, 'the recipe keeps its MAX_LINES cap (placement unchanged)');
+  assert.strictEqual(rb.snapshot, null, '🔴 Codex S-D r1: 101 charged lines vs a 100-line recipe ⇒ NO snapshot (Σ line_cents would not equal the charge)');
+  assert.strictEqual(RN.reorderPriceSnapshot(big, 'x_pizza'), null);
+  const exact = RN.normalizeReorderItemsWithPrices(big.slice(0, 100), 'x_pizza');
+  assert.ok(exact.snapshot && exact.snapshot.lines.length === 100, 'exactly 100 lines (no truncation) still snapshots');
+  const dropped = RN.normalizeReorderItemsWithPrices([...big.slice(0, 100), { name: 'NOT ON MENU', qty: 1 }], 'x_pizza');
+  assert.ok(dropped.snapshot && dropped.snapshot.lines.length === 100, 'a 101st line the recipe DROPS anyway is not a truncation');
   assert.deepStrictEqual(RN.reorderPriceSnapshot([{ name: x[0], qty: 2 }], 'x_pizza'), RN.normalizeReorderItemsWithPrices([{ name: x[0], qty: 2 }], 'x_pizza').snapshot, 'reorderPriceSnapshot = the snapshot half');
   assert.throws(() => RN.normalizeReorderItemsWithPrices([{ name: x[0], qty: 1 }], 'x_pizza', tagged('la_musa')), /pricing_tables_restaurant_mismatch/, 'PIN B: mismatched tables throw');
 }
-ok('alignment: a dropped line drops from both, in order; a line the charge refuses ⇒ NO snapshot; malformed input ⇒ none; the MAX_LINES cap applies to both; PIN B holds');
+ok('alignment: a dropped line drops from both, in order; a line the charge refuses ⇒ NO snapshot; malformed input ⇒ none; a TRUNCATED recipe (> MAX_LINES charged lines) ⇒ NO snapshot; PIN B holds');
 
 // ── 3. the REAL writers compose end to end ──
 const IDX = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');

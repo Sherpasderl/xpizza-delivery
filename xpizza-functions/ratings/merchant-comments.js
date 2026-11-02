@@ -23,6 +23,8 @@ const CAP = 'stats.read';
 const CANDIDATES = 60;     // index keys scanned per call (the candidate-read cap C)
 const PAGE = 20;           // comments returned per call
 const CONCURRENCY = 8;     // authoritative node reads in flight
+// an EXPLICIT limiter policy — checkRateLimit requires it (without one it throws inside its transaction and fails OPEN; Codex S-F r1 #1)
+const RATE = Object.freeze({ windowMs: 60 * 1000, max: 30 });
 const RID_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;   // platform-manifest RID_RE
 const CURSOR_RE = /^[A-Za-z0-9_-]{40,400}$/;
 const HKDF_INFO = 'sherpa/rating-comments-cursor/v1';
@@ -66,7 +68,7 @@ async function merchantRatingCommentsCore({ db, verifyIdToken, checkRateLimit, s
   const rid = qstr(q.rid); const cur = q.cursor === undefined ? undefined : qstr(q.cursor);
   if (!rid || !RID_RE.test(rid) || keys.some((k) => k !== 'rid' && k !== 'cursor') || cur === null || (cur !== undefined && !CURSOR_RE.test(cur))) return reply(400, { ok: false, reason: 'bad_request' });
 
-  const rl = await checkRateLimit(db, 'merchant_rating_comments', dec.uid);
+  const rl = await checkRateLimit(db, 'merchant_rating_comments', dec.uid, RATE);
   if (!rl || rl.allowed !== true) return reply(429, { ok: false, reason: 'rate_limited', retry_after: (rl && rl.retryAfterSec) || 60 });
 
   let access;
@@ -118,4 +120,4 @@ function makeMerchantRatingComments({ getDatabase, getAuth, checkRateLimit, salt
   };
 }
 
-module.exports = { makeMerchantRatingComments, merchantRatingCommentsCore, CANDIDATES, PAGE, CONCURRENCY, CAP };
+module.exports = { makeMerchantRatingComments, merchantRatingCommentsCore, CANDIDATES, PAGE, CONCURRENCY, CAP, RATE };

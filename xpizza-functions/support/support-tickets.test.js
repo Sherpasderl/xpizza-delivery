@@ -46,8 +46,11 @@ async function place(db, uid, id) {
   return db.get(`orders/${id}/tracking_token`);
 }
 const rl = [];
-const h = (db, { limited = false } = {}) => ST.makeSupportTickets({ getDatabase: () => db, getAuth: () => ({ verifyIdToken }), now: () => 5000, newId: (() => { let i = 0; return () => `t${++i}`; })(),
-  checkRateLimit: async (_d, bucket, key) => { rl.push({ bucket, key }); return limited ? { allowed: false, retryAfterSec: 3 } : { allowed: true, retryAfterSec: 0 }; } }).createSupportTicket;
+// as strict as production: index.js checkRateLimit reads cfg.windowMs / cfg.max inside its transaction — a missing policy THROWS there and
+// fails OPEN, so the stub refuses it (Codex S-F r1 #1: the old stub accepted three arguments)
+const policyOk = (cfg) => !!cfg && Number.isSafeInteger(cfg.windowMs) && cfg.windowMs > 0 && Number.isSafeInteger(cfg.max) && cfg.max > 0;
+const h = (db, { limited = false, now = () => 5000, newId } = {}) => ST.makeSupportTickets({ getDatabase: () => db, getAuth: () => ({ verifyIdToken }), now, newId: newId || (() => { let i = 0; return () => `t${++i}`; })(),
+  checkRateLimit: async (_d, bucket, key, cfg) => { assert.ok(policyOk(cfg), `🔴 checkRateLimit(${bucket}) without a valid policy — production fails OPEN there`); rl.push({ bucket, key, cfg, reads: _d.reads ? _d.reads.length : null }); return limited ? { allowed: false, retryAfterSec: 3 } : { allowed: true, retryAfterSec: 0 }; } }).createSupportTicket;
 async function call(fn, { token, body, method = 'POST' } = {}) {
   const headers = token ? { 'x-firebase-id-token': token } : {};
   const req = { method, body, headers, get: (k) => headers[String(k).toLowerCase()] };
@@ -117,10 +120,48 @@ const tickets = (db) => Object.values(db.get('support_tickets') || {});
     assert.strictEqual(r.code, 429, '🔴 the 6th ticket for an order is refused'); assert.strictEqual(tickets(db).length, 5);
     const db2 = fakeDb(); await place(db2, A, 'XPZ-m');
     assert.strictEqual((await call(h(db2, { limited: true }), { token: `tok-${A}`, body: { order_id: 'XPZ-m', reason: 'late', channel: 'inapp' } })).code, 429);
-    assert.ok(rl.some((x) => x.bucket === 'support_ticket' && x.key === 'XPZ-m'), 'rate-limited per order');
+    assert.ok(rl.some((x) => x.bucket === 'support_ticket' && x.key === `u:${A}`), '🔴 a member is rate-limited per CALLER (uid), not per order');
     assert.strictEqual(tickets(db2).length, 0);
   }
-  ok('bounds: at most 5 tickets per order (transaction-counted) and a per-order rate limit ⇒ 429, nothing written');
+  ok('bounds: at most 5 tickets per order and a per-caller rate limit ⇒ 429, nothing written');
+
+  // ── 5. Codex S-F r1: the throttle runs BEFORE anything ownership-dependent; equal work on a missing order; a recoverable reservation ──
+  {
+    const db = fakeDb(); const gTok = await place(db, null, 'XPZ-g');
+    const reads = []; const real = db.ref; db.ref = (p) => { const r = real(p); return { ...r, once: async () => { reads.push(p); return r.once(); } }; };
+    rl.length = 0;
+    await call(h(db), { body: { order_id: 'XPZ-none', tracking_token: gTok, reason: 'late', channel: 'inapp' } });
+    assert.deepStrictEqual(rl.map((x) => x.key), ['g:XPZ-none'], '🔴 an UNKNOWN order is throttled too (per the guest\'s order key) — before any ownership answer');
+    rl.length = 0; reads.length = 0;
+    const lim = await call(h(db, { limited: true }), { body: { order_id: 'XPZ-g', tracking_token: 'wrong', reason: 'late', channel: 'inapp' } });
+    assert.strictEqual(lim.code, 429); assert.deepStrictEqual(reads, [], '🔴 a throttled caller never reaches the order read');
+    db.ref = real;
+    // equal comparison work: a probe on a MISSING order compares against a dummy exactly as a wrong token on a present one
+    const crypto = require('crypto'); const orig = crypto.timingSafeEqual; let calls = 0;
+    crypto.timingSafeEqual = (a, b) => { calls += 1; return orig(a, b); };
+    try {
+      calls = 0; await call(h(db), { body: { order_id: 'XPZ-g', tracking_token: 'wrong-token', reason: 'late', channel: 'inapp' } }); const present = calls;
+      calls = 0; await call(h(db), { body: { order_id: 'XPZ-zzz', tracking_token: 'wrong-token', reason: 'late', channel: 'inapp' } }); const missing = calls;
+      assert.ok(present === 1 && missing === 1, `🔴 equal comparison work on a missing vs a present order (${present} vs ${missing})`);
+    } finally { crypto.timingSafeEqual = orig; }
+    // a FAILED ticket write never burns capacity: its hold expires and the slot comes back
+    const db2 = fakeDb(); await place(db2, A, 'XPZ-m');
+    let t = 10_000; const ids = (() => { let i = 0; return () => `r${++i}`; })();
+    const fn = h(db2, { now: () => t, newId: ids });
+    const realUpdate = db2.ref; let failNext = 4;
+    db2.ref = (p) => { const r = realUpdate(p); if (p === '' || p === undefined) return { ...r, update: async (m) => { if (failNext > 0) { failNext -= 1; throw new Error('write failed'); } return r.update(m); } }; return r; };
+    for (let i = 0; i < 4; i++) assert.strictEqual((await call(fn, { token: `tok-${A}`, body: { order_id: 'XPZ-m', reason: 'late', channel: 'inapp' } })).code, 503, 'premise: the write fails');
+    assert.strictEqual(tickets(db2).length, 0, 'nothing written');
+    assert.strictEqual((await call(fn, { token: `tok-${A}`, body: { order_id: 'XPZ-m', reason: 'late', channel: 'inapp' } })).code, 200, 'one live slot remains while 4 holds are live');
+    assert.strictEqual((await call(fn, { token: `tok-${A}`, body: { order_id: 'XPZ-m', reason: 'late', channel: 'inapp' } })).code, 429, '🔴 4 live holds + 1 committed = the cap (strict while holds live)');
+    t += ST.HOLD_MS + 1;
+    for (let i = 0; i < 4; i++) assert.strictEqual((await call(fn, { token: `tok-${A}`, body: { order_id: 'XPZ-m', reason: 'late', channel: 'inapp' } })).code, 200, '🔴 expired holds RETURN their capacity');
+    assert.strictEqual((await call(fn, { token: `tok-${A}`, body: { order_id: 'XPZ-m', reason: 'late', channel: 'inapp' } })).code, 429, 'and the cap is 5 committed');
+    assert.strictEqual(tickets(db2).length, 5); assert.strictEqual(Object.keys(db2.get('support_ticket_counts/XPZ-m/committed')).length, 5);
+    assert.ok(!db2.get('support_ticket_counts/XPZ-m/held') || Object.values(db2.get('support_ticket_counts/XPZ-m/held')).every((at) => t - at >= ST.HOLD_MS), 'every committed ticket released its hold atomically');
+    db2.ref = realUpdate;
+  }
+  ok('Codex S-F r1: the throttle (an explicit policy; per caller — a member uid, a guest\'s order) runs BEFORE the order read; a missing order costs the same comparison work; the per-order cap is a RECOVERABLE reservation committed atomically with the ticket — a failed write never burns capacity');
 
   FINISHED = true;
   console.log(`support-tickets: OK (${n})`);

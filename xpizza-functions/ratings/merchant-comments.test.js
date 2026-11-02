@@ -90,8 +90,9 @@ async function rated(db, uid, id, { rid = 'x_pizza', at, comment, store = 5 }) {
 }
 
 const rl = [];
+const policyOk = (cfg) => !!cfg && Number.isSafeInteger(cfg.windowMs) && cfg.windowMs > 0 && Number.isSafeInteger(cfg.max) && cfg.max > 0;
 const handler = (db, { limited = false, salt } = {}) => MC.makeMerchantRatingComments({ getDatabase: () => db, getAuth: () => ({ verifyIdToken }),
-  checkRateLimit: async (_d, bucket, key) => { rl.push({ bucket, key }); return limited ? { allowed: false, retryAfterSec: 9 } : { allowed: true, retryAfterSec: 0 }; },
+  checkRateLimit: async (_d, bucket, key, cfg) => { assert.ok(policyOk(cfg), `🔴 checkRateLimit(${bucket}) called without a valid policy — production fails OPEN there`); rl.push({ bucket, key, cfg }); return limited ? { allowed: false, retryAfterSec: 9 } : { allowed: true, retryAfterSec: 0 }; },
   salt: salt === undefined ? () => process.env.OTP_SALT : salt }).getMerchantRatingComments;
 async function call(h, { token, query, method = 'GET', body } = {}) {
   const headers = token ? { authorization: `Bearer ${token}` } : {};

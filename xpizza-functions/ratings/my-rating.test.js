@@ -56,8 +56,9 @@ const fulfil = async (db, id, now) => { db.set(`orders/${id}/status`, 'delivered
 const rate = (db, uid, body, now) => rateOrderCore(db, { body, idToken: `tok-${uid}`, now, verifyIdToken, resolveContext: async (rid) => usableCtx(rid) });
 const DISH = 'x_pizza-dish-' + Object.keys(MENU_BY_RESTAURANT.x_pizza).indexOf('Margherita');
 const rl = [];
+const policyOk = (cfg) => !!cfg && Number.isSafeInteger(cfg.windowMs) && cfg.windowMs > 0 && Number.isSafeInteger(cfg.max) && cfg.max > 0;
 const h = (db, { limited = false, now = 10_000 } = {}) => MR.makeMyRating({ getDatabase: () => db, getAuth: () => ({ verifyIdToken }), now: () => now,
-  checkRateLimit: async (_d, bucket, key) => { rl.push({ bucket, key }); return limited ? { allowed: false, retryAfterSec: 5 } : { allowed: true, retryAfterSec: 0 }; } }).getMyRating;
+  checkRateLimit: async (_d, bucket, key, cfg) => { assert.ok(policyOk(cfg), `🔴 checkRateLimit(${bucket}) called without a valid policy — production fails OPEN there`); rl.push({ bucket, key, cfg }); return limited ? { allowed: false, retryAfterSec: 5 } : { allowed: true, retryAfterSec: 0 }; } }).getMyRating;
 async function call(fn, { token, query, method = 'GET' } = {}) {
   const headers = token ? { 'x-firebase-id-token': token } : {};
   const req = { method, query: query || {}, headers, get: (k) => headers[String(k).toLowerCase()] };

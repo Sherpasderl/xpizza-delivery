@@ -11,6 +11,8 @@
 const V2 = require('./rating-v2');
 
 const GENERIC = { status: 403, body: { ok: false, error: 'not_allowed' } };
+// an EXPLICIT limiter policy — checkRateLimit requires it (without one it throws inside its transaction and fails OPEN; Codex S-F r1 #1)
+const RATE = Object.freeze({ windowMs: 60 * 1000, max: 60 });
 const reply = (status, body) => ({ status, body });
 
 async function myRatingCore({ db, verifyIdToken, checkRateLimit, now }, req) {
@@ -21,7 +23,7 @@ async function myRatingCore({ db, verifyIdToken, checkRateLimit, now }, req) {
   const { customerUidOf } = require('./rate-order');
   const uid = await customerUidOf(db, typeof req.get === 'function' ? req.get('x-firebase-id-token') : null, verifyIdToken);
   if (!uid) return GENERIC;
-  const rl = await checkRateLimit(db, 'get_my_rating', uid);
+  const rl = await checkRateLimit(db, 'get_my_rating', uid, RATE);
   if (!rl || rl.allowed !== true) return reply(429, { ok: false, error: 'rate_limited', retry_after: (rl && rl.retryAfterSec) || 60 });
   const order = (await db.ref(`orders/${orderId}/customer_uid`).once('value')).val();
   if (order !== uid) return GENERIC;
@@ -51,4 +53,4 @@ function makeMyRating({ getDatabase, getAuth, checkRateLimit, now = () => Date.n
   };
 }
 
-module.exports = { makeMyRating, myRatingCore };
+module.exports = { makeMyRating, myRatingCore, RATE };

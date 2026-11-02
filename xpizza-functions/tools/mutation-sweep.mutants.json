@@ -31557,8 +31557,8 @@
   "slice": "sd",
   "label": "S-D: misalignment — a dropped body line still adds a snapshot line",
   "file": "reorder-normalize.js",
-  "from": "    if (one.length !== 1) continue;\n    items.push(one[0]);",
-  "to": "    if (one.length !== 1) { lines.push({ unit_cents: 0, line_cents: 0 }); continue; }\n    items.push(one[0]);",
+  "from": "    if (one.length !== 1) continue;\n    if (items.length >= MAX_LINES) { truncated = true; break; }",
+  "to": "    if (one.length !== 1) { lines.push({ unit_cents: 0, line_cents: 0 }); continue; }\n    if (items.length >= MAX_LINES) { truncated = true; break; }",
   "command": [
    "node",
    "reorder-price-snapshot.test.js"
@@ -31569,8 +31569,8 @@
   "slice": "sd",
   "label": "S-D: a partial snapshot is written when a line is refused",
   "file": "reorder-normalize.js",
-  "from": "  return { items, snapshot: priced && items.length > 0 ? { v: 1, lines } : null };",
-  "to": "  return { items, snapshot: items.length > 0 ? { v: 1, lines } : null };",
+  "from": "snapshot: priced && !truncated && items.length > 0 ?",
+  "to": "snapshot: !truncated && items.length > 0 ?",
   "command": [
    "node",
    "reorder-price-snapshot.test.js"
@@ -32241,8 +32241,8 @@
   "slice": "sf",
   "label": "S-F: the member path drops the order-ownership check",
   "file": "support/support-tickets.js",
-  "from": "    if (uid && order && order.customer_uid === uid) via = 'member';",
-  "to": "    if (uid && order) via = 'member';",
+  "from": "  if (uid) { if (order && order.customer_uid === uid) via = 'member'; }",
+  "to": "  if (uid) { if (order) via = 'member'; }",
   "command": [
    "node",
    "support/support-tickets.test.js"
@@ -32277,8 +32277,8 @@
   "slice": "sf",
   "label": "S-F: no per-order cap",
   "file": "support/support-tickets.js",
-  "from": "    return k >= MAX_PER_ORDER ? undefined : k + 1;",
-  "to": "    return k + 1;",
+  "from": "    if (Object.keys(committed).length + Object.keys(held).length >= MAX_PER_ORDER) return undefined;\n",
+  "to": "",
   "command": [
    "node",
    "support/support-tickets.test.js"
@@ -32301,8 +32301,8 @@
   "slice": "sf",
   "label": "S-F: a non-customer predicate (a handheld / tombstoned token accepted)",
   "file": "support/support-tickets.js",
-  "from": "    const uid = await require('../ratings/rate-order').customerUidOf(db, idToken, verifyIdToken);",
-  "to": "    let uid = null; try { uid = (await verifyIdToken(idToken)).uid; } catch (_) {}",
+  "from": "  if (idToken) { uid = await require('../ratings/rate-order').customerUidOf(db, idToken, verifyIdToken); if (!uid) return GENERIC; }",
+  "to": "  if (idToken) { try { uid = (await verifyIdToken(idToken)).uid; } catch (_) {} if (!uid) return GENERIC; }",
   "command": [
    "node",
    "support/support-tickets.test.js"
@@ -32534,6 +32534,102 @@
   "command": [
    "node",
    "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "sd-14",
+  "slice": "sd",
+  "label": "S-D r1: a TRUNCATED recipe still gets a snapshot (Σ line_cents ≠ charged)",
+  "file": "reorder-normalize.js",
+  "from": "snapshot: priced && !truncated && items.length > 0 ?",
+  "to": "snapshot: priced && items.length > 0 ?",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sf-9",
+  "slice": "sf",
+  "label": "S-F r1: checkRateLimit without its policy (fails OPEN in production)",
+  "file": "support/support-tickets.js",
+  "from": "`g:${p.orderId}`, RATE);",
+  "to": "`g:${p.orderId}`);",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-10",
+  "slice": "sf",
+  "label": "S-F r1: a member is throttled per ORDER, not per caller",
+  "file": "support/support-tickets.js",
+  "from": "uid ? `u:${uid}` : `g:${p.orderId}`",
+  "to": "`g:${p.orderId}`",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-11",
+  "slice": "sf",
+  "label": "S-F r1: a guest probe on a MISSING order skips the comparison (timing reveals existence)",
+  "file": "support/support-tickets.js",
+  "from": "else if (tokenEquals(p.trackingToken, order && typeof order.tracking_token === 'string' ? order.tracking_token : DUMMY_TOKEN) && order) via = 'guest';",
+  "to": "else if (order && tokenEquals(p.trackingToken, order.tracking_token)) via = 'guest';",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-12",
+  "slice": "sf",
+  "label": "S-F r1: a hold never expires (a failed write burns capacity forever)",
+  "file": "support/support-tickets.js",
+  "from": "if (Number.isFinite(at) && nowMs - at < HOLD_MS) held[k] = at;",
+  "to": "if (Number.isFinite(at)) held[k] = at;",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-13",
+  "slice": "sf",
+  "label": "S-F r1: the committed mark is not written with the ticket (the count never advances)",
+  "file": "support/support-tickets.js",
+  "from": "    [`support_ticket_counts/${p.orderId}/committed/${id}`]: true,\n",
+  "to": "",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "smr-10",
+  "slice": "smr",
+  "label": "getMyRating: checkRateLimit without its policy (fails OPEN in production)",
+  "file": "ratings/my-rating.js",
+  "from": "'get_my_rating', uid, RATE);",
+  "to": "'get_my_rating', uid);",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "sad-14",
+  "slice": "sad",
+  "label": "S-A(d): checkRateLimit without its policy (fails OPEN in production)",
+  "file": "ratings/merchant-comments.js",
+  "from": "'merchant_rating_comments', dec.uid, RATE);",
+  "to": "'merchant_rating_comments', dec.uid);",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
   ]
  }
 ]

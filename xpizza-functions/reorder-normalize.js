@@ -89,17 +89,19 @@ function normalizeReorderItemsWithPrices(bodyItems, restaurantId, tables = null)
   const items = [];
   const lines = [];
   let priced = true;
+  let truncated = false;
   for (const it of bodyItems) {
-    if (items.length >= MAX_LINES) break;
     const one = normalizeReorderItems([it], restaurantId, tables);
     if (one.length !== 1) continue;
+    if (items.length >= MAX_LINES) { truncated = true; break; }   // the recipe is capped; the CHARGE is not (Codex S-D r1)
     items.push(one[0]);
     const unit = menu[one[0].key];
     const r = require('./menu-pricing').computeServerTotal([it], restaurantId, tables);
     if (r.error || !Number.isInteger(r.total) || !Number.isInteger(unit)) { priced = false; continue; }
     lines.push({ unit_cents: unit * 100, line_cents: r.total * 100 });
   }
-  return { items, snapshot: priced && items.length > 0 ? { v: 1, lines } : null };
+  // a TRUNCATED recipe ⇒ NO snapshot (Σ line_cents would no longer equal the charge; the client's generic disclosure covers it)
+  return { items, snapshot: priced && !truncated && items.length > 0 ? { v: 1, lines } : null };
 }
 // the snapshot alone (the online pending writer's insert-only hunk: reorder_items itself is written by the unchanged base line)
 function reorderPriceSnapshot(bodyItems, restaurantId, tables = null) {

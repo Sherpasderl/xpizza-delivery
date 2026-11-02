@@ -6,7 +6,8 @@
 //          capability, bound to exactly one order), compared in CONSTANT time. Any failure ⇒ ONE generic 403, nothing written.
 //   → 200 { ok, status:'received' } | 400 bad_request | 403 not_allowed | 405 | 429 rate_limited
 // support_tickets/{id} = { order_id, restaurant_id, reason, text|null, channel, created_at, status:'received', via } — NO identity (Central
-// reaches the customer through the order). ≤ MAX_PER_ORDER tickets per order, counted in a transaction (support_ticket_counts).
+// reaches the customer through the order). ≤ MAX_PER_ORDER tickets per order — a recoverable reservation (support_ticket_counts) committed
+// atomically with the ticket; a per-caller rate limit (an explicit policy) runs BEFORE any ownership-dependent answer.
 // Server-only (rules .read/.write false). Each ticket is raised at once as dispatcher_alerts/support_ticket_<id> = { type:
 // 'support_ticket_received', order_id, reason, created_at } (ruling F3); its dedicated rendering + status write-back is X-1.
 const crypto = require('crypto');
@@ -41,34 +42,52 @@ function parse(body) {
   return { orderId, reason, channel, text, trackingToken: body.tracking_token };
 }
 
+// Codex S-F r1: an EXPLICIT limiter policy (checkRateLimit requires it — without one it throws inside its transaction and fails OPEN)
+const RATE = Object.freeze({ windowMs: 60 * 60 * 1000, max: 10 });   // per caller: a member uid, or a guest's order
+const HOLD_MS = 60 * 1000;                                            // a slot reservation is recoverable after this
+// a constant-shape dummy so a guest probe on a MISSING order does the same comparison work as on a present one (Codex S-F r1 #2)
+const DUMMY_TOKEN = crypto.createHash('sha256').update('support-ticket-dummy-token').digest('hex');
+
+// the per-order cap, as a RECOVERABLE reservation (Codex S-F r1 #3): ONE transaction holds a slot when committed + live holds < MAX;
+// the ticket, its alert, the committed mark and the hold's release then land in ONE atomic multi-path update. A failed write never
+// burns capacity: its hold expires after HOLD_MS. The updater aborts (undefined) only when the cap is reached on the ACTUAL value.
+function reserveUpdater(id, nowMs) {
+  return (cur) => {
+    const committed = cur && cur.committed && typeof cur.committed === 'object' ? cur.committed : {};
+    const held = {};
+    for (const [k, at] of Object.entries(cur && cur.held && typeof cur.held === 'object' ? cur.held : {})) if (Number.isFinite(at) && nowMs - at < HOLD_MS) held[k] = at;
+    if (Object.keys(committed).length + Object.keys(held).length >= MAX_PER_ORDER) return undefined;
+    return { committed, held: { ...held, [id]: nowMs } };
+  };
+}
+
 async function createSupportTicketCore({ db, verifyIdToken, checkRateLimit, now, newId }, req) {
   if (req.method !== 'POST') return reply(405, { ok: false, error: 'method_not_allowed' });
   const p = parse(req.body);
   if (!p) return BAD;
+  // WHO is asking — decided before the order is read, so the throttle runs before anything ownership-dependent (Codex S-F r1 #2)
+  const idToken = typeof req.get === 'function' ? req.get('x-firebase-id-token') : null;
+  let uid = null;
+  if (idToken) { uid = await require('../ratings/rate-order').customerUidOf(db, idToken, verifyIdToken); if (!uid) return GENERIC; }
+  else if (p.trackingToken === undefined) return GENERIC;
+  const rl = await checkRateLimit(db, 'support_ticket', uid ? `u:${uid}` : `g:${p.orderId}`, RATE);
+  if (!rl || rl.allowed !== true) return reply(429, { ok: false, error: 'rate_limited', retry_after: (rl && rl.retryAfterSec) || 60 });
   const order = (await db.ref(`orders/${p.orderId}`).once('value')).val();
   let via = null;
-  const idToken = typeof req.get === 'function' ? req.get('x-firebase-id-token') : null;
-  if (idToken) {
-    const uid = await require('../ratings/rate-order').customerUidOf(db, idToken, verifyIdToken);
-    if (uid && order && order.customer_uid === uid) via = 'member';
-  } else if (p.trackingToken !== undefined) {
-    if (order && tokenEquals(p.trackingToken, order.tracking_token)) via = 'guest';
-  }
+  if (uid) { if (order && order.customer_uid === uid) via = 'member'; }
+  else if (tokenEquals(p.trackingToken, order && typeof order.tracking_token === 'string' ? order.tracking_token : DUMMY_TOKEN) && order) via = 'guest';
   if (!via) return GENERIC;
-  const rl = await checkRateLimit(db, 'support_ticket', p.orderId);
-  if (!rl || rl.allowed !== true) return reply(429, { ok: false, error: 'rate_limited', retry_after: (rl && rl.retryAfterSec) || 60 });
-  const cnt = await db.ref(`support_ticket_counts/${p.orderId}`).transaction((cur) => {
-    const k = Number.isInteger(cur) ? cur : 0;
-    return k >= MAX_PER_ORDER ? undefined : k + 1;
-  });
-  if (!cnt || !cnt.committed) return reply(429, { ok: false, error: 'rate_limited', retry_after: 3600 });
-  // ruling F3: the ticket is raised to the Central NOW through the EXISTING dispatcher_alerts channel (order_id + reason only), in
-  // the SAME atomic multi-path update as the ticket — never a ticket without its alert, never an alert without its ticket
   const id = newId(); const at = now();
+  const hold = await db.ref(`support_ticket_counts/${p.orderId}`).transaction(reserveUpdater(id, at));
+  if (!hold || !hold.committed) return reply(429, { ok: false, error: 'rate_limited', retry_after: 3600 });
+  // ruling F3 + Codex r1 #3: the ticket, its Central alert (order_id + reason only), the committed mark and the hold's release — ONE
+  // atomic multi-path update: never a ticket without its alert or its count, never a count without its ticket
   await db.ref().update({
     [`support_tickets/${id}`]: { order_id: p.orderId, restaurant_id: typeof order.restaurant_id === 'string' ? order.restaurant_id : null,
       reason: p.reason, text: p.text, channel: p.channel, created_at: at, status: 'received', via },
     [`dispatcher_alerts/support_ticket_${id}`]: { type: 'support_ticket_received', order_id: p.orderId, reason: p.reason, created_at: at },
+    [`support_ticket_counts/${p.orderId}/committed/${id}`]: true,
+    [`support_ticket_counts/${p.orderId}/held/${id}`]: null,
   });
   return reply(200, { ok: true, status: 'received' });
 }
@@ -85,4 +104,4 @@ function makeSupportTickets({ getDatabase, getAuth, checkRateLimit, now = () => 
   };
 }
 
-module.exports = { makeSupportTickets, createSupportTicketCore, MAX_PER_ORDER, REASONS, CHANNELS };
+module.exports = { makeSupportTickets, createSupportTicketCore, reserveUpdater, MAX_PER_ORDER, RATE, HOLD_MS, REASONS, CHANNELS };
