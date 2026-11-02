@@ -27,8 +27,14 @@ const ppCrypto = require('./pixelpay');
 // state machine handles (capturing-claim → manual_reconciliation), never a blind retry.
 const REQUEST_TIMEOUT_MS = 30000;
 
+// The response was lost after PixelPay may have acted: callers treat this exactly like a network/abort reject.
+function outcomeUnknown(httpStatus, reason, cause) {
+  return Object.assign(new Error(`PIXELPAY_OUTCOME_UNKNOWN: ${reason} (HTTP ${httpStatus})`), { code: 'PIXELPAY_OUTCOME_UNKNOWN', httpStatus, reason, cause });
+}
+
 // Low-level POST to a transaction endpoint. Returns a normalized envelope; never throws
-// for HTTP/PixelPay errors (returns { ok:false, ... }) — only network/abort rejects.
+// for HTTP/PixelPay errors (returns { ok:false, ... }) — only network/abort rejects, and a 2xx
+// whose envelope cannot be read (code PIXELPAY_OUTCOME_UNKNOWN).
 async function ppPost(action, body, extraHeaders = {}) {
   const cfg = resolvePixelPayConfig();
   const headers = {
@@ -48,15 +54,22 @@ async function ppPost(action, body, extraHeaders = {}) {
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
 
   let res;
+  let text = '';
   try {
     res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload), signal: ctrl.signal });
+    // The deadline covers the BODY too. Headers alone settle nothing: a 2xx whose body is lost may still
+    // have moved money, so it is an UNKNOWN outcome (the lost-response path), never an envelope.
+    try { text = await res.text(); } catch (e) { if (res.ok) throw outcomeUnknown(res.status, 'body_read_failed', e); text = ''; }
   } finally {
     clearTimeout(timer);
   }
 
-  const text = await res.text().catch(() => '');
   let json = null;
   try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+  // A 2xx with no readable JSON object (empty, not JSON, a bare value or array) is not an answer.
+  if (res.ok && !(json && typeof json === 'object' && !Array.isArray(json))) {
+    throw outcomeUnknown(res.status, text ? 'body_unparseable' : 'body_empty');
+  }
 
   return {
     ok: res.ok && !!(json && json.success),

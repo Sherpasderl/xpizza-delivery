@@ -139,7 +139,7 @@ async function cell(name, fn) { try { await fn(); } catch (e) { fails.push(name)
 
 (async () => {
   // POU-CAPTURE-BODY-LOST: capture 200, the body drops → the existing "capture may have landed" path.
-  for (const [label, step] of [['POU-CAPTURE-BODY-LOST', { kind: 'bodyLost' }], ['POU-CAPTURE-EMPTY-200', { kind: 'empty' }], ['POU-CAPTURE-GARBAGE-200', { kind: 'garbage' }]]) {
+  for (const [label, step] of [['POU-CAPTURE-BODY-LOST', { kind: 'bodyLost' }], ['POU-CAPTURE-EMPTY-200', { kind: 'empty' }], ['POU-CAPTURE-GARBAGE-200', { kind: 'garbage' }], ['POU-CAPTURE-ARRAY-200', json(200, [1])], ['POU-CAPTURE-BARE-VALUE-200', json(200, 'ok')]]) {
     await cell(label, async () => {
       const db = makeDb(redeemedOrder());
       const calls = installFetch({ status: [STATUS_OK('authorized')], capture: [step] });
