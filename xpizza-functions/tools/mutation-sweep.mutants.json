@@ -31413,8 +31413,8 @@
   "slice": "sc",
   "label": "S-C favorites: a deleted_uids-tombstoned account can still write favorites",
   "file": "../xpizza-reference/database.rules.json",
-  "from": "\"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
-  "to": "\"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "from": "\".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
   "command": [
    "node",
    "favorites-rules.guard.test.js"
@@ -31425,8 +31425,8 @@
   "slice": "sc",
   "label": "S-C favorites: a sweep-claimed account can still write favorites",
   "file": "../xpizza-reference/database.rules.json",
-  "from": "\"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
-  "to": "\"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists()\"",
+  "from": "\".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists()\"",
   "command": [
    "node",
    "favorites-rules.guard.test.js"
@@ -31437,8 +31437,8 @@
   "slice": "sc",
   "label": "S-C favorites: a non-member (no customer claim) can read favorites",
   "file": "../xpizza-reference/database.rules.json",
-  "from": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid\",\n        \".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
-  "to": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.uid === $uid\",\n        \".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "from": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
   "command": [
    "node",
    "favorites-rules.guard.test.js"
@@ -31449,8 +31449,8 @@
   "slice": "sc",
   "label": "S-C favorites: any key is accepted as a favorite rid",
   "file": "../xpizza-reference/database.rules.json",
-  "from": "\".validate\": \"$rid.matches(/^[a-z0-9][a-z0-9_-]{1,39}$/) && newData.hasChildren(['createdAt'])\"",
-  "to": "\".validate\": \"newData.hasChildren(['createdAt'])\"",
+  "from": "\".validate\": \"$rid.matches(/^[a-z0-9][a-z0-9_-]{1,39}$/) && root.child('restaurants').child($rid).child('identity').exists() && newData.hasChildren(['createdAt'])\"",
+  "to": "\".validate\": \"root.child('restaurants').child($rid).child('identity').exists() && newData.hasChildren(['createdAt'])\"",
   "command": [
    "node",
    "favorites-rules.guard.test.js"
@@ -31463,6 +31463,54 @@
   "file": "../xpizza-reference/database.rules.json",
   "from": "\"createdAt\": { \".validate\": \"newData.isNumber() && newData.val() <= now + 60000\" },\n          \"$other\":    { \".validate\": false }",
   "to": "\"createdAt\": { \".validate\": \"newData.isNumber() && newData.val() <= now + 60000\" },\n          \"$other\":    { \".validate\": true }",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-7",
+  "slice": "sc",
+  "label": "S-C favorites (Codex r1 #1): a scalar may replace the whole favorites node",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\n        \".validate\": \"newData.hasChildren()\",\n        \"$rid\": {",
+  "to": "\n        \"$rid\": {",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-8",
+  "slice": "sc",
+  "label": "S-C favorites (Codex r1 #2): a regex-valid but non-existent restaurant id is accepted (unbounded storage)",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\".validate\": \"$rid.matches(/^[a-z0-9][a-z0-9_-]{1,39}$/) && root.child('restaurants').child($rid).child('identity').exists() && newData.hasChildren(['createdAt'])\"",
+  "to": "\".validate\": \"$rid.matches(/^[a-z0-9][a-z0-9_-]{1,39}$/) && newData.hasChildren(['createdAt'])\"",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-9",
+  "slice": "sc",
+  "label": "S-C favorites (Codex r1): a deleted_uids-tombstoned account can still READ favorites",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-10",
+  "slice": "sc",
+  "label": "S-C favorites (Codex r1): a sweep-claimed account can still READ favorites",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists()\"",
   "command": [
    "node",
    "favorites-rules.guard.test.js"
