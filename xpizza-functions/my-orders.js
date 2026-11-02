@@ -15,7 +15,7 @@ const { HEAL_TERMINAL_STATUSES: TERMINAL } = require('./sweep-pending');   // {c
 const ORDER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;   // the createOrder order_id rule
 const LIMIT_DEFAULT = 20;
 const LIMIT_MAX = 50;
-const QUERY_KEYS = new Set(['context', 'limit', 'cursor']);
+const QUERY_KEYS = new Set(['context', 'limit', 'cursor', 'order_id']);
 const RATE = Object.freeze({ windowMs: 10 * 60 * 1000, max: 60 });   // per verified uid
 
 const encodeCursor = (ts, id) => Buffer.from(JSON.stringify([ts, id])).toString('base64url');
@@ -59,6 +59,36 @@ function withDishIds(items, map) {
     ? { ...l, dish_id: (map && typeof l.key === 'string' && map.dish.get(l.key)) || null } : l));
 }
 
+// RECEIPT detail mode (NOTE-getMyOrders-receipt, approved 2026-11-01): ?context=platform&order_id=X (alone — no limit / cursor).
+// Ownership = the caller's user_orders entry exists AND orders/{id}.customer_uid === uid; anything else ⇒ ONE uniform 404 (no
+// existence oracle). 2 point reads. A WHITELIST of the order: priced lines only when the order has them (x_pizza's platform
+// factura — brand-agnostic BY DATA), present totals only (never 0-filled), the tender as cash / card (never digits or a
+// reference — none is stored), the customer's own address for a delivery (never coordinates).
+const isInt = (v) => Number.isSafeInteger(v);
+function receiptLines(items) {
+  if (!Array.isArray(items) || !items.length) return null;
+  const out = [];
+  for (const l of items) {
+    if (!l || typeof l !== 'object' || !isInt(l.qty) || l.qty < 1 || typeof l.description !== 'string' || !isInt(l.line_gross_cents)) return null;
+    out.push({ qty: l.qty, description: l.description, line_cents: l.line_gross_cents });
+  }
+  return out;
+}
+const TOTAL_KEYS = ['subtotal_cents', 'tax_cents', 'delivery_cents', 'promo_discount_cents', 'tip_cents', 'total_cents'];
+const TENDER = { cash: 'cash', card_delivery: 'card', online: 'card' };
+function projectReceipt(id, entry, o) {
+  const totals = {}; for (const k of TOTAL_KEYS) if (isInt(o[k])) totals[k] = o[k];
+  const method = TENDER[o.payment_method] || null;
+  const type = str(o.order_type);
+  return {
+    order_id: id, ...(Number.isFinite(o.display_number) ? { display_number: o.display_number } : {}),
+    ts: num(entry.ts), restaurant: str(entry.restaurant), order_type: type, status: str(o.status),
+    lines: receiptLines(o.items), items_text: str(o.items_text), totals,
+    tender: { method, ...(method === 'cash' && isInt(o.cash_tendered_cents) ? { cash_tendered_cents: o.cash_tendered_cents } : {}) },
+    ...(type === 'delivery' ? { address: { detected: str(o.address_detected), details: str(o.address_details), area: str(o.address_area) } } : {}),
+  };
+}
+
 // deps: { getDatabase, getAuth, checkRateLimit, resolveContext(rid) → the pricing envelope's context }
 function makeMyOrders(deps) {
   async function getMyOrders(req, res) {
@@ -73,7 +103,9 @@ function makeMyOrders(deps) {
         || (b != null && (typeof b !== 'object' || Array.isArray(b) || Object.keys(b).length > 0));
       const limit = parseLimit(q.limit);
       const cursor = q.cursor === undefined ? null : decodeCursor(q.cursor);
-      if (q.context !== 'platform' || Object.keys(q).some((k) => !QUERY_KEYS.has(k)) || hasBody || limit === null || (q.cursor !== undefined && !cursor)) {
+      const detailId = q.order_id;
+      const badDetail = detailId !== undefined && (typeof detailId !== 'string' || !ORDER_ID_RE.test(detailId) || q.limit !== undefined || q.cursor !== undefined);
+      if (q.context !== 'platform' || Object.keys(q).some((k) => !QUERY_KEYS.has(k)) || hasBody || limit === null || (q.cursor !== undefined && !cursor) || badDetail) {
         return res.status(400).json({ ok: false, reason: 'bad_request' });
       }
       const t = typeof req.get === 'function' ? req.get('x-firebase-id-token') : null;
@@ -86,6 +118,12 @@ function makeMyOrders(deps) {
       const { allowed, retryAfterSec } = await deps.checkRateLimit(db, 'my_orders', uid, RATE);
       if (!allowed) { res.set('Retry-After', String(retryAfterSec)); return res.status(429).json({ ok: false, reason: 'rate_limited' }); }
       if (await S.isTombstoned(db, uid)) return res.status(403).json({ ok: false, reason: 'deleted' });
+      if (detailId !== undefined) {
+        const [eS, oS] = await Promise.all([db.ref(`user_orders/${uid}/${detailId}`).once('value'), db.ref(`orders/${detailId}`).once('value')]);
+        const entry = eS.val(); const order = oS.val();
+        if (!entry || typeof entry !== 'object' || !order || typeof order !== 'object' || order.customer_uid !== uid) return res.status(404).json({ ok: false, reason: 'not_found' });
+        return res.status(200).json({ ok: true, receipt: projectReceipt(detailId, entry, order) });
+      }
       let qr = db.ref(`user_orders/${uid}`).orderByChild('ts');
       if (cursor) qr = qr.endBefore(cursor.ts, cursor.id);
       const snap = await qr.limitToLast(limit + 1).once('value');

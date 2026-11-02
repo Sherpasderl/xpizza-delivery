@@ -285,6 +285,119 @@ const mirror = async (db, uid, id, status) => { const d = decideStatusMirror(id,
   }
   ok('display_number (approved delta): present only when orders/{id}/display_number is a finite number; absent when unstamped or malformed — never the long id');
 
+  // ══ RECEIPT detail mode (NOTE-getMyOrders-receipt, approved 2026-11-01): ?context=platform&order_id=X ══
+  // Orders come from the REAL intake chain: storedCtx (a minted server envío ctx) → DW.withDelivery (the breakdown with envío + tip)
+  // → pricedLineItems (x_pizza's factura-priced lines) → buildCreateOrderUpdates → attachCustomerAttribution — exactly createOrder's
+  // order. The online-card case uses the same builder with payment_method 'online' (chargeOnlineOrder's pending record shares these
+  // field names; its builder is inline in index.js) + the REAL confirm patch (buildMaterializeUpdates).
+  const P = require('./delivery/delivery-pricing'); const DW = require('./delivery/delivery-wire');
+  const { pricedLineItems } = require('./factura/pricing'); const { EXTRAS_BY_RESTAURANT } = require('./menu-pricing');
+  const { buildCreateOrderUpdates } = require('./create-order-build');
+  const place = async (db, uid, id, { rid = 'x_pizza', type = 'delivery', pay = 'cash', tip = 0, now = 100, items } = {}) => {
+    const ctx = type === 'delivery' ? P.storedCtx({ delivery_snapshot: { mode: 'delivery', policy_version: 1, km: 3.2, band: 1, promo: null }, delivery_cents: 4000, promo_discount_cents: 500, ...(tip ? { tip_cents: tip } : {}) }) : null;
+    const bd = DW.withDelivery({ ctx }, { total_cents: 30000, subtotal_cents: 26087, tax_cents: 3913 });
+    const body = items || (rid === 'x_pizza' ? [{ name: 'Margherita', qty: 2, extras: [{ name: 'Mozzarella' }] }] : [{ id: Object.keys(MENU_BY_RESTAURANT.la_musa)[0], name: 'x', qty: 1 }]);
+    const fp = rid === 'x_pizza' ? pricedLineItems(body, MENU_BY_RESTAURANT.x_pizza, EXTRAS_BY_RESTAURANT.x_pizza) : { items: null, error: null };
+    const u = buildCreateOrderUpdates({ orderId: id, orderType: type, now, trackingToken: 'tk' + id.slice(-4), total: bd.total_cents / 100, lat: type === 'delivery' ? 14.07 : null, lng: type === 'delivery' ? -87.19 : null,
+      fields: { customer_name: 'Ana', customer_phone: '50499990000', items_text: '2x Margherita', notes: 'sin cebolla', payment_method: pay, ...(type === 'delivery' ? { address_detected: 'Col. Palmira', address_details: 'casa azul', address_area: 'Palmira' } : {}) },
+      hubSnap: { hub_lat: 1, hub_lng: 2, restaurant_name: 'R', restaurant_phone: '1' }, restaurantId: rid, priceBreakdown: bd, facturaPriced: fp, cashTenderedCents: pay === 'cash' ? 50000 : null });
+    attachCustomerAttribution(u, id, uid, { now, total: bd.total_cents / 100, orderType: type, items_text: '2x Margherita', restaurantId: rid, items: body });
+    await db.ref().update(u);
+    if (pay === 'online') await db.ref().update(buildMaterializeUpdates({ orderId: id, order: { ...db.get(`orders/${id}`), customer_uid: uid }, trackingToken: 'tk' + id.slice(-4), now: now + 1, restaurant: rid, paymentMethod: 'online' }));
+    return u;
+  };
+  const rcpt = (call, token, id, extra = {}) => call({ token, query: { context: 'platform', order_id: id, ...extra } });
+
+  // ── R1. x_pizza delivery, cash, tip + envío: priced lines, the full breakdown, the cash tender, the OWN address (never coordinates) ──
+  {
+    const db = fakeDb(); const { call } = harness(db);
+    await place(db, A, 'XPZ-r1', { tip: 2000 }); db.set('orders/XPZ-r1/display_number', 47);
+    const r = await rcpt(call, `tok-${A}`, 'XPZ-r1');
+    assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    const o = db.get('orders/XPZ-r1');
+    assert.deepStrictEqual(r.body.receipt, {
+      order_id: 'XPZ-r1', display_number: 47, ts: 100, restaurant: 'x_pizza', order_type: 'delivery', status: 'new',
+      lines: o.items.map((l) => ({ qty: l.qty, description: l.description, line_cents: l.line_gross_cents })), items_text: '2x Margherita',
+      totals: { subtotal_cents: 26087, tax_cents: 3913, delivery_cents: 4000, promo_discount_cents: 500, tip_cents: 2000, total_cents: o.total_cents },
+      tender: { method: 'cash', cash_tendered_cents: 50000 },
+      address: { detected: 'Col. Palmira', details: 'casa azul', area: 'Palmira' },
+    }, '🔴 the x_pizza delivery cash receipt');
+    assert.strictEqual(o.total_cents, 30000 + 4000 - 500 + 2000, 'premise: the REAL breakdown (food + net envío + tip)');
+  }
+  ok('receipt R1: x_pizza delivery cash with tip + envío ⇒ factura-priced lines, the full breakdown (present keys), the cash tender, the own address — never coordinates');
+
+  // ── R2. la_musa pickup, card on delivery: NO priced lines (lines null ⇒ the capp shows items_text), food totals only, «Tarjeta», no address ──
+  {
+    const db = fakeDb(); const { call } = harness(db);
+    await place(db, A, 'LMS-r2', { rid: 'la_musa', type: 'pickup', pay: 'card_delivery' });
+    const rc = (await rcpt(call, `tok-${A}`, 'LMS-r2')).body.receipt;
+    assert.strictEqual(rc.lines, null, '🔴 no platform factura ⇒ lines null (brand-agnostic BY DATA)');
+    assert.strictEqual(rc.items_text, '2x Margherita');
+    assert.deepStrictEqual(rc.totals, { subtotal_cents: 26087, tax_cents: 3913, total_cents: 30000 }, 'absent envío / tip are omitted, never 0-filled');
+    assert.deepStrictEqual(rc.tender, { method: 'card' }, '🔴 card ⇒ «Tarjeta» only, no digits, no reference');
+    assert.ok(!('address' in rc), 'pickup ⇒ no address'); assert.ok(!('display_number' in rc), 'unstamped ⇒ absent');
+  }
+  ok('receipt R2: la_musa pickup card-on-delivery ⇒ lines null + items_text, food totals only (absent keys omitted), tender card with no digits, no address');
+
+  // ── R3. online card (confirm patch): tender card; the receipt reads the CONFIRMED order ──
+  {
+    const db = fakeDb(); const { call } = harness(db);
+    await place(db, A, 'XPZ-r3', { type: 'pickup', pay: 'online' });
+    const rc = (await rcpt(call, `tok-${A}`, 'XPZ-r3')).body.receipt;
+    assert.deepStrictEqual(rc.tender, { method: 'card' }); assert.strictEqual(rc.lines.length, 1);
+  }
+  ok('receipt R3: an online card order (the real confirm patch) ⇒ tender card, priced lines');
+
+  // ── R4. ownership: another account's id, a missing history entry, a missing order, a mismatched customer_uid ⇒ ONE uniform 404 ──
+  {
+    const db = fakeDb(); const { call } = harness(db);
+    await place(db, B, 'XPZ-b');                                                    // B's order
+    await place(db, A, 'XPZ-noentry'); db.set(`user_orders/${A}/XPZ-noentry`, null);   // A's order, no history entry
+    await place(db, A, 'XPZ-noorder'); db.set('orders/XPZ-noorder', null);             // the entry, no order
+    await place(db, A, 'XPZ-mism'); db.set('orders/XPZ-mism/customer_uid', B);         // the entry, but the order names B
+    const bodies = [];
+    for (const id of ['XPZ-b', 'XPZ-noentry', 'XPZ-noorder', 'XPZ-mism', 'XPZ-never']) {
+      const r = await rcpt(call, `tok-${A}`, id); assert.strictEqual(r.code, 404, `🔴 ${id} ⇒ ${r.code}`); bodies.push(JSON.stringify(r.body));
+    }
+    assert.strictEqual(new Set(bodies).size, 1, '🔴 one uniform 404 body (no existence oracle)'); assert.deepStrictEqual(JSON.parse(bodies[0]), { ok: false, reason: 'not_found' });
+    assert.strictEqual((await rcpt(call, `tok-${B}`, 'XPZ-b')).code, 200, 'the owner reads it');
+  }
+  ok('receipt R4: another account\'s order, a missing history entry, a missing order, a customer_uid mismatch and an unknown id ⇒ ONE uniform 404; the owner gets 200');
+
+  // ── R5. strict: order_id validated; order_id excludes limit / cursor; the auth gates apply ──
+  {
+    const db = fakeDb(); const { call } = harness(db); await place(db, A, 'XPZ-s');
+    for (const extra of [{ order_id: '../x' }, { order_id: '' }, { order_id: 'a'.repeat(65) }, { order_id: 'XPZ-s', limit: '5' }, { order_id: 'XPZ-s', cursor: Buffer.from('[1,"XPZ-s"]').toString('base64url') }]) {
+      const r = await call({ token: `tok-${A}`, query: { context: 'platform', ...extra } }); assert.strictEqual(r.code, 400, `🔴 ${JSON.stringify(extra)} ⇒ ${r.code}`);
+    }
+    assert.strictEqual((await call({ query: { context: 'platform', order_id: 'XPZ-s' } })).code, 401);
+    db.set(`deleted_uids/${A}`, 1); assert.strictEqual((await rcpt(call, `tok-${A}`, 'XPZ-s')).code, 403);
+  }
+  ok('receipt R5: a malformed order_id, or order_id with limit / cursor ⇒ 400; no token ⇒ 401; a tombstone ⇒ 403');
+
+  // ── R6. exactly TWO point reads (the entry + the order) beyond the tombstone checks; no query ──
+  {
+    const db = fakeDb(); const { call } = harness(db); await place(db, A, 'XPZ-c'); db.reads.length = 0;
+    await rcpt(call, `tok-${A}`, 'XPZ-c');
+    assert.strictEqual(db.reads.filter((x) => x.kind === 'query').length, 0, 'no query');
+    assert.deepStrictEqual(db.reads.filter((x) => x.kind === 'get').map((x) => x.path).sort(), [`deleted_uids/${A}`, `orders/XPZ-c`, `user_orders/${A}/XPZ-c`, `user_private/${A}/deleted_at`].sort(), '🔴 exactly the entry + the order');
+  }
+  ok('receipt R6: exactly two point reads (user_orders/{uid}/{id} + orders/{id}) beyond the tombstone checks — no query, no fan-out');
+
+  // ── R7. the whitelist: no PII / token / payment reference / coordinate ever leaves; malformed lines ⇒ null ──
+  {
+    const db = fakeDb(); const { call } = harness(db); await place(db, A, 'XPZ-w2');
+    db.set('orders/XPZ-w2/payment_reference', 'PX-123'); db.set('orders/XPZ-w2/card_last4', '4242'); db.set('orders/XPZ-w2/guest_verified', { phone: '1' });
+    const rc = (await rcpt(call, `tok-${A}`, 'XPZ-w2')).body.receipt;
+    const flat = JSON.stringify(rc);
+    for (const leak of ['50499990000', 'Ana', 'tk', 'PX-123', '4242', '14.07', '-87.19', 'sin cebolla', 'factura', 'hub_', 'guest_verified', 'customer_uid', 'maps_link'])
+      assert.ok(!flat.includes(leak), `🔴 the receipt leaked ${leak}`);
+    assert.deepStrictEqual(Object.keys(rc).sort(), ['address', 'items_text', 'lines', 'order_id', 'order_type', 'restaurant', 'status', 'tender', 'totals', 'ts']);
+    db.set('orders/XPZ-w2/items', [{ qty: 'two', description: 5 }]);
+    assert.strictEqual((await rcpt(call, `tok-${A}`, 'XPZ-w2')).body.receipt.lines, null, 'malformed priced lines ⇒ null (never passed through)');
+  }
+  ok('receipt R7: a whitelist — no phone, name, tracking token, payment reference, card digits, coordinates, notes, factura or hub field; malformed lines ⇒ null');
+
   FINISHED = true;
   console.log(`\nmy-orders: OK (${n})`);
 })().catch((e) => { process.stderr.write(`my-orders: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });

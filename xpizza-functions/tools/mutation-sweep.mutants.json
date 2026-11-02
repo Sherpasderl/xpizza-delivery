@@ -30705,8 +30705,8 @@
   "slice": "mo",
   "label": "getMyOrders: the projection spreads the stored entry (internal fields leave)",
   "file": "my-orders.js",
-  "from": "  return {\n    order_id: id,",
-  "to": "  return { ...x,\n    order_id: id,",
+  "from": "  return {\n    order_id: id, ts: num(x.ts),",
+  "to": "  return { ...x,\n    order_id: id, ts: num(x.ts),",
   "command": [
    "node",
    "my-orders.test.js"
@@ -30827,6 +30827,78 @@
   "file": "my-orders.js",
   "from": "      const hasBody = (Buffer.isBuffer(req.rawBody) && req.rawBody.length > 0)\n        || (b != null && (typeof b !== 'object' || Array.isArray(b) || Object.keys(b).length > 0));",
   "to": "      const hasBody = b != null && (typeof b !== 'object' || Object.keys(b).length > 0);",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-14",
+  "slice": "mo",
+  "label": "getMyOrders receipt: another account's order is readable (the customer_uid check dropped)",
+  "file": "my-orders.js",
+  "from": " || order.customer_uid !== uid) return res.status(404)",
+  "to": ") return res.status(404)",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-15",
+  "slice": "mo",
+  "label": "getMyOrders receipt: an order without the caller's history entry is readable",
+  "file": "my-orders.js",
+  "from": "if (!entry || typeof entry !== 'object' || !order",
+  "to": "if (!order",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-16",
+  "slice": "mo",
+  "label": "getMyOrders receipt: the address carries coordinates",
+  "file": "my-orders.js",
+  "from": "area: str(o.address_area) } } : {}),",
+  "to": "area: str(o.address_area), lat: o.lat, lng: o.lng } } : {}),",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-17",
+  "slice": "mo",
+  "label": "getMyOrders receipt: the receipt spreads the whole order (PII / tokens leave)",
+  "file": "my-orders.js",
+  "from": "    order_id: id, ...(Number.isFinite(o.display_number)",
+  "to": "    ...o, order_id: id, ...(Number.isFinite(o.display_number)",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-18",
+  "slice": "mo",
+  "label": "getMyOrders receipt: absent totals are 0-filled",
+  "file": "my-orders.js",
+  "from": "for (const k of TOTAL_KEYS) if (isInt(o[k])) totals[k] = o[k];",
+  "to": "for (const k of TOTAL_KEYS) totals[k] = isInt(o[k]) ? o[k] : 0;",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-19",
+  "slice": "mo",
+  "label": "getMyOrders receipt: the tender leaks the payment reference",
+  "file": "my-orders.js",
+  "from": "    tender: { method, ...(method === 'cash'",
+  "to": "    tender: { method, ref: o.payment_reference || null, ...(method === 'cash'",
   "command": [
    "node",
    "my-orders.test.js"
