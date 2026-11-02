@@ -272,7 +272,7 @@
     // Codex G6 r1 #1: EVERY non-member transition (a sign-out, a close mid-completion, a switch) reaches the mounted checkout — its
     // member context (and so its token) never outlives the session
     let memberGen = 0;
-    function dropMember() { memberGen++; clearTokenTimers(); S.member = null; if (S.store) S.store.ui.setMember(null); }
+    function dropMember() { memberGen++; clearTokenTimers(); S.member = null; if (S.store) S.store.ui.setMember(null); identityChanged(); }
     // the member the store mounts / fills from: the profile + the member token the transport sends
     async function applyMember(p) {
       // Codex G6 r1 #3: applied only if, after the token's await, nothing has changed — no sign-out / switch in between, and the
@@ -287,6 +287,7 @@
       S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', ...(typeof p.promos === 'boolean' ? { promos: p.promos } : {}), idToken: null, getIdToken: () => fbAuth.idToken(), onTokenChange: onMemberToken };
       { const A = apiMod(); if (A && typeof A.acceptToken === 'function') A.acceptToken(S.member, idToken, nowMs()); }   // the ONE setter (an unusable token is refused)
       if (S.store) S.store.ui.setMember(S.member);   // §4c: back on the SAME checkout step, filled in
+      identityChanged();
       schedule();
       if (usable(S.member)) armExpiry(); else retryToken(gen, uid, 0);
     }
@@ -437,7 +438,7 @@
       if (r.name === 'search' || r.name === 'account' || r.name === 'orders') { nav.tab({ name: r.name }); return; }
       if (r.name !== 'store') return;
       // a reload on an active order's own URL ⇒ its order screen (the device's record), never a fresh checkout
-      if (r.step === 'pago' && S.order && S.order.rid === r.rid && !CappOrder.FINAL.has(S.order.status)) { if (nav.tab({ name: 'orders' })) nav.go({ name: 'order' }); return; }
+      if (r.step === 'pago' && activeOrder() && S.order.rid === r.rid) { if (nav.tab({ name: 'orders' })) nav.go({ name: 'order' }); return; }
       pendingRoute = { r, gen: ++navGen, mounted: false };
       subscribeMenu(r.rid); cache.get(r.rid);
       tryRoute();
@@ -531,14 +532,19 @@
     // the token in its header; a guest has none) + THIS device's active order (S.order, its local record). One read per visit, newest
     // first, generation-guarded (a sign-out / switch mid-read never paints another member's rows) ──
     let ordersGen = 0;
+    // Codex Pedidos r1: requests AND results are bound to the ADMITTED uid — every identity transition invalidates them (identityChanged);
+    // before admission (an unresolved / restoring session) nothing is declared: the screen WAITS and loads once the member is admitted.
+    // ONE page of 20 (advisor ruling: v6 draws no «load more»; next_cursor is not followed)
     async function loadOrders() {
-      const gen = ++ordersGen;
-      if (!S.member || !suApi || !fbAuth) { S.ordersRead = { phase: 'ready', active: [], past: [] }; return; }
-      S.ordersRead = { phase: 'loading', active: [], past: [] };
+      const gen = ++ordersGen, who = ownerNow();
+      if (who === null || (authNow() === 'member' && !S.member)) { S.ordersRead = { phase: 'loading', active: [], past: [], who: null }; return; }   // wait for admission
+      if (!S.member || !suApi || !fbAuth) { S.ordersRead = { phase: 'ready', active: [], past: [], who }; return; }   // a guest: no history
+      const uid = S.member.uid;
+      S.ordersRead = { phase: 'loading', active: [], past: [], who };
       let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
       const r = tok ? await suApi.getMyOrders({ idToken: tok, limit: 20 }) : { ok: false, reason: 'unauthenticated' };
-      if (dead || gen !== ordersGen) return;
-      S.ordersRead = r.ok ? { phase: 'ready', active: r.active, past: r.past } : { phase: 'error', active: [], past: [] };
+      if (dead || gen !== ordersGen || !S.member || S.member.uid !== uid) return;   // another identity now: this answer is not theirs
+      S.ordersRead = r.ok ? { phase: 'ready', active: r.active, past: r.past, who } : { phase: 'error', active: [], past: [], who };
       if (S.tab === 'orders' && !S.store) renderNow();
     }
     const DAYS3 = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'], MON3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -553,12 +559,14 @@
     function dateOf(ms) { const p = hnParts(ms); if (!p) return null; const t = dayText(p); return t[0].toUpperCase() + t.slice(1); }
     function ordersVm(rows) {
       const storeOfRid = (rid) => { const r = rows.find((x) => x.rid === rid); return r ? CappHome.storeOf(r) : null; };
-      const rd = S.ordersRead || { phase: 'loading', active: [], past: [] };
-      const local = S.order && !CappOrder.FINAL.has(S.order.status) ? S.order : null;
+      const rd = S.ordersRead && S.ordersRead.who === ownerNow() ? S.ordersRead : { phase: 'loading', active: [], past: [] };
+      const local = activeOrder();
       const statusText = (status, mode) => { const v = CappOrder.fromTracking({ status }, mode); return v ? CappOrder.statusCopy({ status: v.status, mode, storeName: '' }).t || '' : ''; };
       const active = [];
+      // the server's own row, when it lists this order: its items_text verbatim wins over the device snapshot (Codex Pedidos r1 #5)
+      const twin = local ? rd.active.concat(rd.past).find((r) => r.order_id === local.order_id) : null;
       if (local) { const st = storeOfRid(local.rid); if (st) active.push({ store: st, oid: local.order_id, numText: local.display_number ? `Orden #${local.display_number}` : null, whenText: whenOf(local.placedAt),
-        total: local.total, itemsLine: (local.lines || []).map((d) => `${d.n}× ${d.name}`).join(', '), statusText: local.scheduled ? CappOrder.SCHED.C.t : CappOrder.statusCopy({ status: local.status || 'new', mode: local.mode, driver: local.driver, stacked: local.stacked, storeName: local.storeName }).t, trackable: true }); }
+        total: local.total, itemsLine: twin && twin.items_text ? twin.items_text : (local.lines || []).map((d) => `${d.n}× ${d.name}`).join(', '), statusText: local.scheduled ? CappOrder.SCHED.C.t : CappOrder.statusCopy({ status: local.status || 'new', mode: local.mode, driver: local.driver, stacked: local.stacked, storeName: local.storeName }).t, trackable: true }); }
       for (const r of rd.active) {
         if (local && r.order_id === local.order_id) continue;
         const st = storeOfRid(r.restaurant); if (!st) continue;   // a store the directory no longer lists: not drawn (reported)
@@ -644,7 +652,7 @@
         const v = CappOrder.fromTracking(rec, od.mode); if (!v) return;
         Object.assign(od, v); saveActive();
         if (CappOrder.FINAL.has(v.status)) closeStream();
-        if (S.tab === 'order' && !S.store) renderNow();
+        if ((S.tab === 'order' || S.tab === 'orders') && !S.store) renderNow();   // a final status also clears the Pedidos card (Codex r1)
       };
       es.addEventListener('put', apply); es.addEventListener('patch', apply);
       es.addEventListener('cancel', () => closeStream()); es.addEventListener('auth_revoked', () => closeStream());
@@ -671,18 +679,43 @@
     // THE DEVICE'S ACTIVE ORDER (advisor ruling 2: token + the sent snapshot, device-only, until final or 24 h — not «history»): written
     // at placement and on every live change, restored at boot (the Pedidos active card, a reload of its URL), dropped when final / expired
     const ACTIVE_KEY = 'capp:active_order', ACTIVE_MS = 24 * 3600e3;
+    // Codex Pedidos r1: the record has an OWNER (the admitted uid, or «guest» on this device) — another identity never sees or restores
+    // it (a shared phone: Bob never opens Ana's order); a guest's record is dropped when a DIFFERENT member signs in unless that member
+    // claimed THIS order (the frame-7 offer); the 24 h bound is LIVE (checked on every read), derived from placedAt, never a stored exp
+    const ownerNow = () => (S.member && S.member.uid ? `u:${S.member.uid}` : authNow() === 'unresolved' || authNow() === 'member' ? null : 'guest');
+    const validAge = (od) => { const t = Number(nowMs()); return !!od && Number.isFinite(od.placedAt) && od.placedAt <= t + 5 * 60e3 && t - od.placedAt < ACTIVE_MS; };
+    function dropActive() { S.order = null; try { if (storage) storage.removeItem(ACTIVE_KEY); } catch (_) {} }
+    // the order THIS identity may see now, or null (an expired one is dropped on the spot)
+    function activeOrder() {
+      const od = S.order; if (!od || CappOrder.FINAL.has(od.status)) return null;
+      if (!validAge(od)) { stopOrder(); dropActive(); return null; }
+      return od.owner && od.owner === ownerNow() ? od : null;
+    }
     function saveActive() {
       const od = S.order; if (!storage) return;
-      try { if (!od || CappOrder.FINAL.has(od.status)) { storage.removeItem(ACTIVE_KEY); return; }
+      try { if (!od || CappOrder.FINAL.has(od.status) || !validAge(od) || !od.owner) { storage.removeItem(ACTIVE_KEY); return; }
         storage.setItem(ACTIVE_KEY, JSON.stringify({ v: 1, order: { ...od, grant: null }, exp: od.placedAt + ACTIVE_MS })); } catch (_) {}
     }
     function restoreActive() {
       let r = null; try { r = storage ? JSON.parse(storage.getItem(ACTIVE_KEY) || 'null') : null; } catch (_) { r = null; }
-      const ok = r && r.v === 1 && r.order && typeof r.order === 'object' && typeof r.order.rid === 'string' && typeof r.order.order_id === 'string' && Number.isFinite(r.exp) && Number(nowMs()) < r.exp && !CappOrder.FINAL.has(r.order.status);
+      const o2 = r && r.order;
+      const ok = r && r.v === 1 && o2 && typeof o2 === 'object' && typeof o2.rid === 'string' && typeof o2.order_id === 'string' && typeof o2.owner === 'string'
+        && Number.isFinite(r.exp) && r.exp === o2.placedAt + ACTIVE_MS && validAge(o2) && !CappOrder.FINAL.has(o2.status);
       if (!ok) { try { if (storage && r) storage.removeItem(ACTIVE_KEY); } catch (_) {} return; }
-      S.order = { ...r.order, offerDone: true };
+      S.order = { ...o2, grant: null, offerDone: true };   // shown only to its owner (activeOrder)
     }
-    function resumeOrder() { const od = S.order; if (!od || CappOrder.FINAL.has(od.status) || orderStream) return; if (!od.windowText) windowOrder(od); streamOrder(od); }
+    function identityChanged() {
+      ordersGen++; S.ordersRead = null;   // any in-flight history read is void; nothing of the previous identity is shown
+      const od = S.order, who = ownerNow();
+      if (od && who !== null && od.owner !== who) {
+        if (od.owner === 'guest' && who && who.startsWith('u:') && od.claimedBy === who) { od.owner = who; saveActive(); }   // claimed via the offer
+        else if (od.owner === 'guest' && who && who.startsWith('u:')) { stopOrder(); dropActive(); }                       // a different member
+        else stopOrder();                                                                                                   // hidden, kept for its owner
+      }
+      if (S.tab === 'order' && !activeOrder()) { if (S.order && CappOrder.FINAL.has(S.order.status) && S.order.owner === who) { /* its final screen stays */ } else nav.tab({ name: 'home' }); }
+      if (S.tab === 'orders' && !S.store) { loadOrders(); renderNow(); }
+    }
+    function resumeOrder() { const od = activeOrder(); if (!od || orderStream) return; if (!od.windowText) windowOrder(od); streamOrder(od); }
     function stopOrder() { orderGen++; closeStream(); if (orderNum) { try { orderNum.stop(); } catch (_) {} } orderNum = null; if (orderFlipT !== null) { T.clearTimeout(orderFlipT); orderFlipT = null; } }
     function showOrder(rid, d) {
       stopOrder();
@@ -690,7 +723,7 @@
       S.order = { ...d.order, rid, order_id: d.order_id || null, token: typeof d.tracking_token === 'string' ? d.tracking_token : null, status: 'new',
         storeName: e.name || '', branch: e.branch || '', storeAddr: e.pickup_addr || '', display_number: null,
         grant: d.signup_grant && typeof d.signup_grant.token === 'string' ? { token: d.signup_grant.token, expires_at: d.signup_grant.expires_at } : null, offerDone: false,
-        placedAt: Number(nowMs()), windowText: null, driver: null, stacked: false, doneAt: null };
+        placedAt: Number(nowMs()), windowText: null, driver: null, stacked: false, doneAt: null, owner: ownerNow() || 'guest' };
       windowOrder(S.order); streamOrder(S.order); saveActive();
       const ON = OrderNumberMod(), base = typeof runtime.rtdbBase === 'string' ? runtime.rtdbBase : null;
       if (ON && base && typeof o.readPublic === 'function' && !S.order.scheduled) {
@@ -725,7 +758,7 @@
       try { r = await suApi.redeemSignupGrant({ grant: od.grant.token, email, name: od.name || '' }); if (r && r.ok && r.token) uid = await fbAuth.signInWithCustomToken(r.token); } catch (_) { uid = null; }
       offerBusy = false;
       if (dead || S.order !== od) return;
-      if (typeof uid === 'string' && uid) { od.offerDone = true; await signedIn({ uid, name: (r && r.name) || od.name || '', phone: od.phoneWire, email: email || null, isNew: !!(r && r.isNew) }); if (!dead && S.tab === 'order' && !S.store) renderNow(); return; }
+      if (typeof uid === 'string' && uid) { od.offerDone = true; od.claimedBy = `u:${uid}`; await signedIn({ uid, name: (r && r.name) || od.name || '', phone: od.phoneWire, email: email || null, isNew: !!(r && r.isNew) }); if (!dead && S.tab === 'order' && !S.store) renderNow(); return; }
       // a grant the server would not redeem (expired, consumed): the approved sign-in sheet, pre-filled — never a dead control
       od.offerDone = true; renderNow(); openSignin({ ctx: 'account', prefill: od.phoneWire || null });
     }
@@ -788,7 +821,7 @@
       if (a === 'tab') { const id = t.dataset.tab; if (id === 'account' && !SU && (runtime.guestCardOnly !== true || authNow() === 'member')) { emit('tab', { tab: id }); return; }   // G7: under runtime.signup the Cuenta is the shell's
         if (id === 'home' || id === 'search' || id === 'account' || id === 'orders') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
       if (a.startsWith('order-') && orderAct(a)) return;
-      if (a === 'go-order' && S.order && t.dataset.oid === S.order.order_id) { nav.go({ name: 'order' }); return; }   // the device's active order ⇒ its live screen
+      if (a === 'go-order') { const od = activeOrder(); if (od && t.dataset.oid === od.order_id) nav.go({ name: 'order' }); return; }   // the device's active order ⇒ its live screen
       if (a === 'orders-help') { const n = supportWa(); if (n) { const od = S.order && S.order.order_id === t.dataset.oid ? S.order : null; const msg = 'Hola, tengo un problema con mi pedido' + (od && od.display_number ? ' #' + od.display_number : ''); openExternal(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`); } return; }
       if ((a === 'app-update' || a === 'app-update-row') && updateOn()) {
         if (a === 'app-update') { try { const d = dayOf(Number(nowMs())); if (d && storage) storage.setItem(UPD_KEY, d); } catch (_) {} }

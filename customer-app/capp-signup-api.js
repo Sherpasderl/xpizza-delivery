@@ -91,9 +91,12 @@
       // Row whitelist is kept (a field the server never promised is dropped; a malformed row is dropped, never guessed)
       async getMyOrders({ idToken, limit, cursor } = {}) {
         if (!idToken) return { ok: false, reason: 'unauthenticated' };
+        // an argument that is SUPPLIED must be valid — refused locally, never silently dropped into a first-page request (Codex r1)
+        if (limit !== undefined && !(Number.isInteger(limit) && limit >= 1 && limit <= 50)) return { ok: false, reason: 'bad_request' };
+        if (cursor !== undefined && cursor !== null && !(typeof cursor === 'string' && /^[A-Za-z0-9_-]{1,512}$/.test(cursor))) return { ok: false, reason: 'bad_request' };
         const q = ['context=platform'];
-        if (Number.isInteger(limit) && limit >= 1 && limit <= 50) q.push(`limit=${limit}`);
-        if (typeof cursor === 'string' && /^[A-Za-z0-9_-]{1,512}$/.test(cursor)) q.push(`cursor=${cursor}`);
+        if (limit !== undefined) q.push(`limit=${limit}`);
+        if (typeof cursor === 'string') q.push(`cursor=${cursor}`);
         const r = await call(E.getMyOrders, { method: 'GET', idToken, query: q.join('&') });
         const j = r.json;
         if (r.status !== 200 || !j || j.ok !== true || !Array.isArray(j.active) || !Array.isArray(j.past)) return { ok: false, reason: r.status === 403 ? 'deleted' : reasonOf(r) };

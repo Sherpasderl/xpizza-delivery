@@ -658,7 +658,7 @@ test('stamp: shell.html is stamped as orders-app; on the stamped shell SherpaCli
 // ── G6: the in-app sign-in, owned by the shell when the runtime carries the signup config (DARK: absent ⇒ exactly as before) ──
 // a Firebase ID token in the REAL writer's shape (a JWT; only `exp` is read by the client, never the signature) — one hour past T0 by default
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
-const TOK = (uid, expMs = T0 + 3600e3) => `${b64u({ alg: 'RS256', typ: 'JWT' })}.${b64u({ sub: uid, user_id: uid, exp: Math.floor(expMs / 1000) })}.sig`;
+const TOK = (uid, expMs = T0 + 3600e3) => `${b64u({ alg: 'RS256', typ: 'JWT' })}.${b64u({ sub: uid, user_id: uid, customer: true, exp: Math.floor(expMs / 1000) })}.sig`;   // the customer claim (getMyOrders requires customer === true)
 const WARNINGS = []; process.on('warning', (w) => WARNINGS.push(w));   // Codex promo r4 #5: no TimeoutOverflowWarning (asserted last)
 // failToken: the next N getIdToken() calls REJECT; failFrom: every call from index N on rejects; tokExp: the issued tokens' exp (ms)
 // rotate: each getIdToken() issues a NEW token (exp + n s) — a fresh token that really changes ⇒ the setter's notifier fires
@@ -1004,7 +1004,7 @@ test('G7 frame 4b: no served promotions value ⇒ the switch INERT (aria-disable
   assert.equal(noVal.srv.sent.filter((x) => x[0] === 'setPromos').length, 0, 'an inert switch sends nothing');
   const bare = await g7Boot({ profile: null });
   assert.equal(bare.S.qa('.acct-hero .t .bar').length, 3, '🔴 G7-placeholder: three static bars'); assert.ok(bare.S.q('.acct-hero .av.ph'));
-  assert.ok(bare.S.q('[data-act="signout"]') && bare.S.q('[data-act="help"]'), 'the rows usable (Ayuda; «Pedidos» is left out — no orders screen)');
+  assert.ok(bare.S.q('[data-act="signout"]') && bare.S.q('[data-act="help"]'), 'the rows usable (Ayuda, the session group)');
 });
 // Codex G7 r1 #3: the promotions consent rides the REAL sign-in — the server's profile.promos (an existing account), or the value a
 // successful completeProfile stored (a new one) — into «Listo», the cache and the Cuenta switch; none stored (a legacy account,
@@ -1993,6 +1993,8 @@ test('Pedido recibido · frame 7: a guest card order\'s paid return shows the ac
     await flush(); await flush(); await flush(800);
     assert.equal(txt(B.q('.mk-title')), 'Pedido recibido', '🔴 PR-7: the paid return lands on the order screen');
     assert.ok(B.q('.mk-sheet .guestcard.offer'), '🔴 PR-7: the offer in the order sheet');
+    const recB = JSON.parse(storage.getItem('capp:active_order') || 'null');
+    assert.ok(recB && recB.order && recB.order.grant === null, '🔴 PED-r2-9: the live signup grant is NEVER written to the device record');
     assert.equal(B.q('#offer-phone') && B.q('#offer-phone').value, '+504 9999-0000', 'the verified phone pre-filled');
     assert.equal(B.q('#offer-email') && B.q('#offer-email').value, 'ana.perez@gmail.com', 'the order\'s email pre-filled');
     const kids = [...B.q('.mk-sheet').children].map((x) => x.className.split(' ')[0]);
@@ -2228,7 +2230,7 @@ function userOrderEntry(uid, orderId, { ts, total, orderType = 'delivery', items
   attachCustomerAttribution(u, orderId, uid, { now: ts, total, orderType, items_text, restaurantId, items, tables: null });   // the REAL writer
   return u[`user_orders/${uid}/${orderId}`];
 }
-function myOrdersServer(db, { deleted = new Set() } = {}) {
+function myOrdersServer(db, { deleted = new Set(), gate = null } = {}) {
   const calls = [];
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const handler = (u, i = {}) => {
@@ -2236,9 +2238,9 @@ function myOrdersServer(db, { deleted = new Set() } = {}) {
     const out = (status, json) => ({ status, json: async () => json });
     if ((i.method || 'GET') !== 'GET' || i.body != null) return out(400, { ok: false, reason: 'bad_request' });
     const tok = (i.headers || {})['x-firebase-id-token'];
-    // the fake verifyIdToken: the Firebase ID token's payload (the real writer's JWT shape, TOK) — a string user_id and not a
-    // non-customer token, else 401
-    let uid = null; try { const pl = JSON.parse(Buffer.from(String(tok).split('.')[1], 'base64url').toString()); if (pl && typeof pl.user_id === 'string' && pl.customer !== false) uid = pl.user_id; } catch (_) { uid = null; }
+    // the fake verifyIdToken: the Firebase ID token's payload (the real writer's JWT shape, TOK) — a string user_id AND customer === true
+    // (the contract; Codex Pedidos r1), else 401
+    let uid = null; try { const pl = JSON.parse(Buffer.from(String(tok).split('.')[1], 'base64url').toString()); if (pl && typeof pl.user_id === 'string' && pl.customer === true) uid = pl.user_id; } catch (_) { uid = null; }
     if (!uid) return out(401, { ok: false, reason: 'unauthenticated' });
     if (deleted.has(uid)) return out(403, { ok: false, reason: 'deleted' });
     const keys = [...url.searchParams.keys()];
@@ -2250,7 +2252,8 @@ function myOrdersServer(db, { deleted = new Set() } = {}) {
     const page = before.slice(-(limit + 1)), more = page.length > limit, rows = (more ? page.slice(1) : page).reverse();   // limitToLast(limit + 1), newest first
     const proj = ({ id, e }) => ({ order_id: id, ts: e.ts, total: e.total, order_type: e.order_type, restaurant: e.restaurant, status: e.status ?? null, items_text: typeof e.items_text === 'string' ? e.items_text : null, items: Array.isArray(e.items) ? e.items : [], ...(e.recipe_format !== undefined ? { recipe_format: e.recipe_format } : {}) });
     const R = rows.map(proj), oldest = rows[rows.length - 1];
-    return out(200, { ok: true, active: R.filter((r) => typeof r.status === 'string' && !TERMINAL.has(r.status)), past: R.filter((r) => typeof r.status !== 'string' || TERMINAL.has(r.status)), next_cursor: more ? b64({ ts: oldest.e.ts, id: oldest.id }) : null });
+    const res = out(200, { ok: true, active: R.filter((r) => typeof r.status === 'string' && !TERMINAL.has(r.status)), past: R.filter((r) => typeof r.status !== 'string' || TERMINAL.has(r.status)), next_cursor: more ? b64({ ts: oldest.e.ts, id: oldest.id }) : null });
+    return gate ? gate.then(() => res) : res;   // a DELAYED answer (the identity-switch cells)
   };
   return { handler, calls };
 }
@@ -2272,9 +2275,9 @@ async function pedidosBoot(db, opts = {}) {
   const g = g7Server();
   const fetch = async (u, i) => (u.split('?')[0].endsWith('/getMyOrders') ? mo.handler(u, i) : g.fetch(u, i));
   const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 3600e3 });
-  const S = bootShell({ auth: 'unresolved', storage: g7Store(G7_PROFILE({ promos: true })), runtime: G7_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, getIdTokenOverride: null } });
-  await flush(); await flush();
-  return { S, mo };
+  const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation });
+  if (!opts.noFlush) { await flush(); await flush(); }
+  return { S, mo, fb };
 }
 test('Pedidos (member): the rows from getMyOrders (the real writer\'s entries) — the active order\'s card (status, «Orden #N» only when numbered, no tracking without its token), the past rows (store, «Sáb 11 oct · L 340», items_text AS GIVEN); the token only in the header; «Volver a pedir» hidden (interim)', async () => {
   const db = { u_ana: {
@@ -2387,6 +2390,113 @@ test('store-update r3 (Codex r2 #2): an OFFLINE first launch of the new build (d
     assert.equal(storage.getItem('capp:store_handoff'), null, 'cleared only now, after the mount');
   } finally { B.w.close(); }
 });
+// ── «Pedidos» r2 (Codex Pedidos r1) — RED-first per repro ──
+test('Pedidos r2 P1 identity: Ana\'s history read still in flight when the SDK signs her out ⇒ it NEVER paints (the guest sees v6\'s empty state); a new admission loads its own', async () => {
+  let release; const gate = new Promise((r) => { release = r; });
+  const db = { u_ana: { 'XP-OLD1': userOrderEntry('u_ana', 'XP-OLD1', { ts: Date.UTC(2026, 9, 12, 1, 42), total: 370, status: 'delivered' }) } };
+  const { S, mo, fb } = await pedidosBoot(db, { gate });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush();
+    assert.equal(mo.calls.length, 1, 'premise: Ana\'s read in flight');
+    const { authMod } = await fb.loadSdk(); await authMod.signOut(); await flush(); await flush();
+    release(); await flush(); await flush();
+    assert.equal(S.qa('.orows .orow').length, 0, '🔴 PED-r2-1: Ana\'s delayed rows never paint for the next person');
+    assert.equal(txt(S.q('.oempty b')), 'Todavía no tenés pedidos', 'the guest\'s own (empty) view');
+  } finally { S.w.close(); }
+});
+async function shellPlaceTolerant(S) {   // a placement that types only the fields the checkout draws (a member's are filled)
+  await toShellCheckout(S);
+  const type = (sel, v) => { const el = S.q(sel); if (!el) return; el.value = v; el.dispatchEvent(new S.w.Event('input', { bubbles: true })); };
+  S.click('[data-act="pin"]'); await flush(); S.click('[data-act="pin-done"]'); await flush();
+  type('#f-details', 'Portón negro'); type('#f-name', 'Ana'); type('#f-phone', '9999 0000'); await flush();
+  if (S.q('[data-act="pay"][data-val="cash"]')) { S.click('[data-act="pay"][data-val="cash"]'); await flush(); }
+  S.click('#cta'); await flush(); S.click('[data-act="tipc"][data-val="0"]'); await flush(); S.click('[data-act="tip-place"]'); await flush();
+  S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); await flush(700);
+}
+test('Pedidos r2 P1 shared device: a GUEST\'s active order is dropped when a DIFFERENT member signs in (unclaimed); a MEMBER\'s is hidden from the next person — no card, no restore, no URL', async () => {
+  const RT_SU = { ...RUNTIME, signup: SU_RUNTIME.signup };   // guest cash allowed, the shell's own sign-in
+  const st = memStorage();
+  const fb = fakeFirebase();
+  const G = bootShell({ storage: st, runtime: RT_SU, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: GEO_OK2, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  try {
+    await flush(); await shellPlaceTolerant(G);
+    assert.equal(JSON.parse(st.getItem('capp:active_order')).order.owner, 'guest', 'premise: the guest owns it');
+    G.click('[data-act="order-close"]'); await flush();
+    await signInViaSheet(G); G.click(suHost(G).querySelector('[data-su="finish"]')); await flush(); await flush(); await flush();
+    assert.ok(st.getItem('capp:member_complete'), 'premise: Ana is now the member');
+    assert.equal(st.getItem('capp:active_order'), null, '🔴 PED-r2-2: an unclaimed guest record is dropped for a different member');
+    G.click('.tabbar [data-tab="orders"]'); await flush();
+    assert.equal(G.q('.ocard.active'), null, '🔴 PED-r2-2: no card for the member');
+  } finally { G.w.close(); }
+  // a MEMBER's own record: Ana places, signs out ⇒ the guest after her sees nothing and cannot restore it
+  const db = { u_ana: {} };
+  const { S, fb: fbA } = await pedidosBoot(db, { storage: (() => { const s2 = g7Store(G7_PROFILE({ promos: true })); return s2; })(), runtime: { ...G7_RUNTIME, guestCardOnly: undefined }, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh34' })), geolocation: GEO_OK2 });
+  let store2;
+  try {
+    await shellPlaceTolerant(S);
+    store2 = S.ui;   // keep the window's storage via the record below
+    assert.ok(S.q('.mk-title'), 'premise: Ana\'s order screen');
+    const { authMod } = await fbA.loadSdk(); await authMod.signOut(); await flush(); await flush();
+    assert.equal(S.q('.mk-title'), null, '🔴 PED-r2-2: leaving her order screen on sign-out');
+    S.click('.tabbar [data-tab="orders"]'); await flush();
+    assert.equal(S.q('.ocard.active'), null, '🔴 PED-r2-2: the next person sees no card');
+  } finally { S.w.close(); }
+});
+test('Pedidos r2 P2 expiry: the 24 h bound is LIVE (an open session past 24 h drops the card and the record) and a restore validates the record\'s age from placedAt (a tampered far exp is refused)', async () => {
+  const clock = { t: T0 }, storage = memStorage();
+  const S = bootShell({ storage, now: clock, runtime: RUNTIME, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: GEO_OK2 });
+  let rec;
+  try {
+    await flush(); await placeShellCash(S); S.click('[data-act="order-close"]'); await flush();
+    assert.ok(S.q('.ocard.active'), 'premise: the card'); rec = JSON.parse(storage.getItem('capp:active_order'));
+    clock.t = T0 + 25 * 3600e3; S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.tabbar [data-tab="orders"]'); await flush();
+    assert.equal(S.q('.ocard.active'), null, '🔴 PED-r2-3: past 24 h ⇒ no card'); assert.equal(storage.getItem('capp:active_order'), null, '🔴 PED-r2-3: the record dropped');
+  } finally { S.w.close(); }
+  const old = memStorage({ 'capp:active_order': JSON.stringify({ ...rec, order: { ...rec.order, placedAt: T0 - 30 * 86400e3 }, exp: T0 + 86400e3 }) });
+  const R = bootShell({ storage: old, now: { t: T0 }, runtime: RUNTIME });
+  try { await flush(); R.click('.tabbar [data-tab="orders"]'); await flush(); assert.equal(R.q('.ocard.active'), null, '🔴 PED-r2-3: a 30-day-old record with a stretched exp never restores'); } finally { R.w.close(); }
+  // a RECENT order whose stored exp was stretched (≠ placedAt + 24 h): the record is not trusted at restore
+  const stretched = memStorage({ 'capp:active_order': JSON.stringify({ ...rec, order: { ...rec.order, placedAt: T0 - 3600e3 }, exp: T0 + 30 * 86400e3 }) });
+  const R2 = bootShell({ storage: stretched, now: { t: T0 }, runtime: RUNTIME });
+  try { await flush(); R2.click('.tabbar [data-tab="orders"]'); await flush(); assert.equal(R2.q('.ocard.active'), null, '🔴 PED-r2-3: exp must be placedAt + 24 h — a stretched record is refused'); } finally { R2.w.close(); }
+});
+test('Pedidos r2 P2: a final status while ON Pedidos clears the active card there', async () => {
+  const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12';
+  const S = bootShell({ runtime: { ...RUNTIME, rtdbBase: 'https://rtdb.test' }, readPublic: async () => ({ ok: false }), mountExtra: { EventSource: ES }, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: TOKEN })), geolocation: GEO_OK2 });
+  try {
+    await flush(); await placeShellCash(S); S.click('[data-act="order-close"]'); await flush();
+    assert.ok(S.q('.ocard.active'), 'premise: the card on Pedidos');
+    const es = made.filter((e) => !e.closed).at(-1); assert.ok(es, 'premise: the live stream on Pedidos');
+    es.emit('put', '/', trackingRecordOf(TOKEN)); es.emit('put', '/status', 'delivered'); await flush();
+    assert.equal(S.q('.ocard.active'), null, '🔴 PED-r2-4: delivered ⇒ the card gone from Pedidos');
+  } finally { S.w.close(); }
+});
+test('Pedidos r2 P2: a cold /pedidos for a member BEFORE admission waits (never «Todavía no tenés pedidos»), then loads her rows', async () => {
+  const db = { u_ana: { 'XP-OLD1': userOrderEntry('u_ana', 'XP-OLD1', { ts: Date.UTC(2026, 9, 12, 1, 42), total: 370, status: 'delivered' }) } };
+  const { S, mo } = await pedidosBoot(db, { url: 'https://app.test/pedidos', routing: true, noFlush: true });
+  try {
+    assert.equal(S.q('.oempty'), null, '🔴 PED-r2-5: no empty state before admission');
+    await flush(); await flush(); await flush();
+    assert.equal(mo.calls.length, 1, '🔴 PED-r2-5: the read once admitted'); assert.equal(S.qa('.orows .orow').length, 1, 'her row');
+  } finally { S.w.close(); }
+});
+test('Pedidos r2: the server\'s items_text wins over the device snapshot when it lists the same order; invalid supplied args are refused; history rows are not controls', async () => {
+  const db = { u_ana: {} };
+  const reply = (b) => { db.u_ana[b.order_id] = userOrderEntry('u_ana', b.order_id, { ts: T0, total: 615, status: 'new', items_text: '1x Carnivora (L340)' }); return { ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh56' }; };
+  const { S } = await pedidosBoot(db, { runtime: { ...G7_RUNTIME, guestCardOnly: undefined }, apiFetch: ORDER_FETCH(reply), geolocation: GEO_OK2 });
+  try {
+    await shellPlaceTolerant(S); S.click('[data-act="order-close"]'); await flush(); await flush();
+    assert.equal(txt(S.q('.ocard.active .items')), '1x Carnivora (L340)', '🔴 PED-r2-8: the server row\'s items_text, verbatim, over the snapshot');
+    assert.equal(S.qa('.ocard.active').length, 1, 'one card for the order (local + server merged)');
+  } finally { S.w.close(); }
+  const A = require('./capp-signup-api.js');
+  const api = A.createSignupApi({ endpoints: { getMyOrders: 'https://fn.test/getMyOrders' }, fetch: async () => { throw new Error('no request may leave'); } });
+  for (const bad of [{ limit: 0 }, { limit: 51 }, { limit: 1.5 }, { cursor: '@@' }, { cursor: 5 }]) assert.deepEqual(await api.getMyOrders({ idToken: 't', ...bad }), { ok: false, reason: 'bad_request' }, `🔴 PED-r2-6: ${JSON.stringify(bad)} refused locally`);
+  const H = require('./capp-home.js');
+  const html = H.ordersHtml({ tab: 'orders', cartN: 0, orders: { phase: 'ready', active: [], past: [{ store: { id: 'x_pizza', name: 'X', logo: '' }, oid: 'P1', dateText: 'Dom 11 oct', total: 370, itemsLine: '1x A' }] } });
+  assert.ok(!/<button class="orow-main"|data-act="go-receipt"/.test(html), '🔴 PED-r2-7: a row without receipt data is not a control');
+});
+// Pagination (advisor ruling 2026-11-01): ONE page of 20 — v6 draws no «load more»; next_cursor is deliberately not followed (not a defect)
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {
   const over = WARNINGS.filter((w) => w && w.name === 'TimeoutOverflowWarning');
