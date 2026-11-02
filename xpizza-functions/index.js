@@ -85,7 +85,7 @@ const whatsapp = require('./whatsapp');
 const { resolvePixelPayConfig, pixelPayCallbackUrl, pixelPayChargeAmountLempiras } = require('./pixelpay-config');
 const pixelpayClient = require('./pixelpay-client');
 const ppCrypto = require('./pixelpay');
-const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
+const { confirmOnlinePayment, confirmAndMaterialize, escalateStaleCapture } = require('./pixelpay-confirm');
 const N2 = require('./n2-paid-strand-decision');   // N2: sweep re-drives a stranded PAID hosted order (paid attempt + still-pending order)
 const { buildMaterializeUpdates } = require('./materialize');
 const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config'); const DW = require('./delivery/delivery-wire'); const TIP = require('./tip'); const PE = require('./payer-email');   // S2-srv-tip (tip.js, payer-email.js; tools/s2tip-inverse.js) · S3a envío (delivery/; tools/s3a-inverse.js)
@@ -178,7 +178,7 @@ const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineS
 const { computeFreshnessAlerts } = require('./driver-freshness');   // Driver Tracking C1: freshness-alarm reconcile core
 const MR = require('./manual-resolve');   // atomic-claim money state machine (RECON_ATOMIC_CLAIM_PLAN rev-5)
 const { resolveManualReconciliationCore, recoverStaleResolve } = require('./resolve-manual');   // the resolver core + sweep recovery (emulator-driven)
-const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, isReconcilerRetryable } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5) + [A] ledger-repair retry
+const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, isReconcilerRetryable, noteRefundRetry, escalateConfirmedRefunds } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5) + [A] ledger-repair retry
 const { runPrediction, runLabelAndUpdate } = require('./ready-time-predict-core');   // Phase-1 Step-3 shadow predictor + prediction-logging (PURE SHADOW)
 const { computeGraduation, buildGraduationRows } = require('./ready-time-graduation');   // Phase 1b-i graduation core (writes ONLY ready_time_graduation)
 const { hashConfig } = require('./ready-time-quality-run');          // reuse the signed-config hash (extended to cover graduation_thresholds)
@@ -2458,7 +2458,7 @@ confirmOnlineApp.all('*', async (req, res) => {
     return res.status(200).json({ ok: true, payment_status: 'manual_reconciliation', order_id: orderId });
   }
   if (o === 'capture_failed' || o === 'failed' || o === 'mismatch_voided') {
-    return res.status(200).json({ ok: false, payment_status: o === 'mismatch_voided' ? 'failed' : 'failed', order_id: orderId, detail: result.message || result.reason || 'payment not completed' });
+    return res.status(200).json({ ok: false, payment_status: o === 'mismatch_voided' && result.voided !== true ? 'refund_pending' : 'failed', order_id: orderId, detail: result.message || result.reason || 'payment not completed' });
   }
   if (o === 'cancelled' || o === 'cancelled_during_confirm') {
     return res.status(200).json({ ok: false, payment_status: 'cancelled', order_id: orderId });
@@ -2959,7 +2959,7 @@ exports.sweepStalePending = onSchedule(
       const attempt = order.active_attempt_id
         ? (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val()
         : null;
-      if (!attempt) { left++; continue; }
+      if (!attempt) { left++; continue; } if (attempt.status === 'capturing' || attempt.status === 'capture_unverified') { if (await escalateStaleCapture(confirmDeps(db), { orderId, attemptId: order.active_attempt_id, now })) flagged++; else left++; continue; }   // a lost/crashed SDK capture → durable manual escalation (never re-captured, never declined)
       if (attempt.hosted_state === 'paid') {
         // N2: a paid hosted attempt whose ORDER is still pending_payment (not confirmed/materialized) is STRANDED
         // — the webhook captured the money but confirmAndMaterialize threw before the confirm-claim committed →
@@ -3664,7 +3664,7 @@ exports.refundReconciler = onSchedule(
       // park the attempt for staff; the H0 sweep alerts it as reversal_uncertain.
       if (!a.payment_uuid) { await H0.parkReconcilerNoUuid(db, attemptId, now); continue; }
       /* h0:end reconciler-no-uuid */
-      const r = await voidOrRefund(deps, { orderId: a.order_id, attemptId, pixelpayOrderId, paymentUuid: a.payment_uuid, reason: 'xpizza_refund_retry', now });
+      try { await noteRefundRetry(db, { attemptId, orderId: a.order_id, now }); } catch (e) { console.warn(`refundReconciler: review marker failed for ${attemptId} — void deferred`, e && e.message); continue; } const r = await voidOrRefund(deps, { orderId: a.order_id, attemptId, pixelpayOrderId, paymentUuid: a.payment_uuid, reason: 'xpizza_refund_retry', now });   // the durable to-do BEFORE the void
       retried++;
       if (!r.voided) {
         stillPending++;
@@ -3672,7 +3672,7 @@ exports.refundReconciler = onSchedule(
         if (age > 24 * 3600 * 1000) await paymentAlert(db, 'aged_refund_pending', { orderId: a.order_id, attemptId });
       }
     }
-    console.log(`refundReconciler: retried=${retried} stillPending=${stillPending}`);
+    let escalated = 0; try { escalated = await escalateConfirmedRefunds({ db }, { now }); } catch (e) { console.warn('refundReconciler: escalation pass failed (retried next run)', e && e.message); } console.log(`refundReconciler: retried=${retried} stillPending=${stillPending} escalated=${escalated}`);   // confirmed refunds → staff release the points (never automatic)
 
     // REVISE-5: stale-refunding recovery — an order stuck at 'refunding_paid_after_close' (a crash between the
     // guard's voidOrRefund and its order-update; money already safe via the attempt's own CAS/idempotency).

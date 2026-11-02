@@ -2121,6 +2121,7 @@
   "photos/sweep-io.js",
   "photos/upload-start.js",
   "pixelpay-charge.js",
+  "pixelpay-client.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
   "pixelpay-return-url.js",
@@ -2322,12 +2323,14 @@
      "file": "xpizza-functions/h0-wiring.guard.test.js",
      "inverses": [
       "tools/h0-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/stackseq-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/stackseq-wiring.guard.test.js",
      "inverses": [
+      "tools/p5a-inverse.js",
       "tools/stackseq-module-inverse.js"
      ]
     },
@@ -4140,6 +4143,12 @@
      ]
     },
     {
+     "file": "xpizza-functions/tools/p5a-inverse.js",
+     "inverses": [
+      "tools/p5a-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/tools/s5-inverse.js",
      "inverses": [
       "tools/s5-inverse.js"
@@ -4652,7 +4661,14 @@
      "inverses": [
       "tools/alertsan-module-inverse.js",
       "tools/brand-server-inverse.js",
-      "tools/d12-inverse.js"
+      "tools/d12-inverse.js",
+      "tools/p5a-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/p5a-wiring.guard.test.js",
+     "inverses": [
+      "tools/p5a-inverse.js"
      ]
     }
    ],
@@ -4775,14 +4791,22 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/d12-inverse.js",
-      "tools/h0-inverse.js"
+      "tools/h0-inverse.js",
+      "tools/p5a-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/h0-wiring.guard.test.js",
      "inverses": [
       "tools/brand-server-inverse.js",
-      "tools/h0-inverse.js"
+      "tools/h0-inverse.js",
+      "tools/p5a-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/p5a-wiring.guard.test.js",
+     "inverses": [
+      "tools/p5a-inverse.js"
      ]
     }
    ],

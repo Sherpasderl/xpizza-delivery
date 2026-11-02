@@ -21,7 +21,7 @@ const { unapplyH0Module, FILES: H0_FILES } = require('./tools/h0-inverse');
 // ORCHESTRATION O1a (scheduled-release-core.js) is reversed before the brand-server inverse; train: the stackseq module
 // inverse INNERMOST of main's layers; DRYRUN R-WIRE (2e): capp's order colonia (area, merged newest) innermost of all
 const { unapplyOrchO1aModule } = require('./tools/orch-o1a-inverse');
-const readRaw = (f) => { const src = require('./tools/brand-server-inverse').unapplyBrandServerModule(f, unapplyOrchO1aModule(f, require('./tools/stackseq-module-inverse').unapplyStackseqModule(f, require('./tools/area-inverse').unapplyAreaModule(f, require('./tools/alertsan-module-inverse').unapplyAlertSanModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')))))); return H0_FILES.includes(f) ? unapplyH0Module(f, src) : src; };
+const readRaw = (f) => { const src = require('./tools/brand-server-inverse').unapplyBrandServerModule(f, unapplyOrchO1aModule(f, require('./tools/stackseq-module-inverse').unapplyStackseqModule(f, require('./tools/area-inverse').unapplyAreaModule(f, require('./tools/alertsan-module-inverse').unapplyAlertSanModule(f, require('./tools/p5a-inverse').unapplyP5aModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))))))); return H0_FILES.includes(f) ? unapplyH0Module(f, src) : src; };
 const readD12 = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, readRaw(f)) : readRaw(f));
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);

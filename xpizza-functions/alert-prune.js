@@ -42,6 +42,9 @@ function orderStillFlagged(order, alert) {
 // An extra-payment alert is a MONEY obligation, not an order flag: it stays until the person who reviews / returns the second
 // payment dismisses it, whatever the order's state (on a cancelled order by design).
 const NEVER_AUTO_PRUNE = new Set(['payment_extra_payment_received']);
+// A «refund confirmed — release points» escalation is a points OBLIGATION, not an order flag: it stays until the staff
+// member who releases the points dismisses it, whatever the order's state (the order is cancelled/refunded by design).
+const NEVER_AUTO_PRUNE = new Set(['payment_refund_confirmed_release_points']);
 function alertsToPrune(alerts, orders) {
   const prune = [];
   for (const [key, alert] of Object.entries(alerts || {})) {

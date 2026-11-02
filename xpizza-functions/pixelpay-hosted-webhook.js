@@ -204,7 +204,8 @@ async function voidPaid(deps, { orderId, attemptId, hostedOrderId, uuid, amount,
   // redemption hold too (reserved/held_paid→released, consumed→credit debit_applied). Idempotent (order_id-keyed)
   // → a no-op if the cancel path already reversed it; closes the gap where voidPaid moved money but not the hold.
   const order = (await db.ref(`orders/${orderId}`).once('value')).val();
-  await reverseRedemptionForOrder(db, { orderId, order, disposition: 'refund', now });
+  if (voided) await reverseRedemptionForOrder(db, { orderId, order, disposition: 'refund', now });
+  else await holdRedemptionForManual(db, { orderId, order, now, alert: deps.alert });   // unconfirmed void → the money may still be held → secure, never release
   deps.alert && deps.alert('hosted_cancel_void', { orderId, attemptId, voided, reason });
   return { code: 200, outcome: voided ? 'cancelled_voided' : 'cancelled_refund_pending' };
 }

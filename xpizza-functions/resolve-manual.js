@@ -25,7 +25,7 @@ const H0 = require('./superseded-capture');   // PLAN-H0 §4 — abandon never c
 const { readLiveBrand } = require('./pickup-label');   // R3-FIX D12
 const { materializeRestaurant } = require('./materialize');   // brand-agnostic server r3 §E — the pre-snapshot hub fallback
 const { holdIfClosedAtMaterialize } = MG;   // paid-after-close re-check (Codex-on-diff)
-const { reverseRedemptionForOrder, settleRedemptionAtConfirm } = require('./rewards-reserve');   // Phase B1 — redemption reversal/settle on manual resolve (single helper, no-op for non-redeemed)
+const { reverseRedemptionForOrder, settleRedemptionAtConfirm, holdRedemptionForManual } = require('./rewards-reserve');   // Phase B1 — redemption reversal/settle on manual resolve (single helper, no-op for non-redeemed)
 const { usesPlatformFactura } = require('./factura/eligibility');   // fiscal-brand gate: X.Pizza owes a SAR factura, La Musa does not
 const { allocateFacturaNumber } = require('./factura/factura-helpers');   // SPLIT 2: issue the SAR factura for a delivered X.Pizza sale on the SAME doc/CAI/PEDIDO:#N path materialize uses
 
@@ -282,7 +282,7 @@ async function resolveManualReconciliationCore(deps, { orderId, action, actor, n
     const finalStatus = voided ? 'refunded' : 'refund_pending';         // any non-anulada void → refund_pending, never fake refunded
     if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ status: finalStatus, refunded_at: now });
     await orderRef.update({ payment_status: finalStatus, status: 'cancelled', resolving_action: null, resolving_claim_id: null, resolving_claimed_at: null, resolving_phase: null });
-    await reverseRedemptionForOrder(db, { orderId, order, disposition: 'refund', now });   // manual refund → release the hold (held_paid/reserved → released; consumed → credit debit_applied)
+    if (voided) await reverseRedemptionForOrder(db, { orderId, order, disposition: 'refund', now }); else await holdRedemptionForManual(db, { orderId, order, now, alert });   // CONFIRMED refund → release; unconfirmed → keep it secured (the reconciler releases on confirm) (held_paid/reserved → released; consumed → credit debit_applied)
     await audit(finalStatus, { voided });
     return { status: MR.httpForOutcome(finalStatus), body: { ok: voided, outcome: finalStatus } };
   } catch (e) {
