@@ -275,8 +275,13 @@ async function healLedgerRepair(deps, orderId, rec, now) {
     const mode = rec.redemption_mode || (online ? 'hold' : 'reverse');
     if (mode === 'hold') {
       try { await holdRedemptionForManual(db, { orderId, order: ord, now, alert }); } catch (_) {}
-      if (order && order.payment_status === 'refunded') await alert('refund_confirmed_release_points', { orderId });
-      red = order ? { ok: true, skipped: true } : { ok: false };   // an order that is gone stays pending (stuck cadence), never "healed"
+      // a DURABLE, idempotent escalation (a throw keeps this record pending) — never a best-effort alert that could vanish
+      let escalatedOk = true;
+      if (order && order.payment_status === 'refunded') {
+        try { await db.ref(`dispatcher_alerts/refund_points_order_${orderId}`).set({ type: 'payment_refund_confirmed_release_points', detail: { orderId }, created_at: now }); }
+        catch (_) { escalatedOk = false; }
+      }
+      red = order && escalatedOk ? { ok: true, skipped: true } : { ok: false };   // a gone order or an unwritten escalation stays pending, never "healed"
     } else {
       try { red = await reverseRedemptionForOrder(db, { orderId, order: ord, disposition: rec.disposition || 'refund', now }); } catch (_) { red = { ok: false }; }
     }
