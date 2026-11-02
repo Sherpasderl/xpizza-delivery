@@ -3547,3 +3547,70 @@ test('C-6c dialog ✕ (advisor 11-02): the PHONE dish sheet keeps its ✕ in the
     assert.equal(S.q('.detail-close-slot'), null);
   } finally { S.w.close(); }
 });
+// ── C-6c r2 (Codex C-6c r1 #1–#5) ──
+const tagHouse = () => { const orig = PROV.x_pizza.envelope, env = JSON.parse(JSON.stringify(orig)), ds = env.menu.dishes.filter((d) => d.img).slice(0, 2);
+  for (const d of ds) d.tags = ['chefs_pick']; PROV.x_pizza.envelope = env; return { ds, restore: () => { PROV.x_pizza.envelope = orig; } }; };
+test('C-6c r2 narrow desk: 1024–1279 px stacks the identity row, narrows the rail and puts the cards in ONE column (the CSS rule; the renders are the Chrome batch\'s)', () => {
+  const CSS = readFileSync(join(HERE, 'capp.css'), 'utf8');
+  const m = CSS.match(/@media \(max-width:1279\.98px\)\{([\s\S]*?)\n\}/); assert.ok(m, '🔴 NB-1: the 1024–1279 rule');
+  const body = m[1];
+  assert.ok(/\.app\.desk \.icards\{grid-template-columns:minmax\(0,1fr\)\}/.test(body), '🔴 NB-1: one card column');
+  assert.ok(/\.app\.desk \.sinfo\{grid-template-columns:minmax\(0,1fr\)\}/.test(body), '🔴 NB-1: the identity row stacks');
+  assert.ok(/\.app\.desk \.sgrid\{grid-template-columns:180px minmax\(0,1fr\)/.test(body), '🔴 NB-1: the narrower rail');
+  assert.ok(!/(^|\})\s*\.(?!app\.desk)/.test(body.trim()), 'desk-scoped only (the phone shell never matches)');
+});
+test('C-6c r2 crossing with the dish dialog open: focus stays IN the dialog (the phone sheet\'s ✕), never BODY; back on the desk the heading', async () => {
+  const { S, media, ui } = await deskStoreAt();
+  try {
+    const a = ui.menu.dishes.find((d) => !d.launcher && !d.variantOf && d.img);
+    S.click(`#dish-${a.key} .txt`); await flush();
+    assert.equal(S.w.document.activeElement, S.q('#detail-name'), 'premise: the heading has focus');
+    media.set(false); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    const ae = S.w.document.activeElement;
+    assert.ok(S.q('#detail-modal').classList.contains('open') && !S.q('#detail-modal').classList.contains('wide'), 'premise: the phone sheet, still open');
+    assert.ok(ae && ae !== S.w.document.body && S.q('#detail-modal').contains(ae), `🔴 XF-1: focus inside the sheet (${ae && (ae.id || ae.tagName)})`);
+    assert.equal(ae, S.q('#detail-close'), 'the phone sheet\'s ✕');
+  } finally { S.w.close(); }
+});
+test('C-6c r2 sold featured dish: «La casa recomienda» shows «Agotado» in the price slot, dimmed, no «+» — like the category cards; its add is refused', async () => {
+  const T = tagHouse();
+  try {
+    const sold = T.ds[0].id;
+    const { S, ui } = await deskStoreAt({ mountExtra: { readAvailability: async (rid, menu) => menu.dishes.filter((d) => String(d.id) === String(sold)).map((d) => d.key) } });
+    try {
+      await until(() => S.q('.icards .icard.sold-out'));   // the availability landed (the CATEGORY card shows it — independent of the row under test)
+      const card = S.q('.hfeat .card.sold-out'); assert.ok(card, '🔴 SF-1: the sold featured card is marked');
+      assert.equal(card.querySelector('.pr').textContent, 'Agotado', '🔴 SF-1: «Agotado» in the price slot');
+      const add = card.querySelector('.qty-add-btn'); assert.ok(add, 'premise: the overlay is the shared one');
+      assert.equal(S.w.getComputedStyle(add).display, 'none', '🔴 SF-1: no «+» on a sold dish');
+      assert.equal(S.w.getComputedStyle(card).opacity, '0.55', '🔴 SF-1: dimmed like the category cards');
+      const live = S.qa('.hfeat .card:not(.sold-out)'); assert.ok(live.length === 1 && /^L /.test(live[0].querySelector('.pr').textContent), 'the other featured dish keeps its price');
+      S.click(add); await flush(); assert.equal(ui.snapshot && cartCount(S), 0, '🔴 SF-1: the store\'s add guard refuses it');
+    } finally { S.w.close(); }
+  } finally { T.restore(); }
+});
+function cartCount(S) { const t = S.q('.deskcart .sheethead small').textContent; const m = t.match(/ · (\d+)/); return m ? Number(m[1]) : 0; }
+test('C-6c r2 auth → the aside: the guest\'s card-only note appears when auth RESOLVES to guest (no store re-render), under the guest rules', async () => {
+  const la = liveAuth('unresolved');
+  const { S } = await deskStoreAt({ runtime: { ...RUNTIME, guestCardOnly: true }, mountExtra: { auth: la.a } });
+  try {
+    S.click('.qty-add-btn'); await flush();
+    assert.equal(S.q('.deskcart .cnote'), null, 'premise: unresolved ⇒ no claim');
+    const info = S.q('.sinfo'), sc = S.q('#scroller');
+    la.set('guest'); await flush();
+    assert.equal(txt(S.q('.deskcart .cnote')), 'Pagás con tarjeta. Creá una cuenta para pagar en efectivo y sumar recompensas.', '🔴 AN-1: the note follows the auth');
+    assert.equal(S.q('.sinfo'), info, 'no store re-render'); assert.equal(S.q('#scroller'), sc);
+  } finally { S.w.close(); }
+});
+test('C-6c r2 featured row: never clipped — the five cards share the width (≤ 150 px, ≥ 110 px) and the row scrolls where they cannot', async () => {
+  const T = tagHouse();
+  try {
+    const { S } = await deskStoreAt();
+    try {
+      const row = S.q('.hfeat .featured'), cs = S.w.getComputedStyle(row);
+      assert.equal(cs.overflowX, 'auto', '🔴 FR-1: the row scrolls (no overflow:hidden clipping)');
+      const c = S.w.getComputedStyle(row.querySelector('.card'));
+      assert.equal(c.minWidth, '110px'); assert.equal(c.maxWidth, '150px'); assert.ok(/^1 1 /.test(c.flex) || c.flexGrow === '1', `🔴 FR-1: the cards flex to the width (${c.flex})`);
+    } finally { S.w.close(); }
+  } finally { T.restore(); }
+});

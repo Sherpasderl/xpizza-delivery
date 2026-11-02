@@ -461,7 +461,7 @@
       const today = range(clock().day);
       const cur = S.activeSec && sections.some((s) => s.id === S.activeSec) ? S.activeSec : (sections[0] || {}).id;
       const rail = `<nav class="catnav" aria-label="Categorías del menú"><h3>Menú</h3>${today ? `<div class="hours">Hoy ${esc(fmtMin(today[0]))} – ${esc(fmtMin(today[1]))}</div>` : ''}${sections.map((s) => `<button data-act="jump" data-jump="${esc(s.id)}" aria-current="${s.id === cur}">${esc(s.name)}</button>`).join('')}</nav>`;
-      let content = house.length ? `<section class="hfeat" aria-label="La casa recomienda"><div class="sechead"><h2>La casa recomienda</h2></div><div class="featured">${house.map((it) => `<div class="card"><div class="ph"><button class="openimg" data-act="open" data-id="${esc(it.id)}" aria-label="Ver ${esc(it.n)}" tabindex="-1" style="border-radius:12px"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div><button class="txtbtn" data-act="open" data-id="${esc(it.id)}"><span class="nm">${esc(it.n)}</span><span class="pr">${money(it.p)}</span></button></div>`).join('')}</div></section>` : '';
+      let content = house.length ? `<section class="hfeat" aria-label="La casa recomienda"><div class="sechead"><h2>La casa recomienda</h2></div><div class="featured">${house.map((it) => { const so = isSold(it); return `<div class="card${so ? ' sold-out' : ''}"><div class="ph"><button class="openimg" data-act="open" data-id="${esc(it.id)}" aria-label="Ver ${esc(it.n)}" tabindex="-1" style="border-radius:12px"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div><button class="txtbtn" data-act="open" data-id="${esc(it.id)}"><span class="nm">${esc(it.n)}</span><span class="pr">${so ? 'Agotado' : money(it.p)}</span></button></div>`; }).join('')}</div></section>` : '';
       for (const s of sections) content += `<section class="sec" id="sec-${esc(s.id)}" data-sec="${esc(s.id)}"><div class="sechead"><h2>${esc(s.name)}</h2>${s.note ? `<span>${esc(s.note)}</span>` : ''}</div>${s.pickupOnly && mode === 'delivery' ? '<div class="secflag">Solo para Pickup · cambiá a Pickup arriba para pedirlas</div>' : ''}<div class="icards">${s.items.map(deskCardHtml).join('')}</div></section>`;
       const pill = cartPillHtml();
       const chrome = typeof opts.deskChrome === 'function' ? String(opts.deskChrome() || '') : '';
@@ -474,7 +474,9 @@
     // the auth tri-state changed on the desk page: its promo pill and fee cell in place (a focused ⓘ refound by descriptor)
     function patchDeskAuth() {
       const info = app.querySelector('.sinfo'); if (!info) return;
-      const fd = info.contains(doc.activeElement) ? descOf(doc.activeElement) : null;
+      const dc = app.querySelector('.deskcart');
+      const fd = info.contains(doc.activeElement) || (dc && dc.contains(doc.activeElement)) ? descOf(doc.activeElement) : null;
+      if (dc) { dc.innerHTML = cartInner(true); applyOrderable(); }   // Codex C-6c r1 #4: the guest's card-only note follows the auth
       const old = info.querySelector('.hdpills'), html = pillsHtml();
       if (old) { if (html) old.outerHTML = html; else old.remove(); } else if (html) { const b = info.querySelector('.brandname'); if (b) b.insertAdjacentHTML('afterend', html); }
       const row = info.querySelector('.toolrow'), c = row && row.querySelector('.cells'), nc = deskCellsHtml();
@@ -1866,6 +1868,7 @@
         const fromAside = !!(ae && ae.closest && ae.closest('.deskcart')), fromPill = !!(ae && ae.id === 'cart-bar');
         S.desk = d; render();
         const sc2 = $('scroller'); if (sc2 && y !== null) sc2.scrollTop = y;
+        if (S.open && lost()) focusTo((d && $('detail-name')) || $('detail-close'));   // Codex C-6c r1 #2: the heading is gone ⇒ the sheet's ✕
         if (lost() && !dialogEl()) {
           if (!d && fromAside) focusTo($('cart-bar'));
           else if (d && fromPill) { const a = app.querySelector('.deskcart'); focusTo(a && ([...a.querySelectorAll('button:not([disabled])')].find(reachable) || a)); }

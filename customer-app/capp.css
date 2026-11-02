@@ -1184,10 +1184,20 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .app.desk .icard.sold-out{opacity:.55}
 .app.desk .icard.sold-out .qty-add-btn{display:none}
 .app.desk .icard .pills{display:flex;gap:6px;margin-top:2px}
-.app.desk .hfeat .featured{display:flex;gap:12px;overflow:hidden;padding-top:10px}
-.app.desk .featured .card{width:150px;max-width:none;flex:none}
+/* Codex C-6c r1 #5: the five cards share the width (≤ 150 px each); where they cannot (≥ 110 px), the row scrolls — never clipped */
+.app.desk .hfeat .featured{display:flex;gap:12px;padding-top:10px;overflow-x:auto;scrollbar-width:none;scroll-snap-type:x proximity}
+.app.desk .hfeat .featured::-webkit-scrollbar{display:none}
+.app.desk .featured .card{flex:1 1 0px;min-width:110px;width:auto;max-width:150px;scroll-snap-align:start}
+.app.desk .featured .card.sold-out{opacity:.55}
+.app.desk .featured .card.sold-out .qty-add-btn{display:none}
 .app.desk .featured .card .ph{border-radius:12px}
 .app.desk .featured .card .pr{font-size:14px;font-weight:500;color:var(--mute);margin-top:0}
+/* Codex C-6c r1 #1: 1024–1279 px (the 380 px aside leaves ~600 px): the identity row stacks, the rail narrows, the cards go one column */
+@media (max-width:1279.98px){
+.app.desk .sinfo{grid-template-columns:minmax(0,1fr)}
+.app.desk .sgrid{grid-template-columns:180px minmax(0,1fr);gap:0 24px}
+.app.desk .icards{grid-template-columns:minmax(0,1fr)}
+}
 .app.desk .deskcart{border-left:0}
 .app.desk .deskcart .sheethead{padding:20px 20px 10px}
 .app.desk .deskcart .sheethead h2{font-size:22px}
