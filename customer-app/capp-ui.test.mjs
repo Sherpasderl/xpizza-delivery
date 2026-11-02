@@ -2636,11 +2636,44 @@ async function retainCash(b) {   // an unresolved scheduled CASH send (the netwo
   return rec;
 }
 const heldSheet = (b) => b.text('#layer .errsheet h2, #layer .errsheet .t, #layer .errsheet b');
+// MOCKUP-capp-cash-chips-lock (owner-approved 2026-11-01, both questions «sí»): while a scheduled send is unresolved (frame 10b) the
+// replay re-sends the SAME body, so every control it ignores is fixed at the drawn .45 and stops responding — the cash amount
+// («Pago exacto», the rounded chip, «Otro monto»), «Tus datos» («Cambiar», «Agregar email / notas») and (question 2) Delivery /
+// Pickup, the pin («Ajustar pin», «Tu ubicación») and the «Cambiar» of «Detalles adicionales»; all back once the record is gone
+test('cash-chips lock (frame 10b): the cash amount, «Tus datos», Delivery/Pickup, the pin and «Detalles adicionales» are fixed while the scheduled send is unresolved — forced taps change nothing; back once the record is gone', async () => {
+  const b = bootS4({ script: { createOrder: ['network'] } }); await retainCash(b);
+  assert.equal(cta(b), 'Reintentar', 'premise: frame 10b');
+  const f0 = J(b.ui.state.flow);
+  const LOCKED = ['[data-act="tender"]', '#f-tender', '[data-act="editwho"]', '[data-act="more"]', '[data-act="type"][data-val="delivery"]', '[data-act="type"][data-val="pickup"]', '.map[data-act="pin"]', '.urow[data-act="pin"]', '[data-act="editdetails"]'];
+  for (const s of LOCKED) {
+    const els = b.qa(s);
+    assert.ok(els.length > 0, `premise: ${s} is drawn on 10b`);
+    for (const e of els) assert.equal(e ? e.disabled : null, true, `🔴 CC-lock: ${s} disabled on 10b`);
+  }
+  for (const s of LOCKED) for (const e of b.qa(s)) { e.dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle(); }
+  assert.deepEqual(J(b.ui.state.flow), f0, '🔴 CC-lock: a forced tap changes nothing in the flow');
+  assert.deepEqual([b.ui.state.flow.editWho || false, b.ui.state.more || false, b.ui.state.editDetails || false, b.ui.state.layerKind || null], [false, false, false, null], '🔴 CC-lock: no edit mode opened, no pin layer');
+  assert.equal(b.ui.state.flow.tendered, f0.tendered, '🔴 CC-lock: the cash amount stands');
+  // a stale node (the attribute stripped): the HANDLER refuses too — the same predicate, not only the markup
+  for (const s of ['[data-act="tender"]', '[data-act="editwho"]', '[data-act="more"]', '[data-act="type"][data-val="pickup"]', '.map[data-act="pin"]', '[data-act="editdetails"]']) {
+    const e = b.q(s); if (!e) continue; e.disabled = false; e.dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle();
+  }
+  assert.deepEqual(J(b.ui.state.flow), f0, '🔴 CC-handler: a stale tap changes nothing in the flow');
+  assert.deepEqual([b.ui.state.flow.editWho || false, b.ui.state.more || false, b.ui.state.editDetails || false, b.ui.state.layerKind || null], [false, false, false, null], '🔴 CC-handler: no edit mode, no pin layer');
+  b.ui.render(); await settle();
+  // the record EXPIRES (discarded) ⇒ the lock lifts and every control answers again
+  b.storage.setItem(S4_PLACE_KEY, JSON.stringify({ ...JSON.parse(b.storage.getItem(S4_PLACE_KEY)), expires_at: 1 })); b.ui.render(); await settle();
+  assert.notEqual(cta(b), 'Reintentar', 'premise: the lock is gone');
+  for (const s of ['[data-act="tender"]', '#f-tender', '[data-act="type"][data-val="pickup"]', '.map[data-act="pin"]', '[data-act="editdetails"]']) {
+    const e = b.q(s); assert.equal(e ? e.disabled : null, false, `🔴 CC-unlock: ${s} enabled again`);
+  }
+});
 test('Codex G7 r1 #1 (remount): a retained scheduled CASH send locks the remounted checkout from the RECORD — a flow edited to ASAP + card still replays the recorded body to createOrder, never chargeOnlineOrder', async () => {
   const a = bootS4({ script: { createOrder: ['network'] } }); const rec = await retainCash(a);
   const sent0 = a.srv.of('createOrder')[0].body;
   const b = bootS4({ storage: a.storage, script: { createOrder: [S4_REPLAY_OK], chargeOnlineOrder: [CHECKOUT] } });
-  await toCheckout(b); await schedFill(b, 'online');
+  await toCheckout(b);   // the cash-chips lock: on 10b the pin / details are fixed (nothing to fill) — the edit goes through the flow below
+  assert.equal(b.q('.map[data-act="pin"]')?.disabled ?? null, true, 'the pin is fixed on the remounted 10b');
   assert.equal(cta(b), 'Reintentar', '🔴 S4-owner: the remounted checkout is locked from the record');
   assert.equal(b.ui.state.flow.pay, 'cash', '🔴 S4-owner: the recorded tender'); assert.equal(b.ui.state.flow.time, 'schedule');
   b.ui.state.flow.time = 'asap'; b.ui.state.flow.pay = 'online'; b.ui.render(); await settle();   // a flow edited behind the lock

@@ -740,7 +740,9 @@
       const amt = T.ready ? ' · ' + moneyC(T.total) : '';   // pickup places from here (no tip); no amount until the quote is ready
       return S.flow.pay === 'online' ? 'Pagar' + amt : 'Confirmar pedido' + amt;
     }
-    const ctaOff = (T) => !!need() || soldBlock() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));   // pickup places from here
+    // cash-chips lock: on 10b the fields need() reads are FIXED and the replay re-sends the recorded body — they never block «Reintentar»
+    // (a remounted 10b with an empty flow would otherwise be a dead end)
+    const ctaOff = (T) => (!hasSlotLock() && !!need()) || soldBlock() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));   // pickup places from here
     function syncCta() { const b = $('cta'); if (!b || !S.flow) return; const T = totalsNow(); b.disabled = ctaOff(T); b.textContent = ctaLabel(T); }
 
     // ── the map: the drawn chrome; a real Google map inside it when a key is configured, else the schematic SVG ──
@@ -838,27 +840,30 @@
       const f = S.flow, del = f.mode === 'delivery', m = member(), open = isOpen(), po = poLines(), T = totalsNow();
       const poNames = [...new Set(po.map((l) => { const s = sectionOfKey(l.key); return s ? s.name : l.key; }))].join(', ');
       const geoDenied = S.geo === 'denied' && !m;
+      // MOCKUP-capp-cash-chips-lock (owner-approved): on frame 10b the replay re-sends the SAME body — every control it ignores is
+      // fixed at the drawn .45 (disabled), back once the record is gone
+      const fx = hasSlotLock(), fxOff = fx ? ' disabled' : '';
       const pinOk = S.pinStepOk === true;   // the drawn «Pin confirmado» = confirmed ON THE PIN STEP (P f.pinOk), not a detected fix
       const chev = IC.chev.replace('class="i"', 'class="i chev"');
       const zoneKm = (S.lastDelivery && Number.isFinite(S.lastDelivery.max_km) ? S.lastDelivery.max_km : cfg.zoneKm);
       // Entrega — ASAP only (scheduling, the «Programar» card, is S4)
       const timeCards = sched() ? schedCards(f, open, del) : `<div class="opts"><button class="opt" aria-pressed="${open}" data-act="time" data-val="asap"${open ? '' : ' disabled'}><b>Lo antes posible</b><span>${open ? esc(etaTxt(del ? 'delivery' : 'pickup')) : 'No disponible · cerrado'}</span></button></div>`;
-      const mapBlock = `<button class="map${S.outZone && del ? ' out' : ''}" data-act="pin" aria-label="Ajustar el pin en el mapa">${MAP_SVG}${gmapBox('preview')}<span class="pin">${IC.pinfill}</span><span class="tag">${geoDenied ? 'Pin en el restaurante' : pinOk ? 'Pin confirmado' : 'Tu ubicación'}</span><span class="adj">Ajustar pin</span></button>
+      const mapBlock = `<button class="map${S.outZone && del ? ' out' : ''}" data-act="pin" aria-label="Ajustar el pin en el mapa"${fxOff}>${MAP_SVG}${gmapBox('preview')}<span class="pin">${IC.pinfill}</span><span class="tag">${geoDenied ? 'Pin en el restaurante' : pinOk ? 'Pin confirmado' : 'Tu ubicación'}</span><span class="adj">Ajustar pin</span></button>
     ${geoDenied ? `<div class="locrow">${IC.locoff}<span>Ubicación desactivada</span><button data-act="loc-on">Activar</button></div>` : ''}
     ${S.outZone && del ? `<div class="gate" role="alert"><b>${esc(cfg.name || '')} no llega a esta dirección</b><span class="note">${Number.isFinite(zoneKm) && cfg.branch ? `Entregamos hasta ${esc(zoneKm)} km de ${esc(cfg.branch)}. ` : ''}Mové el pin a una dirección dentro de la zona, o recogé en tienda.</span><div class="row2"><button class="btn2" data-act="pin">Cambiar dirección</button><button class="btn2 dark" data-act="type" data-val="pickup">Recoger en tienda</button></div></div>` : ''}`;
       // a guest's address line (S2b-geo, MOCKUP-capp-S2b-geo-address.html A1 / b / b2): the confirmed pin's reverse-geocode; c (none,
       // pending, superseded) keeps today's copy byte for byte
       const geoLine = C.addrLine(f);
-      const addrRow = `<button class="urow" data-act="pin">${IC.pin}<span class="t"><b data-addr>${geoLine ? esc(geoLine) : geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
+      const addrRow = `<button class="urow" data-act="pin"${fxOff}>${IC.pin}<span class="t"><b data-addr>${geoLine ? esc(geoLine) : geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
       const detailsFld = `<div class="fld"><label for="f-details">Detalles adicionales <span class="req">*</span></label><input id="f-details" data-field="details" value="${esc(f.details)}" placeholder="Colonia, portón, piso, referencia…" autocomplete="off"></div>`;
-      const detailsRow = m && !S.editDetails && (f.details || '').trim().length >= 3 ? `<div class="urow">${IC.home}<span class="t"><b>${esc(f.details)}</b><span>Detalles adicionales</span></span><button class="act" data-act="editdetails">Cambiar</button></div>` : '';
+      const detailsRow = m && !S.editDetails && (f.details || '').trim().length >= 3 ? `<div class="urow">${IC.home}<span class="t"><b>${esc(f.details)}</b><span>Detalles adicionales</span></span><button class="act" data-act="editdetails"${fxOff}>Cambiar</button></div>` : '';
       const entrega = `<section class="fsec" aria-label="Entrega"><h2>Entrega</h2>
-    <div class="seg" role="group" aria-label="Tipo de pedido"><button aria-pressed="${del}" data-act="type" data-val="delivery">Delivery</button><button aria-pressed="${!del}" data-act="type" data-val="pickup">Pickup</button></div>
+    <div class="seg" role="group" aria-label="Tipo de pedido"><button aria-pressed="${del}" data-act="type" data-val="delivery"${fxOff}>Delivery</button><button aria-pressed="${!del}" data-act="type" data-val="pickup"${fxOff}>Pickup</button></div>
     ${del && po.length ? `<div class="gate"><b>«${esc(poNames)}» es solo para Pickup</b><div class="row2"><button class="btn2" data-act="rm-po">Quitar del pedido</button><button class="btn2 dark" data-act="type" data-val="pickup">Cambiar a Pickup</button></div></div>` : ''}
     ${timeCards}
     ${del ? `${mapBlock}<div class="urows">${addrRow}${detailsRow}</div>${detailsRow ? '' : detailsFld}` : `<div class="urows"><div class="urow">${IC.store}<span class="t"><b>${storeLine()}</b><span>${esc(cfg.addr || '')}</span></span></div></div><div class="note">Te avisamos por WhatsApp cuando esté listo.</div>`}</section>`;
       // Tus datos — TODO(fiscal flag): «factura / » + the RTN fields render ONLY behind a server flag; no such config key exists yet
-      const moreRow = `<button class="urow" data-act="more">${IC.plus}<span class="t"><b>Agregar email / notas</b></span>${chev}</button>`;
+      const moreRow = `<button class="urow" data-act="more"${fxOff}>${IC.plus}<span class="t"><b>Agregar email / notas</b></span>${chev}</button>`;
       const moreFields = `<div class="fld"><label for="f-email">Correo <span class="mute">(opcional · para tu recibo)</span></label><input id="f-email" data-field="email" type="email" value="${esc(f.email)}" placeholder="tu@correo.com" autocomplete="email"></div>
        <div class="fld"><label for="f-notes">Notas para el restaurante</label><textarea id="f-notes" data-field="notes" placeholder="Sin cebolla, extra salsa… (opcional)">${esc(f.notes)}</textarea></div>`;
       // §3.1 / §4b / §4c (frames 1, 1b, 1c): the guest's «Tus datos» opens with the sign-in ROW (replacing the small link), the phone
@@ -877,7 +882,7 @@
          <div class="fld${emailBad ? ' bad' : ''}"><label for="f-email">Correo <span class="req">*</span> <span class="mute">· para tu recibo</span></label><input id="f-email" data-field="email" type="email" value="${esc(f.email)}" placeholder="tu@correo.com" autocomplete="email"></div>
          ${S.more ? `<div class="fld"><label for="f-notes">Notas para el restaurante</label><textarea id="f-notes" data-field="notes" placeholder="Sin cebolla, extra salsa… (opcional)">${esc(f.notes)}</textarea></div>` : `<div class="urows"><button class="urow" data-act="more">${IC.plus}<span class="t"><b>Agregar notas</b></span>${chev}</button></div>`}</section>`;
       const datos = g ? datosGuest : `<section class="fsec" aria-label="Tus datos"><h2>Tus datos</h2>
-    ${m && !f.editWho ? `<div class="urows"><div class="urow">${IC.user}<span class="t"><b>${esc(m.name)}</b><span>${esc(intl() ? phoneShown(newFlow()) : C.fullPhone(m.phone))}</span></span><button class="act" data-act="editwho">Cambiar</button></div>${S.more ? '' : moreRow}</div>`
+    ${m && !f.editWho ? `<div class="urows"><div class="urow">${IC.user}<span class="t"><b>${esc(m.name)}</b><span>${esc(intl() ? phoneShown(newFlow()) : C.fullPhone(m.phone))}</span></span><button class="act" data-act="editwho"${fxOff}>Cambiar</button></div>${S.more ? '' : moreRow}</div>`
       : `<div class="fld"><label for="f-name">Nombre <span class="req">*</span></label><input id="f-name" data-field="name" value="${esc(f.name)}" placeholder="Tu nombre" autocomplete="name"></div>
          ${intl() ? phoneFld(f, '') : `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(f.phone)}" placeholder="+504 9999-9999" autocomplete="tel"></div>`}
          ${!m ? `<div class="line" style="font-size:14px"><span class="mute">¿Ya tenés cuenta?</span><button class="lnk" data-act="signin" data-ctx="checkout">Entrá</button></div>` : ''}${S.more ? '' : `<div class="urows">${moreRow}</div>`}`}
@@ -912,9 +917,9 @@
     function cashPanel(T) {
       const f = S.flow; if (f.pay !== 'cash') return '';
       const tot = T.ready ? T.total / 100 : null; let base = tot === null ? null : Math.ceil(tot / 500) * 500; if (base !== null && base <= tot) base += 500;
-      const tender = Number(f.tendered);
-      const chips = tot === null ? '' : `<div class="chips">${[{ l: 'Pago exacto', v: tot }, { l: money(base), v: base }].map((c) => `<button class="chip" aria-pressed="${tender === c.v}" data-act="tender" data-val="${c.v}">${c.l}</button>`).join('')}</div>`;
-      return `<div class="fld"><label for="f-tender">¿Con cuánto vas a pagar? <span class="mute">(para llevarte el cambio exacto)</span></label>${chips}<input id="f-tender" data-field="tendered" inputmode="numeric" value="${esc(f.tendered)}" placeholder="Otro monto (L)"><span class="note" id="tender-note">${esc(tenderNote(T))}</span></div>`;
+      const tender = Number(f.tendered), fxOff = hasSlotLock() ? ' disabled' : '';   // frame 10b: the amount is fixed (cash-chips lock)
+      const chips = tot === null ? '' : `<div class="chips">${[{ l: 'Pago exacto', v: tot }, { l: money(base), v: base }].map((c) => `<button class="chip" aria-pressed="${tender === c.v}" data-act="tender" data-val="${c.v}"${fxOff}>${c.l}</button>`).join('')}</div>`;
+      return `<div class="fld"><label for="f-tender">¿Con cuánto vas a pagar? <span class="mute">(para llevarte el cambio exacto)</span></label>${chips}<input id="f-tender" data-field="tendered" inputmode="numeric" value="${esc(f.tendered)}" placeholder="Otro monto (L)"${fxOff}><span class="note" id="tender-note">${esc(tenderNote(T))}</span></div>`;
     }
 
     // ── the tip step (prototype tipHtml :1954-1961) ──
@@ -1361,6 +1366,7 @@
     }
     function checkoutAct(t) {
       const f = S.flow, a = t.dataset.act, v = t.dataset.val;
+      if (hasSlotLock() && (a === 'type' || a === 'editwho' || a === 'more' || a === 'editdetails' || a === 'tender' || a === 'pin')) return true;   // frame 10b: fixed (cash-chips lock)
       if (a === 'type') { if (frozenNow()) return true; S.mode = v === 'pickup' ? 'pickup' : 'delivery'; C.setMode(f, S.mode); notifyCart(); if (S.mode === 'delivery' && !finitePin(f.pin) && S.geo === null) requestGeo(); render(); return true; }
       if (a === 'rm-po') { for (const l of poLines()) mutate(() => cart.setQty(l.key, 0)); if (!cart.count()) toStore(); else render(); return true; }
       if (a === 'editwho') { f.editWho = true; render(); return true; }
