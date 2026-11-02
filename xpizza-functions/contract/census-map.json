@@ -245,6 +245,7 @@
   "tracking/tombstones.js": "R8",
   "payment-poll-state.js": "R16",
   "claim-order.js": "R17",
+  "my-orders.js": "R17",
   "claim-prefill.js": "R17",
   "factura/build-record.js": "R10",
   "factura/eligibility.js": "R10",
