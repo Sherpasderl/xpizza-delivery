@@ -2,7 +2,7 @@
 // GUEST-SERVER train item (advisor ruling 2026-11-01): deploy-dotenv-guard ships this train, so a NEW function gets NO plain env
 // at deploy (no dotenv is copied; existing functions keep their deployed env via inferDetailsFromExisting). OTP_SALT therefore
 // reaches the three NEW otp-lib readers as a Secret Manager secret, bound on EXACTLY them:
-//   requestCheckoutCode, verifyCheckoutCode, redeemSignupGrant
+//   requestCheckoutCode, verifyCheckoutCode, redeemSignupGrant (+ S-A(d) getMerchantRatingComments: the sealed-cursor key, HKDF-derived)
 // and on NO other export — above all not on the EXISTING plain-env readers (requestOtp, verifyOtp, chargeOnlineOrder, claimOrder):
 // the same name as a secret there is the secret/plain overlap the dotenv guard exists to prevent. Readers stay
 // process.env.OTP_SALT (a bound secret arrives there); otp-lib reads it at ITS module load, so every require of it must be lazy
@@ -18,7 +18,7 @@ const { spawnSync } = require('child_process');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const FN = __dirname;
-const BOUND = ['requestCheckoutCode', 'verifyCheckoutCode', 'redeemSignupGrant'];
+const BOUND = ['requestCheckoutCode', 'verifyCheckoutCode', 'redeemSignupGrant', 'getMerchantRatingComments'];   // + S-A(d): its cursor key is HKDF(OTP_SALT) — a NEW function, read lazily from process.env
 const EXISTING_READERS = ['requestOtp', 'verifyOtp', 'chargeOnlineOrder', 'claimOrder'];
 const FAKE_SALT = 'tb-otp-salt-'.padEnd(40, 'x');
 

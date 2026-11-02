@@ -31671,5 +31671,161 @@
    "node",
    "reorder-price-snapshot.test.js"
   ]
+ },
+ {
+  "id": "sad-1",
+  "slice": "sad",
+  "label": "S-A(d): serve a non-live comment (read the node raw, skipping readCountable)",
+  "file": "ratings/merchant-comments.js",
+  "from": "? V2.readCountable(db, oid) : null)));",
+  "to": "? db.ref(`ratings_${'v2'}/${oid}`).once('value').then((s) => V2.normalize(s.val())) : null)));",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-2",
+  "slice": "sad",
+  "label": "S-A(d): skip the restaurant_id re-verify (a foreign-rid node under this index is served)",
+  "file": "ratings/merchant-comments.js",
+  "from": "if (nd && nd.restaurant_id === rid && typeof nd.comment",
+  "to": "if (nd && typeof nd.comment",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-3",
+  "slice": "sad",
+  "label": "S-A(d): return the order id with each comment",
+  "file": "ratings/merchant-comments.js",
+  "from": "comments.push({ comment: nd.comment, store:",
+  "to": "comments.push({ order_id: chunk[j][1], comment: nd.comment, store:",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-4",
+  "slice": "sad",
+  "label": "S-A(d): surface the delivery thumb",
+  "file": "ratings/merchant-comments.js",
+  "from": "comments.push({ comment: nd.comment, store:",
+  "to": "comments.push({ delivery: nd.delivery, comment: nd.comment, store:",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-5",
+  "slice": "sad",
+  "label": "S-A(d): authorize by can() alone — no membership resolution for THAT rid (any portal member reads any tenant)",
+  "file": "ratings/merchant-comments.js",
+  "from": "  try { access = await resolveAccess({ db }, ctx, rid); } catch (_) { access = { ok: false, code: 'unavailable' }; }",
+  "to": "  access = { ok: true, caps: ['stats.read'] };",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-6",
+  "slice": "sad",
+  "label": "S-A(d): an uncapped candidate read (the whole index per call)",
+  "file": "ratings/merchant-comments.js",
+  "from": "  const snap = await query.limitToFirst(CANDIDATES).once('value');",
+  "to": "  const snap = await query.once('value');",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-7",
+  "slice": "sad",
+  "label": "S-A(d): an empty page resets the cursor (stale entries force a restart / full scan)",
+  "file": "ratings/merchant-comments.js",
+  "from": "  const cursor = exhausted || !lastScanned ? null : seal(",
+  "to": "  const cursor = exhausted || !lastScanned || !comments.length ? null : seal(",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-8",
+  "slice": "sad",
+  "label": "S-A(d): an UNSEALED cursor (the index key — order id — in clear)",
+  "file": "ratings/merchant-comments.js",
+  "from": "  const cursor = exhausted || !lastScanned ? null : seal(key, { v: 1, rid, uid: dec.uid, k: lastScanned });",
+  "to": "  const cursor = exhausted || !lastScanned ? null : seal(key, { v: 1, rid, uid: dec.uid, k: lastScanned }) + '.' + Buffer.from(lastScanned).toString('base64url');",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-9",
+  "slice": "sad",
+  "label": "S-A(d): the cursor is not bound to the caller (another user's cursor accepted)",
+  "file": "ratings/merchant-comments.js",
+  "from": "if (!p || p.v !== 1 || p.rid !== rid || p.uid !== uid ||",
+  "to": "if (!p || p.v !== 1 || p.rid !== rid ||",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-10",
+  "slice": "sad",
+  "label": "S-A(d): the cursor is not bound to the rid (another tenant's cursor accepted)",
+  "file": "ratings/merchant-comments.js",
+  "from": "if (!p || p.v !== 1 || p.rid !== rid || p.uid !== uid ||",
+  "to": "if (!p || p.v !== 1 || p.uid !== uid ||",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-11",
+  "slice": "sad",
+  "label": "S-A(d): the fulfilment stamp does not re-index on kept (a lost entry is never healed)",
+  "file": "ratings/rating-fulfilment.js",
+  "from": "if (out.outcome === 'stamped' || out.outcome === 'kept') await",
+  "to": "if (out.outcome === 'stamped') await",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-12",
+  "slice": "sad",
+  "label": "S-A(d): a dispatcher (catalog-tier staff) reads comments — the wrong capability",
+  "file": "ratings/merchant-comments.js",
+  "from": "const CAP = 'stats.read';",
+  "to": "const CAP = 'catalog.edit';",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-13",
+  "slice": "sad",
+  "label": "S-A(d): the index keys from the trigger time, not the COMMITTED fulfilment (a retry re-keys / duplicates)",
+  "file": "ratings/rating-v2.js",
+  "from": "  const key = indexKey(node.fulfilled_at, orderId);",
+  "to": "  const key = indexKey(Date.now(), orderId);",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
  }
 ]

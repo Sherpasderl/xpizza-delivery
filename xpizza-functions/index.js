@@ -7855,6 +7855,13 @@ exports.drainRatingRedactions = onSchedule(
     if (out.pending || out.failed) console.log(`drainRatingRedactions: ${JSON.stringify(out)}`);
   },
 );
+// S-A(d) (NOTE-S-Ad-merchant-comments-build): the P-1 merchant view — anonymous rating COMMENTS for ONE rid the caller is a member of
+// (resolveAccess + can 'stats.read'), bounded reads of the server-only rating_index through rating-v2.readCountable; the opaque cursor
+// is sealed with an OTP_SALT-derived key (HKDF, its own label)
+exports.getMerchantRatingComments = onRequest(
+  { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET] },
+  require('./ratings/merchant-comments').makeMerchantRatingComments({ getDatabase, getAuth, checkRateLimit }).getMerchantRatingComments,
+);
 // S-A1: rateOrder's dish votes resolve through the ONE resolver (the expression getMyOrders and the live displayLabel path use)
 require('./ratings/rate-order').configure({ resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) });
 /* checkout:end endpoints */

@@ -144,5 +144,32 @@ async function readCountable(db, orderId) {
   return countable(node, tomb) ? node : null;
 }
 
-module.exports = { countable, ratingRef, ownedRatingIds, readCountable, ORDER_ID_RE, V1_THUMB, WINDOW_MS, COMMENT_MAX, DISHES_MAX, STATES, FULFILLED, parseRequest, freshNode, normalize,
+// S-A(d) — the MANDATORY server-only merchant index rating_index/{rid}/{key} = orderId (orderIds only, never comment text). The key
+// is DETERMINISTIC — <13-digit inverted fulfilled_at>-<orderId> — so the fulfilment trigger's retries / a crash between the stamp and
+// the index write heal with an idempotent re-set, and key order = newest fulfilment first. Readers still reach a node ONLY through
+// readCountable: the index is a candidate list, never an authority (a stale / withdrawn / tombstoned entry is filtered at read).
+const INDEX_ROOT = 'rating_index';
+const INV_TS = 9999999999999;
+const RID_KEY_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;   // platform-manifest RID_RE
+const INDEX_KEY_RE = /^\d{13}-[A-Za-z0-9_-]{1,64}$/;
+function indexKey(fulfilledAt, orderId) {
+  if (!Number.isSafeInteger(fulfilledAt) || fulfilledAt < 0 || fulfilledAt > INV_TS || typeof orderId !== 'string' || !ORDER_ID_RE.test(orderId)) return null;
+  return `${String(INV_TS - fulfilledAt).padStart(13, '0')}-${orderId}`;
+}
+function indexRef(db, rid) {
+  if (typeof rid !== 'string' || !RID_KEY_RE.test(rid)) throw new Error('indexRef: bad restaurant id');
+  return db.ref(`${INDEX_ROOT}/${rid}`);
+}
+// the entry for a COMMITTED node (rid + fulfilled_at read from the node itself, never from the trigger input); a deleted node or one
+// without a fulfilment stamp is never indexed. Idempotent.
+async function indexNode(db, orderId, raw) {
+  const node = normalize(raw);
+  if (!node || node.state === STATES.DELETED || !Number.isFinite(node.fulfilled_at)) return 'skip';
+  const key = indexKey(node.fulfilled_at, orderId);
+  if (!key || typeof node.restaurant_id !== 'string' || !RID_KEY_RE.test(node.restaurant_id)) return 'skip';
+  await db.ref(`${INDEX_ROOT}/${node.restaurant_id}/${key}`).set(orderId);
+  return 'indexed';
+}
+
+module.exports = { countable, ratingRef, ownedRatingIds, readCountable, indexKey, indexRef, indexNode, INDEX_KEY_RE, ORDER_ID_RE, V1_THUMB, WINDOW_MS, COMMENT_MAX, DISHES_MAX, STATES, FULFILLED, parseRequest, freshNode, normalize,
   v1Updater, v2Updater, withdrawUpdater, fulfilmentUpdater, deletionUpdater };
