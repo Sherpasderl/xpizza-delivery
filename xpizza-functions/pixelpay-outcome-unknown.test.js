@@ -139,7 +139,7 @@ async function cell(name, fn) { try { await fn(); } catch (e) { fails.push(name)
 
 (async () => {
   // POU-CAPTURE-BODY-LOST: capture 200, the body drops → the existing "capture may have landed" path.
-  for (const [label, step] of [['POU-CAPTURE-BODY-LOST', { kind: 'bodyLost' }], ['POU-CAPTURE-EMPTY-200', { kind: 'empty' }], ['POU-CAPTURE-GARBAGE-200', { kind: 'garbage' }], ['POU-CAPTURE-ARRAY-200', json(200, [1])], ['POU-CAPTURE-BARE-VALUE-200', json(200, 'ok')]]) {
+  for (const [label, step, reason] of [['POU-CAPTURE-BODY-LOST', { kind: 'bodyLost' }, 'body_read_failed'], ['POU-CAPTURE-EMPTY-200', { kind: 'empty' }, 'body_empty'], ['POU-CAPTURE-GARBAGE-200', { kind: 'garbage' }, 'body_unparseable'], ['POU-CAPTURE-ARRAY-200', json(200, [1]), 'body_unparseable'], ['POU-CAPTURE-BARE-VALUE-200', json(200, 'ok'), 'body_unparseable']]) {
     await cell(label, async () => {
       const db = makeDb(redeemedOrder());
       const calls = installFetch({ status: [STATUS_OK('authorized')], capture: [step] });
@@ -147,6 +147,7 @@ async function cell(name, fn) { try { await fn(); } catch (e) { fails.push(name)
       assert.ok(!e, `${label}: confirm must resolve (capture throw is caught), got ${e && e.message}`);
       assert.strictEqual(r.outcome, 'capture_error_retryable', `${label}: outcome must be capture_error_retryable, got ${r.outcome}`);
       assert.ok(/PIXELPAY_OUTCOME_UNKNOWN/.test(String(r.error)), `${label}: the error names the unknown outcome, got ${r.error}`);
+      assert.ok(String(r.error).includes(reason), `${label}: the unknown outcome is classified ${reason}, got ${r.error}`);
       assert.strictEqual(db.getAt('payment_attempts/A').status, 'capturing', `${label}: the capturing claim stays for the stale sweep`);
       assertNotDeclined(db, label);
       assert.strictEqual(calls.void, 0, `${label}: nothing is voided`);
