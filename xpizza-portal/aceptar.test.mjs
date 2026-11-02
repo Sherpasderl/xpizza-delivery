@@ -7,6 +7,8 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { startAceptar, ledeOf, cleanUrl, RETRY_MS } from './aceptar.js';
+import * as ACEPTAR from './aceptar.js';
+const LOAD_DEADLINE_MS = ACEPTAR.LOAD_DEADLINE_MS;
 const require = createRequire(new URL('../xpizza-functions/x.js', import.meta.url));
 const { JSDOM } = require('jsdom');
 
@@ -306,4 +308,30 @@ test('R4: every first stage replaces the loading line — invalid link, error ca
     assert.ok(r.$('st-loading').hidden, `${JSON.stringify(opts).slice(0, 60)}: the loading line is gone`);
     assert.strictEqual(r.visible().length, 1, 'exactly one stage shows');
   }
+});
+
+// Codex r1 P1 (shell-wait): the loading line is never the end state — an auth restore / preview that never settles ends, after
+// LOAD_DEADLINE_MS, in the existing «No pudimos completar la invitación» card, whose «Reintentar» starts over; the late answer is dropped.
+test('R4 deadline: a preview that NEVER settles → after LOAD_DEADLINE_MS the could-not-complete card (Reintentar), not an endless loading line', async () => {
+  const r = rig({ preview: new Promise(() => {}) });
+  r.start();                       // never settles: not awaited
+  await tick();
+  assert.ok(!r.$('st-loading').hidden, 'premise: still loading');
+  const t = r.calls.timers.find((x) => x.ms === LOAD_DEADLINE_MS);
+  assert.ok(t, 'the deadline is armed');
+  assert.strictEqual(LOAD_DEADLINE_MS, 20000);
+  t.fn(); await tick();
+  assert.ok(r.$('st-loading').hidden);
+  assert.deepStrictEqual(r.visible(), ['st-error']);
+  assert.strictEqual(r.$('err-title').textContent, 'No pudimos completar la invitación');
+  assert.ok(!r.$('err-action').hidden, '«Reintentar»');
+});
+test('R4 deadline: a preview that settles in time — the deadline firing later changes nothing', async () => {
+  const r = rig({});
+  await r.start();
+  assert.deepStrictEqual(r.visible(), ['st-email']);
+  const t = r.calls.timers.find((x) => x.ms === LOAD_DEADLINE_MS);
+  assert.ok(t, 'premise: it was armed');
+  t.fn(); await tick();
+  assert.deepStrictEqual(r.visible(), ['st-email'], 'still the email stage');
 });
