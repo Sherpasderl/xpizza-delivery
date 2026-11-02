@@ -305,6 +305,7 @@
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
+    "xpizza-functions/tools/brand-census.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
@@ -539,6 +540,7 @@
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
+    "xpizza-functions/tools/brand-census.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
@@ -851,6 +853,7 @@
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
+    "xpizza-functions/tools/brand-census.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
@@ -1086,6 +1089,7 @@
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
+    "xpizza-functions/tools/brand-census.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
@@ -1135,6 +1139,7 @@
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
     "xpizza-functions/test/s5-ratings.emulator.test.js",
+    "xpizza-functions/tools/brand-census.test.js",
     "xpizza-kitchen/avail-write.test.mjs",
     "xpizza-kitchen/card-model.test.mjs",
     "xpizza-kitchen/kds-smoke.test.mjs",
@@ -1156,7 +1161,8 @@
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/test/availability-reset.emulator.test.js",
     "xpizza-functions/test/kds-cancel-acks-devices.emulator.test.mjs",
-    "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs"
+    "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
+    "xpizza-functions/tools/brand-census.test.js"
    ]
   },
   "xpizza-dispatch": {
@@ -1220,6 +1226,7 @@
     "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
     "xpizza-functions/test/superseded-capture.emulator.test.js",
     "xpizza-functions/test/unassign.emulator.test.js",
+    "xpizza-functions/tools/brand-census.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
     "xpizza-track/tracker-glide.guard.test.js"
    ],
@@ -1241,6 +1248,7 @@
     "xpizza-functions/contract/timer-bounds.guard.test.js",
     "xpizza-functions/contract/token.guard.test.js",
     "xpizza-functions/contract/tracer.test.js",
+    "xpizza-functions/tools/brand-census.test.js",
     "xpizza-functions/tools/registry-writers.test.js"
    ]
   },
@@ -1285,7 +1293,8 @@
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
     "xpizza-functions/test/driver-assignment-parity.emulator.test.js",
     "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
-    "xpizza-functions/test/unassign.emulator.test.js"
+    "xpizza-functions/test/unassign.emulator.test.js",
+    "xpizza-functions/tools/brand-census.test.js"
    ],
    "via_helper": [
     "xpizza-dispatch-mobile/board-model.test.mjs",
@@ -1302,7 +1311,8 @@
     "xpizza-functions/contract/scenario-state.guard.test.js",
     "xpizza-functions/contract/timer-bounds.guard.test.js",
     "xpizza-functions/contract/token.guard.test.js",
-    "xpizza-functions/contract/tracer.test.js"
+    "xpizza-functions/contract/tracer.test.js",
+    "xpizza-functions/tools/brand-census.test.js"
    ]
   },
   "xpizza-driver": {
@@ -1375,6 +1385,7 @@
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
     "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
     "xpizza-functions/test/web-sdk-loader.emulator.test.mjs",
+    "xpizza-functions/tools/brand-census.test.js",
     "xpizza-functions/tracking/driver-orders.guard.test.js"
    ],
    "via_helper": [
@@ -1392,7 +1403,8 @@
     "xpizza-functions/contract/scenario-state.guard.test.js",
     "xpizza-functions/contract/timer-bounds.guard.test.js",
     "xpizza-functions/contract/token.guard.test.js",
-    "xpizza-functions/contract/tracer.test.js"
+    "xpizza-functions/contract/tracer.test.js",
+    "xpizza-functions/tools/brand-census.test.js"
    ]
   },
   "xpizza-track": {
@@ -1420,6 +1432,7 @@
     "xpizza-functions/d12b-wiring.guard.test.js",
     "xpizza-functions/pselfupdate-stamp.test.js",
     "xpizza-functions/tools/app-suites.guard.test.js",
+    "xpizza-functions/tools/brand-census.test.js",
     "xpizza-track/eta-gate.test.js",
     "xpizza-track/status-view-forms.test.js",
     "xpizza-track/tracker-arrived.test.js",
@@ -1447,7 +1460,8 @@
     "xpizza-functions/contract/timer-bounds.guard.test.js",
     "xpizza-functions/contract/token.guard.test.js",
     "xpizza-functions/contract/tracer.test.js",
-    "xpizza-functions/tools/app-suites.guard.test.js"
+    "xpizza-functions/tools/app-suites.guard.test.js",
+    "xpizza-functions/tools/brand-census.test.js"
    ]
   },
   "xpizza-dashboard": {
@@ -1470,7 +1484,8 @@
     "xpizza-functions/contract/scenario-state.guard.test.js",
     "xpizza-functions/contract/timer-bounds.guard.test.js",
     "xpizza-functions/contract/token.guard.test.js",
-    "xpizza-functions/contract/tracer.test.js"
+    "xpizza-functions/contract/tracer.test.js",
+    "xpizza-functions/tools/brand-census.test.js"
    ],
    "via_helper": [
     "xpizza-functions/contract/applicability.guard.test.js",
@@ -1487,7 +1502,8 @@
     "xpizza-functions/contract/scenario-state.guard.test.js",
     "xpizza-functions/contract/timer-bounds.guard.test.js",
     "xpizza-functions/contract/token.guard.test.js",
-    "xpizza-functions/contract/tracer.test.js"
+    "xpizza-functions/contract/tracer.test.js",
+    "xpizza-functions/tools/brand-census.test.js"
    ]
   },
   "<root>/index.html": {
@@ -1579,6 +1595,7 @@
   "xpizza-functions/tools/ack-identity-finding.js",
   "xpizza-functions/tools/app-suites.js",
   "xpizza-functions/tools/bake-form-bundle.js",
+  "xpizza-functions/tools/brand-census.js",
   "xpizza-functions/tools/draft-drift-report.js",
   "xpizza-functions/tools/extras-baseline-audit.js",
   "xpizza-functions/tools/form-bundle-live-check.js",
@@ -4847,7 +4864,8 @@
   "seed_identity.js": {
    "pins": [],
    "lifts": [
-    "customer-app/fixtures/s7a2/gen-directory.mjs"
+    "customer-app/fixtures/s7a2/gen-directory.mjs",
+    "xpizza-functions/tools/brand-census.js"
    ]
   },
   "sequencing/bounded.js": {
