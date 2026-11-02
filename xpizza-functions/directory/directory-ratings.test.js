@@ -40,7 +40,8 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { process.stderr.write('�
   assert.strictEqual(r.body.representation_version, 'directory-2');
   assert.deepStrictEqual(r.body.restaurants.map((e) => e.ratings), [{ rating_avg: 4.6, rating_count: 15, pct_liked: 88 }, { new_until: 99 }]);
   assert.ok(r.body.restaurants.every((e) => Object.keys(e).join() === D.ENTRY_FIELDS.join()), 'ONE schema: every allowlisted key, in order');
-  const f = await D.buildDirectory(deps(async (rid) => { if (rid === 'la_musa') throw new Error('stats down'); return STATS[rid]; }));
+  const f = await D.buildDirectory(deps(async (rid) => { if (rid === 'la_musa') throw new Error('stats down'); return STATS[rid]; }))
+    .catch((e) => assert.fail(`🔴 a stats outage must never fail the directory: ${e.message}`));
   assert.strictEqual(f.body.complete, true, '🔴 a stats outage NEVER makes the directory partial');
   assert.strictEqual(f.body.restaurants[1].ratings, null); assert.ok(f.body.restaurants[1].degraded.includes('ratings'), 'degraded, named');
   assert.ok(!f.body.restaurants[0].degraded.includes('ratings'));
