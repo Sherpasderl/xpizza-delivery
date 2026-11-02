@@ -8,6 +8,10 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   await assert.rejects(db.ref('a').set({ ok: { 'bad.key': 1 } }), /invalid RTDB key/, 'HRM-NESTED-KEYS: a reserved character in a NESTED key is refused');
   await assert.rejects(db.ref('a').update({ 'x/y': { 'b#': 1 } }), /invalid RTDB key/, 'HRM-NESTED-KEYS: also through update');
   await assert.rejects(db.ref('a').update({ x: { y: undefined } }), /undefined value/, 'HRM-NESTED-KEYS: an undefined value is refused, as the Admin SDK does');
+  const dbt = makeHonestDb({}, { now: () => 777 });
+  await dbt.ref('al').push({ created_at: { '.sv': 'timestamp' } });
+  assert.deepStrictEqual(Object.values(dbt.getAt('al')), [{ created_at: 777 }], 'HRM-NESTED-KEYS: a server timestamp is accepted and resolved, as RTDB does');
+  await assert.rejects(dbt.ref('b').set({ x: { '.sv': 'timestamp', y: 1 } }), /invalid RTDB key/, 'HRM-NESTED-KEYS: a dotted key beside other keys is still refused');
   ok('nested keys are validated on set and update');
 
   await db.ref('o').set({ a: 1, b: null, c: { d: null } });

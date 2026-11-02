@@ -8,16 +8,27 @@
 //     there ABORTS; a value is sent and, if the server value differs from what the function saw, the function is RE-RUN with
 //     the server value — and a concurrent write landing while the function ran is a CONFLICT that re-runs it too (up to 25×).
 // Optional hooks let a test interleave work deterministically: beforeRead(path, api), beforeTx(path, api),
-// beforeWrite(path, value, api).
+// beforeWrite(path, value, api); now() is the clock a {'.sv':'timestamp'} write resolves to.
 const RESERVED = /[.#$[\]/]/;
 
 function validateKeys(v, where, seed = false) {
   if (v === undefined) { if (seed) return; throw new Error(`undefined value at ${where} (RTDB refuses undefined)`); }
   if (v === null || typeof v !== 'object') return;
+  if (isServerValue(v)) return;
   for (const k of Object.keys(v)) {
     if (!k || RESERVED.test(k)) throw new Error(`invalid RTDB key "${k}" under ${where}`);
     validateKeys(v[k], `${where}/${k}`, seed);
   }
+}
+// A server-value sentinel ({'.sv': 'timestamp'}) is the one dotted key RTDB accepts; the model resolves it to its clock
+// and refuses any other sentinel loudly rather than store something production never would.
+function isServerValue(v) { return !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 1 && Object.prototype.hasOwnProperty.call(v, '.sv'); }
+function resolveServerValues(v, now) {
+  if (v === null || typeof v !== 'object') return v;
+  if (isServerValue(v)) { if (v['.sv'] === 'timestamp') return now; throw new Error(`server value ${JSON.stringify(v)} not modelled`); }
+  const out = Array.isArray(v) ? [] : {};
+  for (const [k, x] of Object.entries(v)) out[k] = resolveServerValues(x, now);
+  return out;
 }
 function prune(v) {
   if (v === undefined || v === null) return null;
@@ -38,7 +49,7 @@ function makeHonestDb(initial = {}, hooks = {}) {
     const a = segs(p);
     for (const k of a) if (!k || RESERVED.test(k)) throw new Error(`invalid RTDB key "${k}" in path ${p}`);
     validateKeys(val, p || '/');
-    const v = prune(clone(val));
+    const v = prune(resolveServerValues(clone(val), hooks.now ? hooks.now() : Date.now()));
     if (!a.length) { root = v || {}; return; }
     let n = root; const chain = [];
     for (let i = 0; i < a.length - 1; i++) { if (n[a[i]] == null || typeof n[a[i]] !== 'object') n[a[i]] = {}; chain.push([n, a[i]]); n = n[a[i]]; }
