@@ -28,7 +28,7 @@ import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = '2ce3198d';
-const CAPP_TIP = '8469eabb';   // DRYRUN ASSEMBLY METADATA (2e 11-01, advisor): the assembled cherry-pick of capp 6e9f6e93 (was 097471a4) — RE-POINT at the real assembly (its cherry-pick SHA differs)
+const CAPP_TIP = '097471a4';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 const isAncestor = (a, b) => { try { git('merge-base', '--is-ancestor', a, b); return true; } catch (_) { return false; } };
 // the files tools/sync-client.js copies INTO customer-app/ — read from sync-client itself (run against a recording fs; nothing written)
