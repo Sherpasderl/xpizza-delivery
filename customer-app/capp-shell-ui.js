@@ -36,6 +36,7 @@
     const CappMenuCache = pick(o, 'CappMenuCache', './capp-menu-cache.js'), CappMenu = pick(o, 'CappMenu', './capp-menu.js');
     const CappUI = pick(o, 'CappUI', './capp-ui.js'), CappShell = pick(o, 'CappShell', './capp-shell.js');
     const CappShellNav = pick(o, 'CappShellNav', './capp-shell-nav.js'), CappHome = pick(o, 'CappHome', './capp-home.js');
+    const CappOrder = pick(o, 'CappOrder', './capp-order.js');   // «Pedido recibido» (the host's order screen)
     const CappCheckout = pick(o, 'CappCheckout', './capp-checkout.js'), CappDeviceAccount = pick(o, 'CappDeviceAccount', './capp-device-account.js');
     const win = o.win || doc.defaultView;
     const storage = o.storage !== undefined ? o.storage : (() => { try { return win.localStorage; } catch (_) { return null; } })();
@@ -83,7 +84,7 @@
     let dead = false, rebuild = true;
 
     const S = { tab: 'home', cuisine: '', filters: new Set(), q: '', recent: (readJ(RECENT_KEY) || []).filter((x) => typeof x === 'string').slice(0, RECENT_MAX),
-      held: null, heldErr: false, store: null, layer: null, locDenied: false, loc: null, neutral: null, ret: null, retAssoc: null };
+      held: null, heldErr: false, store: null, layer: null, locDenied: false, loc: null, neutral: null, ret: null, retAssoc: null, order: null };
     // ── the guest location (r1 §2.3, owned by the SHELL, persisted per device): { lat, lng, confirmed, source: 'gps'|'pin', v } ──
     { const l = readJ(LOC_KEY); if (l && Number.isFinite(l.lat) && Number.isFinite(l.lng) && (l.source === 'gps' || l.source === 'pin')) S.loc = { lat: l.lat, lng: l.lng, confirmed: l.confirmed === true, source: l.source, v: Number(l.v) || 1 }; }
     function setLoc(lat, lng, source) {
@@ -168,7 +169,7 @@
         onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
-        onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
+        onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
       S.store = { rid: entry.rid, ui, entry, body: e.body, fp: null, adopt: null };
       watchMenu(S.store);
       const snap = carried || readJ(cfg.cartKey); if (snap) ui.restore(snap);   // an adoption carries the IN-MEMORY cart (Codex s7a2 r1 #1)
@@ -454,6 +455,7 @@
       onShow: (entry, x) => {
         if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link
         if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); reflect(); return; }
+        if (entry.name === 'order') { S.tab = 'order'; renderNow(); return; }
         S.tab = entry.name; dir.visit(); dir.revalidate(); loadMenus();
         renderNow(x && x.restored ? x.restored : null);
       },
@@ -523,12 +525,78 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
       reflect();
     }
+    // ── «PEDIDO RECIBIDO» (v6 orderHtml via CappOrder; owner 2026-11-01: build what v6 draws) ──
+    // A placed order leaves «Enviando» for this SHELL screen: the store mount is left (Inicio under it, so back ⇒ Inicio), the order
+    // as SENT (capp-ui's snapshot) + the store's directory data. «Orden #N»: the forms' own order-number module (synced bytes) reads
+    // order_tracking/{token}/display_number — capped, else hidden, never the long id. C → R flips at its own boundary (one handle).
+    let orderNum = null, orderFlipT = null;
+    const OrderNumberMod = () => (typeof OrderNumber !== 'undefined' ? OrderNumber : o.OrderNumber);
+    const trackBaseOf = (rid) => { const b = runtime.trackBases && runtime.trackBases[rid]; return typeof b === 'string' && /^https:\/\/[a-z0-9.-]+$/.test(b) ? b : null; };
+    const supportWa = () => (typeof runtime.supportWhatsapp === 'string' && /^\d{8,15}$/.test(runtime.supportWhatsapp) ? runtime.supportWhatsapp : null);
+    function stopOrder() { if (orderNum) { try { orderNum.stop(); } catch (_) {} } orderNum = null; if (orderFlipT !== null) { T.clearTimeout(orderFlipT); orderFlipT = null; } }
+    function showOrder(rid, d) {
+      stopOrder();
+      const row = dir.view().rows.find((r) => r.rid === rid), e = (row && row.entry) || {};
+      S.order = { ...d.order, rid, order_id: d.order_id || null, token: typeof d.tracking_token === 'string' ? d.tracking_token : null, status: 'new',
+        storeName: e.name || '', branch: e.branch || '', storeAddr: e.pickup_addr || '', display_number: null,
+        grant: d.signup_grant && typeof d.signup_grant.token === 'string' ? { token: d.signup_grant.token, expires_at: d.signup_grant.expires_at } : null, offerDone: false };
+      const ON = OrderNumberMod(), base = typeof runtime.rtdbBase === 'string' ? runtime.rtdbBase : null;
+      if (ON && base && typeof o.readPublic === 'function' && !S.order.scheduled) {
+        const mine = S.order;
+        orderNum = ON.createOrderNumber({ base, read: (u) => o.readPublic(u), setTimeout: T.setTimeout, clearTimeout: T.clearTimeout,
+          paint: (state, n) => { if (dead || S.order !== mine) return; mine.display_number = state === 'number' ? n : null; if (S.tab === 'order' && !S.store) renderNow(); } });
+        orderNum.start(S.order.token);
+      }
+      if (S.order.scheduled && Number.isFinite(S.order.scheduledFor)) {
+        const at = S.order.scheduledFor + CappOrder.REVIEW_AFTER_MS - Number(nowMs());
+        if (at > 0 && at < 2147483647) orderFlipT = T.setTimeout(() => { orderFlipT = null; if (!dead && S.tab === 'order' && !S.store) renderNow(); }, at + 1);
+      }
+      if (nav.tab({ name: 'home' })) nav.go({ name: 'order' });
+    }
+    function orderScreenHtml(v) {
+      const od = S.order;
+      return CappHome.shellWrap(v, CappOrder.orderHtml(od, { entry: 'app', now: Number(nowMs()), dark: app.classList.contains('dark'), helpOk: !!supportWa(),
+        shareOk: !!(od.token && trackBaseOf(od.rid)), receiptOpen: !!S.orderReceipt, offerHtml: offerHtml(od) }));
+    }
+    // MOCKUP-capp-guest-checkout frame 7 (owner 10-27) in v6's .rw slot: a GUEST whose card order returned a live signup grant (the
+    // phone already verified — no second code), under the shell's own sign-in (runtime.signup); «Ahora no» hides it for this order
+    function offerHtml(od) {
+      if (!SU || !signup || S.member || od.offerDone || !od.grant) return '';
+      return CappUI.accountOfferHtml({ grant: od.grant, now: Number(nowMs()), phone: od.phone, email: od.email });
+    }
+    let offerBusy = false;
+    async function offerCreate() {
+      const od = S.order; if (!od || !od.grant || offerBusy || !suApi || !fbAuth) return;
+      const em = app.querySelector('#offer-email'), email = em ? String(em.value || '').trim() : od.email;
+      offerBusy = true;
+      let uid = null, r = null;
+      try { r = await suApi.redeemSignupGrant({ grant: od.grant.token, email, name: od.name || '' }); if (r && r.ok && r.token) uid = await fbAuth.signInWithCustomToken(r.token); } catch (_) { uid = null; }
+      offerBusy = false;
+      if (dead || S.order !== od) return;
+      if (typeof uid === 'string' && uid) { od.offerDone = true; await signedIn({ uid, name: (r && r.name) || od.name || '', phone: od.phoneWire, email: email || null, isNew: !!(r && r.isNew) }); if (!dead && S.tab === 'order' && !S.store) renderNow(); return; }
+      // a grant the server would not redeem (expired, consumed): the approved sign-in sheet, pre-filled — never a dead control
+      od.offerDone = true; renderNow(); openSignin({ ctx: 'account', prefill: od.phoneWire || null });
+    }
+    function orderAct(a) {
+      const od = S.order; if (!od) return false;
+      if (a === 'order-close' || a === 'order-again') { stopOrder(); nav.tab({ name: 'home' }); return true; }
+      if (a === 'order-receipt') { S.orderReceipt = !S.orderReceipt; renderNow(); return true; }
+      if (a === 'order-help') { const n = supportWa(); if (n) { const msg = 'Hola, tengo un problema con mi pedido' + (od.display_number ? ' #' + od.display_number : ''); openExternal(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`); } return true; }
+      if (a === 'order-share') {
+        const b = trackBaseOf(od.rid); if (!b || !od.token) return true;
+        const url = `${b}/${encodeURIComponent(od.token)}`, nv = win && win.navigator;
+        try { if (nv && nv.clipboard && typeof nv.clipboard.writeText === 'function') nv.clipboard.writeText(url).catch(() => {}); } catch (_) {}
+        toast('Link de seguimiento copiado'); return true;
+      }
+      return false;
+    }
+    function openExternal(url) { try { if (win && typeof win.open === 'function') win.open(url, '_blank', 'noopener'); } catch (_) {} }
     // ── the location layers ──
     let pinGen = 0, pinMap = null, pinDraft = null;
     function renderLayer() {
@@ -570,6 +638,9 @@
       // later slice. Flag absent ⇒ exactly the S7a-2 behaviour: a host event (Codex guest r1 #3)
       if (a === 'tab') { const id = t.dataset.tab; if (id === 'account' && !SU && (runtime.guestCardOnly !== true || authNow() === 'member')) { emit('tab', { tab: id }); return; }   // G7: under runtime.signup the Cuenta is the shell's
         if (id === 'home' || id === 'search' || id === 'account') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
+      if (a.startsWith('order-') && orderAct(a)) return;
+      if (a === 'offer-create') { offerCreate(); return; }
+      if (a === 'offer-skip') { if (S.order) { S.order.offerDone = true; renderNow(); } return; }
       if (a === 'signin') { openSignin({ ctx: t.dataset.ctx || 'account' }); return; }
       if (a === 'help') { emit('help', {}); return; }
       if (a === 'promos') { if (t.getAttribute('aria-disabled') !== 'true') togglePromos(); return; }   // G7 frame 1 / 1b
@@ -669,7 +740,7 @@
       // §4c for the sign-in flow (G6): set the marker at sign-in; ONLY «Cerrar sesión y olvidar este teléfono» / deletion forgets it
       rememberAccount: (e164) => CappDeviceAccount.remember(storage, e164), forgetAccount: () => CappDeviceAccount.forget(storage),
       destroy() {
-        dead = true; clearTokenTimers(); unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
+        dead = true; clearTokenTimers(); stopOrder(); unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
         doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('visibilitychange', onVisible); nav.destroy();
       },
     };

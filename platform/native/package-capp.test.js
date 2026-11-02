@@ -73,7 +73,15 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   assert.ok(txt(P.ENTRY).includes(`<style>${blocks[0][1]}</style>`), 'the hashed block is packaged byte-identical');
   const dir = Object.fromEntries(B.csp.split('; ').map((d) => { const [k, ...v] = d.split(' '); return [k, v]; }));
   const allowed = new Set([...dir['connect-src'], ...dir['script-src'], ...dir['img-src']].filter((x) => /^(https|wss):/.test(x)));
-  const EXEMPT = { 'capp-auth-firebase.js': ['https://www.gstatic.com'] };   // the WEB default SDK; the boot always passes loadSdk
+  // NAVIGATION targets, never fetched (so connect-src / img-src don't govern them): «Ayuda» opens wa.me in a new window (window.open,
+  // noopener) and «Compartir seguimiento» only COPIES a tracker link — the tracker origins come from the manifest's track deployments
+  const TRACK = JSON.parse(show('platform/sites.json').toString('utf8')).deployments.filter((d) => d.app === 'track').map((d) => `https://${d.netlify_site}.netlify.app`);
+  // «Pedido recibido»: the packaged runtime carries each context's tracker from the manifest (one source), and the help number
+  const rtj = JSON.parse(txt('capp-runtime.js').match(/Object\.freeze\((\{[\s\S]*\})\);/)[1]);
+  assert.deepStrictEqual(rtj.track_bases, Object.fromEntries(JSON.parse(show('platform/sites.json').toString('utf8')).deployments.filter((d) => d.app === 'track').map((d) => [d.context, `https://${d.netlify_site}.netlify.app`])), '🔴 track_bases = the manifest\'s track deployments');
+  assert.strictEqual(rtj.track_bases.x_pizza, 'https://xpizzatrack.netlify.app', 'x_pizza\'s tracker = the server\'s TRACKING_BASE (whatsapp.js)');
+  assert.strictEqual(rtj.support_whatsapp, '+50497952893', 'the help number rides the runtime block');
+  const EXEMPT = { 'capp-auth-firebase.js': ['https://www.gstatic.com'], 'capp-shell-ui.js': ['https://wa.me'], 'capp-runtime.js': TRACK };   // the WEB default SDK; the boot always passes loadSdk
   assert.match(txt('capp-boot.js'), /loadSdk: \(\) => Promise\.all\(\[importModule\(`\$\{sdk\}firebase-app\.js`\)/, 'premise of the exemption: the boot overrides the SDK loader');
   const misses = [];
   for (const [f, b] of B.files) {

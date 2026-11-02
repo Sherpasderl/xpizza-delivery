@@ -1128,6 +1128,7 @@
       if (guestCashBlocked()) return;   // no key ⇒ nothing is sent (the record stays clean)
       let c; try { c = { ...ctxBase(), headers: intakeHeaders() }; } catch (_) { return; }   // the key only where the server requires it
       const attempt = ++attemptSeq; S.terminal = null;   // Codex r4 #2: THIS attempt's settled outcome only
+      S.sentOrder = sentOrderOf(f, T, rb);   // «Pedido recibido»: what THIS send stands behind, handed to the host with 'placed'
       S.screen = 'sending'; S.sendHint = null; S.sendTotals = rb ? { total: Number.isFinite(rb.expected_net_cents) ? rb.expected_net_cents : null, tip: Number.isFinite(rb.tip_cents) ? rb.tip_cents : 0 } : { total: T.total, tip: T.tip }; render();
       let has = soldOf;
       if (typeof opts.readAvailability === 'function') {
@@ -1145,11 +1146,39 @@
       try { out = await api.place({ flow: f, ctx: c, freshOk: !!T.ready, sig: rb ? (S.q ? S.q.sig : null) : S.q.sig, checkoutTicket: cardOnlyGuest() ? S.ticket : undefined, expectedNetCents: rb ? rb.expected_net_cents : T.total, totals: rb && !T.ready ? null : T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: api.hosted ? { ...cart.snapshot(), cart_gen: genNow() } : cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
       if (!dead) onOutcome(out, attempt);
     }
+    // «Pedido recibido» (v6 orderHtml): the order as SENT — the lines, the economics (the recorded body's on a replay), the
+    // delivery details, the tender and when — so the host's order screen never reads the live cart or flow after the send
+    function sentOrderOf(f, T, rb) {
+      const m = member(), del = f.mode === 'delivery', cents = (c) => (Number.isFinite(c) ? c / 100 : null);
+      const tot = rb ? rb.expected_net_cents : T.total, tip = rb ? rb.tip_cents : T.tip, fee = rb ? null : (T.envioFree ? 0 : T.envio);
+      const slot = sched() && f.time === 'schedule' && Number.isFinite(f.slot) ? f.slot : null;
+      return { mode: del ? 'delivery' : 'pickup', pay: f.pay === 'online' ? 'online' : 'cash',
+        lines: displayLines().map((d) => ({ n: d.n, name: d.item.n, extras: d.extras || '', total: d.total })),
+        fee: del ? cents(fee) : null, tip: cents(tip) || 0, total: cents(tot),
+        addr: C.addrLine(f) || 'Tu ubicación', details: (f.details || '').trim(), notes: (f.notes || '').trim(),
+        scheduled: slot !== null, scheduledFor: slot, whenText: slot !== null ? schedMod().slotWhen(servedSched(), now().getTime(), slot) : 'Lo antes posible',
+        phoneText: phoneShown(f) || (m ? C.fullPhone(m.phone) : ''), phone: phoneShown(f) || '', email: (f.email || '').trim(), name: (f.name || '').trim(),
+        phoneWire: f.cc && intl() ? phoneMod().toE164(f.cc, f.phone) : (C.fullPhone(f.phone) ? '+' + C.fullPhone(f.phone).replace(/\D/g, '') : '') };
+    }
+    // the sent order survives the hosted-checkout redirect: stored under the per-store key, bound to its order id, read back only for
+    // THAT order's outcome, cleared once handed over (device storage, best-effort: a failed write ⇒ the screen shows no sent lines)
+    const devStore = opts.apiOpts && opts.apiOpts.storage;
+    function keepSent(orderId) {
+      if (!cfg.sentKey || !devStore || typeof orderId !== 'string' || !S.sentOrder) return;
+      try { devStore.setItem(cfg.sentKey, JSON.stringify({ v: 1, order_id: orderId, order: S.sentOrder })); } catch (_) {}
+    }
+    function takeSent(orderId) {
+      if (!cfg.sentKey || !devStore) return null;
+      let r = null; try { r = JSON.parse(devStore.getItem(cfg.sentKey) || 'null'); } catch (_) { r = null; }
+      try { devStore.removeItem(cfg.sentKey); } catch (_) {}
+      return r && r.v === 1 && r.order_id === orderId && r.order && typeof r.order === 'object' ? r.order : null;
+    }
     // the 600 ms happy beat: the spinner becomes the green check, then the host takes over (S5)
     function beat(out) {
       const sp = $('sspin'); if (sp) { sp.innerHTML = CHECK_OK; sp.classList.add('done'); }
       if (beatT !== null) T_.clearTimeout(beatT);
-      beatT = T_.setTimeout(() => { beatT = null; emit('placed', out); }, 600);
+      const stored = takeSent(out.order_id);   // a hosted return: this page never ran send() — the snapshot kept before the redirect
+      beatT = T_.setTimeout(() => { beatT = null; emit('placed', { ...out, order: S.sentOrder || stored || null }); }, 600);
     }
     // back to where the customer tapped (closure / out-of-zone: to «Entrega & Pago», where those gates live)
     function backTo(screen) {
@@ -1231,6 +1260,7 @@
       if (k === 'redirect') {
         // a RESUMED checkout shows the STORED economics (never the current quote), then leaves for the stored URL
         if (out.resumed) { const t = out.totals || {}; S.sendTotals = { total: Number.isFinite(out.expected_net_cents) ? out.expected_net_cents : (Number.isFinite(t.total) ? t.total : null), tip: Number.isFinite(t.tip) ? t.tip : 0 }; S.screen = 'sending'; render(); }
+        if (!out.resumed) keepSent(out.order_id);   // «Pedido recibido» after the hosted return (a new page load) shows THIS order as sent
         navigate(out.url); return;
       }
       // r3 §1.7 (Codex r3 #3): a SETTLED success is recorded — the one exception to «never leave while sending», honoured only once

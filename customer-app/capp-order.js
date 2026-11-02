@@ -1,0 +1,119 @@
+// Customer app — «PEDIDO RECIBIDO»: the order screen after a placement, ported from the frozen prototype APPROVED-v6 (orderHtml
+// P:2070-2105, statusCopy P:2055-2067, mapSvg / ROUTE / routePoint P:1785-1797) — the owner's 2026-11-01 ruling: v6 is approved,
+// build what it draws (the driver card, the PIN card and «Parada rápida» included). Plus the approved deltas: the guest's
+// account offer (MOCKUP-capp-guest-checkout frame 7, owner 10-27) in v6's `.rw` slot (D-3 k7's resolution, advisor-accepted), and
+// the scheduled frames of MOCKUP-capp-S4-states: C «Pedido programado» (owner option B, 10-27) and R «Revisando tu pedido» (owner
+// 11-01). Pure HTML from an order record + a context, no DOM, no clock of its own (`now` is passed) — the shell (capp-shell-ui)
+// owns state, wiring and the live status. Brand-agnostic: every store difference is DATA (no restaurant id or name here).
+// Fail closed (nothing invented): no «Orden #N» line until the server returns the display number; no PIN card without a PIN on the
+// record; no «Ayuda» without the platform's help number; no «Compartir seguimiento» without a tracking link.
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.CappOrder = api;
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const money = (n) => 'L ' + Math.round(n).toLocaleString('en-US');
+  const I = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+  const IC = {   // v6's own paths (P:1190-1210)
+    close: I('<path d="M6 6l12 12"/><path d="M18 6L6 18"/>'),
+    home: I('<path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/>'),
+    down: I('<path d="M6 9l6 6 6-6"/>'),
+    wa: I('<path d="M4 20l1.3-3.9A8 8 0 1 1 8.2 19z"/><path d="M9.5 9.5c0 3 2 5 5 5l1-1.5-2-1-1 1a4 4 0 0 1-1.5-1.5l1-1-1-2z"/>'),
+    share: I('<path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/>'),
+  };
+
+  const FINAL = new Set(['delivered', 'collected', 'cancelled']);
+  // the v6 copy, byte for byte (statusCopy P:2055-2067); `d` = the driver's name
+  const STACKED_COPY = 'Tu repartidor tiene una parada rápida en camino a la tuya, luego va directo hacia vos.';
+  function statusCopy(o) {
+    const d = o.driver, del = o.mode === 'delivery';
+    switch (o.status) {
+      case 'new': return { t: 'Pedido recibido', s: 'Estamos por empezar a preparar tu pedido', segs: del ? [{ a: .5 }, 0, 0, 0, 0] : [{ a: .5 }, 0, 0] };
+      case 'preparing': return { t: 'Tu pedido se está preparando', s: del ? 'Te avisaremos cuando vaya en camino' : 'Te avisaremos cuando esté listo', segs: del ? [1, { a: .55 }, 0, 0, 0] : [1, { a: .5 }, 0] };
+      case 'ready': return { t: '¡Tu pedido está listo para recoger!', s: `Pasá por ${o.storeName} a recogerlo`, segs: [1, 1, { a: .5 }] };
+      case 'collected': return { t: '¡Gracias por tu compra!', s: o.doneAt ? `Recogido a las ${o.doneAt}` : '', segs: [1, 1, 1] };
+      case 'out': return o.stacked ? { t: `${d} va en camino`, s: STACKED_COPY, segs: [1, 1, { a: .35 }, 0, 0], live: true, p: .3 }
+        : { t: `${d} está en camino`, s: Number.isFinite(o.etaMin) ? `Llega en ~${o.etaMin} min` : '', big: true, segs: [1, 1, { a: .5 }, 0, 0], live: true, p: .45 };
+      case 'arriving': return { t: `${d} está llegando`, s: 'Tu pedido está llegando', big: true, segs: [1, 1, 1, { a: .6 }, 0], live: true, p: .92 };
+      case 'delivered': return { t: '¡Pedido entregado!', s: o.doneAt ? `¡Buen provecho! · Entregado ${o.doneAt}` : '¡Buen provecho!', segs: [1, 1, 1, 1, 1], ok: true };
+      case 'cancelled': return { t: 'Pedido cancelado', s: 'Si pagaste por adelantado, te contactaremos sobre el reembolso', segs: del ? [0, 0, 0, 0, 0] : [0, 0, 0], danger: true };
+    }
+    return { t: '', s: '', segs: [] };
+  }
+  // MOCKUP-capp-S4-states C (option B) and R: the drawn order screen with what can't be true before release changed — no order
+  // number, the segbar unfilled, no «Compartir seguimiento»
+  const SCHED = {
+    C: { t: 'Pedido programado', line: 'Te avisamos por WhatsApp cuando entre a cocina', s: 'Tu pedido está programado. Lo empezamos a preparar antes de tu horario.' },
+    R: { t: 'Revisando tu pedido', line: 'Te avisamos por WhatsApp', s: 'Estamos revisando tu horario con el restaurante. Te escribimos por WhatsApp si hay que cambiarlo.' },
+  };
+  // R (S4 r5): no release by scheduled_for + 30 min (the owner-lookup seam is absent — C until then)
+  const REVIEW_AFTER_MS = 30 * 60000;
+  function schedPhase(o, now) {
+    if (!o.scheduled) return null;
+    return Number.isFinite(o.scheduledFor) && Number.isFinite(now) && now >= o.scheduledFor + REVIEW_AFTER_MS ? 'R' : 'C';
+  }
+
+  // ── the illustrated map (v6 mapSvg P:1791; the colours are the map tokens so it follows the theme) ──
+  const ROUTE = [[22, 64], [22, 42], [50, 42], [50, 34], [74, 34]];   // store → home, in % of the box
+  function routePoint(p) {
+    const segs = []; let L = 0; for (let i = 1; i < ROUTE.length; i++) { const a = ROUTE[i - 1], b = ROUTE[i], d = Math.hypot(b[0] - a[0], b[1] - a[1]); segs.push({ a, b, d }); L += d; }
+    let t = Math.max(0, Math.min(1, p)) * L; for (const s of segs) { if (t <= s.d) { const k = t / s.d; return [s.a[0] + (s.b[0] - s.a[0]) * k, s.a[1] + (s.b[1] - s.a[1]) * k]; } t -= s.d; }
+    return ROUTE[ROUTE.length - 1];
+  }
+  function mapSvg(dark, route) {
+    const road = dark ? '#2E3A30' : '#FFFFFF', minor = dark ? '#283329' : '#F4F6F1', park = dark ? '#243227' : '#DCE6D4', water = dark ? '#1C2A33' : '#D6E4EA';
+    const line = route ? `<polyline points="${ROUTE.map(([x, y]) => x + ',' + y).join(' ')}" fill="none" stroke="${dark ? '#EDF1F8' : '#0D1424'}" stroke-width="1.1" stroke-dasharray="1 2.6" stroke-linecap="round" vector-effect="non-scaling-stroke" style="stroke-width:3px"/>` : '';
+    return `<svg class="mapsvg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <rect x="62" y="56" width="30" height="26" rx="3" fill="${park}"/><path d="M-5 92 C 20 80, 40 96, 70 86 S 100 76, 110 84 L110 110 L-5 110 Z" fill="${water}"/>
+    <g stroke="${minor}" stroke-width="1.6" stroke-linecap="round" vector-effect="non-scaling-stroke">${[10, 34, 56, 78].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}${[10, 36, 62, 86].map((x) => `<path d="M${x} -5V105"/>`).join('')}</g>
+    <g stroke="${road}" stroke-width="3.4" stroke-linecap="round" fill="none">${[22, 50, 74].map((x) => `<path d="M${x} -5V105"/>`).join('')}${[22, 42, 64].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}<path d="M-5 100 L45 60 L105 20"/></g>${line}</svg>`;
+  }
+
+  // o: { order_id, display_number?, mode, status, storeName, branch, storeAddr, lines: [{ n, name, extras, total }], fee, tip, total,
+  //      pay, addr, details, notes, whenText, phoneText, scheduled, scheduledFor, driver?, stacked?, pin?, etaMin?, windowText?, doneAt? }
+  // c: { entry: 'app' | 'link', now, dark, offerHtml, helpOk, shareOk }
+  function orderHtml(o, c) {
+    const del = o.mode === 'delivery', ph = schedPhase(o, c.now), sc = ph ? SCHED[ph] : null;
+    const st = sc ? 'new' : (o.status || 'new');
+    const cc = statusCopy({ ...o, status: st });
+    const driverPos = !sc && cc.p !== undefined ? routePoint(cc.p) : null;
+    const [sx, sy] = ROUTE[0], [hx, hy] = ROUTE[ROUTE.length - 1];
+    const markers = `<span class="mk-label" style="left:${sx}%;top:${sy}%">${esc(o.storeName)}${o.branch ? ' · ' + esc(o.branch) : ''}</span><span class="mk-dot" style="left:${sx}%;top:${sy}%"></span>
+    ${del ? `<span class="mk-home" style="left:${hx}%;top:${hy}%">${IC.home}</span>` : ''}${o.stacked && st === 'out' ? '<span class="mk-dot" style="left:50%;top:52%;background:var(--mute)"></span>' : ''}${driverPos ? `<span class="mk-driver" style="left:${driverPos[0]}%;top:${driverPos[1]}%"></span>` : ''}`;
+    const backBtn = c.entry === 'app' ? `<button class="iconbtn" data-act="order-close" aria-label="Cerrar">${IC.close}</button>` : '<span></span>';
+    const help = c.helpOk ? `<button class="helpchip" data-act="order-help">${IC.wa}Ayuda</button>` : '';
+    const map = `<div class="order-map">${mapSvg(!!c.dark, del)}${markers}<div class="ovl">${backBtn}${help}</div></div>`;
+    const segs = sc ? (del ? [0, 0, 0, 0, 0] : [0, 0, 0]) : cc.segs;
+    const segbar = `<div class="segbar${cc.danger && !sc ? ' cancel' : ''}" aria-hidden="true">${segs.map((s) => s === 1 ? '<div class="sg done"></div>' : s && s.a ? `<div class="sg active"><div class="fill" style="--p:${s.a}"></div></div>` : '<div class="sg"></div>').join('')}</div>`;
+    const windowLine = sc || FINAL.has(st) || !o.windowText ? '' : `<div class="mk-window">${esc(o.windowLabel || 'Llega')} <b>${esc(o.windowText)}</b></div>`;
+    const title = sc ? sc.t : st === 'new' ? 'Pedido recibido' : cc.t;
+    const num = sc ? `<div class="mk-num"><span>${esc(sc.line)}</span></div>`
+      : o.display_number != null && String(o.display_number) !== '' ? `<div class="mk-num">Orden #${esc(o.display_number)} <span>· Te avisamos por WhatsApp</span></div>` : '';
+    const statusrow = sc ? `<div class="mk-status mute" style="font-size:13.5px;text-align:center">${esc(sc.s)}</div>`
+      : st === 'new' ? `<div class="mk-status mute" style="font-size:13.5px;text-align:center">${esc(cc.s)}</div>`
+        : `<div class="statusrow">${(st === 'out' || st === 'arriving') && o.driver ? `<span class="av" aria-hidden="true">${esc(String(o.driver)[0])}</span>` : ''}<div class="st"><div class="ssub${cc.big ? ' big' : ''}" style="margin-top:0">${esc(cc.s)}</div>${cc.live ? '<div class="live"><i></i>Actualizando en tiempo real</div>' : ''}</div></div>`;
+    const driverCard = !sc && (st === 'out' || st === 'arriving') && o.driver ? `<div class="drivercard"><span class="av statusrow-av" style="width:40px;height:40px;border-radius:50%;background:var(--surf);display:flex;align-items:center;justify-content:center;font-weight:700">${esc(String(o.driver)[0])}</span><div class="t"><b>${esc(o.driver)}</b><span>Tu repartidor · moto</span></div>${c.driverActs || ''}</div>
+    ${typeof o.pin === 'string' && /^\d{4,6}$/.test(o.pin) ? `<div class="pincard"><span class="pin">${o.pin.split('').join(' ')}</span><span class="t">Dale este código a tu repartidor al recibir tu pedido.</span></div>` : ''}` : '';
+    const details = del ? `<div class="mk-card"><span class="k">Detalles de entrega</span><span class="v">${esc(o.addr)}</span>${o.details ? `<span class="n">${esc(o.details)}</span>` : ''}${o.notes ? `<span class="n">Nota: ${esc(o.notes)}</span>` : ''}</div>`
+      : `<div class="mk-card"><span class="k">Recoger en</span><span class="v">${esc(o.storeName)}${o.branch ? ' · ' + esc(o.branch) : ''}</span><span class="n">${esc(o.storeAddr || '')}</span></div>`;
+    const lineRows = (o.lines || []).map((d) => `<div class="rrow"><span>${d.n}× ${esc(d.name)}${d.extras ? `<span class="note" style="display:block">+ ${esc(d.extras)}</span>` : ''}</span><span>${money(d.total || 0)}</span></div>`).join('')
+      + `${del && o.fee != null ? `<div class="rrow"><span class="k">Envío</span><span>${o.fee ? money(o.fee) : '<span class="free">Gratis</span>'}</span></div>` : ''}${o.tip ? `<div class="rrow"><span class="k">Propina</span><span>${money(o.tip)}</span></div>` : ''}${Number.isFinite(o.total) ? `<div class="rrow tot"><span>Total</span><span>${money(o.total)}</span></div>` : ''}`;
+    const payLines = `<div class="rrow"><span class="k">Pago</span><span>${o.pay === 'online' ? 'Pagado en línea · PixelPay' : 'Efectivo ' + (del ? 'al entregar' : 'al recoger')}</span></div><div class="rrow"><span class="k">Estado</span><span>${o.pay === 'online' ? 'Confirmado' : 'Se cobra al ' + (del ? 'entregar' : 'recoger')}</span></div><div class="rrow"><span class="k">Cuándo</span><span>${esc(o.whenText || 'Lo antes posible')}</span></div>${o.phoneText ? `<div class="rrow"><span class="k">WhatsApp</span><span>${esc(o.phoneText)}</span></div>` : ''}`;
+    // the confirmation («new», C, R) carries the receipt blocks in the open; the live tracker folds them (v6)
+    const open = sc || st === 'new';
+    const receipt = open ? `<div class="receipt2"><h3>Tu pedido</h3>${lineRows}</div>`
+      : `<div class="receipt"><button class="toggle" data-act="order-receipt" aria-expanded="${!!c.receiptOpen}">Resumen del pedido <span>· ${esc(o.storeName)}</span>${IC.down}</button><div class="rbody"${c.receiptOpen ? '' : ' hidden'}>${lineRows}</div></div>`;
+    const payrows = open ? `<div class="receipt2"><h3>Pago y entrega</h3>${payLines}</div>`
+      : `<div class="receipt"><div class="toggle" style="cursor:default">Pago y entrega</div><div class="rbody">${payLines}</div></div>`;
+    const share = !sc && !FINAL.has(st) && del && c.shareOk ? `<button class="shareline" data-act="order-share">${IC.share}Compartir seguimiento</button>` : '';
+    const sheet = `<div class="mk-sheet"><div class="mk-handle"></div><div class="mk-title${cc.ok && !sc ? ' success' : ''}${cc.danger && !sc ? ' danger' : ''}">${esc(title)}</div>${windowLine}
+    ${num}${segbar}${statusrow}${driverCard}${c.offerHtml || ''}${details}${receipt}${payrows}
+    ${share}<button class="btn2 again" data-act="order-again">Hacer otro pedido</button>${c.entry === 'link' ? '<div class="credit">Enviado por <b>Sherpa</b></div>' : ''}</div>`;
+    return `<div class="scroller"><div class="orderwrap">${map}${sheet}</div></div>`;
+  }
+
+  return { orderHtml, statusCopy, schedPhase, routePoint, FINAL, SCHED, REVIEW_AFTER_MS };
+});

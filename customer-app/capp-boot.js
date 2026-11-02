@@ -47,6 +47,10 @@
     return {
       endpoints: Object.fromEntries(ORDER_ENDPOINTS.map((n) => [n, url(n)])),
       intakeKey: rt.intake_key, mapsKey: rt.maps_key || undefined,
+      // «Pedido recibido»: the public tracking reads (order number) on the RTDB base; the per-context tracker links; the help WhatsApp
+      ...(typeof rt.availability_base === 'string' && rt.availability_base ? { rtdbBase: rt.availability_base } : {}),
+      ...(rt.track_bases && typeof rt.track_bases === 'object' && !Array.isArray(rt.track_bases) ? { trackBases: Object.fromEntries(Object.entries(rt.track_bases).filter(([, v]) => typeof v === 'string' && /^https:\/\/[a-z0-9.-]+$/.test(v))) } : {}),
+      ...(typeof rt.support_whatsapp === 'string' && /^\+[1-9]\d{7,14}$/.test(rt.support_whatsapp) ? { supportWhatsapp: rt.support_whatsapp.slice(1) } : {}),
       ...(f.schedulingLive === true ? { schedulingLive: true } : {}),
       ...(f.intlPhone === true ? { intlPhone: true } : {}),
       ...(f.guestCardOnly === true ? { guestCardOnly: true } : {}),
@@ -92,6 +96,7 @@
           return mapper.soldKeys(menu, await res.json());
         } catch (_) { return null; }
       },
+      readPublic: (href) => fetchFn(href, { method: 'GET', cache: 'no-store' }),   // the order number's public tracking read
       loadSdk: () => Promise.all([importModule(`${sdk}firebase-app.js`), importModule(`${sdk}firebase-auth.js`)])
         .then(([app, authMod]) => ({ initializeApp: app.initializeApp, authMod })),
     });

@@ -42,6 +42,16 @@ test('N2: the runtime from the REAL manifest block — every endpoint on the ONE
   assert.equal('signup' in truthy || 'intlPhone' in truthy, false, 'only a literal true flips a flag');
 });
 
+test('Pedido recibido: the help WhatsApp derives from the ONE manifest key (runtime.support_whatsapp, E.164) — digits only, malformed ⇒ absent; the tracker links pass through only as exact https origins; the RTDB base is availability_base', () => {
+  assert.equal(RT0.support_whatsapp, '+50497952893', 'premise: the owner-confirmed number in platform/sites.json');
+  const r = Boot.runtimeFor(RT({ track_bases: { x_pizza: 'https://xpizzatrack.netlify.app', la_musa: 'https://lamusatrack.netlify.app', bad: 'http://x.test', worse: 'https://a.test/path' } }), CappSignupApi);
+  assert.equal(r.supportWhatsapp, '50497952893', '🔴 PR-help: the wa.me digits come from runtime.support_whatsapp');
+  assert.equal(r.rtdbBase, RT0.availability_base);
+  assert.deepEqual(r.trackBases, { x_pizza: 'https://xpizzatrack.netlify.app', la_musa: 'https://lamusatrack.netlify.app' }, '🔴 PR-share: only exact https origins');
+  for (const bad of ['97952893', '+504 9795 2893', 50497952893, '']) assert.equal('supportWhatsapp' in Boot.runtimeFor(RT({ support_whatsapp: bad }), CappSignupApi), false, `malformed ${JSON.stringify(bad)} ⇒ absent`);
+  const { support_whatsapp: _s, ...noHelp } = RT0;
+  assert.equal('supportWhatsapp' in Boot.runtimeFor({ ...RT(), ...noHelp, support_whatsapp: undefined }, CappSignupApi), false, 'absent ⇒ no help control');
+});
 test('N2: fetchEnvelope — getPublicMenu with the rid in the PATH, If-None-Match, 200 / 304 / 5xx / network / bad JSON', async () => {
   const calls = []; let next;
   const { c, CappShellUI } = capture();

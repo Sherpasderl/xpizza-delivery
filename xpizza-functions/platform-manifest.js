@@ -83,14 +83,18 @@ function validateManifest(m) {
     if (d.runtime !== undefined) {
       const rt = d.runtime, FB = ['apiKey', 'authDomain', 'databaseURL', 'projectId', 'messagingSenderId', 'appId'];
       const KEYS = ['note', 'functions_base', 'menu_endpoint', 'availability_base', 'intake_key', 'maps_key', 'firebase'];
+      // OPTIONAL (owner 2026-11-01): the platform's customer-help WhatsApp («Ayuda» on «Pedido recibido»), E.164 — absent ⇒ no help control
+      const OPTIONAL = ['support_whatsapp'];
+      const keysOk = (o) => { const ks = Object.keys(o); return KEYS.every((k) => ks.includes(k)) && ks.every((k) => KEYS.includes(k) || OPTIONAL.includes(k)); };
       if (d.app !== 'orders' || d.context !== PLATFORM_CONTEXT) errs.push(`${tag}: runtime is only for the platform orders deployment`);
-      else if (!rt || typeof rt !== 'object' || Array.isArray(rt) || Object.keys(rt).sort().join() !== [...KEYS].sort().join()) errs.push(`${tag}: runtime must be exactly { ${KEYS.join(', ')} }`);
+      else if (!rt || typeof rt !== 'object' || Array.isArray(rt) || !keysOk(rt)) errs.push(`${tag}: runtime must be exactly { ${KEYS.join(', ')} } (optional: ${OPTIONAL.join(', ')})`);
       else {
         if (typeof rt.note !== 'string' || !rt.note) errs.push(`${tag}: runtime.note must say these are public client keys`);
         for (const k of ['functions_base', 'availability_base']) if (!isExactHttpsOrigin(rt[k])) errs.push(`${tag}: runtime.${k} must be an exact https origin`);
         if (typeof rt.menu_endpoint !== 'string' || !/^[a-z][A-Za-z0-9]{1,62}$/.test(rt.menu_endpoint)) errs.push(`${tag}: runtime.menu_endpoint must be a function name`);
         if (typeof rt.intake_key !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(rt.intake_key)) errs.push(`${tag}: runtime.intake_key malformed`);
         if (typeof rt.maps_key !== 'string' || !/^[A-Za-z0-9_-]{20,80}$/.test(rt.maps_key)) errs.push(`${tag}: runtime.maps_key malformed`);
+        if (rt.support_whatsapp !== undefined && (typeof rt.support_whatsapp !== 'string' || !/^\+[1-9]\d{7,14}$/.test(rt.support_whatsapp))) errs.push(`${tag}: runtime.support_whatsapp must be E.164 (+<digits>)`);
         const fb = rt.firebase;
         if (!fb || typeof fb !== 'object' || Array.isArray(fb) || Object.keys(fb).sort().join() !== [...FB].sort().join() || FB.some((k) => typeof fb[k] !== 'string' || !fb[k])) errs.push(`${tag}: runtime.firebase must be exactly { ${FB.join(', ')} } (non-empty strings)`);
         else if (fb.databaseURL !== rt.availability_base) errs.push(`${tag}: runtime.availability_base must be the firebase databaseURL`);

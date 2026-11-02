@@ -51,6 +51,14 @@ bad((c) => { appOf(c).runtime.availability_base = 'https://other.firebaseio.com'
 bad((c) => { c.deployments.find((d) => d.app === 'orders' && d.context !== M.PLATFORM_CONTEXT).runtime = appOf(c).runtime; }, /runtime is only for the platform orders deployment/);
 ok('refused: extra / missing keys, an empty note, http / wildcard bases, a path-like endpoint, malformed keys, an incomplete firebase config, a foreign availability base, a runtime block on a form');
 
+// 3b. support_whatsapp (owner 2026-11-01: Sherpa's help WhatsApp, E.164) — optional, shape-checked; the committed value is the owner's
+assert.strictEqual(RT.support_whatsapp, '+50497952893', '🔴 the owner-confirmed help number, E.164, in the ONE runtime block');
+bad((c) => { appOf(c).runtime.support_whatsapp = '97952893'; }, /support_whatsapp must be E\.164/);
+bad((c) => { appOf(c).runtime.support_whatsapp = '+504 9795 2893'; }, /support_whatsapp must be E\.164/);
+bad((c) => { appOf(c).runtime.support_whatsapp = 50497952893; }, /support_whatsapp must be E\.164/);
+{ const c2 = clone(); delete appOf(c2).runtime.support_whatsapp; assert.deepStrictEqual(M.validateManifest(c2), [], 'absent ⇒ still valid (optional)'); }
+ok('runtime.support_whatsapp = the owner\'s E.164 number; malformed refused; absent allowed (optional)');
+
 // 4. absent ⇒ appRuntime() is null (nothing invented)
 const c = clone(); delete appOf(c).runtime;
 assert.strictEqual(M.loadPlatform(c, M.PLATFORM.compat).appRuntime(), null);

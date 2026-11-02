@@ -239,7 +239,7 @@ function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }
 const flush = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 // stampedDir: a copy of customer-app/ stamped by the REAL platform/stamp-version.js — the page's own sherpa-client.js runs on its
 // stamped identity and capp-api.js runs in the page realm (its SherpaClient.fetch arm), the network = pageFetch (window.fetch)
-function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null } = {}) {
+function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null, readPublic = null } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(stampedDir || HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: url || 'https://app.test/' });
@@ -247,7 +247,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   if (media) w.matchMedia = media.matchMedia;   // D-2: the viewport the shell reads at mount (a controllable matchMedia)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'capp-order.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -258,7 +258,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
     return Promise.resolve({ status: 200, body: J(PROV[rid].envelope), etag: PROV[rid].etag });
   };
   const clock = now || { t: T0 };
-  const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), fetchDirectory, fetchEnvelope, readAvailability: async () => [], onEvent: (n, d) => events.push([n, J(d)]), runtime, storage: storage || memStorage(), now: () => clock.t,
+  const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), ...(readPublic ? { readPublic } : {}), fetchDirectory, fetchEnvelope, readAvailability: async () => [], onEvent: (n, d) => events.push([n, J(d)]), runtime, storage: storage || memStorage(), now: () => clock.t,
     auth: { state: () => auth }, geolocation, search, timers: { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, ...mountExtra });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
   const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
@@ -1880,6 +1880,73 @@ test('store promo r5: a UID SWITCH queued from the token notifier — no quote d
   assert.ok(dispatches.length >= 1, 'premise: the quote was dispatched'); assert.notEqual(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: Ana is no longer the identity');
   const bad = dispatches.filter((d) => d.sub === 'u_ana' && d.current !== 'u_ana');
   assert.deepEqual(bad, [], `🔴 store promo r5: Ana's token went out after the switch: ${JSON.stringify(dispatches)}`);
+});
+// ── «PEDIDO RECIBIDO» (v6 row 42, owner 2026-11-01: a launch gap; build what v6 draws): a placed order leaves «Enviando» for the SHELL's
+// order screen (CappOrder) — the store mount left, the sent lines / totals / details on it, close ⇒ Inicio. Never back to «Enviando».
+async function placeShellCash(S, reply) {
+  const ui = await toShellCheckout(S);
+  const type = (sel, v) => { const el = S.q(sel); assert.ok(el, `premise: ${sel}`); el.value = v; el.dispatchEvent(new S.w.Event('input', { bubbles: true })); };
+  S.click('[data-act="pin"]'); await flush(); S.click('[data-act="pin-done"]'); await flush();
+  type('#f-details', 'Portón negro'); type('#f-name', 'Ana'); type('#f-phone', '9999 0000'); await flush();
+  S.click('[data-act="pay"][data-val="cash"]'); await flush();
+  S.click('#cta'); await flush(); S.click('[data-act="tipc"][data-val="0"]'); await flush(); S.click('[data-act="tip-place"]'); await flush();
+  S.click('#layer [data-act="placing-go"]'); await flush(); await flush();
+  await flush(700);   // the 600 ms happy beat
+  return ui;
+}
+const ORDER_FETCH = (reply) => (u, i) => (u.startsWith('/x/q') ? quoteOk(u, i) : u.startsWith('/x/c') ? Promise.resolve({ status: 200, ok: true, json: async () => reply(JSON.parse(i.body)) }) : new Promise(() => {}));
+test('Pedido recibido: a placed cash order ⇒ the shell\'s order screen — «Pedido recibido», the sent lines + Envío + Total, the delivery details; the store left; close ⇒ Inicio', async () => {
+  const S = bootShell({ apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
+  try {
+    await flush();
+    const ui = await placeShellCash(S);
+    const dish = ui.menu.dishes.find((d) => !d.launcher && !d.variantOf && !ui.menu.pickupOnlyCats.has(String(d.cat)));
+    assert.equal(S.ui.store(), null, '🔴 PR-1: the store mount is left once the order is placed');
+    assert.equal(txt(S.q('.mk-title')), 'Pedido recibido', '🔴 PR-1: the order screen');
+    assert.equal(txt(S.q('.mk-status')), 'Estamos por empezar a preparar tu pedido');
+    const rows = [...S.w.document.querySelectorAll('.receipt2 .rrow')].map((r) => [...r.children].map((c) => c.textContent.replace(/\s+/g, ' ').trim()));
+    assert.ok(rows.some((r) => r[0] === `1× ${dish.name}`), `🔴 PR-1: the sent line (${JSON.stringify(rows)})`);
+    assert.ok(rows.some((r) => r[0] === 'Envío' && r[1] === 'L 45'), '🔴 PR-1: the quoted Envío');
+    assert.ok(rows.some((r) => r[0] === 'Pago' && r[1] === 'Efectivo al entregar'));
+    assert.equal(txt(S.q('.mk-card .n')), 'Portón negro', 'the delivery details');
+    assert.equal(S.q('.mk-num'), null, 'no display number from the server yet ⇒ no «Orden #» line (fail soft)');
+    S.click('[data-act="order-close"]'); await flush();
+    assert.ok(S.q('.rlist .rcard[data-rid="x_pizza"]'), '🔴 PR-1: close ⇒ Inicio');
+    assert.equal(S.q('.mk-title'), null);
+  } finally { S.w.close(); }
+});
+// «Orden #N» (advisor ruling from 5f's note: the number is stamped AFTER createOrder): the forms' own order-number module reads
+// order_tracking/{token}/display_number from the public base — the number when it lands; never the long id
+test('Pedido recibido: «Orden #N» from order_tracking/{token}/display_number via the shared order-number module (the exact public path; nothing before it lands)', async () => {
+  const reads = [];
+  const readPublic = async (u) => { reads.push(u); return { ok: true, json: async () => (reads.length >= 2 ? 47 : null) }; };
+  const S = bootShell({ runtime: { ...RUNTIME, rtdbBase: 'https://rtdb.test' }, readPublic, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
+  try {
+    await flush(); await placeShellCash(S);
+    assert.equal(S.q('.mk-num'), null, 'pending ⇒ no line yet');
+    await flush(900); assert.equal(S.q('.mk-num'), null, 'the first read answers null ⇒ still nothing (never the long id)');
+    await flush(1700);
+    assert.equal(txt(S.q('.mk-num')), 'Orden #47 · Te avisamos por WhatsApp', '🔴 PR-2: the display number from the tracking node');
+    assert.ok(reads.length >= 2 && reads.every((u) => u === 'https://rtdb.test/order_tracking/tok_abcdefgh12/display_number.json'), `🔴 PR-2: the exact public path (${reads[0]})`);
+  } finally { S.w.close(); }
+});
+test('Pedido recibido: «Ayuda» opens wa.me/<runtime.supportWhatsapp> with the order number pre-filled; «Compartir seguimiento» copies <the context\'s tracker>/<token>; both absent without their config', async () => {
+  const opened = [], copied = [];
+  const readPublic = async () => ({ ok: true, json: async () => 47 });
+  const S = bootShell({ runtime: { ...RUNTIME, rtdbBase: 'https://rtdb.test', supportWhatsapp: '50497952893', trackBases: { x_pizza: 'https://xpizzatrack.netlify.app' } }, readPublic,
+    apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
+  try {
+    S.w.open = (u) => { opened.push(u); return null; };
+    Object.defineProperty(S.w.navigator, 'clipboard', { value: { writeText: (t) => { copied.push(t); return Promise.resolve(); } }, configurable: true });
+    await flush(); await placeShellCash(S); await flush(900);
+    assert.equal(txt(S.q('.mk-num')), 'Orden #47 · Te avisamos por WhatsApp', 'premise: the number landed');
+    S.click('[data-act="order-help"]'); await flush();
+    assert.deepEqual(opened, ['https://wa.me/50497952893?text=' + encodeURIComponent('Hola, tengo un problema con mi pedido #47')], '🔴 PR-help: the link derives from the one key + the order number');
+    S.click('[data-act="order-share"]'); await flush();
+    assert.deepEqual(copied, ['https://xpizzatrack.netlify.app/tok_abcdefgh12'], '🔴 PR-share: the context\'s tracker + the token');
+  } finally { S.w.close(); }
+  const N = bootShell({ apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
+  try { await flush(); await placeShellCash(N); assert.equal(N.q('[data-act="order-help"]'), null, 'no number ⇒ no «Ayuda»'); assert.equal(N.q('[data-act="order-share"]'), null, 'no tracker ⇒ no share'); } finally { N.w.close(); }
 });
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {
