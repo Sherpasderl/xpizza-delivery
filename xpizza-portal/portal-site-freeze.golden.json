@@ -52,6 +52,7 @@
   "review.js",
   "review.test.mjs",
   "shell-dom.test.mjs",
+  "shell-wait-writes.test.mjs",
   "shell-wait.test.mjs",
   "shell.js",
   "shell.test.mjs",
