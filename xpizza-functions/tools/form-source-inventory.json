@@ -58,6 +58,7 @@
     "price-notice.test.mjs",
     "public-menu-display-noop.test.mjs",
     "qty-stepper-outside-click.test.mjs",
+    "reorder-price-snapshot-reader.test.mjs",
     "reorder-whole-page.test.mjs",
     "s2-stash-cleanup.test.mjs",
     "s5-baseline.golden.test.mjs",
@@ -284,6 +285,7 @@
     "xpizza-functions/test/photos-a2.emulator.test.js",
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
+    "xpizza-functions/test/pixelpay-unknown-callers.emulator.test.js",
     "xpizza-functions/test/portal-1b.emulator.test.js",
     "xpizza-functions/test/portal-handlers.emulator.test.js",
     "xpizza-functions/test/portal-ops.emulator.test.js",
@@ -521,6 +523,7 @@
     "xpizza-functions/test/photos-a2.emulator.test.js",
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
+    "xpizza-functions/test/pixelpay-unknown-callers.emulator.test.js",
     "xpizza-functions/test/portal-1b.emulator.test.js",
     "xpizza-functions/test/portal-handlers.emulator.test.js",
     "xpizza-functions/test/portal-ops.emulator.test.js",
@@ -613,6 +616,7 @@
     "price-notice.test.mjs",
     "public-menu-display-noop.test.mjs",
     "qty-stepper-outside-click.test.mjs",
+    "reorder-price-snapshot-reader.test.mjs",
     "reorder-whole-page.test.mjs",
     "s2-stash-cleanup.test.mjs",
     "s5-baseline.golden.test.mjs",
@@ -838,6 +842,7 @@
     "xpizza-functions/test/photos-a2.emulator.test.js",
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
+    "xpizza-functions/test/pixelpay-unknown-callers.emulator.test.js",
     "xpizza-functions/test/portal-1b.emulator.test.js",
     "xpizza-functions/test/portal-handlers.emulator.test.js",
     "xpizza-functions/test/portal-ops.emulator.test.js",
@@ -1076,6 +1081,7 @@
     "xpizza-functions/test/photos-a2.emulator.test.js",
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
+    "xpizza-functions/test/pixelpay-unknown-callers.emulator.test.js",
     "xpizza-functions/test/portal-1b.emulator.test.js",
     "xpizza-functions/test/portal-handlers.emulator.test.js",
     "xpizza-functions/test/portal-ops.emulator.test.js",
@@ -2031,6 +2037,7 @@
   "brands/brands-admin-core.js",
   "cancel-order-core.js",
   "cart-sig.js",
+  "catalog/_hosted-claim-delta.js",
   "catalog/add-product.js",
   "catalog/bound-reuse.js",
   "catalog/bundle-compare.js",
@@ -2063,6 +2070,8 @@
   "checkout-guest-gate.js",
   "checkout-guest-lib.js",
   "checkout-otp.js",
+  "claim-order.js",
+  "client-floor.js",
   "compute-server-net.js",
   "create-order-build.js",
   "createorder-classify.js",
@@ -2078,6 +2087,7 @@
   "driver-ledger/ledger-store.js",
   "driver-ledger/pay-gate.js",
   "driver-problem-alert.js",
+  "extra-payment-repair.js",
   "factura/build-record.js",
   "form-signal.js",
   "index.js",
@@ -2106,6 +2116,7 @@
   "merchant/merchant-transitions.js",
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
+  "my-orders.js",
   "order-exists.js",
   "otp-lib.js",
   "pay-rate.js",
@@ -2140,11 +2151,22 @@
   "photos/sweep-core.js",
   "photos/sweep-io.js",
   "photos/upload-start.js",
+  "pixelpay-cancel.js",
   "pixelpay-charge.js",
   "pixelpay-client.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
+  "pixelpay-hosted-webhook.js",
   "pixelpay-return-url.js",
+  "platform-config/admin-core.js",
+  "platform-config/drift.js",
+  "platform-config/generate.js",
+  "platform-config/legacy-seed.js",
+  "platform-config/projection.js",
+  "platform-config/reader.js",
+  "platform-config/rtdb-encoding.js",
+  "platform-config/schema.js",
+  "platform-config/source.js",
   "platform-manifest.js",
   "portal/branch-lifecycle-core.js",
   "portal/branch-phone.js",
@@ -2158,8 +2180,16 @@
   "portal/reset-list.js",
   "prep-stats.js",
   "quote-issue.js",
+  "ratings/aggregate-producer.js",
+  "ratings/aggregate.js",
+  "ratings/dish-qty.js",
+  "ratings/merchant-comments.js",
+  "ratings/my-rating.js",
   "ratings/rate-order.js",
   "ratings/rating-core.js",
+  "ratings/rating-fulfilment.js",
+  "ratings/rating-v2.js",
+  "reorder-normalize.js",
   "resolve-manual.js",
   "retention-sweep.js",
   "rewards-redeem-intake.js",
@@ -2188,6 +2218,7 @@
   "staff-push.js",
   "stats/stats-api.js",
   "stats/stats-build.js",
+  "support/support-tickets.js",
   "test-push-core.js",
   "tip.js",
   "token-gate.js",
@@ -2273,9 +2304,7 @@
   },
   "alert-prune.js": {
    "pins": [],
-   "lifts": [
-    "xpizza-functions/hostedrace-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "arrived-notify.js": {
    "pins": [],
@@ -2377,6 +2406,10 @@
    "lifts": [
     "xpizza-functions/cart-sig-sync.guard.test.js"
    ]
+  },
+  "catalog/_hosted-claim-delta.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/add-product.js": {
    "pins": [],
@@ -2608,6 +2641,23 @@
    "pins": [],
    "lifts": []
   },
+  "claim-order.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/sd-wiring.guard.test.js",
+     "inverses": [
+      "tools/sd-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
+  },
+  "client-floor.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/pselfupdate-cli.test.js"
+   ]
+  },
   "compute-server-net.js": {
    "pins": [
     {
@@ -2632,7 +2682,8 @@
     {
      "file": "xpizza-functions/area-wiring.guard.test.js",
      "inverses": [
-      "tools/area-inverse.js"
+      "tools/area-inverse.js",
+      "tools/sd-inverse.js"
      ]
     },
     {
@@ -2640,14 +2691,22 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/d12-inverse.js",
-      "tools/d12b-inverse.js"
+      "tools/d12b-inverse.js",
+      "tools/sd-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/d12b-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
-      "tools/d12b-inverse.js"
+      "tools/d12b-inverse.js",
+      "tools/sd-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/sd-wiring.guard.test.js",
+     "inverses": [
+      "tools/sd-inverse.js"
      ]
     }
    ],
@@ -2731,6 +2790,10 @@
     "xpizza-dispatch/dispatch-driver-problem.test.mjs"
    ]
   },
+  "extra-payment-repair.js": {
+   "pins": [],
+   "lifts": []
+  },
   "factura/build-record.js": {
    "pins": [],
    "lifts": [
@@ -2760,12 +2823,14 @@
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -2779,6 +2844,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2805,12 +2872,14 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -2825,6 +2894,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -2854,12 +2925,14 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -2874,6 +2947,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -2894,14 +2969,18 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s4hours-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2918,12 +2997,14 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -2934,6 +3015,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2960,12 +3043,14 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -2980,6 +3065,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -2997,7 +3084,9 @@
       "tools/checkout-pixelpay-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
-      "tools/photos-inverse.js"
+      "tools/photos-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js"
      ]
     },
     {
@@ -3018,12 +3107,14 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3038,6 +3129,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -3058,12 +3151,14 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3074,6 +3169,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3088,11 +3185,13 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
@@ -3102,6 +3201,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3115,9 +3216,11 @@
       "tools/drvc-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
@@ -3127,6 +3230,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     },
@@ -3140,9 +3245,11 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
@@ -3152,6 +3259,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     },
@@ -3172,12 +3281,14 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3192,6 +3303,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -3210,10 +3323,12 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
@@ -3223,6 +3338,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3235,9 +3352,11 @@
       "tools/driver-ledger-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
@@ -3246,7 +3365,9 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
-      "tools/s5r-inverse.js"
+      "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js"
      ]
     },
     {
@@ -3265,12 +3386,14 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3285,6 +3408,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -3306,12 +3431,14 @@
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3323,6 +3450,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -3343,12 +3472,14 @@
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3360,6 +3491,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -3380,7 +3513,9 @@
     {
      "file": "xpizza-functions/lifecycle-wiring.guard.test.js",
      "inverses": [
-      "tools/lifecycle-inverse.js"
+      "tools/lifecycle-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js"
      ]
     },
     {
@@ -3393,12 +3528,14 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3409,6 +3546,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3423,11 +3562,13 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
@@ -3437,6 +3578,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3451,10 +3594,12 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
@@ -3464,6 +3609,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3489,12 +3636,14 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3509,6 +3658,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -3516,6 +3667,12 @@
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
       "tools/wahealth-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/p5a-wiring.guard.test.js",
+     "inverses": [
+      "tools/p5a-inverse.js"
      ]
     },
     {
@@ -3528,11 +3685,13 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
@@ -3542,6 +3701,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3575,12 +3736,14 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3595,6 +3758,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -3614,12 +3779,14 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3630,6 +3797,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3646,12 +3815,14 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3663,6 +3834,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3682,12 +3855,14 @@
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3702,6 +3877,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -3724,12 +3901,14 @@
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3744,6 +3923,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -3760,15 +3941,19 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s4hours-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3785,16 +3970,20 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s4hours-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3808,11 +3997,13 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
@@ -3822,6 +4013,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3835,11 +4028,13 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
@@ -3848,6 +4043,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3861,11 +4058,13 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
@@ -3873,6 +4072,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3895,7 +4096,9 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
-      "tools/s5r-inverse.js"
+      "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js"
      ]
     },
     {
@@ -3912,12 +4115,14 @@
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3930,6 +4135,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -3946,19 +4153,38 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/sb-wiring.guard.test.js",
+     "inverses": [
+      "tools/checkout-inverse.js",
+      "tools/sb-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/sd-wiring.guard.test.js",
+     "inverses": [
+      "tools/checkout-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js"
      ]
     },
     {
@@ -3977,12 +4203,14 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -3997,6 +4225,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -4017,12 +4247,14 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -4034,6 +4266,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -4060,12 +4294,14 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -4080,6 +4316,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -4099,9 +4337,11 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
@@ -4111,6 +4351,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -4147,7 +4389,9 @@
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
-      "tools/photos-inverse.js"
+      "tools/photos-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js"
      ]
     },
     {
@@ -4192,12 +4436,14 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -4209,6 +4455,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/wahealth-inverse.js"
@@ -4226,12 +4474,14 @@
       "tools/drvf-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -4243,6 +4493,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
@@ -4266,12 +4518,14 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
@@ -4286,6 +4540,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -4303,9 +4559,11 @@
       "tools/driver-ledger-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/s2app-inverse.js",
@@ -4315,6 +4573,8 @@
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     }
@@ -4338,7 +4598,6 @@
     "xpizza-functions/driver-callable-guard-coverage.guard.test.js",
     "xpizza-functions/factura-catalog-cutover.test.js",
     "xpizza-functions/fail-closed-reject.test.js",
-    "xpizza-functions/hostedrace-wiring.guard.test.js",
     "xpizza-functions/identity-shadow-placement.test.js",
     "xpizza-functions/intake-gate-placement.test.js",
     "xpizza-functions/intl-intake-wire-sync.test.js",
@@ -4354,7 +4613,10 @@
     "xpizza-functions/prod-ladder-wiring.test.js",
     "xpizza-functions/pselfupdate-client.test.js",
     "xpizza-functions/quote-order.test.js",
+    "xpizza-functions/ratings/aggregate-producer.test.js",
+    "xpizza-functions/ratings/ratings-grace.guard.test.js",
     "xpizza-functions/recon-close-fulfilled.test.js",
+    "xpizza-functions/reorder-price-snapshot.test.js",
     "xpizza-functions/restaurant-config.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
     "xpizza-functions/s2tip.test.js",
@@ -4394,16 +4656,15 @@
   },
   "manual-resolve.js": {
    "pins": [],
-   "lifts": [
-    "xpizza-functions/hostedrace-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "materialize.js": {
    "pins": [
     {
      "file": "xpizza-functions/brand-server-wiring.guard.test.js",
      "inverses": [
-      "tools/brand-server-inverse.js"
+      "tools/brand-server-inverse.js",
+      "tools/sd-inverse.js"
      ]
     },
     {
@@ -4411,12 +4672,18 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/d12-inverse.js",
-      "tools/d12b-inverse.js"
+      "tools/d12b-inverse.js",
+      "tools/sd-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/sd-wiring.guard.test.js",
+     "inverses": [
+      "tools/sd-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "xpizza-functions/brand-server-wiring.guard.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js"
    ]
   },
@@ -4508,6 +4775,10 @@
    "lifts": []
   },
   "merchant/merchant-wiring.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "my-orders.js": {
    "pins": [],
    "lifts": []
   },
@@ -4661,11 +4932,22 @@
    "pins": [],
    "lifts": []
   },
+  "pixelpay-cancel.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/alertsan-wiring.guard.test.js",
+    "xpizza-functions/order-control-wiring.guard.test.js"
+   ]
+  },
   "pixelpay-charge.js": {
    "pins": [],
    "lifts": [
     "xpizza-functions/area-wiring.guard.test.js"
    ]
+  },
+  "pixelpay-client.js": {
+   "pins": [],
+   "lifts": []
   },
   "pixelpay-confirm.js": {
    "pins": [
@@ -4673,7 +4955,8 @@
      "file": "xpizza-functions/brand-server-wiring.guard.test.js",
      "inverses": [
       "tools/alertsan-module-inverse.js",
-      "tools/brand-server-inverse.js"
+      "tools/brand-server-inverse.js",
+      "tools/p5a-inverse.js"
      ]
     },
     {
@@ -4706,11 +4989,68 @@
     "xpizza-functions/extras-wiring.guard.test.js"
    ]
   },
+  "pixelpay-hosted-webhook.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/h0-wiring.guard.test.js",
+     "inverses": [
+      "tools/h0-inverse.js",
+      "tools/hostedrace-module-inverse.js",
+      "tools/p5a-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/p5a-wiring.guard.test.js",
+     "inverses": [
+      "tools/p5a-inverse.js"
+     ]
+    }
+   ],
+   "lifts": [
+    "xpizza-functions/pixelpay-hosted-extra-payment.test.js"
+   ]
+  },
   "pixelpay-return-url.js": {
    "pins": [],
    "lifts": [
     "xpizza-functions/pixelpay-return-url.test.js"
    ]
+  },
+  "platform-config/admin-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "platform-config/drift.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "platform-config/generate.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "platform-config/legacy-seed.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "platform-config/projection.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "platform-config/reader.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "platform-config/rtdb-encoding.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "platform-config/schema.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "platform-config/source.js": {
+   "pins": [],
+   "lifts": []
   },
   "platform-manifest.js": {
    "pins": [],
@@ -4792,6 +5132,26 @@
    ],
    "lifts": []
   },
+  "ratings/aggregate-producer.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ratings/aggregate.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ratings/dish-qty.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ratings/merchant-comments.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ratings/my-rating.js": {
+   "pins": [],
+   "lifts": []
+  },
   "ratings/rate-order.js": {
    "pins": [],
    "lifts": []
@@ -4800,12 +5160,40 @@
    "pins": [],
    "lifts": []
   },
+  "ratings/rating-fulfilment.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ratings/rating-v2.js": {
+   "pins": [],
+   "lifts": [
+    "customer-app/capp-s7a2.test.mjs"
+   ]
+  },
+  "reorder-normalize.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/identity-record-guards.test.js",
+     "inverses": [
+      "tools/sd-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/sd-wiring.guard.test.js",
+     "inverses": [
+      "tools/sd-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
+  },
   "resolve-manual.js": {
    "pins": [
     {
      "file": "xpizza-functions/brand-server-wiring.guard.test.js",
      "inverses": [
-      "tools/brand-server-inverse.js"
+      "tools/brand-server-inverse.js",
+      "tools/p5a-inverse.js"
      ]
     },
     {
@@ -5008,6 +5396,10 @@
    "lifts": []
   },
   "stats/stats-build.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "support/support-tickets.js": {
    "pins": [],
    "lifts": []
   },
