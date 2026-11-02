@@ -2357,6 +2357,36 @@ test('getMyOrders client: ONLY the Row whitelist survives; a malformed row is dr
   await api.getMyOrders({ idToken: 'tok:u_ana', limit: 20 });
   assert.deepEqual(seen[0][1], { method: 'GET', headers: { 'x-firebase-id-token': 'tok:u_ana' } }, '🔴 PED-5: a GET, the token in its header, no body');
 });
+test('store-update r3 (Codex r2 #1): back on a new build with an UNRESOLVED card placement (valid credentials) ⇒ its verification starts by itself — a status request with no tap', async () => {
+  const t0 = T0, polls = [];
+  const storage = memStorage({ ...frozenCart(), 'capp:app_build': 'b1',
+    'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1', order: null, ts: t0 }),
+    'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, dispatched: 1, cart_gen: 'g_1', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }),
+    'capp:store_handoff': JSON.stringify({ v: 1, rid: 'x_pizza', at: t0 - 60e3, build: 'b1' }) });
+  const apiFetch = async (u) => { if (u.startsWith('/x/s')) polls.push(u); return { status: 200, ok: true, json: async () => (u.startsWith('/x/s') ? { ok: true, state: 'pending' } : { ok: false }) }; };
+  const S = bootShell({ storage, runtime: STORE_RT, apiFetch, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b2' } } } });
+  try {
+    await flush(); await flush(); await flush();
+    assert.equal(S.ui.store() && S.ui.store().rid, 'x_pizza', 'premise: the store reopened');
+    assert.ok(polls.length >= 1, '🔴 SU-r3-1: the unresolved order\'s status is read with no tap');
+    assert.ok(storage.getItem('capp:x_pizza:pending_place'), 'its record kept (a pending answer never clears it)');
+  } finally { S.w.close(); }
+});
+test('store-update r3 (Codex r2 #2): an OFFLINE first launch of the new build (directory 503) keeps the handoff; the next (online) launch on that build still restores the store, its cart open, the line', async () => {
+  const storage = memStorage({ 'capp:app_build': 'b1', 'capp:store_handoff': JSON.stringify({ v: 1, rid: 'x_pizza', at: T0 - 60e3, build: 'b1' }),
+    'capp:x_pizza:cart': (() => { const m = CappMenu.adaptMenu(PROV.x_pizza.envelope); const d = m.dishes.find((x) => !x.launcher && !x.variantOf && !m.pickupOnlyCats.has(String(x.cat))); return JSON.stringify({ v: 2, lines: [{ key: d.key, qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery' }); })() });
+  const A = bootShell({ storage, dirScript: ['unavailable_503'], runtime: STORE_RT, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b2' } } } });
+  try { await flush(); await flush(); assert.equal(A.ui.store(), null, 'premise: offline — nothing mounted'); } finally { A.w.close(); }
+  assert.ok(storage.getItem('capp:store_handoff'), '🔴 SU-r3-2: the handoff survives the failed launch');
+  assert.equal(storage.getItem('capp:app_build'), 'b2', 'premise: the device already recorded the new build');
+  const B = bootShell({ storage, runtime: STORE_RT, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b2' } } } });
+  try {
+    await flush(); await flush(); await flush();
+    assert.equal(B.ui.store() && B.ui.store().rid, 'x_pizza', '🔴 SU-r3-2: the online relaunch restores the store');
+    assert.equal(B.ui.store().ui.state.layerKind, 'cart'); assert.equal(txt(B.q('#layer .cartnote')), 'App actualizada. Tu carrito sigue aquí.');
+    assert.equal(storage.getItem('capp:store_handoff'), null, 'cleared only now, after the mount');
+  } finally { B.w.close(); }
+});
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {
   const over = WARNINGS.filter((w) => w && w.name === 'TimeoutOverflowWarning');

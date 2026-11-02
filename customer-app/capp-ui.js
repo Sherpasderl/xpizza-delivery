@@ -1733,6 +1733,9 @@
       // (no store re-render: an open sheet, the scroll and focus stay); a reserved pill becomes the guest's without a reflow
       authChanged() { if (!dead) patchAuth(); },
       openCart() { if (dead || S.screen !== 'store') return false; openLayer('cart'); return true; },
+      // the store round trip (Codex store-update r2 #1): back on a new build, an UNRESOLVED placement's verification is started
+      // explicitly — the same status read «Ver estado del pedido» runs (recoverLocked); nothing locked ⇒ nothing to verify
+      resumeVerification() { if (dead || !mods()) return false; const locked = frozenNow() || (typeof api.holdsLock === 'function' && api.holdsLock()); if (locked) frozenStatus(); return locked; },
       // G6 §4c: a sign-in on THIS checkout — the member's details fill «Tus datos» (name, phone, email; never over what the customer
       // typed differently), the step and the cart stay; the tender is the customer's (a guest's card stays card)
       setMember(m) {

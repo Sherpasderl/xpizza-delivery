@@ -45,20 +45,25 @@
     const storage = o.storage !== undefined ? o.storage : (() => { try { return win.localStorage; } catch (_) { return null; } })();
     // state 4 (MOCKUP-capp-native-store-update): the INSTALLED app on a NEW build (its stamp vs the last build this device ran) ⇒ the
     // cart says «App actualizada…» once (closed ⇒ gone); the device's build is recorded at once (a reopen is never «updated» again)
-    let appUpdated = false;
+    let appUpdated = false, curBuild = null;
     // the store round trip (MOCKUP-capp-native-store-update state 4; Codex store-update r1 #2): leaving for the store records WHICH
     // store's cart to come back to; the NEW build reopens that store with its cart open (the cart and any unresolved placement live in
     // their own durable records, untouched — the mount's reconciliation resumes the order's verification). One-shot, 24 h.
     const HANDOFF_KEY = 'capp:store_handoff', HANDOFF_MS = 24 * 3600e3;
-    function keepHandoff(rid) { try { if (storage && typeof rid === 'string') storage.setItem(HANDOFF_KEY, JSON.stringify({ v: 1, rid, at: Number(nowMs()) })); } catch (_) {} }
-    function takeHandoff() {
+    // the handoff records the build it left FROM: any later launch on a DIFFERENT build restores it (an offline first launch never
+    // loses it — Codex store-update r2 #2); it is cleared only once the destination store has actually mounted
+    function keepHandoff(rid) { try { if (storage && typeof rid === 'string') storage.setItem(HANDOFF_KEY, JSON.stringify({ v: 1, rid, at: Number(nowMs()), build: curBuild })); } catch (_) {} }
+    function pendingHandoff() {
       let h = null; try { h = storage ? JSON.parse(storage.getItem(HANDOFF_KEY) || 'null') : null; } catch (_) { h = null; }
-      try { if (storage) storage.removeItem(HANDOFF_KEY); } catch (_) {}
-      return h && h.v === 1 && typeof h.rid === 'string' && Number.isFinite(h.at) && Number(nowMs()) - h.at >= 0 && Number(nowMs()) - h.at < HANDOFF_MS ? h.rid : null;
+      const age = h && Number.isFinite(h.at) ? Number(nowMs()) - h.at : NaN;
+      if (!h || h.v !== 1 || typeof h.rid !== 'string' || !(age >= 0 && age < HANDOFF_MS)) { if (h) clearHandoff(); return null; }
+      return typeof h.build === 'string' && curBuild && h.build !== curBuild ? h.rid : null;   // not updated yet ⇒ kept, nothing restored
     }
+    function clearHandoff() { try { if (storage) storage.removeItem(HANDOFF_KEY); } catch (_) {} }
     if (o.runtime && o.runtime.native === true) {
       try {
         const SC = o.SherpaClient || g.SherpaClient, b = SC && SC.identity && typeof SC.identity.build === 'string' ? SC.identity.build : null, st = storage;
+        curBuild = b;
         if (b && st) { const last = st.getItem('capp:app_build'); if (last && last !== b) appUpdated = true; if (last !== b) st.setItem('capp:app_build', b); }
       } catch (_) { appUpdated = false; }
     }
@@ -481,7 +486,7 @@
     const nav = CappShellNav.createShellNav({ win, home: { name: 'home' },
       onShow: (entry, x) => {
         if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link
-        if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; S.store.ui.openCart(); } reflect(); return; }
+        if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } reflect(); return; }
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
         if (entry.name === 'orders') { S.tab = 'orders'; loadOrders(); resumeOrder(); dir.visit(); renderNow(); return; }
         S.tab = entry.name; dir.visit(); dir.revalidate(); loadMenus();
@@ -875,7 +880,7 @@
     restoreActive();   // the device's active order, before the boot's route decision (a reload of /r/{rid}/pago lands on it)
     if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();
     // back from the store on a NEW build (state 4): the store left for, its cart open — never on a payment return (that owns the boot)
-    if (appUpdated && !S.ret && !S.neutral) { const rid = takeHandoff(); if (rid) { S.reopenCart = rid; enter(rid); } }   // ANY return (persisted / memory / resumed, owned or not) owns the boot
+    if (!S.ret && !S.neutral) { const rid = pendingHandoff(); if (rid) { appUpdated = true; S.reopenCart = rid; enter(rid); } }   // ANY return (persisted / memory / resumed, owned or not) owns the boot
     // a device Back leaves the sentinel: the nav (its listener runs first) re-pushes it — inheriting the PREVIOUS entry's URL — and
     // a blocked back renders nothing; this listener re-reflects the screen actually shown (pathname only)
     const onPopReflect = () => { if (dead) return; cancelRoute(); reflect(); };   // a device Back is a user navigation (Codex code r1 P1): it cancels a held cold link too
