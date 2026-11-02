@@ -3,7 +3,7 @@
 //   the active version's meta/photos (via photos/edit-io readActive), the registry state of every referenced pid, and — only while in use
 //   (flag on or photo data present) — the legacy-copy records photo_registry/{rid}/legacy/{hash}. Firestore only; Storage is touched
 //   solely to SIGN a draft preview URL (no object read). Dark + no data ⇒ {} with no registry / legacy reads.
-// PHOTOS_PUBLIC_BUCKET (advisor ruling #2) is defined in photos/buckets.js (the one bucket source) and re-exported here.
+// The public bucket (advisor ruling #2) comes from photos/buckets.js publicBucketName (the one bucket source).
 const { makePhotoEditIo } = require('./edit-io');
 const { editablePhotoFields, legacyUrlFor, legacyHashOf } = require('./editable-photos');
 const PS = require('./photo-state');
@@ -13,7 +13,7 @@ const { makeGcsStore } = require('./gcs-store');
 const { assetBaseFor } = require('../catalog/public-photos');
 const { PLATFORM } = require('../platform-manifest');
 
-const { PHOTOS_PUBLIC_BUCKET, privateBucketName } = require('./buckets');   // codex r1 P1-1: the ONE bucket source
+const { publicBucketName, privateBucketName } = require('./buckets');   // codex r1 P1-1: the ONE bucket source
 
 function makeEditableIo({ fs, enabled, publicBucket, legacyBase, signRead, now = Date.now }) {
   const edit = makePhotoEditIo({ fs, enabled });
@@ -50,9 +50,9 @@ function editableIoForPortal() {
   const { getDatabase } = require('firebase-admin/database');
   const { getStorage } = require('firebase-admin/storage');
   return makeEditableIo({
-    fs: getFirestore(), enabled: () => photosUploadsEnabled(getDatabase()), publicBucket: () => PHOTOS_PUBLIC_BUCKET.value(),
+    fs: getFirestore(), enabled: () => photosUploadsEnabled(getDatabase()), publicBucket: () => publicBucketName(),
     legacyBase: (rid) => assetBaseFor(rid, PLATFORM.sites), signRead: (p, e) => makeGcsStore(getStorage().bucket(privateBucketName())).signRead(p, e),
   });
 }
 
-module.exports = { makeEditableIo, editableIoForPortal, PHOTOS_PUBLIC_BUCKET };
+module.exports = { makeEditableIo, editableIoForPortal };

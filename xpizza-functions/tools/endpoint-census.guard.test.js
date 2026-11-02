@@ -132,6 +132,7 @@ const D = {
   [F('photos/functions.js')]: 'lib: the deployed dish-photos entry (DISH PHOTOS A1, isolated group) — lib/admin.js',
   [F('cors-preflight.test.js')]: 'unit: proven loopback-only, off-band (emulator-endpoint.test cell 8)',
   [F('memory-floor.guard.test.js')]: 'unit: loads index.js only to read each export\'s __endpoint options; no handler runs, and the import itself is proven network-free (emulator-endpoint.test cell 8: index.js full load)',
+  [F('deploy-params.guard.test.js')]: 'unit: loads index.js in an env-scrubbed child under tools/egress-guard.js (loopback-only; any refusal fails the test) and reads params.declaredParams only — no handler is invoked, no client call made',
   [F('tools/portal-split.js')]: 'lib: source-TEXT fold (the initializeApp is a string it rewrites, no runtime Admin)',
   [F('tools/deploy-env-guard.js')]: 'lib: reads deploy env KEY NAMES only, no client',
   [F('tools/secret-env.js')]: 'lib: R3 credential scrub — names env KEYS (and reads .env KEY NAMES only) to DELETE them from a test process env; no client, no value read or printed',
