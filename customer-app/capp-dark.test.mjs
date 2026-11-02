@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
+import { inventory, servedSources } from './capp-colour-scan.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, '..');
 const CSS = readFileSync(join(HERE, 'capp.css'), 'utf8');
@@ -126,3 +127,52 @@ test('CappTheme: the OS preference (fail-safe light), an explicit data-theme win
   assert.equal(T.mapStyles(fakeWin(true).win), T.MAP_DARK); assert.equal(T.mapStyles(fakeWin(false).win), null);
 });
 
+// ── §5 the LITERAL-COLOUR guard: every colour literal outside the token blocks (capp.css rule by rule, every served module's SVG
+// attributes / template styles / cssText / CSSOM strings) is listed in capp-colour-allowlist.json with its disposition. A new literal
+// (a post-v6 rule that would not follow dark) ⇒ red; a stale entry ⇒ red. Dispositions per PLAN §5 + the advisor's 2026-11-01 rulings
+// (v6-exact for the qty controls / store nav / map tag). v6-parity entries were checked once against the pinned
+// customer-app-prototype-v6.html (not in this repo) on 2026-11-01. Update: node customer-app/capp-colour-scan.mjs --print, then review.
+const ALLOW = JSON.parse(readFileSync(join(HERE, 'capp-colour-allowlist.json'), 'utf8'));
+const DISPOSITIONS = new Set(['theme-pair', 'v6-parity', 'fixed', 'unused', 'ported', 'external']);
+const missingFrom = (a, b) => a.filter((x) => !b.includes(x));
+
+test('capp-dark §5: every colour literal in the served app is in the allowlist, with a disposition and its reason — and no stale entry', () => {
+  const inv = inventory(), listed = Object.keys(ALLOW);
+  assert.deepEqual(missingFrom(inv, listed), [], '🔴 DK-lit: a colour literal NOT in capp-colour-allowlist.json (a new rule that will not follow dark — use a token, or list it with its disposition)');
+  assert.deepEqual(missingFrom(listed, inv), [], '🔴 DK-lit: a stale allowlist entry (its literal is gone — drop it)');
+  for (const [site, e] of Object.entries(ALLOW)) {
+    assert.ok(e && DISPOSITIONS.has(e.disposition), `🔴 DK-lit: ${site}: unknown disposition ${e && e.disposition}`);
+    assert.ok(e && typeof e.why === 'string' && e.why.length >= 12, `🔴 DK-lit: ${site}: no reason`);
+  }
+});
+
+test('capp-dark §5: each disposition holds — a theme-pair has both sides in all three forms, «ported» is a guarded byte copy, «unused» is never rendered', () => {
+  const sites = Object.keys(ALLOW), css = sites.filter((k) => k.startsWith('css ')).map((k) => ({ k, sel: k.slice(4).split(' | ')[0], prop: k.split(' | ')[1].split(' ')[0] }));
+  const darkSel = (sel) => [`${FORCED} ${sel},${ATTR} ${sel}`, `@media (prefers-color-scheme: dark) ${MEDIA} ${sel}`];
+  for (const c of css.filter((x) => ALLOW[x.k].disposition === 'theme-pair')) {
+    if (/^(\.app\.dark |@media )/.test(c.sel)) {
+      const base = c.sel.startsWith('@media') ? c.sel.slice(`@media (prefers-color-scheme: dark) ${MEDIA} `.length) : c.sel.split(',')[0].slice(FORCED.length + 1);
+      assert.ok(css.some((x) => x.sel === base && x.prop === c.prop && ALLOW[x.k].disposition === 'theme-pair'), `🔴 DK-lit: ${c.k}: a dark side with no light side`);
+    } else for (const d of darkSel(c.sel)) assert.ok(css.some((x) => x.sel === d && x.prop === c.prop), `🔴 DK-lit: ${c.k}: its dark form «${d}» is missing`);
+  }
+  const guards = readFileSync(join(HERE, 'capp-guards.test.mjs'), 'utf8'), ported = ((guards.match(/const PORTED = \{([\s\S]*?)\};/) || [])[1] || '').match(/'[\w.-]+\.js'(?=:)/g) || [];
+  assert.ok(ported.length >= 4, 'premise: the PORTED map read from capp-guards');
+  for (const k of sites.filter((x) => ALLOW[x].disposition === 'ported')) assert.ok(ported.includes(`'${k.split(' ')[1]}'`), `🔴 DK-lit: ${k}: «ported» but not a PORTED byte copy`);
+  const src = servedSources(), markup = Object.values(src.js).join('\n') + readFileSync(join(HERE, 'shell.html'), 'utf8');
+  for (const c of css.filter((x) => ALLOW[x.k].disposition === 'unused')) {
+    const cls = (c.sel.match(/\.([a-z][\w-]*)/g) || []).map((x) => x.slice(1)).filter((x) => x !== 'app' && x !== 'dark-sys')[0];
+    assert.ok(cls, `premise: ${c.k} names a class`);
+    assert.ok(!new RegExp(`class="[^"]*\\b${cls}\\b|classList\\.(add|toggle)\\('${cls}'|className = '[^']*\\b${cls}\\b`).test(markup), `🔴 DK-lit: ${c.k}: «unused» but .${cls} is rendered`);
+  }
+});
+
+test('capp-dark §5 controls: the scan SEES a new rule, an SVG attribute, a template style, cssText after «:», a CSSOM rgb() — and ignores token blocks, comments, HTML entities', () => {
+  const base = { css: '.app{--bg:#FFFFFF}\n.app.dark{--bg:#0A0F1C}\n:root[data-theme="dark"] .app{--bg:#0A0F1C}\n@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app{--bg:#0A0F1C}}\n/* .x{color:#999} */\n', js: { 'a.js': "// fill=\"#888\"\nconst q = '&#039;';\n/* '#777' */\n" } };
+  assert.deepEqual(inventory(base), [], '🔴 DK-lit control: token blocks (light + the three dark forms), comments and entities are not sites');
+  const plus = { css: base.css + '.newx{color:#123456;box-shadow:0 1px 2px rgba(0,0,0,.2)}', js: { 'a.js': base.js['a.js'] + 'const svg = `<path fill="#ABCDEF"/>`; el.style.cssText = \'background:#abc;color:#111\'; s.color = \'rgb(1, 2, 3)\'; const h = `<b style="color:#C0FFEE">`;' } };
+  assert.deepEqual(inventory(plus), ['css .newx | box-shadow rgba(0,0,0,.2)', 'css .newx | color #123456', 'js a.js #111', 'js a.js #ABCDEF', 'js a.js #C0FFEE', 'js a.js #abc', 'js a.js rgb(1,2,3)'], '🔴 DK-lit control: every new literal is a site');
+  const all = servedSources(), first = Object.keys(ALLOW).find((k) => k.startsWith('css .qty-add-btn | background'));
+  assert.ok(first, 'premise: the qty-add-btn background is listed');
+  const cut = { ...all, css: all.css.replace('.qty-add-btn{width:36px;height:36px;border-radius:50%;background:#fff;', '.qty-add-btn{width:36px;height:36px;border-radius:50%;background:var(--surf2);') };
+  assert.ok(cut.css !== all.css && !inventory(cut).includes(first), '🔴 DK-lit control: a literal turned into a token leaves the inventory (its entry would be stale)');
+});
