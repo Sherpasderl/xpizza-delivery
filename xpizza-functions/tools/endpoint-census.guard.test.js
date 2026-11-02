@@ -106,7 +106,10 @@ const D = {
     'platform-legal',
     // security backlog r2 — the one-time owner migration (revived accounts' stale tombstones; DRY RUN unless --apply):
     // requireProject({ requireFlag: true }) before any client
-    'repair-revived-tombstones', 'ratings-v1-guard'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
+    'repair-revived-tombstones', 'ratings-v1-guard',
+    // convergence §1 — the owner platform-config CLI (portal source ↔ RTDB projection; DRY RUN unless --apply):
+    // requireProject({ requireFlag: true }) before argument parsing and before any client
+    'platform-config-admin'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
   [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/set-driver-enforcement-mode.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',

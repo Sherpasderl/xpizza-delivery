@@ -10,9 +10,9 @@ const { requireProject } = require('./require-project');
 const { parseArgs, seed, generate } = require('../platform-config/admin-core');
 const { checkDrift } = require('../platform-config/drift');
 
+const PROJECT_ID = requireProject({ requireFlag: true });   // FIRST — the project pin decides before anything else (project-guard, endpoint-census)
 const args = parseArgs(process.argv.slice(2));
 if (!args.ok) { console.error(`platform-config-admin: REFUSED — ${args.why}`); process.exit(2); }
-const PROJECT_ID = requireProject({ requireFlag: true });
 const { RTDB_URL } = require('../catalog/mirror-rtdb');
 admin.initializeApp({ projectId: PROJECT_ID, databaseURL: RTDB_URL });
 const fs = admin.firestore(); const db = admin.database();

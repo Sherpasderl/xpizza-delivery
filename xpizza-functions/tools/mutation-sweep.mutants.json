@@ -32265,8 +32265,8 @@
   "slice": "sf",
   "label": "S-F: identity written into the ticket",
   "file": "support/support-tickets.js",
-  "from": "created_at: now(), status: 'received', via });",
-  "to": "created_at: now(), status: 'received', via, phone: order.customer_phone || null });",
+  "from": "reason: p.reason, text: p.text, channel: p.channel, created_at: at, status: 'received', via },",
+  "to": "reason: p.reason, text: p.text, channel: p.channel, created_at: at, status: 'received', via, phone: order.customer_phone || null },",
   "command": [
    "node",
    "support/support-tickets.test.js"
