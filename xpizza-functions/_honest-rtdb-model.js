@@ -85,6 +85,21 @@ function makeHonestDb(initial = {}, hooks = {}) {
       async set(v) { if (hooks.beforeWrite) await hooks.beforeWrite(p, v, api); setAt(p, v); },
       async push(v) { const k = `k${String(++pk).padStart(6, '0')}`; setAt(p ? `${p}/${k}` : k, v); return { key: k }; },
       async remove() { setAt(p, null); },
+      // a key-ordered page, as RTDB orders keys: 32-bit integer keys first (numerically), then the rest by string; an
+      // unsupported order or a non-positive limit throws instead of returning everything
+      orderByKey() {
+        const page = (n) => ({ async once() {
+          if (hooks.beforeRead) await hooks.beforeRead(p, api);
+          const v = getAt(p);
+          if (v == null || typeof v !== 'object') return snap(null);
+          const INT = /^-?(0|[1-9]\d*)$/;
+          const isInt = (k) => INT.test(k) && Number(k) >= -2147483648 && Number(k) <= 2147483647;
+          const keys = Object.keys(v).sort((a, b) => (isInt(a) !== isInt(b) ? (isInt(a) ? -1 : 1) : isInt(a) ? Number(a) - Number(b) : (a < b ? -1 : a > b ? 1 : 0)));
+          const out = {}; for (const k of keys.slice(0, n)) out[k] = v[k];
+          return snap(keys.length ? out : null);
+        } });
+        return { limitToFirst(n) { if (!Number.isInteger(n) || n < 1) throw new Error(`limitToFirst: invalid limit ${n}`); return page(n); } };
+      },
     };
     return r;
   };

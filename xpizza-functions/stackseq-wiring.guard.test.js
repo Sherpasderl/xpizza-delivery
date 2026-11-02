@@ -14,7 +14,7 @@ const { unapplyStackseqIndex, INDEX_HUNKS } = require('./tools/stackseq-inverse'
 const BASE = '93573fb5';   // R-WIRE train re-point: M7^1, the train state just before stackseq merged (the slice's own base was acf32fc8)
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))));   // R-WIRE train re-point: the newer train slices reversed first (formsignal innermost → wahealth → drvc → drvf)
+const real = require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/hostedrace-module-inverse').unapplyHostedRaceModule('index.js', fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))));   // R-WIRE train re-point: the newer train slices reversed first (formsignal innermost → wahealth → drvc → drvf)
 const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 // (i)

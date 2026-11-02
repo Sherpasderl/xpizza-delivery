@@ -1811,6 +1811,7 @@
   "createorder-classify.js",
   "driver-ingest.js",
   "driver-problem-alert.js",
+  "extra-payment-repair.js",
   "form-signal.js",
   "index.js",
   "lib/driver-admin-ops.js",
@@ -2195,6 +2196,10 @@
     "xpizza-dispatch/dispatch-driver-problem.test.mjs"
    ]
   },
+  "extra-payment-repair.js": {
+   "pins": [],
+   "lifts": []
+  },
   "form-signal.js": {
    "pins": [],
    "lifts": []
@@ -2212,6 +2217,7 @@
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2241,6 +2247,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2274,6 +2281,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2299,6 +2307,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2325,6 +2334,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2356,6 +2366,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2380,6 +2391,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2393,6 +2405,7 @@
      "inverses": [
       "tools/drvc-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     },
@@ -2402,6 +2415,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     },
@@ -2418,6 +2432,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2437,7 +2452,8 @@
     {
      "file": "xpizza-functions/formsignal-wiring.guard.test.js",
      "inverses": [
-      "tools/formsignal-inverse.js"
+      "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js"
      ]
     },
     {
@@ -2452,6 +2468,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2477,6 +2494,7 @@
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2498,6 +2516,7 @@
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2516,6 +2535,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2530,6 +2550,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/stackseq-inverse.js",
@@ -2542,6 +2563,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
@@ -2564,6 +2586,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2622,6 +2645,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2638,6 +2662,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2658,6 +2683,7 @@
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2684,6 +2710,7 @@
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2709,6 +2736,7 @@
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2734,6 +2762,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2758,6 +2787,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2785,6 +2815,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2808,6 +2839,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2856,6 +2888,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2874,6 +2907,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2898,6 +2932,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
@@ -2919,6 +2954,7 @@
      "file": "xpizza-functions/wahealth-wiring.guard.test.js",
      "inverses": [
       "tools/formsignal-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     }
@@ -2942,6 +2978,7 @@
     "xpizza-functions/driver-callable-guard-coverage.guard.test.js",
     "xpizza-functions/factura-catalog-cutover.test.js",
     "xpizza-functions/fail-closed-reject.test.js",
+    "xpizza-functions/hostedrace-wiring.guard.test.js",
     "xpizza-functions/identity-shadow-placement.test.js",
     "xpizza-functions/intake-gate-placement.test.js",
     "xpizza-functions/materialize-hub.test.js",
@@ -2949,6 +2986,7 @@
     "xpizza-functions/n2-paid-strand-decision.test.js",
     "xpizza-functions/order-creators.guard.test.js",
     "xpizza-functions/order-exists-census.guard.test.js",
+    "xpizza-functions/pixelpay-hosted-extra-payment.test.js",
     "xpizza-functions/platform-sync.guard.test.js",
     "xpizza-functions/portal/ops-helpers.guard.test.js",
     "xpizza-functions/portal/ops-split.test.js",

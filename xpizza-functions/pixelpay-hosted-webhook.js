@@ -17,6 +17,7 @@ const { toCents } = require('./pixelpay-hosted');
 const { confirmAndMaterialize } = require('./pixelpay-confirm');
 const MR = require('./manual-resolve');   // atomic-claim predicate (rev-5): paid-evidence capture in manual-flow states
 const { holdRedemptionForManual, reverseRedemptionForOrder } = require('./rewards-reserve');   // [B] HOLD at a manual entry (alerts on a lost race); [C/#18] reverse the hold when a late paid callback voids a cancelled order
+const XP = require('./extra-payment-repair');   // the second-payment record key, marker and completion write (one source with the sweep's repair)
 
 const ATTEMPT_SUFFIX = /-[0-9a-f]{16}$/;             // hosted_order_id = `${orderId}-${attemptId}` (16-hex)
 const HOSTED_ORDER_RE = /^[A-Za-z0-9_-]{1,96}$/;
@@ -154,24 +155,22 @@ async function setPaidOnce(db, attemptId, { paidAt, reference }) {
 // the same payment is a no-op, one for another payment id is refused), so its first sighting is never rewritten; the durable
 // alert and the order's manual-review flag are then written from the COMMITTED record, so a late or concurrent re-delivery
 // writes byte-identical values. Any failure answers 5xx so PixelPay re-delivers and the next delivery completes the alert and
-// flag. The first payment's binding, reference and paid_at are never touched, and no provider text is copied anywhere.
-const extraKey = (uuid) => crypto.createHash('sha256').update(String(uuid)).digest('hex');
+// flag. A pending marker written BEFORE the claim (and removed in the same update as the alert + flag) lets the payments sweep
+// complete the alert when a crash is followed by re-deliveries the endpoint dedupes. The first payment's binding, reference
+// and paid_at are never touched, and no provider text is copied anywhere.
 async function handleExtraPayment(deps, { orderId, attemptId, uuid, amount, now }) {
   const { db } = deps;
-  const key = extraKey(uuid);
-  const recPath = `payment_attempts/${attemptId}/extra_payments/${key}`;
+  const key = XP.extraKey(uuid);
+  try { await db.ref(`extra_payment_pending/${key}`).set(XP.pendingMarker({ attemptId, orderId, now })); }
+  catch (_) { return { code: 500, outcome: 'extra_payment_marker_failed' }; }
   let rec;
   try {
-    const claim = await db.ref(recPath).transaction((cur) => (cur == null ? { uuid, amount_cents: toCents(amount), at: now } : undefined));
+    const claim = await db.ref(XP.extraRecordPath(attemptId, key)).transaction((cur) => (cur == null ? { uuid, amount_cents: toCents(amount), at: now } : undefined));
     rec = claim.snapshot && claim.snapshot.val();
   } catch (_) { return { code: 500, outcome: 'extra_payment_claim_failed' }; }
   if (!rec || rec.uuid !== uuid) return { code: 500, outcome: 'extra_payment_key_mismatch' };   // never write over another payment's record
-  try {
-    await db.ref().update({
-      [`dispatcher_alerts/extra_payment_${key}`]: { type: 'payment_extra_payment_received', detail: { orderId, attemptId }, created_at: rec.at },
-      [`orders/${orderId}/extra_payment_review`]: true,
-    });
-  } catch (_) { return { code: 500, outcome: 'extra_payment_write_failed' }; }
+  try { await db.ref().update(XP.extraCompletionUpdate(key, rec, { orderId, attemptId })); }
+  catch (_) { return { code: 500, outcome: 'extra_payment_write_failed' }; }
   return { code: 200, outcome: 'extra_payment_recorded' };
 }
 

@@ -174,7 +174,7 @@ async function cell(name, fn) { CURRENT = name; resetProvider(); try { await fn(
     const db = makeDb(cancelled(), { beforeWrite: async (p, v) => { if (p === '' && v && Object.keys(v).some((k) => k.startsWith('dispatcher_alerts/extra_payment_')) && fail > 0) { fail -= 1; throw new Error('injected crash after the claim'); } } });
     const r = await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
     assert.ok(r.code >= 500 && extra(db, 'PAY-2') && !extraAlert(db, 'PAY-2'), `${L}: PREMISE — 5xx, record committed, alert absent (Codex's repro; the re-delivery is then deduped without the handler)`);
-    assert.deepStrictEqual(marker(db, 'PAY-2'), { attempt_id: AID, order_id: OID, at: 2000 }, `${L}: the durable pending marker survives the crash (got ${JSON.stringify(marker(db, 'PAY-2'))})`);
+    assert.deepStrictEqual(marker(db, 'PAY-2'), { attempt: AID, order: OID, at: 2000 }, `${L}: the durable pending marker survives the crash (got ${JSON.stringify(marker(db, 'PAY-2'))})`);
     const out = await repairPendingExtraPayments({ db, now: 2000 + 60 * 1000 });
     assert.strictEqual(out.completed, 1, `${L}: the sweep completes it (got ${JSON.stringify(out)})`);
     recorded(L, db, 'PAY-2', 2000);
@@ -190,7 +190,7 @@ async function cell(name, fn) { CURRENT = name; resetProvider(); try { await fn(
   });
   await cell('XP-R4-RECORDLESS-MARKER-GRACE', async () => {
     const L = 'XP-R4-RECORDLESS-MARKER-GRACE';
-    const db = makeDb({ ...cancelled(), extra_payment_pending: { [xkey('PAY-9')]: { attempt_id: AID, order_id: OID, at: 1000 } } });
+    const db = makeDb({ ...cancelled(), extra_payment_pending: { [xkey('PAY-9')]: { attempt: AID, order: OID, at: 1000 } } });
     const young = await repairPendingExtraPayments({ db, now: 1000 + repairMod().REPAIR_GRACE_MS - 1 });
     assert.ok(young.kept === 1 && marker(db, 'PAY-9'), `${L}: a record-less marker younger than the grace is KEPT (a delivery may be between its marker and its claim) — got ${JSON.stringify(young)}`);
     const old = await repairPendingExtraPayments({ db, now: 1000 + repairMod().REPAIR_GRACE_MS + 1 });
