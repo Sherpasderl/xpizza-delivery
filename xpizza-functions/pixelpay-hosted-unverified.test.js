@@ -44,6 +44,7 @@ const refundedPay1 = () => ({ orders: { [OID]: order({ status: 'cancelled', paym
 const GOOD = paymentHash(HOID, KEY, SECRET);
 const cb = (uuid, over = {}) => ({ order: HOID, status: 'paid', amount: 299, uuid, transaction_id: `TXN-${uuid}`, payment_hash: GOOD, ...over });
 const BAD = { payment_hash: 'deadbeef'.repeat(4) };
+const CLOCK = { now: () => 42 };   // a fixed server clock where two databases are compared whole
 const deps = (db) => ({ db, restaurant: { lat: 15.5, lng: -88, name: 'TB', phone: 'p' }, buildMaterializeUpdates, alert: (k, d) => paymentAlert(db, k, d), genToken: () => 'TOK', client: realClient, voidOrRefund });
 const rdeps = (db) => ({ ...deps(db), sanitizeText: (s) => String(s), serverTimestamp: 0 });
 const att = (db) => db.getAt(`payment_attempts/${AID}`) || {};
@@ -72,24 +73,24 @@ async function cell(name, fn) { voidCalls = []; try { await fn(); console.log(` 
     assert.strictEqual(att(db).paid_amount_cents, 29900, `${L}: nor its paid amount`);
     await handleHostedCallback(deps(db), cb('PAY-1'), 3000);
     assert.strictEqual(voidCalls.length, 0, `${L}: the verified PAY-1 re-delivery sends NO provider void (it was already refunded) — got ${JSON.stringify(voidCalls)}`);
-    assert.strictEqual(att(db).extra_payments, null, `${L}: and PAY-1 is never treated as an extra payment`);
+    assert.ok(att(db).extra_payments == null, `${L}: and PAY-1 is never treated as an extra payment`);
     assert.strictEqual(att(db).payment_uuid, 'PAY-1', `${L}: PAY-1 stays bound`);
   });
 
   // Codex r2 #2 repro B: a bad-hash callback FIRST, then the legitimate single payment → the same end state as base.
   await cell('UV-B-BAD-FIRST-THEN-LEGIT-SAME-AS-BASE', async () => {
     const L = 'UV-B-BAD-FIRST-THEN-LEGIT-SAME-AS-BASE';
-    const db = makeDb(live());
+    const db = makeDb(live(), CLOCK);
     await handleHostedCallback(deps(db), cb('PAY-X', BAD), 1000);
     const r = await handleHostedCallback(deps(db), cb('PAY-1'), 2000);
-    const dbB = makeDb(live()); const base = baseHandler();
+    const dbB = makeDb(live(), CLOCK); const base = baseHandler();
     await base(deps(dbB), cb('PAY-X', BAD), 1000);
     const rB = await base(deps(dbB), cb('PAY-1'), 2000);
     assert.strictEqual(rB.outcome, 'paid_evidence_recorded', `${L}: PREMISE — base records the legit payment as paid evidence (got ${rB.outcome})`);
     assert.strictEqual(r.outcome, rB.outcome, `${L}: the legit payment takes base's path (got ${r.outcome}, base ${rB.outcome})`);
     assert.strictEqual(att(db).payment_uuid, 'PAY-1', `${L}: the legit payment is the bound one`);
     assert.ok(att(db).hosted_callback_verified === true && db.getAt(`orders/${OID}/paid_during_resolve`) === true, `${L}: verified flags and paid_during_resolve are set`);
-    assert.strictEqual(att(db).extra_payments, null, `${L}: the legit payment is never an extra`);
+    assert.ok(att(db).extra_payments == null, `${L}: the legit payment is never an extra`);
     // the ONLY declared delta vs base: the unverified evidence lives apart (and base kept the bad callback's text in manual_reason, unchanged here)
     assert.deepStrictEqual(without(db.root, [`payment_attempts/${AID}/unverified_callbacks`]), dbB.root, `${L}: the whole database equals base's apart from the separated evidence`);
   });

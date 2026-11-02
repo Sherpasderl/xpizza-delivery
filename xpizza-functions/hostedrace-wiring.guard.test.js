@@ -1,6 +1,6 @@
 'use strict';
 // fix/hosted-recover-exclusive — the wiring guard for tools/hostedrace-module-inverse.js: the inverse returns
-// pixelpay-hosted-webhook.js to 8a31e2a3 byte-for-byte; a byte inside a hunk, a duplicated hunk and a byte outside every hunk
+// each owned file (webhook, alert-prune, manual-resolve) to 8a31e2a3 byte-for-byte; a byte inside a hunk, a duplicated hunk and a byte outside every hunk
 // are each caught; an unowned file passes through.
 const assert = require('assert');
 const fs = require('fs');
@@ -8,7 +8,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyHostedRaceModule } = require('./tools/hostedrace-module-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-assert.deepStrictEqual([...FILES].sort(), ['alert-prune.js', 'pixelpay-hosted-webhook.js'], 'the slice owns exactly these files');
+assert.deepStrictEqual([...FILES].sort(), ['alert-prune.js', 'manual-resolve.js', 'pixelpay-hosted-webhook.js'], 'the slice owns exactly these files');
 for (const f of FILES) {
   const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
@@ -22,5 +22,5 @@ for (const f of FILES) {
   assert.notStrictEqual(unapplyHostedRaceModule(f, '\n' + src), b, `${f}: a byte OUTSIDE every hunk survives`);
 }
 assert.strictEqual(unapplyHostedRaceModule('tb-unowned.js', 'x\n'), 'x\n', 'an unowned file passes through');
-ok(`pixelpay-hosted-webhook.js → ${BASE} byte-for-byte; inside / duplicate / outside caught (${HUNKS.length} hunks); unowned passes`);
+ok(`${FILES.join(', ')} → ${BASE} byte-for-byte; inside / duplicate / outside caught (${HUNKS.length} hunks); unowned passes`);
 console.log(`\nhostedrace-wiring.guard: OK (${n})`);

@@ -1817,6 +1817,7 @@
   "lib/driver-callable-guard.js",
   "lib/emulator-endpoint.js",
   "lib/hn-date.js",
+  "manual-resolve.js",
   "materialize.js",
   "menu-pricing.js",
   "merchant/_fake-db.js",
@@ -2989,6 +2990,12 @@
    "pins": [],
    "lifts": [
     "xpizza-functions/portal/ops-helpers.guard.test.js"
+   ]
+  },
+  "manual-resolve.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/hostedrace-wiring.guard.test.js"
    ]
   },
   "materialize.js": {

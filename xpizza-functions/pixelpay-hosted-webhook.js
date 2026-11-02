@@ -63,10 +63,16 @@ async function handleHostedCallback(deps, body, now) {
 
   if (!bindingOk || !hashOk || !amountOk) {
     // PERMANENT verification failure → manual_reconciliation + alert, then 2xx (won't change on retry, I8/R2-3).
+    // An UNVERIFIED callback never writes the attempt's payment binding (payment_uuid / paid_amount_cents): the hash covers
+    // only the order id, so its payment id and amount are claims. They are kept apart, once per claimed payment.
+    const claimedCents = toCents(amount);
+    const evKey = crypto.createHash('sha256').update(JSON.stringify([uuid || '', Number.isFinite(claimedCents) ? claimedCents : null])).digest('hex');
+    const evidence = { uuid: uuid || null, amount_cents: Number.isFinite(claimedCents) ? claimedCents : null, transaction_id: txnRef || null, at: now, binding_ok: bindingOk, hash_ok: hashOk, amount_ok: amountOk };
+    await db.ref(`payment_attempts/${attemptId}/unverified_callbacks/${evKey}`).transaction((cur) => (cur == null ? evidence : undefined));
     await db.ref(`payment_attempts/${attemptId}`).update({
       hosted_state: 'manual_reconciliation',
       manual_reason: `verify_fail binding=${bindingOk} hash=${hashOk} amount=${amountOk}`,
-      payment_uuid: uuid, paid_amount_cents: toCents(amount), flagged_at: now
+      flagged_at: now
     });
     await holdRedemptionForManual(db, { orderId, order, now, alert: deps.alert });   // [B] a 'paid' callback that failed verify → POSSIBLY paid → secure held_paid BEFORE advertising manual_reconciliation (alerts if a release-sweep race already freed it → possible mint)
     await db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });

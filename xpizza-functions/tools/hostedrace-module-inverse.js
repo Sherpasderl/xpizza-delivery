@@ -1,6 +1,6 @@
 'use strict';
 // FINDING-hosted-charge-recover-race (fix/hosted-recover-exclusive, defence in depth) — the test-only INVERSE for this slice's
-// edits to pixelpay-hosted-webhook.js (and alert-prune.js), which older fold guards pin byte-for-byte. Generated from
+// edits to pixelpay-hosted-webhook.js (and alert-prune.js, manual-resolve.js), which older fold guards pin byte-for-byte. Generated from
 // `git diff -U1 8a31e2a3` (each hunk carries one line of context each side, so it is unique); applying it returns the
 // file to 8a31e2a3 byte-for-byte (hostedrace-wiring.guard). NEWEST layer: applied FIRST (innermost) at every per-file fold;
 // it passes every file it does not own through untouched.
@@ -10,6 +10,16 @@ const HUNKS = Object.freeze([
   "file": "pixelpay-hosted-webhook.js",
   "now": " */\nconst crypto = require('crypto');\nconst ppCrypto = require('./pixelpay');\n",
   "was": " */\nconst ppCrypto = require('./pixelpay');\n"
+ },
+ {
+  "file": "pixelpay-hosted-webhook.js",
+  "now": "    // PERMANENT verification failure → manual_reconciliation + alert, then 2xx (won't change on retry, I8/R2-3).\n    // An UNVERIFIED callback never writes the attempt's payment binding (payment_uuid / paid_amount_cents): the hash covers\n    // only the order id, so its payment id and amount are claims. They are kept apart, once per claimed payment.\n    const claimedCents = toCents(amount);\n    const evKey = crypto.createHash('sha256').update(JSON.stringify([uuid || '', Number.isFinite(claimedCents) ? claimedCents : null])).digest('hex');\n    const evidence = { uuid: uuid || null, amount_cents: Number.isFinite(claimedCents) ? claimedCents : null, transaction_id: txnRef || null, at: now, binding_ok: bindingOk, hash_ok: hashOk, amount_ok: amountOk };\n    await db.ref(`payment_attempts/${attemptId}/unverified_callbacks/${evKey}`).transaction((cur) => (cur == null ? evidence : undefined));\n    await db.ref(`payment_attempts/${attemptId}`).update({\n",
+  "was": "    // PERMANENT verification failure → manual_reconciliation + alert, then 2xx (won't change on retry, I8/R2-3).\n    await db.ref(`payment_attempts/${attemptId}`).update({\n"
+ },
+ {
+  "file": "pixelpay-hosted-webhook.js",
+  "now": "      manual_reason: `verify_fail binding=${bindingOk} hash=${hashOk} amount=${amountOk}`,\n      flagged_at: now\n    });\n",
+  "was": "      manual_reason: `verify_fail binding=${bindingOk} hash=${hashOk} amount=${amountOk}`,\n      payment_uuid: uuid, paid_amount_cents: toCents(amount), flagged_at: now\n    });\n"
  },
  {
   "file": "pixelpay-hosted-webhook.js",
@@ -40,6 +50,16 @@ const HUNKS = Object.freeze([
   "file": "alert-prune.js",
   "now": "  for (const [key, alert] of Object.entries(alerts || {})) {\n    if (alert && NEVER_AUTO_PRUNE.has(alert.type)) continue;\n    const ids = alertOrderIds(alert);\n",
   "was": "  for (const [key, alert] of Object.entries(alerts || {})) {\n    const ids = alertOrderIds(alert);\n"
+ },
+ {
+  "file": "manual-resolve.js",
+  "now": "// ── Paid-evidence detection (universal — pre-claim window, during resolve, or post-terminal) ───────\n// Any of: the order's paid_during_resolve flag, or the attempt's persisted UUID / verified capture / unverified callback\n// evidence (a paid callback that failed verification — possibly real money, kept apart from the binding).\n// BROAD — used to ROUTE AMBIGUITY (a bare UUID may be a declined auth) to manual_review, NEVER to gate a void.\n",
+  "was": "// ── Paid-evidence detection (universal — pre-claim window, during resolve, or post-terminal) ───────\n// Any of: the order's paid_during_resolve flag, or the attempt's persisted UUID / verified capture.\n// BROAD — used to ROUTE AMBIGUITY (a bare UUID may be a declined auth) to manual_review, NEVER to gate a void.\n"
+ },
+ {
+  "file": "manual-resolve.js",
+  "now": "    (order && order.paid_during_resolve === true) ||\n    (attempt && (attempt.payment_uuid || attempt.capture_verified === true || attempt.unverified_callbacks))\n  );\n",
+  "was": "    (order && order.paid_during_resolve === true) ||\n    (attempt && (attempt.payment_uuid || attempt.capture_verified === true))\n  );\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);
