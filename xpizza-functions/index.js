@@ -1264,6 +1264,10 @@ createOrderApp.all('*', async (req, res) => {
       scheduledFor: scheduledForRaw, releaseAt, paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare
     });
     attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: DW.totalLempiras(dq, effectiveTotal), orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
+    /* sb:begin cash-dish-qty-held */
+    // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
+    { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables)); if (dishQty) heldUpdates[`orders/${orderId}`].dish_qty = dishQty; }
+    /* sb:end cash-dish-qty-held */
     if (redemptionCanonical) heldUpdates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until release→completion)
     /* a1:begin cash-marker-held */
     Object.assign(heldUpdates[`orders/${orderId}`], TV.markerFields(cashTextVersion));   // PLAN-A A8a: presence for 'a8' only, beside the fingerprint
@@ -1301,6 +1305,10 @@ createOrderApp.all('*', async (req, res) => {
   }));
 
   attachCustomerAttribution(updates, orderId, customer_uid, { now, total: DW.totalLempiras(dq, effectiveTotal), orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
+  /* sb:begin cash-dish-qty */
+  // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
+  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }
+  /* sb:end cash-dish-qty */
   // Track A (MF2): immediate (cash/live) path — order_tracking is built HERE (not via buildMaterializeUpdates),
   // so stamp has_profile from the resolved server customer_uid. Guest → omitted → order_tracking byte-identical.
   if (customer_uid && updates[`order_tracking/${trackingToken}`]) updates[`order_tracking/${trackingToken}`].has_profile = true;
@@ -1973,6 +1981,10 @@ chargeOnlineApp.all('*', async (req, res) => {
     if (reorderPriceSnapshot) pendingOrderRecord.reorder_price_snapshot = reorderPriceSnapshot;
   }
   /* sd:end reorder-price-snapshot */
+  /* sb:begin online-dish-qty */
+  // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
+  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables)); if (dishQty) pendingOrderRecord.dish_qty = dishQty; }
+  /* sb:end online-dish-qty */
   /* serial3:begin card-content-keys */
   // §3 r3 (codex r3 P1): the order's content keys, computed HERE where the pricing version's catalog snapshot is warm, and
   // persisted on the pending order — the confirm-side duplicate guard (other instances, cold cache) reads them, never menu names.

@@ -32163,5 +32163,77 @@
    "node",
    "ratings/aggregate-producer.test.js"
   ]
+ },
+ {
+  "id": "sb-20",
+  "slice": "sb",
+  "label": "S-B F1: a partial identity — an unmapped line is skipped instead of voiding the snapshot",
+  "file": "ratings/dish-qty.js",
+  "from": "    if (!cid || !Number.isInteger(qty) || qty < 1 || qty > 50) return null;",
+  "to": "    if (!cid || !Number.isInteger(qty) || qty < 1 || qty > 50) continue;",
+  "command": [
+   "node",
+   "ratings/dish-qty.test.js"
+  ]
+ },
+ {
+  "id": "sb-21",
+  "slice": "sb",
+  "label": "S-B F1: la_musa keyed by the client display name, not the charge's key",
+  "file": "ratings/dish-qty.js",
+  "from": "    const key = itemPricingKey(it, restaurantId);",
+  "to": "    const key = it && it.name;",
+  "command": [
+   "node",
+   "ratings/dish-qty.test.js"
+  ]
+ },
+ {
+  "id": "sb-22",
+  "slice": "sb",
+  "label": "S-B F1: the cash hunk reads a context that is not this charge's tables",
+  "file": "index.js",
+  "from": "  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }",
+  "to": "  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(null)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }",
+  "command": [
+   "node",
+   "sb-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sb-23",
+  "slice": "sb",
+  "label": "S-B F1: the online pending record never carries dish_qty",
+  "file": "index.js",
+  "from": "if (dishQty) pendingOrderRecord.dish_qty = dishQty; }",
+  "to": "}",
+  "command": [
+   "node",
+   "sb-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sb-24",
+  "slice": "sb",
+  "label": "S-B F1: the held (scheduled) cash record never carries dish_qty",
+  "file": "index.js",
+  "from": "if (dishQty) heldUpdates[`orders/${orderId}`].dish_qty = dishQty; }",
+  "to": "}",
+  "command": [
+   "node",
+   "sb-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sb-25",
+  "slice": "sb",
+  "label": "S-B F1: the cash hunk also rewrites another field (pricing / placement output changed)",
+  "file": "index.js",
+  "from": "if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }",
+  "to": "if (dishQty) { updates[`orders/${orderId}`].dish_qty = dishQty; updates[`orders/${orderId}`].total_cents += 0.5; } }",
+  "command": [
+   "node",
+   "sb-wiring.guard.test.js"
+  ]
  }
 ]

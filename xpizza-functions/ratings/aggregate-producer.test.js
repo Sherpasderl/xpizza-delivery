@@ -2,7 +2,7 @@
 // S-B step 2 — the INCREMENTAL producer, over the REAL writers: intake (buildCreateOrderUpdates), the fulfilment stamp (which writes
 // rating_index — the fulfilled-order log), rateOrderCore + withdraw, a deleted_uids tombstone. The cost rule is ASSERTED from a read
 // log: a run reads only the closed days' orders (four leaves each), never history and never the orders root.
-// NOTE: dish_qty is stamped by the intake hunk of step 3; until it lands these cells set it on the order the way that hunk will.
+// dish_qty comes from the REAL intake writer: index.js's `/* sb:begin cash-dish-qty */` hunk, lifted and run on the intake updates.
 // Run: node ratings/aggregate-producer.test.js
 process.env.OTP_SALT = process.env.OTP_SALT || 'aggregate-producer-test-salt-'.padEnd(40, 'x');
 const assert = require('assert');
@@ -15,6 +15,14 @@ const { rateOrderCore } = require('./rate-order');
 const { stampRatingFulfilment } = require('./rating-fulfilment');
 const { buildCreateOrderUpdates, attachCustomerAttribution } = require(path.join(FN, 'create-order-build'));
 const { hnDateISO } = require(path.join(FN, 'lib', 'hn-date'));
+const vm = require('vm');
+const fsys = require('fs');
+const { MENU_BY_RESTAURANT } = require(path.join(FN, 'menu-pricing'));
+const IDX = fsys.readFileSync(path.join(FN, 'index.js'), 'utf8');
+const SB_CASH = IDX.slice(IDX.lastIndexOf('\n', IDX.indexOf('/* sb:begin cash-dish-qty */')) + 1, IDX.indexOf('/* sb:end cash-dish-qty */') + '/* sb:end cash-dish-qty */'.length + 1);
+const XK = Object.keys(MENU_BY_RESTAURANT.x_pizza);
+const DISH_OF = { d1: XK[0], d2: XK[1], d3: XK[2] };   // the test's canonical ids ↔ real menu keys, through a usable D4-a context
+const CTX = { usableAsIdentity: true, objects: Object.entries(DISH_OF).map(([cid, k]) => ({ kind: 'dish', legacyKey: k, canonicalId: cid })) };
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -64,8 +72,11 @@ async function served(db, { at, phone, dish = { d1: 1 }, uid = null, status = 'd
     hubSnap: { hub_lat: 1, hub_lng: 2, restaurant_name: 'R', restaurant_phone: '1' }, restaurantId: rid,
     priceBreakdown: { total_cents: 30000, subtotal_cents: 26087, tax_cents: 3913 }, facturaPriced: { items: null }, cashTenderedCents: 30000 });
   if (uid) attachCustomerAttribution(u, id, uid, { now: at, total: 300, orderType: 'pickup', items_text: '1x', restaurantId: rid, items: [{ name: 'Margherita', qty: 1 }] });
+  // the REAL intake hunk stamps dish_qty from the charged body lines
+  vm.runInNewContext(SB_CASH, { updates: u, orderId: id, restaurantId: rid, pricingTables: { restaurantId: rid }, contextOfTables: () => CTX,
+    body: { items: Object.entries(dish).map(([cid, qty]) => ({ name: DISH_OF[cid], qty })) }, require: (m) => require(m.startsWith('./') ? path.join(FN, m) : m) });
+  assert.deepStrictEqual(u[`orders/${id}`].dish_qty, dish, 'premise: the intake hunk stamped dish_qty');
   await db.ref().update(u);
-  db.set(`orders/${id}/dish_qty`, dish);                                       // step 3's intake hunk will write this
   db.set(`orders/${id}/status`, status);
   if (status === 'delivered' || status === 'completed') await stampRatingFulfilment(db, { orderId: id, status, now: at });
   return id;
