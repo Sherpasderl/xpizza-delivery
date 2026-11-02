@@ -14,8 +14,8 @@
 //     brand's renderer contract); both are code-derived, no read;
 //   • (codex PB-1 r3 P2-2) a successful publish whose candidate has a dish↔extra key overlap (x_pizza's existing Pepperoni /
 //     Prosciutto) reads exactly those keys' docs in the active version to prove the overlap is not new;
-//   • (PLAN 4 GATED G1) getEditableCatalog's source records carry the REVIEWED data file's rows (reward_icon / extras_policy):
-//     each value asserted equal to its row, then dropped;
+//   • (PLAN 4 GATED G1) getEditableCatalog's source records + structure carry the REVIEWED data file's rows (reward_icon /
+//     extras_policy / badge_priority): each value asserted equal to its row, then dropped;
 //   Anything else — a status, a body field, a write, a missing or extra read of another kind — fails.
 require('./_emulator-required')('firestore', 'database');
 
@@ -195,6 +195,16 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
               assert.deepStrictEqual(rec.display[f], v, `${c.name}: ${coll} ${rec.key}.display.${f} = the reviewed row (PLAN 4 G1)`);
               delete rec.display[f]; seen += 1;
             }
+          }
+        }
+        // and the rows' STRUCTURE block (e.g. la_musa badge_priority), the same rule: value-asserted, dropped only where the base lacked it
+        const rs = rows.structure && typeof rows.structure === 'object' ? rows.structure : {};
+        const bs = ((g.body || {}).source || {}).structure || {};
+        if (body.source.structure && typeof body.source.structure === 'object') {
+          for (const [f, v] of Object.entries(rs)) {
+            if (Object.prototype.hasOwnProperty.call(bs, f)) continue;
+            assert.deepStrictEqual(body.source.structure[f], v, `${c.name}: source.structure.${f} = the reviewed rows' structure (PLAN 4 G1)`);
+            delete body.source.structure[f]; seen += 1;
           }
         }
         declared.body.add(`${c.name}: ${seen} reviewed-row field(s)`);
