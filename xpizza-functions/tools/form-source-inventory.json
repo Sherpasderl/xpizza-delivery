@@ -1787,6 +1787,7 @@
   "brands/brand-store.js",
   "brands/brands-admin-core.js",
   "cancel-order-core.js",
+  "catalog/_hosted-claim-delta.js",
   "catalog/add-product.js",
   "catalog/bound-reuse.js",
   "catalog/canonical-binding.js",
@@ -2031,6 +2032,10 @@
     "xpizza-functions/a1-wiring.guard.test.js",
     "xpizza-functions/rewards-reversal-placement.test.js"
    ]
+  },
+  "catalog/_hosted-claim-delta.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/add-product.js": {
    "pins": [],

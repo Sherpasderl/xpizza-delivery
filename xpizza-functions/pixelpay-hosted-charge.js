@@ -174,15 +174,23 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
       // Persist the create-claim BEFORE the caller calls PixelPay (I7/R2-1): the deterministic
       // hosted_order_id is stored now, so a paid callback that races our hosted/other response
       // still finds the binding and can recover a crashed `creating`.
-      await db.ref(`payment_attempts/${attemptId}`).update({
-        order_id: orderId,
-        hosted_state: 'creating',
-        hosted_order_id: hostedOrderId,
-        hosted_created_at: now,
-        hosted_expires_at: expiresAt,
-        poll_token: pollToken,
-        total_cents: pendingOrderRecord.total_cents
+      // The claim is EXCLUSIVE: only the request that moves the attempt record from ABSENT to `creating` may mint a
+      // checkout. The order CAS above cannot give that guarantee for `recover` (it commits unchanged for every racer
+      // whose pre-read landed between the pointer write and this one), so every racer that loses here re-reads
+      // and answers in_progress — one payable checkout per attempt, never N.
+      const claim = await db.ref(`payment_attempts/${attemptId}`).transaction((cur) => {
+        if (cur !== null) return;                                       // already claimed (or real record) → abort
+        return {
+          order_id: orderId,
+          hosted_state: 'creating',
+          hosted_order_id: hostedOrderId,
+          hosted_created_at: now,
+          hosted_expires_at: expiresAt,
+          poll_token: pollToken,
+          total_cents: pendingOrderRecord.total_cents
+        };
       });
+      if (!claim.committed) continue;                                   // another request claimed it → re-read (→ in_progress)
       return { outcome: 'claimed', attempt_id: attemptId, hosted_order_id: hostedOrderId, poll_token: pollToken, expires_at: expiresAt };
     }
     continue;                                                           // someone else won → re-read (→ reuse/in_progress)

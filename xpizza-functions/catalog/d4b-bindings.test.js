@@ -10,6 +10,7 @@ const SECRET = process.env.QUOTE_TOKEN_SECRET;
 const F = require('../test/d4b-legacy-fixtures');
 const GOLDEN = require('./d4b-legacy-hashes.golden.json');
 const CALLSEQ = require('./d4b-callseq.golden.json');
+const { preExclusiveClaim } = require('./_hosted-claim-delta');   // the declared exclusive-claim delta (FINDING-hosted-charge-recover-race)
 const CB = require('./canonical-binding');
 const { createPricingResolver } = require('./pricing-tables');
 const { signQuoteToken, normalizeCartForFingerprint, cartFingerprint } = require('../quote-token');
@@ -349,7 +350,9 @@ const canonicalToken = (payload) => signQuoteToken({ rid: payload.rid, customer_
   // ── 8. CALL-SEQUENCE GOLDEN: every legacy payment/reservation path reads, transacts and writes exactly as 717f97e ──
   const cur = Object.fromEntries(await callseqScenarios({ hosted, direct, reserve, REDEMPTION_CONFIG_VERSION }));
   assert.strictEqual(Object.keys(CALLSEQ.scenarios).length, 13);
-  for (const [k, want] of Object.entries(CALLSEQ.scenarios)) assert.deepStrictEqual(JSON.parse(JSON.stringify(cur[k])), want, `🔴 ${k}: the legacy read/transaction sequence, result or stored data changed`);
+  const claimDelta = { n: 0 };
+  for (const [k, want] of Object.entries(CALLSEQ.scenarios)) assert.deepStrictEqual(JSON.parse(JSON.stringify(preExclusiveClaim(k, cur[k], claimDelta))), want, `🔴 ${k}: the legacy read/transaction sequence, result or stored data changed`);
+  assert.strictEqual(claimDelta.n, 2, `the exclusive-claim delta is PINNED: hosted.acquire.create + no_fp_install claim through a transaction (mapped ${claimDelta.n})`);
   assert.ok(CALLSEQ.scenarios['reserve.released_re_reserve'].data.user_rewards.u1.x_pizza.reservations.o1.fp_format === undefined, 'premise — a legacy re-reserve writes no tag');
   ok('call-sequence golden: 13 legacy scenarios (hosted acquire/classify, direct acquire, reserve fresh/reused/re-reserve/conflict) perform the SAME ordered reads, transactions and writes, return the same results and leave the same data as the 717f97e modules');
 

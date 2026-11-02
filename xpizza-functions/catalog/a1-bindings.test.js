@@ -16,6 +16,8 @@ const { createFakeRtdb } = require('../test/d4b-fake-rtdb');
 const { scenarios } = require('../test/d4b-callseq');
 const { REDEMPTION_CONFIG_VERSION } = require('../rewards-redeem-config');
 const { BASE } = require('../tools/a1-inverse');
+const { preExclusiveClaim } = require('./_hosted-claim-delta');   // the declared exclusive-claim delta (FINDING-hosted-charge-recover-race)
+const claimDelta = { n: 0 };
 const hosted = require('../pixelpay-hosted-charge');
 const direct = require('../pixelpay-charge');
 const reserve = require('../rewards-reserve');
@@ -59,7 +61,7 @@ const attExpired = { ...attCreated, hosted_expires_at: NOW - 1 };
     const mine = await scenarios({ hosted, direct, reserve, REDEMPTION_CONFIG_VERSION });
     const theirs = await scenarios({ ...base, REDEMPTION_CONFIG_VERSION });
     assert.strictEqual(mine.length, theirs.length);
-    for (let i = 0; i < mine.length; i += 1) assert.deepStrictEqual(mine[i], theirs[i], `🔴 ${mine[i][0]} differs from ${BASE}`);
+    for (let i = 0; i < mine.length; i += 1) assert.deepStrictEqual([mine[i][0], preExclusiveClaim(mine[i][0], mine[i][1], claimDelta)], theirs[i], `🔴 ${mine[i][0]} differs from ${BASE}`);
     // + the branches d4b's scenarios do not reach, both modules side by side
     const extra = [
       ['direct.reuse', { orders: { o1: { ...ORDER, payment_fingerprint: FP, active_attempt_id: 'att_live' } }, payment_attempts: { att_live: attCreated } }, (m) => (db) => m.direct.acquireOnlineAttempt(db, 'o1', ORDER, FP, gen)],
@@ -75,8 +77,9 @@ const attExpired = { ...attCreated, hosted_expires_at: NOW - 1 };
       ['hosted.canonical_unverifiable', { orders: { o1: { ...ORDER, payment_fingerprint: OTHER, fp_format: 'canonical' } } }, (m) => (db) => m.hosted.acquireHostedAttempt(db, 'o1', ORDER, FP, NOW, [], gen, tok, () => ({ ok: false }))],
     ];
     for (const [label, initial, f] of extra) {
-      assert.deepStrictEqual(await run(initial, f({ hosted, direct, reserve })), await run(initial, f(base)), `🔴 ${label} differs from ${BASE}`);
+      assert.deepStrictEqual(preExclusiveClaim(label, await run(initial, f({ hosted, direct, reserve })), claimDelta), await run(initial, f(base)), `🔴 ${label} differs from ${BASE}`);
     }
+    assert.ok(claimDelta.n >= 3, `the exclusive-claim delta is PINNED: today's hosted claims use a transaction (mapped ${claimDelta.n})`);
     // the reservation lifecycle beyond d4b's four: consumed / held_paid reuse, insufficient, a cash (no expiry) reserve
     const canonical = { restaurant_id: 'x_pizza', model: 'add_free', type: 'free_pizza_choice', config_version: REDEMPTION_CONFIG_VERSION, cost: 8, discount_cents: 0, free_item_key: 'Margherita' };
     const args = { uid: 'u1', rid: 'x_pizza', orderId: 'o1', cost: 8, canonical, orderFingerprint: FP, configVersion: REDEMPTION_CONFIG_VERSION, now: NOW };
