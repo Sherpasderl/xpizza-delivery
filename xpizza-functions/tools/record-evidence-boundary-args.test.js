@@ -54,5 +54,16 @@ cell('REB-ONE-RID-PROCEEDS', () => {
   assert.ok(/credential/i.test(r.out), `${L}: it got as far as the credential (got ${r.out.replace(/\s+/g, ' ').slice(0, 200)})`);
 });
 
+cell('REB-MAIN-PASSES-ONE-RID', () => {
+  const L = 'REB-MAIN-PASSES-ONE-RID';
+  // the accepted run stops at the credential before run(), so pin the wiring in source: the rid run() receives is the parsed
+  // one, and no other reader of --rid exists (a rid that fell back to null would fan out across the record)
+  const src = require('fs').readFileSync(path.join(ROOT, 'tools', 'record-evidence-boundary.js'), 'utf8').replace(/\/\/.*$/gm, '');
+  const main = src.slice(src.indexOf('if (require.main === module)'));
+  assert.match(main, /const \{ file, rid, apply \} = args;/, `${L}: main takes rid from the strict parse`);
+  assert.match(main, /record: JSON\.parse\(fs\.readFileSync\(file, 'utf8'\)\), rid, apply \}\)/, `${L}: and hands exactly that rid to run()`);
+  assert.ok(!/indexOf\('--rid'\)|argv\.includes\('--apply'\)|\bval\(/.test(src), `${L}: no second reader of the arguments`);
+});
+
 console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nrecord-evidence-boundary-args: OK (${pass})`);
 process.exit(fails.length ? 1 : 0);
