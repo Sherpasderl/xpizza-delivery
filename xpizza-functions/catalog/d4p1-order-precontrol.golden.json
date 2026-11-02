@@ -1,13 +1,13 @@
 {
   "_provenance": {
-    "captured_from": "dc7d9f75a3e529bf4f6f83527699df9bfe3de17a",
+    "captured_from": "771752afb7d9f2c7f61bd804fb4560a5b0a61d75",
     "what": "PRE-P1 control captured through the REAL createOrder handler (§8a). Never regenerate."
   },
   "brands": {
     "x_pizza": {
       "stored_order": {
         "cash_tendered_cents": 105600,
-        "created_at": 1789827608348,
+        "created_at": 1793577276673,
         "customer_name": "Control",
         "customer_phone": "99992001",
         "earn_preview": {
@@ -58,7 +58,7 @@
         "tax_cents": 13774,
         "total": 1056,
         "total_cents": 105600,
-        "tracking_token": "zv9fXe8KtVbn"
+        "tracking_token": "jiuriu7UHHqB"
       },
       "volatile_fields": [
         "created_at",
@@ -70,12 +70,12 @@
     },
     "la_musa": {
       "stored_order": {
-        "cash_tendered_cents": 74400,
-        "created_at": 1789827608474,
+        "cash_tendered_cents": 79600,
+        "created_at": 1793577276899,
         "customer_name": "Control",
         "customer_phone": "99992003",
         "earn_preview": {
-          "delta": 240,
+          "delta": 260,
           "goal": 300,
           "unit": "point",
           "welcome": 100
@@ -87,17 +87,17 @@
         "notes": "",
         "order_id": "CTL-la_musa-0",
         "order_type": "pickup",
-        "payment_fingerprint": "51514318132489d332ed5a13cb8e881af990466d2c6db2025c7029d63ef55384",
+        "payment_fingerprint": "28261497113560fe7af5287c3e856c30c0cf3d3e1d9d122339a4d86f4b6f1877",
         "payment_method": "cash",
         "pickup_time": "standard",
         "restaurant_id": "la_musa",
         "restaurant_name": "la_musa",
         "restaurant_phone": "+50400000000",
         "status": "new",
-        "subtotal_cents": 74400,
+        "subtotal_cents": 79600,
         "summary_lines": [
           {
-            "cents": 49600,
+            "cents": 54800,
             "name": "Sichuan Spicy Wonton",
             "qty": 2
           },
@@ -108,9 +108,9 @@
           }
         ],
         "tax_cents": 0,
-        "total": 744,
-        "total_cents": 74400,
-        "tracking_token": "jWt3qshdDyh5"
+        "total": 796,
+        "total_cents": 79600,
+        "tracking_token": "kpz7iRpbXmsu"
       },
       "volatile_fields": [
         "created_at",
