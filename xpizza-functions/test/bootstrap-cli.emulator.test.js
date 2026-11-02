@@ -172,10 +172,24 @@ const srcRef = () => db.collection('restaurants').doc(RID).collection('meta').do
       `🔴 the dry run did not name every object it would stamp: ${JSON.stringify(planned)}\n${dry.out.slice(0, 600)}`);
     assert.match(dry.out, new RegExp(`WOULD certify version ${V}`), '🔴 the dry run does not say which version it would certify');
 
+    // PLAN-brand-agnostic-convergence §3-E: the certification is VERIFIED by coverage against the catalog captured BEFORE the
+    // one-way step (identity-usable-check --capture / --against; the CLI refuses emulator configuration by design, so its core
+    // runs in-process here with the real manifest builder and verifier).
+    const IUC = require('../tools/identity-usable-check');
+    const { createCatalogVerifier } = require('../catalog/catalog-verifier');
+    const capture = await IUC.captureCatalog({ db, listIds: async () => [RID], verifier: createCatalogVerifier({ db, log: () => {} }) });
+    assert.ok(capture.failed.length === 0 && capture.restaurants[RID] && capture.restaurants[RID].objects.length === 3,
+      `COV-EMU-CAPTURE: the uncertified catalog is captured, one entry per object: ${JSON.stringify({ failed: capture.failed, n: capture.restaurants[RID] && capture.restaurants[RID].objects.length })}`);
+    const pre = await IUC.checkAgainstCapture({ db, verifier: createCatalogVerifier({ db, log: () => {} }), capture });
+    assert.ok(pre.rows[0].pass === false && pre.rows[0].covered === 0, `COV-EMU-PRE: before --apply the coverage FAILS: ${JSON.stringify(pre.rows[0])}`);
+
     const applied = run(['--rid=' + RID, '--project', PROJECT, '--apply']);
     assert.strictEqual(applied.code, 0, `🔴 --apply failed: ${applied.out.slice(0, 400)}`);
     assert.match(applied.out, /THIS WRITES, IN PLACE, WITH NO UNDO/, 'and --apply says so before doing it');
     assert.strictEqual(await certified(), true, '🔴 --apply did not certify the version');
+    const post = await IUC.checkAgainstCapture({ db, verifier: createCatalogVerifier({ db, log: () => {} }), capture });
+    assert.ok(post.rows[0].pass === true && post.rows[0].covered === 3 && post.rows[0].total === 3,
+      `COV-EMU-POST: after the real --apply every captured object carries an id, nothing missing or added, version unchanged: ${JSON.stringify(post.rows[0])}`);
 
     const actual = await sourceIds();
     /* 🔴 AND AGAINST THE REGISTRY, NOT ONLY AGAINST ITSELF. planned === actual would be satisfied by a
