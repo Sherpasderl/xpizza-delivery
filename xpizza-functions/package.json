@@ -180,6 +180,7 @@
     "test:verify-first-group": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/verify-first-group.emulator.test.js\"",
     "test:kds-cancel-acks": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/kds-cancel-acks-rules.emulator.test.js\"",
     "test:favorites-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/favorites-rules.emulator.test.js\"",
+    "test:stack-server-only-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/stack-server-only-rules.emulator.test.js\"",
     "test:signup-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/signup-rules.emulator.test.js\"",
     "test:signup-http": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/signup-http.emulator.test.js\"",
     "test:signup-core": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/signup-core.emulator.test.js\"",
