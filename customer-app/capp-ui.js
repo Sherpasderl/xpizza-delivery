@@ -105,13 +105,15 @@
     .replace('<!-- rear wheel -->', '<g class="speed" aria-hidden="true"><path d="M14 118h40"/><path d="M4 136h30"/><path d="M20 152h44"/></g><g class="mover">')
     .replace('</svg>', '</g></svg>');
   const CHECK_OK = `<span class="sok">${IC.check}</span>`;
-  // the schematic map (prototype mapSvg :1796-1806, light theme; S1 ships no dark toggle) — the fallback when no Maps key is configured
+  // the schematic map (prototype mapSvg :1796-1806) — the fallback when no Maps key is configured. capp-dark (PLAN §3): its colours are
+  // the --map-* tokens (light = v6's light values, dark = v6 mapSvg's dark branch; capp.css), via inline style so the OS theme flips it
+  // live — never a hex literal here
   const MAP_SVG = (() => {
-    const road = '#FFFFFF', minor = '#F4F6F1', park = '#DCE6D4', water = '#D6E4EA';
+    const road = 'var(--map-road)', minor = 'var(--map-minor)', park = 'var(--map-park)', water = 'var(--map-water)';
     return `<svg class="mapsvg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-    <rect x="62" y="56" width="30" height="26" rx="3" fill="${park}"/><path d="M-5 92 C 20 80, 40 96, 70 86 S 100 76, 110 84 L110 110 L-5 110 Z" fill="${water}"/>
-    <g stroke="${minor}" stroke-width="1.6" stroke-linecap="round" vector-effect="non-scaling-stroke">${[10, 34, 56, 78].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}${[10, 36, 62, 86].map((x) => `<path d="M${x} -5V105"/>`).join('')}</g>
-    <g stroke="${road}" stroke-width="3.4" stroke-linecap="round" fill="none">${[22, 50, 74].map((x) => `<path d="M${x} -5V105"/>`).join('')}${[22, 42, 64].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}<path d="M-5 100 L45 60 L105 20"/></g></svg>`;
+    <rect x="62" y="56" width="30" height="26" rx="3" style="fill:${park}"/><path d="M-5 92 C 20 80, 40 96, 70 86 S 100 76, 110 84 L110 110 L-5 110 Z" style="fill:${water}"/>
+    <g style="stroke:${minor}" stroke-width="1.6" stroke-linecap="round" vector-effect="non-scaling-stroke">${[10, 34, 56, 78].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}${[10, 36, 62, 86].map((x) => `<path d="M${x} -5V105"/>`).join('')}</g>
+    <g style="stroke:${road}" stroke-width="3.4" stroke-linecap="round" fill="none">${[22, 50, 74].map((x) => `<path d="M${x} -5V105"/>`).join('')}${[22, 42, 64].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}<path d="M-5 100 L45 60 L105 20"/></g></svg>`;
   })();
   // the «confirming» line on the approved «Enviando tu pedido…» screen (Q9, no sheet, no button)
   const CONFIRMING_HINT = 'Estamos confirmando tu pago con el banco.';
@@ -755,6 +757,14 @@
     let pinGen = 0, pinMap = null;   // S2b r1 P1-2: the ACTIVE pin map; an obsolete instance's callbacks are dropped
     // the pin step closing — «Listo», «Cancelar», device back — makes its map obsolete: a late idle never reaches the checkout
     function dropPinMap() { pinGen++; pinMap = null; S.pinDraft = null; }
+    // capp-dark §3 (PLAN r2): the live maps follow the OS — ONE subscription per mount restyles every live instance IN PLACE
+    // (setOptions on the same map: camera, pin draft and listeners untouched); never a render. Absent CappTheme ⇒ light, no subscription
+    const Theme = opts.CappTheme || (typeof self !== 'undefined' && self.CappTheme) || null;
+    const themeStyles = () => (Theme ? Theme.mapStyles(doc.defaultView) : null);
+    const unTheme = Theme && doc.defaultView ? Theme.subscribe(doc.defaultView, () => {
+      if (dead) return;
+      for (const el of app.querySelectorAll('[data-gmap]')) if (el.__map && typeof el.__map.setOptions === 'function') { try { el.__map.setOptions({ styles: themeStyles() }); } catch (_) {} }
+    }) : null;
     function wireMaps() {
       const els = [...app.querySelectorAll('[data-gmap]')]; if (!els.length) return;
       const p = loadMaps(); if (!p) return;
@@ -762,7 +772,7 @@
         for (const el of els) {
           const c = mapCenter(); if (!el.isConnected || el.__map || !c) continue;
           const big = el.dataset.gmap === 'pin';
-          const m = new gm.Map(el, { center: c, zoom: 17, disableDefaultUI: true, clickableIcons: false, gestureHandling: big ? 'greedy' : 'none', keyboardShortcuts: big });
+          const m = new gm.Map(el, { center: c, zoom: 17, disableDefaultUI: true, clickableIcons: false, gestureHandling: big ? 'greedy' : 'none', keyboardShortcuts: big, styles: themeStyles() });   // capp-dark §3: the theme read at CONSTRUCTION (a late load is never stale)
           el.__map = m;
           if (big) { const gen = ++pinGen; pinMap = { gen, m, el }; m.addListener('idle', () => { if (gen !== pinGen || dead) return; const cc = m.getCenter(); if (cc) S.pinDraft = { lat: cc.lat(), lng: cc.lng() }; }); }
         }
@@ -1783,6 +1793,7 @@
         dead = true; placingStop(); otpTickStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }
         S.layerKind = null; const L = $('layer'); if (L) L.innerHTML = '';
         for (const el of [...doc.querySelectorAll('.cq-sheet')]) el.remove();   // the ported «El precio cambió» sheet (capp-confirm-quote)
+        if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} }
         doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); doc.removeEventListener('focusout', onPhoneOut); if (!H && doc.defaultView) doc.defaultView.removeEventListener('popstate', onPop); if (typeof unsubBack === 'function') { try { unsubBack(); } catch (_) {} } },
     };
   }

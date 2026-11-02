@@ -83,6 +83,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
   --sans:var(--rht); --head:var(--rhd); --head-style:normal; --head-weight:700; --name:var(--rhd); --name-weight:700;
   /* palette: Cuadra, light. Roles keep the v11 store semantics (bg = page, surf = soft tinted fill, surf2 = white/elevated fill) so the
      approved store → checkout → confirmation screens keep their surface structure; the shell uses the same three values. */
+  --map-road:#FFFFFF; --map-minor:#F4F6F1; --map-park:#DCE6D4; --map-water:#D6E4EA;   /* the schematic maps (v6 mapSvg light) */
   --bg:#FFFFFF; --surf:#F2F3F5; --surf2:#FFFFFF; --ink:#0D1424; --mute:#5A6272; --line:#E8E9EC; --line2:#D2D5DB;
   --acc:#2F5FB8; --acc-ink:#FFFFFF; --price:#0D1424; --pill:#0D1424; --pill-ink:#FFFFFF; --rad:12px;
   --ok:#2F7A55; --ok-bg:#EAF4EF; --warn:#8A5A00; --warn-bg:#FFF1D6; --err:#B9323A; --err-bg:#FCEBEB; --scrim:rgba(13,20,36,.45); --shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px -12px rgba(0,0,0,.18);
@@ -105,7 +106,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 :root[data-theme="dark"]{--page-bg:#0A0F1C}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--page-bg:#0A0F1C}}
 .capp-shell,.capp-shell body{background:var(--page-bg)}
-.app.dark,:root[data-theme="dark"] .app{--bg:#0A0F1C;--surf:#121A2C;--surf2:#1A2439;--ink:#EDF1F8;--mute:#9AA6BD;--line:#24304A;--line2:#34415C;--acc:#8EC0FF;--acc-ink:#0A0F1C;--price:#EDF1F8;--pill:#EDF1F8;--pill-ink:#0A0F1C;
+.app.dark,:root[data-theme="dark"] .app{--map-road:#2E3A30;--map-minor:#283329;--map-park:#243227;--map-water:#1C2A33;--bg:#0A0F1C;--surf:#121A2C;--surf2:#1A2439;--ink:#EDF1F8;--mute:#9AA6BD;--line:#24304A;--line2:#34415C;--acc:#8EC0FF;--acc-ink:#0A0F1C;--price:#EDF1F8;--pill:#EDF1F8;--pill-ink:#0A0F1C;
   --ok:#5BD08E;--ok-bg:#153324;--warn:#F2BE4B;--warn-bg:#3A2B06;--err:#FF8C92;--err-bg:#3B1518;--scrim:rgba(0,0,0,.6);--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.6);
   --pop:#6FD79A;--pop-bg:#143322;--pop-fill:#6FD79A;--pop-fill-ink:#0A0F1C;
   --deal:#FF8FB8;--deal-bg:#3F1A2B;--deal-fill:#FF8FB8;--deal-fill-ink:#0A0F1C;
@@ -113,7 +114,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
   --promo-bg:linear-gradient(135deg,#182A52 0%,#133640 100%);--promo-ink:#EDF1F8;--promo-mute:#A9B8D6;--promo-line:#2B3F66;
   --il-sky-a:#182A52;--il-sky-b:#24427E;--il-sky-c:#17424C;--il-jacket:#4A82E0;--il-pants:#95A3BE;--il-skin:#D9A77B;--il-tyre:#3A4761;
   --a-warm:#1C2230;--a-cool:#172033;--a-green:#182226;--a-rose:#211D25}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app{--bg:#0A0F1C;--surf:#121A2C;--surf2:#1A2439;--ink:#EDF1F8;--mute:#9AA6BD;--line:#24304A;--line2:#34415C;--acc:#8EC0FF;--acc-ink:#0A0F1C;--price:#EDF1F8;--pill:#EDF1F8;--pill-ink:#0A0F1C;
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app{--map-road:#2E3A30;--map-minor:#283329;--map-park:#243227;--map-water:#1C2A33;--bg:#0A0F1C;--surf:#121A2C;--surf2:#1A2439;--ink:#EDF1F8;--mute:#9AA6BD;--line:#24304A;--line2:#34415C;--acc:#8EC0FF;--acc-ink:#0A0F1C;--price:#EDF1F8;--pill:#EDF1F8;--pill-ink:#0A0F1C;
   --ok:#5BD08E;--ok-bg:#153324;--warn:#F2BE4B;--warn-bg:#3A2B06;--err:#FF8C92;--err-bg:#3B1518;--scrim:rgba(0,0,0,.6);--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.6);
   --pop:#6FD79A;--pop-bg:#143322;--pop-fill:#6FD79A;--pop-fill-ink:#0A0F1C;
   --deal:#FF8FB8;--deal-bg:#3F1A2B;--deal-fill:#FF8FB8;--deal-fill-ink:#0A0F1C;

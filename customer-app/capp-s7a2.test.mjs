@@ -246,7 +246,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   const w = dom.window;
   if (media) w.matchMedia = media.matchMedia;   // D-2: the viewport the shell reads at mount (a controllable matchMedia)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
-  for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
+  for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
     'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
@@ -2497,6 +2497,21 @@ test('Pedidos r2: the server\'s items_text wins over the device snapshot when it
   assert.ok(!/<button class="orow-main"|data-act="go-receipt"/.test(html), '🔴 PED-r2-7: a row without receipt data is not a control');
 });
 // Pagination (advisor ruling 2026-11-01): ONE page of 20 — v6 draws no «load more»; next_cursor is deliberately not followed (not a defect)
+test('capp-dark §3: the SHELL\'s own live map (the Inicio pin editor) is built in the OS theme and restyled in place on a flip; destroy detaches', async () => {
+  let dark = true; const ls = new Set();
+  const media = { matchMedia: (q) => ({ get matches() { return q === '(prefers-color-scheme: dark)' ? dark : false; }, addEventListener: (t, f) => ls.add(f), removeEventListener: (t, f) => ls.delete(f), addListener: (f) => ls.add(f), removeListener: (f) => ls.delete(f) }) };
+  const flip = (v) => { dark = v; for (const f of [...ls]) f(); };
+  const S = bootShell({ media, runtime: { ...RUNTIME, mapsKey: 'k_test' } });
+  try {
+    const made = [];
+    S.w.google = { maps: { Map: class { constructor(el, o) { this.styles = o.styles; this.sets = 0; made.push(this); } addListener() {} getCenter() { return null; } setOptions(o) { this.sets++; if ('styles' in o) this.styles = o.styles; } } } };
+    await flush(); S.click('[data-act="addr"]'); S.click('[data-act="addr-new"]'); await flush(); await flush();
+    const m = made.at(-1); assert.ok(m, 'premise: the pin editor\'s map');
+    assert.equal(m.styles, S.w.CappTheme.MAP_DARK, '🔴 DK-pinmap: built dark');
+    flip(false); await flush(); assert.equal(m.styles, null, '🔴 DK-pinmap: restyled light in place'); assert.equal(made.length, 1, 'no new map');
+    S.ui.destroy(); flip(true); await flush(); assert.equal(m.sets, 1, '🔴 DK-pinmap: destroy detaches the subscription');
+  } finally { S.w.close(); }
+});
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {
   const over = WARNINGS.filter((w) => w && w.name === 'TimeoutOverflowWarning');

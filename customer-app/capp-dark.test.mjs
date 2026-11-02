@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
 
 const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, '..');
 const CSS = readFileSync(join(HERE, 'capp.css'), 'utf8');
@@ -82,7 +83,7 @@ test('capp-dark §2.1 controls: the guard SEES drift (Codex r2: only the auto .o
   assert.ok(problems(CSS + '\n.dark .newthing{color:#fff}').some((p) => /outside the three forms/.test(p)), '🔴 control: a bare .dark rule');
 });
 test('capp-dark §2.2/§2.3: the canvas (--page-bg on html.capp-shell) and the theme-color metas equal the app\'s own backgrounds, light and dark; shell.html declares color-scheme', () => {
-  const light = /\.app\{[^}]*--bg:(#[0-9A-Fa-f]{6})/.exec(CSS)[1], dark = /\.app\.dark,:root\[data-theme="dark"\] \.app\{--bg:(#[0-9A-Fa-f]{6})/.exec(CSS)[1];
+  const light = /\.app\{[^}]*--bg:(#[0-9A-Fa-f]{6})/.exec(CSS)[1], dark = /\.app\.dark,:root\[data-theme="dark"\] \.app\{[^}]*?--bg:(#[0-9A-Fa-f]{6})/.exec(CSS)[1];
   assert.equal(/:root\{--page-bg:(#[0-9A-Fa-f]{6})\}/.exec(CSS)[1], light, '🔴 --page-bg light = the app\'s --bg');
   assert.equal(/:root\[data-theme="dark"\]\{--page-bg:(#[0-9A-Fa-f]{6})\}/.exec(CSS)[1], dark, '🔴 --page-bg forced dark = the dark --bg');
   assert.equal(/@media \(prefers-color-scheme: dark\)\{:root:not\(\[data-theme="light"\]\)\{--page-bg:(#[0-9A-Fa-f]{6})\}\}/.exec(CSS)[1], dark, '🔴 --page-bg auto dark = the dark --bg');
@@ -94,3 +95,34 @@ test('capp-dark §2.2/§2.3: the canvas (--page-bg on html.capp-shell) and the t
   assert.equal(/<meta name="theme-color" content="(#[0-9A-Fa-f]{6})" media="\(prefers-color-scheme: dark\)">/.exec(shell)[1], dark, '🔴 theme-color dark');
   assert.ok(!/<script>/.test(shell), 'no inline script (the CSP is unchanged: script-src stays \'self\')');
 });
+test('capp-dark §3: the schematic maps (the checkout map\'s fallback, the order screen\'s map) carry NO hex literal — their colours are the --map-* tokens, which have dark values in the token blocks', () => {
+  const require = createRequire(import.meta.url);
+  const svgs = [require('./capp-ui.js').MAP_SVG, (/<svg class="mapsvg"[\s\S]*?<\/svg>/.exec(require('./capp-order.js').orderHtml({ order_id: 'X', mode: 'delivery', status: 'new', storeName: 'S', lines: [], total: 1, pay: 'cash', addr: 'a' }, { entry: 'app', now: 0 })) || [''])[0]];
+  for (const svg of svgs) {
+    assert.ok(svg.includes('var(--map-park)') && svg.includes('var(--map-road)'), 'premise: the tokens are used');
+    assert.ok(!/#[0-9A-Fa-f]{3,8}\b/.test(svg), `🔴 DK-map: a hex literal in a schematic map: ${(/#[0-9A-Fa-f]{3,8}\b/.exec(svg) || [])[0]}`);
+  }
+  const { pairs } = pairsOf(CSS), tok = pairs.get('');
+  for (const k of ['--map-road', '--map-minor', '--map-park', '--map-water']) assert.ok(new RegExp(`${k}:#`).test(tok.forced), `🔴 DK-map: ${k} has a dark value`);
+});
+// ── §2.5 CappTheme: the one theme source for the JS surfaces ──
+function fakeWin(dark, attr = null) {
+  const ls = new Set(), vis = new Set(); let d = dark;
+  const mq = { get matches() { return d; }, addEventListener: (t, f) => { if (t === 'change') ls.add(f); }, removeEventListener: (t, f) => ls.delete(f) };
+  const doc = { visibilityState: 'visible', documentElement: { getAttribute: (k) => (k === 'data-theme' ? attr : null) }, addEventListener: (t, f) => { if (t === 'visibilitychange') vis.add(f); }, removeEventListener: (t, f) => vis.delete(f) };
+  return { win: { matchMedia: () => mq, document: doc }, flip: (v) => { d = v; for (const f of [...ls]) f(); }, silentFlip: (v) => { d = v; }, wake: () => { for (const f of [...vis]) f(); }, ls, vis };
+}
+test('CappTheme: the OS preference (fail-safe light), an explicit data-theme wins, change notifies ONCE per real change, a wake re-reads, unsubscribe detaches', () => {
+  const require = createRequire(import.meta.url), T = require('./capp-theme.js');
+  assert.equal(T.isDark(fakeWin(true).win), true); assert.equal(T.isDark(fakeWin(false).win), false);
+  assert.equal(T.isDark(fakeWin(false, 'dark').win), true, 'a manual dark wins'); assert.equal(T.isDark(fakeWin(true, 'light').win), false, 'a manual light wins');
+  assert.equal(T.isDark({ matchMedia: () => { throw new Error('x'); } }), false, '🔴 DK-theme: a throwing matchMedia ⇒ light'); assert.equal(T.isDark(null), false);
+  const f = fakeWin(false), seen = [];
+  const un = T.subscribe(f.win, (v) => seen.push(v));
+  f.flip(true); f.flip(true); f.flip(false);
+  assert.deepEqual(seen, [true, false], '🔴 DK-theme: one call per real change');
+  f.silentFlip(true); f.wake(); assert.deepEqual(seen, [true, false, true], '🔴 DK-theme: a wake (the media event lost while backgrounded) re-reads');
+  un(); assert.equal(f.ls.size + f.vis.size, 0, '🔴 DK-theme: unsubscribe detaches both listeners');
+  assert.equal(T.mapStyles(fakeWin(true).win), T.MAP_DARK); assert.equal(T.mapStyles(fakeWin(false).win), null);
+});
+

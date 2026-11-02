@@ -42,6 +42,11 @@
     if (o.runtime && o.runtime.store) { try { const SC = o.SherpaClient || g.SherpaClient; if (SC && !SC.inert && typeof SC.registerAdapter === 'function') SC.registerAdapter({ canReload: () => false, notice: () => {} }); } catch (_) {} }
     const CappCheckout = pick(o, 'CappCheckout', './capp-checkout.js'), CappDeviceAccount = pick(o, 'CappDeviceAccount', './capp-device-account.js');
     const win = o.win || doc.defaultView;
+    // capp-dark §3: the shell's own live map (the Inicio pin editor) follows the OS — one subscription, the same instance restyled
+    const Theme = o.CappTheme || g.CappTheme || null;
+    const themeStyles = () => (Theme && win ? Theme.mapStyles(win) : null);
+    let pinMapRef = () => null;
+    const unTheme = Theme && win ? Theme.subscribe(win, () => { const pm = pinMapRef(); if (pm && pm.m && typeof pm.m.setOptions === 'function') { try { pm.m.setOptions({ styles: themeStyles() }); } catch (_) {} } }) : null;
     const storage = o.storage !== undefined ? o.storage : (() => { try { return win.localStorage; } catch (_) { return null; } })();
     // state 4 (MOCKUP-capp-native-store-update): the INSTALLED app on a NEW build (its stamp vs the last build this device ran) ⇒ the
     // cart says «App actualizada…» once (closed ⇒ gone); the device's build is recorded at once (a reopen is never «updated» again)
@@ -781,6 +786,7 @@
     function openExternal(url) { try { if (win && typeof win.open === 'function') win.open(url, '_blank', 'noopener'); } catch (_) {} }
     // ── the location layers ──
     let pinGen = 0, pinMap = null, pinDraft = null;
+    pinMapRef = () => pinMap;
     function renderLayer() {
       const L = $('layer'); if (!L) return;
       pinGen++; pinMap = null;   // any open pin map is obsolete
@@ -794,7 +800,7 @@
       const gen = pinGen;
       p.then((gm) => {
         if (dead || gen !== pinGen || !el.isConnected) return;
-        const m = new gm.Map(el, { center, zoom: 17, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy', keyboardShortcuts: true });
+        const m = new gm.Map(el, { center, zoom: 17, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy', keyboardShortcuts: true, styles: themeStyles() });   // capp-dark §3
         pinMap = { gen, m };
         m.addListener('idle', () => { if (gen !== pinGen || dead) return; const c = m.getCenter(); if (c) pinDraft = { lat: c.lat(), lng: c.lng() }; });
       }).catch(() => {});
@@ -931,7 +937,7 @@
       // §4c for the sign-in flow (G6): set the marker at sign-in; ONLY «Cerrar sesión y olvidar este teléfono» / deletion forgets it
       rememberAccount: (e164) => CappDeviceAccount.remember(storage, e164), forgetAccount: () => CappDeviceAccount.forget(storage),
       destroy() {
-        dead = true; clearTokenTimers(); stopOrder(); unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
+        dead = true; clearTokenTimers(); stopOrder(); if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} } unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
         doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('visibilitychange', onVisible); nav.destroy();
       },
     };

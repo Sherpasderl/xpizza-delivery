@@ -89,13 +89,15 @@
     let t = Math.max(0, Math.min(1, p)) * L; for (const s of segs) { if (t <= s.d) { const k = t / s.d; return [s.a[0] + (s.b[0] - s.a[0]) * k, s.a[1] + (s.b[1] - s.a[1]) * k]; } t -= s.d; }
     return ROUTE[ROUTE.length - 1];
   }
+  // capp-dark (PLAN §3): v6's light / dark values live in the --map-* tokens (capp.css, three forms) and the route is the ink — the
+  // map follows the OS live; `dark` is kept for the call shape only
   function mapSvg(dark, route) {
-    const road = dark ? '#2E3A30' : '#FFFFFF', minor = dark ? '#283329' : '#F4F6F1', park = dark ? '#243227' : '#DCE6D4', water = dark ? '#1C2A33' : '#D6E4EA';
-    const line = route ? `<polyline points="${ROUTE.map(([x, y]) => x + ',' + y).join(' ')}" fill="none" stroke="${dark ? '#EDF1F8' : '#0D1424'}" stroke-width="1.1" stroke-dasharray="1 2.6" stroke-linecap="round" vector-effect="non-scaling-stroke" style="stroke-width:3px"/>` : '';
+    const road = 'var(--map-road)', minor = 'var(--map-minor)', park = 'var(--map-park)', water = 'var(--map-water)';
+    const line = route ? `<polyline points="${ROUTE.map(([x, y]) => x + ',' + y).join(' ')}" fill="none" stroke-width="1.1" stroke-dasharray="1 2.6" stroke-linecap="round" vector-effect="non-scaling-stroke" style="stroke:var(--ink);stroke-width:3px"/>` : '';
     return `<svg class="mapsvg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-    <rect x="62" y="56" width="30" height="26" rx="3" fill="${park}"/><path d="M-5 92 C 20 80, 40 96, 70 86 S 100 76, 110 84 L110 110 L-5 110 Z" fill="${water}"/>
-    <g stroke="${minor}" stroke-width="1.6" stroke-linecap="round" vector-effect="non-scaling-stroke">${[10, 34, 56, 78].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}${[10, 36, 62, 86].map((x) => `<path d="M${x} -5V105"/>`).join('')}</g>
-    <g stroke="${road}" stroke-width="3.4" stroke-linecap="round" fill="none">${[22, 50, 74].map((x) => `<path d="M${x} -5V105"/>`).join('')}${[22, 42, 64].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}<path d="M-5 100 L45 60 L105 20"/></g>${line}</svg>`;
+    <rect x="62" y="56" width="30" height="26" rx="3" style="fill:${park}"/><path d="M-5 92 C 20 80, 40 96, 70 86 S 100 76, 110 84 L110 110 L-5 110 Z" style="fill:${water}"/>
+    <g style="stroke:${minor}" stroke-width="1.6" stroke-linecap="round" vector-effect="non-scaling-stroke">${[10, 34, 56, 78].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}${[10, 36, 62, 86].map((x) => `<path d="M${x} -5V105"/>`).join('')}</g>
+    <g style="stroke:${road}" stroke-width="3.4" stroke-linecap="round" fill="none">${[22, 50, 74].map((x) => `<path d="M${x} -5V105"/>`).join('')}${[22, 42, 64].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}<path d="M-5 100 L45 60 L105 20"/></g>${line}</svg>`;
   }
 
   // o: { order_id, display_number?, mode, status, storeName, branch, storeAddr, lines: [{ n, name, extras, total }], fee, tip, total,

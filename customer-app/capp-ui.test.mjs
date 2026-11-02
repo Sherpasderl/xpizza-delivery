@@ -1017,6 +1017,30 @@ function gmaps(w, gc) {
   if (gc) w.google.maps.Geocoder = class { geocode(req, cb) { gc.push({ at: J(req.location), reply: (results, status = 'OK') => cb(results, status) }); } };   // S2b-geo: the test releases each reply
   return maps;
 }
+// capp-dark §3 (PLAN r2): the live Google maps follow the OS — built with the theme's styles, restyled IN PLACE on a change (the same
+// instance: camera / pin untouched), never a render, never a requote
+test('capp-dark §3: the checkout map is built with the OS theme\'s styles and restyled in place on a flip — the same instance, the same DOM, no new map, no requote', async () => {
+  let maps, flip, listeners;
+  const b = bootCo({ config: { mapsKey: 'k_test' }, pre: (w) => {
+    maps = gmaps(w); const Map0 = w.google.maps.Map;
+    w.google.maps.Map = class extends Map0 { constructor(el, o) { super(el, o); this.styles = o.styles; this.sets = []; } setOptions(o) { this.sets.push(o); if ('styles' in o) this.styles = o.styles; } };
+    let dark = true; const ls = new Set(); listeners = ls;
+    w.matchMedia = (q) => ({ get matches() { return q === '(prefers-color-scheme: dark)' && dark; }, addEventListener: (t, f) => ls.add(f), removeEventListener: (t, f) => ls.delete(f) });
+    flip = (v) => { dark = v; for (const f of [...ls]) f(); };
+    w.eval(readFileSync(join(HERE, 'capp-theme.js'), 'utf8'));
+  } });
+  await toCheckout(b); await settle(); await settle();
+  const T = b.w.CappTheme, m = maps.at(-1);
+  assert.ok(m, 'premise: the checkout map'); assert.equal(m.styles, T.MAP_DARK, '🔴 DK-map: built dark on a dark OS');
+  const n0 = maps.length, flow0 = b.q('#flow'), quotes0 = b.srv.of('quoteOrder').length;
+  flip(false); await settle();
+  assert.equal(m.styles, null, '🔴 DK-map: light after the flip'); assert.equal(m.sets.length, 1, 'one setOptions');
+  flip(true); await settle();
+  assert.equal(m.styles, T.MAP_DARK, '🔴 DK-map: dark again');
+  assert.equal(maps.length, n0, '🔴 DK-map: no new map instance'); assert.equal(b.q('#flow'), flow0, '🔴 DK-map: the same DOM (no render)');
+  assert.equal(b.srv.of('quoteOrder').length, quotes0, '🔴 DK-map: no requote');
+  b.ui.destroy(); assert.equal(listeners.size, 0, '🔴 DK-map: destroy DETACHES the theme listener (never a leak)'); flip(false); await settle(); assert.equal(m.sets.length, 2, 'after destroy nothing restyles');
+});
 test('S2b r1 P1-2: «Listo» confirms the ACTIVE map\'s centre at the tap (no idle yet); an obsolete map\'s late idle never moves the pin or the preview', async () => {
   let maps;
   const b = bootCo({ config: { mapsKey: 'k_test' }, pre: (w) => { maps = gmaps(w); } });
