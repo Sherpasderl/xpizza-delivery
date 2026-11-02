@@ -168,9 +168,19 @@ const itemBy = (s, pred) => s.items.find(pred);
   // ── 8. it never publishes and never touches anything but meta/source ──
   {
     const src = fs.readFileSync(require.resolve('./migrate-menu-structure'), 'utf8');
-    assert.ok(!/publishVersion|active_version|seedSourceStore/.test(src.replace(/^\s*\/\/.*$/gm, '')), 'no publish, no pointer, no whole-source seed');
-    assert.ok(/process\.argv\.includes\('--write'\)/.test(src) && !/--apply/.test(src), 'the write is opt-in, the default is a dry run');
-    ok('scope: no publish, no active_version, no seedSourceStore; --write opt-in, dry run by default');
+    // the --write path (the DRAFT migration) never publishes: checked on the --write functions' OWN source. The separate, owner-run
+    // --publish mode (PROPOSAL-plan4-migration-publish-path.md, advisor 2026-11-02) does publish — LIVE + absent rows, with a CAS —
+    // and is proven in migrate-menu-structure-publish.test.js; it never reads the draft (it captures the active version).
+    const M = require('./migrate-menu-structure');
+    for (const fn of [M.planMigration, M.migrateRestaurant, M.migrateMenuStructure]) {
+      assert.ok(!/publishVersion|active_version|getActiveVersionId|previewVersion|seedSourceStore/.test(String(fn)), `${fn.name}: the --write path must not publish, read the pointer or seed`);
+    }
+    assert.ok(!/seedSourceStore/.test(src.replace(/^\s*\/\/.*$/gm, '')), 'no whole-source seed anywhere in the tool');
+    assert.ok(/publishVersion\(db, rid, next, \{ mirror, expected: \{ activeVersionId: versionId \} \}\)/.test(String(M.publishRestaurant)), 'the --publish path publishes WITH the activeVersionId CAS');
+    assert.ok(/process\.argv\.includes\('--write'\)/.test(src), 'the draft write is opt-in (--write), the default is a dry run');
+    // --apply exists ONLY for --publish (the owner's publish): alone it refuses, and --write + --publish together refuse
+    assert.ok(/if \(APPLY && !PUBLISH\) \{[^}]*REFUSED/.test(src) && /if \(WRITE && PUBLISH\) \{[^}]*REFUSED/.test(src), '--apply only with --publish; --write and --publish never together');
+    ok('scope: the --write path never publishes / reads the pointer / seeds; --publish publishes only WITH the activeVersionId CAS; --write opt-in, --apply only with --publish, dry run by default');
   }
 
   FINISHED = true;

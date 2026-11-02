@@ -83,7 +83,73 @@ async function migrateMenuStructure(db, data, opts = {}) {
   return out;
 }
 
-module.exports = { planMigration, migrateRestaurant, migrateMenuStructure, MAX_TRIES };
+// ── --publish: the ADMIN publish of LIVE + the reviewed rows (PROPOSAL-plan4-migration-publish-path.md, advisor-approved 2026-11-02).
+// §8.2's «the owner publishes once through the portal» cannot work: every portal publish goes through compareToActive
+// (catalog/add-product.js:402), which refuses a new structure field (:568) and any display change on an existing dish (:422-427) —
+// exactly what this migration adds. So, the Portal 1A Task 8 pattern (tools/migrate-catalog-display.js): the candidate is the
+// LIVE version — projected to a source document exactly as «Volver al menú publicado» projects it (catalog/reset-draft.js:46) —
+// plus ONLY the rows whose field is ABSENT live. Never the draft (a merchant's pending edits must not ride along), never the code
+// tables (prices come from what is live). It publishes with an activeVersionId CAS (a concurrent publish refuses), and a run with
+// nothing to add is `already_current` — no new version, no fence advance (the publish-version.js E-1 lesson).
+const PUBLISH_SHA = 'plan4-migrate-publish';
+const refusePublish = (code, detail) => { const e = new Error(`${code}: ${detail}`); e.code = code; throw e; };
+
+async function captureLiveSource(db, rid) {
+  const { getActiveVersionId } = require('../catalog/catalog-firestore');
+  const { previewVersion } = require('../catalog/catalog-publish');
+  const { candidateSource } = require('../catalog/candidate-validate');
+  const versionId = await getActiveVersionId(db, rid);
+  if (versionId == null) refusePublish('publish_refused_no_active_version', `${rid} — nothing is published`);
+  // fail closed on photos: publishVersion carries a photo map only when its input brings one; this path brings none, so a live
+  // version that HAS one would lose it. Photos are dark at this train — the refusal states it if that ever changes.
+  const photos = await db.collection('restaurants').doc(rid).collection('versions').doc(versionId).collection('meta').doc('photos').get();
+  if (photos.exists && Object.keys(photos.data() || {}).length) refusePublish('publish_refused_active_photos', `${rid}/${versionId} carries a photo map; this path would drop it`);
+  const preview = await previewVersion(db, rid, versionId);
+  const source = canonicalize(candidateSource(rid, { items: preview.items, extras: preview.extras, structure: preview.structure }));
+  validateSource(source, rid);
+  return { versionId, source };
+}
+function publishInputOf(rid, source) {
+  const { buildSourceCandidate } = require('../catalog/candidate-validate');
+  const { inputs, built } = buildSourceCandidate(rid, source);
+  return { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha: PUBLISH_SHA };
+}
+// The candidate may differ from live ONLY by the added fields: strip exactly them and the two must be canonically EQUAL —
+// prices, keys, order, categories, gates, every other display field. Anything else refuses before a write.
+function assertOnlyAdded(rid, liveIn, nextIn, added) {
+  const strip = clone(nextIn);
+  for (const at of added) {
+    const m = /^structure\.(.+)$/.exec(at) || null;
+    if (m) { delete strip.structure[m[1]]; continue; }
+    const r = /^(item|extra)\[(.+)\]\.display\.(.+)$/.exec(at);
+    if (!r) refusePublish('publish_refused_unexpected_delta', `${rid} — unrecognised added path ${at}`);
+    const rec = (r[1] === 'item' ? strip.items : strip.extraRecords).find((x) => x && x.key === r[2]);
+    if (!rec || !rec.display) refusePublish('publish_refused_unexpected_delta', `${rid} — ${at} has no record in the candidate`);
+    delete rec.display[r[3]];
+  }
+  if (!same(strip, liveIn)) refusePublish('publish_refused_unexpected_delta', `${rid} — the candidate differs from live beyond the ${added.length} migrated field(s)`);
+}
+
+async function publishRestaurant(db, rid, rows, { apply = false, mirror } = {}) {
+  const { versionId, source } = await captureLiveSource(db, rid);
+  const plan = planMigration(rid, source, rows);   // the SAME absent-only planner as --write; validateSource inside
+  const report = { rid, liveVersion: versionId, added: plan.added, preserved: plan.preserved, missing: plan.missing, published: null, outcome: null };
+  if (!plan.added.length) { report.outcome = 'already_current'; return report; }
+  const next = publishInputOf(rid, plan.source);
+  assertOnlyAdded(rid, publishInputOf(rid, source), next, plan.added);
+  if (!apply) { report.outcome = 'dry_run'; return report; }
+  const { publishVersion } = require('../catalog/catalog-publish');
+  const res = await publishVersion(db, rid, next, { mirror, expected: { activeVersionId: versionId } });   // CAS: a concurrent publish refuses
+  report.published = res.versionId; report.outcome = 'published';
+  return report;
+}
+async function publishMenuStructure(db, data, opts = {}) {
+  const out = [];
+  for (const rid of Object.keys((data && data.restaurants) || {}).sort()) out.push(await publishRestaurant(db, rid, data.restaurants[rid], opts));
+  return out;
+}
+
+module.exports = { planMigration, migrateRestaurant, migrateMenuStructure, MAX_TRIES, captureLiveSource, publishRestaurant, publishMenuStructure, assertOnlyAdded };
 
 if (require.main === module) {
   try { require('dotenv').config(); } catch (_) { /* devDependency */ }
@@ -92,9 +158,30 @@ if (require.main === module) {
   const { RTDB_URL } = require('../catalog/mirror-rtdb');
   const DATA = require('./migrations/2026-10-26-menu-structure.json');
   const WRITE = process.argv.includes('--write');
+  const PUBLISH = process.argv.includes('--publish'); const APPLY = process.argv.includes('--apply');
+  if (WRITE && PUBLISH) { console.error('menu structure migration: REFUSED — --write (the draft) and --publish (live) are separate runs'); process.exit(2); }
+  if (APPLY && !PUBLISH) { console.error('menu structure migration: REFUSED — --apply belongs to --publish'); process.exit(2); }
   // THE PROJECT GUARD, before anything resolves a credential or constructs a client: --project is mandatory.
   const PROJECT_ID = requireProject({ requireFlag: true });
   admin.initializeApp({ credential: admin.credential.applicationDefault(), projectId: PROJECT_ID, databaseURL: RTDB_URL });
+  if (PUBLISH) {
+    // node tools/migrate-menu-structure.js --project xpizza-delivery --publish [--apply]   (DRY by default; --apply is the OWNER's)
+    const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
+    console.log(APPLY ? 'MENU STRUCTURE PUBLISH — PUBLISHING live + the absent rows (owner)' : 'MENU STRUCTURE PUBLISH — DRY RUN (publishes nothing)');
+    publishMenuStructure(admin.firestore(), DATA, { apply: APPLY, mirror: makeRtdbMirror(admin.database()) })
+      .then((reports) => {
+        for (const r of reports) {
+          console.log(`  ${r.rid} (live ${r.liveVersion}): ${r.outcome}${r.published ? ` → ${r.published}` : ''}; ${r.added.length} to add; ${r.preserved.length} live value(s) preserved; ${r.missing.length} row(s) with no target; prices / keys / order identical to live (asserted)`);
+          for (const p of r.added) console.log(`    + ${p}`);
+          for (const p of r.preserved) console.log(`    = ${p.path} kept ${JSON.stringify(p.have)} (data says ${JSON.stringify(p.want)})`);
+          for (const p of r.missing) console.log(`    ? ${p} — not live, skipped`);
+        }
+        console.log(APPLY ? 'NEXT: «Volver al menú publicado» per brand (the draft must carry the published fields), then the read-only getPublicMenu verify, then form-bundle-live-check.' : 'nothing published. --apply is the owner\'s.');
+        process.exit(0);
+      })
+      .catch((e) => { console.error('menu structure publish failed (nothing published for the restaurant that failed):', e && e.message); process.exit(1); });
+    return;
+  }
   console.log(WRITE ? 'MENU STRUCTURE MIGRATION — WRITING the source store (nothing is published)' : 'MENU STRUCTURE MIGRATION — DRY RUN (writes nothing)');
   migrateMenuStructure(admin.firestore(), DATA, { write: WRITE, log: (l) => console.log(l) })
     .then((reports) => {
