@@ -45405,7 +45405,7 @@
   },
   {
    "id": "xpizza-portal/photo-contract-fake.mjs#createPhotoFake#items#0",
-   "line": 64,
+   "line": 56,
    "kind": "destructure",
    "facts": [
     "ITEMS"
@@ -45415,7 +45415,7 @@
   },
   {
    "id": "xpizza-portal/photo-contract-fake.mjs#getEditableCatalog#items#0",
-   "line": 156,
+   "line": 148,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45425,7 +45425,7 @@
   },
   {
    "id": "xpizza-portal/photo-contract-fake.mjs#getEditableCatalog#items#1",
-   "line": 156,
+   "line": 148,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45435,7 +45435,7 @@
   },
   {
    "id": "xpizza-portal/photo-contract-fake.mjs#editCatalog#items#0",
-   "line": 178,
+   "line": 169,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45445,7 +45445,17 @@
   },
   {
    "id": "xpizza-portal/photo-contract-fake.mjs#editCatalog#items#1",
-   "line": 178,
+   "line": 169,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/photo-contract-fake.mjs#restOfCatalog#items#0",
+   "line": 190,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45455,7 +45465,7 @@
   },
   {
    "id": "xpizza-portal/photo-contract-fake.mjs#editCatalog#items#2",
-   "line": 197,
+   "line": 191,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45465,17 +45475,7 @@
   },
   {
    "id": "xpizza-portal/photo-contract-fake.mjs#editCatalog#items#3",
-   "line": 198,
-   "kind": "member",
-   "facts": [
-    "ITEMS"
-   ],
-   "rule": "page-fn",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-portal/photo-contract-fake.mjs#editCatalog#items#4",
-   "line": 200,
+   "line": 191,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45485,7 +45485,7 @@
   },
   {
    "id": "xpizza-portal/photo-contract-fake.mjs#publishEdited#items#0",
-   "line": 218,
+   "line": 210,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45495,7 +45495,7 @@
   },
   {
    "id": "xpizza-portal/photo-contract-fake.mjs#getBranchAvailability#items#0",
-   "line": 225,
+   "line": 217,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45505,7 +45505,7 @@
   },
   {
    "id": "xpizza-portal/photo-contract-fake.mjs#diffOf#items#0",
-   "line": 251,
+   "line": 243,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45515,7 +45515,7 @@
   },
   {
    "id": "xpizza-portal/photo-contract-fake.mjs#diffOf#items#1",
-   "line": 252,
+   "line": 244,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45525,7 +45525,7 @@
   },
   {
    "id": "xpizza-portal/photo-contract-fake.mjs#send#status#0",
-   "line": 293,
+   "line": 285,
    "kind": "member",
    "facts": [
     "STATUS",

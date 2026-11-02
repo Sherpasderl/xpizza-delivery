@@ -187,9 +187,9 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
       const catsRaw = src.structure && Array.isArray(src.structure.categories) ? src.structure.categories : null;
       if (catsRaw && JSON.stringify(catsRaw) !== JSON.stringify(ac)) {
         const noNames = (cs) => cs.map((c) => { if (!c || typeof c !== 'object') return c; const { name, ...rest } = c; return rest; });
-        const rest = (s0, cs, photos) => JSON.stringify({ items: s0.items, extras: s0.extras || [], structure: { ...s0.structure, categories: noNames(cs) }, photos: photos || {} });
+        const restOfCatalog = (s0, cs, photos) => JSON.stringify({ items: s0.items, extras: s0.extras || [], structure: { ...s0.structure, categories: noNames(cs) }, photos: photos || {} });
         const published = { items: fake.active.items, extras: [], structure: { schema_version: 2, item_order: fake.active.items.map(keyOf), categories: ac } };
-        if (rest(src, catsRaw, own(src, 'photos') ? src.photos : {}) !== rest(published, ac, fake.active.photos)) {
+        if (restOfCatalog(src, catsRaw, own(src, 'photos') ? src.photos : {}) !== restOfCatalog(published, ac, fake.active.photos)) {
           return err(400, 'unmodeled_change', { detail: 'the fake accepts a category change only as a pure rename of an otherwise unchanged published catalog (stricter than production)', field: 'categories' });
         }
       }
