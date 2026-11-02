@@ -51,6 +51,7 @@
   "review.js",
   "review.test.mjs",
   "shell-dom.test.mjs",
+  "shell-wait.test.mjs",
   "shell.js",
   "shell.test.mjs",
   "sherpa-client.js",
@@ -79,8 +80,8 @@
    "bytes": 5860
   },
   "aceptar.html": {
-   "sha256": "61969eab310869f106e327c6c807f696d6f3fd0a365575ad19be2987b810c9d0",
-   "bytes": 5819
+   "sha256": "842f702ac05f7a6684df034902e3570608be3dbcdc9bfc962a6ddca8ce7aee1a",
+   "bytes": 6177
   },
   "index.html": {
    "sha256": "e83de98990fdfdcb6e0511cebec739796bf3a715cba99927d95e1f1d80f4ab75",
@@ -99,8 +100,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "0e8ba21c293a699ba4473d764585dfdb2f34ec7df964b4376d4b5e4945a65d4b",
-   "bytes": 98946
+   "sha256": "1cc04ef786b6449f3167b73b5f3dfdf628f0e74837a28186ac27c9257e982c6b",
+   "bytes": 99081
   }
  },
  "diff_aid": {
