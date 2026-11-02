@@ -9,6 +9,7 @@
 //   4 the production boundary (codex r5 P2): index.js loads no test module and reads exactly the committed file; no production file
 //     references the fixture installer
 //   5 BOTH CLI entrypoints: poisoned legacy env, no dotenv ever opened; the committed config decides
+//   6 the scheduled sweeper (the only deleting path) with a refusing config stays OFF
 // Run: node photos/photos-config-wiring.test.js
 const assert = require('assert');
 const fs = require('fs');
@@ -129,5 +130,23 @@ ok('production boundary: loading index.js loads no test module, the loader reads
   assert.deepStrictEqual(bf.seen, [], `🔴 CLI-BACKFILL-NO-DOTENV opened ${JSON.stringify(bf.seen)}`);
 }
 ok('both CLI entrypoints (spawned, poisoned PHOTOS_* env, a dotenv-open spy): the create-only CLI refuses until a public name is committed, and with one its dry run names exactly the committed buckets; the backfill --apply refuses a project with no committed entry; neither ever opens a dotenv');
+
+// 6. the scheduled SWEEPER (the only path that DELETES; advisor 2026-11-01): driven offline through its real handler (photoSweep.run) with a
+//    REFUSING config → it stays OFF: zero deleters built, zero sweep entries, zero storage use, the refusal logged. Premise: with a resolving
+//    config the same handler does reach the sweep entry (stubbed off — no I/O), so the spies can see it.
+{
+  const SWEEP = "require('./lib/admin'); const S = require('./photos/sweep-io'); const st = require('firebase-admin/storage'); const c = { entry: 0, deleters: 0, storage: 0 };"
+    + " S.sweepEntry = async () => { c.entry += 1; return { mode: 'off' }; }; const md = S.makeGcsDeleter; S.makeGcsDeleter = (...a) => { c.deleters += 1; return md(...a); };"
+    + " const gs = st.getStorage; st.getStorage = (...a) => { c.storage += 1; return gs(...a); };"
+    + " const logs = []; const ce = console.error; console.error = (...a) => { logs.push(a.join(' ')); };"
+    + " const f = require('./photos/functions.js').photoSweep;"
+    + " (async () => { let threw = null; try { await f.run({}); } catch (e) { threw = e.code || e.message; } console.error = ce;"
+    + " console.log('RESULT ' + JSON.stringify({ ...c, threw, refusedLogged: logs.some((l) => /photo_sweep_config_refused/.test(l)) })); process.exit(0); })();";
+  const refused = child({ script: SWEEP, fixture: demoCfg(), env: { GCLOUD_PROJECT: 'tb-proj-z' } }).result;
+  assert.deepStrictEqual(refused, { entry: 0, deleters: 0, storage: 0, threw: null, refusedLogged: true }, `🔴 SWEEP-REFUSED-STAYS-OFF ${JSON.stringify(refused)}`);
+  const resolving = child({ script: SWEEP, fixture: demoCfg(), env: { GCLOUD_PROJECT: DEMO } }).result;
+  assert.deepStrictEqual(resolving, { entry: 1, deleters: 0, storage: 0, threw: null, refusedLogged: false }, `premise — with a resolving config the handler reaches the sweep entry ${JSON.stringify(resolving)}`);
+}
+ok('the scheduled sweeper (photoSweep.run, offline) with a refusing config stays OFF — no sweep entry, no deleter, no storage, the refusal logged; with a resolving config it reaches the sweep entry (premise)');
 
 console.log(`photos-config-wiring: OK (${n})`);
