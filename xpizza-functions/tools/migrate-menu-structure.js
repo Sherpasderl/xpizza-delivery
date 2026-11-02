@@ -105,17 +105,22 @@ async function captureLiveSource(db, rid) {
   const photos = await db.collection('restaurants').doc(rid).collection('versions').doc(versionId).collection('meta').doc('photos').get();
   if (photos.exists && Object.keys(photos.data() || {}).length) refusePublish('publish_refused_active_photos', `${rid}/${versionId} carries a photo map; this path would drop it`);
   const preview = await previewVersion(db, rid, versionId);
+  // the source document «Volver al menú publicado» would write (reset-draft.js:46) — it is ALSO the published payload, unrebuilt:
+  // previewVersion's items / extras / structure ARE the publish input of the live version, canonically (verified on both brands)
   const source = canonicalize(candidateSource(rid, { items: preview.items, extras: preview.extras, structure: preview.structure }));
   validateSource(source, rid);
-  return { versionId, source };
+  return { versionId, source, live: payloadOf(source) };
 }
-function publishInputOf(rid, source) {
-  const { buildSourceCandidate } = require('../catalog/candidate-validate');
-  const { inputs, built } = buildSourceCandidate(rid, source);
-  return { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha: PUBLISH_SHA };
+// Codex r1 P1: the candidate is NEVER rebuilt. Rebuilding (sourceToBuildInputs → buildCatalogV2) drops fields the builder does
+// not carry back (a La Musa pickup_only_cats gate, an extra's has_photo), and comparing two rebuilt sides hid that IDENTICAL loss.
+// So the publish input is the CAPTURED LIVE payload itself, with only the absent rows inserted by planMigration (which clones and
+// adds, nothing else). The extras price table is the live records' own key → price.
+function payloadOf(source) {
+  const extras = {}; for (const e of source.extras || []) extras[e.key] = e.price;
+  return { items: source.items, structure: source.structure, extras, extraRecords: source.extras, source_sha: PUBLISH_SHA };
 }
-// The candidate may differ from live ONLY by the added fields: strip exactly them and the two must be canonically EQUAL —
-// prices, keys, order, categories, gates, every other display field. Anything else refuses before a write.
+// The candidate may differ from the CAPTURED LIVE payload ONLY by the added fields: strip exactly them and the two must be canonically
+// EQUAL — prices, keys, order, categories, gates, has_photo, every other field. Anything else refuses before a write.
 function assertOnlyAdded(rid, liveIn, nextIn, added) {
   const strip = clone(nextIn);
   for (const at of added) {
@@ -131,12 +136,12 @@ function assertOnlyAdded(rid, liveIn, nextIn, added) {
 }
 
 async function publishRestaurant(db, rid, rows, { apply = false, mirror } = {}) {
-  const { versionId, source } = await captureLiveSource(db, rid);
+  const { versionId, source, live } = await captureLiveSource(db, rid);
   const plan = planMigration(rid, source, rows);   // the SAME absent-only planner as --write; validateSource inside
   const report = { rid, liveVersion: versionId, added: plan.added, preserved: plan.preserved, missing: plan.missing, published: null, outcome: null };
   if (!plan.added.length) { report.outcome = 'already_current'; return report; }
-  const next = publishInputOf(rid, plan.source);
-  assertOnlyAdded(rid, publishInputOf(rid, source), next, plan.added);
+  const next = payloadOf(plan.source);
+  assertOnlyAdded(rid, live, next, plan.added);   // stripped candidate vs the CAPTURED live payload (not a rebuild)
   if (!apply) { report.outcome = 'dry_run'; return report; }
   const { publishVersion } = require('../catalog/catalog-publish');
   const res = await publishVersion(db, rid, next, { mirror, expected: { activeVersionId: versionId } });   // CAS: a concurrent publish refuses
@@ -176,7 +181,9 @@ if (require.main === module) {
           for (const p of r.preserved) console.log(`    = ${p.path} kept ${JSON.stringify(p.have)} (data says ${JSON.stringify(p.want)})`);
           for (const p of r.missing) console.log(`    ? ${p} — not live, skipped`);
         }
-        console.log(APPLY ? 'NEXT: «Volver al menú publicado» per brand (the draft must carry the published fields), then the read-only getPublicMenu verify, then form-bundle-live-check.' : 'nothing published. --apply is the owner\'s.');
+        // Codex r1 P1: NOT an unconditional «Volver al menú publicado» — it would discard a merchant's pending edits. The draft gets the
+        // revision-checked, absent-only --write (merchant edits preserved); the reset only for a draft reviewed as disposable.
+        console.log(APPLY ? 'NEXT: `--write` (DRY first) so each DRAFT carries the published fields — absent-only, revision-checked, pending merchant edits kept (NOT a reset); then have anyone with the portal open REFRESH it; then the read-only getPublicMenu verify, then form-bundle-live-check.' : 'nothing published. --apply is the owner\'s.');
         process.exit(0);
       })
       .catch((e) => { console.error('menu structure publish failed (nothing published for the restaurant that failed):', e && e.message); process.exit(1); });

@@ -10,6 +10,7 @@ const { buildSourceCandidate } = require('../catalog/candidate-validate');
 const { buildPublicMenu } = require('../catalog/public-menu');
 const { getActiveVersionId } = require('../catalog/catalog-firestore');
 const { premigrationGaps } = require('../catalog/menu-structure-rows');
+const { canonicalize } = require('../catalog/source-store');
 const { buildSourceFromCode } = require('./seed-source-store');
 const { publishRestaurant, publishMenuStructure, assertOnlyAdded } = require('./migrate-menu-structure');
 const DATA = require('./migrations/2026-10-26-menu-structure.json');
@@ -95,18 +96,26 @@ const priceMap = async (db, rid) => { const v = await getActiveVersionId(db, rid
   // 4 CAS: a publish that lands between the capture and the flip refuses this one; ours writes nothing
   {
     const db = await liveDb();
-    const realPreview = CP.previewVersion; let raced = false;
+    const realPreview = CP.previewVersion; let raced = false; let racer = null;
     CP.previewVersion = async (d, rid, v) => {
       const p = await realPreview(d, rid, v);
-      if (!raced && rid === 'x_pizza') { raced = true; const s = preMigration('x_pizza', clone(buildSourceFromCode('x_pizza'))); const it0 = s.items[0]; it0.price += 1; if (it0.display && it0.display.price !== undefined) it0.display.price = it0.price; await publishSource(d, 'x_pizza', s, v); }
+      if (!raced && rid === 'x_pizza') {
+        raced = true; const s = preMigration('x_pizza', clone(buildSourceFromCode('x_pizza'))); const it0 = s.items[0]; it0.price += 1; if (it0.display && it0.display.price !== undefined) it0.display.price = it0.price;
+        await publishSource(d, 'x_pizza', s, v);
+        racer = { pointer: await pointerOf(d, 'x_pizza'), body: JSON.stringify(await served(d, 'x_pizza')) };
+      }
       return p;
     };
     let threw = null;
     try { await publishRestaurant(db, 'x_pizza', DATA.restaurants.x_pizza, { apply: true }); } catch (e) { threw = e; } finally { CP.previewVersion = realPreview; }
     assert.ok(raced, 'the racing publish ran');
     assert.ok(threw && /flip_cas_stale/.test(threw.message), `a stale activeVersionId must refuse with the CAS (got ${threw && threw.message})`);
-    assert.ok(premigrationGaps('x_pizza', await served(db, 'x_pizza')).length > 0, 'the concurrent publish stands; ours wrote nothing');
-    ok(`CAS: a concurrent publish between capture and flip → refused (${String(threw.message).slice(0, 70)}…); the concurrent version stands, nothing of ours written`);
+    // Codex r1 P2: publishVersion persists the candidate BEFORE the CAS, so a refusal may leave an INACTIVE orphan version
+    // (acceptable: never pointed to, never served). What must hold: the racing version stays ACTIVE, and the pointer (version +
+    // generation fence) and the served snapshot are exactly the racer's.
+    assert.deepStrictEqual(await pointerOf(db, 'x_pizza'), racer.pointer, 'the pointer / generation fence are the racer\'s, unchanged by ours');
+    assert.strictEqual(JSON.stringify(await served(db, 'x_pizza')), racer.body, 'the served snapshot is the racer\'s');
+    ok(`CAS: a concurrent publish between capture and flip → refused (${String(threw.message).slice(0, 60)}…); the racing version stays active, pointer / fence / served snapshot unchanged (an inactive orphan candidate version is acceptable)`);
   }
   // 5 a LIVE value that differs from the data file is a merchant edit: preserved, reported, published as-is
   {
@@ -130,6 +139,37 @@ const priceMap = async (db, rid) => { const v = await getActiveVersionId(db, rid
     await assert.rejects(() => publishRestaurant(db, 'la_musa', bad, { apply: true }), /ghost_badge|badge_priority/);
     assert.deepStrictEqual(await pointerOf(db, 'la_musa'), p0);
     ok('INVALID: a badge_priority naming no badge → validateSource refuses; nothing published');
+  }
+  // R1 (Codex r1 P1, its exact repro): a live La Musa with a pickup_only_cats gate and an extra's has_photo — adding badge_priority
+  // must NOT lose either (the candidate is the captured live payload, never a rebuild)
+  {
+    const db = makeDb(); const rid = 'la_musa';
+    const { inputs, built } = buildSourceCandidate(rid, buildSourceFromCode(rid));
+    delete built.structure.badge_priority;
+    built.structure.pickup_only_cats = [built.structure.categories[0].id];
+    built.extras[0].has_photo = true;
+    const first = await CP.publishVersion(db, rid, { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha: 'review-fixture' }, { expected: { activeVersionId: null } });
+    const before = await CP.previewVersion(db, rid, first.versionId);
+    const r = await publishRestaurant(db, rid, DATA.restaurants[rid], { apply: true });
+    const after = await CP.previewVersion(db, rid, r.published);
+    assert.strictEqual(r.outcome, 'published');
+    assert.deepStrictEqual(after.structure.pickup_only_cats, before.structure.pickup_only_cats, 'the pickup_only_cats gate survives');
+    assert.strictEqual(after.extras[0].has_photo, true, 'the extra\'s has_photo survives');
+    // canonical (key-order-free, as Firestore maps are) — the same comparison the tool's guard makes
+    const strip = (v) => { const c = clone(v); delete c.structure.badge_priority; return JSON.stringify(canonicalize([c.items, c.extras, c.structure])); };
+    assert.strictEqual(strip(after), strip(before), 'apart from the added badge_priority, the new version IS the live payload');
+    ok('REGRESSION (Codex r1 repro): live pickup_only_cats ["' + before.structure.pickup_only_cats.join('","') + '"] + an extra has_photo:true → both survive; the new version = live + badge_priority, nothing else');
+  }
+  // R2 the guard: a candidate that LOSES a live field (identical on a rebuilt pair, different from the captured payload) refuses
+  {
+    const live = { items: [{ key: 'a', price: 1, display: { name: 'A' } }], structure: { item_order: ['a'], pickup_only_cats: ['c1'] }, extras: { e: 5 }, extraRecords: [{ key: 'e', price: 5, display: { name: 'E' }, has_photo: true }], source_sha: 's' };
+    const next = clone(live); next.structure.badge_priority = ['b'];
+    assertOnlyAdded('x', live, next, ['structure.badge_priority']);
+    const lostGate = clone(next); delete lostGate.structure.pickup_only_cats;
+    assert.throws(() => assertOnlyAdded('x', live, lostGate, ['structure.badge_priority']), /publish_refused_unexpected_delta/);
+    const lostPhoto = clone(next); delete lostPhoto.extraRecords[0].has_photo;
+    assert.throws(() => assertOnlyAdded('x', live, lostPhoto, ['structure.badge_priority']), /publish_refused_unexpected_delta/);
+    ok('GUARD vs the captured payload: a lost pickup_only_cats or a lost extra has_photo → publish_refused_unexpected_delta');
   }
   // 7 photos: a live photo map would be dropped → refuse
   {
