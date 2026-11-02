@@ -16545,7 +16545,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund#status#0",
-   "line": 37,
+   "line": 61,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -16558,7 +16558,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund>anon#status#0",
-   "line": 48,
+   "line": 72,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -16571,7 +16571,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund>anon#status#1",
-   "line": 49,
+   "line": 73,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -16584,7 +16584,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund#status#1",
-   "line": 57,
+   "line": 81,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -16597,7 +16597,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund#status#2",
-   "line": 58,
+   "line": 82,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -16610,7 +16610,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund>anon#status#2",
-   "line": 66,
+   "line": 90,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -16618,48 +16618,6 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "server:payment",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund#status#3",
-   "line": 89,
-   "kind": "projection",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "alias": "message",
-   "rule": "server:payment",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund#status#4",
-   "line": 91,
-   "kind": "projection",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "alias": "message",
-   "rule": "server:payment",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund#status#5",
-   "line": 113,
-   "kind": "projection",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "alias": "message",
    "rule": "server:payment",
    "exempt": true
   },
@@ -50250,7 +50208,7 @@
    "file": "xpizza-functions/pixelpay-cancel.js",
    "alias": "message",
    "field": "status",
-   "line": 58,
+   "line": 82,
    "round": 1
   },
   {

@@ -107,7 +107,7 @@ const { unapplyH0Module, FILES: H0_FILES } = require('./tools/h0-inverse');
 const { unapplyA1Module, FILES: A1_FILES } = require('./tools/a1-inverse');
 // BRAND-AGNOSTIC SERVER (r3 §E) is the NEWEST change to pinned modules (materialize.js, pixelpay-confirm.js, resolve-manual.js): its
 // exact module inverse (tools/brand-server-inverse.js, proven by brand-server-wiring.guard) is reversed FIRST.
-const areaRead = (f) => require('./tools/area-inverse').unapplyAreaModule(f, require('./tools/hostedrace-module-inverse').unapplyHostedRaceModule(f, read(f)));   // order colonia (newest; create-order-build.js): reversed FIRST
+const areaRead = (f) => require('./tools/area-inverse').unapplyAreaModule(f, require('./tools/hostedrace-module-inverse').unapplyHostedRaceModule(f, require('./tools/alertsan-module-inverse').unapplyAlertSanModule(f, read(f))));   // order colonia (newest; create-order-build.js): reversed FIRST
 const s2tRead = (f) => { const M = require('./tools/s2tip-module-inverse'); return M.FILES.includes(f) ? M.unapplyS2tipModule(f, areaRead(f)) : areaRead(f); };   // S2-srv-tip: reversed after colonia
 const bsRead = (f) => require('./tools/brand-server-inverse').unapplyBrandServerModule(f, require('./tools/stackseq-module-inverse').unapplyStackseqModule(f, s2tRead(f)));   // DRYRUN R-WIRE (2e): main's stackseq after the capp layers
 const a1Read = (f) => (A1_FILES.includes(f) ? unapplyA1Module(f, bsRead(f)) : bsRead(f));

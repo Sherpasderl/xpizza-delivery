@@ -4372,6 +4372,12 @@
   "materialize.js": {
    "pins": [
     {
+     "file": "xpizza-functions/brand-server-wiring.guard.test.js",
+     "inverses": [
+      "tools/brand-server-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/d12-wiring.guard.test.js",
      "inverses": [
       "tools/brand-server-inverse.js",
@@ -4635,8 +4641,16 @@
   "pixelpay-confirm.js": {
    "pins": [
     {
+     "file": "xpizza-functions/brand-server-wiring.guard.test.js",
+     "inverses": [
+      "tools/alertsan-module-inverse.js",
+      "tools/brand-server-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/d12-wiring.guard.test.js",
      "inverses": [
+      "tools/alertsan-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/d12-inverse.js"
      ]
@@ -4644,7 +4658,7 @@
    ],
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js",
-    "xpizza-functions/brand-server-wiring.guard.test.js",
+    "xpizza-functions/alertsan-wiring.guard.test.js",
     "xpizza-functions/materialize-hub.test.js"
    ]
   },
@@ -4751,6 +4765,12 @@
   "resolve-manual.js": {
    "pins": [
     {
+     "file": "xpizza-functions/brand-server-wiring.guard.test.js",
+     "inverses": [
+      "tools/brand-server-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/d12-wiring.guard.test.js",
      "inverses": [
       "tools/brand-server-inverse.js",
@@ -4768,7 +4788,6 @@
    ],
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js",
-    "xpizza-functions/brand-server-wiring.guard.test.js",
     "xpizza-functions/materialize-hub.test.js",
     "xpizza-functions/recon-close-fulfilled.test.js",
     "xpizza-functions/rewards-reversal-placement.test.js"

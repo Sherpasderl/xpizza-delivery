@@ -166,17 +166,17 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
       await routeManualReconciliation(deps, { orderId, attemptId, uuid, now });
       return { outcome: 'manual_reconciliation' };
     }
-    await attemptRef.update({ status: 'declined', failed_at: now, decline_message: cap.message || 'capture_not_found' });
+    await attemptRef.update({ status: 'declined', failed_at: now, ...require('./pixelpay-cancel').captureDecline('capture_not_found', cap) });
     await orderRef.update({ payment_status: 'failed' });
     await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly
-    return { outcome: 'capture_failed', message: cap.message || 'capture not found' };
+    return { outcome: 'capture_failed', message: require('./pixelpay-cancel').CAPTURE_MESSAGES.capture_not_found };
   }
   if (!cap.ok) {
     // Declined / amount>auth / etc. — no money moved. Open for COD fallback.
-    await attemptRef.update({ status: 'declined', failed_at: now, decline_message: cap.message || null });
+    await attemptRef.update({ status: 'declined', failed_at: now, ...require('./pixelpay-cancel').captureDecline('capture_declined', cap) });
     await orderRef.update({ payment_status: 'failed' });
     await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly
-    return { outcome: 'capture_failed', message: cap.message };
+    return { outcome: 'capture_failed', message: require('./pixelpay-cancel').CAPTURE_MESSAGES.capture_declined };
   }
 
   // ---- 4. Verify the capture response (authoritative, server-obtained binding) ----
