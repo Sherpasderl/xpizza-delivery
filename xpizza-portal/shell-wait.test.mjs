@@ -217,7 +217,7 @@ function storage(seed = {}) {
   globalThis.sessionStorage = { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k),
     key: (i) => [...m.keys()][i] ?? null, get length() { return m.size; } };
 }
-async function shellRun(answer, { seed } = {}) {
+async function shellRun(answer, { seed, catalog } = {}) {
   storage(seed);
   const byId = installDom();
   globalThis.window.location = { reload: () => {} };
@@ -225,6 +225,7 @@ async function shellRun(answer, { seed } = {}) {
   globalThis.__branchesDirect = true;
   installFetch((fn) => {
     if (fn === 'getMyBranches') return typeof answer === 'function' ? answer() : answer;
+    if (fn === 'getEditableCatalog' && catalog) return catalog();
     if (fn === 'getEditableCatalog') return okJson({ source: { restaurant_id: 'r_a', schema_version: 1, items: [], extras: [], structure: { schema_version: 2, item_order: [], categories: [] } }, sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
     if (fn === 'getBranchAvailability') return okJson({ branches: [] });
     return errJson(404, { error: 'not_found' });
@@ -326,4 +327,69 @@ test('one source — the boot-failure card is the portal\'s own outage box: OFFL
   assert.equal(box.querySelector('p').textContent, OFFLINE[1]);
   assert.equal(d.getElementById('gatefailbtn').textContent, 'Reintentar');
   assert.equal(box.getAttribute('role'), 'alert');
+});
+
+// ── Codex r2 (narrow) ────────────────────────────────────────────────────────────────────────────────────────────────
+test('r2 P1 — a held catalog that answers AFTER a render failure never repaints the menu over the retry box', async () => {
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const menu = { source: { restaurant_id: 'r_a', schema_version: 1, items: [{ key: 'Margarita', price: 280, display: { name: 'Margarita', cat: 'cl', price: 280 } }], extras: [],
+    structure: { schema_version: 2, item_order: ['Margarita'], categories: [{ id: 'cl', name: 'Clásicas' }] } }, sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false };
+  const fresh = E1([row('r_a')]);
+  Object.defineProperty(fresh.brands[0], 'name', { get() { throw new Error('render boom'); }, enumerable: true });
+  const ce = console.error; console.error = () => {};
+  try {
+    const { byId } = await shellRun(okJson(fresh), { seed: { 'sherpa.portal.branches.uSw': JSON.stringify(E1([row('r_a')])) }, catalog: () => held.then(() => okJson(menu)) });
+    const box = () => byId.get('detail').children.find((c) => /errbox/.test(c._class));
+    assert.ok(box(), 'premise: the render failure shows the retry box (the cached boot had started the editor load)');
+    release(); await settle(30);
+    assert.ok(box(), 'the late catalog answer is dropped: the retry box stays');
+  } finally { console.error = ce; }
+});
+
+test('r2 P2 — the auth deadline is not «signed out»: a late valid user takes over into the wait state, focus on the wait line', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { d, signIn } = await bootPage({ hint: true });
+  t.mock.timers.tick(6000);
+  assertFormCard(d);
+  signIn();
+  assertWaitCard(d);
+  assert.equal(d.activeElement, d.getElementById('gatewait'), 'focus is not left on a hidden field');
+});
+
+test('r2 P2 — a boot that starts AFTER the boot deadline takes over cleanly: a page with a session goes to the wait card, not the form; focus follows', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { w, d } = pageDom({ hint: true });
+  t.mock.timers.tick(10000);
+  assert.ok(shown(d, 'gatefail'), 'premise: the recovery card');
+  await loadBoot(w);   // the slow module graph finally runs
+  assertWaitCard(d);
+  assert.equal(d.activeElement, d.getElementById('gatewait'), 'focus leaves the hidden «Reintentar»');
+  globalThis.__authCb(null);
+  assertFormCard(d);
+  assert.equal(d.activeElement, d.getElementById('email'));
+});
+
+test('r2 P2 — a late boot on a page WITHOUT a session takes over into the form, focus on the email', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { w, d } = pageDom();
+  t.mock.timers.tick(10000);
+  assert.ok(shown(d, 'gatefail'));
+  await loadBoot(w);
+  assertFormCard(d);
+  assert.equal(d.activeElement, d.getElementById('email'));
+});
+
+test('r2 P2 — the boot deadline firing before the button exists still gives a WORKING «Reintentar» (delegated)', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { w, d } = pageDom();
+  const btn = d.getElementById('gatefailbtn');
+  const parent = btn.parentNode, next = btn.nextSibling;
+  btn.remove();                      // the head script's timer fires before the body is parsed
+  t.mock.timers.tick(10000);
+  parent.insertBefore(btn, next);    // the body arrives
+  let reloaded = 0;
+  w.__portalReload = () => { reloaded += 1; };
+  btn.click();
+  assert.equal(reloaded, 1);
 });

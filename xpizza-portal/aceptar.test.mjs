@@ -336,3 +336,23 @@ test('R4 deadline: a preview that settles in time — the deadline firing later 
   t.fn(); await tick();
   assert.deepStrictEqual(r.visible(), ['st-email'], 'still the email stage');
 });
+
+test('r2 P2 — invite «Reintentar» after a deadline: the loading line again, its OWN deadline, and a late answer of either attempt never repaints', async () => {
+  let release2;
+  const second = new Promise((r) => { release2 = r; });
+  const r = rig({});
+  let n = 0;
+  r.deps.api.preview = () => { n += 1; return n === 1 ? new Promise(() => {}) : second.then(() => OPEN); };
+  r.start(); await tick();
+  r.calls.timers.find((x) => x.ms === LOAD_DEADLINE_MS).fn(); await tick();
+  assert.deepStrictEqual(r.visible(), ['st-error'], 'premise: the first attempt timed out');
+  r.calls.timers.length = 0;
+  await r.click('err-action');      // «Reintentar»
+  assert.ok(!r.$('st-loading').hidden, 'the loading line is back for the second attempt');
+  const t2 = r.calls.timers.find((x) => x.ms === LOAD_DEADLINE_MS);
+  assert.ok(t2, 'the second attempt has its own deadline');
+  t2.fn(); await tick();
+  assert.deepStrictEqual(r.visible(), ['st-error']);
+  release2(); await tick();
+  assert.deepStrictEqual(r.visible(), ['st-error'], 'the late second answer is dropped');
+});
