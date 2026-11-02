@@ -18,7 +18,7 @@ const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { seedCatalog } = require('../catalog/seed-catalog-core');
 const { readFlatMenu } = require('../catalog/catalog-menu');   // 1A: the FLAT layout is read by name; getRestaurantMenu serves versions only
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
-const { generateFormBundle, generateKdsManifest, serialize } = require('../catalog/generate-form-bundle');
+const { generateFormBundle, generateKdsManifest, serialize } = require('../catalog/generate-form-bundle'); const { composeServedMenu } = require('../catalog/public-menu');   // PLAN 4 (A): the committed bundle is the PUBLISHED shape (catalog-form-bundle.test.js)
 
 admin.initializeApp({ projectId: 'demo-xpizza' });
 const db = admin.firestore();
@@ -46,7 +46,7 @@ const R = (over = {}) => ({
   for (const rid of ['x_pizza', 'la_musa']) {
     const snap = await readFlatMenu(db, rid);
     assert.notStrictEqual(snap.items, V2[rid].items, 'the records really came from Firestore');
-    const fresh = serialize(generateFormBundle(rid, snap));
+    const fresh = serialize(composeServedMenu(rid, snap));   // the generator's bundle + the structure's carried fields, as PLAN 4 commits it
     assert.strictEqual(fresh, readFileSync(BUNDLE_PATH[rid], 'utf8'),
       `${rid}: bundle generated off the REAL catalog read == the committed menu-bundle.generated.json`);
     ok(`bundle ${rid}: generated off the REAL Firestore catalog read == the committed artifact (byte-identical)`);
