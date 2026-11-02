@@ -210,10 +210,9 @@
         onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) { keepHandoff(entry.rid); openExternal(runtime.store.url); } return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
       S.store = { rid: entry.rid, ui, entry, body: e.body, fp: null, adopt: null };
       watchMenu(S.store);
-      let snap = carried || readJ(cfg.cartKey);
+      const snap = carried || readJ(cfg.cartKey); if (snap) ui.restore(snap);   // an adoption carries the IN-MEMORY cart (Codex s7a2 r1 #1)
       const ro = !carried && S.reorder && S.reorder.rid === entry.rid ? S.reorder : null;
-      if (ro) { S.reorder = null; if (!cartLocked(cfg)) { snap = { ...reorderSnap(ui.menu, ro.lines, snap), rid: entry.rid }; S.reorderOpen = entry.rid; } }   // «Volver a pedir»: replaces the cart (v6)
-      if (snap) ui.restore(snap);   // an adoption carries the IN-MEMORY cart (Codex s7a2 r1 #1)
+      if (ro) { S.reorder = null; applyReorder(S.store, cfg, ro); }   // «Volver a pedir»: replaces the cart (v6) — in the cart's critical section
       if (entry.dish) ui.openDetail(entry.dish);
       // the return's AUTHORITATIVE outcome settles the stored handoff (S7a-1 r3 §2 / r3.1 N3: never on anything else)
       // …and the association is KEPT: a LATER terminal outcome of this store (a status read, a recovery) settles it too (Codex s7a2 r1 #4)
@@ -508,7 +507,7 @@
     const nav = CappShellNav.createShellNav({ win, home: { name: 'home' },
       onShow: (entry, x) => {
         if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link
-        if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } else if (S.reorderOpen === entry.rid && S.store) { S.reorderOpen = null; S.store.ui.openCart(); toast('Pedido cargado en tu carrito'); } reflect(); return; }
+        if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } reflect(); return; }
         if (entry.name !== 'store') S.reorder = null;   // the customer went elsewhere: a held «Volver a pedir» is void
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
         if (entry.name === 'receipt') { if (!openReceipt(entry.oid)) { T.setTimeout(() => nav.tab({ name: 'orders' }), 0); return; } S.tab = 'receipt'; renderNow(); return; }
@@ -534,7 +533,7 @@
       const h = S.held; if (!h || S.store) return false;
       const st = dir.state(h.rid), e = cache.peek(h.rid);
       if (st === 'unknown' && dir.view().phase === 'cold') return false;   // the directory has not answered yet (a return entered at boot): wait
-      if (st === 'gone' || st === 'unknown') { S.held = null; schedule(); return false; }
+      if (st === 'gone' || st === 'unknown') { S.held = null; S.reorder = null; schedule(); return false; }
       if (st === 'enterable' && e && e.body) {
         S.held = null;
         if (S.q && S.tab === 'search') remember(S.q);
@@ -545,7 +544,7 @@
       // kept in its pressed state; «Reintentar» re-fetches (the hold stays), «Cerrar» releases it
       if (st === 'enterable' && e && e.state === 'failed' && !cache.pending(h.rid)) { if (S.layer !== 'menuerr') openLayer('menuerr'); return false; }
       const v = dir.view();
-      if (st !== 'enterable' && v.failed && !v.pending) { S.held = null; S.heldErr = true; schedule(); }   // r3.3-F1: frame 7 for the held tap
+      if (st !== 'enterable' && v.failed && !v.pending) { S.held = null; S.reorder = null; S.heldErr = true; schedule(); }   // r3.3-F1: frame 7 for the held tap
       return false;
     }
     dir.subscribe(() => { loadMenus(); checkHeld(); schedule(); tryRoute(); });
@@ -600,7 +599,7 @@
         const st = storeOfRid(r.restaurant); if (!st) continue;   // a store the directory no longer lists: not drawn (reported)
         active.push({ store: st, oid: r.order_id, numText: r.display_number ? `Orden #${r.display_number}` : null, whenText: whenOf(r.ts), total: r.total, itemsLine: r.items_text, statusText: statusText(r.status, r.order_type || 'delivery'), trackable: false });
       }
-      const past = rd.past.map((r) => { const st = storeOfRid(r.restaurant); return st ? { store: st, oid: r.order_id, dateText: dateOf(r.ts), total: r.total, itemsLine: r.items_text, again: reorderable(recipeOf(r.items)) } : null; }).filter(Boolean);
+      const past = rd.past.map((r) => { const st = storeOfRid(r.restaurant); return st ? { store: st, oid: r.order_id, dateText: dateOf(r.ts), total: r.total, itemsLine: r.items_text, again: reorderable(recipeOf(r.items, r.recipe_format)) } : null; }).filter(Boolean);
       const again = rd.phase === 'ready' ? againGroups(rows, rd.past) : [];
       return { phase: rd.phase, active, past, againReady: past.some((p) => p.again), again };
     }
@@ -735,6 +734,7 @@
     }
     function identityChanged() {
       ordersGen++; S.ordersRead = null;   // any in-flight history read is void; nothing of the previous identity is shown
+      S.held = null; S.reorder = null;   // Codex VP r1 #2: a held tap / «Volver a pedir» of the previous identity never lands
       receiptGen++; prefetchGen++; S.receipt = null; receiptCache.clear(); receiptInflight.clear(); if (S.tab === 'receipt' && !S.store) nav.tab({ name: 'orders' });   // nor a receipt of hers
       const od = S.order, who = ownerNow();
       if (od && who !== null && od.owner !== who) {
@@ -906,17 +906,21 @@
     // dishes still on its live menu; «+» adds one to that store's cart. A store whose lines are all null has no pill and no section.
     // A cart mid-placement (a pending placement / payment record, a frozen or unreadable cart) is NEVER overwritten.
     const RECIPE_MAX = 100;
-    function recipeOf(items) {
+    // Codex VP r1 #3/#4: the options' meaning comes from the row's DATA — recipe_format absent = the legacy recipe (normalizeReorderItems):
+    // { name, count } matched by the extra's NAME only, { id, qty } by its legacy ID only; any other format (e.g. the dormant canonical
+    // one) is not rebuilt here ⇒ every line unavailable (disclosed). A present but malformed options container ⇒ that line unavailable
+    function recipeOf(items, format) {
       const out = [];
       for (const l of Array.isArray(items) ? items.slice(0, RECIPE_MAX) : []) {
         if (!l || typeof l !== 'object' || !Number.isInteger(l.qty) || l.qty < 1 || l.qty > 50) continue;
+        let ok = format === undefined || format === null;
         const dish = typeof l.dish_id === 'string' && l.dish_id ? l.dish_id : null;
         const options = [];
-        let ok = true;
+        if (l.options !== undefined && !Array.isArray(l.options)) ok = false;
         for (const op of Array.isArray(l.options) ? l.options : []) {
-          if (op && typeof op.name === 'string' && Number.isInteger(op.count)) options.push({ name: op.name, n: op.count });
-          else if (op && typeof op.id === 'string' && Number.isInteger(op.qty)) options.push({ id: op.id, n: op.qty });
-          else ok = false;   // a malformed option: the line cannot be rebuilt faithfully ⇒ unavailable (counted)
+          if (op && typeof op.name === 'string' && Number.isInteger(op.count) && op.id === undefined) options.push({ by: 'name', v: op.name, n: op.count });
+          else if (op && typeof op.id === 'string' && Number.isInteger(op.qty) && op.name === undefined) options.push({ by: 'id', v: op.id, n: op.qty });
+          else ok = false;   // malformed ⇒ the line cannot be rebuilt faithfully
         }
         out.push({ dish_id: ok ? dish : null, qty: l.qty, options });
       }
@@ -931,12 +935,15 @@
         if (l.dish_id) {
           const offered = menu.extrasFor(l.dish_id);
           for (const op of l.options) {
-            const e = offered.find((x) => (op.name != null ? x.name === op.name || String(x.id) === op.name : String(x.id) === op.id));
+            const e = offered.find((x) => (op.by === 'name' ? x.name === op.v : String(x.id) === op.v));   // strictly by the recorded kind
             if (!e || op.n < 1 || op.n > l.qty) { key = UNKNOWN; break; }   // an option the menu no longer offers / cannot carry ⇒ unavailable
             for (let k = 0; k < op.n; k++) ex[k][e.key] = 1;
           }
         }
-        return { key, qty: l.qty, ex, added: i + 1 };
+        // Codex VP r1 #6: the prices on show NOW are what the customer saw — so a later change is disclosed by the cart's priceChanges()
+        const d = key !== UNKNOWN ? menu.dish(key) : null, c = (v) => Math.round(Number(v) * 100);
+        const seen = d ? ex.map((x) => ({ b: c(d.price), x: Object.fromEntries(Object.keys(x).map((k) => [k, c(menu.extra(k).price)])) })) : undefined;
+        return { key, qty: l.qty, ex, added: i + 1, ...(seen ? { seen } : {}) };
       });
       return { v: 2, lines: out, ...(prev && (prev.mode === 'pickup' || prev.mode === 'delivery') ? { mode: prev.mode } : {}) };
     }
@@ -950,7 +957,7 @@
     function pastRow(oid) { const rd = S.ordersRead && S.ordersRead.who === ownerNow() ? S.ordersRead : null; return rd ? rd.past.find((r) => r.order_id === oid) || null : null; }
     function reorder(oid) {
       const r = pastRow(oid); if (!r) return;
-      const lines = recipeOf(r.items); if (!reorderable(lines)) return;
+      const lines = recipeOf(r.items, r.recipe_format); if (!reorderable(lines)) return;
       S.reorder = { rid: r.restaurant, lines };
       enter(r.restaurant, null);
     }
@@ -958,7 +965,7 @@
     function againGroups(rows, past) {
       const groups = [];
       for (const r of past) {
-        const lines = recipeOf(r.items); if (!reorderable(lines)) continue;
+        const lines = recipeOf(r.items, r.recipe_format); if (!reorderable(lines)) continue;
         const row = rows.find((x) => x.rid === r.restaurant); if (!row) continue;
         const view = viewOf(row.rid, row.entry); if (!view) continue;
         let g = groups.find((x) => x.rid === row.rid);
@@ -972,21 +979,53 @@
       }
       return groups.filter((g) => g.items.length);
     }
-    // «+» on a past dish (v6 add-past): one more of it in THAT store's cart, the customer stays on «Pedidos» («Agregado · {store}»)
-    function addPast(rid, key) {
+    // «+» on a past dish (v6 add-past): one more of it in THAT store's cart, the customer stays on «Pedidos» («Agregado · {store}»).
+    // Codex VP r1 #1 (money): ONE critical section per cart key (CappApi.cartLock — the placement's freeze takes the same one): every
+    // check is re-done INSIDE it on the value just read; a cart mid-placement, a placed marker not yet reconciled, a sold-out dish, a
+    // line the live menu no longer carries (#5: never a silently shortened cart) ⇒ the store itself decides. Without Web Locks the
+    // section is synchronous, and a placement that appears right after the write restores the cart as it was
+    const locks = o.locks !== undefined ? o.locks : (win && win.navigator && win.navigator.locks) || null;
+    const placedOf = (cfg) => { try { return !!cfg.placedKey && storage.getItem(cfg.placedKey) != null; } catch (_) { return true; } };
+    async function addPast(rid, key) {
       const row = dir.view().rows.find((x) => x.rid === rid), cfg = row && cfgOf(row.entry), view = row && viewOf(rid, row.entry);
-      // locked, no menu, or a PLACED marker still unreconciled (the stored lines may be the purchased ones — only the store's own
-      // reconcile may clear them): the store itself decides
-      const placed = (() => { try { return !!cfg && !!cfg.placedKey && storage.getItem(cfg.placedKey) != null; } catch (_) { return true; } })();
-      if (!cfg || !view || !cfg.cartKey || placed || cartLocked(cfg)) return enter(rid, key);
-      const CappCart = pick(o, 'CappCart', './capp-cart.js');
+      const A = apiMod(), CappCart = pick(o, 'CappCart', './capp-cart.js');
+      if (!cfg || !view || !cfg.cartKey || !A || typeof A.cartLock !== 'function' || availOf(rid).has(key)) return enter(rid, key);   // #8: sold out ⇒ its store
+      let res = 'store';
       try {
-        const prev = readJ(cfg.cartKey), cart = CappCart.createCart(view.menu, cfg.placedKey ? { provenance: true } : undefined);   // as the store builds it
-        cart.hydrate(prev && prev.v === 2 ? prev : { v: 2, lines: [] });
-        cart.inc(key);   // the menu card's «+»: one plain instance
-        writeJ(cfg.cartKey, { ...cart.snapshot(), rid, ...(prev && (prev.mode === 'pickup' || prev.mode === 'delivery') ? { mode: prev.mode } : {}), ...(prev && typeof prev.cart_gen === 'string' ? { cart_gen: prev.cart_gen } : {}) });
-      } catch (_) { return enter(rid, key); }   // not addable as is (a launcher, an unknown dish): its sheet
+        res = await A.cartLock(locks, cfg.cartKey, () => {
+          if (placedOf(cfg) || cartLocked(cfg)) return 'store';
+          const raw = storage.getItem(cfg.cartKey), prev = readJ(cfg.cartKey);
+          const cart = CappCart.createCart(view.menu, cfg.placedKey ? { provenance: true } : undefined);   // as the store builds it
+          const h = cart.hydrate(prev && prev.v === 2 ? prev : { v: 2, lines: [] });
+          if (h && h.dropped) return 'store';
+          try { cart.inc(key); } catch (_) { return 'store'; }   // a launcher / unknown dish: its sheet
+          const next = { ...cart.snapshot(), rid, ...(prev && (prev.mode === 'pickup' || prev.mode === 'delivery') ? { mode: prev.mode } : {}), ...(prev && typeof prev.cart_gen === 'string' ? { cart_gen: prev.cart_gen } : {}) };
+          if (!writeJ(cfg.cartKey, next)) { try { if (raw == null) storage.removeItem(cfg.cartKey); else storage.setItem(cfg.cartKey, raw); } catch (_) {} return 'fail'; }   // #7
+          if (!locks && (placedOf(cfg) || cartLocked(cfg))) {   // no Web Locks: a placement appeared meanwhile ⇒ the cart as it was
+            try { if (storage.getItem(cfg.cartKey) === JSON.stringify(next)) { if (raw == null) storage.removeItem(cfg.cartKey); else storage.setItem(cfg.cartKey, raw); } } catch (_) {}
+            return 'store';
+          }
+          return 'ok';
+        });
+      } catch (_) { res = 'fail'; }
+      if (dead) return;
+      if (res === 'store') return enter(rid, key);
+      if (res !== 'ok') return;   // #7: nothing written ⇒ no «Agregado»
       toast(`Agregado · ${row.entry.name || ''}`); renderNow();
+    }
+    // the pill's replacement, in the SAME section, once the store is mounted on its live menu (Codex VP r1 #1)
+    async function applyReorder(st, cfg, ro) {
+      const A = apiMod(); if (!A || typeof A.cartLock !== 'function') return;
+      let ok = false;
+      try {
+        ok = await A.cartLock(locks, cfg.cartKey, () => {
+          if (dead || S.store !== st || cartLocked(cfg)) return false;
+          const r = st.ui.restore({ ...reorderSnap(st.ui.menu, ro.lines, readJ(cfg.cartKey)), rid: st.rid });
+          return !(r && (r.blocked || r.cleared));
+        });
+      } catch (_) { ok = false; }
+      if (!ok || dead || S.store !== st) return;
+      st.ui.openCart(); toast('Pedido cargado en tu carrito');
     }
     function openExternal(url) { try { if (win && typeof win.open === 'function') win.open(url, '_blank', 'noopener'); } catch (_) {} }
     // ── the location layers ──

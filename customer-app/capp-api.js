@@ -123,6 +123,7 @@
     const cryptoApi = (root && root.crypto) || (typeof globalThis !== 'undefined' ? globalThis.crypto : null);
     const randomBytes = o.randomBytes || ((n) => { const b = new Uint8Array(n); cryptoApi.getRandomValues(b); return b; });
     const memberOf = typeof o.member === 'function' ? o.member : () => o.member || null;
+    const locks = o.locks !== undefined ? o.locks : (root && root.navigator && root.navigator.locks) || null;   // Web Locks (cross-tab), when the host has them
     const lockInterruptedCard = typeof o.lockInterruptedCard === 'boolean' ? o.lockInterruptedCard : LOCK_INTERRUPTED_CARD;
     const cq = o.confirmQuote || CQ({ now, setInterval: o.setInterval, clearInterval: o.clearInterval, requote: o.requote });
     const PLACE_KEY = `capp:${cfg.restaurantId}:pending_place`;
@@ -572,15 +573,22 @@
           // S7a-1 r3.1 N7: hosted ⇒ a VERIFIED freeze of the purchased cart is a precondition of the FIRST dispatch of an identity;
           // a failure stops here (zero sends; the drawn «Sin conexión» retry) and the retry reuses THIS identity
           if (HOSTED && !(Number(rec.dispatched) > 0)) {
-            const sr = readStrict(CART_KEY); if (!sr.ok) return { kind: 'offline', order_id: rec.order_id, freeze_failed: true };   // P1-3
-            const snap = sr.value && typeof sr.value === 'object' ? sr.value : {};
-            const cs = p.cartSnapshot && Array.isArray(p.cartSnapshot.lines) ? p.cartSnapshot : null;
-            // the cart's own generation unless it is bound to ANOTHER order (never borrowed across orders)
-            // the generation: this identity's own, else the cart's own (the UI's, §1.4), else the stored cart's unless it is bound to
-            // ANOTHER order (never borrowed across orders), else a new one
-            const gen = rec.cart_gen || (cs && typeof cs.cart_gen === 'string' && cs.cart_gen) || ((!snap.frozen_for || snap.frozen_for === rec.order_id) && typeof snap.cart_gen === 'string' && snap.cart_gen) || newGen();
-            // Codex r1 P2-8: the supplied snapshot's own version (v2 — CappCart.hydrate accepts only v2), never a v1 default
-            if (!writeStrict(CART_KEY, { ...snap, v: cs ? cs.v : snap.v, rid: cfg.restaurantId, mode: p.flow && p.flow.mode, lines: cs ? cs.lines : snap.lines, cart_gen: gen, frozen_for: rec.order_id })) return { kind: 'offline', order_id: rec.order_id, freeze_failed: true };
+            // Codex VP r1 #1 (money): the freeze is a read-modify-write of the stored cart — ONE exclusive section per cart key, shared
+            // with every other cart writer across tabs («Volver a pedir»'s replace and «+»), so neither can land between its read and write
+            const fz = await cartLock(locks, CART_KEY, () => {
+              const sr = readStrict(CART_KEY); if (!sr.ok) return { stop: { kind: 'offline', order_id: rec.order_id, freeze_failed: true } };   // P1-3
+              const snap = sr.value && typeof sr.value === 'object' ? sr.value : {};
+              const cs = p.cartSnapshot && Array.isArray(p.cartSnapshot.lines) ? p.cartSnapshot : null;
+              // the cart's own generation unless it is bound to ANOTHER order (never borrowed across orders)
+              // the generation: this identity's own, else the cart's own (the UI's, §1.4), else the stored cart's unless it is bound to
+              // ANOTHER order (never borrowed across orders), else a new one
+              const gen = rec.cart_gen || (cs && typeof cs.cart_gen === 'string' && cs.cart_gen) || ((!snap.frozen_for || snap.frozen_for === rec.order_id) && typeof snap.cart_gen === 'string' && snap.cart_gen) || newGen();
+              // Codex r1 P2-8: the supplied snapshot's own version (v2 — CappCart.hydrate accepts only v2), never a v1 default
+              if (!writeStrict(CART_KEY, { ...snap, v: cs ? cs.v : snap.v, rid: cfg.restaurantId, mode: p.flow && p.flow.mode, lines: cs ? cs.lines : snap.lines, cart_gen: gen, frozen_for: rec.order_id })) return { stop: { kind: 'offline', order_id: rec.order_id, freeze_failed: true } };
+              return { gen };
+            });
+            if (fz.stop) return fz.stop;
+            const gen = fz.gen;
             if (rec.cart_gen !== gen) rec = patchPlace(rec.order_id, { cart_gen: gen });
           }
           // an un-issued identity carries the economics of the body actually sent (an issued one keeps its checkout's, and a cash
@@ -778,5 +786,11 @@
       confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
   }
 
-  return { createApi, tokenUsable, acceptToken, tokenExpMs, TOKEN_SKEW_MS, TOKEN_MAX_AHEAD_MS, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
+  // Codex VP r1 #1: THE cart-mutation critical section — an exclusive Web Lock per cart key (every tab of this origin); without Web
+  // Locks the section runs synchronously (no await inside it: nothing of this tab can interleave). fn is synchronous; its result resolves
+  function cartLock(locks, key, fn) {
+    if (locks && typeof locks.request === 'function') return locks.request(`capp-cart:${key}`, { mode: 'exclusive' }, () => fn());
+    try { return Promise.resolve(fn()); } catch (e) { return Promise.reject(e); }
+  }
+  return { createApi, cartLock, tokenUsable, acceptToken, tokenExpMs, TOKEN_SKEW_MS, TOKEN_MAX_AHEAD_MS, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
 });
