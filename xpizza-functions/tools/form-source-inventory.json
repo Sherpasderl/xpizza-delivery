@@ -2622,6 +2622,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/hostedrace-module-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
