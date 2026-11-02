@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { trackDigests, digestsInFlight, digestsSettled } from './capp-test-digests.mjs';
 
 const require = createRequire(import.meta.url);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -413,7 +414,16 @@ function scripted(script) {
 }
 function fakeTimers() { let id = 0; const q = new Map(); const ms = new Map(); return { ms, setTimeout: (f, d) => { q.set(++id, f); ms.set(id, d); return id; }, clearTimeout: (h) => q.delete(h), setInterval: () => ++id, clearInterval: () => {}, flush() { const fs = [...q.values()]; q.clear(); for (const f of fs) f(); }, get size() { return q.size; } }; }
 const tick = () => new Promise((r) => setImmediate(r));
-const settle = async (n = 25) => { for (let i = 0; i < n; i++) await tick(); };
+// a fixed tick count races WebCrypto (libuv's threadpool) under load — settle() also waits for the digests in flight (capp-test-digests)
+trackDigests();
+const settle = async (n = 25) => {
+  for (let round = 0; round < 50; round++) {
+    for (let i = 0; i < n; i++) await tick();
+    if (!digestsInFlight()) return;
+    await digestsSettled();
+  }
+  throw new Error('settle: WebCrypto digests kept starting (50 rounds)');
+};
 const GEO_OK = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) };
 const GEO_NO = { getCurrentPosition: (_ok, no) => no({ code: 1 }) };
 let RB = 0;
