@@ -386,7 +386,9 @@ const STALE_CAPTURE_ESCALATE_MS = 15 * 60 * 1000;
 async function escalateStaleCapture(deps, { orderId, attemptId, now, staleMs = STALE_CAPTURE_ESCALATE_MS }) {
   const ref = deps.db.ref(`payment_attempts/${attemptId}`);
   const pre = (await ref.once('value')).val();
-  if (!pre || pre.status !== 'capturing') return false;
+  if (!pre) return false;
+  if (pre.status === 'capture_unverified') return finishEscalation(deps, { orderId, attemptId, now, uuid: pre.payment_uuid || null });   // RESUME: the attempt was escalated, the order may not have been
+  if (pre.status !== 'capturing') return false;
   if (now - (Number(pre.capturing_started_at) || 0) <= staleMs) return false;   // a missing start time counts as stale
   const tx = await ref.transaction((cur) => {
     if (cur === null) return null;                                               // null-first-safe
@@ -394,10 +396,17 @@ async function escalateStaleCapture(deps, { orderId, attemptId, now, staleMs = S
     return { ...cur, status: 'capture_unverified', manual_reason: 'stale_capturing_unrecovered', flagged_at: now };
   });
   if (!tx.committed) return false;
+  return finishEscalation(deps, { orderId, attemptId, now, uuid: pre.payment_uuid || null });
+}
+
+// The order half of an escalation — idempotent, so a sweep that finds the attempt already capture_unverified completes
+// it: secure the hold, then advertise manual_reconciliation. A no-op (false) once the order is already there.
+async function finishEscalation(deps, { orderId, attemptId, now, uuid }) {
   const order = (await deps.db.ref(`orders/${orderId}`).once('value')).val();
+  if (!order || order.payment_status === 'manual_reconciliation') return false;
   await holdRedemptionForManual(deps.db, { orderId, order, now, alert: deps.alert });
   await deps.db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation' });
-  deps.alert && deps.alert('manual_reconciliation', { orderId, attemptId, uuid: pre.payment_uuid || null, reason: 'stale_capturing_unrecovered' });
+  deps.alert && deps.alert('manual_reconciliation', { orderId, attemptId, uuid, reason: 'stale_capturing_unrecovered' });
   return true;
 }
 

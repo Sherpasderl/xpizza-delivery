@@ -178,7 +178,7 @@ const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineS
 const { computeFreshnessAlerts } = require('./driver-freshness');   // Driver Tracking C1: freshness-alarm reconcile core
 const MR = require('./manual-resolve');   // atomic-claim money state machine (RECON_ATOMIC_CLAIM_PLAN rev-5)
 const { resolveManualReconciliationCore, recoverStaleResolve } = require('./resolve-manual');   // the resolver core + sweep recovery (emulator-driven)
-const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, isReconcilerRetryable } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5) + [A] ledger-repair retry
+const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, isReconcilerRetryable, releaseHoldAfterConfirmedRefund } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5) + [A] ledger-repair retry
 const { runPrediction, runLabelAndUpdate } = require('./ready-time-predict-core');   // Phase-1 Step-3 shadow predictor + prediction-logging (PURE SHADOW)
 const { computeGraduation, buildGraduationRows } = require('./ready-time-graduation');   // Phase 1b-i graduation core (writes ONLY ready_time_graduation)
 const { hashConfig } = require('./ready-time-quality-run');          // reuse the signed-config hash (extended to cover graduation_thresholds)
@@ -2896,7 +2896,7 @@ exports.sweepStalePending = onSchedule(
       const attempt = order.active_attempt_id
         ? (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val()
         : null;
-      if (!attempt) { left++; continue; } if (attempt.status === 'capturing') { if (await escalateStaleCapture(confirmDeps(db), { orderId, attemptId: order.active_attempt_id, now })) flagged++; else left++; continue; }   // a lost/crashed SDK capture → durable manual escalation (never re-captured, never declined)
+      if (!attempt) { left++; continue; } if (attempt.status === 'capturing' || attempt.status === 'capture_unverified') { if (await escalateStaleCapture(confirmDeps(db), { orderId, attemptId: order.active_attempt_id, now })) flagged++; else left++; continue; }   // a lost/crashed SDK capture → durable manual escalation (never re-captured, never declined)
       if (attempt.hosted_state === 'paid') {
         // N2: a paid hosted attempt whose ORDER is still pending_payment (not confirmed/materialized) is STRANDED
         // — the webhook captured the money but confirmAndMaterialize threw before the confirm-claim committed →
@@ -3602,7 +3602,7 @@ exports.refundReconciler = onSchedule(
       if (!a.payment_uuid) { await H0.parkReconcilerNoUuid(db, attemptId, now); continue; }
       /* h0:end reconciler-no-uuid */
       const r = await voidOrRefund(deps, { orderId: a.order_id, attemptId, pixelpayOrderId, paymentUuid: a.payment_uuid, reason: 'xpizza_refund_retry', now });
-      retried++; if (r.voided) { try { const ro = (await db.ref(`orders/${a.order_id}`).once('value')).val(); if (ro) await reverseRedemptionForOrder(db, { orderId: a.order_id, order: ro, disposition: 'refund', now }); } catch (e) { console.warn(`refundReconciler: hold release failed for ${a.order_id}`, e && e.message); } }   // the refund CONFIRMED → release the hold kept secured while it was pending (idempotent)
+      retried++; if (r.voided) { try { await releaseHoldAfterConfirmedRefund({ db, alert: (k, d) => paymentAlert(db, k, d) }, { orderId: a.order_id, attemptId, now }); } catch (e) { console.warn(`refundReconciler: hold release deferred for ${a.order_id}`, e && e.message); } }   // the refund CONFIRMED → journal + release the hold kept secured while pending (gated on the paying attempt; the sweep retries)
       if (!r.voided) {
         stillPending++;
         const age = now - (Number(a.refunded_at || a.cancel_claimed_at || a.captured_at) || now);

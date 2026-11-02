@@ -205,7 +205,8 @@ async function cancelOrderCore(deps, { orderId, actor, reason, now, claimId }) {
   if (earnFailed || redFailed) {
     await db.ref(`reward_ledger_repair/${orderId}`).update({ order_id: orderId, disposition: 'refund',
       uid: order.customer_uid || null, rid: order.restaurant_id || 'x_pizza', has_redemption: !!order.redemption,   // [A revise] ledger coords → heal INDEPENDENTLY of the order node (a purged order can't orphan a diverged ledger)
-      earn_failed: earnFailed, redemption_failed: redFailed, reason: reason || 'cancel', first_failed_at: now, updated_at: now, attempts: 0 })
+      earn_failed: earnFailed, redemption_failed: redFailed, redemption_mode: fin.payment_status === 'refund_pending' ? 'hold' : 'reverse',   // an UNCONFIRMED refund: the retry keeps the hold, never releases it
+      reason: reason || 'cancel', first_failed_at: now, updated_at: now, attempts: 0 })
       .catch((e) => console.error(`cancelOrder repair-journal write failed for ${orderId}`, e && e.message));
     await alert('reward_reversal_failed', { orderId, earn_failed: earnFailed, redemption_failed: redFailed });
   }
@@ -244,7 +245,20 @@ async function retryRewardLedgerRepair(deps, { now }) {
   const repairs = (await db.ref('reward_ledger_repair').once('value')).val() || {};
   let healed = 0, pending = 0;
   for (const orderId of Object.keys(repairs)) {
-    const rec = repairs[orderId] || {};
+    const r = await healLedgerRepair(deps, orderId, repairs[orderId] || {}, now);
+    if (r === 'healed') healed++; else pending++;
+  }
+  return { healed, pending };
+}
+
+// One ledger-repair record. The redemption leg honours the record's restriction:
+//   redemption_mode 'hold'     → the refund is UNCONFIRMED: re-secure the hold (idempotent), never release it;
+//   release_attempt_id present → release only while that attempt is still the one the order's payment rests on;
+//   otherwise                  → reverse, as before.
+// The earn leg runs unless the record says it never failed (earn_failed === false). Returns 'healed' | 'pending'.
+async function healLedgerRepair(deps, orderId, rec, now) {
+  const { db, alert } = deps;
+  {
     const order = (await db.ref(`orders/${orderId}`).once('value')).val();
     // [A revise] Heal INDEPENDENTLY of the order node: the reversals key off orderId + uid/rid + the ledger, so
     // synthesize the coords from the enriched record when the order was purged. NEVER silently drop the record on
@@ -252,20 +266,42 @@ async function retryRewardLedgerRepair(deps, { now }) {
     // record whose order is also gone), we can't verify/heal → escalate an orphan alert and KEEP the record.
     const uid = (order && order.customer_uid) || rec.uid || null;
     const rid = (order && order.restaurant_id) || rec.rid || 'x_pizza';
-    if (!uid) { pending++; await alert('reward_reversal_orphaned', { orderId }); continue; }
+    if (!uid) { await alert('reward_reversal_orphaned', { orderId }); return 'pending'; }
     const ord = order || { customer_uid: uid, restaurant_id: rid, redemption: rec.has_redemption ? true : null };
-    let earn = { ok: false }, red = { ok: false };
-    try { earn = await reverseEarnForOrder(db, { orderId, order: ord, now }); } catch (_) { earn = { ok: false }; }
-    try { red = await reverseRedemptionForOrder(db, { orderId, order: ord, disposition: rec.disposition || 'refund', now }); } catch (_) { red = { ok: false }; }
+    let earn = { ok: true, skipped: true }, red = { ok: false };
+    if (rec.earn_failed !== false) { try { earn = await reverseEarnForOrder(db, { orderId, order: ord, now }); } catch (_) { earn = { ok: false }; } }
+    if (rec.redemption_mode === 'hold') {
+      try { await holdRedemptionForManual(db, { orderId, order: ord, now, alert }); } catch (_) {}
+      red = { ok: true, skipped: true };
+    } else if (rec.release_attempt_id && !(order && order.active_attempt_id === rec.release_attempt_id)) {
+      if (!order) await alert('reward_release_unverifiable', { orderId });   // the order is gone: which attempt paid can't be proven → never release
+      red = { ok: true, skipped: true };
+    } else {
+      try { red = await reverseRedemptionForOrder(db, { orderId, order: ord, disposition: rec.disposition || 'refund', now }); } catch (_) { red = { ok: false }; }
+    }
     const earnOk = !!earn && earn.ok !== false;
     const redOk = !!red && (red.ok !== false || red.skipped === true);
-    if (earnOk && redOk) { await db.ref(`reward_ledger_repair/${orderId}`).remove(); healed++; continue; }
-    pending++;
+    if (earnOk && redOk) { await db.ref(`reward_ledger_repair/${orderId}`).remove(); return 'healed'; }
     const attempts = (Number(rec.attempts) || 0) + 1;
     await db.ref(`reward_ledger_repair/${orderId}`).update({ attempts, updated_at: now, earn_failed: !earnOk, redemption_failed: !redOk });
     if (attempts === 3 || attempts % 12 === 0) await alert('reward_reversal_stuck', { orderId, attempts });   // persistent divergence → escalate to a human
+    return 'pending';
   }
-  return { healed, pending };
 }
 
-module.exports = { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, isReconcilerRetryable: C.isReconcilerRetryable };
+// A refund the reconciler just CONFIRMED: the obligation to release the redemption hold (kept secured while the refund
+// was pending) is JOURNALED FIRST, then healed at once; any failure leaves the record for the sweep's retry. The release
+// is gated on the refunded attempt still being the one the order's payment rests on — an older attempt's refund never
+// restores points a newer captured sale consumed. The earn leg is untouched unless an earlier failure journaled it.
+async function releaseHoldAfterConfirmedRefund(deps, { orderId, attemptId, now }) {
+  const { db } = deps;
+  const ref = db.ref(`reward_ledger_repair/${orderId}`);
+  await ref.transaction((cur) => {
+    const base = cur || { order_id: orderId, disposition: 'refund', earn_failed: false, reason: 'refund_confirmed_release', first_failed_at: now, attempts: 0 };
+    return { ...base, redemption_mode: 'reverse', release_attempt_id: attemptId, redemption_failed: true, updated_at: now };
+  });
+  const rec = (await ref.once('value')).val() || {};
+  return healLedgerRepair(deps, orderId, rec, now);
+}
+
+module.exports = { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, healLedgerRepair, releaseHoldAfterConfirmedRefund, isReconcilerRetryable: C.isReconcilerRetryable };
