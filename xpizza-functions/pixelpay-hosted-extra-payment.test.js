@@ -18,38 +18,22 @@ const { isReconcilerRetryable } = require('./cancel-order-core');
 const { alertsToPrune } = require('./alert-prune');
 
 const KEY = '1234567890', SECRET = '@s4ndb0x-abcd-1234-n1l4-p1x3l';
-function makeDb(initial, hooks = {}) {
-  const root = JSON.parse(JSON.stringify(initial)); const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
-  const getAt = (p) => { if (!p) return root; let n = root; for (const k of p.split('/')) { if (n == null) return null; n = n[k]; } return n === undefined ? null : n; };
-  const setAt = (p, val) => { const a = p.split('/'); for (const k of a) if (/[.#$[\]]/.test(k)) throw new Error(`invalid RTDB key: ${k}`); let n = root; for (let i = 0; i < a.length - 1; i++) { if (n[a[i]] == null || typeof n[a[i]] !== 'object') n[a[i]] = {}; n = n[a[i]]; } const l = a[a.length - 1]; if (val === null) delete n[l]; else n[l] = val; };
-  let pk = 0;
-  const snap = (v) => ({ val: () => clone(v), exists: () => v != null });
-  const ref = (p = '') => {
-    const r = {
-      async once() { if (hooks.beforeRead) await hooks.beforeRead(p, api); return snap(getAt(p)); }, async get() { return r.once(); },
-      async transaction(fn) {   // Admin-SDK null-first, honestly: undefined on the null call aborts; a value re-runs only on a server mismatch
-        if (hooks.beforeTx) await hooks.beforeTx(p, api);
-        const cur = clone(getAt(p)); let nx = fn(null);
-        if (nx === undefined) return { committed: false, snapshot: snap(cur) };
-        if (cur !== null) { nx = fn(clone(cur)); if (nx === undefined) return { committed: false, snapshot: snap(cur) }; }
-        setAt(p, clone(nx)); return { committed: true, snapshot: snap(getAt(p)) };
-      },
-      async update(patch) { if (hooks.beforeWrite) await hooks.beforeWrite(p, patch, api); if (!p) { for (const [k, v] of Object.entries(patch)) setAt(k, clone(v)); return; } setAt(p, Object.assign({}, getAt(p) || {}, clone(patch))); },
-      async set(v) { if (hooks.beforeWrite) await hooks.beforeWrite(p, v, api); setAt(p, clone(v)); },
-      async push(v) { const k = `k${++pk}`; setAt(p ? `${p}/${k}` : k, clone(v)); return { key: k }; }, async remove() { setAt(p, null); },
-    };
-    return r;
-  };
-  const api = { ref, getAt, setAt, root };
-  return api;
-}
+const { makeHonestDb: makeDb } = require('./_honest-rtdb-model');   // never laxer than production (nested keys, null pruning, immutable snapshots, null-first + conflicts)
 
 // The PixelPay provider, stubbed at fetch with REAL Response objects; every void request body is recorded.
 let voidScript = []; let voidCalls = [];
+const PP = require('./pixelpay'); const { resolvePixelPayConfig } = require('./pixelpay-config');
 globalThis.fetch = async (url, init) => {
   const u = String(url);
   if (!u.endsWith('/api/v2/transaction/void')) throw new Error(`unexpected fetch ${u}`);
-  voidCalls.push(JSON.parse(init.body));
+  // validate the request as the provider would: method, authentication and the void signature for THIS hosted order
+  const cfg = resolvePixelPayConfig(); const h = init.headers || {}; const body = JSON.parse(init.body);
+  if (init.method !== 'POST') throw new Error('provider stub: void must be POST');
+  if (h['x-auth-key'] !== cfg.app_key || h['x-auth-hash'] !== cfg.auth_hash) throw new Error('provider stub: bad auth headers');
+  if (h['x-auth-user'] !== PP.platformUser(cfg.merchant_email)) throw new Error('provider stub: bad x-auth-user');
+  if (body.void_signature !== PP.voidSignature(cfg.merchant_email, HOID, cfg.secret)) throw new Error('provider stub: bad void signature');
+  if (typeof body.payment_uuid !== 'string' || !body.payment_uuid) throw new Error('provider stub: missing payment_uuid');
+  voidCalls.push(body);
   const step = voidScript[Math.min(voidCalls.length - 1, voidScript.length - 1)] || { status: 200, body: { success: true, message: 'anulada' } };
   return new Response(JSON.stringify(step.body), { status: step.status });
 };
