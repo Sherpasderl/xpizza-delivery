@@ -125,6 +125,74 @@
 
   // ── the view model: the served menu as the prototype's item shape (S7a-2: shared with the shell's Inicio / Buscar, so a search hit
   //    is exactly an item the store displays — launchers priced «desde», never a raw variant child; `dish` = the canonical dish id) ──
+  // «Volver a pedir» (advisor ruling 2026-11-02): THE store's cart-write path, ONE implementation. The mounted store edits its cart
+  // through these functions and guards, and the shell's «+» / reorder (no store on screen) go through the very same ones — so their
+  // safety is by construction a customer's tap inside the store. No new cross-tab guarantee is claimed beyond that.
+  // apiConfigOf: the store's transport config (the ONE source — the store's own api and the shell's are built from it)
+  function apiConfigOf(cfg) {
+    return { restaurantId: cfg.restaurantId, orderIdPrefix: cfg.orderIdPrefix, pendingPayKey: cfg.pendingPayKey, endpoints: cfg.endpoints, hours: cfg.hours,
+      cartKey: cfg.cartKey, placedKey: cfg.placedKey, guestCardOnly: cfg.guestCardOnly === true, ...(cfg.schedulingLive === true ? { schedulingLive: true } : {}) };   // S7a-1: hosted by the shell (both absent ⇒ the S2 path, unchanged); §3.2 the guest tender rule
+  }
+  // the cart, its generation and every guard on it: o = { menu, cfg, api: () => the store's api, mods: () => true once it exists }
+  function createCartCore(o) {
+    const { menu, cfg } = o, api = () => o.api(), mods = () => o.mods();
+    const hosted = !!(cfg.cartKey && cfg.placedKey);
+    // S7a r3.4-1: a HOSTED cart (the shell's per-store keys) records each instance's last-seen prices, so a cart restored onto a
+    // re-priced menu is DISCLOSED (frame 13); the S2 / link path keeps today's byte-identical snapshots
+    const cart = CappCart.createCart(menu, hosted ? { provenance: true } : undefined);
+    // S7a-1 (PLAN-capp-S7a r2 §1.4; Codex r2 New 1): hosted ⇒ the cart's GENERATION — re-minted whenever the cart starts empty (or a
+    // restore found it purchased and cleared), restored with a snapshot, carried with every placement and every persisted snapshot
+    let gen = null;
+    const genNow = () => { const a = api(); if (!gen && a && typeof a.newGen === 'function') gen = a.newGen(); return gen; };
+    // S7a-1 r3 §1.1 (Codex r1 P2-7): hosted ⇒ a cart frozen for a placement — or whose freeze state is unknown — is READ-ONLY
+    function frozenNow() {
+      if (!hosted) return false;
+      if (!mods() || !api().hosted) return true;
+      const rc = api().reconcile(); if (!rc.ok) return true;
+      return api().cartFreeze().frozen === true;
+    }
+    function lockedHere() {
+      if (!hosted) return false;
+      if (!mods() || !api().hosted) return true;
+      const a = api(), rc = a.reconcile(); if (!rc.ok) return true;
+      const fz = a.cartFreeze();
+      return !!(fz.unknown || (fz.frozen && fz.live) || (typeof a.holdsLock === 'function' && a.holdsLock()));
+    }
+    // a mutation: refused when not orderable or frozen; a write the cart refuses changes nothing; one that would push the order text past
+    // the server's cap is REVERTED ({ tooLong }) — the caller draws the owner-approved line
+    function mutate(fn, orderable) {
+      if (!orderable || frozenNow()) return { ok: false };
+      const before = cart.snapshot();
+      try { fn(cart); } catch (_) { return { ok: false }; }
+      if (cart.count()) {
+        try { CappSerialize.serialize(cart, menu); } catch (e) {
+          if (e && e.code === 'cart_text_too_long') { cart.hydrate(before); return { ok: false, tooLong: true }; }
+        }
+      }
+      if (!cart.count()) gen = null;   // an emptied cart: the next one is a NEW cart (a new generation)
+      return { ok: true };
+    }
+    // what is persisted (the shell's onCartChange) and what the store's snapshot() returns
+    const snapshotFor = (mode) => ({ ...cart.snapshot(), rid: cfg.restaurantId, mode, ...(hosted ? { cart_gen: cart.count() ? genNow() : null } : {}) });
+    // S7a-1 r3 §1.3 (hosted): reconcile FIRST — blocked until it completes; a purchased (cleared) cart is never restored
+    function restore(snapshot) {
+      let mode = null;
+      if (hosted && mods() && api().hosted) {
+        const rc = api().reconcile(); if (!rc.ok) return { blocked: true, step: rc.step };
+        if (rc.done === 'placed' && snapshot && snapshot.cart_gen && snapshot.cart_gen === rc.cart_gen) {
+          // Codex r3 #1: the PURCHASED lines are cleared from memory too, BEFORE the generation is released — a new generation is
+          // only ever minted for an empty cart, so purchased lines can never be disguised as a new cart
+          cart.hydrate({ v: 2, lines: [] }); gen = null; return { cleared: true };
+        }
+        gen = snapshot && typeof snapshot.cart_gen === 'string' && snapshot.cart_gen ? snapshot.cart_gen : null;   // the restored cart keeps its generation
+        // Codex r1 P2-7: the persisted mode is restored with the lines (a frozen pickup cart is never re-shown as delivery)
+        if (snapshot && (snapshot.mode === 'pickup' || snapshot.mode === 'delivery')) mode = snapshot.mode;
+      }
+      return { hydrated: cart.hydrate(snapshot), mode };
+    }
+    return { cart, genNow, frozenNow, lockedHere, mutate, snapshotFor, restore, hosted };
+  }
+
   function viewSections(menu, cfg) {
     const photo = (d) => (d && d.img && cfg.assetBase ? cfg.assetBase.replace(/\/?$/, '/') + String(d.img).replace(/^\.?\//, '') : '');
     const exOf = (k) => menu.extrasFor(k).filter((e) => e.supported).map((e) => e.key);
@@ -186,16 +254,11 @@
     const emit = (name, detail) => { if (dead) return; try { (opts.onEvent || (() => {}))(name, detail); } catch (_) {} };
     // S7a-1 (PLAN-capp-S7a r2 §1.6): the shell's per-store cart persistence hook — after a SUCCESSFUL mutation, a restore and a
     // delivery/pickup change; a throwing hook never affects the UI; absent ⇒ nothing is called
-    const notifyCart = () => { if (dead || typeof opts.onCartChange !== 'function' || frozenNow()) return; try { opts.onCartChange({ ...cart.snapshot(), rid: cfg.restaurantId, mode: S.mode, ...(hostedKeys() ? { cart_gen: cart.count() ? genNow() : null } : {}) }); } catch (_) {} };
-    // S7a-1 (PLAN-capp-S7a r2 §1.4; Codex r2 New 1): hosted ⇒ the cart's GENERATION is the UI's — re-minted whenever the cart starts
-    // empty (or a restore found it purchased and cleared), restored with a snapshot, carried with every placement and every
-    // onCartChange; the purchase latch binds to it, so a purchased cart is never re-sent while a NEW cart places normally
+    const notifyCart = () => { if (dead || typeof opts.onCartChange !== 'function' || frozenNow()) return; try { opts.onCartChange(core.snapshotFor(S.mode)); } catch (_) {} };
     const hostedKeys = () => !!(cfg.cartKey && cfg.placedKey);
-    let cartGen = null;
-    const genNow = () => { if (!cartGen && api && typeof api.newGen === 'function') cartGen = api.newGen(); return cartGen; };
-    // S7a r3.4-1: a HOSTED cart (the shell's per-store keys) records each instance's last-seen prices, so a cart restored onto a
-    // re-priced menu is DISCLOSED (frame 13); the S2 / link path keeps today's byte-identical snapshots
-    const cart = CappCart.createCart(menu, cfg.cartKey && cfg.placedKey ? { provenance: true } : undefined);
+    // the cart, its generation and its guards: the ONE cart-write path (createCartCore — the shell's «+» / reorder use it too)
+    const core = createCartCore({ menu, cfg, api: () => api, mods: () => mods() });
+    const cart = core.cart, genNow = () => core.genNow();
     const $ = (id) => doc.getElementById(id);
     const app = $('app');
     // PLAN-capp-desktop-website r2 D-2: the host's viewport (capp-view.js) — DESKTOP ⇒ the APPROVED v6 desk view's DOM (the store's
@@ -238,24 +301,12 @@
     // S7a-1 r3 §1.1 (Codex r1 P2-7): hosted ⇒ a cart frozen for a placement — or whose freeze state is unknown — is READ-ONLY:
     // every mutation and mode change is refused before it lands. Reconciliation runs first, so a finished placement unfreezes it.
     // Absent the hosted keys ⇒ never frozen (the S2 path)
-    function frozenNow() {
-      if (!(cfg.cartKey && cfg.placedKey)) return false;
-      if (!mods() || !api.hosted) return true;
-      const rc = api.reconcile(); if (!rc.ok) return true;
-      return api.cartFreeze().frozen === true;
-    }
+    function frozenNow() { return core.frozenNow(); }
     function mutate(fn) {
-      if (!orderable || frozenNow()) return false;
-      const before = cart.snapshot();
-      try { fn(); } catch (_) { return false; }
-      if (cart.count()) {
-        try { CappSerialize.serialize(cart, menu); } catch (e) {
-          if (e && e.code === 'cart_text_too_long') { cart.hydrate(before); S.refusal = FULL_CART; showRefusal(); return false; }
-        }
-      }
+      const m = core.mutate(fn, orderable);
+      if (!m.ok) { if (m.tooLong) { S.refusal = FULL_CART; showRefusal(); } return false; }
       S.refusal = null;
       if (refused.size) { const inCart = new Set(cart.lines().map((l) => l.key)); for (const k of [...refused]) if (!inCart.has(k)) refused.delete(k); }   // removed ⇒ the refusal clears
-      if (!cart.count()) cartGen = null;   // an emptied cart: the next one is a NEW cart (a new generation)
       notifyCart();
       return true;
     }
@@ -688,8 +739,7 @@
       try {
         C = opts.CappCheckout || (typeof self !== 'undefined' && self.CappCheckout) || require('./capp-checkout.js');
         const A = opts.CappApi || (typeof self !== 'undefined' && self.CappApi) || require('./capp-api.js');
-        api = opts.api || A.createApi({ config: { restaurantId: cfg.restaurantId, orderIdPrefix: cfg.orderIdPrefix, pendingPayKey: cfg.pendingPayKey, endpoints: cfg.endpoints, hours: cfg.hours,
-          cartKey: cfg.cartKey, placedKey: cfg.placedKey, guestCardOnly: cfg.guestCardOnly === true, ...(cfg.schedulingLive === true ? { schedulingLive: true } : {}) },   // S7a-1: hosted by the shell (both absent ⇒ the S2 path, unchanged); §3.2 the guest tender rule
+        api = opts.api || A.createApi({ config: apiConfigOf(cfg),
           CappCheckout: C, member, ...(opts.apiOpts || {}), now: () => now().getTime() });   // Codex promo r4 #3: ONE clock — the transport judges the token at the UI's time (the claim's), never a second apiOpts.now
         return true;
       } catch (_) { C = null; api = null; return false; }
@@ -1408,13 +1458,7 @@
     function routeNow() { if (S.screen !== 'store') return { step: 'pago' }; if (S.open && S.open.id != null) return { step: 'plato', dish: String(S.open.id) }; if (S.layerKind === 'cart') return { step: 'pedido' }; return { step: 'store' }; }
     function reportRoute() { if (dead || typeof opts.onRoute !== 'function') return; try { opts.onRoute(routeNow()); } catch (_) { /* never breaks the UI */ } }
     const lockedNow = () => lockedHere() || frozenNow();
-    function lockedHere() {
-      if (!hostedKeys()) return false;
-      if (!mods() || !api.hosted) return true;
-      const rc = api.reconcile(); if (!rc.ok) return true;
-      const fz = api.cartFreeze();
-      return !!(fz.unknown || (fz.frozen && fz.live) || (typeof api.holdsLock === 'function' && api.holdsLock()));
-    }
+    function lockedHere() { return core.lockedHere(); }
     // Codex r2 New 3: a SHELL exit (a tab, the shell's own back, a shell screen opened over the store) asks with intent 'leave' —
     // answered without acting: blocked while sending, over a held sheet, or under a lock; otherwise pass (destroy() then cancels
     // a «Realizando pedido…» countdown: zero sends)
@@ -1775,20 +1819,18 @@
       },
       // Codex s7a2 r1 #1: the cart AS IT IS IN MEMORY (the same shape onCartChange persists) — a remount carries this, never only the
       // stored copy, so a failed persistence can never lose an edit
-      snapshot() { return { ...cart.snapshot(), rid: cfg.restaurantId, mode: S.mode, ...(hostedKeys() ? { cart_gen: cart.count() ? genNow() : null } : {}) }; },
+      snapshot() { return core.snapshotFor(S.mode); },
       // S7a-2: a Buscar / Inicio dish result opens THAT dish's sheet on this store (P open-dish :2253) — false when it is not here
       openDetail(key) { if (dead || S.screen !== 'store' || !find(key)) return false; openDetail(key); return true; },
       restore(snapshot) {
-        // S7a-1 r3 §1.3 (hosted): reconcile FIRST — blocked until it completes; a purchased (cleared) cart is never restored
-        if (cfg.cartKey && cfg.placedKey && mods() && api.hosted) { const rc = api.reconcile(); if (!rc.ok) return { blocked: true, step: rc.step }; if (rc.done === 'placed' && snapshot && snapshot.cart_gen && snapshot.cart_gen === rc.cart_gen) {
-            // Codex r3 #1: the PURCHASED lines are cleared from memory too, BEFORE the generation is released — a new generation is
-            // only ever minted for an empty cart, so purchased lines can never be disguised as a new cart
-            cart.hydrate({ v: 2, lines: [] }); cartGen = null; render(); return { cleared: true };
-          }
-          cartGen = snapshot && typeof snapshot.cart_gen === 'string' && snapshot.cart_gen ? snapshot.cart_gen : null;   // the restored cart keeps its generation
-          // Codex r1 P2-7: the persisted mode is restored with the lines (a frozen pickup cart is never re-shown as delivery)
-          if (snapshot && (snapshot.mode === 'pickup' || snapshot.mode === 'delivery')) { S.mode = snapshot.mode; if (S.flow && C) C.setMode(S.flow, S.mode); } }
-        const r = cart.hydrate(snapshot); notifyCart(); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
+        const rr = core.restore(snapshot);   // the ONE path (reconcile first; a purchased cart cleared, never restored)
+        if (rr.blocked) return { blocked: true, step: rr.step };
+        if (rr.cleared) { render(); return { cleared: true }; }
+        if (rr.mode) { S.mode = rr.mode; if (S.flow && C) C.setMode(S.flow, S.mode); }
+        const r = rr.hydrated; notifyCart(); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
+      // «Volver a pedir»: replace the cart through the SAME restore path — refused exactly where the store refuses an edit (its lock /
+      // freeze predicate), never over a cart mid-placement
+      replaceCart(snapshot) { if (dead || lockedNow()) return { locked: true }; return this.restore(snapshot); },
       destroy() {
         dead = true; placingStop(); otpTickStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }
         S.layerKind = null; const L = $('layer'); if (L) L.innerHTML = '';
@@ -1812,5 +1854,5 @@
       <button class="cta" type="button" data-act="offer-create">Crear mi cuenta</button><button class="lnk" type="button" data-act="offer-skip">Ahora no</button></div></div>`;
   }
 
-  return { mount, viewSections, loadMapsFor, MAP_SVG, FULL_CART, accountOfferHtml, errSheetHtml };
+  return { mount, viewSections, loadMapsFor, MAP_SVG, FULL_CART, accountOfferHtml, errSheetHtml, createCartCore, apiConfigOf };
 });

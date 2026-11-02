@@ -212,7 +212,11 @@
       watchMenu(S.store);
       const snap = carried || readJ(cfg.cartKey); if (snap) ui.restore(snap);   // an adoption carries the IN-MEMORY cart (Codex s7a2 r1 #1)
       const ro = !carried && S.reorder && S.reorder.rid === entry.rid ? S.reorder : null;
-      if (ro) { S.reorder = null; applyReorder(S.store, cfg, ro); }   // «Volver a pedir»: replaces the cart (v6) — in the cart's critical section
+      if (ro) {   // «Volver a pedir»: replaces the cart (v6) through the store's own restore, refused where the store refuses an edit
+        S.reorder = null;
+        const r = ui.replaceCart({ ...reorderSnap(ui.menu, ro.lines, snap), rid: entry.rid });
+        if (r && !r.locked && !r.blocked && !r.cleared) S.reorderOpen = entry.rid;
+      }
       if (entry.dish) ui.openDetail(entry.dish);
       // the return's AUTHORITATIVE outcome settles the stored handoff (S7a-1 r3 §2 / r3.1 N3: never on anything else)
       // …and the association is KEPT: a LATER terminal outcome of this store (a status read, a recovery) settles it too (Codex s7a2 r1 #4)
@@ -507,7 +511,7 @@
     const nav = CappShellNav.createShellNav({ win, home: { name: 'home' },
       onShow: (entry, x) => {
         if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link
-        if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } reflect(); return; }
+        if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } else if (S.reorderOpen === entry.rid && S.store) { S.reorderOpen = null; S.store.ui.openCart(); toast('Pedido cargado en tu carrito'); } reflect(); return; }
         if (entry.name !== 'store') { S.reorder = null; S.held = null; }   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
         if (entry.name === 'receipt') { if (!openReceipt(entry.oid)) { T.setTimeout(() => nav.tab({ name: 'orders' }), 0); return; } S.tab = 'receipt'; renderNow(); return; }
@@ -947,13 +951,6 @@
       });
       return { v: 2, lines: out, ...(prev && (prev.mode === 'pickup' || prev.mode === 'delivery') ? { mode: prev.mode } : {}) };
     }
-    function cartLocked(cfg) {
-      const has = (k) => { if (!k) return false; try { return storage.getItem(k) != null; } catch (_) { return true; } };
-      if (!cfg.placeKey || has(cfg.placeKey) || has(cfg.pendingPayKey)) return true;   // the keys: capp-shell keysFor (ONE source)
-      if (!has(cfg.cartKey)) return false;
-      const snap = readJ(cfg.cartKey);
-      return !snap || typeof snap !== 'object' || snap.frozen_for != null;   // unreadable or frozen for a placement
-    }
     function pastRow(oid) { const rd = S.ordersRead && S.ordersRead.who === ownerNow() ? S.ordersRead : null; return rd ? rd.past.find((r) => r.order_id === oid) || null : null; }
     function reorder(oid) {
       const r = pastRow(oid); if (!r) return;
@@ -979,57 +976,24 @@
       }
       return groups.filter((g) => g.items.length);
     }
-    // «+» on a past dish (v6 add-past): one more of it in THAT store's cart, the customer stays on «Pedidos» («Agregado · {store}»).
-    // Codex VP r1 #1 (money): ONE critical section per cart key (CappApi.cartLock — the placement's freeze takes the same one): every
-    // check is re-done INSIDE it on the value just read; a cart mid-placement, a placed marker not yet reconciled, a sold-out dish, a
-    // line the live menu no longer carries (#5: never a silently shortened cart) ⇒ the store itself decides. Without Web Locks the
-    // section is synchronous, and a placement that appears right after the write restores the cart as it was
-    const locks = o.locks !== undefined ? o.locks : (win && win.navigator && win.navigator.locks) || null;
-    const placedOf = (cfg) => { try { return !!cfg.placedKey && storage.getItem(cfg.placedKey) != null; } catch (_) { return true; } };
-    async function addPast(rid, key) {
-      const row = dir.view().rows.find((x) => x.rid === rid), cfg = row && cfgOf(row.entry), view = row && viewOf(rid, row.entry);
-      const A = apiMod(), CappCart = pick(o, 'CappCart', './capp-cart.js');
-      if (!cfg || !view || !cfg.cartKey || !A || typeof A.cartLock !== 'function' || availOf(rid).has(key)) return enter(rid, key);   // #8: sold out ⇒ its store
-      let res = 'store';
-      try {
-        res = await A.cartLock(locks, cfg.cartKey, () => {
-          if (placedOf(cfg) || cartLocked(cfg)) return 'store';
-          const raw = storage.getItem(cfg.cartKey), prev = readJ(cfg.cartKey);
-          const cart = CappCart.createCart(view.menu, cfg.placedKey ? { provenance: true } : undefined);   // as the store builds it
-          const h = cart.hydrate(prev && prev.v === 2 ? prev : { v: 2, lines: [] });
-          if (h && h.dropped) return 'store';
-          try { cart.inc(key); } catch (_) { return 'store'; }   // a launcher / unknown dish: its sheet
-          const next = { ...cart.snapshot(), rid, ...(prev && (prev.mode === 'pickup' || prev.mode === 'delivery') ? { mode: prev.mode } : {}), ...(prev && typeof prev.cart_gen === 'string' ? { cart_gen: prev.cart_gen } : {}) };
-          // #7 + Codex VP r2 #1: a failed / unverified write is rolled back ONLY while the stored bytes are still exactly OURS
-          // (compare-then-restore) — another tab's freeze that landed in between is never written over: the store decides
-          const mine = JSON.stringify(next), ours = () => { try { return storage.getItem(cfg.cartKey) === mine; } catch (_) { return false; } };
-          const restore = () => { try { if (raw == null) storage.removeItem(cfg.cartKey); else storage.setItem(cfg.cartKey, raw); } catch (_) {} };
-          if (!writeJ(cfg.cartKey, next)) { if (!ours()) return 'store'; restore(); return 'fail'; }
-          if (!locks && (placedOf(cfg) || cartLocked(cfg))) {   // no Web Locks: a placement appeared meanwhile ⇒ the cart as it was
-            if (ours()) restore();
-            return 'store';
-          }
-          return 'ok';
-        });
-      } catch (_) { res = 'fail'; }
-      if (dead) return;
-      if (res === 'store') return enter(rid, key);
-      if (res !== 'ok') return;   // #7: nothing written ⇒ no «Agregado»
+    // «+» on a past dish (v6 add-past): one more of it in THAT store's cart; the customer stays on «Pedidos» («Agregado · {store}»).
+    // Advisor ruling 2026-11-02: EXACTLY the store's own cart-write path (CappUI.createCartCore — the functions and guards a «+» inside
+    // the store runs): the store's preconditions (a FRESH menu, the dish orderable and not sold out), its lock predicate, its restore
+    // (reconcile first; a purchased cart cleared), its mutation (frozen ⇒ refused; the order-text cap) and its persistence (never while
+    // frozen), in its order. Anything the store would refuse or disclose ⇒ the store itself opens and decides. Nothing beyond a tap in the store
+    function addPast(rid, key) {
+      const row = dir.view().rows.find((x) => x.rid === rid), cfg = row && cfgOf(row.entry), view = row && viewOf(rid, row.entry), e = cache.peek(rid);
+      const A = apiMod();
+      if (!cfg || !view || !A || !(e && e.state === 'fresh') || availOf(rid).has(key)) return enter(rid, key);   // the store's own «+» preconditions (a sold-out dish ⇒ its store)
+      let api = null;
+      try { api = A.createApi({ config: CappUI.apiConfigOf(cfg), CappCheckout, storage, ...((o.uiOpts && o.uiOpts.apiOpts) || {}), now: () => Number(nowMs()) }); } catch (_) { return enter(rid, key); }
+      const core = CappUI.createCartCore({ menu: view.menu, cfg, api: () => api, mods: () => true });
+      // the store's own ORDER: its mount restores first (reconcile — a purchased cart cleared), then a tap mutates (frozen ⇒ refused)
+      const rr = core.restore(readJ(cfg.cartKey));
+      if (rr.blocked || (rr.hydrated && rr.hydrated.dropped)) return enter(rid, key);   // the store draws its own disclosure — never a silently shortened cart
+      if (!core.mutate((c) => c.inc(key), true).ok) return enter(rid, key);   // frozen / not addable (a launcher) / the text cap: the store
+      if (!core.frozenNow()) writeJ(cfg.cartKey, core.snapshotFor(rr.mode || 'delivery'));   // the store's notifyCart → the shell's onCartChange
       toast(`Agregado · ${row.entry.name || ''}`); renderNow();
-    }
-    // the pill's replacement, in the SAME section, once the store is mounted on its live menu (Codex VP r1 #1)
-    async function applyReorder(st, cfg, ro) {
-      const A = apiMod(); if (!A || typeof A.cartLock !== 'function') return;
-      let ok = false;
-      try {
-        ok = await A.cartLock(locks, cfg.cartKey, () => {
-          if (dead || S.store !== st || cartLocked(cfg)) return false;
-          const r = st.ui.restore({ ...reorderSnap(st.ui.menu, ro.lines, readJ(cfg.cartKey)), rid: st.rid });
-          return !(r && (r.blocked || r.cleared));
-        });
-      } catch (_) { ok = false; }
-      if (!ok || dead || S.store !== st) return;
-      st.ui.openCart(); toast('Pedido cargado en tu carrito');
     }
     function openExternal(url) { try { if (win && typeof win.open === 'function') win.open(url, '_blank', 'noopener'); } catch (_) {} }
     // ── the location layers ──

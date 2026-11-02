@@ -33,11 +33,11 @@ function server(script) {
   return { fetch, calls, sends: () => calls.filter((c) => c.ep === 'createOrder' || c.ep === 'chargeOnlineOrder').length };
 }
 let RNG = 0;
-function rig({ script = {}, storage = memStorage(), clock = { t: T0 }, hosted = true, locks = null } = {}) {
+function rig({ script = {}, storage = memStorage(), clock = { t: T0 }, hosted = true } = {}) {
   const srv = server(script);
   const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: hosted ? K.pay : 'ta_pending_pay', endpoints: E, hours: OPEN_ALL,
     ...(hosted ? { cartKey: K.cart, placedKey: K.placed } : {}) }, fetch: srv.fetch, storage, now: () => clock.t, sleep: async () => {},
-    randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {}, locks });
+    randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} });
   return { api: make(), reload: make, srv, storage, clock };
 }
 const ITEMS = [{ id: 'margherita', name: 'Margherita', dish_id: 'd_1', qty: 1, price: 250, subtotal: 250, extras: [], extrasTotal: 0 }];
@@ -352,69 +352,43 @@ test('Codex r3 #5: an UNREADABLE placement record is UNKNOWN in the lock and fre
   assert.equal(N.api.readPlace(), null, 'readPlace (S2) still reads a failure as absence');
 });
 
-// Codex VP r2 #2: the admission (freeze + dispatch record) is ONE synchronous decision inside the cart lock — overlapping placements
-// behave EXACTLY as with no lock (the base): one freeze, one send; a placement torn down while it waits for the lock never sends
-const fifoLocks = () => { let tail = Promise.resolve(); const names = []; return { names, request: (n, o, cb) => { names.push(n); const run = tail.then(() => cb()); tail = run.catch(() => {}); return run; } }; };
-// the BASE module: capp-api.js as it was before the cart lock (blob 543d9d71~1), compiled in this directory (its requires resolve here)
+// «Volver a pedir» advisor ruling 2026-11-02: placement is the BASE, byte for byte (no cart lock). This cell PROVES it on behaviour: the
+// base capp-api.js (blob 543d9d71~1, before any «Volver a pedir» change) is compiled here and both modules run the same scenarios on a
+// TRACED storage — every read / write / remove, every request body, every outcome identical
 async function baseApiModule() {
   const { execFileSync } = await import('node:child_process'); const Module = (await import('node:module')).default; const pathM = await import('node:path');
   const here = pathM.dirname(new URL(import.meta.url).pathname), file = pathM.join(here, 'capp-api.base-blob.js');
   const src = execFileSync('git', ['show', '543d9d71~1:customer-app/capp-api.js'], { cwd: here, encoding: 'utf8' });
-  assert.ok(!/cartLock/.test(src), 'premise: the base blob predates the cart lock');
-  const m = new Module(file); m.filename = file; m.paths = Module._nodeModulePaths(here); m._compile(src, file); return m.exports;
+  const m = new Module(file); m.filename = file; m.paths = Module._nodeModulePaths(here); m._compile(src, file); return { exports: m.exports, src };
 }
-test('S7a-1 + VP r2 #2: two OVERLAPPING placements (cash AND card) under Web Locks behave EXACTLY as the base module (pre-lock blob) — sends, outcomes, freeze', async () => {
-  const BASE = await baseApiModule();
-  const OK_CARD = { status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt', status: 'paid' } };
-  for (const pay of ['cash', 'online']) {
-    const run = async (Mod, locks) => {
-      const storage = memStorage(); seedCart(storage); const srv = server({ createOrder: [OK_CASH], chargeOnlineOrder: [OK_CARD], paymentStatus: [OK_CARD] });
-      const mk = () => Mod.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: K.pay, endpoints: E, hours: OPEN_ALL, cartKey: K.cart, placedKey: K.placed }, fetch: srv.fetch, storage, now: () => T0, sleep: async () => {},
-        randomBytes: (k) => Uint8Array.from({ length: k }, (_, i) => (i * 7) % 256), setInterval: () => 0, clearInterval: () => {}, ...(locks ? { locks } : {}) });
-      const api = mk(); const out = await Promise.all([api.place(args(pay)), api.place(args(pay))]);
-      return { sends: srv.sends(), kinds: out.map((x) => x.kind).sort(), frozen: J(storage, K.cart).frozen_for ? 1 : 0 };
-    };
-    const base = await run(BASE, null), L = fifoLocks(), head = await run(A, L), headNoLocks = await run(A, null);
-    assert.deepEqual(head, base, `🔴 VP-20 ${pay}: with the cart lock = the base module (${JSON.stringify(base)})`);
-    assert.deepEqual(headNoLocks, base, `🔴 VP-20 ${pay}: without Web Locks = the base module`);
-    assert.ok(L.names.length >= 1 && L.names.every((n) => n === `capp-cart:${K.cart}`), 'the admission took the cart\'s lock');
+test('placement = the BASE module (543d9d71~1): identical storage traces, request bodies and outcomes — success, failure + retry, refusal, overlap, expiry, an in-memory ABA, cash and card', async () => {
+  const B = await baseApiModule();
+  const { readFileSync } = await import('node:fs');
+  assert.equal(readFileSync(new URL('./capp-api.js', import.meta.url), 'utf8'), B.src, '🔴 VP-base: capp-api.js IS the base blob, byte for byte');
+  const OK_CARD = { status: 200, json: { ok: true, order_id: 'X', checkout_url: 'https://pay.test/c', poll_token: 'pt' } };
+  const run = async (Mod, scenario) => {
+    const trace = [], st = memStorage(), clock = { t: T0 }; let rng = 0;
+    const tr = { getItem: (k) => { const v = st.getItem(k); trace.push(['get', k, v]); return v; }, setItem: (k, v) => { trace.push(['set', k, v]); st.setItem(k, v); }, removeItem: (k) => { trace.push(['del', k]); st.removeItem(k); } };
+    const srv = server(JSON.parse(JSON.stringify(scenario.script)));   // each run its own script (server() consumes it)
+    const api = Mod.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: K.pay, endpoints: E, hours: OPEN_ALL, cartKey: K.cart, placedKey: K.placed }, fetch: srv.fetch, storage: tr, now: () => clock.t, sleep: async () => {},
+      randomBytes: (k) => Uint8Array.from({ length: k }, () => (rng++ * 13) % 256), setInterval: () => 0, clearInterval: () => {} });
+    const out = await scenario.go(api, tr, clock);
+    return { trace, bodies: srv.calls.map((c) => [c.ep, c.body]), out: JSON.parse(JSON.stringify(out)) };
+  };
+  const seed = (tr, extra) => tr.setItem(K.cart, JSON.stringify({ v: 2, rid: 'rid_a', mode: 'delivery', lines: SNAP.lines, cart_gen: 'GEN_A', ...(extra || {}) }));
+  const SC = {
+    'cash success': { script: { createOrder: [OK_CASH] }, go: async (a, tr) => { seed(tr); return a.place(args()); } },
+    'cash network failure, then the retry': { script: { createOrder: ['network', OK_CASH] }, go: async (a, tr) => { seed(tr); return [await a.place(args()), await a.place(args())]; } },
+    'card success (the checkout redirect)': { script: { chargeOnlineOrder: [OK_CARD] }, go: async (a, tr) => { seed(tr); return a.place(args('online')); } },
+    'a refused freeze (the cart write fails)': { script: { createOrder: [OK_CASH] }, go: async (a, tr) => { seed(tr); const set = tr.setItem; tr.setItem = (k, v) => { if (k === K.cart && /frozen_for/.test(v)) throw new Error('quota'); return set(k, v); }; return a.place(args()); } },
+    'a frozen cart from an expired lock (recovery, no send)': { script: { createOrder: [OK_CASH] }, go: async (a, tr) => { seed(tr, { frozen_for: 'TA_OLD' }); return a.place(args()); } },
+    'overlapping cash placements': { script: { createOrder: [OK_CASH] }, go: async (a, tr) => { seed(tr); return Promise.all([a.place(args()), a.place(args())]); } },
+    'overlapping card placements': { script: { chargeOnlineOrder: [OK_CARD] }, go: async (a, tr) => { seed(tr); return Promise.all([a.place(args('online')), a.place(args('online'))]); } },
+    'a retry after the record expired': { script: { createOrder: ['network', OK_CASH] }, go: async (a, tr, clock) => { seed(tr); const x = await a.place(args()); clock.t += 3 * 3600e3; return [x, await a.place(args())]; } },
+    'an in-memory cart, no persisted cart (null → X → null)': { script: { createOrder: [OK_CASH] }, go: async (a) => Promise.all([a.place(args()), a.place(args())]) },
+  };
+  for (const [name, sc] of Object.entries(SC)) {
+    const base = await run(B.exports, sc), head = await run(A, sc);
+    assert.deepEqual(head, base, `🔴 VP-base: «${name}» — storage trace, request bodies and outcome identical to the base`);
   }
-});
-test('S7a-1 + VP r2 #2: a placement whose page is torn down WHILE it waits for the cart lock never sends (alive() re-checked inside)', async () => {
-  const q = []; const lm = { request: (n, o, cb) => new Promise((res, rej) => q.push(async () => { try { res(await cb()); } catch (e) { rej(e); } })) };
-  const R = rig({ script: { createOrder: [OK_CASH] }, locks: lm }); seedCart(R.storage);
-  let alive = true; const pr = R.api.place({ ...args(), alive: () => alive });
-  for (let i = 0; i < 50 && !q.length; i++) await Promise.resolve();
-  assert.equal(q.length, 1, 'premise: waiting for the lock'); alive = false; await q.shift()();
-  const r = await pr;
-  assert.deepEqual([r.kind, R.srv.sends(), J(R.storage, K.cart).frozen_for], ['superseded', 0, undefined], '🔴 VP-20b: superseded — no freeze, ZERO sends');
-});
-// Codex VP r3 (money): null → active → null — a placement that SUCCEEDS while the second one waits for the section; the second must
-// reconcile (the cart is purchased), never mint a NEW id for the same cart. Base: 2 sends / 1 id (the server dedupes); now: 1 send
-const queuedLocks = () => { const q = []; return { q, request: (n, o, cb) => new Promise((res, rej) => q.push(async () => { try { res(await cb()); } catch (e) { rej(e); } })) }; };
-test('S7a-1 + VP r3 (money): two placements; the first is granted and SUCCEEDS, then the second ⇒ ONE send, ONE id, frozen once — never a second purchase of the same cart', async () => {
-  const lm = queuedLocks(), R = rig({ script: { createOrder: [OK_CASH] }, locks: lm }); seedCart(R.storage);
-  const pa = R.api.place(args()), pb = R.api.place(args());
-  for (let i = 0; i < 50 && lm.q.length < 2; i++) await Promise.resolve();
-  assert.equal(lm.q.length, 2, 'premise: both wait for the cart\'s section');
-  await lm.q.shift()(); const a = await pa;
-  assert.equal(a.kind, 'placed', 'premise: the first SUCCEEDED (its record cleared: null → active → null)');
-  const freezes = []; const set = R.storage.setItem; R.storage.setItem = (k, v) => { if (k === K.cart && /frozen_for/.test(v)) freezes.push(JSON.parse(v).frozen_for); return set(k, v); };
-  while (lm.q.length) await lm.q.shift()();
-  for (let i = 0; i < 50 && lm.q.length === 0; i++) await Promise.resolve();
-  while (lm.q.length) await lm.q.shift()();
-  const b = await pb;
-  const ids = new Set(R.srv.calls.filter((c) => c.ep === 'createOrder').map((c) => c.body.order_id));
-  assert.deepEqual([R.srv.sends(), ids.size, freezes.length], [1, 1, 0], `🔴 VP-23: one send, one id, no second freeze (the second: ${b.kind})`);
-  assert.notEqual(b.kind, 'placed_new', 'the second never mints');
-});
-test('S7a-1 + VP r3 (P2): admissions that keep finding the state changed are BOUNDED — after the cap the placement fails SAFE (the drawn retry), nothing sent, nothing minted', async () => {
-  const R = rig({ script: { createOrder: [OK_CASH] } }); seedCart(R.storage);
-  let turns = 0;
-  // every grant: an equivalent cart in DIFFERENT bytes (another tab's rewrite) lands just before the section runs
-  const lm = { request: (n, o, cb) => { turns++; const c = J(R.storage, K.cart); R.storage.setItem(K.cart, JSON.stringify(c, null, turns % 3)); return Promise.resolve().then(() => cb()); } };
-  const S = rig({ script: { createOrder: [OK_CASH] }, storage: R.storage, locks: lm });
-  const r = await S.api.place(args());
-  assert.deepEqual([r.kind, r.contended, S.srv.sends(), J(R.storage, K.place)], ['offline', true, 0, null], '🔴 VP-24: starved ⇒ offline (retryable), ZERO sends, nothing minted');
-  assert.equal(turns, 4, 'one admission + exactly 3 restarts (the cap)');
 });

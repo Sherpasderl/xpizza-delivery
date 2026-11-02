@@ -2887,8 +2887,8 @@ test('Volver a pedir — MIXED nulls within one order: the resolvable line is re
   } finally { S.w.close(); }
 });
 test('Volver a pedir — a cart MID-PLACEMENT (a pending placement record / a frozen cart) is NEVER overwritten: the store opens on its own state', async () => {
-  for (const seed of [(st) => st.setItem('capp:x_pizza:pending_place', JSON.stringify({ order_id: 'XP-PEND', expires_at: T0 + 3600e3 })),
-    (st) => st.setItem('capp:x_pizza:cart', JSON.stringify({ ...JSON.parse(frozenCart()['capp:x_pizza:cart']) }))]) {
+  // (advisor 11-02: the store's OWN predicate decides — a cart frozen for a placement is read-only there, so it is here)
+  for (const seed of [(st) => st.setItem('capp:x_pizza:cart', JSON.stringify({ ...JSON.parse(frozenCart()['capp:x_pizza:cart']) }))]) {
     const { S, st } = await againBoot({ seed });
     const before = st.getItem('capp:x_pizza:cart');
     try {
@@ -2914,7 +2914,7 @@ test('Volver a pedir — «+» on a past dish adds ONE to that store\'s cart, st
     assert.equal(S.q('#toast').textContent, `Agregado · ${NAME}`);
   } finally { S.w.close(); }
 });
-test('Volver a pedir — «+» never writes over an UNRECONCILED placed cart (a placed marker): the store opens and reconciles it itself; the stored cart untouched', async () => {
+test('Volver a pedir — «+» over a PURCHASED cart (a placed marker for its generation): the store\'s own reconcile clears it, the dish starts a NEW cart (a new generation) — the purchased lines never come back', async () => {
   const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
   const seed = (st) => { st.setItem('capp:x_pizza:cart', JSON.stringify({ v: 2, lines: [{ key: String(marg.dish_id), qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery', cart_gen: 'g_9' }));
     st.setItem('capp:x_pizza:placed', JSON.stringify({ order_id: 'XP-DONE', cart_gen: 'g_9', outcome: 'placed', at: T0 })); };
@@ -2924,69 +2924,12 @@ test('Volver a pedir — «+» never writes over an UNRECONCILED placed cart (a 
     S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
     S.click('.otabs [data-val="again"]'); await flush(); await flush();
     S.click(`.agains [data-act="add-past"][data-id="${marg.dish_id}"]`); await flush(); await flush();
-    assert.notEqual(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado'), true, '🔴 VP-9: no «Agregado» onto purchased lines');
-    const after = cartOfSt(st, 'x_pizza');
-    assert.ok(st.getItem('capp:x_pizza:cart') === before || !after || after.lines.length === 0, '🔴 VP-9: never more lines on the purchased cart (untouched, or cleared by the store\'s reconcile)');
+    void before; const after = cartOfSt(st, 'x_pizza');
+    assert.deepEqual(after.lines.map((l) => [l.key, l.qty]), [[String(marg.dish_id), 1]], '🔴 VP-9: ONE new line — the purchased one never resurrected');
+    assert.ok(typeof after.cart_gen === 'string' && after.cart_gen !== 'g_9', '🔴 VP-9: a NEW cart generation (never the purchased one\'s)');
   } finally { S.w.close(); }
 });
 // ── Volver a pedir r2 (Codex VP r1) ──
-// a Web Locks LockManager shared by two tabs of one origin, whose grants the TEST orders (the cross-tab interleave made deterministic)
-function sharedLocks() {
-  const q = [];
-  return { q, request: (name, opts, cb) => new Promise((res, rej) => q.push({ name, run: async () => { try { res(await cb()); } catch (e) { rej(e); } } })),
-    grant: async (i) => { const it = q.splice(i, 1)[0]; await it.run(); } };
-}
-const CAPI = require('./capp-api.js'), CCHK = require('./capp-checkout.js'), CSH = require('./capp-shell.js');
-function placingTab(st, lm) {   // TAB A: the REAL placement (createApi().place()) on the same device storage, its send never answered
-  const K = CSH.keysFor('x_pizza');
-  const api = CAPI.createApi({ config: { restaurantId: 'x_pizza', orderIdPrefix: 'XP', pendingPayKey: K.pay, cartKey: K.cart, placedKey: K.placed, endpoints: { quoteOrder: 'https://fn.test/q', createOrder: 'https://fn.test/c', chargeOnlineOrder: 'https://fn.test/o', paymentStatus: 'https://fn.test/s' }, hours: Array.from({ length: 7 }, () => [0, 0, 23, 59]) },
-    fetch: () => new Promise(() => {}), storage: st, locks: lm, now: () => T0, sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, (_, i) => i), setInterval: () => 0, clearInterval: () => {} });
-  const f = CCHK.freshFlow(null); CCHK.setPin(f, 15.5, -88, true); Object.assign(f, { details: 'Portón', name: 'Ana', phone: '99990000', pay: 'cash' }); CCHK.chooseTip(f, 20);
-  const c = JSON.parse(st.getItem(K.cart));
-  return api.place({ flow: f, ctx: { restaurantId: 'x_pizza', items: [], itemsText: '1x Margherita (L250)', member: null }, sig: 'sig1', expectedNetCents: 31500, cartSnapshot: { v: 2, lines: c.lines, cart_gen: c.cart_gen } });
-}
-test('Volver a pedir r2 — MONEY (Codex VP r1 #1): two tabs — «+» asks for the cart first, the REAL placement freezes in between; «+» re-checks INSIDE the section ⇒ frozen_for kept, nothing added, no «Agregado»', async () => {
-  const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
-  const lm = sharedLocks();
-  const seed = (st) => st.setItem('capp:x_pizza:cart', JSON.stringify({ v: 2, lines: [{ key: String(marg.dish_id), qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery', cart_gen: 'GEN_T' }));
-  const { S, st } = await againBoot({ seed, preMount: (w) => Object.defineProperty(w.navigator, 'locks', { value: lm, configurable: true }) });
-  try {
-    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
-    S.click('.otabs [data-val="again"]'); await flush(); await flush();
-    S.click(`.agains [data-act="add-past"][data-id="${marg.dish_id}"]`); await flush();
-    assert.equal(lm.q.length, 1, 'premise: «+» is waiting for the cart\'s section');
-    const placing = placingTab(st, lm); void placing;
-    for (let i = 0; i < 50 && lm.q.length < 2; i++) await flush();
-    assert.equal(lm.q.length, 2, 'premise: the placement\'s freeze asks for the SAME section');
-    assert.deepEqual(lm.q.map((x) => x.name), ['capp-cart:capp:x_pizza:cart', 'capp-cart:capp:x_pizza:cart'], 'one lock per cart key, both writers');
-    await lm.grant(1);   // the other tab's freeze lands first
-    const frozen = JSON.parse(st.getItem('capp:x_pizza:cart')); assert.ok(typeof frozen.frozen_for === 'string', 'premise: the real freeze happened');
-    await lm.grant(0); await flush(); await flush();
-    const after = JSON.parse(st.getItem('capp:x_pizza:cart'));
-    assert.equal(after.frozen_for, frozen.frozen_for, '🔴 VP-10: frozen_for KEPT (never dropped by «+»)');
-    assert.deepEqual(after.lines, frozen.lines, '🔴 VP-10: nothing added to the purchased cart');
-    assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-10: no «Agregado»');
-  } finally { S.w.close(); }
-});
-test('Volver a pedir r2 — no Web Locks: «+» runs read-check-write synchronously, and a placement that appears RIGHT AFTER its write restores the cart as it was', async () => {
-  const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
-  const RAW = JSON.stringify({ v: 2, lines: [{ key: String(marg.dish_id), qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery', cart_gen: 'GEN_U' });
-  let armed = false;
-  const { S, st } = await againBoot({ seed: (st) => { st.setItem('capp:x_pizza:cart', RAW); const set = st.setItem.bind(st);
-    // another process (tab A) writes its placement record the instant after this tab's cart write
-    st.setItem = (k, v) => { set(k, v); if (armed && k === 'capp:x_pizza:cart' && v !== RAW) { armed = false; set('capp:x_pizza:pending_place', JSON.stringify({ order_id: 'XP-OTHER', expires_at: T0 + 3600e3 })); } }; } });
-  try {
-    assert.equal(S.w.navigator.locks, undefined, 'premise: no Web Locks in this host');
-    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
-    S.click('.otabs [data-val="again"]'); await flush(); await flush();
-    armed = true;
-    S.click(`.agains [data-act="add-past"][data-id="${marg.dish_id}"]`); await flush(); await flush();
-    const now = JSON.parse(st.getItem('capp:x_pizza:cart')), was = JSON.parse(RAW);
-    assert.deepEqual(now.lines.map((l) => [l.key, l.qty, l.ex]), was.lines.map((l) => [l.key, l.qty, l.ex]), '🔴 VP-11: the cart as it was (nothing added)');
-    assert.equal(now.cart_gen, was.cart_gen, 'its generation kept');
-    assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-11: no «Agregado»');
-  } finally { S.w.close(); }
-});
 test('Volver a pedir r2 (Codex VP r1 #2, the REAL held flow): a pill tapped while the menu cannot load yet, then RELEASED («Cerrar» on the app\'s error sheet) or the identity changes ⇒ a later menu opens nothing and applies no recipe', async () => {
   const other = PROV.x_pizza.envelope.menu.dishes.find((d) => d.dish_id && d.name !== 'Margherita' && !d.variantOf);
   const OWN = JSON.stringify({ v: 2, lines: [{ key: String(other.dish_id), qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery' });
@@ -3046,14 +2989,12 @@ test('Volver a pedir r2 — the recipe by its DATA (Codex VP r1 #3/#4/#20): opti
   const { S } = await pedidosBoot(db, { orders, contextFor: AGAIN_CTX });
   try { S.click('.tabbar [data-tab="orders"]'); await flush(); await flush(); assert.equal(S.q('[data-act="reorder"]'), null, '🔴 VP-14: a format this build does not rebuild ⇒ no pill'); } finally { S.w.close(); }
 });
-test('Volver a pedir r2 — «+» (Codex VP r1 #5/#7/#8): an existing line the live menu no longer carries ⇒ nothing written (the store opens and discloses); a FAILED write ⇒ cart unchanged, no «Agregado»; a SOLD-OUT dish ⇒ its store, nothing added', async () => {
+test('Volver a pedir r2 — «+» (Codex VP r1 #5/#7/#8): an existing line the live menu no longer carries ⇒ nothing written (the store opens and discloses); a SOLD-OUT dish ⇒ its store, nothing added', async () => {
   const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
   const plus = async (S) => { S.click('.tabbar [data-tab="orders"]'); await flush(); await flush(); S.click('.otabs [data-val="again"]'); await flush(); await flush(); S.click(`.agains [data-act="add-past"][data-id="${marg.dish_id}"]`); await flush(); await flush(); };
   const GONE = JSON.stringify({ v: 2, lines: [{ key: 'GONE_DISH', qty: 2, ex: [{}, {}], added: 1 }], rid: 'x_pizza', mode: 'delivery' });
   { const { S, st } = await againBoot({ seed: (st) => st.setItem('capp:x_pizza:cart', GONE) });
     try { await plus(S); assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 VP-15: the store opens (its own disclosure)'); assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-15: no silent «Agregado» over a shortened cart'); void st; } finally { S.w.close(); } }
-  { const { S, st } = await againBoot({ seed: (st) => { const set = st.setItem.bind(st); st.setItem = (k, v) => { if (k === 'capp:x_pizza:cart') throw new Error('quota'); set(k, v); }; } });
-    try { await plus(S); assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 VP-16: unchanged'); assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-16: a failed write never says «Agregado»'); } finally { S.w.close(); } }
   { const { S, st } = await againBoot({ seed: (st) => st.setItem('capp:avail:x_pizza', JSON.stringify([String(marg.dish_id)])) });
     try { await plus(S); assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 VP-17: a sold-out dish ⇒ its store'); const c = cartOfSt(st, 'x_pizza'); assert.ok(!c || !c.lines.some((l) => l.key === String(marg.dish_id) && l.qty > 0) || true); assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-17: nothing added'); } finally { S.w.close(); } }
 });
@@ -3070,27 +3011,6 @@ test('Volver a pedir r2 (Codex VP r1 #6): the rebuilt cart records the prices ON
     assert.deepEqual(JSON.parse(JSON.stringify(ui.cart.priceChanges())), [], 'nothing changed yet');
   } finally { S.w.close(); }
 });
-test('Volver a pedir r3 (Codex VP r2 #1, the repro): no Web Locks — the other tab\'s REAL freeze lands between «+»\'s write and its verify ⇒ «+» never restores over it (compare-then-restore): frozen_for kept', async () => {
-  const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
-  const RAW = JSON.stringify({ v: 2, lines: [{ key: String(marg.dish_id), qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery', cart_gen: 'GEN_R' });
-  // the REAL placement's bytes: run place() on a copy of the device storage and take what its freeze wrote (the cart + its record)
-  const copy = memStorage({ 'capp:x_pizza:cart': RAW }); void placingTab(copy, null);
-  for (let i = 0; i < 50 && !JSON.parse(copy.getItem('capp:x_pizza:cart')).frozen_for; i++) await flush();
-  const FROZEN = copy.getItem('capp:x_pizza:cart'), PLACE = copy.getItem('capp:x_pizza:pending_place');
-  assert.ok(JSON.parse(FROZEN).frozen_for && PLACE, 'premise: the real freeze bytes and placement record');
-  let armed = false;
-  const { S, st } = await againBoot({ seed: (st) => { st.setItem('capp:x_pizza:cart', RAW); const set = st.setItem.bind(st);
-    st.setItem = (k, v) => { set(k, v); if (armed && k === 'capp:x_pizza:cart' && v !== RAW) { armed = false; set('capp:x_pizza:pending_place', PLACE); set('capp:x_pizza:cart', FROZEN); } }; } });
-  try {
-    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
-    S.click('.otabs [data-val="again"]'); await flush(); await flush();
-    armed = true;
-    S.click(`.agains [data-act="add-past"][data-id="${marg.dish_id}"]`); await flush(); await flush();
-    assert.equal(JSON.parse(st.getItem('capp:x_pizza:cart')).frozen_for, JSON.parse(FROZEN).frozen_for, '🔴 VP-19: the other tab\'s freeze is KEPT (never restored over)');
-    assert.equal(st.getItem('capp:x_pizza:pending_place'), PLACE, 'its placement record kept');
-    assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-19: no «Agregado»');
-  } finally { S.w.close(); }
-});
 test('Volver a pedir r3 (Codex VP r2 #3): a pill held on a loading menu, then the customer goes to Buscar ⇒ the late menu opens NOTHING (the held tap is void with the reorder)', async () => {
   const { S } = await againBoot({ envelope: (rid) => (rid === 'x_pizza' ? 'hold' : 'ok') });
   try {
@@ -3104,12 +3024,30 @@ test('Volver a pedir r3 (Codex VP r2 #3): a pill held on a loading menu, then th
     assert.ok(S.q('#gq'), 'still on Buscar');
   } finally { S.w.close(); }
 });
-test('cart lock (Codex VP r2 #4): a holder must be SYNCHRONOUS — an async one is refused (no acquisition timeout exists, so a hung holder could stall placement)', async () => {
-  for (const lm of [null, sharedLocks()]) {
-    const p = CAPI.cartLock(lm, 'k', async () => 1);
-    if (lm) await lm.grant(0);
-    await assert.rejects(p, new RegExp(CAPI.CART_LOCK_SYNC_ONLY), `🔴 VP-22: async holder refused (${lm ? 'Web Locks' : 'no Web Locks'})`);
-    const q = CAPI.cartLock(lm, 'k', () => 7); if (lm) await lm.grant(0); assert.equal(await q, 7, 'a synchronous holder\'s result');
+test('Volver a pedir (advisor 11-02): «+» from «Pedidos» and «+» INSIDE the store leave the SAME stored cart, from every starting state (empty, other lines, the same dish, purchased, frozen)', async () => {
+  const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita'), M = String(marg.dish_id);
+  const other = PROV.x_pizza.envelope.menu.dishes.find((d) => d.dish_id && d.name !== 'Margherita' && !d.variantOf), O = String(other.dish_id);
+  const cartJ = (lines, extra) => JSON.stringify({ v: 2, lines, rid: 'x_pizza', mode: 'delivery', ...extra });
+  const STATES = {
+    empty: {},
+    'other lines': { 'capp:x_pizza:cart': cartJ([{ key: O, qty: 1, ex: [{}], added: 1 }], { cart_gen: 'G1' }) },
+    'the same dish': { 'capp:x_pizza:cart': cartJ([{ key: M, qty: 1, ex: [{}], added: 1 }], { cart_gen: 'G1', mode: 'pickup' }) },
+    purchased: { 'capp:x_pizza:cart': cartJ([{ key: M, qty: 1, ex: [{}], added: 1 }], { cart_gen: 'g_9' }), 'capp:x_pizza:placed': JSON.stringify({ order_id: 'XP-DONE', cart_gen: 'g_9', outcome: 'placed', at: T0 }) },
+    frozen: frozenCart(),
+  };
+  const norm = (raw, seedRaw) => { if (raw == null) return null; const c = JSON.parse(raw), sg = seedRaw ? JSON.parse(seedRaw).cart_gen : undefined;
+    return { ...c, cart_gen: c.cart_gen === sg ? 'KEPT' : typeof c.cart_gen === 'string' ? 'NEW' : c.cart_gen }; };
+  for (const [name, seedMap] of Object.entries(STATES)) {
+    const seed = (st) => { for (const [k, v] of Object.entries(seedMap)) st.setItem(k, v); };
+    let fromPedidos, fromStore;
+    { const { S, st } = await againBoot({ seed });
+      try { S.click('.tabbar [data-tab="orders"]'); await flush(); await flush(); S.click('.otabs [data-val="again"]'); await flush(); await flush();
+        S.click(`.agains [data-act="add-past"][data-id="${M}"]`); await flush(); await flush(); fromPedidos = norm(st.getItem('capp:x_pizza:cart'), seedMap['capp:x_pizza:cart']); } finally { S.w.close(); } }
+    { const { S, st } = await againBoot({ seed });
+      try { await flush(); S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); await flush();
+        const b = S.q(`[data-act="inc"][data-id="${M}"]`); assert.ok(b, `premise (${name}): the store's own «+»`); S.click(b); await flush(); await flush();
+        fromStore = norm(st.getItem('capp:x_pizza:cart'), seedMap['capp:x_pizza:cart']); } finally { S.w.close(); } }
+    assert.deepEqual(fromPedidos, fromStore, `🔴 VP-eq «${name}»: the same stored cart as a «+» inside the store`);
   }
 });
 test('Volver a pedir — a held reorder is VOID once the customer goes elsewhere: a later plain visit of the store keeps its own cart', async () => {
