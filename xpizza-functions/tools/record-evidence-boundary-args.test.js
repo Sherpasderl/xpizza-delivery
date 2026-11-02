@@ -36,6 +36,7 @@ cell('REB-RID-NO-VALUE', () => refused('REB-RID-NO-VALUE', ['--from-rollout-reco
 cell('REB-RID-FLAG-AS-VALUE', () => refused('REB-RID-FLAG-AS-VALUE', ['--from-rollout-record', RECORD, '--rid', '--apply'], /--rid/));
 cell('REB-RID-EMPTY', () => refused('REB-RID-EMPTY', ['--from-rollout-record', RECORD, '--rid', ''], /--rid/));
 cell('REB-RID-REPEATED', () => refused('REB-RID-REPEATED', ['--from-rollout-record', RECORD, '--rid', 'la_musa', '--rid', 'x_pizza'], /more than once/));
+cell('REB-RECORD-REPEATED', () => refused('REB-RECORD-REPEATED', ['--from-rollout-record', RECORD, '--from-rollout-record', RECORD, '--rid', 'la_musa'], /--from-rollout-record was given more than once/));
 cell('REB-RECORD-EQUALS-FORM', () => refused('REB-RECORD-EQUALS-FORM', [`--from-rollout-record=${RECORD}`, '--rid', 'la_musa'], /--from-rollout-record/));
 cell('REB-UNKNOWN-ARG', () => refused('REB-UNKNOWN-ARG', ['--from-rollout-record', RECORD, '--rid', 'la_musa', '--aply'], /unrecognised argument/));
 cell('REB-RECORD-ABSENT-UNCHANGED', () => {
