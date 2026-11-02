@@ -1264,6 +1264,10 @@ createOrderApp.all('*', async (req, res) => {
       scheduledFor: scheduledForRaw, releaseAt, paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare
     });
     attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: DW.totalLempiras(dq, effectiveTotal), orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
+    /* sb:begin cash-dish-qty-held */
+    // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
+    { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables)); if (dishQty) heldUpdates[`orders/${orderId}`].dish_qty = dishQty; }
+    /* sb:end cash-dish-qty-held */
     if (redemptionCanonical) heldUpdates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until release→completion)
     /* a1:begin cash-marker-held */
     Object.assign(heldUpdates[`orders/${orderId}`], TV.markerFields(cashTextVersion));   // PLAN-A A8a: presence for 'a8' only, beside the fingerprint
@@ -1301,6 +1305,10 @@ createOrderApp.all('*', async (req, res) => {
   }));
 
   attachCustomerAttribution(updates, orderId, customer_uid, { now, total: DW.totalLempiras(dq, effectiveTotal), orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
+  /* sb:begin cash-dish-qty */
+  // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
+  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }
+  /* sb:end cash-dish-qty */
   // Track A (MF2): immediate (cash/live) path — order_tracking is built HERE (not via buildMaterializeUpdates),
   // so stamp has_profile from the resolved server customer_uid. Guest → omitted → order_tracking byte-identical.
   if (customer_uid && updates[`order_tracking/${trackingToken}`]) updates[`order_tracking/${trackingToken}`].has_profile = true;
@@ -1965,6 +1973,18 @@ chargeOnlineApp.all('*', async (req, res) => {
     // pending order so materialize.js can copy it into user_orders/{uid}.items at CONFIRM (never pending).
     ...(customer_uid ? { reorder_items: normalizeReorderItems(body.items, restaurantId, pricingTables) } : {})   // 2a: allowlist = the CATALOG menu
   };
+  /* sd:begin reorder-price-snapshot */
+  // S-D (PLAN §S-D): the reorder price snapshot beside reorder_items — the committed prices of THIS charge (pricingTables), aligned
+  // 1:1 with the recipe; materialize / claim copy it verbatim into user_orders.price_snapshot (never re-priced).
+  if (customer_uid) {
+    const reorderPriceSnapshot = require('./reorder-normalize').reorderPriceSnapshot(body.items, restaurantId, pricingTables);
+    if (reorderPriceSnapshot) pendingOrderRecord.reorder_price_snapshot = reorderPriceSnapshot;
+  }
+  /* sd:end reorder-price-snapshot */
+  /* sb:begin online-dish-qty */
+  // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
+  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables)); if (dishQty) pendingOrderRecord.dish_qty = dishQty; }
+  /* sb:end online-dish-qty */
   /* serial3:begin card-content-keys */
   // §3 r3 (codex r3 P1): the order's content keys, computed HERE where the pricing version's catalog snapshot is warm, and
   // persisted on the pending order — the confirm-side duplicate guard (other instances, cold cache) reads them, never menu names.
@@ -7823,4 +7843,63 @@ exports.getMyProfile = onRequest(
   { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
   SIGNUP_PLATFORM.getMyProfile,
 );
+// NOTE-getMyOrders: the capp «Pedidos» history read — member-only (x-firebase-id-token), ONE bounded user_orders query, a whitelist projection
+exports.getMyOrders = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  require('./my-orders').makeMyOrders({ getDatabase, getAuth, checkRateLimit, resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) }).getMyOrders,
+);
+// S-A1 (NOTE-S-A-ratings-v2-build): the rating FULFILMENT stamp — ratings_v2/{id}.fulfilled_at set-if-absent at delivered / completed
+// (members AND guests); a SEPARATE trigger (no hunk inside mirrorStatusToHistory, so no new index.js inverse); retried on failure.
+exports.stampRatingFulfilment = onValueWritten(
+  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true, timeoutSeconds: 60 },
+  async (event) => {
+    // Codex S-A1 r1 P2: a failure PROPAGATES (retry on) — the stamp is set-once and idempotent, so a retried event is safe
+    try { await require('./ratings/rating-fulfilment').stampRatingFulfilment(getDatabase(), { orderId: event.params.orderId, status: event.data.after.val(), now: Date.now() }); }
+    catch (e) { console.error('stampRatingFulfilment', e && e.message); throw e; }
+  },
+);
+// S-A1 r4 (Codex r3 P2): the durable rating-redaction journal has its OWN small schedule — the daily account sweep's budget can never
+// starve it (pruneResidual also runs it first, isolated)
+exports.drainRatingRedactions = onSchedule(
+  { schedule: 'every 30 minutes', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const out = await SE.drainRatingRedactions(getDatabase(), Date.now());
+    if (out.pending || out.failed) console.log(`drainRatingRedactions: ${JSON.stringify(out)}`);
+  },
+);
+// S-A(d) (NOTE-S-Ad-merchant-comments-build): the P-1 merchant view — anonymous rating COMMENTS for ONE rid the caller is a member of
+// (resolveAccess + can 'stats.read'), bounded reads of the server-only rating_index through rating-v2.readCountable; the opaque cursor
+// is sealed with an OTP_SALT-derived key (HKDF, its own label)
+exports.getMerchantRatingComments = onRequest(
+  { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET] },
+  require('./ratings/merchant-comments').makeMerchantRatingComments({ getDatabase, getAuth, checkRateLimit }).getMerchantRatingComments,
+);
+// S-A (d) customer read: getMyRating — the C-2 sheet's read of the caller's OWN rating, the writer's predicate (customerUidOf + the
+// order's customer_uid), the payload only through rating-v2.readCountable
+exports.getMyRating = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  require('./ratings/my-rating').makeMyRating({ getDatabase, getAuth, checkRateLimit }).getMyRating,
+);
+// S-B (NOTE-S-B-aggregates-build): the INCREMENTAL public_stats producer — closes each complete HN day from rating_index (the
+// fulfilled-order log) into a server-only bucket, sums 30 / 90 days, publishes counts only; repeat-customer keys are HMAC'd under an
+// OTP_SALT-derived key (HKDF) and expire with their 90-day bucket. A per-rid failure is LOUD and never blocks the other restaurants.
+exports.publishRatingAggregates = onSchedule(
+  { schedule: '30 4 * * *', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB', maxInstances: 1, secrets: [OTP_SALT_SECRET] },
+  async () => {
+    const AP = require('./ratings/aggregate-producer');
+    const out = await AP.runAggregates({ db: getDatabase(), nowMs: Date.now(), salt: process.env.OTP_SALT,
+      listRids: async () => { const r = await restaurantRegistry().readNow(); if (!r || r.ok !== true) throw new Error('aggregate: registry unavailable'); return r.ids; },
+      priceOfFor: async (rid) => { const t = await resolvePricingTables(rid); return AP.priceOfFromTables(t, t ? contextOfTables(t) : null); } });
+    if (out.failed.length) console.error('publishRatingAggregates FAILED', JSON.stringify(out.failed));
+    console.log('publishRatingAggregates', JSON.stringify({ ok: out.ok.length, failed: out.failed.length }));
+  },
+);
+// S-F (NOTE-S-F-support-tickets-build): the customer's «Ayuda» ticket for an order it OWNS (member: the ONE customer predicate; guest: the
+// order's tracking_token, constant-time); no identity in the ticket; ≤ 5 per order; server-only (Central's surface is X-1)
+exports.createSupportTicket = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  require('./support/support-tickets').makeSupportTickets({ getDatabase, getAuth, checkRateLimit }).createSupportTicket,
+);
+// S-A1: rateOrder's dish votes resolve through the ONE resolver (the expression getMyOrders and the live displayLabel path use)
+require('./ratings/rate-order').configure({ resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) });
 /* checkout:end endpoints */

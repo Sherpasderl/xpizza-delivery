@@ -28,7 +28,7 @@ const M512 = require('./tools/mem512-inverse');
 const FS5 = M512.HUNKS.find((h) => h.fn === 'formSignal');
 const once = (src, from, to, label) => { const k = src.split(from).length - 1; if (k !== 1) throw new Error(`checkout-wiring: ${label} occurs ${k} times (expected exactly 1)`); return src.replace(from, () => to); };
 const toBase = (src) => {
-  let out = unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(src));
+  let out = unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(src))));
   for (const t of TIP_LAYERS) { const m = require(`./tools/${t}-inverse`); out = m[Object.keys(m).find((k) => /^unapply\w*Index$/.test(k))](out); if (t === 'mem512') out = once(out, FS5.was, FS5.now, 'the 8a31e2a3 formSignal line'); }
   return out;
 };
@@ -67,6 +67,14 @@ for (const first of ["db.ref(`recent_order_content/", 'reserveRedemption(']) { c
 assert.ok(/secrets: \[SIGNUP_GRANT_SECRET\]/.test(hunk('grant-secret-bind')) && live.indexOf('/* checkout:begin grant-secret-bind */') > live.indexOf('exports.chargeOnlineOrder = onRequest('), 'the grant secret binds to chargeOnlineOrder only');
 assert.strictEqual(live.split('SIGNUP_GRANT_SECRET]').length - 1, 2, 'the grant secret binds to exactly chargeOnlineOrder + redeemSignupGrant');
 assert.ok(/exports\.redeemSignupGrant = onRequest\(\n  \{[^\n]*secrets: \[OTP_SALT_SECRET, SIGNUP_GRANT_SECRET\] \}/.test(block), 'S3b: redeemSignupGrant (in the endpoints block) binds it (+ OTP_SALT, the guest-server train item; exact list)');
+// NOTE-getMyOrders (approved delta): the export resolves dish ids through the SAME expression index.js's live displayLabel path uses
+assert.ok(block.includes("require('./my-orders').makeMyOrders({ getDatabase, getAuth, checkRateLimit, resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) }).getMyOrders,"), '🔴 getMyOrders (in the endpoints block) resolves its context via contextOfTables(await resolvePricingTables(rid))');
+assert.ok(live.includes('contextOfTables(await resolvePricingTables(order.restaurant_id))'), 'premise: the live displayLabel path uses that expression');
+// S-A1 (NOTE-S-A-ratings-v2-build): the rating fulfilment stamp is a trigger on the order STATUS calling the real core; rateOrder's
+// dish votes resolve through the SAME one-resolver expression
+assert.ok(block.includes("exports.drainRatingRedactions = onSchedule(\n  { schedule: 'every 30 minutes', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },") && block.includes('const out = await SE.drainRatingRedactions(getDatabase(), Date.now());'), '🔴 drainRatingRedactions (in the endpoints block) is its own 30-minute schedule calling the real drain');
+assert.ok(block.includes("exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true, timeoutSeconds: 60 },") && block.includes("catch (e) { console.error('stampRatingFulfilment', e && e.message); throw e; }") && block.includes("require('./ratings/rating-fulfilment').stampRatingFulfilment(getDatabase(), { orderId: event.params.orderId, status: event.data.after.val(), now: Date.now() })"), '🔴 stampRatingFulfilment (in the endpoints block) is the status trigger calling the real core');
+assert.ok(block.includes("require('./ratings/rate-order').configure({ resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) });"), '🔴 rateOrder resolves dish ids through contextOfTables(await resolvePricingTables(rid))');
 for (const [name, stmt] of [['gate-create', 'if (cappGuestRefusal) return res.status(400).json({ error: cappGuestRefusal });'],
   ['gate-method', "&& (await require('./checkout-guest-gate').chargeUidOf(req, { getAuth, getDatabase, attributionUid })) === null) {\n    return res.status(400).json({ error: 'guest_cash_not_allowed' });"],
   ['gate-charge', 'if (cappGuest && cappGuest.refuse) return res.status(400).json({ error: cappGuest.refuse });'],
@@ -75,11 +83,11 @@ for (const [name, stmt] of [['gate-create', 'if (cappGuestRefusal) return res.st
   ['gate-grant-field', '...(cappGrant ? { signup_grant: cappGrant } : {}),']]) assert.ok(hunk(name).includes(stmt), `🔴 the ${name} hunk lost its effect: ${stmt}`);
 ok('(ii-S2) placement: gate-create after createOrder identity + before its existence read; chargeOnlineOrder gate → verified (pre-CAS) → bind (post-CAS, before every outcome) → grant (before any answer); gate-method right above the generic online-only refusal; secret bound to chargeOnlineOrder');
 
-assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(live.replace(BEGIN, '/* checkout:BEGIN */\n'))), /missing/, 'a missing begin');
-assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(live.replace(END, '/* checkout:END */\n'))), /missing/, 'a missing end');
-assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(live + BEGIN + END)), /more than once/, 'a duplicated block');
-assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(live.replace('  /* checkout:begin gate-create */\n', '  x; /* checkout:begin gate-create */\n'))), /own lines/, 'a marker sharing a base line');
-assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(live.replace('/* checkout:end gate-bind */', '/* checkout:end gate-bindx */'))), /missing|unknown/, 'a renamed S2 marker');
+assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(live.replace(BEGIN, '/* checkout:BEGIN */\n'))))), /missing/, 'a missing begin');
+assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(live.replace(END, '/* checkout:END */\n'))))), /missing/, 'a missing end');
+assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(live + BEGIN + END)))), /more than once/, 'a duplicated block');
+assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(live.replace('  /* checkout:begin gate-create */\n', '  x; /* checkout:begin gate-create */\n'))))), /own lines/, 'a marker sharing a base line');
+assert.throws(() => unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(live.replace('/* checkout:end gate-bind */', '/* checkout:end gate-bindx */'))))), /missing|unknown/, 'a renamed S2 marker');
 assert.notStrictEqual(toBase(live.replace('exports.verifyOtp', 'exports.verifyOtP')), base, 'an edit OUTSIDE the hunks is detected');
 // S3a placement: each platform hand-off is the FIRST statement after its handler's POST check (before any read / write); the
 // forms' path below it is byte-identical (proven by (i)); exactly the bodies carrying `context` leave

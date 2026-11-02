@@ -175,6 +175,13 @@
     },
 
     "order_ratings": { ".read": false, ".write": false },
+    "ratings_v2": { ".read": false, ".write": false, ".indexOn": ["owner_uid"] },
+    "rating_index": { ".read": false, ".write": false },
+    "stats_buckets": { ".read": false, ".write": false },
+    "stats_agg": { ".read": false, ".write": false },
+    "support_tickets": { ".read": false, ".write": false },
+    "support_ticket_counts": { ".read": false, ".write": false },
+    "ratings_redact_pending": { ".read": false, ".write": false, ".indexOn": ["at", "last_attempt"] },
     "public_stats": { ".read": true, ".write": false },
     "order_tracking": {
       "$token": {
@@ -336,6 +343,7 @@
     "restaurants": {
       "$restaurant_id": {
         "factura_config": { ".read": false, ".write": false },
+        "platform_config": { ".read": false, ".write": false },
         "legal": { ".read": false, ".write": false },
         "identity": {
           ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true",
@@ -457,6 +465,18 @@
           }
         },
         "$other":     { ".validate": false }
+      }
+    },
+    "user_favorites": {
+      "$uid": {
+        ".read":  "auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()",
+        ".write": "auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()",
+        ".validate": "newData.hasChildren()",
+        "$rid": {
+          ".validate": "$rid.matches(/^[a-z0-9][a-z0-9_-]{1,39}$/) && root.child('restaurants').child($rid).child('identity').exists() && newData.hasChildren(['createdAt'])",
+          "createdAt": { ".validate": "newData.isNumber() && newData.val() <= now + 60000" },
+          "$other":    { ".validate": false }
+        }
       }
     },
     "user_orders":  { "$uid": { ".read": "auth != null && auth.token.handheld !== true && auth.uid === $uid", ".write": false, ".indexOn": ["ts"] } },

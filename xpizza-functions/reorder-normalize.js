@@ -72,3 +72,40 @@ function normalizeReorderItemsCanonical(bodyItems, restaurantId, tables, context
 }
 
 module.exports = { normalizeReorderItems, normalizeReorderItemsCanonical };
+
+/* S-D (PLAN §S-D) — the reorder PRICE SNAPSHOT: an additive sibling of the recipe (recipe_format is NOT bumped), captured from the
+   COMMITTED prices when the recipe is first written and copied verbatim afterwards (materialize / claim never re-price).
+     { v:1, lines:[{ unit_cents, line_cents }] }  — aligned 1:1 with the recipe lines normalizeReorderItems keeps
+   unit_cents = the dish's menu price; line_cents = the line EXACTLY as charged. ONE pricer, untouched: line_cents is the existing
+   computeServerTotal on a ONE-LINE cart — its loop carries no state across lines (per-line validation, per-line extras dedup, a plain
+   running sum), so Σ line_cents === the cart's charged subtotal (proven over a generated corpus for both brands). x_pizza extras
+   count once per entry, la_musa extras by their own qty — whatever computeServerTotal charges. The pairing is single-pass: each body
+   line is normalized on its own (normalizeReorderItems carries no cross-line state either, only the MAX_LINES cap, applied here) and
+   priced on its own, so a dropped line drops from BOTH. Any line the pricer refuses ⇒ NO snapshot at all (never a partial one — the
+   client's generic disclosure covers it; a charged cart always prices). Client price fields on the body are never read. */
+function normalizeReorderItemsWithPrices(bodyItems, restaurantId, tables = null) {
+  const { menu } = resolvePriceTables(restaurantId, tables);   // PIN B asserts the tag
+  if (!menu || !Array.isArray(bodyItems)) return { items: [], snapshot: null };
+  const items = [];
+  const lines = [];
+  let priced = true;
+  let truncated = false;
+  for (const it of bodyItems) {
+    const one = normalizeReorderItems([it], restaurantId, tables);
+    if (one.length !== 1) continue;
+    if (items.length >= MAX_LINES) { truncated = true; break; }   // the recipe is capped; the CHARGE is not (Codex S-D r1)
+    items.push(one[0]);
+    const unit = menu[one[0].key];
+    const r = require('./menu-pricing').computeServerTotal([it], restaurantId, tables);
+    if (r.error || !Number.isInteger(r.total) || !Number.isInteger(unit)) { priced = false; continue; }
+    lines.push({ unit_cents: unit * 100, line_cents: r.total * 100 });
+  }
+  // a TRUNCATED recipe ⇒ NO snapshot (Σ line_cents would no longer equal the charge; the client's generic disclosure covers it)
+  return { items, snapshot: priced && !truncated && items.length > 0 ? { v: 1, lines } : null };
+}
+// the snapshot alone (the online pending writer's insert-only hunk: reorder_items itself is written by the unchanged base line)
+function reorderPriceSnapshot(bodyItems, restaurantId, tables = null) {
+  return normalizeReorderItemsWithPrices(bodyItems, restaurantId, tables).snapshot;
+}
+module.exports.normalizeReorderItemsWithPrices = normalizeReorderItemsWithPrices;
+module.exports.reorderPriceSnapshot = reorderPriceSnapshot;

@@ -99,6 +99,8 @@ async function claimOrderCore(db, { uid, orderId, token, now }) {
       items: Array.isArray(committed.reorder_items) ? committed.reorder_items : [],
       // 1D D4-b §B.5/§D (advisor Q3): carried ONLY IF PRESENT (never in D4-b → byte-identical to today).
       ...(committed.recipe_format !== undefined ? { recipe_format: committed.recipe_format } : {}),
+      // S-D: the reorder price snapshot, ONLY IF PRESENT and VERBATIM (never re-priced from a later menu).
+      ...(committed.reorder_price_snapshot !== undefined ? { price_snapshot: committed.reorder_price_snapshot } : {}),
     });
   } catch (_) { /* history is best-effort — never block the credit */ }
 

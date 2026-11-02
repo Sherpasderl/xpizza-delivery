@@ -1,20 +1,21 @@
 'use strict';
-// S5 — rateOrder: the «Entregado» one-tap thumb (server). index.js re-exports it on ONE line (inverse-fold invariant:
-// tools/s5r-inverse.js). The proof is the SIGNED-IN CUSTOMER: the X-Firebase-ID-Token (customer:true, not tombstoned — the
-// same verification createOrder / quoteOrder apply) whose uid is the order's customer_uid. No rate limiter: an account can
-// write at most ONE record per own fulfilled order, so abuse is bounded by construction (advisor r1 redesign).
-//
-//   POST { order_id, thumb: "up"|"down" }   + header X-Firebase-ID-Token
-//   200 { ok:true }                       recorded — or ANY repeat on an already-rated order (never reveals the stored thumb)
-//   409 { ok:false, error:'not_fulfilled' }  the customer's OWN order, not yet delivered / completed
-//   403 { ok:false, error:'not_allowed' }    not signed in, not a customer, not your order, unknown order, malformed body —
-//                                            ONE generic refusal
-// Reads deleted_uids/{uid} and orders/{order_id}; writes ONLY order_ratings/{order_id} (create-if-absent).
+// S5 → S-A1 — rateOrder: the order's SIGNED-IN customer rates it (server). index.js re-exports it on ONE line (inverse-fold invariant:
+// tools/s5r-inverse.js). The proof is the X-Firebase-ID-Token (customer:true, not tombstoned) whose uid is the order's customer_uid.
+// S-A1 (NOTE-S-A-ratings-v2-build, approved 2026-11-01): EVERY write is ratings_v2/{order_id} (one node, one transaction —
+// ratings/rating-v2.js); order_ratings is never written again (prod held zero v1 records).
+//   POST { order_id, thumb:"up"|"down" }   legacy v1 (old clients): legacy_thumb, WRITE-ONCE; status-based eligibility, as before
+//   POST { order_id, store?, dishes?, delivery?, comment? }   v2 (rich): the 7-day window from fulfilled_at; dish votes keyed by the
+//        store's CANONICAL dish id and validated against the member's OWN recipe (user_orders/{uid}/{id}.items keys) mapped through the
+//        ONE resolver (configure({ resolveContext })); an unusable context ⇒ the dish votes are dropped, the rest recorded
+//   POST { order_id, action:"withdraw" }   live → withdrawn
+//   200 { ok:true[, dishes:'unavailable'] } | 409 { ok:false, error: not_fulfilled | window_closed | not_rated } |
+//   400 { ok:false, error:'dish_not_purchased' } | 403 { ok:false, error:'not_allowed' } (ONE generic refusal)
 const { onRequest } = require('firebase-functions/v2/https');
 const { getDatabase } = require('firebase-admin/database');
 const { getAuth } = require('firebase-admin/auth');
 const { attributionUid } = require('../create-order-build');
 const R = require('./rating-core');
+const V2 = require('./rating-v2');
 
 const GENERIC = { httpStatus: 403, body: { ok: false, error: 'not_allowed' } };
 
@@ -23,26 +24,86 @@ async function customerUidOf(db, idToken, verifyIdToken) {
   if (typeof idToken !== 'string' || !idToken) return null;
   try {
     const dec = await verifyIdToken(idToken);
-    if (!dec || dec.customer !== true || !dec.uid) return null;
+    if (!dec || dec.customer !== true || dec.handheld === true || !dec.uid) return null;   // S-A(d) read: a handheld device token never acts as a customer (the rules' handheld !== true)
     return attributionUid(dec, (await db.ref(`deleted_uids/${dec.uid}`).get()).exists());
   } catch (_) { return null; }
 }
 
-async function rateOrderCore(db, { body, idToken, now, verifyIdToken }) {
-  const req = R.parseRequest(body);
+// the ONE resolver (index.js wires it: contextOfTables(await resolvePricingTables(rid))); unset ⇒ dish votes unavailable
+let DEPS = { resolveContext: null };
+function configure(d) { DEPS = { ...DEPS, ...d }; }
+const CB = () => require('../catalog/canonical-binding');
+
+// the member's purchased dishes as CANONICAL ids: their own recipe keys → the store's identity map. null = unresolvable now.
+async function purchasedDishIds(db, { uid, orderId, rid, resolveContext }) {
+  if (typeof resolveContext !== 'function') return null;
+  let map = null;
+  try { map = CB().identityMap(await resolveContext(rid)); } catch (_) { map = null; }
+  if (!map) return null;
+  const entry = (await db.ref(`user_orders/${uid}/${orderId}`).get()).val();
+  const keys = entry && Array.isArray(entry.items) ? entry.items.map((l) => l && l.key).filter((k) => typeof k === 'string') : [];
+  return new Set(keys.map((k) => map.dish.get(k)).filter(Boolean));
+}
+
+// Codex S-A1 r1 P1-2: the ACCOUNT-LEVEL fence = deleted_uids/{uid} (THE tombstone, written in deletion's ONE atomic update, BEFORE its
+// rating redaction scan). A rating write paused across that deletion re-checks it AFTER its own commit and redacts what it just wrote
+// (the scan may have run before this write existed). Either order converges on a redacted node; a FAILED deletion leaves no fence.
+// Codex r2: on a tombstone it FIRST ensures the durable redaction journal entry (idempotent create-if-absent), THEN redacts — so a failed
+// redaction here is still drained by pruneResidual. (If even the tombstone read fails, the deletion's own journal entry — kept past
+// the grace that outlasts this function's timeout — drains it.)
+// r4 P1-2: CREATE-OR-TOUCH the journal entry — v + 1 (created at {at: now, v: 1} if absent). A drain that judged the entry before this
+// touch sees v moved and keeps it, so this late commit is still drained even if the redaction below fails.
+async function touchRedactJournal(db, uid, now) {
+  await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => ({ ...(cur && typeof cur === 'object' ? cur : {}),   // keeps last_attempt / attempts
+    at: cur && typeof cur.at === 'number' ? cur.at : now, v: (cur && Number.isInteger(cur.v) ? cur.v : 0) + 1 }));
+}
+async function fencedAfterWrite(db, uid, ref, now) {
+  if (!(await db.ref(`deleted_uids/${uid}`).get()).exists()) return false;
+  await touchRedactJournal(db, uid, now);
+  await ref.transaction(V2.deletionUpdater({}));
+  return true;
+}
+
+async function rateOrderCore(db, { body, idToken, now, verifyIdToken, resolveContext = DEPS.resolveContext }) {
+  const req = V2.parseRequest(body);
   if (!req.ok) return GENERIC;
   const uid = await customerUidOf(db, idToken, verifyIdToken);
   if (!uid) return GENERIC;
   const order = (await db.ref(`orders/${req.orderId}`).get()).val();
-  const why = R.eligibility(order, uid);
-  if (why === 'not_allowed') return GENERIC;
-  if (why) return { httpStatus: 409, body: { ok: false, error: why } };
-  const rec = R.ratingRecord(req.thumb, order.restaurant_id, now);
-  await db.ref(`order_ratings/${req.orderId}`).transaction((cur) => (cur === null ? rec : undefined));
-  return { httpStatus: 200, body: { ok: true } };   // created, or already rated (first tap final) — the same answer
+  if (!order || order.customer_uid !== uid) return GENERIC;            // not theirs / unknown — never revealing which
+  const ref = V2.ratingRef(db, req.orderId);
+  const out = {};
+  if (req.kind === 'v1') {
+    const why = R.eligibility(order, uid);                                // status-based, exactly as before
+    if (why === 'not_allowed') return GENERIC;
+    if (why) return { httpStatus: 409, body: { ok: false, error: why } };
+    await ref.transaction(V2.v1Updater({ thumb: req.thumb, restaurantId: order.restaurant_id, uid, now }, out));
+    if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref, now)) return GENERIC;
+    return out.outcome === 'closed' ? GENERIC : { httpStatus: 200, body: { ok: true } };   // recorded or kept — the same answer
+  }
+  if (req.kind === 'withdraw') {
+    await ref.transaction(V2.withdrawUpdater({ now }, out));
+    if (out.outcome === 'withdrawn' || out.outcome === 'kept') return { httpStatus: 200, body: { ok: true } };
+    return { httpStatus: 409, body: { ok: false, error: 'not_rated' } };
+  }
+  const fields = { ...req.fields };
+  let dishesUnavailable = false;
+  if (fields.dishes && Object.keys(fields.dishes).length) {
+    const bought = await purchasedDishIds(db, { uid, orderId: req.orderId, rid: order.restaurant_id, resolveContext });
+    if (!bought) { delete fields.dishes; dishesUnavailable = true; }
+    else if (Object.keys(fields.dishes).some((id) => !bought.has(id))) return { httpStatus: 400, body: { ok: false, error: 'dish_not_purchased' } };
+  }
+  if (!Object.keys(fields).length) return { httpStatus: 200, body: { ok: true, dishes: 'unavailable' } };   // only dish votes, none resolvable
+  await ref.transaction(V2.v2Updater({ fields, uid, now }, out));
+  if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref, now)) return GENERIC;
+  if (out.outcome === 'recorded') return { httpStatus: 200, body: { ok: true, ...(dishesUnavailable ? { dishes: 'unavailable' } : {}) } };
+  if (out.outcome === 'closed') return GENERIC;
+  return { httpStatus: 409, body: { ok: false, error: out.outcome } };   // not_fulfilled | window_closed
 }
 
-const rateOrder = onRequest({ region: 'us-central1', cors: true, timeoutSeconds: 20, memory: '256MiB', maxInstances: 5 }, async (req, res) => {
+// the writer's timeout is a NAMED constant: ratings-grace.guard pins REDACT_GRACE_MS ≥ 2× it (read from the deployed manifest)
+const RATE_ORDER_TIMEOUT_S = 20;
+const rateOrder = onRequest({ region: 'us-central1', cors: true, timeoutSeconds: RATE_ORDER_TIMEOUT_S, memory: '256MiB', maxInstances: 5 }, async (req, res) => {
   try {
     if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
     const r = await rateOrderCore(getDatabase(), { body: req.body, idToken: req.get('x-firebase-id-token'), now: Date.now(), verifyIdToken: (t) => getAuth().verifyIdToken(t) });
@@ -53,4 +114,4 @@ const rateOrder = onRequest({ region: 'us-central1', cors: true, timeoutSeconds:
   }
 });
 
-module.exports = { rateOrder, rateOrderCore };
+module.exports = { rateOrder, rateOrderCore, configure, purchasedDishIds, touchRedactJournal, customerUidOf, RATE_ORDER_TIMEOUT_S };   // customerUidOf: the ONE predicate, shared with getMyRating
