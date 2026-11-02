@@ -61,6 +61,7 @@ function makeHonestDb(initial = {}, hooks = {}) {
   const snap = (v) => { const frozen = clone(v); return { val: () => clone(frozen), exists: () => frozen != null }; };
   const api = {};
   const ref = (p = '') => {
+    if (/[.#$[\]]/.test(p)) throw new Error(`invalid RTDB path "${p}"`);   // as the Admin SDK: a path with . # $ [ ] throws at ref(), read or write
     const r = {
       async once() { if (hooks.beforeRead) await hooks.beforeRead(p, api); return snap(getAt(p)); },
       async get() { return r.once(); },
