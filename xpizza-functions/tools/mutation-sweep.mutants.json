@@ -30675,5 +30675,101 @@
    "node",
    "otp-salt-secret.test.js"
   ]
+ },
+ {
+  "id": "mo-1",
+  "slice": "mo",
+  "label": "getMyOrders: any verified token (the customer claim dropped)",
+  "file": "my-orders.js",
+  "from": "if (dec && dec.customer === true && typeof dec.uid",
+  "to": "if (dec && typeof dec.uid",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-2",
+  "slice": "mo",
+  "label": "getMyOrders: reads the SHARED node (another account's history reachable)",
+  "file": "my-orders.js",
+  "from": "let qr = db.ref(`user_orders/${uid}`).orderByChild('ts');",
+  "to": "let qr = db.ref('user_orders').orderByChild('ts');",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-3",
+  "slice": "mo",
+  "label": "getMyOrders: the projection spreads the stored entry (internal fields leave)",
+  "file": "my-orders.js",
+  "from": "  return {\n    order_id: id,",
+  "to": "  return { ...x,\n    order_id: id,",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-4",
+  "slice": "mo",
+  "label": "getMyOrders: the page size is unbounded",
+  "file": "my-orders.js",
+  "from": "  return n <= LIMIT_MAX ? n : null;",
+  "to": "  return n;",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-5",
+  "slice": "mo",
+  "label": "getMyOrders: the page keeps the probe row (a duplicate across pages)",
+  "file": "my-orders.js",
+  "from": "const page = (more ? asc.slice(asc.length - limit) : asc).reverse();",
+  "to": "const page = asc.slice().reverse();",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-6",
+  "slice": "mo",
+  "label": "getMyOrders: 'delivered' counts as active",
+  "file": "my-orders.js",
+  "from": "const isActive = (status) => typeof status === 'string' && status !== '' && !TERMINAL.has(status);",
+  "to": "const isActive = (status) => typeof status === 'string' && status !== '' && (status === 'delivered' || !TERMINAL.has(status));",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-7",
+  "slice": "mo",
+  "label": "getMyOrders: the cursor is not validated",
+  "file": "my-orders.js",
+  "from": "    if (!(ts === null || Number.isFinite(ts)) || typeof id !== 'string' || !ORDER_ID_RE.test(id)) return null;",
+  "to": "    if (false) return null;",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-8",
+  "slice": "mo",
+  "label": "getMyOrders: a tombstoned account still reads its history",
+  "file": "my-orders.js",
+  "from": "      if (await S.isTombstoned(db, uid)) return res.status(403).json({ ok: false, reason: 'deleted' });\n",
+  "to": "",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
  }
 ]

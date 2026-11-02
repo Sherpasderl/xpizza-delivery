@@ -7823,4 +7823,9 @@ exports.getMyProfile = onRequest(
   { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
   SIGNUP_PLATFORM.getMyProfile,
 );
+// NOTE-getMyOrders: the capp «Pedidos» history read — member-only (x-firebase-id-token), ONE bounded user_orders query, a whitelist projection
+exports.getMyOrders = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  require('./my-orders').makeMyOrders({ getDatabase, getAuth, checkRateLimit }).getMyOrders,
+);
 /* checkout:end endpoints */
