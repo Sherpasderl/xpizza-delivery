@@ -42,7 +42,7 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
     const db = ctx.database();
     await db.ref().update({
       [`dispatchers/${UID}`]: true, [`kitchen/${UID}`]: true,
-      [`restaurants/${RID}/kitchen_staff/${UID}`]: true, [`restaurants/${RID}/identity/name`]: 'Centro',
+      [`restaurants/${RID}/kitchen_staff/${UID}`]: true, [`restaurants/${RID}/identity/name`]: 'Centro', [`restaurants/${RID}/identity/version`]: 1,   // 2e 11-01: the identity .validate requires version === data.version + 1 (IDENT writes 2); unseeded → the control write was denied (masked while the read cell failed)
       [`restaurants/${RID}/availability_audit/k1`]: { at: 1 },
       [`restaurants/${RID}/item_availability/k1`]: { available: true },
       [`driver_accounts/${UID}`]: { role: 'driver' }, [`drivers/${UID}`]: { name: 'Dev Person', status: 'off_shift', ingest_token_hash: 'h1', current_shift_id: 's1' },
@@ -50,13 +50,6 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
       'orders/O3': { order_id: 'O3', status: 'delivered', restaurant_id: RID, payment_method: 'cash', delivered_by_driver_uid: 'other-drv' },
       'orders/O1': { order_id: 'O1', status: 'ready', restaurant_id: RID, payment_method: 'cash', pickup_task_id: 'O1_pickup', delivery_task_id: 'O1_delivery' },
       'tasks/O1_delivery': { order_id: 'O1', type: 'delivery', status: 'accepted', assigned_driver_id: UID },
-      // 2e 11-01 — the human control's DATA in the REAL writers' shapes (the grants are data-dependent; roles alone are vacuous):
-      //   stacks/$stack_id — the committed record sequencing/plan-stack.js:100 writes (transaction at :107); driver_uid = the reader
-      'stacks/S1': { state: 'committed', driver_uid: UID, pair: ['O1', 'O3'], ranks: { O1: 1, O3: 2 }, plus_min: 4, plus_s: 240, hub_rid: RID,
-        depart_at: 1700000000000, ready_at: 1700000000000, legs_s: [300, 420], decided_at: 1700000000000 },
-      //   arrived_notices/$oid — the claim arrived-notify.js:97 writes (transaction at :99); `by` = the arriving driver
-      'arrived_notices/O1': { state: 'claimed', by: UID, arrival_at: 1700000000000, task_id: 'O1_delivery', claimed_at: 1700000000000 },
-      //   (its !data.exists() branch reads tasks/<oid>_delivery.assigned_driver_id — tasks/O1_delivery above, create-order-build.js:97 shape)
       'tasks/O1_pickup': { order_id: 'O1', type: 'pickup', status: 'accepted', assigned_driver_id: UID },
       'order_tracking/tok1': { status: 'ready' }, 'order_timelines/O1/e1': { at: 1 }, 'config/x': 1,
       'config/rewards_public/redemption_live': true, 'public/brands/tb_brand': { name: 'Third' },
@@ -153,6 +146,18 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
     '/restaurants/$restaurant_id/availability_audit/$key/.write': [`restaurants/${RID}/availability_audit/k2`, { at: 2 }],
     '/menus/$rid/.write': [`menus/${RID}/b`, 2, { descendant: true }],
     '/user_profiles/$uid/.write': [`user_profiles/${UID}`, { name: 'Dev' }, { op: 'update' }],
+    // 2e 11-01 — the train's new write leaves (previously masked: the read cell aborted first), each in its REAL writer's shape:
+    //   drvf «Problema con este pedido»: xpizza-driver/index.html:2843-2844 — a create-only { reason, by, at: serverTimestamp() } by the
+    //   assigned driver (the human control is assigned tasks/O1_delivery above)
+    '/driver_problems/$oid/$pushId/.write': ['driver_problems/O1/p1', { reason: 'other', by: UID, at: { '.sv': 'timestamp' } }],
+    //   Pausa: the svc-assigner's CLEAR-only grant — index.js:4495 / :4531 write drivers/{uid}/break_since = null
+    '/drivers/$driver_id/break_since/.write': [`drivers/${UID}/break_since`, null, SVC],
+    //   stackseq finalize: sequencing/plan-stack.js:133-143 stackCopies — the five task-copy leaves on tasks/{oid}_delivery
+    '/tasks/$task_id/stack_id/.write': ['tasks/O1_delivery/stack_id', 'S1', SVC],
+    '/tasks/$task_id/stop_seq/.write': ['tasks/O1_delivery/stop_seq', 2, SVC],
+    '/tasks/$task_id/stack_uid/.write': ['tasks/O1_delivery/stack_uid', UID, SVC],
+    '/tasks/$task_id/stack_at/.write': ['tasks/O1_delivery/stack_at', { '.sv': 'timestamp' }, SVC],
+    '/tasks/$task_id/stack_plus_min/.write': ['tasks/O1_delivery/stack_plus_min', 4, SVC],
   };
   const writeLeaves = [];
   (function walkW(node, p) {
