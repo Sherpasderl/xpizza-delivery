@@ -191,6 +191,14 @@ test('capp-dark §5 controls: the scan SEES a new rule, an SVG attribute, a temp
   assert.deepEqual(CSSX('.app{--x:1px;color:#123456}'), ['css .app | color #123456'], '🔴 DK-lit: inside a real home, only its custom properties are the theme');
   assert.deepEqual(CSSX('@supports (display:grid){.g{color:#123456}}'), ['css @supports (display:grid) .g | color #123456'], '🔴 DK-lit: literals inside @supports are scanned (never skipped)');
   assert.deepEqual(CSSX('.f{font-family:Red Hat Display;grid-area:white}'), [], 'a colour WORD outside a colour property is not a colour');
+  // Codex dark r2 #5: any case, every colour function; color-mix() over tokens is not a literal
+  assert.deepEqual(CSSX('.u{color:RGB(1,2,3);background:oklch(0.7 0.1 200);border-color:Lab(50% 40 59);outline-color:color(display-p3 1 0 0);fill:hwb(194 0% 0%);stroke:LCH(52 72 56);caret-color:oklab(0.6 0.1 0.1)}'),
+    ['css .u | background oklch(0.70.1200)', 'css .u | border-color Lab(50%4059)', 'css .u | caret-color oklab(0.60.10.1)', 'css .u | color RGB(1,2,3)', 'css .u | fill hwb(1940%0%)', 'css .u | outline-color color(display-p3100)', 'css .u | stroke LCH(527256)'], '🔴 DK-lit: every colour function, any case');
+  assert.deepEqual(CSSX('.m{background:color-mix(in srgb,var(--acc) 55%,var(--pill))}'), [], 'color-mix() over tokens is not a literal');
+  const JSX = (src) => inventory({ css: base.css, js: { 'b.js': src } });
+  assert.deepEqual(JSX('function chip() { return `<b style="background:white;color:black">x</b>`; }'), ['js b.js @chip black ×1', 'js b.js @chip white ×1'], '🔴 DK-lit: named colours inside a JS inline style string');
+  assert.deepEqual(JSX("function paint(el) { el.style.color = 'white'; el.setAttribute('fill', 'none'); return '<path fill=\"red\"/>'; }"), ['js b.js @paint red ×1', 'js b.js @paint white ×1'], '🔴 DK-lit: a CSSOM assignment and an SVG attribute');
+  assert.deepEqual(JSX('function pick(x) { return x.color(1) + o.rgb(2); }'), [], 'a JS METHOD named like a colour function is not a literal (a bare call is listed — the guard errs to listing, never to missing)');
   const SRV = servedSources(), home = SRV.js['capp-home.js'];
   const extraFn = home + '\nfunction promoBadge() { return `<b style="background:#FFFFFF">x</b>`; }\n';
   assert.ok(inventory({ css: SRV.css, js: { ...SRV.js, 'capp-home.js': extraFn } }).includes('js capp-home.js @promoBadge #FFFFFF ×1'), '🔴 DK-lit: another inline #FFFFFF in an exempted file is a NEW site (per-site, never file-wide)');

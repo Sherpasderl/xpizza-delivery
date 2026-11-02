@@ -143,11 +143,18 @@ for (const [label, spoil, re] of [
     const vals = path.join(dir, 'android/app/src/main/res/values');
     fs.writeFileSync(path.join(out, 'styles.xml'), T('android/styles.xml')); fs.rmSync(vals, { recursive: true }); fs.symlinkSync(out, vals);
     const before = tree(dir), outside = tree(out);
-    assert.throws(() => A.apply(dir, RUN), /resolves outside the native project/, '🔴 a symlinked directory escaping the project is refused');
+    assert.throws(() => A.apply(dir, RUN), /values is a symlink|resolves outside the native project/, '🔴 a symlinked directory escaping the project is refused');
     assert.deepStrictEqual(tree(out), outside, '🔴 the outside directory untouched'); assert.deepStrictEqual(tree(dir), before, '🔴 nothing written inside either');
     const f = path.join(dir, MAIN_REL); fs.rmSync(vals); fs.mkdirSync(vals); fs.writeFileSync(path.join(vals, 'styles.xml'), T('android/styles.xml'));
     fs.writeFileSync(path.join(out, 'Main.java'), A.generatedMainActivity(cfg.appId)); fs.rmSync(f); fs.symlinkSync(path.join(out, 'Main.java'), f);
     assert.throws(() => A.apply(dir, RUN), /symlink|outside/, '🔴 a symlinked destination file is refused');
+    // Codex dark r2 #4: a DANGLING link (its target absent) — exists() is false for it; the write would CREATE the outside file
+    fs.rmSync(f); fs.writeFileSync(f, A.generatedMainActivity(cfg.appId));
+    const dangling = path.join(out, 'new-colors.xml'), cx = path.join(vals, 'colors.xml');
+    fs.symlinkSync(dangling, cx);
+    const before2 = tree(dir);
+    assert.throws(() => A.apply(dir, RUN), /colors\.xml is a symlink/, '🔴 a dangling symlinked destination is refused');
+    assert.ok(!fs.existsSync(dangling), '🔴 its outside target is NOT created'); assert.deepStrictEqual(tree(dir), before2, '🔴 nothing written');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(out, { recursive: true, force: true }); }
 }
 assert.throws(() => A.apply(fs.mkdtempSync(path.join(os.tmpdir(), 'capp-empty-')), RUN), /absent — run `npx cap add` first/, 'nothing is applied onto a project that does not exist');

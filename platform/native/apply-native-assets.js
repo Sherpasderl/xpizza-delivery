@@ -93,12 +93,21 @@ function planFor({ appId, android, ios, png }) {
 const same = (a, b) => Buffer.compare(Buffer.isBuffer(a) ? a : Buffer.from(a), Buffer.isBuffer(b) ? b : Buffer.from(b)) === 0;
 // the destination stays INSIDE the project: its nearest existing ancestor's real path is under the project's real path, and an
 // existing destination is never a symlink (Codex dark r1 #4)
+// Codex dark r2 #4: lstat — never exists(), which is FALSE for a dangling link — on the destination AND every component between the
+// project root and it: any symlink anywhere on the path ⇒ refused (a dangling one would otherwise create its outside target)
 function contained(dir, p) {
-  const root = fs.realpathSync(dir);
-  let a = p; while (!fs.existsSync(a)) a = path.dirname(a);
+  const root = fs.realpathSync(dir), rel = path.relative(dir, p);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) fail(`${rel} is outside the native project`);
+  let cur = dir;
+  for (const part of rel.split(path.sep)) {
+    cur = path.join(cur, part);
+    const st = fs.lstatSync(cur, { throwIfNoEntry: false });
+    if (!st) break;   // nothing further exists: what is created below lives under a real, contained directory
+    if (st.isSymbolicLink()) fail(`${path.relative(dir, cur)} is a symlink`);
+  }
+  let a = p; while (!fs.lstatSync(a, { throwIfNoEntry: false })) a = path.dirname(a);
   const real = fs.realpathSync(a);
-  if (real !== root && !real.startsWith(root + path.sep)) fail(`${path.relative(dir, p)} resolves outside the native project (${real})`);
-  if (fs.existsSync(p) && fs.lstatSync(p).isSymbolicLink()) fail(`${path.relative(dir, p)} is a symlink`);
+  if (real !== root && !real.startsWith(root + path.sep)) fail(`${rel} resolves outside the native project (${real})`);
 }
 function apply(dir, opts) {
   const steps = planFor(opts), writes = [];

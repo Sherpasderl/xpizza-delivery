@@ -13,7 +13,14 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // the CSS named colours (CSS Color 4) — a literal like any hex when it sits in a colour-bearing property or a custom property
 const NAMED = 'aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peru pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen'.split(' ');
 const COLOR_PROP = /^(color|background(-color|-image)?|border(-(top|right|bottom|left|block|inline)(-(start|end))?)?(-color)?|outline(-color)?|fill|stroke|(box|text)-shadow|caret-color|accent-color|column-rule(-color)?|text-decoration(-color)?|filter|stop-color|flood-color|lighting-color|scrollbar-color)$/;
-export const LIT = /#[0-9A-Fa-f]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)/g;
+// Codex dark r2 #5: every CSS colour FUNCTION, any case (rgb()/RGB(), hsl, hwb, lab, lch, oklab, oklch, color()) — color-mix() itself is
+// not a colour (its literal arguments are matched on their own)
+const FN = '(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\\([^)]*\\)';
+export const LIT = new RegExp(`#[0-9A-Fa-f]{3,8}\\b|(?<![\\w-])${FN}`, 'gi');
+const JS_LIT = new RegExp(`(?<![\\w&])#[0-9A-Fa-f]{3,8}\\b|(?<![\\w$.-])${FN}`, 'gi');
+// a CSS declaration written in JS (an inline style string, an SVG attribute, a style object / CSSOM assignment): a named colour in it is
+// a literal exactly as in capp.css
+const JS_DECL = /(?<![\w$-])(color|background(?:-color)?|border(?:-(?:top|right|bottom|left))?(?:-color)?|outline(?:-color)?|fill|stroke|box-shadow|text-shadow|caret-color|accent-color|stop-color)\s*[:=]\s*['"]?([^;'"`}>\n]*)/gi;
 const NAMED_RE = new RegExp(`(?<![\\w-])(${NAMED.join('|')})(?![\\w-])`, 'gi');
 // the theme itself: ONLY the custom properties of these six exact homes (the light tokens, the three dark forms, the canvas pair)
 const AUTO = '@media (prefers-color-scheme: dark)';
@@ -66,9 +73,9 @@ export function inventory(srcs = servedSources()) {
     const lines = raw.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1').split('\n');
     const count = new Map();
     lines.forEach((line, ln) => {
-      for (const l of line.match(/(?<![\w&])#[0-9A-Fa-f]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)/g) || []) {
-        const k = `@${anchorOf(lines, ln)} ${l.replace(/\s+/g, '')}`; count.set(k, (count.get(k) || 0) + 1);
-      }
+      const hits = [...(line.match(JS_LIT) || []).map((l) => l.replace(/\s+/g, ''))];
+      for (const m of line.matchAll(JS_DECL)) for (const n of m[2].match(NAMED_RE) || []) hits.push(n.toLowerCase());
+      for (const l of hits) { const k = `@${anchorOf(lines, ln)} ${l}`; count.set(k, (count.get(k) || 0) + 1); }
     });
     for (const [k, n] of count) sites.push(`js ${f} ${k} ×${n}`);
   }
