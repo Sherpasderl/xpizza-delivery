@@ -315,7 +315,10 @@
     },
     "ratings_v2": {
       ".read": false,
-      ".write": false
+      ".write": false,
+      ".indexOn": [
+        "owner_uid"
+      ]
     },
     "public_stats": {
       ".read": true,
