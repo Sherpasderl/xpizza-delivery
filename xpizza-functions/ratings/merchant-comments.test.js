@@ -169,6 +169,7 @@ const FORBIDDEN = /order|XPZ|LMS|owner|uid|delivery|token|dish|rated|edited|fulf
     for (let i = 0; i < 25; i++) await rated(db, A, `XPZ-c${String(i).padStart(2, '0')}`, { at: 100000 - i * 10, comment: `c${i}` });
     // 500 STALE entries (no node) fulfilled earlier: sparse pages must advance the cursor without a full-history scan
     for (let i = 0; i < 500; i++) db.set(`rating_index/x_pizza/${V2.indexKey(50000 - i, `XPZ-s${i}`)}`, `XPZ-s${i}`);
+    for (let i = 0; i < 3; i++) await rated(db, B, `XPZ-o${i}`, { at: 1000 - i, comment: `o${i}` });   // live comments BEHIND the stale run
     const h = handler(db);
     let cursor = null; const seen = []; let calls = 0; const perCall = [];
     do {
@@ -189,9 +190,9 @@ const FORBIDDEN = /order|XPZ|LMS|owner|uid|delivery|token|dish|rated|edited|fulf
       cursor = r.body.cursor;
       assert.ok(calls < 40, '🔴 the cursor must terminate');
     } while (cursor);
-    assert.deepStrictEqual(seen, Array.from({ length: 25 }, (_, i) => `c${i}`), '🔴 every live comment once, in order, across pages');
+    assert.deepStrictEqual(seen, [...Array.from({ length: 25 }, (_, i) => `c${i}`), 'o0', 'o1', 'o2'], '🔴 every live comment once, in order, across pages — incl. those BEHIND 500 stale entries');
     assert.ok(perCall.every((k) => k <= MC.CANDIDATES), `🔴 ≤ CANDIDATES node reads per call (${perCall})`);
-    assert.ok(calls >= Math.ceil(525 / MC.CANDIDATES), 'the 500 stale entries were walked page by page (empty pages advance the cursor)');
+    assert.ok(calls >= Math.ceil(528 / MC.CANDIDATES), 'the 500 stale entries were walked page by page (empty pages advance the cursor)');
 
     // the cursor is bound to { rid, uid } and authenticated
     const first = await call(h, { token: 'ownerX', query: { rid: 'x_pizza' } });
