@@ -51,8 +51,10 @@ const cancelled = (attemptOver = {}) => ({ orders: { [OID]: order({ status: 'can
   payment_attempts: { [AID]: { order_id: OID, hosted_order_id: HOID, hosted_state: 'voided', status: 'refunded', payment_uuid: 'PAY-1', payment_reference: 'TXN-PAY-1', paid_at: 1000, ...attemptOver } } });
 const livePaid = () => ({ orders: { [OID]: order() }, payment_attempts: { [AID]: freshAttempt() } });
 
-let pass = 0; const fails = [];
-async function cell(name, fn) { resetProvider(); try { await fn(); console.log(`  ✓ ${name}`); pass++; } catch (e) { fails.push(name); console.error(`  ✗ ${String((e && e.message) || e).split('\n')[0]}`); } }
+let pass = 0; const fails = []; let FINISHED = false; let CURRENT = null;
+// a promise that never settles drains the event loop and node exits 0 — a hang must FAIL, never pass silently
+process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error(`TEST FAILED: exited without finishing (stuck in ${CURRENT})`); process.exitCode = 1; } });
+async function cell(name, fn) { CURRENT = name; resetProvider(); try { await fn(); console.log(`  ✓ ${name}`); pass++; } catch (e) { fails.push(name); console.error(`  ✗ ${String((e && e.message) || e).split('\n')[0]}`); } }
 
 (async () => {
   // ── the FIRST payment: bound atomically; a same-payment re-delivery never rewrites the immutable fields ──
@@ -92,146 +94,107 @@ async function cell(name, fn) { resetProvider(); try { await fn(); console.log(`
     assert.ok(extraAlert(db, other), `${L}: and alerted`);
   });
 
-  // ── a LIVE order: record + durable alert + flag; NO provider call ──
-  await cell('XP-LIVE-RECORDED-NO-VOID', async () => {
-    const L = 'XP-LIVE-RECORDED-NO-VOID';
-    const db = makeDb(livePaid());
-    await handleHostedCallback(depsFor(db), cb('PAY-1'), 1000);
+  // ── OWNER 2026-11-02: a second distinct verified payment is NEVER voided automatically — live or cancelled; a person
+  //    refunds it in PixelPay. It is recorded once, alerted durably and flags the order; the first payment is untouched. ──
+  const pay1Untouched = (L, db, before) => {
+    const a = db.getAt(`payment_attempts/${AID}`);
+    for (const k of ['payment_uuid', 'payment_reference', 'paid_at', 'status', 'hosted_state', 'paid_amount_cents']) assert.deepStrictEqual(a[k], before[k], `${L}: the first payment's ${k} is untouched (got ${JSON.stringify(a[k])}, was ${JSON.stringify(before[k])})`);
+  };
+  const recorded = (L, db, uuid, at) => {
+    const r = extra(db, uuid);
+    assert.deepStrictEqual(r, { uuid, amount_cents: 29900, at }, `${L}: one record {uuid, amount_cents, at} — no phase, no reversal state (got ${JSON.stringify(r)})`);
+    const al = extraAlert(db, uuid);
+    assert.ok(al && al.type === 'payment_extra_payment_received' && al.detail && al.detail.orderId === OID && al.detail.attemptId === AID, `${L}: the durable alert (got ${JSON.stringify(al)})`);
+    assert.strictEqual(db.getAt(`orders/${OID}/extra_payment_review`), true, `${L}: the order's manual-review flag`);
+  };
+  for (const [label, seed] of [['LIVE', 'live'], ['CANCELLED-PAY1-REFUNDED', 'refunded'], ['CANCELLED-PAY1-OUTSTANDING', 'outstanding']]) {
+    await cell(`XP-${label}-RECORDED-NO-VOID`, async () => {
+      const L = `XP-${label}-RECORDED-NO-VOID`;
+      const db = seed === 'live' ? makeDb(livePaid()) : makeDb(cancelled(seed === 'outstanding' ? { status: 'refund_pending', hosted_state: 'refund_pending' } : {}));
+      if (seed === 'live') await handleHostedCallback(depsFor(db), cb('PAY-1'), 1000);
+      const before = db.getAt(`payment_attempts/${AID}`); resetProvider();
+      const r = await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
+      assert.ok(r.code === 200 && r.outcome === 'extra_payment_recorded', `${L}: (got ${r.code} ${r.outcome})`);
+      assert.strictEqual(voidCalls.length, 0, `${L}: NO provider void (got ${JSON.stringify(voidCalls)})`);
+      recorded(L, db, 'PAY-2', 2000);
+      pay1Untouched(L, db, before);
+    });
+  }
+
+  await cell('XP-REDELIVERY-RECORDED-ONCE', async () => {
+    const L = 'XP-REDELIVERY-RECORDED-ONCE';
+    const db = makeDb(cancelled());
+    for (const t of [2000, 3000, 4000]) await handleHostedCallback(depsFor(db), cb('PAY-2'), t);
+    assert.strictEqual(voidCalls.length, 0, `${L}: no void on any delivery`);
+    recorded(L, db, 'PAY-2', 2000);
+    assert.strictEqual(Object.keys(db.getAt('dispatcher_alerts') || {}).filter((k) => k.startsWith('extra_payment_')).length, 1, `${L}: one alert`);
+  });
+
+  await cell('XP-ATOMIC-WRITE-FAILURE-SURFACED', async () => {
+    const L = 'XP-ATOMIC-WRITE-FAILURE-SURFACED';
+    let fail = 1;
+    const db = makeDb(cancelled(), { beforeWrite: async (p, v) => { if (p === '' && v && Object.keys(v).some((k) => k.startsWith('dispatcher_alerts/extra_payment_')) && fail > 0) { fail -= 1; throw new Error('injected write failure'); } } });
     const r = await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
-    const att = db.getAt(`payment_attempts/${AID}`);
-    assert.strictEqual(att.payment_uuid, 'PAY-1', `${L}: the first payment stays bound`);
-    assert.strictEqual(att.paid_at, 1000, `${L}: first paid_at preserved`);
-    const ex = extra(db, 'PAY-2');
-    assert.ok(ex && ex.uuid === 'PAY-2' && ex.phase === 'held_for_review' && ex.amount_cents === 29900, `${L}: the extra is held for review under sha256(uuid) with the exact uuid (got ${JSON.stringify(ex)})`);
-    assert.ok(extraAlert(db, 'PAY-2'), `${L}: a DURABLE alert exists at its own key`);
-    assert.strictEqual(db.getAt(`orders/${OID}/extra_payment_review`), true, `${L}: the order is flagged`);
-    assert.strictEqual(voidCalls.length, 0, `${L}: NO provider void on a live order`);
-    assert.strictEqual(r.code, 200, `${L}: 2xx`);
+    assert.ok(r.code >= 500, `${L}: a failed write answers 5xx so PixelPay re-delivers (got ${r.code} ${r.outcome})`);
+    assert.ok(!extraAlert(db, 'PAY-2') && db.getAt(`orders/${OID}/extra_payment_review`) == null && !(extra(db, 'PAY-2') || {}).uuid,
+      `${L}: ALL OR NOTHING — no record without its alert and flag (record ${JSON.stringify(extra(db, 'PAY-2'))}, alert ${JSON.stringify(extraAlert(db, 'PAY-2'))})`);
+    const r2 = await handleHostedCallback(depsFor(db), cb('PAY-2'), 3000);
+    assert.strictEqual(r2.code, 200, `${L}: the re-delivery completes`);
+    recorded(L, db, 'PAY-2', 3000);
+    assert.strictEqual(voidCalls.length, 0, `${L}: and nothing is voided`);
   });
 
-  // ── a CANCELLED order: the extra's OWN reversal, scoped to its payment id; the attempt-level reversal untouched ──
-  await cell('XP-CANCELLED-FIRST-REFUNDED-VOIDS-PAY2', async () => {
-    const L = 'XP-CANCELLED-FIRST-REFUNDED-VOIDS-PAY2';
-    const db = makeDb(cancelled());
-    await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
-    assert.strictEqual(voidCalls.length, 1, `${L}: exactly one provider void (got ${voidCalls.length})`);
-    assert.strictEqual(voidCalls[0].payment_uuid, 'PAY-2', `${L}: the void targets PAY-2 (got ${voidCalls[0] && voidCalls[0].payment_uuid})`);
-    const att = db.getAt(`payment_attempts/${AID}`);
-    assert.strictEqual(att.status, 'refunded', `${L}: the attempt-level reversal state is untouched`);
-    assert.strictEqual(att.payment_uuid, 'PAY-1', `${L}: the first payment stays bound`);
-    const ex = extra(db, 'PAY-2');
-    assert.ok(ex && ex.phase === 'voided' && ex.outcome === 'auto_voided', `${L}: the extra's own outcome is auto_voided (got ${JSON.stringify(ex)})`);
+  // ── Codex r2 P1 #1 / #3 / P2 #4 — interleavings that produced a second (or post-withdrawal) void: impossible by construction ──
+  await cell('XP-CODEX-R2-INTERLEAVINGS-NO-VOID', async () => {
+    const L = 'XP-CODEX-R2-INTERLEAVINGS-NO-VOID';
+    // #1: two concurrent deliveries of PAY-2 with a cancellation landing between them
+    let release; const gate = new Promise((res) => { release = res; }); let n = 0; let armed = false;
+    const db = makeDb(livePaid(), { beforeWrite: async (p) => { if (armed && p === '' && (n += 1) === 1) await gate; } });
+    await handleHostedCallback(depsFor(db), cb('PAY-1'), 1000);
+    resetProvider(); armed = true;
+    const a = handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
+    await new Promise((res) => setTimeout(res, 0));
+    db.setAt(`orders/${OID}/status`, 'cancelled');
+    const b = handleHostedCallback(depsFor(db), cb('PAY-2'), 2001);
+    release(); await Promise.all([a, b]);
+    // #3: the cancellation withdrawn (order back to new), then another delivery; #4: cancellation after the last delivery
+    db.setAt(`orders/${OID}/status`, 'new');
+    await handleHostedCallback(depsFor(db), cb('PAY-2'), 3000);
+    db.setAt(`orders/${OID}/status`, 'cancelled');
+    await handleHostedCallback(depsFor(db), cb('PAY-2'), 4000);
+    assert.strictEqual(voidCalls.length, 0, `${L}: the extra is never voided, whatever the interleaving (got ${JSON.stringify(voidCalls)})`);
+    assert.ok(extra(db, 'PAY-2') && extraAlert(db, 'PAY-2'), `${L}: and it stays recorded and alerted for a person`);
   });
 
-  await cell('XP-CANCELLED-PAY2-UNCONFIRMED-MANUAL', async () => {
-    const L = 'XP-CANCELLED-PAY2-UNCONFIRMED-MANUAL';
-    const db = makeDb(cancelled());
-    resetProvider([{ status: 200, body: { success: false, message: 'card 4111 tb_SECRET_provider_text' } }]);
-    await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
-    const att = db.getAt(`payment_attempts/${AID}`);
-    assert.strictEqual(att.status, 'refunded', `${L}: the attempt-level reversal state is untouched (got ${att.status})`);
-    assert.strictEqual(isReconcilerRetryable(att, 3000, 120000), false, `${L}: the refund reconciler does NOT pick the attempt up (it would retry PAY-1)`);
-    const ex = extra(db, 'PAY-2');
-    assert.ok(ex && ex.phase === 'manual' && ex.outcome === 'void_unconfirmed_manual', `${L}: an unconfirmed extra reversal is manual-only (got ${JSON.stringify(ex)})`);
-    assert.ok(!JSON.stringify(db.getAt('dispatcher_alerts') || {}).includes('tb_SECRET_provider_text'), `${L}: no provider message reaches an alert`);
-    assert.ok(!JSON.stringify(ex).includes('tb_SECRET_provider_text'), `${L}: nor the record`);
+  await cell('XP-EXTRA-PATH-HAS-NO-PROVIDER-CALL', async () => {
+    const L = 'XP-EXTRA-PATH-HAS-NO-PROVIDER-CALL';
+    const src = require('fs').readFileSync(require('path').join(__dirname, 'pixelpay-hosted-webhook.js'), 'utf8');
+    const a = src.indexOf('async function handleExtraPayment'); const b = src.indexOf('\n}\n', a);
+    const body = src.slice(a, b);
+    assert.ok(a > 0 && !/voidTransaction|voidOrRefund|client\.|phase/.test(body), `${L}: the extra-payment path contains no provider call and no reversal phase`);
   });
 
-  await cell('XP-CANCELLED-PAY1-OUTSTANDING-UNTOUCHED', async () => {
-    const L = 'XP-CANCELLED-PAY1-OUTSTANDING-UNTOUCHED';
-    const db = makeDb(cancelled({ hosted_state: 'refund_pending', status: 'refund_pending' }));
-    await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
-    const att = db.getAt(`payment_attempts/${AID}`);
-    assert.strictEqual(att.status, 'refund_pending', `${L}: PAY-1's outstanding reversal is NOT marked done by PAY-2's (got ${att.status})`);
-    assert.strictEqual(isReconcilerRetryable(att, 3000, 120000), true, `${L}: the reconciler still retries PAY-1`);
-    assert.ok(extra(db, 'PAY-2') && extra(db, 'PAY-2').outcome === 'auto_voided', `${L}: PAY-2 voided on its own record`);
-  });
-
-  await cell('XP-BASE-PROVIDER-CALL', async () => {
-    const L = 'XP-BASE-PROVIDER-CALL';
-    const db = makeDb(cancelled({ hosted_state: 'created', status: undefined, payment_uuid: 'PAY-1' }));
-    await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
+  // ── the base auto-void for a FIRST payment on a cancelled order is unchanged (whole database, provider request) ──
+  await cell('XP-FIRST-PAYMENT-ON-CANCELLED-SAME-AS-BASE', async () => {
+    const L = 'XP-FIRST-PAYMENT-ON-CANCELLED-SAME-AS-BASE';
+    const seed = () => ({ orders: { [OID]: order({ status: 'cancelled' }) }, payment_attempts: { [AID]: freshAttempt() } });
+    const CLOCK = { now: () => 42 };
+    const db = makeDb(seed(), CLOCK);
+    const r = await handleHostedCallback(depsFor(db), cb('PAY-1'), 2000);
     const mine = voidCalls.slice();
-    // base 8a31e2a3's own handler on the same input, through the real voidOrRefund + real client
     const { execFileSync } = require('child_process'); const Module = require('module'); const path = require('path');
     const filename = path.join(__dirname, 'pixelpay-hosted-webhook.js');
     const src = execFileSync('git', ['show', '8a31e2a3:xpizza-functions/pixelpay-hosted-webhook.js'], { cwd: __dirname, encoding: 'utf8' });
     const m = new Module(filename, module); m.filename = filename; m.paths = Module._nodeModulePaths(__dirname); m._compile(src, filename);
     resetProvider();
-    const dbB = makeDb(cancelled({ hosted_state: 'created', status: undefined, payment_uuid: 'PAY-1' }));
-    await m.exports.handleHostedCallback(depsFor(dbB), cb('PAY-2'), 2000);
-    assert.strictEqual(voidCalls.length, 1, `${L}: PREMISE — base voids the payment on a cancelled order`);
-    assert.deepStrictEqual(mine, voidCalls, `${L}: the provider void request is IDENTICAL to base 8a31e2a3's (got ${JSON.stringify(mine)} vs ${JSON.stringify(voidCalls)})`);
+    const dbB = makeDb(seed(), CLOCK);
+    const rB = await m.exports.handleHostedCallback(depsFor(dbB), cb('PAY-1'), 2000);
+    assert.ok(rB.outcome === 'cancelled_voided' && voidCalls.length === 1, `${L}: PREMISE — base voids the first payment (got ${rB.outcome}, ${voidCalls.length})`);
+    assert.strictEqual(r.outcome, rB.outcome, `${L}: same outcome as base`);
+    assert.deepStrictEqual(mine, voidCalls, `${L}: the same provider void request`);
+    assert.deepStrictEqual(db.root, dbB.root, `${L}: the whole database equals base's`);
   });
 
-  // ── crash safety: the alert/flag are durable and awaited; phases resume or go manual ──
-  await cell('XP-ALERT-WRITE-FAILS-SURFACED', async () => {
-    const L = 'XP-ALERT-WRITE-FAILS-SURFACED';
-    let fail = 1;
-    const db = makeDb(livePaid(), { beforeWrite: async (p) => { if (p.startsWith('dispatcher_alerts/extra_payment_') && fail > 0) { fail -= 1; throw new Error('injected alert write failure'); } } });
-    await handleHostedCallback(depsFor(db), cb('PAY-1'), 1000);
-    const r = await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
-    assert.ok(r.code >= 500, `${L}: an alert write failure is SURFACED as a 5xx so PixelPay re-delivers (got ${r.code} ${r.outcome})`);
-    assert.ok(extra(db, 'PAY-2'), `${L}: PREMISE — the record exists`);
-    const r2 = await handleHostedCallback(depsFor(db), cb('PAY-2'), 3000);
-    assert.ok(extraAlert(db, 'PAY-2') && r2.code === 200, `${L}: the re-delivery writes the alert and completes (got ${r2.code})`);
-    assert.ok(extra(db, 'PAY-2') && extra(db, 'PAY-2').phase === 'held_for_review', `${L}: and resumes to held_for_review`);
-  });
-
-  await cell('XP-CRASH-AFTER-CLAIM-RESUMES', async () => {
-    const L = 'XP-CRASH-AFTER-CLAIM-RESUMES';
-    const db = makeDb(cancelled());
-    db.setAt(`payment_attempts/${AID}/extra_payments/${xkey('PAY-2')}`, { uuid: 'PAY-2', amount_cents: 29900, at: 1500, phase: 'reversal_claimed', claimed_at: 1500 });
-    await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
-    assert.strictEqual(voidCalls.length, 1, `${L}: a claimed-but-not-started reversal resumes once (got ${voidCalls.length})`);
-    assert.ok(extra(db, 'PAY-2') && extra(db, 'PAY-2').outcome === 'auto_voided', `${L}: completed`);
-  });
-
-  await cell('XP-CRASH-AFTER-SIDE-EFFECT-MANUAL', async () => {
-    const L = 'XP-CRASH-AFTER-SIDE-EFFECT-MANUAL';
-    const db = makeDb(cancelled());
-    db.setAt(`payment_attempts/${AID}/extra_payments/${xkey('PAY-2')}`, { uuid: 'PAY-2', amount_cents: 29900, at: 1500, phase: 'side_effect_started', claimed_at: 1500 });
-    await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
-    assert.strictEqual(voidCalls.length, 0, `${L}: an uncertain started void is NEVER re-sent (got ${voidCalls.length})`);
-    const ex = extra(db, 'PAY-2') || {};
-    assert.ok(ex.phase === 'manual' && ex.outcome === 'void_uncertain_manual', `${L}: held for manual review (got ${JSON.stringify(ex)})`);
-  });
-
-  await cell('XP-REDELIVERY-EXACTLY-ONCE', async () => {
-    const L = 'XP-REDELIVERY-EXACTLY-ONCE';
-    const db = makeDb(cancelled());
-    await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
-    await handleHostedCallback(depsFor(db), cb('PAY-2'), 3000);
-    assert.strictEqual(voidCalls.length, 1, `${L}: one void across re-deliveries (got ${voidCalls.length})`);
-    const alerts = Object.keys(db.getAt('dispatcher_alerts') || {}).filter((k) => k.startsWith('extra_payment_'));
-    assert.strictEqual(alerts.length, 1, `${L}: one durable alert (got ${alerts.length})`);
-  });
-
-  // ── a cancel racing the callback; a cancel after the extra was held ──
-  await cell('XP-CANCEL-RACE-VOIDS', async () => {
-    const L = 'XP-CANCEL-RACE-VOIDS';
-    let reads = 0;
-    const db = makeDb(livePaid(), { beforeRead: async (p, api) => { if (p === `orders/${OID}`) { reads += 1; if (reads === 3) api.setAt(`orders/${OID}/status`, 'cancelled'); } } });
-    await handleHostedCallback(depsFor(db), cb('PAY-1'), 1000);   // reads 1 (+ confirm's own reads)
-    reads = 1;                                                      // the next delivery's first order read is #2; the decision re-read is #3
-    await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
-    const ex = extra(db, 'PAY-2');
-    assert.ok(ex && ex.outcome === 'auto_voided' && voidCalls.length === 1, `${L}: a cancel landing before the decision re-read is honoured → voided (got ${JSON.stringify(ex)}, ${voidCalls.length} voids)`);
-  });
-
-  await cell('XP-HELD-THEN-CANCELLED-REDELIVERY-VOIDS', async () => {
-    const L = 'XP-HELD-THEN-CANCELLED-REDELIVERY-VOIDS';
-    const db = makeDb(livePaid());
-    await handleHostedCallback(depsFor(db), cb('PAY-1'), 1000);
-    await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
-    assert.ok(extra(db, 'PAY-2') && extra(db, 'PAY-2').phase === 'held_for_review', `${L}: PREMISE — held (got ${JSON.stringify(extra(db, 'PAY-2'))})`);
-    db.setAt(`orders/${OID}/status`, 'cancelled');
-    await handleHostedCallback(depsFor(db), cb('PAY-2'), 3000);
-    assert.strictEqual(extra(db, 'PAY-2').outcome, 'auto_voided', `${L}: an existing held extra goes through its reversal after the cancel (got ${JSON.stringify(extra(db, 'PAY-2'))})`);
-    assert.strictEqual(voidCalls.length, 1, `${L}: one void`);
-  });
-
-  // ── keys and alerts ──
   await cell('XP-KEY-COLLISION-RESISTANT', async () => {
     const L = 'XP-KEY-COLLISION-RESISTANT';
     const db = makeDb(livePaid());
@@ -252,6 +215,8 @@ async function cell(name, fn) { resetProvider(); try { await fn(); console.log(`
     assert.ok(!alertsToPrune(alerts, db.getAt('orders')).includes(key), `${L}: the resolved-order pruning never removes the extra-payment alert`);
   });
 
+  FINISHED = true;
   if (fails.length) { console.error(`\nFAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }
+  FINISHED = true;
   console.log(`\nAll ${pass} extra-payment cells passed.`);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
