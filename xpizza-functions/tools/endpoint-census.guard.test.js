@@ -129,6 +129,7 @@ const D = {
   [F('tools/identity-factura-flag.test.js')]: 'unit: drives the factura-flag CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/identity-display-name.test.js')]: 'unit: drives the CLI\'s require-project refusals (no data I/O); its spawned CLI is pointed at a dead loopback RTDB port with void credentials',
   [F('catalog/identity-integrity-guards.test.js')]: 'unit: drives the two c2b prod CLIs into require-project refusals — dead-port hosts, no credential (no data I/O)',
+  [F('tools/record-evidence-boundary-args.test.js')]: 'unit: drives the boundary CLI into its argument refusals before any client, and one accepted run into the void-credential refusal — dead-port hosts, no credential, never --apply (no data I/O)',
   [F('tools/identity-usable-check.test.js')]: 'unit: a NAMED never-connected Admin app whose writes are refused synchronously by the class guards (no op reaches the network), the real manifest builder over catalog/firestore-fake, and CLI refusals before any client (no data I/O)',
   [F('tools/verify-first-group.test.js')]: 'unit: drives the CLI\'s require-project + argument refusals before any client (no data I/O); its spawned CLI points at a dead loopback RTDB port with void credentials',
   [F('test/kds-writer-capture.mjs')]: 'unit: a STUB initializeApp (returns {})', [F('portal/portal-split.test.js')]: 'unit: fold-guard text',
