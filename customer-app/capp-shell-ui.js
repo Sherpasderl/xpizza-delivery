@@ -117,6 +117,7 @@
 
     const S = { tab: 'home', cuisine: '', filters: new Set(), q: '', recent: (readJ(RECENT_KEY) || []).filter((x) => typeof x === 'string').slice(0, RECENT_MAX),
       held: null, heldErr: false, store: null, layer: null, locDenied: false, loc: null, neutral: null, ret: null, retAssoc: null, order: null };
+    let awaitOrderRoute = null;   // a /r/{rid}/pago reload waiting for its order's owner to resolve (identityChanged)
     // ── the guest location (r1 §2.3, owned by the SHELL, persisted per device): { lat, lng, confirmed, source: 'gps'|'pin', v } ──
     { const l = readJ(LOC_KEY); if (l && Number.isFinite(l.lat) && Number.isFinite(l.lng) && (l.source === 'gps' || l.source === 'pin')) S.loc = { lat: l.lat, lng: l.lng, confirmed: l.confirmed === true, source: l.source, v: Number(l.v) || 1 }; }
     function setLoc(lat, lng, source) {
@@ -396,6 +397,9 @@
         // restore — nothing is cleared until the 'guest' callback confirms it)
         if (u && u.uid && completeUid() !== u.uid) { dropMember(); fbAuth.signOut().catch(() => {}); schedule(); return; }
         // a session the SDK RESTORED (no sheet ran): the cached profile of THIS uid, at once (cached-first)
+        // Codex Pedidos r2 P1: a switch to ANOTHER uid drops the previous member SYNCHRONOUSLY (before any token await) — whatever was
+        // issued or shown for them is void before the new identity is admitted
+        if (u && u.uid && S.member && S.member.uid !== u.uid) dropMember();
         if (u && u.uid && (!S.member || S.member.uid !== u.uid)) { const c = CappDeviceAccount.readProfile(storage, u.uid); applyMember(c || { uid: u.uid }); return; }
         schedule();
       });
@@ -444,6 +448,9 @@
       if (r.name !== 'store') return;
       // a reload on an active order's own URL ⇒ its order screen (the device's record), never a fresh checkout
       if (r.step === 'pago' && activeOrder() && S.order.rid === r.rid) { if (nav.tab({ name: 'orders' })) nav.go({ name: 'order' }); return; }
+      // Codex Pedidos r2: the device's record for THIS store whose owner is not resolved yet (a member session restoring) ⇒ the route
+      // decision WAITS for the identity (identityChanged), then lands on the order or falls back to the store
+      if (r.step === 'pago' && S.order && S.order.rid === r.rid && ownerNow() === null && !CappOrder.FINAL.has(S.order.status)) { awaitOrderRoute = r; return; }
       pendingRoute = { r, gen: ++navGen, mounted: false };
       subscribeMenu(r.rid); cache.get(r.rid);
       tryRoute();
@@ -548,7 +555,8 @@
       S.ordersRead = { phase: 'loading', active: [], past: [], who };
       let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
       const r = tok ? await suApi.getMyOrders({ idToken: tok, limit: 20 }) : { ok: false, reason: 'unauthenticated' };
-      if (dead || gen !== ordersGen || !S.member || S.member.uid !== uid) return;   // another identity now: this answer is not theirs
+      const cur = auth && auth.user ? auth.user() : null;   // the uid it was issued for = the CURRENT admitted one AND the SDK's session
+      if (dead || gen !== ordersGen || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid) return;   // another identity now: not theirs
       S.ordersRead = r.ok ? { phase: 'ready', active: r.active, past: r.past, who } : { phase: 'error', active: [], past: [], who };
       if (S.tab === 'orders' && !S.store) renderNow();
     }
@@ -570,10 +578,12 @@
       const active = [];
       // the server's own row, when it lists this order: its items_text verbatim wins over the device snapshot (Codex Pedidos r1 #5)
       const twin = local ? rd.active.concat(rd.past).find((r) => r.order_id === local.order_id) : null;
+      // Codex Pedidos r2 P2: the device's order reached a FINAL state ⇒ the same order's cached server row (still «active» there) is stale
+      const finalId = S.order && S.order.owner && S.order.owner === ownerNow() && CappOrder.FINAL.has(S.order.status) ? S.order.order_id : null;
       if (local) { const st = storeOfRid(local.rid); if (st) active.push({ store: st, oid: local.order_id, numText: local.display_number ? `Orden #${local.display_number}` : null, whenText: whenOf(local.placedAt),
-        total: local.total, itemsLine: twin && twin.items_text ? twin.items_text : (local.lines || []).map((d) => `${d.n}× ${d.name}`).join(', '), statusText: local.scheduled ? CappOrder.SCHED.C.t : CappOrder.statusCopy({ status: local.status || 'new', mode: local.mode, driver: local.driver, stacked: local.stacked, storeName: local.storeName }).t, trackable: true }); }
+        total: local.total, itemsLine: twin && typeof twin.items_text === 'string' ? twin.items_text : (local.lines || []).map((d) => `${d.n}× ${d.name}`).join(', '), statusText: local.scheduled ? CappOrder.SCHED.C.t : CappOrder.statusCopy({ status: local.status || 'new', mode: local.mode, driver: local.driver, stacked: local.stacked, storeName: local.storeName }).t, trackable: true }); }
       for (const r of rd.active) {
-        if (local && r.order_id === local.order_id) continue;
+        if ((local && r.order_id === local.order_id) || r.order_id === finalId) continue;
         const st = storeOfRid(r.restaurant); if (!st) continue;   // a store the directory no longer lists: not drawn (reported)
         active.push({ store: st, oid: r.order_id, numText: r.display_number ? `Orden #${r.display_number}` : null, whenText: whenOf(r.ts), total: r.total, itemsLine: r.items_text, statusText: statusText(r.status, r.order_type || 'delivery'), trackable: false });
       }
@@ -718,6 +728,13 @@
         else stopOrder();                                                                                                   // hidden, kept for its owner
       }
       if (S.tab === 'order' && !activeOrder()) { if (S.order && CappOrder.FINAL.has(S.order.status) && S.order.owner === who) { /* its final screen stays */ } else nav.tab({ name: 'home' }); }
+      if (awaitOrderRoute && who !== null) {   // the deferred /r/{rid}/pago: its order now (owned), else the store as a cold link
+        const rr = awaitOrderRoute; awaitOrderRoute = null;
+        if (activeOrder() && S.order.rid === rr.rid) { if (nav.tab({ name: 'orders' })) nav.go({ name: 'order' }); return; }
+        pendingRoute = { r: rr, gen: ++navGen, mounted: false }; subscribeMenu(rr.rid); cache.get(rr.rid); tryRoute();
+      }
+      // Codex Pedidos r2: the admitted owner's order resumes its live stream where it is shown (Pedidos / its screen)
+      if ((S.tab === 'orders' || S.tab === 'order') && activeOrder()) resumeOrder();
       if (S.tab === 'orders' && !S.store) { loadOrders(); renderNow(); }
     }
     function resumeOrder() { const od = activeOrder(); if (!od || orderStream) return; if (!od.windowText) windowOrder(od); streamOrder(od); }

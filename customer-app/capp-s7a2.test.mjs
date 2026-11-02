@@ -2274,8 +2274,8 @@ async function pedidosBoot(db, opts = {}) {
   const mo = myOrdersServer(db, opts);
   const g = g7Server();
   const fetch = async (u, i) => (u.split('?')[0].endsWith('/getMyOrders') ? mo.handler(u, i) : g.fetch(u, i));
-  const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 3600e3 });
-  const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation });
+  const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 3600e3, ...(opts.fbOpts || {}) });
+  const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation });
   if (!opts.noFlush) { await flush(); await flush(); }
   return { S, mo, fb };
 }
@@ -2495,6 +2495,50 @@ test('Pedidos r2: the server\'s items_text wins over the device snapshot when it
   const H = require('./capp-home.js');
   const html = H.ordersHtml({ tab: 'orders', cartN: 0, orders: { phase: 'ready', active: [], past: [{ store: { id: 'x_pizza', name: 'X', logo: '' }, oid: 'P1', dateText: 'Dom 11 oct', total: 370, itemsLine: '1x A' }] } });
   assert.ok(!/<button class="orow-main"|data-act="go-receipt"/.test(html), '🔴 PED-r2-7: a row without receipt data is not a control');
+});
+// ── «Pedidos» r3 (Codex Pedidos r2) — RED-first ──
+test('Pedidos r3 P1: an SDK switch Ana → Bob while Bob\'s token is still pending ⇒ Ana\'s held history answer NEVER paints (the invalidation is synchronous on the identity event)', async () => {
+  let release; const gate = new Promise((r) => { release = r; });
+  const hold = { on: false, q: [] };
+  const db = { u_ana: { 'XP-OLD1': userOrderEntry('u_ana', 'XP-OLD1', { ts: Date.UTC(2026, 9, 12, 1, 42), total: 370, status: 'delivered' }) }, u_bob: {} };
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const { S, fb } = await pedidosBoot(db, { gate, storage: st, fbOpts: { hold } });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush();
+    st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));   // Bob completed on this device before (his session is admissible)
+    hold.on = true;   // Bob's token read will wait
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush();
+    assert.ok(!S.ui.state.member || S.ui.state.member.uid !== 'u_ana', '🔴 PED-r3-1: the switch drops Ana AT ONCE (the admitted member) while Bob\'s token is pending');
+    release(); await flush(); await flush();
+    assert.equal(S.qa('.orows .orow').length, 0, '🔴 PED-r3-1: Ana\'s answer never paints during the switch to Bob');
+    hold.on = false; for (const f of hold.q.splice(0)) f(); await flush();
+  } finally { S.w.close(); }
+});
+test('Pedidos r3 P2/P3: a FINAL status reconciles the same order\'s cached server row (no card comes back); a server items_text of \'\' is kept as supplied', async () => {
+  const { ES, made } = fakeES(); const db = { u_ana: {} }; let ITEMS = '1x Carnivora (L340)';
+  const reply = (b) => { db.u_ana[b.order_id] = userOrderEntry('u_ana', b.order_id, { ts: T0, total: 615, status: 'new', items_text: ITEMS }); return { ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh78' }; };
+  const { S } = await pedidosBoot(db, { runtime: { ...G7_RUNTIME, guestCardOnly: undefined, rtdbBase: 'https://rtdb.test' }, readPublic: async () => ({ ok: false }), mountExtra: { EventSource: ES }, apiFetch: ORDER_FETCH(reply), geolocation: GEO_OK2 });
+  try {
+    await shellPlaceTolerant(S); S.click('[data-act="order-close"]'); await flush(); await flush();
+    assert.equal(S.qa('.ocard.active').length, 1, 'premise: the card (local + its server row)');
+    const es = made.filter((e) => !e.closed).at(-1); es.emit('put', '/', trackingRecordOf('tok_abcdefgh78')); es.emit('put', '/status', 'delivered'); await flush();
+    assert.equal(S.qa('.ocard.active').length, 0, '🔴 PED-r3-2: the cached server row never re-adds a delivered order');
+  } finally { S.w.close(); }
+  ITEMS = '';
+  const db2 = { u_ana: {} };
+  const reply2 = (b) => { db2.u_ana[b.order_id] = userOrderEntry('u_ana', b.order_id, { ts: T0, total: 615, status: 'new', items_text: '' }); return { ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh90' }; };
+  const { S: S2 } = await pedidosBoot(db2, { runtime: { ...G7_RUNTIME, guestCardOnly: undefined }, apiFetch: ORDER_FETCH(reply2), geolocation: GEO_OK2 });
+  try { await shellPlaceTolerant(S2); S2.click('[data-act="order-close"]'); await flush(); await flush(); assert.equal(S2.q('.ocard.active .items'), null, '🔴 PED-r3-3: the server\'s \'\' as supplied (never the snapshot\'s lines)'); } finally { S2.w.close(); }
+});
+test('Pedidos r3 regressions: a member\'s /r/{rid}/pago reload waits for her admission and lands on her order screen; a cold /pedidos resumes her live stream once admitted', async () => {
+  const db = { u_ana: {} }; const st = g7Store(G7_PROFILE({ promos: true }));
+  const { S } = await pedidosBoot(db, { storage: st, runtime: { ...G7_RUNTIME, guestCardOnly: undefined }, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: GEO_OK2 });
+  try { await shellPlaceTolerant(S); assert.equal(JSON.parse(st.getItem('capp:active_order')).order.owner, 'u:u_ana', 'premise: Ana owns it'); } finally { S.w.close(); }
+  const { S: R } = await pedidosBoot(db, { storage: st, url: 'https://app.test/r/x_pizza/pago', routing: true, noFlush: true });
+  try { await flush(); await flush(); await flush(); assert.equal(txt(R.q('.mk-title')), 'Pedido recibido', '🔴 PED-r3-4: the member\'s reload of her order URL lands on it after admission'); } finally { R.w.close(); }
+  const { ES, made } = fakeES();
+  const { S: P } = await pedidosBoot(db, { storage: st, url: 'https://app.test/pedidos', routing: true, noFlush: true, runtime: { ...G7_RUNTIME, rtdbBase: 'https://rtdb.test' }, readPublic: async () => ({ ok: false }), mountExtra: { EventSource: ES } });
+  try { await flush(); await flush(); await flush(); assert.ok(P.q('.ocard.active'), 'premise: her card'); assert.equal(made.filter((e) => !e.closed).length, 1, '🔴 PED-r3-5: her live stream resumed after admission'); } finally { P.w.close(); }
 });
 // Pagination (advisor ruling 2026-11-01): ONE page of 20 — v6 draws no «load more»; next_cursor is deliberately not followed (not a defect)
 test('capp-dark §3: the SHELL\'s own live map (the Inicio pin editor) is built in the OS theme and restyled in place on a flip; destroy detaches', async () => {
