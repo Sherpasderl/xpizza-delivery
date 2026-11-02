@@ -929,8 +929,9 @@ test('HELD r1 — computed: the held photo\'s «Cancelar» stays ENABLED and UND
   const release = fake.holdPut();
   await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
   await until(() => drawer(d).querySelector('.phbusy'), 'P4');
-  // the server's saved name lands (as ruleA r1 #1) — and the server keeps reporting it on every read, as portal-reads.js does
-  fake.pendingRenames = [{ id: 'cl', from: 'Clásicas', to: 'Pizzas' }];
+  // the server's saved name lands (as ruleA r1 #1): saved on the server's draft (so every later read reports it, derived as
+  // portal-reads.js does), and the page learns it as from a read
+  fake.draft.categories = [{ id: 'cl', name: 'Pizzas' }];
   mods.app.state.savedRenames = [{ id: 'cl', from: 'Clásicas', to: 'Pizzas' }];
   release();
   await until(() => drawer(d).querySelector('.uphoto:not(.phbusy)') && btnText(drawer(d), 'Cancelar'), 'the held photo (not P4\'s own «Cancelar»)');
@@ -940,4 +941,90 @@ test('HELD r1 — computed: the held photo\'s «Cancelar» stays ENABLED and UND
   assert.equal(cancel.disabled, false);
   assert.notEqual(d.defaultView.getComputedStyle(cancel).opacity, '0.5', 'undimmed: its way out looks available');
   assert.notEqual(d.defaultView.getComputedStyle(cancel).cursor, 'not-allowed');
+});
+
+// Codex held r2 — the fake is the server's twin for section names (the «stub laxer than production voids the test» rule)
+const editBody = async (fake, mutate) => {
+  const r = await fake.fetchHandler('getEditableCatalog', { restaurantId: fake.rid });
+  const src = JSON.parse(JSON.stringify(r.body.source));
+  mutate(src);
+  return { restaurantId: fake.rid, baseSourceUpdateTime: r.body.sourceUpdateTime, source: src };
+};
+test('HELD r2 fake — a rename travels ALONE (production changesNothingElse): + a price → 400 rename_not_alone; + a photo → 400; ids frozen', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const rn = (src) => { src.structure.categories[0].name = 'Pizzas'; };
+  let r = await fake.fetchHandler('editCatalog', await editBody(fake, (src) => { rn(src); src.items[0].price += 10; }));
+  assert.equal(r.status, 400); assert.equal(r.body.error, 'rename_not_alone'); assert.equal(r.body.field, 'categories');
+  r = await fake.fetchHandler('editCatalog', await editBody(fake, (src) => { rn(src); src.photos = { Pepperoni: { state: 'removed' } }; }));
+  assert.equal(r.status, 400); assert.equal(r.body.error, 'rename_not_alone', 'a photo change is a change (Part A samePhotoStates)');
+  r = await fake.fetchHandler('editCatalog', await editBody(fake, (src) => { src.structure.categories[0].id = 'xx'; }));
+  assert.equal(r.status, 400); assert.equal(r.body.error, 'structure_changed');
+  r = await fake.fetchHandler('editCatalog', await editBody(fake, rn));
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.diff.changed, [{ surface: 'category', key: 'cl', field: 'name', old: 'Clásicas', new: 'Pizzas' }]);
+  const read = await fake.fetchHandler('getEditableCatalog', { restaurantId: fake.rid });
+  assert.deepEqual(read.body.pendingRenames, [{ id: 'cl', from: 'Clásicas', to: 'Pizzas' }], 'derived from draft vs published, as portal-reads.js');
+  const clean = createPhotoFake({ items: ITEMS() });
+  assert.ok(!('pendingRenames' in (await clean.fetchHandler('getEditableCatalog', { restaurantId: clean.rid })).body), 'absent when none');
+});
+
+// every locked control of every drawer state the hold can meet, by the stylesheet's computed verdict: disabled → the list
+// prices' 0.5 / not-allowed; every enabled button (Cerrar, a held «Cancelar») → not dimmed
+function assertHoldLook(d, where) {
+  const dw = drawer(d);
+  assert.ok(dw.classList.contains('namehold'), `${where}: premise: held`);
+  const ctrls = [...dw.querySelectorAll('input, textarea, select, button')];
+  const locked = ctrls.filter((c) => c.disabled);
+  assert.ok(locked.length > 0, `${where}: non-vacuity`);
+  for (const c of locked) assert.equal(look(d, c), '0.5|not-allowed', `${where}: locked ${c.tagName}.${c.className} «${c.textContent.trim()}» is dimmed`);
+  for (const c of ctrls.filter((x) => !x.disabled && x.tagName === 'BUTTON')) assert.notEqual(d.defaultView.getComputedStyle(c).opacity, '0.5', `${where}: enabled «${c.textContent.trim() || c.getAttribute('aria-label')}» is not dimmed`);
+  return locked;
+}
+// a name saved on the server lands as a read delivers it (every app path that sets savedRenames — loadMenu app.js:485/529,
+// settlePublish :2076, «Enviar al dueño» :2141 — paints right after): a paint (a real rail click), then the open drawer re-renders
+async function serverName(fake, mods, key) {
+  fake.draft.categories = [{ id: 'cl', name: 'Pizzas' }];
+  mods.app.state.savedRenames = [{ id: 'cl', from: 'Clásicas', to: 'Pizzas' }];
+  document.querySelector('#rail .railitem').click(); await settle();
+  mods.app.openDrawer(key); await settle();
+}
+test('HELD r2 — computed, EVERY locked control of every state: the zone + fields, Cambiar / Quitar, Deshacer, Reintentar, the phone pair', async () => {
+  const seen = new Set();
+  const note = (locked) => { for (const c of locked) seen.add(c.closest('.phacts') ? 'phacts' : c.closest('.phrm') ? 'phrm' : c.closest('.pherr') || c.closest('.phright') ? 'pherr' : c.closest('.phph2b') ? 'phph2b' : c.matches('button.uploader') ? 'uploader' : c.tagName.toLowerCase()); };
+  { // a dish without a photo: the zone and the fields
+    const fake = createPhotoFake({ items: ITEMS() }); const { d, mods } = await boot(fake); withCss(d);
+    await openDrawerFor(d, 'Pepperoni'); await serverName(fake, mods, 'Pepperoni');
+    note(assertHoldLook(d, 'plain'));
+  }
+  { // a published (legacy) photo: Cambiar / Quitar
+    const fake = createPhotoFake({ items: ITEMS(), legacy: { Margarita: true } }); const { d, mods } = await boot(fake); withCss(d);
+    await openDrawerFor(d, 'Margarita'); await serverName(fake, mods, 'Margarita');
+    note(assertHoldLook(d, 'with photo'));
+  }
+  { // a removal pending, then the server's name: Deshacer
+    const fake = createPhotoFake({ items: ITEMS(), legacy: { Margarita: true } }); const { d, mods } = await boot(fake); withCss(d);
+    await openDrawerFor(d, 'Margarita'); btnText(drawer(d), 'Quitar').click(); await settle();
+    await serverName(fake, mods, 'Margarita');
+    note(assertHoldLook(d, 'removal'));
+  }
+  { // a failed upload (P5), then the server's name: Reintentar
+    const fake = createPhotoFake({ items: ITEMS() }); const { d, w, mods } = await boot(fake); withCss(d);
+    fake.failNext('photoProcess', 503, { error: 'unavailable', retryable: true });
+    await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+    await until(() => drawer(d).querySelector('.ferr'), 'P5');
+    await serverName(fake, mods, 'Pepperoni');
+    note(assertHoldLook(d, 'failed'));
+  }
+  { // a phone: the zone expanded into «Tomar foto» / «Elegir de la galería», then the server's name
+    window.matchMedia = (q) => ({ matches: /max-width:\s*560px/.test(q) });
+    try {
+      const fake = createPhotoFake({ items: ITEMS() }); const { d, mods } = await boot(fake); withCss(d);
+      window.matchMedia = (q) => ({ matches: /max-width:\s*560px/.test(q) });
+      await openDrawerFor(d, 'Pepperoni'); drawer(d).querySelector('button.uploader').click(); await settle();
+      assert.ok(drawer(d).querySelector('.phph2b button'), 'premise: expanded');
+      await serverName(fake, mods, 'Pepperoni');
+      note(assertHoldLook(d, 'phone'));
+    } finally { delete window.matchMedia; }
+  }
+  for (const k of ['uploader', 'input', 'phacts', 'phrm', 'pherr', 'phph2b']) assert.ok(seen.has(k), `covered: ${k} (${[...seen].join(', ')})`);
 });
