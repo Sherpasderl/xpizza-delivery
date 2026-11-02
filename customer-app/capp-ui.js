@@ -1284,6 +1284,10 @@
       // carries no attempt: its own outcome)
       if ((k === 'placed' || k === 'paid_unverified') && out.unsettled !== true && typeof out.order_id === 'string' && (attempt === undefined || attempt === attemptSeq)) S.terminal = { order_id: out.order_id };
       if (k === 'placed' || k === 'paid_unverified') { if (S.screen !== 'sending') { S.screen = 'sending'; render(); } beat(out); return; }
+      // the native app below the floor, with a store to send it to (runtime.store_urls; else today's shared notice): state 2, or state 3
+      // when the identity is kept in flight (capp-api returns the existing outcome — confirming / existing_order — with update_required)
+      // — AFTER placed / paid (a confirmed order always wins), BEFORE every other outcome (Codex store-update r1 #1)
+      if (storeNow() && (k === 'update_required' || out.update_required === true)) { backTo('checkout'); showErr(out.update_required === true ? ERR.storeUpdatePending(storeNow().name) : ERR.storeUpdate(storeNow().name)); return; }
       if (k === 'confirming') { S.screen = 'sending'; S.sendHint = CONFIRMING_HINT; render(); return; }
       // §3.3 / frame 4: a MEMBER whose order met the GUEST gate — the server could not verify the session (token expired / SDK failure,
       // uid:null). Never a silent cash guest: the member stays a member, nothing was sent or charged, and is asked to sign in again
@@ -1308,9 +1312,6 @@
         showErr(S.returning && !contextRestored() ? ERR.generic() : cardOnlyGuest() ? ERR.payFailedGuest() : ERR.payFailed()); return;
       }
       if (k === 'refunded') { backTo('checkout'); showErr(ERR.refunded(out.refunded_total_cents)); return; }
-      // the native app below the floor, with a store to send it to (runtime.store_urls; else today's shared notice): state 2, or state 3
-      // when the identity is kept in flight (capp-api returns the existing outcome with update_required: true)
-      if (storeNow() && (k === 'update_required' || out.update_required === true)) { backTo('checkout'); showErr(out.update_required === true ? ERR.storeUpdatePending(storeNow().name) : ERR.storeUpdate(storeNow().name)); return; }
       if (k === 'existing_order') { backTo('checkout'); showErr(ERR.exists(out.reference)); return; }   // also a kept identity after a 426 (update_required: true)
       // the held-states mockup draws both sheets over «Entrega & Pago» (#mk-paused / #mk-generic)
       if (k === 'paused') { backTo('checkout'); showErr(ERR.paused()); return; }

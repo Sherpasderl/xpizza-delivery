@@ -46,6 +46,16 @@
     // state 4 (MOCKUP-capp-native-store-update): the INSTALLED app on a NEW build (its stamp vs the last build this device ran) ⇒ the
     // cart says «App actualizada…» once (closed ⇒ gone); the device's build is recorded at once (a reopen is never «updated» again)
     let appUpdated = false;
+    // the store round trip (MOCKUP-capp-native-store-update state 4; Codex store-update r1 #2): leaving for the store records WHICH
+    // store's cart to come back to; the NEW build reopens that store with its cart open (the cart and any unresolved placement live in
+    // their own durable records, untouched — the mount's reconciliation resumes the order's verification). One-shot, 24 h.
+    const HANDOFF_KEY = 'capp:store_handoff', HANDOFF_MS = 24 * 3600e3;
+    function keepHandoff(rid) { try { if (storage && typeof rid === 'string') storage.setItem(HANDOFF_KEY, JSON.stringify({ v: 1, rid, at: Number(nowMs()) })); } catch (_) {} }
+    function takeHandoff() {
+      let h = null; try { h = storage ? JSON.parse(storage.getItem(HANDOFF_KEY) || 'null') : null; } catch (_) { h = null; }
+      try { if (storage) storage.removeItem(HANDOFF_KEY); } catch (_) {}
+      return h && h.v === 1 && typeof h.rid === 'string' && Number.isFinite(h.at) && Number(nowMs()) - h.at >= 0 && Number(nowMs()) - h.at < HANDOFF_MS ? h.rid : null;
+    }
     if (o.runtime && o.runtime.native === true) {
       try {
         const SC = o.SherpaClient || g.SherpaClient, b = SC && SC.identity && typeof SC.identity.build === 'string' ? SC.identity.build : null, st = storage;
@@ -182,7 +192,7 @@
         onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
-        onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) openExternal(runtime.store.url); return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
+        onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) { keepHandoff(entry.rid); openExternal(runtime.store.url); } return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
       S.store = { rid: entry.rid, ui, entry, body: e.body, fp: null, adopt: null };
       watchMenu(S.store);
       const snap = carried || readJ(cfg.cartKey); if (snap) ui.restore(snap);   // an adoption carries the IN-MEMORY cart (Codex s7a2 r1 #1)
@@ -467,7 +477,7 @@
     const nav = CappShellNav.createShellNav({ win, home: { name: 'home' },
       onShow: (entry, x) => {
         if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link
-        if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); reflect(); return; }
+        if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; S.store.ui.openCart(); } reflect(); return; }
         if (entry.name === 'order') { S.tab = 'order'; renderNow(); return; }
         S.tab = entry.name; dir.visit(); dir.revalidate(); loadMenus();
         renderNow(x && x.restored ? x.restored : null);
@@ -797,7 +807,9 @@
     if (S.ret) enter(S.ret.rid, null);
     // D-4a §3: a payment return OWNS the boot (S.ret / S.neutral) — hydration runs only when the boot found NO return
     booted = true;
-    if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();   // ANY return (persisted / memory / resumed, owned or not) owns the boot
+    if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();
+    // back from the store on a NEW build (state 4): the store left for, its cart open — never on a payment return (that owns the boot)
+    if (appUpdated && !S.ret && !S.neutral) { const rid = takeHandoff(); if (rid) { S.reopenCart = rid; enter(rid); } }   // ANY return (persisted / memory / resumed, owned or not) owns the boot
     // a device Back leaves the sentinel: the nav (its listener runs first) re-pushes it — inheriting the PREVIOUS entry's URL — and
     // a blocked back renders nothing; this listener re-reflects the screen actually shown (pathname only)
     const onPopReflect = () => { if (dead) return; cancelRoute(); reflect(); };   // a device Back is a user navigation (Codex code r1 P1): it cancels a held cold link too

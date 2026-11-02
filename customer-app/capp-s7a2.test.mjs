@@ -2168,6 +2168,51 @@ test('store-update state 4 (frozen): back on a new build with a cart FROZEN for 
     assert.equal(txt(S.q('#layer [data-act="frozen-status"]')), 'Ver estado del pedido');
   } finally { S.w.close(); }
 });
+test('store-update r2 (state 3 safety): the in-flight sheet keeps the retained placement record and the cart byte-for-byte (nothing cleared by the sheet)', async () => {
+  const storage = memStorage();
+  const S = bootShell({ storage, runtime: STORE_RT, apiFetch: F426(['network', { status: 426, json: { error: 'client_update_required', app: 'orders', required_compat: 3 } }]), geolocation: GEO_OK2 });
+  try {
+    await flush(); await toShellPlace(S);
+    const place0 = storage.getItem('capp:x_pizza:pending_place'), cart0 = storage.getItem('capp:x_pizza:cart');
+    assert.ok(place0 && JSON.parse(place0).dispatched >= 1, 'premise: the lost send retained its record');
+    S.click('#layer [data-act="err-retry"]'); await flush(); await flush(); await flush();
+    assert.equal(txt(S.q('#layer .errsheet h2')), 'Actualizá la app para seguir', 'premise: state 3');
+    const place1 = JSON.parse(storage.getItem('capp:x_pizza:pending_place') || 'null');
+    assert.ok(place1 && place1.order_id === JSON.parse(place0).order_id, '🔴 SU-r2-3: the retained placement record survives the sheet (same identity)');
+    assert.equal(storage.getItem('capp:x_pizza:cart'), cart0, '🔴 SU-r2-3: the cart is untouched');
+    S.click('#layer [data-act="lclose"]'); await flush();
+    assert.ok(storage.getItem('capp:x_pizza:pending_place'), '🔴 SU-r2-3: «Ahora no» keeps it too');
+  } finally { S.w.close(); }
+});
+test('store-update r2 (round trip): «Abrir App Store» records the store; the NEW build reopens THAT store with its cart open and the «App actualizada» line; the same build never; a first install is never «updated»', async () => {
+  const storage = memStorage({ 'capp:app_build': 'b1' });
+  const A = bootShell({ storage, runtime: STORE_RT, apiFetch: F426([{ status: 426, json: { error: 'client_update_required', app: 'orders', required_compat: 3 } }]), geolocation: GEO_OK2, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b1' } } } });
+  try { A.w.open = () => null; await flush(); await toShellPlace(A); A.click('#layer [data-act="store-open"]'); await flush(); } finally { A.w.close(); }
+  assert.equal(JSON.parse(storage.getItem('capp:store_handoff') || '{}').rid, 'x_pizza', '🔴 SU-r2-2: the store left for is recorded');
+  const cart0 = storage.getItem('capp:x_pizza:cart'); assert.ok(cart0, 'premise: the cart persisted');
+  // the SAME build relaunched (the customer came back without updating): no reopen, the handoff kept for the real update
+  const Same = bootShell({ storage, runtime: STORE_RT, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b1' } } } });
+  try { await flush(); await flush(); assert.equal(Same.ui.store(), null, 'same build ⇒ Inicio as usual'); } finally { Same.w.close(); }
+  assert.ok(storage.getItem('capp:store_handoff'), 'the handoff waits for the new build');
+  // the NEW build: that store, its cart open, the line
+  const B = bootShell({ storage, runtime: STORE_RT, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b2' } } } });
+  try {
+    await flush(); await flush(); await flush();
+    assert.equal(B.ui.store() && B.ui.store().rid, 'x_pizza', '🔴 SU-r2-2: the new build reopens THAT store');
+    assert.equal(B.ui.store().ui.state.layerKind, 'cart', '🔴 SU-r2-2: with its cart open');
+    assert.equal(txt(B.q('#layer .cartnote')), 'App actualizada. Tu carrito sigue aquí.', 'the drawn line');
+    assert.deepEqual(JSON.parse(storage.getItem('capp:x_pizza:cart')).lines, JSON.parse(cart0).lines, 'the cart\'s lines as they were (a 426 on the FIRST send released the identity, capp-api.js:604, so reconciliation lifts its freeze)');
+    assert.equal(storage.getItem('capp:store_handoff'), null, 'one-shot');
+  } finally { B.w.close(); }
+  // a FIRST install (no previous build on the device): never «updated», nothing reopened; the build is recorded
+  const fresh = memStorage({ ...frozenCart() });
+  const F = bootShell({ storage: fresh, runtime: STORE_RT, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b9' } } } });
+  try {
+    await flush(); F.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); F.click('#cart-bar'); await flush();
+    assert.ok(!F.qa('#layer .cartnote .cn-l').some((x) => /App actualizada/.test(x.textContent)), '🔴 SU-r2-3: a first install is never «updated»');
+    assert.equal(fresh.getItem('capp:app_build'), 'b9', 'the first build recorded');
+  } finally { F.w.close(); }
+});
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {
   const over = WARNINGS.filter((w) => w && w.name === 'TimeoutOverflowWarning');

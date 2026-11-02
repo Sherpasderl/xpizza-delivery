@@ -2178,6 +2178,25 @@ test('G4 frame 4: a member\'s order refused by the GUEST gate (token not verifie
 });
 
 const CU = createRequire(import.meta.url)('./capp-ui.js');   // the pure renderers, in this realm
+// ── store-update r2 (Codex store-update r1 #1): capp-api.js:605 answers a 426 on a kept identity with the EXISTING outcome +
+// update_required — incl. {kind:'confirming'} when its credentials poll pending. The store sheet (state 3) must win over «confirming»,
+// while a CONFIRMED order (placed / paid) still wins over the sheet. The real capp-api, its place() answering that exact shape ──
+const STORE = { name: 'App Store', url: 'https://apps.apple.com/app/id1234567890' };
+const withPlace = (outcome) => ({ ...CA, createApi: (o) => { const a = CA.createApi(o); a.place = async () => ({ ...outcome }); return a; } });
+async function toPlace(b) {
+  await toCheckout(b); await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
+  await b.type('#f-details', 'Portón negro'); await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000'); await b.click('[data-act="pay"][data-val="cash"]');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]'); await settle();
+}
+test('store-update r2: {kind:"confirming", update_required:true} (capp-api.js:605 with live credentials) ⇒ the state-3 sheet, never a silent «Enviando»; a placed order with update_required still beats', async () => {
+  const b = bootCo({ config: { store: STORE }, mountOpts: { CappApi: withPlace({ kind: 'confirming', order_id: 'TA-1', state: 'pending', update_required: true }) } });
+  await toPlace(b);
+  assert.equal(b.text('#layer .errsheet h2'), 'Actualizá la app para seguir', '🔴 SU-r2-1: confirming + update_required ⇒ state 3');
+  const c = bootCo({ config: { store: STORE }, mountOpts: { CappApi: withPlace({ kind: 'placed', order_id: 'TA-2', update_required: true }) } });
+  await toPlace(c);
+  assert.equal(c.q('#layer .errsheet'), null, '🔴 SU-r2-1: a confirmed order wins — no store sheet'); assert.ok(c.q('#sspin .sok'), 'the placed beat');
+});
+
 // ── «Pedido recibido» (owner 11-01): the order AS SENT reaches the host with 'placed' — on the same page (cash) and ACROSS the hosted
 // checkout redirect (card: a new page load), bound to that order's id; its money lines are the sent body's, never a recomputation ──
 const SENT_KEY = 'capp:rid_a:sent_order';
