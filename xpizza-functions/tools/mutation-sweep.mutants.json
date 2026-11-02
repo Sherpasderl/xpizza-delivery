@@ -21997,8 +21997,8 @@
     "slice": "s7a1",
     "label": "P2-7: a frozen cart accepts mutations",
     "file": "../customer-app/capp-ui.js",
-    "from": "    function mutate(fn) {\n      if (!orderable || frozenNow()) return false;\n",
-    "to": "    function mutate(fn) {\n      if (!orderable) return false;\n",
+    "from": "      if (!orderable || frozenNow()) return { ok: false };",
+    "to": "      if (!orderable) return { ok: false };",
     "command": [
       "node",
       "--test",
@@ -22007,15 +22007,15 @@
     "kills_with": [
       "a frozen cart rejects «+»"
     ],
-    "repointed": "S7a-2 (2026-10-27): the same guard, re-anchored on the line S7a-2 extended (orderable / frame 13)"
+    "repointed": "S7a-2 (2026-10-27): the same guard, re-anchored on the line S7a-2 extended (orderable / frame 13) · 2026-11-02 (capp, the full light chain): «Volver a pedir» (advisor 11-02) extracted the store's cart writes into createCartCore: the same choke point is now its mutate(fn, orderable), returning { ok:false }"
   },
   {
     "id": "s7a1-36",
     "slice": "s7a1",
     "label": "P2-7: hosted restore drops the persisted mode",
     "file": "../customer-app/capp-ui.js",
-    "from": "if (snapshot && (snapshot.mode === 'pickup' || snapshot.mode === 'delivery')) { S.mode = snapshot.mode;",
-    "to": "if (false) { S.mode = snapshot.mode;",
+    "from": "if (snapshot && (snapshot.mode === 'pickup' || snapshot.mode === 'delivery')) mode = snapshot.mode;",
+    "to": "if (false) mode = snapshot.mode;",
     "command": [
       "node",
       "--test",
@@ -22023,7 +22023,8 @@
     ],
     "kills_with": [
       "the persisted mode is restored"
-    ]
+    ],
+    "repointed": "2026-11-02 (capp, the full light chain): createCartCore's restore returns the mode (mode = snapshot.mode) instead of setting S.mode — the same restore, one owner"
   },
   {
     "id": "s7a1-37",
@@ -22258,8 +22259,8 @@
     "slice": "s7a1",
     "label": "r2 P2-6: a frozen-for-order (recovery) cart is not a lock",
     "file": "../customer-app/capp-ui.js",
-    "from": "return !!(fz.unknown || (fz.frozen && fz.live) || (typeof api.holdsLock",
-    "to": "return !!(fz.unknown || false || (typeof api.holdsLock",
+    "from": "return !!(fz.unknown || (fz.frozen && fz.live) || (typeof a.holdsLock",
+    "to": "return !!(fz.unknown || false || (typeof a.holdsLock",
     "command": [
       "node",
       "--test",
@@ -22267,7 +22268,8 @@
     ],
     "kills_with": [
       "a recovery lock never passes to the shell"
-    ]
+    ],
+    "repointed": "2026-11-02 (capp, the full light chain): createCartCore reads the transport as `a` (the core's api()) instead of the mount's `api`"
   },
   {
     "id": "s7a1-45",
@@ -22386,8 +22388,8 @@
     "slice": "s7a1",
     "label": "r3 #1: a purchased restore keeps the purchased lines in memory",
     "file": "../customer-app/capp-ui.js",
-    "from": "cart.hydrate({ v: 2, lines: [] }); cartGen = null; render(); return { cleared: true };",
-    "to": "cartGen = null; render(); return { cleared: true };",
+    "from": "cart.hydrate({ v: 2, lines: [] }); gen = null; return { cleared: true };",
+    "to": "gen = null; return { cleared: true };",
     "command": [
       "node",
       "--test",
@@ -22395,7 +22397,8 @@
     ],
     "kills_with": [
       "the purchased lines are cleared from memory"
-    ]
+    ],
+    "repointed": "2026-11-02 (capp, the full light chain): createCartCore's restore: the generation is the core's `gen`, the render moved to the caller"
   },
   {
     "id": "s7a1-54",
@@ -23394,8 +23397,8 @@
     "slice": "s7a2",
     "label": "browse-only: mutate no longer refuses",
     "file": "../customer-app/capp-ui.js",
-    "from": "      if (!orderable || frozenNow()) return false;",
-    "to": "      if (frozenNow()) return false;",
+    "from": "      if (!orderable || frozenNow()) return { ok: false };",
+    "to": "      if (frozenNow()) return { ok: false };",
     "command": [
       "node",
       "--test",
@@ -23403,7 +23406,8 @@
     ],
     "kills_with": [
       "the handler refuses too (mutate is the choke point)"
-    ]
+    ],
+    "repointed": "2026-11-02 (capp, the full light chain): the same createCartCore move as s7a1-35: browse-only's refusal now lives in the core's mutate(fn, orderable)"
   },
   {
     "id": "s7a2-11",
@@ -24075,8 +24079,8 @@
     "slice": "g6",
     "label": "Codex G6 r1 #1: a sign-out leaves the mounted checkout's member (and token)",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "function dropMember() { memberGen++; clearTokenTimers(); S.member = null; if (S.store) S.store.ui.setMember(null); }",
-    "to": "function dropMember() { memberGen++; clearTokenTimers(); S.member = null; }",
+    "from": "function dropMember() { memberGen++; clearTokenTimers(); S.member = null; if (S.store) S.store.ui.setMember(null); identityChanged(); }",
+    "to": "function dropMember() { memberGen++; clearTokenTimers(); S.member = null; identityChanged(); }",
     "command": [
       "node",
       "--test",
@@ -24086,7 +24090,7 @@
     "kills_with": [
       "after a sign-out the mounted checkout sends no member token"
     ],
-    "repointed": "Codex promo r3: dropMember also cancels the token timers (clearTokenTimers); the mutant still drops only the store hand-off"
+    "repointed": "Codex promo r3: dropMember also cancels the token timers (clearTokenTimers); the mutant still drops only the store hand-off · 2026-11-02 (capp, the full light chain): Pedidos r1 added identityChanged() to dropMember; the mutation still drops ONLY the mounted store's setMember(null)"
   },
   {
     "id": "g6-13",
@@ -25065,8 +25069,8 @@
     "slice": "s7a2",
     "label": "frame 15: «Cerrar» keeps the row held",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "if (a === 'menu-close') { S.held = null; cancelRoute(); closeLayer();",
-    "to": "if (a === 'menu-close') { cancelRoute(); closeLayer();",
+    "from": "if (a === 'menu-close') { S.held = null; S.reorder = null; S.carry = null; cancelRoute(); closeLayer();",
+    "to": "if (a === 'menu-close') { S.reorder = null; S.carry = null; cancelRoute(); closeLayer();",
     "command": [
       "node",
       "--test",
@@ -25076,7 +25080,8 @@
     ],
     "kills_with": [
       "«Cerrar» releases the row"
-    ]
+    ],
+    "repointed": "2026-11-02 (capp, the full light chain): «Volver a pedir» (Codex VP r1 #2) also clears S.reorder / S.carry on «Cerrar»; the mutation still drops ONLY S.held"
   },
   {
     "id": "s7a2-25",
@@ -25101,8 +25106,8 @@
     "slice": "s7a2",
     "label": "frame 17: no city ⇒ a bare number",
     "file": "../customer-app/capp-home.js",
-    "from": "`${nLive} restaurantes`)",
-    "to": "`${nLive}`)",
+    "from": "(c ? `${nLive} en ${esc(c)}` : `${nLive} restaurantes`)",
+    "to": "(c ? `${nLive} en ${esc(c)}` : `${nLive}`)",
     "command": [
       "node",
       "--test",
@@ -25112,7 +25117,8 @@
     ],
     "kills_with": [
       "F17"
-    ]
+    ],
+    "repointed": "2026-11-02 (capp, the full light chain): C-6b's desk «Todos» sub repeats the text (without esc), making the old anchor ambiguous (2x): the phone line, uniquely, by its esc(c) arm"
   },
   {
     "id": "s7a2-27",
@@ -25544,8 +25550,8 @@
     "slice": "g7",
     "label": "the runtime.signup endpoint set drops setPromos (the host never builds its URL)",
     "file": "../customer-app/capp-signup-api.js",
-    "from": "'completeProfile', 'redeemSignupGrant', 'setPromos']);",
-    "to": "'completeProfile', 'redeemSignupGrant']);",
+    "from": "'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder']);",
+    "to": "'completeProfile', 'redeemSignupGrant', 'getMyOrders', 'getMyRating', 'rateOrder']);",
     "command": [
       "node",
       "--test",
@@ -25554,7 +25560,8 @@
     ],
     "kills_with": [
       "SU-endpoints"
-    ]
+    ],
+    "repointed": "2026-11-02 (capp, the full light chain): ENDPOINTS grew getMyOrders (Pedidos) and getMyRating / rateOrder (C-2); the mutation still drops ONLY setPromos"
   },
   {
     "id": "g7-17",
@@ -26078,20 +26085,21 @@
   {
     "id": "dsk-06",
     "slice": "desk",
-    "label": "«Pedidos» offered again with no orders screen (a dead control)",
+    "label": "«Pedidos» dropped again (the owner put it in launch scope, 11-01) — the orders screen and its entries vanish",
     "file": "../customer-app/capp-home.js",
-    "from": "  const ORDERS_SCREEN = false;",
-    "to": "  const ORDERS_SCREEN = true;",
+    "from": "  const ORDERS_SCREEN = true;   // owner 2026-11-01: «Pedidos» is in launch scope",
+    "to": "  const ORDERS_SCREEN = false;   // owner 2026-11-01: «Pedidos» is in launch scope",
     "command": [
       "node",
       "--test",
       "--test-timeout=120000",
-      "--test-name-pattern=D-2",
+      "--test-name-pattern=^C-6b bar: brand",
       "../customer-app/capp-s7a2.test.mjs"
     ],
     "kills_with": [
-      "an orders control"
-    ]
+      "DN-1: Inicio · Pedidos · Cuenta"
+    ],
+    "repointed": "2026-11-02 (capp, the full light chain): the original bug (offering Pedidos with NO orders screen) cannot exist since the owner put «Pedidos» in launch scope (ORDERS_SCREEN true, 11-01) — re-pointed to its inverse: dropping the in-scope screen must be caught by the Pedidos cells"
   },
   {
     "id": "dsk-07",
@@ -26448,7 +26456,7 @@
     "slice": "route",
     "label": "Codex D-4a r2: a user gesture inside the store does not cancel a pending cold link",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "    const onUserIntent = () => { if (!dead && pendingRoute) cancelRoute(); };",
+    "from": "    const onUserIntent = () => { if (!dead && (pendingRoute || awaitOrderRoute)) cancelRoute(); };",
     "to": "    const onUserIntent = () => {};",
     "command": [
       "node",
@@ -26460,7 +26468,8 @@
     "kills_with": [
       "the fresh menu opened the checkout over the user's search",
       "the cancelled dish link opened after the lock cleared"
-    ]
+    ],
+    "repointed": "2026-11-02 (capp, the full light chain): Pedidos r3 P2 extended the cancel to the deferred /r/{rid}/pago intent (awaitOrderRoute); the mutation still removes the whole gesture cancel"
   },
   {
     "id": "pf-01",

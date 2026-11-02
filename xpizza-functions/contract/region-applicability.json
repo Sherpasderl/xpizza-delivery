@@ -11015,7 +11015,7 @@
       "xpizza-functions/availability-gate.js#functions": 1,
       "xpizza-functions/catalog/extras-intake.js#functions": 1,
       "xpizza-functions/catalog/group-intake.js#functions": 1,
-      "xpizza-functions/client-floor.js#functions": 2,
+      "xpizza-functions/client-floor.js#functions": 3,
       "xpizza-functions/compute-server-net.js#functions": 1,
       "xpizza-functions/hosted-charge-flow.js#functions": 4,
       "xpizza-functions/index.js#functions": 33,

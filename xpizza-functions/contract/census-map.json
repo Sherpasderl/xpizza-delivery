@@ -527,6 +527,7 @@
   "pixelpay-webhook.js#classifySweepCandidate": "payment",
   "pixelpay-webhook.js#extractWebhookNudge": "payment",
   "platform-manifest.js#deriveCorsLists": "infra",
+  "platform-manifest.js#keysOk": "infra",
   "portal/functions.js#editCatalog": "catalog",
   "portal/functions.js#getEditableCatalog": "catalog",
   "portal/functions.js#getMyRestaurants": "catalog",

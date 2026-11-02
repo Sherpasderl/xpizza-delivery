@@ -23,6 +23,7 @@
     "customer-app/capp-availability.test.mjs",
     "customer-app/capp-checkout.test.mjs",
     "customer-app/capp-guards.test.mjs",
+    "customer-app/capp-order.test.mjs",
     "customer-app/capp-price-notice-copy.test.mjs",
     "customer-app/capp-stash.test.mjs",
     "d4b-availability.test.mjs",
@@ -486,6 +487,7 @@
     "customer-app/capp-cart.test.mjs",
     "customer-app/capp-checkout.test.mjs",
     "customer-app/capp-guards.test.mjs",
+    "customer-app/capp-order.test.mjs",
     "customer-app/capp-price-notice-copy.test.mjs",
     "customer-app/capp-stash.test.mjs",
     "d4b-availability.test.mjs",
@@ -1168,6 +1170,8 @@
   },
   "xpizza-track": {
    "tests": [
+    "customer-app/capp-guards.test.mjs",
+    "customer-app/capp-order.test.mjs",
     "s5-live-status.test.mjs",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
