@@ -52,6 +52,7 @@ const real = C.loadPhotosConfig();
 assert.ok(real.ok && real.config.private_bucket[PROD] === committed.private_bucket[PROD], 'PCFG-LOADER-READS-THE-COMMITTED-FILE');
 assert.strictEqual(C.loadPhotosConfig(), real, 'PCFG-LOADER-MEMOIZED');
 assert.strictEqual(C.CONFIG_PATH, path.join(__dirname, '..', 'platform', 'photos.json'), 'PCFG-PATH (the bundled copy, the file the functions deploy)');
+assert.ok(!/process\.env|argv|setConfig|_install|_use[A-Z]/.test(fs.readFileSync(path.join(__dirname, 'photos-config.js'), 'utf8')), '🔴 PCFG-NO-ENV-SEAM the loader reads no env var, argv, setter or installer (codex r5 P2: production is fixed to the committed file)');
 ok('committed: both copies byte-equal and valid; private xpizza-delivery = the owner-verified storageBucket; public "" until launch; the loader reads exactly the bundled file, memoized');
 
 console.log(`photos-config: OK (${n})`);
