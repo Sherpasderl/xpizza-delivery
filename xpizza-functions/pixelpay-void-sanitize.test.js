@@ -29,7 +29,13 @@ const OID = 'TBVS1', AID = 'b0b0b0b0b0b0b0b0', HOID = `${OID}-${AID}`;
 
 let provider = { kind: 'decline' }; let calls = 0;
 globalThis.fetch = async (url, init) => {
-  if (!String(url).endsWith('/api/v2/transaction/void')) throw new Error(`unexpected fetch ${url}`);
+  const u = String(url);
+  if (u.endsWith('/api/v2/transaction/status')) return new Response(JSON.stringify({ success: true, data: { status: provider.status || 'authorized' } }), { status: 200 });
+  if (u.endsWith('/api/v2/transaction/capture')) {
+    calls += 1;
+    return new Response(JSON.stringify({ success: false, message: HOSTILE_TEXT, code: `E-${HOSTILE[1]}`, errors: { card: [HOSTILE_TEXT] } }), { status: provider.captureHttp || 402 });
+  }
+  if (!u.endsWith('/api/v2/transaction/void')) throw new Error(`unexpected fetch ${url}`);
   const cfg = resolvePixelPayConfig(); const h = init.headers || {}; const body = JSON.parse(init.body);
   if (init.method !== 'POST' || h['x-auth-key'] !== cfg.app_key || h['x-auth-hash'] !== cfg.auth_hash) throw new Error('provider stub: bad request');
   if (h['x-auth-user'] !== PP.platformUser(cfg.merchant_email) || body.void_signature !== PP.voidSignature(cfg.merchant_email, HOID, cfg.secret)) throw new Error('provider stub: bad signature');
@@ -121,6 +127,28 @@ const capturedAttempt = (over = {}) => ({ order_id: OID, hosted_order_id: HOID, 
     assert.ok(calls === 1 && r.outcome === 'cancelled_refund_pending', `${L}: PREMISE — the first payment's void was attempted and declined (got ${r.outcome}, calls ${calls})`);
     clean(L, db);
   });
+
+  // ── the legacy CAPTURE decline (confirmOnlinePayment → the authenticated confirm response's `detail`): the DECISION is
+  //    unchanged (capture_failed, attempt declined, order failed); only the provider's text is replaced ──
+  const { confirmOnlinePayment } = require('./pixelpay-confirm');
+  const pending = () => ({ orders: { [OID]: { order_id: OID, order_type: 'pickup', pickup_time: 'standard', customer_name: 'T', customer_phone: '50400000000', items_text: 'x', total: 299, total_cents: 29900,
+    payment_method: 'online', payment_status: 'pending', status: 'pending_payment', active_attempt_id: AID, created_at: 1 } },
+    payment_attempts: { [AID]: { order_id: OID, status: 'active', total_cents: 29900, pixelpay_order_id: HOID, created_at: 1 } } });
+  const cdeps = (db) => ({ db, client: realClient, restaurant: { lat: 15.5, lng: -88, name: 'TB', phone: 'p' }, buildMaterializeUpdates, voidOrRefund, staleMs: 90000, alert: (k, d) => paymentAlert(db, k, d) });
+  for (const [label, captureHttp, code, message] of [['DECLINE', 402, 'capture_declined', 'capture declined by the provider'], ['412-NOT-PAID', 412, 'capture_not_found', 'capture not found']]) {
+    await cell(`VS-CAPTURE-${label}-HOSTILE`, 'decline', async () => {
+      const L = `VS-CAPTURE-${label}-HOSTILE`;
+      provider.captureHttp = captureHttp; provider.status = 'authorized';
+      const db = makeDb(pending());
+      const r = await confirmOnlinePayment(cdeps(db), { orderId: OID, paymentUuid: 'PAY-1', now: 5000, trackingToken: 'TOK' });
+      assert.ok(calls === 1 && r.outcome === 'capture_failed', `${L}: PREMISE/DECISION — one capture, capture_failed (got ${r.outcome}, calls ${calls})`);
+      assert.ok(db.getAt(`payment_attempts/${AID}/status`) === 'declined' && db.getAt(`orders/${OID}/payment_status`) === 'failed', `${L}: the decision is unchanged: attempt declined, order failed`);
+      assert.strictEqual(r.message, message, `${L}: the result (→ the legacy confirm response's detail) carries the fixed message`);
+      const a = db.getAt(`payment_attempts/${AID}`);
+      assert.ok(a.decline_message === message && a.decline_code === code && a.provider_code === 'unknown', `${L}: the attempt records fixed text + code + allowlisted provider code (got ${JSON.stringify({ m: a.decline_message, c: a.decline_code, p: a.provider_code })})`);
+      clean(L, db);
+    });
+  }
 
   console.warn = realWarn; console.error = realErr;
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\npixelpay-void-sanitize: OK (${pass})`);
