@@ -30,8 +30,12 @@ ok('palettes: A light, the dark variant, the splash backgrounds Celeste / Noche 
 // 3. sizes + the ring's share of the tile (69 %) + the Android safe zone (66 dp)
 const F = Object.fromEntries(B.files().map(([name, , meta]) => [name, meta]));
 assert.deepEqual(Object.keys(F).sort(), ['android-foreground-432.svg', 'android-legacy-192.svg', 'android-monochrome-432.svg', 'android-splash-icon-dark-960.svg', 'android-splash-icon-light-960.svg',
-  'ios-icon-1024.svg', 'ios-icon-dark-1024.svg', 'ios-icon-tinted-1024.svg', 'play-store-512.svg', 'splash-mark-dark-104.svg', 'splash-mark-dark-208.svg', 'splash-mark-dark-312.svg',
+  'ios-icon-1024.svg', 'ios-icon-dark-1024.svg', 'ios-icon-tinted-1024.svg', 'play-store-512.svg', 'splash-2732.svg', 'splash-dark-2732.svg', 'splash-mark-dark-104.svg', 'splash-mark-dark-208.svg', 'splash-mark-dark-312.svg',
   'splash-mark-light-104.svg', 'splash-mark-light-208.svg', 'splash-mark-light-312.svg']);
+assert.deepEqual([F['splash-2732.svg'], F['splash-dark-2732.svg']], [{ w: 2732, h: 2732, alpha: false }, { w: 2732, h: 2732, alpha: false }], 'the derived 2732 splash, light + dark, opaque');
+{ const sv = Object.fromEntries(B.files().map(([k, v]) => [k, v])); const k = 2732 * 104 / 390 / 48;
+  assert.ok(sv['splash-2732.svg'].includes(`scale(${k})`) && sv['splash-2732.svg'].includes('fill="#8EC0FF"'), '🔴 2732 light: the mark at 104/390 of the width on Celeste');
+  assert.ok(sv['splash-dark-2732.svg'].includes(`scale(${k})`) && sv['splash-dark-2732.svg'].includes('fill="#0D1B3E"'), '🔴 2732 dark: on Noche'); }
 for (const [k, v] of Object.entries({ 'ios-icon-1024.svg': false, 'ios-icon-dark-1024.svg': false, 'play-store-512.svg': false, 'android-legacy-192.svg': false, 'ios-icon-tinted-1024.svg': true, 'android-foreground-432.svg': true, 'android-monochrome-432.svg': true }))
   assert.equal(F[k].alpha, v, `${k}: alpha ${v} (the App Store / Play icons carry NO alpha)`);
 const ringOuter = (14.8 + B.RING_W / 2) * 2 / 48;

@@ -80,6 +80,16 @@
       "w": 960,
       "h": 960,
       "alpha": true
+    },
+    "splash-2732.svg": {
+      "w": 2732,
+      "h": 2732,
+      "alpha": false
+    },
+    "splash-dark-2732.svg": {
+      "w": 2732,
+      "h": 2732,
+      "alpha": false
     }
   }
 }

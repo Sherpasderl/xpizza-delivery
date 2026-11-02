@@ -46,6 +46,9 @@ function tinted(n) { return svg(n, n, HOLE + mark(PALETTE.tinted, 0, 0, n)); }
 function splashMark(n, p) { return svg(n, n, mark(p, 0, 0, n)); }
 // Android 12+ windowSplashScreenAnimatedIcon: a 240 dp canvas, the mark at ~48/108 of it (the mockup's production note)
 function splashIcon(n, p) { const s = n * 48 / 108, o = (n - s) / 2; return svg(n, n, mark(p, o, o, s)); }
+// the Capacitor 2732 splash (Android < 12 + the SplashScreen plugin; advisor 11-01: DERIVE it): the mark at 104/390 of the width
+// (the mockup's 104 px on a 390 px phone), centred, on the splash background — the same composition as the launch screen
+function splashFull(n, p) { const s = n * 104 / 390, o = (n - s) / 2; return svg(n, n, `<rect width="${n}" height="${n}" fill="${p.bg}"/>${mark(p, o, o, s)}`); }
 
 // every file a build needs (the mockup's «Producción» list) → [name, svg, { w, h, alpha }]
 function files() {
@@ -66,6 +69,8 @@ function files() {
     ['splash-mark-dark-312.svg', splashMark(312, D), { w: 312, h: 312, alpha: true }],
     ['android-splash-icon-light-960.svg', splashIcon(960, L), { w: 960, h: 960, alpha: true }],
     ['android-splash-icon-dark-960.svg', splashIcon(960, D), { w: 960, h: 960, alpha: true }],
+    ['splash-2732.svg', splashFull(2732, L), { w: 2732, h: 2732, alpha: false }],
+    ['splash-dark-2732.svg', splashFull(2732, D), { w: 2732, h: 2732, alpha: false }],
   ];
 }
 // the colour resources (no PNG): the Android icon background and the two launch-screen backgrounds
