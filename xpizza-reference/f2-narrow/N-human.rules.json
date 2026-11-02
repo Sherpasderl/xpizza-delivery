@@ -320,6 +320,10 @@
         "owner_uid"
       ]
     },
+    "rating_index": {
+      ".read": false,
+      ".write": false
+    },
     "ratings_redact_pending": {
       ".read": false,
       ".write": false,
