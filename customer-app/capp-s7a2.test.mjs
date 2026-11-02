@@ -579,7 +579,7 @@ test('G2 §4c device marker: the full E.164 + a hint (never a token); last 4 for
   assert.equal(DA.read(broken), null); assert.equal(DA.remember(broken, '+50496123344'), false);
 });
 test('G2 frame 5b: a guest\'s Cuenta tab = ONE «Entrá o creá tu cuenta» + three benefits, «Pedidos» and «Ayuda» kept; unresolved ⇒ the card hidden (geometry kept); a member ⇒ the host', async () => {
-  const GR = { ...RUNTIME, guestCardOnly: true };
+  const GR = { ...RUNTIME, guestCardOnly: true, supportWhatsapp: '50497952893' };   // the production runtime carries the support number (Cuenta's «Ayuda»)
   const S = bootShell({ auth: 'guest', runtime: GR }); await flush();
   S.click('.tabbar [data-tab="account"]'); await flush();
   assert.equal(txt(S.q('.flowbar h1')), 'Cuenta');
@@ -961,17 +961,17 @@ test('G7 setPromos fake (Codex G7 r1 #4): as strict as the real handler — toda
   assert.deepEqual(await api.setPromos({ idToken: 'id:u_ana', value: false }), { ok: true, value: false }, '🔴 G7-fake: the client\'s real request is accepted (the value read back)');
   assert.deepEqual(await api.setPromos({ idToken: null, value: false }), { ok: false, reason: 'unauthenticated' }, 'a tokenless client call is refused, as in production');
 });
-async function g7Boot({ profile = G7_PROFILE({ promos: true }), srv = g7Server(), fbOpts = {}, media = null } = {}) {
+async function g7Boot({ profile = G7_PROFILE({ promos: true }), srv = g7Server(), fbOpts = {}, media = null, runtime = G7_RUNTIME } = {}) {
   const fb = fakeFirebase({ persisted: 'u_ana', ...fbOpts });
   const store = g7Store(profile);
-  const S = bootShell({ auth: 'unresolved', storage: store, runtime: G7_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch }, media });
+  const S = bootShell({ auth: 'unresolved', storage: store, runtime, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch }, media });
   await flush(); await flush();
   S.click('.tabbar [data-tab="account"]'); await flush();
   return { S, fb, srv, store };
 }
 const g7Rows = (S) => S.qa('.flow .rows .rowbtn').map((b) => txt(b));
 test('G7 frame 1 / 4a: the member\'s Cuenta from the cached profile — the initial, name / phone / email on three lines, Pedidos · Promociones (on) · Ayuda, the session group, «v0.1.0»; never the host\'s tab event', async () => {
-  const { S } = await g7Boot();
+  const { S } = await g7Boot({ runtime: { ...G7_RUNTIME, supportWhatsapp: '50497952893' } });
   assert.equal(S.events.filter((e) => e[0] === 'tab').length, 0, '🔴 G7-shell: the member\'s Cuenta is the shell\'s (no host event)');
   assert.equal(txt(S.q('.acct-hero .av')), 'A');
   assert.deepEqual([...S.qa('.acct-hero .t > *')].map((x) => x.textContent), ['Ana Pérez', '+504 9612-3344', 'ana.perez@gmail.com'], '🔴 G7-hero: name, phone, email on three lines');
@@ -999,13 +999,13 @@ test('G7 frame 1b: Promociones flips at once and calls setPromos (context platfo
   assert.equal(JSON.parse(bad.store.getItem('capp:member_profile')).promos, true);
 });
 test('G7 frame 4b: no served promotions value ⇒ the switch INERT (aria-disabled, the .45); a uid without a cached profile ⇒ the placeholder bars, the rows usable', async () => {
-  const noVal = await g7Boot({ profile: G7_PROFILE() });
+  const noVal = await g7Boot({ runtime: { ...G7_RUNTIME, supportWhatsapp: '50497952893' }, profile: G7_PROFILE() });
   assert.equal(noVal.S.q('[data-act="promos"]').getAttribute('aria-disabled'), 'true', '🔴 G7-inert: no value served ⇒ inert');
   noVal.S.click('[data-act="promos"]'); await flush();
   assert.equal(noVal.srv.sent.filter((x) => x[0] === 'setPromos').length, 0, 'an inert switch sends nothing');
-  const bare = await g7Boot({ profile: null });
+  const bare = await g7Boot({ runtime: { ...G7_RUNTIME, supportWhatsapp: '50497952893' }, profile: null });
   assert.equal(bare.S.qa('.acct-hero .t .bar').length, 3, '🔴 G7-placeholder: three static bars'); assert.ok(bare.S.q('.acct-hero .av.ph'));
-  assert.ok(bare.S.q('[data-act="signout"]') && bare.S.q('[data-act="help"]'), 'the rows usable (Ayuda, the session group)');
+  assert.ok(bare.S.q('[data-act="signout"]') && bare.S.q('[data-act="site-help"]'), 'the rows usable (Ayuda, the session group)');
 });
 // Codex G7 r1 #3: the promotions consent rides the REAL sign-in — the server's profile.promos (an existing account), or the value a
 // successful completeProfile stored (a new one) — into «Listo», the cache and the Cuenta switch; none stored (a legacy account,
@@ -3236,6 +3236,19 @@ test('C-6b heading: the desktop Inicio H1 «Pedí a domicilio en {the directory\
   try { assert.equal(M.q('.h1row .promo'), null, '🔴 DN-6: a member\'s sample card has no data ⇒ absent'); } finally { M.w.close(); }
   const P = bootShell(); await flush();
   try { assert.equal(P.q('.h1row'), null, '🔴 DN-7: the phone: no H1 row (its DOM unchanged)'); assert.notEqual(P.w.getComputedStyle(P.q('.home-head .addr-btn')).display, 'none', 'the phone keeps its addr-btn'); } finally { P.w.close(); }
+});
+test('Cuenta «Ayuda» (advisor 11-02: it was a DEAD control — the host never handled `help`): the guest\'s and the member\'s row open the platform support chat; no support number ⇒ no row', async () => {
+  const GR = { ...RUNTIME, guestCardOnly: true };
+  for (const [label, rt] of [['guest', { ...GR, supportWhatsapp: '50497952893' }]]) {
+    const S = bootShell({ auth: 'guest', runtime: rt }); await flush();
+    try { S.click('.tabbar [data-tab="account"]'); await flush(); const opened = []; S.w.open = (u) => opened.push(u);
+      S.click('.rowbtn[data-act="site-help"]'); await flush(); assert.deepEqual(opened, ['https://wa.me/50497952893'], `🔴 AY-1 ${label}: the support chat`); } finally { S.w.close(); }
+  }
+  const { S: M } = await g7Boot({ runtime: { ...G7_RUNTIME, supportWhatsapp: '50497952893' } });
+  try { M.click('.tabbar [data-tab="account"]'); await flush(); const opened = []; M.w.open = (u) => opened.push(u);
+    M.click('.rowbtn[data-act="site-help"]'); await flush(); assert.deepEqual(opened, ['https://wa.me/50497952893'], '🔴 AY-1 member: the support chat'); } finally { M.w.close(); }
+  const N = bootShell({ auth: 'guest', runtime: GR }); await flush();
+  try { N.click('.tabbar [data-tab="account"]'); await flush(); assert.equal(N.qa('.rowbtn').some((b) => /Ayuda/.test(b.textContent)), false, '🔴 AY-2: no support number ⇒ no «Ayuda» row'); assert.equal(N.q('[data-act="help"]'), null, 'never the dead host event'); } finally { N.w.close(); }
 });
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {

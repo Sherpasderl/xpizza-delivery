@@ -381,7 +381,7 @@
     <div class="guestcard"${known ? '' : ' style="visibility:hidden" aria-hidden="true"'}><h2>Tu cuenta</h2>
       <ul><li>${IC.check}<span>Efectivo al entregar o al recoger</span></li><li>${IC.check}<span>Recompensas, promos y envío gratis</span></li><li>${IC.check}<span>Programá pedidos y guardá tu dirección</span></li></ul>
       ${known ? '<button class="primary" data-act="signin" data-ctx="account">Entrá o creá tu cuenta</button>' : '<span class="primary" aria-hidden="true">Entrá o creá tu cuenta</span>'}</div>
-    <div class="rows">${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button>` : ''}<button class="rowbtn" data-act="help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button></div></div>`);
+    <div class="rows">${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button>` : ''}${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}</div></div>`);
   }
 
   // G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27, frames 1 / 1b / 4a / 4b): the MEMBER's Cuenta — .acct-hero (name, phone and
@@ -425,7 +425,7 @@
       ${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>` : ''}
       <button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>
       <button class="rowbtn" data-act="promos"${inert ? ' aria-disabled="true"' : ''}>${IC.bell}<span class="t">Promociones<span>Ofertas por correo y WhatsApp</span></span><span class="switch" role="switch" aria-checked="${inert ? !a.settled : a.promos}"${inert ? ' aria-disabled="true"' : ''}></span></button>
-      <button class="rowbtn" data-act="help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>
+      ${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}
       ${vm.updateRow ? `<button class="rowbtn" data-act="app-update-row">${IC.update}<span class="t">Actualizar la app<span>Hay una versión nueva en ${esc(vm.updateRow)}</span></span>${IC.chev}</button>` : ''}</div>
     <div class="rows sess">
       <button class="rowbtn" data-act="signout">${IC.out}<span class="t">Cerrar sesión</span></button>
