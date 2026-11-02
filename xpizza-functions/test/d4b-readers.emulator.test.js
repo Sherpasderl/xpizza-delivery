@@ -108,7 +108,20 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
   const xV = await seedPreP1('x_pizza');
   await seedPreP1('la_musa');
   await seedPreP1('synthetic_3', { dataFrom: 'x_pizza' });
+  // PLAN-brand-agnostic-convergence §3-E: certification is VERIFIED by coverage against the catalog CAPTURED before the one-way
+  // step (identity-usable-check --capture / --against; the CLI refuses emulator configuration by design, so its core runs
+  // in-process) — on a catalog the REAL publisher wrote, stamped by the REAL bootstrap.
+  const IUC = require('../tools/identity-usable-check');
+  const covVerifier = () => createCatalogVerifier({ db: fs, log: () => {} });
+  const capture = await IUC.captureCatalog({ db: fs, listIds: async () => ['x_pizza'], verifier: covVerifier() });
+  assert.ok(capture.failed.length === 0 && capture.restaurants.x_pizza && capture.restaurants.x_pizza.objects.length === catalogSnapshot('x_pizza').items.length + catalogSnapshot('x_pizza').extras.length,
+    `COV-EMU-CAPTURE: the uncertified, really-published catalog is captured, one entry per object: ${JSON.stringify({ failed: capture.failed, n: capture.restaurants.x_pizza && capture.restaurants.x_pizza.objects.length })}`);
+  const covPre = await IUC.checkAgainstCapture({ db: fs, verifier: covVerifier(), capture });
+  assert.ok(covPre.rows[0].pass === false && covPre.rows[0].covered === 0, `COV-EMU-PRE: before the bootstrap the coverage FAILS: ${JSON.stringify(covPre.rows[0])}`);
   assert.strictEqual((await bootstrapIdentityStamps(fs, 'x_pizza')).stamped, true);
+  const covPost = await IUC.checkAgainstCapture({ db: fs, verifier: covVerifier(), capture });
+  assert.ok(covPost.rows[0].pass === true && covPost.rows[0].covered === covPost.rows[0].total && covPost.rows[0].missing === 0 && covPost.rows[0].added === 0,
+    `COV-EMU-POST: after the real bootstrap every captured object carries an id, nothing missing or added, version unchanged: ${JSON.stringify(covPost.rows[0])}`);
   // today's KDS manifest, published exactly as publish-menus.mjs does (extractManifest → set)
   const { extractManifest } = await import('../menu-extract.mjs');
   for (const rid of ['x_pizza', 'la_musa']) await rtdb.ref(`menus/${rid}`).set(extractManifest(rid));
