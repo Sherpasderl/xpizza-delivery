@@ -314,14 +314,35 @@ async function cell(name, fn) { const before = pass; try { await fn(); if (pass 
     assert.strictEqual(realClient.interpretStatus(r).paid, true, `${label}: data.status "paid" is honoured`);
   });
 
-  // POU-VOID-NO-SUCCESS-200: a void 200 without `success` is not an "anulada" → refund_pending, never voided.
-  await cell('POU-VOID-NO-SUCCESS-200', async () => {
-    const label = 'POU-VOID-NO-SUCCESS-200';
+  // POU-VOID-NO-SUCCESS-200: a void 200 without `success` is not an "anulada" → refund_pending, never voided. (asm2 ruling: the
+  // sanitized result carries OUR reason code — P5a's envelope_incomplete — with the one FIXED message; never the raw error text.)
+  // POU-VOID-UNKNOWN-REASON-<reason>: each of the client's four PIXELPAY_OUTCOME_UNKNOWN reasons passes through as the code.
+  for (const [label, step, reason] of [['POU-VOID-NO-SUCCESS-200', json(200, {}), 'envelope_incomplete'], ['POU-VOID-UNKNOWN-REASON-BODY-LOST', { kind: 'bodyLost' }, 'body_read_failed'],
+    ['POU-VOID-UNKNOWN-REASON-EMPTY', { kind: 'empty' }, 'body_empty'], ['POU-VOID-UNKNOWN-REASON-GARBAGE', { kind: 'garbage' }, 'body_unparseable']]) {
+    await cell(label, async () => {
+      const db = makeDb({ payment_attempts: { A: { order_id: 'TB-1', status: 'captured', payment_uuid: 'S-tb' } } });
+      const sent = [];
+      installFetch({ void: [step] });
+      const r = await voidOrRefund({ db, client: realClient, alert: (k, d) => sent.push([k, d]) }, { orderId: 'TB-1', attemptId: 'A', pixelpayOrderId: 'TB-1-A', paymentUuid: 'S-tb', reason: 'cancel', now: 1000 });
+      assert.strictEqual(r.outcome, 'refund_pending', `${label}: refund_pending, got ${r.outcome}`);
+      assert.strictEqual(r.code, reason, `${label}: the result's code is the reason ${reason}, got ${r.code}`);
+      assert.strictEqual(r.message, 'void request did not complete', `${label}: the ONE fixed message, got ${r.message}`);
+      const att = db.getAt('payment_attempts/A');
+      const rec = Object.values(db.getAt('refund_attempts') || {})[0];
+      const al = sent.find(([k]) => k === 'refund_pending');
+      assert.ok(att.refund_code === reason && rec && rec.code === reason && al && al[1].code === reason, `${label}: attempt, audit record and alert carry the code (got ${JSON.stringify({ a: att.refund_code, r: rec && rec.code, al: al && al[1].code })})`);
+      const all = JSON.stringify([r, att, rec, sent]);
+      assert.ok(!/PIXELPAY_OUTCOME_UNKNOWN|HTTP \d/.test(all), `${label}: never the raw error text`);
+    });
+  }
+  // POU-VOID-UNKNOWN-REASON-ALLOWLIST: an outcome-unknown error whose reason is NOT one of the four is provider_unreachable.
+  await cell('POU-VOID-UNKNOWN-REASON-ALLOWLIST', async () => {
+    const label = 'POU-VOID-UNKNOWN-REASON-ALLOWLIST';
     const db = makeDb({ payment_attempts: { A: { order_id: 'TB-1', status: 'captured', payment_uuid: 'S-tb' } } });
-    installFetch({ void: [json(200, {})] });
-    const r = await voidOrRefund({ db, client: realClient, alert: () => {} }, { orderId: 'TB-1', attemptId: 'A', pixelpayOrderId: 'TB-1-A', paymentUuid: 'S-tb', reason: 'cancel', now: 1000 });
-    assert.strictEqual(r.outcome, 'refund_pending', `${label}: refund_pending, got ${r.outcome}`);
-    assert.ok(/envelope_incomplete/.test(String(r.message)), `${label}: the void message names envelope_incomplete, got ${r.message}`);
+    const client = { voidTransaction: async () => { throw Object.assign(new Error('PIXELPAY_OUTCOME_UNKNOWN: x'), { code: 'PIXELPAY_OUTCOME_UNKNOWN', reason: 'Transacción no encontrada' }); } };
+    const r = await voidOrRefund({ db, client, alert: () => {} }, { orderId: 'TB-1', attemptId: 'A', pixelpayOrderId: 'TB-1-A', paymentUuid: 'S-tb', reason: 'cancel', now: 1000 });
+    assert.ok(r.code === 'provider_unreachable' && r.message === 'void request did not complete', `${label}: an unlisted reason never becomes the code (got ${JSON.stringify(r)})`);
+    assert.ok(!JSON.stringify(db.root).includes('no encontrada'), `${label}: and its text is stored nowhere`);
   });
 
   // POU-MISMATCH-VOID-UNKNOWN (codex P5a r1 #4): a captured-but-mismatched payment whose void outcome is unknown →
