@@ -716,6 +716,10 @@
           ".read": false,
           ".write": false
         },
+        "platform_config": {
+          ".read": false,
+          ".write": false
+        },
         "legal": {
           ".read": false,
           ".write": false
