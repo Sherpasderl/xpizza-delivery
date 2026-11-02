@@ -24,8 +24,10 @@ if (!process.env.FIREBASE_DATABASE_EMULATOR_HOST) {
 // ---- TEST-OWNED failure-injection seam (codex P5a r2): the reward-ledger helpers are wrapped in require.cache BEFORE
 // index.js loads, so every module that destructures them (cancel-order-core, resolve-manual, index.js, …) gets the wrapper.
 // With no injection armed the wrapper is the real function, byte-for-byte behaviour.
-const inject = { reverseRedemption: 0, reverseEarn: 0 };
+const inject = { reverseRedemption: 0, reverseEarn: 0, noteRefundRetry: 0 };
 {
+  const CO = require('../cancel-order-core'); const realNote = CO.noteRefundRetry;
+  CO.noteRefundRetry = async (...a) => { if (inject.noteRefundRetry > 0) { inject.noteRefundRetry--; throw new Error('injected review-marker write failure'); } return typeof realNote === 'function' ? realNote(...a) : undefined; };
   const RR = require('../rewards-reserve'); const realRev = RR.reverseRedemptionForOrder;
   RR.reverseRedemptionForOrder = async (...a) => { if (inject.reverseRedemption > 0) { inject.reverseRedemption--; return { ok: false, error: true }; } return realRev(...a); };
   const RE = require('../rewards-earn'); const realEarn = RE.reverseEarnForOrder;
@@ -184,14 +186,48 @@ function postConfirm(body) {
     assert.strictEqual((await aVal()).status, 'refund_pending', `${L}: still refund_pending`);
     assert.strictEqual(await holdState(), 'held_paid', `${L}: the hold stays secured while the refund is unconfirmed (got ${await holdState()})`);
   });
-  await cell('POU-E-RECON-RELEASES-ON-CONFIRMED', async () => {
-    const L = 'POU-E-RECON-RELEASES-ON-CONFIRMED';
+  // ruling (codex P5a r3): a CONFIRMED reconciler refund never releases a secured hold — it ESCALATES (a durable,
+  // idempotent dispatcher alert «refund confirmed — release points»); staff release the points.
+  await cell('POU-E-RECON-ESCALATES-ON-CONFIRMED', async () => {
+    const L = 'POU-E-RECON-ESCALATES-ON-CONFIRMED';
     await clearAll();
     await seed({ order: { status: 'cancelled', payment_status: 'refund_pending' }, attempt: { payment_uuid: 'S-1', status: 'refund_pending', refunded_at: NOW - 3600000 }, resv: 'held_paid' });
     useScript({ void: [json(200, { success: true, message: 'anulada' })] });
     await app.refundReconciler.run({});
-    assert.strictEqual((await aVal()).status, 'refunded', `${L}: the retry confirmed the refund`);
-    assert.strictEqual(await holdState(), 'released', `${L}: a confirmed reconciler refund releases the secured hold (got ${await holdState()})`);
+    assert.strictEqual((await aVal()).status, 'refunded', `${L}: PREMISE — the retry confirmed the refund`);
+    assert.strictEqual(await holdState(), 'held_paid', `${L}: the hold is NOT released automatically (got ${await holdState()})`);
+    const al = (await db.ref(`dispatcher_alerts/refund_points_${AID}`).once('value')).val();
+    assert.ok(al && al.type === 'payment_refund_confirmed_release_points', `${L}: a durable escalation alert exists (got ${JSON.stringify(al)})`);
+    await app.refundReconciler.run({});
+    const all = Object.keys((await db.ref('dispatcher_alerts').once('value')).val() || {}).filter((k) => k.startsWith('refund_points_'));
+    assert.strictEqual(all.length, 1, `${L}: the escalation is idempotent (one alert, got ${all.length})`);
+  });
+
+  // ruling #4: the review marker is written BEFORE the void; a marker-write failure means NO void is attempted this run
+  await cell('POU-E-RECON-MARKER-BEFORE-VOID', async () => {
+    const L = 'POU-E-RECON-MARKER-BEFORE-VOID';
+    await clearAll();
+    await seed({ order: { status: 'cancelled', payment_status: 'refund_pending' }, attempt: { payment_uuid: 'S-1', status: 'refund_pending', refunded_at: NOW - 3600000 }, resv: 'held_paid' });
+    useScript({ void: [json(200, { success: true, message: 'anulada' })] });
+    inject.noteRefundRetry = 1;
+    await app.refundReconciler.run({});
+    inject.noteRefundRetry = 0;
+    assert.strictEqual(calls.void, 0, `${L}: no void without its review marker (got ${calls.void})`);
+    assert.strictEqual((await aVal()).status, 'refund_pending', `${L}: the attempt stays refund_pending for the next run`);
+  });
+
+  // codex r3 #5 (terminal-attempt recovery): a refund that confirmed but whose escalation never landed (a crash after the
+  // void) is escalated by the NEXT reconciler run from its marker
+  await cell('POU-E-RECON-RECOVERS-MISSED-ESCALATION', async () => {
+    const L = 'POU-E-RECON-RECOVERS-MISSED-ESCALATION';
+    await clearAll();
+    await seed({ order: { status: 'cancelled', payment_status: 'refunded' }, attempt: { payment_uuid: 'S-1', status: 'refunded', refunded_at: NOW - 3600000 }, resv: 'held_paid' });
+    await db.ref(`refund_hold_review/${AID}`).set({ order_id: OID, attempt_id: AID, created_at: NOW - 3600000 });
+    useScript({});
+    await app.refundReconciler.run({});
+    const al = (await db.ref(`dispatcher_alerts/refund_points_${AID}`).once('value')).val();
+    assert.ok(al && al.type === 'payment_refund_confirmed_release_points', `${L}: the missed escalation is recovered (got ${JSON.stringify(al)})`);
+    assert.strictEqual(await holdState(), 'held_paid', `${L}: still never released automatically`);
   });
 
   // ── the REAL sweepStalePending: a stale SDK `capturing` attempt (lost capture response) is durably escalated ──
@@ -247,24 +283,6 @@ function postConfirm(body) {
     assert.strictEqual((await aVal()).status, 'refunded', `${L}: PREMISE — the older attempt's refund confirmed`);
     assert.strictEqual((await db.ref(`user_rewards/${UID}/${RID}/balance`).once('value')).val(), 92, `${L}: the live sale's consumed points are NOT restored (balance stays 92)`);
     assert.strictEqual(await holdState(), 'consumed', `${L}: the reservation stays consumed (got ${await holdState()})`);
-  });
-
-  // ── codex P5a r2 #4: a confirmed refund whose hold release FAILS is journaled and healed by the sweep ──
-  await cell('POU-E-RECON-RELEASE-FAILURE-JOURNALED', async () => {
-    const L = 'POU-E-RECON-RELEASE-FAILURE-JOURNALED';
-    await clearAll();
-    await seed({ order: { status: 'cancelled', payment_status: 'refund_pending' }, attempt: { payment_uuid: 'S-1', status: 'refund_pending', refunded_at: NOW - 3600000 }, resv: 'held_paid' });
-    useScript({ void: [json(200, { success: true, message: 'anulada' })] });
-    inject.reverseRedemption = 1;
-    await app.refundReconciler.run({});
-    inject.reverseRedemption = 0;
-    assert.strictEqual((await aVal()).status, 'refunded', `${L}: PREMISE — the refund confirmed`);
-    assert.strictEqual(await holdState(), 'held_paid', `${L}: PREMISE — the injected failure left the hold held`);
-    const rec = (await db.ref(`reward_ledger_repair/${OID}`).once('value')).val();
-    assert.ok(rec, `${L}: the failed release is JOURNALED (reward_ledger_repair/${OID}), never dropped`);
-    await app.sweepStalePending.run({});
-    assert.strictEqual(await holdState(), 'released', `${L}: the sweep's ledger-repair retry releases the hold (got ${await holdState()})`);
-    assert.strictEqual((await db.ref(`reward_ledger_repair/${OID}`).once('value')).val(), null, `${L}: the journal clears once healed`);
   });
 
   // ── codex P5a r2 #2: an UNCONFIRMED cancel refund + an earn-reversal failure → the repair retry keeps the hold ──

@@ -362,6 +362,69 @@ async function cell(name, fn) { const before = pass; try { await fn(); if (pass 
     assert.strictEqual(third, false, `${label}: a completed escalation is not redone (got ${third})`);
   });
 
+  // POU-ESCALATE-NEVER-REOPENS (codex P5a r3 #1): a capture_unverified attempt whose order a resolver already settled
+  // (refunded / resolving) is NEVER reopened to manual_reconciliation by a resumed escalation.
+  for (const [label, ps] of [['POU-ESCALATE-NEVER-REOPENS-REFUNDED', 'refunded'], ['POU-ESCALATE-NEVER-REOPENS-RESOLVING', 'resolving_refund']]) {
+    await cell(label, async () => {
+      const init = redeemedOrder();
+      init.payment_attempts.A = { ...init.payment_attempts.A, status: 'capture_unverified', manual_reason: 'stale_capturing_unrecovered', payment_uuid: 'S-tb' };
+      init.orders['TB-1'] = { ...init.orders['TB-1'], payment_status: ps, status: ps === 'refunded' ? 'cancelled' : 'pending_payment' };
+      const db = makeDb(init);
+      const { escalateStaleCapture } = require('./pixelpay-confirm');
+      const r = await escalateStaleCapture({ db, alert: () => {} }, { orderId: 'TB-1', attemptId: 'A', now: 10 * 60 * 60000 });
+      assert.strictEqual(r, false, `${label}: a settled order is not escalated (got ${r})`);
+      assert.strictEqual(db.getAt('orders/TB-1').payment_status, ps, `${label}: payment_status stays ${ps} (got ${db.getAt('orders/TB-1').payment_status})`);
+    });
+  }
+
+  // POU-ESCALATE-RACE-RESOLVED (codex P5a r3 #1): the order is pending when read, but a resolver claims it before the
+  // escalation's order write → the write must REFUSE (an atomic pre-state guard), never overwrite the resolver.
+  await cell('POU-ESCALATE-RACE-RESOLVED', async () => {
+    const label = 'POU-ESCALATE-RACE-RESOLVED';
+    const init = redeemedOrder();
+    init.payment_attempts.A = { ...init.payment_attempts.A, status: 'capture_unverified', manual_reason: 'stale_capturing_unrecovered', payment_uuid: 'S-tb' };
+    init.orders['TB-1'].payment_status = 'pending';
+    const db = makeDb(init);
+    let raced = false;
+    const racing = { ...db, ref: (path) => {
+      const r = db.ref(path);
+      if (path !== 'orders/TB-1') return r;
+      const claim = () => { if (!raced) { raced = true; const o = db.getAt('orders/TB-1'); db.root.orders['TB-1'] = { ...o, payment_status: 'resolving_refund' }; } };
+      return { ...r, update: async (v) => { claim(); return r.update(v); }, transaction: async (fn) => { claim(); return r.transaction(fn); } };
+    } };
+    const { escalateStaleCapture } = require('./pixelpay-confirm');
+    await settle(escalateStaleCapture({ db: racing, alert: () => {} }, { orderId: 'TB-1', attemptId: 'A', now: 10 * 60 * 60000 }));
+    assert.strictEqual(db.getAt('orders/TB-1').payment_status, 'resolving_refund', `${label}: the resolver's claim survives (got ${db.getAt('orders/TB-1').payment_status})`);
+  });
+
+  // POU-REPAIR-LEGACY-HOLDS (codex P5a r3 #3 + ruling 2): a repair record WITHOUT redemption_mode (written before this
+  // slice) on an ONLINE order keeps the hold; if the order shows a refund it ESCALATES (alert), never releases.
+  for (const [label, ps, wantAlert] of [['POU-REPAIR-LEGACY-HOLDS-PENDING', 'refund_pending', false], ['POU-REPAIR-LEGACY-HOLDS-REFUNDED', 'refunded', true]]) {
+    await cell(label, async () => {
+      const init = redeemedOrder();
+      init.orders['TB-1'] = { ...init.orders['TB-1'], status: 'cancelled', payment_status: ps };
+      init.user_rewards.uTb.tb_rest.reservations['TB-1'].state = 'held_paid';
+      init.reward_ledger_repair = { 'TB-1': { order_id: 'TB-1', disposition: 'refund', uid: 'uTb', rid: 'tb_rest', has_redemption: true, earn_failed: false, redemption_failed: true, reason: 'cancel', attempts: 0 } };
+      const db = makeDb(init);
+      const alerts = [];
+      const { retryRewardLedgerRepair } = require('./cancel-order-core');
+      await retryRewardLedgerRepair({ db, alert: async (k, d) => { alerts.push(k); } }, { now: 5000 });
+      assert.strictEqual(holdState(db), 'held_paid', `${label}: a legacy record never releases an online order's hold (got ${holdState(db)})`);
+      assert.strictEqual(alerts.includes('refund_confirmed_release_points'), wantAlert, `${label}: escalation alert ${wantAlert ? 'raised' : 'not raised'} (got ${JSON.stringify(alerts)})`);
+    });
+  }
+  // control: a legacy record on a CASH order (no money moved) still reverses, as before
+  await cell('POU-REPAIR-LEGACY-CASH-REVERSES', async () => {
+    const label = 'POU-REPAIR-LEGACY-CASH-REVERSES';
+    const init = redeemedOrder();
+    init.orders['TB-1'] = { ...init.orders['TB-1'], payment_method: 'cash', status: 'cancelled', payment_status: 'pending' };
+    init.reward_ledger_repair = { 'TB-1': { order_id: 'TB-1', disposition: 'refund', uid: 'uTb', rid: 'tb_rest', has_redemption: true, earn_failed: false, redemption_failed: true, reason: 'cancel', attempts: 0 } };
+    const db = makeDb(init);
+    const { retryRewardLedgerRepair } = require('./cancel-order-core');
+    await retryRewardLedgerRepair({ db, alert: async () => {} }, { now: 5000 });
+    assert.strictEqual(holdState(db), 'released', `${label}: a cash order's reserved hold is released as before (got ${holdState(db)})`);
+  });
+
   if (fails.length) { console.error(`\nFAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }
   console.log(`\nAll ${pass} outcome-unknown tests passed.`);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
