@@ -92,7 +92,10 @@ const D = {
     // requireProject({ requireFlag: true }) before any client
     'handheld-push-probe',
     // TRACKER FIXES — the owner-run flag-transition tool: requireProject({ requireFlag: true }) before any client
-    'tracker-reconcile'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
+    'tracker-reconcile',
+    // P5a follow-up — the READ-ONLY identity-usable check (booleans/counts per restaurant; Firestore writes patched to throw):
+    // requireProject({ requireFlag: true }) before any client
+    'identity-usable-check'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
   [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/set-driver-enforcement-mode.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
