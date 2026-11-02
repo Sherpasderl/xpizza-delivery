@@ -19,7 +19,12 @@ w('m.js', [
   "function makePlain() { return { not: 'an endpoint' }; }",
   "function makeMixed(x) { if (x) return onRequest({}, () => {}); return onSchedule({ schedule: 'x' }, async () => {}); }",
   "function makeNested() { const inner = () => onRequest({}, () => {}); return onSchedule({ schedule: 'y' }, async () => {}); }",   // a nested fn's return is NOT the factory's
-  'module.exports = { makeSched, makeHttp, makeArrow, makePlain, makeMixed, makeNested };',
+  "function makeBothSched(x) { if (x) return onSchedule({ schedule: 'a' }, async () => {}); return onSchedule({ schedule: 'b' }, async () => {}); }",   // every path → onSchedule (OK)
+  "function makeFall(x) { if (x) return onSchedule({ schedule: 'a' }, async () => {}); }",   // a path FALLS THROUGH (undefined)
+  "function makeRefs(x) { if (x) return onRequest({ ref: '/a' }, () => {}); return onRequest({ ref: '/b' }, () => {}); }",   // same ctor, different refs
+  "function realImpl() { return onSchedule({ schedule: 'z' }, async () => {}); }",
+  "function notExported() { return onSchedule({ schedule: 'n' }, async () => {}); }",       // same-name trap: NOT exported under that name
+  'module.exports = { makeSched, makeHttp, makeArrow, makePlain, makeMixed, makeNested, makeBothSched, makeFall, makeRefs, remapped: realImpl, broken: 42 };',
 ].join('\n'));
 w('index.js', [
   "exports.sched = require('./m').makeSched({ a: 1 });",
@@ -28,6 +33,12 @@ w('index.js', [
   "exports.plain = require('./m').makePlain();",
   "exports.mixed = require('./m').makeMixed(true);",
   "exports.nested = require('./m').makeNested();",
+  "exports.bothsched = require('./m').makeBothSched(1);",
+  "exports.fall = require('./m').makeFall(1);",
+  "exports.refs = require('./m').makeRefs(1);",
+  "exports.remap = require('./m').remapped();",              // export key «remapped» → realImpl (followed through the binding)
+  "exports.notexp = require('./m').notExported();",          // a top-level function by that name exists but is NOT exported
+  "exports.broken = require('./m').broken();",               // exported, but not a function
   "exports.missing = require('./m').notThere();",
 ].join('\n'));
 
@@ -39,17 +50,21 @@ assert.strictEqual(by('sched') && by('sched').category, 'schedule', 'a factory r
 assert.strictEqual(by('sched').how, 'factory');
 assert.strictEqual(by('arrow') && by('arrow').category, 'schedule', 'an arrow factory is followed too');
 assert.strictEqual(by('nested') && by('nested').category, 'schedule', "a nested function's return is not the factory's return");
-ok('factory exports are classified by the RETURNED constructor (declaration, arrow; nested returns ignored)');
+assert.strictEqual(by('bothsched') && by('bothsched').category, 'schedule', 'every path returning the SAME constructor is classified');
+assert.strictEqual(by('remap') && by('remap').category, 'schedule', 'a REMAPPED export (key → another function) is followed through the export binding');
+ok('factory exports are classified by the RETURNED constructor, through the EXPORT BINDING (declaration, arrow, remapped key; nested returns ignored; all-paths-same ctor)');
 
 assert.strictEqual(by('http') && by('http').category, 'http', '🔴 MUTANT: a factory returning onRequest must be http, NOT schedule');
 assert.notStrictEqual(by('http').category, 'schedule');
 ok('MUTANT killed: an onRequest factory is classified http (the category comes from the factory, not from a default)');
 
-for (const nm of ['plain', 'mixed', 'missing']) {
+const NEG = { plain: /not a constructor call/, mixed: /different constructors/, fall: /fall through/, refs: /different refs/,
+  notexp: /not exported/, broken: /does not name a top-level function/, missing: /not exported/ };
+for (const [nm, re] of Object.entries(NEG)) {
   assert.ok(!by(nm), `${nm} must not be classified`);
-  assert.ok(un(nm) && un(nm).type === 'factory-call' && typeof un(nm).why === 'string' && un(nm).why.length, `${nm} is UNCLASSIFIED with a reason`);
+  assert.ok(un(nm) && un(nm).type === 'factory-call' && re.test(un(nm).why), `${nm} is UNCLASSIFIED with the right reason (got ${un(nm) && un(nm).why})`);
 }
-ok(`non-constructor / mixed-category / missing factories are UNCLASSIFIED with a reason (${['plain', 'mixed', 'missing'].map((x) => un(x).why).join(' | ')})`);
+ok(`FAIL CLOSED — unclassified with a reason: non-ctor, mixed ctors, fallthrough, different refs, unexported same-name function, non-function export, missing export (${Object.keys(NEG).length} negatives)`);
 
 const real = D.sourceInventory();
 const wah = real.entries.find((e) => e.name === 'whatsappInstanceHealth');

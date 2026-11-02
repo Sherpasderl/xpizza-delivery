@@ -101,29 +101,57 @@ function sourceInventory(file = INDEX) {
 
 const normRef = (r) => String(r).replace(/^\/+/, '');
 
-// a factory's RETURNED constructor, statically: module file + export chain [name] → { ctor, ref } | { why }. Only a single-level
-// export (module.exports.f / exports.f / module.exports = { f }) naming a top-level function (declaration, or const = function / arrow)
-// whose EVERY top-level return is the same constructor call. Anything else → { why } (the caller records it as unclassified).
+// a factory's RETURNED constructor, statically: module file + export chain [name] → { ctor, ref } | { why }. FAIL CLOSED (codex r1):
+//  • the EXPORT BINDING is resolved, not a name match: `module.exports = { f }` / `{ f: g }` / `module.exports.f = g` / `exports.f = g`
+//    → the top-level function it NAMES (declaration, or const = function / arrow). A missing, remapped-to-nothing or non-function
+//    export → { why } (an unexported function that merely shares the name is NOT followed);
+//  • EVERY code path must return the SAME constructor with the SAME ref: the body must END in a return (no fallthrough), every
+//    return must be a constructor call, one constructor, one ref. Anything else → { why }.
 function factoryCtor(absModule, chain) {
   if (chain.length !== 1) return { why: `nested export chain ${chain.join('.')}` };
   const fname = chain[0];
   let file = absModule; if (!/\.m?js$/.test(file)) file = fs.existsSync(`${file}.js`) ? `${file}.js` : path.join(file, 'index.js');
   if (!fs.existsSync(file)) return { why: `module not found: ${path.relative(path.dirname(INDEX), file)}` };
   const ast = parse(file);
-  let fnNode = null;
+  const fns = new Map();   // top-level name → function node
   for (const st of ast.body) {
-    if (st.type === 'FunctionDeclaration' && st.id && st.id.name === fname) fnNode = st;
-    if (st.type === 'VariableDeclaration') for (const d of st.declarations) if (d.id.type === 'Identifier' && d.id.name === fname && d.init && /Function/.test(d.init.type)) fnNode = d.init;
+    if (st.type === 'FunctionDeclaration' && st.id) fns.set(st.id.name, st);
+    if (st.type === 'VariableDeclaration') for (const d of st.declarations) if (d.id.type === 'Identifier' && d.init && /Function/.test(d.init.type)) fns.set(d.id.name, d.init);
   }
-  if (!fnNode) return { why: `no top-level function ${fname} in ${path.basename(file)}` };
-  if (fnNode.body.type !== 'BlockStatement') { const c = fnNode.body; return c.type === 'CallExpression' && CTOR_CATEGORY[calleeName(c.callee)] ? { ctor: calleeName(c.callee), ref: refOf(c.arguments[0]) } : { why: `${fname}: expression body is not a constructor call` }; }
+  // the identifier the module EXPORTS under `fname` (null = not exported)
+  let target; let seen = 0;
+  const isModExports = (n) => n.type === 'MemberExpression' && !n.computed && n.object.type === 'Identifier' && n.object.name === 'module' && n.property.name === 'exports';
+  for (const st of ast.body) {
+    if (st.type !== 'ExpressionStatement' || st.expression.type !== 'AssignmentExpression') continue;
+    const { left, right } = st.expression;
+    if (isModExports(left) && right.type === 'ObjectExpression') {
+      for (const pr of right.properties) {
+        if (pr.type !== 'Property' || pr.computed) continue;
+        const key = pr.key.type === 'Identifier' ? pr.key.name : pr.key.value;
+        if (key === fname) { seen += 1; target = pr.value.type === 'Identifier' ? pr.value.name : null; }
+      }
+    } else if (left.type === 'MemberExpression' && !left.computed && left.property.name === fname
+      && ((left.object.type === 'Identifier' && left.object.name === 'exports') || isModExports(left.object))) {
+      seen += 1; target = right.type === 'Identifier' ? right.name : (/Function/.test(right.type) ? right : null);
+    }
+  }
+  if (!seen) return { why: `${fname} is not exported by ${path.basename(file)}` };
+  if (seen > 1) return { why: `${fname} is exported more than once in ${path.basename(file)}` };
+  const fnNode = target && typeof target === 'object' ? target : (typeof target === 'string' ? fns.get(target) : null);
+  if (!fnNode) return { why: `${fname}: its export does not name a top-level function (${target === null ? 'non-identifier value' : `\`${target}\` is not a function`})` };
+  if (fnNode.body.type !== 'BlockStatement') {
+    const c = fnNode.body; return c.type === 'CallExpression' && CTOR_CATEGORY[calleeName(c.callee)] ? { ctor: calleeName(c.callee), ref: refOf(c.arguments[0]) } : { why: `${fname}: expression body is not a constructor call` };
+  }
+  const body = fnNode.body.body;
+  if (!body.length || body[body.length - 1].type !== 'ReturnStatement') return { why: `${fname}: a code path can fall through (the body does not end in a return)` };
   const rets = [];
   (function walkR(n) { if (!n || typeof n.type !== 'string') return; if (n !== fnNode && /Function/.test(n.type)) return; if (n.type === 'ReturnStatement') rets.push(n.argument); for (const k of Object.keys(n)) { const v = n[k]; if (Array.isArray(v)) v.forEach(walkR); else if (v && typeof v === 'object' && typeof v.type === 'string') walkR(v); } })(fnNode.body);
-  if (!rets.length) return { why: `${fname}: no return` };
   const ctors = rets.map((x) => (x && x.type === 'CallExpression' && CTOR_CATEGORY[calleeName(x.callee)] ? calleeName(x.callee) : null));
   if (ctors.some((c) => !c)) return { why: `${fname}: a return is not a constructor call` };
-  if (new Set(ctors.map((c) => CTOR_CATEGORY[c])).size !== 1) return { why: `${fname}: returns mixed endpoint categories (${[...new Set(ctors)].join(', ')})` };
-  return { ctor: ctors[0], ref: refOf(rets[0].arguments[0]) };
+  if (new Set(ctors).size !== 1) return { why: `${fname}: returns different constructors (${[...new Set(ctors)].join(', ')})` };
+  const refs = rets.map((x) => refOf(x.arguments[0]));
+  if (new Set(refs.map((r) => JSON.stringify(r))).size !== 1) return { why: `${fname}: returns the same constructor with different refs` };
+  return { ctor: ctors[0], ref: refs[0] };
 }
 function refOf(opts) { if (!opts || opts.type !== 'ObjectExpression') return null; const p = opts.properties.find((q) => q.key && (q.key.name === 'ref' || q.key.value === 'ref')); return p && p.value.type === 'Literal' ? p.value.value : null; }
 

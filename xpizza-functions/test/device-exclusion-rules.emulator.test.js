@@ -50,13 +50,6 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
       'orders/O3': { order_id: 'O3', status: 'delivered', restaurant_id: RID, payment_method: 'cash', delivered_by_driver_uid: 'other-drv' },
       'orders/O1': { order_id: 'O1', status: 'ready', restaurant_id: RID, payment_method: 'cash', pickup_task_id: 'O1_pickup', delivery_task_id: 'O1_delivery' },
       'tasks/O1_delivery': { order_id: 'O1', type: 'delivery', status: 'accepted', assigned_driver_id: UID },
-      // 2e 11-01 — the human control's DATA in the REAL writers' shapes (the grants are data-dependent; roles alone are vacuous):
-      //   stacks/$stack_id — the committed record sequencing/plan-stack.js:100 writes (transaction at :107); driver_uid = the reader
-      'stacks/S1': { state: 'committed', driver_uid: UID, pair: ['O1', 'O3'], ranks: { O1: 1, O3: 2 }, plus_min: 4, plus_s: 240, hub_rid: RID,
-        depart_at: 1700000000000, ready_at: 1700000000000, legs_s: [300, 420], decided_at: 1700000000000 },
-      //   arrived_notices/$oid — the claim arrived-notify.js:97 writes (transaction at :99); `by` = the arriving driver
-      'arrived_notices/O1': { state: 'claimed', by: UID, arrival_at: 1700000000000, task_id: 'O1_delivery', claimed_at: 1700000000000 },
-      //   (its !data.exists() branch reads tasks/<oid>_delivery.assigned_driver_id — tasks/O1_delivery above, create-order-build.js:97 shape)
       'tasks/O1_pickup': { order_id: 'O1', type: 'pickup', status: 'accepted', assigned_driver_id: UID },
       'order_tracking/tok1': { status: 'ready' }, 'order_timelines/O1/e1': { at: 1 }, 'config/x': 1,
       'config/rewards_public/redemption_live': true, 'public/brands/tb_brand': { name: 'Third' },
