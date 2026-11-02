@@ -13,7 +13,7 @@ const { execFileSync } = require('child_process');
 const { HUNKS, BASE, unapplyPhotosIndex, unapplyPhotosFold } = require('./tools/photos-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const real = require('./tools/_asm-next2-layers').stripNewer('index.js', fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));
 const GBASE = 'd03f8828';   // DRYRUN R-WIRE (2e): the assembly state just before the photos A1+A2 layer (the train's older layers sit under it); re-point at the real assembly
 // DRYRUN R-WIRE (2e): the security row (0fda02b3, NEWER than photos) edits only INSIDE the /* checkout:begin endpoints */ block, which
 // checkout-inverse removes whole (proven by checkout-wiring.guard) → both sides are compared with that block stripped

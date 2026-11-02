@@ -83,7 +83,12 @@ const wire = (b) => JSON.parse(JSON.stringify(b));   // as the wire delivers it
     const platformOrders = P.sites.deployments.filter((d) => d.app === 'orders' && d.context === PM.PLATFORM_CONTEXT);
     assert.deepStrictEqual(platformOrders.map((d) => d.id), [G.CAPP_DEPLOYMENT], '🔴 the discriminator names THE platform orders deployment');
     assert.ok(entry.origins.every((o) => P.ACCOUNT_ORIGINS.includes(o)), 'its origins join ACCOUNT_ORIGINS by derivation (the checkout endpoints\' CORS)');
-    assert.deepStrictEqual(P.ACCOUNT_ORIGINS.filter((o) => !entry.origins.includes(o)), formsOrigins, 'the forms\' origins are unchanged');
+    // ACCEPTED native-origin widening (advisor ruling 2026-11-02, TRAIN-NEXT2-INVENTORY §CORS): the platform deployment's `native` block
+    // (capacitor://localhost, https://localhost — PLAN-capp-native-shell §1.1) ALSO joins ACCOUNT_ORIGINS by derivation; the forms'
+    // origins are what remains after BOTH the app's https origins and its native origins
+    const nativeOrigins = entry.native && Array.isArray(entry.native.origins) ? entry.native.origins : [];
+    assert.ok(nativeOrigins.every((o) => P.ACCOUNT_ORIGINS.includes(o)), 'the native WebView origins join ACCOUNT_ORIGINS (the accepted widening)');
+    assert.deepStrictEqual(P.ACCOUNT_ORIGINS.filter((o) => !entry.origins.includes(o) && !nativeOrigins.includes(o)), formsOrigins, 'the forms\' origins are unchanged');
     // the header the capp stamps from that id parses to exactly the discriminator's value
     const hdr = CF.readClientHeaders({ headers: { 'x-client-app': 'orders', 'x-client-deployment': entry.id } });
     assert.strictEqual(G.isCappGuest(hdr, null), true);

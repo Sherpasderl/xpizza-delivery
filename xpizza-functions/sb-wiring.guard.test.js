@@ -17,7 +17,7 @@ const { unapplySbIndex, HUNKS } = require('./tools/sb-inverse');
 const { unapplyCheckoutIndex } = require('./tools/checkout-inverse');
 const { MENU_BY_RESTAURANT } = require('./menu-pricing');
 
-const BASE = 'c887daeb';   // S-B step 3's parent on feat/security-lifecycle
+const BASE = 'a61adad5';   // DRYRUN (2e, TRAIN-NEXT2 A4): the pre-3a ASSEMBLY commit (was c887daeb, S-B step 3's parent on feat/security-lifecycle)
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const live = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
@@ -25,7 +25,7 @@ const fold = (s) => unapplyCheckoutIndex(s);
 
 // 1. exact
 assert.notStrictEqual(unapplySbIndex(live), live, 'non-vacuity');
-assert.strictEqual(fold(unapplySbIndex(live)), fold(base), `🔴 index.js minus the sb hunks is not ${BASE}:index.js (outside the checkout endpoints block)`);
+assert.strictEqual(fold(require('./tools/sd-inverse').unapplySdIndex(unapplySbIndex(live))), fold(base),   /* DRYRUN: base = pre-3a, so S-D (an earlier 3a slice) is stripped too */ `🔴 index.js minus the sb hunks is not ${BASE}:index.js (outside the checkout endpoints block)`);
 assert.strictEqual(live.split('\n').length - unapplySbIndex(live).split('\n').length, HUNKS.length * 4, 'exactly the hunks\' whole lines (4 each) removed');
 ok(`exact: index.js minus the three sb hunks === ${BASE} byte-for-byte; exactly their whole lines removed`);
 

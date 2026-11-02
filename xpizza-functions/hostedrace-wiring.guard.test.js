@@ -14,10 +14,12 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['alert-prune.js', 'index.js', 'manual-resolve.js', 'pixelpay-hosted-webhook.js'], 'the slice owns exactly these files');
 for (const f of FILES) {
   // DRYRUN R-WIRE (2e): P5a (newer) innermost
-  const src = require('./tools/p5a-inverse').unapplyP5aModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));
+  const src = require('./tools/_asm-next2-layers').stripNewer(f, fs.readFileSync(path.join(__dirname, f), 'utf8'), 'hostedrace');   // DRYRUN: every newer layer first
   const b = execFileSync('git', ['show', `${ASM_BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
-  assert.strictEqual(unapplyHostedRaceModule(f, src), b, `🔴 ${f} minus the hosted-race hunks is not ${ASM_BASE}:${f}`);
+  // DRYRUN: index.js compared OUTSIDE the checkout endpoints block (3a's new endpoints live inside it, stripped whole — as 3a's guards do)
+  const fold = (X) => (f === 'index.js' ? require('./tools/checkout-inverse').unapplyCheckoutIndex(X) : X);
+  assert.strictEqual(fold(unapplyHostedRaceModule(f, src)), fold(b), `🔴 ${f} minus the hosted-race hunks is not ${ASM_BASE}:${f}`);
   for (const h of HUNKS.filter((x) => x.file === f)) {
     const k = h.now.search(/[A-Za-z]/);
     assert.throws(() => unapplyHostedRaceModule(f, src.replace(h.now, h.now.slice(0, k) + '#' + h.now.slice(k + 1))), /occurs 0 times/, `${f}: a byte INSIDE a hunk`);

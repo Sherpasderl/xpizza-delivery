@@ -13,7 +13,7 @@ const assert = require('assert');
 const { execFileSync } = require('child_process');
 const { unapplySdIndex, unapplySdModule, unapplySdModuleIfAny, HUNKS, MODULE_HUNKS, FILES } = require('./tools/sd-inverse');
 
-const BASE = 'c5093152';   // S-D's parent on feat/security-lifecycle (the S-C r1 f2-narrow regen)
+const BASE = 'a61adad5';   // DRYRUN (2e, TRAIN-NEXT2 A4): the pre-3a ASSEMBLY commit (was c5093152, S-D's parent on feat/security-lifecycle)
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
