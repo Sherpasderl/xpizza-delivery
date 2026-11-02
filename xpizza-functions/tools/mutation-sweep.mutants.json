@@ -31827,5 +31827,113 @@
    "node",
    "ratings/merchant-comments.test.js"
   ]
+ },
+ {
+  "id": "smr-1",
+  "slice": "smr",
+  "label": "getMyRating: no order-ownership check (any verified customer reads any order's rating)",
+  "file": "ratings/my-rating.js",
+  "from": "  if (order !== uid) return GENERIC;\n",
+  "to": "",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-2",
+  "slice": "smr",
+  "label": "getMyRating: a tombstoned caller is served (the writer's predicate dropped)",
+  "file": "ratings/my-rating.js",
+  "from": "  const uid = await customerUidOf(db, typeof req.get === 'function' ? req.get('x-firebase-id-token') : null, verifyIdToken);",
+  "to": "  let uid = null; try { const d = await verifyIdToken(req.get('x-firebase-id-token')); uid = d && d.customer === true && d.handheld !== true ? d.uid : null; } catch (_) {}",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-3",
+  "slice": "smr",
+  "label": "getMyRating: the payload is read RAW (withdrawn / deleted payloads leave)",
+  "file": "ratings/my-rating.js",
+  "from": "  const node = await V2.readCountable(db, orderId);",
+  "to": "  const node = V2.normalize((await V2.ratingRef(db, orderId).once('value')).val());",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-4",
+  "slice": "smr",
+  "label": "getMyRating: another owner's node is returned (no owner_uid === caller check)",
+  "file": "ratings/my-rating.js",
+  "from": "  const mine = node && node.owner_uid === uid ? node : null;",
+  "to": "  const mine = node || null;",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-5",
+  "slice": "smr",
+  "label": "getMyRating: authority fields leak (owner_uid / token_hash)",
+  "file": "ratings/my-rating.js",
+  "from": "legacy_thumb: mine.legacy_thumb ?? null, rated_at:",
+  "to": "legacy_thumb: mine.legacy_thumb ?? null, owner_uid: mine.owner_uid, token_hash: mine.token_hash, rated_at:",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-6",
+  "slice": "smr",
+  "label": "getMyRating: a deleted node still reports a rating window",
+  "file": "ratings/my-rating.js",
+  "from": "  const until = w.state !== V2.STATES.DELETED && Number.isFinite(w.fulfilled_at)",
+  "to": "  const until = Number.isFinite(w.fulfilled_at)",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-7",
+  "slice": "smr",
+  "label": "getMyRating: can_rate ignores the 7-day window",
+  "file": "ratings/my-rating.js",
+  "from": "    can_rate: until != null && now() <= until,",
+  "to": "    can_rate: until != null,",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-8",
+  "slice": "smr",
+  "label": "the shared predicate accepts a handheld token as a customer (writer + reader)",
+  "file": "ratings/rate-order.js",
+  "from": "if (!dec || dec.customer !== true || dec.handheld === true || !dec.uid) return null;",
+  "to": "if (!dec || dec.customer !== true || !dec.uid) return null;",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-9",
+  "slice": "smr",
+  "label": "getMyRating: a refusal reveals existence (unknown order ⇒ 404 instead of the generic 403)",
+  "file": "ratings/my-rating.js",
+  "from": "  if (order !== uid) return GENERIC;",
+  "to": "  if (order == null) return reply(404, { ok: false, error: 'not_found' }); if (order !== uid) return GENERIC;",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
  }
 ]

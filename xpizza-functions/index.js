@@ -7862,6 +7862,12 @@ exports.getMerchantRatingComments = onRequest(
   { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET] },
   require('./ratings/merchant-comments').makeMerchantRatingComments({ getDatabase, getAuth, checkRateLimit }).getMerchantRatingComments,
 );
+// S-A (d) customer read: getMyRating — the C-2 sheet's read of the caller's OWN rating, the writer's predicate (customerUidOf + the
+// order's customer_uid), the payload only through rating-v2.readCountable
+exports.getMyRating = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  require('./ratings/my-rating').makeMyRating({ getDatabase, getAuth, checkRateLimit }).getMyRating,
+);
 // S-A1: rateOrder's dish votes resolve through the ONE resolver (the expression getMyOrders and the live displayLabel path use)
 require('./ratings/rate-order').configure({ resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) });
 /* checkout:end endpoints */

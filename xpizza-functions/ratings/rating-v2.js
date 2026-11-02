@@ -144,6 +144,13 @@ async function readCountable(db, orderId) {
   return countable(node, tomb) ? node : null;
 }
 
+// S-A customer read (getMyRating): the WINDOW facts of a node — fulfilled_at + state ONLY, never a payload field — so the C-2 sheet
+// knows whether the order is rateable without the payload leaving through anything but readCountable.
+async function readRatingWindow(db, orderId) {
+  const node = normalize((await ratingRef(db, orderId).once('value')).val());
+  return node ? { fulfilled_at: Number.isFinite(node.fulfilled_at) ? node.fulfilled_at : null, state: node.state } : { fulfilled_at: null, state: null };
+}
+
 // S-A(d) — the MANDATORY server-only merchant index rating_index/{rid}/{key} = orderId (orderIds only, never comment text). The key
 // is DETERMINISTIC — <13-digit inverted fulfilled_at>-<orderId> — so the fulfilment trigger's retries / a crash between the stamp and
 // the index write heal with an idempotent re-set, and key order = newest fulfilment first. Readers still reach a node ONLY through
@@ -171,5 +178,5 @@ async function indexNode(db, orderId, raw) {
   return 'indexed';
 }
 
-module.exports = { countable, ratingRef, ownedRatingIds, readCountable, indexKey, indexRef, indexNode, INDEX_KEY_RE, ORDER_ID_RE, V1_THUMB, WINDOW_MS, COMMENT_MAX, DISHES_MAX, STATES, FULFILLED, parseRequest, freshNode, normalize,
+module.exports = { countable, ratingRef, ownedRatingIds, readCountable, readRatingWindow, indexKey, indexRef, indexNode, INDEX_KEY_RE, ORDER_ID_RE, V1_THUMB, WINDOW_MS, COMMENT_MAX, DISHES_MAX, STATES, FULFILLED, parseRequest, freshNode, normalize,
   v1Updater, v2Updater, withdrawUpdater, fulfilmentUpdater, deletionUpdater };

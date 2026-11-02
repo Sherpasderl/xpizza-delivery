@@ -24,7 +24,7 @@ async function customerUidOf(db, idToken, verifyIdToken) {
   if (typeof idToken !== 'string' || !idToken) return null;
   try {
     const dec = await verifyIdToken(idToken);
-    if (!dec || dec.customer !== true || !dec.uid) return null;
+    if (!dec || dec.customer !== true || dec.handheld === true || !dec.uid) return null;   // S-A(d) read: a handheld device token never acts as a customer (the rules' handheld !== true)
     return attributionUid(dec, (await db.ref(`deleted_uids/${dec.uid}`).get()).exists());
   } catch (_) { return null; }
 }
@@ -114,4 +114,4 @@ const rateOrder = onRequest({ region: 'us-central1', cors: true, timeoutSeconds:
   }
 });
 
-module.exports = { rateOrder, rateOrderCore, configure, purchasedDishIds, touchRedactJournal, RATE_ORDER_TIMEOUT_S };
+module.exports = { rateOrder, rateOrderCore, configure, purchasedDishIds, touchRedactJournal, customerUidOf, RATE_ORDER_TIMEOUT_S };   // customerUidOf: the ONE predicate, shared with getMyRating
