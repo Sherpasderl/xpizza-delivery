@@ -24,18 +24,17 @@ const { checkRegistered } = require('./registered-roster');   // the roster is t
 const { rollbackVersion } = require('../catalog/catalog-publish');
 const { makeRtdbMirror, RTDB_URL } = require('../catalog/mirror-rtdb');
 
-const arg = (name) => {
-  const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
-  return hit ? hit.slice(name.length + 3).trim() : null;
-};
-const RID = arg('rid');
-const TO = arg('to');
 
 // THE PROJECT GUARD, before anything resolves a credential or constructs a client: a refusal
 // here cannot have read or written a byte. See tools/require-project.js.
 const PROJECT_ID = requireProject();
-// The space form is record-evidence-boundary's spelling; here it would leave RID unset. Refused before any client.
-if (process.argv.includes('--rid')) { console.error('rollback-version: REFUSED — "--rid <rid>" is not this tool\'s form: use --rid=<rid>'); process.exit(1); }
+// STRICT arguments (Codex cert r1 #1): only --rid=<rid> and --to=<versionId>, each at most once; anything else — an unknown
+// flag (`--dry-run`, `--apply`), a repeat, an empty value, the `--rid <rid>` space form — is refused before any client.
+const ARGS = require('./cert-cli-args').parseCertArgs('rollback-version', process.argv.slice(2), { options: ['rid', 'to'] });
+if (ARGS.refused) { console.error(ARGS.refused); process.exit(1); }
+const arg = (name) => (ARGS[name] === undefined ? null : ARGS[name]);   // the strictly parsed value, null when absent
+const RID = arg('rid');
+const TO = arg('to');
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
   projectId: PROJECT_ID,   // NEVER the ambient gcloud default — that is what nearly wrote a catalog into another project

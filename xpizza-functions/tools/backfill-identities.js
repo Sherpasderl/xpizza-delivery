@@ -43,14 +43,12 @@ const { getActivePointer } = require('../catalog/catalog-firestore');
 const { backfillIdentities, liveKeys } = require('../catalog/identity-backfill');
 const { lookupByLegacyKeys } = require('../catalog/identity-registry');
 
-const arg = (name) => {
-  const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
-  return hit ? hit.slice(name.length + 3).trim() : null;
-};
-const RID = arg('rid');
-const APPLY = process.argv.includes('--apply');
-// The space form is record-evidence-boundary's spelling; here it would leave RID unset. Refused before any client.
-if (process.argv.includes('--rid')) { console.error('backfill-identities: REFUSED — "--rid <rid>" is not this tool\'s form: use --rid=<rid>'); process.exit(1); }
+// STRICT arguments (Codex cert r1 #1): only --rid=<rid> and --apply, each at most once; anything else — an unknown flag
+// (`--dry-run`), a repeat, an empty value, the `--rid <rid>` space form — is refused before any client.
+const ARGS = require('./cert-cli-args').parseCertArgs('backfill-identities', process.argv.slice(2), { options: ['rid'], flags: ['apply'] });
+if (ARGS.refused) { console.error(ARGS.refused); process.exit(1); }
+const RID = ARGS.rid || null;
+const APPLY = ARGS.apply === true;
 
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
