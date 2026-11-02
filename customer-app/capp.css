@@ -99,7 +99,13 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
   /* v4 tip-step illustration (flat shapes; Cuadra tints + the green box, never a restaurant colour) */
   --il-sky-a:#E2EBFA; --il-sky-b:#C5D8F2; --il-sky-c:#D3ECE9; --il-jacket:#1D3F85; --il-pants:#2A3550; --il-skin:#D9A77B; --il-tyre:#1B2537;
   --a-warm:#F6F1E8; --a-cool:#EDF1F5; --a-green:#EEF2E9; --a-rose:#F7EEEA}
-.app.dark{--bg:#0A0F1C;--surf:#121A2C;--surf2:#1A2439;--ink:#EDF1F8;--mute:#9AA6BD;--line:#24304A;--line2:#34415C;--acc:#8EC0FF;--acc-ink:#0A0F1C;--price:#EDF1F8;--pill:#EDF1F8;--pill-ink:#0A0F1C;
+/* capp-dark (PLAN-capp-dark-mode §2.2): the CANVAS before #app parses is the app's own background, in the same three forms as the
+   tokens — html.capp-shell (shell.html) only, so the review pages keep their --pg-* chrome */
+:root{--page-bg:#FFFFFF}
+:root[data-theme="dark"]{--page-bg:#0A0F1C}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--page-bg:#0A0F1C}}
+.capp-shell,.capp-shell body{background:var(--page-bg)}
+.app.dark,:root[data-theme="dark"] .app{--bg:#0A0F1C;--surf:#121A2C;--surf2:#1A2439;--ink:#EDF1F8;--mute:#9AA6BD;--line:#24304A;--line2:#34415C;--acc:#8EC0FF;--acc-ink:#0A0F1C;--price:#EDF1F8;--pill:#EDF1F8;--pill-ink:#0A0F1C;
   --ok:#5BD08E;--ok-bg:#153324;--warn:#F2BE4B;--warn-bg:#3A2B06;--err:#FF8C92;--err-bg:#3B1518;--scrim:rgba(0,0,0,.6);--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.6);
   --pop:#6FD79A;--pop-bg:#143322;--pop-fill:#6FD79A;--pop-fill-ink:#0A0F1C;
   --deal:#FF8FB8;--deal-bg:#3F1A2B;--deal-fill:#FF8FB8;--deal-fill-ink:#0A0F1C;
@@ -107,6 +113,14 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
   --promo-bg:linear-gradient(135deg,#182A52 0%,#133640 100%);--promo-ink:#EDF1F8;--promo-mute:#A9B8D6;--promo-line:#2B3F66;
   --il-sky-a:#182A52;--il-sky-b:#24427E;--il-sky-c:#17424C;--il-jacket:#4A82E0;--il-pants:#95A3BE;--il-skin:#D9A77B;--il-tyre:#3A4761;
   --a-warm:#1C2230;--a-cool:#172033;--a-green:#182226;--a-rose:#211D25}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app{--bg:#0A0F1C;--surf:#121A2C;--surf2:#1A2439;--ink:#EDF1F8;--mute:#9AA6BD;--line:#24304A;--line2:#34415C;--acc:#8EC0FF;--acc-ink:#0A0F1C;--price:#EDF1F8;--pill:#EDF1F8;--pill-ink:#0A0F1C;
+  --ok:#5BD08E;--ok-bg:#153324;--warn:#F2BE4B;--warn-bg:#3A2B06;--err:#FF8C92;--err-bg:#3B1518;--scrim:rgba(0,0,0,.6);--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.6);
+  --pop:#6FD79A;--pop-bg:#143322;--pop-fill:#6FD79A;--pop-fill-ink:#0A0F1C;
+  --deal:#FF8FB8;--deal-bg:#3F1A2B;--deal-fill:#FF8FB8;--deal-fill-ink:#0A0F1C;
+  --value:#F3C86C;--value-bg:#3B2D0A;
+  --promo-bg:linear-gradient(135deg,#182A52 0%,#133640 100%);--promo-ink:#EDF1F8;--promo-mute:#A9B8D6;--promo-line:#2B3F66;
+  --il-sky-a:#182A52;--il-sky-b:#24427E;--il-sky-c:#17424C;--il-jacket:#4A82E0;--il-pants:#95A3BE;--il-skin:#D9A77B;--il-tyre:#3A4761;
+  --a-warm:#1C2230;--a-cool:#172033;--a-green:#182226;--a-rose:#211D25}}
 /* v2 had one token set per world (.app[data-world="xp"|"lm"|"cf"]: their own accent, warm inks, Special Elite / Playfair / Fraunces).
    v3 removes them: every restaurant uses the tokens above. */
 
@@ -546,7 +560,8 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .map .adj{position:absolute;right:10px;top:10px;font-size:13px;font-weight:600;color:#FFFFFF;background:rgba(20,18,16,.66);padding:7px 12px;border-radius:999px}
 .map.out{filter:saturate(.4)}
 .map.big{height:100%;border-radius:0}
-.dark .map{background:#1F2A22}
+.app.dark .map,:root[data-theme="dark"] .app .map{background:#1F2A22}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app .map{background:#1F2A22}}
 .line{display:flex;align-items:flex-start;gap:10px;font-size:15px;line-height:1.4}
 .line svg.i{width:18px;height:18px;margin-top:1px;color:var(--mute);flex:none}
 .line .lnk{margin-left:auto;color:var(--acc);font-weight:600;white-space:nowrap;border:0;background:transparent;padding:0;font-size:14px;min-height:24px}
@@ -608,7 +623,8 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 
 /* ── ORDER: confirmation (S5) + live tracker (F4 v4 language) ── */
 .order-map{position:relative;height:260px;flex:none;background:#E8EDE4;overflow:hidden}
-.dark .order-map{background:#1F2A22}
+.app.dark .order-map,:root[data-theme="dark"] .app .order-map{background:#1F2A22}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app .order-map{background:#1F2A22}}
 .order-map svg.mapsvg{position:absolute;inset:0;width:100%;height:100%}
 .order-map .mk-label{position:absolute;transform:translate(-50%,-100%);background:var(--bg);color:var(--ink);font-size:12px;font-weight:600;padding:5px 9px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.18);white-space:nowrap;margin-top:-10px}
 .order-map .mk-label::after{content:"";position:absolute;left:50%;bottom:-5px;width:8px;height:8px;background:var(--bg);transform:translateX(-50%) rotate(45deg)}
@@ -848,7 +864,8 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 /* ── Full-screen pin step ── */
 .pinstep{position:absolute;inset:0;z-index:62;background:var(--bg);display:flex;flex-direction:column}
 .pinstep .mapwrap{flex:1;position:relative;overflow:hidden;background:#E8EDE4}
-.dark .pinstep .mapwrap{background:#1F2A22}
+.app.dark .pinstep .mapwrap,:root[data-theme="dark"] .app .pinstep .mapwrap{background:#1F2A22}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app .pinstep .mapwrap{background:#1F2A22}}
 .pinstep .mapwrap svg.mapsvg{position:absolute;inset:0;width:100%;height:100%}
 .pinstep .pin{position:absolute;left:50%;top:50%;transform:translate(-50%,-100%);color:var(--acc);filter:drop-shadow(0 2px 3px rgba(0,0,0,.25))}
 .pinstep .pin svg{width:44px;height:44px;display:block}
@@ -946,7 +963,8 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .placing .acts{display:flex;flex-direction:column;gap:8px;margin-top:10px}
 .okbtn{position:relative;overflow:hidden}
 .okbtn .fill{position:absolute;inset:0;background:color-mix(in srgb,var(--acc) 72%,var(--pill));transform-origin:left center;transform:scaleX(0);animation:okfill 2s linear forwards;pointer-events:none}
-.app.dark .okbtn .fill{background:color-mix(in srgb,var(--acc) 55%,var(--pill))}
+.app.dark .okbtn .fill,:root[data-theme="dark"] .app .okbtn .fill{background:color-mix(in srgb,var(--acc) 55%,var(--pill))}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app .okbtn .fill{background:color-mix(in srgb,var(--acc) 55%,var(--pill))}}
 @keyframes okfill{to{transform:scaleX(1)}}
 @media (prefers-reduced-motion:reduce){.okbtn .fill{display:none}}
 .okbtn>span{position:relative;font-variant-numeric:tabular-nums}
