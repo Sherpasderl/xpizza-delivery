@@ -922,15 +922,16 @@ test('HELD r1 — computed: every locked control is dimmed exactly like the list
     assert.equal(look(d, n), '0.5|not-allowed', `${n.tagName}.${n.className} dimmed`);
   }
 });
-test('HELD r1 — computed: the held photo\'s «Cancelar» stays ENABLED and UNDIMMED inside the dimmed drawer', async () => {
+test('HELD r1 — DEFENSIVE SYNTHETIC-STATE TEST (no production path demonstrated): the held photo\'s «Cancelar» stays ENABLED and UNDIMMED inside the dimmed drawer', async () => {
   const fake = createPhotoFake({ items: ITEMS() });
   const { d, w, mods } = await boot(fake);
   withCss(d);
   const release = fake.holdPut();
   await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
   await until(() => drawer(d).querySelector('.phbusy'), 'P4');
-  // the server's saved name lands mid-upload (as ruleA r1 #1, the only way this state exists: a local rename blocks the upload
-  // first). The fake serves no pendingRenames (ruling B), so the page state is seeded exactly as ruleA r1 #1 does.
+  // DEFENSIVE SYNTHETIC-STATE TEST (Codex held r4): no production path to this state is demonstrated here — a local rename blocks
+  // the upload first, and the fake serves no pendingRenames (ruling B). The page state is seeded exactly as ruleA r1 #1 does, to
+  // pin what the drawer shows IF a saved name ever meets a held upload.
   mods.app.state.savedRenames = [{ id: 'cl', from: 'Clásicas', to: 'Pizzas' }];
   release();
   await until(() => drawer(d).querySelector('.uphoto:not(.phbusy)') && btnText(drawer(d), 'Cancelar'), 'the held photo (not P4\'s own «Cancelar»)');
@@ -962,11 +963,25 @@ test('HELD r3 fake (ruling B) — stricter, never laxer: a rename beside ANY oth
     ['+ a photo', (src) => { rn(src); src.photos = { Pepperoni: { state: 'removed' } }; }],
     ['an id changed (no rename)', (src) => { src.structure.categories[0].id = 'xx'; }],
     ['a category added', (src) => { src.structure.categories.push({ id: 'nv', name: 'Nueva' }); }],
+    // r4: the STRICTEST fake — only the allowlisted names, only the fake's own input shape
+    ['a name outside the allowlist', (src) => { src.structure.categories[0].name = 'Otra sección'; }],
+    ['whitespace around an allowed name', (src) => { src.structure.categories[0].name = ' Pizzas '; }],
+    ['a numeric name', (src) => { src.structure.categories[0].name = 12; }],
+    ['markup', (src) => { src.structure.categories[0].name = '<b>Pizzas</b>'; }],
+    ['structure.categories missing', (src) => { delete src.structure.categories; }],
+    ['a root field changed (schema_version)', (src) => { src.schema_version = 2; }],
+    ['an unknown root field', (src) => { src.extra_root = true; }],
+    ['an unknown structure field', (src) => { src.structure.badges = []; }],
   ];
   for (const [what, mutate] of probes) {
     const fake = createPhotoFake({ items: ITEMS() });
-    const r = await fake.fetchHandler('editCatalog', await editBody(fake, mutate));
-    assert.equal(r.status, 400, what); assert.equal(r.body.error, 'unmodeled_change', what); assert.equal(r.body.field, 'categories', what);
+    // a fake that THROWS on an unsupported shape is a failure too — recorded as an answer, so it fails as an assertion
+    const r = await fake.fetchHandler('editCatalog', await editBody(fake, mutate)).catch((e) => ({ status: 'threw', body: { error: String(e && e.message) } }));
+    assert.equal(r.status, 400, what); assert.equal(r.body.error, 'unmodeled_change', what);
+  }
+  for (const name of ['Pizzas clásicas', 'Pizzas de la casa']) {   // the other allowlisted names the suites use
+    const f2 = createPhotoFake({ items: ITEMS() });
+    assert.equal((await f2.fetchHandler('editCatalog', await editBody(f2, (src) => { src.structure.categories[0].name = name; }))).status, 200, name);
   }
   const fake = createPhotoFake({ items: ITEMS() });
   const ok = await fake.fetchHandler('editCatalog', await editBody(fake, rn));
@@ -978,8 +993,8 @@ test('HELD r3 fake (ruling B) — stricter, never laxer: a rename beside ANY oth
 
 // C (Codex held r3): EACH locked control, by name, in each state the hold meets — present, disabled, and the stylesheet's computed
 // 0.5 / not-allowed (the list prices' declarations) — and «Cerrar» enabled and undimmed. The rename is made through the page's
-// own path wherever the state allows one after it; a removal pending blocks a local rename, so that one state is seeded like
-// ruleA r1 #1 (a server-saved name landing mid-edit, the only way it exists).
+// own path wherever the state allows one after it. A removal pending blocks a local rename, so that state is a DEFENSIVE
+// SYNTHETIC-STATE TEST (Codex held r4): seeded like ruleA r1 #1, no production path demonstrated.
 function assertLocked(d, n, what) {
   assert.ok(n, `${what}: present`);
   assert.equal(n.disabled, true, `${what}: disabled`);
@@ -1035,7 +1050,7 @@ test('HELD r3 C — a phone: the expanded pair «Tomar foto» / «Elegir de la g
     assertLocked(d, byText(dw, 'Elegir de la galería'), '«Elegir de la galería»');
   } finally { delete window.matchMedia; }
 });
-test('HELD r3 C — a removal pending, then a server-saved name (seeded as ruleA r1 #1): «Deshacer» locked + dimmed', async () => {
+test('HELD r3 C — DEFENSIVE SYNTHETIC-STATE TEST (no production path demonstrated): a removal pending + a seeded saved name → «Deshacer» locked + dimmed', async () => {
   const fake = createPhotoFake({ items: ITEMS(), legacy: { Margarita: true } }); const { d, mods } = await boot(fake); withCss(d);
   await openDrawerFor(d, 'Margarita'); byText(drawer(d), 'Quitar').click(); await settle();
   mods.app.state.savedRenames = [{ id: 'cl', from: 'Clásicas', to: 'Pizzas' }];
