@@ -320,6 +320,13 @@
         "owner_uid"
       ]
     },
+    "ratings_redact_pending": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "at"
+      ]
+    },
     "public_stats": {
       ".read": true,
       ".write": false
