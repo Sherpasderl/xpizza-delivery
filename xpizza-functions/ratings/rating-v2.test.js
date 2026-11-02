@@ -31,9 +31,9 @@ function fakeDb() {
   const ref = (p = '') => ({
     get: async () => snap(get(p)), once: async () => snap(get(p)),
     set: async (v) => set(p, prune(v)), update: async (m) => { for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, prune(v)); },
-    orderByChild: (c) => { const q = { eq: undefined, start: undefined }; const api = {
-      equalTo: (v) => { q.eq = v; return api; }, startAt: (v) => { q.start = v; return api; }, limitToFirst: () => api,
-      once: async () => { const out = {}; for (const [k, row] of Object.entries(get(p) || {})) { const v = row && row[c]; if (q.eq !== undefined && v !== q.eq) continue; if (q.start !== undefined && !(v != null && v >= q.start)) continue; out[k] = row; } return snap(Object.keys(out).length ? out : null); } }; return api; },
+    orderByChild: (c) => { const q = { eq: undefined, start: undefined, end: undefined }; const api = {
+      equalTo: (v) => { q.eq = v; return api; }, startAt: (v) => { q.start = v; return api; }, endAt: (v) => { q.end = v; return api; }, limitToFirst: () => api,
+      once: async () => { const out = {}; for (const [k, row] of Object.entries(get(p) || {})) { const v = row && row[c]; if (q.eq !== undefined && v !== q.eq) continue; if (q.start !== undefined && !(v != null && v >= q.start)) continue; if (q.end !== undefined && !(v != null && v <= q.end)) continue; out[k] = row; } return snap(Object.keys(out).length ? out : null); } }; return api; },
     // RTDB's EXACT Admin-SDK semantics (Codex S-A1 r1 P1-1): the updater runs FIRST on the (uncached) local value null; returning
     // undefined there ABORTS with NO server round-trip and NO retry. Otherwise the server compares: an actual value ≠ the assumed
     // null ⇒ the updater re-runs on the actual value (undefined then aborts). Never laxer than production.
@@ -198,7 +198,7 @@ const node = (db, id) => V2.normalize(db.get(`ratings_v2/${id}`));
     const db = fakeDb(); await place(db, A, 'XPZ-p'); db.set('orders/XPZ-p/status', 'delivered');
     let paused = false;
     const pdb = { ...db, ref: (p) => { const r = db.ref(p); if (p !== 'orders/XPZ-p') return r; return { ...r, get: async () => {
-      if (!paused) { paused = true; assert.strictEqual(await SE.deleteAccountCore(db, ACCOUNT, { uid: A, phoneHash: null, now: 3000, revoke: async () => {} }), true); }
+      if (!paused) { paused = true; assert.strictEqual(await SE.deleteAccountCore(db, ACCOUNT, { uid: A, phoneHash: null, now: 3000, revoke: async () => {} }), true); db.set(`ratings_redact_pending/${A}`, null); }   // as if already drained
       return r.get(); } }; } };
     assert.strictEqual(db.get('ratings_v2/XPZ-p'), undefined, 'premise: no node at the start');
     const r = await rateOrderCore(pdb, { body: { order_id: 'XPZ-p', thumb: 'up' }, idToken: `tok-${A}`, now: 2000, verifyIdToken, resolveContext: async (rid) => usableCtx(rid) });
@@ -206,6 +206,7 @@ const node = (db, id) => V2.normalize(db.get(`ratings_v2/${id}`));
     assert.strictEqual(r.httpStatus, 403, 'the paused write answers the generic refusal');
     const x = node(db, 'XPZ-p');
     assert.deepStrictEqual([x.state, x.owner_uid, x.comment], ['deleted', null, null], '🔴 a paused legacy write after a COMPLETE deletion leaves NO live rating with the deleted uid');
+    assert.ok(db.get(`ratings_redact_pending/${A}`), '🔴 the fence RE-CREATES the durable journal entry (a failed inline redaction is still drained)');
   }
   ok('Codex r1 P1-2: a legacy rateOrder paused across a COMPLETE account deletion (no node existed) commits and is redacted by the post-commit fence (deleted_uids) — no live rating carries the deleted uid');
 
@@ -247,6 +248,73 @@ const node = (db, id) => V2.normalize(db.get(`ratings_v2/${id}`));
     assert.deepStrictEqual([x.state, x.owner_uid, x.comment], ['deleted', null, null], '🔴 a paused v2 write after the deletion\'s scan is redacted by the post-commit fence');
   }
   ok('the v2 fence: a fulfilled unrated node (owner_uid null) with a failed history write, rated by a v2 write paused across the deletion, is redacted after its commit');
+
+  // ── 13. Codex r2 repro A: a paused legacy write commits after a COMPLETE deletion and its OWN fence read FAILS — the rating is live,
+  //    but the deletion's journal entry (kept past the grace) is drained by pruneResidual through the owner_uid index ──
+  {
+    const db = fakeDb(); await place(db, A, 'XPZ-a'); db.set('orders/XPZ-a/status', 'delivered');
+    let paused = false;
+    const pdb = { ...db, ref: (p) => { const r = db.ref(p);
+      if (p === `deleted_uids/${A}` && paused) return { ...r, get: async () => { throw new Error('fence read failed'); } };
+      if (p !== 'orders/XPZ-a') return r;
+      return { ...r, get: async () => { if (!paused) { paused = true; await SE.deleteAccountCore(db, ACCOUNT, { uid: A, phoneHash: null, now: 3000, revoke: async () => {} }); } return r.get(); } }; } };
+    await assert.rejects(rateOrderCore(pdb, { body: { order_id: 'XPZ-a', thumb: 'up' }, idToken: `tok-${A}`, now: 3005, verifyIdToken, resolveContext: async (rid) => usableCtx(rid) }), /fence read failed/);
+    assert.deepStrictEqual([node(db, 'XPZ-a').state, node(db, 'XPZ-a').owner_uid], ['live', A], 'premise: the failed fence left a LIVE rating with the deleted uid');
+    assert.deepStrictEqual(db.get(`ratings_redact_pending/${A}`), { at: 3000 }, 'the deletion wrote the durable journal entry in its atomic update');
+    const early = await SE.drainRatingRedactions(db, 3000 + 60e3);
+    assert.deepStrictEqual([node(db, 'XPZ-a').state, node(db, 'XPZ-a').owner_uid], ['deleted', null], '🔴 the drain redacts the live rating (found by the owner_uid index)');
+    assert.ok(db.get(`ratings_redact_pending/${A}`), 'inside the grace the entry is KEPT (a paused write may still land)'); assert.strictEqual(early.cleared, 0);
+    const late = await SE.drainRatingRedactions(db, 3000 + SE.REDACT_GRACE_MS);
+    assert.strictEqual(db.get(`ratings_redact_pending/${A}`), undefined, 'clean AND past the grace ⇒ the entry is removed'); assert.strictEqual(late.cleared, 1);
+  }
+  ok('Codex r2 repro A: a paused legacy write commits after a COMPLETE deletion and its own fence read fails — the deletion\'s durable journal entry is drained via the owner_uid index; the entry is removed only once clean AND past the grace');
+
+  // ── 14. Codex r2 repro B: the deletion's inline redaction FAILS after the profile is removed — deletion completes, the journal drains it ──
+  {
+    const db = fakeDb(); await place(db, A, 'XPZ-b'); await fulfil(db, 'XPZ-b'); await rate(db, A, { order_id: 'XPZ-b', store: 2, comment: 'malo' });
+    let fail = true;
+    const fdb = { ...db, ref: (p) => { const r = db.ref(p); if (p !== 'ratings_v2/XPZ-b') return r; return { ...r, transaction: async (fn) => { if (fail) { fail = false; throw new Error('redaction failed'); } return r.transaction(fn); } }; } };
+    const logs = []; const e = console.error; console.error = (...a) => logs.push(a.join(' '));
+    let done; try { done = await SE.deleteAccountCore(fdb, ACCOUNT, { uid: A, phoneHash: null, now: 4000, revoke: async () => {} }).catch((err) => `threw: ${err.message}`); } finally { console.error = e; }
+    assert.strictEqual(done, true, '🔴 the deletion completes when its inline redaction fails (the journal drains it)');
+    assert.strictEqual(db.get(`user_profiles/${A}`), undefined, 'premise: the profile is removed'); assert.ok(logs.some((l) => /inline rating redaction/.test(l)), 'the failure is logged');
+    assert.deepStrictEqual([node(db, 'XPZ-b').state, node(db, 'XPZ-b').comment, node(db, 'XPZ-b').owner_uid], ['live', 'malo', A], 'premise: the comment + uid are still live');
+    await SE.pruneResidual(db, 4000 + SE.REDACT_GRACE_MS);
+    assert.deepStrictEqual([node(db, 'XPZ-b').state, node(db, 'XPZ-b').comment, node(db, 'XPZ-b').owner_uid], ['deleted', null, null], '🔴 pruneResidual drains the journal: redacted');
+    assert.strictEqual(db.get(`ratings_redact_pending/${A}`), undefined, 'then the entry is removed');
+  }
+  ok('Codex r2 repro B: the inline redaction fails after the profile is removed — the deletion completes (logged), and pruneResidual drains the durable journal (comment + uid redacted, the entry then removed)');
+
+  // ── 15. the drain: idempotent; a failing uid keeps its entry; removed only when clean AND past the grace; an empty journal is a no-op ──
+  {
+    const db = fakeDb(); await place(db, A, 'XPZ-c'); await fulfil(db, 'XPZ-c'); await rate(db, A, { order_id: 'XPZ-c', store: 4 });
+    db.set(`deleted_uids/${A}`, 1); db.set(`ratings_redact_pending/${A}`, { at: 5000 });
+    let fail = true;
+    const fdb = { ...db, ref: (p) => { const r = db.ref(p); if (p !== 'ratings_v2/XPZ-c') return r; return { ...r, transaction: async (fn) => { if (fail) { fail = false; throw new Error('x'); } return r.transaction(fn); } }; } };
+    const q = console.error; console.error = () => {};
+    let r; try { r = await SE.drainRatingRedactions(fdb, 5000 + SE.REDACT_GRACE_MS); } finally { console.error = q; }
+    assert.deepStrictEqual([r.failed, r.cleared], [1, 0]); assert.ok(db.get(`ratings_redact_pending/${A}`), '🔴 a failing uid keeps its entry (retried next run)');
+    r = await SE.drainRatingRedactions(fdb, 5000 + SE.REDACT_GRACE_MS);
+    assert.deepStrictEqual([r.redacted >= 1, r.cleared], [true, 1]); assert.strictEqual(node(db, 'XPZ-c').state, 'deleted');
+    r = await SE.drainRatingRedactions(fdb, 5000 + SE.REDACT_GRACE_MS + 1);
+    assert.deepStrictEqual(r, { pending: 0, redacted: 0, cleared: 0, failed: 0 }, 'a re-run on an empty journal is a no-op');
+  }
+  ok('drain: a failing uid keeps its entry (retried next run); the next run redacts and clears it; a re-run on an empty journal is a no-op');
+
+  // ── 15b. the race the "none left" check exists for: a rating lands AFTER the drain's redaction pass and BEFORE its check — even past the
+  //     grace, the entry is KEPT (the next run redacts it) ──
+  {
+    const db = fakeDb(); db.set(`deleted_uids/${A}`, 1); db.set(`ratings_redact_pending/${A}`, { at: 6000 });
+    let calls = 0;
+    const rdb = { ...db, ref: (p) => { const r = db.ref(p); if (p !== 'ratings_v2') return r; return { ...r, orderByChild: (c) => { const q = r.orderByChild(c); return { ...q, equalTo: (v) => { const e = q.equalTo(v); return { ...e, once: async () => {
+      calls += 1; if (calls === 2) db.set('ratings_v2/XPZ-late', { rating_format: 2, state: 'live', owner_uid: A, comment: 'late', restaurant_id: 'x_pizza', rev: 1 });
+      return e.once(); } }; } }; } }; } };
+    const r = await SE.drainRatingRedactions(rdb, 6000 + SE.REDACT_GRACE_MS);
+    assert.strictEqual(r.cleared, 0); assert.ok(db.get(`ratings_redact_pending/${A}`), '🔴 a rating still live at the check ⇒ the entry is KEPT, even past the grace');
+    await SE.drainRatingRedactions(db, 6000 + SE.REDACT_GRACE_MS);
+    assert.deepStrictEqual([node(db, 'XPZ-late').state, db.get(`ratings_redact_pending/${A}`)], ['deleted', undefined], 'the next run redacts it and clears the entry');
+  }
+  ok('drain race: a rating landing between the redaction pass and the "none left" check keeps the entry (even past the grace); the next run redacts and clears');
 
   FINISHED = true;
   console.log(`\nrating-v2: OK (${n})`);

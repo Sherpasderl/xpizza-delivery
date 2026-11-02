@@ -30309,8 +30309,8 @@
   "slice": "sec",
   "label": "security backlog: the inactivity sweep writes no deleted_uids again (the gap: deleted_uids-only checks miss swept accounts)",
   "file": "signup-endpoints.js",
-  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at } });",
-  "to": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, sweepCutoff == null ? at : null), [`user_private/${uid}`]: { deleted_at: at } });",
+  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}`]: { at: now } });",
+  "to": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, sweepCutoff == null ? at : null), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}`]: { at: now } });",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -30405,8 +30405,8 @@
   "slice": "sec",
   "label": "security backlog: the sweep residual never backfills deleted_uids for legacy user_private tombstones",
   "file": "signup-endpoints.js",
-  "from": "tombstones: await backfillDeletedUids(db) };",
-  "to": "tombstones: 0 };",
+  "from": "tombstones: await backfillDeletedUids(db), ratings:",
+  "to": "tombstones: 0, ratings:",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -30429,8 +30429,8 @@
   "slice": "sec",
   "label": "security backlog: r2 P1-c: the two tombstones written in TWO steps (a failure between them leaves user_private.deleted_at without deleted_uids)",
   "file": "signup-endpoints.js",
-  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at } });",
-  "to": "await db.ref(`user_private/${uid}`).set({ deleted_at: at }); await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at) });",
+  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}`]: { at: now } });",
+  "to": "await db.ref(`user_private/${uid}`).set({ deleted_at: at }); await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`ratings_redact_pending/${uid}`]: { at: now } });",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -30993,8 +30993,8 @@
   "slice": "sa",
   "label": "S-A1 ratings v2: account deletion does not redact the ratings",
   "file": "signup-endpoints.js",
-  "from": "  await redactRatings(db, uid, historyIds);\n",
-  "to": "",
+  "from": "  try { await redactRatings(db, uid, historyIds); }",
+  "to": "  try { }",
   "command": [
    "node",
    "ratings/rating-v2.test.js"
@@ -31077,7 +31077,7 @@
   "slice": "sa",
   "label": "S-A1 ratings v2 (r2): no post-commit fence on the legacy path (a paused v1 write survives a complete deletion)",
   "file": "ratings/rate-order.js",
-  "from": "    if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref)) return GENERIC;\n    return out.outcome === 'closed'",
+  "from": "    if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref, now)) return GENERIC;\n    return out.outcome === 'closed'",
   "to": "    return out.outcome === 'closed'",
   "command": [
    "node",
@@ -31149,8 +31149,92 @@
   "slice": "sa",
   "label": "S-A1 ratings v2 (r2): no post-commit fence on the v2 path",
   "file": "ratings/rate-order.js",
-  "from": "  await ref.transaction(V2.v2Updater({ fields, uid, now }, out));\n  if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref)) return GENERIC;\n",
+  "from": "  await ref.transaction(V2.v2Updater({ fields, uid, now }, out));\n  if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref, now)) return GENERIC;\n",
   "to": "  await ref.transaction(V2.v2Updater({ fields, uid, now }, out));\n",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-22",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r3): the redaction journal is NOT in the deletion's atomic update",
+  "file": "signup-endpoints.js",
+  "from": ", [`ratings_redact_pending/${uid}`]: { at: now } });",
+  "to": " });",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-23",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r3): the drain clears an entry whose uid still has a live rating",
+  "file": "signup-endpoints.js",
+  "from": "      if (Object.keys(left).length === 0 && now - at >= graceMs) {",
+  "to": "      if (now - at >= graceMs) {",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-24",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r3): the drain ignores the grace (a paused write can land after the entry is gone)",
+  "file": "signup-endpoints.js",
+  "from": "      if (Object.keys(left).length === 0 && now - at >= graceMs) {",
+  "to": "      if (Object.keys(left).length === 0) {",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-25",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r3): the post-commit fence does not ensure the journal entry",
+  "file": "ratings/rate-order.js",
+  "from": "  await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => (cur && typeof cur.at === 'number' ? cur : { at: now }));\n",
+  "to": "",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-26",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r3): an inline redaction failure fails the deletion",
+  "file": "signup-endpoints.js",
+  "from": "  try { await redactRatings(db, uid, historyIds); } catch (e) { console.error(`deleteAccountCore: inline rating redaction for ${uid} failed (${e && e.code ? e.code : 'error'}) — the journal drains it`); }",
+  "to": "  await redactRatings(db, uid, historyIds);",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-27",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r3): pruneResidual does not drain the journal",
+  "file": "signup-endpoints.js",
+  "from": ", ratings: await drainRatingRedactions(db, now) };",
+  "to": " };",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-28",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r3): the drain never redacts (it only checks)",
+  "file": "signup-endpoints.js",
+  "from": "      redacted += await redactRatings(db, uid, []);\n",
+  "to": "",
   "command": [
    "node",
    "ratings/rating-v2.test.js"

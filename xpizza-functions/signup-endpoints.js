@@ -192,8 +192,10 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
   const historyIds = Object.keys((await db.ref(`user_orders/${uid}`).once('value')).val() || {});
   const prior = (await db.ref(`user_private/${uid}/deleted_at`).once('value')).val();
   const at = typeof prior === 'number' ? prior : now;
-  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at } });
-  await redactRatings(db, uid, historyIds);
+  // S-A1 r3 (Codex r2): the DURABLE redaction obligation rides the SAME atomic update as the tombstone (a failed deletion leaves no trace);
+  // the inline redaction is best-effort — a failure is drained by pruneResidual's drainRatingRedactions via the owner_uid index
+  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}`]: { at: now } });
+  try { await redactRatings(db, uid, historyIds); } catch (e) { console.error(`deleteAccountCore: inline rating redaction for ${uid} failed (${e && e.code ? e.code : 'error'}) — the journal drains it`); }
   if (phoneHash) await db.ref(`phone_index/${phoneHash}`).transaction((cur) => (cur === null ? null : (cur === uid ? null : undefined)));
   await S.removeLinks(db, uid);
   await revokeSessions(db, uid, now, revoke, revokeDeadlineMs);
@@ -215,6 +217,28 @@ async function redactRatings(db, uid, historyIds = null) {
     await db.ref(`ratings_v2/${id}`).transaction(V2.deletionUpdater({}));
   }
   return ids.length;
+}
+// S-A1 r3 (Codex r2): DRAIN the durable redaction journal ratings_redact_pending/{uid} = {at}. For each entry: redact every rating the
+// owner_uid index still names for that uid, then REMOVE the entry only when (a) none remains AND (b) the grace has passed since the
+// deletion — a rateOrder paused across it (≤ its 20 s function timeout) has then committed, and is either found here by the index or
+// redacted by its own post-commit fence (which re-creates the entry). Idempotent; a failing uid is retried on the next run.
+const REDACT_GRACE_MS = 10 * 60 * 1000;
+const REDACT_BATCH = 50;
+async function drainRatingRedactions(db, now = Date.now(), { graceMs = REDACT_GRACE_MS, batch = REDACT_BATCH } = {}) {
+  const pending = (await db.ref('ratings_redact_pending').orderByChild('at').limitToFirst(batch).once('value')).val() || {};
+  let redacted = 0, cleared = 0, failed = 0;
+  for (const [uid, entry] of Object.entries(pending)) {
+    try {
+      redacted += await redactRatings(db, uid, []);
+      const left = (await db.ref('ratings_v2').orderByChild('owner_uid').equalTo(uid).once('value')).val() || {};
+      const at = entry && typeof entry.at === 'number' ? entry.at : 0;
+      if (Object.keys(left).length === 0 && now - at >= graceMs) {
+        const tx = await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => (cur && cur.at === at ? null : cur));   // only the entry we judged
+        if (tx.committed && !tx.snapshot.exists()) cleared += 1;
+      }
+    } catch (e) { failed += 1; console.error(`drainRatingRedactions: ${uid} (${e && e.code ? e.code : 'error'}) — retried next run`); }
+  }
+  return { pending: Object.keys(pending).length, redacted, cleared, failed };
 }
 // the persisted / logged reason is an ALLOWLISTED code — never an error message (it can carry PII)
 const REVOKE_REASON_CODES = new Set(['auth/user-not-found', 'auth/internal-error', 'auth/network-request-failed', 'auth/too-many-requests', 'auth/insufficient-permission', 'app/network-error']);
@@ -270,7 +294,7 @@ async function loginUid(db, { pHash, uid, now, newUid }) {
 // the periodic sweep's residual cleanup, run EVERY time (codex build r1 P2-10 — also when no profiles remain): links to
 // deleted accounts, expired challenges / tickets
 async function pruneResidual(db, now = Date.now()) {
-  return { deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db) };
+  return { deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db), ratings: await drainRatingRedactions(db, now) };
 }
 // security backlog 2026-11-01: an account tombstoned in user_private BEFORE the sweep wrote deleted_uids gets it now (its OWN
 // deleted_at), create-if-absent — so every deleted_uids-only check refuses it too. Live / revived accounts are never touched.
@@ -305,4 +329,4 @@ async function pruneDeadLinks(db) {
   return removed;
 }
 
-module.exports = { redactRatings, makeSignup, bindOtpTicket, redeemOtpTicket, refreshActivity, deleteAccountCore, revokeSessions, claimPhoneUid, loginUid, backfillDeletedUids, REVOKE_DEADLINE_MS, REVOKE_REASON_CODES, pruneDeadLinks, pruneResidual, challengeIdOf, SIGNUP_RATE, ACTIVITY_DEADLINE_MS };
+module.exports = { redactRatings, drainRatingRedactions, REDACT_GRACE_MS, makeSignup, bindOtpTicket, redeemOtpTicket, refreshActivity, deleteAccountCore, revokeSessions, claimPhoneUid, loginUid, backfillDeletedUids, REVOKE_DEADLINE_MS, REVOKE_REASON_CODES, pruneDeadLinks, pruneResidual, challengeIdOf, SIGNUP_RATE, ACTIVITY_DEADLINE_MS };
