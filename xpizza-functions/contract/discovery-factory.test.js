@@ -79,8 +79,10 @@ const CX = {
   dupkey: "const { onSchedule } = require('firebase-functions/v2/scheduler');\nfunction a() { return onSchedule({ schedule: 's' }, async () => {}); }\nmodule.exports = { f: a, f: 42 };",
   twiceExports: "const { onSchedule } = require('firebase-functions/v2/scheduler');\nfunction a() { return onSchedule({ schedule: 's' }, async () => {}); }\nexports.f = a;\nexports.f = 42;",
   mixedSurface: "const { onSchedule } = require('firebase-functions/v2/scheduler');\nfunction a() { return onSchedule({ schedule: 's' }, async () => {}); }\nexports.f = a;\nmodule.exports = {};",
+  nestedAssign: "const { onSchedule } = require('firebase-functions/v2/scheduler');\nfunction a() { return onSchedule({ schedule: 's' }, async () => {}); }\nmodule.exports = { f: a };\nif (process.env.X) module.exports = {};",
+  computedKey: "const { onSchedule } = require('firebase-functions/v2/scheduler');\nfunction a() { return onSchedule({ schedule: 's' }, async () => {}); }\nconst k = 'f';\nmodule.exports = { f: a, [k]: 42 };",
 };
-const CXRE = { overwritten: /assigned 2×/, spread: /spread/, dupkey: /repeats a key/, twiceExports: /more than once/, mixedSurface: /reassigned while exports/ };
+const CXRE = { overwritten: /assigned 2×/, spread: /spread/, dupkey: /repeats a key/, twiceExports: /more than once/, mixedSurface: /reassigned while exports/, nestedAssign: /not a top-level statement/, computedKey: /computed key/ };
 for (const [nm, src] of Object.entries(CX)) {
   const d2 = fs.mkdtempSync(path.join(os.tmpdir(), `disc-cx-${nm}-`));
   fs.writeFileSync(path.join(d2, 'm.js'), src); fs.writeFileSync(path.join(d2, 'index.js'), "exports.x = require('./m').f();");
@@ -90,7 +92,7 @@ for (const [nm, src] of Object.entries(CX)) {
   assert.ok(u && CXRE[nm].test(u.why), `${nm}: unclassified with the right reason (got ${u && u.why})`);
   fs.rmSync(d2, { recursive: true, force: true });
 }
-ok(`FAIL CLOSED on the export SURFACE: module.exports reassigned (codex r2 #1), a spread (codex r2 #2), a repeated key, exports.f twice, module.exports + exports.* mixed (${Object.keys(CX).length} counterexamples)`);
+ok(`FAIL CLOSED on the export SURFACE: module.exports reassigned (codex r2 #1), a spread (codex r2 #2), a repeated key, exports.f twice, module.exports + exports.* mixed, a NESTED export assignment, a COMPUTED key (${Object.keys(CX).length} counterexamples)`);
 
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(`\ndiscovery-factory: OK (${n})`);
