@@ -1,20 +1,21 @@
 'use strict';
-// S5 — rateOrder: the «Entregado» one-tap thumb (server). index.js re-exports it on ONE line (inverse-fold invariant:
-// tools/s5r-inverse.js). The proof is the SIGNED-IN CUSTOMER: the X-Firebase-ID-Token (customer:true, not tombstoned — the
-// same verification createOrder / quoteOrder apply) whose uid is the order's customer_uid. No rate limiter: an account can
-// write at most ONE record per own fulfilled order, so abuse is bounded by construction (advisor r1 redesign).
-//
-//   POST { order_id, thumb: "up"|"down" }   + header X-Firebase-ID-Token
-//   200 { ok:true }                       recorded — or ANY repeat on an already-rated order (never reveals the stored thumb)
-//   409 { ok:false, error:'not_fulfilled' }  the customer's OWN order, not yet delivered / completed
-//   403 { ok:false, error:'not_allowed' }    not signed in, not a customer, not your order, unknown order, malformed body —
-//                                            ONE generic refusal
-// Reads deleted_uids/{uid} and orders/{order_id}; writes ONLY order_ratings/{order_id} (create-if-absent).
+// S5 → S-A1 — rateOrder: the order's SIGNED-IN customer rates it (server). index.js re-exports it on ONE line (inverse-fold invariant:
+// tools/s5r-inverse.js). The proof is the X-Firebase-ID-Token (customer:true, not tombstoned) whose uid is the order's customer_uid.
+// S-A1 (NOTE-S-A-ratings-v2-build, approved 2026-11-01): EVERY write is ratings_v2/{order_id} (one node, one transaction —
+// ratings/rating-v2.js); order_ratings is never written again (prod held zero v1 records).
+//   POST { order_id, thumb:"up"|"down" }   legacy v1 (old clients): legacy_thumb, WRITE-ONCE; status-based eligibility, as before
+//   POST { order_id, store?, dishes?, delivery?, comment? }   v2 (rich): the 7-day window from fulfilled_at; dish votes keyed by the
+//        store's CANONICAL dish id and validated against the member's OWN recipe (user_orders/{uid}/{id}.items keys) mapped through the
+//        ONE resolver (configure({ resolveContext })); an unusable context ⇒ the dish votes are dropped, the rest recorded
+//   POST { order_id, action:"withdraw" }   live → withdrawn
+//   200 { ok:true[, dishes:'unavailable'] } | 409 { ok:false, error: not_fulfilled | window_closed | not_rated } |
+//   400 { ok:false, error:'dish_not_purchased' } | 403 { ok:false, error:'not_allowed' } (ONE generic refusal)
 const { onRequest } = require('firebase-functions/v2/https');
 const { getDatabase } = require('firebase-admin/database');
 const { getAuth } = require('firebase-admin/auth');
 const { attributionUid } = require('../create-order-build');
 const R = require('./rating-core');
+const V2 = require('./rating-v2');
 
 const GENERIC = { httpStatus: 403, body: { ok: false, error: 'not_allowed' } };
 
@@ -28,18 +29,55 @@ async function customerUidOf(db, idToken, verifyIdToken) {
   } catch (_) { return null; }
 }
 
-async function rateOrderCore(db, { body, idToken, now, verifyIdToken }) {
-  const req = R.parseRequest(body);
+// the ONE resolver (index.js wires it: contextOfTables(await resolvePricingTables(rid))); unset ⇒ dish votes unavailable
+let DEPS = { resolveContext: null };
+function configure(d) { DEPS = { ...DEPS, ...d }; }
+const CB = () => require('../catalog/canonical-binding');
+
+// the member's purchased dishes as CANONICAL ids: their own recipe keys → the store's identity map. null = unresolvable now.
+async function purchasedDishIds(db, { uid, orderId, rid, resolveContext }) {
+  if (typeof resolveContext !== 'function') return null;
+  let map = null;
+  try { map = CB().identityMap(await resolveContext(rid)); } catch (_) { map = null; }
+  if (!map) return null;
+  const entry = (await db.ref(`user_orders/${uid}/${orderId}`).get()).val();
+  const keys = entry && Array.isArray(entry.items) ? entry.items.map((l) => l && l.key).filter((k) => typeof k === 'string') : [];
+  return new Set(keys.map((k) => map.dish.get(k)).filter(Boolean));
+}
+
+async function rateOrderCore(db, { body, idToken, now, verifyIdToken, resolveContext = DEPS.resolveContext }) {
+  const req = V2.parseRequest(body);
   if (!req.ok) return GENERIC;
   const uid = await customerUidOf(db, idToken, verifyIdToken);
   if (!uid) return GENERIC;
   const order = (await db.ref(`orders/${req.orderId}`).get()).val();
-  const why = R.eligibility(order, uid);
-  if (why === 'not_allowed') return GENERIC;
-  if (why) return { httpStatus: 409, body: { ok: false, error: why } };
-  const rec = R.ratingRecord(req.thumb, order.restaurant_id, now);
-  await db.ref(`order_ratings/${req.orderId}`).transaction((cur) => (cur === null ? rec : undefined));
-  return { httpStatus: 200, body: { ok: true } };   // created, or already rated (first tap final) — the same answer
+  if (!order || order.customer_uid !== uid) return GENERIC;            // not theirs / unknown — never revealing which
+  const ref = db.ref(`ratings_v2/${req.orderId}`);
+  const out = {};
+  if (req.kind === 'v1') {
+    const why = R.eligibility(order, uid);                                // status-based, exactly as before
+    if (why === 'not_allowed') return GENERIC;
+    if (why) return { httpStatus: 409, body: { ok: false, error: why } };
+    await ref.transaction(V2.v1Updater({ thumb: req.thumb, restaurantId: order.restaurant_id, uid, now }, out));
+    return out.outcome === 'closed' ? GENERIC : { httpStatus: 200, body: { ok: true } };   // recorded or kept — the same answer
+  }
+  if (req.kind === 'withdraw') {
+    await ref.transaction(V2.withdrawUpdater({ now }, out));
+    if (out.outcome === 'withdrawn' || out.outcome === 'kept') return { httpStatus: 200, body: { ok: true } };
+    return { httpStatus: 409, body: { ok: false, error: 'not_rated' } };
+  }
+  const fields = { ...req.fields };
+  let dishesUnavailable = false;
+  if (fields.dishes && Object.keys(fields.dishes).length) {
+    const bought = await purchasedDishIds(db, { uid, orderId: req.orderId, rid: order.restaurant_id, resolveContext });
+    if (!bought) { delete fields.dishes; dishesUnavailable = true; }
+    else if (Object.keys(fields.dishes).some((id) => !bought.has(id))) return { httpStatus: 400, body: { ok: false, error: 'dish_not_purchased' } };
+  }
+  if (!Object.keys(fields).length) return { httpStatus: 200, body: { ok: true, dishes: 'unavailable' } };   // only dish votes, none resolvable
+  await ref.transaction(V2.v2Updater({ fields, uid, now }, out));
+  if (out.outcome === 'recorded') return { httpStatus: 200, body: { ok: true, ...(dishesUnavailable ? { dishes: 'unavailable' } : {}) } };
+  if (out.outcome === 'closed') return GENERIC;
+  return { httpStatus: 409, body: { ok: false, error: out.outcome } };   // not_fulfilled | window_closed
 }
 
 const rateOrder = onRequest({ region: 'us-central1', cors: true, timeoutSeconds: 20, memory: '256MiB', maxInstances: 5 }, async (req, res) => {
@@ -53,4 +91,4 @@ const rateOrder = onRequest({ region: 'us-central1', cors: true, timeoutSeconds:
   }
 });
 
-module.exports = { rateOrder, rateOrderCore };
+module.exports = { rateOrder, rateOrderCore, configure, purchasedDishIds };

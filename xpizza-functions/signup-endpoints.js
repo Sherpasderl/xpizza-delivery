@@ -187,6 +187,7 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
     if (typeof la === 'number' && la >= sweepCutoff) return false;   // a recent (pre-gate, Google-era) activity still spares it
     if ((await S.sweepClaim(db, uid, sweepCutoff, now)) !== 'claimed') return false;
   }
+  await redactRatings(db, uid);   // S-A1: BEFORE the removals (user_orders names the account's orders); idempotent on a retry
   const prior = (await db.ref(`user_private/${uid}/deleted_at`).once('value')).val();
   const at = typeof prior === 'number' ? prior : now;
   await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at } });
@@ -194,6 +195,18 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
   await S.removeLinks(db, uid);
   await revokeSessions(db, uid, now, revoke, revokeDeadlineMs);
   return true;
+}
+// S-A1 (PLAN §S-A (d)): account deletion REDACTS the account's ratings IN PLACE — ratings_v2/{orderId} for every order in its own
+// history gets state=deleted (terminal) with comment + owner_uid nulled, ONE transaction per node, so the vote leaves every aggregate
+// and the node remains only as the deletion fence. Runs before the history is removed; re-running is a no-op (already deleted).
+async function redactRatings(db, uid) {
+  const ids = Object.keys((await db.ref(`user_orders/${uid}`).once('value')).val() || {});
+  const V2 = require('./ratings/rating-v2');
+  for (const id of ids) {
+    if (!V2.ORDER_ID_RE.test(id)) continue;
+    await db.ref(`ratings_v2/${id}`).transaction(V2.deletionUpdater({}));
+  }
+  return ids.length;
 }
 // the persisted / logged reason is an ALLOWLISTED code — never an error message (it can carry PII)
 const REVOKE_REASON_CODES = new Set(['auth/user-not-found', 'auth/internal-error', 'auth/network-request-failed', 'auth/too-many-requests', 'auth/insufficient-permission', 'app/network-error']);
@@ -284,4 +297,4 @@ async function pruneDeadLinks(db) {
   return removed;
 }
 
-module.exports = { makeSignup, bindOtpTicket, redeemOtpTicket, refreshActivity, deleteAccountCore, revokeSessions, claimPhoneUid, loginUid, backfillDeletedUids, REVOKE_DEADLINE_MS, REVOKE_REASON_CODES, pruneDeadLinks, pruneResidual, challengeIdOf, SIGNUP_RATE, ACTIVITY_DEADLINE_MS };
+module.exports = { redactRatings, makeSignup, bindOtpTicket, redeemOtpTicket, refreshActivity, deleteAccountCore, revokeSessions, claimPhoneUid, loginUid, backfillDeletedUids, REVOKE_DEADLINE_MS, REVOKE_REASON_CODES, pruneDeadLinks, pruneResidual, challengeIdOf, SIGNUP_RATE, ACTIVITY_DEADLINE_MS };

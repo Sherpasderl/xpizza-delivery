@@ -7828,4 +7828,15 @@ exports.getMyOrders = onRequest(
   { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
   require('./my-orders').makeMyOrders({ getDatabase, getAuth, checkRateLimit, resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) }).getMyOrders,
 );
+// S-A1 (NOTE-S-A-ratings-v2-build): the rating FULFILMENT stamp — ratings_v2/{id}.fulfilled_at set-if-absent at delivered / completed
+// (members AND guests); a SEPARATE trigger (no hunk inside mirrorStatusToHistory, so no new index.js inverse); fail-open on the order.
+exports.stampRatingFulfilment = onValueWritten(
+  { ref: '/orders/{orderId}/status', region: 'us-central1' },
+  async (event) => {
+    try { await require('./ratings/rating-fulfilment').stampRatingFulfilment(getDatabase(), { orderId: event.params.orderId, status: event.data.after.val(), now: Date.now() }); }
+    catch (e) { console.error('stampRatingFulfilment', e && e.message); }
+  },
+);
+// S-A1: rateOrder's dish votes resolve through the ONE resolver (the expression getMyOrders and the live displayLabel path use)
+require('./ratings/rate-order').configure({ resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) });
 /* checkout:end endpoints */
