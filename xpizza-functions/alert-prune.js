@@ -43,8 +43,8 @@ function orderStillFlagged(order, alert) {
 // payment dismisses it, whatever the order's state (on a cancelled order by design).
 // A «refund confirmed — release points» escalation is a points OBLIGATION, not an order flag: it stays until the staff
 // member who releases the points dismisses it, whatever the order's state (the order is cancelled/refunded by design).
-// (assembly composition: both lanes' never-auto-prune alert types — extra-pay's money obligation + P5a's points obligation)
-const NEVER_AUTO_PRUNE = new Set(['payment_extra_payment_received', 'payment_refund_confirmed_release_points']);
+// (assembly composition: both lanes' never-auto-prune alert types — extra-pay's money obligations (received + quarantined) + P5a's points obligation)
+const NEVER_AUTO_PRUNE = new Set(['payment_extra_payment_received', 'payment_extra_payment_quarantined', 'payment_refund_confirmed_release_points']);
 function alertsToPrune(alerts, orders) {
   const prune = [];
   for (const [key, alert] of Object.entries(alerts || {})) {

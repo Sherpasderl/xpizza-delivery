@@ -48,7 +48,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "alert-prune.js",
-  "now": "// Non-order-scoped alerts (no detail orderId/breaches) are never auto-dismissed here.\n// An extra-payment alert is a MONEY obligation, not an order flag: it stays until the person who reviews / returns the second\n// payment dismisses it, whatever the order's state (on a cancelled order by design).\nconst NEVER_AUTO_PRUNE = new Set(['payment_extra_payment_received']);\nfunction alertsToPrune(alerts, orders) {\n",
+  "now": "// Non-order-scoped alerts (no detail orderId/breaches) are never auto-dismissed here.\n// An extra-payment alert is a MONEY obligation, not an order flag: it stays until the person who reviews / returns the second\n// payment dismisses it, whatever the order's state (on a cancelled order by design).\nconst NEVER_AUTO_PRUNE = new Set(['payment_extra_payment_received', 'payment_extra_payment_quarantined']);\nfunction alertsToPrune(alerts, orders) {\n",
   "was": "// Non-order-scoped alerts (no detail orderId/breaches) are never auto-dismissed here.\nfunction alertsToPrune(alerts, orders) {\n"
  },
  {

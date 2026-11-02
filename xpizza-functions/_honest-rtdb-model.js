@@ -9,7 +9,7 @@
 //     the server value — and a concurrent write landing while the function ran is a CONFLICT that re-runs it too (up to 25×).
 // Optional hooks let a test interleave work deterministically: beforeRead(path, api), beforeTx(path, api),
 // beforeWrite(path, value, api); now() is the clock a {'.sv':'timestamp'} write resolves to.
-const RESERVED = /[.#$[\]/]/;
+const RESERVED = /[.#$[\]/\u0000-\u001f\u007f]/;   // as the Admin SDK: . # $ [ ] / and ASCII control characters
 
 function validateKeys(v, where, seed = false) {
   if (v === undefined) { if (seed) return; throw new Error(`undefined value at ${where} (RTDB refuses undefined)`); }
@@ -61,7 +61,7 @@ function makeHonestDb(initial = {}, hooks = {}) {
   const snap = (v) => { const frozen = clone(v); return { val: () => clone(frozen), exists: () => frozen != null }; };
   const api = {};
   const ref = (p = '') => {
-    if (/[.#$[\]]/.test(p)) throw new Error(`invalid RTDB path "${p}"`);   // as the Admin SDK: a path with . # $ [ ] throws at ref(), read or write
+    if (/[.#$[\]\u0000-\u001f\u007f]/.test(p)) throw new Error(`invalid RTDB path "${p}"`);   // as the Admin SDK: a path with . # $ [ ] or a control character throws at ref(), read or write
     const r = {
       async once() { if (hooks.beforeRead) await hooks.beforeRead(p, api); return snap(getAt(p)); },
       async get() { return r.once(); },
