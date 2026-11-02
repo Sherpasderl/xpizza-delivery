@@ -111,6 +111,32 @@ async function cell(name, fn) { try { await fn(); console.log(`  ✓ ${name}`); 
     assert.throws(() => T.writeCapture(f, capture), /EEXIST/, `${L}: an existing capture is never overwritten (it is the pre-cut-over evidence)`);
   });
 
+  // The CLI settles its mode and file BEFORE any client. Spawned with --project but a NONEXISTENT credential and no emulator
+  // variables (the tool refuses those): even a mis-wired run cannot read anything — it would stop at the credential instead.
+  await cell('COV-CLI-REFUSES-BEFORE-CLIENT', async () => {
+    const L = 'COV-CLI-REFUSES-BEFORE-CLIENT';
+    const { spawnSync } = require('child_process');
+    const cli = path.join(__dirname, '..', 'tools', 'identity-usable-check.js');
+    const env = { ...process.env, GOOGLE_APPLICATION_CREDENTIALS: '/nonexistent/never' }; delete env.GOOGLE_CLOUD_PROJECT; delete env.GCLOUD_PROJECT;
+    for (const k of ['FIRESTORE_EMULATOR_HOST', 'FIREBASE_DATABASE_EMULATOR_HOST', 'FIREBASE_AUTH_EMULATOR_HOST', 'FIREBASE_STORAGE_EMULATOR_HOST', 'STORAGE_EMULATOR_HOST', 'FIREBASE_EMULATOR_HUB']) delete env[k];
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cov-cli-'));
+    const existing = path.join(dir, 'exists.json'); fs.writeFileSync(existing, '{}');
+    const junk = path.join(dir, 'junk.json'); fs.writeFileSync(junk, JSON.stringify({ kind: 'identity-coverage-capture', v: 1, restaurants: {} }));
+    for (const [args, re] of [
+      [['--capture=x.json'], /--capture= is not accepted/],
+      [['--rid', 'tb_x'], /unrecognised argument/],
+      [['--capture', existing], /already exists/],
+      [['--against', path.join(dir, 'absent.json')], /cannot be read/],
+      [['--against', junk], /not a valid identity coverage capture/],
+    ]) {
+      const r = spawnSync(process.execPath, [cli, '--project', 'xpizza-delivery', ...args], { env, encoding: 'utf8', timeout: 30000 });
+      assert.strictEqual(r.status, 2, `${L}: ${JSON.stringify(args)} exits 2 (got ${r.status}) ${String(r.stderr).replace(/\s+/g, ' ').slice(0, 160)}`);
+      assert.match(r.stderr, re, `${L}: ${JSON.stringify(args)} names its cause`);
+      assert.ok(!/credential|stage=init/i.test(`${r.stdout}${r.stderr}`), `${L}: ${JSON.stringify(args)} stopped BEFORE any client`);
+    }
+    assert.strictEqual(fs.readFileSync(existing, 'utf8'), '{}', `${L}: the existing capture is untouched`);
+  });
+
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nidentity-coverage: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.message); process.exit(1); });

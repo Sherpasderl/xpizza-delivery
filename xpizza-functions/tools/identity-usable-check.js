@@ -4,6 +4,11 @@
 // It runs buildIdentityManifest's judgement (content integrity intact + complete + registry-confirmed, unexpired) per
 // restaurant and prints ONLY booleans and counts — never a label, key or id.
 //   node tools/identity-usable-check.js --project xpizza-delivery
+//   node tools/identity-usable-check.js --project xpizza-delivery --capture <file>   before a certification's one-way step
+//   node tools/identity-usable-check.js --project xpizza-delivery --against <file>   after it: coverage against that capture
+// The capture holds, per restaurant, the active version, its seq and one sha256 per catalog object — no catalog text — and is
+// written once (an existing file is never overwritten: it is the pre-cut-over evidence). It is the only thing this tool writes,
+// and only to the local disk.
 // What «eligible» does and does NOT mean: the request side ALSO requires the served version/seq provenance and the served
 // prices to match the context (catalog/context-source.js project()), plus a warm resolve on the serving instance — so an
 // eligible catalog makes dish_id resolvable, it does not guarantee a given request attaches it.
@@ -14,6 +19,8 @@
 //     transactions are allowed ONLY with { readOnly: true } (the read path uses them);
 //   - the Firestore handle the judgement receives is a read-only facade as well (defence in depth).
 // Any restaurant whose check errors makes the run exit 1.
+const crypto = require('crypto');
+const fs = require('fs');
 const net = require('net');
 const tls = require('tls');
 const dns = require('dns');
@@ -210,13 +217,110 @@ function failureLine(e, stage) {
   return `identity-usable-check FAILED — stage=${st} class=${cls}${REMEDY[cls] ? ` — ${REMEDY[cls]}` : ''}`;
 }
 
-module.exports = { checkIdentityUsable, denyAllWrites, readOnlyFirestore, restrictEgress, refuseEmulatorConfig, googleHost, egressAllowed, noteResolved, hostClass, classifyError, failureLine, render };
+// ── Coverage against a CAPTURED catalog (PLAN-brand-agnostic-convergence §3-E) ───────────────────────────────────
+// Rows map 1:1 to the active version's objects and carry a cid only when the catalog is usable, so a ratio taken against
+// the live catalog alone is 100% the moment it is eligible. The question certification must answer is narrower: every
+// object that existed BEFORE the one-way step now carries an id, none vanished or appeared, and the version did not move.
+const CAPTURE_KIND = 'identity-coverage-capture';
+const objectHash = (kind, key) => crypto.createHash('sha256').update(`${kind}\0${key}`).digest('hex');
+const HEX64 = /^[0-9a-f]{64}$/;
+
+async function captureCatalog({ db, listIds, verifier, build, now = Date.now }) {
+  const builder = build || require('../catalog/identity-manifest').buildIdentityManifest;
+  const ids = await listIds();
+  const rids = (Array.isArray(ids) ? ids : []).filter((r) => typeof r === 'string' && RID_RE.test(r)).sort();
+  const restaurants = {}; const failed = [];
+  for (const rid of rids) {
+    let r;
+    try { r = await builder({ db, rid, verifier }); } catch (e) { failed.push({ rid, reason: 'error' }); continue; }
+    if (!r || r.ok !== true || !r.node || !Array.isArray(r.node.rows)) { failed.push({ rid, reason: REASONS.has(r && r.reason) ? r.reason : 'other' }); continue; }
+    restaurants[rid] = { versionId: r.node.versionId, seq: r.node.seq, objects: r.node.rows.map((x) => objectHash(x.kind, x.key)).sort() };
+  }
+  return { kind: CAPTURE_KIND, v: 1, captured_at: new Date(now()).toISOString(), restaurants, failed };
+}
+
+function validCapture(c) {
+  if (!c || c.kind !== CAPTURE_KIND || c.v !== 1 || !c.restaurants || typeof c.restaurants !== 'object') return false;
+  const rids = Object.keys(c.restaurants);
+  if (!rids.length) return false;
+  return rids.every((rid) => {
+    const x = c.restaurants[rid];
+    return RID_RE.test(rid) && x && typeof x.versionId === 'string' && x.versionId && Array.isArray(x.objects) && x.objects.length > 0
+      && x.objects.every((h) => typeof h === 'string' && HEX64.test(h)) && new Set(x.objects).size === x.objects.length;
+  });
+}
+
+async function checkAgainstCapture({ db, verifier, build, capture }) {
+  if (!validCapture(capture)) throw Object.assign(new Error('capture_invalid'), { iucStage: 'capture', iucClass: 'CAPTURE_INVALID' });
+  const builder = build || require('../catalog/identity-manifest').buildIdentityManifest;
+  const rows = [];
+  for (const rid of Object.keys(capture.restaurants).sort()) {
+    const cap = capture.restaurants[rid];
+    const total = cap.objects.length;
+    let r;
+    try { r = await builder({ db, rid, verifier }); } catch (e) { rows.push({ rid, pass: false, reason: 'error', total }); continue; }
+    if (!r || r.ok !== true || !r.node || !Array.isArray(r.node.rows)) { rows.push({ rid, pass: false, reason: REASONS.has(r && r.reason) ? r.reason : 'other', total }); continue; }
+    const now = new Map(r.node.rows.map((x) => [objectHash(x.kind, x.key), typeof x.cid === 'string' && x.cid !== '']));
+    const before = new Set(cap.objects);
+    const covered = cap.objects.filter((h) => now.get(h) === true).length;
+    const missing = cap.objects.filter((h) => !now.has(h)).length;
+    const added = [...now.keys()].filter((h) => !before.has(h)).length;
+    const eligible = r.usableAsIdentity === true;
+    const versionUnchanged = r.node.versionId === cap.versionId;
+    rows.push({ rid, pass: eligible && versionUnchanged && missing === 0 && added === 0 && covered === total, eligible, version_unchanged: versionUnchanged, covered, total, missing, added });
+  }
+  return { rows };
+}
+
+function renderCoverage({ rows }) {
+  const lines = ['rid                      pass   eligible  version_unchanged  covered/total  missing  added  reason'];
+  for (const r of rows) {
+    lines.push(`${r.rid.padEnd(24)} ${String(r.pass).padEnd(6)} ${String(r.eligible ?? '-').padEnd(9)} ${String(r.version_unchanged ?? '-').padEnd(18)} ${`${r.covered ?? '-'}/${r.total}`.padEnd(14)} ${String(r.missing ?? '-').padEnd(8)} ${String(r.added ?? '-').padEnd(6)} ${r.reason || '-'}`);
+  }
+  lines.push('pass = identity eligible AND the version unchanged AND every captured object present WITH an id AND none added.');
+  return lines.join('\n');
+}
+
+// Written ONCE: the capture is the pre-cut-over evidence, so an existing file is never replaced.
+function writeCapture(file, capture) { fs.writeFileSync(file, `${JSON.stringify(capture, null, 1)}\n`, { flag: 'wx' }); }
+
+// The CLI's arguments: { mode: 'check' } | { mode: 'capture'|'against', file } | { refused }. --project is the guard's.
+function parseCliArgs(argv) {
+  let mode = 'check'; let file = null; let modes = 0;
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (a === '--project') { i += 1; continue; }
+    if (a.startsWith('--project=')) continue;
+    if (a === '--capture' || a === '--against') {
+      const v = argv[i + 1]; i += 1;
+      if (typeof v !== 'string' || v === '' || v.startsWith('-')) return { refused: `${a} needs a file (write "${a} <file>")` };
+      modes += 1; mode = a.slice(2); file = v; continue;
+    }
+    if (a.startsWith('--capture=') || a.startsWith('--against=')) return { refused: `${a.split('=')[0]}= is not accepted — write "${a.split('=')[0]} <file>"` };
+    return { refused: `unrecognised argument "${a}"` };
+  }
+  if (modes > 1) return { refused: 'give ONE of --capture / --against' };
+  return mode === 'check' ? { mode } : { mode, file };
+}
+
+module.exports = { checkIdentityUsable, captureCatalog, checkAgainstCapture, renderCoverage, writeCapture, parseCliArgs, denyAllWrites, readOnlyFirestore, restrictEgress, refuseEmulatorConfig, googleHost, egressAllowed, noteResolved, hostClass, classifyError, failureLine, render };
 
 if (require.main === module) {
   try { refuseEmulatorConfig(); restrictEgress(); denyAllWrites(); }                 // BEFORE the project guard touches any client
   catch (e) { console.error(`\n🔴 REFUSED — ${String(e && e.message).replace(/^identity-usable-check: /, 'identity-usable-check: ')}\n`); process.exit(2); }
   const { requireProject } = require('./require-project');
   const PROJECT_ID = requireProject({ requireFlag: true });
+  // The mode and its file are settled BEFORE any client: a bad argument, an existing capture or an unreadable/invalid one
+  // refuses with nothing read.
+  const args = parseCliArgs(process.argv.slice(2));
+  const stop = (why) => { console.error(`\n🔴 REFUSED — identity-usable-check: ${why}\n`); process.exit(2); };
+  if (args.refused) stop(args.refused);
+  let capture = null;
+  if (args.mode === 'capture' && fs.existsSync(args.file)) stop('the capture file already exists — it is the pre-cut-over evidence and is never overwritten');
+  if (args.mode === 'against') {
+    try { capture = JSON.parse(fs.readFileSync(args.file, 'utf8')); } catch (_) { stop('the capture file cannot be read as JSON'); }
+    if (!validCapture(capture)) stop('the capture file is not a valid identity coverage capture');
+  }
   const admin = require('firebase-admin');
   const { createCatalogVerifier } = require('../catalog/catalog-verifier');
   const { makeFirestoreRegistryReader } = require('../catalog/restaurant-registry');
@@ -226,7 +330,23 @@ if (require.main === module) {
     db = readOnlyFirestore(admin.firestore());
     verifier = createCatalogVerifier({ db, log: () => {} });   // the verifier's own diagnostics are silenced (they can name ids)
   } catch (e) { console.error(failureLine(e, 'init')); process.exit(1); }
-  checkIdentityUsable({ db, listIds: makeFirestoreRegistryReader(db), verifier })
-    .then((r) => { console.log(render(r)); process.exit(r.errored ? 1 : 0); })
-    .catch((e) => { console.error(failureLine(e, 'builder')); process.exit(1); });   // a fixed stage + class only — never the message
+  if (args.mode === 'capture') {
+    captureCatalog({ db, listIds: makeFirestoreRegistryReader(db), verifier })
+      .then((c) => {
+        for (const f of c.failed) console.error(`${f.rid}: NOT captured — ${f.reason}`);
+        if (c.failed.length) { console.error('nothing written: every registered restaurant must build before a capture is taken (exit 1)'); process.exit(1); }
+        writeCapture(args.file, c);
+        for (const [rid, x] of Object.entries(c.restaurants)) console.log(`${rid}: captured ${x.objects.length} objects (seq ${x.seq})`);
+        process.exit(0);
+      })
+      .catch((e) => { console.error(failureLine(e, 'capture')); process.exit(1); });
+  } else if (args.mode === 'against') {
+    checkAgainstCapture({ db, verifier, capture })
+      .then((r) => { console.log(renderCoverage(r)); process.exit(r.rows.every((x) => x.pass) ? 0 : 1); })
+      .catch((e) => { console.error(failureLine(e, 'coverage')); process.exit(1); });
+  } else {
+    checkIdentityUsable({ db, listIds: makeFirestoreRegistryReader(db), verifier })
+      .then((r) => { console.log(render(r)); process.exit(r.errored ? 1 : 0); })
+      .catch((e) => { console.error(failureLine(e, 'builder')); process.exit(1); });   // a fixed stage + class only — never the message
+  }
 }
