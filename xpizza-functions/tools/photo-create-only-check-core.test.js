@@ -3,7 +3,7 @@
 // against its own loopback server (the generation-scoped wire shape). The CLI is tools/photo-create-only-check.js.
 // Run: node tools/photo-create-only-check-core.test.js
 const assert = require('assert');
-const { parseArgs, refuseEmulatorEnv, dotenvLines, readBucketParams, dryRunMessage, resolveTargets, checkTarget, makeGenerationOps, runCheck, acceptancePath, pinPath, runPinCheck, combineExit, deletePinPath, runDeletePinCheck } = require('./photo-create-only-check-core');
+const { parseArgs, refuseEmulatorEnv, dryRunMessage, resolveTargets, checkTarget, makeGenerationOps, runCheck, acceptancePath, pinPath, runPinCheck, combineExit, deletePinPath, runDeletePinCheck } = require('./photo-create-only-check-core');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -54,41 +54,23 @@ const run = (b) => runCheck({ store: b.store, gens: b.gens, randomHex: () => HEX
   assert.ok(/FIREBASE_STORAGE_EMULATOR_HOST/.test(refuseEmulatorEnv({ FIREBASE_STORAGE_EMULATOR_HOST: '127.0.0.1:9199' }) || ''), 'E4CLI-EMULATOR-REFUSED FIREBASE_STORAGE_EMULATOR_HOST');
   ok('args: --bucket required, unknown flags refused, --yes to write; either storage-emulator variable → refused');
 
-  // ── 2. bucket identities: production's resolvers over the project's deploy dotenv; ONLY the two keys retained; both required ──
+  // ── 2. bucket identities: production's resolver over the COMMITTED photos config for the explicit project (no dotenv, no shell) ──
   {
-    const DECOY = 'tb-decoy-secret-value';
-    const files = { '/fn/.env': `PHOTOS_PRIVATE_BUCKET=tb-priv-general\nSECRET_X=${DECOY}\nPHOTOS_PUBLIC_BUCKET="tb-pub"\n`, '/fn/.env.tb-proj': `SECRET_X=${DECOY}-2\nPHOTOS_PRIVATE_BUCKET='tb-priv'\n` };
-    const seenLines = [];
-    const lines = function* (p) { if (files[p] === undefined) throw Object.assign(new Error('nope'), { code: 'ENOENT' }); for (const l of files[p].split('\n')) { seenLines.push(l); yield l; } };
-    const params = readBucketParams('/fn', 'tb-proj', { lines });
-    assert.deepStrictEqual(params, { PHOTOS_PRIVATE_BUCKET: 'tb-priv', PHOTOS_PUBLIC_BUCKET: 'tb-pub' }, 'E4CLI-DOTENV-ONLY-THE-TWO-KEYS (.env.<project> overrides .env; quotes stripped)');
-    assert.ok(seenLines.some((l) => l.includes(DECOY)), 'premise: the decoy line was scanned');
-    assert.ok(!JSON.stringify(params).includes(DECOY) && !JSON.stringify(params).includes('SECRET_X'), 'E4CLI-DOTENV-DECOY-NEVER-RETAINED');
-    const { privateBucket, publicBucket } = resolveTargets({ projectId: 'tb-proj', params });
-    const msg = dryRunMessage({ projectId: 'tb-proj', privateBucket, publicBucket, bucket: 'tb-priv' });
+    const C2 = require('../photos/photos-config');
+    const loaded = (over = {}) => C2.parseLoaded(() => ({ schema: 1, public_bucket: { 'tb-proj': 'tb-pub' }, private_bucket: { 'tb-proj': 'tb-priv' }, ...over }));
+    assert.deepStrictEqual(resolveTargets({ projectId: 'tb-proj', env: {}, loaded: loaded() }), { privateBucket: 'tb-priv', publicBucket: 'tb-pub', reason: null }, 'E4CLI-RESOLVE-BOTH (the committed config)');
+    const notYet = resolveTargets({ projectId: 'tb-proj', env: {}, loaded: loaded({ public_bucket: { 'tb-proj': '' } }) });
+    assert.deepStrictEqual(notYet, { privateBucket: 'tb-priv', publicBucket: null, reason: null }, 'E4CLI-RESOLVE-PUBLIC-NOT-YET');
+    assert.ok(/not configured/.test(checkTarget({ bucket: 'tb-priv', ...notYet }) || ''), 'E4CLI-TARGET-PUBLIC-NOT-CONFIGURED-REFUSED (until launch)');
+    const noPriv = resolveTargets({ projectId: 'tb-proj', env: {}, loaded: loaded({ private_bucket: {} }) });
+    assert.deepStrictEqual(noPriv, { privateBucket: null, publicBucket: null, reason: 'photos_private_bucket_unknown' }, 'E4CLI-RESOLVE-NO-PRIVATE-NO-GUESS');
+    assert.ok(/refused this project \(photos_private_bucket_unknown\)/.test(checkTarget({ bucket: 'tb-priv', ...noPriv }) || ''), 'E4CLI-TARGET-CONFIG-REFUSAL-REPORTED');
+    assert.strictEqual(resolveTargets({ projectId: 'tb-proj', env: { GCLOUD_PROJECT: 'tb-proj-other' }, loaded: loaded() }).reason, 'photos_project_conflict', 'E4CLI-RESOLVE-SHELL-PROJECT-CONFLICT');
+    assert.strictEqual(resolveTargets({ projectId: 'tb-proj', env: { PHOTOS_PRIVATE_BUCKET: 'tb-poison', PHOTOS_PUBLIC_BUCKET: 'tb-poison-2' }, loaded: loaded() }).privateBucket, 'tb-priv', 'E4CLI-LEGACY-ENV-IGNORED');
+    const msg = dryRunMessage({ projectId: 'tb-proj', privateBucket: 'tb-priv', publicBucket: 'tb-pub', bucket: 'tb-priv' });
     assert.ok(msg.includes('tb-priv') && msg.includes('tb-pub'), 'E4CLI-DRY-RUN-NAMES-THE-BUCKETS (names, not secrets — the owner confirms the target)');
-    assert.ok(!msg.includes(DECOY) && !msg.includes('SECRET_X'), 'E4CLI-DRY-RUN-DECOY-NEVER-PRINTED');
-    assert.deepStrictEqual(readBucketParams('/none', 'tb-proj', { lines }), {}, 'E4CLI-DOTENV-ABSENT-IS-EMPTY');
-    assert.throws(() => readBucketParams('/fn', 'tb-proj', { lines: () => { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); } }), /EACCES/, 'E4CLI-DOTENV-READ-ERROR-PROPAGATES');
-    assert.deepStrictEqual(resolveTargets({ projectId: 'tb-proj', params }), { privateBucket: 'tb-priv', publicBucket: 'tb-pub' }, 'E4CLI-RESOLVE-BOTH');
-    assert.deepStrictEqual(resolveTargets({ projectId: 'tb-proj', params: {} }), { privateBucket: 'tb-proj.firebasestorage.app', publicBucket: null }, 'E4CLI-RESOLVE-PRODUCTION-DEFAULTS');
-  }
-  {
-    // the REAL line reader on a real temp dotenv bigger than one chunk, keys straddling chunk boundaries, CRLF, no trailing newline
-    const fs = require('fs'); const os = require('os'); const path = require('path');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-e4cli-'));
-    try {
-      const pad = (n) => `TB_PAD_${n}=${'x'.repeat(60)}\r\n`;
-      let body = ''; for (let i = 0; i < 120; i++) body += pad(i);
-      body += 'SECRET_X=tb-decoy-secret-value\r\nPHOTOS_PRIVATE_BUCKET=tb-priv-real\r\n'; for (let i = 120; i < 240; i++) body += pad(i);
-      body += 'PHOTOS_PUBLIC_BUCKET=tb-pub-real';
-      fs.writeFileSync(path.join(dir, '.env.tb-proj'), body);
-      assert.ok(body.length > 3 * 4096, 'premise: several chunks');
-      const got = readBucketParams(dir, 'tb-proj');
-      assert.deepStrictEqual(got, { PHOTOS_PRIVATE_BUCKET: 'tb-priv-real', PHOTOS_PUBLIC_BUCKET: 'tb-pub-real' }, 'E4CLI-DOTENV-REAL-READER-CHUNKED');
-      const small = [...dotenvLines(path.join(dir, '.env.tb-proj'), { chunk: 7 })];
-      assert.strictEqual(small.length, 243, 'E4CLI-DOTENV-REAL-READER-EVERY-LINE (tiny chunks)');
-    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    // the REAL committed file: the owner-verified private name resolves; public not configured until launch
+    assert.deepStrictEqual(resolveTargets({ projectId: 'xpizza-delivery', env: {} }), { privateBucket: 'xpizza-delivery.firebasestorage.app', publicBucket: null, reason: null }, 'E4CLI-RESOLVE-COMMITTED-PROD');
   }
   assert.strictEqual(checkTarget({ bucket: 'tb-priv', privateBucket: 'tb-priv', publicBucket: 'tb-pub' }), null, 'E4CLI-TARGET-OK');
   assert.ok(/public photo bucket/.test(checkTarget({ bucket: 'tb-priv', privateBucket: 'tb-priv', publicBucket: null }) || ''), 'E4CLI-TARGET-PUBLIC-UNRESOLVED-REFUSED (codex r1 P1: fails CLOSED)');
@@ -96,7 +78,7 @@ const run = (b) => runCheck({ store: b.store, gens: b.gens, randomHex: () => HEX
   assert.ok(/SAME bucket/.test(checkTarget({ bucket: 'tb-x', privateBucket: 'tb-x', publicBucket: 'tb-x' }) || ''), 'E4CLI-TARGET-EQUAL-REFUSED');
   assert.ok(/PUBLIC/.test(checkTarget({ bucket: 'tb-pub', privateBucket: 'tb-priv', publicBucket: 'tb-pub' }) || ''), 'E4CLI-TARGET-PUBLIC-REFUSED');
   assert.ok(/not the private/.test(checkTarget({ bucket: 'tb-other', privateBucket: 'tb-priv', publicBucket: 'tb-pub' }) || ''), 'E4CLI-TARGET-NOT-PRIVATE-REFUSED');
-  ok('identities: only the two dotenv keys retained (a decoy SECRET_X is scanned, never retained or printed; the real reader is chunked line by line) through photos/buckets.js; public / private unresolved, equal, public target, other target → refused; the dry run names the buckets');
+  ok('identities: production\'s resolver over the COMMITTED photos config for the explicit project — both, public not yet (refused until launch), no private (reported, never guessed), a conflicting shell project refused, legacy env ignored, the real committed prod entry; public / private unresolved, equal, public, not-private targets refused');
 
   // ── 3. real GCS (serializing), versioning on: PASS; the ONE created generation deleted GENERATION-SCOPED and verified gone ──
   {

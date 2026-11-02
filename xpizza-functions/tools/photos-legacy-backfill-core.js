@@ -15,7 +15,7 @@ async function backfillRid(rid, { apply }, d) {
   const base = d.legacyBase(rid);
   if (!base) throw new Error(`no_order_site_base: ${rid} has no single order-site origin in the platform manifest`);
   const bucket = (d.publicBucket || '').trim();
-  if (apply && !bucket) throw new Error('no_public_bucket: --apply needs PHOTOS_PUBLIC_BUCKET (the A0 public photo bucket)');
+  if (apply && !bucket) throw new Error('no_public_bucket: --apply needs a public bucket (public_bucket in platform/photos.json — the A0 public photo bucket)');
   const items = await d.readItems(rid);
   const rows = []; const seen = new Set();
   const counts = apply ? { copied: 0, already_present: 0, unresolvable: 0, same_image: 0 } : { would_copy: 0, already_present: 0, unresolvable: 0, same_image: 0 };

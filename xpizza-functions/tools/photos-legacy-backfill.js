@@ -9,7 +9,7 @@
 // restaurant's OWN order-site origin only, ≤ 10 MB, 20 s), re-encodes it (photos/legacy-encode.js: centre 4:3 800×600 WEBP) and writes a
 // CONTACT SHEET — <out>/<rid>/contact.html with every before/after pair — for the owner to review BEFORE any --apply (the crop changes images
 // the restaurants already show). Nothing is uploaded or recorded.
-// --apply: create-only uploads to the PUBLIC bucket (PHOTOS_PUBLIC_BUCKET env) photos/{rid}/legacy/<hash>-card.webp, then the Firestore
+// --apply: create-only uploads to the PUBLIC bucket (public_bucket[--project] in the committed platform/photos.json) photos/{rid}/legacy/<hash>-card.webp, then the Firestore
 // records photo_registry/{rid}/legacy/{hash}. Idempotent (an existing record is skipped). Reports per rid: copied / already present /
 // unresolvable / same image. The project is NEVER inferred (require-project, --project mandatory) — a refusal touches nothing.
 const fs = require('fs');
@@ -57,7 +57,13 @@ async function fetchFrom(origin, url) {
 }
 
 (async () => {
-  const bucketName = (process.env.PHOTOS_PUBLIC_BUCKET || '').trim();
+  // the PUBLIC bucket from the committed photos config for --project (PLAN-photos-public-bucket-config r5; never an env var). Not configured
+  // ('' / absent) is fine for the contact sheet; --apply then refuses in the core. A config REFUSAL with --apply stops here, untouched.
+  let bucketName = '';
+  try { bucketName = require('../photos/buckets').photoBuckets({ explicit: PROJECT_ID }).public || ''; } catch (e) {
+    if (!(e && e.photosConfig)) throw e;
+    if (args.apply) { console.error(`photos-legacy-backfill: REFUSED — the committed photos config refused this project (${e.code})`); process.exit(2); }
+  }
   const outDir = args.out || path.join(process.cwd(), `legacy-backfill-${Date.now()}`);
   const summary = [];
   for (const rid of args.rids) {

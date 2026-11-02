@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "public_bucket": {
+    "xpizza-delivery": ""
+  },
+  "private_bucket": {
+    "xpizza-delivery": "xpizza-delivery.firebasestorage.app"
+  }
+}

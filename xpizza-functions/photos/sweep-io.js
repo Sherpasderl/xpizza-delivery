@@ -1,7 +1,7 @@
 'use strict';
 // DISH PHOTOS A2 step 13 — the sweeper's I/O (photoSweep, a daily scheduled function in the photos isolation group):
 //   modeOf(rtdb, publicBucket)  RTDB config/photos_sweep: exactly 'dry_run' | 'live' (advisor ruling #5); anything else, absent or
-//                               unreadable → 'off'. 'live' while PHOTOS_PUBLIC_BUCKET is unset → 'dry_run' (5f): a pid must never be marked
+//                               unreadable → 'off'. 'live' while the public bucket is not configured → 'dry_run' (5f): a pid must never be marked
 //                               deleted while its public copies cannot be removed.
 //   makeGcsDeleter(bucket)      deleteIfGeneration(path, gen): file.delete({ifGenerationMatch}) — 404 → 'missing', 412 → 'other_generation'
 //                               (both "done"; an object re-created since is never deleted); any other error propagates.
