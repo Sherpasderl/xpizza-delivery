@@ -2020,6 +2020,7 @@
   "catalog/form-menu-source.js",
   "catalog/form-rebake.js",
   "catalog/identity-record-verifier.js",
+  "catalog/identity-record.js",
   "catalog/menu-structure-rows.js",
   "catalog/mirror-keys.js",
   "catalog/mirror-rtdb.js",
@@ -2428,6 +2429,12 @@
    "lifts": []
   },
   "catalog/identity-record-verifier.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/catalog/identity-record-guards.test.js"
+   ]
+  },
+  "catalog/identity-record.js": {
    "pins": [],
    "lifts": [
     "xpizza-functions/catalog/identity-record-guards.test.js"
