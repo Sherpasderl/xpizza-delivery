@@ -133,9 +133,12 @@
     return { restaurantId: cfg.restaurantId, orderIdPrefix: cfg.orderIdPrefix, pendingPayKey: cfg.pendingPayKey, endpoints: cfg.endpoints, hours: cfg.hours,
       cartKey: cfg.cartKey, placedKey: cfg.placedKey, guestCardOnly: cfg.guestCardOnly === true, ...(cfg.schedulingLive === true ? { schedulingLive: true } : {}) };   // S7a-1: hosted by the shell (both absent ⇒ the S2 path, unchanged); §3.2 the guest tender rule
   }
-  // the cart, its generation and every guard on it: o = { menu, cfg, api: () => the store's api, mods: () => true once it exists }
+  // the cart, its generation and every guard on it: o = { menu, cfg, api: () => the store's api, mods: () => true once it exists,
+  // CappCart, CappSerialize } — the deps are the CALLER's resolved ones (Codex VP r5 #1: never globals), else the same resolution
   function createCartCore(o) {
     const { menu, cfg } = o, api = () => o.api(), mods = () => o.mods();
+    const CappCart = o.CappCart || (typeof self !== 'undefined' && self.CappCart) || require('./capp-cart.js');
+    const CappSerialize = o.CappSerialize || (typeof self !== 'undefined' && self.CappSerialize) || require('./capp-serialize.js');
     const hosted = !!(cfg.cartKey && cfg.placedKey);
     // S7a r3.4-1: a HOSTED cart (the shell's per-store keys) records each instance's last-seen prices, so a cart restored onto a
     // re-priced menu is DISCLOSED (frame 13); the S2 / link path keeps today's byte-identical snapshots
@@ -257,7 +260,7 @@
     const notifyCart = () => { if (dead || typeof opts.onCartChange !== 'function' || frozenNow()) return; try { opts.onCartChange(core.snapshotFor(S.mode)); } catch (_) {} };
     const hostedKeys = () => !!(cfg.cartKey && cfg.placedKey);
     // the cart, its generation and its guards: the ONE cart-write path (createCartCore — the shell's «+» / reorder use it too)
-    const core = createCartCore({ menu, cfg, api: () => api, mods: () => mods() });
+    const core = createCartCore({ menu, cfg, api: () => api, mods: () => mods(), CappCart, CappSerialize });
     const cart = core.cart, genNow = () => core.genNow();
     const $ = (id) => doc.getElementById(id);
     const app = $('app');

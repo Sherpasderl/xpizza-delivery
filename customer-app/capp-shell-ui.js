@@ -210,7 +210,8 @@
         onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) { keepHandoff(entry.rid); openExternal(runtime.store.url); } return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
       S.store = { rid: entry.rid, ui, entry, body: e.body, fp: null, adopt: null };
       watchMenu(S.store);
-      const snap = carried || readJ(cfg.cartKey); if (snap) ui.restore(snap);   // an adoption carries the IN-MEMORY cart (Codex s7a2 r1 #1)
+      const carry = !carried && S.carry && S.carry.rid === entry.rid ? S.carry.snap : null; S.carry = null;   // «+» from Pedidos whose persist failed
+      const snap = carried || carry || readJ(cfg.cartKey); if (snap) ui.restore(snap);   // an adoption carries the IN-MEMORY cart (Codex s7a2 r1 #1)
       const ro = !carried && S.reorder && S.reorder.rid === entry.rid ? S.reorder : null;
       if (ro) {   // «Volver a pedir»: replaces the cart (v6) through the store's own restore, refused where the store refuses an edit
         S.reorder = null;
@@ -512,7 +513,7 @@
       onShow: (entry, x) => {
         if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link
         if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } else if (S.reorderOpen === entry.rid && S.store) { S.reorderOpen = null; S.store.ui.openCart(); toast('Pedido cargado en tu carrito'); } reflect(); return; }
-        if (entry.name !== 'store') { S.reorder = null; S.held = null; }   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
+        if (entry.name !== 'store') { S.reorder = null; S.held = null; S.carry = null; }   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
         if (entry.name === 'receipt') { if (!openReceipt(entry.oid)) { T.setTimeout(() => nav.tab({ name: 'orders' }), 0); return; } S.tab = 'receipt'; renderNow(); return; }
         if (entry.name === 'orders') { S.tab = 'orders'; loadOrders(); resumeOrder(); dir.visit(); renderNow(); return; }
@@ -525,6 +526,7 @@
     function enter(rid, dish) {
       cancelRoute();   // a tap is a user navigation
       if (S.reorder && S.reorder.rid !== rid) S.reorder = null;   // «Volver a pedir» belongs to ITS store's tap only
+      if (S.carry && S.carry.rid !== rid) S.carry = null;
       if (dir.state(rid) === 'gone') return;
       S.held = { rid, dish: dish || null }; S.heldErr = false;
       { const pe = cache.peek(rid); if (pe && pe.state === 'failed') cache.get(rid); }   // frame 15: a failed menu is re-fetched before its sheet is ever shown
@@ -537,7 +539,7 @@
       const h = S.held; if (!h || S.store) return false;
       const st = dir.state(h.rid), e = cache.peek(h.rid);
       if (st === 'unknown' && dir.view().phase === 'cold') return false;   // the directory has not answered yet (a return entered at boot): wait
-      if (st === 'gone' || st === 'unknown') { S.held = null; S.reorder = null; schedule(); return false; }
+      if (st === 'gone' || st === 'unknown') { S.held = null; S.reorder = null; S.carry = null; schedule(); return false; }
       if (st === 'enterable' && e && e.body) {
         S.held = null;
         if (S.q && S.tab === 'search') remember(S.q);
@@ -548,7 +550,7 @@
       // kept in its pressed state; «Reintentar» re-fetches (the hold stays), «Cerrar» releases it
       if (st === 'enterable' && e && e.state === 'failed' && !cache.pending(h.rid)) { if (S.layer !== 'menuerr') openLayer('menuerr'); return false; }
       const v = dir.view();
-      if (st !== 'enterable' && v.failed && !v.pending) { S.held = null; S.reorder = null; S.heldErr = true; schedule(); }   // r3.3-F1: frame 7 for the held tap
+      if (st !== 'enterable' && v.failed && !v.pending) { S.held = null; S.reorder = null; S.carry = null; S.heldErr = true; schedule(); }   // r3.3-F1: frame 7 for the held tap
       return false;
     }
     dir.subscribe(() => { loadMenus(); checkHeld(); schedule(); tryRoute(); });
@@ -738,7 +740,7 @@
     }
     function identityChanged() {
       ordersGen++; S.ordersRead = null;   // any in-flight history read is void; nothing of the previous identity is shown
-      S.held = null; S.reorder = null;   // Codex VP r1 #2: a held tap / «Volver a pedir» of the previous identity never lands
+      S.held = null; S.reorder = null; S.carry = null;   // Codex VP r1 #2: a held tap / «Volver a pedir» of the previous identity never lands
       receiptGen++; prefetchGen++; S.receipt = null; receiptCache.clear(); receiptInflight.clear(); if (S.tab === 'receipt' && !S.store) nav.tab({ name: 'orders' });   // nor a receipt of hers
       const od = S.order, who = ownerNow();
       if (od && who !== null && od.owner !== who) {
@@ -987,12 +989,15 @@
       if (!cfg || !view || !A || !(e && e.state === 'fresh') || availOf(rid).has(key)) return enter(rid, key);   // the store's own «+» preconditions (a sold-out dish ⇒ its store)
       let api = null;
       try { api = A.createApi({ config: CappUI.apiConfigOf(cfg), CappCheckout, storage, ...((o.uiOpts && o.uiOpts.apiOpts) || {}), now: () => Number(nowMs()) }); } catch (_) { return enter(rid, key); }
-      const core = CappUI.createCartCore({ menu: view.menu, cfg, api: () => api, mods: () => true });
+      const core = CappUI.createCartCore({ menu: view.menu, cfg, api: () => api, mods: () => true, CappCart: pick(o, 'CappCart', './capp-cart.js'), CappSerialize: pick(o, 'CappSerialize', './capp-serialize.js') });
       // the store's own ORDER: its mount restores first (reconcile — a purchased cart cleared), then a tap mutates (frozen ⇒ refused)
       const rr = core.restore(readJ(cfg.cartKey));
       if (rr.blocked || (rr.hydrated && rr.hydrated.dropped)) return enter(rid, key);   // the store draws its own disclosure — never a silently shortened cart
       if (!core.mutate((c) => c.inc(key), true).ok) return enter(rid, key);   // frozen / not addable (a launcher) / the text cap: the store
-      if (!core.frozenNow()) writeJ(cfg.cartKey, core.snapshotFor(rr.mode || 'delivery'));   // the store's notifyCart → the shell's onCartChange
+      const snap = core.snapshotFor(rr.mode || 'delivery');
+      // the store's notifyCart → the shell's onCartChange. A FAILED persist: the store's own «+» keeps the edit in its live cart —
+      // so does this one: the in-memory cart goes to the store as its mount's carried cart (the adoption path), no «Agregado»
+      if (!core.frozenNow() && !writeJ(cfg.cartKey, snap)) { S.carry = { rid, snap }; return enter(rid, null); }
       toast(`Agregado · ${row.entry.name || ''}`); renderNow();
     }
     function openExternal(url) { try { if (win && typeof win.open === 'function') win.open(url, '_blank', 'noopener'); } catch (_) {} }
@@ -1065,7 +1070,7 @@
       if (a === 'clearfilters') { S.cuisine = ''; S.filters.clear(); return renderNow(); }
       if (a === 'rownext') { const row = t.closest('.hsec') && t.closest('.hsec').querySelector('.hrow'); if (row && row.scrollBy) row.scrollBy({ left: Math.round(row.clientWidth * 0.8), behavior: 'smooth' }); return; }
       if (a === 'menu-retry') { closeLayer(); if (S.held) cache.get(S.held.rid); return; }   // frame 15: the row stays held until the menu answers
-      if (a === 'menu-close') { S.held = null; S.reorder = null; cancelRoute(); closeLayer(); return renderNow(); }
+      if (a === 'menu-close') { S.held = null; S.reorder = null; S.carry = null; cancelRoute(); closeLayer(); return renderNow(); }
       if (a === 'menus-retry') { loadMenus(); return renderNow(); }   // frame 16
       if (a === 'dir-retry') { S.heldErr = false; dir.revalidate(); return renderNow(); }
       if (a === 'recent') { S.q = t.dataset.q; return renderNow(); }

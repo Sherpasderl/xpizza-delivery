@@ -2942,3 +2942,18 @@ test('store promo r4 ONE CLOCK: the transport reads the UI\'s clock — an apiOp
   assert.ok(seen && typeof seen.now === 'function', 'premise: the transport was created');
   assert.equal(seen.now(), uiNow().getTime(), '🔴 promo r4: the transport reads a SECOND clock (apiOpts.now), not the UI\'s');
 });
+
+// Codex VP r5 #1: the cart core takes the store's RESOLVED deps (never globals) — an injected serializer that rejects the text cap keeps
+// the base behaviour (nothing added), and the core loads under CommonJS with no browser globals
+test('cart core (advisor 11-02): the store\'s INJECTED deps reach its cart path — a serializer that rejects the text cap ⇒ «+» adds nothing (the base); the core runs under CommonJS', () => {
+  const tooLongSer = { serialize: () => { const e = new Error('too long'); e.code = 'cart_text_too_long'; throw e; } };
+  const { ui, click, q } = boot('x_pizza', { mount: { CappSerialize: tooLongSer } });
+  const btn = q('[data-act="inc"]'); assert.ok(btn, 'premise: a «+»');
+  click(btn);
+  assert.equal(ui.cart.count(), 0, '🔴 VP-deps: the injected serializer rejected ⇒ nothing added (base count 0)');
+  const CJS = require('./capp-ui.js'), menu = require('./capp-menu.js').adaptMenu(PROV.x_pizza.envelope), d = menu.dishes.find((x) => !x.launcher && !x.variantOf);
+  const core = CJS.createCartCore({ menu, cfg: {}, api: () => null, mods: () => false });
+  assert.equal(core.mutate((c) => c.inc(d.key), true).ok, true, '🔴 VP-deps: the core works under CommonJS (no CappCart global)');
+  const rej = CJS.createCartCore({ menu, cfg: {}, api: () => null, mods: () => false, CappSerialize: tooLongSer });
+  assert.deepEqual([rej.mutate((c) => c.inc(d.key), true), rej.cart.count()], [{ ok: false, tooLong: true }, 0], '🔴 VP-deps: an injected serializer is the one used');
+});

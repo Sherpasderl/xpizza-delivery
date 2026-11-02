@@ -3024,7 +3024,7 @@ test('Volver a pedir r3 (Codex VP r2 #3): a pill held on a loading menu, then th
     assert.ok(S.q('#gq'), 'still on Buscar');
   } finally { S.w.close(); }
 });
-test('Volver a pedir (advisor 11-02): «+» from «Pedidos» and «+» INSIDE the store leave the SAME stored cart, from every starting state (empty, other lines, the same dish, purchased, frozen)', async () => {
+test('Volver a pedir (advisor 11-02): «+» from «Pedidos» and «+» INSIDE the store leave the SAME stored AND in-memory cart, from every starting state (empty, other lines, the same dish, purchased, frozen, every write failing)', async () => {
   const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita'), M = String(marg.dish_id);
   const other = PROV.x_pizza.envelope.menu.dishes.find((d) => d.dish_id && d.name !== 'Margherita' && !d.variantOf), O = String(other.dish_id);
   const cartJ = (lines, extra) => JSON.stringify({ v: 2, lines, rid: 'x_pizza', mode: 'delivery', ...extra });
@@ -3034,20 +3034,28 @@ test('Volver a pedir (advisor 11-02): «+» from «Pedidos» and «+» INSIDE th
     'the same dish': { 'capp:x_pizza:cart': cartJ([{ key: M, qty: 1, ex: [{}], added: 1 }], { cart_gen: 'G1', mode: 'pickup' }) },
     purchased: { 'capp:x_pizza:cart': cartJ([{ key: M, qty: 1, ex: [{}], added: 1 }], { cart_gen: 'g_9' }), 'capp:x_pizza:placed': JSON.stringify({ order_id: 'XP-DONE', cart_gen: 'g_9', outcome: 'placed', at: T0 }) },
     frozen: frozenCart(),
+    'every cart write fails': { failWrites: true },
   };
   const norm = (raw, seedRaw) => { if (raw == null) return null; const c = JSON.parse(raw), sg = seedRaw ? JSON.parse(seedRaw).cart_gen : undefined;
     return { ...c, cart_gen: c.cart_gen === sg ? 'KEPT' : typeof c.cart_gen === 'string' ? 'NEW' : c.cart_gen }; };
-  for (const [name, seedMap] of Object.entries(STATES)) {
-    const seed = (st) => { for (const [k, v] of Object.entries(seedMap)) st.setItem(k, v); };
+  // the store's IN-MEMORY cart too (Codex VP r5 #2): opened by a plain tap when «+» from Pedidos did not already open it
+  const memOf = async (S) => { if (!S.ui.store()) { S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); await flush(); }
+    return JSON.parse(JSON.stringify(S.ui.store().ui.cart.lines().map((l) => [l.key, l.qty, l.ex]))); };
+  for (const [name, seedMap0] of Object.entries(STATES)) {
+    const { failWrites, ...seedMap } = seedMap0;
+    const seed = (st) => { for (const [k, v] of Object.entries(seedMap)) st.setItem(k, v); if (failWrites) { const set = st.setItem.bind(st); st.setItem = (k, v) => { if (k === 'capp:x_pizza:cart') throw new Error('quota'); return set(k, v); }; } };
     let fromPedidos, fromStore;
     { const { S, st } = await againBoot({ seed });
       try { S.click('.tabbar [data-tab="orders"]'); await flush(); await flush(); S.click('.otabs [data-val="again"]'); await flush(); await flush();
-        S.click(`.agains [data-act="add-past"][data-id="${M}"]`); await flush(); await flush(); fromPedidos = norm(st.getItem('capp:x_pizza:cart'), seedMap['capp:x_pizza:cart']); } finally { S.w.close(); } }
+        S.click(`.agains [data-act="add-past"][data-id="${M}"]`); await flush(); await flush();
+        const said = !!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado'));
+        fromPedidos = { stored: norm(st.getItem('capp:x_pizza:cart'), seedMap['capp:x_pizza:cart']), memory: await memOf(S) };
+        if (failWrites) assert.equal(said, false, '🔴 VP-eq: a failed persist never says «Agregado»'); } finally { S.w.close(); } }
     { const { S, st } = await againBoot({ seed });
       try { await flush(); S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); await flush();
         const b = S.q(`[data-act="inc"][data-id="${M}"]`); assert.ok(b, `premise (${name}): the store's own «+»`); S.click(b); await flush(); await flush();
-        fromStore = norm(st.getItem('capp:x_pizza:cart'), seedMap['capp:x_pizza:cart']); } finally { S.w.close(); } }
-    assert.deepEqual(fromPedidos, fromStore, `🔴 VP-eq «${name}»: the same stored cart as a «+» inside the store`);
+        fromStore = { stored: norm(st.getItem('capp:x_pizza:cart'), seedMap['capp:x_pizza:cart']), memory: await memOf(S) }; } finally { S.w.close(); } }
+    assert.deepEqual(fromPedidos, fromStore, `🔴 VP-eq «${name}»: the same stored AND in-memory cart as a «+» inside the store`);
   }
 });
 test('Volver a pedir — a held reorder is VOID once the customer goes elsewhere: a later plain visit of the store keeps its own cart', async () => {
