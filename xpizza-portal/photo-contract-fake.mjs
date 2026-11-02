@@ -23,7 +23,6 @@ export const PUBLIC_BUCKET = 'xpizza-delivery-photos';     // ⚠️ PLACEHOLDER
 const GCS = 'https://storage.googleapis.com';
 const MAX = 10485760;
 const FRAMES = { card: { a: 4 / 3, w: 400, h: 300 }, hero: { a: 16 / 10, w: 496, h: 310 } };
-import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
@@ -53,13 +52,6 @@ export const REKEY_CASES = [
   { name: 'a tmp key with no matching item is the validation error, never dropped', photos: { 'tmp:zz': { state: 'pid', pid: 'P3' } }, items: [{ ref: 'tmp:a' }], allocated: [['tmp:a', 'Nueva']], want: { error: 'bad_source', field: 'photos', key: 'tmp:zz' } },
   { name: 'a key that is neither a live item nor a tmp ref is refused', photos: { Ghost: { state: 'pid', pid: 'P4' } }, items: [{ key: 'Pep' }], allocated: [], want: { error: 'bad_source', field: 'photos', key: 'Ghost' } },
 ];
-
-// the PRODUCTION comparator (catalog/add-product.js requires nothing — add-product.test pins that), so the fake's rename rule is
-// the server's own code, not a re-implementation
-const AP = createRequire(import.meta.url)('../xpizza-functions/catalog/add-product.js');
-// Part A (photos/photo-state.js samePhotoStates): per key, legacy (no entry) | pid:<pid> | removed — URLs ignored
-const photoKind = (e) => (!e || typeof e !== 'object' ? 'legacy' : e.state === 'pid' ? `pid:${e.pid}` : e.state === 'removed' ? 'removed' : 'legacy');
-const samePhotoKinds = (a, b) => [...new Set([...Object.keys(a || {}), ...Object.keys(b || {})])].every((k) => photoKind((a || {})[k]) === photoKind((b || {})[k]));
 
 export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs = 3600e3, items = [], usesPlatformFactura = false, photosEnabled = true, legacy = {}, caps = ['catalog.read_editor', 'catalog.edit', 'catalog.publish', 'availability.set'] } = {}) {
   const fake = {
@@ -164,10 +156,9 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
       for (const k of Object.keys(fake.legacy)) if (fake.legacy[k]) lg[k] = fake.legacy[k] === 'nourl' ? {} : { card: legacyCard(k) };
       if (Object.keys(lg).length) out.legacyPreviews = lg;
       if (fake.flags.uploads) out.photosEnabled = true;
-      // portal-reads.js (draft-assess.js): the saved draft's unpublished section names — DERIVED from draft vs published names only,
-      // `...(pendingRenames ? { pendingRenames } : {})`; a server-side rename is simulated through fake.draft.categories
-      const renames = renamesOf();
-      if (renames.length) out.pendingRenames = renames;
+      // pendingRenames (portal-reads.js) is NOT served: production derives it with draft-assess.assessDraft, which only accepts a
+      // complete schema-2 source — this fake's catalog is not one, so it reports none (advisor ruling B, Codex held r3). Tests that
+      // need a pending name make it through the page's own rename path; the server's derivation is proven by the emulator cells.
       return answer(200, out);
     },
     editCatalog(b) {
@@ -187,18 +178,19 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
       }
       if (!fake.flags.uploads && JSON.stringify(rk.photos) !== JSON.stringify(fake.draft.photos)) return err(409, 'photo_change_disabled');
       const cats = src.structure && Array.isArray(src.structure.categories) ? src.structure.categories.filter((c) => c && typeof c.id === 'string').map((c) => ({ id: c.id, name: c.name })) : clone(fake.draft.categories);
-      // the production comparator's category rules (catalog/add-product.js compareToActive, T1): the categories are frozen except
-      // each one's display name — same count, the same id at every index …
+      // A RENAME IS NOT MODELLED — the fake is STRICTER than production (advisor ruling B, Codex held r3): it accepts a category
+      // change only when it is a pure display-name change AND everything else is deep-equal to the PUBLISHED catalog (items,
+      // extras, item_order, every structure field, category metadata, photos). Anything else beside a category change → 400
+      // `unmodeled_change` (production would answer rename_not_alone / structure_changed; only a LAXER fake voids a test). The
+      // production rule itself is proven against the real editCatalog in the emulator cells.
       const ac = fake.active.categories;
-      if (cats.length !== ac.length || cats.some((c, i) => c.id !== ac[i].id)) return err(400, 'structure_changed', { detail: "the menu's categories cannot change here", field: 'categories' });
-      // … and a draft that renames changes NOTHING else (rename_not_alone) — judged by the PRODUCTION changesNothingElse (one
-      // source), plus Part A's photo-state equality (photos/photo-state.js samePhotoStates; not on this branch, so carried here)
-      if (cats.some((c, i) => c.name !== ac[i].name)) {
-        const actKeys = new Set(fake.active.items.map(keyOf)), draftKeys = new Set(canon.map(keyOf));
-        const additions = canon.filter((r) => !actKeys.has(keyOf(r))).map(keyOf), removals = fake.active.items.filter((r) => !draftKeys.has(keyOf(r))).map(keyOf);
-        const built = (items) => ({ items, extras: [], structure: { item_order: items.map(keyOf) } });
-        if (!AP.changesNothingElse(built(canon), built(fake.active.items), additions, removals) || !samePhotoKinds(rk.photos, fake.active.photos)) {
-          return err(400, 'rename_not_alone', { detail: 'a category rename must be published on its own, with no other change', field: 'categories' });
+      const catsRaw = src.structure && Array.isArray(src.structure.categories) ? src.structure.categories : null;
+      if (catsRaw && JSON.stringify(catsRaw) !== JSON.stringify(ac)) {
+        const noNames = (cs) => cs.map((c) => { if (!c || typeof c !== 'object') return c; const { name, ...rest } = c; return rest; });
+        const rest = (s0, cs, photos) => JSON.stringify({ items: s0.items, extras: s0.extras || [], structure: { ...s0.structure, categories: noNames(cs) }, photos: photos || {} });
+        const published = { items: fake.active.items, extras: [], structure: { schema_version: 2, item_order: fake.active.items.map(keyOf), categories: ac } };
+        if (rest(src, catsRaw, own(src, 'photos') ? src.photos : {}) !== rest(published, ac, fake.active.photos)) {
+          return err(400, 'unmodeled_change', { detail: 'the fake accepts a category change only as a pure rename of an otherwise unchanged published catalog (stricter than production)', field: 'categories' });
         }
       }
       fake.draft = { items: canon, photos: rk.photos, categories: cats };
