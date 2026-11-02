@@ -758,8 +758,9 @@ function savedHold() {
   return null;
 }
 const RENAME_NOTICE = {
-  others: 'Hay cambios de precio sin publicar. Un cambio de nombre se publica solo: publicá o descartá los precios primero.',
-  renames: 'Hay un cambio de nombre esperando publicarse. Publicalo o descartalo para seguir editando precios o agregando productos.',
+  // owner-approved MOCKUP-portal-photos-held-state.html (2026-11-01): photos count too — H3 is not only prices, H1 locks photos
+  others: 'Hay cambios sin publicar. Un cambio de nombre se publica solo: publicá o descartá esos cambios primero.',
+  renames: 'Hay un cambio de nombre esperando publicarse. Publicalo o descartalo para seguir editando precios, fotos o agregando productos.',
 };
 const isDeclaredCategory = (id) => categoriesOf().some((c) => c && String(c.id) === String(id));
 const declaredName = (id) => { const c = categoriesOf().find((x) => x && String(x.id) === String(id)); return (c && typeof c.name === 'string') ? c.name : ''; };
@@ -895,6 +896,8 @@ function renameNote(text) {
 }
 // R3b — the drawer follows the list: while a name change waits, its fields are off too (Cerrar stays).
 function holdDrawerForRename() {
+  // the held-state mockup: the hold's locked controls are DIMMED like the list's prices (styles.css #drawer.namehold …:disabled)
+  $('drawer').classList.toggle('namehold', renamesPending());
   if (!renamesPending()) return;
   for (const c of $('drawer').querySelectorAll('input, textarea, select')) lockControl(c, true);
   // ruling A — the «Foto» field's controls too (zone, Cambiar / Quitar, Reintentar, Deshacer); a photo is content like a price

@@ -141,7 +141,7 @@ test('REAL Chrome: rename one section — the price hold (R3), the inline edit (
     // R3 — a typed price turns the rename control off at once, with its reason; undoing it turns it back on
     await p.ev(typeIn('#detail .price input', '150'));
     assert.equal(await p.ev(`${$q('#detail .secren')}.disabled`), true, '🔴 a rename cannot join a price change');
-    assert.match(await p.ev(txt('#detail > .secnote')), /Hay cambios de precio sin publicar\. Un cambio de nombre se publica solo/);
+    assert.match(await p.ev(txt('#detail > .secnote')), /Hay cambios sin publicar\. Un cambio de nombre se publica solo/);
     await p.ev(typeIn('#detail .price input', '100'));
     assert.equal(await p.ev(`${$q('#detail .secren')}.disabled`), false, 'and back on once nothing is pending');
     assert.equal(await p.ev(`!!${$q('#detail > .secnote')}`), false);
@@ -302,7 +302,7 @@ test('REAL Chrome (Codex r1 #3): after a RELOAD the saved-but-unpublished side s
     await p.ev(clickOn('#pubback')); await wait(200);
     await p.reload(); await ready(p);
     assert.equal(await p.ev(`${$q('#detail .secren')}.disabled`), true, '🔴 a saved price holds the rename after a reload');
-    assert.match(await p.ev(txt('#detail > .secnote')), /Hay cambios de precio sin publicar/);
+    assert.match(await p.ev(txt('#detail > .secnote')), /Hay cambios sin publicar\. Un cambio de nombre se publica solo/);
   } finally { await p.close(); }
 });
 
