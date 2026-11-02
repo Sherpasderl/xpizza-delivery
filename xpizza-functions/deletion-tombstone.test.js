@@ -69,6 +69,7 @@ const seedAccount = (db, { lastActive = 5 } = {}) => {
   db.set(`user_private/${UID}`, { email: 'a@x.hn', last_active: lastActive });
   db.set('auth_links/google/g1', { uid: UID, at: 1 });
   db.set('reward_welcome/ph_a_x_pizza', { at: 1 });
+  db.set(`user_favorites/${UID}`, { x_pizza: { createdAt: 1 }, la_musa: { createdAt: 2 } });   // S-C
 };
 const recorder = () => { const calls = []; const fn = async (uid) => { calls.push(uid); }; fn.calls = calls; return fn; };
 const quietly = async (f) => { const e = console.error, w = console.warn; const logs = []; console.error = (...a) => logs.push(a.join(' ')); console.warn = console.error; try { return { r: await f(), logs }; } finally { console.error = e; console.warn = w; } };
@@ -81,7 +82,7 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
     assert.strictEqual(await SE.deleteAccountCore(db, ACCOUNT, { uid: UID, phoneHash: PH, now: 100, revoke }), true);
     assert.deepStrictEqual(db.get(`user_private/${UID}`), { deleted_at: 100 }, 'the BC2 tombstone');
     assert.strictEqual(db.get(`deleted_uids/${UID}`), 100, 'deleted_uids (as today)');
-    for (const p of [`user_profiles/${UID}`, `user_orders/${UID}`, `user_rewards/${UID}`, `phone_index/${PH}`, 'auth_links/google/g1']) assert.strictEqual(db.get(p), undefined, `${p} removed`);
+    for (const p of [`user_profiles/${UID}`, `user_orders/${UID}`, `user_rewards/${UID}`, `user_favorites/${UID}`, `phone_index/${PH}`, 'auth_links/google/g1']) assert.strictEqual(db.get(p), undefined, `🔴 ${p} removed`);   // S-C: favorites purged by the REAL deleteAccountCore
     assert.ok(db.get('reward_welcome/ph_a_x_pizza'), 'reward_welcome survives (as today)');
     assert.deepStrictEqual(revoke.calls, [UID], 'the refresh tokens revoked ONCE, for THIS uid');
   }

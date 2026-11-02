@@ -31395,5 +31395,77 @@
    "node",
    "ratings/ratings-grace.guard.test.js"
   ]
+ },
+ {
+  "id": "sc-1",
+  "slice": "sc",
+  "label": "S-C favorites: account deletion keeps the member's favorites",
+  "file": "account-lib.js",
+  "from": ", [`user_rewards/${uid}`]: null, [`user_favorites/${uid}`]: null };",
+  "to": ", [`user_rewards/${uid}`]: null };",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sc-2",
+  "slice": "sc",
+  "label": "S-C favorites: a deleted_uids-tombstoned account can still write favorites",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-3",
+  "slice": "sc",
+  "label": "S-C favorites: a sweep-claimed account can still write favorites",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists()\"",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-4",
+  "slice": "sc",
+  "label": "S-C favorites: a non-member (no customer claim) can read favorites",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid\",\n        \".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.uid === $uid\",\n        \".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-5",
+  "slice": "sc",
+  "label": "S-C favorites: any key is accepted as a favorite rid",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\".validate\": \"$rid.matches(/^[a-z0-9][a-z0-9_-]{1,39}$/) && newData.hasChildren(['createdAt'])\"",
+  "to": "\".validate\": \"newData.hasChildren(['createdAt'])\"",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-6",
+  "slice": "sc",
+  "label": "S-C favorites: a favorite may carry any extra field",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\"createdAt\": { \".validate\": \"newData.isNumber() && newData.val() <= now + 60000\" },\n          \"$other\":    { \".validate\": false }",
+  "to": "\"createdAt\": { \".validate\": \"newData.isNumber() && newData.val() <= now + 60000\" },\n          \"$other\":    { \".validate\": true }",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
  }
 ]
