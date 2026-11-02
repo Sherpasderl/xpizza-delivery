@@ -7829,12 +7829,13 @@ exports.getMyOrders = onRequest(
   require('./my-orders').makeMyOrders({ getDatabase, getAuth, checkRateLimit, resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) }).getMyOrders,
 );
 // S-A1 (NOTE-S-A-ratings-v2-build): the rating FULFILMENT stamp — ratings_v2/{id}.fulfilled_at set-if-absent at delivered / completed
-// (members AND guests); a SEPARATE trigger (no hunk inside mirrorStatusToHistory, so no new index.js inverse); fail-open on the order.
+// (members AND guests); a SEPARATE trigger (no hunk inside mirrorStatusToHistory, so no new index.js inverse); retried on failure.
 exports.stampRatingFulfilment = onValueWritten(
-  { ref: '/orders/{orderId}/status', region: 'us-central1' },
+  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true },
   async (event) => {
+    // Codex S-A1 r1 P2: a failure PROPAGATES (retry on) — the stamp is set-once and idempotent, so a retried event is safe
     try { await require('./ratings/rating-fulfilment').stampRatingFulfilment(getDatabase(), { orderId: event.params.orderId, status: event.data.after.val(), now: Date.now() }); }
-    catch (e) { console.error('stampRatingFulfilment', e && e.message); }
+    catch (e) { console.error('stampRatingFulfilment', e && e.message); throw e; }
   },
 );
 // S-A1: rateOrder's dish votes resolve through the ONE resolver (the expression getMyOrders and the live displayLabel path use)

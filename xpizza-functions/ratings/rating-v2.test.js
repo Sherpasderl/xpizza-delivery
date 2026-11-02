@@ -34,7 +34,16 @@ function fakeDb() {
     orderByChild: (c) => { const q = { eq: undefined, start: undefined }; const api = {
       equalTo: (v) => { q.eq = v; return api; }, startAt: (v) => { q.start = v; return api; }, limitToFirst: () => api,
       once: async () => { const out = {}; for (const [k, row] of Object.entries(get(p) || {})) { const v = row && row[c]; if (q.eq !== undefined && v !== q.eq) continue; if (q.start !== undefined && !(v != null && v >= q.start)) continue; out[k] = row; } return snap(Object.keys(out).length ? out : null); } }; return api; },
-    transaction: async (fn) => { fn(null); const next = fn(clone(get(p)) ?? null); if (next === undefined) return { committed: false, snapshot: snap(get(p)) }; set(p, prune(next)); return { committed: true, snapshot: snap(get(p)) }; },
+    // RTDB's EXACT Admin-SDK semantics (Codex S-A1 r1 P1-1): the updater runs FIRST on the (uncached) local value null; returning
+    // undefined there ABORTS with NO server round-trip and NO retry. Otherwise the server compares: an actual value ≠ the assumed
+    // null ⇒ the updater re-runs on the actual value (undefined then aborts). Never laxer than production.
+    transaction: async (fn) => {
+      const actual = clone(get(p)) ?? null;
+      let next = fn(null);
+      if (next === undefined) return { committed: false, snapshot: snap(get(p)) };
+      if (actual !== null) { next = fn(actual); if (next === undefined) return { committed: false, snapshot: snap(get(p)) }; }
+      set(p, prune(next)); return { committed: true, snapshot: snap(get(p)) };
+    },
   });
   return { tree, get, set, ref };
 }
@@ -166,7 +175,8 @@ const node = (db, id) => V2.normalize(db.get(`ratings_v2/${id}`));
       assert.deepStrictEqual([x.state, x.comment, x.owner_uid], ['deleted', null, null], `🔴 ${id}: redacted in place (comment + identity) and state deleted`);
     }
     assert.strictEqual(node(db, 'XPZ-8').store, 5, 'the fence keeps no identity; the vote leaves every aggregate by state');
-    assert.strictEqual(await db.ref('ratings_v2/XPZ-8').transaction(pausedEdit).then((t) => t.committed), false, '🔴 a paused edit resuming after the deletion is REFUSED (no restore)');
+    await db.ref('ratings_v2/XPZ-8').transaction(pausedEdit);   // an identity no-op commit at most (never undefined: P1-1)
+    assert.deepStrictEqual([node(db, 'XPZ-8').state, node(db, 'XPZ-8').comment, node(db, 'XPZ-8').owner_uid], ['deleted', null, null], '🔴 a paused edit resuming after the deletion is REFUSED (no restore)');
     assert.strictEqual(out.outcome, 'closed');
     assert.strictEqual(await SE.redactRatings(db, A), 0, 'a re-run is a no-op (the history is gone; already-deleted nodes untouched)');
     assert.strictEqual(await fulfil(db, 'XPZ-8', 'completed'), 'kept', 'the fence is never re-stamped');
@@ -181,6 +191,62 @@ const node = (db, id) => V2.normalize(db.get(`ratings_v2/${id}`));
     assert.deepStrictEqual(await guard({ rtdb: db }), { ok: false, count: 1 }, '🔴 a v1 record ⇒ REFUSE enabling v2-only reads');
   }
   ok('deploy-order guard: 0 legacy order_ratings ⇒ OK; any ⇒ REFUSE (v2-only reads must wait)');
+
+  // ── 9. Codex r1 P1-2 (its exact repro): a LEGACY rateOrder that passed auth is paused, the account is deleted COMPLETELY (no node existed,
+  //    so the redaction scan found nothing), then the paused write commits — the post-commit fence (deleted_uids) redacts it ──
+  {
+    const db = fakeDb(); await place(db, A, 'XPZ-p'); db.set('orders/XPZ-p/status', 'delivered');
+    let paused = false;
+    const pdb = { ...db, ref: (p) => { const r = db.ref(p); if (p !== 'orders/XPZ-p') return r; return { ...r, get: async () => {
+      if (!paused) { paused = true; assert.strictEqual(await SE.deleteAccountCore(db, ACCOUNT, { uid: A, phoneHash: null, now: 3000, revoke: async () => {} }), true); }
+      return r.get(); } }; } };
+    assert.strictEqual(db.get('ratings_v2/XPZ-p'), undefined, 'premise: no node at the start');
+    const r = await rateOrderCore(pdb, { body: { order_id: 'XPZ-p', thumb: 'up' }, idToken: `tok-${A}`, now: 2000, verifyIdToken, resolveContext: async (rid) => usableCtx(rid) });
+    assert.ok(paused, 'premise: the deletion ran between the auth and the write');
+    assert.strictEqual(r.httpStatus, 403, 'the paused write answers the generic refusal');
+    const x = node(db, 'XPZ-p');
+    assert.deepStrictEqual([x.state, x.owner_uid, x.comment], ['deleted', null, null], '🔴 a paused legacy write after a COMPLETE deletion leaves NO live rating with the deleted uid');
+  }
+  ok('Codex r1 P1-2: a legacy rateOrder paused across a COMPLETE account deletion (no node existed) commits and is redacted by the post-commit fence (deleted_uids) — no live rating carries the deleted uid');
+
+  // ── 10. Codex r1 P1-3: the history write FAILED (claim-order writes it best-effort) — the owner_uid index still finds the rating ──
+  {
+    const db = fakeDb(); await place(db, A, 'XPZ-h'); await fulfil(db, 'XPZ-h');
+    await rate(db, A, { order_id: 'XPZ-h', store: 4, comment: 'privado' });
+    db.set(`user_orders/${A}/XPZ-h`, null);   // the best-effort history entry is missing
+    assert.strictEqual(await SE.deleteAccountCore(db, ACCOUNT, { uid: A, phoneHash: null, now: 3000, revoke: async () => {} }), true);
+    const x = node(db, 'XPZ-h');
+    assert.deepStrictEqual([x.state, x.owner_uid, x.comment], ['deleted', null, null], '🔴 a rating outside the history is found by the owner_uid index and redacted');
+  }
+  ok('Codex r1 P1-3: deletion discovers ratings by the server-only owner_uid index ∪ the history — a rating whose history write failed is still redacted');
+
+  // ── 11. Codex r1 P2: a fulfilment stamp that FAILS propagates (the trigger retries); the retry stamps it once ──
+  {
+    const db = fakeDb(); await place(db, null, 'XPZ-r'); db.set('orders/XPZ-r/status', 'completed');
+    let fail = true;
+    const fdb = { ...db, ref: (p) => { const r = db.ref(p); if (p !== 'ratings_v2/XPZ-r') return r; return { ...r, transaction: async (fn) => { if (fail) { fail = false; throw new Error('injected'); } return r.transaction(fn); } }; } };
+    await assert.rejects(stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', now: 1000 }), /injected/, '🔴 a failed stamp PROPAGATES (never swallowed)');
+    assert.strictEqual(db.get('ratings_v2/XPZ-r'), undefined, 'nothing written by the failed attempt');
+    assert.strictEqual(await stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', now: 1100 }), 'stamped', 'the retry stamps');
+    assert.strictEqual(await stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', now: 1200 }), 'kept', 'a further retry is a no-op (set-once)');
+    assert.strictEqual(node(db, 'XPZ-r').fulfilled_at, 1100);
+  }
+  ok('Codex r1 P2: a failed fulfilment stamp propagates (the trigger retries it); the retry stamps once; further retries are no-ops');
+
+  // ── 12. the v2 path's fence: a fulfilled, UNRATED node (owner_uid null ⇒ invisible to the index) whose history write failed (invisible to
+  //    the history) — a v2 rating paused across the deletion commits after the scan and the post-commit fence redacts it ──
+  {
+    const db = fakeDb(); await place(db, A, 'XPZ-v'); await fulfil(db, 'XPZ-v'); db.set(`user_orders/${A}/XPZ-v`, null);
+    let paused = false;
+    const pdb = { ...db, ref: (p) => { const r = db.ref(p); if (p !== 'orders/XPZ-v') return r; return { ...r, get: async () => {
+      if (!paused) { paused = true; await SE.deleteAccountCore(db, ACCOUNT, { uid: A, phoneHash: null, now: 3000, revoke: async () => {} }); }
+      return r.get(); } }; } };
+    const r = await rateOrderCore(pdb, { body: { order_id: 'XPZ-v', store: 5, comment: 'tarde' }, idToken: `tok-${A}`, now: 2000, verifyIdToken, resolveContext: async (rid) => usableCtx(rid) });
+    assert.strictEqual(r.httpStatus, 403);
+    const x = node(db, 'XPZ-v');
+    assert.deepStrictEqual([x.state, x.owner_uid, x.comment], ['deleted', null, null], '🔴 a paused v2 write after the deletion\'s scan is redacted by the post-commit fence');
+  }
+  ok('the v2 fence: a fulfilled unrated node (owner_uid null) with a failed history write, rated by a v2 write paused across the deletion, is redacted after its commit');
 
   FINISHED = true;
   console.log(`\nrating-v2: OK (${n})`);

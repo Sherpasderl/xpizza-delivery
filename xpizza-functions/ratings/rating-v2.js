@@ -65,13 +65,16 @@ function normalize(cur) {
   return { ...freshNode({ restaurantId: cur.restaurant_id, fulfilledAt: cur.fulfilled_at ?? null }), ...cur, dishes: cur.dishes && typeof cur.dishes === 'object' ? cur.dishes : {} };
 }
 
-// Each updater: (cur) → next | undefined (abort), recording `out.outcome`. ONE transaction on ratings_v2/{orderId}.
-// v1 (legacy thumb, WRITE-ONCE): an existing legacy_thumb ⇒ no change ('kept'); a deleted node ⇒ refused; else set it once.
+// Each updater: (raw) → the next value, recording `out.outcome` from its FINAL run. NEVER undefined (Codex S-A1 r1 P1-1): the
+// Admin SDK runs the updater first on the uncached local value null and an undefined there ABORTS with no server round-trip — so a
+// "no change" returns the raw current value (null included). The write is then compared server-side: a real node re-runs the updater
+// on it, and an unchanged value commits as a no-op (nothing listens on ratings_v2). ONE transaction on ratings_v2/{orderId}.
+// v1 (legacy thumb, WRITE-ONCE): an existing legacy_thumb ⇒ no change ('kept'); a deleted node ⇒ 'closed'; else set it once.
 function v1Updater({ thumb, restaurantId, uid, now }, out) {
   return (raw) => {
     const cur = normalize(raw);
-    if (cur && cur.state === STATES.DELETED) { out.outcome = 'closed'; return undefined; }
-    if (cur && cur.legacy_thumb != null) { out.outcome = 'kept'; return undefined; }
+    if (cur && cur.state === STATES.DELETED) { out.outcome = 'closed'; return raw; }
+    if (cur && cur.legacy_thumb != null) { out.outcome = 'kept'; return raw; }
     const base = cur || freshNode({ restaurantId });
     out.outcome = 'recorded';
     return { ...base, legacy_thumb: thumb, rated_at: base.rated_at ?? now, owner_uid: base.owner_uid ?? uid };
@@ -82,9 +85,9 @@ function v1Updater({ thumb, restaurantId, uid, now }, out) {
 function v2Updater({ fields, uid, now }, out) {
   return (raw) => {
     const cur = normalize(raw);
-    if (!cur || !Number.isFinite(cur.fulfilled_at)) { out.outcome = 'not_fulfilled'; return undefined; }
-    if (cur.state === STATES.DELETED) { out.outcome = 'closed'; return undefined; }
-    if (now > cur.fulfilled_at + WINDOW_MS) { out.outcome = 'window_closed'; return undefined; }
+    if (!cur || !Number.isFinite(cur.fulfilled_at)) { out.outcome = 'not_fulfilled'; return raw; }
+    if (cur.state === STATES.DELETED) { out.outcome = 'closed'; return raw; }
+    if (now > cur.fulfilled_at + WINDOW_MS) { out.outcome = 'window_closed'; return raw; }
     const first = cur.rated_at == null || (cur.store == null && !Object.keys(cur.dishes).length && cur.delivery == null && cur.comment == null);
     out.outcome = 'recorded';
     return { ...cur, ...fields, ...(fields.dishes ? { dishes: fields.dishes } : {}), state: STATES.LIVE,
@@ -95,7 +98,7 @@ function v2Updater({ fields, uid, now }, out) {
 function withdrawUpdater({ now }, out) {
   return (raw) => {
     const cur = normalize(raw);
-    if (!cur || cur.state !== STATES.LIVE) { out.outcome = cur && cur.state === STATES.WITHDRAWN ? 'kept' : 'closed'; return undefined; }
+    if (!cur || cur.state !== STATES.LIVE) { out.outcome = cur && cur.state === STATES.WITHDRAWN ? 'kept' : 'closed'; return raw; }
     out.outcome = 'withdrawn';
     return { ...cur, state: STATES.WITHDRAWN, edited_at: now, rev: (cur.rev || 0) + 1 };
   };
@@ -104,7 +107,7 @@ function withdrawUpdater({ now }, out) {
 function fulfilmentUpdater({ restaurantId, now }, out) {
   return (raw) => {
     const cur = normalize(raw);
-    if (cur && (cur.state === STATES.DELETED || Number.isFinite(cur.fulfilled_at))) { out.outcome = 'kept'; return undefined; }
+    if (cur && (cur.state === STATES.DELETED || Number.isFinite(cur.fulfilled_at))) { out.outcome = 'kept'; return raw; }
     out.outcome = 'stamped';
     return cur ? { ...cur, fulfilled_at: now } : freshNode({ restaurantId, fulfilledAt: now });
   };
@@ -113,7 +116,7 @@ function fulfilmentUpdater({ restaurantId, now }, out) {
 function deletionUpdater(out) {
   return (raw) => {
     const cur = normalize(raw);
-    if (!cur || cur.state === STATES.DELETED) { out.outcome = cur ? 'kept' : 'absent'; return undefined; }
+    if (!cur || cur.state === STATES.DELETED) { out.outcome = cur ? 'kept' : 'absent'; return raw; }
     out.outcome = 'deleted';
     return { ...cur, state: STATES.DELETED, comment: null, owner_uid: null, rev: (cur.rev || 0) + 1 };
   };

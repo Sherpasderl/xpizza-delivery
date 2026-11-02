@@ -45,6 +45,15 @@ async function purchasedDishIds(db, { uid, orderId, rid, resolveContext }) {
   return new Set(keys.map((k) => map.dish.get(k)).filter(Boolean));
 }
 
+// Codex S-A1 r1 P1-2: the ACCOUNT-LEVEL fence = deleted_uids/{uid} (THE tombstone, written in deletion's ONE atomic update, BEFORE its
+// rating redaction scan). A rating write paused across that deletion re-checks it AFTER its own commit and redacts what it just wrote
+// (the scan may have run before this write existed). Either order converges on a redacted node; a FAILED deletion leaves no fence.
+async function fencedAfterWrite(db, uid, ref) {
+  if (!(await db.ref(`deleted_uids/${uid}`).get()).exists()) return false;
+  await ref.transaction(V2.deletionUpdater({}));
+  return true;
+}
+
 async function rateOrderCore(db, { body, idToken, now, verifyIdToken, resolveContext = DEPS.resolveContext }) {
   const req = V2.parseRequest(body);
   if (!req.ok) return GENERIC;
@@ -59,6 +68,7 @@ async function rateOrderCore(db, { body, idToken, now, verifyIdToken, resolveCon
     if (why === 'not_allowed') return GENERIC;
     if (why) return { httpStatus: 409, body: { ok: false, error: why } };
     await ref.transaction(V2.v1Updater({ thumb: req.thumb, restaurantId: order.restaurant_id, uid, now }, out));
+    if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref)) return GENERIC;
     return out.outcome === 'closed' ? GENERIC : { httpStatus: 200, body: { ok: true } };   // recorded or kept — the same answer
   }
   if (req.kind === 'withdraw') {
@@ -75,6 +85,7 @@ async function rateOrderCore(db, { body, idToken, now, verifyIdToken, resolveCon
   }
   if (!Object.keys(fields).length) return { httpStatus: 200, body: { ok: true, dishes: 'unavailable' } };   // only dish votes, none resolvable
   await ref.transaction(V2.v2Updater({ fields, uid, now }, out));
+  if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref)) return GENERIC;
   if (out.outcome === 'recorded') return { httpStatus: 200, body: { ok: true, ...(dishesUnavailable ? { dishes: 'unavailable' } : {}) } };
   if (out.outcome === 'closed') return GENERIC;
   return { httpStatus: 409, body: { ok: false, error: out.outcome } };   // not_fulfilled | window_closed

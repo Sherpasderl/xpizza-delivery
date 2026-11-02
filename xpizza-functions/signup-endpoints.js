@@ -187,10 +187,13 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
     if (typeof la === 'number' && la >= sweepCutoff) return false;   // a recent (pre-gate, Google-era) activity still spares it
     if ((await S.sweepClaim(db, uid, sweepCutoff, now)) !== 'claimed') return false;
   }
-  await redactRatings(db, uid);   // S-A1: BEFORE the removals (user_orders names the account's orders); idempotent on a retry
+  // S-A1 r2 (Codex r1 P1-2/P1-3): the history's order ids are READ now (the update below removes the history); the ratings are redacted
+  // AFTER the update, whose deleted_uids/{uid} is the account-level fence a paused rating write re-checks after its own commit
+  const historyIds = Object.keys((await db.ref(`user_orders/${uid}`).once('value')).val() || {});
   const prior = (await db.ref(`user_private/${uid}/deleted_at`).once('value')).val();
   const at = typeof prior === 'number' ? prior : now;
   await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at } });
+  await redactRatings(db, uid, historyIds);
   if (phoneHash) await db.ref(`phone_index/${phoneHash}`).transaction((cur) => (cur === null ? null : (cur === uid ? null : undefined)));
   await S.removeLinks(db, uid);
   await revokeSessions(db, uid, now, revoke, revokeDeadlineMs);
@@ -199,8 +202,13 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
 // S-A1 (PLAN §S-A (d)): account deletion REDACTS the account's ratings IN PLACE — ratings_v2/{orderId} for every order in its own
 // history gets state=deleted (terminal) with comment + owner_uid nulled, ONE transaction per node, so the vote leaves every aggregate
 // and the node remains only as the deletion fence. Runs before the history is removed; re-running is a no-op (already deleted).
-async function redactRatings(db, uid) {
-  const ids = Object.keys((await db.ref(`user_orders/${uid}`).once('value')).val() || {});
+async function redactRatings(db, uid, historyIds = null) {
+  // the account's ratings by the server-only owner_uid INDEX (ratings_v2 .indexOn) ∪ its own history — the history is best-effort
+  // (claim-order writes it best-effort), so it is never the only discovery (Codex r1 P1-3). Runs AFTER deletion's atomic update: its
+  // deleted_uids/{uid} is the fence (Codex r1 P1-2) — a rating write committing after this scan sees it and redacts itself.
+  const hist = historyIds || Object.keys((await db.ref(`user_orders/${uid}`).once('value')).val() || {});
+  const owned = (await db.ref('ratings_v2').orderByChild('owner_uid').equalTo(uid).once('value')).val() || {};
+  const ids = [...new Set([...hist, ...Object.keys(owned)])];
   const V2 = require('./ratings/rating-v2');
   for (const id of ids) {
     if (!V2.ORDER_ID_RE.test(id)) continue;

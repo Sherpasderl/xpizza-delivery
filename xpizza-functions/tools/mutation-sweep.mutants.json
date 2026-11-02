@@ -30909,7 +30909,7 @@
   "slice": "sa",
   "label": "S-A1 ratings v2: legacy_thumb is NOT write-once (a v1 retry overwrites it)",
   "file": "ratings/rating-v2.js",
-  "from": "    if (cur && cur.legacy_thumb != null) { out.outcome = 'kept'; return undefined; }\n",
+  "from": "    if (cur && cur.legacy_thumb != null) { out.outcome = 'kept'; return raw; }\n",
   "to": "",
   "command": [
    "node",
@@ -30921,8 +30921,8 @@
   "slice": "sa",
   "label": "S-A1 ratings v2: a v2 rating without the fulfilment stamp",
   "file": "ratings/rating-v2.js",
-  "from": "    if (!cur || !Number.isFinite(cur.fulfilled_at)) { out.outcome = 'not_fulfilled'; return undefined; }",
-  "to": "    if (!cur) { out.outcome = 'not_fulfilled'; return undefined; }",
+  "from": "    if (!cur || !Number.isFinite(cur.fulfilled_at)) { out.outcome = 'not_fulfilled'; return raw; }",
+  "to": "    if (!cur) { out.outcome = 'not_fulfilled'; return raw; }",
   "command": [
    "node",
    "ratings/rating-v2.test.js"
@@ -30933,8 +30933,8 @@
   "slice": "sa",
   "label": "S-A1 ratings v2: the 7-day window is not enforced",
   "file": "ratings/rating-v2.js",
-  "from": "    if (now > cur.fulfilled_at + WINDOW_MS) { out.outcome = 'window_closed'; return undefined; }",
-  "to": "    if (false) { out.outcome = 'window_closed'; return undefined; }",
+  "from": "    if (now > cur.fulfilled_at + WINDOW_MS) { out.outcome = 'window_closed'; return raw; }",
+  "to": "    if (false) { out.outcome = 'window_closed'; return raw; }",
   "command": [
    "node",
    "ratings/rating-v2.test.js"
@@ -30945,8 +30945,8 @@
   "slice": "sa",
   "label": "S-A1 ratings v2: fulfilled_at is re-stamped (not set-once)",
   "file": "ratings/rating-v2.js",
-  "from": "    if (cur && (cur.state === STATES.DELETED || Number.isFinite(cur.fulfilled_at))) { out.outcome = 'kept'; return undefined; }",
-  "to": "    if (cur && cur.state === STATES.DELETED) { out.outcome = 'kept'; return undefined; }",
+  "from": "    if (cur && (cur.state === STATES.DELETED || Number.isFinite(cur.fulfilled_at))) { out.outcome = 'kept'; return raw; }",
+  "to": "    if (cur && cur.state === STATES.DELETED) { out.outcome = 'kept'; return raw; }",
   "command": [
    "node",
    "ratings/rating-v2.test.js"
@@ -30993,7 +30993,7 @@
   "slice": "sa",
   "label": "S-A1 ratings v2: account deletion does not redact the ratings",
   "file": "signup-endpoints.js",
-  "from": "  await redactRatings(db, uid);   // S-A1: BEFORE the removals (user_orders names the account's orders); idempotent on a retry\n",
+  "from": "  await redactRatings(db, uid, historyIds);\n",
   "to": "",
   "command": [
    "node",
@@ -31005,7 +31005,7 @@
   "slice": "sa",
   "label": "S-A1 ratings v2: a paused edit resurrects a deleted rating",
   "file": "ratings/rating-v2.js",
-  "from": "    if (cur.state === STATES.DELETED) { out.outcome = 'closed'; return undefined; }\n    if (now > cur.fulfilled_at",
+  "from": "    if (cur.state === STATES.DELETED) { out.outcome = 'closed'; return raw; }\n    if (now > cur.fulfilled_at",
   "to": "    if (now > cur.fulfilled_at",
   "command": [
    "node",
@@ -31065,11 +31065,95 @@
   "slice": "sa",
   "label": "S-A1 ratings v2: the fulfilment trigger listens on the wrong path",
   "file": "index.js",
-  "from": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1' },",
-  "to": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}', region: 'us-central1' },",
+  "from": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true },",
+  "to": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}', region: 'us-central1', retry: true },",
   "command": [
    "node",
    "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-15",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r2): no post-commit fence on the legacy path (a paused v1 write survives a complete deletion)",
+  "file": "ratings/rate-order.js",
+  "from": "    if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref)) return GENERIC;\n    return out.outcome === 'closed'",
+  "to": "    return out.outcome === 'closed'",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-16",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r2): deletion discovers ratings by the history ONLY (no owner_uid index)",
+  "file": "signup-endpoints.js",
+  "from": "  const ids = [...new Set([...hist, ...Object.keys(owned)])];",
+  "to": "  const ids = [...new Set([...hist])];",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-17",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r2): the fulfilment trigger swallows a failure",
+  "file": "index.js",
+  "from": "catch (e) { console.error('stampRatingFulfilment', e && e.message); throw e; }",
+  "to": "catch (e) { console.error('stampRatingFulfilment', e && e.message); }",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-18",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r2): the fulfilment trigger has retry OFF",
+  "file": "index.js",
+  "from": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true },",
+  "to": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1' },",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-19",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r2): the v2 updater aborts on RTDB's speculative null (no server round-trip)",
+  "file": "ratings/rating-v2.js",
+  "from": "    if (!cur || !Number.isFinite(cur.fulfilled_at)) { out.outcome = 'not_fulfilled'; return raw; }",
+  "to": "    if (!cur || !Number.isFinite(cur.fulfilled_at)) { out.outcome = 'not_fulfilled'; return undefined; }",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-20",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r2): the deletion updater aborts on RTDB's speculative null (a live comment survives deletion)",
+  "file": "ratings/rating-v2.js",
+  "from": "    if (!cur || cur.state === STATES.DELETED) { out.outcome = cur ? 'kept' : 'absent'; return raw; }",
+  "to": "    if (!cur || cur.state === STATES.DELETED) { out.outcome = cur ? 'kept' : 'absent'; return undefined; }",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-21",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r2): no post-commit fence on the v2 path",
+  "file": "ratings/rate-order.js",
+  "from": "  await ref.transaction(V2.v2Updater({ fields, uid, now }, out));\n  if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref)) return GENERIC;\n",
+  "to": "  await ref.transaction(V2.v2Updater({ fields, uid, now }, out));\n",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
   ]
  }
 ]
