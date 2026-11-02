@@ -31515,5 +31515,161 @@
    "node",
    "favorites-rules.guard.test.js"
   ]
+ },
+ {
+  "id": "sd-1",
+  "slice": "sd",
+  "label": "S-D: materialize RE-PRICES the snapshot from the current (code) menu instead of copying it",
+  "file": "materialize.js",
+  "from": "{ price_snapshot: order.reorder_price_snapshot }",
+  "to": "{ price_snapshot: require('./reorder-normalize').reorderPriceSnapshot((order.reorder_items || []).map((l) => ({ name: l.key, id: l.key, qty: l.qty })), order.restaurant_id) }",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-2",
+  "slice": "sd",
+  "label": "S-D: claim RE-PRICES the snapshot from the current (code) menu instead of copying it",
+  "file": "claim-order.js",
+  "from": "{ price_snapshot: committed.reorder_price_snapshot }",
+  "to": "{ price_snapshot: require('./reorder-normalize').reorderPriceSnapshot((committed.reorder_items || []).map((l) => ({ name: l.key, id: l.key, qty: l.qty })), committed.restaurant_id) }",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-3",
+  "slice": "sd",
+  "label": "S-D: the snapshot is priced from the BODY's client prices",
+  "file": "reorder-normalize.js",
+  "from": "    const r = require('./menu-pricing').computeServerTotal([it], restaurantId, tables);",
+  "to": "    const r = { error: null, total: Number(it && it.price) * Number(it && it.qty) || menu[one[0].key] * one[0].qty };",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-4",
+  "slice": "sd",
+  "label": "S-D: misalignment — a dropped body line still adds a snapshot line",
+  "file": "reorder-normalize.js",
+  "from": "    if (one.length !== 1) continue;\n    items.push(one[0]);",
+  "to": "    if (one.length !== 1) { lines.push({ unit_cents: 0, line_cents: 0 }); continue; }\n    items.push(one[0]);",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-5",
+  "slice": "sd",
+  "label": "S-D: a partial snapshot is written when a line is refused",
+  "file": "reorder-normalize.js",
+  "from": "  return { items, snapshot: priced && items.length > 0 ? { v: 1, lines } : null };",
+  "to": "  return { items, snapshot: items.length > 0 ? { v: 1, lines } : null };",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-6",
+  "slice": "sd",
+  "label": "S-D: line_cents = unit × qty (drops extras — not the line as charged)",
+  "file": "reorder-normalize.js",
+  "from": "    lines.push({ unit_cents: unit * 100, line_cents: r.total * 100 });",
+  "to": "    lines.push({ unit_cents: unit * 100, line_cents: unit * 100 * one[0].qty });",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-7",
+  "slice": "sd",
+  "label": "S-D: the cash intake bumps recipe_format (both forms' readers would blank every line)",
+  "file": "create-order-build.js",
+  "from": "  if (priceSnapshot) updates[`user_orders/${customer_uid}/${orderId}`].price_snapshot = priceSnapshot;",
+  "to": "  if (priceSnapshot) { updates[`user_orders/${customer_uid}/${orderId}`].price_snapshot = priceSnapshot; updates[`user_orders/${customer_uid}/${orderId}`].recipe_format = 2; }",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-8",
+  "slice": "sd",
+  "label": "S-D: the cash intake prices from the CODE tables, not the committed tables that charged it",
+  "file": "create-order-build.js",
+  "from": "reorderPriceSnapshot(meta.items, meta.restaurantId, meta.tables);",
+  "to": "reorderPriceSnapshot(meta.items, meta.restaurantId, null);",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-9",
+  "slice": "sd",
+  "label": "S-D: the online pending record prices from the CODE tables, not this charge's pricingTables",
+  "file": "index.js",
+  "from": "require('./reorder-normalize').reorderPriceSnapshot(body.items, restaurantId, pricingTables);",
+  "to": "require('./reorder-normalize').reorderPriceSnapshot(body.items, restaurantId, null);",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-10",
+  "slice": "sd",
+  "label": "S-D: the online pending record never carries the snapshot",
+  "file": "index.js",
+  "from": "    if (reorderPriceSnapshot) pendingOrderRecord.reorder_price_snapshot = reorderPriceSnapshot;\n",
+  "to": "",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-11",
+  "slice": "sd",
+  "label": "S-D: a GUEST pending record carries a snapshot",
+  "file": "index.js",
+  "from": "  if (customer_uid) {\n    const reorderPriceSnapshot",
+  "to": "  if (true) {\n    const reorderPriceSnapshot",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-12",
+  "slice": "sd",
+  "label": "S-D: getMyOrders drops price_snapshot from the Row",
+  "file": "my-orders.js",
+  "from": "    ...(x.price_snapshot !== undefined ? { price_snapshot: x.price_snapshot } : {}),   // S-D: verbatim, like items\n",
+  "to": "",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "sd-13",
+  "slice": "sd",
+  "label": "S-D: materialize writes price_snapshot:undefined-shaped key for a legacy order (entry no longer byte-identical)",
+  "file": "materialize.js",
+  "from": "...(order.reorder_price_snapshot !== undefined ? { price_snapshot: order.reorder_price_snapshot } : {}),",
+  "to": "...({ price_snapshot: order.reorder_price_snapshot || null }),",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
  }
 ]

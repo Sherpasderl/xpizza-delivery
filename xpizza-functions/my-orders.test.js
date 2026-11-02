@@ -156,10 +156,13 @@ const mirror = async (db, uid, id, status) => { const d = decideStatusMirror(id,
     const KEYS = ['items', 'items_text', 'order_id', 'order_type', 'restaurant', 'status', 'total', 'ts'];
     for (const row of [...r.body.active, ...r.body.past]) {
       const e = db.get(`user_orders/${A}/${row.order_id}`);
-      assert.deepStrictEqual(Object.keys(row).sort(), KEYS, `🔴 ${row.order_id}: the projection is exactly the whitelist`);
-      assert.deepStrictEqual(row, { order_id: row.order_id, ts: e.ts, total: e.total, order_type: e.order_type, restaurant: e.restaurant, status: e.status, items_text: e.items_text, items: withIds(e.restaurant, e.items || []) }, `${row.order_id}: the stored values (+ each line's dish_id)`);
+      const snap = e.price_snapshot !== undefined;   // S-D: the additive price snapshot passes through verbatim when stored
+      assert.deepStrictEqual(Object.keys(row).sort(), snap ? [...KEYS, 'price_snapshot'].sort() : KEYS, `🔴 ${row.order_id}: the projection is exactly the whitelist`);
+      assert.deepStrictEqual(row, { order_id: row.order_id, ts: e.ts, total: e.total, order_type: e.order_type, restaurant: e.restaurant, status: e.status, items_text: e.items_text, items: withIds(e.restaurant, e.items || []), ...(snap ? { price_snapshot: e.price_snapshot } : {}) }, `${row.order_id}: the stored values (+ each line's dish_id)`);
     }
     assert.deepStrictEqual(r.body.active.find((x) => x.order_id === 'XPZ-onl').items, [{ key: 'Margherita', qty: 2, dish_id: cidOf('x_pizza', 'Margherita') }], 'the confirm-time recipe');
+    const cash = r.body.active.find((x) => x.order_id === 'XPZ-new');
+    assert.ok(cash.price_snapshot && cash.price_snapshot.v === 1 && cash.price_snapshot.lines.length === cash.items.length, '🔴 S-D: the cash intake\'s price snapshot reaches the Row, aligned with items');
     assert.strictEqual(r.body.active.find((x) => x.order_id === 'XPZ-clm').restaurant, 'la_musa', 'each row names its store (multi-restaurant)');
   }
   ok('real writers (intake / confirm / claim + the status mirror): active = new / preparing / scheduled / out_for_delivery, past = delivered / cancelled / completed, newest first; each row is EXACTLY the whitelist with the stored values');

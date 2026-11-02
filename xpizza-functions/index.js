@@ -1965,6 +1965,14 @@ chargeOnlineApp.all('*', async (req, res) => {
     // pending order so materialize.js can copy it into user_orders/{uid}.items at CONFIRM (never pending).
     ...(customer_uid ? { reorder_items: normalizeReorderItems(body.items, restaurantId, pricingTables) } : {})   // 2a: allowlist = the CATALOG menu
   };
+  /* sd:begin reorder-price-snapshot */
+  // S-D (PLAN §S-D): the reorder price snapshot beside reorder_items — the committed prices of THIS charge (pricingTables), aligned
+  // 1:1 with the recipe; materialize / claim copy it verbatim into user_orders.price_snapshot (never re-priced).
+  if (customer_uid) {
+    const reorderPriceSnapshot = require('./reorder-normalize').reorderPriceSnapshot(body.items, restaurantId, pricingTables);
+    if (reorderPriceSnapshot) pendingOrderRecord.reorder_price_snapshot = reorderPriceSnapshot;
+  }
+  /* sd:end reorder-price-snapshot */
   /* serial3:begin card-content-keys */
   // §3 r3 (codex r3 P1): the order's content keys, computed HERE where the pricing version's catalog snapshot is warm, and
   // persisted on the pending order — the confirm-side duplicate guard (other instances, cold cache) reads them, never menu names.

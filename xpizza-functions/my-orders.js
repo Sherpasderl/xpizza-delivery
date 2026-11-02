@@ -5,8 +5,8 @@
 // MEMBER-ONLY: the uid comes ONLY from the verified customer token (guests have no user_orders — attribution is a no-op for
 // them). ONE bounded query on user_orders/{uid} (orderByChild('ts') [.endBefore(ts, id)] .limitToLast(limit + 1), the existing
 // .indexOn) and no other read but the tombstone check: no fan-out. Rules unchanged (Admin read; the node stays owner-read-only).
-// Row = a WHITELIST of the stored entry; `items` + `recipe_format` (the server-authored, menu-allowlisted reorder recipe) pass
-// through as stored, so 31's S-D additive price snapshot reaches the capp with no change here. active = a status outside the
+// Row = a WHITELIST of the stored entry; `items` + `recipe_format` (the server-authored, menu-allowlisted reorder recipe) and S-D's
+// additive `price_snapshot` (server-authored, aligned with `items`) pass through as stored. active = a status outside the
 // terminal set; a stale non-terminal status (status-mirror is fail-open) stays active — the stored truth (backlog: a reconciler).
 const S = require('./signup-core');
 const CB = require('./catalog/canonical-binding');   // identityMap: the ONE legacy-key → canonical-id resolver (via the pricing envelope's D4-a context)
@@ -44,6 +44,7 @@ function projectRow(id, e) {
     order_id: id, ts: num(x.ts), total: num(x.total), order_type: str(x.order_type), restaurant: str(x.restaurant), status: str(x.status),
     items_text: str(x.items_text), items: Array.isArray(x.items) ? x.items : [],
     ...(x.recipe_format !== undefined ? { recipe_format: x.recipe_format } : {}),
+    ...(x.price_snapshot !== undefined ? { price_snapshot: x.price_snapshot } : {}),   // S-D: verbatim, like items
   };
 }
 const isActive = (status) => typeof status === 'string' && status !== '' && !TERMINAL.has(status);
