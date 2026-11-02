@@ -60,6 +60,7 @@ test('S4 C (owner option B): «Pedido programado», no order number, the segbar 
   assert.equal(txt(r.querySelector('.mk-status')), 'Tu pedido está programado. Lo empezamos a preparar antes de tu horario.');
   assert.deepEqual([...r.querySelectorAll('.segbar .sg')].map((x) => x.className), ['sg', 'sg', 'sg', 'sg', 'sg'], '🔴 OR-C: unfilled');
   assert.equal(r.querySelector('[data-act="order-share"]'), null);
+  assert.equal(txt(r.querySelector('.mk-window')), 'Programado · llega Hoy 9:00 p. m.', '🔴 OR-C: v6 etaRange\'s scheduled line (S4 C\'s drawn anchor)');
 });
 test('S4 R (owner 11-01): no release by scheduled_for + 30 min ⇒ «Revisando tu pedido» with the approved copy; one ms before ⇒ still C', () => {
   const at = T0;
@@ -102,5 +103,16 @@ test('escaping: store, driver, address and line names are text, never markup', (
 test('one source: customer-app/form-order-number.js is byte-identical to the order forms\' copies', () => {
   const mine = readFileSync(join(HERE, 'form-order-number.js'));
   for (const f of ['xpizza-orders/form-order-number.js', 'la-musa-orders/form-order-number.js']) assert.ok(mine.equals(readFileSync(join(ROOT, f))), `🔴 customer-app/form-order-number.js drifted from ${f}`);
+});
+test('one source: status-view.js (the tracker\'s words) and form-live-status.js (S5\'s window) are byte-identical to their sources', () => {
+  assert.ok(readFileSync(join(HERE, 'status-view.js')).equals(readFileSync(join(ROOT, 'xpizza-track/status-view.js'))), '🔴 customer-app/status-view.js drifted from xpizza-track/status-view.js');
+  assert.ok(readFileSync(join(HERE, 'form-live-status.js')).equals(readFileSync(join(ROOT, 'xpizza-orders/form-live-status.js'))), '🔴 customer-app/form-live-status.js drifted from xpizza-orders/form-live-status.js');
+});
+test('fromTracking: the tracker\'s statuses onto v6\'s — ready is still preparing for a delivery; out for a pickup is ready; completed = delivered / collected; unknown ⇒ null; arriving is never derived', () => {
+  const f = (st, mode = 'delivery', x = {}) => { const v = CappOrder.fromTracking({ status: st, ...x }, mode); return v && v.status; };
+  assert.deepEqual([f('new'), f('preparing'), f('ready'), f('out_for_delivery'), f('delivered'), f('completed'), f('cancelled'), f('weird')], ['new', 'preparing', 'preparing', 'out', 'delivered', 'delivered', 'cancelled', null]);
+  assert.deepEqual([f('ready', 'pickup'), f('out_for_delivery', 'pickup'), f('completed', 'pickup')], ['ready', 'ready', 'collected']);
+  assert.equal(CappOrder.fromTracking({ status: 'out_for_delivery', driver_name: 'C', is_active_drop: false }, 'delivery').stacked, true);
+  assert.equal(CappOrder.fromTracking({ status: 'out_for_delivery', driver_name: 'C' }, 'delivery').stacked, false, 'absent ⇒ not stacked (fail-safe)');
 });
 

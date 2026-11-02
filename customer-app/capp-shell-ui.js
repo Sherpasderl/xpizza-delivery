@@ -535,17 +535,64 @@
     // A placed order leaves «Enviando» for this SHELL screen: the store mount is left (Inicio under it, so back ⇒ Inicio), the order
     // as SENT (capp-ui's snapshot) + the store's directory data. «Orden #N»: the forms' own order-number module (synced bytes) reads
     // order_tracking/{token}/display_number — capped, else hidden, never the long id. C → R flips at its own boundary (one handle).
-    let orderNum = null, orderFlipT = null;
+    let orderNum = null, orderFlipT = null, orderStream = null, orderGen = 0;
+    const FLS = () => (typeof FormLiveStatus !== 'undefined' ? FormLiveStatus : o.FormLiveStatus);
+    // RTDB REST streaming (EventSource): a 'put' replaces the value at `path`, a 'patch' merges into it — folded into ONE record
+    function applyRtdb(rec, type, path, data) {
+      const segs = String(path || '/').split('/').filter(Boolean);
+      if (!segs.length) return type === 'put' ? (data && typeof data === 'object' ? { ...data } : null) : { ...(rec || {}), ...(data && typeof data === 'object' ? data : {}) };
+      const root = { ...(rec || {}) }; let cur = root;
+      for (let i = 0; i < segs.length - 1; i++) { const k = segs[i]; cur[k] = cur[k] && typeof cur[k] === 'object' ? { ...cur[k] } : {}; cur = cur[k]; }
+      const last = segs[segs.length - 1];
+      if (type === 'put') { if (data === null) delete cur[last]; else cur[last] = data; } else cur[last] = { ...(cur[last] && typeof cur[last] === 'object' ? cur[last] : {}), ...(data && typeof data === 'object' ? data : {}) };
+      return root;
+    }
+    function streamOrder(od) {
+      const ES = o.EventSource || (win && win.EventSource), base = typeof runtime.rtdbBase === 'string' ? runtime.rtdbBase : null;
+      if (typeof ES !== 'function' || !base || od.scheduled || typeof od.token !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(od.token)) return;
+      let es; try { es = new ES(`${base}/order_tracking/${encodeURIComponent(od.token)}.json`); } catch (_) { return; }
+      orderStream = es; let rec = null; const gen = orderGen;
+      const apply = (ev) => {
+        if (dead || gen !== orderGen || S.order !== od) return;
+        let m = null; try { m = JSON.parse(ev.data); } catch (_) { return; }
+        if (!m || typeof m !== 'object' || typeof m.path !== 'string') return;
+        rec = applyRtdb(rec, ev.type, m.path, m.data);
+        const v = CappOrder.fromTracking(rec, od.mode); if (!v) return;
+        Object.assign(od, v);
+        if (CappOrder.FINAL.has(v.status)) closeStream();
+        if (S.tab === 'order' && !S.store) renderNow();
+      };
+      es.addEventListener('put', apply); es.addEventListener('patch', apply);
+      es.addEventListener('cancel', () => closeStream()); es.addEventListener('auth_revoked', () => closeStream());
+    }
+    function closeStream() { if (orderStream) { try { orderStream.close(); } catch (_) {} } orderStream = null; }
+    // v6's «Llega a – b» / «Listo para recoger a – b»: S5's own window (form-live-status, synced bytes) — the placement window from the
+    // restaurant's public prep (measured ▸ configured ▸ neutral) + its drive fallback (the capp runs no Directions); painted at once from
+    // the neutral prep (no pop-in), refined IN PLACE when the public prep lands
+    function windowOrder(od) {
+      const F = FLS(); if (!F || od.scheduled) return;
+      const pickup = od.mode !== 'delivery', anchor = od.placedAt;
+      const paint = (pub) => { const w = F.windowFor({ stage: 'placement', anchorMs: anchor, prep: F.prepFor(pub, anchor, Number(nowMs())), driveMin: F.LIVE_STATUS.DRIVE_FALLBACK_MIN, pickup }); od.windowText = w ? F.fmtRange(w.low, w.high) : null; };
+      paint(null);
+      const base = typeof runtime.rtdbBase === 'string' ? runtime.rtdbBase : null;
+      if (!base || typeof o.readPublic !== 'function' || !od.rid) return;
+      const gen = orderGen;
+      Promise.resolve().then(() => o.readPublic(`${base}/restaurants/${encodeURIComponent(od.rid)}/public.json`)).then((r) => (r && r.ok ? r.json() : null)).then((pub) => {
+        if (dead || gen !== orderGen || S.order !== od || !pub) return; paint(pub); if (S.tab === 'order' && !S.store) renderNow();
+      }).catch(() => {});
+    }
     const OrderNumberMod = () => (typeof OrderNumber !== 'undefined' ? OrderNumber : o.OrderNumber);
     const trackBaseOf = (rid) => { const b = runtime.trackBases && runtime.trackBases[rid]; return typeof b === 'string' && /^https:\/\/[a-z0-9.-]+$/.test(b) ? b : null; };
     const supportWa = () => (typeof runtime.supportWhatsapp === 'string' && /^\d{8,15}$/.test(runtime.supportWhatsapp) ? runtime.supportWhatsapp : null);
-    function stopOrder() { if (orderNum) { try { orderNum.stop(); } catch (_) {} } orderNum = null; if (orderFlipT !== null) { T.clearTimeout(orderFlipT); orderFlipT = null; } }
+    function stopOrder() { orderGen++; closeStream(); if (orderNum) { try { orderNum.stop(); } catch (_) {} } orderNum = null; if (orderFlipT !== null) { T.clearTimeout(orderFlipT); orderFlipT = null; } }
     function showOrder(rid, d) {
       stopOrder();
       const row = dir.view().rows.find((r) => r.rid === rid), e = (row && row.entry) || {};
       S.order = { ...d.order, rid, order_id: d.order_id || null, token: typeof d.tracking_token === 'string' ? d.tracking_token : null, status: 'new',
         storeName: e.name || '', branch: e.branch || '', storeAddr: e.pickup_addr || '', display_number: null,
-        grant: d.signup_grant && typeof d.signup_grant.token === 'string' ? { token: d.signup_grant.token, expires_at: d.signup_grant.expires_at } : null, offerDone: false };
+        grant: d.signup_grant && typeof d.signup_grant.token === 'string' ? { token: d.signup_grant.token, expires_at: d.signup_grant.expires_at } : null, offerDone: false,
+        placedAt: Number(nowMs()), windowText: null, driver: null, stacked: false, doneAt: null };
+      windowOrder(S.order); streamOrder(S.order);
       const ON = OrderNumberMod(), base = typeof runtime.rtdbBase === 'string' ? runtime.rtdbBase : null;
       if (ON && base && typeof o.readPublic === 'function' && !S.order.scheduled) {
         const mine = S.order;

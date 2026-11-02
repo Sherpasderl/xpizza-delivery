@@ -247,7 +247,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   if (media) w.matchMedia = media.matchMedia;   // D-2: the viewport the shell reads at mount (a controllable matchMedia)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'capp-order.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -1918,16 +1918,17 @@ test('Pedido recibido: a placed cash order ⇒ the shell\'s order screen — «P
 // «Orden #N» (advisor ruling from 5f's note: the number is stamped AFTER createOrder): the forms' own order-number module reads
 // order_tracking/{token}/display_number from the public base — the number when it lands; never the long id
 test('Pedido recibido: «Orden #N» from order_tracking/{token}/display_number via the shared order-number module (the exact public path; nothing before it lands)', async () => {
-  const reads = [];
-  const readPublic = async (u) => { reads.push(u); return { ok: true, json: async () => (reads.length >= 2 ? 47 : null) }; };
+  const reads = []; let landed = false;   // the allocator stamps the number when the test says so (deterministic under load)
+  const readPublic = async (u) => { reads.push(u); return { ok: true, json: async () => (landed ? 47 : null) }; };
   const S = bootShell({ runtime: { ...RUNTIME, rtdbBase: 'https://rtdb.test' }, readPublic, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
   try {
     await flush(); await placeShellCash(S);
     assert.equal(S.q('.mk-num'), null, 'pending ⇒ no line yet');
-    await flush(900); assert.equal(S.q('.mk-num'), null, 'the first read answers null ⇒ still nothing (never the long id)');
-    await flush(1700);
+    await flush(900); assert.equal(S.q('.mk-num'), null, 'a read answering null ⇒ still nothing (never the long id)');
+    assert.ok(reads.length >= 1, 'premise: at least one read happened'); landed = true;
+    await flush(2700);
     assert.equal(txt(S.q('.mk-num')), 'Orden #47 · Te avisamos por WhatsApp', '🔴 PR-2: the display number from the tracking node');
-    assert.ok(reads.length >= 2 && reads.every((u) => u === 'https://rtdb.test/order_tracking/tok_abcdefgh12/display_number.json'), `🔴 PR-2: the exact public path (${reads[0]})`);
+    assert.ok(reads.length >= 2 && reads.filter((u) => u.includes('/order_tracking/')).every((u) => u === 'https://rtdb.test/order_tracking/tok_abcdefgh12/display_number.json'), `🔴 PR-2: the exact public path (${reads[0]})`);
   } finally { S.w.close(); }
 });
 test('Pedido recibido: «Ayuda» opens wa.me/<runtime.supportWhatsapp> with the order number pre-filled; «Compartir seguimiento» copies <the context\'s tracker>/<token>; both absent without their config', async () => {
@@ -2000,6 +2001,68 @@ test('Pedido recibido · frame 7: a guest card order\'s paid return shows the ac
     assert.equal(su.filter((x) => x[0] === 'requestOtp').length, 0, 'no second code');
     assert.equal(B.q('.guestcard.offer'), null, '🔴 PR-7: the offer is gone for the member');
   } finally { B.w.close(); }
+});
+// ── «Pedido recibido» stage 2: the LIVE status, in place, from order_tracking/{token} (RTDB REST stream) — the record from the REAL
+// writer (create-order-build.buildCreateOrderUpdates) and its transitions on the paths index.js writes (status / delivered_at /
+// cancelled_at, driver_name, is_active_drop via tracking-mirror.stackedWaitingTxn) ──
+const FN_REQ = createRequire(join(ROOT, 'xpizza-functions/x.js'));
+const { buildCreateOrderUpdates } = FN_REQ('./create-order-build'), { orderBreakdownCents } = FN_REQ('./order-money'), { stackedWaitingTxn } = FN_REQ('./tracking-mirror');
+function trackingRecordOf(token, orderType = 'delivery') {   // the REAL writer's public tracking node for a placed order
+  const fields = { customer_name: 'Ana', customer_phone: '99990000', customer_email: 'a@b.hn', notes: '', pickup_time: 'standard', items_text: '1x Plato',
+    payment_method: 'cash', address_detected: 'Col. Prueba, SPS', address_details: 'Portón negro', maps_link: 'm', waze_link: 'w', items: [{ name: 'Plato', qty: 1 }] };
+  const u = buildCreateOrderUpdates({ orderId: 'XP-1', orderType, now: T0, trackingToken: token, total: 340, lat: 15.52, lng: -88.04, fields,
+    hubSnap: { hub_lat: 15.5, hub_lng: -88.0, restaurant_name: 'X. Pizza', restaurant_phone: '+504' }, restaurantId: 'x_pizza', priceBreakdown: orderBreakdownCents(340, 'x_pizza'),
+    facturaPriced: { items: [] }, cashTenderedCents: 34000, freeOrder: false, rewardStamp: {} });
+  const rec = u[`order_tracking/${token}`]; assert.ok(rec && rec.status === 'new', 'premise: the writer\'s tracking node');
+  return rec;
+}
+function fakeES() {
+  const made = [];
+  class ES { constructor(url) { this.url = url; this.l = {}; this.closed = false; made.push(this); } addEventListener(t, f) { (this.l[t] = this.l[t] || []).push(f); } close() { this.closed = true; }
+    emit(type, path, data) { for (const f of this.l[type] || []) f({ type, data: JSON.stringify({ path, data }) }); } }
+  return { ES, made };
+}
+test('Pedido recibido · live: the order screen follows order_tracking/{token} in place — preparing → stacked (is_active_drop false) → out with the driver → delivered (the stream closed); the window «Llega a – b» from S5\'s prep', async () => {
+  const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12';
+  const pub = { prep_eta_min: 25 };
+  const readPublic = async (u) => ({ ok: true, json: async () => (u.endsWith('/public.json') ? pub : null) });
+  const S = bootShell({ runtime: { ...RUNTIME, rtdbBase: 'https://rtdb.test' }, readPublic, mountExtra: { EventSource: ES }, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: TOKEN })), geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
+  try {
+    await flush(); await placeShellCash(S); await flush();
+    assert.equal(made.length, 1, '🔴 PR-live: ONE stream'); assert.equal(made[0].url, `https://rtdb.test/order_tracking/${TOKEN}.json`, '🔴 PR-live: the public node by token');
+    assert.match(txt(S.q('.mk-window')) || '', /^Llega \d{1,2}:\d{2}/, '🔴 PR-window: «Llega a – b»');
+    const es = made[0]; let rec = trackingRecordOf(TOKEN);
+    es.emit('put', '/', rec); await flush();
+    assert.equal(txt(S.q('.mk-title')), 'Pedido recibido', 'the writer\'s «new»');
+    es.emit('put', '/status', 'preparing'); await flush();
+    assert.equal(txt(S.q('.mk-title')), 'Tu pedido se está preparando', '🔴 PR-live: preparing, in place');
+    assert.equal(S.ui.store(), null, 'still the shell\'s order screen');
+    es.emit('put', '/driver_name', 'Carlos'); es.emit('put', '/status', 'out_for_delivery'); es.emit('put', '/is_active_drop', stackedWaitingTxn(undefined)); await flush();
+    assert.equal(txt(S.q('.mk-title')), 'Carlos va en camino', '🔴 PR-stacked: is_active_drop false ⇒ «va en camino»');
+    assert.equal(txt(S.q('.ssub')), 'Tu repartidor tiene una parada rápida en camino a la tuya, luego va directo hacia vos.', '🔴 PR-stacked: the tracker\'s line (status-view)');
+    assert.equal(txt(S.q('.drivercard .t b')), 'Carlos'); assert.equal(S.q('.pincard'), null, 'no PIN on the record ⇒ no PIN card');
+    es.emit('put', '/is_active_drop', true); es.emit('patch', '/', { driver_location: { lat: 15.51, lng: -88.03 } }); await flush();
+    assert.equal(txt(S.q('.mk-title')), 'Carlos está en camino', '🔴 PR-live: the active drop');
+    assert.equal(txt(S.q('.ssub')), '', 'no ETA minutes without a real ETA (owner rule)');
+    es.emit('put', '/status', 'delivered'); es.emit('put', '/delivered_at', T0 + 40 * 60e3); await flush();
+    assert.equal(txt(S.q('.mk-title')), '¡Pedido entregado!', '🔴 PR-live: delivered');
+    assert.equal(es.closed, true, '🔴 PR-live: the stream closed on a final state');
+  } finally { S.w.close(); }
+});
+test('Pedido recibido · live: a claim with no driver name says the tracker\'s calm copy (status-view); the cancelled path ⇒ «Pedido cancelado» and the stream closed; leaving the screen closes the stream', async () => {
+  const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12';
+  const S = bootShell({ runtime: { ...RUNTIME, rtdbBase: 'https://rtdb.test' }, readPublic: async () => ({ ok: false }), mountExtra: { EventSource: ES }, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: TOKEN })), geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
+  try {
+    await flush(); await placeShellCash(S); await flush();
+    const es = made[0]; es.emit('put', '/', trackingRecordOf(TOKEN)); es.emit('put', '/status', 'out_for_delivery'); await flush();
+    assert.equal(txt(S.q('.mk-title')), 'Tu pedido va en camino', '🔴 PR-nameless: the tracker\'s calm headline');
+    assert.equal(txt(S.q('.ssub')), 'Pronto llegará a tu dirección', '🔴 PR-nameless: its sub');
+    es.emit('put', '/status', 'cancelled'); es.emit('put', '/cancelled_at', T0 + 5 * 60e3); await flush();
+    assert.equal(txt(S.q('.mk-title')), 'Pedido cancelado', '🔴 PR-cancel'); assert.equal(es.closed, true, '🔴 PR-cancel: the stream closed');
+  } finally { S.w.close(); }
+  const { ES: ES2, made: m2 } = fakeES();
+  const N = bootShell({ runtime: { ...RUNTIME, rtdbBase: 'https://rtdb.test' }, readPublic: async () => ({ ok: false }), mountExtra: { EventSource: ES2 }, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: TOKEN })), geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
+  try { await flush(); await placeShellCash(N); await flush(); N.click('[data-act="order-close"]'); await flush(); assert.equal(m2[0].closed, true, '🔴 PR-live: close ⇒ the stream closed'); } finally { N.w.close(); }
 });
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {

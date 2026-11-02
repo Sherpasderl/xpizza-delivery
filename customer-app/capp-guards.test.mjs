@@ -61,7 +61,11 @@ const LEAK = /x_pizza|la_musa|xpizza|lamusa|X\.? ?Pizza|La Musa/i;
 const SYNCED = 'sherpa-client.js';
 // capp-confirm-quote.js (S2a, PLAN-capp-S2-r4 §5.1 Q6) is a BYTE-IDENTICAL port of the forms' form-confirm-quote.js — its only
 // restaurant mention is a comment about the forms' chrome. Exempt ONLY while it stays identical to BOTH form copies.
-const PORTED = { 'capp-confirm-quote.js': ['xpizza-orders/form-confirm-quote.js', 'la-musa-orders/form-confirm-quote.js'] };
+// «Pedido recibido» (advisor rulings 2026-11-01, one source): the tracker's words and S5's window / order number, byte copies
+const PORTED = { 'capp-confirm-quote.js': ['xpizza-orders/form-confirm-quote.js', 'la-musa-orders/form-confirm-quote.js'],
+  'status-view.js': ['xpizza-track/status-view.js', 'xpizza-orders/status-view.js', 'la-musa-orders/status-view.js'],
+  'form-live-status.js': ['xpizza-orders/form-live-status.js', 'la-musa-orders/form-live-status.js'],
+  'form-order-number.js': ['xpizza-orders/form-order-number.js', 'la-musa-orders/form-order-number.js'] };
 // PLAN-avail-identity: EVERY file tools/sync-client.js writes into customer-app/ (sherpa-client.js, avail-key.js,
 // availability-reducer.js) is another surface's canonical copy — exempt from the literal scan, and pinned byte-identical to its
 // source by the range guard below (syncedIntoApp), so the exemption can never hide an edit. Read lazily (syncedIntoApp is below).

@@ -26,8 +26,12 @@
   };
 
   const FINAL = new Set(['delivered', 'collected', 'cancelled']);
+  // the tracker's own words where v6 and the tracker share a state, from their ONE source (status-view.js, synced byte-identical): the
+  // «parada rápida» line and the calm copy of a claim with no driver name yet (advisor ruling 2026-11-01 — never retyped here)
+  const SV = () => (typeof StatusView !== 'undefined' ? StatusView : (typeof require === 'function' ? require('./status-view.js') : null));
+  const STACKED_COPY = (() => { const v = SV(); return v ? v.STATUS_STACKED_COPY : ''; })();
+  function namelessOut() { const v = SV(); const p = v ? v.presentStatus({ status: 'out_for_delivery', order_type: 'delivery', now: 0 }) : null; return p ? { t: p.headline, s: p.sub || '' } : { t: '', s: '' }; }
   // the v6 copy, byte for byte (statusCopy P:2055-2067); `d` = the driver's name
-  const STACKED_COPY = 'Tu repartidor tiene una parada rápida en camino a la tuya, luego va directo hacia vos.';
   function statusCopy(o) {
     const d = o.driver, del = o.mode === 'delivery';
     switch (o.status) {
@@ -35,7 +39,9 @@
       case 'preparing': return { t: 'Tu pedido se está preparando', s: del ? 'Te avisaremos cuando vaya en camino' : 'Te avisaremos cuando esté listo', segs: del ? [1, { a: .55 }, 0, 0, 0] : [1, { a: .5 }, 0] };
       case 'ready': return { t: '¡Tu pedido está listo para recoger!', s: `Pasá por ${o.storeName} a recogerlo`, segs: [1, 1, { a: .5 }] };
       case 'collected': return { t: '¡Gracias por tu compra!', s: o.doneAt ? `Recogido a las ${o.doneAt}` : '', segs: [1, 1, 1] };
-      case 'out': return o.stacked ? { t: `${d} va en camino`, s: STACKED_COPY, segs: [1, 1, { a: .35 }, 0, 0], live: true, p: .3 }
+      // a claim with no driver name yet: the tracker's owner-approved calm copy (status-view) — v6 always names the driver (default, advisor)
+      case 'out': if (!d) return { ...namelessOut(), segs: [1, 1, { a: .5 }, 0, 0] };
+        return o.stacked ? { t: `${d} va en camino`, s: STACKED_COPY, segs: [1, 1, { a: .35 }, 0, 0], live: true, p: .3 }
         : { t: `${d} está en camino`, s: Number.isFinite(o.etaMin) ? `Llega en ~${o.etaMin} min` : '', big: true, segs: [1, 1, { a: .5 }, 0, 0], live: true, p: .45 };
       case 'arriving': return { t: `${d} está llegando`, s: 'Tu pedido está llegando', big: true, segs: [1, 1, 1, { a: .6 }, 0], live: true, p: .92 };
       case 'delivered': return { t: '¡Pedido entregado!', s: o.doneAt ? `¡Buen provecho! · Entregado ${o.doneAt}` : '¡Buen provecho!', segs: [1, 1, 1, 1, 1], ok: true };
@@ -54,6 +60,26 @@
   function schedPhase(o, now) {
     if (!o.scheduled) return null;
     return Number.isFinite(o.scheduledFor) && Number.isFinite(now) && now >= o.scheduledFor + REVIEW_AFTER_MS ? 'R' : 'C';
+  }
+
+  // ── the live record (order_tracking/{token}, public by token) → v6's status: the tracker's own status words, mapped onto the states
+  // v6 draws. «arriving» has no server signal (never derived — advisor default); `ready` is still «preparing» for a delivery (status-view) ──
+  const TZ = 'America/Tegucigalpa';
+  let _clk = null;
+  function clockText(ms) {
+    if (!Number.isFinite(ms)) return null;
+    try { if (!_clk) _clk = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit', hourCycle: 'h23' }); } catch (_) { return null; }
+    const p = {}; for (const x of _clk.formatToParts(new Date(ms))) p[x.type] = x.value;
+    const h = Number(p.hour) % 24; return `${(h % 12) || 12}:${String(p.minute).padStart(2, '0')} ${h >= 12 ? 'p. m.' : 'a. m.'}`;
+  }
+  function fromTracking(rec, mode) {
+    if (!rec || typeof rec !== 'object') return null;
+    const s = String(rec.status || ''), del = mode === 'delivery';
+    const status = s === 'new' ? 'new' : s === 'preparing' ? 'preparing' : s === 'ready' ? (del ? 'preparing' : 'ready')
+      : s === 'out_for_delivery' ? (del ? 'out' : 'ready') : s === 'delivered' || s === 'completed' ? (del ? 'delivered' : 'collected') : s === 'cancelled' ? 'cancelled' : null;
+    if (!status) return null;
+    const name = typeof rec.driver_name === 'string' && rec.driver_name.trim() ? rec.driver_name.trim() : null;
+    return { status, driver: name, stacked: status === 'out' && rec.is_active_drop === false, doneAt: clockText(Number(rec.delivered_at)) };
   }
 
   // ── the illustrated map (v6 mapSvg P:1791; the colours are the map tokens so it follows the theme) ──
@@ -88,7 +114,10 @@
     const map = `<div class="order-map">${mapSvg(!!c.dark, del)}${markers}<div class="ovl">${backBtn}${help}</div></div>`;
     const segs = sc ? (del ? [0, 0, 0, 0, 0] : [0, 0, 0]) : cc.segs;
     const segbar = `<div class="segbar${cc.danger && !sc ? ' cancel' : ''}" aria-hidden="true">${segs.map((s) => s === 1 ? '<div class="sg done"></div>' : s && s.a ? `<div class="sg active"><div class="fill" style="--p:${s.a}"></div></div>` : '<div class="sg"></div>').join('')}</div>`;
-    const windowLine = sc || FINAL.has(st) || !o.windowText ? '' : `<div class="mk-window">${esc(o.windowLabel || 'Llega')} <b>${esc(o.windowText)}</b></div>`;
+    // v6 etaRange (P:1271): «Programado · llega / listo» + the slot for a scheduled order (S4 C's drawn anchor); else «Llega» /
+    // «Listo para recoger» + the window (S5's form-live-status, the shell's) — none on a final state or without a window
+    const wl = sc ? { k: del ? 'Programado · llega' : 'Programado · listo', v: o.whenText } : { k: del ? 'Llega' : 'Listo para recoger', v: o.windowText };
+    const windowLine = FINAL.has(st) || !wl.v ? '' : `<div class="mk-window">${esc(wl.k)} <b>${esc(wl.v)}</b></div>`;
     const title = sc ? sc.t : st === 'new' ? 'Pedido recibido' : cc.t;
     const num = sc ? `<div class="mk-num"><span>${esc(sc.line)}</span></div>`
       : o.display_number != null && String(o.display_number) !== '' ? `<div class="mk-num">Orden #${esc(o.display_number)} <span>· Te avisamos por WhatsApp</span></div>` : '';
@@ -115,5 +144,5 @@
     return `<div class="scroller"><div class="orderwrap">${map}${sheet}</div></div>`;
   }
 
-  return { orderHtml, statusCopy, schedPhase, routePoint, FINAL, SCHED, REVIEW_AFTER_MS };
+  return { orderHtml, statusCopy, schedPhase, routePoint, fromTracking, clockText, FINAL, SCHED, REVIEW_AFTER_MS };
 });
