@@ -2178,6 +2178,52 @@ test('G4 frame 4: a member\'s order refused by the GUEST gate (token not verifie
 });
 
 const CU = createRequire(import.meta.url)('./capp-ui.js');   // the pure renderers, in this realm
+// ── «Pedido recibido» (owner 11-01): the order AS SENT reaches the host with 'placed' — on the same page (cash) and ACROSS the hosted
+// checkout redirect (card: a new page load), bound to that order's id; its money lines are the sent body's, never a recomputation ──
+const SENT_KEY = 'capp:rid_a:sent_order';
+test('Pedido recibido: a cash placement hands the host the order AS SENT — lines, Envío, Propina and the Total = the body\'s expected_net_cents', async () => {
+  const b = bootCo({ config: { sentKey: SENT_KEY }, script: { createOrder: [{ status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt_12345678' } }] } });
+  await toCheckout(b); await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
+  await b.type('#f-details', 'Portón negro'); await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000'); await b.click('[data-act="pay"][data-val="cash"]');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="20"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]'); await settle();
+  b.timers.flush();
+  const ev = b.events.filter((e) => e[0] === 'placed').at(-1); assert.ok(ev, 'premise: placed');
+  const o = J(ev[1].order), body = b.srv.of('createOrder')[0].body;
+  assert.ok(o && Array.isArray(o.lines), '🔴 PR-snap: the order rides the placed event');
+  assert.deepEqual(o.lines.map((l) => [l.n, l.name]), [[1, b.plain.name]], '🔴 PR-snap: the sent lines');
+  assert.equal(o.total * 100, body.expected_net_cents, '🔴 PR-money: the Total = the body\'s expected_net_cents (the as-sent ceiling)');
+  assert.equal(o.tip, 20, '🔴 PR-money: the chosen tip'); assert.equal(o.fee * 100, FEE, '🔴 PR-money: the quoted Envío');
+  assert.deepEqual([o.mode, o.pay, o.details, o.whenText], ['delivery', 'cash', 'Portón negro', 'Lo antes posible']);
+  assert.equal(b.storage.getItem(SENT_KEY), null, 'nothing kept for a same-page placement');
+});
+test('Pedido recibido: a guest CARD order — the snapshot kept at the redirect (bound to its order id) reaches the host on the paid return, with the grant; a snapshot of ANOTHER order id is never used', async () => {
+  const storage = memStore();
+  const grant = { token: 'sg_1', expires_at: NOON().getTime() + 15 * 60e3 };
+  const a = bootCo({ storage, config: { ...GUEST, sentKey: SENT_KEY }, script: { ...CODE_OK, chargeOnlineOrder: [{ status: 200, json: { ...CHECKOUT.json, signup_grant: grant } }] } });
+  await guestFilled(a); await a.click('#cta'); await a.click('[data-act="tipc"][data-val="0"]'); await a.click('[data-act="tip-place"]'); await viaCode(a); await settle();
+  const charge = a.srv.of('chargeOnlineOrder')[0].body, id = charge.order_id; const snap = J(a.ui.cart.snapshot()); a.ui.destroy();
+  const kept = JSON.parse(storage.getItem(SENT_KEY) || 'null');
+  assert.ok(kept && kept.order_id === id, '🔴 PR-redirect: the snapshot kept, bound to the order id');
+  const c = bootCo({ storage, config: { ...GUEST, sentKey: SENT_KEY }, search: RET('complete', id), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'paid' } }] } });
+  c.ui.restore(snap); await c.ui.returning; await settle(); c.timers.flush();
+  const ev = c.events.filter((e) => e[0] === 'placed').at(-1); assert.ok(ev, 'premise: placed after the return');
+  const o = J(ev[1].order);
+  assert.ok(o && o.lines && o.lines.length === 1, '🔴 PR-redirect: the as-sent order reaches the host after the reload');
+  assert.equal(o.total * 100, charge.expected_net_cents, '🔴 PR-money: the Total = the charged body\'s expected_net_cents');
+  assert.equal(o.pay, 'online'); assert.deepEqual(J(ev[1].signup_grant), grant, 'the grant rides the same event (frame 7)');
+  assert.equal(storage.getItem(SENT_KEY), null, 'cleared once handed over');
+  // identity: a kept snapshot of ANOTHER order is never shown for this one
+  const s2 = memStore();
+  const a2 = bootCo({ storage: s2, config: { ...GUEST, sentKey: SENT_KEY }, script: { ...CODE_OK, chargeOnlineOrder: [{ status: 200, json: { ...CHECKOUT.json } }] } });
+  await guestFilled(a2); await a2.click('#cta'); await a2.click('[data-act="tipc"][data-val="0"]'); await a2.click('[data-act="tip-place"]'); await viaCode(a2); await settle();
+  const id2 = a2.srv.of('chargeOnlineOrder')[0].body.order_id; const snap2 = J(a2.ui.cart.snapshot()); a2.ui.destroy();
+  s2.setItem(SENT_KEY, JSON.stringify({ ...JSON.parse(s2.getItem(SENT_KEY)), order_id: 'TA-SOMEONE-ELSE' }));
+  const c2 = bootCo({ storage: s2, config: { ...GUEST, sentKey: SENT_KEY }, search: RET('complete', id2), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'paid' } }] } });
+  c2.ui.restore(snap2); await c2.ui.returning; await settle(); c2.timers.flush();
+  const ev2 = c2.events.filter((e) => e[0] === 'placed').at(-1); assert.ok(ev2, 'premise: placed');
+  assert.equal(ev2[1].order, null, '🔴 PR-identity: another order\'s snapshot is never used');
+});
+
 // ── G5 frame 7 (approved): the SIGNUP GRANT rides on the placed outcome; the account offer card renders only while it is live ──
 test('G5: a guest\'s paid card return carries the signup grant on its placed outcome (frame 7\'s input); a member\'s never does', async () => {
   const storage = memStore();

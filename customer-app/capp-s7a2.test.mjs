@@ -1948,6 +1948,59 @@ test('Pedido recibido: «Ayuda» opens wa.me/<runtime.supportWhatsapp> with the 
   const N = bootShell({ apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
   try { await flush(); await placeShellCash(N); assert.equal(N.q('[data-act="order-help"]'), null, 'no number ⇒ no «Ayuda»'); assert.equal(N.q('[data-act="order-share"]'), null, 'no tracker ⇒ no share'); } finally { N.w.close(); }
 });
+// frame 7 (owner 10-27) in v6's .rw slot, end to end on the REAL writers: a guest card order (the code sheet, the charge with its
+// grant) leaves for PixelPay; a NEW page load on the paid return lands on «Pedido recibido» with the offer; «Crear mi cuenta» redeems
+// the grant (no second code) and signs in through the shell's own path; the offer is gone for the member
+test('Pedido recibido · frame 7: a guest card order\'s paid return shows the account offer (phone + email pre-filled); «Crear mi cuenta» redeems the grant and signs in — the offer gone', async () => {
+  const storage = memStorage(), grant = { token: 'sg_1', expires_at: T0 + 15 * 60e3 };
+  const GEO = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) };
+  const sent = [];
+  const pay1 = (u, i) => { const ep = u.split('?')[0].split('/').pop(); const body = i && i.body ? JSON.parse(i.body) : null; sent.push([ep, body]);
+    if (u.startsWith('/x/q')) return quoteOk(u, i);
+    const j = u.startsWith('/x/rc') ? { ok: true, resend_in_s: 41 } : u.startsWith('/x/vc') ? { ok: true, checkout_ticket: 'tk_1' }
+      : u.startsWith('/x/p') ? { checkout_url: 'https://pay.test/1', poll_token: 'pt_1', attempt_id: 'a1', signup_grant: grant } : { ok: false };
+    return Promise.resolve({ status: 200, ok: true, json: async () => j }); };
+  const RT = { ...SU_RUNTIME, endpoints: { ...RUNTIME.endpoints, requestCheckoutCode: '/x/rc', verifyCheckoutCode: '/x/vc' } };
+  const fb1 = fakeFirebase();
+  const A = bootShell({ storage, auth: 'guest', runtime: RT, apiFetch: pay1, geolocation: GEO, mountExtra: { loadSdk: fb1.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  let id = null;
+  try {
+    await flush();
+    await toShellCheckout(A);
+    const type = (sel, v) => { const el = A.q(sel); assert.ok(el, `premise: ${sel}`); el.value = v; el.dispatchEvent(new A.w.Event('input', { bubbles: true })); };
+    A.click('[data-act="pin"]'); await flush(); A.click('[data-act="pin-done"]'); await flush();
+    type('#f-details', 'Portón negro'); type('#f-name', 'Ana'); type('#f-phone', '9999 0000'); type('#f-email', 'ana.perez@gmail.com'); await flush();
+    A.click('#cta'); await flush(); A.click('[data-act="tipc"][data-val="0"]'); await flush(); A.click('[data-act="tip-place"]'); await flush(); await flush();
+    if (!A.q('#layer .otp input[data-i="0"]') && A.q('#layer [data-act="placing-go"]')) { A.click('#layer [data-act="placing-go"]'); await flush(); await flush(); }
+    const box = A.q('#layer .otp input[data-i="0"]'); assert.ok(box, 'premise: the code sheet'); box.value = '482913'; box.dispatchEvent(new A.w.Event('input', { bubbles: true })); await flush();
+    A.click('#layer [data-act="otp-verify"]'); await flush(); await flush();
+    const ch = sent.find((x) => x[0] === 'p' && x[1] && x[1].order_id);   // RUNTIME.endpoints.chargeOnlineOrder = /x/p
+    assert.ok(ch, `premise: the charge was sent (${sent.map((x) => x[0]).join(',')})`); id = ch[1].order_id;
+  } finally { A.w.close(); }
+  // the paid return: a NEW page load on the same device storage
+  const fb = fakeFirebase(); const su = [];
+  const suFetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); const b = i && i.body ? JSON.parse(i.body) : null; su.push([ep, b]);
+    const j = ep === 'getSignupConfig' ? { ok: true, terms_url: 'https://legal.test/t', privacy_url: 'https://legal.test/p', legal_ready: true, google_enabled: false }
+      : ep === 'redeemSignupGrant' ? { ok: true, token: 'ct:u_new', is_new: true, name: 'Ana', completion: 'complete' } : { ok: true };
+    return { status: 200, json: async () => j }; };
+  const pay2 = async (u) => ({ status: 200, ok: true, json: async () => (u.startsWith('/x/s') ? { ok: true, state: 'paid' } : { ok: false }) });
+  const B = bootShell({ storage, auth: 'guest', runtime: RT, apiFetch: pay2, search: `?pay=complete&order=${id}&t=pt_1`, mountExtra: { loadSdk: fb.loadSdk, signupFetch: suFetch } });
+  try {
+    await flush(); await flush(); await flush(800);
+    assert.equal(txt(B.q('.mk-title')), 'Pedido recibido', '🔴 PR-7: the paid return lands on the order screen');
+    assert.ok(B.q('.mk-sheet .guestcard.offer'), '🔴 PR-7: the offer in the order sheet');
+    assert.equal(B.q('#offer-phone') && B.q('#offer-phone').value, '+504 9999-0000', 'the verified phone pre-filled');
+    assert.equal(B.q('#offer-email') && B.q('#offer-email').value, 'ana.perez@gmail.com', 'the order\'s email pre-filled');
+    const kids = [...B.q('.mk-sheet').children].map((x) => x.className.split(' ')[0]);
+    assert.ok(kids.indexOf('guestcard') < kids.indexOf('mk-card'), 'v6\'s .rw slot: before the delivery details');
+    B.click('[data-act="offer-create"]'); await flush(); await flush(); await flush();
+    const r = su.find((x) => x[0] === 'redeemSignupGrant');
+    assert.ok(r, '🔴 PR-7: «Crear mi cuenta» redeems the grant'); assert.equal(r[1].grant, 'sg_1'); assert.equal(r[1].email, 'ana.perez@gmail.com');
+    assert.deepEqual(fb.calls.ct, ['ct:u_new'], '🔴 PR-7: signed in with the redeemed custom token (no second code)');
+    assert.equal(su.filter((x) => x[0] === 'requestOtp').length, 0, 'no second code');
+    assert.equal(B.q('.guestcard.offer'), null, '🔴 PR-7: the offer is gone for the member');
+  } finally { B.w.close(); }
+});
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {
   const over = WARNINGS.filter((w) => w && w.name === 'TimeoutOverflowWarning');
