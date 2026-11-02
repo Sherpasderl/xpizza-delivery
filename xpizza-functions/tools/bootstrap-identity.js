@@ -45,6 +45,7 @@
  * reads "DONE" stops, and the retirements §3.0 asks for would never happen.
  */
 const { requireProject } = require('./require-project');
+const { checkRegistered } = require('./registered-roster');   // the roster is the registry, never a list in code
 const PROJECT_ID = requireProject({ requireFlag: true });
 
 try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; this needs only ADC */ }
@@ -57,7 +58,6 @@ const arg = (name) => {
 };
 const RID = arg('rid');
 const APPLY = process.argv.includes('--apply');
-const KNOWN = ['x_pizza', 'la_musa'];
 
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
@@ -66,11 +66,16 @@ admin.initializeApp({
 const db = admin.firestore();
 
 (async () => {
-  if (!RID || !KNOWN.includes(RID)) {
-    console.error('usage: node tools/bootstrap-identity.js --rid=<x_pizza|la_musa> --project <id> [--apply]\n'
+  if (!RID) {
+    console.error('usage: node tools/bootstrap-identity.js --rid=<registered restaurant id> --project <id> [--apply]\n'
                 + '       omit --apply for a DRY RUN — the default, because this pass has no undo\n'
                 + '       one brand per run, deliberately — see the 1D runbook');
     process.exit(1);   // 🔴 NOT 2: exit 2 is the project guard's alone
+  }
+  const reg = await checkRegistered(db, RID);
+  if (!reg.ok) {
+    console.error(`bootstrap-identity: REFUSED — ${reg.reason}${reg.reason === 'not_registered' ? ` (${RID} is not a registered restaurant)` : ''}`);
+    process.exit(1);
   }
 
   /* 🔴 SAY WHICH MODE, FIRST, BEFORE ANY WORK. An operator who believes they are rehearsing and is

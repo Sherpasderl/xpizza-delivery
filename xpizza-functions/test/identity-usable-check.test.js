@@ -11,7 +11,7 @@ const assert = require('assert');
 const path = require('path');
 const net = require('net');
 const { spawnSync } = require('child_process');
-const T = require('./identity-usable-check');
+const T = require('../tools/identity-usable-check');
 const { makeDb } = require('../catalog/firestore-fake');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -125,7 +125,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     ok('error classes: ADC_MISSING / ADC_EXPIRED / PERMISSION_DENIED / UNAUTHENTICATED / FIRESTORE_UNAVAILABLE / GUARD_TRIPPED / EGRESS_REFUSED / UNKNOWN + stage; no message text');
   }
   {
-    const cli = path.join(__dirname, 'identity-usable-check.js');
+    const cli = path.join(__dirname, '..', 'tools', 'identity-usable-check.js');
     const env = { ...process.env }; delete env.GOOGLE_CLOUD_PROJECT; delete env.GCLOUD_PROJECT;
     for (const k of ['FIRESTORE_EMULATOR_HOST', 'FIREBASE_DATABASE_EMULATOR_HOST', 'FIREBASE_AUTH_EMULATOR_HOST', 'FIREBASE_STORAGE_EMULATOR_HOST', 'STORAGE_EMULATOR_HOST', 'FIREBASE_EMULATOR_HUB']) delete env[k];
     const wrong = spawnSync(process.execPath, [cli, '--project', 'some-other-project'], { env, encoding: 'utf8' });

@@ -33,6 +33,7 @@
    GOOGLE_CLOUD_PROJECT would otherwise satisfy it without the operator ever looking at which database
    they were about to write identities into. */
 const { requireProject } = require('./require-project');
+const { checkRegistered } = require('./registered-roster');   // the roster is the registry, never a list in code
 const PROJECT_ID = requireProject({ requireFlag: true });
 
 try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; this needs only ADC */ }
@@ -48,7 +49,6 @@ const arg = (name) => {
 };
 const RID = arg('rid');
 const APPLY = process.argv.includes('--apply');
-const KNOWN = ['x_pizza', 'la_musa'];
 
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
@@ -57,8 +57,8 @@ admin.initializeApp({
 const db = admin.firestore();
 
 (async () => {
-  if (!RID || !KNOWN.includes(RID)) {
-    console.error('usage: node tools/backfill-identities.js --rid=<x_pizza|la_musa> --project <id> [--apply]\n'
+  if (!RID) {
+    console.error('usage: node tools/backfill-identities.js --rid=<registered restaurant id> --project <id> [--apply]\n'
                 + '       omit --apply for a DRY RUN (reads only)\n'
                 + '       one brand per run, deliberately — see the 1D runbook');
     /* 🔴 EXIT 1, NOT 2. Exit 2 is RESERVED for project_guard_refused, so that a script — and a person
@@ -69,6 +69,11 @@ const db = admin.firestore();
        GOOGLE_APPLICATION_CREDENTIALS at a nonexistent path, so applicationDefault() threw before this
        line ever ran. In production credentials resolve and this branch IS reached. It is now
        reproduced with a locally generated, never-registered key — see catalog/project-guard.test.js. */
+    process.exit(1);
+  }
+  const reg = await checkRegistered(db, RID);
+  if (!reg.ok) {
+    console.error(`backfill-identities: REFUSED — ${reg.reason}${reg.reason === 'not_registered' ? ` (${RID} is not a registered restaurant)` : ''}`);
     process.exit(1);
   }
 
