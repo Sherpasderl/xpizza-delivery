@@ -203,7 +203,7 @@
       const updOpts = { appUpdated: () => appUpdated, onAppUpdatedSeen: () => { appUpdated = false; } };   // the store's records live in the shell's storage (one device store)
       // a mount NEVER reads location.search itself: only the store that OWNS a hosted-checkout return gets it, once
       const ret = S.ret && S.ret.rid === entry.rid && !freshBody ? S.ret : null; if (ret) S.ret = null;
-      const ui = CappUI.mount(doc, { ...uo, ...updOpts, ...(view ? { view, deskChrome: storeChrome } : {}), guestCardOnly: runtime.guestCardOnly === true,
+      const ui = CappUI.mount(doc, { ...uo, ...updOpts, ...(view ? { view, deskChrome: storeChrome, deskBrand: CappHome.brandLockHtml, deskTerms: () => { const l = legalVm(); return l && CappHome.legalUrl(l.terms) ? l.terms : null; } } : {}), guestCardOnly: runtime.guestCardOnly === true,
         onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
@@ -817,7 +817,7 @@
     }
     function orderScreenHtml(v) {
       const od = S.order;
-      return CappHome.shellWrap(v, CappOrder.orderHtml(od, { entry: 'app', now: Number(nowMs()), dark: app.classList.contains('dark'), helpOk: !!supportWa(),
+      return CappHome.shellWrap(v, CappOrder.orderHtml(od, { entry: 'app', now: Number(nowMs()), dark: app.classList.contains('dark'), helpOk: !!supportWa(), desk: !!v.desk,
         shareOk: !!(od.token && trackBaseOf(od.rid)), receiptOpen: !!S.orderReceipt, offerHtml: offerHtml(od) }));
     }
     // MOCKUP-capp-guest-checkout frame 7 (owner 10-27) in v6's .rw slot: a GUEST whose card order returned a live signup grant (the

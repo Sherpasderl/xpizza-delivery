@@ -1232,3 +1232,38 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .app.desk .detail-modal.wide .detail-cta-bar{grid-row:3;justify-content:flex-end}
 .app.desk .detail-modal.wide .detail-cta{flex:0 0 300px}
 }
+/* ── C-6d (MOCKUP-capp-desktop-D3 r3 frames 4a/4b, approved; advisor calls 1–6) ── the desktop checkout: its own bar («Volver a la
+   tienda» · the centred Sherpa lock · «Pago seguro»), the page H1 in column A, column B (sticky) = store card → CTA → the guest's next
+   step → «Tu pedido» (a box, open by default) → the fine print */
+.app.desk .ckbar{grid-column:1/-1;height:60px;display:flex;align-items:center;border-bottom:1px solid var(--line);margin:0 -24px;padding-inline:24px;position:relative}
+.app.desk .ckbar .backtxt{min-height:44px;padding:0 12px 0 6px;border:0;background:transparent;color:var(--ink);display:inline-flex;align-items:center;gap:2px;font:600 15px var(--sans)}
+.app.desk .ckbar .lock{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;font:700 19px/1 var(--rhd);letter-spacing:-.02em}
+.app.desk .ckbar .lock svg{width:22px;height:22px}
+.app.desk .ckbar .sec-lock{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--mute)}
+.app.desk .ckbar .sec-lock svg.i{width:16px;height:16px}
+.app.desk .flow .col-a .fsec{padding-inline:0}
+.app.desk .flow .col-a .fsec:first-of-type{padding-top:28px}
+.app.desk .flow .col-a>.flowtitle{margin:28px 0 0;font:700 28px/1.15 var(--rhd);letter-spacing:-.02em}
+.app.desk .flow .col-b{padding-top:28px;display:flex;flex-direction:column;gap:14px}
+.app.desk .flow .col-b>.fsec{padding:0}
+.app.desk .storecard{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:14px}
+.app.desk .storecard .lg{width:40px;height:40px;border-radius:50%;background:#fff;box-shadow:0 0 0 1px var(--line);display:flex;align-items:center;justify-content:center;font:700 14px var(--rhd);color:#1B2A24;flex:none;overflow:hidden}
+.app.desk .storecard .lg img{width:28px;height:auto;display:block}
+.app.desk .storecard .t{flex:1;min-width:0}
+.app.desk .storecard .t b{display:block;font-size:15px;font-weight:600}
+.app.desk .storecard .t span{display:block;font-size:13px;color:var(--mute)}
+.app.desk .osum.box{border:1px solid var(--line);border-radius:14px;padding:4px 16px 8px}
+.app.desk .osum .toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;border:0;padding:12px 0;background:transparent;font:600 15px var(--sans);color:var(--ink);text-align:left}
+.app.desk .osum .toggle .tt span{font-weight:500;color:var(--mute);font-size:14px}
+.app.desk .osum .toggle svg.i{width:18px;height:18px;color:var(--mute)}
+.app.desk .osum .lines{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.app.desk .osum .lines .osline{padding:10px 0}
+.app.desk .osum.box .ostot{border-top:1px solid var(--line);margin-top:4px;padding-top:8px}
+.app.desk .flow .col-b .finenote{font-size:12.5px;color:var(--mute);line-height:1.45;padding:0 2px;margin:0}
+.app.desk .flow .col-b .finenote a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.app.desk .guestline{padding:12px 14px;border-radius:12px;background:var(--surf);font-size:13.5px;line-height:1.45;color:var(--mute)}
+.app.desk .guestline b{color:var(--ink);font-weight:600}
+/* C-6d (frame 5): the desktop order panel reads left-aligned (the phone centres its title because its sheet is narrow); the «new»
+   status line carries an inline centre from the shared renderer, hence the one !important */
+.app.desk .mk-sheet .mk-title,.app.desk .mk-sheet .mk-window{text-align:left}
+.app.desk .mk-sheet .mk-status{text-align:left!important}

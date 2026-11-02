@@ -165,11 +165,14 @@
     // a past receipt still being read (c.hold — advisor 11-01, no reflow): the screen ENDS before the first block that needs it (a
     // delivery's address card; else «Resumen del pedido») — an empty marker holds the place; the shell then puts the tail (c.tailOnly)
     // IN PLACE of the marker, so nothing already drawn moves. The CTA belongs to the tail: never pushed down by a late block
+    // C-6d (D-3 r3 frame 5, approved): the LIVE desktop panel follows the leaders' order — «Orden #N» after the receipt, before the
+    // share line (c.desk; a past receipt keeps its order: its tail is streamed in place). Without c.desk: byte-identical
+    const deskOrder = !!c.desk && !c.past;
     const tail = `${del ? details : ''}${receipt}${payrows}
-    ${share}<button class="btn2 again" data-act="order-again">Hacer otro pedido</button>${c.entry === 'link' ? '<div class="credit">Enviado por <b>Sherpa</b></div>' : ''}`;
+    ${deskOrder ? num : ''}${share}<button class="btn2 again" data-act="order-again">Hacer otro pedido</button>${c.entry === 'link' ? '<div class="credit">Enviado por <b>Sherpa</b></div>' : ''}`;
     if (c.past && c.tailOnly) return tail;   // past-only (Codex rcpt r2): the live screen ignores hold / tailOnly
     const sheet = `<div class="mk-sheet"><div class="mk-handle"></div><div class="mk-title${cc.ok && !sc ? ' success' : ''}${cc.danger && !sc ? ' danger' : ''}">${esc(title)}</div>${windowLine}
-    ${num}${segbar}${statusrow}${driverCard}${c.offerHtml || ''}${del ? '' : details}${c.past && c.hold ? '<div data-rc-tail></div>' : tail}</div>`;
+    ${deskOrder ? '' : num}${segbar}${statusrow}${driverCard}${c.offerHtml || ''}${del ? '' : details}${c.past && c.hold ? '<div data-rc-tail></div>' : tail}</div>`;
     return `<div class="scroller"><div class="orderwrap">${map}${sheet}</div></div>`;
   }
 

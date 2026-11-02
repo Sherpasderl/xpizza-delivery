@@ -27,6 +27,14 @@
   "disposition": "fixed",
   "why": "the store logo's plate over the hero edge (D-3 r3 desktop mockup frames 2a/3, approved; C-6c); the .avatar plate's own shadow family (v6 dark keeps it)"
  },
+ "css .app.desk .storecard .lg | background #fff": {
+  "disposition": "fixed",
+  "why": "logo backplate on the checkout's store card (D-3 r3 desktop checkout frame 4a, approved; C-6d): restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"
+ },
+ "css .app.desk .storecard .lg | color #1B2A24": {
+  "disposition": "fixed",
+  "why": "the text-logo's ink on its white plate (D-3 r3 desktop checkout frame 4a, approved; C-6d): fixed with its plate (as .avatar.txt)"
+ },
  "css .avatar | background #FFFFFF": {
   "disposition": "fixed",
   "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"

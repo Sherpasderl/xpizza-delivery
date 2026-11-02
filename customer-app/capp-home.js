@@ -227,7 +227,7 @@
     const t = (id, label) => `<button class="nb" data-act="tab" data-tab="${id}" aria-current="${vm.tab === id}">${label}</button>`;
     const short = vm.addr && vm.addr.short ? vm.addr.short : 'Tu ubicación', line = vm.addr && vm.addr.line ? vm.addr.line : 'Agregá tu dirección';
     const q = vm.tab === 'search' && vm.q ? vm.q : '';
-    return `<div class="desknav"><span class="lock">${SOLA(22)}Sherpa</span>`
+    return `<div class="desknav">${brandLockHtml()}`
       + `<button class="dn-addr" data-act="addr" aria-label="Dirección de entrega: ${esc(line)}">${IC.pin}<span class="v"><span class="k">Entregar en</span> ${esc(short)}</span>${IC.down}</button>`
       + `<button class="dn-search${vm.tab === 'search' ? ' live' : ''}" data-act="tab" data-tab="search" aria-label="Buscar">${IC.search}${esc(q || 'Buscá restaurantes o platos')}</button>`
       + `<span class="right">${t('home', 'Inicio')}${ORDERS_SCREEN ? t('orders', 'Pedidos') : ''}<button class="nb acct" data-act="tab" data-tab="account" aria-current="${vm.tab === 'account'}">${vm.memberInitial ? `<span class="av">${esc(vm.memberInitial)}</span>` : IC.user}Cuenta</button></span></div>`;
@@ -410,9 +410,13 @@
   // Desktop only (CSS). Ayuda = the platform's support chat (vm.helpOk — none configured ⇒ no Ayuda); Términos / Privacidad = the
   // platform's legal URLs once known (https only; never a dead link). While they may still arrive (vm.legalPending) their slots are
   // RESERVED invisibly, so nothing in the row moves when they land (Codex C-6a r1 #2). Its own class: the pin sheets own .foot
+  // a platform legal URL is drawn only when it is https (never a dead or unsafe link) — ONE rule for the footer and the checkout (C-6d)
+  const legalUrl = (u) => typeof u === 'string' && /^https:\/\//.test(u);
+  // the Sherpa lock (the platform's mark + name) — the top bar's, and the desktop checkout's centred brand (C-6d)
+  const brandLockHtml = () => `<span class="lock">${SOLA(22)}Sherpa</span>`;
   function footHtml(vm) {
     if (!vm.desk) return '';   // desktop only: the phone DOM stays exactly as before
-    const l = vm.legal || {}, url = (u) => typeof u === 'string' && /^https:\/\//.test(u);
+    const l = vm.legal || {}, url = legalUrl;
     const link = (u, label) => (url(u) ? `<li><a href="${esc(u)}" target="_blank" rel="noopener">${label}</a></li>` : vm.legalPending ? `<li class="rsv" aria-hidden="true">${label}</li>` : '');
     const items = `${vm.helpOk ? '<li><button data-act="site-help">Ayuda</button></li>' : ''}${link(l.terms, 'Términos')}${link(l.privacy, 'Privacidad')}`;
     return `<footer class="dfoot"><span class="lock">${SOLA(18)}Sherpa</span><ul>${items}</ul></footer>`;
@@ -462,5 +466,5 @@
   // frame 4 only when EVERY listed store answers «outside» (an unknown coverage is never counted as outside)
   const allOutOfZone = (rows, loc) => { const live = (rows || []).filter((r) => !r.gone); return !!loc && live.length > 0 && live.every((r) => covers(r.entry, loc) === false); };
 
-  return { homeHtml, titleOf, footHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
+  return { homeHtml, titleOf, footHtml, legalUrl, brandLockHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
 });

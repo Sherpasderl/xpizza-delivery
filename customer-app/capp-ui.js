@@ -429,6 +429,8 @@
       return (open ? `<span><span class="dot"></span><strong>Abierto</strong></span>${closesText() ? `<span>cierra ${esc(closesText())}</span>` : ''}` : `<span><span class="dot off"></span><strong>Cerrado</strong></span><span>${esc(opensText())}</span>`)
         + (cfg.addr ? `<span>·</span><span>${esc(cfg.addr)}</span>` : '');
     }
+    // the delivery window «a–b min» (rule 11: a window, never one straight-line minute) — the store cell's and the checkout card's
+    const etaWindow = () => { const e = cfg.etaDel; return e && Number.isFinite(e[0]) ? `${Number.isFinite(e[1]) && e[1] > e[0] ? `${e[0]}–${e[1]}` : e[0]} min` : ''; };
     function deskCellsHtml() {
       if (!isOpen()) return '';
       const cells = [];
@@ -437,7 +439,7 @@
           const ib = Number.isFinite(cfg.zoneKm) ? `<button class="infobtn" data-act="feeinfo" aria-label="Detalle del envío">${IC.info}</button>` : '';
           cells.push(cfg.promoFree === true && authOf() === 'member' ? `<div><b class="free">Envío gratis${ib}</b><span>por ser miembro</span></div>` : `<div><b>Envío desde ${money(cfg.feeFromCents / 100)}${ib}</b><span>según tu dirección</span></div>`);
         }
-        const e = cfg.etaDel; if (e && Number.isFinite(e[0])) cells.push(`<div><b>${Number.isFinite(e[1]) && e[1] > e[0] ? `${e[0]}–${e[1]}` : e[0]} min</b><span>llega aprox.</span></div>`);
+        if (etaWindow()) cells.push(`<div><b>${etaWindow()}</b><span>llega aprox.</span></div>`);
       } else {
         if (etaTxt('pickup')) cells.push(`<div><b>${esc(etaTxt('pickup'))}</b></div>`);
         if (cfg.addr) cells.push(`<div><b>Recogé en</b><span>${esc(cfg.addr)}</span></div>`);
@@ -999,6 +1001,28 @@
         : `<div class="gate"><b>${sd && sd.off === 0 ? 'Hoy ya no hay horarios' : 'Sin horarios disponibles'}</b><span class="note">Elegí otro día.</span></div>`;
       return cards + chips + grid;
     }
+    // C-6d (MOCKUP-capp-desktop-D3 r3 frames 4a/4b, approved; advisor calls 1–6): the desktop checkout — its own bar («Volver a la
+    // tienda» = the existing back-to-the-menu, the Sherpa lock, «Pago seguro»), column A = the approved sections under the page H1,
+    // column B (sticky) = the store card → the SAME CTA (#cta: label, act and disabled state unchanged) → the guest's next step →
+    // «Tu pedido» (open by default) with the totals → the fine print. Presentation only: every value is the phone checkout's
+    function checkoutDeskHtml({ entrega, datos, pago, ctaBtn, T, tip, del, g, lines, nItems }) {
+      const brand = typeof opts.deskBrand === 'function' ? String(opts.deskBrand() || '') : '';
+      let terms = null; try { terms = typeof opts.deskTerms === 'function' ? opts.deskTerms() : null; } catch (_) { terms = null; }
+      const bar = `<div class="ckbar"><button class="backtxt" data-act="addmore">${IC.back}Volver a la tienda</button>${brand}<span class="sec-lock">${IC.lock}Pago seguro</span></div>`;
+      const when = del ? (etaWindow() ? 'llega en ' + etaWindow() : '') : etaTxt('pickup');
+      const card = `<div class="storecard">${logoChip('lg')}<span class="t"><b>${storeLine()}</b>${cfg.addr || when ? `<span>${[cfg.addr ? esc(cfg.addr) : '', esc(when)].filter(Boolean).join(' · ')}</span>` : ''}</span></div>`;
+      // advisor call 5: only the true half of the drawn line (the hosted payment charges when paid — never a claim about «no se cobra»)
+      const next = g ? '<div class="guestline"><b>Después del código de WhatsApp</b> se abre el pago seguro con tarjeta.</div>' : '';
+      const open = S.sumOpen !== false;   // frame 4a: open by default on the desk
+      const tipRow = tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : del ? '<div class="sumrow"><span>Propina</span><span class="r mute">Se elige en el siguiente paso</span></div>' : '';   // call 3
+      const pedido = `<section class="fsec" aria-label="Resumen del pedido"><div class="osum box"><button class="toggle" data-act="sumtoggle" aria-expanded="${open}"><span class="tt">Tu pedido<span> · ${esc(unitOf(nItems))}</span></span>${open ? IC.up : IC.down}</button>
+      ${open ? `<div class="lines">${lines.map((d) => `<div class="osline">${lineName(d, 'n')}${lineStep(d)}<span class="p">${money(d.total)}</span></div>`).join('')}<button class="addmore" data-act="addmore">${IC.plus}Agregar más platos</button></div>` : ''}
+      <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${tipRow}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
+      // call 6: the Terms sentence only with the platform's real (https) Terms link; «Sherpa lo entrega» only on a delivery
+      const fine = [terms ? `Al continuar aceptás los <a href="${esc(terms)}" target="_blank" rel="noopener">Términos de Sherpa</a>.` : '', del ? 'El restaurante prepara tu pedido; Sherpa lo entrega.' : ''].filter(Boolean).join(' ');
+      return `<div class="flow" id="flow">${bar}<div class="col-a"><h1 class="flowtitle">Entrega &amp; Pago</h1>${entrega}${datos}${pago}</div>
+    <div class="col-b">${card}${ctaBtn}${next}${pedido}${fine ? `<p class="finenote">${fine}</p>` : ''}</div></div>`;
+    }
     function checkoutHtml() {
       const f = S.flow, del = f.mode === 'delivery', m = member(), open = isOpen(), po = poLines(), T = totalsNow();
       const poNames = [...new Set(po.map((l) => { const s = sectionOfKey(l.key); return s ? s.name : l.key; }))].join(', ');
@@ -1070,7 +1094,9 @@
       <p class="paynote">Pagás con tarjeta. <button class="lnk" data-act="signin" data-ctx="paynote">Creá una cuenta</button> para pagar en efectivo y sumar recompensas.</p></section>`;
       const pago = g ? pagoGuest : `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
         ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D Secure'}</span></span><button class="act" data-act="showpay"${lp !== null ? ' disabled' : ''}>Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
-      const bar = `<div class="paybar"><button class="primary" id="cta" data-act="confirm"${ctaOff(T) ? ' disabled' : ''}>${esc(ctaLabel(T))}</button></div>`;
+      const ctaBtn = `<button class="primary" id="cta" data-act="confirm"${ctaOff(T) ? ' disabled' : ''}>${esc(ctaLabel(T))}</button>`;
+      const bar = `<div class="paybar">${ctaBtn}</div>`;
+      if (S.desk) return checkoutDeskHtml({ entrega, datos, pago, ctaBtn, T, tip, del, g, lines, nItems });
       // the prototype's footer «¿Problemas con tu pedido? Escribinos al …» (:1886) is omitted — pending a ruling
       return `<div class="flow" id="flow"><div class="flowbar plain"><h1>Entrega &amp; Pago</h1></div>
     <div class="col-a">${entrega}${datos}${S.desk ? pago : pedido + pago}</div>${S.desk ? `<div class="col-b">${pedido}</div>` : ''}${bar}</div>`;   // v6 :1886-1887 — desk MOVES «Tu pedido» to col-b
@@ -1589,7 +1615,7 @@
       if (a === 'cc' && intl()) { openLayer('cc'); render(); return true; }
       if (a === 'more') { S.more = true; render(); return true; }
       if (a === 'editdetails') { S.editDetails = true; render(); return true; }
-      if (a === 'sumtoggle') { S.sumOpen = !S.sumOpen; render(); return true; }
+      if (a === 'sumtoggle') { S.sumOpen = S.desk ? S.sumOpen === false : !S.sumOpen; render(); return true; }
       if ((a === 'pay' || a === 'showpay') && lockedPay() !== null) return true;   // row 10: the tender is fixed while the send is unresolved
       if (a === 'pay') { f.pay = v === 'online' || cardOnlyGuest() ? 'online' : 'cash'; S.showPay = false; render(); return true; }
       if (a === 'showpay') { S.showPay = true; render(); return true; }

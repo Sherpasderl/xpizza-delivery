@@ -3614,3 +3614,106 @@ test('C-6c r2 featured row: never clipped — the five cards share the width (�
     } finally { S.w.close(); }
   } finally { T.restore(); }
 });
+// ── C-6d (D-3 r3 frames 4a/4b/5, approved; advisor calls 1–8, 11-02): the desktop checkout + the live order panel ──
+async function deskCheckout(opts = {}) {
+  const { S, ui, media } = await deskStoreAt(opts);
+  const plain = ui.menu.dishes.find((d) => !d.launcher && !d.variantOf && !ui.menu.pickupOnlyCats.has(String(d.cat)));
+  S.click(`#dish-${plain.key} .qty-add-btn`); await flush();
+  S.click('.deskcart [data-act="checkout"]'); await flush(); await flush();
+  assert.equal(ui.state.screen, 'checkout', 'premise: the desk checkout');
+  return { S, ui, media };
+}
+test('C-6d checkout: its own bar («Volver a la tienda» · the Sherpa lock · «Pago seguro»), NO top bar, the H1 in column A over the approved sections; column B = store card → the CTA → «Tu pedido» → fine print; no paybar', async () => {
+  const { S } = await deskCheckout();
+  try {
+    const flow = S.q('.flow');
+    assert.ok(flow.firstElementChild.classList.contains('ckbar'), '🔴 CK-1: the checkout bar first');
+    assert.equal(S.q('.ckbar .backtxt').textContent, 'Volver a la tienda'); assert.equal(S.q('.ckbar .backtxt').dataset.act, 'addmore', 'the existing back-to-the-menu act');
+    const lock = S.q('.ckbar .lock'); assert.equal(lock && lock.textContent, 'Sherpa', '🔴 CK-1: the centred Sherpa lock (the host\'s)');
+    assert.equal(S.q('.ckbar .sec-lock').textContent, 'Pago seguro');
+    assert.equal(S.q('.desknav'), null, '🔴 CK-1: no top bar on the checkout (nothing competes with finishing)');
+    assert.equal(S.q('.flowbar'), null, 'the v6 flowbar is replaced'); assert.equal(S.q('.paybar'), null, '🔴 CK-1: the CTA left the paybar');
+    const a = S.q('.col-a'); assert.ok(a.firstElementChild.matches('h1.flowtitle') && a.firstElementChild.textContent === 'Entrega & Pago', '🔴 CK-1: the H1 heads column A');
+    assert.deepEqual([...a.querySelectorAll(':scope > section')].map((x) => x.getAttribute('aria-label')), ['Entrega', 'Tus datos', 'Pago']);
+    const b = [...S.q('.col-b').children].map((x) => x.id || x.className.split(' ')[0]);
+    assert.deepEqual(b.filter((k) => k !== 'guestline'), ['storecard', 'cta', 'fsec', 'finenote'], `🔴 CK-2: column B in the leaders' order (${b.join(', ')})`);
+    assert.equal(S.qa('#cta').length, 1, 'ONE CTA');
+  } finally { S.w.close(); }
+});
+test('C-6d checkout CTA: the SAME control as the phone — id, act, label and disabled state identical for the same order state', async () => {
+  const D = await deskCheckout(), P = await deskStore(false, 0);
+  try {
+    const plain = P.ui.menu.dishes.find((d) => !d.launcher && !d.variantOf && !P.ui.menu.pickupOnlyCats.has(String(d.cat)));
+    P.S.click(`#dish-${plain.key} .qty-add-btn`); await flush(); P.S.click('#cart-bar'); P.S.click('[data-act="checkout"]'); await flush(); await flush();
+    const d = D.S.q('#cta'), p = P.S.q('#cta');
+    assert.ok(d && p, 'premise: both CTAs');
+    assert.deepEqual([d.dataset.act, d.textContent, d.disabled], [p.dataset.act, p.textContent, p.disabled], '🔴 CK-3: the desk CTA is the phone\'s');
+  } finally { D.S.w.close(); P.S.w.close(); }
+});
+test('C-6d checkout: «Volver a la tienda» returns to the store with the cart; the summary is open by default and its toggle closes / reopens it', async () => {
+  const { S, ui } = await deskCheckout();
+  try {
+    const box = () => S.q('.col-b .osum.box');
+    assert.equal(box().querySelector('.toggle').getAttribute('aria-expanded'), 'true', '🔴 CK-4: open by default (frame 4a)'); assert.ok(box().querySelector('.lines .osline'));
+    S.click('.col-b .osum .toggle'); await flush(); assert.equal(box().querySelector('.toggle').getAttribute('aria-expanded'), 'false', '🔴 CK-4: the first click closes it'); assert.equal(box().querySelector('.lines'), null);
+    S.click('.col-b .osum .toggle'); await flush(); assert.equal(box().querySelector('.toggle').getAttribute('aria-expanded'), 'true', 'and reopens');
+    assert.ok(/1/.test(box().querySelector('.toggle').textContent), '«Tu pedido · N …»');
+    S.click('.ckbar .backtxt'); await flush();
+    assert.equal(ui.state.screen, 'store', '🔴 CK-5: back to the store'); assert.ok(/ · 1/.test(S.q('.deskcart .sheethead small').textContent), 'the cart kept');
+  } finally { S.w.close(); }
+});
+test('C-6d checkout totals + fine print: delivery ⇒ «Propina · Se elige en el siguiente paso» and «Sherpa lo entrega»; pickup ⇒ neither; the Terms sentence only with the platform\'s https Terms link', async () => {
+  const { S } = await deskCheckout();
+  try {
+    const rows = () => S.qa('.col-b .ostot .sumrow').map((r) => txt(r));
+    assert.ok(rows().includes('Propina Se elige en el siguiente paso'), `🔴 CK-6: the tip row on delivery (${rows().join(' | ')})`);
+    assert.equal(txt(S.q('.col-b .finenote')), 'El restaurante prepara tu pedido; Sherpa lo entrega.', '🔴 CK-6: no Terms link known ⇒ no Terms sentence');
+    S.click('[data-act="type"][data-val="pickup"]'); await flush();
+    assert.ok(!rows().some((r) => /^Propina/.test(r)), '🔴 CK-6: pickup has no tip step ⇒ no tip row');
+    assert.equal(S.q('.col-b .finenote'), null, '🔴 CK-6: pickup ⇒ no «Sherpa lo entrega» (and no Terms link) ⇒ no fine print');
+  } finally { S.w.close(); }
+  const L = await deskCheckout({ storage: memStorage({ 'capp:legal': JSON.stringify({ terms: 'https://legal.test/t', privacy: 'https://legal.test/p' }) }) });
+  try {
+    const a = L.S.q('.col-b .finenote a'); assert.ok(a, '🔴 CK-7: the Terms sentence with the real link');
+    assert.equal(a.getAttribute('href'), 'https://legal.test/t'); assert.equal(a.textContent, 'Términos de Sherpa');
+    assert.equal(L.S.q('.col-b .finenote').textContent, 'Al continuar aceptás los Términos de Sherpa. El restaurante prepara tu pedido; Sherpa lo entrega.', '🔴 CK-7: both sentences on a delivery');
+  } finally { L.S.w.close(); }
+  const B = await deskCheckout({ storage: memStorage({ 'capp:legal': JSON.stringify({ terms: 'http://legal.test/t' }) }) });
+  try { assert.equal(B.S.q('.col-b .finenote a'), null, '🔴 CK-7: a non-https Terms URL is never linked'); } finally { B.S.w.close(); }
+});
+test('C-6d checkout: the guest\'s next step is ONLY the true sentence (never «No se cobra…», advisor call 5); the store card is static with a window', async () => {
+  const { S } = await deskCheckout({ auth: 'guest', runtime: { ...RUNTIME, guestCardOnly: true } });
+  try {
+    assert.equal(txt(S.q('.col-b .guestline')), 'Después del código de WhatsApp se abre el pago seguro con tarjeta.', '🔴 CK-8: the guest line');
+    assert.ok(!/No se cobra/.test(S.q('.col-b').textContent), '🔴 CK-8: no unverifiable money claim');
+    const card = S.q('.col-b .storecard'); assert.equal(card.tagName, 'DIV', '🔴 CK-9: a static card (no control)'); assert.equal(card.querySelector('button, a, svg.chev'), null, '🔴 CK-9: no chevron (it would read as a control)');
+    assert.ok(/llega en \d+–\d+ min/.test(card.textContent), `🔴 CK-9: the arrival window (${card.textContent})`);
+  } finally { S.w.close(); }
+  const { S: N } = await deskCheckout();
+  try { assert.equal(N.q('.col-b .guestline'), null, 'guest rules off ⇒ no guest line'); } finally { N.w.close(); }
+});
+test('C-6d order panel (frame 5): on the desk «Orden #N» moves after the receipt (before the share line); the phone / no desk flag is byte-identical; a past receipt keeps its order', () => {
+  const CappOrder = require('./capp-order.js');
+  const o = { mode: 'delivery', status: 'out', storeName: 'Tienda', display_number: 12, driver: 'Marvin', addr: 'Col. Centro', windowText: '7:40 – 7:55 p. m.', lines: [{ n: 1, name: 'Plato', total: 100 }], fee: 45, pay: 'cash' };
+  const c = { entry: 'app', now: Date.UTC(2026, 10, 2, 18), helpOk: false, shareOk: true };
+  const order = (html) => { const d = dom(html); return [...d.querySelector('.mk-sheet').children].map((x) => x.className.split(' ')[0]); };
+  const desk = order(CappOrder.orderHtml(o, { ...c, desk: true })), phone = order(CappOrder.orderHtml(o, c));
+  assert.ok(phone.indexOf('mk-num') < phone.indexOf('segbar'), 'premise: the phone draws the number above the bar');
+  assert.ok(desk.indexOf('mk-num') > desk.lastIndexOf('receipt') && desk.indexOf('mk-num') < desk.indexOf('shareline'), `🔴 OD-1: desk = … receipt → number → share (${desk.join(', ')})`);
+  assert.equal(CappOrder.orderHtml(o, { ...c, desk: false }), CappOrder.orderHtml(o, c), '🔴 OD-1: no desk flag ⇒ byte-identical');
+  assert.equal(CappOrder.orderHtml(o, { ...c, past: true, desk: true }), CappOrder.orderHtml(o, { ...c, past: true }), '🔴 OD-1: a past receipt keeps its order (its tail streams in place)');
+  const CSS = readFileSync(join(HERE, 'capp.css'), 'utf8');
+  assert.ok(/\.app\.desk \.mk-sheet \.mk-title,\.app\.desk \.mk-sheet \.mk-window\{text-align:left\}/.test(CSS), '🔴 OD-2: left-aligned on the desk');
+});
+test('C-6d order panel through the SHELL: a placed order\'s screen on the desk carries the desk order (the shell passes the view); the phone keeps its own', async () => {
+  const media = fakeMedia(false);
+  const S = bootShell({ media, runtime: { ...RUNTIME, rtdbBase: 'https://rtdb.test' }, readPublic: async () => ({ ok: true, json: async () => 47 }), apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
+  try {
+    await flush(); await placeShellCash(S); await until(() => S.q('.mk-num'), 6000);
+    const kids = () => [...S.q('.mk-sheet').children].map((x) => x.className.split(' ')[0]);
+    assert.ok(kids().indexOf('mk-num') < kids().indexOf('segbar'), 'premise: the phone order');
+    media.set(true); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    assert.ok(S.q('.app').classList.contains('desk') && S.q('.screen > .desknav'), 'premise: the desk, with its top bar');
+    const k = kids(); assert.ok(k.indexOf('mk-num') > k.indexOf('segbar'), `🔴 OD-3: the shell draws the desk order (${k.join(', ')})`);
+  } finally { S.w.close(); }
+});
