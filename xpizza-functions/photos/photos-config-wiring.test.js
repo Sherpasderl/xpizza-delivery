@@ -26,7 +26,7 @@ const DEMO = 'demo-xpizza';
 const DEMO_PRIV = 'demo-xpizza.appspot.com';
 const demoCfg = (over = {}) => ({ schema: 1, public_bucket: { [DEMO]: '' }, private_bucket: { [DEMO]: DEMO_PRIV }, ...over });
 
-function child({ script, file, args = [], fixture, mode, env = {}, spy = false }) {
+function child({ script, file, args = [], fixture, mode, env = {}, spy = false, sentinel = false }) {
   const e = { ...process.env }; delete e.NODE_OPTIONS;
   for (const k of Object.keys(e)) if (/_EMULATOR_HOST$/.test(k) || /^(FUNCTION_TARGET|K_SERVICE|FUNCTION_NAME|FIREBASE_CONFIG|GCLOUD_PROJECT|GOOGLE_CLOUD_PROJECT|PHOTOS_.*)$/.test(k)) delete e[k];
   Object.assign(e, env);
@@ -34,12 +34,15 @@ function child({ script, file, args = [], fixture, mode, env = {}, spy = false }
   if (mode) e.TB_PHOTOS_FIXTURE_MODE = mode;
   const spyOut = spy ? path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tb-spy-')), 'seen.json') : null;
   if (spyOut) e.TB_SPY_OUT = spyOut;
-  const pre = ['-r', EGRESS, ...(fixture !== undefined || mode ? ['-r', FIXTURE] : []), ...(spy ? ['-r', SPY] : [])];
+  const sentOut = sentinel ? path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tb-sent-')), 'hits.json') : null;
+  if (sentOut) e.TB_SENTINEL_OUT = sentOut;
+  const pre = ['-r', EGRESS, ...(fixture !== undefined || mode ? ['-r', FIXTURE] : []), ...(spy ? ['-r', SPY] : []), ...(sentinel ? ['-r', path.join(FN, 'test', '_admin-read-sentinel.js')] : [])];
   const r = spawnSync(process.execPath, [...pre, ...(script ? ['-e', script] : [file, ...args])], { cwd: FN, env: e, encoding: 'utf8', timeout: 90000 });
   assert.ok(!/r3-egress: .*REFUSED/.test(r.stderr || ''), `a scenario attempted a non-loopback connection\n${(r.stderr || '').slice(-600)}`);
   const line = (r.stdout || '').split('\n').find((l) => l.startsWith('RESULT '));
   const seen = spyOut && fs.existsSync(spyOut) ? JSON.parse(fs.readFileSync(spyOut, 'utf8')) : null;
-  return { r, result: line ? JSON.parse(line.slice(7)) : null, seen };
+  const clientHits = sentOut && fs.existsSync(sentOut) ? JSON.parse(fs.readFileSync(sentOut, 'utf8')) : null;
+  return { r, result: line ? JSON.parse(line.slice(7)) : null, seen, clientHits };
 }
 const RESOLVE = "const B = require('./photos/buckets'); const r = {}; try { r.b = { ...B.photoBuckets() }; } catch (e) { r.err = e.code; } r.pub = B.publicOrNull(); console.log('RESULT ' + JSON.stringify(r));";
 
@@ -129,8 +132,9 @@ ok('production boundary: loading index.js loads no test module, the loader reads
   assert.ok(/refused this project \(photos_private_bucket_unknown\)/.test(bf.r.stderr || ''), `CLI-BACKFILL names the refusal: ${bf.r.stderr}`);
   assert.deepStrictEqual(bf.seen, [], `🔴 CLI-BACKFILL-NO-DOTENV opened ${JSON.stringify(bf.seen)}`);
   // codex photos-config r1 #1: the DRY RUN refuses too (before any client or read)
-  const bfDry = child({ file: 'tools/photos-legacy-backfill.js', args: ['--project', 'xpizza-delivery', '--rid', 'x_pizza'], fixture: demoCfg(), env: POISON, spy: true });
-  assert.strictEqual(bfDry.r.status, 2, `🔴 CLI-BACKFILL-DRY-REFUSES a config refusal in the dry run too (exit ${bfDry.r.status})\n${bfDry.r.stderr}`);
+  const bfDry = child({ file: 'tools/photos-legacy-backfill.js', args: ['--project', 'xpizza-delivery', '--rid', 'x_pizza'], fixture: demoCfg(), env: POISON, spy: true, sentinel: true });
+  // ONE named assert on the whole outcome: refused (exit 2) AND no client was ever reached (the offline sentinel — not the egress guard)
+  assert.deepStrictEqual({ status: bfDry.r.status, clientHits: bfDry.clientHits }, { status: 2, clientHits: [] }, `🔴 CLI-BACKFILL-DRY-REFUSES a config refusal in the dry run too, before any client\n${bfDry.r.stderr}`);
   assert.ok(/refused this project \(photos_private_bucket_unknown\)/.test(bfDry.r.stderr || ''), `CLI-BACKFILL-DRY names the refusal: ${bfDry.r.stderr}`);
   // codex photos-config r1 #2: the census refuses an UNREADABLE committed config before any read (never public "")
   for (const mode of ['garbage', 'missing']) {
