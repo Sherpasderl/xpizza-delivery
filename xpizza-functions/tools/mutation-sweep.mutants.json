@@ -32133,8 +32133,8 @@
   "slice": "sb",
   "label": "S-B: no bucket expiry (pseudonymous keys kept past 90 d)",
   "file": "ratings/aggregate-producer.js",
-  "from": "    if (drop.length) await db.ref(`stats_buckets/${rid}`).update(",
-  "to": "    if (false) await db.ref(`stats_buckets/${rid}`).update(",
+  "from": "  if (drop.length) await db.ref(`stats_buckets/${rid}`).update(Object.fromEntries(drop.map((d) => [d, null])));\n  return drop.length;",
+  "to": "  return drop.length;",
   "command": [
    "node",
    "ratings/aggregate-producer.test.js"
@@ -32433,8 +32433,8 @@
   "slice": "pc",
   "label": "config plane: a malformed projection is trusted",
   "file": "platform-config/reader.js",
-  "from": "      fields = S.validateFields(raw.fields);\n    } catch (_) { return fromLkg(rid); }",
-  "to": "      fields = raw.fields;\n    } catch (_) { return fromLkg(rid); }",
+  "from": "      fields = S.validateFields(decodeFields(raw.fields));\n    } catch (_) { return fromLkg(rid); }",
+  "to": "      fields = decodeFields(raw.fields);\n    } catch (_) { return fromLkg(rid); }",
   "command": [
    "node",
    "platform-config/platform-config.test.js"
@@ -32642,6 +32642,66 @@
   "command": [
    "node",
    "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sb-31",
+  "slice": "sb",
+  "label": "S-B run 4: retention only after the days close (repeated budget aborts keep expired customer keys)",
+  "file": "ratings/aggregate-producer.js",
+  "from": "    try { dropped = await applyRetention(db, rid, nowMs); } catch (e) { console.error('aggregate retention', rid, e && e.message); }\n",
+  "to": "",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "pc-13",
+  "slice": "pc",
+  "label": "§1 run 5: the generator writes UNENCODED fields (RTDB drops null / [])",
+  "file": "platform-config/generate.js",
+  "from": "fields: encodeFields(src.fields) };",
+  "to": "fields: src.fields };",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-14",
+  "slice": "pc",
+  "label": "§1 run 5: the reader validates the raw RTDB node (no decode ⇒ unavailable)",
+  "file": "platform-config/reader.js",
+  "from": "      fields = S.validateFields(decodeFields(raw.fields));",
+  "to": "      fields = S.validateFields(raw.fields);",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-15",
+  "slice": "pc",
+  "label": "§1 run 5: the generator compares the raw node (a regen reports conflict)",
+  "file": "platform-config/generate.js",
+  "from": "canonical(decodeFields(raw.fields)) === canonical(decodeFields(next.fields))",
+  "to": "canonical(raw.fields) === canonical(next.fields)",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-16",
+  "slice": "pc",
+  "label": "§1 run 5: drift compares the raw node (reports drift when in sync)",
+  "file": "platform-config/drift.js",
+  "from": "canonical(decodeFields(proj.fields)) === canonical(src.fields)",
+  "to": "canonical(proj.fields) === canonical(src.fields)",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
   ]
  }
 ]

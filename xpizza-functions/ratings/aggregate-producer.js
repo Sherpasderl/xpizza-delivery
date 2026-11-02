@@ -94,10 +94,24 @@ async function takeLease(db, rid, runId, nowMs) {
   return !!(r && r.committed);
 }
 
+// the 90-day retention: every bucket outside the window is deleted (its pseudonymous cust keys with it). → the number dropped
+async function applyRetention(db, rid, nowMs) {
+  const keep = AG.windowDays(nowMs, AG.W.LONG);
+  const days = Object.keys((await leaf(db, `stats_buckets/${rid}`)) || {});
+  const drop = days.filter((d) => !keep.has(d));
+  if (drop.length) await db.ref(`stats_buckets/${rid}`).update(Object.fromEntries(drop.map((d) => [d, null])));
+  return drop.length;
+}
+
 // ONE restaurant. deps: { db, nowMs, keyOf, priceOf(dishId) → unit cents | null, runId }
 async function aggregateRestaurant({ db, nowMs, keyOf, priceOf, runId }, rid) {
   if (!(await takeLease(db, rid, runId, nowMs))) return { rid, skipped: 'leased' };
   try {
+    // RETENTION FIRST, in its own try (Codex run 4 P2): the 90-day expiry of the buckets — and of the pseudonymous customer keys inside
+    // them — must never depend on a day closing successfully. A day that keeps exceeding DAY_BUDGET aborts the run below; retention has
+    // already happened. A retention failure is logged and never blocks the closing / publication.
+    let dropped = 0;
+    try { dropped = await applyRetention(db, rid, nowMs); } catch (e) { console.error('aggregate retention', rid, e && e.message); }
     const yesterday = hnDateISO(nowMs - AG.DAY_MS);
     const wm = await leaf(db, `stats_agg/${rid}/watermark`);
     let day = typeof wm === 'string' && DAY_RE.test(wm) ? nextDay(wm) : yesterday;
@@ -108,17 +122,15 @@ async function aggregateRestaurant({ db, nowMs, keyOf, priceOf, runId }, rid) {
       await db.ref(`stats_agg/${rid}/watermark`).set(day);
       closed.push(day); day = nextDay(day);
     }
-    // buckets: keep the 90-day window, drop the rest (their pseudonymous keys expire with them)
+    // publication reads the window only (anything older was dropped by retention above; a stray one is ignored by publish's window)
     const keep = AG.windowDays(nowMs, AG.W.LONG);
-    const buckets = (await leaf(db, `stats_buckets/${rid}`)) || {};
-    const drop = Object.keys(buckets).filter((d) => !keep.has(d));
-    if (drop.length) await db.ref(`stats_buckets/${rid}`).update(Object.fromEntries(drop.map((d) => [d, null])));
-    for (const d of drop) delete buckets[d];
+    const all = (await leaf(db, `stats_buckets/${rid}`)) || {};
+    const buckets = Object.fromEntries(Object.entries(all).filter(([d]) => keep.has(d)));
     const ratings = await countableRatings(db, rid);
     const firstServedAt = await leaf(db, `stats_agg/${rid}/first_served_at`);
     const doc = AG.publish({ rid, nowMs, buckets, ratings, priceOf, firstServedAt: Number.isFinite(firstServedAt) ? firstServedAt : null });
     await db.ref(`public_stats/${rid}`).set(doc);
-    return { rid, closed, dropped: drop.length, ratings: ratings.length };
+    return { rid, closed, dropped, ratings: ratings.length };
   } finally {
     await db.ref(`stats_agg/${rid}/lease`).transaction((cur) => (cur && cur.run === runId ? null : cur));
   }
@@ -148,4 +160,4 @@ function priceOfFromTables(tables, context) {
   return (cid) => (byCid.has(cid) ? byCid.get(cid) : null);
 }
 
-module.exports = { priceOfFromTables, runAggregates, aggregateRestaurant, repeatKeyer, dayRange, fulfilledOn, LEASE_MS, MAX_CATCHUP_DAYS, DAY_BUDGET, RATINGS_BUDGET };
+module.exports = { priceOfFromTables, applyRetention, runAggregates, aggregateRestaurant, repeatKeyer, dayRange, fulfilledOn, LEASE_MS, MAX_CATCHUP_DAYS, DAY_BUDGET, RATINGS_BUDGET };

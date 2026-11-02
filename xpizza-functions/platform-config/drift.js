@@ -4,6 +4,7 @@
 // Names and states only — no field value is ever printed (the tool prints this object).
 const { readPlatformSource } = require('./source');
 const { projectionRef, canonical } = require('./projection');
+const { decodeFields } = require('./rtdb-encoding');
 
 async function checkDrift({ fs, db }, rid) {
   let src;
@@ -13,7 +14,7 @@ async function checkDrift({ fs, db }, rid) {
   if (proj == null) return { rid, state: 'not_projected' };
   if (!Number.isSafeInteger(proj.source_version) || proj.source_version > src.version) return { rid, state: 'drift' };
   if (proj.source_version < src.version) return { rid, state: 'behind' };
-  return { rid, state: canonical(proj.fields) === canonical(src.fields) ? 'in_sync' : 'drift' };
+  return { rid, state: canonical(decodeFields(proj.fields)) === canonical(src.fields) ? 'in_sync' : 'drift' };
 }
 
 module.exports = { checkDrift };

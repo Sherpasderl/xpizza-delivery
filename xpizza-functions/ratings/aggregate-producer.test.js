@@ -197,7 +197,21 @@ const orderReads = (db, from = 0) => db.reads.slice(from).filter((r) => /^orders
     const rep = await P.runAggregates({ db: two, nowMs: NOW, listRids: async () => ['la_musa', R], salt: process.env.OTP_SALT, priceOfFor: async (rid) => { if (rid === 'la_musa') throw new Error('tables down'); return () => null; } });
     assert.deepStrictEqual(rep.failed.map((f) => f.rid), ['la_musa']); assert.deepStrictEqual(rep.ok.map((o) => o.rid), [R], 'one rid failing never blocks another');
   }
-  ok('the lease (overlap skipped, expired taken over), the per-run catch-up cap, a budget overrun aborts LOUDLY with nothing published, and one failing rid never blocks the others');
+  // Codex run 4 P2: a day that KEEPS exceeding the budget never stalls retention — expired customer keys still expire
+  {
+    const big = fakeDb(); big.set(`stats_agg/${R}/watermark`, '2027-03-08');
+    for (let i = 0; i <= P.DAY_BUDGET; i++) big.set(`rating_index/${R}/${V2.indexKey(Y0 + 1000 + i, `XPZ-b${i}`)}`, `XPZ-b${i}`);
+    const old = hnDateISO(NOW - 91 * DAY);
+    big.set(`stats_buckets/${R}/${old}`, { v: 1, orders: 1, dish: {}, pairs: {}, cust: { pseudonymousKey: 2 } });
+    for (let run = 0; run < 3; run++) await assert.rejects(() => P.aggregateRestaurant(deps(big, { runId: `r${run}` }), R), /aggregate_day_budget_exceeded/, 'the oversized day aborts every run');
+    assert.ok(!big.get(`stats_buckets/${R}/${old}`), '🔴 repeated budget aborts ⇒ the 91-day-old bucket (and its customer keys) STILL expired');
+    const fail = fakeDb(); fail.set(`stats_agg/${R}/watermark`, YDAY); const rr = fail.ref;
+    let failOnce = true;
+    fail.ref = (p) => { const r = rr(p); if (p === `stats_buckets/${R}` && failOnce) return { ...r, once: async () => { failOnce = false; throw new Error('retention read down'); } }; return r; };
+    await P.aggregateRestaurant(deps(fail), R).catch((e) => assert.fail(`🔴 a retention failure must not block the run: ${e.message}`));
+    assert.ok(fail.get(`public_stats/${R}`), 'the run still published');
+  }
+  ok('the lease (overlap skipped, expired taken over), the per-run catch-up cap, a budget overrun aborts LOUDLY with nothing published, and one failing rid never blocks the others; retention runs FIRST in its own try — repeated budget aborts still expire old customer keys, and a retention failure never blocks the run');
 
   // ── 7. prices by canonical id: the guarded tables through the identity map; unusable ⇒ null (no pair suggested) ──
   {

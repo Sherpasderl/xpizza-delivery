@@ -7,6 +7,7 @@
 // Each consumer then applies its plan §3-A row: money / fiscal call requireFresh (no LKG); display / WhatsApp accept LKG.
 const S = require('./schema');
 const { projectionRef } = require('./projection');
+const { decodeFields } = require('./rtdb-encoding');   // Codex run 5 P1: the projection is RTDB-encoded (null / [] omitted)
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 
@@ -25,7 +26,7 @@ function createPlatformConfigReader({ now = () => Date.now(), ttlMs = DEFAULT_TT
     let fields;
     try {
       if (raw.schema_version !== S.SCHEMA_VERSION || !Number.isSafeInteger(raw.source_version) || raw.source_version < 1) throw new Error('x');
-      fields = S.validateFields(raw.fields);
+      fields = S.validateFields(decodeFields(raw.fields));
     } catch (_) { return fromLkg(rid); }                                   // malformed ⇒ treated as an outage, never trusted
     const prev = lkg.get(rid);
     if (prev && raw.source_version < prev.source_version) return fromLkg(rid);   // older than accepted ⇒ rejected

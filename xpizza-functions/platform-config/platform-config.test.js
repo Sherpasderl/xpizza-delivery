@@ -25,7 +25,12 @@ function fakeRtdb() {
   const tree = {}; let failReads = false;
   const parts = (p) => String(p).split('/').filter(Boolean);
   const get = (p) => parts(p).reduce((o, k) => (o == null ? undefined : o[k]), tree);
-  const set = (p, v) => { const ks = parts(p); let o = tree; for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } if (v == null) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = clone(v); };
+  // AS STRICT AS RTDB (Codex run 5 P1 — the old fake kept them): a null leaf, an empty object and an EMPTY ARRAY are not stored —
+  // the node simply has no such child; a value that prunes to nothing deletes the path
+  const prune = (v) => { if (v === null || v === undefined) return undefined; if (typeof v !== 'object') return v;
+    if (Array.isArray(v)) { const a = v.map(prune).filter((x) => x !== undefined); return a.length ? a : undefined; }
+    const o = {}; for (const [k, x] of Object.entries(v)) { const q = prune(x); if (q !== undefined) o[k] = q; } return Object.keys(o).length ? o : undefined; };
+  const set = (p, v) => { const ks = parts(p); let o = tree; for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } const q = prune(clone(v)); if (q === undefined) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = q; };
   const snap = (v) => ({ exists: () => v != null, val: () => (v == null ? null : clone(v)) });
   const ref = (p) => ({
     once: async () => { if (failReads) throw new Error('rtdb down'); return snap(get(p)); },
@@ -99,7 +104,7 @@ const THIRD = { whatsapp_copy: { items_emoji: '🌮', ready_line: '¡Tu pedido e
     assert.deepStrictEqual(await G.generatePlatformConfig({ fs, db, now: 5 }, 'x_pizza'), { rid: 'x_pizza', outcome: 'no_source' });
     await SRC.writePlatformSource(fs, 'x_pizza', X, { expectedVersion: null, by: 'o' });
     assert.strictEqual((await G.generatePlatformConfig({ fs, db, now: 5 }, 'x_pizza')).outcome, 'written');
-    assert.deepStrictEqual(db.get('restaurants/x_pizza/platform_config'), { schema_version: 1, source_version: 1, generated_at: 5, fields: X });
+    assert.deepStrictEqual(db.get('restaurants/x_pizza/platform_config'), { schema_version: 1, source_version: 1, generated_at: 5, fields: require('./rtdb-encoding').encodeFields(X) });
     assert.strictEqual((await G.generatePlatformConfig({ fs, db, now: 9 }, 'x_pizza')).outcome, 'unchanged');
     assert.strictEqual(db.get('restaurants/x_pizza/platform_config').generated_at, 5, 'an unchanged run rewrites nothing');
     await SRC.writePlatformSource(fs, 'x_pizza', { ...X, ready_time: { cold_start_min: 19, has_items_schema: true } }, { expectedVersion: 1, by: 'o' });
@@ -171,6 +176,25 @@ const THIRD = { whatsapp_copy: { items_emoji: '🌮', ready_line: '¡Tu pedido e
     for (const r of ['x_pizza', 'la_musa', 'tb_tercera']) assert.strictEqual((await D.checkDrift({ fs, db }, r)).state, 'in_sync');
   }
   ok('a synthetic 3rd restaurant: portal-authored through the ONE source writer → generated → read fresh with ITS OWN fields; both founding projections untouched; all three in sync');
+
+  // ── 9. Codex run 5 P1: the RTDB-safe encoding — `rewards: null` and `exclude: []` survive a REAL-RTDB round trip (this fake drops them) ──
+  {
+    const E = require('./rtdb-encoding');
+    const EMPTY_EXCL = clone(M); EMPTY_EXCL.rewards.redemption.exclude = [];
+    for (const f of [X, M, THIRD, EMPTY_EXCL]) assert.deepStrictEqual(E.decodeFields(E.encodeFields(f)), f, 'decode(encode(f)) === f');
+    const fs = makeFs(); const db = fakeRtdb();
+    for (const [rid, f] of [['tb_tercera', THIRD], ['la_musa', EMPTY_EXCL]]) {
+      await SRC.writePlatformSource(fs, rid, f, { expectedVersion: null, by: 'o' });
+      assert.strictEqual((await G.generatePlatformConfig({ fs, db }, rid)).outcome, 'written');
+      const stored = db.get(`restaurants/${rid}/platform_config/fields`);
+      assert.ok(rid === 'tb_tercera' ? !('rewards' in stored) : !('exclude' in stored.rewards.redemption), `premise: RTDB dropped the empty value (${rid})`);
+      const r = await R.createPlatformConfigReader().read(db, rid);
+      assert.ok(r.ok && r.fresh, `🔴 ${rid}: the reader restores the empty value (not 'unavailable')`); assert.deepStrictEqual(r.fields, f);
+      assert.strictEqual((await G.generatePlatformConfig({ fs, db }, rid)).outcome, 'unchanged', `🔴 ${rid}: a regen is 'unchanged', not 'conflict'`);
+      assert.strictEqual((await D.checkDrift({ fs, db }, rid)).state, 'in_sync', `🔴 ${rid}: drift is 'in_sync', not 'drift'`);
+    }
+  }
+  ok('Codex run 5 P1: ONE RTDB-safe encoding (rewards: null / exclude: [] omitted on the wire, restored on read) shared by generate / read / compare / drift — through an RTDB-faithful fake: the reader returns the fields, a regen is unchanged, drift is in_sync');
 
   // ── 8. the owner CLI core: strict arguments (no fan-out), break-glass seed never overwrites ──
   {
