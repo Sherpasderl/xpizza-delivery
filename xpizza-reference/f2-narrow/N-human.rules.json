@@ -911,10 +911,11 @@
     },
     "user_favorites": {
       "$uid": {
-        ".read": "auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid",
+        ".read": "auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()",
         ".write": "auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()",
+        ".validate": "newData.hasChildren()",
         "$rid": {
-          ".validate": "$rid.matches(/^[a-z0-9][a-z0-9_-]{1,39}$/) && newData.hasChildren(['createdAt'])",
+          ".validate": "$rid.matches(/^[a-z0-9][a-z0-9_-]{1,39}$/) && root.child('restaurants').child($rid).child('identity').exists() && newData.hasChildren(['createdAt'])",
           "createdAt": {
             ".validate": "newData.isNumber() && newData.val() <= now + 60000"
           },
