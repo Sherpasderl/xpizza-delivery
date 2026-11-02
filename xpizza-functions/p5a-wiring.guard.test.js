@@ -15,24 +15,32 @@ const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 // DRYRUN (2e, next-train assembly): compare against the REAL pre-P5a assembly commit, not the lane base 8a31e2a3 (which lacks the
 // whole last train). Re-point again at the real assembly (TRAIN-NEXT2 obligation A4).
 const ASM_BASE = 'f1077a76';
-const baseOf = (f) => execFileSync('git', ['show', `${ASM_BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
+// asm2 (5f): alert-prune.js's NEVER_AUTO_PRUNE is ONE composed statement; extra-pay's r5 (f2e1f2fa) sits directly below P5a in
+// every chain, so P5a's alert-prune hunk returns the composed file to f2e1f2fa's approved alert-prune.js (hostedrace-wiring then
+// proves f2e1f2fa minus the hosted-race hunks is the assembly base).
+const BELOW = { 'alert-prune.js': 'f2e1f2fa' };
+const baseOf = (f) => execFileSync('git', ['show', `${BELOW[f] || ASM_BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
-assert.deepStrictEqual([...FILES].sort(), ['cancel-order-core.js', 'index.js', 'pixelpay-client.js', 'pixelpay-confirm.js', 'pixelpay-hosted-webhook.js', 'resolve-manual.js'], 'the slice owns exactly these files');
+assert.deepStrictEqual([...FILES].sort(), ['alert-prune.js', 'cancel-order-core.js', 'index.js', 'pixelpay-client.js', 'pixelpay-confirm.js', 'pixelpay-hosted-webhook.js', 'resolve-manual.js'], 'the slice owns exactly these files');
 for (const f of FILES) {
-  const src = read(f); const b = baseOf(f);
-  assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
-  assert.strictEqual(unapplyP5aModule(f, src), b, `🔴 ${f} minus the P5a hunks is not ${ASM_BASE}:${f}`);
+  // asm2 (5f): index.js carries the newer S-B / S-D layers (stripped first) and capp + 3a additions INSIDE checkout's endpoints
+  // block (no inverse; pinned by checkout-wiring) — index.js is compared with the checkout blocks removed on BOTH sides.
+  const CO = f === 'index.js' ? require('./tools/checkout-inverse').unapplyCheckoutIndex : (x) => x;
+  const src = f === 'index.js' ? require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(read(f))) : read(f);
+  const b = CO(baseOf(f));
+  assert.notStrictEqual(CO(src), b, `non-vacuity: ${f} differs from ${BASE}`);
+  assert.strictEqual(CO(unapplyP5aModule(f, src)), b, `🔴 ${f} minus the P5a hunks is not ${BELOW[f] || ASM_BASE}:${f}`);
   for (const h of HUNKS.filter((x) => x.file === f)) {
     const k = h.now.search(/[A-Za-z]/);
     assert.throws(() => unapplyP5aModule(f, src.replace(h.now, h.now.slice(0, k) + '#' + h.now.slice(k + 1))), /occurs 0 times/, `${f}: a byte INSIDE a hunk`);
     assert.throws(() => unapplyP5aModule(f, src + h.now), /occurs 2 times/, `${f}: a duplicated hunk`);
   }
-  assert.notStrictEqual(unapplyP5aModule(f, '\n' + src), b, `${f}: a byte OUTSIDE every hunk survives (the base pin catches it)`);
+  assert.notStrictEqual(CO(unapplyP5aModule(f, '\n' + src)), b, `${f}: a byte OUTSIDE every hunk survives (the base pin catches it)`);
 }
 ok(`each of ${FILES.length} files: unapplyP5aModule → ${BASE} byte-for-byte; inside / duplicate / outside each caught (${HUNKS.length} hunks)`);
 
-assert.strictEqual(unapplyP5aIndex(read('index.js')), baseOf('index.js'), 'unapplyP5aIndex is the index.js case');
-assert.strictEqual(read('index.js').split('\n').length, baseOf('index.js').split('\n').length, 'index.js: same-line edits only (no line moved)');
+{ const x = require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(read('index.js'))); assert.strictEqual(unapplyP5aIndex(x), unapplyP5aModule('index.js', x), 'unapplyP5aIndex is the index.js case'); assert.notStrictEqual(unapplyP5aIndex(x), x, 'non-vacuity: it strips the P5a hunks'); }
+{ const CO = require('./tools/checkout-inverse').unapplyCheckoutIndex; const x = CO(require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(read('index.js')))); assert.strictEqual(x.split('\n').length, CO(baseOf('index.js')).split('\n').length, 'index.js: same-line edits only (no line moved)'); }   // asm2 (5f): the P5a layer alone (newer layers stripped)
 const other = 'tb unowned source\n';
 assert.strictEqual(unapplyP5aModule('tb-unowned.js', other), other, 'a file the slice does not own passes through untouched');
 ok('unapplyP5aIndex = the index.js case; index.js line count unchanged; unowned files pass through');

@@ -120,6 +120,11 @@ const HUNKS = Object.freeze([
   "file": "pixelpay-client.js",
   "now": "\n  let json = null;\n  try { json = text ? JSON.parse(text) : null; } catch { json = null; }\n  // A 2xx with no readable JSON object (empty, not JSON, a bare value or array) is not an answer.\n  if (res.ok && !(json && typeof json === 'object' && !Array.isArray(json))) {\n    throw outcomeUnknown(res.status, text ? 'body_unparseable' : 'body_empty');\n  }\n  if (res.ok && !hasActionEvidence(action, json)) throw outcomeUnknown(res.status, 'envelope_incomplete');\n\n",
   "was": "\n  const text = await res.text().catch(() => '');\n  let json = null;\n  try { json = text ? JSON.parse(text) : null; } catch { json = null; }\n\n"
+ },
+ {
+  "file": "alert-prune.js",
+  "now": "// payment dismisses it, whatever the order's state (on a cancelled order by design).\n// A «refund confirmed — release points» escalation is a points OBLIGATION, not an order flag: it stays until the staff\n// member who releases the points dismisses it, whatever the order's state (the order is cancelled/refunded by design).\n// (assembly composition: both lanes' never-auto-prune alert types — extra-pay's money obligations (received + quarantined) + P5a's points obligation)\nconst NEVER_AUTO_PRUNE = new Set(['payment_extra_payment_received', 'payment_extra_payment_quarantined', 'payment_refund_confirmed_release_points']);\nfunction alertsToPrune(alerts, orders) {\n",
+  "was": "// payment dismisses it, whatever the order's state (on a cancelled order by design).\nconst NEVER_AUTO_PRUNE = new Set(['payment_extra_payment_received', 'payment_extra_payment_quarantined']);\nfunction alertsToPrune(alerts, orders) {\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);
