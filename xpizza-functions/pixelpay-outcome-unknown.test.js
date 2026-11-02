@@ -410,7 +410,8 @@ async function cell(name, fn) { const before = pass; try { await fn(); if (pass 
       const { retryRewardLedgerRepair } = require('./cancel-order-core');
       await retryRewardLedgerRepair({ db, alert: async (k, d) => { alerts.push(k); } }, { now: 5000 });
       assert.strictEqual(holdState(db), 'held_paid', `${label}: a legacy record never releases an online order's hold (got ${holdState(db)})`);
-      assert.strictEqual(alerts.includes('refund_confirmed_release_points'), wantAlert, `${label}: escalation alert ${wantAlert ? 'raised' : 'not raised'} (got ${JSON.stringify(alerts)})`);
+      const node = db.getAt('dispatcher_alerts/refund_points_order_TB-1');
+      assert.strictEqual(!!(node && node.type === 'payment_refund_confirmed_release_points'), wantAlert, `${label}: durable escalation node ${wantAlert ? 'written' : 'absent'} (got ${JSON.stringify(node)})`);
     });
   }
   // control: a legacy record on a CASH order (no money moved) still reverses, as before
@@ -423,6 +424,39 @@ async function cell(name, fn) { const before = pass; try { await fn(); if (pass 
     const { retryRewardLedgerRepair } = require('./cancel-order-core');
     await retryRewardLedgerRepair({ db, alert: async () => {} }, { now: 5000 });
     assert.strictEqual(holdState(db), 'released', `${label}: a cash order's reserved hold is released as before (got ${holdState(db)})`);
+  });
+
+  // POU-REPAIR-ALERT-DURABLE (codex P5a r4 #2): the legacy escalation alert write FAILS once → the repair record is KEPT
+  // (never deleted after a swallowed alert), and the next retry writes the alert, then clears the record.
+  await cell('POU-REPAIR-ALERT-DURABLE', async () => {
+    const label = 'POU-REPAIR-ALERT-DURABLE';
+    const init = redeemedOrder();
+    init.orders['TB-1'] = { ...init.orders['TB-1'], status: 'cancelled', payment_status: 'refunded' };
+    init.user_rewards.uTb.tb_rest.reservations['TB-1'].state = 'held_paid';
+    init.reward_ledger_repair = { 'TB-1': { order_id: 'TB-1', disposition: 'refund', uid: 'uTb', rid: 'tb_rest', has_redemption: true, earn_failed: false, redemption_failed: true, reason: 'cancel', attempts: 0 } };
+    const db = makeDb(init);
+    let failAlert = 1;
+    const flaky = { ...db, ref: (path) => { const r = db.ref(path); if (path.startsWith('dispatcher_alerts')) return { ...r, set: async (v) => { if (failAlert > 0) { failAlert--; throw new Error('injected alert-write failure'); } return r.set(v); }, push: async (v) => { if (failAlert > 0) { failAlert--; throw new Error('injected alert-write failure'); } return r.push(v); } }; return r; } };
+    const { retryRewardLedgerRepair } = require('./cancel-order-core');
+    const { paymentAlert } = require('./lib/payment-alert');
+    await retryRewardLedgerRepair({ db: flaky, alert: (k, d) => paymentAlert(flaky, k, d) }, { now: 5000 });
+    assert.ok(db.getAt('reward_ledger_repair/TB-1'), `${label}: a failed escalation write KEEPS the repair record`);
+    await retryRewardLedgerRepair({ db: flaky, alert: (k, d) => paymentAlert(flaky, k, d) }, { now: 6000 });
+    const node = db.getAt('dispatcher_alerts/refund_points_order_TB-1');
+    assert.ok(node && node.type === 'payment_refund_confirmed_release_points', `${label}: the retry writes the durable alert (got ${JSON.stringify(node)})`);
+    assert.strictEqual(db.getAt('reward_ledger_repair/TB-1'), null, `${label}: the record clears only after the alert landed`);
+    assert.strictEqual(holdState(db), 'held_paid', `${label}: still never released`);
+  });
+
+  // POU-ALERT-NOT-PRUNED (codex P5a r4 #1): the release-points escalation survives the resolved-order alert pruning.
+  await cell('POU-ALERT-NOT-PRUNED', async () => {
+    const label = 'POU-ALERT-NOT-PRUNED';
+    const { alertsToPrune } = require('./alert-prune');
+    const alerts = { refund_points_A: { type: 'payment_refund_confirmed_release_points', detail: { orderId: 'O1', attemptId: 'A' } },
+                     refund_points_order_O1: { type: 'payment_refund_confirmed_release_points', detail: { orderId: 'O1' } },
+                     other: { type: 'payment_manual_reconciliation', detail: { orderId: 'O1' } } };
+    const pruned = alertsToPrune(alerts, { O1: { status: 'cancelled', payment_status: 'refunded' } });
+    assert.deepStrictEqual(pruned, ['other'], `${label}: only the ordinary alert is pruned for a resolved order (got ${JSON.stringify(pruned)})`);
   });
 
   if (fails.length) { console.error(`\nFAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }
