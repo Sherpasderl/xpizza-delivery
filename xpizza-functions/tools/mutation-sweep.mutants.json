@@ -31935,5 +31935,233 @@
    "node",
    "ratings/my-rating.test.js"
   ]
+ },
+ {
+  "id": "sb-1",
+  "slice": "sb",
+  "label": "S-B: rating threshold off-by-one (9 ratings publish)",
+  "file": "ratings/aggregate.js",
+  "from": "if (stars >= T.RATINGS) {",
+  "to": "if (stars >= T.RATINGS - 1) {",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-2",
+  "slice": "sb",
+  "label": "S-B: %liked threshold off-by-one",
+  "file": "ratings/aggregate.js",
+  "from": "if (likes >= T.LIKED) doc.pct_liked",
+  "to": "if (likes >= T.LIKED - 1) doc.pct_liked",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-3",
+  "slice": "sb",
+  "label": "S-B: dish-vote threshold off-by-one",
+  "file": "ratings/aggregate.js",
+  "from": "if (v.up + v.down >= T.DISH_VOTES)",
+  "to": "if (v.up + v.down >= T.DISH_VOTES - 1)",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-4",
+  "slice": "sb",
+  "label": "S-B: orders_30d threshold off-by-one",
+  "file": "ratings/aggregate.js",
+  "from": "filter(([, k]) => k >= T.DISH_ORDERS)",
+  "to": "filter(([, k]) => k >= T.DISH_ORDERS - 1)",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-5",
+  "slice": "sb",
+  "label": "S-B: pairs threshold off-by-one",
+  "file": "ratings/aggregate.js",
+  "from": "    if (c < T.PAIR) continue;",
+  "to": "    if (c < T.PAIR - 1) continue;",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-6",
+  "slice": "sb",
+  "label": "S-B: repeat threshold off-by-one",
+  "file": "ratings/aggregate.js",
+  "from": "if (repeat >= T.REPEAT) doc.repeatCustomers",
+  "to": "if (repeat >= T.REPEAT - 1) doc.repeatCustomers",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-7",
+  "slice": "sb",
+  "label": "S-B: non-fulfilled orders counted",
+  "file": "ratings/aggregate.js",
+  "from": "if (!isObj(o) || o.restaurant_id !== rid || !FULFILLED.has(o.status)) continue;",
+  "to": "if (!isObj(o) || o.restaurant_id !== rid) continue;",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-8",
+  "slice": "sb",
+  "label": "S-B: qty multiplies the dish count (not distinct orders)",
+  "file": "ratings/aggregate.js",
+  "from": "    for (const d of ids) b.dish[d] = (b.dish[d] || 0) + 1;",
+  "to": "    for (const d of ids) b.dish[d] = (b.dish[d] || 0) + o.dish_qty[d];",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-9",
+  "slice": "sb",
+  "label": "S-B: a below-threshold field published as zero instead of omitted",
+  "file": "ratings/aggregate.js",
+  "from": "  if (repeat >= T.REPEAT) doc.repeatCustomers = repeat;",
+  "to": "  doc.repeatCustomers = repeat >= T.REPEAT ? repeat : 0;",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-10",
+  "slice": "sb",
+  "label": "S-B: the pairs price cap dropped",
+  "file": "ratings/aggregate.js",
+  "from": "return Number.isInteger(pr) && pr > 0 && pr < T.PAIR_PRICE_CENTS;",
+  "to": "return true;",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-11",
+  "slice": "sb",
+  "label": "S-B: a non-live rating counted (no contract check)",
+  "file": "ratings/aggregate.js",
+  "from": "    if (!isObj(r) || r.state !== 'live') throw new Error(",
+  "to": "    if (!isObj(r)) throw new Error(",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-12",
+  "slice": "sb",
+  "label": "S-B: publication MERGES instead of replacing the doc",
+  "file": "ratings/aggregate-producer.js",
+  "from": "    await db.ref(`public_stats/${rid}`).set(doc);",
+  "to": "    await db.ref(`public_stats/${rid}`).update(doc);",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-13",
+  "slice": "sb",
+  "label": "S-B: the lease is skipped (overlapping runs both publish)",
+  "file": "ratings/aggregate-producer.js",
+  "from": "  if (!(await takeLease(db, rid, runId, nowMs))) return { rid, skipped: 'leased' };",
+  "to": "  await takeLease(db, rid, runId, nowMs);",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-14",
+  "slice": "sb",
+  "label": "S-B: the producer reads ratings RAW (bypassing readCountable)",
+  "file": "ratings/aggregate-producer.js",
+  "from": "? V2.readCountable(db, id) : null));",
+  "to": "? V2.ratingRef(db, id).once('value').then((s) => V2.normalize(s.val())) : null));",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-15",
+  "slice": "sb",
+  "label": "S-B: a day bucket is ADDED to instead of replaced (re-run double counts)",
+  "file": "ratings/aggregate-producer.js",
+  "from": "  await db.ref(`stats_buckets/${rid}/${day}`).set(bucket);",
+  "to": "  { const prev = (await db.ref(`stats_buckets/${rid}/${day}`).once('value')).val(); if (prev && prev.dish) for (const [k, v] of Object.entries(prev.dish)) bucket.dish[k] = (bucket.dish[k] || 0) + v; await db.ref(`stats_buckets/${rid}/${day}`).set(bucket); }",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-16",
+  "slice": "sb",
+  "label": "S-B: raw phone digits stored as the repeat key",
+  "file": "ratings/aggregate-producer.js",
+  "from": "  return (digits) => crypto.createHmac('sha256', k).update(String(digits)).digest('base64url').slice(0, 22);",
+  "to": "  return (digits) => String(digits);",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-17",
+  "slice": "sb",
+  "label": "S-B: no bucket expiry (pseudonymous keys kept past 90 d)",
+  "file": "ratings/aggregate-producer.js",
+  "from": "    if (drop.length) await db.ref(`stats_buckets/${rid}`).update(",
+  "to": "    if (false) await db.ref(`stats_buckets/${rid}`).update(",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-18",
+  "slice": "sb",
+  "label": "S-B: the budget never aborts (an oversized day is processed)",
+  "file": "ratings/aggregate-producer.js",
+  "from": "  if (ids.length > DAY_BUDGET) throw new Error(",
+  "to": "  if (false) throw new Error(",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-19",
+  "slice": "sb",
+  "label": "S-B: the watermark ignored — every run re-reads from yesterday back 7 days (history read)",
+  "file": "ratings/aggregate-producer.js",
+  "from": "    let day = typeof wm === 'string' && DAY_RE.test(wm) ? nextDay(wm) : yesterday;",
+  "to": "    let day = hnDateISO(nowMs - 7 * AG.DAY_MS);",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
  }
 ]

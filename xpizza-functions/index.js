@@ -7868,6 +7868,20 @@ exports.getMyRating = onRequest(
   { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
   require('./ratings/my-rating').makeMyRating({ getDatabase, getAuth, checkRateLimit }).getMyRating,
 );
+// S-B (NOTE-S-B-aggregates-build): the INCREMENTAL public_stats producer — closes each complete HN day from rating_index (the
+// fulfilled-order log) into a server-only bucket, sums 30 / 90 days, publishes counts only; repeat-customer keys are HMAC'd under an
+// OTP_SALT-derived key (HKDF) and expire with their 90-day bucket. A per-rid failure is LOUD and never blocks the other restaurants.
+exports.publishRatingAggregates = onSchedule(
+  { schedule: '30 4 * * *', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB', maxInstances: 1, secrets: [OTP_SALT_SECRET] },
+  async () => {
+    const AP = require('./ratings/aggregate-producer');
+    const out = await AP.runAggregates({ db: getDatabase(), nowMs: Date.now(), salt: process.env.OTP_SALT,
+      listRids: async () => { const r = await restaurantRegistry().readNow(); if (!r || r.ok !== true) throw new Error('aggregate: registry unavailable'); return r.ids; },
+      priceOfFor: async (rid) => { const t = await resolvePricingTables(rid); return AP.priceOfFromTables(t, t ? contextOfTables(t) : null); } });
+    if (out.failed.length) console.error('publishRatingAggregates FAILED', JSON.stringify(out.failed));
+    console.log('publishRatingAggregates', JSON.stringify({ ok: out.ok.length, failed: out.failed.length }));
+  },
+);
 // S-A1: rateOrder's dish votes resolve through the ONE resolver (the expression getMyOrders and the live displayLabel path use)
 require('./ratings/rate-order').configure({ resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) });
 /* checkout:end endpoints */

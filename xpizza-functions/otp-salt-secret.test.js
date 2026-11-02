@@ -18,7 +18,7 @@ const { spawnSync } = require('child_process');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const FN = __dirname;
-const BOUND = ['requestCheckoutCode', 'verifyCheckoutCode', 'redeemSignupGrant', 'getMerchantRatingComments'];   // + S-A(d): its cursor key is HKDF(OTP_SALT) — a NEW function, read lazily from process.env
+const BOUND = ['requestCheckoutCode', 'verifyCheckoutCode', 'redeemSignupGrant', 'getMerchantRatingComments', 'publishRatingAggregates'];   // + S-B: the repeat-customer HMAC key (HKDF)   // + S-A(d): its cursor key is HKDF(OTP_SALT) — a NEW function, read lazily from process.env
 const EXISTING_READERS = ['requestOtp', 'verifyOtp', 'chargeOnlineOrder', 'claimOrder'];
 const FAKE_SALT = 'tb-otp-salt-'.padEnd(40, 'x');
 
