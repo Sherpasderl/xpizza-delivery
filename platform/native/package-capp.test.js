@@ -105,6 +105,8 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   for (const k of Object.keys(DEP.runtime).filter((k) => k !== 'note' && k !== 'mode')) assert.ok(JSON.stringify(R[k]) === JSON.stringify(DEP.runtime[k]), `the runtime's ${k} is the manifest's`);
   const F = P.build({ sha: HEAD, ...NAT, flags: ['signup', 'intlPhone'] }); const sf = {}; new Function('self', F.files.get('capp-runtime.js').toString('utf8'))(sf);
   assert.deepStrictEqual(sf.CAPP_RUNTIME.flags, { signup: true, intlPhone: true }); assert.deepStrictEqual(F.manifest.flags, ['intlPhone', 'signup']);
+  { const R = P.build({ sha: HEAD, ...NAT, flags: ['ratings'] }); const sr = {}; new Function('self', R.files.get('capp-runtime.js').toString('utf8'))(sr);
+    assert.deepStrictEqual(sr.CAPP_RUNTIME.flags, { ratings: true }, '🔴 C-2: the ratings flag can be shipped (it was refused as unknown)'); }
   assert.notStrictEqual(F.manifest.build, B.manifest.build, 'a different flag set is a different build');
   ok('firebase-auth\'s one gstatic import → ./firebase-app.js (firebase-app byte-identical); the runtime = the manifest block minus its note + sdk_base; flags dark unless named; a flag set changes the build id');
 }
