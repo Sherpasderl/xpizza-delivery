@@ -216,14 +216,32 @@ async function cell(name, fn) { CURRENT = name; resetProvider(); try { await fn(
     assert.ok(r.code >= 500, `${L}: a failed marker write answers 5xx (got ${JSON.stringify(r)})`);
     assert.ok(!extra(db, 'PAY-2') && !extraAlert(db, 'PAY-2'), `${L}: and nothing is claimed — the marker comes BEFORE the claim`);
   });
-  await cell('XP-R4-MISMATCHED-RECORD-KEPT', async () => {
-    const L = 'XP-R4-MISMATCHED-RECORD-KEPT';
+  await cell('XP-R5-MISMATCHED-RECORD-QUARANTINED', async () => {
+    const L = 'XP-R5-MISMATCHED-RECORD-QUARANTINED';
     const k = xkey('PAY-2');
-    const db = makeDb({ ...cancelled(), extra_payment_pending: { [k]: { attempt: AID, order: OID, at: 1000 } } });
+    const m = { attempt: AID, order: OID, at: 1000 };
+    const db = makeDb({ ...cancelled(), extra_payment_pending: { [k]: m } });
     db.setAt(`payment_attempts/${AID}/extra_payments/${k}`, { uuid: 'PAY-OTHER', amount_cents: 29900, at: 1000 });
-    const out = await repairPendingExtraPayments({ db, now: 1000 + 60 * 60 * 1000 });
-    assert.ok(out.kept === 1 && out.completed === 0 && out.removed === 0, `${L}: a record that does not match its key is neither completed nor removed (got ${JSON.stringify(out)})`);
-    assert.ok(marker(db, 'PAY-2') && !extraAlert(db, 'PAY-2') && db.getAt(`orders/${OID}/extra_payment_review`) == null, `${L}: nothing is written from it`);
+    const out = await repairPendingExtraPayments({ db, now: 5000 });
+    assert.ok(out.quarantined === 1 && out.completed === 0 && out.removed === 0, `${L}: a record that does not match its key is quarantined (got ${JSON.stringify(out)})`);
+    assert.strictEqual(marker(db, 'PAY-2'), null, `${L}: and leaves the pending page (it can never starve it)`);
+    assert.deepStrictEqual(db.getAt(`extra_payment_quarantine/${k}`), { ...m, reason: 'record_key_mismatch', at_quarantined: 5000 }, `${L}: the marker is kept in quarantine (got ${JSON.stringify(db.getAt(`extra_payment_quarantine/${k}`))})`);
+    assert.deepStrictEqual(db.getAt(`dispatcher_alerts/extra_payment_quarantine_${k}`), { type: 'payment_extra_payment_quarantined', detail: { orderId: OID, attemptId: AID }, created_at: 1000 }, `${L}: with a durable alert for a person`);
+    assert.ok(!extraAlert(db, 'PAY-2') && db.getAt(`orders/${OID}/extra_payment_review`) == null && db.getAt(`payment_attempts/${AID}/extra_payments/${k}`).uuid === 'PAY-OTHER', `${L}: nothing is written from the record, and the record is untouched`);
+    const again = db.root; await repairPendingExtraPayments({ db, now: 9000 });
+    assert.deepStrictEqual(db.root, again, `${L}: idempotent`);
+    assert.ok(!alertsToPrune(db.getAt('dispatcher_alerts'), db.getAt('orders')).includes(`extra_payment_quarantine_${k}`), `${L}: the quarantine alert is never auto-pruned`);
+  });
+  await cell('XP-R5-MISMATCHES-NEVER-STARVE-THE-PAGE', async () => {
+    const L = 'XP-R5-MISMATCHES-NEVER-STARVE-THE-PAGE';
+    let fail = 1;
+    const ms = {}; for (const n of ['01', '02', '03']) ms[`0000000000${n}`] = { attempt: AID, order: OID, at: 1 };
+    const db = makeDb({ ...cancelled(), extra_payment_pending: ms }, { beforeWrite: async (p, v) => { if (p === '' && v && Object.keys(v).some((k) => k.startsWith('dispatcher_alerts/extra_payment_') && !k.includes('quarantine')) && fail > 0) { fail -= 1; throw new Error('crash'); } } });
+    for (const n of ['01', '02', '03']) db.setAt(`payment_attempts/${AID}/extra_payments/0000000000${n}`, { uuid: `PAY-X${n}`, amount_cents: 1, at: 1 });
+    await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
+    for (let run = 0; run < 3 && !extraAlert(db, 'PAY-2'); run++) await repairPendingExtraPayments({ db, now: 2000 + 60 * 1000, limit: 2 });
+    recorded(L, db, 'PAY-2', 2000);
+    assert.strictEqual(db.getAt('extra_payment_pending'), null, `${L}: every mismatch left the page and the real marker completed`);
   });
   await cell('XP-R4-REPAIR-BOUNDED', async () => {
     const L = 'XP-R4-REPAIR-BOUNDED';
@@ -243,6 +261,57 @@ async function cell(name, fn) { CURRENT = name; resetProvider(); try { await fn(
     assert.ok(out.completed === 1 && out.removed === 1, `${L}: a marker whose ids are not valid path keys is removed as record-less, and the real one still completes (got ${JSON.stringify(out)})`);
     recorded(L, db, 'PAY-2', 2000);
   });
+  await cell('XP-R5-STALE-CLEANUP-NEVER-DELETES-A-FRESH-MARKER', async () => {
+    const L = 'XP-R5-STALE-CLEANUP-NEVER-DELETES-A-FRESH-MARKER';
+    const k = xkey('PAY-2');
+    let refreshed = false; let fail = 1;
+    // the sweep judges an OLD record-less marker; while it reads the (absent) record, a fresh delivery of that payment refreshes the marker
+    const db = makeDb({ ...cancelled(), extra_payment_pending: { [k]: { attempt: AID, order: OID, at: 1 } } }, {
+      beforeRead: async (p, api) => { if (p === `payment_attempts/${AID}/extra_payments/${k}` && !refreshed) { refreshed = true; api.setAt(`extra_payment_pending/${k}`, { attempt: AID, order: OID, at: 2000 }); } },
+      beforeWrite: async (p, v) => { if (p === '' && v && Object.keys(v).some((x) => x.startsWith('dispatcher_alerts/extra_payment_')) && fail > 0) { fail -= 1; throw new Error('crash after the claim'); } },
+    });
+    const out = await repairPendingExtraPayments({ db, now: 2000 + 60 * 60 * 1000 });
+    assert.ok(refreshed, `${L}: PREMISE — the refresh happened between the judgement and the removal`);
+    assert.deepStrictEqual(marker(db, 'PAY-2'), { attempt: AID, order: OID, at: 2000 }, `${L}: the FRESH marker survives the stale cleanup (got ${JSON.stringify(marker(db, 'PAY-2'))}, ${JSON.stringify(out)})`);
+    assert.strictEqual(out.removed, 0, `${L}: nothing counted as removed`);
+    // that delivery then claims and crashes before its alert; the next sweep completes it
+    const r = await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
+    assert.ok(r.code >= 500 && extra(db, 'PAY-2') && !extraAlert(db, 'PAY-2'), `${L}: PREMISE — claimed, alert absent`);
+    await repairPendingExtraPayments({ db, now: 2000 + 60 * 1000 });
+    recorded(L, db, 'PAY-2', 2000);
+  });
+  await cell('XP-R5-ABSENT-MARKER-CLEANUP-IS-A-NOOP', async () => {
+    const L = 'XP-R5-ABSENT-MARKER-CLEANUP-IS-A-NOOP';
+    const k = xkey('PAY-9'); let gone = false;
+    const db = makeDb({ ...cancelled(), extra_payment_pending: { [k]: { attempt: AID, order: OID, at: 1 } } }, {
+      beforeRead: async (p, api) => { if (p === `payment_attempts/${AID}/extra_payments/${k}` && !gone) { gone = true; api.setAt(`extra_payment_pending/${k}`, null); } },
+    });
+    const out = await repairPendingExtraPayments({ db, now: 60 * 60 * 1000 });
+    assert.ok(gone && marker(db, 'PAY-9') === null && out.failed === 0, `${L}: a marker already gone is not an error (got ${JSON.stringify(out)})`);
+  });
+  await cell('XP-R5-CONTROL-CHAR-MARKER-NEVER-BLOCKS', async () => {
+    const L = 'XP-R5-CONTROL-CHAR-MARKER-NEVER-BLOCKS';
+    let fail = 1;
+    const db = makeDb({ ...cancelled(), extra_payment_pending: { '0000bad': { attempt: 'a\u0000b', order: 'o\u0007', at: 1 } } }, { beforeWrite: async (p, v) => { if (p === '' && v && Object.keys(v).some((k) => k.startsWith('dispatcher_alerts/extra_payment_')) && fail > 0) { fail -= 1; throw new Error('crash'); } } });
+    await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
+    const out = await repairPendingExtraPayments({ db, now: 2000 + 60 * 60 * 1000 });
+    assert.ok(out.completed === 1 && out.removed === 1 && out.failed === 0, `${L}: a marker whose ids carry control characters is treated record-less and removed; the real one completes (got ${JSON.stringify(out)})`);
+    recorded(L, db, 'PAY-2', 2000);
+  });
+  await cell('XP-R5-ONE-FAILING-MARKER-IS-ISOLATED', async () => {
+    const L = 'XP-R5-ONE-FAILING-MARKER-IS-ISOLATED';
+    let fail = 1;
+    const bad = '0000aaaa';
+    const db = makeDb({ ...cancelled(), extra_payment_pending: { [bad]: { attempt: AID, order: OID, at: 1 } } }, {
+      beforeRead: async (p) => { if (p === `payment_attempts/${AID}/extra_payments/${bad}`) throw new Error('injected read failure'); },
+      beforeWrite: async (p, v) => { if (p === '' && v && Object.keys(v).some((k) => k.startsWith('dispatcher_alerts/extra_payment_')) && fail > 0) { fail -= 1; throw new Error('crash'); } },
+    });
+    await handleHostedCallback(depsFor(db), cb('PAY-2'), 2000);
+    const out = await repairPendingExtraPayments({ db, now: 2000 + 60 * 1000 });
+    assert.ok(out.failed === 1 && out.completed === 1, `${L}: the failing marker is counted and skipped; the rest of the page completes (got ${JSON.stringify(out)})`);
+    assert.ok(db.getAt(`extra_payment_pending/${bad}`), `${L}: the failing marker is kept for the next run`);
+    recorded(L, db, 'PAY-2', 2000);
+  });
   await cell('XP-R4-SWEEP-HOOK-WIRED', async () => {
     const L = 'XP-R4-SWEEP-HOOK-WIRED';
     const src = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
@@ -254,8 +323,10 @@ async function cell(name, fn) { CURRENT = name; resetProvider(); try { await fn(
   });
   await cell('XP-R4-PENDING-NODE-SERVER-ONLY', async () => {
     const L = 'XP-R4-PENDING-NODE-SERVER-ONLY';
-    const rules = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, 'database.rules.json'), 'utf8')).rules;
+    // the canonical rules source (the deploy copy under xpizza-functions is generated by sync:rules and absent in a fresh checkout)
+    const rules = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'xpizza-reference', 'database.rules.json'), 'utf8')).rules;
     assert.deepStrictEqual(rules.extra_payment_pending, { '.read': false, '.write': false }, `${L}: declared server-only (got ${JSON.stringify(rules.extra_payment_pending)})`);
+    assert.deepStrictEqual(rules.extra_payment_quarantine, { '.read': false, '.write': false }, `${L}: the quarantine node too (got ${JSON.stringify(rules.extra_payment_quarantine)})`);
     assert.ok(rules['.read'] === undefined && rules['.write'] === undefined, `${L}: and the root grants nothing`);
   });
 
