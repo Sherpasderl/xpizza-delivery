@@ -834,3 +834,46 @@ test('OWNER BUG — photos DARK (flag off): the item drawer and the «Nuevo prod
   assertCloseIcon(drawer(d), '«Nuevo producto» drawer (dark)').click(); await settle();
   assert.ok(!drawer(d).classList.contains('show'), '«Nuevo producto» drawer (dark): closed');
 });
+
+// OWNER-APPROVED MOCKUP-portal-photos-held-state.html (2026-11-01): ruling A's held states, the two notice lines as proposed, and
+// the drawer's locked controls DIMMED like the list's prices (they did not look locked: the zone kept its green «Subí una foto»).
+const NOTE_RENAMES = 'Hay un cambio de nombre esperando publicarse. Publicalo o descartalo para seguir editando precios, fotos o agregando productos.';
+const NOTE_OTHERS = 'Hay cambios sin publicar. Un cambio de nombre se publica solo: publicá o descartá esos cambios primero.';
+const secnote = (d) => { const n = d.querySelector('#detail > .secnote span'); return n ? n.textContent : null; };
+test('HELD H1 — a pending section name: the notice names photos too (owner-approved line); the drawer\'s photo controls are locked AND dimmed', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d } = await boot(fake);
+  await renameSection(d, 'Pizzas de la casa');
+  assert.equal(secnote(d), NOTE_RENAMES);
+  await openDrawerFor(d, 'Pepperoni');
+  const dw = drawer(d);
+  assert.ok(dw.classList.contains('namehold'), 'the drawer carries the hold, for the dimming');
+  assert.ok(dw.querySelector('button.uploader').disabled, 'premise: the zone is locked');
+});
+test('HELD H3 — a pending photo: «Cambiar nombre» is off and the notice is the owner-approved generic line (not «precio»)', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, w } = await boot(fake);
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => drawer(d).querySelector('.uphoto:not(.phbusy) .phacts'), 'a pending photo');
+  closeBtn(drawer(d)).click(); await settle();
+  assert.ok(d.querySelector('#detail .secren').disabled, 'premise: the rename is off');
+  assert.equal(secnote(d), NOTE_OTHERS);
+});
+test('HELD — no pending name: the drawer has no hold class (nothing dimmed by it)', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d } = await boot(fake);
+  await openDrawerFor(d, 'Pepperoni');
+  assert.ok(!drawer(d).classList.contains('namehold'));
+});
+test('HELD dimming — styles.css dims every control the name hold locks, exactly like the list\'s prices (opacity .5, not-allowed)', () => {
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const listPrice = /\.price input:disabled\{([^}]*)\}/.exec(css);
+  assert.ok(listPrice, 'premise: the list price rule');
+  const rule = /\n\s*((?:#drawer\.namehold [^{]+?,\s*)*#drawer\.namehold [^{]+)\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'a #drawer.namehold rule');
+  assert.equal(rule[2].replace(/\s/g, ''), listPrice[1].replace(/\s/g, ''), 'the SAME declarations as the list prices');
+  const sels = rule[1].split(',').map((s) => s.trim());
+  for (const s of ['input:disabled', 'textarea:disabled', 'select:disabled', 'button.uploader:disabled', '.phph2b button:disabled', '.phacts button:disabled', '.pherr button:disabled', '.phrm button:disabled']) {
+    assert.ok(sels.includes(`#drawer.namehold ${s}`), `dims ${s}`);
+  }
+});
