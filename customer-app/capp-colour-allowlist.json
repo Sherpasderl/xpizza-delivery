@@ -11,9 +11,21 @@
   "disposition": "theme-pair",
   "why": "the dark map backdrop (v6 .dark rule), in the three forms"
  },
+ "css .app.desk .icard:hover | box-shadow rgba(0,0,0,.05)": {
+  "disposition": "fixed",
+  "why": "the item card's hover lift, near edge (D-3 r3 desktop mockup frames 2a/3, approved; C-6c): a dark 5 % shadow, readable on both themes"
+ },
+ "css .app.desk .icard:hover | box-shadow rgba(0,0,0,.28)": {
+  "disposition": "fixed",
+  "why": "the item card's hover lift, soft drop (D-3 r3 desktop mockup frames 2a/3, approved; C-6c): a dark shadow, readable on both themes"
+ },
  "css .app.desk .rcard:hover .ph | box-shadow rgba(0,0,0,.06)": {
   "disposition": "fixed",
   "why": "the store card's hover hairline (D-3 r3 desktop mockup, approved): a dark 6 % inset, readable on both themes"
+ },
+ "css .app.desk .shero .avatar | box-shadow rgba(0,0,0,.18)": {
+  "disposition": "fixed",
+  "why": "the store logo's plate over the hero edge (D-3 r3 desktop mockup frames 2a/3, approved; C-6c); the .avatar plate's own shadow family (v6 dark keeps it)"
  },
  "css .avatar | background #FFFFFF": {
   "disposition": "fixed",
@@ -306,6 +318,14 @@
  "css :root[data-theme=\"dark\"] .dec li .tag.conv,.dark-sys .dec li .tag.conv | color #7ED6A0": {
   "disposition": "unused",
   "why": "v6 review chrome carried by the byte-identical CSS; never rendered by the app"
+ },
+ "css @media (min-width:1100px) .app.desk .detail-modal.wide .dphoto .lgtag | background rgba(255,255,255,.92)": {
+  "disposition": "fixed",
+  "why": "the store-name tag ON the dish photo (D-3 r3 desktop mockup frames 2a/3, approved; C-6c): a white chip over a photo, the same in both themes"
+ },
+ "css @media (min-width:1100px) .app.desk .detail-modal.wide .dphoto .lgtag | color #0D1424": {
+  "disposition": "fixed",
+  "why": "the store-name tag's ink on its white chip (D-3 r3 desktop mockup frames 2a/3, approved; C-6c): fixed with its chip"
  },
  "css @media (prefers-color-scheme: dark) :root:not([data-theme=\"light\"]) .app .map | background #1F2A22": {
   "disposition": "theme-pair",

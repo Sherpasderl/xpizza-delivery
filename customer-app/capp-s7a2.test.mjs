@@ -3351,3 +3351,185 @@ test('C-6b r2 head: the desk renders NO empty header above the H1 (the bar has t
   assert.ok(q({ desk: true, locDenied: true }, '.home-head .locrow'), '🔴 HH-1: the location-denied message stays on the desk');
   assert.ok(q({}, '.home-head .addr-btn'), 'the phone keeps its head');
 });
+// ── C-6c (D-3 r3 frames 2a/2b/3, approved; advisor calls 1–8, 11-02): the desktop store page + the two-pane item dialog ──
+async function deskStoreAt(opts = {}, rid = 'x_pizza') {
+  const media = opts.media || fakeMedia(true); const S = bootShell({ ...opts, media });
+  const sel = `.hsec[aria-label="Todos los restaurantes"] .rcard[data-rid="${rid}"]`;
+  await until(() => S.q(sel)); S.click(sel); await flush();
+  assert.ok(S.q('.sinfo'), `premise: the ${rid} desk store page`);
+  return { S, media, ui: S.ui.store().ui };
+}
+const deskCfg = (S) => S.ui.store().ui.config || null;
+test('C-6c page: the shell\'s top bar (no tab current) above storewrap = the menu scroller + the cart aside; hero + the logo over its edge; identity (name, facts) + tools (Delivery/Pickup, the fee and ETA cells, «Buscar en»); the rail beside two-column cards — no phone header, no «Más información»', async () => {
+  const { S } = await deskStoreAt();
+  try {
+    const scr = S.q('.screen'), nav = scr.querySelector(':scope > .desknav');
+    assert.ok(nav && nav.nextElementSibling && nav.nextElementSibling.classList.contains('storewrap'), '🔴 SP-1: the top bar sits above the store page');
+    assert.deepEqual([...nav.querySelectorAll('[aria-current="true"]')], [], '🔴 SP-1: no tab is current on a store');
+    const wrap = S.q('.storewrap'); assert.deepEqual([...wrap.children].map((c) => c.id || c.tagName.toLowerCase()), ['scroller', 'aside'], 'the menu scroller + the cart aside');
+    assert.ok(S.q('#scroller').classList.contains('store-main'));
+    assert.ok(S.q('.shero > .hero#hero img') && S.q('.shero > .avatar'), '🔴 SP-1: the hero + the logo plate over it (outside the clipped hero)');
+    const name = S.q('.sinfo .brandname').textContent; assert.ok(name.length > 0, 'premise: the store name');
+    assert.ok(/^(Abierto|Cerrado)/.test(txt(S.q('.sinfo .facts'))), '🔴 SP-1: the facts lead with the open state');
+    assert.equal(S.qa('.sinfo .tools .seg [data-act="mode"]').length, 2, 'Delivery / Pickup');
+    assert.equal(S.q('.sinfo .ssearch[data-act="ssearch"]').textContent, `Buscar en ${name}`, '🔴 SP-1: «Buscar en {name}» = the in-store search');
+    assert.ok(!/Más información/.test(S.q('.sinfo').textContent), '🔴 SP-1: no «Más información» (no store-info surface ⇒ no dead control)');
+    for (const sel of ['#top', '#stick', '.store-nav', '.tabsbar']) assert.equal(S.q(sel), null, `🔴 SP-1: the phone header (${sel}) is not on the desk page`);
+    const secs = S.qa('.scontent > .sec'), rail = S.qa('.catnav [data-act="jump"]');
+    assert.ok(secs.length >= 2, 'premise: two sections');
+    assert.equal(S.q('.catnav h3').textContent, 'Menú');
+    assert.deepEqual(rail.map((b) => b.dataset.jump), secs.map((s) => s.dataset.sec), '🔴 SP-2: the rail = the real categories, in order (no «Destacados» entry)');
+    assert.deepEqual(rail.map((b) => b.textContent), secs.map((s) => s.querySelector('.sechead h2').textContent));
+    assert.ok(/^Hoy \S.* – \S/.test(S.q('.catnav .hours').textContent), `🔴 SP-2: today's hours in the rail (${S.q('.catnav .hours').textContent})`);
+    for (const s of secs) assert.ok(s.querySelector(':scope > .icards'), '🔴 SP-3: two-column item cards in every section');
+  } finally { S.w.close(); }
+});
+test('C-6c cards: name · 2-line description · price, the + on the photo (an item without one: no photo pane, the + inline); the SAME overlay and cart path as the phone', async () => {
+  const { S, ui } = await deskStoreAt();
+  try {
+    const plain = ui.menu.dishes.filter((d) => !d.launcher && !d.variantOf);
+    const withImg = plain.find((d) => d.img), noImg = plain.find((d) => !d.img);
+    assert.ok(withImg && noImg, 'premise: the fixture has dishes with and without a photo');
+    const c1 = S.q(`#dish-${withImg.key}`), c2 = S.q(`#dish-${noImg.key}`);
+    assert.ok(c1.classList.contains('icard') && c2.classList.contains('icard'));
+    assert.deepEqual([...c1.querySelector('.txt').children].map((x) => x.className).filter((k) => k !== 'pills'), withImg.desc || withImg.d ? ['nm', 'ds', 'pr'] : ['nm', 'pr'], '🔴 SP-3: name · description · price');
+    assert.ok(c1.querySelector('.nm').textContent.length > 0 && /^L /.test(c1.querySelector('.pr').textContent), `the name and the price (${c1.querySelector('.pr').textContent})`);
+    assert.ok(c1.querySelector('.thumb:not(.noimg) img') && c1.querySelector('.thumb .qty-add-btn'), '🔴 SP-3: the + on the photo');
+    assert.ok(c2.querySelector('.thumb.noimg .qty-add-btn') && !c2.querySelector('img'), '🔴 SP-3: no photo ⇒ no photo pane (no empty well), the + kept');
+    S.click(c1.querySelector('.qty-add-btn')); await flush();
+    assert.equal(S.q(`#dish-${withImg.key} .qty-ctrl-num`).textContent, '1', '🔴 SP-3: the card\'s + adds through the store\'s own path (the stepper shows 1)');
+    assert.ok(/ · 1 /.test(S.q('.deskcart .sheethead small').textContent + ' '), 'the aside follows');
+  } finally { S.w.close(); }
+});
+test('C-6c rail: a category jumps the menu scroller to its section; the section in view marks its category (aria-current)', async () => {
+  const { S } = await deskStoreAt();
+  try {
+    const sc = S.q('#scroller'), secs = S.qa('.scontent > .sec'), rail = () => S.qa('.catnav [data-act="jump"]');
+    const calls = []; sc.scrollTo = (o) => calls.push(o);
+    S.click(rail()[1]); await flush();
+    assert.equal(calls.length, 1, '🔴 SP-4: the jump scrolls the menu'); assert.equal(calls[0].behavior, 'smooth');
+    // jsdom has no layout (every rect 0 ⇒ the spy's first pass marks the LAST section) — so the cell scrolls to each end in turn
+    sc.getBoundingClientRect = () => ({ top: 0 });
+    const scrollTo = async (i) => { secs.forEach((s, k) => { s.getBoundingClientRect = () => ({ top: k < i ? -400 : k === i ? 10 : 900 }); }); sc.dispatchEvent(new S.w.Event('scroll')); await flush(); };
+    for (const i of [0, secs.length - 1, 0]) { await scrollTo(i);
+      assert.deepEqual(rail().map((b) => b.getAttribute('aria-current')), secs.map((s, k) => String(k === i)), `🔴 SP-4: the section in view is current (${i})`); }
+  } finally { S.w.close(); }
+});
+test('C-6c tools: delivery ⇒ the fee cell («Envío desde L 45 · según tu dirección», its ⓘ = the fee sheet) + the ETA cell («a–b min · llega aprox.»); Pickup ⇒ the pickup ETA + «Recogé en»; the mode switch is the store\'s own', async () => {
+  const { S } = await deskStoreAt();
+  try {
+    const cells = () => S.qa('.sinfo .cells > div').map((d) => txt(d));
+    assert.deepEqual(cells(), ['Envío desde L 45 según tu dirección', '30–45 min llega aprox.'], '🔴 SP-5: the two delivery cells');
+    S.click('.sinfo .cells .infobtn[data-act="feeinfo"]'); await flush();
+    assert.ok(S.q('#layer .sheet, #layer [role="dialog"]'), '🔴 SP-5: the fee ⓘ opens the fee sheet');
+    S.click('#layer [data-act="lclose"]'); await flush();
+    S.click('.sinfo .seg [data-val="pickup"]'); await flush();
+    assert.equal(S.q('.sinfo .seg [data-val="pickup"]').getAttribute('aria-pressed'), 'true');
+    const p = cells(); assert.ok(p.length >= 1 && !p.some((c) => /Envío/.test(c)), `🔴 SP-5: pickup has no fee cell (${p.join(' | ')})`);
+    assert.ok(p.some((c) => /Listo en|Recogé en/.test(c)), 'the pickup facts');
+  } finally { S.w.close(); }
+});
+test('C-6c bar on a store: Inicio / Pedidos / Cuenta / the search field leave the store for the shell\'s screen; the address pill ⇒ Inicio with the location sheet', async () => {
+  for (const [sel, want] of [['.desknav .nb[data-tab="home"]', () => '.h1row'], ['.desknav .dn-search', () => '#gq'], ['.desknav .nb[data-tab="orders"]', () => '.pagehead']]) {
+    const { S } = await deskStoreAt();
+    try { S.click(sel); await flush(); await flush();
+      assert.equal(S.ui.store(), null, `🔴 SP-6: ${sel} leaves the store`); assert.ok(S.q(want()), `🔴 SP-6: ${sel} ⇒ ${want()}`); } finally { S.w.close(); }
+  }
+  const { S } = await deskStoreAt();
+  try { S.click('.desknav .dn-addr'); await flush(); await flush();
+    assert.equal(S.ui.store(), null); assert.ok(S.q('.h1row'), 'Inicio'); assert.ok(S.q('#layer .sheet, #layer [role="dialog"]'), '🔴 SP-6: the address pill opens the location sheet over Inicio'); } finally { S.w.close(); }
+  const { S: P } = await deskStoreAt();
+  try { P.click('.sinfo .seg [data-val="pickup"]'); await flush(); assert.ok(P.ui.store(), 'premise: the store\'s own controls still belong to the store (the shell ignores them)'); } finally { P.w.close(); }
+});
+test('C-6c aside: «Tu pedido» · «{store}» (+ « · N …» with lines); the drawn empty state; the guest\'s card-only note only under runtime.guestCardOnly — a guest yes, flag off no (advisor call 7)', async () => {
+  const { S } = await deskStoreAt();
+  try {
+    const name = S.q('.sinfo .brandname').textContent, small = () => S.q('.deskcart .sheethead small').textContent;
+    assert.equal(small(), name, '🔴 SP-7: the empty aside names the store');
+    assert.equal(txt(S.q('.deskcart .empty')), 'Tu pedido está vacío Agregá platos del menú y aparecen aquí.', '🔴 SP-7: the drawn empty state');
+    assert.equal(S.q('.deskcart .empty button'), null, 'no CTA on the empty aside');
+    S.click('.qty-add-btn'); await flush();
+    assert.ok(small().startsWith(name + ' · 1'), `🔴 SP-7: «{store} · N …» (${small()})`);
+    assert.equal(S.q('.deskcart .cnote'), null, '🔴 SP-7: guest rules OFF ⇒ no card-only note');
+  } finally { S.w.close(); }
+  const { S: G } = await deskStoreAt({ auth: 'guest', runtime: { ...RUNTIME, guestCardOnly: true } });
+  try {
+    G.click('.qty-add-btn'); await flush();
+    assert.equal(txt(G.q('.deskcart .cnote')), 'Pagás con tarjeta. Creá una cuenta para pagar en efectivo y sumar recompensas.', '🔴 SP-7: the guest\'s card-only note under the guest rules');
+    assert.ok(G.q('.deskcart .cnote').nextElementSibling.classList.contains('ctot'), 'before the totals');
+  } finally { G.w.close(); }
+  const { S: U } = await deskStoreAt({ auth: 'unresolved', runtime: { ...RUNTIME, guestCardOnly: true } });
+  try { U.click('.qty-add-btn'); await flush(); assert.equal(U.q('.deskcart .cnote'), null, 'an unresolved session: no claim'); } finally { U.w.close(); }
+});
+test('C-6c header auth: the desk page\'s promo pill resolves IN PLACE (reserved while unresolved, shown for a guest) — the page is not re-rendered', async () => {
+  const la = liveAuth('unresolved');
+  const { S } = await deskStoreAt({ mountExtra: { auth: la.a } });
+  try {
+    const pill = S.q('.sinfo .pill.deal'); assert.ok(pill, 'premise: the reserved pill (promo store)');
+    assert.equal(pill.getAttribute('aria-hidden'), 'true', 'reserved while unresolved');
+    const info = S.q('.sinfo'), sc = S.q('#scroller');
+    la.set('guest'); await flush();
+    assert.equal(S.q('.sinfo'), info, '🔴 SP-8: in place'); assert.equal(S.q('#scroller'), sc);
+    assert.equal(S.q('.sinfo .pill.deal').getAttribute('aria-hidden'), null, '🔴 SP-8: the guest pill shown');
+    assert.ok(/Envío desde L 45/.test(txt(S.q('.sinfo .cells'))), 'the fee cell unchanged for a guest');
+  } finally { S.w.close(); }
+});
+test('C-6c dialog (frame 3): the desk dish dialog = two panes (photo | options) + the pinned bar; the HEADING takes focus (aria-labelledby), ✕ before it; close ⇒ back to the opener; no photo ⇒ one column; adding is the store\'s own path', async () => {
+  const { S, ui } = await deskStoreAt();
+  try {
+    const plain = ui.menu.dishes.filter((d) => !d.launcher && !d.variantOf), a = plain.find((d) => d.img), b = plain.find((d) => !d.img);
+    const opener = S.q(`#dish-${a.key} .txt`); opener.focus(); S.click(opener); await flush();
+    const m = S.q('#detail-modal');
+    assert.ok(m.classList.contains('open') && m.classList.contains('wide'), '🔴 SD-1: the wide dialog');
+    assert.equal(m.getAttribute('aria-labelledby'), 'detail-name');
+    const h = S.q('#detail-name'); assert.equal(h.tagName, 'H2'); assert.equal(h.getAttribute('tabindex'), '-1');
+    assert.equal(S.w.document.activeElement, h, '🔴 SD-1: focus on the item name (the approved a11y spec)');
+    assert.equal(S.q('#detail-header-title').textContent, S.q('.sinfo .brandname').textContent, 'the header names the store (frame 3)');
+    const db = S.q('#detail-dbody'); assert.deepEqual([...db.children].map((c) => c.id), ['detail-dphoto', 'detail-scroll'], '🔴 SD-1: photo | options');
+    assert.ok(S.q('#detail-dphoto img') && S.q('#detail-dphoto .lgtag'), 'the photo pane + the store tag'); assert.equal(S.q('#detail-dphoto img').getAttribute('alt'), '', 'decorative');
+    assert.equal(S.q('#detail-scroll .detail-photo'), null, '🔴 SD-1: the options pane has no second photo');
+    assert.ok(!db.classList.contains('nophoto'));
+    const order = [...S.q('#detail-scroll .detail-body').children].map((c) => c.className); assert.equal(order[0], 'detail-name', 'name first');
+    const focusables = [...m.querySelectorAll('button:not([disabled]),[tabindex="0"]')]; assert.ok(focusables.indexOf(S.q('#detail-close')) === 0, '✕ is the dialog\'s first stop (Shift+Tab from the heading)');
+    S.click('#detail-close'); await flush();
+    assert.ok(!S.q('#detail-modal').classList.contains('open'), 'closed');
+    assert.equal(S.w.document.activeElement, S.q(`#dish-${a.key} .txt`), '🔴 SD-1: focus returns to the opener');
+    S.click(`#dish-${a.key} .txt`); await flush(); S.click('#detail-cta'); await flush();
+    assert.ok(/ · 1 /.test(S.q('.deskcart .sheethead small').textContent + ' '), '🔴 SD-2: «Agregar» adds through the store\'s path');
+    if (S.q('#detail-modal').classList.contains('open')) { S.click('#detail-close'); await flush(); }
+    S.click(`#dish-${b.key} .txt`); await flush();
+    assert.ok(S.q('#detail-dbody').classList.contains('nophoto'), '🔴 SD-3: no photo ⇒ one column'); assert.equal(S.q('#detail-dphoto').innerHTML, '', 'no empty well');
+  } finally { S.w.close(); }
+});
+test('C-6c crossing: desk→phone the store re-renders as the phone page (its own header back, the desk page gone), the cart kept; phone→desk back to the desk page', async () => {
+  const { S, media } = await deskStoreAt();
+  try {
+    S.click('.qty-add-btn'); await flush();
+    media.set(false); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    assert.equal(S.q('.sinfo'), null, '🔴 SX-1: no desk page on the phone'); assert.ok(S.q('#top') && S.q('#stick'), '🔴 SX-1: the phone header');
+    assert.equal(S.q('.screen > .desknav'), null, 'no top bar on the phone store');
+    assert.ok(/1/.test(S.q('#cart-bar').textContent), 'the cart kept');
+    media.set(true); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    assert.ok(S.q('.sinfo') && S.q('.screen > .desknav'), '🔴 SX-2: back to the desk page');
+  } finally { S.w.close(); }
+});
+test('C-6c featured + badges: house-tagged dishes ⇒ «La casa recomienda» in the drawn 5-card row (no «Lo más pedido», no rail entry); a dish\'s badge sits in the pill slot after the price, its text and colour unchanged', async () => {
+  const orig = PROV.x_pizza.envelope, env = JSON.parse(JSON.stringify(orig)), ds = env.menu.dishes.filter((d) => d.img).slice(0, 2);
+  assert.equal(ds.length, 2, 'premise: two photographed dishes in the fixture'); for (const d of ds) d.tags = ['chefs_pick'];
+  PROV.x_pizza.envelope = env;
+  try {
+    const { S } = await deskStoreAt();
+    try {
+      const f = S.q('.scontent > .hfeat'); assert.ok(f, '🔴 SP-9: the house row');
+      assert.equal(f.getAttribute('aria-label'), 'La casa recomienda'); assert.equal(f.querySelector('.sechead h2').textContent, 'La casa recomienda');
+      assert.equal(f.querySelector('.sechead span'), null, '🔴 SP-9: no «Lo más pedido» sub (a false claim)');
+      assert.equal(f.querySelectorAll('.featured > .card').length, 2, 'its own data');
+      assert.ok(f.querySelector('.featured .card .ph .qty-add-btn'), 'the + on its photo');
+      assert.ok(!S.qa('.catnav [data-act="jump"]').some((b) => /recomienda|Destacados/.test(b.textContent)), '🔴 SP-9: no rail entry for it');
+      const card = S.q(`.icards #dish-${ds[0].id}`) || S.qa('.icards .icard').find((c) => c.querySelector('.pills'));
+      assert.ok(card, 'premise: the tagged dish\'s card'); const pills = card.querySelector('.txt > .pills');
+      assert.ok(pills && pills.previousElementSibling.classList.contains('pr'), '🔴 SP-9: the badge in the pill slot, after the price');
+      const mk = pills.querySelector('.mark'); assert.ok(mk && mk.textContent.length > 0 && /^var\(--/.test(mk.style.color), `the badge's own text and colour token (${mk && mk.getAttribute('style')})`);
+    } finally { S.w.close(); }
+  } finally { PROV.x_pizza.envelope = orig; }
+});

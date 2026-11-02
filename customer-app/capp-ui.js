@@ -367,6 +367,7 @@
         : `<span class="full"><span class="dot off"></span><strong>Cerrado</strong> · ${esc(opensText())}</span>`;
     }
     function patchAuth() {
+      if (S.desk) { patchDeskAuth(); return; }
       const top = $('top'), info = top && top.querySelector('.info'); if (!info) return;
       const old = info.querySelector('.hdpills'), html = pillsHtml();
       if (old) { if (html) old.outerHTML = html; else old.remove(); } else if (html) { const id = info.querySelector('.idrow'); if (id) id.insertAdjacentHTML('afterend', html); }
@@ -387,20 +388,30 @@
       f.innerHTML = tpl.innerHTML;
       if (fd) { const el = refind(fd); if (el) el.focus({ preventScroll: true }); }
     }
-    function storeHtml() {
-      const mode = S.mode, open = isOpen();
-      const house = sections.flatMap((s) => s.items).filter((x) => x.img && (x.tags || []).some((t) => ['signature_special', 'chefs_pick', 'must_try'].includes(t))).slice(0, 5);
-      const facts = factsHtml();
+    // the store page's shared pieces (the phone header and the C-6c desk page draw the SAME ones)
+    const houseItems = () => sections.flatMap((s) => s.items).filter((x) => x.img && (x.tags || []).some((t) => ['signature_special', 'chefs_pick', 'must_try'].includes(t))).slice(0, 5);
+    function closedNoteHtml(open) {
       const fs = !open && !sched() ? firstSlot() : null;
       const sfd = !open && sched() ? schedDays().find((d) => d.slots.length) || null : null;
       const dayWord = (off) => (off === 0 ? 'hoy' : off === 1 ? 'mañana' : DAYS[(clock().day + off) % 7]);
-      const closednote = !open && sched() ? `<div class="closednote">${IC.clock}<span>${sfd ? `Podés programar un pedido para ${sfd.off === 0 ? 'hoy' : esc(schedMod().slotWhen(servedSched(), now().getTime(), sfd.slots[0]).split(' · ')[0].toLowerCase())}, desde las ${esc(schedMod().slotTime(servedSched(), sfd.slots[0]))}` : 'Sin horarios disponibles · ' + esc(opensText()).toLowerCase()}</span>${sfd ? '<button class="lnk" data-act="closed-sched">Programar</button>' : ''}</div>`
+      return !open && sched() ? `<div class="closednote">${IC.clock}<span>${sfd ? `Podés programar un pedido para ${sfd.off === 0 ? 'hoy' : esc(schedMod().slotWhen(servedSched(), now().getTime(), sfd.slots[0]).split(' · ')[0].toLowerCase())}, desde las ${esc(schedMod().slotTime(servedSched(), sfd.slots[0]))}` : 'Sin horarios disponibles · ' + esc(opensText()).toLowerCase()}</span>${sfd ? '<button class="lnk" data-act="closed-sched">Programar</button>' : ''}</div>`
         : !open ? `<div class="closednote">${IC.clock}<span>${fs ? `Podés programar un pedido para ${esc(dayWord(fs.off))}, desde las ${esc(fmtMin(fs.t))}` : 'Sin horarios disponibles · ' + esc(opensText()).toLowerCase()}</span>${fs ? '<button class="lnk" data-act="closed-sched">Programar</button>' : ''}</div>` : '';
-      const avatar = cfg.logo ? `<div class="avatar${cfg.logoWide ? ' wide' : ''}"><img src="${esc(cfg.logo)}" alt="${esc(cfg.name)}"></div>` : `<div class="avatar txt" aria-hidden="true">${esc(String(cfg.name || '').split(' ').map((x) => x[0]).join('').slice(0, 2))}</div>`;
+    }
+    const avatarHtml = () => (cfg.logo ? `<div class="avatar${cfg.logoWide ? ' wide' : ''}"><img src="${esc(cfg.logo)}" alt="${esc(cfg.name)}"></div>` : `<div class="avatar txt" aria-hidden="true">${esc(String(cfg.name || '').split(' ').map((x) => x[0]).join('').slice(0, 2))}</div>`);
+    function cartPillHtml() {
+      const n = cart.count();
+      return `<button class="cart-bar" id="cart-bar" data-act="pill" aria-label="Tu pedido"><span class="cart-icon">${CART_ICON}</span><span class="cart-pill-text">${n ? unitOf(n) : 'Tu pedido'}</span><span class="cart-pill-dot">·</span><span class="cart-pill-text">${money(cartTotal())}</span></button>`;
+    }
+    function storeHtml() {
+      if (S.desk) return storeDeskHtml();
+      const mode = S.mode, open = isOpen();
+      const house = houseItems();
+      const facts = factsHtml();
+      const closednote = closedNoteHtml(open);
+      const avatar = avatarHtml();
       let content = house.length ? `<section class="toprow" aria-label="La casa recomienda"><h2>La casa recomienda</h2><div class="cards">${house.map((it) => `<div class="card"><div class="ph"><button class="openimg" data-act="open" data-id="${esc(it.id)}" aria-label="Ver ${esc(it.n)}" tabindex="-1" style="border-radius:14px"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div><button class="txtbtn" data-act="open" data-id="${esc(it.id)}"><span class="nm">${esc(it.n)}</span><span class="prrow"><span class="mute" style="font-size:14px">${money(it.p)}</span></span></button></div>`).join('')}</div></section>` : '';
       for (const s of sections) content += `<section class="sec" id="sec-${esc(s.id)}" data-sec="${esc(s.id)}"><div class="sechead"><h2>${esc(s.name)}</h2><span>${esc(s.items.length + (s.items.length === 1 ? ' plato' : ' platos'))}</span></div>${s.note ? `<div class="secnote">${esc(s.note)}</div>` : ''}${s.pickupOnly && mode === 'delivery' ? '<div class="secflag">Solo para Pickup · cambiá a Pickup arriba para pedirlas</div>' : ''}<div>${s.items.map(rowHtml).join('')}</div></section>`;
-      const n = cart.count();
-      const pill = `<button class="cart-bar" id="cart-bar" data-act="pill" aria-label="Tu pedido"><span class="cart-icon">${CART_ICON}</span><span class="cart-pill-text">${n ? unitOf(n) : 'Tu pedido'}</span><span class="cart-pill-dot">·</span><span class="cart-pill-text">${money(cartTotal())}</span></button>`;
+      const pill = cartPillHtml();
       const nav = `<div class="store-nav">${S.entry === 'app' ? `<button class="iconbtn" data-act="back" aria-label="Cerrar">${IC.close}</button>` : '<span></span>'}<span></span></div>`;
       const hero = cfg.hero ? `<img class="hero" id="hero" src="${esc(cfg.hero)}" alt="">` : '<div class="hero" id="hero"></div>';
       const scroller = `<div class="scroller" id="scroller">${nav}<header id="top">${hero}<div class="info"><div class="idrow">${avatar}<div class="idtxt"><h1 class="brandname">${esc(cfg.name || '')}</h1>${cfg.kicker ? `<div class="kicker">${esc(cfg.kicker)}</div>` : ''}</div></div>${pillsHtml()}<div class="facts">${facts}</div>${closednote}
@@ -410,13 +421,75 @@
     <main class="content" id="content">${content}</main></div>`;
       return `<div class="storewrap">${scroller}${S.desk ? `<aside class="deskcart" aria-label="Tu pedido">${cartInner(true)}</aside>` : ''}</div>${pill}`;   // v6 :1628
     }
+    // C-6c (MOCKUP-capp-desktop-D3 r3 frames 2a/2b, approved; advisor calls 1–7): the desktop store page — the host's top bar
+    // (opts.deskChrome), the wide hero with the logo over it, identity + tools (Delivery/Pickup, the fee and ETA cells, «Buscar en»),
+    // the sticky category rail beside two-column item cards, the v6 cart aside. The SAME acts, cart and overlays as the phone page
+    function deskFactsHtml() {
+      const open = isOpen();
+      return (open ? `<span><span class="dot"></span><strong>Abierto</strong></span>${closesText() ? `<span>cierra ${esc(closesText())}</span>` : ''}` : `<span><span class="dot off"></span><strong>Cerrado</strong></span><span>${esc(opensText())}</span>`)
+        + (cfg.addr ? `<span>·</span><span>${esc(cfg.addr)}</span>` : '');
+    }
+    function deskCellsHtml() {
+      if (!isOpen()) return '';
+      const cells = [];
+      if (S.mode === 'delivery') {
+        if (cfg.feeFromCents != null) {
+          const ib = Number.isFinite(cfg.zoneKm) ? `<button class="infobtn" data-act="feeinfo" aria-label="Detalle del envío">${IC.info}</button>` : '';
+          cells.push(cfg.promoFree === true && authOf() === 'member' ? `<div><b class="free">Envío gratis${ib}</b><span>por ser miembro</span></div>` : `<div><b>Envío desde ${money(cfg.feeFromCents / 100)}${ib}</b><span>según tu dirección</span></div>`);
+        }
+        const e = cfg.etaDel; if (e && Number.isFinite(e[0])) cells.push(`<div><b>${Number.isFinite(e[1]) && e[1] > e[0] ? `${e[0]}–${e[1]}` : e[0]} min</b><span>llega aprox.</span></div>`);
+      } else {
+        if (etaTxt('pickup')) cells.push(`<div><b>${esc(etaTxt('pickup'))}</b></div>`);
+        if (cfg.addr) cells.push(`<div><b>Recogé en</b><span>${esc(cfg.addr)}</span></div>`);
+      }
+      return cells.length ? `<div class="cells${cells.length === 1 ? ' one' : ''}">${cells.join('')}</div>` : '';
+    }
+    function deskCardHtml(it) {
+      const b = badgeOf(it), sold = isSold(it);
+      const price = sold ? 'Agotado' : it.group ? 'desde ' + money(Math.min(...it.group.choices.map((c) => c.p))) : money(it.p);
+      const open = `data-act="open" data-id="${esc(it.id)}"`;
+      return `<div class="icard${sold ? ' sold-out' : ''}" id="dish-${esc(it.id)}"><button class="txtbtn txt" ${open}><span class="nm">${esc(it.n)}</span>${it.d ? `<span class="ds">${esc(it.d)}</span>` : ''}<span class="pr">${esc(price)}</span>${b ? `<span class="pills"><span class="mark" style="color:${b.color}">${esc(b.text)}</span></span>` : ''}</button>`
+        + `${it.img ? `<div class="thumb"><button class="openimg" ${open} aria-label="Ver ${esc(it.n)}" tabindex="-1"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div>` : `<div class="thumb noimg">${overlayHtml(it)}</div>`}</div>`;
+    }
+    function storeDeskHtml() {
+      const mode = S.mode, open = isOpen();
+      const house = houseItems();
+      const closednote = closedNoteHtml(open);
+      // the logo is the page's own avatar (its white plate), laid over the hero's lower edge — outside the clipped hero so it overlaps
+      const logo = avatarHtml();
+      const hero = `<div class="hero" id="hero">${cfg.hero ? `<img src="${esc(cfg.hero)}" alt="">` : ''}</div>${logo}`;
+      const today = range(clock().day);
+      const cur = S.activeSec && sections.some((s) => s.id === S.activeSec) ? S.activeSec : (sections[0] || {}).id;
+      const rail = `<nav class="catnav" aria-label="Categorías del menú"><h3>Menú</h3>${today ? `<div class="hours">Hoy ${esc(fmtMin(today[0]))} – ${esc(fmtMin(today[1]))}</div>` : ''}${sections.map((s) => `<button data-act="jump" data-jump="${esc(s.id)}" aria-current="${s.id === cur}">${esc(s.name)}</button>`).join('')}</nav>`;
+      let content = house.length ? `<section class="hfeat" aria-label="La casa recomienda"><div class="sechead"><h2>La casa recomienda</h2></div><div class="featured">${house.map((it) => `<div class="card"><div class="ph"><button class="openimg" data-act="open" data-id="${esc(it.id)}" aria-label="Ver ${esc(it.n)}" tabindex="-1" style="border-radius:12px"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div><button class="txtbtn" data-act="open" data-id="${esc(it.id)}"><span class="nm">${esc(it.n)}</span><span class="pr">${money(it.p)}</span></button></div>`).join('')}</div></section>` : '';
+      for (const s of sections) content += `<section class="sec" id="sec-${esc(s.id)}" data-sec="${esc(s.id)}"><div class="sechead"><h2>${esc(s.name)}</h2>${s.note ? `<span>${esc(s.note)}</span>` : ''}</div>${s.pickupOnly && mode === 'delivery' ? '<div class="secflag">Solo para Pickup · cambiá a Pickup arriba para pedirlas</div>' : ''}<div class="icards">${s.items.map(deskCardHtml).join('')}</div></section>`;
+      const pill = cartPillHtml();
+      const chrome = typeof opts.deskChrome === 'function' ? String(opts.deskChrome() || '') : '';
+      const scroller = `<div class="scroller store-main" id="scroller"><div class="shero">${hero}</div>
+    <div class="sinfo"><div>${cfg.kicker ? `<div class="kicker">${esc(cfg.kicker)}</div>` : ''}<h1 class="brandname">${esc(cfg.name || '')}</h1>${pillsHtml()}<div class="facts">${deskFactsHtml()}</div>${closednote}</div>
+      <div class="tools"><div class="toolrow"><div class="seg" role="group" aria-label="Tipo de pedido"><button aria-pressed="${mode === 'delivery'}" data-act="mode" data-val="delivery">${IC.bike}Delivery</button><button aria-pressed="${mode === 'pickup'}" data-act="mode" data-val="pickup">${IC.bag}Pickup</button></div>${deskCellsHtml()}</div><button class="ssearch" data-act="ssearch">${IC.search}Buscar en ${esc(cfg.name || '')}</button></div></div>
+    <div class="sgrid">${rail}<main class="scontent" id="content">${content}</main></div></div>`;
+      return `${chrome}<div class="storewrap">${scroller}<aside class="deskcart" aria-label="Tu pedido">${cartInner(true)}</aside></div>${pill}`;
+    }
+    // the auth tri-state changed on the desk page: its promo pill and fee cell in place (a focused ⓘ refound by descriptor)
+    function patchDeskAuth() {
+      const info = app.querySelector('.sinfo'); if (!info) return;
+      const fd = info.contains(doc.activeElement) ? descOf(doc.activeElement) : null;
+      const old = info.querySelector('.hdpills'), html = pillsHtml();
+      if (old) { if (html) old.outerHTML = html; else old.remove(); } else if (html) { const b = info.querySelector('.brandname'); if (b) b.insertAdjacentHTML('afterend', html); }
+      const row = info.querySelector('.toolrow'), c = row && row.querySelector('.cells'), nc = deskCellsHtml();
+      if (c) { if (nc) c.outerHTML = nc; else c.remove(); } else if (row && nc) row.insertAdjacentHTML('beforeend', nc);
+      if (fd && lost()) { const el = refind(fd); if (el) el.focus({ preventScroll: true }); }
+    }
     let sectionEls = [];
     function wireStore() {
       const sc = $('scroller'); if (!sc) return;
       sectionEls = [...sc.querySelectorAll('.sec')];
       let lastActive = '';
       const onScroll = () => {
-        if (!sc.isConnected || !$('top') || !$('stick')) return;
+        if (!sc.isConnected) return;
+        if (S.desk) { deskSpy(sc); return; }
+        if (!$('top') || !$('stick')) return;
         const y = sc.scrollTop;
         const hero = $('hero'); if (hero) { hero.style.transform = `translateY(${Math.min(y, 150) * 0.35}px) scale(${1 + Math.min(y, 150) / 900})`; hero.style.opacity = String(Math.max(0.35, 1 - y / 260)); }
         const collapseAt = $('top').offsetHeight - 4; $('stick').classList.toggle('collapsed', y > collapseAt);
@@ -427,7 +500,17 @@
       };
       sc.addEventListener('scroll', onScroll, { passive: true }); onScroll();
     }
-    function jumpTo(id) { const el = $('sec-' + id), sc = $('scroller'); if (!el || !sc) return; const extra = $('stick').classList.contains('collapsed') ? 0 : 56; if (sc.scrollTo) sc.scrollTo({ top: el.offsetTop - ($('stick').offsetHeight + extra) + 8, behavior: 'smooth' }); }
+    function deskSpy(sc) {
+      if (!sectionEls.length) return;
+      const top = sc.getBoundingClientRect().top + 24;
+      let active = sectionEls[0].dataset.sec;
+      for (const el of sectionEls) if (el.getBoundingClientRect().top <= top) active = el.dataset.sec;
+      if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 4 && sc.scrollTop > 0) active = sectionEls[sectionEls.length - 1].dataset.sec;
+      if (active === S.activeSec) return;
+      S.activeSec = active;
+      for (const b of sc.querySelectorAll('.catnav [data-jump]')) b.setAttribute('aria-current', String(b.dataset.jump === active));
+    }
+    function jumpTo(id) { const el = $('sec-' + id), sc = $('scroller'); if (!el || !sc) return; if (S.desk) { if (sc.scrollTo) sc.scrollTo({ top: sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 16, behavior: 'smooth' }); return; } const extra = $('stick').classList.contains('collapsed') ? 0 : 56; if (sc.scrollTo) sc.scrollTo({ top: el.offsetTop - ($('stick').offsetHeight + extra) + 8, behavior: 'smooth' }); }
     function renderStoreKeep() { const sc = $('scroller'); const y = sc ? sc.scrollTop : 0; render(); const sc2 = $('scroller'); if (sc2) sc2.scrollTop = y; }
 
     // ── focus (sheets are dialogs: focus moves in, Tab stays in, the background and a closed sheet are inert, focus returns) ──
@@ -472,12 +555,12 @@
     }
 
     // ── ITEM SHEET (per-instance extras; S1: toggles) ──
-    const detailSkeleton = () => `<div class="detail-overlay" id="detail-overlay" data-act="dclose"></div><div class="detail-modal" id="detail-modal" aria-hidden="true" role="dialog" aria-labelledby="detail-header-title"><div class="detail-drag-handle" aria-hidden="true"></div><div class="detail-header"><button class="detail-close" id="detail-close" data-act="dclose" aria-label="Cerrar">${IC.close}</button><div class="detail-header-title" id="detail-header-title"></div><div class="detail-header-spacer"></div></div><div class="detail-scroll" id="detail-scroll"></div><div class="detail-cta-bar"><div class="detail-step" id="detail-step" role="group" aria-label="Cantidad"></div><button class="detail-cta" id="detail-cta" data-act="dcta"></button></div></div>`;
+    const detailSkeleton = () => `<div class="detail-overlay" id="detail-overlay" data-act="dclose"></div><div class="detail-modal${S.desk ? ' wide' : ''}" id="detail-modal" aria-hidden="true" role="dialog" aria-labelledby="${S.desk ? 'detail-name' : 'detail-header-title'}"><div class="detail-drag-handle" aria-hidden="true"></div><div class="detail-header"><button class="detail-close" id="detail-close" data-act="dclose" aria-label="Cerrar">${IC.close}</button><div class="detail-header-title" id="detail-header-title"></div><div class="detail-header-spacer"></div></div>${S.desk ? '<div class="dbody" id="detail-dbody"><div class="dphoto" id="detail-dphoto"></div><div class="detail-scroll dscroll" id="detail-scroll"></div></div>' : '<div class="detail-scroll" id="detail-scroll"></div>'}<div class="detail-cta-bar"><div class="detail-step" id="detail-step" role="group" aria-label="Cantidad"></div><button class="detail-cta" id="detail-cta" data-act="dcta"></button></div></div>`;
     const extrasByCat = (ids) => { const out = []; for (const id of ids) { const e = EX[id]; if (!e) continue; let g = out.find((x) => x.cat === e.c); if (!g) out.push(g = { cat: e.c, list: [] }); g.list.push({ id, ...e }); } return out; };
     const instTotal = (inst) => Object.keys(inst || {}).reduce((a, k) => a + (EX[k] ? EX[k].p : 0), 0);
     function openDetail(id) { const it = find(id); if (!it) return; S.open = it.group ? { id, kind: 'launcher', staged: { choice: null, ex: {}, qty: 1 } } : { id, kind: 'dish', staged: { qty: 1 } }; openDetailDom(); }
     function openEdit(key, g = '') { const l = cart.lines().find((x) => x.key === key); if (!l) return; const it = find(key); const n = l.ex.filter((inst) => CappCart.sigOf(inst) === g).length; S.open = { id: it.parent ? it.parent.id : it.id, kind: 'edit', key, g, n, staged: { choice: it.parent ? it.id : null, ex: Object.fromEntries(g ? g.split(',').map((k) => [k, 1]) : []) } }; openDetailDom(); }
-    function openDetailDom() { if (!S.open) return; T_report(); returnTo = returnTo || descOf(doc.activeElement); renderDetail(); $('detail-overlay').classList.add('open'); $('detail-modal').classList.add('open'); syncInert(); focusTo($('detail-close')); }
+    function openDetailDom() { if (!S.open) return; T_report(); returnTo = returnTo || descOf(doc.activeElement); renderDetail(); $('detail-overlay').classList.add('open'); $('detail-modal').classList.add('open'); syncInert(); focusTo((S.desk && $('detail-name')) || $('detail-close')); }
     function closeDetail() { $('detail-overlay').classList.remove('open'); $('detail-modal').classList.remove('open'); S.open = null; S.refusal = null; renderStoreKeep(); syncInert(); reportRoute(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar')); }
     function extraRow(e, q, act, attrs) {
       const sel = q > 0;
@@ -487,16 +570,24 @@
     let detailHad = null;
     function renderDetailBody() {
       const o = S.open, it = find(o.id);
-      $('detail-header-title').textContent = o.kind === 'edit' ? 'Editar' : it.n;
       const src = it.hero || it.img;
-      let html = `<div class="detail-photo${src ? '' : ' empty'}">${src ? `<img class="detail-photo-img" src="${esc(src)}" alt="${esc(it.n)}">` : ''}</div>`;
-      const body = (price) => `<div class="detail-body"><div class="detail-name">${esc(it.n)}</div><div class="detail-price">${price}</div>${it.d ? `<div class="detail-desc">${esc(it.d)}</div>` : ''}</div>`;
+      const desk = S.desk && !!$('detail-dbody');
+      $('detail-header-title').textContent = o.kind === 'edit' ? 'Editar' : desk ? cfg.name || '' : it.n;
+      let html = desk ? '' : `<div class="detail-photo${src ? '' : ' empty'}">${src ? `<img class="detail-photo-img" src="${esc(src)}" alt="${esc(it.n)}">` : ''}</div>`;
+      if (desk) {   // the photo pane (decorative; the heading names the dish) — no photo ⇒ one column, no empty well
+        const ph = $('detail-dphoto'), was = ph.dataset.src || '';
+        if (was !== (src || '')) { ph.dataset.src = src || ''; ph.innerHTML = src ? `<div class="detail-photo"><img class="detail-photo-img" src="${esc(src)}" alt=""></div><span class="lgtag">${esc(cfg.name || '')}</span>` : ''; }
+        $('detail-dbody').classList.toggle('nophoto', !src);
+      }
+      const nameEl = desk ? `<h2 class="detail-name" id="detail-name" tabindex="-1">${esc(it.n)}</h2>` : `<div class="detail-name">${esc(it.n)}</div>`;
+      const body = (price) => (desk ? `<div class="detail-body">${nameEl}${it.d ? `<p class="detail-desc">${esc(it.d)}</p>` : ''}<div class="detail-price">${price}</div></div>`   // D-3 r3 frame 3: name, description, price
+        : `<div class="detail-body">${nameEl}<div class="detail-price">${price}</div>${it.d ? `<div class="detail-desc">${esc(it.d)}</div>` : ''}</div>`);
       const groupLabel = (g) => `<div class="detail-cat-label"><span>${esc(g.label)}</span><span class="grp-status ${o.staged.choice ? 'done' : 'req'}">${o.staged.choice ? IC.check.replace('class="i"', '') + 'Requerido' : IC.alert.replace('class="i"', '') + 'Elegí 1 · Requerido'}</span></div>`;
       const variantRows = (g, min) => `<div class="detail-extras-list">${g.choices.map((c) => { const sel = o.staged.choice === c.id, delta = c.p - min > 0 ? c.p - min : null, off = soldOf(c.id); return `<div class="detail-variant-row${sel ? ' sel' : ''}${off ? ' sold-out' : ''}" data-act="variant" data-id="${esc(c.id)}" role="radio" aria-checked="${sel}"${off ? ' aria-disabled="true" style="opacity:.45"' : ''} tabindex="0"><div><span class="detail-extras-name">${esc(c.choice)}</span>${off ? '<span class="detail-extras-price">Agotado</span>' : delta !== null ? `<span class="detail-extras-price">+${money(delta)}</span>` : ''}</div><span class="detail-variant-radio"></span></div>`; }).join('')}</div>`;
       const optLabel = (cat) => `<div class="detail-cat-label"><span>${esc(cat)}</span><span class="grp-status optional">Opcional</span></div>`;
       const exOfChoice = () => { const c = o.staged.choice ? find(o.staged.choice) : null; return c ? c.ex : (it.group ? [] : it.ex); };
       if (o.kind === 'edit') {
-        html += `<div class="detail-body"><div class="detail-name">${esc(it.n)}</div>${o.n > 1 ? `<div class="detail-desc">Se aplica a ${o.n === 2 ? 'las' : 'los'} ${o.n} ${unit[1]} de esta línea.</div>` : ''}</div>`;
+        html += `<div class="detail-body">${nameEl}${o.n > 1 ? `<div class="detail-desc">Se aplica a ${o.n === 2 ? 'las' : 'los'} ${o.n} ${unit[1]} de esta línea.</div>` : ''}</div>`;
         if (it.group) { const min = Math.min(...it.group.choices.map((c) => c.p)); html += groupLabel(it.group) + variantRows(it.group, min); }
         for (const grp of extrasByCat(it.group ? exOfChoice() : it.ex)) html += optLabel(grp.cat) + `<div class="detail-extras-list">${grp.list.map((e) => extraRow(e, o.staged.ex[e.id] || 0, 'staged', `data-eid="${esc(e.id)}"`)).join('')}</div>`;
       } else if (o.kind === 'launcher') {
@@ -514,7 +605,7 @@
       if (S.refusal) html += `<div class="cartnote">${IC.info}<span>${esc(S.refusal)}</span></div>`;
       html += '<div style="height:12px"></div>';
       detailHad = $('detail-modal').contains(doc.activeElement) ? descOf(doc.activeElement) : null;
-      const keep = $('detail-scroll').scrollTop; $('detail-scroll').innerHTML = html; $('detail-scroll').scrollTop = keep;
+      const keep = $('detail-scroll').scrollTop, db = desk ? $('detail-dbody') : null, keepB = db ? db.scrollTop : 0; $('detail-scroll').innerHTML = html; $('detail-scroll').scrollTop = keep; if (db) db.scrollTop = keepB;
       const step = $('detail-step'), cta = $('detail-cta'); cta.disabled = false; cta.className = 'detail-cta';
       const stepper = (n, minusOk, plusOk = true) => `<button class="detail-step-btn" data-act="qty" data-delta="-1" aria-label="Quitar una"${minusOk ? '' : ' disabled'}>−</button><span class="detail-step-num" aria-live="polite">${n}</span><button class="detail-step-btn" data-act="qty" data-delta="1" aria-label="Agregar una"${plusOk ? '' : ' disabled aria-disabled="true"'}>+</button>`;
       const label = (verb, amount) => `<span>${verb}</span><span class="detail-cta-divider">·</span><span>${money(amount)}</span>`;
@@ -568,13 +659,15 @@
       const soldOfLine = (d) => isSold(find(d.key));
       const soldDishes = [...new Map(lines.filter(soldOfLine).map((d) => [d.key, d.item.n])).values()];
       const total = lines.reduce((a, d) => a + (soldOfLine(d) ? 0 : d.total), 0);
-      const head = `<div class="sheethead"><div><h2>Tu pedido</h2><small>${lines.length ? unitOf(cart.count()) + ' · ' : ''}${mode === 'delivery' ? 'Delivery' : 'Pickup'}</small></div>${desk ? '' : `<button class="iconbtn" data-act="cartclose" aria-label="Cerrar el carrito">${IC.close}</button>`}</div>`;
+      const head = `<div class="sheethead"><div><h2>Tu pedido</h2><small>${desk && S.desk ? esc(cfg.name || '') + (lines.length ? ' · ' + unitOf(cart.count()) : '') : (lines.length ? unitOf(cart.count()) + ' · ' : '') + (mode === 'delivery' ? 'Delivery' : 'Pickup')}</small></div>${desk ? '' : `<button class="iconbtn" data-act="cartclose" aria-label="Cerrar el carrito">${IC.close}</button>`}</div>`;
+      // C-6c (advisor call 7): the guest's card-only note — true copy, drawn only while the guest rules are ON (runtime.guestCardOnly)
+      const cnote = desk && S.desk && opts.guestCardOnly === true && authOf() === 'guest' ? '<div class="cnote"><b>Pagás con tarjeta.</b> Creá una cuenta para pagar en efectivo y sumar recompensas.</div>' : '';
       const upd = appUpdated() && lines.length > 0;   // state 4: only over a cart that survived the update
       const updNote = upd ? `<div class="cartnote" role="status">${IC.info}<span>App actualizada. Tu carrito sigue aquí.</span></div>` : '';
       const note = S.cartNote ? `<div class="cartnote">${IC.info}<span>${S.cartNote === 1 ? '1 plato ya no está disponible' : S.cartNote + ' platos ya no están disponibles'}</span></div>` : '';
       const over = tooLong();
       const refusal = S.refusal || over ? `<div class="cartnote">${IC.info}<span>${esc(over ? FULL_CART : S.refusal)}</span></div>` : '';
-      if (!lines.length) return head + note + `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span>${desk ? '' : '<button class="btn2" data-act="cartclose">Ver el menú</button>'}</div>`;
+      if (!lines.length) return head + note + (desk && S.desk ? `<div class="empty">${IC.bag}<b>Tu pedido está vacío</b><span>Agregá platos del menú y aparecen aquí.</span></div>` : `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span>${desk ? '' : '<button class="btn2" data-act="cartclose">Ver el menú</button>'}</div>`);
       const soldNote = soldDishes.length ? `<div class="cartnote" role="status">${IC.info}<span>${soldDishes.map((n) => `<span class="cn-l">${esc(n)} se agotó. Quitalo para enviar tu pedido.</span>`).join('')}</span></div>` : '';
       // the owner's frame 10 (approved 2026-10-27): a cart FROZEN for a placement (S7a-1 r3 §1.1) is read-only — one calm note,
       // the lines' controls at the drawn .45 (disabled), and «Ver estado del pedido»: the placement's STATUS (poll with its stored
@@ -595,7 +688,7 @@
       const oldOf = (d) => { const cs = changes.filter((c) => c.key === d.key && c.sig === d.g); return cs.length ? d.total - cs.reduce((a, c) => a + (c.newSubtotalCents - c.oldSubtotalCents) / 100, 0) : null; };
       return head + updNote + note + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
         return `<div class="cline${so ? ' sold-out' : ''}">${lineName(d, 'cl-txt')}${lineStep(d, so)}<span class="cl-p">${so ? 'Agotado' : old !== null ? `<s class="cl-old">${money(old)}</s>${money(d.total)}` : money(d.total)}</span></div>`; }).join('')
-        + `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>`
+        + cnote + `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>`
         + `<div class="sheetbar"><button class="primary${soldDishes.length ? ' sold-wait' : ''}" data-act="checkout"${off ? ' disabled aria-disabled="true"' : ''}>Ir al checkout</button></div>`;
     }
     function runStoreSearch(q) {
