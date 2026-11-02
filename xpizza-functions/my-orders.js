@@ -66,7 +66,11 @@ function makeMyOrders(deps) {
     try {
       if (req.method !== 'GET') return res.status(405).json({ ok: false });
       const q = req.query || {};
-      const hasBody = req.body != null && (typeof req.body !== 'object' || Object.keys(req.body).length > 0);
+      // Codex r1 P2: ANY body is refused — raw bytes (the runtime's rawBody: a `{}` or `[]` body is non-empty) or a parsed body that
+      // is not the runtime's empty plain object for a body-less GET (an array, a string, an object with keys)
+      const b = req.body;
+      const hasBody = (Buffer.isBuffer(req.rawBody) && req.rawBody.length > 0)
+        || (b != null && (typeof b !== 'object' || Array.isArray(b) || Object.keys(b).length > 0));
       const limit = parseLimit(q.limit);
       const cursor = q.cursor === undefined ? null : decodeCursor(q.cursor);
       if (q.context !== 'platform' || Object.keys(q).some((k) => !QUERY_KEYS.has(k)) || hasBody || limit === null || (q.cursor !== undefined && !cursor)) {

@@ -30819,5 +30819,17 @@
    "node",
    "checkout-wiring.guard.test.js"
   ]
+ },
+ {
+  "id": "mo-13",
+  "slice": "mo",
+  "label": "getMyOrders: a non-empty raw body ({} / []) is accepted (Codex r1 P2)",
+  "file": "my-orders.js",
+  "from": "      const hasBody = (Buffer.isBuffer(req.rawBody) && req.rawBody.length > 0)\n        || (b != null && (typeof b !== 'object' || Array.isArray(b) || Object.keys(b).length > 0));",
+  "to": "      const hasBody = b != null && (typeof b !== 'object' || Object.keys(b).length > 0);",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
  }
 ]

@@ -70,9 +70,9 @@ function harness(db, { limitedFor = () => false, contextFor = usableCtx } = {}) 
   const { getMyOrders } = makeMyOrders({ getDatabase: () => db, getAuth: () => auth,
     checkRateLimit: async (_db, bucket, key) => { rl.push({ bucket, key }); return limitedFor(key) ? { allowed: false, retryAfterSec: 7 } : { allowed: true, retryAfterSec: 0 }; },
     resolveContext: async (rid) => { ctxCalls.push(rid); return contextFor(rid); } });
-  const call = async ({ method = 'GET', token, query = { context: 'platform' }, body } = {}) => {
+  const call = async ({ method = 'GET', token, query = { context: 'platform' }, body, rawBody } = {}) => {
     const headers = token ? { 'x-firebase-id-token': token } : {};
-    const req = { method, query, body, headers, ip: '9.9.9.9', get: (h) => headers[String(h).toLowerCase()] };
+    const req = { method, query, body, rawBody, headers, ip: '9.9.9.9', get: (h) => headers[String(h).toLowerCase()] };
     const res = { h: {}, set(k, v) { res.h[k] = v; return res; }, status(c) { res.code = c; return res; }, json(b) { res.body = b; return res; } };
     await getMyOrders(req, res); return res;
   };
@@ -122,7 +122,13 @@ const mirror = async (db, uid, id, status) => { const d = decideStatusMirror(id,
       { query: { context: 'platform', cursor: Buffer.from('["1","XPZ-1"]').toString('base64url') } }];
     for (const o of bad) { const r = await call({ token: t, ...o }); assert.strictEqual(r.code, 400, `🔴 ${JSON.stringify(o)} ⇒ ${r.code}`); assert.deepStrictEqual(r.body, { ok: false, reason: 'bad_request' }); }
     assert.strictEqual((await call({ token: t, method: 'POST' })).code, 405);
+    // Codex r1 P2: ANY non-empty raw body is refused — `{}` / `[]` included (they parse to an empty object / array)
+    for (const [why, o] of [['{}', { body: {}, rawBody: Buffer.from('{}') }], ['[]', { body: [], rawBody: Buffer.from('[]') }], ['a parsed [] alone', { body: [] }],
+      ['whitespace', { body: {}, rawBody: Buffer.from(' ') }], ['a string body', { body: 'x' }]]) {
+      const r = await call({ token: t, ...o }); assert.strictEqual(r.code, 400, `🔴 a ${why} body ⇒ ${r.code}`);
+    }
     assert.strictEqual(db.reads.filter((x) => x.kind === 'query').length, 0, 'a refused request never queries');
+    for (const o of [{}, { body: {} }, { body: {}, rawBody: Buffer.alloc(0) }, { body: undefined }]) assert.strictEqual((await call({ token: t, ...o })).code, 200, `a body-less GET passes (${JSON.stringify(o)})`);
   }
   ok('strict request: GET only; exactly context=platform plus optional limit (integer 1..50) and a well-formed cursor; any other key, a body or a malformed value ⇒ 400 with ZERO queries');
 
