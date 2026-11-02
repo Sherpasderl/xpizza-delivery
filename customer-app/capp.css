@@ -1098,3 +1098,28 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
   .app:not(.desk){background:var(--surf)}
   .app:not(.desk) .screen{left:50%;right:auto;width:600px;transform:translateX(-50%);background:var(--bg);box-shadow:0 0 0 1px var(--line)}
 }
+
+/* ── C-6b (MOCKUP-capp-desktop-D3 r3 frames f1a/f1b, approved — its DESK-R2 rules verbatim) ── the r2 top bar = the v6 desknav +
+   the leaders' anatomy (brand · address pill · search field · account), one 60 px row */
+.app.desk .desknav{gap:10px;padding:0 24px}
+.app.desk .desknav .lock{margin-right:8px}
+.app.desk .dn-addr{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px 0 10px;border-radius:999px;border:0;background:var(--surf);color:var(--ink);font:600 14px var(--sans);max-width:300px;min-width:0}
+.app.desk .dn-addr svg.i{width:18px;height:18px;color:var(--ink)}
+.app.desk .dn-addr .k{color:var(--mute);font-weight:500}
+.app.desk .dn-addr .v{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app.desk .dn-search{flex:0 1 520px;min-width:200px;height:40px;display:flex;align-items:center;gap:10px;padding:0 14px;border-radius:999px;background:var(--surf);color:var(--mute);font:500 14px var(--sans);margin:0 auto;border:0}
+.app.desk .dn-search svg.i{width:18px;height:18px}
+.app.desk .dn-search.live{background:var(--bg);box-shadow:0 0 0 2px var(--acc);color:var(--ink)}
+.app.desk .desknav .right{display:flex;align-items:center;gap:4px;margin-left:auto}
+.app.desk .desknav .nb.acct{display:inline-flex;align-items:center;gap:8px;color:var(--ink)}
+.app.desk .desknav .nb.acct svg.i{width:20px;height:20px}
+.app.desk .desknav .nb.acct .av{width:28px;height:28px;border-radius:50%;background:var(--surf);display:inline-flex;align-items:center;justify-content:center;font:700 12px var(--rhd);box-shadow:0 0 0 1px var(--line)}
+/* home: the one-line page heading (the H1 Google indexes); the phone's own addr-btn yields to the bar's pill on the desk */
+.h1row{display:none}
+.app.desk .home-head .addr-btn{display:none}
+.app.desk .h1row{max-width:1040px;margin:0 auto;width:100%;padding:28px 24px 4px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
+.app.desk .h1row h1{font:800 30px/1.1 var(--rhd);letter-spacing:-.025em}
+.app.desk .h1row p{font-size:14.5px;color:var(--mute);margin-top:6px}
+.app.desk .h1row .promo{max-width:380px;flex:none}
+.app.desk .cuisrow{padding:8px 24px 0;gap:10px}
+.app.desk .fchips{padding:0 24px}

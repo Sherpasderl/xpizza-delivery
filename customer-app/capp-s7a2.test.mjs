@@ -3168,6 +3168,45 @@ test('C-6a «Direcciones» (D-3 r3 frame 6, DECIDED): the member\'s Cuenta row a
     assert.ok(S.q('#layer .sheet, #layer [role="dialog"]'), '🔴 SEO-dir: the location sheet opens');
   } finally { S.w.close(); }
 });
+// ── C-6b (D-3 r3 f1a/f1b): the desktop top bar and the Inicio heading ──
+test('C-6b bar: brand · «Entregar en» pill (the location sheet) · the search field that IS Buscar (the query, «live», on Buscar) · Inicio · Pedidos · Cuenta — no separate Buscar button', async () => {
+  const S = bootShell({ media: fakeMedia(true) }); await flush();
+  try {
+    const nav = S.q('.desknav'); assert.ok(nav && S.q('.app').classList.contains('desk'), 'premise: the desk');
+    assert.equal(nav.querySelector('.lock').textContent, 'Sherpa');
+    const pill = nav.querySelector('.dn-addr'); assert.ok(pill && /Entregar en/.test(pill.textContent), '🔴 DN-1: the address pill');
+    assert.deepEqual([...nav.querySelectorAll('.right .nb')].map((b) => b.textContent), ['Inicio', 'Pedidos', 'Cuenta'], '🔴 DN-1: Inicio · Pedidos · Cuenta (the v6 «Buscar» button is the field now)');
+    assert.equal(nav.querySelector('.dn-search').textContent, 'Buscá restaurantes o platos', 'the field\'s placeholder');
+    S.click(pill); await flush(); assert.ok(S.q('#layer .sheet, #layer [role="dialog"]'), '🔴 DN-2: the pill opens the location sheet');
+    S.click('[data-act="addr-close"], #layer .scrim, #layer [data-act="close"]'); await flush();
+    S.click('.desknav .dn-search'); await flush();
+    assert.ok(S.q('#gq'), '🔴 DN-3: the field opens Buscar');
+    const i = S.q('#gq'); i.value = 'pizza'; i.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+    const f = S.q('.desknav .dn-search'); assert.ok(f.classList.contains('live') && /pizza/.test(f.textContent), '🔴 DN-3: on Buscar the field shows the query, live');
+  } finally { S.w.close(); }
+});
+test('C-6b bar: a member\'s initial in the Cuenta avatar; the guest\'s person icon', async () => {
+  const { S } = await pedidosBoot({}, { preMount: (w) => { w.matchMedia = fakeMedia(true).matchMedia; } });
+  try { const av = S.q('.desknav .nb.acct .av'); assert.ok(av && /^[A-ZÁÉÍÓÚÑ]$/.test(av.textContent), `🔴 DN-4: the member's initial (${av && av.textContent})`); } finally { S.w.close(); }
+  const G = bootShell({ media: fakeMedia(true) }); await flush();
+  try { assert.equal(G.q('.desknav .nb.acct .av'), null); assert.ok(G.q('.desknav .nb.acct svg'), 'the guest: the person icon'); } finally { G.w.close(); }
+});
+test('C-6b heading: the desktop Inicio H1 «Pedí a domicilio en {the directory\'s city}» + the approved sub; the guest promo only where sign-up exists; none for a member; the phone keeps its own head', async () => {
+  const CITY = SC.complete.body.platform.city_label;
+  const D = bootShell({ media: fakeMedia(true) }); await flush();
+  try {
+    assert.equal(D.q('.h1row h1').textContent, CITY ? `Pedí a domicilio en ${CITY}` : 'Pedí a domicilio', '🔴 DN-5: the H1 from the data');
+    assert.equal(D.q('.h1row p').textContent, 'Restaurantes de tu zona, con envío por Sherpa. Entregamos solo en Honduras.');
+    assert.equal(D.q('.h1row .promo'), null, '🔴 DN-6: no sign-up ⇒ no «Creá tu cuenta» card');
+    assert.equal(D.w.getComputedStyle(D.q('.home-head .addr-btn')).display, 'none', 'the desk: the bar\'s pill replaces the phone addr-btn');
+  } finally { D.w.close(); }
+  const G = bootShell({ media: fakeMedia(true), auth: 'unresolved', runtime: SU_RUNTIME, mountExtra: { loadSdk: fakeFirebase({}).loadSdk } }); await flush(); await flush(); await flush();
+  try { assert.ok(/Creá tu cuenta y pagá en efectivo/.test(G.q('.h1row .promo') ? G.q('.h1row .promo').textContent : ''), '🔴 DN-6: the guest\'s approved promo card where sign-up exists'); } finally { G.w.close(); }
+  const { S: M } = await pedidosBoot({}, { preMount: (w) => { w.matchMedia = fakeMedia(true).matchMedia; } });
+  try { assert.equal(M.q('.h1row .promo'), null, '🔴 DN-6: a member\'s sample card has no data ⇒ absent'); } finally { M.w.close(); }
+  const P = bootShell(); await flush();
+  try { assert.equal(P.w.getComputedStyle(P.q('.h1row')).display, 'none', '🔴 DN-7: the phone: no H1 row'); assert.notEqual(P.w.getComputedStyle(P.q('.home-head .addr-btn')).display, 'none', 'the phone keeps its addr-btn'); } finally { P.w.close(); }
+});
 // LAST in the file (node:test runs a file's tests in order): every timer above stayed within setTimeout's range
 test('store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)', () => {
   const over = WARNINGS.filter((w) => w && w.name === 'TimeoutOverflowWarning');

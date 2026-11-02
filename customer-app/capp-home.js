@@ -221,9 +221,16 @@
     const badge = vm.cartN ? `<i class="badge" aria-hidden="true">${vm.cartN}</i>` : vm.live ? '<i class="badge dot" aria-hidden="true"></i>' : '';
     return `<nav class="tabbar" aria-label="Navegación">${t('home', 'Inicio', IC.home)}<button class="search" data-act="tab" data-tab="search" aria-current="${cur('search')}">${IC.search}<span>Buscar</span></button>${ORDERS_SCREEN ? t('orders', 'Pedidos', IC.receipt, badge) : ''}${t('account', 'Cuenta', IC.user)}</nav>`;
   }
+  // C-6b (MOCKUP-capp-desktop-D3 r3 frames f1a/f1b, approved): the desktop top bar — brand · the «Entregar en» address pill (the
+  // location sheet, like the phone addr-btn) · a centred search field that IS Buscar · Inicio · Pedidos · Cuenta (the member's initial)
   function desknavHtml(vm) {
     const t = (id, label) => `<button class="nb" data-act="tab" data-tab="${id}" aria-current="${vm.tab === id}">${label}</button>`;
-    return `<div class="desknav"><span class="lock">${SOLA(22, 'var(--acc)')}Sherpa</span>${t('home', 'Inicio')}${t('search', 'Buscar')}${ORDERS_SCREEN ? t('orders', 'Pedidos') : ''}${t('account', 'Cuenta')}<span class="sp"></span><span class="mute" style="font-size:13px">${esc(city(vm.platform))}</span></div>`;
+    const short = vm.addr && vm.addr.short ? vm.addr.short : 'Tu ubicación', line = vm.addr && vm.addr.line ? vm.addr.line : 'Agregá tu dirección';
+    const q = vm.tab === 'search' && vm.q ? vm.q : '';
+    return `<div class="desknav"><span class="lock">${SOLA(22)}Sherpa</span>`
+      + `<button class="dn-addr" data-act="addr" aria-label="Dirección de entrega: ${esc(line)}">${IC.pin}<span class="v"><span class="k">Entregar en</span> ${esc(short)}</span>${IC.down}</button>`
+      + `<button class="dn-search${vm.tab === 'search' ? ' live' : ''}" data-act="tab" data-tab="search" aria-label="Buscar">${IC.search}${esc(q || 'Buscá restaurantes o platos')}</button>`
+      + `<span class="right">${t('home', 'Inicio')}${ORDERS_SCREEN ? t('orders', 'Pedidos') : ''}<button class="nb acct" data-act="tab" data-tab="account" aria-current="${vm.tab === 'account'}">${vm.memberInitial ? `<span class="av">${esc(vm.memberInitial)}</span>` : IC.user}Cuenta</button></span></div>`;
   }
   const shellWrap = (vm, inner) => `${desknavHtml(vm)}${inner}${tabbarHtml(vm)}`;
 
@@ -268,8 +275,12 @@
   function homeHtml(vm) {
     const head = homeHead(vm);
     const all = (vm.rows || []).map(storeOf);
-    const page = (body, credit) => shellWrap(vm, `<div class="scroller">${head}<div class="home-body">${body}</div>${credit || ''}</div>`);
     const c = city(vm.platform);
+    // C-6b (f1a/f1b): the page heading Google indexes + the guest's approved promo card (only where sign-up exists; the member's
+    // sample card has no data ⇒ absent). Desktop only (CSS)
+    const promo = vm.auth === 'guest' && vm.signupOn ? `<div class="promo"><span class="ic">${IC.user}</span><span class="t"><b>Creá tu cuenta y pagá en efectivo</b><span>Recompensas, promos y envío gratis</span></span></div>` : '';
+    const h1row = `<div class="h1row"><div><h1>${c ? `Pedí a domicilio en ${esc(c)}` : 'Pedí a domicilio'}</h1><p>Restaurantes de tu zona, con envío por Sherpa. Entregamos solo en Honduras.</p></div>${promo}</div>`;
+    const page = (body, credit) => shellWrap(vm, `<div class="scroller">${head}${h1row}<div class="home-body">${body}</div>${credit || ''}</div>`);
     if (!all.length) {
       if (vm.phase === 'error') return page(emptyHtml('alert', 'No pudimos cargar los restaurantes', 'Revisá tu conexión e intentá de nuevo.', ['dir-retry', 'Reintentar']));   // frame 7
       if (vm.phase !== 'ready') return page('<p class="note hload">Cargando restaurantes…</p>');   // frame 1
