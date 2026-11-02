@@ -22,7 +22,7 @@ const HEAD = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: '
 const show = (rel) => execFileSync('git', ['show', `${HEAD}:${rel}`], { cwd: ROOT, maxBuffer: 1 << 28 });
 const SITES = JSON.parse(show('platform/sites.json')), COMPAT = JSON.parse(show('platform/compat.json'));
 const DEP = SITES.deployments.find((d) => d.app === 'orders' && d.context === 'platform');
-const LOCK = JSON.parse(show('platform/native/vendor/firebasejs.lock.json'));
+const LOCK = JSON.parse(show('platform/native/vendor/sdk-lock.json'));
 const NAT = { target: 'native', env: 'production' }, WEB = { target: 'web', env: 'production' };
 const B = P.build({ sha: HEAD, ...NAT });
 const txt = (rel) => B.files.get(rel).toString('utf8');

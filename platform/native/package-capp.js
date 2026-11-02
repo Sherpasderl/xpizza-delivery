@@ -106,7 +106,7 @@ function build({ sha, flags = [], root = ROOT, show, target = 'native', env } = 
   if (errs.length) throw new Error(`the manifest at ${full.slice(0, 12)} is invalid — ${errs.join('; ')}`);
   const gen = compat.generations && compat.generations[dep.app];
   if (!Number.isInteger(gen) || gen < 1) throw new Error('no compat generation for the orders app — refusing to ship an inert build');
-  const lock = JSON.parse(T('platform/native/vendor/firebasejs.lock.json'));
+  const lock = JSON.parse(T('platform/native/vendor/sdk-lock.json'));
 
   const files = new Map();   // packaged path → Buffer
   const readText = (rel) => T(`${APP}/${rel}`);

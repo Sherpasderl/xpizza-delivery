@@ -14,7 +14,7 @@ const { JSDOM } = createRequire(join(ROOT, 'xpizza-functions/x.js'))('jsdom');
 const Boot = require('./capp-boot.js');
 const CappSignupApi = require('./capp-signup-api.js');
 const M = require(join(ROOT, 'xpizza-functions/platform-manifest.js'));
-const LOCK = JSON.parse(readFileSync(join(ROOT, 'platform/native/vendor/firebasejs.lock.json'), 'utf8'));
+const LOCK = JSON.parse(readFileSync(join(ROOT, 'platform/native/vendor/sdk-lock.json'), 'utf8'));
 const RT0 = M.PLATFORM.appRuntime();
 const RT = (x = {}) => ({ mode: 'native', ...RT0, sdk_base: `./vendor/firebasejs/${LOCK.version}/`, flags: {}, ...x });
 const res = (status, body, etag) => ({ status, headers: { get: (h) => (h === 'ETag' ? etag || null : null) }, json: async () => { if (body === 'bad') throw new Error('not json'); return body; } });

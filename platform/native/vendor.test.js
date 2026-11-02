@@ -11,7 +11,7 @@ const crypto = require('crypto');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const ROOT = path.join(__dirname, '..', '..');
-const LOCK = JSON.parse(fs.readFileSync(path.join(__dirname, 'vendor', 'firebasejs.lock.json'), 'utf8'));
+const LOCK = JSON.parse(fs.readFileSync(path.join(__dirname, 'vendor', 'sdk-lock.json'), 'utf8'));
 const DIR = path.join(__dirname, 'vendor', 'firebasejs', LOCK.version);
 const SITES = JSON.parse(fs.readFileSync(path.join(ROOT, 'platform', 'sites.json'), 'utf8'));
 const FORMS = SITES.deployments.filter((d) => d.app === 'orders' && d.context !== 'platform').map((d) => d.folder);
