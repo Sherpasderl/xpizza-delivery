@@ -1,6 +1,7 @@
 'use strict';
 // TEST-ONLY in-memory RTDB model that is NEVER LAXER than production (rule 29; codex extra-pay r2):
-//   · keys are validated RECURSIVELY on every write (no empty key, no . # $ [ ] /), as RTDB rejects them;
+//   · keys are validated RECURSIVELY on every write (no empty key, no . # $ [ ] /), and an undefined value anywhere is
+//     refused, as RTDB rejects both;
 //   · null children are PRUNED (an object written with null fields stores none of them; an emptied object disappears);
 //   · snapshots are IMMUTABLE (deep-cloned when taken; later writes never show through);
 //   · transactions follow the Admin SDK: the first call sees the cached value (null when uncached) and returning undefined
@@ -10,11 +11,12 @@
 // beforeWrite(path, value, api).
 const RESERVED = /[.#$[\]/]/;
 
-function validateKeys(v, where) {
+function validateKeys(v, where, seed = false) {
+  if (v === undefined) { if (seed) return; throw new Error(`undefined value at ${where} (RTDB refuses undefined)`); }
   if (v === null || typeof v !== 'object') return;
   for (const k of Object.keys(v)) {
     if (!k || RESERVED.test(k)) throw new Error(`invalid RTDB key "${k}" under ${where}`);
-    validateKeys(v[k], `${where}/${k}`);
+    validateKeys(v[k], `${where}/${k}`, seed);
   }
 }
 function prune(v) {
@@ -28,7 +30,7 @@ const clone = (v) => (v == null ? null : JSON.parse(JSON.stringify(v)));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 function makeHonestDb(initial = {}, hooks = {}) {
-  validateKeys(initial, '/');
+  validateKeys(initial, '/', true);                            // a seed may spell "absent" as undefined; a WRITE may not
   let root = prune(clone(initial)) || {};
   const segs = (p) => (p ? p.split('/') : []);
   const getAt = (p) => { let n = root; for (const k of segs(p)) { if (n == null || typeof n !== 'object') return null; n = n[k]; } return n === undefined ? null : clone(n); };

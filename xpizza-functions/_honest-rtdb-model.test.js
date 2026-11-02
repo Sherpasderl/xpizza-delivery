@@ -7,6 +7,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   const db = makeHonestDb({});
   await assert.rejects(db.ref('a').set({ ok: { 'bad.key': 1 } }), /invalid RTDB key/, 'HRM-NESTED-KEYS: a reserved character in a NESTED key is refused');
   await assert.rejects(db.ref('a').update({ 'x/y': { 'b#': 1 } }), /invalid RTDB key/, 'HRM-NESTED-KEYS: also through update');
+  await assert.rejects(db.ref('a').update({ x: { y: undefined } }), /undefined value/, 'HRM-NESTED-KEYS: an undefined value is refused, as the Admin SDK does');
   ok('nested keys are validated on set and update');
 
   await db.ref('o').set({ a: 1, b: null, c: { d: null } });
