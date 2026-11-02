@@ -17,8 +17,13 @@ const PROBE = "process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-
   + " process.stdout.write('PARAMS ' + JSON.stringify(p.declaredParams.map((x) => ({ name: x.name, kind: x.constructor && x.constructor.name }))) + '\\n');";
 
 // the params a fresh load of the deployed source declares (extra preload modules for the sensitivity cell)
-function declared(preload = []) {
+// The child must load the WHOLE deployed closure: index.js gates its load on FUNCTION_TARGET (a gen2 instance loads only its
+// group, index.js:6–8), so an inherited one would census a single group — a false pass (codex HIGH P2). It is removed with the
+// other runtime identity vars; `keepTarget` exists only for the premise cell that proves the gate is real.
+const ISOLATE_VARS = ['FUNCTION_TARGET', 'K_SERVICE', 'FUNCTION_NAME'];
+function declared(preload = [], { keepTarget = false } = {}) {
   const env = { ...process.env }; delete env.NODE_OPTIONS;
+  if (!keepTarget) for (const k of ISOLATE_VARS) delete env[k];
   for (const k of Object.keys(env)) if (/_EMULATOR_HOST$/.test(k)) delete env[k];   // a plain offline load, as cors-preflight.test.js does
   // tools/egress-guard.js FIRST: loopback-only, so loading index.js here can never reach a real endpoint (endpoint census)
   const r = spawnSync(process.execPath, ['-r', path.join(__dirname, 'tools', 'egress-guard.js'), ...preload.flatMap((f) => ['-r', f]), '-e', PROBE], { cwd: __dirname, env, encoding: 'utf8', timeout: 60000 });
@@ -38,5 +43,19 @@ const plant = path.join(__dirname, 'test', '_plant-string-param.js');
 const planted = declared([plant]);
 assert.ok(planted.some((p) => p.name === 'TB_PLANTED_PARAM' && !SECRET_KINDS.has(p.kind)), `DEPLOY-PARAMS-SENSITIVE a planted defineString is seen by the census ${JSON.stringify(planted)}`);
 ok('sensitive: a planted defineString in the loaded closure is reported as a non-secret param');
+
+// codex HIGH P2 regression: FUNCTION_TARGET set in the PARENT (an isolated portal target) + a param planted ONLY on the full-load
+// path (test/_plant-full-load-param.js: declared when photos/functions.js loads) → still detected, because the child loads it all
+{
+  const fullPlant = path.join(__dirname, 'test', '_plant-full-load-param.js');
+  const saved = process.env.FUNCTION_TARGET; process.env.FUNCTION_TARGET = 'getEditableCatalog';
+  try {
+    const isolated = declared([fullPlant], { keepTarget: true });
+    assert.ok(!isolated.some((p) => p.name === 'TB_FULL_LOAD_PARAM'), `premise — with FUNCTION_TARGET kept, the isolated load never reaches the full-load plant ${JSON.stringify(isolated)}`);
+    const full = declared([fullPlant]);
+    assert.ok(full.some((p) => p.name === 'TB_FULL_LOAD_PARAM' && !SECRET_KINDS.has(p.kind)), `🔴 DEPLOY-PARAMS-FULL-LOAD an inherited FUNCTION_TARGET hid a full-load param from the census ${JSON.stringify(full)}`);
+  } finally { if (saved === undefined) delete process.env.FUNCTION_TARGET; else process.env.FUNCTION_TARGET = saved; }
+}
+ok('FUNCTION_TARGET inherited from the parent (getEditableCatalog) cannot narrow the census: a param planted only on the full-load path is still detected (and the kept-target premise shows the gate is real)');
 
 console.log(`deploy-params.guard: OK (${n})`);
