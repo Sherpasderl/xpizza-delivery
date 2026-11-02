@@ -73,7 +73,8 @@ async function cell(name, fn) { try { await fn(); console.log(`  ✓ ${name}`); 
   await cell('COV-CAPTURE-INVALID-REFUSED', async () => {
     const L = 'COV-CAPTURE-INVALID-REFUSED';
     for (const bad of [null, {}, { kind: 'identity-coverage-capture', v: 1, restaurants: { tb_dark: { versionId: 'v1', seq: 3, objects: ['nothex'] } } },
-      { kind: 'identity-coverage-capture', v: 1, restaurants: {} }]) {
+      { kind: 'identity-coverage-capture', v: 1, restaurants: {} },
+      { kind: 'identity-coverage-capture', v: 1, restaurants: { tb_dark: { versionId: 'v1', seq: 3, objects: ['a'.repeat(64), 'a'.repeat(64)] } } }]) {
       await assert.rejects(against({ tb_dark: built(CAT, { usable: true }) }, bad), /capture_invalid/, `${L}: ${JSON.stringify(bad)} is refused`);
     }
   });
