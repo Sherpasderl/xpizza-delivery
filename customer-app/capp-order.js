@@ -167,9 +167,9 @@
     // IN PLACE of the marker, so nothing already drawn moves. The CTA belongs to the tail: never pushed down by a late block
     const tail = `${del ? details : ''}${receipt}${payrows}
     ${share}<button class="btn2 again" data-act="order-again">Hacer otro pedido</button>${c.entry === 'link' ? '<div class="credit">Enviado por <b>Sherpa</b></div>' : ''}`;
-    if (c.tailOnly) return tail;
+    if (c.past && c.tailOnly) return tail;   // past-only (Codex rcpt r2): the live screen ignores hold / tailOnly
     const sheet = `<div class="mk-sheet"><div class="mk-handle"></div><div class="mk-title${cc.ok && !sc ? ' success' : ''}${cc.danger && !sc ? ' danger' : ''}">${esc(title)}</div>${windowLine}
-    ${num}${segbar}${statusrow}${driverCard}${c.offerHtml || ''}${del ? '' : details}${c.hold ? '<div data-rc-tail></div>' : tail}</div>`;
+    ${num}${segbar}${statusrow}${driverCard}${c.offerHtml || ''}${del ? '' : details}${c.past && c.hold ? '<div data-rc-tail></div>' : tail}</div>`;
     return `<div class="scroller"><div class="orderwrap">${map}${sheet}</div></div>`;
   }
 

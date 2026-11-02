@@ -160,7 +160,7 @@ test('past receipt hold (option A): c.hold ends the sheet before the first recei
 
 // Codex rcpt r1 #1: the LIVE screen (not past) is byte-identical to the pre-receipt CappOrder — the base module is loaded from its
 // git blob (c6719256, the commit before the receipt) and both render the same grid: redeem × tender × mode × status × hold flags absent
-test('the live order screen = the pre-receipt CappOrder byte for byte (base blob c6719256), across redeem 0/5 × cash/card/online/unknown × delivery/pickup × statuses', async () => {
+test('the live order screen = the pre-receipt CappOrder byte for byte (base blob c6719256), across redeem 0/5 × cash/card/online/unknown × delivery/pickup × statuses × hold/tailOnly flags', async () => {
   const { execFileSync } = await import('node:child_process');
   const src = execFileSync('git', ['show', 'c6719256:customer-app/capp-order.js'], { cwd: ROOT, encoding: 'utf8' });
   assert.ok(src.includes('function orderHtml(o, c)') && !src.includes('c.past'), 'premise: the base blob is the pre-receipt module');
@@ -168,10 +168,10 @@ test('the live order screen = the pre-receipt CappOrder byte for byte (base blob
   const BASE = mod.exports; assert.equal(typeof BASE.orderHtml, 'function');
   let n = 0;
   for (const redeem of [0, 5]) for (const pay of ['cash', 'card', 'online', undefined]) for (const mode of ['delivery', 'pickup'])
-    for (const status of ['new', 'preparing', 'ready', 'out', 'delivered', 'collected', 'cancelled']) for (const receiptOpen of [false, true]) {
+    for (const status of ['new', 'preparing', 'ready', 'out', 'delivered', 'collected', 'cancelled']) for (const receiptOpen of [false, true]) for (const flags of [{}, { hold: true }, { tailOnly: true }, { hold: true, tailOnly: true }]) {
       const o = { ...ORDER, redeem, pay, mode, status, driver: status === 'out' ? 'Carlos' : null, lines: [...ORDER.lines, { n: '', name: 'Sin cantidad', extras: '', total: null }] };
-      const c = { ...CTX, receiptOpen };
-      assert.equal(CappOrder.orderHtml(o, c), BASE.orderHtml(o, c), `🔴 RC-base: live render drifted (redeem ${redeem}, ${pay}, ${mode}, ${status}, open ${receiptOpen})`); n++;
+      const c = { ...CTX, receiptOpen, ...flags };   // Codex rcpt r2: hold / tailOnly set on the LIVE screen change nothing
+      assert.equal(CappOrder.orderHtml(o, c), BASE.orderHtml(o, c), `🔴 RC-base: live render drifted (redeem ${redeem}, ${pay}, ${mode}, ${status}, open ${receiptOpen}, ${JSON.stringify(flags)})`); n++;
     }
-  assert.equal(n, 224);
+  assert.equal(n, 896);
 });

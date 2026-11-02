@@ -2740,9 +2740,11 @@ test('Receipt PREFETCH (advisor 11-01, 3a): after «Pedidos» paints, at idle, t
     const rq = () => mo.calls.filter((c) => c.url.includes('order_id=')).map((c) => new URL(c.url).searchParams.get('order_id'));
     assert.deepEqual(rq(), ['XP-P0', 'XP-P1', 'XP-P2', 'XP-P3', 'XP-P4'], '🔴 RC-13: exactly the first 5 visible past rows, in order');
     assert.equal(mo.rx.max, 1, '🔴 RC-13: ONE at a time (never a fan-out)');
-    S.click(S.q('.orow-main[data-oid="XP-P2"]')); await flush();
+    S.click(S.q('.orow-main[data-oid="XP-P2"]'));
+    const sheet = S.q('.mk-sheet');   // the tap's own (synchronous) paint
+    assert.ok(sheet, 'premise: painted on the tap');
     assert.equal(S.q('[data-rc-tail]'), null, '🔴 RC-13: a prefetched receipt opens complete (no hold)'); assert.ok(S.q('.receipt'));
-    const sheet = S.q('.mk-sheet'); await flush(); await flush();
+    await flush(); await flush();
     assert.equal(S.q('.mk-sheet'), sheet, '🔴 RC-13: and is never re-rendered after it opens (no second paint)');
     assert.equal(rq().length, 5, 'no second read');
   } finally { S.w.close(); }
