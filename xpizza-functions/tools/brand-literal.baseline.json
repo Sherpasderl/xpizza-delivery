@@ -1,0 +1,3569 @@
+{
+ "_doc": "brand-literal ratchet baseline (tools/brand-literal-guard.js). The EXACT existing brand-literal debt, keyed by file + kind + brand + normalised snippet with a count. Shrink only: `--write` lowers counts / drops entries; nothing may be added by hand. PLAN-brand-agnostic-convergence §3-G.",
+ "scanner": "phase-a.5",
+ "kinds": [
+  "rid",
+  "name",
+  "host",
+  "rid-predicate",
+  "unscanned"
+ ],
+ "entries": [
+  {
+   "file": "la-musa-orders/.gitignore",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "la-musa-orders/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "[la musa] preview_mode is on — schedule check bypassed. set preview_mode = false before launch.",
+   "count": 1
+  },
+  {
+   "file": "la-musa-orders/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa",
+   "count": 1
+  },
+  {
+   "file": "la-musa-orders/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa gastropub",
+   "count": 1
+  },
+  {
+   "file": "la-musa-orders/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa gastropub — pedido en linea",
+   "count": 1
+  },
+  {
+   "file": "la-musa-orders/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa gastropub logo",
+   "count": 1
+  },
+  {
+   "file": "la-musa-orders/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "lamusa_acct",
+   "count": 1
+  },
+  {
+   "file": "la-musa-orders/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "lamusa_pending_pay",
+   "count": 1
+  },
+  {
+   "file": "la-musa-orders/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "pedidos@lamusa.hn",
+   "count": 2
+  },
+  {
+   "file": "la-musa-orders/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_acct_intent",
+   "count": 1
+  },
+  {
+   "file": "la-musa-orders/index.html",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "la-musa-orders/index.html",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa_fallback_email",
+   "count": 2
+  },
+  {
+   "file": "platform/fonts/fonts.manifest.json",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "the §4.1 census 2026-10-27: la_musa s1 paints playfair 700 («dim sum», y=312) in the first 390×844 viewport; x_pizza has none — one surface, one preload set (un",
+   "count": 1
+  },
+  {
+   "file": "platform/fonts/metrics.py",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "host",
+   "brand": "la_musa",
+   "snippet": "https://orders.lamusa.hn",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "host",
+   "brand": "x_pizza",
+   "snippet": "https://orders.xpizza.hn",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "host",
+   "brand": "x_pizza",
+   "snippet": "https://xpizzaorders.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "https://orders.lamusa.hn",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "kitchen-lamusa",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "lamusakitchendisplay",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "lamusaorders",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "lamusatrack",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "orders-lamusa",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "track-lamusa",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "catering-xpizza",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "https://orders.xpizza.hn",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "https://xpizzaorders.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "kitchen-xpizza",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "orders-xpizza",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "track-xpizza",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzacatering",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzadashboard",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzadispatch",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzadispatchlite",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzakitchendisplay",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzaorders",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzatrack",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 3
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "pixelpay_return_url_la_musa",
+   "count": 1
+  },
+  {
+   "file": "platform/sites.json",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 4
+  },
+  {
+   "file": "xpizza-catering/.gitignore",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-catering/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "cotiza tu evento privado, catering o reserva con x. pizza. pizzas artesanales en san pedro sula, honduras.",
+   "count": 1
+  },
+  {
+   "file": "xpizza-catering/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "gracias por elegir x. pizza para tu evento.",
+   "count": 1
+  },
+  {
+   "file": "xpizza-catering/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "hola x. pizza, quiero cotizar un evento:",
+   "count": 1
+  },
+  {
+   "file": "xpizza-catering/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x. pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-catering/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x. pizza — cotiza tu evento",
+   "count": 1
+  },
+  {
+   "file": "xpizza-catering/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x. pizza · san pedro sula · honduras",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dashboard/.gitignore",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dashboard/icon.svg",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dashboard/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-dashboard/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza · estadisticas",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dashboard/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza estadisticas ·",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dashboard/manifest.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "panel de estadisticas operativas de x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dashboard/manifest.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza estadisticas",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dashboard/xpizza-delivery.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dashboard/xpizza-delivery.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-dashboard/xpizza-delivery.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 8
+  },
+  {
+   "file": "xpizza-dashboard/xpizza-delivery.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch-mobile/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "dispatch · x. pizza + la musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch-mobile/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch-mobile/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x. pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch-mobile/index.html",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-dispatch-mobile/index.html",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 4
+  },
+  {
+   "file": "xpizza-dispatch-mobile/index.html",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch-mobile/manifest.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "dispatch · x. pizza + la musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch-mobile/scheduled-badge-fixture.mjs",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa",
+   "count": 3
+  },
+  {
+   "file": "xpizza-dispatch-mobile/scheduled-badge-fixture.mjs",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch-mobile/xpizza-delivery.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch-mobile/xpizza-delivery.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-dispatch-mobile/xpizza-delivery.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 8
+  },
+  {
+   "file": "xpizza-dispatch-mobile/xpizza-delivery.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch/.gitignore",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch/icon.svg",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "-brand-lamusa",
+   "count": 3
+  },
+  {
+   "file": "xpizza-dispatch/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa",
+   "count": 3
+  },
+  {
+   "file": "xpizza-dispatch/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-dispatch/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza · despacho",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x. pizza",
+   "count": 4
+  },
+  {
+   "file": "xpizza-dispatch/index.html",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": ".rest-la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch/index.html",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 6
+  },
+  {
+   "file": "xpizza-dispatch/index.html",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": ".rest-x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch/index.html",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 4
+  },
+  {
+   "file": "xpizza-dispatch/index.html",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-dispatch/manifest.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "centro de despacho de x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch/manifest.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza dispatch",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch/xpizza-delivery.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-dispatch/xpizza-delivery.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-dispatch/xpizza-delivery.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 8
+  },
+  {
+   "file": "xpizza-dispatch/xpizza-delivery.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/.gitignore",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/brand-helpers.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/brand-helpers.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/capture-earnings.mjs",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-driver/capture-earnings.mjs",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x. pizza",
+   "count": 5
+  },
+  {
+   "file": "xpizza-driver/fa4400-neverships.proof.sh",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/icon-transparent.svg",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/icon.svg",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "-lamusa",
+   "count": 8
+  },
+  {
+   "file": "xpizza-driver/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/slice1-font-resolution.proof.sh",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/slice1-freeze.proof.sh",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/slice2-freeze.proof.sh",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/slice3-regions.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "<div class=\"brand-mark\"><img src=\"icon-transparent.svg\" alt=\"x pizza\"></div>",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/stacking-helpers.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/stacking-helpers.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 5
+  },
+  {
+   "file": "xpizza-driver/stacking-helpers.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/sw.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/sw.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza-order",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/xpizza-delivery.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-driver/xpizza-delivery.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-driver/xpizza-delivery.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 8
+  },
+  {
+   "file": "xpizza-driver/xpizza-delivery.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-factura/.env.example",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-factura/.gitignore",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-factura/package.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x. pizza sar factura subsystem: renderer, amount-in-words, allocation helpers, print agent (surface pro). isolated from xpizza-functions until merge.",
+   "count": 1
+  },
+  {
+   "file": "xpizza-factura/preview.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-factura/print_agent.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-factura/seed_factura_config.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-factura/seed_factura_config.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-factura/tools/print-sample.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-factura/tools/reprint.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-factura/tools/test-order.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/.env.example",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/.firebaserc",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/.gitignore",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/access/kds-filter-pre-f2.mjs",
+   "kind": "host",
+   "brand": "la_musa",
+   "snippet": "--lamusakitchendisplay.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/access/kds-filter-pre-f2.mjs",
+   "kind": "host",
+   "brand": "la_musa",
+   "snippet": "lamusakitchendisplay.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/access/kds-filter-pre-f2.mjs",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "--lamusakitchendisplay.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/access/kds-filter-pre-f2.mjs",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "lamusakitchendisplay.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/access/kds-filter-pre-f2.mjs",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 11
+  },
+  {
+   "file": "xpizza-functions/access/kds-filter-pre-f2.mjs",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 5
+  },
+  {
+   "file": "xpizza-functions/access/kds-filter-pre-f2.mjs",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 6
+  },
+  {
+   "file": "xpizza-functions/access/team-http-core.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "invite",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/availability-reset.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/availability-reset.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/cancel-order-core.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/catalog/exposure-source.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/catalog/exposure-source.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/catalog/fallback-groups.generated.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/catalog/fallback-groups.generated.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/catalog/form-menu-source.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 5
+  },
+  {
+   "file": "xpizza-functions/catalog/form-menu-source.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/catalog/form-menu-source.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/catalog/identity-grace.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/catalog/identity-grace.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/catalog/identity-registry.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/catalog/menu-gates.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/catalog/menu-gates.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza_weekend_only",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/catalog/menu-gates.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/catalog/redeem-source.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "redeemextrasforlamusa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/catalog/redeem-source.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "redeemcatsforxpizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/catalog/redeem-source.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/catalog/redeem-source.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa_acomp",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/catalog/redeem-source.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa_exclude_prefixes",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/catalog/redeem-source.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "redeemextrasforlamusa",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/catalog/redeem-source.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "redeemcatsforxpizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/catalog/redeem-source.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/catalog/redeem-source.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza_redeem_eligible",
+   "count": 6
+  },
+  {
+   "file": "xpizza-functions/catalog/redeem-source.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/catalog/redeem-source.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/catalog/renderer-contract.generated.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/catalog/renderer-contract.generated.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/claim-order.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/claim-order.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/claim-order.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/contract/applicability-report.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/contract/applicability-report.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/contract/capp/capture.mjs",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/contract/capp/capture.mjs",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/contract/capp/third-brand-fork.mjs",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "<div class=\"pickup-store-name\">x pizza</div>",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/contract/capp/third-brand-fork.mjs",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "<title>x pizza — pedido en linea</title>",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/contract/capp/third-brand-fork.mjs",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "alt=\"x pizza logo\"",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/contract/capp/third-brand-fork.mjs",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "alt=\"x pizza\"",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/contract/capp/third-brand-fork.mjs",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza fork source",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/contract/capp/third-brand-fork.mjs",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "xpizzaconfig",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/contract/ratchet.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "s1/x_pizza/new",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/contract/scenario-state.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/contract/scenario-state.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/contract/third-brand.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/check-seed-readiness.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/combo-validation.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "recoger en x. pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/combo-validation.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/deploy/combo-validation.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x. pizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/deploy/combo-validation.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 7
+  },
+  {
+   "file": "xpizza-functions/deploy/emu-seed.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emu-seed.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x. pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emu-seed.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "emu-seed: x_pizza identity (active:false)",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emu-seed.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "emu-seed: x_pizza identity invalid (hub_lat string)",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emu-seed.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "emu-seed: x_pizza identity removed",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emu-seed.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "emu-seed: x_pizza identity valid + active",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emu-seed.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "restaurants/x_pizza/identity",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "✓ la_musa pending (helper-level): pending_payment, restaurant_id=la_musa, tax_cents=0, no tasks/tracking",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "drivelamusa",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 7
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa pending: created a delivery task",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa pending: created a pickup task",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa pending: must not have a tracking_token",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa pending: not pending_payment",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa pending: restaurant_id not la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa pending: tax_cents must be 0",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa_cash_delivery",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa_cash_pickup",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa_hub",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa_valid",
+   "count": 6
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "restaurants/la_musa/identity",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/deploy/emulator-e2e.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/factura/eligibility.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/firestore.rules",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/generate-form-bundle.mjs",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/generate-form-bundle.mjs",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "account creation is restricted to x pizza staff.",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "mailto:admin@xpizza.com",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_refund_retry",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 8
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "tracking_base_la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "ultramsg_instance_id_la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "ultramsg_token_la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 18
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/lib/emulator-endpoint.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "storage target refused: xpizza_emu_offset is not set — this run's storage port cannot be pinned",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/lib/emulator-endpoint.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_dead",
+   "count": 8
+  },
+  {
+   "file": "xpizza-functions/lib/emulator-endpoint.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_offset",
+   "count": 6
+  },
+  {
+   "file": "xpizza-functions/lib/emulator-endpoint.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_services",
+   "count": 8
+  },
+  {
+   "file": "xpizza-functions/lib/emulator-endpoint.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza.emu.nullguard",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/materialize-guard.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/materialize.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/menu-extract.mjs",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/menu-extract.mjs",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/menu-pricing.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza.d4.pricingkeystamp",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/menu-pricing.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 6
+  },
+  {
+   "file": "xpizza-functions/menu-pricing.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa_extras",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/menu-pricing.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa_menu",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/menu-pricing.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 5
+  },
+  {
+   "file": "xpizza-functions/menu-pricing.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza_menu",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/menu-pricing.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza_weekend_only",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/menu-pricing.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/menu-pricing.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/merchant/merchant-scope.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "unknown",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/order-lifecycle.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/package.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza delivery cloud functions — make.com → firebase + web push + kds sync + auto-assign + acceptance timeout + stacking + whatsapp inbound/outbound",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/parity-carts.fixture.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/parity-carts.fixture.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/pixelpay-cancel.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_cancel",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/pixelpay-client.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "_xpizza_void",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/pixelpay-client.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_auto_void",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/pixelpay-confirm.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_inactive_void",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/pixelpay-confirm.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_mismatch_void",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/pixelpay-confirm.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "host",
+   "brand": "la_musa",
+   "snippet": "https://orders.lamusa.hn",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "host",
+   "brand": "x_pizza",
+   "snippet": "https://orders.xpizza.hn",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "host",
+   "brand": "x_pizza",
+   "snippet": "https://xpizzaorders.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "https://orders.lamusa.hn",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "kitchen-lamusa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "lamusakitchendisplay",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "lamusaorders",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "lamusatrack",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "orders-lamusa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "track-lamusa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "catering-xpizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "https://orders.xpizza.hn",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "https://xpizzaorders.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "kitchen-xpizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "orders-xpizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "track-xpizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzacatering",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzadashboard",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzadispatch",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzadispatchlite",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzakitchendisplay",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzaorders",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzatrack",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "pixelpay_return_url_la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/platform/sites.json",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/ready-time-eligibility.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ready-time-features.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ready-time-features.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ready-time-features.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ready-time-predict-core.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/ready-time-predict-core.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ready-time-predict.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ready-time-predict.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/ready-time-predict.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ready-time-quality.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/reorder-normalize.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/reorder-normalize.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/resolve-manual.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_manual_refund",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/resolve-manual.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/restaurant-id.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/rewards-core.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/rewards-core.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/rewards-earn.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-config.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "islamusaeligible",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-config.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "isxpizzaeligible",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-config.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "islamusaeligible",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-config.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 7
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-config.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa_acomp",
+   "count": 5
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-config.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "isxpizzaeligible",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-config.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 5
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-config.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza_redeem_eligible",
+   "count": 5
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-config.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-config.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-pricing.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "applylamusa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-pricing.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-pricing.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "applyxpizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-pricing.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 5
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-pricing.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem-pricing.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "islamusaeligible",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "lamusapricecents",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "isxpizzaeligible",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "computelamusa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "islamusaeligible",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "lamusapricecents",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "computexpizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "isxpizzaeligible",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/rewards-redeem.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/rewards-reserve.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/scheduled-release-core.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/seed_identity.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/seed_identity.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/seed_identity.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/seed_identity.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "ultramsg_instance_id not set — required for x_pizza whatsapp_instance",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/seed_identity.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/seed_identity.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "xpizza_instance",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/staff-push.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/staff-push.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x. pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/staff-push.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/staff-push.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/staff-push.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/storage.rules",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/avail-identity-inverse.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "const availidentityfield = (rid) => (rid === 'la_musa' ? 'id' : 'name'); function itempricingkey(item, restaurantid) { // plan-avail-identity r1: the one availa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/avail-identity-inverse.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "const raw = restaurantid === 'la_musa' ? (item && item.id) : (item && item.name);",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/backfill-identities.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "usage: node tools/backfill-identities.js --rid=<x_pizza|la_musa> --project <id> [--apply] omit --apply for a dry run (reads only) one brand per run, deliberatel",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/backfill-identities.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/backfill-identities.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "usage: node tools/backfill-identities.js --rid=<x_pizza|la_musa> --project <id> [--apply] omit --apply for a dry run (reads only) one brand per run, deliberatel",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/backfill-identities.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/backfill-snapshot.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/backfill-snapshot.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/bootstrap-identity.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "usage: node tools/bootstrap-identity.js --rid=<x_pizza|la_musa> --project <id> [--apply] omit --apply for a dry run — the default, because this pass has no undo",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/bootstrap-identity.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/bootstrap-identity.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "usage: node tools/bootstrap-identity.js --rid=<x_pizza|la_musa> --project <id> [--apply] omit --apply for a dry run — the default, because this pass has no undo",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/bootstrap-identity.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/brand-census.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "brand-lamusa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/brand-census.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/brand-census.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "lamusa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/brand-census.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "owner standing rule: only x. pizza issues facturas through the platform",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/brand-census.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/brand-census.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x. pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/brand-census.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/brand-census.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza-d4c-grill",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/brand-census.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/tools/brand-census.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/tools/brand-server-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "* restaurant, // x_pizza hub fallback for buildmaterializeupdates",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/brand-server-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "// brand-agnostic server (plan-brand-agnostic-server r3 §e) — the `restaurant` a materialize caller passes in. a stamped order // (charge-time hub snapshot) get",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/brand-server-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "async function pickeligibledriver(db, excludedriverids, hublat, hublng) { // brand-agnostic x1: the hub is required (no x_pizza default) — a caller without one ",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/brand-server-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "const { resolveassignhub, x_pizza_hub } = require('./assign-hub');",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/brand-server-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "const stale_ping_ms = 90 * 1000; const restaurant_lat = x_pizza_hub.lat; // x_pizza hub (single source: assign-hub.js) — geofence + auto-assign fallback const r",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/d12-inverse.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "? fields.address_detected.split(',')[0].trim() : 'recoger en x. pizza'; updates[`order_tracking/${trackingtoken}`] = {",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/d12-inverse.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "? string(order.address_detected || '').split(',')[0].trim() : 'recoger en x. pizza'; updates[`order_tracking/${trackingtoken}`] = {",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/d12-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "} // r3-fix d12: an order without a display-name snapshot (created before it existed) names its brand from the live identity const liveidentity = order.order_ty",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/d12-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "// public tracking record (safe-to-expose subset only). // r3-fix d12: the pickup line names this restaurant — the order's own config snapshot first, then the c",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/d12b-inverse.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "const brand = restaurantid === 'la_musa' ? 'la musa' : 'x. pizza'; await whatsapp.sendmessage(phone, `tu codigo de ${brand} es ${code}. vence en 5 minutos. no l",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/d12b-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "restaurant_id: order.restaurant_id || 'x_pizza', // d2: per-restaurant tracker branding (legacy-normalized) ...(trackbrand ? { restaurant_display_name: trackbra",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/d12b-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "restaurant_id: order.restaurant_id || 'x_pizza', // d2: per-restaurant tracker branding (legacy-normalized) customer_name: order.customer_name,",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/d4c4-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "if (order.status !== 'scheduled') return res.status(409).json({ error: 'not_releasable', detail: `order is ${order.status}, not scheduled` }); // d4-c4 §3a: the",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/deploy-env-guard.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_dead",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/deploy-env-guard.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_fs_rules",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/deploy-env-guard.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_offset",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/deploy-env-guard.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_run",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/deploy-env-guard.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_services",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/deploy-env-guard.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_started_file",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/drvc-inverse.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "const tplotp = (args) => defer('otp', args); const tplarrived = (args) => defer('arrived', args); // driver c // driver c (codex r1 p2-8) — which ultramsg insta",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/emu-alloc.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "(?:^| )xpizza_emu_run=",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/emu-alloc.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "(?:^| )xpizza_emu_run=(\\s+)",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/emu-alloc.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_offset",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/emu-alloc.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_run",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/emu-cmd-wrapper.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_fs_rules",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/emu-cmd-wrapper.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_started_file",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/emu-mixed-guard.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza.emu.clientrecheck",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/emulator-run.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "emulator-run: 🔴 emulator refused to start — the pinned slot is unavailable (xpizza_emu_port_offset).",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/emulator-run.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "emulator-run: or drop the pin: without xpizza_emu_port_offset the runner picks a free slot itself.",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/emulator-run.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_fs_rules",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/emulator-run.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_port_offset",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/emulator-run.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_queue_deadline_s",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/emulator-run.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_emu_started_file",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/emulator-run.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza-emu-discovery.",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/tools/emulator-run.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza-emu-tmp.",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/tools/extras-module-inverse.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "if (byid) { // la_musa — id-keyed, qty-aware, standalone (independent of dish qty) const eid = ex && ex.id; if (!eid || !object.prototype.hasownproperty.call(ex",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/extras-module-inverse.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "if (byid) { // la_musa — id-keyed, qty-aware, standalone (independent of dish qty) const eid = extrapricingkey(ex, restaurantid); if (!eid || !object.prototype.",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/extras-module-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "} else { // x_pizza — original name-keyed / count-once logic, verbatim const ename = ex && ex.name; if (!ename || !object.prototype.hasownproperty.call(extrapri",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/extras-module-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "} else { // x_pizza — original name-keyed / count-once logic, verbatim const ename = extrapricingkey(ex, restaurantid); if (!ename || !object.prototype.hasownpr",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/extras-module-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "// the extra-side twin of itempricingkey — the single source of truth for which key an order line's extra is priced by // (x_pizza → extra.name, la_musa → extra",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/generate-renderer-contract.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/generate-renderer-contract.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/identity-boundary-records/2026-10-09.json",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/identity-boundary-records/2026-10-09.json",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/migrate-catalog-display.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/migrate-catalog-display.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/migrations/2026-10-26-menu-structure.json",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/migrations/2026-10-26-menu-structure.json",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/migrations/gen-menu-structure-2026-10-26.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "gen_acompanamientos_shape_moved: la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/migrations/gen-menu-structure-2026-10-26.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/migrations/gen-menu-structure-2026-10-26.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "gen_no_nutella: x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/migrations/gen-menu-structure-2026-10-26.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/migrations/gen-menu-structure-2026-10-26.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/publish-version.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/publish-version.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/rollback-version.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/rollback-version.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/s2tip-inverse.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "const fallbackemail = process.env.pixelpay_merchant_email || 'pedidos@lamusa.hn'; // both deliverable (mx-valid)",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/s3a-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "...(effbreakdown.desc_rebaja_cents ? { desc_rebaja_cents: effbreakdown.desc_rebaja_cents } : {}), ...dw.orderfields(effbreakdown), // a-f: factura comp rebaja (",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/s3a-inverse.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "...(effbreakdown.desc_rebaja_cents ? { desc_rebaja_cents: effbreakdown.desc_rebaja_cents } : {}), // a-f: factura comp rebaja (x_pizza only)",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/secret-env.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "pixelpay_return_url_la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/secret-env.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "tracking_base_la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/secret-env.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "ultramsg_instance_id_la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/secret-env.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "ultramsg_token_la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/seed-catalog.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/seed-catalog.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x. pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/seed-catalog.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/tools/seed-catalog.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/tools/seed-source-store.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/tools/seed-source-store.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/seed-source-store.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/splice-form-bundle.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/splice-form-bundle.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/verify-catalog.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/verify-catalog.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/whatsapp_inbound.js",
+   "kind": "host",
+   "brand": "la_musa",
+   "snippet": "https://orders.lamusa.hn",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/whatsapp_inbound.js",
+   "kind": "host",
+   "brand": "x_pizza",
+   "snippet": "https://orders.xpizza.hn",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/whatsapp_inbound.js",
+   "kind": "host",
+   "brand": "x_pizza",
+   "snippet": "https://xpizzatrack.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/whatsapp_inbound.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "https://orders.lamusa.hn",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/whatsapp_inbound.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "https://track.lamusa.hn",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/whatsapp_inbound.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "https://orders.xpizza.hn",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/whatsapp_inbound.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "https://xpizzatrack.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/whatsapp_inbound.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/whatsapp_inbound.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/whatsapp_inbound.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/whatsapp.js",
+   "kind": "host",
+   "brand": "x_pizza",
+   "snippet": "https://xpizzatrack.netlify.app",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/whatsapp.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "https://xpizzatrack.netlify.app",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/whatsapp.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 5
+  },
+  {
+   "file": "xpizza-functions/whatsapp.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "tracking_base_la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/whatsapp.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "ultramsg_instance_id_la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/whatsapp.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "ultramsg_token_la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/whatsapp.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 8
+  },
+  {
+   "file": "xpizza-functions/whatsapp.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/whatsapp.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-handheld/fonts/SHA256SUMS",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-handheld/vendor/SHA256SUMS",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-kitchen/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa — cocina",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza — cocina",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_kds_cols",
+   "count": 2
+  },
+  {
+   "file": "xpizza-kitchen/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_kds_completed",
+   "count": 2
+  },
+  {
+   "file": "xpizza-kitchen/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_kds_completed_at",
+   "count": 2
+  },
+  {
+   "file": "xpizza-kitchen/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_kds_layout",
+   "count": 2
+  },
+  {
+   "file": "xpizza-kitchen/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_log",
+   "count": 2
+  },
+  {
+   "file": "xpizza-kitchen/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_orders",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/index.html",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-kitchen/order-filter.js",
+   "kind": "host",
+   "brand": "la_musa",
+   "snippet": "--lamusakitchendisplay.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/order-filter.js",
+   "kind": "host",
+   "brand": "la_musa",
+   "snippet": "lamusakitchendisplay.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/order-filter.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "--lamusakitchendisplay.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/order-filter.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "lamusakitchendisplay.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/order-filter.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 5
+  },
+  {
+   "file": "xpizza-kitchen/order-filter.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 5
+  },
+  {
+   "file": "xpizza-kitchen/order-filter.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-kitchen/ready-nudge.js",
+   "kind": "host",
+   "brand": "la_musa",
+   "snippet": "lamusakitchendisplay.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/ready-nudge.js",
+   "kind": "host",
+   "brand": "x_pizza",
+   "snippet": "xpizzakitchendisplay.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/ready-nudge.js",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "lamusakitchendisplay.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/ready-nudge.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizzakitchendisplay.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/ready-nudge.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/ready-nudge.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/xpizza-delivery.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/xpizza-delivery.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 4
+  },
+  {
+   "file": "xpizza-kitchen/xpizza-delivery.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 8
+  },
+  {
+   "file": "xpizza-kitchen/xpizza-delivery.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-kitchen/xpizza-delivery.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-orders/.gitignore",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-orders/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-orders/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza — pedido en linea",
+   "count": 1
+  },
+  {
+   "file": "xpizza-orders/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza logo",
+   "count": 1
+  },
+  {
+   "file": "xpizza-orders/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x. pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-orders/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_acct",
+   "count": 1
+  },
+  {
+   "file": "xpizza-orders/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_acct_intent",
+   "count": 1
+  },
+  {
+   "file": "xpizza-orders/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "xpizza_pending_pay",
+   "count": 1
+  },
+  {
+   "file": "xpizza-orders/index.html",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-reference/test-harness.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza delivery — test harness",
+   "count": 2
+  },
+  {
+   "file": "xpizza-reference/xpizza-delivery.js",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-reference/xpizza-delivery.js",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-reference/xpizza-delivery.js",
+   "kind": "rid",
+   "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 8
+  },
+  {
+   "file": "xpizza-reference/xpizza-delivery.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-track/.gitignore",
+   "kind": "unscanned",
+   "brand": "-",
+   "snippet": "unsupported",
+   "count": 1
+  },
+  {
+   "file": "xpizza-track/index.html",
+   "kind": "host",
+   "brand": "la_musa",
+   "snippet": "--lamusatrack.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-track/index.html",
+   "kind": "host",
+   "brand": "la_musa",
+   "snippet": "https://orders.lamusa.hn",
+   "count": 1
+  },
+  {
+   "file": "xpizza-track/index.html",
+   "kind": "host",
+   "brand": "x_pizza",
+   "snippet": "https://orders.xpizza.hn",
+   "count": 1
+  },
+  {
+   "file": "xpizza-track/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "--lamusatrack.netlify.app",
+   "count": 1
+  },
+  {
+   "file": "xpizza-track/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "https://orders.lamusa.hn",
+   "count": 1
+  },
+  {
+   "file": "xpizza-track/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-track/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "la musa · sigue tu pedido",
+   "count": 1
+  },
+  {
+   "file": "xpizza-track/index.html",
+   "kind": "name",
+   "brand": "la_musa",
+   "snippet": "track.lamusa.hn",
+   "count": 1
+  },
+  {
+   "file": "xpizza-track/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "https://orders.xpizza.hn",
+   "count": 1
+  },
+  {
+   "file": "xpizza-track/index.html",
+   "kind": "name",
+   "brand": "x_pizza",
+   "snippet": "x. pizza · sigue tu pedido",
+   "count": 1
+  },
+  {
+   "file": "xpizza-track/index.html",
+   "kind": "rid",
+   "brand": "la_musa",
+   "snippet": "la_musa",
+   "count": 3
+  },
+  {
+   "file": "xpizza-track/index.html",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 1
+  }
+ ]
+}
