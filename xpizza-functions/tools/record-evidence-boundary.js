@@ -4,7 +4,11 @@
 // ruling N2, DECISIONS 2026-10-09 "c2b N2 BOUNDARY"). OWNER-RUN, DRY RUN unless --apply. WRITE-ONCE: an existing boundary is
 // never overwritten.
 //
-//   node tools/record-evidence-boundary.js --project xpizza-delivery --from-rollout-record tools/identity-boundary-records/2026-10-09.json [--rid <rid>] [--apply]
+//   node tools/record-evidence-boundary.js --project xpizza-delivery --from-rollout-record tools/identity-boundary-records/2026-10-09.json --rid <rid> [--apply]
+//
+// ONE restaurant per run: --rid <rid> (space-separated) is REQUIRED. An absent, empty, flag-like or repeated rid, the `--rid=` /
+// `--from-rollout-record=` forms and any unrecognised argument are REFUSED (exit 2) before any client exists — a null rid would
+// otherwise make the run cover every restaurant in the record.
 //
 // G0 is NEVER derived from today's pointer. The input is the RECORDED read-only observation (version + full-precision updateTime
 // per restaurant, read after c2a went ready); tools/identity-boundary-core.js decides: unchanged pointer, or every generation since
@@ -70,21 +74,46 @@ async function run({ db, rtdb, record, rid = null, apply = false, log = console.
   return { ok: out.every((x) => x.ok), results: out };
 }
 
-module.exports = { run, observe, MAX_SPAN };
+const RECORD_REQUIRED = '--from-rollout-record <file> is required (G0 is never derived from today\'s pointer)';
+
+// The CLI's arguments, strictly: { file, rid, apply } or { refused }. --project is validated by requireProject before this runs.
+function parseCliArgs(argv) {
+  let file = null; let rid = null; let apply = false; let rids = 0; let files = 0;
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (a === '--apply') { apply = true; continue; }
+    if (a === '--project') { i += 1; continue; }
+    if (a.startsWith('--project=')) continue;
+    if (a === '--rid' || a === '--from-rollout-record') {
+      const v = argv[i + 1]; i += 1;
+      if (typeof v !== 'string' || v === '' || v.startsWith('-')) return { refused: `${a} needs a value (write "${a} <value>")` };
+      if (a === '--rid') { rids += 1; rid = v; } else { files += 1; file = v; }
+      continue;
+    }
+    if (a.startsWith('--rid=') || a.startsWith('--from-rollout-record=')) return { refused: `${a.split('=')[0]}= is not accepted — write "${a.split('=')[0]} <value>" (space-separated)` };
+    return { refused: `unrecognised argument "${a}"` };
+  }
+  if (!file) return { refused: RECORD_REQUIRED };
+  if (files > 1) return { refused: '--from-rollout-record was given more than once' };
+  if (rids > 1) return { refused: '--rid was given more than once — name ONE restaurant per run' };
+  if (!rid) return { refused: '--rid <rid> is required — name ONE restaurant; the tool never defaults to every restaurant in the record' };
+  return { file, rid, apply };
+}
+
+module.exports = { run, observe, parseCliArgs, MAX_SPAN };
 
 if (require.main === module) {
   const argv = process.argv.slice(2);
-  const val = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : null; };
   const { requireProject } = require('./require-project');
   const PROJECT_ID = requireProject({ requireFlag: true });   // FIRST: before any client is constructed
-  const file = val('--from-rollout-record');
-  if (!file) { console.error('record-evidence-boundary: REFUSED — --from-rollout-record <file> is required (G0 is never derived from today\'s pointer)'); process.exit(2); }
+  const args = parseCliArgs(argv);
+  if (args.refused) { console.error(`record-evidence-boundary: REFUSED — ${args.refused}`); process.exit(2); }
+  const { file, rid, apply } = args;
   const admin = require('firebase-admin');
   const { RTDB_URL } = require('../catalog/mirror-rtdb');
   admin.initializeApp({ projectId: PROJECT_ID, databaseURL: RTDB_URL });
-  const apply = argv.includes('--apply');
   console.log(`record-evidence-boundary ${apply ? 'APPLY' : 'DRY RUN'} — project ${PROJECT_ID}, record ${file}`);
-  run({ db: admin.firestore(), rtdb: admin.database(), record: JSON.parse(fs.readFileSync(file, 'utf8')), rid: val('--rid'), apply })
+  run({ db: admin.firestore(), rtdb: admin.database(), record: JSON.parse(fs.readFileSync(file, 'utf8')), rid, apply })
     .then((r) => {
       if (r.refused) { console.error(`record-evidence-boundary: REFUSED — ${r.refused}`); process.exit(1); }
       if (!apply) console.log('(dry run — nothing written; add --apply)');

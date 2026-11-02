@@ -113,7 +113,10 @@ const D = {
     'platform-legal',
     // security backlog r2 — the one-time owner migration (revived accounts' stale tombstones; DRY RUN unless --apply):
     // requireProject({ requireFlag: true }) before any client
-    'repair-revived-tombstones'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
+    'repair-revived-tombstones',
+    // P5a follow-up — the READ-ONLY identity-usable check (booleans/counts per restaurant; Firestore writes patched to throw):
+    // requireProject({ requireFlag: true }) before any client
+    'identity-usable-check'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
   [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/set-driver-enforcement-mode.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
@@ -153,6 +156,11 @@ const D = {
   [F('tools/identity-factura-flag.test.js')]: 'unit: drives the factura-flag CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/identity-display-name.test.js')]: 'unit: drives the CLI\'s require-project refusals (no data I/O); its spawned CLI is pointed at a dead loopback RTDB port with void credentials',
   [F('catalog/identity-integrity-guards.test.js')]: 'unit: drives the two c2b prod CLIs into require-project refusals — dead-port hosts, no credential (no data I/O)',
+  [F('tools/cert-rid-form.test.js')]: 'unit: spawns the three --rid= cert/recovery CLIs into their wrong-form refusal before any client, and the right form into the nonexistent-credential stop — dead-port hosts, never --apply (no data I/O)',
+  [F('tools/registered-roster.test.js')]: 'unit: the roster over a fake registry; spawns the three cert/recovery CLIs with a locally generated never-registered key and BOTH data hosts on the dead loopback 127.0.0.1:1, never --apply — they refuse on the unreadable registry before any catalog read (no data I/O)',
+  [F('tools/record-evidence-boundary-args.test.js')]: 'unit: drives the boundary CLI into its argument refusals before any client, and one accepted run into the void-credential refusal — dead-port hosts, no credential, never --apply (no data I/O)',
+  [F('test/identity-coverage.test.js')]: 'unit: the coverage core over an injected builder and the real builder on the in-memory Firestore fake; spawns the usable-check CLI only into its pre-client argument/file refusals with a nonexistent credential and no emulator hosts (no data I/O)',
+  [F('test/identity-usable-check.test.js')]: 'unit: a NAMED never-connected Admin app whose writes are refused synchronously by the class guards (no op reaches the network), the real manifest builder over catalog/firestore-fake, and CLI refusals before any client (no data I/O)',
   [F('tools/verify-first-group.test.js')]: 'unit: drives the CLI\'s require-project + argument refusals before any client (no data I/O); its spawned CLI points at a dead loopback RTDB port with void credentials',
   [F('test/kds-writer-capture.mjs')]: 'unit: a STUB initializeApp (returns {})', [F('portal/portal-split.test.js')]: 'unit: fold-guard text',
   [F('portal/ops-split.test.js')]: 'unit: static require closure + module-load checks only — no handler is invoked; its emulator hosts are DELETED or set to the dead loopback 127.0.0.1:1 (no data I/O)',

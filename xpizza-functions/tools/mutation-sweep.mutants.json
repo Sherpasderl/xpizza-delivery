@@ -9755,8 +9755,8 @@
   "id": "e15-01",
   "slice": "e15",
   "file": "tools/bootstrap-identity.js",
-  "from": "const APPLY = process.argv.includes('--apply');",
-  "to": "const APPLY = !process.argv.includes('--dry-run');",
+  "from": "const APPLY = ARGS.apply === true;",
+  "to": "const APPLY = ARGS.apply !== false;",
   "label": "🔴 --apply BECOMES THE DEFAULT AND --dry-run THE OPT-IN — a one-way door against a live menu opens for anyone who runs the tool without reading its flags",
   "kills_with": [
    "does not announce itself as a rehearsal",
