@@ -10,7 +10,7 @@ const { BASE, HUNKS, FILES, unapplyAlertSanModule } = require('./tools/alertsan-
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['pixelpay-cancel.js', 'pixelpay-confirm.js'], 'the slice owns exactly these files');
 for (const f of FILES) {
-  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+  const src = require('./tools/p5a-inverse').unapplyP5aModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));   // asm2 (5f): P5a (newer: pixelpay-confirm.js) stripped first, INNERMOST
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyAlertSanModule(f, src), b, `🔴 ${f} minus the alert-sanitize hunks is not ${BASE}:${f}`);

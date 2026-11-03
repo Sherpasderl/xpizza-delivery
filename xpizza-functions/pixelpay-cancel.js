@@ -26,8 +26,14 @@ const VOID_MESSAGES = Object.freeze({
   provider_declined: 'void declined by the provider',
   provider_http_error: 'void request failed at the provider',
   provider_unreachable: 'void request did not complete',
+  // our client's own PIXELPAY_OUTCOME_UNKNOWN reasons (not provider text): the same outcome, its diagnostic kept as the code
+  envelope_incomplete: 'void request did not complete',
+  body_empty: 'void request did not complete',
+  body_unparseable: 'void request did not complete',
+  body_read_failed: 'void request did not complete',
   no_payment_to_void: 'no payment to void',
 });
+const OUTCOME_UNKNOWN_REASONS = new Set(['envelope_incomplete', 'body_empty', 'body_unparseable', 'body_read_failed']);
 function providerCode(raw) {
   if (raw === undefined || raw === null || raw === '') return 'none';
   const k = String(raw);
@@ -111,8 +117,8 @@ async function voidOrRefund(deps, { orderId, attemptId, pixelpayOrderId, payment
       const vd = await client.voidTransaction({ payment_uuid: paymentUuid, pixelpayOrderId, voidReason: reason || 'xpizza_cancel' });
       voided = !!vd.ok;
       ({ code, provider_code: pcode } = classifyVoid(vd));
-    } catch (_) {
-      code = 'provider_unreachable';
+    } catch (e) {
+      code = e && e.code === 'PIXELPAY_OUTCOME_UNKNOWN' && OUTCOME_UNKNOWN_REASONS.has(e.reason) ? e.reason : 'provider_unreachable';
     }
   } else {
     // No payment to reverse (auth never captured / nothing charged) → nothing owed.
