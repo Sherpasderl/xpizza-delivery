@@ -3501,6 +3501,16 @@
      ]
     },
     {
+     "file": "xpizza-functions/hostedrace-wiring.guard.test.js",
+     "inverses": [
+      "tools/checkout-inverse.js",
+      "tools/hostedrace-module-inverse.js",
+      "tools/p5a-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/intl-wiring.guard.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
@@ -3672,7 +3682,10 @@
     {
      "file": "xpizza-functions/p5a-wiring.guard.test.js",
      "inverses": [
-      "tools/p5a-inverse.js"
+      "tools/checkout-inverse.js",
+      "tools/p5a-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js"
      ]
     },
     {
@@ -4933,9 +4946,15 @@
    "lifts": []
   },
   "pixelpay-cancel.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/alertsan-wiring.guard.test.js",
+     "inverses": [
+      "tools/alertsan-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": [
-    "xpizza-functions/alertsan-wiring.guard.test.js",
     "xpizza-functions/order-control-wiring.guard.test.js"
    ]
   },
@@ -4952,6 +4971,13 @@
   "pixelpay-confirm.js": {
    "pins": [
     {
+     "file": "xpizza-functions/alertsan-wiring.guard.test.js",
+     "inverses": [
+      "tools/alertsan-module-inverse.js",
+      "tools/p5a-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/brand-server-wiring.guard.test.js",
      "inverses": [
       "tools/alertsan-module-inverse.js",
@@ -4967,17 +4993,10 @@
       "tools/d12-inverse.js",
       "tools/p5a-inverse.js"
      ]
-    },
-    {
-     "file": "xpizza-functions/p5a-wiring.guard.test.js",
-     "inverses": [
-      "tools/p5a-inverse.js"
-     ]
     }
    ],
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js",
-    "xpizza-functions/alertsan-wiring.guard.test.js",
     "xpizza-functions/materialize-hub.test.js"
    ]
   },
@@ -4996,12 +5015,6 @@
      "inverses": [
       "tools/h0-inverse.js",
       "tools/hostedrace-module-inverse.js",
-      "tools/p5a-inverse.js"
-     ]
-    },
-    {
-     "file": "xpizza-functions/p5a-wiring.guard.test.js",
-     "inverses": [
       "tools/p5a-inverse.js"
      ]
     }
@@ -5210,12 +5223,6 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/h0-inverse.js",
-      "tools/p5a-inverse.js"
-     ]
-    },
-    {
-     "file": "xpizza-functions/p5a-wiring.guard.test.js",
-     "inverses": [
       "tools/p5a-inverse.js"
      ]
     }
