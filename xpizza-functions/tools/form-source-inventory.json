@@ -3503,7 +3503,6 @@
     {
      "file": "xpizza-functions/hostedrace-wiring.guard.test.js",
      "inverses": [
-      "tools/checkout-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sb-inverse.js",
@@ -3682,7 +3681,6 @@
     {
      "file": "xpizza-functions/p5a-wiring.guard.test.js",
      "inverses": [
-      "tools/checkout-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js"
@@ -4189,7 +4187,8 @@
      "file": "xpizza-functions/sb-wiring.guard.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
-      "tools/sb-inverse.js"
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js"
      ]
     },
     {
@@ -4374,6 +4373,15 @@
      "file": "xpizza-functions/test/s4-schedule-only.emulator.test.js",
      "inverses": [
       "tools/s4hours-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/tools/_asm-next2-layers.js",
+     "inverses": [
+      "tools/hostedrace-module-inverse.js",
+      "tools/p5a-inverse.js",
+      "tools/sb-inverse.js",
+      "tools/sd-inverse.js"
      ]
     },
     {
