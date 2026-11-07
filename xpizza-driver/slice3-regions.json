@@ -1,0 +1,690 @@
+{
+ "regions": [
+  {
+   "name": "PRESENTATION-3",
+   "kind": "insert"
+  },
+  {
+   "name": "IMPORT-3",
+   "kind": "insert"
+  },
+  {
+   "name": "LOGIC-3",
+   "kind": "insert"
+  },
+  {
+   "name": "IDLE-3",
+   "kind": "insert"
+  },
+  {
+   "name": "OFFLINE-INIT-3",
+   "kind": "insert"
+  },
+  {
+   "name": "OFFLINE-TEARDOWN-3",
+   "kind": "insert"
+  },
+  {
+   "name": "GPSOFF-RESUME-3",
+   "kind": "insert"
+  },
+  {
+   "name": "GPSOFF-DENIED-3",
+   "kind": "insert"
+  },
+  {
+   "name": "OFFLINE-START-GEN-3",
+   "kind": "insert"
+  },
+  {
+   "name": "RENDER-OFFLINE-3",
+   "kind": "insert"
+  },
+  {
+   "name": "RENDER-BOARD-3",
+   "kind": "insert"
+  },
+  {
+   "name": "HELP-HANDLER",
+   "kind": "replace",
+   "restore": [
+    "$('idle-help-link').addEventListener('click', () => {",
+    "  alert(",
+    "    'Posibles razones:\\n\\n' +",
+    "    '• Aún no se ha asignado un pedido a ti\\n' +",
+    "    '• Tu GPS está inactivo (revisa el indicador arriba)\\n' +",
+    "    '• Las notificaciones están desactivadas\\n\\n' +",
+    "    'Si crees que algo está mal, contacta al despachador.'",
+    "  );",
+    "});"
+   ]
+  },
+  {
+   "name": "CUADRE-CSS",
+   "kind": "replace",
+   "restore": [
+    "  /* ==================== CLOCK-OUT CUADRE (P3) ==================== */",
+    "  #cuadre-screen{ position:fixed; inset:0; background:var(--canvas); z-index:250; display:none; flex-direction:column; justify-content:center; overflow-y:auto; padding:calc(28px + var(--safe-top)) 18px calc(20px + var(--safe-bottom)); }",
+    "  #cuadre-screen.open{ display:flex; }",
+    "  .receipt{ background:var(--surface); border-radius:18px; box-shadow:0 1px 2px rgba(20,30,50,.04),0 10px 26px rgba(20,30,50,.08); padding:20px 18px; border:1px solid rgba(20,30,50,.05); max-width:360px; width:100%; margin:auto; }",
+    "  .rc-title{ text-align:center; font-size:13px; letter-spacing:.16em; font-weight:800; color:var(--text); text-transform:uppercase; margin-bottom:3px; }",
+    "  .rc-date{ text-align:center; font-size:11.5px; color:var(--text-dim); margin-bottom:16px; }",
+    "  .dash{ border:none; border-top:1.5px dashed #DDE2E9; margin:14px 0; }",
+    "  .rc-row{ display:flex; align-items:center; justify-content:space-between; padding:6px 0; }",
+    "  .rc-row .l{ font-size:13px; color:var(--text-soft); font-weight:600; } .rc-row .v{ font-size:14px; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }",
+    "  .rc-row.rc-muted .l, .rc-row.rc-muted .v{ color:var(--text-dim); font-weight:600; }",
+    "  .rc-big{ background:var(--green-bg); border-radius:14px; padding:16px; text-align:center; margin:6px 0 4px; }",
+    "  .rc-big .l{ font-size:10.5px; letter-spacing:.12em; font-weight:800; color:var(--green); text-transform:uppercase; margin-bottom:5px; }",
+    "  .rc-big .v{ font-size:34px; font-weight:800; color:var(--green); letter-spacing:-.025em; font-variant-numeric:tabular-nums; } .rc-big .v span{ font-size:20px; }",
+    "  .rc-note{ text-align:center; font-size:12px; color:var(--text-dim); margin:13px 6px 0; line-height:1.4; }",
+    "  .rc-confirm{ width:100%; padding:15px; border-radius:15px; background:linear-gradient(180deg,#FB5616,#F23E00); color:#fff; font-weight:800; font-size:14.5px; border:none; font-family:inherit; box-shadow:0 6px 16px rgba(242,62,0,.32); margin-top:16px; cursor:pointer; }",
+    "  .rc-confirm:disabled{ opacity:.6; }",
+    "  .rc-back{ width:100%; padding:12px; background:none; border:none; color:var(--text-dim); font-weight:700; font-size:13px; font-family:inherit; margin-top:6px; cursor:pointer; }"
+   ]
+  },
+  {
+   "name": "CUADRE-DOM",
+   "kind": "replace",
+   "restore": [
+    "<div id=\"cuadre-screen\"><div class=\"receipt\" id=\"cuadre-receipt\"></div></div>"
+   ]
+  },
+  {
+   "name": "CUADRE-RENDER",
+   "kind": "replace",
+   "restore": [
+    "function showCuadre() {",
+    "  const screen = $('cuadre-screen');",
+    "  const now = new Date();",
+    "  const dateStr = `Hoy · ${now.toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit' })}`;",
+    "  const ident = shiftIdentity();",
+    "",
+    "  // READINESS GATE (plan §5): never compute cash before the orders feed AND the cutover config have loaded,",
+    "  // and never without a valid shift identity. Show \"cargando…\" instead of a false L0; the subscriptions",
+    "  // re-call showCuadre as they arrive. A loaded-but-identity-less shift (legacy, pre-2.5.0) is a distinct,",
+    "  // explicit state — not cargando — because it will not resolve on its own.",
+    "  // §6/BC1: continuous readiness gate. Hold \"cargando\" while the feed is not ready (initial load OR a reconnect",
+    "  // re-sync) OR the cutover config has not loaded OR a pending-handoff order is awaiting its fresh history",
+    "  // reconcile — a just-delivered order mid-handoff must never let the cuadre undercount.",
+    "  if (!feedReady || !cutoverLoaded || !driverState || (driverFeed && driverFeed.hasPendingHandoff())) {",
+    "    screen._ident = null;",
+    "    $('cuadre-receipt').innerHTML = `",
+    "      <div class=\"rc-title\">Cierre de turno</div>",
+    "      <div class=\"rc-date\">${dateStr}</div>",
+    "      <hr class=\"dash\">",
+    "      <div class=\"rc-note\">Cargando el resumen del turno…</div>",
+    "      <button class=\"rc-back\" id=\"cuadre-back\">Volver</button>`;",
+    "    screen.classList.add('open');",
+    "    return;",
+    "  }",
+    "  if (!ident.valid) {",
+    "    // No valid shift identity (e.g. a shift active across the 2.5.0 upgrade with no current_shift_id). The core",
+    "    // cuadre needs a shift id to record under; the driver ends + restarts the shift so the next close records",
+    "    // correctly. (The emergency close for an unidentified shift is a separate future slice.)",
+    "    screen._ident = null;",
+    "    $('cuadre-receipt').innerHTML = `",
+    "      <div class=\"rc-title\">Cierre de turno</div>",
+    "      <div class=\"rc-date\">${dateStr}</div>",
+    "      <hr class=\"dash\">",
+    "      <div class=\"rc-note\">${BLOCKED_CLOSE_TEXT}</div>",
+    "      <button class=\"rc-back\" id=\"cuadre-back\">Volver</button>`;",
+    "    screen.classList.add('open');",
+    "    return;",
+    "  }",
+    "",
+    "  screen._ident = ident;",
+    "  renderCuadreReceipt({ uid: currentUser.uid, shiftId: ident.shiftId, start: ident.start });",
+    "  screen.classList.add('open');",
+    "}",
+    "",
+    "// THE single source for the receipt: compute the cash from the CURRENT settled orders, render it,",
+    "// and stash it on the screen as `_cash` + `_bound`. The confirm/escape actions submit screen._cash — so what is",
+    "// DISPLAYED is exactly what is SUBMITTED, every render. Returns the computed cash.",
+    "function renderCuadreReceipt(bound) {",
+    "  const screen = $('cuadre-screen');",
+    "  const cash = computeShiftCash(allOrders, bound.uid, bound.start, driverIdentityCutoverMs);",
+    "  screen._cash = cash;",
+    "  screen._bound = bound;",
+    "  const now = new Date();",
+    "  const dateStr = `Hoy · ${now.toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit' })}`;",
+    "  const provisionalNote = cash.provisional",
+    "    ? `<div class=\"rc-row rc-muted\"><span class=\"l\">Entregas por confirmar</span><span class=\"v\">${cash.legacy_provisional_count + cash.unresolved_count}</span></div>",
+    "       <div class=\"rc-note\">Algunas entregas aún no están confirmadas por el servidor; el cuadre se marcará como provisional.</div>`",
+    "    : '';",
+    "  $('cuadre-receipt').innerHTML = `",
+    "    <div class=\"rc-title\">Cierre de turno</div>",
+    "    <div class=\"rc-date\">${dateStr}</div>",
+    "    <hr class=\"dash\">",
+    "    <div class=\"rc-row\"><span class=\"l\">Entregas</span><span class=\"v\">${cash.deliveries}</span></div>",
+    "    <div class=\"rc-row\"><span class=\"l\">Total cobrado</span><span class=\"v\">L ${cash.totalCollected.toLocaleString('es-HN')}</span></div>",
+    "    ${cash.paidOnlineTotal > 0 ? `<div class=\"rc-row rc-muted\"><span class=\"l\">Pagado en línea</span><span class=\"v\">L ${cash.paidOnlineTotal.toLocaleString('es-HN')}</span></div>` : ''}",
+    "    <div class=\"rc-row\"><span class=\"l\">Pedidos en efectivo</span><span class=\"v\">${cash.cashOrderCount}</span></div>",
+    "    ${provisionalNote}",
+    "    <hr class=\"dash\">",
+    "    <div class=\"rc-big\"><div class=\"l\">Efectivo a entregar</div><div class=\"v\"><span>L</span> ${cash.cashOwed.toLocaleString('es-HN')}</div></div>",
+    "    <div class=\"rc-note\">Mostrá esta pantalla a quien recibe el efectivo.</div>",
+    "    <button class=\"rc-confirm\" id=\"cuadre-confirm\">Confirmar entrega de efectivo</button>",
+    "    <button class=\"rc-back\" id=\"cuadre-back\">Volver</button>`;",
+    "  return cash;",
+    "}"
+   ]
+  },
+  {
+   "name": "CUADRE-SUBMIT",
+   "kind": "replace",
+   "restore": [
+    "function reEnableConfirm() {",
+    "  const b = $('cuadre-confirm');",
+    "  if (b) { b.disabled = false; b.textContent = 'Confirmar entrega de efectivo'; }",
+    "}",
+    "",
+    "// Cuadre screen: Volver cancels, Confirmar records a SERVER-ACKED cuadre THEN ends the shift.",
+    "$('cuadre-screen').addEventListener('click', async (e) => {",
+    "  // Volver — and backing out supersedes any in-flight close so a late ack can't finalize a shift the driver",
+    "  // chose to stay on.",
+    "  if (e.target.id === 'cuadre-back') { closeGen++; closeInFlight = false; $('cuadre-screen').classList.remove('open'); return; }",
+    "  if (e.target.id !== 'cuadre-confirm') return;",
+    "  const btn = e.target;",
+    "  if (btn.disabled) return;",
+    "  btn.disabled = true;",
+    "",
+    "  // Re-validate identity now; bind the whole operation to it.",
+    "  const ident = shiftIdentity();",
+    "  const openedUnder = $('cuadre-screen')._ident;",
+    "  if (!ident.valid || !openedUnder || openedUnder.shiftId !== ident.shiftId) {",
+    "    toast('El turno cambió — volvé a abrir el cierre', 'error');",
+    "    $('cuadre-screen').classList.remove('open');",
+    "    return;",
+    "  }",
+    "  const bound = { uid: currentUser.uid, shiftId: ident.shiftId, start: ident.start };",
+    "  // A fresh generation supersedes any still-in-flight prior attempt immediately (exactly-once finalize).",
+    "  const myGen = ++closeGen;",
+    "  const isLatest = () => myGen === closeGen;",
+    "  closeInFlight = true;   // block surface refresh for the whole operation (incl. the settle wait below)",
+    "",
+    "  // P1-2: wait (bounded) for any in-flight completeTask writes to SETTLE before computing. A completion can",
+    "  // optimistically stamp an order locally then be REJECTED server-side (e.g. reassigned); its rejection rolls",
+    "  // back the optimistic order, so recomputing from allOrders only AFTER settlement can't bank rejected cash.",
+    "  if (pendingCompletions.size) {",
+    "    btn.textContent = 'Guardando…';",
+    "    const settled = await Promise.race([",
+    "      Promise.allSettled([...pendingCompletions]).then(() => true),",
+    "      new Promise((r) => setTimeout(() => r(false), COMPLETION_SETTLE_TIMEOUT_MS)),",
+    "    ]);",
+    "    if (!isLatest()) return;                                   // superseded by a newer confirm while waiting (it owns closeInFlight)",
+    "    if (!settled) { closeInFlight = false; toast(BLOCKED_CLOSE_TEXT, 'error'); refreshOpenCashSurfaces(); return; }   // P2-6 catch-up; retry stays available (confirm re-rendered)",
+    "  }",
+    "  // P1-3: the shift may have changed while we waited — re-validate before touching money.",
+    "  if (!identityMatches(bound)) { closeInFlight = false; toast('El turno cambió — volvé a abrir el cierre', 'error'); $('cuadre-screen').classList.remove('open'); return; }",
+    "",
+    "  // §6/BC1: re-check COMBINED feed readiness at confirm time. If the feed re-synced (a reconnect dropped it to",
+    "  // loading) or a just-delivered order is mid-handoff, the receipt could undercount — do NOT finalize; stay on",
+    "  // shift, re-render (→ \"cargando\"), and leave retry available.",
+    "  if (!feedReady || !driverState || (driverFeed && driverFeed.hasPendingHandoff())) {",
+    "    closeInFlight = false;",
+    "    toast('Un momento — actualizando el resumen del turno…', '');",
+    "    refreshOpenCashSurfaces();",
+    "    reEnableConfirm();",
+    "    return;",
+    "  }",
+    "",
+    "  // RECOMPUTE + REDISPLAY together from the now-settled orders (codex r3 E): renderCuadreReceipt rewrites the",
+    "  // receipt AND stashes screen._cash, and we submit that exact value — so what is DISPLAYED is what is SUBMITTED",
+    "  // (a completion rollback during the settle wait can't leave the shown amount ahead of the recorded one).",
+    "  const cash = renderCuadreReceipt(bound);",
+    "  const closeOpId = makeOpId();",
+    "  const btn2 = $('cuadre-confirm'); if (btn2) { btn2.disabled = true; btn2.textContent = 'Guardando…'; }   // re-render replaced the button",
+    "",
+    "  // ONE authoritative closing operation. Its outcome — whether it acks in-time or LATE (after the UI timeout)",
+    "  // — is handled exactly once, HERE, and only while this attempt is still the latest (not superseded by a",
+    "  // retry) AND the bound identity still holds. finalize runs under shiftBusy so the (briefly re-exposed)",
+    "  // start toggle can't interleave a clock-in mid-clock-out.",
+    "  const p = XPD.recordCuadre(bound.uid, bound.shiftId, { ...cash, close_op_id: closeOpId });",
+    "  p.then(async () => {",
+    "    if (!isLatest()) return;                                   // a newer attempt owns the close now",
+    "    closeInFlight = false;",
+    "    if (!identityMatches(bound)) { toast('El turno cambió — no se cerró el turno.', 'error'); reEnableConfirm(); return; }",
+    "    shiftBusy = true;",
+    "    try {",
+    "      $('cuadre-screen').classList.remove('open');",
+    "      optimisticShift = false; render();",
+    "      await finalizeEndShift();                 // ordinary clock-out via the existing endDriverShift callable",
+    "    } finally { shiftBusy = false; }",
+    "  }).catch((err) => {",
+    "    if (!isLatest()) return;",
+    "    closeInFlight = false;",
+    "    // Server REJECTED (permission/validation/other) — never clock out; the cuadre is the whole point. Stay on",
+    "    // shift and surface it (this also surfaces a LATE rejection after the timeout message); the driver retries.",
+    "    console.warn('recordCuadre rejected (staying on shift):', err);",
+    "    toast(BLOCKED_CLOSE_TEXT, 'error');        // retry stays available (button re-enabled below); dispatch is the exit",
+    "    refreshOpenCashSurfaces();                 // re-render from settled orders so a retry submits the current amount",
+    "    reEnableConfirm();",
+    "  });",
+    "",
+    "  // UI-only: if no ack within the window, tell the driver to retry. We do NOT finalize or discard the op here",
+    "  // — the observer above still owns its late outcome (unless a retry supersedes it).",
+    "  const raced = await Promise.race([p.then(() => 'acked', () => 'failed'), new Promise((r) => setTimeout(() => r('timeout'), CUADRE_ACK_TIMEOUT_MS))]);",
+    "  if (raced === 'timeout' && isLatest()) {",
+    "    toast(BLOCKED_CLOSE_TEXT, 'error');   // no ack yet; retry stays available, dispatch is the exit; a late ack of THIS op still finalizes via the observer",
+    "    reEnableConfirm();",
+    "  }",
+    "});"
+   ]
+  },
+  {
+   "name": "CHIME-FRESH",
+   "kind": "replace",
+   "restore": [
+    "function detectNewAssignments(tasks) {",
+    "  if (!currentUser) return;",
+    "  const newIds = new Set();",
+    "  for (const [id, t] of Object.entries(tasks || {})) {",
+    "    if (t.assigned_driver_id === currentUser.uid && t.type === 'pickup' && t.status === 'assigned') {",
+    "      newIds.add(id);",
+    "    }",
+    "  }",
+    "  // Find newly-added IDs since last poll",
+    "  const fresh = [...newIds].filter(id => !knownTaskIds.has(id));",
+    "  // Chime on any genuinely-new order AFTER the first snapshot. The old guard",
+    "  // (knownTaskIds.size > 0) silently skipped the FIRST order of a no-orders",
+    "  // shift; the initialAssignmentsLoaded flag fixes that while still not chiming",
+    "  // for orders already assigned when the app loads.",
+    "  if (fresh.length > 0 && initialAssignmentsLoaded) {",
+    "    if (soundOn) { const c = $('chime'); c.currentTime = 0; c.play().catch(() => {}); }",
+    "    toast('¡Nuevo pedido asignado!', 'success');",
+    "    try {",
+    "      if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);",
+    "    } catch {}",
+    "  }",
+    "  knownTaskIds = newIds;",
+    "  initialAssignmentsLoaded = true;",
+    "}"
+   ]
+  },
+  {
+   "name": "OFFER-TAKEOVER",
+   "kind": "replace",
+   "restore": [
+    "  attachActiveCardHandlers(active);",
+    "  pendingAccept.forEach(attachIncomingBannerHandlers);"
+   ]
+  },
+  {
+   "name": "PRESENTATION-INICIO",
+   "kind": "insert"
+  },
+  {
+   "name": "INICIO-LOGIN",
+   "kind": "replace",
+   "restore": [
+    "  <div class=\"brand-mark\"><img src=\"icon-transparent.svg\" alt=\"X Pizza\"></div>",
+    "  <div class=\"greeting\">DRIVER</div>",
+    "  <div class=\"greeting-sub\">Inicia sesión para empezar</div>",
+    "  <div class=\"signin-form\">",
+    "    <input type=\"email\" id=\"login-email\" placeholder=\"email\" autocomplete=\"email\" inputmode=\"email\">",
+    "    <input type=\"password\" id=\"login-password\" placeholder=\"contraseña\" autocomplete=\"current-password\">",
+    "  </div>"
+   ]
+  },
+  {
+   "name": "INICIO-ESPERANDO",
+   "kind": "replace",
+   "restore": [
+    "    $('screen-companion').innerHTML = companionShellHtml(`",
+    "      <div style=\"flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;text-align:center\">",
+    "        <div class=\"co-chip-wait\">Esperando aprobación</div>",
+    "        <div class=\"co-title\">Perfil enviado</div>",
+    "        <div class=\"co-sub\">Despacho revisa tu cuenta. Te avisamos cuando puedas entrar en turno.</div>",
+    "      </div>`,",
+    "      `<button class=\"big-btn\" id=\"co-refresh\" style=\"background:#fff;color:#15181E;border:1.5px solid #D7D3CB\">Actualizar</button>`);",
+    "    const r = $('co-refresh'); if (r) r.addEventListener('click', () => { if (companion) companion.refresh(); });"
+   ]
+  },
+  {
+   "name": "INICIO-CHECKLIST-FLAG",
+   "kind": "insert"
+  },
+  {
+   "name": "INICIO-POSTACT-ROUTE",
+   "kind": "replace",
+   "restore": [
+    "      if (r.action === 'activated') { companionShowActivatedTransient(); return; }"
+   ]
+  },
+  {
+   "name": "INICIO-PERFIL",
+   "kind": "replace",
+   "restore": [
+    "    const veh = d.vehicle || 'moto';",
+    "    el.innerHTML = companionShellHtml(`",
+    "      <div class=\"co-title\">Completá tu perfil</div>",
+    "      <div><div class=\"co-lbl\">Nombre</div><input class=\"co-field\" id=\"co-name\" value=\"${escapeHtml(d.name || '')}\" placeholder=\"Tu nombre\"></div>",
+    "      <div><div class=\"co-lbl\">Teléfono</div><input class=\"co-field\" id=\"co-phone\" value=\"${escapeHtml(d.phone || '')}\" placeholder=\"+504 ....\"></div>",
+    "      <div><div class=\"co-lbl\">Vehículo</div>",
+    "        <div class=\"co-seg\" id=\"co-veh\">",
+    "          <div data-v=\"moto\" class=\"${veh === 'moto' ? 'on' : ''}\">Moto</div>",
+    "          <div data-v=\"carro\" class=\"${veh === 'carro' ? 'on' : ''}\">Carro</div>",
+    "          <div data-v=\"bici\" class=\"${veh === 'bici' ? 'on' : ''}\">Bici</div>",
+    "        </div></div>",
+    "      <div><div class=\"co-lbl\">Placa</div><input class=\"co-field\" id=\"co-plate\" value=\"${escapeHtml(d.plate || '')}\" placeholder=\"ABC 1234\"></div>",
+    "      <div class=\"co-card\" style=\"display:flex;align-items:center;gap:11px\"><div style=\"font-weight:700;font-size:13px\">Foto del repartidor</div><div class=\"co-sub\" style=\"margin-left:auto\">Próximamente</div></div>",
+    "      <div style=\"flex:1\"></div>`,",
+    "      `<button class=\"big-btn primary\" id=\"co-save\">Guardar perfil</button>`);",
+    "    let vehicle = veh;",
+    "    // P2-12: stage every edit to the draft LIVE (on input / vehicle tap) so a routine driver/task/order render",
+    "    // that rebuilds this form restores the in-progress values instead of wiping typed input.",
+    "    const stageField = (id, key) => { const x = $(id); if (x) x.addEventListener('input', () => companionWriteDraft({ [key]: x.value })); };",
+    "    stageField('co-name', 'name'); stageField('co-phone', 'phone'); stageField('co-plate', 'plate');",
+    "    el.querySelectorAll('#co-veh div').forEach(x => x.addEventListener('click', () => {",
+    "      vehicle = x.getAttribute('data-v');",
+    "      el.querySelectorAll('#co-veh div').forEach(y => y.classList.toggle('on', y === x));",
+    "      companionWriteDraft({ vehicle });",
+    "    }));",
+    "    $('co-save').addEventListener('click', () => {",
+    "      companionWriteDraft({ name: $('co-name').value.trim(), phone: $('co-phone').value.trim(), vehicle, plate: $('co-plate').value.trim() });",
+    "      companionStep = 'checklist';",
+    "      companionRenderOnboarding();",
+    "    });"
+   ]
+  },
+  {
+   "name": "INICIO-CHECKLIST",
+   "kind": "replace",
+   "restore": [
+    "    const ck = (on) => on ? 'on' : '';",
+    "    el.innerHTML = companionShellHtml(`",
+    "      <div class=\"co-title\">Listo para repartir</div>",
+    "      <div class=\"co-sub\">Terminá estos pasos para pedir tu aprobación.</div>",
+    "      <div class=\"co-card co-ck\"><span class=\"co-box on\">✓</span>Perfil completo</div>",
+    "      <label class=\"co-card co-ck\"><span class=\"co-box ${ck(d.ackPerms)}\" id=\"co-bx-perms\">${d.ackPerms ? '✓' : ''}</span>Permisos y batería (ubicación + \"sin restricción\")</label>",
+    "      <label class=\"co-card co-ck\"><span class=\"co-box ${ck(d.ackCash)}\" id=\"co-bx-cash\">${d.ackCash ? '✓' : ''}</span>Reglas de efectivo + cambio inicial (entregás 100% · llevás sencillo)</label>",
+    "      <div class=\"co-card co-ck\" id=\"co-practice-row\"><span class=\"co-box ${ck(d.practiceDone)}\">${d.practiceDone ? '✓' : ''}</span>Pedido de práctica${d.practiceDone ? '' : ' <span class=\"co-sub\" style=\"margin-left:auto\">Abrir →</span>'}</div>",
+    "      <div style=\"flex:1\"></div>`,",
+    "      `<button class=\"big-btn primary\" id=\"co-request\" ${(d.ackPerms && d.ackCash && d.practiceDone) ? '' : 'disabled'}>Pedir aprobación</button>`);",
+    "    $('co-bx-perms').closest('label').addEventListener('click', () => { const n = companionWriteDraft({ ackPerms: !companionReadDraft().ackPerms }); companionRenderOnboarding(); void n; });",
+    "    $('co-bx-cash').closest('label').addEventListener('click', () => { companionWriteDraft({ ackCash: !companionReadDraft().ackCash }); companionRenderOnboarding(); });",
+    "    if (!d.practiceDone) $('co-practice-row').addEventListener('click', () => { companionStep = 'practice'; companionRenderOnboarding(); });",
+    "    const req = $('co-request'); if (req && !req.disabled) req.addEventListener('click', () => companionSubmit());"
+   ]
+  },
+  {
+   "name": "INICIO-PRACTICA",
+   "kind": "replace",
+   "restore": [
+    "    // Guided practice — writes NOTHING real; brand-agnostic (a synthetic order with no brand → neutral greeting).",
+    "    const steps = [",
+    "      'Deslizá \"Llegué al restaurante\" para avisar que estás recogiendo el pedido.',",
+    "      'Confirmá los productos del pedido antes de salir.',",
+    "      'Seguí la ruta hasta la dirección del cliente.',",
+    "      `Al llegar, saludá: \"${driverGreeting({})}\"`,",
+    "      'Entregá el pedido y cobrá si es efectivo (entregás el 100%).',",
+    "      'Deslizá \"Entregado\" para cerrar el pedido.',",
+    "    ];",
+    "    const i = Math.min(d.practiceStep || 0, steps.length - 1);",
+    "    el.innerHTML = companionShellHtml(`",
+    "      <div class=\"co-note-warn\">Esto NO es un pedido real · práctica</div>",
+    "      <div class=\"co-card\" style=\"border:2px solid #15181E\">",
+    "        <div class=\"co-chip-dark\">Paso ${i + 1} de ${steps.length}</div>",
+    "        <div class=\"co-sub\" style=\"margin-top:8px;color:#15181E;font-weight:600\">${escapeHtml(steps[i])}</div>",
+    "      </div>",
+    "      <div style=\"flex:1\"></div>`,",
+    "      `<button class=\"big-btn primary\" id=\"co-practice-next\">${i + 1 < steps.length ? 'Siguiente' : 'Terminé la práctica'}</button>",
+    "       <button class=\"big-btn\" id=\"co-practice-exit\" style=\"background:#fff;color:#15181E;border:1.5px solid #D7D3CB\">Salir de la práctica</button>`);",
+    "    $('co-practice-next').addEventListener('click', () => {",
+    "      if (i + 1 < steps.length) { companionWriteDraft({ practiceStep: i + 1 }); companionRenderOnboarding(); }",
+    "      else { companionWriteDraft({ practiceDone: true, practiceStep: 0 }); companionStep = 'checklist'; companionRenderOnboarding(); }",
+    "    });",
+    "    $('co-practice-exit').addEventListener('click', () => { companionStep = 'checklist'; companionRenderOnboarding(); });"
+   ]
+  },
+  {
+   "name": "INICIO-DEMO",
+   "kind": "insert"
+  },
+  {
+   "name": "INICIO-DEMO-TEARDOWN",
+   "kind": "insert"
+  },
+  {
+   "name": "TABBAR-SHOW",
+   "kind": "insert"
+  },
+  {
+   "name": "TABBAR-BOARD",
+   "kind": "insert"
+  },
+  {
+   "name": "DISP-HEADER",
+   "kind": "insert"
+  },
+  {
+   "name": "RETURN-TARGET-CAPTURE",
+   "kind": "insert"
+  },
+  {
+   "name": "SOLO-CANCEL",
+   "kind": "insert"
+  },
+  {
+   "name": "ARRIVAL-ACTION",
+   "kind": "insert"
+  },
+  {
+   "name": "PAUSE-BOARD",
+   "kind": "insert"
+  },
+  {
+   "name": "PRESENTATION-REVERIFY",
+   "kind": "insert"
+  },
+  {
+   "name": "CUENTA-CARD",
+   "kind": "insert"
+  },
+  {
+   "name": "INICIO-DESACTIVADA",
+   "kind": "replace",
+   "restore": [
+    "  $('screen-companion').innerHTML = companionShellHtml(`",
+    "    <div style=\"flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;text-align:center\">",
+    "      <div class=\"co-title\" style=\"color:#8a241d\">Cuenta desactivada</div>",
+    "      <div class=\"co-sub\" style=\"color:#7a3a35\">Despacho desactivó tu cuenta. Contactalos para reactivarla.</div>",
+    "      <div class=\"co-card\" style=\"text-align:left\"><div class=\"co-sub\" style=\"color:#7a3a35\">No podés recibir ni completar pedidos. Despacho puede reactivarte cuando corresponda.</div></div>",
+    "    </div>",
+    "    <button class=\"big-btn primary\" id=\"co-e2-signout\" style=\"background:#B4322A\">Cerrar sesión</button>`, '');",
+    "  const btn = $('co-e2-signout');",
+    "  // The DRIVER taps this — there is NO automatic sign-out. Signing out here routes onAuth(null) → login as usual.",
+    "  if (btn) btn.addEventListener('click', async () => { try { await XPD.signOutUser(); } catch (_) { showScreen('login'); } });"
+   ]
+  },
+  {
+   "name": "MONEY-VUELTO",
+   "kind": "replace",
+   "restore": [
+    "  const t = Number(total) || 0;",
+    "  const sugg = vueltoSuggestions(t);",
+    "  const body = $('vuelto-sheet-body');",
+    "  body.innerHTML = `",
+    "    <div class=\"grab\"></div>",
+    "    <div class=\"vt-title\">Vuelto</div>",
+    "    <div class=\"vt-sub\">El cliente indicó este monto al ordenar — editá solo si paga con otra cosa</div>",
+    "    <div class=\"vt-total\"><span class=\"l\">Total del pedido</span><span class=\"v\">L ${t.toLocaleString('es-HN')}</span></div>",
+    "    <div class=\"vt-inlbl\">Cliente paga con</div>",
+    "    <div class=\"vt-input\"><span>L</span><input id=\"vt-tendered\" inputmode=\"numeric\" type=\"text\" value=\"${tenderedPrefill != null && tenderedPrefill !== '' ? tenderedPrefill : ''}\" placeholder=\"0\"></div>",
+    "    <div class=\"vt-chips\">${sugg.map(s => `<button class=\"vt-chip\" data-amt=\"${s}\">L ${s.toLocaleString('es-HN')}</button>`).join('')}</div>",
+    "    <div class=\"vt-result hidden\" id=\"vt-result\"><span class=\"l\">VUELTO</span><span class=\"v\"><span>L</span> <span id=\"vt-amount\">0</span></span></div>",
+    "    <button class=\"vt-done\" id=\"vuelto-done\">Listo</button>`;",
+    "  const input = $('vt-tendered');",
+    "  const resultEl = $('vt-result');",
+    "  const amountEl = $('vt-amount');",
+    "  function recompute() {",
+    "    const v = computeVuelto(t, input.value);",
+    "    if (v == null) { resultEl.classList.add('hidden'); }",
+    "    else { amountEl.textContent = v.toLocaleString('es-HN'); resultEl.classList.remove('hidden'); }",
+    "    body.querySelectorAll('.vt-chip').forEach(c => c.classList.toggle('on', Number(c.getAttribute('data-amt')) === Number(input.value)));",
+    "  }",
+    "  input.addEventListener('input', recompute);",
+    "  body.querySelectorAll('.vt-chip').forEach(c => c.addEventListener('click', () => { input.value = c.getAttribute('data-amt'); recompute(); }));",
+    "  recompute();",
+    "  $('vuelto-sheet').classList.add('open');"
+   ]
+  },
+  {
+   "name": "MONEY-TERMINAR",
+   "kind": "replace",
+   "restore": [
+    "  const rows = prompt.orders.map((o) => `",
+    "    <div class=\"es-row\"><div class=\"es-mid\">",
+    "      <div class=\"es-name\"><span class=\"order-num\">${escapeHtml(o.label)}</span>${escapeHtml(o.name)}</div>",
+    "      <div class=\"es-addr\">${escapeHtml(o.address)}</div>",
+    "    </div><span class=\"phase-pill delivery\">Entregar</span></div>`).join('');"
+   ]
+  },
+  {
+   "name": "MONEY-CERRADO",
+   "kind": "insert"
+  },
+  {
+   "name": "MONEY-FINALIZE-RET",
+   "kind": "replace",
+   "restore": [
+    "  try {",
+    "    // Clock out via the server (the existing endDriverShift callable, which returns { ok: true } or throws), and",
+    "    // stop tracking ONLY after it succeeds: cleanupShift (kills the PWA GPS watch) and the native FGS stop both",
+    "    // run after a successful call, so a failed close never leaves active:true with no location.",
+    "    const res = isNative()",
+    "      ? await stopNativeTracking(XPD.getAuthInstance().app)",
+    "      : await XPD.endShift(currentUser.uid);",
+    "    if (res && res.ok === false) throw new Error('clock-out not ok');   // defensive; the live callable throws on failure",
+    "    await cleanupShift();",
+    "    toast('Turno terminado');",
+    "  } catch (e) {",
+    "    // End failed — the driver is still on shift server-side; revert the optimistic off-shift screen. Tracking was",
+    "    // never stopped (we call the server before cleanupShift), so no stranded active-but-untracked state.",
+    "    optimisticShift = null;",
+    "    render();",
+    "    toast('Error al terminar turno', 'error');",
+    "  }"
+   ]
+  },
+  {
+   "name": "MONEY-RATE",
+   "kind": "insert"
+  },
+  {
+   "name": "MONEY-RATE-SUB",
+   "kind": "replace",
+   "restore": [
+    "  startCountdownTick();"
+   ]
+  },
+  {
+   "name": "PAYRATE-SCRIPT",
+   "kind": "insert"
+  },
+  {
+   "name": "GANANCIAS-CSS",
+   "kind": "insert"
+  },
+  {
+   "name": "GANANCIAS-DOM",
+   "kind": "insert"
+  },
+  {
+   "name": "GANANCIAS-SHOW",
+   "kind": "insert"
+  },
+  {
+   "name": "GANANCIAS-REFRESH",
+   "kind": "insert"
+  }
+ ],
+ "deps": [
+  {
+   "name": "OFFER-RENDER",
+   "kind": "slice3deps",
+   "parent": "SINGLE-ORDER-MOUNT",
+   "restore": [
+    "      : singleOrderCardHtml(soloOrder, {",
+    "          ICONS, esc: escapeHtml, scheduledBadge, computeVuelto,",
+    "          RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: drv2ReadNavPref(),",
+    "          nowMs: Date.now(),   // offer ring: elapsed drives the resume (negative animation-delay); display-only",
+    "        });"
+   ]
+  },
+  {
+   "name": "LLEGUE-MAP",
+   "kind": "slice3deps",
+   "parent": "SINGLE-ORDER-MOUNT",
+   "restore": [
+    "    const soloMapHtml = (soloOrder.phase !== 'awaiting_acceptance')"
+   ]
+  },
+  {
+   "name": "LLEGUE-HEADER",
+   "kind": "slice3deps",
+   "parent": "SINGLE-ORDER-MOUNT",
+   "restore": [
+    "      : (spStopScreen ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: spTotalM === 1, canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml }) : '');"
+   ]
+  },
+  {
+   "name": "LLEGUE-CARD",
+   "kind": "slice3deps",
+   "parent": "SINGLE-ORDER-MOUNT",
+   "restore": [
+    "      ? activeCardHtml(soloOrder, spCardDeps, { ordinal: spOrdinal, solo: false, showActualPill: true, arrived: spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()), navLabel: stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: '' })"
+   ]
+  },
+  {
+   "name": "SOLO-PICKUP-HEADER",
+   "kind": "slice3deps",
+   "parent": "SINGLE-ORDER-MOUNT",
+   "restore": [
+    "      ? stopHeaderHtml({ ...soloPickupHeaderInfo(spOrder, spShowReview), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml })"
+   ]
+  },
+  {
+   "name": "STACKED-DELIV-HEADER",
+   "kind": "slice3deps",
+   "parent": "STACKED-BRANCH",
+   "restore": [
+    "  activeSlot.innerHTML = stopHeaderHtml({ ordinal: activeOrdinal2, total: totalM2, name: activeAccepted2 ? nameOf2(active) : '', area: activeAccepted2 ? coloniaOf(active) : '', canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)"
+   ]
+  },
+  {
+   "name": "COMBINED-PICKUP-HEADER",
+   "kind": "slice3deps",
+   "parent": "STACKED-BRANCH",
+   "restore": [
+    "    activeSlot.innerHTML = stopHeaderHtml({ pickupCount: stacked2.length, sub: pickupSubLabel(stacked2.map((s) => s.order)), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)"
+   ]
+  },
+  {
+   "name": "STACKED-DELIV-CARD",
+   "kind": "slice3deps",
+   "parent": "STACKED-BRANCH",
+   "restore": [
+    "    + activeCardHtml(active, deps2, { ordinal: activeOrdinal2, solo, showActualPill: !solo, arrived: a2Arrived && !mapStale2, navLabel: labels2[0] && labels2[0].label, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: queue.length ? queuedPreviewHtml(queue[0], activeOrdinal2 + 1, deps2) : '' });"
+   ]
+  },
+  {
+   "name": "INTERLUDE-EARN",
+   "kind": "slice3deps",
+   "parent": "IMPORT",
+   "restore": [
+    "  ov.classList.add('open');",
+    "  const go = ov.querySelector('#btn-interlude-go'); if (go) go.onclick = drv2DismissInterlude;"
+   ]
+  },
+  {
+   "name": "RESUMEN-EARN",
+   "kind": "slice3deps",
+   "parent": "IMPORT",
+   "restore": [
+    "  ov.classList.add('open');",
+    "  const done = ov.querySelector('#btn-resumen-done'); if (done) done.onclick = drv2DismissResumen;"
+   ]
+  }
+ ]
+}

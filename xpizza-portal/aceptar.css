@@ -1,7 +1,7 @@
 /* PLAN-portal-team-invites T-c — the invitee's /aceptar page. Built to the OWNER-APPROVED mockup v8
    (https://claude.ai/artifact/B524m1Gp7H5ztKCUgvZtwh), whose tokens are the approved portal prototype v3.1 (light) verbatim.
    A separate stylesheet on purpose: the shell's styles.css belongs to portal-ui and is not touched by this page. */
-:root{--board:#FFFFFF;--board-2:#F6F6F2;--panel:#FFFFFF;--line:#E7E7E1;--line2:#F0F0EB;--card:#FFFFFF;--card-2:#F6F6F2;--ink:#0A0A0B;--mute:#6C6C70;--mute2:#6E6E72;--accent:#0A6E3E;--green-soft:#E7F5EC;--green-line:#BEE6CE;--green-text:#0B7C47;--red:#D23425;--red-soft:#FCEBE9;--red-line:#EFC9C2;--red-text:#C73123;--tint:rgba(14,159,91,.07);--body:'Söhne','Helvetica Neue',system-ui,-apple-system,'Segoe UI',sans-serif;--disp:'Archivo','Söhne','Helvetica Neue',system-ui,sans-serif;--focus:0 0 0 2px var(--board),0 0 0 4px var(--ink);color-scheme:light}
+:root{--board:#FFFFFF;--board-2:#F6F6F2;--panel:#FFFFFF;--line:#E7E7E1;--line2:#F0F0EB;--card:#FFFFFF;--card-2:#F6F6F2;--ink:#0A0A0B;--mute:#6C6C70;--mute2:#6E6E72;--accent:#0A6E3E;--green-soft:#E7F5EC;--green-line:#BEE6CE;--green-text:#0B7C47;--red:#D23425;--red-soft:#FCEBE9;--red-line:#EFC9C2;--red-text:#C73123;--tint:rgba(14,159,91,.07);--body:'Söhne','Helvetica Neue',system-ui,-apple-system,'Segoe UI',sans-serif;--disp:'Archivo','Archivo Fallback','Archivo Fallback Roboto','Söhne','Helvetica Neue',system-ui,sans-serif;--focus:0 0 0 2px var(--board),0 0 0 4px var(--ink);color-scheme:light}
 *{box-sizing:border-box;margin:0}
 html,body{background:var(--board);color:var(--ink)}
 body{font-family:var(--body);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;min-height:100dvh;display:flex;flex-direction:column}

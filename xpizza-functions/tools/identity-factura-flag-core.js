@@ -6,7 +6,7 @@
 //
 //   • desired value per rid: `true` when usesPlatformFactura(rid), ABSENT otherwise (OWNER RULE: only X. Pizza issues facturas);
 //   • only restaurants that HAVE an identity node are touched — it never creates a partial identity;
-//   • ONE multi-path update of the single leaf per changed rid (never a node replacement); a second run plans 0 rows;
+//   • ONE identity transaction per changed rid: the leaf + version + 1 (orchestration O1a ruling); a second run plans 0 rows;
 //   • the read-back re-reads every identity and fails unless every platform restaurant reads `true` and every other reads absent.
 const { usesPlatformFactura, FACTURA_PLATFORM_RESTAURANTS } = require('../factura/eligibility');
 
@@ -35,8 +35,26 @@ function planFlags(identities) {
   return { rows, missing };
 }
 
+// ORCHESTRATION O1a (advisor ruling): ONE identity transaction per changed rid — the leaf + `version` + 1 in the SAME transaction;
+// the commit re-checks the leaf (already right → no write, no bump); an identity without a numeric version is refused and named.
+// Null-first safe: the cached-null pass answers null, never creating an identity. → { unversioned: [rid] }
 async function applyFlags(rtdb, rows) {
-  if (rows.length) await rtdb.ref().update(Object.fromEntries(rows.map((r) => [r.path, r.to])));
+  const unversioned = [];
+  for (const r of rows) {
+    let bad = false;
+    await rtdb.ref(`restaurants/${r.rid}/identity`).transaction((cur) => {
+      bad = false;
+      if (cur === null) return null;
+      const from = cur[FLAG] === undefined ? null : cur[FLAG];
+      if (from === r.to) return undefined;
+      if (!Number.isFinite(cur.version)) { bad = true; return undefined; }
+      const next = { ...cur, version: cur.version + 1 };
+      if (r.to === null) delete next[FLAG]; else next[FLAG] = r.to;
+      return next;
+    });
+    if (bad) unversioned.push(r.rid);
+  }
+  return { unversioned };
 }
 
 // → [problem strings]; empty = every identity carries exactly the projected value

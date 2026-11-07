@@ -243,6 +243,11 @@ try {
   // H1c-server: merchantPushOnStatus is in the multiset but must be a NO-OP for a non-handheld location — no push-log, no token row
   assert.strictEqual((await rtdb.ref('merchant_push_log').get()).val(), null, FAIL('invocations', 'merchantPushOnStatus wrote a push log for a non-handheld location'));
   assert.strictEqual((await rtdb.ref('merchant_push_tokens').get()).val(), null, FAIL('invocations', 'merchantPushOnStatus touched the token index'));
+  // stackseq: detectOutOfSequence is in the multiset (onValueWritten /tasks/{taskId}: the pay tap writes the order's task
+  // records) but must be a NO-OP here — nothing is completed, so isDeliveryCompletion is false and it returns before any read.
+  // Its ONLY write is the create-only dispatcher_alerts/oos_<stack_id> (sequencing/detector.js:24 / :37): none may exist.
+  const oos = Object.keys((await rtdb.ref('dispatcher_alerts').get()).val() || {}).filter((k) => k.startsWith('oos_'));
+  assert.deepStrictEqual(oos, [], FAIL('invocations', `detectOutOfSequence wrote an out-of-sequence alert on the pay tap: ${oos.join(', ')}`));
   ok(`the pay tap's invocation multiset equals the declared one (${invs.length} invocations: ${Object.entries(ms).map(([k, v]) => `${k}×${v}`).join(', ')}); no invocation error, parked = declared`);
 
   // per-call served version: every PRICING call served exactly {ACTIVE} live; the others are the declared non-pricing calls

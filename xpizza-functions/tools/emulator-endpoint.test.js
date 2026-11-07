@@ -209,6 +209,51 @@ const refuses = (env, re, label) => {
     ok(`auth: own-band on a started run and the off-band loopback stand-in validate; ${STRAY.length} stray off-machine values refuse (started, unstarted, lenient), plus foreign slot / off-band-when-started / absent-when-started / on-band-when-unstarted / NULL; the var alone is NOT a signal; the real lib/admin.js refuses a stray production Auth host before any app`);
   }
 
+  // ── 6c. STORAGE (dish-photos A1): optional, never a signal; its own band; both CLI spellings agree; the prod-wipe guard ──
+  {
+    const SV = EE.STORAGE_VAR, SA = EE.STORAGE_ALIAS;
+    const run = (services) => ({ FIRESTORE_EMULATOR_HOST: lo(P.firestore), FIREBASE_DATABASE_EMULATOR_HOST: lo(P.database), XPIZZA_EMU_OFFSET: String(OFF), XPIZZA_EMU_SERVICES: services });
+    const withSt = run('firestore,database,storage');
+    const without = run('firestore,database');
+    const both = (hp) => ({ [SV]: hp, [SA]: `http://${hp}` });
+    assert.strictEqual(EE.BANDS.storage, 9800, 'premise — storage has its own band (9800)');
+    // every band's 40 slots are disjoint from every other band's (9199, the CLI default, would sit inside the database band)
+    const ranges = Object.entries(EE.BANDS).map(([k, b]) => [k, b, b + (EE.SLOTS - 1) * EE.STEP]);
+    for (const [k1, a1, b1] of ranges) for (const [k2, a2, b2] of ranges) if (k1 < k2) assert.ok(b1 < a2 || b2 < a1, `🔴 bands ${k1} and ${k2} overlap`);
+    assert.ok(9199 >= EE.BANDS.database && 9199 <= EE.BANDS.database + (EE.SLOTS - 1) * EE.STEP, 'premise — the CLI default 9199 is inside the database band (why storage needs its own)');
+    assert.ok(P.storage <= 65535 && (P.storage - EE.BANDS.storage) === OFF, 'premise — this run\'s storage port is base + offset');
+    assert.strictEqual(validateEmulatorEnv({ ...withSt, ...both(lo(P.storage)) }).storage, lo(P.storage), 'a run that started storage validates its own port (both spellings)');
+    assert.strictEqual(validateEmulatorEnv(without).storage, null, 'no storage vars, storage not started: unchanged (null)');
+    assert.strictEqual(validateEmulatorEnv({ ...without, ...both(lo(51234)) }).storage, lo(51234), 'an off-band loopback stand-in on a run that did not start storage validates');
+    const STRAY = ['storage.googleapis.com:443', 'firebasestorage.googleapis.com:443', '10.0.0.5:' + P.storage, '0.0.0.0:' + P.storage, '127.0.0.1.example.test:' + P.storage, 'localhost'];
+    for (const v of STRAY) {
+      for (const [env, which] of [[without, 'storage not started'], [withSt, 'storage started']]) {
+        refuses({ ...env, [SV]: v }, /strict loopback/, `stray ${SV}=${v} (${which})`);
+        refuses({ ...env, [SA]: `http://${v}` }, /strict loopback/, `stray ${SA}=http://${v} (${which})`);
+      }
+      assert.throws(() => validateEmulatorEnv({ ...without, [SV]: v }, { lenient: true }), EmulatorEndpointError, `🔴 lenient form accepted stray ${SV}=${v}`);
+    }
+    for (const bad of [`https://${lo(P.storage)}`, lo(P.storage), `http://${lo(P.storage)}/b/x`, 'https://storage.googleapis.com']) refuses({ ...withSt, [SV]: lo(P.storage), [SA]: bad }, /not http:\/\/<strict loopback/, `${SA}=${bad} (wrong form)`);
+    refuses({ ...withSt, [SV]: lo(P.storage), [SA]: `http://${lo(P.storage + 10)}` }, /disagrees/, 'the two spellings disagree');
+    refuses({ ...withSt, ...both(lo(P.storage + 10)) }, /not this run's storage port/, 'another slot\'s storage on a run that started storage');
+    refuses(withSt, /STARTED storage/, 'storage started but no var (Storage would go to production)');
+    refuses({ ...without, ...both(lo(P.storage)) }, /did NOT start/, 'a storage-band endpoint on a run that did not start storage (someone else\'s)');
+    refuses({ ...without, [SV]: NULL_ENDPOINT }, /no NULL endpoint/, 'storage has no NULL endpoint');
+    assert.ok(!hasEmulatorSignal({ ...both(lo(P.storage)) }), '🔴 the storage vars became an emulator signal');
+    // the prod-wipe guard: right host AND a test bucket, on a run that started storage with a known slot — every other shape refuses
+    const T = EE.assertStorageTestTarget;
+    assert.deepStrictEqual(T({ ...withSt, ...both(lo(P.storage)) }, 'demo-xpizza.appspot.com'), { host: lo(P.storage), bucket: 'demo-xpizza.appspot.com' });
+    assert.strictEqual(T({ ...withSt, ...both(lo(P.storage)) }, 'tb-photos').bucket, 'tb-photos');
+    const tRefuses = (env, bucket, re, what) => assert.throws(() => T(env, bucket), (e) => e instanceof EmulatorEndpointError && re.test(e.message), `🔴 the storage guard did not refuse: ${what}`);
+    for (const b of ['xpizza-delivery.firebasestorage.app', 'xpizza-delivery.appspot.com', 'gs://demo-x', 'Demo-x', 'demo-', 'tb', '', undefined, 'demo-x/../prod']) tRefuses({ ...withSt, ...both(lo(P.storage)) }, b, /not a test bucket/, `bucket ${JSON.stringify(b)}`);
+    tRefuses({ ...without, ...both(lo(51234)) }, 'demo-x', /did not start storage/, 'storage not started (a stand-in host)');
+    tRefuses({ ...withSt, XPIZZA_EMU_OFFSET: undefined, ...both(lo(P.storage)) }, 'demo-x', /XPIZZA_EMU_OFFSET is not set/, 'unknown slot');
+    tRefuses({ ...withSt, [SV]: lo(P.storage) }, 'demo-x', /both .* must be set/, 'only one spelling set (an SDK honouring the other would go elsewhere)');
+    tRefuses({ ...withSt, ...both(lo(P.storage + 10)) }, 'demo-x', /not this run's storage port/, 'another slot\'s storage');
+    tRefuses({ ...withSt, ...both('storage.googleapis.com:443') }, 'demo-x', /strict loopback/, 'a production host');
+    ok(`storage: its own band (9800, disjoint from all ${ranges.length} bands); own-band + off-band stand-in validate; ${STRAY.length} stray values refuse in both spellings (started / unstarted / lenient); alias form, disagreement, foreign slot, absent-when-started, NULL refuse; not a signal; the prod-wipe guard accepts only this run's port + a demo-*/tb-* bucket`);
+  }
+
   // ── 7. ACCIDENTAL NULL USE FAILS FAST — bounded and asserted, through the REAL lib/admin.js ─────────────
   {
     const BOUND_MS = 3000;

@@ -14,6 +14,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import * as acorn from 'acorn';
+import { PB_FOLD } from './photos-b-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
@@ -58,7 +59,59 @@ function withoutFs(src) {
   }
   return out;
 }
-const appJs = () => withoutFs(read('app.js'));
+// ── PLAN-public-menu-display T1 (portal-ui, owner-approved mockup «Cambiar nombre de sección» 2026-10-25): a section's display
+// NAME. app.js / editor.js / review.js / render.js gain EXACTLY the hunks named in portalui-guards.t1-hunks.json — each [now,
+// was] pair occurs once — and folding them back out gives the T1 base (5f's 7f72757f) byte-for-byte. Every older pin below
+// then keeps judging the folded file against its own base, so nothing outside the named hunks can move unnoticed.
+const T1_BASE = '7f72757f';
+const T1_HUNKS = JSON.parse(readFileSync(join(DIR, 'portalui-guards.t1-hunks.json'), 'utf8'));
+function withoutT1(f, src) {
+  let out = src;
+  for (const [now, was] of T1_HUNKS[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `${f}: T1 hunk occurs exactly once: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+// ── DISH PHOTOS B (PLAN-dish-photos r2 §3): the slice's EXACT hunks in app.js / editor.js / review.js / render.js
+// (photos-b-fold.mjs), cut against main PB_BASE (8a31e2a3, which carries T1). Folded out FIRST (it is the newest layer): what
+// is left is PB_BASE byte-for-byte, so T1's own registry (portalui-guards.t1-hunks.json) and every pin below keep judging
+// exactly what they judged before — a line both slices touch is ONE photos hunk whose `was` is T1's line.
+const PB_BASE = '8a31e2a3';
+function withoutPb(f, src) {
+  let out = src;
+  for (const [now, was] of PB_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `photos-B hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+test('DISH PHOTOS B: exactly the named hunks in the four frozen files — anything else, or an edit inside one, fails', () => {
+  for (const f of ['app.js', 'editor.js', 'review.js', 'render.js']) {
+    assert.ok((PB_FOLD[f] || []).length > 0, `non-vacuity: ${f} has named hunks`);
+    assert.notEqual(withoutPb(f, read(f)), read(f), `non-vacuity: the ${f} fold changes something`);
+    const was = execFileSync('git', ['show', `${PB_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.equal(withoutPb(f, read(f)), was, `${f} minus the DISH PHOTOS B hunks ≠ ${PB_BASE}`);
+  }
+  // a stray edit outside the hunks survives the fold (and so fails the byte pins); an edit INSIDE one breaks its match
+  const stray = read('render.js').replace('export function renderDetail(', 'export function renderDetail (');
+  assert.notEqual(withoutT1('render.js', withoutPb('render.js', stray)), base('render.js'));
+  const [inside] = PB_FOLD['editor.js'].find(([now]) => now.includes('setPhoto'));   // the hunk that DEFINES setPhoto
+  assert.throws(() => withoutPb('editor.js', read('editor.js').replace(inside, inside.replace('setPhoto', 'setPhot0'))));
+});
+const appJs = () => withoutFs(withoutT1('app.js', withoutPb('app.js', read('app.js'))));
+test('T1 (PLAN-public-menu-display): exactly the named hunks — folding them out gives the T1 base byte-for-byte', () => {
+  for (const f of ['app.js', 'editor.js', 'review.js', 'render.js']) {
+    const was = execFileSync('git', ['show', `${T1_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.ok((T1_HUNKS[f] || []).length > 0, `${f}: the fold is not empty`);
+    assert.equal(withoutT1(f, withoutPb(f, read(f))), was, `${f} minus the T1 hunks ≠ ${T1_BASE}`);
+    // non-vacuity: a stray extra edit survives the fold
+    assert.notEqual(withoutT1(f, withoutPb(f, read(f) + '\n// stray\n')), was);
+  }
+  // the DRAFT side writes a section's NAME and nothing else: editor.js's only new property assignment is `cat.name = …`
+  const writes = T1_HUNKS['editor.js'].flatMap(([now]) => [...now.matchAll(/\b\w+\.\w+\s*=[^=>]/g)].map((m) => m[0].replace(/\s*=.*$/, '')));
+  assert.deepEqual(writes, ['cat.name'], `editor.js T1 writes: ${writes.join(', ')}`);
+});
 test('app.js field state (train-3 follow-up): exactly the four named lines; no field toggles the global .err block', () => {
   assert.ok(withoutFs(read('app.js')) !== read('app.js'), 'non-vacuity: the fold changes something');
   assert.ok(!/classList\.(add|toggle)\('err'/.test(read('app.js')), 'no app.js element is given the global .err class');
@@ -125,7 +178,7 @@ test('ventas.js: exactly one added line — the A3 owner-only early return in it
 
 test('the editor, review, render, auth and logic modules are byte-identical to the base', () => {
   for (const f of ['editor.js', 'review.js', 'render.js', 'auth.js', 'auth-errors.js', 'firebase.js', 'portal-logic.js', 'ventas-logic.js', 'sherpa-client.js']) {
-    assert.equal(read(f), base(f), `${f} changed`);
+    assert.equal(withoutT1(f, withoutPb(f, read(f))), base(f), `${f} changed (beyond the named DISH PHOTOS B and T1 hunks)`);   // each layer's hunks are judged by its own test above
   }
 });
 
@@ -133,7 +186,7 @@ test('the editor, review, render, auth and logic modules are byte-identical to t
 const LITERALS = [/x_pizza/i, /la_musa/i, /\bX\.? ?Pizza\b/i, /\bLa Musa\b/i, /15\.5074/, /-88\.0398/, /15\.50414/, /-88\.03848/, /97952893/, /93736607/];
 const hits = (src) => LITERALS.reduce((n, re) => n + (src.match(new RegExp(re.source, `${re.flags.replace('g', '')}g`)) || []).length, 0);
 const NEW_PORTAL = ['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'branch-logic.js', 'ops-dom.js',
-  'team.js', 'team-logic.js', 'invite-mail.js', 'pubreq.js', 'aceptar.js', 'equipos.js'];   // + 3a's T-b / T-c / T-d modules (aceptar-boot.js holds the
+  'team.js', 'team-logic.js', 'invite-mail.js', 'pubreq.js', 'aceptar.js', 'equipos.js', 'branch-1b-logic.js'];   // + 1b   // + 3a's T-b / T-c / T-d modules (aceptar-boot.js holds the
   // Functions BASE URL — the GCP project id, exactly as api.js does — so it is not a zero-literal module)
 const NEW_SERVER = ['portal/ops-core.js', 'portal/ops-functions.js', 'portal/location-name.js', 'portal/pause-reasons.js', 'portal/reset-list.js', 'lib/hn-date.js'];
 const EXISTING = ['index.html', 'styles.css', 'app.js', 'api.js', 'boot.js', 'ventas.js', 'render.js', 'editor.js', 'review.js', 'portal-logic.js', 'ventas-logic.js'];
@@ -145,8 +198,12 @@ test('BRAND-AGNOSTIC: zero restaurant / brand literals in every new portal and o
   assert.ok(hits("rid === 'x_pizza' || name === 'La Musa'") >= 2);
 });
 
+// PLAN-portal-fonts r1.1: index.html's Functions-origin PRECONNECT carries the GCP project id (`xpizza-delivery`), which the
+// /X.?Pizza/ pattern counts — the same project-id case as api.js's BASE (not a brand choice). That one exact link is excluded.
+const FN_PRECONNECT = /<link rel="preconnect" href="https:\/\/us-central1-xpizza-delivery\.cloudfunctions\.net" crossorigin>/g;
 test('BRAND-AGNOSTIC: the pre-existing portal files gain no literal (counts frozen against the base)', () => {
-  for (const f of EXISTING) assert.ok(hits(read(f)) <= hits(base(f)), `${f}: ${hits(base(f))} → ${hits(read(f))} brand literals`);
+  for (const f of EXISTING) { const now = f === 'index.html' ? read(f).replace(FN_PRECONNECT, '') : read(f); assert.ok(hits(now) <= hits(base(f)), `${f}: ${hits(base(f))} → ${hits(now)} brand literals`); }
+  assert.ok(FN_PRECONNECT.test(read('index.html')), 'non-vacuity: the excluded link is the one index.html carries');
 });
 
 // ── slice 2 (PLAN-portal-ui-slice2-equipos r1.1 §5, codex plan r1 P2-4): app.js / ventas.js are BYTE-EQUAL to the approved stack

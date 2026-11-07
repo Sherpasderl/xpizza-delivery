@@ -244,6 +244,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   const badgeFree = () => {
     const s = buildSourceFromCode('la_musa');
     delete s.structure.badges;
+    delete s.structure.badge_priority;   // PLAN 4 GATED: the order of badges goes with the badges
     for (const i of s.items) delete i.display.tags;
     return s;
   };

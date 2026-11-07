@@ -1,0 +1,662 @@
+[
+  {
+    "file": "access/invites.js",
+    "line_sha256": "d6135b0ac275484ed4c0c2a2070e1916bfe086d19f147fbcbfc4eb760ede3b40",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 183,
+    "text": "// come from identity only (restaurants/{rid}/identity/name); a missing one is null.",
+    "reason": "R4 false positive: identity/name read (display name), no hours"
+  },
+  {
+    "file": "access/invites.js",
+    "line_sha256": "d8bf9b0ce57c3ee226af1e1718955f9ef66fe0226bb300ae719d37ddd8c21601",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 184,
+    "text": "const identityName = async (db, rid) => { const v = (await db.ref(`restaurants/${rid}/identity/name`).once('value')).val(); return typeof v === 'string' && v.tr",
+    "reason": "R4 false positive: identity/name read (display name), no hours"
+  },
+  {
+    "file": "access/legacy-readers.js",
+    "line_sha256": "f304676b8f68a627ef8b107e1732c7404e28bbe7f5a8045b094df2bc09c12bb0",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 71,
+    "text": "const name = await val(db, `restaurants/${rid}/identity/name`);",
+    "reason": "R4 false positive: identity/name read, no hours"
+  },
+  {
+    "file": "access/membership.js",
+    "line_sha256": "60b72a9dd82867db79ac4412c8b74dd6605f48bff44c9303d5a81fac06102ca9",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 38,
+    "text": "'location.hours':      { owner: true, manager: true },                          // O1",
+    "reason": "R1 false positive: the location.hours PERMISSION key, not a read"
+  },
+  {
+    "file": "access/membership.js",
+    "line_sha256": "fcc1d9b32c0a15dd713684d4455bf12045991f3d0967434fb781c4a597601a49",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 52,
+    "text": "owner: Object.freeze(['availability.set', 'device.pair', 'device.revoke', 'device.list', 'location.hours', 'location.prep', 'location.contact', 'location.profil",
+    "reason": "R1 false positive: the location.hours PERMISSION key, not a read"
+  },
+  {
+    "file": "access/membership.js",
+    "line_sha256": "973cb78fecb242c42c0ebe15ae8bbe15825b490ad1c9534dad96c9e6110fb86e",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 53,
+    "text": "manager: Object.freeze(['availability.set', 'device.pair', 'device.revoke', 'device.list', 'location.hours', 'location.prep', 'location.contact']),",
+    "reason": "R1 false positive: the location.hours PERMISSION key, not a read"
+  },
+  {
+    "file": "assign-hub.js",
+    "line_sha256": "cda251cdd556ed4451b71b1dede8cd29b17dfea956e340b6833823b66a9bf858",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 23,
+    "text": "return { ok: true, hub: hubOf((await db.ref(`restaurants/${rid}/identity`).once('value')).val()) };",
+    "reason": "R4 false positive: identity read for the hub only"
+  },
+  {
+    "file": "branches/branch-ops.js",
+    "line_sha256": "2b57d83a2f16041e3e04adf34a11c2a1f753b03ee2cf718fdd5dc1287084e505",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 8,
+    "text": "const { hours7Errors } = require('../schedule/hours-grammar');   // S4 C′: MOVED to the one hours grammar; re-exported below (same object)",
+    "reason": "E6/E7 branch planners: hours VALIDATED through the grammar module (hours7Errors import) + group keys; no parser"
+  },
+  {
+    "file": "branches/branch-ops.js",
+    "line_sha256": "2f2f4dbea8c057f9ae2dd1b22e5a3effb5bc000be91a00be3586a97dbd1a7983",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 29,
+    "text": "if (hours7Errors(d.hours).length) e.push('bad_hours');",
+    "reason": "E6/E7 branch planners: hours VALIDATED through the grammar module (hours7Errors import) + group keys; no parser"
+  },
+  {
+    "file": "branches/branch-ops.js",
+    "line_sha256": "b32b2cabbc512c4416d711ed556aae9b33c2a1f239f0e8c75ea9d6f91c6fb039",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 55,
+    "text": "name: brandName, brand_id: draft.brand_id, location_name: draft.location_name, phone: draft.phone, hours: draft.hours,",
+    "reason": "E6/E7 branch planners: hours VALIDATED through the grammar module (hours7Errors import) + group keys; no parser"
+  },
+  {
+    "file": "branches/branch-ops.js",
+    "line_sha256": "a94b41021a4ca5fc88084bc34534f7ca1965c4ffe78ed7b4f127040ccb86b29a",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 97,
+    "text": "// name / phone (owner: 'profile'), hours ('hours'), prep ('prep') — never hub / address / zone / active / anything else",
+    "reason": "E6/E7 branch planners: hours VALIDATED through the grammar module (hours7Errors import) + group keys; no parser"
+  },
+  {
+    "file": "branches/branch-ops.js",
+    "line_sha256": "0c0020d5003e32a57798ec8058ea5a2ce8ceedfab985ca49a485e435ef507e18",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 98,
+    "text": "const GROUP_OF = { location_name: 'profile', phone: 'profile', hours: 'hours', prep_default_min: 'prep' };",
+    "reason": "E6/E7 branch planners: hours VALIDATED through the grammar module (hours7Errors import) + group keys; no parser"
+  },
+  {
+    "file": "branches/branch-ops.js",
+    "line_sha256": "0bbbede0a781a4991c7b206065167b5942e4156f539e7165da323208ba7ada1a",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 99,
+    "text": "const GROUP_ORDER = ['profile', 'hours', 'prep'];",
+    "reason": "E6/E7 branch planners: hours VALIDATED through the grammar module (hours7Errors import) + group keys; no parser"
+  },
+  {
+    "file": "branches/branch-ops.js",
+    "line_sha256": "3a517a80489694e26df6641d2c33a85eca736fb01964ee7183856a62d8e78346",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 107,
+    "text": "if ('hours' in p && hours7Errors(p.hours).length) errors.push('bad_hours');",
+    "reason": "E6/E7 branch planners: hours VALIDATED through the grammar module (hours7Errors import) + group keys; no parser"
+  },
+  {
+    "file": "branches/branch-ops.js",
+    "line_sha256": "b78d777756024abc1c0126be2faf104480bc097683398b2562c8d5e0eedd5aa7",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 128,
+    "text": "const IDENTITY_GAPS = Object.freeze(['location', 'zone', 'hours', 'prep', 'integrity']);",
+    "reason": "E6/E7 branch planners: hours VALIDATED through the grammar module (hours7Errors import) + group keys; no parser"
+  },
+  {
+    "file": "branches/branch-ops.js",
+    "line_sha256": "f6ab61b11c44f15458bc23e7601c84928177abbebb6744b9ba2c03c9ac0fbae1",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 135,
+    "text": "if (hours7Errors(id.hours).length) gaps.push('hours');",
+    "reason": "E6/E7 branch planners: hours VALIDATED through the grammar module (hours7Errors import) + group keys; no parser"
+  },
+  {
+    "file": "branches/branch-store.js",
+    "line_sha256": "7d25f13a5bcbc3bc8316677de35884c6f9dc3999c4df186e866eff88d079e2c5",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 24,
+    "text": "const DRAFT_KEYS = ['brand_id', 'location_name', 'phone', 'hours', 'prep_default_min'];",
+    "reason": "R1 false positive: the draft key list (writer), no parser"
+  },
+  {
+    "file": "branches/branches-admin-core.js",
+    "line_sha256": "1467e112edaa9d0df9020413c3542913076eb9f50cd9374147a77acf89bb6b9f",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 21,
+    "text": "'--name': ['name', 'str'], '--first-branch': ['firstBranch', 'str'], '--phone': ['phone', 'str'], '--hours': ['hours', 'json'] };",
+    "reason": "R1: the branches-admin CLI option plumbing (writer input), validated by the grammar via branch-ops"
+  },
+  {
+    "file": "branches/branches-admin-core.js",
+    "line_sha256": "de15e6c00a80ef831ab824126862dc3cc0d6fe8adea0bda2bcc4cfb70eb97700",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 97,
+    "text": "if ([opts.name, opts.firstBranch, opts.phone, opts.prep, opts.hours].some((x) => x === undefined)) { log(`branches-admin: create-brand needs --name --first-bran",
+    "reason": "R1: the branches-admin CLI option plumbing (writer input), validated by the grammar via branch-ops"
+  },
+  {
+    "file": "branches/branches-admin-core.js",
+    "line_sha256": "0a4237b4c4c1b291bb2668484d2265adbf508f34cbf292e43f0e91fd6df342f5",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 98,
+    "text": "const input = { location_name: opts.firstBranch, phone: opts.phone, prep_default_min: opts.prep, hours: opts.hours };",
+    "reason": "R1: the branches-admin CLI option plumbing (writer input), validated by the grammar via branch-ops"
+  },
+  {
+    "file": "brands/brand-model.js",
+    "line_sha256": "d4ccb3b660c504a7c81648860a8ac80d6e164eb32ac267cea658b9734b9597e8",
+    "occurrence": 1,
+    "rules": [
+      "R5"
+    ],
+    "line": 17,
+    "text": "const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];",
+    "reason": "L11 neighbours: DAYS constant beside the G1-pinned HHMM and the hoursErrors call (L11 is pinned)"
+  },
+  {
+    "file": "brands/brand-model.js",
+    "line_sha256": "d56a8932b156ece31a082160a1f03a11d8b80e0cbebdb91f3f4d59af0c80d13c",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 93,
+    "text": "e.push(...hoursErrors(id.hours));",
+    "reason": "L11 neighbours: DAYS constant beside the G1-pinned HHMM and the hoursErrors call (L11 is pinned)"
+  },
+  {
+    "file": "brands/brand-projection.js",
+    "line_sha256": "7d9b709dbf0869a453bdd7cd3e5d6fb3c3eada188811e401bd27bb7769b4cdb9",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 6,
+    "text": "// RTDB drops empty objects, so the builder never emits one: no member → no `locations`; no day → no `hours` (read-back stays equal).",
+    "reason": "R1 false positive: a comment (L10 pickHours is G1-pinned)"
+  },
+  {
+    "file": "brands/brand-store.js",
+    "line_sha256": "40bdaa719f25ea0f1c334733e220b86b565d3d0ea2743287d9c712caa49a458d",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 15,
+    "text": "// ONE read of /restaurants (RTDB only — no Firestore registry): rid → identity, for every node that has one.",
+    "reason": "R4: the L10 readIdentities comment line (the function itself is G1-pinned)"
+  },
+  {
+    "file": "catalog/portal-reads.js",
+    "line_sha256": "4ed774f7616db8b7b104837cadcee475d35aaa11e6ec1cb0016d0d099d0c2303",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 42,
+    "text": "const snap = await db.ref(`restaurants/${rid}/identity/name`).get();",
+    "reason": "R4 false positive: identity/name read"
+  },
+  {
+    "file": "catalog/seed-catalog-core.js",
+    "line_sha256": "11743f23ad3b095c620dad1f857ea67bc024325cd220f5ead2d9c71d89525fd6",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 33,
+    "text": "const PROFILE_FIELDS = new Set(['name', 'tier', 'active', 'hours', 'branding', 'pricing_key_mode', 'schema_version']);   // 1c-a: schema_version (the allowlist ",
+    "reason": "R1 false positive: the catalog profile field list (catalog seed), not identity hours"
+  },
+  {
+    "file": "deploy/check-seed-readiness.js",
+    "line_sha256": "df4cf5d4b7f9187daa8165bb2ebf55b6c547787693d0cd1f51131b4680c4215f",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 42,
+    "text": "const id = (await admin.database().ref(`restaurants/${RID}/identity`).once('value')).val();",
+    "reason": "R4: deploy readiness tool reads identity for existence, no hours parse"
+  },
+  {
+    "file": "deploy/check-seed-readiness.js",
+    "line_sha256": "4c42294ff7d255ce83fd822c4322170eb11ae3fce7b6be3e9b3b694f1f8e5714",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 44,
+    "text": "if (!id) throw new Error(`/restaurants/${RID}/identity is MISSING — seed before deploying the reader`);",
+    "reason": "R4: deploy readiness tool reads identity for existence, no hours parse"
+  },
+  {
+    "file": "deploy/emu-seed.js",
+    "line_sha256": "bc33b03d6c3bb28014efbd919c01cfd5f5bf5b3a85b51875191102f67f6e2b6f",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 32,
+    "text": "const ref = admin.database().ref('restaurants/x_pizza/identity');",
+    "reason": "R4: emulator seed writer"
+  },
+  {
+    "file": "deploy/emulator-e2e.js",
+    "line_sha256": "1b0bd294cfcd7848b512427d4efabdd858e20baa8a70a884c5daf48f81ba9c92",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 174,
+    "text": "await db.ref('restaurants/la_musa/identity').set(LA_MUSA_VALID);",
+    "reason": "R4: emulator e2e fixture writer"
+  },
+  {
+    "file": "index.js",
+    "line_sha256": "b79bee94a3bab7ffbb178a1f279f224d799b0db006e93b1a4d2d6e163d41a006",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 1086,
+    "text": "// failure). These checks depend only on restIdentity.hours / scheduledForRaw / orderType — never on the",
+    "reason": "comments only (the L1/L2/L5 hours lines are G1-pinned)"
+  },
+  {
+    "file": "index.js",
+    "line_sha256": "c11f88c8b3a17ba77308193d24fd59be878b646a291b79c6e9544269a03fd95d",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 6199,
+    "text": "// the restaurants the same-hub decision needs, their hubs are read fresh, THEN the final reads below, then a synchronous",
+    "reason": "comments only (the L1/L2/L5 hours lines are G1-pinned)"
+  },
+  {
+    "file": "lib/driver-admin-ops.js",
+    "line_sha256": "19af00a983aac89362b8f583f37669f8418c17ae4e24d7b7fb2cfc03d5be1030",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 84,
+    "text": "const [disp, kitchen, restaurants] = await Promise.all([",
+    "reason": "R4 false positive: a restaurants variable for driver admin, no hours"
+  },
+  {
+    "file": "merchant/merchant-brand.js",
+    "line_sha256": "128b296b9fbf2d2b0684baa4fb9e6fdcccd691d50c5e127bb50e7a1f50d706f4",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 11,
+    "text": "const identity = (await db.ref(`restaurants/${rid}/identity`).once('value')).val();",
+    "reason": "R4 false positive: identity read for brand fields"
+  },
+  {
+    "file": "merchant/merchant-devices.js",
+    "line_sha256": "416a2e610b72b7fd5b1d920137c86a7422a1a2188484f981bc18a3809fef2e4f",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 46,
+    "text": "try { base = V.vPrepBase((await db.ref(`restaurants/${rid}/identity/prep_default_min`).once('value')).val()); } catch (_) { throw new HttpsError('unavailable', ",
+    "reason": "R4 false positive: identity/prep_default_min read"
+  },
+  {
+    "file": "pickup-label.js",
+    "line_sha256": "b88f8474181f181f317feb234a9195d090316505c6dcb6c01fc61cd9250900ae",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 36,
+    "text": "const base = `restaurants/${rid}/identity`;",
+    "reason": "R4 false positive: identity name/display_name reads"
+  },
+  {
+    "file": "portal/branch-lifecycle-core.js",
+    "line_sha256": "ef527fad1d6af1c6b0869ee9d4f1cf27251d1b68f7b05f96e08e951cd716526c",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 33,
+    "text": "const E6_KEYS = Object.freeze(['brand_id', 'hours', 'location_name', 'op_id', 'phone', 'prep_default_min']);",
+    "reason": "E6 portal writer: hours key/capability plumbing; validated by the grammar via branch-ops"
+  },
+  {
+    "file": "portal/branch-lifecycle-core.js",
+    "line_sha256": "ffb5ca2b3fc1839d69ac75f6be13beb72d43c86020f7c2cc3dfd50462e5e05d7",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 35,
+    "text": "const GROUP_CAP = Object.freeze({ location_name: 'location.profile', phone: 'location.contact', hours: 'location.hours', prep_default_min: 'location.prep' });",
+    "reason": "E6 portal writer: hours key/capability plumbing; validated by the grammar via branch-ops"
+  },
+  {
+    "file": "portal/branch-lifecycle-core.js",
+    "line_sha256": "1e32a7a575bc2827e56b4110fd4ae0aeee6cbd2836e65c8a77b4d877db954d27",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 109,
+    "text": "r = await S.createDraft(deps.db, { input: { brand_id: body.brand_id, location_name: body.location_name, phone: body.phone, hours: body.hours, prep_default_min: ",
+    "reason": "E6 portal writer: hours key/capability plumbing; validated by the grammar via branch-ops"
+  },
+  {
+    "file": "portal/branch-read-model.js",
+    "line_sha256": "4f5d42d93579dd1e0ea1cfd56561280dc216a380ccf47d1cfb7a6f9e6c7ed43e",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 22,
+    "text": "hours: isObj(x) && isObj(x.hours) ? x.hours : null,",
+    "reason": "NOT IN L1-L12 (flagged to the advisor): portal branch read model passes identity.hours through for display (no parse); a HOURS-ONE-SOURCE candidate"
+  },
+  {
+    "file": "portal/branch-read-model.js",
+    "line_sha256": "04b387aa0447195ff8758adbad85ceffd43aeaec2fc67161518dd807b8cd53fc",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 47,
+    "text": "const identity = await val(db, `restaurants/${row.rid}/identity`);",
+    "reason": "NOT IN L1-L12 (flagged to the advisor): portal branch read model passes identity.hours through for display (no parse); a HOURS-ONE-SOURCE candidate"
+  },
+  {
+    "file": "portal/location-name.js",
+    "line_sha256": "4ed774f7616db8b7b104837cadcee475d35aaa11e6ec1cb0016d0d099d0c2303",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 7,
+    "text": "const snap = await db.ref(`restaurants/${rid}/identity/name`).get();",
+    "reason": "R4 false positive: identity/name read"
+  },
+  {
+    "file": "portal/ops-core.js",
+    "line_sha256": "1d3aad472b032ad33fde749ecd680cd30c2ef9b803e87f3181010604fd36f1fa",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 203,
+    "text": "tx = await db.ref(`restaurants/${rid}/identity`).transaction((cur) => {",
+    "reason": "R4: the ops-core identity transaction (prep writer); the hours lines are G1-pinned (L9)"
+  },
+  {
+    "file": "restaurant-config.js",
+    "line_sha256": "bab224f36002a032c5154b9c170d843013bb05c9b1e261e6f82e019d5b1134c2",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 12,
+    "text": "* stricter than the ADR (which permits stale non-critical phone/hours). Safer; revisit if a use",
+    "reason": "getIdentity itself (the boundary loadSchedule is built on) + comments"
+  },
+  {
+    "file": "restaurant-config.js",
+    "line_sha256": "6e1ee810ce7e7768fbba0d8cecbbc58df34258fabbb79b7fee8322adc63969d5",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 38,
+    "text": "const path = `restaurants/${rid}/identity`;",
+    "reason": "getIdentity itself (the boundary loadSchedule is built on) + comments"
+  },
+  {
+    "file": "restaurant-config.js",
+    "line_sha256": "f735af03b616eb6b04591a373ab487cff10c2c55178241b790a018425f7159ef",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 73,
+    "text": "// allowlist — NEVER spread the reader result, so _source/_fetched_at/active/version/hours/",
+    "reason": "getIdentity itself (the boundary loadSchedule is built on) + comments"
+  },
+  {
+    "file": "schedule/load-schedule.js",
+    "line_sha256": "32270e562c2f0c58e5b35d5c6cb25e6f7df8f8a2c5678c99cd0582afe9c74b5e",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 8,
+    "text": "//   valid  — hours7Errors(identity.hours) is empty (the ONE grammar, schedule/hours-grammar.js);",
+    "reason": "S4 C-prime boundary loadSchedule (the ONE reader for new consumers), built on getIdentity"
+  },
+  {
+    "file": "schedule/load-schedule.js",
+    "line_sha256": "317b8706266a078ee973d38aa16ab390b4a2ce8012aee7cb90e7ff05bc9bbba3",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 14,
+    "text": "const { hours7Errors } = require('./hours-grammar');",
+    "reason": "S4 C-prime boundary loadSchedule (the ONE reader for new consumers), built on getIdentity"
+  },
+  {
+    "file": "schedule/load-schedule.js",
+    "line_sha256": "2d0793a37659a94fa83b1f5945d8a8f440fba808a03ef9b9f240fecd7841737b",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 20,
+    "text": "const raw = identity && typeof identity === 'object' ? identity.hours : undefined;",
+    "reason": "S4 C-prime boundary loadSchedule (the ONE reader for new consumers), built on getIdentity"
+  },
+  {
+    "file": "schedule/schedule-only.js",
+    "line_sha256": "7f181c4d32f9e575b6d7d635991b436b98a6a454c26f512a1979ae8603e53aec",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 48,
+    "text": "hours: s.hours,",
+    "reason": "S4 C-prime schedule_only: serves loadSchedule hours (no read, no parse)"
+  },
+  {
+    "file": "scheduled-release-core.js",
+    "line_sha256": "0d14a63238f1b8c1f87cacae6e5fa6d6cc056a59ecd6a7282ea413af3251132c",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 73,
+    "text": "try { active = (await db.ref(`restaurants/${rid}/identity/active`).once('value')).val(); } catch (_) { active = undefined; }",
+    "reason": "R4 false positive: identity/active read (the L4 hours read is G1-pinned)"
+  },
+  {
+    "file": "seed_identity.js",
+    "line_sha256": "734ec8fc47941a605e5de7193ebf6cae2b4b84d0af397ca349b9949f80ae5183",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 69,
+    "text": "const { hours7Errors } = require('./schedule/hours-grammar');",
+    "reason": "the seed: validates hours through the grammar module (BC-3) + its writer"
+  },
+  {
+    "file": "seed_identity.js",
+    "line_sha256": "058b8e8eaaa64a878b639fe4a74ce5d5e8b6864af80516e9fe7d189859bae677",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 74,
+    "text": "'delivery_radius_km', 'hours', 'active', 'version'];",
+    "reason": "the seed: validates hours through the grammar module (BC-3) + its writer"
+  },
+  {
+    "file": "seed_identity.js",
+    "line_sha256": "e80c4c8126180c191ddfaae28b48323e635272943f92bdf402c22c5e115fa698",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 87,
+    "text": "if (!id.hours || typeof id.hours !== 'object') throw new Error(`${rid}: hours must be an object`);",
+    "reason": "the seed: validates hours through the grammar module (BC-3) + its writer"
+  },
+  {
+    "file": "seed_identity.js",
+    "line_sha256": "08dfdc2f8e7ec57c7abb4bfa2151bf8f3d622eca656642f0287c72c8b8232137",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 88,
+    "text": "const hoursErr = hours7Errors(id.hours);",
+    "reason": "the seed: validates hours through the grammar module (BC-3) + its writer"
+  },
+  {
+    "file": "seed_identity.js",
+    "line_sha256": "308d57b43cdae6f4d24ad4bb79778958943750a3c7d462bf00c95e493a1bf110",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 107,
+    "text": "const ref = db.ref(`restaurants/${rid}/identity`); // never touches factura_config",
+    "reason": "the seed: validates hours through the grammar module (BC-3) + its writer"
+  },
+  {
+    "file": "whatsapp.js",
+    "line_sha256": "991e58765020957c5caa4ee2f3c959a4f4e35d85e7d6dbeefa58320dddea62f4",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 250,
+    "text": "const v = (await db.ref(`restaurants/${restaurantId}/identity/whatsapp_enabled`).once('value')).val();",
+    "reason": "R4 false positive: identity/whatsapp_enabled read"
+  },
+  {
+    "file": "whatsapp_inbound.js",
+    "line_sha256": "68907cb47e998045e5afa16310ee6064892bd92e3faa1bef75eef8aedfdfca38",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 126,
+    "text": "// Convert identity.hours (RTDB config: { mon:{open:bool,start:\"HH:MM\",end:\"HH:MM\"}, ... }) to the",
+    "reason": "comments only (the L6 family is G1-pinned)"
+  },
+  {
+    "file": "whatsapp_inbound.js",
+    "line_sha256": "b3ac8017c2e65717984d2f873d6dd02146c4381d1e96b6444f4baa8a60bd9736",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 149,
+    "text": "//   GENERAL_INQUIRY — wants to order, asking about menu/prices/hours",
+    "reason": "comments only (the L6 family is G1-pinned)"
+  },
+  {
+    "file": "index.js",
+    "line_sha256": "c2e650f1e4436df9685c49b9b3510b66b9d9e2ce8fe7a4a118a7b5aab72f1f6a",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 2060,
+    "text": "const returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('orig",
+    "reason": "R4 false positive: S3b hosted-checkout return routing reads identity/brand_id (resolveReturnBaseForCharge readBrandId), no hours"
+  }
+]

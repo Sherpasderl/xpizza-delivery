@@ -82,4 +82,25 @@ const XC = { cold: ['x_pizza'] }; const LC = { cold: ['la_musa'] }; const WARM =
   ok('codex R1c P2: a WARM request carrying 31 extra COLD-shaped ops keeps them IN (no longer compares equal); a strip without the observed cold loads is refused; a cold request that does not lead with COLD fails');
 }
 
+// ── the FIRST LINE names the actual divergence (advisor 2026-11-01: the suites keep only line 1 of a failure, and the
+//    intl red printed only the DECLARED delta, which cost hours) ───────────────────────────────────────────────────────
+{
+  const o = (path, op = 'once') => ({ db: 'rtdb', op, path });
+  const FLAG = o('config/phone_wire_strict');
+  const off = [o('deleted_uids/<uid>', 'get'), o('orders/<oid>'), o('orders/<oid>', 'transaction')];
+  const line1 = (fn) => { try { fn(); } catch (e) { return e.message.split('\n')[0]; } return null; };
+  const extra = line1(() => RD.assertSameOps(off, [off[0], FLAG, off[1], off[2]], 'L'));
+  assert.ok(extra && extra.includes('"path":"config/phone_wire_strict"') && /at 1/.test(extra) && /ON-only/.test(extra), `RD-DIFF-EXTRA line 1 names the extra op and its index: ${extra}`);
+  assert.ok(/ON-only \[\{"db":"rtdb","op":"once","path":"config\/phone_wire_strict"\}\]; OFF-only \[\]/.test(extra), `RD-DIFF-ON-ONLY-LIST the ON-only list holds exactly the extra op: ${extra}`);
+  const ins = line1(() => RD.assertInserted(off, [off[0], FLAG, o('orders/<oid>'), off[1], off[2]], 1, RD.PROBE_ABSENT(), 'L'));
+  assert.ok(ins && ins.includes('config/phone_wire_strict'), `RD-DIFF-INSERTED line 1 names the actual extra op, not only the declared delta: ${ins}`);
+  const sc = line1(() => RD.assertShortCircuit(off, [off[0], FLAG, o('orders/<oid>')], 1, RD.PROBE_ABSENT(), 'L'));
+  assert.ok(sc && sc.includes('config/phone_wire_strict'), `RD-DIFF-SHORT line 1 names the actual extra op: ${sc}`);
+  const miss = line1(() => RD.assertSameOps(off, [off[0], off[2]], 'L'));
+  assert.ok(miss && /OFF-only/.test(miss) && miss.includes('"op":"once","path":"orders/<oid>"'), `RD-DIFF-MISSING line 1 names the missing op: ${miss}`);
+  assert.ok(/ON-only \[\]; OFF-only \[\{"db":"rtdb","op":"once","path":"orders\/<oid>"\}\]/.test(miss), `RD-DIFF-OFF-ONLY-LIST the OFF-only list holds exactly the missing op: ${miss}`);
+  assert.strictEqual(line1(() => RD.assertSameOps(off, off.map((x) => ({ ...x })), 'L')), null, 'RD-DIFF-EQUAL equal sequences pass');
+  ok('a failing sequence comparison names, on its FIRST line, the first divergence index and the ON-only / OFF-only operations');
+}
+
 console.log(`\n_render-delta: OK (${n})`);

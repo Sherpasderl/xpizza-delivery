@@ -72,7 +72,7 @@ function weekendOnlyViolation(items, restaurantId, fulfillmentMs, weekendOnlyKey
 // the factura), so no tax rate is encoded here — this is purely the cart price source.
 const LA_MUSA_MENU = {
   // dim_sum
-  dimsum_01: 223, dimsum_02: 248, dimsum_03: 198, dimsum_04: 237, dimsum_05: 260,
+  dimsum_01: 249, dimsum_02: 248, dimsum_03: 286, dimsum_04: 288, dimsum_05: 260,
   // starters
   starter_01: 262, starter_02: 252, starter_03: 265, starter_04: 378, starter_05: 413, starter_06: 409,
   // house_specials (no special_03 in the menu)
@@ -141,8 +141,8 @@ const EXTRAS_BY_RESTAURANT = { x_pizza: EXTRA_PRICES, la_musa: LA_MUSA_EXTRAS };
    The raw accessor stays exactly as it was, and is what the agreement check compares against. */
 const PRICING_KEY_STAMP = Symbol.for('xpizza.d4.pricingKeyStamp');
 
-function itemPricingKey(item, restaurantId) {
-  const raw = restaurantId === 'la_musa' ? (item && item.id) : (item && item.name);
+const availIdentityField = (rid) => (rid === 'la_musa' ? 'id' : 'name'); function itemPricingKey(item, restaurantId) {   // PLAN-avail-identity r1: the ONE availability-identity rule, also served in the public menu
+  const raw = item && item[availIdentityField(restaurantId)];
   if (item && typeof item === 'object') {
     const stamped = item[PRICING_KEY_STAMP];
     /* Preferred only when it is a real string. It is never DIFFERENT from `raw` — the stamper only
@@ -324,7 +324,7 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
   return lines;
 }
 
-module.exports = { PRICING_KEY_STAMP,
+module.exports = { PRICING_KEY_STAMP, availIdentityField,
   MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal, itemPricingKey, extraPricingKey, summaryLines,
   resolvePriceTables,   // 1b-1b: the shared PIN-B-asserting table resolver, reused across the redemption graph
   X_PIZZA_WEEKEND_ONLY, hnDayFromMs, weekendOnlyViolation,

@@ -20,7 +20,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 
 // ── (i) the inverse ──
 {
-  const live = read('index.js'); const baseIdx = baseOf('index.js');
+  const live = require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(require('./tools/pausa-inverse').unapplyPausaIndex(require('./tools/mem512-inverse').unapplyMem512Index(require('./tools/checkout-inverse').unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(require('./tools/intl-inverse').unapplyIntlIndex(require('./tools/photos-inverse').unapplyPhotosIndex(read('index.js')))))))))))))))); const baseIdx = baseOf('index.js');   // DRYRUN R-WIRE (2e): 10 cross-side layers innermost (the line-67 AST read stays raw)
   assert.strictEqual(unapplyAreaIndex(live), baseIdx, `🔴 index.js minus the colonia hunks is not ${BASE}:index.js`);
   assert.notStrictEqual(live, baseIdx, 'non-vacuity: the slice is present in index.js');
   assert.strictEqual(live.split('\n').length, baseIdx.split('\n').length, 'index.js same-line: no line inserted');
@@ -48,7 +48,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 // ── (i-b) the charge-inputs line inverse (Codex colonia r1 P2-2): removes ONLY the address_area NON_CHARGE_FIELDS entry ──
 {
   const CIV = require('./tools/area-charge-inputs-inverse');
-  const src = read(CIV.FILE); const base = baseOf(CIV.FILE);
+  const src = require('./tools/checkout-charge-inputs-inverse').unapplyCheckoutChargeInputs(read(CIV.FILE)); const base = baseOf(CIV.FILE);   // R-WIRE: the guest-checkout line (newer) stripped first, INNERMOST
   assert.strictEqual(CIV.BASE, BASE, 'the same base as area-inverse');
   assert.strictEqual(CIV.unapplyAreaChargeInputs(src), base, `🔴 ${CIV.FILE} minus the address_area entry is not ${BASE}:${CIV.FILE}`);
   assert.notStrictEqual(src, base, `non-vacuity: ${CIV.FILE} carries the entry`);

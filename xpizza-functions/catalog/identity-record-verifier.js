@@ -20,6 +20,7 @@
 const { readVersionDocs, getActiveVersionId } = require('./catalog-firestore');
 const { buildTablesFromDocs } = require('./catalog-transform');
 const { pricesExactlyEqual } = require('./context-source');
+const { decodeMirror } = require('./mirror-keys');   // hotfix 2026-10-26: the mirror's key encoding
 const { sanitize } = require('./restaurant-registry');
 const {
   IDENTITY_PATH, NODE_CAP_BYTES, buildIdentityRecord, identityFromVersionNode, utf8Bytes, isPathKey,
@@ -101,7 +102,7 @@ function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { tr
   const readers = {
     // every reader does its I/O through the caller's GATED handles `io` = { db, rtdb } (required) — the foreign
     // readVersionDocs / getActiveVersionId included: they receive the gated db, so none of their reads can start late
-    mirrorValue: async (rid, io) => { const s = await needIo(io).rtdb.ref(`catalog_snapshot/${rid}`).get(); return s && s.val(); },
+    mirrorValue: async (rid, io) => { const s = await needIo(io).rtdb.ref(`catalog_snapshot/${rid}`).get(); return decodeMirror(s && s.val()); },
     activeServed: async (rid, versionId, io) => {
       const { itemDocs, extraDocs, seq } = await readVersionDocs(needIo(io).db, rid, versionId);   // the live pricing read (completeness-checked)
       const { menu, extras } = buildTablesFromDocs(itemDocs, extraDocs);

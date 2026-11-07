@@ -42,8 +42,13 @@ const fnSrc = (src, name) => {
   // F6 #2: the ONLY intended change to the content generator is the Items row (run-on blob → one line per item).
   // Prove it: strip the Pedido/Items block from BOTH and assert the REMAINDER is byte-identical — so Cliente /
   // Entrega / Factura·RTN / Pago / Vuelto / totals / timeline / cancel-reason are provably untouched.
-  const stripItems = (s) => s.replace(/const pedidoRows = \[\];[\s\S]*?if \(order\.notes\)/, '<<PEDIDO_ITEMS_BLOCK>>\n  if (order.notes)');
-  assert.strictEqual(stripItems(cur), stripItems(base), 'renderOrderDetailModal byte-identical to base EVERYWHERE except the Items row (F6 #2)');
+  const stripItems = (s) => s
+    .replace(/const pedidoRows = \[\];[\s\S]*?if \(order\.notes\)/, '<<PEDIDO_ITEMS_BLOCK>>\n  if (order.notes)')
+    // Approved action change: the reassign button is now gated on !isPostPickup (post-pickup guard).
+    // Normalise it away so the REMAINDER (every content field) is still proven byte-identical.
+    .replace(/ && !isPostPickup\(order\.order_id\)/, '');
+  assert.strictEqual(stripItems(cur), stripItems(base), 'renderOrderDetailModal byte-identical to base EVERYWHERE except the Items row (F6 #2) and the reassign post-pickup gate');
+  assert.match(cur, / && !isPostPickup\(order\.order_id\)/, 'the Reasignar action is gated on isPostPickup (approved post-pickup change)');
   // The new Items rendering: split on '|' (else ',') → one <div> per item, EACH escapeHtml'd; value/source unchanged.
   const itemsBlk = (cur.match(/const pedidoRows = \[\];[\s\S]*?if \(order\.notes\)/) || [''])[0];
   assert.match(itemsBlk, /raw\.includes\('\|'\) \? '\|' : ','/, 'items split on | (prod pipe delimiter) else , (legacy)');

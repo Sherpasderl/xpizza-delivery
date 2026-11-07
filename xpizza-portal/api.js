@@ -238,3 +238,68 @@ export async function getBranchDevices({ rid, brandId, token, assertLive }) {
 export async function revokeBranchDevice({ rid, uid, token }) {
   return apiFetch('revokeBranchDevice', { token, body: { rid, uid } });
 }
+
+// PORTAL-UI 1b (PLAN-portal-ui-slice1b-sucursales r4 §3.2) — the O1b branch-lifecycle endpoints (portal/branch-lifecycle-core.js).
+// The token (`expectedVersion`) is OPAQUE: an integer (identity) or a string (draft), echoed exactly as E1 sent it. Bodies are
+// built here and nowhere else, so the allowlist tests run against the real request builders. Additions only.
+export const E6_KEYS = Object.freeze(['brand_id', 'hours', 'location_name', 'op_id', 'phone', 'prep_default_min']);
+export const E7_PATCH_KEYS = Object.freeze(['hours', 'phone', 'prep_default_min']);
+export async function createBranchDraft({ opId, brandId, locationName, phone, hours, prepDefaultMin, token }) {
+  return apiFetch('createBranchDraft', { token, body: { op_id: opId, brand_id: brandId, location_name: locationName, phone, hours, prep_default_min: prepDefaultMin } });
+}
+export async function updateBranchProfile({ rid, expectedVersion, patch, token }) {
+  const p = {};
+  for (const k of E7_PATCH_KEYS) if (patch && Object.prototype.hasOwnProperty.call(patch, k)) p[k] = patch[k];   // never another key
+  return apiFetch('updateBranchProfile', { token, body: { rid, expectedVersion, patch: p } });
+}
+export async function setBranchActive({ rid, expectedVersion, active, token }) {
+  return apiFetch('setBranchActive', { token, body: { rid, expectedVersion, active: active === true } });
+}
+export async function deleteBranchDraft({ rid, expectedVersion, token }) {
+  return apiFetch('deleteBranchDraft', { token, body: { rid, expectedVersion } });
+}
+
+// ── DISH PHOTOS B (PLAN-dish-photos §2.2, FROZEN) — the two photo endpoints and the signed upload. Additions only. ──────
+// E-P1: authorize an upload; the answer carries EVERY header the URL was signed with (Content-Type, the size range, create-
+// only). E-P2: process the uploaded bytes with the two crops (EXIF-oriented integer rects) into a pid + its draft preview.
+// The rid travels in the BODY, as the contract names it. Typed failures come from apiFetch; the UI maps them by `error`.
+export async function photoUploadStart({ rid, opId, contentType, bytes, token }) {
+  return apiFetch('photoUploadStart', { token, body: { rid, op_id: opId, contentType, bytes } });
+}
+export async function photoProcess({ rid, uploadId, crops, token }) {
+  return apiFetch('photoProcess', { token, body: { rid, uploadId, crops } });
+}
+// The signed PUT. XMLHttpRequest rather than fetch for exactly one reason: upload PROGRESS (P4's determinate bar). It sends
+// exactly E-P1's `url`, `method` and `headers` and nothing it invented (§2.2 r2 P2-1) — no Authorization (the signature is the
+// credential), no extra header (an unsigned one fails the signature). The URL must be the path-style Storage upload prefix,
+// the only one the CSP admits (netlify.toml connect-src pins the exact bucket + uploads/ prefix; here only its brand-free
+// shape). Resolves on 2xx; rejects with an ApiError (Unavailable for a network failure, 'Aborted' when the caller's signal
+// fired). `onProgress(0..1)`.
+export const isUploadUrl = (url) => typeof url === 'string' && /^https:\/\/storage\.googleapis\.com\/[a-z0-9._-]+\/uploads\/[^?#]+\?/.test(url);
+export function putSigned({ url, method, headers }, body, { onProgress, signal, XHR } = {}) {
+  return new Promise((resolve, reject) => {
+    if (!isUploadUrl(url) || method !== 'PUT' || !headers || typeof headers !== 'object') {
+      reject(new ApiError('BadRequest', 0, { error: 'bad_upload_target' })); return;
+    }
+    const Ctor = XHR || globalThis.XMLHttpRequest;
+    const xhr = new Ctor();
+    let settled = false;
+    const done = (fn, v) => { if (!settled) { settled = true; fn(v); } };
+    xhr.open('PUT', url);
+    for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, String(v));
+    // the fraction of THIS body that has left (its size is known here; the event's own total is the same number)
+    const size = body && typeof body.size === 'number' ? body.size : 0;
+    if (xhr.upload && typeof onProgress === 'function' && size > 0) {
+      xhr.upload.onprogress = (e) => { if (e && typeof e.loaded === 'number') onProgress(Math.min(1, e.loaded / size)); };
+    }
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? done(resolve, { status: xhr.status })
+      : done(reject, new ApiError(KIND_BY_STATUS[xhr.status] || 'Failed', xhr.status, null)));
+    xhr.onerror = () => done(reject, new ApiError('Unavailable', 0, null));
+    xhr.onabort = () => done(reject, new ApiError('Aborted', 0, null));
+    if (signal) {
+      if (signal.aborted) { xhr.abort(); return; }
+      signal.addEventListener('abort', () => xhr.abort(), { once: true });
+    }
+    xhr.send(body);
+  });
+}

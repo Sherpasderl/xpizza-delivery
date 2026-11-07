@@ -6,10 +6,18 @@
 const assert = require('assert');
 const vm = require('vm');
 const { readFileSync } = require('fs');
-const { join } = require('path');
+const { join, dirname } = require('path');
+const { FORMS } = require('./tools/splice-form-bundle');
 const S = require('./catalog/splice-form-bundle');
 const { readLiteral, readSetLiteral } = require('./catalog/form-menu-source');
-const { catalogSnapshot, generateFormBundle } = require('./catalog/generate-form-bundle');
+const { catalogSnapshot } = require('./catalog/generate-form-bundle');
+// PLAN 4 (gap resolution A): the spliced bundle is the PUBLISHED shape — the ONE composer getPublicMenu serves
+const { composeServedMenu } = require('./catalog/public-menu');
+const generateFormBundle = composeServedMenu;
+
+// PLAN 4 GATED (G1): the bootstrap's record set = the form literals + the ONE reviewed data file's rows (reward_icon / extras_policy)
+const { withBootstrapRows } = require('./catalog/menu-structure-rows');
+const BR = (rid, src) => withBootstrapRows(rid, { dishes: readLiteral(src, 'MENU'), extras: readLiteral(src, 'EXTRAS') });
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 const ROOT = join(__dirname, '..');
@@ -28,7 +36,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
 //     menu change). If these ever differ, customers see a different menu than today. ────────────
 for (const rid of ['x_pizza', 'la_musa']) {
   const src = html(rid), b = S.extractBundle(src);
-  assert.deepStrictEqual(b.dishes, readLiteral(src, 'MENU'), `${rid}: served dishes == the hard-coded fallback, field for field AND in order`);
+  assert.deepStrictEqual(b.dishes, BR(rid, src).dishes, `${rid}: served dishes == the hard-coded fallback (+ the reviewed rows), field for field AND in order`);
   ok(`byte-parity ${rid}: ${b.dishes.length} served dishes identical to the current hard-coded menu`);
 }
 {
@@ -126,84 +134,96 @@ ok('idempotence: re-splicing both shipped forms yields byte-identical HTML');
   ok('splice scope: a completely different bundle changes ONLY the marked region');
 }
 
-// ── 6. THE VALIDATED SELECT: the bundle is used when valid, and EVERY structure falls back on its
-//     own validity. This is the always-renders guarantee. ─────────────────────────────────────────
-// Evaluate ONLY the validated-select block, with the form's own FALLBACK_* literals injected as
-// globals. The form interleaves other statements between the literals and the select, so slicing a
-// contiguous region would drag in code that uses MENU before the select declares it. This isolates
-// the decision logic, which is precisely what the always-renders guarantee rests on.
-const SELECT_NAMES = { x_pizza: ['MENU', 'PICKUP_ONLY_CATS', 'WEEKEND_ONLY_CATS'], la_musa: ['MENU', 'CATEGORIES', 'VARIANT_ITEMS', 'HAS_PHOTO'] };
-// Gather the select STATEMENTS individually. After the TDZ fix the x_pizza selects are deliberately
-// no longer contiguous — each sits beside the fallback it reads — so slicing a region would drag in
-// unrelated top-level code (and did).
-/* 🔴 `const` OR `let`. Portal 1B Task 6 made the globals the live apply REPLACES reassignable, so the
-   selects the form ships are now `let MENU = _okDishes(...)`. This harness lifts those statements and
-   re-runs them, and it cares about the SELECT — which bundle field is used and what it falls back to —
-   not about the keyword in front of it. Both spellings are accepted, and an absent declaration is still
-   a loud failure rather than an empty block that would quietly assert nothing. */
+// ── 6. THE BOOT SELECT (PLAN 4 r3 §3): the bundle is the ONLY boot source. Valid → used; a REQUIRED structure that is absent
+//     or any malformed one boots EMPTY, is announced (announceMenuBroken, once) and NEVER becomes a literal; an OPTIONAL one
+//     that is absent is simply none. Each structure is judged on its own. The REAL boot block and selects are lifted from each
+//     form and run with the form's own shared picker. ─────────────────────────────────────────────────────────────────────
+const SELECT_NAMES = {
+  x_pizza: ['MENU', 'EXTRAS', 'EXTRAS_BY_CATEGORY', 'EXTRAS_BY_ITEM', 'PICKUP_ONLY_CATS', 'WEEKEND_ONLY_CATS'],
+  la_musa: ['MENU', 'CATEGORIES', 'VARIANT_ITEMS', 'HAS_PHOTO', 'EXTRAS', 'EXTRAS_BY_CATEGORY', 'EXTRAS_BY_ITEM', 'TAG_BADGES', 'BADGE_PRIORITY'],
+};
 function stmt(src, decl) {
-  const candidates = decl.startsWith('const ') ? [decl, 'let ' + decl.slice(6)] : [decl];
-  for (const c of candidates) {
-    const at = src.indexOf(c);
-    if (at > 0) return src.slice(at, src.indexOf(';', at) + 1);
-  }
-  assert.fail(`expected declaration in form (tried ${candidates.join(' / ')})`);
+  const at = src.indexOf(decl);
+  if (at > 0) return src.slice(at, src.indexOf(';', at) + 1);
+  return assert.fail(`expected declaration in form: ${decl}`);
 }
-function selectBlock(src, rid) {
-  const helpers = ['const _BUNDLE = ', 'const _okDishes = ', 'const _okStrArr = ']
-    .concat(rid === 'la_musa' ? ['const _okCats = ', 'const _okObj = '] : []);
-  const selects = SELECT_NAMES[rid].map((k) => `const ${k} = ${k === 'HAS_PHOTO' ? 'new Set(' : '_ok'}`);
-  return helpers.concat(selects).map((d) => stmt(src, d)).join('\n');
+const clone = (v) => JSON.parse(JSON.stringify(v));
+function bootBlock(src) {
+  const a = src.indexOf('/* ── PLAN 4 (bake from published, r3 §3) — THE BUNDLE IS THE ONLY BOOT SOURCE');
+  const fn = src.indexOf('function _announceBootBroken(){', a);
+  assert.ok(a > 0 && fn > a, 'the boot block is in the form');
+  return src.slice(a, src.indexOf('\n}\n', fn) + 3);
 }
 function runSelect(rid, bundleGlobal) {
   const src = html(rid);
+  const announced = [];
   const sandbox = {
     window: bundleGlobal === undefined ? {} : { __FORM_MENU_BUNDLE__: bundleGlobal },
-    FALLBACK_MENU: readLiteral(src, 'MENU'),
+    GroupPicker: require(join(dirname(FORMS[rid]), 'form-group-picker.js')),
+    announceMenuBroken: () => announced.push(1), console: { error: () => {}, warn: () => {} },
+    document: { readyState: 'complete', addEventListener: () => {} },
   };
-  if (rid === 'la_musa') {
-    sandbox.FALLBACK_CATEGORIES = readLiteral(src, 'CATEGORIES');
-    sandbox.FALLBACK_VARIANT_ITEMS = readLiteral(src, 'VARIANT_ITEMS', '{', '}');
-    sandbox.FALLBACK_HAS_PHOTO = readSetLiteral(src, 'HAS_PHOTO');
-  } else {
-    sandbox.FALLBACK_PICKUP_ONLY = readLiteral(src, 'PICKUP_ONLY_CATS');
-    sandbox.FALLBACK_WEEKEND_ONLY = readLiteral(src, 'WEEKEND_ONLY_CATS');
-  }
   vm.createContext(sandbox);
-  /* 1D D2 — THE SELECTOR CALLS NO HELPER AGAIN. In D1 the initial-bundle selector routed through
-     _stripIdentityOrFail, so this sandbox had to lift that function out of the form and execute it.
-     D2 removed the boundary strip entirely — the id now rides into the cart on purpose — so the
-     selector is back to a bare `_okDishes(...) ? _BUNDLE.dishes : FALLBACK_MENU` and there is nothing
-     to lift. The assertion that the form still DEFINES that function is gone with it; what replaces it
-     lives in form-identity-strip.copy.test.mjs, which asserts the boundaries no longer strip and that
-     every raw-items signature projects instead. */
-  vm.runInContext(`${selectBlock(src, rid)}\n;globalThis.__out = { ${SELECT_NAMES[rid].join(', ')} };`, sandbox);
-  return sandbox.__out;
+  const helpers = ['const _BUNDLE = ', 'const _okDishes = ', 'const _okStrArr = '].concat(rid === 'la_musa' ? ['const _okCats = ', 'const _okObj = '] : []);
+  const selects = SELECT_NAMES[rid].map((k) => `let ${k} = ${k === 'HAS_PHOTO' ? 'new Set(_bootSelect(' : '_bootSelect('}`);
+  const code = helpers.map((d) => stmt(src, d)).join('\n') + '\n' + bootBlock(src) + '\n' + selects.map((d) => stmt(src, d)).join('\n')
+    + `\n_announceBootBroken();\n;globalThis.__out = { ${SELECT_NAMES[rid].join(', ')}, _BOOT_BROKEN, _MENU_BROKEN };`;
+  vm.runInContext(code, sandbox);
+  // out of the vm realm: plain arrays / objects (a cross-realm array fails deepStrictEqual on its prototype alone)
+  const out = {};
+  for (const [k, v] of Object.entries(sandbox.__out)) out[k] = JSON.parse(JSON.stringify(Object.prototype.toString.call(v) === '[object Set]' ? [...v] : v));
+  return { ...out, announced: announced.length };
 }
+const LITERAL_NAMES = { x_pizza: ['MENU', 'EXTRAS'], la_musa: ['MENU', 'EXTRAS', 'CATEGORIES'] };
 for (const rid of ['x_pizza', 'la_musa']) {
   const src = html(rid), bundle = S.extractBundle(src);
   const used = runSelect(rid, bundle);
   assert.deepStrictEqual(used.MENU, bundle.dishes, `${rid}: a VALID bundle is used for MENU`);
-  const fell = runSelect(rid, undefined);
-  assert.deepStrictEqual(fell.MENU, readLiteral(src, 'MENU'), `${rid}: NO bundle → the fallback literal renders`);
-  for (const bad of [{}, { dishes: [] }, { dishes: 'nope' }, { dishes: [{ id: 1 }] }, { dishes: [null] }]) {
-    assert.deepStrictEqual(runSelect(rid, bad).MENU, readLiteral(src, 'MENU'), `${rid}: malformed bundle (${JSON.stringify(bad)}) → fallback`);
+  assert.deepStrictEqual(used.EXTRAS, bundle.extras, `${rid}: … and for EXTRAS`);
+  assert.deepStrictEqual(used.EXTRAS_BY_CATEGORY, bundle.extras_by_category, `${rid}: … and for the option map`);
+  assert.deepStrictEqual([used._BOOT_BROKEN, used.announced], [[], 0], `${rid}: nothing broken, nothing announced`);
+  const none = runSelect(rid, undefined);
+  for (const k of LITERAL_NAMES[rid]) {
+    assert.deepStrictEqual(none[k], [], `${rid}: NO bundle → ${k} boots EMPTY`);
+    assert.notDeepStrictEqual(none[k], readLiteral(src, k), `🔴 ${rid}: ${k} must never become the literal`);
   }
-  ok(`validated select ${rid}: valid bundle used; absent/empty/malformed (5 shapes) → fallback — the menu ALWAYS renders`);
+  assert.strictEqual(none.announced, 1, `${rid}: announced once`);
+  assert.strictEqual(used._MENU_BROKEN, false, `${rid}: a valid bundle does not latch`);
+  assert.strictEqual(none._MENU_BROKEN, true, `${rid}: no bundle LATCHES the page non-orderable`);
+  // PLAN 4 r2 (Codex r1 #2): the COMPLETE contract at boot — any failure boots NOTHING (every structure empty), announced, latched
+  const dup = clone(bundle); dup.dishes[1] = { ...dup.dishes[1], id: dup.dishes[0].id };
+  const neg = clone(bundle); neg.dishes[0] = { ...neg.dishes[0], price: -5 };
+  for (const [label, bad] of [['empty dishes', { ...bundle, dishes: [] }], ['dishes not an array', { ...bundle, dishes: 'nope' }], ['an unnamed dish', { ...bundle, dishes: [{ id: 1 }] }],
+    ['a null dish', { ...bundle, dishes: [null] }], ['a NEGATIVE price', neg], ['DUPLICATE dish ids', dup], ['no extras', (() => { const b = clone(bundle); delete b.extras; return b; })()]]) {
+    const out = runSelect(rid, bad);
+    assert.deepStrictEqual([out.MENU, out.EXTRAS, out.announced, out._MENU_BROKEN], [[], [], 1, true], `${rid}: ${label} → EVERY structure empty, announced once, latched`);
+  }
+  ok(`boot select ${rid}: a valid bundle is used for every structure; no bundle, a malformed record, a negative price, duplicate ids or no extras → NOTHING boots, announced once, latched non-orderable — never the literal`);
 }
 {
-  // Per-structure independence: a bundle with good dishes but a broken aux structure must fall back
-  // for THAT structure only — a partial bundle can never leave one undefined.
+  // per-structure independence + optional absence
   const src = html('la_musa'), b = S.extractBundle(src);
-  const out = runSelect('la_musa', { ...b, categories: 'broken', variant_items: null, has_photo: 42 });
-  assert.deepStrictEqual(out.MENU, b.dishes, 'good dishes are still used');
-  assert.deepStrictEqual(out.CATEGORIES, readLiteral(src, 'CATEGORIES'), 'broken categories fall back independently');
-  assert.deepStrictEqual(out.VARIANT_ITEMS, readLiteral(src, 'VARIANT_ITEMS', '{', '}'), 'broken variant_items fall back independently');
-  assert.deepStrictEqual([...out.HAS_PHOTO].sort(), readSetLiteral(src, 'HAS_PHOTO').slice().sort(), 'broken has_photo falls back independently');
-  ok('validated select: each structure falls back on its OWN validity (a partial bundle leaves nothing undefined)');
-  const x = runSelect('x_pizza', { dishes: S.extractBundle(html('x_pizza')).dishes, pickup_only_cats: 7, weekend_only_cats: null });
-  assert.deepStrictEqual(x.PICKUP_ONLY_CATS, readLiteral(html('x_pizza'), 'PICKUP_ONLY_CATS'), 'x_pizza gate arrays fall back independently');
-  ok('validated select x_pizza: the gate arrays fall back independently of the dish array');
+  const out = runSelect('la_musa', { ...b, categories: 'broken' });
+  assert.deepStrictEqual([out.MENU, out.CATEGORIES, out.EXTRAS, out.VARIANT_ITEMS, out.HAS_PHOTO, out.EXTRAS_BY_CATEGORY, out.TAG_BADGES], [[], [], [], {}, [], {}, {}], 'broken categories → nothing boots');
+  assert.deepStrictEqual(out._BOOT_BROKEN, ['apply_categories_missing'], 'the first problem is named');
+  // PLAN 4 r2 (Codex r1 #2 / #3): a malformed variant map, and dishes whose variant map is MISSING, boot nothing either
+  const bvm = clone(b); bvm.variant_items[Object.keys(bvm.variant_items)[0]].variantIds = ['ghost'];
+  assert.deepStrictEqual(runSelect('la_musa', bvm)._BOOT_BROKEN.map((x) => x.split('@')[0]), ['apply_variant_id_orphan'], 'a malformed variant map refuses the boot');
+  const nvm = clone(b); delete nvm.variant_items;
+  const o0 = runSelect('la_musa', nvm);
+  assert.ok(/^apply_variant_uncovered@/.test(o0._BOOT_BROKEN[0]) && o0._MENU_BROKEN && o0.MENU.length === 0, 'variants with NO map (reverse coverage) refuse the boot — never "no groups"');
+  const opt = { ...b }; delete opt.extras_by_item; delete opt.badges; delete opt.badge_priority;
+  const o2 = runSelect('la_musa', opt);
+  assert.deepStrictEqual([o2.EXTRAS_BY_ITEM, o2.TAG_BADGES, o2._BOOT_BROKEN], [{}, {}, []], 'an OPTIONAL structure that is absent is simply none — not broken');
+  assert.deepStrictEqual(o2.BADGE_PRIORITY, [], 'PLAN 4 GATED: with no published priority NO badge is chosen — there is no literal order to fall back to');
+  const o3 = runSelect('la_musa', { ...b, badge_priority: ['must_try', 'chefs_pick'] });
+  assert.deepStrictEqual(o3.BADGE_PRIORITY, ['must_try', 'chefs_pick'], 'a published priority wins');
+  const o4 = runSelect('la_musa', { ...b, extras_by_category: { ...b.extras_by_category, ghost: [] } });
+  assert.deepStrictEqual([o4.EXTRAS_BY_CATEGORY, o4.MENU, o4.announced, o4._MENU_BROKEN], [{}, [], 1, true], 'a map the shared rule refuses boots NOTHING (never the literal), announced, latched');
+  ok('boot select la_musa: broken categories, a malformed variant map, variants with no map, a refused option map → nothing boots, latched; optional absent = none; a published priority wins over TAG_PRIORITY');
+  const x = runSelect('x_pizza', { ...S.extractBundle(html('x_pizza')), pickup_only_cats: 7, weekend_only_cats: null });
+  assert.deepStrictEqual([x.PICKUP_ONLY_CATS, x.WEEKEND_ONLY_CATS, x.MENU, x.announced, x._MENU_BROKEN], [[], [], [], 1, true], 'x_pizza malformed gates → nothing boots, announced, latched — never the literal');
+  ok('boot select x_pizza: malformed gate arrays refuse the boot (nothing orderable), announced and latched');
 }
 // ── 6b. SERVED MENU vs SERVER PRICING — asserted DIRECTLY, not via transitivity. The customer sees
 //      the bundle; the server charges from menu-pricing. Those two must agree item-for-item. ─────

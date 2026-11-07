@@ -59,8 +59,23 @@ export function isUnassignedDelivery(order, orderId, tasks) {
 // (→ "Reasignar"). Broadened from the old ready/out-only rule to match the desktop dispatch, so an
 // unassigned order gets a driver immediately instead of waiting for "listo". Pickup/scheduled/completed
 // have no driver leg → no action.
+// A delivery whose pickup is DONE can no longer be reassigned — the driver physically has the food, and
+// reassigning would reset the completed pickup and corrupt the order. Mirrors unassign-core.js:59 (pickup
+// completed OR order out_for_delivery), plus a finite picked_up_at (also fires on the corrupted shape a
+// reset would leave behind). Phase of THE ORDER, not the driver's global status. Pure; no firebase.
+export const pickupTaskId = (orderId) => `${orderId}_pickup`;
+export function isPostPickup(order, orderId, tasks) {
+  const pt = (tasks || {})[pickupTaskId(orderId)];
+  return (pt && pt.status === 'completed')
+    || !!(order && order.status === 'out_for_delivery')
+    || !!(order && Number.isFinite(order.picked_up_at));
+}
+
+// NARROW ONLY the action predicate: hide «Reasignar» once the pickup is done. isLiveDelivery and
+// isUnassignedDelivery (and the section classification + counts that read them) are UNCHANGED, so the
+// order stays visible and correctly classified while only the action disappears.
 export function canReassign(order, orderId, tasks) {
-  return isLiveDelivery(order, orderId, tasks);
+  return isLiveDelivery(order, orderId, tasks) && !isPostPickup(order, orderId, tasks);
 }
 
 export const typeChip = (order) => (order && order.order_type === 'pickup' ? 'pickup' : 'delivery');

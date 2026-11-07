@@ -12,7 +12,7 @@ const { HUNKS, unapplyS3cIndex } = require('./tools/s3c-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const BASE = '786a328a';   // the HELD S3b tip this slice branches from
-const live = require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(require('./tools/s2app-inverse').unapplyS2appIndex(require('./tools/area-inverse').unapplyAreaIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))));   // S5r (newer) is reversed first
+const live = require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(require('./tools/s2app-inverse').unapplyS2appIndex(require('./tools/area-inverse').unapplyAreaIndex(require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(require('./tools/pausa-inverse').unapplyPausaIndex(require('./tools/mem512-inverse').unapplyMem512Index(require('./tools/checkout-inverse').unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(require('./tools/intl-inverse').unapplyIntlIndex(require('./tools/photos-inverse').unapplyPhotosIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))   /* DRYRUN R-WIRE (2e): photos A1/A2 (newest) innermost */ )))))))))))))) /* DRYRUN R-WIRE (2e): 10 cross-side layers innermost */))));   // S5r (newer) is reversed first
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 assert.strictEqual(unapplyS3cIndex(live), baseIdx, `🔴 index.js minus the S3c hunks is not ${BASE}:index.js — something beyond the stated seams changed`);
@@ -40,7 +40,7 @@ ok('sensitivity: a byte inside a hunk, a duplicated hunk and a missing hunk are 
   const baseWa = show(BASE);
   assert.deepStrictEqual([...FILES], ['whatsapp.js'], 'S3C-MOD-FILES: whatsapp.js only');
   assert.strictEqual(unapplyS3cModule('whatsapp.js', show('72ba5a0d')), baseWa, '🔴 S3C-MOD-GEN: the S3c tip\'s whatsapp.js minus the S3c hunks is not 786a328a:whatsapp.js');
-  const wa = unapplyS2tipModule('whatsapp.js', fs.readFileSync(path.join(__dirname, 'whatsapp.js'), 'utf8'));   // the fold order: s2tip (newer) FIRST
+  const wa = unapplyS2tipModule('whatsapp.js', require('./tools/drvc-inverse').unapplyDrvcModule('whatsapp.js', fs.readFileSync(path.join(__dirname, 'whatsapp.js'), 'utf8')) /* R-WIRE (3a stack): main's DRIVER C whatsapp.js hunks, a cross-side layer, innermost */);   // the fold order: s2tip (newer) FIRST
   assert.strictEqual(unapplyS3cModule('whatsapp.js', wa), baseWa, '🔴 S3C-MOD-BASE: whatsapp.js minus s2tip\'s, then S3c\'s hunks, is not 786a328a:whatsapp.js — something beyond the stated seams changed');
   assert.notStrictEqual(wa, baseWa, 'S3C-MOD-NONVACUOUS: the S3c hunks are present');
   for (const h of MH) assert.ok(wa.indexOf(h.now) > -1 && wa.indexOf(h.now, wa.indexOf(h.now) + 1) === -1, `S3C-MOD-ONCE: ${h.now.slice(0, 50)}`);

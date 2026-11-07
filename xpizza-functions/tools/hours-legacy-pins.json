@@ -1,0 +1,225 @@
+[
+  {
+    "id": "L1-read",
+    "family": "L1",
+    "file": "index.js",
+    "start_anchor": "    restIdentity = await getRestaurantIdentity(db, restaurantId);",
+    "end_anchor": "    restIdentity = await getRestaurantIdentity(db, restaurantId);",
+    "inclusive": true,
+    "sha256": "af7c09d81d0db963f5017b67ba5289d2bf1090c7cc810a880b5d7465ea9bac9f"
+  },
+  {
+    "id": "L1-gate",
+    "family": "L1",
+    "file": "index.js",
+    "start_anchor": "    const v = SCHED.validateScheduledFor(restIdentity.hours, scheduledForRaw, Date.now(), orderType);",
+    "end_anchor": "    return badRequest(res, 'Cerrado — programá tu pedido');   // ASAP while closed → never dump onto a dark kitchen",
+    "inclusive": true,
+    "sha256": "5dda858e366c32afbb01b55938dd02ed500e7e5cbf4bcb0987061f4bc962c2fe"
+  },
+  {
+    "id": "L2-read",
+    "family": "L2",
+    "file": "index.js",
+    "start_anchor": "    schedIdentity = await getRestaurantIdentity(db, restaurantId);",
+    "end_anchor": "    schedIdentity = await getRestaurantIdentity(db, restaurantId);",
+    "inclusive": true,
+    "sha256": "6c9625d4a6335ee9ea7bfc82b53527b22a3f0639277a6542e2e2456040d8642e"
+  },
+  {
+    "id": "L2-gate",
+    "family": "L2",
+    "file": "index.js",
+    "start_anchor": "    const v = SCHED.validateScheduledFor(schedIdentity.hours, scheduledForRaw, Date.now(), orderType);",
+    "end_anchor": "  } else if (SCHED.asapWhileClosed(schedIdentity.hours, scheduledForRaw, Date.now())) {",
+    "inclusive": true,
+    "sha256": "3dd0783c511cc906910d15a1948189c7df1d61e83ca2ff7081acc73e5187a450"
+  },
+  {
+    "id": "L3-confirm",
+    "family": "L3",
+    "file": "pixelpay-confirm.js",
+    "start_anchor": "    if (deps.getIdentity) { try { hours = (await deps.getIdentity(db, order.restaurant_id || 'x_pizza')).hours; } catch (_) { hours = null; } }",
+    "end_anchor": "    const sv = SCHED.releaseTimeValid(hours, order, now);",
+    "inclusive": true,
+    "sha256": "fc2a6d4d3d5ea72d5b4a5c3f4823afe71fffa77b6f9456b7ce76e340173ef137"
+  },
+  {
+    "id": "L4-release",
+    "family": "L4",
+    "file": "scheduled-release-core.js",
+    "start_anchor": "  const hours = (await db.ref(`restaurants/${rid}/identity/hours`).once('value')).val() || null;",
+    "end_anchor": "  const check = S.releaseTimeValid(hours, order, now);",
+    "inclusive": true,
+    "sha256": "22de5735c715fb58d71d959852ff1e17d0770d36f57492f598d5ce94e7589972"
+  },
+  {
+    "id": "L5-reply",
+    "family": "L5",
+    "file": "index.js",
+    "start_anchor": "    // Hours for the closed-message. x_pizza uses its hardcoded HOURS (byte-identical). Non-x_pizza reads",
+    "end_anchor": "      const hours = inbound.getHoursStatus(new Date(), hoursMap);   // hoursMap undefined → x_pizza HOURS default",
+    "inclusive": true,
+    "sha256": "e3077fe3bc2549bb5008e27d3b7b2a121349240691d8ef2eb9450385316c044c"
+  },
+  {
+    "id": "L6-default-table",
+    "family": "L6",
+    "file": "whatsapp_inbound.js",
+    "start_anchor": "const HOURS = {",
+    "end_anchor": "  6: { open: '12:00', close: '20:45' }   // Sábado",
+    "inclusive": true,
+    "sha256": "aca3f3d6d11597f0e9b6d51be1fc7e5d0fb3e7e5024afe1b5348af5fb1ac97f9"
+  },
+  {
+    "id": "L6-status",
+    "family": "L6",
+    "file": "whatsapp_inbound.js",
+    "start_anchor": "function getHoursStatus(refDate = new Date(), hoursMap = HOURS) {",
+    "end_anchor": [
+      "  return `${displayHr}:${String(m).padStart(2, '0')} ${ampm}`;",
+      "}"
+    ],
+    "inclusive": true,
+    "sha256": "22418a392015ce4e77047acebd6ec0022a708491c9f5b3c2da6397d4f6c079dd"
+  },
+  {
+    "id": "L6-converter",
+    "family": "L6",
+    "file": "whatsapp_inbound.js",
+    "start_anchor": "const IDENTITY_DAY_ABBR = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']; // index 0..6 (getUTCDay)",
+    "end_anchor": [
+      "  return out;",
+      "}"
+    ],
+    "inclusive": true,
+    "sha256": "81fdb77760ab12b6544a2de7e0b646be0e4ce5d4018d8b33315854286a46c4da"
+  },
+  {
+    "id": "L7-reset",
+    "family": "L7",
+    "file": "availability-reset.js",
+    "start_anchor": "  const hours = (await db.ref(`restaurants/${rid}/identity/hours`).once('value')).val() || null;",
+    "end_anchor": "  if (isOpenAt(hours, now)) return { rid, skipped: true, reason: 'open' };",
+    "inclusive": true,
+    "sha256": "a718503386e53bbffd4fc32524f27767a7b34a7632c5fac6bf10c0473af46d34"
+  },
+  {
+    "id": "L8-grace",
+    "family": "L8",
+    "file": "materialize-guard.js",
+    "start_anchor": "async function needsPaidAfterCloseRefund(deps, order, now) {",
+    "end_anchor": [
+      "  return !SCHED.isWithinGrace(hours, now, graceMin);",
+      "}"
+    ],
+    "inclusive": true,
+    "sha256": "902e888e10ab186879268c995bda476eae4d98708b554627e2d4516828b00f0a"
+  },
+  {
+    "id": "L9-control",
+    "family": "L9",
+    "file": "portal/ops-core.js",
+    "start_anchor": "  return nullControl(isOpenAt(identity.hours, nowMs) ? 'open' : 'closed');",
+    "end_anchor": "  return nullControl(isOpenAt(identity.hours, nowMs) ? 'open' : 'closed');",
+    "inclusive": true,
+    "sha256": "dd01a4c720749bf505d52f717d9f97a5c72c7f6495b42d00331f7ce8ba125d88"
+  },
+  {
+    "id": "L9-operational",
+    "family": "L9",
+    "file": "portal/ops-core.js",
+    "start_anchor": "async function operationalOf(db, rid, nowMs) {",
+    "end_anchor": [
+      "  };",
+      "}"
+    ],
+    "inclusive": true,
+    "sha256": "bc259196ef38157c50efc4ff13902a2576bb879218853402d4310fbc859adf71"
+  },
+  {
+    "id": "L9-degrade",
+    "family": "L9",
+    "file": "portal/ops-core.js",
+    "start_anchor": "      log.warn('portal_ops_branch_degraded', JSON.stringify({ fn: 'getMyBranches', rid: l.rid, error: String((e && e.message) || e).slice(0, 160) }));",
+    "end_anchor": "      return { rid: l.rid, brand_id: a.brandId, degraded: true };",
+    "inclusive": true,
+    "sha256": "b080c901ca226627c8314afb176b3e3d57b5d28dea993323ed95d679e2f7b0f0"
+  },
+  {
+    "id": "L10-store",
+    "family": "L10",
+    "file": "brands/brand-store.js",
+    "start_anchor": "async function readIdentities(rtdb) {",
+    "end_anchor": [
+      "  return out;",
+      "}"
+    ],
+    "inclusive": true,
+    "sha256": "df597a5a1ace6e7ec54f5434e5e5952a6cdd3ee23c17c9a23975889c0df3344a"
+  },
+  {
+    "id": "L10-pick",
+    "family": "L10",
+    "file": "brands/brand-projection.js",
+    "start_anchor": "function pickHours(h) {",
+    "end_anchor": [
+      "  return out;",
+      "}"
+    ],
+    "inclusive": true,
+    "sha256": "9890256682810cd5494dbb900b26f9f54cde49203e05100b06496167a5e79fcf"
+  },
+  {
+    "id": "L10-row",
+    "family": "L10",
+    "file": "brands/brand-projection.js",
+    "start_anchor": "    const hours = pickHours(id.hours);",
+    "end_anchor": "    if (Object.keys(hours).length) row.hours = hours;",
+    "inclusive": true,
+    "sha256": "684c9554e50fbb21f745c7e4e638282c2f753be41e0a4005a723ceef64de4e21"
+  },
+  {
+    "id": "L11-hhmm",
+    "family": "L11",
+    "file": "brands/brand-model.js",
+    "start_anchor": "const HHMM = /^([01]\\d|2[0-3]):[0-5]\\d$/;",
+    "end_anchor": "const HHMM = /^([01]\\d|2[0-3]):[0-5]\\d$/;",
+    "inclusive": true,
+    "sha256": "e0e6aa1b1f1a443c7dff60296124a50fa8c5ba96eb26bbffce7d1dce1884da34"
+  },
+  {
+    "id": "L11-istime",
+    "family": "L11",
+    "file": "brands/brand-model.js",
+    "start_anchor": "const isTime = (v) => typeof v === 'string' && HHMM.test(v);   // the type FIRST: a regex coerces an array to a string",
+    "end_anchor": "const isTime = (v) => typeof v === 'string' && HHMM.test(v);   // the type FIRST: a regex coerces an array to a string",
+    "inclusive": true,
+    "sha256": "b65e6dafe9c28adacb45653dd48b466ba1847ef71cc7188afad016c518563e9c"
+  },
+  {
+    "id": "L11-errors",
+    "family": "L11",
+    "file": "brands/brand-model.js",
+    "start_anchor": "function hoursErrors(h) {",
+    "end_anchor": [
+      "  }",
+      "  return e;",
+      "}"
+    ],
+    "inclusive": true,
+    "sha256": "de061a830a95bfd91806a6670b9e43523c2f4c447ff0897543024af8b16736d4"
+  },
+  {
+    "id": "L12-interp",
+    "family": "L12",
+    "file": "scheduled-orders.js",
+    "start_anchor": "const parseHM = (s) => {",
+    "end_anchor": [
+      "  return mins >= hd.startMin && mins < hd.endMin;   // end exclusive",
+      "}"
+    ],
+    "inclusive": true,
+    "sha256": "7640683e6bb76c209c20d8cf8acb5c835248171d312bcb531de0d69e51b3bfcf"
+  }
+]

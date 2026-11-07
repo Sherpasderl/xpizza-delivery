@@ -14,6 +14,9 @@ const ROOT = path.join(here, '..', '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tracker-golden-'));
 const run = (args) => { const r = spawnSync(process.execPath, args, { stdio: 'inherit', env: process.env }); if (r.status !== 0) { console.error(`tracker-golden gate: FAIL — ${args.join(' ')} exited ${r.status}`); process.exit(1); } };
 try {
+  // the post-pickup «Reasignar» refusal (39b59b08), on the candidate: { ok: false, reason: 'picked_up' }, task unmoved
+  run([path.join(here, 'tracker-golden.mjs'), '--root', ROOT, '--refusal-check']);
+  console.log("  ✓ refusal: a post-pickup reassign is REFUSED { ok: false, reason: 'picked_up' } and the delivery task stays with D1");
   for (const [mode, extra] of [['off', []], ['on', ['--allow', path.join(here, 'fixtures', 'tracker-golden.on-deltas.json')]]]) {
     const out = path.join(tmp, `${mode}.json`);
     run([path.join(here, 'tracker-golden.mjs'), '--root', ROOT, '--out', out, '--flag', mode]);

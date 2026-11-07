@@ -101,12 +101,17 @@ const withField = (k, v) => ({ ...VALID, [k]: v });
   await no('B: whole-node delivery_radius_km string', set(dispDb, 'restaurants/wbad/identity', withField('delivery_radius_km', '7')));
 
   // Child update on a COMPLETE node (cnode seeded with VALID, version 1).
-  await ok('B: child update active=false (complete node)', set(dispDb, 'restaurants/cnode/identity/active', false));
-  await ok('B: child update hub_lat=number (complete node)', set(dispDb, 'restaurants/cnode/identity/hub_lat', 99));
-  await ok('B: child update version 1->2 (increasing)', set(dispDb, 'restaurants/cnode/identity/version', 2));
-  await no('B: child update version 2->1 (decreasing)', set(dispDb, 'restaurants/cnode/identity/version', 1));
+  // O1a T6 (advisor ruling): every non-admin identity write bumps version by EXACTLY 1 — so each child update carries it
+  await no('B: child update WITHOUT a version bump (active) → deny', set(dispDb, 'restaurants/cnode/identity/active', false));
+  await ok('B: child update active=false + version 1->2', upd(dispDb, 'restaurants/cnode/identity', { active: false, version: 2 }));
+  await ok('B: child update hub_lat=number in range + version 2->3', upd(dispDb, 'restaurants/cnode/identity', { hub_lat: 15.6, version: 3 }));
+  await no('B: hub_lat 99 (out of range) even with version + 1', upd(dispDb, 'restaurants/cnode/identity', { hub_lat: 99, version: 4 }));
+  await no('B: hub_lng 181 (out of range) even with version + 1', upd(dispDb, 'restaurants/cnode/identity', { hub_lng: 181, version: 4 }));
+  await ok('B: version-only bump 3->4', set(dispDb, 'restaurants/cnode/identity/version', 4));
+  await no('B: child update version 4->3 (decreasing)', set(dispDb, 'restaurants/cnode/identity/version', 3));
+  await no('B: child update version 4->6 (+2 jump)', set(dispDb, 'restaurants/cnode/identity/version', 6));
   // phone has no type validator this step — number write is permitted (documents the rule surface).
-  await ok('B: child update phone=number (no validator)', set(dispDb, 'restaurants/cnode/identity/phone', 123));
+  await ok('B: child update phone=number (no validator) + version 4->5', upd(dispDb, 'restaurants/cnode/identity', { phone: 123, version: 5 }));
 
   // Parent-recheck: a single child write onto an INCOMPLETE node. If the parent .validate
   // re-evaluates the merged node (Firebase docs say it does), hasChildren fails -> deny.

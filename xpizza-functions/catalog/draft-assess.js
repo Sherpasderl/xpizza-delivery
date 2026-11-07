@@ -25,9 +25,11 @@ function assessDraft(rid, source, activeRes) {
     return { publishable: false, code: 'draft_unbuildable', detail: String((e && e.message) || e).slice(0, 300) };
   }
   try {
+    const draftBuilt = { items: built.items, extras: built.extras, structure: built.structure };
+    const activeBuilt = { items: activeRes.built.items, extras: activeRes.extraRecords, structure: activeRes.built.structure };
     const r = AP.compareToActive({
-      draftBuilt: { items: built.items, extras: built.extras, structure: built.structure },
-      activeBuilt: { items: activeRes.built.items, extras: activeRes.extraRecords, structure: activeRes.built.structure },
+      draftBuilt,
+      activeBuilt,
       draftAuthored: Object.keys(source.structure || {}),
       renderedCategories: rendererContract(rid).renderedCategories,
       deletedIds: source.deleted_ids && Array.isArray(source.deleted_ids.ids) ? source.deleted_ids.ids : [],
@@ -36,7 +38,16 @@ function assessDraft(rid, source, activeRes) {
       authoring: groupCapabilities().authoring,
       extrasAuthoring: extrasCapabilities().authoring,   // per-product extras (the narrow deny_extras / extras_policy exception)
     });
-    return { publishable: true, additions: r.additions, removals: r.removals };
+    // PLAN-public-menu-display T1 (portal r1 #3) — what the saved draft has PENDING against the published menu, from the SAME
+    // comparison a save and a publish are judged by: the section names that differ (paired by index — compareToActive has
+    // just proved the ids, order and count equal), and whether ANYTHING besides a name differs (changesNothingElse, the
+    // rule rename_not_alone enforces). A publishable draft never has both: that is exactly rename_not_alone.
+    const nameOf = (c) => (c && c.name !== undefined ? c.name : null);
+    const ac = Array.isArray(activeBuilt.structure.categories) ? activeBuilt.structure.categories : [];
+    const dc = Array.isArray(draftBuilt.structure.categories) ? draftBuilt.structure.categories : [];
+    const renames = dc.map((c, i) => ({ id: c && c.id, from: nameOf(ac[i]), to: nameOf(c) })).filter((x) => x.from !== x.to);
+    const other = !AP.changesNothingElse(draftBuilt, activeBuilt, r.additions, r.removals);
+    return { publishable: true, additions: r.additions, removals: r.removals, renames, other };
   } catch (e) {
     if (e instanceof AP.AddProductError) return { publishable: false, code: e.code, detail: e.detail, ...(e.key ? { key: e.key } : {}), ...(e.field ? { field: e.field } : {}) };
     return { publishable: false, code: 'assessment_failed', detail: String((e && e.message) || e).slice(0, 300) };

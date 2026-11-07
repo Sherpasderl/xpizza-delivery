@@ -44,7 +44,9 @@ test('every function a module calls is one it defines or imports', () => {
     // Stats S2: the CSV export hands the merchant a file through a Blob URL
     'Blob',
     // T-c /aceptar: the WHATWG URL parser (strips the email link's one-time code from the address bar)
-    'URL']);
+    'URL',
+    // DISH PHOTOS B: cancel an upload (AbortController), read a picked photo's EXIF-oriented size (createImageBitmap, Image)
+    'AbortController', 'createImageBitmap', 'Image']);
   for (const f of JS) {
     const c = codeOf(f);
     const defined = new Set([
@@ -380,11 +382,21 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // on/off (setRequiredChoice), its name / "sin extras" / options while unsaved (setGroupLabel, setGroupExtrasNone, addChoice,
   // removeChoice, setChoiceName, setChoiceRecommended), its prices while it is an addition (setChoicePrice, setGroupPrice —
   // the ONE group price mutator), and the read-only choiceGroup / optionPricesEqual / isNewGroupOption / optionParentId.
+  // PLAN-public-menu-display T1 — a SECTION'S DISPLAY NAME, and nothing else about a section: setCategoryNames (a whole SET of
+  // names applied at once or not at all — never an id, the order or the count), and the read-only pendingRenames /
+  // categoriesUnnamed / categoryNameProblem. No key is written: a section name is not a pricing key.
+  // DISH PHOTOS B (PLAN-dish-photos §2.1) — the draft PHOTO map: ONE guarded mutator (setPhoto: a pid E-P2/E-P3 returned, the
+  // removed state, or back to absent) and the read-only draftPhotos / origPhotos / pendingPhotos. It writes no pricing key,
+  // no display field and no item — the map is a separate top-level field of the source.
   assert.deepStrictEqual(exported, [
-    'addChoice', 'addProduct', 'adopt', 'canEditDraft', 'choiceGroup', 'commit', 'commitTo', 'createDraft', 'discard', 'draftSource', 'groupUsage', 'incompleteAdditions', 'invalidKeys', 'isNewGroupOption', 'isPublishable',
-    'optionGroups', 'optionParentId', 'optionPricesEqual', 'parsePrice', 'pendingChanges', 'pendingCount', 'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId',
-    'setAddition', 'setChoiceName', 'setChoicePrice', 'setChoiceRecommended', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setRequiredChoice',
+    'addChoice', 'addProduct', 'adopt', 'canEditDraft', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup', 'commit', 'commitTo', 'createDraft', 'discard', 'draftPhotos', 'draftSource', 'groupUsage', 'incompleteAdditions', 'invalidKeys', 'isNewGroupOption', 'isPublishable',
+    'optionGroups', 'optionParentId', 'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingPhotos', 'pendingRenames', 'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId',
+    'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice', 'setChoiceRecommended', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
   ], 'the edit state exports exactly these');
+  const setPhotoBody = editor.slice(editor.indexOf('export function setPhoto('), editor.indexOf('export function setPhoto(') + 300);
+  // ruling A: setPhoto asks canEditContent — owned-for-editing (canEditDraft) AND no section name waiting (local or saved)
+  assert.ok(/if \(!canEditContent\(draft\)\) return draft;/.test(setPhotoBody), 'setPhoto refuses when the draft is not owned for editing, or a name waits');
+  assert.ok(/const canEditContent = \(draft\) => canEditDraft\(draft\) && pendingRenames\(draft\)\.length === 0 && draft\.held\(\) !== 'names';/.test(editor), 'canEditContent still includes canEditDraft');
   // commit and discard are OPPOSITE operations on the same draft, and confusing them reverted a
   // published price. Both must exist, and the publish path must use commit.
   assert.ok(/export function commit\(/.test(editor) && /export function discard\(/.test(editor), 'both baseline operations exist');
@@ -394,7 +406,10 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // node does not remove its listeners and neither inert nor disabled stops a programmatic dispatch.
   assert.ok(/export const canEditDraft/.test(editor), 'the predicate exists and is shared');
   const setPriceBody = editor.slice(editor.indexOf('function setPrice('), editor.indexOf('function setPrice(') + 900);
-  assert.ok(/if \(!canEditDraft\(draft\)\) return draft;/.test(setPriceBody), 'setPrice refuses when the draft is not owned for editing');
+  // PLAN-public-menu-display T1 (Codex r1 #2): the content mutators ask canEditContent — canEditDraft FIRST, then «a rename
+  // publishes alone» — so the ownership boundary is unchanged and the exclusion is enforced at the same place
+  assert.ok(/if \(!canEditContent\(draft\)\) return draft;/.test(setPriceBody), 'setPrice refuses when the draft is not owned for editing');
+  assert.ok(/const canEditContent = \(draft\) => canEditDraft\(draft\) && /.test(editor), 'canEditContent is canEditDraft first');
   const discardBody = editor.slice(editor.indexOf('export function discard('), editor.indexOf('export function discard(') + 400);
   assert.ok(/if \(!canEditDraft\(draft\)\) return draft;/.test(discardBody), '...and so does discard');
   // commit/commitTo must NOT be guarded — they run DURING a publish, when the lock is held by
@@ -761,7 +776,8 @@ test('every publish state is wired — and edit_superseded re-reviews rather tha
 
   // the receipt reads the CAPTURED review, because the draft is discarded on success
   assert.ok(/const captured = state\.review/.test(app), 'the review is captured before the draft is thrown away');
-  assert.ok(/receiptFor\(out\.res, captured\)/.test(app), '...and the receipt is built from it');
+  // (DISH PHOTOS B: + a `nameOf` lookup for the photos-only receipt line — names, not evidence)
+  assert.ok(/receiptFor\(out\.res, captured(?:, \{ nameOf: photoNameOf \})?\)/.test(app), '...and the receipt is built from it');
   const successIdx = app.indexOf('renderReceipt(');
   const settleIdx = app.indexOf('state.settle = {', successIdx);
   assert.ok(settleIdx > successIdx, 'the receipt renders BEFORE the baseline moves');
@@ -972,9 +988,12 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.publishViaRequest':   [1, 'guarded', 'T-d (3a) — the server\u2019s publish_via_request, written ONLY in applyPublishRequestFacts: reset at the start of a load (fail closed: today\u2019s path) and set on the load / post-publish settle paths behind the generation check; it only chooses the review-bar CTA, and the server re-checks every request'],
     'state.uid':                 [1, 'ender',   'the auth handler itself — the identity change that ENDS the previous world'],
     'state.extras':              [1, 'guarded', 'the flat extras list, written by the load path behind the generation check'],
+    'state.savedRenames':        [2, 'guarded', 'PLAN-public-menu-display T1 (Codex r1 #3) — the SAVED draft\u2019s unpublished section names, from the server: set in applyAddProductFacts (load / post-publish settle, behind the generation check) and in sendToOwnerFlow\u2019s settle path from the server\u2019s own diff, behind its generation check. It only HOLDS edits (prices / names), it never writes the draft'],
+    'state.savedOther':          [2, 'guarded', 'PLAN-public-menu-display T1 (Codex r1 #3) — whether the SAVED draft has anything unpublished besides a name, from the server: the same two settle paths as state.savedRenames, generation-checked; it only HOLDS a rename'],
+    'state.renameEdit':          [5, 'view',    'PLAN-public-menu-display T1 — WHICH section title is being edited (an id, nothing else): reset by the load path, set by «Cambiar nombre», cleared by Guardar / Cancelar and by moving to another section. Presentational: the NAME itself reaches the draft only through setCategoryNames (canEdit), from bound() callbacks'],
     'state.selectedCat':         [5, 'view',    '[1D add-product A: + the add drawer\u2019s section change and the FIX action, both presentational] which category the rail highlights — a stale write repaints, it cannot mis-price'],
     'state.openGroups':          [6, 'view',    '[1D add-product B: + the same three for the "Elección requerida" chevron, keyed choice::<id>] which option groups are expanded in the drawer — one assignment plus the add/delete of the toggle; presentational only'],
-    'state.drawerKey':           [6, 'view',    '[1D add-product A: + the add drawer\u2019s Cerrar and Listo] [1D add-product B: + renderDrawer redirecting a new product\u2019s OPTION to its product] which dish the drawer shows; the fields inside it are canEdit-guarded'],
+    'state.drawerKey':           [7, 'view',    '[1D add-product A: + the add drawer\u2019s Cerrar and Listo] [1D add-product B: + renderDrawer redirecting a new product\u2019s OPTION to its product] [DISH PHOTOS B: + the crop step\u2019s Cerrar (bound), which closes the drawer and discards the picked file] which dish the drawer shows; the fields inside it are canEdit-guarded'],
     'state.restaurants':         [2, 'guarded', '[PORTAL-UI 1a: + openEditor, once per page at boot — the page\u2019s single selected restaurant] the switcher list, written by loadRestaurants behind its generation check'],
     'editLockHolder':            [4, 'guarded', 'the declaration, take, release, and the ender — which no longer clears it unconditionally: a ticket with a request on the wire is not the ender\u2019s to reclaim'],
     'writeSeq':                  [2, 'guarded', 'the monotonic source of request ids — declared once, incremented once, never reused, which is what makes a request id an identity rather than a label'],
@@ -1123,7 +1142,17 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo
                  'publishedChoiceBlock',
                  // PLAN-portal-team-invites T-d (3a) — the per-load publish-request facts (load + post-publish settle paths, behind
                  // the generation check) and the manager's send (the review's admission / lock / generation discipline)
-                 'applyPublishRequestFacts', 'sendToOwnerFlow'];
+                 'applyPublishRequestFacts', 'sendToOwnerFlow',
+                 // PLAN-public-menu-display T1 — a section's name: the canEdit-guarded setter and the three handlers that call it or
+                 // move the view state (state.renameEdit); every one is reached only through bound()
+                 'setCategoryNames', 'renameStart', 'renameSave', 'renameCancel',
+                 // DISH PHOTOS B — the photo surfaces' repaint (photoChanged: the open drawer / rows / bar, from the draft) and the
+                 // preview renewal (refreshPreviews, onPhotoImgError: merge PREVIEWS only behind the tenant-world check, then
+                 // repaint; the draft itself is written only through setPhoto, canEdit-guarded)
+                 'photoChanged', 'refreshPreviews', 'onPhotoImgError',
+                 // …and the picker (pickPhoto): on a phone it re-renders the open drawer to expand the zone (P1 cajón → P2);
+                 // its callers are bound(); the draft is touched only through the upload controller → setPhoto (canEdit-guarded)
+                 'pickPhoto'];
 function writesIn(code) {
   const m = maskLiterals(code);
   const found = new Set();
@@ -1153,6 +1182,12 @@ function registrations(src) {
     const head = raw.match(/^\s*'[^']+'\s*,/);
     out.push({ key: `${recv}::${ev}`, handler: raw.replace(/^\s*'[^']+'\s*,/, ''), start: open + 1 + (head ? head[0].length : 0), ...at(g.index) });
   }
+  // a drawer's top-right close (ops-dom closeIcon, owner bug 2026-11-01): its one argument IS the click handler — scanned as
+  // `close::click` exactly as the old `close.addEventListener('click', …)` was, so its writes stay judged by the same ruling
+  for (const g of m.matchAll(/\bcloseIcon\s*\(/g)) {
+    const open = g.index + g[0].length - 1, end = spanFrom(m, open);
+    out.push({ key: 'close::click', handler: src.slice(open + 1, end), start: open + 1, ...at(g.index) });
+  }
   for (const g of m.matchAll(/\brender(Rail|Detail|Attestation|Outcome)\s*\(/g)) {
     const open = g.index + g[0].length - 1, end = spanFrom(m, open);
     out.push({ key: `render${g[1]}::callback`, handler: src.slice(open + 1, end), start: open + 1, ...at(g.index) });
@@ -1180,7 +1215,7 @@ const LISTENERS = {
   "$('pubback')::click":          ['singleton', ['closeReview'], 'closing is refused while this world has a publish in flight'],
   "PUBBTN::click":                ['singleton', ['runPublish'], 'admission-controlled, and validates a current review before acquiring'],
   "document::portal:auth":        ['ender', ['invalidateReview', 'repaintFromDraft', 'state.draft', 'state.groups', 'state.currentRid', 'state.uid'], 'the identity change that ENDS a world; it clears, then repaints what follows'],
-  "renderRail::callback":         ['view', ['state.selectedCat'], 'which category the rail highlights'],
+  "renderRail::callback":         ['view', ['state.selectedCat', 'state.renameEdit'], 'which category the rail highlights — and (PLAN-public-menu-display T1) leaving a section drops its unsaved title edit; both presentational'],
   "renderDetail::callback":       ['bound', ['openDrawer'], 'the inline price cells. onPrice is bound AT THE CALL SITE — the function itself belongs to no world — and is deliberately NOT listed here, so the lexical check requires it to sit inside the wrapper. openDrawer is listed: it writes only which dish the drawer shows.'],
   "renderAttestation::callback":  ['bound', [], '🔴 the acknowledgement — nothing here is allowed outside the wrapper'],
   "renderOutcome::callback":      ['bound', [], 'the recovery controls — real transitions, not messages, and every one of them inside the wrapper'],
@@ -1206,6 +1241,11 @@ const LISTENERS = {
   "add::click":                   ['bound', [], '"Agregar opción", through addChoice (canEdit, unsaved only)'],
   "cb::change":                   ['bound', [], '"Mismo precio para todas" (setGroupPrice, the ONE group mutator) and "Sin extras" (setGroupExtrasNone) — canEdit'],
   "fold::click":                  ['bound', [], 'folds the choice\u2019s options away — view state (state.openGroups) and a drawer re-render'],
+  // PLAN-public-menu-display T1 — naming every section at once (mockup R1c / R2b)
+  "callBtn::click":               ['bound', [], '«Ponerles nombre»: opens the naming modal — view only, inside the wrapper'],
+  "nameIn::input":                ['view', [], 'one section\u2019s typed name: updates the modal\u2019s own «Falta N nombres» and «Guardar nombres», no shared state'],
+  "nameCancel::click":            ['view', [], 'closes the naming modal; nothing is written'],
+  "nameSave::click":              ['bound', [], '«Guardar nombres»: setCategoryNames (canEdit) for the WHOLE set at once, then a repaint'],
 };
 
 test('🔴 every listener that writes is bound, or ruled — and nothing else is registered', () => {
@@ -1434,6 +1474,11 @@ const ALLOWED_CONSUMERS = new Set([
   // 1D add-product B — the required-choice setters (canEdit-guarded) and their pure readers
   'setRequiredChoice', 'setGroupLabel', 'setGroupExtrasNone', 'addChoice', 'removeChoice', 'setChoiceName', 'setChoiceRecommended', 'setChoicePrice', 'setGroupPrice',
   'choiceGroup', 'optionPricesEqual', 'isNewGroupOption', 'optionParentId',
+  // PLAN-public-menu-display T1 — a section's name: the canEdit-guarded setter and its two pure readers
+  'setCategoryNames', 'pendingRenames', 'categoriesUnnamed',
+  // DISH PHOTOS B — the draft photo map's ONE setter (canEdit-guarded in editor.js; it writes only source.photos, from a pid
+  // the server returned or the removed / restored states) and its pure readers
+  'setPhoto', 'draftPhotos', 'origPhotos', 'pendingPhotos',
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.
@@ -1712,7 +1757,8 @@ test('🔴 the evidence has ONE home — nothing renders from the pre-mint local
   // later edit to one of those locals cannot make the screen and the record disagree.
   const app = codeOf('app.js');
   // (1D add-product A: + a `describe` option that names a NEW product from the adopted draft — a lookup, not evidence)
-  assert.match(app, /renderReview\(\$\('mbody'\), reviewModel\(state\.review\.diff\)(?:, \{ describe: describeAddition \})?\)/,
+  // (DISH PHOTOS B: + `photos`, the names / card URLs of the photo lines — lookups, not evidence; the lines are the minted diff's)
+  assert.match(app, /renderReview\(\$\('mbody'\), reviewModel\(state\.review\.diff\)(?:, \{ describe: describeAddition(?:, photos: photoReviewOpts\(\))? \})?\)/,
     '🔴 the review renders from the MINTED diff');
   assert.match(app, /renderAttestation\(attBox, state\.review\.attestation,/,
     '🔴 the attestation renders from the MINTED attestation, not the local it was computed into');

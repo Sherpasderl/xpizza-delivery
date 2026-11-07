@@ -4,10 +4,10 @@
 //     query, so offline boot must find it under that exact cache key — caches.match is query-sensitive).
 //     skipWaiting()/clients.claim() so a deployed SW/push update takes control of existing installs
 //     immediately (else it stays 'waiting' until every tab closes — a re-install for the owner).
-const SHELL = 'dl-shell-v6';
+const SHELL = 'dl-shell-v7';
 const ASSETS = [
   './index.html', './xpizza-delivery.js', './dispatch-h0-dismiss.js?v=1', './board-model.js', './slot-format.js',
-  './reassign-model.js', './dispatch-aging.js', './driver-glide.js', './push-support.js', './fonts/hankengrotesk-var.woff2', './manifest.json',
+  './reassign-model.js', './dispatch-aging.js', './dispatch-alerts.js?v=4', './driver-glide.js', './push-support.js', './fonts/hankengrotesk-var.woff2', './manifest.json',
 ];
 
 self.addEventListener('install', (e) => {

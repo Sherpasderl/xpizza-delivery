@@ -7,13 +7,16 @@ import { dirname, join } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const swSrc = readFileSync(join(here, 'sw.js'), 'utf8');
 const HELPER = './dispatch-h0-dismiss.js?v=1';   // the exact query xpizza-delivery.js imports
+const ALERTS = './dispatch-alerts.js?v=4';       // the exact query index.html imports (shared alert module)
 
 // 1) static: the versioned helper is precached and the shell version was bumped so existing installs re-cache.
+const REQUIRED_SHELL = 'dl-shell-v7';   // the exact version this alerts slice ships (adding dispatch-alerts.js?v=4 to the precache demands a shell bump); reverting to v6 must fail here
 test('sw precaches the exact versioned helper URL and bumps the shell version', () => {
   const shell = (swSrc.match(/const SHELL = '([^']+)'/) || [])[1];
-  assert.ok(shell && shell !== 'dl-shell-v5', `SHELL must be bumped past v5 (got ${shell})`);
+  assert.equal(shell, REQUIRED_SHELL, `SHELL must be exactly ${REQUIRED_SHELL} (got ${shell}) — the new precache asset requires this bump`);
   const assets = swSrc.slice(swSrc.indexOf('const ASSETS = ['), swSrc.indexOf('];', swSrc.indexOf('const ASSETS')));
   assert.ok(assets.includes(`'${HELPER}'`), 'ASSETS must precache the exact ./dispatch-h0-dismiss.js?v=1 URL (with the query)');
+  assert.ok(assets.includes(`'${ALERTS}'`), 'ASSETS must precache the exact ./dispatch-alerts.js?v=4 URL (the shared alert module the page imports)');
 });
 
 // 2) lifecycle: install precaches, then an OFFLINE fetch of the helper is served from cache (not the network).
@@ -42,6 +45,11 @@ test('offline boot: the SW serves the cached versioned helper; the un-versioned 
   handlers.install({ waitUntil: (p) => { installDone = p; } });
   await installDone;
   assert.ok(store.has(abs(HELPER)), 'install precached the versioned helper into the shell cache');
+  assert.ok(store.has(abs(ALERTS)), 'install precached the versioned dispatch-alerts.js into the shell cache');
+  // offline fetch of the shared alert module → served from cache (would break module loading if omitted)
+  let servedAl; handlers.fetch({ request: { url: abs(ALERTS) }, respondWith: (p) => { servedAl = p; } });
+  const hitAl = await servedAl;
+  assert.ok(hitAl && hitAl.body === `cached:${ALERTS}`, 'offline: the versioned dispatch-alerts.js is served from cache');
 
   // offline fetch of the versioned helper → served from cache
   let served;

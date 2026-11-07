@@ -14,7 +14,7 @@ const { execFileSync } = require('child_process');
 const { unapplyBrandServerIndex, unapplyBrandServerModule, INDEX_HUNKS, MODULE_HUNKS, FILES } = require('./tools/brand-server-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const idx = require('./tools/dlite-push-inverse').unapplyDlitePushIndex(require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(require('./tools/s2app-inverse').unapplyS2appIndex(require('./tools/area-inverse').unapplyAreaIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))))))))));   // DISPATCH-LITE PUSH (newer layer) reversed first
+const idx = require('./tools/dlite-push-inverse').unapplyDlitePushIndex(require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(require('./tools/s2app-inverse').unapplyS2appIndex(require('./tools/area-inverse').unapplyAreaIndex(require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(require('./tools/pausa-inverse').unapplyPausaIndex(require('./tools/mem512-inverse').unapplyMem512Index(require('./tools/checkout-inverse').unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(require('./tools/intl-inverse').unapplyIntlIndex(require('./tools/photos-inverse').unapplyPhotosIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))))))))))))))))))))))))));   // DISPATCH-LITE PUSH (newer layer) reversed first
 const BASE = execFileSync('git', ['show', 'df4a1bdb:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.strictEqual(unapplyBrandServerIndex(idx), BASE, '🔴 index.js minus the brand-server hunks is not df4a1bdb:index.js');
@@ -50,5 +50,12 @@ for (const f of FILES) {
   assert.ok(MODULE_HUNKS[f].some(([h]) => h.includes('materializeRestaurant')), `${f}: the hunks carry materializeRestaurant`);
 }
 assert.strictEqual(unapplyBrandServerModule('unlisted-module.js', 'x'), 'x', 'an unlisted module passes through');
+{ // DRIVER C (newer) edits whatsapp.js, an unlisted module here: its own inverse (applied first) restores the pre-C bytes exactly
+  const { unapplyDrvcModule } = require('./tools/drvc-inverse');
+  const live = fs.readFileSync(path.join(__dirname, 'whatsapp.js'), 'utf8');
+  const preC = execFileSync('git', ['show', 'c8b08cf1:xpizza-functions/whatsapp.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
+  const capp = require('./tools/s3c-module-inverse').unapplyS3cModule('whatsapp.js', require('./tools/s2tip-module-inverse').unapplyS2tipModule('whatsapp.js', live));   // R-WIRE: the capp hunks (s2tip, then S3c) reversed FIRST
+  assert.strictEqual(unapplyBrandServerModule('whatsapp.js', unapplyDrvcModule('whatsapp.js', capp)), preC, '🔴 whatsapp.js minus the DRIVER C hunks is not the pre-C whatsapp.js');
+}
 ok(`PROOF (iii): unapplyBrandServerModule restores df4a1bdb byte-for-byte for ${FILES.join(', ')}; a duplicated hunk is refused; an unlisted module passes through`);
 console.log(`brand-server-wiring.guard: OK (${n} cases)`);

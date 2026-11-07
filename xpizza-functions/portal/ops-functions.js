@@ -12,9 +12,9 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { PORTAL_ORIGINS } = require('./origins');
 const { withPreflightMaxAge } = require('./preflight-max-age');
-const C = require('./ops-core');
+const C = require('./ops-core'); const { defaultReadVersionPhotos } = require('../photos/served-photos');   // DISH PHOTOS A2 step 12 (E-P4)
 
-const PORTAL_OPS_TARGETS = Object.freeze(['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability', 'getBranchDevices', 'revokeBranchDevice']);
+const PORTAL_OPS_TARGETS = Object.freeze(['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability', 'getBranchDevices', 'revokeBranchDevice', 'createBranchDraft', 'updateBranchProfile', 'setBranchActive', 'deleteBranchDraft']);
 const verifyIdToken = (t) => getAuth().verifyIdToken(t);
 
 function handler(name, core, deps) {
@@ -48,7 +48,7 @@ exports.setBranchPause = onRequest(WRITE_OPTS, handler('setBranchPause', C.setBr
   })));
 
 exports.getBranchAvailability = onRequest(READ_OPTS, handler('getBranchAvailability', C.getBranchAvailabilityCore,
-  () => ({ db: getDatabase(), fs: getFirestore(), verifyIdToken })));
+  () => ({ db: getDatabase(), fs: getFirestore(), verifyIdToken, readVersionPhotos: defaultReadVersionPhotos })));   // DISH PHOTOS A2 step 12 (E-P4)
 
 exports.setBranchAvailability = onRequest(WRITE_OPTS, handler('setBranchAvailability', C.setBranchAvailabilityCore,
   () => ({ db: getDatabase(), fs: getFirestore(), verifyIdToken, timestamp: () => ServerValue.TIMESTAMP })));
@@ -68,6 +68,15 @@ exports.revokeBranchDevice = onRequest(WRITE_OPTS, handler('revokeBranchDevice',
     timestamp: () => ServerValue.TIMESTAMP,
     newOpId: () => `oc_${Date.now().toString(36)}_${crypto.randomBytes(5).toString('hex')}`,
   })));
+
+// ORCHESTRATION O1b (PLAN-orch-o1b r3 §2): the branch-LIFECYCLE endpoints of slice 1b — E6 / E7 / E8 / E10, thin wrappers over
+// portal/branch-lifecycle-core.js (write gate, authorization, the O1a writers, publish after commit).
+const L = require('./branch-lifecycle-core');
+const lifecycleDeps = () => ({ db: getDatabase(), verifyIdToken, now: () => Date.now() });
+exports.createBranchDraft = onRequest(WRITE_OPTS, handler('createBranchDraft', L.createBranchDraftCore, lifecycleDeps));
+exports.updateBranchProfile = onRequest(WRITE_OPTS, handler('updateBranchProfile', L.updateBranchProfileCore, lifecycleDeps));
+exports.setBranchActive = onRequest(WRITE_OPTS, handler('setBranchActive', L.setBranchActiveCore, lifecycleDeps));
+exports.deleteBranchDraft = onRequest(WRITE_OPTS, handler('deleteBranchDraft', L.deleteBranchDraftCore, lifecycleDeps));
 
 for (const name of PORTAL_OPS_TARGETS) exports[name] = withPreflightMaxAge(exports[name]);
 

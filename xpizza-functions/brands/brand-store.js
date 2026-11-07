@@ -42,17 +42,91 @@ async function applySeedLegacy(rtdb, plan) {
   return isDeepStrictEqual(back, plan.row.to) ? { ok: true } : { ok: false, error: 'read-back mismatch', back };
 }
 
+// Orchestration §6 — fenced publication. Every projected input is versioned: brands/{b}/projection_gen (bumped in every membership /
+// activation brand transaction) and each member identity's `version`. The projection carries source = {gen, versions}; a publish
+// commits only over an OLDER source, so a late publisher that read older inputs can never overwrite a newer projection.
+const finiteOr = (v, d) => (Number.isFinite(v) ? v : d);
+function projectionSource(brand, identities) {
+  const versions = {};
+  for (const [rid, st] of Object.entries((brand && brand.locations) || {})) if (st === 'member') versions[rid] = finiteOr(identities[rid] && identities[rid].version, 0);
+  const gen = finiteOr(brand && brand.projection_gen, 0);
+  return Object.keys(versions).length ? { gen, versions } : { gen };   // RTDB drops an empty object: write what reads back
+}
+// component-wise over gen + the member versions both sides share (a member added / removed moves gen, so gen covers it)
+function compareSource(next, cur) {
+  if (!cur || typeof cur !== 'object') return 'newer';   // a pre-v2 (unstamped) projection
+  const a = { gen: finiteOr(next.gen, -1), v: next.versions || {} };
+  const b = { gen: finiteOr(cur.gen, -1), v: cur.versions || {} };
+  const ka = Object.keys(a.v).sort(); const kb = Object.keys(b.v).sort();
+  if (a.gen === b.gen && !isDeepStrictEqual(ka, kb)) return 'incomparable';
+  let ge = a.gen >= b.gen; let le = a.gen <= b.gen;
+  for (const k of ka) if (k in b.v) { ge = ge && a.v[k] >= b.v[k]; le = le && a.v[k] <= b.v[k]; }
+  if (ge && le) return 'equal';
+  return ge ? 'newer' : (le ? 'older' : 'incomparable');
+}
+
 function planPublish({ brandId, brand, identities, current }) {
   const b = buildPublicBrand(brandId, brand, identities);
   if (!b.ok) return { ok: false, errors: b.errors };
+  const to = { ...b.projection, source: projectionSource(brand, identities) };
   const from = current === undefined ? null : current;
-  return { ok: true, row: { path: publicPath(brandId), from, to: b.projection }, changed: !isDeepStrictEqual(from, b.projection) };
+  return { ok: true, row: { path: publicPath(brandId), from, to }, changed: !isDeepStrictEqual(from, to) };
 }
 
 async function applyPublish(rtdb, plan) {
-  await rtdb.ref(plan.row.path).set(plan.row.to);   // overwritable: the projection is derived
-  const back = await readNode(rtdb, plan.row.path);
-  return isDeepStrictEqual(back, plan.row.to) ? { ok: true } : { ok: false, back };
+  let verdict = null;
+  await rtdb.ref(plan.row.path).transaction((cur) => {
+    verdict = compareSource(plan.row.to.source, cur && cur.source);
+    return verdict === 'newer' ? plan.row.to : undefined;
+  });
+  if (verdict === 'equal') return { ok: true, unchanged: true };
+  if (verdict === 'older') return { ok: false, error: 'superseded' };
+  if (verdict !== 'newer') return { ok: false, error: 'incomparable' };
+  const back = await readNode(rtdb, plan.row.path);   // read-back compares source (a newer publisher may already have landed)
+  if (back && isDeepStrictEqual(back.source, plan.row.to.source)) return isDeepStrictEqual(back, plan.row.to) ? { ok: true } : { ok: false, back };
+  return { ok: true, superseded_after_write: true };
 }
 
-module.exports = { brandPath, publicPath, readNode, readIdentities, planSeedLegacy, applySeedLegacy, planPublish, applyPublish };
+// O1b T7 (Codex r2 P2): ONE per-brand stale-projection alert. A portal mutation whose publish failed / threw / timed out upserts it
+// (the LAST reason and time; first_at kept; count); ANY successful publish clears it (only when present — no write otherwise).
+const staleAlertPath = (brandId) => `dispatcher_alerts/projection_stale_${brandId}`;
+async function raiseProjectionStale(rtdb, brandId, { rid, reason, at }) {
+  await rtdb.ref(staleAlertPath(brandId)).transaction((cur) => (cur && typeof cur === 'object'
+    ? { ...cur, rid: rid || null, reason, at, count: (Number.isInteger(cur.count) ? cur.count : 1) + 1 }
+    : { type: 'projection_stale', brand_id: brandId, rid: rid || null, reason, first_at: at, at, count: 1 }));
+}
+// Clear ONLY the alert this publish observed BEFORE it read the identities (Codex build r1 #2): that alert's failure is covered
+// by this publish; an alert raised (or re-raised) after the observation reports a later write this publish may not include, so it
+// is kept. One transaction: delete iff the stored alert still equals the observed one (null-first safe).
+async function clearProjectionStale(rtdb, brandId, observed) {
+  if (observed == null) return false;
+  let cleared = false;
+  await rtdb.ref(staleAlertPath(brandId)).transaction((cur) => {
+    cleared = false;
+    if (cur === null) return null;   // speculative / already gone: no-op (the server re-runs with a real value)
+    if (!isDeepStrictEqual(cur, observed)) return undefined;   // a newer alert: keep it
+    cleared = true; return null;
+  });
+  return cleared;
+}
+const observeProjectionStale = (rtdb, brandId) => readNode(rtdb, staleAlertPath(brandId));
+
+const PUBLISH_TRIES = 3;
+async function publishBrandProjection(rtdb, brandId, { now }) {
+  for (let i = 0; i < PUBLISH_TRIES; i += 1) {
+    const observed = await observeProjectionStale(rtdb, brandId);   // BEFORE the identities: what this publish may clear
+    const brand = await readNode(rtdb, brandPath(brandId));
+    if (brand === null || brand === undefined) return { ok: false, error: 'brand_not_found' };
+    const plan = planPublish({ brandId, brand, identities: await readIdentities(rtdb), current: null });
+    if (!plan.ok) return { ok: false, error: 'refused', errors: plan.errors };
+    const r = await applyPublish(rtdb, plan);
+    if (r.error === 'incomparable') continue;   // a mixed-timing read: re-read
+    if (r.error === 'superseded') { await clearProjectionStale(rtdb, brandId, observed); return { ok: true, superseded: true }; }
+    if (r.ok) await clearProjectionStale(rtdb, brandId, observed);
+    return r.ok ? { ...r, source: plan.row.to.source } : r;
+  }
+  await rtdb.ref(`dispatcher_alerts/projection_unfenced_${brandId}`).transaction((cur) => (cur == null ? { type: 'projection_unfenced', brand_id: brandId, created_at: now } : undefined));
+  return { ok: false, error: 'projection_unfenced' };
+}
+
+module.exports = { brandPath, publicPath, readNode, readIdentities, planSeedLegacy, applySeedLegacy, planPublish, applyPublish, projectionSource, compareSource, publishBrandProjection, raiseProjectionStale, clearProjectionStale, observeProjectionStale, staleAlertPath };

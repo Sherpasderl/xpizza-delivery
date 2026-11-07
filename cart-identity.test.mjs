@@ -74,7 +74,7 @@ async function pageWithCart(dir, identity) {
 const EMIT_GOLDEN = {
   'xpizza-orders': [{ name: 'Carnivora', qty: 1, price: 340, subtotal: 340,
     extras: [{ instance: 0, name: 'Salsa Roja', price: 39 }], extrasTotal: 39 }],
-  'la-musa-orders': [{ id: 'dimsum_01', name: 'Sichuan Spicy Wonton', cat: 'dim_sum', qty: 1, price: 223, subtotal: 273,
+  'la-musa-orders': [{ id: 'dimsum_01', name: 'Sichuan Spicy Wonton', cat: 'dim_sum', qty: 1, price: 249, subtotal: 299,
     extras: [{ id: 'rice_white', name: 'Arroz Blanco', price: 50, qty: 1 }], extrasTotal: 50 }],
 };
 /* 🔴 ROUND-TRIPPED THROUGH JSON, because these objects come out of the jsdom window and carry THAT

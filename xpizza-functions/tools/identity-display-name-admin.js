@@ -75,18 +75,28 @@ function planDisplayMark({ rid, value, current }) {
   return { ok: true, row: { path: markPathOf(rid), from, to: value }, ...(fill ? fill : {}) };
 }
 
-// set / set-mark: absent-fill enforced AT COMMIT (codex build r1 P2) — a leaf transaction fills only an absent value; an equal
+// set / set-mark: absent-fill enforced AT COMMIT (codex build r1 P2) — an IDENTITY transaction fills only an absent value; an equal
 // value is a no-op; a different value (even one written after the plan was made) is PRESERVED and reported as a conflict.
-// delete stays the explicit replace path (an unconditional one-leaf removal). Every outcome is read back.
+// delete stays the explicit replace path. ORCHESTRATION O1a (advisor ruling): every write that CHANGES the identity bumps
+// `version` by exactly 1 in the SAME transaction (a no-op / conflict writes nothing); an identity without a numeric version at
+// commit is refused (`unversioned`). Null-first safe: the cached-null pass answers null, never creates an identity. Read back.
 async function applyDisplayName(rtdb, plan) {
   const { path, to } = plan.row;
-  if (to === null) {
-    await rtdb.ref().update({ [path]: null });
-    const back = (await rtdb.ref(path).once('value')).val();
-    return { ok: back === null, back };
-  }
-  await rtdb.ref(path).transaction((cur) => (cur == null ? to : undefined));
+  const field = path.slice(path.lastIndexOf('/') + 1);
+  let unversioned = false;
+  await rtdb.ref(path.slice(0, path.lastIndexOf('/'))).transaction((cur) => {
+    unversioned = false;
+    if (cur === null) return null;
+    const has = cur[field] !== undefined && cur[field] !== null;
+    if (to === null ? !has : has) return undefined;   // nothing to delete / absent-fill refuses a present value
+    if (!Number.isFinite(cur.version)) { unversioned = true; return undefined; }
+    const next = { ...cur, version: cur.version + 1 };
+    if (to === null) delete next[field]; else next[field] = to;
+    return next;
+  });
   const back = (await rtdb.ref(path).once('value')).val();
+  if (unversioned) return { ok: false, error: 'unversioned', back };
+  if (to === null) return { ok: back === null, back };
   if (back === to) return { ok: true, back };
   return { ok: false, conflict: back != null, back };
 }

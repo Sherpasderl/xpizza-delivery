@@ -1,5 +1,5 @@
 {
- "root_head": "e8e77e24eb8fde1b95d668a45be193065e37c46a",
+ "root_head": "5d4e0d25e02cfd4cd36d0a1f2f10313c228299ba",
  "flag": "off",
  "journeys": {
   "native": [
@@ -2265,141 +2265,11 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "payment_method": "cash",
-     "picked_up_at": "T@order/picked_up_at",
      "pickup_task_id": "o_golden_1_pickup",
      "restaurant_id": "tb_centro",
      "restaurant_name": "TB Centro",
      "restaurant_phone": "+50400000000",
-     "status": "out_for_delivery",
-     "total": 250,
-     "total_cents": 25000,
-     "tracking_token": "TOKgolden1"
-    },
-    "side_effects": [
-     [
-      "whatsapp",
-      "+50499990000",
-      "🛵 Uno ya viene en camino\n\nhttps://xpizzatrack.netlify.app/TOKgolden1",
-      "tb_centro"
-     ]
-    ],
-    "step": "pickup",
-    "tracking": {
-     "address_short": "Col. Centro",
-     "created_at": "T@order/created_at",
-     "customer_name": "Ana",
-     "display_number": "DN1",
-     "driver_name": "Uno",
-     "items_text": "1x Margherita",
-     "order_id": "o_golden_1",
-     "order_type": "delivery",
-     "picked_up_at": "T@tracking/picked_up_at",
-     "ready_at": "T@tracking/ready_at",
-     "restaurant_display_name": "TB Centro",
-     "restaurant_id": "tb_centro",
-     "status": "out_for_delivery",
-     "total": 250
-    },
-    "_ts_order": [
-     "T@order/created_at",
-     "T@tracking/ready_at",
-     "T@order/picked_up_at",
-     "T@tracking/picked_up_at"
-    ]
-   },
-   {
-    "alerts": null,
-    "failures": [],
-    "order": {
-     "address_details": "Casa azul",
-     "address_detected": "Col. Centro",
-     "created_at": "T@order/created_at",
-     "customer_name": "Ana",
-     "customer_phone": "+50499990000",
-     "delivery_task_id": "o_golden_1_delivery",
-     "display_number": "DN1",
-     "factura_status": "external_pos",
-     "hub_lat": 15.5,
-     "hub_lng": -88.03,
-     "items_text": "1x Margherita",
-     "lat": 15.52,
-     "lng": -88.01,
-     "maps_link": "https://www.google.com/maps?q=15.52,-88.01",
-     "notes": "",
-     "order_id": "o_golden_1",
-     "order_type": "delivery",
-     "payment_method": "cash",
-     "picked_up_at": "T@order/picked_up_at",
-     "pickup_task_id": "o_golden_1_pickup",
-     "restaurant_id": "tb_centro",
-     "restaurant_name": "TB Centro",
-     "restaurant_phone": "+50400000000",
-     "status": "out_for_delivery",
-     "total": 250,
-     "total_cents": 25000,
-     "tracking_token": "TOKgolden1"
-    },
-    "side_effects": [],
-    "step": "ingest 1",
-    "tracking": {
-     "address_short": "Col. Centro",
-     "created_at": "T@order/created_at",
-     "customer_name": "Ana",
-     "dest_lat": 15.52,
-     "dest_lng": -88.01,
-     "display_number": "DN1",
-     "driver_location": {
-      "at": "T@tracking/driver_location/at",
-      "lat": 15.504,
-      "lng": -88.026
-     },
-     "driver_name": "Uno",
-     "is_active_drop": true,
-     "items_text": "1x Margherita",
-     "order_id": "o_golden_1",
-     "order_type": "delivery",
-     "picked_up_at": "T@tracking/picked_up_at",
-     "ready_at": "T@tracking/ready_at",
-     "restaurant_display_name": "TB Centro",
-     "restaurant_id": "tb_centro",
-     "status": "out_for_delivery",
-     "total": 250
-    },
-    "_ts_order": [
-     "T@order/created_at",
-     "T@tracking/ready_at",
-     "T@order/picked_up_at",
-     "T@tracking/picked_up_at"
-    ]
-   },
-   {
-    "alerts": null,
-    "failures": [],
-    "order": {
-     "address_details": "Casa azul",
-     "address_detected": "Col. Centro",
-     "created_at": "T@order/created_at",
-     "customer_name": "Ana",
-     "customer_phone": "+50499990000",
-     "delivery_task_id": "o_golden_1_delivery",
-     "display_number": "DN1",
-     "factura_status": "external_pos",
-     "hub_lat": 15.5,
-     "hub_lng": -88.03,
-     "items_text": "1x Margherita",
-     "lat": 15.52,
-     "lng": -88.01,
-     "maps_link": "https://www.google.com/maps?q=15.52,-88.01",
-     "notes": "",
-     "order_id": "o_golden_1",
-     "order_type": "delivery",
-     "payment_method": "cash",
-     "picked_up_at": "T@order/picked_up_at",
-     "pickup_task_id": "o_golden_1_pickup",
-     "restaurant_id": "tb_centro",
-     "restaurant_name": "TB Centro",
-     "restaurant_phone": "+50400000000",
-     "status": "out_for_delivery",
+     "status": "ready",
      "total": 250,
      "total_cents": 25000,
      "tracking_token": "TOKgolden1"
@@ -2410,31 +2280,19 @@
      "address_short": "Col. Centro",
      "created_at": "T@order/created_at",
      "customer_name": "Ana",
-     "dest_lat": 15.52,
-     "dest_lng": -88.01,
      "display_number": "DN1",
-     "driver_location": {
-      "at": "T@tracking/driver_location/at",
-      "lat": 15.504,
-      "lng": -88.026
-     },
-     "driver_name": "Uno",
-     "is_active_drop": true,
      "items_text": "1x Margherita",
      "order_id": "o_golden_1",
      "order_type": "delivery",
-     "picked_up_at": "T@tracking/picked_up_at",
      "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
-     "status": "out_for_delivery",
+     "status": "ready",
      "total": 250
     },
     "_ts_order": [
      "T@order/created_at",
-     "T@tracking/ready_at",
-     "T@order/picked_up_at",
-     "T@tracking/picked_up_at"
+     "T@tracking/ready_at"
     ]
    },
    {
@@ -2459,12 +2317,11 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "payment_method": "cash",
-     "picked_up_at": "T@order/picked_up_at",
      "pickup_task_id": "o_golden_1_pickup",
      "restaurant_id": "tb_centro",
      "restaurant_name": "TB Centro",
      "restaurant_phone": "+50400000000",
-     "status": "out_for_delivery",
+     "status": "ready",
      "total": 250,
      "total_cents": 25000,
      "tracking_token": "TOKgolden1"
@@ -2475,31 +2332,19 @@
      "address_short": "Col. Centro",
      "created_at": "T@order/created_at",
      "customer_name": "Ana",
-     "dest_lat": 15.52,
-     "dest_lng": -88.01,
      "display_number": "DN1",
-     "driver_location": {
-      "at": "T@tracking/driver_location/at",
-      "lat": 15.504,
-      "lng": -88.026
-     },
-     "driver_name": "Uno",
-     "is_active_drop": true,
      "items_text": "1x Margherita",
      "order_id": "o_golden_1",
      "order_type": "delivery",
-     "picked_up_at": "T@tracking/picked_up_at",
      "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
-     "status": "out_for_delivery",
+     "status": "ready",
      "total": 250
     },
     "_ts_order": [
      "T@order/created_at",
-     "T@tracking/ready_at",
-     "T@order/picked_up_at",
-     "T@tracking/picked_up_at"
+     "T@tracking/ready_at"
     ]
    },
    {
@@ -2524,12 +2369,11 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "payment_method": "cash",
-     "picked_up_at": "T@order/picked_up_at",
      "pickup_task_id": "o_golden_1_pickup",
      "restaurant_id": "tb_centro",
      "restaurant_name": "TB Centro",
      "restaurant_phone": "+50400000000",
-     "status": "out_for_delivery",
+     "status": "ready",
      "total": 250,
      "total_cents": 25000,
      "tracking_token": "TOKgolden1"
@@ -2540,31 +2384,19 @@
      "address_short": "Col. Centro",
      "created_at": "T@order/created_at",
      "customer_name": "Ana",
-     "dest_lat": 15.52,
-     "dest_lng": -88.01,
      "display_number": "DN1",
-     "driver_location": {
-      "at": "T@tracking/driver_location/at",
-      "lat": 15.504,
-      "lng": -88.026
-     },
-     "driver_name": "Uno",
-     "is_active_drop": true,
      "items_text": "1x Margherita",
      "order_id": "o_golden_1",
      "order_type": "delivery",
-     "picked_up_at": "T@tracking/picked_up_at",
      "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
-     "status": "out_for_delivery",
+     "status": "ready",
      "total": 250
     },
     "_ts_order": [
      "T@order/created_at",
-     "T@tracking/ready_at",
-     "T@order/picked_up_at",
-     "T@tracking/picked_up_at"
+     "T@tracking/ready_at"
     ]
    },
    {
@@ -2589,12 +2421,11 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "payment_method": "cash",
-     "picked_up_at": "T@order/picked_up_at",
      "pickup_task_id": "o_golden_1_pickup",
      "restaurant_id": "tb_centro",
      "restaurant_name": "TB Centro",
      "restaurant_phone": "+50400000000",
-     "status": "out_for_delivery",
+     "status": "ready",
      "total": 250,
      "total_cents": 25000,
      "tracking_token": "TOKgolden1"
@@ -2605,31 +2436,19 @@
      "address_short": "Col. Centro",
      "created_at": "T@order/created_at",
      "customer_name": "Ana",
-     "dest_lat": 15.52,
-     "dest_lng": -88.01,
      "display_number": "DN1",
-     "driver_location": {
-      "at": "T@tracking/driver_location/at",
-      "lat": 15.504,
-      "lng": -88.026
-     },
-     "driver_name": "Uno",
-     "is_active_drop": true,
      "items_text": "1x Margherita",
      "order_id": "o_golden_1",
      "order_type": "delivery",
-     "picked_up_at": "T@tracking/picked_up_at",
      "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
-     "status": "out_for_delivery",
+     "status": "ready",
      "total": 250
     },
     "_ts_order": [
      "T@order/created_at",
-     "T@tracking/ready_at",
-     "T@order/picked_up_at",
-     "T@tracking/picked_up_at"
+     "T@tracking/ready_at"
     ]
    }
   ]

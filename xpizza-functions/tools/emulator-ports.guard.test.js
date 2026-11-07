@@ -259,6 +259,28 @@ const runObserved = (argv, extraEnv = {}) => {
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
+/* PRECONDITION — the rules files the runner itself requires (tools/emulator-run.js refuses, exit 2, when one is missing, empty
+   or — database — not JSON). Without them every cell that starts a data service is refused BEFORE its port preflight prints,
+   and the port cells then report a misleading «hub is not in the preflight set». database.rules.json is gitignored (a fresh
+   worktree has none until `npm run sync:rules`). Checked, never written here: the synced copy is also the deploy copy, and a
+   guard that re-synced it could overwrite a rules-mutant run in the same worktree. */
+{
+  const fb = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.json'), 'utf8'));
+  for (const [svc, rel] of [['database', fb.database && fb.database.rules], ['firestore', fb.firestore && fb.firestore.rules]]) {
+    if (!rel) continue;
+    let text = null;
+    try { text = fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { /* reported below */ }
+    let bad = text === null ? 'is missing' : (!text.trim() ? 'is empty' : null);
+    if (!bad && svc === 'database') { try { JSON.parse(text); } catch (e) { bad = `is not valid JSON (${e.message})`; } }
+    if (bad) {
+      console.error(`EMULATOR PORTS GUARD: PRECONDITION — the ${svc} rules file ${rel} ${bad}, so the runner refuses before any port preflight.`);
+      console.error(svc === 'database' ? '  Run `npm run sync:rules` in xpizza-functions (it copies ../xpizza-reference/database.rules.json), then re-run this guard.'
+        : `  ${rel} is tracked — restore it from git, then re-run this guard.`);
+      process.exit(1);
+    }
+  }
+}
+
 (async () => {
   // ── 1. EVERY SUITE GOES THROUGH THE RUNNER ──────────────────────────────────────────────────
   {
@@ -369,10 +391,10 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   // ── 6. AN UNKNOWN SERVICE REFUSES RATHER THAN TAKING A SHARED DEFAULT ───────────────────────
   /* 🔴 THE HOLE THAT WAS ACTUALLY THERE. An --only the runner had no band for fell straight through:
      nothing preflighted, nothing pinned in the generated config, so firebase started that emulator on
-     its own shared default (storage 9199, pubsub 8085; auth 9099 before it got its band). Adding one emulator service would
+     its own shared default (pubsub 8085; auth 9099 and storage 9199 before they got their bands). Adding one emulator service would
      have quietly reintroduced the cross-checkout collision this whole tool removes. */
   {
-    const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'storage', 'node -e "process.exit(0)"'],
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'pubsub', 'node -e "process.exit(0)"'],
       { cwd: ROOT, encoding: 'utf8' });
     assert.strictEqual(r.status, 2, '🔴 an unknown --only service did not refuse — its emulator would take an unpreflighted default port');
     assert.match(r.stderr, /no port band for/, 'the refusal says why');
@@ -394,7 +416,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
        and cell 7 did not catch it because it only drove the unknown-service path. Both refusals are
        driven here now, and any future early exit should be added to this list. */
     const REFUSALS = [
-      [['--only', 'storage', 'node -e "process.exit(0)"'], {}, 'unknown --only service'],
+      [['--only', 'pubsub', 'node -e "process.exit(0)"'], {}, 'unknown --only service'],
       [['--only', 'firestore', 'node -e "process.exit(0)"'], { XPIZZA_EMU_PORT_OFFSET: '7' }, 'malformed port offset'],
       [['--only', 'firestore', '--ui', 'node -e "process.exit(0)"'], {}, 'a rejected argument'],
     ];
@@ -419,13 +441,13 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   // ── 8. 🔴 ARGUMENTS CANNOT BYPASS THE PREFLIGHT ─────────────────────────────────────────────
   /* Each of these once got through. `--only firestore --only auth`: this runner read the FIRST value
      and Firebase's parser the LAST, so firestore was validated and an unbanded auth emulator started
-     (auth has a band now; storage, still unbanded, takes its place below).
+     (auth and storage have bands now; pubsub, still unbanded, takes their place below).
      `--config firebase.json`: re-points the CLI at the committed config, restoring the DEFAULT ports
      AFTER different ones were preflighted. `--ui`: overrides enabled:false and starts the UI plus
      logging. `--inspect-functions`: opens an unchecked debug listener. */
   {
     const cases = [
-      [['--only', 'firestore', '--only', 'storage'], 'a repeated --only (CLI takes the last, we took the first)'],
+      [['--only', 'firestore', '--only', 'pubsub'], 'a repeated --only (CLI takes the last, we took the first)'],
       [['--only', 'firestore', '--config', 'firebase.json'], 'a --config that would restore default ports after preflight'],
       [['--only', 'firestore', '--ui'], 'a --ui that would start the UI despite enabled:false'],
       [['--only', 'functions', '--inspect-functions'], 'an --inspect-functions debug listener'],
@@ -480,6 +502,36 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.match(r.stderr, /auth 9400\b/, '🔴 auth did not take its own band at offset 0');
     ok(`auth is opt-in (bare run and functions unchanged), banded at ${planPorts(0).auth} and preflighted; an inherited auth host is cleared unless auth is started (${users.length} script(s) start it)`);
   }
+  // ── 9c. STORAGE IS AN OPT-IN SERVICE (dish-photos A1): banded at 9800, preflighted, both host spellings kept only when started,
+  //        and refused outright when firebase.json names no storage rules (an open storage emulator makes rules cells vacuous) ──
+  {
+    assert.deepStrictEqual(SERVICE_LISTENERS.storage, ['storage'], '🔴 storage must declare exactly its one listener');
+    assert.deepStrictEqual(HOST_ENV.storage, ['FIREBASE_STORAGE_EMULATOR_HOST', 'STORAGE_EMULATOR_HOST'], '🔴 storage must own BOTH CLI spellings');
+    for (const v of HOST_ENV.storage) assert.ok(ALL_HOST_ENV.includes(v), `🔴 ${v} is not in ALL_HOST_ENV — it would survive a run that does not start storage`);
+    assert.deepStrictEqual(servicesFor(undefined), ['firestore', 'database', 'functions'], '🔴 a bare run changed its services — storage must stay opt-in');
+    assert.deepStrictEqual(servicesFor('functions'), ['functions', 'firestore', 'database'], '🔴 functions must not imply storage');
+    assert.deepStrictEqual(servicesFor('firestore,database,storage'), ['firestore', 'database', 'storage']);
+    const stray = { FIREBASE_STORAGE_EMULATOR_HOST: 'storage.googleapis.com:443', STORAGE_EMULATOR_HOST: 'https://storage.googleapis.com' };
+    const off = childEnv(['firestore', 'database'], stray);
+    assert.ok(!('FIREBASE_STORAGE_EMULATOR_HOST' in off) && !('STORAGE_EMULATOR_HOST' in off), '🔴 an inherited storage host survived a run that does not start storage');
+    const on = childEnv(['firestore', 'database', 'storage'], stray);
+    assert.strictEqual(on.STORAGE_EMULATOR_HOST, stray.STORAGE_EMULATOR_HOST, 'a storage run keeps the vars for the CLI to overwrite with its own (lib/emulator-endpoint.js validates them)');
+    assert.strictEqual(planPorts(0).storage, 9800, '🔴 storage is not on its own band at offset 0');
+    const base = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.json'), 'utf8'));
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'firestore,database,storage', '--project', 'demo-xpizza', 'node test/emu-isolation.proof.js noop'],
+      { cwd: ROOT, encoding: 'utf8', env: { ...process.env, XPIZZA_EMU_PORT_OFFSET: '0', PATH: '/nonexistent' } });
+    if (!(base.storage && base.storage.rules)) {
+      assert.strictEqual(r.status, 2, '🔴 a storage run with no storage rules in firebase.json was not refused');
+      assert.match(r.stderr, /no "storage": \{"rules"/, 'the refusal names the missing storage rules');
+      assert.doesNotMatch(r.stdout || '', /Running script/, '🔴 the command ran despite the missing storage rules');
+      ok(`storage is opt-in and banded at ${planPorts(0).storage}; both host spellings are cleared unless storage starts; this tree has no storage rules, so a storage run REFUSES (exit 2)`);
+    } else {
+      for (const svc of ['hub', 'logging', 'firestore', 'database', 'storage']) assert.match(r.stderr, new RegExp(`${svc} \\d+`), `🔴 ${svc} is not in the preflight set of a storage run`);
+      assert.match(r.stderr, /storage 9800\b/, '🔴 storage did not take its own band at offset 0');
+      ok(`storage is opt-in, banded at ${planPorts(0).storage} and preflighted with its rules (${base.storage.rules}); both host spellings are cleared unless storage starts`);
+    }
+  }
+
 
   // ── 10. THE GENERATED CONFIG CANNOT RIDE INTO A DEPLOY ARCHIVE ──────────────────────────────
   /* 🔴 gitignore IS NOT ENOUGH. The file is written inside the configured functions source dir, and

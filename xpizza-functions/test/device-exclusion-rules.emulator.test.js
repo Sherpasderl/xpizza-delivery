@@ -21,7 +21,8 @@ const RULES = JSON.parse(RULES_TEXT).rules;
 const UID = 'dev-uid';                      // the device's own uid — and, in the human control, the same person-less uid
 const RID = 'tb_centro';
 const BIND = { $uid: UID, $driver_id: UID, $restaurant_id: RID, $order_id: 'O1', $task_id: 'O1_delivery', $token: 'tok1',
-  $alert_id: 'a1', $msg_id: 'm1', $shift_id: 's1', $hash: 'h1', $key: 'k1', $rid: RID };
+  $alert_id: 'a1', $msg_id: 'm1', $shift_id: 's1', $hash: 'h1', $key: 'k1', $rid: RID,
+  $stack_id: 'S1', $oid: 'O1' };   // 2e 11-01: the stackseq + drvc leaves (unbound before → read at …/undefined, so the human control was denied)
 const PUBLIC = ['/config/rewards_public/redemption_live', '/public/brands', '/order_tracking/$token',
   '/restaurants/$restaurant_id/item_availability', '/restaurants/$restaurant_id/public', '/menus', '/menus/_meta',
   '/public_stats'];   // S5 ratings (advisor ruling E): the public social-proof projection — read by everyone, written by no client   // S5: the status screen's public restaurant facts
@@ -41,7 +42,7 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
     const db = ctx.database();
     await db.ref().update({
       [`dispatchers/${UID}`]: true, [`kitchen/${UID}`]: true,
-      [`restaurants/${RID}/kitchen_staff/${UID}`]: true, [`restaurants/${RID}/identity/name`]: 'Centro',
+      [`restaurants/${RID}/kitchen_staff/${UID}`]: true, [`restaurants/${RID}/identity/name`]: 'Centro', [`restaurants/${RID}/identity/version`]: 1,   // 2e 11-01: the identity .validate requires version === data.version + 1 (IDENT writes 2); unseeded → the control write was denied (masked while the read cell failed)
       [`restaurants/${RID}/availability_audit/k1`]: { at: 1 },
       [`restaurants/${RID}/item_availability/k1`]: { available: true },
       [`driver_accounts/${UID}`]: { role: 'driver' }, [`drivers/${UID}`]: { name: 'Dev Person', status: 'off_shift', ingest_token_hash: 'h1', current_shift_id: 's1' },
@@ -145,6 +146,18 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
     '/restaurants/$restaurant_id/availability_audit/$key/.write': [`restaurants/${RID}/availability_audit/k2`, { at: 2 }],
     '/menus/$rid/.write': [`menus/${RID}/b`, 2, { descendant: true }],
     '/user_profiles/$uid/.write': [`user_profiles/${UID}`, { name: 'Dev' }, { op: 'update' }],
+    // 2e 11-01 — the train's new write leaves (previously masked: the read cell aborted first), each in its REAL writer's shape:
+    //   drvf «Problema con este pedido»: xpizza-driver/index.html:2843-2844 — a create-only { reason, by, at: serverTimestamp() } by the
+    //   assigned driver (the human control is assigned tasks/O1_delivery above)
+    '/driver_problems/$oid/$pushId/.write': ['driver_problems/O1/p1', { reason: 'other', by: UID, at: { '.sv': 'timestamp' } }],
+    //   Pausa: the svc-assigner's CLEAR-only grant — index.js:4495 / :4531 write drivers/{uid}/break_since = null
+    '/drivers/$driver_id/break_since/.write': [`drivers/${UID}/break_since`, null, SVC],
+    //   stackseq finalize: sequencing/plan-stack.js:133-143 stackCopies — the five task-copy leaves on tasks/{oid}_delivery
+    '/tasks/$task_id/stack_id/.write': ['tasks/O1_delivery/stack_id', 'S1', SVC],
+    '/tasks/$task_id/stop_seq/.write': ['tasks/O1_delivery/stop_seq', 2, SVC],
+    '/tasks/$task_id/stack_uid/.write': ['tasks/O1_delivery/stack_uid', UID, SVC],
+    '/tasks/$task_id/stack_at/.write': ['tasks/O1_delivery/stack_at', { '.sv': 'timestamp' }, SVC],
+    '/tasks/$task_id/stack_plus_min/.write': ['tasks/O1_delivery/stack_plus_min', 4, SVC],
   };
   const writeLeaves = [];
   (function walkW(node, p) {

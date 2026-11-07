@@ -34,6 +34,9 @@ function buildPublicBrand(brandId, brand, identities) {
     const hours = pickHours(id.hours);
     if (Object.keys(hours).length) row.hours = hours;
     row.prep_default_min = id.prep_default_min;
+    row.active = id.active === true;   // orchestration §6 (v2): consumers can tell an inactive branch
+    if (typeof id.address_line === 'string' && id.address_line) row.address_line = id.address_line;
+    if (typeof id.address_reference === 'string' && id.address_reference) row.address_reference = id.address_reference;
     locations[rid] = row;
   }
   if (errors.length) return { ok: false, errors };

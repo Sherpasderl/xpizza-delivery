@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "test:browser": "node avatar-browser.mjs && node scheduled-badge-browser.mjs",
+    "test:browser:avatar": "node avatar-browser.mjs",
+    "test:browser:scheduled": "node scheduled-badge-browser.mjs"
   }
 }

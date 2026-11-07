@@ -1,0 +1,274 @@
+[
+ {
+  "frame": "s2",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s2",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s2-empty",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s2-empty",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s2-onedraft",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s2-onedraft",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s3",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s3",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s3-bad",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s3-bad",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s3-legacy",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s3-legacy",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s3-inactive",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s3-inactive",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s5",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s5",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s7",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s7",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s8",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s8",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s8b",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s8b",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s8c",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s8c",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s9a",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s9a",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s9a-bad",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s9a-bad",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s9b",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s9b",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s10",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s10",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s11a",
+  "w": 1280,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ },
+ {
+  "frame": "s11a",
+  "w": 390,
+  "mockReady": true,
+  "buildReady": true,
+  "errs": [],
+  "stepErr": null
+ }
+]

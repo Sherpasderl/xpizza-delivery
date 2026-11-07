@@ -32,10 +32,13 @@ try {
   const PB1_BLOCKS = { 'catalog-publish.js': 4 };
   // per-product extras (stage 2) landed later: its exact module inverse is reversed FIRST (newest first)
   const { unapplyExtrasModule, FILES: EXTRAS_FILES } = require('../tools/extras-module-inverse');
+  // the mirror key-encoding hotfix (2026-10-26) landed after both: its exact module inverse is reversed FIRST (newest first)
+  const { unapplyMirrorKeysModule, FILES: MIRRORKEYS_FILES } = require('../tools/mirrorkeys-module-inverse');
   const shaBase = (f) => {
-    const raw = fsys.readFileSync(path.join(__dirname, f), 'utf8');
+    const raw0 = require('../tools/photos-module-inverse').unapplyPhotosModule(`catalog/${f}`, fsys.readFileSync(path.join(__dirname, f), 'utf8'));   // DRYRUN R-WIRE (2e): DISH PHOTOS A2 (newest) innermost
+    const raw = MIRRORKEYS_FILES.includes(`catalog/${f}`) ? unapplyMirrorKeysModule(`catalog/${f}`, raw0) : raw0;
     const src = EXTRAS_FILES.includes(`catalog/${f}`) ? unapplyExtrasModule(`catalog/${f}`, raw) : raw;
-    if (!C2A_BLOCKS[f]) return crypto.createHash('sha256').update(fsys.readFileSync(path.join(__dirname, f))).digest('hex');
+    if (!C2A_BLOCKS[f]) return crypto.createHash('sha256').update(MIRRORKEYS_FILES.includes(`catalog/${f}`) ? Buffer.from(src, 'utf8') : fsys.readFileSync(path.join(__dirname, f))).digest('hex');
     const begins = (src.match(/\/\* c2a-evidence:begin \*\//g) || []).length;
     const ends = (src.match(/\/\* c2a-evidence:end \*\//g) || []).length;
     assert.strictEqual(begins, C2A_BLOCKS[f], `🔴 ${f}: expected exactly ${C2A_BLOCKS[f]} c2a blocks, found ${begins} begin delimiters`);
@@ -53,7 +56,7 @@ try {
   assert.notStrictEqual(one, FROZEN['catalog-publish.js']);
   {
     // the sensitivity cells judge the file as the pins do: the per-product extras hunks reversed first
-    const src = unapplyExtrasModule('catalog/catalog-publish.js', fsys.readFileSync(path.join(__dirname, 'catalog-publish.js'), 'utf8'));
+    const src = unapplyExtrasModule('catalog/catalog-publish.js', require('../tools/photos-module-inverse').unapplyPhotosModule('catalog/catalog-publish.js', fsys.readFileSync(path.join(__dirname, 'catalog-publish.js'), 'utf8')));
     const planted = src.replace('async function releaseLease(', 'async function releaseLeasE(');
     assert.notStrictEqual(planted, src, 'sensitivity premise: the plant changed the file');
     assert.notStrictEqual(crypto.createHash('sha256').update(planted.replace(C2A, '').replace(PB1, '')).digest('hex'), FROZEN['catalog-publish.js'], 'a one-byte change OUTSIDE the c2a / PB-1 blocks is detected');

@@ -6,6 +6,7 @@
   "autoAssignOnOrderCreate": 3,
   "clearTrackerMirrorOnDone": 1,
   "deleteTasksOnOrderTerminal": 1,
+  "detectOutOfSequence": 2,
   "earnRewardsOnCompletion": 1,
   "logOrderLifecycle": 1,
   "materializeOnConfirm": 3,

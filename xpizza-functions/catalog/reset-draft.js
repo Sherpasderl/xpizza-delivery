@@ -15,11 +15,12 @@
 const { validateSource, sourceRefOf, canonicalize, encodeUpdateTime } = require('./source-store');
 const { candidateSource } = require('./candidate-validate');
 const { isPreconditionFailure } = require('./edit-catalog-handler');
+const PS = require('../photos/photo-state');   // DISH PHOTOS A2: the three-state vocabulary (pure)
 
 const { can } = require('../access/membership');   // PLAN-portal-membership r3 §3.2 — the ONE capability table
 const reply = (status, body) => ({ status, body });
 
-async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previewVersion, toPrecondition = (v) => v }, body, req) {
+async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previewVersion, toPrecondition = (v) => v, readActivePhotos = null, attach = null }, body, req) {
   const rid = body && body.restaurantId;
   const auth = await authorize(rid, req);
   if (!auth || !auth.ok) return reply((auth && auth.status) || 403, { error: (auth && auth.error) || 'not_authorized' });
@@ -35,13 +36,31 @@ async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previe
   } catch (e) {
     return reply(503, { error: 'live_version_unavailable', retryable: true });
   }
+  // DISH PHOTOS A2 step 11 (§2.1): the draft photo map comes back from the ACTIVE version's meta/photos (pid / removed; legacy = absent).
+  // Without the dependency, or with no photo doc on the active version, nothing is added (a stale draft map is cleared below).
+  let photoMap = null;
+  if (readActivePhotos) {
+    try { photoMap = PS.resetMapFromActive(await readActivePhotos(rid, versionId)); } catch (e) { return reply(503, { error: 'live_version_unavailable', retryable: true }); }
+  }
 
-  const projected = canonicalize({ ...candidateSource(rid, { items: preview.items, extras: preview.extras, structure: preview.structure }), deleted_ids: null });
+  const projected = canonicalize({ ...candidateSource(rid, { items: preview.items, extras: preview.extras, structure: preview.structure }), deleted_ids: null, ...(photoMap ? { photos: photoMap } : {}) });
   try {
     validateSource(projected, rid);
   } catch (e) {
     // The active version passed this exact validation before it was flipped live; failing now is a contradiction.
     return reply(500, { error: 'projection_invalid', detail: String((e && e.message) || e).slice(0, 200) });
+  }
+
+  /* codex r1 P1-3 — the restored pids go through the SAME fenced attach editCatalog uses (registry draft|published + last_ref_at bump,
+     one transaction) BEFORE the CAS below: a concurrent publish + prune + sweep can no longer delete a photo this reset is about to
+     reference. A pid already deleting/deleted refuses (the owner re-uploads); an attach I/O failure fails closed. */
+  if (attach && photoMap) {
+    const pids = PS.referencedPids(photoMap);
+    if (pids.length) {
+      let a;
+      try { a = await attach(rid, pids); } catch (e) { return reply(503, { error: 'store_unavailable', retryable: true }); }
+      if (!a || a.ok !== true) return reply(409, { error: 'photo_unavailable', detail: 'a published photo is no longer available — publish again or upload it again' });
+    }
   }
 
   const ref = sourceRefOf(db, rid);

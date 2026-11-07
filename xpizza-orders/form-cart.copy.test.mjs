@@ -70,7 +70,8 @@ test('the conflict gate sits at every path to a charge — structural census, bo
     // add-product B: a restored bare-launcher line is announced at once; a NOTICE, not a gate — the gates above refuse it).
     assert.strictEqual((html.match(/cartConflicts\(\)/g) || []).length, 5,
       `${dir}: expected 5 cartConflicts() sites — definition, refuseConflictedSend, buildOrder, submitOrder, cartRestore's announcement`);
-    assert.ok(/\nfunction cartRestore\(stashedCart\)\{[\s\S]*?announceCartConflicts\(cartConflicts\(\)\);[\s\S]*?\n\}\n/.test(raw), `${dir}: the fifth site is cartRestore's announcement`);
+    // PLAN 3: the announcement now holds its conflicts once, for the announcer AND the formSignal beacon (same statement line)
+    assert.ok(/\nfunction cartRestore\(stashedCart\)\{[\s\S]*?const _restoreConflicts = cartConflicts\(\); announceCartConflicts\(_restoreConflicts\); sendFormSignal\('restore', formSignalReasons\(_restoreConflicts\)\);[\s\S]*?\n\}\n/.test(raw), `${dir}: the fifth site is cartRestore's announcement`);
 
     // 🔴 THE SEND GATE, INSIDE THE RETRY LOOP, with nothing between the check and the fetch. The retry
     // re-sends createOrder without rebuilding the order, so a gate before the loop does not cover it.

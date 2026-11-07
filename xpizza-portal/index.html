@@ -5,9 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <title>Sherpa — Portal del comercio</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600..800&display=swap" rel="stylesheet">
+<link rel="preload" href="fonts/archivo-latin.7150c0ec5a.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="./portal-fonts.css">   <!-- PLAN-portal-fonts r1.1: self-hosted Archivo, font-display:optional (platform/fonts) -->
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://us-central1-xpizza-delivery.cloudfunctions.net" crossorigin>   <!-- the Firebase SDK import + the first authenticated call; ratified by the §3.1 origin trace -->
+<link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>   <!-- the SDK's restored-session account lookup starts before the editor paints (perf/portal.origins.json, T2) -->
 <link rel="stylesheet" href="./styles.css">
 <script src="sherpa-client.js"></script>
 </head>
@@ -51,7 +53,7 @@
       <div class="switchmenu hidden" id="scopemenu" role="listbox"></div>
       <p class="scopenote hidden" id="scopenote" role="status" aria-live="polite"></p>
     </div>
-    <div class="nlabel">Menú</div>
+    <div class="nlabel" id="navmenulabel">Menú</div>
     <button class="nav on" id="navprod" type="button" aria-current="page"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Productos</button>
     <!-- PORTAL-UI 1a: Operación (shell.js shows these only to a holder of the location capabilities) -->
     <div class="nlabel hidden" id="navopslabel">Operación</div>
@@ -95,6 +97,8 @@
     <div class="hidden" id="pubreq"></div>
     <!-- PORTAL-UI 1a: «Agotados ahora» per branch (availability.js) -->
     <div class="ops hidden" id="availstrip"></div>
+    <!-- PLAN-public-menu-display T1: «Tus secciones todavía no tienen nombre» (app.js; shown only while no section has a name) -->
+    <div class="hidden" id="seccall"></div>
     <div class="split">
       <div class="rail" id="rail"></div>
       <div class="detail" id="detail">
@@ -117,6 +121,8 @@
   <div class="scrim pausescrim" id="pausescrim"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="pausetitle" id="pausemodal"></div></div>
   <!-- the «Desvincular» modal (equipos.js) -->
   <div class="scrim pausescrim" id="devscrim"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="devtitle" id="devmodal"></div></div>
+  <!-- PORTAL-UI 1b: the Sucursales confirms (Desactivar, Nueva sucursal, Eliminar borrador), built by branches-view.js -->
+  <div class="scrim pausescrim" id="sucscrim"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="suctitle" id="sucmodal"></div></div>
   <!-- «Disponibilidad por sucursal» (availability.js; the read-only menu only — the editor's chevron keeps opening #drawer) -->
   <aside class="drawer ops" id="availdrawer" aria-label="Disponibilidad por sucursal"></aside>
   <div class="ops opsscrim hidden" id="availscrim"></div>
@@ -149,6 +155,9 @@
       </div>
     </div>
   </div>
+
+  <!-- PLAN-public-menu-display T1: «Ponerles nombre a tus secciones» — every section named at once (app.js) -->
+  <div class="scrim" id="namescrim"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="nameTitle" id="namemodal"></div></div>
 
   <!-- The item drawer (Task 3: price only). Filled by app.js; empty and inert until a row is opened. -->
   <aside class="drawer" id="drawer" aria-label="Editar producto"></aside>

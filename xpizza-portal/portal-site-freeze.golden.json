@@ -18,13 +18,25 @@
   "auth.js",
   "availability.js",
   "boot.js",
+  "branch-1b-logic.js",
+  "branch-1b-logic.test.mjs",
   "branch-logic.js",
   "branch-logic.test.mjs",
+  "branches-1b-aa.test.mjs",
+  "branches-1b-copytruth.test.mjs",
+  "branches-1b-focus.test.mjs",
+  "branches-1b-life.test.mjs",
+  "branches-1b.test.mjs",
   "branches-view.js",
+  "category-name.browser.test.mjs",
   "editor.js",
   "editor.test.mjs",
   "equipos.js",
   "firebase.js",
+  "fonts/OFL.txt",
+  "fonts/archivo-latin-ext.a999e009fd.woff2",
+  "fonts/archivo-latin.7150c0ec5a.woff2",
+  "fonts/archivo-vietnamese.2518e8eb97.woff2",
   "index.html",
   "invite-mail.js",
   "netlify.toml",
@@ -32,10 +44,20 @@
   "package-lock.json",
   "package.json",
   "pausas.js",
+  "perf/portal.origins.json",
+  "photo-contract-fake.mjs",
+  "photo-flow.test.mjs",
+  "photo-logic.js",
+  "photo-logic.test.mjs",
+  "photo.js",
+  "photos-b-fold.mjs",
+  "portal-fonts.css",
+  "portal-fonts.test.mjs",
   "portal-logic.js",
   "portal-look.test.mjs",
   "portal-site-freeze.golden.json",
   "portal-wiring.test.mjs",
+  "portalui-guards.t1-hunks.json",
   "portalui-guards.test.mjs",
   "pubreq.js",
   "pubreq.test.mjs",
@@ -68,20 +90,36 @@
    "bytes": 4451
   },
   "aceptar.css": {
-   "sha256": "b2741774106fa57757c3cfa54f4a724c001031cc1dbff23af8c7b67f0328a841",
-   "bytes": 5860
+   "sha256": "008782289ed38d94e26a80a77e4e433fd3e7bd958b4bfad4e578e70a83070b04",
+   "bytes": 5905
   },
   "aceptar.html": {
-   "sha256": "61969eab310869f106e327c6c807f696d6f3fd0a365575ad19be2987b810c9d0",
-   "bytes": 5819
+   "sha256": "abd66fa4defe1a91506de73be318523c4bbf11a47478346e9ffead9139013b0d",
+   "bytes": 6298
+  },
+  "fonts/OFL.txt": {
+   "sha256": "8961013dbda3464baefca27c97a068539c798ee7c0be1d1f6b4254a9b20d7518",
+   "bytes": 4389
+  },
+  "fonts/archivo-latin-ext.a999e009fd.woff2": {
+   "sha256": "a999e009fdcd0f939c138e04043b3b2ad083b26252b644e8f94c083d48b77af0",
+   "bytes": 32672
+  },
+  "fonts/archivo-latin.7150c0ec5a.woff2": {
+   "sha256": "7150c0ec5ad356453013d11affec1fbab95de0dd2dcecb043b4f1cb7f87c4ba4",
+   "bytes": 34940
+  },
+  "fonts/archivo-vietnamese.2518e8eb97.woff2": {
+   "sha256": "2518e8eb97cd2b36dbf380d085e47bbc0df5c32fc6adc32fe1ca6edce192cee0",
+   "bytes": 13216
   },
   "index.html": {
-   "sha256": "0516143e18d2041917ab3731165f6e2848efad58aee3df2c9f215f63dd65abf5",
-   "bytes": 10276
+   "sha256": "007259874002903a744f0d7dc68710edd963fc75520bd9fb80c19d5fe4c15617",
+   "bytes": 11491
   },
   "netlify.toml": {
-   "sha256": "fe3ef565e42ad144919fa416dd111b322958d83486746116dd07c228faed22ee",
-   "bytes": 2549
+   "sha256": "6398e8dec6883e51292f9754d59d4eb97a378ac957b9deaffd5a1970fc79b520",
+   "bytes": 3704
   },
   "package-lock.json": {
    "sha256": "2a0d35b67d76dd7ddc912326272387f6e960371c9a490ad009e7c8d091de7a7f",
@@ -91,9 +129,21 @@
    "sha256": "ca999494e69e1dafcc4bc513a34c82bdb08d819401688ead7af94aeff865c3ef",
    "bytes": 443
   },
+  "perf/portal.origins.json": {
+   "sha256": "740f32b569d578e82f0749e48c180c482232ac2e109bbc19a21ae1376ce29d7d",
+   "bytes": 11580
+  },
+  "portal-fonts.css": {
+   "sha256": "c767de20341796e28f1c4d5e5b3b27d80871956cbd991de0f697065637c36d45",
+   "bytes": 2103
+  },
+  "portalui-guards.t1-hunks.json": {
+   "sha256": "7eb5d5f0db0b58401358b3dabe9d4579405b3178542961afe62a5a4a0b84657d",
+   "bytes": 35199
+  },
   "styles.css": {
-   "sha256": "6ae2646fa7c8f8c78a2df3f91a34cf395ba578d5384966f4bebcc771ee2dfd41",
-   "bytes": 89444
+   "sha256": "1e8e44041ff227b4d254942703ddc1198e08413cad1509b03f0eef910dcb9c3e",
+   "bytes": 108666
   }
  },
  "diff_aid": {
@@ -134,7 +184,7 @@
    "--shadow": "0 1px 2px rgba(10,10,11,.05),0 16px 40px -30px rgba(10,10,11,.26)",
    "--shadow-lg": "0 44px 96px -40px rgba(10,10,11,.34)",
    "--body": "'Söhne','Helvetica Neue',system-ui,-apple-system,'Segoe UI',sans-serif",
-   "--disp": "'Archivo','Söhne','Helvetica Neue',system-ui,sans-serif",
+   "--disp": "'Archivo','Archivo Fallback','Archivo Fallback Roboto','Söhne','Helvetica Neue',system-ui,sans-serif",
    "--r": "14px",
    "--focus": "0 0 0 2px var(--board),0 0 0 4px var(--ink)"
   },
@@ -186,6 +236,108 @@
     "#pausemodal .plab",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    "#seccall",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    "#sucmodal .callout",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    "#sucmodal .callout",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b.chipon1b",
+    "background",
+    "var(--tint)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b.chipon1b",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b.chipon1b",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    "#sucmodal .ferr1b",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    "#sucmodal .fld .lab",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    "#sucmodal .fnote",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    "#sucmodal .step .val span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    "#sucmodal .stepb",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    "#sucmodal .stepb",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    "#sucmodal .tel1b",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    "#sucmodal .tel1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    "#sucmodal .telbad1b",
+    "border-color",
+    "var(--red)"
    ],
    [
     "",
@@ -513,6 +665,24 @@
    ],
    [
     "",
+    ".chipon1b",
+    "background",
+    "var(--tint)"
+   ],
+   [
+    "",
+    ".chipon1b",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".chipon1b",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
     ".cicon.info",
     "background",
     "var(--tint2)"
@@ -556,6 +726,18 @@
    [
     "",
     ".conflict p",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".cqfoot1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".cqt1b span",
     "color",
     "var(--mute)"
    ],
@@ -743,7 +925,7 @@
     "",
     ".drawer.ops .fnote",
     "color",
-    "var(--mute2)"
+    "var(--mute)"
    ],
    [
     "",
@@ -1545,6 +1727,24 @@
    ],
    [
     "",
+    ".nvin1b",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".nvin1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".nvin1b:focus",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
     ".oav",
     "color",
     "#fff"
@@ -1659,6 +1859,42 @@
    ],
    [
     "",
+    ".ops .addcard1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".ops .addcard1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .addcard1b:hover",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".ops .addcard1b:hover",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".ops .browmiss1b",
+    "border-color",
+    "var(--amber-line)"
+   ],
+   [
+    "",
+    ".ops .bt1b span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".ops .callout b",
     "color",
     "var(--amber)"
@@ -1677,6 +1913,42 @@
    ],
    [
     "",
+    ".ops .calloutok1b b",
+    "color",
+    "var(--green-text)"
+   ],
+   [
+    "",
+    ".ops .calloutok1b",
+    "background",
+    "var(--green-soft)"
+   ],
+   [
+    "",
+    ".ops .calloutok1b",
+    "border-color",
+    "var(--green-line)"
+   ],
+   [
+    "",
+    ".ops .calloutquiet1b b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .calloutquiet1b",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".ops .calloutquiet1b",
+    "border-color",
+    "var(--line)"
+   ],
+   [
+    "",
     ".ops .card",
     "background",
     "var(--card)"
@@ -1692,6 +1964,30 @@
     ".ops .card.clk:hover",
     "border-color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".ops .chip1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".ops .chip1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .chip1b:hover",
+    "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".ops .chipq1b",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -1725,6 +2021,24 @@
    ],
    [
     "",
+    ".ops .csub1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .emptyline1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .emptynote1b",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".ops .errbox b,#detail .errbox b",
     "color",
     "var(--red-text)"
@@ -1743,21 +2057,99 @@
    ],
    [
     "",
+    ".ops .ferr1b",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
     ".ops .fld .lab",
     "color",
-    "var(--mute2)"
+    "var(--mute)"
    ],
    [
     "",
     ".ops .fnote",
     "color",
-    "var(--mute2)"
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .hday1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .herr1b",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".ops .hmiss1b",
+    "background",
+    "var(--amber-soft)"
+   ],
+   [
+    "",
+    ".ops .hmiss1b",
+    "border-color",
+    "var(--amber-line)"
+   ],
+   [
+    "",
+    ".ops .hmiss1b",
+    "color",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".ops .hoff1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".ops .hoff1b",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
     ".ops .hrow .d",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .htime1b",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".ops .htime1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .htime1b:focus",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".ops .htimebad1b",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".ops .htimebad1b",
+    "border-color",
+    "var(--red)"
    ],
    [
     "",
@@ -1780,6 +2172,18 @@
    [
     "",
     ".ops .inval.inro",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .legend1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .lock1b",
     "color",
     "var(--mute)"
    ],
@@ -1805,7 +2209,7 @@
     "",
     ".ops .sec h3 .hint",
     "color",
-    "var(--mute2)"
+    "var(--mute)"
    ],
    [
     "",
@@ -1818,6 +2222,18 @@
     ".ops .sec",
     "background",
     "var(--card)"
+   ],
+   [
+    "",
+    ".ops .sherpa1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".ops .sherpa1b",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -1884,6 +2300,30 @@
     ".ops .stepb:hover",
     "border-color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".ops .tel1b",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".ops .tel1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .tel1b:focus",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".ops .telbad1b",
+    "border-color",
+    "var(--red)"
    ],
    [
     "",
@@ -2010,6 +2450,108 @@
     ".pdelta.up",
     "color",
     "var(--amber)"
+   ],
+   [
+    "",
+    ".phbar i",
+    "background",
+    "#fff"
+   ],
+   [
+    "",
+    ".phbar",
+    "background",
+    "rgba(255,255,255,.3)"
+   ],
+   [
+    "",
+    ".phgrid",
+    "background",
+    "linear-gradient(to right,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px)),linear-gradient(to right,transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px)),linear-gradient(to bottom,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px)),linear-gradient(to bottom,transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px))"
+   ],
+   [
+    "",
+    ".phhint",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".phocard",
+    "background",
+    "#fff"
+   ],
+   [
+    "",
+    ".phocard",
+    "color",
+    "#1E1B18"
+   ],
+   [
+    "",
+    ".phodesc",
+    "color",
+    "#5A4F47"
+   ],
+   [
+    "",
+    ".phoprice",
+    "color",
+    "#7A5A08"
+   ],
+   [
+    "",
+    ".phov",
+    "background",
+    "rgba(10,10,11,.62)"
+   ],
+   [
+    "",
+    ".phov",
+    "color",
+    "#fff"
+   ],
+   [
+    "",
+    ".phpth",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".phpvcap",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".phpvlbl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".phrm",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".phshc",
+    "background",
+    "linear-gradient(to bottom,transparent 40%,rgba(0,0,0,.35) 100%)"
+   ],
+   [
+    "",
+    ".phshh",
+    "background",
+    "linear-gradient(to bottom,transparent 50%,rgba(0,0,0,.25) 100%)"
+   ],
+   [
+    "",
+    ".phzl",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -2163,6 +2705,114 @@
    ],
    [
     "",
+    ".pilldraft1b i",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".pilldraft1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".pilldraft1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".pillinactive1b",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".pillinactive1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".pillok1b",
+    "background",
+    "var(--green-soft)"
+   ],
+   [
+    "",
+    ".pillok1b",
+    "border-color",
+    "var(--green-line)"
+   ],
+   [
+    "",
+    ".pillok1b",
+    "color",
+    "var(--green-text)"
+   ],
+   [
+    "",
+    ".pillstaged1b i",
+    "background",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".pillstaged1b",
+    "background",
+    "var(--amber-soft)"
+   ],
+   [
+    "",
+    ".pillstaged1b",
+    "border-color",
+    "var(--amber-line)"
+   ],
+   [
+    "",
+    ".pillstaged1b",
+    "color",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".pillwait1b i",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".pillwait1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".pillwait1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".pillwarn1b",
+    "background",
+    "var(--amber-soft)"
+   ],
+   [
+    "",
+    ".pillwarn1b",
+    "border-color",
+    "var(--amber-line)"
+   ],
+   [
+    "",
+    ".pillwarn1b",
+    "color",
+    "var(--amber)"
+   ],
+   [
+    "",
     ".premove",
     "color",
     "var(--mute2)"
@@ -2250,6 +2900,12 @@
     ".prow .now",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    ".prow .now.phnone",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -2388,6 +3044,12 @@
     ".rbar",
     "background",
     "var(--rbar-bg)"
+   ],
+   [
+    "",
+    ".rbdoterr1b",
+    "background",
+    "var(--red)"
    ],
    [
     "",
@@ -2577,6 +3239,12 @@
    ],
    [
     "",
+    ".seal.phseal .seachg .sv",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".sealbadge",
     "background",
     "var(--gold)"
@@ -2646,6 +3314,120 @@
     ".search input:focus",
     "border-color",
     "var(--accent)"
+   ],
+   [
+    "",
+    ".seccallic",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".seccallic",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".seccalltx span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".seccnt",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".secerr",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".secin",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".secin",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".secmfnote",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".secnmid",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".secnmk",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".secnmk",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".secnote",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".secnote",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".secren",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".secren",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".secren:disabled:hover",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".secren:disabled:hover",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".secren:hover",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".secren:hover",
+    "color",
+    "var(--ink)"
    ],
    [
     "",
@@ -2919,6 +3701,12 @@
    ],
    [
     "",
+    ".thumb.phro",
+    "border-color",
+    "transparent"
+   ],
+   [
+    "",
     ".thumb.set",
     "border-color",
     "transparent"
@@ -3114,6 +3902,24 @@
     ".uploader span",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".uploader.phinv,.fld.invalid .uploader",
+    "border-color",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".uploader:focus-visible",
+    "background",
+    "var(--tint)"
+   ],
+   [
+    "",
+    ".uploader:focus-visible",
+    "border-color",
+    "var(--accent)"
    ],
    [
     "",
@@ -3474,6 +4280,12 @@
     "body",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    "button.uploader",
+    "background",
+    "none"
    ],
    [
     "@media(max-width:920px)",

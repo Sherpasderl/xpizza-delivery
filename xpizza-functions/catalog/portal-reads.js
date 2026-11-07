@@ -100,7 +100,7 @@ async function getMyRestaurantsCore({ db, verifyIdToken }, req) {
 //
 // READ-ONLY. Nothing in this module writes.
 // ---------------------------------------------------------------------------
-async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource, _readPublishRequest = null, _resolveAccess = resolveAccess, now = () => Date.now() }, req) {
+async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, photoReads = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource, _readPublishRequest = null, _resolveAccess = resolveAccess, now = () => Date.now() }, req) {
   if (!req || req.method !== 'GET') return reply(405, { error: 'method_not_allowed' });
   const rid = req.query && req.query.restaurantId;
 
@@ -149,6 +149,8 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
        product can be added to;
      • restaurantName: for the fiscal note, never a literal;
      • pendingAdditions: the saved draft's unpublished new products (keys), present only when there are some;
+     • pendingRenames / pendingOther (PLAN-public-menu-display T1): the saved draft's unpublished section names
+       ([{id, from, to}]) and whether anything besides a name is unpublished — each present only when there is something;
      • draft_unpublishable: present ONLY when the saved draft cannot publish against what is serving (a
        structural drift or an unbuildable draft) — the portal then offers "Volver al menú publicado".
      An assessment that cannot be made (the live read failed) is simply omitted: the editor still loads. */
@@ -166,13 +168,22 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
   try { restaurantName = await displayName(db, rid); } catch (_) { restaurantName = rid; }
   let draftUnpublishable = null;
   let pendingAdditions = null;
+  let pendingRenames = null;
+  let pendingOther = false;
   if (readActiveBuilt && activeVersionId != null) {
     try {
       const a = assessDraft(rid, source, await readActiveBuilt(rid));
       if (!a.publishable) draftUnpublishable = { code: a.code, detail: a.detail, ...(a.key ? { key: a.key } : {}) };
       // the saved draft's products that are NOT published yet (keys), so a reloaded editor still marks them NUEVO
       // and lets the owner remove them ("Quitar") — present only when there are some
-      else if (Array.isArray(a.additions) && a.additions.length) pendingAdditions = a.additions;
+      else {
+        if (Array.isArray(a.additions) && a.additions.length) pendingAdditions = a.additions;
+        // PLAN-public-menu-display T1 (portal r1 #3): what the saved draft has pending against the published menu, so a
+        // reloaded editor keeps «a rename publishes alone» from SERVER truth — the section names that differ, and whether
+        // anything else does. Present only when there is something, exactly like pendingAdditions.
+        if (Array.isArray(a.renames) && a.renames.length) pendingRenames = a.renames;
+        if (a.other === true) pendingOther = true;
+      }
     } catch (e) {
       console.warn('portal_draft_assessment_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
     }
@@ -204,6 +215,20 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     catch (_) { publishViaRequest = false; }
   }
 
+  /* DISH PHOTOS A2 step 9 (E-P3) — photos / photoPreviews / legacyPreviews / photosEnabled, each OMITTED when empty or off (a restaurant
+     without photo data gets today's response byte-for-byte). Best effort: a failed photo read omits them and the editor still loads
+     (the draft map is in `source` regardless). A pending photo change counts as «something besides a name» (pendingOther). */
+  let photoOut = {};
+  if (photoReads) {
+    try {
+      const { photosPending, ...fields } = (await photoReads.fieldsFor({ rid, source, activeVersionId: activeVersionId == null ? null : activeVersionId })) || {};
+      photoOut = fields;
+      if (photosPending === true && !draftUnpublishable) pendingOther = true;
+    } catch (e) {
+      console.warn('portal_photo_fields_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
+    }
+  }
+
   return reply(200, {
     renderedCategories,
     groupAuthoring,
@@ -213,6 +238,9 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     restaurantName,
     ...(draftUnpublishable ? { draft_unpublishable: draftUnpublishable } : {}),
     ...(pendingAdditions ? { pendingAdditions } : {}),
+    ...(pendingRenames ? { pendingRenames } : {}),
+    ...(pendingOther ? { pendingOther: true } : {}),
+    ...photoOut,   // DISH PHOTOS A2 step 9 (E-P3)
     source,
     // The CAS baseline. Byte-identical to editCatalog's baseSourceUpdateTime by construction.
     sourceUpdateTime: doc.updateTime ? encodeUpdateTime(doc.updateTime) : null,

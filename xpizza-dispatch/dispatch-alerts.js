@@ -18,7 +18,38 @@ const REGISTRY = {
   payment_aged_refund_pending:     { category: 'payment',     severity: 'neutral', iconId: 'i-card' },
   paid_superseded:                 { category: 'payment',     severity: 'red',     iconId: 'i-card' },   // PLAN-H0
   reversal_uncertain:              { category: 'payment',     severity: 'red',     iconId: 'i-card' },   // PLAN-H0
+  driver_problem:                  { category: 'driver-problem', severity: 'amber', iconId: 'i-alert' },  // DRIVER F
 };
+
+// DRIVER F — «Problema con este pedido»: the driver app's six reasons (the APPROVED prototype copy, verbatim), keyed by the ids
+// the server validates. The alert carries the id; the Torre shows the label. An id outside the six never renders raw.
+const DRIVER_PROBLEM_REASON_LABELS = Object.freeze({
+  waiting_restaurant:   'Estoy esperando en el restaurante',
+  not_ready_incomplete: 'El pedido no está listo o está incompleto',
+  customer_no_answer:   'El cliente no contesta',
+  address_not_found:    'No encuentro la dirección',
+  restaurant_closed:    'El local está cerrado',
+  other:                'Otro',
+});
+export function driverProblemReasonLabel(reason) {
+  return Object.prototype.hasOwnProperty.call(DRIVER_PROBLEM_REASON_LABELS, reason) ? DRIVER_PROBLEM_REASON_LABELS[reason] : DRIVER_PROBLEM_REASON_LABELS.other;
+}
+
+// DRIVER F — the title/detail for a driver_problem alert, ONE pure builder for BOTH Torres. Injection-based
+// (no DOM, no firebase, no globals): `label(ordRef)` → the FULL, escaped «Pedido #N» order label (the caller
+// owns the whole phrase, so mobile can make it the violet tap-cue while desktop renders it plain — both
+// byte-identical), `resolveDriverName(alert)` → the raw driver name from the caller's own store, `escapeHtml`
+// → the escaper. Desktop's alertContent and the mobile sheet both call this, so content lives in one place.
+export function driverProblemContent(alert, { label, resolveDriverName, escapeHtml }) {
+  const a = alert || {};
+  const name = escapeHtml(resolveDriverName(a));
+  const note = typeof a.note === 'string' && a.note ? ` — ${escapeHtml(a.note)}` : '';
+  const ord = Number.isFinite(a.display_number) ? { order_id: a.order_id, display_number: a.display_number } : a.order_id;
+  return {
+    title: 'Problema con el pedido',
+    detail: `${label(ord)} · ${escapeHtml(driverProblemReasonLabel(a.reason))} · ${name}${note}`,
+  };
+}
 
 export function classifyAlert(alert) {
   const type = alert && typeof alert.type === 'string' ? alert.type : '';

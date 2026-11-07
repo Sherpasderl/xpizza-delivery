@@ -736,9 +736,6 @@
   "xpizza-dispatch/index.html<script@0>#getPickupQueue>anon@self": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#initMap@xpizza-dispatch/index.html<script@0>#boot>anon": {
-   "status": "pending"
-  },
   "xpizza-dispatch/index.html<script@0>#mark>anon@self": {
    "status": "pending"
   },
@@ -877,9 +874,6 @@
   "xpizza-dispatch/index.html<script@0>#scheduledBadge@xpizza-dispatch/index.html<script@0>#renderTaskRow": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#showLastLocation@xpizza-dispatch/index.html<script@0>#action": {
-   "status": "pending"
-  },
   "xpizza-dispatch/index.html<script@0>#showLookupPin@xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon": {
    "status": "pending"
   },
@@ -958,10 +952,19 @@
   "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/single-order-view.js#singleOrderCardHtml": {
    "status": "pending"
   },
+  "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/stacked-view.js#destinationLabel": {
+   "status": "pending"
+  },
+  "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/stacked-view.js#offerScreenHtml>anon": {
+   "status": "pending"
+  },
   "xpizza-driver/brand-helpers.js#brandMeta@xpizza-driver/index.html<script@0>#restaurantMeta": {
    "status": "pending"
   },
   "xpizza-driver/brand-helpers.js#brandMeta@xpizza-driver/single-order-view.js#svChip": {
+   "status": "pending"
+  },
+  "xpizza-driver/brand-helpers.js#brandMeta@xpizza-driver/stacked-view.js#rchip": {
    "status": "pending"
   },
   "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/cash-helpers.js#computeShiftCash": {
@@ -979,6 +982,18 @@
   "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/single-order-view.js#svPay": {
    "status": "pending"
   },
+  "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/stacked-view.js#activeCardHtml": {
+   "status": "pending"
+  },
+  "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/stacked-view.js#activeCardHtml~2": {
+   "status": "pending"
+  },
+  "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/stacked-view.js#queueDetailHtml>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/stacked-view.js#vueltoLine": {
+   "status": "pending"
+  },
   "xpizza-driver/cash-helpers.js#computeShiftCash@xpizza-driver/index.html<script@0>#renderCuadreReceipt": {
    "status": "pending"
   },
@@ -994,11 +1009,24 @@
   "xpizza-driver/cash-helpers.js#paymentRowHtml@xpizza-driver/index.html<script@0>#renderQueueDetail": {
    "status": "pending"
   },
+  "xpizza-driver/cash-helpers.js#paymentRowHtml@xpizza-driver/stacked-view.js#activeCardHtml": {
+   "status": "pending"
+  },
+  "xpizza-driver/cash-helpers.js#paymentRowHtml@xpizza-driver/stacked-view.js#activeCardHtml~2": {
+   "status": "pending"
+  },
   "xpizza-driver/cash-helpers.js#queuePayHtml@xpizza-driver/index.html<script@0>#renderQueue>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/cash-helpers.js#queuePayHtml@xpizza-driver/stacked-view.js#queueHtml>anon": {
    "status": "pending"
   },
   "xpizza-driver/cash-helpers.js#shiftDeliveries@xpizza-driver/cash-helpers.js#computeShiftCash": {
    "status": "pending"
+  },
+  "xpizza-driver/cash-helpers.js#shiftDeliveries@xpizza-driver/index.html<script@0>#drv2DayEarned": {
+   "status": "pending",
+   "reason": "2f \u00abGanado hoy\u00bb metadata (87eed83c, 11b): drv2DayEarned is THE one-source day-earnings read/derive (HN-day, resolved-only); pure, no persistence; not a gate-A observable. Display only."
   },
   "xpizza-driver/cash-helpers.js#shiftDeliveries@xpizza-driver/index.html<script@0>#renderHistoryModal": {
    "status": "pending"
@@ -1027,10 +1055,40 @@
   "xpizza-driver/index.html<script@0>#detectNewAssignments@xpizza-driver/index.html<script@0>#onTasks": {
    "status": "pending"
   },
+  "xpizza-driver/index.html<script@0>#drv2Observe@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#drv2RecordDone@xpizza-driver/index.html<script@0>#drv2Observe": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#hubOf2@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#hubOf2@xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#ofHaver@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#ofHaver@xpizza-driver/index.html<script@0>#renderActiveAndQueue~2": {
+   "status": "pending"
+  },
   "xpizza-driver/index.html<script@0>#openEndShiftSheet>anon@self": {
    "status": "pending"
   },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#<top>>anon": {
+   "status": "pending"
+  },
   "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#attachIncomingBannerHandlers>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#document.addEventListener": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#ensureSlice2MapAgeTimer>anon": {
    "status": "pending"
   },
   "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#onUp": {
@@ -1042,25 +1100,10 @@
   "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon": {
    "status": "pending"
   },
-  "xpizza-driver/index.html<script@0>#renderActiveCard>anon@self": {
-   "status": "pending"
-  },
-  "xpizza-driver/index.html<script@0>#renderActiveCard@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
-   "status": "pending"
-  },
   "xpizza-driver/index.html<script@0>#renderHistoryModal>anon@self": {
    "status": "pending"
   },
   "xpizza-driver/index.html<script@0>#renderIdleState@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
-   "status": "pending"
-  },
-  "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon@self": {
-   "status": "pending"
-  },
-  "xpizza-driver/index.html<script@0>#renderQueue>anon@self": {
-   "status": "pending"
-  },
-  "xpizza-driver/index.html<script@0>#renderQueueDetail@xpizza-driver/index.html<script@0>#<top>>anon": {
    "status": "pending"
   },
   "xpizza-driver/index.html<script@0>#renderStatusBar@xpizza-driver/index.html<script@0>#document.addEventListener": {
@@ -1090,7 +1133,19 @@
   "xpizza-driver/index.html<script@0>#scheduledBadge@xpizza-driver/single-order-view.js#singleOrderCardHtml~2": {
    "status": "pending"
   },
-  "xpizza-driver/index.html<script@0>#scheduledBadge@xpizza-driver/single-order-view.js#singleOrderCardHtml~3": {
+  "xpizza-driver/index.html<script@0>#scheduledBadge@xpizza-driver/stacked-view.js#activeCardHtml": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#scheduledBadge@xpizza-driver/stacked-view.js#incomingBannerHtml>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#scheduledBadge@xpizza-driver/stacked-view.js#queueDetailHtml": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#scheduledBadge@xpizza-driver/stacked-view.js#queueHtml>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#startCountdownTick>anon>anon@self": {
    "status": "pending"
   },
   "xpizza-driver/native-push.js#initNativePush>anon@self": {
@@ -1114,8 +1169,36 @@
   "xpizza-driver/order-helpers.js#displayOrderLabel@xpizza-driver/single-order-view.js#singleOrderCardHtml": {
    "status": "pending"
   },
+  "xpizza-driver/order-helpers.js#displayOrderLabel@xpizza-driver/stacked-view.js#activeCardHtml": {
+   "status": "pending"
+  },
+  "xpizza-driver/order-helpers.js#displayOrderLabel@xpizza-driver/stacked-view.js#combinedPickupHtml>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/order-helpers.js#displayOrderLabel@xpizza-driver/stacked-view.js#incomingBannerHtml>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/order-helpers.js#displayOrderLabel@xpizza-driver/stacked-view.js#offerScreenHtml>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/order-helpers.js#displayOrderLabel@xpizza-driver/stacked-view.js#queueDetailHtml>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/order-helpers.js#displayOrderLabel@xpizza-driver/stacked-view.js#queueHtml>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/order-helpers.js#displayOrderLabel@xpizza-driver/stacked-view.js#stopNavInfo": {
+   "status": "pending"
+  },
   "xpizza-driver/order-helpers.js#endShiftPrompt>anon@self": {
    "status": "pending"
+  },
+  "xpizza-driver/overview-map.js#projectGeo>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-driver/pay-rate.js#shiftEarningsCents@xpizza-driver/index.html<script@0>#drv2DayEarned": {
+   "status": "pending",
+   "reason": "2e-applied under 2f's blanket ruling (87eed83c, 11b: \u00abapply pending to the whole drv2DayEarned-era set\u00bb) \u2014 NOT in 2f's enumerated list (2f expected the PR alias to hide it); FLAGGED to 2f for confirmation. The PAGOS-gated \u00abGanado hoy\u00bb amount derived in drv2DayEarned; informativo pay, never persisted/collected. Display only."
   },
   "xpizza-driver/single-order-view.js#itemLines@xpizza-driver/single-order-view.js#svItems": {
    "status": "pending"
@@ -1126,16 +1209,28 @@
   "xpizza-driver/single-order-view.js#mapsHref@xpizza-driver/single-order-view.js#svNav~2": {
    "status": "pending"
   },
+  "xpizza-driver/single-order-view.js#mapsHref@xpizza-driver/stacked-view.js#navBtnHtml": {
+   "status": "pending"
+  },
+  "xpizza-driver/single-order-view.js#mapsHref@xpizza-driver/stacked-view.js#navBtnHtml~2": {
+   "status": "pending"
+  },
+  "xpizza-driver/single-order-view.js#mapsHref@xpizza-driver/stacked-view.js#stopNavInfo": {
+   "status": "pending"
+  },
   "xpizza-driver/single-order-view.js#navTarget@xpizza-driver/single-order-view.js#singleOrderCardHtml": {
+   "status": "pending"
+  },
+  "xpizza-driver/single-order-view.js#navTarget@xpizza-driver/stacked-view.js#activeCardHtml": {
+   "status": "pending"
+  },
+  "xpizza-driver/single-order-view.js#navTarget@xpizza-driver/stacked-view.js#stopNavInfo": {
    "status": "pending"
   },
   "xpizza-driver/single-order-view.js#singleOrderCardHtml@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
    "status": "pending"
   },
   "xpizza-driver/single-order-view.js#svItems@xpizza-driver/single-order-view.js#singleOrderCardHtml": {
-   "status": "pending"
-  },
-  "xpizza-driver/single-order-view.js#svItems@xpizza-driver/single-order-view.js#singleOrderCardHtml~2": {
    "status": "pending"
   },
   "xpizza-driver/single-order-view.js#svPay@xpizza-driver/single-order-view.js#singleOrderCardHtml": {
@@ -1147,13 +1242,67 @@
   "xpizza-driver/single-order-view.js#svPay@xpizza-driver/single-order-view.js#singleOrderCardHtml~3": {
    "status": "pending"
   },
-  "xpizza-driver/single-order-view.js#svPay@xpizza-driver/single-order-view.js#singleOrderCardHtml~4": {
-   "status": "pending"
-  },
   "xpizza-driver/single-order-view.js#wazeHref@xpizza-driver/single-order-view.js#svNav": {
    "status": "pending"
   },
   "xpizza-driver/single-order-view.js#wazeHref@xpizza-driver/single-order-view.js#svNav~2": {
+   "status": "pending"
+  },
+  "xpizza-driver/single-order-view.js#wazeHref@xpizza-driver/stacked-view.js#navBtnHtml": {
+   "status": "pending"
+  },
+  "xpizza-driver/single-order-view.js#wazeHref@xpizza-driver/stacked-view.js#navBtnHtml~2": {
+   "status": "pending"
+  },
+  "xpizza-driver/single-order-view.js#wazeHref@xpizza-driver/stacked-view.js#stopNavInfo": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#activeCardHtml@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#activeCardHtml@xpizza-driver/index.html<script@0>#renderActiveAndQueue~2": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#cancelBannerHtml@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#cancelBannerHtml@xpizza-driver/index.html<script@0>#renderActiveAndQueue~2": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#combinedPickupHtml>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#destinationLabel@xpizza-driver/stacked-view.js#stopNavInfo": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#incomingBannerHtml>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#offerScreenHtml>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#queueDetailHtml>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#queueDetailHtml@xpizza-driver/index.html<script@0>#<top>>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#queueDetailHtml@xpizza-driver/index.html<script@0>#<top>>anon~2": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#queueHtml>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#stopHeaderHtml@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#stopHeaderHtml@xpizza-driver/index.html<script@0>#renderActiveAndQueue~2": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#stopHeaderHtml@xpizza-driver/index.html<script@0>#renderActiveAndQueue~3": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#vueltoLine@xpizza-driver/stacked-view.js#activeCardHtml": {
    "status": "pending"
   },
   "xpizza-driver/stacking-helpers.js#coordsMatch@xpizza-driver/stacking-helpers.js#resolvePickupHub": {
@@ -1223,6 +1372,12 @@
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#<top>>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#drv2ShowInterlude": {
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#handleEndShift": {
@@ -1552,7 +1707,7 @@
   "xpizza-functions/stats/stats-classify.js#isSale@xpizza-functions/stats/stats-classify.js#<top>>anon": {
    "status": "pending"
   },
-  "xpizza-functions/stats/stats-gen.js#generate@xpizza-functions/catalog/public-menu.js#buildPublicMenu": {
+  "xpizza-functions/stats/stats-gen.js#generate@xpizza-functions/catalog/public-menu.js#composeServedMenu": {
    "status": "pending"
   },
   "xpizza-functions/stats/stats-job.js#readOrdersBounded>anon@self": {
@@ -2454,6 +2609,610 @@
   },
   "xpizza-functions/tracking/tombstones.js#staleVerdict@xpizza-functions/tracking/tombstones.js#validateLiveClaims": {
    "status": "pending"
+  },
+  "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/stacked-view.js#payPhrase": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#queueDetailHtml@xpizza-driver/index.html<script@0>#<top>>anon~3": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#legsAssignedElsewhere>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon~2": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#statusOf@xpizza-driver/index.html<script@0>#drv2Observe": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#payPhrase@xpizza-driver/stacked-view.js#combinedPickupHtml>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#drv2LiveBoard": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#drv2ActionGuard": {
+   "status": "pending"
+  },
+  "xpizza-driver/single-order-view.js#itemLines@xpizza-driver/stacked-view.js#queueDetailHtml>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#drv2ActionGuard>anon": {
+   "status": "pending"
+  },
+  "la-musa-orders/status-view.js#statusArrived@la-musa-orders/status-view.js#presentStatus": {
+   "status": "pending"
+  },
+  "xpizza-functions/arrived-notify.js#eligible@xpizza-functions/arrived-notify.js#notifyArrived": {
+   "status": "pending"
+  },
+  "xpizza-functions/arrived-notify.js#eligible@xpizza-functions/arrived-notify.js#notifyArrived~2": {
+   "status": "pending"
+  },
+  "xpizza-functions/arrived-notify.js#makeMirrorUpdater>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-functions/arrived-notify.js#notifyArrived@xpizza-functions/index.js#notifyArrivedOnTap": {
+   "status": "pending"
+  },
+  "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/arrived-notify.js#notifyArrived": {
+   "status": "pending"
+  },
+  "xpizza-orders/status-view.js#statusArrived@xpizza-orders/status-view.js#presentStatus": {
+   "status": "pending"
+  },
+  "xpizza-track/status-view.js#statusArrived@xpizza-track/status-view.js#presentStatus": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/board-model.js#isPostPickup@xpizza-dispatch-mobile/board-model.js#canReassign": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/board-model.js#isPostPickup@xpizza-dispatch-mobile/index.html<script@0>#mdraDeactivate>anon>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/board-model.js#isPostPickup@xpizza-dispatch-mobile/index.html<script@0>#openPicker": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/dispatch-aging.js#agingBaselineMs@xpizza-dispatch-mobile/index.html<script@0>#levelOf": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/dispatch-aging.js#agingBaselineMs@xpizza-dispatch-mobile/index.html<script@0>#minutesOf": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/dispatch-alerts.js#driverProblemContent@xpizza-dispatch-mobile/index.html<script@0>#alertRow": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#alLabel@self": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#alertRow@self": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#displayLabel@xpizza-dispatch-mobile/index.html<script@0>#alLabel": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#hasSlot@xpizza-dispatch-mobile/index.html<script@0>#openDetail": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#hasSlot@xpizza-dispatch-mobile/index.html<script@0>#openDetail~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#hasSlot@xpizza-dispatch-mobile/index.html<script@0>#passHTML": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#openDetail@xpizza-dispatch-mobile/index.html<script@0>#openOrderFromAlert": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#openDetail@xpizza-dispatch-mobile/index.html<script@0>#openOrderFromAlert>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#openOrderFromAlert>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-aging.js#agingBaselineMs@xpizza-dispatch/index.html<script@0>#agedOrd": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-aging.js#agingBaselineMs@xpizza-dispatch/index.html<script@0>#agedOrd~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-aging.js#agingBaselineMs@xpizza-dispatch/index.html<script@0>#colaCard": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-aging.js#agingBaselineMs@xpizza-dispatch/index.html<script@0>#colaCard~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-aging.js#agingBaselineMs@xpizza-dispatch/index.html<script@0>#renderTaskRow": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-aging.js#agingBaselineMs@xpizza-dispatch/index.html<script@0>#riskOf": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-alerts.js#driverProblemContent@xpizza-dispatch/index.html<script@0>#alertContent": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#isPostPickup@xpizza-dispatch/index.html<script@0>#colaCard": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#isPostPickup@xpizza-dispatch/index.html<script@0>#draRenderDeactivate>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#isPostPickup@xpizza-dispatch/index.html<script@0>#openPicker": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#isPostPickup@xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#isPostPickup@xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#isPostPickup@xpizza-dispatch/index.html<script@0>#renderOrderDetailModal": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/index.html<script@0>#drv2CaptureReturnTarget": {
+   "status": "pending",
+   "reason": "display-only: brandLabel = the server-stamped restaurant_display_name used as the returning-state nav-target LABEL (drv2SetReturnTarget.name; '' -> no target -> hidden). Text-only, brand-agnostic, never a literal; same contract class as the other brandLabel consumers, not a gate-A observable (adapter not built)."
+  },
+  "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/index.html<script@0>#renderGanancias>anon": {
+   "status": "pending",
+   "reason": "display-only: brandLabel labels each delivery row in the earnings meta «H:MM · {brand}» (renderGanancias). The Ganancias screen is gated TAB_SHOW_GANANCIAS=PAGOS_LIVE. Text-only, brand-agnostic; same class as the other brandLabel consumers, not a gate-A observable (adapter not built)."
+  },
+  "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/stacked-view.js#contactRowHtml": {
+   "status": "pending",
+   "reason": "display-only: brandLabel labels the restaurant in the stacked contact row (contactRowHtml). Text-only, brand-agnostic; same class as the other brandLabel consumers, not a gate-A observable (adapter not built)."
+  },
+  "xpizza-dispatch/index.html<script@0>#initMap@xpizza-dispatch/index.html<script@0>#ensureMap>anon": {
+   "status": "pending",
+   "reason": "decoupled Maps-enhancement surface (PLAN-dispatch-maps-decouple; dispatch NOTE-dispatch-contract-metadata.md, reviewed from source): initMap builds the Google Map + restaurant marker only after loadGoogleMaps() resolves; the board is already live and stays live on map failure. Off the order matrix."
+  },
+  "xpizza-dispatch/index.html<script@0>#updateDriverMarkers@xpizza-dispatch/index.html<script@0>#onMapReady": {
+   "status": "pending",
+   "reason": "decoupled Maps-enhancement surface (PLAN-dispatch-maps-decouple; dispatch NOTE-dispatch-contract-metadata.md, reviewed from source): repaints driver pins from in-memory driver snapshots on the one-time onMapReady replay; order handling never depends on it."
+  },
+  "xpizza-dispatch/index.html<script@0>#updateCustomerMarkers@xpizza-dispatch/index.html<script@0>#onMapReady": {
+   "status": "pending",
+   "reason": "decoupled Maps-enhancement surface (PLAN-dispatch-maps-decouple; dispatch NOTE-dispatch-contract-metadata.md, reviewed from source): repaints customer destination pins on the onMapReady replay; same decoupled map surface."
+  },
+  "xpizza-dispatch/index.html<script@0>#refreshDeliveryEtas@xpizza-dispatch/index.html<script@0>#onMapReady": {
+   "status": "pending",
+   "reason": "decoupled Maps-enhancement surface (PLAN-dispatch-maps-decouple; dispatch NOTE-dispatch-contract-metadata.md, reviewed from source): recomputes DirectionsService ETAs for active deliveries on onMapReady; the board order state is independent of it."
+  },
+  "xpizza-dispatch/index.html<script@0>#showLastLocation@xpizza-dispatch/index.html<script@0>#action>anon": {
+   "status": "pending",
+   "reason": "decoupled Maps-enhancement surface (PLAN-dispatch-maps-decouple; dispatch NOTE-dispatch-contract-metadata.md, reviewed from source): operator action «Ver última ubicación» (last-known marker + InfoWindow + pan), guarded `if (!mapReady) return`; operator-initiated, off the order matrix."
+  },
+  "xpizza-dispatch/dispatch-maps-perf.mjs#evaluateGate@xpizza-dispatch/dispatch-maps-perf.mjs#runGate": {
+   "status": "pending",
+   "reason": "dev-only perf-gate harness (PLAN §6.4): runGate() spawns headless Chrome and evaluateGate(results) returns a pass/fail verdict; never deployed / never on an order path (dispatch NOTE). Assembly-only region (the assembly census file-set scans this .mjs)."
+  },
+  "xpizza-dispatch/index.html<script@0>#renderDispatcherAlerts>anon>anon>anon@self": {
+   "status": "pending",
+   "reason": "decoupled Maps-enhancement surface (PLAN-dispatch-maps-decouple; dispatch NOTE-dispatch-contract-metadata.md, reviewed from source): the runOnMap(() => { map.panTo(...); map.setZoom(...) }) callback 3 deep in renderDispatcherAlerts (alert card → click → runOnMap): a dispatcher map pan to the alert target; no order write / read. Assembly-only region (source byte-identical to bb387c42)."
+  },
+  "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/stacked-view.js#pickupSubLabel": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/stacked-view.js#pickupToRestaurantHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/stacked-view.js#pickupToRestaurantHtml~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/stacked-view.js#soloPickupHeaderInfo": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/single-order-view.js#singleOrderCardHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A1 money-path, per-site): Renders the offer/active card's pay row from the derived kind; same collection the cuadre uses (one source) — a render, not an observable."
+  },
+  "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/stacked-view.js#deliverySummaryHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A1 money-path, per-site): Derives the resumen's \"Cobraste/Sin costo\" row; display of the same server truth."
+  },
+  "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/stacked-view.js#reviewPayRowHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A1 money-path, per-site): The pre-handoff review pay row; display only."
+  },
+  "xpizza-driver/cash-helpers.js#computeShiftCash@xpizza-driver/index.html<script@0>#drv2ShowResumen": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A1 money-path, per-site): The end-of-run resumen's day-cash stat; a display figure gated on the same money-readiness as the cuadre (feedReady && cutoverLoaded && ident.valid), never a persisted number."
+  },
+  "xpizza-driver/cash-helpers.js#computeShiftCash@xpizza-driver/index.html<script@0>#renderGanancias": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A1 money-path, per-site): The Ganancias screen's cash figure; the screen is dark until Pagos (TAB_SHOW_GANANCIAS = PAGOS_LIVE). Display only."
+  },
+  "xpizza-driver/cash-helpers.js#computeShiftCash@xpizza-driver/index.html<script@0>#renderOffshift": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A1 money-path, per-site): The off-shift \"Efectivo a entregar\" stat; display only."
+  },
+  "xpizza-driver/cash-helpers.js#shiftDeliveries@xpizza-driver/index.html<script@0>#renderGanancias": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A1 money-path, per-site): Feeds the earnings list + count; display derivation over `delivered_by_driver_uid`."
+  },
+  "xpizza-driver/index.html<script@0>#drv2CaptureReturnTarget@xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G4 — client-local nav-return / pause state (11).: `drv2IsPaused` (reads `driverState.status==='on_break'` + a pending write-kind — pure read), and the returning-nav memory `drv2GetReturnTarget` / `drv2SetReturnTarget` / `drv2CaptureReturnTarget` (held in memory + `sessionStorage`, uid-stamped). **NO)"
+  },
+  "xpizza-driver/index.html<script@0>#drv2EarnRateFor@xpizza-driver/index.html<script@0>#drv2InjectInterludeEarn": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G5 — overlay / offer / earnings-display orchestration (4).: `drv2EarnRateFor` (PAGOS-gated per-delivery rate lookup via `window.PayRate.rateCentsInEffect`, no persistence — feeds the overlay earnings inject), `drv2ShowResumen` (builds the end-of-run DOM overlay), `startOfferRepeat` (the offer-ring r)"
+  },
+  "xpizza-driver/index.html<script@0>#drv2EarnRateFor@xpizza-driver/index.html<script@0>#drv2InjectResumenEarn": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G5 — overlay / offer / earnings-display orchestration (4).: `drv2EarnRateFor` (PAGOS-gated per-delivery rate lookup via `window.PayRate.rateCentsInEffect`, no persistence — feeds the overlay earnings inject), `drv2ShowResumen` (builds the end-of-run DOM overlay), `startOfferRepeat` (the offer-ring r)"
+  },
+  "xpizza-driver/index.html<script@0>#drv2GetReturnTarget@xpizza-driver/index.html<script@0>#renderDisponible": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G4 — client-local nav-return / pause state (11).: `drv2IsPaused` (reads `driverState.status==='on_break'` + a pending write-kind — pure read), and the returning-nav memory `drv2GetReturnTarget` / `drv2SetReturnTarget` / `drv2CaptureReturnTarget` (held in memory + `sessionStorage`, uid-stamped). **NO)"
+  },
+  "xpizza-driver/index.html<script@0>#drv2IsPaused@xpizza-driver/index.html<script@0>#detectNewAssignments": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G4 — client-local nav-return / pause state (11).: `drv2IsPaused` (reads `driverState.status==='on_break'` + a pending write-kind — pure read), and the returning-nav memory `drv2GetReturnTarget` / `drv2SetReturnTarget` / `drv2CaptureReturnTarget` (held in memory + `sessionStorage`, uid-stamped). **NO)"
+  },
+  "xpizza-driver/index.html<script@0>#drv2IsPaused@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G4 — client-local nav-return / pause state (11).: `drv2IsPaused` (reads `driverState.status==='on_break'` + a pending write-kind — pure read), and the returning-nav memory `drv2GetReturnTarget` / `drv2SetReturnTarget` / `drv2CaptureReturnTarget` (held in memory + `sessionStorage`, uid-stamped). **NO)"
+  },
+  "xpizza-driver/index.html<script@0>#drv2IsPaused@xpizza-driver/index.html<script@0>#renderActiveAndQueue~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G4 — client-local nav-return / pause state (11).: `drv2IsPaused` (reads `driverState.status==='on_break'` + a pending write-kind — pure read), and the returning-nav memory `drv2GetReturnTarget` / `drv2SetReturnTarget` / `drv2CaptureReturnTarget` (held in memory + `sessionStorage`, uid-stamped). **NO)"
+  },
+  "xpizza-driver/index.html<script@0>#drv2IsPaused@xpizza-driver/index.html<script@0>#renderActiveAndQueue~3": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G4 — client-local nav-return / pause state (11).: `drv2IsPaused` (reads `driverState.status==='on_break'` + a pending write-kind — pure read), and the returning-nav memory `drv2GetReturnTarget` / `drv2SetReturnTarget` / `drv2CaptureReturnTarget` (held in memory + `sessionStorage`, uid-stamped). **NO)"
+  },
+  "xpizza-driver/index.html<script@0>#drv2IsPaused@xpizza-driver/index.html<script@0>#renderActiveAndQueue~4": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G4 — client-local nav-return / pause state (11).: `drv2IsPaused` (reads `driverState.status==='on_break'` + a pending write-kind — pure read), and the returning-nav memory `drv2GetReturnTarget` / `drv2SetReturnTarget` / `drv2CaptureReturnTarget` (held in memory + `sessionStorage`, uid-stamped). **NO)"
+  },
+  "xpizza-driver/index.html<script@0>#drv2IsPaused@xpizza-driver/index.html<script@0>#renderDisponible": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G4 — client-local nav-return / pause state (11).: `drv2IsPaused` (reads `driverState.status==='on_break'` + a pending write-kind — pure read), and the returning-nav memory `drv2GetReturnTarget` / `drv2SetReturnTarget` / `drv2CaptureReturnTarget` (held in memory + `sessionStorage`, uid-stamped). **NO)"
+  },
+  "xpizza-driver/index.html<script@0>#drv2IsPaused@xpizza-driver/index.html<script@0>#renderStatusBar": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G4 — client-local nav-return / pause state (11).: `drv2IsPaused` (reads `driverState.status==='on_break'` + a pending write-kind — pure read), and the returning-nav memory `drv2GetReturnTarget` / `drv2SetReturnTarget` / `drv2CaptureReturnTarget` (held in memory + `sessionStorage`, uid-stamped). **NO)"
+  },
+  "xpizza-driver/index.html<script@0>#drv2IsPaused@xpizza-driver/index.html<script@0>#renderStatusBar~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G4 — client-local nav-return / pause state (11).: `drv2IsPaused` (reads `driverState.status==='on_break'` + a pending write-kind — pure read), and the returning-nav memory `drv2GetReturnTarget` / `drv2SetReturnTarget` / `drv2CaptureReturnTarget` (held in memory + `sessionStorage`, uid-stamped). **NO)"
+  },
+  "xpizza-driver/index.html<script@0>#drv2SetReturnTarget@xpizza-driver/index.html<script@0>#drv2CaptureReturnTarget": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G4 — client-local nav-return / pause state (11).: `drv2IsPaused` (reads `driverState.status==='on_break'` + a pending write-kind — pure read), and the returning-nav memory `drv2GetReturnTarget` / `drv2SetReturnTarget` / `drv2CaptureReturnTarget` (held in memory + `sessionStorage`, uid-stamped). **NO)"
+  },
+  "xpizza-driver/index.html<script@0>#drv2ShowResumen@xpizza-driver/index.html<script@0>#drv2ShowInterlude": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G5 — overlay / offer / earnings-display orchestration (4).: `drv2EarnRateFor` (PAGOS-gated per-delivery rate lookup via `window.PayRate.rateCentsInEffect`, no persistence — feeds the overlay earnings inject), `drv2ShowResumen` (builds the end-of-run DOM overlay), `startOfferRepeat` (the offer-ring r)"
+  },
+  "xpizza-driver/index.html<script@0>#ofHav@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/index.html<script@0>#ofHav@xpizza-driver/index.html<script@0>#renderActiveAndQueue~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/index.html<script@0>#ofHav@xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/index.html<script@0>#ofHav@xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/index.html<script@0>#ofValid@xpizza-driver/index.html<script@0>#ofHav": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/index.html<script@0>#ofValid@xpizza-driver/index.html<script@0>#ofHav~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/index.html<script@0>#ofValid@xpizza-driver/index.html<script@0>#ofHav~3": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/index.html<script@0>#ofValid@xpizza-driver/index.html<script@0>#ofHav~4": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/index.html<script@0>#ofValid@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/index.html<script@0>#ofValid@xpizza-driver/index.html<script@0>#renderActiveAndQueue~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/index.html<script@0>#ofValid@xpizza-driver/index.html<script@0>#renderActiveAndQueue~3": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/index.html<script@0>#ofValid@xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/index.html<script@0>#ofValid@xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/index.html<script@0>#ofValid@xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon~3": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#<top>>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#companionPracticeStart": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#companionRenderOnboarding": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#companionRenderOnboarding>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#companionShowActivatedTransient>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#companionSubmit": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#doStartShift": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#finalizeEndShift": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#handleStartShift": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#mountTabBar>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#onCuadreConfirm>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#onDriver": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#onOrders": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#onTasks": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#render>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#rerender": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#showCerrado>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#subscribeDriverRate>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#subscribeDriverRate>anon~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#subscribeToFirebase>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#syncTabBarForScreen": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#syncTabBarForScreen>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#<top>>anon>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#drv2PauseShift": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#drv2WritePauseState>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#drv2WritePauseState>anon~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#onclick": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#onclick~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#renderDisponible@xpizza-driver/index.html<script@0>#renderIdleState": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#renderGanancias>anon@self": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#renderIdleState@xpizza-driver/index.html<script@0>#renderActiveAndQueue~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#renderSoloCancel@xpizza-driver/index.html<script@0>#renderDisponible": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
+  "xpizza-driver/index.html<script@0>#scheduledBadge@xpizza-driver/stacked-view.js#pickupToRestaurantHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/index.html<script@0>#startOfferRepeat>anon@self": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G5 — overlay / offer / earnings-display orchestration (4).: `drv2EarnRateFor` (PAGOS-gated per-delivery rate lookup via `window.PayRate.rateCentsInEffect`, no persistence — feeds the overlay earnings inject), `drv2ShowResumen` (builds the end-of-run DOM overlay), `startOfferRepeat` (the offer-ring r)"
+  },
+  "xpizza-driver/index.html<script@0>#statusOf@xpizza-driver/index.html<script@0>#drv2Observe~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G3 — pure predicates / geometry (15).: `ofValid` (finite lat/lng check), `ofHav` (haversine via `XPD.haversineDistance`, for the offer-km display), `statusOf` (reads a task record's `status` string). No I/O. → **pending.**)"
+  },
+  "xpizza-driver/order-helpers.js#displayOrderLabel@xpizza-driver/index.html<script@0>#drv2Observe>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/order-helpers.js#displayOrderLabel@xpizza-driver/stacked-view.js#deliverySummaryHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/order-helpers.js#displayOrderLabel@xpizza-driver/stacked-view.js#pickupReviewHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/order-helpers.js#displayOrderLabel@xpizza-driver/stacked-view.js#pickupToRestaurantHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/pay-rate.js#shiftEarningsCents@xpizza-driver/index.html<script@0>#renderGanancias": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A1 money-path, per-site): The \"Ganado hoy/semana\" earnings + per-row amounts; PAGOS-gated (PAGOS_LIVE && a known rate; blank otherwise), never a persisted/collected figure — it's informativo pay, paid aparte from the cash. Display only."
+  },
+  "xpizza-driver/practica-fixture.js#practicaDemoOrder@xpizza-driver/index.html<script@0>#companionPracticeStart": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/single-order-view.js#itemLines@xpizza-driver/single-order-view.js#singleOrderCardHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/single-order-view.js#itemLines@xpizza-driver/stacked-view.js#activeCardHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/single-order-view.js#itemLines@xpizza-driver/stacked-view.js#reviewItemsCardHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/single-order-view.js#navTarget@xpizza-driver/stacked-view.js#pickupToRestaurantHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/single-order-view.js#singleOrderCardHtml@xpizza-driver/index.html<script@0>#render": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/single-order-view.js#singleOrderCardHtml@xpizza-driver/index.html<script@0>#renderActiveAndQueue~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#activeCardHtml@xpizza-driver/index.html<script@0>#render": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#coloniaOf@xpizza-driver/index.html<script@0>#drv2ShowInterlude": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#coloniaOf@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#coloniaOf@xpizza-driver/index.html<script@0>#renderActiveAndQueue~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#coloniaOf@xpizza-driver/index.html<script@0>#renderActiveAndQueue~3": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#coloniaOf@xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#coloniaOf@xpizza-driver/index.html<script@0>#renderGanancias>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#coloniaOf@xpizza-driver/stacked-view.js#offerScreenHtml>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#coloniaOf@xpizza-driver/stacked-view.js#queuedPreviewHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#deliverySummaryHtml@xpizza-driver/index.html<script@0>#drv2ShowResumen": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#deliverySummaryHtml@xpizza-driver/index.html<script@0>#render": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#phaseStripHtml>anon@self": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#pickupToRestaurantHtml@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#reviewItemsCardHtml@xpizza-driver/stacked-view.js#pickupReviewHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#reviewPayRowHtml@xpizza-driver/stacked-view.js#pickupReviewHtml": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/stacked-view.js#stopHeaderHtml@xpizza-driver/index.html<script@0>#renderActiveAndQueue~4": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G1 — pure UI builders (32).: Pure functions returning display markup / a view-model from server-written order fields (`restaurant_display_name`, `address_area`, items, total, phase). No state, no persistence, no gate-A observable — a render, not a scenario-observed output. Covers `brandLabel`, `disp)"
+  },
+  "xpizza-driver/xpizza-delivery.js#acceptSecondOrder@xpizza-driver/index.html<script@0>#mountOfferTakeover>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G6 — read-only view-model (1).: `getDriverOrders` — pure sort/classify of the driver's orders from `allTasks`/`allOrders`; read-only; its existing consumers are already `pending`. → **pending.**)"
+  },
+  "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#drv2PauseShift": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G6 — read-only view-model (1).: `getDriverOrders` — pure sort/classify of the driver's orders from `allTasks`/`allOrders`; read-only; its existing consumers are already `pending`. → **pending.**)"
+  },
+  "xpizza-driver/pay-rate.js#shiftEarningsCents@xpizza-driver/index.html<script@0>#renderGanancias>anon": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A1 money-path, per-site): The \"Ganado hoy/semana\" earnings + per-row amounts; PAGOS-gated (PAGOS_LIVE && a known rate; blank otherwise), never a persisted/collected figure — it's informativo pay, paid aparte from the cash. Display only. [the ×3 renderGanancias sites; explicit in the note A1 id list]"
   }
  }
 }

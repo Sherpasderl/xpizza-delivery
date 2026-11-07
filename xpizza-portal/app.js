@@ -7,15 +7,49 @@ import { apiFetch, editCatalog, publishEdited, resetDraftToLive, requestPublish 
 import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
 // 1D add-product B — the required choice on a NEW product ("Elección requerida — el cliente elige 1")
 import { parsePrice } from './editor.js';
+// PLAN-public-menu-display T1 — a section's display NAME (owner-approved mockup «Cambiar nombre de sección», 2026-10-25)
+import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
 import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
+// DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
+import * as PL from './photo-logic.js';
+import { createUploader, photoField, cropStep, rowThumb, rowTag, decodeFile, openPicker } from './photo.js';
+import { setPhoto, draftPhotos, origPhotos, pendingPhotos, canEditDraft } from './editor.js';
 
 const $ = (id) => document.getElementById(id);
 const REMEMBERED = 'sherpa.portal.rid';
 
-export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set(), settle: null };
+export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set(), settle: null, savedRenames: [], savedOther: false };
+
+// ── DISH PHOTOS B — per-load photo facts (getEditableCatalog E-P3) and the upload controller ─────────────────────────────
+//   enabled   photosEnabled === true (the server's PHOTOS_UPLOADS): the uploader is drawn only then (no control without effect)
+//   previews  photoPreviews {[pid]: {card, hero, expiresAt?}} — every pid the draft OR the active version references
+//   legacy    legacyPreviews {[itemKey]: {card}} — the image the public menu serves today for a dish with no entry
+// A photo upload belongs to a TENANT WORLD (photoWorld), not to an operation generation: opening the review bumps the
+// generation, and must not kill an upload; a tenant switch / reload / sign-out ends it.
+// Module-private, NOT on the exported `state`: nothing outside this module reads or writes them (portal-wiring's census).
+const emptyPhotoFacts = () => ({ enabled: false, previews: {}, legacy: {}, broken: new Set(), retried: new Set(), stale: new Set(), renewTimer: null });
+let photo = emptyPhotoFacts();
+let photoWorld = 0;
+const uploader = createUploader({
+  rid: () => state.draftRid,
+  token,
+  gen: () => photoWorld,
+  alive: (w) => w === photoWorld,
+  // the ONE write of an uploaded pid, through the guarded editor; refused (→ held, applied on the next repaint) while owned
+  apply: (key, pid, preview) => {
+    if (!state.draft || !canEditDraft(state.draft) || renamesPending()) return false;   // ruling A: held, never dropped, beside a name
+    if (preview && typeof preview === 'object') photo.previews[pid] = preview;
+    setPhoto(state.draft, key, { 'state': 'pid', pid });   // a quoted key: the census reads a bare `state:` as the state object
+    scheduleRenew();
+    return true;
+  },
+  changed: (key, what) => photoChanged(key, what),
+  decode: decodeFile,
+  newOpId: () => `op:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`,
+});
 
 export { pickRid, messageFor } from './portal-logic.js';
 
@@ -33,6 +67,8 @@ function showEmpty(title, detail) {
   $('detail').replaceChildren(e);
 }
 import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
+// a drawer's top-right close: the approved 32×32 X icon box (aria-label «Cerrar», no text) — ONE builder (ops-dom), shared with photo.js; availability.js's .adwx is the same button + icon('close')
+import { closeIcon } from './ops-dom.js';
 
 function renderSwitcher() {
   const cur = state.restaurants.find((r) => r.rid === state.currentRid);
@@ -367,7 +403,7 @@ function syncUi() {
   const rev = $('review');
   if (rev) {
     const valid = !!state.draft && isPublishable(state.draft);
-    rev.disabled = owned || state.menuLoading === true || !state.draft || !valid;
+    rev.disabled = owned || state.menuLoading === true || !state.draft || !valid || uploader.busy();
     rev.title = (state.draft && !valid) ? 'Hay un precio sin valor válido' : '';
   }
   // "Listo" on the receipt is not pressable while the post-publish reload is owed (derived, like every other control)
@@ -406,6 +442,9 @@ export async function loadMenu(rid) {
   state.rawPrice = new Map();                 // typed price text that is not (yet) a price, per field (codex PB-3 P2-2)
   invalidateReview();                        // clears tenant-bound state AND bumps the generation
   const gen = opGeneration;
+  state.renameEdit = null;                    // PLAN-public-menu-display T1 — the section title being edited, if any
+  closeNameAll();
+  endPhotoWorld();                            // DISH PHOTOS B — uploads and previews belong to the tenant world that is ending
   $('detail').replaceChildren();
   showEmpty('Cargando tu menú…', 'Un momento.');
   let data;
@@ -438,10 +477,11 @@ export async function loadMenu(rid) {
   // The draft carries the boundary: it may be edited only while nobody owns it for a review or a
   // publish. Every mutator asks this, so a retained or detached listener is refused at the state
   // rather than at the DOM.
-  state.draft = createDraft((data && data.source) || { items: [], extras: [], structure: {} },
-    { canEdit: () => editLockHolder === null });
+  state.draft = createDraft(withPhotos((data && data.source) || { items: [], extras: [], structure: {} }, data),
+    { canEdit: () => editLockHolder === null, held: savedHold });
   state.sourceUpdateTime = (data && data.sourceUpdateTime) || null;
   state.usesPlatformFactura = (data && data.usesPlatformFactura) === true;
+  applyPhotoFacts(data);                    // DISH PHOTOS B — behind the same generation check
   applyAddProductFacts(data);
   applyPublishRequestFacts(data);           // T-d — behind the same generation check
   // WHICH TENANT THIS DRAFT IS. Recorded with the draft, from the rid the request was made for — so
@@ -456,6 +496,7 @@ export async function loadMenu(rid) {
 // keeps the count, the marks and the values from drifting apart: there is one source of truth and one
 // pass that reads it.
 function repaintFromDraft() {
+  uploader.flush();                           // DISH PHOTOS B — an upload that finished while the draft was owned lands now
   const src = draftSource(state.draft);
   // 1D add-product B — a product's options belong under it (its drawer, its review row, its nested lines in the list —
   // portal mockup screen 2), not in the list as products of their own: they are folded out here, NEW and PUBLISHED groups
@@ -483,6 +524,10 @@ function applyAddProductFacts(data) {
   // which badges this brand's picker draws on an option. Strictly from the server; absent = off / none.
   state.groupAuthoring = !!(data && data.groupAuthoring === true);
   state.choiceBadges = Array.isArray(data && data.choiceBadges) ? data.choiceBadges.filter((b) => typeof b === 'string') : [];
+  // PLAN-public-menu-display T1 (Codex r1 #3) — what the SAVED draft already has pending against the PUBLISHED menu (server
+  // truth), so «a rename publishes alone» survives a reload, a branch switch and «Enviar al dueño». Absent = nothing.
+  state.savedRenames = Array.isArray(data && data.pendingRenames) ? data.pendingRenames.filter((r) => r && typeof r.id === 'string') : [];
+  state.savedOther = !!(data && data.pendingOther === true);
 }
 // PLAN-portal-team-invites T-d — the two per-load facts of «Enviar al dueño para publicar», strictly from the server:
 //   publish_via_request  this caller SENDS the draft to the owner instead of publishing (getEditableCatalog decides it with the
@@ -494,6 +539,202 @@ function applyPublishRequestFacts(data) {
   const request = data && data.publish_request && typeof data.publish_request === 'object' ? data.publish_request : null;
   document.dispatchEvent(new CustomEvent('portal:publish-request', { detail: { request } }));
 }
+// ── DISH PHOTOS B (PLAN-dish-photos r2 §2.2 E-P3 + amendments 2026-10-27) — the photo facts and their surfaces ─────────
+const objOrEmpty = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+// The draft map arrives as E-P3 `photos` and lives IN the document as `source.photos`, so every save sends it back whole
+// (an unchanged stored map always passes with uploads off). Empty or absent: the source is left exactly as it came.
+function withPhotos(source, data) {
+  const map = objOrEmpty(data && data.photos);
+  if (Object.keys(map).length && source && typeof source === 'object') source.photos = JSON.parse(JSON.stringify(map));
+  return source;
+}
+function applyPhotoFacts(data) {
+  if (photo.renewTimer) clearTimeout(photo.renewTimer);
+  photo = emptyPhotoFacts();
+  photo.enabled = !!(data && data.photosEnabled === true);
+  photo.previews = { ...objOrEmpty(data && data.photoPreviews) };
+  photo.legacy = { ...objOrEmpty(data && data.legacyPreviews) };
+  scheduleRenew();
+}
+// A tenant world ends (switch, reload, sign-out): its uploads are aborted and its previews forgotten.
+function endPhotoWorld() {
+  photoWorld += 1;
+  uploader.abortAll();
+  if (photo.renewTimer) clearTimeout(photo.renewTimer);
+  photo = emptyPhotoFacts();
+}
+// The row's photo as the screen shows it; an image that failed to load (after its one renewal) is a missing preview —
+// visible as such, never a broken image.
+function photoViewOf(key) {
+  // legacy images are shown (row / drawer) only with uploads ON: E-P3 sends legacyPreviews whatever the flag, and the dark
+  // portal must look exactly as today; the review still reads them (a stored map's lines need the true «nueva / cambiada»)
+  const v = PL.photoView(key, { photos: draftPhotos(state.draft), orig: origPhotos(state.draft), previews: photo.previews, legacy: photo.enabled ? photo.legacy : {} });
+  // a picture that cannot be shown: a legacy image, or an upload whose renewal had nothing newer (codex r1 #2: an unsaved pid
+  // is not in E-P3), keeps the NEUTRAL frame — still a photo; a pid the server no longer serves is MISSING (P5, a new upload)
+  if (v.url && (photo.broken.has(v.url) || (v.pid && photo.stale.has(v.pid) && previewExpired(v.pid)))) {
+    if (v.kind !== 'photo') return { ...v, url: null };
+    return v.legacy || (v.pid && photo.stale.has(v.pid)) ? { ...v, url: null, neutral: true, missing: false } : { ...v, url: null, missing: true };
+  }
+  return v;
+}
+const previewExpired = (pid) => { const e = PL.expiryMs(photo.previews[pid] && photo.previews[pid].expiresAt); return e !== null && Date.now() >= e; };
+// A photo's STABLE identity for its picture URL(s) — the pid, or the legacy dish key — so "one retry" is per photo, not per
+// signed URL (each renewal mints a new one; codex r1 #3)
+function photoIdOfUrl(url) {
+  for (const [pid, p] of Object.entries(photo.previews)) if (p && (p.card === url || p.hero === url)) return `pid:${pid}`;
+  for (const [k, l] of Object.entries(photo.legacy)) if (l && l.card === url) return `legacy:${k}`;
+  return `url:${url}`;
+}
+function urlOfPhotoId(id) {
+  if (id.startsWith('pid:')) { const pid = id.slice(4); const p = photo.previews[pid]; const u = p && typeof p.card === 'string' ? p.card : null; return u && !photo.broken.has(u) && !(photo.stale.has(pid) && previewExpired(pid)) ? u : null; }
+  if (id.startsWith('legacy:')) { const l = photo.legacy[id.slice(7)]; const u = l && typeof l.card === 'string' ? l.card : null; return u && !photo.broken.has(u) ? u : null; }
+  return null;
+}
+const photoNameOf = (key) => {
+  const it = ((draftSource(state.draft) || {}).items || []).find((i) => i && rowId(i) === key);
+  const n = it && it.display && typeof it.display.name === 'string' && it.display.name.trim() ? it.display.name : null;
+  return n || (typeof key === 'string' && key.startsWith('tmp:') ? 'Nuevo producto' : String(key));
+};
+// render.js asks per row: today's placeholder (null) unless uploads are on or the dish has a photo to show
+function rowPhoto(it, { name, open, upload }) {
+  const v = photoViewOf(rowId(it));
+  if (!photo.enabled && !(v.kind === 'photo' && (v.url || v.neutral))) return null;
+  return { thumb: rowThumb({ view: v, name, enabled: photo.enabled, onOpen: open, onUpload: upload, onImgError: onPhotoImgError }), tag: rowTag(v) };
+}
+// P2 — choosing a photo for one product. `capture` null = the zone / the row camera: on a phone that EXPANDS the zone in place
+// into «Tomar foto» / «Elegir de la galería» (the mockup's P1 cajón → P2 at 390); elsewhere it opens the system picker.
+// true / false = those two buttons. Synchronous from the click, so the browser treats the picker as the user's gesture.
+let photoExpandedKey = null;
+const isPhone = () => !!(typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 560px)').matches);
+function pickPhoto(key, capture) {
+  if (!photo.enabled || !state.draft || !canEditDraft(state.draft) || renamesPending()) return;   // ruling A: a rename publishes alone
+  if (capture === null && isPhone() && photoExpandedKey !== key) { photoExpandedKey = key; renderDrawer(); return; }
+  openPicker((file) => { photoExpandedKey = null; uploader.take(key, file); }, { capture: capture === true });
+}
+// The controller's "something changed for this product": the bar in place for progress (no rebuild under the pointer),
+// otherwise the open drawer, the rows and the bar from the draft.
+function photoChanged(key, what) {
+  if (what === 'progress') {
+    const job = uploader.jobOf(key);
+    const bar = state.drawerKey === key ? $('drawer').querySelector('.phbar') : null;
+    if (job && bar) { const pct = Math.round((job.progress || 0) * 100); bar.setAttribute('aria-valuenow', String(pct)); const i = bar.querySelector('i'); if (i) i.style.width = `${pct}%`; }
+    return;
+  }
+  if (state.drawerKey === key && $('drawer').classList.contains('show')) renderDrawer();
+  if (state.draft) { paint(); refreshBar(); }
+}
+// The drawer's «Foto» field for a product, or null (uploads off and no photo: the drawer exactly as today).
+function photoFieldFor(it) {
+  const key = rowId(it);
+  const name = photoNameOf(key);
+  const job = uploader.jobOf(key);
+  return photoField({
+    name, view: photoViewOf(key), job, enabled: photo.enabled, expanded: photoExpandedKey === key && isPhone(), held: renamesPending(),
+    onPick: bound((capture) => pickPhoto(key, capture)),
+    onRemove: bound(() => {
+      uploader.clear(key);
+      setPhoto(state.draft, key, PL.removedEntry(key, { orig: origPhotos(state.draft), legacy: photo.legacy }));
+      photoChanged(key);
+    }),
+    onUndo: bound(() => { setPhoto(state.draft, key, PL.undoEntry(key, { orig: origPhotos(state.draft) })); photoChanged(key); }),
+    // P5: the same upload again; a preview the server could not give (a pid it cannot show) needs a new file
+    onRetry: bound(() => { if (renamesPending()) return; const j = uploader.jobOf(key); if (j && j.phase === 'failed') uploader.retry(key); else pickPhoto(key, null); }),
+    onCancel: bound(() => uploader.cancel(key)),
+    onImgError: onPhotoImgError,
+  });
+}
+// P3 — «Ajustar foto», the drawer's own step: Cancelar / Cerrar discard the file and upload nothing; Listo uploads.
+function renderCropDrawer(d, it, job) {
+  const key = rowId(it);
+  const disp = it.display || {};
+  const { head, body, foot } = cropStep({
+    job, name: photoNameOf(key), desc: typeof disp.desc === 'string' ? disp.desc : '',
+    priceText: Number.isInteger(it.price) && it.price > 0 ? `L ${it.price}` : '',
+    onFrame: bound((id) => uploader.setFrame(key, id)),
+    onView: (id, v) => uploader.setView(key, id, v),
+    onCancel: bound(() => uploader.cancel(key)),
+    onDone: bound(() => { if (!renamesPending()) uploader.upload(key); }),
+    onClose: bound(() => { state.drawerKey = null; uploader.cancel(key); d.classList.remove('show'); d.replaceChildren(); }),
+  });
+  d.replaceChildren(head, body, foot);
+  d.classList.add('show');
+}
+// What the review (P8) and the seal need to show a photo line: the dish's name, the card URL of a state, and which dishes
+// have a legacy image (that decides «Foto nueva» vs «Foto cambiada»).
+function photoReviewOpts() {
+  return {
+    nameOf: photoNameOf,
+    legacy: photo.legacy,
+    urlOf: (st, key) => urlOfPhotoId(st && st.kind === 'pid' ? `pid:${st.pid}` : `legacy:${key}`),
+    onImgError: onPhotoImgError,
+  };
+}
+// ── preview renewal (§2.2 E-P3): a background re-read, never on the paint path. It merges PREVIEWS only — the draft on screen
+// is the merchant's and is never replaced by a renewal.
+function scheduleRenew() {
+  if (photo.renewTimer) { clearTimeout(photo.renewTimer); photo.renewTimer = null; }
+  if (!state.draft) return;
+  // a pid a renewal could not extend is never scheduled again (codex r1 #2: no zero-delay loop); it falls back to the frame
+  const pids = Object.values(draftPhotos(state.draft)).filter((e) => e && e.state === 'pid' && !photo.stale.has(e.pid)).map((e) => e.pid);
+  const ms = PL.renewIn(photo.previews, pids, Date.now());
+  if (ms === null) return;
+  const w = photoWorld;
+  const t = setTimeout(() => { if (w === photoWorld) refreshPreviews(); }, Math.min(ms, 2147483647));
+  if (t && typeof t.unref === 'function') t.unref();
+  photo.renewTimer = t;
+}
+async function refreshPreviews() {
+  const rid = state.draftRid;
+  const w = photoWorld;
+  if (!rid) return;
+  let fresh = null;
+  try { fresh = await apiFetch('getEditableCatalog', { rid, token }); } catch (_) { fresh = null; }
+  if (w !== photoWorld || rid !== state.draftRid || !fresh) return;
+  const got = objOrEmpty(fresh.photoPreviews);
+  // E-P3's `photos` is the SAVED draft map: it says which pids the server knows (codex r2 #3)
+  const saved = new Set(Object.values(objOrEmpty(fresh.photos)).filter((e) => e && e.state === 'pid').map((e) => e.pid));
+  const now = Date.now();
+  for (const e of Object.values(draftPhotos(state.draft))) {
+    if (!e || e.state !== 'pid') continue;
+    const g = got[e.pid];
+    const exp = g ? PL.expiryMs(g.expiresAt) : null;
+    if (!g && saved.has(e.pid)) {
+      // a SAVED pid the server no longer serves (§2.2 E-P3: deleting / deleted): MISSING — P5 and its re-upload, never the frame
+      delete photo.previews[e.pid];
+      photo.stale.delete(e.pid);
+    } else if (!g || (exp !== null && exp - PL.RENEW_EARLY_MS <= now)) {
+      // an UNSAVED upload (E-P3 knows only the saved draft), or a preview the read did not extend: STALE — no more renewals,
+      // the neutral frame once its picture fails or expires (codex r1 #2)
+      photo.stale.add(e.pid);
+    } else photo.stale.delete(e.pid);
+  }
+  Object.assign(photo.previews, got);
+  photo.legacy = { ...photo.legacy, ...objOrEmpty(fresh.legacyPreviews) };
+  photo.broken.clear();
+  scheduleRenew();
+  if (state.draft) paint();
+  if (state.drawerKey && $('drawer').classList.contains('show')) renderDrawer();
+  renewReviewThumbs();
+}
+// codex r1 #4 — the OPEN review (P8) keeps its nodes, its record and the fiscal acknowledgement: only each thumbnail's picture
+// is replaced in place (matched by its photo identity, data-ph), with a fresh one-shot error listener; no URL → the frame.
+function renewReviewThumbs() {
+  for (const img of $('mbody').querySelectorAll('img[data-ph]')) {
+    const u = urlOfPhotoId(img.dataset.ph);
+    if (!u) { img.remove(); continue; }
+    if (img.getAttribute('src') !== u) img.setAttribute('src', u);   // its one identity-bound handler (review.js) stays
+  }
+}
+// An image that fails to load: ONE renewal read PER PHOTO (its pid / legacy key — codex r1 #3); a second failure of the same
+// photo, whatever its URL, re-reads nothing and leaves it shown as missing / the frame.
+function onPhotoImgError(url, identity) {
+  if (!url || photo.broken.has(url)) return;
+  const id = identity || photoIdOfUrl(url);
+  photo.broken.add(url);
+  if (photo.retried.has(id)) { if (state.draft) paint(); if (state.drawerKey && $('drawer').classList.contains('show')) renderDrawer(); renewReviewThumbs(); return; }
+  photo.retried.add(id);
+  refreshPreviews();
+}
 // A NEW product: still unsaved (a temporary reference), or saved but not yet published (the server said so).
 const isTmpRow = (it) => !!(it && typeof it.ref === 'string' && it.ref.startsWith('tmp:') && !('key' in it));
 function isAddition(it) {
@@ -501,6 +742,165 @@ function isAddition(it) {
 }
 const canAddTo = (catId) => state.renderedCategories.includes(catId);   // always an array: declared [] and set from data
 const categoriesOf = () => { const st = (draftSource(state.draft) || {}).structure || {}; return Array.isArray(st.categories) ? st.categories : []; };
+// ── PLAN-public-menu-display T1 — A SECTION'S NAME ──────────────────────────────────────────────────────────────────────
+// A RENAME PUBLISHES ALONE (server: rename_not_alone). The two sides are kept apart HERE, where the merchant can still see
+// why: with prices / new products pending the rename control is off (mockup R3); with a name change pending prices and
+// «Agregar producto» are off (R3b). The client sees only this session's draft — a saved draft that already mixes them is
+// refused by the server with its own designed panel (R4).
+// LOCAL (this session's draft) OR SAVED (the server's pendingRenames / pendingOther / pendingAdditions — Codex r1 #3): the
+// exclusion holds against the PUBLISHED menu, not against whatever baseline this screen loaded or last sent.
+const renamesPending = () => !!state.draft && (pendingRenames(state.draft).length > 0 || state.savedRenames.length > 0);
+const othersPending = () => !!state.draft && (pendingCount(state.draft, state.additionKeys) > 0 || state.savedOther === true || (state.additionKeys && state.additionKeys.size > 0) || uploader.active());   // ruling A: an open upload is a pending photo
+// the same SAVED half, handed to the draft so its state boundary refuses the other side (editor.js canEditContent)
+function savedHold() {
+  if (state.savedRenames.length) return 'names';
+  if (state.savedOther === true || (state.additionKeys && state.additionKeys.size > 0)) return 'prices';
+  return null;
+}
+const RENAME_NOTICE = {
+  others: 'Hay cambios de precio sin publicar. Un cambio de nombre se publica solo: publicá o descartá los precios primero.',
+  renames: 'Hay un cambio de nombre esperando publicarse. Publicalo o descartalo para seguir editando precios o agregando productos.',
+};
+const isDeclaredCategory = (id) => categoriesOf().some((c) => c && String(c.id) === String(id));
+const declaredName = (id) => { const c = categoriesOf().find((x) => x && String(x.id) === String(id)); return (c && typeof c.name === 'string') ? c.name : ''; };
+function renameStart(catId) {
+  if (!state.draft || othersPending() || categoriesUnnamed(state.draft) || !isDeclaredCategory(catId)) return;
+  state.renameEdit = { catId: String(catId) };
+  paint();
+}
+function renameSave(catId, value) {
+  if (!state.draft || othersPending() || categoryNameProblem(value) !== null) return;
+  setCategoryNames(state.draft, [[catId, value]]);
+  state.renameEdit = null;
+  repaintFromDraft();
+  if (state.drawerKey) { renderDrawer(); holdDrawerForRename(); }   // a drawer open BEFORE the rename locks too (Codex r1 #2)
+}
+function renameCancel() {
+  state.renameEdit = null;
+  paint();
+}
+// The R1c callout: shown only while NO section has a name — then they are named together (R2b), never one at a time.
+function paintNameCall() {
+  const host = $('seccall');
+  if (!host) return;
+  const show = !!state.draft && categoriesUnnamed(state.draft);
+  host.classList.toggle('hidden', !show);
+  host.replaceChildren();
+  if (!show) return;
+  const ic = document.createElement('div');
+  ic.className = 'seccallic';
+  ic.append(pencilIcon());
+  const tx = document.createElement('div');
+  tx.className = 'seccalltx';
+  const b = document.createElement('b');
+  b.textContent = 'Tus secciones todavía no tienen nombre';
+  const sp = document.createElement('span');
+  sp.textContent = 'En el portal se muestran por su código. Se nombran todas juntas, de una vez.';
+  tx.append(b, sp);
+  const callBtn = document.createElement('button');
+  callBtn.type = 'button'; callBtn.className = 'btn';
+  callBtn.append(pencilIcon(), document.createTextNode('Ponerles nombre'));
+  if (othersPending()) callBtn.disabled = true;
+  else callBtn.addEventListener('click', bound(openNameAll));
+  host.append(ic, tx, callBtn);
+}
+function pencilIcon() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+  for (const d of ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z']) { const pth = document.createElementNS(NS, 'path'); pth.setAttribute('d', d); svg.append(pth); }
+  return svg;
+}
+// R2b — every section in its order, its id as a hint, one field each; «Guardar nombres» only when every field is a name.
+function openNameAll() {
+  if (!state.draft || othersPending() || !categoriesUnnamed(state.draft)) return;
+  const modal = $('namemodal');
+  if (!modal) return;
+  modal.replaceChildren();
+  const mh = document.createElement('div'); mh.className = 'mh';
+  const mt = document.createElement('div'); mt.className = 'mt'; mt.id = 'nameTitle'; mt.textContent = 'Ponerles nombre a tus secciones';
+  const ms = document.createElement('div'); ms.className = 'ms'; ms.textContent = 'Se nombran todas juntas: el menú lleva nombre en todas sus secciones o en ninguna.';
+  mh.append(mt, ms);
+  const mb = document.createElement('div'); mb.className = 'mb mscroll';
+  const inputs = [];
+  categoriesOf().forEach((c, i) => {
+    if (!c) return;
+    const f = document.createElement('div'); f.className = 'fld secnm';
+    const hint = document.createElement('div'); hint.className = 'secnmid';
+    const k = document.createElement('span'); k.className = 'secnmk'; k.textContent = String(i + 1);
+    hint.append(k, document.createTextNode(String(c.id)));
+    const nameIn = document.createElement('input');
+    nameIn.type = 'text'; nameIn.maxLength = 40; nameIn.placeholder = 'Nombre de la sección'; nameIn.autocomplete = 'off';
+    nameIn.setAttribute('aria-label', `Nombre de la sección ${c.id}`);
+    nameIn.addEventListener('input', () => sync());
+    f.append(hint, nameIn);
+    mb.append(f);
+    inputs.push([String(c.id), nameIn]);
+  });
+  const mf = document.createElement('div'); mf.className = 'mf';
+  const note = document.createElement('span'); note.className = 'secmfnote';
+  const nameCancel = document.createElement('button'); nameCancel.type = 'button'; nameCancel.className = 'btn ghost'; nameCancel.textContent = 'Cancelar';
+  const nameSave = document.createElement('button'); nameSave.type = 'button'; nameSave.className = 'btn accent'; nameSave.textContent = 'Guardar nombres';
+  mf.append(note, nameCancel, nameSave);
+  function sync() {
+    const missing = inputs.filter(([, inp]) => categoryNameProblem(inp.value) !== null).length;
+    note.textContent = missing === 0 ? '' : (missing === 1 ? 'Falta 1 nombre' : `Faltan ${missing} nombres`);
+    nameSave.disabled = missing > 0;
+  }
+  nameCancel.addEventListener('click', () => closeNameAll());
+  nameSave.addEventListener('click', bound(() => {
+    if (othersPending() || inputs.some(([, inp]) => categoryNameProblem(inp.value) !== null)) return;
+    setCategoryNames(state.draft, inputs.map(([id, inp]) => [id, inp.value]));
+    closeNameAll();
+    repaintFromDraft();
+    if (state.drawerKey) { renderDrawer(); holdDrawerForRename(); }
+  }));
+  modal.append(mh, mb, mf);
+  sync();
+  $('namescrim').classList.add('show');
+  if (inputs.length) inputs[0][1].focus();
+}
+function closeNameAll() {
+  const scrim = $('namescrim');
+  if (scrim) scrim.classList.remove('show');
+  const modal = $('namemodal');
+  if (modal) modal.replaceChildren();
+}
+// R3 — prices are edited WITHOUT a repaint (the caret must stay), so the rename side follows in place: «Cambiar nombre» and
+// «Ponerles nombre» go off, and the slim reason appears under the section header, the moment a price becomes pending (and
+// come back when it is undone). A pending NAME repaints anyway (Guardar), so it is painted, not synced.
+function syncRenameHold() {
+  if (!state.draft || renamesPending()) return;
+  const hold = othersPending();
+  for (const b of document.querySelectorAll('#detail .secren, #seccall .btn')) b.disabled = hold;
+  const head = document.querySelector('#detail > .dhead');
+  const note = document.querySelector('#detail > .secnote');
+  const wants = hold && !!head && (!!document.querySelector('#detail .secren') || categoriesUnnamed(state.draft));
+  if (wants && !note) head.after(renameNote(RENAME_NOTICE.others));
+  if (!wants && note) note.remove();
+}
+function renameNote(text) {
+  const n = document.createElement('div');
+  n.className = 'secnote';
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+  const pth = document.createElementNS(NS, 'path');
+  pth.setAttribute('d', 'M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM8 11V7a4 4 0 0 1 8 0v4');
+  svg.append(pth);
+  const t = document.createElement('span');
+  t.textContent = text;
+  n.append(svg, t);
+  return n;
+}
+// R3b — the drawer follows the list: while a name change waits, its fields are off too (Cerrar stays).
+function holdDrawerForRename() {
+  if (!renamesPending()) return;
+  for (const c of $('drawer').querySelectorAll('input, textarea, select')) lockControl(c, true);
+  // ruling A — the «Foto» field's controls too (zone, Cambiar / Quitar, Reintentar, Deshacer); a photo is content like a price
+  // …except a held upload's «Cancelar» (data-held): its way out (Codex r1 #1)
+  for (const c of $('drawer').querySelectorAll('button.uploader, .phph2b button, .phacts button, .pherr button, .phrm button')) if (!c.closest('[data-held]')) lockControl(c, true);
+}
 const categoryName = (id) => { const c = categoriesOf().find((x) => x && String(x.id) === String(id)); return (c && typeof c.name === 'string' && c.name.trim()) ? c.name : String(id); };
 // What a NEW product inherits from its section — said in the review so the owner knows before publishing.
 function inheritedRules(catId) {
@@ -556,7 +956,7 @@ function listGroupOf(it) {
 // An option row drawn under its product (listGroupOf), never as a product of its own.
 const listIsGroupOption = (it) => !!(it && optionParentId(state.draft, rowId(it)));
 function onAddProduct(catId) {
-  if (!state.draft || !canAddTo(catId)) return;
+  if (!state.draft || !canAddTo(catId) || renamesPending()) return;   // R3b: a name change travels alone
   const ref = `tmp:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
   const cat = categoriesOf().find((c) => c && String(c.id) === String(catId));
   addProduct(state.draft, { ref, cat: catId, subcat: (cat && Array.isArray(cat.subcats) && cat.subcats.length === 1) ? cat.subcats[0] : null });
@@ -612,7 +1012,8 @@ function offerResetToLive(host, rid, rev) {
 // only place "you have unpublished work" is said, so it must never say it when the draft matches what
 // is published — and never stay silent when it does not.
 function refreshBar() {
-  const n = pendingCount(state.draft, state.additionKeys);
+  const renames = pendingRenames(state.draft).length;   // PLAN-public-menu-display T1 — a section name is a change too
+  const n = pendingCount(state.draft, state.additionKeys) + renames;
   // 🔴 #7-B — REACHABLE WHENEVER A DRAFT EXISTS, not only when this session typed something.
   //
   // editCatalog PERSISTS the draft and getEditableCatalog returns the SAVED draft, so after a reload
@@ -630,12 +1031,16 @@ function refreshBar() {
   // whole change exists for.
   $('rbtxt').textContent = n === 0
     ? 'Revisá si hay algo sin publicar'
-    : (n === 1 ? '1 cambio sin publicar' : `${n} cambios sin publicar`);
+    : (n === 1 ? '1 cambio sin publicar' : `${n} cambios sin publicar`) + (renames && renames === n ? (n === 1 ? ' · nombre de sección' : ' · nombres de sección') : '');
+  // DISH PHOTOS B (P7) — «1 cambio sin publicar · 1 foto»: the photo share of the count, said where the count is
+  const nPhotos = state.draft ? pendingPhotos(state.draft).length : 0;
+  if (nPhotos) { const sfx = document.createElement('span'); sfx.textContent = PL.COPY.barSuffix(nPhotos); $('rbtxt').append(sfx); }
   // T-d (mockup v8 D2): who publishes, said where the merchant decides — text only
   if (state.publishViaRequest) { const note = document.createElement('span'); note.textContent = ' · el dueño confirma y publica con la autorización fiscal'; $('rbtxt').append(note); }
   // Nothing typed, nothing to throw away. The review is the way forward here; discard would be a
   // control that looks live and does nothing.
   $('discard').classList.toggle('hidden', n === 0);
+  syncRenameHold();                          // PLAN-public-menu-display T1 — a typed price turns the rename control off, in place
   // A price we cannot vouch for blocks the way forward — HERE, where the merchant can still see which
   // row it is, rather than at the server after the review and the attestation. The RULE lives here; the
   // BUTTON is painted by syncUi, which also knows whether an operation currently owns the draft. Two
@@ -644,6 +1049,7 @@ function refreshBar() {
 }
 
 function onPrice(surface, key, value) {
+  if (renamesPending()) return;                // R3b: a name change travels alone (the field is disabled; this is the state half)
   if (surface === 'extra') setExtraPrice(state.draft, key, value);
   else if (typeof key === 'string' && key.startsWith('tmp:')) setAddition(state.draft, key, 'price', value);   // an unsaved addition
   else setItemPrice(state.draft, key, value);
@@ -673,9 +1079,28 @@ function cellChanged(changed, k) {
 }
 
 function paint() {
-  renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; paint(); });
+  renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; if (state.renameEdit && state.renameEdit.catId !== id) state.renameEdit = null; paint(); });
   const changed = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
+  paintNameCall();
+  // PLAN-public-menu-display T1 — the section-name control for the section on screen (mockup R1–R3b), or none: no draft, no
+  // section of its own (the uncategorized bucket), or no section named yet (then the R1c callout is the one way in).
+  const catId = state.selectedCat;
+  const nameHold = renamesPending();
+  const otherHold = !nameHold && othersPending();
+  const editing = !!(state.renameEdit && state.renameEdit.catId === catId);
+  const rename = (state.draft && catId !== null && isDeclaredCategory(catId) && !categoriesUnnamed(state.draft)) ? {
+    mode: editing ? 'edit' : (otherHold ? 'blocked' : 'idle'),
+    value: declaredName(catId),
+    focus: editing,
+    problemOf: categoryNameProblem,
+    onStart: bound(() => renameStart(catId)),
+    onSave: bound((v) => renameSave(catId, v)),
+    onCancel: bound(renameCancel),
+  } : null;
   renderDetail($('detail'), state.groups.find((g) => g.category.id === state.selectedCat), state.extras, {
+    rename,
+    locked: nameHold,
+    notice: nameHold ? RENAME_NOTICE.renames : (otherHold && (rename || categoriesUnnamed(state.draft)) ? RENAME_NOTICE.others : null),
     editable: true,
     changed: (surface, key) => changed.has(`${surface}::${key}`),
     // 🔴 BOUND AT THE CALL SITE, not declared bound. `onPrice` is one module-level function shared by
@@ -691,6 +1116,8 @@ function paint() {
     canAdd: canAddTo,
     onAdd: bound(onAddProduct),
     groupOf: listGroupOf,          // 1D add-product B (a group's option rows are folded out in repaintFromDraft)
+    photoOf: rowPhoto,             // DISH PHOTOS B — null with uploads off and no photo: today's placeholder
+    onPhoto: bound((id) => { photoExpandedKey = null; openDrawer(id); pickPhoto(id, null); }),   // the camera: the drawer with the picker open
   });
   if (state.draftUnpublishable && state.draftRid) offerResetToLive($('detail'), state.draftRid, state.sourceUpdateTime);
 }
@@ -752,13 +1179,16 @@ function setDrawerInert(on) {
 export function openDrawer(key) {
   state.drawerKey = key;
   state.openGroups = state.openGroups || new Set();
-  renderDrawer();
+  renderDrawer(); holdDrawerForRename();
 }
 
 // Re-rendered on every group toggle, so it PRESERVES the body's scroll position. Without that, opening
 // a group three down the list snaps the drawer back to the top and the merchant loses the row they
 // were reading — on a menu with a dozen option groups that makes the panel unusable.
 function renderDrawer() {
+  // ruling A (Codex r1 #2) — EVERY drawer render carries the rename lock (renewal, image-error and picker redraws included),
+  // whichever return it leaves by
+  try {
   const d = $('drawer');
   const scroller = d.querySelector('.dwb');
   const keepScroll = scroller ? scroller.scrollTop : 0;
@@ -771,6 +1201,8 @@ function renderDrawer() {
   const it = (src.items || []).find((i) => i && rowId(i) === state.drawerKey);
   d.replaceChildren();
   if (!it) { d.classList.remove('show'); return; }
+  const pjob = uploader.jobOf(rowId(it));
+  if (pjob && pjob.phase === 'crop') { renderCropDrawer(d, it, pjob); return; }   // DISH PHOTOS B — P3, a step of the drawer
   if (isAddition(it)) { renderAddDrawer(d, it, keepScroll); return; }   // 1D add-product A
 
   const head = document.createElement('div');
@@ -778,9 +1210,7 @@ function renderDrawer() {
   const title = document.createElement('div');
   title.className = 'dwt';
   title.textContent = (it.display && it.display.name) || it.key;   // textContent: a dish name is data
-  const close = document.createElement('button');
-  close.type = 'button'; close.className = 'dwx'; close.textContent = 'Cerrar';
-  close.addEventListener('click', () => { state.drawerKey = null; d.classList.remove('show'); });
+  const close = closeIcon(() => { state.drawerKey = null; d.classList.remove('show'); });
   head.append(title, close);
 
   const body = document.createElement('div');
@@ -789,6 +1219,8 @@ function renderDrawer() {
   // A PUBLISHED product with a required choice: its price IS its choices' prices (the launcher's own is legacy and never
   // charged), so the drawer shows the choice block in price-only mode instead of a "Precio" field (advisor ruling on
   // portal A — the list shows the choices read-only, so this is where a published choice's price is changed).
+  const pf = photoFieldFor(it);            // DISH PHOTOS B — «Foto» first (P1), or nothing (uploads off, no photo: today)
+  if (pf) body.append(pf);
   const pg = choiceGroup(state.draft, rowId(it));
   if (pg && pg.options.length) {
     body.append(publishedChoiceBlock(rowId(it), pg));
@@ -831,6 +1263,7 @@ function renderDrawer() {
   // listeners were all correctly attached to a panel nobody could see.
   d.classList.add('show');
   body.scrollTop = keepScroll;
+  } finally { holdDrawerForRename(); }
 }
 
 // ── A PUBLISHED group's choices, price-only (advisor ruling on portal A) ──────────────────────────────────────────────
@@ -932,13 +1365,12 @@ function renderAddDrawer(d, it, keepScroll) {
   const head = mk('div', 'dwh');
   const title = mk('div', 'dwt', 'Nuevo producto');
   title.append(mk('span', 'newtag', 'Nuevo'));
-  const close = document.createElement('button');
-  close.type = 'button'; close.className = 'dwx'; close.textContent = 'Cerrar';
-  close.addEventListener('click', () => { state.drawerKey = null; d.classList.remove('show'); });
+  const close = closeIcon(() => { state.drawerKey = null; d.classList.remove('show'); });
   head.append(title, close);
 
   const body = mk('div', 'dwb');
-  body.append(field('Foto', mk('div', 'fotosoon', 'Foto: próximamente — por ahora se muestra el emoji de la sección.')));
+  // DISH PHOTOS B — the approved «Agregar producto» hole becomes the zone (P1 inset); uploads off: today's note, exactly
+  body.append(photoFieldFor(it) || field('Foto', mk('div', 'fotosoon', 'Foto: próximamente — por ahora se muestra el emoji de la sección.')));
 
   const name = document.createElement('input');
   name.type = 'text'; name.value = typeof disp.name === 'string' ? disp.name : ''; name.setAttribute('aria-label', 'Nombre');
@@ -962,7 +1394,7 @@ function renderAddDrawer(d, it, keepScroll) {
     o.value = catId; o.selected = catId === disp.cat;
     sec.append(o);
   }
-  sec.addEventListener('change', bound(() => { setAddition(state.draft, id, 'cat', sec.value); state.selectedCat = sec.value; after(); renderDrawer(); }));
+  sec.addEventListener('change', bound(() => { setAddition(state.draft, id, 'cat', sec.value); state.selectedCat = sec.value; after(); renderDrawer(); holdDrawerForRename(); }));
   row2.append(field('Sección', sec, 'cat'));
   const prf = mk('div', 'fld pr');
   prf.append(mk('label', null, 'Precio'), mk('span', 'cur2', 'L'));
@@ -1029,6 +1461,7 @@ function renderAddDrawer(d, it, keepScroll) {
   const quitar = document.createElement('button');
   quitar.type = 'button'; quitar.className = 'btn delx'; quitar.textContent = 'Quitar';
   quitar.addEventListener('click', bound(() => {
+    uploader.cancel(id);                      // DISH PHOTOS B — an upload for a product being removed has nowhere to land
     removeAddition(state.draft, id, state.additionKeys);
     state.drawerError = null;
     closeDrawer(); repaintFromDraft();
@@ -1051,7 +1484,7 @@ function renderAddDrawer(d, it, keepScroll) {
 function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, price, sameOn, optionPriceInputs, derivedUi }) {
   const svgPath = (dd) => { const NS = 'http://www.w3.org/2000/svg'; const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); const pth = document.createElementNS(NS, 'path'); pth.setAttribute('d', dd); svg.append(pth); return svg; };
   const newRef = () => `tmp:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
-  const restructure = (keys) => { after(); renderDrawer(); refocus(keys); };
+  const restructure = (keys) => { after(); renderDrawer(); holdDrawerForRename(); refocus(keys); };
   const errAt = (target, field) => (state.drawerError && state.drawerError.target === target && (!field || state.drawerError.field === field) && typeof state.drawerError.message === 'string' ? `${state.drawerError.message}` : null);
   const block = mk('div', 'modblock');
   block.append(mk('div', 'modh', 'Elección requerida — el cliente elige 1'));
@@ -1100,7 +1533,7 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
     fold.setAttribute('aria-label', 'Ver opciones'); fold.setAttribute('aria-expanded', String(open));
     fold.append(svgPath('M9 6l6 6-6 6'));
     focusKey(fold, 'fold');
-    fold.addEventListener('click', bound(() => { if (state.openGroups.has(foldKey)) state.openGroups.delete(foldKey); else state.openGroups.add(foldKey); renderDrawer(); refocus(['fold']); }));
+    fold.addEventListener('click', bound(() => { if (state.openGroups.has(foldKey)) state.openGroups.delete(foldKey); else state.openGroups.add(foldKey); renderDrawer(); holdDrawerForRename(); refocus(['fold']); }));
     h.append(fold);
   }
   grp.append(h);
@@ -1226,7 +1659,7 @@ function groupBlock(g) {
   main.append(nm, sub);
   const toggle = () => {
     if (state.openGroups.has(g.name)) state.openGroups.delete(g.name); else state.openGroups.add(g.name);
-    renderDrawer();
+    renderDrawer(); holdDrawerForRename();
   };
   main.addEventListener('click', toggle);
   const chev = document.createElement('button');
@@ -1303,6 +1736,7 @@ document.addEventListener('portal:restaurant', (e) => { loadMenu(e.detail && e.d
 // The review bar's own controls. Wired here, not inline: the CSP has no 'unsafe-inline', so an
 // onclick attribute would be inert and the button would look enabled while doing nothing.
 $('discard').addEventListener('click', () => {
+  if (canEditDraft(state.draft)) uploader.abortAll();   // DISH PHOTOS B — an upload in flight belongs to the edits thrown away
   discard(state.draft);
   $('drawer').classList.remove('show');
   repaintFromDraft();
@@ -1374,7 +1808,7 @@ async function openReviewFlow() {
     // Computed BEFORE the record is minted, because the record is immutable once it exists — the whole
     // evidence set is fixed at the moment it is created, rather than assembled field by field
     // afterwards where anything could join in.
-    const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura });
+    const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura, legacy: photo.legacy });
     const minted = mintReview({
       diff,
       editToken: res && res.token,
@@ -1392,7 +1826,7 @@ async function openReviewFlow() {
     // 🔴 RENDERED FROM THE MINTED RECORD, not from the locals it was built out of. What the merchant
     // reads must be the same object the publish will send — rendering from the pre-freeze originals
     // would leave a second, mutable copy of the evidence alive for as long as this scope is.
-    renderReview($('mbody'), reviewModel(state.review.diff), { describe: describeAddition });
+    renderReview($('mbody'), reviewModel(state.review.diff), { describe: describeAddition, photos: photoReviewOpts() });
     const attBox = document.createElement('div');
     $('mbody').append(attBox);
     // BOUND to this review and this world. Dispatching A's checkbox after B opened must acknowledge
@@ -1403,7 +1837,7 @@ async function openReviewFlow() {
     renderAttestation(attBox, state.review.attestation, bound((v) => {
       minted.acknowledge(v);
       syncUi();
-    }), { describe: describeAddition });
+    }), { describe: describeAddition, photos: photoReviewOpts() });
     syncPublishButton();
     restorePublishFooter();
     // The drawer is z-index 26; the review scrim is 20. An open drawer therefore sits OVER the
@@ -1603,7 +2037,7 @@ async function runPublish() {
   // the merchant no longer has.
   $('revFoot').replaceChildren(PUBBACK);
   PUBBACK.textContent = 'Listo';
-  renderReceipt($('mbody'), receiptFor(out.res, captured));
+  renderReceipt($('mbody'), receiptFor(out.res, captured, { nameOf: photoNameOf }));
   clearReview();
   // 1D add-product A §3 — RELOAD the authoritative source and revision before editing resumes: a certified publish
   // writes identity stamps back to the source (so "publish doesn't change the revision" no longer holds), and the
@@ -1629,9 +2063,10 @@ async function settlePublish() {
     syncUi();
     return;
   }
-  state.draft = createDraft(fresh.source, { canEdit: () => editLockHolder === null });
+  state.draft = createDraft(withPhotos(fresh.source, fresh), { canEdit: () => editLockHolder === null, held: savedHold });
   state.sourceUpdateTime = fresh.sourceUpdateTime || null;
   state.usesPlatformFactura = fresh.usesPlatformFactura === true;
+  applyPhotoFacts(fresh);                   // DISH PHOTOS B — the published photos' previews (public URLs) replace the draft ones
   applyAddProductFacts(fresh);
   applyPublishRequestFacts(fresh);          // T-d — a publish retires the owner's banner / badge (the request is no longer fresh)
   state.settle = null;
@@ -1695,6 +2130,13 @@ async function sendToOwnerFlow() {
     if (res && res.updateTime) state.sourceUpdateTime = res.updateTime;
     await requestPublish({ rid, editToken: res && res.token, token });
     if (gen !== opGeneration) return;
+    // PLAN-public-menu-display T1 (Codex r1 #3): what was just SENT is saved and still unpublished — keep it as the saved
+    // half of the exclusion, from the server's own diff, before the local baseline moves forward
+    { const sent = (res && res.diff) || {};
+      const ch = Array.isArray(sent.changed) ? sent.changed : [];
+      const names = ch.filter((c) => c && c.surface === 'category' && c.field === 'name');
+      state.savedRenames = names.map((c) => ({ id: String(c.key), from: c.old, to: c.new }));
+      state.savedOther = ch.length > names.length || ['added', 'removed', 'renamed'].some((k) => Array.isArray(sent[k]) && sent[k].length > 0); }
     commit(state.draft);                       // saved and sent: nothing of this snapshot is pending on THIS screen any more
     repaintFromDraft();
     document.dispatchEvent(new CustomEvent('portal:publish-request-sent'));   // pubreq.js: «Enviado al dueño para publicar»
@@ -1817,6 +2259,7 @@ document.addEventListener('portal:auth', (e) => {
   // window between these two lines; the only thing that ever mattered was which came first.
   if (state.uid && state.uid !== uid) { state.draft = null; state.groups = []; state.currentRid = null; }
   state.uid = uid;
+  if (state.draft === null) endPhotoWorld();   // DISH PHOTOS B — a different person: their uploads are not this one's
   invalidateReview();                       // bumps: whatever this event means, the old session is over
   // A re-authentication for the SAME person keeps the draft — but the generation moved, so the controls
   // rendered under the old session are inert. Rebuild them, or a token refresh silently freezes the
@@ -1833,8 +2276,8 @@ document.addEventListener('portal:auth', (e) => {
 // merchant is told once, plainly: "Nueva versión: guardá tus cambios para actualizar".
 function portalReloadFacts() {
   const a = document.activeElement;
-  return { pendingWrite: !!pendingWrite, publishing: !!publisher.busy || !!state.settle, review: !!state.review, reviewLock: !!state.reviewLock,
-    pendingCount: state.draft ? pendingCount(state.draft, state.additionKeys) : 0, focusedTag: a ? a.tagName : null };
+  return { pendingWrite: !!pendingWrite || uploader.busy(), publishing: !!publisher.busy || !!state.settle, review: !!state.review, reviewLock: !!state.reviewLock,
+    pendingCount: state.draft ? pendingCount(state.draft, state.additionKeys) + pendingRenames(state.draft).length : 0, focusedTag: a ? a.tagName : null };
 }
 try {
   const S = window.SherpaClient;

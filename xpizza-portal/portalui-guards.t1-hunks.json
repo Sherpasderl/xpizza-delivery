@@ -1,0 +1,270 @@
+{
+"app.js": [
+[
+"// PLAN-public-menu-display T1 — a section's display NAME (owner-approved mockup «Cambiar nombre de sección», 2026-10-25)\nimport { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';\n",
+""
+],
+[
+"export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set(), settle: null, savedRenames: [], savedOther: false };\n",
+"export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set(), settle: null };\n"
+],
+[
+"  state.renameEdit = null;                    // PLAN-public-menu-display T1 — the section title being edited, if any\n  closeNameAll();\n",
+""
+],
+[
+"    { canEdit: () => editLockHolder === null, held: savedHold });\n",
+"    { canEdit: () => editLockHolder === null });\n"
+],
+[
+"  // PLAN-public-menu-display T1 (Codex r1 #3) — what the SAVED draft already has pending against the PUBLISHED menu (server\n  // truth), so «a rename publishes alone» survives a reload, a branch switch and «Enviar al dueño». Absent = nothing.\n  state.savedRenames = Array.isArray(data && data.pendingRenames) ? data.pendingRenames.filter((r) => r && typeof r.id === 'string') : [];\n  state.savedOther = !!(data && data.pendingOther === true);\n",
+""
+],
+[
+"// ── PLAN-public-menu-display T1 — A SECTION'S NAME ──────────────────────────────────────────────────────────────────────\n// A RENAME PUBLISHES ALONE (server: rename_not_alone). The two sides are kept apart HERE, where the merchant can still see\n// why: with prices / new products pending the rename control is off (mockup R3); with a name change pending prices and\n// «Agregar producto» are off (R3b). The client sees only this session's draft — a saved draft that already mixes them is\n// refused by the server with its own designed panel (R4).\n// LOCAL (this session's draft) OR SAVED (the server's pendingRenames / pendingOther / pendingAdditions — Codex r1 #3): the\n// exclusion holds against the PUBLISHED menu, not against whatever baseline this screen loaded or last sent.\nconst renamesPending = () => !!state.draft && (pendingRenames(state.draft).length > 0 || state.savedRenames.length > 0);\nconst othersPending = () => !!state.draft && (pendingCount(state.draft, state.additionKeys) > 0 || state.savedOther === true || (state.additionKeys && state.additionKeys.size > 0));\n// the same SAVED half, handed to the draft so its state boundary refuses the other side (editor.js canEditContent)\nfunction savedHold() {\n  if (state.savedRenames.length) return 'names';\n  if (state.savedOther === true || (state.additionKeys && state.additionKeys.size > 0)) return 'prices';\n  return null;\n}\nconst RENAME_NOTICE = {\n  others: 'Hay cambios de precio sin publicar. Un cambio de nombre se publica solo: publicá o descartá los precios primero.',\n  renames: 'Hay un cambio de nombre esperando publicarse. Publicalo o descartalo para seguir editando precios o agregando productos.',\n};\nconst isDeclaredCategory = (id) => categoriesOf().some((c) => c && String(c.id) === String(id));\nconst declaredName = (id) => { const c = categoriesOf().find((x) => x && String(x.id) === String(id)); return (c && typeof c.name === 'string') ? c.name : ''; };\nfunction renameStart(catId) {\n  if (!state.draft || othersPending() || categoriesUnnamed(state.draft) || !isDeclaredCategory(catId)) return;\n  state.renameEdit = { catId: String(catId) };\n  paint();\n}\nfunction renameSave(catId, value) {\n  if (!state.draft || othersPending() || categoryNameProblem(value) !== null) return;\n  setCategoryNames(state.draft, [[catId, value]]);\n  state.renameEdit = null;\n  repaintFromDraft();\n  if (state.drawerKey) { renderDrawer(); holdDrawerForRename(); }   // a drawer open BEFORE the rename locks too (Codex r1 #2)\n}\nfunction renameCancel() {\n  state.renameEdit = null;\n  paint();\n}\n// The R1c callout: shown only while NO section has a name — then they are named together (R2b), never one at a time.\nfunction paintNameCall() {\n  const host = $('seccall');\n  if (!host) return;\n  const show = !!state.draft && categoriesUnnamed(state.draft);\n  host.classList.toggle('hidden', !show);\n  host.replaceChildren();\n  if (!show) return;\n  const ic = document.createElement('div');\n  ic.className = 'seccallic';\n  ic.append(pencilIcon());\n  const tx = document.createElement('div');\n  tx.className = 'seccalltx';\n  const b = document.createElement('b');\n  b.textContent = 'Tus secciones todavía no tienen nombre';\n  const sp = document.createElement('span');\n  sp.textContent = 'En el portal se muestran por su código. Se nombran todas juntas, de una vez.';\n  tx.append(b, sp);\n  const callBtn = document.createElement('button');\n  callBtn.type = 'button'; callBtn.className = 'btn';\n  callBtn.append(pencilIcon(), document.createTextNode('Ponerles nombre'));\n  if (othersPending()) callBtn.disabled = true;\n  else callBtn.addEventListener('click', bound(openNameAll));\n  host.append(ic, tx, callBtn);\n}\nfunction pencilIcon() {\n  const NS = 'http://www.w3.org/2000/svg';\n  const svg = document.createElementNS(NS, 'svg');\n  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');\n  for (const d of ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z']) { const pth = document.createElementNS(NS, 'path'); pth.setAttribute('d', d); svg.append(pth); }\n  return svg;\n}\n// R2b — every section in its order, its id as a hint, one field each; «Guardar nombres» only when every field is a name.\nfunction openNameAll() {\n  if (!state.draft || othersPending() || !categoriesUnnamed(state.draft)) return;\n  const modal = $('namemodal');\n  if (!modal) return;\n  modal.replaceChildren();\n  const mh = document.createElement('div'); mh.className = 'mh';\n  const mt = document.createElement('div'); mt.className = 'mt'; mt.id = 'nameTitle'; mt.textContent = 'Ponerles nombre a tus secciones';\n  const ms = document.createElement('div'); ms.className = 'ms'; ms.textContent = 'Se nombran todas juntas: el menú lleva nombre en todas sus secciones o en ninguna.';\n  mh.append(mt, ms);\n  const mb = document.createElement('div'); mb.className = 'mb mscroll';\n  const inputs = [];\n  categoriesOf().forEach((c, i) => {\n    if (!c) return;\n    const f = document.createElement('div'); f.className = 'fld secnm';\n    const hint = document.createElement('div'); hint.className = 'secnmid';\n    const k = document.createElement('span'); k.className = 'secnmk'; k.textContent = String(i + 1);\n    hint.append(k, document.createTextNode(String(c.id)));\n    const nameIn = document.createElement('input');\n    nameIn.type = 'text'; nameIn.maxLength = 40; nameIn.placeholder = 'Nombre de la sección'; nameIn.autocomplete = 'off';\n    nameIn.setAttribute('aria-label', `Nombre de la sección ${c.id}`);\n    nameIn.addEventListener('input', () => sync());\n    f.append(hint, nameIn);\n    mb.append(f);\n    inputs.push([String(c.id), nameIn]);\n  });\n  const mf = document.createElement('div'); mf.className = 'mf';\n  const note = document.createElement('span'); note.className = 'secmfnote';\n  const nameCancel = document.createElement('button'); nameCancel.type = 'button'; nameCancel.className = 'btn ghost'; nameCancel.textContent = 'Cancelar';\n  const nameSave = document.createElement('button'); nameSave.type = 'button'; nameSave.className = 'btn accent'; nameSave.textContent = 'Guardar nombres';\n  mf.append(note, nameCancel, nameSave);\n  function sync() {\n    const missing = inputs.filter(([, inp]) => categoryNameProblem(inp.value) !== null).length;\n    note.textContent = missing === 0 ? '' : (missing === 1 ? 'Falta 1 nombre' : `Faltan ${missing} nombres`);\n    nameSave.disabled = missing > 0;\n  }\n  nameCancel.addEventListener('click', () => closeNameAll());\n  nameSave.addEventListener('click', bound(() => {\n    if (othersPending() || inputs.some(([, inp]) => categoryNameProblem(inp.value) !== null)) return;\n    setCategoryNames(state.draft, inputs.map(([id, inp]) => [id, inp.value]));\n    closeNameAll();\n    repaintFromDraft();\n    if (state.drawerKey) { renderDrawer(); holdDrawerForRename(); }\n  }));\n  modal.append(mh, mb, mf);\n  sync();\n  $('namescrim').classList.add('show');\n  if (inputs.length) inputs[0][1].focus();\n}\nfunction closeNameAll() {\n  const scrim = $('namescrim');\n  if (scrim) scrim.classList.remove('show');\n  const modal = $('namemodal');\n  if (modal) modal.replaceChildren();\n}\n// R3 — prices are edited WITHOUT a repaint (the caret must stay), so the rename side follows in place: «Cambiar nombre» and\n// «Ponerles nombre» go off, and the slim reason appears under the section header, the moment a price becomes pending (and\n// come back when it is undone). A pending NAME repaints anyway (Guardar), so it is painted, not synced.\nfunction syncRenameHold() {\n  if (!state.draft || renamesPending()) return;\n  const hold = othersPending();\n  for (const b of document.querySelectorAll('#detail .secren, #seccall .btn')) b.disabled = hold;\n  const head = document.querySelector('#detail > .dhead');\n  const note = document.querySelector('#detail > .secnote');\n  const wants = hold && !!head && (!!document.querySelector('#detail .secren') || categoriesUnnamed(state.draft));\n  if (wants && !note) head.after(renameNote(RENAME_NOTICE.others));\n  if (!wants && note) note.remove();\n}\nfunction renameNote(text) {\n  const n = document.createElement('div');\n  n.className = 'secnote';\n  const NS = 'http://www.w3.org/2000/svg';\n  const svg = document.createElementNS(NS, 'svg');\n  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');\n  const pth = document.createElementNS(NS, 'path');\n  pth.setAttribute('d', 'M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM8 11V7a4 4 0 0 1 8 0v4');\n  svg.append(pth);\n  const t = document.createElement('span');\n  t.textContent = text;\n  n.append(svg, t);\n  return n;\n}\n// R3b — the drawer follows the list: while a name change waits, its fields are off too (Cerrar stays).\nfunction holdDrawerForRename() {\n  if (!renamesPending()) return;\n  for (const c of $('drawer').querySelectorAll('input, textarea, select')) lockControl(c, true);\n}\n",
+""
+],
+[
+"  if (!state.draft || !canAddTo(catId) || renamesPending()) return;   // R3b: a name change travels alone\n",
+"  if (!state.draft || !canAddTo(catId)) return;\n"
+],
+[
+"  const renames = pendingRenames(state.draft).length;   // PLAN-public-menu-display T1 — a section name is a change too\n  const n = pendingCount(state.draft, state.additionKeys) + renames;\n",
+"  const n = pendingCount(state.draft, state.additionKeys);\n"
+],
+[
+"    : (n === 1 ? '1 cambio sin publicar' : `${n} cambios sin publicar`) + (renames && renames === n ? (n === 1 ? ' · nombre de sección' : ' · nombres de sección') : '');\n",
+"    : (n === 1 ? '1 cambio sin publicar' : `${n} cambios sin publicar`);\n"
+],
+[
+"  syncRenameHold();                          // PLAN-public-menu-display T1 — a typed price turns the rename control off, in place\n",
+""
+],
+[
+"  if (renamesPending()) return;                // R3b: a name change travels alone (the field is disabled; this is the state half)\n",
+""
+],
+[
+"  renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; if (state.renameEdit && state.renameEdit.catId !== id) state.renameEdit = null; paint(); });\n",
+"  renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; paint(); });\n"
+],
+[
+"  paintNameCall();\n  // PLAN-public-menu-display T1 — the section-name control for the section on screen (mockup R1–R3b), or none: no draft, no\n  // section of its own (the uncategorized bucket), or no section named yet (then the R1c callout is the one way in).\n  const catId = state.selectedCat;\n  const nameHold = renamesPending();\n  const otherHold = !nameHold && othersPending();\n  const editing = !!(state.renameEdit && state.renameEdit.catId === catId);\n  const rename = (state.draft && catId !== null && isDeclaredCategory(catId) && !categoriesUnnamed(state.draft)) ? {\n    mode: editing ? 'edit' : (otherHold ? 'blocked' : 'idle'),\n    value: declaredName(catId),\n    focus: editing,\n    problemOf: categoryNameProblem,\n    onStart: bound(() => renameStart(catId)),\n    onSave: bound((v) => renameSave(catId, v)),\n    onCancel: bound(renameCancel),\n  } : null;\n",
+""
+],
+[
+"    rename,\n    locked: nameHold,\n    notice: nameHold ? RENAME_NOTICE.renames : (otherHold && (rename || categoriesUnnamed(state.draft)) ? RENAME_NOTICE.others : null),\n",
+""
+],
+[
+"  state.openGroups = state.openGroups || new Set();\n  renderDrawer(); holdDrawerForRename();\n",
+"  state.openGroups = state.openGroups || new Set();\n  renderDrawer();\n"
+],
+[
+"  sec.addEventListener('change', bound(() => { setAddition(state.draft, id, 'cat', sec.value); state.selectedCat = sec.value; after(); renderDrawer(); holdDrawerForRename(); }));\n",
+"  sec.addEventListener('change', bound(() => { setAddition(state.draft, id, 'cat', sec.value); state.selectedCat = sec.value; after(); renderDrawer(); }));\n"
+],
+[
+"  const restructure = (keys) => { after(); renderDrawer(); holdDrawerForRename(); refocus(keys); };\n",
+"  const restructure = (keys) => { after(); renderDrawer(); refocus(keys); };\n"
+],
+[
+"    fold.addEventListener('click', bound(() => { if (state.openGroups.has(foldKey)) state.openGroups.delete(foldKey); else state.openGroups.add(foldKey); renderDrawer(); holdDrawerForRename(); refocus(['fold']); }));\n",
+"    fold.addEventListener('click', bound(() => { if (state.openGroups.has(foldKey)) state.openGroups.delete(foldKey); else state.openGroups.add(foldKey); renderDrawer(); refocus(['fold']); }));\n"
+],
+[
+"    renderDrawer(); holdDrawerForRename();\n",
+"    renderDrawer();\n"
+],
+[
+"  state.draft = createDraft(fresh.source, { canEdit: () => editLockHolder === null, held: savedHold });\n",
+"  state.draft = createDraft(fresh.source, { canEdit: () => editLockHolder === null });\n"
+],
+[
+"    // PLAN-public-menu-display T1 (Codex r1 #3): what was just SENT is saved and still unpublished — keep it as the saved\n    // half of the exclusion, from the server's own diff, before the local baseline moves forward\n    { const sent = (res && res.diff) || {};\n      const ch = Array.isArray(sent.changed) ? sent.changed : [];\n      const names = ch.filter((c) => c && c.surface === 'category' && c.field === 'name');\n      state.savedRenames = names.map((c) => ({ id: String(c.key), from: c.old, to: c.new }));\n      state.savedOther = ch.length > names.length || ['added', 'removed', 'renamed'].some((k) => Array.isArray(sent[k]) && sent[k].length > 0); }\n",
+""
+],
+[
+"    pendingCount: state.draft ? pendingCount(state.draft, state.additionKeys) + pendingRenames(state.draft).length : 0, focusedTag: a ? a.tagName : null };\n",
+"    pendingCount: state.draft ? pendingCount(state.draft, state.additionKeys) : 0, focusedTag: a ? a.tagName : null };\n"
+]
+],
+"editor.js": [
+[
+"// STILL NOT IMPLEMENTED HERE: renaming or removing an EXISTING item, adding or removing an option, category edits other\n// than a section's display NAME (PLAN-public-menu-display T1; see \"A SECTION'S NAME\" at the end).\n",
+"// STILL NOT IMPLEMENTED HERE: renaming or removing an EXISTING item, adding or removing an option, category edits.\n"
+],
+[
+"  // PLAN-public-menu-display T1 (Codex r1 P2-2/P2-3) — what the SERVER says is already pending against the published menu\n  // ('names' | 'prices' | null), from the caller; fixed at construction like canEdit. See \"A RENAME PUBLISHES ALONE\" below.\n  Object.defineProperty(draft, 'held', {\n    value: typeof opts.held === 'function' ? opts.held : () => null,\n    writable: false, configurable: false, enumerable: true,\n  });\n",
+""
+],
+[
+"// 🔴 A RENAME PUBLISHES ALONE (server: rename_not_alone) — held HERE, at the state boundary every content mutator asks, not at\n// the controls: a drawer opened before the rename keeps its live inputs (Codex r1 P2-2), and a control that is merely\n// disabled can still be dispatched. A pending section NAME (local, or one the server says is saved and unpublished) refuses\n// every price / product / choice write; a pending price or product refuses a name (setCategoryNames).\nconst canEditContent = (draft) => canEditDraft(draft) && pendingRenames(draft).length === 0 && draft.held() !== 'names';\n",
+""
+],
+[
+"  // listener, a retained reference, a stray dispatch — is refused here, whatever the DOM looks like.\n  if (!canEditContent(draft)) return draft;\n",
+"  // listener, a retained reference, a stray dispatch — is refused here, whatever the DOM looks like.\n  if (!canEditDraft(draft)) return draft;\n"
+],
+[
+"export function addProduct(draft, { ref, cat, subcat = null } = {}) {\n  if (!canEditContent(draft)) return draft;\n",
+"export function addProduct(draft, { ref, cat, subcat = null } = {}) {\n  if (!canEditDraft(draft)) return draft;\n"
+],
+[
+"export function setAddition(draft, ref, field, raw) {\n  if (!canEditContent(draft)) return draft;\n",
+"export function setAddition(draft, ref, field, raw) {\n  if (!canEditDraft(draft)) return draft;\n"
+],
+[
+"export function removeAddition(draft, id, savedAdditions = new Set()) {\n  if (!canEditContent(draft)) return draft;\n",
+"export function removeAddition(draft, id, savedAdditions = new Set()) {\n  if (!canEditDraft(draft)) return draft;\n"
+],
+[
+"export function setRequiredChoice(draft, id, on, optionRefs = [], savedAdditions = new Set()) {\n  if (!canEditContent(draft)) return draft;\n",
+"export function setRequiredChoice(draft, id, on, optionRefs = [], savedAdditions = new Set()) {\n  if (!canEditDraft(draft)) return draft;\n"
+],
+[
+"export function setGroupLabel(draft, id, raw) {\n  if (!canEditContent(draft)) return draft;\n",
+"export function setGroupLabel(draft, id, raw) {\n  if (!canEditDraft(draft)) return draft;\n"
+],
+[
+"export function setGroupExtrasNone(draft, id, on) {\n  if (!canEditContent(draft)) return draft;\n",
+"export function setGroupExtrasNone(draft, id, on) {\n  if (!canEditDraft(draft)) return draft;\n"
+],
+[
+"export function addChoice(draft, id, ref, raw) {\n  if (!canEditContent(draft)) return draft;\n",
+"export function addChoice(draft, id, ref, raw) {\n  if (!canEditDraft(draft)) return draft;\n"
+],
+[
+"export function removeChoice(draft, id, ref) {\n  if (!canEditContent(draft)) return draft;\n",
+"export function removeChoice(draft, id, ref) {\n  if (!canEditDraft(draft)) return draft;\n"
+],
+[
+"export function setChoiceName(draft, id, raw) {\n  if (!canEditContent(draft)) return draft;\n",
+"export function setChoiceName(draft, id, raw) {\n  if (!canEditDraft(draft)) return draft;\n"
+],
+[
+"export function setChoiceRecommended(draft, id, on) {\n  if (!canEditContent(draft)) return draft;\n",
+"export function setChoiceRecommended(draft, id, on) {\n  if (!canEditDraft(draft)) return draft;\n"
+],
+[
+"export function setChoicePrice(draft, id, raw, savedAdditions = new Set()) {\n  if (!canEditContent(draft)) return draft;\n",
+"export function setChoicePrice(draft, id, raw, savedAdditions = new Set()) {\n  if (!canEditDraft(draft)) return draft;\n"
+],
+[
+"export function setGroupPrice(draft, id, raw, savedAdditions = new Set()) {\n  if (!canEditContent(draft)) return draft;\n",
+"export function setGroupPrice(draft, id, raw, savedAdditions = new Set()) {\n  if (!canEditDraft(draft)) return draft;\n"
+],
+[
+"\n// ── PLAN-public-menu-display T1 — A SECTION'S NAME ────────────────────────────────────────────────────────────────\n// The one field of a category the edit path may change (server: compareToActive, `sameCategoriesExceptName`). The id,\n// the order, the count and every other field stay frozen, so nothing here touches anything but `name`.\n//\n// Two server rules shape it:\n//   • A RENAME PUBLISHES ALONE (`rename_not_alone`): a draft that renames may change nothing else. The caller keeps the\n//     two apart (app.js); this module only reports both sides — pendingRenames here, pendingChanges above.\n//   • ALL-OR-NOTHING where names are optional: none named, or every one. setCategoryNames therefore applies a SET of names\n//     at once and refuses the whole set if any one is not a name — a half-applied set is the state the server refuses.\n// Where names are REQUIRED a name can never be removed: there is no way to clear one here at all.\nconst CATEGORY_NAME_MAX = 40;\nconst catsOf = (src) => (src && src.structure && Array.isArray(src.structure.categories) ? src.structure.categories : []);\nconst catNameOf = (cat) => (cat && typeof cat.name === 'string' && cat.name.trim() ? cat.name : null);\n// The server's `body` sink (display-safety.js): no markup characters, no entity that decodes to one.\nconst MARKUP = /[<>]|&(?:lt|gt|#0*(?:60|62)|#x0*3[ce]);?/i;\n// 'empty' | 'long' | 'markup' | null — the reason a typed value is not a name. Refuse, never repair: the name saved is\n// the name typed (trimmed, inner runs of spaces collapsed — the one normalisation, applied the same everywhere).\nconst cleanCategoryName = (raw) => (typeof raw === 'string' ? raw.trim().replace(/\\s+/g, ' ') : '');\nexport function categoryNameProblem(raw) {\n  const v = cleanCategoryName(raw);\n  if (!v) return 'empty';\n  if (v.length > CATEGORY_NAME_MAX) return 'long';\n  if (MARKUP.test(v)) return 'markup';\n  return null;\n}\n// `names`: [[categoryId, typedValue], …]. Every id must be a declared section and every value a name, or NOTHING changes.\nexport function setCategoryNames(draft, names) {\n  if (!canEditDraft(draft) || pendingCount(draft) > 0 || draft.held() === 'prices') return draft;\n  const cats = catsOf(draft.state);\n  const next = [];\n  for (const [id, raw] of (Array.isArray(names) ? names : [])) {\n    const cat = cats.find((c) => c && String(c.id) === String(id));\n    if (!cat || categoryNameProblem(raw) !== null) return draft;\n    next.push([cat, cleanCategoryName(raw)]);\n  }\n  for (const [cat, v] of next) cat.name = v;\n  return draft;\n}\n// The sections whose name differs from the baseline, in section order: { id, from, to } (null = no name).\nexport function pendingRenames(draft) {\n  const orig = catsOf(draft.orig);\n  const out = [];\n  for (const cat of catsOf(draft.state)) {\n    const was = orig.find((c) => c && cat && String(c.id) === String(cat.id));\n    const from = catNameOf(was), to = catNameOf(cat);\n    if (from !== to) out.push({ id: String(cat.id), from, to });\n  }\n  return out;\n}\n// No section has a name yet: then they can only be named together (all-or-nothing), never one at a time.\nexport function categoriesUnnamed(draft) {\n  const cats = catsOf(draft.state);\n  return cats.length > 0 && cats.every((c) => catNameOf(c) === null);\n}\n\n",
+""
+]
+],
+"review.js": [
+[
+"  // PLAN-public-menu-display T1 — a SECTION'S NAME is the server's `{surface:'category', field:'name'}` line. It is shown\n  // in its own group («Secciones»), never among the prices; any other category line (none exists) stays a row of its own.\n  const isSectionName = (c) => !!c && c.surface === 'category' && c.field === 'name';\n  const sections = changed.filter(isSectionName).map((c) => ({ surface: c.surface, key: c.key, was: c.old, now: c.new }));\n",
+""
+],
+[
+"  const rows = changed.filter((c) => !isSectionName(c)).map((c) => ({\n",
+"  const rows = changed.map((c) => ({\n"
+],
+[
+"    sections,\n",
+""
+],
+[
+"    total: rows.length + sections.length + added.length + removed.length + renamed.length,\n",
+"    total: rows.length + added.length + removed.length + renamed.length,\n"
+],
+[
+"// A section's name as the review shows it: no name is «Sin nombre», never a dash or the raw id.\nconst sectionName = (v) => (typeof v === 'string' && v.trim() ? v : 'Sin nombre');\n// The section a line is about: its name before the change, or its id while it has none (as the rail shows it).\nconst sectionLabel = (r) => (typeof r.was === 'string' && r.was.trim() ? r.was : String(r.key));\n",
+""
+],
+[
+"\n  const sections = Array.isArray(model.sections) ? model.sections : [];\n  if (sections.length) {\n    const g = el('div', 'mgroup');\n    g.append(groupHead('Secciones', sections.length));\n    for (const r of sections) {\n      const row = el('div', 'prow');\n      row.dataset.k = `${r.surface}::${r.key}`;\n      const main = el('div', 'pmain');\n      main.append(el('div', 'pname', sectionLabel(r)));     // textContent: a section name is data\n      main.append(el('div', 'psub', 'Nombre de la sección'));\n      row.append(main);\n      const val = el('div', 'pval');                        // WAS then NOW, as separate nodes (the price rows' rule)\n      val.append(el('span', 'was', sectionName(r.was)));\n      val.append(el('span', 'arr', '\\u2192'));\n      val.append(el('span', 'now', sectionName(r.now)));\n      row.append(val);\n      g.append(row);\n    }\n    root.append(g);\n  }\n",
+""
+],
+[
+"  // PLAN-public-menu-display T1 — the section names this publish changes (a rename publishes alone, so on a fiscal brand\n  // these are the seal's only lines): listed with the same was → now as the prices.\n  const sectionRows = reviewModel(diff).sections;\n",
+""
+],
+[
+"    sectionRows,\n",
+""
+],
+[
+"    // PLAN-public-menu-display T1 (owner-approved mockup R5b): a publish that changes only SECTION NAMES prints no price, so\n    // the seal says what is true — the publish needs the owner's authorization — and never that the name is on the factura.\n    const namesOnly = (model.sectionRows || []).length > 0 && !model.sealRows.length && !(model.addedRows || []).length;\n    ht.append(el('span', null, namesOnly ? 'Esta publicación requiere tu autorización como propietario' : 'Estos precios se imprimen en tu factura fiscal'));\n",
+"    ht.append(el('span', null, 'Estos precios se imprimen en tu factura fiscal'));\n"
+],
+[
+"    if (namesOnly) {\n      body.append(el('p', null, 'Como propietario, autorizás esta publicación. No cambia ningún precio: solo el nombre de las secciones.'));\n      for (const r of model.sectionRows) {\n        const c = el('div', 'seachg');\n        c.append(el('span', 'sn', sectionLabel(r)));\n        const v = el('span', 'sv');\n        v.append(el('span', 'was', sectionName(r.was)));\n        v.append(el('span', 'arr', ' → '));\n        v.append(el('span', 'now', sectionName(r.now)));\n        c.append(v);\n        body.append(c);\n      }\n      seal.append(body);\n      const n = model.sectionRows.length;\n      seal.append(checkbox('attest', () => {\n        const t = el('span', 'at');\n        t.append(el('b', null, 'Autorizo'));\n        t.append(n === 1 ? ' publicar el nombre de esta sección.' : ` publicar el nombre de estas ${n} secciones.`);\n        return t;\n      }));\n      root.append(seal);\n      return root;\n    }\n",
+""
+],
+[
+"  // PLAN-public-menu-display T1 (owner-approved mockup R4): a section rename travels ALONE — the server refuses a draft\n  // that renames and changes anything else. The draft is not publishable as it stands, so the way out is the published menu.\n  rename_not_alone: { icon: 'warn', title: 'Un cambio de nombre se publica solo',\n    detail: 'Tu borrador cambia el nombre de una sección y también otras cosas. Volvé al menú publicado, cambiá solo el nombre y publicalo; el resto hacelo después.',\n    action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },\n",
+""
+],
+[
+"    // PLAN-public-menu-display T1 — EXCEPT rename_not_alone: its words state the RULE (\"a rename is published on its own\"),\n    // never that this operation published, and they are as true of the save that refused it as of a publish (mockup R4).\n    if (code === 'rename_not_alone') return base;\n",
+""
+],
+[
+"    // PLAN-public-menu-display T1 — the section names this publish changed, for the receipt's sentence\n    sections: reviewModel(diff).sections,\n",
+""
+],
+[
+"// PLAN-public-menu-display T1 (owner-approved mockup R6) — what a names-only publish changed, in the receipt's words. It says\n// the published menu carries the name, never where a customer sees it.\nfunction sectionsReceipt(secs) {\n  const list = (names) => (names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`);\n  if (secs.every((r) => !(typeof r.was === 'string' && r.was.trim()))) return `Tus secciones ya tienen nombre: ${list(secs.map((r) => sectionName(r.now)))}.`;\n  if (secs.length === 1) return `«${sectionLabel(secs[0])}» ahora se llama «${sectionName(secs[0].now)}». El menú publicado ya lleva el nuevo nombre.`;\n  return `${secs.map((r) => `«${sectionLabel(r)}» ahora se llama «${sectionName(r.now)}»`).join('; ')}. El menú publicado ya lleva los nuevos nombres.`;\n}\n\n",
+""
+],
+[
+"  const secs = Array.isArray(receipt.sections) ? receipt.sections : [];\n  if (secs.length && secs.length === receipt.count) r.append(el('p', null, sectionsReceipt(secs)));\n  else r.append(el('p', null, receipt.count === 1\n",
+"  r.append(el('p', null, receipt.count === 1\n"
+]
+],
+"render.js": [
+[
+"function priceCell(value, { editable, locked = false, changed, onInput, surface, key }) {\n",
+"function priceCell(value, { editable, changed, onInput, surface, key }) {\n"
+],
+[
+"  if (locked) input.disabled = true;\n  else input.addEventListener('input', () => onInput(input.value));\n",
+"  input.addEventListener('input', () => onInput(input.value));\n"
+],
+[
+"const PENCIL = 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z';\nconst LOCK = 'M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM8 11V7a4 4 0 0 1 8 0v4';\n// PLAN-public-menu-display T1 (mockup R2) — the section title as a field: the typed value, a counter, «Escribí un nombre» when\n// it is empty, Guardar (off while it is not a name) and Cancelar. Typing re-renders nothing: the counter, the message and\n// Guardar are updated in place, so the caret stays where the merchant left it.\nconst SECTION_NAME_MAX = 40;\nconst NAME_PROBLEM = { empty: 'Escribí un nombre', long: `Hasta ${SECTION_NAME_MAX} letras`, markup: 'Quitá los signos < y >' };\nfunction sectionNameField(head, rename) {\n  head.classList.add('secedit');\n  const field = el('label', 'secfield');\n  field.append(el('span', 'secvh', 'Nombre de la sección'));\n  const row = el('span', 'secrow');\n  const input = document.createElement('input');\n  input.className = 'secin';\n  input.type = 'text';\n  input.maxLength = SECTION_NAME_MAX;\n  input.placeholder = 'Nombre de la sección';\n  input.autocomplete = 'off';\n  input.value = typeof rename.value === 'string' ? rename.value : '';\n  const cnt = el('span', 'seccnt');\n  row.append(input, cnt);\n  const err = el('span', 'secerr');\n  field.append(row, err);\n  const act = el('span', 'secact');\n  const save = el('button', 'btn accent', 'Guardar');\n  save.type = 'button';\n  const cancel = el('button', 'btn ghost', 'Cancelar');\n  cancel.type = 'button';\n  act.append(save, cancel);\n  const sync = () => {\n    const problem = typeof rename.problemOf === 'function' ? rename.problemOf(input.value) : null;\n    cnt.textContent = `${input.value.length}/${SECTION_NAME_MAX}`;\n    err.textContent = problem ? NAME_PROBLEM[problem] || NAME_PROBLEM.empty : '';\n    err.hidden = !problem;\n    save.disabled = !!problem;\n  };\n  input.addEventListener('input', () => { if (typeof rename.onInput === 'function') rename.onInput(input.value); sync(); });\n  input.addEventListener('keydown', (e) => {\n    if (e.key === 'Enter' && !save.disabled) { e.preventDefault(); rename.onSave(input.value); }\n    if (e.key === 'Escape') { e.preventDefault(); rename.onCancel(); }\n  });\n  save.addEventListener('click', () => rename.onSave(input.value));\n  cancel.addEventListener('click', () => rename.onCancel());\n  sync();\n  head.append(field, act);\n  if (rename.focus) setTimeout(() => { if (input.isConnected) { input.focus(); input.select(); } }, 0);\n}\n\n",
+""
+],
+[
+"  // PLAN-public-menu-display T1 — a section's NAME (owner-approved mockup R1–R3b). All three are the caller's answers:\n  //   rename   null (no control) | {mode: 'idle' | 'blocked' | 'edit', value, problem, onStart, onInput, onSave, onCancel}\n  //   notice   the slim line under the header that says why a control is off (a rename travels alone), or null\n  //   locked   prices and «Agregar producto» are off while a name change waits to be published\n  const rename = editable && opts.rename && typeof opts.rename === 'object' ? opts.rename : null;\n  const locked = editable && opts.locked === true;\n",
+""
+],
+[
+"  if (rename && rename.mode === 'edit') sectionNameField(head, rename);\n  else {\n    head.append(el('div', 'dtitle', group.category.name));\n    if (rename) {\n      const b = el('button', 'secren');\n      b.type = 'button';\n      b.append(svgIcon(PENCIL), document.createTextNode('Cambiar nombre'));\n      if (rename.mode === 'blocked') b.disabled = true;\n      else b.addEventListener('click', () => rename.onStart());\n      head.append(b);\n    }\n  }\n  if (onAdd && !(rename && rename.mode === 'edit')) {\n",
+"  head.append(el('div', 'dtitle', group.category.name));\n  if (onAdd) {\n"
+],
+[
+"    if (locked) add.disabled = true;\n    else add.addEventListener('click', () => onAdd(group.category.id));\n",
+"    add.addEventListener('click', () => onAdd(group.category.id));\n"
+],
+[
+"  if (editable && typeof opts.notice === 'string' && opts.notice) {\n    const n = el('div', 'secnote');\n    n.append(svgIcon(LOCK), el('span', null, opts.notice));\n    detailEl.append(n);\n  }\n",
+""
+],
+[
+"      editable, locked, changed: changed('item', id), onInput: (v) => onPrice('item', id, v),\n",
+"      editable, changed: changed('item', id), onInput: (v) => onPrice('item', id, v),\n"
+],
+[
+"    addRow.setAttribute('role', 'button');\n",
+"    addRow.setAttribute('role', 'button'); addRow.tabIndex = 0;\n"
+],
+[
+"    if (locked) { addRow.classList.add('off'); addRow.setAttribute('aria-disabled', 'true'); }\n    else {\n      addRow.tabIndex = 0;\n      addRow.addEventListener('click', () => onAdd(group.category.id));\n      addRow.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(group.category.id); } });\n    }\n",
+"    addRow.addEventListener('click', () => onAdd(group.category.id));\n    addRow.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(group.category.id); } });\n"
+],
+[
+"        editable, locked, changed: changed('extra', k), onInput: (v) => onPrice('extra', k, v),\n",
+"        editable, changed: changed('extra', k), onInput: (v) => onPrice('extra', k, v),\n"
+]
+]
+}

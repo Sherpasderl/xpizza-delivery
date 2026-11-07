@@ -150,13 +150,18 @@ const allocated = (rid, adds) => alloc(rid, withFresh(rid, SRC[rid], adds)).sour
   const rid = 'la_musa';
   const ren = clone(SRC[rid]); ren.items[0].display.name += ' Nuevo';
   throwsCode(() => cmp(rid, ren), 'existing_item_changed', 'BLIND SPOT 1: a La Musa display-name rename (the key is the slug, so the price diff never saw it)');
+  // BLIND SPOT 2 is now closed by the DIFF rather than by refusal (PLAN-public-menu-display r2 T1): a category name is the
+  // one category field the edit path may change, and catalogDiff shows it as a reviewed `category` line
+  // (category-rename.test.js). Everything else about a category is still refused.
   const lab = clone(SRC[rid]); lab.structure.categories[0].name += ' X';
-  throwsCode(() => cmp(rid, lab), 'structure_changed', 'BLIND SPOT 2: a category label rename');
+  assert.deepStrictEqual(cmp(rid, lab), { additions: [], removals: [] }, 'BLIND SPOT 2: a category label rename is now allowed (and shown in the diff)');
+  const lid = clone(SRC[rid]); lid.structure.categories[0].layout = 'grid';
+  throwsCode(() => cmp(rid, lid), 'structure_changed', 'BLIND SPOT 2: any other category field is still refused');
   const vm = clone(SRC[rid]); const L = Object.keys(vm.structure.variant_items)[0]; vm.structure.variant_items[L].label = 'Otra';
   throwsCode(() => cmp(rid, vm), 'structure_changed', 'BLIND SPOT 3: a variant-map change');
   const ex = clone(SRC[rid]); ex.extras[0].display.name += ' X';
   throwsCode(() => cmp(rid, ex), 'extras_changed', 'BLIND SPOT 4: an extra display-name rename');
-  ok('the four probe-confirmed blind spots of the price diff are refused: La Musa display rename, category label, variant map, extra display name');
+  ok('the four probe-confirmed blind spots of the price diff: La Musa display rename, variant map and extra display name refused; a category label rename allowed and diffed, any other category field refused');
 }
 {
   const rid = 'x_pizza';

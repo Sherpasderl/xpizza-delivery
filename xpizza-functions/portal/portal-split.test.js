@@ -44,6 +44,7 @@ const PARENT_INDEX = '711db74576a3fe720c765e7c88af4738eff03fbde1b8d9fd987a2dfcb8
 // The REVIEWED application graph of every portal target (identical for all five: they are one isolated group).
 const PORTAL_GRAPH_LOCAL = [
   'access/membership.js',                  // PLAN-portal-membership r3: the ONE resolver (catalog-edit-auth, portal-reads, stats); pure + RTDB reads
+  'avail-key.js',                          // hotfix 2026-10-26: the shared reversible key encoder, via catalog/mirror-keys.js — pure
   'brands/brand-model.js',                  // F1 brandIdOf / validateBrand / checkMembership, via access/membership.js — pure
   'catalog/add-product-io.js',              // 1D add-product A: the profile key mode, high-water mark, registry key reads, KDS sync
   'catalog/add-product.js',                 // 1D add-product A: the pure allocation + structural comparison (editCatalog / publishEdited)
@@ -65,22 +66,32 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/identity-partition.js', 'catalog/identity-plan.js', 'catalog/identity-reconcile.js', 'catalog/identity-registry.js',
   'catalog/identity-stampmap.js', 'catalog/identity-verdict.js', 'catalog/identity-writer.js',
   'catalog/kds-manifest.js',                // 1D add-product A: the conditional /menus writer, after a successful publish
+  'catalog/menu-structure-rows.js',         // plan 4 GATED (G1): the reviewed rows the bootstrap applies, via form-menu-source.js (pure; no I/O)
+  'catalog/mirror-keys.js',                 // hotfix 2026-10-26: mirror-rtdb's PURE key encoder (RTDB-unsafe name keys)
   'catalog/mirror-rtdb.js',
   'catalog/platform-extras.js',             // per-product extras: the platform authoring switch (editCatalog / publishEdited); no I/O
   'catalog/platform-groups.js',             // 1D add-product B: the ONE platform authoring switch (editCatalog / publishEdited); no I/O
-  'catalog/portal-reads.js', 'catalog/publish-edited-handler.js', 'catalog/redeem-source.js',
+  'catalog/portal-reads.js',
+  'catalog/public-photos.js',              // DISH PHOTOS A2 step 9: the public menu's own legacy-image rule (buildPhotos / assetBaseFor; pure)
+  'catalog/publish-edited-handler.js', 'catalog/redeem-source.js',
+  'catalog/reward-icons.js',                // plan 4 r3 §8.1: the closed reward_icon set, via source-store.js (a frozen list; no I/O)
   'catalog/seed-catalog-core.js', 'catalog/source-store.js',
   'factura/eligibility.js',                 // usesPlatformFactura (getEditableCatalog's fiscal capability) — pure
   'index.js',                               // the entry: only its early branch runs
   'lib/admin.js', 'lib/payment-alert.js',   // the shared Admin app + the publish alarm
   'menu-pricing.js',
+  // DISH PHOTOS A2 steps 8–9: editCatalog's photos dependency (registry attach, meta/photos read, PHOTOS_UPLOADS flag) and
+  // getEditableCatalog's photo reads (E-P3) + the draft-preview signer; photo-state = the pure three-state vocabulary
+  'photos/buckets.js', 'photos/edit-io.js', 'photos/editable-io.js', 'photos/editable-photos.js', 'photos/flag.js', 'photos/gcs-copy.js', 'photos/gcs-store.js', 'photos/photo-state.js', 'photos/publish-io.js', 'photos/publish-photos.js',
   'pickup-label.js',                        // PLAN-portal-membership r3: brandText, via brands/brand-model.js → restaurant-config.js (pure)
+  'platform-manifest.js', 'platform/compat.json', 'platform/sites.json',   // DISH PHOTOS A2 step 9: the legacy image base (public-photos assetBaseFor; config + data)
   'portal/functions.js', 'portal/origins.js', 'portal/preflight-max-age.js', 'price-valid.js',
   'restaurant-config.js',                   // PLAN-portal-membership r3: isRoutingValid, via brands/brand-model.js (pure)
   'restaurant-id.js',
   'rewards-redeem-config.js', 'scheduled-orders.js',
   'stats/keyer.js', 'stats/stats-api.js', 'stats/stats-build.js', 'stats/stats-classify.js', 'stats/stats-identity.js', 'stats/stats-index.js',
   'stats/stats-indexing.js', 'stats/stats-job.js', 'stats/stats-store.js', 'stats/stats-time.js',
+  'tools/migrations/2026-10-26-menu-structure.json',   // plan 4 GATED (G1): the reviewed data file those rows come from (data)
 ];
 const PORTAL_GRAPH_NPM = ['firebase-admin', 'firebase-functions', 'node:crypto', 'node:fs', 'node:path'];
 // Never in a portal instance: the order / payment / driver / messaging / fiscal-writer surface and the heavy npm deps.
@@ -143,7 +154,18 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
   // ── 1. ROUTING ────────────────────────────────────────────────────────────────────────────────────────────────
   // PORTAL-UI 1a: the ops early branch is appended to the Set line (a same-line hunk); its own pin + routing proofs live in
   // portal/ops-split.test.js, so this section pins the five-target branch on index.js minus the portal-ui hunks.
-  const idx = require('../tools/portalui-inverse').unapplyPortalUiIndex(read('index.js'));
+  const idx = require('../tools/portalui-inverse').unapplyPortalUiIndex(require('../tools/menu-warm-inverse').unapplyMenuWarmIndex(require('../tools/o1b-inverse').unapplyO1bIndex(require('../tools/stackseq-inverse').unapplyStackseqIndex(require('../tools/drvf-inverse').unapplyDrvfIndex(require('../tools/drvc-inverse').unapplyDrvcIndex(require('../tools/wahealth-inverse').unapplyWaHealthIndex(require('../tools/formsignal-inverse').unapplyFormSignalIndex(require('../tools/formbake-inverse').unapplyFormbakeIndex(require('../tools/s4hours-inverse').unapplyS4HoursIndex(require('../tools/pausa-inverse').unapplyPausaIndex(require('../tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('../tools/s3a-inverse').unapplyS3aIndex(require('../tools/s3b-inverse').unapplyS3bIndex(require('../tools/s3c-inverse').unapplyS3cIndex(require('../tools/s5r-inverse').unapplyS5rIndex(require('../tools/s2tip-inverse').unapplyS2tipIndex(require('../tools/s2app-inverse').unapplyS2appIndex(require('../tools/area-inverse').unapplyAreaIndex(require('../tools/mem512-inverse').unapplyMem512Index(require('../tools/checkout-inverse').unapplyCheckoutIndex(require('../tools/lifecycle-inverse').unapplyLifecycleIndex(require('../tools/intl-inverse').unapplyIntlIndex(require('../tools/photos-inverse').unapplyPhotosIndex(read('index.js')))))))))))))))))))))))));   // DRYRUN R-WIRE (2e): Area,S2app,S2tip,S5r,S3c,S3b,S3a,DriverLedger innermost
+  // R-WIRE (codex train-tip r1 P2): an EQUALITY with the complete earlier layer, not only the selected early-branch text —
+  // idx must be byte-equal to portal-ui's proven parent layer (built exactly as portalui-wiring.guard does: 2920b705 + the
+  // membership hunk, T-c's later same-line export folded out), so a missing train inverse fails here
+  const TC_NOW = 'exports.memberPasswordSet = MEMBERSHIP_TEAM.memberPasswordSet; exports.memberInvitePreview = MEMBERSHIP_TEAM.memberInvitePreview;   /* membership:end team */';
+  const TC_WAS = 'exports.memberPasswordSet = MEMBERSHIP_TEAM.memberPasswordSet;   /* membership:end team */';
+  const unapplyTc = (src) => { assert.strictEqual(src.split(TC_NOW).length - 1, 1, 'the T-c same-line hunk occurs exactly once'); return src.replace(TC_NOW, () => TC_WAS); };
+  const withMembership = require('../tools/membership-inverse').HUNKS.reduce((src, h) => {
+    assert.strictEqual(src.split(h.was).length - 1, 1, 'the membership hunk anchors once on 2920b705');
+    return src.replace(h.was, () => h.now);
+  }, require('child_process').execFileSync('git', ['show', '2920b705:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 }));
+  assert.strictEqual(unapplyTc(idx), unapplyTc(withMembership), '🔴 index.js minus every newer layer and the portal-ui hunks is not portal-ui\'s parent layer (a missing inverse fails here)');
   const EARLY_BRANCH = "const PORTAL_ISOLATED_TARGETS = Object.freeze(new Set(['getMyRestaurants', 'getEditableCatalog', 'editCatalog', 'publishEdited', 'getSalesStats']));\n"
     + 'if (PORTAL_ISOLATED_TARGETS.has(process.env.FUNCTION_TARGET)) {\n'
     + "  console.log('portal_isolated_entry', process.env.FUNCTION_TARGET);   // §8 deploy check: the isolated branch ran\n"
@@ -408,7 +430,7 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
 // D12b landed on top of D4-c2b: its ONE delimited, byte-pinned index.js block (tools/d12b-inverse.js unapplyD12bIndex) is reversed
 // after the WhatsApp-cancel block (tools/wacancel-inverse.js unapplyWaCancelIndex), which is reversed after the per-product extras blocks
 // (tools/extras-inverse.js unapplyExtrasIndex — the newest, reversed FIRST).
-    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(require('../tools/d12b-inverse').unapplyD12bIndex(require('../tools/wacancel-inverse').unapplyWaCancelIndex(require('../tools/extras-inverse').unapplyExtrasIndex(require('../tools/serial3-inverse').unapplySerial3Index(require('../tools/h0-inverse').unapplyH0Index(require('../tools/s1a-inverse').unapplyS1aIndex(require('../tools/a1-inverse').unapplyA1Index(require('../tools/s1b-inverse').unapplyS1bIndex(require('../tools/s5-inverse').unapplyS5Index(require('../tools/h1-inverse').unapplyH1Index(require('../tools/h1c-inverse').unapplyH1cIndex(require('../tools/signup-inverse').unapplySignupIndex(require('../tools/unassign-inverse').unapplyUnassignIndex(require('../tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('../tools/release-race-inverse').unapplyReleaseRaceIndex(require('../tools/brand-server-inverse').unapplyBrandServerIndex(require('../tools/dlite-push-inverse').unapplyDlitePushIndex(require('../tools/membership-inverse').unapplyMembershipIndex(require('../tools/portalui-inverse').unapplyPortalUiFold(require('../tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('../tools/s3a-inverse').unapplyS3aIndex(require('../tools/s3b-inverse').unapplyS3bIndex(require('../tools/s3c-inverse').unapplyS3cIndex(require('../tools/s5r-inverse').unapplyS5rIndex(require('../tools/s2tip-inverse').unapplyS2tipIndex(require('../tools/s2app-inverse').unapplyS2appIndex(require('../tools/area-inverse').unapplyAreaIndex(foldPortalSplit(root))))))))))))))))))))))))))))))))));
+    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(require('../tools/d12b-inverse').unapplyD12bIndex(require('../tools/wacancel-inverse').unapplyWaCancelIndex(require('../tools/extras-inverse').unapplyExtrasIndex(require('../tools/serial3-inverse').unapplySerial3Index(require('../tools/h0-inverse').unapplyH0Index(require('../tools/s1a-inverse').unapplyS1aIndex(require('../tools/a1-inverse').unapplyA1Index(require('../tools/s1b-inverse').unapplyS1bIndex(require('../tools/s5-inverse').unapplyS5Index(require('../tools/h1-inverse').unapplyH1Index(require('../tools/h1c-inverse').unapplyH1cIndex(require('../tools/signup-inverse').unapplySignupIndex(require('../tools/unassign-inverse').unapplyUnassignIndex(require('../tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('../tools/release-race-inverse').unapplyReleaseRaceIndex(require('../tools/brand-server-inverse').unapplyBrandServerIndex(require('../tools/dlite-push-inverse').unapplyDlitePushIndex(require('../tools/membership-inverse').unapplyMembershipIndex(require('../tools/portalui-inverse').unapplyPortalUiFold(require('../tools/menu-warm-inverse').unapplyMenuWarmIndex(require('../tools/o1b-inverse').unapplyO1bFold(require('../tools/stackseq-inverse').unapplyStackseqIndex(require('../tools/drvf-inverse').unapplyDrvfIndex(require('../tools/drvc-inverse').unapplyDrvcIndex(require('../tools/wahealth-inverse').unapplyWaHealthFold(require('../tools/formsignal-inverse').unapplyFormSignalIndex(require('../tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('../tools/s3a-inverse').unapplyS3aIndex(require('../tools/s3b-inverse').unapplyS3bIndex(require('../tools/s3c-inverse').unapplyS3cIndex(require('../tools/s5r-inverse').unapplyS5rIndex(require('../tools/s2tip-inverse').unapplyS2tipIndex(require('../tools/s2app-inverse').unapplyS2appIndex(require('../tools/area-inverse').unapplyAreaIndex(require('../tools/formbake-inverse').unapplyFormbakeIndex(require('../tools/s4hours-inverse').unapplyS4HoursIndex(require('../tools/pausa-inverse').unapplyPausaIndex(require('../tools/mem512-inverse').unapplyMem512Index(require('../tools/intl-inverse').unapplyIntlIndex(require('../tools/photos-inverse').unapplyPhotosFold(foldPortalSplit(root, require('../tools/checkout-inverse').unapplyCheckoutIndex(require('../tools/lifecycle-inverse').unapplyLifecycleIndex(fs.readFileSync(path.join(root || ROOT, 'index.js'), 'utf8'))))))))))))))))))))))))))))))))))))))))))))))))));
     assert.strictEqual(sha(foldToParent()), PARENT_INDEX, 'premise: the real tree folds back to the parent');
     const FILES = ['index.js', 'lib/admin.js', 'lib/payment-alert.js', 'portal/origins.js', 'portal/functions.js', 'stats/keyer.js'];
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-split-'));
@@ -478,14 +500,17 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
       + "if (process.env.FUNCTIONS_EMULATOR === 'true' || process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_FIRESTORE_EMULATOR_ADDRESS\n"
       + "  || process.env.FIREBASE_DATABASE_EMULATOR_HOST || process.env.FIREBASE_EMULATOR_HUB) require('./emulator-endpoint').guardEmulatorProcess();\n\n",
     ];
-    const skeletonPre = [...AP_LINES, ...R1_LINES].reduce((acc, l) => { const i = acc.indexOf(l); assert.ok(i > -1 && acc.indexOf(l, i + 1) === -1, `add-product header line exactly once: ${l.slice(0, 60)}`); return acc.slice(0, i) + acc.slice(i + l.length); }, skeleton);
+    // DISH PHOTOS A2 step 8 appends EXACTLY one import to add-product's header line (same line: no portal line shifts; outside the
+    // moved blocks) — removed FIRST (it sits inside that AP line's text), exactly once like add-product's lines
+    const PHOTO_LINES = [" const { photoIoForEdit } = require('../photos/edit-io'); const { editableIoForPortal } = require('../photos/editable-io'); const { photoPublishIoForEdit } = require('../photos/publish-io');   // DISH PHOTOS A2 steps 8–10 — same line, outside the moved blocks (the fold counts their requires)"];
+    const skeletonPre = [...PHOTO_LINES, ...AP_LINES, ...R1_LINES].reduce((acc, l) => { const i = acc.indexOf(l); assert.ok(i > -1 && acc.indexOf(l, i + 1) === -1, `add-product header line exactly once: ${l.slice(0, 60)}`); return acc.slice(0, i) + acc.slice(i + l.length); }, skeleton);
     assert.strictEqual(sha(skeletonPre), SKELETON, `🔴 the split's non-moved text changed (headers / imports / exports / the wrap loop / the wrapper): ${sha(skeletonPre)}`);
     assert.notStrictEqual(sha(skeleton), SKELETON, '(the add-product lines are really there)');
     assert.notStrictEqual(sha(skeletonPre.replace("exports[name] = withPreflightMaxAge(exports[name]);", 'void 0;')), SKELETON, 'sensitivity: dropping the wrap is caught');
     // metadata preservation is guarded by section 3 (its naive-wrapper sensitivity); REQUIRE_REWRITES is the exact count
     assert.strictEqual(REQUIRE_REWRITES, 12);
     // + 1D add-product A's add-product-io header import (the fifth header import; outside the moved blocks)
-    assert.strictEqual((read('portal/functions.js').match(/require\('\.\.\//g) || []).length, REQUIRE_REWRITES + 5, '12 rewritten in-block specifiers + the 5 header imports (catalog/add-product-io, lib/admin, lib/payment-alert, stats/stats-api, stats/keyer)');
+    assert.strictEqual((read('portal/functions.js').match(/require\('\.\.\//g) || []).length, REQUIRE_REWRITES + 8, '12 rewritten in-block specifiers + the 8 header imports (catalog/add-product-io, lib/admin, lib/payment-alert, stats/stats-api, stats/keyer, photos/edit-io, photos/editable-io, photos/publish-io)');
   }
   ok('fold-guard sensitivity: a byte changed inside a moved handler, a moved helper, a moved block\'s non-require text, outside the permitted edits, in paymentAlert / the Admin URL / PORTAL_ORIGINS / the keyer, a re-export pointed at the wrong function, one rewrite too few or a rewrite outside the rule — each FAILS the reconstruction; the routing Set and the marker fail the exact early-branch pin; every non-moved byte of the split files (headers, imports, the wrap loop, the wrapper module) is SKELETON-pinned; the wrapper\'s metadata preservation fails §3');
 

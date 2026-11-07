@@ -13,7 +13,9 @@ import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { catalogSnapshot, generateFormBundle, serialize } = require('./catalog/generate-form-bundle');
+const { catalogSnapshot, serialize } = require('./catalog/generate-form-bundle');
+// PLAN 4 (gap resolution A): the committed bundle takes the PUBLISHED shape — composed by the ONE composer getPublicMenu serves
+const { composeServedMenu } = require('./catalog/public-menu');
 const { spliceFormFile } = require('./catalog/splice-form-bundle');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -34,7 +36,7 @@ const FORM = {
 };
 
 for (const rid of ['x_pizza', 'la_musa']) {
-  const bundle = generateFormBundle(rid, catalogSnapshot(rid));
+  const bundle = composeServedMenu(rid, catalogSnapshot(rid));
   writeFileSync(OUT[rid], serialize(bundle));
   console.log(`  wrote ${OUT[rid]} (${bundle.dishes.length} dishes, ${bundle.extras.length} extras)`);
   const { changed } = spliceFormFile(FORM[rid], bundle, rid);

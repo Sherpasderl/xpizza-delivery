@@ -3,7 +3,7 @@
 // portal/functions.js (the five handlers + their dependencies) and this file stops here. Unset (deploy / emulator
 // discovery, tests), unknown, or wrong-case → the FULL load below, exactly as before. Exact, case-sensitive Set.has —
 // no lowercasing, prefixes, K_SERVICE or object-property lookup.
-const PORTAL_ISOLATED_TARGETS = Object.freeze(new Set(['getMyRestaurants', 'getEditableCatalog', 'editCatalog', 'publishEdited', 'getSalesStats'])); const PORTAL_OPS_TARGETS = Object.freeze(new Set(['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability', 'getBranchDevices', 'revokeBranchDevice'])); if (PORTAL_OPS_TARGETS.has(process.env.FUNCTION_TARGET)) { console.log('portal_ops_entry', process.env.FUNCTION_TARGET); module.exports = require('./portal/ops-functions'); return; }   // PORTAL-UI 1a + slice 2: the branch-ops functions, isolated the same way (portal/ops-functions.js)
+const PORTAL_ISOLATED_TARGETS = Object.freeze(new Set(['getMyRestaurants', 'getEditableCatalog', 'editCatalog', 'publishEdited', 'getSalesStats'])); const PORTAL_OPS_TARGETS = Object.freeze(new Set(['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability', 'getBranchDevices', 'revokeBranchDevice', 'createBranchDraft', 'updateBranchProfile', 'setBranchActive', 'deleteBranchDraft'])); if (PORTAL_OPS_TARGETS.has(process.env.FUNCTION_TARGET)) { console.log('portal_ops_entry', process.env.FUNCTION_TARGET); module.exports = require('./portal/ops-functions'); return; } const PHOTOS_TARGETS = Object.freeze(new Set(['photoUploadStart', 'photoProcess', 'photoSweep'])); if (PHOTOS_TARGETS.has(process.env.FUNCTION_TARGET)) { console.log('photos_entry', process.env.FUNCTION_TARGET); module.exports = require('./photos/functions'); return; }   // PORTAL-UI 1a + slice 2: the branch-ops functions, isolated the same way (portal/ops-functions.js)
 if (PORTAL_ISOLATED_TARGETS.has(process.env.FUNCTION_TARGET)) {
   console.log('portal_isolated_entry', process.env.FUNCTION_TARGET);   // §8 deploy check: the isolated branch ran
   module.exports = require('./portal/functions');
@@ -64,6 +64,11 @@ if (PORTAL_ISOLATED_TARGETS.has(process.env.FUNCTION_TARGET)) {
 const { onRequest, onCall } = require('firebase-functions/v2/https');
 const { onValueWritten, onValueCreated } = require('firebase-functions/v2/database');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { defineSecret } = require('firebase-functions/params');
+const ROUTES_API_KEY = defineSecret('ROUTES_API_KEY');   // stacked-seq r5 T3: bound to autoAssign + sweep ONLY (D12: timeout never stacks)
+const SEQ = require('./sequencing/writer');   // stacked-seq r5 T5: flag, D7 candidate filter, planning, post-claim checks
+const { stackCopies } = require('./sequencing/plan-stack');
+const routesKey = () => { try { return ROUTES_API_KEY.value() || ''; } catch (_) { return ''; } };   // empty → planStack refuses no_key
 const { beforeUserCreated, HttpsError } = require('firebase-functions/v2/identity');
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
@@ -822,7 +827,7 @@ createOrderApp.all('*', async (req, res) => {
   const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP });
   reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
 
-  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [create]
   if (errors.length > 0) {
     return badRequest(res, errors.join('; '));
   }
@@ -856,6 +861,12 @@ createOrderApp.all('*', async (req, res) => {
       }
     } catch (_) { /* malformed/expired/foreign/tomb-read-failure → ignore, treat as guest */ }
   }
+  /* checkout:begin gate-create */
+  // PLAN-guest-checkout-server r4 §2.3 INVARIANT: createOrder never places a capp-guest order — refused HERE, after identity and
+  // BEFORE the existence read and every write. Forms + members: null with zero I/O (checkout-guest-gate.js).
+  const cappGuestRefusal = require('./checkout-guest-gate').createOrderRefusal(clientHdr, customer_uid, body);
+  if (cappGuestRefusal) return res.status(400).json({ error: cappGuestRefusal });
+  /* checkout:end gate-create */
 
   // Content fingerprint for THIS request — computed ONCE, read-only, and threaded to BOTH the idempotency
   // content-check (below) AND the stored payment_fingerprint (create-order-build), so store==compare can never
@@ -1416,7 +1427,7 @@ exports.createOrder = onRequest(
     region: 'us-central1',
     cors: true,            // browser-callable — order form posts directly (no Make.com relay)
     timeoutSeconds: 30,
-    memory: '256MiB',
+    memory: '512MiB',
     minInstances: 1,       // keep one warm — the cash order path is customer-facing; avoid cold-start lag
     maxInstances: 10       // blast-radius cap: the intake secret is public, so bound
                            // how much concurrent order-spam can fan out. Tune up if
@@ -1528,9 +1539,18 @@ chargeOnlineApp.all('*', async (req, res) => {
   const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP });
   reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
 
-  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [charge]
   if (errors.length > 0) return badRequest(res, errors.join('; '));
 
+  /* checkout:begin gate-method */
+  // PLAN-guest-checkout-server §2.2 (Codex r1 P2-4): a capp GUEST's non-online body is answered with its typed reason, not the
+  // generic online-only 400 below. Only a request stamped orders-app pays the identity check here (the handler's own rules,
+  // checkout-guest-gate.js chargeUidOf); forms do no I/O and members get the line below, byte-identical.
+  if (fields.payment_method !== 'online' && clientHdr.deployment === 'orders-app'
+    && (await require('./checkout-guest-gate').chargeUidOf(req, { getAuth, getDatabase, attributionUid })) === null) {
+    return res.status(400).json({ error: 'guest_cash_not_allowed' });
+  }
+  /* checkout:end gate-method */
   // This endpoint is ONLY for online card payments. cash/card_delivery use createOrder.
   if (fields.payment_method !== 'online') {
     return badRequest(res, 'chargeOnlineOrder is for payment_method "online" only');
@@ -1569,6 +1589,19 @@ chargeOnlineApp.all('*', async (req, res) => {
       ]);
     } catch (_) { customer_uid = null; }   // any error → guest
   }
+  /* checkout:begin gate-charge */
+  // PLAN-guest-checkout-server r4 §2.2/§2.3: the capp-guest gate — refusals (payment → scheduling → email → ticket) returned
+  // DIRECTLY, before any write. Forms + members: null with zero I/O. otp-lib loads lazily (guest path only).
+  let cappGuest = null;
+  try {
+    cappGuest = await require('./checkout-guest-gate').chargeGate({ clientHdr, uid: customer_uid, body, rid: restaurantId, orderId, db,
+      now: Date.now(), OTP: { phoneHash: (d) => require('./otp-lib').phoneHash(d) }, normalizePhone: require('./whatsapp').normalizePhone });
+  } catch (e) {
+    console.error(`chargeOnlineOrder: capp-guest gate failed for ${orderId}`, e.message);
+    return res.status(500).json({ error: 'Database error', detail: 'guest gate unavailable' });
+  }
+  if (cappGuest && cappGuest.refuse) return res.status(400).json({ error: cappGuest.refuse });
+  /* checkout:end gate-charge */
 
   // ── Rewards Phase B1 (online): PREPARE the redemption BEFORE both fingerprint sites, so the reservation
   // binding AND the PixelPay payment fingerprint carry the discounted total + appended items_text. The RESERVE
@@ -1956,6 +1989,9 @@ chargeOnlineApp.all('*', async (req, res) => {
     pendingOrderRecord.release_at = scheduledReleaseAt;
   }
 
+  /* checkout:begin gate-verified */
+  if (cappGuest && cappGuest.guest) pendingOrderRecord.guest_verified = { phone: cappGuest.guest.phone, phone_hash: cappGuest.guest.phone_hash };   // §2.3: in the SAME CAS write, capp guests only
+  /* checkout:end gate-verified */
   // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a
   // customer reusing a live hosted checkout during a config outage is NOT failed closed. The CAS
   // in acquireHostedAttempt stays authoritative; on a probe-fresh/CAS-reuse race the only cost is
@@ -2103,6 +2139,13 @@ chargeOnlineApp.all('*', async (req, res) => {
     return res.status(500).json({ error: 'Database error', detail: e.message });
   }
 
+  /* checkout:begin gate-bind */
+  // §2.5: an order that now exists under this id must carry THIS request's verified phone, before any outcome answers with it.
+  // No hold to release: a capp guest has no verified uid, so it can never have reserved a redemption hold.
+  if (cappGuest && cappGuest.guest && !(await require('./checkout-guest-gate').boundToGuest({ db, orderId, guest: cappGuest.guest }))) {
+    return res.status(400).json({ error: 'guest_ticket_invalid' });
+  }
+  /* checkout:end gate-bind */
   // Authoritative intake gate (Slice-4): a fresh/rotated payable URL was about to be minted for a 86'd
   // cart → the CAS aborted BEFORE any write. Respond 400 with the blocked labels; nothing was persisted.
   if (acq.outcome === 'item_unavailable') {
@@ -2256,6 +2299,18 @@ chargeOnlineApp.all('*', async (req, res) => {
      refusals, the reuse, AND a checkout-creation or persistence failure — so returning on it means a
      charge that never issued emits no heartbeat and no alert, without that being a separate rule
      somebody has to remember. Reporting below is reached only by a charge that actually issued. */
+  /* checkout:begin gate-grant */
+  // §2.5: the stateless signup grant, recomputed from the STORED order (same bytes on replay / reuse / concurrent success)
+  let cappGrant = null;
+  if (cappGuest && cappGuest.guest && (!flow.respond || flow.respond.status === 200)) {
+    let grantSecret = '';
+    try { grantSecret = SIGNUP_GRANT_SECRET.value() || ''; } catch (_) { grantSecret = ''; }
+    const g = await require('./checkout-guest-gate').grantFor({ db, orderId, guest: cappGuest.guest, secret: grantSecret, now: Date.now() });
+    if (g.refuse) return res.status(400).json({ error: g.refuse });
+    cappGrant = g.grant;
+    if (cappGrant && flow.respond) flow.respond.body = { ...flow.respond.body, signup_grant: cappGrant };
+  }
+  /* checkout:end gate-grant */
   if (flow.respond) return res.status(flow.respond.status).json(flow.respond.body);
   const hosted = flow.hosted;
 
@@ -2280,6 +2335,9 @@ chargeOnlineApp.all('*', async (req, res) => {
     pixelpay_order_id: pixelpayOrderId,
     poll_token: pollToken,
     checkout_url: hosted.url,
+    /* checkout:begin gate-grant-field */
+    ...(cappGrant ? { signup_grant: cappGrant } : {}),
+    /* checkout:end gate-grant-field */
     payment_status: 'pending'
   });
 });
@@ -2293,12 +2351,22 @@ chargeOnlineApp.use((err, req, res, next) => {
   next(err);
 });
 
+/* checkout:begin grant-secret */
+const SIGNUP_GRANT_SECRET = defineSecret('SIGNUP_GRANT_SECRET');   // PLAN-guest-checkout-server §2.5: the signup-grant HMAC key (owner-set; ≥ 32 chars)
+// OTP_SALT for the three NEW otp-lib readers ONLY (requestCheckoutCode, verifyCheckoutCode, redeemSignupGrant): a new function gets no
+// plain env at a dotenv-free deploy. The EXISTING readers keep their deployed plain OTP_SALT — never bound here (no secret/plain
+// overlap). The owner creates the secret with the SAME value as the live plain OTP_SALT (cross-function phone hashes must match).
+const OTP_SALT_SECRET = defineSecret('OTP_SALT');
+/* checkout:end grant-secret */
 exports.chargeOnlineOrder = onRequest(
   {
     region: 'us-central1',
     cors: true,
+    /* checkout:begin grant-secret-bind */
+    secrets: [SIGNUP_GRANT_SECRET],
+    /* checkout:end grant-secret-bind */
     timeoutSeconds: 30,
-    memory: '256MiB',
+    memory: '512MiB',
     maxInstances: 10
   },
   chargeOnlineApp
@@ -4424,6 +4492,7 @@ exports.startDriverShift = onCall({ region: 'us-central1' }, async (request) => 
     [`drivers/${uid}/current_restaurant_id`]: null,
     [`drivers/${uid}/current_hub_task_id`]: null,
     [`drivers/${uid}/current_shift_id`]: shiftId,
+    [`drivers/${uid}/break_since`]: null,   // Pausa: a new shift never starts paused (svc-assigner clear-only grant)
     [`drivers/${uid}/location_source`]: isNativeClient ? 'native' : 'pwa'
   };
 
@@ -4459,6 +4528,7 @@ exports.endDriverShift = onCall({ region: 'us-central1' }, async (request) => {
     [`drivers/${uid}/active`]: false,
     [`drivers/${uid}/status`]: 'off_shift',
     [`drivers/${uid}/shift_ended_at`]: ServerValue.TIMESTAMP,
+    [`drivers/${uid}/break_since`]: null,   // Pausa: clocking off ends the pause
     [`drivers/${uid}/current_shift_id`]: null,
     [`drivers/${uid}/current_task_id`]: null,
     [`drivers/${uid}/current_hub_lat`]: null,
@@ -4795,6 +4865,13 @@ async function trackerOnTask(event) {
   for (const uid of owners) await driverFanout(db, uid);
 }
 exports.trackerOnTaskOwner = onValueWritten({ ref: '/tasks/{taskId}/assigned_driver_id', region: 'us-central1', retry: true }, trackerOnTask);
+// stacked-seq r5 T7: the out-of-sequence detector — a whole-node task trigger that returns after ONE in-memory check unless the
+// write is a DELIVERY task's completion; then delivery-time evidence only, and ONE create-only alert (sequencing/detector.js)
+exports.detectOutOfSequence = onValueWritten({ ref: '/tasks/{taskId}', region: 'us-central1', retry: true }, async (event) => {
+  const before = event.data.before.val(); const after = event.data.after.val();
+  if (!require('./sequencing/detector').isDeliveryCompletion(event.params.taskId, before, after)) return;
+  await require('./sequencing/detector').detectOutOfSequence({ db: getDatabase(), taskId: event.params.taskId, before, after });
+});
 exports.trackerOnTaskStatus = onValueWritten({ ref: '/tasks/{taskId}/status', region: 'us-central1', retry: true }, async (event) => {
   const db = getDatabase();
   if (!(await trackerFixesEnabled(db))) return;
@@ -5768,7 +5845,7 @@ exports.onIncomingWhatsApp = onRequest(
     try {
       const mdb = getDatabase();
       const windowMs = inbound.resolveMuteWindowMs((await mdb.ref('config/whatsapp_mute_window_ms').once('value')).val());
-      const muteRec = (await mdb.ref(`whatsapp_mute/${restaurantId}/${inbound.muteKeyFor(fromPhoneRaw)}`).once('value')).val();
+      const muteRec = await require('./phone/match').readMute(mdb, restaurantId, fromPhoneRaw);   // INTL S-match (codex r1 #4): the identity leaf + the legacy last-8 leaf, latest wins — no mute lost at deploy
       if (inbound.shouldSuppressAutoReply(muteRec, Date.now(), windowMs)) {
         await mdb.ref('incoming_messages').push({
           from: data.from, restaurant_id: restaurantId, body,
@@ -5815,9 +5892,9 @@ exports.onIncomingWhatsApp = onRequest(
           // wrong restaurant's number falls through to tplStatusCheckNotFound (no cross-restaurant leak).
           if ((o.restaurant_id || 'x_pizza') !== restaurantId) return false;
           const orderPhoneDigits = String(o.customer_phone).replace(/[^\d]/g, '');
-          // Match by suffix (handles +504, 504, or just 8-digit local)
-          if (!orderPhoneDigits.endsWith(fromPhoneRaw.slice(-8))
-              && !fromPhoneRaw.endsWith(orderPhoneDigits.slice(-8))) {
+          // Match the FULL number (handles +504, 504, or just 8-digit local) — INTL S-match: phone/match.js samePhone
+          if (!require('./phone/match').samePhone(o.customer_phone, fromPhoneRaw)) {   // null / invalid never matches
+            // (was a two-way last-8 suffix match, which let +502 9795-0000 see +504 9795-0000's order)
             return false;
           }
           // Active = not delivered, not cancelled
@@ -5977,7 +6054,8 @@ function constantTimeEqual(a, b) {
  *   - assigned: has task, hasn't accepted yet (rare in pick context;
  *     mostly relevant when stacking onto same driver)
  *   - en_route_delivery: out delivering — last resort for stacking
- *   - on_break / unknown: deprioritize via the ?? 99 fallback
+ *   - on_break: NEVER offered (Pausa — skipped in pickEligibleDriver, refused in reassertAssignable)
+ *   - unknown: deprioritize via the ?? 99 fallback
  */
 const STATUS_PRIORITY = {
   at_restaurant: 0,
@@ -6002,7 +6080,7 @@ const STATUS_PRIORITY = {
  * Shared by autoAssignOnOrderCreate and monitorAssignmentTimeout to avoid
  * drift between initial-assign and reassign behavior.
  */
-async function pickEligibleDriver(db, excludeDriverIds, hubLat, hubLng) {
+async function pickEligibleDriver(db, excludeDriverIds, hubLat, hubLng, opts) {
   // brand-agnostic X1: the hub is REQUIRED (no x_pizza default) — a caller without one has nothing to rank from
   if (!Number.isFinite(hubLat) || !Number.isFinite(hubLng)) { console.error('pickEligibleDriver: no hub — refusing to rank'); return null; }
   excludeDriverIds = excludeDriverIds || [];
@@ -6066,6 +6144,7 @@ async function pickEligibleDriver(db, excludeDriverIds, hubLat, hubLng) {
     // the driver as if they're at the restaurant. They probably are if their
     // phone hasn't pinged.
     if (d.status === 'off_shift') continue;
+    if (d.status === 'on_break') continue;   // Pausa: a paused driver is never offered an order
     // computePushReachable on the driver record only sees web push_subscription
     // (FCM tokens are server-only), which is exactly the legacy fallback we want.
     const reachable = (typeof d.push_reachable === 'boolean') ? d.push_reachable : computePushReachable(d);
@@ -6110,6 +6189,9 @@ async function pickEligibleDriver(db, excludeDriverIds, hubLat, hubLng) {
     eligible.push({ driverId, orderCount, hasAcceptedOrder, statusPriority, distanceKm, name: d.name || driverId });
   }
 
+  // stacked-seq r5 T5(i): ONLY with {stackFilter} (autoAssign / sweep, flag ON) — a 1-order driver stays a candidate iff the pair is
+  // cross-hub (D7: today's rule) or same-hub AND the cheap gate passes. Without the option (flag OFF, timeout) nothing changes.
+  if (opts && opts.stackFilter) eligible.splice(0, eligible.length, ...(await SEQ.filterEligible(db, tasks, eligible, activeOrdersByDriver, opts.stackFilter.newOid)));
   if (eligible.length === 0) return null;
   eligible.sort((a, b) => {
     if (a.orderCount !== b.orderCount) return a.orderCount - b.orderCount;
@@ -6195,6 +6277,7 @@ async function reassertAssignable(db, driverId, newOrderId = null) {
   const d = dSnap.val();
   if (!d) return { ok: false, reason: 'no_driver' };
   if (d.status === 'off_shift') return { ok: false, reason: 'off_shift' };
+  if (d.status === 'on_break') return { ok: false, reason: 'on_break' };   // Pausa: refused right before the write
   const reachable = (typeof d.push_reachable === 'boolean')
     ? d.push_reachable : !!(d.push_subscription && d.push_subscription.endpoint);
   if (!reachable) return { ok: false, reason: 'unreachable' };
@@ -6313,9 +6396,11 @@ exports.autoAssignOnOrderCreate = onValueWritten(
   {
     ref: '/orders/{orderId}',
     region: 'us-central1',
-    timeoutSeconds: 90  // 30s sleep + ample headroom for the assignment query
+    timeoutSeconds: 90,  // 30s sleep + ample headroom for the assignment query
+    secrets: [ROUTES_API_KEY]   // stacked-seq r5 T3
   },
   async (event) => {
+    const seqInvocationDeadline = Date.now() + 90 * 1000;   // stacked-seq r5 T5: the 90 s invocation budget INCLUDES the grace sleep
     const before = event.data.before.val();
     const after = event.data.after.val();
 
@@ -6389,7 +6474,8 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       return;
     }
     const { hubLat, hubLng } = assignHub;
-    const chosen = await pickEligibleDriver(db, [], hubLat, hubLng);
+    const seqOn = await SEQ.readSeqFlag(db);   // stacked-seq r5 T5: read ONCE per invocation; OFF → every line below is today's
+    const chosen = await pickEligibleDriver(db, [], hubLat, hubLng, seqOn ? { stackFilter: { newOid: orderId } } : undefined);
     if (!chosen) {
       console.warn(`autoAssign: no eligible drivers for ${orderId}, alerting dispatcher`);
       await db.ref('dispatcher_alerts').push({
@@ -6429,6 +6515,20 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       console.log(`autoAssign: ${orderId} is SAME-HUB STACKED on ${chosen.name} (already has ${chosen.orderCount} active)`);
     }
 
+    // stacked-seq r5 T5(ii): a same-hub pair is planned BEFORE the claim (no claim is held across Routes). Cross-hub / not one
+    // other order → today's path (D7). Any same-hub refusal, a deadline or no time left → SINGLE: the existing no-taker alert,
+    // no claim. The deadline is checked again right before the claim.
+    let seq = null;
+    if (seqOn && recheck.orderCount === 1) {
+      const p = await SEQ.planForWriter({ db, uid: chosen.driverId, newOid: orderId, invocationDeadline: seqInvocationDeadline, key: routesKey() });
+      if (p.mode === 'stack') seq = p;
+      if (p.mode === 'single' || (seq && Date.now() >= seq.deadlineAt)) {
+        console.warn(`autoAssign: ${orderId} not stacked on ${chosen.driverId} (${p.reason || 'deadline'}) — single, alerting`);
+        await db.ref('dispatcher_alerts').push({ type: 'no_drivers_available', order_id: orderId, customer_name: after.recipient_name || 'Cliente', total: after.total || null, created_at: ServerValue.TIMESTAMP });
+        return;
+      }
+    }
+
     // S3d: CAS-claim the delivery task before the finalize write, so a manual assign / sweep landing in
     // the window between reassert and this write can't be overwritten (and vice-versa). NULL-claim: a
     // brand-new order's delivery is null → the claim commits uncontended and the finalize update() below
@@ -6442,9 +6542,19 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       return;
     }
 
+    // stacked-seq r5 T5(iii) (r1 P1 ×2): a SEQUENCED placement runs its post-claim checks — the hold check, then the stack re-check
+    // — under ONE 3 s deadline started HERE, right after the claim; held / changed / confirm false / a throw / the deadline each roll
+    // back through rollbackOrAlert (retry + assignment_strand alert); confirm false also raises the existing no-taker alert.
+    if (seq) {
+      const v = await SEQ.sequencedPostClaim({ budget: SEQ.claimBudget(seq), hold: () => merchantHooks.holdAfterClaim(db, orderId, (o) => !AUTO_ASSIGNABLE_STATUSES.has(o.status)), rollback: () => rollbackOrAlert(db, claim, orderId, 'autoAssign'), db, uid: chosen.driverId, newOid: orderId, decision: seq.decision, reassert: reassertAssignable, isAssignable: (o) => AUTO_ASSIGNABLE_STATUSES.has(o.status), isHeld: (o) => merchantHooks.heldByReject(o) });
+      if (v === 'refused') await db.ref('dispatcher_alerts').push({ type: 'no_drivers_available', order_id: orderId, customer_name: after.recipient_name || 'Cliente', total: after.total || null, created_at: ServerValue.TIMESTAMP });
+      if (v !== 'ok') { console.log(`autoAssign: ${orderId} stack post-claim check → ${v}, rolled back`); return; }
+    }
+
     // attempts=1 = initial assignment. monitorAssignmentTimeout uses this
     // for its 2-strikes rule (only relevant for non-stacked).
-    if (await merchantHooks.holdAfterClaim(db, orderId, (o) => !AUTO_ASSIGNABLE_STATUSES.has(o.status))) { console.log(`autoAssign: ${orderId} held or gone after the claim, rolling back`); await claim.rollback(); return; } const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);   // h1 A-R1
+    if (!seq && await merchantHooks.holdAfterClaim(db, orderId, (o) => !AUTO_ASSIGNABLE_STATUSES.has(o.status))) { console.log(`autoAssign: ${orderId} held or gone after the claim, rolling back`); await claim.rollback(); return; } const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);   // h1 A-R1
+    if (seq) Object.assign(updates, stackCopies(seq.decision, chosen.driverId));   // stacked-seq r5: the copies ride in the ONE finalize update()
     try {
       await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'autoAssign.finalize', target: chosen.driverId });   // S1a §3
       console.log(`autoAssign: success for ${orderId} → ${chosen.driverId}`);
@@ -6668,11 +6778,12 @@ const SWEEP_RETRY_MAX = 2;
 const HALF_CLAIM_STALE_MS = 2 * SWEEP_INTERVAL_MS;
 
 exports.sweepPendingOrders = onSchedule(
-  { schedule: 'every 1 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  { schedule: 'every 1 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB', secrets: [ROUTES_API_KEY] },   // stacked-seq r5 T3
   async () => {
     const db = getDatabase();
     const svcDb = await pickHandle(db);   // S1a §3 — ownership-creating writes are rules-bound
     const now = Date.now();
+    const seqStart = now; let seqPlans = 0; let seqOn = null;   // stacked-seq r5 T5: ≤ 2 plans per tick, only while < 60 s of 120 elapsed
     // Read config + all data up front. The HEAL pass runs EVERY tick regardless of the flags (H1) — the
     // delivery CAS-claim is on the LIVE autoAssign/timeout paths, so a strand there must self-heal even
     // while the pending-re-offer behaviour is OFF. Only the OFFER pass is gated.
@@ -6800,8 +6911,19 @@ exports.sweepPendingOrders = onSchedule(
       const sweepHub = await resolveAssignHub(db, order);
       if (sweepHub.unresolved) { if (sweepHub.unresolved === 'no_hub') await alertHubUnresolved(db, orderId, order, 'sweepPending'); continue; }
       const { hubLat, hubLng } = sweepHub;
-      const chosen = await pickEligibleDriver(db, [], hubLat, hubLng);
+      if (seqOn === null) seqOn = await SEQ.readSeqFlag(db);   // stacked-seq r5 T5: read ONCE per invocation, only when an order is swept
+      const chosen = await pickEligibleDriver(db, [], hubLat, hubLng, seqOn ? { stackFilter: { newOid: orderId } } : undefined);
       if (!chosen) { waiting++; continue; }   // no taker this cycle — leave pending, keep waiting (no throttle bump)
+      // stacked-seq r5 T5(ii): plan a same-hub pair BEFORE the claim; cross-hub → today (D7); a same-hub refusal / deadline / no
+      // plan budget left → single (waiting++, no claim)
+      let seq = null;
+      if (seqOn && chosen.orderCount === 1) {
+        const mayPlan = seqPlans < 2 && Date.now() - seqStart < 60 * 1000;
+        const p = await SEQ.planForWriter({ db, uid: chosen.driverId, newOid: orderId, invocationDeadline: seqStart + 120 * 1000, key: routesKey(), mayPlan });
+        if (mayPlan && p.reason !== 'cross_hub' && p.reason !== 'not_one') seqPlans++;
+        if (p.mode === 'stack') seq = p;
+        if (p.mode === 'single' || (seq && Date.now() >= seq.deadlineAt)) { waiting++; continue; }
+      }
 
       // S3d: CAS-claim the DELIVERY task's assigned_driver_id (null → chosen) via the shared helper. This
       // is the field getPendingOrders reads, so the claim atomically leaves SIN ASIGNAR + blocks a
@@ -6820,13 +6942,14 @@ exports.sweepPendingOrders = onSchedule(
         // order + delivery task immediately before the write. sweepDecision ran against the batch snapshot,
         // so a dispatcher park, a cancel, a status change, or a driver-state change landing mid-sweep must
         // abort the placement. (delNow is also the FRESH source for retry_count below.)
-        const recheck = await reassertAssignable(db, chosen.driverId, orderId);
-        const [parkedSnap, orderNowSnap, delNowSnap, pickupNowSnap] = await Promise.all([
+        const pcb = SEQ.claimBudget(seq);   // stacked-seq r5 (r1 P1): sequenced → ONE 3 s deadline from the claim over every read below; else the identity
+        const recheck = await pcb(reassertAssignable(db, chosen.driverId, orderId));
+        const [parkedSnap, orderNowSnap, delNowSnap, pickupNowSnap] = await pcb(Promise.all([
           db.ref(`orders/${orderId}/dispatch_parked`).once('value'),
           db.ref(`orders/${orderId}`).once('value'),
           db.ref(`tasks/${orderId}_delivery`).once('value'),
           db.ref(`tasks/${orderId}_pickup`).once('value')
-        ]);
+        ]));
         const parkedNow = parkedSnap.val();
         const orderNow = orderNowSnap.val();
         const delNow = delNowSnap.val();
@@ -6843,6 +6966,12 @@ exports.sweepPendingOrders = onSchedule(
           await claim.rollback();   // back to SIN ASIGNAR, no throttle bump
           continue;
         }
+        // stacked-seq r5 T5(iii): a sequenced placement re-checks under the SAME deadline (a throw / expiry → the catch below →
+        // rollbackOrAlert); changed or confirm false → roll back, skip
+        if (seq) {
+          const pc = await SEQ.postClaimSeq({ db, uid: chosen.driverId, newOid: orderId, decision: seq.decision, reassert: reassertAssignable, sweep: true, isAssignable: (o) => AUTO_ASSIGNABLE_STATUSES.has(o.status), isHeld: (o) => merchantHooks.heldByReject(o), end: pcb.end });
+          if (pc.changed || !pc.ok) { await claim.rollback(); continue; }
+        }
 
         // Finalize as a NORMAL new offer: attempts=1 → fresh 60s deadline + slide-to-accept, re-arms the
         // timer. Same-hub force-accept (S3a): mirror autoAssign — if the chosen driver already ACCEPTED a
@@ -6852,6 +6981,7 @@ exports.sweepPendingOrders = onSchedule(
         // under-count. retry_count is written SEPARATELY (buildAssignmentUpdates never touches it).
         const retryCount = (delNow.retry_count) || 0;
         const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, recheck.hasAcceptedSameHubOrder);
+        if (seq) Object.assign(updates, stackCopies(seq.decision, chosen.driverId));   // stacked-seq r5: the copies ride in the ONE finalize
         updates[`tasks/${orderId}_delivery/retry_count`] = retryCount + 1;
         updates[`tasks/${orderId}_delivery/last_swept`] = now;
         await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'sweeper.finalize', target: chosen.driverId });   // S1a §3
@@ -7050,7 +7180,7 @@ const sendJson = (res, status, payload) => {
 };
 
 exports.getPublicMenu = onRequest(
-  { region: 'us-central1', cors: PUBLIC_MENU_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 20 },
+  { region: 'us-central1', cors: PUBLIC_MENU_ORIGINS, timeoutSeconds: 20, memory: '512MiB', maxInstances: 20, minInstances: 1 },   // PLAN 2: one warm instance — the live menu must not wait on a cold start
   async (req, res) => {
     // Two headers on EVERY response, including the failures: a cache that varies by origin must be
     // told so even when the answer is an error, and a browser cannot read the validator it is
@@ -7121,10 +7251,13 @@ exports.requestOtp = onRequest(
     catch (e) { console.error('requestOtp: OTP_SALT misconfigured — failing closed', e.message); return res.status(500).json({ ok: false }); }
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
+      /* checkout:begin s3a-request */
+      if ((req.body || {}).context !== undefined) return SIGNUP_PLATFORM.requestOtp(req, res, OTP);   // S3a: the app's scope (the forms never send `context`)
+      /* checkout:end s3a-request */
       const { phone, restaurant_id } = req.body || {};
       const { restaurantId } = resolveRestaurantId(restaurant_id, restaurantRegistry().known());
       const pHash = OTP.phoneHash(phone);
-      if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration
+      if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 }); if (!(await require('./phone/login-gate').otpLoginAllowed({ db: getDatabase(), phone, restaurantId, strict: () => require('./phone/flag').phoneWireStrictNow(getDatabase()) }))) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration (INTL S-core step 4: the per-sender login gate refuses uniformly)
       const now = Date.now();
       const db = getDatabase();
       // per-IP soft cap (secondary; req.ip is the Cloud Run-trusted peer, NOT spoofable XFF — H4)
@@ -7161,6 +7294,9 @@ exports.verifyOtp = onRequest(
     catch (e) { console.error('verifyOtp: OTP_SALT misconfigured — failing closed', e.message); return res.status(500).json({ ok: false }); }
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
+      /* checkout:begin s3a-verify */
+      if ((req.body || {}).context !== undefined) return SIGNUP_PLATFORM.verifyOtp(req, res, OTP);   // S3a: the app's scope (the forms never send `context`)
+      /* checkout:end s3a-verify */
       const { phone, code } = req.body || {};
       const pHash = OTP.phoneHash(phone);
       if (!pHash || !/^\d{6}$/.test(String(code || ''))) return res.status(200).json({ ok: false });   // generic
@@ -7177,8 +7313,19 @@ exports.verifyOtp = onRequest(
       // UIDs by construction (staff sign in with email/password; their UIDs are never `u_...`), so a
       // customer:true token can never collide with a staff uid in the uid-match rules.
       const idxRef = db.ref('phone_index/' + pHash);
+      /* lifecycle:begin login-claim */
+      // security r2 (Codex r2 P2): claim the phone's uid CREATE-IF-ABSENT in ONE transaction before the read below — a concurrent first
+      // login on the platform path converges on the winner's uid, and the `if (!uid)` set below never fires on a live entry
+      const lcUid = await SE.claimPhoneUid(db, pHash, () => 'u_' + require('crypto').randomBytes(12).toString('hex'));
+      /* lifecycle:end login-claim */
       let uid = (await idxRef.get()).val();
       if (!uid) { uid = 'u_' + require('crypto').randomBytes(12).toString('hex'); await idxRef.set(uid); }
+      /* lifecycle:begin login-uid */
+      // security r2 (Codex P1-a/P1-b): THE lifecycle gate — a profile a sweep claimed, or a tombstoned uid with no profile, is never
+      // handed to this login: a FRESH uid, phone_index CAS-repointed; a live profile's last_login bumped (linearized with the sweep's
+      // claim on user_profiles/{uid}). FAIL-CLOSED: a failure lands in the catch below (the generic retryable answer), no mint.
+      uid = await SE.loginUid(db, { pHash, uid: lcUid, now: Date.now(), newUid: () => 'u_' + require('crypto').randomBytes(12).toString('hex') });
+      /* lifecycle:end login-uid */
       const now2 = Date.now();
       const profRef = db.ref('user_profiles/' + uid);
       const prof = (await profRef.get()).val();
@@ -7231,7 +7378,7 @@ exports.verifyOtp = onRequest(
 // what is DISPLAYED. Correspondingly it fails SOFT: a bad cart returns ok:false with HTTP 200 so the
 // client can silently fall back to its own total rather than blocking checkout.
 exports.quoteOrder = onRequest(
-  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '512MiB', maxInstances: 10 },
   async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
@@ -7247,7 +7394,7 @@ exports.quoteOrder = onRequest(
       // Public + unauthenticated (a non-redemption cart's price is not user-specific), so it is
       // rate-limited like the other public endpoints.
       const db = getDatabase();
-      const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+      const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown'; /* s4hours:begin */ if (body.schedule_only === true && await require('./schedule/schedule-only').handle({ res, body, db, restaurantId, clientIp, checkRateLimit })) return; /* s4hours:end */
       const dpP = DW.loadPricing(db, restaurantId); const { allowed, retryAfterSec } = await checkRateLimit(db, 'quote_ip', clientIp, RATE_LIMIT_BUCKETS.quote_ip);   // S3a: envío config read in parallel
       if (!allowed) {
         res.set('Retry-After', String(retryAfterSec));
@@ -7425,7 +7572,7 @@ module.exports.sendPaidAfterCloseRefund = sendPaidAfterCloseRefund;   /* members
 const portalFunctions = require('./portal/functions');
 exports.editCatalog = portalFunctions.editCatalog;
 exports.publishEdited = portalFunctions.publishEdited;
-exports.resetDraftToLive = require('./portal/reset-draft').resetDraftToLive; exports.getMyBranches = require('./portal/ops-functions').getMyBranches; exports.updateBranch = require('./portal/ops-functions').updateBranch; exports.setBranchPause = require('./portal/ops-functions').setBranchPause; exports.getBranchAvailability = require('./portal/ops-functions').getBranchAvailability; exports.setBranchAvailability = require('./portal/ops-functions').setBranchAvailability; exports.getBranchDevices = require('./portal/ops-functions').getBranchDevices; exports.revokeBranchDevice = require('./portal/ops-functions').revokeBranchDevice;   // PORTAL-UI 1a + slice 2: + the branch-ops endpoints (portal/ops-functions.js, full load) · 1D add-product A §0.1: "Volver al menú publicado" (full load; not an isolated portal fn)
+exports.resetDraftToLive = require('./portal/reset-draft').resetDraftToLive; exports.getMyBranches = require('./portal/ops-functions').getMyBranches; exports.updateBranch = require('./portal/ops-functions').updateBranch; exports.setBranchPause = require('./portal/ops-functions').setBranchPause; exports.getBranchAvailability = require('./portal/ops-functions').getBranchAvailability; exports.setBranchAvailability = require('./portal/ops-functions').setBranchAvailability; exports.getBranchDevices = require('./portal/ops-functions').getBranchDevices; exports.revokeBranchDevice = require('./portal/ops-functions').revokeBranchDevice; exports.createBranchDraft = require('./portal/ops-functions').createBranchDraft; exports.updateBranchProfile = require('./portal/ops-functions').updateBranchProfile; exports.setBranchActive = require('./portal/ops-functions').setBranchActive; exports.deleteBranchDraft = require('./portal/ops-functions').deleteBranchDraft; exports.photoUploadStart = require('./photos/functions').photoUploadStart; exports.photoProcess = require('./photos/functions').photoProcess; exports.photoSweep = require('./photos/functions').photoSweep;   // PORTAL-UI 1a + slice 2: + the branch-ops endpoints (portal/ops-functions.js, full load) · 1D add-product A §0.1: "Volver al menú publicado" (full load; not an isolated portal fn)
 
 // PORTAL SPEED P1: the Portal 2b-2a block (getMyRestaurants, getEditableCatalog) moved verbatim to portal/functions.js.
 exports.getMyRestaurants = portalFunctions.getMyRestaurants;
@@ -7529,3 +7676,151 @@ exports.merchantPendingOrders = merchantPushFunctions.merchantPendingOrders;
 exports.merchantPushOnStatus = merchantPushFunctions.merchantPushOnStatus;
 exports.merchantPushOnAnswered = merchantPushFunctions.merchantPushOnAnswered;
 /* h1c:end */
+
+/* drvf:begin */
+// DRIVER F (PLAN-driver-server-F-problema r2, Codex r3 APPROVE) — «Problema con este pedido»: a driver's create-only report at
+// driver_problems/{oid}/{pid} → ONE keyed dispatcher alert (driver-problem-alert.js). retry:true, and the core's write errors are
+// NOT caught here, so a transient failure re-runs the trigger. No order / task state is touched.
+const { alertOnDriverProblem: driverProblemAlertCore } = require('./driver-problem-alert');
+exports.alertOnDriverProblem = onValueCreated(
+  { ref: '/driver_problems/{oid}/{pid}', region: 'us-central1', retry: true },
+  async (event) => {
+    await driverProblemAlertCore(getDatabase(), { oid: event.params.oid, pid: event.params.pid, rec: event.data.val(), now: Date.now() }, { resolveDriverName });
+  }
+);
+/* drvf:end */
+
+/* drvc:begin */
+// DRIVER C (PLAN-driver-server-C-llegue r3, Codex r4 APPROVE) — «Llegué · avisar a {Nombre}»: the driver's create of
+// tasks/{oid}_delivery/arrived → at most ONE customer notice (arrived-notify.js): claim in arrived_notices/{oid}, a full recheck,
+// the tracker mirror bound to the TAPPING driver, the approved WhatsApp, a winner-only final outcome. retry:false — never a resend.
+// Its 6 keys come from Secret Manager (owner ruling 2026-10-26), bound to THIS function only. A bound secret is injected into the
+// container's env at start ("you'll be able to access it like any other environment variable"), so the process.env reads here
+// and whatsapp.js's load-time reads are unchanged. Deploy carries no dotenv (tools/deploy-dotenv-guard.js): no plain/secret overlap.
+const { notifyArrived } = require('./arrived-notify');
+const { defineSecret: drvcSecret } = require('firebase-functions/params');
+const ARRIVED_SECRETS = ['MAKE_SECRET', 'ULTRAMSG_INSTANCE_ID', 'ULTRAMSG_TOKEN', 'ULTRAMSG_INSTANCE_ID_LA_MUSA', 'ULTRAMSG_TOKEN_LA_MUSA', 'TRACKING_BASE_LA_MUSA'].map((k) => drvcSecret(k));
+exports.notifyArrivedOnTap = onValueCreated(
+  { ref: '/tasks/{taskId}/arrived', region: 'us-central1', retry: false, secrets: ARRIVED_SECRETS },
+  async (event) => {
+    await notifyArrived(getDatabase(), { taskId: event.params.taskId, arrived: event.data.val(), now: Date.now() }, {
+      wa: { sendMessage: whatsapp.sendMessage, isSendConfirmed: whatsapp.isSendConfirmed, instanceFor: whatsapp.instanceFor,
+        isEnabledForRestaurant: whatsapp.isEnabledForRestaurant, tplArrived: whatsapp.tplArrived, isRoutingValid: require('./restaurant-config').isRoutingValid },
+      resolveDriverName, tagOf, secret: process.env.MAKE_SECRET,
+    });
+  }
+);
+/* drvc:end */
+
+/* wahealth:begin */
+// WhatsApp gateway health (OWNER-approved 2026-10-22) — every 30 min, ONE severity=ERROR line per UNLINKED UltraMsg instance
+// (the owner's error alert emails it). Logic in whatsapp/instance-health.js; the restaurant ids come from the registry (data).
+exports.whatsappInstanceHealth = require('./whatsapp/instance-health').makeHealthFunction({ registry: restaurantRegistry, getDb: getDatabase });
+/* wahealth:end */
+
+/* formsignal:begin */
+// ── PLAN 3 — formSignal: the server-visible COUNT of order-form cart blocks (docs/superpowers/plans/2026-10-26-form-signal-counter.md)
+// Public: every order site beacons it (navigator.sendBeacon, text/plain — a CORS-simple POST). Untrusted observations
+// under a strict schema, never authority. A dedicated fail-CLOSED limiter (form_signal_limits), one atomic update under
+// form_signals/{HN day}/{rid}/{event}. Core + tests: form-signal.js / form-signal.test.js / form-signal.emulator.test.js.
+// The audience is the order sites' exact origins, derived from the manifest (the ACCOUNT_ORIGINS list — no localhost).
+const FORM_SIGNAL_ORIGINS = require('./platform-manifest').PLATFORM.ACCOUNT_ORIGINS;
+exports.formSignal = onRequest(
+  { region: 'us-central1', cors: FORM_SIGNAL_ORIGINS, timeoutSeconds: 10, memory: '256MiB', maxInstances: 5, concurrency: 40 },
+  async (req, res) => {
+    try {
+      return await require('./form-signal').handleSignal(req, res, { db: getDatabase(), ServerValue, registry: restaurantRegistry() });
+    } catch (e) {
+      console.error('formSignal', e && e.message);
+      return res.status(204).end();
+    }
+  },
+);
+// The sweep: day keys past the 90-day retention, and expired limiter windows, in bounded batches.
+exports.sweepFormSignals = onSchedule(
+  { schedule: '20 3 * * *', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    const out = await require('./form-signal').sweepFormSignals({ db: getDatabase() });
+    if (out.days || out.limits) console.log(`sweepFormSignals: ${JSON.stringify(out)}`);
+  },
+);
+/* formsignal:end */
+
+/* formbake:begin */
+// PLAN 4 (bake from published) r3 §4 / §5 — a publish rebuilds its brand's form (best-effort, on the mirror write) and a
+// reconciler proves the DEPLOYED form carries the PUBLISHED menu. All logic is catalog/form-rebake.js; this block only wires
+// it. No platform retry, bounded instances and deadlines, off the publish and money paths. Dormant until FORM_BUILD_HOOKS is set.
+const FORM_REBAKE = require('./catalog/form-rebake');
+const formRebakeDeps = () => ({
+  db: getDatabase(),
+  env: process.env,
+  now: () => Date.now(),
+  alarm: (kind, detail) => paymentAlert(getDatabase(), kind, detail),
+  registry: restaurantRegistry(),
+  sites: require('./platform-manifest').PLATFORM.sites,
+  // the published menu WITHOUT the identity overlay: what a bake writes, so nothing needs stripping and the comparator ignores no key
+  // the overlay-free published menu + the ACTIVATION GENERATION it was read at (the budget's fence — it advances on rollbacks too)
+  readPublished: (rid) => FORM_REBAKE.readFencedPublished(rid, {
+    getPointer: (r) => require('./catalog/catalog-firestore').getActivePointer(getFirestore(), r),
+    readMenu: (r) => buildPublicMenu(getFirestore(), r, { known: () => restaurantRegistry().known(), isActive: defaultIsActive(getDatabase()), overlayIdentity: false }),
+  }),
+  http: {
+    post: (url) => fetch(url, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(FORM_REBAKE.HOOK_DEADLINE_MS) }).then((r) => ({ status: r.status })),
+    getText: (url, opts) => fetch(url, { headers: (opts && opts.headers) || {}, redirect: 'follow', signal: AbortSignal.timeout(15000) })
+      .then((r) => { if (!r.ok) throw new Error(`answered ${r.status}`); return r.text(); }),
+  },
+});
+exports.rebakeFormOnMirror = onValueWritten(
+  { ref: '/catalog_snapshot/{rid}', region: 'us-central1', timeoutSeconds: 30, memory: '256MiB', maxInstances: 2, retry: false },
+  async (event) => {
+    try { await FORM_REBAKE.onMirrorWrite(event.params.rid, formRebakeDeps()); } catch (e) {
+      console.error('form_rebake_trigger_failed', JSON.stringify({ rid: event.params.rid }));
+    }
+  },
+);
+exports.reconcileFormBundles = onSchedule(
+  { schedule: 'every 10 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB', maxInstances: 1, retryCount: 0 },
+  async () => {
+    try { await FORM_REBAKE.reconcile(formRebakeDeps()); } catch (e) { console.error('form_rebake_reconcile_failed', (e && e.code) || 'error'); }
+  },
+);
+/* formbake:end */
+/* checkout:begin endpoints */
+// PLAN-guest-checkout-server r4 (FINAL) §1 — S1: the checkout-purpose WhatsApp code for the customer app's guest checkout.
+// NEW endpoints only; requestOtp / verifyOtp are untouched (the forms' wire and the signup inverse are unaffected). The
+// handlers live in checkout-otp.js; this block is folded back by tools/checkout-inverse.js (checkout-wiring.guard.test.js).
+const CHECKOUT_OTP = require('./checkout-otp').makeCheckoutOtp({
+  getDatabase,
+  registry: restaurantRegistry,   // checkout-otp warms it and checks a KNOWN rid (never defaulted, never resolveRestaurantId's default)
+});
+exports.requestCheckoutCode = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET] },
+  CHECKOUT_OTP.requestCheckoutCode,
+);
+exports.verifyCheckoutCode = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET] },
+  CHECKOUT_OTP.verifyCheckoutCode,
+);
+exports.pruneCheckoutState = onSchedule(
+  { schedule: 'every 60 minutes', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const out = await require('./checkout-otp').pruneCheckoutState(getDatabase(), Date.now());
+    if (out.tickets || out.codes || out.budgets) console.log(`pruneCheckoutState: ${JSON.stringify(out)}`);
+  },
+);
+// S3 (PLAN §3, CONTRACT-capp-signup-platform-wire.md): the customer app's signup family, context:'platform'. requestOtp /
+// verifyOtp hand a body carrying `context` to these handlers (the s3a-request / s3a-verify hunks); two NEW endpoints.
+const SIGNUP_PLATFORM = require('./signup-platform').makeSignupPlatform({
+  getDatabase, getAuth, checkRateLimit,
+  sendPlatformOtp: require('./checkout-otp').sendPlatformOtp, senderConfigured: require('./checkout-otp').platformSenderConfigured, isSendConfirmed: (d) => whatsapp.isSendConfirmed(d),
+  grantSecret: () => { try { return SIGNUP_GRANT_SECRET.value() || ''; } catch (_) { return ''; } },
+});
+exports.redeemSignupGrant = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET, SIGNUP_GRANT_SECRET] },
+  SIGNUP_PLATFORM.redeemSignupGrant,
+);
+exports.getMyProfile = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  SIGNUP_PLATFORM.getMyProfile,
+);
+/* checkout:end endpoints */

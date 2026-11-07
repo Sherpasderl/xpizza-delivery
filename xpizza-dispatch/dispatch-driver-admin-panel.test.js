@@ -32,6 +32,8 @@ function slice(src, startMarker, endMarker) {
 }
 const draStyle = (desktop.match(/<style id="dra-style">([\s\S]*?)<\/style>/) || [, ''])[1];
 const draJs = slice(desktop, 'function deriveDriverAcctState(rec) {', "$('dra-open')?.addEventListener");
+// The reassign remedy now gates on the real post-pickup predicate; include it so the sandbox runs the real gating.
+const isPostPickupJs = slice(desktop, 'function isPostPickup(orderId, tasksSrc = allTasks) {', '\nfunction openPicker(');
 const mdraJs = slice(mobileHtml, 'function mdraDeriveState(rec) {', '\nrenderLive();');
 assert.ok(/function draRenderLink/.test(draJs) && /function draRenderDeactivate/.test(draJs), 'desktop panel source extracted');
 assert.ok(/function mdraRenderLink/.test(mdraJs) && /function mdraDeactivate/.test(mdraJs), 'mobile panel source extracted');
@@ -43,6 +45,13 @@ const STUBS = `
 var escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function $(id){ return document.getElementById(id); }
 var allDrivers = {};
+var allOrders = {};   // board state the reassign post-pickup guard (isPostPickup) reads; empty here → o1 is a qualifying PRE-pickup order, so «Reasignar» is offered
+var allTasks = {};
+// S4B: callDriverAdmin (the admin onCall transport) carries the session-superseded barrier that reads the
+// page-lifetime vars (reloading, sessionUid) declared in index.html OUTSIDE this extracted slice, plus a local
+// auth. Model a NORMAL operator session -- not mid-reload, auth uid matches sessionUid -- so admin writes
+// proceed exactly as in a live page. The barrier's blocking path is covered by mobile-reload.test.mjs.
+var reloading = false, sessionUid = 'op1';
 var STORE = { drivers: {} };
 var H = { accData:{}, accSubs:[], cashSubs:[], unsub:0, getData:{}, getDelay:0, getFail:false, call:'ok', toasts:[], picked:[], waUrl:'', calls:[] };
 window.H = H;
@@ -51,7 +60,7 @@ function openPicker(oid, reassign){ H.picked.push({ oid: oid, reassign: !!reassi
 window.open = (u) => { H.waUrl = String(u); return null; };
 var XPD = {
   getDb: () => ({}),
-  getAuthInstance: () => ({ app:{}, currentUser:{ getIdToken: async()=> 't' } }),
+  getAuthInstance: () => ({ app:{}, currentUser:{ uid:'op1', getIdToken: async()=> 't' } }),
   subscribeToDriverCash: (onData, onErr) => { var s={onData:onData,onErr:onErr}; H.cashSubs.push(s); onData(H.cashData||{}); return () => { H.unsub++; var i=H.cashSubs.indexOf(s); if(i>=0) H.cashSubs.splice(i,1); }; },
 };
 function _ref(db, p){ return { path: p }; }
@@ -74,6 +83,7 @@ function desktopPage() {
 <div id="out"></div>
 <script>window.onerror=function(msg,src,line,col){try{document.getElementById('out').textContent='PANEL_RESULT:'+JSON.stringify({error:msg+' @'+line+':'+col})+':END';}catch(e){}};</script>
 <script>${STUBS}
+${isPostPickupJs}
 ${draJs}
 (async () => {
  var res = {};

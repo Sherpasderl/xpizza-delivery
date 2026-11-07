@@ -60,6 +60,12 @@ function genPollToken() {
    lazy thunk for the untruncated-text candidate, compared ONLY against a record marked 'a8'; `fresh` is the text version of
    THIS request's fresh binding ('legacy' | 'a8'): 'a8' only when a retained 'a8' reservation selected it, and then the
    create CAS writes the a8 fingerprint (pendingOrderRecord already carries the a8 text + marker). */
+/* PLAN-guest-checkout-server S2 (Codex r1 P1-2): a capp GUEST's pending record carries `guest_verified` (forms / members never
+   do ⇒ every existing path is unchanged). An EXISTING order under the id must carry the SAME verified phone, or this call is a
+   foreign phone: it is refused at the pre-read AND inside the CAS (a no-op), so it can never install / recover / rotate another
+   guest's attempt — the caller answers guest_ticket_invalid, nothing written. */
+const guestForeign = (order, pending) => !!(pending && pending.guest_verified)
+  && !(order && order.guest_verified && order.guest_verified.phone_hash === pending.guest_verified.phone_hash);
 async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false, controlRefuseFresh = false, menuRefuseFresh = false, choiceRefuseFresh = false, extrasRefuseFresh = null, textBinding = null, incomingTip = 0, payerRefuseFresh = false) {
   const canon = once(canonicalFp);
   const a8 = once(textBinding && textBinding.a8Fp);
@@ -71,6 +77,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
 
     // Order-level terminal reads.
     if (order) {
+      if (guestForeign(order, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };   // S2: before ANY answer about it
       if (order.payment_status === 'confirmed') return { outcome: 'already_paid' };
       { const t = tipBindingConflict(order, incomingTip); if (t) return conflictOutcome(t); }   // S2: a changed tip → 'tip' (precedes the fingerprint, which also binds it)
       { const d = paymentBindingConflict(order, fingerprint, canon, a8); if (d) return conflictOutcome(d); }   // advisory
@@ -144,6 +151,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
       }
       const c = cur || order;
       if (!c) return;
+      if (guestForeign(c, pendingOrderRecord)) return c;                    // S2: a foreign guest phone never mutates the order (re-read refuses)
       if (c.payment_status === 'confirmed') return c;
       if (tipBindingConflict(c, incomingTip) || paymentBindingConflict(c, fingerprint, canon, a8)) return c;     // the CAS: (tip, format, fingerprint) on the record held
       if (decided.kind === 'install') {
@@ -165,6 +173,9 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
 
     if (!tx.committed) continue;
     const committed = tx.snapshot.val();
+    // S2 (Codex r2 P1): the guarded CAS answers a foreign phone with the record UNCHANGED — still a committed transaction — so the
+    // AUTHORITATIVE record is re-checked here, before every claim / recovery write: a foreign phone writes NO payment_attempts row
+    if (guestForeign(committed, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };
     if (committed.payment_status === 'confirmed') return { outcome: 'already_paid' };
     { const t = tipBindingConflict(committed, incomingTip); if (t) return conflictOutcome(t); }   // S2: post-txn tip
     { const d = paymentBindingConflict(committed, fingerprint, canon, a8); if (d) return conflictOutcome(d); }   // advisory post-txn

@@ -4,14 +4,15 @@
       "id": "dimsum_01",
       "cat": "dim_sum",
       "name": "Sichuan Spicy Wonton",
-      "price": 223,
+      "price": 249,
       "desc": "Wonton de cerdo, aceite de chili, vinagre Chinkiang y soya",
       "tags": [
         "chefs_pick",
         "most_ordered"
       ],
       "color": "#A8814E",
-      "emoji": "🥟"
+      "emoji": "🥟",
+      "reward_icon": "dumpling"
     },
     {
       "id": "dimsum_02",
@@ -23,27 +24,30 @@
         "must_try"
       ],
       "color": "#A8814E",
-      "emoji": "🥟"
+      "emoji": "🥟",
+      "reward_icon": "dumpling"
     },
     {
       "id": "dimsum_03",
       "cat": "dim_sum",
       "name": "Shrimp Dumplings",
-      "price": 198,
+      "price": 286,
       "desc": "Dumplings al vapor, camaron, hongo shiitake, sésamo, soya con jengibre",
       "tags": [],
       "color": "#A8814E",
-      "emoji": "🥟"
+      "emoji": "🥟",
+      "reward_icon": "dumpling"
     },
     {
       "id": "dimsum_04",
       "cat": "dim_sum",
       "name": "Fried Wontons",
-      "price": 237,
+      "price": 288,
       "desc": "Wonton frito de cerdo, hongos shiitake, salsa sweet chili",
       "tags": [],
       "color": "#A8814E",
-      "emoji": "🥟"
+      "emoji": "🥟",
+      "reward_icon": "dumpling"
     },
     {
       "id": "dimsum_05",
@@ -53,7 +57,8 @@
       "desc": "Bao al vapor, tempura crocante, sriracha mayo",
       "tags": [],
       "color": "#A8814E",
-      "emoji": "🥟"
+      "emoji": "🥟",
+      "reward_icon": "dumpling"
     },
     {
       "id": "starter_01",
@@ -65,7 +70,8 @@
         "crowd_favourite"
       ],
       "color": "#13100E",
-      "emoji": "🍢"
+      "emoji": "🍢",
+      "reward_icon": "skewer"
     },
     {
       "id": "starter_02",
@@ -75,7 +81,8 @@
       "desc": "A la parrilla, mostaza dijon",
       "tags": [],
       "color": "#13100E",
-      "emoji": "🍢"
+      "emoji": "🍢",
+      "reward_icon": "skewer"
     },
     {
       "id": "starter_03",
@@ -85,7 +92,8 @@
       "desc": "Costillas de cerdo glaseadas, hoisin, cinco especias, sésamo",
       "tags": [],
       "color": "#13100E",
-      "emoji": "🍢"
+      "emoji": "🍢",
+      "reward_icon": "skewer"
     },
     {
       "id": "starter_04",
@@ -95,7 +103,8 @@
       "desc": "A la parrilla, aji amarillo",
       "tags": [],
       "color": "#13100E",
-      "emoji": "🍢"
+      "emoji": "🍢",
+      "reward_icon": "skewer"
     },
     {
       "id": "starter_05",
@@ -105,7 +114,8 @@
       "desc": "Camarones salteados, frijol negro, ajo, chile",
       "tags": [],
       "color": "#13100E",
-      "emoji": "🍢"
+      "emoji": "🍢",
+      "reward_icon": "skewer"
     },
     {
       "id": "starter_06",
@@ -115,7 +125,8 @@
       "desc": "Camarones tempura crocantes, mayo picante, cítricos",
       "tags": [],
       "color": "#13100E",
-      "emoji": "🍢"
+      "emoji": "🍢",
+      "reward_icon": "skewer"
     },
     {
       "id": "special_01",
@@ -127,7 +138,8 @@
         "signature_special"
       ],
       "color": "#B61218",
-      "emoji": "✦"
+      "emoji": "✦",
+      "reward_icon": "star"
     },
     {
       "id": "special_02",
@@ -139,7 +151,8 @@
         "must_try"
       ],
       "color": "#B61218",
-      "emoji": "✦"
+      "emoji": "✦",
+      "reward_icon": "star"
     },
     {
       "id": "special_04",
@@ -149,7 +162,8 @@
       "desc": "Costilla corta braseada, adobo asiático, ají amarillo",
       "tags": [],
       "color": "#B61218",
-      "emoji": "✦"
+      "emoji": "✦",
+      "reward_icon": "star"
     },
     {
       "id": "special_05",
@@ -159,7 +173,8 @@
       "desc": "Filete sellado, mantequilla miso, jengibre encurtido, microverdes",
       "tags": [],
       "color": "#B61218",
-      "emoji": "✦"
+      "emoji": "✦",
+      "reward_icon": "star"
     },
     {
       "id": "crudo_01",
@@ -171,7 +186,8 @@
         "must_try"
       ],
       "color": "#2D5447",
-      "emoji": "🐟"
+      "emoji": "🐟",
+      "reward_icon": "fish"
     },
     {
       "id": "crudo_02",
@@ -181,7 +197,8 @@
       "desc": "Pescado fresco, leche de tigre, cebolla morada, camote, choclo",
       "tags": [],
       "color": "#2D5447",
-      "emoji": "🐟"
+      "emoji": "🐟",
+      "reward_icon": "fish"
     },
     {
       "id": "crudo_03",
@@ -191,7 +208,8 @@
       "desc": "Camarones tigre, leche de tigre, ají amarillo, pepino",
       "tags": [],
       "color": "#2D5447",
-      "emoji": "🐟"
+      "emoji": "🐟",
+      "reward_icon": "fish"
     },
     {
       "id": "noodle_01",
@@ -203,7 +221,8 @@
         "most_ordered"
       ],
       "color": "#8A7B6B",
-      "emoji": "🍜"
+      "emoji": "🍜",
+      "reward_icon": "noodle"
     },
     {
       "id": "noodle_01_sin",
@@ -213,7 +232,8 @@
       "color": "#8A7B6B",
       "emoji": "🍜",
       "variantOf": "noodle_01",
-      "choice": "Sin Proteína"
+      "choice": "Sin Proteína",
+      "reward_icon": "noodle"
     },
     {
       "id": "noodle_01_pollo",
@@ -223,7 +243,8 @@
       "color": "#8A7B6B",
       "emoji": "🍜",
       "variantOf": "noodle_01",
-      "choice": "Pollo"
+      "choice": "Pollo",
+      "reward_icon": "noodle"
     },
     {
       "id": "noodle_01_camaron",
@@ -233,7 +254,8 @@
       "color": "#8A7B6B",
       "emoji": "🍜",
       "variantOf": "noodle_01",
-      "choice": "Camarones"
+      "choice": "Camarones",
+      "reward_icon": "noodle"
     },
     {
       "id": "noodle_02",
@@ -243,7 +265,8 @@
       "desc": "Res tierna, brócoli, salsa de ostras y jengibre",
       "tags": [],
       "color": "#8A7B6B",
-      "emoji": "🍜"
+      "emoji": "🍜",
+      "reward_icon": "noodle"
     },
     {
       "id": "noodle_03",
@@ -253,7 +276,8 @@
       "desc": "Pollo salteado, chiles secos, frijol negro, bok choy",
       "tags": [],
       "color": "#8A7B6B",
-      "emoji": "🍜"
+      "emoji": "🍜",
+      "reward_icon": "noodle"
     },
     {
       "id": "rice_01",
@@ -265,7 +289,8 @@
         "most_ordered"
       ],
       "color": "#A8814E",
-      "emoji": "🍚"
+      "emoji": "🍚",
+      "reward_icon": "rice"
     },
     {
       "id": "rice_02",
@@ -275,7 +300,8 @@
       "desc": "Res al wok, hoisin, jengibre, cebollín, arroz",
       "tags": [],
       "color": "#A8814E",
-      "emoji": "🍚"
+      "emoji": "🍚",
+      "reward_icon": "rice"
     },
     {
       "id": "rice_03",
@@ -285,7 +311,8 @@
       "desc": "Arroz jazmín al wok, huevo, vegetales, salsa de ostras",
       "tags": [],
       "color": "#A8814E",
-      "emoji": "🍚"
+      "emoji": "🍚",
+      "reward_icon": "rice"
     },
     {
       "id": "rice_04",
@@ -295,7 +322,8 @@
       "desc": "lascas de pollo, brócoli salteado, salsa de ostras preparada",
       "tags": [],
       "color": "#A8814E",
-      "emoji": "🍚"
+      "emoji": "🍚",
+      "reward_icon": "rice"
     },
     {
       "id": "rice_05",
@@ -305,7 +333,8 @@
       "desc": "longaniza china, arroz blanco, arvejas chinas salteadas",
       "tags": [],
       "color": "#A8814E",
-      "emoji": "🍚"
+      "emoji": "🍚",
+      "reward_icon": "rice"
     },
     {
       "id": "soup_01",
@@ -315,7 +344,8 @@
       "desc": "Caldo de huesos, fideos de huevo, char siu, bok choy",
       "tags": [],
       "color": "#2D5447",
-      "emoji": "🥣"
+      "emoji": "🥣",
+      "reward_icon": "soup"
     },
     {
       "id": "soup_02",
@@ -325,7 +355,8 @@
       "desc": "Wonton de cerdo y camarón, caldo de la casa, jengibre, cebollín",
       "tags": [],
       "color": "#2D5447",
-      "emoji": "🥣"
+      "emoji": "🥣",
+      "reward_icon": "soup"
     },
     {
       "id": "soup_03",
@@ -335,7 +366,8 @@
       "desc": "Pepino japonés, wakame, sésamo, vinagre de arroz",
       "tags": [],
       "color": "#2D5447",
-      "emoji": "🥣"
+      "emoji": "🥣",
+      "reward_icon": "soup"
     },
     {
       "id": "beer_01",
@@ -434,7 +466,8 @@
       "tags": [],
       "color": "#8A7B6B",
       "emoji": "🥤",
-      "subcat": "Sodas"
+      "subcat": "Sodas",
+      "reward_icon": "glass"
     },
     {
       "id": "soft_02",
@@ -445,7 +478,8 @@
       "tags": [],
       "color": "#8A7B6B",
       "emoji": "🥤",
-      "subcat": "Sodas"
+      "subcat": "Sodas",
+      "reward_icon": "glass"
     },
     {
       "id": "soft_03",
@@ -456,7 +490,8 @@
       "tags": [],
       "color": "#8A7B6B",
       "emoji": "🥤",
-      "subcat": "Sodas"
+      "subcat": "Sodas",
+      "reward_icon": "glass"
     },
     {
       "id": "soft_04",
@@ -467,7 +502,8 @@
       "tags": [],
       "color": "#8A7B6B",
       "emoji": "🥤",
-      "subcat": "Sodas"
+      "subcat": "Sodas",
+      "reward_icon": "glass"
     }
   ],
   "extras": [
@@ -475,19 +511,22 @@
       "id": "rice_white",
       "cat": "Acompañamientos",
       "name": "Arroz Blanco",
-      "price": 50
+      "price": 50,
+      "reward_icon": "rice"
     },
     {
       "id": "rice_chinese",
       "cat": "Acompañamientos",
       "name": "Arroz Chino",
-      "price": 85
+      "price": 85,
+      "reward_icon": "rice"
     },
     {
       "id": "papas_fritas",
       "cat": "Acompañamientos",
       "name": "Papas Fritas",
-      "price": 75
+      "price": 75,
+      "reward_icon": "rice"
     },
     {
       "id": "sauce_chili_oil",
@@ -635,5 +674,74 @@
     "starter_04",
     "starter_05",
     "starter_06"
+  ],
+  "extras_by_category": {
+    "dim_sum": [
+      "Acompañamientos",
+      "Salsas"
+    ],
+    "starters": [
+      "Acompañamientos",
+      "Salsas"
+    ],
+    "house_specials": [
+      "Acompañamientos",
+      "Salsas"
+    ],
+    "crudo": [
+      "Acompañamientos",
+      "Salsas"
+    ],
+    "noodles": [
+      "Acompañamientos",
+      "Salsas"
+    ],
+    "rice": [
+      "Acompañamientos",
+      "Salsas"
+    ],
+    "soups_salads": [
+      "Acompañamientos",
+      "Salsas"
+    ]
+  },
+  "extras_by_item": {
+    "rice_03": [
+      "Proteínas"
+    ]
+  },
+  "badges": {
+    "signature_special": {
+      "label": "Especial de la casa",
+      "cls": "menu-badge--bronze"
+    },
+    "chefs_pick": {
+      "label": "Selección del chef",
+      "cls": "menu-badge--bronze"
+    },
+    "must_try": {
+      "label": "Imperdible",
+      "cls": "menu-badge--red"
+    },
+    "crowd_favourite": {
+      "label": "Favorito",
+      "cls": "menu-badge--red"
+    },
+    "most_ordered": {
+      "label": "Más pedido",
+      "cls": "menu-badge--jade"
+    },
+    "price_pending": {
+      "label": "Precio próximamente",
+      "cls": "menu-badge--muted"
+    }
+  },
+  "badge_priority": [
+    "signature_special",
+    "chefs_pick",
+    "must_try",
+    "crowd_favourite",
+    "most_ordered",
+    "price_pending"
   ]
 }

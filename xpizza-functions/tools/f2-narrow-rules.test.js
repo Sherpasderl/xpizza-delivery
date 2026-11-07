@@ -30,6 +30,27 @@ for (const variant of ['N-human', 'N-full']) {
 }
 ok(`only the allowlisted leaves change (N-human ${N.CHANGED_LEAVES('N-human').length}, N-full ${N.CHANGED_LEAVES('N-full').length}); every other leaf (validators, indexes, payment protection, driver writes, Q0 exclusions) byte-equal`);
 
+// ── rules hardening (PLAN-rules-driver-terminal-hardening r1.1 §2.3): the order-status VALIDATOR is narrowed like its grant ──
+{
+  const GLOBAL_KITCHEN = "root.child('kitchen').child(auth.uid).exists()";
+  const SCOPED = "root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('kitchen_staff').child(auth.uid).exists()";
+  const v0 = BASE.rules.orders.$order_id.status['.validate'];
+  assert.ok(typeof v0 === 'string' && v0.includes(GLOBAL_KITCHEN), 'RH-F2-PREMISE the canonical status .validate exists and carries the global kitchen exemption');
+  assert.ok(BASE.rules.orders.$order_id.status['.write'].includes("&& (newData.exists() || root.child('dispatchers').child(auth.uid).exists() || " + GLOBAL_KITCHEN + ')'), 'RH-F2-PREMISE the canonical status .write carries the delete conjunct');
+  for (const variant of ['N-human', 'N-full']) {
+    assert.ok(N.CHANGED_LEAVES(variant).includes('/orders/$order_id/status/.validate'), `RH-F2-VALIDATE-CHANGED ${variant}`);
+    const st = N.narrow(BASE, variant).rules.orders.$order_id.status;
+    for (const leaf of ['.write', '.validate']) {
+      assert.ok(!st[leaf].includes(GLOBAL_KITCHEN), `RH-F2-NO-GLOBAL-KITCHEN ${variant} ${leaf}`);
+      assert.ok(st[leaf].includes(SCOPED), `RH-F2-SCOPED-KITCHEN ${variant} ${leaf}`);
+    }
+    assert.strictEqual(st['.validate'], v0.replaceAll(GLOBAL_KITCHEN, `(root.child('orders').child($order_id).child('restaurant_id').isString() && ${SCOPED})`), `RH-F2-VALIDATE-EXACT ${variant}`);
+  }
+  const dv = JSON.parse(JSON.stringify(BASE)); dv.rules.orders.$order_id.status['.validate'] += ' && true';
+  assert.throws(() => N.narrow(dv, 'N-human'), /source drift at \/orders\/\$order_id\/status\/\.validate/, 'RH-F2-VALIDATE-DRIFT');
+  ok('rules hardening: the status .validate is a pinned changed leaf; its kitchen exemption (and the .write delete conjunct\'s) narrows to the order\'s restaurant kitchen_staff in N-human and N-full; drift refused');
+}
+
 // ── source drift is refused ──
 const drift = JSON.parse(JSON.stringify(BASE)); drift.rules.orders['.read'] += ' && true';
 assert.throws(() => N.narrow(drift, 'N-human'), /source drift at \/orders\/\.read/);

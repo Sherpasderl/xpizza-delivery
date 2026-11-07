@@ -1,0 +1,34 @@
+{
+  "surface": "portal",
+  "captured": "2026-10-27",
+  "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+  "request": "https://fonts.googleapis.com/css2?family=Archivo:wght@600..800&display=swap",
+  "css": {
+    "file": "portal.google.css",
+    "sha256": "c319827b54196e4c9091688e40050bd958e85eb83b3bc69a2688daa4ece1eac3",
+    "bytes": 1377
+  },
+  "files": [
+    {
+      "family": "Archivo",
+      "subset": "vietnamese",
+      "url": "https://fonts.gstatic.com/s/archivo/v25/k3kPo8UDI-1M0wlSV9XAw6lQkqWY8Q82sLySOxKsv4RnUPU.woff2",
+      "sha256": "2518e8eb97cd2b36dbf380d085e47bbc0df5c32fc6adc32fe1ca6edce192cee0",
+      "bytes": 13216
+    },
+    {
+      "family": "Archivo",
+      "subset": "latin-ext",
+      "url": "https://fonts.gstatic.com/s/archivo/v25/k3kPo8UDI-1M0wlSV9XAw6lQkqWY8Q82sLyTOxKsv4RnUPU.woff2",
+      "sha256": "a999e009fdcd0f939c138e04043b3b2ad083b26252b644e8f94c083d48b77af0",
+      "bytes": 32672
+    },
+    {
+      "family": "Archivo",
+      "subset": "latin",
+      "url": "https://fonts.gstatic.com/s/archivo/v25/k3kPo8UDI-1M0wlSV9XAw6lQkqWY8Q82sLydOxKsv4Rn.woff2",
+      "sha256": "7150c0ec5ad356453013d11affec1fbab95de0dd2dcecb043b4f1cb7f87c4ba4",
+      "bytes": 34940
+    }
+  ]
+}

@@ -72,6 +72,26 @@ test('a refused pairing (gate off, no prep base, not a manager) → an error, no
   }
 });
 
+test('H1c: after the device signs in, the SAME custom token goes to native (uid + rid); a native failure keeps the pairing', async () => {
+  const f = fakes(); const nat = [];
+  const native = { setDeviceCredential: async (t, uid, rid) => { nat.push([t, uid, rid]); f.log.push(['setDeviceCredential']); } };
+  const store = createSessionStore(memoryStorage());
+  const p = await startPairing({ auth: f.auth, call: f.call, store, native }, { email: 'a@x.test', password: 'p' });
+  assert.equal((await p.pair(p.selected, 'Mostrador')).ok, true);
+  assert.deepEqual(nat, [['TOKEN', 'hh_tb_norte_r4nd', 'tb_norte']]);
+  const order = f.log.map((l) => l[0]).filter((n) => ['merchantPairDevice', 'signOut', 'signInWithToken', 'setDeviceCredential'].includes(n));
+  assert.deepEqual(order, ['merchantPairDevice', 'signOut', 'signInWithToken', 'setDeviceCredential'], 'native only after the web device sign-in');
+  const g = fakes(); const store2 = createSessionStore(memoryStorage());
+  const p2 = await startPairing({ auth: g.auth, call: g.call, store: store2, native: { setDeviceCredential: async () => { throw new Error('native sign-in failed'); } } }, { email: 'a@x.test', password: 'p' });
+  const r2 = await p2.pair(p2.selected, 'Mostrador');
+  assert.equal(r2.ok, true, 'the web pairing stands (pushReady stays false → the checks screen blocks)');
+  assert.ok(store2.load());
+  const t = fakes({ tokenFails: true }); let called = 0;
+  const p3 = await startPairing({ auth: t.auth, call: t.call, store: createSessionStore(memoryStorage()), native: { setDeviceCredential: async () => { called++; } } }, { email: 'a@x.test', password: 'p' });
+  await p3.pair(p3.selected, 'Mostrador');
+  assert.equal(called, 0, 'a failed web token exchange never reaches native');
+});
+
 test('the session store: prep base persisted at pairing; a VALID refresh updates it; a null / invalid refresh KEEPS it (advisor)', () => {
   const st = memoryStorage();
   const s = createSessionStore(st);
@@ -135,6 +155,19 @@ test('"Olvidé el PIN" / sign-out ORDER: gen bump → feeds stop → queue parti
   const note = await signOut(ctx, 'cambiar_sucursal');
   assert.deepEqual(log, ['gen++', 'feeds.stop', 'undo.drop', 'eta.stopAll', 'queue.discard:cambiar_sucursal', 'alarm.stop', 'auth.signOut', 'store.clear']);
   assert.deepEqual(note, { discarded: 2, reason: 'cambiar_sucursal' });
+});
+
+test('H1c: sign-out ends the NATIVE session before the alarm stop and the web sign-out; a native failure never blocks the logout', async () => {
+  for (const fails of [false, true]) {
+    const log = [];
+    const ctx = {
+      session: { bump: () => log.push('gen++') }, feeds: null, queue: null, undoStop: null, eta: null,
+      bridge: { alarm: { stop: () => log.push('alarm.stop') }, endDeviceSession: async () => { log.push('endDeviceSession'); if (fails) throw new Error('x'); } },
+      auth: { signOut: async () => log.push('auth.signOut') }, store: { clear: () => log.push('store.clear') },
+    };
+    await signOut(ctx, 'olvide_pin');
+    assert.deepEqual(log, ['gen++', 'endDeviceSession', 'alarm.stop', 'auth.signOut', 'store.clear'], `fails=${fails}`);
+  }
 });
 
 test('codex H1b r1 P1-5: five CONCURRENT wrong attempts lock exactly once — never five unlocked answers', async () => {

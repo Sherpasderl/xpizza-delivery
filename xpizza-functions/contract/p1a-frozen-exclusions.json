@@ -1,5 +1,5 @@
 {
- "_doc": "R3 P1-b REGRESSION LOCK — the exact 67 region ids P1-a excluded at S1 / x_pizza / new, frozen from git show 1091d30:xpizza-functions/contract/output-applicability.json (codex P1-b design r1), + the 67th added on main by int7 e8d0414 (advisor ruling A: updateCart@detailCtaTap; P1-a precondition no-detail-cta = vector field detailCta here). The derived model must exclude exactly these at that context. The lock is over P1-a's ENFORCED slice readers (git show 1091d30 journey SLICE.readers) — the cells those 66 exclusions were reviewed for; P1-b bulk entries for OTHER readers at S1 / x_pizza / new are new reviewed exclusions, listed in the review report.",
+ "_doc": "R3 P1-b REGRESSION LOCK — the exact 67 region ids P1-a excluded at S1 / x_pizza / new, frozen from git show 1091d30:xpizza-functions/contract/output-applicability.json (codex P1-b design r1), + the 67th added on main by int7 e8d0414 (advisor ruling A: updateCart@detailCtaTap; P1-a precondition no-detail-cta = vector field detailCta here). The derived model must exclude exactly these at that context. The lock is over P1-a's ENFORCED slice readers (git show 1091d30 journey SLICE.readers) — the cells those 66 exclusions were reviewed for; P1-b bulk entries for OTHER readers at S1 / x_pizza / new are new reviewed exclusions, listed in the review report. SECOND EXTENSION (67 → 72; the 1st was ruling A / int7): advisor ruling B, 2026-10-27, train next-after-bd777b6d; C fb160f98/d71d5606; derivation diff HEAD→draft (0 removed, +10 cells at S1, all R9/R15 «Llegué»). The 5 added ids: the 4 «Llegué» server regions (context no-call:notifyArrivedOnTap, as claimOrder / pixelPayWebhook) and statusArrived@presentStatus (appliesWhenAny outForDelivery, as tplOutForDelivery).",
  "frozenAt": "1091d30",
  "context": "S1|x_pizza|new",
  "readers": [
@@ -10,6 +10,9 @@
   "R15"
  ],
  "regions": [
+  "xpizza-functions/arrived-notify.js#eligible@xpizza-functions/arrived-notify.js#notifyArrived",
+  "xpizza-functions/arrived-notify.js#eligible@xpizza-functions/arrived-notify.js#notifyArrived~2",
+  "xpizza-functions/arrived-notify.js#notifyArrived@xpizza-functions/index.js#notifyArrivedOnTap",
   "xpizza-functions/index.js#onIncomingWhatsApp>anon@self",
   "xpizza-functions/index.js#onIncomingWhatsApp@self",
   "xpizza-functions/index.js#sendPaidAfterCloseRefund@xpizza-functions/index.js#refundReconciler",
@@ -21,6 +24,7 @@
   "xpizza-functions/whatsapp.js#renderDelivered@self",
   "xpizza-functions/whatsapp.js#renderPickupReceived@self",
   "xpizza-functions/whatsapp.js#renderPreparing@self",
+  "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/arrived-notify.js#notifyArrived",
   "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#notifyPickupReady",
   "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#notifyPreparing",
   "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#onIncomingWhatsApp",
@@ -76,6 +80,7 @@
   "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#applyPollState",
   "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#applyPollState~2",
   "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#processPixelPay",
-  "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#submitOrder"
+  "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#submitOrder",
+  "xpizza-orders/status-view.js#statusArrived@xpizza-orders/status-view.js#presentStatus"
  ]
 }

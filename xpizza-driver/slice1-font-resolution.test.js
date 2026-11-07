@@ -113,7 +113,7 @@ t('every used weight resolves to a local Red Hat face (exact pin or winning rang
 });
 
 t('body font-family leads with the aliased family (body + card text resolve to the local face)', () => {
-  const body = html.match(/\bbody\s*\{[^}]*\}/);
+  const body = html.match(/(?<![\w.#-])body\s*\{[^}]*\}/);   // the real `body {` rule, NOT `.off2-body {` (the \b caught body after the hyphen)
   assert.ok(body, 'no body {} rule found');
   assert.match(body[0], /font-family:\s*['"]Plus Jakarta Sans['"]/, 'body must lead with the aliased family');
 });

@@ -41,10 +41,24 @@ import {
 // promise settles) — a stalled connection keeps it outstanding, so the self-update never reloads over a pending write.
 // Same arguments, same returned promise / reference; with no stamped module this is exactly the SDK call.
 function sherpaTrack(p) { try { const S = (typeof window !== 'undefined') ? window.SherpaClient : null; if (S && typeof S.trackWrite === 'function') S.trackWrite(p); } catch (_) {} return p; }
-const set = (...a) => sherpaTrack(fbSet(...a));
-const update = (...a) => sherpaTrack(fbUpdate(...a));
-const remove = (...a) => sherpaTrack(fbRemove(...a));
-const runTransaction = (...a) => sherpaTrack(fbRunTransaction(...a));
+// ── Authed-write barrier (PLAN-dispatch-maps-decouple §4) ──────────────────────────────────────────────
+// A host page registers a predicate via setAuthedRequestGuard; while it returns true (the page's authorized
+// session was superseded by a sign-out / account switch that is mid-reload), EVERY authed write — RTDB, HTTP,
+// and the page's onCall — refuses with a typed rejection and issues NO network call, so a stale continuation
+// can never write under the next operator. Default null = inert: every other app (and dispatch-mobile, which
+// never registers it) behaves exactly as before.
+let authedRequestGuard = null;
+export function setAuthedRequestGuard(fn) { authedRequestGuard = fn; }
+const authWriteBarred = () => !!(authedRequestGuard && authedRequestGuard());
+const supersededError = () => Object.assign(new Error('session superseded'), { code: 'auth/session-superseded' });
+
+// The ONLY RTDB write primitives (tripwire-enforced): fbSet/fbUpdate/fbRemove/fbRunTransaction appear exactly
+// once each, here. Each checks the barrier immediately BEFORE the write — not at caller entry, because the
+// callers await between writes, so every write and every rollback write is re-checked at issue time.
+const set            = (...a) => authWriteBarred() ? Promise.reject(supersededError()) : sherpaTrack(fbSet(...a));
+const update         = (...a) => authWriteBarred() ? Promise.reject(supersededError()) : sherpaTrack(fbUpdate(...a));
+const remove         = (...a) => authWriteBarred() ? Promise.reject(supersededError()) : sherpaTrack(fbRemove(...a));
+const runTransaction = (...a) => authWriteBarred() ? Promise.reject(supersededError()) : sherpaTrack(fbRunTransaction(...a));
 
 // ============================================================
 // CONSTANTS
@@ -53,6 +67,22 @@ const runTransaction = (...a) => sherpaTrack(fbRunTransaction(...a));
 // P-SELFUPDATE CP2 — the one request wrapper at every platform-function call site (advisor ruling Q6/Q7). A non-identity
 // endpoint: SherpaClient.fetch passes the SAME arguments through untouched; with no module loaded, it is fetch itself.
 function sherpaFetch(u, o) { const S = (typeof window !== 'undefined') ? window.SherpaClient : null; return (S && typeof S.fetch === 'function') ? S.fetch(u, o) : fetch(u, o); }
+
+// Shared authed POST (PLAN-dispatch-maps-decouple §4A): refuses BEFORE token acquisition / network when the
+// session was superseded, else attaches the caller's fresh ID token. Returns the raw Response so each call
+// site keeps its own status / outcome handling unchanged.
+async function authedFetch(url, body) {
+  if (authWriteBarred()) throw supersededError();
+  const user = auth && auth.currentUser;
+  if (!user) throw new Error('No hay sesión de dispatcher');
+  const token = await user.getIdToken();
+  if (authWriteBarred()) throw supersededError();   // re-check: the session may have been superseded DURING the token await
+  return sherpaFetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(body)
+  });
+}
 
 export const RESTAURANT = {
   lat: 15.507489753573818,
@@ -140,6 +170,10 @@ const STALE_PING_THRESHOLD_S = 90;
  * in the Cloud Function's monitorAssignmentTimeout (ACCEPT_TIMEOUT_MS).
  */
 export const ACCEPT_TIMEOUT_MS = 60 * 1000;
+
+// Map-pane failure copy — ONE gesture-neutral string shared by desktop + mobile dispatch (owner ruling (b),
+// 2026-10-27). The whole message line is the retry target in the UI. Swap the wording here only.
+export const MAP_UNAVAILABLE_MSG = 'Mapa no disponible — reintentá. El tablero sigue en vivo.';
 
 // ============================================================
 // MODULE STATE
@@ -236,7 +270,8 @@ export async function endShift(driverId) {
   await update(ref(db, `drivers/${driverId}`), {
     active: false,
     status: DRIVER_STATUS.OFF_SHIFT,
-    shift_ended_at: serverTimestamp()
+    shift_ended_at: serverTimestamp(),
+    break_since: null   // Pausa: a forced clock-out (Torre forceOffShift) ends the pause too
   });
 }
 
@@ -598,14 +633,7 @@ function functionUrl(name) {
   return `https://${FUNCTIONS_REGION}-${pid}.cloudfunctions.net/${name}`;
 }
 export async function resolveReconciliation(orderId, action, note = '') {
-  const user = auth && auth.currentUser;
-  if (!user) throw new Error('No hay sesión de dispatcher');
-  const token = await user.getIdToken();
-  const res = await sherpaFetch(functionUrl('resolveManualReconciliation'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body: JSON.stringify({ order_id: orderId, action, note })
-  });
+  const res = await authedFetch(functionUrl('resolveManualReconciliation'), { order_id: orderId, action, note });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     // #9 honest contract: refund_pending / manual_review now return 409 — surface the outcome (not a generic
@@ -633,7 +661,7 @@ export function subscribeToDispatcherAlerts(callback) {
 // PLAN-H0 (ruling B): a payment alert's × is durable dismissal on its evidence (dispatch-h0-dismiss.js).
 export async function dismissDispatcherAlert(alertId, rec = null) {
   const u = h0DismissUpdate(alertId, rec);
-  if (u) { await fbUpdate(ref(db), u); return; }
+  if (u) { await update(ref(db), u); return; }
   await remove(ref(db, `dispatcher_alerts/${alertId}`));
 }
 
@@ -758,6 +786,14 @@ function casAssign(expected, target) {
   };
 }
 
+// Pausa (PLAN-driver-pausa-server r1.1 §5, owner ruling BLOCK): a paused driver is never hand-assigned. The TARGET's CURRENT status
+// is read right before the claim — so «A mí», self-assign, a stale picker (paused after it opened) and a stale mobile confirmation
+// are all refused, not only the picker row. The read→claim instant is an accepted residual (the offer then times out).
+async function targetOnBreak(driverId) {
+  if (!driverId) return false;
+  return (await get(ref(db, `drivers/${driverId}/status`))).val() === DRIVER_STATUS.ON_BREAK;
+}
+
 export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
   // S2 same-hub stacking: force-accept (direct 'accepted', no swipe/timeout) ONLY when the driver
   // already has an accepted/in-progress order at the SAME restaurant hub as this new order. A cross-hub
@@ -790,6 +826,8 @@ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
 
   const pickupTaskId = `${orderId}_pickup`;
   const deliveryTaskId = `${orderId}_delivery`;
+
+  if (await targetOnBreak(driverId)) return { ok: false, reason: 'on_break' };   // Pausa: refused, nothing written
 
   // S3b race guard: atomically CAS-claim the DELIVERY task's assigned_driver_id — the same field the
   // S3 sweeper and SIN ASIGNAR use — so a manual assign cannot race the sweeper or another dispatcher.
@@ -872,6 +910,20 @@ export async function reassignOrder(orderId, newDriverId, expectedFromDriver) {
   const pickup = pickupSnap.val();
   if (!pickup) throw new Error(`Order ${orderId} not found`);
 
+  // Phase guard — refuse once the driver physically has the food, exactly like unassign-core.js:59
+  // (pickup completed OR order out_for_delivery), plus a finite picked_up_at (which also fires on the
+  // corrupted shape a reset would leave behind). Without this, reassign would rewrite the COMPLETED pickup
+  // back to `assigned`. Refuse BEFORE the CAS so nothing is written. NOTE: the client CAS below locks only
+  // the delivery owner, so a pickup swipe in the same instant as this read is an accepted residual (owner
+  // simple-edge-case rule); the everyday case — reassigning an order already en route — is fully covered.
+  const orderSnap = await get(ref(db, `orders/${orderId}`));
+  const order = orderSnap.val() || {};
+  if (pickup.status === TASK_STATUS.COMPLETED
+      || order.status === ORDER_STATUS.OUT_FOR_DELIVERY
+      || Number.isFinite(order.picked_up_at)) {
+    return { ok: false, reason: 'picked_up' };
+  }
+
   // S3n: CAS the delivery field against the driver the PICKER CAPTURED AT OPEN-TIME (expectedFromDriver),
   // NOT a fresh click-time read. This closes the stale-picker-view window: if the order moved (sweeper /
   // timeout monitor / another dispatcher) between the picker opening and this click, cur !== expectedFrom-
@@ -880,6 +932,7 @@ export async function reassignOrder(orderId, newDriverId, expectedFromDriver) {
   // fresh-pickup fallback preserves the old behavior for any caller that doesn't capture. oldDriverId — the
   // driver we CAS-confirmed we moved away FROM — is also whose current_task_id/status we clean up below.
   const oldDriverId = expectedFromDriver !== undefined ? (expectedFromDriver ?? null) : (pickup.assigned_driver_id ?? null);
+  if (await targetOnBreak(newDriverId)) return { ok: false, reason: 'on_break' };   // Pausa: refused, nothing written
   const claim = await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), casAssign(oldDriverId, newDriverId));
   if (!claim.committed || claim.snapshot.val() !== newDriverId) {
     return { ok: false, reason: 'already_assigned' };
@@ -957,14 +1010,7 @@ export async function reassignOrder(orderId, newDriverId, expectedFromDriver) {
 // money, heals an already-cancelled-but-still-paid order, releases the driver). Replaces the old RTDB-only
 // `cancelOrder`, which wrote status+tasks directly and NEVER refunded a paid card order (the L251 bug).
 export async function cancelOrderRemote(orderId, reason = '') {
-  const user = auth && auth.currentUser;
-  if (!user) throw new Error('No hay sesión de dispatcher');
-  const token = await user.getIdToken();
-  const res = await sherpaFetch(functionUrl('cancelPaidOrder'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body: JSON.stringify({ order_id: orderId, reason })
-  });
+  const res = await authedFetch(functionUrl('cancelPaidOrder'), { order_id: orderId, reason });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     // refund_pending / manual_review / claim_lost arrive as non-2xx carrying {outcome} — surface it so the
@@ -986,14 +1032,7 @@ export async function cancelOrderRemote(orderId, reason = '') {
  * { ok:true } | { ok:false, reason:'reassigned'|'not_assigned'|'picked_up' }; THROWS on non-2xx (caller maps to error copy).
  */
 export async function unassignOrder(orderId, expectedFromDriver, opId) {
-  const user = auth && auth.currentUser;
-  if (!user) throw new Error('No hay sesión de dispatcher');
-  const token = await user.getIdToken();
-  const res = await sherpaFetch(functionUrl('unassignOrder'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body: JSON.stringify({ orderId, expectedFromDriver, opId })
-  });
+  const res = await authedFetch(functionUrl('unassignOrder'), { orderId, expectedFromDriver, opId });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data.error || `HTTP ${res.status}`);
@@ -1011,11 +1050,13 @@ export async function unassignOrder(orderId, expectedFromDriver, opId) {
  * the mockup's success/error states; a transport failure surfaces as httpStatus 0.
  */
 export async function sendTestPush() {
+  if (authWriteBarred()) return { httpStatus: 0, reason: 'superseded' };
   const user = auth && auth.currentUser;
   if (!user) return { httpStatus: 0, reason: 'no_session' };
   let res;
   try {
     const token = await user.getIdToken();
+    if (authWriteBarred()) return { httpStatus: 0, reason: 'superseded' };   // re-check after the token await (preserve the never-throw contract)
     res = await sherpaFetch(functionUrl('sendTestStaffPush'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },

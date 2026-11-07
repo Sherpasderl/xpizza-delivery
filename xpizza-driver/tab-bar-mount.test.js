@@ -1,0 +1,224 @@
+// tab-bar-mount.test.js — the HOST glue for the O6 bottom nav bar, driven through the REAL showScreen + the REAL
+// syncTabBarForScreen / mountTabBar, with the LIFTED production gating constants (not injected). Covers the mounts
+// (offshift + Cuenta), the data-gating, the central no-bar-with-active-work rule and the two Cuenta races, and the
+// Inicio/Cuenta routing. The board-mount (idle vs active) lifecycle is covered through the REAL renderActiveAndQueue
+// in slice2-branch.test.js. Kills: dropping the showScreen→sync call, and flipping the production Pedidos flag.
+// Run: `node tab-bar-mount.test.js` (jsdom resolved from xpizza-functions, like the other harnesses).
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
+import { tabBarHtml } from './tab-bar-view.js';
+import { cuentaHtml } from './nav-view.js';   // the REAL frozen Cuenta shell (header back + flex:1 spacer + signout) the injection adapts
+
+const __dir = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(join(__dir, '..', 'xpizza-functions', 'package.json'));   // resolve jsdom like the other harnesses
+const { JSDOM } = require('jsdom');
+const SCRIPT = readFileSync(join(__dir, 'index.html'), 'utf8').match(/<script type="module">([\s\S]*?)<\/script>/)[1];
+function liftFn(name) {
+  let start = SCRIPT.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1, `function ${name} not found`);
+  let depth = 0, seen = false;
+  for (let i = start; i < SCRIPT.length; i++) {
+    if (SCRIPT[i] === '{') { depth++; seen = true; }
+    else if (SCRIPT[i] === '}') { depth--; if (seen && depth === 0) return SCRIPT.slice(start, i + 1); }
+  }
+  throw new Error(`unbalanced ${name}`);
+}
+function liftConst(name) {   // lift a `const NAME = …;` statement VERBATIM (the real production value)
+  const hits = [...SCRIPT.matchAll(new RegExp(`const ${name} = `, 'g'))];
+  assert.equal(hits.length, 1, `const ${name} must appear exactly once (found ${hits.length})`);
+  const start = hits[0].index, end = SCRIPT.indexOf(';', start);
+  return SCRIPT.slice(start, end + 1);
+}
+
+const SCREENS = ['config', 'login', 'offshift', 'onshift', 'companion', 'cuenta', 'navApp'];
+function boot(opts = {}) {
+  const dom = new JSDOM('<!doctype html><html><body>'
+    + SCREENS.map((s) => `<div id="screen-${s}" class="hidden"></div>`).join('')
+    + '<button id="duty-toggle-off"></button></body></html>', { pretendToBeVisual: true });
+  const { document, window } = dom.window;
+  const calls = { render: 0, openCuenta: 0, openHistory: 0, origBack: 0 };
+  const boardRef = { list: [] };
+  const $ = (id) => document.getElementById(id);
+  document.getElementById('screen-cuenta').innerHTML = cuentaHtml({   // the REAL frozen shell: .set-top (back + title) + .set-body (.set-card + flex:1 spacer + signout)
+    icons: { back: '<svg data-back></svg>', navi: '<svg data-navi></svg>', chev: '<svg data-chev></svg>' }, esc: (s) => String(s), navLabel: 'Waze' });
+  // the FROZEN slice2 cuenta-back listener (showScreen('offshift')) — the rebind must strip it
+  document.getElementById('cuenta-back').addEventListener('click', () => { calls.origBack++; });
+
+  // Cuenta account-hub injection deps: the driver's own record + a dispatch contact. Overridable per test via opts.
+  const ds = JSON.stringify(opts.driverState === undefined
+    ? { name: 'Marvin Reyes', vehicle: 'moto', plate: 'MAB 4821', phone: '+504 9795 2893', active: true }
+    : opts.driverState);
+  const disp = JSON.stringify(opts.dispContact === undefined ? '+504 9795 2893' : opts.dispContact);
+  const body =
+    'const SYSTEM_VERSION = "2.5.3";\n' +   // the Cuenta version line references it
+    'function render(){ _calls.render++; }\n' +
+    'function openCuenta(){ _calls.openCuenta++; }\n' +
+    'function openHistoryModal(){ _calls.openHistory++; }\n' +
+    'function renderOffshift(){ _calls.renderOffshift = (_calls.renderOffshift||0)+1; }\n' +
+    'let soundOn = true;\n' +
+    'function toast(){ _calls.toasts = (_calls.toasts||0) + 1; }\n' +
+    'function updateNotifBanners(){}\n' +
+    'let driverState = ' + ds + ';\n' +                                    // the profile card reads drivers/{uid}
+    'let currentUser = { uid: "t", email: "marvin@x.com" };\n' +
+    'let _dispContact = ' + disp + ';\n' +                                 // config/dispatch_contact (Ayuda row)
+    'function fbRef(){ return {}; }\n' +
+    'function fbOnValue(ref, okCb){ okCb({ val: () => _dispContact }); return () => {}; }\n' +
+    'const XPD = { getDb: () => ({}) };\n' +
+    'const NAVP_ICONS = { chev: "<svg data-chev></svg>" };\n' +            // only .chev is used (Ayuda row); glyph not asserted
+    liftConst('PAGOS_LIVE') + '\n' +
+    liftConst('TAB_SHOW_PEDIDOS') + '\n' +
+    liftConst('TAB_SHOW_GANANCIAS') + '\n' +
+    liftFn('escapeHtml') + '\n' +
+    liftFn('wireDispatchCallRow') + '\n' +
+    liftFn('mountTabBar') + '\n' +
+    liftFn('syncTabBarForScreen') + '\n' +
+    liftFn('showScreen') + '\n' +
+    'return { showScreen, syncTabBarForScreen, mountTabBar, getSoundOn: () => soundOn, setSound: (v) => { soundOn = v; } };';
+  const api = (new Function('document', '$', 'tabBarHtml', 'drv2LiveBoard', '_calls', body))(
+    document, $, tabBarHtml, () => boardRef.list, calls);
+  return { api, document, window, calls, $, boardRef,
+    bar: (id) => document.getElementById(id).querySelector(':scope > .tabs') };
+}
+
+let passed = 0;
+const t = (name, fn) => { try { fn(); passed += 1; } catch (e) { console.error(`✗ ${name}`); throw e; } };
+
+t('REAL showScreen mounts the bar on offshift (Inicio) + Cuenta, data-gated to Inicio·Pedidos·Cuenta via the production constants', () => {
+  const h = boot();
+  h.api.showScreen('offshift');
+  const ob = h.bar('screen-offshift');
+  assert.ok(ob, 'offshift carries the bar (showScreen → syncTabBarForScreen)');
+  assert.equal(ob.querySelectorAll('.tab-btn').length, 3, 'Inicio + Pedidos + Cuenta — Pedidos live (→ history), Ganancias still dormant');
+  assert.ok(ob.querySelector('.tab-btn.on[data-tab="inicio"]'), 'Inicio active');
+  assert.ok(ob.querySelector('[data-tab="pedidos"]'), 'Pedidos shown (TAB_SHOW_PEDIDOS flipped on — history modal shipped)');
+  assert.ok(!ob.querySelector('[data-tab="ganancias"]'), 'Ganancias still dormant (PAGOS_LIVE false)');
+  h.api.showScreen('cuenta');
+  assert.equal(h.bar('screen-offshift'), null, 'leaving offshift removes its bar');
+  assert.ok(h.bar('screen-cuenta').querySelector('.tab-btn.on[data-tab="cuenta"]'), 'Cuenta active on the Cuenta screen');
+  const ver = h.document.getElementById('screen-cuenta').querySelector('.cuenta-ver');
+  assert.ok(ver && /v2\.5\.3 · driver/.test(ver.textContent), 'the muted version line is on Cuenta (customer-app precedent)');
+  h.api.showScreen('login');
+  assert.equal(h.bar('screen-offshift'), null);
+  assert.equal(h.bar('screen-cuenta'), null, 'no bar on an unrelated screen');
+});
+
+t('CENTRAL no-bar-with-active-work (P1): a Cuenta reopen over an active order bounces to the board, no bar', () => {
+  const h = boot();
+  h.boardRef.list = [{ orderId: 'x' }];   // an order arrived
+  h.api.showScreen('cuenta');             // a delayed continuation reopened Cuenta
+  assert.equal(h.calls.render, 1, 'bounced to the board via render()');
+  assert.equal(h.bar('screen-cuenta'), null, 'no Cuenta bar over an active order');
+  // offshift too: no bar while there is active work
+  h.api.showScreen('offshift');
+  assert.equal(h.bar('screen-offshift'), null, 'no offshift bar while an order is active');
+});
+
+t('Cuenta back button (P2.2) is rebound to render() — the frozen showScreen(offshift) listener is stripped', () => {
+  const h = boot();
+  h.api.showScreen('cuenta');   // rebinds cuenta-back
+  const before = h.calls.render;
+  h.document.getElementById('cuenta-back').dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(h.calls.render, before + 1, 'cuenta-back → render() (destination follows current state)');
+  assert.equal(h.calls.origBack, 0, 'the frozen showScreen(offshift) listener no longer fires');
+});
+
+t('tab buttons route: Inicio → render(), Pedidos → openHistoryModal(), Cuenta → openCuenta() (wired once)', () => {
+  const h = boot();
+  h.api.showScreen('offshift');
+  const ob = h.bar('screen-offshift');
+  ob.querySelector('[data-tab="cuenta"]').dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(h.calls.openCuenta, 1, 'Cuenta → openCuenta');
+  ob.querySelector('[data-tab="pedidos"]').dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(h.calls.openHistory, 1, 'Pedidos → openHistoryModal (the daily-history modal)');
+  const r0 = h.calls.render;
+  ob.querySelector('[data-tab="inicio"]').dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(h.calls.render, r0 + 1, 'Inicio → render (go home)');
+});
+
+t('Cuenta: the «Sonido y notificaciones» row is injected into the card and its switch toggles the SAME soundOn state', () => {
+  const h = boot();
+  h.api.showScreen('cuenta');   // syncTabBarForScreen('cuenta') injects the row
+  const card = h.document.getElementById('screen-cuenta').querySelector('.set-card');
+  const row = card.querySelector('#cuenta-sound');
+  assert.ok(row, 'the sound row is injected into the Cuenta card');
+  assert.ok(/Sonido y notificaciones/.test(row.textContent), 'row label');
+  const sw = row.querySelector('#cuenta-sound-sw');
+  assert.ok(sw.classList.contains('on'), 'switch ON reflects soundOn=true');
+  assert.equal(h.api.getSoundOn(), true, 'starts enabled');
+  row.dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(h.api.getSoundOn(), false, 'tapping the row flips the REAL soundOn (the chime gate)');
+  assert.ok(!sw.classList.contains('on'), 'switch reflects the new state');
+  // idempotent: a re-sync does not inject a second row
+  h.api.showScreen('offshift'); h.api.showScreen('cuenta');
+  assert.equal(h.document.getElementById('screen-cuenta').querySelectorAll('#cuenta-sound').length, 1, 'no duplicate row on re-render');
+});
+
+t('Cuenta: the account-hub injection builds the profile card + Reglas/Ayuda rows, omits Mi perfil + restaurant pills, exact to the prototype', () => {
+  const h = boot();   // default driverState: Marvin Reyes · moto · MAB 4821 · +504 9795 2893 · active, dispContact present
+  h.api.showScreen('cuenta');
+  const cs = h.document.getElementById('screen-cuenta');
+  const card = cs.querySelector('.set-card');
+  // profile card (display-only) above the settings card
+  const prof = cs.querySelector('.set-body > .cuenta-prof');
+  assert.ok(prof, 'profile card injected into .set-body');
+  assert.ok(prof.compareDocumentPosition(card) & h.window.Node.DOCUMENT_POSITION_FOLLOWING, 'profile card sits ABOVE the settings card');
+  assert.equal(prof.querySelector('.cp-av').textContent, 'MR', 'initials from the driver name');
+  assert.ok(/Marvin Reyes/.test(prof.querySelector('.cp-name').textContent), 'full name');
+  assert.equal(prof.querySelector('.cp-sub').textContent, 'Moto · MAB 4821 · +504 9••• ••••', 'vehicle · plate · MASKED phone (exact to prototype)');
+  assert.ok(prof.querySelector('.cp-chip'), '«Activa» chip when the account is active');
+  // Reglas de efectivo — DISPLAY-ONLY (no chevron, no pointer)
+  const reglas = card.querySelector('#cuenta-reglas');
+  assert.ok(reglas, 'Reglas row present');
+  assert.ok(reglas.classList.contains('set-static'), 'Reglas is display-only (set-static, no pointer)');
+  assert.ok(!reglas.querySelector('.set-chev'), 'Reglas has NO chevron (proto target is a self-loop no-op)');
+  assert.ok(/Entregás el 100% · llevás sencillo/.test(reglas.textContent), 'Reglas copy from the prototype');
+  // Ayuda y despacho — tappable, chevron, «Central» (never «Torre»), wired to the dispatch number
+  const ayuda = card.querySelector('#cuenta-ayuda');
+  assert.ok(ayuda, 'Ayuda row present');
+  assert.ok(ayuda.querySelector('.set-chev'), 'Ayuda has a chevron (real tel: destination)');
+  assert.ok(/a la Central/.test(ayuda.textContent) && !/Torre/.test(ayuda.textContent), 'copy says «Central», never «Torre» (owner rule overrides the stale prototype copy)');
+  assert.ok(!ayuda.classList.contains('hidden'), 'Ayuda is shown when a valid dispatch number exists');
+  assert.equal(typeof ayuda.onclick, 'function', 'Ayuda is wired (tel: on tap, via wireDispatchCallRow)');
+  // card order: App-nav (frozen cuentaHtml) · sound · reglas · ayuda — the prototype order (minus omitted Mi perfil)
+  const ids = [...card.children].map((c) => c.id);
+  assert.deepEqual(ids, ['cuenta-navapp', 'cuenta-sound', 'cuenta-reglas', 'cuenta-ayuda'], 'rows in prototype order');
+  // sound row icon = prototype bell (not a speaker)
+  assert.ok(card.querySelector('#cuenta-sound .set-ic svg path[d^="M6 9a6"]'), 'sound row uses the prototype bell glyph');
+  // header: cuenta is a TAB ROOT — the frozen back button is hidden, the Sola brand mark replaces it
+  const back = cs.querySelector('#cuenta-back');
+  assert.equal(back.style.display, 'none', 'the frozen back button is hidden (tab root, no back)');
+  assert.ok(cs.querySelector('.set-top .cuenta-mark svg'), 'the Sola brand mark is injected into the header');
+  // «Cerrar sesión» flows under the cards: the frozen flex:1 spacer is neutralized
+  const neutralized = [...cs.querySelectorAll('.set-body > div')].filter((d) => d.style.flex === '0 0 auto');
+  assert.equal(neutralized.length, 1, 'the frozen flex:1 spacer is neutralized to 0 0 auto (signout under the cards)');
+  // OMITTED per owner ruling: Mi perfil (no edit route) + restaurant pills (no assigned-brand reader)
+  assert.ok(!/Mi perfil/.test(cs.textContent), 'Mi perfil row OMITTED (no post-onboarding edit route)');
+  assert.ok(!/RECIB|Recib[íi]s pedidos/.test(cs.textContent), 'restaurant pills OMITTED (no assigned-brand reader today)');
+  // idempotent: a re-sync does not duplicate the injected pieces
+  h.api.showScreen('offshift'); h.api.showScreen('cuenta');
+  assert.equal(cs.querySelectorAll('.cuenta-prof').length, 1, 'no duplicate profile card');
+  assert.equal(cs.querySelectorAll('#cuenta-reglas').length, 1, 'no duplicate Reglas row');
+  assert.equal(cs.querySelectorAll('#cuenta-ayuda').length, 1, 'no duplicate Ayuda row');
+});
+
+t('Cuenta: Ayuda hides with no dispatch number; «Activa» chip drops when the account is not active', () => {
+  const h = boot({ dispContact: null, driverState: { name: 'Ana', vehicle: 'carro', plate: 'XYZ 1', phone: '', active: false } });
+  h.api.showScreen('cuenta');
+  const cs = h.document.getElementById('screen-cuenta');
+  const ayuda = cs.querySelector('#cuenta-ayuda');
+  assert.ok(ayuda && ayuda.classList.contains('hidden'), 'Ayuda row hidden when no valid dispatch number (no dead affordance)');
+  assert.equal(cs.querySelector('.cp-av').textContent, 'A', 'single-word name → one initial');
+  assert.equal(cs.querySelector('.cp-sub').textContent, 'Carro · XYZ 1', 'empty phone drops cleanly from the identity line');
+  assert.ok(!cs.querySelector('.cp-chip'), 'no «Activa» chip when active=false');
+});
+
+t('showScreen(offshift) invokes the renderOffshift rebuild hook (kills the removed-hook mutant)', () => {
+  const h = boot();
+  h.api.showScreen('offshift');
+  assert.equal(h.calls.renderOffshift, 1, 'showScreen → renderOffshift (TABBAR-SHOW rebuild hook)');
+});
+
+console.log(`✓ tab-bar-mount: ${passed} tests passed`);

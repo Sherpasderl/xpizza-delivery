@@ -124,6 +124,26 @@ const CELLS = {
     return 'install() after index.js has loaded is refused; a second install() is refused';
   },
   // assertBuilt: a singleton NOT built through the hook (or built twice) is RED
+  // the PHONE FLAG (phone/flag.js, 30 s — a module singleton, not a factory): install() puts its TTL on the SAME virtual clock
+  // (advisor ruling B, 2026-11-01: its never-awaited refresh landed inside random order-control traces by wall time)
+  async phoneFlag() {
+    const C = require('./_catalog-clock').install();
+    const F = require('../phone/flag');
+    const reads = [];
+    const db = { ref: (p) => ({ once: async () => { reads.push(p); return { val: () => null }; } }) };
+    const settle = () => new Promise((r) => setImmediate(r));
+    assert.strictEqual(await require('./_catalog-clock').warmPhoneFlag(db), false, 'the warm reads the flag (absent → OFF)');
+    assert.strictEqual(reads.length, 1, 'premise — the warm made exactly one read');
+    jumpWallClock(10 * 60000); F.phoneWireStrictNow(db); await settle();
+    assert.strictEqual(reads.length, 1, '🔴 PHONE-FLAG-CLOCK wall time moved 10 min and the hooked flag refreshed — real time still drives it');
+    C.advance(30000 - 1); F.phoneWireStrictNow(db); await settle();
+    assert.strictEqual(reads.length, 1, 'one ms short of the TTL: still cached');
+    C.advance(1); F.phoneWireStrictNow(db); await settle();
+    assert.strictEqual(reads.length, 2, '🔴 PHONE-FLAG-CLOCK advancing the virtual clock to the TTL did not refresh the flag');
+    assert.deepStrictEqual([...new Set(reads)], ['config/phone_wire_strict']);
+    assert.throws(() => F._useClock(() => 0), /once per process/, 'a second clock is refused');
+    return 'phone flag (30 s): warm → one read; wall time +10 min → no refresh; virtual +29 999 ms → cached; +1 ms → exactly one refresh; a second clock refused';
+  },
   async assertBuilt() {
     const C = require('./_catalog-clock').install();
     assert.throws(() => C.assertBuilt(['createCatalogReader'], 'probe'), /built 0× through the clock hook/);

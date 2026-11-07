@@ -4,7 +4,14 @@
  * unassigned queue (honest Phase-1 baseline); `now` injected as epoch ms.
  */
 export function agingBaselineMs(order) {
-  return order && Number.isFinite(order.created_at) ? order.created_at : null;
+  if (!order) return null;
+  // A released scheduled order rejoins the live board stamped with `released_at`
+  // (scheduled-release-core.js), keeping its original `created_at` from when it was placed
+  // hours earlier. Age it from release, not placement, so "min" reads as "live for N min"
+  // for every live order and stays coherent beside the "Programado · <slot>" badge. An ASAP
+  // order has no `released_at`, so it still ages from `created_at` — unchanged.
+  if (Number.isFinite(order.released_at)) return order.released_at;
+  return Number.isFinite(order.created_at) ? order.created_at : null;
 }
 
 export function agingSeconds(baselineMs, nowMs) {

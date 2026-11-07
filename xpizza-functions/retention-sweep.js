@@ -63,6 +63,12 @@ async function runRetentionSweep(db, opts) {
     const t = await require('./tracking/tombstones').sweepTrackerTombstones(db, Date.now());
     if (t.scanned) console.log(`retentionSweepTasks: tracker tombstones — deleted ${t.deleted}, kept ${t.kept} of ${t.scanned}`);
   } catch (e) { console.warn('retentionSweepTasks: tracker tombstone sweep failed (task pass unaffected)', e && e.message); }
+  // stacked-seq r5 T9 (D10): the stacks/ retention pass — flag-gated (OFF → no stacks/ read, no delete), isolated in its own
+  // try/catch, never affects the passes above
+  try {
+    const s = await require('./sequencing/retention').runStackPassIfOn(db, Date.now());
+    if (s && s.deleted) console.log(`retentionSweepTasks: stacks — deleted ${s.deleted}, kept ${s.kept} of ${s.scanned}`);
+  } catch (e) { console.warn('retentionSweepTasks: stack retention pass failed (task pass unaffected)', e && e.message); }
   return r;
 }
 

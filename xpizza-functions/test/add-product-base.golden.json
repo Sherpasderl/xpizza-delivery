@@ -1157,7 +1157,7 @@
        "emoji": "🥟",
        "id": "dimsum_01",
        "name": "Sichuan Spicy Wonton",
-       "price": 223,
+       "price": 249,
        "tags": [
         "chefs_pick",
         "most_ordered"
@@ -1165,7 +1165,7 @@
       },
       "has_photo": true,
       "key": "dimsum_01",
-      "price": 223
+      "price": 249
      },
      {
       "display": {
@@ -1192,12 +1192,12 @@
        "emoji": "🥟",
        "id": "dimsum_03",
        "name": "Shrimp Dumplings",
-       "price": 198,
+       "price": 286,
        "tags": []
       },
       "has_photo": true,
       "key": "dimsum_03",
-      "price": 198
+      "price": 286
      },
      {
       "display": {
@@ -1207,12 +1207,12 @@
        "emoji": "🥟",
        "id": "dimsum_04",
        "name": "Fried Wontons",
-       "price": 237,
+       "price": 288,
        "tags": []
       },
       "has_photo": true,
       "key": "dimsum_04",
-      "price": 237
+      "price": 288
      },
      {
       "display": {
@@ -2090,8 +2090,8 @@
       "key": "dimsum_01",
       "surface": "item",
       "field": "price",
-      "old": 223,
-      "new": 229
+      "old": 249,
+      "new": 255
      }
     ],
     "largeChangeSet": []
@@ -2127,8 +2127,8 @@
       "key": "dimsum_01",
       "surface": "item",
       "field": "price",
-      "old": 223,
-      "new": 230
+      "old": 249,
+      "new": 256
      }
     ],
     "largeChangeSet": []
@@ -2462,8 +2462,8 @@
       "key": "dimsum_01",
       "surface": "item",
       "field": "price",
-      "old": 230,
-      "new": 231
+      "old": 256,
+      "new": 257
      }
     ],
     "largeChangeSet": []
@@ -2776,8 +2776,8 @@
       "key": "dimsum_01",
       "surface": "item",
       "field": "price",
-      "old": 231,
-      "new": 232
+      "old": 257,
+      "new": 258
      }
     ],
     "largeChangeSet": []
@@ -3086,8 +3086,8 @@
      "key": "dimsum_01",
      "surface": "item",
      "reason": "swing_gt_50",
-     "old": 232,
-     "new": 5232
+     "old": 258,
+     "new": 5258
     }
    ]
   },
@@ -3141,8 +3141,8 @@
       "key": "dimsum_01",
       "surface": "item",
       "field": "price",
-      "old": 232,
-      "new": 5234
+      "old": 258,
+      "new": 5260
      }
     ],
     "largeChangeSet": [
@@ -3150,8 +3150,8 @@
       "key": "dimsum_01",
       "surface": "item",
       "reason": "swing_gt_50",
-      "old": 232,
-      "new": 5234
+      "old": 258,
+      "new": 5260
      }
     ]
    },

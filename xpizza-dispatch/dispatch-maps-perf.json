@@ -1,0 +1,38 @@
+{
+  "plan": "PLAN-dispatch-maps-decouple §6.4",
+  "generatedAt": "2026-10-27T17:14:03.970Z",
+  "config": {
+    "chrome": {
+      "kind": "chrome-headless-shell",
+      "version": "mac_arm-131.0.6778.204"
+    },
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "dpr": 1
+    },
+    "timingOrigin": "#screen-main visible",
+    "deadlineMs": 9000,
+    "runCapMs": 20000,
+    "repeats": 5,
+    "gate": "median; any incomplete run fails the scenario",
+    "scenarios": [
+      "maps_delayed",
+      "maps_failed",
+      "no_map_baseline"
+    ],
+    "metrics": [
+      "board_useful_ms",
+      "driver_useful_ms"
+    ],
+    "budgets": {
+      "board_useful_vs_baseline_max_ratio": 1.15,
+      "driver_useful_vs_baseline_max_ratio": 1.15,
+      "map_useful": "not budgeted (Google CDN)"
+    }
+  },
+  "status": "pending-heavy-slot",
+  "note": "Run the gate with `node dispatch-maps-perf.mjs --run` (spawns headless Chrome; one at a time).",
+  "gate": null,
+  "results": null
+}

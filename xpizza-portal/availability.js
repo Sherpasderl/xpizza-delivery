@@ -10,6 +10,7 @@
 import { getBranchAvailability, setBranchAvailability } from './api.js';
 import * as L from './branch-logic.js';
 import { $, el, icon, button, toggle, pill, errBox, skeleton, OFFLINE } from './ops-dom.js';
+import { readOnlyThumb } from './photo.js';
 
 export function mountAvailability(ctx) {
   const V = { menus: null, loading: false, err: null, writeErr: null, cat: null, drawerKey: null, pending: new Set(), loadedFor: null, observer: null };
@@ -174,6 +175,14 @@ export function mountAvailability(ctx) {
     const failed = menus.filter((m) => m.error);
     const unpublished = menus.filter((m) => m.published === false);
     const { items, categories } = L.availabilityUnion(menus, scopeList().map((b) => b.rid));
+    // DISH PHOTOS B (P10b, §2.2 E-P4) — each branch's PUBLISHED card URLs (branches[i].photos, from its active version),
+    // unioned by item key in scope order, first wins. No photo data anywhere: today's rows exactly.
+    const cards = new Map();
+    for (const b of scopeList()) {
+      const m = menus.find((x) => x.rid === b.rid);
+      const ph = m && m.photos && typeof m.photos === 'object' && !Array.isArray(m.photos) ? m.photos : null;
+      for (const [k, v] of Object.entries(ph || {})) if (!cards.has(k) && v && typeof v.card === 'string') cards.set(k, v.card);
+    }
     if (!categories.length) {
       rail.replaceChildren();
       const msgs = [];
@@ -208,13 +217,16 @@ export function mountAvailability(ctx) {
     for (const k of cat.keys) {
       const it = items.get(k);
       const row = el('div', 'irow');
-      const th = el('div', 'thumb'); th.setAttribute('aria-hidden', 'true'); th.append(icon('photo'));
+      // the published photo as a plain picture; with photos on this menu, a dish without one shows no square (P10b)
+      const th = cards.has(k) ? readOnlyThumb(cards.get(k)) : (cards.size ? null : el('div', 'thumb'));
+      if (th && !cards.has(k)) { th.setAttribute('aria-hidden', 'true'); th.append(icon('photo')); }
       const info = el('div', 'iinfo');
       const nm = el('div', 'nm', it.name);
       if (it.out.length && it.out.length === it.applicable.length) nm.append(pill('paused', 'Agotado en todas'));
       info.append(nm);
       if (it.description) info.append(el('div', 'idesc', it.description));
-      row.append(th, info, el('div', 'price', L.priceText(it.price)));
+      if (th) row.append(th);
+      row.append(info, el('div', 'price', L.priceText(it.price)));
       const c = controlFor(it);
       if (c) row.append(c);
       row.append(button('rowchev', null, () => openDrawer(k), { aria: `Disponibilidad de ${it.name} por sucursal`, iconName: 'chev' }));

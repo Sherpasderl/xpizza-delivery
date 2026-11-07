@@ -43,12 +43,19 @@ const SVC_READ = `${Q0} && auth.uid === 'svc-assigner'`;
 
 // H1a (PLAN-H1a BC1): the KDS is dark at a handheld location — a kitchen status write there is refused. Its kitchen test is the
 // same expression as the grant's, so the narrowing below rewrites BOTH (replaceAll): the denial follows the narrowed grant.
+// RULES HARDENING (PLAN-rules-driver-terminal-hardening r1.1 §2.1/§2.2/§2.3): the status grant gains a DELETE conjunct (only a dispatcher or
+// kitchen may write status:null — .validate never runs on deletes) and a status VALIDATOR (a non-dispatcher, non-kitchen writer may only
+// set out_for_delivery / delivered on a live order it owns through a non-cancelled task; same value always passes). Both carry the
+// global kitchen test, so the narrowing below rewrites it in BOTH leaves (replaceAll): the exemption follows the narrowed grant.
+const STATUS_DELETE_CONJ = " && (newData.exists() || root.child('dispatchers').child(auth.uid).exists() || root.child('kitchen').child(auth.uid).exists())";
+const STATUS_VALIDATE = "root.child('dispatchers').child(auth.uid).exists() || root.child('kitchen').child(auth.uid).exists() || newData.val() === data.val() || (data.val() !== 'cancelled' && data.val() !== 'delivered' && data.val() !== 'completed' && ((newData.val() === 'out_for_delivery' && root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid && root.child('tasks').child($order_id + '_pickup').child('status').val() !== 'cancelled') || (newData.val() === 'delivered' && root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid && root.child('tasks').child($order_id + '_delivery').child('status').val() !== 'cancelled')))";
 const H1A_DARK_KDS = " && !(root.child('kitchen').child(auth.uid).exists() && root.child('orders').child($order_id).child('restaurant_id').isString() && root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('order_surface').val() === 'handheld')";
 // the pinned SOURCE of every changed leaf (on base = main + Q0 + Q1 indexes)
 const SRC = {
   '/orders/.read': `${G}`,
   '/orders/$order_id/.read': ABSENT,
-  '/orders/$order_id/status/.write': `${Q0} && (root.child('dispatchers').child(auth.uid).exists() || root.child('kitchen').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid) && !(newData.val() === 'cancelled' && root.child('orders').child($order_id).child('payment_method').val() === 'online' && (root.child('orders').child($order_id).child('payment_status').val() === 'confirmed' || root.child('orders').child($order_id).child('payment_status').val() === 'pending')) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner'${H1A_DARK_KDS}`,
+  '/orders/$order_id/status/.write': `${Q0} && (root.child('dispatchers').child(auth.uid).exists() || root.child('kitchen').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid) && !(newData.val() === 'cancelled' && root.child('orders').child($order_id).child('payment_method').val() === 'online' && (root.child('orders').child($order_id).child('payment_status').val() === 'confirmed' || root.child('orders').child($order_id).child('payment_status').val() === 'pending')) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner'${H1A_DARK_KDS}${STATUS_DELETE_CONJ}`,
+  '/orders/$order_id/status/.validate': STATUS_VALIDATE,
   '/tasks/.read': `${G}`,
   '/tasks/$task_id/.read': ABSENT,
   ...Object.fromEntries(SVC_TASK_READ_LEAVES.map((l) => [`/tasks/$task_id/${l}/.read`, ABSENT])),
@@ -66,6 +73,7 @@ function target(variant) {
     '/orders/.read': `${G} && (${DISP} || ${LOC_QUERY(full)} || ${HIST_QUERY})${full ? ` || (${DEVICE})` : ''}`,
     '/orders/$order_id/.read': `${G} && ((data.child('restaurant_id').isString() && ${scope("data.child('restaurant_id').val()", full)}) || ${driverOrder('data')})`,
     '/orders/$order_id/status/.write': SRC['/orders/$order_id/status/.write'].replaceAll("root.child('kitchen').child(auth.uid).exists()", KITCHEN_OF_ORDER),
+    '/orders/$order_id/status/.validate': SRC['/orders/$order_id/status/.validate'].replaceAll("root.child('kitchen').child(auth.uid).exists()", KITCHEN_OF_ORDER),
     '/tasks/.read': `${G} && (${DISP} || (query.orderByChild === 'assigned_driver_id' && query.equalTo === auth.uid && auth.uid !== 'svc-assigner'))`,
     '/tasks/$task_id/.read': `${G} && auth.uid !== 'svc-assigner' && data.child('assigned_driver_id').val() === auth.uid`,
     ...Object.fromEntries(SVC_TASK_READ_LEAVES.map((l) => [`/tasks/$task_id/${l}/.read`, SVC_READ])),

@@ -78,19 +78,42 @@ const D = {
     'membership-admin',
     // PLATFORM F1 — the brands owner CLI: requireProject({ requireFlag: true }) before any client
     'brands-admin',
+    // ORCHESTRATION O1a — the Sherpa-admin branches CLI: requireProject({ requireFlag: true }) before any client
+    'branches-admin',
     // PLATFORM F2 Q1 — the access census + kitchen roster owner CLIs: requireProject({ requireFlag: true }) before any client
     'access-census', 'kitchen-roster',
     // BRAND-AGNOSTIC SERVER — the B1 factura-flag projection owner CLI: requireProject({ requireFlag: true }) before any client
     'identity-factura-flag', 'driver-return-backfill',
+    // PAY RATE — the owner's append-only driver pay-rate CLI: parseArgs, then requireProject({ requireFlag: true }) before any client
+    'set-driver-rate',
     // D4-c2b operator CLIs — requireProject({ requireFlag: true }): --project mandatory, an inherited project variable alone refuses
     'ack-identity-finding', 'record-evidence-boundary',
     // per-product extras gate 0: the READ-ONLY live export (active version + public menu) for the advisor's parity run
     'extras-export-live',
+    // INTL PHONE S-core step 3 — the READ-ONLY phone census (counts only) the owner runs before flipping config/phone_wire_strict
+    'phone-census',
+    // DISH PHOTOS A2 step 12b — the owner's one-time legacy backfill (dry run + contact sheet; --apply owner-only): requireProject({ requireFlag: true }) first
+    'photos-legacy-backfill',
+    // DISH PHOTOS E4 (3) — the owner's real-GCS create-only acceptance check (--yes writes ONE throwaway object, deletes only its own
+    // generations): requireProject({ requireFlag: true }) before any client
+    'photo-create-only-check',
     // H1c step 0 — the owner-run hardware-gate sender (ONE data-only FCM message; no database read or write):
     // requireProject({ requireFlag: true }) before any client
     'handheld-push-probe',
     // TRACKER FIXES — the owner-run flag-transition tool: requireProject({ requireFlag: true }) before any client
-    'tracker-reconcile'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
+    'tracker-reconcile',
+    // PLAN 4 r3 §8.2 — the additive menu-structure migration (dry run by default; --write is the owner's):
+    // requireProject({ requireFlag: true }) before any client
+    'migrate-menu-structure',
+    // S7a directory — the presentation writer: requireProject({ requireFlag: true }) before any client, then the RTDB target
+    // is bound to the stated project (an inherited FB_DATABASE_URL naming another database REFUSES; directory.test cell 9)
+    'seed-presentation',
+    // PLAN-guest-checkout-server S3c — the owner/ops platform legal CLI (platform_config/legal; DRY RUN unless --apply):
+    // requireProject({ requireFlag: true }) before any client
+    'platform-legal',
+    // security backlog r2 — the one-time owner migration (revived accounts' stale tombstones; DRY RUN unless --apply):
+    // requireProject({ requireFlag: true }) before any client
+    'repair-revived-tombstones'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
   [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/set-driver-enforcement-mode.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
@@ -106,25 +129,37 @@ const D = {
   [F('index.js')]: 'lib: the deployed entry — its Admin app is lib/admin.js (guarded)', [F('portal/functions.js')]: 'lib: the deployed portal entry — lib/admin.js',
   [F('portal/reset-draft.js')]: 'lib: deployed portal module — lib/admin.js',
   [F('portal/ops-functions.js')]: 'lib: the deployed portal branch-ops entry (PORTAL-UI 1a) — lib/admin.js',
+  [F('photos/functions.js')]: 'lib: the deployed dish-photos entry (DISH PHOTOS A1, isolated group) — lib/admin.js',
   [F('cors-preflight.test.js')]: 'unit: proven loopback-only, off-band (emulator-endpoint.test cell 8)',
+  [F('memory-floor.guard.test.js')]: 'unit: loads index.js only to read each export\'s __endpoint options; no handler runs, and the import itself is proven network-free (emulator-endpoint.test cell 8: index.js full load)',
+  [F('deploy-params.guard.test.js')]: 'unit: loads index.js in an env-scrubbed child under tools/egress-guard.js (loopback-only; any refusal fails the test) and reads params.declaredParams only — no handler is invoked, no client call made',
   [F('tools/portal-split.js')]: 'lib: source-TEXT fold (the initializeApp is a string it rewrites, no runtime Admin)',
   [F('tools/deploy-env-guard.js')]: 'lib: reads deploy env KEY NAMES only, no client',
   [F('tools/secret-env.js')]: 'lib: R3 credential scrub — names env KEYS (and reads .env KEY NAMES only) to DELETE them from a test process env; no client, no value read or printed',
   [F('tools/portal-latency-probe.js')]: 'prod-measurement: HTTP to the DEPLOYED functions by design (token-authenticated); no Admin client, emulator vars do not reach it',
   // tests that never contact a database (fakes / stubs / text), each verified
   [F('rtdb-init.test.js')]: 'unit: proven loopback-only, off-band (emulator-endpoint.test cell 8)',
+  // INTL codex r1 #2 — the real requestOtp in-process over a STUBBED getDatabase (every read hangs; the first reservation throws), no send reached
+  [F('intl-otp-endpoint.test.js')]: 'unit: drives the real requestOtp over a stubbed getDatabase (reads hang, the first reservation throws; no send) — no network, no credential',
   [F('stats/stats-volume.test.js')]: 'unit: a named app over catalog/firestore-fake — no network',
   [F('stats/stats-job.test.js')]: 'unit: initializeApp appears in a source string under test', [F('catalog/project-guard.test.js')]: 'unit: drives require-project refusals (no data I/O)',
   [F('tools/brands-admin.test.js')]: 'unit: drives the brands CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
+  [F('directory/directory.test.js')]: 'unit: drives tools/seed-presentation.js into its database-target refusal under tools/no-connect.js (asserts zero connects; it scrubs emulator vars, sets a foreign FB_DATABASE_URL); every other cell uses in-memory fakes',
+  [F('tools/branches-admin.test.js')]: 'unit: drives the branches CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/access-census.test.js')]: 'unit: drives the access-census CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/kitchen-roster.test.js')]: 'unit: drives the kitchen-roster CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/driver-return-backfill.test.js')]: 'unit: drives the return-backfill CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
+  [F('tools/set-driver-rate.test.js')]: 'unit: drives the set-driver-rate CLI into require-project / argument refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/identity-factura-flag.test.js')]: 'unit: drives the factura-flag CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/identity-display-name.test.js')]: 'unit: drives the CLI\'s require-project refusals (no data I/O); its spawned CLI is pointed at a dead loopback RTDB port with void credentials',
   [F('catalog/identity-integrity-guards.test.js')]: 'unit: drives the two c2b prod CLIs into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/verify-first-group.test.js')]: 'unit: drives the CLI\'s require-project + argument refusals before any client (no data I/O); its spawned CLI points at a dead loopback RTDB port with void credentials',
   [F('test/kds-writer-capture.mjs')]: 'unit: a STUB initializeApp (returns {})', [F('portal/portal-split.test.js')]: 'unit: fold-guard text',
   [F('portal/ops-split.test.js')]: 'unit: static require closure + module-load checks only — no handler is invoked; its emulator hosts are DELETED or set to the dead loopback 127.0.0.1:1 (no data I/O)',
+  [F('tools/photo-create-only-check-core.js')]: 'lib: PURE core of the owner create-only check — names the storage-emulator variables only to REFUSE them (codex r1); no client, no I/O of its own (the CLI injects the bucket)',
+  [F('tools/photo-create-only-check-core.test.js')]: 'unit: fake buckets + ONE real-SDK cell against its OWN loopback server (127.0.0.1, ephemeral port; STORAGE_EMULATOR_HOST deleted for the cell and restored) — no data I/O, no egress (green under tools/egress-guard.js)',
+  [F('photos/gcs-store.test.js')]: 'unit: fake buckets + ONE real-SDK cell against its OWN loopback server (127.0.0.1, ephemeral port; STORAGE_EMULATOR_HOST deleted for the cell and restored) — no data I/O, no egress (green under tools/egress-guard.js)',
+  [F('photos/photos-split.test.js')]: 'unit: child index.js loads + a static require closure only — no handler is invoked; every emulator host var is DELETED in the children (no data I/O)',
   [F('pselfupdate-client.test.js')]: 'unit: injected fetch, no network', [F('pselfupdate-wrapper-lint.test.js')]: 'unit: lints source text',
   'order-control-client.test.mjs': 'unit: injected fetch, no network',
   [F('tools/emulator-endpoint.test.js')]: 'test of this guard family', [F('tools/emulator-ports.guard.test.js')]: 'test of this guard family',

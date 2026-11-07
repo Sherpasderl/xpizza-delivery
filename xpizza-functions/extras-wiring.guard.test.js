@@ -12,6 +12,8 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { unapplyExtrasIndex, BLOCKS } = require('./tools/extras-inverse');
 const { unapplyExtrasModule, FILES, HUNKS } = require('./tools/extras-module-inverse');
+// the menu price sync landed after the extras slice: its exact inverse is reversed FIRST (newest first)
+const { unapplyPriceSync } = require('./tools/price-sync-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 // index.js: the extras slice sits on 6f353ed (main, which added the WhatsApp-cancel block); the pinned MODULES are byte-identical
@@ -23,7 +25,7 @@ const baseOf = (f, at = BASE) => execFileSync('git', ['show', `${at}:xpizza-func
 
 // ── 1a. index.js ──
 {
-  const real = require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('./tools/release-race-inverse').unapplyReleaseRaceIndex(require('./tools/brand-server-inverse').unapplyBrandServerIndex(require('./tools/dlite-push-inverse').unapplyDlitePushIndex(require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(require('./tools/s2app-inverse').unapplyS2appIndex(require('./tools/area-inverse').unapplyAreaIndex(read('index.js')))))))))))))))))))))))));   // the newer §3 serial3 blocks are reversed FIRST
+  const real = require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('./tools/release-race-inverse').unapplyReleaseRaceIndex(require('./tools/brand-server-inverse').unapplyBrandServerIndex(require('./tools/dlite-push-inverse').unapplyDlitePushIndex(require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(require('./tools/s2app-inverse').unapplyS2appIndex(require('./tools/area-inverse').unapplyAreaIndex(require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(require('./tools/pausa-inverse').unapplyPausaIndex(require('./tools/mem512-inverse').unapplyMem512Index(require('./tools/checkout-inverse').unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(require('./tools/intl-inverse').unapplyIntlIndex(require('./tools/photos-inverse').unapplyPhotosIndex(read('index.js'))))))))))))))))))))))))))))))))))))))));   // the newer §3 serial3 blocks are reversed FIRST
   const base = baseOf('index.js', INDEX_BASE);
   assert.notStrictEqual(unapplyExtrasIndex(real), real, 'non-vacuity: the blocks are present and swapped back');
   assert.strictEqual(unapplyExtrasIndex(real), base, `🔴 index.js minus the extras blocks is not ${INDEX_BASE}:index.js`);
@@ -37,8 +39,16 @@ const baseOf = (f, at = BASE) => execFileSync('git', ['show', `${at}:xpizza-func
 // ── 1b. the pinned modules ──
 {
   assert.deepStrictEqual([...FILES].sort(), ['catalog/catalog-publish.js', 'catalog/source-store.js', 'menu-pricing.js']);
-  for (const f of FILES) assert.strictEqual(unapplyExtrasModule(f, read(f)), baseOf(f), `🔴 ${f} minus the extras hunks is not ${BASE}:${f}`);
-  const f = 'catalog/source-store.js'; const src = read(f);
+  // PLAN-public-menu-display landed later: its exact module inverse (proven by pmdisplay-wiring.guard) is reversed FIRST
+  // (train assembly: the newer train inverse innermost, then main's price-sync, then extras)
+  const { unapplyPmdisplayModule } = require('./tools/pmdisplay-module-inverse');
+  // PLAN 4 landed after public-menu-display: its exact module inverse (proven by formbake-module-wiring.guard) is reversed FIRST
+  const { unapplyFormbakeModule } = require('./tools/formbake-module-inverse');
+  // DRYRUN R-WIRE (2e): PLAN-avail-identity landed newest — its exact inverse is reversed FIRST (innermost)
+  const aiRead = (f) => require('./tools/avail-identity-inverse').unapplyAvailIdentity(f, require('./tools/photos-module-inverse').unapplyPhotosModule(f, read(f)));   // DISH PHOTOS A2 (newest) reversed FIRST
+  const pmdRead = (f) => unapplyPmdisplayModule(f, unapplyFormbakeModule(f, aiRead(f)));
+  for (const f of FILES) assert.strictEqual(unapplyExtrasModule(f, unapplyPriceSync(f, pmdRead(f))), baseOf(f), `🔴 ${f} minus the avail-identity, formbake, pmdisplay, price-sync and extras hunks is not ${BASE}:${f}`);
+  const f = 'catalog/source-store.js'; const src = pmdRead(f);
   const h = HUNKS.find((x) => x.file === f && x.now.includes('deny_extras'));
   assert.throws(() => unapplyExtrasModule(f, src.replace(h.now, h.now.replace('deny_extras', 'deny_extraz'))), /occurs 0 times/, 'a byte INSIDE a hunk');
   assert.throws(() => unapplyExtrasModule(f, src + h.now), /occurs 2 times/, 'a duplicated hunk');

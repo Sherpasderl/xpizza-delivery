@@ -30,6 +30,8 @@ const { getRestaurantMenu } = require('./catalog-menu');
 const { generateFormBundle } = require('./generate-form-bundle');
 const { canonicalJson } = require('./canonical-json');
 const { applyIdentityToServedBody } = require('./identity-overlay');
+const { photosFor } = require('./public-photos'); const { availIdentityField } = require('../menu-pricing');
+const { REWARD_ICONS } = require('./reward-icons');
 
 // Bumped whenever THIS module's projection changes — a field added, a shape altered, a generator
 // change that moves the bundle. It is inside the etag, so a redeploy that changes the body also
@@ -38,7 +40,11 @@ const { applyIdentityToServedBody } = require('./identity-overlay');
 /* 1D D1: bumped because the served body can now carry dish_id/extra_id. The marker is inside the
    etag, so without the bump a cache would keep serving the id-less body under the old key — and a
    change that is supposed to be additive-and-immediate would instead be invisible for a TTL. */
-const REPRESENTATION_VERSION = '1d.1';
+/* PLAN-public-menu-display r2 (D3 RULED): bumped because the served body can now carry `photos`. The forms keep their own
+   '1d.1' marker (they stay byte-identical) and log menu_representation_changed on a mismatch — a console warning only. */
+/* PLAN 4 r3 §8.1 (version collision ruled): advanced 1d.2 → 1d.3 because the body can now carry `badge_priority` and a
+   dish's `reward_icon`. 7f72757f's photo field and its category-rename validation are kept as they were. */
+const REPRESENTATION_VERSION = '1d.3';
 
 // EVERY field this endpoint serves, and what has to be true of it. One table, because the list of
 // what may appear and the rules for what must appear are the same fact — kept apart they drift, and
@@ -68,9 +74,14 @@ const BODY_CONTRACT = Object.freeze({
   extras_by_category: { type: 'object', fromSource: (menu) => menu.structure.extras_by_category !== undefined },
   extras_by_item: { type: 'object', fromSource: (menu) => menu.structure.extras_by_item !== undefined },
   badges: { type: 'object', fromSource: (menu) => menu.structure.badges !== undefined },
+  // PLAN 4 r3 §8.1: the ORDER badges are chosen in — badge keys only (assertWholeBody checks each names a served badge)
+  badge_priority: { type: 'array', fromSource: (menu) => menu.structure.badge_priority !== undefined },
   // per-product extras (PLAN rev 2.1 §7): the DENSE public complement { version, deny: { itemKey: [extraKey…] } } of the
   // version's eligibility document — present exactly when that version carries one (a pre-feature version does not)
   extras_eligibility: { type: 'object', fromSource: (menu) => menu.eligibility != null },
+  // PLAN-public-menu-display r2 T2: absolute dish photo URLs, { [String(dish.id)]: { card, hero } }. Declared but NEVER
+  // required — a decoration omitted on any trouble (catalog/public-photos.js), so its absence is not a half-menu.
+  photos: { type: 'object' }, avail_identity: { required: true, type: 'object' },   // PLAN-avail-identity r1: { field } — the restaurant's availability identity, from the server's ONE rule
 });
 const PUBLIC_MENU_BODY_FIELDS = Object.freeze(Object.keys(BODY_CONTRACT));
 
@@ -92,6 +103,18 @@ function assertWholeBody(restaurantId, body, menu) {
   }
   const undeclared = Object.keys(body).filter((f) => !PUBLIC_MENU_BODY_FIELDS.includes(f));
   for (const f of undeclared) problems.push(`${f} is served but undeclared`);
+  // PLAN 4 r3 §8.1 — the two new display facts, checked against what renders them: a priority entry must name a served
+  // badge, and a dish's reward_icon must be one the reward picker's sprite draws.
+  if (Array.isArray(body.badge_priority)) {
+    const served = isType(body.badges, 'object') ? body.badges : {};
+    const bad = body.badge_priority.filter((k) => typeof k !== 'string' || !Object.prototype.hasOwnProperty.call(served, k));
+    if (bad.length) problems.push(`badge_priority names ${bad.length} key(s) that are not served badges`);
+  }
+  for (const coll of ['dishes', 'extras']) {
+    if (!Array.isArray(body[coll])) continue;
+    const badIcon = body[coll].filter((d) => d && d.reward_icon !== undefined && !REWARD_ICONS.includes(d.reward_icon));
+    if (badIcon.length) problems.push(`${badIcon.length} ${coll} record(s) carry a reward_icon outside the closed set`);
+  }
   if (problems.length) {
     fail('public_menu_unavailable', `${restaurantId}: the projection is not a whole menu — ${problems.join('; ')}`);
   }
@@ -100,7 +123,19 @@ function assertWholeBody(restaurantId, body, menu) {
 // Carried from `structure` — the fields the generator leaves there. Order fixed so the body's own
 // key order is stable across builds (the etag is over canonical JSON, but a stable body is easier to
 // diff by eye, and an operator comparing two responses is a real thing that happens).
-const CARRIED_FROM_STRUCTURE = Object.freeze(['extras_by_category', 'extras_by_item', 'badges']);
+const CARRIED_FROM_STRUCTURE = Object.freeze(['extras_by_category', 'extras_by_item', 'badges', 'badge_priority']);
+
+// PLAN 4 r3 gap resolution (A, advisor 2026-10-26) — THE ONE COMPOSER of a menu's catalog fields: the generator's bundle +
+// the fields CARRIED from the structure. buildPublicMenu serves it (then adds eligibility, photos and identity), and the
+// committed form bundle is composed by it too (generate-form-bundle.mjs, tools/splice-form-bundle.js, the 1c gates) — so the
+// bundle a form carries before a bake has exactly the shape the bake writes, and there is no second projection.
+function composeServedMenu(restaurantId, menu, generate = generateFormBundle) {
+  const body = generate(restaurantId, menu);
+  for (const f of CARRIED_FROM_STRUCTURE) {
+    if (menu.structure[f] !== undefined) body[f] = menu.structure[f];
+  }
+  return body;
+}
 
 // The rid the platform will serve. Deliberately NOT resolveRestaurantId(): that function defaults a
 // blank id to x_pizza, which is right for a form that has always posted none and wrong here, where
@@ -147,6 +182,14 @@ const defaultIsActive = (rtdb) => async (rid) => {
   const identity = await getIdentity(rtdb, rid);
   return !!(identity && identity.active);
 };
+// S7a directory (PLAN-capp-S7a-r3 §4): ADDITIVE — the SAME getIdentity and the SAME activity predicate as defaultIsActive,
+// plus the identity's source ('fresh' | 'cache') and the identity itself (so the directory reads it once). defaultIsActive
+// above is untouched (a paired test asserts identical activity for fresh / cache / failure).
+const activityWithSource = (rtdb) => async (rid) => {
+  const { getIdentity } = require('../restaurant-config');
+  const identity = await getIdentity(rtdb, rid);
+  return { active: !!(identity && identity.active), source: (identity && identity._source) || null, identity };
+};
 
 async function buildPublicMenu(db, rid, deps = {}) {
   const { known, isActive, representationVersion = REPRESENTATION_VERSION, generate = generateFormBundle,
@@ -181,16 +224,20 @@ async function buildPublicMenu(db, rid, deps = {}) {
   // worse than no menu, because it renders.
   let body;
   try {
-    body = generate(restaurantId, menu);
-    for (const f of CARRIED_FROM_STRUCTURE) {
-      if (menu.structure[f] !== undefined) body[f] = menu.structure[f];
-    }
-    if (menu.eligibility) body.extras_eligibility = menu.eligibility;
+    body = composeServedMenu(restaurantId, menu, generate);
+    if (menu.eligibility) body.extras_eligibility = menu.eligibility; body.avail_identity = { field: availIdentityField(restaurantId) };   // the NORMALIZED rid (codex P1)
   } catch (e) {
     fail('public_menu_unavailable', `${restaurantId}: the live catalog does not project to a servable menu — ${String((e && e.message) || e).slice(0, 160)}`);
   }
 
   assertWholeBody(restaurantId, body, menu);
+
+  /* PLAN-public-menu-display r2 T2 — PHOTOS, after the body is whole and before identity. A separate top-level field (never
+     on a dish record: the cart serializes records into the order), and a decoration that cannot fail the serve —
+     photosFor returns null on any trouble. The default manifest is the one index.js already loaded at module load. */
+  const photos = await require('../photos/served-photos').withVersionPhotos(db, restaurantId, menu, photosFor(restaurantId, menu, deps.sites !== undefined ? deps.sites : require('../platform-manifest').PLATFORM.sites), deps.readVersionPhotos || require('../photos/served-photos').defaultReadVersionPhotos);   // DISH PHOTOS A2 step 11: the SERVED version's meta/photos overlaid (no doc ⇒ unchanged)
+  if (photos) body = { ...body, photos };
+  else console.warn('public_menu_photos_absent', JSON.stringify({ rid: restaurantId }));
 
   /* ── 1D D1 — IDENTITY, APPLIED LAST AND ABLE TO FAIL ALONE ──────────────────────────────────────
      The body is already whole and already correct at this point: the version's hash was verified by
@@ -203,7 +250,9 @@ async function buildPublicMenu(db, rid, deps = {}) {
      applyIdentityToServedBody never throws and never blocks: on a registry error or a slow read it
      returns the body it was given, unchanged, and the customer is served a menu with no ids — which is
      exactly the menu served today, because in D1 nothing reads them. */
-  const enriched = await applyIdentityToServedBody(db, restaurantId, body);
+  // PLAN 4 r3 §4: the reconciler compares the DEPLOYED bundle (baked, overlay-free) with the published menu read with
+  // `overlayIdentity: false` — the same body minus the overlay. Every other caller (the endpoint) gets the overlay, unchanged.
+  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, body);
   body = enriched.body;
   if (!enriched.applied) {
     // A diagnostic, never a decision — no caller branches on it and no response changes shape.
@@ -221,7 +270,9 @@ async function buildPublicMenu(db, rid, deps = {}) {
   // `seq` rides ALONGSIDE the body, not inside it. It moves on every publish — including ones that
   // change nothing a customer sees — so a body carrying it would produce a new etag for an identical
   // menu, and every cache would miss for no reason.
-  return { rid: restaurantId, seq: menu.identity.seq, representation_version: representationVersion, body, etag };
+  // version_id (PLAN 4 r4): which immutable version THIS body is — the reconciler pairs it with the pointer's activation generation.
+  // The endpoint sends rid / representation_version / menu only, so the served response is unchanged.
+  return { rid: restaurantId, seq: menu.identity.seq, version_id: menu.identity.version_id, representation_version: representationVersion, body, etag };
 }
 
 // HOW A FAILURE BECOMES AN HTTP RESPONSE. Pure, and here rather than in index.js, because the
@@ -247,4 +298,4 @@ function publicMenuErrorResponse(e) {
   return { status: 500, log: 'public_menu_failed', payload: { error: 'error' } };
 }
 
-module.exports = { buildPublicMenu, defaultIsActive, assertWholeBody, publicMenuErrorResponse, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };
+module.exports = { buildPublicMenu, composeServedMenu, CARRIED_FROM_STRUCTURE, defaultIsActive, activityWithSource, assertWholeBody, publicMenuErrorResponse, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };

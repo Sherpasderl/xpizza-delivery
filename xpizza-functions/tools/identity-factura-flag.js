@@ -31,7 +31,8 @@ const rtdb = admin.database();
   for (const r of rows) console.log(`  ${r.path}: ${JSON.stringify(r.from)} → ${r.to === null ? 'ABSENT' : JSON.stringify(r.to)}`);
   if (missing.length) { console.error(`identity-factura-flag: REFUSED — no identity node for platform-factura restaurant(s) ${missing.join(', ')}`); process.exit(1); }
   if (!APPLY) { console.log('(dry run — nothing written; add --apply)'); process.exit(0); }
-  await applyFlags(rtdb, rows);
+  const { unversioned } = await applyFlags(rtdb, rows);
+  if (unversioned.length) { console.error(`identity-factura-flag: REFUSED — identity without a numeric version: ${unversioned.join(', ')} (nothing written for it)`); process.exit(1); }
   const problems = await readBack(rtdb, rids);
   if (problems.length) { console.error('identity-factura-flag: READ-BACK MISMATCH'); for (const p of problems) console.error(`  ${p}`); process.exit(1); }
   console.log('identity-factura-flag: applied and read back (every identity carries the projected value)');

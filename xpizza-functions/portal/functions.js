@@ -14,7 +14,7 @@ const { getSalesStatsCore } = require('../stats/stats-api');
 const { statsKeyer, _statsLiveCache } = require('../stats/keyer');
 const { withPreflightMaxAge } = require('./preflight-max-age');
 const { addProductIo } = require('../catalog/add-product-io');   // 1D add-product A — outside the moved blocks (the fold counts their requires)
-const addProductIoForEdit = () => addProductIo({ fs: getFirestore(), rtdb: getDatabase() });
+const addProductIoForEdit = () => addProductIo({ fs: getFirestore(), rtdb: getDatabase() }); const { photoIoForEdit } = require('../photos/edit-io'); const { editableIoForPortal } = require('../photos/editable-io'); const { photoPublishIoForEdit } = require('../photos/publish-io');   // DISH PHOTOS A2 steps 8–10 — same line, outside the moved blocks (the fold counts their requires)
 
 // ⟪moved:A — verbatim from index.js@bb37684 (relative require specifiers './' → '../')⟫
 // ── Portal 2b-1 — the merchant catalog write path ──────────────────────────────────────────────
@@ -53,7 +53,7 @@ exports.editCatalog = onRequest(
         authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
         readActiveBuilt: readActiveBuiltForEdit,
         toPrecondition: decodeUpdateTimeForEdit,
-        addProduct: addProductIoForEdit(),   // 1D add-product A
+        addProduct: addProductIoForEdit(), photos: photoIoForEdit(),   // 1D add-product A; DISH PHOTOS A2 step 8: the draft photo map
       }, req.body || {}, req);
       return res.status(out.status).json(out.body);
     } catch (e) {
@@ -106,7 +106,7 @@ exports.publishEdited = onRequest(
         publishVersion: publishVersionForEdit,
         mirror: makeRtdbMirrorForEdit(getDatabase()),
         alarm: (kind, detail) => paymentAlert(getDatabase(), kind, detail),
-        addProduct: addProductIoForEdit(),   // 1D add-product A
+        addProduct: addProductIoForEdit(), photos: photoPublishIoForEdit(),   // 1D add-product A; DISH PHOTOS A2 step 10: the photo publish
       }, req.body || {}, req);
       return res.status(out.status).json(out.body);
     } catch (e) {
@@ -155,7 +155,7 @@ exports.getEditableCatalog = onRequest(
         fsdb: getFirestore(),
         authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
         readActiveVersionId: (fsdb, rid) => getActiveVersionIdForPortal(fsdb, rid),
-        readActiveBuilt: readActiveBuiltForEdit,   // 1D add-product A: assess the saved draft against what is serving
+        readActiveBuilt: readActiveBuiltForEdit, photoReads: editableIoForPortal(),   // 1D add-product A: assess the saved draft against what is serving; DISH PHOTOS A2 step 9 (E-P3)
       }, req);
       return res.status(out.status).json(out.body);
     } catch (e) {

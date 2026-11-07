@@ -14,6 +14,8 @@
 //     brand's renderer contract); both are code-derived, no read;
 //   • (codex PB-1 r3 P2-2) a successful publish whose candidate has a dish↔extra key overlap (x_pizza's existing Pepperoni /
 //     Prosciutto) reads exactly those keys' docs in the active version to prove the overlap is not new;
+//   • (PLAN 4 GATED G1) getEditableCatalog's source records + structure carry the REVIEWED data file's rows (reward_icon /
+//     extras_policy / badge_priority): each value asserted equal to its row, then dropped;
 //   Anything else — a status, a body field, a write, a missing or extra read of another kind — fails.
 require('./_emulator-required')('firestore', 'database');
 
@@ -175,6 +177,38 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
       // T-d (declared): publish_via_request — every golden caller is the owner, so its VALUE is asserted false, then dropped
       if (c.status === 200) assert.strictEqual(body.publish_via_request, false, `${c.name}: the owner never gets the send-to-owner path`);
       delete body.publish_via_request;
+      // PLAN 4 GATED (G1, declared): the bootstrap source carries the REVIEWED data file's rows (catalog/menu-structure-rows.js:
+      // reward_icon / extras_policy …). Each authored field the base record lacked is asserted EQUAL to its reviewed row, then
+      // dropped; a field the base already carried stays compared (the rows are additive). Nothing else is excused.
+      if (c.status === 200 && body.source && typeof body.source === 'object') {
+        const rid = c.name.split(':')[0];
+        const rows = (require('../tools/migrations/2026-10-26-menu-structure.json').restaurants || {})[rid] || {};
+        body.source = JSON.parse(JSON.stringify(body.source));
+        let seen = 0;
+        for (const coll of ['items', 'extras']) {
+          for (const rec of (Array.isArray(body.source[coll]) ? body.source[coll] : [])) {
+            const row = rows[coll] && rows[coll][rec.key];
+            if (!row || !row.display || !rec.display) continue;
+            const base = (((g.body || {}).source || {})[coll] || []).find((x) => x && x.key === rec.key);
+            for (const [f, v] of Object.entries(row.display)) {
+              if (base && base.display && Object.prototype.hasOwnProperty.call(base.display, f)) continue;
+              assert.deepStrictEqual(rec.display[f], v, `${c.name}: ${coll} ${rec.key}.display.${f} = the reviewed row (PLAN 4 G1)`);
+              delete rec.display[f]; seen += 1;
+            }
+          }
+        }
+        // and the rows' STRUCTURE block (e.g. la_musa badge_priority), the same rule: value-asserted, dropped only where the base lacked it
+        const rs = rows.structure && typeof rows.structure === 'object' ? rows.structure : {};
+        const bs = ((g.body || {}).source || {}).structure || {};
+        if (body.source.structure && typeof body.source.structure === 'object') {
+          for (const [f, v] of Object.entries(rs)) {
+            if (Object.prototype.hasOwnProperty.call(bs, f)) continue;
+            assert.deepStrictEqual(body.source.structure[f], v, `${c.name}: source.structure.${f} = the reviewed rows' structure (PLAN 4 G1)`);
+            delete body.source.structure[f]; seen += 1;
+          }
+        }
+        declared.body.add(`${c.name}: ${seen} reviewed-row field(s)`);
+      }
     }
     assert.deepStrictEqual(body, g.body, `${c.name}: body (beyond the declared fields)`);
     // calls: golden ⊆ candidate (as a multiset), and every EXTRA call is a declared read

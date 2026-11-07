@@ -120,6 +120,12 @@ export const ALLOWED_CONSUMERS = new Set([
   // product's group; the price setters receive the saved-additions Set and only call .has on it) and their pure readers
   'setRequiredChoice', 'setGroupLabel', 'setGroupExtrasNone', 'addChoice', 'removeChoice', 'setChoiceName', 'setChoiceRecommended', 'setChoicePrice', 'setGroupPrice',
   'choiceGroup', 'optionPricesEqual', 'isNewGroupOption', 'optionParentId',
+  // PLAN-public-menu-display T1 — a section's name: setCategoryNames (canEdit-guarded in editor.js; applies a whole set or
+  // nothing, and writes only `name`) and the pure readers pendingRenames / categoriesUnnamed
+  'setCategoryNames', 'pendingRenames', 'categoriesUnnamed',
+  // DISH PHOTOS B — the draft photo map's ONE setter (canEdit-guarded in editor.js; it writes only source.photos, from a pid
+  // the server returned or the removed / restored states) and its pure readers
+  'setPhoto', 'draftPhotos', 'origPhotos', 'pendingPhotos',
 ]);
 // Method calls on a state property, by FULL CHAIN — so a mutating method is permitted on exactly the
 // collection it was ruled for and nowhere else.
