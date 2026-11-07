@@ -23,7 +23,12 @@ const show = (rel) => execFileSync('git', ['show', `${HEAD}:${rel}`], { cwd: ROO
 const SITES = JSON.parse(show('platform/sites.json')), COMPAT = JSON.parse(show('platform/compat.json'));
 const DEP = SITES.deployments.find((d) => d.app === 'orders' && d.context === 'platform');
 const LOCK = JSON.parse(show('platform/native/vendor/sdk-lock.json'));
-const NAT = { target: 'native', env: 'production' }, WEB = { target: 'web', env: 'production' };
+// the APP-TRAIN obligation (below): with 3a's capp-guest server in THIS commit, every real build carries guestCardOnly — so the
+// baseline builds here name it too (the packager refuses them otherwise); with the server absent, the baseline is flag-free
+const GUEST = 'xpizza-functions/checkout-guest-gate.js';
+const GUEST_PRESENT = (() => { try { show(GUEST); return true; } catch (_) { return false; } })();
+const BASE_FLAGS = GUEST_PRESENT ? ['guestCardOnly'] : [], on = (fl) => Object.fromEntries(fl.map((f) => [f, true]));
+const NAT = { target: 'native', env: 'production', flags: BASE_FLAGS }, WEB = { target: 'web', env: 'production', flags: BASE_FLAGS };
 const B = P.build({ sha: HEAD, ...NAT });
 const txt = (rel) => B.files.get(rel).toString('utf8');
 
@@ -101,12 +106,12 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   assert.ok(B.files.get(`vendor/firebasejs/${LOCK.version}/firebase-app.js`).equals(show(`platform/native/vendor/firebasejs/${LOCK.version}/firebase-app.js`)));
   const cfg = txt('capp-runtime.js'); const sb = {}; new Function('self', cfg)(sb);
   const R = sb.CAPP_RUNTIME;
-  assert.ok(Object.isFrozen(R) && !('note' in R)); assert.deepStrictEqual(R.flags, {}); assert.strictEqual(R.mode, 'native'); assert.strictEqual(R.sdk_base, `./vendor/firebasejs/${LOCK.version}/`);
+  assert.ok(Object.isFrozen(R) && !('note' in R)); assert.deepStrictEqual(R.flags, on(BASE_FLAGS)); assert.strictEqual(R.mode, 'native'); assert.strictEqual(R.sdk_base, `./vendor/firebasejs/${LOCK.version}/`);
   for (const k of Object.keys(DEP.runtime).filter((k) => k !== 'note' && k !== 'mode')) assert.ok(JSON.stringify(R[k]) === JSON.stringify(DEP.runtime[k]), `the runtime's ${k} is the manifest's`);
-  const F = P.build({ sha: HEAD, ...NAT, flags: ['signup', 'intlPhone'] }); const sf = {}; new Function('self', F.files.get('capp-runtime.js').toString('utf8'))(sf);
-  assert.deepStrictEqual(sf.CAPP_RUNTIME.flags, { signup: true, intlPhone: true }); assert.deepStrictEqual(F.manifest.flags, ['intlPhone', 'signup']);
-  { const R = P.build({ sha: HEAD, ...NAT, flags: ['ratings'] }); const sr = {}; new Function('self', R.files.get('capp-runtime.js').toString('utf8'))(sr);
-    assert.deepStrictEqual(sr.CAPP_RUNTIME.flags, { ratings: true }, '🔴 C-2: the ratings flag can be shipped (it was refused as unknown)'); }
+  const F = P.build({ sha: HEAD, ...NAT, flags: [...BASE_FLAGS, 'signup', 'intlPhone'] }); const sf = {}; new Function('self', F.files.get('capp-runtime.js').toString('utf8'))(sf);
+  assert.deepStrictEqual(sf.CAPP_RUNTIME.flags, { ...on(BASE_FLAGS), signup: true, intlPhone: true }); assert.deepStrictEqual(F.manifest.flags, [...BASE_FLAGS, 'intlPhone', 'signup'].sort());
+  { const R = P.build({ sha: HEAD, ...NAT, flags: [...BASE_FLAGS, 'ratings'] }); const sr = {}; new Function('self', R.files.get('capp-runtime.js').toString('utf8'))(sr);
+    assert.deepStrictEqual(sr.CAPP_RUNTIME.flags, { ...on(BASE_FLAGS), ratings: true }, '🔴 C-2: the ratings flag can be shipped (it was refused as unknown)'); }
   assert.notStrictEqual(F.manifest.build, B.manifest.build, 'a different flag set is a different build');
   ok('firebase-auth\'s one gstatic import → ./firebase-app.js (firebase-app byte-identical); the runtime = the manifest block minus its note + sdk_base; flags dark unless named; a flag set changes the build id');
 }
@@ -126,7 +131,7 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   refuse({ show: over({ 'platform/compat.json': { schema: 1, generations: {} } }) }, /no compat generation .* inert/);
   refuse({ show: over({ [`platform/native/vendor/firebasejs/${LOCK.version}/firebase-app.js`]: 'tampered' }) }, /does not match its lock/);
   refuse({ show: over({ 'customer-app/shell.html': show('customer-app/shell.html').toString('utf8').replace('<script src="capp-ui.js"></script>', '<script src="https://cdn.example/x.js"></script>') }) }, /non-local or nested file/);
-  refuse({ flags: ['payments'] }, /unknown flag payments/);
+  refuse({ flags: [...BASE_FLAGS, 'payments'] }, /unknown flag payments/);
   refuse({ sha: 'not-a-sha' }, /--sha must be a commit/);
   refuse({ env: undefined }, /--env is required .* never guessed/); refuse({ env: 'Prod uction' }, /--env is required/); refuse({ target: 'desktop' }, /--target must be one of web, native/);
   ok('refused: no native id / no runtime / any one runtime key missing / a malformed base / an incomplete firebase config / no compat generation (never an inert build), a second <style> block, a tampered vendored file, a remote script in shell.html, an unknown flag, a non-commit');
@@ -186,7 +191,7 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   assert.ok(!/<base /.test(B.files.get(P.ENTRY).toString('utf8')) && !B.files.has('_redirects'), 'native: no <base>, no _redirects');
   const strip = (b) => b.toString('utf8').replace(/<!-- sherpa-stamp:begin -->[\s\S]*?<!-- sherpa-stamp:end -->\n/, '').replace('<base href="/">\n', '');
   assert.strictEqual(strip(Wb.files.get(P.ENTRY)), strip(B.files.get(P.ENTRY)), 'the entry pages differ only inside the stamp block');
-  const Pv = P.build({ sha: HEAD, target: 'web', env: 'deploy-preview' });
+  const Pv = P.build({ sha: HEAD, target: 'web', env: 'deploy-preview', flags: BASE_FLAGS });
   const pid = mod.exports.readIdentity(new JSDOM(Pv.files.get(P.ENTRY).toString('utf8')).window.document);
   assert.strictEqual(pid.env, 'deploy-preview', 'a preview stamps its environment (heartbeats off by design)');
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'capp-web-test-'));
@@ -199,14 +204,13 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
 // guest that is not card + email + a verified ticket — so a bundle that can serve capp guests without the client's guestCardOnly rules
 // (card only, the email, the WhatsApp code) must never be built. The packager refuses it, web AND native; the release command carries it.
 {
-  const GUEST = 'xpizza-functions/checkout-guest-gate.js';
   const withGuest = (rel) => (rel === GUEST ? Buffer.from('// the capp-guest server is present\n') : show(rel));
-  for (const t of [NAT, WEB]) {
+  for (const t of [{ target: 'native', env: 'production' }, { target: 'web', env: 'production' }]) {   // NO flags: the refusal is the point
     assert.throws(() => P.build({ sha: HEAD, ...t, show: withGuest }), /guestCardOnly/, `🔴 ${t.target}: the guest server is present and guestCardOnly is NOT set ⇒ packaging must REFUSE`);
     const G = P.build({ sha: HEAD, ...t, show: withGuest, flags: ['guestCardOnly'] });
     assert.ok(G.files.has(P.ENTRY), `${t.target}: with guestCardOnly the build proceeds`);
   }
-  const present = (() => { try { show(GUEST); return true; } catch (_) { return false; } })();
+  const present = GUEST_PRESENT;
   const cmd = (fs.readFileSync(path.join(ROOT, 'customer-app/netlify.toml'), 'utf8').match(/command\s*=\s*"([^"]*package-capp[^"]*)"/) || [])[1] || '';
   assert.ok(cmd, 'premise: the web release command runs the packager');
   if (present) assert.ok(/--flags\s+\S*\bguestCardOnly\b/.test(cmd), `🔴 the guest server is in this tree: the web release command must pass --flags …guestCardOnly (${cmd})`);

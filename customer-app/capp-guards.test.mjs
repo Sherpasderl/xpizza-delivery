@@ -128,7 +128,7 @@ test('customer-app/ is the one platform orders deployment, with exactly the appr
   // + writes version.json itself), fail-closed, published from dist/. assert.ok (never assert.match): the toml carries the public
   // key omit list, and a failure must not dump it
   const toml = readFileSync(join(ROOT, 'customer-app', 'netlify.toml'), 'utf8');
-  assert.ok(/command = "node \.\.\/platform\/native\/package-capp\.js --target web --env \$CONTEXT --sha \$COMMIT_REF --out dist"/.test(toml), '🔴 customer-app/netlify.toml must build with the shell packager\'s web target');
+  assert.ok(/command = "node \.\.\/platform\/native\/package-capp\.js --target web --env \$CONTEXT --sha \$COMMIT_REF --out dist --flags guestCardOnly"/.test(toml), '🔴 customer-app/netlify.toml must build with the shell packager\'s web target');
   assert.ok(/^\s*publish = "dist"$/m.test(toml), '🔴 customer-app/netlify.toml must publish dist/');
 });
 
