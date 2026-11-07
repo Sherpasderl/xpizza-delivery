@@ -31,5 +31,21 @@ for (const f of FILES) {
   assert.notStrictEqual(CO(unapplyHostedRaceModule(f, '\n' + src)), b, `${f}: a byte OUTSIDE every hunk survives`);
 }
 assert.strictEqual(unapplyHostedRaceModule('tb-unowned.js', 'x\n'), 'x\n', 'an unowned file passes through');
+// asm2 (5f): index.js's fold to the assembly base — the ONE definition the loop and the sensitivity cell share
+const foldIndexToBase = (raw) => require('./tools/checkout-inverse').unapplyCheckoutIndex(unapplyHostedRaceModule('index.js', require('./tools/p5a-inverse').unapplyP5aModule('index.js', require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(raw)))));
+const indexBase = () => require('./tools/checkout-inverse').unapplyCheckoutIndex(execFileSync('git', ['show', `${ASM_BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 }));
+
+// ASM2-CHECKOUT-SENSITIVITY (Codex asm2 r1 P2): a change to EXISTING checkout logic must fail the index.js base pin — the
+// fold may remove only the approved additions, never the surrounding checkout bytes.
+{
+  const raw = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+  const CALC = "const cappGuestRefusal = require('./checkout-guest-gate').createOrderRefusal(clientHdr, customer_uid, body);";
+  assert.strictEqual(raw.split(CALC).length - 1, 1, 'ASM2-CHECKOUT-SENSITIVITY: PREMISE — the calculation is present exactly once');
+  const mutated = raw.replace(CALC, () => 'const cappGuestRefusal = null;');
+  assert.strictEqual(foldIndexToBase(raw), indexBase(), 'ASM2-CHECKOUT-SENSITIVITY: PREMISE — the unmutated file folds to base');
+  assert.notStrictEqual(foldIndexToBase(mutated), indexBase(), 'ASM2-CHECKOUT-SENSITIVITY: replacing cappGuestRefusal\'s calculation with null fails the hostedrace-wiring index.js base pin');
+  ok('ASM2-CHECKOUT-SENSITIVITY: an edit to existing checkout logic is caught');
+}
+
 ok(`${FILES.join(', ')} → ${BASE} byte-for-byte; inside / duplicate / outside caught (${HUNKS.length} hunks); unowned passes`);
 console.log(`\nhostedrace-wiring.guard: OK (${n})`);
