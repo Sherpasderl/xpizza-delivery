@@ -335,6 +335,14 @@ async function cell(name, fn) { const before = pass; try { await fn(); if (pass 
       assert.ok(!/PIXELPAY_OUTCOME_UNKNOWN|HTTP \d/.test(all), `${label}: never the raw error text`);
     });
   }
+  // POU-VOID-UNKNOWN-REASON-CODE-REQUIRED: a listed reason on an error that is NOT the client's outcome-unknown error is ignored.
+  await cell('POU-VOID-UNKNOWN-REASON-CODE-REQUIRED', async () => {
+    const label = 'POU-VOID-UNKNOWN-REASON-CODE-REQUIRED';
+    const db = makeDb({ payment_attempts: { A: { order_id: 'TB-1', status: 'captured', payment_uuid: 'S-tb' } } });
+    const client = { voidTransaction: async () => { throw Object.assign(new Error('socket hang up'), { reason: 'envelope_incomplete' }); } };
+    const r = await voidOrRefund({ db, client, alert: () => {} }, { orderId: 'TB-1', attemptId: 'A', pixelpayOrderId: 'TB-1-A', paymentUuid: 'S-tb', reason: 'cancel', now: 1000 });
+    assert.strictEqual(r.code, 'provider_unreachable', `${label}: only the outcome-unknown error's reason is trusted (got ${r.code})`);
+  });
   // POU-VOID-UNKNOWN-REASON-ALLOWLIST: an outcome-unknown error whose reason is NOT one of the four is provider_unreachable.
   await cell('POU-VOID-UNKNOWN-REASON-ALLOWLIST', async () => {
     const label = 'POU-VOID-UNKNOWN-REASON-ALLOWLIST';
