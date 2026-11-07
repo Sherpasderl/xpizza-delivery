@@ -17099,7 +17099,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund#status#0",
-   "line": 61,
+   "line": 67,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17112,7 +17112,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund>anon#status#0",
-   "line": 72,
+   "line": 78,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17125,7 +17125,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund>anon#status#1",
-   "line": 73,
+   "line": 79,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17138,7 +17138,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund#status#1",
-   "line": 81,
+   "line": 87,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17151,7 +17151,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund#status#2",
-   "line": 82,
+   "line": 88,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17164,7 +17164,7 @@
   },
   {
    "id": "xpizza-functions/pixelpay-cancel.js#voidOrRefund>anon#status#2",
-   "line": 90,
+   "line": 96,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -51450,7 +51450,7 @@
    "file": "xpizza-functions/pixelpay-cancel.js",
    "alias": "message",
    "field": "status",
-   "line": 82,
+   "line": 88,
    "round": 1
   },
   {

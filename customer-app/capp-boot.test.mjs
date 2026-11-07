@@ -140,3 +140,9 @@ test('D-4a: the boot turns URL routing on for the WEBSITE only — native keeps 
   const n = capture(); Boot.boot({}, { runtime: RT({ mode: 'native' }), CappShellUI: n.CappShellUI, CappSignupApi });
   assert.equal('routing' in n.c.opts, false, '🔴 native must not route');
 });
+test('C-2 (the Chrome batch found it): EVERY flag the boot reads is one the packager can ship — package-capp FLAGS = the boot\'s `f.<flag> === true` set (one source; a flag the packager refuses can never be turned on)', () => {
+  const read = [...new Set([...readFileSync(join(HERE, 'capp-boot.js'), 'utf8').matchAll(/\bf\.([A-Za-z]+) === true/g)].map((m) => m[1]))].sort();
+  const { FLAGS } = require('../platform/native/package-capp.js');
+  assert.ok(read.length >= 5, `premise: the boot's flags (${read.join(', ')})`);
+  assert.deepEqual([...FLAGS].sort(), read, '🔴 FL-1: the packager ships exactly the flags the boot reads');
+});

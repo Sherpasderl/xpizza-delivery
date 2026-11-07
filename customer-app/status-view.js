@@ -86,6 +86,32 @@ function statusOfdGen2(r, v) {
   }
 }
 
+// DRIVER C (PLAN-driver-server-C-llegue r3; OWNER-APPROVED mockup) — «{Nombre} llegó». An arrival renders ONLY for the CURRENT
+// live driver it belongs to: with mx (server flag on) its owner_tag must be the live claim's; legacy, the active drop's displayed
+// name must be the arrival's. A reassignment (new tag / name) or the waiting («parada rápida») state never shows it. Precedence:
+// cancelled > delivered / completed > arrived > live / waiting / calm. No ETA beside it; the driver's dot may still show.
+function statusArrivedApplies(r) {
+  const a = r.arrived;
+  if (!a || typeof a !== 'object' || !Number.isFinite(a.at)) return false;
+  const mx = (r.mx && typeof r.mx === 'object') ? r.mx : null;
+  if (mx) return mx.mode === 'live' && typeof a.owner_tag === 'string' && a.owner_tag === mx.owner_tag;
+  return r.is_active_drop === true && typeof a.name === 'string' && a.name !== '' && a.name === r.driver_name;
+}
+function statusArrived(r, v) {
+  const mx = (r.mx && typeof r.mx === 'object') ? r.mx : null;
+  const nm = mx ? mx.name : r.driver_name;
+  const name = (typeof nm === 'string' && nm.trim()) ? nm : null;
+  const loc = r.driver_location;
+  if (name) v.avatar = name.charAt(0).toUpperCase();
+  v.segs = ['done', 'done', 'done', { a: .5 }, 'pending'];
+  v.headline = (name || 'Tu repartidor') + ' llegó';
+  v.sub = 'Ya está afuera con tu pedido';
+  v.subClass = 'ssub big';
+  v.arrived = true;
+  v.etaMin = null;
+  v.mapEligible = !!(loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lng));
+}
+
 function presentStatus(r) {
   r = r || {};
   const status = r.status || 'new';
@@ -134,7 +160,9 @@ function presentStatus(r) {
     v.headline = 'Tu pedido se está preparando';
     v.sub = 'Te avisaremos cuando vaya en camino';
   } else if (status === 'out_for_delivery') {
-    if (r.gen2 === true) {
+    if (statusArrivedApplies(r)) {
+      statusArrived(r, v);
+    } else if (r.gen2 === true) {
       statusOfdGen2(r, v);
     } else if (r.driver_name) {
       const driverName = r.driver_name;

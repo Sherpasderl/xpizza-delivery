@@ -37,7 +37,7 @@ const Stamp = require('../stamp-version');
 
 const ROOT = path.join(__dirname, '..', '..');
 const APP = 'customer-app';
-const FLAGS = ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive'];
+const FLAGS = ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive', 'ratings'];   // = the boot's flags (capp-boot.test FL-1)
 const GUEST_SERVER = 'xpizza-functions/checkout-guest-gate.js';   // 3a's capp-guest gate (PLAN-guest-checkout-server)
 const BOOT = ['capp-runtime.js', 'capp-boot.js'];
 const TARGETS = ['web', 'native'];
