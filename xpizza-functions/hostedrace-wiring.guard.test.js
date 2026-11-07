@@ -15,10 +15,10 @@ assert.deepStrictEqual([...FILES].sort(), ['alert-prune.js', 'index.js', 'manual
 for (const f of FILES) {
   // DRYRUN R-WIRE (2e): P5a (newer) innermost
   // asm2 (5f): index.js also carries the newer S-B / S-D layers (stripped first, as in h0-wiring), and capp + 3a additions made
-  // INSIDE checkout's endpoints block (no inverse of their own; pinned by checkout-wiring's approved-delta checks) — so index.js
-  // is compared with the checkout blocks removed on BOTH sides: every byte outside them must be base after the hosted-race hunks.
-  const raw = fs.readFileSync(path.join(__dirname, f), 'utf8');
-  const CO = f === 'index.js' ? require('./tools/checkout-inverse').unapplyCheckoutIndex : (x) => x;
+  // INSIDE checkout's endpoints block with no inverse of their own — stripped by their EXACT generated text
+  // (tools/asm2-approved-additions.js) from the actual side only; every other byte, checkout code included, must be base.
+  const raw = f === 'index.js' ? require('./tools/asm2-approved-additions').stripApprovedAdditions(fs.readFileSync(path.join(__dirname, f), 'utf8')) : fs.readFileSync(path.join(__dirname, f), 'utf8');
+  const CO = (x) => x;
   const src = require('./tools/p5a-inverse').unapplyP5aModule(f, f === 'index.js' ? require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(raw)) : raw);
   const b = CO(execFileSync('git', ['show', `${ASM_BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 }));
   assert.notStrictEqual(CO(src), b, `non-vacuity: ${f} differs from ${BASE}`);
@@ -32,8 +32,8 @@ for (const f of FILES) {
 }
 assert.strictEqual(unapplyHostedRaceModule('tb-unowned.js', 'x\n'), 'x\n', 'an unowned file passes through');
 // asm2 (5f): index.js's fold to the assembly base — the ONE definition the loop and the sensitivity cell share
-const foldIndexToBase = (raw) => require('./tools/checkout-inverse').unapplyCheckoutIndex(unapplyHostedRaceModule('index.js', require('./tools/p5a-inverse').unapplyP5aModule('index.js', require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(raw)))));
-const indexBase = () => require('./tools/checkout-inverse').unapplyCheckoutIndex(execFileSync('git', ['show', `${ASM_BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 }));
+const foldIndexToBase = (raw) => unapplyHostedRaceModule('index.js', require('./tools/p5a-inverse').unapplyP5aModule('index.js', require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/asm2-approved-additions').stripApprovedAdditions(raw)))));
+const indexBase = () => execFileSync('git', ['show', `${ASM_BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 // ASM2-CHECKOUT-SENSITIVITY (Codex asm2 r1 P2): a change to EXISTING checkout logic must fail the index.js base pin — the
 // fold may remove only the approved additions, never the surrounding checkout bytes.

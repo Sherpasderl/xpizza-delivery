@@ -3503,7 +3503,6 @@
     {
      "file": "xpizza-functions/hostedrace-wiring.guard.test.js",
      "inverses": [
-      "tools/checkout-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sb-inverse.js",
@@ -3682,7 +3681,6 @@
     {
      "file": "xpizza-functions/p5a-wiring.guard.test.js",
      "inverses": [
-      "tools/checkout-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js"
