@@ -167,3 +167,29 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
     assert.match(src, /intakeKey: /, `${suite}: …with the key as config (its headers built by ctxBase)`);
   }
 });
+
+// EVIL MERGES (advisor ruling 11-07): «later» skips merge commits (--no-merges), so a capp edit made INSIDE a merge resolution would
+// escape it. For each first-parent merge in BASE..HEAD, a customer-app/ path whose blob differs from EVERY parent's was written by
+// the resolution itself (equal to parent 2 = the merged-in line's own change; equal to parent 1 = untouched). The sync-client and
+// PORTED copies are exempt (their byte-identity checks own them, re-asserted here); any other hit must sit in MERGE_ALLOW, keyed
+// «<merge sha8> <path>», with a one-line reason — reviewed, and an entry that no longer hits is stale and fails.
+const MERGE_ALLOW = {};
+const blobAt = (rev, f) => { try { return git('rev-parse', '-q', '--verify', `${rev}:${f}`).trim(); } catch (_) { return null; } };
+test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
+  const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
+  for (const { src, dst } of synced) assert.ok(readFileSync(join(ROOT, dst)).equals(readFileSync(join(ROOT, src))), `🔴 ${dst} differs from its source ${src} — the merge exemption no longer holds`);
+  for (const [f, sources] of Object.entries(PORTED)) for (const src of sources) assert.ok(readFileSync(join(ROOT, 'customer-app', f)).equals(readFileSync(join(ROOT, src))), `🔴 customer-app/${f} differs from ${src} — the merge exemption no longer holds`);
+  const merges = git('rev-list', '--first-parent', '--merges', `${BASE}..HEAD`).trim().split('\n').filter(Boolean);
+  const hits = [];
+  for (const m of merges) {
+    const parents = git('log', '-1', '--format=%P', m).trim().split(' ').filter(Boolean);
+    for (const f of git('diff', '--name-only', `${m}^1`, m, '--', 'customer-app/').trim().split('\n').filter(Boolean)) {
+      if (exempt.has(f)) continue;
+      const b = blobAt(m, f);
+      if (parents.every((p) => blobAt(p, f) !== b)) hits.push(`${m.slice(0, 8)} ${f}`);
+    }
+  }
+  const unlisted = hits.filter((h) => !(h in MERGE_ALLOW)), stale = Object.keys(MERGE_ALLOW).filter((k) => !hits.includes(k));
+  assert.equal(unlisted.join('\n'), '', `🔴 customer-app/ edit(s) made in a merge resolution (differ from every parent; not in MERGE_ALLOW):\n${unlisted.join('\n')}`);
+  assert.equal(stale.join('\n'), '', `🔴 stale MERGE_ALLOW entr(ies) — no longer a resolution edit:\n${stale.join('\n')}`);
+});
