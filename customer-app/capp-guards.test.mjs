@@ -58,6 +58,25 @@ const capRange = () => {
   assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP ${CAPP_TIP} — re-point CAPP_TIP to the newest of them:\n${later}`);
   return [BASE, CAPP_TIP];
 };
+// THIS LANE's changes (advisor ruling 11-07, after the merge of main): the range cells take their changed-file set from the lane only —
+// every NON-merge commit on the first-parent chain BASE..upTo, plus every path a first-parent MERGE's resolution wrote itself (its blob
+// differs from EVERY parent's: equal to parent 2 = the merged-in line's own change, equal to parent 1 = untouched). ONE helper, shared
+// with the evil-merge cell below. A plain BASE..CAPP_TIP diff would count all of main's merged-in work as this lane's.
+const blobAt = (rev, f) => { try { return git('rev-parse', '-q', '--verify', `${rev}:${f}`).trim(); } catch (_) { return null; } };
+const resolutionEdits = (upTo, scopes) => {
+  const out = [];
+  for (const m of git('rev-list', '--first-parent', '--merges', `${BASE}..${upTo}`).trim().split('\n').filter(Boolean)) {
+    const parents = git('log', '-1', '--format=%P', m).trim().split(' ').filter(Boolean);
+    for (const f of git('diff', '--name-only', `${m}^1`, m, '--', ...scopes).trim().split('\n').filter(Boolean)) {
+      const b = blobAt(m, f);
+      if (parents.every((p) => blobAt(p, f) !== b)) out.push({ m, f });
+    }
+  }
+  return out;
+};
+const laneCommits = (upTo, scopes) => git('log', '--first-parent', '--no-merges', '--format=%H', `${BASE}..${upTo}`, '--', ...scopes).trim().split('\n').filter(Boolean);
+const laneChanged = (upTo, scopes) => [...new Set(git('log', '--first-parent', '--no-merges', '--name-only', '--format=', `${BASE}..${upTo}`, '--', ...scopes).trim().split('\n').filter(Boolean)
+  .concat(resolutionEdits(upTo, scopes).map(({ f }) => f)))].sort();
 const LEAK = /x_pizza|la_musa|xpizza|lamusa|X\.? ?Pizza|La Musa/i;
 // sherpa-client.js is the shared PLATFORM module, synced byte-for-byte into every manifest site (npm run sync:client); it is
 // not app code, so it is exempt from the literal scan ONLY while it stays identical to platform/client/sherpa-client.js
@@ -114,7 +133,7 @@ test('customer-app/ is the one platform orders deployment, with exactly the appr
 });
 
 test(`the live forms are byte-unchanged by the capp range ${BASE}..${CAPP_TIP}`, () => {
-  const changed = git('diff', '--name-only', ...capRange(), '--', 'xpizza-orders', 'la-musa-orders').trim();
+  const [, tip] = capRange(), changed = laneChanged(tip, ['xpizza-orders', 'la-musa-orders']).join(', ');
   const untracked = git('ls-files', '--others', '--exclude-standard', '--', 'xpizza-orders', 'la-musa-orders').trim();
   assert.equal(changed, '', `🔴 live form files changed: ${changed}`);
   assert.equal(untracked, '', `🔴 new files in the live forms: ${untracked}`);
@@ -139,17 +158,22 @@ const S2TIP_SERVER = new Set(['address-area.js', 'create-order-build.js', 'contr
   'platform/sites.json', 'platform-manifest.js', 'pixelpay-return-url.js', 'tools/sync-client.js', 'tools/s2app-inverse.js',
   'tools/s3c-module-inverse.js', 'client-floor.js', 'contract/region-applicability.json'].map((f) => `xpizza-functions/${f}`));
 test(`no server change beyond S2-srv-tip + S2-srv-app + colonia: the capp range ${BASE}..${CAPP_TIP} changes xpizza-functions/ only in tests, fixtures, generated inventories, the test chain and the slices' allowlist`, () => {
-  const range = capRange();
-  const changed = git('diff', '--name-only', ...range, '--', 'xpizza-functions').trim().split('\n').filter(Boolean)
+  const [, tip] = capRange();
+  const changed = laneChanged(tip, ['xpizza-functions'])
     .concat(git('ls-files', '--others', '--exclude-standard', '--', 'xpizza-functions').trim().split('\n').filter(Boolean));
   const allowed = (p) => /\.test\.(m?js|cjs)$/.test(p) || /^xpizza-functions\/test\//.test(p) || /\.golden\.json$|\.expect\.json$/.test(p)
     || p === 'xpizza-functions/tools/form-source-inventory.json' || p === 'xpizza-functions/package.json' || S2TIP_SERVER.has(p);
   const bad = changed.filter((p) => !allowed(p));
   assert.deepEqual(bad, [], `🔴 production files changed: ${bad.join(', ')}`);
   if (changed.includes('xpizza-functions/package.json')) {
-    const was = JSON.parse(git('show', `${BASE}:xpizza-functions/package.json`)); const now = JSON.parse(git('show', `${CAPP_TIP}:xpizza-functions/package.json`));
-    const strip = (j) => { const c = { ...j, scripts: { ...j.scripts } }; delete c.scripts.test; for (const k of Object.keys(c.scripts)) if (/^test:(capp-s1|s2tip$|capp-s2a$|capp-s2a-browser$|address-area$|capp-s4$)/.test(k)) delete c.scripts[k]; return c; };
-    assert.deepEqual(strip(now), strip(was), '🔴 package.json changed beyond the test chain / the capp-s1 test scripts');
+    const PKG = 'xpizza-functions/package.json', at = (rev) => { const b = blobAt(rev, PKG); return b ? JSON.parse(git('show', `${rev}:${PKG}`)) : null; };
+    const strip = (j) => { if (!j) return null; const c = { ...j, scripts: { ...j.scripts } }; delete c.scripts.test; for (const k of Object.keys(c.scripts)) if (/^test:(capp-s1|s2tip$|capp-s2a$|capp-s2a-browser$|address-area$|capp-s4$)/.test(k)) delete c.scripts[k]; return c; };
+    // each lane commit changes it only in the test chain / the capp test scripts; a merge resolution takes ONE parent's rest verbatim
+    for (const c of laneCommits(tip, [PKG])) assert.deepEqual(strip(at(c)), strip(at(`${c}^1`)), `🔴 package.json changed beyond the test chain / the capp-s1 test scripts in ${c.slice(0, 8)}`);
+    for (const { m } of resolutionEdits(tip, [PKG])) {
+      const parents = git('log', '-1', '--format=%P', m).trim().split(' ').filter(Boolean), now = JSON.stringify(strip(at(m)));
+      assert.ok(parents.some((p) => JSON.stringify(strip(at(p))) === now), `🔴 the merge ${m.slice(0, 8)} resolved package.json beyond the test chain (its rest matches no parent)`);
+    }
   }
 });
 
@@ -174,21 +198,11 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // PORTED copies are exempt (their byte-identity checks own them, re-asserted here); any other hit must sit in MERGE_ALLOW, keyed
 // «<merge sha8> <path>», with a one-line reason — reviewed, and an entry that no longer hits is stale and fails.
 const MERGE_ALLOW = {};
-const blobAt = (rev, f) => { try { return git('rev-parse', '-q', '--verify', `${rev}:${f}`).trim(); } catch (_) { return null; } };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
   for (const { src, dst } of synced) assert.ok(readFileSync(join(ROOT, dst)).equals(readFileSync(join(ROOT, src))), `🔴 ${dst} differs from its source ${src} — the merge exemption no longer holds`);
   for (const [f, sources] of Object.entries(PORTED)) for (const src of sources) assert.ok(readFileSync(join(ROOT, 'customer-app', f)).equals(readFileSync(join(ROOT, src))), `🔴 customer-app/${f} differs from ${src} — the merge exemption no longer holds`);
-  const merges = git('rev-list', '--first-parent', '--merges', `${BASE}..HEAD`).trim().split('\n').filter(Boolean);
-  const hits = [];
-  for (const m of merges) {
-    const parents = git('log', '-1', '--format=%P', m).trim().split(' ').filter(Boolean);
-    for (const f of git('diff', '--name-only', `${m}^1`, m, '--', 'customer-app/').trim().split('\n').filter(Boolean)) {
-      if (exempt.has(f)) continue;
-      const b = blobAt(m, f);
-      if (parents.every((p) => blobAt(p, f) !== b)) hits.push(`${m.slice(0, 8)} ${f}`);
-    }
-  }
+  const hits = resolutionEdits('HEAD', ['customer-app/']).filter(({ f }) => !exempt.has(f)).map(({ m, f }) => `${m.slice(0, 8)} ${f}`);
   const unlisted = hits.filter((h) => !(h in MERGE_ALLOW)), stale = Object.keys(MERGE_ALLOW).filter((k) => !hits.includes(k));
   assert.equal(unlisted.join('\n'), '', `🔴 customer-app/ edit(s) made in a merge resolution (differ from every parent; not in MERGE_ALLOW):\n${unlisted.join('\n')}`);
   assert.equal(stale.join('\n'), '', `🔴 stale MERGE_ALLOW entr(ies) — no longer a resolution edit:\n${stale.join('\n')}`);
