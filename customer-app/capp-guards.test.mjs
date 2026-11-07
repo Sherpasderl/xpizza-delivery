@@ -16,6 +16,9 @@
 //   MERGE commits are not capp commits (--no-merges), and the files tools/sync-client.js WRITES into customer-app/ are another
 //   lane's synced copies — excluded, their list derived by running sync-client itself against a recording fs (never a hand list),
 //   and each is asserted BYTE-IDENTICAL to its source, so the exclusion can never hide an edit.
+//   MERGED-IN history is not this lane's either (--first-parent): a merge of main brings main's own capp commits (already gated
+//   by main's pin) into CAPP_TIP..HEAD, and no single CAPP_TIP can cover both parents without pulling main's server work into
+//   BASE..CAPP_TIP. Every commit made ON this branch is still on the first-parent chain, so none escapes the re-pin.
 // Run: node --test customer-app/capp-guards.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -50,7 +53,7 @@ const capRange = () => {
   assert.ok(isAncestor(CAPP_TIP, 'HEAD'), `🔴 ${CAPP_TIP} is not in HEAD's history — the capp range is not part of this tree`);
   const synced = syncedIntoApp();
   for (const { src, dst } of synced) assert.ok(readFileSync(join(ROOT, dst)).equals(readFileSync(join(ROOT, src))), `🔴 ${dst} is a sync-client copy but differs from its source ${src} — an edit hidden in a synced file`);
-  const later = git('log', '--no-merges', '--format=%h %s', `${CAPP_TIP}..HEAD`, '--', 'customer-app/', ':(exclude)customer-app/capp-guards.test.mjs',
+  const later = git('log', '--no-merges', '--first-parent', '--format=%h %s', `${CAPP_TIP}..HEAD`, '--', 'customer-app/', ':(exclude)customer-app/capp-guards.test.mjs',
     ...synced.map(({ dst }) => `:(exclude)${dst}`)).trim();
   assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP ${CAPP_TIP} — re-point CAPP_TIP to the newest of them:\n${later}`);
   return [BASE, CAPP_TIP];
