@@ -4,6 +4,7 @@
 // current_task_id} | null, ownerTasks:{taskId: task} (the owner's task set) }.
 // Output: { mode: 'terminal'|'pre'|'live'|'waiting'|'neutral', owner: uid|null, shift_id }.
 const { getDriverOrders } = require('./driver-orders');
+const { validPair } = require('../sequencing/validity');   // the ONE stack-coherence rule (the driver's stack-validity.js is byte-pinned to it)
 
 const TERMINAL = new Set(['delivered', 'completed', 'cancelled']);
 
@@ -26,7 +27,10 @@ function deriveOrderTracker({ orderId, order, pickup, delivery, owner, ownerTask
   const list = getDriverOrders(O, ownerTasks || {}, {});
   const D = list.filter((x) => x.phase === 'delivery');
   const first = list.length && list[0].phase === 'delivery' ? list[0] : null;
-  const tie = first && D.some((x) => x !== first && (x.deliveryTask.created_at || 0) === (first.deliveryTask.created_at || 0));
+  // a created_at tie makes element 0 ambiguous → neutral — EXCEPT a coherent sequenced stack: the driver app's own sort orders
+  // exactly one valid delivery pair by stop_seq (the same set-level rule, the same validPair), so equal times are no tie there
+  const seqMode = D.length === 2 && validPair(D[0].deliveryTask, D[1].deliveryTask);
+  const tie = first && !seqMode && D.some((x) => x !== first && (x.deliveryTask.created_at || 0) === (first.deliveryTask.created_at || 0));
   const pointer = owner.current_task_id || null;
   const pointsAtFirst = !!(first && pointer === first.deliveryTask.id);
   const inD = D.some((x) => x.orderId === orderId);

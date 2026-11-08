@@ -1,11 +1,13 @@
 'use strict';
-// BUILD-stacked-seq-server r5 T6 — tracker parity, BEFORE 2f lands: the pickup batch is driven through a CONTRACT HELPER that
-// writes exactly the §1 2f obligation this server build can rely on (after pickup, current_task_id = the delivery of the LOWEST
-// VALID stop_seq remaining; else today's pointer), and the REAL tracker derivation (tracking/derive.js, unchanged) is asked at
-// every step. What it proves today:
+// BUILD-stacked-seq-server r5 T6 — tracker parity. The transitions are driven by the REAL driver writers (Codex r1 P2): the
+// pickup pointer is the driver app's pickStackPointer over its pickupComplete in-hand set, a delivery applies its
+// buildCompleteTaskUpdates, a cancel runs the server's cancel promotion — and the REAL tracker derivation (tracking/derive.js)
+// is asked at every step. What it proves:
 //   • an I-first pair (rank order = order time): pre → stop 1 LIVE / stop 2 WAITING → stop 2 LIVE → terminal;
-//   • an N-first pair: until 2f's SORT is re-copied into tracking/driver-orders.js the tracker shows NEUTRAL for both — never a
-//     wrong LIVE (the pointer and element 0 disagree). This cell PINS that gap; 2f's re-copy + the tie-check key flip it;
+//   • an N-first pair: with 2f's stop_seq SORT re-copied into tracking/driver-orders.js (and the tie check stop_seq-aware), stop 1
+//     is LIVE and stop 2 WAITING (the gap this file pinned is closed);
+//   • the stacked-seq consumption matrix at EQUAL created_at (a valid pair → LIVE/WAITING; mismatched / stale provenance →
+//     NEUTRAL/NEUTRAL; three orders → legacy created_at);
 //   • a survivor after a pre-pickup unassign: its stale copy is inert (validity) → the lone order is LIVE;
 //   • a manual reunion (assigned_at > stack_at): order-time, as today;
 //   • flag OFF (no copies): today's pointer → today's tracker; the single-order golden is unchanged.
@@ -13,14 +15,13 @@
 // Run: node sequencing/tracker-parity.test.js
 const assert = require('assert');
 const { deriveOrderTracker } = require('../tracking/derive');
-const { validPair } = require('./validity');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('tracker-parity: FAILED — exited without completing'); process.exitCode = 1; } });
 
 const UID = 'drv_tb_1'; const SID = 'stk_tb';
-const leg = (oid, type, status, created_at, extra = {}) => ({ order_id: oid, type, status, assigned_driver_id: UID, assigned_at: 1000, created_at, ...extra });
+const leg = (oid, type, status, created_at, extra = {}) => ({ order_id: oid, type, status, assigned_driver_id: UID, assigned_at: 1000, created_at, linked_task_id: `${oid}_${type === 'pickup' ? 'delivery' : 'pickup'}`, ...extra });
 const copy = (seq, plus = null) => ({ stack_id: SID, stop_seq: seq, stack_uid: UID, stack_at: 1000, stack_plus_min: plus });
 // the world: ord_i (older) and ord_n, both accepted on the driver; ranks given
 function world({ rankI = 1, copies = true } = {}) {
@@ -31,25 +32,35 @@ function world({ rankI = 1, copies = true } = {}) {
   };
   return { tasks, orders: { ord_i: { status: 'preparing' }, ord_n: { status: 'preparing' } }, driver: { uid: UID, active: true, current_shift_id: 'sh', current_task_id: 'ord_i_pickup' } };
 }
-// THE CONTRACT HELPER — the §1 2f pickup obligation: both pickups completed in one batch (a stacked pickup), the pointer to the
-// delivery of the LOWEST VALID stop_seq remaining (validity per §1); with no valid pair, today's pointer (the swiped order's delivery)
-function pickupBatch(w, swipedOid) {
-  for (const oid of ['ord_i', 'ord_n']) { w.tasks[`${oid}_pickup`].status = 'completed'; w.orders[oid].status = 'out_for_delivery'; }
-  w.driver.current_task_id = nextPointer(w) || `${swipedOid}_delivery`;
+// THE REAL DRIVER WRITERS (Codex r1 P2): the pointer after a pickup is the driver app's pickStackPointer over EXACTLY the in-hand set its
+// pickupComplete gathers (xpizza-delivery.js — the swiped + co-completed deliveries ∪ every delivery of this driver still accepted |
+// in_progress; that function itself needs Firebase, so its gathering is mirrored here and its POINTER is the real one); a delivery
+// is completed by applying the driver app's own buildCompleteTaskUpdates (its next-stop promotion included) to the shared state.
+let DC = null;   // xpizza-driver/driver-complete.js (ES module), loaded once
+function applyUpdates(w, updates) {
+  const root = { tasks: w.tasks, orders: w.orders, drivers: { [UID]: w.driver } };
+  for (const [path, v] of Object.entries(updates)) {
+    const segs = path.split('/'); let o = root;
+    for (let i = 0; i < segs.length - 1; i++) { if (!o[segs[i]] || typeof o[segs[i]] !== 'object') o[segs[i]] = {}; o = o[segs[i]]; }
+    o[segs[segs.length - 1]] = v;
+  }
 }
-function nextPointer(w) {
-  const live = ['ord_i', 'ord_n'].map((o) => w.tasks[`${o}_delivery`]).filter((t) => t && t.status !== 'completed' && t.status !== 'cancelled');
-  if (live.length === 2 && validPair(live[0], live[1])) return live[0].stop_seq < live[1].stop_seq ? `${live[0].order_id}_delivery` : `${live[1].order_id}_delivery`;
-  return live.length === 1 ? `${live[0].order_id}_delivery` : null;
+function pickupBatch(w, swipedOid, oids = ['ord_i', 'ord_n']) {
+  for (const oid of oids) { w.tasks[`${oid}_pickup`].status = 'completed'; w.orders[oid].status = 'out_for_delivery'; }
+  const swiped = `${swipedOid}_delivery`;
+  const inHandIds = new Set([swiped, ...oids.map((o) => `${o}_delivery`)]);
+  for (const [tid, t] of Object.entries(w.tasks)) if (t && t.assigned_driver_id === UID && t.type === 'delivery' && (t.status === 'accepted' || t.status === 'in_progress')) inHandIds.add(tid);
+  w.driver.current_task_id = DC.pickStackPointer([...inHandIds].map((id) => ({ id, task: w.tasks[id] })), swiped);
 }
 function deliver(w, oid) {
-  w.tasks[`${oid}_delivery`].status = 'completed'; w.orders[oid].status = 'delivered';
-  w.driver.current_task_id = nextPointer(w);
+  const taskId = `${oid}_delivery`;
+  applyUpdates(w, DC.buildCompleteTaskUpdates({ driverId: UID, taskId, task: w.tasks[taskId], allTasks: w.tasks, now: 9999 }));
 }
 const mode = (w, oid) => deriveOrderTracker({ orderId: oid, order: w.orders[oid], pickup: w.tasks[`${oid}_pickup`], delivery: w.tasks[`${oid}_delivery`], owner: w.driver, ownerTasks: w.tasks }).mode;
 const both = (w) => [mode(w, 'ord_i'), mode(w, 'ord_n')];
 
-(() => {
+(async () => {
+  DC = await import('../../xpizza-driver/driver-complete.js');
   // ── 1. I-first: pre → live/waiting → live → terminal ────────────────────────────────────────────────────────
   {
     const w = world({ rankI: 1 });
@@ -63,22 +74,21 @@ const both = (w) => [mode(w, 'ord_i'), mode(w, 'ord_n')];
     assert.deepStrictEqual(both(w), ['terminal', 'terminal']);
     ok('I-first: pre → stop 1 LIVE / stop 2 WAITING (whichever pickup was swiped) → stop 2 LIVE → terminal');
   }
-  // ── 2. N-first: NEUTRAL (never a wrong LIVE) until 2f's sort is re-copied — the pinned gap ─────────────────────
+  // ── 2. N-first: with 2f's stop_seq sort re-copied, the pointer's stop 1 is element 0 → LIVE / WAITING (gap closed) ──
   {
     const w = world({ rankI: 2 });
     pickupBatch(w, 'ord_i');
     assert.strictEqual(w.driver.current_task_id, 'ord_n_delivery', 'the pointer follows the rank');
-    assert.deepStrictEqual(both(w), ['neutral', 'neutral'], 'N-first today: neutral for both — the order-time sort and the pointer disagree; never a wrong live');
+    assert.deepStrictEqual(both(w), ['waiting', 'live'], 'N-first: stop 1 (ord_n) LIVE, stop 2 (ord_i) WAITING — the tracker agrees with the driver card');
     deliver(w, 'ord_n');
     assert.deepStrictEqual(both(w), ['live', 'terminal'], 'after stop 1 (N) is delivered, the remaining order is live');
-    ok('N-first: NEUTRAL for both until 2f’s sort lands (pinned gap — never a wrong LIVE); after stop 1, the survivor is LIVE');
+    ok('N-first: stop 1 LIVE / stop 2 WAITING (2f’s stop_seq sort re-copied — the pinned gap closed); after stop 1, the survivor is LIVE');
   }
   // ── 3. a survivor after a pre-pickup unassign of either member: its stale copy is inert ────────────────────────
   for (const gone of ['ord_i', 'ord_n']) {
     const w = world({ rankI: 1 }); const keep = gone === 'ord_i' ? 'ord_n' : 'ord_i';
     for (const t of ['pickup', 'delivery']) { w.tasks[`${gone}_${t}`].assigned_driver_id = null; w.tasks[`${gone}_${t}`].status = 'pending'; }
-    w.tasks[`${keep}_pickup`].status = 'completed'; w.orders[keep].status = 'out_for_delivery';
-    w.driver.current_task_id = nextPointer({ ...w, tasks: Object.fromEntries(Object.entries(w.tasks).filter(([, t]) => t.assigned_driver_id === UID)) }) || `${keep}_delivery`;
+    pickupBatch(w, keep, [keep]);   // the survivor's own pickup, through the real pointer
     assert.strictEqual(mode(w, keep), 'live', `survivor ${keep} after ${gone} unassigned: live`);
   }
   ok('a pre-pickup unassign of either member: the survivor is the lone order and LIVE (its stale copy is inert)');
@@ -100,6 +110,71 @@ const both = (w) => [mode(w, 'ord_i'), mode(w, 'ord_n')];
     assert.strictEqual(mode(one, 'ord_i'), 'live', 'the single-order golden');
     ok('flag OFF (no copies) behaves as today; the single-order golden is LIVE');
   }
+  // ── 6. the stacked-seq consumption matrix (2f stackseq-consume.test.js titles; advisor ruling Codex r1 #3) — EQUAL created_at ──
+  const eq = (over = {}) => { const w = world({ rankI: 2 }); w.tasks.ord_n_delivery.created_at = 100; w.tasks.ord_n_pickup.created_at = 100; Object.entries(over).forEach(([k, v]) => Object.assign(w.tasks[k], v)); return w; };
+  {
+    const w = eq(); pickupBatch(w, 'ord_i');
+    assert.deepStrictEqual(both(w), ['waiting', 'live'], 'a VALID pair with EQUAL created_at is never a tie: stop 1 (ord_n) LIVE, stop 2 WAITING');
+    ok('valid pair, equal created_at → ordered by stop_seq: LIVE / WAITING (the degenerate the neutral rule must not swallow)');
+  }
+  {
+    const w = eq({ ord_n_delivery: { stack_id: 'stk_other' } }); pickupBatch(w, 'ord_i');
+    assert.deepStrictEqual(both(w), ['neutral', 'neutral'], 'mismatched stack_id + equal created_at → an invalid pair → a created_at tie → NEUTRAL for both');
+    ok('mismatched stack_id, equal created_at → invalid → NEUTRAL / NEUTRAL');
+  }
+  for (const [label, over] of [['reassigned away (stack_uid foreign)', { ord_n_delivery: { stack_uid: 'drv_tb_other' } }], ['reassigned AFTER the stack write (assigned_at > stack_at)', { ord_n_delivery: { assigned_at: 5000 } }]]) {
+    const w = eq(over); pickupBatch(w, 'ord_i');
+    assert.deepStrictEqual(both(w), ['neutral', 'neutral'], `${label} + equal created_at → stale provenance → NEUTRAL for both`);
+  }
+  ok('stale provenance (stack_uid foreign / assigned after the stack), equal created_at → invalid → NEUTRAL / NEUTRAL');
+  {
+    // three delivery-phase orders: not exactly one pair → legacy created_at, no stop_seq sequencing (even though ord_i/ord_n are a valid pair)
+    const w = world({ rankI: 2 });
+    w.tasks.ord_x_pickup = leg('ord_x', 'pickup', 'completed', 300); w.tasks.ord_x_delivery = leg('ord_x', 'delivery', 'accepted', 300); w.orders.ord_x = { status: 'out_for_delivery' };
+    pickupBatch(w, 'ord_i');
+    assert.strictEqual(w.driver.current_task_id, 'ord_i_delivery', 'the real pickup pointer: three in hand → not one pair → the swiped delivery (legacy)');
+    assert.deepStrictEqual([...both(w), mode(w, 'ord_x')], ['live', 'waiting', 'waiting'], '3 orders: legacy created_at — the oldest (ord_i) LIVE although its stop_seq is 2');
+    ok('3 delivery orders (a valid pair + a third) → legacy created_at, no stop_seq sequencing');
+  }
+  {
+    // the same three, with the valid pair's created_at EQUAL: legacy → a created_at tie → NEUTRAL (the pair is not sequenced)
+    const w = eq();
+    w.tasks.ord_x_pickup = leg('ord_x', 'pickup', 'completed', 300); w.tasks.ord_x_delivery = leg('ord_x', 'delivery', 'accepted', 300); w.orders.ord_x = { status: 'out_for_delivery' };
+    pickupBatch(w, 'ord_i');
+    assert.deepStrictEqual([...both(w), mode(w, 'ord_x')], ['neutral', 'neutral', 'neutral'], '3 orders, the pair at EQUAL created_at: legacy tie → NEUTRAL for all (no stop_seq sequencing outside exactly one pair)');
+    ok('3 delivery orders with the pair at equal created_at → legacy tie → NEUTRAL (never sequenced by stop_seq)');
+  }
+  {
+    // 2f's case (t02): THREE deliveries ALL at created_at 100 — a valid pair (stop 1 / stop 2) at D[0] / D[1] plus an unrelated
+    // third. Not exactly one pair → no sequencing → a 3-way created_at tie → NEUTRAL for all three (never a wrong LIVE)
+    const w = eq({ ord_n_delivery: {}, ord_i_delivery: {} });
+    w.tasks.ord_x_pickup = leg('ord_x', 'pickup', 'completed', 100); w.tasks.ord_x_delivery = leg('ord_x', 'delivery', 'accepted', 100); w.orders.ord_x = { status: 'out_for_delivery' };
+    w.tasks.ord_i_delivery.created_at = 100;
+    pickupBatch(w, 'ord_n');
+    assert.deepStrictEqual([...both(w), mode(w, 'ord_x')], ['neutral', 'neutral', 'neutral'], '3 deliveries ALL tied with an embedded valid pair: not one pair → NEUTRAL for all three');
+    ok('3 deliveries all at equal created_at with a valid pair embedded → NEUTRAL for all (the length guard is load-bearing)');
+  }
+  // ── 7. the REAL server cancel promotion (sequencing/cancel-promotion.js): stop 1 cancelled after pickup → stop 2 LIVE ──
+  {
+    const w = world({ rankI: 1 }); pickupBatch(w, 'ord_n');
+    const { createFakeDb } = require('../merchant/_fake-db');
+    w.orders.ord_i.status = 'cancelled';
+    const db = createFakeDb({ config: { stack_sequencing_enabled: true, tracker_fixes_enabled: true }, tasks: w.tasks, orders: w.orders, drivers: { [UID]: { name: 'D', status: 'en_route_delivery', current_task_id: w.driver.current_task_id } } });
+    await require('./cancel-promotion').cleanupWithPromotion(db, 'ord_i');
+    w.tasks = db.get('tasks'); w.driver.current_task_id = db.get(`drivers/${UID}/current_task_id`);
+    assert.deepStrictEqual([w.driver.current_task_id, mode(w, 'ord_n')], ['ord_n_delivery', 'live'], 'the promotion moves the pointer to the survivor, which the tracker shows LIVE');
+    ok('the real cancel promotion: stop 1 cancelled after pickup → the survivor (stop 2) is LIVE');
+  }
+  // ── 8. Codex r1 P1: tracker_fixes OFF refuses sequencing — the switch is OFF, so no stop_seq exists and today's path serves ──
+  {
+    const { createFakeDb } = require('../merchant/_fake-db');
+    const { readSeqFlag } = require('./flags');
+    assert.strictEqual(await readSeqFlag(createFakeDb({ config: { stack_sequencing_enabled: true, tracker_fixes_enabled: false } })), false, 'sequencing ON × tracker_fixes OFF → the switch is OFF');
+    assert.strictEqual(await readSeqFlag(createFakeDb({ config: { stack_sequencing_enabled: true, tracker_fixes_enabled: true } })), true, 'PREMISE: both ON → ON');
+    const w = world({ copies: false }); pickupBatch(w, 'ord_i');
+    assert.deepStrictEqual(both(w), ['live', 'waiting'], 'with the switch OFF nothing is sequenced: today’s order-time behaviour');
+    ok('tracker_fixes OFF → the sequencing switch is OFF (no stop_seq written) → today’s behaviour; both ON → sequencing');
+  }
   FINISHED = true;
   console.log(`\ntracker-parity: OK (${n})`);
-})();
+})().catch((e) => { console.error(e && e.stack || e); process.exit(1); });

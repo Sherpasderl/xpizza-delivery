@@ -4,6 +4,7 @@
  * the emulator rules test (which cannot load xpizza-delivery.js — that module imports the Firebase web SDK
  * over https). xpizza-delivery.js imports these as its single source of truth and re-exports the enums.
  */
+import { validPair } from './stack-validity.js';   // the ONE stack-coherence rule (byte-pinned to the server's validity.js); stack-validity.js is pure (no Firebase)
 
 export const DRIVER_STATUS = {
   OFF_SHIFT: 'off_shift',
@@ -68,19 +69,33 @@ export function buildCompleteTaskUpdates({ driverId, taskId, task, allTasks, now
       updates[`orders/${task.order_id}/delivered_by_driver_uid`] = driverId;
     }
 
-    // Look for the next queued delivery for this driver — a delivery task
-    // that's already 'accepted' (stacked) but not completed/cancelled.
-    let nextDeliveryId = null;
-    let earliestCreated = Infinity;
+    // Look for the next queued delivery for this driver — a delivery task already 'accepted' (stacked), not
+    // completed/cancelled. SEQUENCING (stacked-order consumption): when the remaining stacked deliveries form a
+    // COHERENT server-sequenced stack — all carry stop_seq ∈ {1,2} with the SAME stack_id and DISTINCT ranks —
+    // take the LOWEST remaining stop_seq (the server's decided order). Otherwise (absent / partial / mismatched)
+    // fall back to the earliest created_at — byte-identical to the legacy behaviour. The server (sequencing/
+    // plan-stack) is the ONLY writer of stop_seq/stack_id (on tasks/{oid}_delivery); flag-OFF writes none, so the
+    // OFF / non-stacked path stays on created_at.
+    const remaining = [];
     for (const [tid, t] of Object.entries(allTasks || {})) {
       if (tid === taskId) continue;
       if (!t || t.assigned_driver_id !== driverId) continue;
       if (t.type !== TASK_TYPE.DELIVERY) continue;
       if (t.status !== TASK_STATUS.ACCEPTED && t.status !== TASK_STATUS.IN_PROGRESS) continue;
-      const created = t.created_at || 0;
-      if (created < earliestCreated) {
-        earliestCreated = created;
-        nextDeliveryId = tid;
+      remaining.push({ tid, t });
+    }
+    // A coherent 2-stop stack — the server's validPair provenance (same stack_id/driver, ranks 1+2, stack_at >=
+    // assigned_at so no reassignment invalidated it) — promotes the LOWEST remaining stop_seq. Anything else (a lone
+    // remainder, a 3rd order, or stale/mismatched metadata) → earliest created_at, byte-identical to legacy.
+    const validStack = remaining.length === 2 && validPair(remaining[0].t, remaining[1].t);
+    let nextDeliveryId = null;
+    if (validStack) {
+      nextDeliveryId = remaining.reduce((lo, m) => (lo === null || m.t.stop_seq < lo.t.stop_seq ? m : lo), null).tid;
+    } else {
+      let earliestCreated = Infinity;
+      for (const { tid, t } of remaining) {
+        const created = t.created_at || 0;
+        if (created < earliestCreated) { earliestCreated = created; nextDeliveryId = tid; }
       }
     }
 
@@ -121,4 +136,18 @@ export function buildCompleteTaskUpdates({ driverId, taskId, task, allTasks, now
   // also accepts the linked delivery task. Direct completeTask on a pickup
   // is unusual but supported — just clears the pickup status without touching driver.
   return updates;
+}
+
+/**
+ * PURE: choose the active-stop pointer among the deliveries just taken in hand at pickupComplete. When the members
+ * form a COHERENT server-sequenced stack (every member carries stop_seq ∈ {1,2} with the SAME stack_id and DISTINCT
+ * ranks), the pointer is the LOWEST stop_seq delivery (the server's stop 1) — so the active stop is stop 1 even when
+ * the driver swipes stop 2's pickup first. Otherwise (single order, absent/partial/mismatched stop_seq) the pointer
+ * is the swiped delivery, byte-identical to the legacy behaviour. `members` = [{ id, task }].
+ */
+export function pickStackPointer(members, swipedDeliveryId) {
+  const m = members || [];
+  // Only a coherent 2-stop stack (server validPair provenance) chooses stop 1; otherwise the swiped delivery (legacy).
+  if (!(m.length === 2 && validPair(m[0].task, m[1].task))) return swipedDeliveryId;
+  return m.reduce((lo, x) => (lo === null || x.task.stop_seq < lo.task.stop_seq ? x : lo), null).id;
 }

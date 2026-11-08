@@ -2,7 +2,8 @@
 // BUILD-stacked-seq-server r5 T5 — the writer-side helpers. autoAssignOnOrderCreate and sweepPendingOrders call these from small
 // index.js hunks; monitorAssignmentTimeout NEVER does (D12: it is byte-identical with the flag ON or OFF).
 //
-//   readSeqFlag(db)          config/stack_sequencing_enabled, read ONCE per invocation; only === true is ON (fail OFF)
+//   readSeqFlag(db)          config/stack_sequencing_enabled AND config/tracker_fixes_enabled, read ONCE per invocation;
+//                            only both === true is ON (each fails OFF) — sequencing/flags.js
 //   filterEligible(...)      pickEligibleDriver's {stackFilter}: a 1-order driver stays a candidate iff the pair is CROSS-HUB
 //                            (D7 phase 1: today's rule exactly) or same-hub AND the cheap gate passes (prep + coords)
 //   planForWriter(...)       { mode:'today' } (cross-hub / not one other order) | { mode:'single', reason } | { mode:'stack', … }
@@ -19,10 +20,8 @@ const MIN_LEFT_MS = 20000;       // plan only with ≥ 20 s left of the invocati
 const POST_CLAIM_MS = 3000;      // the post-claim reads, a separate budget
 const TODAY = new Set(['cross_hub', 'not_one']);
 
-async function readSeqFlag(db) {
-  try { return (await db.ref('config/stack_sequencing_enabled').once('value')).val() === true; }
-  catch (e) { console.warn(`stackseq: flag read failed (${(e && e.message) || e}) — OFF`); return false; }
-}
+// the switch requires BOTH stack_sequencing_enabled and tracker_fixes_enabled (sequencing/flags.js — the one source)
+const { readSeqFlag } = require('./flags');
 
 // eligible: pickEligibleDriver's ranked entries; activeByDriver: { uid → Set(orderId) }. Returns the kept entries, in order.
 async function filterEligible(db, tasks, eligible, activeByDriver, newOid) {

@@ -16,8 +16,9 @@ const SURVIVOR_READ_MS = 3000;
 const TERMINAL_ORDER = new Set(['delivered', 'completed', 'cancelled', 'refund_pending']);
 const TODAY_AVAILABLE = ['assigned', 'at_restaurant', 'en_route_delivery'];   // today's cleanup allowlist
 
+// the same switch as the writer: BOTH stack_sequencing_enabled and tracker_fixes_enabled (sequencing/flags.js), failing OFF
 async function readSeqFlagSafe(db) {
-  try { return (await db.ref('config/stack_sequencing_enabled').once('value')).val() === true; } catch (_) { return false; }
+  try { return await require('./flags').readSeqFlag(db); } catch (_) { return false; }
 }
 
 async function findSurvivor(db, driverId, orderId) {
