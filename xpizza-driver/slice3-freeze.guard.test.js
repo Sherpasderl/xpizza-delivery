@@ -437,7 +437,7 @@ t('restore spans are present in the 07e5ab38 baseline (pin integrity)', () => {
 // (there 2.5.2→2.5.4 off e2266b24; here 2.5.3→2.5.4 off 07e5ab38). Any OTHER out-of-region drift still fails
 // recovery (the NEG cell below applies the same allow, so the probe line is the ONLY difference it can trip on).
 const OUT_OF_REGION_ALLOW = [
-  { from: "const SYSTEM_VERSION = '2.5.3';", to: "const SYSTEM_VERSION = '2.5.4';" },
+  { from: "const SYSTEM_VERSION = '2.5.3';", to: "const SYSTEM_VERSION = '2.6.0';" },
 ];
 const applyAllow = (html) => {
   for (const { from, to } of OUT_OF_REGION_ALLOW) {

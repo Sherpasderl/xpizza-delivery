@@ -266,7 +266,7 @@ const ALLOWED_DELETE = new Set(['xpizza-driver/single-order-branch.test.js']);
 // still goes RED (proven by the sensitivity cell below: the allow is line-count-preserving and changes exactly
 // these lines, nothing else).
 const OUT_OF_REGION_ALLOW = [
-  { from: "const SYSTEM_VERSION = '2.5.2';", to: "const SYSTEM_VERSION = '2.5.4';" },
+  { from: "const SYSTEM_VERSION = '2.5.2';", to: "const SYSTEM_VERSION = '2.6.0';" },
   // R7: add the two nav-pref screen names to showScreen's switch list (single-line, line-count-preserving).
   { from: "  ['config', 'login', 'offshift', 'onshift', 'companion'].forEach(s => {",
     to:   "  ['config', 'login', 'offshift', 'onshift', 'companion', 'cuenta', 'navApp'].forEach(s => {" },
