@@ -15,29 +15,6 @@ const { BASE, HUNKS, FILES, unapplyKeyModeModule } = require('./tools/keymode-mo
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 
-// ── 1 ──
-const pinnedElsewhere = new Set();
-for (const t of fs.readdirSync(path.join(__dirname, 'tools')).filter((x) => /-inverse\.js$/.test(x) && x !== 'keymode-module-inverse.js')) {
-  const txt = fs.readFileSync(path.join(__dirname, 'tools', t), 'utf8');
-  for (const f of FILES) if (txt.includes(`"${f}"`) || txt.includes(`'${f}'`)) pinnedElsewhere.add(f);
-}
-assert.ok(pinnedElsewhere.has('index.js') && pinnedElsewhere.has('menu-pricing.js'), 'premise: the older layers are found');
-for (const f of FILES) {
-  const src = read(f);
-  const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
-  assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
-  assert.strictEqual(unapplyKeyModeModule(f, src), b, `🔴 ${f} minus the S0 key-mode hunks is not ${BASE}:${f}`);
-  if (pinnedElsewhere.has(f)) assert.strictEqual(src.split('\n').length, b.split('\n').length, `🔴 ${f} is pinned by an older layer: same-line edits only`);
-  for (const h of HUNKS.filter((x) => x.file === f)) {
-    const k = h.now.search(/[A-Za-z]/);
-    assert.throws(() => unapplyKeyModeModule(f, src.replace(h.now, h.now.slice(0, k) + '#' + h.now.slice(k + 1))), /occurs 0 times/, `${f}: a byte INSIDE a hunk`);
-    assert.throws(() => unapplyKeyModeModule(f, src + h.now), /occurs 2 times/, `${f}: a duplicated hunk`);
-  }
-  assert.notStrictEqual(unapplyKeyModeModule(f, '\n' + src), b, `${f}: a byte OUTSIDE every hunk survives`);
-}
-assert.strictEqual(unapplyKeyModeModule('tb-unowned.js', 'x\n'), 'x\n', 'an unowned file passes through');
-ok(`${FILES.length} files → ${BASE} byte-for-byte (${pinnedElsewhere.size} pinned by older layers: same-line only); inside / duplicate / outside caught (${HUNKS.length} hunks)`);
-
 // ── 2 ──
 const BRAND = /'la_musa'|'x_pizza'|"la_musa"|"x_pizza"/;
 const parseFile = (f) => parse(read(f), { ecmaVersion: 'latest', sourceType: 'script', allowHashBang: true, allowReturnOutsideFunction: true });
@@ -155,5 +132,29 @@ const ALLOWED = {
   for (const [f, text, count, label] of MUST) assert.strictEqual(read(f).split(text).length - 1, count, `🔴 ${label}: ${f} must carry the mode here (${count}×)`);
   ok(`${MUST.length} handler / publish / rollback / backfill / CLI / public-menu carries are in place`);
 }
+
+// The inverse round-trip runs LAST: a mutant in an owned file breaks it, so every named pin above must get its turn first.
+// ── 1 ──
+const pinnedElsewhere = new Set();
+for (const t of fs.readdirSync(path.join(__dirname, 'tools')).filter((x) => /-inverse\.js$/.test(x) && x !== 'keymode-module-inverse.js')) {
+  const txt = fs.readFileSync(path.join(__dirname, 'tools', t), 'utf8');
+  for (const f of FILES) if (txt.includes(`"${f}"`) || txt.includes(`'${f}'`)) pinnedElsewhere.add(f);
+}
+assert.ok(pinnedElsewhere.has('index.js') && pinnedElsewhere.has('menu-pricing.js'), 'premise: the older layers are found');
+for (const f of FILES) {
+  const src = read(f);
+  const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
+  assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
+  assert.strictEqual(unapplyKeyModeModule(f, src), b, `🔴 ${f} minus the S0 key-mode hunks is not ${BASE}:${f}`);
+  if (pinnedElsewhere.has(f)) assert.strictEqual(src.split('\n').length, b.split('\n').length, `🔴 ${f} is pinned by an older layer: same-line edits only`);
+  for (const h of HUNKS.filter((x) => x.file === f)) {
+    const k = h.now.search(/[A-Za-z]/);
+    assert.throws(() => unapplyKeyModeModule(f, src.replace(h.now, h.now.slice(0, k) + '#' + h.now.slice(k + 1))), /occurs 0 times/, `${f}: a byte INSIDE a hunk`);
+    assert.throws(() => unapplyKeyModeModule(f, src + h.now), /occurs 2 times/, `${f}: a duplicated hunk`);
+  }
+  assert.notStrictEqual(unapplyKeyModeModule(f, '\n' + src), b, `${f}: a byte OUTSIDE every hunk survives`);
+}
+assert.strictEqual(unapplyKeyModeModule('tb-unowned.js', 'x\n'), 'x\n', 'an unowned file passes through');
+ok(`${FILES.length} files → ${BASE} byte-for-byte (${pinnedElsewhere.size} pinned by older layers: same-line only); inside / duplicate / outside caught (${HUNKS.length} hunks)`);
 
 console.log(`\nkeymode-wiring.guard: OK (${n})`);
