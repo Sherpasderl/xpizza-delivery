@@ -72,12 +72,19 @@ function world(coById, swipedOid) {
 // The tracker mode for one order, fed the SAME world.
 const mode = (w, oid) => deriveOrderTracker({ orderId: oid, order: w.orders[oid], pickup: w.tasks[`${oid}_pickup`], delivery: w.tasks[`${oid}_delivery`], owner: w.driver, ownerTasks: w.tasks }).mode;
 const both = (w, a, b) => [mode(w, a), mode(w, b)];
-// Deliver one order through the REAL buildCompleteTaskUpdates; apply its writes to the world (status + the promotion pointer).
+// Deliver one order through the REAL buildCompleteTaskUpdates, then APPLY the writer's own returned paths to the world —
+// the task-status + order-status + promotion-pointer writes all come from `u`, nothing hard-coded. So if the writer
+// stops emitting any of those writes (e.g. a mutant drops the orders/{oid}/status = DELIVERED line), the world no longer
+// transitions and the downstream mode assertion turns RED. Paths are RTDB-style `root/key/field…`.
 function deliver(w, oid) {
   const u = buildCompleteTaskUpdates({ driverId: UID, taskId: `${oid}_delivery`, task: w.tasks[`${oid}_delivery`], allTasks: w.tasks, now: 1 });
-  w.tasks[`${oid}_delivery`].status = TASK_STATUS.COMPLETED;
-  w.orders[oid].status = 'delivered';
-  if (PTR in u) w.driver.current_task_id = u[PTR];
+  for (const [p, val] of Object.entries(u)) {
+    const seg = p.split('/');
+    const field = seg.slice(2).join('/');
+    if (seg[0] === 'tasks' && w.tasks[seg[1]]) w.tasks[seg[1]][field] = val;
+    else if (seg[0] === 'orders' && w.orders[seg[1]]) w.orders[seg[1]][field] = val;
+    else if (seg[0] === 'drivers' && seg[1] === UID) w.driver[field] = val;
+  }
 }
 
 // ───────── the 5-case matrix (keys mirror stackseq-consume.test.js) ─────────
@@ -121,8 +128,13 @@ t('(a/#2) 3 orders (valid pair + a 3rd) → NOT exactly one pair → legacy crea
   const w = world({ a: { created_at: 300, stop_seq: 2 }, b: { created_at: 100, stop_seq: 1 }, c: { created_at: 200, mk: del } }, 'a');
   // driver side: legacy created_at order b(100) < c(200) < a(300), NOT stop_seq
   assert.deepEqual(getDriverOrders(UID, w.tasks, {}).map((o) => o.orderId), ['b', 'c', 'a'], 'legacy created_at order across 3 orders');
-  // tracker side never claims a wrong live: with no clean pair the pointer and element-0 need not resolve to the 3rd order
-  assert.ok(!['live'].includes(mode(w, 'c')) || mode(w, 'c') === 'live', 'c (the 3rd) is not forced live by stop_seq');
+  // tracker side (exact, from deriveOrderTracker): 3 delivery orders ⇒ NOT seqMode (D.length===2 is false); created_at
+  // distinct ⇒ no tie; pointer = swiped a_delivery (no valid 2-pair for pickStackPointer) while element-0 = earliest-created
+  // b ⇒ pointsAtFirst is FALSE ⇒ every order falls through to neutral. No order — least of all the 3rd, c — is forced live
+  // or waiting. This is the "never wrong when uncertain" rule, and it kills a mutant that drops the pointsAtFirst guard
+  // (which would otherwise promote b→live and a/c→waiting).
+  assert.equal(w.pointer, 'a_delivery', 'no clean pair ⇒ pointer stays on the swiped delivery');
+  assert.deepEqual([mode(w, 'a'), mode(w, 'b'), mode(w, 'c')], ['neutral', 'neutral', 'neutral'], 'pointer (swiped a) ≠ element-0 (created-first b) ⇒ neutral for all three');
 });
 
 console.log(`\nstackseq-tracker-parity: ${failed === 0 ? 'OK' : 'INCOMPLETE'} (${passed} passed, ${failed} failed)`);
