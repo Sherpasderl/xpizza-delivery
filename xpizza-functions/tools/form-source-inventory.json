@@ -2911,7 +2911,9 @@
   },
   "catalog/reset-draft.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/keymode-wiring.guard.test.js"
+   ]
   },
   "catalog/restaurant-registry.js": {
    "pins": [
