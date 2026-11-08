@@ -15,7 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { router, DIRECTORY_ENDPOINT } from './fixtures.mjs';
+import { router, DIRECTORY_ENDPOINT, CLOCK_SHIM } from './fixtures.mjs';
 import { SCENES } from './scenes.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -66,6 +66,7 @@ async function openPage({ width, height, dark }) {
   const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
   const S = (m, p) => send(m, p, sessionId);
   await S('Page.enable'); await S('Runtime.enable');
+  await S('Page.addScriptToEvaluateOnNewDocument', { source: CLOCK_SHIM });   // the pinned NOW (fixtures.mjs) — before any page script
   await S('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile: width < 600 });
   await S('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: dark ? 'dark' : 'light' }] });
   await S('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
@@ -75,13 +76,15 @@ async function openPage({ width, height, dark }) {
     try {
       if (request.url.startsWith(ORIGIN) || request.url.startsWith('data:') || request.url.startsWith('blob:')) return void await S('Fetch.continueRequest', { requestId });
       const hit = page.route ? page.route(request) : null;
+      page.trace.push(`${hit ? hit.status || 200 : 'UNMAPPED'} ${request.method} ${request.url.replace(/^https?:\/\//, '').slice(0, 110)}`);
       if (!hit) { unmapped.push(`${page.scene}: ${request.method} ${request.url.slice(0, 160)}`); return void await S('Fetch.fulfillRequest', { requestId, responseCode: 599, body: '' }); }
-      const body = typeof hit.body === 'string' ? hit.body : JSON.stringify(hit.body ?? null);
+      const body = Buffer.isBuffer(hit.body) || typeof hit.body === 'string' ? hit.body : JSON.stringify(hit.body ?? null);   // a Buffer = a committed image file
+      if (hit.delay) await sleep(hit.delay);   // a slow read (memberExtra's receiptDelay: the cold-miss CLS scene)
       await S('Fetch.fulfillRequest', { requestId, responseCode: hit.status || 200, responseHeaders: [{ name: 'Content-Type', value: hit.type || 'application/json' }, { name: 'Access-Control-Allow-Origin', value: ORIGIN }, ...(hit.headers || [])], body: Buffer.from(body).toString('base64') });
     } catch (_) {}
   };
   handlers.add(onPaused);
-  const page = { S, sessionId, scene: '', route: null,
+  const page = { S, sessionId, scene: '', route: null, trace: [],
     async eval(expr) { const r = await S('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(`eval: ${r.exceptionDetails.exception ? r.exceptionDetails.exception.description : r.exceptionDetails.text}`); return r.result.value; },
     async until(expr, ms = 15000) { const t0 = Date.now(); for (;;) { if (await page.eval(`!!(${expr})`).catch(() => false)) return; if (Date.now() - t0 > ms) throw new Error(`until timed out: ${expr}`); await sleep(100); } },
     async shot(clip) { const r = await S('Page.captureScreenshot', { format: 'png', ...(clip ? { clip: { ...clip, scale: 1 } } : {}), captureBeyondViewport: !!clip }); return Buffer.from(r.data, 'base64'); },
@@ -144,10 +147,10 @@ const want = SCENES.filter((s) => !ONLY.length || ONLY.includes(s.name));
 const write = (f, buf) => fs.writeFileSync(path.join(OUT, 'img', f), buf);
 for (const sc of want) {
   for (const theme of sc.themes || ['light']) {
-    const id = `${sc.name}-${theme}`, row = { scene: sc.name, theme, width: sc.width, height: sc.height, note: sc.note || '' };
+    const id = `${sc.name}-${theme}`, row = { scene: sc.name, theme, width: sc.width, height: sc.height, note: sc.note || '' }; let p = null;
     try {
       // the REAL scene, from the packaged entry
-      const p = await openPage({ width: sc.width, height: sc.height, dark: theme === 'dark' }); p.scene = id; p.route = router(sc.fixtures || {});
+      p = await openPage({ width: sc.width, height: sc.height, dark: theme === 'dark' }); p.scene = id; p.route = router(sc.fixtures || {});
       if (sc.seed) { await p.S('Page.navigate', { url: `${ORIGIN}/__mock/` }); await sleep(300); await p.eval(sc.seed); }   // same-origin storage BEFORE the app boots
       if (sc.cls) await p.S('Page.addScriptToEvaluateOnNewDocument', { source: 'window.__cls = 0; new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; }).observe({ type: "layout-shift", buffered: true });' });
       await p.S('Page.navigate', { url: `${ORIGIN}${sc.path || '/'}` });
@@ -158,7 +161,7 @@ for (const sc of want) {
       const real = await p.shot(); write(`${id}-real.png`, real);
       const mk = typeof sc.mock === 'function' ? sc.mock(theme) : sc.mock;   // a mockup scene of THIS theme, else none (contrast only)
       let realL = null; if (mk) { await p.eval(MASK); await sleep(150); realL = await p.shot(); await p.eval(UNMASK); }
-      await p.close();
+      await p.close(); p = null;
       // its MOCKUP scene (when it has one): the same CSS size, DPR 2
       if (mk) {
         const m = await openPage({ width: mk.vw || sc.mockWidth || 1600, height: mk.vh || sc.mockHeight || 1200, dark: theme === 'dark' }); m.scene = `${id}-mock`; m.route = () => ({ status: 404, body: '' });
@@ -172,7 +175,11 @@ for (const sc of want) {
         const l = await diffPair(id, realL, mockL, 'ldiff'); write(`${id}-ldiff.png`, Buffer.from(l.png, 'base64')); row.layoutPct = l.pct;
         row.mock = mk.label || mk.file;
       }
-    } catch (e) { row.error = String(e.message || e).slice(0, 300); }
+    } catch (e) {
+      row.error = String(e.message || e).slice(0, 300);
+      // the failing page's own state, for the operator (the page is still open when a step times out)
+      try { if (p) { row.errorText = String(await p.eval('document.body ? document.body.innerText.slice(0, 500) : ""')); row.trace = p.trace.slice(-40); write(`${id}-error.png`, await p.shot()); await p.close(); } } catch (_) {}
+    }
     results.push(row); process.stdout.write(`${id}: ${row.error ? 'ERROR ' + row.error : `diff ${row.diffPct ?? '—'}% layout ${row.layoutPct ?? '—'}%  contrast fails ${row.contrast ? row.contrast.fails.length : '—'}${row.cls !== undefined ? '  CLS ' + row.cls : ''}`}\n`);
   }
 }
