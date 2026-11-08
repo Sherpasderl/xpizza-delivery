@@ -135,6 +135,37 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.ok(db2.getAt(`orders/${OID}/control_held`), `${L}: PREMISE — a legacy scheduled order IS claimed and processed (held) by the same call`);
   });
 
+  await cell('LX-SCHEDULED-RECOVERY-REFUSES-SDK', async (L) => {
+    const SR = require('../../scheduled-release-core');
+    const db = makeHonestDb({ orders: { [OID]: sdkOrder({ status: 'releasing', release_claim_id: 'old', releasing_since: 1 }) } });
+    const before = snapshot(db);
+    let built = 0;
+    const r = await SR.recoverStaleReleasing({ db, genToken: () => 'T', alert: () => {}, orderControl: async () => null, buildMaterializeUpdates: () => { built += 1; return {}; } }, { orderId: OID, now: 10 * 3600 * 1000, claimId: 'c2' });
+    assert.ok(!r.recovered && built === 0 && snapshot(db) === before, `${L}: a stale releasing SDK order is not re-claimed or finalized (got ${JSON.stringify(r)})`);
+    const db2 = makeHonestDb({ orders: { [OID]: legacyOrder({ status: 'releasing', release_claim_id: 'old', releasing_since: 1 }) } });
+    const r2 = await SR.recoverStaleReleasing({ db: db2, genToken: () => 'T', alert: () => {}, orderControl: async () => ({ paused: true, cause: 'pause' }) }, { orderId: OID, now: 10 * 3600 * 1000, claimId: 'c2' }).catch((e) => ({ err: e.message }));
+    assert.ok(r2.recovered, `${L}: PREMISE — the same LEGACY order is recovered (got ${JSON.stringify(r2)})`);
+  });
+  await cell('LX-SCHEDULED-FINALIZE-REFUSES-SDK', async (L) => {
+    const SR = require('../../scheduled-release-core');
+    const o = sdkOrder({ status: 'releasing', release_claim_id: 'c1', releasing_since: 1 });
+    const db = makeHonestDb({ orders: { [OID]: o } });
+    const before = snapshot(db);
+    const r = await SR.finalizeRelease({ db, genToken: () => 'T', alert: () => {}, orderControl: async () => ({ paused: true, cause: 'pause' }) }, OID, o, 1000);
+    assert.ok(snapshot(db) === before && !r.released && !r.held, `${L}: finalize refuses an SDK order at entry — no rollback, no materialize (got ${JSON.stringify(r)})`);
+  });
+  await cell('LX-REWARD-CONSUME-RECOVERY-SKIPS-SDK', async (L) => {
+    const RR = require('../../rewards-reserve');
+    const seed = (o) => ({ orders: { [OID]: o }, user_rewards: { tb_uid: { tb_rest: { reservations: { [OID]: { state: 'reserved', created_at: 0 } } } } } });
+    const live = { status: 'new', payment_status: 'confirmed', materialized_at: 5 };
+    const db = makeHonestDb(seed(sdkOrder(live)));
+    assert.ok(RR.consumeEligible(db.getAt(`orders/${OID}`)), `${L}: PREMISE — the SDK order is consume-eligible by the legacy rule`);
+    await RR.sweepConsumeRecovery(db, { now: 10 * 24 * 3600 * 1000 });
+    assert.strictEqual(db.getAt(`user_rewards/tb_uid/tb_rest/reservations/${OID}/state`), 'reserved', `${L}: the SDK reservation is NOT consumed by the legacy sweep (coordinator-owned)`);
+    const db2 = makeHonestDb(seed(legacyOrder(live)));
+    await RR.sweepConsumeRecovery(db2, { now: 10 * 24 * 3600 * 1000 });
+    assert.notStrictEqual(db2.getAt(`user_rewards/tb_uid/tb_rest/reservations/${OID}/state`), 'reserved', `${L}: PREMISE — the same LEGACY reservation IS consumed`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk legacy exclusion: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
