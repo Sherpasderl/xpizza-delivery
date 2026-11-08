@@ -8,7 +8,8 @@
 //
 // ARGUMENTS ARE STRICT (the record-evidence-boundary `--rid=` lesson): the SPACE form only; `--rid=…`, a missing / malformed rid,
 // an unknown flag, a repeated flag, a second subcommand, or --apply on status ⇒ exit 2 — never a silent fan-out. --project is
-// mandatory and checked against .firebaserc BEFORE any client exists (tools/require-project.js).
+// mandatory and checked against .firebaserc FIRST, before the arguments and before any client (tools/require-project.js; the
+// catalog/project-guard cell drives every connecting tool with no / the wrong project and expects ITS refusal).
 // Run:  node tools/platform-pending.js status --project <id> --rid <rid>
 //       node tools/platform-pending.js clear  --project <id> --rid <rid> [--apply]
 const { pendingRefOf, readPlatformPending, malformedAlertRef } = require('../catalog/platform-pending');
@@ -69,10 +70,10 @@ async function clear(fs, rtdb, rid, { apply = false } = {}) {
 module.exports = { parseArgs, status, clear, RID_RE };
 
 if (require.main === module) {
-  const args = parseArgs(process.argv.slice(2));
-  if (!args.ok) { console.error(`🔴 REFUSED — ${args.why}`); process.exit(2); }
   const { requireProject } = require('./require-project');
-  const PROJECT_ID = requireProject({ requireFlag: true });   // before any credential or client
+  const PROJECT_ID = requireProject({ requireFlag: true });   // the project guard FIRST (its refusal banner, exit 2), before any client
+  const args = parseArgs(process.argv.slice(2));               // then the arguments (pure) — still before any credential or client
+  if (!args.ok) { console.error(`🔴 REFUSED — ${args.why}`); process.exit(2); }
   const admin = require('firebase-admin');
   const { RTDB_URL } = require('../catalog/mirror-rtdb');
   admin.initializeApp({ credential: admin.credential.applicationDefault(), projectId: PROJECT_ID, databaseURL: RTDB_URL });

@@ -4,6 +4,7 @@
 // Run: node photos/editable-wiring.test.js
 const assert = require('assert');
 const { getEditableCatalogCore } = require('../catalog/portal-reads');
+const { NO_STAMP } = require('../test/_no-stamp');   // F-1 r2: the fail-closed stamp read's "no stamp"
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const RID = 'tb_r1';
@@ -11,7 +12,7 @@ const P = 'a'.repeat(32);
 const src = { restaurant_id: RID, items: [{ key: 'tb_k', price: 100, display: { id: 1, name: 'K', price: 100 } }], extras: [], structure: { categories: [{ id: 'c' }], item_order: ['tb_k'] } };
 const TS = { seconds: 1788754374, nanoseconds: 1 };
 const deps = (over = {}) => ({
-  db: {}, fsdb: {}, authorize: async () => ({ ok: true, uid: 'tb_owner', role: 'owner' }), readActiveVersionId: async () => 'v1',
+  db: {}, fsdb: NO_STAMP, authorize: async () => ({ ok: true, uid: 'tb_owner', role: 'owner' }), readActiveVersionId: async () => 'v1',
   _sourceRefOf: () => ({ get: async () => ({ exists: true, data: () => src, updateTime: TS }) }), _validateSource: () => {}, ...over,
 });
 const req = { method: 'GET', query: { restaurantId: RID }, get: () => 'Bearer tok' };

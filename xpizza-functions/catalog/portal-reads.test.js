@@ -41,13 +41,7 @@ const owns = (uid, rids) => Object.assign({ [`member_of/${uid}`]: { brands: Obje
   ...rids.map((r) => ({ [`brand_members/${r}/owners/${uid}`]: { granted_at: 1, granted_by: 'cli:op' }, [`brands/${r}`]: legacy(r) })));
 const req = (over = {}) => ({ method: 'GET', get: (h) => (h.toLowerCase() === 'authorization' ? 'Bearer tok' : undefined), ...over });
 const asUid = (uid, extra = {}) => async () => ({ uid, ...extra });
-// F-1 r2 (Codex r1 P2-1): getEditableCatalog now reads the platform-pending stamp FAIL-CLOSED (unreadable ⇒ 503), so a bare
-// `fsdb: NO_STAMP` no longer stands for "no stamp". NO_STAMP answers exactly that one path — restaurants/<rid>/meta/platform_pending —
-// as absent, and throws on every other path (as strict as the bare object it replaces; the stamp cells live in platform-pending.test).
-const NO_STAMP = { collection: (c) => { if (c !== 'restaurants') throw new Error(`NO_STAMP: unexpected collection ${c}`);
-  return { doc: (rid) => ({ collection: (m) => { if (m !== 'meta') throw new Error(`NO_STAMP: unexpected subcollection ${m}`);
-    return { doc: (d) => { if (d !== 'platform_pending') throw new Error(`NO_STAMP: unexpected doc ${d}`);
-      return { get: async () => ({ exists: false, data: () => undefined, updateTime: null }) }; } }; } }) }; } };
+const { NO_STAMP } = require('../test/_no-stamp');   // F-1 r2: the fail-closed stamp read's "no stamp" (fsdb: {} no longer means that)
 
 // Brand-agnostic throughout: nothing here knows our restaurants exist.
 const TWO = {
