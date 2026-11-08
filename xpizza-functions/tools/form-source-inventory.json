@@ -302,6 +302,7 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/signup-platform.emulator.test.js",
     "xpizza-functions/test/stackseq-writers.emulator.test.js",
@@ -540,6 +541,7 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/signup-platform.emulator.test.js",
     "xpizza-functions/test/stackseq-writers.emulator.test.js",
@@ -859,6 +861,7 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/signup-platform.emulator.test.js",
     "xpizza-functions/test/stackseq-writers.emulator.test.js",
@@ -1098,6 +1101,7 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/signup-platform.emulator.test.js",
     "xpizza-functions/test/stackseq-writers.emulator.test.js",
@@ -2121,6 +2125,17 @@
   "otp-lib.js",
   "pay-rate.js",
   "payer-email.js",
+  "payments/sdk/coordinator.js",
+  "payments/sdk/deps.js",
+  "payments/sdk/fake-adapter.js",
+  "payments/sdk/flow.js",
+  "payments/sdk/functions.js",
+  "payments/sdk/psp-adapter.js",
+  "payments/sdk/record.js",
+  "payments/sdk/release.js",
+  "payments/sdk/rules-clauses.js",
+  "payments/sdk/sweeper.js",
+  "payments/sdk/void-eligibility.js",
   "phone-countries.js",
   "phone/flag.js",
   "phone/identity-corpus.js",
@@ -2373,6 +2388,7 @@
      "inverses": [
       "tools/h0-inverse.js",
       "tools/p5a-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-module-inverse.js"
      ]
     },
@@ -2380,6 +2396,7 @@
      "file": "xpizza-functions/stackseq-wiring.guard.test.js",
      "inverses": [
       "tools/p5a-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-module-inverse.js"
      ]
     },
@@ -2846,6 +2863,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2896,6 +2914,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -2949,6 +2968,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -2981,6 +3001,7 @@
       "tools/s4hours-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3017,6 +3038,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3067,6 +3089,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -3086,7 +3109,8 @@
       "tools/mem512-inverse.js",
       "tools/photos-inverse.js",
       "tools/sb-inverse.js",
-      "tools/sd-inverse.js"
+      "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
@@ -3131,6 +3155,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -3171,6 +3196,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3203,6 +3229,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3232,6 +3259,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     },
@@ -3261,6 +3289,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     },
@@ -3305,6 +3334,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -3340,6 +3370,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3367,7 +3398,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
-      "tools/sd-inverse.js"
+      "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
@@ -3410,6 +3442,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -3452,6 +3485,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -3493,6 +3527,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -3506,7 +3541,8 @@
       "tools/hostedrace-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sb-inverse.js",
-      "tools/sd-inverse.js"
+      "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
@@ -3516,7 +3552,8 @@
       "tools/intl-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
-      "tools/photos-inverse.js"
+      "tools/photos-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
@@ -3557,6 +3594,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3589,6 +3627,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3620,6 +3659,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3669,6 +3709,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -3683,7 +3724,8 @@
      "inverses": [
       "tools/p5a-inverse.js",
       "tools/sb-inverse.js",
-      "tools/sd-inverse.js"
+      "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
@@ -3714,6 +3756,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3722,7 +3765,8 @@
      "file": "xpizza-functions/photos-wiring.guard.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
-      "tools/photos-inverse.js"
+      "tools/photos-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
@@ -3771,6 +3815,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -3810,6 +3855,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3847,6 +3893,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3890,6 +3937,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -3936,6 +3984,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -3965,6 +4014,7 @@
       "tools/s4hours-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3995,6 +4045,7 @@
       "tools/s4hours-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -4026,6 +4077,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -4056,6 +4108,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -4085,6 +4138,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -4109,7 +4163,8 @@
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
-      "tools/sd-inverse.js"
+      "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
@@ -4148,6 +4203,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -4179,6 +4235,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -4188,7 +4245,8 @@
      "inverses": [
       "tools/checkout-inverse.js",
       "tools/sb-inverse.js",
-      "tools/sd-inverse.js"
+      "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
@@ -4196,7 +4254,8 @@
      "inverses": [
       "tools/checkout-inverse.js",
       "tools/sb-inverse.js",
-      "tools/sd-inverse.js"
+      "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
@@ -4239,6 +4298,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -4280,6 +4340,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -4330,6 +4391,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -4365,6 +4427,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -4478,6 +4541,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/wahealth-inverse.js"
@@ -4516,6 +4580,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
@@ -4563,6 +4628,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -4596,6 +4662,7 @@
       "tools/s5r-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     }
@@ -4831,6 +4898,50 @@
    "pins": [],
    "lifts": []
   },
+  "payments/sdk/coordinator.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/deps.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/fake-adapter.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/flow.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/functions.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/psp-adapter.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/record.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/release.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/rules-clauses.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/sweeper.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/void-eligibility.js": {
+   "pins": [],
+   "lifts": []
+  },
   "phone-countries.js": {
    "pins": [],
    "lifts": []
@@ -4982,7 +5093,8 @@
      "file": "xpizza-functions/alertsan-wiring.guard.test.js",
      "inverses": [
       "tools/alertsan-module-inverse.js",
-      "tools/p5a-inverse.js"
+      "tools/p5a-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
@@ -4990,7 +5102,8 @@
      "inverses": [
       "tools/alertsan-module-inverse.js",
       "tools/brand-server-inverse.js",
-      "tools/p5a-inverse.js"
+      "tools/p5a-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
@@ -4999,7 +5112,8 @@
       "tools/alertsan-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/d12-inverse.js",
-      "tools/p5a-inverse.js"
+      "tools/p5a-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     }
    ],
@@ -5023,7 +5137,8 @@
      "inverses": [
       "tools/h0-inverse.js",
       "tools/hostedrace-module-inverse.js",
-      "tools/p5a-inverse.js"
+      "tools/p5a-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     }
    ],
@@ -5214,7 +5329,8 @@
      "file": "xpizza-functions/brand-server-wiring.guard.test.js",
      "inverses": [
       "tools/brand-server-inverse.js",
-      "tools/p5a-inverse.js"
+      "tools/p5a-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
@@ -5223,7 +5339,8 @@
       "tools/brand-server-inverse.js",
       "tools/d12-inverse.js",
       "tools/h0-inverse.js",
-      "tools/p5a-inverse.js"
+      "tools/p5a-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
@@ -5231,7 +5348,8 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/h0-inverse.js",
-      "tools/p5a-inverse.js"
+      "tools/p5a-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     }
    ],
@@ -5239,7 +5357,8 @@
     "xpizza-functions/a1-wiring.guard.test.js",
     "xpizza-functions/materialize-hub.test.js",
     "xpizza-functions/recon-close-fulfilled.test.js",
-    "xpizza-functions/rewards-reversal-placement.test.js"
+    "xpizza-functions/rewards-reversal-placement.test.js",
+    "xpizza-functions/sdkpay-wiring.guard.test.js"
    ]
   },
   "retention-sweep.js": {
@@ -5294,7 +5413,9 @@
   },
   "rewards-reserve.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/sdkpay-wiring.guard.test.js"
+   ]
   },
   "schedule/hours-grammar.js": {
    "pins": [],
@@ -5314,18 +5435,21 @@
      "file": "xpizza-functions/d12-wiring.guard.test.js",
      "inverses": [
       "tools/d12-inverse.js",
-      "tools/orch-o1a-inverse.js"
+      "tools/orch-o1a-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/scheduled-inactive-hold.test.js",
      "inverses": [
-      "tools/orch-o1a-inverse.js"
+      "tools/orch-o1a-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "xpizza-functions/a1-wiring.guard.test.js"
+    "xpizza-functions/a1-wiring.guard.test.js",
+    "xpizza-functions/sdkpay-wiring.guard.test.js"
    ]
   },
   "seed_identity.js": {
