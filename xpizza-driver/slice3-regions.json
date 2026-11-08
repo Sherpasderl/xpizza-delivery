@@ -597,6 +597,10 @@
   {
    "name": "GANANCIAS-REFRESH",
    "kind": "insert"
+  },
+  {
+   "name": "GANANCIAS-STAY",
+   "kind": "insert"
   }
  ],
  "deps": [

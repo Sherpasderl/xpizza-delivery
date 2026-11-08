@@ -31880,6 +31880,21 @@
   ]
  },
  {
+  "id": "gh-14",
+  "slice": "gh",
+  "file": "../xpizza-driver/index.html",
+  "from": "drv2LiveBoard().length === 0) { renderGanancias(drv2GananciasView); return; }",
+  "to": "drv2LiveBoard().length === -1) { renderGanancias(drv2GananciasView); return; }",
+  "label": "GANANCIAS-STAY guard PRESENT — an ordinary live update must not eject the driver out of Ganancias (Codex r1 P2c)",
+  "kills_with": [
+   "Ganancias re-rendered in place"
+  ],
+  "command": [
+   "node",
+   "../xpizza-driver/ganado-hoy-earnings.test.js"
+  ]
+ },
+ {
   "id": "otps-1",
   "slice": "otps",
   "label": "guest train item: verifyCheckoutCode loses its OTP_SALT secret binding (a NEW function gets no plain env ⇒ 500 at launch)",

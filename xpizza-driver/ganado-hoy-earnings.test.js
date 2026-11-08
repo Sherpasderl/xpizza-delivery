@@ -133,4 +133,41 @@ t('(cerrado P2b) a replacement shift / session change blanks the snapshot', () =
   } finally { Date.now = realNow; }
 });
 
+// ───────── P2c: render() keeps the driver on the open Ganancias screen on ordinary live updates ─────────
+function renderWith({ board, optimisticShift = null, driverState = { active: false }, ganHidden = false }) {
+  const calls = { showScreen: [], renderGanancias: 0 };
+  const gn = { classList: { contains: (c) => c === 'hidden' && ganHidden } };
+  const els = { 'screen-ganancias': gn, 'off-driver-name': { textContent: '' } };
+  const scope = {
+    currentUser: { email: 'd@x.pizza', uid: 'drv' },
+    companion: null, companionSyncSuspendedNotice: () => {},
+    driverState, optimisticShift,
+    $: (id) => els[id] || null,
+    drv2LiveBoard: () => board,
+    renderGanancias: () => { calls.renderGanancias++; },
+    drv2GananciasView: 'hoy',
+    showScreen: (s) => { calls.showScreen.push(s); },
+    stopKeepAlive: () => {}, startKeepAlive: () => {}, ensureOfflineBanner: () => {},
+    renderStatusBar: () => {}, renderActiveAndQueue: () => {},
+  };
+  const names = Object.keys(scope);
+  new Function(...names, 'let companionSuspended, companionNeutralNotice;\n' + liftFn('render') + '\nreturn render;')(...Object.values(scope))();
+  return calls;
+}
+t('(P2c) on Ganancias + an ordinary update (no work) → STAYS on Ganancias (re-renders in place, no navigation)', () => {
+  const c = renderWith({ board: [] });
+  assert.equal(c.renderGanancias, 1, 'Ganancias re-rendered in place');
+  assert.deepEqual(c.showScreen, [], 'no showScreen — the driver was NOT ejected to on/offshift');
+});
+t('(P2c) on Ganancias + WORK arrives → takeover to the board (onshift), Ganancias not held', () => {
+  const c = renderWith({ board: [{}], optimisticShift: true });
+  assert.equal(c.renderGanancias, 0, 'did NOT hold Ganancias when work arrived');
+  assert.ok(c.showScreen.includes('onshift'), 'took over to the operational board (onshift)');
+});
+t('(P2c) Ganancias NOT open → guard inert, ordinary off-shift render proceeds', () => {
+  const c = renderWith({ board: [], ganHidden: true });
+  assert.equal(c.renderGanancias, 0, 'guard inert when Ganancias is not the open screen');
+  assert.ok(c.showScreen.includes('offshift'), 'normal off-shift render');
+});
+
 console.log(`\nganado-hoy-earnings: ${failed === 0 ? 'OK' : 'INCOMPLETE'} (${passed} passed, ${failed} failed)`);

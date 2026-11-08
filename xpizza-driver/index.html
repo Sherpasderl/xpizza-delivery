@@ -5950,6 +5950,13 @@ function render() {
   // Optimistic override wins while a shift transition is in flight; otherwise RTDB is truth.
   const active = optimisticShift !== null ? optimisticShift : !!(driverState && driverState.active);
 
+  /* ===== SLICE3:GANANCIAS-STAY:START — an ordinary live update (a driver/order/rate change) must NOT eject the driver
+     out of the open Ganancias earnings screen; only WORK arriving takes over. When Ganancias is open and the board is
+     empty (the SAME drv2LiveBoard() signal the tab bar uses at TABBAR-SHOW), re-render it in place and return. A
+     non-empty board falls through to the operational render below, which navigates on/offshift (takeover). Codex r1 P2c. ===== */
+  { const gn = $('screen-ganancias');
+    if (gn && !gn.classList.contains('hidden') && drv2LiveBoard().length === 0) { renderGanancias(drv2GananciasView); return; } }
+  /* ===== SLICE3:GANANCIAS-STAY:END ===== */
   if (!active) {
     stopKeepAlive();
     $('off-driver-name').textContent = (name || '—').toUpperCase();
