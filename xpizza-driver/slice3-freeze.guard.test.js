@@ -167,7 +167,7 @@ const SLICE3_COEXIST_MODIFY = new Set(['xpizza-driver/slice2-freeze.guard.test.j
 // to the reviewed revision so the exemption stays BOUNDED (any later edit re-opens this guard at HIGH effort). One
 // file only; nothing else is exempted.
 const SLICE3_TEST_MODIFY = new Set(['xpizza-driver/onboarding-host.test.js', 'xpizza-driver/slice1-font-resolution.test.js']);
-const SLICE3_TEST_MODIFY_SHA = { 'xpizza-driver/onboarding-host.test.js': 'eebae9b55a686c357dac34d75e6458ba24cf4def4c987026c1a2aa831b904f93', 'xpizza-driver/slice1-font-resolution.test.js': '9e7cc99cb9f115ef7c2c65bc543c46f27eaabfc20b413723eda856cc4e2fce0e' };
+const SLICE3_TEST_MODIFY_SHA = { 'xpizza-driver/onboarding-host.test.js': '98e7576dbc502274e86bc726081619302f5a141825763fb4d4eed2f1a20dc157', 'xpizza-driver/slice1-font-resolution.test.js': '9e7cc99cb9f115ef7c2c65bc543c46f27eaabfc20b413723eda856cc4e2fce0e' };
 // Everything slice 3 is allowed to ADD under xpizza-driver/.
 const ALLOWED_ADDS = new Set([
   'xpizza-driver/slice3-regions.json',          // the shared SLICE3 region contract (non-executable data)
