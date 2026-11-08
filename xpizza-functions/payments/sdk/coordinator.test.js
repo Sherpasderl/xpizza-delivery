@@ -282,6 +282,90 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.deepStrictEqual([committedIds(w.rec()).join(), w.rec().legs.L2.role], ['L1', 'surplus'], `${L}: the LOST proposal's B is surplus; S captured`);
     assert.deepStrictEqual(w.fake.calls.filter((c) => c.action === 'capture').map((c) => c.amount_cents), [10000], `${L}: S captured once`);
   });
+  // ── cancellation / TTL expiry (§8: win the order decision FIRST, then stop, recover, reconcile, classify, clean up) ──
+  const pend = (w) => w;   // a pending_payment order (placement not decided)
+  await cell('SDK-CANCEL-LIVE-ORDER', async (L) => {
+    const w = await placed(); await live(w);
+    const r = await C().cancel(w.deps, { orderId: OID, kind: 'cancel' });
+    assert.strictEqual(r.outcome, 'cancelled', `${L}: cancelled (got ${JSON.stringify(r)})`);
+    assert.ok(w.ord().status === 'cancelled' && w.ord().payment_cancel && w.ord().payment_cancel.kind === 'cancel', `${L}: the order decision (status + payment_cancel) committed`);
+    assert.deepStrictEqual([w.rec().phase, w.rec().legs.L1.role, w.rec().legs.L1.state], ['cancelled', 'surplus', 'approved'], `${L}: the hold is SURPLUS, tracked (not voided under the stub)`);
+    assert.deepStrictEqual([w.fake.count('void'), w.fake.count('capture'), w.deps.released], [0, 0, 1], `${L}: no void (production stub), no capture, released once`);
+    assert.ok(!R.isFinanciallyClosed(w.rec(), w.ord()), `${L}: a live hold keeps it open until expiry is confirmed`);
+  });
+  await cell('SDK-CANCEL-LOSES-TO-TERMINAL', async (L) => {
+    const w = await placed();
+    await w.db.ref(`orders/${OID}/status`).set('delivered');
+    const r = await C().cancel(w.deps, { orderId: OID, kind: 'cancel' });
+    assert.strictEqual(r.outcome, 'lost_to_terminal', `${L}: the terminal write won (got ${JSON.stringify(r)})`);
+    assert.ok(!w.ord().payment_cancel && w.fake.count('capture') === 1 && !w.deps.released && w.rec().legs.L1.role === 'committed', `${L}: settled as terminal, nothing released or reclassified`);
+  });
+  await cell('SDK-TERMINAL-AFTER-COMMITTED-CANCEL', async (L) => {
+    const w = await placed(); await live(w);
+    await C().cancel(w.deps, { orderId: OID, kind: 'cancel' });
+    await w.db.ref(`orders/${OID}/status`).set('delivered');   // an override AFTER the cancel decision
+    const r = await C().settleTerminal(w.deps, { orderId: OID });
+    assert.ok(r.outcome === 'manual' && w.fake.count('capture') === 0, `${L}: never captured automatically (got ${JSON.stringify(r)})`);
+    assert.ok(w.rec().lock && w.rec().lock.reason === 'manual_reconciliation' && alerts(w.db).some((x) => x.type === 'payment_sdk_terminal_after_cancel'), `${L}: manual + alert`);
+  });
+  await cell('SDK-CANCEL-TERMINAL-AT-EACH-BOUNDARY', async (L) => {
+    // a terminal write lands right AFTER the cancel's order decision (before stop / classify / cleanup)
+    let fired = false;
+    const w = await placed({ hooks: { beforeTx: async (p, api) => { if (p === `payment_sdk/${OID}` && api.getAt(`orders/${OID}/payment_cancel`) && !fired) { fired = true; api.setAt(`orders/${OID}/status`, 'delivered'); } } } }); await live(w);
+    const r = await C().cancel(w.deps, { orderId: OID, kind: 'cancel' });
+    assert.ok(fired && r.outcome === 'cancelled', `${L}: the cancel had already won (got ${JSON.stringify(r)})`);
+    await C().settleTerminal(w.deps, { orderId: OID });
+    assert.ok(w.fake.count('capture') === 0 && w.rec().legs.L1.role === 'surplus', `${L}: the later terminal write does not reopen money`);
+  });
+  await cell('SDK-EXPIRE-RESPECTS-TTL-AND-PLACEMENT', async (L) => {
+    const w = world({ script: { authorize: [{ outcome: 'definitive_decline' }] } });
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const early = await C().expirePending(w.deps, { orderId: OID });
+    assert.ok(early.outcome === 'refused' && w.ord().status === 'pending_payment', `${L}: not before the TTL (got ${JSON.stringify(early)})`);
+    w.tick(R.TTL_MS + 1);
+    const r = await C().expirePending(w.deps, { orderId: OID });
+    assert.ok(r.outcome === 'cancelled' && w.ord().status === 'cancelled' && w.ord().payment_cancel.kind === 'expire' && w.deps.released === 1, `${L}: expired after the TTL, released once (got ${JSON.stringify(r)})`);
+    const w2 = await placed();
+    w2.tick(R.TTL_MS + 1);
+    const r2 = await C().expirePending(w2.deps, { orderId: OID });
+    assert.ok(r2.outcome === 'refused' && !w2.ord().payment_cancel, `${L}: a PLACED order never expires (got ${JSON.stringify(r2)})`);
+  });
+  await cell('SDK-EXPIRE-LATE-APPROVAL-SURPLUS', async (L) => {
+    let release; const gate = new Promise((r) => { release = r; });
+    const w = world({ script: { authorize: [{ pause: gate }] } });
+    const placing = C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await new Promise((r) => setTimeout(r, 20));
+    w.tick(R.TTL_MS + 1);
+    const ex = await C().expirePending(w.deps, { orderId: OID });   // expiry while the auth is in flight
+    release(); const pr = await placing;
+    assert.strictEqual(pr.outcome, 'late_surplus', `${L}: the late approval cannot place the order (got ${JSON.stringify(pr)}; expiry ${JSON.stringify(ex)})`);
+    await C().cancel(w.deps, { orderId: OID, kind: 'expire' });   // the sweeper's resume
+    assert.deepStrictEqual([w.ord().status, w.rec().legs.L1.role, w.fake.count('capture')], ['cancelled', 'surplus', 0], `${L}: surplus, never captured`);
+  });
+  await cell('SDK-EXPIRE-NO-UUID-UNKNOWN-STILL-RELEASES', async (L) => {
+    const w = world({ script: { authorize: [{ lost: true }] } });
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    w.tick(R.TTL_MS + 1);
+    const r = await C().expirePending(w.deps, { orderId: OID });
+    assert.ok(r.outcome === 'cancelled' && w.deps.released === 1, `${L}: cleanup proceeds (got ${JSON.stringify(r)})`);
+    assert.ok(w.rec().lock && w.rec().lock.reason === 'manual_reconciliation' && !R.isFinanciallyClosed(w.rec(), w.ord()), `${L}: the unknown no-uuid auth stays locked for a person; not closed`);
+  });
+  await cell('SDK-TWO-EXPIRY-WORKERS-RELEASE-ONCE', async (L) => {
+    const w = world({ script: { authorize: [{ outcome: 'definitive_decline' }] } });
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    w.tick(R.TTL_MS + 1);
+    await Promise.all([C().expirePending(w.deps, { orderId: OID }), C().expirePending(w.deps, { orderId: OID })]);
+    assert.strictEqual(w.deps.released, 1, `${L}: released exactly once (got ${w.deps.released})`);
+  });
+  await cell('SDK-INTERRUPTED-CLEANUP-RESUMED', async (L) => {
+    const w = await placed(); await live(w);
+    let n = 0; w.deps.release = async () => { n += 1; if (n === 1) throw new Error('crash mid-cleanup'); };
+    await C().cancel(w.deps, { orderId: OID, kind: 'cancel' }).catch(() => {});
+    assert.ok(!(w.rec().cleanup && w.rec().cleanup.done_at), `${L}: PREMISE — cleanup not done`);
+    w.tick(3 * 60 * 1000);
+    await C().cancel(w.deps, { orderId: OID, kind: 'cancel' });
+    assert.ok(n === 2 && w.rec().cleanup && w.rec().cleanup.done_at, `${L}: the resume finishes the cleanup (calls ${n})`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
