@@ -37,6 +37,7 @@ function isFinanciallyClosed(rec, order) {
   if (pendingProjection(rec, order)) return false;
   if (rec.frozen && (rec.frozen.capture_set || []).some((id) => !legsOf(rec)[id] || legsOf(rec)[id].state !== 'captured')) return false;
   if (rec.phase === 'open' || rec.phase === 'adjusting') return false;   // an open order is not closed
+  if (rec.phase === 'cancelled' && !(rec.cleanup && rec.cleanup.done_at)) return false;   // a cancellation's cleanup must be done
   return Object.values(obj(rec.obligations)).every((o) => o.state === 'verified');
 }
 

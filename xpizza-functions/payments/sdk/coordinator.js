@@ -141,6 +141,11 @@ async function reconcile(deps, { orderId }) {
   const rec = await readRecord(deps.db, orderId);
   if (!rec) return { reconciled: 0 };
   let reconciled = 0;
+  await R.casRecord(deps.db, orderId, (r) => {
+    let changed = false;
+    for (const o of Object.values(R.opsOf(r))) if (o.action === 'status' && !o.result && now - o.dispatched_at >= RECONCILE_AFTER_MS) { o.result = { kind: 'abandoned', at: now }; changed = true; }
+    return changed ? r : undefined;
+  });
   for (const [opId, op] of Object.entries(R.opsOf(rec))) {
     if (!R.MONEY_ACTIONS.includes(op.action)) continue;
     const unanswered = !op.result && now - op.dispatched_at >= RECONCILE_AFTER_MS;
@@ -475,14 +480,15 @@ async function cancel(deps, { orderId, kind = 'cancel' }) {
       return cur;
     });
     order = d.order || await readOrder(deps.db, orderId);
+    if (d.won) await enrol(deps, orderId);            // a fresh decision is discoverable before its follow-up work
     if (!d.won) {
       if (order && (R.TERMINAL.includes(order.status) || order.payment_terminal) && !order.payment_cancel) { await settleTerminal(deps, { orderId }); return { outcome: 'lost_to_terminal' }; }
       if (!order || !order.payment_cancel) return { outcome: 'refused', reason: 'not_cancellable' };
     }
   }
   // the decision is committed (now or earlier): every step below is idempotent and resumable
-  await R.createRecord(deps.db, orderId, { flow: 'sdk_auth_v1', phase: 'cancelled', committed_revision: 0, fulfillment_total_cents: 0, created_at: now, ttl_at: now });
-  await enrol(deps, orderId);
+  const made = await R.createRecord(deps.db, orderId, { flow: 'sdk_auth_v1', phase: 'cancelled', committed_revision: 0, fulfillment_total_cents: 0, created_at: now, ttl_at: now });
+  if (made.created) await enrol(deps, orderId);
   // 2. stop attempts (placement and adjustments require phase 'open')
   await R.casRecord(deps.db, orderId, (r) => {
     if (r.phase === 'cancelled') return undefined;
@@ -518,4 +524,37 @@ async function cancel(deps, { orderId, kind = 'cancel' }) {
 }
 const expirePending = (deps, { orderId }) => cancel(deps, { orderId, kind: 'expire' });
 
-module.exports = { cancel, expirePending, placeOriginal, reconcile, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, orderTxn, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };
+// A replacement/delta leg approved but never committed (its flow crashed before deciding) is SURPLUS after the reconcile window.
+async function sweepPendingRoles(deps, orderId) {
+  const now = deps.now();
+  return R.casRecord(deps.db, orderId, (r) => {
+    let changed = false;
+    const proposed = new Set(Object.values(r.proposals || {}).filter((p) => p.state === 'proposed').flatMap((p) => p.new_leg_ids || []));
+    for (const [id, l] of Object.entries(R.legsOf(r))) {
+      if (l.role === 'pending' && !proposed.has(id) && now - l.created_at >= RECONCILE_AFTER_MS) { l.role = 'surplus'; changed = true; }
+    }
+    return changed ? r : undefined;
+  });
+}
+
+// A surplus hold past its 15-day expiry becomes `expired` (or `voided`) ONLY on bound status evidence — never by assumption.
+async function trackExpiry(deps, orderId) {
+  const now = deps.now();
+  const rec = await readRecord(deps.db, orderId);
+  if (!rec) return;
+  for (const [legId, leg] of Object.entries(R.legsOf(rec))) {
+    if (leg.state !== 'approved' || leg.role === 'committed' || now < leg.hold_expires_at || !leg.pp_uuid) continue;
+    let sId = null;
+    await R.casRecord(deps.db, orderId, (r) => { sId = `${orderId}:${legId}:status:${Object.keys(R.opsOf(r)).length + 1}`; r.ops = { ...R.opsOf(r), [sId]: { leg_id: legId, action: 'status', of: 'expiry', dispatched_at: now, result: null } }; return r; });
+    const ev = await deps.psp.status({ uuid: leg.pp_uuid });
+    await R.casRecord(deps.db, orderId, (r) => {
+      const s = R.opsOf(r)[sId]; const l = R.legsOf(r)[legId];
+      if (!s || s.result) return undefined;
+      s.result = { kind: ev.state, at: deps.now() };
+      if (l && l.state === 'approved' && boundStatus(ev, l) && (ev.state === 'expired' || ev.state === 'voided')) l.state = ev.state;
+      return r;
+    });
+  }
+}
+
+module.exports = { sweepPendingRoles, trackExpiry, cancel, expirePending, placeOriginal, reconcile, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, orderTxn, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };

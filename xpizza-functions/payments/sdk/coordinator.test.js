@@ -375,7 +375,10 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     w.tick(60 * 1000);
     await SW().sweepSdkPayments(w.deps);
     assert.ok(w.fake.count('capture') === 1 && w.rec().legs.L1.state === 'captured', `${L}: found on the due visit and settled (captures ${w.fake.count('capture')})`);
-    assert.strictEqual(due(w), null, `${L}: financially closed → the due entry removed (got ${due(w)})`);
+    assert.ok(due(w) != null, `${L}: the capture's own enrol (newer work) is not erased by the same visit`);
+    w.tick(SW().REVISIT_MS + 1);
+    await SW().sweepSdkPayments(w.deps);
+    assert.strictEqual(due(w), null, `${L}: financially closed → removed on the next visit (got ${due(w)})`);
   });
   await cell('SDK-SWEEP-OVERLAPPING-ONE-CAPTURE', async (L) => {
     const w = await placed();
