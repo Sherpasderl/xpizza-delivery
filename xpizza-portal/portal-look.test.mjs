@@ -352,6 +352,12 @@ const PINNED_LITERALS = [
   ['.phocard', 'background', '#fff'], ['.phocard', 'color', '#1E1B18'], ['.phodesc', 'color', '#5A4F47'], ['.phoprice', 'color', '#7A5A08'],
   ['.phshc', 'background', 'linear-gradient(to bottom,transparent 40%,rgba(0,0,0,.35) 100%)'],
   ['.phshh', 'background', 'linear-gradient(to bottom,transparent 50%,rgba(0,0,0,.25) 100%)'],
+  // «MARCA» (MOCKUP R1pshGArpS5Af2tzcdCvTW, owner-approved): the order page's OWN light card in «Así te ven tus clientes» (the customer's
+  // tokens, like .phocard: it stays light in the dark portal) — #1E1B18 on #fff 17.14, #6E6A64 on #fff 5.37 — and the monogram / button
+  // label: white on a palette FILL (every swatch ≥ 5.01, the palette's own AA guard) or on the never-saved neutral #6E6A64 (5.37)
+  ['.mk-mono', 'color', '#fff'], ['.mk-mono', 'background', '#6E6A64'], ['.mk-prevband', 'background', '#6E6A64'], ['.mk-prevbtn', 'background', '#6E6A64'],
+  ['.mk-prevtrack i', 'background', '#6E6A64'], ['.mk-prev', 'background', '#fff'], ['.mk-prev', 'color', '#1E1B18'], ['.mk-prevname', 'color', '#1E1B18'],
+  ['.mk-prevsub', 'color', '#6E6A64'], ['.mk-prevbtn', 'color', '#fff'], ['.mk-prevtrack', 'color', '#1E1B18'], ['.mk-prevtrack span', 'color', '#6E6A64'],
 ];
 const PINNED_ICON_RULES = {
   top: [':root[data-theme="dark"] .tbtn .moon,:root[data-theme="dark"] .miconbtn .moon', ':root[data-theme="dark"] .tbtn .sun,:root[data-theme="dark"] .miconbtn .sun'],
