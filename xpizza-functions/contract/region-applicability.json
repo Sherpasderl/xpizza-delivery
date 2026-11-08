@@ -5245,7 +5245,7 @@
      "counts": {
       "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 4
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
      }
     },
     {
@@ -5268,7 +5268,7 @@
       "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/cash-helpers.js#xpizza-driver": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 9,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 11,
       "xpizza-driver/pay-rate.js#xpizza-driver": 3,
       "xpizza-functions/driver-ledger/ledger-core.js#functions": 10,
       "xpizza-functions/driver-ledger/ledger-store.js#functions": 4,
@@ -7009,7 +7009,7 @@
      "counts": {
       "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 4
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
      }
     },
     {
@@ -7032,7 +7032,7 @@
       "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/cash-helpers.js#xpizza-driver": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 9,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 11,
       "xpizza-driver/pay-rate.js#xpizza-driver": 3,
       "xpizza-functions/driver-ledger/ledger-core.js#functions": 10,
       "xpizza-functions/driver-ledger/ledger-store.js#functions": 4,
