@@ -127,6 +127,14 @@ const both = (w) => [mode(w, 'ord_i'), mode(w, 'ord_n')];
     assert.deepStrictEqual([...both(w), mode(w, 'ord_x')], ['live', 'waiting', 'waiting'], '3 orders: legacy created_at — the oldest (ord_i) LIVE although its stop_seq is 2');
     ok('3 delivery orders (a valid pair + a third) → legacy created_at, no stop_seq sequencing');
   }
+  {
+    // the same three, with the valid pair's created_at EQUAL: legacy → a created_at tie → NEUTRAL (the pair is not sequenced)
+    const w = eq();
+    w.tasks.ord_x_pickup = leg('ord_x', 'pickup', 'completed', 300); w.tasks.ord_x_delivery = leg('ord_x', 'delivery', 'accepted', 300); w.orders.ord_x = { status: 'out_for_delivery' };
+    pickupBatch(w, 'ord_i');
+    assert.deepStrictEqual([...both(w), mode(w, 'ord_x')], ['neutral', 'neutral', 'neutral'], '3 orders, the pair at EQUAL created_at: legacy tie → NEUTRAL for all (no stop_seq sequencing outside exactly one pair)');
+    ok('3 delivery orders with the pair at equal created_at → legacy tie → NEUTRAL (never sequenced by stop_seq)');
+  }
   FINISHED = true;
   console.log(`\ntracker-parity: OK (${n})`);
 })();
