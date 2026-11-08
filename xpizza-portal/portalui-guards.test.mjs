@@ -15,10 +15,24 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import * as acorn from 'acorn';
 import { PB_FOLD } from './photos-b-fold.mjs';
+import { PP_FOLD } from './pp-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
-const read = (f) => readFileSync(join(DIR, f), 'utf8');
+const rawRead = (f) => readFileSync(join(DIR, f), 'utf8');
+// ── F-2 (owner-approved mockup ENrjdkJmw3mzy9PkFCy4D1, 2026-11-07): the NEWEST layer — app.js / review.js gain EXACTLY the hunks in
+// pp-fold.mjs over PP_BASE (the «Marca» commit, which left both files as on main). `read` folds them out FIRST, so every registry and
+// pin below keeps judging exactly what it judged before; the F-2 test pins the layer itself (an edit outside or inside a hunk fails).
+const PP_BASE = '3d1ae27e';
+function withoutPp(f, src) {
+  let out = src;
+  for (const [now, was] of PP_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `F-2 hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const read = (f) => withoutPp(f, rawRead(f));
 const readFn = (f) => readFileSync(join(DIR, '..', 'xpizza-functions', f), 'utf8');
 const base = (f) => execFileSync('git', ['show', `${BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
 const topLevel = (src) => acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module' }).body.map((n) => src.slice(n.start, n.end));
@@ -86,6 +100,17 @@ function withoutPb(f, src) {
   }
   return out;
 }
+test('F-2: exactly the named hunks in app.js / review.js — folding them out gives PP_BASE byte-for-byte; an edit outside or inside one fails', () => {
+  for (const f of ['app.js', 'review.js']) {
+    assert.ok((PP_FOLD[f] || []).length > 0, `non-vacuity: ${f} has named hunks`);
+    assert.notEqual(read(f), rawRead(f), `non-vacuity: the ${f} fold changes something`);
+    const was = execFileSync('git', ['show', `${PP_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.equal(read(f), was, `${f} minus the F-2 hunks ≠ ${PP_BASE}`);
+    assert.notEqual(withoutPp(f, rawRead(f) + '\n// stray\n'), was, 'a stray edit survives the fold');
+  }
+  const [inside] = PP_FOLD['app.js'].find(([now]) => now.includes('platform_changes_pending'));
+  assert.throws(() => withoutPp('app.js', rawRead('app.js').replace(inside, inside.replace('platform_changes_pending', 'platform_changes_pendinq'))));
+});
 test('DISH PHOTOS B: exactly the named hunks in the four frozen files — anything else, or an edit inside one, fails', () => {
   for (const f of ['app.js', 'editor.js', 'review.js', 'render.js']) {
     assert.ok((PB_FOLD[f] || []).length > 0, `non-vacuity: ${f} has named hunks`);

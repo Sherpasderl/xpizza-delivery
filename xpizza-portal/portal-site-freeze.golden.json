@@ -54,6 +54,7 @@
   "photo-logic.test.mjs",
   "photo.js",
   "photos-b-fold.mjs",
+  "platform-notice.test.mjs",
   "portal-fonts.css",
   "portal-fonts.test.mjs",
   "portal-logic.js",
@@ -62,6 +63,7 @@
   "portal-wiring.test.mjs",
   "portalui-guards.t1-hunks.json",
   "portalui-guards.test.mjs",
+  "pp-fold.mjs",
   "pubreq.js",
   "pubreq.test.mjs",
   "render.js",
@@ -145,8 +147,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "5c375edee18783c5f9b245d63ec9a82b1bd5534b69dfe8f138f56ec84fbf87fb",
-   "bytes": 111275
+   "sha256": "2af5e685b2435f965c560be853e6edc5864ed6c1bee3f278acb0ef726da9887b",
+   "bytes": 111980
   }
  },
  "diff_aid": {
@@ -233,6 +235,24 @@
     "#availstrip .sl",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    "#detail .callout b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    "#detail .callout",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    "#detail .callout",
+    "color",
+    "var(--ink)"
    ],
    [
     "",

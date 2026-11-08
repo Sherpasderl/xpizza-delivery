@@ -1267,3 +1267,9 @@
   .ops .sec.mk-quiet{background:var(--board-2);margin-top:16px}
   .ops .mk-quiet h3 svg.mk-h3lock{width:14px;height:14px;stroke:var(--mute);fill:none;stroke-width:2}
   .mk-link{background:none;border:0;padding:0;color:var(--accent);font:inherit;font-weight:650;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  /* F-2 (owner-approved mockup ENrjdkJmw3mzy9PkFCy4D1) — the quiet callout inside the Productos card: the portal's own .calloutquiet1b
+     declarations (styles.css scopes them under .ops) with the margins .unpub already uses inside #detail */
+  #detail .callout{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:var(--board-2);font-size:13px;line-height:1.5;color:var(--ink);margin:14px 20px 0}
+  #detail .callout svg{width:17px;height:17px;stroke:var(--mute);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none;margin-top:2px}
+  #detail .callout b{color:var(--ink)}
+  #detail .callout div{min-width:0}
