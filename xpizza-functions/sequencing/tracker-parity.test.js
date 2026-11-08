@@ -4,8 +4,10 @@
 // VALID stop_seq remaining; else today's pointer), and the REAL tracker derivation (tracking/derive.js, unchanged) is asked at
 // every step. What it proves today:
 //   • an I-first pair (rank order = order time): pre → stop 1 LIVE / stop 2 WAITING → stop 2 LIVE → terminal;
-//   • an N-first pair: until 2f's SORT is re-copied into tracking/driver-orders.js the tracker shows NEUTRAL for both — never a
-//     wrong LIVE (the pointer and element 0 disagree). This cell PINS that gap; 2f's re-copy + the tie-check key flip it;
+//   • an N-first pair: with 2f's stop_seq SORT re-copied into tracking/driver-orders.js (and the tie check stop_seq-aware), stop 1
+//     is LIVE and stop 2 WAITING (the gap this file pinned is closed);
+//   • the stacked-seq consumption matrix at EQUAL created_at (a valid pair → LIVE/WAITING; mismatched / stale provenance →
+//     NEUTRAL/NEUTRAL; three orders → legacy created_at);
 //   • a survivor after a pre-pickup unassign: its stale copy is inert (validity) → the lone order is LIVE;
 //   • a manual reunion (assigned_at > stack_at): order-time, as today;
 //   • flag OFF (no copies): today's pointer → today's tracker; the single-order golden is unchanged.
@@ -63,15 +65,15 @@ const both = (w) => [mode(w, 'ord_i'), mode(w, 'ord_n')];
     assert.deepStrictEqual(both(w), ['terminal', 'terminal']);
     ok('I-first: pre → stop 1 LIVE / stop 2 WAITING (whichever pickup was swiped) → stop 2 LIVE → terminal');
   }
-  // ── 2. N-first: NEUTRAL (never a wrong LIVE) until 2f's sort is re-copied — the pinned gap ─────────────────────
+  // ── 2. N-first: with 2f's stop_seq sort re-copied, the pointer's stop 1 is element 0 → LIVE / WAITING (gap closed) ──
   {
     const w = world({ rankI: 2 });
     pickupBatch(w, 'ord_i');
     assert.strictEqual(w.driver.current_task_id, 'ord_n_delivery', 'the pointer follows the rank');
-    assert.deepStrictEqual(both(w), ['neutral', 'neutral'], 'N-first today: neutral for both — the order-time sort and the pointer disagree; never a wrong live');
+    assert.deepStrictEqual(both(w), ['waiting', 'live'], 'N-first: stop 1 (ord_n) LIVE, stop 2 (ord_i) WAITING — the tracker agrees with the driver card');
     deliver(w, 'ord_n');
     assert.deepStrictEqual(both(w), ['live', 'terminal'], 'after stop 1 (N) is delivered, the remaining order is live');
-    ok('N-first: NEUTRAL for both until 2f’s sort lands (pinned gap — never a wrong LIVE); after stop 1, the survivor is LIVE');
+    ok('N-first: stop 1 LIVE / stop 2 WAITING (2f’s stop_seq sort re-copied — the pinned gap closed); after stop 1, the survivor is LIVE');
   }
   // ── 3. a survivor after a pre-pickup unassign of either member: its stale copy is inert ────────────────────────
   for (const gone of ['ord_i', 'ord_n']) {
@@ -99,6 +101,31 @@ const both = (w) => [mode(w, 'ord_i'), mode(w, 'ord_n')];
     one.tasks.ord_i_pickup.status = 'completed'; one.orders.ord_i.status = 'out_for_delivery'; one.driver.current_task_id = 'ord_i_delivery';
     assert.strictEqual(mode(one, 'ord_i'), 'live', 'the single-order golden');
     ok('flag OFF (no copies) behaves as today; the single-order golden is LIVE');
+  }
+  // ── 6. the stacked-seq consumption matrix (2f stackseq-consume.test.js titles; advisor ruling Codex r1 #3) — EQUAL created_at ──
+  const eq = (over = {}) => { const w = world({ rankI: 2 }); w.tasks.ord_n_delivery.created_at = 100; w.tasks.ord_n_pickup.created_at = 100; Object.entries(over).forEach(([k, v]) => Object.assign(w.tasks[k], v)); return w; };
+  {
+    const w = eq(); pickupBatch(w, 'ord_i');
+    assert.deepStrictEqual(both(w), ['waiting', 'live'], 'a VALID pair with EQUAL created_at is never a tie: stop 1 (ord_n) LIVE, stop 2 WAITING');
+    ok('valid pair, equal created_at → ordered by stop_seq: LIVE / WAITING (the degenerate the neutral rule must not swallow)');
+  }
+  {
+    const w = eq({ ord_n_delivery: { stack_id: 'stk_other' } }); pickupBatch(w, 'ord_i');
+    assert.deepStrictEqual(both(w), ['neutral', 'neutral'], 'mismatched stack_id + equal created_at → an invalid pair → a created_at tie → NEUTRAL for both');
+    ok('mismatched stack_id, equal created_at → invalid → NEUTRAL / NEUTRAL');
+  }
+  for (const [label, over] of [['reassigned away (stack_uid foreign)', { ord_n_delivery: { stack_uid: 'drv_tb_other' } }], ['reassigned AFTER the stack write (assigned_at > stack_at)', { ord_n_delivery: { assigned_at: 5000 } }]]) {
+    const w = eq(over); pickupBatch(w, 'ord_i');
+    assert.deepStrictEqual(both(w), ['neutral', 'neutral'], `${label} + equal created_at → stale provenance → NEUTRAL for both`);
+  }
+  ok('stale provenance (stack_uid foreign / assigned after the stack), equal created_at → invalid → NEUTRAL / NEUTRAL');
+  {
+    // three delivery-phase orders: not exactly one pair → legacy created_at, no stop_seq sequencing (even though ord_i/ord_n are a valid pair)
+    const w = world({ rankI: 2 });
+    w.tasks.ord_x_pickup = leg('ord_x', 'pickup', 'completed', 300); w.tasks.ord_x_delivery = leg('ord_x', 'delivery', 'accepted', 300); w.orders.ord_x = { status: 'out_for_delivery' };
+    pickupBatch(w, 'ord_i'); w.driver.current_task_id = 'ord_i_delivery';   // the driver card under legacy order-time = the oldest
+    assert.deepStrictEqual([...both(w), mode(w, 'ord_x')], ['live', 'waiting', 'waiting'], '3 orders: legacy created_at — the oldest (ord_i) LIVE although its stop_seq is 2');
+    ok('3 delivery orders (a valid pair + a third) → legacy created_at, no stop_seq sequencing');
   }
   FINISHED = true;
   console.log(`\ntracker-parity: OK (${n})`);
