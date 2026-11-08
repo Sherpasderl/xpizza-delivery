@@ -57,6 +57,20 @@ function photoOrigins(sites) {
   return [...new Set([...brand, new URL(publicUrl('bucket', 'rid', 'pid', 'card')).origin])].sort();
 }
 
+// Codex r2 P2-2: every NETWORK source is a strict origin — https/wss, LDH host labels, an optional port, nothing else — and equals
+// its own URL origin. A manifest value that carries an entity (`&colon;`), a quote, a space, a path or a CSP separator would change
+// meaning inside the <meta> attribute (another origin admitted, or the policy cut short): the build refuses it.
+const LABEL = '[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', STRICT_ORIGIN = new RegExp(`^(https|wss)://${LABEL}(?:\\.${LABEL})+(?::[0-9]{1,5})?$`);
+function strictOrigin(o) {
+  let ok = typeof o === 'string' && STRICT_ORIGIN.test(o);
+  if (ok) { try { ok = new URL(o.replace(/^wss:/, 'https:')).origin === o.replace(/^wss:/, 'https:'); } catch (_) { ok = false; } }
+  if (!ok) throw new Error(`the CSP refuses a malformed origin: ${JSON.stringify(String(o)).slice(0, 80)}`);
+  return o;
+}
+// the attribute value, HTML-escaped (belt to the origin check's braces): the parsed <meta>.content is the CSP, exactly
+const escAttr = (v) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const cspMeta = (csp) => `<meta http-equiv="Content-Security-Policy" content="${escAttr(csp)}">\n`;
+
 // the plan §1.2 CSP, from the runtime DATA (no host literal here beyond Google's fixed API hosts the plan names)
 function cspFor(rt, styleHash, photoHosts = []) {
   if (!/^sha256-[A-Za-z0-9+/]+=*$/.test(String(styleHash || ''))) throw new Error('the shell <style> hash is required for the CSP');
@@ -71,6 +85,7 @@ function cspFor(rt, styleHash, photoHosts = []) {
     ["style-src-attr", ["'unsafe-inline'"]],
     ["frame-src", ["'none'"]],
   ];
+  for (const [, v] of d) for (const src of v) if (/:\/\//.test(src)) strictOrigin(src);
   return d.map(([k, v]) => `${k} ${v.join(' ')}`).join('; ');
 }
 
@@ -155,7 +170,7 @@ function build({ sha, flags = [], root = ROOT, show, target = 'native', env } = 
   if (styles.length !== 1) throw new Error('shell.html must carry exactly one <style> block (its hash is in the CSP)');
   const styleHash = `sha256-${crypto.createHash('sha256').update(styles[0][1], 'utf8').digest('base64')}`;
   const csp = cspFor(rt, styleHash, photoOrigins(sites));
-  const cspTag = `<meta http-equiv="Content-Security-Policy" content="${csp}">\n`;
+  const cspTag = cspMeta(csp);
   // D-4a §6 (web only): the site serves the shell at nested paths (/r/{rid}/plato/{id}), so every relative reference resolves from
   // the ROOT — <base> right after the charset, BEFORE every relative URL; native (capacitor://localhost/index.html) gets none
   const baseTag = target === 'web' ? '<base href="/">\n' : '';
@@ -218,4 +233,4 @@ if (require.main === module) {
     } else { const m = pack(opts); console.log(`package-capp: ${m.target} ${m.deployment} (${m.env}) build ${m.build} compat ${m.compat} sdk ${m.sdk} flags [${m.flags}] → ${opts.out} (${Object.keys(m.files).length} files)`); }
   } catch (e) { console.error(`package-capp: FAILED — ${e.message}`); process.exit(1); }
 }
-module.exports = { build, pack, verify, cspFor, photoOrigins, shellFiles, FLAGS, ENTRY, TARGETS };
+module.exports = { build, pack, verify, cspFor, cspMeta, photoOrigins, shellFiles, FLAGS, ENTRY, TARGETS };

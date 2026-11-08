@@ -245,4 +245,24 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   assert.deepStrictEqual(missing, [], `🔴 img-src does not admit the dish-photo host(s) the menu can serve: ${missing.join(', ')}`);
   ok(`img-src admits every dish-photo host the menu can serve, from the publishers' rules (${[...new Set(served)].length}: each brand's order site + the public bucket)`);
 }
+// 9. Codex r2 P2-2: a manifest origin must not change meaning inside the CSP <meta> attribute. `&colon;` decodes to ':' (another
+//    origin admitted) and a `"` ends the attribute (every later source and directive dropped). Every network source is a strict
+//    https/wss origin or the build refuses; the attribute is HTML-escaped; the PARSED <meta>.content is the CSP, exactly.
+{
+  const rt = DEP.runtime, HASH9 = 'sha256-AAAA';
+  for (const bad of ['https://example.com&colon;443', 'https://example.com"oops', 'https://exa mple.com', 'https://example.com/path', 'http://example.com', 'https://example.com;script-src *', "https://example.com'", 'https://example.com<x']) {
+    let threw = null; try { P.cspFor({ ...rt, functions_base: bad }, HASH9, []); } catch (e) { threw = e; }
+    assert.ok(threw, `🔴 the CSP admitted a malformed runtime origin: ${JSON.stringify(bad)}`);
+    threw = null; try { P.cspFor(rt, HASH9, [bad]); } catch (e) { threw = e; }
+    assert.ok(threw, `🔴 the CSP admitted a malformed photo origin: ${JSON.stringify(bad)}`);
+  }
+  const B9 = P.build({ sha: HEAD, ...WEB }), page = B9.files.get(P.ENTRY).toString('utf8');
+  const meta = new JSDOM(page).window.document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  assert.strictEqual(meta && meta.getAttribute('content'), B9.csp, '🔴 the parsed <meta> CSP is not the CSP the packager built');
+  // the attribute is escaped on its own (the belt): a value with an entity, a quote and a tag reads back verbatim
+  const hostile = `img-src https://a.example&colon;443 "x" <b>`;
+  const back = new JSDOM(`<!doctype html><head>${P.cspMeta(hostile)}</head>`).window.document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  assert.strictEqual(back && back.getAttribute('content'), hostile, '🔴 the <meta> attribute is not HTML-escaped (an entity or a quote changes the CSP)');
+  ok('the CSP refuses every malformed origin (entities, quotes, spaces, paths, http, separators) and the parsed <meta>.content is the built CSP');
+}
 console.log(`package-capp: OK (${n})`);
