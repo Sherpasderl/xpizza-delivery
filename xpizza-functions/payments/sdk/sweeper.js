@@ -2,7 +2,7 @@
 // The durable SDK payments sweeper (BRIEF r5 §5) — independent of the app and of the status trigger. It reads ONE bounded
 // page of the due index (payment_sdk_due/{orderId} = next visit time) and RESCHEDULES each visited entry before working it,
 // so persistent unknowns rotate and can never starve later orders. A visit reconciles, recovers a committed projection,
-// re-drives a placed order's go-live, settles a terminal order (including
+// re-drives a placed order's go-live (and, for a live order, its reserved-redemption consume), settles a terminal order (including
 // one whose trigger never ran), resumes a cancellation, expires a pending order past its TTL, re-opens a missed obligation,
 // tracks surplus holds to a CONFIRMED expiry, and raises the overdue alerts. The entry is removed only when the record is
 // financially closed and the entry still holds the value this visit wrote (a newer enrol is never erased).
@@ -34,6 +34,11 @@ async function visitDueOrder(deps, orderId) {
     // placed, not live: re-drive the shared go-live (idempotent); a parked order (manual_reconciliation) is left to a person
     try { await deps.goLive(deps, orderId); } catch (e) { console.error(`sdk go-live re-drive failed for ${orderId}: ${e && e.message}`); }
     if (F.goLiveRedrivable(await C.readOrder(deps.db, orderId)) && now - order.payment_placed.at > CAPTURE_OVERDUE_MS) await C.alertOnce(deps, 'golive_overdue', orderId, {});
+  } else if (F.consumeBackstopDue(order)) {
+    // live with a redemption still reserved (its consume failed after materialization): re-enter the shared go-live, whose
+    // already-confirmed branch consumes it idempotently
+    const st = (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val();
+    if (st === 'reserved') { try { await deps.goLive(deps, orderId); } catch (e) { console.error(`sdk consume backstop failed for ${orderId}: ${e && e.message}`); } }
   }
   await C.sweepPendingRoles(deps, orderId);
   await C.trackExpiry(deps, orderId);

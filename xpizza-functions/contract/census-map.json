@@ -851,7 +851,8 @@
   "payments/sdk/flow.js#markerFault": "payment",
   "payments/sdk/flow.js#sdkGoLiveAdmits": "payment",
   "payments/sdk/flow.js#goLiveInFlight": "payment",
-  "payments/sdk/flow.js#goLiveRedrivable": "payment"
+  "payments/sdk/flow.js#goLiveRedrivable": "payment",
+  "payments/sdk/flow.js#consumeBackstopDue": "payment"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
@@ -2016,7 +2017,9 @@
   "payment_placed@xpizza-functions/payments/sdk/flow.js#goLiveInFlight": "SDK card payments (ruling #9 A): the server-only GO-LIVE decision marker, read as a presence test to decide whether the shared go-live claim is in flight / may be re-driven; never an amount or an identity",
   "materialized_at@xpizza-functions/payments/sdk/flow.js#goLiveInFlight": "lifecycle timestamp, read as a presence test (an SDK order already live is never re-driven; a cancel waits only while the go-live is in flight); never an amount or an identity",
   "payment_placed@xpizza-functions/payments/sdk/flow.js#goLiveRedrivable": "SDK card payments (ruling #9 A): the server-only GO-LIVE decision marker, read as a presence test to decide whether the shared go-live claim is in flight / may be re-driven; never an amount or an identity",
-  "materialized_at@xpizza-functions/payments/sdk/flow.js#goLiveRedrivable": "lifecycle timestamp, read as a presence test (an SDK order already live is never re-driven; a cancel waits only while the go-live is in flight); never an amount or an identity"
+  "materialized_at@xpizza-functions/payments/sdk/flow.js#goLiveRedrivable": "lifecycle timestamp, read as a presence test (an SDK order already live is never re-driven; a cancel waits only while the go-live is in flight); never an amount or an identity",
+  "materialized_at@xpizza-functions/payments/sdk/flow.js#consumeBackstopDue": "lifecycle timestamp, read as a presence test: only a LIVE (materialized) SDK order gets the redemption consume backstop (ruling A on the redemption gap); never an amount or an identity",
+  "customer_uid@xpizza-functions/payments/sdk/flow.js#consumeBackstopDue": "read only to require that the order names its customer (the reservation path user_rewards/{uid}/{rid}) before the consume backstop re-enters the shared go-live; never compared, displayed or used as an amount"
  },
  "unreachableOnSurface": {
   "_doc": "P1-a (reviewed): a page function that NOTHING in its page scope references (no identifier, NS.member or inline HTML handler) cannot run on that surface — reachability is a FIXPOINT from top-level code, registered callbacks and inline HTML handlers, so a function referenced only by unreachable functions is unreachable too, so its order reads are not that surface's outputs. census.js marks them (over-approximating reachability); this list must EQUAL the marked set — a function that becomes referenced again makes its entry stale (RED: review its mapping); a new unreferenced one is RED until reviewed here.",

@@ -30,4 +30,8 @@ const sdkGoLiveAdmits = (order) => isSdkOrder(order) && !markerFault(order) && !
 const goLiveInFlight = (order) => isSdkOrder(order) && !!order.payment_placed && order.payment_status === 'confirmed' && !order.materialized_at;
 // Placed, not live, not parked for a person: the go-live may be (re-)driven.
 const goLiveRedrivable = (order) => isSdkOrder(order) && !!order.payment_placed && order.status === 'pending_payment' && !order.materialized_at && (order.payment_status === 'pending' || order.payment_status === 'confirmed');
-module.exports = { SDK_FLOW, isSdkOrder, MARKER_SHAPES, markerFault, sdkGoLiveAdmits, goLiveInFlight, goLiveRedrivable };
+// Live (claimed + materialized) with a redemption on the order: the shared go-live's already-confirmed branch is the
+// idempotent consume backstop for a redemption still reserved (ruling A on the redemption gap).
+const consumeBackstopDue = (order) => sdkGoLiveAdmits(order) && order.payment_status === 'confirmed' && !!order.materialized_at && !!order.redemption
+  && typeof order.customer_uid === 'string' && order.customer_uid.length > 0 && typeof order.restaurant_id === 'string' && order.restaurant_id.length > 0;
+module.exports = { SDK_FLOW, isSdkOrder, MARKER_SHAPES, markerFault, sdkGoLiveAdmits, goLiveInFlight, goLiveRedrivable, consumeBackstopDue };
