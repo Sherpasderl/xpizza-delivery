@@ -7,8 +7,28 @@
 // locked the «Recogí el pedido» slide. Fix: point at the next stop's WORKING task — its pickup ONLY for a valid
 // actionable pair (type pickup, same order, same driver, accepted|in_progress, reciprocal link), else its delivery.
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { writeFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { buildCompleteTaskUpdates, TASK_STATUS, TASK_TYPE } from './driver-complete.js';
-import { buildCompleteTaskUpdates as buildOLD } from './driver-complete.baseline.fixture.mjs'; // origin/main 51dc55ab, verbatim
+
+// OLD baseline = origin/main 51dc55ab's buildCompleteTaskUpdates, loaded at TEST TIME (no committed clone, so the
+// contract census never scans a duplicate source unit). FAIL LOUDLY if git or the object is unavailable — never
+// silently skip the no-regression proof.
+const BASELINE_REF = '51dc55ab:xpizza-driver/driver-complete.js';
+let buildOLD;
+{
+  const here = fileURLToPath(new URL('.', import.meta.url));
+  let src;
+  try { src = execFileSync('git', ['show', BASELINE_REF], { cwd: here, encoding: 'utf8' }); }
+  catch (e) { throw new Error(`EQUIVALENCE baseline unavailable: \`git show ${BASELINE_REF}\` failed (${e && e.message}). Cannot prove no-regression — FAILING LOUDLY.`); }
+  if (!src || !/function buildCompleteTaskUpdates/.test(src)) throw new Error(`EQUIVALENCE baseline empty/invalid from ${BASELINE_REF} — FAILING LOUDLY.`);
+  const f = join(mkdtempSync(join(tmpdir(), 'dc-baseline-')), 'driver-complete.baseline.mjs');
+  writeFileSync(f, src);
+  ({ buildCompleteTaskUpdates: buildOLD } = await import(pathToFileURL(f).href));
+}
 
 const NOW = 1000;
 let passed = 0;
