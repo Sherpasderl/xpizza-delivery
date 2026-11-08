@@ -16,6 +16,7 @@ const { validateSource, sourceRefOf, canonicalize, encodeUpdateTime } = require(
 const { candidateSource } = require('./candidate-validate');
 const { isPreconditionFailure } = require('./edit-catalog-handler');
 const PS = require('../photos/photo-state');   // DISH PHOTOS A2: the three-state vocabulary (pure)
+const { resolvePlatformPending } = require('./platform-pending');   // F-1 (2026-11-07): Sherpa-written draft fields are never reset away
 
 const { can } = require('../access/membership');   // PLAN-portal-membership r3 §3.2 — the ONE capability table
 const reply = (status, body) => ({ status, body });
@@ -49,6 +50,16 @@ async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previe
   } catch (e) {
     // The active version passed this exact validation before it was flipped live; failing now is a contradiction.
     return reply(500, { error: 'projection_invalid', detail: String((e && e.message) || e).slice(0, 200) });
+  }
+
+  /* F-1 (BRIEF-portal-stale-draft-clobber, ruled 2026-11-07) — a draft carrying fields a SHERPA tool wrote (the platform-pending
+     stamp) that live does not carry yet is NOT the merchant's to throw away: going back to live would silently discard them (the
+     11-02 loss). Refused until live carries them; a draft that merely differs from live (a rollback) still resets — the stamp,
+     not the difference, decides. Live already carrying every stamped field clears the stamp here. Fails CLOSED. */
+  let pend;
+  try { pend = await resolvePlatformPending(db, rid, projected); } catch (e) { return reply(503, { error: 'store_unavailable', retryable: true }); }
+  if (pend.pending) {
+    return reply(409, { error: 'platform_changes_pending', detail: 'Sherpa is updating this menu; the draft cannot be reset until that update is published', fields: pend.fields });
   }
 
   /* codex r1 P1-3 — the restored pids go through the SAME fenced attach editCatalog uses (registry draft|published + last_ref_at bump,

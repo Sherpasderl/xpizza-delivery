@@ -71,6 +71,7 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/mirror-rtdb.js',
   'catalog/platform-extras.js',             // per-product extras: the platform authoring switch (editCatalog / publishEdited); no I/O
   'catalog/platform-groups.js',             // 1D add-product B: the ONE platform authoring switch (editCatalog / publishEdited); no I/O
+  'catalog/platform-pending.js',            // F-1 (2026-11-07): the platform-pending stamp — getEditableCatalog reads it, resetDraftToLive refuses / clears by it
   'catalog/portal-reads.js',
   'catalog/public-photos.js',              // DISH PHOTOS A2 step 9: the public menu's own legacy-image rule (buildPhotos / assetBaseFor; pure)
   'catalog/publish-edited-handler.js', 'catalog/redeem-source.js',

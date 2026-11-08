@@ -20,6 +20,7 @@
 // ---------------------------------------------------------------------------
 const { sourceRefOf, validateSource, rendererContract } = require('./source-store');
 const { assessDraft } = require('./draft-assess');   // 1D add-product A
+const { readPlatformPending, gapsIn } = require('./platform-pending');   // F-1: the Sherpa-written-fields flag (read-only here)
 const { groupCapabilities } = require('./platform-groups');   // 1D add-product B: the ONE platform authoring switch (no brand)
 const { usesPlatformFactura } = require('../factura/eligibility');   // 2b-2b: the fiscal capability, server-owned
 // The EXISTING codec from the 2b-1 write path, imported rather than reimplemented. `sourceUpdateTime`
@@ -170,9 +171,11 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
   let pendingAdditions = null;
   let pendingRenames = null;
   let pendingOther = false;
+  let liveRead = null;   // F-1: the same live read answers the platform-pending question below (no second read)
   if (readActiveBuilt && activeVersionId != null) {
     try {
-      const a = assessDraft(rid, source, await readActiveBuilt(rid));
+      liveRead = await readActiveBuilt(rid);
+      const a = assessDraft(rid, source, liveRead);
       if (!a.publishable) draftUnpublishable = { code: a.code, detail: a.detail, ...(a.key ? { key: a.key } : {}) };
       // the saved draft's products that are NOT published yet (keys), so a reloaded editor still marks them NUEVO
       // and lets the owner remove them ("Quitar") — present only when there are some
@@ -186,6 +189,23 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
       }
     } catch (e) {
       console.warn('portal_draft_assessment_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
+    }
+  }
+
+  /* F-1 (BRIEF-portal-stale-draft-clobber, ruled 2026-11-07) — platform_changes_pending: a SHERPA tool wrote fields into this draft
+     (the platform-pending stamp) that live does not carry yet. The portal then shows the calm notice INSTEAD of «Volver al menú
+     publicado», which resetDraftToLive refuses anyway (the server decides). READ-ONLY here: the stamp is only read, never cleared
+     (clearing is the reset's / Sherpa's publish tools'). Best effort: a failed read omits it; the reset still refuses. */
+  let platformPending = null;
+  if (liveRead && liveRead.built) {
+    try {
+      const st = await readPlatformPending(fsdb, rid);
+      if (st) {
+        const gaps = st.malformed ? [] : gapsIn({ items: liveRead.built.items, extras: liveRead.extraRecords, structure: liveRead.built.structure }, st.fields);
+        if (st.malformed || gaps.length) platformPending = { fields: gaps };
+      }
+    } catch (e) {
+      console.warn('portal_platform_pending_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
     }
   }
 
@@ -237,6 +257,7 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     choiceBadges,
     restaurantName,
     ...(draftUnpublishable ? { draft_unpublishable: draftUnpublishable } : {}),
+    ...(platformPending ? { platform_changes_pending: platformPending } : {}),   // F-1
     ...(pendingAdditions ? { pendingAdditions } : {}),
     ...(pendingRenames ? { pendingRenames } : {}),
     ...(pendingOther ? { pendingOther: true } : {}),
