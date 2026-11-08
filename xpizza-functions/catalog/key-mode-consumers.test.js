@@ -38,7 +38,7 @@ const tablesFor = (mode) => MP.attachTablesKeyMode({ restaurantId: RID, menu: { 
   // the menu-updating gate
   {
     const known = new Set([SLUG]);
-    assert.deepStrictEqual(absentFromMenu([line()], RID, known, 'id'), []);
+    assert.deepStrictEqual(absentFromMenu([line()], RID, known, 'id'), [], 'CN-ABSENT id mode knows the slug');
     assert.deepStrictEqual(absentFromMenu([line()], RID, known, 'name'), [NAME]);
     assert.deepStrictEqual(absentFromMenu([line()], RID, known), [NAME], 'no mode = today');
     ok('menu-updating gate keys by the passed mode');
@@ -55,7 +55,7 @@ const tablesFor = (mode) => MP.attachTablesKeyMode({ restaurantId: RID, menu: { 
   // dish quantities for ratings
   {
     const ctx = (k) => ({ usableAsIdentity: true, objects: [{ kind: 'dish', legacyKey: k, canonicalId: 'cid_1' }] });
-    assert.deepStrictEqual(dishQtyOf([line()], RID, ctx(SLUG), 'id'), { cid_1: 1 });
+    assert.deepStrictEqual(dishQtyOf([line()], RID, ctx(SLUG), 'id'), { cid_1: 1 }, 'CN-DISHQTY id mode maps the slug');
     assert.strictEqual(dishQtyOf([line()], RID, ctx(SLUG), 'name'), null);
     assert.deepStrictEqual(dishQtyOf([line()], RID, ctx(NAME)), { cid_1: 1 }, 'no mode = today');
     ok('rating dish quantities key by the passed mode');
@@ -70,10 +70,10 @@ const tablesFor = (mode) => MP.attachTablesKeyMode({ restaurantId: RID, menu: { 
   }
   // per-product extras: item and extra keys come from the tables' own mode
   {
-    assert.strictEqual(lineItemKey(line(), tablesFor('id'), RID), SLUG);
+    assert.strictEqual(lineItemKey(line(), tablesFor('id'), RID), SLUG, 'CN-EXTRAS-ITEM');
     assert.strictEqual(lineItemKey(line(), tablesFor('name'), RID), NAME);
     assert.strictEqual(lineItemKey(line(), tablesFor(null), RID), NAME, 'no mode = today');
-    assert.deepStrictEqual(lineExtraKeys(line(), tablesFor('id'), RID), [XSLUG]);
+    assert.deepStrictEqual(lineExtraKeys(line(), tablesFor('id'), RID), [XSLUG], 'CN-EXTRAS-EXTRA');
     assert.deepStrictEqual(lineExtraKeys(line(), tablesFor('name'), RID), [XNAME]);
     ok('extras eligibility keys items and extras by the tables\' mode');
   }

@@ -74,6 +74,11 @@ function flatTree(rid, profile) {
     const flat = await getRestaurantDocs(db, 'tb_r');
     assert.strictEqual(flat.versionId, null); assert.strictEqual(flat.keyMode, 'id', 'SERVE-FLAT-ROUTE');
   }
+  {
+    const db = fakeDb({ ...versionTree('tb_r', 'v1', { key_mode: 'id' }), 'restaurants/tb_r/meta/active_version': { version: 'v1', generation: 1 } });
+    const live = await getRestaurantDocs(db, 'tb_r');
+    assert.strictEqual(live.versionId, 'v1'); assert.strictEqual(live.keyMode, 'id', 'SERVE-VERSION-ROUTE');
+  }
   ok('A: the version record\'s key_mode and the flat profile\'s pricing_key_mode surface; absent ⇒ undefined; malformed ⇒ refused');
 
   // ── B ──

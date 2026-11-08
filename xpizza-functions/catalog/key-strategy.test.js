@@ -77,7 +77,7 @@ ok('null handling of each accessor is unchanged under every mode');
     assert.strictEqual(rawLegacyKey(rid, probe(), m), MP.itemPricingKey(probe(), rid, m), `pin ${rid}/${m}`);
   }
   const items = [{ id: 'tb_slug', name: 'TB Name', dish_id: 'd1', extras: [{ id: 'tb_x', name: 'TB X', extra_id: 'e1' }] }];
-  assert.deepStrictEqual(occurrences('tb_merch_3', items, 'id').map((o) => o.raw), ['tb_slug', 'tb_x']);
+  assert.deepStrictEqual(occurrences('tb_merch_3', items, 'id').map((o) => o.raw), ['tb_slug', 'tb_x'], 'KS-GRACE the walk keys by the mode');
   assert.deepStrictEqual(occurrences('tb_merch_3', items).map((o) => o.raw), ['TB Name', 'TB X'], 'no mode = today');
   ok('rawLegacyKey is pinned to itemPricingKey under both modes; the grace walk keys by the mode');
 }

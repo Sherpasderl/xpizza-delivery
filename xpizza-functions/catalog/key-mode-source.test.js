@@ -54,10 +54,10 @@ for (const rid of ['x_pizza', 'la_musa']) {
   // (la_musa's data relabelled: the per-restaurant RENDERER contract judges it later and is not S0's concern, so the
   // assertion is on the KEY check alone — with its mode every key passes; without it the first key is a mismatch)
   const reason = (s) => { try { validateSource(s, 'tb_merch_3'); return 'valid'; } catch (e) { return String(e.message); } };
-  assert.ok(!/key does not match|key_mode/.test(reason(src)), `id-keyed third restaurant passes the key check by its own mode (${reason(src).slice(0, 120)})`);
+  assert.match(reason(src), /badge \S+ is not one the renderer can select/, `SRC-THIRD id-keyed third restaurant gets past every key and id check to the renderer contract (${reason(src).slice(0, 120)})`);
   assert.match(reason(without(src)), /key does not match its display record/, 'without its mode it is judged by the default (name) and fails on the key');
   const built = buildCatalogV2('tb_merch_3', { ...(({ formData, priceTable, extras }) => ({ formData, priceTable, extrasTable: extras }))(sourceToBuildInputs(src)), keyMode: 'id' });
-  assert.deepStrictEqual(built.items.map((i) => i.key).sort(), src.items.map((i) => i.key).sort());
+  assert.deepStrictEqual(built.items.map((i) => i.key).sort(), src.items.map((i) => i.key).sort(), 'SRC-THIRD-BUILD the build keys by the mode');
   assert.strictEqual(built.key_mode, 'id');
   ok('a config-only id-keyed restaurant validates and builds by its mode alone');
 }
@@ -70,6 +70,9 @@ for (const rid of ['x_pizza', 'la_musa']) {
   assert.deepStrictEqual(serverOwnedKeyMode({ key_mode: null }, { key_mode: 'id' }), { ok: true, key_mode: 'id' }, 'a null in the draft is absent');
   assert.strictEqual(serverOwnedKeyMode({ key_mode: 'id' }, { key_mode: 'name' }).ok, false, 'a change is refused');
   assert.strictEqual(serverOwnedKeyMode({ key_mode: 'id' }, {}).ok, false, 'adding one through a draft is refused');
+  const { withServerKeyMode } = require('./key-mode');
+  assert.deepStrictEqual(withServerKeyMode({ a: 1, key_mode: 'id' }, 'name'), { a: 1, key_mode: 'name' }, 'SRC-WITH-MODE sets the stored mode');
+  assert.deepStrictEqual(withServerKeyMode({ a: 1, key_mode: 'id' }, undefined), { a: 1 }, 'SRC-WITH-MODE removes one where none is stored');
   ok('the draft write keeps the stored key_mode: echo allowed, change / add refused, absent ⇒ kept');
 }
 
