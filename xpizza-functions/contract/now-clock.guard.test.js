@@ -1,5 +1,7 @@
 'use strict';
-// Soundness guard for write-provenance's COMMON 'now' (advisor ruling 2026-11-07, condition 1; Codex MEDIUM r1 → a WHITELIST).
+// Soundness guard for write-provenance's COMMON 'now' (advisor ruling 2026-11-07, condition 1; Codex MEDIUM r1 → a WHITELIST;
+// r2: computed class members, alias reassignment, call results — `clock` bindings are guarded too, so `X.now()` / `X.clock()`
+// are timestamps by induction; a positional now / clock that its body CALLS must be a verified forward of a guarded name).
 // COMMON means "a call named `now` is a library clock — never followed". That is sound only while EVERY binding named `now`
 // in the census scope is exactly one of:
 //   CLOCK  — a function of an allowed pure-clock shape (() => Date.now(), () => <number>, () => new Date().toISOString(),
@@ -21,9 +23,12 @@ const REVIEWED = Object.freeze({
   'xpizza-functions/stats/stats-store.js::await serverNow(db, rid)': 'the RTDB server-time read (a timestamp value)',
   'xpizza-functions/access/membership-admin-core.js::{ ...(await operationResults(db, uid, rid, authorizeCatalogEdit)), ...(await deviceResults(db, uid, rid, authorizeManager)) }': 'a results OBJECT named now (not callable)',
   'xpizza-functions/phone/flag.js::_clock()': 'the module clock of the phone flag (Date.now unless a test installs one once)',
+  'xpizza-functions/superseded-capture.js::positional clock@acquireLease': 'exported for its tests; the only production call (the same file) forwards the guarded `clock`',
   'xpizza-functions/stats/stats-fixtures.js::param at@71': 'the fixture materialize helper: its callers pass timestamp numbers',
   'xpizza-functions/stats/stats-gen.js::T.dayStartMs(date) + Math.floor(r() * 86400000)': 'a synthetic fixture timestamp',
 });
+// the guarded names: `now` (write-provenance COMMON) and `clock` (so a call `X.clock()` is a timestamp by the same induction)
+const NAMES = new Set(['now', 'clock']);
 const DATA_MEMBERS = new Set(['op.at', 'sample.at', 'opts.now', 'ServerValue.TIMESTAMP']);
 
 const srcOf = (u, x) => u.code.slice(x.start, x.end).replace(/\s+/g, ' ').trim();
@@ -41,13 +46,14 @@ function isClockFn(f) {
   const b = f.body && f.body.body;
   return Array.isArray(b) && b.length === 1 && b[0].type === 'ReturnStatement' && clockBody(b[0].argument);
 }
-const isClockRef = (x) => isDateNowRef(x) || (x && x.type === 'LogicalExpression' && x.operator === '||' && isMemberNow(x.left) && (isDateNowRef(x.right) || isClockFn(x.right)));
+const isNamedRef = (x) => x && x.type === 'MemberExpression' && !x.computed && NAMES.has(x.property.name);   // X.now / X.clock — itself guarded
+const isClockRef = (x) => isDateNowRef(x) || isNamedRef(x) || (x && x.type === 'LogicalExpression' && x.operator === '||' && isMemberNow(x.left) && (isDateNowRef(x.right) || isClockFn(x.right)));
 function isDataExpr(x) {
   if (!x) return false;
   if (isNumLit(x) || (x.type === 'Literal' && x.value === null) || isDateNowCall(x) || isDelegate(x) || isNewDateIso(x)) return true;
   if (x.type === 'CallExpression' && x.arguments.length === 0) {
     const c = x.callee;
-    if (c.type === 'Identifier' && c.name === 'now') return true;                                        // now()
+    if (c.type === 'Identifier' && NAMES.has(c.name)) return true;                                       // now() / clock(): every such binding is guarded here
     if (c.type === 'MemberExpression' && !c.computed && ['now', 'clock'].includes(c.property.name)) return true;   // X.now() / X.clock()
     if (isClockRef(c)) return true;                                                                       // (X.now || Date.now)()
   }
@@ -59,12 +65,23 @@ function isDataExpr(x) {
 
 // every binding named `now`: [{ where, kind, value, unit }]
 function bindings(units) {
-  const out = []; const declsByName = new Map();
+  const out = []; const declsByName = new Map(); const assignsByName = new Map();
   const scopes = (ast) => { const fs = []; C.walk(ast, (x) => { if (/Function/.test(x.type)) fs.push([x.start, x.end]); }); return fs; };
   const innermost = (fs, pos) => fs.filter(([a, b]) => a <= pos && pos < b).reduce((m, r) => (!m || r[0] > m[0] ? r : m), null) || [-1, Infinity];
-  const keyNow = (k, computed) => (!computed && k && (k.name === 'now' || k.value === 'now')) || (computed && k && ((k.type === 'Literal' && k.value === 'now') || (k.type === 'TemplateLiteral' && !k.expressions.length && k.quasis[0].value.cooked === 'now')));
+  const keyNow = (k, computed) => (!computed && k && (NAMES.has(k.name) || NAMES.has(k.value))) || (computed && k && ((k.type === 'Literal' && NAMES.has(k.value)) || (k.type === 'TemplateLiteral' && !k.expressions.length && NAMES.has(k.quasis[0].value.cooked))));
   for (const u of units) {
-    const ast = C.parseUnit(u); const fs = scopes(ast); u.scopeAt = (pos) => innermost(fs, pos);
+    const ast = C.parseUnit(u); const fs = scopes(ast);
+    // a NAMED function declared once whose name is used ONLY as the callee of direct calls in its file, every one passing a
+    // guarded name (now / clock) at index i: its parameter i is that guarded binding forwarded, never an unverified value
+    const forwardedOnly = (root, fn, i) => {
+      if (fn.type !== 'FunctionDeclaration' || !fn.id) return false;
+      let ok = true; let calls = 0; let refs = 0;
+      C.walk(root, (y) => {
+        if (y.type === 'Identifier' && y.name === fn.id.name && y !== fn.id) refs += 1;
+        if (y.type === 'CallExpression' && y.callee.type === 'Identifier' && y.callee.name === fn.id.name) { calls += 1; const a = y.arguments[i]; if (!(a && a.type === 'Identifier' && NAMES.has(a.name))) ok = false; }
+      });
+      return ok && calls > 0 && refs === calls;
+    }; u.scopeAt = (pos) => innermost(fs, pos);
     const PARAM = { type: 'Param' };
     const record = (name, init, pos) => { const l = declsByName.get(`${u.file}#${name}`) || []; l.push({ init, scope: u.scopeAt(pos) }); declsByName.set(`${u.file}#${name}`, l); };
     const patNames = (p, f) => { if (!p) return; if (p.type === 'Identifier') f(p.name); else if (p.type === 'AssignmentPattern') patNames(p.left, f); else if (p.type === 'RestElement') patNames(p.argument, f); else if (p.type === 'ArrayPattern') p.elements.forEach((e) => patNames(e, f)); else if (p.type === 'ObjectPattern') p.properties.forEach((q) => patNames(q.type === 'RestElement' ? q.argument : q.value, f)); };
@@ -76,6 +93,9 @@ function bindings(units) {
       if (x.type === 'VariableDeclarator' && x.id.type !== 'Identifier') patNames(x.id, (nm) => record(nm, x.init && x.init.type === 'Identifier' ? PARAM : { type: 'Destructured' }, x.start));
       const at = `${u.file}:${x.loc ? x.loc.start.line : '?'}`;
       if (x.type === 'VariableDeclarator' && x.id.type === 'Identifier') record(x.id.name, x.init, x.start);
+      const staticKey = (k) => k && ((k.type === 'Literal') || (k.type === 'TemplateLiteral' && !k.expressions.length));
+      if ((x.type === 'MethodDefinition' || x.type === 'PropertyDefinition') && x.computed && !staticKey(x.key)) out.push({ where: at, kind: 'computed-class-member', value: null, unit: u, fail: 'a class member under a non-literal computed key could be named now at runtime' });
+      if (x.type === 'AssignmentExpression' && x.operator === '=' && x.left.type === 'Identifier') { const l = assignsByName.get(`${u.file}#${x.left.name}`) || []; l.push(x.right); assignsByName.set(`${u.file}#${x.left.name}`, l); }
       if (x.type === 'Property' && x.computed && !keyNow(x.key, true) && x.value && /Function/.test(x.value.type)) out.push({ where: at, kind: 'computed-key', value: null, unit: u, fail: 'a function under a computed key could be named now at runtime' });
       if (x.type === 'Property' && keyNow(x.key, x.computed)) {
         if (x.kind !== 'init') out.push({ where: at, kind: `property-${x.kind}`, value: null, unit: u, fail: 'a getter / setter named now' });
@@ -84,18 +104,28 @@ function bindings(units) {
         // a plain shorthand { now } refers to a `now` binding of its scope, itself checked here
       }
       if ((x.type === 'MethodDefinition' || x.type === 'PropertyDefinition') && keyNow(x.key, x.computed)) out.push({ where: at, kind: x.type, value: x.type === 'MethodDefinition' && x.kind !== 'method' ? null : x.value, unit: u, fail: x.type === 'MethodDefinition' && x.kind !== 'method' ? 'a class getter / setter named now' : undefined });
-      if (x.type === 'AssignmentExpression' && ((x.left.type === 'MemberExpression' && keyNow(x.left.property, x.left.computed)) || (x.left.type === 'Identifier' && x.left.name === 'now'))) out.push({ where: at, kind: 'assignment', value: x.right, unit: u });
-      if (x.type === 'VariableDeclarator' && x.id.type === 'Identifier' && x.id.name === 'now') out.push({ where: at, kind: 'variable', value: x.init, unit: u });
-      if (x.type === 'FunctionDeclaration' && x.id && x.id.name === 'now') out.push({ where: at, kind: 'function', value: x, unit: u });
-      if (x.type === 'AssignmentPattern' && x.left.type === 'Identifier' && x.left.name === 'now') out.push({ where: at, kind: 'param-default', value: x.right, unit: u });
+      if (x.type === 'AssignmentExpression' && ((x.left.type === 'MemberExpression' && keyNow(x.left.property, x.left.computed)) || (x.left.type === 'Identifier' && NAMES.has(x.left.name)))) out.push({ where: at, kind: 'assignment', value: x.right, unit: u });
+      if (x.type === 'VariableDeclarator' && x.id.type === 'Identifier' && NAMES.has(x.id.name)) out.push({ where: at, kind: 'variable', value: x.init, unit: u });
+      // a POSITIONAL parameter named now / clock receives the caller's argument (unverified): sound only as DATA — its own body
+      // never calls it (a nested function rebinding the name is its own binding, checked where it is declared)
+      if (/Function/.test(x.type)) x.params.forEach((p) => {
+        if (!(p.type === 'Identifier' && NAMES.has(p.name))) return;
+        let called = false;
+        C.walk(x.body, (y) => { if (y.type === 'CallExpression' && y.callee.type === 'Identifier' && y.callee.name === p.name) called = true; });
+        if (called && !forwardedOnly(ast, x, x.params.indexOf(p)) && !REVIEWED[`${u.file}::positional ${p.name}@${x.id ? x.id.name : '?'}`]) out.push({ where: at, kind: 'positional-param', value: null, unit: u, fail: `the positional parameter ${p.name} is CALLED in its body — its caller's argument is unverified (review it or pass a named clock)` });
+        else out.push({ where: at, kind: 'positional-param-data', value: null, unit: u, data: true });
+      });
+      if (x.type === 'FunctionDeclaration' && x.id && NAMES.has(x.id.name)) out.push({ where: at, kind: 'function', value: x, unit: u });
+      if (x.type === 'AssignmentPattern' && x.left.type === 'Identifier' && NAMES.has(x.left.name)) out.push({ where: at, kind: 'param-default', value: x.right, unit: u });
       if (x.type === 'CallExpression' && x.callee.type === 'MemberExpression' && !x.callee.computed && x.callee.property.name === 'defineProperty' && x.arguments[1] && x.arguments[1].type === 'Literal' && x.arguments[1].value === 'now') out.push({ where: at, kind: 'defineProperty', value: null, unit: u, fail: 'Object.defineProperty(…, "now", …)' });
     });
   }
-  return { out, declsByName };
+  return { out, declsByName, assignsByName };
 }
-function verdict(b, declsByName) {
+function verdict(b, declsByName, assignsByName) {
   if (b.fail) return b.fail;
   const v = b.value; const u = b.unit;
+  if (b.data) return null;
   if (v === null || v === undefined) return b.kind === 'variable' ? null : `no value (${b.kind})`;
   if (REVIEWED[`${u.file}::${srcOf(u, v)}`]) return null;
   if (/Function/.test(v.type)) return isClockFn(v) ? null : `a function named now that is not an allowed clock shape: ${srcOf(u, v).slice(0, 80)}`;
@@ -111,13 +141,18 @@ function verdict(b, declsByName) {
       if (d == null || isDataExpr(d) || isClockRef(d) || isClockFn(d) || REVIEWED[`${u.file}::${srcOf(u, d)}`]) continue;
       return `now aliases ${v.name}, whose declaration is neither a clock nor timestamp data: ${srcOf(u, d).slice(0, 80)}`;
     }
+    // a later REASSIGNMENT of the alias counts as a declaration too (anywhere in the file — conservative)
+    for (const d of assignsByName.get(`${u.file}#${v.name}`) || []) {
+      if (isDataExpr(d) || isClockRef(d) || isClockFn(d) || REVIEWED[`${u.file}::${srcOf(u, d)}`]) continue;
+      return `now aliases ${v.name}, which is reassigned to neither a clock nor timestamp data: ${srcOf(u, d).slice(0, 80)}`;
+    }
     return null;
   }
   return `not an allowed clock / timestamp form (${v.type}): ${srcOf(u, v).slice(0, 80)}`;
 }
 function scan(units) {
-  const { out, declsByName } = bindings(units);
-  return { count: out.length, offenders: out.map((b) => { const w = verdict(b, declsByName); return w && `${b.where} [${b.kind}] ${w}`; }).filter(Boolean) };
+  const { out, declsByName, assignsByName } = bindings(units);
+  return { count: out.length, offenders: out.map((b) => { const w = verdict(b, declsByName, assignsByName); return w && `${b.where} [${b.kind}] ${w}`; }).filter(Boolean) };
 }
 
 const real = scan(C.sources().filter((u) => u.kind === 'fn'));
@@ -143,10 +178,15 @@ const NEGATIVES = [
   ['function f(w) { return { now: w }; }', 'an alias to an unreviewed parameter'],
   ['const d = { now: imported };', 'an alias with no declaration in the file'],
   ['Object.defineProperty(d, "now", { value: () => 1 });', 'defineProperty'],
+  ['const k = "now"; class K { [k](p) { db.ref("o").set(p); } }', 'a computed class member (method)'],
+  ['const k = "now"; class K { [k] = () => db.ref("o").set(1); }', 'a computed class member (field)'],
+  ['function writer() { db.ref("o").set(1); } let w = () => Date.now(); w = writer; const d = { now: w };', 'an alias REASSIGNED to a non-clock'],
+  ['const d = { clock: () => db.ref("o").set(1) }; const now = d.clock();', 'a clock that writes (so `X.clock()` is never trusted unverified)'],
+  ['function f(a, now) { return now(); } f(1, () => db.ref("o").set(1));', 'a positional now that is called, fed an arbitrary argument'],
 ];
 for (const [code, why] of NEGATIVES) assert.ok(neg(code) >= 1, `NEGATIVE: ${why} must fail closed — ${code}`);
-for (const code of ['const d = { now: () => Date.now() };', 'const d = { now: () => 0 };', 'const d = { now: () => (deps.now ? deps.now() : Date.now()) };', 'const now = deps.now || Date.now;', 'const t = Date.now(); const d = { now: t };', 'function f(now = Date.now()) { return now; }', 'const now = deps.clock();']) {
+for (const code of ['function g(clock) { return h(clock); } function h(clock) { return clock(); }', 'const d = { now: () => Date.now() };', 'const d = { now: () => 0 };', 'const d = { now: () => (deps.now ? deps.now() : Date.now()) };', 'const now = deps.now || Date.now;', 'const t = Date.now(); const d = { now: t };', 'function f(now = Date.now()) { return now; }', 'const now = deps.clock();']) {
   assert.strictEqual(neg(code), 0, `NEGATIVE control: an allowed form passes — ${code}`);
 }
-ok(`negatives: ${NEGATIVES.length} unsafe forms fail closed; 7 allowed forms pass`);
+ok(`negatives: ${NEGATIVES.length} unsafe forms fail closed; 8 allowed forms pass`);
 console.log(`\nnow-clock.guard: OK (${n})`);
