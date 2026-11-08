@@ -197,14 +197,14 @@ const ID_S = 'sentinel_id';
 const NAME_S = 'sentinel_name';
 // A numeric UI id is a DOM handle and an argument to an inline handler — it must be a positive
 // integer, not merely a number. -0.5 was accepted and would produce `openDetailModal(-0.5)`.
-const dishIdTypeFor = (rid) => (pricingKeyOf(rid, { id: ID_S, name: NAME_S }) === ID_S ? 'string' : 'int_positive');
+const dishIdTypeFor = (rid, keyMode) => (pricingKeyOf(rid, { id: ID_S, name: NAME_S }, keyMode) === ID_S ? 'string' : 'int_positive');
 
 
 // Reject anything that could produce a wrong or partial build. Ordering of checks is deliberate:
 // identity → shape → values → bijection → structural coverage, so the error names the first real problem.
 function validateSource(source, rid) {
   if (!source || typeof source !== 'object') fail(`${rid} — source is not an object`);
-  if (source.restaurant_id !== rid) fail(`${rid} — restaurant_id mismatch (${String(source.restaurant_id)})`);
+  if (source.restaurant_id !== rid) fail(`${rid} — restaurant_id mismatch (${String(source.restaurant_id)})`); const keyMode = source.key_mode; if (keyMode !== undefined && keyMode !== 'id' && keyMode !== 'name') fail(`${rid} — key_mode must be 'id' or 'name' (${JSON.stringify(keyMode).slice(0, 30)})`);
   if (!Array.isArray(source.items) || source.items.length === 0) fail(`${rid} — items must be a non-empty array`);
   if (!Array.isArray(source.extras)) fail(`${rid} — extras must be an array`);
   const st = source.structure;
@@ -254,7 +254,7 @@ function validateSource(source, rid) {
     if (!it.display || typeof it.display !== 'object') fail(`${rid}/${it.key} — item missing its display record`);
     // The key IS the pricing identity; it must agree with the display record it describes, or an edit
     // to the display name would silently reprice (x_pizza) or orphan (la_musa) the item.
-    const derived = pricingKeyOf(rid, it.display);
+    const derived = pricingKeyOf(rid, it.display, keyMode);
     if (derived !== it.key) fail(`${rid}/${it.key} — key does not match its display record (derived ${String(derived)})`);
     if (seen.has(it.key)) fail(`${rid}/${it.key} — duplicate item key`);
     seen.add(it.key);
@@ -271,7 +271,7 @@ function validateSource(source, rid) {
     // price by that id. A seed that keyed x_pizza extras by `e1` would round-trip cleanly and hash
     // stably — and price nothing, because no cart line would ever match. Fail closed on it.
     if (ex.display) {
-      const derived = extrasKeyOf(rid, ex.display);
+      const derived = extrasKeyOf(rid, ex.display, keyMode);
       if (derived !== ex.key) fail(`${rid}/extra ${ex.key} — key does not match its display record (derived ${String(derived)}; x_pizza extras key by NAME, la_musa by id)`);
     }
   }
@@ -300,7 +300,7 @@ function validateSource(source, rid) {
   // The STRUCTURE carries its own version, distinct from the source's. It was ruled exempt and so was
   // never checked at all — the census refuses an exemption, which is how this surfaced.
   checkField(st.schema_version, { required: false, type: 'int_positive' }, `${rid}`, 'structure.schema_version');
-  const dishIdType = dishIdTypeFor(rid);
+  const dishIdType = dishIdTypeFor(rid, keyMode);
   const ITEM_RULES = {
     key: { required: true, type: 'string', nonEmpty: true },
     price: { required: true, type: 'int_positive' },
@@ -768,7 +768,7 @@ function sourceToBuildInputs(source) {
   if (Array.isArray(source.extras) && source.extras.some((e) => e.display)) {
     formData.extras_display = source.extras.map((e) => e.display).filter(Boolean);
   }
-  return { priceTable, formData, extras };
+  return { priceTable, formData, extras, ...(source.key_mode === undefined ? {} : { keyMode: source.key_mode }) };
 }
 
 // Read + validate in one step. There is deliberately no "read without validating" export: every

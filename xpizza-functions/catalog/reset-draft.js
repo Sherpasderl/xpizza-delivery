@@ -43,7 +43,7 @@ async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previe
     try { photoMap = PS.resetMapFromActive(await readActivePhotos(rid, versionId)); } catch (e) { return reply(503, { error: 'live_version_unavailable', retryable: true }); }
   }
 
-  const projected = canonicalize({ ...candidateSource(rid, { items: preview.items, extras: preview.extras, structure: preview.structure }), deleted_ids: null, ...(photoMap ? { photos: photoMap } : {}) });
+  const projected = canonicalize({ ...candidateSource(rid, { items: preview.items, extras: preview.extras, structure: preview.structure, key_mode: preview.record && preview.record.key_mode }), deleted_ids: null, ...(photoMap ? { photos: photoMap } : {}) });
   try {
     validateSource(projected, rid);
   } catch (e) {
@@ -68,7 +68,7 @@ async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previe
   try { snap = await ref.get(); } catch (e) { return reply(503, { error: 'store_unavailable', retryable: true }); }
   if (!snap || !snap.exists) return reply(409, { error: 'source_missing' });
   const payload = { ...projected };
-  for (const k of Object.keys((snap.data && snap.data()) || {})) if (!Object.prototype.hasOwnProperty.call(projected, k)) payload[k] = null;
+  for (const k of Object.keys((snap.data && snap.data()) || {})) if (!Object.prototype.hasOwnProperty.call(projected, k) && k !== 'key_mode') payload[k] = null;   // S0: a version with no recorded mode leaves the stored mode in place
 
   let writeTime;
   try {

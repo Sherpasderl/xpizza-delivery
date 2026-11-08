@@ -41,8 +41,8 @@ const mirror = makeRtdbMirror(admin.database());
     // the ordinal existed carry no `seq`, and 2b's reader treats an absent seq as too-stale (never
     // distance-zero) — so until this re-run lands, the fallback is correctly but permanently refused.
     if (!Number.isInteger(docs.seq)) throw new Error(`backfill_missing_seq: ${rid}/${versionId} — the version record has no seq ordinal`);
-    await snapshotRefOf(db, rid).set(snapshotOf(rid, versionId, docs.seq, menuTable, extraTable));
-    const res = await writeMirror(mirror, null, rid, { version: versionId, seq: docs.seq, rid, menu: menuTable, extras: extraTable });
+    await snapshotRefOf(db, rid).set(snapshotOf(rid, versionId, docs.seq, menuTable, extraTable, docs.keyMode));
+    const res = await writeMirror(mirror, null, rid, { version: versionId, seq: docs.seq, rid, menu: menuTable, extras: extraTable, ...(docs.keyMode != null ? { keyMode: docs.keyMode } : {}) });
     if (!res.mirrored) failures++;
     console.log(`${rid}: snapshot + ${res.mirrored ? 'mirror' : 'MIRROR FAILED'} for active version ${versionId} (seq ${docs.seq}) ` +
       `(${Object.keys(menuTable).length} items + ${Object.keys(extraTable).length} extras) — pointer UNCHANGED`);

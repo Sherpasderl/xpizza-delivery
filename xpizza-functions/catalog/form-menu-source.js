@@ -153,7 +153,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   const dishes = fd ? fd.dishes : readLiteral(src, 'MENU');
 
   const items = dishes.map((dish) => {
-    const key = pricingKeyOf(restaurantId, dish);
+    const key = pricingKeyOf(restaurantId, dish, opts.keyMode);
     if (typeof key !== 'string' || !key) throw new Error(`bootstrap_bad_key: ${restaurantId}/${JSON.stringify(dish).slice(0, 60)}`);
     if (!Object.prototype.hasOwnProperty.call(priceTable, key)) throw new Error(`bootstrap_unpriced_item: ${restaurantId}/${key}`);
     const price = priceTable[key];                                          // menu-pricing is the AUTHORITY
@@ -179,7 +179,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   const extras = [];
   const byKey = new Set();
   for (const display of (extrasDisplay || [])) {
-    const key = extrasKeyOf(restaurantId, display);
+    const key = extrasKeyOf(restaurantId, display, opts.keyMode);
     if (typeof key !== 'string' || !key) throw new Error(`bootstrap_bad_extra_key: ${restaurantId}`);
     if (byKey.has(key)) throw new Error(`bootstrap_duplicate_extra_key: ${restaurantId}/${key}`);
     if (!Object.prototype.hasOwnProperty.call(extrasTable, key)) throw new Error(`bootstrap_unpriced_extra: ${restaurantId}/${key}`);
@@ -305,7 +305,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   } else {
     attachRedeemFields(restaurantId, structure, items, opts.extrasTable || EXTRAS_BY_RESTAURANT[restaurantId]);
   }
-  return { items, extras, structure };
+  return { items, extras, structure, ...(opts.keyMode == null ? {} : { key_mode: opts.keyMode }) };
 }
 
 // 🔴 "DESDE" IS DERIVED, EVERY TIME. The launcher keeps its own authoritative price — a bare launcher

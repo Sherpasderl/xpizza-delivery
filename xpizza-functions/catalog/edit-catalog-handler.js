@@ -35,6 +35,7 @@ const { catalogDiff, issueEditToken, sha256 } = require('./catalog-edit');
 const AP = require('./add-product');
 const { rendererContract } = require('./source-store');
 const { buildSourceCandidate, assertBuiltValid } = require('./candidate-validate');
+const { serverOwnedKeyMode, withServerKeyMode } = require('./key-mode');
 
 const { can } = require('../access/membership');   // PLAN-portal-membership r3 §3.2 — the ONE capability table
 const reply = (status, body) => ({ status, body });
@@ -103,10 +104,13 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   }
   if (!snap || !snap.exists) return reply(409, { error: 'source_missing', detail: 'no draft to edit — seed the store first' });
   const stored = (snap.data && snap.data()) || {};
+  // S0: the key mode is server-owned — a draft may echo the stored one, never change or add one; an absent one keeps it.
+  const keyModeOwn = serverOwnedKeyMode(source, stored);
+  if (!keyModeOwn.ok) return reply(409, { error: keyModeOwn.error });
 
   // SERVER ALLOCATION (§2): tmp references become keys/ids here, once; the high-water mark advances in the
   // same commit as the draft below.
-  let candidate = canonicalize(source);
+  let candidate = canonicalize(withServerKeyMode(source, keyModeOwn.key_mode));
   let hwmPlan = null;
   let refOfKey = {};          // fresh additions: allocated key → the tmp reference the portal still holds
   if (hasAdditions) {

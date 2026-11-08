@@ -28,7 +28,9 @@ const editExtra = (src, rid, delta) => {
   for (const rid of ['x_pizza', 'la_musa']) {
     const src = canonicalize(buildSourceFromCode(rid));
     const { built } = CV.buildSourceCandidate(rid, src);
-    assert.deepStrictEqual(built, oldBuild(rid, src), `${rid}: an unedited source builds BYTE-IDENTICALLY to the old call`);
+    const { key_mode: builtMode, ...builtRest } = built;   // S0: the source's key mode rides the build; everything else is the old call's
+    assert.strictEqual(builtMode, require('../menu-pricing').defaultKeyMode(rid), `${rid}: the built candidate carries the seeded (default) key mode`);
+    assert.deepStrictEqual(builtRest, oldBuild(rid, src), `${rid}: an unedited source builds BYTE-IDENTICALLY to the old call`);
     assert.doesNotThrow(() => CV.assertBuiltValid(rid, built, 'golden'), `${rid}: and the candidate is valid`);
     // sensitivity: an extra-price edit is exactly where the two builds part
     const edited = editExtra(src, rid, 7);

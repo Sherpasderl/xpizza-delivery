@@ -84,8 +84,8 @@ const snapshotRefOf = (db, rid) => db.collection('restaurants').doc(rid).collect
 // on both ends the 2b max-version-distance (K) check has nothing to measure from: `version` is an
 // opaque id, not an ordinal, and resolving it to one would require a Firestore lookup — the very
 // dependency the RTDB mirror exists to remove.
-const snapshotOf = (rid, versionId, seq, menuTable, extraTable) => ({
-  version: versionId, seq, rid, menu: menuTable, extras: extraTable, at: FieldValue.serverTimestamp(),
+const snapshotOf = (rid, versionId, seq, menuTable, extraTable, keyMode) => ({
+  version: versionId, seq, rid, menu: menuTable, extras: extraTable, at: FieldValue.serverTimestamp(), ...(keyMode == null ? {} : { key_mode: keyMode }),
 });
 
 // The RTDB mirror is the Firestore-INDEPENDENT disaster fallback, so it must be bounded: a hung write
@@ -1211,7 +1211,7 @@ function normalizeInputs({ items, extras, extraRecords }) {
    function was not given is a stamp that does not exist, which is what keeps a draft field from ever
    becoming certification. The discriminator is what later separates "certified but a stamp is
    broken" (an anomaly) from "genuinely unstamped, pre-P1" (serve by name, as today). */
-async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha, stamps = null, baseline = null, stampsResolvedAgainst = undefined }, nowServer) {
+async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha, stamps = null, baseline = null, stampsResolvedAgainst = undefined, key_mode = undefined }, nowServer) { if (key_mode != null && key_mode !== 'id' && key_mode !== 'name') throw new Error(`write_version_key_mode_invalid: ${rid}`);
   /* 🔴 THE BASELINE IS REQUIRED, SO "RECORDLESS" STOPS BEING A STATE ANYONE CAN CREATE. It defaulted
      to null and the record was omitted when absent — and the eligibility predicate then treated an
      absent record as permitted, so a version with no record at all was creatable through this exported
@@ -1399,7 +1399,7 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
     item_count: desc.item_count, extra_count: desc.extra_count,
     menu_hash: desc.menu_hash, extras_hash: desc.extras_hash,
     content_hash,
-    source_sha: source_sha || 'unknown', created_at: FieldValue.serverTimestamp(),
+    source_sha: source_sha || 'unknown', created_at: FieldValue.serverTimestamp(), ...(key_mode == null ? {} : { key_mode }),
   });
   return { versionId, descriptor: desc, seq, menuTable, extraTable };   // 1b: tables for the coherent snapshot; 2b-pre: + the ordinal
 }
@@ -1525,7 +1525,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
   // and rollbackVersion are the only two functions that reach flipPointer, and flipPointer is the
   // only thing that moves the pointer, so validating here covers every path that exists AND every
   // path anyone adds later.
-  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure }), `${rid} (pre-publish)`);
+  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure, key_mode: input && input.key_mode }), `${rid} (pre-publish)`);
 
   // §3.3 — the whole draft accounts for the active certified set before anything is minted or moved.
   /* …and it hands back the stamp map it validated, plus the pointer pair it validated AGAINST. Both
@@ -1590,7 +1590,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
     // VERIFY by re-reading via the REAL reader path (proves counts + BOTH hashes + structure BEFORE the flip).
     await readVersionDocs(db, rid, versionId);        // throws on completeness fail (counts + both hashes)
     await verifyVersionStructure(db, rid, versionId); if (input && input.photos) await input.photos.commit(db, rid, versionId); // throws on a broken menu_structure bijection; DISH PHOTOS A2 step 10: meta/photos + registry refs in ONE transaction, BEFORE the flip
-    const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable);
+    const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable, input && input.key_mode);
     /* READ ONCE, OUTSIDE THE TRANSACTION (identity-flags.js explains why once). */
     const renameOn = await renameEnabled(db, rid);
     const flipped = await flipPointer(db, rid, token, versionId, snapshot, expected, { renameOn,
@@ -1598,7 +1598,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
     identityPair = { version: flipped.version, generation: flipped.generation };
     certifiedActivation = flipped.certified === true;
     // Mirror AFTER the flip and BEFORE releasing the lease — see writeMirror for why both matter.
-    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable });
+    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable, ...(input && input.key_mode != null ? { keyMode: input.key_mode } : {}) });
     await pruneRetention(db, rid, { protect: [versionId] }).catch(() => {});   // never let prune fail the publish
 
     identityKeys = { dish: Object.keys(menuTable || {}), extra: Object.keys(extraTable || {}) };
@@ -1719,9 +1719,9 @@ async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm, expect
     // per-product extras §4: never a pre-baseline target while non-off — judged only once the target is known to EXIST and
     // verify (a missing / torn target keeps its own refusal), and before the pointer moves
     await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode);
-    const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable);
+    const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable, targetDocs.keyMode);
     await flipPointer(db, rid, token, targetVersionId, snapshot, expected, { rollback: true });
-    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable });
+    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable, ...(targetDocs.keyMode != null ? { keyMode: targetDocs.keyMode } : {}) });
     return { versionId: targetVersionId, rolledBack: true, mirrored: mirrorResult.mirrored };
   } finally {
     await releaseLease(db, rid, token);
