@@ -481,7 +481,21 @@ async function failingOrderWrite(oid, fn) {
       await rtdb.ref().set(S0);
       assert.strictEqual(mine[0].status, 200, `premise — ${rid}/${method}: placed (${JSON.stringify(mine[0].body).slice(0, 160)})`);
       assert.ok(Object.keys(mine[0].changed).some((k) => k.startsWith(`orders/${oid}/`)), 'premise — the order was written');
-      for (let i = 0; i < mine.length; i += 1) assert.deepStrictEqual(mine[i], theirs[i], `🔴 ${rid}/${method} step ${i}: today's handler differs from ${BASE}`);
+      // DECLARED (3a S-D 1fd123ff, NOTE-S-D-price-snapshot-build §1, confirmed 2026-11-08): an ONLINE member placement also writes
+      // orders/<oid>/reorder_price_snapshot/{v, lines/<n>/unit_cents, lines/<n>/line_cents} on the pending order (copied to user_orders
+      // at confirm); CASH writes no orders-level field (its snapshot lives on user_orders at intake). Exactly that is stripped from
+      // today's side; anything else still differs, and the online placement must carry it (non-vacuous).
+      const SNAP = new RegExp(`^orders/${oid}/reorder_price_snapshot/(v|lines/\\d+/(unit_cents|line_cents))$`);
+      const declaredOf = (o) => Object.keys(o.changed).filter((k) => k.startsWith(`orders/${oid}/reorder_price_snapshot/`));
+      for (let i = 0; i < mine.length; i += 1) {
+        const decl = declaredOf(mine[i]);
+        if (method === 'cash') assert.deepStrictEqual(decl, [], `🔴 ${rid}/cash step ${i}: a cash placement writes no orders-level reorder_price_snapshot`);
+        else assert.ok(decl.every((k) => SNAP.test(k)), `🔴 ${rid}/online step ${i}: only {v, lines/n/unit_cents, lines/n/line_cents} are declared (${decl.join(', ')})`);
+        if (method === 'online' && i === 0) assert.ok(decl.includes(`orders/${oid}/reorder_price_snapshot/v`), `🔴 ${rid}/online: the member placement writes the declared snapshot (non-vacuity)`);
+        assert.deepStrictEqual(declaredOf(theirs[i]), [], `premise: ${BASE} never wrote reorder_price_snapshot`);
+        const stripped = { ...mine[i], changed: Object.fromEntries(Object.entries(mine[i].changed).filter(([k]) => !decl.includes(k))) };
+        assert.deepStrictEqual(stripped, theirs[i], `🔴 ${rid}/${method} step ${i}: today's handler differs from ${BASE}`);
+      }
       assert.strictEqual(mine[2].status, 200, `${rid}/${method}: a LEGACY order with a cart differing only past char 1500 → idempotent, exactly as ${BASE} (int10 truncation)`);
     }
     ok(`Q4 golden — legacy differential (x_pizza, la_musa AND the third brand ${T3.THIRD} × cash/card × place / retry / past-1500 cart): today's handlers and the ${BASE} handlers leave identical responses and identical RTDB changes`);

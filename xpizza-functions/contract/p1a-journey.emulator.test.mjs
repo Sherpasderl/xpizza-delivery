@@ -248,6 +248,16 @@ try {
   // Its ONLY write is the create-only dispatcher_alerts/oos_<stack_id> (sequencing/detector.js:24 / :37): none may exist.
   const oos = Object.keys((await rtdb.ref('dispatcher_alerts').get()).val() || {}).filter((k) => k.startsWith('oos_'));
   assert.deepStrictEqual(oos, [], FAIL('invocations', `detectOutOfSequence wrote an out-of-sequence alert on the pay tap: ${oos.join(', ')}`));
+  // ratings S-A1: stampRatingFulfilment is in the multiset (onValueWritten /orders/{orderId}/status) but must be a NO-OP here — the
+  // journey's status is never delivered/completed (V2.FULFILLED), so it returns 'skip' before any read. Its ONLY writes are the
+  // rating node (V2.ratingRef) and the merchant index (V2.indexNode → rating_index): none may exist.
+  const V2 = require('../ratings/rating-v2');
+  const journeyOrders = Object.keys((await rtdb.ref('orders').get()).val() || {});
+  assert.ok(journeyOrders.length >= 1, 'premise: the journey wrote its order(s)');
+  const ratable = journeyOrders.filter((id) => V2.ORDER_ID_RE.test(id));
+  assert.ok(ratable.length >= 1, `premise: the journey's order ids are rating-addressable (${journeyOrders.join(', ')})`);
+  for (const id of ratable) assert.strictEqual((await V2.ratingRef(rtdb, id).get()).val(), null, FAIL('invocations', `stampRatingFulfilment stamped ${id} on the pay tap`));
+  assert.strictEqual((await rtdb.ref('rating_index').get()).val(), null, FAIL('invocations', 'stampRatingFulfilment wrote a merchant rating index entry on the pay tap'));
   ok(`the pay tap's invocation multiset equals the declared one (${invs.length} invocations: ${Object.entries(ms).map(([k, v]) => `${k}×${v}`).join(', ')}); no invocation error, parked = declared`);
 
   // per-call served version: every PRICING call served exactly {ACTIVE} live; the others are the declared non-pricing calls

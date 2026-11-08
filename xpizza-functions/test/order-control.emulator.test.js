@@ -188,7 +188,20 @@ function assertNoD12(key, ops) {
 const D12B_TRACK = 'order_tracking/<tracking_token>/restaurant_display_name';
 function expectedChangedD12b(goldenChanged) {
   const wroteTracking = goldenChanged.includes('order_tracking/<tracking_token>/restaurant_id');
-  return wroteTracking ? [...goldenChanged, D12B_TRACK].sort() : goldenChanged;
+  return expectedChangedSD(wroteTracking ? [...goldenChanged, D12B_TRACK].sort() : goldenChanged);
+}
+// S-D (DECLARED, exact; 3a 1fd123ff, NOTE-S-D-price-snapshot-build §1, confirmed 2026-11-08): wherever the baseline wrote the MEMBER's
+// order-history entry (user_orders/<uid>/<oid>), it now also carries price_snapshot {v, lines/<n>/unit_cents, line_cents} — the
+// fixtures' carts are one line, so exactly these three paths. No member entry → nothing extra (guests write neither).
+const SD_USER_SNAP = ['user_orders/<uid>/<oid>/price_snapshot/lines/0/line_cents', 'user_orders/<uid>/<oid>/price_snapshot/lines/0/unit_cents', 'user_orders/<uid>/<oid>/price_snapshot/v'];
+// ONLINE: the pending order carries reorder_price_snapshot beside reorder_items (index.js sd:begin — same customer_uid condition), so
+// exactly where the baseline wrote orders/<oid>/reorder_items it now also writes these three paths (materialize copies them at confirm).
+const SD_ORDER_SNAP = ['orders/<oid>/reorder_price_snapshot/lines/0/line_cents', 'orders/<oid>/reorder_price_snapshot/lines/0/unit_cents', 'orders/<oid>/reorder_price_snapshot/v'];
+function expectedChangedSD(goldenChanged) {
+  let out = goldenChanged;
+  if (out.includes('user_orders/<uid>/<oid>/ts')) out = [...out, ...SD_USER_SNAP];
+  if (out.some((p) => p.startsWith('orders/<oid>/reorder_items/'))) out = [...out, ...SD_ORDER_SNAP];
+  return out === goldenChanged ? goldenChanged : out.sort();
 }
 // sensitivity (pure): the declaration admits exactly that one path, only where the tracking record was written
 {
@@ -196,6 +209,12 @@ function expectedChangedD12b(goldenChanged) {
   assert.deepStrictEqual(expectedChangedD12b(g), [...g, D12B_TRACK].sort());
   assert.deepStrictEqual(expectedChangedD12b(['orders/<oid>/status']), ['orders/<oid>/status'], 'no tracking record → no extra path');
   assert.notDeepStrictEqual([...g, D12B_TRACK, 'order_tracking/<tracking_token>/other'].sort(), expectedChangedD12b(g), 'a second extra path is NOT admitted');
+  const m = ['orders/<oid>/status', 'user_orders/<uid>/<oid>/ts'];
+  assert.deepStrictEqual(expectedChangedSD(m), [...m, ...SD_USER_SNAP].sort(), 'S-D: a member entry admits exactly the three snapshot paths');
+  assert.deepStrictEqual(expectedChangedSD(['orders/<oid>/status']), ['orders/<oid>/status'], 'S-D: no member entry → nothing extra');
+  assert.notDeepStrictEqual([...m, ...SD_USER_SNAP, 'user_orders/<uid>/<oid>/price_snapshot/lines/1/unit_cents'].sort(), expectedChangedSD(m), 'S-D: a further snapshot path is NOT admitted');
+  const o = ['orders/<oid>/reorder_items/0/qty', 'orders/<oid>/status'];
+  assert.deepStrictEqual(expectedChangedSD(o), [...o, ...SD_ORDER_SNAP].sort(), 'S-D: a pending order with reorder_items admits exactly the three order-level snapshot paths');
 }
 function checkD12(key, ops, goldenOps) {
   const rid = key.split(' | ')[2];
