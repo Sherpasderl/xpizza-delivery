@@ -70,6 +70,18 @@ ok('null handling of each accessor is unchanged under every mode');
   ok('the server stamp still wins in itemPricingKey under every mode; the raw copy stays stamp-blind');
 }
 
+{
+  // R4 — the raw copy is pinned to the money accessor under BOTH modes (and the default), and the grace walk keys by the mode
+  const { occurrences } = require('./identity-grace');
+  for (const rid of ['x_pizza', 'la_musa', 'tb_merch_3']) for (const m of [undefined, 'id', 'name']) {
+    assert.strictEqual(rawLegacyKey(rid, probe(), m), MP.itemPricingKey(probe(), rid, m), `pin ${rid}/${m}`);
+  }
+  const items = [{ id: 'tb_slug', name: 'TB Name', dish_id: 'd1', extras: [{ id: 'tb_x', name: 'TB X', extra_id: 'e1' }] }];
+  assert.deepStrictEqual(occurrences('tb_merch_3', items, 'id').map((o) => o.raw), ['tb_slug', 'tb_x']);
+  assert.deepStrictEqual(occurrences('tb_merch_3', items).map((o) => o.raw), ['TB Name', 'TB X'], 'no mode = today');
+  ok('rawLegacyKey is pinned to itemPricingKey under both modes; the grace walk keys by the mode');
+}
+
 assert.doesNotThrow(() => assertFiscalKeyMode('x_pizza', undefined), 'a pre-snapshot x_pizza version (mode absent) passes');
 assert.doesNotThrow(() => assertFiscalKeyMode('x_pizza', 'name'));
 assert.throws(() => assertFiscalKeyMode('x_pizza', 'id'), /fiscal_key_mode_unsupported/);
