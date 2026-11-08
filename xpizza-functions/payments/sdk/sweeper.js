@@ -22,6 +22,7 @@ async function visitDueOrder(deps, orderId) {
   await C.reconcileSdkOps(deps, { orderId });
   order = await C.readOrder(deps.db, orderId);
   if (await C.markerGuard(deps, orderId, order)) return 'open';   // a malformed decision marker: a person decides
+  if (order.sdk_live_pending) { await require('./materialize-sdk').completeSdkLive(deps.db, orderId); order = await C.readOrder(deps.db, orderId); }   // replay a crashed go-live's paths
   // every visit first recovers a committed projection and classifies lost proposals (Codex r1 #5) — live orders included
   await C.recoverProjection(deps, orderId, order);
   await C.classifyLostProposals(deps, orderId, order);

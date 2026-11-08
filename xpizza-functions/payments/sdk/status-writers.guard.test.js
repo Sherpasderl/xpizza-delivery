@@ -23,6 +23,7 @@ const REVIEWED = Object.freeze({
   'scheduled-release-core.js#claimForRelease#status#transaction-updater': 'predicate in its txn: refuses SDK / payment_terminal / payment_cancel',
   'scheduled-release-core.js#finalizeRelease#status#update': '§2 refusal at ENTRY (an SDK order returns before any write); its callers refuse SDK too — the fresh claim in its txn, the stale-releasing recovery in its re-claim txn (Codex r1 #3); legacy writes kept byte-identical',
   'scheduled-release-core.js#rollbackClaim#status#update': 'reached only from finalizeRelease, after its SDK entry refusal (Codex r1 #3)',
+  'payments/sdk/materialize-sdk.js#writeSdkLive#status#resolved:dynamic-field-segment': 'the SDK go-live FINAL write (Codex r2 P1-A): pending_payment → new inside ONE orders txn requiring the go-live admission (no cancel / terminal marker, no delivered / completed / cancelled status), confirmed and not yet materialized — never over a settled order',
   'payments/sdk/coordinator.js#cancelSdkOrder#status#transaction-updater': 'the SDK cancel / expiry DECISION: an orders txn requiring a non-terminal status, no payment_terminal, no payment_cancel (§8)',
 });
 const census = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'contract', 'census.json'), 'utf8'));

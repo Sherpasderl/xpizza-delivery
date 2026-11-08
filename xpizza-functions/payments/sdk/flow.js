@@ -23,11 +23,14 @@ function markerFault(order) {
   for (const [f, ok] of Object.entries(MARKER_SHAPES)) if (order[f] !== undefined && order[f] !== null && !ok(order[f])) return f;
   return null;
 }
-// The SDK go-live admission (ruling #9 A): placed, not cancelled, not terminal, every marker well-formed, not scheduled
+// The SDK go-live admission (ruling #9 A): placed, not cancelled, not terminal (marker AND status), every marker well-formed, not scheduled
 // (scheduled SDK orders are refused at placement in this slice).
-const sdkGoLiveAdmits = (order) => isSdkOrder(order) && !markerFault(order) && !!order.payment_placed && !order.payment_cancel && !order.payment_terminal && order.scheduled_for == null;
-// The shared go-live claim has committed and its materialization has not run: a cancel waits for it (or for its park).
-const goLiveInFlight = (order) => isSdkOrder(order) && !!order.payment_placed && order.payment_status === 'confirmed' && !order.materialized_at;
+const CLOSED_STATUSES = Object.freeze(['delivered', 'completed', 'cancelled']);
+const sdkGoLiveAdmits = (order) => isSdkOrder(order) && !markerFault(order) && !!order.payment_placed && !order.payment_cancel && !order.payment_terminal && order.scheduled_for == null
+  && !CLOSED_STATUSES.includes(order.status);
+// The shared go-live claim has committed and its materialization has not run, or its create-only paths are still pending:
+// a cancel waits for it (or for its park).
+const goLiveInFlight = (order) => isSdkOrder(order) && !!order.payment_placed && ((order.payment_status === 'confirmed' && !order.materialized_at) || !!order.sdk_live_pending);
 // Placed, not live, not parked for a person: the go-live may be (re-)driven.
 const goLiveRedrivable = (order) => isSdkOrder(order) && !!order.payment_placed && order.status === 'pending_payment' && !order.materialized_at && (order.payment_status === 'pending' || order.payment_status === 'confirmed');
 // Live (claimed + materialized) with a redemption on the order: the shared go-live's already-confirmed branch is the
