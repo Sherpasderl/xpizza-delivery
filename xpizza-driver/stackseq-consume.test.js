@@ -41,6 +41,12 @@ t('(a) coherent valid stack: delivery-phase stops ordered by stop_seq, NOT creat
   const tasks = { ...delPhase(vdel, 'a', { created_at: 101, stop_seq: 2 }), ...delPhase(vdel, 'b', { created_at: 201, stop_seq: 1 }) };
   assert.deepEqual(ord(tasks), ['b', 'a']);
 });
+t('(a/advisor Codex r1 #3) VALID stack, EQUAL created_at → stop_seq order, NOT a neutral tie', () => {
+  // the degenerate the tracker-neutral rule must NOT swallow: a coherent pair whose created_at tie would be
+  // "neutral" for an invalid pair is still authoritatively ordered by stop_seq here (seqMode never reads created_at).
+  const tasks = { ...delPhase(vdel, 'a', { created_at: 150, stop_seq: 2 }), ...delPhase(vdel, 'b', { created_at: 150, stop_seq: 1 }) };
+  assert.deepEqual(ord(tasks), ['b', 'a']);
+});
 t('(a) GOLDEN: no stop_seq → created_at order', () => {
   assert.deepEqual(ord({ ...delPhase(del, 'a', { created_at: 101 }), ...delPhase(del, 'b', { created_at: 201 }) }), ['a', 'b']);
 });
@@ -74,6 +80,12 @@ t('(b) coherent valid stack: promote lowest remaining stop_seq (not earliest cre
   const all = { x_delivery: del('x', { status: TASK_STATUS.IN_PROGRESS, created_at: 100 }),
     a_pickup: pu('a', { status: TASK_STATUS.COMPLETED }), a_delivery: vdel('a', { status: TASK_STATUS.ACCEPTED, created_at: 201, stop_seq: 2 }),
     b_pickup: pu('b', { status: TASK_STATUS.COMPLETED }), b_delivery: vdel('b', { status: TASK_STATUS.ACCEPTED, created_at: 301, stop_seq: 1 }) };
+  assert.equal(buildCompleteTaskUpdates({ driverId: UID, taskId: 'x_delivery', task: all.x_delivery, allTasks: all, now: 1 })[PTR], 'b_delivery');
+});
+t('(b/advisor Codex r1 #3) VALID stack, EQUAL created_at remaining → promote stop_seq 1, NOT a tie', () => {
+  const all = { x_delivery: del('x', { status: TASK_STATUS.IN_PROGRESS, created_at: 100 }),
+    a_pickup: pu('a', { status: TASK_STATUS.COMPLETED }), a_delivery: vdel('a', { status: TASK_STATUS.ACCEPTED, created_at: 150, stop_seq: 2 }),
+    b_pickup: pu('b', { status: TASK_STATUS.COMPLETED }), b_delivery: vdel('b', { status: TASK_STATUS.ACCEPTED, created_at: 150, stop_seq: 1 }) };
   assert.equal(buildCompleteTaskUpdates({ driverId: UID, taskId: 'x_delivery', task: all.x_delivery, allTasks: all, now: 1 })[PTR], 'b_delivery');
 });
 t('(b) composes with working-task: promoted stop whose pickup is not completed → pointer = its PICKUP', () => {
