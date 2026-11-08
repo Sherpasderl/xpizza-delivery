@@ -348,7 +348,7 @@ async function sweepStaleReservations(db, { now }) {
               // Expired ≠ necessarily abandoned: a PAID order whose primary consume fail-opened ALSO has an
               // expired expiry + a reserved hold. Consult the order — if it realized (paid + live/terminal),
               // do NOT release (leave it for consume-recovery).
-              const order = (await db.ref(`orders/${orderId}`).get()).val();
+              const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { audited.push({ uid, rid, orderId, kind: 'sdk_flow_coordinator' }); continue; }
               if (consumeEligible(order)) continue;                       // paid + live → realized, not abandoned
               // [C] CONSERVATIVE: release ONLY a DEFINITIVELY-not-captured hold. An AMBIGUOUS one
               // (manual_reconciliation / still pending / unknown) MIGHT be paid-but-lost → releasing it risks a
@@ -361,7 +361,7 @@ async function sweepStaleReservations(db, { now }) {
             continue;
           }
           // cash / scheduled (no hosted expiry): consult the FULL order (need release_at / materialized_at too).
-          const order = (await db.ref(`orders/${orderId}`).get()).val();
+          const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { audited.push({ uid, rid, orderId, kind: 'sdk_flow_coordinator' }); continue; }
           const status = order && order.status;
           if (status == null || TERMINAL_CANCEL.has(status)) { await releaseRedemption(db, { uid, rid, orderId, now }); await db.ref(`dispatcher_alerts/reward_hold_stale_${orderId}`).remove().catch(() => {}); released.push({ uid, rid, orderId, kind: status == null ? 'cash_orphan' : 'cash_cancelled' }); continue; }
           // [F/#22] Scheduled: LEGITIMATE until its slot — NEVER flag before release_at. Only stale when PAST

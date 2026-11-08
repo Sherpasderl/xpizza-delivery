@@ -52,7 +52,7 @@ async function handleHostedCallback(deps, body, now) {
   const orderId = hostedOrderId.replace(ATTEMPT_SUFFIX, '');
   const attemptId = hostedOrderId.slice(orderId.length + 1);
 
-  const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+  const order = (await db.ref(`orders/${orderId}`).once('value')).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { try { await db.ref(`dispatcher_alerts/sdkpay_hosted_callback_${orderId}`).transaction((cur) => (cur == null ? { type: 'payment_sdk_hosted_callback', detail: { orderId }, created_at: now } : undefined)); } catch (_) {} return { code: 200, outcome: 'ignored_sdk_flow' }; }
   const attempt = (await db.ref(`payment_attempts/${attemptId}`).once('value')).val();
   if (!order || !attempt) return { code: 200, outcome: 'ignored_unknown' };   // nothing to bind to
 

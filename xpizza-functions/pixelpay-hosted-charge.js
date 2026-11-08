@@ -76,7 +76,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
     const order = (await orderRef.once('value')).val();
 
     // Order-level terminal reads.
-    if (order) {
+    if (order) { if (require('./payments/sdk/flow').isSdkOrder(order)) return { outcome: 'closed', reason: 'sdk_flow' };
       if (guestForeign(order, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };   // S2: before ANY answer about it
       if (order.payment_status === 'confirmed') return { outcome: 'already_paid' };
       { const t = tipBindingConflict(order, incomingTip); if (t) return conflictOutcome(t); }   // S2: a changed tip → 'tip' (precedes the fingerprint, which also binds it)
@@ -149,7 +149,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
         if (!freshFp) return;                                           // A8a: an 'a8' fresh binding with no candidate → never a mixed record
         return { ...pendingOrderRecord, active_attempt_id: decided.newAaid, payment_fingerprint: freshFp };
       }
-      const c = cur || order;
+      const c = cur || order; if (require('./payments/sdk/flow').isSdkOrder(c)) return;
       if (!c) return;
       if (guestForeign(c, pendingOrderRecord)) return c;                    // S2: a foreign guest phone never mutates the order (re-read refuses)
       if (c.payment_status === 'confirmed') return c;

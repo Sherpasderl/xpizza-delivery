@@ -22,7 +22,7 @@ function applyAction(node, req, ctx) {
   }
   if (node.restaurant_id !== req.rid || typeof node.routing_reason !== 'string') return fail('not_served');
   const stale = () => fail('stale_state', { status: node.status === undefined ? null : node.status });
-  if (node.cancel_claim_id || TERMINAL.has(node.status)) return stale();
+  if (node.cancel_claim_id || TERMINAL.has(node.status)) return stale(); if (node.payment_terminal || node.payment_cancel) return stale();
 
   const t = ctx.nowMs, by = ctx.uid, op = req.op_id, p = req.payload || {};
   let next;
@@ -51,7 +51,7 @@ function applyAction(node, req, ctx) {
     }
     case 'handed':
       if (node.status !== 'ready' || node.order_type !== 'pickup') return stale();
-      next = { ...node, status: 'completed' };
+      next = { ...node, status: 'completed' }; if (require('../payments/sdk/flow').isSdkOrder(node)) next.payment_terminal = { revision: (node.payment_commit && node.payment_commit.revision) || 0, at: t };
       break;
     case 'reject':
       if (node.status !== 'new') return stale();

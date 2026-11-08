@@ -80,7 +80,7 @@ async function resolveManualReconciliationCore(deps, { orderId, action, actor, n
   };
 
   // 'keep' does NOT mutate payment_status → no claim needed.
-  if (action === 'keep') { await audit('kept_queued'); return { status: 200, body: { ok: true, outcome: 'kept_queued' } }; }
+  if (action === 'keep') { await audit('kept_queued'); return { status: 200, body: { ok: true, outcome: 'kept_queued' } }; } if (require('./payments/sdk/flow').isSdkOrder((await orderRef.once('value')).val())) { await audit('sdk_flow_refused'); return { status: 409, body: { ok: false, outcome: 'sdk_flow' } }; }
 
   /* 🔴 DECIDED BEFORE ANYTHING MOVES. A materialize on this path ends at the paid-after-close guard,
      and this caller cannot reverse a payment — but by the time the guard could say so, the resolver

@@ -2966,7 +2966,7 @@ exports.sweepStalePending = onSchedule(
     let flagged = 0, left = 0, recovered = 0;
 
     for (const orderId of Object.keys(orders)) {
-      const order = orders[orderId];
+      const order = orders[orderId]; if (require('./payments/sdk/flow').isSdkOrder(order)) continue;
       if (order.payment_method !== 'online') continue;
       // [rev-5 D / R2-#2] Phase-aware recovery for a CRASHED resolve. Pre-side-effect stale → revert to
       // manual_reconciliation (safe, no money moved); post-side-effect stale → manual_review + alert, NEVER
@@ -3034,7 +3034,7 @@ exports.sweepStalePending = onSchedule(
     catch (e) { console.error('sweepStalePending: ledger-repair retry failed', e && e.message); } try { await require('./extra-payment-repair').repairPendingExtraPayments({ db, now }); } catch (e) { console.warn('sweepStalePending: extra-payment repair failed', e && e.message); }
     console.log(`sweepStalePending: manual_flagged=${flagged} left=${left} paid_strand_recovered=${recovered} ledger_healed=${repair.healed} ledger_pending=${repair.pending}`);
   }
-);
+); const SDK_PAY_FUNCTIONS = require('./payments/sdk/functions'); exports.sweepSdkPayments = SDK_PAY_FUNCTIONS.sweepSdkPayments; exports.settleSdkOnStatus = SDK_PAY_FUNCTIONS.settleSdkOnStatus;
 
 // ============================================================
 // resetItemAvailability — KDS Phase 2b: end-of-business-day availability auto-reset
@@ -3153,7 +3153,7 @@ exports.reconcilePayments = onSchedule(
     const breaches = [];
 
     for (const orderId of Object.keys(orders)) {
-      const o = orders[orderId];
+      const o = orders[orderId]; if (require('./payments/sdk/flow').isSdkOrder(o)) continue;
       // [B.10] Phase-aware recovery for a stale resolving_action='cancel' claim (ANY method — a crashed cancel;
       // checked BEFORE the online-only filter since cash cancels can strand a claim too). Full order scan is the
       // only place these live claims are reachable (they aren't pending_payment). CAS on cancel_claim_id.
@@ -3677,7 +3677,7 @@ exports.refundReconciler = onSchedule(
       // Re-drive a failed void (refund_pending) OR a STALE reversing (crash after the reversal CAS, before the
       // terminal write) — skip FRESH reversing (in-flight void; re-driving would double-void). Same 2-min
       // threshold as the CAS. Selector is the shared pure predicate so it can't drift from the CAS's freshness rule.
-      if (!isReconcilerRetryable(a, now, 2 * 60 * 1000)) continue;
+      if (!isReconcilerRetryable(a, now, 2 * 60 * 1000)) continue; if (require('./payments/sdk/flow').isSdkOrder((await db.ref(`orders/${a.order_id}`).once('value')).val())) continue;
       const pixelpayOrderId = `${a.order_id}-${attemptId}`;
       /* h0:begin reconciler-no-uuid */
       // PLAN-H0 §4 — never call voidOrRefund without a uuid (its no-uuid branch reports 'refunded' without reversing anything):
@@ -3700,7 +3700,7 @@ exports.refundReconciler = onSchedule(
     const orders = (await db.ref('orders').once('value')).val() || {};
     let recovered = 0, notifyRecovered = 0;
     for (const orderId of Object.keys(orders)) {
-      const o = orders[orderId];
+      const o = orders[orderId]; if (require('./payments/sdk/flow').isSdkOrder(o)) continue;
       // 🔴 NOTIFICATION RECOVERY (add-only): a paid-after-close refund that already FINALIZED (refunded +
       // 'refunded_paid_after_close') but never CONFIRMED its customer message — a crash after the terminal write
       // before the send, or a send that returned null. sendPaidAfterCloseRefund is idempotent on

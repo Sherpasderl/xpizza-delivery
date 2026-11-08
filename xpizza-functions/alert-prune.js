@@ -50,7 +50,7 @@ function alertsToPrune(alerts, orders) {
   for (const [key, alert] of Object.entries(alerts || {})) {
     if (alert && NEVER_AUTO_PRUNE.has(alert.type)) continue;
     const ids = alertOrderIds(alert);
-    if (ids.length === 0) continue;
+    if (ids.length === 0) continue; if (alert && String(alert.type || '').startsWith('payment_sdk_')) continue;
     if (ids.every((id) => !orderStillFlagged((orders || {})[id], alert))) prune.push(key);
   }
   return prune;

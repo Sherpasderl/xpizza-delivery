@@ -31,7 +31,7 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
   const orderRef = db.ref(`orders/${orderId}`);
 
   const order = (await orderRef.once('value')).val();
-  if (!order) return { outcome: 'no_order' };
+  if (!order) return { outcome: 'no_order' }; if (require('./payments/sdk/flow').isSdkOrder(order)) return { outcome: 'sdk_flow' };
   if (order.payment_method !== 'online') return { outcome: 'not_online' };
   if (order.status === 'cancelled') return { outcome: 'cancelled' };
   if (order.payment_status === 'manual_reconciliation') return { outcome: 'manual_reconciliation' };
@@ -235,7 +235,7 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
 
   // Pre-read to avoid the Admin SDK first-call-null transaction abort (see §1).
   const preOrder = (await orderRef.once('value')).val();
-  if (!preOrder) return { outcome: 'no_order' };
+  if (!preOrder) return { outcome: 'no_order' }; if (require('./payments/sdk/flow').isSdkOrder(preOrder)) return { outcome: 'sdk_flow' };
 
   const claim = await orderRef.transaction((cur) => {
     const o = cur || preOrder;
