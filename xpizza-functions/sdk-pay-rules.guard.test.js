@@ -15,7 +15,7 @@ for (const node of ['payment_sdk', 'payment_sdk_due']) {
 }
 ok('payment_sdk + payment_sdk_due are server-only');
 const o = rules.orders.$order_id;
-assert.ok(o['.write'].endsWith(` && ${SR.PRESERVE}`), 'SPR-PRESERVE: the order-level .write must END with the server-field preservation clause (covers create / change / leaf delete / whole-order replace / order delete)');
+assert.ok(o['.write'].endsWith(` && ${SR.PRESERVE} && ${SR.NO_REVERSAL_ORDER}`), 'SPR-PRESERVE: the order-level .write must END with the server-field preservation clause (create / change / leaf delete / whole-order replace / order delete) AND the no-reversal clause (a status DELETE runs no .validate)');
 ok('order .write preserves every server-only payment field');
 assert.ok(o['.validate'].endsWith(` && ${SR.NO_REVERSAL_ORDER}`), 'SPR-NO-REVERSAL-ORDER: the order-level .validate must END with the no-reversal clause (whole-order / multipath writes)');
 assert.ok(o.status['.validate'].startsWith('(') && o.status['.validate'].endsWith(`) && (${SR.NO_REVERSAL_STATUS})`), 'SPR-NO-REVERSAL-STATUS: status .validate must be (the existing alternatives) && (the SDK no-reversal clause) — without the parentheses && binds only to the last alternative and dispatchers / kitchen bypass it');
