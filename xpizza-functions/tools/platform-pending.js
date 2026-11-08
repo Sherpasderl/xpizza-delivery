@@ -63,7 +63,7 @@ module.exports = { parseArgs, status, clear, RID_RE };
 
 if (require.main === module) {
   const args = parseArgs(process.argv.slice(2));
-  if (!args.ok) { console.error(`REFUSED — ${args.why}`); process.exit(2); }
+  if (!args.ok) { console.error(`🔴 REFUSED — ${args.why}`); process.exit(2); }
   const { requireProject } = require('./require-project');
   const PROJECT_ID = requireProject({ requireFlag: true });   // before any credential or client
   const admin = require('firebase-admin');

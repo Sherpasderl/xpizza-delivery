@@ -62,7 +62,7 @@
   },
   "clocks": {
    "display": 39,
-   "business-sample": 183,
+   "business-sample": 184,
    "persisted-stamp": 61,
    "business-comparison": 14,
    "io-deadline": 4
@@ -3200,7 +3200,7 @@
   },
   {
    "id": "xpizza-functions/catalog/portal-reads.js#getEditableCatalogCore#status#0",
-   "line": 112,
+   "line": 113,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -3213,7 +3213,7 @@
   },
   {
    "id": "xpizza-functions/catalog/portal-reads.js#getEditableCatalogCore#items#0",
-   "line": 204,
+   "line": 219,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -17778,7 +17778,7 @@
   },
   {
    "id": "xpizza-functions/portal/functions.js#getEditableCatalog#status#0",
-   "line": 160,
+   "line": 161,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17791,7 +17791,7 @@
   },
   {
    "id": "xpizza-functions/portal/functions.js#getEditableCatalog#status#1",
-   "line": 160,
+   "line": 161,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17804,7 +17804,7 @@
   },
   {
    "id": "xpizza-functions/portal/functions.js#getEditableCatalog#status#2",
-   "line": 163,
+   "line": 164,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17817,7 +17817,7 @@
   },
   {
    "id": "xpizza-functions/portal/functions.js#getSalesStats#status#0",
-   "line": 187,
+   "line": 188,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17830,7 +17830,7 @@
   },
   {
    "id": "xpizza-functions/portal/functions.js#getSalesStats#status#1",
-   "line": 187,
+   "line": 188,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17843,7 +17843,7 @@
   },
   {
    "id": "xpizza-functions/portal/functions.js#getSalesStats#status#2",
-   "line": 189,
+   "line": 190,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17856,7 +17856,7 @@
   },
   {
    "id": "xpizza-functions/portal/functions.js#getSalesStats#status#3",
-   "line": 189,
+   "line": 190,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17869,7 +17869,7 @@
   },
   {
    "id": "xpizza-functions/portal/functions.js#getSalesStats#status#4",
-   "line": 192,
+   "line": 193,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17974,7 +17974,7 @@
   },
   {
    "id": "xpizza-functions/portal/reset-draft.js#<top>>anon#status#1",
-   "line": 37,
+   "line": 38,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17987,7 +17987,7 @@
   },
   {
    "id": "xpizza-functions/portal/reset-draft.js#<top>>anon#status#2",
-   "line": 37,
+   "line": 38,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -18000,7 +18000,7 @@
   },
   {
    "id": "xpizza-functions/portal/reset-draft.js#<top>>anon#status#3",
-   "line": 40,
+   "line": 41,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48001,7 +48001,7 @@
   },
   {
    "id": "xpizza-portal/app.js#showOutcome>anon#items#0",
-   "line": 2264,
+   "line": 2266,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -48011,7 +48011,7 @@
   },
   {
    "id": "xpizza-portal/app.js#showOutcome>anon#items#1",
-   "line": 2269,
+   "line": 2271,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -51712,12 +51712,17 @@
   },
   {
    "key": "xpizza-functions/catalog/platform-pending.js:stampPlatformPending:Date.now()",
-   "line": 50,
+   "line": 53,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/catalog/platform-pending.js:raiseMalformedAlert:Date.now()",
+   "line": 107,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/catalog/portal-reads.js:getEditableCatalogCore>anon:Date.now()",
-   "line": 104,
+   "line": 105,
    "class": "business-sample"
   },
   {
@@ -52742,7 +52747,7 @@
   },
   {
    "key": "xpizza-functions/portal/functions.js:getSalesStats:Date.now()",
-   "line": 179,
+   "line": 180,
    "class": "business-sample"
   },
   {

@@ -14,7 +14,7 @@ const { getSalesStatsCore } = require('../stats/stats-api');
 const { statsKeyer, _statsLiveCache } = require('../stats/keyer');
 const { withPreflightMaxAge } = require('./preflight-max-age');
 const { addProductIo } = require('../catalog/add-product-io');   // 1D add-product A — outside the moved blocks (the fold counts their requires)
-const addProductIoForEdit = () => addProductIo({ fs: getFirestore(), rtdb: getDatabase() }); const { photoIoForEdit } = require('../photos/edit-io'); const { editableIoForPortal } = require('../photos/editable-io'); const { photoPublishIoForEdit } = require('../photos/publish-io');   // DISH PHOTOS A2 steps 8–10 — same line, outside the moved blocks (the fold counts their requires)
+const addProductIoForEdit = () => addProductIo({ fs: getFirestore(), rtdb: getDatabase() }); const { raiseMalformedAlert } = require('../catalog/platform-pending'); const { photoIoForEdit } = require('../photos/edit-io'); const { editableIoForPortal } = require('../photos/editable-io'); const { photoPublishIoForEdit } = require('../photos/publish-io');   // DISH PHOTOS A2 steps 8–10 — same line, outside the moved blocks (the fold counts their requires)
 
 // ⟪moved:A — verbatim from index.js@bb37684 (relative require specifiers './' → '../')⟫
 // ── Portal 2b-1 — the merchant catalog write path ──────────────────────────────────────────────
@@ -156,7 +156,7 @@ exports.getEditableCatalog = onRequest(
         authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
         readActiveVersionId: (fsdb, rid) => getActiveVersionIdForPortal(fsdb, rid),
         readActiveBuilt: readActiveBuiltForEdit, photoReads: editableIoForPortal(),   // 1D add-product A: assess the saved draft against what is serving; DISH PHOTOS A2 step 9 (E-P3)
-        alertMalformed: (rid) => require('../catalog/platform-pending').raiseMalformedAlert(getDatabase(), rid),   // F-1: a malformed stamp's ONE deduped owner alert
+        alertMalformed: (rid) => raiseMalformedAlert(getDatabase(), rid),   // F-1: a malformed stamp's ONE deduped owner alert
       }, req);
       return res.status(out.status).json(out.body);
     } catch (e) {
