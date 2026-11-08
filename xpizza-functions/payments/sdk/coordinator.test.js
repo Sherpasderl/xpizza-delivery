@@ -886,6 +886,14 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     w.tick(SW().REVISIT_MS + 1); await SW().sweepSdkPayments(w.deps);
     assert.strictEqual(due(w), null, `${L}: settled → closed → removed`);
   });
+  await cell('SDK-LIVE-PENDING-FALSY-MALFORMED-DROPPED', async (L) => {
+    for (const bad of ['', false, 0]) {
+      const w = await placed(); await live(w);
+      w.db.setAt(`orders/${OID}/sdk_live_pending`, bad);
+      w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps);
+      assert.ok(w.db.getAt(`orders/${OID}/sdk_live_pending`) === undefined && alerts(w.db).some((a) => a.type === 'payment_sdk_malformed_live_pending'), `${L}: ${JSON.stringify(bad)}: a falsy malformed list is alerted and dropped (got ${JSON.stringify(w.db.getAt(`orders/${OID}/sdk_live_pending`))})`);
+    }
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
