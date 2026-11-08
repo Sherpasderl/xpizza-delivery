@@ -22,7 +22,7 @@ function world({ seed = {}, script = {}, hooks = {}, eligible = () => false, t0 
 const legs = (rec) => Object.values((rec && rec.legs) || {});
 const alerts = (db) => Object.values(db.getAt('dispatcher_alerts') || {});
 
-let pass = 0; const fails = [];
+let pass = 0; const fails = []; const w0 = {};
 async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}`); pass++; } catch (e) { fails.push(name); console.log(`  ✗ ${name}: ${String((e && e.message) || e).split('\n')[0]}`); } }
 
 (async () => {
@@ -139,6 +139,149 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.ok(!w.rec().lock && legs(w.rec())[0].state === 'captured' && w.fake.count('capture') === 1, `${L}: the PSP did capture → status (bound, captured) resolves it; never a second capture`);
   });
 
+  // ── adjustments (§2.10 via §4: proposal → order commit → projection) ──
+  const committedIds = (rec) => Object.entries((rec && rec.legs) || {}).filter(([, l]) => l.role === 'committed').map(([id]) => id).sort();
+  const deliver = async (w) => { await w.db.ref(`orders/${OID}/status`).set('delivered'); return C().settleTerminal(w.deps, { orderId: OID }); };
+  const live = async (w) => { await w.db.ref(`orders/${OID}/status`).set('preparing'); };
+  await cell('SDK-RULE4-UNDER-PRODUCTION-STUB', async (L) => {
+    const w = await placed(); await live(w);
+    const r = await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 8000 });
+    assert.strictEqual(r.outcome, 'rule4', `${L}: the production stub makes every leg ineligible → rule 4 (got ${JSON.stringify(r)})`);
+    assert.ok(w.fake.count('authorize') === 1 && w.fake.count('void') === 0, `${L}: no auth B, no void`);
+    const rec = w.rec();
+    assert.deepStrictEqual([rec.fulfillment_total_cents, rec.derived.committed_auth_total, rec.derived.refund_liability], [8000, 10000, 2000], `${L}: fulfillment 8000, committed 10000, liability 2000 (derived)`);
+    assert.ok(rec.rule4 && alerts(w.db).some((a) => a.type === 'payment_sdk_rule4'), `${L}: rule-4 flag + owner alert`);
+    assert.ok(w.ord().payment_commit && w.ord().payment_commit.revision === 1 && rec.committed_revision === 1, `${L}: committed by the order transaction (revision 1) and projected`);
+    assert.ok(!rec.obligations, `${L}: NO obligation before capture`);
+    await deliver(w);
+    assert.deepStrictEqual(w.fake.calls.filter((c) => c.action === 'capture').map((c) => c.amount_cents), [10000], `${L}: rule 4 captures the ORIGINAL amount once`);
+    const obs = Object.entries(w.rec().obligations || {});
+    assert.deepStrictEqual(obs.map(([id, o]) => [id, o.amount_cents, o.state]), [['refund_1', 2000, 'open']], `${L}: ONE refund obligation of 2000 opened after the capture (got ${JSON.stringify(obs)})`);
+    assert.ok(!R.isFinanciallyClosed(w.rec(), w.ord()), `${L}: not closed while the obligation is open`);
+    await C().openObligations(w.deps, OID);
+    assert.strictEqual(Object.keys(w.rec().obligations).length, 1, `${L}: a re-run opens nothing new (deterministic id)`);
+    await C().completeObligation(w.deps, { orderId: OID, obligationId: 'refund_1', state: 'verified', bank_ref: 'BANK-1' });
+    assert.ok(R.isFinanciallyClosed(w.rec(), w.ord()), `${L}: verified → financially closed`);
+  });
+  await cell('SDK-100-80-90-NO-AUTH', async (L) => {
+    const w = await placed(); await live(w);
+    await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 8000 });
+    await C().recordConsent(w.deps, { orderId: OID, adjustment_id: 'adj1', new_total_cents: 9000 });
+    const c = w.rec().consent;
+    const r = await C().applyIncrease(w.deps, { orderId: OID, adjustment_id: 'adj1', order_revision: c.order_revision, new_total_cents: 9000, accept: true });
+    assert.strictEqual(r.outcome, 'committed', `${L}: committed (got ${JSON.stringify(r)})`);
+    assert.strictEqual(w.fake.count('authorize'), 1, `${L}: delta_needed 0 → NO delta auth`);
+    assert.deepStrictEqual([w.rec().fulfillment_total_cents, w.rec().derived.refund_liability, w.rec().derived.delta_needed], [9000, 1000, 0], `${L}: the liability shrinks to 1000`);
+    await deliver(w);
+    assert.deepStrictEqual([w.fake.count('capture'), Object.values(w.rec().obligations).map((o) => o.amount_cents).join()], [1, '1000'], `${L}: one capture of 10000, one obligation of 1000`);
+  });
+  await cell('SDK-INCREASE-DELTA-AUTH', async (L) => {
+    const w = await placed(); await live(w);
+    await C().recordConsent(w.deps, { orderId: OID, adjustment_id: 'adj1', new_total_cents: 12500 });
+    const c = w.rec().consent;
+    assert.ok(c.expires_at - w.at() === C().CONSENT_WINDOW_MS && C().CONSENT_WINDOW_MS === 3 * 60 * 1000, `${L}: the consent window is the 3-minute constant (owner 11-07)`);
+    const r = await C().applyIncrease(w.deps, { orderId: OID, adjustment_id: 'adj1', order_revision: c.order_revision, new_total_cents: 12500, accept: true });
+    const auths = w.fake.calls.filter((c2) => c2.action === 'authorize');
+    assert.deepStrictEqual(auths.map((a2) => [a2.token, a2.amount_cents]), [[TOKEN, 10000], [TOKEN, 2500]], `${L}: ONE delta auth for delta_needed 2500 with the token (got ${JSON.stringify(auths)}; ${JSON.stringify(r)})`);
+    assert.deepStrictEqual(committedIds(w.rec()), ['L1', 'L2'], `${L}: the delta is committed WITH the original`);
+    assert.deepStrictEqual([w.rec().fulfillment_total_cents, w.rec().derived.committed_auth_total, w.rec().derived.refund_liability], [12500, 12500, 0], `${L}: amounts`);
+    await deliver(w);
+    assert.deepStrictEqual(w.fake.calls.filter((x) => x.action === 'capture').map((x) => x.amount_cents).sort(), [2500, 10000], `${L}: each committed leg captured in full`);
+  });
+  await cell('SDK-CONSENT-WINDOW-AND-BINDING', async (L) => {
+    const w = await placed(); await live(w);
+    await C().recordConsent(w.deps, { orderId: OID, adjustment_id: 'adj1', new_total_cents: 12000 });
+    const c = w.rec().consent;
+    const bad = await C().applyIncrease(w.deps, { orderId: OID, adjustment_id: 'adj1', order_revision: c.order_revision + 1, new_total_cents: 12000, accept: true });
+    assert.ok(bad.outcome === 'rejected' && w.fake.count('authorize') === 1, `${L}: a mismatched revision is rejected (got ${JSON.stringify(bad)})`);
+    await C().recordConsent(w.deps, { orderId: OID, adjustment_id: 'adj2', new_total_cents: 12000 });
+    w.tick(C().CONSENT_WINDOW_MS + 1);
+    const late = await C().applyIncrease(w.deps, { orderId: OID, adjustment_id: 'adj2', order_revision: w.rec().consent.order_revision, new_total_cents: 12000, accept: true });
+    assert.ok(late.outcome === 'rejected' && w.fake.count('authorize') === 1, `${L}: a LATE consent is rejected, no auth (got ${JSON.stringify(late)})`);
+    await C().recordConsent(w.deps, { orderId: OID, adjustment_id: 'adj3', new_total_cents: 12000 });
+    await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 9000 });
+    assert.strictEqual(w.rec().consent.state, 'expired', `${L}: a later edit invalidates a pending consent`);
+  });
+  await cell('SDK-DELTA-DECLINED-ORDER-UNCHANGED', async (L) => {
+    const w = await placed({ script: { authorize: [{}, { outcome: 'definitive_decline', code: '51' }] } }); await live(w);
+    await C().recordConsent(w.deps, { orderId: OID, adjustment_id: 'adj1', new_total_cents: 12000 });
+    const r = await C().applyIncrease(w.deps, { orderId: OID, adjustment_id: 'adj1', order_revision: w.rec().consent.order_revision, new_total_cents: 12000, accept: true });
+    assert.strictEqual(r.outcome, 'declined', `${L}: declined (got ${JSON.stringify(r)})`);
+    assert.deepStrictEqual([committedIds(w.rec()).join(), w.rec().fulfillment_total_cents, w.rec().derived.refund_liability, (w.ord().payment_commit || {}).revision || 0], ['L1', 10000, 0, 0], `${L}: the order stays as it was, nothing to refund`);
+  });
+  // test-only injected eligibility: reach the replacement-B path (production stays fail-closed)
+  const ELIGIBLE = () => true;
+  const withDeltas = async (opts = {}) => {
+    const w = await placed({ eligible: ELIGIBLE, ...opts }); await live(w);
+    for (const [id, tot] of [['a1', 12000], ['a2', 13000]]) {
+      await C().recordConsent(w.deps, { orderId: OID, adjustment_id: id, new_total_cents: tot });
+      await C().applyIncrease(w.deps, { orderId: OID, adjustment_id: id, order_revision: w.rec().consent.order_revision, new_total_cents: tot, accept: true });
+    }
+    return w;
+  };
+  await cell('SDK-B-REPLACES-WHOLE-SET-NEVER-REVERTS', async (L) => {
+    const w = await withDeltas({ script: { void: [{}, { outcome: 'refused' }, { lost: true }] } });
+    assert.deepStrictEqual(committedIds(w.rec()), ['L1', 'L2', 'L3'], `${L}: PREMISE — original + 2 deltas committed (got ${committedIds(w.rec())})`);
+    const r = await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 9000 });
+    assert.strictEqual(r.outcome, 'replaced', `${L}: replaced (got ${JSON.stringify(r)})`);
+    const lastAuth = w.fake.calls.filter((c) => c.action === 'authorize').pop();
+    assert.deepStrictEqual([lastAuth.token, lastAuth.amount_cents], [TOKEN, 9000], `${L}: ONE auth B for the new total`);
+    assert.deepStrictEqual(committedIds(w.rec()), ['L4'], `${L}: B is the ONLY committed leg`);
+    assert.deepStrictEqual(['L1', 'L2', 'L3'].map((id) => w.rec().legs[id].role), ['surplus', 'surplus', 'surplus'], `${L}: the WHOLE old set is surplus`);
+    assert.strictEqual(w.fake.count('void'), 3, `${L}: each surplus leg voided once (one ok, one refused, one lost)`);
+    w.tick(3 * 60 * 1000); await C().reconcile(w.deps, { orderId: OID });
+    assert.deepStrictEqual(committedIds(w.rec()), ['L4'], `${L}: a failed / unknown void NEVER restores S (got ${committedIds(w.rec())})`);
+    await deliver(w);
+    assert.deepStrictEqual(w.fake.calls.filter((c) => c.action === 'capture').map((c) => c.amount_cents), [9000], `${L}: only B is captured; surplus never`);
+  });
+  await cell('SDK-UNKNOWN-B-LIVE-BECOMES-SURPLUS', async (L) => {
+    const w = await placed({ eligible: ELIGIBLE, script: { authorize: [{}, { lost: true, outcome: 'approved', uuid: 'P-B', amount_cents: 8000, effect: (st) => { st['P-B'] = { state: 'authorized', amount_cents: 8000 }; } }] } }); await live(w);
+    const r = await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 8000 });
+    assert.strictEqual(r.outcome, 'unknown', `${L}: B unknown (got ${JSON.stringify(r)})`);
+    await C().reconcile(w.deps, { orderId: OID });
+    assert.ok(w.rec().lock && w.rec().lock.reason === 'manual_reconciliation', `${L}: no uuid for a lost B → manual (the lost-UUID lookup is §7.V)`);
+    // the same with a uuid known (an amount-mismatched answer): status says live → B surplus, S committed
+    const w2 = await placed({ eligible: ELIGIBLE, script: { authorize: [{}, { outcome: 'approved', uuid: 'P-B2', amount_cents: 1, effect: (st) => { st['P-B2'] = { state: 'authorized', amount_cents: 8000 }; } }] } }); await live(w2);
+    await C().requestDecrease(w2.deps, { orderId: OID, new_total_cents: 8000 });
+    w2.tick(3 * 60 * 1000); await C().reconcile(w2.deps, { orderId: OID });
+    assert.deepStrictEqual([committedIds(w2.rec()).join(), w2.rec().legs.L2.role, w2.rec().legs.L2.state, w2.rec().fulfillment_total_cents], ['L1', 'surplus', 'approved', 10000], `${L}: B found live → SURPLUS; S stays committed; the total unchanged (got ${JSON.stringify(w2.rec().legs.L2)})`);
+    await deliver(w2);
+    assert.deepStrictEqual(w2.fake.calls.filter((c) => c.action === 'capture').map((c) => c.amount_cents), [10000], `${L}: only S captured`);
+  });
+  await cell('SDK-ADJUSTMENT-LOSES-TO-TERMINAL', async (L) => {
+    let release; const gate = new Promise((r) => { release = r; });
+    const w = await placed({ eligible: ELIGIBLE, script: { authorize: [{}, { pause: gate }] } }); await live(w);
+    const adj = C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 8000 });
+    await new Promise((r) => setTimeout(r, 20));
+    await w.db.ref(`orders/${OID}/status`).set('delivered');   // the driver's write never waits on payments
+    release(); const r = await adj;
+    assert.strictEqual(r.outcome, 'lost_to_order', `${L}: the adjustment lost the order decision (got ${JSON.stringify(r)})`);
+    assert.deepStrictEqual([committedIds(w.rec()).join(), w.rec().legs.L2.role, (w.ord().payment_commit || {}).revision || 0], ['L1', 'surplus', 0], `${L}: B surplus, S committed, nothing committed on the order`);
+    await C().settleTerminal(w.deps, { orderId: OID });
+    assert.deepStrictEqual([w.fake.calls.filter((c) => c.action === 'capture').map((c) => c.amount_cents).join(), Object.keys(w.rec().obligations || {}).length], ['10000', 0], `${L}: S captured; the lost decrease left no obligation`);
+  });
+  await cell('SDK-CRASH-AFTER-ORDER-COMMIT-RECOVERED', async (L) => {
+    let armed = false; let thrown = false;
+    const w = await placed({ eligible: ELIGIBLE, hooks: { beforeTx: async (p) => { if (p === `orders/${OID}` && armed === 'go') armed = 'crash'; else if (armed === 'crash' && p === `payment_sdk/${OID}` && !thrown) { thrown = true; throw new Error('crash after the order commit'); } } } }); await live(w);
+    armed = 'go';
+    await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 8000 }).catch(() => {});
+    assert.ok(thrown && w.ord().payment_commit && w.ord().payment_commit.revision === 1 && (w.rec().committed_revision || 0) === 0, `${L}: PREMISE — the order committed revision 1, the projection did not happen`);
+    await w.db.ref(`orders/${OID}/status`).set('delivered');
+    await C().settleTerminal(w.deps, { orderId: OID });
+    assert.deepStrictEqual([committedIds(w.rec()).join(), w.rec().committed_revision], ['L2', 1], `${L}: settle RECOVERS the committed proposal before freezing`);
+    assert.deepStrictEqual(w.fake.calls.filter((c) => c.action === 'capture').map((c) => c.amount_cents), [8000], `${L}: B captured (the committed decision), not S`);
+  });
+  await cell('SDK-CRASH-BEFORE-ORDER-COMMIT-LOST', async (L) => {
+    let thrown = false;
+    const w = await placed({ eligible: ELIGIBLE, hooks: { beforeTx: async (p) => { if (p === `orders/${OID}` && w0.armed && !thrown) { thrown = true; throw new Error('crash before the order commit'); } } } }); await live(w);
+    w0.armed = true;
+    await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 8000 }).catch(() => {});
+    assert.ok(thrown && Object.keys(w.rec().proposals || {}).length === 1 && !w.ord().payment_commit, `${L}: PREMISE — proposal persisted, the order transaction never ran`);
+    await w.db.ref(`orders/${OID}/status`).set('delivered');
+    await C().settleTerminal(w.deps, { orderId: OID });
+    assert.deepStrictEqual([committedIds(w.rec()).join(), w.rec().legs.L2.role], ['L1', 'surplus'], `${L}: the LOST proposal's B is surplus; S captured`);
+    assert.deepStrictEqual(w.fake.calls.filter((c) => c.action === 'capture').map((c) => c.amount_cents), [10000], `${L}: S captured once`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
