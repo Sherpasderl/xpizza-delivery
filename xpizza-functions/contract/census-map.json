@@ -846,7 +846,12 @@
   "payments/sdk/coordinator.js#classifyLostProposals": "payment",
   "payments/sdk/coordinator.js#cancelSdkOrder": "payment",
   "payments/sdk/coordinator.js#cancelSdkOrder>anon": "payment",
-  "payments/sdk/sweeper.js#visitDueOrder": "payment"
+  "payments/sdk/sweeper.js#visitDueOrder": "payment",
+  "payments/sdk/coordinator.js#orderRevision": "payment",
+  "payments/sdk/flow.js#markerFault": "payment",
+  "payments/sdk/flow.js#sdkGoLiveAdmits": "payment",
+  "payments/sdk/flow.js#goLiveInFlight": "payment",
+  "payments/sdk/flow.js#goLiveRedrivable": "payment"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
@@ -1335,7 +1340,7 @@
   },
   "payment_total_cents": {
    "class": "lifecycle",
-   "reason": "SDK card payments (BRIEF-sdk-payment-coordinator r5 §4 / §4a / §8): a MIRROR of the committed fulfillment total for the SDK coordinator (written with payment_commit); the order's authoritative §1 money facts (total_cents and its breakdown) are unchanged and remain the contract — this mirror is read by no reader"
+   "reason": "SDK card payments (BRIEF-sdk-payment-coordinator r5 §4 / §4a / §8): a MIRROR of the committed fulfillment total for the SDK coordinator, written with payment_commit in the same orders transaction that writes the order revision (items, total_cents, total and its breakdown — the §1 money facts, Codex r1 #10); this mirror is read by no reader"
   },
   "paid_strand_seen_at": {
    "class": "stamp",
@@ -1771,6 +1776,22 @@
    "fields": [],
    "reason": "S-A(d): `${INDEX_ROOT}/${rid}/${key}` with INDEX_ROOT = 'rating_index' — the server-only merchant comment index (value = an order id), never an /orders path",
    "count": 1
+  },
+  {
+   "file": "xpizza-functions/payments/sdk/coordinator.js",
+   "fn": "commitProposal",
+   "how": "spread-in-order-write",
+   "detail": "p.order_revision",
+   "fields": [
+    "items",
+    "total_cents",
+    "total",
+    "delivery_cents",
+    "tip_cents",
+    "promo_discount_cents"
+   ],
+   "reason": "SDK card payments (Codex r1 #10, BRIEF r5 §2.10): the adjustment commit writes the validated ORDER REVISION in the same orders transaction as payment_commit — orderRevision (payments/sdk/coordinator.js) returns exactly { items, total_cents, total = total_cents / 100 } plus any of delivery_cents / tip_cents / promo_discount_cents the caller supplied as integer cents; total_cents must equal the committed new total. Asserted by SDK-ADJUST-COMMITS-ORDER-REVISION",
+   "count": 1
   }
  ],
  "moneyPathNonFactReads": {
@@ -1991,7 +2012,11 @@
   "handheld_answered@xpizza-functions/merchant/merchant-reject-repair.js#needs": "NOT a fact: A-R1 repair selection — kind 'rejected' marks a handheld reject; selects no amount",
   "reject_outcome@xpizza-functions/merchant/merchant-reject-repair.js#needs": "NOT a fact: A-R1 repair selection — an existing op-matched outcome means the reject was settled; selects no amount",
   "resolving_action@xpizza-functions/merchant/merchant-reject-repair.js#needs": "NOT a fact: A-R1 repair — a held cancel claim (resolving_action==='cancel') chooses the claim_held notice; read only, never cleared here, selects no amount",
-  "cancel_claim_id@xpizza-functions/merchant/merchant-reject-repair.js#needs": "NOT a fact: A-R1 repair — a held cancel claim chooses the claim_held notice; read only, never cleared here, selects no amount"
+  "cancel_claim_id@xpizza-functions/merchant/merchant-reject-repair.js#needs": "NOT a fact: A-R1 repair — a held cancel claim chooses the claim_held notice; read only, never cleared here, selects no amount",
+  "payment_placed@xpizza-functions/payments/sdk/flow.js#goLiveInFlight": "SDK card payments (ruling #9 A): the server-only GO-LIVE decision marker, read as a presence test to decide whether the shared go-live claim is in flight / may be re-driven; never an amount or an identity",
+  "materialized_at@xpizza-functions/payments/sdk/flow.js#goLiveInFlight": "lifecycle timestamp, read as a presence test (an SDK order already live is never re-driven; a cancel waits only while the go-live is in flight); never an amount or an identity",
+  "payment_placed@xpizza-functions/payments/sdk/flow.js#goLiveRedrivable": "SDK card payments (ruling #9 A): the server-only GO-LIVE decision marker, read as a presence test to decide whether the shared go-live claim is in flight / may be re-driven; never an amount or an identity",
+  "materialized_at@xpizza-functions/payments/sdk/flow.js#goLiveRedrivable": "lifecycle timestamp, read as a presence test (an SDK order already live is never re-driven; a cancel waits only while the go-live is in flight); never an amount or an identity"
  },
  "unreachableOnSurface": {
   "_doc": "P1-a (reviewed): a page function that NOTHING in its page scope references (no identifier, NS.member or inline HTML handler) cannot run on that surface — reachability is a FIXPOINT from top-level code, registered callbacks and inline HTML handlers, so a function referenced only by unreachable functions is unreachable too, so its order reads are not that surface's outputs. census.js marks them (over-approximating reachability); this list must EQUAL the marked set — a function that becomes referenced again makes its entry stale (RED: review its mapping); a new unreferenced one is RED until reviewed here.",

@@ -12,7 +12,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "index.js",
-  "now": "  }\n); const SDK_PAY_FUNCTIONS = require('./payments/sdk/functions'); exports.sweepSdkPayments = SDK_PAY_FUNCTIONS.sweepSdkPayments; exports.settleSdkOnStatus = SDK_PAY_FUNCTIONS.settleSdkOnStatus;\n\n",
+  "now": "  }\n); const SDK_PAY_FUNCTIONS = require('./payments/sdk/functions'); exports.sweepSdkPayments = SDK_PAY_FUNCTIONS.sweepSdkPayments; exports.settleSdkOnStatus = SDK_PAY_FUNCTIONS.settleSdkOnStatus; require('./payments/sdk/deps').setSdkGoLive((db, orderId) => { const { voidOrRefund, client, ...sdkConfirm } = confirmDeps(db); return confirmAndMaterialize(sdkConfirm, { orderId, attemptId: null, now: Date.now(), trackingToken: generateTrackingToken(), sdkGoLive: true }); });\n\n",
   "was": "  }\n);\n\n"
  },
  {
@@ -67,8 +67,13 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "pixelpay-confirm.js",
-  "now": "  const preOrder = (await orderRef.once('value')).val();\n  if (!preOrder) return { outcome: 'no_order' }; if (require('./payments/sdk/flow').isSdkOrder(preOrder)) return { outcome: 'sdk_flow' };\n\n",
-  "was": "  const preOrder = (await orderRef.once('value')).val();\n  if (!preOrder) return { outcome: 'no_order' };\n\n"
+  "now": "// Idempotent: safe to re-enter for an already-confirmed-but-unmaterialized order.\nasync function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingToken, paymentReference = null, sdkGoLive = false }) {\n  const { db, buildMaterializeUpdates } = deps;\n",
+  "was": "// Idempotent: safe to re-enter for an already-confirmed-but-unmaterialized order.\nasync function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingToken, paymentReference = null }) {\n  const { db, buildMaterializeUpdates } = deps;\n"
+ },
+ {
+  "file": "pixelpay-confirm.js",
+  "now": "  const preOrder = (await orderRef.once('value')).val();\n  if (!preOrder) return { outcome: 'no_order' }; if (require('./payments/sdk/flow').isSdkOrder(preOrder) && !(sdkGoLive === true && require('./payments/sdk/flow').sdkGoLiveAdmits(preOrder))) return { outcome: 'sdk_flow' };\n\n  const claim = await orderRef.transaction((cur) => {\n    const o = cur || preOrder; if (require('./payments/sdk/flow').isSdkOrder(o) && !(sdkGoLive === true && require('./payments/sdk/flow').sdkGoLiveAdmits(o))) return o;\n    if (o.status === 'cancelled') return o;\n",
+  "was": "  const preOrder = (await orderRef.once('value')).val();\n  if (!preOrder) return { outcome: 'no_order' };\n\n  const claim = await orderRef.transaction((cur) => {\n    const o = cur || preOrder;\n    if (o.status === 'cancelled') return o;\n"
  },
  {
   "file": "pixelpay-hosted-charge.js",
@@ -101,9 +106,24 @@ const HUNKS = Object.freeze([
   "was": "          // cash / scheduled (no hosted expiry): consult the FULL order (need release_at / materialized_at too).\n          const order = (await db.ref(`orders/${orderId}`).get()).val();\n          const status = order && order.status;\n"
  },
  {
+  "file": "rewards-reserve.js",
+  "now": "          const order = (await db.ref(`orders/${orderId}`).get()).val();\n          if (!consumeEligible(order)) continue; if (require('./payments/sdk/flow').isSdkOrder(order)) continue;   // an SDK card order's redemption is coordinator-owned\n          const r = await consumeRedemption(db, { uid, rid, orderId, now });   // idempotent\n",
+  "was": "          const order = (await db.ref(`orders/${orderId}`).get()).val();\n          if (!consumeEligible(order)) continue;\n          const r = await consumeRedemption(db, { uid, rid, orderId, now });   // idempotent\n"
+ },
+ {
   "file": "scheduled-release-core.js",
   "now": "    if (cur === null) return null;                                   // null-first: don't fabricate an order\n    if (cur.status !== S.SCHEDULED) return; if (require('./payments/sdk/flow').isSdkOrder(cur) || cur.payment_terminal || cur.payment_cancel) return;   // abort — not claimable\n    if (cur.scheduled_blocked === true) return;\n",
   "was": "    if (cur === null) return null;                                   // null-first: don't fabricate an order\n    if (cur.status !== S.SCHEDULED) return;                          // abort — not claimable\n    if (cur.scheduled_blocked === true) return;\n"
+ },
+ {
+  "file": "scheduled-release-core.js",
+  "now": "async function finalizeRelease(deps, orderId, order, now) {\n  const { db, alert } = deps; if (require('./payments/sdk/flow').isSdkOrder(order)) return { released: false, blocked: false, held: false, refused: 'sdk_flow' };\n  const rid = order.restaurant_id || 'x_pizza';\n",
+  "was": "async function finalizeRelease(deps, orderId, order, now) {\n  const { db, alert } = deps;\n  const rid = order.restaurant_id || 'x_pizza';\n"
+ },
+ {
+  "file": "scheduled-release-core.js",
+  "now": "    if (cur === null) return null;\n    if (cur.status !== S.RELEASING) return; if (require('./payments/sdk/flow').isSdkOrder(cur) || cur.payment_terminal || cur.payment_cancel) return;   // already finished/changed — or not the legacy release's order\n    if (!(isNum(cur.releasing_since) && now - cur.releasing_since > c.staleReleasingMs)) return; // not stale\n",
+  "was": "    if (cur === null) return null;\n    if (cur.status !== S.RELEASING) return;                                          // already finished/changed\n    if (!(isNum(cur.releasing_since) && now - cur.releasing_since > c.staleReleasingMs)) return; // not stale\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

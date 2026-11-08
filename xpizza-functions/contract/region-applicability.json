@@ -10930,14 +10930,14 @@
     "site": "if (didNotify && deps.sendScheduledSlotClosed) { try { await deps.sendScheduledSlotClosed(db, { orderId, order }); } catch (_) {} }",
     "siteSha": "893a10464deb4f02f240ce89d6f56ab6620dde110064ea556d8b8a8617438fb9",
     "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
-    "scopeSha": "6b5e9efb59615dbae5d687359d474c77772fc8e1d4f26419f979c16a27b8f0c1"
+    "scopeSha": "09d73b66bf4c743ce563c1ad589acf32f09f39f38cfe267e0df5cfa820d7affb"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
      "text": "if (Number.isFinite(Number(order.scheduled_for))) {",
-     "scopeSha": "6b5e9efb59615dbae5d687359d474c77772fc8e1d4f26419f979c16a27b8f0c1"
+     "scopeSha": "09d73b66bf4c743ce563c1ad589acf32f09f39f38cfe267e0df5cfa820d7affb"
     }
    ],
    "cases": {
@@ -11798,7 +11798,7 @@
      "kind": "S",
      "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
      "text": "if (Number.isFinite(Number(order.scheduled_for))) {",
-     "scopeSha": "6b5e9efb59615dbae5d687359d474c77772fc8e1d4f26419f979c16a27b8f0c1"
+     "scopeSha": "09d73b66bf4c743ce563c1ad589acf32f09f39f38cfe267e0df5cfa820d7affb"
     }
    ],
    "cases": {
