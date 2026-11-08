@@ -835,7 +835,18 @@
   "photos/upload-start.js#fail": "catalog",
   "photos/editable-io.js#fieldsFor": "catalog",
   "photos/editable-photos.js#editablePhotoFields": "catalog",
-  "photos/served-photos.js#overlay": "catalog"
+  "photos/served-photos.js#overlay": "catalog",
+  "payments/sdk/coordinator.js#isTerminalOrder": "payment",
+  "payments/sdk/coordinator.js#placeOriginal": "payment",
+  "payments/sdk/coordinator.js#placeOriginal>anon": "payment",
+  "payments/sdk/coordinator.js#settleTerminal": "payment",
+  "payments/sdk/coordinator.js#settleTerminal>anon": "payment",
+  "payments/sdk/coordinator.js#orderOpen": "payment",
+  "payments/sdk/coordinator.js#commitProposal>anon": "payment",
+  "payments/sdk/coordinator.js#classifyLostProposals": "payment",
+  "payments/sdk/coordinator.js#cancelSdkOrder": "payment",
+  "payments/sdk/coordinator.js#cancelSdkOrder>anon": "payment",
+  "payments/sdk/sweeper.js#visitDueOrder": "payment"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
@@ -1305,6 +1316,26 @@
   "extra_payment_review": {
    "class": "lifecycle",
    "reason": "manual-review FLAG (owner 2026-11-02): a second distinct verified payment on the order was recorded for a person to refund in PixelPay — lifecycle bookkeeping like paid_during_resolve; the money facts stay on the payment attempt's extra_payments record; not a contract fact"
+  },
+  "payment_placed": {
+   "class": "lifecycle",
+   "reason": "SDK card payments (BRIEF-sdk-payment-coordinator r5 §4 / §4a / §8): the server-only GO-LIVE decision ({leg_id, at}) written by the coordinator in an orders transaction when the original authorization is approved; payment bookkeeping (the money facts live in the server-only payment_sdk record), not a contract fact"
+  },
+  "payment_commit": {
+   "class": "lifecycle",
+   "reason": "SDK card payments (BRIEF-sdk-payment-coordinator r5 §4 / §4a / §8): the server-only adjustment DECISION ({revision, pid}) won in an orders transaction; it names the committed proposal in payment_sdk; payment bookkeeping, not a contract fact"
+  },
+  "payment_terminal": {
+   "class": "lifecycle",
+   "reason": "SDK card payments (BRIEF-sdk-payment-coordinator r5 §4 / §4a / §8): the server-only, rules-immutable marker that the order reached delivered / completed for payments ({revision, at}) — written by the coordinator or by the merchant handed transition in the same transaction; lifecycle bookkeeping, not a contract fact"
+  },
+  "payment_cancel": {
+   "class": "lifecycle",
+   "reason": "SDK card payments (BRIEF-sdk-payment-coordinator r5 §4 / §4a / §8): the server-only cancel / TTL-expiry DECISION ({kind, at}) won in an orders transaction before any hold is reclassified or resource released; lifecycle bookkeeping, not a contract fact"
+  },
+  "payment_total_cents": {
+   "class": "lifecycle",
+   "reason": "SDK card payments (BRIEF-sdk-payment-coordinator r5 §4 / §4a / §8): a MIRROR of the committed fulfillment total for the SDK coordinator (written with payment_commit); the order's authoritative §1 money facts (total_cents and its breakdown) are unchanged and remain the contract — this mirror is read by no reader"
   },
   "paid_strand_seen_at": {
    "class": "stamp",
