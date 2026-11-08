@@ -13,7 +13,7 @@ const DISP = 'u_disp00000000000000000';
 const KITCHEN = 'u_kitchen000000000000000';
 const DRIVER = 'u_driver0000000000000000';
 const DEVICE = 'hh_tb_norte_abc';
-const SDK = { payment_flow: 'sdk_auth_v1', payment_total_cents: 10000, payment_placed: { leg_id: 'L1', at: 1 }, payment_commit: { revision: 1, pid: 'p1' } };
+const SDK = { payment_flow: 'sdk_auth_v1', payment_total_cents: 10000, payment_placed: { leg_id: 'L1', at: 1 }, payment_commit: { revision: 1, pid: 'p1' }, sdk_live_pending: '{"delivery":{}}' };
 const live = () => ({ order_id: 'x', restaurant_id: 'tb_norte', status: 'preparing', ...SDK });
 const done = () => ({ ...live(), status: 'delivered', payment_terminal: { revision: 1, at: 2 } });
 const legacy = () => ({ order_id: 'x', restaurant_id: 'tb_norte', status: 'delivered', payment_method: 'cash' });
@@ -60,6 +60,13 @@ const legacy = () => ({ order_id: 'x', restaurant_id: 'tb_norte', status: 'deliv
     await no(`SPRE-SCALAR ${r} creates ${f} = true`, () => db.ref(`orders/o_fresh/${f}`).set(true));
     await no(`SPRE-SCALAR ${r} creates ${f} = 1`, () => db.ref(`orders/o_fresh/${f}`).set(1));
   }
+  // Codex r3 A: the go-live pending list is server-only — never created, changed or removed by a client
+  for (const [r, db] of Object.entries(roles)) {
+    await no(`SPRE-LIVE-PENDING ${r} creates sdk_live_pending`, () => db.ref('orders/o_fresh/sdk_live_pending').set('{"pickup":{}}'));
+    await no(`SPRE-LIVE-PENDING ${r} changes sdk_live_pending`, () => db.ref('orders/o_live/sdk_live_pending').set('{}'));
+    await no(`SPRE-LIVE-PENDING ${r} removes sdk_live_pending`, () => db.ref('orders/o_live/sdk_live_pending').remove());
+  }
+  await no('SPRE-LIVE-PENDING dispatcher whole-order write adds sdk_live_pending', () => disp.ref('orders/o_fresh').set({ order_id: 'x', restaurant_id: 'tb_norte', status: 'preparing', payment_flow: 'sdk_auth_v1', payment_total_cents: 10000, sdk_live_pending: '{}' }));
   await no('SPRE-SCALAR dispatcher replaces payment_placed with a scalar', () => disp.ref('orders/o_live/payment_placed').set(true));
   await no('SPRE-SCALAR dispatcher whole-order write adds payment_terminal = true', () => disp.ref('orders/o_fresh').set({ order_id: 'x', restaurant_id: 'tb_norte', status: 'preparing', payment_flow: 'sdk_auth_v1', payment_total_cents: 10000, payment_terminal: true }));
   await no('SPRE-SCALAR dispatcher multipath adds payment_cancel = true', () => disp.ref().update({ 'orders/o_fresh/payment_cancel': true, 'orders/o_fresh/notes': 'x' }));

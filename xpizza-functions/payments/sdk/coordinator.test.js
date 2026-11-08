@@ -847,6 +847,45 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.ok(w.db.getAt(`tasks/${OID}_delivery`) && w.db.getAt(`order_tracking/${w.ord().tracking_token}`) && !w.ord().sdk_live_pending, `${L}: the sweeper replays the pending paths and clears the list`);
     assert.strictEqual(w.db.getAt(`tasks/${OID}_pickup/status`), 'assigned', `${L}: the replay is CREATE-ONLY — the driver's pickup is never reset`);
   });
+  // ── Codex r3: the pending go-live list is never trusted; tracking fills per leaf; a failed reward consume keeps the order due ──
+  await cell('SDK-LIVE-PENDING-FORGED-NEVER-REPLAYED', async (L) => {
+    const w = await placed(); await live(w);
+    // a forged list (any shape a client could have planted) naming a payment marker and a foreign order
+    w.db.setAt(`orders/${OID}/sdk_live_pending`, [{ path: `orders/${OID}/payment_terminal`, value: { revision: 0, at: 1 } }, { path: 'orders/tb_other/status', value: 'delivered' }]);
+    w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps); await SW().sweepSdkPayments(w.deps);
+    assert.ok(!w.ord().payment_terminal && !w.db.getAt('orders/tb_other') && caps(w).length === 0, `${L}: nothing of the forged list is written (payment_terminal ${JSON.stringify(w.ord().payment_terminal)}, captures ${caps(w).length})`);
+    assert.ok(alerts(w.db).some((a) => a.type === 'payment_sdk_malformed_live_pending') && !w.ord().sdk_live_pending, `${L}: alerted and dropped`);
+  });
+  await cell('SDK-LIVE-REPLAY-FILLS-TRACKING-PER-LEAF', async (L) => {
+    let crash = true;
+    const w = world({ hooks: { beforeTx: async (p) => { if (crash && p.startsWith('order_tracking/')) { crash = false; throw new Error('crash before the tracking record'); } } } });
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const tok = w.ord().tracking_token;
+    assert.ok(!crash && tok && !w.db.getAt(`order_tracking/${tok}`) && w.ord().sdk_live_pending, `${L}: PREMISE — live, tracking not written, list pending`);
+    // the triggers write their leaves first
+    await w.db.ref(`order_tracking/${tok}/display_number`).set(42);
+    await w.db.ref(`order_tracking/${tok}/status`).set('preparing');
+    w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps);
+    const t = w.db.getAt(`order_tracking/${tok}`);
+    assert.ok(t.display_number === 42 && t.status === 'preparing', `${L}: trigger-written leaves are never overwritten (got ${JSON.stringify({ d: t.display_number, s: t.status })})`);
+    assert.ok(t.order_type === 'delivery' && t.restaurant_name !== undefined && Object.keys(t).length > 3, `${L}: the missing leaves are initialized (got keys ${Object.keys(t).join(',')})`);
+  });
+  await cell('SDK-REWARD-CONSUME-FAILURE-KEEPS-DUE', async (L) => {
+    let left = 6;   // go-live 1, settle 2, then two sweeper visits × (settle + sweeper) = 6 failed consumes
+    const w = world({ seed: rewardSeed('reserved'), hooks: { beforeTx: async (p) => { if (left > 0 && p === RWP) { left -= 1; throw new Error('consume transaction failed'); } } } });
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await deliver(w);
+    for (let i = 1; i <= 2; i++) {
+      w.tick(SW().REVISIT_MS + 1); await SW().sweepSdkPayments(w.deps);
+      assert.ok(due(w) != null, `${L}: visit ${i}: a failed reward consume keeps the order due (reservation ${w.db.getAt(`${RWP}/reservations/${OID}/state`)})`);
+    }
+    assert.ok(left === 0 && w.db.getAt(`${RWP}/reservations/${OID}/state`) === 'reserved', `${L}: PREMISE — every consume so far failed (left ${left})`);
+    assert.ok(!R.isFinanciallyClosed(w.rec(), w.ord(), { rewardState: 'reserved' }), `${L}: an unsettled redemption is NOT financially closed`);
+    w.tick(SW().REVISIT_MS + 1); await SW().sweepSdkPayments(w.deps);
+    assert.strictEqual(w.db.getAt(`${RWP}/reservations/${OID}/state`), 'consumed', `${L}: a later visit consumes it`);
+    w.tick(SW().REVISIT_MS + 1); await SW().sweepSdkPayments(w.deps);
+    assert.strictEqual(due(w), null, `${L}: settled → closed → removed`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });

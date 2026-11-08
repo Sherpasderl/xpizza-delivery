@@ -37,6 +37,7 @@ for (const [f, leaves] of Object.entries(SR.OBJECT_FIELDS)) {
   assert.strictEqual(o[f]['.validate'], `newData.hasChildren([${leaves.map((l) => `'${l}'`).join(', ')}])`, `SPR-OBJECT-SHAPE: ${f} must validate as an object with its fields`);
 }
 ok('no decision object can be created, removed or forged as a scalar by a client');
+assert.ok(SR.SCALAR_FIELDS.includes('sdk_live_pending'), 'SPR-LIVE-PENDING: the go-live pending list is a server-only immutable scalar (Codex r3 A)');
 for (const f of SR.SCALAR_FIELDS) assert.strictEqual(o[f] && o[f]['.validate'], SR.LEAF_IMMUTABLE, `SPR-FIELD-SHAPE: ${f} must be immutable for clients`);
 ok('every server-only payment field is immutable for clients and admits no extra child');
 assert.ok(!JSON.stringify(rules).includes('payment_gate'), 'SPR-NO-GATE: no rule may block a terminal write on a payment gate (advisor amendment: delivery never waits)');
