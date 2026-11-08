@@ -85,9 +85,32 @@ export function buildCompleteTaskUpdates({ driverId, taskId, task, allTasks, now
     }
 
     if (nextDeliveryId) {
-      // Stacked: promote next delivery to current, keep en_route_delivery state
-      updates[`drivers/${driverId}/current_task_id`] = nextDeliveryId;
-      // status stays en_route_delivery — driver still has pizza to deliver
+      // Stacked: promote the next stop to current, keep en_route_delivery state. The pointer must name that stop's
+      // WORKING task — its PICKUP while that order's pickup is not yet completed, else its DELIVERY. A stacked order
+      // that joined post-pickup (reassigned to a driver already out for delivery) has its delivery accepted but its
+      // pickup still uncompleted; the driver has to pick it up before delivering, so the pointer names that PICKUP.
+      // Pointing at the delivery while the pickup is pending made current_task_id disagree with the stop's working
+      // task, which the pointer gate reads as "pointer set but unresolved" and locked the «Recogí el pedido» slide
+      // (bug #962, 2026-11-07). A delivery task with no linked pickup, or a pickup already completed, keeps today's
+      // behaviour (→ the delivery), so non-stacked / already-picked-up flows are byte-identical.
+      const nextDelivery = allTasks[nextDeliveryId];
+      const nextPickupId = nextDelivery && nextDelivery.linked_task_id;
+      const nextPickup = nextPickupId ? allTasks[nextPickupId] : null;
+      // Substitute the pickup pointer ONLY for a VALID ACTIONABLE pair, so we never arm the pickup slide on a
+      // malformed/foreign pickup — a pickup whose own link is missing makes pickupComplete write tasks/undefined/…
+      // (Codex r1 P2). Required: a pickup task, the SAME order, the SAME driver, an actionable status
+      // (accepted|in_progress), and a RECIPROCAL link back to this delivery. Anything else keeps the baseline
+      // (→ the delivery), preserving today's behaviour (incl. its unresolved-pointer limitation for malformed data).
+      const validActionablePickup = !!(nextPickup
+        && nextPickup.type === TASK_TYPE.PICKUP
+        && typeof nextDelivery.order_id === 'string' && nextDelivery.order_id !== ''
+        && nextPickup.order_id === nextDelivery.order_id
+        && nextPickup.assigned_driver_id === driverId
+        && (nextPickup.status === TASK_STATUS.ACCEPTED || nextPickup.status === TASK_STATUS.IN_PROGRESS)
+        && nextPickup.linked_task_id === nextDeliveryId);
+      const nextWorkingId = validActionablePickup ? nextPickupId : nextDeliveryId;
+      updates[`drivers/${driverId}/current_task_id`] = nextWorkingId;
+      // status stays en_route_delivery — driver still has a stop to work
     } else {
       // No stacked deliveries — driver returns to restaurant
       updates[`drivers/${driverId}/current_task_id`] = null;

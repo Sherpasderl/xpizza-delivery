@@ -1346,6 +1346,7 @@
     "xpizza-driver/chime-fresh.test.js",
     "xpizza-driver/cuadre-submit.test.js",
     "xpizza-driver/disponible.test.js",
+    "xpizza-driver/driver-complete.test.js",
     "xpizza-driver/endshift-confirm.test.js",
     "xpizza-driver/endshift.test.js",
     "xpizza-driver/fa4400-neverships.test.js",
@@ -1408,7 +1409,8 @@
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
     "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
     "xpizza-functions/test/web-sdk-loader.emulator.test.mjs",
-    "xpizza-functions/tracking/driver-orders.guard.test.js"
+    "xpizza-functions/tracking/driver-orders.guard.test.js",
+    "xpizza-functions/tracking/stacked-pickup-pointer-parity.test.js"
    ],
    "via_helper": [
     "xpizza-driver/oferta-offer.test.js",
