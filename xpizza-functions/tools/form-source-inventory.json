@@ -2402,7 +2402,8 @@
     {
      "file": "xpizza-functions/test/superseded-capture.emulator.test.js",
      "inverses": [
-      "tools/h0-inverse.js"
+      "tools/h0-inverse.js",
+      "tools/stackseq-module-inverse.js"
      ]
     },
     {

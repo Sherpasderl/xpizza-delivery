@@ -917,7 +917,13 @@ const itemsOf = async () => (await val('pending_paid_alerts')) || {};
     const realPath = pathx.join(__dirname, '..', 'cancel-order-core.js');
     const basePath = pathx.join(__dirname, '..', '.cancel-order-core.base-8f1e017.tmp.js');
     // DRYRUN (2e, TRAIN-NEXT2 A4): the next train's newer layers (P5a edits this file) are stripped first, newest innermost
-    fsx.writeFileSync(basePath, INV.unapplyH0Module('cancel-order-core.js', require('../tools/_asm-next2-layers').stripNewer('cancel-order-core.js', fsx.readFileSync(realPath, 'utf8'))));
+    // then stackseq T8 (3c23e0fa, newer than H0) is undone before H0; the result must be the 8f1e017 blob byte for byte
+    const baseSrc = INV.unapplyH0Module('cancel-order-core.js', require('../tools/stackseq-module-inverse').unapplyStackseqModule('cancel-order-core.js', require('../tools/_asm-next2-layers').stripNewer('cancel-order-core.js', fsx.readFileSync(realPath, 'utf8'))));
+    // sha256 of `git show 8f1e017:xpizza-functions/cancel-order-core.js` (codex sdkpay-cell23 r1 P2)
+    const BASE_8F1E017_SHA256 = '0adf3c5fa0a8fe6bbab101225d01b38ce3ab02a16c88280edc024475ef7e1469';
+    const baseSha = require('crypto').createHash('sha256').update(baseSrc).digest('hex');
+    assert.strictEqual(baseSha, BASE_8F1E017_SHA256, `CELL23-BASE-NOT-8F1E017: the reconstructed cancel core is not the historical 8f1e017 blob (sha256 ${baseSha})`);
+    fsx.writeFileSync(basePath, baseSrc);
     let baseCore;
     try { baseCore = require(basePath).cancelOrderCore; } finally { fsx.unlinkSync(basePath); }
     assert.ok(typeof baseCore === 'function' && baseCore !== cancelOrderCore, 'premise: the 8f1e017 core is loaded separately');
