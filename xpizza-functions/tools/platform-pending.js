@@ -50,13 +50,20 @@ async function status(fs, rid) {
   return { rid, exists: true, malformed: false, by: st.by, at: st.at, fields: st.fields.length };
 }
 
+// the stamp and its alert are cleared INDEPENDENTLY (Codex r2 P2): a run whose stamp delete succeeded but whose alert delete failed
+// exits non-zero, and its retry — the stamp now absent — still removes the alert (the alert delete is idempotent; never an early
+// return on "no stamp" while an alert may remain). The result says which of the two existed and what this run cleared.
 async function clear(fs, rtdb, rid, { apply = false } = {}) {
   const before = await status(fs, rid);
-  if (!before.exists) return { rid, existed: false, cleared: false, apply };
-  if (!apply) return { rid, existed: true, cleared: false, apply, would: 'delete the stamp + its malformed alert', before };
-  await pendingRefOf(fs, rid).delete();
-  await malformedAlertRef(rtdb, rid).set(null);
-  return { rid, existed: true, cleared: true, apply, before };
+  const alert = (await malformedAlertRef(rtdb, rid).once('value')).val() != null;
+  const existed = before.exists;
+  if (!existed && !alert) return { rid, existed, alert, cleared: false, apply };
+  if (!apply) return { rid, existed, alert, cleared: false, apply, would: 'delete the stamp + its malformed alert', before };
+  if (existed) await pendingRefOf(fs, rid).delete();
+  try { await malformedAlertRef(rtdb, rid).set(null); } catch (e) {
+    throw new Error(`${existed ? 'the stamp was deleted but ' : ''}the alert delete failed (${(e && e.message) || e}) — re-run clear --apply`);
+  }
+  return { rid, existed, alert, cleared: true, apply, stampDeleted: existed, alertDeleted: alert, before };
 }
 
 module.exports = { parseArgs, status, clear, RID_RE };
@@ -72,7 +79,7 @@ if (require.main === module) {
   const run = args.sub === 'status' ? status(admin.firestore(), args.rid) : clear(admin.firestore(), admin.database(), args.rid, { apply: args.apply });
   run.then((r) => {
     console.log(JSON.stringify(r));
-    if (args.sub === 'clear' && !args.apply && r.existed) console.log('DRY RUN — nothing written. Re-run with --apply to delete this rid\'s stamp.');
+    if (args.sub === 'clear' && !args.apply && (r.existed || r.alert)) console.log('DRY RUN — nothing written. Re-run with --apply to delete this rid\'s stamp and alert.');
     process.exit(0);
-  }).catch((e) => { console.error('platform-pending failed (nothing more was written):', e && e.message); process.exit(1); });
+  }).catch((e) => { console.error('platform-pending failed:', e && e.message); process.exit(1); });   // the message says what WAS written
 }

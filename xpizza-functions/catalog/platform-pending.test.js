@@ -331,8 +331,23 @@ const stampFields = async (db, rid, label = `${rid}: a stamp exists`) => { const
     assert.deepStrictEqual(await stampFields(db8, 'la_musa'), ['structure.b'], 'another rid\u2019s stamp is untouched');
     await PP.pendingRefOf(db8, 'la_musa').set({ v: 1, fields: 'nope' });
     assert.deepStrictEqual(await CLI.status(db8, 'la_musa'), { rid: 'la_musa', exists: true, malformed: true });
+    // Codex r2 P2: the stamp delete succeeds, the alert delete FAILS ⇒ the run rejects (main maps a rejection to exit 1) and says
+    // the stamp is gone; the RETRY — no stamp left — still removes the alert and resolves (exit 0). Same real fake, one failing set.
+    await PP.raiseMalformedAlert(rt8, 'la_musa', 10);
+    let failAlert = true;
+    const flaky = { ref: (p) => { const r = rt8.ref(p); return { once: r.once, transaction: r.transaction,
+      set: async (v) => { if (failAlert && p === 'dispatcher_alerts/platform_pending_malformed_la_musa') { failAlert = false; throw new Error('rtdb down'); } return r.set(v); } }; } };
+    await assert.rejects(CLI.clear(db8, flaky, 'la_musa', { apply: true }), /the stamp was deleted but the alert delete failed/, 'a failed alert delete is an error, never exit 0');
+    assert.strictEqual(await pendingDoc(db8, 'la_musa'), null, 'premise: the stamp delete went through');
+    assert.ok(rt8.data.dispatcher_alerts.platform_pending_malformed_la_musa, 'premise: the alert survived the failed run');
+    const dry2 = await CLI.clear(db8, flaky, 'la_musa', { apply: false });
+    assert.deepStrictEqual([dry2.existed, dry2.alert, dry2.cleared], [false, true, false], 'the dry run reports the leftover alert (no stamp)');
+    const retry = await CLI.clear(db8, flaky, 'la_musa', { apply: true });
+    assert.deepStrictEqual([retry.existed, retry.alert, retry.cleared, retry.stampDeleted, retry.alertDeleted], [false, true, true, false, true], 'the retry clears the alert alone');
+    assert.ok(!rt8.data.dispatcher_alerts || !rt8.data.dispatcher_alerts.platform_pending_malformed_la_musa, 'the leftover alert is gone after the retry');
+    assert.deepStrictEqual(await CLI.clear(db8, flaky, 'la_musa', { apply: true }), { rid: 'la_musa', existed: false, alert: false, cleared: false, apply: true }, 'and a third run is a clean no-op');
   }
-  ok('owner CLI: strict argv (9 refusals); status prints the shape only; clear is a DRY RUN by default; --apply clears ONLY that rid\u2019s stamp + its alert');
+  ok('owner CLI: strict argv (9 refusals); status prints the shape only; clear is a DRY RUN by default; --apply clears ONLY that rid\u2019s stamp + its alert; a failed alert delete rejects and its retry (stamp gone) still clears the alert (Codex r2 P2)');
 
   FINISHED = true;
   console.log(`platform-pending: OK (${n})`);
