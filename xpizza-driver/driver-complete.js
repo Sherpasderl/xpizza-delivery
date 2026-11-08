@@ -4,6 +4,7 @@
  * the emulator rules test (which cannot load xpizza-delivery.js — that module imports the Firebase web SDK
  * over https). xpizza-delivery.js imports these as its single source of truth and re-exports the enums.
  */
+import { validPair } from './stack-validity.js';   // the ONE stack-coherence rule (byte-pinned to the server's validity.js); stack-validity.js is pure (no Firebase)
 
 export const DRIVER_STATUS = {
   OFF_SHIFT: 'off_shift',
@@ -83,12 +84,12 @@ export function buildCompleteTaskUpdates({ driverId, taskId, task, allTasks, now
       if (t.status !== TASK_STATUS.ACCEPTED && t.status !== TASK_STATUS.IN_PROGRESS) continue;
       remaining.push({ tid, t });
     }
-    const seqMembers = remaining.filter(({ t }) => t.stack_id && (t.stop_seq === 1 || t.stop_seq === 2));
-    const coherentSeq = remaining.length > 0 && seqMembers.length === remaining.length
-      && new Set(remaining.map(({ t }) => t.stack_id)).size === 1
-      && new Set(remaining.map(({ t }) => t.stop_seq)).size === remaining.length;   // distinct ranks
+    // A coherent 2-stop stack — the server's validPair provenance (same stack_id/driver, ranks 1+2, stack_at >=
+    // assigned_at so no reassignment invalidated it) — promotes the LOWEST remaining stop_seq. Anything else (a lone
+    // remainder, a 3rd order, or stale/mismatched metadata) → earliest created_at, byte-identical to legacy.
+    const validStack = remaining.length === 2 && validPair(remaining[0].t, remaining[1].t);
     let nextDeliveryId = null;
-    if (coherentSeq) {
+    if (validStack) {
       nextDeliveryId = remaining.reduce((lo, m) => (lo === null || m.t.stop_seq < lo.t.stop_seq ? m : lo), null).tid;
     } else {
       let earliestCreated = Infinity;
@@ -145,10 +146,8 @@ export function buildCompleteTaskUpdates({ driverId, taskId, task, allTasks, now
  * is the swiped delivery, byte-identical to the legacy behaviour. `members` = [{ id, task }].
  */
 export function pickStackPointer(members, swipedDeliveryId) {
-  const seq = (members || []).filter((m) => m.task && m.task.stack_id && (m.task.stop_seq === 1 || m.task.stop_seq === 2));
-  const coherent = (members || []).length > 1 && seq.length === members.length
-    && new Set(members.map((m) => m.task.stack_id)).size === 1
-    && new Set(members.map((m) => m.task.stop_seq)).size === members.length;   // distinct ranks
-  if (!coherent) return swipedDeliveryId;
-  return members.reduce((lo, m) => (lo === null || m.task.stop_seq < lo.task.stop_seq ? m : lo), null).id;
+  const m = members || [];
+  // Only a coherent 2-stop stack (server validPair provenance) chooses stop 1; otherwise the swiped delivery (legacy).
+  if (!(m.length === 2 && validPair(m[0].task, m[1].task))) return swipedDeliveryId;
+  return m.reduce((lo, x) => (lo === null || x.task.stop_seq < lo.task.stop_seq ? x : lo), null).id;
 }

@@ -35,6 +35,7 @@ import { computeShiftCash } from './cash-helpers.js';
 import { displayOrderLabel } from './order-helpers.js';
 // Firebase-FREE real modules → imported REAL (not lifted): the writers' pure cores + the task/order constants.
 import { buildCompleteTaskUpdates, pickStackPointer, DRIVER_STATUS, ORDER_STATUS, TASK_STATUS, TASK_TYPE } from './driver-complete.js';
+import { validPair } from './stack-validity.js';   // getDriverOrders (lifted below) references it for the stop_seq sort
 import { stackedTasksToAccept } from './stacking-helpers.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -241,9 +242,9 @@ function buildRealSDK(fb) {
     + LIFTED.acceptSecondOrder + '\n' + LIFTED.completeTask + '\n' + LIFTED.pickupComplete + '\n'
     + 'return { getDriverOrders, acceptTask, acceptSecondOrder, completeTask, pickupComplete };';
   const names = ['db', 'ref', 'get', 'update', 'serverTimestamp', 'runTransaction', 'query', 'orderByChild', 'equalTo',
-    'stackedTasksToAccept', 'buildCompleteTaskUpdates', 'pickStackPointer', 'TASK_STATUS', 'TASK_TYPE', 'DRIVER_STATUS', 'ORDER_STATUS'];
+    'stackedTasksToAccept', 'buildCompleteTaskUpdates', 'pickStackPointer', 'validPair', 'TASK_STATUS', 'TASK_TYPE', 'DRIVER_STATUS', 'ORDER_STATUS'];
   return (new Function(...names, body))(fb.db, fb.ref, fb.get, fb.update, fb.serverTimestamp, fb.runTransaction,
-    fb.query, fb.orderByChild, fb.equalTo, stackedTasksToAccept, buildCompleteTaskUpdates, pickStackPointer,
+    fb.query, fb.orderByChild, fb.equalTo, stackedTasksToAccept, buildCompleteTaskUpdates, pickStackPointer, validPair,
     TASK_STATUS, TASK_TYPE, DRIVER_STATUS, ORDER_STATUS);
 }
 

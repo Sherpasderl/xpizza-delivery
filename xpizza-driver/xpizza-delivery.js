@@ -59,6 +59,7 @@ export const RESTAURANT = {
 // Delivery/task/driver enums + the completeTask writer live in a PURE module (no remote imports) so the
 // money-grade writer can be unit- and emulator-tested directly. Imported here and re-exported for API stability.
 import { DRIVER_STATUS, TASK_STATUS, TASK_TYPE, ORDER_STATUS, buildCompleteTaskUpdates, pickStackPointer } from './driver-complete.js';
+import { validPair } from './stack-validity.js';   // the ONE stack-coherence rule (byte-pinned to the server's validity.js)
 export { DRIVER_STATUS, TASK_STATUS, TASK_TYPE, ORDER_STATUS };
 
 // Payment axis (online orders) — orthogonal to order.status; never cross-tested.
@@ -1128,10 +1129,17 @@ export async function pickupComplete(driverId, pickupTaskId) {
     }
   }
 
-  // The active stop = the lowest-stop_seq delivery among the members taken in hand (the server's stop 1) when they
-  // form a coherent sequenced stack; else the swiped delivery. So current_task_id names stop 1 even if the driver
-  // swiped stop 2's pickup first — the one-active-stop UI + the tracker's `live` order follow stop_seq, not swipe order.
-  const inHand = [deliveryTaskId, ...coCompletedDeliveryIds].map((id) => ({ id, task: allTasks[id] }));
+  // The active stop = the lowest-stop_seq delivery among ALL the driver's still-actionable deliveries after this
+  // batch (the server's stop 1) when they form a coherent stack — NOT just the ones picked up in this swipe. A
+  // delivery picked up EARLIER (staggered pickups, or a repeat-swipe of stop 2) must be counted, else the pointer
+  // could flip to the wrong stop (Codex r1 P1). Otherwise the swiped delivery (legacy). pickStackPointer gates on
+  // the server validPair provenance rule, so stale/foreign stack metadata falls back to legacy.
+  const inHandIds = new Set([deliveryTaskId, ...coCompletedDeliveryIds]);   // the swiped + co-completed become accepted here
+  for (const [tid, t] of Object.entries(allTasks)) {
+    if (t && t.assigned_driver_id === driverId && t.type === TASK_TYPE.DELIVERY
+        && (t.status === TASK_STATUS.ACCEPTED || t.status === TASK_STATUS.IN_PROGRESS)) inHandIds.add(tid);
+  }
+  const inHand = [...inHandIds].map((id) => ({ id, task: allTasks[id] }));
   updates[`drivers/${driverId}/current_task_id`] = pickStackPointer(inHand, deliveryTaskId);
 
   await update(ref(db), updates);
@@ -1182,22 +1190,22 @@ export function getDriverOrders(driverId, allTasks, allOrders, includeCompleted 
     });
   }
 
-  // Sort: in-progress orders first, then by the server's stop_seq (sequenced stacks), else by created_at.
+  // Sort: in-progress orders first, then by the server's stop_seq (a coherent sequenced stack), else by created_at.
   const phaseRank = { delivery: 0, pickup: 1, awaiting_acceptance: 2, completed: 3 };
+  // Sequence ONLY a coherent 2-stop DELIVERY stack: the whole delivery-phase set is EXACTLY one valid pair (server
+  // validPair provenance — same stack_id/driver, ranks 1+2, no reassignment after the stack write). This is a
+  // SET-LEVEL decision computed once, so the comparator is consistent/transitive (never a pairwise mix with a 3rd
+  // order). Non-delivery phases, a non-coherent delivery set (3+ orders, partial/mismatched/stale metadata) → legacy
+  // created_at. The server (sequencing/plan-stack) is the only writer of stop_seq/stack_id on tasks/{oid}_delivery;
+  // flag-OFF writes none. (This whole block is mirrored verbatim into tracking/driver-orders.js by platform-core,
+  // which imports validPair from the same byte-pinned rule.)
+  const deliveryPhase = result.filter((o) => o.phase === 'delivery');
+  const seqMode = deliveryPhase.length === 2 && validPair(deliveryPhase[0].deliveryTask, deliveryPhase[1].deliveryTask);
   result.sort((a, b) => {
     const r = phaseRank[a.phase] - phaseRank[b.phase];
     if (r !== 0) return r;
-    // Sequenced stacks (stacked-order consumption): when BOTH delivery tasks carry a coherent server stop_seq —
-    // the SAME stack_id and DISTINCT ranks 1|2 — order by stop_seq (the server's decided order). Otherwise
-    // (absent / partial / mismatched) fall back to created_at, byte-identical to the legacy behaviour. The server
-    // (sequencing/plan-stack) is the only writer of stop_seq/stack_id on tasks/{oid}_delivery. (This comparator is
-    // mirrored verbatim into tracking/driver-orders.js by platform-core; keep it self-contained.)
-    const da = a.deliveryTask, db = b.deliveryTask;
-    const coherent = !!(da && db && da.stack_id && da.stack_id === db.stack_id
-      && (da.stop_seq === 1 || da.stop_seq === 2) && (db.stop_seq === 1 || db.stop_seq === 2)
-      && da.stop_seq !== db.stop_seq);
-    if (coherent) return da.stop_seq - db.stop_seq;
-    return (da.created_at || 0) - (db.created_at || 0);
+    if (seqMode && a.phase === 'delivery' && b.phase === 'delivery') return a.deliveryTask.stop_seq - b.deliveryTask.stop_seq;
+    return (a.deliveryTask.created_at || 0) - (b.deliveryTask.created_at || 0);
   });
 
   return result;
