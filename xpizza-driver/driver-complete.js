@@ -96,7 +96,18 @@ export function buildCompleteTaskUpdates({ driverId, taskId, task, allTasks, now
       const nextDelivery = allTasks[nextDeliveryId];
       const nextPickupId = nextDelivery && nextDelivery.linked_task_id;
       const nextPickup = nextPickupId ? allTasks[nextPickupId] : null;
-      const nextWorkingId = (nextPickup && nextPickup.status !== TASK_STATUS.COMPLETED) ? nextPickupId : nextDeliveryId;
+      // Substitute the pickup pointer ONLY for a VALID ACTIONABLE pair, so we never arm the pickup slide on a
+      // malformed/foreign pickup — a pickup whose own link is missing makes pickupComplete write tasks/undefined/…
+      // (Codex r1 P2). Required: a pickup task, the SAME order, the SAME driver, an actionable status
+      // (accepted|in_progress), and a RECIPROCAL link back to this delivery. Anything else keeps the baseline
+      // (→ the delivery), preserving today's behaviour (incl. its unresolved-pointer limitation for malformed data).
+      const validActionablePickup = !!(nextPickup
+        && nextPickup.type === TASK_TYPE.PICKUP
+        && nextPickup.order_id === nextDelivery.order_id
+        && nextPickup.assigned_driver_id === driverId
+        && (nextPickup.status === TASK_STATUS.ACCEPTED || nextPickup.status === TASK_STATUS.IN_PROGRESS)
+        && nextPickup.linked_task_id === nextDeliveryId);
+      const nextWorkingId = validActionablePickup ? nextPickupId : nextDeliveryId;
       updates[`drivers/${driverId}/current_task_id`] = nextWorkingId;
       // status stays en_route_delivery — driver still has a stop to work
     } else {

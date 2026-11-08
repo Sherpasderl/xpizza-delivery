@@ -1,108 +1,147 @@
-// Regression + equivalence suite for the 2026-11-07 live prod bug (driver Elmer, X.Pizza #962 Carolina Sierra).
+// Regression + equivalence suite for the 2026-11-07 live prod bug (driver Elmer, X.Pizza #962 Carolina Sierra)
+// and its Codex r1 revision (valid-actionable-pair predicate; oracle-based equivalence).
 //
-// Owner sequence: Carolina assigned → owner UNASSIGNS her, leaves Angelo → Elmer swipes "Recogí" on Angelo
-// (Angelo pickup done, Elmer in Angelo's DELIVERY leg) → owner REASSIGNS Carolina while Elmer is already
-// out_for_delivery, so her legs are stacked-accepted but her PICKUP is not completed → Elmer delivers Angelo →
-// Carolina's card shows "Parada actual" + "Recogí el pedido", slide LOCKED.
-//
-// Root cause: buildCompleteTaskUpdates promoted the next ACCEPTED DELIVERY to current_task_id without checking
-// that order's PICKUP was completed, so the pointer named Carolina's DELIVERY while her working task was her
-// PICKUP. drv2ResolveActivePointer couldn't resolve it → the fail-closed pointer gate locked the pickup slide.
-// Fix: point current_task_id at the next stop's WORKING task (its pickup when the pickup isn't completed, else
-// its delivery). This cell was RED before the fix (got 'C_del'); it is GREEN after.
+// Bug: after delivering stop 1, buildCompleteTaskUpdates promoted the next accepted DELIVERY to current_task_id
+// without checking that order's PICKUP was completed, so a stacked order that joined post-pickup (delivery accepted,
+// pickup pending) got a pointer on its DELIVERY while its working task was its PICKUP → the fail-closed pointer gate
+// locked the «Recogí el pedido» slide. Fix: point at the next stop's WORKING task — its pickup ONLY for a valid
+// actionable pair (type pickup, same order, same driver, accepted|in_progress, reciprocal link), else its delivery.
 import assert from 'node:assert/strict';
 import { buildCompleteTaskUpdates, TASK_STATUS, TASK_TYPE } from './driver-complete.js';
 import { buildCompleteTaskUpdates as buildOLD } from './driver-complete.baseline.fixture.mjs'; // origin/main 51dc55ab, verbatim
 
+const NOW = 1000;
 let passed = 0;
 function t(name, fn) {
   try { fn(); passed++; console.log(`  ✓ ${name}`); }
   catch (e) { console.error(`  🔴 ${name}\n    ${e && e.message ? e.message : e}`); process.exitCode = 1; }
 }
-
 const UID = 'elmer';
+const mk = (o) => o; // readability
 
-t('bug #962: deliver stop 1 (Angelo) while stop 2 (Carolina) pickup is not completed → pointer names Carolina PICKUP (working task), not her delivery', () => {
-  const A_pu = { order_id: 'angelo', type: TASK_TYPE.PICKUP, status: TASK_STATUS.COMPLETED, assigned_driver_id: UID, created_at: 100, linked_task_id: 'A_del' };
-  const A_del = { order_id: 'angelo', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.IN_PROGRESS, assigned_driver_id: UID, created_at: 101, linked_task_id: 'A_pu' };
-  // Carolina stacked-accepted but NOT picked up: pickup ACCEPTED (so her card renders the pickup slide), delivery ACCEPTED.
-  const C_pu = { order_id: 'carolina', type: TASK_TYPE.PICKUP, status: TASK_STATUS.ACCEPTED, assigned_driver_id: UID, created_at: 200, linked_task_id: 'C_del' };
-  const C_del = { order_id: 'carolina', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.ACCEPTED, assigned_driver_id: UID, created_at: 201, linked_task_id: 'C_pu' };
-  const updates = buildCompleteTaskUpdates({ driverId: UID, taskId: 'A_del', task: A_del, allTasks: { A_pu, A_del, C_pu, C_del }, now: 1000 });
-  assert.equal(updates[`drivers/${UID}/current_task_id`], 'C_pu', 'pointer must be Carolina PICKUP so the pickup slide is armed');
+// ---- named cells --------------------------------------------------------------------------------------------
+t('bug #962: deliver stop 1 while stop 2 pickup not completed (valid pair) → pointer = stop 2 PICKUP', () => {
+  const A_del = mk({ order_id: 'angelo', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.IN_PROGRESS, assigned_driver_id: UID, created_at: 101, linked_task_id: 'A_pu' });
+  const C_pu = mk({ order_id: 'carolina', type: TASK_TYPE.PICKUP, status: TASK_STATUS.ACCEPTED, assigned_driver_id: UID, created_at: 200, linked_task_id: 'C_del' });
+  const C_del = mk({ order_id: 'carolina', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.ACCEPTED, assigned_driver_id: UID, created_at: 201, linked_task_id: 'C_pu' });
+  const u = buildCompleteTaskUpdates({ driverId: UID, taskId: 'A_del', task: A_del, allTasks: { A_del, C_pu, C_del }, now: NOW });
+  assert.equal(u[`drivers/${UID}/current_task_id`], 'C_pu');
+});
+t('in_progress pickup (valid pair) → pointer = that PICKUP (not accepted-only)', () => {
+  const A_del = mk({ order_id: 'a', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.IN_PROGRESS, assigned_driver_id: UID, created_at: 101, linked_task_id: 'a_pu' });
+  const C_pu = mk({ order_id: 'c', type: TASK_TYPE.PICKUP, status: TASK_STATUS.IN_PROGRESS, assigned_driver_id: UID, created_at: 200, linked_task_id: 'c_del' });
+  const C_del = mk({ order_id: 'c', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.ACCEPTED, assigned_driver_id: UID, created_at: 201, linked_task_id: 'c_pu' });
+  const u = buildCompleteTaskUpdates({ driverId: UID, taskId: 'A_del', task: A_del, allTasks: { A_del, c_pu: C_pu, c_del: C_del }, now: NOW });
+  assert.equal(u[`drivers/${UID}/current_task_id`], 'c_pu');
+});
+t('malformed: next delivery whose pickup lacks the reciprocal link → KEEPS the delivery pointer (no tasks/undefined exposure)', () => {
+  const A_del = mk({ order_id: 'a', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.IN_PROGRESS, assigned_driver_id: UID, created_at: 101, linked_task_id: 'a_pu' });
+  const C_pu = mk({ order_id: 'c', type: TASK_TYPE.PICKUP, status: TASK_STATUS.ACCEPTED, assigned_driver_id: UID, created_at: 200 /* NO linked_task_id */ });
+  const C_del = mk({ order_id: 'c', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.ACCEPTED, assigned_driver_id: UID, created_at: 201, linked_task_id: 'c_pu' });
+  const u = buildCompleteTaskUpdates({ driverId: UID, taskId: 'A_del', task: A_del, allTasks: { A_del, c_pu: C_pu, c_del: C_del }, now: NOW });
+  assert.equal(u[`drivers/${UID}/current_task_id`], 'c_del');
+});
+t('foreign: next delivery whose pickup belongs to another driver → KEEPS the delivery pointer', () => {
+  const A_del = mk({ order_id: 'a', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.IN_PROGRESS, assigned_driver_id: UID, created_at: 101, linked_task_id: 'a_pu' });
+  const C_pu = mk({ order_id: 'c', type: TASK_TYPE.PICKUP, status: TASK_STATUS.ACCEPTED, assigned_driver_id: 'other', created_at: 200, linked_task_id: 'c_del' });
+  const C_del = mk({ order_id: 'c', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.ACCEPTED, assigned_driver_id: UID, created_at: 201, linked_task_id: 'c_pu' });
+  const u = buildCompleteTaskUpdates({ driverId: UID, taskId: 'A_del', task: A_del, allTasks: { A_del, c_pu: C_pu, c_del: C_del }, now: NOW });
+  assert.equal(u[`drivers/${UID}/current_task_id`], 'c_del');
+});
+t('control: stop 2 already picked up (pickup completed) → pointer = delivery (unchanged)', () => {
+  const A_del = mk({ order_id: 'a', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.IN_PROGRESS, assigned_driver_id: UID, created_at: 101, linked_task_id: 'a_pu' });
+  const C_pu = mk({ order_id: 'c', type: TASK_TYPE.PICKUP, status: TASK_STATUS.COMPLETED, assigned_driver_id: UID, created_at: 200, linked_task_id: 'c_del' });
+  const C_del = mk({ order_id: 'c', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.ACCEPTED, assigned_driver_id: UID, created_at: 201, linked_task_id: 'c_pu' });
+  const u = buildCompleteTaskUpdates({ driverId: UID, taskId: 'A_del', task: A_del, allTasks: { A_del, c_pu: C_pu, c_del: C_del }, now: NOW });
+  assert.equal(u[`drivers/${UID}/current_task_id`], 'c_del');
+});
+t('single-order golden: deliver the only order → null + RETURNING (unchanged)', () => {
+  const A_del = mk({ order_id: 'a', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.IN_PROGRESS, assigned_driver_id: UID, created_at: 101, linked_task_id: 'a_pu' });
+  const u = buildCompleteTaskUpdates({ driverId: UID, taskId: 'A_del', task: A_del, allTasks: { A_del }, now: NOW });
+  assert.equal(u[`drivers/${UID}/current_task_id`], null);
+  assert.equal(u[`drivers/${UID}/status`], 'returning');
 });
 
-t('control: deliver stop 1 with stop 2 already picked up (pickup COMPLETED, delivery accepted) → pointer names stop 2 DELIVERY (unchanged)', () => {
-  const A_del = { order_id: 'angelo', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.IN_PROGRESS, assigned_driver_id: UID, created_at: 101, linked_task_id: 'A_pu' };
-  const C_pu = { order_id: 'carolina', type: TASK_TYPE.PICKUP, status: TASK_STATUS.COMPLETED, assigned_driver_id: UID, created_at: 200, linked_task_id: 'C_del' };
-  const C_del = { order_id: 'carolina', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.ACCEPTED, assigned_driver_id: UID, created_at: 201, linked_task_id: 'C_pu' };
-  const updates = buildCompleteTaskUpdates({ driverId: UID, taskId: 'A_del', task: A_del, allTasks: { A_del, C_pu, C_del }, now: 1000 });
-  assert.equal(updates[`drivers/${UID}/current_task_id`], 'C_del', 'already picked up → working task is the delivery');
-});
+// ---- ORACLE: EXPECTED = OLD with EXACTLY the permitted pointer replacement (mirrors the fix spec). ----------
+// deep-compare NEW === EXPECTED on EVERY scenario, so the fix is REQUIRED (not merely permitted) in every case.
+const PTR = `drivers/${UID}/current_task_id`;
+function expected(taskId, task, allTasks) {
+  const old = buildOLD({ driverId: UID, taskId, task, allTasks, now: NOW });
+  const dId = old[PTR];
+  const d = (typeof dId === 'string') ? allTasks[dId] : null;
+  if (d && d.type === TASK_TYPE.DELIVERY) {
+    const pId = d.linked_task_id;
+    const p = pId ? allTasks[pId] : null;
+    const valid = !!(p && p.type === TASK_TYPE.PICKUP && p.order_id === d.order_id && p.assigned_driver_id === UID
+      && (p.status === TASK_STATUS.ACCEPTED || p.status === TASK_STATUS.IN_PROGRESS) && p.linked_task_id === dId);
+    if (valid) return { ...old, [PTR]: pId };
+  }
+  return old;
+}
+function norm(o) { return JSON.stringify(Object.keys(o).sort().map((k) => [k, o[k]])); }
+function compare(label, taskId, task, allTasks, counters) {
+  counters.scenarios++;
+  let oErr = null, nErr = null, exp, got;
+  try { exp = expected(taskId, task, allTasks); } catch (e) { oErr = e.message; }
+  try { got = buildCompleteTaskUpdates({ driverId: UID, taskId, task, allTasks, now: NOW }); } catch (e) { nErr = e.message; }
+  assert.equal(!!oErr, !!nErr, `${label} throw mismatch: old=${oErr} new=${nErr}`);
+  if (oErr) { assert.equal(oErr, nErr, `${label} error text`); counters.throws++; return; }
+  assert.equal(norm(got), norm(exp), `${label}\n    expected ${norm(exp)}\n    got      ${norm(got)}`);
+  if (got[PTR] !== buildOLD({ driverId: UID, taskId, task, allTasks, now: NOW })[PTR]) counters.subst++;
+}
 
-t('single-order golden: deliver the only order → pointer null + RETURNING (unchanged)', () => {
-  const A_del = { order_id: 'angelo', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.IN_PROGRESS, assigned_driver_id: UID, created_at: 101, linked_task_id: 'A_pu' };
-  const updates = buildCompleteTaskUpdates({ driverId: UID, taskId: 'A_del', task: A_del, allTasks: { A_del }, now: 1000 });
-  assert.equal(updates[`drivers/${UID}/current_task_id`], null);
-  assert.equal(updates[`drivers/${UID}/status`], 'returning');
-});
-
-// ===== EQUIVALENCE (owner no-regression, ironclad): OLD (origin/main, verbatim) vs NEW over the task-state space.
-// Dimensions: 1-3 orders; each order's pickup + delivery leg ∈ {assigned,accepted,in_progress,completed,cancelled};
-// the completing task = each existing leg (pickup or delivery). (Hub is NOT an input to buildCompleteTaskUpdates —
-// it has no hub parameter — so same/cross hub cannot change its output and is not a dimension here.) NEW must be
-// byte-identical to OLD EXCEPT exactly the combos where the promoted next order's DELIVERY is accepted/in_progress
-// while its PICKUP is not completed — the bug case the fix corrects.
 const STATUSES = [TASK_STATUS.ASSIGNED, TASK_STATUS.ACCEPTED, TASK_STATUS.IN_PROGRESS, TASK_STATUS.COMPLETED, TASK_STATUS.CANCELLED];
-function* legCombos(n) {                       // every (pu,del) status assignment for n orders
+function* legCombos(n) {
   if (n === 0) { yield []; return; }
   for (const rest of legCombos(n - 1)) for (const pu of STATUSES) for (const del of STATUSES) yield [...rest, { pu, del }];
 }
-function buildTasks(combo) {
-  const all = {};
-  combo.forEach(({ pu, del }, i) => {
-    const oid = `o${i}`;
-    all[`${oid}_pickup`]   = { order_id: oid, type: TASK_TYPE.PICKUP,   status: pu,  assigned_driver_id: UID, created_at: 100 + i * 10,     linked_task_id: `${oid}_delivery` };
-    all[`${oid}_delivery`] = { order_id: oid, type: TASK_TYPE.DELIVERY, status: del, assigned_driver_id: UID, created_at: 100 + i * 10 + 1, linked_task_id: `${oid}_pickup` };
-  });
-  return all;
-}
-function keysUnion(a, b) { return [...new Set([...Object.keys(a), ...Object.keys(b)])]; }
-function diffLeaves(a, b) { return keysUnion(a, b).filter((k) => a[k] !== b[k]); }
 
-t('EQUIVALENCE: NEW === OLD everywhere except the {next delivery accepted, its pickup not completed} case', () => {
-  const PTR = `drivers/${UID}/current_task_id`;
-  let scenarios = 0, diffs = 0, oldThrow = 0;
-  for (let n = 1; n <= 3; n++) {
-    for (const combo of legCombos(n)) {
-      const base = buildTasks(combo);
-      for (const taskId of Object.keys(base)) {
-        scenarios++;
-        const allTasks = base;
-        const task = allTasks[taskId];
-        let oldRes, newRes, oldErr = null, newErr = null;
-        try { oldRes = buildOLD({ driverId: UID, taskId, task, allTasks, now: 1000 }); } catch (e) { oldErr = e.message; }
-        try { newRes = buildCompleteTaskUpdates({ driverId: UID, taskId, task, allTasks, now: 1000 }); } catch (e) { newErr = e.message; }
-        // Throw behaviour must be identical (cancelled/missing completing task).
-        assert.equal(!!oldErr, !!newErr, `throw mismatch @ n=${n} task=${taskId}: old=${oldErr} new=${newErr}`);
-        if (oldErr) { assert.equal(oldErr, newErr, `error text mismatch @ ${taskId}`); oldThrow++; continue; }
-        const d = diffLeaves(oldRes, newRes);
-        if (d.length === 0) continue;
-        diffs++;
-        // The ONLY permitted difference: the pointer leaf, where OLD named a DELIVERY whose order's PICKUP is not completed.
-        assert.deepEqual(d, [PTR], `@ n=${n} task=${taskId}: diffs beyond the pointer: ${JSON.stringify(d)}`);
-        const oldPtr = oldRes[PTR];
-        assert.ok(typeof oldPtr === 'string' && oldPtr.endsWith('_delivery'), `OLD pointer should be a delivery here; got ${JSON.stringify(oldPtr)}`);
-        const pickupId = allTasks[oldPtr] && allTasks[oldPtr].linked_task_id;
-        assert.equal(newRes[PTR], pickupId, `NEW pointer should be that order's pickup; got ${JSON.stringify(newRes[PTR])}`);
-        assert.notEqual(allTasks[pickupId] && allTasks[pickupId].status, TASK_STATUS.COMPLETED, 'the differing case must have an uncompleted pickup');
-        // And OLD's chosen delivery was itself accepted/in_progress (the promotion gate).
-        assert.ok([TASK_STATUS.ACCEPTED, TASK_STATUS.IN_PROGRESS].includes(allTasks[oldPtr].status), 'OLD-chosen delivery must be accepted/in_progress');
-      }
-    }
+t('EQUIVALENCE A — status matrix (1–3 orders, reciprocal links): NEW === EXPECTED on every scenario', () => {
+  const c = { scenarios: 0, throws: 0, subst: 0 };
+  for (let n = 1; n <= 3; n++) for (const combo of legCombos(n)) {
+    const all = {};
+    combo.forEach(({ pu, del }, i) => {
+      all[`o${i}_pickup`]   = { order_id: `o${i}`, type: TASK_TYPE.PICKUP,   status: pu,  assigned_driver_id: UID, created_at: 100 + i * 10,     linked_task_id: `o${i}_delivery` };
+      all[`o${i}_delivery`] = { order_id: `o${i}`, type: TASK_TYPE.DELIVERY, status: del, assigned_driver_id: UID, created_at: 100 + i * 10 + 1, linked_task_id: `o${i}_pickup` };
+    });
+    for (const taskId of Object.keys(all)) compare(`A n=${n} ${taskId}`, taskId, all[taskId], all, c);
   }
-  console.log(`    enumerated ${scenarios} scenarios (${oldThrow} identical throws); ${diffs} differ — all the {next delivery accepted, pickup not completed} case`);
-  assert.ok(diffs > 0, 'the bug case must be reachable in the enumeration');
+  console.log(`    A: ${c.scenarios} scenarios, ${c.throws} identical throws, ${c.subst} pointer substitutions`);
+  assert.ok(c.subst > 0, 'substitution must occur somewhere');
 });
 
-console.log(`driver-complete (#962 regression + equivalence): ${passed} passed`);
+t('EQUIVALENCE B — adversarial (link mode × owner × statuses): NEW === EXPECTED', () => {
+  const c = { scenarios: 0, throws: 0, subst: 0 };
+  const LINK = { recip: 'o1_delivery', wrong: 'o9_delivery', missing: undefined };
+  const OWNERS = [UID, 'other'];
+  // order0 = the completing delivery, picked up; order1 = the promoted candidate, varied.
+  for (const puS of STATUSES) for (const delS of [TASK_STATUS.ASSIGNED, TASK_STATUS.ACCEPTED, TASK_STATUS.IN_PROGRESS]) {
+    for (const lk of Object.keys(LINK)) for (const owner of OWNERS) for (const dropPickup of [false, true]) {
+      const all = {
+        o0_pickup:   { order_id: 'o0', type: TASK_TYPE.PICKUP,   status: TASK_STATUS.COMPLETED,   assigned_driver_id: UID, created_at: 100, linked_task_id: 'o0_delivery' },
+        o0_delivery: { order_id: 'o0', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.IN_PROGRESS, assigned_driver_id: UID, created_at: 101, linked_task_id: 'o0_pickup' },
+        o1_delivery: { order_id: 'o1', type: TASK_TYPE.DELIVERY, status: delS, assigned_driver_id: UID, created_at: 110, linked_task_id: 'o1_pickup' },
+      };
+      if (!dropPickup) all.o1_pickup = { order_id: 'o1', type: TASK_TYPE.PICKUP, status: puS, assigned_driver_id: owner, created_at: 109, linked_task_id: LINK[lk] };
+      compare(`B lk=${lk} owner=${owner} pu=${puS} del=${delS} drop=${dropPickup}`, 'o0_delivery', all.o0_delivery, all, c);
+    }
+  }
+  console.log(`    B: ${c.scenarios} scenarios, ${c.throws} throws, ${c.subst} substitutions`);
+});
+
+t('EQUIVALENCE C — created_at ties: selection unchanged, NEW === EXPECTED', () => {
+  const c = { scenarios: 0, throws: 0, subst: 0 };
+  // two candidate deliveries sharing created_at; OLD keeps first-encountered → NEW must match
+  const all = {
+    x_pickup:   { order_id: 'x', type: TASK_TYPE.PICKUP,   status: TASK_STATUS.COMPLETED,   assigned_driver_id: UID, created_at: 100, linked_task_id: 'x_delivery' },
+    x_delivery: { order_id: 'x', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.IN_PROGRESS, assigned_driver_id: UID, created_at: 101, linked_task_id: 'x_pickup' },
+    y_pickup:   { order_id: 'y', type: TASK_TYPE.PICKUP,   status: TASK_STATUS.ACCEPTED,    assigned_driver_id: UID, created_at: 200, linked_task_id: 'y_delivery' },
+    y_delivery: { order_id: 'y', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.ACCEPTED,    assigned_driver_id: UID, created_at: 200, linked_task_id: 'y_pickup' },
+    z_pickup:   { order_id: 'z', type: TASK_TYPE.PICKUP,   status: TASK_STATUS.COMPLETED,   assigned_driver_id: UID, created_at: 200, linked_task_id: 'z_delivery' },
+    z_delivery: { order_id: 'z', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.ACCEPTED,    assigned_driver_id: UID, created_at: 200, linked_task_id: 'z_pickup' },
+  };
+  compare('C tie', 'x_delivery', all.x_delivery, all, c);
+  console.log(`    C: ${c.scenarios} scenario, ${c.subst} substitution(s)`);
+});
+
+console.log(`driver-complete (#962 regression + equivalence r2): ${passed} passed`);
