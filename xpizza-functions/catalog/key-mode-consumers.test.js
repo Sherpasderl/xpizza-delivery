@@ -83,7 +83,10 @@ const tablesFor = (mode) => MP.attachTablesKeyMode({ restaurantId: RID, menu: { 
     assert.strictEqual(JSON.stringify(normalizeReorderItems([line()], RID, tablesFor('name'))), JSON.stringify(normalizeReorderItems([line()], RID, tablesFor(null))), 'no mode = today');
     assert.notStrictEqual(JSON.stringify(normalizeReorderItems([{ id: SLUG, name: 'TB Nope', qty: 1 }], RID, tablesFor('id'))), '[]', 'id mode allowlists by the slug');
     assert.strictEqual(JSON.stringify(normalizeReorderItems([{ id: SLUG, name: 'TB Nope', qty: 1 }], RID, tablesFor('name'))), '[]', 'name mode does not');
-    ok('reorder allowlist keys items by the tables\' mode');
+    // Codex S0 r1 #2: the recipe's EXTRAS are keyed by the same mode (cardinality stays the rid's model, R5)
+    assert.ok(JSON.stringify(normalizeReorderItems([line()], RID, tablesFor('id'))).includes(XSLUG), 'CN-REORDER-EXTRA id mode keeps the extra by its slug');
+    assert.ok(JSON.stringify(normalizeReorderItems([line()], RID, tablesFor('name'))).includes(XNAME), 'name mode keeps it by its name');
+    ok('reorder allowlist keys items AND extras by the tables\' mode');
   }
   // the fiscal fence — EFFECTIVE mode, at the request head and in the redeemed factura pricer
   {

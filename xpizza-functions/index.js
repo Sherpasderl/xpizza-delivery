@@ -802,7 +802,7 @@ createOrderApp.all('*', async (req, res) => {
   // It is also the FISCAL barrier: pricedLineItems is reached further down, and fiscal's own
   // resolvePriceTables(null) would fall back to code — so this reject is the only thing preventing a
   // code-priced factura. Nothing has been written and no money has moved at this point.
-  if (!pricingTables || !fiscalKeyModeOk(restaurantId, keyModeOfTables(pricingTables))) return pricingUnavailable(res);
+  if (!pricingTables) return pricingUnavailable(res);
   // 2a Task 6 — the catalog-authored redemption allowlist. Deliberately BELOW the fail-closed guard:
   // that guard must stay the first statement after the resolver, and an order that cannot be priced is
   // rejected regardless. Resolved ONCE per request so the dedupe fingerprint and the reserve cannot see
@@ -815,7 +815,7 @@ createOrderApp.all('*', async (req, res) => {
   // AFTER the resolver → fail-closed guard → eligibility chain, which is pinned contiguous elsewhere.
   // T6 ships the READING only; the flip to true is an owner action once the client has shipped and the
   // no-token rate has reached ~0 (server and client must both be live before enforcing).
-  const tokenEnforce = await tokenEnforceEnabled(db);
+  const tokenEnforce = await tokenEnforceEnabled(db); if (!fiscalKeyModeOk(restaurantId, keyModeOfTables(pricingTables))) return pricingUnavailable(res);   // S0 fiscal fence: refused before any write or hold
 
   /* ── 1D D4-grace — RESOLVE THE IDENTITY FORWARD, ONCE, BEFORE PRICING ────────────────────────
      Placed here because everything below prices through itemPricingKey, and the stamp is what that
@@ -1266,7 +1266,7 @@ createOrderApp.all('*', async (req, res) => {
     attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: DW.totalLempiras(dq, effectiveTotal), orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
     /* sb:begin cash-dish-qty-held */
     // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
-    { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables), keyModeOfTables(pricingTables)); if (dishQty) heldUpdates[`orders/${orderId}`].dish_qty = dishQty; }
+    { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables), require('./menu-pricing').keyModeOfTables(pricingTables)); if (dishQty) heldUpdates[`orders/${orderId}`].dish_qty = dishQty; }
     /* sb:end cash-dish-qty-held */
     if (redemptionCanonical) heldUpdates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until release→completion)
     /* a1:begin cash-marker-held */
@@ -1307,7 +1307,7 @@ createOrderApp.all('*', async (req, res) => {
   attachCustomerAttribution(updates, orderId, customer_uid, { now, total: DW.totalLempiras(dq, effectiveTotal), orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
   /* sb:begin cash-dish-qty */
   // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
-  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables), keyModeOfTables(pricingTables)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }
+  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables), require('./menu-pricing').keyModeOfTables(pricingTables)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }
   /* sb:end cash-dish-qty */
   // Track A (MF2): immediate (cash/live) path — order_tracking is built HERE (not via buildMaterializeUpdates),
   // so stamp has_profile from the resolved server customer_uid. Guest → omitted → order_tracking byte-identical.
@@ -1522,7 +1522,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // availability read, the rate-limit write, the reward reserve, acquireHostedAttempt and
   // createHostedCharge. Placed here NO money moves and NO pending order is stranded; a guard even a
   // little later could reach PixelPay carrying prices from the retired code tables.
-  if (!pricingTables || !fiscalKeyModeOk(restaurantId, keyModeOfTables(pricingTables))) return pricingUnavailable(res);
+  if (!pricingTables) return pricingUnavailable(res);
   // 2a Task 6 — the catalog-authored redemption allowlist. Deliberately BELOW the fail-closed guard:
   // that guard must stay the first statement after the resolver, and an order that cannot be priced is
   // rejected regardless. Resolved ONCE per request so the dedupe fingerprint and the reserve cannot see
@@ -1535,7 +1535,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // AFTER the resolver → fail-closed guard → eligibility chain, which is pinned contiguous elsewhere.
   // T6 ships the READING only; the flip to true is an owner action once the client has shipped and the
   // no-token rate has reached ~0 (server and client must both be live before enforcing).
-  const tokenEnforce = await tokenEnforceEnabled(db);
+  const tokenEnforce = await tokenEnforceEnabled(db); if (!fiscalKeyModeOk(restaurantId, keyModeOfTables(pricingTables))) return pricingUnavailable(res);   // S0 fiscal fence: refused before any write or hold
 
   /* ── 1D D4-grace — RESOLVE THE IDENTITY FORWARD, ONCE, BEFORE PRICING ────────────────────────
      Placed here because everything below prices through itemPricingKey, and the stamp is what that
@@ -1983,7 +1983,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   /* sd:end reorder-price-snapshot */
   /* sb:begin online-dish-qty */
   // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
-  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables), keyModeOfTables(pricingTables)); if (dishQty) pendingOrderRecord.dish_qty = dishQty; }
+  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables), require('./menu-pricing').keyModeOfTables(pricingTables)); if (dishQty) pendingOrderRecord.dish_qty = dishQty; }
   /* sb:end online-dish-qty */
   /* serial3:begin card-content-keys */
   // §3 r3 (codex r3 P1): the order's content keys, computed HERE where the pricing version's catalog snapshot is warm, and

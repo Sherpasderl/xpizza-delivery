@@ -1700,7 +1700,7 @@ async function verifyVersionStructure(db, rid, versionId) {
   // (2) ...and what was PERSISTED is a valid candidate, not merely a readable one. The pre-publish
   // check validated the publisher's intention; this validates the fact. They are not the same claim,
   // and only the second one describes what customers would get.
-  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure }),
+  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode }),
     `${rid}/versions/${versionId} (pre-flip)`);
   return served;
 }

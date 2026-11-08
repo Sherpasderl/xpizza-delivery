@@ -132,7 +132,7 @@ const ALLOWED = {
 //        emulator matrix proves the behaviour, these pin the text so a removal fails here first
 {
   const MUST = [
-    ['index.js', 'if (!pricingTables || !fiscalKeyModeOk(restaurantId, keyModeOfTables(pricingTables))) return pricingUnavailable(res);', 2, 'GUARD-FENCE both request heads'],
+    ['index.js', 'const tokenEnforce = await tokenEnforceEnabled(db); if (!fiscalKeyModeOk(restaurantId, keyModeOfTables(pricingTables))) return pricingUnavailable(res);', 2, 'GUARD-FENCE both request heads'],
     ['index.js', 'resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP, keyMode: keyModeOfTables(pricingTables) })', 2, 'GUARD-GRACE both handlers'],
     ['catalog/catalog-publish.js', 'structure: input && input.structure, key_mode: input && input.key_mode }), `${rid} (pre-publish)`', 1, 'GUARD-PUBLISH-VALIDATE'],
     ['catalog/catalog-publish.js', "source_sha: source_sha || 'unknown', created_at: FieldValue.serverTimestamp(), ...(key_mode == null ? {} : { key_mode }),", 1, 'GUARD-PUBLISH-RECORD'],
@@ -148,6 +148,9 @@ const ALLOWED = {
     ['catalog/catalog-menu.js', "identity, ...require('./catalog-firestore').keyModeField(record.key_mode, where) };", 1, 'GUARD-VERSION-MENU'],
     ['catalog/edit-catalog-handler.js', 'let candidate = canonicalize(withServerKeyMode(source, keyModeOwn.key_mode));', 1, 'GUARD-PORTAL-SAVE'],
     ['catalog/reset-draft.js', "&& k !== 'key_mode') payload[k] = null;", 1, 'GUARD-RESET-KEEPS'],
+    ['catalog/catalog-publish.js', 'structure: served.structure, key_mode: served.keyMode }),\n    `${rid}/versions/${versionId} (pre-flip)`', 1, 'GUARD-PREFLIP the persisted version is judged by its own mode (publish and rollback)'],
+    ['reorder-normalize.js', 'const eid = extraPricingKey(ex, restaurantId, keyMode);', 1, 'GUARD-REORDER-EXTRAS id-model extras keyed by the mode'],
+    ['reorder-normalize.js', 'const ename = extraPricingKey(ex, restaurantId, keyMode);', 1, 'GUARD-REORDER-EXTRAS name-model extras keyed by the mode'],
   ];
   for (const [f, text, count, label] of MUST) assert.strictEqual(read(f).split(text).length - 1, count, `🔴 ${label}: ${f} must carry the mode here (${count}×)`);
   ok(`${MUST.length} handler / publish / rollback / backfill / CLI / public-menu carries are in place`);

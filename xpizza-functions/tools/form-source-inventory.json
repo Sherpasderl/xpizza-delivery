@@ -322,6 +322,7 @@
     "xpizza-functions/test/ingest-liveness.emulator.test.js",
     "xpizza-functions/test/intake-availability.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
@@ -368,6 +369,7 @@
     "xpizza-functions/tools/extras-baseline-audit.test.js",
     "xpizza-functions/tools/form-bundle-deployed-check.test.js",
     "xpizza-functions/tools/form-bundle-live-check.test.js",
+    "xpizza-functions/tools/mem512-inverse.test.js",
     "xpizza-functions/tools/migrate-menu-structure-publish.test.js",
     "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
@@ -618,6 +620,7 @@
     "xpizza-functions/test/ingest-liveness.emulator.test.js",
     "xpizza-functions/test/intake-availability.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
@@ -662,6 +665,7 @@
     "xpizza-functions/tools/extras-baseline-audit.test.js",
     "xpizza-functions/tools/form-bundle-deployed-check.test.js",
     "xpizza-functions/tools/form-bundle-live-check.test.js",
+    "xpizza-functions/tools/mem512-inverse.test.js",
     "xpizza-functions/tools/migrate-menu-structure-publish.test.js",
     "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
@@ -991,6 +995,7 @@
     "xpizza-functions/test/ingest-liveness.emulator.test.js",
     "xpizza-functions/test/intake-availability.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
@@ -1037,6 +1042,7 @@
     "xpizza-functions/tools/extras-baseline-audit.test.js",
     "xpizza-functions/tools/form-bundle-deployed-check.test.js",
     "xpizza-functions/tools/form-bundle-live-check.test.js",
+    "xpizza-functions/tools/mem512-inverse.test.js",
     "xpizza-functions/tools/migrate-menu-structure-publish.test.js",
     "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
@@ -1288,6 +1294,7 @@
     "xpizza-functions/test/ingest-liveness.emulator.test.js",
     "xpizza-functions/test/intake-availability.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
@@ -1332,6 +1339,7 @@
     "xpizza-functions/tools/extras-baseline-audit.test.js",
     "xpizza-functions/tools/form-bundle-deployed-check.test.js",
     "xpizza-functions/tools/form-bundle-live-check.test.js",
+    "xpizza-functions/tools/mem512-inverse.test.js",
     "xpizza-functions/tools/migrate-menu-structure-publish.test.js",
     "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
@@ -2911,9 +2919,7 @@
   },
   "catalog/reset-draft.js": {
    "pins": [],
-   "lifts": [
-    "xpizza-functions/keymode-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "catalog/restaurant-registry.js": {
    "pins": [
@@ -4168,6 +4174,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4863,6 +4870,7 @@
      "inverses": [
       "tools/checkout-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
