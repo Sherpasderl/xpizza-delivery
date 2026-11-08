@@ -4492,7 +4492,8 @@
       "tools/menu-warm-inverse.js",
       "tools/photos-inverse.js",
       "tools/sb-inverse.js",
-      "tools/sd-inverse.js"
+      "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js"
      ]
     },
     {
