@@ -25,6 +25,15 @@ const ASSET_HOST = 'https://assets.sherpa.test/', ASSET_SBS = 'https://storage.g
 const FX = JSON.parse(fs.readFileSync(path.join(ROOT, 'customer-app/fixtures/s7a2/directory.json'), 'utf8').split(ASSET_HOST).join(ASSET_SBS));
 const ASSET_FILES = { 'img/xp-hero.jpg': 'xpizza-orders/hero.jpg', 'img/lm-hero.jpg': 'la-musa-orders/hero.jpg' };
 const IMG_TYPES = { '.jpg': 'image/jpeg', '.webp': 'image/webp', '.png': 'image/png' };
+// F1/F2: the public menu's `photos` are on each brand's ORDER SITE (public-photos assetBaseFor). Served from that deployment's
+// committed folder, mapped by the manifest (never a host literal); images/ only.
+const SITES = JSON.parse(fs.readFileSync(path.join(ROOT, 'platform/sites.json'), 'utf8'));
+const ORDER_SITES = new Map(SITES.deployments.filter((d) => d.app === 'orders' && d.context !== 'platform' && Array.isArray(d.origins) && d.origins.length === 1).map((d) => [d.origins[0], d.folder]));
+function orderSiteFile(origin, p) {
+  const folder = ORDER_SITES.get(origin), rel = decodeURIComponent(p).replace(/^\//, '');
+  if (!folder || !/^images\/[A-Za-z0-9_.-]+\.(jpg|webp|png)$/.test(rel) || !fs.existsSync(path.join(ROOT, folder, rel))) return { status: 404, body: '', type: 'text/plain' };
+  return { status: 200, body: fs.readFileSync(path.join(ROOT, folder, rel)), type: IMG_TYPES[path.extname(rel)] };
+}
 function assetFile(rest) {
   const rel = ASSET_FILES[rest] || (/^xpizza-orders\/images\/[A-Za-z0-9_.-]+\.(jpg|webp|png)$/.test(rest) ? rest : null);
   if (!rel || !fs.existsSync(path.join(ROOT, rel))) return { status: 404, body: '', type: 'text/plain' };
@@ -123,6 +132,7 @@ export function router(opts = {}) {
       if (opts.extra) { const x = opts.extra(req, u); if (x) return x; }
       return null;
     }
+    if (ORDER_SITES.has(u.origin)) return orderSiteFile(u.origin, p);
     if (req.url.startsWith(ASSET_SBS)) return assetFile(decodeURIComponent(req.url.slice(ASSET_SBS.length).split('?')[0]));
     if (host === 'maps.googleapis.com') return { status: 503, body: '', type: 'text/javascript' };
     if (opts.extra) { const x = opts.extra(req, u); if (x) return x; }
