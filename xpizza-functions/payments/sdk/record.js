@@ -28,9 +28,14 @@ const unansweredMoneyOps = (rec) => Object.entries(opsOf(rec)).filter(([, o]) =>
 const pendingProjection = (rec, order) => !!(order && order.payment_commit && order.payment_commit.revision > (rec.committed_revision || 0));
 
 // Financially closed (r5 §6): every issued op answered, every leg final, no lock, no pending projection, settlement complete
-// where a capture set exists, every captured liability covered by an obligation, every obligation verified, no open review.
-function isFinanciallyClosed(rec, order) {
+// where a capture set exists, every captured liability covered by an obligation, every obligation verified, no open review,
+// and a redemption on the order consumed or released.
+const REWARD_SETTLED = Object.freeze(['consumed', 'released']);
+// opts.rewardState: the order's redemption reservation state (read by the caller) — an SDK order carrying a redemption is
+// closed only once it is consumed or released (Codex r3 B: a failed consume is never abandoned).
+function isFinanciallyClosed(rec, order, opts = {}) {
   if (!rec) return false;
+  if (order && order.redemption && !REWARD_SETTLED.includes(opts.rewardState)) return false;
   if (rec.lock) return false;
   if (Object.values(opsOf(rec)).some((o) => !o.result)) return false;
   if (Object.values(legsOfRecord(rec)).some((l) => !LEG_FINAL.includes(l.state))) return false;

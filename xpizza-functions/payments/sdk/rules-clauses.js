@@ -2,7 +2,8 @@
 // THE rule clauses for SDK card orders (BRIEF r5 §3, §4a) — one source for the rules file, its guard and the emulator suite.
 // The server-only decision fields are written ONLY by the Admin SDK (which bypasses rules); a client can never create,
 // change or remove them, and can never move a delivered/completed SDK order back. Legacy orders (no payment_flow) are untouched.
-const SCALAR_FIELDS = Object.freeze(['payment_flow', 'payment_total_cents']);
+// sdk_live_pending: the go-live's pending create-only list (one JSON string; Codex r3 A) — server-only like the decision markers
+const SCALAR_FIELDS = Object.freeze(['payment_flow', 'payment_total_cents', 'sdk_live_pending']);
 const OBJECT_FIELDS = Object.freeze({ payment_placed: ['leg_id', 'at'], payment_commit: ['revision', 'pid'], payment_terminal: ['revision', 'at'], payment_cancel: ['kind', 'at'] });
 const LEAF_IMMUTABLE = 'newData.val() === data.val()';
 const leaves = [...SCALAR_FIELDS, ...Object.entries(OBJECT_FIELDS).flatMap(([f, ls]) => ls.map((l) => `${f}/${l}`))];

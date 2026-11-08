@@ -868,7 +868,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps);
     const t = w.db.getAt(`order_tracking/${tok}`);
     assert.ok(t.display_number === 42 && t.status === 'preparing', `${L}: trigger-written leaves are never overwritten (got ${JSON.stringify({ d: t.display_number, s: t.status })})`);
-    assert.ok(t.order_type === 'delivery' && t.restaurant_name !== undefined && Object.keys(t).length > 3, `${L}: the missing leaves are initialized (got keys ${Object.keys(t).join(',')})`);
+    assert.ok(t.order_type === 'delivery' && t.order_id === OID && t.items_text === '1x tb_item', `${L}: the missing leaves are initialized (got keys ${Object.keys(t).join(',')})`);
   });
   await cell('SDK-REWARD-CONSUME-FAILURE-KEEPS-DUE', async (L) => {
     let left = 6;   // go-live 1, settle 2, then two sweeper visits × (settle + sweeper) = 6 failed consumes
