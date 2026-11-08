@@ -18,7 +18,11 @@ const o = rules.orders.$order_id;
 assert.ok(o['.write'].endsWith(` && ${SR.PRESERVE}`), 'SPR-PRESERVE: the order-level .write must END with the server-field preservation clause (covers create / change / leaf delete / whole-order replace / order delete)');
 ok('order .write preserves every server-only payment field');
 assert.ok(o['.validate'].endsWith(` && ${SR.NO_REVERSAL_ORDER}`), 'SPR-NO-REVERSAL-ORDER: the order-level .validate must END with the no-reversal clause (whole-order / multipath writes)');
-assert.ok(o.status['.validate'].endsWith(` && (${SR.NO_REVERSAL_STATUS})`), 'SPR-NO-REVERSAL-STATUS: status .validate must END with the SDK no-reversal clause (leaf writes)');
+assert.ok(o.status['.validate'].startsWith('(') && o.status['.validate'].endsWith(`) && (${SR.NO_REVERSAL_STATUS})`), 'SPR-NO-REVERSAL-STATUS: status .validate must be (the existing alternatives) && (the SDK no-reversal clause) — without the parentheses && binds only to the last alternative and dispatchers / kitchen bypass it');
+{ // the clause must hold for EVERY alternative: evaluate the expression's top-level structure, not just its text
+  const depth0 = (e) => { let d = 0; const tops = []; for (let i = 0; i < e.length; i++) { const c = e[i]; if (c === '(') d++; else if (c === ')') d--; else if (d === 0 && e.startsWith(' || ', i)) tops.push(i); } return tops; };
+  assert.deepStrictEqual(depth0(o.status['.validate']), [], 'SPR-NO-REVERSAL-STATUS: no top-level || may escape the no-reversal clause');
+}
 ok('a terminal SDK order cannot be moved back by a client (leaf + whole-order)');
 for (const [f, leaves] of Object.entries(SR.OBJECT_FIELDS)) {
   const node = o[f];
