@@ -37,10 +37,18 @@
     const variants = obj(m.variant_items);
     const choiceOf = new Map();
     for (const [launcherId, g] of Object.entries(variants)) for (const vid of list(g && g.variantIds)) choiceOf.set(String(vid), String(launcherId));
+    // F1 (advisor 11-08): the dish photos are the public menu's `photos` — THE one source (public-photos.js: { [String(dish.id)]:
+    // { card, hero } }, absolute https). A malformed entry is no photo, never a guessed URL; absent → the dish.img fallback (capp-ui).
+    // Codex r2 P2-3: on a PHOTO-CAPABLE payload (representation_version ≥ 1d.2 — the bump that added `photos`; anything newer
+    // too) the map is AUTHORITATIVE: a dish it leaves out ({state:'removed'} deletes the id) and an omitted map (all removed, or an
+    // unreadable version doc the server withholds) mean NO photo. Only a LEGACY payload (no marker, 1d.0 / 1d.1) keeps dish.img.
+    const rvm = /^1d\.(\d+)$/.exec(String(envelope.representation_version || '')), legacyPhotos = !envelope.representation_version || (!!rvm && Number(rvm[1]) < 2);
+    const served = obj(m.photos), httpsUrl = (u) => typeof u === 'string' && /^https:\/\/[^\s"'<>\\]+$/.test(u);
+    const photoOf = (d) => { const p = served[String(d.id)]; return p && httpsUrl(p.card) && httpsUrl(p.hero) ? Object.freeze({ card: p.card, hero: p.hero }) : null; };
     const dishes = list(m.dishes).map((d) => {
       const isLauncher = Object.prototype.hasOwnProperty.call(variants, String(d.id));
       return Object.freeze({ key: keyOf(d), id: d.id, name: String(d.name || ''), dish_id: d.dish_id, price: Number(d.price), cat: d.cat, desc: d.desc || '',
-        img: d.img || null, tags: list(d.tags), launcher: isLauncher, variantOf: d.variantOf != null ? String(d.variantOf) : (choiceOf.get(String(d.id)) || null),
+        img: d.img || null, photo: photoOf(d), tags: list(d.tags), launcher: isLauncher, variantOf: d.variantOf != null ? String(d.variantOf) : (choiceOf.get(String(d.id)) || null),
         choice: d.choice || null });
     });
     const dishByKey = new Map(dishes.map((d) => [d.key, d]));
@@ -66,9 +74,10 @@
         choices: list(g && g.variantIds).map((v) => dishById.get(String(v))).filter(Boolean).map((c) => c.key) });
     }
     return Object.freeze({
-      rid: envelope.rid, representation_version: envelope.representation_version,
-      // PLAN-avail-identity (5f, marker 1d.3): the restaurant's availability identity — 'id' | 'name', else null (an older envelope)
-      availIdentity: envelope.avail_identity && (envelope.avail_identity.field === 'id' || envelope.avail_identity.field === 'name') ? envelope.avail_identity.field : null,
+      rid: envelope.rid, representation_version: envelope.representation_version, photosAuthoritative: !legacyPhotos,
+      // PLAN-avail-identity (5f, marker 1d.3): the restaurant's availability identity — 'id' | 'name', else null (an older envelope).
+      // It lives IN the served body (catalog/public-menu.js writes body.avail_identity; the endpoint sends { …, menu: body })
+      availIdentity: m.avail_identity && (m.avail_identity.field === 'id' || m.avail_identity.field === 'name') ? m.avail_identity.field : null,
       dishes, extras, categories: list(m.categories).map((c) => Object.freeze({ id: c.id, name: c.name != null ? String(c.name) : null })),
       dish: (k) => dishByKey.get(String(k)) || null, extra: (k) => extraByKey.get(String(k)) || null, extrasFor,
       groups: Object.freeze(groups), pickupOnlyCats: new Set(list(m.pickup_only_cats).map(String)), weekendOnlyCats: new Set(list(m.weekend_only_cats).map(String)),

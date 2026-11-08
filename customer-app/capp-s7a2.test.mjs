@@ -141,7 +141,8 @@ const txt = (el) => { if (!el) return null; const tw = el.ownerDocument.createTr
 test('Inicio S5-absent: no statistics rows; «Destacados» = «Abiertos ahora y para pedir hoy», open first then directory order', () => {
   const d = dom(CappHome.homeHtml(VM()));
   const secs = [...d.querySelectorAll('.hsec')].map((s) => s.getAttribute('aria-label'));
-  assert.deepEqual(secs, ['Destacados', 'La casa recomienda', 'Todos los restaurantes']);
+  // F1 (11-08): la_musa's served photos now reach the app ⇒ its photographed meal dishes form «Para compartir» (rows need a photo)
+  assert.deepEqual(secs, ['Destacados', 'La casa recomienda', 'Para compartir', 'Todos los restaurantes']);
   assert.ok(!/más pedido|volvieron a pedir|vuelven a pedir|%/.test(d.querySelector('#x').textContent), 'nothing from statistics');
   assert.equal(txt(d.querySelector('.hsec[aria-label="Destacados"] p')), 'Abiertos ahora y para pedir hoy');
   // 6:00 p.m.: x_pizza open (12–7:45), la_musa open (5–8:45); 8:00 p.m.: only la_musa ⇒ it leads
@@ -151,7 +152,8 @@ test('Inicio S5-absent: no statistics rows; «Destacados» = «Abiertos ahora y 
 test('Inicio house: ids ⇒ those canonical dishes (a dish the loaded menu lacks is dropped); absent ⇒ catalog-tag fallback; [] ⇒ hidden', () => {
   const xp = SC.complete.body.restaurants[0];
   const withHouse = (house) => { const rows = rowsOf(SC.complete.body); rows[0] = { ...rows[0], entry: { ...xp, house } }; return rows; };
-  const names = (rows) => [...dom(CappHome.homeHtml(VM({ rows }))).querySelectorAll('.hsec[aria-label="La casa recomienda"] .dcard .nm')].map((n) => n.textContent);
+  // THIS store's cards only (F1, 11-08: la_musa's served photos now put its own tag-fallback dishes in the same row)
+  const names = (rows) => [...dom(CappHome.homeHtml(VM({ rows }))).querySelectorAll(`.hsec[aria-label="La casa recomienda"] .dcard[data-rid="${xp.restaurant_id}"] .nm`)].map((n) => n.textContent);
   assert.deepEqual(names(withHouse(xp.house)), ['Sweet Corn & Calabrian Chili', 'Pancetta Vodka Sauce', 'Pistaccio Mortadella', 'Prosciutto']);
   assert.deepEqual(names(withHouse(['ZZZZZZZZZZ', ...xp.house.slice(0, 2)])), ['Pistaccio Mortadella', 'Prosciutto'], 'an unknown id is dropped; the rest in menu order');
   assert.deepEqual(names(withHouse([])), [], 'house: [] hides the row');

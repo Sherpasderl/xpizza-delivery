@@ -32,8 +32,12 @@ import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = '2ce3198d';
-const CAPP_TIP = '239a90a7';
+const CAPP_TIP = '3de0345e';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
+// git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
+const paths = (out) => out.split('\0').filter(Boolean);
+// byte identity, null-safe: a missing copy is a named failure, not an ENOENT before the named assertion (Codex r1 P3)
+const sameBytes = (a, b) => existsSync(join(ROOT, a)) && existsSync(join(ROOT, b)) && readFileSync(join(ROOT, a)).equals(readFileSync(join(ROOT, b)));
 const isAncestor = (a, b) => { try { git('merge-base', '--is-ancestor', a, b); return true; } catch (_) { return false; } };
 // the files tools/sync-client.js copies INTO customer-app/ — read from sync-client itself (run against a recording fs; nothing written)
 const syncedIntoApp = () => {
@@ -52,9 +56,17 @@ const capRange = () => {
   assert.ok(isAncestor(BASE, CAPP_TIP), `🔴 ${BASE} is not an ancestor of ${CAPP_TIP} — not the capp range`);
   assert.ok(isAncestor(CAPP_TIP, 'HEAD'), `🔴 ${CAPP_TIP} is not in HEAD's history — the capp range is not part of this tree`);
   const synced = syncedIntoApp();
-  for (const { src, dst } of synced) assert.ok(readFileSync(join(ROOT, dst)).equals(readFileSync(join(ROOT, src))), `🔴 ${dst} is a sync-client copy but differs from its source ${src} — an edit hidden in a synced file`);
-  const later = git('log', '--no-merges', '--first-parent', '--format=%h %s', `${CAPP_TIP}..HEAD`, '--', 'customer-app/', ':(exclude)customer-app/capp-guards.test.mjs',
-    ...synced.map(({ dst }) => `:(exclude)${dst}`)).trim();
+  for (const { src, dst } of synced) assert.ok(sameBytes(dst, src), `🔴 ${dst} is a sync-client copy but differs from (or is missing beside) its source ${src} — an edit hidden in a synced file`);
+  // the lane's first-parent commits AND every descendant of the pin (--ancestry-path): a lane commit after the pin that comes in as a
+  // merge's SECOND parent (the assembly shape) is off the first-parent chain, and the merge equals that parent, so neither the
+  // first-parent walk nor the evil-merge cell would see it (Codex r1 P2-1). Main's own merged-in history is not a descendant of the pin.
+  // Both ranges are listed WITHOUT a pathspec (Codex r2 P2-1): a path-limited walk applies git's history simplification, which drops a
+  // merge's side when the merge is TREESAME to a parent for that path; each listed commit's OWN paths are then filtered here.
+  const skip = new Set(['customer-app/capp-guards.test.mjs', ...synced.map(({ dst }) => dst)]);
+  const touched = (range) => git('log', '--no-merges', '--no-renames', '--name-only', '-z', '--format=%x01%h %s', ...range).split('\x01').filter(Boolean)
+    .map((rec) => { const [head, ...files] = rec.split('\0'); const [subject, first] = head.split('\n'); return { subject, files: [first, ...files].map((f) => (f || '').replace(/^\n+/, '')).filter(Boolean) }; })
+    .filter(({ files }) => files.some((f) => f.startsWith('customer-app/') && !skip.has(f))).map(({ subject }) => subject);
+  const later = [...new Set([...touched(['--first-parent', `${CAPP_TIP}..HEAD`]), ...touched(['--ancestry-path', `${CAPP_TIP}..HEAD`])])].join('\n');
   assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP ${CAPP_TIP} — re-point CAPP_TIP to the newest of them:\n${later}`);
   return [BASE, CAPP_TIP];
 };
@@ -67,7 +79,7 @@ const resolutionEdits = (upTo, scopes) => {
   const out = [];
   for (const m of git('rev-list', '--first-parent', '--merges', `${BASE}..${upTo}`).trim().split('\n').filter(Boolean)) {
     const parents = git('log', '-1', '--format=%P', m).trim().split(' ').filter(Boolean);
-    for (const f of git('diff', '--name-only', `${m}^1`, m, '--', ...scopes).trim().split('\n').filter(Boolean)) {
+    for (const f of paths(git('diff', '--no-renames', '--name-only', '-z', `${m}^1`, m, '--', ...scopes))) {
       const b = blobAt(m, f);
       if (parents.every((p) => blobAt(p, f) !== b)) out.push({ m, f });
     }
@@ -75,7 +87,8 @@ const resolutionEdits = (upTo, scopes) => {
   return out;
 };
 const laneCommits = (upTo, scopes) => git('log', '--first-parent', '--no-merges', '--format=%H', `${BASE}..${upTo}`, '--', ...scopes).trim().split('\n').filter(Boolean);
-const laneChanged = (upTo, scopes) => [...new Set(git('log', '--first-parent', '--no-merges', '--name-only', '--format=', `${BASE}..${upTo}`, '--', ...scopes).trim().split('\n').filter(Boolean)
+// --no-renames: a rename reports BOTH paths, so a server file moved into test/ still counts as a server change (Codex r1 P2-2)
+const laneChanged = (upTo, scopes) => [...new Set(paths(git('log', '--first-parent', '--no-merges', '--no-renames', '--name-only', '-z', '--format=', `${BASE}..${upTo}`, '--', ...scopes)).map((f) => f.replace(/^\n+/, ''))
   .concat(resolutionEdits(upTo, scopes).map(({ f }) => f)))].sort();
 const LEAK = /x_pizza|la_musa|xpizza|lamusa|X\.? ?Pizza|La Musa/i;
 // sherpa-client.js is the shared PLATFORM module, synced byte-for-byte into every manifest site (npm run sync:client); it is
@@ -102,9 +115,9 @@ test('no restaurant id or name in customer-app/ code', () => {
     assert.equal(hit, null, `🔴 ${f} carries a restaurant literal: ${hit && hit[0]}`);
   }
   assert.ok(LEAK.test("rid === 'la_musa'") && LEAK.test('X. Pizza'), 'non-vacuity: the detector fires');
-  assert.ok(readFileSync(join(ROOT, 'customer-app', SYNCED)).equals(readFileSync(join(ROOT, 'platform', 'client', SYNCED))), `🔴 customer-app/${SYNCED} is not the platform copy — the literal-scan exemption no longer holds`);
+  assert.ok(sameBytes(`customer-app/${SYNCED}`, `platform/client/${SYNCED}`), `🔴 customer-app/${SYNCED} is not the platform copy — the literal-scan exemption no longer holds`);
   for (const [f, sources] of Object.entries(PORTED)) for (const src of sources) {
-    assert.ok(readFileSync(join(ROOT, 'customer-app', f)).equals(readFileSync(join(ROOT, src))), `🔴 customer-app/${f} is not byte-identical to ${src} — the literal-scan exemption no longer holds`);
+    assert.ok(sameBytes(`customer-app/${f}`, src), `🔴 customer-app/${f} is not byte-identical to (or is missing beside) ${src} — the literal-scan exemption no longer holds`);
   }
 });
 
@@ -197,16 +210,11 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // the resolution itself (equal to parent 2 = the merged-in line's own change; equal to parent 1 = untouched). The sync-client and
 // PORTED copies are exempt (their byte-identity checks own them, re-asserted here); any other hit must sit in MERGE_ALLOW, keyed
 // «<merge sha8> <path>», with a one-line reason — reviewed, and an entry that no longer hits is stale and fails.
-const MERGE_ALLOW = {
-  // DRYRUN (2e, next-train dry assembly asm2; TRAIN-NEXT2 A4): 1bca1782 hand-wrote CAPP_TIP (the pre-B4 placeholder pin + a DRYRUN
-  // comment) in the first capp merge; the B4 merge 01d76176 then took capp's line verbatim. The REAL assembly merges the capp tip
-  // taking capp-guards VERBATIM, so this entry must NOT exist there (its stale check makes it RED if unused).
-  '1bca1782 customer-app/capp-guards.test.mjs': 'dry-run placeholder CAPP_TIP, superseded verbatim by the B4 merge',
-};
+const MERGE_ALLOW = {};
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
-  for (const { src, dst } of synced) assert.ok(readFileSync(join(ROOT, dst)).equals(readFileSync(join(ROOT, src))), `🔴 ${dst} differs from its source ${src} — the merge exemption no longer holds`);
-  for (const [f, sources] of Object.entries(PORTED)) for (const src of sources) assert.ok(readFileSync(join(ROOT, 'customer-app', f)).equals(readFileSync(join(ROOT, src))), `🔴 customer-app/${f} differs from ${src} — the merge exemption no longer holds`);
+  for (const { src, dst } of synced) assert.ok(sameBytes(dst, src), `🔴 ${dst} differs from (or is missing beside) its source ${src} — the merge exemption no longer holds`);
+  for (const [f, sources] of Object.entries(PORTED)) for (const src of sources) assert.ok(sameBytes(`customer-app/${f}`, src), `🔴 customer-app/${f} differs from (or is missing beside) ${src} — the merge exemption no longer holds`);
   const hits = resolutionEdits('HEAD', ['customer-app/']).filter(({ f }) => !exempt.has(f)).map(({ m, f }) => `${m.slice(0, 8)} ${f}`);
   const unlisted = hits.filter((h) => !(h in MERGE_ALLOW)), stale = Object.keys(MERGE_ALLOW).filter((k) => !hits.includes(k));
   assert.equal(unlisted.join('\n'), '', `🔴 customer-app/ edit(s) made in a merge resolution (differ from every parent; not in MERGE_ALLOW):\n${unlisted.join('\n')}`);

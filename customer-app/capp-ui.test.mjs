@@ -133,6 +133,60 @@ test('cart sheet: empty state; «Agotado» rows are dimmed and cannot be added',
   assert.equal(s.ui.cart.count(), 0, 'a sold-out dish is never added');
 });
 
+// F1 (advisor 11-08, LAUNCH GATE; found by the SBS): the dish photos come from the public menu's `photos` field — the ONE source
+// (xpizza-functions/catalog/public-photos.js: absolute { card, hero } per String(dish.id)) — falling back to assetBase + dish.img.
+// The app read dish.img only, and la_musa's dishes carry no img: its 28 served photos never showed.
+test('dish photos: the REAL served `photos` (card on the row, hero on the sheet); the dish.img fallback only without it', () => {
+  const photos = PROV.la_musa.envelope.menu.photos || {};
+  const b = boot('la_musa');
+  const shown = b.ui.menu.dishes.filter((d) => photos[String(d.id)] && b.q(`#dish-${d.key}`));
+  assert.ok(shown.length >= 5, `premise: the real la_musa envelope serves photos for rendered dishes (${shown.length})`);
+  for (const d of shown) {
+    const img = b.q(`#dish-${d.key} img`);
+    assert.equal(img && img.getAttribute('src'), photos[String(d.id)].card, `🔴 ${d.name}: the row does not show the served photo (photos[${d.id}].card)`);
+  }
+  const d0 = shown[0]; b.click(b.q(`#dish-${d0.key} .txtbtn`));
+  const hero = b.q('.detail-photo-img');
+  assert.equal(hero && hero.getAttribute('src'), photos[String(d0.id)].hero, `🔴 ${d0.name}: the dish sheet does not show the served hero (photos[${d0.id}].hero)`);
+  // Codex r2 P2-3: on a PHOTO-CAPABLE payload (representation_version ≥ 1d.2, the bump that added `photos`) the served map is
+  // AUTHORITATIVE — a dish it leaves out (the overlay DELETES a {state:'removed'} id) or an omitted map (all removed / unreadable:
+  // the server omits it so a removed photo never shows) has NO photo; dish.img must not resurrect it. The assetBase + dish.img
+  // fallback is only for a LEGACY payload (no representation_version, or 1d.0 / 1d.1) that cannot carry photos.
+  const xp = PROV.x_pizza.envelope, d1 = xp.menu.dishes.find((x) => x.img && (xp.menu.photos || {})[String(x.id)]);
+  assert.ok(d1 && /^1d\.([2-9]|\d{2,})$/.test(xp.representation_version), 'premise: x_pizza serves a photographed dish.img on a photo-capable payload');
+  const AB = { config: { assetBase: 'https://cdn.example/x' } };
+  const srcOf = (b, d) => { const k = b.ui.menu.dishes.find((x) => String(x.id) === String(d.id)).key, im = b.q(`#dish-${k} img`); return im ? im.getAttribute('src') : null; };
+  const { [String(d1.id)]: _gone, ...rest } = xp.menu.photos;
+  assert.equal(srcOf(boot('x_pizza', { envelope: { ...xp, menu: { ...xp.menu, photos: rest } }, ...AB }), d1), null, '🔴 a REMOVED photo (left out of the served map) came back through dish.img');
+  assert.equal(srcOf(boot('x_pizza', { envelope: { ...xp, menu: { ...xp.menu, photos: undefined } }, ...AB }), d1), null, '🔴 an OMITTED photo map on a photo-capable payload fell back to dish.img');
+  const bad = { ...xp, menu: { ...xp.menu, photos: { [String(d1.id)]: { card: 'javascript:alert(1)', hero: 'http://plain.example/h.jpg' } } } };
+  assert.equal(srcOf(boot('x_pizza', { envelope: bad, ...AB }), d1), null, '🔴 a malformed served photo entry reached the page');
+  // the legacy payload keeps today's fallback
+  const legacy = { ...xp, representation_version: '1d.1', menu: { ...xp.menu, photos: undefined } };
+  assert.equal(srcOf(boot('x_pizza', { envelope: legacy, ...AB }), d1), `https://cdn.example/x/${d1.img}`, '🔴 a LEGACY payload (1d.1, no photos) lost the dish.img fallback');
+});
+
+// F4 (advisor 11-08, the SBS sold-out scene): the sold row's «+» was inert by CSS only (pointer-events:none) — still a tab stop,
+// announced «Agregar …». Every «+» of a sold dish (the add button, and the stepper's + when it is already in the cart) is disabled,
+// aria-disabled and out of the tab order; a dish that is not sold keeps a live «+».
+test('a sold dish\'s «+» is disabled, aria-disabled and no tab stop (the add button and the in-cart stepper)', () => {
+  const pick = (b) => b.ui.menu.dishes.filter((x) => !x.launcher && !x.variantOf);
+  const [d, live] = pick(boot('la_musa'));
+  const s = boot('la_musa', { unavailable: new Set([d.key]) });
+  const inert = (el, what) => {
+    assert.ok(el, `premise: ${what} is rendered`);
+    assert.equal(el && el.disabled, true, `🔴 ${what} of a sold dish is not disabled`);
+    assert.equal(el && el.getAttribute('aria-disabled'), 'true', `🔴 ${what} of a sold dish is not aria-disabled`);
+    assert.equal(el && el.getAttribute('tabindex'), '-1', `🔴 ${what} of a sold dish is still a tab stop`);
+  };
+  const row = s.q(`#dish-${d.key}`);
+  assert.ok(row && row.classList.contains('sold-out'), 'premise: the row is sold out');
+  inert(row && row.querySelector('.qty-add-btn'), 'the add «+»');
+  inert(row && row.querySelector('.qty-ctrl-btn[data-act="inc"]'), 'the stepper «+»');
+  const ok = s.q(`#dish-${live.key} .qty-add-btn`);
+  assert.ok(ok && !ok.disabled && !ok.hasAttribute('aria-disabled') && ok.getAttribute('tabindex') !== '-1', 'non-vacuity: a dish that is not sold keeps a live «+»');
+});
+
 test('restore: a line that no longer fits is dropped and counted in the prototype\'s note', () => {
   const b = boot('la_musa'); const d = b.ui.menu.dishes.find((x) => !x.launcher && !x.variantOf);
   const r = b.ui.restore({ v: 2, lines: [{ key: d.key, qty: 1, ex: [{}], added: 1 }, { key: 'gone', qty: 1, ex: [{}], added: 2 }] });

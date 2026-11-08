@@ -23,6 +23,12 @@ const show = (rel) => execFileSync('git', ['show', `${HEAD}:${rel}`], { cwd: ROO
 const SITES = JSON.parse(show('platform/sites.json')), COMPAT = JSON.parse(show('platform/compat.json'));
 const DEP = SITES.deployments.find((d) => d.app === 'orders' && d.context === 'platform');
 const LOCK = JSON.parse(show('platform/native/vendor/sdk-lock.json'));
+// F2: the dish-photo hosts as the PUBLISHERS' rules produce them (never the packager's own photoOrigins — a guard on two rebuilt
+// sides hides a loss): each manifest brand's order-site base (public-photos assetBaseFor) + the public bucket (photos/ publicUrl)
+const { assetBaseFor, buildPhotos } = require(path.join(ROOT, 'xpizza-functions/catalog/public-photos'));
+const { publicUrl } = require(path.join(ROOT, 'xpizza-functions/photos/editable-photos'));
+const PHOTO_RIDS = [...new Set(SITES.deployments.filter((d) => d.app === 'orders' && d.context !== 'platform').map((d) => d.context))];
+const PHOTO_HOSTS = [...new Set([...PHOTO_RIDS.map((rid) => assetBaseFor(rid, SITES)).filter(Boolean).map((b) => new URL(b).origin), new URL(publicUrl('bucket', 'rid', 'pid', 'card')).origin])].sort();
 // the APP-TRAIN obligation (below): with 3a's capp-guest server in THIS commit, every real build carries guestCardOnly — so the
 // baseline builds here name it too (the packager refuses them otherwise); with the server absent, the baseline is flag-free
 const GUEST = 'xpizza-functions/checkout-guest-gate.js';
@@ -70,7 +76,7 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   const web = show('customer-app/shell.html').toString('utf8'), blocks = [...web.matchAll(/<style>([\s\S]*?)<\/style>/g)];
   assert.strictEqual(blocks.length, 1, 'premise: the web shell has one fixed <style> block');
   const HASH = `sha256-${require('crypto').createHash('sha256').update(blocks[0][1], 'utf8').digest('base64')}`;
-  const PLAN = `default-src 'self'; script-src 'self' https://maps.googleapis.com; connect-src 'self' ${rt.functions_base} ${rt.availability_base} wss://${rtdb} https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://maps.googleapis.com; img-src 'self' data: https://maps.googleapis.com https://storage.googleapis.com; font-src 'self'; style-src 'self' '${HASH}'; style-src-attr 'unsafe-inline'; frame-src 'none'`;
+  const PLAN = `default-src 'self'; script-src 'self' https://maps.googleapis.com; connect-src 'self' ${rt.functions_base} ${rt.availability_base} wss://${rtdb} https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://maps.googleapis.com; img-src 'self' data: https://maps.googleapis.com ${PHOTO_HOSTS.join(' ')}; font-src 'self'; style-src 'self' '${HASH}'; style-src-attr 'unsafe-inline'; frame-src 'none'`;
   assert.strictEqual(B.csp, PLAN, '🔴 the CSP differs from plan §1.2 (+ Codex r1 #3)');
   assert.ok(!B.csp.includes('*'), 'no wildcard'); assert.ok(txt(P.ENTRY).includes(`content="${PLAN}"`));
   const styleSrc = B.csp.split('; ').find((d) => d.startsWith('style-src '));
@@ -215,5 +221,48 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   assert.ok(cmd, 'premise: the web release command runs the packager');
   if (present) assert.ok(/--flags\s+\S*\bguestCardOnly\b/.test(cmd), `🔴 the guest server is in this tree: the web release command must pass --flags …guestCardOnly (${cmd})`);
   ok(`APP-TRAIN obligation: with 3a's capp-guest server present, the packager REFUSES a web or native build without guestCardOnly (and builds with it); the web release command is checked against this tree (guest server ${present ? 'PRESENT' : 'absent'})`);
+}
+// 8. F2 (advisor 11-08, LAUNCH GATE): every dish-photo host the public menu can serve is admitted by img-src, GENERATED — never
+//    hand-listed. The hosts come from the publishers' own rules: catalog/public-photos.js assetBaseFor (each brand's order site, from
+//    the manifest) and photos/ publicUrl (the public photos bucket). The SBS found the packaged CSP blocking every served photo.
+{
+  const B8 = P.build({ sha: HEAD, ...NAT });
+  const img = (B8.csp.split('; ').find((d) => d.startsWith('img-src ')) || '').split(' ').slice(1);
+  const rids = PHOTO_RIDS;
+  assert.ok(rids.length >= 2, `premise: the manifest has brand order sites (${rids.join(', ')})`);
+  const served = [];
+  for (const rid of rids) {
+    const base = assetBaseFor(rid, SITES);
+    assert.ok(base, `premise: ${rid} has one order-site photo base`);
+    // the publisher's own rule only ever emits URLs under that base (both record shapes: a relative img, has_photo)
+    const ph = buildPhotos({ items: [{ key: 'k1', display: { id: 1, img: 'images/a.jpg' } }, { key: 'k2', display: { id: 2, has_photo: true } }] }, base);
+    const urls = Object.values(ph).flatMap((p) => [p.card, p.hero]);
+    assert.ok(urls.length > 0 && urls.every((u) => u.startsWith(base)), `premise: ${rid}'s photo URLs are under its base`);
+    served.push(...urls.map((u) => new URL(u).origin));
+  }
+  served.push(new URL(publicUrl('bucket', rids[0], 'pid', 'card')).origin);   // portal-published photos: the public bucket
+  const missing = [...new Set(served)].filter((o) => !img.includes(o));
+  assert.deepStrictEqual(missing, [], `🔴 img-src does not admit the dish-photo host(s) the menu can serve: ${missing.join(', ')}`);
+  ok(`img-src admits every dish-photo host the menu can serve, from the publishers' rules (${[...new Set(served)].length}: each brand's order site + the public bucket)`);
+}
+// 9. Codex r2 P2-2: a manifest origin must not change meaning inside the CSP <meta> attribute. `&colon;` decodes to ':' (another
+//    origin admitted) and a `"` ends the attribute (every later source and directive dropped). Every network source is a strict
+//    https/wss origin or the build refuses; the attribute is HTML-escaped; the PARSED <meta>.content is the CSP, exactly.
+{
+  const rt = DEP.runtime, HASH9 = 'sha256-AAAA';
+  for (const bad of ['https://example.com&colon;443', 'https://example.com"oops', 'https://exa mple.com', 'https://example.com/path', 'http://example.com', 'https://example.com;script-src *', "https://example.com'", 'https://example.com<x']) {
+    let threw = null; try { P.cspFor({ ...rt, functions_base: bad }, HASH9, []); } catch (e) { threw = e; }
+    assert.ok(threw, `🔴 the CSP admitted a malformed runtime origin: ${JSON.stringify(bad)}`);
+    threw = null; try { P.cspFor(rt, HASH9, [bad]); } catch (e) { threw = e; }
+    assert.ok(threw, `🔴 the CSP admitted a malformed photo origin: ${JSON.stringify(bad)}`);
+  }
+  const B9 = P.build({ sha: HEAD, ...WEB }), page = B9.files.get(P.ENTRY).toString('utf8');
+  const meta = new JSDOM(page).window.document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  assert.strictEqual(meta && meta.getAttribute('content'), B9.csp, '🔴 the parsed <meta> CSP is not the CSP the packager built');
+  // the attribute is escaped on its own (the belt): a value with an entity, a quote and a tag reads back verbatim
+  const hostile = `img-src https://a.example&colon;443 "x" <b>`;
+  const back = new JSDOM(`<!doctype html><head>${P.cspMeta(hostile)}</head>`).window.document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  assert.strictEqual(back && back.getAttribute('content'), hostile, '🔴 the <meta> attribute is not HTML-escaped (an entity or a quote changes the CSP)');
+  ok('the CSP refuses every malformed origin (entities, quotes, spaces, paths, http, separators) and the parsed <meta>.content is the built CSP');
 }
 console.log(`package-capp: OK (${n})`);
