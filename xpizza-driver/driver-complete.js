@@ -85,9 +85,20 @@ export function buildCompleteTaskUpdates({ driverId, taskId, task, allTasks, now
     }
 
     if (nextDeliveryId) {
-      // Stacked: promote next delivery to current, keep en_route_delivery state
-      updates[`drivers/${driverId}/current_task_id`] = nextDeliveryId;
-      // status stays en_route_delivery — driver still has pizza to deliver
+      // Stacked: promote the next stop to current, keep en_route_delivery state. The pointer must name that stop's
+      // WORKING task — its PICKUP while that order's pickup is not yet completed, else its DELIVERY. A stacked order
+      // that joined post-pickup (reassigned to a driver already out for delivery) has its delivery accepted but its
+      // pickup still uncompleted; the driver has to pick it up before delivering, so the pointer names that PICKUP.
+      // Pointing at the delivery while the pickup is pending made current_task_id disagree with the stop's working
+      // task, which the pointer gate reads as "pointer set but unresolved" and locked the «Recogí el pedido» slide
+      // (bug #962, 2026-11-07). A delivery task with no linked pickup, or a pickup already completed, keeps today's
+      // behaviour (→ the delivery), so non-stacked / already-picked-up flows are byte-identical.
+      const nextDelivery = allTasks[nextDeliveryId];
+      const nextPickupId = nextDelivery && nextDelivery.linked_task_id;
+      const nextPickup = nextPickupId ? allTasks[nextPickupId] : null;
+      const nextWorkingId = (nextPickup && nextPickup.status !== TASK_STATUS.COMPLETED) ? nextPickupId : nextDeliveryId;
+      updates[`drivers/${driverId}/current_task_id`] = nextWorkingId;
+      // status stays en_route_delivery — driver still has a stop to work
     } else {
       // No stacked deliveries — driver returns to restaurant
       updates[`drivers/${driverId}/current_task_id`] = null;
