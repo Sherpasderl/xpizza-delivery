@@ -103,6 +103,7 @@ export function buildCompleteTaskUpdates({ driverId, taskId, task, allTasks, now
       // (→ the delivery), preserving today's behaviour (incl. its unresolved-pointer limitation for malformed data).
       const validActionablePickup = !!(nextPickup
         && nextPickup.type === TASK_TYPE.PICKUP
+        && typeof nextDelivery.order_id === 'string' && nextDelivery.order_id !== ''
         && nextPickup.order_id === nextDelivery.order_id
         && nextPickup.assigned_driver_id === driverId
         && (nextPickup.status === TASK_STATUS.ACCEPTED || nextPickup.status === TASK_STATUS.IN_PROGRESS)

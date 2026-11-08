@@ -48,6 +48,15 @@ t('foreign: next delivery whose pickup belongs to another driver → KEEPS the d
   const u = buildCompleteTaskUpdates({ driverId: UID, taskId: 'A_del', task: A_del, allTasks: { A_del, c_pu: C_pu, c_del: C_del }, now: NOW });
   assert.equal(u[`drivers/${UID}/current_task_id`], 'c_del');
 });
+t('malformed order_id: reciprocal pair whose order_id is missing/null/empty → KEEPS the delivery pointer (no vacuous undefined===undefined match)', () => {
+  for (const oid of [undefined, null, '']) {
+    const A_del = mk({ order_id: 'a', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.IN_PROGRESS, assigned_driver_id: UID, created_at: 101, linked_task_id: 'a_pu' });
+    const C_pu = mk({ order_id: oid, type: TASK_TYPE.PICKUP, status: TASK_STATUS.ACCEPTED, assigned_driver_id: UID, created_at: 200, linked_task_id: 'c_del' });
+    const C_del = mk({ order_id: oid, type: TASK_TYPE.DELIVERY, status: TASK_STATUS.ACCEPTED, assigned_driver_id: UID, created_at: 201, linked_task_id: 'c_pu' });
+    const u = buildCompleteTaskUpdates({ driverId: UID, taskId: 'A_del', task: A_del, allTasks: { A_del, c_pu: C_pu, c_del: C_del }, now: NOW });
+    assert.equal(u[`drivers/${UID}/current_task_id`], 'c_del', `order_id=${JSON.stringify(oid)} must not substitute`);
+  }
+});
 t('control: stop 2 already picked up (pickup completed) → pointer = delivery (unchanged)', () => {
   const A_del = mk({ order_id: 'a', type: TASK_TYPE.DELIVERY, status: TASK_STATUS.IN_PROGRESS, assigned_driver_id: UID, created_at: 101, linked_task_id: 'a_pu' });
   const C_pu = mk({ order_id: 'c', type: TASK_TYPE.PICKUP, status: TASK_STATUS.COMPLETED, assigned_driver_id: UID, created_at: 200, linked_task_id: 'c_del' });
@@ -72,13 +81,13 @@ function expected(taskId, task, allTasks) {
   if (d && d.type === TASK_TYPE.DELIVERY) {
     const pId = d.linked_task_id;
     const p = pId ? allTasks[pId] : null;
-    const valid = !!(p && p.type === TASK_TYPE.PICKUP && p.order_id === d.order_id && p.assigned_driver_id === UID
+    const valid = !!(p && p.type === TASK_TYPE.PICKUP
+      && typeof d.order_id === 'string' && d.order_id !== '' && p.order_id === d.order_id && p.assigned_driver_id === UID
       && (p.status === TASK_STATUS.ACCEPTED || p.status === TASK_STATUS.IN_PROGRESS) && p.linked_task_id === dId);
     if (valid) return { ...old, [PTR]: pId };
   }
   return old;
 }
-function norm(o) { return JSON.stringify(Object.keys(o).sort().map((k) => [k, o[k]])); }
 function compare(label, taskId, task, allTasks, counters) {
   counters.scenarios++;
   let oErr = null, nErr = null, exp, got;
@@ -86,7 +95,9 @@ function compare(label, taskId, task, allTasks, counters) {
   try { got = buildCompleteTaskUpdates({ driverId: UID, taskId, task, allTasks, now: NOW }); } catch (e) { nErr = e.message; }
   assert.equal(!!oErr, !!nErr, `${label} throw mismatch: old=${oErr} new=${nErr}`);
   if (oErr) { assert.equal(oErr, nErr, `${label} error text`); counters.throws++; return; }
-  assert.equal(norm(got), norm(exp), `${label}\n    expected ${norm(exp)}\n    got      ${norm(got)}`);
+  // deepStrictEqual (NOT a JSON-normalized compare, which collapses undefined→null and would miss an undefined
+  // pointer in the no-next branch — Codex r2 (b)). It also distinguishes a missing key from a null-valued one.
+  assert.deepStrictEqual(got, exp, `${label}\n    expected ${JSON.stringify(exp)}\n    got      ${JSON.stringify(got)}`);
   if (got[PTR] !== buildOLD({ driverId: UID, taskId, task, allTasks, now: NOW })[PTR]) counters.subst++;
 }
 
