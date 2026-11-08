@@ -16060,8 +16060,8 @@
   "slice": "tracker",
   "label": "derive ignore tie",
   "file": "tracking/derive.js",
-  "from": "  const tie = first && D.some(",
-  "to": "  const tie = false && D.some(",
+  "from": "  const tie = first && !seqMode && D.some(",
+  "to": "  const tie = false && !seqMode && D.some(",
   "command": [
    "node",
    "tracking/tracking-core.test.js"
