@@ -55,7 +55,7 @@ function boot({ allOrders = {}, rateEntries = null, now = Date.UTC(2026, 9, 28, 
     'let drv2GananciasView = "hoy";\n' +
     'const driverIdentityCutoverMs = null;\n' +
     'let feedReady = _ready, cutoverLoaded = _ready;\n' +
-    'let driverState = _ready ? { active: true, name: "Marvin" } : null;\n' +
+    'let driverState = _ready ? { active: true, name: "Marvin", current_shift_id: "s" } : null;\n' +
     'const driverFeed = { hasPendingHandoff: () => _pendingHandoff };\n' +
     'function shiftIdentity(){ return { valid: _identValid, start: 0 }; }\n' +
     'let closeInFlight = false;\n' +
@@ -65,7 +65,7 @@ function boot({ allOrders = {}, rateEntries = null, now = Date.UTC(2026, 9, 28, 
     liftFn('drv2DayReady') + '\n' + liftFn('drv2DayEarned') + '\n' +   // THE one source renderGanancias (Hoy) now calls
     liftFn('renderGanancias') + '\n' +
     liftFn('refreshOpenCashSurfaces') + '\n' +
-    'return { renderGanancias, refreshOpenCashSurfaces, setReady: (b) => { feedReady = b; cutoverLoaded = b; driverState = b ? { active: true } : null; } };';
+    'return { renderGanancias, refreshOpenCashSurfaces, setReady: (b) => { feedReady = b; cutoverLoaded = b; driverState = b ? { active: true, current_shift_id: "s" } : null; } };';
   const names = ['document', 'window', '$', 'escapeHtml', 'CUADRE_WD', 'allOrders', 'currentUser', 'shiftDeliveries', 'computeShiftCash', 'coloniaOf', 'brandLabel', 'readyTimeHHMM', '_ready', '_pendingHandoff', '_identValid'];
   const api = (new Function(...names, body))(document, window, $, escapeHtml, CUADRE_WD, allOrders, { uid: 'drv' }, shiftDeliveries, computeShiftCash, coloniaOf, brandLabel, readyTimeHHMM, ready, pendingHandoff, identValid);
   const open = () => { document.getElementById('screen-ganancias').classList.remove('hidden'); };
@@ -235,7 +235,7 @@ function injectOverlay(kind, info, { rate = 7000, pagosLive = true } = {}) {
     const fns = (new Function('PAGOS_LIVE', 'window', 'allOrders', 'driverRateEntries', 'currentUser', 'driverIdentityCutoverMs',
       'feedReady', 'cutoverLoaded', 'driverState', 'driverFeed', 'shiftDeliveries', 'HN_OFFSET_MS', 'ICONS',
       liftFn('hnDayStartMs') + '\n' + liftFn('drv2DayReady') + '\n' + liftFn('drv2DayEarned') + '\n' + liftFn('drv2EarnRateFor') + '\n' + liftFn('drv2InjectInterludeEarn') + '\n' + liftFn('drv2InjectResumenEarn') + '\nreturn { ii: drv2InjectInterludeEarn, ir: drv2InjectResumenEarn };'))(
-      pagosLive, win, allOrders, entries, { uid: 'drv' }, null, true, true, { active: true }, driverFeed, shiftDeliveries, HN_OFFI, IC);
+      pagosLive, win, allOrders, entries, { uid: 'drv' }, null, true, true, { active: true, current_shift_id: 's' }, driverFeed, shiftDeliveries, HN_OFFI, IC);
     ov.dataset.oid = oid;
     (kind === 'interlude' ? fns.ii : fns.ir)(ov);
   } finally { Date.now = realNow; }
@@ -286,7 +286,7 @@ t('injection #3 late load: unknown rate → nothing; re-inject after the rate ar
   const mk = () => (new Function('PAGOS_LIVE', 'window', 'allOrders', 'driverRateEntries', 'currentUser', 'driverIdentityCutoverMs',
     'feedReady', 'cutoverLoaded', 'driverState', 'driverFeed', 'shiftDeliveries', 'HN_OFFSET_MS', 'ICONS',
     liftFn('hnDayStartMs') + '\n' + liftFn('drv2DayReady') + '\n' + liftFn('drv2DayEarned') + '\n' + liftFn('drv2EarnRateFor') + '\n' + liftFn('drv2InjectResumenEarn') + '\nreturn drv2InjectResumenEarn;'))(
-    true, win, allOrders, entries, { uid: 'drv' }, null, true, true, { active: true }, { hasPendingHandoff: () => false }, shiftDeliveries, -6 * 3600000, IC);
+    true, win, allOrders, entries, { uid: 'drv' }, null, true, true, { active: true, current_shift_id: 's' }, { hasPendingHandoff: () => false }, shiftDeliveries, -6 * 3600000, IC);
   try {
     mk()(ov);
     assert.ok(!ov.innerHTML.includes('Tu pago por esta entrega'), 'unknown rate → NOTHING injected (never stale/invented)');

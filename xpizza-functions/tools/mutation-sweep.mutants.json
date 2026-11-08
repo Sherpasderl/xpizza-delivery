@@ -31692,7 +31692,7 @@
   "to": "const earnCents = PAGOS_LIVE ? drv2DayEarned().cents + 100 : null;",
   "label": "«Ganado hoy» ONE-SOURCE parity: the offshift landing must render EXACTLY drv2DayEarned() (the Ganancias one source)",
   "kills_with": [
-   "offshift «Ganado hoy» diverges from drv2DayEarned() — a second, drifting source"
+   "«Ganado hoy» hidden while PAGOS_LIVE is false (R2)"
   ],
   "command": [
    "node",
@@ -31707,7 +31707,7 @@
   "to": "const _sd = shiftDeliveries(allOrders, currentUser && currentUser.uid, hnDayStartMs(Date.now()), driverIdentityCutoverMs); const resolved = _sd.resolved.concat(_sd.legacyProvisional);",
   "label": "«Ganado hoy» RESOLVED-ONLY: counts an order only when DELIVERED + attributed; counting legacyProvisional/pending ⇒ overcount",
   "kills_with": [
-   "«Ganado hoy» counts unresolved/provisional deliveries (not money-grade attribution)"
+   "only the resolved delivery counts (provisional excluded)"
   ],
   "command": [
    "node",
@@ -31718,11 +31718,11 @@
   "id": "gh-03",
   "slice": "gh",
   "file": "../xpizza-driver/index.html",
-  "from": "const ready = feedReady && cutoverLoaded && !!driverState && !(driverFeed && driverFeed.hasPendingHandoff()) && ident.valid;",
-  "to": "const ready = true;",
-  "label": "«Ganado hoy» MONEY-READY gate: hides until feed + cutover + a valid identity are ready and no handoff reconcile is in flight",
+  "from": "  return feedReady && cutoverLoaded && !!driverState && !(driverFeed && driverFeed.hasPendingHandoff());",
+  "to": "  return true;",
+  "label": "«Ganado hoy» MONEY-READY gate: drv2DayReady hides until feed + cutover are ready and no handoff reconcile is in flight",
   "kills_with": [
-   "«Ganado hoy» shows an amount before the money is ready (false figure over a settling feed / pending handoff)"
+   "earn BLANK while loading"
   ],
   "command": [
    "node",
@@ -31737,7 +31737,7 @@
   "to": "const cents = PR ? resolved.length * 7000 : null;",
   "label": "«Ganado hoy» RATE SOURCE: = sum of each delivery in-effect platform rate (one source); a hardcoded L70 is wrong when the rate is not 70",
   "kills_with": [
-   "«Ganado hoy» hardcodes L70 instead of the platform pay-rate reader"
+   "7000¢ + 9000¢ = L 160 (both counted)"
   ],
   "command": [
    "node",
@@ -31748,11 +31748,11 @@
   "id": "gh-05",
   "slice": "gh",
   "file": "../xpizza-driver/index.html",
-  "from": "hnDayStartMs(Date.now())",
-  "to": "todayMidnightMs()",
-  "label": "«Ganado hoy» DAY BOUNDARY: uses the Honduras (UTC-6) day start, not local midnight",
+  "from": "const HN_OFFSET_MS = -6 * 3600000;",
+  "to": "const HN_OFFSET_MS = -5 * 3600000;",
+  "label": "«Ganado hoy» DAY BOUNDARY: the Honduras day start is UTC-6, not UTC-5 (hnDayStartMs offset)",
   "kills_with": [
-   "«Ganado hoy» day window uses local midnight instead of Honduras UTC-6 (wrong day near the boundary)"
+   "HN day start = Sun 2026-10-25 00:00 HN (06:00 UTC)"
   ],
   "command": [
    "node",
@@ -31817,6 +31817,36 @@
   "command": [
    "node",
    "../xpizza-driver/ganado-hoy-earnings.test.js"
+  ]
+ },
+ {
+  "id": "gh-10",
+  "slice": "gh",
+  "file": "../xpizza-driver/index.html",
+  "from": "  if (at == null || o.delivered_by_driver_uid !== (currentUser && currentUser.uid)) return null;",
+  "to": "  if (at == null) return null;",
+  "label": "per-delivery «Tu pago» shares the ATTRIBUTION predicate — dropping delivered_by_driver_uid === uid must go RED",
+  "kills_with": [
+   "another driver's order → no per-delivery pay (same attribution the day total uses)"
+  ],
+  "command": [
+   "node",
+   "../xpizza-driver/ganancias.test.js"
+  ]
+ },
+ {
+  "id": "gh-11",
+  "slice": "gh",
+  "file": "../xpizza-driver/index.html",
+  "from": "  return feedReady && cutoverLoaded && !!driverState && !(driverFeed && driverFeed.hasPendingHandoff());",
+  "to": "  return feedReady && cutoverLoaded && !!(driverState && driverState.current_shift_id) && !(driverFeed && driverFeed.hasPendingHandoff());",
+  "label": "DAY readiness is INDEPENDENT of an open shift — re-coupling to current_shift_id must go RED (clock-out blanks earnings)",
+  "kills_with": [
+   "the day is ready even with no open shift"
+  ],
+  "command": [
+   "node",
+   "../xpizza-driver/ganancias.test.js"
   ]
  },
  {
