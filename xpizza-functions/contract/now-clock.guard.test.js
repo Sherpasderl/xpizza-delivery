@@ -1,7 +1,14 @@
 'use strict';
 // Soundness guard for write-provenance's COMMON 'now' (advisor ruling 2026-11-07, condition 1; Codex MEDIUM r1 → a WHITELIST;
 // r2: computed class members, alias reassignment, call results — `clock` bindings are guarded too, so `X.now()` / `X.clock()`
-// are timestamps by induction; a positional now / clock that its body CALLS must be a verified forward of a guarded name).
+// are timestamps by induction; a positional now / clock that its body CALLS must be a verified forward of a guarded name;
+// r3: destructuring targets, a positional now / clock escaping as a shorthand `{ now }`, recursive forward proofs).
+//
+// THREAT MODEL (advisor 2026-11-07): this guard protects the census against ACCIDENTAL writer naming in OUR code — a function
+// that writes an order, or a value that can become one, given the name `now` / `clock` and thereby skipped by the census. It
+// does NOT try to defeat adversarial obfuscation (eval, Function, Proxy, Reflect, prototype tricks, cross-file data flow through
+// option bags): those forms are out of scope by design. A new exotic form found later is handled by a REVIEWED exception here
+// (exact file + anchor + reason), not by extending the analysis into an arms race.
 // COMMON means "a call named `now` is a library clock — never followed". That is sound only while EVERY binding named `now`
 // in the census scope is exactly one of:
 //   CLOCK  — a function of an allowed pure-clock shape (() => Date.now(), () => <number>, () => new Date().toISOString(),
@@ -23,6 +30,11 @@ const REVIEWED = Object.freeze({
   'xpizza-functions/stats/stats-store.js::await serverNow(db, rid)': 'the RTDB server-time read (a timestamp value)',
   'xpizza-functions/access/membership-admin-core.js::{ ...(await operationResults(db, uid, rid, authorizeCatalogEdit)), ...(await deviceResults(db, uid, rid, authorizeManager)) }': 'a results OBJECT named now (not callable)',
   'xpizza-functions/phone/flag.js::_clock()': 'the module clock of the phone flag (Date.now unless a test installs one once)',
+  'xpizza-functions/cancel-order-core.js::positional now@healLedgerRepair': 'a timestamp: its only caller (same file) forwards the sweep\'s timestamp now into option bags of the reward reversals',
+  'xpizza-functions/materialize-guard.js::positional now@holdIfClosedAtMaterialize': 'a timestamp: confirmAndMaterialize and the manual resolve pass their timestamp now; it reaches option bags as data',
+  'xpizza-functions/pixelpay-hosted-webhook.js::positional now@handleHostedCallback': 'a timestamp: index.js passes Date.now()',
+  'xpizza-functions/scheduled-release-core.js::positional now@finalizeRelease': 'a timestamp: releaseOne / recoverStaleReleasing (same file) forward their timestamp now (the sweep\'s Date.now())',
+  'xpizza-functions/branches/branches-admin-core.js::pattern nowMs→now@runBranchesAdmin': 'the CLI passes a millisecond timestamp under nowMs',
   'xpizza-functions/superseded-capture.js::positional clock@acquireLease': 'exported for its tests; the only production call (the same file) forwards the guarded `clock`',
   'xpizza-functions/stats/stats-fixtures.js::param at@71': 'the fixture materialize helper: its callers pass timestamp numbers',
   'xpizza-functions/stats/stats-gen.js::T.dayStartMs(date) + Math.floor(r() * 86400000)': 'a synthetic fixture timestamp',
@@ -71,14 +83,33 @@ function bindings(units) {
   const keyNow = (k, computed) => (!computed && k && (NAMES.has(k.name) || NAMES.has(k.value))) || (computed && k && ((k.type === 'Literal' && NAMES.has(k.value)) || (k.type === 'TemplateLiteral' && !k.expressions.length && NAMES.has(k.quasis[0].value.cooked))));
   for (const u of units) {
     const ast = C.parseUnit(u); const fs = scopes(ast);
+    // (positional-parameter helpers below)
     // a NAMED function declared once whose name is used ONLY as the callee of direct calls in its file, every one passing a
     // guarded name (now / clock) at index i: its parameter i is that guarded binding forwarded, never an unverified value
-    const forwardedOnly = (root, fn, i) => {
-      if (fn.type !== 'FunctionDeclaration' || !fn.id) return false;
+    const sensitive = (fn, name) => {
+      let hit = false;
+      C.walk(fn.body, (y) => {
+        if (y.type === 'CallExpression' && y.callee.type === 'Identifier' && y.callee.name === name) hit = true;
+        if (y.type === 'ObjectExpression' && y.properties.some((q) => q.type === 'Property' && q.shorthand && q.value.type === 'Identifier' && q.value.name === name)) hit = true;
+      });
+      return hit;
+    };
+    // the innermost function (if any) whose POSITIONAL parameter is `name` and that encloses position `pos`
+    const fnsWithParam = []; C.walk(ast, (y) => { if (/Function/.test(y.type)) y.params.forEach((q, i) => { if (q.type === 'Identifier' && NAMES.has(q.name)) fnsWithParam.push({ fn: y, name: q.name, i }); }); });
+    const paramOwner = (name, pos) => fnsWithParam.filter((e) => e.name === name && e.fn.start <= pos && pos < e.fn.end).sort((a, b) => b.fn.start - a.fn.start)[0] || null;
+    const forwardedOnly = (root, fn, i, seen = new Set()) => {
+      if (fn.type !== 'FunctionDeclaration' || !fn.id || seen.has(fn)) return false;
+      seen.add(fn);
       let ok = true; let calls = 0; let refs = 0;
       C.walk(root, (y) => {
         if (y.type === 'Identifier' && y.name === fn.id.name && y !== fn.id) refs += 1;
-        if (y.type === 'CallExpression' && y.callee.type === 'Identifier' && y.callee.name === fn.id.name) { calls += 1; const a = y.arguments[i]; if (!(a && a.type === 'Identifier' && NAMES.has(a.name))) ok = false; }
+        if (y.type === 'CallExpression' && y.callee.type === 'Identifier' && y.callee.name === fn.id.name) {
+          calls += 1; const a = y.arguments[i];
+          if (!(a && a.type === 'Identifier' && NAMES.has(a.name))) { ok = false; return; }
+          // the forwarded name is itself a positional parameter of the caller: that caller must be a proven forward too
+          const own = paramOwner(a.name, y.start);
+          if (own && !forwardedOnly(root, own.fn, own.i, seen)) ok = false;
+        }
       });
       return ok && calls > 0 && refs === calls;
     }; u.scopeAt = (pos) => innermost(fs, pos);
@@ -95,6 +126,11 @@ function bindings(units) {
       if (x.type === 'VariableDeclarator' && x.id.type === 'Identifier') record(x.id.name, x.init, x.start);
       const staticKey = (k) => k && ((k.type === 'Literal') || (k.type === 'TemplateLiteral' && !k.expressions.length));
       if ((x.type === 'MethodDefinition' || x.type === 'PropertyDefinition') && x.computed && !staticKey(x.key)) out.push({ where: at, kind: 'computed-class-member', value: null, unit: u, fail: 'a class member under a non-literal computed key could be named now at runtime' });
+      if (x.type === 'AssignmentExpression' && x.operator === '=' && x.left.type !== 'Identifier' && x.left.type !== 'MemberExpression') patNames(x.left, (nm) => { const l = assignsByName.get(`${u.file}#${nm}`) || []; l.push({ type: 'Destructured' }); assignsByName.set(`${u.file}#${nm}`, l); });
+      // a guarded name bound by DESTRUCTURING from anything but its own key (`[now] = …`, `{ x: now } = …`) is unverified
+      if (x.type === 'ArrayPattern') x.elements.forEach((e) => { const id = e && (e.type === 'AssignmentPattern' ? e.left : e); if (id && id.type === 'Identifier' && NAMES.has(id.name)) out.push({ where: at, kind: 'array-pattern', value: null, unit: u, fail: `${id.name} bound by array destructuring (unverified)` }); });
+      if (x.type === 'ObjectPattern') x.properties.forEach((q) => { if (q.type !== 'Property') return; const id = q.value.type === 'AssignmentPattern' ? q.value.left : q.value; const kn = q.computed ? q.key.value : (q.key.name || q.key.value); const fnName = (() => { let f = null; C.walk(ast, (z) => { if (/Function/.test(z.type) && z.id && z.start <= x.start && x.start < z.end) f = z.id.name; }); return f || '?'; })();
+        if (id.type === 'Identifier' && NAMES.has(id.name) && !(keyNow(q.key, q.computed) && kn === id.name) && !REVIEWED[`${u.file}::pattern ${kn}→${id.name}@${fnName}`]) out.push({ where: at, kind: 'renamed-pattern', value: null, unit: u, fail: `${id.name} bound by destructuring a different key (unverified)` }); });
       if (x.type === 'AssignmentExpression' && x.operator === '=' && x.left.type === 'Identifier') { const l = assignsByName.get(`${u.file}#${x.left.name}`) || []; l.push(x.right); assignsByName.set(`${u.file}#${x.left.name}`, l); }
       if (x.type === 'Property' && x.computed && !keyNow(x.key, true) && x.value && /Function/.test(x.value.type)) out.push({ where: at, kind: 'computed-key', value: null, unit: u, fail: 'a function under a computed key could be named now at runtime' });
       if (x.type === 'Property' && keyNow(x.key, x.computed)) {
@@ -110,9 +146,11 @@ function bindings(units) {
       // never calls it (a nested function rebinding the name is its own binding, checked where it is declared)
       if (/Function/.test(x.type)) x.params.forEach((p) => {
         if (!(p.type === 'Identifier' && NAMES.has(p.name))) return;
-        let called = false;
-        C.walk(x.body, (y) => { if (y.type === 'CallExpression' && y.callee.type === 'Identifier' && y.callee.name === p.name) called = true; });
-        if (called && !forwardedOnly(ast, x, x.params.indexOf(p)) && !REVIEWED[`${u.file}::positional ${p.name}@${x.id ? x.id.name : '?'}`]) out.push({ where: at, kind: 'positional-param', value: null, unit: u, fail: `the positional parameter ${p.name} is CALLED in its body — its caller's argument is unverified (review it or pass a named clock)` });
+        // CALLED, or ESCAPING as a shorthand `{ now }` / `{ clock }` in an object (Codex r3: a factory returning it). Every other
+        // escape lands in a binding this guard checks where it lands: `x: now` / `x.now = now` / `now = p` (an alias of a parameter
+        // fails), `const now = make(p)` (an unresolved call fails), a callee's own parameter (checked in its own file)
+        const called = sensitive(x, p.name);
+        if (called && !forwardedOnly(ast, x, x.params.indexOf(p)) && !REVIEWED[`${u.file}::positional ${p.name}@${x.id ? x.id.name : '?'}`]) out.push({ where: at, kind: 'positional-param', value: null, unit: u, fail: `the positional parameter ${p.name} is CALLED or ESCAPES in its body — its caller's argument is unverified (review it or pass a named clock)` });
         else out.push({ where: at, kind: 'positional-param-data', value: null, unit: u, data: true });
       });
       if (x.type === 'FunctionDeclaration' && x.id && NAMES.has(x.id.name)) out.push({ where: at, kind: 'function', value: x, unit: u });
@@ -183,10 +221,16 @@ const NEGATIVES = [
   ['function writer() { db.ref("o").set(1); } let w = () => Date.now(); w = writer; const d = { now: w };', 'an alias REASSIGNED to a non-clock'],
   ['const d = { clock: () => db.ref("o").set(1) }; const now = d.clock();', 'a clock that writes (so `X.clock()` is never trusted unverified)'],
   ['function f(a, now) { return now(); } f(1, () => db.ref("o").set(1));', 'a positional now that is called, fed an arbitrary argument'],
+  ['function writer() { db.ref("o").set(1); } let w = () => Date.now(); [w] = [writer]; const d = { now: w };', 'an alias reassigned by ARRAY destructuring'],
+  ['function writer() { db.ref("o").set(1); } let w = () => Date.now(); ({ x: w } = { x: writer }); const d = { now: w };', 'an alias reassigned by OBJECT destructuring'],
+  ['const [now] = [() => db.ref("o").set(1)];', 'now bound by array destructuring'],
+  ['const { x: now } = { x: () => db.ref("o").set(1) };', 'now bound by destructuring a different key'],
+  ['function make(clock) { return { clock }; } const d = make(() => db.ref("o").set(1)); d.clock();', 'a positional clock escaping through a factory'],
+  ['function g(clock) { return h(clock); } function h(clock) { return clock(); } g(() => db.ref("o").set(1));', 'a positional clock forwarded from an UNPROVEN parameter'],
 ];
 for (const [code, why] of NEGATIVES) assert.ok(neg(code) >= 1, `NEGATIVE: ${why} must fail closed — ${code}`);
-for (const code of ['function g(clock) { return h(clock); } function h(clock) { return clock(); }', 'const d = { now: () => Date.now() };', 'const d = { now: () => 0 };', 'const d = { now: () => (deps.now ? deps.now() : Date.now()) };', 'const now = deps.now || Date.now;', 'const t = Date.now(); const d = { now: t };', 'function f(now = Date.now()) { return now; }', 'const now = deps.clock();']) {
+for (const code of ['function h(clock) { return clock(); } function g() { const clock = () => Date.now(); return h(clock); }', 'const { now } = deps;', 'const d = { now: () => Date.now() };', 'const d = { now: () => 0 };', 'const d = { now: () => (deps.now ? deps.now() : Date.now()) };', 'const now = deps.now || Date.now;', 'const t = Date.now(); const d = { now: t };', 'function f(now = Date.now()) { return now; }', 'const now = deps.clock();']) {
   assert.strictEqual(neg(code), 0, `NEGATIVE control: an allowed form passes — ${code}`);
 }
-ok(`negatives: ${NEGATIVES.length} unsafe forms fail closed; 8 allowed forms pass`);
+ok(`negatives: ${NEGATIVES.length} unsafe forms fail closed; 9 allowed forms pass`);
 console.log(`\nnow-clock.guard: OK (${n})`);
