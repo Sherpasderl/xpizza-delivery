@@ -747,6 +747,24 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     await C().classifyLostProposals(w.deps, OID, w.ord());
     assert.deepStrictEqual([w.rec().proposals.p1.state, w.rec().legs.L2.role], ['lost', 'surplus'], `${L}: the superseded proposal is LOST and its new leg SURPLUS`);
   });
+  // ruling (A) on the redemption gap: a live, placed SDK order whose redemption is still `reserved` (the go-live's consume
+  // failed after materialization) is re-entered through the shared go-live, whose already-confirmed branch consumes it
+  await cell('SDK-SWEEP-CONSUMES-A-RESERVED-REDEMPTION', async (L) => {
+    let failOnce = true;
+    const RW = `user_rewards/tb_uid/tb_rest`;
+    const w = world({
+      seed: { orders: { [OID]: order({ customer_uid: 'tb_uid', redemption: { cost: 5, item: 'tb_item' } }) }, user_rewards: { tb_uid: { tb_rest: { balance: 10, reserved: 5, reservations: { [OID]: { state: 'reserved', cost: 5, created_at: 1 } } } } } },
+      hooks: { beforeTx: async (p) => { if (failOnce && p.startsWith(RW)) { failOnce = false; throw new Error('consume transaction failed'); } } },
+    });
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.ok(w.ord().materialized_at && !failOnce && w.db.getAt(`${RW}/reservations/${OID}/state`) === 'reserved', `${L}: PREMISE — live, but the consume failed (state ${w.db.getAt(`${RW}/reservations/${OID}/state`)})`);
+    w.tick(60 * 1000);
+    await SW().sweepSdkPayments(w.deps);
+    assert.strictEqual(w.db.getAt(`${RW}/reservations/${OID}/state`), 'consumed', `${L}: the sweep's go-live re-entry consumed the redemption`);
+    assert.deepStrictEqual([w.fake.callCount('authorize'), w.fake.callCount('capture'), w.ord().status], [1, 0, 'new'], `${L}: no money moved, the order stays live`);
+    w.tick(SW().REVISIT_MS + 1); await SW().sweepSdkPayments(w.deps);
+    assert.strictEqual(w.db.getAt(`${RW}/balance`), 5, `${L}: consumed ONCE (balance 10 − 5)`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
