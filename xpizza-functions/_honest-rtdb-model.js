@@ -32,7 +32,8 @@ function resolveServerValues(v, now) {
 }
 function prune(v) {
   if (v === undefined || v === null) return null;
-  if (typeof v !== 'object' || Array.isArray(v)) return v;
+  if (typeof v !== 'object') return v;
+  if (Array.isArray(v)) { const a = v.map(prune); return a.some((x) => x !== null) ? a : null; }   // RTDB: an array with no children is absent
   const out = {};
   for (const [k, x] of Object.entries(v)) { const p = prune(x); if (p !== null) out[k] = p; }
   return Object.keys(out).length ? out : null;
@@ -58,6 +59,10 @@ function makeHonestDb(initial = {}, hooks = {}) {
     for (let i = chain.length - 1; i >= 0; i--) { const [parent, key] = chain[i]; if (parent[key] && typeof parent[key] === 'object' && !Object.keys(parent[key]).length) delete parent[key]; }
   };
   let pk = 0;
+  // RTDB key order: 32-bit integer keys first (numerically), then the rest by string
+  const INT = /^-?(0|[1-9]\d*)$/;
+  const isInt = (k) => INT.test(k) && Number(k) >= -2147483648 && Number(k) <= 2147483647;
+  const keyCmp = (a, b) => (isInt(a) !== isInt(b) ? (isInt(a) ? -1 : 1) : isInt(a) ? Number(a) - Number(b) : (a < b ? -1 : a > b ? 1 : 0));
   const snap = (v) => { const frozen = clone(v); return { val: () => clone(frozen), exists: () => frozen != null }; };
   const api = {};
   const ref = (p = '') => {
@@ -93,13 +98,28 @@ function makeHonestDb(initial = {}, hooks = {}) {
           if (hooks.beforeRead) await hooks.beforeRead(p, api);
           const v = getAt(p);
           if (v == null || typeof v !== 'object') return snap(null);
-          const INT = /^-?(0|[1-9]\d*)$/;
-          const isInt = (k) => INT.test(k) && Number(k) >= -2147483648 && Number(k) <= 2147483647;
-          const keys = Object.keys(v).sort((a, b) => (isInt(a) !== isInt(b) ? (isInt(a) ? -1 : 1) : isInt(a) ? Number(a) - Number(b) : (a < b ? -1 : a > b ? 1 : 0)));
+          const keys = Object.keys(v).sort(keyCmp);
           const out = {}; for (const k of keys.slice(0, n)) out[k] = v[k];
           return snap(keys.length ? out : null);
         } });
         return { limitToFirst(n) { if (!Number.isInteger(n) || n < 1) throw new Error(`limitToFirst: invalid limit ${n}`); return page(n); } };
+      },
+      // a value-ordered page, as RTDB orders values: null < false < true < numbers < strings < objects, ties by key;
+      // endAt is inclusive; a non-positive limit throws instead of returning everything
+      orderByValue() {
+        const rank = (v) => (v === null || v === undefined ? 0 : v === false ? 1 : v === true ? 2 : typeof v === 'number' ? 3 : typeof v === 'string' ? 4 : 5);
+        const cmpV = (a, b) => (rank(a) !== rank(b) ? rank(a) - rank(b) : rank(a) === 3 ? a - b : rank(a) === 4 ? (a < b ? -1 : a > b ? 1 : 0) : 0);
+        const page = (end, n) => ({ async once() {
+          if (hooks.beforeRead) await hooks.beforeRead(p, api);
+          const v = getAt(p);
+          if (v == null || typeof v !== 'object') return snap(null);
+          const keys = Object.keys(v).filter((k) => end === undefined || cmpV(v[k], end) <= 0)
+            .sort((a, b) => cmpV(v[a], v[b]) || keyCmp(a, b));
+          const out = {}; for (const k of keys.slice(0, n)) out[k] = v[k];
+          return snap(keys.length ? out : null);
+        } });
+        const lim = (end) => ({ limitToFirst(n) { if (!Number.isInteger(n) || n < 1) throw new Error(`limitToFirst: invalid limit ${n}`); return page(end, n); } });
+        return { ...lim(undefined), endAt(e) { return lim(e); } };
       },
     };
     return r;

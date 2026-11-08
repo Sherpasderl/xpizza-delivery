@@ -31,7 +31,7 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
   const orderRef = db.ref(`orders/${orderId}`);
 
   const order = (await orderRef.once('value')).val();
-  if (!order) return { outcome: 'no_order' };
+  if (!order) return { outcome: 'no_order' }; if (require('./payments/sdk/flow').isSdkOrder(order)) return { outcome: 'sdk_flow' };
   if (order.payment_method !== 'online') return { outcome: 'not_online' };
   if (order.status === 'cancelled') return { outcome: 'cancelled' };
   if (order.payment_status === 'manual_reconciliation') return { outcome: 'manual_reconciliation' };
@@ -229,16 +229,16 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
 
 // Claim payment_status pending→confirmed (CAS on the order) then materialize atomically.
 // Idempotent: safe to re-enter for an already-confirmed-but-unmaterialized order.
-async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingToken, paymentReference = null }) {
+async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingToken, paymentReference = null, sdkGoLive = false }) {
   const { db, buildMaterializeUpdates } = deps;
   const orderRef = db.ref(`orders/${orderId}`);
 
   // Pre-read to avoid the Admin SDK first-call-null transaction abort (see §1).
   const preOrder = (await orderRef.once('value')).val();
-  if (!preOrder) return { outcome: 'no_order' };
+  if (!preOrder) return { outcome: 'no_order' }; if (require('./payments/sdk/flow').isSdkOrder(preOrder) && !(sdkGoLive === true && require('./payments/sdk/flow').sdkGoLiveAdmits(preOrder))) return { outcome: 'sdk_flow' };
 
   const claim = await orderRef.transaction((cur) => {
-    const o = cur || preOrder;
+    const o = cur || preOrder; if (require('./payments/sdk/flow').isSdkOrder(o) && !(sdkGoLive === true && require('./payments/sdk/flow').sdkGoLiveAdmits(o))) return o;
     if (o.status === 'cancelled') return o;
     if (attemptId && o.active_attempt_id !== attemptId) return o; // attempt no longer active
     if (o.payment_status === 'confirmed') return o;               // already (idempotent)
@@ -246,7 +246,7 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
     return { ...o, payment_status: 'confirmed', charged_at: now, ...(paymentReference != null ? { payment_reference: paymentReference } : {}) };
   });
 
-  const order = claim.snapshot.val() || preOrder;
+  const order = claim.snapshot.val() || preOrder; if (require('./payments/sdk/flow').isSdkOrder(order) && !(sdkGoLive === true && require('./payments/sdk/flow').sdkGoLiveAdmits(order))) return { outcome: 'sdk_flow' };
   if (!order || order.status === 'cancelled') return { outcome: 'cancelled_during_confirm' };
   if (attemptId && order.active_attempt_id !== attemptId) return { outcome: 'attempt_superseded' };
   if (order.payment_status !== 'confirmed') return { outcome: 'confirm_claim_failed' };
@@ -343,7 +343,7 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
     liveIdentity,
   });
   if (inactiveRid) updates[`orders/${orderId}/inactive_materialize_alerted_at`] = now;
-  await db.ref().update(updates);
+  if (require('./payments/sdk/flow').isSdkOrder(order)) { if (!(await require('./payments/sdk/materialize-sdk').writeSdkLive(db, orderId, updates)).written) return { outcome: 'sdk_live_refused' }; } else await db.ref().update(updates);
   // AWAIT the alert (it's an async DB write): a fire-and-forget alert can be dropped if the
   // instance freezes after the update, and the committed marker would then suppress it on
   // re-entry — losing it permanently. On alert failure, LOG only: the order is already

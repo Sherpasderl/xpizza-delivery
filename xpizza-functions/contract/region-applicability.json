@@ -10810,14 +10810,14 @@
     "site": "try { await sendPaidAfterCloseRefund(db, { orderId, order: o }); notifyRecovered++; } catch (_) {}",
     "siteSha": "89061984e006b424b14d86cb5113e77b3e903f44c68f838d2ec3e8cfb50b2800",
     "scope": "xpizza-functions/index.js#refundReconciler",
-    "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
+    "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     }
    ],
    "cases": {
@@ -10848,20 +10848,20 @@
     "site": "try { await sendPaidAfterCloseRefund(db, { orderId, order: o }); } catch (_) {}",
     "siteSha": "b380c4b5d362470c21afb81b9dc9ed29173bcf18033e59bf198a790a98ed025a",
     "scope": "xpizza-functions/index.js#refundReconciler",
-    "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
+    "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (!isPac) continue;",
-     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (dec.action === 'finalize_refunded') {",
-     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     }
    ],
    "cases": {
@@ -10930,14 +10930,14 @@
     "site": "if (didNotify && deps.sendScheduledSlotClosed) { try { await deps.sendScheduledSlotClosed(db, { orderId, order }); } catch (_) {} }",
     "siteSha": "893a10464deb4f02f240ce89d6f56ab6620dde110064ea556d8b8a8617438fb9",
     "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
-    "scopeSha": "625e4e2596ed2a59060449e50a2a61636b06851431986896ea68efb03e66d066"
+    "scopeSha": "d16ef5cb75dbeb876a155454f5d57f6734e463392892d64f60c00de7ad6bc6dd"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
      "text": "if (Number.isFinite(Number(order.scheduled_for))) {",
-     "scopeSha": "625e4e2596ed2a59060449e50a2a61636b06851431986896ea68efb03e66d066"
+     "scopeSha": "d16ef5cb75dbeb876a155454f5d57f6734e463392892d64f60c00de7ad6bc6dd"
     }
    ],
    "cases": {
@@ -10968,14 +10968,14 @@
     "site": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
     "siteSha": "cebf5cdd793a080b49b30e8c96304fa4acf25d87a8aed2618c4304063c654e83",
     "scope": "xpizza-functions/index.js#refundReconciler",
-    "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
+    "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     }
    ],
    "cases": {
@@ -11748,13 +11748,13 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (dec.action === 'finalize_refunded') {",
-     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",
@@ -11798,7 +11798,7 @@
      "kind": "S",
      "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
      "text": "if (Number.isFinite(Number(order.scheduled_for))) {",
-     "scopeSha": "625e4e2596ed2a59060449e50a2a61636b06851431986896ea68efb03e66d066"
+     "scopeSha": "d16ef5cb75dbeb876a155454f5d57f6734e463392892d64f60c00de7ad6bc6dd"
     }
    ],
    "cases": {
@@ -11913,13 +11913,13 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (dec.action === 'finalize_refunded') {",
-     "scopeSha": "1060ba2839ea158de1135812be8b5a61fe531602c5a3314484df46352d2a4f98"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",
