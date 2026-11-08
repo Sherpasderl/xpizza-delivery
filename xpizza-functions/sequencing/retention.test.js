@@ -53,7 +53,7 @@ const committed = (decided_at, pair = ['a', 'b']) => ({ state: 'committed', driv
 
   // ── 3. isolated inside runRetentionSweep: a failure never changes the task pass's result ──────────────────
   {
-    const seed = { config: { retention: { tasks_mode: 'dry_run' }, stack_sequencing_enabled: true }, tasks: {}, orders: {}, stacks: { r_old: refused(1) } };
+    const seed = { config: { retention: { tasks_mode: 'dry_run' }, stack_sequencing_enabled: true, tracker_fixes_enabled: true }, tasks: {}, orders: {}, stacks: { r_old: refused(1) } };
     const good = createFakeDb(seed); const a = await runRetentionSweep(good, { healTerminalStatuses: new Set(['cancelled']) });
     assert.strictEqual(good.get('stacks/r_old'), null, 'the stack pass ran from the sweep');
     const bad = createFakeDb(seed); bad.failReads.add('stacks');

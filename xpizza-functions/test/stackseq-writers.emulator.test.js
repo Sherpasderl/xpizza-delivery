@@ -84,7 +84,7 @@ function scenario(k, { newStatus = 'new', crossHub = false } = {}) {
   };
 }
 const seedAll = async (scs, flag) => {
-  await db.ref().set({ config: { auto_assign_enabled: true, sweep_pending_enabled: true, ...(flag === undefined ? {} : { stack_sequencing_enabled: flag }) } });
+  await db.ref().set({ config: { auto_assign_enabled: true, sweep_pending_enabled: true, ...(flag === undefined ? {} : { stack_sequencing_enabled: flag }), ...(flag === true ? { tracker_fixes_enabled: true } : {}) } });   // ON needs BOTH flags (Codex r1 P1)
   const u = {}; for (const s of scs) Object.assign(u, s.seed); await db.ref().update(u);
 };
 // autoAssign fires on the order BECOMING new
