@@ -19,8 +19,8 @@ const ternaryField = (rid) => (rid === 'la_musa' ? 'id' : 'name');   // today's 
 const RIDS = ['x_pizza', 'la_musa', 'tb_merch_3', '', undefined, null];
 const probe = () => ({ id: 'tb_slug', name: 'TB Name' });
 
-assert.strictEqual(MP.defaultKeyMode('la_musa'), 'id');
-assert.strictEqual(MP.defaultKeyMode('x_pizza'), 'name');
+assert.strictEqual(MP.defaultKeyMode('la_musa'), 'id', 'KS-DEFAULT la_musa');
+assert.strictEqual(MP.defaultKeyMode('x_pizza'), 'name', 'KS-DEFAULT x_pizza');
 for (const rid of RIDS) assert.strictEqual(MP.defaultKeyMode(rid), ternaryField(rid), `defaultKeyMode(${rid})`);
 ok('defaultKeyMode is today\'s rid rule for every rid shape (la_musa → id, anything else → name)');
 
@@ -84,7 +84,7 @@ ok('null handling of each accessor is unchanged under every mode');
 
 assert.doesNotThrow(() => assertFiscalKeyMode('x_pizza', undefined), 'a pre-snapshot x_pizza version (mode absent) passes');
 assert.doesNotThrow(() => assertFiscalKeyMode('x_pizza', 'name'));
-assert.throws(() => assertFiscalKeyMode('x_pizza', 'id'), /fiscal_key_mode_unsupported/);
+assert.throws(() => assertFiscalKeyMode('x_pizza', 'id'), /fiscal_key_mode_unsupported/, 'KS-FENCE an id mode on a platform-factura restaurant is refused');
 assert.throws(() => assertFiscalKeyMode('x_pizza', 'ID'), /key_mode_invalid/);
 for (const m of [undefined, 'id', 'name']) assert.doesNotThrow(() => assertFiscalKeyMode('la_musa', m), 'not a platform-factura restaurant');
 assert.doesNotThrow(() => assertFiscalKeyMode('tb_merch_3', 'id'));

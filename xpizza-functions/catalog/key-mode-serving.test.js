@@ -66,13 +66,13 @@ function flatTree(rid, profile) {
   }
   for (const [profile, want] of [[{ pricing_key_mode: 'id' }, 'id'], [{ pricing_key_mode: 'name' }, 'name'], [{}, undefined]]) {
     const r = await readFlatDocs(fakeDb(flatTree('tb_r', profile)), 'tb_r');
-    assert.strictEqual(r.keyMode, want);
+    assert.strictEqual(r.keyMode, want, `SERVE-FLAT ${JSON.stringify(profile)}`);
   }
   await assert.rejects(readFlatDocs(fakeDb(flatTree('tb_r', { pricing_key_mode: 'slug' })), 'tb_r'), /key_mode_invalid/);
   {
     const db = fakeDb({ ...flatTree('tb_r', { pricing_key_mode: 'id' }), 'restaurants/tb_r/meta/active_version': undefined });
     const flat = await getRestaurantDocs(db, 'tb_r');
-    assert.strictEqual(flat.versionId, null); assert.strictEqual(flat.keyMode, 'id');
+    assert.strictEqual(flat.versionId, null); assert.strictEqual(flat.keyMode, 'id', 'SERVE-FLAT-ROUTE');
   }
   ok('A: the version record\'s key_mode and the flat profile\'s pricing_key_mode surface; absent ⇒ undefined; malformed ⇒ refused');
 
@@ -96,7 +96,7 @@ function flatTree(rid, profile) {
     for (const keyMode of ['id', 'name']) {
       const ladder = createSnapshotFallback({ mirrorReader: async () => null });
       const t = await mk({ menu: { tb_slug: 120 }, extras: {}, versionId: 'v1', seq: 4, keyMode }, ladder).getPricingTables('tb_r');
-      assert.strictEqual(t[MP.TABLES_KEY_MODE], keyMode);
+      assert.strictEqual(t[MP.TABLES_KEY_MODE], keyMode, 'SERVE-LIVE the live route carries the mode');
       assert.strictEqual(MP.keyModeOfTables(t), keyMode);
       assert.deepStrictEqual(Object.keys(t), ['restaurantId', 'menu', 'extras']);
       assert.strictEqual(JSON.stringify(t), JSON.stringify(legacy), 'serialises byte-identically');
@@ -120,7 +120,7 @@ function flatTree(rid, profile) {
     ]) {
       const ladder = createSnapshotFallback({ mirrorReader: async () => mirror });
       const t = await createPricingResolver({ reader: { getTables: async () => { throw new Error('boom'); } }, ladder }).getPricingTables('tb_r');
-      assert.strictEqual(MP.keyModeOfTables(t), want); assert.strictEqual(envelopeOf(t).source, src);
+      assert.strictEqual(MP.keyModeOfTables(t), want, `SERVE-MIRROR-COLD ${JSON.stringify(want)}`); assert.strictEqual(envelopeOf(t).source, src);
     }
     {
       const ladder = createSnapshotFallback({ mirrorReader: async () => null });
@@ -128,7 +128,7 @@ function flatTree(rid, profile) {
       const warmMirror = createSnapshotFallback({ mirrorReader: async () => ({ version: 'v1', seq: 4, rid: 'tb_r', menu: { tb_slug: 120 }, extras: {}, key_mode: 'name' }) });
       warmMirror.recordActive('tb_r', 'v1', 4);
       const t = await createPricingResolver({ reader: { getTables: async () => { throw new Error('boom'); } }, ladder: warmMirror }).getPricingTables('tb_r');
-      assert.strictEqual(MP.keyModeOfTables(t), 'name'); assert.strictEqual(envelopeOf(t).source, 'mirror');
+      assert.strictEqual(MP.keyModeOfTables(t), 'name', 'SERVE-MIRROR-WARM'); assert.strictEqual(envelopeOf(t).source, 'mirror');
     }
     for (const bad of ['ID', 3]) {
       const ladder = createSnapshotFallback({ mirrorReader: async () => ({ version: 'v1', seq: 4, rid: 'tb_r', menu: { tb_slug: 120 }, extras: {}, key_mode: bad }) });
@@ -144,7 +144,7 @@ function flatTree(rid, profile) {
     const w = makeRtdbMirror(rtdb);
     await w('tb_r', { version: 'v1', seq: 4, rid: 'tb_r', menu: { tb_slug: 120 }, extras: {}, keyMode: 'id' });
     await w('tb_r', { version: 'v1', seq: 4, rid: 'tb_r', menu: { tb_slug: 120 }, extras: {} });
-    assert.strictEqual(writes[0][1].key_mode, 'id');
+    assert.strictEqual(writes[0][1].key_mode, 'id', 'SERVE-MIRROR-WRITE persists the mode');
     assert.strictEqual('key_mode' in writes[1][1], false, 'absent ⇒ the mirror payload is today\'s');
     assert.deepStrictEqual(Object.keys(writes[1][1]), ['version', 'seq', 'rid', 'menu', 'extras', 'at']);
     ok('E: the mirror writer persists key_mode only when present');

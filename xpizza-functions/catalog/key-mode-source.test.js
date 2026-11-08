@@ -33,15 +33,15 @@ for (const rid of ['x_pizza', 'la_musa']) {
   // BUILD ↔ PUBLISH parity: writing the default changes nothing the build produces, and the build carries the mode
   const a = buildSourceCandidate(rid, seeded);
   const b = buildSourceCandidate(rid, without(seeded));
-  assert.strictEqual(a.inputs.keyMode, seeded.key_mode);
+  assert.strictEqual(a.inputs.keyMode, seeded.key_mode, `SRC-INPUTS ${rid}`);
   assert.strictEqual('keyMode' in b.inputs, false, 'no mode ⇒ the build inputs are today\'s shape');
-  assert.strictEqual(a.built.key_mode, seeded.key_mode);
+  assert.strictEqual(a.built.key_mode, seeded.key_mode, `SRC-BUILT ${rid}`);
   assert.strictEqual('key_mode' in b.built, false, 'no mode ⇒ the built candidate is today\'s shape');
   const { key_mode: _km, ...aRest } = a.built;   // eslint-disable-line no-unused-vars
   assert.deepStrictEqual(aRest, b.built, `${rid}: items / extras / structure are byte-identical with and without the written default`);
   assert.deepStrictEqual(JSON.stringify(sourceToBuildInputs(without(seeded))), JSON.stringify(b.inputs));
   // the candidate a publish validates carries it too
-  assert.strictEqual(candidateSource(rid, { items: a.built.items, extras: seeded.extras, structure: a.built.structure, key_mode: a.built.key_mode }).key_mode, seeded.key_mode);
+  assert.strictEqual(candidateSource(rid, { items: a.built.items, extras: seeded.extras, structure: a.built.structure, key_mode: a.built.key_mode }).key_mode, seeded.key_mode, `SRC-CANDIDATE ${rid}`);
   assert.strictEqual('key_mode' in candidateSource(rid, { items: b.built.items, extras: seeded.extras, structure: b.built.structure }), false);
   ok(`${rid}: seed writes the profile's mode; validation derives through it (contradicting / malformed refused); build ↔ publish byte-identical`);
 }
@@ -71,6 +71,13 @@ for (const rid of ['x_pizza', 'la_musa']) {
   assert.strictEqual(serverOwnedKeyMode({ key_mode: 'id' }, { key_mode: 'name' }).ok, false, 'a change is refused');
   assert.strictEqual(serverOwnedKeyMode({ key_mode: 'id' }, {}).ok, false, 'adding one through a draft is refused');
   ok('the draft write keeps the stored key_mode: echo allowed, change / add refused, absent ⇒ kept');
+}
+
+{
+  const { snapshotOf } = require('./catalog-publish');
+  assert.strictEqual(snapshotOf('tb_r', 'v1', 1, {}, {}, 'id').key_mode, 'id', 'SRC-SNAPSHOT carries the mode');
+  assert.strictEqual('key_mode' in snapshotOf('tb_r', 'v1', 1, {}, {}), false, 'SRC-SNAPSHOT absent ⇒ today\'s shape');
+  ok('the active snapshot carries the version\'s mode only when it has one');
 }
 
 console.log(`\nkey-mode-source: OK (${n})`);
