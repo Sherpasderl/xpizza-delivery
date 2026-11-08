@@ -122,6 +122,17 @@ function ready() {
   readied = true;
   document.dispatchEvent(new CustomEvent('portal:ready'));
 }
+// shell-wait r5 (A1/R2): the «Agotados ahora» strip answers AFTER discovery; revealed first, it then pushed the editor down
+// (+82 px). The portal is revealed once the strip's first load has settled (painted, failed or not needed) — bounded, so a slow
+// availability read never holds the card: after STRIP_WAIT_MS the portal shows as it stands.
+const STRIP_WAIT_MS = 1200;
+function settleThenReady(strip) {
+  if (readied || !strip) { ready(); return; }
+  let done = false;
+  const go = () => { if (done) return; done = true; ready(); };
+  Promise.resolve(strip).then(go, go);
+  setTimeout(go, STRIP_WAIT_MS);
+}
 // boot.js's DISCOVERY deadline (Codex r1): discovery never ended → drop it (a late answer is ignored) and show the retry box.
 document.addEventListener('portal:deadline', () => {
   if (readied) return;
@@ -228,8 +239,7 @@ function apply(e1, { persist = true } = {}) {
     const b = sel.brand.branches.find((x) => x.rid === rid);
     openEditor(rid, { name: b ? b.name : rid, sales: S.sales });   // ONCE per page (apply runs once; a later E1 only repaints)
   }
-  renderViews();
-  ready();
+  settleThenReady(renderViews());
 }
 
 function showBootError(err) {
@@ -657,8 +667,9 @@ function renderViews() {
   if (!S.views.equipos) S.views.equipos = mountEquipos($('viewequipos'), ctx);
   S.views.suc.render();
   S.views.pausas.render();
-  S.views.avail.render();
+  const strip = S.views.avail.render();
   S.views.equipos.render();   // a no-op while hidden; entry (goto) fetches
+  return strip;
 }
 
 // test-only view of the shell's state (never read by the page)

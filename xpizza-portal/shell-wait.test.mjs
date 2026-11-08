@@ -218,7 +218,7 @@ function storage(seed = {}) {
   globalThis.sessionStorage = { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k),
     key: (i) => [...m.keys()][i] ?? null, get length() { return m.size; } };
 }
-async function shellRun(answer, { seed, catalog } = {}) {
+async function shellRun(answer, { seed, catalog, avail } = {}) {
   storage(seed);
   const byId = installDom();
   globalThis.window.location = { reload: () => {} };
@@ -228,11 +228,12 @@ async function shellRun(answer, { seed, catalog } = {}) {
     if (fn === 'getMyBranches') return typeof answer === 'function' ? answer() : answer;
     if (fn === 'getEditableCatalog' && catalog) return catalog();
     if (fn === 'getEditableCatalog') return okJson({ source: { restaurant_id: 'r_a', schema_version: 1, items: [], extras: [], structure: { schema_version: 2, item_order: [], categories: [] } }, sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
-    if (fn === 'getBranchAvailability') return okJson({ branches: [] });
+    if (fn === 'getBranchAvailability') return avail ? avail() : okJson({ branches: [] });
     return errJson(404, { error: 'not_found' });
   });
   const seen = [];
-  document.addEventListener('portal:ready', () => seen.push({ shop: byId.get('shopname').textContent, detail: byId.get('detail').children.length }));
+  document.addEventListener('portal:ready', () => seen.push({ shop: byId.get('shopname').textContent, detail: byId.get('detail').children.length,
+    strip: !byId.get('availstrip').classList.contains('hidden'), chips: byId.get('availstrip').querySelectorAll('.bchip').length, t: Date.now() }));
   const mods = await loadModules(['app', 'ventas', 'shell']);
   document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'uSw' } }));
   document.dispatchEvent(new CustomEvent('portal:signed-in'));
@@ -244,6 +245,27 @@ test('shell — an owner\'s E1: `portal:ready` once, after the chrome is rendere
   const { seen } = await shellRun(okJson(E1([row('r_a'), row('r_b')])));
   assert.equal(seen.length, 1);
   assert.equal(seen[0].shop, 'Marca S', 'the chrome was rendered BEFORE the reveal');
+});
+
+test('shell-wait r5 (A1/R2) — the «Agotados ahora» strip is painted BEFORE the reveal: a slow availability answer holds the card until it lands', async () => {
+  let release; const gate = new Promise((r) => { release = r; });
+  const run = shellRun(okJson(E1([row('r_a'), row('r_b')])), { avail: async () => { await gate; return okJson({ branches: [] }); } });
+  const { seen } = await run;
+  assert.equal(seen.length, 0, 'no reveal while the strip has not answered (the card holds)');
+  release(); await settle(25);
+  assert.equal(seen.length, 1, 'one reveal once it answers');
+  assert.equal(seen[0].strip, true, 'the strip is already shown at the reveal (nothing pushes the editor afterwards)');
+  assert.equal(seen[0].chips, 2, 'with its branch chips in place');
+});
+
+test('shell-wait r5 — the strip wait is BOUNDED: an availability read that never answers still reveals after STRIP_WAIT_MS (1.2 s), once', async () => {
+  const t0 = Date.now();
+  const { seen } = await shellRun(okJson(E1([row('r_a'), row('r_b')])), { avail: () => new Promise(() => {}) });
+  assert.equal(seen.length, 0, 'premise: held at first');
+  await settle(1300);
+  assert.equal(seen.length, 1, 'revealed once by the bound');
+  assert.ok(seen[0].t - t0 >= 1150 && seen[0].t - t0 < 2500, `revealed at the bound (${seen[0].t - t0} ms)`);
+  assert.equal(seen[0].strip, false, 'the strip is not drawn (it never answered)');
 });
 
 test('shell — no branches («no administra ningún local»): `portal:ready` once, with the empty state already in place', async () => {

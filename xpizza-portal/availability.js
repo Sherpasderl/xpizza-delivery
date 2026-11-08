@@ -279,6 +279,6 @@ export function mountAvailability(ctx) {
   }
 
   return {
-    render() { if (!ctx.sel) return; paint(); load(); },
+    render() { if (!ctx.sel) return null; paint(); return load(); },   // shell-wait r5: the first load's promise — shell.js reveals once the strip is painted
   };
 }

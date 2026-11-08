@@ -102,8 +102,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "3fd97cd835b47efe1b49c73fbb3e6af34a60bf5ead019ad2bcb2527d32c469cd",
-   "bytes": 99416
+   "sha256": "70f3907e1834364617b77aa2e6e32b343b7560bdacfc2538975cd08929fd8d8c",
+   "bytes": 99650
   }
  },
  "diff_aid": {
@@ -1993,19 +1993,19 @@
    ],
    [
     "",
-    ".ops .errbox b,#detail .errbox b",
+    ".ops .errbox b,#detail .errbox b,#gatefail b",
     "color",
     "var(--red-text)"
    ],
    [
     "",
-    ".ops .errbox p,#detail .errbox p",
+    ".ops .errbox p,#detail .errbox p,#gatefail p",
     "color",
     "var(--ink)"
    ],
    [
     "",
-    ".ops .errbox,#detail .errbox",
+    ".ops .errbox,#detail .errbox,#gatefail",
     "background",
     "var(--red-soft)"
    ],

@@ -60,7 +60,7 @@
   input,button,textarea{font-family:inherit}
   ::selection{background:var(--tint2)}
   .app{display:grid;grid-template-columns:238px 1fr;min-height:100vh}
-  @media(max-width:920px){.app{grid-template-columns:1fr}}
+  @media(max-width:920px){.app{grid-template-columns:1fr;align-content:start}}   /* shell-wait r5: rows keep their content height — a short first frame never stretches #mtop / #mnav, which then snapped back (post-reveal CLS) */
 
   /* ── sidebar ── */
   .side{background:var(--panel);border-right:1px solid var(--line);padding:20px 16px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh;transition:background .3s,border-color .3s}
@@ -827,12 +827,12 @@
   .ops .callout svg{width:17px;height:17px;stroke:var(--amber);fill:none;stroke-width:2;flex:none;margin-top:2px}
   .ops .callout b{color:var(--amber)}
   .ops .callout.dcallout{margin-top:22px}
-  .ops .errbox,#detail .errbox{margin-top:24px;padding:18px 20px;border:1px solid var(--red-line);background:var(--red-soft);border-radius:14px;display:flex;gap:14px;align-items:flex-start}
+  .ops .errbox,#detail .errbox,#gatefail{margin-top:24px;padding:18px 20px;border:1px solid var(--red-line);background:var(--red-soft);border-radius:14px;display:flex;gap:14px;align-items:flex-start}
   #detail .errbox{margin:16px 20px}
-  .ops .errbox svg,#detail .errbox svg{width:20px;height:20px;stroke:var(--red-text);fill:none;stroke-width:2;flex:none;margin-top:1px}
-  .ops .errbox b,#detail .errbox b{display:block;color:var(--red-text);font-size:14px}
-  .ops .errbox p,#detail .errbox p{color:var(--ink);font-size:13px;margin-top:3px}
-  .ops .errbox .btn,#detail .errbox .btn{margin-left:auto;flex:none}
+  .ops .errbox svg,#detail .errbox svg,#gatefail svg{width:20px;height:20px;stroke:var(--red-text);fill:none;stroke-width:2;flex:none;margin-top:1px}
+  .ops .errbox b,#detail .errbox b,#gatefail b{display:block;color:var(--red-text);font-size:14px}
+  .ops .errbox p,#detail .errbox p,#gatefail p{color:var(--ink);font-size:13px;margin-top:3px}
+  .ops .errbox .btn,#detail .errbox .btn,#gatefail .btn{margin-left:auto;flex:none}
   .skel{margin-top:24px;display:flex;flex-direction:column;gap:10px}
   #detail .skel{margin:16px 20px}
   .skel i{display:block;height:54px;border-radius:12px;background:var(--board-2);animation:opssk 1.2s ease-in-out infinite alternate}
