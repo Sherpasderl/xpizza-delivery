@@ -223,6 +223,16 @@ async function reconcileSdkOps(deps, { orderId }) {
   return { reconciled };
 }
 
+// A FULFILLED SDK order's redemption still reserved is consumed with the SAME primitive the shared go-live's already-confirmed
+// branch uses (never left reserved forever: the legacy reward sweeps skip SDK orders). Only `reserved` is consumed — consumed /
+// released / held_paid are left to their owners. Idempotent.
+async function consumeFulfilledRedemption(deps, orderId, order) {
+  if (!F.terminalConsumeDue(order)) return null;
+  const st = (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val();
+  if (st !== 'reserved') return null;
+  return require('../../rewards-reserve').settleRedemptionAtConfirm(deps.db, { orderId, order, disposition: 'consume', now: deps.clock() });
+}
+
 // ── terminal settlement (§4, §4a, §6): payment_terminal → recover → freeze → capture the frozen set → obligations ───────
 async function settleTerminal(deps, { orderId }) {
   const now = deps.clock();
@@ -283,6 +293,7 @@ async function settleTerminal(deps, { orderId }) {
     if (opened) await alertOnce(deps, 'refund_obligation', orderId, opened, opened.id);
   }
   await openObligations(deps, orderId);
+  await consumeFulfilledRedemption(deps, orderId, await readOrder(deps.db, orderId));
   return { outcome: 'settled' };
 }
 
@@ -609,4 +620,4 @@ async function trackExpiry(deps, orderId) {
   }
 }
 
-module.exports = { markerGuard, sweepPendingRoles, trackExpiry, cancelSdkOrder, expirePending, placeOriginal, reconcileSdkOps, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };
+module.exports = { consumeFulfilledRedemption, markerGuard, sweepPendingRoles, trackExpiry, cancelSdkOrder, expirePending, placeOriginal, reconcileSdkOps, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };

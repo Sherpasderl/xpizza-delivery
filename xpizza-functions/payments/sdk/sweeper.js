@@ -40,6 +40,8 @@ async function visitDueOrder(deps, orderId) {
     const st = (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val();
     if (st === 'reserved') { try { await deps.goLive(deps, orderId); } catch (e) { console.error(`sdk consume backstop failed for ${orderId}: ${e && e.message}`); } }
   }
+  // a fulfilled order's redemption still reserved is consumed here too (settlement may have stopped early or failed)
+  await C.consumeFulfilledRedemption(deps, orderId, await C.readOrder(deps.db, orderId));
   await C.sweepPendingRoles(deps, orderId);
   await C.trackExpiry(deps, orderId);
   const rec = await C.readRecord(deps.db, orderId);

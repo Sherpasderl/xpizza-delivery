@@ -34,4 +34,8 @@ const goLiveRedrivable = (order) => isSdkOrder(order) && !!order.payment_placed 
 // idempotent consume backstop for a redemption still reserved (ruling A on the redemption gap).
 const consumeBackstopDue = (order) => sdkGoLiveAdmits(order) && order.payment_status === 'confirmed' && !!order.materialized_at && !!order.redemption
   && typeof order.customer_uid === 'string' && order.customer_uid.length > 0 && typeof order.restaurant_id === 'string' && order.restaurant_id.length > 0;
-module.exports = { SDK_FLOW, isSdkOrder, MARKER_SHAPES, markerFault, sdkGoLiveAdmits, goLiveInFlight, goLiveRedrivable, consumeBackstopDue };
+// Fulfilled (delivered / completed), never cancelled, with a redemption on the order: a redemption still reserved is consumed.
+const FULFILLED = Object.freeze(['delivered', 'completed']);
+const terminalConsumeDue = (order) => isSdkOrder(order) && !markerFault(order) && FULFILLED.includes(order.status) && !order.payment_cancel && !!order.redemption
+  && typeof order.customer_uid === 'string' && order.customer_uid.length > 0 && typeof order.restaurant_id === 'string' && order.restaurant_id.length > 0;
+module.exports = { SDK_FLOW, isSdkOrder, MARKER_SHAPES, markerFault, sdkGoLiveAdmits, goLiveInFlight, goLiveRedrivable, consumeBackstopDue, terminalConsumeDue };
