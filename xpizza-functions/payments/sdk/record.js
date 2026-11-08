@@ -28,7 +28,7 @@ const unansweredMoneyOps = (rec) => Object.entries(opsOf(rec)).filter(([, o]) =>
 const pendingProjection = (rec, order) => !!(order && order.payment_commit && order.payment_commit.revision > (rec.committed_revision || 0));
 
 // Financially closed (r5 §6): every issued op answered, every leg final, no lock, no pending projection, settlement complete
-// where a capture set exists, every obligation verified.
+// where a capture set exists, every captured liability covered by an obligation, every obligation verified, no open review.
 function isFinanciallyClosed(rec, order) {
   if (!rec) return false;
   if (rec.lock) return false;
@@ -38,6 +38,11 @@ function isFinanciallyClosed(rec, order) {
   if (rec.frozen && (rec.frozen.capture_set || []).some((id) => !legsOfRecord(rec)[id] || legsOfRecord(rec)[id].state !== 'captured')) return false;
   if (rec.phase === 'open' || rec.phase === 'adjusting') return false;   // an open order is not closed
   if (rec.phase === 'cancelled' && !(rec.cleanup && rec.cleanup.done_at)) return false;   // a cancellation's cleanup must be done
+  if (rec.manual_review && !rec.manual_review.resolved_at) return false;                 // a person owes a review
+  // a captured liability must be COVERED by refund obligations (Codex r1 #4) — never closed on an uncovered liability
+  const d = derive(rec);
+  const covered = Object.values(obj(rec.obligations)).filter((o) => o.kind === 'refund').reduce((s, o) => s + (Number.isInteger(o.amount_cents) ? o.amount_cents : 0), 0);
+  if (d.captured_total > 0 && d.refund_liability > covered) return false;
   return Object.values(obj(rec.obligations)).every((o) => o.state === 'verified');
 }
 

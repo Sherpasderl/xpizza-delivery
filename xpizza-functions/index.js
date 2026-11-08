@@ -3034,7 +3034,7 @@ exports.sweepStalePending = onSchedule(
     catch (e) { console.error('sweepStalePending: ledger-repair retry failed', e && e.message); } try { await require('./extra-payment-repair').repairPendingExtraPayments({ db, now }); } catch (e) { console.warn('sweepStalePending: extra-payment repair failed', e && e.message); }
     console.log(`sweepStalePending: manual_flagged=${flagged} left=${left} paid_strand_recovered=${recovered} ledger_healed=${repair.healed} ledger_pending=${repair.pending}`);
   }
-); const SDK_PAY_FUNCTIONS = require('./payments/sdk/functions'); exports.sweepSdkPayments = SDK_PAY_FUNCTIONS.sweepSdkPayments; exports.settleSdkOnStatus = SDK_PAY_FUNCTIONS.settleSdkOnStatus;
+); const SDK_PAY_FUNCTIONS = require('./payments/sdk/functions'); exports.sweepSdkPayments = SDK_PAY_FUNCTIONS.sweepSdkPayments; exports.settleSdkOnStatus = SDK_PAY_FUNCTIONS.settleSdkOnStatus; require('./payments/sdk/deps').setSdkGoLive((db, orderId) => { const { voidOrRefund, client, ...sdkConfirm } = confirmDeps(db); return confirmAndMaterialize(sdkConfirm, { orderId, attemptId: null, now: Date.now(), trackingToken: generateTrackingToken(), sdkGoLive: true }); });
 
 // ============================================================
 // resetItemAvailability — KDS Phase 2b: end-of-business-day availability auto-reset

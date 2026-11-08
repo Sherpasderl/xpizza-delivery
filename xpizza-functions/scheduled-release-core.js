@@ -56,7 +56,7 @@ async function claimForRelease(deps, orderId, now, claimId) {
 
 // Re-validate at release then MATERIALIZE (releasing→new) OR HOLD-block. Shared by fresh claim + recovery.
 async function finalizeRelease(deps, orderId, order, now) {
-  const { db, alert } = deps;
+  const { db, alert } = deps; if (require('./payments/sdk/flow').isSdkOrder(order)) return { released: false, blocked: false, held: false, refused: 'sdk_flow' };
   const rid = order.restaurant_id || 'x_pizza';
   if (typeof deps.orderControl === 'function') {
     const hold = releaseHold(await deps.orderControl(rid));
@@ -124,7 +124,7 @@ async function recoverStaleReleasing(deps, { orderId, now, claimId, cfg }) {
   const c = S.resolveCfg(cfg);
   const res = await deps.db.ref(`orders/${orderId}`).transaction((cur) => {
     if (cur === null) return null;
-    if (cur.status !== S.RELEASING) return;                                          // already finished/changed
+    if (cur.status !== S.RELEASING) return; if (require('./payments/sdk/flow').isSdkOrder(cur) || cur.payment_terminal || cur.payment_cancel) return;   // already finished/changed — or not the legacy release's order
     if (!(isNum(cur.releasing_since) && now - cur.releasing_since > c.staleReleasingMs)) return; // not stale
     return { ...cur, release_claim_id: claimId, releasing_since: now };              // re-claim the stale one
   });

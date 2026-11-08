@@ -5,7 +5,8 @@
  *    sweepStalePending, reconcilePayments, refundReconciler (both passes);
  *  - the coordinator's CAS on `version`, its order-level commit / cancel transactions and the bounded due query on the
  *    real Admin SDK (null-first transactions, real conflicts), with the fake PSP behind the real adapter;
- *  - the status trigger settles exactly once alongside the sweeper.
+ *  - the status trigger settles exactly once alongside the sweeper;
+ *  - the production go-live registration (index.js) reaches the shared materialization through the SDK admission.
  * Run: npm run test:sdk-pay-legacy (destructive: clears the emulator root).
  */
 require('./_emulator-required')('database');
@@ -79,6 +80,16 @@ const depsWith = (script = {}) => { const fake = makeFakePsp(script); return { f
   await C.settleTerminal(w3.deps, { orderId: OID });
   assert.strictEqual(w3.fake.callCount('capture'), 0, 'SPLE-CANCEL: no capture after a committed cancel');
   ok('SPLE-CANCEL decision first; a later terminal write does not reopen money');
+  // ruling #9 A: the PRODUCTION go-live (registered by index.js) admits a placed SDK order into the shared materialization,
+  // with confirm dependencies that carry no refund capability
+  await db.ref('/').set(null);
+  await db.ref(`orders/${OID}`).set(sdkOrder({ created_at: Date.now(), items: [{ name: 'tb_item', qty: 1, unit: 100 }], items_text: '1x tb_item', lat: 14.08, lng: -87.19, hub_lat: 14.1, hub_lng: -87.2, address_detected: 'tb calle 1', address_details: 'tb casa', customer_name: 'tb Cliente', customer_phone: '+50499990000', restaurant_name: 'tb R', restaurant_phone: '+50400000000' }));
+  const w4 = depsWith(); w4.deps.goLive = require('../payments/sdk/deps').productionDeps(db).goLive;
+  const p4 = await C.placeOriginal(w4.deps, { orderId: OID, token: 'T-emu', amount_cents: 10000 });
+  const o4 = await val(`orders/${OID}`);
+  assert.ok(p4.outcome === 'placed' && ['confirmed', 'manual_reconciliation'].includes(o4.payment_status), `SPLE-GOLIVE: the registered go-live admitted and claimed the placed SDK order (got ${JSON.stringify({ p4, ps: o4.payment_status, st: o4.status })})`);
+  assert.ok(!o4.refunding_at && o4.payment_status !== 'refunded' && w4.fake.callCount('capture') === 0 && w4.fake.callCount('void') === 0, 'SPLE-GOLIVE: never refunded, captured or voided by the go-live');
+  ok(`SPLE-GOLIVE production wiring → ${o4.payment_status} / ${o4.status}`);
   // the bounded due query on the real database
   await db.ref('/').set(null);
   const due = {}; for (let i = 0; i < 60; i++) due[`tb_due_${String(i).padStart(2, '0')}`] = 1000 + i;

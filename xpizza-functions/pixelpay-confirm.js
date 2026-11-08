@@ -229,16 +229,16 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
 
 // Claim payment_status pending→confirmed (CAS on the order) then materialize atomically.
 // Idempotent: safe to re-enter for an already-confirmed-but-unmaterialized order.
-async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingToken, paymentReference = null }) {
+async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingToken, paymentReference = null, sdkGoLive = false }) {
   const { db, buildMaterializeUpdates } = deps;
   const orderRef = db.ref(`orders/${orderId}`);
 
   // Pre-read to avoid the Admin SDK first-call-null transaction abort (see §1).
   const preOrder = (await orderRef.once('value')).val();
-  if (!preOrder) return { outcome: 'no_order' }; if (require('./payments/sdk/flow').isSdkOrder(preOrder)) return { outcome: 'sdk_flow' };
+  if (!preOrder) return { outcome: 'no_order' }; if (require('./payments/sdk/flow').isSdkOrder(preOrder) && !(sdkGoLive === true && require('./payments/sdk/flow').sdkGoLiveAdmits(preOrder))) return { outcome: 'sdk_flow' };
 
   const claim = await orderRef.transaction((cur) => {
-    const o = cur || preOrder;
+    const o = cur || preOrder; if (require('./payments/sdk/flow').isSdkOrder(o) && !(sdkGoLive === true && require('./payments/sdk/flow').sdkGoLiveAdmits(o))) return o;
     if (o.status === 'cancelled') return o;
     if (attemptId && o.active_attempt_id !== attemptId) return o; // attempt no longer active
     if (o.payment_status === 'confirmed') return o;               // already (idempotent)

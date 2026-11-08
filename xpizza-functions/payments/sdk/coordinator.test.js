@@ -11,7 +11,7 @@ const C = () => require('./coordinator');
 
 const OID = 'tb_sdk_1';
 const TOKEN = 'T-tb-token';
-const order = (o = {}) => ({ restaurant_id: 'tb_rest', payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', payment_method: 'online', order_type: 'delivery', hub_lat: 14.1, hub_lng: -87.2, items: [{ name: 'tb_item', qty: 1, unit: 100 }], total: 100, total_cents: 10000, created_at: 1000, ...o });
+const order = (o = {}) => ({ restaurant_id: 'tb_rest', payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', payment_method: 'online', order_type: 'delivery', hub_lat: 14.1, hub_lng: -87.2, items: [{ name: 'tb_item', qty: 1, unit: 100 }], items_text: '1x tb_item', lat: 14.08, lng: -87.19, address_detected: 'tb calle 1', address_details: 'tb casa azul', customer_name: 'tb Cliente', customer_phone: '+50499990000', restaurant_name: 'tb R', restaurant_phone: '+50400000000', total: 100, total_cents: 10000, created_at: 1000, ...o });
 // the order revision an adjustment commits with its payment decision (canonical items + totals)
 const REV = (cents) => ({ items: [{ name: 'tb_item', qty: 1, unit: cents / 100 }], total_cents: cents, delivery_cents: 0 });
 // the REAL go-live: confirmAndMaterialize through its explicit SDK admission (no refund wiring → a closed kitchen parks)
@@ -504,6 +504,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
       const before = JSON.stringify(db.root);
       const r = await CM(md(db), { orderId: OID, attemptId: null, now: 5, trackingToken: 'T', ...extra });
       assert.ok(JSON.stringify(db.root) === before && r.outcome !== 'confirmed', `${L}: ${label}: refused, nothing written (got ${JSON.stringify(r)})`);
+      assert.strictEqual(r.outcome, 'sdk_flow', `${L}: ${label}: refused at the pre-read (got ${JSON.stringify(r)})`);
     }
     const db = makeHonestDb({ orders: { [OID]: order({ payment_placed: { leg_id: 'L1', at: 1 } }) } });
     const ok = await CM(md(db), { orderId: OID, attemptId: null, now: 5, trackingToken: 'T', sdkGoLive: true });
@@ -598,16 +599,18 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.deepStrictEqual([Object.keys(w.rec().obligations).length, caps(w).length], [1, 1], `${L}: still one obligation, one capture`);
   });
   await cell('SDK-OBLIGATION-IN-RECONCILED-CAPTURE-CAS', async (L) => {
-    let crash = false; let thrown = false;
-    const w = await placed({ script: { capture: [{ lost: true }] }, hooks: { beforeTx: async (p, api) => { if (crash && !thrown && p === `payment_sdk/${OID}` && api.getAt(`payment_sdk/${OID}/legs/L1/state`) === 'captured') { thrown = true; throw new Error('crash after the reconciled capture'); } } } });
+    // invariant observed before EVERY later transaction (any path): a confirmed capture is never seen without its obligation
+    let watch = false; let gap = null;
+    const w = await placed({ script: { capture: [{ lost: true }] }, hooks: { beforeTx: async (p, api) => { if (watch && api.getAt(`payment_sdk/${OID}/legs/L1/state`) === 'captured' && !api.getAt(`payment_sdk/${OID}/obligations`)) gap = gap || p; } } });
     await live(w);
     await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 7000, revision: REV(7000) });
     await deliver(w);
     assert.ok(w.rec().lock && w.rec().legs.L1.state === 'approved', `${L}: PREMISE — the capture answer was lost`);
-    w.tick(3 * 60 * 1000); crash = true;
-    await C().reconcileSdkOps(w.deps, { orderId: OID }).catch(() => {});
-    assert.ok(thrown, `${L}: PREMISE — crashed right after the reconciling CAS`);
-    assert.deepStrictEqual(Object.values(w.rec().obligations || {}).map((o) => o.amount_cents), [3000], `${L}: the reconciled capture opened the obligation in the same CAS (got ${JSON.stringify(w.rec().obligations)})`);
+    w.tick(3 * 60 * 1000); watch = true;
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
+    assert.ok(w.rec().legs.L1.state === 'captured', `${L}: PREMISE — bound evidence confirmed the capture`);
+    assert.ok(!gap, `${L}: a transaction (${gap}) observed the confirmed capture WITHOUT its obligation`);
+    assert.deepStrictEqual(Object.values(w.rec().obligations || {}).map((o) => o.amount_cents), [3000], `${L}: the reconciling CAS opened the obligation (got ${JSON.stringify(w.rec().obligations)})`);
   });
   await cell('SDK-CLOSURE-REJECTS-UNCOVERED-LIABILITY', async (L) => {
     const w = await placed(); await live(w);
@@ -643,7 +646,8 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.deepStrictEqual([w.rec().legs.L1.state, w.rec().legs.L1.role], ['approved', 'surplus'], `${L}: approved outside the frozen set → SURPLUS (tracked to expiry), never committed`);
   });
   await cell('SDK-LATE-ORIGINAL-AFTER-CANCEL-SURPLUS', async (L) => {
-    const w = world({ script: { authorize: [{ outcome: 'approved', uuid: 'P-91', amount_cents: 9999, effect: (st) => { st['P-91'] = { state: 'authorized', amount_cents: 10000 }; } }] } });
+    // the status is still inconclusive while the cancel runs, so only the LATER reconciliation classifies the approval
+    const w = world({ script: { authorize: [{ outcome: 'approved', uuid: 'P-91', amount_cents: 9999, effect: (st) => { st['P-91'] = { state: 'authorized', amount_cents: 10000 }; } }], status: [{ state: 'inconclusive' }] } });
     await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
     await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     w.tick(3 * 60 * 1000);
@@ -689,6 +693,59 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.ok(w.rec().manual_review && w.rec().manual_review.reason === 'status_reversal_after_terminal', `${L}: the condition is PERSISTED on the record (got ${JSON.stringify(w.rec().manual_review)})`);
     assert.strictEqual(caps(w).length, 1, `${L}: the frozen set settles exactly once`);
     assert.ok(!R.isFinanciallyClosed(w.rec(), w.ord()), `${L}: not closed while a person owes the review`);
+  });
+  // ── Codex r1 #11: ordering + races between a pre-read and its transaction ──
+  await cell('SDK-OP-JOURNALED-BEFORE-CALL', async (L) => {
+    let seen; let wRef = null;
+    const w = world({ script: { authorize: [(args) => { seen = wRef.db.getAt(`payment_sdk/${OID}/ops/${args.op_id}`); return {}; }] } }); wRef = w;
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.ok(seen && seen.action === 'auth' && seen.result === undefined && seen.amount_cents === 10000, `${L}: the op is journaled (unanswered) BEFORE the PSP call (got ${JSON.stringify(seen)})`);
+  });
+  await cell('SDK-CANCEL-TXN-REFUSES-TERMINAL-RACE', async (L) => {
+    let armed = false;
+    const w = await placed({ hooks: { beforeTx: async (p, api) => { if (armed && p === `orders/${OID}`) { armed = false; api.setAt(`orders/${OID}/status`, 'delivered'); } } } });
+    await live(w); armed = true;
+    const r = await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
+    assert.ok(!w.ord().payment_cancel && r.outcome === 'lost_to_terminal', `${L}: a delivery landing after the pre-read wins inside the cancel transaction (got ${JSON.stringify(r)})`);
+    assert.strictEqual(caps(w).length, 1, `${L}: the order settles (one capture)`);
+  });
+  await cell('SDK-PLACE-TXN-REFUSES-CANCEL-RACE', async (L) => {
+    let armed = true;
+    const w = world({ hooks: { beforeTx: async (p, api) => { if (armed && p === `orders/${OID}`) { armed = false; api.setAt(`orders/${OID}/status`, 'cancelled'); api.setAt(`orders/${OID}/payment_cancel`, { kind: 'cancel', at: 1 }); } } } });
+    const r = await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.ok(r.outcome === 'late_surplus' && !w.ord().payment_placed && w.rec().legs.L1.role === 'surplus', `${L}: a cancel landing during the authorization wins the placement transaction (got ${JSON.stringify(r)})`);
+  });
+  await cell('SDK-GOLIVE-TXN-REFUSES-CANCEL-RACE', async (L) => {
+    let armed = true;
+    const db = makeHonestDb({ orders: { [OID]: order({ payment_placed: { leg_id: 'L1', at: 1 } }) } }, { beforeTx: async (p, api) => { if (armed && p === `orders/${OID}`) { armed = false; api.setAt(`orders/${OID}/payment_placed`, true); } } });
+    const r = await require('../../pixelpay-confirm').confirmAndMaterialize({ db, buildMaterializeUpdates: require('../../materialize').buildMaterializeUpdates, restaurant: { lat: 1, lng: 1, name: 'R', phone: '+504' } }, { orderId: OID, attemptId: null, now: 5, trackingToken: 'T', sdkGoLive: true });
+    const o = db.getAt(`orders/${OID}`);
+    assert.ok(o.payment_status === 'pending' && !o.materialized_at && r.outcome !== 'confirmed', `${L}: a marker change landing after the admission pre-read is refused inside the claim (got ${JSON.stringify(r)}, ps ${o.payment_status})`);
+  });
+  await cell('SDK-CANCEL-TXN-REFUSES-GO-LIVE-RACE', async (L) => {
+    let armed = false;
+    const w = world({ hooks: { beforeTx: async (p, api) => { if (armed && p === `orders/${OID}`) { armed = false; api.setAt(`orders/${OID}/payment_status`, 'confirmed'); } } } });
+    w.deps.goLive = async () => { throw new Error('go-live not yet run'); };
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    armed = true;
+    const r = await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
+    assert.ok(!w.ord().payment_cancel && r.outcome === 'refused', `${L}: a go-live claim landing after the cancel pre-read wins inside the cancel transaction (got ${JSON.stringify(r)})`);
+  });
+  await cell('SDK-CLASSIFY-LOST-PROPOSAL-DIRECT', async (L) => {
+    // P1 persisted, its order transaction never ran (crash); P2 then commits on the order but is not projected (crash) —
+    // classification is the ONLY step between them that reclassifies P1's leg
+    let stage = 0; let thrown1 = false; let thrown2 = false;
+    const w = await placed({ eligible: ELIGIBLE, hooks: { beforeTx: async (p) => {
+      if (stage === 1 && p === `orders/${OID}` && !thrown1) { thrown1 = true; throw new Error('crash before the order commit'); }
+      if (stage === 2 && p === `orders/${OID}`) stage = 3;
+      else if (stage === 3 && p === `payment_sdk/${OID}` && !thrown2) { thrown2 = true; throw new Error('crash after the order commit'); }
+    } } });
+    await live(w);
+    stage = 1; await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 8000, revision: REV(8000) }).catch(() => {});
+    stage = 2; await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 7000, revision: REV(7000) }).catch(() => {});
+    assert.ok(thrown1 && thrown2 && w.ord().payment_commit.pid === 'p2' && w.rec().legs.L2.role === 'pending' && w.rec().proposals.p1.state === 'proposed', `${L}: PREMISE — P1 proposed (L2 pending), P2 committed on the order, not projected (got ${JSON.stringify({ pc: w.ord().payment_commit, l2: w.rec().legs.L2, p1: w.rec().proposals && w.rec().proposals.p1 && w.rec().proposals.p1.state })})`);
+    await C().classifyLostProposals(w.deps, OID, w.ord());
+    assert.deepStrictEqual([w.rec().proposals.p1.state, w.rec().legs.L2.role], ['lost', 'surplus'], `${L}: the superseded proposal is LOST and its new leg SURPLUS`);
   });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);

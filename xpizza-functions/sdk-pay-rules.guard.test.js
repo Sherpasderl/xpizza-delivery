@@ -30,6 +30,13 @@ for (const [f, leaves] of Object.entries(SR.OBJECT_FIELDS)) {
   for (const leaf of leaves) assert.strictEqual(node[leaf] && node[leaf]['.validate'], SR.LEAF_IMMUTABLE, `SPR-FIELD-SHAPE: ${f}/${leaf} must be immutable for clients`);
   assert.deepStrictEqual(node.$other, { '.validate': false }, `SPR-FIELD-SHAPE: ${f} admits no other child`);
 }
+// Codex r1 #1: a decision object can never be forged as a scalar — existence is preserved per object (descendant equality alone
+// passes when an absent object becomes `true`), and each object, when written, must carry exactly its fields
+for (const [f, leaves] of Object.entries(SR.OBJECT_FIELDS)) {
+  assert.ok(o['.write'].includes(`newData.child('${f}').exists() === data.child('${f}').exists()`), `SPR-OBJECT-EXISTENCE: the order .write must preserve the EXISTENCE of ${f}`);
+  assert.strictEqual(o[f]['.validate'], `newData.hasChildren([${leaves.map((l) => `'${l}'`).join(', ')}])`, `SPR-OBJECT-SHAPE: ${f} must validate as an object with its fields`);
+}
+ok('no decision object can be created, removed or forged as a scalar by a client');
 for (const f of SR.SCALAR_FIELDS) assert.strictEqual(o[f] && o[f]['.validate'], SR.LEAF_IMMUTABLE, `SPR-FIELD-SHAPE: ${f} must be immutable for clients`);
 ok('every server-only payment field is immutable for clients and admits no extra child');
 assert.ok(!JSON.stringify(rules).includes('payment_gate'), 'SPR-NO-GATE: no rule may block a terminal write on a payment gate (advisor amendment: delivery never waits)');

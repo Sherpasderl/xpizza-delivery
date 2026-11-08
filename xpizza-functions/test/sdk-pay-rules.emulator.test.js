@@ -25,7 +25,7 @@ const legacy = () => ({ order_id: 'x', restaurant_id: 'tb_norte', status: 'deliv
       dispatchers: { [DISP]: { name: 'D' } }, kitchen: { [KITCHEN]: { name: 'K' } }, drivers: { [DRIVER]: { name: 'R' } },
       restaurants: { tb_norte: { order_surface: 'kds' } },
       tasks: { o_live_delivery: { assigned_driver_id: DRIVER, status: 'assigned' } },
-      orders: { o_live: live(), o_done: done(), o_legacy: legacy(), o_legacy2: { ...legacy(), status: 'preparing' } },
+      orders: { o_live: live(), o_done: done(), o_legacy: legacy(), o_legacy2: { ...legacy(), status: 'preparing' }, o_fresh: { order_id: 'x', restaurant_id: 'tb_norte', status: 'preparing', payment_flow: 'sdk_auth_v1', payment_total_cents: 10000 } },
       payment_sdk: { o_live: { version: 1 } }, payment_sdk_due: { o_live: 1 },
     });
   });
@@ -54,6 +54,16 @@ const legacy = () => ({ order_id: 'x', restaurant_id: 'tb_norte', status: 'deliv
     await no(`SPRE-FIELD ${r} creates payment_terminal`, () => db.ref('orders/o_live/payment_terminal').set({ revision: 1, at: 1 }));
     await no(`SPRE-FIELD ${r} creates payment_flow on a LEGACY order`, () => db.ref('orders/o_legacy2/payment_flow').set('sdk_auth_v1'));
   }
+  // Codex r1 #1: scalar forgery of every decision object — created as a scalar, an existing object replaced by a scalar,
+  // and a whole-order write carrying a scalar marker
+  for (const [r, db] of Object.entries(roles)) for (const f of ['payment_placed', 'payment_commit', 'payment_terminal', 'payment_cancel']) {
+    await no(`SPRE-SCALAR ${r} creates ${f} = true`, () => db.ref(`orders/o_fresh/${f}`).set(true));
+    await no(`SPRE-SCALAR ${r} creates ${f} = 1`, () => db.ref(`orders/o_fresh/${f}`).set(1));
+  }
+  await no('SPRE-SCALAR dispatcher replaces payment_placed with a scalar', () => disp.ref('orders/o_live/payment_placed').set(true));
+  await no('SPRE-SCALAR dispatcher whole-order write adds payment_terminal = true', () => disp.ref('orders/o_fresh').set({ order_id: 'x', restaurant_id: 'tb_norte', status: 'preparing', payment_flow: 'sdk_auth_v1', payment_total_cents: 10000, payment_terminal: true }));
+  await no('SPRE-SCALAR dispatcher multipath adds payment_cancel = true', () => disp.ref().update({ 'orders/o_fresh/payment_cancel': true, 'orders/o_fresh/notes': 'x' }));
+  await ok('SPRE-SCALAR PREMISE dispatcher edits the fresh SDK order otherwise', () => disp.ref('orders/o_fresh/notes').set('x'));
   const { payment_flow, ...stripped } = live();
   await no('SPRE-WHOLE dispatcher replaces the order WITHOUT payment_flow', () => disp.ref('orders/o_live').set(stripped));
   await no('SPRE-WHOLE dispatcher replaces the order with another payment_commit', () => disp.ref('orders/o_live').set({ ...live(), payment_commit: { revision: 2, pid: 'pX' } }));

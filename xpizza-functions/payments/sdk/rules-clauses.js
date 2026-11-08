@@ -8,7 +8,10 @@ const LEAF_IMMUTABLE = 'newData.val() === data.val()';
 const leaves = [...SCALAR_FIELDS, ...Object.entries(OBJECT_FIELDS).flatMap(([f, ls]) => ls.map((l) => `${f}/${l}`))];
 // at orders/$order_id, newData is the WHOLE resulting order for any write beneath it, so this covers a leaf write, a leaf
 // delete, a whole-order replace and an order delete (validation alone does not run on deletes)
-const PRESERVE = `(${leaves.map((p) => `newData.child('${p}').val() === data.child('${p}').val()`).join(' && ')})`;
+// a decision OBJECT's existence is preserved too: descendant equality alone passes when an absent object becomes a scalar
+const PRESERVE = `(${[...leaves.map((p) => `newData.child('${p}').val() === data.child('${p}').val()`), ...Object.keys(OBJECT_FIELDS).map((f) => `newData.child('${f}').exists() === data.child('${f}').exists()`)].join(' && ')})`;
+// a decision object, when written, carries its fields (the Admin SDK bypasses rules; clients can never write it at all)
+const objectValidate = (f) => `newData.hasChildren([${OBJECT_FIELDS[f].map((l) => `'${l}'`).join(', ')}])`;
 const NO_REVERSAL_STATUS = "!data.parent().child('payment_flow').exists() || (data.val() !== 'delivered' && data.val() !== 'completed') || newData.val() === data.val()";
 const NO_REVERSAL_ORDER = "(!data.child('payment_flow').exists() || (data.child('status').val() !== 'delivered' && data.child('status').val() !== 'completed') || newData.child('status').val() === data.child('status').val())";
-module.exports = { SCALAR_FIELDS, OBJECT_FIELDS, LEAF_IMMUTABLE, PRESERVE, NO_REVERSAL_STATUS, NO_REVERSAL_ORDER };
+module.exports = { SCALAR_FIELDS, OBJECT_FIELDS, LEAF_IMMUTABLE, PRESERVE, objectValidate, NO_REVERSAL_STATUS, NO_REVERSAL_ORDER };

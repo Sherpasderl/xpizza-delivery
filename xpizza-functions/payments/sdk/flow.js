@@ -3,4 +3,31 @@
 // and routes its money to the SDK coordinator instead. payment_flow is written once by the server and is rules-immutable.
 const SDK_FLOW = 'sdk_auth_v1';
 const isSdkOrder = (order) => !!order && typeof order === 'object' && order.payment_flow === SDK_FLOW;
-module.exports = { SDK_FLOW, isSdkOrder };
+
+// The decision markers on orders/{id} and their EXACT shapes (Codex r1 #1). A present marker of any other shape — a scalar,
+// a missing or extra field, a wrong type — is never acted on: the coordinator locks for a person instead.
+const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const isTime = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+const isRev = (v, min) => Number.isInteger(v) && v >= min;
+const isId = (v) => typeof v === 'string' && v.length > 0;
+const exact = (v, keys) => isObj(v) && Object.keys(v).length === keys.length && keys.every((k) => Object.prototype.hasOwnProperty.call(v, k));
+const MARKER_SHAPES = Object.freeze({
+  payment_placed: (v) => exact(v, ['leg_id', 'at']) && isId(v.leg_id) && isTime(v.at),
+  payment_commit: (v) => exact(v, ['revision', 'pid']) && isRev(v.revision, 1) && isId(v.pid),
+  payment_terminal: (v) => exact(v, ['revision', 'at']) && isRev(v.revision, 0) && isTime(v.at),
+  payment_cancel: (v) => exact(v, ['kind', 'at']) && (v.kind === 'cancel' || v.kind === 'expire') && isTime(v.at),
+});
+// The first present-but-malformed marker's name, or null when every present marker is well-formed.
+function markerFault(order) {
+  if (!isObj(order)) return null;
+  for (const [f, ok] of Object.entries(MARKER_SHAPES)) if (order[f] !== undefined && order[f] !== null && !ok(order[f])) return f;
+  return null;
+}
+// The SDK go-live admission (ruling #9 A): placed, not cancelled, not terminal, every marker well-formed, not scheduled
+// (scheduled SDK orders are refused at placement in this slice).
+const sdkGoLiveAdmits = (order) => isSdkOrder(order) && !markerFault(order) && !!order.payment_placed && !order.payment_cancel && !order.payment_terminal && order.scheduled_for == null;
+// The shared go-live claim has committed and its materialization has not run: a cancel waits for it (or for its park).
+const goLiveInFlight = (order) => isSdkOrder(order) && !!order.payment_placed && order.payment_status === 'confirmed' && !order.materialized_at;
+// Placed, not live, not parked for a person: the go-live may be (re-)driven.
+const goLiveRedrivable = (order) => isSdkOrder(order) && !!order.payment_placed && order.status === 'pending_payment' && !order.materialized_at && (order.payment_status === 'pending' || order.payment_status === 'confirmed');
+module.exports = { SDK_FLOW, isSdkOrder, MARKER_SHAPES, markerFault, sdkGoLiveAdmits, goLiveInFlight, goLiveRedrivable };

@@ -492,7 +492,7 @@ async function sweepConsumeRecovery(db, { now, staleMs = CASH_STALE_MS }) {
           const rec = reservations[orderId];
           if (!rec || rec.state !== 'reserved') continue;
           const order = (await db.ref(`orders/${orderId}`).get()).val();
-          if (!consumeEligible(order)) continue;
+          if (!consumeEligible(order)) continue; if (require('./payments/sdk/flow').isSdkOrder(order)) continue;   // an SDK card order's redemption is coordinator-owned
           const r = await consumeRedemption(db, { uid, rid, orderId, now });   // idempotent
           if (r && r.action === 'applied') {
             consumed.push({ uid, rid, orderId, status: order.status });

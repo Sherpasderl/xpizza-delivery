@@ -3,8 +3,9 @@
 // BRIEF-sdk-payment-coordinator r5). Every PSP call is journaled by a record CAS BEFORE it is made and answered by another CAS
 // after; an unknown outcome LOCKS the record (no new money op until a bound status answer resolves it). Decisions that race
 // the order's own life (going live, adjusting, cancelling, settling) are won by a transaction on orders/{id} (§4, §4a, §8).
-// deps: { db, psp (makeAdapter), now(), voidEligible(leg, now), release(orderId) }.
+// deps: { db, psp (makeAdapter), clock(), voidEligible(leg, now), releaseResources(deps, orderId, order), goLive(deps, orderId) }.
 const R = require('./record');
+const F = require('./flow');
 const { boundStatus } = require('./psp-adapter');
 
 const RECONCILE_AFTER_MS = 2 * 60 * 1000;   // an unanswered op older than this is reconciled (> the PSP call timeout)
@@ -23,6 +24,15 @@ async function alertOnce(deps, kind, orderId, detail, suffix) {
   try {
     await deps.db.ref(`dispatcher_alerts/${key}`).transaction((cur) => (cur == null ? { type: `payment_sdk_${kind}`, detail: { orderId, ...(detail || {}) }, created_at: deps.clock() } : undefined));
   } catch (_) { /* best-effort: the record still carries the condition and the sweeper re-raises it */ }
+}
+
+// A present decision marker of the wrong shape (Codex r1 #1) is never acted on: the record locks for a person, once alerted.
+async function markerGuard(deps, orderId, order) {
+  const f = F.markerFault(order);
+  if (!f) return false;
+  await R.casRecord(deps.db, orderId, (r) => { if (r.lock && r.lock.reason === 'manual_reconciliation') return undefined; lockFor(r, 'manual_reconciliation', null, deps.clock()); return r; });
+  await alertOnce(deps, 'malformed_marker', orderId, { field: f }, f);
+  return true;
 }
 
 // One transaction on orders/{id}: mutate(cur) returns the next order or undefined (refuse). Null-first safe.
@@ -64,7 +74,7 @@ const lockFor = (rec, reason, opId, now) => { rec.lock = { reason, op_id: opId |
 function applyAuth(deps, rec, leg, out, opId) {
   if (!leg) return;
   if (out.uuid) leg.pp_uuid = out.uuid;
-  if (out.outcome === 'approved') { leg.state = 'approved'; leg.role = leg.kind === 'original' ? 'committed' : 'pending'; }
+  if (out.outcome === 'approved') { leg.state = 'approved'; leg.role = rec.phase === 'cancelled' || rec.frozen ? 'surplus' : leg.kind === 'original' ? 'committed' : 'pending'; }
   else if (out.outcome === 'definitive_decline' || out.outcome === 'token_expired_confirmed') { leg.state = 'declined'; leg.role = 'none'; }
   else if (out.outcome === 'requires_action') { leg.state = 'requires_action'; lockFor(rec, 'requires_action', opId, deps.clock()); }
   else { leg.state = 'unknown'; lockFor(rec, 'unknown_op', opId, deps.clock()); }
@@ -82,6 +92,20 @@ function applyVoid(deps, rec, leg, out, opId) {
   // refused: the leg stays approved (surplus), tracked to its expiry
 }
 
+// The refund obligation, opened INSIDE the CAS that confirms the last capture of the frozen set (Codex r1 #4): deterministic id
+// ⇒ created once. Returns { id, amount_cents } when this CAS opened it.
+function obligationIn(r, now) {
+  if (!r.frozen) return null;
+  const set = r.frozen.capture_set || [];
+  if (set.some((id) => !R.legsOfRecord(r)[id] || R.legsOfRecord(r)[id].state !== 'captured')) return null;
+  const liability = R.derive(r).refund_liability;
+  if (liability <= 0) return null;
+  const id = `refund_${r.frozen.revision}`;
+  if (r.obligations && r.obligations[id]) return null;
+  r.obligations = { ...(r.obligations || {}), [id]: { kind: 'refund', amount_cents: liability, reason: r.rule4 ? 'rule4_no_void' : 'liability', owner: 'operator', due_at: now + OBLIGATION_DUE_MS, state: 'open' } };
+  return { id, amount_cents: liability };
+}
+
 function newLeg(rec, kind, amount_cents, now) {
   const id = `L${Object.keys(R.legsOfRecord(rec)).length + 1}`;
   rec.legs = { ...R.legsOfRecord(rec), [id]: { kind, amount_cents, role: 'none', state: 'journaled', created_at: now, hold_expires_at: now + R.HOLD_MS } };
@@ -93,7 +117,8 @@ async function placeOriginal(deps, { orderId, token, amount_cents }) {
   const now = deps.clock();
   if (!R.isCentsInt(amount_cents) || amount_cents <= 0 || typeof token !== 'string' || !token) return { outcome: 'refused', reason: 'bad_input' };
   const order = await readOrder(deps.db, orderId);
-  if (!isSdk(order) || order.status !== 'pending_payment' || order.payment_cancel || order.payment_placed) return { outcome: 'refused', reason: 'order_state' };
+  if (!isSdk(order) || order.status !== 'pending_payment' || order.payment_cancel || order.payment_placed || F.markerFault(order)) return { outcome: 'refused', reason: 'order_state' };
+  if (order.scheduled_for != null) return { outcome: 'refused', reason: 'scheduled_unsupported' };   // a LOGGED card-launch gate (ruling #9)
   await enrol(deps, orderId);
   await R.createRecord(deps.db, orderId, { flow: 'sdk_auth_v1', phase: 'open', committed_revision: 0, fulfillment_total_cents: amount_cents, created_at: now, ttl_at: now + R.TTL_MS });
   let legId = null;
@@ -119,11 +144,15 @@ async function placeOriginal(deps, { orderId, token, amount_cents }) {
   const decided = decision(await deps.db.ref(`orders/${orderId}`).transaction((cur) => {
     box.won = false;
     if (cur == null) return null;
-    if (cur.status !== 'pending_payment' || cur.payment_cancel || cur.payment_placed) return undefined;
+    if (cur.status !== 'pending_payment' || cur.payment_cancel || cur.payment_placed || F.markerFault(cur)) return undefined;
     box.won = true;
     return { ...cur, payment_placed: { leg_id: legId, at: deps.clock() } };
   }), box);
-  if (decided.won) return { outcome: 'placed', leg_id: legId };
+  if (decided.won) {
+    // go live through the shared materialization (ruling #9 A); a failure here is re-driven by the sweeper
+    try { await deps.goLive(deps, orderId); } catch (e) { console.error(`sdk go-live deferred to the sweeper for ${orderId}: ${e && e.message}`); }
+    return { outcome: 'placed', leg_id: legId };
+  }
   // the order lost the race (expired / cancelled first): the approved hold is SURPLUS, never captured
   await R.casRecord(deps.db, orderId, (rec) => { const l = R.legsOfRecord(rec)[legId]; if (!l || l.state !== 'approved') return undefined; l.role = 'surplus'; return rec; });
   return { outcome: 'late_surplus', leg_id: legId };
@@ -161,18 +190,21 @@ async function reconcileSdkOps(deps, { orderId }) {
       if (now - op.dispatched_at >= UNKNOWN_ALERT_MS) await alertOnce(deps, 'unknown_op', orderId, { op_id: opId }, opId.replace(/[^A-Za-z0-9_-]/g, '_'));
       continue;                                        // inconclusive / unbound → the lock stays, no retry
     }
+    let opened = null;
     const res = await R.casRecord(deps.db, orderId, (r) => {
+      opened = null;
       const o = R.opsOf(r)[opId]; const l = R.legsOfRecord(r)[op.leg_id];
       if (!o || !l || (o.result && o.result.kind !== 'unknown')) return undefined;
       const st = ev.state;
       let kind = null;
       if (o.action === 'auth') {
-        if (st === 'authorized') { l.state = 'approved'; l.role = l.kind === 'original' ? 'committed' : 'surplus'; kind = 'approved'; }   // a B / delta found live after its flow returned is SURPLUS
+        // a B / delta found live after its flow returned is SURPLUS; so is ANY approval found after a cancel or outside the frozen set
+        if (st === 'authorized') { l.state = 'approved'; l.role = r.phase === 'cancelled' ? 'surplus' : r.frozen ? ((r.frozen.capture_set || []).includes(op.leg_id) ? 'committed' : 'surplus') : l.kind === 'original' ? 'committed' : 'surplus'; kind = 'approved'; }
         else if (st === 'declined') { l.state = 'declined'; l.role = 'none'; kind = 'definitive_decline'; }
         else if (st === 'voided' || st === 'expired') { l.state = st; kind = st; }
       } else if (o.action === 'capture') {
+        // an `authorized` snapshot never resolves an unanswered capture (it may still land): the lock stays until evidence
         if (st === 'captured') { l.state = 'captured'; l.captured_at = now; kind = 'captured'; }
-        else if (st === 'authorized') kind = 'not_captured';
       } else if (o.action === 'void') {
         if (st === 'voided') { l.state = 'voided'; kind = 'voided'; }
         else if (st === 'authorized') kind = 'refused';
@@ -181,9 +213,12 @@ async function reconcileSdkOps(deps, { orderId }) {
       if (!kind) return undefined;                     // evidence that does not fit this op → stays locked for a person
       o.result = { kind, code: null, at: now, via: sId };
       if (r.lock && r.lock.op_id === opId && r.lock.reason !== 'manual_reconciliation') r.lock = null;
+      opened = kind === 'captured' ? obligationIn(r, now) : null;
       return r;
     });
     if (res.applied) reconciled += 1;
+    if (res.applied && opened) await alertOnce(deps, 'refund_obligation', orderId, opened, opened.id);
+    if (!res.applied && now - op.dispatched_at >= UNKNOWN_ALERT_MS) await alertOnce(deps, 'unknown_op', orderId, { op_id: opId }, opId.replace(/[^A-Za-z0-9_-]/g, '_'));
   }
   return { reconciled };
 }
@@ -194,6 +229,7 @@ async function settleTerminal(deps, { orderId }) {
   let order = await readOrder(deps.db, orderId);
   let rec = await readRecord(deps.db, orderId);
   if (!rec || !isSdk(order)) return { outcome: 'none' };
+  if (await markerGuard(deps, orderId, order)) return { outcome: 'manual' };
   if (!isTerminalOrder(order) && !order.payment_terminal) return { outcome: 'not_terminal' };
   if (order.payment_cancel && !order.payment_terminal) {
     // a terminal status written after a committed cancel decision (an override): never captured automatically
@@ -206,7 +242,7 @@ async function settleTerminal(deps, { orderId }) {
     const t = decision(await deps.db.ref(`orders/${orderId}`).transaction((cur) => {
       box.won = false;
       if (cur == null) return null;
-      if (cur.payment_terminal) return undefined;
+      if (cur.payment_terminal || F.markerFault(cur)) return undefined;
       if (!R.TERMINAL.includes(cur.status) || cur.payment_cancel) return undefined;
       box.won = true;
       return { ...cur, payment_terminal: { revision: (cur.payment_commit && cur.payment_commit.revision) || 0, at: deps.clock() } };
@@ -214,7 +250,12 @@ async function settleTerminal(deps, { orderId }) {
     order = t.order || await readOrder(deps.db, orderId);
     if (!order || !order.payment_terminal) return { outcome: 'not_terminal' };
   }
-  if (!isTerminalOrder(order)) await alertOnce(deps, 'status_reversal_after_terminal', orderId, { status: order.status || null });
+  if (!isTerminalOrder(order)) {
+    // a SERVER writer moved the order back after the terminal decision (Codex r1 #12): the condition is persisted for a person;
+    // the frozen set still settles exactly once
+    await R.casRecord(deps.db, orderId, (r) => { if (r.manual_review) return undefined; r.manual_review = { reason: 'status_reversal_after_terminal', status: order.status || null, at: now }; return r; });
+    await alertOnce(deps, 'status_reversal_after_terminal', orderId, { status: order.status || null });
+  }
   await recoverProjection(deps, orderId, order);
   await classifyLostProposals(deps, orderId, order);
   const fr = await R.casRecord(deps.db, orderId, (r) => {
@@ -231,13 +272,15 @@ async function settleTerminal(deps, { orderId }) {
   for (const legId of rec.frozen.capture_set || []) {
     const leg = R.legsOfRecord(rec)[legId];
     if (!leg || leg.state !== 'approved') continue;
+    let opened = null;
     const d = await dispatch(deps, orderId, {
       legId, action: 'capture', amount_cents: leg.amount_cents,
       pre: (r) => { const l = R.legsOfRecord(r)[legId]; if (r.phase !== 'frozen' || !l || l.state !== 'approved' || !(r.frozen.capture_set || []).includes(legId)) return undefined; return r; },
       call: (opId) => deps.psp.pspCapture({ uuid: leg.pp_uuid, amount_cents: leg.amount_cents, op_id: opId }),
-      apply: (r, l, out, opId) => applyCapture(deps, r, l, out, opId),
+      apply: (r, l, out, opId) => { applyCapture(deps, r, l, out, opId); opened = l && l.state === 'captured' ? obligationIn(r, deps.clock()) : null; },
     });
     if (d.record) rec = d.record;
+    if (opened) await alertOnce(deps, 'refund_obligation', orderId, opened, opened.id);
   }
   await openObligations(deps, orderId);
   return { outcome: 'settled' };
@@ -247,18 +290,7 @@ async function settleTerminal(deps, { orderId }) {
 async function openObligations(deps, orderId) {
   const now = deps.clock();
   let opened = null;
-  await R.casRecord(deps.db, orderId, (r) => {
-    if (!r.frozen) return undefined;
-    const set = r.frozen.capture_set || [];
-    if (set.some((id) => !R.legsOfRecord(r)[id] || R.legsOfRecord(r)[id].state !== 'captured')) return undefined;
-    const liability = R.derive(r).refund_liability;
-    if (liability <= 0) return undefined;
-    const id = `refund_${r.frozen.revision}`;
-    if (r.obligations && r.obligations[id]) return undefined;
-    r.obligations = { ...(r.obligations || {}), [id]: { kind: 'refund', amount_cents: liability, reason: r.rule4 ? 'rule4_no_void' : 'liability', owner: 'operator', due_at: now + OBLIGATION_DUE_MS, state: 'open' } };
-    opened = { id, amount_cents: liability };
-    return r;
-  });
+  await R.casRecord(deps.db, orderId, (r) => { opened = obligationIn(r, now); return opened ? r : undefined; });
   if (opened) await alertOnce(deps, 'refund_obligation', orderId, opened, opened.id);
   return opened;
 }
@@ -278,7 +310,17 @@ async function completeObligation(deps, { orderId, obligationId, state, bank_ref
 const CONSENT_WINDOW_MS = 3 * 60 * 1000;   // owner 2026-11-07: the increase consent window
 const revOf = (order) => (order && order.payment_commit && order.payment_commit.revision) || 0;
 const committedLegIds = (rec) => Object.entries(R.legsOfRecord(rec)).filter(([, l]) => l.role === 'committed' && (l.state === 'approved' || l.state === 'captured')).map(([id]) => id);
-const orderOpen = (order) => isSdk(order) && !!order.payment_placed && !isTerminalOrder(order) && order.status !== 'cancelled' && !order.payment_cancel && !order.payment_terminal;
+const orderOpen = (order) => isSdk(order) && !F.markerFault(order) && !!order.payment_placed && !isTerminalOrder(order) && order.status !== 'cancelled' && !order.payment_cancel && !order.payment_terminal;
+// The order revision an adjustment commits WITH its payment decision (Codex r1 #10): canonical items + totals, validated against
+// the new total. Returns the fields to write, or null (refused before any PSP call).
+const BREAKDOWN_CENTS = Object.freeze(['delivery_cents', 'tip_cents', 'promo_discount_cents']);
+function orderRevision(rv, total) {
+  if (!rv || typeof rv !== 'object' || !Array.isArray(rv.items) || !rv.items.length || !rv.items.every((i) => i && typeof i === 'object' && !Array.isArray(i))) return null;
+  if (!R.isCentsInt(total) || rv.total_cents !== total) return null;
+  const out = { items: rv.items, total_cents: total, total: total / 100 };
+  for (const f of BREAKDOWN_CENTS) if (rv[f] !== undefined) { if (!R.isCentsInt(rv[f])) return null; out[f] = rv[f]; }
+  return out;
+}
 const recordOpen = (rec, order) => !!rec && rec.phase === 'open' && !rec.lock && !R.unansweredMoneyOps(rec).length && (rec.committed_revision || 0) === revOf(order);
 
 async function persistProposal(deps, orderId, p) {
@@ -297,10 +339,10 @@ async function commitProposal(deps, orderId, pid, p) {
   return decision(await deps.db.ref(`orders/${orderId}`).transaction((cur) => {
     box.won = false;
     if (cur == null) return null;
-    if (R.TERMINAL.includes(cur.status) || cur.status === 'cancelled' || cur.payment_cancel || cur.payment_terminal) return undefined;
+    if (R.TERMINAL.includes(cur.status) || cur.status === 'cancelled' || cur.payment_cancel || cur.payment_terminal || F.markerFault(cur)) return undefined;
     if (revOf(cur) !== p.base_revision) return undefined;
     box.won = true;
-    return { ...cur, payment_commit: { revision: p.base_revision + 1, pid }, payment_total_cents: p.fulfillment_total_cents };
+    return { ...cur, ...p.order_revision, payment_commit: { revision: p.base_revision + 1, pid }, payment_total_cents: p.fulfillment_total_cents };
   }), box);
 }
 
@@ -377,12 +419,14 @@ async function decideProposal(deps, orderId, p) {
 
 const expireConsent = (deps, orderId) => R.casRecord(deps.db, orderId, (r) => { if (!r.consent || r.consent.state !== 'pending') return undefined; r.consent.state = 'expired'; return r; });
 
-async function requestDecrease(deps, { orderId, new_total_cents }) {
+async function requestDecrease(deps, { orderId, new_total_cents, revision }) {
   const now = deps.clock();
   const order = await readOrder(deps.db, orderId);
   const rec = await readRecord(deps.db, orderId);
   if (!orderOpen(order) || !recordOpen(rec, order)) return { outcome: 'refused', reason: 'not_adjustable' };
   if (!R.isCentsInt(new_total_cents) || new_total_cents <= 0 || new_total_cents >= rec.fulfillment_total_cents) return { outcome: 'refused', reason: 'not_a_decrease' };
+  const ov = orderRevision(revision, new_total_cents);
+  if (!ov) return { outcome: 'refused', reason: 'bad_revision' };
   await expireConsent(deps, orderId);                 // a later edit invalidates a pending consent
   const base = rec.committed_revision || 0;
   const S = committedLegIds(rec);
@@ -396,7 +440,7 @@ async function requestDecrease(deps, { orderId, new_total_cents }) {
     });
     if (!d.dispatched) return { outcome: 'refused', reason: 'locked_or_busy' };
     if (d.out.outcome === 'approved') {
-      const res = await decideProposal(deps, orderId, { kind: 'decrease', base_revision: base, committed_set: [legId], fulfillment_total_cents: new_total_cents, new_leg_ids: [legId] });
+      const res = await decideProposal(deps, orderId, { kind: 'decrease', base_revision: base, committed_set: [legId], fulfillment_total_cents: new_total_cents, new_leg_ids: [legId], order_revision: ov });
       if (res.outcome !== 'committed') { await R.casRecord(deps.db, orderId, (r) => { const l = R.legsOfRecord(r)[legId]; if (!l || l.role !== 'pending') return undefined; l.role = 'surplus'; return r; }); return res; }
       await voidSurplus(deps, orderId);
       return { outcome: 'replaced', leg_id: legId };
@@ -404,7 +448,7 @@ async function requestDecrease(deps, { orderId, new_total_cents }) {
     if (d.out.outcome === 'unknown' || d.out.outcome === 'requires_action') return { outcome: d.out.outcome };
     // a definitive decline of B → rule 4 (S stays committed)
   }
-  const r4 = await decideProposal(deps, orderId, { kind: 'decrease_rule4', base_revision: base, committed_set: S, fulfillment_total_cents: new_total_cents, new_leg_ids: [] });
+  const r4 = await decideProposal(deps, orderId, { kind: 'decrease_rule4', base_revision: base, committed_set: S, fulfillment_total_cents: new_total_cents, new_leg_ids: [], order_revision: ov });
   return r4.outcome === 'committed' ? { outcome: 'rule4' } : r4;
 }
 
@@ -422,8 +466,10 @@ async function recordConsent(deps, { orderId, adjustment_id, new_total_cents }) 
   return { outcome: res.applied ? 'pending' : 'refused' };
 }
 
-async function applyIncrease(deps, { orderId, adjustment_id, order_revision, new_total_cents, accept }) {
+async function applyIncrease(deps, { orderId, adjustment_id, order_revision, new_total_cents, accept, revision }) {
   const now = deps.clock();
+  const ov = orderRevision(revision, new_total_cents);
+  if (!ov) return { outcome: 'rejected', reason: 'bad_revision' };
   const order = await readOrder(deps.db, orderId);
   let consent = null;
   const taken = await R.casRecord(deps.db, orderId, (r) => {
@@ -441,7 +487,7 @@ async function applyIncrease(deps, { orderId, adjustment_id, order_revision, new
   const S = committedLegIds(rec);
   const need = Math.max(0, new_total_cents - R.derive(rec).committed_auth_total);
   if (need === 0) {
-    const res = await decideProposal(deps, orderId, { kind: 'increase', base_revision: base, committed_set: S, fulfillment_total_cents: new_total_cents, new_leg_ids: [] });
+    const res = await decideProposal(deps, orderId, { kind: 'increase', base_revision: base, committed_set: S, fulfillment_total_cents: new_total_cents, new_leg_ids: [], order_revision: ov });
     return res.outcome === 'committed' ? { outcome: 'committed' } : res;
   }
   let legId = null;
@@ -453,7 +499,7 @@ async function applyIncrease(deps, { orderId, adjustment_id, order_revision, new
   });
   if (!d.dispatched) return { outcome: 'refused', reason: 'locked_or_busy' };
   if (d.out.outcome !== 'approved') return { outcome: d.out.outcome === 'unknown' || d.out.outcome === 'requires_action' ? d.out.outcome : 'declined' };
-  const res = await decideProposal(deps, orderId, { kind: 'increase', base_revision: base, committed_set: [...S, legId], fulfillment_total_cents: new_total_cents, new_leg_ids: [legId] });
+  const res = await decideProposal(deps, orderId, { kind: 'increase', base_revision: base, committed_set: [...S, legId], fulfillment_total_cents: new_total_cents, new_leg_ids: [legId], order_revision: ov });
   if (res.outcome !== 'committed') {
     await R.casRecord(deps.db, orderId, (r) => { const l = R.legsOfRecord(r)[legId]; if (!l || l.role !== 'pending') return undefined; l.role = 'surplus'; return r; });
     await voidSurplus(deps, orderId);
@@ -468,29 +514,33 @@ async function cancelSdkOrder(deps, { orderId, kind = 'cancel' }) {
   const now = deps.clock();
   let order = await readOrder(deps.db, orderId);
   if (!isSdk(order)) return { outcome: 'refused', reason: 'not_sdk' };
+  if (await markerGuard(deps, orderId, order)) return { outcome: 'manual' };
+  const rec0 = await readRecord(deps.db, orderId);
+  // 0. ENROL before the decision and before the record (Codex r1 #7) — fresh or resumed; only a finished cleanup skips it
+  if (!(rec0 && rec0.cleanup && rec0.cleanup.done_at)) await enrol(deps, orderId);
   if (!order.payment_cancel) {
     if (isTerminalOrder(order) || order.payment_terminal) { await settleTerminal(deps, { orderId }); return { outcome: 'lost_to_terminal' }; }
-    const rec0 = await readRecord(deps.db, orderId);
+    // the shared go-live claim has committed and its materialization has not: the cancel waits for it (or for its park)
+    if (F.goLiveInFlight(order)) return { outcome: 'refused', reason: 'going_live' };
     // 1. WIN the order-level decision first
     const box = { won: false };
     const d = decision(await deps.db.ref(`orders/${orderId}`).transaction((cur) => {
       box.won = false;
       if (cur == null) return null;
-      if (R.TERMINAL.includes(cur.status) || cur.payment_terminal || cur.payment_cancel) return undefined;
+      if (R.TERMINAL.includes(cur.status) || cur.payment_terminal || cur.payment_cancel || F.markerFault(cur)) return undefined;
+      if (F.goLiveInFlight(cur)) return undefined;
       if (kind === 'expire' && (cur.status !== 'pending_payment' || cur.payment_placed || !rec0 || now < rec0.ttl_at)) return undefined;
       box.won = true;
       return { ...cur, payment_cancel: { kind, at: now }, status: 'cancelled', cancelled_at: now };
     }), box);
     order = d.order || await readOrder(deps.db, orderId);
-    if (d.won) await enrol(deps, orderId);            // a fresh decision is discoverable before its follow-up work
     if (!d.won) {
       if (order && (R.TERMINAL.includes(order.status) || order.payment_terminal) && !order.payment_cancel) { await settleTerminal(deps, { orderId }); return { outcome: 'lost_to_terminal' }; }
       if (!order || !order.payment_cancel) return { outcome: 'refused', reason: 'not_cancellable' };
     }
   }
   // the decision is committed (now or earlier): every step below is idempotent and resumable
-  const made = await R.createRecord(deps.db, orderId, { flow: 'sdk_auth_v1', phase: 'cancelled', committed_revision: 0, fulfillment_total_cents: 0, created_at: now, ttl_at: now });
-  if (made.created) await enrol(deps, orderId);
+  await R.createRecord(deps.db, orderId, { flow: 'sdk_auth_v1', phase: 'cancelled', committed_revision: 0, fulfillment_total_cents: 0, created_at: now, ttl_at: now });
   // 2. stop attempts (placement and adjustments require phase 'open')
   await R.casRecord(deps.db, orderId, (r) => {
     if (r.phase === 'cancelled') return undefined;
@@ -559,4 +609,4 @@ async function trackExpiry(deps, orderId) {
   }
 }
 
-module.exports = { sweepPendingRoles, trackExpiry, cancelSdkOrder, expirePending, placeOriginal, reconcileSdkOps, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };
+module.exports = { markerGuard, sweepPendingRoles, trackExpiry, cancelSdkOrder, expirePending, placeOriginal, reconcileSdkOps, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };
