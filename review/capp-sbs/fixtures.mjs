@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 // the harness's injected runtime field (ruling (A)) — mirrors 3a's APPROVED contract: GET …/getRestaurantDirectory, no query; ETag /
@@ -60,6 +61,36 @@ export async function kdsSoldNode(rid, raws) {
 }
 
 const json = (body, status = 200, headers = []) => ({ status, body, type: 'application/json', headers });
+
+// quoteOrder from the REAL pieces the handler composes (index.js quoteOrder; Codex r1 P2-6: the old fake trusted client subtotals and
+// always priced a delivery): the food = computeServerTotal over the PUBLISHED catalog's tables (provisionBrand) → orderBreakdownCents,
+// an unknown item → the handler's 200 {ok:false, error:'bad_cart'}; the envío = delivery-wire quoteDeliveryFor itself (mode, pin,
+// coverage, member promo, refusals) over a pricing config matching the s7a2 directory (from L 45; x_pizza free for members; each
+// identity's hub + radius = the directory row's hub / coverage_km). Only the I/O is stubbed: the config read, the identity read, and
+// the ID-token check (the harness's member token → u_ana, anything else a guest — as getAuth refuses a foreign token). No quote_token
+// (an unprovisioned secret: the issuer's own fallback). Not the rate limit, extras gate or redemption path.
+const FN = path.join(ROOT, 'xpizza-functions'), freq = createRequire(path.join(FN, 'index.js'));
+const { computeServerTotal } = freq('./menu-pricing.js'), { orderBreakdownCents } = freq('./order-money.js'), DW = freq('./delivery/delivery-wire.js'), DP = freq('./delivery/delivery-pricing.js');
+const ROWS = Object.fromEntries(FX.scenarios.complete.body.restaurants.map((r) => [r.restaurant_id, r]));
+const PRICING_RAW = { policy_version: 1, bands: [{ max_km: 4, cents: 4500 }, { max_km: 10, cents: 6500 }],
+  restaurants: Object.fromEntries(Object.values(ROWS).map((r) => [r.restaurant_id, { active: true, free_delivery: !!(r.promo && r.promo.free_delivery) }])) };
+async function quoteOrder(req) {
+  let body; try { body = JSON.parse(req.postData || ''); } catch (_) { return json({ ok: false, error: 'bad_request' }, 400); }
+  const rid = body && body.restaurant_id, prov = PROV[rid], row = ROWS[rid];
+  if (!prov || !row) return json({ ok: false, error: 'bad_request', detail: 'restaurant_id' }, 400);
+  const { total, error } = computeServerTotal(body.items, rid, prov.tables);
+  if (error) return json({ ok: false, error: 'bad_cart' });
+  const bd = orderBreakdownCents(total, rid);
+  const tok = Object.entries(req.headers || {}).find(([k]) => k.toLowerCase() === 'x-firebase-id-token');
+  const dq = await DW.quoteDeliveryFor({ get: (h) => (h.toLowerCase() === 'x-firebase-id-token' && tok ? tok[1] : undefined) },
+    { ref: () => ({ get: async () => ({ exists: () => false, val: () => null }) }) }, rid, body, {
+      pricingP: Promise.resolve({ pricing: DP.readPricing(PRICING_RAW, rid) }),
+      getIdentity: async () => ({ hub_lat: row.hub_lat, hub_lng: row.hub_lng, delivery_radius_km: row.coverage_km }),
+      getAuth: () => ({ verifyIdToken: async (t) => { if (t !== MEMBER_TOKEN) throw new Error('foreign token'); return { uid: 'u_ana', customer: true }; } }),
+      attributionUid: (dec, deleted) => (deleted ? null : dec.uid) });
+  if (dq.refuse) return json(dq.refuse, dq.httpStatus || 200);
+  return json({ ok: true, total_cents: bd.total_cents, subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents, ...DW.quoteFields(dq.ctx) });
+}
 // opts: { directory: 'complete' | <scenario>, sold: { rid: <item_availability node from kdsSoldNode> }, quote: true }
 export function router(opts = {}) {
   const scen = FX.scenarios[opts.directory || 'complete'];
@@ -82,11 +113,7 @@ export function router(opts = {}) {
       // the client-version heartbeat (main's P-SELFUPDATE telemetry): its accepted answer is 204, no body (client-version.js handleReport)
       if (p.endsWith('/reportClientVersion') && req.method === 'POST') return { status: 204, body: '', type: 'text/plain' };
       if (p.endsWith('/getSignupConfig')) return json({ ok: true, terms_url: 'https://legal.sherpa.test/terminos', privacy_url: 'https://legal.sherpa.test/privacidad', legal_ready: true, google_enabled: false });
-      if (p.endsWith('/quoteOrder') && req.method === 'POST' && opts.quote !== false) {
-        let b = {}; try { b = JSON.parse(req.postData || '{}'); } catch (_) {}
-        const food = (b.items || []).reduce((a, x) => a + Math.round((x.subtotal || 0) * 100), 0);
-        return json({ ok: true, total_cents: food, net_total_cents: food + 4500, delivery: { mode: 'delivery', delivery_cents: 4500, promo_discount_cents: 0, policy_version: 'p1', from_cents: 3500, max_km: 6 } });
-      }
+      if (p.endsWith('/quoteOrder') && req.method === 'POST' && opts.quote !== false) return quoteOrder(req);
       if (opts.extra) { const x = opts.extra(req, u); if (x) return x; }
       return null;
     }
@@ -119,8 +146,10 @@ export const CLOCK_SHIM = `(() => { const D = Date, off = ${NOW_PIN} - D.now();
   function P(...a) { if (!new.target) return new D(D.now() + off).toString(); return a.length ? new D(...a) : new D(D.now() + off); }
   P.prototype = D.prototype; P.now = () => D.now() + off; P.UTC = D.UTC; P.parse = D.parse; self.Date = P; })();`;
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
-export const memberToken = () => { const now = Math.floor(nowMs() / 1000);
+export const memberToken = () => MEMBER_TOKEN;
+const mintMemberToken = () => { const now = Math.floor(nowMs() / 1000);
   return `${b64u({ alg: 'RS256', kid: 'sbs', typ: 'JWT' })}.${b64u({ iss: 'https://securetoken.google.com/xpizza-delivery', aud: 'xpizza-delivery', auth_time: now - 60, user_id: 'u_ana', sub: 'u_ana', iat: now - 60, exp: now + 3600, customer: true, firebase: { identities: {}, sign_in_provider: 'custom' } })}.sig`; };
+const MEMBER_TOKEN = mintMemberToken();   // ONE token per run: the seed installs it, the quote's getAuth stub recognizes it
 export const MEMBER_SEED = () => `(async () => {
   const load = (src) => new Promise((r, j) => { const s = document.createElement('script'); s.src = src; s.onload = r; s.onerror = j; document.head.appendChild(s); });
   await load('/capp-runtime.js'); await load('/capp-device-account.js');

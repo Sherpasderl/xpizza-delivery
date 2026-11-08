@@ -28,7 +28,9 @@ fs.mkdirSync(path.join(OUT, 'img'), { recursive: true });
 
 // ── the server: the bundle at /, the mockups at /__mock/ (read-only), SPA fallback as the bundle's _redirects says ──
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.woff': 'font/woff', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
-const safeJoin = (root, p) => { const f = path.normalize(path.join(root, decodeURIComponent(p))); return f.startsWith(root) ? f : null; };
+// inside root ONLY: root itself or root + separator (a bare startsWith admitted a sibling sharing the prefix — Codex r1 P2-4); a bad
+// %-escape is a 404, never a throw
+const safeJoin = (root, p) => { let d; try { d = decodeURIComponent(p); } catch (_) { return null; } const f = path.normalize(path.join(root, d)); return f === root || f.startsWith(root + path.sep) ? f : null; };
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
   let file = u.pathname.startsWith('/__mock/') ? safeJoin(MOCK, u.pathname.slice('/__mock/'.length)) : safeJoin(PKG, u.pathname === '/' ? '/index.html' : u.pathname);
@@ -75,9 +77,11 @@ async function openPage({ width, height, dark }) {
     const { requestId, request } = d.params;
     try {
       if (request.url.startsWith(ORIGIN) || request.url.startsWith('data:') || request.url.startsWith('blob:')) return void await S('Fetch.continueRequest', { requestId });
-      const hit = page.route ? page.route(request) : null;
+      let hit = null;
+      try { hit = page.route ? await page.route(request) : null; }   // a route may be async (the real-composed quoteOrder)
+      catch (e) { hit = null; request.__routeError = String(e && e.message || e).slice(0, 120); }   // a throwing route is UNMAPPED, never a hung request (Codex r1 P2-5)
       page.trace.push(`${hit ? hit.status || 200 : 'UNMAPPED'} ${request.method} ${request.url.replace(/^https?:\/\//, '').slice(0, 110)}`);
-      if (!hit) { unmapped.push(`${page.scene}: ${request.method} ${request.url.slice(0, 160)}`); return void await S('Fetch.fulfillRequest', { requestId, responseCode: 599, body: '' }); }
+      if (!hit) { unmapped.push(`${page.scene}: ${request.method} ${request.url.slice(0, 160)}${request.__routeError ? ` (route threw: ${request.__routeError})` : ''}`); return void await S('Fetch.fulfillRequest', { requestId, responseCode: 599, body: '' }); }
       const body = Buffer.isBuffer(hit.body) || typeof hit.body === 'string' ? hit.body : JSON.stringify(hit.body ?? null);   // a Buffer = a committed image file
       if (hit.delay) await sleep(hit.delay);   // a slow read (memberExtra's receiptDelay: the cold-miss CLS scene)
       await S('Fetch.fulfillRequest', { requestId, responseCode: hit.status || 200, responseHeaders: [{ name: 'Content-Type', value: hit.type || 'application/json' }, { name: 'Access-Control-Allow-Origin', value: ORIGIN }, ...(hit.headers || [])], body: Buffer.from(body).toString('base64') });
