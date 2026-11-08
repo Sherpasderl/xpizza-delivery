@@ -105,8 +105,8 @@ function boundCerrado() {
     'function render(){}\n' +
     liftFn('drv2CerradoEarnStale') + '\n' + liftFn('showCerrado') + '\n' + liftFn('drv2ValidateCerradoEarn') + '\n' +
     'return { open: (earned) => showCerrado({ deliveries: 6, cashOwed: 1430 }, 1000, 7960000, earned), validate: () => drv2ValidateCerradoEarn(), dismiss: () => { if (drv2CerradoDismiss) drv2CerradoDismiss(); }, setShift: (s) => { driverState = s === null ? null : { current_shift_id: s }; }, setGen: (g) => { authGen = g; } };')(
-    document, (fn) => { ticks.push(fn); return ticks.length; }, () => {});
-  return { document, api, fireTicks: () => { const t = ticks.slice(); ticks.length = 0; t.forEach((fn) => fn()); } };
+    document, (fn, delay) => { ticks.push({ fn, delay }); return ticks.length; }, () => {});
+  return { document, api, fireTicks: () => { const t = ticks.slice(); ticks.length = 0; t.forEach(({ fn }) => fn()); }, lastDelay: () => ticks.length ? ticks[ticks.length - 1].delay : null };
 }
 
 t('(cerrado P2b) a midnight crossing blanks the stale «Ganado hoy» snapshot', () => {
@@ -197,6 +197,21 @@ t('(cerrado r2) an OPEN card blanks itself at the HN-midnight tick with NO feed 
     assert.equal(h.document.querySelector('.cerrado-earn'), null, 'the midnight tick blanked the stale card');
   } finally { Date.now = realNow; }
 });
+t('(cerrado r3) the tick deadline is anchored to the SNAPSHOT day, not a post-validate Date.now (no extra-day staleness)', () => {
+  const realNow = Date.now;
+  try {
+    const h = boundCerrado();
+    // The race Codex r3 flagged: Date.now reads the snapshot's day (500) at the at-open validate — so the card PAINTS —
+    // then a time ALREADY PAST the snapshot's next HN midnight (500 + 86400000 = 86400500) by the time the tick schedules.
+    let seq = [500]; const afterMidnight = 86400600;
+    Date.now = () => seq.length ? seq.shift() : afterMidnight;
+    h.api.open({ ready: true, cents: 42000, count: 6, day: 500, shiftId: 'sh1' });
+    assert.ok(h.document.querySelector('.cerrado-earn'), 'card painted (snapshot day matched at the at-open validate)');
+    // Anchored on earned.day: its next midnight already passed ⇒ delay clamps to ~immediate (≤ a second), so the stale
+    // card is blanked now. A fresh-Date.now deadline would be ~a full day (86400000+) — the extra-day staleness bug.
+    assert.ok(h.lastDelay() != null && h.lastDelay() <= 2000, `tick fires ~immediately, not a day late; got delay=${h.lastDelay()}`);
+  } finally { Date.now = realNow; }
+});
 
 // ───────── P2c Fix 2: the REAL Inicio tab handler leaves Ganancias past the stay guard ─────────
 t('(P2c nav) tapping Inicio (REAL mountTabBar handler → render) LEAVES Ganancias', () => {
@@ -229,6 +244,42 @@ t('(P2c nav) tapping Inicio (REAL mountTabBar handler → render) LEAVES Gananci
   inicio.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   assert.equal(calls.renderGanancias, 0, 'did NOT swallow the Inicio tap by re-rendering Ganancias');
   assert.ok(calls.showScreen.includes('offshift'), 'the REAL Inicio handler + render left Ganancias (→ offshift)');
+});
+t('(P2c nav r3) an Inicio tap whose render EARLY-RETURNS (companion) must NOT leak nav intent into a later ordinary render', () => {
+  const dom = new JSDOM('<!doctype html><html><body><div id="screen-ganancias"></div></body></html>');
+  const document = dom.window.document;
+  const gn = document.getElementById('screen-ganancias');   // Ganancias open
+  const calls = { showScreen: [], renderGanancias: 0 };
+  const els = { 'screen-ganancias': gn, 'off-driver-name': { textContent: '' } };
+  const decideQ = [{ action: 'deactivate' }, { action: 'legacy' }];   // 1st render (Inicio tap) early-returns; 2nd (ordinary) falls through to the stay guard
+  const scope = {
+    document,
+    drv2LiveBoard: () => [], TAB_SHOW_PEDIDOS: true, TAB_SHOW_GANANCIAS: true,
+    tabBarHtml: () => '<div class="tabs"><button class="tab-btn" data-tab="inicio">Inicio</button></div>',
+    openCuenta: () => {}, openHistoryModal: () => {}, openGanancias: () => {},
+    currentUser: { email: 'd@x.pizza', uid: 'drv' },
+    companion: { decide: () => decideQ.shift() || { action: 'legacy' } },
+    companionRenderE2: () => {}, companionRenderScreen: () => {}, companionPostActStep: () => false, companionHasHeldWork: () => false, companionSyncSuspendedNotice: () => {},
+    driverState: { active: false }, optimisticShift: null,
+    $: (id) => els[id] || null,
+    renderGanancias: () => { calls.renderGanancias++; },
+    drv2GananciasView: 'hoy',
+    showScreen: (s) => { calls.showScreen.push(s); },
+    stopKeepAlive: () => {}, startKeepAlive: () => {}, ensureOfflineBanner: () => {},
+    renderStatusBar: () => {}, renderActiveAndQueue: () => {},
+  };
+  const names = Object.keys(scope);
+  const h = new Function(...names, 'let drv2NavHome = false, companionSuspended, companionNeutralNotice;\n' +
+    liftFn('render') + '\n' + liftFn('mountTabBar') + '\n' +
+    'mountTabBar(document.getElementById("screen-ganancias"), "ganancias", true); return { render, navHome: () => drv2NavHome };')(...Object.values(scope));
+  // 1) tap Inicio: render() early-returns via companion 'deactivate' BEFORE the stay guard — the try/finally must still clear the intent.
+  gn.querySelector('[data-tab="inicio"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(h.navHome(), false, 'nav intent CLEARED even though the Inicio render early-returned (try/finally)');
+  // 2) a later ordinary render (companion legacy) on the open Ganancias with no work must STAY — never consume a leaked intent.
+  calls.renderGanancias = 0; calls.showScreen.length = 0;
+  h.render();
+  assert.equal(calls.renderGanancias, 1, 'the later ordinary render STAYED on Ganancias (no leaked nav intent ejected it)');
+  assert.deepEqual(calls.showScreen, [], 'no navigation on the ordinary render');
 });
 
 console.log(`\nganado-hoy-earnings: ${failed === 0 ? 'OK' : 'INCOMPLETE'} (${passed} passed, ${failed} failed)`);

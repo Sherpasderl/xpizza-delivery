@@ -3156,7 +3156,7 @@ function mountTabBar(screenEl, active, visible) {
       if (tab === 'cuenta') openCuenta();
       else if (tab === 'pedidos') openHistoryModal();   // Pedidos → the daily-history modal (moved off the header «Hoy» button)
       else if (tab === 'ganancias') openGanancias();   // Ganancias → the earnings screen (dark: TAB_SHOW_GANANCIAS = PAGOS_LIVE, so the tab never renders yet)
-      else if (tab === 'inicio') { drv2NavHome = true; render(); }   // route home (render() → offshift when off-shift, the board when on-shift); the nav-intent flag lets it leave Ganancias past the stay guard
+      else if (tab === 'inicio') { drv2NavHome = true; try { render(); } finally { drv2NavHome = false; } }   // route home; the one-shot nav-intent lets it leave Ganancias past the stay guard. Codex r3 P2: clear in finally so an EARLY return (companion/auth gate before the guard) can't leak stale intent into a later ordinary render
     });
   }
 }
@@ -5631,8 +5631,12 @@ function showCerrado(cash, startMs, closedAtMs, earned) {
     <div class="cerrado-foot"><button class="cerrado-done" id="cerrado-done" type="button">Listo</button></div>`;
   ov.classList.add('open');
   if (drv2CerradoTick) { clearTimeout(drv2CerradoTick); drv2CerradoTick = null; }
-  if (earnCard) {   // Codex r2 P2: an open card must blank itself at the HN-day rollover even with NO feed update — schedule one re-validate at the next HN midnight
-    const DAY = 86400000, delay = Math.max(0, (hnDayStartMs(Date.now()) + DAY) - Date.now()) + 1000;
+  if (earnCard && earned.day != null) {   // Codex r2 P2: an open card must blank itself at the HN-day rollover even with NO feed update — schedule one re-validate at the next HN midnight
+    // Codex r3 P2: anchor the deadline on the SNAPSHOT's HN day (earned.day), NOT a fresh Date.now() read taken after
+    // the at-open validate — if midnight slips in between, hnDayStartMs(now) would already be tomorrow and the tick
+    // would be a full day late. earned.day + DAY is this snapshot's own next midnight; if it has already passed, delay
+    // clamps to 0 and the tick fires ~immediately to blank the now-stale card.
+    const DAY = 86400000, delay = Math.max(0, (Number(earned.day) + DAY) - Date.now()) + 1000;
     drv2CerradoTick = setTimeout(() => { drv2CerradoTick = null; drv2ValidateCerradoEarn(); }, delay);
   }
   const done = document.getElementById('cerrado-done');
