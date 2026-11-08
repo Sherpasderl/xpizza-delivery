@@ -15,7 +15,7 @@ const stripComments = require('./tools/strip-comments');
 const { HUNKS, FILES, BASE, unapplyAreaIndex, unapplyAreaModule } = require('./tools/area-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');   // this slice is the NEWEST: nothing composes on top
+const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));   // this slice is the NEWEST: nothing composes on top
 const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // ── (i) the inverse ──
