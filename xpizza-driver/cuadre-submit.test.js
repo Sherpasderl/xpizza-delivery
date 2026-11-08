@@ -71,7 +71,7 @@ function build(opts = {}) {
     makeOpId: () => 'op_test',
     XPD,
     finalizeEndShift: async () => { calls.finalize++; if (opts.deferFinalize) { pendingFinalize = deferred(); return pendingFinalize.promise; } return opts.finalizeOk !== false; },   // success by default; opts.finalizeOk:false = failed close; opts.deferFinalize = controllable (resolveFinalize)
-    showCerrado: (cash, start, closedAt) => { calls.cerrado = (calls.cerrado || 0) + 1; calls.cerradoArgs = { cash, start, closedAt }; },
+    showCerrado: (cash, start, closedAt, earned) => { calls.cerrado = (calls.cerrado || 0) + 1; calls.cerradoArgs = { cash, start, closedAt, earned }; },   // capture the 4th arg so the earnedAtClose WIRING is actually exercised (Codex r1 P2-tests)
     render: () => {},
     BLOCKED_CLOSE_TEXT: 'No se pudo registrar el cierre.',
     COMPLETION_SETTLE_TIMEOUT_MS: 100000,
@@ -81,7 +81,8 @@ function build(opts = {}) {
     + 'let feedReady = true; let cutoverLoaded = true; let driverState = {}; let driverFeed = null;\n'
     + 'let slidingEl = null; let renderPending = false; function renderActiveAndQueue() {}\n'   // stacked-view globals attachSlideConfirm touches
     + 'const pendingCompletions = new Set();\n'
-    + 'const PAGOS_LIVE = false;\n'   // O6: CUADRE-RENDER now reads the single Pagos flag (CUADRE_SHOW_EARNINGS = PAGOS_LIVE)
+    + 'const PAGOS_LIVE = ' + (opts.pagosOn ? 'true' : 'false') + ';\n'   // O6: CUADRE-RENDER reads the single Pagos flag; opts.pagosOn exercises the earnedAtClose snapshot wiring (Codex r1 P2-tests)
+    + (opts.pagosOn ? 'function drv2DayEarned() { return { ready: true, resolved: [], cents: 7000, count: 1 }; } function hnDayStartMs(ms) { return ms; }\n' : '')   // the ONE source + HN-day helper onCuadreConfirm snapshots when Pagos is live
     + 'function refreshOpenCashSurfaces() { if (closeInFlight) return; if ($("cuadre-screen").classList.contains("open")) showCuadre(); }\n'
     + regionBody('CUADRE-RENDER') + '\n'
     + liftFn('attachSlideConfirm') + '\n'
@@ -237,6 +238,31 @@ await t('a successful clock-out shows cerrado ONCE, with the submitted cuadre ca
   assert.equal(typeof h.calls.cerradoArgs.closedAt, 'number', 'a single captured closedAt instant is passed');
 });
 
+await t('payments-ON: a clean clock-out passes the earnedAtClose SNAPSHOT to cerrado — wired, not null (Codex r1 P2-tests)', async () => {
+  const h = build({ pagosOn: true });
+  h.api.showCuadre();
+  slideToComplete(h);
+  await tick();
+  h.resolveRecord({});
+  await tick(); await tick();
+  assert.equal(h.calls.cerrado, 1, 'cerrado shown after finalize');
+  const earned = h.calls.cerradoArgs.earned;
+  assert.ok(earned && earned.ready === true, 'the earned snapshot IS passed (not null) — the earnedAtClose wiring is exercised');
+  assert.equal(earned.cents, 7000, 'the snapshot carries drv2DayEarned().cents (the one source)');
+  assert.ok(typeof earned.day === 'number', 'the snapshot is bound to its HN day');
+  assert.ok(earned.shiftId != null, 'the snapshot is bound to the closing shift id');
+});
+
+await t('payments-OFF: earnedAtClose is null (no snapshot when Pagos is off)', async () => {
+  const h = build();
+  h.api.showCuadre();
+  slideToComplete(h);
+  await tick();
+  h.resolveRecord({});
+  await tick(); await tick();
+  assert.equal(h.calls.cerradoArgs.earned, null, 'Pagos off → earnedAtClose is null');
+});
+
 await t('a FAILED clock-out does NOT show cerrado (shown only on success)', async () => {
   const h = build({ finalizeOk: false });  // the clock-out reverts
   h.api.showCuadre();
@@ -367,4 +393,4 @@ await t('pay-rate reader = window.PayRate (carried byte-identical from platform/
 });
 
 console.log(`✓ cuadre-submit: ${passed} checks passed`);
-process.exit(passed === 14 ? 0 : 1);   // force-exit past the lifted handler's lingering ack-timeout timers
+process.exit(passed === 16 ? 0 : 1);   // force-exit past the lifted handler's lingering ack-timeout timers

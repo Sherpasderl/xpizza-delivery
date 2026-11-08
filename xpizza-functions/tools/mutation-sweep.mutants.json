@@ -31865,6 +31865,21 @@
   ]
  },
  {
+  "id": "gh-13",
+  "slice": "gh",
+  "file": "../xpizza-driver/index.html",
+  "from": "  const earnedAtClose = PAGOS_LIVE ? { ...drv2DayEarned(), day: hnDayStartMs(closedAt), shiftId: bound.shiftId } : null;",
+  "to": "  const earnedAtClose = null;",
+  "label": "onCuadreConfirm WIRES the earnedAtClose snapshot into cerrado — nulling it (dead wire) must go RED",
+  "kills_with": [
+   "the earned snapshot IS passed (not null) — the earnedAtClose wiring is exercised"
+  ],
+  "command": [
+   "node",
+   "../xpizza-driver/cuadre-submit.test.js"
+  ]
+ },
+ {
   "id": "otps-1",
   "slice": "otps",
   "label": "guest train item: verifyCheckoutCode loses its OTP_SALT secret binding (a NEW function gets no plain env ⇒ 500 at launch)",
