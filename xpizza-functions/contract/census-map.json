@@ -857,7 +857,9 @@
   "payments/sdk/coordinator.js#consumeFulfilledRedemption": "payment",
   "payments/sdk/materialize-sdk.js#setIn": "payment",
   "payments/sdk/materialize-sdk.js#writeSdkLive>anon": "payment",
-  "payments/sdk/materialize-sdk.js#completeSdkLive": "payment"
+  "payments/sdk/materialize-sdk.js#completeSdkLive": "payment",
+  "payments/sdk/materialize-sdk.js#fillMissing": "payment",
+  "payments/sdk/record.js#isFinanciallyClosed": "payment"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
@@ -1826,7 +1828,7 @@
   },
   {
    "file": "xpizza-functions/payments/sdk/materialize-sdk.js",
-   "fn": "completeSdkLive",
+   "fn": "clear",
    "how": "dynamic-field-segment",
    "detail": "orders/*/*",
    "fields": [
