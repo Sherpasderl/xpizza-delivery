@@ -916,7 +916,8 @@ const itemsOf = async () => (await val('pending_paid_alerts')) || {};
     const INV = require('../tools/h0-inverse');
     const realPath = pathx.join(__dirname, '..', 'cancel-order-core.js');
     const basePath = pathx.join(__dirname, '..', '.cancel-order-core.base-8f1e017.tmp.js');
-    fsx.writeFileSync(basePath, INV.unapplyH0Module('cancel-order-core.js', fsx.readFileSync(realPath, 'utf8')));
+    // DRYRUN (2e, TRAIN-NEXT2 A4): the next train's newer layers (P5a edits this file) are stripped first, newest innermost
+    fsx.writeFileSync(basePath, INV.unapplyH0Module('cancel-order-core.js', require('../tools/_asm-next2-layers').stripNewer('cancel-order-core.js', fsx.readFileSync(realPath, 'utf8'))));
     let baseCore;
     try { baseCore = require(basePath).cancelOrderCore; } finally { fsx.unlinkSync(basePath); }
     assert.ok(typeof baseCore === 'function' && baseCore !== cancelOrderCore, 'premise: the 8f1e017 core is loaded separately');
