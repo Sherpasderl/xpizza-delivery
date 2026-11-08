@@ -35,7 +35,8 @@ const availIdentityField = (() => {
   return new Function(`return ${m[1]};`)();
 })();
 const servedBody = async (rid) => (await applyIdentityToServedBody(fullRegistry(rid), rid, generateFormBundle(rid, catalogSnapshot(rid)))).body;
-const cappEnvelope = (rid, body, field) => ({ ...envelope(rid, body, '1d.3'), ...(field ? { avail_identity: { field } } : {}) });
+// the identity where the server writes it — inside the served body (catalog/public-menu.js), pinned by the real-envelope cell below
+const cappEnvelope = (rid, body, field) => envelope(rid, field ? { ...body, avail_identity: { field } } : body, '1d.3');
 const mapper = () => CappAvailability.createAvailability({ availKey, decide: Reducer.decide });
 const OFF = { available: false, updated_at: 1 }, ON = { available: true, updated_at: 2 };
 
@@ -75,12 +76,25 @@ for (const dir of ['xpizza-orders', 'la-musa-orders']) {
   });
 }
 
+// FROM THE REAL WRITER (SBS 11-07): the endpoint serves { rid, representation_version, menu: body } (index.js getPublicMenu) and the
+// server writes avail_identity INTO the body (catalog/public-menu.js) — so the identity the app reads must come from the envelope the
+// real publish produces (contract/capp provisionBrand), never a hand-placed field: the earlier top-level builder hid a dead read
+test('the REAL served envelope (the publish, seeded) carries the identity where the app reads it: availIdentity = the server rule', async () => {
+  const { provisionBrand } = await import(join(ROOT, 'xpizza-functions/contract/capp/capture.mjs'));
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const log = console.log; console.log = () => {}; let pv; try { pv = await provisionBrand(rid); } finally { console.log = log; }
+    const env = pv && pv.envelope;
+    assert.ok(env && env.menu && Array.isArray(env.menu.dishes) && env.menu.dishes.length > 0, `premise: ${rid}'s real envelope has a menu`);
+    assert.equal(CappMenu.adaptMenu(env).availIdentity, availIdentityField(rid), `🔴 ${rid}: the app reads no availability identity from the REAL served envelope — sold-out dishes would never be read`);
+  }
+});
+
 test('FAIL-OPEN on an older envelope (no avail_identity): null — never a guessed identity, never an RTDB read', async () => {
   const body = await servedBody('x_pizza');
   const old = CappMenu.adaptMenu(cappEnvelope('x_pizza', body, null));
   assert.equal(old.availIdentity, null);
   assert.equal(mapper().soldKeys(old, { anything: OFF }), null);
-  for (const bad of [{ field: 'slug' }, { field: '' }, 'name', null]) assert.equal(CappMenu.adaptMenu({ ...envelope('x_pizza', body, '1d.3'), avail_identity: bad }).availIdentity, null, `a malformed identity ${JSON.stringify(bad)} is no identity`);
+  for (const bad of [{ field: 'slug' }, { field: '' }, 'name', null]) assert.equal(CappMenu.adaptMenu(envelope('x_pizza', { ...body, avail_identity: bad }, '1d.3')).availIdentity, null, `a malformed identity ${JSON.stringify(bad)} is no identity`);
   let fetched = 0; let opts;
   const S = { mount: (d, o) => { opts = o; return {}; } };
   Boot.boot({}, { runtime: { mode: 'native', ...M.PLATFORM.appRuntime(), flags: {}, sdk_base: './' }, CappShellUI: S, CappSignupApi: { ENDPOINTS: [] }, CappAvailability, availabilityReducer: Reducer, availKey, fetch: async () => { fetched++; return {}; } });
