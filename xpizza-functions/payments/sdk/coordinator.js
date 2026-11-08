@@ -456,4 +456,66 @@ async function applyIncrease(deps, { orderId, adjustment_id, order_revision, new
   return { outcome: 'committed', leg_id: legId };
 }
 
-module.exports = { placeOriginal, reconcile, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, orderTxn, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };
+// ── cancellation / TTL expiry (§8) ───────────────────────────────────────────────────────────────────────────────────────
+const CLEANUP_STALE_MS = 2 * 60 * 1000;
+async function cancel(deps, { orderId, kind = 'cancel' }) {
+  const now = deps.now();
+  let order = await readOrder(deps.db, orderId);
+  if (!isSdk(order)) return { outcome: 'refused', reason: 'not_sdk' };
+  if (!order.payment_cancel) {
+    if (isTerminal(order) || order.payment_terminal) { await settleTerminal(deps, { orderId }); return { outcome: 'lost_to_terminal' }; }
+    const rec0 = await readRecord(deps.db, orderId);
+    // 1. WIN the order-level decision first
+    const d = await orderTxn(deps.db, orderId, (cur) => {
+      if (R.TERMINAL.includes(cur.status) || cur.payment_terminal || cur.payment_cancel) return undefined;
+      if (kind === 'expire' && (cur.status !== 'pending_payment' || cur.payment_placed || !rec0 || now < rec0.ttl_at)) return undefined;
+      cur.payment_cancel = { kind, at: now };
+      cur.status = 'cancelled';
+      cur.cancelled_at = now;
+      return cur;
+    });
+    order = d.order || await readOrder(deps.db, orderId);
+    if (!d.won) {
+      if (order && (R.TERMINAL.includes(order.status) || order.payment_terminal) && !order.payment_cancel) { await settleTerminal(deps, { orderId }); return { outcome: 'lost_to_terminal' }; }
+      if (!order || !order.payment_cancel) return { outcome: 'refused', reason: 'not_cancellable' };
+    }
+  }
+  // the decision is committed (now or earlier): every step below is idempotent and resumable
+  await R.createRecord(deps.db, orderId, { flow: 'sdk_auth_v1', phase: 'cancelled', committed_revision: 0, fulfillment_total_cents: 0, created_at: now, ttl_at: now });
+  await enrol(deps, orderId);
+  // 2. stop attempts (placement and adjustments require phase 'open')
+  await R.casRecord(deps.db, orderId, (r) => {
+    if (r.phase === 'cancelled') return undefined;
+    r.phase = 'cancelled'; r.cancel_kind = order.payment_cancel.kind;
+    if (r.consent && r.consent.state === 'pending') r.consent.state = 'expired';
+    return r;
+  });
+  // 3. recover a pending projection, classify lost proposals, reconcile issued ops
+  await recoverProjection(deps, orderId, order);
+  await classifyLostProposals(deps, orderId, order);
+  await reconcile(deps, { orderId });
+  // 4. every live hold (a late approval included) is SURPLUS — voided only if eligible (production: never)
+  await R.casRecord(deps.db, orderId, (r) => {
+    let changed = false;
+    for (const l of Object.values(R.legsOf(r))) if (l.state === 'approved' && l.role !== 'surplus') { l.role = 'surplus'; changed = true; }
+    return changed ? r : undefined;
+  });
+  await voidSurplus(deps, orderId);
+  // 5. cleanup — claimed in the record so concurrent workers release once; a stale claim (a crash) is resumed
+  const claim = await R.casRecord(deps.db, orderId, (r) => {
+    const c = r.cleanup || {};
+    if (c.done_at) return undefined;
+    if (c.claimed_at && now - c.claimed_at < CLEANUP_STALE_MS) return undefined;
+    r.cleanup = { ...c, claimed_at: now };
+    return r;
+  });
+  if (claim.applied) {
+    const release = deps.release || ((dp, id, o) => require('./release').releaseSdkOrder(dp, id, o));
+    await release(deps, orderId, order);
+    await R.casRecord(deps.db, orderId, (r) => { if (!r.cleanup || r.cleanup.done_at) return undefined; r.cleanup.done_at = deps.now(); return r; });
+  }
+  return { outcome: 'cancelled' };
+}
+const expirePending = (deps, { orderId }) => cancel(deps, { orderId, kind: 'expire' });
+
+module.exports = { cancel, expirePending, placeOriginal, reconcile, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, orderTxn, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };
