@@ -86,15 +86,15 @@ function boot(opts = {}) {
 let passed = 0;
 const t = (name, fn) => { try { fn(); passed += 1; } catch (e) { console.error(`✗ ${name}`); throw e; } };
 
-t('REAL showScreen mounts the bar on offshift (Inicio) + Cuenta, data-gated to Inicio·Pedidos·Cuenta via the production constants', () => {
+t('REAL showScreen mounts the bar on offshift (Inicio) + Cuenta, data-gated to Inicio·Pedidos·Ganancias·Cuenta via the production constants', () => {
   const h = boot();
   h.api.showScreen('offshift');
   const ob = h.bar('screen-offshift');
   assert.ok(ob, 'offshift carries the bar (showScreen → syncTabBarForScreen)');
-  assert.equal(ob.querySelectorAll('.tab-btn').length, 3, 'Inicio + Pedidos + Cuenta — Pedidos live (→ history), Ganancias still dormant');
+  assert.equal(ob.querySelectorAll('.tab-btn').length, 4, 'Inicio + Pedidos + Ganancias + Cuenta — the full prototype 4-tab bar (Pedidos + Ganancias both live)');
   assert.ok(ob.querySelector('.tab-btn.on[data-tab="inicio"]'), 'Inicio active');
   assert.ok(ob.querySelector('[data-tab="pedidos"]'), 'Pedidos shown (TAB_SHOW_PEDIDOS flipped on — history modal shipped)');
-  assert.ok(!ob.querySelector('[data-tab="ganancias"]'), 'Ganancias still dormant (PAGOS_LIVE false)');
+  assert.ok(ob.querySelector('[data-tab="ganancias"]'), 'Ganancias live (PAGOS_LIVE / TAB_SHOW_GANANCIAS true)');
   h.api.showScreen('cuenta');
   assert.equal(h.bar('screen-offshift'), null, 'leaving offshift removes its bar');
   assert.ok(h.bar('screen-cuenta').querySelector('.tab-btn.on[data-tab="cuenta"]'), 'Cuenta active on the Cuenta screen');

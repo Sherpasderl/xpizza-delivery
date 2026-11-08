@@ -3126,7 +3126,7 @@ function applyGpsoff() {
 // THE single Pagos flag (advisor 2026-10-27): earnings everywhere — the Ganancias tab, the cuadre «Ganado hoy» card,
 // and the offshift «Ganado hoy» stat — are hidden until Pagos ships (R2: earnings need a server-delivered pay rate).
 // Flip this ONE const and all three appear with no other code change.
-const PAGOS_LIVE = false;
+const PAGOS_LIVE = true;
 const TAB_SHOW_PEDIDOS = true;          // Pedidos → the existing daily-history modal (openHistoryModal), moved off the header
 const TAB_SHOW_GANANCIAS = PAGOS_LIVE;  // Ganancias ships with Pagos (R2)
 // Idempotently mount / update / remove the bar as the LAST child of a screen (visible:false removes it). One reused
