@@ -1812,6 +1812,7 @@ $('discard').addEventListener('click', () => {
 // how a merchant approves a change they were never shown.
 async function openReviewFlow() {
   if (state.publishViaRequest) return sendToOwnerFlow();   // T-d: this caller sends; the owner's path below is untouched
+  if (state.platformPending === true) return;   // F-2 r2 (Codex r1 P2-2): Sherpa is updating the menu — no save, no review, at ADMISSION (each flow owns its own)
   // 🔴 ADMISSION CONTROL, FIRST — before the generation is bumped and before anything is sent.
   //
   // An operation that cannot acquire the edit lock is REFUSED, not admitted-then-collided. Letting a
@@ -2166,6 +2167,7 @@ function restorePublishFooter() {
 // catalogRequestPublish records the request with the edit token that save returned. No review, no attestation, no publishEdited.
 // Every failure lands on the designed panels (outcomeFor), like the review's own save.
 async function sendToOwnerFlow() {
+  if (state.platformPending === true) return;   // F-2 r2 (Codex r1 P2-2): the same admission refusal for «Enviar al dueño»
   if (state.menuLoading) return;
   if (!state.draft || !state.draftRid) return;
   if (state.currentRid && state.currentRid !== state.draftRid) return;

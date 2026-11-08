@@ -154,6 +154,29 @@ test('a photo is content like a price: with uploads ON, a flagged draft offers n
   assert.ok(cams(q).length > 0, 'premise: with uploads on, rows offer the camera');
 });
 
+test('Codex r1 P2-2: a click DISPATCHED on the disabled review entry is refused at ADMISSION — owner (review) and manager («Enviar al dueño»)', async () => {
+  const p = await page();
+  await p.signIn();
+  const rev = p.d.getElementById('review');
+  assert.ok(rev.disabled, 'premise: disabled');
+  rev.disabled = false; rev.click(); await settle(60);   // past the disabled look
+  assert.equal(p.n('editCatalog').length, 0, 'owner: no save leaves');
+  assert.ok(!p.d.getElementById('scrim').classList.contains('show'), 'and no review opened');
+  // a manager on a platform-factura brand SENDS instead of publishing (publish_via_request): the same refusal
+  const q = await page({ read: () => editable({ platform_changes_pending: PENDING, publish_via_request: true }) });
+  await q.signIn();
+  const rq = q.d.getElementById('review');
+  rq.disabled = false; rq.click(); await settle(60);
+  assert.equal(q.n('editCatalog').length, 0, '«Enviar al dueño»: no save leaves');
+  assert.equal(q.n('catalogRequestPublish').length, 0, 'and no publish request');
+  // non-vacuity: the same forced click WITHOUT the flag does reach the server
+  const r = await page({ read: () => editable({}), on: { editCatalog: () => errJson(503, { error: 'store_unavailable', retryable: true }) } });
+  await r.signIn();
+  const rr = r.d.getElementById('review');
+  rr.disabled = false; rr.click(); await settle(60);
+  assert.ok(r.n('editCatalog').length >= 1, 'premise: unflagged, the click saves');
+});
+
 test('no regression: a merchant\'s OWN unpublishable draft (no flag) still gets today\'s red box and «Volver al menú publicado»; editing as today', async () => {
   const p = await page({ read: () => editable({ draft_unpublishable: { code: 'structure_changed', detail: 'x' } }) });
   await p.signIn();

@@ -153,17 +153,30 @@ function assertOnlyAdded(rid, liveIn, nextIn, added) {
   if (!same(strip, liveIn)) refusePublish('publish_refused_unexpected_delta', `${rid} — the candidate differs from live beyond the ${added.length} migrated field(s)`);
 }
 
+// F-1 r2 (Codex r1 P1-1): a successful publish (or an already-current re-run) is where live comes to CARRY the stamped fields, so the
+// platform-pending stamp is resolved HERE — otherwise it outlives the publish and a LATER rollback relocks the draft. Retryable: a
+// failed cleanup never undoes the publish; re-running --publish --apply (already_current = no new version) retries it.
+async function cleanupStamp(db, rid, liveSource) {
+  try {
+    const r = await require('../catalog/platform-pending').resolvePlatformPending(db, rid, liveSource);
+    return r.cleared ? 'cleared' : (r.pending ? 'still_pending' : 'none');
+  } catch (e) {
+    return 'cleanup_failed';
+  }
+}
+
 async function publishRestaurant(db, rid, rows, { apply = false, mirror } = {}) {
   const { versionId, source, live } = await captureLiveSource(db, rid);
   const plan = planMigration(rid, source, rows);   // the SAME absent-only planner as --write; validateSource inside
   const report = { rid, liveVersion: versionId, added: plan.added, preserved: plan.preserved, missing: plan.missing, published: null, outcome: null };
-  if (!plan.added.length) { report.outcome = 'already_current'; return report; }
+  if (!plan.added.length) { report.outcome = 'already_current'; if (apply) report.stamp = await cleanupStamp(db, rid, source); return report; }
   const next = payloadOf(plan.source);
   assertOnlyAdded(rid, live, next, plan.added);   // stripped candidate vs the CAPTURED live payload (not a rebuild)
   if (!apply) { report.outcome = 'dry_run'; return report; }
   const { publishVersion } = require('../catalog/catalog-publish');
   const res = await publishVersion(db, rid, next, { mirror, expected: { activeVersionId: versionId } });   // CAS: a concurrent publish refuses
   report.published = res.versionId; report.outcome = 'published';
+  report.stamp = await cleanupStamp(db, rid, plan.source);   // live now IS the candidate
   return report;
 }
 async function publishMenuStructure(db, data, opts = {}) {
@@ -198,6 +211,7 @@ if (require.main === module) {
           for (const p of r.added) console.log(`    + ${p}`);
           for (const p of r.preserved) console.log(`    = ${p.path} kept ${JSON.stringify(p.have)} (data says ${JSON.stringify(p.want)})`);
           for (const p of r.missing) console.log(`    ? ${p} — not live, skipped`);
+          if (r.stamp) console.log(`    platform-pending stamp: ${r.stamp}${r.stamp === 'cleanup_failed' ? ' — re-run --publish --apply to retry (already_current publishes nothing)' : ''}`);
         }
         // Codex r1 P1: NOT an unconditional «Volver al menú publicado» — it would discard a merchant's pending edits. The draft gets the
         // revision-checked, absent-only --write (merchant edits preserved); the reset only for a draft reviewed as disposable.

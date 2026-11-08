@@ -21,7 +21,7 @@ const { resolvePlatformPending } = require('./platform-pending');   // F-1 (2026
 const { can } = require('../access/membership');   // PLAN-portal-membership r3 §3.2 — the ONE capability table
 const reply = (status, body) => ({ status, body });
 
-async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previewVersion, toPrecondition = (v) => v, readActivePhotos = null, attach = null }, body, req) {
+async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previewVersion, toPrecondition = (v) => v, readActivePhotos = null, attach = null, alertMalformed = null }, body, req) {
   const rid = body && body.restaurantId;
   const auth = await authorize(rid, req);
   if (!auth || !auth.ok) return reply((auth && auth.status) || 403, { error: (auth && auth.error) || 'not_authorized' });
@@ -59,6 +59,8 @@ async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previe
   let pend;
   try { pend = await resolvePlatformPending(db, rid, projected); } catch (e) { return reply(503, { error: 'store_unavailable', retryable: true }); }
   if (pend.pending) {
+    // a malformed stamp: still refused (fail closed), and never silent — the one deduped owner alert (best effort)
+    if (pend.malformed && alertMalformed) { try { await alertMalformed(rid); } catch (e) { console.error('platform_pending_alert_failed', JSON.stringify({ rid })); } }
     return reply(409, { error: 'platform_changes_pending', detail: 'Sherpa is updating this menu; the draft cannot be reset until that update is published', fields: pend.fields });
   }
 

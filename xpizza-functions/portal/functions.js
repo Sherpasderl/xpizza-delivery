@@ -156,6 +156,7 @@ exports.getEditableCatalog = onRequest(
         authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
         readActiveVersionId: (fsdb, rid) => getActiveVersionIdForPortal(fsdb, rid),
         readActiveBuilt: readActiveBuiltForEdit, photoReads: editableIoForPortal(),   // 1D add-product A: assess the saved draft against what is serving; DISH PHOTOS A2 step 9 (E-P3)
+        alertMalformed: (rid) => require('../catalog/platform-pending').raiseMalformedAlert(getDatabase(), rid),   // F-1: a malformed stamp's ONE deduped owner alert
       }, req);
       return res.status(out.status).json(out.body);
     } catch (e) {

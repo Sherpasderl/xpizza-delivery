@@ -49,8 +49,16 @@ export const PP_FOLD = {
    "  if (state.draftUnpublishable && state.draftRid) offerResetToLive($('detail'), state.draftRid, state.sourceUpdateTime);\n"
   ],
   [
+   "  if (state.platformPending === true) return;   // F-2 r2 (Codex r1 P2-2): Sherpa is updating the menu — no save, no review, at ADMISSION (each flow owns its own)\n",
+   ""
+  ],
+  [
    "  state.draft = createDraft(withPhotos(fresh.source, fresh), { canEdit: () => editLockHolder === null && state.platformPending !== true, held: savedHold });\n",
    "  state.draft = createDraft(withPhotos(fresh.source, fresh), { canEdit: () => editLockHolder === null, held: savedHold });\n"
+  ],
+  [
+   "  if (state.platformPending === true) return;   // F-2 r2 (Codex r1 P2-2): the same admission refusal for «Enviar al dueño»\n",
+   ""
   ]
  ],
  "review.js": [
