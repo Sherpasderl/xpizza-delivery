@@ -133,6 +133,27 @@ test('cart sheet: empty state; «Agotado» rows are dimmed and cannot be added',
   assert.equal(s.ui.cart.count(), 0, 'a sold-out dish is never added');
 });
 
+// F4 (advisor 11-08, the SBS sold-out scene): the sold row's «+» was inert by CSS only (pointer-events:none) — still a tab stop,
+// announced «Agregar …». Every «+» of a sold dish (the add button, and the stepper's + when it is already in the cart) is disabled,
+// aria-disabled and out of the tab order; a dish that is not sold keeps a live «+».
+test('a sold dish\'s «+» is disabled, aria-disabled and no tab stop (the add button and the in-cart stepper)', () => {
+  const pick = (b) => b.ui.menu.dishes.filter((x) => !x.launcher && !x.variantOf);
+  const [d, live] = pick(boot('la_musa'));
+  const s = boot('la_musa', { unavailable: new Set([d.key]) });
+  const inert = (el, what) => {
+    assert.ok(el, `premise: ${what} is rendered`);
+    assert.equal(el && el.disabled, true, `🔴 ${what} of a sold dish is not disabled`);
+    assert.equal(el && el.getAttribute('aria-disabled'), 'true', `🔴 ${what} of a sold dish is not aria-disabled`);
+    assert.equal(el && el.getAttribute('tabindex'), '-1', `🔴 ${what} of a sold dish is still a tab stop`);
+  };
+  const row = s.q(`#dish-${d.key}`);
+  assert.ok(row && row.classList.contains('sold-out'), 'premise: the row is sold out');
+  inert(row && row.querySelector('.qty-add-btn'), 'the add «+»');
+  inert(row && row.querySelector('.qty-ctrl-btn[data-act="inc"]'), 'the stepper «+»');
+  const ok = s.q(`#dish-${live.key} .qty-add-btn`);
+  assert.ok(ok && !ok.disabled && !ok.hasAttribute('aria-disabled') && ok.getAttribute('tabindex') !== '-1', 'non-vacuity: a dish that is not sold keeps a live «+»');
+});
+
 test('restore: a line that no longer fits is dropped and counted in the prototype\'s note', () => {
   const b = boot('la_musa'); const d = b.ui.menu.dishes.find((x) => !x.launcher && !x.variantOf);
   const r = b.ui.restore({ v: 2, lines: [{ key: d.key, qty: 1, ex: [{}], added: 1 }, { key: 'gone', qty: 1, ex: [{}], added: 2 }] });

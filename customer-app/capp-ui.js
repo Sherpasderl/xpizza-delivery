@@ -324,11 +324,12 @@
 
     // ── STORE ──
     function overlayHtml(it) {
-      const n = qtyAll(it), exp = S.expanded.has(it.id), id = esc(it.id), launcher = !!it.group;
+      // F4: a sold dish's «+» is inert for everyone — disabled, aria-disabled, out of the tab order (CSS alone left a live tab stop)
+      const n = qtyAll(it), exp = S.expanded.has(it.id), id = esc(it.id), launcher = !!it.group, off = isSold(it) ? ' disabled aria-disabled="true" tabindex="-1"' : '';
       return `<div class="qty-overlay" data-stop="1">
-    <div class="qty-controls${n > 0 && exp ? ' visible' : ''}"><button class="qty-ctrl-btn" data-act="dec" data-id="${id}" aria-label="${launcher ? 'Ver tu pedido' : 'Quitar uno'}">−</button><span class="qty-ctrl-num">${n}</span><button class="qty-ctrl-btn" data-act="inc" data-id="${id}" aria-label="${launcher ? 'Agregar otra' : 'Agregar uno'}">+</button></div>
+    <div class="qty-controls${n > 0 && exp ? ' visible' : ''}"><button class="qty-ctrl-btn" data-act="dec" data-id="${id}" aria-label="${launcher ? 'Ver tu pedido' : 'Quitar uno'}">−</button><span class="qty-ctrl-num">${n}</span><button class="qty-ctrl-btn" data-act="inc" data-id="${id}" aria-label="${launcher ? 'Agregar otra' : 'Agregar uno'}"${off}>+</button></div>
     <div class="qty-badge" style="display:${n > 0 && !exp ? 'flex' : 'none'}" data-act="badge" data-id="${id}" role="button" tabindex="0" aria-label="${n} en tu pedido"><span>${n > 0 ? n : 1}</span></div>
-    <button class="qty-add-btn"${n > 0 ? ' style="display:none"' : ''} data-act="${launcher ? 'open' : 'inc'}" data-id="${id}" aria-label="${launcher ? 'Personalizar' : 'Agregar ' + esc(it.n)}">+</button></div>`;
+    <button class="qty-add-btn"${n > 0 ? ' style="display:none"' : ''} data-act="${launcher ? 'open' : 'inc'}" data-id="${id}" aria-label="${launcher ? 'Personalizar' : 'Agregar ' + esc(it.n)}"${off}>+</button></div>`;
     }
     function rowHtml(it) {
       // the owner's frame 12 (D1 ruled (a), approved 2026-10-27): a sold dish's «Agotado» TAKES THE PRICE SLOT (muted ink) — no marks
