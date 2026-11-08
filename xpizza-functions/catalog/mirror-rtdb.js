@@ -27,8 +27,7 @@ function makeRtdbMirror(rtdb) {
       menu: enc.menu,
       extras: enc.extras,
       at: Date.now(),        // wall-clock stamp for staleness triage; the VERSION is the authority
-      ...(enc.key_encoding ? { key_encoding: enc.key_encoding } : {}),
-      ...(payload.keyMode == null ? {} : { key_mode: payload.keyMode }),   // S0: the version's key mode, only when it has one
+      ...(enc.key_encoding ? { key_encoding: enc.key_encoding } : {}), ...(payload.keyMode == null ? {} : { key_mode: payload.keyMode }),   // S0: + the version's key mode, only when it has one
     });
   };
 }
