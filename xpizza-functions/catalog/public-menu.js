@@ -225,7 +225,7 @@ async function buildPublicMenu(db, rid, deps = {}) {
   let body;
   try {
     body = composeServedMenu(restaurantId, menu, generate);
-    if (menu.eligibility) body.extras_eligibility = menu.eligibility; body.avail_identity = { field: availIdentityField(restaurantId) };   // the NORMALIZED rid (codex P1)
+    if (menu.eligibility) body.extras_eligibility = menu.eligibility; body.avail_identity = { field: availIdentityField(restaurantId, menu.keyMode) };   // the NORMALIZED rid (codex P1)
   } catch (e) {
     fail('public_menu_unavailable', `${restaurantId}: the live catalog does not project to a servable menu — ${String((e && e.message) || e).slice(0, 160)}`);
   }

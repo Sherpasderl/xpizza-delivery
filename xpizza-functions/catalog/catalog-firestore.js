@@ -224,4 +224,4 @@ async function getRestaurantDocs(db, restaurantId) {
    `.data()` on it. What stops that is convention plus the census — a lint, in this codebase's own
    words — not construction. The census would also miss it if spelled differently, which is exactly
    how the flip's reader survived three rounds. */
-module.exports = { activePointerRef, getActivePointer, readPointerSnap, getRestaurantDocs, getActiveVersionId, readVersionDocs, readFlatDocs, mapDocs };
+module.exports = { activePointerRef, getActivePointer, readPointerSnap, getRestaurantDocs, getActiveVersionId, readVersionDocs, readFlatDocs, mapDocs, keyModeField };

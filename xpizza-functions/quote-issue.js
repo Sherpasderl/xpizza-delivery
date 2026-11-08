@@ -18,7 +18,7 @@
 const crypto = require('node:crypto');
 const { computeServerNet } = require('./compute-server-net');
 const { tipCentsOf } = require('./delivery/delivery-pricing');   // S2-srv-tip
-const { cartFingerprint, normalizeCartForFingerprint, signQuoteToken } = require('./quote-token');
+const { cartFingerprint, normalizeCartForFingerprint, signQuoteToken } = require('./quote-token'); const { keyModeOfTables } = require('./menu-pricing');
 
 /* Generous on purpose. The expiry is not a money control — the server reprices at the charge, so an
    old token buys an attacker nothing — it is a bound on how long a quote is worth honouring. Fifteen
@@ -102,7 +102,7 @@ function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tabl
   try {
     // Inside the try: normalization promises not to throw, and this is the belt for that braces — a
     // residual throw here must still return the PRICE without a token, never a 500 on a quote.
-    const norm = normalizeCartForFingerprint(items, rid);
+    const norm = normalizeCartForFingerprint(items, rid, keyModeOfTables(tables));
     if (!norm) return result;                    // unfingerprintable → price without a token
     const payload = {
       rid,

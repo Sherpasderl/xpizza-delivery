@@ -20,13 +20,13 @@ const MAX_LINES = 100;   // bounded to a real order's line count (defensive cap)
 // today's exact behaviour — a reorder recipe is never worth failing an order over, and the allowlist
 // still fails CLOSED either way: an unrecognized key is dropped, never persisted.
 function normalizeReorderItems(bodyItems, restaurantId, tables = null) {
-  const { menu, extraPrices } = resolvePriceTables(restaurantId, tables);   // PIN B asserts the tag
+  const { menu, extraPrices, keyMode } = resolvePriceTables(restaurantId, tables);   // PIN B asserts the tag
   if (!menu || !Array.isArray(bodyItems)) return [];
   const byId = restaurantId === 'la_musa';   // la_musa extras are id-keyed/qty-aware; x_pizza name-keyed/count-once
   const out = [];
   for (const it of bodyItems) {
     if (out.length >= MAX_LINES) break;
-    const key = itemPricingKey(it, restaurantId);
+    const key = itemPricingKey(it, restaurantId, keyMode);
     if (!key || !Object.prototype.hasOwnProperty.call(menu, key)) continue;   // unknown item → drop
     const qty = Number(it && it.qty);
     if (!Number.isInteger(qty) || qty < 1 || qty > 50) continue;              // invalid qty → drop

@@ -21,7 +21,7 @@ const { reserveRedemption } = require('./rewards-reserve');
 const { REDEMPTION_CONFIG_VERSION, redemptionEnabled } = require('./rewards-redeem-config');
 const { checkItemAvailability } = require('./availability-gate');
 const { orderFingerprint } = require('./pixelpay-charge');
-const { computeServerTotal } = require('./menu-pricing');
+const { computeServerTotal, keyModeOfTables } = require('./menu-pricing');
 
 // Mirrors index.js sanitizeText — the free-item display NAME is client text; price + eligibility are
 // server-derived from the id, so the name is display-only.
@@ -70,7 +70,7 @@ async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, t
 
   // 86-gate EVERY free item (x_pizza key = name, la_musa key = id → pass both; itemPricingKey picks per brand).
   const gateItems = freeItems.map((fi) => ({ id: fi.item_id, name: fi.item_id, qty: fi.qty }));
-  const freeGate = await checkItemAvailability(db, gateItems, restaurantId);
+  const freeGate = await checkItemAvailability(db, gateItems, restaurantId, keyModeOfTables(tables));
   if (freeGate.blocked && freeGate.blocked.length > 0) return { ok: false, status: 409, body: { error: 'reward_unavailable', blocked: freeGate.blocked } };
 
   // Append every free line to items_text ( ' | ' delimiter — rail-count-safe; renders inline on WhatsApp + its

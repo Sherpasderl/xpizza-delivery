@@ -41,4 +41,11 @@ function assertFiscalKeyMode(restaurantId, keyMode) {
   const mode = require('../menu-pricing').effectiveKeyMode(restaurantId, keyMode);
   if (usesPlatformFactura(restaurantId) && mode !== 'name') throw new Error(`fiscal_key_mode_unsupported: ${restaurantId} prices by ${mode}`);
 }
-module.exports = { facturaSaleEligible, facturaVoidEligible, usesPlatformFactura, FACTURA_PLATFORM_RESTAURANTS, assertFiscalKeyMode };
+// The same fence as a verdict, for the request handlers: false refuses the request before anything is written, and logs why.
+function fiscalKeyModeOk(restaurantId, keyMode) {
+  try { assertFiscalKeyMode(restaurantId, keyMode); return true; } catch (e) {
+    console.error('fiscal_key_mode_unsupported', JSON.stringify({ restaurantId, error: String((e && e.message) || e).slice(0, 160) }));
+    return false;
+  }
+}
+module.exports = { facturaSaleEligible, facturaVoidEligible, usesPlatformFactura, FACTURA_PLATFORM_RESTAURANTS, assertFiscalKeyMode, fiscalKeyModeOk };

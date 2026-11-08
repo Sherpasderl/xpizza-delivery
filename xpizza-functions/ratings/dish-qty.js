@@ -7,12 +7,12 @@
 const { itemPricingKey } = require('../menu-pricing');
 const { identityMap } = require('../catalog/canonical-binding');
 
-function dishQtyOf(bodyItems, restaurantId, context) {
+function dishQtyOf(bodyItems, restaurantId, context, keyMode) {
   const map = identityMap(context);
   if (!map || !Array.isArray(bodyItems) || !bodyItems.length) return null;
   const out = {};
   for (const it of bodyItems) {
-    const key = itemPricingKey(it, restaurantId);
+    const key = itemPricingKey(it, restaurantId, keyMode);
     const cid = key ? map.dish.get(key) : undefined;
     const qty = Number(it && it.qty);
     if (!cid || !Number.isInteger(qty) || qty < 1 || qty > 50) return null;
