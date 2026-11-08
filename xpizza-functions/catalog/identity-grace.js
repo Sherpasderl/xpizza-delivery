@@ -20,14 +20,14 @@
 // stage does not make the id authoritative: enforce would refuse a renamed dish. Rename-stability is
 // its own later stage.
 // ---------------------------------------------------------------------------
-const { resolveAcrossKinds } = require('./identity-registry');
+const { resolveAcrossKinds } = require('./identity-registry'); const { effectiveKeyMode } = require('../menu-pricing');
 
 /* The RAW legacy accessor, duplicated here deliberately and for one reason: the agreement check must
    compare against what the client actually sent, computed BEFORE anything is stamped. Calling
    itemPricingKey would read the stamp once one exists, so the check would be comparing the resolved
    key against itself and would agree with everything. A copy that can never see a stamp is the point;
    it is pinned against menu-pricing's own accessor by test. */
-const rawLegacyKey = (rid, node) => (rid === 'la_musa' ? (node && node.id) : (node && node.name));
+const rawLegacyKey = (rid, node, keyMode) => (effectiveKeyMode(rid, keyMode) === 'id' ? (node && node.id) : (node && node.name));
 
 /* Every id-carrying node a cart holds — dish lines and their nested extras — with the raw key each
    would price by. Mirrors D3's occurrence walk so the two stages cannot disagree about what a cart

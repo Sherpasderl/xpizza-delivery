@@ -141,8 +141,8 @@ const EXTRAS_BY_RESTAURANT = { x_pizza: EXTRA_PRICES, la_musa: LA_MUSA_EXTRAS };
    The raw accessor stays exactly as it was, and is what the agreement check compares against. */
 const PRICING_KEY_STAMP = Symbol.for('xpizza.d4.pricingKeyStamp');
 
-const availIdentityField = (rid) => (rid === 'la_musa' ? 'id' : 'name'); function itemPricingKey(item, restaurantId) {   // PLAN-avail-identity r1: the ONE availability-identity rule, also served in the public menu
-  const raw = item && item[availIdentityField(restaurantId)];
+const defaultKeyMode = (rid) => (rid === 'la_musa' ? 'id' : 'name'); const effectiveKeyMode = (rid, keyMode) => { if (keyMode == null) return defaultKeyMode(rid); if (keyMode === 'id' || keyMode === 'name') return keyMode; throw new Error(`key_mode_invalid: ${typeof keyMode === 'string' ? keyMode.slice(0, 20) : typeof keyMode}`); }; const availIdentityField = (rid, keyMode) => effectiveKeyMode(rid, keyMode); function itemPricingKey(item, restaurantId, keyMode) {   // PLAN-avail-identity r1: the ONE availability-identity rule, also served in the public menu
+  const raw = item && item[availIdentityField(restaurantId, keyMode)];
   if (item && typeof item === 'object') {
     const stamped = item[PRICING_KEY_STAMP];
     /* Preferred only when it is a real string. It is never DIFFERENT from `raw` — the stamper only
@@ -158,8 +158,8 @@ const availIdentityField = (rid) => (rid === 'la_musa' ? 'id' : 'name'); functio
 // the extra's key THROUGH this, and so does the per-product extras eligibility check (catalog/extras-intake.js): an extra
 // is judged by exactly the key it is charged by, so a forged id beside a real name can never be judged as one extra and
 // charged as another.
-function extraPricingKey(ex, restaurantId) {
-  return restaurantId === 'la_musa' ? (ex && ex.id) : (ex && ex.name);
+function extraPricingKey(ex, restaurantId, keyMode) {
+  return effectiveKeyMode(restaurantId, keyMode) === 'id' ? (ex && ex.id) : (ex && ex.name);
 }
 
 // Phase 1b-1 — resolve WHICH price tables price this order. Omitting `tables` keeps today's exact
@@ -324,7 +324,7 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
   return lines;
 }
 
-module.exports = { PRICING_KEY_STAMP, availIdentityField,
+module.exports = { PRICING_KEY_STAMP, availIdentityField, defaultKeyMode, effectiveKeyMode,
   MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal, itemPricingKey, extraPricingKey, summaryLines,
   resolvePriceTables,   // 1b-1b: the shared PIN-B-asserting table resolver, reused across the redemption graph
   X_PIZZA_WEEKEND_ONLY, hnDayFromMs, weekendOnlyViolation,

@@ -24,7 +24,7 @@ const { join } = require('path');
 const { attachRedeemFields } = require('./redeem-source');
 const { attachExposure } = require('./exposure-source');
 const { applyBootstrapRows } = require('./menu-structure-rows');
-const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./../menu-pricing');
+const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, effectiveKeyMode } = require('./../menu-pricing');
 
 // Relative to this file (xpizza-functions/catalog/) → up two, to the repo root.
 const FORM_PATH = {
@@ -124,7 +124,7 @@ function formSiblingSource(restaurantId, file, root) {
 
 // PIN 2 — `key` is the IMMUTABLE pricing identity; `name` is display DATA. x_pizza prices by NAME so
 // key === name there (guarded by a test); la_musa prices by the id slug.
-const pricingKeyOf = (restaurantId, dish) => (restaurantId === 'la_musa' ? dish.id : dish.name);
+const pricingKeyOf = (restaurantId, dish, keyMode) => (effectiveKeyMode(restaurantId, keyMode) === 'id' ? dish.id : dish.name);
 
 // The EXTRAS pricing key — the mirror of the rule above, carrying the same per-brand asymmetry:
 // x_pizza extras price by NAME (their display `id` is a form-local handle like 'e1' that prices
@@ -132,7 +132,7 @@ const pricingKeyOf = (restaurantId, dish) => (restaurantId === 'la_musa' ? dish.
 //
 // It lived in source-store.js under a comment saying it was "kept beside the item rule so the two
 // cannot drift apart" — while sitting in a different module from it. Moved here, where that is true.
-const extrasKeyOf = (restaurantId, display) => (restaurantId === 'la_musa' ? (display && display.id) : (display && display.name));
+const extrasKeyOf = (restaurantId, display, keyMode) => (effectiveKeyMode(restaurantId, keyMode) === 'id' ? (display && display.id) : (display && display.name));
 
 // Build the schema-v2 records for one restaurant: items (key + authoritative price + verbatim display)
 // and the structure doc (category order/labels, variants, gate flags, and the ITEM ORDER — Firestore
