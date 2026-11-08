@@ -88,7 +88,8 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
   const rtdb = admin.database();
   const fs = admin.firestore();
   const { PLATFORM } = require('../platform-manifest');
-  assert.deepStrictEqual(PLATFORM.ACCOUNT_ORIGINS.slice(-2), [OLD, NEW], 'premise: the test hosts are declared app origins (CORS)');
+  // by NAME, not position: the native WebView origins (capp native N1) are appended after the app deployment's origins
+  assert.deepStrictEqual(PLATFORM.ACCOUNT_ORIGINS.filter((o) => o === OLD || o === NEW), [OLD, NEW], 'premise: the test hosts are declared app origins (CORS)');
   const { publishVersion } = require('../catalog/catalog-publish');
   const { buildPublishCandidate } = require('../tools/publish-version');
   const { makeRtdbMirror } = require('../catalog/mirror-rtdb');

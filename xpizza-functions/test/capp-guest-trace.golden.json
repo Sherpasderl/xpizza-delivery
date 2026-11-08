@@ -57,17 +57,8 @@
    "path": "orders/<oid>"
   },
   {
-   "op": "update",
-   "path": "payment_attempts/<active_attempt_id>",
-   "keys": [
-    "hosted_created_at",
-    "hosted_expires_at",
-    "hosted_order_id",
-    "hosted_state",
-    "order_id",
-    "poll_token",
-    "total_cents"
-   ]
+   "op": "transaction",
+   "path": "payment_attempts/<active_attempt_id>"
   },
   {
    "op": "once",
