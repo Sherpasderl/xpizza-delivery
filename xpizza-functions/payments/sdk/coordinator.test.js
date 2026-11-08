@@ -366,6 +366,99 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     await C().cancel(w.deps, { orderId: OID, kind: 'cancel' });
     assert.ok(n === 2 && w.rec().cleanup && w.rec().cleanup.done_at, `${L}: the resume finishes the cleanup (calls ${n})`);
   });
+  // ── the durable sweeper + due index (§5) ──
+  const SW = () => require('./sweeper');
+  const due = (w, id = OID) => w.db.getAt(`payment_sdk_due/${id}`);
+  await cell('SDK-SWEEP-SETTLES-MISSING-TRIGGER-THEN-REMOVES', async (L) => {
+    const w = await placed();
+    await w.db.ref(`orders/${OID}/status`).set('delivered');   // the trigger never ran
+    w.tick(60 * 1000);
+    await SW().sweepSdkPayments(w.deps);
+    assert.ok(w.fake.count('capture') === 1 && w.rec().legs.L1.state === 'captured', `${L}: found on the due visit and settled (captures ${w.fake.count('capture')})`);
+    assert.strictEqual(due(w), null, `${L}: financially closed → the due entry removed (got ${due(w)})`);
+  });
+  await cell('SDK-SWEEP-OVERLAPPING-ONE-CAPTURE', async (L) => {
+    const w = await placed();
+    await w.db.ref(`orders/${OID}/status`).set('delivered');
+    w.tick(60 * 1000);
+    await Promise.all([SW().sweepSdkPayments(w.deps), SW().sweepSdkPayments(w.deps), C().settleTerminal(w.deps, { orderId: OID })]);
+    assert.strictEqual(w.fake.count('capture'), 1, `${L}: exactly one capture (got ${w.fake.count('capture')})`);
+  });
+  await cell('SDK-SWEEP-NO-STARVATION-60-UNKNOWNS', async (L) => {
+    const ids = Array.from({ length: 60 }, (_, i) => `tb_lock_${String(i).padStart(2, '0')}`);
+    const orders = Object.fromEntries(ids.map((id) => [id, order()]));
+    const w = world({ seed: { orders }, script: { authorize: ids.map(() => ({ lost: true })) } });
+    for (const id of ids) await C().placeOriginal(w.deps, { orderId: id, token: TOKEN, amount_cents: 1000 });
+    w.tick(3 * 60 * 1000);
+    const t = w.at();
+    await SW().sweepSdkPayments(w.deps);
+    await SW().sweepSdkPayments(w.deps);
+    const visited = ids.filter((id) => due(w, id) > t);
+    assert.strictEqual(visited.length, 60, `${L}: every one of 60 persistent unknowns visited within two passes (got ${visited.length})`);
+    assert.ok(ids.every((id) => w.db.getAt(`payment_sdk/${id}/lock/reason`) === 'manual_reconciliation'), `${L}: and each stays locked for a person`);
+  });
+  await cell('SDK-SWEEP-REMOVAL-NEVER-ERASES-NEWER-ENROL', async (L) => {
+    let n = 0;
+    const w = await placed({ hooks: { beforeTx: async (p, api) => { if (p === `payment_sdk_due/${OID}` && ++n === 2) api.setAt(`payment_sdk_due/${OID}`, 1); } } });
+    await w.db.ref(`orders/${OID}/status`).set('delivered');
+    await C().settleTerminal(w.deps, { orderId: OID });
+    w.tick(60 * 1000);
+    await SW().sweepSdkPayments(w.deps);
+    assert.strictEqual(due(w), 1, `${L}: a newer enrol landing between the visit and the removal survives (got ${due(w)})`);
+  });
+  await cell('SDK-SWEEP-OBLIGATION-AFTER-CRASH', async (L) => {
+    let crash = false; let thrown = false;
+    const w = await placed({ hooks: { beforeTx: async (p, api) => { if (crash && !thrown && p === `payment_sdk/${OID}` && api.getAt(`payment_sdk/${OID}/legs/L1/state`) === 'captured') { thrown = true; throw new Error('crash after the capture'); } } } });
+    await live(w);
+    await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 7000 });
+    await w.db.ref(`orders/${OID}/status`).set('delivered');
+    crash = true;
+    await C().settleTerminal(w.deps, { orderId: OID }).catch(() => {});
+    assert.ok(thrown && !w.rec().obligations, `${L}: PREMISE — captured, the obligation not yet written`);
+    w.tick(60 * 1000);
+    await SW().sweepSdkPayments(w.deps); await SW().sweepSdkPayments(w.deps);
+    assert.deepStrictEqual(Object.values(w.rec().obligations || {}).map((o) => o.amount_cents), [3000], `${L}: the sweeper opens the obligation ONCE`);
+    assert.strictEqual(w.fake.count('capture'), 1, `${L}: no second capture`);
+  });
+  await cell('SDK-SWEEP-EXPIRES-PENDING-TTL', async (L) => {
+    const w = world({ script: { authorize: [{ outcome: 'definitive_decline' }] } });
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    w.tick(R.TTL_MS + 1);
+    await SW().sweepSdkPayments(w.deps);
+    assert.ok(w.ord().status === 'cancelled' && w.ord().payment_cancel.kind === 'expire' && w.deps.released === 1, `${L}: expired by the sweeper, released once`);
+  });
+  await cell('SDK-SWEEP-SURPLUS-EXPIRY-CONFIRMED', async (L) => {
+    const w = await placed(); await live(w);
+    await C().cancel(w.deps, { orderId: OID, kind: 'cancel' });
+    const uuid = w.rec().legs.L1.pp_uuid;
+    w.tick(R.HOLD_MS + 1);
+    await SW().sweepSdkPayments(w.deps);
+    assert.ok(w.rec().legs.L1.state === 'approved' && due(w) != null, `${L}: unconfirmed expiry → not closed, still tracked`);
+    w.tick(24 * 3600 * 1000);
+    await SW().sweepSdkPayments(w.deps);
+    assert.ok(alerts(w.db).some((x) => x.type === 'payment_sdk_surplus_unconfirmed'), `${L}: at 16 days an unconfirmed surplus hold alerts`);
+    w.fake.state[uuid].state = 'expired';
+    w.tick(10 * 60 * 1000);
+    await SW().sweepSdkPayments(w.deps);
+    w.tick(10 * 60 * 1000);
+    await SW().sweepSdkPayments(w.deps);
+    assert.ok(w.rec().legs.L1.state === 'expired' && due(w) === null, `${L}: a CONFIRMED expiry closes it and removes the due entry (leg ${w.rec().legs.L1.state}, due ${due(w)})`);
+  });
+  await cell('SDK-CLOSURE-EMPTY-SET-UNKNOWN-STAYS', async (L) => {
+    const w = world({ script: { authorize: [{ lost: true }] } });
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await w.db.ref(`orders/${OID}/status`).set('delivered');
+    await C().settleTerminal(w.deps, { orderId: OID });
+    assert.deepStrictEqual(w.rec().frozen && w.rec().frozen.capture_set, undefined, `${L}: PREMISE — an empty capture set`);
+    w.tick(3 * 60 * 1000);
+    await SW().sweepSdkPayments(w.deps); await SW().sweepSdkPayments(w.deps);
+    assert.ok(!R.isFinanciallyClosed(w.rec(), w.ord()) && due(w) != null && w.rec().lock, `${L}: an unknown no-uuid auth keeps it open, locked and discoverable`);
+  });
+  await cell('SDK-ENROL-FAILURE-REFUSES', async (L) => {
+    const w = world({ hooks: { beforeWrite: async (p) => { if (p === `payment_sdk_due/${OID}`) throw new Error('enrol write failed'); } } });
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 }).catch(() => {});
+    assert.ok(w.fake.count('authorize') === 0 && !(w.rec() && w.rec().ops), `${L}: no enrol → nothing journaled, no PSP call`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
