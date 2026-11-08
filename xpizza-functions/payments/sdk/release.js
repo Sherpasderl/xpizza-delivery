@@ -8,7 +8,7 @@ const { reverseEarnForOrder } = require('../../rewards-earn');
 const { reverseRedemptionForOrder } = require('../../rewards-reserve');
 
 async function releaseSdkOrder(deps, orderId, order) {
-  const now = deps.now();
+  const now = deps.clock();
   await cleanupTasksAndDriver(deps, orderId, order, now);
   const earn = await reverseEarnForOrder(deps.db, { orderId, order, now });
   if (earn && earn.ok === false) throw new Error('sdk release: earn reversal failed');

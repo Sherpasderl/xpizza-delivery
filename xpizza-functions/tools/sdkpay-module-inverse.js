@@ -37,7 +37,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "cancel-order-core.js",
-  "now": "  const order = (await orderRef.once('value')).val();\n  if (!order) return { status: 404, body: { error: 'Order not found' } }; if (require('./payments/sdk/flow').isSdkOrder(order)) { const r = await require('./payments/sdk/coordinator').cancel(require('./payments/sdk/deps').productionDeps(db), { orderId, kind: 'cancel' }); return { status: r.outcome === 'cancelled' ? 200 : 409, body: { ok: r.outcome === 'cancelled', outcome: r.outcome, order_id: orderId } }; }\n\n",
+  "now": "  const order = (await orderRef.once('value')).val();\n  if (!order) return { status: 404, body: { error: 'Order not found' } }; if (require('./payments/sdk/flow').isSdkOrder(order)) { const r = await require('./payments/sdk/coordinator').cancelSdkOrder(require('./payments/sdk/deps').productionDeps(db), { orderId, kind: 'cancel' }); return { status: r.outcome === 'cancelled' ? 200 : 409, body: { ok: r.outcome === 'cancelled', outcome: r.outcome, order_id: orderId } }; }\n\n",
   "was": "  const order = (await orderRef.once('value')).val();\n  if (!order) return { status: 404, body: { error: 'Order not found' } };\n\n"
  },
  {

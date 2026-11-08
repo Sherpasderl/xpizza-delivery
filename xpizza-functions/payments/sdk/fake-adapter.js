@@ -19,15 +19,15 @@ function makeFakePsp(script = {}) {
     return out;
   }
   const impl = {
-    authorize: (a) => run('authorize', a, () => {
+    pspAuthorize: (a) => run('authorize', a, () => {
       const uuid = `P-${++seq}`;
       return { outcome: 'approved', uuid, amount_cents: a.amount_cents, effect: (st, args, o) => { if (o.outcome === 'approved') st[o.uuid] = { state: 'authorized', amount_cents: o.amount_cents }; } };
     }),
-    capture: (a) => run('capture', a, () => ({ outcome: 'captured', uuid: a.uuid, amount_cents: a.amount_cents, effect: (st, args, o) => { if (o.outcome === 'captured' && st[args.uuid]) st[args.uuid].state = 'captured'; } })),
-    void: (a) => run('void', a, () => ({ outcome: 'voided', uuid: a.uuid, effect: (st, args, o) => { if (o.outcome === 'voided' && st[args.uuid]) st[args.uuid].state = 'voided'; } })),
-    status: (a) => run('status', a, () => (state[a.uuid] ? { state: state[a.uuid].state, uuid: a.uuid, amount_cents: state[a.uuid].amount_cents } : { state: 'inconclusive', uuid: a.uuid })),
+    pspCapture: (a) => run('capture', a, () => ({ outcome: 'captured', uuid: a.uuid, amount_cents: a.amount_cents, effect: (st, args, o) => { if (o.outcome === 'captured' && st[args.uuid]) st[args.uuid].state = 'captured'; } })),
+    pspVoid: (a) => run('void', a, () => ({ outcome: 'voided', uuid: a.uuid, effect: (st, args, o) => { if (o.outcome === 'voided' && st[args.uuid]) st[args.uuid].state = 'voided'; } })),
+    pspStatus: (a) => run('status', a, () => (state[a.uuid] ? { state: state[a.uuid].state, uuid: a.uuid, amount_cents: state[a.uuid].amount_cents } : { state: 'inconclusive', uuid: a.uuid })),
   };
-  const count = (action) => calls.filter((c) => c.action === action).length;
-  return { impl, calls, state, count };
+  const callCount = (action) => calls.filter((c) => c.action === action).length;
+  return { impl, calls, state, callCount };
 }
 module.exports = { makeFakePsp };

@@ -16,7 +16,7 @@ function world({ seed = {}, script = {}, hooks = {}, eligible = () => false, t0 
   let t = t0;
   const db = makeHonestDb({ orders: { [OID]: order() }, ...seed }, { now: () => t, ...hooks });
   const fake = makeFakePsp(script);
-  const deps = { db, psp: makeAdapter(fake.impl), now: () => t, voidEligible: eligible, release: async () => { deps.released = (deps.released || 0) + 1; } };
+  const deps = { db, psp: makeAdapter(fake.impl), clock: () => t, voidEligible: eligible, releaseResources: async () => { deps.released = (deps.released || 0) + 1; } };
   return { db, fake, deps, rec: () => db.getAt(`payment_sdk/${OID}`), ord: () => db.getAt(`orders/${OID}`), tick: (ms) => { t += ms; }, at: () => t };
 }
 const legs = (rec) => Object.values((rec && rec.legs) || {});
@@ -52,15 +52,15 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.strictEqual(r.outcome, 'unknown', `${L}: unknown (got ${JSON.stringify(r)})`);
     assert.ok(w.rec().lock && legs(w.rec())[0].state === 'unknown' && !w.ord().payment_placed, `${L}: locked, leg unknown, NOT placed`);
     const again = await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
-    assert.ok(again.outcome === 'refused' && w.fake.count('authorize') === 1, `${L}: a second placement is refused — still ONE authorize (got ${JSON.stringify(again)})`);
+    assert.ok(again.outcome === 'refused' && w.fake.callCount('authorize') === 1, `${L}: a second placement is refused — still ONE authorize (got ${JSON.stringify(again)})`);
   });
   await cell('SDK-RECONCILE-NO-UUID-MANUAL', async (L) => {
     const w = world({ script: { authorize: [{ lost: true }] } });
     await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
     w.tick(3 * 60 * 1000);
-    await C().reconcile(w.deps, { orderId: OID });
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
     assert.strictEqual(w.rec().lock.reason, 'manual_reconciliation', `${L}: an unknown auth with NO uuid → manual_reconciliation (got ${JSON.stringify(w.rec().lock)})`);
-    assert.ok(w.fake.count('status') === 0 && w.fake.count('authorize') === 1, `${L}: no status (no uuid), no retry`);
+    assert.ok(w.fake.callCount('status') === 0 && w.fake.callCount('authorize') === 1, `${L}: no status (no uuid), no retry`);
   });
   await cell('SDK-RECONCILE-BOUND-STATUS-RESOLVES', async (L) => {
     // approved with a mismatched amount → adapter says unknown WITH a uuid; status (bound, authorized) resolves it
@@ -68,16 +68,16 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.ok(w.rec().lock, `${L}: PREMISE — locked on the mismatched answer`);
     w.tick(3 * 60 * 1000);
-    await C().reconcile(w.deps, { orderId: OID });
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
     const l1 = legs(w.rec())[0];
     assert.ok(!w.rec().lock && l1.state === 'approved' && l1.pp_uuid === 'P-77', `${L}: bound evidence resolves the op (got ${JSON.stringify({ lock: w.rec().lock, l1 })})`);
-    assert.ok(w.fake.count('authorize') === 1 && w.fake.calls.filter((c) => c.action === 'status').every((c) => c.uuid === 'P-77'), `${L}: one authorize, status by uuid`);
+    assert.ok(w.fake.callCount('authorize') === 1 && w.fake.calls.filter((c) => c.action === 'status').every((c) => c.uuid === 'P-77'), `${L}: one authorize, status by uuid`);
   });
   await cell('SDK-RECONCILE-MISMATCHED-STATUS-KEEPS-LOCK', async (L) => {
     const w = world({ script: { authorize: [{ outcome: 'approved', uuid: 'P-78', amount_cents: 9999, effect: (st) => { st['P-78'] = { state: 'authorized', amount_cents: 9999 }; } }] } });
     await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
     w.tick(3 * 60 * 1000);
-    await C().reconcile(w.deps, { orderId: OID });
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
     assert.ok(w.rec().lock && legs(w.rec())[0].state === 'unknown', `${L}: evidence with another amount is NOT bound → lock kept (got ${JSON.stringify(w.rec().lock)})`);
   });
 
@@ -93,19 +93,19 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.deepStrictEqual([w.rec().derived.captured_total, w.rec().derived.live_holds, Object.keys(w.rec().obligations || {}).length], [10000, 0, 0], `${L}: captured 10000, no live hold, no obligation`);
     assert.ok(R.isFinanciallyClosed(w.rec(), w.ord()), `${L}: financially closed`);
     await C().settleTerminal(w.deps, { orderId: OID });
-    assert.strictEqual(w.fake.count('capture'), 1, `${L}: idempotent — a second settle captures nothing`);
+    assert.strictEqual(w.fake.callCount('capture'), 1, `${L}: idempotent — a second settle captures nothing`);
   });
   await cell('SDK-TERMINAL-COMPLETED-ALSO-SETTLES', async (L) => {
     const w = await placed();
     await w.db.ref(`orders/${OID}/status`).set('completed');
     await C().settleTerminal(w.deps, { orderId: OID });
-    assert.strictEqual(w.fake.count('capture'), 1, `${L}: 'completed' (merchant handed) is terminal too`);
+    assert.strictEqual(w.fake.callCount('capture'), 1, `${L}: 'completed' (merchant handed) is terminal too`);
   });
   await cell('SDK-TERMINAL-NOT-TERMINAL-NOOP', async (L) => {
     const w = await placed();
     await w.db.ref(`orders/${OID}/status`).set('preparing');
     await C().settleTerminal(w.deps, { orderId: OID });
-    assert.ok(w.fake.count('capture') === 0 && !w.ord().payment_terminal && w.rec().phase === 'open', `${L}: a live order is not settled`);
+    assert.ok(w.fake.callCount('capture') === 0 && !w.ord().payment_terminal && w.rec().phase === 'open', `${L}: a live order is not settled`);
   });
   await cell('SDK-TERMINAL-TRIGGER-SWEEPER-RACE-ONE-CAPTURE', async (L) => {
     let release; const gate = new Promise((r) => { release = r; });
@@ -116,7 +116,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     const b = C().settleTerminal(w.deps, { orderId: OID });   // the sweeper, concurrently
     await new Promise((r) => setTimeout(r, 20));
     release(); await Promise.all([a, b]);
-    assert.strictEqual(w.fake.count('capture'), 1, `${L}: exactly ONE capture call for L1 (got ${w.fake.count('capture')})`);
+    assert.strictEqual(w.fake.callCount('capture'), 1, `${L}: exactly ONE capture call for L1 (got ${w.fake.callCount('capture')})`);
     assert.strictEqual(legs(w.rec())[0].state, 'captured', `${L}: captured once`);
   });
   await cell('SDK-LOST-CAPTURE-INCONCLUSIVE-KEEPS-LOCK', async (L) => {
@@ -125,9 +125,9 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     await C().settleTerminal(w.deps, { orderId: OID });
     assert.ok(w.rec().lock, `${L}: PREMISE — the lost capture locks`);
     w.tick(3 * 60 * 1000);
-    await C().reconcile(w.deps, { orderId: OID });
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
     await C().settleTerminal(w.deps, { orderId: OID });
-    assert.ok(w.rec().lock && w.fake.count('capture') === 1, `${L}: inconclusive status → lock kept, NO second capture (got lock ${JSON.stringify(w.rec().lock)}, captures ${w.fake.count('capture')})`);
+    assert.ok(w.rec().lock && w.fake.callCount('capture') === 1, `${L}: inconclusive status → lock kept, NO second capture (got lock ${JSON.stringify(w.rec().lock)}, captures ${w.fake.callCount('capture')})`);
     assert.ok(!R.isFinanciallyClosed(w.rec(), w.ord()), `${L}: not closed`);
   });
   await cell('SDK-LOST-CAPTURE-BOUND-STATUS-CAPTURED', async (L) => {
@@ -135,8 +135,8 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     await w.db.ref(`orders/${OID}/status`).set('delivered');
     await C().settleTerminal(w.deps, { orderId: OID });
     w.tick(3 * 60 * 1000);
-    await C().reconcile(w.deps, { orderId: OID });
-    assert.ok(!w.rec().lock && legs(w.rec())[0].state === 'captured' && w.fake.count('capture') === 1, `${L}: the PSP did capture → status (bound, captured) resolves it; never a second capture`);
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
+    assert.ok(!w.rec().lock && legs(w.rec())[0].state === 'captured' && w.fake.callCount('capture') === 1, `${L}: the PSP did capture → status (bound, captured) resolves it; never a second capture`);
   });
 
   // ── adjustments (§2.10 via §4: proposal → order commit → projection) ──
@@ -147,7 +147,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     const w = await placed(); await live(w);
     const r = await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 8000 });
     assert.strictEqual(r.outcome, 'rule4', `${L}: the production stub makes every leg ineligible → rule 4 (got ${JSON.stringify(r)})`);
-    assert.ok(w.fake.count('authorize') === 1 && w.fake.count('void') === 0, `${L}: no auth B, no void`);
+    assert.ok(w.fake.callCount('authorize') === 1 && w.fake.callCount('void') === 0, `${L}: no auth B, no void`);
     const rec = w.rec();
     assert.deepStrictEqual([rec.fulfillment_total_cents, rec.derived.committed_auth_total, rec.derived.refund_liability], [8000, 10000, 2000], `${L}: fulfillment 8000, committed 10000, liability 2000 (derived)`);
     assert.ok(rec.rule4 && alerts(w.db).some((a) => a.type === 'payment_sdk_rule4'), `${L}: rule-4 flag + owner alert`);
@@ -170,10 +170,10 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     const c = w.rec().consent;
     const r = await C().applyIncrease(w.deps, { orderId: OID, adjustment_id: 'adj1', order_revision: c.order_revision, new_total_cents: 9000, accept: true });
     assert.strictEqual(r.outcome, 'committed', `${L}: committed (got ${JSON.stringify(r)})`);
-    assert.strictEqual(w.fake.count('authorize'), 1, `${L}: delta_needed 0 → NO delta auth`);
+    assert.strictEqual(w.fake.callCount('authorize'), 1, `${L}: delta_needed 0 → NO delta auth`);
     assert.deepStrictEqual([w.rec().fulfillment_total_cents, w.rec().derived.refund_liability, w.rec().derived.delta_needed], [9000, 1000, 0], `${L}: the liability shrinks to 1000`);
     await deliver(w);
-    assert.deepStrictEqual([w.fake.count('capture'), Object.values(w.rec().obligations).map((o) => o.amount_cents).join()], [1, '1000'], `${L}: one capture of 10000, one obligation of 1000`);
+    assert.deepStrictEqual([w.fake.callCount('capture'), Object.values(w.rec().obligations).map((o) => o.amount_cents).join()], [1, '1000'], `${L}: one capture of 10000, one obligation of 1000`);
   });
   await cell('SDK-INCREASE-DELTA-AUTH', async (L) => {
     const w = await placed(); await live(w);
@@ -193,11 +193,11 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     await C().recordConsent(w.deps, { orderId: OID, adjustment_id: 'adj1', new_total_cents: 12000 });
     const c = w.rec().consent;
     const bad = await C().applyIncrease(w.deps, { orderId: OID, adjustment_id: 'adj1', order_revision: c.order_revision + 1, new_total_cents: 12000, accept: true });
-    assert.ok(bad.outcome === 'rejected' && w.fake.count('authorize') === 1, `${L}: a mismatched revision is rejected (got ${JSON.stringify(bad)})`);
+    assert.ok(bad.outcome === 'rejected' && w.fake.callCount('authorize') === 1, `${L}: a mismatched revision is rejected (got ${JSON.stringify(bad)})`);
     await C().recordConsent(w.deps, { orderId: OID, adjustment_id: 'adj2', new_total_cents: 12000 });
     w.tick(C().CONSENT_WINDOW_MS + 1);
     const late = await C().applyIncrease(w.deps, { orderId: OID, adjustment_id: 'adj2', order_revision: w.rec().consent.order_revision, new_total_cents: 12000, accept: true });
-    assert.ok(late.outcome === 'rejected' && w.fake.count('authorize') === 1, `${L}: a LATE consent is rejected, no auth (got ${JSON.stringify(late)})`);
+    assert.ok(late.outcome === 'rejected' && w.fake.callCount('authorize') === 1, `${L}: a LATE consent is rejected, no auth (got ${JSON.stringify(late)})`);
     await C().recordConsent(w.deps, { orderId: OID, adjustment_id: 'adj3', new_total_cents: 12000 });
     await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 9000 });
     assert.strictEqual(w.rec().consent.state, 'expired', `${L}: a later edit invalidates a pending consent`);
@@ -228,8 +228,8 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.deepStrictEqual([lastAuth.token, lastAuth.amount_cents], [TOKEN, 9000], `${L}: ONE auth B for the new total`);
     assert.deepStrictEqual(committedIds(w.rec()), ['L4'], `${L}: B is the ONLY committed leg`);
     assert.deepStrictEqual(['L1', 'L2', 'L3'].map((id) => w.rec().legs[id].role), ['surplus', 'surplus', 'surplus'], `${L}: the WHOLE old set is surplus`);
-    assert.strictEqual(w.fake.count('void'), 3, `${L}: each surplus leg voided once (one ok, one refused, one lost)`);
-    w.tick(3 * 60 * 1000); await C().reconcile(w.deps, { orderId: OID });
+    assert.strictEqual(w.fake.callCount('void'), 3, `${L}: each surplus leg voided once (one ok, one refused, one lost)`);
+    w.tick(3 * 60 * 1000); await C().reconcileSdkOps(w.deps, { orderId: OID });
     assert.deepStrictEqual(committedIds(w.rec()), ['L4'], `${L}: a failed / unknown void NEVER restores S (got ${committedIds(w.rec())})`);
     await deliver(w);
     assert.deepStrictEqual(w.fake.calls.filter((c) => c.action === 'capture').map((c) => c.amount_cents), [9000], `${L}: only B is captured; surplus never`);
@@ -238,12 +238,12 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     const w = await placed({ eligible: ELIGIBLE, script: { authorize: [{}, { lost: true, outcome: 'approved', uuid: 'P-B', amount_cents: 8000, effect: (st) => { st['P-B'] = { state: 'authorized', amount_cents: 8000 }; } }] } }); await live(w);
     const r = await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 8000 });
     assert.strictEqual(r.outcome, 'unknown', `${L}: B unknown (got ${JSON.stringify(r)})`);
-    await C().reconcile(w.deps, { orderId: OID });
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
     assert.ok(w.rec().lock && w.rec().lock.reason === 'manual_reconciliation', `${L}: no uuid for a lost B → manual (the lost-UUID lookup is §7.V)`);
     // the same with a uuid known (an amount-mismatched answer): status says live → B surplus, S committed
     const w2 = await placed({ eligible: ELIGIBLE, script: { authorize: [{}, { outcome: 'approved', uuid: 'P-B2', amount_cents: 1, effect: (st) => { st['P-B2'] = { state: 'authorized', amount_cents: 8000 }; } }] } }); await live(w2);
     await C().requestDecrease(w2.deps, { orderId: OID, new_total_cents: 8000 });
-    w2.tick(3 * 60 * 1000); await C().reconcile(w2.deps, { orderId: OID });
+    w2.tick(3 * 60 * 1000); await C().reconcileSdkOps(w2.deps, { orderId: OID });
     assert.deepStrictEqual([committedIds(w2.rec()).join(), w2.rec().legs.L2.role, w2.rec().legs.L2.state, w2.rec().fulfillment_total_cents], ['L1', 'surplus', 'approved', 10000], `${L}: B found live → SURPLUS; S stays committed; the total unchanged (got ${JSON.stringify(w2.rec().legs.L2)})`);
     await deliver(w2);
     assert.deepStrictEqual(w2.fake.calls.filter((c) => c.action === 'capture').map((c) => c.amount_cents), [10000], `${L}: only S captured`);
@@ -286,36 +286,36 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   const pend = (w) => w;   // a pending_payment order (placement not decided)
   await cell('SDK-CANCEL-LIVE-ORDER', async (L) => {
     const w = await placed(); await live(w);
-    const r = await C().cancel(w.deps, { orderId: OID, kind: 'cancel' });
+    const r = await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     assert.strictEqual(r.outcome, 'cancelled', `${L}: cancelled (got ${JSON.stringify(r)})`);
     assert.ok(w.ord().status === 'cancelled' && w.ord().payment_cancel && w.ord().payment_cancel.kind === 'cancel', `${L}: the order decision (status + payment_cancel) committed`);
     assert.deepStrictEqual([w.rec().phase, w.rec().legs.L1.role, w.rec().legs.L1.state], ['cancelled', 'surplus', 'approved'], `${L}: the hold is SURPLUS, tracked (not voided under the stub)`);
-    assert.deepStrictEqual([w.fake.count('void'), w.fake.count('capture'), w.deps.released], [0, 0, 1], `${L}: no void (production stub), no capture, released once`);
+    assert.deepStrictEqual([w.fake.callCount('void'), w.fake.callCount('capture'), w.deps.released], [0, 0, 1], `${L}: no void (production stub), no capture, released once`);
     assert.ok(!R.isFinanciallyClosed(w.rec(), w.ord()), `${L}: a live hold keeps it open until expiry is confirmed`);
   });
   await cell('SDK-CANCEL-LOSES-TO-TERMINAL', async (L) => {
     const w = await placed();
     await w.db.ref(`orders/${OID}/status`).set('delivered');
-    const r = await C().cancel(w.deps, { orderId: OID, kind: 'cancel' });
+    const r = await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     assert.strictEqual(r.outcome, 'lost_to_terminal', `${L}: the terminal write won (got ${JSON.stringify(r)})`);
-    assert.ok(!w.ord().payment_cancel && w.fake.count('capture') === 1 && !w.deps.released && w.rec().legs.L1.role === 'committed', `${L}: settled as terminal, nothing released or reclassified`);
+    assert.ok(!w.ord().payment_cancel && w.fake.callCount('capture') === 1 && !w.deps.released && w.rec().legs.L1.role === 'committed', `${L}: settled as terminal, nothing released or reclassified`);
   });
   await cell('SDK-TERMINAL-AFTER-COMMITTED-CANCEL', async (L) => {
     const w = await placed(); await live(w);
-    await C().cancel(w.deps, { orderId: OID, kind: 'cancel' });
+    await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     await w.db.ref(`orders/${OID}/status`).set('delivered');   // an override AFTER the cancel decision
     const r = await C().settleTerminal(w.deps, { orderId: OID });
-    assert.ok(r.outcome === 'manual' && w.fake.count('capture') === 0, `${L}: never captured automatically (got ${JSON.stringify(r)})`);
+    assert.ok(r.outcome === 'manual' && w.fake.callCount('capture') === 0, `${L}: never captured automatically (got ${JSON.stringify(r)})`);
     assert.ok(w.rec().lock && w.rec().lock.reason === 'manual_reconciliation' && alerts(w.db).some((x) => x.type === 'payment_sdk_terminal_after_cancel'), `${L}: manual + alert`);
   });
   await cell('SDK-CANCEL-TERMINAL-AT-EACH-BOUNDARY', async (L) => {
     // a terminal write lands right AFTER the cancel's order decision (before stop / classify / cleanup)
     let fired = false;
     const w = await placed({ hooks: { beforeTx: async (p, api) => { if (p === `payment_sdk/${OID}` && api.getAt(`orders/${OID}/payment_cancel`) && !fired) { fired = true; api.setAt(`orders/${OID}/status`, 'delivered'); } } } }); await live(w);
-    const r = await C().cancel(w.deps, { orderId: OID, kind: 'cancel' });
+    const r = await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     assert.ok(fired && r.outcome === 'cancelled', `${L}: the cancel had already won (got ${JSON.stringify(r)})`);
     await C().settleTerminal(w.deps, { orderId: OID });
-    assert.ok(w.fake.count('capture') === 0 && w.rec().legs.L1.role === 'surplus', `${L}: the later terminal write does not reopen money`);
+    assert.ok(w.fake.callCount('capture') === 0 && w.rec().legs.L1.role === 'surplus', `${L}: the later terminal write does not reopen money`);
   });
   await cell('SDK-EXPIRE-RESPECTS-TTL-AND-PLACEMENT', async (L) => {
     const w = world({ script: { authorize: [{ outcome: 'definitive_decline' }] } });
@@ -339,8 +339,8 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     const ex = await C().expirePending(w.deps, { orderId: OID });   // expiry while the auth is in flight
     release(); const pr = await placing;
     assert.strictEqual(pr.outcome, 'late_surplus', `${L}: the late approval cannot place the order (got ${JSON.stringify(pr)}; expiry ${JSON.stringify(ex)})`);
-    await C().cancel(w.deps, { orderId: OID, kind: 'expire' });   // the sweeper's resume
-    assert.deepStrictEqual([w.ord().status, w.rec().legs.L1.role, w.fake.count('capture')], ['cancelled', 'surplus', 0], `${L}: surplus, never captured`);
+    await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'expire' });   // the sweeper's resume
+    assert.deepStrictEqual([w.ord().status, w.rec().legs.L1.role, w.fake.callCount('capture')], ['cancelled', 'surplus', 0], `${L}: surplus, never captured`);
   });
   await cell('SDK-EXPIRE-NO-UUID-UNKNOWN-STILL-RELEASES', async (L) => {
     const w = world({ script: { authorize: [{ lost: true }] } });
@@ -359,11 +359,11 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-INTERRUPTED-CLEANUP-RESUMED', async (L) => {
     const w = await placed(); await live(w);
-    let n = 0; w.deps.release = async () => { n += 1; if (n === 1) throw new Error('crash mid-cleanup'); };
-    await C().cancel(w.deps, { orderId: OID, kind: 'cancel' }).catch(() => {});
+    let n = 0; w.deps.releaseResources = async () => { n += 1; if (n === 1) throw new Error('crash mid-cleanup'); };
+    await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' }).catch(() => {});
     assert.ok(!(w.rec().cleanup && w.rec().cleanup.done_at), `${L}: PREMISE — cleanup not done`);
     w.tick(3 * 60 * 1000);
-    await C().cancel(w.deps, { orderId: OID, kind: 'cancel' });
+    await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     assert.ok(n === 2 && w.rec().cleanup && w.rec().cleanup.done_at, `${L}: the resume finishes the cleanup (calls ${n})`);
   });
   // ── the durable sweeper + due index (§5) ──
@@ -374,7 +374,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     await w.db.ref(`orders/${OID}/status`).set('delivered');   // the trigger never ran
     w.tick(60 * 1000);
     await SW().sweepSdkPayments(w.deps);
-    assert.ok(w.fake.count('capture') === 1 && w.rec().legs.L1.state === 'captured', `${L}: found on the due visit and settled (captures ${w.fake.count('capture')})`);
+    assert.ok(w.fake.callCount('capture') === 1 && w.rec().legs.L1.state === 'captured', `${L}: found on the due visit and settled (captures ${w.fake.callCount('capture')})`);
     assert.ok(due(w) != null, `${L}: the capture's own enrol (newer work) is not erased by the same visit`);
     w.tick(SW().REVISIT_MS + 1);
     await SW().sweepSdkPayments(w.deps);
@@ -385,7 +385,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     await w.db.ref(`orders/${OID}/status`).set('delivered');
     w.tick(60 * 1000);
     await Promise.all([SW().sweepSdkPayments(w.deps), SW().sweepSdkPayments(w.deps), C().settleTerminal(w.deps, { orderId: OID })]);
-    assert.strictEqual(w.fake.count('capture'), 1, `${L}: exactly one capture (got ${w.fake.count('capture')})`);
+    assert.strictEqual(w.fake.callCount('capture'), 1, `${L}: exactly one capture (got ${w.fake.callCount('capture')})`);
   });
   await cell('SDK-SWEEP-NO-STARVATION-60-UNKNOWNS', async (L) => {
     const ids = Array.from({ length: 60 }, (_, i) => `tb_lock_${String(i).padStart(2, '0')}`);
@@ -421,7 +421,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     w.tick(60 * 1000);
     await SW().sweepSdkPayments(w.deps); await SW().sweepSdkPayments(w.deps);
     assert.deepStrictEqual(Object.values(w.rec().obligations || {}).map((o) => o.amount_cents), [3000], `${L}: the sweeper opens the obligation ONCE`);
-    assert.strictEqual(w.fake.count('capture'), 1, `${L}: no second capture`);
+    assert.strictEqual(w.fake.callCount('capture'), 1, `${L}: no second capture`);
   });
   await cell('SDK-SWEEP-EXPIRES-PENDING-TTL', async (L) => {
     const w = world({ script: { authorize: [{ outcome: 'definitive_decline' }] } });
@@ -432,7 +432,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-SWEEP-SURPLUS-EXPIRY-CONFIRMED', async (L) => {
     const w = await placed(); await live(w);
-    await C().cancel(w.deps, { orderId: OID, kind: 'cancel' });
+    await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     const uuid = w.rec().legs.L1.pp_uuid;
     w.tick(R.HOLD_MS + 1);
     await SW().sweepSdkPayments(w.deps);
@@ -460,7 +460,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   await cell('SDK-ENROL-FAILURE-REFUSES', async (L) => {
     const w = world({ hooks: { beforeWrite: async (p) => { if (p === `payment_sdk_due/${OID}`) throw new Error('enrol write failed'); } } });
     await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 }).catch(() => {});
-    assert.ok(w.fake.count('authorize') === 0 && !(w.rec() && w.rec().ops), `${L}: no enrol → nothing journaled, no PSP call`);
+    assert.ok(w.fake.callCount('authorize') === 0 && !(w.rec() && w.rec().ops), `${L}: no enrol → nothing journaled, no PSP call`);
   });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);

@@ -6,13 +6,13 @@ const { makeAdapter } = require('./psp-adapter');
 const { voidEligible } = require('./void-eligibility');
 
 const UNCONFIGURED = Object.freeze({
-  authorize: async () => { throw new Error('sdk psp adapter not configured'); },
-  capture: async () => { throw new Error('sdk psp adapter not configured'); },
-  void: async () => { throw new Error('sdk psp adapter not configured'); },
-  status: async () => { throw new Error('sdk psp adapter not configured'); },
+  pspAuthorize: async () => { throw new Error('sdk psp adapter not configured'); },
+  pspCapture: async () => { throw new Error('sdk psp adapter not configured'); },
+  pspVoid: async () => { throw new Error('sdk psp adapter not configured'); },
+  pspStatus: async () => { throw new Error('sdk psp adapter not configured'); },
 });
 
 function productionDeps(db) {
-  return { db, psp: makeAdapter(UNCONFIGURED), now: () => Date.now(), voidEligible, release: (dp, id, o) => require('./release').releaseSdkOrder(dp, id, o) };
+  return { db, psp: makeAdapter(UNCONFIGURED), clock: () => Date.now(), voidEligible, releaseResources: (dp, id, o) => require('./release').releaseSdkOrder(dp, id, o) };
 }
 module.exports = { productionDeps, UNCONFIGURED };

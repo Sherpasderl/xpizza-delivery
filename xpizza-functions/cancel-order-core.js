@@ -78,7 +78,7 @@ async function cancelOrderCore(deps, { orderId, actor, reason, now, claimId }) {
   };
 
   const order = (await orderRef.once('value')).val();
-  if (!order) return { status: 404, body: { error: 'Order not found' } }; if (require('./payments/sdk/flow').isSdkOrder(order)) { const r = await require('./payments/sdk/coordinator').cancel(require('./payments/sdk/deps').productionDeps(db), { orderId, kind: 'cancel' }); return { status: r.outcome === 'cancelled' ? 200 : 409, body: { ok: r.outcome === 'cancelled', outcome: r.outcome, order_id: orderId } }; }
+  if (!order) return { status: 404, body: { error: 'Order not found' } }; if (require('./payments/sdk/flow').isSdkOrder(order)) { const r = await require('./payments/sdk/coordinator').cancelSdkOrder(require('./payments/sdk/deps').productionDeps(db), { orderId, kind: 'cancel' }); return { status: r.outcome === 'cancelled' ? 200 : 409, body: { ok: r.outcome === 'cancelled', outcome: r.outcome, order_id: orderId } }; }
 
   // B.2 allowed-state gate
   const g = C.gate(order);

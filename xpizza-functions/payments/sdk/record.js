@@ -8,14 +8,14 @@ const HOLD_MS = 15 * 24 * 3600 * 1000;   // BAC hold window
 const TTL_MS = 15 * 60 * 1000;           // sdk pending_payment TTL (server-arbitrated)
 
 const obj = (v) => (v && typeof v === 'object' ? v : {});
-const legsOf = (rec) => obj(rec && rec.legs);
+const legsOfRecord = (rec) => obj(rec && rec.legs);
 const opsOf = (rec) => obj(rec && rec.ops);
-const isInt = (n) => Number.isInteger(n) && n >= 0;
+const isCentsInt = (n) => Number.isInteger(n) && n >= 0;
 
 // The money figures, DERIVED from the legs (never patched). A captured committed leg stays in the authorization basis.
 function derive(rec) {
   let committed = 0; let captured = 0; let live = 0;
-  for (const l of Object.values(legsOf(rec))) {
+  for (const l of Object.values(legsOfRecord(rec))) {
     if (l.role === 'committed' && (l.state === 'approved' || l.state === 'captured')) committed += l.amount_cents;
     if (l.state === 'captured') captured += l.amount_cents;
     if (l.state === 'approved') live += 1;
@@ -33,9 +33,9 @@ function isFinanciallyClosed(rec, order) {
   if (!rec) return false;
   if (rec.lock) return false;
   if (Object.values(opsOf(rec)).some((o) => !o.result)) return false;
-  if (Object.values(legsOf(rec)).some((l) => !LEG_FINAL.includes(l.state))) return false;
+  if (Object.values(legsOfRecord(rec)).some((l) => !LEG_FINAL.includes(l.state))) return false;
   if (pendingProjection(rec, order)) return false;
-  if (rec.frozen && (rec.frozen.capture_set || []).some((id) => !legsOf(rec)[id] || legsOf(rec)[id].state !== 'captured')) return false;
+  if (rec.frozen && (rec.frozen.capture_set || []).some((id) => !legsOfRecord(rec)[id] || legsOfRecord(rec)[id].state !== 'captured')) return false;
   if (rec.phase === 'open' || rec.phase === 'adjusting') return false;   // an open order is not closed
   if (rec.phase === 'cancelled' && !(rec.cleanup && rec.cleanup.done_at)) return false;   // a cancellation's cleanup must be done
   return Object.values(obj(rec.obligations)).every((o) => o.state === 'verified');
@@ -48,7 +48,7 @@ async function casRecord(db, orderId, fn) {
   const res = await db.ref(`payment_sdk/${orderId}`).transaction((cur) => {
     applied = false;
     if (cur == null) return null;
-    const next = fn(JSON.parse(JSON.stringify(cur)));
+    const next = fn.call(null, JSON.parse(JSON.stringify(cur)));   // invoked as a library call: the record is never an order
     if (next === undefined) return undefined;
     next.version = (cur.version || 0) + 1;
     next.derived = derive(next);
@@ -74,4 +74,4 @@ async function createRecord(db, orderId, init) {
   return { created: !!(res && res.committed && created), record };
 }
 
-module.exports = { TERMINAL, LEG_FINAL, MONEY_ACTIONS, HOLD_MS, TTL_MS, derive, legsOf, opsOf, isInt, unansweredMoneyOps, pendingProjection, isFinanciallyClosed, casRecord, createRecord };
+module.exports = { TERMINAL, LEG_FINAL, MONEY_ACTIONS, HOLD_MS, TTL_MS, derive, legsOfRecord, opsOf, isCentsInt, unansweredMoneyOps, pendingProjection, isFinanciallyClosed, casRecord, createRecord };

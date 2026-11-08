@@ -13,43 +13,34 @@ const OBLIGATION_DUE_MS = 3 * 24 * 3600 * 1000;
 
 const readOrder = async (db, orderId) => (await db.ref(`orders/${orderId}`).once('value')).val();
 const readRecord = async (db, orderId) => (await db.ref(`payment_sdk/${orderId}`).once('value')).val();
-const enrol = (deps, orderId) => deps.db.ref(`payment_sdk_due/${orderId}`).set(deps.now());
+const enrol = (deps, orderId) => deps.db.ref(`payment_sdk_due/${orderId}`).set(deps.clock());
 const isSdk = (order) => !!order && order.payment_flow === 'sdk_auth_v1';
-const isTerminal = (order) => !!order && R.TERMINAL.includes(order.status);
+const isTerminalOrder = (order) => !!order && R.TERMINAL.includes(order.status);
 
 // A deterministic, create-once alert (never duplicated by retries or sweeps).
 async function alertOnce(deps, kind, orderId, detail, suffix) {
   const key = `sdkpay_${kind}_${orderId}${suffix ? `_${suffix}` : ''}`;
   try {
-    await deps.db.ref(`dispatcher_alerts/${key}`).transaction((cur) => (cur == null ? { type: `payment_sdk_${kind}`, detail: { orderId, ...(detail || {}) }, created_at: deps.now() } : undefined));
+    await deps.db.ref(`dispatcher_alerts/${key}`).transaction((cur) => (cur == null ? { type: `payment_sdk_${kind}`, detail: { orderId, ...(detail || {}) }, created_at: deps.clock() } : undefined));
   } catch (_) { /* best-effort: the record still carries the condition and the sweeper re-raises it */ }
 }
 
 // One transaction on orders/{id}: mutate(cur) returns the next order or undefined (refuse). Null-first safe.
-async function orderTxn(db, orderId, mutate) {
-  let won = false;
-  const res = await db.ref(`orders/${orderId}`).transaction((cur) => {
-    won = false;
-    if (cur == null) return null;
-    const next = mutate(JSON.parse(JSON.stringify(cur)));
-    if (next === undefined) return undefined;
-    won = true;
-    return next;
-  });
-  return { won: !!(res && res.committed && won), order: res && res.snapshot ? res.snapshot.val() : null };
-}
+// The result of a decision transaction on orders/{id}: won only if it committed AND this updater produced the value.
+// (Each decision runs its OWN literal transaction below, so the write census sees exactly the fields it writes.)
+const decision = (res, box) => ({ won: !!(res && res.committed && box.won), order: res && res.snapshot ? res.snapshot.val() : null });
 
 // ── journal → call → answer ───────────────────────────────────────────────────────────────────────────────────────────
 // pre(rec) mutates the record for this op (or returns undefined to refuse); call(opId, rec) talks to the PSP; apply(rec, leg,
 // out, opId) records the answer. A money op is refused while the record is locked or any money op is unanswered.
 async function dispatch(deps, orderId, { legId, action, amount_cents, pre, call, apply }) {
-  const now = deps.now();
+  const now = deps.clock();
   const lid = () => (typeof legId === 'function' ? legId() : legId);   // a new leg's id is known only after pre()
   await enrol(deps, orderId);                         // enrol BEFORE work (§5): a crash after this leaves only a due entry
   let opId = null;
   const j = await R.casRecord(deps.db, orderId, (rec) => {
     if (rec.lock || R.unansweredMoneyOps(rec).length) return undefined;
-    const r2 = pre(rec);
+    const r2 = pre.call(null, rec);
     if (!r2) return undefined;
     const n = Object.keys(R.opsOf(r2)).length + 1;
     opId = `${orderId}:${lid()}:${action}:${n}`;
@@ -57,12 +48,12 @@ async function dispatch(deps, orderId, { legId, action, amount_cents, pre, call,
     return r2;
   });
   if (!j.applied) return { dispatched: false, record: j.record };
-  const out = await call(opId, j.record);
+  const out = await call.call(null, opId, j.record);
   const done = await R.casRecord(deps.db, orderId, (rec) => {
     const op = R.opsOf(rec)[opId];
     if (!op || op.result) return undefined;           // already answered (reconciled) — a stale result is ignored
-    op.result = { kind: out.outcome, code: out.code || null, at: deps.now() };
-    apply(rec, R.legsOf(rec)[lid()], out, opId);
+    op.result = { kind: out.outcome, code: out.code || null, at: deps.clock() };
+    apply.call(null, rec, R.legsOfRecord(rec)[lid()], out, opId);
     return rec;
   });
   return { dispatched: true, out, opId, record: done.record };
@@ -75,32 +66,32 @@ function applyAuth(deps, rec, leg, out, opId) {
   if (out.uuid) leg.pp_uuid = out.uuid;
   if (out.outcome === 'approved') { leg.state = 'approved'; leg.role = leg.kind === 'original' ? 'committed' : 'pending'; }
   else if (out.outcome === 'definitive_decline' || out.outcome === 'token_expired_confirmed') { leg.state = 'declined'; leg.role = 'none'; }
-  else if (out.outcome === 'requires_action') { leg.state = 'requires_action'; lockFor(rec, 'requires_action', opId, deps.now()); }
-  else { leg.state = 'unknown'; lockFor(rec, 'unknown_op', opId, deps.now()); }
+  else if (out.outcome === 'requires_action') { leg.state = 'requires_action'; lockFor(rec, 'requires_action', opId, deps.clock()); }
+  else { leg.state = 'unknown'; lockFor(rec, 'unknown_op', opId, deps.clock()); }
 }
 function applyCapture(deps, rec, leg, out, opId) {
   if (!leg) return;
-  if (out.outcome === 'captured') { leg.state = 'captured'; leg.captured_at = deps.now(); }
-  else if (out.outcome === 'declined') lockFor(rec, 'manual_reconciliation', opId, deps.now());   // capture failure ⇒ a person
-  else lockFor(rec, 'unknown_op', opId, deps.now());
+  if (out.outcome === 'captured') { leg.state = 'captured'; leg.captured_at = deps.clock(); }
+  else if (out.outcome === 'declined') lockFor(rec, 'manual_reconciliation', opId, deps.clock());   // capture failure ⇒ a person
+  else lockFor(rec, 'unknown_op', opId, deps.clock());
 }
 function applyVoid(deps, rec, leg, out, opId) {
   if (!leg) return;
   if (out.outcome === 'voided') leg.state = 'voided';
-  else if (out.outcome === 'unknown') lockFor(rec, 'unknown_op', opId, deps.now());
+  else if (out.outcome === 'unknown') lockFor(rec, 'unknown_op', opId, deps.clock());
   // refused: the leg stays approved (surplus), tracked to its expiry
 }
 
 function newLeg(rec, kind, amount_cents, now) {
-  const id = `L${Object.keys(R.legsOf(rec)).length + 1}`;
-  rec.legs = { ...R.legsOf(rec), [id]: { kind, amount_cents, role: 'none', state: 'journaled', created_at: now, hold_expires_at: now + R.HOLD_MS } };
+  const id = `L${Object.keys(R.legsOfRecord(rec)).length + 1}`;
+  rec.legs = { ...R.legsOfRecord(rec), [id]: { kind, amount_cents, role: 'none', state: 'journaled', created_at: now, hold_expires_at: now + R.HOLD_MS } };
   return id;
 }
 
 // ── placement (§2.11: the order goes live on an APPROVED original leg; the go-live decision is an order transaction) ─────
 async function placeOriginal(deps, { orderId, token, amount_cents }) {
-  const now = deps.now();
-  if (!R.isInt(amount_cents) || amount_cents <= 0 || typeof token !== 'string' || !token) return { outcome: 'refused', reason: 'bad_input' };
+  const now = deps.clock();
+  if (!R.isCentsInt(amount_cents) || amount_cents <= 0 || typeof token !== 'string' || !token) return { outcome: 'refused', reason: 'bad_input' };
   const order = await readOrder(deps.db, orderId);
   if (!isSdk(order) || order.status !== 'pending_payment' || order.payment_cancel || order.payment_placed) return { outcome: 'refused', reason: 'order_state' };
   await enrol(deps, orderId);
@@ -112,32 +103,35 @@ async function placeOriginal(deps, { orderId, token, amount_cents }) {
     amount_cents,
     pre: (rec) => {
       if (rec.phase !== 'open') return undefined;
-      if (Object.values(R.legsOf(rec)).some((l) => l.kind === 'original' && l.state !== 'declined')) return undefined;
+      if (Object.values(R.legsOfRecord(rec)).some((l) => l.kind === 'original' && l.state !== 'declined')) return undefined;
       legId = newLeg(rec, 'original', amount_cents, now);
       rec.legs[legId].state = 'sent';
       rec.token = token;
       rec.fulfillment_total_cents = amount_cents;
       return rec;
     },
-    call: (opId) => deps.psp.authorize({ token, amount_cents, op_id: opId, ref: orderId }),
+    call: (opId) => deps.psp.pspAuthorize({ token, amount_cents, op_id: opId, ref: orderId }),
     apply: (rec, leg, out, opId) => applyAuth(deps, rec, leg, out, opId),
   });
   if (!d.dispatched) return { outcome: 'refused', reason: 'locked_or_busy' };
   if (d.out.outcome !== 'approved') return { outcome: d.out.outcome === 'requires_action' ? 'requires_action' : d.out.outcome === 'unknown' ? 'unknown' : 'declined' };
-  const decided = await orderTxn(deps.db, orderId, (cur) => {
+  const box = { won: false };
+  const decided = decision(await deps.db.ref(`orders/${orderId}`).transaction((cur) => {
+    box.won = false;
+    if (cur == null) return null;
     if (cur.status !== 'pending_payment' || cur.payment_cancel || cur.payment_placed) return undefined;
-    cur.payment_placed = { leg_id: legId, at: deps.now() };
-    return cur;
-  });
+    box.won = true;
+    return { ...cur, payment_placed: { leg_id: legId, at: deps.clock() } };
+  }), box);
   if (decided.won) return { outcome: 'placed', leg_id: legId };
   // the order lost the race (expired / cancelled first): the approved hold is SURPLUS, never captured
-  await R.casRecord(deps.db, orderId, (rec) => { const l = R.legsOf(rec)[legId]; if (!l || l.state !== 'approved') return undefined; l.role = 'surplus'; return rec; });
+  await R.casRecord(deps.db, orderId, (rec) => { const l = R.legsOfRecord(rec)[legId]; if (!l || l.state !== 'approved') return undefined; l.role = 'surplus'; return rec; });
   return { outcome: 'late_surplus', leg_id: legId };
 }
 
 // ── reconciliation: status queries never resolve an op implicitly; a separate CAS does, on BOUND definitive evidence ─────
-async function reconcile(deps, { orderId }) {
-  const now = deps.now();
+async function reconcileSdkOps(deps, { orderId }) {
+  const now = deps.clock();
   const rec = await readRecord(deps.db, orderId);
   if (!rec) return { reconciled: 0 };
   let reconciled = 0;
@@ -151,7 +145,7 @@ async function reconcile(deps, { orderId }) {
     const unanswered = !op.result && now - op.dispatched_at >= RECONCILE_AFTER_MS;
     const unknown = op.result && op.result.kind === 'unknown';
     if (!unanswered && !unknown) continue;
-    const leg = R.legsOf(rec)[op.leg_id];
+    const leg = R.legsOfRecord(rec)[op.leg_id];
     if (!leg || !leg.pp_uuid) {
       // no uuid: the lost-UUID lookup (§7.V) is out of scope → a person; the lock stays
       await R.casRecord(deps.db, orderId, (r) => { if (r.lock && r.lock.reason === 'manual_reconciliation' && r.lock.op_id === opId) return undefined; lockFor(r, 'manual_reconciliation', opId, now); return r; });
@@ -161,14 +155,14 @@ async function reconcile(deps, { orderId }) {
     // journal the status query (allowed while locked), ask, record its answer
     let sId = null;
     await R.casRecord(deps.db, orderId, (r) => { sId = `${orderId}:${op.leg_id}:status:${Object.keys(R.opsOf(r)).length + 1}`; r.ops = { ...R.opsOf(r), [sId]: { leg_id: op.leg_id, action: 'status', of: opId, dispatched_at: now, result: null } }; return r; });
-    const ev = await deps.psp.status({ uuid: leg.pp_uuid });
-    await R.casRecord(deps.db, orderId, (r) => { const s = R.opsOf(r)[sId]; if (!s || s.result) return undefined; s.result = { kind: ev.state, at: deps.now() }; return r; });
+    const ev = await deps.psp.pspStatus({ uuid: leg.pp_uuid });
+    await R.casRecord(deps.db, orderId, (r) => { const s = R.opsOf(r)[sId]; if (!s || s.result) return undefined; s.result = { kind: ev.state, at: deps.clock() }; return r; });
     if (!boundStatus(ev, leg)) {
       if (now - op.dispatched_at >= UNKNOWN_ALERT_MS) await alertOnce(deps, 'unknown_op', orderId, { op_id: opId }, opId.replace(/[^A-Za-z0-9_-]/g, '_'));
       continue;                                        // inconclusive / unbound → the lock stays, no retry
     }
     const res = await R.casRecord(deps.db, orderId, (r) => {
-      const o = R.opsOf(r)[opId]; const l = R.legsOf(r)[op.leg_id];
+      const o = R.opsOf(r)[opId]; const l = R.legsOfRecord(r)[op.leg_id];
       if (!o || !l || (o.result && o.result.kind !== 'unknown')) return undefined;
       const st = ev.state;
       let kind = null;
@@ -196,11 +190,11 @@ async function reconcile(deps, { orderId }) {
 
 // ── terminal settlement (§4, §4a, §6): payment_terminal → recover → freeze → capture the frozen set → obligations ───────
 async function settleTerminal(deps, { orderId }) {
-  const now = deps.now();
+  const now = deps.clock();
   let order = await readOrder(deps.db, orderId);
   let rec = await readRecord(deps.db, orderId);
   if (!rec || !isSdk(order)) return { outcome: 'none' };
-  if (!isTerminal(order) && !order.payment_terminal) return { outcome: 'not_terminal' };
+  if (!isTerminalOrder(order) && !order.payment_terminal) return { outcome: 'not_terminal' };
   if (order.payment_cancel && !order.payment_terminal) {
     // a terminal status written after a committed cancel decision (an override): never captured automatically
     await R.casRecord(deps.db, orderId, (r) => { if (r.lock && r.lock.reason === 'manual_reconciliation') return undefined; lockFor(r, 'manual_reconciliation', null, now); return r; });
@@ -208,22 +202,25 @@ async function settleTerminal(deps, { orderId }) {
     return { outcome: 'manual' };
   }
   if (!order.payment_terminal) {
-    const t = await orderTxn(deps.db, orderId, (cur) => {
+    const box = { won: false };
+    const t = decision(await deps.db.ref(`orders/${orderId}`).transaction((cur) => {
+      box.won = false;
+      if (cur == null) return null;
       if (cur.payment_terminal) return undefined;
       if (!R.TERMINAL.includes(cur.status) || cur.payment_cancel) return undefined;
-      cur.payment_terminal = { revision: (cur.payment_commit && cur.payment_commit.revision) || 0, at: deps.now() };
-      return cur;
-    });
+      box.won = true;
+      return { ...cur, payment_terminal: { revision: (cur.payment_commit && cur.payment_commit.revision) || 0, at: deps.clock() } };
+    }), box);
     order = t.order || await readOrder(deps.db, orderId);
     if (!order || !order.payment_terminal) return { outcome: 'not_terminal' };
   }
-  if (!isTerminal(order)) await alertOnce(deps, 'status_reversal_after_terminal', orderId, { status: order.status || null });
+  if (!isTerminalOrder(order)) await alertOnce(deps, 'status_reversal_after_terminal', orderId, { status: order.status || null });
   await recoverProjection(deps, orderId, order);
   await classifyLostProposals(deps, orderId, order);
   const fr = await R.casRecord(deps.db, orderId, (r) => {
     if (r.phase !== 'open' && r.phase !== 'adjusting') return undefined;
-    const set = Object.entries(R.legsOf(r)).filter(([, l]) => l.role === 'committed' && (l.state === 'approved' || l.state === 'captured')).map(([id]) => id);
-    for (const l of Object.values(R.legsOf(r))) if (l.role === 'pending') l.role = 'surplus';   // a late approval outside the set
+    const set = Object.entries(R.legsOfRecord(r)).filter(([, l]) => l.role === 'committed' && (l.state === 'approved' || l.state === 'captured')).map(([id]) => id);
+    for (const l of Object.values(R.legsOfRecord(r))) if (l.role === 'pending') l.role = 'surplus';   // a late approval outside the set
     r.phase = 'frozen';
     r.frozen = { revision: r.committed_revision || 0, fulfillment_total_cents: r.fulfillment_total_cents, capture_set: set, at: now };
     if (r.consent && r.consent.state === 'pending') r.consent.state = 'expired';
@@ -232,12 +229,12 @@ async function settleTerminal(deps, { orderId }) {
   rec = fr.record || await readRecord(deps.db, orderId);
   if (!rec || !rec.frozen) return { outcome: 'not_frozen' };
   for (const legId of rec.frozen.capture_set || []) {
-    const leg = R.legsOf(rec)[legId];
+    const leg = R.legsOfRecord(rec)[legId];
     if (!leg || leg.state !== 'approved') continue;
     const d = await dispatch(deps, orderId, {
       legId, action: 'capture', amount_cents: leg.amount_cents,
-      pre: (r) => { const l = R.legsOf(r)[legId]; if (r.phase !== 'frozen' || !l || l.state !== 'approved' || !(r.frozen.capture_set || []).includes(legId)) return undefined; return r; },
-      call: (opId) => deps.psp.capture({ uuid: leg.pp_uuid, amount_cents: leg.amount_cents, op_id: opId }),
+      pre: (r) => { const l = R.legsOfRecord(r)[legId]; if (r.phase !== 'frozen' || !l || l.state !== 'approved' || !(r.frozen.capture_set || []).includes(legId)) return undefined; return r; },
+      call: (opId) => deps.psp.pspCapture({ uuid: leg.pp_uuid, amount_cents: leg.amount_cents, op_id: opId }),
       apply: (r, l, out, opId) => applyCapture(deps, r, l, out, opId),
     });
     if (d.record) rec = d.record;
@@ -248,12 +245,12 @@ async function settleTerminal(deps, { orderId }) {
 
 // Obligations open in the step that follows the LAST confirmed capture; deterministic id ⇒ created once.
 async function openObligations(deps, orderId) {
-  const now = deps.now();
+  const now = deps.clock();
   let opened = null;
   await R.casRecord(deps.db, orderId, (r) => {
     if (!r.frozen) return undefined;
     const set = r.frozen.capture_set || [];
-    if (set.some((id) => !R.legsOf(r)[id] || R.legsOf(r)[id].state !== 'captured')) return undefined;
+    if (set.some((id) => !R.legsOfRecord(r)[id] || R.legsOfRecord(r)[id].state !== 'captured')) return undefined;
     const liability = R.derive(r).refund_liability;
     if (liability <= 0) return undefined;
     const id = `refund_${r.frozen.revision}`;
@@ -280,8 +277,8 @@ async function completeObligation(deps, { orderId, obligationId, state, bank_ref
 // ── adjustments (§2.10 through §4): proposal (payment side, immutable) → commit (orders txn) → projection (record CAS) ──
 const CONSENT_WINDOW_MS = 3 * 60 * 1000;   // owner 2026-11-07: the increase consent window
 const revOf = (order) => (order && order.payment_commit && order.payment_commit.revision) || 0;
-const committedLegIds = (rec) => Object.entries(R.legsOf(rec)).filter(([, l]) => l.role === 'committed' && (l.state === 'approved' || l.state === 'captured')).map(([id]) => id);
-const orderOpen = (order) => isSdk(order) && !!order.payment_placed && !isTerminal(order) && order.status !== 'cancelled' && !order.payment_cancel && !order.payment_terminal;
+const committedLegIds = (rec) => Object.entries(R.legsOfRecord(rec)).filter(([, l]) => l.role === 'committed' && (l.state === 'approved' || l.state === 'captured')).map(([id]) => id);
+const orderOpen = (order) => isSdk(order) && !!order.payment_placed && !isTerminalOrder(order) && order.status !== 'cancelled' && !order.payment_cancel && !order.payment_terminal;
 const recordOpen = (rec, order) => !!rec && rec.phase === 'open' && !rec.lock && !R.unansweredMoneyOps(rec).length && (rec.committed_revision || 0) === revOf(order);
 
 async function persistProposal(deps, orderId, p) {
@@ -289,19 +286,23 @@ async function persistProposal(deps, orderId, p) {
   const res = await R.casRecord(deps.db, orderId, (rec) => {
     if ((rec.committed_revision || 0) !== p.base_revision) return undefined;
     pid = `p${Object.keys(rec.proposals || {}).length + 1}`;
-    rec.proposals = { ...(rec.proposals || {}), [pid]: { ...p, pid, state: 'proposed', created_at: deps.now() } };
+    rec.proposals = { ...(rec.proposals || {}), [pid]: { ...p, pid, state: 'proposed', created_at: deps.clock() } };
     return rec;
   });
   return res.applied ? pid : null;
 }
 // THE decision: the order must be live, not cancelled/terminal, and still at the proposal's base revision.
-const commitProposal = (deps, orderId, pid, p) => orderTxn(deps.db, orderId, (cur) => {
-  if (R.TERMINAL.includes(cur.status) || cur.status === 'cancelled' || cur.payment_cancel || cur.payment_terminal) return undefined;
-  if (revOf(cur) !== p.base_revision) return undefined;
-  cur.payment_commit = { revision: p.base_revision + 1, pid };
-  cur.payment_total_cents = p.fulfillment_total_cents;
-  return cur;
-});
+async function commitProposal(deps, orderId, pid, p) {
+  const box = { won: false };
+  return decision(await deps.db.ref(`orders/${orderId}`).transaction((cur) => {
+    box.won = false;
+    if (cur == null) return null;
+    if (R.TERMINAL.includes(cur.status) || cur.status === 'cancelled' || cur.payment_cancel || cur.payment_terminal) return undefined;
+    if (revOf(cur) !== p.base_revision) return undefined;
+    box.won = true;
+    return { ...cur, payment_commit: { revision: p.base_revision + 1, pid }, payment_total_cents: p.fulfillment_total_cents };
+  }), box);
+}
 
 // Apply the order's committed proposal if the record lags (crash recovery included). At most one can be pending.
 async function recoverProjection(deps, orderId, order) {
@@ -312,18 +313,18 @@ async function recoverProjection(deps, orderId, order) {
     if ((rec.committed_revision || 0) >= pc.revision) return undefined;
     const p = rec.proposals && rec.proposals[pc.pid];
     if (!p) { missing = true; return undefined; }
-    for (const [id, l] of Object.entries(R.legsOf(rec))) {
+    for (const [id, l] of Object.entries(R.legsOfRecord(rec))) {
       if ((p.committed_set || []).includes(id)) { if (l.state === 'approved' || l.state === 'captured') l.role = 'committed'; }
       else if (l.role === 'committed' || l.role === 'pending') l.role = 'surplus';
     }
     rec.fulfillment_total_cents = p.fulfillment_total_cents;
     rec.committed_revision = pc.revision;
     p.state = 'committed';
-    if (p.kind === 'decrease_rule4') { rec.rule4 = { at: deps.now(), revision: pc.revision }; rule4 = true; }
+    if (p.kind === 'decrease_rule4') { rec.rule4 = { at: deps.clock(), revision: pc.revision }; rule4 = true; }
     return rec;
   });
   if (missing) {
-    await R.casRecord(deps.db, orderId, (r) => { if (r.lock && r.lock.reason === 'manual_reconciliation') return undefined; lockFor(r, 'manual_reconciliation', null, deps.now()); return r; });
+    await R.casRecord(deps.db, orderId, (r) => { if (r.lock && r.lock.reason === 'manual_reconciliation') return undefined; lockFor(r, 'manual_reconciliation', null, deps.clock()); return r; });
     await alertOnce(deps, 'proposal_missing', orderId, { revision: pc.revision });
   }
   if (rule4) await alertOnce(deps, 'rule4', orderId, { revision: pc.revision }, `r${pc.revision}`);
@@ -342,7 +343,7 @@ async function classifyLostProposals(deps, orderId, order) {
       const superseded = revOf(order) > p.base_revision;
       if (!closedOrder && !superseded) continue;
       p.state = 'lost'; changed = true;
-      for (const id of p.new_leg_ids || []) { const l = R.legsOf(rec)[id]; if (l && (l.role === 'pending' || l.role === 'none')) l.role = 'surplus'; }
+      for (const id of p.new_leg_ids || []) { const l = R.legsOfRecord(rec)[id]; if (l && (l.role === 'pending' || l.role === 'none')) l.role = 'surplus'; }
     }
     return changed ? rec : undefined;
   });
@@ -351,21 +352,21 @@ async function classifyLostProposals(deps, orderId, order) {
 // Void every surplus hold that is still void-eligible (production: never); a refused / unknown void leaves it SURPLUS.
 async function voidSurplus(deps, orderId) {
   const rec = await readRecord(deps.db, orderId);
-  for (const [legId, leg] of Object.entries(R.legsOf(rec))) {
+  for (const [legId, leg] of Object.entries(R.legsOfRecord(rec))) {
     if (leg.role !== 'surplus' || leg.state !== 'approved' || !leg.pp_uuid) continue;
     if (Object.values(R.opsOf(rec)).some((o) => o.leg_id === legId && o.action === 'void')) continue;   // one void per leg
-    if (!deps.voidEligible(leg, deps.now())) continue;
+    if (!deps.voidEligible(leg, deps.clock())) continue;
     await dispatch(deps, orderId, {
       legId, action: 'void',
-      pre: (r) => { const l = R.legsOf(r)[legId]; if (!l || l.role !== 'surplus' || l.state !== 'approved') return undefined; return r; },
-      call: (opId) => deps.psp.void({ uuid: leg.pp_uuid, op_id: opId }),
+      pre: (r) => { const l = R.legsOfRecord(r)[legId]; if (!l || l.role !== 'surplus' || l.state !== 'approved') return undefined; return r; },
+      call: (opId) => deps.psp.pspVoid({ uuid: leg.pp_uuid, op_id: opId }),
       apply: (r, l, out, opId) => applyVoid(deps, r, l, out, opId),
     });
   }
 }
 
 // propose → commit → project; the caller's new legs become surplus if the order decided otherwise.
-async function decide(deps, orderId, p) {
+async function decideProposal(deps, orderId, p) {
   const pid = await persistProposal(deps, orderId, p);
   if (!pid) return { outcome: 'refused', reason: 'revision_moved' };
   const c = await commitProposal(deps, orderId, pid, p);
@@ -377,42 +378,42 @@ async function decide(deps, orderId, p) {
 const expireConsent = (deps, orderId) => R.casRecord(deps.db, orderId, (r) => { if (!r.consent || r.consent.state !== 'pending') return undefined; r.consent.state = 'expired'; return r; });
 
 async function requestDecrease(deps, { orderId, new_total_cents }) {
-  const now = deps.now();
+  const now = deps.clock();
   const order = await readOrder(deps.db, orderId);
   const rec = await readRecord(deps.db, orderId);
   if (!orderOpen(order) || !recordOpen(rec, order)) return { outcome: 'refused', reason: 'not_adjustable' };
-  if (!R.isInt(new_total_cents) || new_total_cents <= 0 || new_total_cents >= rec.fulfillment_total_cents) return { outcome: 'refused', reason: 'not_a_decrease' };
+  if (!R.isCentsInt(new_total_cents) || new_total_cents <= 0 || new_total_cents >= rec.fulfillment_total_cents) return { outcome: 'refused', reason: 'not_a_decrease' };
   await expireConsent(deps, orderId);                 // a later edit invalidates a pending consent
   const base = rec.committed_revision || 0;
   const S = committedLegIds(rec);
-  if (S.length && S.every((id) => deps.voidEligible(R.legsOf(rec)[id], now))) {
+  if (S.length && S.every((id) => deps.voidEligible(R.legsOfRecord(rec)[id], now))) {
     let legId = null;
     const d = await dispatch(deps, orderId, {
       action: 'auth', legId: () => legId, amount_cents: new_total_cents,
       pre: (r) => { if (r.phase !== 'open' || (r.committed_revision || 0) !== base) return undefined; legId = newLeg(r, 'replacement', new_total_cents, now); r.legs[legId].state = 'sent'; return r; },
-      call: (opId) => deps.psp.authorize({ token: rec.token, amount_cents: new_total_cents, op_id: opId, ref: orderId }),
+      call: (opId) => deps.psp.pspAuthorize({ token: rec.token, amount_cents: new_total_cents, op_id: opId, ref: orderId }),
       apply: (r, l, out, opId) => applyAuth(deps, r, l, out, opId),
     });
     if (!d.dispatched) return { outcome: 'refused', reason: 'locked_or_busy' };
     if (d.out.outcome === 'approved') {
-      const res = await decide(deps, orderId, { kind: 'decrease', base_revision: base, committed_set: [legId], fulfillment_total_cents: new_total_cents, new_leg_ids: [legId] });
-      if (res.outcome !== 'committed') { await R.casRecord(deps.db, orderId, (r) => { const l = R.legsOf(r)[legId]; if (!l || l.role !== 'pending') return undefined; l.role = 'surplus'; return r; }); return res; }
+      const res = await decideProposal(deps, orderId, { kind: 'decrease', base_revision: base, committed_set: [legId], fulfillment_total_cents: new_total_cents, new_leg_ids: [legId] });
+      if (res.outcome !== 'committed') { await R.casRecord(deps.db, orderId, (r) => { const l = R.legsOfRecord(r)[legId]; if (!l || l.role !== 'pending') return undefined; l.role = 'surplus'; return r; }); return res; }
       await voidSurplus(deps, orderId);
       return { outcome: 'replaced', leg_id: legId };
     }
     if (d.out.outcome === 'unknown' || d.out.outcome === 'requires_action') return { outcome: d.out.outcome };
     // a definitive decline of B → rule 4 (S stays committed)
   }
-  const r4 = await decide(deps, orderId, { kind: 'decrease_rule4', base_revision: base, committed_set: S, fulfillment_total_cents: new_total_cents, new_leg_ids: [] });
+  const r4 = await decideProposal(deps, orderId, { kind: 'decrease_rule4', base_revision: base, committed_set: S, fulfillment_total_cents: new_total_cents, new_leg_ids: [] });
   return r4.outcome === 'committed' ? { outcome: 'rule4' } : r4;
 }
 
 async function recordConsent(deps, { orderId, adjustment_id, new_total_cents }) {
-  const now = deps.now();
+  const now = deps.clock();
   const order = await readOrder(deps.db, orderId);
   const rec = await readRecord(deps.db, orderId);
   if (!orderOpen(order) || !recordOpen(rec, order)) return { outcome: 'refused' };
-  if (typeof adjustment_id !== 'string' || !adjustment_id || !R.isInt(new_total_cents) || new_total_cents <= rec.fulfillment_total_cents) return { outcome: 'refused' };
+  if (typeof adjustment_id !== 'string' || !adjustment_id || !R.isCentsInt(new_total_cents) || new_total_cents <= rec.fulfillment_total_cents) return { outcome: 'refused' };
   const res = await R.casRecord(deps.db, orderId, (r) => {
     if ((r.committed_revision || 0) !== revOf(order)) return undefined;
     r.consent = { adjustment_id, order_revision: r.committed_revision || 0, old_total: r.fulfillment_total_cents, new_total: new_total_cents, delta: new_total_cents - r.fulfillment_total_cents, expires_at: now + CONSENT_WINDOW_MS, state: 'pending' };
@@ -422,7 +423,7 @@ async function recordConsent(deps, { orderId, adjustment_id, new_total_cents }) 
 }
 
 async function applyIncrease(deps, { orderId, adjustment_id, order_revision, new_total_cents, accept }) {
-  const now = deps.now();
+  const now = deps.clock();
   const order = await readOrder(deps.db, orderId);
   let consent = null;
   const taken = await R.casRecord(deps.db, orderId, (r) => {
@@ -440,21 +441,21 @@ async function applyIncrease(deps, { orderId, adjustment_id, order_revision, new
   const S = committedLegIds(rec);
   const need = Math.max(0, new_total_cents - R.derive(rec).committed_auth_total);
   if (need === 0) {
-    const res = await decide(deps, orderId, { kind: 'increase', base_revision: base, committed_set: S, fulfillment_total_cents: new_total_cents, new_leg_ids: [] });
+    const res = await decideProposal(deps, orderId, { kind: 'increase', base_revision: base, committed_set: S, fulfillment_total_cents: new_total_cents, new_leg_ids: [] });
     return res.outcome === 'committed' ? { outcome: 'committed' } : res;
   }
   let legId = null;
   const d = await dispatch(deps, orderId, {
     action: 'auth', legId: () => legId, amount_cents: need,
     pre: (r) => { if (r.phase !== 'open' || (r.committed_revision || 0) !== base) return undefined; legId = newLeg(r, 'delta', need, now); r.legs[legId].state = 'sent'; return r; },
-    call: (opId) => deps.psp.authorize({ token: rec.token, amount_cents: need, op_id: opId, ref: orderId }),
+    call: (opId) => deps.psp.pspAuthorize({ token: rec.token, amount_cents: need, op_id: opId, ref: orderId }),
     apply: (r, l, out, opId) => applyAuth(deps, r, l, out, opId),
   });
   if (!d.dispatched) return { outcome: 'refused', reason: 'locked_or_busy' };
   if (d.out.outcome !== 'approved') return { outcome: d.out.outcome === 'unknown' || d.out.outcome === 'requires_action' ? d.out.outcome : 'declined' };
-  const res = await decide(deps, orderId, { kind: 'increase', base_revision: base, committed_set: [...S, legId], fulfillment_total_cents: new_total_cents, new_leg_ids: [legId] });
+  const res = await decideProposal(deps, orderId, { kind: 'increase', base_revision: base, committed_set: [...S, legId], fulfillment_total_cents: new_total_cents, new_leg_ids: [legId] });
   if (res.outcome !== 'committed') {
-    await R.casRecord(deps.db, orderId, (r) => { const l = R.legsOf(r)[legId]; if (!l || l.role !== 'pending') return undefined; l.role = 'surplus'; return r; });
+    await R.casRecord(deps.db, orderId, (r) => { const l = R.legsOfRecord(r)[legId]; if (!l || l.role !== 'pending') return undefined; l.role = 'surplus'; return r; });
     await voidSurplus(deps, orderId);
     return res;
   }
@@ -463,22 +464,23 @@ async function applyIncrease(deps, { orderId, adjustment_id, order_revision, new
 
 // ── cancellation / TTL expiry (§8) ───────────────────────────────────────────────────────────────────────────────────────
 const CLEANUP_STALE_MS = 2 * 60 * 1000;
-async function cancel(deps, { orderId, kind = 'cancel' }) {
-  const now = deps.now();
+async function cancelSdkOrder(deps, { orderId, kind = 'cancel' }) {
+  const now = deps.clock();
   let order = await readOrder(deps.db, orderId);
   if (!isSdk(order)) return { outcome: 'refused', reason: 'not_sdk' };
   if (!order.payment_cancel) {
-    if (isTerminal(order) || order.payment_terminal) { await settleTerminal(deps, { orderId }); return { outcome: 'lost_to_terminal' }; }
+    if (isTerminalOrder(order) || order.payment_terminal) { await settleTerminal(deps, { orderId }); return { outcome: 'lost_to_terminal' }; }
     const rec0 = await readRecord(deps.db, orderId);
     // 1. WIN the order-level decision first
-    const d = await orderTxn(deps.db, orderId, (cur) => {
+    const box = { won: false };
+    const d = decision(await deps.db.ref(`orders/${orderId}`).transaction((cur) => {
+      box.won = false;
+      if (cur == null) return null;
       if (R.TERMINAL.includes(cur.status) || cur.payment_terminal || cur.payment_cancel) return undefined;
       if (kind === 'expire' && (cur.status !== 'pending_payment' || cur.payment_placed || !rec0 || now < rec0.ttl_at)) return undefined;
-      cur.payment_cancel = { kind, at: now };
-      cur.status = 'cancelled';
-      cur.cancelled_at = now;
-      return cur;
-    });
+      box.won = true;
+      return { ...cur, payment_cancel: { kind, at: now }, status: 'cancelled', cancelled_at: now };
+    }), box);
     order = d.order || await readOrder(deps.db, orderId);
     if (d.won) await enrol(deps, orderId);            // a fresh decision is discoverable before its follow-up work
     if (!d.won) {
@@ -499,11 +501,11 @@ async function cancel(deps, { orderId, kind = 'cancel' }) {
   // 3. recover a pending projection, classify lost proposals, reconcile issued ops
   await recoverProjection(deps, orderId, order);
   await classifyLostProposals(deps, orderId, order);
-  await reconcile(deps, { orderId });
+  await reconcileSdkOps(deps, { orderId });
   // 4. every live hold (a late approval included) is SURPLUS — voided only if eligible (production: never)
   await R.casRecord(deps.db, orderId, (r) => {
     let changed = false;
-    for (const l of Object.values(R.legsOf(r))) if (l.state === 'approved' && l.role !== 'surplus') { l.role = 'surplus'; changed = true; }
+    for (const l of Object.values(R.legsOfRecord(r))) if (l.state === 'approved' && l.role !== 'surplus') { l.role = 'surplus'; changed = true; }
     return changed ? r : undefined;
   });
   await voidSurplus(deps, orderId);
@@ -516,21 +518,21 @@ async function cancel(deps, { orderId, kind = 'cancel' }) {
     return r;
   });
   if (claim.applied) {
-    const release = deps.release || ((dp, id, o) => require('./release').releaseSdkOrder(dp, id, o));
-    await release(deps, orderId, order);
-    await R.casRecord(deps.db, orderId, (r) => { if (!r.cleanup || r.cleanup.done_at) return undefined; r.cleanup.done_at = deps.now(); return r; });
+    const releaseResources = deps.releaseResources || ((dp, id, o) => require('./release').releaseSdkOrder(dp, id, o));
+    await releaseResources(deps, orderId, order);
+    await R.casRecord(deps.db, orderId, (r) => { if (!r.cleanup || r.cleanup.done_at) return undefined; r.cleanup.done_at = deps.clock(); return r; });
   }
   return { outcome: 'cancelled' };
 }
-const expirePending = (deps, { orderId }) => cancel(deps, { orderId, kind: 'expire' });
+const expirePending = (deps, { orderId }) => cancelSdkOrder(deps, { orderId, kind: 'expire' });
 
 // A replacement/delta leg approved but never committed (its flow crashed before deciding) is SURPLUS after the reconcile window.
 async function sweepPendingRoles(deps, orderId) {
-  const now = deps.now();
+  const now = deps.clock();
   return R.casRecord(deps.db, orderId, (r) => {
     let changed = false;
     const proposed = new Set(Object.values(r.proposals || {}).filter((p) => p.state === 'proposed').flatMap((p) => p.new_leg_ids || []));
-    for (const [id, l] of Object.entries(R.legsOf(r))) {
+    for (const [id, l] of Object.entries(R.legsOfRecord(r))) {
       if (l.role === 'pending' && !proposed.has(id) && now - l.created_at >= RECONCILE_AFTER_MS) { l.role = 'surplus'; changed = true; }
     }
     return changed ? r : undefined;
@@ -539,22 +541,22 @@ async function sweepPendingRoles(deps, orderId) {
 
 // A surplus hold past its 15-day expiry becomes `expired` (or `voided`) ONLY on bound status evidence — never by assumption.
 async function trackExpiry(deps, orderId) {
-  const now = deps.now();
+  const now = deps.clock();
   const rec = await readRecord(deps.db, orderId);
   if (!rec) return;
-  for (const [legId, leg] of Object.entries(R.legsOf(rec))) {
+  for (const [legId, leg] of Object.entries(R.legsOfRecord(rec))) {
     if (leg.state !== 'approved' || leg.role === 'committed' || now < leg.hold_expires_at || !leg.pp_uuid) continue;
     let sId = null;
     await R.casRecord(deps.db, orderId, (r) => { sId = `${orderId}:${legId}:status:${Object.keys(R.opsOf(r)).length + 1}`; r.ops = { ...R.opsOf(r), [sId]: { leg_id: legId, action: 'status', of: 'expiry', dispatched_at: now, result: null } }; return r; });
-    const ev = await deps.psp.status({ uuid: leg.pp_uuid });
+    const ev = await deps.psp.pspStatus({ uuid: leg.pp_uuid });
     await R.casRecord(deps.db, orderId, (r) => {
-      const s = R.opsOf(r)[sId]; const l = R.legsOf(r)[legId];
+      const s = R.opsOf(r)[sId]; const l = R.legsOfRecord(r)[legId];
       if (!s || s.result) return undefined;
-      s.result = { kind: ev.state, at: deps.now() };
+      s.result = { kind: ev.state, at: deps.clock() };
       if (l && l.state === 'approved' && boundStatus(ev, l) && (ev.state === 'expired' || ev.state === 'voided')) l.state = ev.state;
       return r;
     });
   }
 }
 
-module.exports = { sweepPendingRoles, trackExpiry, cancel, expirePending, placeOriginal, reconcile, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, orderTxn, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };
+module.exports = { sweepPendingRoles, trackExpiry, cancelSdkOrder, expirePending, placeOriginal, reconcileSdkOps, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };

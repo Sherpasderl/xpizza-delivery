@@ -13,13 +13,13 @@ const REVISIT_MS = 5 * 60 * 1000;
 const CAPTURE_OVERDUE_MS = 15 * 60 * 1000;
 const SURPLUS_ALERT_MS = 24 * 3600 * 1000;   // a surplus hold not confirmed expired/voided one day after its 15-day expiry
 
-async function visit(deps, orderId) {
-  const now = deps.now();
+async function visitDueOrder(deps, orderId) {
+  const now = deps.clock();
   let order = await C.readOrder(deps.db, orderId);
   if (!order || order.payment_flow !== 'sdk_auth_v1') return 'not_sdk';
-  await C.reconcile(deps, { orderId });
+  await C.reconcileSdkOps(deps, { orderId });
   order = await C.readOrder(deps.db, orderId);
-  if (order.payment_cancel) await C.cancel(deps, { orderId, kind: order.payment_cancel.kind });
+  if (order.payment_cancel) await C.cancelSdkOrder(deps, { orderId, kind: order.payment_cancel.kind });
   else if (R.TERMINAL.includes(order.status) || order.payment_terminal) await C.settleTerminal(deps, { orderId });
   else if (order.status === 'pending_payment' && !order.payment_placed) {
     const rec = await C.readRecord(deps.db, orderId);
@@ -33,14 +33,14 @@ async function visit(deps, orderId) {
       && (rec.frozen.capture_set || []).some((id) => !rec.legs[id] || rec.legs[id].state !== 'captured')) {
     await C.alertOnce(deps, 'capture_overdue', orderId, {});
   }
-  if (rec) for (const [legId, l] of Object.entries(R.legsOf(rec))) {
+  if (rec) for (const [legId, l] of Object.entries(R.legsOfRecord(rec))) {
     if (l.state === 'approved' && l.role === 'surplus' && now >= l.hold_expires_at + SURPLUS_ALERT_MS) await C.alertOnce(deps, 'surplus_unconfirmed', orderId, { leg_id: legId }, legId);
   }
   return R.isFinanciallyClosed(rec, order) ? 'closed' : 'open';
 }
 
 async function sweepSdkPayments(deps) {
-  const now = deps.now();
+  const now = deps.clock();
   const snap = await deps.db.ref('payment_sdk_due').orderByValue().endAt(now).limitToFirst(PAGE).once('value');
   const page = (snap && snap.val()) || {};
   const out = { visited: 0, closed: 0, failed: 0 };
@@ -50,7 +50,7 @@ async function sweepSdkPayments(deps) {
     await deps.db.ref(`payment_sdk_due/${orderId}`).transaction((cur) => (cur == null ? null : cur === at ? next : undefined));
     out.visited += 1;
     let state;
-    try { state = await visit(deps, orderId); } catch (e) { out.failed += 1; continue; }   // one order never blocks the page
+    try { state = await visitDueOrder(deps, orderId); } catch (e) { out.failed += 1; continue; }   // one order never blocks the page
     if (state === 'closed' || state === 'not_sdk') {
       await deps.db.ref(`payment_sdk_due/${orderId}`).transaction((cur) => (cur == null ? null : cur === next ? null : undefined));
       out.closed += 1;
@@ -59,4 +59,4 @@ async function sweepSdkPayments(deps) {
   return out;
 }
 
-module.exports = { sweepSdkPayments, visit, PAGE, REVISIT_MS };
+module.exports = { sweepSdkPayments, visitDueOrder, PAGE, REVISIT_MS };

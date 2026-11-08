@@ -25,7 +25,7 @@ const OID = 'tb_sdk_emu';
 const sdkOrder = (o = {}) => ({ payment_flow: 'sdk_auth_v1', payment_method: 'online', payment_status: 'pending', status: 'pending_payment', restaurant_id: 'tb_rest', order_type: 'delivery', total: 100, total_cents: 10000, created_at: Date.now() - 3 * 3600 * 1000, ...o });
 const val = async (p) => (await db.ref(p).once('value')).val();
 let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
-const depsWith = (script = {}) => { const fake = makeFakePsp(script); return { fake, deps: { db, psp: makeAdapter(fake.impl), now: () => Date.now(), voidEligible: () => false, release: async () => {} } }; };
+const depsWith = (script = {}) => { const fake = makeFakePsp(script); return { fake, deps: { db, psp: makeAdapter(fake.impl), clock: () => Date.now(), voidEligible: () => false, releaseResources: async () => {} } }; };
 
 (async () => {
   // ── the index.js loops leave an SDK order untouched ──
@@ -56,7 +56,7 @@ const depsWith = (script = {}) => { const fake = makeFakePsp(script); return { f
   // two concurrent settlements (trigger + sweeper) → one capture
   await db.ref(`orders/${OID}/status`).set('delivered');
   await Promise.all([C.settleTerminal(w1.deps, { orderId: OID }), C.settleTerminal(w1.deps, { orderId: OID }), SW.sweepSdkPayments(w1.deps)]);
-  assert.strictEqual(w1.fake.count('capture'), 1, `SPLE-RACE: exactly one capture on real transactions (got ${w1.fake.count('capture')})`);
+  assert.strictEqual(w1.fake.callCount('capture'), 1, `SPLE-RACE: exactly one capture on real transactions (got ${w1.fake.callCount('capture')})`);
   ok('SPLE-RACE concurrent settle + sweep → one capture');
   // the adjustment loses to a terminal write that lands first
   await db.ref('/').set(null);
@@ -73,11 +73,11 @@ const depsWith = (script = {}) => { const fake = makeFakePsp(script); return { f
   const w3 = depsWith();
   await C.placeOriginal(w3.deps, { orderId: OID, token: 'T-emu', amount_cents: 10000 });
   await db.ref(`orders/${OID}/status`).set('preparing');
-  const c3 = await C.cancel(w3.deps, { orderId: OID, kind: 'cancel' });
+  const c3 = await C.cancelSdkOrder(w3.deps, { orderId: OID, kind: 'cancel' });
   assert.ok(c3.outcome === 'cancelled' && (await val(`orders/${OID}/payment_cancel/kind`)) === 'cancel', `SPLE-CANCEL: decided on the real order (got ${JSON.stringify(c3)})`);
   await db.ref(`orders/${OID}/status`).set('delivered');
   await C.settleTerminal(w3.deps, { orderId: OID });
-  assert.strictEqual(w3.fake.count('capture'), 0, 'SPLE-CANCEL: no capture after a committed cancel');
+  assert.strictEqual(w3.fake.callCount('capture'), 0, 'SPLE-CANCEL: no capture after a committed cancel');
   ok('SPLE-CANCEL decision first; a later terminal write does not reopen money');
   // the bounded due query on the real database
   await db.ref('/').set(null);
