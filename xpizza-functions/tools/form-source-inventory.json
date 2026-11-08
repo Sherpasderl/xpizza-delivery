@@ -1347,6 +1347,7 @@
     "xpizza-driver/stack-validity.guard.test.js",
     "xpizza-driver/stacked-view.test.js",
     "xpizza-driver/stackseq-consume.test.js",
+    "xpizza-driver/stackseq-tracker-parity.test.js",
     "xpizza-driver/statusbar-disp-header.test.js",
     "xpizza-driver/tab-bar-mount.test.js",
     "xpizza-functions/branches-rules.guard.test.js",
@@ -4970,7 +4971,9 @@
   },
   "tracking/derive.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-driver/stackseq-tracker-parity.test.js"
+   ]
   },
   "tracking/driver-name.js": {
    "pins": [],

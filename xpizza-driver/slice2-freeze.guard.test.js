@@ -217,6 +217,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/stackseq-consume.test.js',        // stacked-order consumption slice: stop_seq sort/promotion/pointer + «+N min»
   'xpizza-driver/stack-validity.js',               // stacked-seq: byte-pinned client copy of the server's stack-coherence rule (validCopy/validPair)
   'xpizza-driver/stack-validity.guard.test.js',    // stacked-seq: guards stack-validity.js == xpizza-functions/sequencing/validity.js
+  'xpizza-driver/stackseq-tracker-parity.test.js', // stacked-seq joint acceptance: driver SDK ⊗ tracker deriveOrderTracker (6-case split)
   'xpizza-driver/solo-cancel.test.js',              // S.cancelado idle takeover real-code suite (SLICE3)
   'xpizza-driver/pausa.test.js',                    // slice 3-P manual-pause (S.pausa) real-code suite (SLICE3)
   'xpizza-driver/endshift.test.js',                 // «Terminar turno» idle slide real-code suite (SLICE3)
