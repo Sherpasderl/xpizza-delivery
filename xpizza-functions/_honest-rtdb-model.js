@@ -32,7 +32,8 @@ function resolveServerValues(v, now) {
 }
 function prune(v) {
   if (v === undefined || v === null) return null;
-  if (typeof v !== 'object' || Array.isArray(v)) return v;
+  if (typeof v !== 'object') return v;
+  if (Array.isArray(v)) { const a = v.map(prune); return a.some((x) => x !== null) ? a : null; }   // RTDB: an array with no children is absent
   const out = {};
   for (const [k, x] of Object.entries(v)) { const p = prune(x); if (p !== null) out[k] = p; }
   return Object.keys(out).length ? out : null;

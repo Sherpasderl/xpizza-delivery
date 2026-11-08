@@ -72,5 +72,10 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   assert.strictEqual((await db5.ref('none').orderByValue().endAt(1).limitToFirst(3).once('value')).val(), null, 'HRM-VALUE-ORDER: an absent node is null');
   assert.throws(() => db5.ref('d').orderByValue().endAt(1).limitToFirst(0), /invalid limit/, 'HRM-VALUE-ORDER: a non-positive limit throws');
   ok('value-ordered bounded page');
+  // HRM-EMPTY-ARRAY: RTDB stores an array as children; an EMPTY array (or one of only nulls) has none, so the key is absent
+  const db6 = makeHonestDb({});
+  await db6.ref('x').set({ a: [], b: [null], c: [1, 2], keep: 1 });
+  assert.deepStrictEqual(db6.getAt('x'), { c: [1, 2], keep: 1 }, `HRM-EMPTY-ARRAY: an empty array is absent, as in RTDB (got ${JSON.stringify(db6.getAt('x'))})`);
+  ok('an empty array is pruned');
   console.log(`\nhonest-rtdb-model: OK (${n})`);
 })().catch((e) => { console.error('TEST FAILED:', e && e.message); process.exit(1); });
