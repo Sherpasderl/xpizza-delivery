@@ -808,6 +808,42 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps);
     assert.ok(w.db.getAt(`${RWP}/reservations/${OID}/state`) === 'released' && w.db.getAt(`${RWP}/balance`) === 10, `${L}: never consumed afterwards (balance 10)`);
   });
+  // ── Codex r2 P1-A: a go-live can never reopen a settled order (stale / overlapping workers, through the FINAL write) ──
+  const OPEN_ALL = Object.fromEntries(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].map((d) => [d, { open: true, start: '00:00', end: '23:59' }]));
+  const CMd = (db, extra = {}) => ({ db, buildMaterializeUpdates: require('../../materialize').buildMaterializeUpdates, restaurant: { lat: 1, lng: 1, name: 'R', phone: '+504' }, ...extra });
+  const CMcall = (deps, now) => require('../../pixelpay-confirm').confirmAndMaterialize(deps, { orderId: OID, attemptId: null, now, trackingToken: `TT-${now}`, sdkGoLive: true });
+  await cell('SDK-GOLIVE-FAILED-ADMISSION-TERMINATES', async (L) => {
+    // Codex repro 1: the order is already confirmed (an earlier claim); delivered + payment_terminal land between the pre-read and the claim
+    let armed = true;
+    const db = makeHonestDb({ orders: { [OID]: order({ payment_placed: { leg_id: 'L1', at: 1 }, payment_status: 'confirmed' }) } }, { beforeTx: async (p, api) => { if (armed && p === `orders/${OID}`) { armed = false; api.setAt(`orders/${OID}/status`, 'delivered'); api.setAt(`orders/${OID}/payment_terminal`, { revision: 0, at: 2 }); } } });
+    const r = await CMcall(CMd(db), 5);
+    const o = db.getAt(`orders/${OID}`);
+    assert.ok(o.status === 'delivered' && !o.materialized_at && !db.getAt('tasks') && !db.getAt('order_tracking') && r.outcome === 'sdk_flow', `${L}: a failed admission TERMINATES — nothing materialized (got ${JSON.stringify(r)}, status ${o.status})`);
+  });
+  await cell('SDK-GOLIVE-OVERLAP-NEVER-REOPENS', async (L) => {
+    // Codex repro 2: two overlapping go-lives; the slower one resumes after the order was delivered and completed
+    let release; const gate = new Promise((r) => { release = r; });
+    const w = world(); w.deps.goLive = async () => { throw new Error('not yet'); };
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const slow = CMcall(CMd(w.db, { getIdentity: async () => { await gate; return { active: true, hours: OPEN_ALL }; }, getGraceMinutes: async () => 15 }), 7);
+    await new Promise((r) => setTimeout(r, 20));
+    const fast = await CMcall(CMd(w.db), 8);
+    assert.ok(fast.outcome === 'confirmed' && w.ord().status === 'new', `${L}: PREMISE — the fast go-live materialized (got ${JSON.stringify(fast)})`);
+    await w.db.ref(`orders/${OID}/status`).set('completed');
+    await w.db.ref(`tasks/${OID}_delivery/status`).set('delivered');
+    release(); const r = await slow;
+    assert.ok(w.ord().status === 'completed' && w.db.getAt(`tasks/${OID}_delivery/status`) === 'delivered' && w.ord().tracking_token === 'TT-8', `${L}: the slower go-live writes NOTHING (got ${JSON.stringify(r)}, status ${w.ord().status}, task ${w.db.getAt(`tasks/${OID}_delivery/status`)})`);
+  });
+  await cell('SDK-GOLIVE-CRASH-AFTER-ORDER-TXN-REPLAYED', async (L) => {
+    let crash = true;
+    const w = world({ hooks: { beforeTx: async (p) => { if (crash && p.startsWith('tasks/')) { crash = false; throw new Error('crash after the order transaction'); } } } });
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.ok(!crash && w.ord().materialized_at && !w.db.getAt(`tasks/${OID}_pickup`) && w.ord().sdk_live_pending, `${L}: PREMISE — the order went live, its tasks were not written, the pending list is recorded`);
+    const c = await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
+    assert.ok(c.outcome === 'refused' && c.reason === 'going_live', `${L}: a cancel waits while the go-live's paths are pending (got ${JSON.stringify(c)})`);
+    w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps);
+    assert.ok(w.db.getAt(`tasks/${OID}_pickup`) && w.db.getAt(`tasks/${OID}_delivery`) && w.db.getAt(`order_tracking/${w.ord().tracking_token}`) && !w.ord().sdk_live_pending, `${L}: the sweeper replays the pending paths and clears the list`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
