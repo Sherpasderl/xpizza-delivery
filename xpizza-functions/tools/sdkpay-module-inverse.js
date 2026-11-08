@@ -102,11 +102,6 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "scheduled-release-core.js",
-  "now": "// ORCHESTRATION O1a §5 — the claim rollback the pause hold and the inactive hold SHARE (releasing → scheduled, ownership cleared)\nconst rollbackClaim = (db, orderId, extra) => db.ref(`orders/${orderId}`).transaction((cur) => (cur == null ? null : cur.status !== S.RELEASING || cur.payment_terminal || cur.payment_cancel ? undefined : { ...cur, status: S.SCHEDULED, release_claim_id: null, releasing_since: null, ...extra }));\n\n",
-  "was": "// ORCHESTRATION O1a §5 — the claim rollback the pause hold and the inactive hold SHARE (releasing → scheduled, ownership cleared)\nconst rollbackClaim = (db, orderId, extra) => db.ref(`orders/${orderId}`).update({ status: S.SCHEDULED, release_claim_id: null, releasing_since: null, ...extra });\n\n"
- },
- {
-  "file": "scheduled-release-core.js",
   "now": "    if (cur === null) return null;                                   // null-first: don't fabricate an order\n    if (cur.status !== S.SCHEDULED) return; if (require('./payments/sdk/flow').isSdkOrder(cur) || cur.payment_terminal || cur.payment_cancel) return;   // abort — not claimable\n    if (cur.scheduled_blocked === true) return;\n",
   "was": "    if (cur === null) return null;                                   // null-first: don't fabricate an order\n    if (cur.status !== S.SCHEDULED) return;                          // abort — not claimable\n    if (cur.scheduled_blocked === true) return;\n"
  }

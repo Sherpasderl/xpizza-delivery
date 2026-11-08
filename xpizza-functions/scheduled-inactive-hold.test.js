@@ -21,7 +21,7 @@ const compile = (src) => { const m = new Module(FILE, module); m.filename = FILE
 // the BASE is derived from the COMMITTED file (git HEAD), so a working-tree mutant is judged against the genuine base, not itself
 const { execFileSync } = require('child_process');
 const committed = (() => { try { return execFileSync('git', ['show', 'HEAD:./scheduled-release-core.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 }); } catch (_) { return fs.readFileSync(FILE, 'utf8'); } })();
-const BASE = compile(unapplyOrchO1aModule('scheduled-release-core.js', committed));
+const BASE = compile(unapplyOrchO1aModule('scheduled-release-core.js', require('./tools/sdkpay-module-inverse').unapplySdkPayModule('scheduled-release-core.js', committed)));
 
 function makeDb(initial = {}, { throwOn = null } = {}) {
   const root = JSON.parse(JSON.stringify(initial));

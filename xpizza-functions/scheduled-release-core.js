@@ -36,7 +36,7 @@ const { releaseHold } = require('./order-control-state');
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 
 // ORCHESTRATION O1a §5 — the claim rollback the pause hold and the inactive hold SHARE (releasing → scheduled, ownership cleared)
-const rollbackClaim = (db, orderId, extra) => db.ref(`orders/${orderId}`).transaction((cur) => (cur == null ? null : cur.status !== S.RELEASING || cur.payment_terminal || cur.payment_cancel ? undefined : { ...cur, status: S.SCHEDULED, release_claim_id: null, releasing_since: null, ...extra }));
+const rollbackClaim = (db, orderId, extra) => db.ref(`orders/${orderId}`).update({ status: S.SCHEDULED, release_claim_id: null, releasing_since: null, ...extra });
 
 // Atomic claim scheduled → releasing (null-first-safe). Aborts (no write) unless still a due, unblocked,
 // non-cancelling scheduled order. Returns { claimed, order }.

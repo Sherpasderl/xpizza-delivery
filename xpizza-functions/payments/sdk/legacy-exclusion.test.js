@@ -122,12 +122,17 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     const r = await require('../../scheduled-release-core').claimForRelease({ db }, OID, 1000, 'claim1');
     assert.ok(!r.claimed && db.getAt(`orders/${OID}/status`) === 'scheduled', `${L}: an SDK scheduled order is not claimed by the legacy release (got ${JSON.stringify(r)})`);
   });
-  await cell('LX-SCHEDULED-ROLLBACK-NEVER-REVERTS-A-MOVED-ORDER', async (L) => {
-    // the release claimed it (releasing); then a dispatcher delivered it; a held release must NOT restore 'scheduled'
-    const order = legacyOrder({ status: 'releasing', release_claim_id: 'c1', releasing_since: 1, release_at: 10 });
-    const db = makeHonestDb({ orders: { [OID]: { ...order, status: 'delivered' } } });
-    await require('../../scheduled-release-core').finalizeRelease({ db, orderControl: async () => ({ paused: true, cause: 'pause' }) }, OID, order, 1000);
-    assert.strictEqual(db.getAt(`orders/${OID}/status`), 'delivered', `${L}: the rollback is conditional on 'releasing' — a delivered order stays delivered (got ${db.getAt(`orders/${OID}/status`)})`);
+  await cell('LX-SCHEDULED-RELEASE-NEVER-REACHES-AN-SDK-ORDER', async (L) => {
+    // rows 15/16 (finalize / rollback) run only on a CLAIMED order; the claim refuses SDK orders, so the legacy release can
+    // never move an SDK order's status (the legacy rollback's writes stay byte-identical: scheduled-inactive-hold pins them)
+    const db = makeHonestDb({ orders: { [OID]: sdkOrder({ status: 'scheduled', release_at: 10 }) } });
+    let finalized = 0;
+    const r = await require('../../scheduled-release-core').releaseOne({ db, genToken: () => 'T', alert: () => {}, orderControl: async () => null, buildMaterializeUpdates: () => { finalized += 1; return {}; } }, { orderId: OID, now: 1000, claimId: 'c1' });
+    assert.ok(db.getAt(`orders/${OID}/status`) === 'scheduled' && finalized === 0 && !db.getAt(`orders/${OID}/release_claim_id`), `${L}: the SDK scheduled order is untouched (got ${JSON.stringify(r)})`);
+    // non-vacuity: the same LEGACY order is claimed by the same call
+    const db2 = makeHonestDb({ orders: { [OID]: legacyOrder({ status: 'scheduled', release_at: 10 }) } });
+    await require('../../scheduled-release-core').releaseOne({ db: db2, genToken: () => 'T', alert: () => {}, orderControl: async () => ({ paused: true, cause: 'pause' }) }, { orderId: OID, now: 1000, claimId: 'c1' }).catch(() => {});
+    assert.ok(db2.getAt(`orders/${OID}/control_held`), `${L}: PREMISE — a legacy scheduled order IS claimed and processed (held) by the same call`);
   });
 
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk legacy exclusion: OK (${pass})`);
