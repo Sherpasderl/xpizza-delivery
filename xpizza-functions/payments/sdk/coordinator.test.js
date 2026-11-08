@@ -891,7 +891,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
       const w = await placed(); await live(w);
       w.db.setAt(`orders/${OID}/sdk_live_pending`, bad);
       w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps);
-      assert.ok(w.db.getAt(`orders/${OID}/sdk_live_pending`) === undefined && alerts(w.db).some((a) => a.type === 'payment_sdk_malformed_live_pending'), `${L}: ${JSON.stringify(bad)}: a falsy malformed list is alerted and dropped (got ${JSON.stringify(w.db.getAt(`orders/${OID}/sdk_live_pending`))})`);
+      assert.ok(w.db.getAt(`orders/${OID}/sdk_live_pending`) == null && alerts(w.db).some((a) => a.type === 'payment_sdk_malformed_live_pending'), `${L}: ${JSON.stringify(bad)}: a falsy malformed list is alerted and dropped (got ${JSON.stringify(w.db.getAt(`orders/${OID}/sdk_live_pending`))})`);
     }
   });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);

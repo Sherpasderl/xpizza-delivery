@@ -59,7 +59,7 @@ async function writeSdkLive(db, orderId, updates) {
   const res = await db.ref(`orders/${orderId}`).transaction((cur) => {
     won = false;
     if (cur == null) return null;
-    if (!F.sdkGoLiveAdmits(cur) || cur.status !== 'pending_payment' || cur.payment_status !== 'confirmed' || cur.materialized_at || cur[PENDING]) return undefined;
+    if (!F.sdkGoLiveAdmits(cur) || cur.status !== 'pending_payment' || cur.payment_status !== 'confirmed' || cur.materialized_at || cur[PENDING] != null) return undefined;
     const next = JSON.parse(JSON.stringify(cur));
     for (const [p, v] of patch) setIn(next, p.slice(prefix.length).split('/'), v);
     const kinds = {};

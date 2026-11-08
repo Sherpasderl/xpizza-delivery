@@ -30,7 +30,7 @@ const sdkGoLiveAdmits = (order) => isSdkOrder(order) && !markerFault(order) && !
   && !CLOSED_STATUSES.includes(order.status);
 // The shared go-live claim has committed and its materialization has not run, or its create-only paths are still pending:
 // a cancel waits for it (or for its park).
-const goLiveInFlight = (order) => isSdkOrder(order) && !!order.payment_placed && ((order.payment_status === 'confirmed' && !order.materialized_at) || !!order.sdk_live_pending);
+const goLiveInFlight = (order) => isSdkOrder(order) && !!order.payment_placed && ((order.payment_status === 'confirmed' && !order.materialized_at) || order.sdk_live_pending != null);
 // Placed, not live, not parked for a person: the go-live may be (re-)driven.
 const goLiveRedrivable = (order) => isSdkOrder(order) && !!order.payment_placed && order.status === 'pending_payment' && !order.materialized_at && (order.payment_status === 'pending' || order.payment_status === 'confirmed');
 // Live (claimed + materialized) with a redemption on the order: the shared go-live's already-confirmed branch is the
