@@ -60,9 +60,13 @@ const capRange = () => {
   // the lane's first-parent commits AND every descendant of the pin (--ancestry-path): a lane commit after the pin that comes in as a
   // merge's SECOND parent (the assembly shape) is off the first-parent chain, and the merge equals that parent, so neither the
   // first-parent walk nor the evil-merge cell would see it (Codex r1 P2-1). Main's own merged-in history is not a descendant of the pin.
-  const scope = ['--', 'customer-app/', ':(exclude)customer-app/capp-guards.test.mjs', ...synced.map(({ dst }) => `:(exclude)${dst}`)];
-  const later = [...new Set([...git('log', '--no-merges', '--first-parent', '--format=%h %s', `${CAPP_TIP}..HEAD`, ...scope).trim().split('\n'),
-    ...git('log', '--no-merges', '--ancestry-path', '--format=%h %s', `${CAPP_TIP}..HEAD`, ...scope).trim().split('\n')].filter(Boolean))].join('\n');
+  // Both ranges are listed WITHOUT a pathspec (Codex r2 P2-1): a path-limited walk applies git's history simplification, which drops a
+  // merge's side when the merge is TREESAME to a parent for that path; each listed commit's OWN paths are then filtered here.
+  const skip = new Set(['customer-app/capp-guards.test.mjs', ...synced.map(({ dst }) => dst)]);
+  const touched = (range) => git('log', '--no-merges', '--no-renames', '--name-only', '-z', '--format=%x01%h %s', ...range).split('\x01').filter(Boolean)
+    .map((rec) => { const [head, ...files] = rec.split('\0'); const [subject, first] = head.split('\n'); return { subject, files: [first, ...files].map((f) => (f || '').replace(/^\n+/, '')).filter(Boolean) }; })
+    .filter(({ files }) => files.some((f) => f.startsWith('customer-app/') && !skip.has(f))).map(({ subject }) => subject);
+  const later = [...new Set([...touched(['--first-parent', `${CAPP_TIP}..HEAD`]), ...touched(['--ancestry-path', `${CAPP_TIP}..HEAD`])])].join('\n');
   assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP ${CAPP_TIP} — re-point CAPP_TIP to the newest of them:\n${later}`);
   return [BASE, CAPP_TIP];
 };
