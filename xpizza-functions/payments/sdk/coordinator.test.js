@@ -357,6 +357,19 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     await Promise.all([C().expirePending(w.deps, { orderId: OID }), C().expirePending(w.deps, { orderId: OID })]);
     assert.strictEqual(w.deps.released, 1, `${L}: released exactly once (got ${w.deps.released})`);
   });
+  await cell('SDK-CANCEL-STOPS-AN-IN-FLIGHT-ADJUSTMENT', async (L) => {
+    // the decrease has read the order (live) and the record; the cancel decision lands before its auth is journaled
+    let armed = false; let fired = false; let wRef = null;
+    const w = await placed({ eligible: ELIGIBLE, hooks: { beforeTx: async (p, api) => {
+      if (armed && !fired && p === `payment_sdk/${OID}` && api.getAt(`orders/${OID}/status`) === 'preparing' && !api.getAt(`orders/${OID}/payment_cancel`)) {
+        fired = true; await C().cancelSdkOrder(wRef.deps, { orderId: OID, kind: 'cancel' });
+      } } } });
+    wRef = w; await live(w);
+    armed = true;
+    const r = await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 8000 });
+    assert.ok(fired, `${L}: PREMISE — the cancel landed inside the decrease`);
+    assert.strictEqual(w.fake.callCount('authorize'), 1, `${L}: the cancelled order never gets the replacement auth (got ${w.fake.callCount('authorize')}; ${JSON.stringify(r)})`);
+  });
   await cell('SDK-INTERRUPTED-CLEANUP-RESUMED', async (L) => {
     const w = await placed(); await live(w);
     let n = 0; w.deps.releaseResources = async () => { n += 1; if (n === 1) throw new Error('crash mid-cleanup'); };
@@ -365,6 +378,20 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     w.tick(3 * 60 * 1000);
     await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     assert.ok(n === 2 && w.rec().cleanup && w.rec().cleanup.done_at, `${L}: the resume finishes the cleanup (calls ${n})`);
+  });
+  await cell('SDK-PROD-VOID-ELIGIBILITY-FAILS-CLOSED', async (L) => {
+    const { voidEligible } = require('./void-eligibility');
+    const leg = { kind: 'original', amount_cents: 1, state: 'approved', created_at: Date.now(), hold_expires_at: Date.now() + R.HOLD_MS };
+    for (const now of [0, leg.created_at, leg.created_at + 60 * 1000, leg.created_at + 23 * 3600 * 1000]) assert.strictEqual(voidEligible(leg, now), false, `${L}: the production rule is NOT eligible for any input until §7.V (now ${now})`);
+    assert.strictEqual(require('./deps').productionDeps({}).voidEligible, voidEligible, `${L}: production deps use exactly that stub`);
+  });
+  await cell('SDK-NO-OBLIGATION-WHILE-CAPTURE-UNCONFIRMED', async (L) => {
+    const w = await placed({ script: { capture: [{ lost: true }], status: [{ state: 'inconclusive' }] } }); await live(w);
+    await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 7000 });
+    await deliver(w);
+    assert.ok(w.rec().lock && w.rec().legs.L1.state === 'approved', `${L}: PREMISE — the capture is unconfirmed (locked)`);
+    await C().openObligations(w.deps, OID);
+    assert.ok(!w.rec().obligations, `${L}: no refund obligation opens before the LAST confirmed capture (got ${JSON.stringify(w.rec().obligations)})`);
   });
   // ── the durable sweeper + due index (§5) ──
   const SW = () => require('./sweeper');
