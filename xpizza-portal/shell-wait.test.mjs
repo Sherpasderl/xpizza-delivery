@@ -268,6 +268,18 @@ test('shell-wait r5 — the strip wait is BOUNDED: an availability read that nev
   assert.equal(seen[0].strip, false, 'the strip is not drawn (it never answered)');
 });
 
+test('shell-wait r5 (Codex r5) — the phone align-content:start is SCREEN-ISOLATED: exactly the ops views and the Menú view; Ventas (.app.vview) never matches', () => {
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
+  const sels = [];
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) if (/align-content\s*:/.test(m[2])) for (const sel of m[1].split(',')) { const t = sel.trim().replace(/^@media[^{]*$/, ''); if (/\.app\b/.test(t)) sels.push(t); }
+  assert.deepEqual(sels.sort(), ['.app.opsview', '.app:not(.opsview):not(.vview)'], `every .app align-content rule: ${JSON.stringify(sels)}`);
+  // a Ventas page carries .vview (ventas.js) and never .opsview at the same time (shell.js removes it) → neither selector matches it
+  const matches = (sel, cls) => { const has = (c) => cls.includes(c); if (sel === '.app.opsview') return has('opsview'); return !has('opsview') && !has('vview'); };
+  assert.ok(!sels.some((s) => matches(s, ['app', 'vview'])), 'Ventas never matches');
+  assert.ok(sels.some((s) => matches(s, ['app'])), 'non-vacuity: the Menú view matches');
+  assert.ok(!/\.app\s*\{[^}]*align-content/.test(css), 'no unscoped .app align-content rule');
+});
+
 test('shell — no branches («no administra ningún local»): `portal:ready` once, with the empty state already in place', async () => {
   const { seen } = await shellRun(okJson(E1([])));
   assert.equal(seen.length, 1);

@@ -60,7 +60,7 @@
   input,button,textarea{font-family:inherit}
   ::selection{background:var(--tint2)}
   .app{display:grid;grid-template-columns:238px 1fr;min-height:100vh}
-  @media(max-width:920px){.app{grid-template-columns:1fr;align-content:start}}   /* shell-wait r5: rows keep their content height — a short first frame never stretches #mtop / #mnav, which then snapped back (post-reveal CLS) */
+  @media(max-width:920px){.app{grid-template-columns:1fr}}
 
   /* ── sidebar ── */
   .side{background:var(--panel);border-right:1px solid var(--line);padding:20px 16px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh;transition:background .3s,border-color .3s}
@@ -1129,4 +1129,7 @@
   #sucmodal .callout svg{width:17px;height:17px;stroke:var(--mute);fill:none;stroke-width:2;flex:none;margin-top:2px}
   /* side-by-side s2-empty / s2-onedraft at 390: a short ops page must not stretch the stacked shell rows (top bar, nav) */
   @media(max-width:920px){ .app.opsview{align-content:start} }
+  /* shell-wait r5 (Codex r5: screen-isolated): the Menú view — neither ops nor Ventas — keeps its rows at content height too:
+     a short first frame stretched #mtop / #mnav, which snapped back after the reveal (post-reveal CLS). Ventas (.vview) untouched. */
+  @media(max-width:920px){ .app:not(.opsview):not(.vview){align-content:start} }
   @media(max-width:920px){ .ops .secwide1b{grid-column:auto} .frow1b{grid-template-columns:1fr} .ops .brows1b{grid-template-columns:1fr} .ops .brow1b{flex-wrap:wrap} .ops .bt1b{min-width:60%} }
