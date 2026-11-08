@@ -197,8 +197,9 @@
   }
 
   function viewSections(menu, cfg) {
-    // F1: the served photo first (card on rows/cards, hero on the sheet); else today's assetBase + dish.img, for both
-    const photo = (d, size = 'card') => (d && d.photo ? d.photo[size] : d && d.img && cfg.assetBase ? cfg.assetBase.replace(/\/?$/, '/') + String(d.img).replace(/^\.?\//, '') : '');
+    // F1: the served photo first (card on rows/cards, hero on the sheet); assetBase + dish.img ONLY on a legacy payload — on a
+    // photo-capable one the served map is authoritative and a dish it leaves out has no photo (Codex r2 P2-3: never resurrect a removal)
+    const photo = (d, size = 'card') => (d && d.photo ? d.photo[size] : !menu.photosAuthoritative && d && d.img && cfg.assetBase ? cfg.assetBase.replace(/\/?$/, '/') + String(d.img).replace(/^\.?\//, '') : '');
     const exOf = (k) => menu.extrasFor(k).filter((e) => e.supported).map((e) => e.key);
     const itemOf = (d) => {
       const g = menu.groups[d.key];

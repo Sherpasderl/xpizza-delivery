@@ -148,17 +148,22 @@ test('dish photos: the REAL served `photos` (card on the row, hero on the sheet)
   const d0 = shown[0]; b.click(b.q(`#dish-${d0.key} .txtbtn`));
   const hero = b.q('.detail-photo-img');
   assert.equal(hero && hero.getAttribute('src'), photos[String(d0.id)].hero, `🔴 ${d0.name}: the dish sheet does not show the served hero (photos[${d0.id}].hero)`);
-  // the fallback: an envelope without `photos` keeps today's assetBase + dish.img
-  const xp = PROV.x_pizza.envelope, d1 = xp.menu.dishes.find((x) => x.img);
-  assert.ok(d1, 'premise: x_pizza serves a dish.img');
-  const noPhotos = { ...xp, menu: { ...xp.menu, photos: undefined } };
-  const f = boot('x_pizza', { envelope: noPhotos, config: { assetBase: 'https://cdn.example/x' } });
-  const k = f.ui.menu.dishes.find((x) => String(x.id) === String(d1.id)).key;
-  assert.equal(f.q(`#dish-${k} img`) && f.q(`#dish-${k} img`).getAttribute('src'), `https://cdn.example/x/${d1.img}`, '🔴 without `photos` the dish.img fallback is gone');
-  // a malformed served entry is no photo (never a non-https URL on the page): the fallback applies
+  // Codex r2 P2-3: on a PHOTO-CAPABLE payload (representation_version ≥ 1d.2, the bump that added `photos`) the served map is
+  // AUTHORITATIVE — a dish it leaves out (the overlay DELETES a {state:'removed'} id) or an omitted map (all removed / unreadable:
+  // the server omits it so a removed photo never shows) has NO photo; dish.img must not resurrect it. The assetBase + dish.img
+  // fallback is only for a LEGACY payload (no representation_version, or 1d.0 / 1d.1) that cannot carry photos.
+  const xp = PROV.x_pizza.envelope, d1 = xp.menu.dishes.find((x) => x.img && (xp.menu.photos || {})[String(x.id)]);
+  assert.ok(d1 && /^1d\.([2-9]|\d{2,})$/.test(xp.representation_version), 'premise: x_pizza serves a photographed dish.img on a photo-capable payload');
+  const AB = { config: { assetBase: 'https://cdn.example/x' } };
+  const srcOf = (b, d) => { const k = b.ui.menu.dishes.find((x) => String(x.id) === String(d.id)).key, im = b.q(`#dish-${k} img`); return im ? im.getAttribute('src') : null; };
+  const { [String(d1.id)]: _gone, ...rest } = xp.menu.photos;
+  assert.equal(srcOf(boot('x_pizza', { envelope: { ...xp, menu: { ...xp.menu, photos: rest } }, ...AB }), d1), null, '🔴 a REMOVED photo (left out of the served map) came back through dish.img');
+  assert.equal(srcOf(boot('x_pizza', { envelope: { ...xp, menu: { ...xp.menu, photos: undefined } }, ...AB }), d1), null, '🔴 an OMITTED photo map on a photo-capable payload fell back to dish.img');
   const bad = { ...xp, menu: { ...xp.menu, photos: { [String(d1.id)]: { card: 'javascript:alert(1)', hero: 'http://plain.example/h.jpg' } } } };
-  const g = boot('x_pizza', { envelope: bad, config: { assetBase: 'https://cdn.example/x' } });
-  assert.equal(g.q(`#dish-${k} img`) && g.q(`#dish-${k} img`).getAttribute('src'), `https://cdn.example/x/${d1.img}`, '🔴 a malformed served photo entry reached the page');
+  assert.equal(srcOf(boot('x_pizza', { envelope: bad, ...AB }), d1), null, '🔴 a malformed served photo entry reached the page');
+  // the legacy payload keeps today's fallback
+  const legacy = { ...xp, representation_version: '1d.1', menu: { ...xp.menu, photos: undefined } };
+  assert.equal(srcOf(boot('x_pizza', { envelope: legacy, ...AB }), d1), `https://cdn.example/x/${d1.img}`, '🔴 a LEGACY payload (1d.1, no photos) lost the dish.img fallback');
 });
 
 // F4 (advisor 11-08, the SBS sold-out scene): the sold row's «+» was inert by CSS only (pointer-events:none) — still a tab stop,
