@@ -2146,6 +2146,7 @@
   "payments/sdk/fake-adapter.js",
   "payments/sdk/flow.js",
   "payments/sdk/functions.js",
+  "payments/sdk/materialize-sdk.js",
   "payments/sdk/psp-adapter.js",
   "payments/sdk/record.js",
   "payments/sdk/release.js",
@@ -4931,6 +4932,10 @@
    "lifts": []
   },
   "payments/sdk/functions.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/materialize-sdk.js": {
    "pins": [],
    "lifts": []
   },

@@ -76,6 +76,16 @@ const HUNKS = Object.freeze([
   "was": "  const preOrder = (await orderRef.once('value')).val();\n  if (!preOrder) return { outcome: 'no_order' };\n\n  const claim = await orderRef.transaction((cur) => {\n    const o = cur || preOrder;\n    if (o.status === 'cancelled') return o;\n"
  },
  {
+  "file": "pixelpay-confirm.js",
+  "now": "\n  const order = claim.snapshot.val() || preOrder; if (require('./payments/sdk/flow').isSdkOrder(order) && !(sdkGoLive === true && require('./payments/sdk/flow').sdkGoLiveAdmits(order))) return { outcome: 'sdk_flow' };\n  if (!order || order.status === 'cancelled') return { outcome: 'cancelled_during_confirm' };\n",
+  "was": "\n  const order = claim.snapshot.val() || preOrder;\n  if (!order || order.status === 'cancelled') return { outcome: 'cancelled_during_confirm' };\n"
+ },
+ {
+  "file": "pixelpay-confirm.js",
+  "now": "  if (inactiveRid) updates[`orders/${orderId}/inactive_materialize_alerted_at`] = now;\n  if (require('./payments/sdk/flow').isSdkOrder(order)) { if (!(await require('./payments/sdk/materialize-sdk').writeSdkLive(db, orderId, updates)).written) return { outcome: 'sdk_live_refused' }; } else await db.ref().update(updates);\n  // AWAIT the alert (it's an async DB write): a fire-and-forget alert can be dropped if the\n",
+  "was": "  if (inactiveRid) updates[`orders/${orderId}/inactive_materialize_alerted_at`] = now;\n  await db.ref().update(updates);\n  // AWAIT the alert (it's an async DB write): a fire-and-forget alert can be dropped if the\n"
+ },
+ {
   "file": "pixelpay-hosted-charge.js",
   "now": "    // Order-level terminal reads.\n    if (order) { if (require('./payments/sdk/flow').isSdkOrder(order)) return { outcome: 'closed', reason: 'sdk_flow' };\n      if (guestForeign(order, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };   // S2: before ANY answer about it\n",
   "was": "    // Order-level terminal reads.\n    if (order) {\n      if (guestForeign(order, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };   // S2: before ANY answer about it\n"
