@@ -62,5 +62,15 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   assert.doesNotThrow(() => db4.ref(''), 'HRM-REF-PATH: the root is a valid ref');
   await assert.rejects(db4.ref('k').set({ 'x\u0001y': 1 }), /invalid RTDB key/, 'HRM-REF-PATH: a control character in a written key is refused, as the Admin SDK does');
   ok('an invalid path throws at ref()');
+  // HRM-VALUE-ORDER: orderByValue().endAt(v).limitToFirst(n) — RTDB's value order (null < false < true < numbers < strings <
+  // objects; ties by key), endAt inclusive, a bounded page; a non-positive limit throws.
+  const db5 = makeHonestDb({ d: { a: 30, b: 10, c: 20, d: 10, e: 'x', f: { z: 1 }, g: true } });
+  const vsel = async (end, n) => Object.keys((await db5.ref('d').orderByValue().endAt(end).limitToFirst(n).once('value')).val() || {}).sort();
+  assert.deepStrictEqual(await vsel(20, 10), ['b', 'c', 'd', 'g'], `HRM-VALUE-ORDER: endAt 20 keeps true and the numbers <= 20 (got ${JSON.stringify(await vsel(20, 10))})`);
+  assert.deepStrictEqual(await vsel(20, 2), ['b', 'g'], `HRM-VALUE-ORDER: the first 2 in value order are true, then 10@b (tie b<d by key) (got ${JSON.stringify(await vsel(20, 2))})`);
+  assert.deepStrictEqual(await vsel(5, 10), ['g'], 'HRM-VALUE-ORDER: only true sorts below 5');
+  assert.strictEqual((await db5.ref('none').orderByValue().endAt(1).limitToFirst(3).once('value')).val(), null, 'HRM-VALUE-ORDER: an absent node is null');
+  assert.throws(() => db5.ref('d').orderByValue().endAt(1).limitToFirst(0), /invalid limit/, 'HRM-VALUE-ORDER: a non-positive limit throws');
+  ok('value-ordered bounded page');
   console.log(`\nhonest-rtdb-model: OK (${n})`);
 })().catch((e) => { console.error('TEST FAILED:', e && e.message); process.exit(1); });
