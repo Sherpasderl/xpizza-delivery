@@ -4,7 +4,11 @@
 // and throws on every other path: as strict as the bare object it replaces (the stamp's own cells live in
 // catalog/platform-pending.test.js). One copy, shared by the getEditableCatalogCore suites.
 const NO_STAMP = { collection: (c) => { if (c !== 'restaurants') throw new Error(`NO_STAMP: unexpected collection ${c}`);
-  return { doc: (rid) => ({ collection: (m) => { if (m !== 'meta') throw new Error(`NO_STAMP: unexpected subcollection ${m}`);
+  return { doc: (rid) => {
+    // the restaurant doc segment is validated at least as strictly as the real ref constructor (Codex r4): a non-empty
+    // string with no '/' (the real one rejects undefined / null / non-strings / '' / 'a/b' / 'a//b'; a rid never holds a '/')
+    if (typeof rid !== 'string' || rid === '' || rid.includes('/')) throw new Error(`NO_STAMP: invalid restaurant id ${JSON.stringify(rid)}`);
+    return { collection: (m) => { if (m !== 'meta') throw new Error(`NO_STAMP: unexpected subcollection ${m}`);
     return { doc: (d) => { if (d !== 'platform_pending') throw new Error(`NO_STAMP: unexpected doc ${d}`);
-      return { get: async () => ({ exists: false, data: () => undefined, updateTime: null }) }; } }; } }) }; } };
+      return { get: async () => ({ exists: false, data: () => undefined, updateTime: null }) }; } }; } }; } }; } };
 module.exports = { NO_STAMP };

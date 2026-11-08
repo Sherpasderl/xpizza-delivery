@@ -723,6 +723,22 @@ const TWO = {
     ok('T1: pendingRenames / pendingOther from a real saved draft vs the active build — rename-only, price-only, both (rename_not_alone), active read down (omitted), nothing pending (response keys unchanged); both brands');
   }
 
+  // ── F-1 r2 (Codex r4): the NO_STAMP fixture is NEVER laxer than the real ref constructor — every restaurant id the real
+  //    Firestore refuses, NO_STAMP refuses too (and the valid one both accept). Offline: building a ref opens no connection.
+  {
+    const { Firestore } = require('@google-cloud/firestore');
+    const real = new Firestore({ projectId: 'demo-no-stamp' });
+    const path = (db, rid) => db.collection('restaurants').doc(rid).collection('meta').doc('platform_pending');
+    for (const bad of [undefined, null, 5, '', 'a/b', 'a//b']) {
+      assert.throws(() => path(real, bad), `premise: the real ref constructor refuses ${JSON.stringify(bad)}`);
+      assert.throws(() => path(NO_STAMP, bad), /NO_STAMP: invalid restaurant id/, `NO_STAMP refuses ${JSON.stringify(bad)} as production does`);
+    }
+    assert.strictEqual(path(real, 'x_pizza').path, 'restaurants/x_pizza/meta/platform_pending');
+    assert.strictEqual((await path(NO_STAMP, 'x_pizza').get()).exists, false, 'the valid id: an absent stamp');
+    assert.throws(() => NO_STAMP.collection('restaurants').doc('x_pizza').collection('meta').doc('publish_request'), /unexpected doc/, 'any other path throws');
+    ok('NO_STAMP is never laxer than production: every restaurant id the real ref constructor refuses (undefined, null, 5, \'\', a/b, a//b) it refuses; other paths throw');
+  }
+
   console.log(`portal-reads: OK (${n})`);
   FINISHED = true;
 })().catch((e) => { console.error(e); process.exit(1); });
