@@ -37,10 +37,14 @@
     const variants = obj(m.variant_items);
     const choiceOf = new Map();
     for (const [launcherId, g] of Object.entries(variants)) for (const vid of list(g && g.variantIds)) choiceOf.set(String(vid), String(launcherId));
+    // F1 (advisor 11-08): the dish photos are the public menu's `photos` — THE one source (public-photos.js: { [String(dish.id)]:
+    // { card, hero } }, absolute https). A malformed entry is no photo, never a guessed URL; absent → the dish.img fallback (capp-ui).
+    const served = obj(m.photos), httpsUrl = (u) => typeof u === 'string' && /^https:\/\/[^\s"'<>\\]+$/.test(u);
+    const photoOf = (d) => { const p = served[String(d.id)]; return p && httpsUrl(p.card) && httpsUrl(p.hero) ? Object.freeze({ card: p.card, hero: p.hero }) : null; };
     const dishes = list(m.dishes).map((d) => {
       const isLauncher = Object.prototype.hasOwnProperty.call(variants, String(d.id));
       return Object.freeze({ key: keyOf(d), id: d.id, name: String(d.name || ''), dish_id: d.dish_id, price: Number(d.price), cat: d.cat, desc: d.desc || '',
-        img: d.img || null, tags: list(d.tags), launcher: isLauncher, variantOf: d.variantOf != null ? String(d.variantOf) : (choiceOf.get(String(d.id)) || null),
+        img: d.img || null, photo: photoOf(d), tags: list(d.tags), launcher: isLauncher, variantOf: d.variantOf != null ? String(d.variantOf) : (choiceOf.get(String(d.id)) || null),
         choice: d.choice || null });
     });
     const dishByKey = new Map(dishes.map((d) => [d.key, d]));

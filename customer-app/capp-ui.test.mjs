@@ -133,6 +133,34 @@ test('cart sheet: empty state; «Agotado» rows are dimmed and cannot be added',
   assert.equal(s.ui.cart.count(), 0, 'a sold-out dish is never added');
 });
 
+// F1 (advisor 11-08, LAUNCH GATE; found by the SBS): the dish photos come from the public menu's `photos` field — the ONE source
+// (xpizza-functions/catalog/public-photos.js: absolute { card, hero } per String(dish.id)) — falling back to assetBase + dish.img.
+// The app read dish.img only, and la_musa's dishes carry no img: its 28 served photos never showed.
+test('dish photos: the REAL served `photos` (card on the row, hero on the sheet); the dish.img fallback only without it', () => {
+  const photos = PROV.la_musa.envelope.menu.photos || {};
+  const b = boot('la_musa');
+  const shown = b.ui.menu.dishes.filter((d) => photos[String(d.id)] && b.q(`#dish-${d.key}`));
+  assert.ok(shown.length >= 5, `premise: the real la_musa envelope serves photos for rendered dishes (${shown.length})`);
+  for (const d of shown) {
+    const img = b.q(`#dish-${d.key} img`);
+    assert.equal(img && img.getAttribute('src'), photos[String(d.id)].card, `🔴 ${d.name}: the row does not show the served photo (photos[${d.id}].card)`);
+  }
+  const d0 = shown[0]; b.click(b.q(`#dish-${d0.key} .txtbtn`));
+  const hero = b.q('.detail-photo-img');
+  assert.equal(hero && hero.getAttribute('src'), photos[String(d0.id)].hero, `🔴 ${d0.name}: the dish sheet does not show the served hero (photos[${d0.id}].hero)`);
+  // the fallback: an envelope without `photos` keeps today's assetBase + dish.img
+  const xp = PROV.x_pizza.envelope, d1 = xp.menu.dishes.find((x) => x.img);
+  assert.ok(d1, 'premise: x_pizza serves a dish.img');
+  const noPhotos = { ...xp, menu: { ...xp.menu, photos: undefined } };
+  const f = boot('x_pizza', { envelope: noPhotos, config: { assetBase: 'https://cdn.example/x' } });
+  const k = f.ui.menu.dishes.find((x) => String(x.id) === String(d1.id)).key;
+  assert.equal(f.q(`#dish-${k} img`) && f.q(`#dish-${k} img`).getAttribute('src'), `https://cdn.example/x/${d1.img}`, '🔴 without `photos` the dish.img fallback is gone');
+  // a malformed served entry is no photo (never a non-https URL on the page): the fallback applies
+  const bad = { ...xp, menu: { ...xp.menu, photos: { [String(d1.id)]: { card: 'javascript:alert(1)', hero: 'http://plain.example/h.jpg' } } } };
+  const g = boot('x_pizza', { envelope: bad, config: { assetBase: 'https://cdn.example/x' } });
+  assert.equal(g.q(`#dish-${k} img`) && g.q(`#dish-${k} img`).getAttribute('src'), `https://cdn.example/x/${d1.img}`, '🔴 a malformed served photo entry reached the page');
+});
+
 // F4 (advisor 11-08, the SBS sold-out scene): the sold row's «+» was inert by CSS only (pointer-events:none) — still a tab stop,
 // announced «Agregar …». Every «+» of a sold dish (the add button, and the stepper's + when it is already in the cart) is disabled,
 // aria-disabled and out of the tab order; a dish that is not sold keeps a live «+».

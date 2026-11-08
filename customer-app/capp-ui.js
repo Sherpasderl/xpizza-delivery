@@ -197,11 +197,12 @@
   }
 
   function viewSections(menu, cfg) {
-    const photo = (d) => (d && d.img && cfg.assetBase ? cfg.assetBase.replace(/\/?$/, '/') + String(d.img).replace(/^\.?\//, '') : '');
+    // F1: the served photo first (card on rows/cards, hero on the sheet); else today's assetBase + dish.img, for both
+    const photo = (d, size = 'card') => (d && d.photo ? d.photo[size] : d && d.img && cfg.assetBase ? cfg.assetBase.replace(/\/?$/, '/') + String(d.img).replace(/^\.?\//, '') : '');
     const exOf = (k) => menu.extrasFor(k).filter((e) => e.supported).map((e) => e.key);
     const itemOf = (d) => {
       const g = menu.groups[d.key];
-      const it = { id: d.key, n: d.name, d: d.desc, p: d.price, img: photo(d), hero: photo(d), tags: d.tags || [], ex: exOf(d.key), cat: d.cat, dish: d.dish_id };
+      const it = { id: d.key, n: d.name, d: d.desc, p: d.price, img: photo(d), hero: photo(d, 'hero'), tags: d.tags || [], ex: exOf(d.key), cat: d.cat, dish: d.dish_id };
       if (g) it.group = { label: g.label, choices: g.choices.map((ck) => { const c = menu.dish(ck); return { id: c.key, choice: c.choice || c.name, p: c.price, n: c.name, ex: exOf(c.key) }; }) };
       return it;
     };
