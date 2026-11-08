@@ -1355,6 +1355,7 @@
     "xpizza-driver/endshift.test.js",
     "xpizza-driver/fa4400-neverships.test.js",
     "xpizza-driver/fa4400-render.browser.test.js",
+    "xpizza-driver/ganado-hoy-earnings.test.js",
     "xpizza-driver/ganancias.test.js",
     "xpizza-driver/gpsoff.test.js",
     "xpizza-driver/idle-help-gate.test.js",
