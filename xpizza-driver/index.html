@@ -3738,10 +3738,15 @@ function gananciasWeekStartMs(nowMs) {   // Monday 00:00 HN of the week containi
 // pending handoff). Recomputed on EVERY call — never cached on the overlay. renderGanancias (Hoy) AND
 // drv2InjectResumenEarn both call it, so the resumen card can never show a figure that differs from the Ganancias
 // «Ganado hoy». Returns { ready, resolved, cents, count }; cents is null when PAGOS off / unseeded / any delivery unpriced.
+// DAY readiness for «Ganado hoy» / Ganancias (Codex r1 P2): the feed + cutover are loaded and no handoff reconcile
+// is in flight. INDEPENDENT of an open shift — the day's earnings are today's resolved+attributed deliveries whether
+// or not a shift is currently open. A normal clock-out clears current_shift_id (functions index.js), so requiring
+// shiftIdentity().valid here would blank the day's money the moment the driver clocks out; it must not vanish.
+function drv2DayReady() {
+  return feedReady && cutoverLoaded && !!driverState && !(driverFeed && driverFeed.hasPendingHandoff());
+}
 function drv2DayEarned() {
-  const ident = (typeof shiftIdentity === 'function') ? shiftIdentity() : { valid: true, start: null };
-  const ready = feedReady && cutoverLoaded && !!driverState && !(driverFeed && driverFeed.hasPendingHandoff()) && ident.valid;
-  if (!ready) return { ready: false, resolved: [], cents: null, count: 0 };
+  if (!drv2DayReady()) return { ready: false, resolved: [], cents: null, count: 0 };
   const resolved = shiftDeliveries(allOrders, currentUser && currentUser.uid, hnDayStartMs(Date.now()), driverIdentityCutoverMs).resolved;
   const PR = (typeof window !== 'undefined' && window.PayRate) || null;   // PAGOS gating is at the consumer (the Ganancias screen is PAGOS-reachable; the resumen card guards its call site)
   const cents = PR ? PR.shiftEarningsCents(resolved.map((d) => d.order), driverRateEntries) : null;
@@ -3761,8 +3766,7 @@ function renderGanancias(view) {
   // over a loading / reconnecting / reconciling feed — a partial feed yields a false L0. Blank until feed + cutover +
   // a valid identity are all ready and no handoff reconcile is in flight; treated exactly like the unseeded state.
   // The feed re-emits readiness on reconnect → refreshOpenCashSurfaces re-renders this open screen.
-  const ident = (typeof shiftIdentity === 'function') ? shiftIdentity() : { valid: true, start: null };
-  const moneyReady = feedReady && cutoverLoaded && !!driverState && !(driverFeed && driverFeed.hasPendingHandoff()) && ident.valid;
+  const moneyReady = drv2DayReady();   // Codex r1 P2: DAY readiness (feed + cutover + no handoff) — NOT tied to an open shift, so earnings survive a clock-out
   const lemp = (cents) => (cents == null) ? '' : (cents / 100).toLocaleString('es-HN');   // cents → Lempiras string; '' when unknown
   const curRate = PR ? PR.rateCentsInEffect(entries, now) : null;   // display rate for the tariff line
   const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
@@ -3835,10 +3839,17 @@ function renderGanancias(view) {
 // late rate load (refreshOpenCashSurfaces) re-runs it. The injected DOM is byte-equal to the old builder's
 // showEarnings:true output (same element/classes/text/position) — proven in stacked-view.test.js.
 function drv2EarnRateFor(orderId) {
+  // Codex r1 P1: the per-delivery pay MUST apply the SAME attribution + readiness contract as the Ganancias day total —
+  // ONE predicate. readiness = drv2DayReady() (feed + cutover settled, no handoff reconcile); attribution = the
+  // money-grade stamp delivered_by_driver_uid === uid, EXACTLY shiftDeliveries' `resolved` rule. An order delivered by
+  // ANOTHER driver returns null here, so it shows no «+L N» / «Tu pago» just as it contributes 0 in Ganancias — never a
+  // divergent per-order rate off a bare delivered_at. The rate is still this delivery's OWN in-effect rate at its delivered_at.
   if (!PAGOS_LIVE || typeof window === 'undefined' || !window.PayRate) return null;
+  if (!drv2DayReady()) return null;
   const o = (typeof allOrders === 'object' && allOrders && allOrders[orderId]) || null;
   const at = o && typeof o.delivered_at === 'number' ? o.delivered_at : null;
-  return at == null ? null : window.PayRate.rateCentsInEffect(driverRateEntries, at);   // this delivery's OWN in-effect rate
+  if (at == null || o.delivered_by_driver_uid !== (currentUser && currentUser.uid)) return null;
+  return window.PayRate.rateCentsInEffect(driverRateEntries, at);
 }
 function drv2InjectInterludeEarn(ov) {
   if (!ov) return;

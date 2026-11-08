@@ -74,7 +74,7 @@ function boot({ pagosLive = false, startImpl, suspended = false, dispatch = '+50
     'let feedReady = true, cutoverLoaded = true;\n' +   // money-readiness inputs for the one-source drv2DayEarned
     'const driverFeed = { hasPendingHandoff: () => false };\n' +
     'function shiftIdentity(){ return { valid: true, start: 0 }; }\n' +
-    liftConst('HN_OFFSET_MS') + '\n' + liftFn('hnDayStartMs') + '\n' + liftFn('drv2DayEarned') + '\n' +   // THE «Ganado hoy» one source renderOffshift now calls (same as Ganancias + the resumen)
+    liftConst('HN_OFFSET_MS') + '\n' + liftFn('hnDayStartMs') + '\n' + liftFn('drv2DayReady') + '\n' + liftFn('drv2DayEarned') + '\n' +   // THE «Ganado hoy» one source renderOffshift now calls (same as Ganancias + the resumen)
     'let closeInFlight = false;\n' +
     liftFn('attachSlideConfirm') + '\n' +
     liftFn('driverRow') + '\n' +
