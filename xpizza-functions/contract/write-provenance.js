@@ -88,7 +88,9 @@ const WRITE_METHODS = new Set(['set', 'update', 'push', 'setWithPriority', 'tran
 const IDENT = /^[A-Za-z_$][\w$]*$/;
 // a METHOD call by one of these names is a library / SDK call, never matched to a same-named function of ours
 // (`db.ref(p).update(patch)` is not a call of identity-integrity-state's `update`)
-const COMMON = new Set([...WRITE_METHODS, 'get', 'ref', 'child', 'once', 'on', 'off', 'then', 'catch', 'finally', 'map', 'filter', 'reduce', 'forEach',
+// 'now' (advisor ruling 2026-11-07): a clock is never an order writer; resolving `x.now()` by name walked PERMUTATIONS of every
+// `now: () => Date.now()` in the codebase. Sound only while every `now` is a pure clock — contract/now-clock.guard.test.js.
+const COMMON = new Set([...WRITE_METHODS, 'now', 'get', 'ref', 'child', 'once', 'on', 'off', 'then', 'catch', 'finally', 'map', 'filter', 'reduce', 'forEach',
   'find', 'some', 'every', 'join', 'split', 'slice', 'splice', 'includes', 'has', 'add', 'delete', 'clear', 'call', 'apply', 'bind', 'assign', 'keys',
   'values', 'entries', 'send', 'json', 'status', 'end', 'log', 'warn', 'error', 'info', 'toString', 'valueOf', 'parse', 'stringify', 'concat', 'sort',
   'replace', 'trim', 'test', 'exec', 'match', 'resolve', 'reject', 'all', 'race', 'next', 'emit', 'write', 'read', 'run', 'start', 'stop', 'close', 'open']);
