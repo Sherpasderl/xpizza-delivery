@@ -144,6 +144,16 @@ const both = (w) => [mode(w, 'ord_i'), mode(w, 'ord_n')];
     assert.deepStrictEqual([...both(w), mode(w, 'ord_x')], ['neutral', 'neutral', 'neutral'], '3 orders, the pair at EQUAL created_at: legacy tie → NEUTRAL for all (no stop_seq sequencing outside exactly one pair)');
     ok('3 delivery orders with the pair at equal created_at → legacy tie → NEUTRAL (never sequenced by stop_seq)');
   }
+  {
+    // 2f's case (t02): THREE deliveries ALL at created_at 100 — a valid pair (stop 1 / stop 2) at D[0] / D[1] plus an unrelated
+    // third. Not exactly one pair → no sequencing → a 3-way created_at tie → NEUTRAL for all three (never a wrong LIVE)
+    const w = eq({ ord_n_delivery: {}, ord_i_delivery: {} });
+    w.tasks.ord_x_pickup = leg('ord_x', 'pickup', 'completed', 100); w.tasks.ord_x_delivery = leg('ord_x', 'delivery', 'accepted', 100); w.orders.ord_x = { status: 'out_for_delivery' };
+    w.tasks.ord_i_delivery.created_at = 100;
+    pickupBatch(w, 'ord_n');
+    assert.deepStrictEqual([...both(w), mode(w, 'ord_x')], ['neutral', 'neutral', 'neutral'], '3 deliveries ALL tied with an embedded valid pair: not one pair → NEUTRAL for all three');
+    ok('3 deliveries all at equal created_at with a valid pair embedded → NEUTRAL for all (the length guard is load-bearing)');
+  }
   // ── 7. the REAL server cancel promotion (sequencing/cancel-promotion.js): stop 1 cancelled after pickup → stop 2 LIVE ──
   {
     const w = world({ rankI: 1 }); pickupBatch(w, 'ord_n');
