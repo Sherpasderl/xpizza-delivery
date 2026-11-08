@@ -5120,7 +5120,8 @@ function refreshOpenCashSurfaces() {
   { const gn = $('screen-ganancias'); if (gn && !gn.classList.contains('hidden') && typeof renderGanancias === 'function') renderGanancias(drv2GananciasView);
     const os = $('screen-offshift'); if (os && !os.classList.contains('hidden') && typeof renderOffshift === 'function') renderOffshift();   // the offshift landing «Ganado hoy»/«Efectivo» read the same drv2DayEarned/computeShiftCash — refresh it too on a readiness flip (Codex r2 P2)
     const il = $('drv2-interlude'); if (il && il.classList.contains('open') && typeof drv2InjectInterludeEarn === 'function') drv2InjectInterludeEarn(il);
-    const rs = $('drv2-resumen'); if (rs && rs.classList.contains('open') && typeof drv2InjectResumenEarn === 'function') drv2InjectResumenEarn(rs); }
+    const rs = $('drv2-resumen'); if (rs && rs.classList.contains('open') && typeof drv2InjectResumenEarn === 'function') drv2InjectResumenEarn(rs);
+    if (typeof drv2ValidateCerradoEarn === 'function') drv2ValidateCerradoEarn(); }   // Codex r1 P2: blank a cerrado «Ganado hoy» snapshot that has outlived its HN day / shift / session
   /* ===== SLICE3:GANANCIAS-REFRESH:END ===== */
   if (closeInFlight) return;
   if ($('cuadre-screen').classList.contains('open')) showCuadre();
@@ -5530,7 +5531,7 @@ async function onCuadreConfirm(slideGen) {
   // «Ganado hoy» for the cerrado summary (prototype S.cerrado :901): snapshot the ONE source NOW — the shift identity
   // and feed are still valid here. finalizeEndShift below clocks the shift out, after which drv2DayEarned would gate to
   // blank; captured like `cash` so what the summary shows is what was computed at confirm. Null unless Pagos is live.
-  const earnedAtClose = PAGOS_LIVE ? drv2DayEarned() : null;
+  const earnedAtClose = PAGOS_LIVE ? { ...drv2DayEarned(), day: hnDayStartMs(closedAt), shiftId: bound.shiftId } : null;   // Codex r1 P2: bind the snapshot to its HN day + the closing shift so a midnight crossing / replacement shift invalidates it
   const p = XPD.recordCuadre(bound.uid, bound.shiftId, { ...cash, close_op_id: closeOpId });
   p.then(async () => {
     if (!isLatest()) return;                                   // a newer attempt owns the close now
@@ -5598,6 +5599,7 @@ function showCerrado(cash, startMs, closedAtMs, earned) {
   if (!ov) { ov = document.createElement('div'); ov.id = 'cerrado-screen'; document.body.appendChild(ov); }
   ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-label', 'Turno cerrado');
   ov.dataset.gen = String(authGen);   // bound to THIS session (Codex r1 P2): a teardown drops it; it never reopens a prior session's summary
+  if (earned && earned.day != null) { ov.dataset.earnDay = String(earned.day); ov.dataset.earnShift = earned.shiftId == null ? '' : String(earned.shiftId); }   // Codex r1 P2: the «Ganado hoy» snapshot is bound to its HN day + shift (drv2ValidateCerradoEarn blanks it when either changes)
   // Prototype S.cerrado :901 — the «Ganado hoy» card. ONE source (the confirm-time drv2DayEarned snapshot passed in);
   // blank-not-wrong: no card unless Pagos live + ready + priced. Never a fabricated rate.
   const earnCard = (earned && earned.ready && earned.cents != null && earned.cents > 0)
@@ -5625,6 +5627,20 @@ function showCerrado(cash, startMs, closedAtMs, earned) {
       render();   // route «Listo» through the CURRENT state (never force offshift over a changed session)
     });
   }
+}
+// Codex r1 P2: the cerrado «Ganado hoy» card is a point-in-time SNAPSHOT bound to its HN day + closing shift (+ session).
+// If the open summary outlives that binding — a midnight crossing (the HN day rolls over) OR a replacement shift under the
+// same login (current_shift_id becomes a DIFFERENT id) OR a session change (authGen) — the figure is stale under a «hoy»
+// label, so blank the card. Called from refreshOpenCashSurfaces on every feed re-emit (a new shift / clock tick re-checks).
+function drv2ValidateCerradoEarn() {
+  const ov = document.getElementById('cerrado-screen');
+  if (!ov || !ov.classList.contains('open')) return;
+  const card = ov.querySelector('.cerrado-earn'); if (!card) return;
+  const curShift = (driverState && driverState.current_shift_id != null) ? String(driverState.current_shift_id) : '';
+  const dayChanged = ov.dataset.earnDay !== undefined && Number(ov.dataset.earnDay) !== hnDayStartMs(Date.now());
+  const shiftReplaced = curShift !== '' && ov.dataset.earnShift !== undefined && ov.dataset.earnShift !== '' && curShift !== ov.dataset.earnShift;
+  const sessionChanged = ov.dataset.gen !== String(authGen);
+  if (dayChanged || shiftReplaced || sessionChanged) card.remove();   // the snapshot no longer belongs to the current day/shift/session — never a stale «Ganado hoy»
 }
 /* ===== SLICE3:MONEY-CERRADO:END ===== */
 /* ===== SLICE3:MONEY-RATE:START — the platform pay-rate SUBSCRIPTION. The pure reader is window.PayRate

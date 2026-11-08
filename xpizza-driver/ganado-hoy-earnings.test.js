@@ -91,4 +91,46 @@ t('(cerrado) the cash line stays «Entregaste L 1,430» independent of earnings'
   assert.match(runCerrado({ ready: true, cents: 42000, count: 6 }).textContent, /Entregaste\s*L 1,430\s*en efectivo/, 'cash line intact');
 });
 
+// ───────── P2b: the cerrado snapshot is bound to its HN day + shift + session, and invalidates when any changes ─────────
+function boundCerrado() {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>');
+  const document = dom.window.document;
+  const api = new Function('document',
+    'let drv2CerradoDismiss = null, authGen = 0, driverState = { current_shift_id: "sh1" };\n' +
+    'function hnDayStartMs(ms){ return ms; }\n' +   // identity: the test passes already-day-aligned instants
+    'function render(){}\n' +
+    liftFn('showCerrado') + '\n' + liftFn('drv2ValidateCerradoEarn') + '\n' +
+    'return { open: (earned) => showCerrado({ deliveries: 6, cashOwed: 1430 }, 1000, 7960000, earned), validate: () => drv2ValidateCerradoEarn(), setShift: (s) => { driverState = s === null ? null : { current_shift_id: s }; }, setGen: (g) => { authGen = g; } };')(document);
+  return { document, api };
+}
+
+t('(cerrado P2b) a midnight crossing blanks the stale «Ganado hoy» snapshot', () => {
+  const realNow = Date.now;
+  try {
+    const { document, api } = boundCerrado();
+    Date.now = () => 500;
+    api.open({ ready: true, cents: 42000, count: 6, day: 500, shiftId: 'sh1' });
+    assert.ok(document.querySelector('.cerrado-earn'), 'card present at open');
+    api.validate();
+    assert.ok(document.querySelector('.cerrado-earn'), 'same day + shift + session → card stays');
+    Date.now = () => 90000000;   // the HN day rolled over while the summary stayed open
+    api.validate();
+    assert.equal(document.querySelector('.cerrado-earn'), null, 'midnight crossing → the stale «Ganado hoy» card is blanked');
+  } finally { Date.now = realNow; }
+});
+t('(cerrado P2b) a replacement shift / session change blanks the snapshot', () => {
+  const realNow = Date.now;
+  try {
+    Date.now = () => 500;
+    let h = boundCerrado();
+    h.api.open({ ready: true, cents: 42000, count: 6, day: 500, shiftId: 'sh1' });
+    h.api.setShift('sh2'); h.api.validate();
+    assert.equal(h.document.querySelector('.cerrado-earn'), null, 'a replacement shift under the same login → blanked');
+    h = boundCerrado();
+    h.api.open({ ready: true, cents: 42000, count: 6, day: 500, shiftId: 'sh1' });
+    h.api.setGen(1); h.api.validate();
+    assert.equal(h.document.querySelector('.cerrado-earn'), null, 'a session change (authGen) → blanked');
+  } finally { Date.now = realNow; }
+});
+
 console.log(`\nganado-hoy-earnings: ${failed === 0 ? 'OK' : 'INCOMPLETE'} (${passed} passed, ${failed} failed)`);
