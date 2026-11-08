@@ -1344,6 +1344,7 @@
     "xpizza-driver/slice3-contrast.test.js",
     "xpizza-driver/slice3-freeze.guard.test.js",
     "xpizza-driver/solo-cancel.test.js",
+    "xpizza-driver/stack-validity.guard.test.js",
     "xpizza-driver/stacked-view.test.js",
     "xpizza-driver/stackseq-consume.test.js",
     "xpizza-driver/statusbar-disp-header.test.js",
@@ -4899,7 +4900,9 @@
   },
   "sequencing/validity.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-driver/stack-validity.guard.test.js"
+   ]
   },
   "sequencing/writer.js": {
    "pins": [],

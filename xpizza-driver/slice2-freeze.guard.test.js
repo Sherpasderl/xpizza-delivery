@@ -215,6 +215,8 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/return-target.test.js',           // returning-state nav target real-code suite (SLICE3)
   'xpizza-driver/driver-complete.test.js',         // #962 hotfix: buildCompleteTaskUpdates regression + equivalence suite
   'xpizza-driver/stackseq-consume.test.js',        // stacked-order consumption slice: stop_seq sort/promotion/pointer + «+N min»
+  'xpizza-driver/stack-validity.js',               // stacked-seq: byte-pinned client copy of the server's stack-coherence rule (validCopy/validPair)
+  'xpizza-driver/stack-validity.guard.test.js',    // stacked-seq: guards stack-validity.js == xpizza-functions/sequencing/validity.js
   'xpizza-driver/solo-cancel.test.js',              // S.cancelado idle takeover real-code suite (SLICE3)
   'xpizza-driver/pausa.test.js',                    // slice 3-P manual-pause (S.pausa) real-code suite (SLICE3)
   'xpizza-driver/endshift.test.js',                 // «Terminar turno» idle slide real-code suite (SLICE3)
@@ -358,8 +360,8 @@ function sovRestHash(text) {
 //   driver-complete.js  — #962 + stacked-seq (b)/pickStackPointer
 //   xpizza-delivery.js  — stacked-seq (a) getDriverOrders sort + (c.1) pickupComplete pointer (edits OUTSIDE the
 //                         NAV-SDK region, so the region-strip recovery no longer applies; sha-pinned instead)
-const DRIVER_COMPLETE_HOTFIX_SHA = 'a6a77a4b00136069fbc3592dfe8f0011e39e7cb9264ce3ecbfae52614fc033e8';
-const XPIZZA_DELIVERY_SHA = '191c473d9281aa5b3bd71cff2943b5166f7e975f53da8dd52d47c6772a399d8a';
+const DRIVER_COMPLETE_HOTFIX_SHA = '6cbedd2bbf56ef5948d7b0f10ef59a25333af59920eaaf1a507c07e7d235cd6a';
+const XPIZZA_DELIVERY_SHA = '1df84cbfc62c5bfd5c39b6070524c67f01d98b86436a0c4c35bd55061c27128e';
 
 t('frozen: every baseline file under xpizza-driver/ (except index.html) is byte-identical (region-bearing files strip to baseline)', () => {
   const baseFiles = gitStr('ls-tree', '-r', '--name-only', BASELINE, '--', 'xpizza-driver')
