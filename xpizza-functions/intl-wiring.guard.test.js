@@ -26,7 +26,7 @@ const foldOthers = (src) => {
   }
   return out;
 };
-const real = foldOthers(require('./tools/photos-inverse').unapplyPhotosIndex(require('./tools/_asm-next2-layers').stripNewer('index.js', require('./tools/sdkpay-module-inverse').unapplySdkPayModule('index.js', fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))   /* DRYRUN R-WIRE (2e): photos A1/A2 (newest) innermost */ );
+const real = foldOthers(require('./tools/photos-inverse').unapplyPhotosIndex(require('./tools/_asm-next2-layers').stripNewer('index.js', require('./tools/sdkpay-module-inverse').unapplySdkPayModule('index.js', require('./tools/keymode-module-inverse').unapplyKeyModeModule('index.js', fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))))   /* DRYRUN R-WIRE (2e): photos A1/A2 (newest) innermost */ );
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // ── 1. the inverse ──
