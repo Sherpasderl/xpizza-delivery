@@ -68,19 +68,33 @@ export function buildCompleteTaskUpdates({ driverId, taskId, task, allTasks, now
       updates[`orders/${task.order_id}/delivered_by_driver_uid`] = driverId;
     }
 
-    // Look for the next queued delivery for this driver — a delivery task
-    // that's already 'accepted' (stacked) but not completed/cancelled.
-    let nextDeliveryId = null;
-    let earliestCreated = Infinity;
+    // Look for the next queued delivery for this driver — a delivery task already 'accepted' (stacked), not
+    // completed/cancelled. SEQUENCING (stacked-order consumption): when the remaining stacked deliveries form a
+    // COHERENT server-sequenced stack — all carry stop_seq ∈ {1,2} with the SAME stack_id and DISTINCT ranks —
+    // take the LOWEST remaining stop_seq (the server's decided order). Otherwise (absent / partial / mismatched)
+    // fall back to the earliest created_at — byte-identical to the legacy behaviour. The server (sequencing/
+    // plan-stack) is the ONLY writer of stop_seq/stack_id (on tasks/{oid}_delivery); flag-OFF writes none, so the
+    // OFF / non-stacked path stays on created_at.
+    const remaining = [];
     for (const [tid, t] of Object.entries(allTasks || {})) {
       if (tid === taskId) continue;
       if (!t || t.assigned_driver_id !== driverId) continue;
       if (t.type !== TASK_TYPE.DELIVERY) continue;
       if (t.status !== TASK_STATUS.ACCEPTED && t.status !== TASK_STATUS.IN_PROGRESS) continue;
-      const created = t.created_at || 0;
-      if (created < earliestCreated) {
-        earliestCreated = created;
-        nextDeliveryId = tid;
+      remaining.push({ tid, t });
+    }
+    const seqMembers = remaining.filter(({ t }) => t.stack_id && (t.stop_seq === 1 || t.stop_seq === 2));
+    const coherentSeq = remaining.length > 0 && seqMembers.length === remaining.length
+      && new Set(remaining.map(({ t }) => t.stack_id)).size === 1
+      && new Set(remaining.map(({ t }) => t.stop_seq)).size === remaining.length;   // distinct ranks
+    let nextDeliveryId = null;
+    if (coherentSeq) {
+      nextDeliveryId = remaining.reduce((lo, m) => (lo === null || m.t.stop_seq < lo.t.stop_seq ? m : lo), null).tid;
+    } else {
+      let earliestCreated = Infinity;
+      for (const { tid, t } of remaining) {
+        const created = t.created_at || 0;
+        if (created < earliestCreated) { earliestCreated = created; nextDeliveryId = tid; }
       }
     }
 
