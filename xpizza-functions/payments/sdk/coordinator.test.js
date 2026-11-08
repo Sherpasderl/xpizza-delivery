@@ -186,7 +186,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.deepStrictEqual(committedIds(w.rec()), ['L1', 'L2'], `${L}: the delta is committed WITH the original`);
     assert.deepStrictEqual([w.rec().fulfillment_total_cents, w.rec().derived.committed_auth_total, w.rec().derived.refund_liability], [12500, 12500, 0], `${L}: amounts`);
     await deliver(w);
-    assert.deepStrictEqual(w.fake.calls.filter((x) => x.action === 'capture').map((x) => x.amount_cents).sort(), [2500, 10000], `${L}: each committed leg captured in full`);
+    assert.deepStrictEqual(w.fake.calls.filter((x) => x.action === 'capture').map((x) => x.amount_cents).sort((x, y) => x - y), [2500, 10000], `${L}: each committed leg captured in full`);
   });
   await cell('SDK-CONSENT-WINDOW-AND-BINDING', async (L) => {
     const w = await placed(); await live(w);

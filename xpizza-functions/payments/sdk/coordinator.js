@@ -168,7 +168,7 @@ async function reconcile(deps, { orderId }) {
       const st = ev.state;
       let kind = null;
       if (o.action === 'auth') {
-        if (st === 'authorized') { l.state = 'approved'; l.role = l.kind === 'original' ? 'committed' : 'pending'; kind = 'approved'; }
+        if (st === 'authorized') { l.state = 'approved'; l.role = l.kind === 'original' ? 'committed' : 'surplus'; kind = 'approved'; }   // a B / delta found live after its flow returned is SURPLUS
         else if (st === 'declined') { l.state = 'declined'; l.role = 'none'; kind = 'definitive_decline'; }
         else if (st === 'voided' || st === 'expired') { l.state = st; kind = st; }
       } else if (o.action === 'capture') {
@@ -272,8 +272,188 @@ async function completeObligation(deps, { orderId, obligationId, state, bank_ref
   return { applied: res.applied };
 }
 
-// Stubs completed in later batches (adjustments / cancellation).
-async function recoverProjection() { return null; }
-async function classifyLostProposals() { return null; }
+// ── adjustments (§2.10 through §4): proposal (payment side, immutable) → commit (orders txn) → projection (record CAS) ──
+const CONSENT_WINDOW_MS = 3 * 60 * 1000;   // owner 2026-11-07: the increase consent window
+const revOf = (order) => (order && order.payment_commit && order.payment_commit.revision) || 0;
+const committedLegIds = (rec) => Object.entries(R.legsOf(rec)).filter(([, l]) => l.role === 'committed' && (l.state === 'approved' || l.state === 'captured')).map(([id]) => id);
+const orderOpen = (order) => isSdk(order) && !!order.payment_placed && !isTerminal(order) && order.status !== 'cancelled' && !order.payment_cancel && !order.payment_terminal;
+const recordOpen = (rec, order) => !!rec && rec.phase === 'open' && !rec.lock && !R.unansweredMoneyOps(rec).length && (rec.committed_revision || 0) === revOf(order);
 
-module.exports = { placeOriginal, reconcile, settleTerminal, openObligations, completeObligation, readOrder, readRecord, orderTxn, alertOnce, RECONCILE_AFTER_MS };
+async function persistProposal(deps, orderId, p) {
+  let pid = null;
+  const res = await R.casRecord(deps.db, orderId, (rec) => {
+    if ((rec.committed_revision || 0) !== p.base_revision) return undefined;
+    pid = `p${Object.keys(rec.proposals || {}).length + 1}`;
+    rec.proposals = { ...(rec.proposals || {}), [pid]: { ...p, pid, state: 'proposed', created_at: deps.now() } };
+    return rec;
+  });
+  return res.applied ? pid : null;
+}
+// THE decision: the order must be live, not cancelled/terminal, and still at the proposal's base revision.
+const commitProposal = (deps, orderId, pid, p) => orderTxn(deps.db, orderId, (cur) => {
+  if (R.TERMINAL.includes(cur.status) || cur.status === 'cancelled' || cur.payment_cancel || cur.payment_terminal) return undefined;
+  if (revOf(cur) !== p.base_revision) return undefined;
+  cur.payment_commit = { revision: p.base_revision + 1, pid };
+  cur.payment_total_cents = p.fulfillment_total_cents;
+  return cur;
+});
+
+// Apply the order's committed proposal if the record lags (crash recovery included). At most one can be pending.
+async function recoverProjection(deps, orderId, order) {
+  const pc = order && order.payment_commit;
+  if (!pc) return null;
+  let rule4 = false; let missing = false;
+  const res = await R.casRecord(deps.db, orderId, (rec) => {
+    if ((rec.committed_revision || 0) >= pc.revision) return undefined;
+    const p = rec.proposals && rec.proposals[pc.pid];
+    if (!p) { missing = true; return undefined; }
+    for (const [id, l] of Object.entries(R.legsOf(rec))) {
+      if ((p.committed_set || []).includes(id)) { if (l.state === 'approved' || l.state === 'captured') l.role = 'committed'; }
+      else if (l.role === 'committed' || l.role === 'pending') l.role = 'surplus';
+    }
+    rec.fulfillment_total_cents = p.fulfillment_total_cents;
+    rec.committed_revision = pc.revision;
+    p.state = 'committed';
+    if (p.kind === 'decrease_rule4') { rec.rule4 = { at: deps.now(), revision: pc.revision }; rule4 = true; }
+    return rec;
+  });
+  if (missing) {
+    await R.casRecord(deps.db, orderId, (r) => { if (r.lock && r.lock.reason === 'manual_reconciliation') return undefined; lockFor(r, 'manual_reconciliation', null, deps.now()); return r; });
+    await alertOnce(deps, 'proposal_missing', orderId, { revision: pc.revision });
+  }
+  if (rule4) await alertOnce(deps, 'rule4', orderId, { revision: pc.revision }, `r${pc.revision}`);
+  return res;
+}
+
+// A proposal whose order transaction LOST (the order moved on without it): its new legs are SURPLUS, never captured.
+async function classifyLostProposals(deps, orderId, order) {
+  const closedOrder = !order || R.TERMINAL.includes(order.status) || order.status === 'cancelled' || order.payment_cancel || order.payment_terminal;
+  const pc = (order && order.payment_commit) || null;
+  return R.casRecord(deps.db, orderId, (rec) => {
+    let changed = false;
+    for (const [pid, p] of Object.entries(rec.proposals || {})) {
+      if (p.state !== 'proposed') continue;
+      if (pc && pc.pid === pid) continue;
+      const superseded = revOf(order) > p.base_revision;
+      if (!closedOrder && !superseded) continue;
+      p.state = 'lost'; changed = true;
+      for (const id of p.new_leg_ids || []) { const l = R.legsOf(rec)[id]; if (l && (l.role === 'pending' || l.role === 'none')) l.role = 'surplus'; }
+    }
+    return changed ? rec : undefined;
+  });
+}
+
+// Void every surplus hold that is still void-eligible (production: never); a refused / unknown void leaves it SURPLUS.
+async function voidSurplus(deps, orderId) {
+  const rec = await readRecord(deps.db, orderId);
+  for (const [legId, leg] of Object.entries(R.legsOf(rec))) {
+    if (leg.role !== 'surplus' || leg.state !== 'approved' || !leg.pp_uuid) continue;
+    if (Object.values(R.opsOf(rec)).some((o) => o.leg_id === legId && o.action === 'void')) continue;   // one void per leg
+    if (!deps.voidEligible(leg, deps.now())) continue;
+    await dispatch(deps, orderId, {
+      legId, action: 'void',
+      pre: (r) => { const l = R.legsOf(r)[legId]; if (!l || l.role !== 'surplus' || l.state !== 'approved') return undefined; return r; },
+      call: (opId) => deps.psp.void({ uuid: leg.pp_uuid, op_id: opId }),
+      apply: (r, l, out, opId) => applyVoid(deps, r, l, out, opId),
+    });
+  }
+}
+
+// propose → commit → project; the caller's new legs become surplus if the order decided otherwise.
+async function decide(deps, orderId, p) {
+  const pid = await persistProposal(deps, orderId, p);
+  if (!pid) return { outcome: 'refused', reason: 'revision_moved' };
+  const c = await commitProposal(deps, orderId, pid, p);
+  if (!c.won) { await classifyLostProposals(deps, orderId, c.order || await readOrder(deps.db, orderId)); return { outcome: 'lost_to_order', pid }; }
+  await recoverProjection(deps, orderId, c.order);
+  return { outcome: 'committed', pid, revision: c.order.payment_commit.revision };
+}
+
+const expireConsent = (deps, orderId) => R.casRecord(deps.db, orderId, (r) => { if (!r.consent || r.consent.state !== 'pending') return undefined; r.consent.state = 'expired'; return r; });
+
+async function requestDecrease(deps, { orderId, new_total_cents }) {
+  const now = deps.now();
+  const order = await readOrder(deps.db, orderId);
+  const rec = await readRecord(deps.db, orderId);
+  if (!orderOpen(order) || !recordOpen(rec, order)) return { outcome: 'refused', reason: 'not_adjustable' };
+  if (!R.isInt(new_total_cents) || new_total_cents <= 0 || new_total_cents >= rec.fulfillment_total_cents) return { outcome: 'refused', reason: 'not_a_decrease' };
+  await expireConsent(deps, orderId);                 // a later edit invalidates a pending consent
+  const base = rec.committed_revision || 0;
+  const S = committedLegIds(rec);
+  if (S.length && S.every((id) => deps.voidEligible(R.legsOf(rec)[id], now))) {
+    let legId = null;
+    const d = await dispatch(deps, orderId, {
+      action: 'auth', legId: () => legId, amount_cents: new_total_cents,
+      pre: (r) => { if (r.phase !== 'open' || (r.committed_revision || 0) !== base) return undefined; legId = newLeg(r, 'replacement', new_total_cents, now); r.legs[legId].state = 'sent'; return r; },
+      call: (opId) => deps.psp.authorize({ token: rec.token, amount_cents: new_total_cents, op_id: opId, ref: orderId }),
+      apply: (r, l, out, opId) => applyAuth(deps, r, l, out, opId),
+    });
+    if (!d.dispatched) return { outcome: 'refused', reason: 'locked_or_busy' };
+    if (d.out.outcome === 'approved') {
+      const res = await decide(deps, orderId, { kind: 'decrease', base_revision: base, committed_set: [legId], fulfillment_total_cents: new_total_cents, new_leg_ids: [legId] });
+      if (res.outcome !== 'committed') { await R.casRecord(deps.db, orderId, (r) => { const l = R.legsOf(r)[legId]; if (!l || l.role !== 'pending') return undefined; l.role = 'surplus'; return r; }); return res; }
+      await voidSurplus(deps, orderId);
+      return { outcome: 'replaced', leg_id: legId };
+    }
+    if (d.out.outcome === 'unknown' || d.out.outcome === 'requires_action') return { outcome: d.out.outcome };
+    // a definitive decline of B → rule 4 (S stays committed)
+  }
+  const r4 = await decide(deps, orderId, { kind: 'decrease_rule4', base_revision: base, committed_set: S, fulfillment_total_cents: new_total_cents, new_leg_ids: [] });
+  return r4.outcome === 'committed' ? { outcome: 'rule4' } : r4;
+}
+
+async function recordConsent(deps, { orderId, adjustment_id, new_total_cents }) {
+  const now = deps.now();
+  const order = await readOrder(deps.db, orderId);
+  const rec = await readRecord(deps.db, orderId);
+  if (!orderOpen(order) || !recordOpen(rec, order)) return { outcome: 'refused' };
+  if (typeof adjustment_id !== 'string' || !adjustment_id || !R.isInt(new_total_cents) || new_total_cents <= rec.fulfillment_total_cents) return { outcome: 'refused' };
+  const res = await R.casRecord(deps.db, orderId, (r) => {
+    if ((r.committed_revision || 0) !== revOf(order)) return undefined;
+    r.consent = { adjustment_id, order_revision: r.committed_revision || 0, old_total: r.fulfillment_total_cents, new_total: new_total_cents, delta: new_total_cents - r.fulfillment_total_cents, expires_at: now + CONSENT_WINDOW_MS, state: 'pending' };
+    return r;
+  });
+  return { outcome: res.applied ? 'pending' : 'refused' };
+}
+
+async function applyIncrease(deps, { orderId, adjustment_id, order_revision, new_total_cents, accept }) {
+  const now = deps.now();
+  const order = await readOrder(deps.db, orderId);
+  let consent = null;
+  const taken = await R.casRecord(deps.db, orderId, (r) => {
+    const c = r.consent;
+    if (!c || c.state !== 'pending' || c.adjustment_id !== adjustment_id) return undefined;
+    const valid = c.order_revision === order_revision && c.new_total === new_total_cents && now <= c.expires_at && (r.committed_revision || 0) === c.order_revision;
+    c.state = !valid ? (now > c.expires_at ? 'expired' : 'rejected') : accept === true ? 'accepted' : 'rejected';
+    consent = { ...c };
+    return r;
+  });
+  if (!taken.applied || !consent || consent.state !== 'accepted') return { outcome: 'rejected' };
+  const rec = taken.record;
+  if (!orderOpen(order) || !recordOpen(rec, order)) return { outcome: 'rejected', reason: 'not_adjustable' };
+  const base = rec.committed_revision || 0;
+  const S = committedLegIds(rec);
+  const need = Math.max(0, new_total_cents - R.derive(rec).committed_auth_total);
+  if (need === 0) {
+    const res = await decide(deps, orderId, { kind: 'increase', base_revision: base, committed_set: S, fulfillment_total_cents: new_total_cents, new_leg_ids: [] });
+    return res.outcome === 'committed' ? { outcome: 'committed' } : res;
+  }
+  let legId = null;
+  const d = await dispatch(deps, orderId, {
+    action: 'auth', legId: () => legId, amount_cents: need,
+    pre: (r) => { if (r.phase !== 'open' || (r.committed_revision || 0) !== base) return undefined; legId = newLeg(r, 'delta', need, now); r.legs[legId].state = 'sent'; return r; },
+    call: (opId) => deps.psp.authorize({ token: rec.token, amount_cents: need, op_id: opId, ref: orderId }),
+    apply: (r, l, out, opId) => applyAuth(deps, r, l, out, opId),
+  });
+  if (!d.dispatched) return { outcome: 'refused', reason: 'locked_or_busy' };
+  if (d.out.outcome !== 'approved') return { outcome: d.out.outcome === 'unknown' || d.out.outcome === 'requires_action' ? d.out.outcome : 'declined' };
+  const res = await decide(deps, orderId, { kind: 'increase', base_revision: base, committed_set: [...S, legId], fulfillment_total_cents: new_total_cents, new_leg_ids: [legId] });
+  if (res.outcome !== 'committed') {
+    await R.casRecord(deps.db, orderId, (r) => { const l = R.legsOf(r)[legId]; if (!l || l.role !== 'pending') return undefined; l.role = 'surplus'; return r; });
+    await voidSurplus(deps, orderId);
+    return res;
+  }
+  return { outcome: 'committed', leg_id: legId };
+}
+
+module.exports = { placeOriginal, reconcile, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, orderTxn, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };
