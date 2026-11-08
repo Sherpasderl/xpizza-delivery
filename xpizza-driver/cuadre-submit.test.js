@@ -324,7 +324,9 @@ await t('REAL showCerrado: modal (focus+Tab trap), «Listo» → render (not off
   const calls = { render: 0, showScreen: [] };
   const deps = { document, render: () => { calls.render++; }, showScreen: (s) => { calls.showScreen.push(s); } };
   const names = Object.keys(deps);
-  const body = 'let authGen = 3; let drv2CerradoDismiss = null;\n'
+  const body = 'let authGen = 3; let drv2CerradoDismiss = null, drv2CerradoTick = null, driverState = null;\n'
+    + 'function hnDayStartMs(ms){ return ms; } const clearTimeout = () => {}, setTimeout = () => 1;\n'
+    + liftFn('drv2CerradoEarnStale') + '\n'
     + liftFn('showCerrado') + '\n'
     + 'function teardown() { if (drv2CerradoDismiss) drv2CerradoDismiss(); }\n'
     + 'return { showCerrado, teardown, getDismiss: () => drv2CerradoDismiss };';

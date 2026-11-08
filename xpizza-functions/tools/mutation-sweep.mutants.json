@@ -31793,8 +31793,8 @@
   "id": "gh-08",
   "slice": "gh",
   "file": "../xpizza-driver/index.html",
-  "from": "  const earnCard = (earned && earned.ready && earned.cents != null && earned.cents > 0)",
-  "to": "  const earnCard = (earned && earned.ready && earned.cents != null && earned.cents < 0)",
+  "from": "  const earnCard = (earned && earned.ready && earned.cents != null && earned.cents > 0",
+  "to": "  const earnCard = (earned && earned.ready && earned.cents != null && earned.cents < 0",
   "label": "cerrado «Ganado hoy» card PRESENT when priced — a dropped card (never-true gate) must go RED",
   "kills_with": [
    "the .cerrado-earn card renders"
@@ -31853,7 +31853,7 @@
   "id": "gh-12",
   "slice": "gh",
   "file": "../xpizza-driver/index.html",
-  "from": "  if (dayChanged || shiftReplaced || sessionChanged) card.remove();",
+  "from": "  if (stale || sessionChanged) card.remove();",
   "to": "  if (false) card.remove();",
   "label": "the cerrado «Ganado hoy» snapshot invalidates on day/shift/session change — a never-invalidate guard must go RED",
   "kills_with": [
@@ -31888,6 +31888,51 @@
   "label": "GANANCIAS-STAY guard PRESENT — an ordinary live update must not eject the driver out of Ganancias (Codex r1 P2c)",
   "kills_with": [
    "Ganancias re-rendered in place"
+  ],
+  "command": [
+   "node",
+   "../xpizza-driver/ganado-hoy-earnings.test.js"
+  ]
+ },
+ {
+  "id": "gh-15",
+  "slice": "gh",
+  "file": "../xpizza-driver/index.html",
+  "from": "!drv2CerradoEarnStale(earned.day, earned.shiftId == null ? '' : String(earned.shiftId))",
+  "to": "!false",
+  "label": "cerrado «Ganado hoy» is validated AT OPEN — a snapshot already stale when the summary opens must not paint (Codex r2)",
+  "kills_with": [
+   "stale-at-open snapshot paints NO «Ganado hoy» card"
+  ],
+  "command": [
+   "node",
+   "../xpizza-driver/ganado-hoy-earnings.test.js"
+  ]
+ },
+ {
+  "id": "gh-16",
+  "slice": "gh",
+  "file": "../xpizza-driver/index.html",
+  "from": "if (!navHome && gn && !gn.classList.contains('hidden') && drv2LiveBoard().length === 0)",
+  "to": "if (gn && !gn.classList.contains('hidden') && drv2LiveBoard().length === 0)",
+  "label": "GANANCIAS-STAY honors the nav-intent flag — an explicit Inicio tap must LEAVE Ganancias (Codex r2)",
+  "kills_with": [
+   "did NOT swallow the Inicio tap by re-rendering Ganancias"
+  ],
+  "command": [
+   "node",
+   "../xpizza-driver/ganado-hoy-earnings.test.js"
+  ]
+ },
+ {
+  "id": "gh-17",
+  "slice": "gh",
+  "file": "../xpizza-driver/index.html",
+  "from": "drv2CerradoTick = setTimeout(() => { drv2CerradoTick = null; drv2ValidateCerradoEarn(); }, delay);",
+  "to": "drv2CerradoTick = setTimeout(() => { drv2CerradoTick = null; }, delay);",
+  "label": "cerrado midnight tick re-validates — an open card must blank at the HN rollover with no feed update (Codex r2)",
+  "kills_with": [
+   "the midnight tick blanked the stale card"
   ],
   "command": [
    "node",

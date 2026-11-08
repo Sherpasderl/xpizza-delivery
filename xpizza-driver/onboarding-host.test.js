@@ -78,7 +78,7 @@ function buildHost({ dom, XPD, currentUser, controller, store, storageThrows = f
     `const companionChecklistPendingMem = {}; const companionChecklistClearedMem = {}; let companionProgressMem = {};\n` +
     // render()'s ambient state + the non-companion renderers it reaches on the legacy fall-through (stubbed inert;
     // driverState inactive → the short offshift fall-through, enough to tell checklist (companion) vs app (offshift)):
-    `let companionSuspended = false; let companionNeutralNotice = false; let driverState = null; let optimisticShift = null;\n` +
+    `let companionSuspended = false; let companionNeutralNotice = false; let driverState = null; let optimisticShift = null; let drv2NavHome = false;\n` +
     // Inicio c: the practica branch consults companionDemo (null here → it renders the intro, which this suite asserts)
     // and drv2LiveBoard() (the start-guard reads an EMPTY board here). companionDemoAlive is short-circuited (companionDemo
     // is null) but defined for completeness. The isolated demo controller itself is proven in practica-demo.test.js.

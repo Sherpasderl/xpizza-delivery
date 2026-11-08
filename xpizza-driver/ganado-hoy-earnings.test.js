@@ -63,7 +63,10 @@ t('(cuadre) not ready / unpriced / zero ⇒ blank (never a false L0)', () => {
 function runCerrado(earned) {
   const dom = new JSDOM('<!doctype html><html><body></body></html>');
   const document = dom.window.document;
-  const fn = new Function('document', 'authGen', 'render', 'let drv2CerradoDismiss = null;\n' + liftFn('showCerrado') + '\nreturn showCerrado;')(document, 0, () => {});
+  const fn = new Function('document', 'authGen', 'render', 'setTimeout', 'clearTimeout',
+    'let drv2CerradoDismiss = null, drv2CerradoTick = null, driverState = null;\n' +
+    'function hnDayStartMs(ms){ return ms; }\n' +
+    liftFn('drv2CerradoEarnStale') + '\n' + liftFn('showCerrado') + '\nreturn showCerrado;')(document, 0, () => {}, () => 1, () => {});
   fn({ deliveries: 6, cashOwed: 1430 }, 1000, 1000 + 6960000, earned);   // ~1 h 56 min window
   return document.getElementById('cerrado-screen');
 }
@@ -95,13 +98,15 @@ t('(cerrado) the cash line stays «Entregaste L 1,430» independent of earnings'
 function boundCerrado() {
   const dom = new JSDOM('<!doctype html><html><body></body></html>');
   const document = dom.window.document;
-  const api = new Function('document',
-    'let drv2CerradoDismiss = null, authGen = 0, driverState = { current_shift_id: "sh1" };\n' +
+  const ticks = [];
+  const api = new Function('document', 'setTimeout', 'clearTimeout',
+    'let drv2CerradoDismiss = null, drv2CerradoTick = null, authGen = 0, driverState = { current_shift_id: "sh1" };\n' +
     'function hnDayStartMs(ms){ return ms; }\n' +   // identity: the test passes already-day-aligned instants
     'function render(){}\n' +
-    liftFn('showCerrado') + '\n' + liftFn('drv2ValidateCerradoEarn') + '\n' +
-    'return { open: (earned) => showCerrado({ deliveries: 6, cashOwed: 1430 }, 1000, 7960000, earned), validate: () => drv2ValidateCerradoEarn(), setShift: (s) => { driverState = s === null ? null : { current_shift_id: s }; }, setGen: (g) => { authGen = g; } };')(document);
-  return { document, api };
+    liftFn('drv2CerradoEarnStale') + '\n' + liftFn('showCerrado') + '\n' + liftFn('drv2ValidateCerradoEarn') + '\n' +
+    'return { open: (earned) => showCerrado({ deliveries: 6, cashOwed: 1430 }, 1000, 7960000, earned), validate: () => drv2ValidateCerradoEarn(), dismiss: () => { if (drv2CerradoDismiss) drv2CerradoDismiss(); }, setShift: (s) => { driverState = s === null ? null : { current_shift_id: s }; }, setGen: (g) => { authGen = g; } };')(
+    document, (fn) => { ticks.push(fn); return ticks.length; }, () => {});
+  return { document, api, fireTicks: () => { const t = ticks.slice(); ticks.length = 0; t.forEach((fn) => fn()); } };
 }
 
 t('(cerrado P2b) a midnight crossing blanks the stale «Ganado hoy» snapshot', () => {
@@ -151,7 +156,7 @@ function renderWith({ board, optimisticShift = null, driverState = { active: fal
     renderStatusBar: () => {}, renderActiveAndQueue: () => {},
   };
   const names = Object.keys(scope);
-  new Function(...names, 'let companionSuspended, companionNeutralNotice;\n' + liftFn('render') + '\nreturn render;')(...Object.values(scope))();
+  new Function(...names, 'let companionSuspended, companionNeutralNotice, drv2NavHome = false;\n' + liftFn('render') + '\nreturn render;')(...Object.values(scope))();
   return calls;
 }
 t('(P2c) on Ganancias + an ordinary update (no work) → STAYS on Ganancias (re-renders in place, no navigation)', () => {
@@ -168,6 +173,62 @@ t('(P2c) Ganancias NOT open → guard inert, ordinary off-shift render proceeds'
   const c = renderWith({ board: [], ganHidden: true });
   assert.equal(c.renderGanancias, 0, 'guard inert when Ganancias is not the open screen');
   assert.ok(c.showScreen.includes('offshift'), 'normal off-shift render');
+});
+
+// ───────── P2b/r2: the cerrado snapshot is validated AT OPEN and on an HN-midnight tick ─────────
+t('(cerrado r2) a snapshot already STALE when the summary OPENS is NOT painted (validate at open)', () => {
+  const realNow = Date.now;
+  try {
+    const { document, api } = boundCerrado();
+    Date.now = () => 90000000;                 // a new HN day: the snapshot (day 500) is already stale at paint time
+    api.open({ ready: true, cents: 42000, count: 6, day: 500, shiftId: 'sh1' });
+    assert.equal(document.querySelector('.cerrado-earn'), null, 'stale-at-open snapshot paints NO «Ganado hoy» card');
+  } finally { Date.now = realNow; }
+});
+t('(cerrado r2) an OPEN card blanks itself at the HN-midnight tick with NO feed update', () => {
+  const realNow = Date.now;
+  try {
+    const h = boundCerrado();
+    Date.now = () => 500;
+    h.api.open({ ready: true, cents: 42000, count: 6, day: 500, shiftId: 'sh1' });
+    assert.ok(h.document.querySelector('.cerrado-earn'), 'card present at open (same day)');
+    Date.now = () => 90000000;                 // the HN day rolled over while the card stayed open
+    h.fireTicks();                             // the scheduled next-midnight re-validate fires (no feed update)
+    assert.equal(h.document.querySelector('.cerrado-earn'), null, 'the midnight tick blanked the stale card');
+  } finally { Date.now = realNow; }
+});
+
+// ───────── P2c Fix 2: the REAL Inicio tab handler leaves Ganancias past the stay guard ─────────
+t('(P2c nav) tapping Inicio (REAL mountTabBar handler → render) LEAVES Ganancias', () => {
+  const dom = new JSDOM('<!doctype html><html><body><div id="screen-ganancias"></div></body></html>');
+  const document = dom.window.document;
+  const gn = document.getElementById('screen-ganancias');   // Ganancias open (not hidden)
+  const calls = { showScreen: [], renderGanancias: 0 };
+  const els = { 'screen-ganancias': gn, 'off-driver-name': { textContent: '' } };
+  const scope = {
+    document,
+    drv2LiveBoard: () => [], TAB_SHOW_PEDIDOS: true, TAB_SHOW_GANANCIAS: true,
+    tabBarHtml: () => '<div class="tabs"><button class="tab-btn" data-tab="inicio">Inicio</button></div>',
+    openCuenta: () => {}, openHistoryModal: () => {}, openGanancias: () => {},
+    currentUser: { email: 'd@x.pizza', uid: 'drv' },
+    companion: null, companionSyncSuspendedNotice: () => {},
+    driverState: { active: false }, optimisticShift: null,
+    $: (id) => els[id] || null,
+    renderGanancias: () => { calls.renderGanancias++; },
+    drv2GananciasView: 'hoy',
+    showScreen: (s) => { calls.showScreen.push(s); },
+    stopKeepAlive: () => {}, startKeepAlive: () => {}, ensureOfflineBanner: () => {},
+    renderStatusBar: () => {}, renderActiveAndQueue: () => {},
+  };
+  const names = Object.keys(scope);
+  new Function(...names, 'let drv2NavHome = false, companionSuspended, companionNeutralNotice;\n' +
+    liftFn('render') + '\n' + liftFn('mountTabBar') + '\n' +
+    'mountTabBar(document.getElementById("screen-ganancias"), "ganancias", true); return null;')(...Object.values(scope));
+  const inicio = gn.querySelector('[data-tab="inicio"]');
+  assert.ok(inicio, 'the Inicio tab button mounted');
+  inicio.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(calls.renderGanancias, 0, 'did NOT swallow the Inicio tap by re-rendering Ganancias');
+  assert.ok(calls.showScreen.includes('offshift'), 'the REAL Inicio handler + render left Ganancias (→ offshift)');
 });
 
 console.log(`\nganado-hoy-earnings: ${failed === 0 ? 'OK' : 'INCOMPLETE'} (${passed} passed, ${failed} failed)`);

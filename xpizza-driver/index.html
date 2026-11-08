@@ -2808,6 +2808,11 @@ import { fmtClockHM } from './time-format.js';   // ONE source for «7:16» — 
 import { brandLabel } from './brand-helpers.js';   // the server-stamped restaurant display name (returning-state nav target label — brand-agnostic, never a literal)
 /* ===== SLICE3:IMPORT-3:END ===== */
 /* ===== SLICE3:LOGIC-3:START — batch-3 module logic (help diagnosis sheet; gpsoff / cierreRechazado / offline to follow) ===== */
+// Codex r2 P2c: a ONE-SHOT user-navigation intent. The Inicio tab routes home through the shared render() entry point,
+// which the GANANCIAS-STAY guard would otherwise treat as an ordinary update and swallow (re-rendering Ganancias).
+// The handler sets this true right before render(); the guard reads AND clears it on every render that reaches it, so an
+// explicit Inicio tap leaves Ganancias while an ordinary feed-driven render stays. Leak-safe: always consumed at the guard.
+let drv2NavHome = false;
 // SLICE3:HELP — the «¿Por qué no veo pedidos?» diagnosis sheet (prototype S.help), mounted on demand (reusing the
 // .sheet-backdrop) in place of the old idle alert(). The GPS row reads the REAL last_location_ts (age + live via
 // isStaleFix); dismissible «Entendido». Pure data in, DOM here.
@@ -3151,7 +3156,7 @@ function mountTabBar(screenEl, active, visible) {
       if (tab === 'cuenta') openCuenta();
       else if (tab === 'pedidos') openHistoryModal();   // Pedidos → the daily-history modal (moved off the header «Hoy» button)
       else if (tab === 'ganancias') openGanancias();   // Ganancias → the earnings screen (dark: TAB_SHOW_GANANCIAS = PAGOS_LIVE, so the tab never renders yet)
-      else if (tab === 'inicio') render();   // route home (render() → offshift when off-shift, the board when on-shift)
+      else if (tab === 'inicio') { drv2NavHome = true; render(); }   // route home (render() → offshift when off-shift, the board when on-shift); the nav-intent flag lets it leave Ganancias past the stay guard
     });
   }
 }
@@ -5583,6 +5588,17 @@ function cuadreSubmitting(label) {
    drv2CerradoDismiss, «Listo» renders the current state (never forces offshift). Shows only on a clean clock-out of
    THIS session (onCuadreConfirm gates on the auth generation). ===== */
 let drv2CerradoDismiss = null;   // teardown hook: tears down an open «Turno cerrado» summary (overlay + its Tab trap)
+let drv2CerradoTick = null;      // the next-HN-midnight re-validation timer for an open «Turno cerrado» card (cleared on teardown)
+// Codex r2 P2: the «Ganado hoy» snapshot is STALE when its HN day no longer matches today, or a replacement shift took
+// over under the same login. ONE predicate — used at PAINT (showCerrado, from the snapshot) AND post-paint
+// (drv2ValidateCerradoEarn, from the stamped datasets) — so a snapshot already stale when the summary opens is never
+// painted, and one that goes stale while open is blanked.
+function drv2CerradoEarnStale(earnDay, earnShift) {
+  const curShift = (driverState && driverState.current_shift_id != null) ? String(driverState.current_shift_id) : '';
+  const dayChanged = earnDay != null && Number(earnDay) !== hnDayStartMs(Date.now());
+  const shiftReplaced = curShift !== '' && earnShift != null && earnShift !== '' && curShift !== String(earnShift);
+  return dayChanged || shiftReplaced;
+}
 function showCerrado(cash, startMs, closedAtMs, earned) {
   const deliveries = (cash && cash.deliveries) || 0;
   const cashOwed = (cash && cash.cashOwed) || 0;
@@ -5602,7 +5618,8 @@ function showCerrado(cash, startMs, closedAtMs, earned) {
   if (earned && earned.day != null) { ov.dataset.earnDay = String(earned.day); ov.dataset.earnShift = earned.shiftId == null ? '' : String(earned.shiftId); }   // Codex r1 P2: the «Ganado hoy» snapshot is bound to its HN day + shift (drv2ValidateCerradoEarn blanks it when either changes)
   // Prototype S.cerrado :901 — the «Ganado hoy» card. ONE source (the confirm-time drv2DayEarned snapshot passed in);
   // blank-not-wrong: no card unless Pagos live + ready + priced. Never a fabricated rate.
-  const earnCard = (earned && earned.ready && earned.cents != null && earned.cents > 0)
+  const earnCard = (earned && earned.ready && earned.cents != null && earned.cents > 0
+      && !drv2CerradoEarnStale(earned.day, earned.shiftId == null ? '' : String(earned.shiftId)))   // Codex r2 P2: validate the snapshot AT OPEN — a stale day/shift paints NO card, never a stale «hoy»
     ? `<div class="cerrado-earn"><div class="ce-lbl">Ganado hoy</div><div class="ce-big"><span class="ce-cur">L</span>${(earned.cents / 100).toLocaleString('es-HN')}</div><div class="ce-tiny">Se paga aparte según el calendario de la plataforma</div></div>`
     : '';
   ov.innerHTML = `
@@ -5613,12 +5630,17 @@ function showCerrado(cash, startMs, closedAtMs, earned) {
     </div>
     <div class="cerrado-foot"><button class="cerrado-done" id="cerrado-done" type="button">Listo</button></div>`;
   ov.classList.add('open');
+  if (drv2CerradoTick) { clearTimeout(drv2CerradoTick); drv2CerradoTick = null; }
+  if (earnCard) {   // Codex r2 P2: an open card must blank itself at the HN-day rollover even with NO feed update — schedule one re-validate at the next HN midnight
+    const DAY = 86400000, delay = Math.max(0, (hnDayStartMs(Date.now()) + DAY) - Date.now()) + 1000;
+    drv2CerradoTick = setTimeout(() => { drv2CerradoTick = null; drv2ValidateCerradoEarn(); }, delay);
+  }
   const done = document.getElementById('cerrado-done');
   // MODAL (Codex r1 P2): initial focus on «Listo» and a contained Tab, so the offshift chrome behind can't be reached
   // by keyboard («Iniciar turno» can't start a shift behind the summary). Mirrors terminar's focus trap.
   const onKey = (e) => { if (e.key === 'Tab') { e.preventDefault(); if (done) done.focus(); } };
   document.addEventListener('keydown', onKey, true);
-  drv2CerradoDismiss = () => { document.removeEventListener('keydown', onKey, true); const el = document.getElementById('cerrado-screen'); if (el) el.remove(); drv2CerradoDismiss = null; };
+  drv2CerradoDismiss = () => { document.removeEventListener('keydown', onKey, true); if (drv2CerradoTick) { clearTimeout(drv2CerradoTick); drv2CerradoTick = null; } const el = document.getElementById('cerrado-screen'); if (el) el.remove(); drv2CerradoDismiss = null; };
   if (done) {
     done.focus();
     done.addEventListener('click', () => {
@@ -5636,11 +5658,9 @@ function drv2ValidateCerradoEarn() {
   const ov = document.getElementById('cerrado-screen');
   if (!ov || !ov.classList.contains('open')) return;
   const card = ov.querySelector('.cerrado-earn'); if (!card) return;
-  const curShift = (driverState && driverState.current_shift_id != null) ? String(driverState.current_shift_id) : '';
-  const dayChanged = ov.dataset.earnDay !== undefined && Number(ov.dataset.earnDay) !== hnDayStartMs(Date.now());
-  const shiftReplaced = curShift !== '' && ov.dataset.earnShift !== undefined && ov.dataset.earnShift !== '' && curShift !== ov.dataset.earnShift;
   const sessionChanged = ov.dataset.gen !== String(authGen);
-  if (dayChanged || shiftReplaced || sessionChanged) card.remove();   // the snapshot no longer belongs to the current day/shift/session — never a stale «Ganado hoy»
+  const stale = drv2CerradoEarnStale(ov.dataset.earnDay !== undefined ? ov.dataset.earnDay : null, ov.dataset.earnShift !== undefined ? ov.dataset.earnShift : null);
+  if (stale || sessionChanged) card.remove();   // the snapshot no longer belongs to the current day/shift/session — never a stale «Ganado hoy»
 }
 /* ===== SLICE3:MONEY-CERRADO:END ===== */
 /* ===== SLICE3:MONEY-RATE:START — the platform pay-rate SUBSCRIPTION. The pure reader is window.PayRate
@@ -5954,8 +5974,8 @@ function render() {
      out of the open Ganancias earnings screen; only WORK arriving takes over. When Ganancias is open and the board is
      empty (the SAME drv2LiveBoard() signal the tab bar uses at TABBAR-SHOW), re-render it in place and return. A
      non-empty board falls through to the operational render below, which navigates on/offshift (takeover). Codex r1 P2c. ===== */
-  { const gn = $('screen-ganancias');
-    if (gn && !gn.classList.contains('hidden') && drv2LiveBoard().length === 0) { renderGanancias(drv2GananciasView); return; } }
+  { const gn = $('screen-ganancias'); const navHome = drv2NavHome; drv2NavHome = false;   // consume the one-shot nav intent on EVERY render that reaches the guard (leak-safe)
+    if (!navHome && gn && !gn.classList.contains('hidden') && drv2LiveBoard().length === 0) { renderGanancias(drv2GananciasView); return; } }
   /* ===== SLICE3:GANANCIAS-STAY:END ===== */
   if (!active) {
     stopKeepAlive();
