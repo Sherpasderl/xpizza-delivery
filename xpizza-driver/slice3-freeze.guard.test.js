@@ -355,6 +355,11 @@ t('SLICE3 contract is byte-frozen + matches the independently-pinned names/kinds
 });
 
 // ---------- P3. the coexistence exemption is bounded to the reviewed slice2-freeze revision ----------
+// NOTE (2026-11-08, advisor + Codex): this pin is PRE-EXISTING-STALE and expected-RED as of c20c92f4 — both
+// SLICE2_GUARD_SHA (f6c3bb66…) and SLICE2_GUARD_CHECKS (16) were fixed before slice2-freeze.guard.test.js was
+// later revised, so the live file now hashes differently and reports 18 checks. The 2.5.4 web version bump does
+// not touch this pin and deliberately does NOT re-baseline it; re-gating the coexistence revision is a separate
+// HIGH-effort task. Left intentionally so this cell stays RED until that re-gate happens.
 t('coexistence pin: slice2-freeze.guard.test.js is the approved revision + still reports its exact check count', () => {
   assert.equal(sha256(readFileSync(join(__dir, SLICE2_GUARD))), SLICE2_GUARD_SHA,
     'slice2-freeze.guard.test.js changed from the approved coexistence revision — its content is NOT free under the exemption; re-gate at HIGH effort');
@@ -424,9 +429,26 @@ t('restore spans are present in the 07e5ab38 baseline (pin integrity)', () => {
   }
 });
 
+// OUT-OF-REGION ALLOW (2026-11-08 web version bump): index.html's SYSTEM_VERSION line sits OUTSIDE every SLICE3
+// region, so strip+restore carries it through verbatim. The 2.5.4 web bump (parity with the native www, already
+// 2.5.4) makes that one line differ from the 07e5ab38 baseline's 2.5.3. Transform the baseline by this single
+// exact, line-count-preserving line before each recovery byte-compare — the same pattern slice2-freeze uses
+// (there 2.5.2→2.5.4 off e2266b24; here 2.5.3→2.5.4 off 07e5ab38). Any OTHER out-of-region drift still fails
+// recovery (the NEG cell below applies the same allow, so the probe line is the ONLY difference it can trip on).
+const OUT_OF_REGION_ALLOW = [
+  { from: "const SYSTEM_VERSION = '2.5.3';", to: "const SYSTEM_VERSION = '2.5.4';" },
+];
+const applyAllow = (html) => {
+  for (const { from, to } of OUT_OF_REGION_ALLOW) {
+    assert.equal(html.split(from).length - 1, 1, `OUT_OF_REGION_ALLOW: '${from}' must occur exactly once in the 07e5ab38 baseline`);
+    html = html.replace(from, to);
+  }
+  return html;
+};
+
 t('index.html: strip SLICE3 regions + restore the replace spans recovers 07e5ab38 byte-for-byte', () => {
   const current = readFileSync(join(__dir, 'index.html'), 'utf8');
-  const baseHtml = gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`);
+  const baseHtml = applyAllow(gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`));
   assert.equal(recoverSlice3(current), baseHtml,
     'strip+restore did NOT recover 07e5ab38 — a change leaked OUTSIDE the SLICE3 regions, or a pinned span is wrong');
 });
@@ -449,7 +471,7 @@ t('NEG: an edit to single-order-view.js OUTSIDE the region (svPay) → RED', () 
 // inside SINGLE-ORDER-MOUNT but OUTSIDE the OFFER-RENDER carve (the spCardDeps line) → recovery must NOT recover 07e5ab38.
 t('NEG: an edit inside the SLICE2 parent but OUTSIDE the OFFER-RENDER carve → recovery RED', () => {
   const current = readFileSync(join(__dir, 'index.html'), 'utf8');
-  const baseHtml = gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`);
+  const baseHtml = applyAllow(gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`));
   const probeLine = '    const spCardDeps = { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto, RESTAURANT: XPD.RESTAURANT, navPref: drv2ReadNavPref(), collapsedBanners };';
   assert.ok(current.includes(probeLine), 'the spCardDeps anchor line must exist inside SINGLE-ORDER-MOUNT (outside the carve)');
   const mutated = current.replace(probeLine, probeLine + '  /* probe */');
