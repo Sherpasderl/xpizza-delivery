@@ -58,7 +58,7 @@ export const RESTAURANT = {
 
 // Delivery/task/driver enums + the completeTask writer live in a PURE module (no remote imports) so the
 // money-grade writer can be unit- and emulator-tested directly. Imported here and re-exported for API stability.
-import { DRIVER_STATUS, TASK_STATUS, TASK_TYPE, ORDER_STATUS, buildCompleteTaskUpdates } from './driver-complete.js';
+import { DRIVER_STATUS, TASK_STATUS, TASK_TYPE, ORDER_STATUS, buildCompleteTaskUpdates, pickStackPointer } from './driver-complete.js';
 export { DRIVER_STATUS, TASK_STATUS, TASK_TYPE, ORDER_STATUS };
 
 // Payment axis (online orders) — orthogonal to order.status; never cross-tested.
@@ -1097,7 +1097,8 @@ export async function pickupComplete(driverId, pickupTaskId) {
   updates[`tasks/${pickupTaskId}/completed_at`] = serverTimestamp();
   updates[`tasks/${deliveryTaskId}/status`] = TASK_STATUS.ACCEPTED;
   updates[`tasks/${deliveryTaskId}/accepted_at`] = serverTimestamp();
-  updates[`drivers/${driverId}/current_task_id`] = deliveryTaskId;
+  // current_task_id is set AFTER the stacked co-complete loop below (pickStackPointer): it names the lowest-stop_seq
+  // delivery of the members taken in hand (the server's stop 1), else the swiped delivery (legacy).
   // The pickup swipe is what moves the driver to en_route — closes the order-
   // stacking window at the moment they leave with the pizza, independent of the
   // (background-fragile) geofence. See ADR 0004. The geofence exit transition
@@ -1110,6 +1111,7 @@ export async function pickupComplete(driverId, pickupTaskId) {
   }
 
   // Auto-complete stacked pickups + promote their delivery tasks
+  const coCompletedDeliveryIds = [];
   for (const stackedPickupId of stackedPickupIds) {
     const stackedPickup = allTasks[stackedPickupId];
     const stackedDeliveryId = stackedPickup.linked_task_id;
@@ -1117,6 +1119,7 @@ export async function pickupComplete(driverId, pickupTaskId) {
     updates[`tasks/${stackedPickupId}/completed_at`] = serverTimestamp();
     if (stackedDeliveryId) {
       updates[`tasks/${stackedDeliveryId}/status`] = TASK_STATUS.ACCEPTED;
+      coCompletedDeliveryIds.push(stackedDeliveryId);
       // Don't overwrite accepted_at if already set (it was set when stacked)
     }
     if (stackedPickup.order_id) {
@@ -1124,6 +1127,12 @@ export async function pickupComplete(driverId, pickupTaskId) {
       updates[`orders/${stackedPickup.order_id}/picked_up_at`] = serverTimestamp();
     }
   }
+
+  // The active stop = the lowest-stop_seq delivery among the members taken in hand (the server's stop 1) when they
+  // form a coherent sequenced stack; else the swiped delivery. So current_task_id names stop 1 even if the driver
+  // swiped stop 2's pickup first — the one-active-stop UI + the tracker's `live` order follow stop_seq, not swipe order.
+  const inHand = [deliveryTaskId, ...coCompletedDeliveryIds].map((id) => ({ id, task: allTasks[id] }));
+  updates[`drivers/${driverId}/current_task_id`] = pickStackPointer(inHand, deliveryTaskId);
 
   await update(ref(db), updates);
 }
@@ -1173,12 +1182,22 @@ export function getDriverOrders(driverId, allTasks, allOrders, includeCompleted 
     });
   }
 
-  // Sort: in-progress orders first, then by created_at
+  // Sort: in-progress orders first, then by the server's stop_seq (sequenced stacks), else by created_at.
   const phaseRank = { delivery: 0, pickup: 1, awaiting_acceptance: 2, completed: 3 };
   result.sort((a, b) => {
     const r = phaseRank[a.phase] - phaseRank[b.phase];
     if (r !== 0) return r;
-    return (a.deliveryTask.created_at || 0) - (b.deliveryTask.created_at || 0);
+    // Sequenced stacks (stacked-order consumption): when BOTH delivery tasks carry a coherent server stop_seq —
+    // the SAME stack_id and DISTINCT ranks 1|2 — order by stop_seq (the server's decided order). Otherwise
+    // (absent / partial / mismatched) fall back to created_at, byte-identical to the legacy behaviour. The server
+    // (sequencing/plan-stack) is the only writer of stop_seq/stack_id on tasks/{oid}_delivery. (This comparator is
+    // mirrored verbatim into tracking/driver-orders.js by platform-core; keep it self-contained.)
+    const da = a.deliveryTask, db = b.deliveryTask;
+    const coherent = !!(da && db && da.stack_id && da.stack_id === db.stack_id
+      && (da.stop_seq === 1 || da.stop_seq === 2) && (db.stop_seq === 1 || db.stop_seq === 2)
+      && da.stop_seq !== db.stop_seq);
+    if (coherent) return da.stop_seq - db.stop_seq;
+    return (da.created_at || 0) - (db.created_at || 0);
   });
 
   return result;

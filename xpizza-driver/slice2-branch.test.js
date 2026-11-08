@@ -34,7 +34,7 @@ import { computeShiftCash } from './cash-helpers.js';
 // REAL displayOrderLabel — the observer's offer-expiry snapshot computes the banner's «#N» from it.
 import { displayOrderLabel } from './order-helpers.js';
 // Firebase-FREE real modules → imported REAL (not lifted): the writers' pure cores + the task/order constants.
-import { buildCompleteTaskUpdates, DRIVER_STATUS, ORDER_STATUS, TASK_STATUS, TASK_TYPE } from './driver-complete.js';
+import { buildCompleteTaskUpdates, pickStackPointer, DRIVER_STATUS, ORDER_STATUS, TASK_STATUS, TASK_TYPE } from './driver-complete.js';
 import { stackedTasksToAccept } from './stacking-helpers.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -241,9 +241,9 @@ function buildRealSDK(fb) {
     + LIFTED.acceptSecondOrder + '\n' + LIFTED.completeTask + '\n' + LIFTED.pickupComplete + '\n'
     + 'return { getDriverOrders, acceptTask, acceptSecondOrder, completeTask, pickupComplete };';
   const names = ['db', 'ref', 'get', 'update', 'serverTimestamp', 'runTransaction', 'query', 'orderByChild', 'equalTo',
-    'stackedTasksToAccept', 'buildCompleteTaskUpdates', 'TASK_STATUS', 'TASK_TYPE', 'DRIVER_STATUS', 'ORDER_STATUS'];
+    'stackedTasksToAccept', 'buildCompleteTaskUpdates', 'pickStackPointer', 'TASK_STATUS', 'TASK_TYPE', 'DRIVER_STATUS', 'ORDER_STATUS'];
   return (new Function(...names, body))(fb.db, fb.ref, fb.get, fb.update, fb.serverTimestamp, fb.runTransaction,
-    fb.query, fb.orderByChild, fb.equalTo, stackedTasksToAccept, buildCompleteTaskUpdates,
+    fb.query, fb.orderByChild, fb.equalTo, stackedTasksToAccept, buildCompleteTaskUpdates, pickStackPointer,
     TASK_STATUS, TASK_TYPE, DRIVER_STATUS, ORDER_STATUS);
 }
 

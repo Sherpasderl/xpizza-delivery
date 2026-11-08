@@ -136,3 +136,19 @@ export function buildCompleteTaskUpdates({ driverId, taskId, task, allTasks, now
   // is unusual but supported — just clears the pickup status without touching driver.
   return updates;
 }
+
+/**
+ * PURE: choose the active-stop pointer among the deliveries just taken in hand at pickupComplete. When the members
+ * form a COHERENT server-sequenced stack (every member carries stop_seq ∈ {1,2} with the SAME stack_id and DISTINCT
+ * ranks), the pointer is the LOWEST stop_seq delivery (the server's stop 1) — so the active stop is stop 1 even when
+ * the driver swipes stop 2's pickup first. Otherwise (single order, absent/partial/mismatched stop_seq) the pointer
+ * is the swiped delivery, byte-identical to the legacy behaviour. `members` = [{ id, task }].
+ */
+export function pickStackPointer(members, swipedDeliveryId) {
+  const seq = (members || []).filter((m) => m.task && m.task.stack_id && (m.task.stop_seq === 1 || m.task.stop_seq === 2));
+  const coherent = (members || []).length > 1 && seq.length === members.length
+    && new Set(members.map((m) => m.task.stack_id)).size === 1
+    && new Set(members.map((m) => m.task.stop_seq)).size === members.length;   // distinct ranks
+  if (!coherent) return swipedDeliveryId;
+  return members.reduce((lo, m) => (lo === null || m.task.stop_seq < lo.task.stop_seq ? m : lo), null).id;
+}

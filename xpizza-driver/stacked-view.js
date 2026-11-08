@@ -170,6 +170,14 @@ export function navBtnHtml(target, navPref, label, deps = {}) {
  * entry; `ordinal` its board position (2…). PRIVACY: an awaiting_acceptance next stop shows no name/area (S7).
  * Pure. Carries data-order-id so the frozen tap handler resolves it by id (S8).
  */
+// «+N min» for a demoted/queued stop, from the server's stack_plus_min (the rank-2 member's extra minutes vs going
+// first). POSITIVE-ONLY (owner rule, [[plus-n-min-positive-only]]): shown only for an integer N ≥ 1; null / 0 /
+// negative / absent → '' (no badge). Pure.
+export function stackPlusMinLabel(next, esc = String) {
+  const n = next && next.deliveryTask ? next.deliveryTask.stack_plus_min : null;
+  return (Number.isFinite(n) && n >= 1) ? `<span class="after-plusmin">+${esc(String(Math.round(n)))} min</span>` : '';
+}
+
 export function queuedPreviewHtml(next, ordinal, deps = {}) {
   if (!next) return '';
   const { ICONS = {}, esc = String } = deps;
@@ -180,7 +188,7 @@ export function queuedPreviewHtml(next, ordinal, deps = {}) {
   const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
   const after = area ? `${esc(name)} · ${esc(area)}` : esc(name);
   return `<div class="after-card" data-order-id="${esc(next.orderId)}">
-      <div class="after-head">${bagTagHtml(ordinal, esc)}<span class="after-title">Después: ${after}</span><span class="qchev">${CHEV}</span></div>
+      <div class="after-head">${bagTagHtml(ordinal, esc)}<span class="after-title">Después: ${after}</span>${stackPlusMinLabel(next, esc)}<span class="qchev">${CHEV}</span></div>
       <div class="after-hint">Se activa sola al entregar la 1 · sin navegación aún · tocá para ver qué lleva</div>
     </div>`;
 }

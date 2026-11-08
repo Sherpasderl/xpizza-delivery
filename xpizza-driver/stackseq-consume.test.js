@@ -3,7 +3,25 @@
 // points at that stop's WORKING task (the hotfix logic). Absent/partial/mismatched stop_seq → created_at fallback,
 // byte-identical to legacy. The server (sequencing/plan-stack) writes stop_seq/stack_id on tasks/{oid}_delivery.
 import assert from 'node:assert/strict';
-import { buildCompleteTaskUpdates, TASK_STATUS, TASK_TYPE } from './driver-complete.js';
+import { readFileSync } from 'node:fs';
+import { buildCompleteTaskUpdates, pickStackPointer, TASK_STATUS, TASK_TYPE } from './driver-complete.js';
+import { stackPlusMinLabel } from './stacked-view.js';
+
+// getDriverOrders lives in xpizza-delivery.js, which imports the Firebase web SDK over https (un-importable in node).
+// Lift the PURE function body and run it with TASK_TYPE/TASK_STATUS injected (same pattern as the other driver
+// fragment harnesses). getDriverOrders references only those two module constants + globals.
+function liftFn(src, name, scope) {
+  const at = src.indexOf(`export function ${name}(`);
+  if (at < 0) throw new Error(`${name} not found`);
+  const open = src.indexOf('{', src.indexOf('(', at));
+  let depth = 0, end = -1;
+  for (let k = open; k < src.length; k++) { const c = src[k]; if (c === '{') depth++; else if (c === '}') { if (--depth === 0) { end = k + 1; break; } } }
+  const sig = src.slice(src.indexOf('(', at), open);
+  const names = Object.keys(scope);
+  return new Function(...names, `return (function ${name}${sig}${src.slice(open, end)});`)(...Object.values(scope));
+}
+const SDK = readFileSync(new URL('./xpizza-delivery.js', import.meta.url), 'utf8');
+const getDriverOrders = liftFn(SDK, 'getDriverOrders', { TASK_TYPE, TASK_STATUS });
 
 let passed = 0;
 function t(name, fn) {
@@ -83,4 +101,55 @@ t('(b) GOLDEN: single order → null + RETURNING', () => {
   assert.equal(u[`drivers/${UID}/status`], 'returning');
 });
 
-console.log(`stackseq-consume (b): ${passed} passed`);
+// (a) getDriverOrders orders delivery-phase stops by stop_seq for a coherent stack; created_at otherwise.
+const delPhase = (oid, o) => ({   // a delivery-phase order = pickup COMPLETED + delivery ACCEPTED
+  [`${oid}_pickup`]:   pu(oid,  { status: TASK_STATUS.COMPLETED, created_at: o.created_at - 1 }),
+  [`${oid}_delivery`]: del(oid, { status: TASK_STATUS.ACCEPTED, ...o }),
+});
+t('(a) coherent stack: delivery-phase stops ordered by stop_seq, NOT created_at', () => {
+  const tasks = { ...delPhase('a', { created_at: 101, stop_seq: 2, stack_id: 'S' }), ...delPhase('b', { created_at: 201, stop_seq: 1, stack_id: 'S' }) };
+  assert.deepEqual(getDriverOrders(UID, tasks, {}).map((o) => o.orderId), ['b', 'a'], 'stop_seq 1 (b) before stop_seq 2 (a)');
+});
+t('(a) GOLDEN: no stop_seq → created_at order (a before b)', () => {
+  const tasks = { ...delPhase('a', { created_at: 101 }), ...delPhase('b', { created_at: 201 }) };
+  assert.deepEqual(getDriverOrders(UID, tasks, {}).map((o) => o.orderId), ['a', 'b']);
+});
+t('(a) GOLDEN: partial (only one has stop_seq) → NOT coherent → created_at order', () => {
+  const tasks = { ...delPhase('a', { created_at: 101, stop_seq: 2, stack_id: 'S' }), ...delPhase('b', { created_at: 201 }) };
+  assert.deepEqual(getDriverOrders(UID, tasks, {}).map((o) => o.orderId), ['a', 'b']);
+});
+t('(a) GOLDEN: mismatched stack_id → NOT coherent → created_at order', () => {
+  const tasks = { ...delPhase('a', { created_at: 101, stop_seq: 2, stack_id: 'S1' }), ...delPhase('b', { created_at: 201, stop_seq: 1, stack_id: 'S2' }) };
+  assert.deepEqual(getDriverOrders(UID, tasks, {}).map((o) => o.orderId), ['a', 'b']);
+});
+
+// (c.1) pickupComplete active pointer = lowest-stop_seq delivery of the members in hand; else the swiped delivery.
+const M = (id, o) => ({ id, task: { stack_id: o.stack_id, stop_seq: o.stop_seq } });
+t('(c.1) coherent stack: pointer = stop_seq 1 delivery even when the driver swiped stop 2 first', () => {
+  const members = [M('b_delivery', { stop_seq: 2, stack_id: 'S' }), M('a_delivery', { stop_seq: 1, stack_id: 'S' })];
+  assert.equal(pickStackPointer(members, 'b_delivery'), 'a_delivery', 'swiped b (stop 2) → pointer is a (stop 1)');
+});
+t('(c.1) GOLDEN: single member → swiped delivery', () => {
+  assert.equal(pickStackPointer([M('x_delivery', {})], 'x_delivery'), 'x_delivery');
+});
+t('(c.1) GOLDEN: no stop_seq → swiped delivery', () => {
+  const members = [M('b_delivery', {}), M('a_delivery', {})];
+  assert.equal(pickStackPointer(members, 'b_delivery'), 'b_delivery');
+});
+t('(c.1) GOLDEN: mismatched stack_id → swiped delivery', () => {
+  const members = [M('b_delivery', { stop_seq: 2, stack_id: 'S1' }), M('a_delivery', { stop_seq: 1, stack_id: 'S2' })];
+  assert.equal(pickStackPointer(members, 'b_delivery'), 'b_delivery');
+});
+
+// (c.2) «+N min» on the demoted/queued stop — positive-only (owner rule).
+t('(c.2) «+N min»: an integer N ≥ 1 shows «+N min»', () => {
+  assert.match(stackPlusMinLabel({ deliveryTask: { stack_plus_min: 4 } }), /\+4 min/);
+  assert.match(stackPlusMinLabel({ deliveryTask: { stack_plus_min: 4.6 } }), /\+5 min/);   // rounded
+});
+t('(c.2) «+N min» hidden for null / 0 / negative / absent', () => {
+  for (const v of [null, 0, -3, undefined, NaN]) assert.equal(stackPlusMinLabel({ deliveryTask: { stack_plus_min: v } }), '', `+${v} should be hidden`);
+  assert.equal(stackPlusMinLabel({ deliveryTask: {} }), '');
+  assert.equal(stackPlusMinLabel(null), '');
+});
+
+console.log(`stackseq-consume (a)+(b)+(c.1)+(c.2): ${passed} passed`);
