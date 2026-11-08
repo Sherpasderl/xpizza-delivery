@@ -213,6 +213,20 @@ test('N2: a stale page\'s reset is refused 409 platform_changes_pending → the 
   flagged = true;
 });
 
+test('no «Cambiar nombre» while Sherpa updates (mockup N1/P1 draw none): named sections, flagged → no control; unflagged → the control is back', async () => {
+  // all-or-nothing naming: a named copy of the real-writer seed, so the rename control has every premise but the flag
+  const named = JSON.parse(JSON.stringify(SRC)); named.structure.categories.forEach((c, i) => { c.name = `Sección ${i + 1}`; });
+  let flag = true;
+  const p = await page({ read: () => editable({ source: JSON.parse(JSON.stringify(named)), ...(flag ? { platform_changes_pending: PENDING } : {}) }) });
+  await p.signIn();
+  assert.ok(p.detail().querySelector('.calloutquiet1b'), 'premise: the notice is up');
+  assert.equal(p.detail().querySelector('.secren'), null, 'no rename control while Sherpa updates');
+  flag = false;
+  await p.mods.app.loadMenu('x_pizza'); await settle(60);
+  assert.ok(p.detail().querySelector('.secren'), 'non-vacuity: the same named draft without the flag shows «Cambiar nombre»');
+  assert.equal(p.n('editCatalog').length, 0, 'nothing saved');
+});
+
 test('the state ends with the flag: a reload without it restores the editor, the header lock\'s own text and today\'s bar', async () => {
   let flag = true;
   const p = await page({ read: () => editable(flag ? { platform_changes_pending: PENDING } : {}) });

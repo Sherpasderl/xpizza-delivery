@@ -178,7 +178,7 @@ function page() {
   nameIn.addEventListener('blur', () => { S.touched.add('display_name'); sync(); });
   const cnt1 = el('div', 'mk-cnt'); R.nameCount = el('span', 'seccnt');
   cnt1.append(el('span', 'fnote', COPY.nameNote), R.nameCount);
-  R.nameErrSlot = el('div');
+  R.nameErrSlot = el('div', 'mk-errslot');
   fName.append(nameIn, cnt1, R.nameErrSlot); R.nameFld = fName; R.nameIn = nameIn;
 
   const fColor = fld('Color de la marca');
@@ -191,7 +191,7 @@ function page() {
     sw.append(b); R.swatches.push(b);
   }
   R.colorNote = el('span', 'fnote');
-  R.colorErrSlot = el('div');
+  R.colorErrSlot = el('div', 'mk-errslot');
   fColor.append(sw, R.colorNote, R.colorErrSlot); R.colorFld = fColor;
 
   const fLogo = fld('Logo');
@@ -213,7 +213,7 @@ function page() {
   });
   const cnt2 = el('div', 'mk-cnt'); R.noteCount = el('span', 'seccnt');
   cnt2.append(el('span', 'fnote', COPY.noteNote), R.noteCount);
-  R.noteErrSlot = el('div');
+  R.noteErrSlot = el('div', 'mk-errslot');
   fNote.append(ta, cnt2, R.noteErrSlot); R.noteFld = fNote; R.noteIn = ta;
   rec.append(fNote);
 

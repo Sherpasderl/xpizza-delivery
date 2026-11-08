@@ -1256,6 +1256,7 @@
   .mk-mono,.mk-prevband,.mk-prevbtn,.mk-prevtrack i{background:#6E6A64}   /* no colour chosen yet (never saved): a neutral that keeps the white initial / label at AA (5.37) */
   .mk-prev{background:#fff;border:1px solid #E6E6E2;border-radius:14px;overflow:hidden;color:#1E1B18;box-shadow:0 1px 2px rgba(30,28,24,.04),0 6px 16px -12px rgba(30,28,24,.18)}
   .mk-prevband{height:6px}
+  .mk-errslot:empty{display:none}   /* an empty error slot takes no .fld gap (the approved B1/B2 spacing) */
   .mk-prevhead{display:flex;align-items:center;gap:12px;padding:14px 14px 10px}
   .mk-prevhead .mk-mono{width:44px;height:44px;border-radius:11px;font-size:20px}
   .mk-prevname{font-family:var(--disp);font-weight:800;font-size:17px;letter-spacing:-.03em;line-height:1.1;color:#1E1B18}

@@ -1,0 +1,184 @@
+[
+ {
+  "frame": "b1",
+  "mockup": "MOCKUP-portal-marca.html#B1",
+  "theme": "light",
+  "w": 1280,
+  "h": 1480,
+  "mock": true,
+  "errs": [],
+  "brandPosts": []
+ },
+ {
+  "frame": "b1",
+  "mockup": "MOCKUP-portal-marca.html#B1",
+  "theme": "dark",
+  "w": 1280,
+  "h": 1480,
+  "mock": true,
+  "errs": [],
+  "brandPosts": []
+ },
+ {
+  "frame": "b2",
+  "mockup": "MOCKUP-portal-marca.html#B2",
+  "theme": "light",
+  "w": 1280,
+  "h": 1480,
+  "mock": true,
+  "errs": [],
+  "brandPosts": []
+ },
+ {
+  "frame": "b2",
+  "mockup": "MOCKUP-portal-marca.html#B2",
+  "theme": "dark",
+  "w": 1280,
+  "h": 1480,
+  "mock": true,
+  "errs": [],
+  "brandPosts": []
+ },
+ {
+  "frame": "b3",
+  "mockup": "MOCKUP-portal-marca.html#B3",
+  "theme": "light",
+  "w": 1280,
+  "h": 760,
+  "mock": true,
+  "errs": [],
+  "brandPosts": [
+   {
+    "brand_id": "marca_v",
+    "expected_version": 1,
+    "fields": {
+     "display_name": "Pizzería Del Valle",
+     "accent": "terracota",
+     "logo": null,
+     "pickup_note": "Pasá por la ventanilla de la izquierda y decí tu número de pedido."
+    }
+   }
+  ]
+ },
+ {
+  "frame": "b3",
+  "mockup": "MOCKUP-portal-marca.html#B3",
+  "theme": "dark",
+  "w": 1280,
+  "h": 760,
+  "mock": true,
+  "errs": [],
+  "brandPosts": [
+   {
+    "brand_id": "marca_v",
+    "expected_version": 1,
+    "fields": {
+     "display_name": "Pizzería Del Valle",
+     "accent": "terracota",
+     "logo": null,
+     "pickup_note": "Pasá por la ventanilla de la izquierda y decí tu número de pedido."
+    }
+   }
+  ]
+ },
+ {
+  "frame": "b4",
+  "mockup": "MOCKUP-portal-marca.html#B4",
+  "theme": "light",
+  "w": 1280,
+  "h": 560,
+  "mock": true,
+  "errs": [],
+  "brandPosts": []
+ },
+ {
+  "frame": "b4",
+  "mockup": "MOCKUP-portal-marca.html#B4",
+  "theme": "dark",
+  "w": 1280,
+  "h": 560,
+  "mock": true,
+  "errs": [],
+  "brandPosts": []
+ },
+ {
+  "frame": "p1",
+  "mockup": "MOCKUP-portal-marca.html#P1",
+  "theme": "light",
+  "w": 390,
+  "h": 2080,
+  "mock": true,
+  "errs": [],
+  "brandPosts": []
+ },
+ {
+  "frame": "p1",
+  "mockup": "MOCKUP-portal-marca.html#P1",
+  "theme": "dark",
+  "w": 390,
+  "h": 2080,
+  "mock": true,
+  "errs": [],
+  "brandPosts": []
+ },
+ {
+  "frame": "n1",
+  "mockup": "MOCKUP-portal-platform-changes-notice.html#N1",
+  "theme": "light",
+  "w": 1280,
+  "h": 760,
+  "mock": true,
+  "errs": [],
+  "brandPosts": []
+ },
+ {
+  "frame": "n1",
+  "mockup": "MOCKUP-portal-platform-changes-notice.html#N1",
+  "theme": "dark",
+  "w": 1280,
+  "h": 760,
+  "mock": true,
+  "errs": [],
+  "brandPosts": []
+ },
+ {
+  "frame": "n2",
+  "mockup": "MOCKUP-portal-platform-changes-notice.html#N2",
+  "theme": "light",
+  "w": 1280,
+  "h": 760,
+  "mock": true,
+  "errs": [],
+  "brandPosts": []
+ },
+ {
+  "frame": "n2",
+  "mockup": "MOCKUP-portal-platform-changes-notice.html#N2",
+  "theme": "dark",
+  "w": 1280,
+  "h": 760,
+  "mock": true,
+  "errs": [],
+  "brandPosts": []
+ },
+ {
+  "frame": "np1",
+  "mockup": "MOCKUP-portal-platform-changes-notice.html#P1",
+  "theme": "light",
+  "w": 390,
+  "h": 1180,
+  "mock": true,
+  "errs": [],
+  "brandPosts": []
+ },
+ {
+  "frame": "np1",
+  "mockup": "MOCKUP-portal-platform-changes-notice.html#P1",
+  "theme": "dark",
+  "w": 390,
+  "h": 1180,
+  "mock": true,
+  "errs": [],
+  "brandPosts": []
+ }
+]

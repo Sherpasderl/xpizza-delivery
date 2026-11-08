@@ -25,6 +25,14 @@ export const PP_FOLD = {
    "  if (!photo.enabled && !(v.kind === 'photo' && (v.url || v.neutral))) return null;\n  return { thumb: rowThumb({ view: v, name, enabled: photo.enabled, onOpen: open, onUpload: upload, onImgError: onPhotoImgError }), tag: rowTag(v) };\n"
   ],
   [
+   "  if (state.platformPending === true) return;   // F-2: refused at admission while Sherpa updates (the control is not drawn)\n",
+   ""
+  ],
+  [
+   "  if (state.platformPending === true) return;   // F-2: refused at admission while Sherpa updates\n",
+   ""
+  ],
+  [
    "  if (!renamesPending() && state.platformPending !== true) return;   // F-2: the same hold while Sherpa updates the menu\n",
    "  if (!renamesPending()) return;\n"
   ],
@@ -39,6 +47,10 @@ export const PP_FOLD = {
   [
    "  if (state.platformPending === true) { $('rbtxt').textContent = PLATFORM_COPY.bar; $('discard').classList.add('hidden'); }   // F-2: the reason, said where the action is\n",
    ""
+  ],
+  [
+   "  const rename = (state.platformPending !== true && state.draft && catId !== null && isDeclaredCategory(catId) && !categoriesUnnamed(state.draft)) ? {   // F-2: no «Cambiar nombre» while Sherpa updates (mockup N1/P1)\n",
+   "  const rename = (state.draft && catId !== null && isDeclaredCategory(catId) && !categoriesUnnamed(state.draft)) ? {\n"
   ],
   [
    "    locked: nameHold || state.platformPending === true,   // F-2: Sherpa is updating the menu — prices and «Agregar producto» read-only\n",

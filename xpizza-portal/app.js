@@ -770,11 +770,13 @@ const RENAME_NOTICE = {
 const isDeclaredCategory = (id) => categoriesOf().some((c) => c && String(c.id) === String(id));
 const declaredName = (id) => { const c = categoriesOf().find((x) => x && String(x.id) === String(id)); return (c && typeof c.name === 'string') ? c.name : ''; };
 function renameStart(catId) {
+  if (state.platformPending === true) return;   // F-2: refused at admission while Sherpa updates (the control is not drawn)
   if (!state.draft || othersPending() || categoriesUnnamed(state.draft) || !isDeclaredCategory(catId)) return;
   state.renameEdit = { catId: String(catId) };
   paint();
 }
 function renameSave(catId, value) {
+  if (state.platformPending === true) return;   // F-2: refused at admission while Sherpa updates
   if (!state.draft || othersPending() || categoryNameProblem(value) !== null) return;
   setCategoryNames(state.draft, [[catId, value]]);
   state.renameEdit = null;
@@ -1145,7 +1147,7 @@ function paint() {
   const nameHold = renamesPending();
   const otherHold = !nameHold && othersPending();
   const editing = !!(state.renameEdit && state.renameEdit.catId === catId);
-  const rename = (state.draft && catId !== null && isDeclaredCategory(catId) && !categoriesUnnamed(state.draft)) ? {
+  const rename = (state.platformPending !== true && state.draft && catId !== null && isDeclaredCategory(catId) && !categoriesUnnamed(state.draft)) ? {   // F-2: no «Cambiar nombre» while Sherpa updates (mockup N1/P1)
     mode: editing ? 'edit' : (otherHold ? 'blocked' : 'idle'),
     value: declaredName(catId),
     focus: editing,
