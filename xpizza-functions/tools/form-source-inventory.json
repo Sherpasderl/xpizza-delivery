@@ -1345,6 +1345,7 @@
     "xpizza-driver/slice3-freeze.guard.test.js",
     "xpizza-driver/solo-cancel.test.js",
     "xpizza-driver/stacked-view.test.js",
+    "xpizza-driver/stackseq-consume.test.js",
     "xpizza-driver/statusbar-disp-header.test.js",
     "xpizza-driver/tab-bar-mount.test.js",
     "xpizza-functions/branches-rules.guard.test.js",

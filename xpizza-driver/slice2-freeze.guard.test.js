@@ -214,6 +214,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/disponible.test.js',              // renderDisponible body (prototype S.disponible) test (SLICE3)
   'xpizza-driver/return-target.test.js',           // returning-state nav target real-code suite (SLICE3)
   'xpizza-driver/driver-complete.test.js',         // #962 hotfix: buildCompleteTaskUpdates regression + equivalence suite
+  'xpizza-driver/stackseq-consume.test.js',        // stacked-order consumption slice: stop_seq sort/promotion/pointer + «+N min»
   'xpizza-driver/solo-cancel.test.js',              // S.cancelado idle takeover real-code suite (SLICE3)
   'xpizza-driver/pausa.test.js',                    // slice 3-P manual-pause (S.pausa) real-code suite (SLICE3)
   'xpizza-driver/endshift.test.js',                 // «Terminar turno» idle slide real-code suite (SLICE3)
@@ -302,7 +303,7 @@ const t = (name, fn) => {
 };
 // Belt-and-braces (Codex r2 P1): force RED on ANY early exit — if fewer than the expected checks completed (an
 // injected process.exit, a thrown/short-circuited load, a skipped check), the process exit code is forced to 1.
-const EXPECTED_CHECKS = 17;
+const EXPECTED_CHECKS = 18;
 process.on('exit', () => {
   if (passed !== EXPECTED_CHECKS) {
     console.error(`slice2-freeze.guard INCOMPLETE: ${passed}/${EXPECTED_CHECKS} checks ran — early exit / skipped check`);
@@ -349,12 +350,16 @@ function sovRestHash(text) {
   return sha256([...lines.slice(0, marks[0].i), ...lines.slice(marks[1].i + 1)].join('\n'));
 }
 
-// OUT-OF-FREEZE ALLOW (hotfix #962, Codex r3 APPROVE 2026-11-07, advisor sign-off): driver-complete.js was slice-2
-// frozen; the LIVE pickup-pointer fix (buildCompleteTaskUpdates → the next stop's WORKING task) changed its bytes.
-// Pinned to the EXACT approved content — sha256 of driver-complete.js at 75550290 (== the current hotfix tip; prod
-// byte-frozen since Codex r3). ONLY that content passes; any FURTHER byte change still trips the freeze (proven by
-// the sensitivity cell below). NOT a blanket baseline refresh.
-const DRIVER_COMPLETE_HOTFIX_SHA = 'f2ad4f9bebd829535712a51bdea011302c996788cfb961af6c0b82dcfc4d5d06';
+// OUT-OF-FREEZE ALLOW (advisor sign-off): these slice-2 frozen files carry APPROVED changes — the #962 pickup-pointer
+// hotfix and the stacked-order consumption slice (buildCompleteTaskUpdates/getDriverOrders/pickupComplete sequence by
+// server stop_seq, + pickStackPointer). Each is pinned to its EXACT approved content by sha256; ONLY that content
+// passes and any FURTHER byte change still trips the freeze (the sensitivity cells below prove it). NOT a blanket
+// baseline refresh. One allow per changed frozen file:
+//   driver-complete.js  — #962 + stacked-seq (b)/pickStackPointer
+//   xpizza-delivery.js  — stacked-seq (a) getDriverOrders sort + (c.1) pickupComplete pointer (edits OUTSIDE the
+//                         NAV-SDK region, so the region-strip recovery no longer applies; sha-pinned instead)
+const DRIVER_COMPLETE_HOTFIX_SHA = 'a6a77a4b00136069fbc3592dfe8f0011e39e7cb9264ce3ecbfae52614fc033e8';
+const XPIZZA_DELIVERY_SHA = '191c473d9281aa5b3bd71cff2943b5166f7e975f53da8dd52d47c6772a399d8a';
 
 t('frozen: every baseline file under xpizza-driver/ (except index.html) is byte-identical (region-bearing files strip to baseline)', () => {
   const baseFiles = gitStr('ls-tree', '-r', '--name-only', BASELINE, '--', 'xpizza-driver')
@@ -381,6 +386,9 @@ t('frozen: every baseline file under xpizza-driver/ (except index.html) is byte-
     if (repoPath === 'xpizza-driver/single-order-card.test.js') continue;
     // driver-complete.js: the #962 hotfix changed it (Codex r3 APPROVE); allowed ONLY at the exact approved sha.
     if (repoPath === 'xpizza-driver/driver-complete.js' && sha256(diskBytes.toString('utf8')) === DRIVER_COMPLETE_HOTFIX_SHA) continue;
+    // xpizza-delivery.js: the stacked-seq getDriverOrders sort + pickupComplete pointer changed it OUTSIDE the NAV-SDK
+    // region (so the region-strip above no longer recovers baseline); allowed ONLY at the exact approved sha.
+    if (repoPath === 'xpizza-driver/xpizza-delivery.js' && sha256(diskBytes.toString('utf8')) === XPIZZA_DELIVERY_SHA) continue;
     drift.push(`${repoPath} (byte-changed${ALLOWED_REGION_BEARING.has(repoPath) ? ' — region strip did NOT recover baseline' : (repoPath.endsWith('single-order-view.js') ? ' — edited OUTSIDE the OFERTA-OFFER region' : '')})`);
   }
   assert.deepEqual(drift, [], `frozen files changed:\n  ${drift.join('\n  ')}`);
@@ -390,9 +398,15 @@ t('frozen: every baseline file under xpizza-driver/ (except index.html) is byte-
 // passes, and ANY further 1-byte change still trips the freeze (the allow does not become a blanket exemption).
 t('freeze pin for driver-complete.js is EXACT: approved bytes pass; a further 1-byte change still fails', () => {
   const disk = readFileSync(join(__dir, 'driver-complete.js'), 'utf8');
-  assert.equal(sha256(disk), DRIVER_COMPLETE_HOTFIX_SHA, 'driver-complete.js is not the approved #962 content');
+  assert.equal(sha256(disk), DRIVER_COMPLETE_HOTFIX_SHA, 'driver-complete.js is not the approved #962+stacked-seq content');
   assert.notEqual(sha256(disk + '\n'), DRIVER_COMPLETE_HOTFIX_SHA, 'a 1-byte change must NOT match the pin');
   assert.notEqual(sha256(disk.replace(/;/, ';;')), DRIVER_COMPLETE_HOTFIX_SHA, 'any byte edit must NOT match the pin');
+});
+t('freeze pin for xpizza-delivery.js is EXACT: approved bytes pass; a further 1-byte change still fails', () => {
+  const disk = readFileSync(join(__dir, 'xpizza-delivery.js'), 'utf8');
+  assert.equal(sha256(disk), XPIZZA_DELIVERY_SHA, 'xpizza-delivery.js is not the approved stacked-seq content');
+  assert.notEqual(sha256(disk + '\n'), XPIZZA_DELIVERY_SHA, 'a 1-byte change must NOT match the pin');
+  assert.notEqual(sha256(disk.replace(/;/, ';;')), XPIZZA_DELIVERY_SHA, 'any byte edit must NOT match the pin');
 });
 
 // A region-bearing frozen file must ONLY carry the regions the freeze allows (NAV-SDK), and nothing else may
