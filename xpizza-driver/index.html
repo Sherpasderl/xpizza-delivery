@@ -1090,8 +1090,15 @@
   .rc-big .v span{ font-size:22px; color:var(--text-dim); font-weight:700; vertical-align:top; margin-right:3px; line-height:1.6; }
   .rc-sub{ text-align:center; font-size:12px; color:var(--text-dim); margin-top:3px; line-height:1.4; }
   .rc-note{ text-align:center; font-size:12px; color:var(--text-dim); margin:13px 6px 0; line-height:1.4; }
-  /* «Ganado hoy» informational card — HIDDEN until Pagos ships (showEarnings:false); mount kept */
+  /* «Ganado hoy» informational card (prototype S.cuadre :894) — the icon row carried by cuadreEarnCardHtml */
   .cuadre-earn{ background:transparent; border:1px solid var(--line); border-radius:14px; padding:2px 14px; }
+  .cuadre-earn .row{ display:flex; gap:11px; align-items:flex-start; padding:10px 0; }
+  .cuadre-earn .ic{ width:30px; height:30px; border-radius:9px; background:var(--surface2,#E7ECF4); color:var(--text-soft); display:grid; place-items:center; flex:none; }
+  .cuadre-earn .ic svg{ width:17px; height:17px; }
+  .cuadre-earn .ic.ok{ background:var(--green-bg,#EBF7F0); color:var(--success,#15803D); }
+  .cuadre-earn .tx{ min-width:0; flex:1; }
+  .cuadre-earn .t{ font-weight:700; font-size:14px; line-height:1.3; color:var(--text,#0D1424); }
+  .cuadre-earn .d{ font-size:12.5px; color:var(--text-soft); margin-top:1px; }
   /* rejection banner (cierreRechazado) — sibling ABOVE the receipt */
   .rc-reject-banner{ display:flex; gap:11px; align-items:flex-start; text-align:left; padding:12px 13px; border-radius:13px; font-size:13.5px; line-height:1.35; background:var(--sv-err-bg, #FBEAEA); color:var(--sv-err, #B9323A); }
   .rc-reject-banner b{ display:block; font-family:'Red Hat Display', sans-serif; font-size:14.5px; margin-bottom:2px; }
@@ -2221,7 +2228,7 @@
 #endshift-sheet .es-ic svg { width: 19px; height: 19px; }
 #endshift-sheet .es-cancel { background: var(--surface, #fff); border: 1px solid var(--border, #DCE2EC); }   /* proto .btn.ghost: white + 1px border */
 #endshift-sheet .es-confirm { background: var(--accent, #2F5FB8); box-shadow: none; }
-/* cerrado (showCerrado, S.cerrado): the «Turno cerrado» summary overlay — green check, the shift totals line, «Listo». «Ganado hoy» card is intentionally absent (no pay-rate reader; see STRUCTURAL note). */
+/* cerrado (showCerrado, S.cerrado): the «Turno cerrado» summary overlay — green check, the shift totals line, the «Ganado hoy» okwash card (one source, confirm-time snapshot; blank-not-wrong), «Listo». */
 #cerrado-screen { position: fixed; inset: 0; background: var(--bg, #F5F7FA); z-index: 260; display: none; flex-direction: column; padding: calc(24px + var(--safe-top, 0px)) 20px calc(16px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
 #cerrado-screen.open { display: flex; }
 #cerrado-screen .cerrado-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; }
@@ -2232,6 +2239,12 @@
 #cerrado-screen .cerrado-sub b { font-weight: 700; color: var(--text, #0D1424); }
 #cerrado-screen .cerrado-foot { flex: none; }
 #cerrado-screen .cerrado-done { width: 100%; padding: 15px 14px; min-height: 52px; border-radius: 14px; background: var(--accent, #2F5FB8); color: #fff; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -.01em; border: 0; cursor: pointer; }
+/* «Ganado hoy» card (prototype S.cerrado :901) — okwash, informative; rendered by showCerrado from the confirm-time snapshot */
+#cerrado-screen .cerrado-earn { width: 100%; border-radius: 16px; padding: 16px 14px; background: var(--green-bg, #EBF7F0); color: var(--success, #15803D); text-align: center; }
+#cerrado-screen .cerrado-earn .ce-lbl { font-size: 10.5px; letter-spacing: .12em; font-weight: 800; text-transform: uppercase; color: inherit; }
+#cerrado-screen .cerrado-earn .ce-big { font-family: 'Red Hat Display', sans-serif; font-size: 46px; font-weight: 800; letter-spacing: -.03em; line-height: 1; margin-top: 4px; font-variant-numeric: tabular-nums; color: inherit; }
+#cerrado-screen .cerrado-earn .ce-cur { font-size: 22px; font-weight: 700; opacity: .5; vertical-align: top; margin-right: 3px; line-height: 1.6; }
+#cerrado-screen .cerrado-earn .ce-tiny { font-size: 12px; opacity: .85; margin-top: 4px; color: inherit; line-height: 1.4; }
 </style>
 <!-- ===== SLICE3:PRESENTATION-REVERIFY:END ===== -->
 <!-- ===== SLICE3:CUENTA-CARD:START — cuenta account-hub additions (owner ruled BUILD 2026-10-27). The profile card (display-only) is injected above the frozen .set-card; the Reglas/Ayuda rows are injected into it. Own trailing stylesheet, new classes only, zero frozen bytes. Light-only (the driver app has no dark theme). Exact to prototype S.cuenta card 1 + rows; the profile card mirrors the frozen .set-card surface, rows reuse the frozen .set-row/.set-ic/.set-tx. ===== -->
@@ -5107,9 +5120,8 @@ function refreshOpenCashSurfaces() {
 // Self-contained glyphs (index.html's ICONS is fine to use at runtime, but these keep the cuadre shell legible).
 const CUADRE_BACK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>';
 const CUADRE_ARROW_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>';
-// «Ganado hoy» stays HIDDEN until Pagos ships: earnings need a real, server-delivered pay-rate source (advisor R2);
-// the driver app has none today, so NEVER fabricate L70×deliveries here. The card's mount (cuadreEarnCardHtml) is
-// kept so Pagos flips this true and feeds the rate.
+// «Ganado hoy» on the cuadre receipt — gated on the ONE Pagos flag, same as the Ganancias tab + offshift. The amount
+// is the ONE source (drv2DayEarned → window.PayRate over the platform rate); blank-not-wrong, never a fabricated rate.
 const CUADRE_SHOW_EARNINGS = PAGOS_LIVE;   // same single Pagos flag as the Ganancias tab + offshift (advisor 2026-10-27)
 // Each confirm-slide MOUNT gets a generation (Codex r2 P2). A cash refresh replaces the slide; a release from the
 // OLD (stale) slide is a no-op, so a mid-drag refresh can never submit a superseded amount — the driver re-slides.
@@ -5142,7 +5154,16 @@ function cuadreShellHtml({ backClass = 'cuadre-volver', bodyHtml = '', footHtml 
     + `<div class="cuadre-foot">${footHtml}</div>`;
 }
 function cuadreEarnCardHtml() {
-  return CUADRE_SHOW_EARNINGS ? '' : '';   // mount point only; HIDDEN until Pagos ships (R2) — never a fabricated rate
+  // Prototype S.cuadre :894 — the «Ganado hoy · L N» informative row. ONE source (drv2DayEarned); blank-not-wrong:
+  // no card unless Pagos is live AND the day's earnings are ready + priced (a seeded platform rate covering every
+  // delivery). Never an invented number — an unseeded/partial rate yields no row, never a false L0.
+  if (!CUADRE_SHOW_EARNINGS) return '';
+  const de = drv2DayEarned();
+  if (!de.ready || de.cents == null || de.cents <= 0) return '';
+  const icon = ICONS.wallet || ICONS.cash || '';
+  return `<div class="cuadre-earn" data-n="2"><div class="row"><span class="ic ok">${icon}</span>`
+    + `<div class="tx"><div class="t">Ganado hoy · L ${(de.cents / 100).toLocaleString('es-HN')}</div>`
+    + `<div class="d">Informativo. No se resta del efectivo; se paga aparte.</div></div></div></div>`;
 }
 function cuadreConfirmFootHtml() {
   // NO .slide-confirm class (Codex r2 P3): the later slice-2 .slide-confirm rules (margin / label layout /
@@ -5495,6 +5516,10 @@ async function onCuadreConfirm(slideGen) {
   // client instant is within ms of the server record, so the minute-granularity duration agrees. (Advisor-accepted.)
   const closedAt = Date.now();
   const submitAuthGen = authGen;   // cerrado is bound to THIS session (Codex r1 P2): an auth change during the pending finalize drops the summary
+  // «Ganado hoy» for the cerrado summary (prototype S.cerrado :901): snapshot the ONE source NOW — the shift identity
+  // and feed are still valid here. finalizeEndShift below clocks the shift out, after which drv2DayEarned would gate to
+  // blank; captured like `cash` so what the summary shows is what was computed at confirm. Null unless Pagos is live.
+  const earnedAtClose = PAGOS_LIVE ? drv2DayEarned() : null;
   const p = XPD.recordCuadre(bound.uid, bound.shiftId, { ...cash, close_op_id: closeOpId });
   p.then(async () => {
     if (!isLatest()) return;                                   // a newer attempt owns the close now
@@ -5505,7 +5530,7 @@ async function onCuadreConfirm(slideGen) {
       $('cuadre-screen').classList.remove('open');
       optimisticShift = false; render();
       const closedOk = await finalizeEndShift();   // ordinary clock-out via the existing endDriverShift callable
-      if (closedOk && authGen === submitAuthGen) showCerrado(cash, bound.start, closedAt);   // «Turno cerrado» ONLY on a clean clock-out of THIS still-current session (never on the revert path, never after an auth change)
+      if (closedOk && authGen === submitAuthGen) showCerrado(cash, bound.start, closedAt, earnedAtClose);   // «Turno cerrado» ONLY on a clean clock-out of THIS still-current session (never on the revert path, never after an auth change)
     } finally { shiftBusy = false; }
   }).catch((err) => {
     if (!isLatest()) return;
@@ -5540,13 +5565,13 @@ function cuadreSubmitting(label) {
 
 /* ===== SLICE3:MONEY-CERRADO:START — the «Turno cerrado» summary (prototype S.cerrado), shown after a successful
    cuadre clock-out. On-demand overlay; reuses the cuadre's SUBMITTED cash (cashOwed + deliveries) and a
-   start→closedAt duration (the instant the cuadre recorded, NOT Date.now() at render). «Ganado hoy» is OMITTED:
-   it needs PAGOS live AND a real pay-rate reader, and the driver app has neither (only a hardcoded L70/delivery) —
-   so it must not invent the number. Modal + session-bound (Codex r1 P2): focus-trapped, dismissed on teardown via
+   start→closedAt duration (the instant the cuadre recorded, NOT Date.now() at render). «Ganado hoy» (prototype
+   S.cerrado :901) is the ONE source — a confirm-time drv2DayEarned snapshot passed in — gated on Pagos, blank-not-wrong,
+   never invented. Modal + session-bound (Codex r1 P2): focus-trapped, dismissed on teardown via
    drv2CerradoDismiss, «Listo» renders the current state (never forces offshift). Shows only on a clean clock-out of
    THIS session (onCuadreConfirm gates on the auth generation). ===== */
 let drv2CerradoDismiss = null;   // teardown hook: tears down an open «Turno cerrado» summary (overlay + its Tab trap)
-function showCerrado(cash, startMs, closedAtMs) {
+function showCerrado(cash, startMs, closedAtMs, earned) {
   const deliveries = (cash && cash.deliveries) || 0;
   const cashOwed = (cash && cash.cashOwed) || 0;
   let dur = '';
@@ -5562,10 +5587,16 @@ function showCerrado(cash, startMs, closedAtMs) {
   if (!ov) { ov = document.createElement('div'); ov.id = 'cerrado-screen'; document.body.appendChild(ov); }
   ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-label', 'Turno cerrado');
   ov.dataset.gen = String(authGen);   // bound to THIS session (Codex r1 P2): a teardown drops it; it never reopens a prior session's summary
+  // Prototype S.cerrado :901 — the «Ganado hoy» card. ONE source (the confirm-time drv2DayEarned snapshot passed in);
+  // blank-not-wrong: no card unless Pagos live + ready + priced. Never a fabricated rate.
+  const earnCard = (earned && earned.ready && earned.cents != null && earned.cents > 0)
+    ? `<div class="cerrado-earn"><div class="ce-lbl">Ganado hoy</div><div class="ce-big"><span class="ce-cur">L</span>${(earned.cents / 100).toLocaleString('es-HN')}</div><div class="ce-tiny">Se paga aparte según el calendario de la plataforma</div></div>`
+    : '';
   ov.innerHTML = `
     <div class="cerrado-body">
       <div class="cerrado-illus">${CHECK}</div>
       <div><div class="cerrado-h">Turno cerrado</div><p class="cerrado-sub">Entregaste <b>L ${cashOwed.toLocaleString('es-HN')}</b> en efectivo · ${deliveries} ${ent}${dur ? ` · ${dur}` : ''}.</p></div>
+      ${earnCard}
     </div>
     <div class="cerrado-foot"><button class="cerrado-done" id="cerrado-done" type="button">Listo</button></div>`;
   ov.classList.add('open');

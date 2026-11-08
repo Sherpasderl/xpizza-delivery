@@ -174,6 +174,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/slice3-freeze.guard.test.js',  // this guard
   'xpizza-driver/slice3-contrast.test.js',      // batch-3 fg/bg WCAG checks (added when the first batch-3 CSS lands)
   'xpizza-driver/cuadre-submit.test.js',        // cuadre slide-to-confirm money-submit handler test (lift-real idiom)
+  'xpizza-driver/ganado-hoy-earnings.test.js',  // «Ganado hoy» cuadre row + cerrado card one-source test (SLICE3 Pagos)
   'xpizza-driver/chime-fresh.test.js',          // new-assignment chime (same-hub 'accepted' stacks) handler test
   'xpizza-driver/offer-takeover.test.js',       // cross-hub 2nd-order S.oferta takeover: acceptSecondOrder-not-acceptTask exclusivity
   'xpizza-driver/oferta-offer.test.js',         // S.oferta offer-branch rebuild output test

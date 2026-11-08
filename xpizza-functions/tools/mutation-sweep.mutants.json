@@ -31760,6 +31760,66 @@
   ]
  },
  {
+  "id": "gh-06",
+  "slice": "gh",
+  "file": "../xpizza-driver/index.html",
+  "from": "  if (!de.ready || de.cents == null || de.cents <= 0) return '';",
+  "to": "  if (!de.ready || de.cents == null || de.cents >= 0) return '';",
+  "label": "cuadre «Ganado hoy» row PRESENT when priced — a dropped row (always-blank guard) must go RED",
+  "kills_with": [
+   "the .cuadre-earn card renders"
+  ],
+  "command": [
+   "node",
+   "../xpizza-driver/ganado-hoy-earnings.test.js"
+  ]
+ },
+ {
+  "id": "gh-07",
+  "slice": "gh",
+  "file": "../xpizza-driver/index.html",
+  "from": "<div class=\"t\">Ganado hoy · L ${(de.cents / 100).toLocaleString('es-HN')}</div>",
+  "to": "<div class=\"t\">Ganado hoy · L ${(de.count).toLocaleString('es-HN')}</div>",
+  "label": "cuadre «Ganado hoy» amount = drv2DayEarned ONLY — a second source (de.count) must go RED",
+  "kills_with": [
+   "cuadre amount L 150.5 for 15050c tracks drv2DayEarned"
+  ],
+  "command": [
+   "node",
+   "../xpizza-driver/ganado-hoy-earnings.test.js"
+  ]
+ },
+ {
+  "id": "gh-08",
+  "slice": "gh",
+  "file": "../xpizza-driver/index.html",
+  "from": "  const earnCard = (earned && earned.ready && earned.cents != null && earned.cents > 0)",
+  "to": "  const earnCard = (earned && earned.ready && earned.cents != null && earned.cents < 0)",
+  "label": "cerrado «Ganado hoy» card PRESENT when priced — a dropped card (never-true gate) must go RED",
+  "kills_with": [
+   "the .cerrado-earn card renders"
+  ],
+  "command": [
+   "node",
+   "../xpizza-driver/ganado-hoy-earnings.test.js"
+  ]
+ },
+ {
+  "id": "gh-09",
+  "slice": "gh",
+  "file": "../xpizza-driver/index.html",
+  "from": "<div class=\"ce-big\"><span class=\"ce-cur\">L</span>${(earned.cents / 100).toLocaleString('es-HN')}</div>",
+  "to": "<div class=\"ce-big\"><span class=\"ce-cur\">L</span>${(earned.count).toLocaleString('es-HN')}</div>",
+  "label": "cerrado «Ganado hoy» amount = the snapshot ONLY — a second source (earned.count) must go RED",
+  "kills_with": [
+   "cerrado amount L 150.5 for 15050c tracks the snapshot"
+  ],
+  "command": [
+   "node",
+   "../xpizza-driver/ganado-hoy-earnings.test.js"
+  ]
+ },
+ {
   "id": "otps-1",
   "slice": "otps",
   "label": "guest train item: verifyCheckoutCode loses its OTP_SALT secret binding (a NEW function gets no plain env ⇒ 500 at launch)",
