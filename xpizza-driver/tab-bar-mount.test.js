@@ -53,7 +53,7 @@ function boot(opts = {}) {
     : opts.driverState);
   const disp = JSON.stringify(opts.dispContact === undefined ? '+504 9795 2893' : opts.dispContact);
   const body =
-    'const SYSTEM_VERSION = "2.5.3";\n' +   // the Cuenta version line references it
+    'const SYSTEM_VERSION = "2.5.4";\n' +   // the Cuenta version line references it
     'function render(){ _calls.render++; }\n' +
     'function openCuenta(){ _calls.openCuenta++; }\n' +
     'function openHistoryModal(){ _calls.openHistory++; }\n' +
@@ -99,7 +99,7 @@ t('REAL showScreen mounts the bar on offshift (Inicio) + Cuenta, data-gated to I
   assert.equal(h.bar('screen-offshift'), null, 'leaving offshift removes its bar');
   assert.ok(h.bar('screen-cuenta').querySelector('.tab-btn.on[data-tab="cuenta"]'), 'Cuenta active on the Cuenta screen');
   const ver = h.document.getElementById('screen-cuenta').querySelector('.cuenta-ver');
-  assert.ok(ver && /v2\.5\.3 · driver/.test(ver.textContent), 'the muted version line is on Cuenta (customer-app precedent)');
+  assert.ok(ver && /v2\.5\.4 · driver/.test(ver.textContent), 'the muted version line is on Cuenta (customer-app precedent)');
   h.api.showScreen('login');
   assert.equal(h.bar('screen-offshift'), null);
   assert.equal(h.bar('screen-cuenta'), null, 'no bar on an unrelated screen');

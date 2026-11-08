@@ -258,13 +258,14 @@ const SLICE2_TEST_MODIFY = new Set(['xpizza-driver/onboarding-host.test.js', 'xp
 const ALLOWED_DELETE = new Set(['xpizza-driver/single-order-branch.test.js']);
 
 // OUT-OF-REGION ALLOW (owner/advisor ruling 2026-10-23): a short, explicit list of exact single-line edits
-// permitted OUTSIDE the SLICE2 regions, each documented. The native 2.5.3 build bumps the app's SYSTEM_VERSION
-// constant (2.5.2 → 2.5.3); that line is not inside any SLICE2 region. The restoration check applies this list
+// permitted OUTSIDE the SLICE2 regions, each documented. The native 2.5.3 build bumped the app's SYSTEM_VERSION
+// constant 2.5.2 → 2.5.3; the 2.5.4 web bump (parity with the native www) advances it to 2.5.4 — still the same
+// single line, not inside any SLICE2 region, so the allow transforms the 2.5.2 baseline straight to 2.5.4. The restoration check applies this list
 // to the baseline before the byte-compare, so ONLY these exact lines may differ — any OTHER out-of-region drift
 // still goes RED (proven by the sensitivity cell below: the allow is line-count-preserving and changes exactly
 // these lines, nothing else).
 const OUT_OF_REGION_ALLOW = [
-  { from: "const SYSTEM_VERSION = '2.5.2';", to: "const SYSTEM_VERSION = '2.5.3';" },
+  { from: "const SYSTEM_VERSION = '2.5.2';", to: "const SYSTEM_VERSION = '2.5.4';" },
   // R7: add the two nav-pref screen names to showScreen's switch list (single-line, line-count-preserving).
   { from: "  ['config', 'login', 'offshift', 'onshift', 'companion'].forEach(s => {",
     to:   "  ['config', 'login', 'offshift', 'onshift', 'companion', 'cuenta', 'navApp'].forEach(s => {" },

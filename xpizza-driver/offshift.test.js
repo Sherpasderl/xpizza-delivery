@@ -83,7 +83,7 @@ function boot({ pagosLive = false, startImpl, suspended = false, dispatch = '+50
     'return { renderOffshift, refresh: () => refreshOpenCashSurfaces(), setReady: (b) => { feedReady = b; cutoverLoaded = b; driverState = b ? { name: "Marvin", active: false } : null; }, getShiftBusy: () => shiftBusy, getOptimistic: () => optimisticShift, de: () => drv2DayEarned() };';
   const names = ['document', '$', 'computeShiftCash', 'allOrders', 'SYSTEM_VERSION', 'toast', 'ICONS', 'fbOnValue', 'fbRef', 'XPD', '_suspended', '_driverState', '_currentUser', '_calls', '_startImpl', 'shiftDeliveries', 'window'];
   const api = (new Function(...names, body))(
-    document, $, computeShiftCash, allOrders, '2.5.3', () => {}, ICONS, fbOnValue, fbRef, XPD, suspended,
+    document, $, computeShiftCash, allOrders, '2.5.4', () => {}, ICONS, fbOnValue, fbRef, XPD, suspended,
     { name: 'Marvin Posadas', active: false }, { uid: 'drv', email: 'marvin@x.pizza' }, calls, startImpl, shiftDeliveries, window);
   const host = () => document.getElementById('screen-offshift');
   async function slide(id = 'btn-start-shift') {
@@ -114,7 +114,7 @@ await t('structure: greeting (natural case), status chip, «Efectivo a entregar�
   assert.ok(!/Recib[ií]s pedidos de/.test(html), '«Recibís pedidos de» OMITTED (no data source)');
   assert.ok(h.host().querySelector('.off2-stats.one') && !h.host().querySelector('.off2-stats.two'), 'single-stat layout');
   assert.ok(h.host().querySelector('.off2-cuenta'), 'Cuenta circle button (.off2-cuenta) present');
-  assert.ok(!/version-tag/.test(html) && !/v2\.5\.3/.test(html), 'version line OMITTED (not in the prototype offshift frame)');
+  assert.ok(!/version-tag/.test(html) && !/v2\.5\.4/.test(html), 'version line OMITTED (not in the prototype offshift frame)');
   assert.ok(h.host().querySelector('#btn-start-shift .slide-thumb'), '«Iniciar turno» slide present');
   assert.ok(h.host().querySelector('#duty-toggle-off.hidden'), 'the duty-toggle is kept (hidden) for the frozen references');
   assert.ok(h.calls.clearReturn >= 1, 'renderOffshift clears the returning nav target (off-shift / shift-end — advisor clear hook)');
