@@ -498,6 +498,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
       ['admission after a cancel decision', order({ payment_placed: { leg_id: 'L1', at: 1 }, payment_cancel: { kind: 'cancel', at: 2 } }), { sdkGoLive: true }],
       ['admission after a terminal decision', order({ payment_placed: { leg_id: 'L1', at: 1 }, payment_terminal: { revision: 0, at: 2 } }), { sdkGoLive: true }],
       ['admission with a malformed placement', order({ payment_placed: true }), { sdkGoLive: true }],
+      ['admission on a delivered order without a terminal marker', order({ payment_placed: { leg_id: 'L1', at: 1 }, status: 'delivered' }), { sdkGoLive: true }],
     ];
     for (const [label, o, extra] of rows) {
       const db = makeHonestDb({ orders: { [OID]: o } });
@@ -835,14 +836,16 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.ok(w.ord().status === 'completed' && w.db.getAt(`tasks/${OID}_delivery/status`) === 'delivered' && w.ord().tracking_token === 'TT-8', `${L}: the slower go-live writes NOTHING (got ${JSON.stringify(r)}, status ${w.ord().status}, task ${w.db.getAt(`tasks/${OID}_delivery/status`)})`);
   });
   await cell('SDK-GOLIVE-CRASH-AFTER-ORDER-TXN-REPLAYED', async (L) => {
-    let crash = true;
-    const w = world({ hooks: { beforeTx: async (p) => { if (crash && p.startsWith('tasks/')) { crash = false; throw new Error('crash after the order transaction'); } } } });
+    let n = 0; let crashed = false;
+    const w = world({ hooks: { beforeTx: async (p) => { if (p.startsWith('tasks/') && ++n === 2) { crashed = true; throw new Error('crash after the first task'); } } } });
     await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
-    assert.ok(!crash && w.ord().materialized_at && !w.db.getAt(`tasks/${OID}_pickup`) && w.ord().sdk_live_pending, `${L}: PREMISE — the order went live, its tasks were not written, the pending list is recorded`);
+    assert.ok(crashed && w.ord().materialized_at && w.db.getAt(`tasks/${OID}_pickup`) && !w.db.getAt(`tasks/${OID}_delivery`) && w.ord().sdk_live_pending, `${L}: PREMISE — live, the pickup task written, the delivery task not, the pending list recorded`);
+    await w.db.ref(`tasks/${OID}_pickup/status`).set('assigned');   // a driver took the pickup meanwhile
     const c = await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     assert.ok(c.outcome === 'refused' && c.reason === 'going_live', `${L}: a cancel waits while the go-live's paths are pending (got ${JSON.stringify(c)})`);
     w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps);
-    assert.ok(w.db.getAt(`tasks/${OID}_pickup`) && w.db.getAt(`tasks/${OID}_delivery`) && w.db.getAt(`order_tracking/${w.ord().tracking_token}`) && !w.ord().sdk_live_pending, `${L}: the sweeper replays the pending paths and clears the list`);
+    assert.ok(w.db.getAt(`tasks/${OID}_delivery`) && w.db.getAt(`order_tracking/${w.ord().tracking_token}`) && !w.ord().sdk_live_pending, `${L}: the sweeper replays the pending paths and clears the list`);
+    assert.strictEqual(w.db.getAt(`tasks/${OID}_pickup/status`), 'assigned', `${L}: the replay is CREATE-ONLY — the driver's pickup is never reset`);
   });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
