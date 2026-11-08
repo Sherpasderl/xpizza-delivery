@@ -765,6 +765,49 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     w.tick(SW().REVISIT_MS + 1); await SW().sweepSdkPayments(w.deps);
     assert.strictEqual(w.db.getAt(`${RW}/balance`), 5, `${L}: consumed ONCE (balance 10 − 5)`);
   });
+  // ruling (r2.2): a FULFILLED (delivered / completed) SDK order's redemption still reserved is consumed — never left reserved
+  const RWP = `user_rewards/tb_uid/tb_rest`;
+  const rewardSeed = (state, o = {}) => ({ orders: { [OID]: order({ customer_uid: 'tb_uid', redemption: { cost: 5, item: 'tb_item' }, ...o }) }, user_rewards: { tb_uid: { tb_rest: { balance: 10, reserved: 5, reservations: { [OID]: { state, cost: 5, created_at: 1 } } } } } });
+  const failRewardTx = (n) => { let left = n; return { beforeTx: async (p) => { if (left > 0 && p.startsWith(RWP)) { left -= 1; throw new Error('consume transaction failed'); } } }; };
+  await cell('SDK-TERMINAL-SETTLE-CONSUMES-RESERVED-REDEMPTION', async (L) => {
+    const w = world({ seed: rewardSeed('reserved'), hooks: failRewardTx(1) });
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.strictEqual(w.db.getAt(`${RWP}/reservations/${OID}/state`), 'reserved', `${L}: PREMISE — the go-live consume failed`);
+    await deliver(w);
+    assert.strictEqual(w.db.getAt(`${RWP}/reservations/${OID}/state`), 'consumed', `${L}: settlement of the fulfilled order consumed the redemption`);
+    w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps); w.tick(SW().REVISIT_MS + 1); await SW().sweepSdkPayments(w.deps);
+    assert.strictEqual(w.db.getAt(`${RWP}/balance`), 5, `${L}: consumed ONCE across settle + two sweeps (balance 10 − 5)`);
+  });
+  await cell('SDK-TERMINAL-SWEEP-CONSUMES-RESERVED-REDEMPTION', async (L) => {
+    // the go-live consume AND settlement's consume fail; the sweeper's own terminal step consumes in the SAME visit
+    const w = world({ seed: rewardSeed('reserved'), hooks: failRewardTx(2) });
+    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await w.db.ref(`orders/${OID}/status`).set('delivered');
+    w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps);
+    assert.strictEqual(w.db.getAt(`${RWP}/reservations/${OID}/state`), 'consumed', `${L}: the sweeper's terminal visit consumed it (one visit)`);
+    w.tick(SW().REVISIT_MS + 1); await SW().sweepSdkPayments(w.deps);
+    assert.strictEqual(w.db.getAt(`${RWP}/balance`), 5, `${L}: consumed ONCE`);
+  });
+  await cell('SDK-TERMINAL-REDEMPTION-NOT-RESERVED-NOOP', async (L) => {
+    const w = await (async () => { const x = world({ seed: rewardSeed('reserved') }); await C().placeOriginal(x.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 }); return x; })();
+    assert.strictEqual(w.db.getAt(`${RWP}/reservations/${OID}/state`), 'consumed', `${L}: PREMISE — consumed at go-live`);
+    const ledger0 = JSON.stringify(w.db.getAt(`${RWP}/ledger`));
+    await deliver(w); w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps); w.tick(SW().REVISIT_MS + 1); await SW().sweepSdkPayments(w.deps);
+    assert.ok(w.db.getAt(`${RWP}/balance`) === 5 && JSON.stringify(w.db.getAt(`${RWP}/ledger`)) === ledger0, `${L}: an already-consumed redemption is untouched (no second debit, no new ledger entry)`);
+    // a RELEASED one on a fulfilled order is never consumed by the backstop (no consume-after-release attempt / alert)
+    const w2 = world({ seed: rewardSeed('released', { status: 'delivered', payment_placed: { leg_id: 'L1', at: 1 }, payment_status: 'confirmed', materialized_at: 5 }) });
+    await SW().sweepSdkPayments(w2.deps);
+    await C().consumeFulfilledRedemption(w2.deps, OID, w2.ord());
+    assert.ok(w2.db.getAt(`${RWP}/reservations/${OID}/state`) === 'released' && !alerts(w2.db).some((a) => a.kind === 'reward_consume_after_release'), `${L}: a released redemption is left released (no consume attempt)`);
+  });
+  await cell('SDK-CANCEL-RELEASES-RESERVED-REDEMPTION', async (L) => {
+    const w = world({ seed: rewardSeed('reserved') });
+    w.deps.releaseResources = (dp, id, o) => require('./release').releaseSdkOrder(dp, id, o);
+    const r = await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
+    assert.ok(r.outcome === 'cancelled' && w.db.getAt(`${RWP}/reservations/${OID}/state`) === 'released', `${L}: the SDK cancel RELEASES the reserved redemption through the existing release path (got ${JSON.stringify(r)}, state ${w.db.getAt(`${RWP}/reservations/${OID}/state`)})`);
+    w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps);
+    assert.ok(w.db.getAt(`${RWP}/reservations/${OID}/state`) === 'released' && w.db.getAt(`${RWP}/balance`) === 10, `${L}: never consumed afterwards (balance 10)`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
