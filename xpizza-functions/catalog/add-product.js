@@ -108,7 +108,7 @@ function classifyItems(incoming, activeKeys) {
 // validator that runs after allocation still refuses — this only names the field).
 // authoring — the ONE platform authoring switch (catalog/platform-groups.js, §0c.7). Off ⇒ a new required-choice group is
 // refused for EVERY brand (choices_not_supported_yet); on ⇒ a group arrives as ONE atomic unit (see allocateGroups).
-function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, registryHasKey, fieldProblem = () => null, authoring = false }) {
+function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, registryHasKey, fieldProblem = () => null, authoring = false, mint = null }) {
   const source = JSON.parse(JSON.stringify(incoming));
   // S1a: every frozen key — active or inert — stays TAKEN, and every frozen display id stays USED, so a renamed product's key is
   // never minted for another product and its id is never handed to a new one (D1 ruling condition 1).
@@ -185,6 +185,8 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
   // has, and never an existing product that happens to share the key.
   const at = (key) => { for (const [r, k] of refToKey) if (k === key) return { key, ref: r }; return { key }; };
   const refToId = new Map();   // 1D add-product B: tmp ref → DISPLAY id (the namespace variantOf / variant_items use)
+  const mintedNow = new Set();
+  const mintExtraKeys = new Set(((incoming && incoming.extras) || []).map((e) => (isObj(e) ? e.key : null)).filter((k) => typeof k === 'string'));
   for (const { item } of fresh) {
     const name = tidyName(item.display.name);
     let key; let id;
@@ -192,6 +194,17 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
       key = slugify(name);
       if (!key) refuse('name_unusable', `"${name}" has no letters or digits to build an identifier from`, { ref: item.ref, field: 'name' });
       id = key;
+    }
+    // S1c: with minting on, the pricing key is a fresh opaque token (the id is still today's) and the server records it as a
+    // frozen key, so nothing downstream needs a new rule. It never equals an active, saved, same-batch, extra, frozen or
+    // reserved key; three collisions in a row refuse (retryable) rather than reuse one.
+    if (mint) {
+      const used = (k) => activeKeys.has(k) || frozenKeys.has(k) || storedByKey.has(k) || mintedNow.has(k) || mintExtraKeys.has(k) || (mint.reserved && mint.reserved.has(k));
+      let drawn = null;
+      for (let i = 0; i < 3 && drawn === null; i++) { const k = mint.newKey(); if (!used(k)) drawn = k; }
+      if (drawn === null) refuse('mint_unavailable', 'could not allocate a new product identifier — try again', { status: 503, ref: item.ref, field: 'name' });
+      key = drawn; mintedNow.add(key);
+      source.frozen_keys = { ...(isObj(source.frozen_keys) ? source.frozen_keys : {}), [String(id)]: key };
     }
     refToKey.set(item.ref, key);
     refToId.set(item.ref, id);
@@ -592,7 +605,7 @@ function assertSameAuthoredFields(incomingStructure, storedStructure, { activeHa
 const NAME_MAX = 60;
 const DESC_MAX = 200;
 const chars = (s) => [...String(s)].length;
-function textCapProblems({ draft, live }) {
+function textCapProblems({ draft, live, mint = false }) {
   const liveByKey = new Map(((live && live.items) || []).filter((it) => isObj(it) && typeof it.key === 'string').map((it) => [it.key, it]));
   const out = [];
   const items = ((draft && draft.items) || []).filter((it) => isObj(it) && isObj(it.display));
@@ -613,7 +626,7 @@ function textCapProblems({ draft, live }) {
         if (/[<>]/.test(d.name)) out.push({ key: id, field: 'name', code: 'text_unsafe' });
       }
       if (taken(it, d.name)) out.push({ key: id, field: isGroupVariant(it) ? 'choice' : 'name', code: 'name_taken' });
-      else if (reserved.has(normalizeName(d.name)) && !(l && normalizeName(it.key) === normalizeName(d.name))) out.push({ key: id, field: isGroupVariant(it) ? 'choice' : 'name', code: 'name_previously_used' });
+      else if (!(mint && !l) && reserved.has(normalizeName(d.name)) && !(l && normalizeName(it.key) === normalizeName(d.name))) out.push({ key: id, field: isGroupVariant(it) ? 'choice' : 'name', code: 'name_previously_used' });
     }
     if (typeof d.desc === 'string' && (!was || was.desc !== d.desc) && chars(d.desc) > DESC_MAX) out.push({ key: id, field: 'desc', code: 'desc_too_long' });
   }

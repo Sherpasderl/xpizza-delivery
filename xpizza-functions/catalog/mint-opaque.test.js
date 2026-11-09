@@ -28,7 +28,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   ok('OFF by default; i_ + 12 symbols of [a-z2-7] from 60 random bits');
 }
 
-const addTo = (src, ref, name, cat) => { const s = clone(src); s.items.push({ ref, price: 150, display: { name, cat, desc: '' } }); s.structure.item_order.push(ref); return s; };
+const addTo = (src, ref, name, cat) => { const s = clone(src); s.items.push({ ref, price: 150, display: { name, cat, desc: '', price: 150 } }); s.structure.item_order.push(ref); return s; };
 const seq = (...keys) => { let i = 0; return () => keys[Math.min(i++, keys.length - 1)]; };
 
 // ── name-keyed (x_pizza): a fresh key, the id as today, the frozen entry recorded; the build and validation accept it ──
@@ -76,9 +76,12 @@ const seq = (...keys) => { let i = 0; return () => keys[Math.min(i++, keys.lengt
   const stored = { ...base, frozen_keys: { 9999: 'i_frozenfrozen' } };
   const two = addTo(addTo(stored, 'tmp:mint0003', 'Pizza Uno', cat), 'tmp:mint0004', 'Pizza Dos', cat);
   const r = AP.allocateAdditions({ incoming: two, stored, activeItems: base.items, keyMode: 'name', hwm: null, registryHasKey: () => false,
-    mint: { newKey: seq(liveKey, extraKey, 'i_frozenfrozen', 'i_reservedkey2', 'i_bbbbbbbbbbbb', 'i_bbbbbbbbbbbb', 'i_cccccccccccc'), reserved: new Set(['i_reservedkey2']) } });
+    mint: { newKey: seq(liveKey, extraKey, 'i_bbbbbbbbbbbb', 'i_frozenfrozen', 'i_reservedkey2', 'i_cccccccccccc'), reserved: new Set(['i_reservedkey2']) } });
   const keys = ['Pizza Uno', 'Pizza Dos'].map((nm) => r.source.items.find((i) => i.display.name === nm).key);
-  assert.deepStrictEqual(keys, ['i_bbbbbbbbbbbb', 'i_cccccccccccc'], `MO-COLLIDE active, extra, frozen, reserved and same-batch keys are redrawn (${keys})`);
+  assert.deepStrictEqual(keys, ['i_bbbbbbbbbbbb', 'i_cccccccccccc'], `MO-COLLIDE active, extra, frozen and reserved keys are redrawn (${keys})`);
+  const r2 = AP.allocateAdditions({ incoming: two, stored, activeItems: base.items, keyMode: 'name', hwm: null, registryHasKey: () => false,
+    mint: { newKey: seq('i_ffffffffffff', 'i_ffffffffffff', 'i_gggggggggggg'), reserved: new Set() } });
+  assert.deepStrictEqual(['Pizza Uno', 'Pizza Dos'].map((nm) => r2.source.items.find((i) => i.display.name === nm).key), ['i_ffffffffffff', 'i_gggggggggggg'], 'MO-COLLIDE-BATCH a key minted earlier in the same save is redrawn');
   let err = null;
   try { AP.allocateAdditions({ incoming: addTo(stored, 'tmp:mint0005', 'Pizza Tres', cat), stored, activeItems: base.items, keyMode: 'name', hwm: null, registryHasKey: () => false, mint: { newKey: () => liveKey, reserved: new Set() } }); } catch (e) { err = e; }
   assert.ok(err && err.code === 'mint_unavailable' && err.status === 503, 'MO-503 three collisions in a row: a retryable 503, never a reused key');

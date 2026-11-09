@@ -2363,6 +2363,7 @@
   "catalog/menu-gates.js",
   "catalog/menu-order.js",
   "catalog/menu-structure-rows.js",
+  "catalog/mint-opaque.js",
   "catalog/mirror-keys.js",
   "catalog/mirror-rtdb.js",
   "catalog/portal-reads.js",
@@ -2937,6 +2938,10 @@
    "lifts": []
   },
   "catalog/menu-structure-rows.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/mint-opaque.js": {
    "pins": [],
    "lifts": []
   },
