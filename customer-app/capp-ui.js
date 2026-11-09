@@ -1473,7 +1473,9 @@
       if (!S.flow) { S.flow = newFlow(); C.setMode(S.flow, S.mode); }
       onOutcome(out);
     }
+    const SDK_KINDS = new Set(['sdk_pending', 'sdk_review', 'sdk_declined', 'sdk_expired', 'sdk_unavailable', 'sdk_not_allowed', 'sdk_bad_card', 'sdk_switched']);
     function onOutcome(out, attempt) {
+      if (out && SDK_KINDS.has(out.kind) && sdkOn()) { emit('outcome', out); onSdkOutcome(out); return; }   // Codex r2 P2: an SDK outcome from ANY entry point (send, «Ver estado»)
       emit('outcome', out);   // S7a-2 (Codex s7a2 r1 #4): every outcome reaches the host (a return handoff settles on a LATER terminal one)
       const k = out && out.kind;
       if (k === 'redirect') {
@@ -1820,6 +1822,11 @@
       SDK.unsub = typeof un === 'function' ? un : null;
     }
     function sdkHostUnsub() { if (SDK.unsub) { try { SDK.unsub(); } catch (_) {} } SDK.unsub = null; }
+    // the completed switch's cash order: placed ONCE, as soon as the checkout can send (the restored flow's quote landed)
+    function sdkPlaceIfReady() {
+      if (!SDK.placeWhenReady || dead || !S.flow || need() || !C.tipChosen(S.flow) || !totalsNow().ready) return;
+      SDK.placeWhenReady = false; placeNow();
+    }
     function sdkStopPoll() { if (SDK.pollT !== null) { T_.clearTimeout(SDK.pollT); SDK.pollT = null; } }
     function sdkPollLater(id, ms) {
       sdkStopPoll();
@@ -1853,7 +1860,14 @@
       if (k === 'sdk_expired') { backTo('checkout'); if (!out.safe) sdkPollLater(out.order_id, POLL_SDK_MS); return; }
       if (k === 'sdk_unavailable') { SDK.avail = false; backTo(); return; }
       if (k === 'sdk_not_allowed' || k === 'sdk_bad_card') { backTo('checkout'); return; }
-      if (k === 'sdk_switched') { SDK.replaces = out.replaces; SDK.declId = null; if (S.flow) S.flow.pay = 'cash'; render(); placeNow(); return; }
+      if (k === 'sdk_switched') {
+        SDK.replaces = out.replaces; SDK.declId = null;
+        // Codex r2 P2: after a reload the flow is empty — the switch's stored inputs (a cash body) restore it, so the SAME transition completes
+        if (out.body && (!S.flow || need())) { const rf = flowFromBody(out.body); if (rf) { S.flow = rf; S.mode = rf.mode; S.flowRestored = true; } }
+        if (S.flow) S.flow.pay = 'cash';
+        if (S.screen !== 'checkout' && S.screen !== 'tip') S.screen = S.flow && S.flow.mode === 'delivery' ? 'tip' : 'checkout';
+        SDK.placeWhenReady = true; render(); sdkPlaceIfReady(); return;   // the cash order goes once the checkout is ready (a reload re-quotes first)
+      }
       onOutcome(out);   // the shared refusals (closed, offline, the recovery sheet, …)
     }
     // send(): the SDK card path (after the kept 2-s window); the processing sheet over the screen of the tap
@@ -1869,7 +1883,8 @@
       if (S.layerKind) { S.layerKind = null; renderLayer(); }
       if (!id) { if (S.flow) S.flow.pay = 'cash'; render(); return; }   // nothing was attempted: simply cash
       sdkProc(false);
-      let out; try { out = await api.sdkSwitchToCash(id, sdkAuth()); } catch (_) { out = { kind: 'sdk_pending', order_id: id }; }
+      let ctx = null; try { ctx = { ...ctxBase(), headers: intakeHeaders() }; } catch (_) { ctx = null; }
+      let out; try { out = await api.sdkSwitchToCash(id, { ...sdkAuth(), ...(S.flow && ctx ? { flow: { ...S.flow, pay: 'cash' }, ctx } : {}) }); } catch (_) { out = { kind: 'sdk_pending', order_id: id }; }
       if (!dead) onSdkOutcome(out);
     }
     async function sdkSaveCard() {
@@ -1928,7 +1943,7 @@
       syncInert(); reportRoute();
       if (had && lost()) { focusTo(refind(had)); if (caret && doc.activeElement && doc.activeElement.id === caret[0]) { try { doc.activeElement.setSelectionRange(caret[1], caret[2]); } catch (_) {} } }
       if (S.screen === 'checkout') wireMaps();
-      if ((S.screen === 'checkout' || S.screen === 'tip') && cfg.sdkCheckout === true) sdkLoad();   // S2-checkout: the cards + availability, once
+      if ((S.screen === 'checkout' || S.screen === 'tip') && cfg.sdkCheckout === true) { sdkLoad(); if (SDK.placeWhenReady) Promise.resolve().then(sdkPlaceIfReady); }   // S2-checkout: the cards + availability, once; a pending switch's cash order
       if (S.screen === 'checkout' || S.screen === 'tip') requote();
       geocodePin();
     }

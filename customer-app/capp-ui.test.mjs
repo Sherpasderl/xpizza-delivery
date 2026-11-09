@@ -3248,3 +3248,39 @@ test('Codex r1 P1-5: the page that ships (shell.html) loads the checkout modules
   for (const f of ['capp-pay-card.js', 'capp-pay-checkout.js', 'capp-pay-sdk.js', 'capp-pay-adjust.js']) assert.ok(src.includes(f), `🔴 SDK-ship: shell.html loads ${f}`);
   assert.ok(src.indexOf('capp-pay-card.js') < src.indexOf('capp-pay-checkout.js'), 'the card logic before the markup that reads it');
 });
+
+// ── Codex narrow r2 — the UI ──
+test('Codex r2 P2: «Probar otra tarjeta» → cash → «Hacer pedido» with the switch NOT yet safe ⇒ the SDK handler (processing + polling); a later «expired, safe» places the NEW cash order', async () => {
+  const b = bootSdk({ script: { placeSdkOrder: [(body) => SDK_R('declined', { order_id: body.order_id, attempt_id: body.attempt_id, decline: 'retryable', pay_deadline_at: NOON().getTime() + 600e3 })],
+    cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, false) }], placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })],
+    createOrder: [(body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })] } });
+  await sdkCheckout(b); await sdkPlace(b);
+  const old = b.srv.of('placeSdkOrder')[0].body.order_id;
+  await b.click('#layer [data-act="decl-other_card"]'); await b.click('#layer [data-act="paypick"][data-card="cash"]');
+  await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b.text('#layer .sheet.proc h2'), 'Procesando tu pago…', '🔴 SDKUI-route: the SDK outcome is handled (the processing sheet)');
+  b.timers.flush(); await settle(); b.timers.flush(); await settle();
+  assert.ok(b.srv.of('placeSdkStatus').length >= 1, '🔴 SDKUI-route: the status is polled');
+  const co = b.srv.of('createOrder')[0];
+  assert.ok(co && co.body.order_id !== old && co.body.replaces_order_id === old, '🔴 SDKUI-route: the switch completes — a NEW cash order');
+});
+
+test('Codex r2 P2: a reload DURING a pending cash switch restores the checkout\'s inputs — the completed switch places the NEW cash order (pin, details, tip intact)', async () => {
+  const storage = memStore(), HOST = HOSTED_KEYS;   // the shell's per-store keys (the cart persists)
+  const b1 = bootSdk({ storage, config: HOST, script: { placeSdkOrder: [(body) => SDK_R('declined', { order_id: body.order_id, attempt_id: body.attempt_id, decline: 'retryable', pay_deadline_at: NOON().getTime() + 600e3 })],
+    cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, false) }], placeSdkStatus: ['network'] } });
+  // a REAL tap adds the dish (the store's persisting write — cart.inc() alone never persists, a test shortcut a reload would expose)
+  await b1.click(`.qty-add-btn[data-id="${b1.plain.key}"]`); b1.ui.render(); await b1.click('#cart-bar'); await b1.click('[data-act="checkout"]'); await settle();
+  await b1.type('#f-details', 'Portón negro'); await b1.click('[data-act="pin"]'); await b1.click('[data-act="pin-done"]'); await settle();
+  await sdkPlace(b1);
+  assert.ok(storage.getItem(HOSTED_KEYS.cartKey), 'premise: the placement froze the cart snapshot (hosted)');
+  const old = b1.srv.of('placeSdkOrder')[0].body.order_id;
+  await b1.click('#layer [data-act="decl-cash"]'); await settle();
+  const b2 = bootSdk({ storage, config: HOST, script: { placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })], createOrder: [(body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })] } });
+  b2.ui.restore(JSON.parse(storage.getItem(HOSTED_KEYS.cartKey)));   // what the shell does on a reload: the persisted cart into the mounted store
+  await settle(); b2.timers.flush(); await settle(); b2.timers.flush(); await settle();
+  const co = b2.srv.of('createOrder')[0];
+  assert.ok(co, '🔴 SDKUI-reload-switch: the completed switch places the cash order');
+  assert.ok(co.body.replaces_order_id === old && co.body.order_id !== old && co.body.payment_method === 'cash', '🔴 SDKUI-reload-switch: a NEW cash order replacing the SDK one');
+  assert.ok(Number.isFinite(co.body.lat) && Number.isFinite(co.body.lng), 'the restored inputs (the pin) rode along');
+});

@@ -32707,8 +32707,8 @@
   "slice": "s2ck",
   "label": "an unknown answer read as a decline (no status)",
   "file": "../customer-app/capp-api.js",
-  "from": "      if (r.network || r.status >= 500 || !r.json) return sdkStatus(id, p);",
-  "to": "      if (r.network || r.status >= 500 || !r.json) return { kind: 'sdk_declined', order_id: id, bucket: 'hard' };",
+  "from": "      if (r.network || r.status >= 500 || !r.json) { markClaimed(id); return sdkStatus(id, p); }",
+  "to": "      if (r.network || r.status >= 500 || !r.json) { return { kind: 'sdk_declined', order_id: id, bucket: 'hard' }; }",
   "command": [
    "node",
    "--test",
@@ -32791,7 +32791,7 @@
   "slice": "s2ck",
   "label": "unavailable left locked",
   "file": "../customer-app/capp-api.js",
-  "from": "        case 'unavailable': settleSdk(id, 'none'); return",
+  "from": "        case 'unavailable': settlePreAdmission(id, null); return",
   "to": "        case 'unavailable': return",
   "command": [
    "node",
@@ -32893,7 +32893,7 @@
   "slice": "s2ck",
   "label": "a quote refusal treated as uncertain (Codex r1 P2-6)",
   "file": "../customer-app/capp-api.js",
-  "from": "      if (cq.classify(r.json)) { settleSdk(id, 'none', attemptId); return { kind: 'replay_requote', order_id: id }; }\n",
+  "from": "      if (cq.classify(r.json)) { settlePreAdmission(id, attemptId); return { kind: 'replay_requote', order_id: id }; }\n",
   "to": "",
   "command": [
    "node",
@@ -32935,8 +32935,8 @@
   "slice": "s2ck",
   "label": "the switch intent forgotten (Codex r1 P2-9)",
   "file": "../customer-app/capp-api.js",
-  "from": "      try { patchPlace(id, { switch_intent: true }); } catch (_) {}   // BEFORE the request: a crash keeps the intent\n",
-  "to": "",
+  "from": "      try { patchPlace(id, { switch_intent: true, ...(sb ? { switch_body: sb } : {}) }); } catch (_) {}",
+  "to": "      try { patchPlace(id, { ...(sb ? { switch_body: sb } : {}) }); } catch (_) {}",
   "command": [
    "node",
    "--test",
@@ -33173,5 +33173,103 @@
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": "SDK8: the card + Total rows"
+ },
+ {
+  "id": "s2ck-r10",
+  "slice": "s2ck",
+  "label": "a waiting place() registered only after it resumes (Codex r2 P1)",
+  "file": "../customer-app/capp-api.js",
+  "from": "        let started = null; const waiter = new Promise((r) => { started = r; });\n        legacyRuns.add(waiter);\n",
+  "to": "        let started = () => {}; const waiter = null;\n",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-queue"
+ },
+ {
+  "id": "s2ck-r11",
+  "slice": "s2ck",
+  "label": "a pre-admission refusal keeps the order dispatched (Codex r2 P2)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      try { patchPlace(id, { attempt_state: 'none', unresolved: false, dispatched: 0 }); } catch (_) {}\n",
+  "to": "      settleSdk(id, 'none', attemptId);\n",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-preadmit: no cancel"
+ },
+ {
+  "id": "s2ck-r12",
+  "slice": "s2ck",
+  "label": "an answered attempt never marks the order admitted (Codex r2 P2)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (['declined', 'bank_pending', 'action_required', 'under_review', 'expired'].includes(out.outcome)) markClaimed(id);\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-preadmit: an admitted order is always switched"
+ },
+ {
+  "id": "s2ck-a12",
+  "slice": "s2ck",
+  "label": "the switch forgets the cash order's inputs (Codex r2 P2)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      try { patchPlace(id, { switch_intent: true, ...(sb ? { switch_body: sb } : {}) }); } catch (_) {}",
+  "to": "      try { patchPlace(id, { switch_intent: true }); } catch (_) {}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-reload-switch"
+ },
+ {
+  "id": "s2ck-u16",
+  "slice": "s2ck",
+  "label": "an SDK outcome from a legacy entry point dropped (Codex r2 P2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (out && SDK_KINDS.has(out.kind) && sdkOn()) { emit('outcome', out); onSdkOutcome(out); return; }",
+  "to": "      if (false) { emit('outcome', out); onSdkOutcome(out); return; }",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-route"
+ },
+ {
+  "id": "s2ck-u17",
+  "slice": "s2ck",
+  "label": "the switch's stored inputs never restore the flow (Codex r2 P2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        if (out.body && (!S.flow || need())) { const rf = flowFromBody(out.body); if (rf) { S.flow = rf; S.mode = rf.mode; S.flowRestored = true; } }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-reload-switch"
+ },
+ {
+  "id": "s2ck-u18",
+  "slice": "s2ck",
+  "label": "the completed switch places before the checkout is ready (Codex r2 P2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        SDK.placeWhenReady = true; render(); sdkPlaceIfReady(); return;",
+  "to": "        render(); placeNow(); return;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-reload-switch"
  }
 ]
