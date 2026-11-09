@@ -215,4 +215,8 @@ body{margin:0;padding:16px;background:var(--bg);color:var(--ink);font:14px/1.45 
 <h1>Customer app · side-by-sides</h1><p class="n">The PACKAGED bundle (package-capp at the tip) + ONE injected runtime field, <code>directory_endpoint</code> (production has no directory endpoint yet — a launch gap; ruling (A)), every outside request served from fixtures${unmapped.length ? ` — <b class="bad">${unmapped.length} unmapped request(s)</b>` : ' (0 unmapped)'}. Diff = % of pixels whose RGB distance exceeds 48.</p>${rows}`);
 console.log(`\n${results.length} renders · ${unmapped.length} unmapped request(s) · ${path.join(OUT, 'index.html')}`);
 ws.close(); chrome.kill('SIGTERM'); server.close(); try { fs.rmSync(udd, { recursive: true, force: true }); } catch (_) {}
-if (unmapped.length) { console.error('UNMAPPED (the run FAILS):\n  ' + unmapped.join('\n  ')); process.exit(1); }
+// Codex r1 P2: a scene error (a step timeout, a failed in-page check such as S2ck-1's bar height) FAILS the run like an unmapped request
+const errored = results.filter((r) => r.error);
+if (errored.length) console.error(`SCENE ERRORS (the run FAILS):\n  ` + errored.map((r) => `${r.scene}-${r.theme}: ${r.error}`).join('\n  '));
+if (unmapped.length) console.error('UNMAPPED (the run FAILS):\n  ' + unmapped.join('\n  '));
+if (errored.length || unmapped.length) process.exit(1);

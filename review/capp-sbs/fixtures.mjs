@@ -281,16 +281,37 @@ export function s2Extra(opts = {}) {
     }
     if (!u.host.endsWith('cloudfunctions.net')) return null;
     const ep = u.pathname.split('/').pop();
+    // as strict as the contract (Codex r1 P2): §1.1 member authority on every SDK call (the harness's ONE member token → u_ana; a
+    // missing / foreign token is refused, never served); §2.1 the placement body's SDK keys exact; A3 a saved card must be one of
+    // THIS member's listed, usable cards, else the one identical 409; status / getPayAdjust only for an order this member placed
+    const SDK_EPS = new Set(['listCards', 'placeSdkOrder', 'placeSdkStatus', 'getPayAdjust']);
+    const hdr = (k) => { const e = Object.entries(req.headers || {}).find(([h]) => h.toLowerCase() === k); return e ? e[1] : undefined; };
+    const uid = hdr('authorization') === `Bearer ${MEMBER_TOKEN}` ? 'u_ana' : null;
+    if (SDK_EPS.has(ep) && !uid) return json({ error: 'auth_required' }, 401);
     if (ep === 'listCards' && req.method === 'GET') return json(SDKF.listCards(cards));
     if (ep === 'sdkPayStatus' && req.method === 'GET') return json(SDKF.sdkPayStatus(opts.available !== false, opts.available === false ? 300 : 0));
     if (ep === 'placeSdkOrder' && req.method === 'POST') {
       let b = null; try { b = JSON.parse(req.postData || 'null'); } catch (_) { b = null; }
-      if (!b || typeof b.order_id !== 'string' || typeof b.attempt_id !== 'string' || !b.card) return null;   // not the client's body ⇒ unmapped (fails the run)
+      if (!b || typeof b.order_id !== 'string' || !b.card) return null;   // not the client's body ⇒ unmapped (fails the run)
+      const bad = (why) => { throw new Error(`placeSdkOrder 400 (contract §2.1): ${why}`); };   // a route that throws is UNMAPPED ⇒ the run fails
+      if (typeof b.attempt_id !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(b.attempt_id)) bad(`attempt_id ${JSON.stringify(b.attempt_id)}`);
+      if (!('replaces_order_id' in b) || !(b.replaces_order_id === null || typeof b.replaces_order_id === 'string')) bad('replaces_order_id');
+      if ('amount_cents' in b || 'total_cents' in b) bad('the client never sends an amount');
+      const ck = Object.keys(b.card).sort().join();
+      if (b.card.kind === 'saved') {
+        if (ck !== 'card_id,kind' || typeof b.card.card_id !== 'string') bad(`card keys ${ck}`);
+        if (!cards.some((c) => c.card_id === b.card.card_id && !c.expired)) { const r = SDKF.savedCardUnavailable(); return json(r.json, r.status); }   // A3: the strict fake's exact 409
+      } else if (b.card.kind === 'new') {
+        if (ck !== 'authentication_identifier,display,kind,save,sdk_token') bad(`card keys ${ck}`);
+      } else bad(`card.kind ${b.card.kind}`);
       if (opts.place === 'slow') return { ...json(SDKF.placeResp('bank_pending', { order_id: b.order_id, attempt_id: b.attempt_id })), delay: 60000 };   // frame 4: still answering at the shot
       const r = respOf(b.order_id, b.attempt_id); placed.set(b.order_id, r); return json(r);
     }
-    if (ep === 'placeSdkStatus' && req.method === 'GET') { const id = u.searchParams.get('order_id'); const r = placed.get(id); return r ? json(SDKF.placeResp(r.outcome, Object.fromEntries(Object.entries(r).filter(([k]) => k !== 'outcome' && k !== 'adjust_grant')), { replay: true })) : null; }
-    if (ep === 'getPayAdjust' && req.method === 'GET') { const v = viewOf(); return v ? json({ view: v, server_now: S2_EXP - 180000 }) : null; }
+    if (ep === 'placeSdkStatus' && req.method === 'GET') { const id = u.searchParams.get('order_id'); const r = placed.get(id); if (!r) return json({ error: 'not_found' }, 404); return r ? json(SDKF.placeResp(r.outcome, Object.fromEntries(Object.entries(r).filter(([k]) => k !== 'outcome' && k !== 'adjust_grant')), { replay: true })) : null; }
+    if (ep === 'getPayAdjust' && req.method === 'GET') {
+      if (![...placed.keys()].includes(u.searchParams.get('order_id'))) return json({ error: 'not_found' }, 404);   // only this member's order
+      const v = viewOf(); return v ? json({ view: v, server_now: S2_EXP - 180000 }) : null;
+    }
     return null;
   };
 }
