@@ -7,7 +7,7 @@ const BASE = '43cfdf11';
 const HUNKS = Object.freeze([
  {
   "file": "catalog/catalog-publish.js",
-  "now": "const { REGISTRY_AGREEMENT_REFUSALS } = require('./identity-stampmap');\nconst { renameEnabled } = require('./identity-flags'); const RK = require('./reserved-keys');   // S1c: the reserved-key set\n/* c2a-evidence:begin */\n",
+  "now": "const { REGISTRY_AGREEMENT_REFUSALS } = require('./identity-stampmap');\nconst { renameEnabled } = require('./identity-flags'); const RK = require('./reserved-keys'); const { textEditCapabilities } = require('./item-text-edit');   // S1c: the reserved-key set; renames are judged only with the text switch on\n/* c2a-evidence:begin */\n",
   "was": "const { REGISTRY_AGREEMENT_REFUSALS } = require('./identity-stampmap');\nconst { renameEnabled } = require('./identity-flags');\n/* c2a-evidence:begin */\n"
  },
  {
@@ -17,12 +17,17 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/catalog-publish.js",
+  "now": "    const livePointer = readPointerSnap(pointerSnap, rid);\n    const liveActive = livePointer.version; const activeItemsSnap = (textEditCapabilities().enabled && liveActive && liveActive !== versionId) ? await tx.get(versionsColOf(db, rid).doc(liveActive).collection('menu_items')) : null;\n    if (liveActive !== expected.activeVersionId) {\n",
+  "was": "    const livePointer = readPointerSnap(pointerSnap, rid);\n    const liveActive = livePointer.version;\n    if (liveActive !== expected.activeVersionId) {\n"
+ },
+ {
+  "file": "catalog/catalog-publish.js",
   "now": "      const [itemsSnap, extrasSnap, dishKeys, extraKeys, dishIds, extraIds] = await Promise.all([\n        candItemsSnap, candExtrasSnap,\n        tx.get(keysColOf(db, rid, 'dish')), tx.get(keysColOf(db, rid, 'extra')),\n",
   "was": "      const [itemsSnap, extrasSnap, dishKeys, extraKeys, dishIds, extraIds] = await Promise.all([\n        tx.get(vref.collection('menu_items')), tx.get(vref.collection('extras')),\n        tx.get(keysColOf(db, rid, 'dish')), tx.get(keysColOf(db, rid, 'extra')),\n"
  },
  {
   "file": "catalog/catalog-publish.js",
-  "now": "    });\n    if (!verdict.ok) throw new Error(`${verdict.code}: ${rid}/${versionId} — ${verdict.detail}`); const reservedNext = RK.unionReserved(reservedDoc, { dish: candItemsSnap.docs.map((d) => (d.data() || {}).key), extra: candExtrasSnap.docs.map((d) => (d.data() || {}).key) }, versionId); RK.assertWithinLimit(reservedNext.doc); if (reservedNext.added > 0) tx.set(RK.reservedRefOf(db, rid), reservedNext.doc);   // S1c: add-only, never removes\n\n",
+  "now": "    });\n    if (!verdict.ok) throw new Error(`${verdict.code}: ${rid}/${versionId} — ${verdict.detail}`); const reservedNext = RK.unionReserved(reservedDoc, { dish: candItemsSnap.docs.map((d) => (d.data() || {}).key), extra: candExtrasSnap.docs.map((d) => (d.data() || {}).key) }, versionId); const rkConflict = activeItemsSnap ? RK.renameConflicts({ items: candItemsSnap.docs.map((d) => d.data() || {}), activeItems: activeItemsSnap.docs.map((d) => d.data() || {}), reserved: RK.reservedKeySet(reservedDoc) })[0] : null; if (rkConflict) { const e = new Error(`reserved_key_conflict: ${rid}/${versionId} — a renamed item may not take a reserved key (${JSON.stringify(rkConflict.key)})`); e.status = 409; throw e; } RK.assertWithinLimit(reservedNext.doc); if (reservedNext.added > 0) tx.set(RK.reservedRefOf(db, rid), reservedNext.doc);   // S1c: add-only, never removes\n\n",
   "was": "    });\n    if (!verdict.ok) throw new Error(`${verdict.code}: ${rid}/${versionId} — ${verdict.detail}`);\n\n"
  },
  {
