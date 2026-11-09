@@ -70,6 +70,7 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/kds-manifest.js',                // 1D add-product A: the conditional /menus writer, after a successful publish
   'catalog/key-mode.js',                    // S0 key mode: the server-owned draft mode (pure), via edit-catalog-handler.js
   'catalog/menu-structure-rows.js',         // plan 4 GATED (G1): the reviewed rows the bootstrap applies, via form-menu-source.js (pure; no I/O)
+  'catalog/mint-opaque.js',                 // S1c: the one-time opaque-minting switch (a constant) + its token, via edit-catalog-handler.js
   'catalog/mirror-keys.js',                 // hotfix 2026-10-26: mirror-rtdb's PURE key encoder (RTDB-unsafe name keys)
   'catalog/mirror-rtdb.js',
   'catalog/platform-extras.js',             // per-product extras: the platform authoring switch (editCatalog / publishEdited); no I/O
