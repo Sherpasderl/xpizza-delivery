@@ -31,18 +31,23 @@ stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CH
 stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));
 // the P-C race (as test/s3a-envio.emulator.test.js): the live checkout EXPIRES after the handler's classify and before the acquire
 let EXPIRE_BEFORE_ACQUIRE = null;
-let INJECT_AT_CAS = null;   // tip-pref §8: (orderId) ⇒ the record planted between the pre-read and the CAS
+let INJECT_AT_CAS = null;   // tip-pref §8: the conflicting patch applied to orders/{id} between the pre-read and the CAS
+let LAST_CAS = null;        // tip-pref §8: { committed, unchanged } of that CAS
 // codex r1 P2: the read-only classifier fails the next N calls (the handler's classify, then P-C's re-check)
 let CLASSIFY_FAIL = 0; let CLASSIFY_CALLS = 0;
 stub('../pixelpay-hosted-charge', (r) => ({ ...r,
   acquireHostedAttempt: async (db, orderId, ...a) => {
     if (EXPIRE_BEFORE_ACQUIRE) { const f = EXPIRE_BEFORE_ACQUIRE; EXPIRE_BEFORE_ACQUIRE = null; await f(orderId); }
-    // tip-pref §8 (Codex slice-C r1 #2): a REAL pre-read → CAS conflict — the pre-read saw no order; the record appears just before the
-    // CAS, so the transaction commits it UNCHANGED and the post-transaction acceptance checks refuse (the unchanged-commit path)
+    // tip-pref §8 (Codex slice-C r1 #2 / r2 #1): a REAL unchanged-COMMIT refusal — the pre-read saw a COMPATIBLE existing order (install
+    // path); the conflicting change is applied just before the CAS, so the transaction COMMITS the record unchanged and the
+    // post-transaction acceptance checks refuse. The CAS result is recorded (LAST_CAS) so the cell can prove that path was taken.
     if (INJECT_AT_CAS) {
-      const rec = INJECT_AT_CAS; INJECT_AT_CAS = null;
+      const patch = INJECT_AT_CAS; INJECT_AT_CAS = null;
       const wrapped = Object.create(db);
-      wrapped.ref = (p) => { const ref = db.ref(p); if (p !== `orders/${orderId}`) return ref; const w = Object.create(ref); w.transaction = async (fn, ...x) => { await ref.set(rec(orderId)); return ref.transaction(fn, ...x); }; return w; };
+      wrapped.ref = (p) => { const ref = db.ref(p); if (p !== `orders/${orderId}`) return ref; const w = Object.create(ref);
+        w.transaction = async (fn, ...x) => { await ref.update(patch); const before = (await ref.once('value')).val(); const res = await ref.transaction(fn, ...x);
+          LAST_CAS = { committed: res.committed, unchanged: JSON.stringify(res.snapshot.val()) === JSON.stringify(before) }; return res; };
+        return w; };
       return r.acquireHostedAttempt(wrapped, orderId, ...a);
     }
     return r.acquireHostedAttempt(db, orderId, ...a);
@@ -347,29 +352,42 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     const k = await card({ extra: { tip_cents: 6000, tip_choice: true } }, M('m_card'));
     assert.strictEqual(k.status, 200, k.text.slice(0, 200));
     assert.deepStrictEqual(await lastTip('m_card'), { cents: 6000, at: k.rec.created_at }, '🔴 PREF-E card: written after the charge issued, at = the pending order\'s created_at');
-    // hosted UNCHANGED-COMMIT refusals (Codex slice-C r1 #2): a REAL pre-read → CAS conflict (INJECT_AT_CAS); the preference is seeded
-    // ABSENT (m_cas_a) or OLDER (m_cas_o: at 1) so an erroneous write would show; zero preference transactions either way
-    const planted = (o) => (id) => ({ order_id: id, restaurant_id: RID, status: 'pending_payment', payment_method: 'online', total_cents: 1, created_at: 1, ...o });
-    for (const [what, rec, outcome] of [
-      ['already paid', planted({ payment_status: 'confirmed' }), 200],
-      ['tip conflict', planted({ tip_cents: 9900 }), 409],
-      ['fingerprint conflict', planted({ tip_cents: 2000, payment_fingerprint: 'zz-foreign-fingerprint' }), 409],
-    ]) {
-      await rtdb.ref('user_private/m_cas_o/last_tip').set({ cents: 100, at: 1 });
-      await rtdb.ref('user_private/m_cas_a').remove();
-      for (const uid of ['m_cas_a', 'm_cas_o']) {
-        INJECT_AT_CAS = rec;
-        const r = await card({ extra: { tip_cents: 2000, tip_choice: true } }, M(uid));
-        assert.strictEqual(INJECT_AT_CAS, null, `premise (${what}): the conflict was planted between the pre-read and the CAS`);
-        assert.ok(r.status === outcome || (outcome === 409 && r.status === 409), `premise (${what}): refused (${r.status} ${r.text.slice(0, 120)})`);
-        assert.strictEqual(r.charged.length, 0, `premise (${what}): no checkout issued`);
+    // hosted UNCHANGED-COMMIT refusals (Codex slice-C r1 #2, r2 #1-#2): seed a COMPATIBLE existing order (a real first card attempt,
+    // then its attempt pointer cleared ⇒ the pre-read decides INSTALL), patch the conflict in just before the CAS, and prove the
+    // transaction COMMITTED unchanged and the request was refused. The preference is seeded ABSENT or strictly OLDER than the order's
+    // created_at, and every preference transaction is COUNTED (a spy on the admin Reference) — the count must stay 0.
+    const RefProto = Object.getPrototypeOf(rtdb.ref('x'));
+    const realTx = RefProto.transaction; let prefTx = 0;
+    RefProto.transaction = function (...x) { if (/\/user_private\//.test(String(this.toString()))) prefTx++; return realTx.apply(this, x); };
+    try {
+      for (const [what, patch, outcome] of [
+        ['already paid', { payment_status: 'confirmed' }, 'already_paid'],
+        ['tip conflict', { tip_cents: 9900 }, 'conflict'],
+        ['fingerprint conflict', { payment_fingerprint: 'zz-foreign-fingerprint' }, 'conflict'],
+      ]) {
+        for (const seed of ['absent', 'older']) {
+          const uid = `m_cas_${what.replace(/\W+/g, '_')}_${seed}`;
+          const first = await card({ extra: { tip_cents: 2000, tip_choice: true } }, M(uid));
+          assert.strictEqual(first.status, 200, `premise (${what}): the compatible order exists (${first.text.slice(0, 120)})`);
+          const createdAt = first.rec.created_at;
+          await rtdb.ref(`orders/${first.b.order_id}/active_attempt_id`).remove();   // ⇒ the next pre-read decides INSTALL (compatible order, no lock)
+          if (seed === 'absent') await rtdb.ref(`user_private/${uid}`).remove(); else await rtdb.ref(`user_private/${uid}/last_tip`).set({ cents: 100, at: createdAt - 1000 });
+          const seeded = await lastTip(uid);
+          prefTx = 0; LAST_CAS = null; INJECT_AT_CAS = patch;
+          const r = await card({ body: first.b }, M(uid));
+          assert.strictEqual(INJECT_AT_CAS, null, `premise (${what}/${seed}): the patch was applied at the CAS`);
+          assert.deepStrictEqual(LAST_CAS, { committed: true, unchanged: true }, `🔴 premise (${what}/${seed}): the CAS COMMITTED the record UNCHANGED (the unchanged-commit path)`);
+          assert.strictEqual(r.charged.length, 0, `premise (${what}/${seed}): refused — no checkout issued (${r.status} ${r.text.slice(0, 120)})`);
+          assert.ok(outcome === 'already_paid' ? r.status === 200 || r.status === 409 : r.status === 409, `premise (${what}/${seed}): the post-transaction refusal answered (${r.status})`);
+          assert.strictEqual(prefTx, 0, `🔴 PREF-E card (${what}/${seed}): ZERO preference transactions on an unchanged-commit refusal`);
+          assert.deepStrictEqual(await lastTip(uid), seeded, `🔴 PREF-E card (${what}/${seed}): the preference is exactly as seeded (${seed}; the order's created_at ${createdAt} is NEWER)`);
+        }
       }
-      assert.deepStrictEqual([await lastTip('m_cas_a'), await lastTip('m_cas_o')], [null, { cents: 100, at: 1 }], `🔴 PREF-E card (${what}): an unchanged-commit refusal performs ZERO preference writes (absent stays absent, older stays older)`);
-    }
+    } finally { RefProto.transaction = realTx; }
     // foreign identity (guestForeign) applies only to capp GUESTS (pending.guest_verified, pixelpay-hosted-charge.js:67-68): a guest has
     // no verified uid, so prefOf is null by construction (tip-pref.test.js PREF-1 «a guest») — no preference path exists to refuse
   }
-  ok('last tip: cash and card write {cents, at = the accepted order\'s created_at} for the verified member only; «Sin propina» = 0; an older retry, a forged body uid, a guest, no tip_choice, pickup, a refused order and a REAL hosted unchanged-commit refusal (already paid / tip / fingerprint conflict, planted at the CAS) write nothing');
+  ok('last tip: cash and card write {cents, at = the accepted order\'s created_at} for the verified member only; «Sin propina» = 0; an older retry, a forged body uid, a guest, no tip_choice, pickup, a refused order and a REAL hosted unchanged-COMMIT refusal (already paid / tip / fingerprint conflict patched in at the CAS of a compatible order) performs ZERO preference transactions');
 
   // ── 9. Codex slice-C r1 #1: D0 keeps today's precedence — a below-floor client gets its 426 FIRST (the floor read precedes the tip seam) ──
   {
