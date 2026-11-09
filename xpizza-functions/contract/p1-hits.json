@@ -260,6 +260,8 @@
    "xpizza-functions/catalog/identity-backfill.js#liveKeys#items#1",
    "xpizza-functions/catalog/identity-stampmap.js#walkDraftIdentities#items#0",
    "xpizza-functions/catalog/redeem-source.js#assertRedeemAllowMatchesToday#items#0",
+   "xpizza-functions/catalog/source-store.js#validateSource#items#0",
+   "xpizza-functions/catalog/source-store.js#validateSource#items#1",
    "xpizza-functions/catalog/source-store.js#validateSource#items#10",
    "xpizza-functions/catalog/source-store.js#validateSource#items#11",
    "xpizza-functions/catalog/source-store.js#validateSource#items#12",
