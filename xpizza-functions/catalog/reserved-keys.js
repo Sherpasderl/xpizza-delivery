@@ -66,6 +66,26 @@ function assertWithinLimit(doc) {
   }
 }
 
+// D3 (owner 2026-11-09): only a RENAME is judged — an item whose display.id the active version also holds, under a different
+// display name. Its new name may not fold to a reserved key other than its own, nor take the opaque-key syntax. An addition is
+// never judged here: it is a new item (with minting on, under a fresh key), and history stays with the old one.
+const OPAQUE_SYNTAX = /^i_[a-z2-7]{12}$/i;
+function renameConflicts({ items, activeItems, reserved }) {
+  const { normalizeName } = require('./add-product');
+  const wasName = new Map((activeItems || []).filter((it) => isPlainObj(it) && isPlainObj(it.display) && it.display.id != null).map((it) => [String(it.display.id), it.display.name]));
+  const folded = new Set([...reserved.keys()].map(normalizeName));
+  const out = [];
+  for (const it of items || []) {
+    if (!isPlainObj(it) || !isPlainObj(it.display) || it.display.id == null || typeof it.display.name !== 'string') continue;
+    const id = String(it.display.id);
+    if (!wasName.has(id) || wasName.get(id) === it.display.name) continue;
+    const f = normalizeName(it.display.name);
+    const own = typeof it.key === 'string' && normalizeName(it.key) === f;
+    if (OPAQUE_SYNTAX.test(it.display.name.trim()) || (!own && folded.has(f))) out.push({ key: it.key, field: 'name', name: it.display.name });
+  }
+  return out;
+}
+
 const reservedRefOf = (db, rid) => db.collection('restaurants').doc(rid).collection('meta').doc('reserved_keys');
 
-module.exports = { reservedRefOf, emptyReserved, readReserved, unionReserved, reservedKeySet, assertWithinLimit, RESERVED_LIMIT_BYTES };
+module.exports = { renameConflicts, OPAQUE_SYNTAX, reservedRefOf, emptyReserved, readReserved, unionReserved, reservedKeySet, assertWithinLimit, RESERVED_LIMIT_BYTES };
