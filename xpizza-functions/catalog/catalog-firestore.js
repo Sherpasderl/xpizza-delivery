@@ -39,7 +39,7 @@ function mapDocs(snap, where) {
     if (!Number.isInteger(v.price) || v.price <= 0) throw new Error(`catalog_bad_doc: ${where}/${v.key} — price not a positive integer`);
     if (seen.has(v.key)) throw new Error(`catalog_dup_key: ${where}/${v.key}`);
     seen.add(v.key);
-    return { key: v.key, price: v.price };
+    return { key: v.key, price: v.price, ...(v.display && typeof v.display === 'object' && typeof v.display.name === 'string' ? { label: v.display.name } : {}) };
   });
 }
 

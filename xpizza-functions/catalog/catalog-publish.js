@@ -50,7 +50,7 @@ const { judgePlanDestinations } = require('./identity-destination');
 const { applyIdentityPlan } = require('./identity-writer');
 const { reconcileOnRollback } = require('./identity-reconcile');
 const { REGISTRY_AGREEMENT_REFUSALS } = require('./identity-stampmap');
-const { renameEnabled } = require('./identity-flags'); const RK = require('./reserved-keys'); const { textEditCapabilities } = require('./item-text-edit');   // S1c: the reserved-key set; renames are judged only with the text switch on
+const { renameEnabled } = require('./identity-flags'); const RK = require('./reserved-keys'); const { labelsFromDocs } = require('./catalog-transform'); const { textEditCapabilities } = require('./item-text-edit');   // S1c: the reserved-key set; renames are judged only with the text switch on
 /* c2a-evidence:begin */
 // 1D D4-c2a — binding evidence recorded at activation (PLAN-D4c2a rev 9 §2). Dormant: nothing reads it in this slice.
 const { buildActivationEvidence, activationEvidenceDoc, evidenceRefOf, withAt, translateEvidenceCollision } = require('./identity-evidence');
@@ -1598,7 +1598,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
     identityPair = { version: flipped.version, generation: flipped.generation };
     certifiedActivation = flipped.certified === true;
     // Mirror AFTER the flip and BEFORE releasing the lease — see writeMirror for why both matter.
-    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable, ...(input && input.key_mode != null ? { keyMode: input.key_mode } : {}) });
+    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable, ...(input && input.key_mode != null ? { keyMode: input.key_mode } : {}), labels: labelsFromDocs(((input && input.items) || []).map((i) => ({ key: i && i.key, label: i && i.display && i.display.name }))) });
     await pruneRetention(db, rid, { protect: [versionId] }).catch(() => {});   // never let prune fail the publish
 
     identityKeys = { dish: Object.keys(menuTable || {}), extra: Object.keys(extraTable || {}) };
@@ -1721,7 +1721,7 @@ async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm, expect
     await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode);
     const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable, targetDocs.keyMode);
     await flipPointer(db, rid, token, targetVersionId, snapshot, expected, { rollback: true });
-    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable, ...(targetDocs.keyMode != null ? { keyMode: targetDocs.keyMode } : {}) });
+    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable, ...(targetDocs.keyMode != null ? { keyMode: targetDocs.keyMode } : {}), labels: labelsFromDocs(targetDocs.itemDocs) });
     return { versionId: targetVersionId, rolledBack: true, mirrored: mirrorResult.mirrored };
   } finally {
     await releaseLease(db, rid, token);

@@ -139,7 +139,7 @@ const EXTRAS_BY_RESTAURANT = { x_pizza: EXTRA_PRICES, la_musa: LA_MUSA_EXTRAS };
    remembering to strip on every path including the error ones; this cannot be supplied at all.
 
    The raw accessor stays exactly as it was, and is what the agreement check compares against. */
-const PRICING_KEY_STAMP = Symbol.for('xpizza.d4.pricingKeyStamp'); const TABLES_KEY_MODE = Symbol.for('xpizza.s0.tablesKeyMode'); const keyModeOfTables = (tables) => (tables && typeof tables === 'object' ? tables[TABLES_KEY_MODE] : undefined); const attachTablesKeyMode = (tables, keyMode) => { if (keyMode == null) return tables; if (keyMode !== 'id' && keyMode !== 'name') throw new Error(`key_mode_invalid: ${typeof keyMode === 'string' ? keyMode.slice(0, 20) : typeof keyMode}`); Object.defineProperty(tables, TABLES_KEY_MODE, { value: keyMode, enumerable: false, writable: false, configurable: false }); return tables; };
+const PRICING_KEY_STAMP = Symbol.for('xpizza.d4.pricingKeyStamp'); const TABLES_KEY_MODE = Symbol.for('xpizza.s0.tablesKeyMode'); const keyModeOfTables = (tables) => (tables && typeof tables === 'object' ? tables[TABLES_KEY_MODE] : undefined); const attachTablesKeyMode = (tables, keyMode) => { if (keyMode == null) return tables; if (keyMode !== 'id' && keyMode !== 'name') throw new Error(`key_mode_invalid: ${typeof keyMode === 'string' ? keyMode.slice(0, 20) : typeof keyMode}`); Object.defineProperty(tables, TABLES_KEY_MODE, { value: keyMode, enumerable: false, writable: false, configurable: false }); return tables; }; const TABLES_LABELS = Symbol.for('xpizza.s1d.tablesLabels'); const labelsOfTables = (tables) => (tables && typeof tables === 'object' && tables[TABLES_LABELS] ? tables[TABLES_LABELS] : null); const attachTablesLabels = (tables, labels) => { if (labels && typeof labels === 'object' && !Array.isArray(labels)) Object.defineProperty(tables, TABLES_LABELS, { value: Object.freeze({ ...labels }), enumerable: false, writable: false, configurable: false }); return tables; };   // S1d: dish labels beside the prices (null = this route has none)
 
 const defaultKeyMode = (rid) => (rid === 'la_musa' ? 'id' : 'name'); const effectiveKeyMode = (rid, keyMode) => { if (keyMode == null) return defaultKeyMode(rid); if (keyMode === 'id' || keyMode === 'name') return keyMode; throw new Error(`key_mode_invalid: ${typeof keyMode === 'string' ? keyMode.slice(0, 20) : typeof keyMode}`); }; const availIdentityField = (rid, keyMode) => effectiveKeyMode(rid, keyMode); function itemPricingKey(item, restaurantId, keyMode) {   // PLAN-avail-identity r1: the ONE availability-identity rule, also served in the public menu
   const raw = item && item[availIdentityField(restaurantId, keyMode)];
@@ -324,7 +324,7 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
   return lines;
 }
 
-module.exports = { PRICING_KEY_STAMP, availIdentityField, defaultKeyMode, effectiveKeyMode, TABLES_KEY_MODE, keyModeOfTables, attachTablesKeyMode,
+module.exports = { PRICING_KEY_STAMP, availIdentityField, defaultKeyMode, effectiveKeyMode, TABLES_KEY_MODE, keyModeOfTables, attachTablesKeyMode, TABLES_LABELS, labelsOfTables, attachTablesLabels,
   MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal, itemPricingKey, extraPricingKey, summaryLines,
   resolvePriceTables,   // 1b-1b: the shared PIN-B-asserting table resolver, reused across the redemption graph
   X_PIZZA_WEEKEND_ONLY, hnDayFromMs, weekendOnlyViolation,

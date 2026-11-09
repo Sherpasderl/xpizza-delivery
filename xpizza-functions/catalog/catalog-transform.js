@@ -19,4 +19,11 @@ function codeTablesToCatalogDocs(menuTable, extraTable) {
   const toDocs = (table) => Object.entries(table || {}).map(([key, price]) => ({ key, price }));
   return { itemDocs: toDocs(menuTable), extraDocs: toDocs(extraTable) };
 }
-module.exports = { buildTablesFromDocs, codeTablesToCatalogDocs };
+// S1d: a dish's label ({key: display.name}) from the same docs as its price — null when no doc carries one (that route has
+// no labels; readers fall back). Never part of the price tables.
+function labelsFromDocs(itemDocs) {
+  const out = {};
+  for (const d of (itemDocs || [])) { if (d && typeof d.key === 'string' && typeof d.label === 'string') out[d.key] = d.label; }
+  return Object.keys(out).length ? out : null;
+}
+module.exports = { buildTablesFromDocs, codeTablesToCatalogDocs, labelsFromDocs };

@@ -13,9 +13,12 @@ const RTDB_UNSAFE_KEY = /[.#$/[\]\u0000-\u001f\u007f]/;
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const mapKeys = (t, f) => (isObj(t) ? Object.fromEntries(Object.entries(t).map(([k, v]) => [f(k), v])) : t);
 
-function encodeMirrorTables(menu, extras) {
-  const needs = [menu, extras].some((t) => isObj(t) && Object.keys(t).some((k) => RTDB_UNSAFE_KEY.test(k)));
-  return needs ? { menu: mapKeys(menu, availKey), extras: mapKeys(extras, availKey), key_encoding: KEY_ENCODING } : { menu, extras };
+// S1d: a dish-label table ({key: label}) rides with the prices; its KEYS are the dish keys, so they take the same decision
+// and the same codec (a label VALUE never forces encoding). Absent labels: today's shape exactly.
+function encodeMirrorTables(menu, extras, labels) {
+  const needs = [menu, extras, labels].some((t) => isObj(t) && Object.keys(t).some((k) => RTDB_UNSAFE_KEY.test(k)));
+  const lab = isObj(labels) ? { labels: needs ? mapKeys(labels, availKey) : labels } : {};
+  return needs ? { menu: mapKeys(menu, availKey), extras: mapKeys(extras, availKey), ...lab, key_encoding: KEY_ENCODING } : { menu, extras, ...lab };
 }
 function decodeKey(k) {
   let d;
@@ -26,7 +29,7 @@ function decodeKey(k) {
 function decodeMirror(value) {
   if (!isObj(value) || value.key_encoding === undefined) return value;   // today's unmarked shape: exactly as stored
   if (value.key_encoding !== KEY_ENCODING) throw new Error(`mirror_key_decode_failed: unknown key_encoding ${JSON.stringify(value.key_encoding)}`);
-  const out = { ...value, menu: mapKeys(value.menu, decodeKey), extras: mapKeys(value.extras, decodeKey) };
+  const out = { ...value, menu: mapKeys(value.menu, decodeKey), extras: mapKeys(value.extras, decodeKey), ...(isObj(value.labels) ? { labels: mapKeys(value.labels, decodeKey) } : {}) };
   delete out.key_encoding;
   return out;
 }
