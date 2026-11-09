@@ -9,7 +9,7 @@
 const assert = require('assert');
 const MP = require('../menu-pricing');
 const { mapDocs } = require('./catalog-firestore');
-const { labelsFromDocs, buildTablesFromDocs } = require('./catalog-transform');
+const { labelsFromDocs, labelsFromSnap } = require('./catalog-transform');
 const { createCatalogReader } = require('./catalog');
 const { createPricingResolver, tablesEqual, menuHash } = require('./pricing-tables');
 const { createSnapshotFallback } = require('./snapshot-fallback');
@@ -23,20 +23,23 @@ const snapOf = (rows) => ({ docs: rows.map((v, i) => ({ id: `d${i}`, data: () =>
 const LABELS = { 'Dish One': 'Dish One Renamed', 'N.Y. Slice': 'N.Y. Slice' };
 
 (async () => {
-  // ── the doc mapper and the transform ──
+  // ── the doc mapper keeps {key, price} exactly (PIN 1); the labels are read BESIDE it from the same snapshot ──
   {
-    const docs = mapDocs(snapOf([{ key: 'Dish One', price: 100, display: { name: 'Dish One Renamed' } }, { key: 'N.Y. Slice', price: 80, display: { name: 'N.Y. Slice' } }, { key: 'Bare', price: 50 }]), 'tb');
-    assert.deepStrictEqual(docs, [{ key: 'Dish One', price: 100, label: 'Dish One Renamed' }, { key: 'N.Y. Slice', price: 80, label: 'N.Y. Slice' }, { key: 'Bare', price: 50 }], 'LB-MAPDOCS a label is emitted only when display.name is a string');
-    assert.deepStrictEqual(buildTablesFromDocs(docs, []), { menu: { 'Dish One': 100, 'N.Y. Slice': 80, Bare: 50 }, extras: {} }, 'LB-TABLES the price tables are unchanged');
-    assert.deepStrictEqual(labelsFromDocs(docs), { 'Dish One': 'Dish One Renamed', 'N.Y. Slice': 'N.Y. Slice' }, 'LB-TRANSFORM {key: label} for the docs that carry one');
-    assert.strictEqual(labelsFromDocs([{ key: 'A', price: 1 }]), null, 'LB-NONE no labels at all → null (fall back), never {}');
-    ok('the mapper emits a label beside the price; the transform builds {key: label} or null; prices unchanged');
+    const snap = snapOf([{ key: 'Dish One', price: 100, display: { name: 'Dish One Renamed' } }, { key: 'N.Y. Slice', price: 80, display: { name: 'N.Y. Slice' } }, { key: 'Bare', price: 50 }]);
+    const docs = mapDocs(snap, 'tb');
+    assert.deepStrictEqual(docs, [{ key: 'Dish One', price: 100 }, { key: 'N.Y. Slice', price: 80 }, { key: 'Bare', price: 50 }], 'LB-MAPDOCS the price docs are unchanged (labels never inside them)');
+    assert.deepStrictEqual(labelsFromSnap(snap), { 'Dish One': 'Dish One Renamed', 'N.Y. Slice': 'N.Y. Slice' }, 'LB-SNAP {key: display.name} from the same snapshot, for the docs that carry one');
+    assert.strictEqual(labelsFromSnap(snapOf([{ key: 'A', price: 1 }])), null, 'LB-NONE no labels at all → null (fall back), never {}');
+    assert.deepStrictEqual(labelsFromDocs([{ key: 'A', label: 'a' }, { key: 'B' }]), { A: 'a' }, 'LB-TRANSFORM');
+    ok('the mapper keeps {key, price}; the labels are read beside it from the same snapshot, or null');
   }
 
   // ── the cached reader: version and flat ──
   {
     for (const versionId of ['v1', null]) {
-      const reader = createCatalogReader({ getRestaurantDocs: async () => ({ versionId, seq: versionId ? 3 : null, itemDocs: [{ key: 'Dish One', price: 100, label: 'Dish One Renamed' }], extraDocs: [{ key: 'X', price: 5, label: 'X' }], keyMode: 'name' }) });
+      const reader = createCatalogReader({ getRestaurantDocs: async () => ({ versionId, seq: versionId ? 3 : null, itemDocs: [{ key: 'Dish One', price: 100 }], extraDocs: [{ key: 'X', price: 5 }], keyMode: 'name', itemLabels: { 'Dish One': 'Dish One Renamed' } }) });
+      const bare = await createCatalogReader({ getRestaurantDocs: async () => ({ versionId, seq: versionId ? 3 : null, itemDocs: [{ key: 'Dish One', price: 100 }], extraDocs: [], keyMode: 'name' }) }).getTables('tb_merch');
+      assert.ok(!Object.prototype.hasOwnProperty.call(bare, 'labels'), `LB-READER-LEGACY no labels → the exact legacy shape (${versionId ? 'version' : 'flat'})`);
       const t = await reader.getTables('tb_merch');
       assert.deepStrictEqual(t.labels, { 'Dish One': 'Dish One Renamed' }, `LB-READER-${versionId ? 'VERSION' : 'FLAT'} the cached tables carry dish labels (extras none)`);
     }

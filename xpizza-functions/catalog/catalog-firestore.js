@@ -27,7 +27,7 @@
 // readVersionDocs runs inside publishVersion's pre-flip verify, the rule ALSO blocks the version
 // pointer from ever flipping to a version containing a zero price — the guard reaches publish time
 // with no separate publish-side change.
-const { buildTablesFromDocs } = require('./catalog-transform');
+const { buildTablesFromDocs, labelsFromSnap } = require('./catalog-transform');
 const { assertComplete } = require('./catalog-integrity');
 
 // Shared per-doc validation → [{key, price}]. Identical rules for the flat layout AND a version's docs.
@@ -39,7 +39,7 @@ function mapDocs(snap, where) {
     if (!Number.isInteger(v.price) || v.price <= 0) throw new Error(`catalog_bad_doc: ${where}/${v.key} — price not a positive integer`);
     if (seen.has(v.key)) throw new Error(`catalog_dup_key: ${where}/${v.key}`);
     seen.add(v.key);
-    return { key: v.key, price: v.price, ...(v.display && typeof v.display === 'object' && typeof v.display.name === 'string' ? { label: v.display.name } : {}) };
+    return { key: v.key, price: v.price };
   });
 }
 
@@ -171,7 +171,7 @@ async function readVersionDocs(db, restaurantId, versionId) {
   if (!recSnap.exists) throw new Error(`version_missing: ${restaurantId}/${versionId}`);
   const record = recSnap.data() || {};
   const where = `${restaurantId}/versions/${versionId}`;
-  const itemDocs = mapDocs(items, where);
+  const itemDocs = mapDocs(items, where); const itemLabels = labelsFromSnap(items);   // S1d: dish labels BESIDE the price docs (never inside them)
   const extraDocs = mapDocs(extras, where);
   // Completeness-on-read (money PIN): the read set MUST match the version-record's counts AND both full
   // hashes, or the read was torn/tampered → THROW (never serve partial). buildTablesFromDocs is the SAME
@@ -182,7 +182,7 @@ async function readVersionDocs(db, restaurantId, versionId) {
   // payload from here, and without it a rollback would emit an ordinal-less fallback on exactly the
   // path where a coherent fallback matters most. Read-side (2b) treats an ABSENT seq as too-stale,
   // never as distance-zero, so a pre-ordinal mirror can never read as perfectly fresh.
-  return { itemDocs, extraDocs, seq: record.seq, ...keyModeField(record.key_mode, where) };
+  return { itemDocs, extraDocs, seq: record.seq, ...keyModeField(record.key_mode, where), ...(itemLabels ? { itemLabels } : {}) };
 }
 
 // ── The FLAT layout (un-migrated restaurant) — byte-identical to the pre-1c-b2 reader ────────────
@@ -191,7 +191,7 @@ async function readFlatDocs(db, restaurantId) {
   const [profile, items, extras] = await Promise.all([rref.get(), rref.collection('menu_items').get(), rref.collection('extras').get()]);
   if (!profile.exists) throw new Error(`restaurant_not_found: ${restaurantId}`);   // not-found ≠ empty
   if (items.empty) throw new Error(`catalog_empty: ${restaurantId}`);              // known restaurant, no menu items
-  return { itemDocs: mapDocs(items, restaurantId), extraDocs: mapDocs(extras, restaurantId), ...keyModeField((profile.data() || {}).pricing_key_mode, restaurantId) };
+  return { itemDocs: mapDocs(items, restaurantId), extraDocs: mapDocs(extras, restaurantId), ...keyModeField((profile.data() || {}).pricing_key_mode, restaurantId), ...(labelsFromSnap(items) ? { itemLabels: labelsFromSnap(items) } : {}) };
 }
 
 // The pricing reader. Resolves the pointer, then reads+verifies the pointed version; falls back to the
@@ -202,12 +202,12 @@ async function getRestaurantDocs(db, restaurantId) {
   const versionId = await getActiveVersionId(db, restaurantId);   // throws on malformed / read error
   if (versionId == null) {
     const flat = await readFlatDocs(db, restaurantId);            // clean-absent → flat (throws if flat also absent)
-    return { versionId: null, seq: null, itemDocs: flat.itemDocs, extraDocs: flat.extraDocs, ...keyModeField(flat.keyMode, restaurantId) };   // 2b: flat layout has no version/ordinal
+    return { versionId: null, seq: null, itemDocs: flat.itemDocs, extraDocs: flat.extraDocs, ...keyModeField(flat.keyMode, restaurantId), ...(flat.itemLabels ? { itemLabels: flat.itemLabels } : {}) };   // 2b: flat layout has no version/ordinal
   }
-  const { itemDocs, extraDocs, seq, keyMode } = await readVersionDocs(db, restaurantId, versionId);   // throws on version-missing / completeness fail
+  const { itemDocs, extraDocs, seq, keyMode, itemLabels } = await readVersionDocs(db, restaurantId, versionId);   // throws on version-missing / completeness fail
   // 2b: `seq` rides along so the resolver can learn WHICH ordinal it served. Additive — every existing
   // consumer destructures only itemDocs/extraDocs and is byte-unchanged.
-  return { versionId, seq, itemDocs, extraDocs, ...keyModeField(keyMode, restaurantId) };
+  return { versionId, seq, itemDocs, extraDocs, ...keyModeField(keyMode, restaurantId), ...(itemLabels ? { itemLabels } : {}) };
 }
 
 /* 🔴 ONE INTERPRETATION SITE — BY CONVENTION, ENFORCED, BUT NOT BY CONSTRUCTION. Saying it precisely

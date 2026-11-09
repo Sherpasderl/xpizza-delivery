@@ -24,8 +24,8 @@ const FN = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export const T0 = Date.UTC(2026, 9, 22, 0, 0, 0);          // Wed 2026-10-21 18:00 America/Tegucigalpa
 export const PLAN_ETAG = {                                // PLAN-shared-order-form.FINAL §10.3
-  x_pizza: '"f5d28c63fe9d99497ec3395073a6ceef6b2166d9105b288f1376e6c5e958d960"',
-  la_musa: '"e8d62d92e4737c9288cf7f4c76fb89341d5bd9ce5f193b7e0249ebb8a0409bc0"',
+  x_pizza: '"802843005b92de448979d84202e4b03d0dec2224cbae0b35bc3e39226e012db2"',   // S1d (Q5-a): the endpoint body gains item_keys — the etag moves once; was "f5d28c63…d960"
+  la_musa: '"cea5849b27d538e5d73b3f00fab424dee8d021e68fbc6a86761f7836362f5b1e"',   // S1d (Q5-a): the endpoint body gains item_keys — the etag moves once; was "e8d62d92…09bc0"
 };
 
 export const PREAMBLE = `(function(){

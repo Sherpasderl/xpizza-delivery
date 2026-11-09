@@ -1721,7 +1721,7 @@ async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm, expect
     await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode);
     const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable, targetDocs.keyMode);
     await flipPointer(db, rid, token, targetVersionId, snapshot, expected, { rollback: true });
-    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable, ...(targetDocs.keyMode != null ? { keyMode: targetDocs.keyMode } : {}), labels: labelsFromDocs(targetDocs.itemDocs) });
+    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable, ...(targetDocs.keyMode != null ? { keyMode: targetDocs.keyMode } : {}), labels: targetDocs.itemLabels || null });
     return { versionId: targetVersionId, rolledBack: true, mirrored: mirrorResult.mirrored };
   } finally {
     await releaseLease(db, rid, token);

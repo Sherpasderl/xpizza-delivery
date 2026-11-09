@@ -1,6 +1,6 @@
 'use strict';
 const { isValidPrice } = require('../price-valid');   // 1d-1a EXTENSION: the ONE price-validity rule
-const { PRICING_KEY_STAMP } = require('../menu-pricing');
+const PRICING_KEY_STAMP = Symbol.for('xpizza.d4.pricingKeyStamp');   // the resolution stage's stamp — the registered symbol (as catalog/menu-order.js), so this leaf stays free of menu-pricing
 const { OPAQUE_SYNTAX } = require('../catalog/mint-opaque');
 
 /**

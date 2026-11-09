@@ -10,7 +10,7 @@ require.cache[require.resolve('./item-text-edit')] = { id: require.resolve('./it
   exports: { textEditCapabilities: () => ({ enabled: SWITCH.enabled }) } };
 const MINT = { enabled: false, next: null };   // S1c: the one-time minting switch, swapped like the text switch; `next` forces the token
 require.cache[require.resolve('./mint-opaque')] = { id: require.resolve('./mint-opaque'), filename: require.resolve('./mint-opaque'), loaded: true,
-  exports: { mintCapabilities: () => ({ enabled: MINT.enabled }), mintKey: () => (MINT.next ? MINT.next() : require('crypto').randomBytes(6).toString('hex').replace(/[^a-z2-7]/g, 'a').padEnd(12, 'a').slice(0, 12).replace(/^/, 'i_')) } };
+  exports: { ...require('./mint-opaque'), mintCapabilities: () => ({ enabled: MINT.enabled }), mintKey: () => (MINT.next ? MINT.next() : require('crypto').randomBytes(6).toString('hex').replace(/[^a-z2-7]/g, 'a').padEnd(12, 'a').slice(0, 12).replace(/^/, 'i_')) } };
 const { editCatalogCore } = require('./edit-catalog-handler');
 const { validateSource } = require('./source-store');
 const { buildSourceFromCode } = require('../tools/seed-source-store');

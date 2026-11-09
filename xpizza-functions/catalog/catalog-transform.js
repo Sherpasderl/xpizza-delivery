@@ -26,4 +26,9 @@ function labelsFromDocs(itemDocs) {
   for (const d of (itemDocs || [])) { if (d && typeof d.key === 'string' && typeof d.label === 'string') out[d.key] = d.label; }
   return Object.keys(out).length ? out : null;
 }
-module.exports = { buildTablesFromDocs, codeTablesToCatalogDocs, labelsFromDocs };
+// S1d: the same table straight from a read snapshot's docs ({key, display.name}) — the reader keeps its price docs {key, price}
+// exactly (PIN 1) and hands the labels beside them.
+function labelsFromSnap(snap) {
+  return labelsFromDocs(((snap && snap.docs) || []).map((d) => { const v = (d && typeof d.data === 'function' ? d.data() : null) || {}; return { key: v.key, label: v.display && typeof v.display === 'object' ? v.display.name : undefined }; }));
+}
+module.exports = { buildTablesFromDocs, codeTablesToCatalogDocs, labelsFromDocs, labelsFromSnap };
