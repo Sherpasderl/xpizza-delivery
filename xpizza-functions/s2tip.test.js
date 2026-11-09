@@ -247,6 +247,9 @@ const seq = (...ids) => { let i = 0; return () => ids[i++]; };
     assert.deepStrictEqual([fp(b), fp({ ...b, tip_cents: undefined }), fp({ ...b, tip_cents: 0 })], [golden, golden, golden], 'absent / undefined / 0 hash identically = the pre-S2 golden');
     assert.notStrictEqual(fp({ ...b, tip_cents: 1 }), golden, 'a tip changes the fingerprint');
     assert.strictEqual(base.chargeInputsFingerprint({ ...b, tip_cents: 0 }), null, 'premise: at the base an unclassified tip_cents field had NO fingerprint (bound reuse was skipped)');
+    // PLAN-capp-tip-step r7 §1: the capp's tip_choice marker (a card redemption sends it with «Sin propina») is NON-charge — it never
+    // nulls the fingerprint (which would drop charge_inputs_fp and bound reuse) and never changes it
+    assert.deepStrictEqual([fp({ ...b, tip_choice: true }), fp({ ...b, tip_choice: true, tip_cents: 0 })], [golden, golden], '🔴 TIPCHOICE-FP: tip_choice is non-charge — the fingerprint is defined and unchanged');
     // a LIVE reward checkout bound at issuance without a tip, retried with tip_cents: 0, reuses through the real probe — the
     // prepare step is never reached (its failure would otherwise strand the retry)
     const bound = fp(b);

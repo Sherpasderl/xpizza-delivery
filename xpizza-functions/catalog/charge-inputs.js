@@ -35,6 +35,7 @@ const NON_CHARGE_FIELDS = Object.freeze({
   entry_mode: 'S3b: selects only WHICH allowlisted order site PixelPay returns to (direct | app); never priced',
   address_area: 'the pre-accept area label for the driver (display only); never priced, routed, deduped, receipted or bound',
   checkout_ticket: 'PLAN-guest-checkout-server §2.3: the capp guest\'s verified-phone evidence, checked read-only by the guest gate; never priced',
+  tip_choice: 'PLAN-capp-tip-step §1: the capp tip step\'s explicit-choice marker, read only by tip-pref (a member UX hint, after acceptance); never priced (tip_cents is)',
 });
 // Fields the order forms SEND that NO order path reads (the census proves it) — non-charge by construction.
 const UNREAD_FORM_FIELDS = Object.freeze({

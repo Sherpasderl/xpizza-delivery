@@ -48,7 +48,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 // ── (i-b) the charge-inputs line inverse (Codex colonia r1 P2-2): removes ONLY the address_area NON_CHARGE_FIELDS entry ──
 {
   const CIV = require('./tools/area-charge-inputs-inverse');
-  const src = require('./tools/checkout-charge-inputs-inverse').unapplyCheckoutChargeInputs(read(CIV.FILE)); const base = baseOf(CIV.FILE);   // R-WIRE: the guest-checkout line (newer) stripped first, INNERMOST
+  const src = require('./tools/checkout-charge-inputs-inverse').unapplyCheckoutChargeInputs(require('./tools/tippref-charge-inputs-inverse').unapplyTipprefChargeInputs(read(CIV.FILE))); const base = baseOf(CIV.FILE);   // the tip slice's tip_choice line (newest), then R-WIRE's guest-checkout line, stripped first, INNERMOST
   assert.strictEqual(CIV.BASE, BASE, 'the same base as area-inverse');
   assert.strictEqual(CIV.unapplyAreaChargeInputs(src), base, `🔴 ${CIV.FILE} minus the address_area entry is not ${BASE}:${CIV.FILE}`);
   assert.notStrictEqual(src, base, `non-vacuity: ${CIV.FILE} carries the entry`);
