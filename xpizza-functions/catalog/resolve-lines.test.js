@@ -58,34 +58,49 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
   ok('an unknown key refuses menu_changed, naming the first refused line; only own keys count');
 }
 
-// ── malformed: invalid_line (the intentional tightening — today an array name prices by coercion) ──
+// ── a malformed LEGACY field is not judged (advisor ruling, option A, 2026-11-09): today's item_malformed check (and pricing's
+//    own 400) refuse it exactly as at the base, with the customer copy — the whole cart passes through unstamped ──
 {
-  const bad = [
+  const notJudged = [
     ['x_pizza', XP, { name: ['Carnivora'], qty: 1 }, 'RL-ARRAY an array name'],
     ['x_pizza', XP, { name: 5, qty: 1 }, 'RL-NUMBER a number name'],
     ['x_pizza', XP, { name: { toString: () => 'Carnivora' }, qty: 1 }, 'RL-OBJECT an object name'],
     ['la_musa', LM, { id: ['dimsum_01'], qty: 1 }, 'RL-ARRAY-ID an array id'],
+    ['x_pizza', XP, { name: null, qty: 1 }, 'RL-NULL-NAME a null name on a name-keyed menu'],
+    ['la_musa', LM, { id: null, name: 'Sichuan Spicy Wonton', qty: 1 }, 'RL-NULL-ID a null id on an id-keyed menu'],
+    ['x_pizza', XP, { item_key: 'Carnivora', name: ['Carnivora'], qty: 1 }, 'RL-DISAGREE-TYPE a non-string legacy field beside item_key'],
+    ['x_pizza', XP, { qty: 1 }, 'RL-ABSENT no legacy field and no item_key'],
+    ['x_pizza', XP, { item_key: 'Carnivora', name: null, qty: 1 }, 'RL-NULL-NAME-KEY a null name beside an item_key (null is never read as absent)'],
+  ];
+  for (const [rid, t, line, label] of notJudged) {
+    const good = rid === 'x_pizza' ? { name: 'Carnivora', qty: 1 } : { id: 'dimsum_01', qty: 1 };
+    const b = body([good, line], { item_id: rid === 'x_pizza' ? 'Carnivora' : 'dimsum_01' });
+    assert.deepStrictEqual(resolveLines(rid, b, t), { ok: true }, `${label}: not judged (today's refusal answers it)`);
+    assert.deepStrictEqual([stampOf(b.items[0]), stampOf(b.items[1]), stampOf(b.redeem)], [undefined, undefined, undefined], `${label}: the whole cart passes through unstamped`);
+  }
+  ok('a malformed legacy field (non-string, null) or a line naming nothing is not judged: the cart passes through unstamped');
+}
+
+// ── a malformed or disagreeing item_key (the NEW field — no legacy code): invalid_line, never stamped ──
+{
+  const bad = [
     ['x_pizza', XP, { item_key: 5, name: 'Carnivora', qty: 1 }, 'RL-KEY-TYPE a non-string item_key'],
     ['x_pizza', XP, { item_key: '', name: 'Carnivora', qty: 1 }, 'RL-KEY-EMPTY an empty item_key'],
     ['x_pizza', XP, { item_key: ['Carnivora'], qty: 1 }, 'RL-KEY-TYPE-ALONE a non-string item_key with no legacy field'],
     ['x_pizza', XP, { item_key: '', qty: 1 }, 'RL-KEY-EMPTY-ALONE an empty item_key with no legacy field'],
-    ['x_pizza', XP, { item_key: 'Carnivora', name: 'Margherita', qty: 1 }, 'RL-DISAGREE item_key and name disagree'],
-    ['x_pizza', XP, { item_key: 'Carnivora', name: ['Carnivora'], qty: 1 }, 'RL-DISAGREE-TYPE a non-string legacy field beside item_key'],
-    // codex S1b r1 P2-1: an explicit null is a malformed field, never an absent one (no live writer sends one)
-    ['x_pizza', XP, { name: null, qty: 1 }, 'RL-NULL-NAME a null name on a name-keyed menu'],
-    ['la_musa', LM, { id: null, name: 'Sichuan Spicy Wonton', qty: 1 }, 'RL-NULL-ID a null id on an id-keyed menu'],
     ['x_pizza', XP, { name: 'Carnivora', item_key: null, qty: 1 }, 'RL-NULL-KEY a null item_key beside a good name'],
+    ['x_pizza', XP, { item_key: 'Carnivora', name: 'Margherita', qty: 1 }, 'RL-DISAGREE item_key and name disagree'],
   ];
   for (const [rid, t, line, label] of bad) {
     const b = body([line]);
     assert.deepStrictEqual(resolveLines(rid, b, t), { ok: false, code: 'invalid_line', at: 'items', index: 0 }, label);
     assert.strictEqual(stampOf(b.items[0]), undefined, `${label}: never stamped`);
   }
-  // the null rule reads only the mode's own field and item_key: a null in the OTHER identity field changes nothing
+  // a null in the field the mode does NOT use changes nothing
   const nx = body([{ name: 'Carnivora', id: null, qty: 1 }]);
   assert.deepStrictEqual(resolveLines('x_pizza', nx, XP), { ok: true }, 'RL-NULL-OTHER a null id on a name-keyed menu is not judged');
   assert.strictEqual(stampOf(nx.items[0]), 'Carnivora', 'RL-NULL-OTHER stamped with its name');
-  ok('a non-string, null or disagreeing field refuses invalid_line, never stamped');
+  ok('a malformed or disagreeing item_key refuses invalid_line, never stamped');
 }
 
 // ── a cart the stage does not judge passes through untouched (validateOrderPayload keeps today's errors) ──

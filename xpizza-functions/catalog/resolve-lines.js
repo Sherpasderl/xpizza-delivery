@@ -8,8 +8,8 @@
 // STRICT in S1b: a line carrying `item_key` must ALSO carry its legacy field (name on a name-keyed menu, id on an id-keyed one)
 // and the two must be equal. So every accepted line resolves to exactly the key it priced by before this stage existed — a
 // no-op on money by construction. S1d widens the agreement to the version's label (and only then may a key differ from it).
-// A cart this stage does not judge (not a non-empty array of objects, or no tables) passes through untouched, so the
-// validator keeps today's errors. Pure: reads nothing; the only write is the stamp, and only on full success.
+// A cart this stage does not judge (not a non-empty array of objects, no tables, or a line whose legacy field is not a
+// well-typed string — advisor ruling, option A) passes through untouched, so today's refusals keep their codes and copy. Pure: reads nothing; the only write is the stamp, and only on full success.
 // ---------------------------------------------------------------------------
 const { PRICING_KEY_STAMP, keyModeOfTables, availIdentityField } = require('../menu-pricing');
 
@@ -23,7 +23,7 @@ function resolveOne(line, field, menu) {
   const hasKey = own(line, 'item_key') && line.item_key !== undefined;   // an explicit null is malformed, not absent
   const hasLegacy = own(line, field) && line[field] !== undefined;
   if (hasKey && (typeof line.item_key !== 'string' || !line.item_key)) return { code: 'invalid_line' };
-  if (hasLegacy && typeof line[field] !== 'string') return { code: 'invalid_line' };
+  if (hasLegacy && typeof line[field] !== 'string') return { code: 'invalid_line' };   // reached by reward lines only (a cart line is screened above)
   if (hasKey && hasLegacy && line.item_key !== line[field]) return { code: 'invalid_line' };
   if (hasKey && !hasLegacy) return { code: 'menu_changed' };      // S1b: no label to judge it by yet — never priced
   if (!hasLegacy) return { code: 'menu_changed' };
@@ -46,6 +46,10 @@ function resolveLines(rid, body, tables) {
   if (!Array.isArray(items) || items.length === 0 || !items.every(isObj)) return { ok: true };
   const field = availIdentityField(rid, keyModeOfTables(tables));
   const menu = tables.menu;
+  // advisor ruling (option A): only well-typed legacy keys are judged. A line whose legacy field is present but not a string
+  // (null included), or that names nothing at all, is today's refusal (item_malformed with its customer copy, or pricing's
+  // own 400) — the whole cart passes through unstamped so that refusal answers exactly as before this stage existed.
+  if (items.some((l) => (own(l, field) && l[field] !== undefined) ? typeof l[field] !== 'string' : !(own(l, 'item_key') && l.item_key !== undefined))) return { ok: true };
   const stamps = [];
   for (let i = 0; i < items.length; i++) {
     const r = resolveOne(items[i], field, menu);
