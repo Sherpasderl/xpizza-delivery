@@ -4,7 +4,7 @@
 // one), so pricing, rewards and fingerprints see exactly today's keys. Tables are built as the reader builds them: a real built
 // catalog → its {key, price} docs → buildTablesFromDocs → the key mode attached. Run: node catalog/resolve-lines.test.js
 const assert = require('assert');
-const { resolveLines, resolutionRefusal } = require('./resolve-lines');
+const { resolveLines, labelGap, resolutionRefusal } = require('./resolve-lines');
 const { PRICING_KEY_STAMP, attachTablesKeyMode, itemPricingKey } = require('../menu-pricing');
 const { buildTablesFromDocs } = require('./catalog-transform');
 const { buildSourceCandidate } = require('./candidate-validate');
@@ -60,6 +60,18 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
   assert.deepStrictEqual(resolveLines('x_pizza', body([{ item_key: 'Carnivora', name: 'Otra', qty: 1 }]), XPL), { ok: false, code: 'invalid_line', at: 'items', index: 0 }, 'RL-LABEL-WRONG a name that is neither the key nor its label refuses');
   assert.deepStrictEqual(resolveLines('x_pizza', body([{ name: 'Carnívora Suprema', qty: 1 }]), XPL), { ok: false, code: 'menu_changed', at: 'items', index: 0 }, 'RL-LEGACY-NEWNAME a legacy line naming the NEW label (an old client) refuses menu_changed — legacy lines stay exact-key');
   assert.deepStrictEqual(resolveLines('x_pizza', body([{ item_key: 'Nope', name: 'Carnívora Suprema', qty: 1 }]), XPL), { ok: false, code: 'menu_changed', at: 'items', index: 0 }, 'RL-LABEL-UNKNOWN-KEY an unknown item_key refuses menu_changed even if the name is a label');
+  // D3 early gate: on a route without a label for an OPAQUE resolved key, the order endpoints refuse before any write
+  const OPQ = 'i_aaaaaaaaaaaa';
+  const withOpaque = (labels) => attachTablesLabels(attachTablesKeyMode({ restaurantId: 'x_pizza', menu: { ...XP.menu, [OPQ]: 199 }, extras: XP.extras }, 'name'), labels);
+  const gapBody = () => body([{ item_key: OPQ, qty: 1 }]);
+  const g1 = gapBody(); resolveLines('x_pizza', g1, withOpaque(null));
+  assert.strictEqual(labelGap(g1, withOpaque(null)), true, 'RL-LABELGAP an opaque key with no label on this route');
+  const g2 = gapBody(); resolveLines('x_pizza', g2, withOpaque({ [OPQ]: 'Pizza Nueva' }));
+  assert.strictEqual(labelGap(g2, withOpaque({ [OPQ]: 'Pizza Nueva' })), false, 'RL-LABELGAP-OK its label is here');
+  const g3 = body([{ name: 'Carnivora', qty: 1 }]); resolveLines('x_pizza', g3, XP);
+  assert.strictEqual(labelGap(g3, XP), false, 'RL-LABELGAP-LEGACY a legacy key is its own description (no gap)');
+  const g4 = body([{ name: 'Carnivora', qty: 1 }], { item_id: OPQ }); resolveLines('x_pizza', g4, withOpaque(null));
+  assert.strictEqual(labelGap(g4, withOpaque(null)), true, 'RL-LABELGAP-REWARD a resolved opaque reward key with no label');
   ok('S1d: item_key agrees with its legacy field OR the version\'s label; without labels strict; legacy lines exact-key');
 }
 
