@@ -687,6 +687,7 @@
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
+      reconcilePay();   // S2: the adjustment sheet follows what is now on screen
       containLayer();   // C-5 r2: a rebuilt screen behind an open sheet stays inert
       reflect();
       if (S.tab === 'home' && !S.store && !S.neutral) { askLegal(); rowArrows(); askRateNudge(); }
@@ -736,8 +737,9 @@
     const payOn = () => !!(CappPayAdjust && payEp());
     const payFetchFn = () => (typeof o.payFetch === 'function' ? o.payFetch : win && typeof win.fetch === 'function' ? (u, i) => win.fetch(u, i) : null);
     const mono = () => { try { const pf = win && win.performance; return pf && typeof pf.now === 'function' ? pf.now() : Number(nowMs()); } catch (_) { return Number(nowMs()); } };
-    const payOf = (od) => { if (!od.payAdj) od.payAdj = { view: null, help: false, dismissed: {}, anchor: null, busy: false, seen: null }; return od.payAdj; };
-    const payLeft = (p) => (p && p.anchor ? p.anchor.left - (mono() - p.anchor.at) : null);
+    const payOf = (od) => { if (!od.payAdj) od.payAdj = { view: null, help: false, dismissed: {}, anchor: null, busy: false, seen: null, getting: false }; return od.payAdj; };
+    // the anchor belongs to ONE adjustment (Codex r1 #2): another adjustment's — say an expired one's — never counts
+    const payLeft = (p) => { const c = p && p.view && p.view.consent; return p && p.anchor && c && p.anchor.id === c.adjustment_id ? p.anchor.left - (mono() - p.anchor.at) : null; };
     function takeView(od, v) {
       const p = payOf(od);
       if (!v || typeof v !== 'object' || !Number.isInteger(v.seq) || (p.view && v.seq < p.view.seq)) return false;   // §1.2: never an older snapshot
@@ -748,14 +750,21 @@
       if (c && c.outcome === 'pending' && Number.isInteger(c.expires_at) && Number.isFinite(serverNow)) p.anchor = { at: mono(), left: c.expires_at - serverNow, id: c.adjustment_id };
     }
     async function payHeaders() { if (!S.member || !fbAuth) return null; let t = null; try { t = await fbAuth.idToken(); } catch (_) { t = null; } return t ? { Authorization: `Bearer ${t}` } : null; }
+    // §1.4: GET on the first sight of a pending consent, on every stream (re)open, when the app becomes visible and on resume; a failed
+    // GET keeps the last anchor and is retried by the next of those (Codex r1 #4). A reply's timing comes WITH its view: a stale view
+    // (an older seq) brings no anchor (Codex r1 #3)
     async function payGet(od) {
-      const ep = payEp(), f = payFetchFn(); if (!ep || !f || typeof od.order_id !== 'string') return;
+      const ep = payEp(), f = payFetchFn(), p = payOf(od); if (!ep || !f || typeof od.order_id !== 'string' || p.getting) return;
       const h = await payHeaders(); if (!h) return;
-      const gen = orderGen; let r = null;
+      const gen = orderGen; let r = null; p.getting = true;
       try { const res = await f(`${ep.getPayAdjust}?order_id=${encodeURIComponent(od.order_id)}`, { headers: h }); r = res && res.ok ? await res.json() : null; } catch (_) { r = null; }
-      if (dead || gen !== orderGen || S.order !== od || !r) return;   // a failed GET keeps the last anchor (§1.4)
-      takeView(od, r.view); anchorPay(od, r.server_now); paintPay(od);
+      p.getting = false;
+      if (dead || gen !== orderGen || S.order !== od || !r) return;
+      if (takeView(od, r.view)) { anchorPay(od, r.server_now); const c = p.view.consent; if (c) p.seen = c.adjustment_id; }
+      paintPay(od);
     }
+    const payPending = (od) => { const c = od && od.payAdj && od.payAdj.view && od.payAdj.view.consent; return !!c && c.outcome === 'pending'; };
+    function repay(od) { if (payOn() && od && S.order === od && payPending(od)) payGet(od); }
     async function payRespond(od, accept) {
       const ep = payEp(), f = payFetchFn(), p = payOf(od), c = p.view && p.view.consent;
       if (!ep || !f || !c || p.busy || typeof od.order_id !== 'string') return;
@@ -765,7 +774,7 @@
       try { const res = await f(ep.respondPayAdjust, { method: 'POST', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify({ order_id: od.order_id, adjustment_id: c.adjustment_id, accept }) }); r = res && res.ok ? await res.json() : null; } catch (_) { r = null; }
       if (dead || gen !== orderGen || S.order !== od) return;
       p.busy = false;
-      if (r) { takeView(od, r.view); anchorPay(od, r.server_now); }
+      if (r && takeView(od, r.view)) anchorPay(od, r.server_now);   // a stale reply brings neither its view nor its timing (Codex r1 #3)
       paintPay(od);
     }
     function streamPay(od) {
@@ -781,10 +790,11 @@
         if (!takeView(od, rec)) return;
         const p = payOf(od), c = p.view.consent;
         // §1.4: anchor on the first sight of a pending consent (and on every resume — resumeOrder)
-        if (c && c.outcome === 'pending' && p.seen !== c.adjustment_id) { p.seen = c.adjustment_id; payGet(od); }
+        if (c && c.outcome === 'pending' && p.seen !== c.adjustment_id) payGet(od);   // `seen` is set only by a successful GET
         paintPay(od);
       };
       es.addEventListener('put', apply); es.addEventListener('patch', apply);
+      es.addEventListener('open', () => { if (!dead && gen === orderGen) repay(od); });   // a (re)connect re-anchors (§1.4)
       es.addEventListener('cancel', () => closePay()); es.addEventListener('auth_revoked', () => closePay());
     }
     function closePay() { if (payStream) { try { payStream.close(); } catch (_) {} } payStream = null; if (payTickT !== null) { T.clearTimeout(payTickT); payTickT = null; } }
@@ -800,11 +810,17 @@
     }
     // the sheet follows the frame: opened over the order screen when the view asks (never over another open sheet), closed when not;
     // the consent's minute line re-paints at each minute boundary of the anchored deadline (and F at zero)
+    // the sheet follows the frame AND the screen: reconciled at the end of every render (an order-status change — a cancellation, Codex
+    // r1 P1 —, entering the order screen, Codex r1 #5) and whenever another sheet closes; never over another open sheet
+    function reconcilePay() {
+      if (dead || !payOn()) return;
+      const od = S.order, fr = od && S.tab === 'order' && !S.store ? payFrame(od) : null, want = !!(fr && fr.sheet);
+      if (want) { if (S.layer === 'payadj') renderLayer(); else if (!S.layer) openLayer('payadj'); } else if (S.layer === 'payadj') closeLayer(false);
+    }
     function paintPay(od) {
       if (dead || S.order !== od) return;
-      const fr = payFrame(od), here = S.tab === 'order' && !S.store, want = here && !!(fr && fr.sheet);
-      if (want) { if (S.layer === 'payadj') renderLayer(); else if (!S.layer) openLayer('payadj'); } else if (S.layer === 'payadj') closeLayer(false);
-      if (here) renderNow();
+      const fr = payFrame(od);
+      if (S.tab === 'order' && !S.store) renderNow(); else reconcilePay();
       if (payTickT !== null) { T.clearTimeout(payTickT); payTickT = null; }
       const left = payLeft(od.payAdj);
       if (fr && fr.sheet === 'consent' && Number.isFinite(left) && left > 0) payTickT = T.setTimeout(() => { payTickT = null; paintPay(od); }, Math.max(250, left % 60000 || 60000));
@@ -896,7 +912,7 @@
       if ((S.tab === 'orders' || S.tab === 'order') && activeOrder()) resumeOrder();
       if (S.tab === 'orders' && !S.store) { loadOrders(); renderNow(); }
     }
-    function resumeOrder() { const od = activeOrder(); if (!od || orderStream) return; if (!od.windowText) windowOrder(od); streamOrder(od); streamPay(od); if (od.payAdj) od.payAdj.seen = null; }
+    function resumeOrder() { const od = activeOrder(); if (od && orderStream) { repay(od); return; } if (!od || orderStream) return; if (!od.windowText) windowOrder(od); streamOrder(od); streamPay(od); if (od.payAdj) od.payAdj.seen = null; }
     function stopOrder() { orderGen++; closeStream(); if (orderNum) { try { orderNum.stop(); } catch (_) {} } orderNum = null; if (orderFlipT !== null) { T.clearTimeout(orderFlipT); orderFlipT = null; } }
     function showOrder(rid, d) {
       stopOrder();
@@ -1382,7 +1398,7 @@
       if (MODAL.has(k) && !MODAL.has(S.layer)) { const ae = doc.activeElement; layerOpener = (ae && ae.dataset && ae.dataset.act ? { act: ae.dataset.act, oid: ae.dataset.oid || null } : null) || lastTap; }
       S.layer = k; renderLayer(); containLayer();
     }
-    function closeLayer(restore = true) { const was = S.layer; S.layer = null; renderLayer(); containLayer(); if (restore && MODAL.has(was)) restoreOpener(); }
+    function closeLayer(restore = true) { const was = S.layer; S.layer = null; renderLayer(); containLayer(); if (restore && MODAL.has(was)) restoreOpener(); if (was !== 'payadj') reconcilePay(); }
     let pending = null;
     const raf = win && typeof win.requestAnimationFrame === 'function' ? (f) => win.requestAnimationFrame(f) : (f) => T.setTimeout(f, 16);
     function schedule() { if (pending || dead) return; pending = true; raf(() => { pending = null; renderNow(); }); }
@@ -1468,7 +1484,7 @@
       if (el.dataset.field !== 'q') return;
       S.q = el.value; renderNow();
     }
-    function onVisible() { if (doc.visibilityState === 'visible' && !S.store) { dir.revalidate(); loadMenus(); } }
+    function onVisible() { if (doc.visibilityState === 'visible') repay(S.order); if (doc.visibilityState === 'visible' && !S.store) { dir.revalidate(); loadMenus(); } }   // S2 §1.4: re-anchor
     doc.addEventListener('click', onClick);
     doc.addEventListener('input', onInput);
     // C-2 / C-5: Escape dismisses the rating sheet («Ahora no») and the help sheet

@@ -20,10 +20,17 @@ const INFO = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="
 
 test('the fake is no laxer than the contract: unknown keys, an outcome outside the closed enum, changes that do not add up — refused', () => {
   assert.throws(() => payView({ total_cents: 1, extra: 1 }), /key/);
-  assert.throws(() => INC('approved'), /closed enum/);
+  assert.throws(() => INC('approved'), /outcome/, '🔴 S2-fake: an outcome outside the closed enum is refused');
   assert.throws(() => INC('pending', { token: 'T-1' }), /key the contract does not/);
   assert.throws(() => INC('pending', { changes: [line('line_added', 'X', 3000)] }), /do not add up/);
   assert.equal(OUTCOMES.length, 10);
+  // Codex r1 #6: a required key holding undefined (JSON would drop it) and a wrong type are refused, at every level
+  assert.throws(() => INC('pending', { adjustment_id: undefined }), /adjustment_id/, '🔴 S2-fake: an undefined required value is refused');
+  assert.throws(() => INC('pending', { expires_at: 'tomorrow' }), /expires_at/, '🔴 S2-fake: a wrong type is refused');
+  assert.throws(() => INC('pending', { changes: [line('line_added', 'Agua', 4000, { config: undefined })] }), /config/, '🔴 S2-fake: a nested undefined is refused');
+  assert.throws(() => INC('pending', { changes: [line('line_added', 'Agua', 4000, { qty_new: 'dos' })] }), /qty_new/, '🔴 S2-fake: a nested wrong type is refused');
+  assert.throws(() => payView({ total_cents: 1, card: { brand: 'visa', last4: undefined } }), /card|last4/, 'card values');
+  assert.throws(() => payView({ total_cents: 1, notice: { kind: 'decrease', revision: '1', old_total_cents: 1, new_total_cents: 1, changes: [] } }), /revision/, 'notice values');
 });
 
 test('dark: no view, a foreign version, a cancelled order ⇒ no frame and no markup (§1.3 precedence)', () => {
@@ -89,6 +96,13 @@ test('C: every Change kind of §2 draws a row; the mockup draws only line_added 
   const rows = (flat(A.sheetHtml(v, fr(v), {}, STORE)).match(/<div class="sumrow">.*?<\/div>/g) || []);
   assert.deepEqual(rows, ['<div class="sumrow"><span>+ Agua · Fría</span><span>L 40</span></div>', '<div class="sumrow"><span>Pan</span><span>− L 65</span></div>', '<div class="sumrow"><span>Lasaña · no disponible</span><span>− L 160</span></div>',
     '<div class="sumrow"><span>Pizza</span><span>L 295</span></div>', '<div class="sumrow"><span>Té</span><span>L 5</span></div>', '<div class="sumrow"><span>Envío</span><span>L 15</span></div>', '<div class="sumrow"><span>Propina</span><span>L 10</span></div>', '<div class="sumrow"><span>Descuento</span><span>− L 10</span></div>'], '🔴 S2-C-changes: one row per Change, signed effect');
+});
+
+test('Codex r1 #7: the local zero turns ONLY a pending C into F — every other outcome keeps its frame at left 0', () => {
+  for (const [o, sheet, notice] of [['processing', 'verify', null], ['action_required', 'verify', null], ['bank_pending', 'verify', null], ['declined', 'declined', null], ['accepted', null, null], ['under_review', null, 'review']]) {
+    const f = fr(INC(o), { left: 0 });
+    assert.deepEqual([f.sheet, f.notice], [sheet, notice], `🔴 S2-zero: ${o} at left 0 keeps its frame (never F)`);
+  }
 });
 
 test('E: processing / bank_pending ⇒ E without the well; action_required ⇒ E with the SDK well (no buttons either way)', () => {

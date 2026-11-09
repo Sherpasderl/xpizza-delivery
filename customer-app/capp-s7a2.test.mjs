@@ -4222,10 +4222,10 @@ test('S2 shell · dark: runtime.sdkPay absent ⇒ no projection stream, no notic
 
 const ACTIVE_REC = (TOKEN, placedAt) => JSON.stringify({ v: 1, exp: placedAt + 24 * 3600e3, order: { rid: 'x_pizza', order_id: 'XP-9', token: TOKEN, mode: 'delivery', status: 'new', owner: 'u:u_ana', placedAt, storeName: 'X. Pizza', branch: '', storeAddr: '',
   lines: [{ n: 1, name: 'Carnivora', extras: '', total: 340, dish_id: null }], fee: 45, tip: 20, total: 405, pay: 'online', addr: 'Col. Trejo', details: '', notes: '', whenText: 'Lo antes posible', phoneText: '', display_number: null, windowText: null, driver: null, stacked: false, doneAt: null, offerDone: true } });
-function payMember({ reply }) {
+function payMember({ reply, rt = {} }) {
   const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', srv = payServer(reply), fb = fakeFirebase({ persisted: 'u_ana' });
   const storage = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF), 'capp:active_order': ACTIVE_REC(TOKEN, T0) });
-  const S = routeShell('/r/x_pizza/pago', { auth: 'unresolved', storage, runtime: PAY_RT(SU_RUNTIME), readPublic: async () => ({ ok: false }), mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch, EventSource: ES, payFetch: srv.fetch } });
+  const S = routeShell('/r/x_pizza/pago', { auth: 'unresolved', storage, runtime: { ...PAY_RT(SU_RUNTIME), ...rt }, readPublic: async () => ({ ok: false }), mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch, EventSource: ES, payFetch: srv.fetch } });
   return { S, srv, made, TOKEN };
 }
 
@@ -4267,5 +4267,114 @@ test('S2 shell · member: «Más información» opens B over C and «Entendido»
     assert.equal(srv.log.filter((e) => e.method === 'POST').length, calls, '🔴 S2-shell-G: «Mantener mi pedido» on G calls nothing (the decline is final)');
     assert.equal(S.q('#layer .errsheet'), null, 'G closed');
     assert.equal(txt(S.q('.closednote span')), 'Tu pedido sigue como estaba. Total L 585.', '🔴 S2-shell-F: G dismissed ⇒ F');
+  } finally { S.w.close(); }
+});
+
+// ── Codex HIGH r1 on S2 (4cf1e229): the sheet follows the ORDER as well as the view; the anchor belongs to ONE adjustment and to the
+// view it came with; §1.4's re-anchor on reconnect / visibility (and recovery from a failed first GET); entering the order screen
+// reconciles; C's decline is submitted as accept:false
+const payOpen = (pv) => { for (const f of pv.l.open || []) f({ type: 'open' }); };
+const payPv = (made, TOKEN) => made.find((e) => e.url === `https://rtdb.test/order_pay_view/${TOKEN}.json`);
+const payTr = (made, TOKEN) => made.find((e) => e.url === `https://rtdb.test/order_tracking/${TOKEN}.json`);
+
+test('S2 shell · Codex r1 P1: the order cancelled under an open consent sheet ⇒ the sheet closes (no «Aceptar nuevo total» over «Pedido cancelado»)', async () => {
+  const { S, made, TOKEN } = payMember({ reply: () => null });
+  try {
+    await until(() => S.ui.state.member && payPv(made, TOKEN)); await flush();
+    payPv(made, TOKEN).emit('put', '/', payInc(2, 'pending')); await flush();
+    assert.ok(S.q('#layer [data-act="adj-accept"]'), 'premise: C is open');
+    const tr = payTr(made, TOKEN); tr.emit('put', '/', trackingRecordOf(TOKEN)); tr.emit('put', '/status', 'cancelled'); await flush();
+    assert.equal(txt(S.q('.mk-title')), 'Pedido cancelado', 'premise: cancelled');
+    assert.equal(S.q('#layer [data-act="adj-accept"]'), null, '🔴 S2-shell-cancel: no consent action survives the cancellation');
+    assert.equal(S.q('#layer .errsheet'), null, '🔴 S2-shell-cancel: the sheet closed');
+  } finally { S.w.close(); }
+});
+
+test('S2 shell · Codex r1 #2: a new adjustment never inherits the previous one\'s (expired) anchor — B with a failed GET still shows C with its buttons', async () => {
+  const exp = T0 + 10 * 60e3;
+  const { S, srv, made, TOKEN } = payMember({ reply: (e) => (e.method === 'GET' && srv.log.length === 1 ? { view: payInc(2, 'pending'), server_now: exp + 1000 } : null) });
+  try {
+    await until(() => S.ui.state.member && payPv(made, TOKEN)); await flush();
+    payPv(made, TOKEN).emit('put', '/', payInc(2, 'pending')); await until(() => srv.log.length >= 1); await flush();
+    assert.equal(txt(S.q('.closednote span')), 'Tu pedido sigue como estaba. Total L 585.', 'premise: A expired locally ⇒ F');
+    payPv(made, TOKEN).emit('put', '/', payInc(3, 'pending', {}, { adjustment_id: 'adj-3' })); await until(() => srv.log.length >= 2); await flush();
+    assert.ok(S.q('#layer [data-act="adj-accept"]'), '🔴 S2-shell-anchor-id: B (its GET failed) is C with its buttons, not A\'s expired F');
+  } finally { S.w.close(); }
+});
+
+test('S2 shell · Codex r1 #3: a stale reply (an older seq) brings no timing — the countdown keeps the installed view\'s anchor', async () => {
+  const exp = T0 + 10 * 60e3;
+  const { S, srv, made, TOKEN } = payMember({ reply: (e) => (e.method === 'GET' ? { view: payInc(5, 'pending'), server_now: exp - 60000 } : { outcome: 'pending', view: payInc(2, 'pending'), server_now: exp - 660000 }) });
+  try {
+    await until(() => S.ui.state.member && payPv(made, TOKEN)); await flush();
+    payPv(made, TOKEN).emit('put', '/', payInc(5, 'pending')); await until(() => srv.log.length >= 1); await flush();
+    assert.equal(txt(S.q('#layer .cdown')), 'Tenés 1 min para responder', 'premise: anchored at 60 s');
+    S.click('#layer [data-act="adj-accept"]'); await until(() => srv.log.length >= 2); await flush();
+    assert.equal(txt(S.q('#layer .cdown')), 'Tenés 1 min para responder', '🔴 S2-shell-stale: the stale reply\'s server_now never re-anchors');
+  } finally { S.w.close(); }
+});
+
+test('S2 shell · Codex r1 #4: §1.4 re-anchor — a stream reconnect and the app becoming visible each GET again; a failed first GET is recovered', async () => {
+  const exp = T0 + 10 * 60e3; let n = 0;
+  const { S, srv, made, TOKEN } = payMember({ reply: (e) => (e.method === 'GET' ? (++n === 1 ? null : { view: payInc(2, 'pending'), server_now: exp - 120000 }) : null) });
+  try {
+    await until(() => S.ui.state.member && payPv(made, TOKEN)); await flush();
+    const pv = payPv(made, TOKEN);
+    pv.emit('put', '/', payInc(2, 'pending')); await until(() => srv.log.length >= 1); await flush();
+    assert.equal(txt(S.q('#layer .cdown')), 'Tenés 3 min para responder', 'premise: the first GET failed ⇒ no anchor yet');
+    payOpen(pv); await until(() => srv.log.length >= 2).catch(() => {}); await flush();
+    assert.equal(srv.log.filter((e) => e.method === 'GET').length, 2, '🔴 S2-shell-reanchor: a stream (re)open GETs again');
+    assert.equal(txt(S.q('#layer .cdown')), 'Tenés 2 min para responder', '🔴 S2-shell-reanchor: the failed first GET is recovered');
+    S.w.document.dispatchEvent(new S.w.Event('visibilitychange')); await until(() => srv.log.length >= 3).catch(() => {}); await flush();
+    assert.equal(srv.log.filter((e) => e.method === 'GET').length, 3, '🔴 S2-shell-reanchor: becoming visible GETs again');
+  } finally { S.w.close(); }
+});
+
+test('S2 shell · Codex r1 #5: a pending consent that arrived while away is shown on ENTERING the order screen', async () => {
+  const { S, made, TOKEN } = payMember({ reply: () => null });
+  try {
+    await until(() => S.ui.state.member && payPv(made, TOKEN)); await flush();
+    S.click('.tabbar [data-tab="home"]'); await flush();
+    assert.notEqual(S.ui.state.tab, 'order', 'premise: away from the order screen');
+    payPv(made, TOKEN).emit('put', '/', payInc(2, 'pending')); await flush();
+    assert.equal(S.q('#layer .errsheet'), null, 'no sheet over another screen');
+    S.ui.nav.go({ name: 'order' }); await flush();
+    assert.ok(S.q('#layer [data-act="adj-accept"]'), '🔴 S2-shell-enter: entering the order screen opens C');
+  } finally { S.w.close(); }
+});
+
+test('S2 shell · Codex r1 #7: C\'s «Mantener mi pedido» is submitted as accept:false', async () => {
+  const { S, srv, made, TOKEN } = payMember({ reply: (e) => (e.method === 'POST' ? { outcome: 'kept', view: payInc(3, 'kept'), server_now: T0 } : null) });
+  try {
+    await until(() => S.ui.state.member && payPv(made, TOKEN)); await flush();
+    payPv(made, TOKEN).emit('put', '/', payInc(2, 'pending')); await flush();
+    S.click('#layer [data-act="adj-keep"]'); await until(() => srv.log.some((e) => e.method === 'POST')); await flush();
+    assert.deepEqual(srv.log.find((e) => e.method === 'POST').body, { order_id: 'XP-9', adjustment_id: 'adj-2', accept: false }, '🔴 S2-shell-keep: C\'s decline is accept:false');
+    assert.equal(txt(S.q('.closednote span')), 'Tu pedido sigue como estaba. Total L 585.', 'the reply\'s kept ⇒ F');
+  } finally { S.w.close(); }
+});
+
+test('S2 shell · Codex r1 #5: a pending consent that arrived under another sheet (Ayuda) opens C when that sheet closes', async () => {
+  const { S, made, TOKEN } = payMember({ reply: () => null, rt: { supportWhatsapp: '50496112080' } });
+  try {
+    await until(() => S.ui.state.member && payPv(made, TOKEN)); await flush();
+    S.click('[data-act="order-help"]'); await flush();
+    assert.ok(S.q('#layer .helpsheet'), 'premise: the help sheet is open');
+    payPv(made, TOKEN).emit('put', '/', payInc(2, 'pending')); await flush();
+    assert.ok(S.q('#layer .helpsheet') && !S.q('#layer [data-act="adj-accept"]'), 'C never covers the open help sheet');
+    S.click('#layer [data-act="help-close"]'); await flush();
+    assert.ok(S.q('#layer [data-act="adj-accept"]'), '🔴 S2-shell-modal: C opens once the other sheet closes');
+  } finally { S.w.close(); }
+});
+
+test('S2 shell · Codex r1 #3 (GET): a stale GET reply (an older seq) brings no timing either', async () => {
+  const exp = T0 + 10 * 60e3; let n = 0;
+  const { S, srv, made, TOKEN } = payMember({ reply: (e) => (e.method === 'GET' ? (++n === 1 ? { view: payInc(5, 'pending'), server_now: exp - 60000 } : { view: payInc(2, 'pending'), server_now: exp - 660000 }) : null) });
+  try {
+    await until(() => S.ui.state.member && payPv(made, TOKEN)); await flush();
+    payPv(made, TOKEN).emit('put', '/', payInc(5, 'pending')); await until(() => srv.log.length >= 1); await flush();
+    assert.equal(txt(S.q('#layer .cdown')), 'Tenés 1 min para responder', 'premise: anchored at 60 s');
+    S.w.document.dispatchEvent(new S.w.Event('visibilitychange')); await until(() => srv.log.length >= 2); await flush();
+    assert.equal(txt(S.q('#layer .cdown')), 'Tenés 1 min para responder', '🔴 S2-shell-stale-get: the stale GET\'s server_now never re-anchors');
   } finally { S.w.close(); }
 });
