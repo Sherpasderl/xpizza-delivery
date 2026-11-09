@@ -53,14 +53,34 @@ export const REKEY_CASES = [
   { name: 'a key that is neither a live item nor a tmp ref is refused', photos: { Ghost: { state: 'pid', pid: 'P4' } }, items: [{ key: 'Pep' }], allocated: [], want: { error: 'bad_source', field: 'photos', key: 'Ghost' } },
 ];
 
+// The strictest fake (Codex held r4): the ONLY section names a rename may set — the exact names the suites use — and the ONLY
+// source shape the fake accepts (its own: restaurant_id + schema_version 1 + items + extras + structure{schema_version 2,
+// item_order, categories} [+ photos]). Anything else is refused, never modelled.
+// key-order-free JSON: equality is about content, never about the order a client happened to write keys in
+const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys(v[k])])) : v);
+const canonJson = (v) => JSON.stringify(sortKeys(v));
+const RENAME_ALLOWLIST = Object.freeze(['Pizzas', 'Pizzas clásicas', 'Pizzas de la casa']);
+const ROOT_KEYS = ['extras', 'items', 'restaurant_id', 'schema_version', 'structure'];
+function shapeProblem(src) {
+  if (!src || typeof src !== 'object' || Array.isArray(src)) return 'source';
+  const keys = Object.keys(src).filter((k) => k !== 'photos').sort();
+  if (JSON.stringify(keys) !== JSON.stringify(ROOT_KEYS)) return `root fields ${JSON.stringify(keys)}`;
+  if (src.schema_version !== 1 || !Array.isArray(src.items) || !Array.isArray(src.extras)) return 'root values';
+  const st = src.structure;
+  if (!st || typeof st !== 'object' || JSON.stringify(Object.keys(st).sort()) !== JSON.stringify(['categories', 'item_order', 'schema_version'])) return 'structure fields';
+  if (st.schema_version !== 2 || !Array.isArray(st.item_order) || !Array.isArray(st.categories)) return 'structure values';
+  return null;
+}
+
 export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs = 3600e3, items = [], usesPlatformFactura = false, photosEnabled = true, legacy = {}, caps = ['catalog.read_editor', 'catalog.edit', 'catalog.publish', 'availability.set'] } = {}) {
   const fake = {
     rid, brandId, caps: new Set(caps), uid: 'u_owner',
     flags: { uploads: photosEnabled },
     usesPlatformFactura,
     // the published version and the draft (a source document, as editCatalog stores it; photos stored beside it)
-    active: { vid: 'v1', items: clone(items), photos: {} },
-    draft: { items: clone(items), photos: {} },
+    // section names (PLAN-public-menu-display T1), so a rename travels like the real server's: the draft's names vs the published
+    active: { vid: 'v1', items: clone(items), photos: {}, categories: [{ id: 'cl', name: 'Clásicas' }] },
+    draft: { items: clone(items), photos: {}, categories: [{ id: 'cl', name: 'Clásicas' }] },
     sourceUpdateTime: 'T1',
     legacy: { ...legacy },            // itemKey → true (the dish has a legacy image the public menu serves)
     uploads: new Map(),               // uploadId → doc
@@ -144,7 +164,7 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
     // the caller must hold the read's capability
     getEditableCatalog(q) {
       if (q.restaurantId !== fake.rid || !fake.caps.has('catalog.read_editor')) return err(403, 'not_authorized');
-      const out = { source: { restaurant_id: fake.rid, schema_version: 1, items: clone(fake.draft.items), extras: [], structure: { schema_version: 2, item_order: fake.draft.items.map((r) => keyOf(r)), categories: [{ id: 'cl', name: 'Clásicas' }] } },
+      const out = { source: servedSource(fake.draft.items, fake.draft.categories),
         sourceUpdateTime: fake.sourceUpdateTime, activeVersionId: fake.active.vid, usesPlatformFactura: fake.usesPlatformFactura, renderedCategories: ['cl'] };
       if (Object.keys(fake.draft.photos).length) out.photos = clone(fake.draft.photos);
       const pids = new Set([...Object.values(fake.draft.photos), ...Object.values(fake.active.photos)].filter((e) => e.state === 'pid').map((e) => e.pid));
@@ -155,6 +175,9 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
       for (const k of Object.keys(fake.legacy)) if (fake.legacy[k]) lg[k] = fake.legacy[k] === 'nourl' ? {} : { card: legacyCard(k) };
       if (Object.keys(lg).length) out.legacyPreviews = lg;
       if (fake.flags.uploads) out.photosEnabled = true;
+      // pendingRenames (portal-reads.js) is NOT served: production derives it with draft-assess.assessDraft, which only accepts a
+      // complete schema-2 source — this fake's catalog is not one, so it reports none (advisor ruling B, Codex held r3). Tests that
+      // need a pending name make it through the page's own rename path; the server's derivation is proven by the emulator cells.
       return answer(200, out);
     },
     editCatalog(b) {
@@ -173,12 +196,32 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
         if (e.state === 'pid') { const r = fake.registry.get(e.pid); if (!r || r.state === 'deleting' || r.state === 'deleted') return err(409, 'photo_unavailable'); }
       }
       if (!fake.flags.uploads && JSON.stringify(rk.photos) !== JSON.stringify(fake.draft.photos)) return err(409, 'photo_change_disabled');
-      fake.draft = { items: canon, photos: rk.photos };
+      const cats = src.structure && Array.isArray(src.structure.categories) ? src.structure.categories.filter((c) => c && typeof c.id === 'string').map((c) => ({ id: c.id, name: c.name })) : clone(fake.draft.categories);
+      // NOT A MODEL OF PRODUCTION — the STRICTEST fake (advisor ruling B, Codex held r3/r4): every input shape it does not serve
+      // itself is refused, and a category change is accepted ONLY as a rename to one of the exact names the suites use
+      // (RENAME_ALLOWLIST) of an otherwise unchanged published catalog. Anything else → 400 unmodeled_change. Stricter than
+      // production by construction (only a LAXER fake voids a test); the production rule is proven by the emulator cells.
+      const shape = shapeProblem(src);
+      if (shape) return err(400, 'unmodeled_change', { detail: `the fake refuses an input shape it does not serve: ${shape}`, field: 'source' });
+      const ac = fake.active.categories;
+      const catsIn = src.structure.categories;
+      if (JSON.stringify(catsIn) !== JSON.stringify(ac)) {
+        const renameOnly = catsIn.length === ac.length && catsIn.every((c, i) => c && typeof c === 'object'
+          && JSON.stringify(Object.keys(c).sort()) === JSON.stringify(Object.keys(ac[i]).sort()) && c.id === ac[i].id
+          && (c.name === ac[i].name || RENAME_ALLOWLIST.includes(c.name)));
+        // the EFFECTIVE resulting catalog, names put back, must be the published one in every other byte
+        const effective = { ...src, structure: { ...src.structure, categories: ac }, photos: own(src, 'photos') ? src.photos : {} };
+        const published = { ...servedSource(fake.active.items, ac), photos: fake.active.photos };
+        if (!renameOnly || canonJson(effective) !== canonJson(published)) {
+          return err(400, 'unmodeled_change', { detail: 'the fake accepts a category change only as an allowlisted rename of an otherwise unchanged published catalog (stricter than production)', field: 'categories' });
+        }
+      }
+      fake.draft = { items: canon, photos: rk.photos, categories: cats };
       fake.sourceUpdateTime = `T${++fake.versions}`;
       const diff = diffOf();
       const token = nid('tok');
       fake.tokens.set(token, JSON.stringify(fake.draft));
-      const source = { restaurant_id: fake.rid, schema_version: 1, items: clone(canon), extras: [], structure: { schema_version: 2, item_order: canon.map(keyOf), categories: [{ id: 'cl', name: 'Clásicas' }] } };
+      const source = servedSource(canon, fake.draft.categories);
       if (Object.keys(rk.photos).length) source.photos = clone(rk.photos);
       return answer(200, { diff, token, updateTime: fake.sourceUpdateTime, source });
     },
@@ -187,7 +230,7 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
       if (fake.tokens.get(b.token) !== JSON.stringify(fake.draft)) return err(409, 'edit_superseded');
       if (fake.usesPlatformFactura && b.fiscalAck !== true) return err(403, 'fiscal_ack_required');
       for (const e of Object.values(fake.draft.photos)) if (e.state === 'pid') fake.registry.get(e.pid).state = 'published';
-      fake.active = { vid: `v${++fake.versions}`, items: clone(fake.draft.items), photos: clone(fake.draft.photos) };
+      fake.active = { vid: `v${++fake.versions}`, items: clone(fake.draft.items), photos: clone(fake.draft.photos), categories: clone(fake.draft.categories) };
       fake.tokens.clear();
       return answer(200, { ok: true, versionId: fake.active.vid });
     },
@@ -218,6 +261,10 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
       method: 'PUT', headers: { 'Content-Type': u.contentType, 'x-goog-content-length-range': '1,10485760', 'x-goog-if-generation-match': '0' }, expiresAt: Date.now() + 600e3 };
   }
   // the diff against the ACTIVE version: prices, additions, and the three-state photo lines
+  // the source shape the fake serves (getEditableCatalog / editCatalog) — the ONE definition the strict check compares against
+  function servedSource(items, categories) {
+    return { restaurant_id: fake.rid, schema_version: 1, items: clone(items), extras: [], structure: { schema_version: 2, item_order: items.map(keyOf), categories: clone(categories) } };
+  }
   function diffOf() {
     const changed = [], added = [];
     const act = new Map(fake.active.items.map((r) => [keyOf(r), r]));
@@ -231,7 +278,13 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
       const o = st(fake.active.photos, k), n = st(fake.draft.photos, k);
       if (!sameSt(o, n)) changed.push({ surface: 'item', key: k, field: 'photo', old: o, new: n });
     }
+    // a section's display name, as the server's diff carries it (app.js reads surface 'category', field 'name', key, old, new)
+    for (const r of renamesOf()) changed.push({ surface: 'category', key: r.id, field: 'name', old: r.from, new: r.to });
     return { changed, added, removed: [], renamed: [], largeChangeSet: added.map((a) => ({ surface: 'item', key: a.key })) };
+  }
+  function renamesOf() {
+    const was = new Map(fake.active.categories.map((c) => [c.id, c.name]));
+    return fake.draft.categories.filter((c) => was.has(c.id) && was.get(c.id) !== c.name).map((c) => ({ id: c.id, from: was.get(c.id), to: c.name }));
   }
 
   // ── fetch: the Functions host ──

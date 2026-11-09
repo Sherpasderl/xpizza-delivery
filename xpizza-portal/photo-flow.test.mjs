@@ -834,3 +834,230 @@ test('OWNER BUG — photos DARK (flag off): the item drawer and the «Nuevo prod
   assertCloseIcon(drawer(d), '«Nuevo producto» drawer (dark)').click(); await settle();
   assert.ok(!drawer(d).classList.contains('show'), '«Nuevo producto» drawer (dark): closed');
 });
+
+// OWNER-APPROVED MOCKUP-portal-photos-held-state.html (2026-11-01): ruling A's held states, the two notice lines as proposed, and
+// the drawer's locked controls DIMMED like the list's prices (they did not look locked: the zone kept its green «Subí una foto»).
+const NOTE_RENAMES = 'Hay un cambio de nombre esperando publicarse. Publicalo o descartalo para seguir editando precios, fotos o agregando productos.';
+const NOTE_OTHERS = 'Hay cambios sin publicar. Un cambio de nombre se publica solo: publicá o descartá esos cambios primero.';
+const secnote = (d) => { const n = d.querySelector('#detail > .secnote span'); return n ? n.textContent : null; };
+test('HELD H1 — a pending section name: the notice names photos too (owner-approved line); the drawer\'s photo controls are locked AND dimmed', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d } = await boot(fake);
+  await renameSection(d, 'Pizzas de la casa');
+  assert.equal(secnote(d), NOTE_RENAMES);
+  await openDrawerFor(d, 'Pepperoni');
+  const dw = drawer(d);
+  assert.ok(dw.classList.contains('namehold'), 'the drawer carries the hold, for the dimming');
+  assert.ok(dw.querySelector('button.uploader').disabled, 'premise: the zone is locked');
+});
+test('HELD H3 — a pending photo: «Cambiar nombre» is off and the notice is the owner-approved generic line (not «precio»)', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, w } = await boot(fake);
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => drawer(d).querySelector('.uphoto:not(.phbusy) .phacts'), 'a pending photo');
+  closeBtn(drawer(d)).click(); await settle();
+  assert.ok(d.querySelector('#detail .secren').disabled, 'premise: the rename is off');
+  assert.equal(secnote(d), NOTE_OTHERS);
+});
+test('HELD — no pending name: the drawer has no hold class (nothing dimmed by it)', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d } = await boot(fake);
+  await openDrawerFor(d, 'Pepperoni');
+  assert.ok(!drawer(d).classList.contains('namehold'));
+});
+test('HELD dimming — styles.css dims every control the name hold locks, exactly like the list\'s prices (opacity .5, not-allowed)', () => {
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const listPrice = /\.price input:disabled\{([^}]*)\}/.exec(css);
+  assert.ok(listPrice, 'premise: the list price rule');
+  const rule = /\n\s*((?:#drawer\.namehold [^{]+?,\s*)*#drawer\.namehold [^{]+)\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'a #drawer.namehold rule');
+  assert.equal(rule[2].replace(/\s/g, ''), listPrice[1].replace(/\s/g, ''), 'the SAME declarations as the list prices');
+  const sels = rule[1].split(',').map((s) => s.trim());
+  for (const s of ['input:disabled', 'textarea:disabled', 'select:disabled', 'button.uploader:disabled', '.phph2b button:disabled', '.phacts button:disabled', '.pherr button:disabled', '.phrm button:disabled']) {
+    assert.ok(sels.includes(`#drawer.namehold ${s}`), `dims ${s}`);
+  }
+});
+
+// Codex held r1: the hold must CLEAR on the same drawer element when the pending name goes (discard / publish), and the
+// dimming must be the stylesheet's computed verdict — the locked controls dimmed, the held photo's «Cancelar» enabled and not.
+const withCss = (d) => { const st = d.createElement('style'); st.textContent = readFileSync(join(DIR, 'styles.css'), 'utf8'); d.head.append(st); };
+const look = (d, n) => { const cs = d.defaultView.getComputedStyle(n); return `${cs.opacity}|${cs.cursor}`; };
+test('HELD r1 — Descartar clears the hold on the SAME drawer element (no sticky namehold)', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d } = await boot(fake);
+  await renameSection(d, 'Pizzas de la casa');
+  await openDrawerFor(d, 'Pepperoni');
+  const dw = drawer(d);
+  assert.ok(dw.classList.contains('namehold'), 'premise: held');
+  d.getElementById('discard').click(); await settle();
+  assert.equal(secnote(d), null, 'premise: the name change is gone');
+  assert.ok(!dw.classList.contains('namehold'), 'the hold cleared with it');
+});
+test('HELD r1 — publishing the name clears the hold on the SAME drawer element', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, calls } = await boot(fake);
+  await renameSection(d, 'Pizzas de la casa');
+  await openDrawerFor(d, 'Pepperoni');
+  const dw = drawer(d);
+  assert.ok(dw.classList.contains('namehold'), 'premise: held');
+  d.getElementById('review').click();
+  await until(() => !d.getElementById('pubbtn').disabled, 'the review is ready');
+  d.getElementById('pubbtn').click();
+  await until(() => d.querySelector('#mbody .receipt'), 'published');
+  await until(() => n(calls, 'getEditableCatalog') >= 2, 'the post-publish reload'); await settle(40);
+  assert.ok(!dw.classList.contains('namehold'), 'the hold cleared once the name is published');
+});
+test('HELD r1 — computed: every locked control is dimmed exactly like the list prices (0.5 / not-allowed); the price list itself too', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d } = await boot(fake);
+  withCss(d);
+  await renameSection(d, 'Pizzas de la casa');
+  const listPrice = d.querySelector('#detail .price input');
+  assert.ok(listPrice.disabled, 'premise: the list prices are locked');
+  assert.equal(look(d, listPrice), '0.5|not-allowed');
+  await openDrawerFor(d, 'Pepperoni');
+  const dw = drawer(d);
+  for (const n of [dw.querySelector('button.uploader'), ...dw.querySelectorAll('input')]) {
+    assert.ok(n.disabled, `premise: ${n.tagName}.${n.className} locked`);
+    assert.equal(look(d, n), '0.5|not-allowed', `${n.tagName}.${n.className} dimmed`);
+  }
+});
+test('HELD r1 — DEFENSIVE SYNTHETIC-STATE TEST (no production path demonstrated): the held photo\'s «Cancelar» stays ENABLED and UNDIMMED inside the dimmed drawer', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, w, mods } = await boot(fake);
+  withCss(d);
+  const release = fake.holdPut();
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => drawer(d).querySelector('.phbusy'), 'P4');
+  // DEFENSIVE SYNTHETIC-STATE TEST (Codex held r4): no production path to this state is demonstrated here — a local rename blocks
+  // the upload first, and the fake serves no pendingRenames (ruling B). The page state is seeded exactly as ruleA r1 #1 does, to
+  // pin what the drawer shows IF a saved name ever meets a held upload.
+  mods.app.state.savedRenames = [{ id: 'cl', from: 'Clásicas', to: 'Pizzas' }];
+  release();
+  await until(() => drawer(d).querySelector('.uphoto:not(.phbusy)') && btnText(drawer(d), 'Cancelar'), 'the held photo (not P4\'s own «Cancelar»)');
+  const dw = drawer(d);
+  assert.ok(dw.classList.contains('namehold'), 'premise: the drawer is held');
+  const cancel = btnText(dw, 'Cancelar');
+  assert.equal(cancel.disabled, false);
+  assert.notEqual(d.defaultView.getComputedStyle(cancel).opacity, '0.5', 'undimmed: its way out looks available');
+  assert.notEqual(d.defaultView.getComputedStyle(cancel).cursor, 'not-allowed');
+});
+
+// Codex held r3 / advisor ruling B — the fake does NOT model the rename rule: it is STRICTER than production (a category change
+// only as a pure rename of an otherwise unchanged published catalog; anything else → 400 unmodeled_change) and serves no
+// pendingRenames. Production's rule (rename_not_alone, structure_changed, the derived pendingRenames incl. from: null) is proven
+// against the REAL editCatalog / getEditableCatalog in the emulator cells (the dry tree, where Part A is present).
+const editBody = async (fake, mutate) => {
+  const r = await fake.fetchHandler('getEditableCatalog', { restaurantId: fake.rid });
+  const src = JSON.parse(JSON.stringify(r.body.source));
+  mutate(src);
+  return { restaurantId: fake.rid, baseSourceUpdateTime: r.body.sourceUpdateTime, source: src };
+};
+test('HELD r3 fake (ruling B) — stricter, never laxer: a rename beside ANY other change is refused; a pure rename passes; no pendingRenames', async () => {
+  const rn = (src) => { src.structure.categories[0].name = 'Pizzas'; };
+  const probes = [
+    ['+ a price', (src) => { rn(src); src.items[0].price += 10; }],
+    ['+ an extra', (src) => { rn(src); src.extras.push({ key: 'Queso extra', price: 25, display: { name: 'Queso extra', price: 25 } }); }],
+    ['+ item_order changed', (src) => { rn(src); src.structure.item_order.reverse(); }],
+    ['+ category metadata', (src) => { rn(src); src.structure.categories[0].color = 'red'; }],
+    ['+ a photo', (src) => { rn(src); src.photos = { Pepperoni: { state: 'removed' } }; }],
+    ['an id changed (no rename)', (src) => { src.structure.categories[0].id = 'xx'; }],
+    ['a category added', (src) => { src.structure.categories.push({ id: 'nv', name: 'Nueva' }); }],
+    // r4: the STRICTEST fake — only the allowlisted names, only the fake's own input shape
+    ['a name outside the allowlist', (src) => { src.structure.categories[0].name = 'Otra sección'; }],
+    ['whitespace around an allowed name', (src) => { src.structure.categories[0].name = ' Pizzas '; }],
+    ['a numeric name', (src) => { src.structure.categories[0].name = 12; }],
+    ['markup', (src) => { src.structure.categories[0].name = '<b>Pizzas</b>'; }],
+    ['structure.categories missing', (src) => { delete src.structure.categories; }],
+    ['a root field changed (schema_version)', (src) => { src.schema_version = 2; }],
+    ['an unknown root field', (src) => { src.extra_root = true; }],
+    ['an unknown structure field', (src) => { src.structure.badges = []; }],
+  ];
+  for (const [what, mutate] of probes) {
+    const fake = createPhotoFake({ items: ITEMS() });
+    // a fake that THROWS on an unsupported shape is a failure too — recorded as an answer, so it fails as an assertion
+    const r = await fake.fetchHandler('editCatalog', await editBody(fake, mutate)).catch((e) => ({ status: 'threw', body: { error: String(e && e.message) } }));
+    assert.equal(r.status, 400, what); assert.equal(r.body.error, 'unmodeled_change', what);
+  }
+  for (const name of ['Pizzas clásicas', 'Pizzas de la casa']) {   // the other allowlisted names the suites use
+    const f2 = createPhotoFake({ items: ITEMS() });
+    assert.equal((await f2.fetchHandler('editCatalog', await editBody(f2, (src) => { src.structure.categories[0].name = name; }))).status, 200, name);
+  }
+  const fake = createPhotoFake({ items: ITEMS() });
+  const ok = await fake.fetchHandler('editCatalog', await editBody(fake, rn));
+  assert.equal(ok.status, 200, 'a pure rename is accepted');
+  assert.deepEqual(ok.body.diff.changed, [{ surface: 'category', key: 'cl', field: 'name', old: 'Clásicas', new: 'Pizzas' }]);
+  const read = await fake.fetchHandler('getEditableCatalog', { restaurantId: fake.rid });
+  assert.ok(!('pendingRenames' in read.body), 'never served by the fake (production derives it with assessDraft — emulator cells)');
+});
+
+// C (Codex held r3): EACH locked control, by name, in each state the hold meets — present, disabled, and the stylesheet's computed
+// 0.5 / not-allowed (the list prices' declarations) — and «Cerrar» enabled and undimmed. The rename is made through the page's
+// own path wherever the state allows one after it. A removal pending blocks a local rename, so that state is a DEFENSIVE
+// SYNTHETIC-STATE TEST (Codex held r4): seeded like ruleA r1 #1, no production path demonstrated.
+function assertLocked(d, n, what) {
+  assert.ok(n, `${what}: present`);
+  assert.equal(n.disabled, true, `${what}: disabled`);
+  assert.equal(look(d, n), '0.5|not-allowed', `${what}: dimmed like the list prices`);
+}
+function assertOpen(d, n, what) {
+  assert.ok(n && !n.disabled, `${what}: present and enabled`);
+  assert.notEqual(d.defaultView.getComputedStyle(n).opacity, '0.5', `${what}: not dimmed`);
+}
+const byText = (root, t) => [...root.querySelectorAll('button')].find((b) => b.textContent.trim() === t);
+const price = (dw) => dw.querySelector('input[aria-label="Precio"]');
+test('HELD r3 C — no photo: the zone and «Precio» locked + dimmed; «Cerrar» open', async () => {
+  const fake = createPhotoFake({ items: ITEMS() }); const { d } = await boot(fake); withCss(d);
+  await renameSection(d, 'Pizzas de la casa');
+  await openDrawerFor(d, 'Pepperoni'); const dw = drawer(d);
+  assert.ok(dw.classList.contains('namehold'), 'premise: held');
+  assertLocked(d, dw.querySelector('button.uploader.phdesk'), 'the zone «Subí una foto»');
+  assertLocked(d, price(dw), '«Precio»');
+  assertOpen(d, closeBtn(dw), '«Cerrar»');
+});
+test('HELD r3 C — a published photo: «Cambiar» and «Quitar» locked + dimmed', async () => {
+  const fake = createPhotoFake({ items: ITEMS(), legacy: { Margarita: true } }); const { d } = await boot(fake); withCss(d);
+  await renameSection(d, 'Pizzas de la casa');
+  await openDrawerFor(d, 'Margarita'); const dw = drawer(d);
+  assertLocked(d, byText(dw, 'Cambiar'), '«Cambiar»');
+  assertLocked(d, byText(dw, 'Quitar'), '«Quitar»');
+  assertLocked(d, price(dw), '«Precio»');
+  assertOpen(d, closeBtn(dw), '«Cerrar»');
+});
+test('HELD r3 C — a failed upload (P5), then a rename: «Reintentar» and the zone locked + dimmed', async () => {
+  const fake = createPhotoFake({ items: ITEMS() }); const { d, w } = await boot(fake); withCss(d);
+  fake.failNext('photoProcess', 503, { error: 'unavailable', retryable: true });
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => drawer(d).querySelector('.ferr'), 'P5');
+  closeBtn(drawer(d)).click(); await settle();
+  await renameSection(d, 'Pizzas de la casa');                   // a failed upload is not a pending photo: the page's own rename
+  await openDrawerFor(d, 'Pepperoni'); const dw = drawer(d);
+  assert.ok(dw.classList.contains('namehold'), 'premise: held');
+  assertLocked(d, byText(dw, 'Reintentar'), '«Reintentar»');
+  assertLocked(d, dw.querySelector('button.uploader'), 'the zone');
+});
+test('HELD r3 C — a phone: the expanded pair «Tomar foto» / «Elegir de la galería» locked + dimmed', async () => {
+  window.matchMedia = (q) => ({ matches: /max-width:\s*560px/.test(q) });
+  try {
+    const fake = createPhotoFake({ items: ITEMS() }); const { d } = await boot(fake); withCss(d);
+    window.matchMedia = (q) => ({ matches: /max-width:\s*560px/.test(q) });
+    await openDrawerFor(d, 'Pepperoni'); drawer(d).querySelector('button.uploader').click(); await settle();
+    assert.ok(byText(drawer(d), 'Tomar foto'), 'premise: expanded');
+    closeBtn(drawer(d)).click(); await settle();
+    await renameSection(d, 'Pizzas de la casa');
+    await openDrawerFor(d, 'Pepperoni'); const dw = drawer(d);
+    assertLocked(d, byText(dw, 'Tomar foto'), '«Tomar foto»');
+    assertLocked(d, byText(dw, 'Elegir de la galería'), '«Elegir de la galería»');
+  } finally { delete window.matchMedia; }
+});
+test('HELD r3 C — DEFENSIVE SYNTHETIC-STATE TEST (no production path demonstrated): a removal pending + a seeded saved name → «Deshacer» locked + dimmed', async () => {
+  const fake = createPhotoFake({ items: ITEMS(), legacy: { Margarita: true } }); const { d, mods } = await boot(fake); withCss(d);
+  await openDrawerFor(d, 'Margarita'); byText(drawer(d), 'Quitar').click(); await settle();
+  mods.app.state.savedRenames = [{ id: 'cl', from: 'Clásicas', to: 'Pizzas' }];
+  d.querySelector('#rail .railitem').click(); await settle();      // the paint every savedRenames path is followed by
+  mods.app.openDrawer('Margarita'); await settle();
+  const dw = drawer(d);
+  assert.ok(dw.classList.contains('namehold'), 'premise: held');
+  assertLocked(d, byText(dw, 'Deshacer'), '«Deshacer»');
+  assertLocked(d, dw.querySelector('button.uploader'), 'the zone');
+});

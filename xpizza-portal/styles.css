@@ -1046,6 +1046,9 @@
   .secnote{display:flex;align-items:center;gap:9px;padding:10px 20px;background:var(--board-2);border-bottom:1px solid var(--line2);font-size:12.5px;color:var(--mute);line-height:1.45}
   .secnote svg{width:14px;height:14px;stroke:var(--mute2);fill:none;stroke-width:2;flex:none}
   .price input:disabled{opacity:.5;cursor:not-allowed}
+  /* owner-approved MOCKUP-portal-photos-held-state.html: a pending section name locks the drawer — its locked controls look it,
+     with the SAME dimming as the list's prices above (the held photo's «Cancelar» stays enabled, so it stays undimmed) */
+  #drawer.namehold input:disabled, #drawer.namehold textarea:disabled, #drawer.namehold select:disabled, #drawer.namehold button.uploader:disabled, #drawer.namehold .phph2b button:disabled, #drawer.namehold .phacts button:disabled, #drawer.namehold .pherr button:disabled, #drawer.namehold .phrm button:disabled{opacity:.5;cursor:not-allowed}
   .dright .btn:disabled{opacity:.42;cursor:not-allowed}
   .addrow.off{opacity:.42;pointer-events:none}
   #seccall{display:flex;gap:14px;align-items:center;padding:14px 18px;border:1px solid var(--line);background:var(--card);border-radius:14px;margin-top:22px}
