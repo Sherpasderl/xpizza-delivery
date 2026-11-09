@@ -1301,7 +1301,9 @@ function syncRow(surface, key, value) {
   markChanged(surface, key);
 }
 
-document.addEventListener('portal:restaurant', (e) => { loadMenu(e.detail && e.detail.rid); });
+// shell-wait r7 (R2): the load this event started, so openEditor can hand it to the shell's bounded reveal (it settles, never throws)
+let lastMenuLoad = null;
+document.addEventListener('portal:restaurant', (e) => { lastMenuLoad = loadMenu(e.detail && e.detail.rid); });
 
 // The review bar's own controls. Wired here, not inline: the CSP has no 'unsafe-inline', so an
 // onclick attribute would be inert and the button would look enabled while doing nothing.
@@ -1852,7 +1854,9 @@ try {
 export function openEditor(rid, { name = rid, sales } = {}) {
   state.restaurants = [{ rid, name }];
   state.currentRid = rid;
+  lastMenuLoad = null;
   document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid, sales } }));
+  return lastMenuLoad;   // shell-wait r7: the catalog's first load — the shell's reveal waits for it (bounded)
 }
 // The self-update guard, reused verbatim to block a branch switch while the merchant has unsaved work or an operation open.
 export const editorCanLeave = () => portalCanReload(portalReloadFacts());

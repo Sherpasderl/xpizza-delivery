@@ -268,6 +268,45 @@ test('shell-wait r5 — the strip wait is BOUNDED: an availability read that nev
   assert.equal(seen[0].strip, false, 'the strip is not drawn (it never answered)');
 });
 
+const MENU2 = { source: { restaurant_id: 'r_a', schema_version: 1, extras: [],
+  items: [{ key: 'Margarita', price: 280, display: { name: 'Margarita', cat: 'cl', price: 280 } }, { key: 'Coca', price: 40, display: { name: 'Coca', cat: 'be', price: 40 } }],
+  structure: { schema_version: 2, item_order: ['Margarita', 'Coca'], categories: [{ id: 'cl', name: 'Clásicas' }, { id: 'be', name: 'Bebidas' }] } },
+  sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false };
+test('shell-wait r7 (R2) — the CATALOG is in place BEFORE the reveal: a slow menu read holds the card; at the reveal the rail is already filled', async () => {
+  let release; const gate = new Promise((r) => { release = r; });
+  const { seen, byId } = await shellRun(okJson(E1([row('r_a'), row('r_b')])), { catalog: async () => { await gate; return okJson(MENU2); } });
+  const rail = () => byId.get('rail').children.length;
+  document.addEventListener('portal:ready', () => { seen[seen.length - 1].rail = rail(); });
+  assert.equal(seen.length, 0, 'no reveal while the catalog has not answered (the card holds; the strip already answered)');
+  release(); await settle(25);
+  assert.equal(seen.length, 1, 'one reveal once it answers');
+  assert.ok(seen[0].rail > 0, 'the rail is already filled at the reveal (nothing pushes #detail down on a phone afterwards)');
+  assert.equal(seen[0].strip, true, 'and the strip too');
+});
+
+test('shell-wait r7 — ONE bound for both: strip AND catalog that never answer reveal once at STRIP_WAIT_MS (not one bound each)', async () => {
+  const t0 = Date.now();
+  const { seen } = await shellRun(okJson(E1([row('r_a'), row('r_b')])), { avail: () => new Promise(() => {}), catalog: () => new Promise(() => {}) });
+  assert.equal(seen.length, 0, 'premise: held at first');
+  await settle(1300);
+  assert.equal(seen.length, 1, 'revealed once by the ONE bound');
+  assert.ok(seen[0].t - t0 >= 1150 && seen[0].t - t0 < 2000, `revealed at the single bound (${seen[0].t - t0} ms)`);
+  await settle(1300);
+  assert.equal(seen.length, 1, 'never a second reveal');
+});
+
+test('shell-wait r7 (ruling b) — a catalog answering AFTER the bound: the reveal stays bounded and the late menu still paints (the accepted, measured residual)', async () => {
+  let release; const gate = new Promise((r) => { release = r; });
+  const t0 = Date.now();
+  const { seen, byId } = await shellRun(okJson(E1([row('r_a'), row('r_b')])), { catalog: async () => { await gate; return okJson(MENU2); } });
+  await settle(1300);
+  assert.equal(seen.length, 1, 'revealed by the bound');
+  assert.ok(seen[0].t - t0 < 2000, `bounded (${seen[0].t - t0} ms)`);
+  release(); await settle(25);
+  assert.ok(byId.get('rail').children.length > 0, 'the late catalog still paints the rail (never dropped)');
+  assert.equal(seen.length, 1, 'and never re-reveals');
+});
+
 test('shell-wait r5 (Codex r5) — the phone align-content:start is SCREEN-ISOLATED: exactly the ops views and the Menú view; Ventas (.app.vview) never matches', () => {
   const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
   const sels = [];

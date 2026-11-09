@@ -82,6 +82,15 @@ const SW_HUNKS = [
  [
   "\n// PLAN-portal-shell-no-shift (Codex r2 P1): shell.js presents its recovery box after a boot failure / the discovery deadline;\n// the editor's held catalog LOAD belongs to an abandoned world and must not repaint over it — reads only (Codex r3).\ndocument.addEventListener('portal:abandon', () => { readGeneration += 1; });\n",
   ""
+ ],
+ // shell-wait r7 (advisor ruling a): the reveal also waits for the catalog's first load — openEditor returns it
+ [
+  "// shell-wait r7 (R2): the load this event started, so openEditor can hand it to the shell's bounded reveal (it settles, never throws)\nlet lastMenuLoad = null;\ndocument.addEventListener('portal:restaurant', (e) => { lastMenuLoad = loadMenu(e.detail && e.detail.rid); });\n",
+  "document.addEventListener('portal:restaurant', (e) => { loadMenu(e.detail && e.detail.rid); });\n"
+ ],
+ [
+  "  lastMenuLoad = null;\n  document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid, sales } }));\n  return lastMenuLoad;   // shell-wait r7: the catalog's first load — the shell's reveal waits for it (bounded)\n",
+  "  document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid, sales } }));\n"
  ]
 ];
 function withoutSw(src) {

@@ -123,14 +123,16 @@ function ready() {
   document.dispatchEvent(new CustomEvent('portal:ready'));
 }
 // shell-wait r5 (A1/R2): the «Agotados ahora» strip answers AFTER discovery; revealed first, it then pushed the editor down
-// (+82 px). The portal is revealed once the strip's first load has settled (painted, failed or not needed) — bounded, so a slow
-// availability read never holds the card: after STRIP_WAIT_MS the portal shows as it stands.
+// (+82 px). r7: so did the catalog on a phone (the rail fills ABOVE the editor, +152 px). The portal is revealed once the
+// strip's AND the catalog's first loads have settled (painted, failed or not needed) — under ONE bound, so a slow read never
+// holds the card: after STRIP_WAIT_MS the portal shows as it stands (a later answer then shifts it — the accepted residual).
 const STRIP_WAIT_MS = 1200;
-function settleThenReady(strip) {
-  if (readied || !strip) { ready(); return; }
+function settleThenReady(...loads) {
+  const pending = loads.filter(Boolean);
+  if (readied || !pending.length) { ready(); return; }
   let done = false;
   const go = () => { if (done) return; done = true; ready(); };
-  Promise.resolve(strip).then(go, go);
+  Promise.allSettled(pending).then(go, go);
   setTimeout(go, STRIP_WAIT_MS);
 }
 // boot.js's DISCOVERY deadline (Codex r1): discovery never ended → drop it (a late answer is ignored) and show the retry box.
@@ -235,11 +237,12 @@ function apply(e1, { persist = true } = {}) {
   S.sales = L.salesFor(sel, rid);
   if (persist && rid && sel.scope !== 'all') store.set(EDITOR_KEY(S.uid, sel.brand_id), rid);
   renderChrome();
+  let catalog = null;
   if (rid) {
     const b = sel.brand.branches.find((x) => x.rid === rid);
-    openEditor(rid, { name: b ? b.name : rid, sales: S.sales });   // ONCE per page (apply runs once; a later E1 only repaints)
+    catalog = openEditor(rid, { name: b ? b.name : rid, sales: S.sales });   // ONCE per page (apply runs once; a later E1 only repaints)
   }
-  settleThenReady(renderViews());
+  settleThenReady(renderViews(), catalog);
 }
 
 function showBootError(err) {
