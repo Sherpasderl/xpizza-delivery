@@ -12,8 +12,16 @@ const fs = require('fs'); const path = require('path');
 const read = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
 const sorted = (v) => (Array.isArray(v) ? v.map(sorted) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted(v[k])])) : v);
 if (process.argv[2] === '--print-pins') { process.stdout.write(`${JSON.stringify(sorted(read(process.argv[3])), null, 1)}\n`); process.exit(0); }
-const [base, tip] = process.argv.slice(2, 4).map(read);
-const pins = read(process.argv[4] || path.join(__dirname, 's1b-reward-parity.pins.json'));
+// the hosted-charge reference is `<order_id>-<16 hex>`, the hex drawn fresh per attempt: only that suffix is per-run (the
+// order_id prefix stays compared). Any other shape is left as is, so it must match exactly.
+const ATTEMPT = /^(.+)-[0-9a-f]{16}$/;
+const canon = (cap) => Object.fromEntries(Object.entries(cap).map(([k, r]) => {
+  let j; try { j = JSON.parse(r.body); } catch (_) { return [k, r]; }
+  if (!j || typeof j.pixelpay_order_id !== 'string' || !ATTEMPT.test(j.pixelpay_order_id)) return [k, r];
+  return [k, { ...r, body: JSON.stringify({ ...j, pixelpay_order_id: j.pixelpay_order_id.replace(ATTEMPT, '$1-<attempt>') }) }];
+}));
+const [base, tip] = process.argv.slice(2, 4).map(read).map(canon);
+const pins = canon(read(process.argv[4] || path.join(__dirname, 's1b-reward-parity.pins.json')));
 const COPY = 'Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.';
 const keys = Object.keys(pins).sort();
 assert.strictEqual(keys.length, 40, 'premise: forty pinned cases (8 reward, 32 malformed: 2 settings × 2 brands × 2 kinds × 4 endpoints)');

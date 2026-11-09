@@ -43,5 +43,12 @@ try {
   { const p = clone(); const k = 'mf_enforce_la_musa_id_array/quoteOrder'; p[k].body = '{"ok":false,"error":"bad_cart"}'; p[k].status = 200; const b = clone(p); const r = run(b, clone(b), p);
     assert.ok(r.rc !== 0 && r.out.includes(`premise: the pin for ${k} is today's 400 item_malformed`), `NEG-ENFORCE (${r.out.slice(0, 300)})`); }
   ok('NEG-ENFORCE: a pin table whose enforce/array answer is not item_malformed + copy → refused');
+  { const OK = 'mf_off_x_pizza_name_array/chargeOnlineOrder'; const p = clone(); const ref = (h) => JSON.stringify({ ok: true, order_id: 'rwp_x', pixelpay_order_id: `rwp_x-${h}` });
+    p[OK].body = ref('0123456789abcdef'); p[OK].status = 200;
+    const b = clone(p); b[OK].body = ref('fedcba9876543210'); const t = clone(p); t[OK].body = ref('a1b2c3d4e5f60718');
+    const g2 = run(b, t, p); assert.strictEqual(g2.rc, 0, `NEG-ATTEMPT premise: only the per-attempt hex differs → passes (${g2.out.slice(0, 300)})`);
+    const t2 = clone(p); t2[OK].body = JSON.stringify({ ok: true, order_id: 'rwp_x', pixelpay_order_id: 'rwp_y-a1b2c3d4e5f60718' });
+    const r = run(b, t2, p); assert.ok(r.rc !== 0 && r.out.includes(`RWP ${OK}`), `NEG-ATTEMPT a different order prefix is still refused (${r.out.slice(0, 300)})`); }
+  ok('NEG-ATTEMPT: only the hosted reference\'s 16-hex attempt suffix is per-run; its order prefix is still compared');
 } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 console.log(`\ns1b-reward-parity.compare selftest: OK (${n})`);
