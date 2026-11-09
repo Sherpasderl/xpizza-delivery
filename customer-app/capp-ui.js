@@ -1832,7 +1832,7 @@
       sdkStopPoll();
       SDK.pollT = T_.setTimeout(async () => {
         SDK.pollT = null; if (dead) return;
-        let out; try { out = await api.sdkStatus(id, sdkAuth()); } catch (_) { out = { kind: 'sdk_pending', order_id: id }; }
+        let out; try { out = await api.sdkResolve(id, sdkAuth()); } catch (_) { out = { kind: 'sdk_pending', order_id: id }; }   // a pending switch re-sends its cancel (Codex r4)
         if (!dead) onSdkOutcome(out);
       }, ms);
     }
@@ -1918,7 +1918,7 @@
       const id = api.sdkLive(); if (!id) return;
       if (!S.flow) { S.flow = newFlow(); C.setMode(S.flow, S.mode); S.flow.pay = 'online'; }   // Codex r1 P1-4: a fresh mount has no flow; the outcome screens read one
       sdkProc(false);
-      Promise.resolve().then(() => api.sdkStatus(id, sdkAuth())).catch(() => ({ kind: 'sdk_pending', order_id: id })).then((out) => { if (!dead) onSdkOutcome(out); });
+      Promise.resolve().then(() => api.sdkResolve(id, sdkAuth())).catch(() => ({ kind: 'sdk_pending', order_id: id })).then((out) => { if (!dead) onSdkOutcome(out); });
     }
 
     function render() {

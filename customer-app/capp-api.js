@@ -839,8 +839,10 @@
       const r = await sdkCall('POST', E.cancelSdkPending, { order_id: id }, h);
       if (r.status === 409 && r.json && r.json.error === 'already_placed') return sdkStatus(id, p);
       if (r.network || r.status !== 200 || !r.json || PC.switchStep(r.json) !== 'cash') return { kind: 'sdk_pending', order_id: id, switching: true };
+      const cur = readPlace(); let body = null;   // the stored cash inputs travel with the completion (a reload restores the flow from them)
+      try { body = cur && cur.order_id === id && typeof cur.switch_body === 'string' ? JSON.parse(cur.switch_body) : null; } catch (_) { body = null; }
       const ok = resolvePlace(id, 'released');
-      return { kind: 'sdk_switched', replaces: id, ...settledOf(ok) };
+      return { kind: 'sdk_switched', replaces: id, ...(body ? { body } : {}), ...settledOf(ok) };
     }
     async function listCards() {
       if (!E.listCards || !memberOf()) return null;
@@ -852,6 +854,14 @@
       if (!E.sdkPayStatus) return null;
       const r = await sdkCall('GET', E.sdkPayStatus, null, {});
       return !r.network && r.status === 200 && r.json && typeof r.json.available === 'boolean' && Number.isInteger(r.json.retry_after_s) ? { available: r.json.available, retry_after_s: r.json.retry_after_s } : null;
+    }
+    // the UI's resolver (poll / resume): a record with a pending cash switch is resolved by RE-SENDING the idempotent cancelSdkPending (Codex r4
+    // P2-1: a lost cancel reply never strands it — the status of a cancelled order cannot answer the switch), through the money queue; the
+    // stored cash inputs (switch_body) are kept (patchPlace merges). Anything else: its status
+    function sdkResolve(id, p) {
+      const cur = readPlace();
+      if (cur && cur.order_id === id && cur.sdk === true && cur.switch_intent === true) return enqueue(() => sdkSwitchInner(id, p));
+      return sdkStatus(id, p);
     }
     // the live SDK attempt this device holds (boot / resume ⇒ the status first)
     function sdkLive() { const r = readPlace(); return sdkUnresolved(r) ? r.order_id : null; }
@@ -934,7 +944,7 @@
     // the order body a card send stashed (the return restores the checkout from it)
     function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
 
-    return { quote, latestQuote, place, placeSdk, sdkStatus, sdkSwitchToCash, sdkLive, listCards, sdkPayStatus, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
+    return { quote, latestQuote, place, placeSdk, sdkStatus, sdkResolve, sdkSwitchToCash, sdkLive, listCards, sdkPayStatus, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
       confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
   }

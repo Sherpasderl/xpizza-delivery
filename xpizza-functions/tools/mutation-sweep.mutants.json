@@ -33280,5 +33280,47 @@
    "SDKUI-reload-switch",
    "SDKUI-restore"
   ]
+ },
+ {
+  "id": "s2ck-r15",
+  "slice": "s2ck",
+  "label": "a pending switch resolved by its status, never by re-sending the cancel (Codex r4 P2-1)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (cur && cur.order_id === id && cur.sdk === true && cur.switch_intent === true) return enqueue(() => sdkSwitchInner(id, p));\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-cancel-retry: the cancel is re-sent"
+ },
+ {
+  "id": "s2ck-r16",
+  "slice": "s2ck",
+  "label": "the cancel's completion drops the stored cash inputs (Codex r4 P2-1)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      return { kind: 'sdk_switched', replaces: id, ...(body ? { body } : {}), ...settledOf(ok) };\n    }",
+  "to": "      return { kind: 'sdk_switched', replaces: id, ...settledOf(ok) };\n    }",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-cancel-retry: the stored cash inputs kept"
+ },
+ {
+  "id": "s2ck-u20",
+  "slice": "s2ck",
+  "label": "the UI poll reads the status instead of the resolver (Codex r4 P2-1)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        let out; try { out = await api.sdkResolve(id, sdkAuth()); }",
+  "to": "        let out; try { out = await api.sdkStatus(id, sdkAuth()); }",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-route: the pending switch is re-resolved"
  }
 ]

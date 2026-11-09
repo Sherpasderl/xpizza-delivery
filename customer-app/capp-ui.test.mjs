@@ -3218,7 +3218,7 @@ test('Codex r1 P1-3 (UI): «Probar otra tarjeta» → «Efectivo al entregar» �
 
 test('Codex r1 P2-9 (UI): «Pagar en efectivo» not yet safe ⇒ polling; a later «expired, safe» COMPLETES the switch (a NEW cash order with replaces_order_id)', async () => {
   const b = bootSdk({ script: { placeSdkOrder: [(body) => SDK_R('declined', { order_id: body.order_id, attempt_id: body.attempt_id, decline: 'retryable', pay_deadline_at: NOON().getTime() + 600e3 })],
-    cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, false) }], placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })],
+    cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, false) }, { status: 200, json: SDKF.cancelPending(true, true) }], placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })],
     createOrder: [(body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })] } });
   await sdkCheckout(b); await sdkPlace(b);
   const old = b.srv.of('placeSdkOrder')[0].body.order_id;
@@ -3252,7 +3252,7 @@ test('Codex r1 P1-5: the page that ships (shell.html) loads the checkout modules
 // ── Codex narrow r2 — the UI ──
 test('Codex r2 P2: «Probar otra tarjeta» → cash → «Hacer pedido» with the switch NOT yet safe ⇒ the SDK handler (processing + polling); a later «expired, safe» places the NEW cash order', async () => {
   const b = bootSdk({ script: { placeSdkOrder: [(body) => SDK_R('declined', { order_id: body.order_id, attempt_id: body.attempt_id, decline: 'retryable', pay_deadline_at: NOON().getTime() + 600e3 })],
-    cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, false) }], placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })],
+    cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, false) }, { status: 200, json: SDKF.cancelPending(true, true) }], placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })],
     createOrder: [(body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })] } });
   await sdkCheckout(b); await sdkPlace(b);
   const old = b.srv.of('placeSdkOrder')[0].body.order_id;
@@ -3260,7 +3260,7 @@ test('Codex r2 P2: «Probar otra tarjeta» → cash → «Hacer pedido» with th
   await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]'); await settle();
   assert.equal(b.text('#layer .sheet.proc h2'), 'Procesando tu pago…', '🔴 SDKUI-route: the SDK outcome is handled (the processing sheet)');
   b.timers.flush(); await settle(); b.timers.flush(); await settle();
-  assert.ok(b.srv.of('placeSdkStatus').length >= 1, '🔴 SDKUI-route: the status is polled');
+  assert.ok(b.srv.of('cancelSdkPending').length >= 2, '🔴 SDKUI-route: the pending switch is re-resolved (its idempotent cancel re-sent — Codex r4)');
   const co = b.srv.of('createOrder')[0];
   assert.ok(co && co.body.order_id !== old && co.body.replaces_order_id === old, '🔴 SDKUI-route: the switch completes — a NEW cash order');
 });
@@ -3276,7 +3276,7 @@ test('Codex r2 P2: a reload DURING a pending cash switch restores the checkout\'
   assert.ok(storage.getItem(HOSTED_KEYS.cartKey), 'premise: the placement froze the cart snapshot (hosted)');
   const old = b1.srv.of('placeSdkOrder')[0].body.order_id;
   await b1.click('#layer [data-act="decl-cash"]'); await settle();
-  const b2 = bootSdk({ storage, config: HOST, script: { placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })], createOrder: [(body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })] } });
+  const b2 = bootSdk({ storage, config: HOST, script: { cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, true) }], placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })], createOrder: [(body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })] } });
   b2.ui.restore(JSON.parse(storage.getItem(HOSTED_KEYS.cartKey)));   // what the shell does on a reload: the persisted cart into the mounted store
   await settle(); b2.timers.flush(); await settle(); b2.timers.flush(); await settle();
   const co = b2.srv.of('createOrder')[0];
@@ -3295,7 +3295,7 @@ test('Codex r3 P2-4 repro (advisor r3 C): a PICKUP member switch completed after
   await b1.click('#cta'); await b1.click('#layer [data-act="placing-go"]'); await settle();
   assert.equal(b1.text('#layer .errsheet h2'), 'Tu banco no autorizó el pago', 'premise: declined');
   await b1.click('#layer [data-act="decl-cash"]'); await settle();
-  const b2 = bootSdk({ storage, config: HOST, script: { placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })], createOrder: [(body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })] } });
+  const b2 = bootSdk({ storage, config: HOST, script: { cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, true) }], placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })], createOrder: [(body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })] } });
   b2.ui.restore(JSON.parse(storage.getItem(HOSTED_KEYS.cartKey)));
   await settle(); b2.timers.flush(); await settle(); b2.timers.flush(); await settle();
   const co = b2.srv.of('createOrder')[0];

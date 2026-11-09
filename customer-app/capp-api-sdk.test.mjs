@@ -350,3 +350,36 @@ test('Codex r2 P2 (guard): once an attempt WAS admitted (declined), a later pre-
   await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 });
   assert.equal(s.srv.of('cancelSdkPending').length, 1, '🔴 SDK-preadmit: an admitted order is always switched');
 });
+
+// ── Codex narrow r4 ──
+test('Codex r4 P2-1: a LOST cancelSdkPending reply never strands the switch — the resolver re-sends the idempotent cancel (through the money queue, the stored inputs kept) until safe; across a reload', async () => {
+  const s = rig({ script: { placeSdkOrder: [(c) => DECL_OF(c.body.order_id, c.body.attempt_id)], cancelSdkPending: ['network', { status: 200, json: cancelPending(true, true) }], placeSdkStatus: [{ status: 404, json: {} }] } });
+  await s.api.placeSdk(args(SAVED));
+  const id = s.srv.of('placeSdkOrder')[0].body.order_id;
+  const first = await s.api.sdkSwitchToCash(id, { flow: flowOf('cash'), ctx: CTX });
+  assert.equal(first.kind, 'sdk_pending', 'premise: the cancel reply was lost');
+  const body0 = rec(s.storage).switch_body;
+  const out = await s.reload().sdkResolve(id);
+  assert.equal(s.srv.of('cancelSdkPending').length, 2, '🔴 SDK-cancel-retry: the cancel is re-sent (never a status that cannot answer)');
+  assert.deepEqual([out.kind, out.replaces], ['sdk_switched', id], '🔴 SDK-cancel-retry: the switch completes once safe');
+  assert.ok(out.body && body0 && JSON.stringify(out.body) === body0, '🔴 SDK-cancel-retry: the stored cash inputs kept');
+});
+
+test('Codex r3 P1-2 regression: a settlement write that FAILS, a reload, a later quote refusal — cash is still the switch (cancel + a NEW replacement order), never a direct createOrder', async () => {
+  const storage = memStorage(); let failOnce = true;
+  const set = storage.setItem; storage.setItem = (k, v) => { if (failOnce && k === KEY && /"attempt_state":"declined"/.test(v)) { failOnce = false; throw new Error('quota'); } return set(k, v); };
+  const s = rig({ storage, script: { placeSdkOrder: [(c) => DECL_OF(c.body.order_id, c.body.attempt_id), { status: 409, json: { error: 'quote_invalid' } }],
+    placeSdkStatus: [(c) => DECL_OF(new URL(c.url).searchParams.get('order_id'), JSON.parse(storage.getItem(KEY)).attempt_id)],
+    cancelSdkPending: [{ status: 200, json: cancelPending(true, true) }], createOrder: [OK_CASH_FN] } });
+  await s.api.placeSdk(args(SAVED));
+  assert.equal(failOnce, false, 'premise: the settlement write failed once');
+  const id = s.srv.of('placeSdkOrder')[0].body.order_id;
+  const api2 = s.reload();
+  await api2.placeSdk(args(NEW));                       // the attempt still «sent» ⇒ its status (declined) settles it
+  await api2.placeSdk(args(NEW));                       // a new attempt ⇒ 409 quote_invalid (pre-admission)
+  const out = await api2.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 });
+  assert.equal(s.srv.of('cancelSdkPending').length, 1, '🔴 SDK-r3-p12: the cancellation');
+  const co = s.srv.of('createOrder')[0];
+  assert.ok(co && co.body.order_id !== id && co.body.replaces_order_id === id, '🔴 SDK-r3-p12: a NEW replacement order');
+  assert.equal(out.kind, 'placed');
+});
