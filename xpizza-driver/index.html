@@ -2231,7 +2231,7 @@
 /* cerrado (showCerrado, S.cerrado): the «Turno cerrado» summary overlay — green check, the shift totals line, the «Ganado hoy» okwash card (one source, confirm-time snapshot; blank-not-wrong), «Listo». */
 #cerrado-screen { position: fixed; inset: 0; background: var(--bg, #F5F7FA); z-index: 260; display: none; flex-direction: column; padding: calc(24px + var(--safe-top, 0px)) 20px calc(16px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
 #cerrado-screen.open { display: flex; }
-#cerrado-screen .cerrado-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; gap: 16px; }   /* top-weight to match the prototype S.cerrado .body>.sp layout (check ~1/5 down, card under the subtitle, space above «Listo»); flex-start packs content up, the flex:1 body leaves the gap below */
+#cerrado-screen .cerrado-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; gap: 16px; }   /* top-align to the prototype S.cerrado .body>.sp layout: justify-content:flex-start packs the check/title/subtitle/«Ganado hoy» card to the TOP of the flex:1 body (at the container's top padding), leaving the remaining space below with «Listo» at the foot — NOT vertically centred. */
 #cerrado-screen .cerrado-illus { width: 104px; height: 104px; border-radius: 30px; display: grid; place-items: center; background: var(--green-bg, #EBF7F0); color: var(--success, #15803D); }
 #cerrado-screen .cerrado-illus svg { width: 50px; height: 50px; }
 #cerrado-screen .cerrado-h { font-family: 'Red Hat Display', sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -.02em; color: var(--text, #0D1424); }
