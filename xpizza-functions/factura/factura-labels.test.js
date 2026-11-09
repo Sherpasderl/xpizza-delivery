@@ -36,11 +36,11 @@ const anExtra = Object.keys(XE)[0];
   const KEY = Object.keys(XM)[0];
   const labels = { [KEY]: 'Nombre Nuevo' };
   const r = pricedLineItems([stamped({ name: 'Nombre Nuevo', item_key: KEY, qty: 2, extras: [{ name: anExtra }] }, KEY)], XM, XE, labels);
-  assert.deepStrictEqual(r, { items: [{ qty: 2, description: `Nombre Nuevo (+${anExtra})`, line_gross_cents: (XM[KEY] * 2 + XE[anExtra]) * 100 }], error: null }, 'FL-RENAMED priced by the key, described by the label; extras keep their names');
+  assert.deepStrictEqual(r, { items: [{ qty: 2, description: `Nombre Nuevo (+${anExtra})`, line_gross_cents: (XM[KEY] * 2 + XE[anExtra]) * 100, item_key: KEY }], error: null }, 'FL-RENAMED priced by the key, described by the label; extras keep their names');
   const only = pricedLineItems([stamped({ item_key: KEY, qty: 1 }, KEY)], XM, XE, labels);
-  assert.deepStrictEqual(only.items, [{ qty: 1, description: 'Nombre Nuevo', line_gross_cents: XM[KEY] * 100 }], 'FL-ITEMKEY-ONLY a line with no name prices and describes by its key\'s label');
+  assert.deepStrictEqual(only.items, [{ qty: 1, description: 'Nombre Nuevo', line_gross_cents: XM[KEY] * 100, item_key: KEY }], 'FL-ITEMKEY-ONLY a line with no name prices and describes by its key\'s label');
   const nolab = pricedLineItems([stamped({ item_key: KEY, qty: 1 }, KEY)], XM, XE, null);
-  assert.deepStrictEqual(nolab.items, [{ qty: 1, description: KEY, line_gross_cents: XM[KEY] * 100 }], 'FL-LEGACY-FALLBACK no labels: a legacy key is its own description (today)');
+  assert.deepStrictEqual(nolab.items, [{ qty: 1, description: KEY, line_gross_cents: XM[KEY] * 100, item_key: KEY }], 'FL-LEGACY-FALLBACK no labels: a legacy key is its own description (today)');
   ok('a renamed dish is priced by its key and described by its label; a key-only line too; no labels → the key');
 }
 
@@ -51,7 +51,7 @@ const anExtra = Object.keys(XE)[0];
   const r = pricedLineItems([stamped({ item_key: OK, qty: 1 }, OK)], menu, XE, null);
   assert.deepStrictEqual([r.items, r.error], [null, 'labels_unavailable'], 'FL-OPAQUE-NOLABEL refused (labels_unavailable)');
   const g = pricedLineItems([stamped({ item_key: OK, qty: 1 }, OK)], menu, XE, { [OK]: 'Pizza Nueva' });
-  assert.deepStrictEqual(g.items, [{ qty: 1, description: 'Pizza Nueva', line_gross_cents: 19900 }], 'FL-OPAQUE-LABEL described by its label');
+  assert.deepStrictEqual(g.items, [{ qty: 1, description: 'Pizza Nueva', line_gross_cents: 19900, item_key: OK }], 'FL-OPAQUE-LABEL described by its label');
   ok('an opaque key with no label is refused (labels_unavailable); with one it is described by it');
 }
 

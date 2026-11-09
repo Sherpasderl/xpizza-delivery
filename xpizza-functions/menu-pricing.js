@@ -308,7 +308,7 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
       }
     }
     const name = byId ? summaryLineName(it && it.name, key) : (((labelsOfTables(tables) || {})[key]) || key);   // S1d: a name-keyed line shows its key's current label
-    lines.push({ name, qty, cents: lineL * 100 });
+    lines.push({ name, qty, cents: lineL * 100, item_key: key });   // S1d: the key that priced the line (additive)
   }
   if (redemption && redemption.model === 'discount' && Number.isInteger(redemption.discount_cents) && redemption.discount_cents > 0) {
     lines.push({ name: summaryLineName(redemption.name, 'Recompensa') + ' · Recompensa', qty: 1, cents: -redemption.discount_cents });   // legacy (unused in v2)

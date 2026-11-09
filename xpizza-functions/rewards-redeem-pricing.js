@@ -43,7 +43,7 @@ function freeLinesFrom(redemption) {
 function applyXPizza(items, redemption, totalLempiras, tables = null) {
   const t = resolvePriceTables('x_pizza', tables);                       // PIN B asserts the tag
   const menu = t.menu, extra = t.extraPrices; if (!require('./factura/eligibility').fiscalKeyModeOk('x_pizza', t.keyMode)) return { ok: false, error: 'fiscal_key_mode_unsupported' };   // S0: the effective mode must be name
-  const lab = require('./menu-pricing').labelsOfTables(tables); const priced = pricedLineItems(items, menu, extra, lab);                                  // the PAID cart lines (mirrors computeServerTotal)
+  const lab = require('./menu-pricing').labelsOfTables(tables); const env = tables ? require('./catalog/pricing-tables').envelopeOf(tables) : undefined; const ver = env ? env.versionId : undefined; const priced = pricedLineItems(items, menu, extra, lab, ver);                                  // the PAID cart lines (mirrors computeServerTotal)
   if (priced.error) return { ok: false, error: priced.error };
   const free_lines = freeLinesFrom(redemption);
   if (free_lines.length !== 1 || !Object.prototype.hasOwnProperty.call(menu, free_lines[0].item_id)) return { ok: false, error: 'bad_free_item' };
@@ -61,7 +61,7 @@ function applyXPizza(items, redemption, totalLempiras, tables = null) {
 
   // A-F: the comped pizza is a FULL-VALUE factura line (the customer's chosen 12"; extras are NEVER comped),
   // marked `redeemed` so it lands ONLY in factura_items — never in `items` / order.items / the earn base.
-  const compedLine = { qty: freeQty, description: freeDesc, line_gross_cents: compedGross, redeemed: true };
+  const compedLine = { qty: freeQty, description: freeDesc, line_gross_cents: compedGross, redeemed: true, item_key: freeName, ...(ver === undefined ? {} : { menu_version_id: ver }) };
   const factura_items = priced.items.concat([compedLine]);
 
   const paid = orderBreakdownCents(totalLempiras, 'x_pizza');                          // PAID (what is charged) — money spine, UNCHANGED

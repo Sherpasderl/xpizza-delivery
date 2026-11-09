@@ -1215,7 +1215,7 @@ createOrderApp.all('*', async (req, res) => {
     ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
         factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn base); factura_items = paid + comped (SAR doc)
     : (usesPlatformFactura(restaurantId)
-      ? pricedLineItems(body.items, facturaMenu, facturaExtras, require('./menu-pricing').labelsOfTables(pricingTables))
+      ? pricedLineItems(body.items, facturaMenu, facturaExtras, require('./menu-pricing').labelsOfTables(pricingTables), menuOrderVersionOf(pricingTables))
       : { items: null, error: null });
   /* serial3:begin factura-cash-order */
   // §3 FISCAL: the factura's lines in the MENU order of the version that priced this order (byte-identical to before §3,
@@ -1260,7 +1260,7 @@ createOrderApp.all('*', async (req, res) => {
   if (isScheduled) {
     const heldUpdates = buildScheduledOrderRecord({
       orderId, orderType, now, trackingToken, total: DW.totalLempiras(dq, effectiveTotal), lat, lng, fields, hubSnap,
-      restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
+      restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp, menuVersionId: menuOrderVersionOf(pricingTables),
       scheduledFor: scheduledForRaw, releaseAt, paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare
     });
     attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: DW.totalLempiras(dq, effectiveTotal), orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
@@ -1300,7 +1300,7 @@ createOrderApp.all('*', async (req, res) => {
   // field names are load-bearing (driver app, KDS, tracking site, factura trigger).
   Object.assign(updates, buildCreateOrderUpdates({
     orderId, orderType, now, trackingToken, total: DW.totalLempiras(dq, effectiveTotal), lat, lng, fields, hubSnap,
-    restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
+    restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp, menuVersionId: menuOrderVersionOf(pricingTables),
     paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare (idempotent retry recomputes identical)
   }));
 
@@ -1927,7 +1927,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
         factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn); factura_items = paid + comped (SAR doc)
     : (usesPlatformFactura(restaurantId)
-      ? pricedLineItems(body.items, facturaMenu, facturaExtras, require('./menu-pricing').labelsOfTables(pricingTables))
+      ? pricedLineItems(body.items, facturaMenu, facturaExtras, require('./menu-pricing').labelsOfTables(pricingTables), menuOrderVersionOf(pricingTables))
       : { items: null, error: null });  // non-platform (la_musa) → no factura line items
   /* serial3:begin factura-card-order */
   // §3 FISCAL: the factura's lines in the MENU order of the version that priced this order (byte-identical to before §3,
@@ -1963,7 +1963,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     // --- factura (SAR) fields ---
     restaurant_id: restaurantId,
     factura_status: 'not_due',
-    cash_tendered_cents: 0,                     // online: no cash, CAMBIO 0
+    cash_tendered_cents: 0, menu_version_id: menuOrderVersionOf(pricingTables),   // online: no cash, CAMBIO 0; S1d: the pricing version (additive)
     ...(facturaPriced.items ? { items: facturaPriced.items } : {}),
     ...(facturaPriced.factura_items ? { factura_items: facturaPriced.factura_items } : {}),   // A-F: paid + comped SAR line set (redeemed x_pizza only; build-record reads factura_items || items)
     ...(fields.razon_social ? { razon_social: fields.razon_social } : {}),

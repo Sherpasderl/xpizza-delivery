@@ -15,7 +15,7 @@ const { OPAQUE_SYNTAX } = require('../catalog/mint-opaque');
 // S1d (owner 11-08): a line is priced by its RESOLVED key (the resolution stage's stamp, else its name) and described by that
 // key's label from the version that priced the order. No label: a legacy key is its own description (today's); an opaque
 // key is refused (labels_unavailable) — a minted token never lands on a factura.
-function pricedLineItems(items, menuPrices, extraPrices, labels = null) {
+function pricedLineItems(items, menuPrices, extraPrices, labels = null, versionId = undefined) {
   if (!Array.isArray(items) || items.length === 0) {
     return { items: null, error: 'items must be a non-empty array' };
   }
@@ -57,7 +57,7 @@ function pricedLineItems(items, menuPrices, extraPrices, labels = null) {
     const label = labels && typeof labels[name] === 'string' ? labels[name] : (OPAQUE_SYNTAX.test(name) ? null : name);
     if (label === null) return { items: null, error: 'labels_unavailable' };
     const description = extraNames.length ? `${label} (+${extraNames.join(', ')})` : label;
-    out.push({ qty, description, line_gross_cents: lineGrossCents });
+    out.push({ qty, description, line_gross_cents: lineGrossCents, item_key: name, ...(versionId === undefined ? {} : { menu_version_id: versionId }) });   // S1d: the key and version that priced the line (additive)
   }
   return { items: out, error: null };
 }
