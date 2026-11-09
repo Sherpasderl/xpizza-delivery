@@ -9,6 +9,8 @@
 //      menu_changed (S1b: never priced)
 //   F  one key across endpoints: quoteOrder signs the SAME cart fingerprint for an item_key cart and its legacy twin, and the
 //      order carrying the legacy quote's token is accepted for the item_key cart
+//   W  the REAL writer (codex S1b r1): the served menu → the capp's own menu adapter, cart and serializer → quoteOrder ok and
+//      createOrder 200 on both key modes (the stage never refuses a line a live client builds)
 // The reward refusal's byte-identity (base vs tip) is test/s1b-reward-parity.capture.js. Run: npm run test:resolve-lines
 require('./_emulator-required')('database', 'firestore');
 
@@ -38,6 +40,11 @@ const { catalogSnapshot } = require('../catalog/generate-form-bundle');
 const { getActivePointer } = require('../catalog/catalog-firestore');
 const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
 const { verifyQuoteToken } = require('../quote-token');
+const ROOT = require('path').join(__dirname, '..', '..');
+const { buildPublicMenu } = require('../catalog/public-menu');
+const { adaptMenu } = require(require('path').join(ROOT, 'customer-app/capp-menu.js'));
+const { createCart } = require(require('path').join(ROOT, 'customer-app/capp-cart.js'));
+const { serialize } = require(require('path').join(ROOT, 'customer-app/capp-serialize.js'));
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -146,6 +153,25 @@ const written = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).exists();
     assert.strictEqual(co.status, 200, `F-ORDER ${rid} the order with the item_key cart accepts the legacy cart's quote (${co.text.slice(0, 200)})`);
   }
   ok('quoteOrder and the order fingerprint one key: an item_key cart and its legacy twin sign the same fingerprint; the order accepts either\'s quote');
+
+  // ── W: the real capp writer ──
+  for (const rid of ['x_pizza', 'la_musa']) {
+    await fs.collection('restaurants').doc(rid).set({ name: rid, pricing_key_mode: rid === 'la_musa' ? 'id' : 'name', active: true, schema_version: 2 }, { merge: true });
+    const pm = await buildPublicMenu(fs, rid, { known: new Set([rid]), isActive: async () => true });
+    const m = adaptMenu({ rid: pm.rid, representation_version: pm.representation_version, menu: pm.body });
+    const d = m.dishes.find((x) => !x.launcher && !(m.weekendOnlyCats.has(String(x.cat)) || m.pickupOnlyCats.has(String(x.cat))));
+    assert.ok(d, `premise: ${rid} the served menu has an orderable dish`);
+    const cart = createCart(m); cart.inc(d.key);
+    const s = serialize(cart, m);
+    assert.ok(Array.isArray(s.items) && s.items.length === 1, `premise: ${rid} the capp serialized one line`);
+    const q = await post(app.quoteOrder, { restaurant_id: rid, items: s.items, order_type: 'pickup' });
+    assert.ok(q.status === 200 && q.json && q.json.ok === true, `W-QUOTE ${rid} the capp's own line quotes (${q.text.slice(0, 200)})`);
+    const f = await fresh();
+    const co = await post(app.createOrder, bodyFor(rid, f.oid, f.phone, s.items, { items_text: s.items_text }), { 'x-firebase-id-token': uid });
+    assert.strictEqual(co.status, 200, `W-CREATE ${rid} the capp's own line places (${co.text.slice(0, 200)})`);
+    assert.strictEqual(await written(f.oid), true, `W-CREATE ${rid} written`);
+  }
+  ok('the real capp writer (served menu → adapter → cart → serializer): quoteOrder ok and createOrder 200 on both key modes');
 
   FINISHED = true;
   console.log(`\nresolve-lines(emulator): OK (${n})`);
