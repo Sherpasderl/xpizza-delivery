@@ -4,9 +4,10 @@
 //   U  an unknown item: createOrder / the charge → 409 menu_changed «El menú se actualizó, recargá la página» (not retryable),
 //      nothing written, nothing charged; quoteOrder → 200 { ok:false, error:'menu_changed' } (fail-soft); quoteRedemption →
 //      409 { ok:false, error:'menu_changed', detail }
-//   I  a malformed legacy key is NOT the stage's (advisor ruling, option A): an array name / id is refused exactly as at the
-//      base — 400 item_malformed with its customer copy — at createOrder, the charge, quoteOrder and quoteRedemption;
-//      nothing written, nothing charged (the base-vs-tip bytes, null included: test/s1b-reward-parity.capture.js)
+//   I  a malformed legacy key is NOT the stage's (advisor ruling, option A), under both extras_eligibility settings: under
+//      enforce an array name / id is today's 400 item_malformed with its customer copy at createOrder, the charge, quoteOrder
+//      and quoteRedemption (nothing written or charged); under off the stage never answers (the base-vs-tip bytes for both
+//      settings, null included: test/s1b-reward-parity.capture.js)
 //   K  item_key: an agreeing item_key prices exactly as its legacy twin (same stored total); an item_key-only line refuses
 //      menu_changed (S1b: never priced)
 //   F  one key across endpoints: quoteOrder signs the SAME cart fingerprint for an item_key cart and its legacy twin, and the
@@ -110,28 +111,37 @@ const written = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).exists();
   }
   ok('an unknown item: 409 menu_changed on createOrder and the charge (nothing written or charged); quoteOrder fail-soft; quoteRedemption 409 { ok:false }');
 
-  // ── I: a malformed legacy key keeps today's refusal ──
+  // ── I: a malformed legacy key keeps today's refusal (codex S1b r3 P2-1: under BOTH extras_eligibility settings) ──
   {
     const COPY = 'Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.';
     const isMalformed = (r) => r.status === 400 && r.json && r.json.error === 'item_malformed' && r.json.detail === COPY;
-    for (const [rid, over] of [['x_pizza', { name: ['Carnivora'] }], ['la_musa', { id: ['dimsum_01'] }]]) {
-      const tag = `${rid} ${Object.keys(over)[0]}=array`;
-      const f = await fresh();
-      const co = await post(app.createOrder, bodyFor(rid, f.oid, f.phone, [lineOf(rid, over)]), { 'x-firebase-id-token': uid });
-      assert.ok(isMalformed(co), `I-CREATE ${tag} is today's 400 item_malformed (${co.text.slice(0, 200)})`);
-      assert.strictEqual(await written(f.oid), false, `I-CREATE ${tag} nothing written`);
-      const g = await fresh(); const before = CHARGED.length;
-      const ch = await post(app.chargeOnlineOrder, bodyFor(rid, g.oid, g.phone, [lineOf(rid, over)], { payment_method: 'online' }), { 'x-firebase-id-token': uid });
-      assert.ok(isMalformed(ch), `I-CHARGE ${tag} is today's 400 item_malformed (${ch.text.slice(0, 200)})`);
-      assert.strictEqual(CHARGED.length, before, `I-CHARGE ${tag} nothing charged`);
-      assert.strictEqual(await written(g.oid), false, `I-CHARGE ${tag} nothing written`);
-      const q = await post(app.quoteOrder, { restaurant_id: rid, items: [lineOf(rid, over)], order_type: 'pickup' });
-      assert.ok(isMalformed(q), `I-QUOTE ${tag} is today's 400 item_malformed (${q.text.slice(0, 200)})`);
-      const qr = await post(app.quoteRedemption, { restaurant_id: rid, items: [lineOf(rid, over)], order_type: 'pickup', redeem: rid === 'x_pizza' ? { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' } : { type: 'points_ala_carte', items: [{ id: 'rice_white', qty: 1, name: 'Arroz Blanco' }] } }, { 'x-firebase-id-token': uid });
-      assert.ok(isMalformed(qr), `I-QUOTE-REDEEM ${tag} is today's 400 item_malformed (${qr.text.slice(0, 200)})`);
+    const notStage = (r) => !(r.json && ['menu_changed', 'invalid_line'].includes(r.json.error));
+    const REDEEM = { x_pizza: { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' }, la_musa: { type: 'points_ala_carte', items: [{ id: 'rice_white', qty: 1, name: 'Arroz Blanco' }] } };
+    for (const setting of ['enforce', 'off']) {
+      await rtdb.ref('platform_config/extras_eligibility').set(setting);
+      // enforce: today's 400 item_malformed + copy, nothing written or charged. off: the extras check is skipped at the base too,
+      // so the stage must simply not answer (its codes never appear); the byte-identity with the base is the capture's
+      // (test/s1b-reward-parity.capture.js, both settings)
+      const judge = setting === 'enforce' ? isMalformed : notStage;
+      for (const [rid, over] of [['x_pizza', { name: ['Carnivora'] }], ['la_musa', { id: ['dimsum_01'] }]]) {
+        const tag = `${setting} ${rid} ${Object.keys(over)[0]}=array`;
+        const f = await fresh();
+        const co = await post(app.createOrder, bodyFor(rid, f.oid, f.phone, [lineOf(rid, over)]), { 'x-firebase-id-token': uid });
+        assert.ok(judge(co), `I-CREATE ${tag} (${co.status} ${co.text.slice(0, 200)})`);
+        if (setting === 'enforce') assert.strictEqual(await written(f.oid), false, `I-CREATE ${tag} nothing written`);
+        const g = await fresh(); const before = CHARGED.length;
+        const ch = await post(app.chargeOnlineOrder, bodyFor(rid, g.oid, g.phone, [lineOf(rid, over)], { payment_method: 'online' }), { 'x-firebase-id-token': uid });
+        assert.ok(judge(ch), `I-CHARGE ${tag} (${ch.status} ${ch.text.slice(0, 200)})`);
+        if (setting === 'enforce') { assert.strictEqual(CHARGED.length, before, `I-CHARGE ${tag} nothing charged`); assert.strictEqual(await written(g.oid), false, `I-CHARGE ${tag} nothing written`); }
+        const q = await post(app.quoteOrder, { restaurant_id: rid, items: [lineOf(rid, over)], order_type: 'pickup' });
+        assert.ok(judge(q), `I-QUOTE ${tag} (${q.status} ${q.text.slice(0, 200)})`);
+        const qr = await post(app.quoteRedemption, { restaurant_id: rid, items: [lineOf(rid, over)], order_type: 'pickup', redeem: REDEEM[rid] }, { 'x-firebase-id-token': uid });
+        assert.ok(judge(qr), `I-QUOTE-REDEEM ${tag} (${qr.status} ${qr.text.slice(0, 200)})`);
+      }
     }
+    await rtdb.ref('platform_config/extras_eligibility').remove();
   }
-  ok('a malformed legacy key is refused exactly as at the base: 400 item_malformed with its customer copy at all four endpoints; nothing written or charged');
+  ok('a malformed legacy key: under enforce today\'s 400 item_malformed + copy at all four endpoints (nothing written or charged); under off the stage never answers');
 
   // ── K: item_key ──
   for (const rid of ['x_pizza', 'la_musa']) {

@@ -1,23 +1,31 @@
 'use strict';
-// S1b — the base's and the tip's captures must be identical (status + body + nothing written / charged), and each base answer
-// is pinned to today's refusal (D4c-grill/item-s1/S1b-DESIGN.md, the Q3 correction and the option-A ruling):
-//   reward (Q3): an UNKNOWN reward key → 503 menu_updating (group-intake: unclassifiable); a non-string reward id → 409
-//     redemption_invalid
-//   malformed legacy key (option A): an array name / id → 400 item_malformed at all four endpoints; a null one → today's 400
-//     (whichever check answers first at the base) — never the stage's menu_changed / invalid_line
-// Run: node test/s1b-reward-parity.compare.js <base.json> <tip.json>
+// S1b — base vs tip, captured by test/s1b-reward-parity.capture.js: every response must be byte-identical (status + body + written
+// + charged + the written order's money projection), AND every base response must equal its PINNED answer exactly
+// (test/s1b-reward-parity.pins.json — one record per endpoint, setting and case; codex S1b r3 P2-2: a pin, never a predicate).
+// Fixed rules on top of the pins (D4c-grill/item-s1/S1b-DESIGN.md: the Q3 correction, option A, codex r3):
+//   - a malformed-key case never carries the stage's codes (menu_changed / invalid_line), at base or tip;
+//   - under extras_eligibility 'enforce' an ARRAY key is today's 400 item_malformed with its customer copy at all four endpoints.
+// Run: node test/s1b-reward-parity.compare.js <base.json> <tip.json> [pins.json]
+//      node test/s1b-reward-parity.compare.js --print-pins <base.json>   (writes the pin table from a reviewed base capture)
 const assert = require('assert');
-const [base, tip] = process.argv.slice(2).map((f) => JSON.parse(require('fs').readFileSync(f, 'utf8')));
-assert.ok(base && tip && Object.keys(base).length === 24, 'premise: twenty-four captured responses (8 reward, 16 malformed)');
-assert.deepStrictEqual(Object.keys(tip).sort(), Object.keys(base).sort(), 'the same cases');
-const today = (k) => {
-  if (k.startsWith('mf_')) return k.split('/')[0].endsWith('_array') ? [400, 'item_malformed'] : [400, null];
-  return k.split('/')[0].endsWith('_unknown') ? [503, 'menu_updating'] : [409, 'redemption_invalid'];
-};
-for (const k of Object.keys(base)) {
-  const [status, error] = today(k); const b = base[k]; const j = JSON.parse(b.body);
-  assert.ok(b.status === status && (error ? j.error === error : !['menu_changed', 'invalid_line'].includes(j.error)) && b.written === false && !b.charged,
-    `premise: the base refuses ${k} with today's ${status} ${error || '(not the stage\'s code)'}, nothing written or charged (${b.status} ${b.body.slice(0, 120)})`);
-  assert.deepStrictEqual(tip[k], b, `🔴 RWP ${k}: the tip answers differently from the base`);
+const fs = require('fs'); const path = require('path');
+const read = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
+const sorted = (v) => (Array.isArray(v) ? v.map(sorted) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted(v[k])])) : v);
+if (process.argv[2] === '--print-pins') { process.stdout.write(`${JSON.stringify(sorted(read(process.argv[3])), null, 1)}\n`); process.exit(0); }
+const [base, tip] = process.argv.slice(2, 4).map(read);
+const pins = read(process.argv[4] || path.join(__dirname, 's1b-reward-parity.pins.json'));
+const COPY = 'Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.';
+const keys = Object.keys(pins).sort();
+assert.strictEqual(keys.length, 40, 'premise: forty pinned cases (8 reward, 32 malformed: 2 settings × 2 brands × 2 kinds × 4 endpoints)');
+assert.deepStrictEqual(Object.keys(base).sort(), keys, 'premise: the base capture has exactly the pinned cases');
+assert.deepStrictEqual(Object.keys(tip).sort(), keys, 'premise: the tip capture has exactly the pinned cases');
+const errOf = (r) => { try { return JSON.parse(r.body).error; } catch (_) { return undefined; } };
+for (const k of keys) {
+  if (k.startsWith('mf_')) {
+    for (const [who, r] of [['base', base[k]], ['tip', tip[k]]]) assert.ok(!['menu_changed', 'invalid_line'].includes(errOf(r)), `🔴 RWP-STAGE ${k}: the ${who} answers with the stage's code (${r.body.slice(0, 120)})`);
+    if (k.startsWith('mf_enforce_') && k.split('/')[0].endsWith('_array')) assert.ok(pins[k].status === 400 && JSON.parse(pins[k].body).error === 'item_malformed' && JSON.parse(pins[k].body).detail === COPY, `premise: the pin for ${k} is today's 400 item_malformed with its copy`);
+  }
+  assert.deepStrictEqual(base[k], pins[k], `premise: the base answers ${k} exactly as pinned (${JSON.stringify(base[k]).slice(0, 160)})`);
+  assert.deepStrictEqual(tip[k], base[k], `🔴 RWP ${k}: the tip answers differently from the base`);
 }
-console.log(`s1b-reward-parity: OK (${Object.keys(base).length} responses byte-identical, base vs tip; each the base's pinned refusal)`);
+console.log(`s1b-reward-parity: OK (${keys.length} responses: each the base's pinned answer, byte-identical at the tip)`);

@@ -93,18 +93,30 @@ const written = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).exists();
   // advisor ruling (option A): a malformed LEGACY key (array / null on the mode's own field) keeps today's refusal, byte for
   // byte, at all four endpoints
   const REDEEM_OK = { x_pizza: { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' }, la_musa: { type: 'points_ala_carte', items: [{ id: 'rice_white', qty: 1, name: 'Arroz Blanco' }] } };
-  for (const [rid, field] of [['x_pizza', 'name'], ['la_musa', 'id']]) for (const [kind, v] of [['array', [rid === 'x_pizza' ? 'Carnivora' : 'dimsum_01']], ['null', null]]) {
-    const k = `mf_${rid}_${field}_${kind}`; const line = () => lineOf(rid, { [field]: v });
-    for (const [ep, handler, pm] of [['createOrder', app.createOrder, 'cash'], ['chargeOnlineOrder', app.chargeOnlineOrder, 'online']]) {
-      const f = await fresh(); const before = CHARGED.length;
-      const r = await post(handler, bodyFor(rid, `rwp_${k}_${ep}`, f.phone, [line()], { payment_method: pm }), { 'x-firebase-id-token': uid });
-      out[`${k}/${ep}`] = { status: r.status, body: r.text, written: await written(`rwp_${k}_${ep}`), charged: CHARGED.length - before };
+  // codex S1b r3 P2-1: the malformed-key verdict depends on platform_config/extras_eligibility (absent = off: the extras check
+  // is skipped and pricing coerces an array key). Both settings are captured; base and tip must agree byte for byte in each.
+  // A 2xx body's per-run values (tokens, URLs, timestamps) are masked; a written order adds its money projection.
+  const VOLATILE = /token|url|_at$|expires|attempt/i;
+  const mask = (v) => (Array.isArray(v) ? v.map(mask) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, VOLATILE.test(k) ? '<volatile>' : mask(x)])) : v);
+  const bodyOf = (r) => (r.status >= 200 && r.status < 300 && r.json ? JSON.stringify(mask(r.json)) : r.text);
+  const MONEY = ['total', 'total_cents', 'subtotal', 'tax', 'items_text', 'items', 'payment_method', 'status'];
+  const projection = async (id) => { const o = (await rtdb.ref(`orders/${id}`).get()).val(); return o ? Object.fromEntries(MONEY.map((f) => [f, o[f] === undefined ? null : o[f]])) : null; };
+  for (const setting of ['off', 'enforce']) {
+    await rtdb.ref('platform_config/extras_eligibility').set(setting);
+    for (const [rid, field] of [['x_pizza', 'name'], ['la_musa', 'id']]) for (const [kind, v] of [['array', [rid === 'x_pizza' ? 'Carnivora' : 'dimsum_01']], ['null', null]]) {
+      const k = `mf_${setting}_${rid}_${field}_${kind}`; const line = () => lineOf(rid, { [field]: v });
+      for (const [ep, handler, pm] of [['createOrder', app.createOrder, 'cash'], ['chargeOnlineOrder', app.chargeOnlineOrder, 'online']]) {
+        const f = await fresh(); const before = CHARGED.length; const id = `rwp_${k}_${ep}`;
+        const r = await post(handler, bodyFor(rid, id, f.phone, [line()], { payment_method: pm }), { 'x-firebase-id-token': uid });
+        out[`${k}/${ep}`] = { status: r.status, body: bodyOf(r), written: await written(id), charged: CHARGED.length - before, order: await projection(id) };
+      }
+      const q = await post(app.quoteOrder, { restaurant_id: rid, items: [line()], order_type: 'pickup' });
+      out[`${k}/quoteOrder`] = { status: q.status, body: bodyOf(q), written: false };
+      const qr = await post(app.quoteRedemption, { restaurant_id: rid, items: [line()], order_type: 'pickup', redeem: REDEEM_OK[rid] }, { 'x-firebase-id-token': uid });
+      out[`${k}/quoteRedemption`] = { status: qr.status, body: bodyOf(qr), written: false };
     }
-    const q = await post(app.quoteOrder, { restaurant_id: rid, items: [line()], order_type: 'pickup' });
-    out[`${k}/quoteOrder`] = { status: q.status, body: q.text, written: false };
-    const qr = await post(app.quoteRedemption, { restaurant_id: rid, items: [line()], order_type: 'pickup', redeem: REDEEM_OK[rid] }, { 'x-firebase-id-token': uid });
-    out[`${k}/quoteRedemption`] = { status: qr.status, body: qr.text, written: false };
   }
+  await rtdb.ref('platform_config/extras_eligibility').remove();
   require('fs').writeFileSync(OUT, `${JSON.stringify(out, null, 1)}\n`);
   FINISHED = true;
   console.log(`s1b-reward-parity(capture): ${Object.keys(out).length} responses from ${FN} → ${OUT}`);
