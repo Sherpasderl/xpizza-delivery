@@ -68,4 +68,21 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   ok('past the limit the set refuses (503 reserved_keys_full) rather than drop a key');
 }
 
+// ── D3 (owner 2026-11-09): RENAMES only — a renamed item may not take another item's reserved key; additions are not judged ──
+{
+  const set = RK.reservedKeySet(RK.unionReserved(RK.emptyReserved(), { dish: ['Carnivora', 'Pizza Vieja', 'Hawaiana'], extra: ['Queso Extra'] }, 'v1').doc);
+  const it = (key, id, name) => ({ key, display: { id, name } });
+  const active = [it('Carnivora', 1, 'Carnivora'), it('Hawaiana', 2, 'Hawaiana')];
+  const judge = (items) => RK.renameConflicts({ items, activeItems: active, reserved: set }).map((c) => c.key);
+  assert.deepStrictEqual(judge([it('Carnivora', 1, 'Carnivora'), it('Hawaiana', 2, 'Hawaiana')]), [], 'RKR-UNCHANGED untouched names are never judged');
+  assert.deepStrictEqual(judge([it('Carnivora', 1, 'Pizza Vieja')]), ['Carnivora'], 'RKR-EXACT a rename onto another reserved key');
+  assert.deepStrictEqual(judge([it('Carnivora', 1, '  pizza   VIEJA ')]), ['Carnivora'], 'RKR-NORMALIZED a rename onto a reserved key after folding');
+  assert.deepStrictEqual(judge([it('Carnivora', 1, 'Queso Extra')]), ['Carnivora'], 'RKR-EXTRA an extra\'s reserved key counts');
+  assert.deepStrictEqual(judge([it('Carnivora', 1, 'Carnívora')]), [], 'RKR-OWN a rename that folds to the item\'s OWN key is allowed');
+  assert.deepStrictEqual(judge([it('Carnivora', 1, 'i_abcdefghijk2')]), ['Carnivora'], 'RKR-OPAQUE a rename into the opaque syntax');
+  assert.deepStrictEqual(judge([it('Carnivora', 1, 'Carnivora Suprema')]), [], 'RKR-FREE a rename onto an unreserved name');
+  assert.deepStrictEqual(judge([it('Pizza Vieja', 9, 'Pizza Vieja'), it('i_aaaaaaaaaaaa', 10, 'Hawaiana Nueva')]), [], 'RKR-ADDITION additions (no active item with that display.id) are never judged (owner)');
+  assert.deepStrictEqual(judge([it('Hawaiana', 1, 'Pizza Vieja')]), ['Hawaiana'], 'RKR-ID matched by display.id: id 1 now carries another name');
+  ok('D3: only renames are judged — exact, normalized, an extra key, the opaque syntax; own key and additions are free');
+}
 console.log(`\nreserved-keys: OK (${n})`);
