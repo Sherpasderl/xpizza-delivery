@@ -72,6 +72,20 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
   assert.strictEqual(labelGap(g3, XP), false, 'RL-LABELGAP-LEGACY a legacy key is its own description (no gap)');
   const g4 = body([{ name: 'Carnivora', qty: 1 }], { item_id: OPQ }); resolveLines('x_pizza', g4, withOpaque(null));
   assert.strictEqual(labelGap(g4, withOpaque(null)), true, 'RL-LABELGAP-REWARD a resolved opaque reward key with no label');
+  // codex S1d r1 #2 (advisor): reward lines are NOT widened by label — item_id must equal the key exactly (today's rule)
+  const rw = body([{ name: 'Carnivora', qty: 1 }], { type: 'free_pizza_choice', item_key: 'Margherita', item_id: 'Margarita Nueva' });
+  assert.deepStrictEqual(resolveLines('x_pizza', rw, labelled(XP, { Margherita: 'Margarita Nueva' })), { ok: true }, 'premise: the cart resolves');
+  assert.strictEqual(stampOf(rw.redeem), undefined, 'RL-REDEEM-LABEL-STRICT a reward whose item_id is only the LABEL is not stamped (today\'s refusal answers)');
+  // codex S1d r1 #3: the gate judges the reward actually CONSUMED (its raw item_id / items[].id), stamped or not
+  const gapR = body([{ name: 'Carnivora', qty: 1 }], { type: 'free_pizza_choice', item_id: OPQ, items: [] });
+  resolveLines('x_pizza', gapR, withOpaque(null));
+  assert.strictEqual(labelGap(gapR, withOpaque(null)), true, 'RL-LABELGAP-REWARD-RAW an unlabelled opaque reward key the menu holds');
+  assert.strictEqual(labelGap(gapR, withOpaque({ [OPQ]: 'Pizza Nueva' })), false, 'RL-LABELGAP-REWARD-LABELLED its label is here');
+  const unknownR = body([{ name: 'Carnivora', qty: 1 }], { type: 'free_pizza_choice', item_id: 'i_zzzzzzzzzzzz' });
+  resolveLines('x_pizza', unknownR, withOpaque(null));
+  assert.strictEqual(labelGap(unknownR, withOpaque(null)), false, 'RL-LABELGAP-REWARD-UNKNOWN an opaque reward key the menu does not hold is left to today\'s refusal');
+  const itemsR = body([{ name: 'Carnivora', qty: 1 }], { type: 'points_ala_carte', items: [{ id: OPQ, qty: 1 }] });
+  assert.strictEqual(labelGap(itemsR, withOpaque(null)), true, 'RL-LABELGAP-REWARD-ITEMS redeem.items[].id too');
   ok('S1d: item_key agrees with its legacy field OR the version\'s label; without labels strict; legacy lines exact-key');
 }
 

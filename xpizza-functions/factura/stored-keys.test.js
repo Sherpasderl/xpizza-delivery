@@ -67,6 +67,15 @@ const KEY = Object.keys(XM)[0];
     const s = MP.summaryLines([{ name: KEY, qty: 2 }], 'x_pizza', null, T);
     assert.deepStrictEqual(s, [{ name: KEY, qty: 2, cents: XM[KEY] * 200, item_key: KEY }], 'SK-SUMMARY each summary line stores its key');
     ok('summary lines store item_key');
+    // codex S1d r1 #1: the FREE (reward) row carries its key too, and a name-keyed one is named by its label
+    const red = { model: 'add_free', items: [{ name: 'Margherita', qty: 1, item_key: 'Margherita' }] };
+    const free = (lab) => MP.summaryLines([{ name: KEY, qty: 1 }], 'x_pizza', red, MP.attachTablesLabels(MP.attachTablesKeyMode({ restaurantId: 'x_pizza', menu: { ...XM }, extras: { ...XE } }, 'name'), lab)).find((l) => l.cents === 0);
+    assert.deepStrictEqual(free(null), { name: 'Margherita', qty: 1, cents: 0, item_key: 'Margherita' }, 'SK-FREE-SUMMARY the free row stores its key (name as today)');
+    assert.strictEqual(free({ Margherita: 'Margarita Nueva' }).name, 'Margarita Nueva', 'SK-FREE-LABEL a renamed free item shows its current name');
+    const LMk = Object.keys(MP.MENU_BY_RESTAURANT.la_musa)[0];
+    const lmFree = (lab) => MP.summaryLines([{ id: LMk, name: 'X', qty: 1 }], 'la_musa', { model: 'add_free', items: [{ name: 'Del Cliente', qty: 1, item_key: LMk }] }, MP.attachTablesLabels(MP.attachTablesKeyMode({ restaurantId: 'la_musa', menu: { ...MP.MENU_BY_RESTAURANT.la_musa }, extras: { ...MP.EXTRAS_BY_RESTAURANT.la_musa } }, 'id'), lab)).find((l) => l.cents === 0);
+    assert.strictEqual(lmFree({ [LMk]: 'Otro' }).name, lmFree(null).name, 'SK-FREE-IDMODE an id-keyed free row keeps today\'s name');
+    ok('free summary rows store their key; a name-keyed one is named by its label; id-keyed names unchanged');
   }
 
   FINISHED = true;

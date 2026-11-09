@@ -195,6 +195,32 @@ const written = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).exists();
   }
   ok('the real capp writer (served menu → adapter → cart → serializer): quoteOrder ok and createOrder 200 on both key modes');
 
+  // ── G (S1d D3 + codex S1d r1 #3): a reward that consumes an OPAQUE key this route has no label for is refused 503
+  //    labels_unavailable right after the stage — before ANY write (rate limit, dedupe, reserve, order) — at createOrder and
+  //    the charge. The version below holds a minted dish whose stored display is stripped, so its route carries no label. ──
+  {
+    const { buildSourceCandidate } = require('../catalog/candidate-validate');
+    const OPQ = 'i_aaaaaaaaaaab';
+    const src = canonicalize(buildSourceFromCode('x_pizza'));
+    src.items.push({ key: OPQ, price: 150, display: { id: 9901, name: 'Pizza Nueva', cat: src.items[0].display.cat, price: 150, desc: '' } });
+    src.structure.item_order.push(OPQ); src.frozen_keys = { 9901: OPQ };
+    const { inputs, built } = buildSourceCandidate('x_pizza', src);
+    const active = (await getActivePointer(fs, 'x_pizza')).version;
+    const v = await publishVersion(fs, 'x_pizza', { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha: 's1d-gate', key_mode: built.key_mode, frozen_keys: built.frozen_keys }, { expected: { activeVersionId: active }, mirror: makeRtdbMirror(rtdb) });
+    const docs = await fs.collection('restaurants').doc('x_pizza').collection('versions').doc(v.versionId).collection('menu_items').where('key', '==', OPQ).get();
+    assert.strictEqual(docs.size, 1, 'premise: the minted dish is in the version');
+    await docs.docs[0].ref.update({ display: admin.firestore.FieldValue.delete() });   // the price docs (key, price) and their hash are untouched
+    const redeem = { type: 'free_pizza_choice', item_id: OPQ, name: 'Pizza Nueva' };
+    for (const [route, pay] of [['createOrder', 'cash'], ['chargeOnlineOrder', 'online']]) {
+      const f = await fresh(); const before = JSON.stringify((await rtdb.ref().get()).val()); const charged = CHARGED.length;
+      const r = await post(app[route], bodyFor('x_pizza', f.oid, f.phone, [lineOf('x_pizza')], { payment_method: pay, redeem }), { 'x-firebase-id-token': uid });
+      assert.deepStrictEqual([r.status, r.json && r.json.error, r.json && r.json.retryable], [503, 'labels_unavailable', true], `G-${route} an unlabelled opaque reward key: 503 labels_unavailable (${r.text.slice(0, 160)})`);
+      assert.strictEqual(JSON.stringify((await rtdb.ref().get()).val()), before, `G-${route} ZERO writes (rate limit, dedupe, reserve, order)`);
+      assert.strictEqual(CHARGED.length, charged, `G-${route} nothing charged`);
+    }
+    ok('an unlabelled opaque reward key: 503 labels_unavailable at createOrder and the charge, with zero writes');
+  }
+
   FINISHED = true;
   console.log(`\nresolve-lines(emulator): OK (${n})`);
   process.exit(0);
