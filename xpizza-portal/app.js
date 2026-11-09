@@ -168,6 +168,9 @@ export async function loadRestaurants() {
 // world can change while the continuation is running.
 let opGeneration = 0;
 const bumpGeneration = () => { opGeneration += 1; };
+// PLAN-portal-shell-no-shift (Codex r3): the catalog READ's own generation — shell.js's recovery (portal:abandon) cancels an
+// abandoned load and nothing else; a save / publish in flight always settles, reconciles and runs its authoritative reload.
+let readGeneration = 0;
 
 // ── THE SHARED-STATE CALLBACK GUARD ────────────────────────────────────────────────────────────
 // canEdit covers every writer of the DRAFT. This covers the other class: callbacks that write shared
@@ -441,7 +444,7 @@ export async function loadMenu(rid) {
   state.samePrice = new Map();                // "Mismo precio para todas", per product; DERIVED again on every load
   state.rawPrice = new Map();                 // typed price text that is not (yet) a price, per field (codex PB-3 P2-2)
   invalidateReview();                        // clears tenant-bound state AND bumps the generation
-  const gen = opGeneration;
+  const gen = opGeneration, rgen = readGeneration;
   state.renameEdit = null;                    // PLAN-public-menu-display T1 — the section title being edited, if any
   closeNameAll();
   endPhotoWorld();                            // DISH PHOTOS B — uploads and previews belong to the tenant world that is ending
@@ -454,7 +457,7 @@ export async function loadMenu(rid) {
       // THE CHECK COMES FIRST, before ANY mutation. It sat BELOW the two lines that follow, so a slow
       // failure from the tenant the merchant had already left blanked the menu of the tenant they were
       // on — the current rail erased by an error about a different restaurant.
-    if (gen !== opGeneration) return;
+    if (gen !== opGeneration || rgen !== readGeneration) return;
     // Degrade to a message, never to an empty menu that reads as "you have no products". The typed
     // kind decides the sentence: an outage says try again, a refusal says this account cannot see it.
     state.menuLoading = false;               // it is not coming; the entry must stop saying "wait"
@@ -473,7 +476,7 @@ export async function loadMenu(rid) {
   // response — so an edit shows up because the underlying source changed, not because a view model was
   // nudged to agree. The response is kept only for what the draft is not: the CAS baseline and the
   // fiscal capability.
-  if (gen !== opGeneration) return;        // a newer switch won; this response is for a tenant the merchant left
+  if (gen !== opGeneration || rgen !== readGeneration) return;        // a newer switch won; this response is for a tenant the merchant left
   // The draft carries the boundary: it may be edited only while nobody owns it for a review or a
   // publish. Every mutator asks this, so a retained or detached listener is refused at the state
   // rather than at the DOM.
@@ -1737,7 +1740,9 @@ function syncRow(surface, key, value) {
   markChanged(surface, key);
 }
 
-document.addEventListener('portal:restaurant', (e) => { loadMenu(e.detail && e.detail.rid); });
+// shell-wait r7 (R2): the load this event started, so openEditor can hand it to the shell's bounded reveal (it settles, never throws)
+let lastMenuLoad = null;
+document.addEventListener('portal:restaurant', (e) => { lastMenuLoad = loadMenu(e.detail && e.detail.rid); });
 
 // The review bar's own controls. Wired here, not inline: the CSP has no 'unsafe-inline', so an
 // onclick attribute would be inert and the button would look enabled while doing nothing.
@@ -2298,7 +2303,13 @@ try {
 export function openEditor(rid, { name = rid, sales } = {}) {
   state.restaurants = [{ rid, name }];
   state.currentRid = rid;
+  lastMenuLoad = null;
   document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid, sales } }));
+  return lastMenuLoad;   // shell-wait r7: the catalog's first load — the shell's reveal waits for it (bounded)
 }
 // The self-update guard, reused verbatim to block a branch switch while the merchant has unsaved work or an operation open.
 export const editorCanLeave = () => portalCanReload(portalReloadFacts());
+
+// PLAN-portal-shell-no-shift (Codex r2 P1): shell.js presents its recovery box after a boot failure / the discovery deadline;
+// the editor's held catalog LOAD belongs to an abandoned world and must not repaint over it — reads only (Codex r3).
+document.addEventListener('portal:abandon', () => { readGeneration += 1; });

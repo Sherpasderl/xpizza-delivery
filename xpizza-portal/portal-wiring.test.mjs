@@ -1210,6 +1210,7 @@ const LISTENERS = {
   "chev::click":                  ['view', ['toggle'], 'expands an option group'],
   "pi::input":                    ['bound', [], 'the option price field'],
   "document::portal:restaurant":  ['singleton', ['loadMenu'], 'the tenant switch, dispatched by switchTo which has already revalidated'],
+  "document::portal:abandon":     ['ender', [], 'PLAN-portal-shell-no-shift (Codex r2 + r3): before its recovery box shell.js cancels the editor\u2019s abandoned catalog READ (readGeneration) — writes always settle'],
   "$('discard')::click":          ['singleton', ['discard', 'closeDrawer', 'repaintFromDraft'], 'throws away local edits — a DRAFT write, refused by the canEdit boundary whenever an operation owns the draft'],
   "$('review')::click":           ['singleton', ['openReviewFlow'], 'admission-controlled: it acquires the edit lock or returns'],
   "$('pubback')::click":          ['singleton', ['closeReview'], 'closing is refused while this world has a publish in flight'],

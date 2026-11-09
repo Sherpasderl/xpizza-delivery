@@ -2565,7 +2565,9 @@
   "access/membership.js": {
    "pins": [],
    "lifts": [
-    "xpizza-portal/branches-1b-focus.test.mjs"
+    "xpizza-portal/branches-1b-focus.test.mjs",
+    "xpizza-portal/shell-wait-writes.test.mjs",
+    "xpizza-portal/shell-wait.test.mjs"
    ]
   },
   "access/portal-account.js": {

@@ -7,6 +7,8 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { startAceptar, ledeOf, cleanUrl, RETRY_MS } from './aceptar.js';
+import * as ACEPTAR from './aceptar.js';
+const LOAD_DEADLINE_MS = ACEPTAR.LOAD_DEADLINE_MS;
 const require = createRequire(new URL('../xpizza-functions/x.js', import.meta.url));
 const { JSDOM } = require('jsdom');
 
@@ -106,9 +108,10 @@ test('A2b: pending → busy + ONE auto-retry after the 30 s window → the fallb
   const r = rig({ user: { email: 'j@m.hn' }, accept: [{ ok: false, code: 'pending' }, { ok: false, code: 'pending' }, { ok: true, outcome: 'granted', password_set: true }] });
   await r.start();
   assert.deepStrictEqual(r.visible(), ['st-busy']);
-  assert.strictEqual(r.calls.timers.length, 1, 'pending: ONE auto-retry scheduled'); assert.strictEqual(r.calls.timers[0].ms, RETRY_MS);
+  const retries = r.calls.timers.filter((t) => t.ms === RETRY_MS);   // (the R4 load deadline is the other timer)
+  assert.strictEqual(retries.length, 1, 'pending: ONE auto-retry scheduled');
   assert.ok(RETRY_MS > 30000, 'past the server in-flight window');
-  r.calls.timers[0].fn(); await tick();
+  retries[0].fn(); await tick();
   assert.ok(!r.$('busy-fallback').hidden && r.$('busy-live').hidden, 'still pending → «Todavía no pudimos activar tu acceso»');
   await r.click('retry2');
   assert.strictEqual(r.calls.portal, 1);
@@ -276,4 +279,80 @@ test('codex T-c build r1 P2s: authority / scope codes → inactive; not_found �
   rs.$('pw').value = 'contrasena-larga'; await rs.submit('pwform');
   const exit = rs.$('reset-sent').querySelector('a.btn');
   assert.ok(!rs.$('reset-sent').hidden && exit && exit.textContent === 'Ir al portal' && exit.getAttribute('href') === './');
+});
+
+// PLAN-portal-shell-no-shift R4 — owner-approved option A (MOCKUP-portal-shell-wait.html): until the invitation is checked the
+// page shows the brand and «Cargando tu invitación…» (role=status) — never an almost empty card; the first stage replaces it.
+test('R4: before the preview resolves, «Cargando tu invitación…» is the ONE visible stage; the email stage then replaces it', async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const r = rig({});
+  const load = r.$('st-loading');
+  assert.ok(load && !load.hidden, 'the loading stage is visible from the first paint');
+  assert.strictEqual(load.textContent.trim(), 'Cargando tu invitación…');
+  assert.strictEqual(load.querySelector('[role=status]').textContent, 'Cargando tu invitación…');
+  assert.deepStrictEqual(r.visible(), [], 'no other stage paints before the decision');
+  const orig = r.deps.api.preview;
+  r.deps.api.preview = async () => { await gate; return orig(); };
+  const run = r.start();
+  await tick();
+  assert.ok(!load.hidden, 'still loading while the preview is in flight');
+  release(); await run;
+  assert.ok(load.hidden, 'replaced');
+  assert.deepStrictEqual(r.visible(), ['st-email']);
+});
+
+test('R4: every first stage replaces the loading line — invalid link, error card, restored session (busy / password)', async () => {
+  for (const opts of [{ href: 'https://portal.test/aceptar.html' }, { preview: notFound }, { user: { email: 'jorge@m.hn', emailVerified: true }, link: false }]) {
+    const r = rig(opts);
+    await r.start();
+    assert.ok(r.$('st-loading').hidden, `${JSON.stringify(opts).slice(0, 60)}: the loading line is gone`);
+    assert.strictEqual(r.visible().length, 1, 'exactly one stage shows');
+  }
+});
+
+// Codex r1 P1 (shell-wait): the loading line is never the end state — an auth restore / preview that never settles ends, after
+// LOAD_DEADLINE_MS, in the existing «No pudimos completar la invitación» card, whose «Reintentar» starts over; the late answer is dropped.
+test('R4 deadline: a preview that NEVER settles → after LOAD_DEADLINE_MS the could-not-complete card (Reintentar), not an endless loading line', async () => {
+  const r = rig({ preview: new Promise(() => {}) });
+  r.start();                       // never settles: not awaited
+  await tick();
+  assert.ok(!r.$('st-loading').hidden, 'premise: still loading');
+  const t = r.calls.timers.find((x) => x.ms === LOAD_DEADLINE_MS);
+  assert.ok(t, 'the deadline is armed');
+  assert.strictEqual(LOAD_DEADLINE_MS, 20000);
+  t.fn(); await tick();
+  assert.ok(r.$('st-loading').hidden);
+  assert.deepStrictEqual(r.visible(), ['st-error']);
+  assert.strictEqual(r.$('err-title').textContent, 'No pudimos completar la invitación');
+  assert.ok(!r.$('err-action').hidden, '«Reintentar»');
+});
+test('R4 deadline: a preview that settles in time — the deadline firing later changes nothing', async () => {
+  const r = rig({});
+  await r.start();
+  assert.deepStrictEqual(r.visible(), ['st-email']);
+  const t = r.calls.timers.find((x) => x.ms === LOAD_DEADLINE_MS);
+  assert.ok(t, 'premise: it was armed');
+  t.fn(); await tick();
+  assert.deepStrictEqual(r.visible(), ['st-email'], 'still the email stage');
+});
+
+test('r2 P2 — invite «Reintentar» after a deadline: the loading line again, its OWN deadline, and a late answer of either attempt never repaints', async () => {
+  let release2;
+  const second = new Promise((r) => { release2 = r; });
+  const r = rig({});
+  let n = 0;
+  r.deps.api.preview = () => { n += 1; return n === 1 ? new Promise(() => {}) : second.then(() => OPEN); };
+  r.start(); await tick();
+  r.calls.timers.find((x) => x.ms === LOAD_DEADLINE_MS).fn(); await tick();
+  assert.deepStrictEqual(r.visible(), ['st-error'], 'premise: the first attempt timed out');
+  r.calls.timers.length = 0;
+  await r.click('err-action');      // «Reintentar»
+  assert.ok(!r.$('st-loading').hidden, 'the loading line is back for the second attempt');
+  const t2 = r.calls.timers.find((x) => x.ms === LOAD_DEADLINE_MS);
+  assert.ok(t2, 'the second attempt has its own deadline');
+  t2.fn(); await tick();
+  assert.deepStrictEqual(r.visible(), ['st-error']);
+  release2(); await tick();
+  assert.deepStrictEqual(r.visible(), ['st-error'], 'the late second answer is dropped');
 });

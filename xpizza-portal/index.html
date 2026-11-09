@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>   <!-- the SDK's restored-session account lookup starts before the editor paints (perf/portal.origins.json, T2) -->
 <link rel="stylesheet" href="./styles.css">
 <script src="sherpa-client.js"></script>
+<script src="gate-early.js"></script>
 </head>
 <body>
 
@@ -20,7 +21,12 @@
   <div class="gatecard">
     <div class="gatebrand"><div class="bmark">S</div><div class="bname">Sherpa</div></div>
     <h1>Portal del comercio</h1>
-    <p class="lede">Ingresá para ver y administrar tu menú.</p>
+    <p class="lede" id="gatelede">Ingresá para ver y administrar tu menú.</p>
+    <!-- PLAN-portal-shell-no-shift (owner-approved MOCKUP-portal-shell-wait.html, option A): the card's one quiet line while the
+         session opens (html.sw-wait, set by gate-early.js / boot.js), and the recovery card if the portal's scripts never start
+         (html.sw-fail, gate-early.js's boot deadline) — the portal's own outage copy (ops-dom OFFLINE) and box, never an unwired form -->
+    <p class="lede wait" id="gatewait" role="status">Abriendo tu portal…</p>
+    <div class="errbox" id="gatefail" role="alert"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg><div><b>Sin conexión con Sherpa</b><p>Tus datos están a salvo. Revisá tu internet y volvé a intentar; si sigue igual, escribinos por WhatsApp.</p></div><button class="btn" id="gatefailbtn" type="button">Reintentar</button></div>
     <!-- a real <form>, so Enter submits and password managers behave; the handler prevents the
          default GET that would otherwise put the password in the URL -->
     <form id="loginform" novalidate>

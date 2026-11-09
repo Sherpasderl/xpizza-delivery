@@ -66,6 +66,8 @@
   "review.js",
   "review.test.mjs",
   "shell-dom.test.mjs",
+  "shell-wait-writes.test.mjs",
+  "shell-wait.test.mjs",
   "shell.js",
   "shell.test.mjs",
   "sherpa-client.js",
@@ -2039,19 +2041,19 @@
    ],
    [
     "",
-    ".ops .errbox b,#detail .errbox b",
+    ".ops .errbox b,#detail .errbox b,#gatefail b",
     "color",
     "var(--red-text)"
    ],
    [
     "",
-    ".ops .errbox p,#detail .errbox p",
+    ".ops .errbox p,#detail .errbox p,#gatefail p",
     "color",
     "var(--ink)"
    ],
    [
     "",
-    ".ops .errbox,#detail .errbox",
+    ".ops .errbox,#detail .errbox,#gatefail",
     "background",
     "var(--red-soft)"
    ],

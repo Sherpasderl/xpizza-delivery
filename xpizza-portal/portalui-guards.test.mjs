@@ -59,6 +59,62 @@ function withoutFs(src) {
   }
   return out;
 }
+// ── PLAN-portal-shell-no-shift (Codex r2 P1 + r3): app.js gains EXACTLY these named hunks — the catalog READ's own generation
+// (readGeneration, captured and checked by loadMenu) and the portal:abandon listener that bumps ONLY it (writes always settle).
+// Folded out FIRST (the newest layer), so every older pin below judges exactly what it judged before. Generated from the slice
+// diff against its base 1e81a7f2 and pinned: an edit outside these hunks, or inside one, fails. Train asm3 (2e): main now carries
+// DISH PHOTOS B + T1 + held-state over 1e81a7f2, so the pin runs THROUGH those older folds to T1_BASE (readSw below).
+const SW_HUNKS = [
+ [
+  "// PLAN-portal-shell-no-shift (Codex r3): the catalog READ's own generation — shell.js's recovery (portal:abandon) cancels an\n// abandoned load and nothing else; a save / publish in flight always settles, reconciles and runs its authoritative reload.\nlet readGeneration = 0;\n",
+  ""
+ ],
+ [
+  "  const gen = opGeneration, rgen = readGeneration;\n",
+  "  const gen = opGeneration;\n"
+ ],
+ [
+  "    if (gen !== opGeneration || rgen !== readGeneration) return;\n",
+  "    if (gen !== opGeneration) return;\n"
+ ],
+ [
+  "  if (gen !== opGeneration || rgen !== readGeneration) return;        // a newer switch won; this response is for a tenant the merchant left\n",
+  "  if (gen !== opGeneration) return;        // a newer switch won; this response is for a tenant the merchant left\n"
+ ],
+ [
+  "\n// PLAN-portal-shell-no-shift (Codex r2 P1): shell.js presents its recovery box after a boot failure / the discovery deadline;\n// the editor's held catalog LOAD belongs to an abandoned world and must not repaint over it — reads only (Codex r3).\ndocument.addEventListener('portal:abandon', () => { readGeneration += 1; });\n",
+  ""
+ ],
+ // shell-wait r7 (advisor ruling a): the reveal also waits for the catalog's first load — openEditor returns it
+ [
+  "// shell-wait r7 (R2): the load this event started, so openEditor can hand it to the shell's bounded reveal (it settles, never throws)\nlet lastMenuLoad = null;\ndocument.addEventListener('portal:restaurant', (e) => { lastMenuLoad = loadMenu(e.detail && e.detail.rid); });\n",
+  "document.addEventListener('portal:restaurant', (e) => { loadMenu(e.detail && e.detail.rid); });\n"
+ ],
+ [
+  "  lastMenuLoad = null;\n  document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid, sales } }));\n  return lastMenuLoad;   // shell-wait r7: the catalog's first load — the shell's reveal waits for it (bounded)\n",
+  "  document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid, sales } }));\n"
+ ]
+];
+function withoutSw(src) {
+  let out = src;
+  for (const [now, was] of SW_HUNKS) {
+    assert.equal(out.split(now).length - 1, 1, `shell-wait hunk occurs exactly once: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+// train asm3 (2e): the shell-wait layer (newest) is folded out of app.js before every older fold below
+const readSw = (f) => (f === 'app.js' ? withoutSw(read(f)) : read(f));
+test('shell-wait (Codex r2 P1 + r3): app.js gains exactly the read-generation hunks + the portal:abandon listener; nothing else', () => {
+  // train asm3: through the older folds (DISH PHOTOS B incl. held-state, then T1) to T1_BASE — the base every pin below agrees on
+  const was = execFileSync('git', ['show', `${T1_BASE}:xpizza-portal/app.js`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+  const through = (src) => withoutT1('app.js', withoutPb('app.js', withoutSw(src)));
+  assert.notEqual(withoutSw(read('app.js')), read('app.js'), 'non-vacuity: the shell-wait fold changes something');
+  assert.equal(through(read('app.js')), was, `app.js minus the shell-wait, DISH PHOTOS B and T1 hunks ≠ ${T1_BASE}`);
+  assert.notEqual(through(read('app.js') + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+  assert.equal(read('app.js').split("addEventListener('portal:abandon'").length - 1, 1, 'one listener');
+  assert.ok(/addEventListener\('portal:abandon', \(\) => \{ readGeneration \+= 1; \}\)/.test(read('app.js')), 'it bumps ONLY the read generation (never invalidateReview: writes settle)');
+});
 // ── PLAN-public-menu-display T1 (portal-ui, owner-approved mockup «Cambiar nombre de sección» 2026-10-25): a section's display
 // NAME. app.js / editor.js / review.js / render.js gain EXACTLY the hunks named in portalui-guards.t1-hunks.json — each [now,
 // was] pair occurs once — and folding them back out gives the T1 base (5f's 7f72757f) byte-for-byte. Every older pin below
@@ -89,9 +145,9 @@ function withoutPb(f, src) {
 test('DISH PHOTOS B: exactly the named hunks in the four frozen files — anything else, or an edit inside one, fails', () => {
   for (const f of ['app.js', 'editor.js', 'review.js', 'render.js']) {
     assert.ok((PB_FOLD[f] || []).length > 0, `non-vacuity: ${f} has named hunks`);
-    assert.notEqual(withoutPb(f, read(f)), read(f), `non-vacuity: the ${f} fold changes something`);
+    assert.notEqual(withoutPb(f, readSw(f)), readSw(f), `non-vacuity: the ${f} fold changes something`);
     const was = execFileSync('git', ['show', `${PB_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
-    assert.equal(withoutPb(f, read(f)), was, `${f} minus the DISH PHOTOS B hunks ≠ ${PB_BASE}`);
+    assert.equal(withoutPb(f, readSw(f)), was, `${f} minus the DISH PHOTOS B hunks ≠ ${PB_BASE}`);
   }
   // a stray edit outside the hunks survives the fold (and so fails the byte pins); an edit INSIDE one breaks its match
   const stray = read('render.js').replace('export function renderDetail(', 'export function renderDetail (');
@@ -99,14 +155,14 @@ test('DISH PHOTOS B: exactly the named hunks in the four frozen files — anythi
   const [inside] = PB_FOLD['editor.js'].find(([now]) => now.includes('setPhoto'));   // the hunk that DEFINES setPhoto
   assert.throws(() => withoutPb('editor.js', read('editor.js').replace(inside, inside.replace('setPhoto', 'setPhot0'))));
 });
-const appJs = () => withoutFs(withoutT1('app.js', withoutPb('app.js', read('app.js'))));
+const appJs = () => withoutFs(withoutT1('app.js', withoutPb('app.js', withoutSw(read('app.js')))));
 test('T1 (PLAN-public-menu-display): exactly the named hunks — folding them out gives the T1 base byte-for-byte', () => {
   for (const f of ['app.js', 'editor.js', 'review.js', 'render.js']) {
     const was = execFileSync('git', ['show', `${T1_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
     assert.ok((T1_HUNKS[f] || []).length > 0, `${f}: the fold is not empty`);
-    assert.equal(withoutT1(f, withoutPb(f, read(f))), was, `${f} minus the T1 hunks ≠ ${T1_BASE}`);
+    assert.equal(withoutT1(f, withoutPb(f, readSw(f))), was, `${f} minus the T1 hunks ≠ ${T1_BASE}`);
     // non-vacuity: a stray extra edit survives the fold
-    assert.notEqual(withoutT1(f, withoutPb(f, read(f) + '\n// stray\n')), was);
+    assert.notEqual(withoutT1(f, withoutPb(f, readSw(f) + '\n// stray\n')), was);
   }
   // the DRAFT side writes a section's NAME and nothing else: editor.js's only new property assignment is `cat.name = …`
   const writes = T1_HUNKS['editor.js'].flatMap(([now]) => [...now.matchAll(/\b\w+\.\w+\s*=[^=>]/g)].map((m) => m[0].replace(/\s*=.*$/, '')));
@@ -178,7 +234,7 @@ test('ventas.js: exactly one added line — the A3 owner-only early return in it
 
 test('the editor, review, render, auth and logic modules are byte-identical to the base', () => {
   for (const f of ['editor.js', 'review.js', 'render.js', 'auth.js', 'auth-errors.js', 'firebase.js', 'portal-logic.js', 'ventas-logic.js', 'sherpa-client.js']) {
-    assert.equal(withoutT1(f, withoutPb(f, read(f))), base(f), `${f} changed (beyond the named DISH PHOTOS B and T1 hunks)`);   // each layer's hunks are judged by its own test above
+    assert.equal(withoutT1(f, withoutPb(f, readSw(f))), base(f), `${f} changed (beyond the named shell-wait, DISH PHOTOS B and T1 hunks)`);   // each layer's hunks are judged by its own test above
   }
 });
 

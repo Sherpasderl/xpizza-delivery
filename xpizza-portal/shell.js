@@ -108,8 +108,45 @@ document.addEventListener('portal:auth', (e) => {
 
 document.addEventListener('portal:signed-in', () => {
   if (S.bootedUid === null) { boot(); return; }
-  requestReload();                                    // a later sign-in on this page: the NEW page reselects (A1)
+  // a later sign-in on this page: the NEW page reselects (A1); a reload held by unsaved work shows its notice IN the portal
+  if (!requestReload()) document.dispatchEvent(new CustomEvent('portal:ready'));
 });
+
+// PLAN-portal-shell-no-shift R1 (option A): boot.js reveals the portal on this event — fired when the chrome is rendered, or
+// when discovery ended in its empty / error state (including an exception anywhere in boot, Codex r1). ready() fires it once
+// per page boot (later E1 answers repaint in place); the held-reload path above and boot.js's own deadline fallback may
+// dispatch it again — boot.js reveals once per signed-in interval regardless.
+let readied = false;
+function ready() {
+  if (readied) return;
+  readied = true;
+  document.dispatchEvent(new CustomEvent('portal:ready'));
+}
+// shell-wait r5 (A1/R2): the «Agotados ahora» strip answers AFTER discovery; revealed first, it then pushed the editor down
+// (+82 px). r7: so did the catalog on a phone (the rail fills ABOVE the editor, +152 px). The portal is revealed once the
+// strip's AND the catalog's first loads have settled (painted, failed or not needed) — under ONE bound, so a slow read never
+// holds the card: after STRIP_WAIT_MS the portal shows as it stands (a later answer then shifts it — the accepted residual).
+const STRIP_WAIT_MS = 1200;
+function settleThenReady(...loads) {
+  const pending = loads.filter(Boolean);
+  if (readied || !pending.length) { ready(); return; }
+  let done = false;
+  const go = () => { if (done) return; done = true; ready(); };
+  Promise.allSettled(pending).then(go, go);
+  setTimeout(go, STRIP_WAIT_MS);
+}
+// boot.js's DISCOVERY deadline (Codex r1): discovery never ended → drop it (a late answer is ignored) and show the retry box.
+document.addEventListener('portal:deadline', () => {
+  if (readied) return;
+  abandon();
+  showBootError({ kind: 'Unavailable' });
+});
+// Codex r2 P1: before ANY recovery box, end every in-flight continuation — the shell's own discovery (S.gen) and the editor's
+// (app.js's portal:abandon bumps its generation) — so a late success can never repaint over the box.
+function abandon() {
+  S.gen += 1;
+  document.dispatchEvent(new CustomEvent('portal:abandon'));
+}
 
 // ── boot ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const decisionOf = (sel) => {
@@ -118,7 +155,16 @@ const decisionOf = (sel) => {
   return JSON.stringify({ rid, sales: L.salesFor(sel, rid), b: sel.brand.branches.map((x) => [x.rid, x.caps]) });
 };
 
+// Codex r1 P1: an exception ANYWHERE in boot (a cached / fresh apply, renderChrome / renderViews) ends in the retry box and
+// the reveal — the card is never the end state. It is logged, not swallowed.
 async function boot() {
+  try { await bootSteps(); } catch (e) {
+    console.error('portal boot', e && e.message);
+    abandon();
+    showBootError({ kind: 'Unavailable' });
+  }
+}
+async function bootSteps() {
   S.bootedUid = S.uid;
   const gen = S.gen;
   const uid = S.uid;
@@ -182,6 +228,7 @@ function apply(e1, { persist = true } = {}) {
     renderChrome();
     renderViews();
     goto('suc');
+    ready();
     return;
   }
   const remembered = store.get(EDITOR_KEY(S.uid, sel.brand_id));
@@ -190,31 +237,35 @@ function apply(e1, { persist = true } = {}) {
   S.sales = L.salesFor(sel, rid);
   if (persist && rid && sel.scope !== 'all') store.set(EDITOR_KEY(S.uid, sel.brand_id), rid);
   renderChrome();
+  let catalog = null;
   if (rid) {
     const b = sel.brand.branches.find((x) => x.rid === rid);
-    openEditor(rid, { name: b ? b.name : rid, sales: S.sales });   // ONCE per page (apply runs once; a later E1 only repaints)
+    catalog = openEditor(rid, { name: b ? b.name : rid, sales: S.sales });   // ONCE per page (apply runs once; a later E1 only repaints)
   }
-  renderViews();
+  settleThenReady(renderViews(), catalog);
 }
 
 function showBootError(err) {
-  $('shopname').textContent = '—';
-  $('shopsub').textContent = '';
-  const d = $('detail');
-  if (!d) return;
-  const isOutage = !err || err.kind === 'Unavailable' || err.status === 0 || err.status >= 500;
-  d.replaceChildren(isOutage ? errBox(OFFLINE[0], OFFLINE[1], reload) : errBox('No tenés acceso a este portal', 'Si esperabas ver tu restaurante, escribinos y lo revisamos.'));
+  try {
+    $('shopname').textContent = '—';
+    $('shopsub').textContent = '';
+    const d = $('detail');
+    const isOutage = !err || err.kind === 'Unavailable' || err.status === 0 || err.status >= 500;
+    if (d) d.replaceChildren(isOutage ? errBox(OFFLINE[0], OFFLINE[1], reload) : errBox('No tenés acceso a este portal', 'Si esperabas ver tu restaurante, escribinos y lo revisamos.'));
+  } finally { ready(); }   // every terminal outcome reveals — the card never waits forever
 }
 function showNoBranches() {
-  $('shopname').textContent = '—';
-  $('shopsub').textContent = '';
-  const d = $('detail');
-  if (d) {
-    const e = el('div', 'empty');
-    e.append(el('b', null, 'Tu cuenta no administra ningún local todavía'), el('span', null, 'Si esperabas ver uno, escribinos y lo revisamos.'));
-    d.replaceChildren(e);
-  }
-  hideOpsChrome();
+  try {
+    $('shopname').textContent = '—';
+    $('shopsub').textContent = '';
+    const d = $('detail');
+    if (d) {
+      const e = el('div', 'empty');
+      e.append(el('b', null, 'Tu cuenta no administra ningún local todavía'), el('span', null, 'Si esperabas ver uno, escribinos y lo revisamos.'));
+      d.replaceChildren(e);
+    }
+    hideOpsChrome();
+  } finally { ready(); }
 }
 
 // ── chrome: switcher, scope, nav ──────────────────────────────────────────────────────────────────────────────────────
@@ -619,8 +670,9 @@ function renderViews() {
   if (!S.views.equipos) S.views.equipos = mountEquipos($('viewequipos'), ctx);
   S.views.suc.render();
   S.views.pausas.render();
-  S.views.avail.render();
+  const strip = S.views.avail.render();
   S.views.equipos.render();   // a no-op while hidden; entry (goto) fetches
+  return strip;
 }
 
 // test-only view of the shell's state (never read by the page)
