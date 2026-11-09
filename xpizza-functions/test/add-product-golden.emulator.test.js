@@ -27,6 +27,7 @@ process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'add-product-go
 const admin = require('firebase-admin');
 admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-xpizza', databaseURL: `http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}?ns=demo-xpizza` });
 const realDb = admin.firestore();
+const SEEDED_MODE = {};   // S0/S1a: the pricing_key_mode each restaurant's profile was seeded with (the declared key_mode drop asserts it)
 const rtdb = admin.database();
 const CAPTURE = process.env.AP_GOLDEN_CAPTURE === '1';
 const GOLDEN = path.join(__dirname, 'add-product-base.golden.json');
@@ -120,7 +121,7 @@ async function scenario(name, fn) {
 }
 
 async function seedBrand(rid) {
-  await realDb.collection('restaurants').doc(rid).set({ name: rid, pricing_key_mode: rid === 'la_musa' ? 'id' : 'name', active: true, schema_version: 2 });
+  SEEDED_MODE[rid] = rid === 'la_musa' ? 'id' : 'name'; await realDb.collection('restaurants').doc(rid).set({ name: rid, pricing_key_mode: SEEDED_MODE[rid], active: true, schema_version: 2 });
   await sourceRefOf(realDb, rid).set(canonicalize(buildSourceFromCode(rid)));
   const { input } = require('../tools/publish-version').buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: 'seed' });
   await publishVersion(realDb, rid, input, { expected: { activeVersionId: null }, mirror: makeRtdbMirror(rtdb) });
@@ -186,8 +187,8 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
       if (c.status === 200 && body.source && typeof body.source === 'object' && Object.prototype.hasOwnProperty.call(body.source, 'key_mode')
         && !Object.prototype.hasOwnProperty.call(((g.body || {}).source || {}), 'key_mode')) {
         const rid = c.name.split(':')[0];
-        const stored = ((await realDb.collection('restaurants').doc(rid).get()).data() || {}).pricing_key_mode;
-        assert.ok(stored === 'name' || stored === 'id', `premise: ${rid} has a stored key mode`);
+        const stored = SEEDED_MODE[rid];
+        assert.ok(stored === 'name' || stored === 'id', `premise: ${rid} was seeded with a key mode`);
         assert.strictEqual(body.source.key_mode, stored, `${c.name}: source.key_mode is the restaurant's stored mode (S0 server-owned)`);
         body.source = { ...body.source }; delete body.source.key_mode;
         declared.body.add(`${c.name}: source.key_mode`);
