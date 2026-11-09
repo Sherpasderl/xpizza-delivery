@@ -8,7 +8,7 @@
 //
 // boot(doc, opts) → the CappShellUI instance (or null with no / an invalid runtime)
 //   opts.runtime  { mode: 'web' | 'native', functions_base, menu_endpoint, availability_base, intake_key, maps_key, firebase,
-//                   directory_endpoint?, sdk_base, flags: { signup?, intlPhone?, guestCardOnly?, schedulingLive?, ratings? } }   absent flag ⇒ dark
+//                   directory_endpoint?, sdk_base, flags: { signup?, intlPhone?, guestCardOnly?, schedulingLive?, ratings?, sdkPay? } }   absent flag ⇒ dark
 //   opts.fetch, opts.importModule (the dynamic import; tests inject), opts.CappShellUI, opts.CappSignupApi, and every other
 //   CappShellUI.mount option (storage, now, timers, win, uiOpts, onEvent) passed through unchanged
 // Transports (the CappShellUI contract):
@@ -66,6 +66,7 @@
       ...(f.intlPhone === true ? { intlPhone: true } : {}),
       ...(f.guestCardOnly === true ? { guestCardOnly: true } : {}),
       ...(f.ratings === true ? { ratings: true } : {}),   // C-2: the rating sheet + its entries (dark until the rating server is live)
+      ...(f.sdkPay === true ? { sdkPay: true } : {}),   // S2: the in-app card adjustment screens (dark until the customer endpoints, D4, are live)
       ...(f.signup === true ? { signup: { firebase: rt.firebase, endpoints: Object.fromEntries(CappSignupApi.ENDPOINTS.map((n) => [n, url(n)])) } } : {}),
     };
   }
