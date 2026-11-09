@@ -38,6 +38,9 @@ const REVIEWED = Object.freeze({
   'xpizza-functions/superseded-capture.js::positional clock@acquireLease': 'exported for its tests; the only production call (the same file) forwards the guarded `clock`',
   'xpizza-functions/stats/stats-fixtures.js::param at@71': 'the fixture materialize helper: its callers pass timestamp numbers',
   'xpizza-functions/stats/stats-gen.js::T.dayStartMs(date) + Math.floor(r() * 86400000)': 'a synthetic fixture timestamp',
+  // train asm3 (2e): portal-ui F-1 (376eeb8f) meets this guard (main, 4edddc60) — resolvePlatformPending's transaction names the stamp
+  // doc's SNAPSHOT `now` (the current one); it is read for .exists / .updateTime only and never called
+  'xpizza-functions/catalog/platform-pending.js::await tx.get(ref)': 'a Firestore snapshot named now (read for .exists / .updateTime; not callable)',
 });
 // the guarded names: `now` (write-provenance COMMON) and `clock` (so a call `X.clock()` is a timestamp by the same induction)
 const NAMES = new Set(['now', 'clock']);
