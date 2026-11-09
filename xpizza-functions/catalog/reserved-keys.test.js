@@ -5,7 +5,7 @@
 // key codec is the identity registry's own. Fail-closed at the Firestore doc limit: 503 reserved_keys_full, nothing written.
 // Run: node catalog/reserved-keys.test.js
 //   new module catalog/reserved-keys.js: emptyReserved() · readReserved(data) · unionReserved(doc, { dish, extra }, versionId)
-//     → { doc, added } · reservedKeySet(doc) → Map(key → kinds) · assertWithinLimit(doc) · RESERVED_LIMIT_BYTES
+//     → { doc, added } · reservedKeySet(doc) → Map(key → kinds) · assertWithinLimit(doc) · RESERVED_MAX_ENTRIES
 const assert = require('assert');
 const RK = require('./reserved-keys');
 const { encodeKey } = require('./identity-registry');
@@ -56,16 +56,16 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   ok('union is add-only, idempotent and pure; a kind keeps its first version; a key may be dish and extra');
 }
 
-// ── the 1 MB limit: fail closed ──
+// ── the size cap (codex S1c r1 P2-1, advisor: a conservative ENTRY count, no Firestore-size math): fail closed ──
 {
-  assert.ok(Number.isInteger(RK.RESERVED_LIMIT_BYTES) && RK.RESERVED_LIMIT_BYTES <= 1048576 - 1024, 'RK-LIMIT below the Firestore doc limit with headroom for the doc name');
-  const small = RK.unionReserved(RK.emptyReserved(), { dish: ['A'], extra: [] }, 'v1').doc;
-  assert.doesNotThrow(() => RK.assertWithinLimit(small));
-  const many = []; for (let i = 0; many.join('').length < RK.RESERVED_LIMIT_BYTES; i++) many.push(`Producto de prueba número ${i}`);
-  const big = RK.unionReserved(RK.emptyReserved(), { dish: many, extra: [] }, 'v1').doc;
-  let err = null; try { RK.assertWithinLimit(big); } catch (e) { err = e; }
-  assert.ok(err && /reserved_keys_full/.test(err.message) && err.status === 503, 'RK-FULL past the limit: 503 reserved_keys_full');
-  ok('past the limit the set refuses (503 reserved_keys_full) rather than drop a key');
+  assert.strictEqual(RK.RESERVED_MAX_ENTRIES, 5000, 'RK-LIMIT 5,000 keys (real menus hold ~100)');
+  const keys = (count) => Array.from({ length: count }, (_, i) => `Producto ${i}`);
+  const at = RK.unionReserved(RK.emptyReserved(), { dish: keys(5000), extra: [] }, 'v1').doc;
+  assert.doesNotThrow(() => RK.assertWithinLimit(at), 'RK-LIMIT exactly at the cap is accepted');
+  const over = RK.unionReserved(at, { dish: ['Uno Más'], extra: [] }, 'v2').doc;
+  let err = null; try { RK.assertWithinLimit(over); } catch (e) { err = e; }
+  assert.ok(err && /reserved_keys_full/.test(err.message) && err.status === 503, 'RK-FULL one past the cap: 503 reserved_keys_full');
+  ok('past 5,000 keys the set refuses (503 reserved_keys_full) rather than drop a key');
 }
 
 // ── D3 (owner 2026-11-09): RENAMES only — a renamed item may not take another item's reserved key; additions are not judged ──
@@ -84,5 +84,19 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   assert.deepStrictEqual(judge([it('Pizza Vieja', 9, 'Pizza Vieja'), it('i_aaaaaaaaaaaa', 10, 'Hawaiana')]), [], 'RKR-ADDITION additions (no active item with that display.id) are never judged (owner)');
   assert.deepStrictEqual(judge([it('Hawaiana', 1, 'Pizza Vieja')]), ['Hawaiana'], 'RKR-ID matched by display.id: id 1 now carries another name');
   ok('D3: only renames are judged — exact, normalized, an extra key, the opaque syntax; own key and additions are free');
+}
+// ── codex S1c r1 P2-3: a NAME that looks like a minted key is refused — additions and renames (its own key included),
+//    always (switch-independent); an untouched existing name is never judged ──
+{
+  const it = (key, id, name) => ({ key, display: { id, name } });
+  const active = [it('Carnivora', 1, 'Carnivora'), it('i_aaaaaaaaaaab', 2, 'Pizza Nueva')];
+  const judge = (items) => RK.opaqueNameProblems({ items, activeItems: active }).map((c) => c.key || c.ref);
+  assert.deepStrictEqual(judge([...active]), [], 'RKO-UNTOUCHED untouched names are not judged');
+  assert.deepStrictEqual(judge([{ ref: 'tmp:x1', display: { name: 'i_abcdefghijk2' } }]), ['tmp:x1'], 'RKO-ADDITION a new product named like a minted key');
+  assert.deepStrictEqual(judge([{ ref: 'tmp:x2', display: { name: '  I_ABCDEFGHIJK2 ' } }]), ['tmp:x2'], 'RKO-ADDITION-CASE case and spaces do not help');
+  assert.deepStrictEqual(judge([it('Carnivora', 1, 'i_zzzzzzzzzzzz')]), ['Carnivora'], 'RKO-RENAME a rename into the syntax');
+  assert.deepStrictEqual(judge([it('i_aaaaaaaaaaab', 2, 'i_aaaaaaaaaaab')]), ['i_aaaaaaaaaaab'], 'RKO-OWN a rename to its OWN minted key is refused too');
+  assert.deepStrictEqual(judge([{ ref: 'tmp:x3', display: { name: 'i_short' } }, it('Carnivora', 1, 'Pizza i_aaaaaaaaaaab')]), [], 'RKO-FREE names merely containing the prefix are fine');
+  ok('a name in the minted-key syntax is refused for additions and renames (own key too); untouched names are not judged');
 }
 console.log(`\nreserved-keys: OK (${n})`);

@@ -79,7 +79,7 @@ const allow = async () => ({ ok: true, uid: 'u_owner', role: 'owner', actor: 'o@
 // the add-product I/O (catalog/add-product-io.js shape): the profile's mode, the id high-water mark, and the identity registry's
 // key rows — RETIRED holds the names used before; an unknown key mode throws exactly as production does
 const RETIRED = new Set();
-const RESERVED_IO = { doc: undefined, fail: false, reads: 0 };   // S1c: the reserved-key set the io reads
+const RESERVED_IO = { doc: undefined, fail: false, reads: 0 }; const PUBLISH_THROWS = { err: null };   // S1c (codex r1 P2-2): the activation's typed refusals   // S1c: the reserved-key set the io reads
 const addProductOf = (db, mode) => ({
   readKeyMode: async () => mode,
   hwmRef: (rid) => (db ? db.doc(`restaurants/${rid}/meta/display_id_hwm`) : { path: null, get: async () => ({ exists: false, data: () => undefined }) }),   // the production path (add-product-io hwmRefOf)
@@ -324,7 +324,7 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
       const deps = { db: {}, authorize: allow, addProduct: addProductOf(null, rid === 'la_musa' ? 'id' : 'name'),
         readActiveBuilt: async () => { const i = sourceToBuildInputs(live); const b = buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable, keyMode: i.keyMode }); return { built: { ...b, extras: i.extras }, versionId: 'v-live', extraRecords: b.extras }; },
         readDraft: async () => ({ source: draft, updateTime: T }),
-        publishVersion: async (_db, r, input) => { publishes.push(input); return { versionId: 'v-new', item_count: input.items.length, extra_count: Object.keys(input.extras).length }; } };
+        publishVersion: async (_db, r, input) => { publishes.push(input); if (PUBLISH_THROWS.err) throw PUBLISH_THROWS.err; return { versionId: 'v-new', item_count: input.items.length, extra_count: Object.keys(input.extras).length }; } };
       const diff = catalogDiff(builtOf(live, rid), builtOf(draft, rid));
       const token = issueEditToken({ rid, baseActiveVersionId: 'v-live', sourceUpdateTime: T, sourceHash: sha256(draft), diff });
       const r = await publishEditedCore(deps, { restaurantId: rid, token, acknowledgedChanges: diff.largeChangeSet.map((l) => ({ key: l.key, surface: l.surface })), fiscalAck: true }, {});
@@ -349,6 +349,16 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     const p4 = await publish({ ...renamed(seed, 'Pizza Movida'), frozen_keys: { [ID]: KEY } });
     RESERVED_IO.doc = undefined;
     assert.deepStrictEqual([p4.r.status, p4.r.body.error, p4.publishes.length], [400, 'name_previously_used', 0], `HX-RK-PUB a rename onto a reserved key never reaches the publisher (${JSON.stringify(p4.r.body).slice(0, 160)})`);
+    // codex S1c r1 P2-2: the activation's typed refusals keep their status at the HTTP boundary
+    for (const [msg, status, code] of [['reserved_key_conflict: x_pizza/v-new — a renamed item may not take a reserved key ("Carnivora")', 409, 'reserved_key_conflict'], ['reserved_keys_full', 503, 'reserved_keys_full']]) {
+      PUBLISH_THROWS.err = Object.assign(new Error(msg), { status });
+      const p = await publish({ ...renamed(seed, 'Carnívora Suprema'), frozen_keys: { [ID]: KEY } });
+      PUBLISH_THROWS.err = null;
+      assert.deepStrictEqual([p.r.status, p.r.body.error], [status, code], `HX-RK-ACT-${status} the activation's ${code} answers ${status}, not 500 (${JSON.stringify(p.r.body).slice(0, 120)})`);
+    }
+    // codex S1c r1 P2-3: a name in the minted-key syntax never reaches the publisher
+    const p5 = await publish({ ...renamed(seed, 'i_abcdefghijk2'), frozen_keys: { [ID]: KEY } });
+    assert.deepStrictEqual([p5.r.status, p5.r.body.error, p5.publishes.length], [400, 'name_previously_used', 0], `HX-RKO-PUB a rename into the minted-key syntax is refused before the publisher (${JSON.stringify(p5.r.body).slice(0, 120)})`);
     ok('publish: a recorded rename publishes with its map; renames onto reserved keys are refused before the publisher');
   }
 
@@ -430,6 +440,17 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     const r4 = await save(stub(RID, seed), RID, addNew(seed, 'Pizza Caida'));
     RESERVED_IO.fail = false; RESERVED_IO.doc = undefined;
     assert.deepStrictEqual([r4.status, r4.body.error], [503, 'store_unavailable'], 'HX-MINT-DOWN an unreadable reserved set is a retryable 503');
+    // codex S1c r1 P2-3: a NEW product named like a minted key is refused ALWAYS (minting on or off, text switch on or off)
+    for (const [mint, text] of [[true, false], [false, false], [false, true]]) {
+      MINT.enabled = mint; SWITCH.enabled = text;
+      const dbo = stub(RID, seed);
+      const ro = await save(dbo, RID, addNew(seed, 'i_abcdefghijk2'));
+      assert.deepStrictEqual([ro.status, ro.body.error, dbo.state.writes.length], [400, 'name_previously_used', 0], `HX-RKO-SAVE mint=${mint} text=${text}: a new product named like a minted key is refused (${JSON.stringify(ro.body).slice(0, 120)})`);
+    }
+    SWITCH.enabled = true; MINT.enabled = false;
+    const rr = await save(stub(RID, seed), RID, renamed(seed, 'i_zzzzzzzzzzzz'));
+    assert.deepStrictEqual([rr.status, rr.body.error], [400, 'name_previously_used'], 'HX-RKO-RENAME a rename into the syntax is refused at save');
+    SWITCH.enabled = false;
     MINT.enabled = false;
     ok('S1c minting ON: a fresh opaque key recorded as frozen; a retired name re-added as a new product; registry collision / unreadable set → 503');
   }
