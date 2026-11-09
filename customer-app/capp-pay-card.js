@@ -6,7 +6,7 @@
 //     is `invalid` (fail closed: the app asks the status, never guesses «placed» or a decline)
 //   · nextStep — outcome → the frame and its actions (owner ruling 3: a guest is card-only, never cash)
 //   · cardsVm / placeBody / newAttemptId / switchStep — §6 saved cards, the §2.1 body (the client never sends an amount), §5's switch
-//   · formVm — frame 3 over an ABSTRACT field interface (advisor Q9, PCI unsettled): it reads per-field STATES (`empty | invalid |
+//   · formVm — frame 3 (v7: one pinned «Guardar tarjeta», disabled until valid) over an ABSTRACT field interface (advisor Q9, PCI unsettled): it reads per-field STATES (`empty | invalid |
 //     past | valid`, + touched, + brand), never card values; domValidators serve only a DOM implementation, if that is the one chosen
 // Copy: mockup v2's strings (COPY), kept in one place for v3. No hold words (owner 11-07); no wallet; no hosted fallback.
 (function (root, factory) {
@@ -68,7 +68,7 @@
   // mockup v2's copy (v3 may change it). A guest's body never offers cash (owner ruling 3)
   const COPY = Object.freeze({
     declined: Object.freeze({
-      retryable: { title: 'Tu banco no autorizó el pago', body: 'Parece que la tarjeta no tiene fondos suficientes. Podés probar otra tarjeta o pagar en efectivo; tu pedido sigue igual.', guest: 'Parece que la tarjeta no tiene fondos suficientes. Podés probar otra tarjeta; tu pedido sigue igual.' },
+      retryable: { title: 'Tu banco no autorizó el pago', body: 'Parece que la tarjeta no tiene fondos suficientes. Podés probar otra tarjeta o pagar en efectivo; tu pedido sigue igual.', guest: 'Parece que la tarjeta no tiene fondos suficientes. Podés probar con otra tarjeta; tu pedido sigue igual.' },   // v7
       hard: { title: 'Tu banco no autorizó el pago', body: 'Tu banco rechazó esta tarjeta. Probá con otra o pagá en efectivo; tu pedido sigue igual.', guest: 'Tu banco rechazó esta tarjeta. Probá con otra; tu pedido sigue igual.' },
       wrong_data: { title: 'Revisá los datos de la tarjeta', body: 'Algún dato no coincide con tu banco. Corregilo o probá otra tarjeta; tu pedido sigue igual.', guest: 'Algún dato no coincide con tu banco. Corregilo o probá otra tarjeta; tu pedido sigue igual.' },
       token_expired: { title: 'Tu tarjeta guardada venció', body: 'Agregá una tarjeta para pagar en línea, o pagá en efectivo al recibir tu pedido.', guest: 'Agregá una tarjeta para pagar en línea.' },
@@ -85,7 +85,7 @@
   const cardLabel = (brand, last4) => `${BRANDS[brand] ? BRANDS[brand] + ' ' : ''}···· ${last4}`;
   function cardsVm(list) {
     const rows = (obj(list) && Array.isArray(list.cards) ? list.cards : []).filter(rowOk)
-      .map((c) => ({ card_id: c.card_id, label: cardLabel(c.brand, c.last4), sub: c.expired ? `Venció en ${mmyy(c.exp_month, c.exp_year)}` : `Vence ${mmyy(c.exp_month, c.exp_year)}`, expired: c.expired }));
+      .map((c) => ({ card_id: c.card_id, brand: c.brand, label: cardLabel(c.brand, c.last4), sub: c.expired ? `Venció en ${mmyy(c.exp_month, c.exp_year)}` : `Vence ${mmyy(c.exp_month, c.exp_year)}`, expired: c.expired }));
     const first = rows.find((r) => !r.expired);
     return { rows, selected: first ? first.card_id : null };
   }
@@ -114,8 +114,6 @@
   // frame 3 over the abstract field interface — states only (`value` is never read)
   const FIELDS = ['number', 'expiry', 'cvv', 'name'];
   const ERR = { number: 'Revisá el número de tarjeta', expiry: 'Revisá la fecha de vencimiento', past: 'Esta tarjeta ya venció', cvv: 'El CVV tiene 3 dígitos', cvv4: 'El CVV tiene 4 dígitos', name: 'Escribí el nombre como aparece en la tarjeta' };
-  // the primary names the first fix (v6's missing-step rule; v2 draws «Revisá el vencimiento»; the others follow it — v3 to confirm)
-  const FIX = { number: 'Revisá el número', expiry: 'Revisá el vencimiento', cvv: 'Revisá el CVV', name: 'Escribí el nombre' };
   function formVm(states, ctx) {
     const S = obj(states) ? states : {}, member = obj(ctx) && ctx.member === true;
     const st = (f) => (obj(S[f]) && ['empty', 'invalid', 'past', 'valid'].includes(S[f].state) ? S[f].state : 'empty');
@@ -126,7 +124,8 @@
       errors[f] = !shown ? null : f === 'expiry' && s === 'past' ? ERR.past : f === 'cvv' && brand === 'amex' ? ERR.cvv4 : ERR[f];
     }
     const firstBad = FIELDS.find((f) => st(f) !== 'valid');
-    return { errors, brand, primary: firstBad ? { label: FIX[firstBad], enabled: false } : { label: 'Usar esta tarjeta', enabled: true }, save: member ? { shown: true, on: true } : { shown: false, on: false } };
+    return { errors, brand, primary: { label: 'Guardar tarjeta', enabled: !firstBad },   // v7: ONE pinned primary, disabled until valid
+      save: member ? { shown: true, on: true } : { shown: false, on: false } };
   }
 
   // used ONLY by a DOM implementation of the fields (if PCI allows one): Luhn, brand, expiry vs now, CVV by brand, name

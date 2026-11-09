@@ -243,7 +243,7 @@ function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }
 const flush = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 // stampedDir: a copy of customer-app/ stamped by the REAL platform/stamp-version.js — the page's own sherpa-client.js runs on its
 // stamped identity and capp-api.js runs in the page realm (its SherpaClient.fetch arm), the network = pageFetch (window.fetch)
-function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null, readPublic = null, preMount = null } = {}) {
+function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null, readPublic = null, preMount = null } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(stampedDir || HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: url || 'https://app.test/' });
@@ -251,7 +251,8 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   if (media) w.matchMedia = media.matchMedia;   // D-2: the viewport the shell reads at mount (a controllable matchMedia)
   // the paint frame is a MICROTASK (2e: test 35 flaky under load — a fixed flush raced jsdom's timer-driven frame): a render the shell
   // schedules lands in the same microtask drain as the data it paints, before any timer, whatever the load (no sleep, no timeout)
-  let frameId = 0; w.requestAnimationFrame = (f) => { const id = ++frameId; queueMicrotask(() => f(w.performance.now())); return id; }; w.cancelAnimationFrame = () => {};
+  // realFrames: jsdom's own TIMER-driven frame (advisor: at least one cell keeps it, so ordering bugs that need real frame timing can't hide)
+  if (!realFrames) { let frameId = 0; w.requestAnimationFrame = (f) => { const id = ++frameId; queueMicrotask(() => f(w.performance.now())); return id; }; w.cancelAnimationFrame = () => {}; }
   if (preMount) preMount(w);   // a host object present BEFORE the shell mounts (the installed app's Capacitor bridge)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
@@ -4419,5 +4420,17 @@ test('S2 shell · Codex r2 #3: resuming the order screen with the stream alive G
     S.ui.nav.go({ name: 'order' }); await until(() => srv.log.length >= 2).catch(() => {}); await flush();
     assert.equal(srv.log.filter((e) => e.method === 'GET').length, 2, '🔴 S2-shell-resume: resuming GETs again');
     assert.equal(txt(S.q('#layer .cdown')), 'Tenés 1 min para responder', '🔴 S2-shell-resume: the countdown re-anchored');
+  } finally { S.w.close(); }
+});
+
+test('harness · REAL frames (advisor 11-08): with jsdom\'s own timer-driven requestAnimationFrame, the home list paints and a tap opens the store — awaited on the paint itself (a MutationObserver), never a sleep', async () => {
+  const S = bootShell({ realFrames: true });
+  try {
+    assert.equal(S.w.requestAnimationFrame.toString().includes('queueMicrotask'), false, '🔴 HARNESS-real: this cell runs jsdom\'s own frames');
+    const painted = (sel) => new Promise((res) => { if (S.q(sel)) return res(); const mo = new S.w.MutationObserver(() => { if (S.q(sel)) { mo.disconnect(); res(); } }); mo.observe(S.w.document, { subtree: true, childList: true }); });
+    await painted('.rlist .rcard[data-rid="x_pizza"]');
+    S.click('.rlist .rcard[data-rid="x_pizza"]');
+    await new Promise((res) => { const chk = () => (S.ui.store() ? res() : S.w.requestAnimationFrame(chk)); chk(); });
+    assert.ok(S.ui.store(), '🔴 HARNESS-real: the store opened under real frame timing');
   } finally { S.w.close(); }
 });

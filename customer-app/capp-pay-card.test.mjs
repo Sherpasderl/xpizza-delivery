@@ -92,12 +92,12 @@ test('switching to cash (§5): only once the pending order is safe_to_switch; ot
   assert.equal(P.switchStep({ cancelled: true }), 'poll', 'malformed ⇒ poll');
 });
 
-test('frame 3 form over an ABSTRACT field interface (advisor Q9): per-field states → one primary naming the first fix; errors only once touched; the save switch for members only, ON by default (owner ruling 2)', () => {
+test('frame 3 form over an ABSTRACT field interface (advisor Q9): per-field states → ONE pinned «Guardar tarjeta», disabled until valid (mockup v7); errors only once touched; the save switch for members only, ON by default (owner ruling 2)', () => {
   const ok = { state: 'valid' };
   const st = (o) => ({ number: ok, expiry: ok, cvv: ok, name: ok, ...o });
-  assert.deepEqual(P.formVm(st({}), { member: true }).primary, { label: 'Usar esta tarjeta', enabled: true }, '🔴 SC-form: all valid ⇒ «Usar esta tarjeta»');
+  assert.deepEqual(P.formVm(st({}), { member: true }).primary, { label: 'Guardar tarjeta', enabled: true }, '🔴 SC-form: all valid ⇒ «Guardar tarjeta» enabled (v7)');
   const ex = P.formVm(st({ expiry: { state: 'invalid', touched: true } }), { member: true });
-  assert.deepEqual(ex.primary, { label: 'Revisá el vencimiento', enabled: false }, '🔴 SC-form: the primary names the missing step (v2 frame 3)');
+  assert.deepEqual(ex.primary, { label: 'Guardar tarjeta', enabled: false }, '🔴 SC-form: «Guardar tarjeta» disabled until valid (v7; the fix is named by the field error)');
   assert.equal(ex.errors.expiry, 'Revisá la fecha de vencimiento', 'the drawn inline error');
   assert.equal(P.formVm(st({ expiry: { state: 'past', touched: true } }), { member: true }).errors.expiry, 'Esta tarjeta ya venció');
   assert.equal(P.formVm(st({ expiry: { state: 'invalid', touched: false } }), { member: true }).errors.expiry, null, '🔴 SC-form: no error before the field is left');
