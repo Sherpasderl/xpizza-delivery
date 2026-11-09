@@ -557,8 +557,8 @@ function buildRewardStamp(items, restaurantId, subtotalCents, redemptionCanonica
     const arr = format === CB.FORMAT_CANONICAL
       ? CB.canonicalRewardRows(freeItems, redemptionCanonical.free_item_key, contextOfTables(tables))
       : (Array.isArray(freeItems) && freeItems.length)
-        ? freeItems.map((fi) => ({ name: fi.name || fi.item_id, qty: Number(fi.qty) || 1 }))
-        : (freeName ? [{ name: freeName, qty: 1 }] : (redemptionCanonical.free_item_key ? [{ name: redemptionCanonical.free_item_key, qty: 1 }] : []));
+        ? freeItems.map((fi) => ({ name: fi.name || fi.item_id, qty: Number(fi.qty) || 1, ...(typeof fi.item_id === 'string' && fi.item_id ? { item_key: fi.item_id } : {}) }))
+        : (freeName ? [{ name: freeName, qty: 1, ...(typeof redemptionCanonical.free_item_key === 'string' && redemptionCanonical.free_item_key ? { item_key: redemptionCanonical.free_item_key } : {}) }] : (redemptionCanonical.free_item_key ? [{ name: redemptionCanonical.free_item_key, qty: 1, item_key: redemptionCanonical.free_item_key }] : []));
     redArg = { model: 'add_free', items: arr };
   }
   const summary_lines = summaryLines(items, restaurantId, redArg, tables);   // 1b-1: guarded catalog tables (null → code default)

@@ -66,7 +66,7 @@ function resolveLines(rid, body, tables) {
   // through to prepareRedemption and today's 409 redemption_invalid, which the frozen forms' classifyRedeemError handles.
   for (const [line, f] of rewardLines(body.redeem)) {
     if (!isObj(line)) continue;
-    const r = resolveOne(f === 'item_id' ? { item_key: line.item_key, item_id: line.item_id } : line, f === 'item_id' ? 'item_id' : field, menu, labels);
+    const r = resolveOne(f === 'item_id' ? { item_key: line.item_key, item_id: line.item_id } : line, f === 'item_id' ? 'item_id' : field, menu, null);   // codex S1d r1 #2: reward lines are never widened by label (exact, as today)
     if (r.key && own(line, f) && line[f] !== undefined) stamps.push([line, r.key]);   // S1d: a reward line still needs its legacy field (today's refusal answers otherwise)
   }
   for (const [line, key] of stamps) line[PRICING_KEY_STAMP] = key;
@@ -78,8 +78,13 @@ function resolveLines(rid, body, tables) {
 function labelGap(body, tables) {
   const { OPAQUE_SYNTAX } = require('./mint-opaque');
   const labels = labelsOfTables(tables);
-  const lines = [...((isObj(body) && Array.isArray(body.items)) ? body.items : []), ...(isObj(body) ? rewardLines(body.redeem).map(([l]) => l) : [])];
-  return lines.some((l) => isObj(l) && typeof l[PRICING_KEY_STAMP] === 'string' && OPAQUE_SYNTAX.test(l[PRICING_KEY_STAMP]) && !(labels && typeof labels[l[PRICING_KEY_STAMP]] === 'string'));
+  const menu = isObj(tables) && isObj(tables.menu) ? tables.menu : {};
+  const gap = (k) => typeof k === 'string' && OPAQUE_SYNTAX.test(k) && own(menu, k) && !(labels && typeof labels[k] === 'string');
+  const cart = (isObj(body) && Array.isArray(body.items)) ? body.items : [];
+  // codex S1d r1 #3: the reward actually CONSUMED is its raw legacy key (redeem.item_id / redeem.items[].id), stamped or not
+  const r = isObj(body) && isObj(body.redeem) ? body.redeem : {};
+  const rewards = [r.item_id, ...(Array.isArray(r.items) ? r.items.map((it) => (isObj(it) ? it.id : undefined)) : [])];   // both shapes, whichever the calculator reads
+  return cart.some((l) => isObj(l) && gap(l[PRICING_KEY_STAMP])) || rewards.some(gap);
 }
 
 // The order endpoints' refusal. (The quotes keep their own fail-soft envelope and read `code` directly.)

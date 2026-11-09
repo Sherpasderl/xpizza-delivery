@@ -318,7 +318,7 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
     for (const f of freeArr) {
       const q = Number(f && f.qty);
       if (!Number.isInteger(q) || q < 1 || q > 50) return null;
-      lines.push({ name: summaryLineName(f && f.name, 'Recompensa'), qty: q, cents: 0 });   // added free item → GRATIS
+      const fk = f && typeof f.item_key === 'string' && f.item_key ? f.item_key : null; const fn = summaryLineName(f && f.name, 'Recompensa'); lines.push({ name: (byId || !fk) ? fn : (((labelsOfTables(tables) || {})[fk]) || fn), qty: q, cents: 0, ...(fk ? { item_key: fk } : {}) });   // added free item → GRATIS; S1d: its key (+ a name-keyed label)
     }
   }
   return lines;
