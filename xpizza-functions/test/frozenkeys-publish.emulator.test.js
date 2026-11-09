@@ -18,6 +18,7 @@ const { readVersionMenu } = require('../catalog/catalog-menu');
 const { createCatalogReader } = require('../catalog/catalog');
 const { createPricingResolver } = require('../catalog/pricing-tables');
 const MP = require('../menu-pricing');
+const AP = require('../catalog/add-product');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -85,6 +86,30 @@ const MAP = { 1: KEY };
     assert.ok(rb2 && rb2.rolledBack, 'FKP-ROLLBACK back to the renamed version passes the pre-flip validator by its own map');
     assert.strictEqual((await getActivePointer(fs, RID)).version, v2.versionId);
     ok('a rollback to the plain version and back to the renamed one both pass pre-flip');
+  }
+
+  // the LIFECYCLE (D1 condition 1): delete the renamed dish → publish → roll back to the renamed version → forward again → re-add.
+  // Each version validates by its own map; the retired key and id are never handed to a new product.
+  {
+    const deleted = source('Dish One Renamed', MAP);
+    deleted.items = deleted.items.filter((i) => i.key !== KEY); deleted.structure.item_order = deleted.structure.item_order.filter((k) => k !== KEY);
+    const v3 = await publishVersion(fs, RID, inputOf(deleted, 'fk-v3'), { expected: { activeVersionId: v2.versionId }, mirror: mirror() });
+    assert.ok(v3 && v3.versionId, 'FKP-LIFE-DELETE the deletion publishes (its entry is inert, never a failure)');
+    assert.deepStrictEqual((await recordOf(v3.versionId)).frozen_keys, MAP, 'FKP-LIFE-DELETE the inert entry rides the version');
+    const back = await rollbackVersion(fs, RID, v2.versionId, { mirror: mirror(), expected: { activeVersionId: v3.versionId } });
+    assert.ok(back && back.rolledBack, 'FKP-LIFE-ROLLBACK back to the renamed version passes pre-flip');
+    const fwd = await rollbackVersion(fs, RID, v3.versionId, { mirror: mirror(), expected: { activeVersionId: v2.versionId } });
+    assert.ok(fwd && fwd.rolledBack, 'FKP-LIFE-ROLLBACK forward to the deletion passes pre-flip');
+    // re-add: the retired key is refused; a new product gets a fresh key AND a fresh display id (never the retired id 1)
+    const reAdd = (name) => { const inc = JSON.parse(JSON.stringify(deleted)); inc.items.push({ ref: 'tmp:readd0001', price: 90, display: { name, cat: 'c1', price: 90 } }); inc.structure.item_order.push('tmp:readd0001'); return inc; };
+    assert.throws(() => AP.allocateAdditions({ incoming: reAdd(KEY), stored: deleted, activeItems: deleted.items, keyMode: 'name', hwm: null, registryHasKey: () => false }),
+      (e) => e && e.code === 'name_previously_used', 'FKP-LIFE-READD the retired frozen key is never minted again');
+    const res = AP.allocateAdditions({ incoming: reAdd('Dish Three'), stored: deleted, activeItems: deleted.items, keyMode: 'name', hwm: null, registryHasKey: () => false });
+    const added = res.source.items.find((i) => i.key === 'Dish Three');
+    assert.ok(added && added.display.id !== 1 && added.display.id > 2, `FKP-LIFE-READD a new product never reuses the retired id (${added && added.display.id})`);
+    const v4 = await publishVersion(fs, RID, inputOf(res.source, 'fk-v4'), { expected: { activeVersionId: v3.versionId }, mirror: mirror() });
+    assert.ok(v4 && v4.versionId, 'FKP-LIFE-READD the re-added menu publishes with the inert entry');
+    ok('delete → publish → rollback → forward → re-add: every version validates by its own map; the retired key and id stay reserved');
   }
 
   FINISHED = true;
