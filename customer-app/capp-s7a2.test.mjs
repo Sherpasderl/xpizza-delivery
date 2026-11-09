@@ -4197,7 +4197,7 @@ test('S2 shell · guest: the projection streams beside order_tracking (its own n
     assert.equal(S.q('.notecard'), null, 'no view yet ⇒ today\'s screen');
     pv.emit('put', '/', payDec(1)); await flush();
     assert.equal(txt(S.q('.notecard b')), 'Actualizamos tu total', '🔴 S2-shell-A: the decrease notice in place');
-    assert.equal(txt(S.q('.receipt .rbody p.note')), 'Se cobra al recibir tu pedido.', '🔴 S2-shell: the Pago block');
+    assert.equal(txt(S.q('.payline .mute')), 'Se cobra al recibir tu pedido.', '🔴 S2-shell: the Pago rows in «Pago y entrega»');
     pv.emit('put', '/', payInc(3, 'pending')); await flush();
     const sh = S.q('#layer .errsheet h2');
     assert.equal(txt(sh), 'X Pizza cambió tu pedido', '🔴 S2-shell-C: the consent sheet, the restaurant from the directory');

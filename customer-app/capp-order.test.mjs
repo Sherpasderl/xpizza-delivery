@@ -181,20 +181,24 @@ test('S2 mount points (MOCKUP-capp-S2-adjustment r3): an sdk order\'s c.pay — 
   const PA = require('./capp-pay-adjust.js');
   const view = payView({ total_cents: 87500, revision: 1, card: { brand: 'visa', last4: '4242' }, notice: { kind: 'decrease', revision: 1, old_total_cents: 92000, new_total_cents: 87500, changes: [line('line_removed', 'Crispy Bacon', -4500)] } });
   const fr = PA.frameOf(view, 'preparing', {});
-  const pay = { notice: PA.noticeHtml(view, fr), block: PA.payHtml(view), statusSub: null };
+  const pay = { notice: PA.noticeHtml(view, fr), rows: PA.payHtml(view), statusSub: null };
   for (const status of ['new', 'preparing', 'out']) {   // out: the driver card follows the status row — the notice comes first
     const r = dom(CappOrder.orderHtml({ ...ORDER, status, driver: status === 'out' ? 'Carlos' : null }, { ...CTX, pay }));
     const note = r.querySelector('.notecard'), row = r.querySelector(status === 'new' ? '.mk-status' : '.statusrow');
     assert.ok(note && row && row.compareDocumentPosition(note) === 4 && row.nextElementSibling === note, `🔴 S2-mount: the notice sits right after the status row (${status})`);
-    const rows = [...r.querySelectorAll('.rrow .k')].map(txt);
-    assert.ok(!rows.includes('Pago') && !rows.includes('Estado'), `🔴 S2-mount: no «Pagado en línea» / «Confirmado» rows on an sdk order (${status}: ${rows.join(', ')})`);
-    const blocks = [...r.querySelectorAll('.receipt, .receipt2')], pb = r.querySelector('.receipt .rbody p.note');
-    assert.equal(txt(pb), 'Se cobra al recibir tu pedido.', `🔴 S2-mount: the Pago block is drawn (${status})`);
-    assert.ok(blocks.indexOf(pb && pb.closest('.receipt')) === blocks.length - 2, `the Pago block sits before «Pago y entrega» (${status})`);
+    const pe = [...r.querySelectorAll('.receipt, .receipt2')].pop(), keys = pe ? [...pe.querySelectorAll('.rrow')].map((x) => txt(x)) : [];
+    assert.ok(!keys.some((k) => /Pagado en línea|Confirmado|^Estado/.test(k)), `🔴 S2-mount: no «Pagado en línea» / «Confirmado» rows on an sdk order (${status}: ${keys.join(' | ')})`);
+    assert.deepEqual(keys.slice(0, 2), ['PagoVisa ···· 4242', 'TotalL 875'], `🔴 S2-mount: the card + Total rows lead «Pago y entrega» (v2 frame 8; ${status})`);
+    assert.equal(txt(pe && pe.querySelector('.payline .mute')), 'Se cobra al recibir tu pedido.', `🔴 S2-mount: the charge line inside «Pago y entrega» (${status})`);
+    assert.equal(txt(pe && pe.querySelector('.payline + .rrow .k')), 'Cuándo', `the delivery rows follow (${status})`);
   }
   const d = dom(CappOrder.orderHtml({ ...ORDER, status: 'preparing' }, { ...CTX, pay: { ...pay, notice: '', statusSub: 'Nuevo total aceptado' } }));
   assert.equal(txt(d.querySelector('.statusrow .ssub')), 'Nuevo total aceptado · Te avisaremos cuando vaya en camino', '🔴 S2-D: the status line leads the subline');
-  for (const bad of [null, {}, { notice: '<b>x</b>' }, { block: '' }, { block: 5 }, 'x']) {
-    assert.equal(CappOrder.orderHtml(ORDER, { ...CTX, pay: bad }), CappOrder.orderHtml(ORDER, CTX), `🔴 S2-mount: a malformed c.pay (${JSON.stringify(bad)}) changes nothing`);
+  const cx = dom(CappOrder.orderHtml({ ...ORDER, status: 'cancelled' }, { ...CTX, pay }));
+  assert.equal(txt(cx.querySelector('.statusrow .ssub')), 'No se hizo ningún cargo a tu tarjeta.', '🔴 S2-cancel: a held card never charged says so (advisor 11-08), never the refund line');
+  assert.equal(cx.querySelector('.payline'), null, '🔴 S2-cancel: no «Se cobra al recibir tu pedido.» on a cancelled order');
+  assert.equal(txt(dom(CappOrder.orderHtml({ ...ORDER, status: 'cancelled' }, CTX)).querySelector('.statusrow .ssub')), 'Si pagaste por adelantado, te contactaremos sobre el reembolso', 'a legacy (charged) order keeps the refund line');
+  for (const bad of [null, {}, { notice: '<b>x</b>' }, { rows: '' }, { rows: 5 }, 'x']) {
+    for (const status of ['new', 'cancelled']) assert.equal(CappOrder.orderHtml({ ...ORDER, status }, { ...CTX, pay: bad }), CappOrder.orderHtml({ ...ORDER, status }, CTX), `🔴 S2-mount: a malformed c.pay (${JSON.stringify(bad)}) changes nothing (${status})`);
   }
 });

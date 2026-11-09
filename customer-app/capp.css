@@ -1327,6 +1327,9 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .errsheet .osum .sumrow .strike{color:var(--mute)}
 .errsheet .note .lnk{border:0;background:transparent;padding:0;color:var(--acc);font:600 13px var(--sans)}
 .cdown{font-size:13px;color:var(--mute);text-align:center;margin-top:2px}
-.receipt .rbody p.note{padding:8px 0 2px}
+.payline{display:flex;align-items:center;gap:6px;flex-wrap:wrap;line-height:1.4;padding:8px 0 4px;font-size:13px}
+.payline .mute{color:var(--mute)}
+.payline .lnk{border:0;background:transparent;padding:0;color:var(--acc);font:600 13px var(--sans);min-height:24px}
+.payline + .rrow{border-top:1px solid var(--line)}
 .rrow .k s{text-decoration:line-through;color:var(--mute)}
 .ph3ds{height:230px;border-radius:14px;background:var(--surf);border:1.5px dashed var(--line2)}

@@ -39,7 +39,7 @@ test('A: a committed decrease — the mockup\'s notice; «Un producto no estaba 
   const f = fr(v);
   assert.deepEqual([f.notice, f.sheet], ['decrease', null], '🔴 S2-A: a decrease draws the notice, no sheet');
   assert.equal(flat(A.noticeHtml(v, f)), flat(`<div class="notecard" role="status">${INFO}<div class="t"><b>Actualizamos tu total</b><p>Un producto no estaba disponible. Tu nuevo total es L 520 y es lo único que se te cobra.</p><button class="lnk" data-act="adj-more">Más información</button></div></div>`), '🔴 S2-A: the notice is the mockup\'s');
-  assert.equal(flat(A.payHtml(v)), flat('<div class="receipt"><button class="toggle" aria-expanded="true">Pago <span>Visa ···· 4242</span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button><div class="rbody"><div class="rrow tot"><span>Total</span><span class="r">L 520</span></div><p class="note">Se cobra al recibir tu pedido.</p></div></div>'), '🔴 S2-pay: the payment block is the mockup\'s');
+  assert.equal(flat(A.payHtml(v)), flat('<div class="rrow"><span class="k">Pago</span><span>Visa ···· 4242</span></div><div class="rrow tot"><span>Total</span><span>L 520</span></div><p class="payline"><span class="mute">Se cobra al recibir tu pedido.</span><button class="lnk" data-act="adj-more">Más información</button></p>'), '🔴 S2-pay: the Pago rows are checkout v2 frame 8\'s (inside «Pago y entrega», advisor Q10)');
   const removed = DEC([line('line_removed', 'Pan de ajo', -6500)]);
   assert.ok(!/no estaba disponible/.test(A.noticeHtml(removed, fr(removed))), '🔴 S2-A: a plain removal invents no reason');
   assert.equal(fr(DEC(), {}, 'delivered').notice, null, '§1.3: the notice only while the order is active');
@@ -74,6 +74,14 @@ test('C: `pending` — the consent sheet: the restaurant (data), the change list
   assert.ok(ro.sheet === 'consent' && !/data-act="adj-(accept|keep)"/.test(hro) && hro.includes('data-owner-pending="read_only"'), '🔴 S2-C-ro: a shared-link viewer sees the change without buttons (§3.2, OWNER-PENDING copy)');
 });
 
+test('C: the body — the mockup\'s «{restaurante} agregó esto a tu pedido.» ONLY for an additions-only list; any other list ⇒ «Revisá los cambios:» (advisor 11-08)', () => {
+  const body = (changes) => { const d = changes.reduce((s, c) => s + c.delta_cents, 0); const v = payView({ total_cents: 58500, consent: consent('pending', { new_total_cents: 58500 + d, delta_cents: d, changes }) }); const m = flat(A.sheetHtml(v, fr(v), {}, STORE)).match(/<\/h2><p>(.*?)<\/p>/); return m && m[1]; };
+  assert.equal(body([line('line_added', 'Agua', 4000), line('line_added', 'Té', 500)]), 'La Musa agregó esto a tu pedido. Revisalo antes de aceptar el nuevo total.', '🔴 S2-C-body: additions only ⇒ the mockup\'s sentence');
+  for (const mixed of [[line('line_added', 'Agua', 4000), line('line_removed', 'Pan', -500)], [line('line_qty', 'Pizza', 29500, { qty_old: 1, qty_new: 2 })], [component('delivery', 4500, 6000)], [line('line_price', 'Té', 500)]]) {
+    assert.equal(body(mixed), 'Revisá los cambios:', `🔴 S2-C-body: not additions-only (${mixed.map((c) => c.kind).join('+')}) ⇒ the neutral line`);
+  }
+});
+
 test('C: every Change kind of §2 draws a row; the mockup draws only line_added — the rest are OWNER-PENDING rows (name + signed effect)', () => {
   const changes = [line('line_added', 'Agua', 4000, { config: 'Fría' }), line('line_removed', 'Pan', -6500), line('line_unavailable', 'Lasaña', -16000), line('line_qty', 'Pizza', 29500, { qty_old: 1, qty_new: 2 }), line('line_price', 'Té', 500), component('delivery', 4500, 6000), component('tip', 2000, 3000), component('discount', 0, 1000)];
   const delta = changes.reduce((s, c) => s + c.delta_cents, 0);
@@ -95,7 +103,7 @@ test('E: processing / bank_pending ⇒ E without the well; action_required ⇒ E
 test('D: accepted ⇒ the status line only; the payment block at the committed total', () => {
   const v = INC('accepted', {}, { total_cents: 62500, revision: 1 }), f = fr(v);
   assert.deepEqual([f.statusSub, f.sheet, f.notice], ['Nuevo total aceptado', null, null], '🔴 S2-D: accepted ⇒ the status line only');
-  assert.ok(flat(A.payHtml(v)).includes('<span class="r">L 625</span>'), 'the new total');
+  assert.ok(flat(A.payHtml(v)).includes('<div class="rrow tot"><span>Total</span><span>L 625</span></div>'), 'the new total');
 });
 
 test('F: kept / expired / not_applied, the countdown at zero while still pending, and G dismissed ⇒ the line from total_cents', () => {
@@ -116,11 +124,10 @@ test('G: declined ⇒ ONE button «Mantener mi pedido» (owner)', () => {
   assert.equal(flat(A.sheetHtml(v, f, {}, STORE)), flat('<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="No pudimos actualizar tu total"><div class="grab"></div><div class="errsheet"><div class="icon"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 10h18"></path><path d="M7 15h4"></path></svg></div><h2>No pudimos actualizar tu total</h2><p>Tu banco no autorizó el nuevo total. Tu pedido sigue como estaba (L 585).</p><div class="acts"><button class="primary" data-act="adj-keep">Mantener mi pedido</button></div></div></div>'), '🔴 S2-G: the mockup\'s sheet, one button');
 });
 
-test('R: under_review ⇒ a calm inline notice, NO button, no sheet (advisor 11-08; copy OWNER-PENDING, flagged in the markup)', () => {
+test('R: under_review ⇒ a calm inline notice, NO button, no sheet — the OWNER-FINAL copy (advisor 11-08)', () => {
   const v = INC('under_review'), f = fr(v);
   assert.deepEqual([f.notice, f.sheet], ['review', null], '🔴 S2-R: under_review ⇒ the calm notice, no sheet');
-  const h = A.noticeHtml(v, f);
-  assert.ok(/data-owner-pending="under_review"/.test(h) && !/<button/.test(h), '🔴 S2-R: no button; the placeholder is flagged');
+  assert.equal(flat(A.noticeHtml(v, f)), flat(`<div class="closednote" role="status">${INFO}<span>Estamos confirmando tu pago con el banco. Te avisamos en cuanto esté listo.</span></div>`), '🔴 S2-R: the owner\'s final line, no button, no placeholder flag');
 });
 
 test('terminal order: no consent UI (§1.3 precedence)', () => {

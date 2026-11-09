@@ -13,7 +13,7 @@
 //   F  `kept` / `expired` / `not_applied` — or the countdown reached zero while the view still says `pending` (§1.4) — and G once
 //      dismissed: «Tu pedido sigue como estaba. Total L X» from total_cents, never old_total_cents (§1.3)
 //   G  `declined`: ONE button «Mantener mi pedido» (owner) → F
-//   R  `under_review`: a calm inline notice, no button — NEW UX, copy OWNER-PENDING (placeholder below; advisor 11-08)
+//   R  `under_review`: a calm inline notice, no button — the owner's final copy (advisor 11-08)
 //   local: { help?: true, dismissed?: { [adjustment_id]: true }, left?: ms | null, readOnly?: true (a shared-link viewer, §3.2) }
 (function (root, factory) {
   const api = factory();
@@ -103,16 +103,16 @@
       parts.push(`<div class="notecard" role="status">${IC.info}<div class="t"><b>Actualizamos tu total</b><p>${why}Tu nuevo total es ${moneyC(n.new_total_cents)} y es lo único que se te cobra.</p><button class="lnk" data-act="adj-more">Más información</button></div></div>`);
     }
     if (fr.notice === 'kept') parts.push(`<div class="closednote" role="status">${IC.info}<span>Tu pedido sigue como estaba. Total ${moneyC(view.total_cents)}.</span></div>`);
-    // OWNER-PENDING placeholder (advisor 11-08: under_review = a calm notice, no button; flagged for the owner's copy)
-    if (fr.notice === 'review') parts.push(`<div class="closednote" role="status" data-owner-pending="under_review">${IC.info}<span>Estamos revisando el cambio de tu total. Te avisamos por WhatsApp.</span></div>`);
+    if (fr.notice === 'review') parts.push(`<div class="closednote" role="status">${IC.info}<span>Estamos confirmando tu pago con el banco. Te avisamos en cuanto esté listo.</span></div>`);   // OWNER-FINAL 11-08
     return parts.join('');
   }
 
-  // the payment block (every frame): «Pago» + the card, «Total» (the committed total), «Se cobra al recibir tu pedido.»
+  // the Pago rows INSIDE «Pago y entrega» (checkout mockup v2 frame 8; advisor Q10: one placement for both mockups): the card, «Total»
+  // (the committed total), «Se cobra al recibir tu pedido.» + «Más información» (→ B) — no hold words
   function payHtml(view) {
     if (!viewOk(view)) return '';
     const label = cardText(view.card);
-    return `<div class="receipt"><button class="toggle" aria-expanded="true">Pago${label ? ` <span>${label}</span>` : ''}${IC.down}</button><div class="rbody"><div class="rrow tot"><span>Total</span><span class="r">${moneyC(view.total_cents)}</span></div><p class="note">Se cobra al recibir tu pedido.</p></div></div>`;
+    return `${label ? `<div class="rrow"><span class="k">Pago</span><span>${label}</span></div>` : ''}<div class="rrow tot"><span>Total</span><span>${moneyC(view.total_cents)}</span></div><p class="payline"><span class="mute">Se cobra al recibir tu pedido.</span><button class="lnk" data-act="adj-more">Más información</button></p>`;
   }
 
   // B · C · E · G
@@ -129,7 +129,9 @@
         ? '<p class="note" data-owner-pending="read_only">Respondé desde la app con la que hiciste el pedido</p>'
         : `<div class="acts"><button class="primary" data-act="adj-accept">Aceptar nuevo total</button><button class="btn2 wide" data-act="adj-keep">Mantener mi pedido</button></div>
             <p class="cdown">Tenés ${minutesLeft(L.left)} min para responder</p>`;
-      return `<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="${store} cambió tu pedido"><div class="grab"></div><div class="errsheet"><div class="icon calm">${IC.edit}</div><h2>${store} cambió tu pedido</h2><p>${store} agregó esto a tu pedido. Revisalo antes de aceptar el nuevo total.</p>
+      // the mockup's sentence only for an additions-only list; any other list ⇒ the neutral «Revisá los cambios:» (advisor 11-08)
+      const added = c.changes.length > 0 && c.changes.every((ch) => ch && ch.kind === 'line_added');
+      return `<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="${store} cambió tu pedido"><div class="grab"></div><div class="errsheet"><div class="icon calm">${IC.edit}</div><h2>${store} cambió tu pedido</h2><p>${added ? `${store} agregó esto a tu pedido. Revisalo antes de aceptar el nuevo total.` : 'Revisá los cambios:'}</p>
             <div class="osum">${c.changes.map(changeRow).join('')}<div class="sumrow tot"><span>Total</span><span><span class="strike">${moneyC(c.old_total_cents)}</span>${moneyC(c.new_total_cents)}</span></div></div>
             <p class="note">Se cobra ${label ? `a tu ${label} ` : ''}al recibir tu pedido. <button class="lnk" data-act="adj-more">Más información</button></p>
             ${acts}</div></div>`;

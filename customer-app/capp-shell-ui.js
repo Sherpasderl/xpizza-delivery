@@ -792,7 +792,7 @@
       const p = od && od.payAdj; if (!payOn() || !p || !p.view) return null;
       return CappPayAdjust.frameOf(p.view, od.status, { help: p.help, dismissed: p.dismissed, left: payLeft(p), readOnly: !S.member });
     }
-    function payPieces(od) { const fr = payFrame(od); return fr ? { notice: CappPayAdjust.noticeHtml(od.payAdj.view, fr), block: CappPayAdjust.payHtml(od.payAdj.view), statusSub: fr.statusSub } : null; }
+    function payPieces(od) { const fr = payFrame(od); return fr ? { notice: CappPayAdjust.noticeHtml(od.payAdj.view, fr), rows: CappPayAdjust.payHtml(od.payAdj.view), statusSub: fr.statusSub } : null; }
     function paySheetHtml() {
       const od = S.order, fr = od ? payFrame(od) : null; if (!fr || !fr.sheet) return '';
       const h = CappPayAdjust.sheetHtml(od.payAdj.view, fr, { left: payLeft(od.payAdj) }, od.storeName);
