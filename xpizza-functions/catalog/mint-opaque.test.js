@@ -3,8 +3,8 @@
 // ONE platform switch, flipped ONCE (MINT_OPAQUE, a constant; OFF until S1d + S3 + the La Musa POS evidence). ON: a NEW product
 // gets `i_` + 12 random [a-z2-7] as its pricing key — never derived from its name — and the server records it as a frozen key
 // (display.id → key), so validation, the build and pricing accept it with no new rule. Its display.id is allocated exactly as
-// today. A minted key never equals an active, saved, same-batch, extra, frozen or reserved key; three collisions in a row is a
-// retryable 503. An addition named like a retired key is a NEW product with a fresh key (owner). If the switch is ever set back
+// today. A minted key never equals an active, saved, same-batch, extra, frozen or reserved key: ONE draw, and a collision is a
+// retryable 503 (codex S1c r1 P2-5). An addition named like a retired key is a NEW product with a fresh key (owner). If the switch is ever set back
 // to OFF, minted products keep working. Run: node catalog/mint-opaque.test.js
 const assert = require('assert');
 const MO = require('./mint-opaque');
@@ -67,26 +67,25 @@ const seq = (...keys) => { let i = 0; return () => keys[Math.min(i++, keys.lengt
   ok('id-keyed: the id stays the slug; the key is minted and recorded');
 }
 
-// ── collisions: every source is avoided; three in a row is a retryable 503 ──
+// ── collisions (codex S1c r1 P2-5, advisor: ONE draw + checks): a token that collides with an active, extra, frozen, reserved or
+//    same-batch key is a retryable 503, never a reused key; a free token is used ──
 {
   const RID = 'x_pizza';
   const base = canonicalize(buildSourceFromCode(RID));
   const cat = base.items[0].display.cat;
   const liveKey = base.items[0].key; const extraKey = base.extras[0].key;
   const stored = { ...base, frozen_keys: { 9999: 'i_frozenfrozen' } };
-  const two = addTo(addTo(stored, 'tmp:mint0003', 'Pizza Uno', cat), 'tmp:mint0004', 'Pizza Dos', cat);
-  let r;
-  try { r = AP.allocateAdditions({ incoming: two, stored, activeItems: base.items, keyMode: 'name', hwm: null, registryHasKey: () => false,
-    mint: { newKey: seq(liveKey, extraKey, 'i_bbbbbbbbbbbb', 'i_frozenfrozen', 'i_reservedkey2', 'i_cccccccccccc'), reserved: new Set(['i_reservedkey2']) } }); } catch (e) { assert.fail(`MO-COLLIDE two collisions are redrawn, not refused (${e.code})`); }
-  const keys = ['Pizza Uno', 'Pizza Dos'].map((nm) => r.source.items.find((i) => i.display.name === nm).key);
-  assert.deepStrictEqual(keys, ['i_bbbbbbbbbbbb', 'i_cccccccccccc'], `MO-COLLIDE active, extra, frozen and reserved keys are redrawn (${keys})`);
-  const r2 = AP.allocateAdditions({ incoming: two, stored, activeItems: base.items, keyMode: 'name', hwm: null, registryHasKey: () => false,
-    mint: { newKey: seq('i_ffffffffffff', 'i_ffffffffffff', 'i_gggggggggggg'), reserved: new Set() } });
-  assert.deepStrictEqual(['Pizza Uno', 'Pizza Dos'].map((nm) => r2.source.items.find((i) => i.display.name === nm).key), ['i_ffffffffffff', 'i_gggggggggggg'], 'MO-COLLIDE-BATCH a key minted earlier in the same save is redrawn');
-  let err = null;
-  try { AP.allocateAdditions({ incoming: addTo(stored, 'tmp:mint0005', 'Pizza Tres', cat), stored, activeItems: base.items, keyMode: 'name', hwm: null, registryHasKey: () => false, mint: { newKey: () => liveKey, reserved: new Set() } }); } catch (e) { err = e; }
-  assert.ok(err && err.code === 'mint_unavailable' && err.status === 503, 'MO-503 three collisions in a row: a retryable 503, never a reused key');
-  ok('a minted key avoids active, extra, frozen, reserved and same-batch keys; three collisions → 503 mint_unavailable');
+  const alloc = (incoming, newKey, reserved = new Set()) => AP.allocateAdditions({ incoming, stored, activeItems: base.items, keyMode: 'name', hwm: null, registryHasKey: () => false, mint: { newKey, reserved } });
+  const one = addTo(stored, 'tmp:mint0003', 'Pizza Uno', cat);
+  for (const [tok, label, reserved] of [[liveKey, 'an active key'], [extraKey, 'an extra key'], ['i_frozenfrozen', 'a frozen key'], ['i_reservedkey2', 'a reserved key', new Set(['i_reservedkey2'])]]) {
+    let err = null; try { alloc(one, () => tok, reserved); } catch (e) { err = e; }
+    assert.ok(err && err.code === 'mint_unavailable' && err.status === 503, `MO-COLLIDE ${label}: a retryable 503, never the key`);
+  }
+  let errB = null; try { alloc(addTo(one, 'tmp:mint0004', 'Pizza Dos', cat), () => 'i_ffffffffffff'); } catch (e) { errB = e; }
+  assert.ok(errB && errB.code === 'mint_unavailable', 'MO-COLLIDE-BATCH a token minted earlier in the same save: 503');
+  const r = alloc(one, () => 'i_bbbbbbbbbbbb');
+  assert.strictEqual(r.source.items.find((i) => i.display.name === 'Pizza Uno').key, 'i_bbbbbbbbbbbb', 'MO-FREE a free token is used');
+  ok('one draw: a collision with an active, extra, frozen, reserved or same-batch key is 503 mint_unavailable; a free token is used');
 }
 
 // ── owner: an addition named like a retired / reserved key is a NEW product under a fresh key ──
