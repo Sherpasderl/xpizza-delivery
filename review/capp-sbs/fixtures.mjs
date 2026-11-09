@@ -258,6 +258,45 @@ export const S2_VIEWS = {
   G: () => PAYF.payView({ total_cents: 58500, card: S2_CARD, consent: consentOf('declined') }),
 };
 // opts: { cards: [listCards rows], available: bool, place: <outcome> | 'slow', decline: bucket, view: <S2_VIEWS key> (default plain; null = no node), status: tracking status }
+// the priced-order fields placeSdkOrder requires — CONTRACT-sdk-checkout §2.1 «as chargeOnlineOrder»: read from the server's OWN
+// validateOrderPayload `required` list (index.js), never a copy, plus its order_id / order_type rules
+const ORDER_REQUIRED = (() => {
+  const src = fs.readFileSync(path.join(FN, 'index.js'), 'utf8'), i = src.indexOf('function validateOrderPayload(');
+  const m = i >= 0 && src.slice(i, i + 600).match(/const required = \[([^\]]+)\]/);
+  if (!m) throw new Error('fixtures: validateOrderPayload\'s required list not found in index.js');
+  return m[1].split(',').map((x) => x.trim().replace(/^'|'$/g, ''));
+})();
+const SDK_BRANDS = ['visa', 'mastercard', 'amex', 'other'];
+// §2.1 body (the SDK keys exact by NAME and VALUE; the priced order's required fields): a list of violations, [] when valid
+export function placeBodyViolations(b, { nowYear = new Date().getFullYear() } = {}) {
+  const v = [], str = (x) => typeof x === 'string' && x !== '';
+  for (const f of ORDER_REQUIRED) if (b[f] == null || b[f] === '') v.push(`missing ${f}`);
+  if (b.order_id != null && !/^[A-Za-z0-9_-]{1,64}$/.test(String(b.order_id))) v.push('order_id format');
+  if (b.order_type != null && !['delivery', 'pickup'].includes(b.order_type)) v.push('order_type');
+  if (!str(b.restaurant_id)) v.push('restaurant_id');
+  if (!Array.isArray(b.items) || !b.items.length) v.push('items');
+  if (typeof b.attempt_id !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(b.attempt_id)) v.push(`attempt_id ${JSON.stringify(b.attempt_id)}`);
+  if (!('replaces_order_id' in b) || !(b.replaces_order_id === null || str(b.replaces_order_id))) v.push('replaces_order_id');
+  if ('amount_cents' in b || 'total_cents' in b) v.push('a client amount');
+  const c = b.card, ck = c && typeof c === 'object' ? Object.keys(c).sort().join() : '';
+  if (c && c.kind === 'saved') { if (ck !== 'card_id,kind' || !str(c.card_id)) v.push(`saved card ${ck}`); }
+  else if (c && c.kind === 'new') {
+    if (ck !== 'authentication_identifier,display,kind,save,sdk_token') v.push(`new card keys ${ck}`);
+    if (!str(c.sdk_token)) v.push('sdk_token');
+    if (typeof c.save !== 'boolean') v.push('save');
+    if (!(c.authentication_identifier === null || str(c.authentication_identifier))) v.push('authentication_identifier');
+    const d = c.display, dk = d && typeof d === 'object' ? Object.keys(d).sort().join() : '';
+    if (dk !== 'brand,exp_month,exp_year,last4') v.push(`display keys ${dk}`);
+    else {
+      if (!SDK_BRANDS.includes(d.brand)) v.push('display.brand');
+      if (typeof d.last4 !== 'string' || !/^\d{4}$/.test(d.last4)) v.push('display.last4');
+      if (!Number.isInteger(d.exp_month) || d.exp_month < 1 || d.exp_month > 12) v.push('display.exp_month');
+      if (!Number.isInteger(d.exp_year) || d.exp_year < 1000 || d.exp_year > 9999 || d.exp_year < nowYear) v.push('display.exp_year');
+    }
+  } else v.push(`card.kind ${c && c.kind}`);
+  return v;
+}
+
 export function s2Extra(opts = {}) {
   const cards = opts.cards || [{ card_id: 'c_visa', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false }];
   const viewOf = () => (opts.view === null ? null : S2_VIEWS[opts.view || 'plain']());   // an SDK order's node exists (plain) unless a scene says none
@@ -292,18 +331,10 @@ export function s2Extra(opts = {}) {
     if (ep === 'sdkPayStatus' && req.method === 'GET') return json(SDKF.sdkPayStatus(opts.available !== false, opts.available === false ? 300 : 0));
     if (ep === 'placeSdkOrder' && req.method === 'POST') {
       let b = null; try { b = JSON.parse(req.postData || 'null'); } catch (_) { b = null; }
-      if (!b || typeof b.order_id !== 'string' || !b.card) return null;   // not the client's body ⇒ unmapped (fails the run)
-      const bad = (why) => { throw new Error(`placeSdkOrder 400 (contract §2.1): ${why}`); };   // a route that throws is UNMAPPED ⇒ the run fails
-      if (typeof b.attempt_id !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(b.attempt_id)) bad(`attempt_id ${JSON.stringify(b.attempt_id)}`);
-      if (!('replaces_order_id' in b) || !(b.replaces_order_id === null || typeof b.replaces_order_id === 'string')) bad('replaces_order_id');
-      if ('amount_cents' in b || 'total_cents' in b) bad('the client never sends an amount');
-      const ck = Object.keys(b.card).sort().join();
-      if (b.card.kind === 'saved') {
-        if (ck !== 'card_id,kind' || typeof b.card.card_id !== 'string') bad(`card keys ${ck}`);
-        if (!cards.some((c) => c.card_id === b.card.card_id && !c.expired)) { const r = SDKF.savedCardUnavailable(); return json(r.json, r.status); }   // A3: the strict fake's exact 409
-      } else if (b.card.kind === 'new') {
-        if (ck !== 'authentication_identifier,display,kind,save,sdk_token') bad(`card keys ${ck}`);
-      } else bad(`card.kind ${b.card.kind}`);
+      if (!b || typeof b !== 'object' || Array.isArray(b)) return null;   // not a JSON object ⇒ unmapped (fails the run)
+      const viol = placeBodyViolations(b);   // a route that throws is UNMAPPED ⇒ the run fails
+      if (viol.length) throw new Error(`placeSdkOrder 400 (contract §2.1): ${viol.join('; ')}`);
+      if (b.card.kind === 'saved' && !cards.some((c) => c.card_id === b.card.card_id && !c.expired)) { const r = SDKF.savedCardUnavailable(); return json(r.json, r.status); }   // A3: the strict fake's exact 409
       if (opts.place === 'slow') return { ...json(SDKF.placeResp('bank_pending', { order_id: b.order_id, attempt_id: b.attempt_id })), delay: 60000 };   // frame 4: still answering at the shot
       const r = respOf(b.order_id, b.attempt_id); placed.set(b.order_id, r); return json(r);
     }

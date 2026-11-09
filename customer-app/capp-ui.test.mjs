@@ -3096,14 +3096,28 @@ test('S2-checkout identity (Codex r1 P1): the cards belong to the member who lis
   assert.deepEqual(p && p.body && p.body.card, { kind: 'saved', card_id: 'c_b' }, '🔴 SDKUI-ID: placed with B\'s card — never A\'s card id under B\'s token');
 });
 
-test('S2-checkout A3 (contract r3b): placeSdkOrder 409 saved_card_unavailable ⇒ the card unselected, the list read again, the chooser open — one placement, nothing retried on its own', async () => {
-  const b = bootSdk({ script: { placeSdkOrder: [SDKF.savedCardUnavailable()], listCards: [SDK_CARDS(), SDK_CARDS([{ card_id: 'c_n', brand: 'mastercard', last4: '2222', exp_month: 12, exp_year: 2028, expired: false }])] } });
+test('S2-checkout A3 (contract r3b): placeSdkOrder 409 saved_card_unavailable ⇒ the attempt released on the record, the refused card unselected, the list read again, the chooser open — nothing re-sent; an explicit choice then places with a NEW attempt (Codex r2: nothing retained blocks recovery)', async () => {
+  const placedR = (body) => SDK_R('placed', { order_id: body.order_id, tracking_token: 'tok_abcdefgh12', card: { brand: 'mastercard', last4: '2222' } });
+  const b = bootSdk({ script: { placeSdkOrder: [SDKF.savedCardUnavailable(), placedR], listCards: [SDK_CARDS(), SDK_CARDS([{ card_id: 'c_n', brand: 'mastercard', last4: '2222', exp_month: 12, exp_year: 2028, expired: false }])] } });
   await sdkCheckout(b); await sdkPlace(b);
   assert.equal(b.srv.of('placeSdkOrder').length, 1, 'premise: one placement sent');
+  const first = b.srv.of('placeSdkOrder')[0].body;
+  const rec = placeRec(b.storage);
+  assert.ok(rec && rec.order_id === first.order_id && rec.attempt_id === first.attempt_id, 'premise: the record holds the refused attempt');
+  assert.equal(rec.attempt_state, 'none', '🔴 SDKUI-A3: the refused attempt is released on the device record (attempt_state «none»)');
+  assert.equal(rec.unresolved, false, '🔴 SDKUI-A3: nothing left unresolved (the refusal was before any claim)');
   assert.equal(b.srv.of('listCards').length, 2, '🔴 SDKUI-A3: the saved cards read again');
   assert.ok(b.q('#layer .sheet[aria-label="Elegí cómo pagar"]'), '🔴 SDKUI-A3: the chooser open');
   assert.ok(!/4242/.test(b.text('#layer') || ''), '🔴 SDKUI-A3: the refused card is gone from the chooser');
+  const pressed = b.qa('#layer [data-act="paypick"][aria-pressed="true"]').map((e) => e.dataset.card);
+  assert.deepEqual(pressed, ['c_n'], `🔴 SDKUI-A3: the refused card is no longer the selection — the refreshed list's own (${JSON.stringify(pressed)})`);
   assert.equal(b.srv.of('placeSdkOrder').length, 1, '🔴 SDKUI-A3: nothing re-sent on its own');
+  await b.click('#layer [data-act="paypick"][data-card="c_n"]'); await settle();
+  await sdkPlace(b);
+  const second = b.srv.of('placeSdkOrder')[1];
+  assert.ok(second, '🔴 SDKUI-A3: an explicit choice places again — no retained attempt blocks recovery');
+  assert.deepEqual(second.body.card, { kind: 'saved', card_id: 'c_n' }, '🔴 SDKUI-A3: with the chosen card');
+  assert.notEqual(second.body.attempt_id, first.attempt_id, '🔴 SDKUI-A3: a NEW attempt (the refused one was released)');
 });
 
 test('S2-checkout 1 before the quote (advisor ruling 11-09): «Se cobra al recibir tu pedido. Más información» without an amount until the quote, then «Total L X · » in place — the bar never shows «L 0» / «NaN»', async () => {
