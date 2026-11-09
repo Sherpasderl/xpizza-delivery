@@ -83,6 +83,10 @@ const seq = (...keys) => { let i = 0; return () => keys[Math.min(i++, keys.lengt
   }
   let errB = null; try { alloc(addTo(one, 'tmp:mint0004', 'Pizza Dos', cat), () => 'i_ffffffffffff'); } catch (e) { errB = e; }
   assert.ok(errB && errB.code === 'mint_unavailable', 'MO-COLLIDE-BATCH a token minted earlier in the same save: 503');
+  // codex S1c r2 #2: collide-then-free — exactly ONE draw, and the collision is the answer (no redraw)
+  let draws = 0; let errC = null;
+  try { alloc(one, () => { draws += 1; return draws === 1 ? liveKey : 'i_bbbbbbbbbbbc'; }); } catch (e) { errC = e; }
+  assert.ok(errC && errC.code === 'mint_unavailable' && draws === 1, `MO-ONE-DRAW a collision is answered after exactly one draw (draws ${draws}, ${errC && errC.code})`);
   const r = alloc(one, () => 'i_bbbbbbbbbbbb');
   assert.strictEqual(r.source.items.find((i) => i.display.name === 'Pizza Uno').key, 'i_bbbbbbbbbbbb', 'MO-FREE a free token is used');
   ok('one draw: a collision with an active, extra, frozen, reserved or same-batch key is 503 mint_unavailable; a free token is used');
