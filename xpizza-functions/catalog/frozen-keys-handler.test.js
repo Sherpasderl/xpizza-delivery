@@ -19,23 +19,44 @@ const T0 = '2026-11-08T10:00:00.000000Z';
 const T1 = '2026-11-08T11:00:00.000000Z';
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
-// A Firestore stub with a real precondition (as edit-catalog.test.js): the draft at restaurants/{rid}/meta/source, the live version
-// built by the production builder from the seeded source.
-function stub(rid, sourceDoc, liveSource = null) {
-  const state = { source: { data: clone(sourceDoc), updateTime: T0 }, writes: [] };
+// A per-document Firestore stub as strict as production (codex S1a r3): every document has its own data and revision; a write
+// batch checks EVERY precondition first — update needs the document (NOT_FOUND 5) and, when given, its revision
+// (FAILED_PRECONDITION 9); create needs it absent (ALREADY_EXISTS 6) — and then applies all of it or none. Updates merge fields;
+// creates persist their data (the id high-water mark included). The draft lives at restaurants/{rid}/meta/source (a draft
+// write must be conditional); the live version is built by the production builder from the seeded source. `race` runs once,
+// right after a read of the named path — a concurrent writer landing between the handler's read and its commit.
+function stub(rid, sourceDoc, liveSource = null, { docs: extra = {}, race = {} } = {}) {
+  const SRC = `restaurants/${rid}/meta/source`;
+  const docs = new Map([[SRC, { data: clone(sourceDoc), updateTime: T0 }], [`restaurants/${rid}/meta/active_version`, { data: { version: 'v-live' }, updateTime: T0 }]]);
+  for (const [p, d] of Object.entries(extra)) docs.set(p, { data: clone(d), updateTime: T0 });
+  const state = { docs, writes: [], get source() { return docs.get(SRC); } };
   const live = liveSource || buildSourceFromCode(rid);   // the published version (a renamed one where a cell says so)
+  const fail = (code, m) => { const e = new Error(m); e.code = code; return e; };
+  const commit = async (ops) => {
+    for (const op of ops) {
+      const cur = docs.get(op.path);
+      if (op.kind === 'create') { if (cur) throw fail(6, `ALREADY_EXISTS ${op.path}`); continue; }
+      if (!cur) throw fail(5, `NOT_FOUND ${op.path}`);
+      if (op.path === SRC && !(op.pre && op.pre.lastUpdateTime !== undefined)) throw fail(9, 'FAILED_PRECONDITION: an unconditional draft write');
+      if (op.pre && op.pre.lastUpdateTime !== undefined && op.pre.lastUpdateTime !== cur.updateTime) throw fail(9, `FAILED_PRECONDITION ${op.path}`);
+    }
+    for (const op of ops) {
+      const cur = docs.get(op.path);
+      docs.set(op.path, { data: op.kind === 'create' ? clone(op.data) : { ...cur.data, ...clone(op.data) }, updateTime: T1 });
+      state.writes.push(op.path);
+    }
+    return ops.map(() => ({ writeTime: T1 }));
+  };
   const doc = (path) => ({
+    path,
     get: async () => {
-      if (path === `restaurants/${rid}/meta/source`) { const frozen = clone(state.source.data); return { exists: true, data: () => frozen, updateTime: state.source.updateTime }; }
-      if (path === `restaurants/${rid}/meta/active_version`) return { exists: true, data: () => ({ version: 'v-live' }) };
-      return { exists: false, data: () => ({}) };
+      const d = docs.get(path);
+      const snap = d ? { exists: true, data: () => clone(d.data), updateTime: d.updateTime } : { exists: false, data: () => undefined, updateTime: undefined };
+      if (race[path]) { const r = race[path]; delete race[path]; r(docs); }
+      return snap;
     },
-    update: async (data, pre) => {
-      state.writes.push(path);
-      if (!pre || pre.lastUpdateTime !== state.source.updateTime) { const e = new Error('FAILED_PRECONDITION'); e.code = 9; throw e; }
-      state.source = { data, updateTime: T1 };
-      return { writeTime: T1 };
-    },
+    update: async (data, pre) => (await commit([{ kind: 'update', path, data, pre }]))[0],
+    create: async (data) => (await commit([{ kind: 'create', path, data }]))[0],
   });
   return {
     state,
@@ -44,10 +65,9 @@ function stub(rid, sourceDoc, liveSource = null) {
       const built = require('./form-menu-source').buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable, keyMode: inputs.keyMode });
       return { built: { ...built, extras: inputs.extras }, versionId: 'v-live', extraRecords: built.extras };
     },
+    doc,
     collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }) }) }),
-    // an addition writes the draft and the id high-water mark in one batch (edit-catalog-handler); the draft's precondition holds
-    batch: () => { const ops = []; return { update: (ref, data, pre) => ops.push(() => ref.update(data, pre)), create: () => ops.push(async () => { state.writes.push('create'); }),
-      commit: async () => { const out = []; for (const op of ops) out.push(await op()); return out; } }; },
+    batch: () => { const ops = []; return { update: (ref, data, pre) => { ops.push({ kind: 'update', path: ref.path, data, pre }); }, create: (ref, data) => { ops.push({ kind: 'create', path: ref.path, data }); }, commit: () => commit(ops) }; },
   };
 }
 const allow = async () => ({ ok: true, uid: 'u_owner', role: 'owner', actor: 'o@x.hn' });
@@ -56,7 +76,7 @@ const allow = async () => ({ ok: true, uid: 'u_owner', role: 'owner', actor: 'o@
 const RETIRED = new Set();
 const addProductOf = (db, mode) => ({
   readKeyMode: async () => mode,
-  hwmRef: () => ({ get: async () => ({ exists: false, data: () => ({}) }) }),
+  hwmRef: (rid) => (db ? db.doc(`restaurants/${rid}/meta/display_id_hwm`) : { path: null, get: async () => ({ exists: false, data: () => undefined }) }),   // the production path (add-product-io hwmRefOf)
   registryKeysTaken: async (_rid, keys, keyMode) => {
     if (keyMode !== 'name' && keyMode !== 'id') throw new Error(`registryKeysTaken: unknown key mode ${JSON.stringify(keyMode)}`);
     return new Set([...new Set(keys)].filter((k) => RETIRED.has(k)));
@@ -190,6 +210,29 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     assert.deepStrictEqual([r.status, r.body.error], [400, 'name_previously_used'], `HX-NEW-RESERVED a new product named as a retired key (normalized) is refused (${JSON.stringify(r.body).slice(0, 160)})`);
     assert.strictEqual(db.state.writes.length, 0, 'nothing written');
     ok('switch ON: a new product whose allocated key would be a retired key is refused (no own-key exemption)');
+  }
+
+  // ── an addition commits the draft and the id high-water mark TOGETHER (codex S1a r3): a mark created or moved by another save
+  //    between the read and the commit refuses the whole batch — the draft is left exactly as it was ──
+  {
+    SWITCH.enabled = false;
+    const HWM = `restaurants/${RID}/meta/display_id_hwm`;
+    const withAddition = () => { const d = clone(seed); const T = 'tmp:hwmrace0001'; d.items.push({ ref: T, price: 150, display: { name: 'Pizza Nueva', cat: 'ny', price: 150, desc: '' } }); d.structure.item_order.push(T); return d; };
+    const ctl = stub(RID, seed);
+    const c = await save(ctl, RID, withAddition());
+    assert.strictEqual(c.status, 200, `premise: the addition saves (${JSON.stringify(c.body).slice(0, 160)})`);
+    assert.ok(Number.isInteger(ctl.state.docs.get(HWM).data.value), 'HX-HWM-PERSIST the high-water mark is created with the draft');
+    // (a) create conflict: absent at read, created by another save before the commit
+    const a = stub(RID, seed, null, { race: { [HWM]: (docs) => docs.set(HWM, { data: { value: 777 }, updateTime: 'racer' }) } });
+    const ra = await save(a, RID, withAddition());
+    assert.deepStrictEqual([ra.status, ra.body.error], [409, 'stale_edit'], `HX-HWM-CREATE-CONFLICT a mark created concurrently refuses the save (${JSON.stringify(ra.body).slice(0, 160)})`);
+    assert.deepStrictEqual([a.state.source.data, a.state.source.updateTime, a.state.docs.get(HWM).data.value, a.state.writes.length], [seed, T0, 777, 0], 'HX-HWM-CREATE-CONFLICT the draft untouched, the racer\'s mark kept');
+    // (b) atomic: the mark exists, another save moves it — the batch's SECOND write fails, so its first (the draft) never applies
+    const b = stub(RID, seed, null, { docs: { [HWM]: { value: 50 } }, race: { [HWM]: (docs) => docs.set(HWM, { data: { value: 60 }, updateTime: 'racer' }) } });
+    const rb = await save(b, RID, withAddition());
+    assert.deepStrictEqual([rb.status, rb.body.error], [409, 'stale_edit'], `HX-HWM-ATOMIC a mark moved concurrently refuses the save (${JSON.stringify(rb.body).slice(0, 160)})`);
+    assert.deepStrictEqual([b.state.source.data, b.state.source.updateTime, b.state.docs.get(HWM).data.value, b.state.writes.length], [seed, T0, 60, 0], 'HX-HWM-ATOMIC the draft untouched — nothing of the batch applied');
+    ok('an addition\'s draft + high-water mark commit atomically: a concurrent create or move refuses the save and leaves the draft untouched');
   }
 
   // ── ON (codex S1a r1 P2): a NEW group is capped on its fully derived option names, atomically ──
