@@ -40,12 +40,16 @@ const SEED = ['address-autofill-recheckout', 'claim-address-capture', 'createord
   ...['availability-reset.emulator', 'catalog-generation.emulator', 'order-control.emulator', 'order-exists.emulator'].map((x) => `test/${x}`),
   'secrets-scan-omit.guard', 'tools/endpoint-census.guard'];
 const SKIP = new Set(['node_modules', '.git', '.firebase', 'coverage', 'dist']);
+// the repo-root review/ tree is evidence + side-by-side harnesses (review/capp-sbs, …): it never ships and is not a surface reader;
+// skipped by its EXACT path only (train asm3, codex asm3 P2: capp-guards' S2 SBS cell forbids naming the harness outside review/)
+const REVIEW_DIR = path.join(__dirname, '..', '..', 'review');
 
 const rel = (abs) => path.relative(ROOT, abs).split(path.sep).join('/');
 function walk(dir, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (SKIP.has(e.name) || e.name.startsWith('.')) continue;
     const p = path.join(dir, e.name);
+    if (e.isDirectory() && p === REVIEW_DIR) continue;
     if (e.isDirectory()) walk(p, out); else if (/\.(c|m)?js$/.test(e.name)) out.push(p);
   }
   return out;
