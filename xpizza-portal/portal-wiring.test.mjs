@@ -87,7 +87,16 @@ test('every module the portal ships is reachable from an entry page (index.html,
   for (const m of html.matchAll(/(?:from\s+|import\s+|src=")\.?\/?([\w-]+\.js)"?/g)) walk(m[1]);
   // the shell loads its boot script via <script src>, not an import
   for (const m of html.matchAll(/<script[^>]*src="\.\/([\w-]+\.js)"/g)) walk(m[1]);
+  // S4 «Editar producto» Phase 1 (advisor-approved slice plan, 2026-11-08): the drawer's working copy is built and tested
+  // before the drawer DOM is wired (Phase 2, after the server's S1). SELF-EXPIRING: the exception holds only while the
+  // module is NOT reachable — once Phase 2 wires it, this fails until the line is removed.
+  const PHASE1_UNWIRED = ['item-edit-logic.js'];
+  for (const f of PHASE1_UNWIRED) {
+    assert.ok(!seen.has(f), `${f} is wired now — remove it from PHASE1_UNWIRED`);
+    assert.ok(/from '\.\/item-edit-logic\.js'/.test(readFileSync(join(DIR, 'item-edit.test.mjs'), 'utf8')), `${f} is exercised by its tests`);
+  }
   for (const f of JS) {
+    if (PHASE1_UNWIRED.includes(f)) continue;
     assert.ok(seen.has(f), `${f} ships but nothing imports it — dead code on a money surface, or a missing wire`);
   }
 });
@@ -388,10 +397,17 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // DISH PHOTOS B (PLAN-dish-photos §2.1) — the draft PHOTO map: ONE guarded mutator (setPhoto: a pid E-P2/E-P3 returned, the
   // removed state, or back to absent) and the read-only draftPhotos / origPhotos / pendingPhotos. It writes no pricing key,
   // no display field and no item — the map is a separate top-level field of the source.
+  // S4 «Editar producto» (PLAN-portal-item-edit r6) — an EXISTING product's name / description / section through ONE
+  // whole-drawer mutator (editItem: all or nothing; never a key, display.id or identity stamp), the read-only judges
+  // itemNameProblem / itemDescProblem / itemCategoryProblem / pendingTexts / tidyItemName, and the two caps.
   assert.deepStrictEqual(exported, [
-    'addChoice', 'addProduct', 'adopt', 'canEditDraft', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup', 'commit', 'commitTo', 'createDraft', 'discard', 'draftPhotos', 'draftSource', 'groupUsage', 'incompleteAdditions', 'invalidKeys', 'isNewGroupOption', 'isPublishable',
-    'optionGroups', 'optionParentId', 'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingPhotos', 'pendingRenames', 'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId',
-    'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice', 'setChoiceRecommended', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
+    'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'canEditDraft', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
+    'commit', 'commitTo', 'createDraft', 'discard', 'draftPhotos', 'draftSource', 'editItem', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
+    'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'optionGroups', 'optionParentId',
+    'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingPhotos', 'pendingRenames', 'pendingTexts',
+    'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
+    'setChoiceRecommended', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
+    'tidyItemName',
   ], 'the edit state exports exactly these');
   const setPhotoBody = editor.slice(editor.indexOf('export function setPhoto('), editor.indexOf('export function setPhoto(') + 300);
   // ruling A: setPhoto asks canEditContent — owned-for-editing (canEditDraft) AND no section name waiting (local or saved)

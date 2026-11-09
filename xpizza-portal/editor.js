@@ -12,10 +12,12 @@
 // Pure and DOM-free on purpose: node can import it, so every rule below is asserted directly rather
 // than through a rendered page.
 //
-// STILL NOT IMPLEMENTED HERE: renaming or removing an EXISTING item, adding or removing an option, category edits other
-// than a section's display NAME (PLAN-public-menu-display T1; see "A SECTION'S NAME" at the end).
+// STILL NOT IMPLEMENTED HERE: removing an EXISTING item, adding or removing an option, category edits other than a
+// section's display NAME (PLAN-public-menu-display T1; see "A SECTION'S NAME" at the end).
 // There is no setter for them in this file — not a disabled one, not a guarded one. A capability that does not exist
 // cannot be reached by accident.
+// S4 (PLAN-portal-item-edit) — an EXISTING product's name, description and section ARE here, through ONE whole-drawer
+// mutator (editItem, at the end): the key and every identity stay; the server records the rename.
 //
 // 1D add-product A — ADDING a plain product IS here, and it writes NO key: a new row carries only a temporary
 // reference (`ref: 'tmp:<uuid>'`) and its display fields; the SERVER allocates the pricing key and id on save
@@ -319,7 +321,10 @@ function foldNewGroups(draft, entries, saved) {
 
 // DISH PHOTOS B — a photo change is a change like any other (mockup P7: «1 cambio sin publicar · 1 foto"), counted here and
 // nowhere in pendingChanges, whose entries light PRICE cells by key.
-export const pendingCount = (draft, savedAdditions) => pendingChanges(draft, savedAdditions).length + pendingPhotos(draft).length;
+// S4 (item edit) — and so is an existing product's text or section: one per changed field (Nombre, Descripción, Categoría),
+// MOCKUP-portal-item-edit B («4 cambios sin publicar · 1 producto»).
+export const pendingCount = (draft, savedAdditions) => pendingChanges(draft, savedAdditions).length + pendingPhotos(draft).length
+  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0);
 
 // ── DISH PHOTOS B (PLAN-dish-photos §2.1 / §2.2) — THE DRAFT PHOTO MAP ────────────────────────────────────────────────
 // `source.photos` = {[itemKey]: {state:'pid', pid} | {state:'removed'}}; an absent key is LEGACY. It is part of the document
@@ -697,3 +702,133 @@ export function categoriesUnnamed(draft) {
   return cats.length > 0 && cats.every((c) => catNameOf(c) === null);
 }
 
+
+// ── S4 (PLAN-portal-item-edit r6 + addendum S4) — AN EXISTING PRODUCT'S NAME, DESCRIPTION AND SECTION ─────────────────────
+// The «Editar producto» drawer edits a working copy (item-edit-logic.js) and hands the WHOLE edit here once, on «Guardar».
+// editItem applies it ALL OR NOTHING: every field is judged first, and one refusal writes nothing — an invalid name can never
+// be half-saved next to a price. It is the explicit whitelist: name / desc / cat / subcat / price / option prices / photo.
+// The key, display.id and every identity stamp are never written; the SERVER records the rename (S1a frozen_keys).
+// A product with a required choice renames WITH its options: each option's name is derived, «{producto} - {opción}», exactly
+// the server's rule (source-store.js:592; S1a re-derives it too), and the section moves with it. Choices, keys and prices stay.
+export const ITEM_NAME_MAX = 60;
+export const ITEM_DESC_MAX = 200;
+const charCount = (s) => [...String(s)].length;
+// The server's own folds: tidyName (stored form) and normalizeName (what counts as the same name) — catalog/add-product.js.
+export const tidyItemName = (raw) => (typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim() : '');
+const foldName = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+// A name reaches an attribute sink (display-safety.js `attribute`): markup, an entity that decodes to it, or a quote.
+const QUOTE = /["'`]/;
+// The opaque id syntax new products are keyed by (plan §2.2): a name may never look like one.
+const OPAQUE = /^i_[a-z2-7]{12}$/i;
+const existingRow = (st, key) => rowsOf(st, 'item').find((r) => r && typeof r.key === 'string' && r.key === key && !isTmp(r) && !isOptionRow(r)) || null;
+const membersOf = (st, row) => { const g = groupOfRow(st, row); return g ? g.options : []; };
+const derivedName = (name, opt) => `${name} - ${opt && opt.display && typeof opt.display.choice === 'string' ? opt.display.choice : ''}`;
+
+// 'empty' | 'long' | 'quote' | 'unavailable' | 'taken' | 'option_long' | null. A value equal to the LOADED one is grandfathered
+// (the server caps only newly authored values), however long.
+export function itemNameProblem(draft, key, raw) {
+  const row = existingRow(draft.state, key);
+  if (!row) return null;
+  const v = tidyItemName(raw);
+  const was = existingRow(draft.orig, key);
+  if (was && was.display && was.display.name === v) return null;
+  if (!v) return 'empty';
+  if (charCount(v) > ITEM_NAME_MAX) return 'long';
+  if (MARKUP.test(v) || QUOTE.test(v)) return 'quote';
+  if (OPAQUE.test(v)) return 'unavailable';
+  const mine = new Set([row, ...membersOf(draft.state, row)]);
+  const others = rowsOf(draft.state, 'item').filter((r) => r && !mine.has(r));
+  const names = (n) => others.some((o) => (o.display && typeof o.display.name === 'string' && foldName(o.display.name) === n) || (typeof o.key === 'string' && foldName(o.key) === n))
+    || rowsOf(draft.state, 'extra').some((e) => e && e.display && typeof e.display.name === 'string' && foldName(e.display.name) === n);
+  if (names(foldName(v))) return 'taken';
+  const opts = membersOf(draft.state, row);
+  if (opts.some((o) => charCount(derivedName(v, o)) > ITEM_NAME_MAX)) return 'option_long';
+  if (opts.some((o) => names(foldName(derivedName(v, o))))) return 'taken';
+  return null;
+}
+// 'long' | 'markup' | null (the `body` rule). Empty is fine: the description is optional.
+export function itemDescProblem(draft, key, raw) {
+  const v = typeof raw === 'string' ? raw : '';
+  const was = existingRow(draft.orig, key);
+  if (was && was.display && (was.display.desc || '') === v) return null;
+  if (charCount(v) > ITEM_DESC_MAX) return 'long';
+  if (MARKUP.test(v)) return 'markup';
+  return null;
+}
+// 'unknown' | 'subcat_required' | 'section_empty' | 'subsection_empty' | null — the target must be a section the page shows,
+// one of ITS subsections when it has any (chosen, never preselected), and the move may not leave a section or subsection empty.
+export function itemCategoryProblem(draft, key, { cat, subcat = null } = {}) {
+  const row = existingRow(draft.state, key);
+  if (!row) return 'unknown';
+  const target = catsOf(draft.state).find((c) => c && String(c.id) === String(cat));
+  if (!target) return 'unknown';
+  const subs = Array.isArray(target.subcats) ? target.subcats.map(String) : [];
+  if (subs.length && !subs.includes(subcat == null ? '' : String(subcat))) return 'subcat_required';
+  if (!subs.length && subcat != null && subcat !== '') return 'unknown';
+  const d = row.display || {};
+  const products = rowsOf(draft.state, 'item').filter((r) => r && r !== row && !isOptionRow(r) && r.display);
+  if (String(d.cat) !== String(cat) && !products.some((r) => String(r.display.cat) === String(d.cat))) return 'section_empty';
+  const nextSub = subs.length ? String(subcat) : null;
+  if (typeof d.subcat === 'string' && (String(d.cat) !== String(cat) || d.subcat !== nextSub)
+      && !products.some((r) => String(r.display.cat) === String(d.cat) && r.display.subcat === d.subcat)) return 'subsection_empty';
+  return null;
+}
+
+// The whole drawer, once. `edit`: any of { name, desc, cat, subcat, price, optionPrices: {[optionKey]: raw}, photo }; an absent
+// field is unchanged. Returns true when written, false when refused (and then NOTHING was written).
+export function editItem(draft, key, edit = {}) {
+  if (!canEditContent(draft)) return false;
+  const row = existingRow(draft.state, key);
+  if (!row || !row.display) return false;
+  const e = edit && typeof edit === 'object' ? edit : {};
+  const d = row.display;
+  const opts = membersOf(draft.state, row);
+  const name = own(e, 'name') ? tidyItemName(e.name) : d.name;
+  if (own(e, 'name') && itemNameProblem(draft, key, e.name) !== null) return false;
+  const desc = own(e, 'desc') ? (typeof e.desc === 'string' ? e.desc : '') : undefined;
+  if (desc !== undefined && itemDescProblem(draft, key, desc) !== null) return false;
+  const moving = own(e, 'cat') || own(e, 'subcat');
+  const cat = own(e, 'cat') ? e.cat : d.cat;
+  const subcat = own(e, 'subcat') ? (e.subcat == null || e.subcat === '' ? null : String(e.subcat)) : (own(e, 'cat') && String(e.cat) !== String(d.cat) ? null : (d.subcat == null ? null : d.subcat));
+  if (moving && itemCategoryProblem(draft, key, { cat, subcat }) !== null) return false;
+  const price = own(e, 'price') ? parsePrice(e.price) : undefined;
+  if (price === null || (price !== undefined && opts.length)) return false;   // a group's price lives on its options
+  const optPrices = [];
+  for (const [k, raw] of Object.entries(e.optionPrices && typeof e.optionPrices === 'object' ? e.optionPrices : {})) {
+    const o = opts.find((x) => x.key === k);
+    const p = parsePrice(raw);
+    if (!o || p === null) return false;
+    optPrices.push([o, p]);
+  }
+  const photo = own(e, 'photo') ? e.photo : undefined;
+  if (photo !== undefined && !(photo === null || (photo && photo.state === 'removed' && Object.keys(photo).length === 1)
+      || (photo && photo.state === 'pid' && typeof photo.pid === 'string' && photo.pid && Object.keys(photo).length === 2))) return false;
+  // every field judged: write
+  if (own(e, 'name')) { d.name = name; for (const o of opts) o.display.name = derivedName(name, o); }
+  if (desc !== undefined) { if (desc.trim()) d.desc = desc; else delete d.desc; }
+  if (moving) {
+    for (const r of [row, ...opts]) { r.display.cat = cat; if (subcat == null) delete r.display.subcat; else r.display.subcat = subcat; }
+  }
+  if (price !== undefined) setRowPrice(row, price);
+  for (const [o, p] of optPrices) setRowPrice(o, p);
+  if (photo !== undefined) setPhoto(draft, key, photo);
+  return true;
+}
+
+// Existing products whose text or section differs from what was loaded: [{ key, fields: ['name' | 'desc' | 'cat'] }] in
+// document order ('cat' covers the subsection). A group's options are derived from their product and are not counted again.
+export function pendingTexts(draft) {
+  const out = [];
+  for (const row of rowsOf(draft.state, 'item')) {
+    if (!row || isTmp(row) || isOptionRow(row) || typeof row.key !== 'string') continue;
+    const was = existingRow(draft.orig, row.key);
+    if (!was || !was.display || !row.display) continue;
+    const a = was.display, b = row.display;
+    const fields = [];
+    if (a.name !== b.name) fields.push('name');
+    if ((a.desc || '') !== (b.desc || '')) fields.push('desc');
+    if (String(a.cat) !== String(b.cat) || (a.subcat || null) !== (b.subcat || null)) fields.push('cat');
+    if (fields.length) out.push({ key: row.key, fields });
+  }
+  return out;
+}

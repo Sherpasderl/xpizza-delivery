@@ -15,10 +15,22 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import * as acorn from 'acorn';
 import { PB_FOLD } from './photos-b-fold.mjs';
+import { S4_BASE, S4_FOLD } from './s4-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
-const read = (f) => readFileSync(join(DIR, f), 'utf8');
+// S4 «Editar producto» (PLAN-portal-item-edit r6) is the NEWEST layer: read() folds its named hunks out first, so every pin
+// below judges exactly what it judged before; readNow() is the file on disk, judged by the S4 test.
+const readNow = (f) => readFileSync(join(DIR, f), 'utf8');
+function withoutS4(f, src) {
+  let out = src;
+  for (const [now, was] of S4_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `S4 hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const read = (f) => withoutS4(f, readNow(f));
 const readFn = (f) => readFileSync(join(DIR, '..', 'xpizza-functions', f), 'utf8');
 const base = (f) => execFileSync('git', ['show', `${BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
 const topLevel = (src) => acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module' }).body.map((n) => src.slice(n.start, n.end));
@@ -73,6 +85,19 @@ function withoutT1(f, src) {
   }
   return out;
 }
+// ── S4 «Editar producto»: editor.js gains EXACTLY the hunks in s4-fold.mjs (the header line, pendingCount counting text
+// changes, and the editItem block) — folding them out gives S4_BASE byte-for-byte.
+test('S4 (item edit): editor.js gains exactly the named hunks — folding them out gives S4_BASE byte-for-byte', () => {
+  for (const f of Object.keys(S4_FOLD)) {
+    const was = execFileSync('git', ['show', `${S4_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.notEqual(read(f), readNow(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(read(f), was, `${f} minus the S4 hunks ≠ ${S4_BASE}`);
+    assert.notEqual(withoutS4(f, readNow(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+  }
+  const [inside] = S4_FOLD['editor.js'].find(([now]) => now.includes('export function editItem('));
+  assert.throws(() => withoutS4('editor.js', readNow('editor.js').replace(inside, inside.replace('editItem(', 'editltem('))), 'an edit inside a hunk breaks it');
+});
+
 // ── DISH PHOTOS B (PLAN-dish-photos r2 §3): the slice's EXACT hunks in app.js / editor.js / review.js / render.js
 // (photos-b-fold.mjs), cut against main PB_BASE (8a31e2a3, which carries T1). Folded out FIRST (it is the newest layer): what
 // is left is PB_BASE byte-for-byte, so T1's own registry (portalui-guards.t1-hunks.json) and every pin below keep judging
