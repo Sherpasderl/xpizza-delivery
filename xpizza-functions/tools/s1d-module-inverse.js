@@ -112,6 +112,11 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "menu-pricing.js",
+  "now": "    }\n    const name = byId ? summaryLineName(it && it.name, key) : (((labelsOfTables(tables) || {})[key]) || key);   // S1d: a name-keyed line shows its key's current label\n    lines.push({ name, qty, cents: lineL * 100 });\n",
+  "was": "    }\n    const name = byId ? summaryLineName(it && it.name, key) : key;\n    lines.push({ name, qty, cents: lineL * 100 });\n"
+ },
+ {
+  "file": "menu-pricing.js",
   "now": "\nmodule.exports = { PRICING_KEY_STAMP, availIdentityField, defaultKeyMode, effectiveKeyMode, TABLES_KEY_MODE, keyModeOfTables, attachTablesKeyMode, TABLES_LABELS, labelsOfTables, attachTablesLabels,\n  MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal, itemPricingKey, extraPricingKey, summaryLines,\n",
   "was": "\nmodule.exports = { PRICING_KEY_STAMP, availIdentityField, defaultKeyMode, effectiveKeyMode, TABLES_KEY_MODE, keyModeOfTables, attachTablesKeyMode,\n  MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal, itemPricingKey, extraPricingKey, summaryLines,\n"
  },
