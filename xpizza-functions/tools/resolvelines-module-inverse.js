@@ -32,8 +32,8 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "menu-pricing.js",
-  "now": "  if (WEEKEND_DAYS.has(hnDayFromMs(fulfillmentMs))) return null;                 // Fri/Sat/Sun → everything allowed\n  const hit = items.find((it) => it && keys.has(itemPricingKey(it, restaurantId)));   // S1b: the resolved key (the stamp), as pricing reads it\n  return hit ? hit.name : null;\n",
-  "was": "  if (WEEKEND_DAYS.has(hnDayFromMs(fulfillmentMs))) return null;                 // Fri/Sat/Sun → everything allowed\n  const hit = items.find((it) => it && keys.has(it.name));\n  return hit ? hit.name : null;\n"
+  "now": "  if (WEEKEND_DAYS.has(hnDayFromMs(fulfillmentMs))) return null;                 // Fri/Sat/Sun → everything allowed\n  const hit = items.find((it) => it && keys.has(itemPricingKey(it, restaurantId)));   // S1b: the resolved key (the stamp), as pricing reads it\n  return hit ? ((typeof hit.name === 'string' && hit.name) ? hit.name : itemPricingKey(hit, restaurantId)) : null;\n}\n",
+  "was": "  if (WEEKEND_DAYS.has(hnDayFromMs(fulfillmentMs))) return null;                 // Fri/Sat/Sun → everything allowed\n  const hit = items.find((it) => it && keys.has(it.name));\n  return hit ? hit.name : null;\n}\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

@@ -30,6 +30,12 @@ const MON = Date.parse('2026-11-09T18:00:00Z'); const SAT = Date.parse('2026-11-
   assert.deepStrictEqual(resolveLines('la_musa', b, LM_TABLES), { ok: true }, 'premise: the line resolves');
   assert.strictEqual(weekendOnlyViolation(b.items, 'la_musa', MON, new Set(['dimsum_01'])), 'Sichuan Spicy Wonton', 'RLR-WEEKEND-ID an id-keyed weekend-only dish is gated on a weekday (the latent fix — the base answers null)');
   assert.strictEqual(weekendOnlyViolation(b.items, 'la_musa', SAT, new Set(['dimsum_01'])), null, 'RLR-WEEKEND-ID allowed on a Saturday');
+  // codex S1b r1 P2-2: an id-keyed line needs no name — the gate's verdict may never rest on the label being truthy
+  for (const [line, label] of [[{ id: 'dimsum_01', qty: 1 }, 'RLR-WEEKEND-IDONLY an id-only line'], [{ id: 'dimsum_01', name: '', qty: 1 }, 'RLR-WEEKEND-EMPTYNAME an empty name'], [{ id: 'dimsum_01', name: null, qty: 1 }, 'RLR-WEEKEND-NULLNAME a null name']]) {
+    assert.deepStrictEqual(resolveLines('la_musa', { items: [line] }, LM_TABLES), { ok: true }, `premise: ${label} resolves`);
+    assert.strictEqual(weekendOnlyViolation([line], 'la_musa', MON, new Set(['dimsum_01'])), 'dimsum_01', `${label} is gated on a weekday, named by its key`);
+    assert.strictEqual(weekendOnlyViolation([line], 'la_musa', SAT, new Set(['dimsum_01'])), null, `${label} is allowed on a Saturday`);
+  }
   // name-keyed (x_pizza): the resolved key IS the name — every verdict equals today's name rule, stamped or not
   const XP_KEYS = new Set(['Margherita NY', 'Jamon NY']);
   for (const name of ['Margherita NY', 'Jamon NY', 'Carnivora', 'Margherita']) {
