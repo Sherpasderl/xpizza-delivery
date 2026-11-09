@@ -26352,8 +26352,8 @@
   "slice": "perf-core",
   "label": "r3.3-F2 r2-2: the tip step can place an unavailable line (delivery)",
   "file": "../customer-app/capp-ui.js",
-  "from": "const tipReady = (T) => C.tipChosen(S.flow) && S.tipStale !== S.flow && T.ready && !need() && !soldBlock() && intakeOk();",
-  "to": "const tipReady = (T) => C.tipChosen(S.flow) && S.tipStale !== S.flow && T.ready && !need() && intakeOk();",
+  "from": "const tipReady = (T) => C.tipChosen(S.flow) && T.ready && !need() && !soldBlock() && intakeOk();",
+  "to": "const tipReady = (T) => C.tipChosen(S.flow) && T.ready && !need() && intakeOk();",
   "command": [
    "node",
    "--test",

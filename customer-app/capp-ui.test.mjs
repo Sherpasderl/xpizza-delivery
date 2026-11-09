@@ -3548,38 +3548,38 @@ test('tip r7 Codex D-r1 P2a: «Continuar» while the preference read is pending,
   assert.ok(!('tip_cents' in body) && !('tip_choice' in body), 'TIP-P2a: no tip on the cash order');
 });
 
-test('tip r7 Codex D-r1 P2b: an identity change ON the open tip step re-resolves the new member\'s default IN PLACE — never a chip-less step, never placeable with the old default; a tap / Back during the wait behave', async () => {
-  const nb = deferred(leaf(6000));
-  const b = bootTip({ member: TIP_MEMBER('u1'), last: [leaf(4000), nb.fn] });
+test('tip r7 Codex D-r2 (advisor: simplify) 1: an identity change A→B ON the tip step returns to the checkout with NO tip; the next «Continuar» resolves B\'s own default fresh', async () => {
+  const b = bootTip({ member: TIP_MEMBER('u1'), last: [leaf(4000), leaf(6000)] });
   await memberToTip(b); await b.click('#cta'); await settle();
   assert.deepEqual(pressedChips(b), ['L 40'], 'premise: A\'s default on the step');
   b.ui.setMember(TIP_MEMBER('u2')); await settle();
-  assert.equal(b.ui.state.screen, 'tip', 'TIP-P2b: the step stays');
-  assert.equal(pressedChips(b).length, 1, '🔴 TIP-P2b: never a chip-less step while B\'s read is pending');
-  assert.ok(b.q('[data-act="tip-place"]').disabled, '🔴 TIP-P2b: A\'s default is never placeable for B');
-  nb.go(); await settle();
-  assert.deepEqual(pressedChips(b), ['L 60'], '🔴 TIP-P2b: B\'s own last tip, applied in place');
-  assert.deepEqual(J(b.ui.state.flow.tipChoice), { kind: 'preset', lempiras: 60 }, 'TIP-P2b: B\'s default in the state');
-  assert.ok(!b.q('[data-act="tip-place"]').disabled, 'TIP-P2b: placeable again');
+  assert.equal(b.ui.state.screen, 'checkout', '🔴 TIP-ID2-1: back on the checkout');
+  assert.deepEqual([b.ui.state.flow.tipChoice, b.ui.state.flow.tipCents], [null, 0], 'TIP-ID2-1: no tip carried');
+  await b.click('#cta'); await settle();
+  assert.deepEqual(pressedChips(b), ['L 60'], 'TIP-ID2-1: B\'s own last tip, resolved fresh');
+});
 
-  const t = bootTip({ member: TIP_MEMBER('u1'), last: [leaf(4000), () => new Promise(() => {})] });
-  await memberToTip(t); await t.click('#cta'); await settle();
-  t.ui.setMember(TIP_MEMBER('u2')); await settle();
-  t.timers.flush(); await settle();
-  assert.deepEqual(pressedChips(t), ['L 20'], '🔴 TIP-P2b: no answer within the wait ⇒ the platform default (L 20)');
+test('tip r7 Codex D-r2 2: A→B→C in quick succession ON the step (after an EXPLICIT tap) lands on the checkout with no tip', async () => {
+  const b = bootTip({ member: TIP_MEMBER('u1'), last: [leaf(4000), leaf(6000)] });
+  await memberToTip(b); await b.click('#cta'); await settle();
+  await b.click('[data-act="tipc"][data-val="20"]'); await settle();
+  assert.deepEqual(pressedChips(b), ['L 20'], 'premise: an explicit tap on the step');
+  b.ui.setMember(TIP_MEMBER('u2')); b.ui.setMember(TIP_MEMBER('u3')); await settle();
+  assert.equal(b.ui.state.screen, 'checkout', 'TIP-ID2-2: on the checkout');
+  assert.deepEqual([b.ui.state.flow.tipChoice, b.ui.state.flow.tipCents], [null, 0], '🔴 TIP-ID2-2: no tip carried across identities (not even an explicit tap)');
+  await b.click('#cta'); await settle();
+  assert.deepEqual(pressedChips(b), ['L 60'], 'TIP-ID2-2: C\'s own default');
+});
 
-  const k = bootTip({ member: TIP_MEMBER('u1'), last: [leaf(4000), deferred(leaf(6000)).fn] });
-  await memberToTip(k); await k.click('#cta'); await settle();
-  k.ui.setMember(TIP_MEMBER('u2')); await settle();
-  await k.click('[data-act="tipc"][data-val="20"]'); await settle();
-  k.timers.flush(); await settle();
-  assert.deepEqual(J(k.ui.state.flow.tipChoice), { kind: 'preset', lempiras: 20 }, '🔴 TIP-P2b: a tap during the wait is the person\'s — kept');
-
-  const r = bootTip({ member: TIP_MEMBER('u1'), last: [leaf(4000), deferred(leaf(6000)).fn] });
-  await memberToTip(r); await r.click('#cta'); await settle();
-  r.ui.setMember(TIP_MEMBER('u2')); await settle();
-  await r.click('[data-act="back"]'); await settle();
-  assert.deepEqual([r.ui.state.screen, r.ui.state.flow.tipChoice], ['checkout', null], '🔴 TIP-P2b: Back during the wait drops A\'s default (never kept as B\'s choice)');
+test('tip r7 Codex D-r2 3: a «Realizando pedido…» confirmation open during the identity change is closed — nothing is sent', async () => {
+  const b = bootTip({ member: TIP_MEMBER('u1'), last: [leaf(4000)] });
+  await memberToTip(b); await b.click('#cta'); await settle();
+  await b.click('[data-act="tip-place"]'); await settle();
+  assert.ok(b.q('#layer .placing'), 'premise: the confirmation is open');
+  b.ui.setMember(TIP_MEMBER('u2')); await settle();
+  b.timers.flush(); await settle();
+  assert.deepEqual([b.ui.state.layerKind, b.ui.state.screen], [null, 'checkout'], '🔴 TIP-ID2-3: the confirmation is closed, back on the checkout');
+  assert.equal(b.srv.of('createOrder').length + b.srv.of('chargeOnlineOrder').length, 0, '🔴 TIP-ID2-3: nothing sent');
 });
 
 test('tip r7: switching to CASH on the tip step (its footer payment row) clears the tip and returns to the checkout', async () => {
