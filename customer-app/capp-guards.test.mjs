@@ -220,3 +220,29 @@ test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}.
   assert.equal(unlisted.join('\n'), '', `🔴 customer-app/ edit(s) made in a merge resolution (differ from every parent; not in MERGE_ALLOW):\n${unlisted.join('\n')}`);
   assert.equal(stale.join('\n'), '', `🔴 stale MERGE_ALLOW entr(ies) — no longer a resolution edit:\n${stale.join('\n')}`);
 });
+
+// S2 SBS method (A), advisor 11-09: the side-by-side harness renders the SDK checkout with TWO stated injections — runtime mode 'native'
+// (applied per page by review/capp-sbs/sbs.mjs) and the stand-in pay binding (review/capp-sbs/standin-paysdk.mjs). Both live ONLY in
+// the harness: no tracked code file outside review/ carries the stand-in or names the harness, and the packaged bundle (web AND
+// native, every flag) carries neither; the web bundle's runtime says 'web' (the injection is never packaged). The marker is built
+// here, never written whole, so this file cannot match itself.
+test('S2 SBS: the stand-in pay binding and the native-mode injection live ONLY in review/capp-sbs — no production file, no packaged bundle', () => {
+  const MARK = ['SBS', 'STANDIN', 'PAYSDK'].join('-'), HARNESS = ['capp', 'sbs/'].join('-');
+  const standin = readFileSync(join(ROOT, 'review/capp-sbs/standin-paysdk.mjs'), 'utf8'), sbs = readFileSync(join(ROOT, 'review/capp-sbs/sbs.mjs'), 'utf8');
+  assert.ok(standin.includes(MARK), '🔴 premise: the stand-in carries its marker (else this guard is vacuous)');
+  assert.ok(sbs.includes(`'"mode":"native"'`), '🔴 premise: the native-mode injection is the harness\'s');
+  const code = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8' }).split('\0')
+    .filter((f) => f && !f.startsWith('review/') && /\.(m?js|cjs|html|json)$/.test(f) && f !== 'customer-app/capp-guards.test.mjs' && existsSync(join(ROOT, f)));
+  assert.ok(code.length > 100 && code.includes('customer-app/capp-ui.js'), `🔴 premise: the scan reads the tree (${code.length} files)`);
+  const leaks = code.filter((f) => { const s = readFileSync(join(ROOT, f), 'utf8'); return s.includes(MARK) || s.includes(HARNESS); });
+  assert.deepEqual(leaks, [], `🔴 SBS-1: a production/test file carries the stand-in or names the harness:\n${leaks.join('\n')}`);
+  const P = createRequire(import.meta.url)('../platform/native/package-capp.js');
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
+  for (const target of P.TARGETS) {
+    const B = P.build({ sha: head, target, env: 'production', flags: [...P.FLAGS] });
+    const bad = [...B.files].filter(([, buf]) => { const s = Buffer.from(buf).toString('latin1'); return s.includes(MARK) || s.includes(HARNESS); }).map(([f]) => f);
+    assert.deepEqual(bad, [], `🔴 SBS-2: the packaged ${target} bundle carries the stand-in / the harness: ${bad.join(', ')}`);
+    const rt = {}; new Function('self', B.files.get('capp-runtime.js').toString('utf8'))(rt);
+    assert.equal(rt.CAPP_RUNTIME && rt.CAPP_RUNTIME.mode, target, `🔴 SBS-3: the packaged ${target} runtime says its own mode (no injected mode)`);
+  }
+});

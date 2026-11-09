@@ -13,6 +13,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import * as SDKF from '../../customer-app/test/fake-sdk-checkout.mjs';
+import * as PAYF from '../../customer-app/test/fake-sdk-pay.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 // the harness's injected runtime field (ruling (A)) — mirrors 3a's APPROVED contract: GET …/getRestaurantDirectory, no query; ETag /
@@ -217,3 +219,72 @@ export function memberExtra({ receiptDelay = 0, active = false } = {}) {
     return null;
   };
 }
+
+// ── S2 (sdkPay): the SDK checkout + the order's payment view (advisor 11-09, SBS method (A)) ──
+// Every body is built by the STRICT test fakes (customer-app/test/fake-sdk-checkout.mjs = CONTRACT-sdk-checkout r3/r3b; fake-sdk-pay.mjs
+// = CONTRACT-sdk-customer r4 payViewOf) — exact keys and types, never laxer than the server. The order_tracking node is the REAL writer's
+// (create-order-build.buildCreateOrderUpdates, as capp-s7a2's trackingRecordOf), on the status path index.js writes. Both RTDB nodes are
+// served as the REST stream does: text/event-stream, ONE `put` at path "/" (the connection then ends; EventSource reconnects and
+// receives the same snapshot — same seq, so the view is unchanged).
+const FN_REQ = createRequire(path.join(ROOT, 'xpizza-functions/x.js'));
+const S2_TOKEN = 'tok_sbsS2order01';
+const sse = (data) => ({ status: 200, body: `event: put\ndata: ${JSON.stringify({ path: '/', data })}\n\n`, type: 'text/event-stream', headers: [{ name: 'Cache-Control', value: 'no-cache' }] });
+function trackingNode(status) {
+  const { buildCreateOrderUpdates } = FN_REQ('./create-order-build'), { orderBreakdownCents } = FN_REQ('./order-money');
+  const fields = { customer_name: 'Ana', customer_phone: '96123344', customer_email: 'ana.perez@gmail.com', notes: '', pickup_time: 'standard', items_text: '1x Plato',
+    payment_method: 'online', address_detected: 'Col. Jardines del Valle, SPS', address_details: 'Portón negro', maps_link: 'm', waze_link: 'w', items: [{ name: 'Plato', qty: 1 }] };
+  const u = buildCreateOrderUpdates({ orderId: 'LMS-SBS-1', orderType: 'delivery', now: nowMs(), trackingToken: S2_TOKEN, total: 585, lat: 15.52, lng: -88.04, fields,
+    hubSnap: { hub_lat: 15.5, hub_lng: -88.0, restaurant_name: 'La Musa', restaurant_phone: '+504' }, restaurantId: 'la_musa', priceBreakdown: orderBreakdownCents(585, 'la_musa'),
+    facturaPriced: { items: [] }, cashTenderedCents: null, freeOrder: false, rewardStamp: {} });
+  const rec = u[`order_tracking/${S2_TOKEN}`]; if (!rec || rec.status !== 'new') throw new Error('S2 fixture: the writer wrote no tracking node');
+  return { ...rec, status };   // the status path index.js writes
+}
+// the A–G views — EXACTLY capp-pay-adjust.test.mjs's (which copy MOCKUP-capp-S2-adjustment r3's data)
+const S2_CARD = { brand: 'visa', last4: '4242' };
+const S2_EXP = 1762564980000;
+const consentOf = (outcome) => ({ adjustment_id: 'adj-2', outcome, old_total_cents: 58500, new_total_cents: 62500, delta_cents: 4000, expires_at: S2_EXP, changes: [PAYF.line('line_added', 'Agua Pura 600 ml', 4000)] });
+export const S2_VIEWS = {
+  plain: () => PAYF.payView({ total_cents: 58500, card: S2_CARD }),
+  A: () => PAYF.payView({ total_cents: 52000, revision: 1, card: S2_CARD, notice: { kind: 'decrease', revision: 1, old_total_cents: 58500, new_total_cents: 52000, changes: [PAYF.line('line_unavailable', 'Pan de ajo', -6500)] } }),
+  C: () => PAYF.payView({ total_cents: 58500, card: S2_CARD, consent: consentOf('pending') }),
+  D: () => PAYF.payView({ total_cents: 62500, card: S2_CARD, consent: consentOf('accepted') }),
+  E: () => PAYF.payView({ total_cents: 58500, card: S2_CARD, consent: consentOf('action_required') }),
+  F: () => PAYF.payView({ total_cents: 58500, card: S2_CARD, consent: consentOf('expired') }),
+  G: () => PAYF.payView({ total_cents: 58500, card: S2_CARD, consent: consentOf('declined') }),
+};
+// opts: { cards: [listCards rows], available: bool, place: <outcome> | 'slow', decline: bucket, view: <S2_VIEWS key> (default plain; null = no node), status: tracking status }
+export function s2Extra(opts = {}) {
+  const cards = opts.cards || [{ card_id: 'c_visa', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false }];
+  const viewOf = () => (opts.view === null ? null : S2_VIEWS[opts.view || 'plain']());   // an SDK order's node exists (plain) unless a scene says none
+  const placed = new Map();   // order_id → the outcome served (placeSdkStatus answers the same)
+  const respOf = (id, att) => {
+    const o = opts.place || 'placed';
+    if (o === 'placed') return SDKF.placeResp('placed', { order_id: id, tracking_token: S2_TOKEN, card: S2_CARD });
+    if (o === 'declined') return SDKF.placeResp('declined', { order_id: id, attempt_id: att, decline: opts.decline || 'retryable', pay_deadline_at: nowMs() + 10 * 60e3 });
+    if (o === 'under_review') return SDKF.placeResp('under_review', { order_id: id });
+    throw new Error(`S2 fixture: no placement outcome ${o}`);
+  };
+  return (req, u) => {
+    if (u.host.endsWith('firebaseio.com')) {
+      if (u.pathname === `/order_tracking/${S2_TOKEN}.json`) return sse(trackingNode(opts.status || 'preparing'));
+      if (u.pathname === `/order_tracking/${S2_TOKEN}/display_number.json`) return json(4833);
+      if (u.pathname === `/order_pay_view/${S2_TOKEN}.json`) return sse(viewOf());
+      return null;
+    }
+    if (!u.host.endsWith('cloudfunctions.net')) return null;
+    const ep = u.pathname.split('/').pop();
+    if (ep === 'listCards' && req.method === 'GET') return json(SDKF.listCards(cards));
+    if (ep === 'sdkPayStatus' && req.method === 'GET') return json(SDKF.sdkPayStatus(opts.available !== false, opts.available === false ? 300 : 0));
+    if (ep === 'placeSdkOrder' && req.method === 'POST') {
+      let b = null; try { b = JSON.parse(req.postData || 'null'); } catch (_) { b = null; }
+      if (!b || typeof b.order_id !== 'string' || typeof b.attempt_id !== 'string' || !b.card) return null;   // not the client's body ⇒ unmapped (fails the run)
+      if (opts.place === 'slow') return { ...json(SDKF.placeResp('bank_pending', { order_id: b.order_id, attempt_id: b.attempt_id })), delay: 60000 };   // frame 4: still answering at the shot
+      const r = respOf(b.order_id, b.attempt_id); placed.set(b.order_id, r); return json(r);
+    }
+    if (ep === 'placeSdkStatus' && req.method === 'GET') { const id = u.searchParams.get('order_id'); const r = placed.get(id); return r ? json(SDKF.placeResp(r.outcome, Object.fromEntries(Object.entries(r).filter(([k]) => k !== 'outcome' && k !== 'adjust_grant')), { replay: true })) : null; }
+    if (ep === 'getPayAdjust' && req.method === 'GET') { const v = viewOf(); return v ? json({ view: v, server_now: S2_EXP - 180000 }) : null; }
+    return null;
+  };
+}
+// two extras in order (a member's + the S2 surface)
+export const chainExtra = (...fs) => (req, u) => { for (const f of fs) { const x = f && f(req, u); if (x) return x; } return null; };
