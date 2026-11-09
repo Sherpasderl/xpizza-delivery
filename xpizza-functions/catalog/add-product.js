@@ -197,11 +197,10 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
     }
     // S1c: with minting on, the pricing key is a fresh opaque token (the id is still today's) and the server records it as a
     // frozen key, so nothing downstream needs a new rule. It never equals an active, saved, same-batch, extra, frozen or
-    // reserved key; three collisions in a row refuse (retryable) rather than reuse one.
+    // reserved key: ONE draw, and a collision refuses (retryable) rather than reuse one (codex S1c r1 P2-5).
     if (mint) {
       const used = (k) => activeKeys.has(k) || frozenKeys.has(k) || storedByKey.has(k) || mintedNow.has(k) || mintExtraKeys.has(k) || (mint.reserved && mint.reserved.has(k));
-      let drawn = null;
-      for (let i = 0; i < 3 && drawn === null; i++) { const k = mint.newKey(); if (!used(k)) drawn = k; }
+      const k = mint.newKey(); const drawn = used(k) ? null : k;
       if (drawn === null) refuse('mint_unavailable', 'could not allocate a new product identifier — try again', { status: 503, ref: item.ref, field: 'name' });
       key = drawn; mintedNow.add(key);
       source.frozen_keys = { ...(isObj(source.frozen_keys) ? source.frozen_keys : {}), [String(id)]: key };

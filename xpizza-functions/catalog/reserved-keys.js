@@ -6,14 +6,14 @@
 //   { v: 1, keys: { <b64url(key)>: { dish?: <first version>, extra?: <first version> } } }
 // Add-only: a union never removes or rewrites an entry. The key codec is the identity registry's own, so one key has one
 // spelling everywhere. A stored doc that does not have this exact shape is refused, never read as empty — an unread set is
-// not an empty one. Past the Firestore doc limit the set refuses (503) rather than silently drop a key. Pure.
+// not an empty one. Past a conservative entry cap the set refuses (503) rather than silently drop a key. Pure.
 // ---------------------------------------------------------------------------
 const { encodeKey } = require('./identity-registry');
 
 const KINDS = ['dish', 'extra'];
-// Firestore's doc limit is 1 MiB including the doc name and per-field overhead; the JSON length is a close upper bound for
-// a map of short strings, and the margin covers the rest.
-const RESERVED_LIMIT_BYTES = 1048576 - 16384;
+// codex S1c r1 P2-1 (advisor): a conservative ENTRY cap, far below Firestore's 1 MiB doc limit for any realistic key length
+// (real menus hold ~100 keys). No size arithmetic.
+const RESERVED_MAX_ENTRIES = 5000;
 
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const isPlainObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -61,7 +61,7 @@ function reservedKeySet(doc) {
 }
 
 function assertWithinLimit(doc) {
-  if (Buffer.byteLength(JSON.stringify(doc), 'utf8') > RESERVED_LIMIT_BYTES) {
+  if (Object.keys((doc && doc.keys) || {}).length > RESERVED_MAX_ENTRIES) {
     const e = new Error('reserved_keys_full'); e.status = 503; throw e;
   }
 }
@@ -86,6 +86,19 @@ function renameConflicts({ items, activeItems, reserved }) {
   return out;
 }
 
+// codex S1c r1 P2-3 (advisor): a NAME in the minted-key syntax is refused — a new product's, and a renamed one's (its own key
+// included) — always, whatever the switches say. An untouched existing name is never judged. Returns [{ key | ref, field }].
+function opaqueNameProblems({ items, activeItems }) {
+  const wasName = new Map((activeItems || []).filter((it) => isPlainObj(it) && isPlainObj(it.display) && it.display.id != null).map((it) => [String(it.display.id), it.display.name]));
+  const out = [];
+  for (const it of items || []) {
+    if (!isPlainObj(it) || !isPlainObj(it.display) || typeof it.display.name !== 'string') continue;
+    const untouched = it.display.id != null && wasName.has(String(it.display.id)) && wasName.get(String(it.display.id)) === it.display.name;
+    if (!untouched && OPAQUE_SYNTAX.test(it.display.name.trim())) out.push(own(it, 'ref') ? { ref: it.ref, field: 'name' } : { key: it.key, field: 'name' });
+  }
+  return out;
+}
+
 const reservedRefOf = (db, rid) => db.collection('restaurants').doc(rid).collection('meta').doc('reserved_keys');
 
-module.exports = { renameConflicts, OPAQUE_SYNTAX, reservedRefOf, emptyReserved, readReserved, unionReserved, reservedKeySet, assertWithinLimit, RESERVED_LIMIT_BYTES };
+module.exports = { renameConflicts, OPAQUE_SYNTAX, reservedRefOf, emptyReserved, readReserved, unionReserved, reservedKeySet, assertWithinLimit, RESERVED_MAX_ENTRIES, opaqueNameProblems };

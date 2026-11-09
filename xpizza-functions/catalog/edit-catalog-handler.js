@@ -111,7 +111,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   // SERVER ALLOCATION (§2): tmp references become keys/ids here, once; the high-water mark advances in the
   // same commit as the draft below.
   let candidate = canonicalize(FK.withFrozenKeys(withServerKeyMode(source, keyModeOwn.key_mode), fkOwn.frozen_keys)); if (textEdit) { candidate = canonicalize(AP.rederiveOptionNames(candidate)); const rec = FK.recordRenames({ draft: candidate, live, stored, textEdit }); if (!rec.ok) return reply(409, { error: rec.error, key: rec.key }); candidate = canonicalize(FK.withFrozenKeys(candidate, rec.frozen_keys)); }   // S1a: with the switch on, a group renames as one unit, new text is capped, and every rename is recorded under its kept key
-  let hwmPlan = null;
+  let hwmPlan = null; { const op = RK.opaqueNameProblems({ items: candidate.items, activeItems: live.items })[0]; if (op) return reply(400, { error: 'name_previously_used', field: 'name', ...op }); }   // S1c (codex r1): never a name in the minted-key syntax
   let refOfKey = {};          // fresh additions: allocated key → the tmp reference the portal still holds
   if (hasAdditions) {
     if (!addProduct) return reply(503, { error: 'add_product_unavailable', retryable: false });
