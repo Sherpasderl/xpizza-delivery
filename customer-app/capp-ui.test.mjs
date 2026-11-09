@@ -3159,3 +3159,30 @@ test('S2-checkout resume (advisor condition): a live SDK attempt on this device 
   assert.equal(b2.srv.of('placeSdkOrder').length, 0, '🔴 SDKUI-resume: no placement');
   assert.equal(b2.text('#layer .sheet.proc h2'), 'Procesando tu pago…', '🔴 SDKUI-resume: the processing sheet');
 });
+
+test('S2-checkout 4 (advisor 11-08): the pending poll backs off — every 3 s for the first minute (20 polls), then every 10 s; never a second placement', async () => {
+  const pend = (_, url) => SDK_R('bank_pending', { order_id: new URL(url).searchParams.get('order_id'), attempt_id: 'x'.repeat(16) });
+  const b = bootSdk({ script: { placeSdkOrder: [(body) => SDK_R('bank_pending', { order_id: body.order_id, attempt_id: 'x'.repeat(16) })], placeSdkStatus: [pend] } });
+  await sdkCheckout(b); await sdkPlace(b);
+  const seen = () => [...b.timers.ms.values()].filter((d) => d === 3000 || d === 10000);
+  for (let i = 0; i < 24; i++) { b.timers.flush(); await settle(); }
+  const d = seen();
+  assert.deepEqual(d.slice(0, 20), Array(20).fill(3000), '🔴 SDKUI-poll: 3 s for the first 20 polls');
+  assert.ok(d.length > 21 && d.slice(21).every((x) => x === 10000), `🔴 SDKUI-poll: then 10 s (${d.slice(18).join(',')})`);
+  assert.equal(b.srv.of('placeSdkOrder').length, 1, 'never a second placement');
+});
+
+test('S2-checkout 4: a settled outcome restarts the backoff — after a slow pending attempt is declined, the next attempt polls at 3 s again', async () => {
+  let mode = 'pending';
+  const st = (_, url) => { const id = new URL(url).searchParams.get('order_id'); return mode === 'pending' ? SDK_R('bank_pending', { order_id: id, attempt_id: 'x'.repeat(16) }) : SDK_R('declined', { order_id: id, attempt_id: 'x'.repeat(16), decline: 'retryable', pay_deadline_at: NOON().getTime() + 600e3 }); };
+  const b = bootSdk({ script: { placeSdkOrder: [(body) => SDK_R('bank_pending', { order_id: body.order_id, attempt_id: 'x'.repeat(16) })], placeSdkStatus: [st] } });
+  await sdkCheckout(b); await sdkPlace(b);
+  for (let i = 0; i < 22; i++) { b.timers.flush(); await settle(); }
+  mode = 'declined'; b.timers.flush(); await settle();
+  assert.equal(b.text('#layer .errsheet h2'), 'Tu banco no autorizó el pago', 'premise: declined after a slow pending');
+  mode = 'pending'; b.timers.ms.clear();
+  await b.click('#layer [data-act="decl-other_card"]'); await b.click('#layer [data-act="paypick"][data-card="c_v"]');
+  await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]'); await settle();
+  const d = [...b.timers.ms.values()].filter((x) => x === 3000 || x === 10000);
+  assert.equal(d[0], 3000, `🔴 SDKUI-poll: the new attempt polls at 3 s (${d.join(',')})`);
+});

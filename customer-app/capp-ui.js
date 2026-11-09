@@ -43,6 +43,8 @@
   const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
   // S2-checkout: the status poll while the bank answers / a review is open (the contract names no client interval — proposed values)
   const POLL_SDK_MS = 3000, POLL_SDK_REVIEW_MS = 15000;
+  // advisor 11-08: a long bank delay never hammers the server — after the first minute of pending (20 polls at 3 s) every 10 s
+  const POLL_SDK_SLOW_MS = 10000, POLL_SDK_FAST_N = 20;
   const FULL_CART = 'Tu carrito está lleno. Empezá otro carrito con el resto de tu pedido.';   // owner-approved 2026-10-24 (cart_text_too_long)
 
   // ── icons (the prototype's, one stroke, one weight) ──
@@ -1759,7 +1761,7 @@
       PCARD = PCARD || sdkMod('CappPayCard', './capp-pay-card.js'); PCO = PCO || sdkMod('CappPayCheckout', './capp-pay-checkout.js');
       return !!(PCARD && PCO);
     }
-    const SDK = { cards: null, avail: null, sel: null, loading: false, loaded: false, decl: null, declId: null, proc: null, pollT: null, save: true, form: {}, replaces: null, back: null };
+    const SDK = { cards: null, avail: null, sel: null, loading: false, loaded: false, decl: null, declId: null, proc: null, pollT: null, pollN: 0, save: true, form: {}, replaces: null, back: null };
     const sdkCtx = () => ({ guest: !member(), cashAllowed: !cardOnlyGuest() });
     const sdkHost = () => (opts.paySdk && opts.paySdk.fieldHost && typeof opts.paySdk.fieldHost.input === 'function' ? opts.paySdk.fieldHost : null);
     const sdkAuth = () => ({ checkoutTicket: cardOnlyGuest() ? S.ticket : undefined });
@@ -1829,8 +1831,9 @@
     function onSdkOutcome(out) {
       const k = out && out.kind;
       sdkStopPoll();
-      if (k === 'sdk_pending') { sdkProc(SDK.proc && SDK.proc.review); sdkPollLater(out.order_id, POLL_SDK_MS); return; }
+      if (k === 'sdk_pending') { sdkProc(SDK.proc && SDK.proc.review); sdkPollLater(out.order_id, SDK.pollN++ < POLL_SDK_FAST_N ? POLL_SDK_MS : POLL_SDK_SLOW_MS); return; }
       if (k === 'sdk_review') { sdkProc(true); sdkPollLater(out.order_id, POLL_SDK_REVIEW_MS); return; }
+      SDK.pollN = 0;   // any settled outcome restarts the backoff
       if (S.layerKind === 'sdkproc') { S.layerKind = null; renderLayer(); }
       if (k === 'placed') { SDK.replaces = null; onOutcome(out); return; }
       if (k === 'sdk_declined') {
