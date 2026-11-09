@@ -13,7 +13,7 @@ const { execFileSync } = require('child_process');
 const { parse } = require('acorn');
 const { BASE, HUNKS, FILES, unapplyKeyModeModule } = require('./tools/keymode-module-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));   // S1a's newer layer is peeled first
+const read = (f) => require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/pp-module-inverse').unapplyPpModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')));   // S1a's newer layer is peeled first; F-1 (portal line, newer still — train asm4) before it
 
 // ── 2 ──
 const BRAND = /'la_musa'|'x_pizza'|"la_musa"|"x_pizza"/;
