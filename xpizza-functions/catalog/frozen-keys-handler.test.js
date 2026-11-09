@@ -32,6 +32,7 @@ function stub(rid, sourceDoc, liveSource = null, { docs: extra = {}, race = {} }
   const state = { docs, writes: [], get source() { return docs.get(SRC); } };
   const live = liveSource || buildSourceFromCode(rid);   // the published version (a renamed one where a cell says so)
   const fail = (code, m) => { const e = new Error(m); e.code = code; return e; };
+  let seq = 0;
   const commit = async (ops) => {
     for (const op of ops) {
       const cur = docs.get(op.path);
@@ -40,12 +41,13 @@ function stub(rid, sourceDoc, liveSource = null, { docs: extra = {}, race = {} }
       if (op.path === SRC && !(op.pre && op.pre.lastUpdateTime !== undefined)) throw fail(9, 'FAILED_PRECONDITION: an unconditional draft write');
       if (op.pre && op.pre.lastUpdateTime !== undefined && op.pre.lastUpdateTime !== cur.updateTime) throw fail(9, `FAILED_PRECONDITION ${op.path}`);
     }
+    const rev = T1.replace(/0{6}Z$/, `${String(seq++).padStart(6, '0')}Z`);   // a FRESH revision per commit, shared by its writes (first = T1)
     for (const op of ops) {
       const cur = docs.get(op.path);
-      docs.set(op.path, { data: op.kind === 'create' ? clone(op.data) : { ...cur.data, ...clone(op.data) }, updateTime: T1 });
+      docs.set(op.path, { data: op.kind === 'create' ? clone(op.data) : { ...cur.data, ...clone(op.data) }, updateTime: rev });
       state.writes.push(op.path);
     }
-    return ops.map(() => ({ writeTime: T1 }));
+    return ops.map(() => ({ writeTime: rev }));
   };
   const doc = (path) => ({
     path,
@@ -212,6 +214,24 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     ok('switch ON: a new product whose allocated key would be a retired key is refused (no own-key exemption)');
   }
 
+  // ── a write carrying a revision that a LATER commit superseded is refused (codex S1a r4: every commit has its own revision) ──
+  {
+    SWITCH.enabled = false;
+    const db = stub(RID, seed);
+    const price = (src, p) => { const s = clone(src); itemOf(s, KEY).price = p; itemOf(s, KEY).display.price = p; return s; };
+    const first = await save(db, RID, price(seed, 341));
+    assert.strictEqual(first.status, 200, 'premise: the first save');
+    const r1 = db.state.source.updateTime;
+    const second = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt, addProduct: addProductOf(db, 'name') }, { restaurantId: RID, source: price(seed, 342), baseSourceUpdateTime: r1 }, {});
+    assert.strictEqual(second.status, 200, 'premise: a second save on the first one\'s revision');
+    assert.notStrictEqual(db.state.source.updateTime, r1, 'premise: the second commit has its own revision');
+    const before = clone(db.state.source);
+    const stale = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt, addProduct: addProductOf(db, 'name') }, { restaurantId: RID, source: price(seed, 343), baseSourceUpdateTime: r1 }, {});
+    assert.deepStrictEqual([stale.status, stale.body.error], [409, 'stale_edit'], `HX-STALE-REVISION a save on a superseded revision is refused (${JSON.stringify(stale.body).slice(0, 160)})`);
+    assert.deepStrictEqual(db.state.source, before, 'HX-STALE-REVISION the draft keeps the second save');
+    ok('a save carrying a revision a later commit superseded is refused; the later draft stands');
+  }
+
   // ── an addition commits the draft and the id high-water mark TOGETHER (codex S1a r3): a mark created or moved by another save
   //    between the read and the commit refuses the whole batch — the draft is left exactly as it was ──
   {
@@ -232,7 +252,12 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     const ctl = stub(RID, seed);
     const c = await save(ctl, RID, withAddition());
     assert.strictEqual(c.status, 200, `HX-HWM-PERSIST the addition saves (${JSON.stringify(c.body).slice(0, 160)})`);
-    assert.ok(Number.isInteger(ctl.state.docs.get(HWM).data.value), 'HX-HWM-PERSIST the high-water mark is created with the draft');
+    const nextId = Math.max(...seed.items.map((i) => i.display.id).filter(Number.isInteger)) + 1;   // no mark yet ⇒ above every live id
+    const added = itemOf(ctl.state.source.data, 'Pizza Nueva');
+    assert.ok(added && added.display.id === nextId && added.display.name === 'Pizza Nueva' && added.price === 150, `HX-HWM-PERSIST the draft holds the addition under its allocated id ${nextId} (${JSON.stringify(added && added.display)})`);
+    assert.deepStrictEqual(ctl.state.docs.get(HWM).data, { value: nextId }, 'HX-HWM-PERSIST the mark is created at exactly the allocated id');
+    assert.deepStrictEqual([...ctl.state.writes].sort(), [HWM, `restaurants/${RID}/meta/source`].sort(), 'HX-HWM-PERSIST both documents written, in one commit');
+    assert.strictEqual(ctl.state.docs.get(HWM).updateTime, ctl.state.source.updateTime, 'HX-HWM-PERSIST one batch: one revision');
     ok('an addition\'s draft + high-water mark commit atomically: a concurrent create or move refuses the save and leaves the draft untouched');
   }
 
