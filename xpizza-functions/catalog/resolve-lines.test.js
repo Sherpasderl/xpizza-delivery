@@ -71,13 +71,21 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
     ['x_pizza', XP, { item_key: '', qty: 1 }, 'RL-KEY-EMPTY-ALONE an empty item_key with no legacy field'],
     ['x_pizza', XP, { item_key: 'Carnivora', name: 'Margherita', qty: 1 }, 'RL-DISAGREE item_key and name disagree'],
     ['x_pizza', XP, { item_key: 'Carnivora', name: ['Carnivora'], qty: 1 }, 'RL-DISAGREE-TYPE a non-string legacy field beside item_key'],
+    // codex S1b r1 P2-1: an explicit null is a malformed field, never an absent one (no live writer sends one)
+    ['x_pizza', XP, { name: null, qty: 1 }, 'RL-NULL-NAME a null name on a name-keyed menu'],
+    ['la_musa', LM, { id: null, name: 'Sichuan Spicy Wonton', qty: 1 }, 'RL-NULL-ID a null id on an id-keyed menu'],
+    ['x_pizza', XP, { name: 'Carnivora', item_key: null, qty: 1 }, 'RL-NULL-KEY a null item_key beside a good name'],
   ];
   for (const [rid, t, line, label] of bad) {
     const b = body([line]);
     assert.deepStrictEqual(resolveLines(rid, b, t), { ok: false, code: 'invalid_line', at: 'items', index: 0 }, label);
     assert.strictEqual(stampOf(b.items[0]), undefined, `${label}: never stamped`);
   }
-  ok('a non-string or disagreeing field refuses invalid_line, never stamped');
+  // the null rule reads only the mode's own field and item_key: a null in the OTHER identity field changes nothing
+  const nx = body([{ name: 'Carnivora', id: null, qty: 1 }]);
+  assert.deepStrictEqual(resolveLines('x_pizza', nx, XP), { ok: true }, 'RL-NULL-OTHER a null id on a name-keyed menu is not judged');
+  assert.strictEqual(stampOf(nx.items[0]), 'Carnivora', 'RL-NULL-OTHER stamped with its name');
+  ok('a non-string, null or disagreeing field refuses invalid_line, never stamped');
 }
 
 // ── a cart the stage does not judge passes through untouched (validateOrderPayload keeps today's errors) ──

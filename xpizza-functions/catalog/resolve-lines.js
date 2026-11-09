@@ -20,8 +20,8 @@ const MENU_CHANGED_DETAIL = 'El menú se actualizó, recargá la página';
 // One line's resolution: { key } or { code }. `field` is the legacy field ('name' | 'id'); `itemKeyField` names the line's
 // item_key property (always 'item_key').
 function resolveOne(line, field, menu) {
-  const hasKey = own(line, 'item_key') && line.item_key !== undefined && line.item_key !== null;
-  const hasLegacy = own(line, field) && line[field] !== undefined && line[field] !== null;
+  const hasKey = own(line, 'item_key') && line.item_key !== undefined;   // an explicit null is malformed, not absent
+  const hasLegacy = own(line, field) && line[field] !== undefined;
   if (hasKey && (typeof line.item_key !== 'string' || !line.item_key)) return { code: 'invalid_line' };
   if (hasLegacy && typeof line[field] !== 'string') return { code: 'invalid_line' };
   if (hasKey && hasLegacy && line.item_key !== line[field]) return { code: 'invalid_line' };
