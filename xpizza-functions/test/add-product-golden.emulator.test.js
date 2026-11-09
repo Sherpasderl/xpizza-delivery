@@ -14,6 +14,7 @@
 //     brand's renderer contract); both are code-derived, no read;
 //   • (codex PB-1 r3 P2-2) a successful publish whose candidate has a dish↔extra key overlap (x_pizza's existing Pepperoni /
 //     Prosciutto) reads exactly those keys' docs in the active version to prove the overlap is not new;
+//   • (S0/S1a) getEditableCatalog's source echoes the restaurant's server-owned key_mode: asserted equal to its stored mode, then dropped;
 //   • (PLAN 4 GATED G1) getEditableCatalog's source records + structure carry the REVIEWED data file's rows (reward_icon /
 //     extras_policy / badge_priority): each value asserted equal to its row, then dropped;
 //   Anything else — a status, a body field, a write, a missing or extra read of another kind — fails.
@@ -180,6 +181,17 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
       // PLAN 4 GATED (G1, declared): the bootstrap source carries the REVIEWED data file's rows (catalog/menu-structure-rows.js:
       // reward_icon / extras_policy …). Each authored field the base record lacked is asserted EQUAL to its reviewed row, then
       // dropped; a field the base already carried stays compared (the rows are additive). Nothing else is excused.
+      // S0/S1a (declared): the editable draft echoes the restaurant's server-owned key mode (withServerKeyMode). Its VALUE is
+      // asserted equal to the restaurant's STORED mode, then dropped — only where the base body lacked it. No golden re-baseline.
+      if (c.status === 200 && body.source && typeof body.source === 'object' && Object.prototype.hasOwnProperty.call(body.source, 'key_mode')
+        && !Object.prototype.hasOwnProperty.call(((g.body || {}).source || {}), 'key_mode')) {
+        const rid = c.name.split(':')[0];
+        const stored = ((await realDb.collection('restaurants').doc(rid).get()).data() || {}).pricing_key_mode;
+        assert.ok(stored === 'name' || stored === 'id', `premise: ${rid} has a stored key mode`);
+        assert.strictEqual(body.source.key_mode, stored, `${c.name}: source.key_mode is the restaurant's stored mode (S0 server-owned)`);
+        body.source = { ...body.source }; delete body.source.key_mode;
+        declared.body.add(`${c.name}: source.key_mode`);
+      }
       if (c.status === 200 && body.source && typeof body.source === 'object') {
         const rid = c.name.split(':')[0];
         const rows = (require('../tools/migrations/2026-10-26-menu-structure.json').restaurants || {})[rid] || {};
