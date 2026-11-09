@@ -35,12 +35,16 @@
   "pausas.js",
   "photo-contract-fake.mjs",
   "photo-flow.test.mjs",
+  "photo-flow.test.mjs",
+  "photo-flow.test.mjs",
   "photo-logic.js",
   "photo-logic.test.mjs",
   "photo.js",
   "photos-b-fold.mjs",
   "portal-logic.js",
   "portal-look.test.mjs",
+  "portal-site-freeze.golden.json",
+  "portal-site-freeze.golden.json",
   "portal-site-freeze.golden.json",
   "portal-wiring.test.mjs",
   "portalui-guards.t1-hunks.json",
@@ -104,8 +108,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "e1dcf712c02da45bb446ccd00a7a4093b990716b19e7491e679a5a928f490387",
-   "bytes": 99696
+   "sha256": "fb989f12f36f42a87e55d114c04dbd90c3e92b022c2cd5d2544da5c5197a7d76",
+   "bytes": 100097
   }
  },
  "diff_aid": {
@@ -2124,6 +2128,12 @@
     ".phshh",
     "background",
     "linear-gradient(to bottom,transparent 50%,rgba(0,0,0,.25) 100%)"
+   ],
+   [
+    "",
+    ".phwait",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
