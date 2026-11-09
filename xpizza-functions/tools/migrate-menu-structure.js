@@ -19,6 +19,8 @@
 // Run (dry run, the default — writes nothing):   node tools/migrate-menu-structure.js --project xpizza-delivery
 // Write (the OWNER, or the advisor with the owner's approval — never an executor):  … --project xpizza-delivery --write
 const { readSource, validateSource, sourceRefOf, encodeUpdateTime, canonicalize } = require('../catalog/source-store');
+const { stampPlatformPending } = require('../catalog/platform-pending');   // F-1 (2026-11-07): Sherpa-written draft fields are stamped
+const { candidateSource } = require('../catalog/candidate-validate');
 
 const MAX_TRIES = 3;
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -49,13 +51,27 @@ function planMigration(rid, source, rows) {
   return { source: next, added, preserved, missing };
 }
 
+// The LIVE source (what is serving), for the platform-pending stamp: fields live already carries are not stamped. null when
+// nothing is published (every added field is then stamped).
+async function readLiveSource(db, rid) {
+  const { getActiveVersionId } = require('../catalog/catalog-firestore');
+  const { previewVersion } = require('../catalog/catalog-publish');
+  const versionId = await getActiveVersionId(db, rid);
+  if (versionId == null) return null;
+  const p = await previewVersion(db, rid, versionId);
+  return candidateSource(rid, { items: p.items, extras: p.extras, structure: p.structure });
+}
+
 // One restaurant: read → plan → (write in a revision-checked transaction). Re-plans on a concurrent save.
-async function migrateRestaurant(db, rid, rows, { write = false, log = () => {} } = {}) {
+// F-1: the SAME transaction stamps the added fields as PLATFORM-PENDING (catalog/platform-pending), so a merchant reset cannot
+// discard them while live does not carry them yet.
+async function migrateRestaurant(db, rid, rows, { write = false, log = () => {}, readLive = readLiveSource } = {}) {
   for (let attempt = 1; attempt <= MAX_TRIES; attempt += 1) {
     const { source, revision } = await readSource(db, rid);
     const plan = planMigration(rid, source, rows);
     const report = { rid, revision, added: plan.added, preserved: plan.preserved, missing: plan.missing, written: false, attempt };
     if (!plan.added.length || !write) return report;
+    const live = await readLive(db, rid);
     try {
       await db.runTransaction(async (tx) => {
         const now = await tx.get(sourceRefOf(db, rid));
@@ -65,6 +81,8 @@ async function migrateRestaurant(db, rid, rows, { write = false, log = () => {} 
           e.code = 'migrate_menu_structure_moved';
           throw e;
         }
+        // reads before writes (Firestore): the stamp reads its doc, then both writes land in this one transaction
+        report.stamped = (await stampPlatformPending(tx, { db, rid, by: 'migrate-menu-structure', fields: plan.added, live })).stamped;
         tx.set(sourceRefOf(db, rid), canonicalize(plan.source));
       });
       report.written = true;
@@ -135,17 +153,30 @@ function assertOnlyAdded(rid, liveIn, nextIn, added) {
   if (!same(strip, liveIn)) refusePublish('publish_refused_unexpected_delta', `${rid} — the candidate differs from live beyond the ${added.length} migrated field(s)`);
 }
 
+// F-1 r2 (Codex r1 P1-1): a successful publish (or an already-current re-run) is where live comes to CARRY the stamped fields, so the
+// platform-pending stamp is resolved HERE — otherwise it outlives the publish and a LATER rollback relocks the draft. Retryable: a
+// failed cleanup never undoes the publish; re-running --publish --apply (already_current = no new version) retries it.
+async function cleanupStamp(db, rid, liveSource) {
+  try {
+    const r = await require('../catalog/platform-pending').resolvePlatformPending(db, rid, liveSource);
+    return r.cleared ? 'cleared' : (r.pending ? 'still_pending' : 'none');
+  } catch (e) {
+    return 'cleanup_failed';
+  }
+}
+
 async function publishRestaurant(db, rid, rows, { apply = false, mirror } = {}) {
   const { versionId, source, live } = await captureLiveSource(db, rid);
   const plan = planMigration(rid, source, rows);   // the SAME absent-only planner as --write; validateSource inside
   const report = { rid, liveVersion: versionId, added: plan.added, preserved: plan.preserved, missing: plan.missing, published: null, outcome: null };
-  if (!plan.added.length) { report.outcome = 'already_current'; return report; }
+  if (!plan.added.length) { report.outcome = 'already_current'; if (apply) report.stamp = await cleanupStamp(db, rid, source); return report; }
   const next = payloadOf(plan.source);
   assertOnlyAdded(rid, live, next, plan.added);   // stripped candidate vs the CAPTURED live payload (not a rebuild)
   if (!apply) { report.outcome = 'dry_run'; return report; }
   const { publishVersion } = require('../catalog/catalog-publish');
   const res = await publishVersion(db, rid, next, { mirror, expected: { activeVersionId: versionId } });   // CAS: a concurrent publish refuses
   report.published = res.versionId; report.outcome = 'published';
+  report.stamp = await cleanupStamp(db, rid, plan.source);   // live now IS the candidate
   return report;
 }
 async function publishMenuStructure(db, data, opts = {}) {
@@ -154,7 +185,7 @@ async function publishMenuStructure(db, data, opts = {}) {
   return out;
 }
 
-module.exports = { planMigration, migrateRestaurant, migrateMenuStructure, MAX_TRIES, captureLiveSource, publishRestaurant, publishMenuStructure, assertOnlyAdded };
+module.exports = { planMigration, migrateRestaurant, migrateMenuStructure, readLiveSource, MAX_TRIES, captureLiveSource, publishRestaurant, publishMenuStructure, assertOnlyAdded };
 
 if (require.main === module) {
   try { require('dotenv').config(); } catch (_) { /* devDependency */ }
@@ -180,6 +211,7 @@ if (require.main === module) {
           for (const p of r.added) console.log(`    + ${p}`);
           for (const p of r.preserved) console.log(`    = ${p.path} kept ${JSON.stringify(p.have)} (data says ${JSON.stringify(p.want)})`);
           for (const p of r.missing) console.log(`    ? ${p} — not live, skipped`);
+          if (r.stamp) console.log(`    platform-pending stamp: ${r.stamp}${r.stamp === 'cleanup_failed' ? ' — re-run --publish --apply to retry (already_current publishes nothing)' : ''}`);
         }
         // Codex r1 P1: NOT an unconditional «Volver al menú publicado» — it would discard a merchant's pending edits. The draft gets the
         // revision-checked, absent-only --write (merchant edits preserved); the reset only for a draft reviewed as disposable.
@@ -197,6 +229,7 @@ if (require.main === module) {
         for (const p of r.added) console.log(`    + ${p}`);
         for (const p of r.preserved) console.log(`    = ${p.path} kept ${JSON.stringify(p.have)} (data says ${JSON.stringify(p.want)})`);
         for (const p of r.missing) console.log(`    ? ${p} — not in the draft, skipped`);
+        if (r.written) console.log(`    stamped platform-pending (live lacks them; a merchant reset is refused until published): ${(r.stamped || []).length}`);
       }
       console.log(WRITE ? 'NEXT: the owner publishes once through the portal, then the read-only getPublicMenu verification.' : 'nothing written. --write is the owner\'s.');
       process.exit(0);

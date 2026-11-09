@@ -119,7 +119,10 @@ const D = {
     'identity-usable-check',
     // convergence §1 — the owner platform-config CLI (portal source ↔ RTDB projection; DRY RUN unless --apply):
     // requireProject({ requireFlag: true }) before argument parsing and before any client
-    'platform-config-admin'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
+    'platform-config-admin',
+    // F-1 (BRIEF-portal-stale-draft-clobber) — the owner's platform-pending stamp CLI (status / clear; DRY RUN unless --apply):
+    // strict parseArgs, then requireProject({ requireFlag: true }) before any client
+    'platform-pending'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
   [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/set-driver-enforcement-mode.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
@@ -244,6 +247,7 @@ const FOREIGN = { FIRESTORE_EMULATOR_HOST: 'evil.example:8080', FIREBASE_DATABAS
   // 3. PROD CLIs (require-project) + functions-root PROD SCRIPTS: mixed signals ⇒ refuse; no signal ⇒ unchanged
   const ARGS = {
     [F('scripts/test-ingest.js')]: ['https://us-central1-xpizza-delivery.cloudfunctions.net/ingestDriverLocation', 'UID'],
+    [F('tools/platform-pending.js')]: ['status', '--rid', 'x_pizza'],   // valid arguments, so the run reaches requireProject (not the argument refusal)
   };
   const EXTRA = { [F('seed_identity.js')]: { ULTRAMSG_INSTANCE_ID: 'instanceX' } };
   let cli = 0;

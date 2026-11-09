@@ -41,6 +41,7 @@ const owns = (uid, rids) => Object.assign({ [`member_of/${uid}`]: { brands: Obje
   ...rids.map((r) => ({ [`brand_members/${r}/owners/${uid}`]: { granted_at: 1, granted_by: 'cli:op' }, [`brands/${r}`]: legacy(r) })));
 const req = (over = {}) => ({ method: 'GET', get: (h) => (h.toLowerCase() === 'authorization' ? 'Bearer tok' : undefined), ...over });
 const asUid = (uid, extra = {}) => async () => ({ uid, ...extra });
+const { NO_STAMP } = require('../test/_no-stamp');   // F-1 r2: the fail-closed stamp read's "no stamp" (fsdb: {} no longer means that)
 
 // Brand-agnostic throughout: nothing here knows our restaurants exist.
 const TWO = {
@@ -260,7 +261,7 @@ const TWO = {
     const src = realSource(rid);
     const fs2 = mkFs(src);
     const r = await getEditableCatalogCore({
-      db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v-1788754374634', ...fs2,
+      db: {}, fsdb: NO_STAMP, authorize: asOwner, readActiveVersionId: async () => 'v-1788754374634', ...fs2,
     }, gReq(rid));
     assert.strictEqual(r.status, 200, `expected 200, got ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
     assert.deepStrictEqual(r.body.source, src, 'the owner gets the real source document');
@@ -278,7 +279,7 @@ const TWO = {
     for (const role of ['dispatcher', 'staff', undefined, null, 'admin', 'OWNER']) {
       const fs2 = mkFs(realSource('merch_a'));
       const r = await getEditableCatalogCore({
-        db: {}, fsdb: {}, authorize: async () => ({ ok: true, uid: 'u', role }), readActiveVersionId: async () => 'v', ...fs2,
+        db: {}, fsdb: NO_STAMP, authorize: async () => ({ ok: true, uid: 'u', role }), readActiveVersionId: async () => 'v', ...fs2,
       }, gReq('merch_a'));
       assert.strictEqual(r.status, 403, `role ${JSON.stringify(role)} → 403`);
       assert.strictEqual(r.body.error, 'not_owner', `role ${JSON.stringify(role)} → not_owner`);
@@ -295,7 +296,7 @@ const TWO = {
       { ok: false, status: 503, error: 'authorization_unavailable' },
     ]) {
       const fs2 = mkFs(realSource('merch_a'));
-      const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: async () => a, readActiveVersionId: async () => 'v', ...fs2 }, gReq());
+      const r = await getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize: async () => a, readActiveVersionId: async () => 'v', ...fs2 }, gReq());
       assert.strictEqual(r.status, a.status, `authorize ${a.error} → ${a.status}`);
       assert.strictEqual(r.body.error, a.error, 'with its own typed error');
       assert.deepStrictEqual(fs2.refs, [], 'and nothing read');
@@ -308,12 +309,12 @@ const TWO = {
     const broken = realSource('merch_a');
     broken.items[0].price = 0;                      // a price validateSource rejects
     const fs2 = mkFs(broken);
-    const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v', ...fs2 }, gReq());
+    const r = await getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize: asOwner, readActiveVersionId: async () => 'v', ...fs2 }, gReq());
     assert.strictEqual(r.status, 503, 'a malformed source is a 503, never a normal 200');
     assert.strictEqual(r.body.error, 'source_unavailable', 'typed');
     assert.ok(!JSON.stringify(r.body).includes('"items"'), 'and the unvalidated source is NOT returned');
     // ...and it is the REAL validator, not a stub that always passes
-    const good = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(realSource('merch_a')) }, gReq());
+    const good = await getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(realSource('merch_a')) }, gReq());
     assert.strictEqual(good.status, 200, 'non-vacuity: a VALID source still loads (the validator is not rejecting everything)');
     ok('a malformed source fails CLOSED as 503 and is never returned — validated by the real validator, on every read');
   }
@@ -321,18 +322,18 @@ const TWO = {
     // The source is validated against the AUTHORIZED rid. Validating against the document's own
     // restaurant_id would make a mis-filed document validate happily.
     const misfiled = realSource('merch_b');          // valid, but says merch_b while stored under merch_a
-    const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(misfiled) }, gReq('merch_a'));
+    const r = await getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(misfiled) }, gReq('merch_a'));
     assert.strictEqual(r.status, 503, 'a source whose restaurant_id does not match where it is stored fails closed');
     ok('the source is validated against the AUTHORIZED rid — a mis-filed document cannot self-certify');
   }
   {
     // Absent vs unreadable are different things and must not share a code.
-    const absent = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(null, { exists: false }) }, gReq());
+    const absent = await getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(null, { exists: false }) }, gReq());
     assert.strictEqual(absent.status, 404, 'no source document yet → 404');
     assert.strictEqual(absent.body.error, 'source_absent', 'typed');
-    const down = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(null, { throwOn: 'firestore down' }) }, gReq());
+    const down = await getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(null, { throwOn: 'firestore down' }) }, gReq());
     assert.strictEqual(down.status, 503, 'an unreadable source → 503');
-    const noVersion = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => { throw new Error('pointer down'); }, ...mkFs(realSource('merch_a')) }, gReq());
+    const noVersion = await getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize: asOwner, readActiveVersionId: async () => { throw new Error('pointer down'); }, ...mkFs(realSource('merch_a')) }, gReq());
     assert.strictEqual(noVersion.status, 503, 'an unreadable active-version pointer → 503');
     assert.notStrictEqual(absent.status, down.status, 'and "not there yet" is never confused with "cannot read it"');
     ok('absent (404), unreadable source (503) and unreadable pointer (503) are distinct — never conflated');
@@ -340,14 +341,14 @@ const TWO = {
   {
     // A restaurant with no published version yet is a legitimate state, not a failure: the draft exists
     // and can be shown. Only an actual read FAILURE is a 503.
-    const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => null, ...mkFs(realSource('merch_a')) }, gReq());
+    const r = await getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize: asOwner, readActiveVersionId: async () => null, ...mkFs(realSource('merch_a')) }, gReq());
     assert.strictEqual(r.status, 200, 'never-published is still readable');
     assert.strictEqual(r.body.activeVersionId, null, 'and honestly reports that nothing is live');
     ok('a restaurant with nothing published yet loads, reporting activeVersionId null rather than failing');
   }
   {
     // Read-only, and non-GET is refused.
-    const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(realSource('merch_a')) }, gReq('merch_a', { method: 'POST' }));
+    const r = await getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize: asOwner, readActiveVersionId: async () => 'v', ...mkFs(realSource('merch_a')) }, gReq('merch_a', { method: 'POST' }));
     assert.strictEqual(r.status, 405, 'non-GET is refused');
     const src = require('fs').readFileSync(require('path').join(__dirname, 'portal-reads.js'), 'utf8')
       .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
@@ -449,7 +450,7 @@ const TWO = {
       ['merch_3', false, 'a config-only merchant is not on the platform factura'],
     ]) {
       const r = await getEditableCatalogCore({
-        db: {}, fsdb: {}, authorize: asOwner2, readActiveVersionId: async () => 'v-1', ...mkFs(srcFor(rid)),
+        db: {}, fsdb: NO_STAMP, authorize: asOwner2, readActiveVersionId: async () => 'v-1', ...mkFs(srcFor(rid)),
       }, gReq2(rid));
       assert.strictEqual(r.status, 200, `${rid}: expected 200, got ${r.status} ${JSON.stringify(r.body).slice(0, 160)}`);
       assert.strictEqual(r.body.usesPlatformFactura, expected, `${rid} — ${why}`);
@@ -458,7 +459,7 @@ const TWO = {
     // It must be the SERVER's fact, not a second copy of the rule living in this test.
     const { usesPlatformFactura } = require('../factura/eligibility');
     for (const rid of ['x_pizza', 'la_musa', 'merch_3']) {
-      const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner2, readActiveVersionId: async () => 'v-1', ...mkFs(srcFor(rid)) }, gReq2(rid));
+      const r = await getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize: asOwner2, readActiveVersionId: async () => 'v-1', ...mkFs(srcFor(rid)) }, gReq2(rid));
       assert.strictEqual(r.body.usesPlatformFactura, usesPlatformFactura(rid),
         `${rid}: the response must agree with factura/eligibility, not with a duplicate rule`);
     }
@@ -471,14 +472,14 @@ const TWO = {
       FACTURA_PLATFORM_RESTAURANTS.add('merch_3');
       try {
         const r = await getEditableCatalogCore({
-          db: {}, fsdb: {}, authorize: asOwner2, readActiveVersionId: async () => 'v-1', ...mkFs(srcFor('merch_3')),
+          db: {}, fsdb: NO_STAMP, authorize: asOwner2, readActiveVersionId: async () => 'v-1', ...mkFs(srcFor('merch_3')),
         }, gReq2('merch_3'));
         assert.strictEqual(r.body.usesPlatformFactura, true,
           'a merchant ADDED to the platform-factura set must report true — a `rid === \'x_pizza\'` literal reports false here');
       } finally { FACTURA_PLATFORM_RESTAURANTS.delete('merch_3'); }
       // ...and it moves back, so the flag tracks the set rather than latching
       const back = await getEditableCatalogCore({
-        db: {}, fsdb: {}, authorize: asOwner2, readActiveVersionId: async () => 'v-1', ...mkFs(srcFor('merch_3')),
+        db: {}, fsdb: NO_STAMP, authorize: asOwner2, readActiveVersionId: async () => 'v-1', ...mkFs(srcFor('merch_3')),
       }, gReq2('merch_3'));
       assert.strictEqual(back.body.usesPlatformFactura, false, 'and false again once removed — the fixture cleaned up after itself');
     }
@@ -493,7 +494,7 @@ const TWO = {
     const src = realSource('x_pizza');
     const gq = { method: 'GET', query: { restaurantId: 'x_pizza' }, get: () => 'Bearer tok' };
     const r = await getEditableCatalogCore({
-      db: {}, fsdb: {}, authorize: asOwner2, readActiveVersionId: async () => 'v-9', ...mkFs(src),
+      db: {}, fsdb: NO_STAMP, authorize: asOwner2, readActiveVersionId: async () => 'v-9', ...mkFs(src),
     }, gq);
     // 1D add-product A adds renderedCategories + restaurantName (always present); draft_unpublishable appears only
     // when the saved draft cannot publish (asserted in its own cell below).
@@ -506,7 +507,7 @@ const TWO = {
     assert.strictEqual(r.body.activeVersionId, 'v-9', 'and the live version id');
 
     const denied = await getEditableCatalogCore({
-      db: {}, fsdb: {}, authorize: async () => ({ ok: true, uid: 'u2', role: 'dispatcher' }), readActiveVersionId: async () => 'v', ...mkFs(src),
+      db: {}, fsdb: NO_STAMP, authorize: async () => ({ ok: true, uid: 'u2', role: 'dispatcher' }), readActiveVersionId: async () => 'v', ...mkFs(src),
     }, gq);
     assert.strictEqual(denied.status, 403, 'a dispatcher is still refused by the tenant-facing read');
     assert.ok(!('usesPlatformFactura' in denied.body), 'and the refusal leaks no capability flag');
@@ -524,7 +525,7 @@ const TWO = {
     const facts = (f, state = 'member') => ({ ok: true, facts: f, state, caps: [] });
     const run = async (resolved, authorize = asMgr) => {
       let calls = 0;
-      const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize, readActiveVersionId: async () => 'v-9', ...mkFs(realSource('x_pizza')),
+      const r = await getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize, readActiveVersionId: async () => 'v-9', ...mkFs(realSource('x_pizza')),
         _resolveAccess: async () => { calls += 1; if (resolved instanceof Error) throw resolved; return resolved; } }, gq);
       return { v: r.body.publish_via_request, calls };
     };
@@ -549,7 +550,7 @@ const TWO = {
     const { rendererContract, canonicalize } = require('./source-store');
     const seeded = (rid) => canonicalize(require('../tools/seed-source-store').buildSourceFromCode(rid));   // each brand's REAL source
     for (const rid of ['x_pizza', 'la_musa']) {
-      const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner3, readActiveVersionId: async () => 'v-1', ...mkFs(seeded(rid)) }, gqFor(rid));
+      const r = await getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize: asOwner3, readActiveVersionId: async () => 'v-1', ...mkFs(seeded(rid)) }, gqFor(rid));
       assert.strictEqual(r.status, 200, `${rid}: loads`);
       assert.strictEqual(r.body.groupAuthoring, true, `${rid}: the SHIPPED switch is ON (§0b.3(e): flipped after the PB-3 portal deploy)`);
       assert.deepStrictEqual(r.body.choiceBadges, [...rendererContract(rid).choiceBadges], `${rid}: the badges the brand's picker draws on an option`);
@@ -564,9 +565,9 @@ const TWO = {
       return require('./portal-reads').getEditableCatalogCore;
     };
     try {
-      const on = await load(() => ({ render: true, authoring: true }))({ db: {}, fsdb: {}, authorize: asOwner3, readActiveVersionId: async () => 'v-1', ...mkFs(realSource('x_pizza')) }, gqFor('x_pizza'));
+      const on = await load(() => ({ render: true, authoring: true }))({ db: {}, fsdb: NO_STAMP, authorize: asOwner3, readActiveVersionId: async () => 'v-1', ...mkFs(realSource('x_pizza')) }, gqFor('x_pizza'));
       assert.strictEqual(on.body.groupAuthoring, true, '🔴 the switch ON reaches the portal');
-      const bad = await load(() => { throw new Error('unreadable'); })({ db: {}, fsdb: {}, authorize: asOwner3, readActiveVersionId: async () => 'v-1', ...mkFs(realSource('x_pizza')) }, gqFor('x_pizza'));
+      const bad = await load(() => { throw new Error('unreadable'); })({ db: {}, fsdb: NO_STAMP, authorize: asOwner3, readActiveVersionId: async () => 'v-1', ...mkFs(realSource('x_pizza')) }, gqFor('x_pizza'));
       assert.deepStrictEqual([bad.status, bad.body.groupAuthoring], [200, false], 'an unreadable switch is OFF, and the editor still loads');
     } finally {
       require.cache[pgPath] = keep.pg; delete require.cache[prPath]; if (keep.pr) require.cache[prPath] = keep.pr;
@@ -579,7 +580,7 @@ const TWO = {
       const real = require('./source-store');
       require.cache[ssPath] = { id: ssPath, filename: ssPath, loaded: true, exports: { ...real, rendererContract: (rid) => ({ ...real.rendererContract(rid), choiceBadges: Object.freeze([]) }) } };
       delete require.cache[prPath];
-      const none = await require('./portal-reads').getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner3, readActiveVersionId: async () => 'v-1', ...mkFs(realSource('x_pizza')) }, gqFor('x_pizza'));
+      const none = await require('./portal-reads').getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize: asOwner3, readActiveVersionId: async () => 'v-1', ...mkFs(realSource('x_pizza')) }, gqFor('x_pizza'));
       assert.deepStrictEqual([none.status, none.body.choiceBadges], [200, []], '🔴 a contract with no option badge → none offered (never a brand or a fixed list)');
     } finally {
       require.cache[ssPath] = keepSs; delete require.cache[prPath]; if (keep.pr) require.cache[prPath] = keep.pr;
@@ -647,7 +648,7 @@ const TWO = {
     const activeOf = (rid, src) => { const i = sourceToBuildInputs(src); const b = buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable });
       return { built: { items: b.items, structure: b.structure, extras: i.extras }, versionId: 'v-9', extraRecords: b.extras }; };
     const rtdbName = (name) => ({ ref: () => ({ get: async () => ({ val: () => name }) }) });
-    const call = (rid, src, extra = {}) => getEditableCatalogCore({ db: rtdbName('X. Pizza'), fsdb: {}, authorize: asOwner3,
+    const call = (rid, src, extra = {}) => getEditableCatalogCore({ db: rtdbName('X. Pizza'), fsdb: NO_STAMP, authorize: asOwner3,
       readActiveVersionId: async () => 'v-9', ...mkFs(src), ...extra }, { method: 'GET', query: { restaurantId: rid }, get: () => 'Bearer tok' });
     for (const rid of ['x_pizza', 'la_musa']) {
       const src = canonicalize(buildSourceFromCode(rid));
@@ -671,7 +672,7 @@ const TWO = {
     assert.ok(!('pendingAdditions' in d.body), 'absent when there is none');
     const unk = await call('x_pizza', drift, { readActiveBuilt: async () => { throw new Error('down'); } });
     assert.strictEqual(unk.status, 200); assert.ok(!('draft_unpublishable' in unk.body), 'an assessment that cannot be made is omitted, the editor still loads');
-    const noName = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner3, readActiveVersionId: async () => 'v-9', ...mkFs(xp) },
+    const noName = await getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize: asOwner3, readActiveVersionId: async () => 'v-9', ...mkFs(xp) },
       { method: 'GET', query: { restaurantId: 'x_pizza' }, get: () => 'Bearer tok' });
     assert.strictEqual(noName.body.restaurantName, 'x_pizza', 'an unreadable name falls back to the id');
     const bad = JSON.parse(JSON.stringify(xp)); bad.items[0].price = 0;
@@ -691,7 +692,7 @@ const TWO = {
     const asOwner4 = async () => ({ ok: true, uid: 'u1', role: 'owner', actor: 'o@m.hn' });
     const activeOf = (rid, src) => { const i = sourceToBuildInputs(src); const b = buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable });
       return { built: { items: b.items, structure: b.structure, extras: i.extras }, versionId: 'v-9', extraRecords: b.extras }; };
-    const call = (rid, src, active) => getEditableCatalogCore({ db: { ref: () => ({ get: async () => ({ val: () => 'Marca' }) }) }, fsdb: {}, authorize: asOwner4,
+    const call = (rid, src, active) => getEditableCatalogCore({ db: { ref: () => ({ get: async () => ({ val: () => 'Marca' }) }) }, fsdb: NO_STAMP, authorize: asOwner4,
       readActiveVersionId: async () => 'v-9', readActiveBuilt: active, ...mkFs(src) }, { method: 'GET', query: { restaurantId: rid }, get: () => 'Bearer tok' });
     for (const rid of ['x_pizza', 'la_musa']) {
       const live = canonicalize(buildSourceFromCode(rid));
@@ -727,6 +728,22 @@ const TWO = {
       assert.ok(!('pendingRenames' in r4.body) && !('pendingOther' in r4.body), `${rid}: no assessment → no claim`);
     }
     ok('T1: pendingRenames / pendingOther from a real saved draft vs the active build — rename-only, price-only, both (rename_not_alone), active read down (omitted), nothing pending (response keys unchanged); both brands');
+  }
+
+  // ── F-1 r2 (Codex r4): the NO_STAMP fixture is NEVER laxer than the real ref constructor — every restaurant id the real
+  //    Firestore refuses, NO_STAMP refuses too (and the valid one both accept). Offline: building a ref opens no connection.
+  {
+    const { Firestore } = require('@google-cloud/firestore');
+    const real = new Firestore({ projectId: 'demo-no-stamp' });
+    const path = (db, rid) => db.collection('restaurants').doc(rid).collection('meta').doc('platform_pending');
+    for (const bad of [undefined, null, 5, '', 'a/b', 'a//b']) {
+      assert.throws(() => path(real, bad), `premise: the real ref constructor refuses ${JSON.stringify(bad)}`);
+      assert.throws(() => path(NO_STAMP, bad), /NO_STAMP: invalid restaurant id/, `NO_STAMP refuses ${JSON.stringify(bad)} as production does`);
+    }
+    assert.strictEqual(path(real, 'x_pizza').path, 'restaurants/x_pizza/meta/platform_pending');
+    assert.strictEqual((await path(NO_STAMP, 'x_pizza').get()).exists, false, 'the valid id: an absent stamp');
+    assert.throws(() => NO_STAMP.collection('restaurants').doc('x_pizza').collection('meta').doc('publish_request'), /unexpected doc/, 'any other path throws');
+    ok('NO_STAMP is never laxer than production: every restaurant id the real ref constructor refuses (undefined, null, 5, \'\', a/b, a//b) it refuses; other paths throw');
   }
 
   console.log(`portal-reads: OK (${n})`);

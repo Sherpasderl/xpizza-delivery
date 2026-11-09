@@ -33,6 +33,7 @@ exports.resetDraftToLive = withPreflightMaxAge(onRequest(
         readActiveVersionId: (fs, rid) => getActiveVersionId(fs, rid),
         previewVersion, readActivePhotos: (rid, vid) => require('../photos/edit-io').makePhotoEditIo({ fs: getFirestore(), enabled: async () => false }).readActive(rid, vid), attach: (rid, pids) => require('../photos/edit-io').makePhotoEditIo({ fs: getFirestore(), enabled: async () => false }).attach(rid, pids),   // DISH PHOTOS A2 step 11: the photo map comes back from the active meta/photos; codex r1 P1-3: its pids attached (fenced) before the CAS
         toPrecondition: decodeUpdateTime,
+        alertMalformed: (rid) => require('../catalog/platform-pending').raiseMalformedAlert(getDatabase(), rid),   // F-1: a malformed stamp's ONE deduped owner alert
       }, req.body || {}, req);
       return res.status(out.status).json(out.body);
     } catch (e) {

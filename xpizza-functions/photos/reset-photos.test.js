@@ -22,7 +22,9 @@ function stubDb(stored) {
   const state = { data: stored, updateTime: T0 };
   const ref = { get: async () => ({ exists: true, data: () => clone(state.data), updateTime: state.updateTime }),
     update: async (d, pre) => { if (!pre || pre.lastUpdateTime !== state.updateTime) { const e = new Error('FAILED_PRECONDITION'); e.code = 9; throw e; } state.data = clone(d); state.updateTime = T1; return { writeTime: T1 }; } };
-  return { state, collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ref }) }) }) };
+  // path-faithful: meta/source is the draft; meta/platform_pending (F-1's stamp) does not exist in these cells
+  const absent = { get: async () => ({ exists: false, data: () => undefined }) };
+  return { state, collection: () => ({ doc: () => ({ collection: () => ({ doc: (id) => (id === 'platform_pending' ? absent : ref) }) }) }) };
 }
 const reset = (db, extra = {}) => resetDraftToLiveCore({ db, authorize: owner, readActiveVersionId: async () => 'v-active-1', previewVersion: async () => preview, ...extra },
   { restaurantId: RID, expectedRevision: T0 }, {});

@@ -34904,5 +34904,18 @@
   "kills_with": [
    "packaging must REFUSE"
   ]
+ },
+ {
+  "id": "f2r-1",
+  "slice": "f2-rename",
+  "label": "F-2 (portal-ui SBS 2026-11-08, Codex r4): «Cambiar nombre» is drawn while Sherpa updates the menu (the approved mockups draw none)",
+  "file": "../xpizza-portal/app.js",
+  "from": "  const rename = (state.platformPending !== true && state.draft &&",
+  "to": "  const rename = (state.draft &&",
+  "command": [
+   "node",
+   "--test",
+   "../xpizza-portal/platform-notice.test.mjs"
+  ]
  }
 ]
