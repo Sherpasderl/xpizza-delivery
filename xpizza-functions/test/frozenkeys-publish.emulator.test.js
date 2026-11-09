@@ -26,14 +26,14 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('frozenkey
 const RID = 'tb_merch_4';
 const KEY = 'Dish One';
 const source = (dish1Name, frozen) => ({ restaurant_id: RID, schema_version: 2, key_mode: 'name', ...(frozen ? { frozen_keys: frozen } : {}),
-  items: [{ key: KEY, price: 100, display: { id: 1, name: dish1Name, cat: 'c1', price: 100 } },
-    { key: 'Dish Two', price: 80, display: { id: 2, name: 'Dish Two', cat: 'c1', price: 80 } }],
+  items: [{ key: KEY, price: 100, display: { id: 2, name: dish1Name, cat: 'c1', price: 100 } },   // the renamed dish holds the HIGHEST id (codex S1a r2)
+    { key: 'Dish Two', price: 80, display: { id: 1, name: 'Dish Two', cat: 'c1', price: 80 } }],
   extras: [{ key: 'Extra X', price: 15, display: { id: 'e1', name: 'Extra X', cat: 'Adicionales', price: 15 } }],
   structure: { schema_version: 1, categories: [{ id: 'c1', name: 'Cat One' }], item_order: [KEY, 'Dish Two'], extra_categories: ['Adicionales'],
     exposure: { category_allow: { c1: ['Adicionales'] }, item_overrides: {} }, extras_by_category: { c1: ['Adicionales'] }, pickup_only_cats: [], weekend_only_cats: [] } });
 const inputOf = (src, sha) => { const { inputs, built } = buildSourceCandidate(RID, src); return { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha: sha, key_mode: built.key_mode, ...(built.frozen_keys ? { frozen_keys: built.frozen_keys } : {}) }; };
 const recordOf = async (v) => (await fs.collection('restaurants').doc(RID).collection('versions').doc(v).get()).data() || {};
-const MAP = { 1: KEY };
+const MAP = { 2: KEY };
 
 (async () => {
   assert.match(String(process.env.FIRESTORE_EMULATOR_HOST || ''), /^(127\.0\.0\.1|localhost|\[::1\]):\d+$/, '🔴 refusing: not the local Firestore emulator');
@@ -53,14 +53,14 @@ const MAP = { 1: KEY };
   assert.deepStrictEqual((await recordOf(v2.versionId)).frozen_keys, MAP, 'FKP-RECORD the version record carries the map');
   const served = await readVersionMenu(fs, RID, v2.versionId);
   assert.deepStrictEqual(served.frozenKeys, MAP, 'FKP-READ the version reader returns it');
-  assert.strictEqual(served.items.find((i) => i.display && i.display.id === 1).display.name, 'Dish One Renamed');
+  assert.strictEqual(served.items.find((i) => i.display && i.display.id === 2).display.name, 'Dish One Renamed');
   ok('a renamed name-keyed dish publishes under its kept key; the record and the reader carry the map');
 
   // the kept key still prices through the real reader + resolver (the name is a label until the resolution stage, S1b)
   {
     const reader = createCatalogReader({ getRestaurantDocs: (rid) => getRestaurantDocs(fs, rid) });
     const tables = await createPricingResolver({ reader }).getPricingTables(RID);
-    const line = { id: 1, name: KEY, qty: 1, extras: [{ id: 'e1', name: 'Extra X', qty: 1 }] };
+    const line = { id: 2, name: KEY, qty: 1, extras: [{ id: 'e1', name: 'Extra X', qty: 1 }] };
     assert.strictEqual(MP.computeServerTotal([line], RID, tables).total, 115, 'FKP-PRICE the kept key prices 100 + 15');
     assert.ok(Number.isNaN(MP.computeServerTotal([{ ...line, name: 'Dish One Renamed' }], RID, tables).total), 'FKP-PRICE the new label alone does not price (the switch stays off until S1b)');
     ok('the kept key prices 100 + 15 at the renamed version; the new label does not price on its own');
@@ -100,13 +100,19 @@ const MAP = { 1: KEY };
     assert.ok(back && back.rolledBack, 'FKP-LIFE-ROLLBACK back to the renamed version passes pre-flip');
     const fwd = await rollbackVersion(fs, RID, v3.versionId, { mirror: mirror(), expected: { activeVersionId: v2.versionId } });
     assert.ok(fwd && fwd.rolledBack, 'FKP-LIFE-ROLLBACK forward to the deletion passes pre-flip');
-    // re-add: the retired key is refused; a new product gets a fresh key AND a fresh display id (never the retired id 1)
-    const reAdd = (name) => { const inc = JSON.parse(JSON.stringify(deleted)); inc.items.push({ ref: 'tmp:readd0001', price: 90, display: { name, cat: 'c1', price: 90 } }); inc.structure.item_order.push('tmp:readd0001'); return inc; };
-    assert.throws(() => AP.allocateAdditions({ incoming: reAdd(KEY), stored: deleted, activeItems: deleted.items, keyMode: 'name', hwm: null, registryHasKey: () => false }),
+    // re-add, from the state RECOVERED after rollback → forward (the version reader, not the local object): the retired key is
+    // refused; a new product gets a fresh key AND a fresh display id. The deleted renamed dish held the HIGHEST id (2) and the
+    // survivor holds 1, so without the frozen-id accounting the allocator would hand out 2 again (codex S1a r2)
+    const recovered = await readVersionMenu(fs, RID, v3.versionId);
+    assert.deepStrictEqual(recovered.frozenKeys, MAP, 'FKP-LIFE-RECOVER the forward version still carries the inert entry');
+    assert.deepStrictEqual(recovered.items.map((i) => i.display.id), [1], 'premise: only the survivor (id 1) is live');
+    const state = { ...JSON.parse(JSON.stringify(deleted)), frozen_keys: recovered.frozenKeys };
+    const reAdd = (name) => { const inc = JSON.parse(JSON.stringify(state)); inc.items.push({ ref: 'tmp:readd0001', price: 90, display: { name, cat: 'c1', price: 90 } }); inc.structure.item_order.push('tmp:readd0001'); return inc; };
+    assert.throws(() => AP.allocateAdditions({ incoming: reAdd(KEY), stored: state, activeItems: recovered.items, keyMode: 'name', hwm: null, registryHasKey: () => false }),
       (e) => e && e.code === 'name_previously_used', 'FKP-LIFE-READD the retired frozen key is never minted again');
-    const res = AP.allocateAdditions({ incoming: reAdd('Dish Three'), stored: deleted, activeItems: deleted.items, keyMode: 'name', hwm: null, registryHasKey: () => false });
+    const res = AP.allocateAdditions({ incoming: reAdd('Dish Three'), stored: state, activeItems: recovered.items, keyMode: 'name', hwm: null, registryHasKey: () => false });
     const added = res.source.items.find((i) => i.key === 'Dish Three');
-    assert.ok(added && added.display.id !== 1 && added.display.id > 2, `FKP-LIFE-READD a new product never reuses the retired id (${added && added.display.id})`);
+    assert.ok(added && added.display.id === 3, `FKP-LIFE-READD-ID a new product never reuses the retired highest id 2 (got ${added && added.display.id})`);
     const v4 = await publishVersion(fs, RID, inputOf(res.source, 'fk-v4'), { expected: { activeVersionId: v3.versionId }, mirror: mirror() });
     assert.ok(v4 && v4.versionId, 'FKP-LIFE-READD the re-added menu publishes with the inert entry');
     ok('delete → publish → rollback → forward → re-add: every version validates by its own map; the retired key and id stay reserved');

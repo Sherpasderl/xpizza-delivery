@@ -613,7 +613,7 @@ function textCapProblems({ draft, live }) {
         if (/[<>]/.test(d.name)) out.push({ key: id, field: 'name', code: 'text_unsafe' });
       }
       if (taken(it, d.name)) out.push({ key: id, field: isGroupVariant(it) ? 'choice' : 'name', code: 'name_taken' });
-      else if (reserved.has(normalizeName(d.name)) && !(typeof it.key === 'string' && !own(it, 'ref') && normalizeName(it.key) === normalizeName(d.name))) out.push({ key: id, field: isGroupVariant(it) ? 'choice' : 'name', code: 'name_previously_used' });
+      else if (reserved.has(normalizeName(d.name)) && !(l && normalizeName(it.key) === normalizeName(d.name))) out.push({ key: id, field: isGroupVariant(it) ? 'choice' : 'name', code: 'name_previously_used' });
     }
     if (typeof d.desc === 'string' && (!was || was.desc !== d.desc) && chars(d.desc) > DESC_MAX) out.push({ key: id, field: 'desc', code: 'desc_too_long' });
   }

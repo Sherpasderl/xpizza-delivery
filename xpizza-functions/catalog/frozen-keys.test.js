@@ -174,7 +174,7 @@ const idOf = (src, key) => itemOf(src, key).display.id;
   ok('compareToActive: with the switch on a product may move only into a shown section');
 }
 
-// ── renamedLabels: the labels a draft newly gives products held by an ACTIVE entry (group members included) ──
+// ── renamedLabels: the labels a draft newly gives EXISTING products (same key + display.id as live), map entry or not (codex S1a r2 P1) ──
 {
   const base = live();
   const d = { ...renamed(base, KEY, 'Carnívora Suprema'), frozen_keys: { [String(idOf(base, KEY))]: KEY, 999: 'Gone' } };
@@ -182,7 +182,9 @@ const idOf = (src, key) => itemOf(src, key).display.id;
   const back = { ...renamed(base, KEY, KEY), frozen_keys: { [String(idOf(base, KEY))]: KEY } };
   assert.deepStrictEqual(FK.renamedLabels({ draft: back, live: renamed(base, KEY, 'Antes') }), [], 'FK-LABELS a rename back to the own key is not new');
   assert.deepStrictEqual(FK.renamedLabels({ draft: d, live: d }), [], 'FK-LABELS an unchanged label is not new');
-  ok('renamedLabels lists exactly the new labels of products held by an active entry');
+  const noEntry = renamed(base, KEY, 'Carnívora Suprema');   // no frozen_keys at all — as every id-keyed rename
+  assert.deepStrictEqual(FK.renamedLabels({ draft: noEntry, live: base }), [{ key: KEY, name: 'Carnívora Suprema', field: 'name' }], 'FK-LABELS-NOENTRY a rename with no map entry is listed');
+  ok('renamedLabels lists exactly the new labels of existing products, with or without a map entry');
 }
 
 console.log(`\nfrozen-keys: OK (${n})`);

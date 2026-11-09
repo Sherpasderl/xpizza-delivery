@@ -13,10 +13,11 @@ const TIP = path.join(__dirname, '..');
 assert.notStrictEqual(path.resolve(BASE), path.resolve(TIP), 'premise: two different checkouts');
 assert.strictEqual(require(path.join(TIP, 'catalog/item-text-edit')).textEditCapabilities().enabled, false, 'premise: the tip ships with the switch OFF');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const clone = (o) => JSON.parse(JSON.stringify(o));
+const clone = (o) => JSON.parse(JSON.stringify(o)); const label = (b) => JSON.stringify(b).slice(0, 160);
 const T0 = '2026-11-09T10:00:00.000000Z'; const T1 = '2026-11-09T11:00:00.000000Z';
 const allow = async () => ({ ok: true, uid: 'u_owner', role: 'owner', actor: 'o@x.hn' });
-const strip = (b) => { if (!b || typeof b !== 'object') return b; const { token: _t, updateTime: _u, ...rest } = b; return rest; };   // eslint-disable-line no-unused-vars
+// codex S1a r2: nothing is stripped — the save's token and updateTime are compared tip vs base, under one frozen clock
+const FIXED_NOW = Date.parse('2026-11-09T10:30:00.000Z'); Date.now = () => FIXED_NOW;
 
 function sideOf(dir) {
   const r = (m) => require(path.join(dir, m));
@@ -48,25 +49,26 @@ async function run(S, rid, draft) {
   const out = {};
   const w = world(S, rid, draft);
   const save = await S.editCatalogCore({ db: w.db, authorize: allow, readActiveBuilt: async () => w.activeRes(), addProduct: w.addProduct }, { restaurantId: rid, source: draft, baseSourceUpdateTime: T0 }, {});
-  out.save = { status: save.status, body: strip(save.body), writes: w.state.writes, hwm: w.state.hwm };
+  out.save = { status: save.status, body: save.body, writes: w.state.writes, hwm: w.state.hwm };
   const stored = w.state.source.data;
   out.assess = S.assessDraft(rid, clone(stored), w.activeRes());
   if (save.status === 200) {
     const publishes = [];
     const builtOf = (src) => { const i = S.sourceToBuildInputs(src); return { ...S.buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable, keyMode: i.keyMode }), extras: i.extras }; };
     const diff = S.edit.catalogDiff(builtOf(w.live), builtOf(stored));
-    const token = S.edit.issueEditToken({ rid, baseActiveVersionId: 'v-live', sourceUpdateTime: T1, sourceHash: S.edit.sha256(stored), diff });
-    const pub = await S.publishEditedCore({ db: {}, authorize: allow, addProduct: w.addProduct, readActiveBuilt: async () => w.activeRes(), readDraft: async () => ({ source: clone(stored), updateTime: T1 }),
+    const token = save.body.token;   // the token the save RETURNED, against the revision it returned (codex S1a r2)
+    assert.ok(typeof token === 'string' && token, `premise: the save returned a token (${label(save.body)})`);   // a wrong token or revision fails the publish ⇒ the tip/base comparison
+    const pub = await S.publishEditedCore({ db: {}, authorize: allow, addProduct: w.addProduct, readActiveBuilt: async () => w.activeRes(), readDraft: async () => ({ source: clone(stored), updateTime: save.body.updateTime }),
       publishVersion: async (_db, r, input) => { publishes.push(clone(input)); return { versionId: 'v-new', item_count: input.items.length, extra_count: Object.keys(input.extras).length }; } },
     { restaurantId: rid, token, acknowledgedChanges: diff.largeChangeSet.map((l) => ({ key: l.key, surface: l.surface })), fiscalAck: true }, {});
-    out.publish = { status: pub.status, body: strip(pub.body), inputs: publishes };
+    out.publish = { status: pub.status, body: pub.body, inputs: publishes };
   }
   // reset back to the live version
   const vb = S.buildSourceCandidate(rid, w.live).built;
   const rs = await S.resetDraftToLiveCore({ db: w.db, authorize: allow, readActiveVersionId: async () => 'v-live',
     previewVersion: async () => ({ items: vb.items, extras: vb.extras, structure: vb.structure, record: { key_mode: rid === 'la_musa' ? 'id' : 'name' } }) },
   { restaurantId: rid, expectedRevision: w.state.source.updateTime }, {});
-  out.reset = { status: rs.status, body: strip(rs.body), stored: w.state.source.data };
+  out.reset = { status: rs.status, body: rs.body, stored: w.state.source.data };
   return out;
 }
 
