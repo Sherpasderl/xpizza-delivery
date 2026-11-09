@@ -303,12 +303,3 @@ export function putSigned({ url, method, headers }, body, { onProgress, signal, 
     xhr.send(body);
   });
 }
-
-// ── «Marca» (NOTE-portal-marca-build; contract agreed with 3a, BRIEF-3a-marca-server) — the brand profile, owner-only on the
-// server (BRAND cap brand.settings). Additions only.
-export async function getBrandProfile({ brandId, token, assertLive }) {
-  return apiFetch('getBrandProfile', { token, assertLive, params: { brand_id: brandId } });
-}
-export async function updateBrandProfile({ brandId, expectedVersion, fields, token, assertLive }) {
-  return apiFetch('updateBrandProfile', { token, assertLive, body: { brand_id: brandId, expected_version: expectedVersion, fields } });
-}

@@ -28,7 +28,6 @@
   "branches-1b-life.test.mjs",
   "branches-1b.test.mjs",
   "branches-view.js",
-  "brand-fields.js",
   "category-name.browser.test.mjs",
   "editor.js",
   "editor.test.mjs",
@@ -40,8 +39,6 @@
   "fonts/archivo-vietnamese.2518e8eb97.woff2",
   "index.html",
   "invite-mail.js",
-  "marca.js",
-  "marca.test.mjs",
   "netlify.toml",
   "ops-dom.js",
   "package-lock.json",
@@ -147,8 +144,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "56e9e571bcee158c4ef6e82aeffb76af2d5ad281c47d7d71769dcf14a27461ea",
-   "bytes": 112089
+   "sha256": "d04eb168699501344b032471a416d2543570ad41d921523e914957781a2a3e79",
+   "bytes": 109371
   }
  },
  "diff_aid": {
@@ -1540,78 +1537,6 @@
    ],
    [
     "",
-    ".mk-link",
-    "background",
-    "none"
-   ],
-   [
-    "",
-    ".mk-link",
-    "color",
-    "var(--accent)"
-   ],
-   [
-    "",
-    ".mk-logorow span",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".mk-mono",
-    "color",
-    "#fff"
-   ],
-   [
-    "",
-    ".mk-mono,.mk-prevband,.mk-prevbtn,.mk-prevtrack i",
-    "background",
-    "#6E6A64"
-   ],
-   [
-    "",
-    ".mk-prev",
-    "background",
-    "#fff"
-   ],
-   [
-    "",
-    ".mk-prev",
-    "color",
-    "#1E1B18"
-   ],
-   [
-    "",
-    ".mk-prevbtn",
-    "color",
-    "#fff"
-   ],
-   [
-    "",
-    ".mk-prevname",
-    "color",
-    "#1E1B18"
-   ],
-   [
-    "",
-    ".mk-prevsub",
-    "color",
-    "#6E6A64"
-   ],
-   [
-    "",
-    ".mk-prevtrack span",
-    "color",
-    "#6E6A64"
-   ],
-   [
-    "",
-    ".mk-prevtrack",
-    "color",
-    "#1E1B18"
-   ],
-   [
-    "",
     ".modal",
     "background",
     "var(--card)"
@@ -2317,12 +2242,6 @@
     ".ops .sec",
     "background",
     "var(--card)"
-   ],
-   [
-    "",
-    ".ops .sec.mk-quiet",
-    "background",
-    "var(--board-2)"
    ],
    [
     "",

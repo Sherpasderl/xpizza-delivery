@@ -1242,32 +1242,6 @@
   .phoname.phoh{font-family:'Playfair Display',Georgia,serif;font-size:17px;letter-spacing:-.4px;margin-bottom:5px}
   .phodesc{font-size:11.5px;color:#5A4F47;line-height:1.4;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .phoprice{font-family:'DM Sans',system-ui,sans-serif;font-size:14px;font-weight:700;color:#7A5A08;font-variant-numeric:tabular-nums}
-  /* «Marca» (approved mockup R1pshGArpS5Af2tzcdCvTW, its EXTRA rules verbatim; the logo box and the rules drawer wait for M2 / lane 5f) */
-  .mk-swatches{display:flex;gap:10px;flex-wrap:wrap}
-  .mk-sw{width:36px;height:36px;border-radius:50%;border:1px solid rgba(0,0,0,.14);cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;flex:none}
-  .mk-sw.on{box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--ink)}
-  .mk-sw:focus-visible{outline:none;box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--accent)}
-  .mk-sw svg{width:16px;height:16px;stroke:#fff;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
-  .mk-cnt{display:flex;justify-content:space-between;align-items:center;gap:10px}
-  .mk-logorow{display:flex;align-items:center;gap:12px}
-  .mk-logorow b{display:block;font-weight:650;font-size:13.5px}
-  .mk-logorow span{font-size:12px;color:var(--mute);display:block;margin-top:2px;line-height:1.45}
-  .mk-mono{width:56px;height:56px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-family:var(--disp);font-weight:800;font-size:26px;letter-spacing:-.04em;flex:none}
-  .mk-mono,.mk-prevband,.mk-prevbtn,.mk-prevtrack i{background:#6E6A64}   /* no colour chosen yet (never saved): a neutral that keeps the white initial / label at AA (5.37) */
-  .mk-prev{background:#fff;border:1px solid #E6E6E2;border-radius:14px;overflow:hidden;color:#1E1B18;box-shadow:0 1px 2px rgba(30,28,24,.04),0 6px 16px -12px rgba(30,28,24,.18)}
-  .mk-prevband{height:6px}
-  .mk-errslot:empty{display:none}   /* an empty error slot takes no .fld gap (the approved B1/B2 spacing) */
-  .mk-prevhead{display:flex;align-items:center;gap:12px;padding:14px 14px 10px}
-  .mk-prevhead .mk-mono{width:44px;height:44px;border-radius:11px;font-size:20px}
-  .mk-prevname{font-family:var(--disp);font-weight:800;font-size:17px;letter-spacing:-.03em;line-height:1.1;color:#1E1B18}
-  .mk-prevsub{font-size:12px;color:#6E6A64;margin-top:3px}
-  .mk-prevbtn{margin:4px 14px 12px;padding:12px;border-radius:11px;color:#fff;font-weight:700;font-size:14px;text-align:center}
-  .mk-prevtrack{display:flex;align-items:center;gap:9px;padding:11px 14px;border-top:1px solid #EEEDE8;font-size:12.5px;color:#1E1B18}
-  .mk-prevtrack i{width:9px;height:9px;border-radius:50%;display:block;flex:none}
-  .mk-prevtrack span{color:#6E6A64;margin-left:auto}
-  .ops .sec.mk-quiet{background:var(--board-2);margin-top:16px}
-  .ops .mk-quiet h3 svg.mk-h3lock{width:14px;height:14px;stroke:var(--mute);fill:none;stroke-width:2}
-  .mk-link{background:none;border:0;padding:0;color:var(--accent);font:inherit;font-weight:650;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
   /* F-2 (owner-approved mockup ENrjdkJmw3mzy9PkFCy4D1) — the quiet callout inside the Productos card: the portal's own .calloutquiet1b
      declarations (styles.css scopes them under .ops) with the margins .unpub already uses inside #detail */
   #detail .callout{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:var(--board-2);font-size:13px;line-height:1.5;color:var(--ink);margin:14px 20px 0}
