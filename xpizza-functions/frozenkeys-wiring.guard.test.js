@@ -11,7 +11,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyFrozenKeysModule } = require('./tools/frozenkeys-module-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
+const read = (f) => require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));   // the S1c layer is newer: peeled first
 
 // ── 1 ──
 {
