@@ -318,8 +318,8 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     const { buildCatalogV2 } = require('./form-menu-source');
     const builtOf = (src, rid = RID) => { const i = sourceToBuildInputs(src); return { ...buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable, keyMode: i.keyMode, frozenKeys: i.frozenKeys }), extras: i.extras }; };
     const T = '2026-11-08T12:00:00.000000Z';
-    const publish = async (draft, rid = RID) => {
-      const live = buildSourceFromCode(rid);
+    const publish = async (draft, rid = RID, liveSrc = null) => {
+      const live = liveSrc || buildSourceFromCode(rid);
       const publishes = [];
       const deps = { db: {}, authorize: allow, addProduct: addProductOf(null, rid === 'la_musa' ? 'id' : 'name'),
         readActiveBuilt: async () => { const i = sourceToBuildInputs(live); const b = buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable, keyMode: i.keyMode }); return { built: { ...b, extras: i.extras }, versionId: 'v-live', extraRecords: b.extras }; },
@@ -359,6 +359,23 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     // codex S1c r1 P2-3: a name in the minted-key syntax never reaches the publisher
     const p5 = await publish({ ...renamed(seed, 'i_abcdefghijk2'), frozen_keys: { [ID]: KEY } });
     assert.deepStrictEqual([p5.r.status, p5.r.body.error, p5.publishes.length], [400, 'name_previously_used', 0], `HX-RKO-PUB a rename into the minted-key syntax is refused before the publisher (${JSON.stringify(p5.r.body).slice(0, 120)})`);
+    // codex S1c r2 #1: an ADDITION named like a minted key, and a minted product renamed to its OWN key, are refused before the
+    // publisher — text switch off and on (neither reaches D3: the addition is not a rename, the own key folds to itself)
+    const cat0 = seed.items[0].display.cat;
+    const withAdd = clone(seed); withAdd.items.push({ key: 'i_abcdefghijk2', price: 150, display: { id: 7001, name: 'i_abcdefghijk2', cat: cat0, price: 150, desc: '' } }); withAdd.structure.item_order.push('i_abcdefghijk2');
+    const minted = clone(seed); minted.items.push({ key: 'i_aaaaaaaaaaab', price: 150, display: { id: 7002, name: 'Pizza Minted', cat: cat0, price: 150, desc: '' } }); minted.structure.item_order.push('i_aaaaaaaaaaab'); minted.frozen_keys = { 7002: 'i_aaaaaaaaaaab' };
+    const toOwn = clone(minted); toOwn.items.find((i) => i.key === 'i_aaaaaaaaaaab').display.name = 'i_aaaaaaaaaaab';
+    for (const text of [false, true]) {
+      SWITCH.enabled = text;
+      const pa = await publish(withAdd);
+      assert.deepStrictEqual([pa.r.status, pa.r.body.error, pa.publishes.length], [400, 'name_previously_used', 0], `HX-RKO-PUB-ADD text=${text}: a new product named like a minted key never reaches the publisher (${JSON.stringify(pa.r.body).slice(0, 120)})`);
+      const po = await publish(toOwn, RID, minted);
+      assert.deepStrictEqual([po.r.status, po.r.body.error, po.publishes.length], [400, 'name_previously_used', 0], `HX-RKO-PUB-OWN text=${text}: a minted product renamed to its own key never reaches the publisher (${JSON.stringify(po.r.body).slice(0, 120)})`);
+      // codex S1c r2 #3: an UNCHANGED minted-syntax name is not judged — an ordinary publish of that menu goes through
+      const pu = await publish(clone(toOwn), RID, clone(toOwn));
+      assert.strictEqual(pu.r.status === 400 && pu.r.body.error === 'name_previously_used', false, `HX-RKO-UNTOUCHED-PUB text=${text}: an unchanged minted-syntax name is never refused (${JSON.stringify(pu.r.body).slice(0, 120)})`);
+    }
+    SWITCH.enabled = true;
     ok('publish: a recorded rename publishes with its map; renames onto reserved keys are refused before the publisher');
   }
 
@@ -446,6 +463,14 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
       const dbo = stub(RID, seed);
       const ro = await save(dbo, RID, addNew(seed, 'i_abcdefghijk2'));
       assert.deepStrictEqual([ro.status, ro.body.error, dbo.state.writes.length], [400, 'name_previously_used', 0], `HX-RKO-SAVE mint=${mint} text=${text}: a new product named like a minted key is refused (${JSON.stringify(ro.body).slice(0, 120)})`);
+    }
+    {   // codex S1c r2 #3: an UNCHANGED minted-syntax name is never judged — an ordinary save of that menu goes through
+      const held = clone(seed); held.items.push({ key: 'i_aaaaaaaaaaab', price: 150, display: { id: 7002, name: 'i_aaaaaaaaaaab', cat: seed.items[0].display.cat, price: 150, desc: '' } }); held.structure.item_order.push('i_aaaaaaaaaaab'); held.frozen_keys = { 7002: 'i_aaaaaaaaaaab' };
+      for (const text of [false, true]) {
+        SWITCH.enabled = text; MINT.enabled = false;
+        const ru = await save(stub(RID, held, held), RID, clone(held));
+        assert.strictEqual(ru.status === 400 && ru.body.error === 'name_previously_used', false, `HX-RKO-UNTOUCHED-SAVE text=${text}: an unchanged minted-syntax name is never refused (${JSON.stringify(ru.body).slice(0, 120)})`);
+      }
     }
     SWITCH.enabled = true; MINT.enabled = false;
     const rr = await save(stub(RID, seed), RID, renamed(seed, 'i_zzzzzzzzzzzz'));
