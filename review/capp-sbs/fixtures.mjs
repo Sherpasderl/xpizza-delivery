@@ -78,10 +78,12 @@ const json = (body, status = 200, headers = []) => ({ status, body, type: 'appli
 // an unknown item → the handler's 200 {ok:false, error:'bad_cart'}; the envío = delivery-wire quoteDeliveryFor itself (mode, pin,
 // coverage, member promo, refusals) over a pricing config matching the s7a2 directory (from L 45; x_pizza free for members; each
 // identity's hub + radius = the directory row's hub / coverage_km). Only the I/O is stubbed: the config read, the identity read, and
-// the ID-token check (the harness's member token → u_ana, anything else a guest — as getAuth refuses a foreign token). No quote_token
-// (an unprovisioned secret: the issuer's own fallback). Not the rate limit, extras gate or redemption path.
+// the ID-token check (the harness's member token → u_ana, anything else a guest — as getAuth refuses a foreign token). The signed-quote
+// fields come from the REAL issuer (quote-issue.js issueQuote, as the handler calls it): with no QUOTE_TOKEN_SECRET in the harness it
+// takes its own fallback — net_total_cents, quote_token null (omitted, as the handler spreads only a truthy token). Not the rate
+// limit, extras gate or redemption path.
 const FN = path.join(ROOT, 'xpizza-functions'), freq = createRequire(path.join(FN, 'index.js'));
-const { computeServerTotal } = freq('./menu-pricing.js'), { orderBreakdownCents } = freq('./order-money.js'), DW = freq('./delivery/delivery-wire.js'), DP = freq('./delivery/delivery-pricing.js');
+const { computeServerTotal } = freq('./menu-pricing.js'), { orderBreakdownCents } = freq('./order-money.js'), { issueQuote } = freq('./quote-issue.js'), DW = freq('./delivery/delivery-wire.js'), DP = freq('./delivery/delivery-pricing.js');
 const ROWS = Object.fromEntries(FX.scenarios.complete.body.restaurants.map((r) => [r.restaurant_id, r]));
 const PRICING_RAW = { policy_version: 1, bands: [{ max_km: 4, cents: 4500 }, { max_km: 10, cents: 6500 }],
   restaurants: Object.fromEntries(Object.values(ROWS).map((r) => [r.restaurant_id, { active: true, free_delivery: !!(r.promo && r.promo.free_delivery) }])) };
@@ -100,7 +102,10 @@ async function quoteOrder(req) {
       getAuth: () => ({ verifyIdToken: async (t) => { if (t !== MEMBER_TOKEN) throw new Error('foreign token'); return { uid: 'u_ana', customer: true }; } }),
       attributionUid: (dec, deleted) => (deleted ? null : dec.uid) });
   if (dq.refuse) return json(dq.refuse, dq.httpStatus || 200);
-  return json({ ok: true, total_cents: bd.total_cents, subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents, ...DW.quoteFields(dq.ctx) });
+  if (process.env.QUOTE_TOKEN_SECRET) throw new Error('the harness runs the issuer\'s unsigned fallback — unset QUOTE_TOKEN_SECRET');
+  const issued = issueQuote({ items: body.items, reward: null, rid, tables: prov.tables, deliveryContext: dq.ctx, customerId: dq.uid, nowMs: Date.now() });
+  return json({ ok: true, total_cents: bd.total_cents, subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents,
+    ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}), ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}), ...DW.quoteFields(dq.ctx) });
 }
 // opts: { directory: 'complete' | <scenario>, sold: { rid: <item_availability node from kdsSoldNode> }, quote: true }
 export function router(opts = {}) {
@@ -124,7 +129,7 @@ export function router(opts = {}) {
       // the client-version heartbeat (main's P-SELFUPDATE telemetry): its accepted answer is 204, no body (client-version.js handleReport)
       if (p.endsWith('/reportClientVersion') && req.method === 'POST') return { status: 204, body: '', type: 'text/plain' };
       if (p.endsWith('/getSignupConfig')) return json({ ok: true, terms_url: 'https://legal.sherpa.test/terminos', privacy_url: 'https://legal.sherpa.test/privacidad', legal_ready: true, google_enabled: false });
-      if (p.endsWith('/quoteOrder') && req.method === 'POST' && opts.quote !== false) return quoteOrder(req);
+      if (p.endsWith('/quoteOrder') && req.method === 'POST' && opts.quote !== false) return opts.quoteDelay ? quoteOrder(req).then((r) => ({ ...r, delay: opts.quoteDelay })) : quoteOrder(req);   // quoteDelay: the pre-quote state (S2ck-1q)
       if (opts.extra) { const x = opts.extra(req, u); if (x) return x; }
       return null;
     }
@@ -269,6 +274,9 @@ export function s2Extra(opts = {}) {
       if (u.pathname === `/order_tracking/${S2_TOKEN}.json`) return sse(trackingNode(opts.status || 'preparing'));
       if (u.pathname === `/order_tracking/${S2_TOKEN}/display_number.json`) return json(4833);
       if (u.pathname === `/order_pay_view/${S2_TOKEN}.json`) return sse(viewOf());
+      // the order screen's prep read (capp-shell-ui readPublic → form-live-status prepFor): no prep_stats / prep_eta_min written for the
+      // store — a real production state (the nightly writer has not run for it); the window then comes from the fallback
+      if (/^\/restaurants\/[a-z0-9_-]+\/public\.json$/.test(u.pathname)) return json(null);
       return null;
     }
     if (!u.host.endsWith('cloudfunctions.net')) return null;
