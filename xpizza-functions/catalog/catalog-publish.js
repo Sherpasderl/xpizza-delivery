@@ -50,7 +50,7 @@ const { judgePlanDestinations } = require('./identity-destination');
 const { applyIdentityPlan } = require('./identity-writer');
 const { reconcileOnRollback } = require('./identity-reconcile');
 const { REGISTRY_AGREEMENT_REFUSALS } = require('./identity-stampmap');
-const { renameEnabled } = require('./identity-flags'); const RK = require('./reserved-keys');   // S1c: the reserved-key set
+const { renameEnabled } = require('./identity-flags'); const RK = require('./reserved-keys'); const { textEditCapabilities } = require('./item-text-edit');   // S1c: the reserved-key set; renames are judged only with the text switch on
 /* c2a-evidence:begin */
 // 1D D4-c2a — binding evidence recorded at activation (PLAN-D4c2a rev 9 §2). Dormant: nothing reads it in this slice.
 const { buildActivationEvidence, activationEvidenceDoc, evidenceRefOf, withAt, translateEvidenceCollision } = require('./identity-evidence');
@@ -385,7 +385,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        BOTH fields now come from ONE readPointerSnap: there is no independent parse of this document
        left anywhere, which is the property E-1 was for. */
     const livePointer = readPointerSnap(pointerSnap, rid);
-    const liveActive = livePointer.version;
+    const liveActive = livePointer.version; const activeItemsSnap = (textEditCapabilities().enabled && liveActive && liveActive !== versionId) ? await tx.get(versionsColOf(db, rid).doc(liveActive).collection('menu_items')) : null;
     if (liveActive !== expected.activeVersionId) {
       throw new Error(`flip_cas_stale: ${rid} — validated against active ${JSON.stringify(expected.activeVersionId)} but ${JSON.stringify(liveActive)} is live; this publish would overwrite a newer one`);
     }
@@ -1089,7 +1089,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
       currentGeneration: priorGeneration,          // read from the pointer in THIS transaction, a few lines above
       intent: isRollback ? 'rollback' : 'activate',
     });
-    if (!verdict.ok) throw new Error(`${verdict.code}: ${rid}/${versionId} — ${verdict.detail}`); const reservedNext = RK.unionReserved(reservedDoc, { dish: candItemsSnap.docs.map((d) => (d.data() || {}).key), extra: candExtrasSnap.docs.map((d) => (d.data() || {}).key) }, versionId); RK.assertWithinLimit(reservedNext.doc); if (reservedNext.added > 0) tx.set(RK.reservedRefOf(db, rid), reservedNext.doc);   // S1c: add-only, never removes
+    if (!verdict.ok) throw new Error(`${verdict.code}: ${rid}/${versionId} — ${verdict.detail}`); const reservedNext = RK.unionReserved(reservedDoc, { dish: candItemsSnap.docs.map((d) => (d.data() || {}).key), extra: candExtrasSnap.docs.map((d) => (d.data() || {}).key) }, versionId); const rkConflict = activeItemsSnap ? RK.renameConflicts({ items: candItemsSnap.docs.map((d) => d.data() || {}), activeItems: activeItemsSnap.docs.map((d) => d.data() || {}), reserved: RK.reservedKeySet(reservedDoc) })[0] : null; if (rkConflict) { const e = new Error(`reserved_key_conflict: ${rid}/${versionId} — a renamed item may not take a reserved key (${JSON.stringify(rkConflict.key)})`); e.status = 409; throw e; } RK.assertWithinLimit(reservedNext.doc); if (reservedNext.added > 0) tx.set(RK.reservedRefOf(db, rid), reservedNext.doc);   // S1c: add-only, never removes
 
     tx.set(pointerRef, {
       version: versionId,
