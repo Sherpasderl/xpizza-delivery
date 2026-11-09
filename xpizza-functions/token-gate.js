@@ -21,7 +21,7 @@
 // three that agree until one is edited.
 // ---------------------------------------------------------------------------
 const { computeServerNet } = require('./compute-server-net');
-const { verifyQuoteToken, cartFingerprint, normalizeCartForFingerprint } = require('./quote-token');
+const { verifyQuoteToken, cartFingerprint, normalizeCartForFingerprint } = require('./quote-token'); const { keyModeOfTables } = require('./menu-pricing');
 const { formatOf, FORMAT_LEGACY, canonicalQuoteFingerprint } = require('./catalog/canonical-binding');   // 1D D4-b §A/§B
 const { contextOf } = require('./catalog/pricing-tables');
 const { deliveryBindingMismatch } = require('./delivery/delivery-pricing');   // S3a
@@ -150,7 +150,7 @@ function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, rewar
      at or under the ceiling. And it is the ONLY check that can see a swap the amount cannot: Task 1
      measured that a la_musa reward is net-invariant, and two same-priced x_pizza dishes are
      net-identical, so the fingerprint is the sole witness in both cases. */
-  const norm = normalizeCartForFingerprint(submittedCart, rid);
+  const norm = normalizeCartForFingerprint(submittedCart, rid, keyModeOfTables(tables));
   if (!norm) {
     return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'unfingerprintable_cart', quoteId: payload.quote_id || null, degraded: false };
   }

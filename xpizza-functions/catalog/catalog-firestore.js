@@ -156,6 +156,14 @@ async function getActiveVersionId(db, restaurantId) {
   return version;   // null ONLY when the document is absent
 }
 
+// The restaurant's key mode as the read found it: present only when the stored value is a real mode, absent when there is
+// none (the frozen per-restaurant default then applies), and REFUSED when malformed, so a corrupt value is never cached.
+function keyModeField(value, where) {
+  if (value === undefined || value === null) return {};
+  if (value !== 'id' && value !== 'name') throw new Error(`key_mode_invalid: ${where} — ${JSON.stringify(value).slice(0, 40)}`);
+  return { keyMode: value };
+}
+
 // ── Read a specific IMMUTABLE version's pricing docs + VERIFY completeness ───────────────────────
 async function readVersionDocs(db, restaurantId, versionId) {
   const vref = db.collection('restaurants').doc(restaurantId).collection('versions').doc(versionId);
@@ -174,7 +182,7 @@ async function readVersionDocs(db, restaurantId, versionId) {
   // payload from here, and without it a rollback would emit an ordinal-less fallback on exactly the
   // path where a coherent fallback matters most. Read-side (2b) treats an ABSENT seq as too-stale,
   // never as distance-zero, so a pre-ordinal mirror can never read as perfectly fresh.
-  return { itemDocs, extraDocs, seq: record.seq };
+  return { itemDocs, extraDocs, seq: record.seq, ...keyModeField(record.key_mode, where) };
 }
 
 // ── The FLAT layout (un-migrated restaurant) — byte-identical to the pre-1c-b2 reader ────────────
@@ -183,7 +191,7 @@ async function readFlatDocs(db, restaurantId) {
   const [profile, items, extras] = await Promise.all([rref.get(), rref.collection('menu_items').get(), rref.collection('extras').get()]);
   if (!profile.exists) throw new Error(`restaurant_not_found: ${restaurantId}`);   // not-found ≠ empty
   if (items.empty) throw new Error(`catalog_empty: ${restaurantId}`);              // known restaurant, no menu items
-  return { itemDocs: mapDocs(items, restaurantId), extraDocs: mapDocs(extras, restaurantId) };
+  return { itemDocs: mapDocs(items, restaurantId), extraDocs: mapDocs(extras, restaurantId), ...keyModeField((profile.data() || {}).pricing_key_mode, restaurantId) };
 }
 
 // The pricing reader. Resolves the pointer, then reads+verifies the pointed version; falls back to the
@@ -194,12 +202,12 @@ async function getRestaurantDocs(db, restaurantId) {
   const versionId = await getActiveVersionId(db, restaurantId);   // throws on malformed / read error
   if (versionId == null) {
     const flat = await readFlatDocs(db, restaurantId);            // clean-absent → flat (throws if flat also absent)
-    return { versionId: null, seq: null, itemDocs: flat.itemDocs, extraDocs: flat.extraDocs };   // 2b: flat layout has no version/ordinal
+    return { versionId: null, seq: null, itemDocs: flat.itemDocs, extraDocs: flat.extraDocs, ...keyModeField(flat.keyMode, restaurantId) };   // 2b: flat layout has no version/ordinal
   }
-  const { itemDocs, extraDocs, seq } = await readVersionDocs(db, restaurantId, versionId);   // throws on version-missing / completeness fail
+  const { itemDocs, extraDocs, seq, keyMode } = await readVersionDocs(db, restaurantId, versionId);   // throws on version-missing / completeness fail
   // 2b: `seq` rides along so the resolver can learn WHICH ordinal it served. Additive — every existing
   // consumer destructures only itemDocs/extraDocs and is byte-unchanged.
-  return { versionId, seq, itemDocs, extraDocs };
+  return { versionId, seq, itemDocs, extraDocs, ...keyModeField(keyMode, restaurantId) };
 }
 
 /* 🔴 ONE INTERPRETATION SITE — BY CONVENTION, ENFORCED, BUT NOT BY CONSTRUCTION. Saying it precisely
@@ -216,4 +224,4 @@ async function getRestaurantDocs(db, restaurantId) {
    `.data()` on it. What stops that is convention plus the census — a lint, in this codebase's own
    words — not construction. The census would also miss it if spelled differently, which is exactly
    how the flip's reader survived three rounds. */
-module.exports = { activePointerRef, getActivePointer, readPointerSnap, getRestaurantDocs, getActiveVersionId, readVersionDocs, readFlatDocs, mapDocs };
+module.exports = { activePointerRef, getActivePointer, readPointerSnap, getRestaurantDocs, getActiveVersionId, readVersionDocs, readFlatDocs, mapDocs, keyModeField };

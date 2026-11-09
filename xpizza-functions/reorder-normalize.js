@@ -6,7 +6,7 @@
 // the menu doesn't recognize is DROPPED, never stored. NO raw client names/prices are persisted (they
 // would be an XSS/trust vector) — only menu-recognized keys + qty. Display uses the sanitized
 // items_text; reorder re-resolves today's name/price from the menu by key. Guest/empty/malformed → [].
-const { itemPricingKey, resolvePriceTables } = require('./menu-pricing');
+const { itemPricingKey, extraPricingKey, resolvePriceTables } = require('./menu-pricing');
 
 const MAX_LINES = 100;   // bounded to a real order's line count (defensive cap)
 
@@ -20,13 +20,13 @@ const MAX_LINES = 100;   // bounded to a real order's line count (defensive cap)
 // today's exact behaviour — a reorder recipe is never worth failing an order over, and the allowlist
 // still fails CLOSED either way: an unrecognized key is dropped, never persisted.
 function normalizeReorderItems(bodyItems, restaurantId, tables = null) {
-  const { menu, extraPrices } = resolvePriceTables(restaurantId, tables);   // PIN B asserts the tag
+  const { menu, extraPrices, keyMode } = resolvePriceTables(restaurantId, tables);   // PIN B asserts the tag
   if (!menu || !Array.isArray(bodyItems)) return [];
   const byId = restaurantId === 'la_musa';   // la_musa extras are id-keyed/qty-aware; x_pizza name-keyed/count-once
   const out = [];
   for (const it of bodyItems) {
     if (out.length >= MAX_LINES) break;
-    const key = itemPricingKey(it, restaurantId);
+    const key = itemPricingKey(it, restaurantId, keyMode);
     if (!key || !Object.prototype.hasOwnProperty.call(menu, key)) continue;   // unknown item → drop
     const qty = Number(it && it.qty);
     if (!Number.isInteger(qty) || qty < 1 || qty > 50) continue;              // invalid qty → drop
@@ -37,7 +37,7 @@ function normalizeReorderItems(bodyItems, restaurantId, tables = null) {
       // la_musa — id-keyed, qty-aware, standalone; dedup by id (already faithful)
       const seen = new Set();
       for (const ex of extras) {
-        const eid = ex && ex.id;
+        const eid = extraPricingKey(ex, restaurantId, keyMode);
         if (!eid || !Object.prototype.hasOwnProperty.call(extraPrices || {}, eid) || seen.has(eid)) continue;
         const eqty = Number(ex && ex.qty);
         if (!Number.isInteger(eqty) || eqty < 1 || eqty > 50) continue;
@@ -51,7 +51,7 @@ function normalizeReorderItems(bodyItems, restaurantId, tables = null) {
       // count is bounded to the item qty: an extra can't be on more instances than there are pizzas.
       const counts = {};
       for (const ex of extras) {
-        const ename = ex && ex.name;
+        const ename = extraPricingKey(ex, restaurantId, keyMode);
         if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices || {}, ename)) continue;
         counts[ename] = (counts[ename] || 0) + 1;
       }

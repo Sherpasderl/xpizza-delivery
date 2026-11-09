@@ -15,7 +15,7 @@ const { unapplySdIndex, unapplySdModule, unapplySdModuleIfAny, HUNKS, MODULE_HUN
 
 const BASE = 'a61adad5';   // DRYRUN (2e, TRAIN-NEXT2 A4): the pre-3a ASSEMBLY commit (was c5093152, S-D's parent on feat/security-lifecycle)
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));
+const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))));
 const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // 1. exact

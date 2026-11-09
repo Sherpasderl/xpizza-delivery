@@ -13,7 +13,7 @@ const { execFileSync } = require('child_process');
 const { unapplySerial3Index, unapplySerial3Module, BLOCKS, HUNKS, FILES, BASE } = require('./tools/serial3-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));
+const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))));
 const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // ── 1a. index.js ──

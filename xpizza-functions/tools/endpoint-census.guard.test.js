@@ -55,7 +55,7 @@ const D = {
   [F('test/d4p1-capture-order-control.js')]: 'harness', [F('deploy/emulator-e2e.js')]: 'harness', [F('deploy/config-read-probe.js')]: 'harness',
   [F('deploy/check-seed-readiness.js')]: 'harness', [F('deploy/emu-seed.js')]: 'harness', [F('tools/menus-identity-publish.js')]: 'harness',
   [F('test/portal-emulator-workers.probe.js')]: 'harness', [F('test/_kds-writer-worker.js')]: 'harness', [F('test/emu-isolation.proof.js')]: 'harness',
-  [F('test/measure-identity-fence.js')]: 'harness',
+  [F('test/measure-identity-fence.js')]: 'harness', [F('test/keymode-noop.capture.js')]: 'harness',
   // TRACKER FIXES T9: the cost harness — `_emulator-required('database')` before index.js is loaded (driven below like every harness)
   [F('test/tracker-measure.mjs')]: 'harness',
   // H1a gate G-1: the handheld isolation ACCEPTANCE check A1 runs before enabling pairing (expected red until F2(c)) —

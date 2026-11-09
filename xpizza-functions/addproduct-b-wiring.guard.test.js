@@ -16,7 +16,7 @@ const { unapplyAddProductB, INDEX_HUNKS } = require('./tools/addproduct-b-invers
 const { unapplyStackedTracker } = require('./tools/stacked-tracker-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));
+const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))));
 // D4-c2b landed on top of the stacked-tracker slice (main 2cb5a1c): its one delimited index.js block (tools/d4c2b-inverse.js,
 // advisor ruling N1) is reversed FIRST, then the stacked-tracker inverse, before add-product B's proof.
 // D12b landed on top of D4-c2b: its ONE delimited, byte-pinned index.js block (tools/d12b-inverse.js unapplyD12bIndex) is reversed

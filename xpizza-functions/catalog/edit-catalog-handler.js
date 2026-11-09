@@ -35,6 +35,7 @@ const { catalogDiff, issueEditToken, sha256 } = require('./catalog-edit');
 const AP = require('./add-product');
 const { rendererContract } = require('./source-store');
 const { buildSourceCandidate, assertBuiltValid } = require('./candidate-validate');
+const { serverOwnedKeyMode, withServerKeyMode } = require('./key-mode'); const FK = require('./frozen-keys'); const { textEditCapabilities } = require('./item-text-edit');   // S1a
 
 const { can } = require('../access/membership');   // PLAN-portal-membership r3 §3.2 — the ONE capability table
 const reply = (status, body) => ({ status, body });
@@ -103,16 +104,19 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   }
   if (!snap || !snap.exists) return reply(409, { error: 'source_missing', detail: 'no draft to edit — seed the store first' });
   const stored = (snap.data && snap.data()) || {};
+  // S0: the key mode is server-owned — a draft may echo the stored one, never change or add one; an absent one keeps it.
+  const keyModeOwn = serverOwnedKeyMode(source, stored);
+  if (!keyModeOwn.ok) return reply(409, { error: keyModeOwn.error }); const fkOwn = FK.serverOwnedFrozenKeys(source, stored); if (!fkOwn.ok) return reply(409, { error: fkOwn.error }); const textEdit = textEditCapabilities().enabled;   // S1a: the rename map is server-owned too
 
   // SERVER ALLOCATION (§2): tmp references become keys/ids here, once; the high-water mark advances in the
   // same commit as the draft below.
-  let candidate = canonicalize(source);
+  let candidate = canonicalize(FK.withFrozenKeys(withServerKeyMode(source, keyModeOwn.key_mode), fkOwn.frozen_keys)); if (textEdit) { candidate = canonicalize(AP.rederiveOptionNames(candidate)); const rec = FK.recordRenames({ draft: candidate, live, stored, textEdit }); if (!rec.ok) return reply(409, { error: rec.error, key: rec.key }); candidate = canonicalize(FK.withFrozenKeys(candidate, rec.frozen_keys)); }   // S1a: with the switch on, a group renames as one unit, new text is capped, and every rename is recorded under its kept key
   let hwmPlan = null;
   let refOfKey = {};          // fresh additions: allocated key → the tmp reference the portal still holds
   if (hasAdditions) {
     if (!addProduct) return reply(503, { error: 'add_product_unavailable', retryable: false });
     try {
-      const keyMode = AP.resolveKeyMode(await addProduct.readKeyMode(rid), live.items);
+      const keyMode = AP.resolveKeyMode(await addProduct.readKeyMode(rid), live.items, candidate.frozen_keys);
       const hwmRef = addProduct.hwmRef(rid);
       const hwmSnap = await hwmRef.get();
       const hwmVal = hwmSnap.exists ? (hwmSnap.data() || {}).value : null;
@@ -140,7 +144,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
      `source.photos` is taken OFF the candidate (the builder never sees it), re-keyed from tmp refs to the keys allocated
      above, validated against this draft's item keys, and put back on the stored draft only when non-empty. Flag OFF: a map
      that DIFFERS from the stored draft's is refused; the unchanged stored map always passes, so other edits never block. */
-  let photoMap = null;
+  let photoMap = null; if (textEdit) { const cap = AP.textCapProblems({ draft: candidate, live })[0]; if (cap) return reply(400, { error: cap.code, field: cap.field, key: cap.key, ...(Object.prototype.hasOwnProperty.call(refOfKey, cap.key) ? { ref: refOfKey[cap.key] } : {}) }); const rn = FK.renamedLabels({ draft: candidate, live }); if (rn.length) { if (!addProduct) return reply(503, { error: 'add_product_unavailable', retryable: false }); let used; try { used = await addProduct.registryKeysTaken(rid, rn.map((x) => x.name), 'name'); } catch (_) { return reply(503, { error: 'store_unavailable', retryable: true }); } const hit = rn.find((x) => used.has(x.name)); if (hit) return reply(400, { error: 'name_previously_used', field: hit.field, key: hit.key }); } }   // S1a (codex r1): the FULLY derived candidate — new groups' option names included — is capped, and every renamed label is checked against the reserved keys, before anything is written
   if (photos) {
     const raw = candidate.photos;
     delete candidate.photos;
@@ -363,7 +367,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
       renderedCategories: rendererContract(rid).renderedCategories,
       deletedIds: next.deleted_ids && Array.isArray(next.deleted_ids.ids) ? next.deleted_ids.ids : [],
       authoring: groupCapabilities().authoring,
-      extrasAuthoring: extrasCapabilities().authoring,   // per-product extras (the narrow deny_extras / extras_policy exception)
+      extrasAuthoring: extrasCapabilities().authoring, textEdit,   // per-product extras (the narrow deny_extras / extras_policy exception)
     });
   } catch (e) {
     if (e instanceof AP.AddProductError) {

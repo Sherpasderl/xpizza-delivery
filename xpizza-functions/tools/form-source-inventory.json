@@ -69,14 +69,20 @@
     "visibility-refetch.test.mjs",
     "whole-flow.test.mjs",
     "xp-stage2-summary.test.mjs",
+    "xpizza-functions/a1-wiring.guard.test.js",
     "xpizza-functions/access/membership-admin.test.js",
     "xpizza-functions/access/membership.test.js",
     "xpizza-functions/access/staged-access.test.js",
     "xpizza-functions/access/team-http.test.js",
     "xpizza-functions/access/team-ui-server.test.js",
     "xpizza-functions/access/third-brand.test.js",
+    "xpizza-functions/addproduct-b-wiring.guard.test.js",
+    "xpizza-functions/addproduct-wiring.guard.test.js",
     "xpizza-functions/address-autofill-recheckout.test.js",
+    "xpizza-functions/area-wiring.guard.test.js",
+    "xpizza-functions/avail-identity-wiring.guard.test.js",
     "xpizza-functions/branches-rules.guard.test.js",
+    "xpizza-functions/brand-server-wiring.guard.test.js",
     "xpizza-functions/catalog-form-bundle.test.js",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/catalog-schemav2.test.js",
@@ -110,6 +116,8 @@
     "xpizza-functions/catalog/extras-intake.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-keys-handler.test.js",
+    "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
     "xpizza-functions/catalog/group-index.test.js",
     "xpizza-functions/catalog/group-intake.test.js",
@@ -125,6 +133,8 @@
     "xpizza-functions/catalog/identity-record.test.js",
     "xpizza-functions/catalog/identity-registry.test.js",
     "xpizza-functions/catalog/identity-sweep.test.js",
+    "xpizza-functions/catalog/key-mode-source.test.js",
+    "xpizza-functions/catalog/key-strategy.test.js",
     "xpizza-functions/catalog/menu-gates.test.js",
     "xpizza-functions/catalog/menu-order.test.js",
     "xpizza-functions/catalog/migration-parity.test.js",
@@ -144,8 +154,10 @@
     "xpizza-functions/catalog/renderer-contract.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
+    "xpizza-functions/catalog/text-edit-rules.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
     "xpizza-functions/checkout-guest-lib.test.js",
+    "xpizza-functions/checkout-wiring.guard.test.js",
     "xpizza-functions/claim-address-capture.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -172,22 +184,44 @@
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/createorder-selfheal-client.test.js",
+    "xpizza-functions/d12b-wiring.guard.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
+    "xpizza-functions/directory-wiring.guard.test.js",
     "xpizza-functions/directory/directory.test.js",
+    "xpizza-functions/dlite-push-wiring.guard.test.js",
+    "xpizza-functions/driver-ledger-wiring.guard.test.js",
+    "xpizza-functions/drvc-wiring.guard.test.js",
+    "xpizza-functions/drvf-wiring.guard.test.js",
+    "xpizza-functions/extras-wiring.guard.test.js",
     "xpizza-functions/f2-client.test.js",
     "xpizza-functions/form-bundle-splice.test.js",
     "xpizza-functions/form-load-execution.test.js",
     "xpizza-functions/form-runtime-literals.guard.test.js",
+    "xpizza-functions/formbake-module-wiring.guard.test.js",
+    "xpizza-functions/formbake-wiring.guard.test.js",
+    "xpizza-functions/formsignal-wiring.guard.test.js",
+    "xpizza-functions/h0-wiring.guard.test.js",
+    "xpizza-functions/h1-wiring.guard.test.js",
+    "xpizza-functions/h1c-wiring.guard.test.js",
+    "xpizza-functions/hostedrace-wiring.guard.test.js",
     "xpizza-functions/intl-otp-endpoint.test.js",
+    "xpizza-functions/intl-wiring.guard.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
+    "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
     "xpizza-functions/menu-parity.test.js",
+    "xpizza-functions/menu-warm-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
+    "xpizza-functions/mirrorkeys-wiring.guard.test.js",
     "xpizza-functions/n3-weekend-message.test.js",
     "xpizza-functions/n4-cancel-verify.test.js",
     "xpizza-functions/o1b-wiring.guard.test.js",
+    "xpizza-functions/order-control-wiring.guard.test.js",
     "xpizza-functions/order-form-location-escape.test.js",
+    "xpizza-functions/p5a-wiring.guard.test.js",
+    "xpizza-functions/pausa-wiring.guard.test.js",
+    "xpizza-functions/photos-module-wiring.guard.test.js",
     "xpizza-functions/photos-wiring.guard.test.js",
     "xpizza-functions/photos/diff-photos.test.js",
     "xpizza-functions/photos/edit-photos.test.js",
@@ -196,6 +230,7 @@
     "xpizza-functions/photos/reset-photos.test.js",
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
+    "xpizza-functions/pmdisplay-wiring.guard.test.js",
     "xpizza-functions/portal/branch-lifecycle-core.test.js",
     "xpizza-functions/portal/e1-extend.test.js",
     "xpizza-functions/portal/ops-core.test.js",
@@ -207,11 +242,29 @@
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
     "xpizza-functions/quote-order.test.js",
     "xpizza-functions/recognized-entry.test.js",
+    "xpizza-functions/release-race-wiring.guard.test.js",
     "xpizza-functions/rewards-parity.guard.test.js",
+    "xpizza-functions/s1a-wiring.guard.test.js",
+    "xpizza-functions/s1b-wiring.guard.test.js",
+    "xpizza-functions/s2app-wiring.guard.test.js",
+    "xpizza-functions/s2tip-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
+    "xpizza-functions/s3a-wiring.guard.test.js",
+    "xpizza-functions/s3b-wiring.guard.test.js",
+    "xpizza-functions/s3c-wiring.guard.test.js",
+    "xpizza-functions/s4hours-wiring.guard.test.js",
+    "xpizza-functions/s5-wiring.guard.test.js",
+    "xpizza-functions/s5r-wiring.guard.test.js",
+    "xpizza-functions/sb-wiring.guard.test.js",
+    "xpizza-functions/sd-wiring.guard.test.js",
+    "xpizza-functions/sdkpay-wiring.guard.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
+    "xpizza-functions/serial3-wiring.guard.test.js",
+    "xpizza-functions/signup-wiring.guard.test.js",
+    "xpizza-functions/stacked-tracker-wiring.guard.test.js",
+    "xpizza-functions/stackseq-wiring.guard.test.js",
     "xpizza-functions/test/_catalog-clock.test.js",
     "xpizza-functions/test/a1-readers.emulator.test.js",
     "xpizza-functions/test/add-product-golden.emulator.test.js",
@@ -262,6 +315,7 @@
     "xpizza-functions/test/extras-eligibility-publish.emulator.test.js",
     "xpizza-functions/test/extras-intake.emulator.test.js",
     "xpizza-functions/test/form-signal.emulator.test.js",
+    "xpizza-functions/test/frozenkeys-publish.emulator.test.js",
     "xpizza-functions/test/graduation-monitor.emulator.test.js",
     "xpizza-functions/test/handheld-client.emulator.test.js",
     "xpizza-functions/test/identity-coverage.test.js",
@@ -272,6 +326,7 @@
     "xpizza-functions/test/ingest-liveness.emulator.test.js",
     "xpizza-functions/test/intake-availability.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
@@ -318,10 +373,15 @@
     "xpizza-functions/tools/extras-baseline-audit.test.js",
     "xpizza-functions/tools/form-bundle-deployed-check.test.js",
     "xpizza-functions/tools/form-bundle-live-check.test.js",
+    "xpizza-functions/tools/mem512-inverse.test.js",
     "xpizza-functions/tools/migrate-menu-structure-publish.test.js",
     "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
+    "xpizza-functions/tracker-fixes-wiring.guard.test.js",
+    "xpizza-functions/unassign-wiring.guard.test.js",
+    "xpizza-functions/wacancel-wiring.guard.test.js",
+    "xpizza-functions/wahealth-wiring.guard.test.js",
     "xpizza-groupless-golden.test.mjs",
     "xpizza-orders/form-apply.test.mjs",
     "xpizza-orders/form-cart.copy.test.mjs",
@@ -348,12 +408,18 @@
     "group-picker-lamusa.test.mjs",
     "stage-race.test.mjs",
     "whole-flow.test.mjs",
+    "xpizza-functions/a1-wiring.guard.test.js",
     "xpizza-functions/access/membership-admin.test.js",
     "xpizza-functions/access/membership.test.js",
     "xpizza-functions/access/staged-access.test.js",
     "xpizza-functions/access/team-http.test.js",
     "xpizza-functions/access/team-ui-server.test.js",
     "xpizza-functions/access/third-brand.test.js",
+    "xpizza-functions/addproduct-b-wiring.guard.test.js",
+    "xpizza-functions/addproduct-wiring.guard.test.js",
+    "xpizza-functions/area-wiring.guard.test.js",
+    "xpizza-functions/avail-identity-wiring.guard.test.js",
+    "xpizza-functions/brand-server-wiring.guard.test.js",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/catalog/activation-eligibility.test.js",
     "xpizza-functions/catalog/add-product-groups.test.js",
@@ -383,6 +449,8 @@
     "xpizza-functions/catalog/extras-intake.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-keys-handler.test.js",
+    "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
     "xpizza-functions/catalog/group-intake.test.js",
     "xpizza-functions/catalog/group-rules.test.js",
@@ -395,6 +463,8 @@
     "xpizza-functions/catalog/identity-record.test.js",
     "xpizza-functions/catalog/identity-registry.test.js",
     "xpizza-functions/catalog/identity-sweep.test.js",
+    "xpizza-functions/catalog/key-mode-source.test.js",
+    "xpizza-functions/catalog/key-strategy.test.js",
     "xpizza-functions/catalog/menu-gates.test.js",
     "xpizza-functions/catalog/menu-order.test.js",
     "xpizza-functions/catalog/migration-parity.test.js",
@@ -411,7 +481,9 @@
     "xpizza-functions/catalog/redeem-exclusion.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
+    "xpizza-functions/catalog/text-edit-rules.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
+    "xpizza-functions/checkout-wiring.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
     "xpizza-functions/contract/census.negative.test.js",
@@ -432,20 +504,43 @@
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
+    "xpizza-functions/d12b-wiring.guard.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
+    "xpizza-functions/directory-wiring.guard.test.js",
     "xpizza-functions/directory/directory.test.js",
+    "xpizza-functions/dlite-push-wiring.guard.test.js",
+    "xpizza-functions/driver-ledger-wiring.guard.test.js",
+    "xpizza-functions/drvc-wiring.guard.test.js",
+    "xpizza-functions/drvf-wiring.guard.test.js",
+    "xpizza-functions/extras-wiring.guard.test.js",
+    "xpizza-functions/formbake-module-wiring.guard.test.js",
+    "xpizza-functions/formbake-wiring.guard.test.js",
+    "xpizza-functions/formsignal-wiring.guard.test.js",
+    "xpizza-functions/h0-wiring.guard.test.js",
+    "xpizza-functions/h1-wiring.guard.test.js",
+    "xpizza-functions/h1c-wiring.guard.test.js",
+    "xpizza-functions/hostedrace-wiring.guard.test.js",
     "xpizza-functions/intl-otp-endpoint.test.js",
+    "xpizza-functions/intl-wiring.guard.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
+    "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
+    "xpizza-functions/menu-warm-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
+    "xpizza-functions/mirrorkeys-wiring.guard.test.js",
     "xpizza-functions/o1b-wiring.guard.test.js",
+    "xpizza-functions/order-control-wiring.guard.test.js",
+    "xpizza-functions/p5a-wiring.guard.test.js",
+    "xpizza-functions/pausa-wiring.guard.test.js",
+    "xpizza-functions/photos-module-wiring.guard.test.js",
     "xpizza-functions/photos-wiring.guard.test.js",
     "xpizza-functions/photos/diff-photos.test.js",
     "xpizza-functions/photos/edit-photos.test.js",
     "xpizza-functions/photos/editable-wiring.test.js",
     "xpizza-functions/photos/publish-wiring.test.js",
     "xpizza-functions/photos/reset-photos.test.js",
+    "xpizza-functions/pmdisplay-wiring.guard.test.js",
     "xpizza-functions/portal/branch-lifecycle-core.test.js",
     "xpizza-functions/portal/e1-extend.test.js",
     "xpizza-functions/portal/ops-core.test.js",
@@ -453,10 +548,28 @@
     "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
+    "xpizza-functions/release-race-wiring.guard.test.js",
+    "xpizza-functions/s1a-wiring.guard.test.js",
+    "xpizza-functions/s1b-wiring.guard.test.js",
+    "xpizza-functions/s2app-wiring.guard.test.js",
+    "xpizza-functions/s2tip-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
+    "xpizza-functions/s3a-wiring.guard.test.js",
+    "xpizza-functions/s3b-wiring.guard.test.js",
+    "xpizza-functions/s3c-wiring.guard.test.js",
+    "xpizza-functions/s4hours-wiring.guard.test.js",
+    "xpizza-functions/s5-wiring.guard.test.js",
+    "xpizza-functions/s5r-wiring.guard.test.js",
+    "xpizza-functions/sb-wiring.guard.test.js",
+    "xpizza-functions/sd-wiring.guard.test.js",
+    "xpizza-functions/sdkpay-wiring.guard.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
+    "xpizza-functions/serial3-wiring.guard.test.js",
+    "xpizza-functions/signup-wiring.guard.test.js",
+    "xpizza-functions/stacked-tracker-wiring.guard.test.js",
+    "xpizza-functions/stackseq-wiring.guard.test.js",
     "xpizza-functions/test/_catalog-clock.test.js",
     "xpizza-functions/test/a1-readers.emulator.test.js",
     "xpizza-functions/test/add-product-golden.emulator.test.js",
@@ -504,6 +617,7 @@
     "xpizza-functions/test/extras-eligibility-publish.emulator.test.js",
     "xpizza-functions/test/extras-intake.emulator.test.js",
     "xpizza-functions/test/form-signal.emulator.test.js",
+    "xpizza-functions/test/frozenkeys-publish.emulator.test.js",
     "xpizza-functions/test/graduation-monitor.emulator.test.js",
     "xpizza-functions/test/handheld-client.emulator.test.js",
     "xpizza-functions/test/identity-coverage.test.js",
@@ -514,6 +628,7 @@
     "xpizza-functions/test/ingest-liveness.emulator.test.js",
     "xpizza-functions/test/intake-availability.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
@@ -558,10 +673,15 @@
     "xpizza-functions/tools/extras-baseline-audit.test.js",
     "xpizza-functions/tools/form-bundle-deployed-check.test.js",
     "xpizza-functions/tools/form-bundle-live-check.test.js",
+    "xpizza-functions/tools/mem512-inverse.test.js",
     "xpizza-functions/tools/migrate-menu-structure-publish.test.js",
     "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
+    "xpizza-functions/tracker-fixes-wiring.guard.test.js",
+    "xpizza-functions/unassign-wiring.guard.test.js",
+    "xpizza-functions/wacancel-wiring.guard.test.js",
+    "xpizza-functions/wahealth-wiring.guard.test.js",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs"
    ]
@@ -631,14 +751,20 @@
     "visibility-refetch.test.mjs",
     "whole-flow.test.mjs",
     "xp-stage2-summary.test.mjs",
+    "xpizza-functions/a1-wiring.guard.test.js",
     "xpizza-functions/access/membership-admin.test.js",
     "xpizza-functions/access/membership.test.js",
     "xpizza-functions/access/staged-access.test.js",
     "xpizza-functions/access/team-http.test.js",
     "xpizza-functions/access/team-ui-server.test.js",
     "xpizza-functions/access/third-brand.test.js",
+    "xpizza-functions/addproduct-b-wiring.guard.test.js",
+    "xpizza-functions/addproduct-wiring.guard.test.js",
     "xpizza-functions/address-autofill-recheckout.test.js",
+    "xpizza-functions/area-wiring.guard.test.js",
+    "xpizza-functions/avail-identity-wiring.guard.test.js",
     "xpizza-functions/branches-rules.guard.test.js",
+    "xpizza-functions/brand-server-wiring.guard.test.js",
     "xpizza-functions/catalog-form-bundle.test.js",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/catalog-schemav2.test.js",
@@ -672,6 +798,8 @@
     "xpizza-functions/catalog/extras-intake.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-keys-handler.test.js",
+    "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
     "xpizza-functions/catalog/group-index.test.js",
     "xpizza-functions/catalog/group-intake.test.js",
@@ -686,6 +814,8 @@
     "xpizza-functions/catalog/identity-record-guards.test.js",
     "xpizza-functions/catalog/identity-record.test.js",
     "xpizza-functions/catalog/identity-registry.test.js",
+    "xpizza-functions/catalog/key-mode-source.test.js",
+    "xpizza-functions/catalog/key-strategy.test.js",
     "xpizza-functions/catalog/menu-gates.test.js",
     "xpizza-functions/catalog/menu-order.test.js",
     "xpizza-functions/catalog/migration-parity.test.js",
@@ -705,8 +835,10 @@
     "xpizza-functions/catalog/renderer-contract.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
+    "xpizza-functions/catalog/text-edit-rules.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
     "xpizza-functions/checkout-guest-lib.test.js",
+    "xpizza-functions/checkout-wiring.guard.test.js",
     "xpizza-functions/claim-address-capture.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -734,22 +866,44 @@
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/createorder-selfheal-client.test.js",
+    "xpizza-functions/d12b-wiring.guard.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
+    "xpizza-functions/directory-wiring.guard.test.js",
     "xpizza-functions/directory/directory.test.js",
+    "xpizza-functions/dlite-push-wiring.guard.test.js",
+    "xpizza-functions/driver-ledger-wiring.guard.test.js",
+    "xpizza-functions/drvc-wiring.guard.test.js",
+    "xpizza-functions/drvf-wiring.guard.test.js",
+    "xpizza-functions/extras-wiring.guard.test.js",
     "xpizza-functions/f2-client.test.js",
     "xpizza-functions/form-bundle-splice.test.js",
     "xpizza-functions/form-load-execution.test.js",
     "xpizza-functions/form-runtime-literals.guard.test.js",
+    "xpizza-functions/formbake-module-wiring.guard.test.js",
+    "xpizza-functions/formbake-wiring.guard.test.js",
+    "xpizza-functions/formsignal-wiring.guard.test.js",
+    "xpizza-functions/h0-wiring.guard.test.js",
+    "xpizza-functions/h1-wiring.guard.test.js",
+    "xpizza-functions/h1c-wiring.guard.test.js",
+    "xpizza-functions/hostedrace-wiring.guard.test.js",
     "xpizza-functions/intl-otp-endpoint.test.js",
+    "xpizza-functions/intl-wiring.guard.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
+    "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
     "xpizza-functions/menu-parity.test.js",
+    "xpizza-functions/menu-warm-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
+    "xpizza-functions/mirrorkeys-wiring.guard.test.js",
     "xpizza-functions/n3-weekend-message.test.js",
     "xpizza-functions/n4-cancel-verify.test.js",
     "xpizza-functions/o1b-wiring.guard.test.js",
+    "xpizza-functions/order-control-wiring.guard.test.js",
     "xpizza-functions/order-form-location-escape.test.js",
+    "xpizza-functions/p5a-wiring.guard.test.js",
+    "xpizza-functions/pausa-wiring.guard.test.js",
+    "xpizza-functions/photos-module-wiring.guard.test.js",
     "xpizza-functions/photos-wiring.guard.test.js",
     "xpizza-functions/photos/diff-photos.test.js",
     "xpizza-functions/photos/edit-photos.test.js",
@@ -758,6 +912,7 @@
     "xpizza-functions/photos/reset-photos.test.js",
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
+    "xpizza-functions/pmdisplay-wiring.guard.test.js",
     "xpizza-functions/portal/branch-lifecycle-core.test.js",
     "xpizza-functions/portal/e1-extend.test.js",
     "xpizza-functions/portal/ops-core.test.js",
@@ -769,11 +924,29 @@
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
     "xpizza-functions/quote-order.test.js",
     "xpizza-functions/recognized-entry.test.js",
+    "xpizza-functions/release-race-wiring.guard.test.js",
     "xpizza-functions/rewards-parity.guard.test.js",
+    "xpizza-functions/s1a-wiring.guard.test.js",
+    "xpizza-functions/s1b-wiring.guard.test.js",
+    "xpizza-functions/s2app-wiring.guard.test.js",
+    "xpizza-functions/s2tip-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
+    "xpizza-functions/s3a-wiring.guard.test.js",
+    "xpizza-functions/s3b-wiring.guard.test.js",
+    "xpizza-functions/s3c-wiring.guard.test.js",
+    "xpizza-functions/s4hours-wiring.guard.test.js",
+    "xpizza-functions/s5-wiring.guard.test.js",
+    "xpizza-functions/s5r-wiring.guard.test.js",
+    "xpizza-functions/sb-wiring.guard.test.js",
+    "xpizza-functions/sd-wiring.guard.test.js",
+    "xpizza-functions/sdkpay-wiring.guard.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
+    "xpizza-functions/serial3-wiring.guard.test.js",
+    "xpizza-functions/signup-wiring.guard.test.js",
+    "xpizza-functions/stacked-tracker-wiring.guard.test.js",
+    "xpizza-functions/stackseq-wiring.guard.test.js",
     "xpizza-functions/test/_catalog-clock.test.js",
     "xpizza-functions/test/a1-readers.emulator.test.js",
     "xpizza-functions/test/add-product-golden.emulator.test.js",
@@ -823,6 +996,7 @@
     "xpizza-functions/test/extras-eligibility-publish.emulator.test.js",
     "xpizza-functions/test/extras-intake.emulator.test.js",
     "xpizza-functions/test/form-signal.emulator.test.js",
+    "xpizza-functions/test/frozenkeys-publish.emulator.test.js",
     "xpizza-functions/test/graduation-monitor.emulator.test.js",
     "xpizza-functions/test/handheld-client.emulator.test.js",
     "xpizza-functions/test/identity-coverage.test.js",
@@ -833,6 +1007,7 @@
     "xpizza-functions/test/ingest-liveness.emulator.test.js",
     "xpizza-functions/test/intake-availability.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
@@ -879,9 +1054,14 @@
     "xpizza-functions/tools/extras-baseline-audit.test.js",
     "xpizza-functions/tools/form-bundle-deployed-check.test.js",
     "xpizza-functions/tools/form-bundle-live-check.test.js",
+    "xpizza-functions/tools/mem512-inverse.test.js",
     "xpizza-functions/tools/migrate-menu-structure-publish.test.js",
     "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
+    "xpizza-functions/tracker-fixes-wiring.guard.test.js",
+    "xpizza-functions/unassign-wiring.guard.test.js",
+    "xpizza-functions/wacancel-wiring.guard.test.js",
+    "xpizza-functions/wahealth-wiring.guard.test.js",
     "xpizza-groupless-golden.test.mjs",
     "xpizza-orders/form-cart.copy.test.mjs",
     "xpizza-orders/form-confirm-quote.copy.test.mjs",
@@ -905,12 +1085,18 @@
     "picker-extras.test.mjs",
     "stage-race.test.mjs",
     "whole-flow.test.mjs",
+    "xpizza-functions/a1-wiring.guard.test.js",
     "xpizza-functions/access/membership-admin.test.js",
     "xpizza-functions/access/membership.test.js",
     "xpizza-functions/access/staged-access.test.js",
     "xpizza-functions/access/team-http.test.js",
     "xpizza-functions/access/team-ui-server.test.js",
     "xpizza-functions/access/third-brand.test.js",
+    "xpizza-functions/addproduct-b-wiring.guard.test.js",
+    "xpizza-functions/addproduct-wiring.guard.test.js",
+    "xpizza-functions/area-wiring.guard.test.js",
+    "xpizza-functions/avail-identity-wiring.guard.test.js",
+    "xpizza-functions/brand-server-wiring.guard.test.js",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/catalog/activation-eligibility.test.js",
     "xpizza-functions/catalog/add-product-groups.test.js",
@@ -940,6 +1126,8 @@
     "xpizza-functions/catalog/extras-intake.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-keys-handler.test.js",
+    "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
     "xpizza-functions/catalog/group-intake.test.js",
     "xpizza-functions/catalog/group-rules.test.js",
@@ -952,6 +1140,8 @@
     "xpizza-functions/catalog/identity-record-guards.test.js",
     "xpizza-functions/catalog/identity-record.test.js",
     "xpizza-functions/catalog/identity-registry.test.js",
+    "xpizza-functions/catalog/key-mode-source.test.js",
+    "xpizza-functions/catalog/key-strategy.test.js",
     "xpizza-functions/catalog/menu-gates.test.js",
     "xpizza-functions/catalog/menu-order.test.js",
     "xpizza-functions/catalog/migration-parity.test.js",
@@ -969,7 +1159,9 @@
     "xpizza-functions/catalog/redeem-exclusion.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
+    "xpizza-functions/catalog/text-edit-rules.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
+    "xpizza-functions/checkout-wiring.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
@@ -994,20 +1186,43 @@
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
+    "xpizza-functions/d12b-wiring.guard.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
+    "xpizza-functions/directory-wiring.guard.test.js",
     "xpizza-functions/directory/directory.test.js",
+    "xpizza-functions/dlite-push-wiring.guard.test.js",
+    "xpizza-functions/driver-ledger-wiring.guard.test.js",
+    "xpizza-functions/drvc-wiring.guard.test.js",
+    "xpizza-functions/drvf-wiring.guard.test.js",
+    "xpizza-functions/extras-wiring.guard.test.js",
+    "xpizza-functions/formbake-module-wiring.guard.test.js",
+    "xpizza-functions/formbake-wiring.guard.test.js",
+    "xpizza-functions/formsignal-wiring.guard.test.js",
+    "xpizza-functions/h0-wiring.guard.test.js",
+    "xpizza-functions/h1-wiring.guard.test.js",
+    "xpizza-functions/h1c-wiring.guard.test.js",
+    "xpizza-functions/hostedrace-wiring.guard.test.js",
     "xpizza-functions/intl-otp-endpoint.test.js",
+    "xpizza-functions/intl-wiring.guard.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
+    "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
+    "xpizza-functions/menu-warm-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
+    "xpizza-functions/mirrorkeys-wiring.guard.test.js",
     "xpizza-functions/o1b-wiring.guard.test.js",
+    "xpizza-functions/order-control-wiring.guard.test.js",
+    "xpizza-functions/p5a-wiring.guard.test.js",
+    "xpizza-functions/pausa-wiring.guard.test.js",
+    "xpizza-functions/photos-module-wiring.guard.test.js",
     "xpizza-functions/photos-wiring.guard.test.js",
     "xpizza-functions/photos/diff-photos.test.js",
     "xpizza-functions/photos/edit-photos.test.js",
     "xpizza-functions/photos/editable-wiring.test.js",
     "xpizza-functions/photos/publish-wiring.test.js",
     "xpizza-functions/photos/reset-photos.test.js",
+    "xpizza-functions/pmdisplay-wiring.guard.test.js",
     "xpizza-functions/portal/branch-lifecycle-core.test.js",
     "xpizza-functions/portal/e1-extend.test.js",
     "xpizza-functions/portal/ops-core.test.js",
@@ -1015,10 +1230,28 @@
     "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
+    "xpizza-functions/release-race-wiring.guard.test.js",
+    "xpizza-functions/s1a-wiring.guard.test.js",
+    "xpizza-functions/s1b-wiring.guard.test.js",
+    "xpizza-functions/s2app-wiring.guard.test.js",
+    "xpizza-functions/s2tip-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
+    "xpizza-functions/s3a-wiring.guard.test.js",
+    "xpizza-functions/s3b-wiring.guard.test.js",
+    "xpizza-functions/s3c-wiring.guard.test.js",
+    "xpizza-functions/s4hours-wiring.guard.test.js",
+    "xpizza-functions/s5-wiring.guard.test.js",
+    "xpizza-functions/s5r-wiring.guard.test.js",
+    "xpizza-functions/sb-wiring.guard.test.js",
+    "xpizza-functions/sd-wiring.guard.test.js",
+    "xpizza-functions/sdkpay-wiring.guard.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
+    "xpizza-functions/serial3-wiring.guard.test.js",
+    "xpizza-functions/signup-wiring.guard.test.js",
+    "xpizza-functions/stacked-tracker-wiring.guard.test.js",
+    "xpizza-functions/stackseq-wiring.guard.test.js",
     "xpizza-functions/test/_catalog-clock.test.js",
     "xpizza-functions/test/a1-readers.emulator.test.js",
     "xpizza-functions/test/add-product-golden.emulator.test.js",
@@ -1066,6 +1299,7 @@
     "xpizza-functions/test/extras-eligibility-publish.emulator.test.js",
     "xpizza-functions/test/extras-intake.emulator.test.js",
     "xpizza-functions/test/form-signal.emulator.test.js",
+    "xpizza-functions/test/frozenkeys-publish.emulator.test.js",
     "xpizza-functions/test/graduation-monitor.emulator.test.js",
     "xpizza-functions/test/handheld-client.emulator.test.js",
     "xpizza-functions/test/identity-coverage.test.js",
@@ -1076,6 +1310,7 @@
     "xpizza-functions/test/ingest-liveness.emulator.test.js",
     "xpizza-functions/test/intake-availability.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
@@ -1120,9 +1355,14 @@
     "xpizza-functions/tools/extras-baseline-audit.test.js",
     "xpizza-functions/tools/form-bundle-deployed-check.test.js",
     "xpizza-functions/tools/form-bundle-live-check.test.js",
+    "xpizza-functions/tools/mem512-inverse.test.js",
     "xpizza-functions/tools/migrate-menu-structure-publish.test.js",
     "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
+    "xpizza-functions/tracker-fixes-wiring.guard.test.js",
+    "xpizza-functions/unassign-wiring.guard.test.js",
+    "xpizza-functions/wacancel-wiring.guard.test.js",
+    "xpizza-functions/wahealth-wiring.guard.test.js",
     "xpizza-groupless-golden.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs"
@@ -1586,6 +1826,7 @@
   "xpizza-functions/catalog/draft-assess.js",
   "xpizza-functions/catalog/edit-catalog-handler.js",
   "xpizza-functions/catalog/form-menu-source.js",
+  "xpizza-functions/catalog/frozen-keys.js",
   "xpizza-functions/catalog/generate-form-bundle.js",
   "xpizza-functions/catalog/identity-bootstrap.js",
   "xpizza-functions/catalog/identity-integrity-monitor.js",
@@ -1635,6 +1876,7 @@
   "xpizza-functions/tools/extras-baseline-audit.js",
   "xpizza-functions/tools/form-bundle-live-check.js",
   "xpizza-functions/tools/identity-usable-check.js",
+  "xpizza-functions/tools/keymode-module-inverse.js",
   "xpizza-functions/tools/menus-divergence-report.js",
   "xpizza-functions/tools/migrate-catalog-display.js",
   "xpizza-functions/tools/migrate-menu-structure.js",
@@ -2051,6 +2293,7 @@
   "arrived-notify.js",
   "assign-hub.js",
   "assignment-conflict.js",
+  "availability-gate.js",
   "branches/branch-check.js",
   "branches/branch-ops.js",
   "branches/branch-store.js",
@@ -2068,22 +2311,34 @@
   "catalog/add-product.js",
   "catalog/bound-reuse.js",
   "catalog/bundle-compare.js",
+  "catalog/candidate-validate.js",
   "catalog/canonical-binding.js",
   "catalog/catalog-edit-auth.js",
   "catalog/catalog-edit.js",
+  "catalog/catalog-firestore.js",
+  "catalog/catalog-menu.js",
   "catalog/catalog-publish.js",
+  "catalog/catalog.js",
   "catalog/charge-inputs.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
   "catalog/exposure-source.js",
+  "catalog/extras-intake.js",
   "catalog/form-menu-source.js",
   "catalog/form-rebake.js",
+  "catalog/frozen-keys.js",
+  "catalog/group-intake.js",
+  "catalog/identity-grace.js",
   "catalog/identity-record-verifier.js",
   "catalog/identity-record.js",
+  "catalog/item-text-edit.js",
+  "catalog/key-mode.js",
+  "catalog/menu-gates.js",
   "catalog/menu-structure-rows.js",
   "catalog/mirror-keys.js",
   "catalog/mirror-rtdb.js",
   "catalog/portal-reads.js",
+  "catalog/pricing-tables.js",
   "catalog/public-menu.js",
   "catalog/public-photos.js",
   "catalog/publish-edited-handler.js",
@@ -2116,6 +2371,7 @@
   "driver-problem-alert.js",
   "extra-payment-repair.js",
   "factura/build-record.js",
+  "factura/eligibility.js",
   "form-signal.js",
   "index.js",
   "lib/driver-admin-ops.js",
@@ -2219,6 +2475,7 @@
   "portal/reset-list.js",
   "prep-stats.js",
   "quote-issue.js",
+  "quote-token.js",
   "ratings/aggregate-producer.js",
   "ratings/aggregate.js",
   "ratings/dish-qty.js",
@@ -2232,6 +2489,7 @@
   "resolve-manual.js",
   "retention-sweep.js",
   "rewards-redeem-intake.js",
+  "rewards-redeem-pricing.js",
   "rewards-reserve.js",
   "schedule/hours-grammar.js",
   "schedule/load-schedule.js",
@@ -2358,6 +2616,10 @@
    "pins": [],
    "lifts": []
   },
+  "availability-gate.js": {
+   "pins": [],
+   "lifts": []
+  },
   "branches/branch-check.js": {
    "pins": [],
    "lifts": []
@@ -2472,6 +2734,10 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/candidate-validate.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/canonical-binding.js": {
    "pins": [],
    "lifts": [
@@ -2487,12 +2753,29 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/catalog-firestore.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/identity-integrity-guards.test.js",
+     "inverses": [
+      "tools/keymode-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
+  },
+  "catalog/catalog-menu.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/catalog-publish.js": {
    "pins": [
     {
      "file": "xpizza-functions/catalog/context-guards.test.js",
      "inverses": [
       "tools/extras-module-inverse.js",
+      "tools/frozenkeys-module-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js"
      ]
     },
@@ -2500,19 +2783,28 @@
      "file": "xpizza-functions/catalog/identity-integrity-guards.test.js",
      "inverses": [
       "tools/extras-module-inverse.js",
+      "tools/frozenkeys-module-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/photos-module-wiring.guard.test.js",
      "inverses": [
+      "tools/frozenkeys-module-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "xpizza-functions/catalog/publish-paths.test.js"
+    "xpizza-functions/catalog/publish-paths.test.js",
+    "xpizza-functions/frozenkeys-wiring.guard.test.js"
    ]
+  },
+  "catalog/catalog.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/charge-inputs.js": {
    "pins": [],
@@ -2532,11 +2824,31 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/extras-intake.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/form-menu-source.js": {
    "pins": [],
    "lifts": []
   },
   "catalog/form-rebake.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/frozen-keys.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/frozenkeys-wiring.guard.test.js"
+   ]
+  },
+  "catalog/group-intake.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/addproduct-b-wiring.guard.test.js"
+   ]
+  },
+  "catalog/identity-grace.js": {
    "pins": [],
    "lifts": []
   },
@@ -2552,6 +2864,22 @@
     "xpizza-functions/catalog/identity-record-guards.test.js"
    ]
   },
+  "catalog/item-text-edit.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/frozenkeys-wiring.guard.test.js"
+   ]
+  },
+  "catalog/key-mode.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/menu-gates.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/serial3-wiring.guard.test.js"
+   ]
+  },
   "catalog/menu-structure-rows.js": {
    "pins": [],
    "lifts": []
@@ -2561,15 +2889,34 @@
    "lifts": []
   },
   "catalog/mirror-rtdb.js": {
-   "pins": [],
-   "lifts": [
-    "xpizza-functions/mirrorkeys-wiring.guard.test.js"
-   ]
+   "pins": [
+    {
+     "file": "xpizza-functions/mirrorkeys-wiring.guard.test.js",
+     "inverses": [
+      "tools/keymode-module-inverse.js",
+      "tools/mirrorkeys-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
   },
   "catalog/portal-reads.js": {
    "pins": [],
    "lifts": [
     "xpizza-functions/portal/ops-helpers.guard.test.js"
+   ]
+  },
+  "catalog/pricing-tables.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/identity-record-guards.test.js",
+     "inverses": [
+      "tools/keymode-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": [
+    "xpizza-functions/keymode-wiring.guard.test.js"
    ]
   },
   "catalog/public-menu.js": {
@@ -2578,12 +2925,14 @@
      "file": "xpizza-functions/avail-identity-wiring.guard.test.js",
      "inverses": [
       "tools/avail-identity-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/photos-module-wiring.guard.test.js",
      "inverses": [
+      "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js"
      ]
     }
@@ -2624,10 +2973,16 @@
    "lifts": []
   },
   "catalog/snapshot-fallback.js": {
-   "pins": [],
-   "lifts": [
-    "xpizza-functions/mirrorkeys-wiring.guard.test.js"
-   ]
+   "pins": [
+    {
+     "file": "xpizza-functions/mirrorkeys-wiring.guard.test.js",
+     "inverses": [
+      "tools/keymode-module-inverse.js",
+      "tools/mirrorkeys-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
   },
   "catalog/source-store.js": {
    "pins": [
@@ -2636,6 +2991,8 @@
      "inverses": [
       "tools/extras-module-inverse.js",
       "tools/formbake-module-inverse.js",
+      "tools/frozenkeys-module-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js"
      ]
     },
@@ -2644,24 +3001,32 @@
      "inverses": [
       "tools/extras-module-inverse.js",
       "tools/formbake-module-inverse.js",
+      "tools/frozenkeys-module-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/formbake-module-wiring.guard.test.js",
      "inverses": [
-      "tools/formbake-module-inverse.js"
+      "tools/formbake-module-inverse.js",
+      "tools/frozenkeys-module-inverse.js",
+      "tools/keymode-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/pmdisplay-wiring.guard.test.js",
      "inverses": [
       "tools/formbake-module-inverse.js",
+      "tools/frozenkeys-module-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js"
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/frozenkeys-wiring.guard.test.js"
+   ]
   },
   "catalog/text-version.js": {
    "pins": [],
@@ -2846,6 +3211,10 @@
     "xpizza-functions/portal/ops-helpers.guard.test.js"
    ]
   },
+  "factura/eligibility.js": {
+   "pins": [],
+   "lifts": []
+  },
   "form-signal.js": {
    "pins": [],
    "lifts": []
@@ -2869,6 +3238,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -2919,6 +3289,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -2973,6 +3344,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3018,6 +3390,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -3047,6 +3420,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3094,6 +3468,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3132,6 +3507,7 @@
       "tools/checkout-charge-inputs-inverse.js",
       "tools/checkout-inverse.js",
       "tools/checkout-pixelpay-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/photos-inverse.js",
@@ -3160,6 +3536,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3205,6 +3582,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3240,6 +3618,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -3272,6 +3651,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/p5a-inverse.js",
@@ -3302,6 +3682,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/p5a-inverse.js",
@@ -3339,6 +3720,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3382,6 +3764,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/o1b-inverse.js",
@@ -3412,6 +3795,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/p5a-inverse.js",
@@ -3447,6 +3831,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3493,6 +3878,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3535,6 +3921,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3566,6 +3953,7 @@
      "file": "xpizza-functions/hostedrace-wiring.guard.test.js",
      "inverses": [
       "tools/hostedrace-module-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
@@ -3577,6 +3965,7 @@
      "inverses": [
       "tools/checkout-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/photos-inverse.js",
@@ -3603,6 +3992,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3638,6 +4028,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -3671,6 +4062,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/o1b-inverse.js",
@@ -3714,6 +4106,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3749,6 +4142,7 @@
     {
      "file": "xpizza-functions/p5a-wiring.guard.test.js",
      "inverses": [
+      "tools/keymode-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
@@ -3767,6 +4161,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -3792,6 +4187,7 @@
      "file": "xpizza-functions/photos-wiring.guard.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/photos-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -3820,6 +4216,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3864,6 +4261,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3901,6 +4299,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3942,6 +4341,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -3989,6 +4389,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4030,6 +4431,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -4060,6 +4462,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -4088,6 +4491,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -4120,6 +4524,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -4151,6 +4556,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -4178,6 +4584,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/formbake-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/pausa-inverse.js",
@@ -4210,6 +4617,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4249,6 +4657,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -4271,6 +4680,7 @@
      "file": "xpizza-functions/sb-wiring.guard.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js"
@@ -4280,6 +4690,7 @@
      "file": "xpizza-functions/sd-wiring.guard.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js"
@@ -4303,6 +4714,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4348,6 +4760,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4396,6 +4809,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4440,6 +4854,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/p5a-inverse.js",
@@ -4497,6 +4912,7 @@
      "inverses": [
       "tools/checkout-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -4550,6 +4966,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4589,6 +5006,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4634,6 +5052,7 @@
       "tools/h1c-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4676,6 +5095,7 @@
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/p5a-inverse.js",
@@ -4717,6 +5137,7 @@
     "xpizza-functions/identity-shadow-placement.test.js",
     "xpizza-functions/intake-gate-placement.test.js",
     "xpizza-functions/intl-intake-wire-sync.test.js",
+    "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/materialize-hub.test.js",
     "xpizza-functions/merchant-no-money.guard.test.js",
     "xpizza-functions/n2-paid-strand-decision.test.js",
@@ -4808,7 +5229,8 @@
     {
      "file": "xpizza-functions/avail-identity-wiring.guard.test.js",
      "inverses": [
-      "tools/avail-identity-inverse.js"
+      "tools/avail-identity-inverse.js",
+      "tools/keymode-module-inverse.js"
      ]
     },
     {
@@ -4816,11 +5238,14 @@
      "inverses": [
       "tools/avail-identity-inverse.js",
       "tools/extras-module-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/price-sync-inverse.js"
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/keymode-wiring.guard.test.js"
+   ]
   },
   "merchant/_fake-db.js": {
    "pins": [],
@@ -5286,6 +5711,7 @@
     {
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
+      "tools/keymode-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
@@ -5293,12 +5719,19 @@
     {
      "file": "xpizza-functions/s3a-wiring.guard.test.js",
      "inverses": [
+      "tools/keymode-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
     }
    ],
    "lifts": []
+  },
+  "quote-token.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/quote-token.test.js"
+   ]
   },
   "ratings/aggregate-producer.js": {
    "pins": [],
@@ -5343,17 +5776,21 @@
     {
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
+      "tools/keymode-module-inverse.js",
       "tools/sd-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/sd-wiring.guard.test.js",
      "inverses": [
+      "tools/keymode-module-inverse.js",
       "tools/sd-inverse.js"
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/keymode-wiring.guard.test.js"
+   ]
   },
   "resolve-manual.js": {
    "pins": [
@@ -5425,6 +5862,7 @@
      "file": "xpizza-functions/a1-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
@@ -5433,6 +5871,7 @@
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
       "tools/a1-inverse.js",
+      "tools/keymode-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
@@ -5442,6 +5881,17 @@
     "xpizza-functions/rewards-catalog-cutover.test.js",
     "xpizza-functions/serial3-wiring.guard.test.js"
    ]
+  },
+  "rewards-redeem-pricing.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/identity-record-guards.test.js",
+     "inverses": [
+      "tools/keymode-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
   },
   "rewards-reserve.js": {
    "pins": [],
@@ -5593,6 +6043,7 @@
     {
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
+      "tools/keymode-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
     }

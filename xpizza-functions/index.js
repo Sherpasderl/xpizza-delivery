@@ -129,7 +129,7 @@ const { getMessaging } = require('firebase-admin/messaging');
 // factura/sync.test.js). Allocation/void fire from DB triggers (allocateFacturaOnSale /
 // voidFacturaOnCancel) defined below. FACTURA_PLAN.md + ADR-0003/0004.
 const { pricedLineItems } = require('./factura/pricing');
-const { facturaSaleEligible, facturaVoidEligible, usesPlatformFactura } = require('./factura/eligibility');
+const { facturaSaleEligible, facturaVoidEligible, usesPlatformFactura, fiscalKeyModeOk } = require('./factura/eligibility');
 const { allocateFacturaNumber, voidFactura } = require('./factura/factura-helpers');
 const { decideDisplayNumber, displayNumberEligible } = require('./order-display-number');   // per-restaurant daily #N (display-only)
 const { hnDateISO } = require('./factura/build-record');   // YYYY-MM-DD in America/Tegucigalpa (the factura day boundary)
@@ -310,7 +310,7 @@ const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 // had already moved to the resolved tables. Dead imports of a retired authority are exactly what a
 // future edit reaches for, so they are gone and catalog/no-code-authority.guard.test.js keeps them gone.
 // ---------------------------------------------------------------------------
-const { computeServerTotal, summaryLines, weekendOnlyViolation, resolvePriceTables } = require('./menu-pricing');
+const { computeServerTotal, summaryLines, weekendOnlyViolation, resolvePriceTables, keyModeOfTables } = require('./menu-pricing');
 const { orderContentKey, isContentRetap, rateLimitKey } = require('./order-dedup');   // Layer 2 — content-aware phone rate limit; rateLimitKey shared with the F3 guard
 /* serial3:begin require */
 const { readContentStamp, contentKeysRecord } = require('./order-dedup');   // §3: the content stamp under the order-independent OR the pre-§3 verbatim key; r3: the keys persisted on the pending order
@@ -815,7 +815,7 @@ createOrderApp.all('*', async (req, res) => {
   // AFTER the resolver → fail-closed guard → eligibility chain, which is pinned contiguous elsewhere.
   // T6 ships the READING only; the flip to true is an owner action once the client has shipped and the
   // no-token rate has reached ~0 (server and client must both be live before enforcing).
-  const tokenEnforce = await tokenEnforceEnabled(db);
+  const tokenEnforce = await tokenEnforceEnabled(db); if (!fiscalKeyModeOk(restaurantId, keyModeOfTables(pricingTables))) return pricingUnavailable(res);   // S0 fiscal fence: refused before any write or hold
 
   /* ── 1D D4-grace — RESOLVE THE IDENTITY FORWARD, ONCE, BEFORE PRICING ────────────────────────
      Placed here because everything below prices through itemPricingKey, and the stamp is what that
@@ -824,7 +824,7 @@ createOrderApp.all('*', async (req, res) => {
      would have been selected anyway. A disagreement stamps nothing and is logged.
      getFirestore is passed as a GETTER so a cold-instance throw is caught inside the guard rather than
      failing the request — the lesson D3 paid for. */
-  const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP });
+  const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP, keyMode: keyModeOfTables(pricingTables) });
   reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
 
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [create]
@@ -975,7 +975,7 @@ createOrderApp.all('*', async (req, res) => {
   // increment and any order/scheduled write — so a blocked (86'd) cash attempt writes NOTHING (no
   // orders/{id}, no rate_limits). checkItemAvailability is fail-open internally (a read error/absent
   // node ⇒ blocked:[] ⇒ the sale proceeds), so a Firebase hiccup can never wrongly reject.
-  const availGate = await checkItemAvailability(db, body.items, restaurantId);
+  const availGate = await checkItemAvailability(db, body.items, restaurantId, keyModeOfTables(pricingTables));
   if (availGate.blocked.length > 0) {
     console.warn(`createOrder: rejecting ${orderId} — unavailable item(s): ${availGate.blocked.join(', ')}`);
     return res.status(400).json({ error: 'item_unavailable', blocked: availGate.blocked });
@@ -992,7 +992,7 @@ createOrderApp.all('*', async (req, res) => {
     // 1D add-product A §0b.1: from the SAME snapshot, the known-key membership — a key it cannot classify (a product
     // added after this snapshot, or a portal addition while the read fails) is refused, retryably, before any write.
     const intakeGates = await gateReader().intakeGatesFor(restaurantId);
-    const unknownKeys = absentFromMenu(body.items, restaurantId, intakeGates.known);
+    const unknownKeys = absentFromMenu(body.items, restaurantId, intakeGates.known, keyModeOfTables(pricingTables));
     if (unknownKeys.length) {
       console.warn(`createOrder: ${orderId} — 503 menu_updating (keys the gate snapshot does not know: ${unknownKeys.join(', ')})`);
       res.set('Retry-After', '2');
@@ -1001,7 +1001,7 @@ createOrderApp.all('*', async (req, res) => {
     // 1D add-product B (rev 6): the group rules, render capability on only — a bare launcher line or reward → 409
     // choice_required; a choice whose launcher is 86'd → item_unavailable; an unreadable variant map → 503. Same snapshot,
     // after the dedupe, before any write or reserve.
-    const groupRefusal = GI.cashRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId,
+    const groupRefusal = GI.cashRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId, keyMode: keyModeOfTables(pricingTables),
       rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables), readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }));
     if (groupRefusal) { if (groupRefusal.retryAfter) res.set('Retry-After', String(groupRefusal.retryAfter)); return res.status(groupRefusal.status).json(groupRefusal.body); }
     /* extras:begin cash */
@@ -1266,7 +1266,7 @@ createOrderApp.all('*', async (req, res) => {
     attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: DW.totalLempiras(dq, effectiveTotal), orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
     /* sb:begin cash-dish-qty-held */
     // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
-    { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables)); if (dishQty) heldUpdates[`orders/${orderId}`].dish_qty = dishQty; }
+    { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables), require('./menu-pricing').keyModeOfTables(pricingTables)); if (dishQty) heldUpdates[`orders/${orderId}`].dish_qty = dishQty; }
     /* sb:end cash-dish-qty-held */
     if (redemptionCanonical) heldUpdates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until release→completion)
     /* a1:begin cash-marker-held */
@@ -1307,7 +1307,7 @@ createOrderApp.all('*', async (req, res) => {
   attachCustomerAttribution(updates, orderId, customer_uid, { now, total: DW.totalLempiras(dq, effectiveTotal), orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
   /* sb:begin cash-dish-qty */
   // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
-  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }
+  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables), require('./menu-pricing').keyModeOfTables(pricingTables)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }
   /* sb:end cash-dish-qty */
   // Track A (MF2): immediate (cash/live) path — order_tracking is built HERE (not via buildMaterializeUpdates),
   // so stamp has_profile from the resolved server customer_uid. Guest → omitted → order_tracking byte-identical.
@@ -1535,7 +1535,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // AFTER the resolver → fail-closed guard → eligibility chain, which is pinned contiguous elsewhere.
   // T6 ships the READING only; the flip to true is an owner action once the client has shipped and the
   // no-token rate has reached ~0 (server and client must both be live before enforcing).
-  const tokenEnforce = await tokenEnforceEnabled(db);
+  const tokenEnforce = await tokenEnforceEnabled(db); if (!fiscalKeyModeOk(restaurantId, keyModeOfTables(pricingTables))) return pricingUnavailable(res);   // S0 fiscal fence: refused before any write or hold
 
   /* ── 1D D4-grace — RESOLVE THE IDENTITY FORWARD, ONCE, BEFORE PRICING ────────────────────────
      Placed here because everything below prices through itemPricingKey, and the stamp is what that
@@ -1544,7 +1544,7 @@ chargeOnlineApp.all('*', async (req, res) => {
      would have been selected anyway. A disagreement stamps nothing and is logged.
      getFirestore is passed as a GETTER so a cold-instance throw is caught inside the guard rather than
      failing the request — the lesson D3 paid for. */
-  const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP });
+  const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP, keyMode: keyModeOfTables(pricingTables) });
   reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
 
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [charge]
@@ -1648,7 +1648,7 @@ chargeOnlineApp.all('*', async (req, res) => {
       // render capability FIRST (codex PB-1 r2 P2-a): with it off this branch reads nothing and returns the preparation's error
       if (groupCapabilities().render) {
         const pr = GI.prepFailureRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId),
-          items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables) }));
+          items: body.items, restaurantId, keyMode: keyModeOfTables(pricingTables), rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables) }));
         if (pr) { if (pr.retryAfter) res.set('Retry-After', String(pr.retryAfter)); return res.status(pr.status).json({ ...pr.body, order_id: orderId }); }
       }
       return res.status(prep.status).json({ ...prep.body, order_id: orderId });   // non-payable, nothing written, NO reserve yet
@@ -1775,7 +1775,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     const MONOTONIC_TERMINAL = ['already_paid', 'conflict', 'closed'];
     const bypassGate = clsG && MONOTONIC_TERMINAL.includes(clsG.outcome);
     if (!bypassGate) {
-      const availGate = await checkItemAvailability(db, body.items, restaurantId);
+      const availGate = await checkItemAvailability(db, body.items, restaurantId, keyModeOfTables(pricingTables));
       cartBlocked = availGate.blocked;
     }
   }
@@ -1790,7 +1790,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     // FRESH checkout (or a failed classifier) is refused here, before reserving; anything else (reuse, in_progress,
     // paid, closed) is honoured and ARMS the guard in acquireHostedAttempt against a drift to a fresh issuance.
     const intakeGates = await gateReader().intakeGatesFor(restaurantId);
-    const unknownKeys = absentFromMenu(body.items, restaurantId, intakeGates.known);
+    const unknownKeys = absentFromMenu(body.items, restaurantId, intakeGates.known, keyModeOfTables(pricingTables));
     if (unknownKeys.length) {
       const mg = OCS.chargePreGate('menu_updating', clsForMenu);
       if (mg.refuse) {
@@ -1804,7 +1804,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     // is refused here; a verified reuse keeps its BOUND snapshot and only arms the guard in acquireHostedAttempt (so a
     // reuse → fresh rotation is refused there); parent-86'd choices join cartBlocked (acquire enforces it the same way).
     {
-      const gd = GI.chargeDecision(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId,
+      const gd = GI.chargeDecision(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId, keyMode: keyModeOfTables(pricingTables),
         rewardKeys: (redemptionFreeItems || []).map((fi) => fi.item_id), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables),
         readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }), clsForMenu);
       if (gd.respond) { if (gd.respond.retryAfter) res.set('Retry-After', String(gd.respond.retryAfter)); return res.status(gd.respond.status).json({ ...gd.respond.body, order_id: orderId }); }
@@ -1983,7 +1983,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   /* sd:end reorder-price-snapshot */
   /* sb:begin online-dish-qty */
   // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
-  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables)); if (dishQty) pendingOrderRecord.dish_qty = dishQty; }
+  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables), require('./menu-pricing').keyModeOfTables(pricingTables)); if (dishQty) pendingOrderRecord.dish_qty = dishQty; }
   /* sb:end online-dish-qty */
   /* serial3:begin card-content-keys */
   // §3 r3 (codex r3 P1): the order's content keys, computed HERE where the pricing version's catalog snapshot is warm, and
@@ -7428,7 +7428,7 @@ exports.quoteOrder = onRequest(
       if (!tables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' });
       // 1D add-product B: a bare launcher quotes as choice_required (render capability on only — no read otherwise)
       if (groupCapabilities().render) {
-        const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId }));
+        const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, keyMode: keyModeOfTables(tables) }));
         if (qr) return res.status(200).json({ ok: false, ...qr });
       }
       /* extras:begin quote */
@@ -7501,7 +7501,7 @@ exports.quoteRedemption = onRequest(
       const quoteEligible = await gateReader().redeemEligibleFor(restaurantId);
       // 1D add-product B: a bare launcher (line or reward) quotes as choice_required (render capability on only)
       if (groupCapabilities().render) {
-        const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, quoteTables) }));
+        const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, keyMode: keyModeOfTables(quoteTables), rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, quoteTables) }));
         if (qr) return res.status(409).json({ ok: false, ...qr });
       }
       /* extras:begin quote-redemption */

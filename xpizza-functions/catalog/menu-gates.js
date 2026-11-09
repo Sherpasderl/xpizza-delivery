@@ -266,10 +266,10 @@ function staticGroupsFallback(restaurantId) {
 }
 
 // The order's lines whose pricing key the snapshot does not know (deduplicated, in order).
-function absentFromMenu(items, restaurantId, known) {
+function absentFromMenu(items, restaurantId, known, keyMode) {
   const out = [];
   for (const it of Array.isArray(items) ? items : []) {
-    const k = itemPricingKey(it, restaurantId);
+    const k = itemPricingKey(it, restaurantId, keyMode);
     if (typeof k === 'string' && !(known instanceof Set && known.has(k)) && !out.includes(k)) out.push(k);
   }
   return out;

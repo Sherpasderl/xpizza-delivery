@@ -21,7 +21,7 @@
 // pricing's addressing contract, whatever that is (today menu-pricing keys it per restaurant — existing onboarding debt
 // there, not a second copy here).
 const { eligibleSet } = require('./extras-eligibility');
-const { itemPricingKey, extraPricingKey } = require('../menu-pricing');
+const { itemPricingKey, extraPricingKey, keyModeOfTables } = require('../menu-pricing');
 
 const MODES = new Set(['off', 'shadow', 'enforce']);
 const PATH = 'platform_config/extras_eligibility';
@@ -62,14 +62,14 @@ const own = (o, k) => !!o && typeof o === 'object' && Object.prototype.hasOwnPro
 // {name:'Salsa Roja', id:'Pepperoni'} be judged as Pepperoni and charged as Salsa Roja). The other field is ignored
 // exactly as pricing ignores it. A key the tables do not price is pricing's refusal, not ours.
 function lineItemKey(line, tables, rid) {
-  const k = itemPricingKey(line, rid);
+  const k = itemPricingKey(line, rid, keyModeOfTables(tables));
   return (typeof k === 'string' || typeof k === 'number') && own((tables && tables.menu) || {}, String(k)) ? String(k) : null;
 }
 function lineExtraKeys(line, tables, rid) {
   const ex = (tables && tables.extras) || {};
   const out = [];
   for (const e of (Array.isArray(line && line.extras) ? line.extras : [])) {
-    const k = extraPricingKey(e, rid);
+    const k = extraPricingKey(e, rid, keyModeOfTables(tables));
     if ((typeof k === 'string' || typeof k === 'number') && own(ex, String(k))) out.push(String(k));
   }
   return out;
