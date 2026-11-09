@@ -2326,6 +2326,7 @@
   "cancel-order-core.js",
   "cart-sig.js",
   "catalog/_hosted-claim-delta.js",
+  "catalog/add-product-io.js",
   "catalog/add-product.js",
   "catalog/bound-reuse.js",
   "catalog/bundle-compare.js",
@@ -2739,6 +2740,10 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/add-product-io.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/add-product.js": {
    "pins": [],
    "lifts": [
@@ -2848,7 +2853,14 @@
    "lifts": []
   },
   "catalog/edit-catalog-handler.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
+     "inverses": [
+      "tools/reservedkeys-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": []
   },
   "catalog/exposure-source.js": {
@@ -2980,7 +2992,14 @@
    "lifts": []
   },
   "catalog/publish-edited-handler.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
+     "inverses": [
+      "tools/reservedkeys-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": [
     "xpizza-functions/catalog/publish-paths.test.js"
    ]

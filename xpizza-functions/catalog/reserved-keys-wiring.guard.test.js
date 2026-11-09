@@ -53,13 +53,21 @@ const POINTER = 'tx.set(pointerRef, {';
   assert.ok(at(LIMIT) < at(UNION) && at(UNION) < at(POINTER), '🔴 RKW-UNION-BEFORE-POINTER limit check → union write → pointer');
   ok('the union is written after the branch (every activation) and before the pointer moves, behind the limit check');
 }
-// ── 4 ── the slice's test-only inverse returns the activation module to its base byte for byte (every older pin peels it)
+// ── 4 ── the slice's test-only inverse returns every pinned file it edits to its base byte for byte (every older pin peels it)
 {
   const I = require('../tools/reservedkeys-module-inverse');
-  assert.deepStrictEqual([...I.FILES], ['catalog/catalog-publish.js'], 'RKW-INVERSE the slice edits exactly one pinned file');
-  const back = I.unapplyReservedKeysModule('catalog/catalog-publish.js', src);
-  assert.strictEqual(require('crypto').createHash('sha256').update(back).digest('hex'), '012eccdf776cc4f06c52dcb9cba315e8dc3daa30f026368e1e5b3192b5ce0669', '🔴 RKW-INVERSE round trip to 43cfdf11');
-  assert.strictEqual(back.split('\n').length, src.split('\n').length, '🔴 RKW-SAME-LINE the slice adds no line to the pinned file');
-  ok('the inverse returns catalog-publish.js to 43cfdf11 byte for byte; same-line edits only');
+  const BASE_SHA = {
+    'catalog/catalog-publish.js': '012eccdf776cc4f06c52dcb9cba315e8dc3daa30f026368e1e5b3192b5ce0669',
+    'catalog/edit-catalog-handler.js': 'a747ce0695a06d762a3424c2cf893376a1ce983e056c87be917be93e04c3b37a',
+    'catalog/publish-edited-handler.js': 'ef64da069cc1766399fab66580096a087f8db6ac5ab444b8d16a2eb968e30613',
+  };
+  assert.deepStrictEqual([...I.FILES].sort(), Object.keys(BASE_SHA).sort(), 'RKW-INVERSE the slice edits exactly these pinned files');
+  for (const [f, want] of Object.entries(BASE_SHA)) {
+    const now = fs.readFileSync(path.join(__dirname, '..', f));
+    const back = Buffer.from(I.unapplyReservedKeysModule(f, now.toString('utf8')), 'utf8');
+    assert.strictEqual(require('crypto').createHash('sha256').update(back).digest('hex'), want, `🔴 RKW-INVERSE ${f} round trip to 43cfdf11`);
+    assert.strictEqual(back.toString('utf8').split('\n').length, now.toString('utf8').split('\n').length, `🔴 RKW-SAME-LINE ${f}: no line added`);
+  }
+  ok('the inverse returns each pinned file to 43cfdf11 byte for byte; same-line edits only');
 }
 console.log(`\nreserved-keys-wiring.guard: OK (${n})`);
