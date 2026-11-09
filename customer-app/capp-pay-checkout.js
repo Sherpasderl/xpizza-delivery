@@ -103,7 +103,7 @@
               <div class="pxrow">${fld('expiry')}${fld('cvv', '', `<button class="infobtn" aria-label="Qué es el CVV" data-act="cvv-info">${IC.info}</button>`)}</div>
               ${fld('name')}
               ${save}
-              <div class="line sec">${IC.lock}<span>Tus datos van cifrados directo al banco. Solo guardamos los últimos 4 dígitos.</span></div>
+              <div class="line pxlock">${IC.lock}<span>Tus datos van cifrados directo al banco. Solo guardamos los últimos 4 dígitos.</span></div>
             </div>
             <div class="paybar">${btn('primary', 'addcard-save', 'Guardar tarjeta', !ok)}</div>
           </div>`;

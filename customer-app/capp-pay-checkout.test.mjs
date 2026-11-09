@@ -43,6 +43,21 @@ test('1 before / after the quote: the bar keeps ONE layout — in the pay bar th
   assert.ok(rule && /flex-basis:100%/.test(rule[1]), `🔴 CO-PQ-h: .paybar.pay .payline span takes the whole row (${rule ? rule[1] : 'no rule'})`);
 });
 
+test('3 layout (the SBS, 11-09): «Guardar tarjeta» PINNED to the bottom (the mockup\'s .flow.px .paybar{margin-top:auto}); the lock note borrows no global class — a stand-alone rule (the menu\'s .sec padding) would push and indent it', () => {
+  const css = readFileSync(new URL('./capp.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ');
+  const rules = css.split('}').map((r) => r.split('{')).filter((r) => r.length === 2).map(([sel, body]) => ({ sels: sel.split(',').map((x) => x.trim()), body }));
+  assert.ok(rules.some((r) => r.sels.includes('.app:not(.desk) .flow.px .paybar') && /margin-top:auto/.test(r.body)), '🔴 CO-3L: .flow.px .paybar{margin-top:auto} — the primary pinned to the bottom (phone; the desk grid keeps its margin)');
+  assert.ok(!rules.some((r) => r.sels.includes('.flow.px .paybar') && /margin-top:auto/.test(r.body)), '🔴 CO-3L: never unscoped — on the desk grid an auto margin would drop the bar\'s 28 px');
+  const h = flat(H.formHtml(null, { input: (k) => `<input id="c-${k}">` }));
+  const note = h.match(/<div class="([^"]*)"><svg[^>]*>(?:(?!<\/svg>).)*<\/svg><span>Tus datos van cifrados/);
+  assert.ok(note, 'premise: the lock note');
+  const own = note[1].split(/\s+/).filter((c) => c && c !== 'line');
+  for (const c of own) {
+    const bare = rules.filter((r) => r.sels.includes(`.${c}`));
+    assert.deepEqual(bare.map((r) => r.body), [], `🔴 CO-3L: the lock note's class «${c}» has a stand-alone global rule`);
+  }
+});
+
 test('2: the chooser sheet — ✕, the saved cards (tile, label, expiry, a checkmark on the selected), «Agregar tarjeta», «Efectivo al entregar» for members where allowed', () => {
   const h = H.chooserHtml({ cards: CARDS, selected: { kind: 'card', card_id: 'c_v' }, cash: true });
   assert.equal(flat(h), flat(`<div class="scrim" data-act="paysheet-close"></div><div class="sheet" role="dialog" aria-label="Elegí cómo pagar"><div class="grab"></div>
