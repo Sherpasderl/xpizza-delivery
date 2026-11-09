@@ -82,8 +82,8 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/publish-edited-handler.js",
-  "now": "const AP = require('./add-product');\nconst { groupCapabilities } = require('./platform-groups'); const { textEditCapabilities } = require('./item-text-edit');   // S1a: the product-text switch\nconst { extrasCapabilities } = require('./platform-extras');   // 1D add-product B: the ONE platform authoring switch\n",
-  "was": "const AP = require('./add-product');\nconst { groupCapabilities } = require('./platform-groups');\nconst { extrasCapabilities } = require('./platform-extras');   // 1D add-product B: the ONE platform authoring switch\n"
+  "now": "}\nconst { textEditCapabilities } = require('./item-text-edit');   // S1a: the product-text switch (below the reviewed NUL, so its offset stands)\nasync function publishEditedCore({ db, authorize, readActiveBuilt, readDraft, publishVersion, mirror, alarm, sourceSha, addProduct = null, photos = null }, body, req) {\n",
+  "was": "}\n\nasync function publishEditedCore({ db, authorize, readActiveBuilt, readDraft, publishVersion, mirror, alarm, sourceSha, addProduct = null, photos = null }, body, req) {\n"
  },
  {
   "file": "catalog/publish-edited-handler.js",

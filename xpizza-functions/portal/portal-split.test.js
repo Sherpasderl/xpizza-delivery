@@ -58,6 +58,7 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/extras-eligibility-store.js',    // per-product extras: the per-version eligibility doc, written by catalog-publish.js
   'catalog/extras-eligibility.js',          // per-product extras: the ONE pure evaluator, via the eligibility store
   'catalog/extras-exposure.js', 'catalog/form-menu-source.js',
+  'catalog/frozen-keys.js',                 // S1a: the server-owned rename map (pure; form-menu-source only), via source-store.js
   'catalog/generate-form-bundle.js',        // 1D add-product A: generateKdsManifest (pure over a catalog), via kds-manifest.js
   'catalog/identity-backfill.js',
   'catalog/identity-derive.js', 'catalog/identity-destination.js',
@@ -65,6 +66,7 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/identity-fence.js', 'catalog/identity-flags.js',
   'catalog/identity-partition.js', 'catalog/identity-plan.js', 'catalog/identity-reconcile.js', 'catalog/identity-registry.js',
   'catalog/identity-stampmap.js', 'catalog/identity-verdict.js', 'catalog/identity-writer.js',
+  'catalog/item-text-edit.js',              // S1a: the product-text platform switch (a constant), via edit-catalog-handler.js
   'catalog/kds-manifest.js',                // 1D add-product A: the conditional /menus writer, after a successful publish
   'catalog/key-mode.js',                    // S0 key mode: the server-owned draft mode (pure), via edit-catalog-handler.js
   'catalog/menu-structure-rows.js',         // plan 4 GATED (G1): the reviewed rows the bootstrap applies, via form-menu-source.js (pure; no I/O)

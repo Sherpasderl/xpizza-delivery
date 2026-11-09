@@ -35,6 +35,13 @@ const codes = (ps) => ps.map((p) => `${p.key}:${p.field}:${p.code}`).sort();
   // a NEW product is newly authored throughout
   const add = clone(live); add.items.push({ ref: 'tmp:newdish01', price: 100, display: { name: 'A'.repeat(61), cat: 'individual' } });
   assert.deepStrictEqual(codes(AP.textCapProblems({ draft: add, live })), ['tmp:newdish01:name:name_too_long'], 'TC-NEW a new product\'s name is capped');
+  // a newly authored name may not be another product's name or key, or an option's — on a name-keyed menu it would price that one
+  const other = live.items.find((i) => i.key !== 'Carnivora' && i.display.variantOf == null);
+  const dup = clone(live); dup.items.find((i) => i.key === 'Carnivora').display.name = other.display.name.toUpperCase();
+  assert.deepStrictEqual(codes(AP.textCapProblems({ draft: dup, live })), ['Carnivora:name:name_taken'], 'TC-TAKEN another product\'s name (any case) is refused');
+  const exName = live.extras.find((e) => e.display && typeof e.display.name === 'string').display.name;
+  const dupX = clone(live); dupX.items.find((i) => i.key === 'Carnivora').display.name = exName;
+  assert.ok(codes(AP.textCapProblems({ draft: dupX, live })).includes('Carnivora:name:name_taken'), 'TC-TAKEN an option (extra) name is refused');
   ok('caps: name ≤ 60 (attribute rule), desc ≤ 200, newly authored only; live values grandfathered; new products capped');
 }
 

@@ -11,7 +11,7 @@
 const assert = require('assert');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { validateSource, canonicalize } = require('./source-store');
-const { buildSourceCandidate, candidateSource } = require('./candidate-validate');
+const { buildSourceCandidate, candidateSource, assertBuiltValid } = require('./candidate-validate');
 const AP = require('./add-product');
 const FK = require('./frozen-keys');
 
@@ -53,13 +53,20 @@ const idOf = (src, key) => itemOf(src, key).display.id;
 {
   const base = live();
   const src = { ...renamed(base, KEY, 'Carnívora Suprema'), frozen_keys: { [String(idOf(base, KEY))]: KEY } };
-  const { inputs, built } = buildSourceCandidate(RID, src);
+  let inputs, built;
+  assert.doesNotThrow(() => ({ inputs, built } = buildSourceCandidate(RID, src)), 'FK-BUILD a renamed source builds (its key is the entry, not the new name)');
   const b = built.items.find((i) => i.display && i.display.id === idOf(base, KEY));
   assert.strictEqual(b.key, KEY, 'FK-BUILD the renamed item keeps its pricing key');
   assert.strictEqual(b.display.name, 'Carnívora Suprema');
   assert.deepStrictEqual(inputs.frozenKeys, src.frozen_keys, 'FK-INPUTS carry the map');
   assert.deepStrictEqual(built.frozen_keys, src.frozen_keys, 'FK-BUILT carries the map');
   assert.deepStrictEqual(candidateSource(RID, { items: built.items, extras: src.extras, structure: built.structure, frozen_keys: built.frozen_keys }).frozen_keys, src.frozen_keys, 'FK-CANDIDATE carries the map');
+  assert.doesNotThrow(() => assertBuiltValid(RID, built, 'fk'), 'FK-ASSERT-BUILT the built candidate validates WITH its map');
+  // condition 2 at the build: an entry whose display.id now belongs to another product never re-keys that product
+  const reused = clone(base); const other = reused.items.find((i) => i.key !== KEY && Number.isInteger(i.display.id));
+  reused.frozen_keys = { [String(other.display.id)]: KEY };
+  let rb; assert.doesNotThrow(() => { rb = buildSourceCandidate(RID, reused).built; }, 'FK-REUSE-BUILD an inert entry on a reused id builds');
+  assert.strictEqual(rb.items.find((i) => i.display.id === other.display.id).key, other.key, 'FK-REUSE-BUILD the reused id keeps its own key');
   const plain = buildSourceCandidate(RID, base);
   assert.strictEqual('frozenKeys' in plain.inputs || 'frozen_keys' in plain.built, false, 'no map ⇒ today\'s shapes');
   ok('the build keys a renamed item by its entry; inputs, built and candidate carry the map; none ⇒ today');
