@@ -1149,33 +1149,48 @@
     function tipIdentity() {
       TIPD.gen++; TIPD.owner = null; TIPD.state = 'idle'; TIPD.cents = null; TIPD.p = null;
       tipCancel();
-      if (S.flow && S.tipDefaultFlow === S.flow) { S.flow.tipChoice = null; S.flow.tipCents = 0; }   // a DEFAULT was this identity's
+      const f = S.flow, wasDefault = !!f && S.tipDefaultFlow === f;   // a DEFAULT was this identity's; an explicit tap is kept
       S.tipDefaultFlow = null;
+      if (!wasDefault) return;
+      // Codex D-r1 P2b: ON the open step, the new identity's default is re-resolved IN PLACE (never a chip-less step); until it
+      // lands, the old default stays drawn but is never placeable (tipStale), and any cancel drops it
+      if (S.screen === 'tip' && C.tipped(f)) { tipLoad(); const apply = () => { S.tipStale = null; f.tipChoice = null; f.tipCents = 0; tipApply(f); }; if (TIPD.state !== 'loading' || !TIPD.p) { apply(); return; } tipWait(f, 'tip', () => { if (S.tipStale !== f) return; apply(); render(); }); S.tipStale = f; return; }
+      f.tipChoice = null; f.tipCents = 0;
     }
-    function tipCancel() { S.tipEntryGen = (S.tipEntryGen || 0) + 1; S.tipEntry = null; }
-    function enterTip() {
-      const f = S.flow;
-      if (f.tipChoice !== null) { go('tip'); return; }   // a choice already made is never replaced
-      if (S.tipEntry) return;                               // duplicate taps coalesce into the pending entry
-      tipLoad();
-      const apply = () => { C.chooseTip(f, C.tipDefault({ lastCents: TIPD.state === 'done' ? TIPD.cents : null, redeem: !!f.redeem })); S.tipDefaultFlow = f; go('tip'); };
-      if (TIPD.state !== 'loading' || !TIPD.p) { apply(); return; }
+    // every cancel (Back / pickup / cash / identity / teardown / a tap) also drops a stale default — never left as the person's choice
+    function tipCancel() {
+      S.tipEntryGen = (S.tipEntryGen || 0) + 1; S.tipEntry = null;
+      if (S.tipStale) { if (S.tipStale === S.flow) { S.flow.tipChoice = null; S.flow.tipCents = 0; } S.tipStale = null; }
+    }
+    const tipApply = (f) => { C.chooseTip(f, C.tipDefault({ lastCents: TIPD.state === 'done' ? TIPD.cents : null, redeem: !!f.redeem })); S.tipDefaultFlow = f; };
+    // wait ≤ TIP_WAIT_MS for the pending read, then apply once — only if still this flow, this screen, this identity, and a CARD
+    // delivery (Codex D-r1 P2a: a switch to cash meanwhile never lets the late answer open the step)
+    function tipWait(f, on, apply) {
       tipCancel();
       const gen = S.tipEntryGen, who = tipOwner(), tm = opts.timers || { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (h) => clearTimeout(h) };
       let done = false, t = null;
       const finish = () => {
         if (done) return; done = true; if (t !== null) tm.clearTimeout(t);
-        if (dead || gen !== S.tipEntryGen) return;            // Back / pickup / identity / teardown cancelled it
+        if (dead || gen !== S.tipEntryGen) return;            // Back / pickup / cash / identity / teardown cancelled it
         S.tipEntry = null;
-        if (S.flow !== f || S.screen !== 'checkout' || f.mode !== 'delivery' || who !== tipOwner() || f.tipChoice !== null) return;
+        if (S.flow !== f || S.screen !== on || !C.tipped(f) || who !== tipOwner()) return;
         apply();
       };
       S.tipEntry = { gen };
       t = tm.setTimeout(finish, TIP_WAIT_MS);
       TIPD.p.then(finish, finish);
     }
+    function enterTip() {
+      const f = S.flow;
+      if (f.tipChoice !== null) { go('tip'); return; }   // a choice already made is never replaced
+      if (S.tipEntry) return;                               // duplicate taps coalesce into the pending entry
+      tipLoad();
+      const apply = () => { tipApply(f); go('tip'); };
+      if (TIPD.state !== 'loading' || !TIPD.p) { apply(); return; }
+      tipWait(f, 'checkout', () => { if (f.tipChoice === null) apply(); });
+    }
     const tipKey = () => { const c = S.flow.tipChoice; return c === null ? null : c.kind === 'none' ? 0 : c.kind === 'other' ? 'other' : c.lempiras; };
-    const tipReady = (T) => C.tipChosen(S.flow) && T.ready && !need() && !soldBlock() && intakeOk();
+    const tipReady = (T) => C.tipChosen(S.flow) && S.tipStale !== S.flow && T.ready && !need() && !soldBlock() && intakeOk();
     function tipHtml() {
       const f = S.flow, T = totalsNow(), c = tipKey();
       const chip = (v, label, cls = '') => `<button class="chip${cls}" aria-pressed="${c === v}" data-act="tipc" data-val="${v}">${label}</button>`;
@@ -1707,7 +1722,7 @@
     function tipAct(t) {
       const f = S.flow, a = t.dataset.act;
       if (a === 'back') { back(); return true; }
-      if (a === 'tipc') { const v = t.dataset.val; if (v === 'other') { S.tipDraft = f.tipChoice && f.tipChoice.kind === 'other' && f.tipCents ? String(f.tipCents / 100) : ''; openLayer('tipother'); return true; } C.chooseTip(f, Number(v)); S.tipDefaultFlow = null; render(); return true; }
+      if (a === 'tipc') { const v = t.dataset.val; if (v === 'other') { S.tipDraft = f.tipChoice && f.tipChoice.kind === 'other' && f.tipCents ? String(f.tipCents / 100) : ''; openLayer('tipother'); return true; } C.chooseTip(f, Number(v)); S.tipDefaultFlow = null; S.tipStale = null; tipCancel(); render(); return true; }
       if (a === 'tip-place') { if (!tipReady(totalsNow())) return true; placeTap(); return true; }
       return false;
     }
@@ -1721,7 +1736,7 @@
       }
       const a = t.dataset.act;
       if (a === 'tk') { const v = t.dataset.val; S.tipDraft = v === 'del' ? (S.tipDraft || '').slice(0, -1) : capDraft((S.tipDraft || '') + v, S.tipDraft || ''); renderLayer(); return true; }
-      if (a === 'tip-save') { const n = Number(S.tipDraft) || 0; C.chooseTip(S.flow, { other: Math.min(n, C.TIP_MAX_LEMPIRAS) }); S.tipDefaultFlow = null; closeLayer(); render(); return true; }
+      if (a === 'tip-save') { const n = Number(S.tipDraft) || 0; C.chooseTip(S.flow, { other: Math.min(n, C.TIP_MAX_LEMPIRAS) }); S.tipDefaultFlow = null; S.tipStale = null; tipCancel(); closeLayer(); render(); return true; }
       if (a === 'placing-go') { placingGo(); return true; }
       if (a === 'placing-back') { placingStop(); closeLayer(); return true; }
       if (a === 'pin-done') {
@@ -1993,7 +2008,7 @@
     function render() {
       if (dead) return;
       // r7 (owner 11-09): the tip is card-only — a cash flow holds no tip choice; a switch to cash ON the step returns to the checkout
-      if (S.flow && S.flow.mode === 'delivery' && S.flow.pay === 'cash' && (S.flow.tipChoice !== null || S.screen === 'tip')) {
+      if (S.flow && S.flow.mode === 'delivery' && S.flow.pay === 'cash' && (S.flow.tipChoice !== null || S.screen === 'tip' || S.tipEntry)) {
         S.flow.tipChoice = null; S.flow.tipCents = 0; S.tipDefaultFlow = null; tipCancel();
         if (S.screen === 'tip') { const top = S.stack[S.stack.length - 1]; if (top && top.screen === 'checkout') back(); else { S.screen = 'checkout'; render(); } return; }   // the stack + history stay in step
       }

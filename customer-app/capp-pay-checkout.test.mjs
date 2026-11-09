@@ -94,13 +94,10 @@ test('1 in the TIP footer (tip-step SBS 11-09): the charge line under .tipfoot i
   }
 });
 
-test('1 cash (tip-step r2 frame 5, owner-approved 11-09): the cash row carries its own charge line — «Total L X · Pagás cuando llegue tu pedido.», no «Más información» (no hold); before the quote, the sentence alone', () => {
+test('1 cash (card-only tip, OWNER 11-09; tip mockup frame 5 SUPERSEDED): the cash row carries NO charge line — v7 draws none, and frame 5\'s «Pagás cuando llegue tu pedido.» line was never owner-approved', () => {
   const cash = { kind: 'cash' }, cta = { label: 'Hacer pedido · L 585', enabled: true };
-  const line = (h) => { const m = flat(h).match(/<p class="payline">(.*?)<\/p>/); return m ? m[1] : null; };
-  assert.strictEqual(line(H.payBarHtml({ method: cash, total_cents: 58500, cta })), '<span>Total L 585 · Pagás cuando llegue tu pedido.</span>', '🔴 CO-CASH: the cash line (frame 5)');
-  assert.strictEqual(line(H.payBarHtml({ method: cash, total_cents: null, cta })), '<span>Pagás cuando llegue tu pedido.</span>', '🔴 CO-CASH: before the quote, no amount');
-  assert.strictEqual(line(H.payRowHtml(cash, 58500)), '<span>Total L 585 · Pagás cuando llegue tu pedido.</span>', '🔴 CO-CASH: the same line in the tip footer');
-  assert.ok(!/L 0\b|NaN/.test(flat(H.payBarHtml({ method: cash, total_cents: 20, cta }))), 'CO-CASH: never «L 0» / «NaN»');
+  for (const total_cents of [58500, null]) assert.ok(!/class="payline"/.test(flat(H.payBarHtml({ method: cash, total_cents, cta }))), `🔴 CO-CASH: no charge line under the cash row (total ${total_cents})`);
+  assert.ok(/class="payline"/.test(flat(H.payBarHtml({ method: { kind: 'card', label: 'Visa ···· 4242', brand: 'visa' }, total_cents: 58500, cta }))), 'CO-CASH: non-vacuity — a card still carries its line');
 });
 
 test('2: the chooser sheet — ✕, the saved cards (tile, label, expiry, a checkmark on the selected), «Agregar tarjeta», «Efectivo al entregar» for members where allowed', () => {

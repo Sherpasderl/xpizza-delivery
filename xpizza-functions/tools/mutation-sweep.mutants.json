@@ -26352,8 +26352,8 @@
   "slice": "perf-core",
   "label": "r3.3-F2 r2-2: the tip step can place an unavailable line (delivery)",
   "file": "../customer-app/capp-ui.js",
-  "from": "const tipReady = (T) => C.tipChosen(S.flow) && T.ready && !need() && !soldBlock() && intakeOk();",
-  "to": "const tipReady = (T) => C.tipChosen(S.flow) && T.ready && !need() && intakeOk();",
+  "from": "const tipReady = (T) => C.tipChosen(S.flow) && S.tipStale !== S.flow && T.ready && !need() && !soldBlock() && intakeOk();",
+  "to": "const tipReady = (T) => C.tipChosen(S.flow) && S.tipStale !== S.flow && T.ready && !need() && intakeOk();",
   "command": [
    "node",
    "--test",
@@ -26361,7 +26361,7 @@
    "../customer-app/capp-ui.test.mjs"
   ],
   "kills_with": [
-   "the tip step's place button is disabled"
+   "the placing button (the tip step's, or the checkout's for cash) is disabled"
   ]
  },
  {
@@ -26420,8 +26420,8 @@
   "slice": "perf-core",
   "label": "r3.3-F2 r2-2: «Confirmar pedido» (pickup) can place an unavailable line",
   "file": "../customer-app/capp-ui.js",
-  "from": "const ctaOff = (T) => (!hasSlotLock() && !!need()) || soldBlock() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));",
-  "to": "const ctaOff = (T) => (!hasSlotLock() && !!need()) || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));",
+  "from": "const ctaOff = (T) => (!hasSlotLock() && !!need()) || soldBlock() || ((S.flow.mode !== 'delivery' || (S.flow.pay === 'cash' && !hasSlotLock())) && (!T.ready || !intakeOk()));",
+  "to": "const ctaOff = (T) => (!hasSlotLock() && !!need()) || ((S.flow.mode !== 'delivery' || (S.flow.pay === 'cash' && !hasSlotLock())) && (!T.ready || !intakeOk()));",
   "command": [
    "node",
    "--test",
@@ -26429,7 +26429,7 @@
    "../customer-app/capp-ui.test.mjs"
   ],
   "kills_with": [
-   "the pickup CTA is disabled for an unavailable line"
+   "the placing button (the tip step's, or the checkout's for cash) is disabled"
   ]
  },
  {
