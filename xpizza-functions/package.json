@@ -29,6 +29,7 @@
     "test:frozenkeys-publish": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/frozenkeys-publish.emulator.test.js\"",
     "test:resolve-lines": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/resolve-lines.emulator.test.js\"",
     "test:reserved-keys-flip": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/reserved-keys-flip.emulator.test.js\"",
+    "test:reserved-keys-audit": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/reserved-keys-audit.emulator.test.js\"",
     "test:intake-availability": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/intake-availability.emulator.test.js\"",
     "test:pickup-ready": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/pickup-ready.emulator.test.js\"",
     "test:preparing-ready": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/preparing-ready.emulator.test.js\"",
