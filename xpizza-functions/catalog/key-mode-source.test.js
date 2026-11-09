@@ -56,7 +56,9 @@ for (const rid of ['x_pizza', 'la_musa']) {
   const reason = (s) => { try { validateSource(s, 'tb_merch_3'); return 'valid'; } catch (e) { return String(e.message); } };
   assert.match(reason(src), /badge \S+ is not one the renderer can select/, `SRC-THIRD id-keyed third restaurant gets past every key and id check to the renderer contract (${reason(src).slice(0, 120)})`);
   assert.match(reason(without(src)), /key does not match its display record/, 'without its mode it is judged by the default (name) and fails on the key');
-  const built = buildCatalogV2('tb_merch_3', { ...(({ formData, priceTable, extras }) => ({ formData, priceTable, extrasTable: extras }))(sourceToBuildInputs(src)), keyMode: 'id' });
+  let built;
+  try { built = buildCatalogV2('tb_merch_3', { ...(({ formData, priceTable, extras }) => ({ formData, priceTable, extrasTable: extras }))(sourceToBuildInputs(src)), keyMode: 'id' }); }
+  catch (e) { assert.fail(`SRC-THIRD-BUILD the build keys by the mode (it threw: ${String(e && e.message).slice(0, 120)})`); }
   assert.deepStrictEqual(built.items.map((i) => i.key).sort(), src.items.map((i) => i.key).sort(), 'SRC-THIRD-BUILD the build keys by the mode');
   assert.strictEqual(built.key_mode, 'id');
   ok('a config-only id-keyed restaurant validates and builds by its mode alone');

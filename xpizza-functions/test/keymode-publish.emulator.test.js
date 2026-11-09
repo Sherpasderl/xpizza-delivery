@@ -29,7 +29,7 @@ const source = (dish1Price) => ({ restaurant_id: RID, schema_version: 2, key_mod
     { key: 'tb_dish_2', price: 80, display: { id: 'tb_dish_2', name: 'Dish Two', cat: 'c1', price: 80 } }],
   extras: [{ key: 'tb_x', price: 15, display: { id: 'tb_x', name: 'Extra X', cat: 'Adicionales', price: 15 } }],
   structure: { schema_version: 1, categories: [{ id: 'c1', name: 'Cat One' }], item_order: ['tb_dish_1', 'tb_dish_2'], extra_categories: ['Adicionales'],
-    exposure: { category_allow: { c1: ['Adicionales'] }, item_overrides: {} }, extras_by_category: { c1: ['Adicionales'] } } });
+    exposure: { category_allow: { c1: ['Adicionales'] }, item_overrides: {} }, extras_by_category: { c1: ['Adicionales'] }, pickup_only_cats: [], weekend_only_cats: [] } });
 const inputOf = (src, sha) => { const { inputs, built } = buildSourceCandidate(RID, src); return { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha: sha, key_mode: built.key_mode }; };
 async function modes(versionId) {
   const rec = (await fs.collection('restaurants').doc(RID).collection('versions').doc(versionId).get()).data() || {};

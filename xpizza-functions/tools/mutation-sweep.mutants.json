@@ -92,8 +92,8 @@
   "slice": "t56",
   "label": "the pre-flip verify goes back to the item_order-only check",
   "file": "tools/publish-version.js",
-  "from": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, extraRecords: built.extras, source_sha }, expected };",
-  "to": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, source_sha }, expected };"
+  "from": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, extraRecords: built.extras, source_sha, key_mode: require('../menu-pricing').defaultKeyMode(rid) }, expected };   // S0: the code path IS the seed — the same default mode",
+  "to": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, source_sha, key_mode: require('../menu-pricing').defaultKeyMode(rid) }, expected };   // S0: the code path IS the seed — the same default mode"
  },
  {
   "id": "t56-13",
@@ -198,7 +198,7 @@
   "slice": "task7",
   "label": "publishVersion stops validating the candidate pre-publish",
   "file": "catalog/catalog-publish.js",
-  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure }), `${rid} (pre-publish)`);",
+  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure, key_mode: input && input.key_mode }), `${rid} (pre-publish)`);",
   "to": "  void assertCandidateValid;"
  },
  {
@@ -206,7 +206,7 @@
   "slice": "task7",
   "label": "the pre-flip gate drops the validator and only re-reads",
   "file": "catalog/catalog-publish.js",
-  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure }),\n    `${rid}/versions/${versionId} (pre-flip)`);",
+  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode }),\n    `${rid}/versions/${versionId} (pre-flip)`);",
   "to": "  void candidateSource;"
  },
  {
@@ -304,8 +304,8 @@
   "slice": "task7",
   "label": "the cutover CLI stops carrying extras display records",
   "file": "tools/publish-version.js",
-  "from": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, extraRecords: built.extras, source_sha }, expected };",
-  "to": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, source_sha }, expected };"
+  "from": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, extraRecords: built.extras, source_sha, key_mode: require('../menu-pricing').defaultKeyMode(rid) }, expected };   // S0: the code path IS the seed — the same default mode",
+  "to": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, source_sha, key_mode: require('../menu-pricing').defaultKeyMode(rid) }, expected };   // S0: the code path IS the seed — the same default mode"
  },
  {
   "id": "task7-13",
@@ -3639,7 +3639,7 @@
   "slice": "c3",
   "label": "the fingerprint keys id-preferred again, so x_pizza's name swap is invisible",
   "file": "quote-token.js",
-  "from": "      const raw = itemPricingKey(o, rid);",
+  "from": "      const raw = itemPricingKey(o, rid, keyMode);",
   "to": "      const raw = (o && o.id !== undefined && o.id !== null) ? o.id : (o && o.name);",
   "command": [
    "node",
@@ -5749,8 +5749,8 @@
   "slice": "d4",
   "label": "🔴 the agreement check compares against the STAMP instead of the raw client fields - it agrees with itself",
   "file": "catalog/identity-grace.js",
-  "from": "const rawLegacyKey = (rid, node) => (rid === 'la_musa' ? (node && node.id) : (node && node.name));",
-  "to": "const rawLegacyKey = (rid, node) => require('../menu-pricing').itemPricingKey(node, rid);",
+  "from": "const rawLegacyKey = (rid, node, keyMode) => (effectiveKeyMode(rid, keyMode) === 'id' ? (node && node.id) : (node && node.name));",
+  "to": "const rawLegacyKey = (rid, node, keyMode) => require('../menu-pricing').itemPricingKey(node, rid, keyMode);",
   "command": [
    "node",
    "catalog/identity-grace.test.js"
@@ -33300,7 +33300,7 @@
   "slice": "sb",
   "label": "S-B F1: la_musa keyed by the client display name, not the charge's key",
   "file": "ratings/dish-qty.js",
-  "from": "    const key = itemPricingKey(it, restaurantId);",
+  "from": "    const key = itemPricingKey(it, restaurantId, keyMode);",
   "to": "    const key = it && it.name;",
   "command": [
    "node",
@@ -33312,8 +33312,8 @@
   "slice": "sb",
   "label": "S-B F1: the cash hunk reads a context that is not this charge's tables",
   "file": "index.js",
-  "from": "  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }",
-  "to": "  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(null)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }",
+  "from": "  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables), require('./menu-pricing').keyModeOfTables(pricingTables)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }",
+  "to": "  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(null), require('./menu-pricing').keyModeOfTables(pricingTables)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }",
   "command": [
    "node",
    "sb-wiring.guard.test.js"
