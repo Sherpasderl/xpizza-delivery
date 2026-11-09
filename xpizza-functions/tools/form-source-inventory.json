@@ -2792,7 +2792,8 @@
       "tools/extras-module-inverse.js",
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
-      "tools/photos-module-inverse.js"
+      "tools/photos-module-inverse.js",
+      "tools/reservedkeys-module-inverse.js"
      ]
     },
     {
@@ -2801,7 +2802,14 @@
       "tools/extras-module-inverse.js",
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
-      "tools/photos-module-inverse.js"
+      "tools/photos-module-inverse.js",
+      "tools/reservedkeys-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
+     "inverses": [
+      "tools/reservedkeys-module-inverse.js"
      ]
     },
     {
@@ -2809,7 +2817,8 @@
      "inverses": [
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
-      "tools/photos-module-inverse.js"
+      "tools/photos-module-inverse.js",
+      "tools/reservedkeys-module-inverse.js"
      ]
     }
    ],

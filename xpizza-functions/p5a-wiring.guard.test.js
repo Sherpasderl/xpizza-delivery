@@ -11,7 +11,7 @@ const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyP5aModule, unapplyP5aIndex } = require('./tools/p5a-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')))));
+const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))))));
 // DRYRUN (2e, next-train assembly): compare against the REAL pre-P5a assembly commit, not the lane base 8a31e2a3 (which lacks the
 // whole last train). Re-point again at the real assembly (TRAIN-NEXT2 obligation A4).
 const ASM_BASE = 'f1077a76';
@@ -46,7 +46,7 @@ const indexBase = () => baseOf('index.js');
 // ASM2-CHECKOUT-SENSITIVITY (Codex asm2 r1 P2): a change to EXISTING checkout logic must fail the index.js base pin — the
 // fold may remove only the approved additions, never the surrounding checkout bytes.
 {
-  const raw = require('./tools/sdkpay-module-inverse').unapplySdkPayModule('index.js', require('./tools/keymode-module-inverse').unapplyKeyModeModule('index.js', require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule('index.js', require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule('index.js', fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))));
+  const raw = require('./tools/sdkpay-module-inverse').unapplySdkPayModule('index.js', require('./tools/keymode-module-inverse').unapplyKeyModeModule('index.js', require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule('index.js', require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule('index.js', require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule('index.js', fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))));
   const CALC = "const cappGuestRefusal = require('./checkout-guest-gate').createOrderRefusal(clientHdr, customer_uid, body);";
   assert.strictEqual(raw.split(CALC).length - 1, 1, 'ASM2-CHECKOUT-SENSITIVITY: PREMISE — the calculation is present exactly once');
   const mutated = raw.replace(CALC, () => 'const cappGuestRefusal = null;');

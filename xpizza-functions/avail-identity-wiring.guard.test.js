@@ -10,7 +10,7 @@ const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyAvailIdentity } = require('./tools/avail-identity-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))));   // S0 key mode (newest) reversed first
+const read = (f) => require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')))));   // S0 key mode (newest) reversed first
 const GBASE = '69b045de';   // DRYRUN R-WIRE (2e): the assembly state just before the avail-identity layer (the train's older layers sit under it); re-point at the real assembly
 const baseOf = (f) => execFileSync('git', ['show', `${GBASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 

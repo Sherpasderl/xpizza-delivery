@@ -53,4 +53,13 @@ const POINTER = 'tx.set(pointerRef, {';
   assert.ok(at(LIMIT) < at(UNION) && at(UNION) < at(POINTER), '🔴 RKW-UNION-BEFORE-POINTER limit check → union write → pointer');
   ok('the union is written after the branch (every activation) and before the pointer moves, behind the limit check');
 }
+// ── 4 ── the slice's test-only inverse returns the activation module to its base byte for byte (every older pin peels it)
+{
+  const I = require('../tools/reservedkeys-module-inverse');
+  assert.deepStrictEqual([...I.FILES], ['catalog/catalog-publish.js'], 'RKW-INVERSE the slice edits exactly one pinned file');
+  const back = I.unapplyReservedKeysModule('catalog/catalog-publish.js', src);
+  assert.strictEqual(require('crypto').createHash('sha256').update(back).digest('hex'), '012eccdf776cc4f06c52dcb9cba315e8dc3daa30f026368e1e5b3192b5ce0669', '🔴 RKW-INVERSE round trip to 43cfdf11');
+  assert.strictEqual(back.split('\n').length, src.split('\n').length, '🔴 RKW-SAME-LINE the slice adds no line to the pinned file');
+  ok('the inverse returns catalog-publish.js to 43cfdf11 byte for byte; same-line edits only');
+}
 console.log(`\nreserved-keys-wiring.guard: OK (${n})`);
