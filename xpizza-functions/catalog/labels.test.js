@@ -104,6 +104,22 @@ const LABELS = { 'Dish One': 'Dish One Renamed', 'N.Y. Slice': 'N.Y. Slice' };
     ok('the mirror stores label keys under the price keys\' encoding, decodes them exactly, and is today\'s without labels');
   }
 
+  // ── D5 (ruling Q4): the kitchen / driver / summary name of a name-keyed line is its key's LABEL (a renamed dish shows its
+  //    current name, never its old key); today every label is its key, so every summary is byte-identical. Id-keyed unchanged ──
+  {
+    const XM = MP.MENU_BY_RESTAURANT.x_pizza; const KEY = Object.keys(XM)[0];
+    const base = MP.attachTablesKeyMode({ restaurantId: 'x_pizza', menu: { ...XM }, extras: { ...MP.EXTRAS_BY_RESTAURANT.x_pizza } }, 'name');
+    const withLabels = (labels) => MP.attachTablesLabels(MP.attachTablesKeyMode({ restaurantId: 'x_pizza', menu: { ...XM }, extras: { ...MP.EXTRAS_BY_RESTAURANT.x_pizza } }, 'name'), labels);
+    const cart = () => [{ name: KEY, qty: 2 }];
+    const today = MP.summaryLines(cart(), 'x_pizza', null, base);
+    assert.deepStrictEqual(MP.summaryLines(cart(), 'x_pizza', null, withLabels({ [KEY]: KEY })), today, 'LB-SUMMARY-NOOP labels equal to keys: byte-identical');
+    assert.strictEqual(MP.summaryLines(cart(), 'x_pizza', null, withLabels({ [KEY]: 'Nombre Nuevo' }))[0].name, 'Nombre Nuevo', 'LB-SUMMARY a renamed dish shows its current name');
+    assert.strictEqual(today[0].name, KEY, 'premise: no labels → the key (today)');
+    const LMk = Object.keys(MP.MENU_BY_RESTAURANT.la_musa)[0];
+    const lmT = (labels) => MP.attachTablesLabels(MP.attachTablesKeyMode({ restaurantId: 'la_musa', menu: { ...MP.MENU_BY_RESTAURANT.la_musa }, extras: { ...MP.EXTRAS_BY_RESTAURANT.la_musa } }, 'id'), labels);
+    assert.deepStrictEqual(MP.summaryLines([{ id: LMk, name: 'Del Cliente', qty: 1 }], 'la_musa', null, lmT({ [LMk]: 'Otro' })), MP.summaryLines([{ id: LMk, name: 'Del Cliente', qty: 1 }], 'la_musa', null, lmT(null)), 'LB-SUMMARY-IDMODE id-keyed summaries are unchanged');
+    ok('D5: a name-keyed summary line is named by its label (byte-identical today); id-keyed unchanged');
+  }
   FINISHED = true;
   console.log(`\nlabels: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });
