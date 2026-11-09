@@ -107,6 +107,11 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "index.js",
+  "now": "      ? CB.canonicalRewardRows(freeItems, redemptionCanonical.free_item_key, contextOfTables(tables))\n      : (Array.isArray(freeItems) && freeItems.length)\n        ? freeItems.map((fi) => ({ name: fi.name || fi.item_id, qty: Number(fi.qty) || 1, ...(typeof fi.item_id === 'string' && fi.item_id ? { item_key: fi.item_id } : {}) }))\n        : (freeName ? [{ name: freeName, qty: 1, ...(typeof redemptionCanonical.free_item_key === 'string' && redemptionCanonical.free_item_key ? { item_key: redemptionCanonical.free_item_key } : {}) }] : (redemptionCanonical.free_item_key ? [{ name: redemptionCanonical.free_item_key, qty: 1, item_key: redemptionCanonical.free_item_key }] : []));\n    redArg = { model: 'add_free', items: arr };\n  }\n",
+  "was": "      ? CB.canonicalRewardRows(freeItems, redemptionCanonical.free_item_key, contextOfTables(tables))\n      : (Array.isArray(freeItems) && freeItems.length)\n        ? freeItems.map((fi) => ({ name: fi.name || fi.item_id, qty: Number(fi.qty) || 1 }))\n        : (freeName ? [{ name: freeName, qty: 1 }] : (redemptionCanonical.free_item_key ? [{ name: redemptionCanonical.free_item_key, qty: 1 }] : []));\n    redArg = { model: 'add_free', items: arr };\n  }\n"
+ },
+ {
+  "file": "index.js",
   "now": "     failing the request — the lesson D3 paid for. */\n  const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP, keyMode: keyModeOfTables(pricingTables) });\n  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements); { const rl = RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); } if (usesPlatformFactura(restaurantId) && RL.labelGap(body, pricingTables)) return res.status(503).json({ error: 'labels_unavailable', retryable: true }); }   // S1b: every line resolves to a key the tables hold, before any check or price\n\n  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [create]\n",
   "was": "     failing the request — the lesson D3 paid for. */\n  const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP, keyMode: keyModeOfTables(pricingTables) });\n  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements); { const rl = RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); } }   // S1b: every line resolves to a key the tables hold, before any check or price\n\n  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [create]\n"
  },
@@ -149,6 +154,11 @@ const HUNKS = Object.freeze([
   "file": "menu-pricing.js",
   "now": "    }\n    const name = byId ? summaryLineName(it && it.name, key) : (((labelsOfTables(tables) || {})[key]) || key);   // S1d: a name-keyed line shows its key's current label\n    lines.push({ name, qty, cents: lineL * 100, item_key: key });   // S1d: the key that priced the line (additive)\n  }\n",
   "was": "    }\n    const name = byId ? summaryLineName(it && it.name, key) : key;\n    lines.push({ name, qty, cents: lineL * 100 });\n  }\n"
+ },
+ {
+  "file": "menu-pricing.js",
+  "now": "      if (!Number.isInteger(q) || q < 1 || q > 50) return null;\n      const fk = f && typeof f.item_key === 'string' && f.item_key ? f.item_key : null; const fn = summaryLineName(f && f.name, 'Recompensa'); lines.push({ name: (byId || !fk) ? fn : (((labelsOfTables(tables) || {})[fk]) || fn), qty: q, cents: 0, ...(fk ? { item_key: fk } : {}) });   // added free item → GRATIS; S1d: its key (+ a name-keyed label)\n    }\n",
+  "was": "      if (!Number.isInteger(q) || q < 1 || q > 50) return null;\n      lines.push({ name: summaryLineName(f && f.name, 'Recompensa'), qty: q, cents: 0 });   // added free item → GRATIS\n    }\n"
  },
  {
   "file": "menu-pricing.js",

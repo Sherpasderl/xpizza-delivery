@@ -33,6 +33,8 @@ const GATE = " if (usesPlatformFactura(restaurantId) && RL.labelGap(body, pricin
 {
   assert.strictEqual(src.split('restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp, menuVersionId: menuOrderVersionOf(pricingTables),').length - 1, 2, '🔴 S1DW-VERSION the immediate and the held cash orders store the pricing version');
   assert.strictEqual(src.split('cash_tendered_cents: 0, menu_version_id: menuOrderVersionOf(pricingTables),').length - 1, 1, '🔴 S1DW-VERSION the charge\'s pending record stores it');
+  // codex S1d r1 #1: the reward stamp carries the free item's key into the summary
+  assert.ok(src.includes("? freeItems.map((fi) => ({ name: fi.name || fi.item_id, qty: Number(fi.qty) || 1, ...(typeof fi.item_id === 'string' && fi.item_id ? { item_key: fi.item_id } : {}) }))"), '🔴 S1DW-FREE-KEY the free rows carry their key');
   ok('the cash (immediate + held) and charge records store the pricing version');
 }
 // ── 3 ──
