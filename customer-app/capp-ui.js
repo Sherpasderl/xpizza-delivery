@@ -1811,7 +1811,15 @@
       const sel = S.flow && S.flow.pay === 'cash' ? { kind: 'cash' } : SDK.sel && SDK.sel.kind === 'card' ? SDK.sel : null;
       return PCO.chooserHtml({ cards: SDK.cards || { rows: [], selected: null }, selected: sel, cash: sdkCtx().cashAllowed });
     }
-    const sdkFormHtml = () => PCO.formHtml(PCARD.formVm(SDK.form, { member: !!member() }), sdkHost());
+    const sdkFormHtml = () => PCO.formHtml(PCARD.formVm(SDK.form, { member: !!member(), save: SDK.save }), sdkHost());
+    // Codex r1 P2-10: the field host reports its per-field STATES (never values) through onChange(states) ⇒ the form re-renders
+    function sdkHostSubscribe() {
+      sdkHostUnsub();
+      const h = sdkHost(); if (!h || typeof h.onChange !== 'function') return;
+      let un = null; try { un = h.onChange((st) => { if (dead) return; SDK.form = st && typeof st === 'object' ? st : {}; if (S.screen === 'addcard') render(); }); } catch (_) { un = null; }
+      SDK.unsub = typeof un === 'function' ? un : null;
+    }
+    function sdkHostUnsub() { if (SDK.unsub) { try { SDK.unsub(); } catch (_) {} } SDK.unsub = null; }
     function sdkStopPoll() { if (SDK.pollT !== null) { T_.clearTimeout(SDK.pollT); SDK.pollT = null; } }
     function sdkPollLater(id, ms) {
       sdkStopPoll();
@@ -1851,7 +1859,7 @@
     // send(): the SDK card path (after the kept 2-s window); the processing sheet over the screen of the tap
     async function sdkSend(p, attempt) {
       sdkProc(false);
-      let out; try { out = await api.placeSdk(p); } catch (_) { out = { kind: 'sdk_pending', order_id: null }; }
+      let out; try { out = await api.placeSdk({ ...p, onDispatch: (id) => keepSent(id) }); } catch (_) { out = { kind: 'sdk_pending', order_id: null }; }   // Codex r1 P1-4: the sent order kept for a reload
       if (dead || attempt !== attemptSeq) return;
       if (out && out.kind === 'sdk_pending' && !out.order_id) { const id = api.sdkLive(); out = id ? { ...out, order_id: id } : { kind: 'offline' }; }
       onSdkOutcome(out);
@@ -1870,7 +1878,7 @@
       if (dead || !r || r.ok !== true) { toast('No pudimos guardar la tarjeta. Revisá los datos.'); return; }
       SDK.sel = { kind: 'new', sdk_token: r.sdk_token, save: !!member() && SDK.save, authentication_identifier: r.authentication_identifier, display: { ...r.display } };
       if (S.flow) S.flow.pay = 'online';
-      S.screen = SDK.back || 'checkout'; SDK.back = null; render();   // owner ruling 1: back to checkout with the card selected
+      sdkHostUnsub(); S.screen = SDK.back || 'checkout'; SDK.back = null; render();   // owner ruling 1: back to checkout with the card selected
     }
     // the SDK acts (the chooser, the form, the sheets, the wells) — true when handled
     function sdkAct(t) {
@@ -1878,8 +1886,8 @@
       if (a === 'paysheet') { openLayer('paysheet'); return true; }
       if (a === 'paysheet-close') { closeLayer(); return true; }
       if (a === 'paypick') { const v = t.dataset.card; if (v === 'cash') S.flow.pay = 'cash'; else { S.flow.pay = 'online'; SDK.sel = { kind: 'card', card_id: v }; } closeLayer(); render(); return true; }
-      if (a === 'addcard' || a === 'decl-fix' || a === 'decl-add_card') { if (S.layerKind) { S.layerKind = null; renderLayer(); } SDK.back = S.screen === 'addcard' ? SDK.back : S.screen; SDK.form = {}; SDK.save = true; S.screen = 'addcard'; render(); return true; }
-      if (a === 'addcard-back') { S.screen = SDK.back || 'checkout'; SDK.back = null; render(); openLayer('paysheet'); return true; }   // back to the chooser, nothing saved
+      if (a === 'addcard' || a === 'decl-fix' || a === 'decl-add_card') { if (S.layerKind) { S.layerKind = null; renderLayer(); } SDK.back = S.screen === 'addcard' ? SDK.back : S.screen; SDK.form = {}; SDK.save = true; S.screen = 'addcard'; sdkHostSubscribe(); render(); return true; }
+      if (a === 'addcard-back') { sdkHostUnsub(); S.screen = SDK.back || 'checkout'; SDK.back = null; render(); openLayer('paysheet'); return true; }   // back to the chooser, nothing saved
       if (a === 'savecard') { SDK.save = !SDK.save; render(); return true; }
       if (a === 'cvv-info') { toast('Son los 3 dígitos al reverso de tu tarjeta.'); return true; }
       if (a === 'addcard-save') { sdkSaveCard(); return true; }
@@ -1892,6 +1900,7 @@
     function sdkResume() {
       if (!sdkOn()) return;
       const id = api.sdkLive(); if (!id) return;
+      if (!S.flow) { S.flow = newFlow(); C.setMode(S.flow, S.mode); S.flow.pay = 'online'; }   // Codex r1 P1-4: a fresh mount has no flow; the outcome screens read one
       sdkProc(false);
       Promise.resolve().then(() => api.sdkStatus(id, sdkAuth())).catch(() => ({ kind: 'sdk_pending', order_id: id })).then((out) => { if (!dead) onSdkOutcome(out); });
     }

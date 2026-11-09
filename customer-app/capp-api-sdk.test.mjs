@@ -50,7 +50,8 @@ const args = (card = SAVED, extra = {}) => ({ flow: flowOf('online'), ctx: CTX, 
 const rec = (s) => JSON.parse(s.getItem(KEY) || 'null');
 const R = (outcome, f) => ({ status: 200, json: placeResp(outcome, f) });
 const PLACED = (oid) => R('placed', { order_id: oid, tracking_token: 'tok_abcdefgh12', card: { brand: 'visa', last4: '4242' } });
-const DECLINED = (oid, b = 'retryable') => R('declined', { order_id: oid, attempt_id: 'x'.repeat(16), decline: b, pay_deadline_at: at(12, 15) });
+// the server answers with THE attempt it was asked about (a made-up id would be laxer than the server — and is refused as stale)
+const DECLINED = (oid, b = 'retryable', att) => R('declined', { order_id: oid, attempt_id: att, decline: b, pay_deadline_at: at(12, 15) });
 const PENDING = (oid) => R('bank_pending', { order_id: oid, attempt_id: 'x'.repeat(16) });
 
 test('the durable record BEFORE the dispatch: sdk, the attempt, dispatched + unresolved — and never the token, never a body', async () => {
@@ -76,7 +77,7 @@ test('placed: the order goes live; the record is cleared; the card label comes b
 });
 
 test('declined: the sheet\'s bucket; the record stays, the attempt FINAL; «Probar otra tarjeta» = the SAME order_id, a NEW attempt_id — across a reload', async () => {
-  const { api, reload, srv, storage } = rig({ script: { placeSdkOrder: [(c) => DECLINED(c.body.order_id), (c) => PLACED(c.body.order_id)] } });
+  const { api, reload, srv, storage } = rig({ script: { placeSdkOrder: [(c) => DECLINED(c.body.order_id, 'retryable', c.body.attempt_id), (c) => PLACED(c.body.order_id)] } });
   const d = await api.placeSdk(args(SAVED));
   assert.deepEqual([d.kind, d.bucket], ['sdk_declined', 'retryable'], '🔴 SDK-decl: the bucket');
   const r1 = rec(storage);
@@ -129,7 +130,7 @@ test('expired: safe_to_switch ⇒ released (back to checkout); not safe ⇒ kept
 });
 
 test('the cash switch (§5): cancelSdkPending ⇒ safe ⇒ released, then createOrder with a NEW order_id and replaces_order_id; not safe ⇒ no cash', async () => {
-  const s = rig({ script: { placeSdkOrder: [(c) => DECLINED(c.body.order_id, 'hard')], cancelSdkPending: [{ status: 200, json: cancelPending(true, true) }], createOrder: [(c) => ({ status: 200, json: { ok: true, order_id: c.body.order_id, tracking_token: 'tt' } })] } });
+  const s = rig({ script: { placeSdkOrder: [(c) => DECLINED(c.body.order_id, 'hard', c.body.attempt_id)], cancelSdkPending: [{ status: 200, json: cancelPending(true, true) }], createOrder: [(c) => ({ status: 200, json: { ok: true, order_id: c.body.order_id, tracking_token: 'tt' } })] } });
   await s.api.placeSdk(args(SAVED));
   const old = s.srv.of('placeSdkOrder')[0].body.order_id;
   const sw = await s.api.sdkSwitchToCash(old);
@@ -138,7 +139,7 @@ test('the cash switch (§5): cancelSdkPending ⇒ safe ⇒ released, then create
   const co = s.srv.of('createOrder')[0].body;
   assert.ok(co.order_id !== old && co.replaces_order_id === old, `🔴 SDK-switch: a NEW order replacing the old one (${co.order_id} / ${co.replaces_order_id})`);
   assert.equal(out.kind, 'placed');
-  const n = rig({ script: { placeSdkOrder: [(c) => DECLINED(c.body.order_id, 'hard')], cancelSdkPending: [{ status: 200, json: cancelPending(true, false) }] } });
+  const n = rig({ script: { placeSdkOrder: [(c) => DECLINED(c.body.order_id, 'hard', c.body.attempt_id)], cancelSdkPending: [{ status: 200, json: cancelPending(true, false) }] } });
   await n.api.placeSdk(args(SAVED));
   const sw2 = await n.api.sdkSwitchToCash(n.srv.of('placeSdkOrder')[0].body.order_id);
   assert.equal(sw2.kind, 'sdk_pending', '🔴 SDK-switch: not yet safe ⇒ poll, never cash'); assert.ok(rec(n.storage), 'kept');
@@ -181,4 +182,110 @@ test('a DISPATCHED placement of another tender (an unresolved hosted card / a ca
   const out = await s.api.placeSdk(args(SAVED));
   assert.equal(s.srv.of('placeSdkOrder').length, 0, '🔴 SDK-legacy: never paid over a dispatched placement');
   assert.notEqual(out.kind, 'placed', 'resolved, not placed');
+});
+
+// ── Codex HIGH r1 on S2-checkout (codex-capp-s2-checkout-r1.txt): every finding reproduced first ──
+const DECL_OF = (oid, att, b = 'retryable') => R('declined', { order_id: oid, attempt_id: att, decline: b, pay_deadline_at: at(12, 15) });
+const slowMember = () => { let rel = []; const m = { uid: 'u_ana', idToken: null, getIdToken: () => new Promise((r) => rel.push(() => r(JWT))) }; return { m, release: () => { const x = rel; rel = []; x.forEach((f) => f()); } }; };
+
+test('Codex r1 P1-1: two concurrent SDK placements ⇒ ONE dispatch (the placement lock; the attempt re-checked right before the POST)', async () => {
+  const { api, srv } = rig({ script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });
+  await Promise.all([api.placeSdk(args(SAVED)), api.placeSdk(args(NEW))]);
+  assert.equal(srv.of('placeSdkOrder').length, 1, '🔴 SDK-race: one POST for one order, never two attempts in flight');
+});
+
+test('Codex r1 P1-1: a cash placement and an SDK placement racing never both reach the server for the same order', async () => {
+  const { api, srv } = rig({ script: { createOrder: ['network'], placeSdkOrder: ['network'], placeSdkStatus: ['network'], paymentStatus: [{ status: 200, json: { ok: true, state: 'pending' } }] } });
+  await Promise.all([api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 }), api.placeSdk(args(SAVED))]);
+  const ids = (ep) => srv.of(ep).map((c) => c.body.order_id);
+  const both = ids('createOrder').filter((id) => ids('placeSdkOrder').includes(id));
+  assert.deepEqual(both, [], '🔴 SDK-race: never cash AND card for one order');
+});
+
+test('Codex r1 P1-1: a torn-down page (alive() false by dispatch time) never POSTs', async () => {
+  const { m, release } = slowMember();
+  const { api, srv } = rig({ member: m, script: { placeSdkOrder: [(c) => PLACED(c.body.order_id)] } });
+  let alive = true; const p = api.placeSdk(args(SAVED, { alive: () => alive }));
+  await new Promise((r) => setImmediate(r)); alive = false; release();
+  const out = await p;
+  assert.equal(srv.of('placeSdkOrder').length, 0, '🔴 SDK-alive: no POST after teardown'); assert.equal(out.kind, 'superseded');
+});
+
+test('Codex r1 P1-2: a delayed answer about attempt A never settles attempt B (settlement bound to the current attempt)', async () => {
+  let aId = null;
+  const { api, srv, storage } = rig({ script: { placeSdkOrder: [(c) => { aId = c.body.attempt_id; return DECL_OF(c.body.order_id, aId); }, 'network'], placeSdkStatus: [(c) => DECL_OF(new URL(c.url).searchParams.get('order_id'), aId)] } });
+  await api.placeSdk(args(SAVED));                       // A declined
+  const out = await api.placeSdk(args(NEW));             // B dispatched, unknown ⇒ the status says «declined» — about A
+  const b = srv.of('placeSdkOrder')[1].body.attempt_id;
+  assert.notEqual(b, aId, 'premise: B is a new attempt');
+  const r = rec(storage);
+  assert.ok(r && r.attempt_id === b && r.attempt_state === 'sent' && r.unresolved === true, `🔴 SDK-stale: B stays in flight (${JSON.stringify(r && { a: r.attempt_id, s: r.attempt_state })})`);
+  assert.equal(out.kind, 'sdk_pending', '🔴 SDK-stale: a stale answer is not B\'s outcome');
+});
+
+test('Codex r1 P1-3: cash over a DISPATCHED SDK order, from ANY entry point (place()), goes through the switch — cancelSdkPending ⇒ safe ⇒ a NEW id with replaces_order_id; not safe ⇒ no cash', async () => {
+  const s = rig({ script: { placeSdkOrder: [(c) => DECL_OF(c.body.order_id, c.body.attempt_id)], cancelSdkPending: [{ status: 200, json: cancelPending(true, true) }], createOrder: [(c) => ({ status: 200, json: { ok: true, order_id: c.body.order_id, tracking_token: 'tt' } })] } });
+  await s.api.placeSdk(args(SAVED));
+  const old = s.srv.of('placeSdkOrder')[0].body.order_id;
+  const out = await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 });
+  assert.equal(s.srv.of('cancelSdkPending').length, 1, '🔴 SDK-cash-fence: the switch first');
+  const co = s.srv.of('createOrder')[0];
+  assert.ok(co && co.body.order_id !== old && co.body.replaces_order_id === old, '🔴 SDK-cash-fence: a NEW order replacing the SDK one');
+  assert.equal(out.kind, 'placed');
+  const n = rig({ script: { placeSdkOrder: [(c) => DECL_OF(c.body.order_id, c.body.attempt_id)], cancelSdkPending: [{ status: 200, json: cancelPending(true, false) }] } });
+  await n.api.placeSdk(args(SAVED));
+  const o2 = await n.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 });
+  assert.equal(n.srv.of('createOrder').length, 0, '🔴 SDK-cash-fence: not yet safe ⇒ never cash'); assert.equal(o2.kind, 'sdk_pending');
+});
+
+test('Codex r1 P2-6: a quote refusal (quote_invalid / quote_required / price_increased) is pre-admission — the attempt released, a requote; never a bank poll', async () => {
+  for (const err of ['quote_invalid', 'quote_required', 'price_increased']) {
+    const s = rig({ script: { placeSdkOrder: [{ status: 409, json: { error: err } }], placeSdkStatus: [{ status: 404, json: {} }] } });
+    const out = await s.api.placeSdk(args(SAVED));
+    assert.equal(s.srv.of('placeSdkStatus').length, 0, `🔴 SDK-quote: no status poll (${err})`);
+    assert.equal(out.kind, 'replay_requote', `🔴 SDK-quote: a requote (${err})`);
+    const r = rec(s.storage); assert.ok(r && r.attempt_state === 'none' && r.unresolved === false, `the attempt released (${err})`);
+  }
+});
+
+test('Codex r1 P2-7: the legacy recovery of a retained SDK order (resolveExisting / resolveStatus) asks the SDK resolver — a declined one included', async () => {
+  const s = rig({ script: { placeSdkOrder: [(c) => DECL_OF(c.body.order_id, c.body.attempt_id)], placeSdkStatus: [(c) => DECL_OF(new URL(c.url).searchParams.get('order_id'), JSON.parse(s.storage.getItem(KEY)).attempt_id)] } });
+  await s.api.placeSdk(args(SAVED));
+  const id = s.srv.of('placeSdkOrder')[0].body.order_id;
+  const out = await s.reload().resolveStatus(id);
+  assert.equal(s.srv.of('placeSdkStatus').length, 1, '🔴 SDK-recover: the SDK resolver');
+  assert.equal(out.kind, 'sdk_declined', '🔴 SDK-recover: its outcome, never the generic recovery sheet');
+});
+
+test('Codex r1 P2-8: the legacy closing / 12-h expiry never deletes an UNRESOLVED SDK attempt', async () => {
+  const s = rig({ script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });
+  await s.api.placeSdk(args(SAVED));
+  s.clock.t += 30 * 3600e3;
+  const api2 = s.reload();
+  assert.ok(api2.sdkLive(), '🔴 SDK-expiry: the attempt is still live');
+  assert.ok(rec(s.storage), '🔴 SDK-expiry: the record is kept');
+});
+
+test('Codex r1 P2-9: a cash switch that was not yet safe is REMEMBERED — a later status «expired, safe» completes the switch (sdk_switched + the old id)', async () => {
+  const s = rig({ script: { placeSdkOrder: [(c) => DECL_OF(c.body.order_id, c.body.attempt_id)], cancelSdkPending: [{ status: 200, json: cancelPending(true, false) }], placeSdkStatus: [(c) => R('expired', { order_id: new URL(c.url).searchParams.get('order_id'), safe_to_switch: true })] } });
+  await s.api.placeSdk(args(SAVED));
+  const id = s.srv.of('placeSdkOrder')[0].body.order_id;
+  assert.equal((await s.api.sdkSwitchToCash(id)).kind, 'sdk_pending', 'premise: not yet safe');
+  const out = await s.reload().sdkStatus(id);
+  assert.deepEqual([out.kind, out.replaces], ['sdk_switched', id], '🔴 SDK-switch-intent: the switch completes once safe');
+});
+
+test('Codex r1 P1-1: a placement racing a cash switch whose cancel is still in flight waits for it — never an attempt on the order being cancelled', async () => {
+  let releaseCancel = null;
+  const s = rig({ script: { placeSdkOrder: [(c) => DECL_OF(c.body.order_id, c.body.attempt_id), (c) => PLACED(c.body.order_id)],
+    cancelSdkPending: [() => new Promise((r) => { releaseCancel = () => r({ status: 200, json: cancelPending(true, true) }); })] } });
+  await s.api.placeSdk(args(SAVED));
+  const old = s.srv.of('placeSdkOrder')[0].body.order_id;
+  const sw = s.api.sdkSwitchToCash(old);
+  await new Promise((r) => setImmediate(r));
+  const pl = s.api.placeSdk(args(NEW));
+  await new Promise((r) => setImmediate(r)); await new Promise((r) => setImmediate(r));
+  assert.equal(s.srv.of('placeSdkOrder').length, 1, '🔴 SDK-lock: no attempt while the switch is in flight');
+  releaseCancel(); await sw; await pl;
+  assert.ok(s.srv.of('placeSdkOrder').slice(1).every((c) => c.body.order_id !== old), '🔴 SDK-lock: never an attempt on the order being cancelled');
 });

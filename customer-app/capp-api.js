@@ -169,9 +169,12 @@
     function readPlace() {
       const r = readJSON(PLACE_KEY);
       if (!r || typeof r !== 'object' || typeof r.order_id !== 'string' || !Number.isFinite(r.expires_at)) { if (r !== null) removeKey(PLACE_KEY); return null; }
-      if (now() >= r.expires_at) { removeKey(PLACE_KEY); return null; }
+      if (now() >= r.expires_at && !sdkUnresolved(r)) { removeKey(PLACE_KEY); return null; }   // Codex r1 P2-8: never an SDK attempt still in doubt
       return r;
     }
+    // an SDK placement whose money is still in doubt (an attempt in flight, or a cash switch waiting for safe_to_switch) — kept past the
+    // legacy closing / 12-h expiry until an AUTHORITATIVE answer resolves it (contract §4: elapsed time never decides)
+    function sdkUnresolved(r) { return !!r && r.sdk === true && (r.attempt_state === 'sent' || r.switch_intent === true); }
     // a clearing outcome removes the record ONLY while it still holds THAT order (a newer placement is never deleted)
     function clearPlace(id) {
       const r = readJSON(PLACE_KEY);
@@ -381,7 +384,7 @@
     function placeStrict() {
       const pr = readStrict(PLACE_KEY); if (!pr.ok) return { ok: false };
       const r = pr.value;
-      const live = r && typeof r === 'object' && typeof r.order_id === 'string' && Number.isFinite(r.expires_at) && now() < r.expires_at ? r : null;
+      const live = r && typeof r === 'object' && typeof r.order_id === 'string' && Number.isFinite(r.expires_at) && (now() < r.expires_at || sdkUnresolved(r)) ? r : null;
       return { ok: true, value: live };
     }
     function holdsLock() { if (memLock) return true; const ps = placeStrict(); if (!ps.ok) return true; return !!(ps.value && ps.value.pay_pending === true); }
@@ -399,6 +402,7 @@
     // whose definitive poll RELEASES the lock (pending → paid ⇒ the customer can leave); any other through resolveExisting
     function resolveStatus(id) {
       const live = readPlace();
+      if (live && live.order_id === id && live.sdk === true) return sdkStatus(id, null);   // Codex r1 P2-7: a retained SDK order — its OWN resolver, a decline included (the same read, no extra one)
       if (memLock === id || (live && live.order_id === id && live.pay_pending === true)) return lockedOutcome(id);
       return resolveExisting(id);
     }
@@ -510,7 +514,14 @@
       if (!writeStrict(CART_KEY, { ...snap, v: cs ? cs.v : snap.v, rid: cfg.restaurantId, mode: p.flow && p.flow.mode, lines: cs ? cs.lines : snap.lines, cart_gen: gen, frozen_for: rec.order_id })) return { stop: { kind: 'offline', order_id: rec.order_id, freeze_failed: true } };
       return { rec: rec.cart_gen !== gen ? patchPlace(rec.order_id, { cart_gen: gen }) : rec };
     }
-    async function place(p) {
+    // Codex r1 P1-1: never alongside an SDK placement / switch on this page. With none in flight, place() returns placeLegacy's OWN
+    // promise (no added await): the legacy overlap interleaving stays the base's exactly (capp-s7a1 VP-base)
+    function place(p) {
+      if (sdkRun) return sdkRun.then(() => {}, () => {}).then(() => trackLegacy(p));
+      return trackLegacy(p);
+    }
+    function trackLegacy(p) { const run = placeLegacy(p); legacyRuns.add(run); const done = () => { legacyRuns.delete(run); }; run.then(done, done); return run; }
+    async function placeLegacy(p) {
       // Codex G7 r1 #1 / r2 (advisor (a)): another account's unresolved send (scheduled or ASAP) is on this device ⇒ refused HERE — before any gate,
       // record write or request; it places normally once that record resolves or expires
       if (retainedByOther()) return { kind: 'held_other_account', local: true };
@@ -519,9 +530,19 @@
       // lock or send (and re-checked before EVERY dispatch below, Codex guest r1 #1)
       { const g0 = guestGate(p, { ticket: false }); if (g0) return g0; }
       { const hg = hostedGate(p); if (hg) return hg; }
-      const live = readPlace();
+      let live = readPlace();
       // S2-checkout (advisor design A): a live SDK attempt is resolved by ITS status first — never a dispatch of any kind over it
       if (live && live.sdk === true && live.attempt_state === 'sent') return sdkStatus(live.order_id, p);
+      // Codex r1 P1-3: cash from ANY entry point over a DISPATCHED SDK order is the §5 switch — cancelSdkPending ⇒ safe_to_switch ⇒ a NEW
+      // order carrying replaces_order_id; not yet safe ⇒ nothing is sent. Another tender over it ⇒ its status
+      if (live && live.sdk === true && Number(live.dispatched) > 0) {
+        if (method !== 'cash') return sdkStatus(live.order_id, p);
+        const sw = await sdkSwitchInner(live.order_id, p);
+        if (!sw || sw.kind !== 'sdk_switched') return sw;
+        p = { ...p, replacesOrderId: live.order_id };
+        { const hg = hostedGate(p); if (hg) return hg; }   // the released marker reconciled (the cart unfrozen) before the new identity
+        live = readPlace();
+      }
       if (memLock) return lockedOutcome(memLock);                                         // this page's lock (even if its write failed)
       if (live && live.pay_pending === true) return lockedOutcome(live.order_id);   // locked: zero writes until a definitive poll
       if (live && live.card === true && live.unresolved && (method === 'online' || lockInterruptedCard)) return resolveExisting(live.order_id);   // rule ii: never charged again
@@ -725,16 +746,49 @@
       } catch (_) { return { network: true }; }
     }
     // an attempt that ended with nothing in flight (declined, or never claimed): the record stays (the same order), unlocked
-    const settleSdk = (id, state) => { try { patchPlace(id, { attempt_state: state, unresolved: false }); } catch (_) {} };
+    // ONE money operation at a time on this page (Codex r1 P1-1): an SDK placement / switch waits for every in-flight place() and the
+    // previous SDK operation; a place() waits for an in-flight SDK operation. Legacy place() calls are NOT serialized among themselves
+    // (their overlap behaviour is the base's — capp-s7a1 VP-base)
+    let sdkRun = null;
+    const legacyRuns = new Set();
+    function sdkExclusive(fn) {
+      const prev = sdkRun;
+      const run = (async () => {
+        if (prev) { try { await prev; } catch (_) {} }
+        while (legacyRuns.size) { try { await Promise.all([...legacyRuns]); } catch (_) {} }
+        return fn();
+      })();
+      sdkRun = run;
+      const done = () => { if (sdkRun === run) sdkRun = null; };
+      run.then(done, done);
+      return run;
+    }
+    // settlement is bound to THE attempt it answers (Codex r1 P1-2): a write only while the record still holds that attempt
+    function settleSdk(id, state, attemptId) {
+      const cur = readPlace();
+      if (!cur || cur.order_id !== id || (attemptId != null && cur.attempt_id !== attemptId)) return false;
+      try { patchPlace(id, { attempt_state: state, unresolved: false }); return true; } catch (_) { return false; }
+    }
+    // an answer about an EARLIER attempt than the record's current one says nothing about the current one
+    function staleAttempt(id, out) {
+      if (typeof out.attempt_id !== 'string') return false;
+      const cur = readPlace();
+      return !!cur && cur.order_id === id && typeof cur.attempt_id === 'string' && cur.attempt_id !== out.attempt_id;
+    }
     function sdkApply(id, out) {
+      if ((out.outcome === 'declined' || out.outcome === 'bank_pending' || out.outcome === 'action_required') && staleAttempt(id, out)) return { kind: 'sdk_pending', order_id: id, stale: true };
       switch (out.outcome) {
         case 'placed': { const ok = resolvePlace(id, 'placed'); return { kind: 'placed', order_id: id, tracking_token: out.tracking_token, card: { ...out.card }, sdk: true, ...(typeof out.adjust_grant === 'string' ? { adjust_grant: out.adjust_grant } : {}), ...settledOf(ok) }; }
-        case 'declined': settleSdk(id, 'declined'); return { kind: 'sdk_declined', order_id: id, bucket: out.decline };
+        case 'declined': settleSdk(id, 'declined', out.attempt_id); return { kind: 'sdk_declined', order_id: id, bucket: out.decline };
         case 'action_required': return { kind: 'sdk_pending', order_id: id, challenge: out.challenge };
         case 'bank_pending': return { kind: 'sdk_pending', order_id: id };
         case 'under_review': return { kind: 'sdk_review', order_id: id };
-        case 'expired': if (out.safe_to_switch === true) { const ok = resolvePlace(id, 'released'); return { kind: 'sdk_expired', order_id: id, safe: true, ...settledOf(ok) }; }
-          return { kind: 'sdk_expired', order_id: id, safe: false };
+        case 'expired': {
+          if (out.safe_to_switch !== true) return { kind: 'sdk_expired', order_id: id, safe: false };
+          const cur = readPlace(), intent = !!cur && cur.order_id === id && cur.switch_intent === true;   // Codex r1 P2-9: a remembered cash switch
+          const ok = resolvePlace(id, 'released');
+          return intent ? { kind: 'sdk_switched', replaces: id, ...settledOf(ok) } : { kind: 'sdk_expired', order_id: id, safe: true, ...settledOf(ok) };
+        }
         case 'unavailable': settleSdk(id, 'none'); return { kind: 'sdk_unavailable', order_id: id, retry_after_s: out.retry_after_s };
         case 'not_allowed': settleSdk(id, 'none'); return { kind: 'sdk_not_allowed', order_id: id, reason: out.reason };
         default: return { kind: 'sdk_pending', order_id: id };
@@ -749,14 +803,19 @@
       const out = PC.readPlacement(r.json);
       return out.outcome === 'invalid' ? { kind: 'sdk_pending', order_id: id } : sdkApply(id, out);
     }
-    async function placeSdk(p) {
+    const placeSdk = (p) => sdkExclusive(() => placeSdkInner(p));
+    async function placeSdkInner(p) {
       if (!E.placeSdkOrder || !PC) return { kind: 'sdk_unavailable', local: true };
+      // the authority FIRST (the one await before the dispatch, Codex r1 P1-1): everything after it is checked and sent with no await between
+      const h = await sdkHeaders(p, null);
+      if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded' };
       if (retainedByOther()) return { kind: 'held_other_account', local: true };
       { const g0 = guestGate(p, { ticket: false }); if (g0) return g0; }
       { const hg = hostedGate(p); if (hg) return hg; }
       const live = readPlace();
       if (live && live.sdk === true && live.attempt_state === 'sent') return sdkStatus(live.order_id, p);   // in flight: status first
       if (live && live.sdk !== true && Number(live.dispatched) > 0) return resolveExisting(live.order_id);   // a DISPATCHED placement of another tender is never paid over
+      if (!h) return memberOf() ? { kind: 'offline', order_id: live ? live.order_id : null } : { kind: 'guest_ticket_invalid', local: true };
       let rec;
       try { rec = live || mintPlace('online', p); } catch (e) { return placeErr(e, null) || { kind: 'error', error: 'placement_lost' }; }
       { const g = guestGate(p, { ticket: true, id: rec.order_id }); if (g) return g; }
@@ -766,26 +825,30 @@
       cq.send(base, p.sig, p.expectedNetCents);
       const body = PC.placeBody(base, p.card, attemptId, { guest: !memberOf() }, typeof p.replacesOrderId === 'string' ? p.replacesOrderId : null);
       if (!body) return { kind: 'sdk_bad_card', order_id: rec.order_id, local: true };
-      const h = await sdkHeaders(p, rec.order_id);
-      if (!h) return memberOf() ? { kind: 'offline', order_id: rec.order_id } : { kind: 'guest_ticket_invalid', local: true };
       try {
         const fr = freezeFirst(rec, p); if (fr.stop) return fr.stop; rec = fr.rec;
         // rule i: the attempt recorded and re-read BEFORE the dispatch (a failed write ⇒ no dispatch)
         rec = confirmSend(rec.order_id, 'online', { sdk: true, attempt_id: attemptId, attempt_state: 'sent', card_ref: cardRef(p.card), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(p.expectedNetCents), totals: p.totals || rec.totals || null });
       } catch (e) { return placeErr(e, rec.order_id) || { kind: 'offline', order_id: rec.order_id }; }
       const id = rec.order_id;
+      if (typeof p.onDispatch === 'function') { try { p.onDispatch(id); } catch (_) {} }   // the UI keeps the sent order for a reload (Codex r1 P1-4)
       const r = await sdkCall('POST', E.placeSdkOrder, body, h);
       if (r.network || r.status >= 500 || !r.json) return sdkStatus(id, p);                        // unknown ⇒ the status, never a new attempt
       if (r.status === 200) { const out = PC.readPlacement(r.json); return out.outcome === 'invalid' ? sdkStatus(id, p) : sdkApply(id, out); }
+      // Codex r1 P2-6: a quote refusal is pre-admission (nothing claimed): the attempt released, the checkout re-quotes
+      if (cq.classify(r.json)) { settleSdk(id, 'none', attemptId); return { kind: 'replay_requote', order_id: id }; }
       const cr = commonRefusal({ status: r.status, json: r.json, parsed: true });
-      if (cr) { settleSdk(id, 'none'); return { ...cr, order_id: id }; }                              // the intake gates refuse before any claim
+      if (cr) { settleSdk(id, 'none', attemptId); return { ...cr, order_id: id }; }                   // the intake gates refuse before any claim
       if (r.status === 401 || r.status === 404) return recoverySheet(id);
       return sdkStatus(id, p);
     }
-    // §5 «Pagar en efectivo»: cash only once the pending order is safe_to_switch; otherwise poll (never cash)
-    async function sdkSwitchToCash(id, p) {
+    // §5 «Pagar en efectivo»: cash only once the pending order is safe_to_switch; otherwise poll (never cash). A switch not yet safe is
+    // REMEMBERED on the record (Codex r1 P2-9) and completes when a later status says «expired, safe»
+    const sdkSwitchToCash = (id, p) => sdkExclusive(() => sdkSwitchInner(id, p));
+    async function sdkSwitchInner(id, p) {
       if (!E.cancelSdkPending || !PC) return { kind: 'sdk_pending', order_id: id };
       const h = await sdkHeaders(p, id); if (!h) return recoverySheet(id);
+      try { patchPlace(id, { switch_intent: true }); } catch (_) {}   // BEFORE the request: a crash keeps the intent
       const r = await sdkCall('POST', E.cancelSdkPending, { order_id: id }, h);
       if (r.status === 409 && r.json && r.json.error === 'already_placed') return sdkStatus(id, p);
       if (r.network || r.status !== 200 || !r.json || PC.switchStep(r.json) !== 'cash') return { kind: 'sdk_pending', order_id: id, switching: true };
@@ -804,7 +867,7 @@
       return !r.network && r.status === 200 && r.json && typeof r.json.available === 'boolean' && Number.isInteger(r.json.retry_after_s) ? { available: r.json.available, retry_after_s: r.json.retry_after_s } : null;
     }
     // the live SDK attempt this device holds (boot / resume ⇒ the status first)
-    function sdkLive() { const r = readPlace(); return r && r.sdk === true && r.attempt_state === 'sent' ? r.order_id : null; }
+    function sdkLive() { const r = readPlace(); return sdkUnresolved(r) ? r.order_id : null; }
 
     // ── the hosted-checkout return: ?pay=complete|cancel&order=&t= ──
     async function handleReturn(search) {

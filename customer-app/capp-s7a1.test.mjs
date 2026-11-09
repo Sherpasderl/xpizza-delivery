@@ -384,7 +384,7 @@ test('placement = the BASE module (543d9d71~1): identical storage traces, reques
     const trace = [], st = memStorage(), clock = { t: T0 }; let rng = 0;
     const tr = { getItem: (k) => { const v = st.getItem(k); trace.push(['get', k, v]); return v; }, setItem: (k, v) => { trace.push(['set', k, v]); st.setItem(k, v); }, removeItem: (k) => { trace.push(['del', k]); st.removeItem(k); } };
     const srv = server(JSON.parse(JSON.stringify(scenario.script)));   // each run its own script (server() consumes it)
-    const api = Mod.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: K.pay, endpoints: E, hours: OPEN_ALL, cartKey: K.cart, placedKey: K.placed }, fetch: srv.fetch, storage: tr, now: () => clock.t, sleep: async () => {},
+    const api = Mod.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: K.pay, endpoints: E, hours: OPEN_ALL, cartKey: K.cart, placedKey: K.placed, ...(scenario.config || {}) }, ...(scenario.member ? { member: () => scenario.member } : {}), fetch: srv.fetch, storage: tr, now: () => clock.t, sleep: async () => {},
       randomBytes: (k) => Uint8Array.from({ length: k }, () => (rng++ * 13) % 256), setInterval: () => 0, clearInterval: () => {} });
     const out = await scenario.go(api, tr, clock);
     return { trace, bodies: srv.calls.map((c) => [c.ep, c.body]), out: JSON.parse(JSON.stringify(out)) };
@@ -400,6 +400,16 @@ test('placement = the BASE module (543d9d71~1): identical storage traces, reques
     'overlapping card placements': { script: { chargeOnlineOrder: [OK_CARD] }, go: async (a, tr) => { seed(tr); return Promise.all([a.place(args('online')), a.place(args('online'))]); } },
     'a retry after the record expired': { script: { createOrder: ['network', OK_CASH] }, go: async (a, tr, clock) => { seed(tr); const x = await a.place(args()); clock.t += 3 * 3600e3; return [x, await a.place(args())]; } },
     'an in-memory cart, no persisted cart (null → X → null)': { script: { createOrder: [OK_CASH] }, go: async (a) => Promise.all([a.place(args()), a.place(args())]) },
+    // Codex S2-checkout r1: the differential extended — guest and scheduled placement, quote acceptance, storage failures
+    'a guest card placement with its checkout ticket (guestCardOnly)': { config: { guestCardOnly: true }, script: { chargeOnlineOrder: [OK_CARD] }, go: async (a, tr) => { seed(tr); const id = a.orderIdForCode(args('online')); return a.place({ ...args('online'), checkoutTicket: { ticket: 'tk_1', order_id: id, expires_at: T0 + 600e3 } }); } },
+    'a guest without a ticket, and a guest cash attempt (refused locally)': { config: { guestCardOnly: true }, script: {}, go: async (a, tr) => { seed(tr); return [await a.place(args('online')), await a.place(args('cash'))]; } },
+    'a scheduled member cash order (schedulingLive)': { config: { schedulingLive: true }, member: { uid: 'u1', idToken: null }, script: { createOrder: [OK_CASH] }, go: async (a, tr) => { seed(tr); const p = args(); p.flow.time = 'schedule'; p.flow.slot = T0 + 3 * 3600e3; return a.place(p); } },
+    'a scheduled send whose answer is lost, then the replay of the recorded bytes': { config: { schedulingLive: true }, member: { uid: 'u1', idToken: null }, script: { createOrder: ['network', OK_CASH] }, go: async (a, tr) => { seed(tr); const p = args(); p.flow.time = 'schedule'; p.flow.slot = T0 + 3 * 3600e3; return [await a.place(p), await a.place({ ...p, freshOk: false })]; } },
+    'a price increase, accepted on the sheet': { script: { createOrder: [{ status: 409, json: { error: 'price_increased', net_total_cents: 33000 } }, OK_CASH] }, go: async (a, tr) => { seed(tr); return a.place({ ...args(), sheet: async () => true }); } },
+    'a price increase, declined on the sheet': { script: { createOrder: [{ status: 409, json: { error: 'price_increased', net_total_cents: 33000 } }] }, go: async (a, tr) => { seed(tr); return a.place({ ...args(), sheet: async () => false }); } },
+    'a stale quote (quote_invalid) recovered once, silently': { script: { createOrder: [{ status: 409, json: { error: 'quote_invalid' } }, OK_CASH] }, go: async (a, tr) => { seed(tr); return a.place(args()); } },
+    'the placement record cannot be written (quota)': { script: { createOrder: [OK_CASH] }, go: async (a, tr) => { seed(tr); const set = tr.setItem; tr.setItem = (k, v) => { if (k === K.place) throw new Error('quota'); return set(k, v); }; return a.place(args()); } },
+    'the record write lands, its re-read is lost (a replaced record mid-send)': { script: { createOrder: [OK_CASH] }, go: async (a, tr) => { seed(tr); const get = tr.getItem; let n = 0; tr.getItem = (k) => (k === K.place && ++n === 3 ? null : get(k)); return a.place(args()); } },
   };
   for (const [name, sc] of Object.entries(SC)) {
     const base = await run(B.exports, sc), head = await run(A, sc);

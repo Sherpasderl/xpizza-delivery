@@ -102,6 +102,7 @@ test('frame 3 form over an ABSTRACT field interface (advisor Q9): per-field stat
   assert.equal(P.formVm(st({ expiry: { state: 'past', touched: true } }), { member: true }).errors.expiry, 'Esta tarjeta ya venció');
   assert.equal(P.formVm(st({ expiry: { state: 'invalid', touched: false } }), { member: true }).errors.expiry, null, '🔴 SC-form: no error before the field is left');
   assert.deepEqual([P.formVm(st({}), { member: true }).save, P.formVm(st({}), { member: false }).save], [{ shown: true, on: true }, { shown: false, on: false }], '🔴 SC-form: save ON for members, absent for guests');
+  assert.deepEqual(P.formVm(st({}), { member: true, save: false }).save, { shown: true, on: false }, '🔴 SC-form: the customer\'s choice is what shows (Codex r1 P2-10)');
   assert.equal(P.formVm(st({ number: { state: 'empty' } }), { member: true }).primary.enabled, false, 'an empty field blocks');
   assert.ok(!JSON.stringify(P.formVm(st({ number: { state: 'valid', brand: 'visa', value: '4242424242424242' } }), { member: true })).includes('4242424242424242'), '🔴 SC-form: no card value ever enters the view model');
 });

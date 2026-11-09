@@ -125,7 +125,7 @@
     }
     const firstBad = FIELDS.find((f) => st(f) !== 'valid');
     return { errors, brand, primary: { label: 'Guardar tarjeta', enabled: !firstBad },   // v7: ONE pinned primary, disabled until valid
-      save: member ? { shown: true, on: true } : { shown: false, on: false } };
+      save: member ? { shown: true, on: !(obj(ctx) && ctx.save === false) } : { shown: false, on: false } };   // ON unless the customer turned it off (Codex r1 P2-10)
   }
 
   // used ONLY by a DOM implementation of the fields (if PCI allows one): Luhn, brand, expiry vs now, CVV by brand, name
