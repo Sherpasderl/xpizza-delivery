@@ -483,6 +483,33 @@
       if (ticket && id !== null && p.checkoutTicket.order_id !== id) return { kind: 'guest_ticket_invalid', local: true };
       return null;
     }
+    // the hosted (multi-store shell) preconditions of ANY placement — shared by place() and placeSdk(): reconciliation complete, a
+    // purchased cart never re-dispatched, a frozen cart whose lock expired never unlocked (nothing sent on any of them)
+    function hostedGate(p) {
+      if (!HOSTED) return null;
+      if (markerSuspect) return { kind: 'offline', reconcile: 'marker_unverified' };   // P1-1: fail closed until a fresh mount
+      const rc = reconcile();
+      if (!rc.ok) return { kind: 'offline', reconcile: rc.step };   // blocked until reconciliation completes (nothing sent)
+      // P1-1 (r2): a PURCHASED cart is never re-dispatched (new identity or not) — bound to its generation; a cart that carries no
+      // generation is unknown ⇒ blocked once any purchase is on record here
+      const cg = p.cartSnapshot && typeof p.cartSnapshot.cart_gen === 'string' && p.cartSnapshot.cart_gen ? p.cartSnapshot.cart_gen : null;
+      if (purchased.size && (cg === null || purchased.has(cg))) return recoverySheet(cg === null ? [...purchased.values()].pop() : purchased.get(cg));
+      const fz = cartFreeze();
+      if (fz.unknown) return { kind: 'offline', reconcile: 'read_cart' };   // P1-3: unknown freeze state ⇒ blocked
+      // r3 §1.4: a frozen cart whose lock expired with no marker NEVER unlocks — the drawn recovery sheet, never a new placement
+      if (fz.frozen && !fz.live) return recoverySheet(fz.order_id);
+      return null;
+    }
+    // S7a-1 r3.1 N7: hosted ⇒ a VERIFIED freeze of the purchased cart is a precondition of the FIRST dispatch of an identity (shared)
+    function freezeFirst(rec, p) {
+      if (!HOSTED || Number(rec.dispatched) > 0) return { rec };
+      const sr = readStrict(CART_KEY); if (!sr.ok) return { stop: { kind: 'offline', order_id: rec.order_id, freeze_failed: true } };   // P1-3
+      const snap = sr.value && typeof sr.value === 'object' ? sr.value : {};
+      const cs = p.cartSnapshot && Array.isArray(p.cartSnapshot.lines) ? p.cartSnapshot : null;
+      const gen = rec.cart_gen || (cs && typeof cs.cart_gen === 'string' && cs.cart_gen) || ((!snap.frozen_for || snap.frozen_for === rec.order_id) && typeof snap.cart_gen === 'string' && snap.cart_gen) || newGen();
+      if (!writeStrict(CART_KEY, { ...snap, v: cs ? cs.v : snap.v, rid: cfg.restaurantId, mode: p.flow && p.flow.mode, lines: cs ? cs.lines : snap.lines, cart_gen: gen, frozen_for: rec.order_id })) return { stop: { kind: 'offline', order_id: rec.order_id, freeze_failed: true } };
+      return { rec: rec.cart_gen !== gen ? patchPlace(rec.order_id, { cart_gen: gen }) : rec };
+    }
     async function place(p) {
       // Codex G7 r1 #1 / r2 (advisor (a)): another account's unresolved send (scheduled or ASAP) is on this device ⇒ refused HERE — before any gate,
       // record write or request; it places normally once that record resolves or expires
@@ -491,20 +518,10 @@
       // PLAN-capp-signin-required §3.2: an app GUEST (cfg.guestCardOnly, no member NOW) never maps to cash — refused before any record,
       // lock or send (and re-checked before EVERY dispatch below, Codex guest r1 #1)
       { const g0 = guestGate(p, { ticket: false }); if (g0) return g0; }
-      if (HOSTED) {
-        if (markerSuspect) return { kind: 'offline', reconcile: 'marker_unverified' };   // P1-1: fail closed until a fresh mount
-        const rc = reconcile();
-        if (!rc.ok) return { kind: 'offline', reconcile: rc.step };   // blocked until reconciliation completes (nothing sent)
-        // P1-1 (r2): a PURCHASED cart is never re-dispatched (new identity or not) — bound to its generation; a cart that carries no
-        // generation is unknown ⇒ blocked once any purchase is on record here
-        const cg = p.cartSnapshot && typeof p.cartSnapshot.cart_gen === 'string' && p.cartSnapshot.cart_gen ? p.cartSnapshot.cart_gen : null;
-        if (purchased.size && (cg === null || purchased.has(cg))) return recoverySheet(cg === null ? [...purchased.values()].pop() : purchased.get(cg));
-        const fz = cartFreeze();
-        if (fz.unknown) return { kind: 'offline', reconcile: 'read_cart' };   // P1-3: unknown freeze state ⇒ blocked
-        // r3 §1.4: a frozen cart whose lock expired with no marker NEVER unlocks — the drawn recovery sheet, never a new placement
-        if (fz.frozen && !fz.live) return recoverySheet(fz.order_id);
-      }
+      { const hg = hostedGate(p); if (hg) return hg; }
       const live = readPlace();
+      // S2-checkout (advisor design A): a live SDK attempt is resolved by ITS status first — never a dispatch of any kind over it
+      if (live && live.sdk === true && live.attempt_state === 'sent') return sdkStatus(live.order_id, p);
       if (memLock) return lockedOutcome(memLock);                                         // this page's lock (even if its write failed)
       if (live && live.pay_pending === true) return lockedOutcome(live.order_id);   // locked: zero writes until a definitive poll
       if (live && live.card === true && live.unresolved && (method === 'online' || lockInterruptedCard)) return resolveExisting(live.order_id);   // rule ii: never charged again
@@ -554,7 +571,7 @@
             if (!fresh && priorSends > 0 && rec.sched_pending === true && !schedSettled.has(rec.order_id) && typeof rec.sent_body === 'string') {
               try { const b = JSON.parse(rec.sent_body); if (b && typeof b === 'object' && b.order_id === rec.order_id) { body = b; replay = true; } } catch (_) { /* unreadable ⇒ the rebuilt body */ }
             }
-            if (!replay) { body = C.orderBody(p.flow, { ...p.ctx, orderId: rec.order_id }); cq.send(body, p.sig, expected); }
+            if (!replay) { body = withReplaces(C.orderBody(p.flow, { ...p.ctx, orderId: rec.order_id }), p); cq.send(body, p.sig, expected); }
             // Codex S4 r2 (G=B): the account rule on the OUTGOING / replayed body BEFORE anything is recorded for this send (no
             // dispatched++, no card / unresolved lock, no cart freeze) — an earlier uncertain send keeps its record exactly as it was
             if (body.scheduled_for != null && !memberOf()) return { kind: 'schedule_needs_account', order_id: rec.order_id, local: true };
@@ -569,27 +586,15 @@
               schedSettled.delete(rec.order_id);
             }
           }
-          // S7a-1 r3.1 N7: hosted ⇒ a VERIFIED freeze of the purchased cart is a precondition of the FIRST dispatch of an identity;
-          // a failure stops here (zero sends; the drawn «Sin conexión» retry) and the retry reuses THIS identity
-          if (HOSTED && !(Number(rec.dispatched) > 0)) {
-            const sr = readStrict(CART_KEY); if (!sr.ok) return { kind: 'offline', order_id: rec.order_id, freeze_failed: true };   // P1-3
-            const snap = sr.value && typeof sr.value === 'object' ? sr.value : {};
-            const cs = p.cartSnapshot && Array.isArray(p.cartSnapshot.lines) ? p.cartSnapshot : null;
-            // the cart's own generation unless it is bound to ANOTHER order (never borrowed across orders)
-            // the generation: this identity's own, else the cart's own (the UI's, §1.4), else the stored cart's unless it is bound to
-            // ANOTHER order (never borrowed across orders), else a new one
-            const gen = rec.cart_gen || (cs && typeof cs.cart_gen === 'string' && cs.cart_gen) || ((!snap.frozen_for || snap.frozen_for === rec.order_id) && typeof snap.cart_gen === 'string' && snap.cart_gen) || newGen();
-            // Codex r1 P2-8: the supplied snapshot's own version (v2 — CappCart.hydrate accepts only v2), never a v1 default
-            if (!writeStrict(CART_KEY, { ...snap, v: cs ? cs.v : snap.v, rid: cfg.restaurantId, mode: p.flow && p.flow.mode, lines: cs ? cs.lines : snap.lines, cart_gen: gen, frozen_for: rec.order_id })) return { kind: 'offline', order_id: rec.order_id, freeze_failed: true };
-            if (rec.cart_gen !== gen) rec = patchPlace(rec.order_id, { cart_gen: gen });
-          }
+          // S7a-1 r3.1 N7: hosted ⇒ a VERIFIED freeze of the purchased cart before the FIRST dispatch of an identity (freezeFirst, shared)
+          { const fr = freezeFirst(rec, p); if (fr.stop) return fr.stop; rec = fr.rec; }
           // an un-issued identity carries the economics of the body actually sent (an issued one keeps its checkout's, and a cash
           // attempt never overwrites a charge's); the method is the record's first one once a charge was ever dispatched (`card` is sticky)
           rec = confirmSend(rec.order_id, method, rec.issued || (rec.card && method !== 'online') ? {} : { ...(rec.card ? {} : { method }), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(expected), totals: p.totals || rec.totals || null });
         } catch (e) { const pe = placeErr(e, rec && rec.order_id); return pe || (rec ? resolveExisting(rec.order_id) : { kind: 'error', error: 'placement_lost' }); }
         const id = rec.order_id;
         if (body === null) {   // the flag absent: today's build, byte for byte
-          body = C.orderBody(p.flow, { ...p.ctx, orderId: id });
+          body = withReplaces(C.orderBody(p.flow, { ...p.ctx, orderId: id }), p);
           if (cfg.guestCardOnly === true && !memberOf() && p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;   // §4 (consumed at placement by the server)
           cq.send(body, p.sig, expected);
         } else if (cfg.guestCardOnly === true && !memberOf() && p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;   // S4: the ticket is read NOW, never replayed
@@ -695,6 +700,112 @@
       return { kind: 'paid_unverified', order_id: id, ...settledOf(ok) };
     }
 
+    // ── S2-checkout: the SDK card placement INSIDE this machinery (advisor design A–D, 11-08; CONTRACT-sdk-checkout r3) ──
+    // ONE recovery path: the same pending_place record, minted / patched the same way. Before EVERY dispatch the attempt is recorded
+    // (sdk: true, attempt_id, attempt_state 'sent', dispatched + 1, unresolved) — never a token, PAN or CVV and never the body (card_ref is
+    // display only: a new card's body carries its SDK token). An answer that is not a contract outcome is UNKNOWN: placeSdkStatus decides,
+    // never a new attempt (the only resend is the SAME attempt_id, which the server answers as a retransmission). A live 'sdk' attempt is
+    // resolved by its status before anything else, place() included. «Probar otra tarjeta» = the same order, a new attempt, only after a
+    // definitive decline. The cash switch = cancelSdkPending ⇒ safe_to_switch ⇒ released, then place() with replacesOrderId (a NEW id).
+    const PC = o.CappPayCard || (root && root.CappPayCard) || (typeof require === 'function' ? require('./capp-pay-card.js') : null);
+    const withReplaces = (body, p) => (p && typeof p.replacesOrderId === 'string' && p.replacesOrderId && body && body.payment_method !== 'online' ? { ...body, replaces_order_id: p.replacesOrderId } : body);
+    const cardRef = (c) => (c && c.kind === 'saved' ? { kind: 'saved', card_id: c.card_id } : c && c.kind === 'new' && c.display ? { kind: 'new', brand: c.display.brand, last4: c.display.last4 } : null);
+    // contract §1: a member's Bearer ID token; a guest's checkout ticket bound to THIS order; else no authority (null)
+    async function sdkHeaders(p, id) {
+      const m = memberOf();
+      if (m) { const tok = await memberToken(m); return tok && memberOf() === m ? { Authorization: `Bearer ${tok}` } : null; }
+      const t = p && p.checkoutTicket;
+      return ticketValid(t) && (id == null || t.order_id === id) ? { 'X-Sherpa-Order-Ticket': t.ticket } : null;
+    }
+    async function sdkCall(method, url, body, headers) {
+      try {
+        const r = await sfetch(url, { method, headers: { 'Content-Type': 'application/json', ...(headers || {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+        let j = null; try { j = await r.json(); } catch (_) { j = null; }
+        return { status: r.status, json: j && typeof j === 'object' && !Array.isArray(j) ? j : null };
+      } catch (_) { return { network: true }; }
+    }
+    // an attempt that ended with nothing in flight (declined, or never claimed): the record stays (the same order), unlocked
+    const settleSdk = (id, state) => { try { patchPlace(id, { attempt_state: state, unresolved: false }); } catch (_) {} };
+    function sdkApply(id, out) {
+      switch (out.outcome) {
+        case 'placed': { const ok = resolvePlace(id, 'placed'); return { kind: 'placed', order_id: id, tracking_token: out.tracking_token, card: { ...out.card }, sdk: true, ...(typeof out.adjust_grant === 'string' ? { adjust_grant: out.adjust_grant } : {}), ...settledOf(ok) }; }
+        case 'declined': settleSdk(id, 'declined'); return { kind: 'sdk_declined', order_id: id, bucket: out.decline };
+        case 'action_required': return { kind: 'sdk_pending', order_id: id, challenge: out.challenge };
+        case 'bank_pending': return { kind: 'sdk_pending', order_id: id };
+        case 'under_review': return { kind: 'sdk_review', order_id: id };
+        case 'expired': if (out.safe_to_switch === true) { const ok = resolvePlace(id, 'released'); return { kind: 'sdk_expired', order_id: id, safe: true, ...settledOf(ok) }; }
+          return { kind: 'sdk_expired', order_id: id, safe: false };
+        case 'unavailable': settleSdk(id, 'none'); return { kind: 'sdk_unavailable', order_id: id, retry_after_s: out.retry_after_s };
+        case 'not_allowed': settleSdk(id, 'none'); return { kind: 'sdk_not_allowed', order_id: id, reason: out.reason };
+        default: return { kind: 'sdk_pending', order_id: id };
+      }
+    }
+    // the durable-state resolver (§4): unknown stays unknown (pending) — never declined, never placed, never a new attempt
+    async function sdkStatus(id, p) {
+      if (!E.placeSdkStatus || !PC) return { kind: 'sdk_pending', order_id: id };
+      const h = await sdkHeaders(p, id); if (!h) return recoverySheet(id);   // no authority to read it (a lost guest ticket ⇒ §1.3 recovery)
+      const r = await sdkCall('GET', `${E.placeSdkStatus}?order_id=${encodeURIComponent(id)}`, null, h);
+      if (r.network || r.status !== 200 || !r.json) return { kind: 'sdk_pending', order_id: id };
+      const out = PC.readPlacement(r.json);
+      return out.outcome === 'invalid' ? { kind: 'sdk_pending', order_id: id } : sdkApply(id, out);
+    }
+    async function placeSdk(p) {
+      if (!E.placeSdkOrder || !PC) return { kind: 'sdk_unavailable', local: true };
+      if (retainedByOther()) return { kind: 'held_other_account', local: true };
+      { const g0 = guestGate(p, { ticket: false }); if (g0) return g0; }
+      { const hg = hostedGate(p); if (hg) return hg; }
+      const live = readPlace();
+      if (live && live.sdk === true && live.attempt_state === 'sent') return sdkStatus(live.order_id, p);   // in flight: status first
+      if (live && live.sdk !== true && Number(live.dispatched) > 0) return resolveExisting(live.order_id);   // a DISPATCHED placement of another tender is never paid over
+      let rec;
+      try { rec = live || mintPlace('online', p); } catch (e) { return placeErr(e, null) || { kind: 'error', error: 'placement_lost' }; }
+      { const g = guestGate(p, { ticket: true, id: rec.order_id }); if (g) return g; }
+      const attemptId = PC.newAttemptId(randomBytes);
+      const base = C.orderBody(p.flow, { ...p.ctx, orderId: rec.order_id });
+      if (cfg.guestCardOnly === true && !memberOf() && p.checkoutTicket) base.checkout_ticket = p.checkoutTicket.ticket;
+      cq.send(base, p.sig, p.expectedNetCents);
+      const body = PC.placeBody(base, p.card, attemptId, { guest: !memberOf() }, typeof p.replacesOrderId === 'string' ? p.replacesOrderId : null);
+      if (!body) return { kind: 'sdk_bad_card', order_id: rec.order_id, local: true };
+      const h = await sdkHeaders(p, rec.order_id);
+      if (!h) return memberOf() ? { kind: 'offline', order_id: rec.order_id } : { kind: 'guest_ticket_invalid', local: true };
+      try {
+        const fr = freezeFirst(rec, p); if (fr.stop) return fr.stop; rec = fr.rec;
+        // rule i: the attempt recorded and re-read BEFORE the dispatch (a failed write ⇒ no dispatch)
+        rec = confirmSend(rec.order_id, 'online', { sdk: true, attempt_id: attemptId, attempt_state: 'sent', card_ref: cardRef(p.card), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(p.expectedNetCents), totals: p.totals || rec.totals || null });
+      } catch (e) { return placeErr(e, rec.order_id) || { kind: 'offline', order_id: rec.order_id }; }
+      const id = rec.order_id;
+      const r = await sdkCall('POST', E.placeSdkOrder, body, h);
+      if (r.network || r.status >= 500 || !r.json) return sdkStatus(id, p);                        // unknown ⇒ the status, never a new attempt
+      if (r.status === 200) { const out = PC.readPlacement(r.json); return out.outcome === 'invalid' ? sdkStatus(id, p) : sdkApply(id, out); }
+      const cr = commonRefusal({ status: r.status, json: r.json, parsed: true });
+      if (cr) { settleSdk(id, 'none'); return { ...cr, order_id: id }; }                              // the intake gates refuse before any claim
+      if (r.status === 401 || r.status === 404) return recoverySheet(id);
+      return sdkStatus(id, p);
+    }
+    // §5 «Pagar en efectivo»: cash only once the pending order is safe_to_switch; otherwise poll (never cash)
+    async function sdkSwitchToCash(id, p) {
+      if (!E.cancelSdkPending || !PC) return { kind: 'sdk_pending', order_id: id };
+      const h = await sdkHeaders(p, id); if (!h) return recoverySheet(id);
+      const r = await sdkCall('POST', E.cancelSdkPending, { order_id: id }, h);
+      if (r.status === 409 && r.json && r.json.error === 'already_placed') return sdkStatus(id, p);
+      if (r.network || r.status !== 200 || !r.json || PC.switchStep(r.json) !== 'cash') return { kind: 'sdk_pending', order_id: id, switching: true };
+      const ok = resolvePlace(id, 'released');
+      return { kind: 'sdk_switched', replaces: id, ...settledOf(ok) };
+    }
+    async function listCards() {
+      if (!E.listCards || !memberOf()) return null;
+      const h = await sdkHeaders(null, null); if (!h) return null;
+      const r = await sdkCall('GET', E.listCards, null, h);
+      return !r.network && r.status === 200 && r.json && Array.isArray(r.json.cards) ? r.json : null;
+    }
+    async function sdkPayStatus() {
+      if (!E.sdkPayStatus) return null;
+      const r = await sdkCall('GET', E.sdkPayStatus, null, {});
+      return !r.network && r.status === 200 && r.json && typeof r.json.available === 'boolean' && Number.isInteger(r.json.retry_after_s) ? { available: r.json.available, retry_after_s: r.json.retry_after_s } : null;
+    }
+    // the live SDK attempt this device holds (boot / resume ⇒ the status first)
+    function sdkLive() { const r = readPlace(); return r && r.sdk === true && r.attempt_state === 'sent' ? r.order_id : null; }
+
     // ── the hosted-checkout return: ?pay=complete|cancel&order=&t= ──
     async function handleReturn(search) {
       const q = new URLSearchParams(search || '');
@@ -773,7 +884,7 @@
     // the order body a card send stashed (the return restores the checkout from it)
     function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
 
-    return { quote, latestQuote, place, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
+    return { quote, latestQuote, place, placeSdk, sdkStatus, sdkSwitchToCash, sdkLive, listCards, sdkPayStatus, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
       confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
   }
