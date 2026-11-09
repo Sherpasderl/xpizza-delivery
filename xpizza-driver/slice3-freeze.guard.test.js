@@ -104,8 +104,8 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = 'f6c3bb66d5be6596cf2e2276b5eb151884384f4760cecde80794e9d57f63f99b';
-const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
+const SLICE2_GUARD_SHA = '2cc4d9aaa94a50192f8319e94899edc5b4cb1f313eb414d05d58e94d65045765';
+const SLICE2_GUARD_CHECKS = 18;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 16). Re-pinned 16→18: the #962+stacked-seq re-gate ADDED 2 exact-pin sensitivity cells, never removed one.
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
   assert.deepEqual(regions.map((r) => r.name), SLICE3_PINS.names, 'SLICE3 region names/order tampered (added/removed/shrunk region?)');
@@ -184,6 +184,11 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/time-format.test.js',          // the shared formatter's spec test
   'xpizza-driver/disponible.test.js',           // renderDisponible body (prototype S.disponible) test
   'xpizza-driver/return-target.test.js',        // returning-state nav target (capture/get/clear + renderDisponible) — real-code suite
+  'xpizza-driver/driver-complete.test.js',         // #962 hotfix: buildCompleteTaskUpdates regression + equivalence suite
+  'xpizza-driver/stackseq-consume.test.js',        // stacked-order consumption slice: stop_seq sort/promotion/pointer + «+N min»
+  'xpizza-driver/stack-validity.js',               // stacked-seq: byte-pinned client copy of the server's stack-coherence rule (validCopy/validPair)
+  'xpizza-driver/stack-validity.guard.test.js',    // stacked-seq: guards stack-validity.js == xpizza-functions/sequencing/validity.js
+  'xpizza-driver/stackseq-tracker-parity.test.js', // stacked-seq joint acceptance: driver SDK ⊗ tracker deriveOrderTracker (6-case split)
   'xpizza-driver/solo-cancel.test.js',           // no-survivor cancel idle takeover (S.cancelado) real-code suite
   'xpizza-driver/pausa.test.js',                 // slice 3-P manual-pause (S.pausa) real-code suite
   'xpizza-driver/endshift.test.js',             // slice: «Terminar turno» idle slide real-code suite
@@ -356,11 +361,13 @@ t('SLICE3 contract is byte-frozen + matches the independently-pinned names/kinds
 });
 
 // ---------- P3. the coexistence exemption is bounded to the reviewed slice2-freeze revision ----------
-// NOTE (2026-11-08, advisor + Codex): this pin is PRE-EXISTING-STALE and expected-RED as of c20c92f4 — both
-// SLICE2_GUARD_SHA (f6c3bb66…) and SLICE2_GUARD_CHECKS (16) were fixed before slice2-freeze.guard.test.js was
-// later revised, so the live file now hashes differently and reports 18 checks. The 2.5.4 web version bump does
-// not touch this pin and deliberately does NOT re-baseline it; re-gating the coexistence revision is a separate
-// HIGH-effort task. Left intentionally so this cell stays RED until that re-gate happens.
+// RE-GATED 2026-11-08 (advisor sign-off): slice2-freeze.guard.test.js was revised by the #962 hotfix + stacked-seq
+// freeze cascade (48508be3, 9598926b, 3feb317d, 2ecaa075) and the «Ganado hoy»/SYSTEM_VERSION edits, so this pin was
+// re-baselined f6c3bb66…→2cc4d9aa… and the check count 16→18. The baseline(89151e47)→current blob diff was verified to
+// be ONLY additive allow/region/version edits: new ALLOWED_ADDS entries, the GANANCIAS-STAY SLICE3 region pin, the
+// SYSTEM_VERSION out-of-region allow (2.5.2→2.6.0), and the two #962/stacked-seq EXACT sha-pin freeze allows plus their
+// 2 sensitivity cells (the +2 to the check count). NO protection was removed or weakened — EXPECTED_CHECKS went UP, not
+// down. Any FURTHER drift re-reds this cell (re-gate at HIGH effort).
 t('coexistence pin: slice2-freeze.guard.test.js is the approved revision + still reports its exact check count', () => {
   assert.equal(sha256(readFileSync(join(__dir, SLICE2_GUARD))), SLICE2_GUARD_SHA,
     'slice2-freeze.guard.test.js changed from the approved coexistence revision — its content is NOT free under the exemption; re-gate at HIGH effort');
@@ -390,6 +397,13 @@ t('each SLICE3 replace span is byte-identical in BOTH e2266b24 and 07e5ab38 (so 
 });
 
 // ---------- 1. frozen files ----------
+// #962 pickup-pointer hotfix + stacked-seq consumption changed driver-complete.js and xpizza-delivery.js to their
+// advisor-approved content — the IDENTICAL exact-sha allow slice2-freeze already carries (DRIVER_COMPLETE_HOTFIX_SHA /
+// XPIZZA_DELIVERY_SHA). Permitted ONLY at that exact sha; any further byte drift still reds (the Buffer.compare below).
+const FREEZE_APPROVED = {
+  'xpizza-driver/driver-complete.js': '6cbedd2bbf56ef5948d7b0f10ef59a25333af59920eaaf1a507c07e7d235cd6a',
+  'xpizza-driver/xpizza-delivery.js': '1df84cbfc62c5bfd5c39b6070524c67f01d98b86436a0c4c35bd55061c27128e',
+};
 t('frozen: every file tracked at 07e5ab38 is byte-identical, except index.html, the editable set, and the coexistence guard', () => {
   const baseFiles = gitStr('ls-tree', '-r', '--name-only', BASELINE, '--', 'xpizza-driver')
     .split('\n').map((s) => s.trim()).filter(Boolean);
@@ -403,6 +417,8 @@ t('frozen: every file tracked at 07e5ab38 is byte-identical, except index.html, 
     let diskBytes;
     try { diskBytes = readFileSync(join(__dir, rel)); }
     catch { drift.push(`${repoPath} (missing on disk — deleted?)`); continue; }
+    // #962 + stacked-seq: these two frozen files carry advisor-approved content, allowed ONLY at the exact approved sha.
+    if (FREEZE_APPROVED[repoPath] && sha256(diskBytes.toString('utf8')) === FREEZE_APPROVED[repoPath]) continue;
     if (Buffer.compare(baseBytes, diskBytes) !== 0) drift.push(`${repoPath} (byte-changed)`);
   }
   assert.deepEqual(drift, [], `frozen files changed:\n  ${drift.join('\n  ')}`);
@@ -523,7 +539,7 @@ t('file-level: only the allowed MODIFY set changed; only the slice-3 allowlist a
   for (const p of gitStr('ls-files', '--others', '--exclude-standard', '--', 'xpizza-driver').split('\n').map((s) => s.trim()).filter(Boolean)) added.push(p);
 
   assert.deepEqual(otherOps, [], `forbidden op(s) (delete/rename/copy/type):\n  ${otherOps.join('\n  ')}`);
-  const allowedModify = new Set([ALLOWED_MODIFY, ...SLICE3_EDITABLE, ...SLICE3_COEXIST_MODIFY, ...SLICE3_TEST_MODIFY]);
+  const allowedModify = new Set([ALLOWED_MODIFY, ...SLICE3_EDITABLE, ...SLICE3_COEXIST_MODIFY, ...SLICE3_TEST_MODIFY, ...Object.keys(FREEZE_APPROVED)]);   // + the #962/stacked-seq frozen files (driver-complete.js, xpizza-delivery.js), each pinned to its EXACT approved sha by the frozen-files check above
   const strayMods = modified.filter((p) => !allowedModify.has(p));
   assert.deepEqual(strayMods, [], `modified outside the allowed set:\n  ${strayMods.join('\n  ')}`);
   const strayAdds = added.filter((p) => !ALLOWED_ADDS.has(p));

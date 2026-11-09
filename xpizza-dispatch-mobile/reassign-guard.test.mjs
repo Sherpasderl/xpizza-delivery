@@ -15,6 +15,10 @@ import { canReassign, isPostPickup, isUnassignedDelivery, sectionForOrder } from
 const here = dirname(fileURLToPath(import.meta.url));
 const sdk = readFileSync(join(here, '..', 'xpizza-dispatch', 'xpizza-delivery.js'), 'utf8');
 const driverSdk = readFileSync(join(here, '..', 'xpizza-driver', 'xpizza-delivery.js'), 'utf8');
+// Since stackseq, the real pickupComplete sequences a coherent 2-stop stack via pickStackPointer → validPair. Those
+// live in sibling driver modules, so lift them from their REAL sources (not stubs) and inject them below.
+const driverComplete = readFileSync(join(here, '..', 'xpizza-driver', 'driver-complete.js'), 'utf8');
+const stackValidity = readFileSync(join(here, '..', 'xpizza-driver', 'stack-validity.js'), 'utf8');
 
 const sliceFn = (src, sig) => { const s = src.indexOf(sig); assert.ok(s > -1, `${sig} present`); return src.slice(s, src.indexOf('\n}', s) + 2); };
 const sliceObj = (src, sig) => { const s = src.indexOf(sig); assert.ok(s > -1, `${sig} present`); return src.slice(s, src.indexOf('\n};', s) + 3); };
@@ -51,6 +55,13 @@ const SRC = [
   sliceFn(sdk, 'function casAssign(expected, target) {'),
   reassignOrderSrc,
   ...depSrcs,
+  // pickupComplete's stackseq deps — the REAL helpers (byte-pinned to the server validity rule), in dependency order,
+  // so the lifted writer composes exactly as in production rather than against a laxer stub. sliceFn/sliceLine assert
+  // each signature is present, so a rename fails loudly here instead of as a cryptic ReferenceError at run time.
+  sliceLine(stackValidity, 'const fin ='),
+  sliceFn(stackValidity, 'function validCopy('),
+  sliceFn(stackValidity, 'function validPair('),
+  sliceFn(driverComplete, 'export function pickStackPointer('),
   sliceFn(driverSdk, 'export async function pickupComplete('),    // the REAL driver writer
   'return { reassignOrder, pickupComplete };',
 ].join('\n').replace(/export /g, '');
