@@ -12,7 +12,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const ROOT = path.join(__dirname, '..');
-const read = (f) => require('../tools/keymode-module-inverse').unapplyKeyModeModule(f, fs.readFileSync(path.join(ROOT, f), 'utf8'));   // S0 key mode (newest) reversed first
+const read = (f) => require('../tools/keymode-module-inverse').unapplyKeyModeModule(f, require('../tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, fs.readFileSync(path.join(ROOT, f), 'utf8')));   // S0 key mode (newest) reversed first
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);

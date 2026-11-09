@@ -2769,6 +2769,7 @@
      "file": "xpizza-functions/catalog/context-guards.test.js",
      "inverses": [
       "tools/extras-module-inverse.js",
+      "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js"
      ]
@@ -2777,6 +2778,7 @@
      "file": "xpizza-functions/catalog/identity-integrity-guards.test.js",
      "inverses": [
       "tools/extras-module-inverse.js",
+      "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js"
      ]
@@ -2784,13 +2786,15 @@
     {
      "file": "xpizza-functions/photos-module-wiring.guard.test.js",
      "inverses": [
+      "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "xpizza-functions/catalog/publish-paths.test.js"
+    "xpizza-functions/catalog/publish-paths.test.js",
+    "xpizza-functions/frozenkeys-wiring.guard.test.js"
    ]
   },
   "catalog/catalog.js": {
@@ -2829,7 +2833,9 @@
   },
   "catalog/frozen-keys.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/frozenkeys-wiring.guard.test.js"
+   ]
   },
   "catalog/group-intake.js": {
    "pins": [],
@@ -2855,7 +2861,9 @@
   },
   "catalog/item-text-edit.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/frozenkeys-wiring.guard.test.js"
+   ]
   },
   "catalog/key-mode.js": {
    "pins": [],
@@ -2978,6 +2986,7 @@
      "inverses": [
       "tools/extras-module-inverse.js",
       "tools/formbake-module-inverse.js",
+      "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js"
      ]
@@ -2987,6 +2996,7 @@
      "inverses": [
       "tools/extras-module-inverse.js",
       "tools/formbake-module-inverse.js",
+      "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js"
      ]
@@ -2995,6 +3005,7 @@
      "file": "xpizza-functions/formbake-module-wiring.guard.test.js",
      "inverses": [
       "tools/formbake-module-inverse.js",
+      "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js"
      ]
     },
@@ -3002,12 +3013,15 @@
      "file": "xpizza-functions/pmdisplay-wiring.guard.test.js",
      "inverses": [
       "tools/formbake-module-inverse.js",
+      "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js"
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/frozenkeys-wiring.guard.test.js"
+   ]
   },
   "catalog/text-version.js": {
    "pins": [],

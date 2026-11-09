@@ -20,7 +20,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 // at 537bbbc and 6f353ed, and keep the slice's original base
 const BASE = '537bbbc';
 const INDEX_BASE = '6f353ed';
-const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')));
+const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))));
 const baseOf = (f, at = BASE) => execFileSync('git', ['show', `${at}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 // ── 1a. index.js ──
