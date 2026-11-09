@@ -1081,7 +1081,7 @@
   .rc-date{ text-align:center; font-size:12px; color:var(--text-dim); margin-top:2px; }
   .dash{ border:none; border-top:1.5px dashed #DDE2E9; margin:12px 0; }
   .rc-row{ display:flex; align-items:center; justify-content:space-between; font-size:14px; padding:5px 0; }
-  .rc-row .l{ color:var(--text-soft); font-weight:400; } .rc-row .v{ font-family:'Red Hat Display', sans-serif; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }   /* regular-weight Red Hat Text label (proto .receipt .rr span: body default 400), not semibold — shared by S.cuadre + S.cierreRechazado */
+  .rc-row .l{ color:var(--text-soft); font-weight:400; } .rc-row .v{ font-family:'Red Hat Display', sans-serif; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }   /* regular-weight Red Hat Text label (proto .receipt .rr span: body default 400), not semibold — S.cuadre receipt rows only (S.cierreRechazado renders .rc-big, not .rc-row) */
   .rc-row.rc-muted .l{ color:var(--text-dim); font-weight:400; } .rc-row.rc-muted .v{ color:var(--text-dim); font-weight:600; }   /* muted row: regular-weight label (proto .rr.m mutes colour only, not weight), value stays lighter */
   /* hero (prototype .rbig/.big): NEUTRAL dark number inside the white receipt — NOT the green owed-confirmed card */
   .rc-big{ display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 0 2px; text-align:center; margin:0; background:none; border-radius:0; }
@@ -1112,10 +1112,10 @@
   .cuadre-slide .slide-fill{ position:absolute; left:0; top:0; bottom:0; width:60px; border-radius:16px; background:rgba(255,255,255,.14); opacity:0; z-index:1; transition:width .2s ease; }
   .cuadre-slide.completed .slide-fill{ opacity:1; }
   .cuadre-slide.dragging .slide-fill{ transition:none; }
-  /* The prototype slide label collides with the hint at 390 (its own flaw); we fit it clear of both the knob and the
-     «DESLIZÁ» hint — slightly smaller than the prototype's 15px — so it never overlaps (Codex r2 P3). */
-  .cuadre-slide .slide-text{ position:absolute; left:52px; right:66px; top:0; bottom:0; z-index:2; display:flex; align-items:center; justify-content:center; white-space:nowrap; font-family:'Red Hat Display', sans-serif; font-weight:700; font-size:13px; letter-spacing:.01em; text-transform:none; color:#fff; -webkit-text-fill-color:#fff; }   /* 13px: the label «Confirmar entrega de efectivo» (29 chars) needs a CLEAN gap before the «DESLIZÁ» hint. Geometry is tight — thumb lane ≤~55px, hint starts ~321px → ~266px usable — so 14px+ geometrically forces a touch/overlap for this long label. The proto's own «DE» overlap is a proto bug we do NOT reproduce; 13px clears it fully (advisor ruling). */
-  .cuadre-slide .slide-hint{ position:absolute; right:14px; top:0; bottom:0; display:flex; align-items:center; z-index:2; font:600 10.5px 'Red Hat Text', sans-serif; opacity:.7; letter-spacing:.06em; text-transform:uppercase; color:#fff; pointer-events:none; }
+  /* This slide DROPS the «DESLIZÁ» hint (advisor 2026-11-08): the 29-char «Confirmar entrega de efectivo» can't share the
+     390px track with the hint without overlap (the proto's own label overlaps «DE» — a proto defect we don't copy); the arrow thumb signals the gesture, other slides keep their hint. Label at the proto's 14px, centred in the free lane. */
+  .cuadre-slide .slide-text{ position:absolute; left:60px; right:16px; padding-left:0; top:0; bottom:0; z-index:2; display:flex; align-items:center; justify-content:center; white-space:nowrap; font-family:'Red Hat Display', sans-serif; font-weight:700; font-size:14px; letter-spacing:.01em; text-transform:none; color:#fff; -webkit-text-fill-color:#fff; }   /* padding-left:0 overrides the generic .slide-text padding-left:60px (:1697) so the absolute box fully controls the lane. With the hint dropped the label centres in the free lane between the thumb (clears at left:60) and the track right edge (right:16), at the proto's 14px, with a clear margin on BOTH sides at 390px. */
+  .cuadre-slide .slide-hint{ display:none; }   /* hint DROPPED on this slide (advisor 2026-11-08) — see .slide-text above: the 29-char label can't share the track with the hint; the arrow thumb signals the slide gesture. Node kept for DOM/JS parity; other slides' hints are unaffected. */
   .cuadre-slide.completed .slide-hint, .cuadre-slide.dragging .slide-hint{ opacity:0; }
   .cuadre-slide .slide-thumb{ position:absolute; left:5px; top:5px; bottom:5px; width:50px; border-radius:12px; background:rgba(255,255,255,.22); display:grid; place-items:center; cursor:grab; z-index:3; touch-action:none; box-shadow:none; }
   .cuadre-slide .slide-thumb svg{ width:22px; height:22px; color:#fff; }
