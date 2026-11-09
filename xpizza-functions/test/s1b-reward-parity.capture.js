@@ -1,6 +1,7 @@
 'use strict';
 // S1b (advisor ruling Q3) — an UNKNOWN or non-string reward item keeps today's refusal, byte for byte: this captures what
-// createOrder and the charge answer for such a reward, from the functions dir S1B_FN (the base checkout or this one), into
+// createOrder and the charge answer for such a reward (and, advisor ruling option A, what all four endpoints answer for a
+// malformed legacy key), from the functions dir S1B_FN (the base checkout or this one), into
 // CAPTURE_OUT. Run once per checkout inside the emulator, then compare the two captures (identical status AND body).
 // Run: S1B_FN=<functions dir> CAPTURE_OUT=<file> node tools/emulator-run.js --only firestore,database --project demo-xpizza "node test/s1b-reward-parity.capture.js"
 const FN = require('path').resolve(process.env.S1B_FN || require('path').join(__dirname, '..'));
@@ -88,6 +89,21 @@ const written = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).exists();
       const r = await post(handler, bodyFor(rid, `rwp_${k}_${ep}`, f.phone, [lineOf(rid)], { payment_method: pm, redeem }), { 'x-firebase-id-token': uid });
       out[`${k}/${ep}`] = { status: r.status, body: r.text, written: await written(`rwp_${k}_${ep}`) };
     }
+  }
+  // advisor ruling (option A): a malformed LEGACY key (array / null on the mode's own field) keeps today's refusal, byte for
+  // byte, at all four endpoints
+  const REDEEM_OK = { x_pizza: { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' }, la_musa: { type: 'points_ala_carte', items: [{ id: 'rice_white', qty: 1, name: 'Arroz Blanco' }] } };
+  for (const [rid, field] of [['x_pizza', 'name'], ['la_musa', 'id']]) for (const [kind, v] of [['array', [rid === 'x_pizza' ? 'Carnivora' : 'dimsum_01']], ['null', null]]) {
+    const k = `mf_${rid}_${field}_${kind}`; const line = () => lineOf(rid, { [field]: v });
+    for (const [ep, handler, pm] of [['createOrder', app.createOrder, 'cash'], ['chargeOnlineOrder', app.chargeOnlineOrder, 'online']]) {
+      const f = await fresh(); const before = CHARGED.length;
+      const r = await post(handler, bodyFor(rid, `rwp_${k}_${ep}`, f.phone, [line()], { payment_method: pm }), { 'x-firebase-id-token': uid });
+      out[`${k}/${ep}`] = { status: r.status, body: r.text, written: await written(`rwp_${k}_${ep}`), charged: CHARGED.length - before };
+    }
+    const q = await post(app.quoteOrder, { restaurant_id: rid, items: [line()], order_type: 'pickup' });
+    out[`${k}/quoteOrder`] = { status: q.status, body: q.text, written: false };
+    const qr = await post(app.quoteRedemption, { restaurant_id: rid, items: [line()], order_type: 'pickup', redeem: REDEEM_OK[rid] }, { 'x-firebase-id-token': uid });
+    out[`${k}/quoteRedemption`] = { status: qr.status, body: qr.text, written: false };
   }
   require('fs').writeFileSync(OUT, `${JSON.stringify(out, null, 1)}\n`);
   FINISHED = true;

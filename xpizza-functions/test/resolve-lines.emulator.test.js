@@ -4,7 +4,9 @@
 //   U  an unknown item: createOrder / the charge → 409 menu_changed «El menú se actualizó, recargá la página» (not retryable),
 //      nothing written, nothing charged; quoteOrder → 200 { ok:false, error:'menu_changed' } (fail-soft); quoteRedemption →
 //      409 { ok:false, error:'menu_changed', detail }
-//   I  the intentional tightening: an array name → 400 invalid_line on the order endpoints, fail-soft on quoteOrder
+//   I  a malformed legacy key is NOT the stage's (advisor ruling, option A): an array name / id is refused exactly as at the
+//      base — 400 item_malformed with its customer copy — at createOrder, the charge, quoteOrder and quoteRedemption;
+//      nothing written, nothing charged (the base-vs-tip bytes, null included: test/s1b-reward-parity.capture.js)
 //   K  item_key: an agreeing item_key prices exactly as its legacy twin (same stored total); an item_key-only line refuses
 //      menu_changed (S1b: never priced)
 //   F  one key across endpoints: quoteOrder signs the SAME cart fingerprint for an item_key cart and its legacy twin, and the
@@ -108,19 +110,28 @@ const written = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).exists();
   }
   ok('an unknown item: 409 menu_changed on createOrder and the charge (nothing written or charged); quoteOrder fail-soft; quoteRedemption 409 { ok:false }');
 
-  // ── I: the intentional tightening ──
+  // ── I: a malformed legacy key keeps today's refusal ──
   {
-    const f = await fresh();
-    const co = await post(app.createOrder, bodyFor('x_pizza', f.oid, f.phone, [lineOf('x_pizza', { name: ['Carnivora'] })]), { 'x-firebase-id-token': uid });
-    assert.deepStrictEqual([co.status, co.json], [400, { error: 'invalid_line', at: 'items', index: 0 }], `I-ARRAY an array name is 400 invalid_line (${co.text.slice(0, 160)})`);
-    assert.strictEqual(await written(f.oid), false);
-    const g = await fresh();
-    const ch = await post(app.chargeOnlineOrder, bodyFor('la_musa', g.oid, g.phone, [lineOf('la_musa', { id: ['dimsum_01'] })], { payment_method: 'online' }), { 'x-firebase-id-token': uid });
-    assert.deepStrictEqual([ch.status, ch.json], [400, { error: 'invalid_line', at: 'items', index: 0 }], `I-ARRAY-ID an array id is 400 invalid_line (${ch.text.slice(0, 160)})`);
-    const q = await post(app.quoteOrder, { restaurant_id: 'x_pizza', items: [lineOf('x_pizza', { name: ['Carnivora'] })], order_type: 'pickup' });
-    assert.deepStrictEqual([q.status, q.json], [200, { ok: false, error: 'invalid_line' }], 'I-QUOTE fail-soft');
+    const COPY = 'Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.';
+    const isMalformed = (r) => r.status === 400 && r.json && r.json.error === 'item_malformed' && r.json.detail === COPY;
+    for (const [rid, over] of [['x_pizza', { name: ['Carnivora'] }], ['la_musa', { id: ['dimsum_01'] }]]) {
+      const tag = `${rid} ${Object.keys(over)[0]}=array`;
+      const f = await fresh();
+      const co = await post(app.createOrder, bodyFor(rid, f.oid, f.phone, [lineOf(rid, over)]), { 'x-firebase-id-token': uid });
+      assert.ok(isMalformed(co), `I-CREATE ${tag} is today's 400 item_malformed (${co.text.slice(0, 200)})`);
+      assert.strictEqual(await written(f.oid), false, `I-CREATE ${tag} nothing written`);
+      const g = await fresh(); const before = CHARGED.length;
+      const ch = await post(app.chargeOnlineOrder, bodyFor(rid, g.oid, g.phone, [lineOf(rid, over)], { payment_method: 'online' }), { 'x-firebase-id-token': uid });
+      assert.ok(isMalformed(ch), `I-CHARGE ${tag} is today's 400 item_malformed (${ch.text.slice(0, 200)})`);
+      assert.strictEqual(CHARGED.length, before, `I-CHARGE ${tag} nothing charged`);
+      assert.strictEqual(await written(g.oid), false, `I-CHARGE ${tag} nothing written`);
+      const q = await post(app.quoteOrder, { restaurant_id: rid, items: [lineOf(rid, over)], order_type: 'pickup' });
+      assert.ok(isMalformed(q), `I-QUOTE ${tag} is today's 400 item_malformed (${q.text.slice(0, 200)})`);
+      const qr = await post(app.quoteRedemption, { restaurant_id: rid, items: [lineOf(rid, over)], order_type: 'pickup', redeem: rid === 'x_pizza' ? { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' } : { type: 'points_ala_carte', items: [{ id: 'rice_white', qty: 1, name: 'Arroz Blanco' }] } }, { 'x-firebase-id-token': uid });
+      assert.ok(isMalformed(qr), `I-QUOTE-REDEEM ${tag} is today's 400 item_malformed (${qr.text.slice(0, 200)})`);
+    }
   }
-  ok('a non-string name / id: 400 invalid_line on the order endpoints, fail-soft on quoteOrder (the intentional tightening)');
+  ok('a malformed legacy key is refused exactly as at the base: 400 item_malformed with its customer copy at all four endpoints; nothing written or charged');
 
   // ── K: item_key ──
   for (const rid of ['x_pizza', 'la_musa']) {
