@@ -4,7 +4,7 @@
   "units": 574,
   "sites": 4564,
   "mapped": 1850,
-  "exempt": 2711,
+  "exempt": 2714,
   "byR": {
    "R9": 66,
    "R8": 131,
@@ -30,7 +30,7 @@
    "server dispatch": 217,
    "server branches": 30,
    "server payment": 417,
-   "server intake": 480,
+   "server intake": 483,
    "server delivery_pricing": 30,
    "server driver_pay": 11,
    "server driverreport": 5,
@@ -3733,7 +3733,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": null
+   "rule": "server:intake",
+   "exempt": true
   },
   {
    "id": "xpizza-functions/catalog/resolve-lines.js#labelGap#items#1",
@@ -3742,7 +3743,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": null
+   "rule": "server:intake",
+   "exempt": true
   },
   {
    "id": "xpizza-functions/catalog/resolve-lines.js#labelGap#redeem#0",
@@ -3751,7 +3753,8 @@
    "facts": [
     "REWARD"
    ],
-   "rule": null
+   "rule": "server:intake",
+   "exempt": true
   },
   {
    "id": "xpizza-functions/catalog/source-store.js#validateSource#restaurant_id#0",

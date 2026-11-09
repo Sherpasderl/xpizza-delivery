@@ -5318,8 +5318,8 @@
   "slice": "d2",
   "label": "🔴 pricedLineItems returns CONSTANT fiscal lines",
   "file": "factura/pricing.js",
-  "from": "function pricedLineItems(items, menuPrices, extraPrices) {",
-  "to": "function pricedLineItems(items, menuPrices, extraPrices) {\n  if (true) return { items: [{ qty: 1, description: 'X', line_gross_cents: 1 }] };",
+  "from": "function pricedLineItems(items, menuPrices, extraPrices, labels = null) {",
+  "to": "function pricedLineItems(items, menuPrices, extraPrices, labels = null) {\n  if (true) return { items: [{ qty: 1, description: 'X', line_gross_cents: 1 }] };",
   "command": [
    "node",
    "../cart-identity.test.mjs"

@@ -407,6 +407,7 @@
   "catalog/group-intake.js#groupIssues": "catalog",
   "catalog/group-intake.js#rewardKeysOf": "catalog",
   "catalog/reserved-keys.js#renameConflicts": "catalog",
+  "catalog/resolve-lines.js#labelGap": "intake",
   "catalog/resolve-lines.js#resolveLines": "intake",
   "catalog/resolve-lines.js#rewardLines": "intake",
   "catalog/identity-backfill.js#liveKeys": "catalog",
