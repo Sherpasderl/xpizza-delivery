@@ -63,7 +63,7 @@ const reserve = async (keys) => { const ref = RK.reservedRefOf(fs, RID); const c
   const v4 = await pub(source('Dish One Nuevo Dos', MAP), 'rk-v4-ok-before-reserve', v3.versionId).catch((e) => e);
   assert.ok(v4 instanceof Error && /reserved_key_conflict/.test(v4.message), 'premise: that name is now reserved');
   SWITCH.enabled = false;
-  const v5 = await pub(source('Dish One Nuevo Dos', MAP), 'rk-v5-off', v3.versionId);
+  let v5; try { v5 = await pub(source('Dish One Nuevo Dos', MAP), 'rk-v5-off', v3.versionId); } catch (e) { assert.fail(`RKRF-OFF switch OFF judged a rename at the activation (${String(e.message).slice(0, 120)})`); }
   assert.strictEqual((await getActivePointer(fs, RID)).version, v5.versionId, 'RKRF-OFF switch OFF: nothing is judged at the activation (today)');
   const v6 = await pub(source('Dish One Nuevo', MAP), 'rk-v6', v5.versionId);
   SWITCH.enabled = true;

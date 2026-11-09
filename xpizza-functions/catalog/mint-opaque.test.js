@@ -46,7 +46,7 @@ const seq = (...keys) => { let i = 0; return () => keys[Math.min(i++, keys.lengt
   assert.strictEqual(a.display.id, b.display.id, 'MO-ID the display id is allocated exactly as today');
   assert.deepStrictEqual(onRes.source.frozen_keys, { [String(a.display.id)]: a.key }, 'MO-FROZEN the server records (display.id → minted key)');
   assert.strictEqual(off.source.frozen_keys, undefined, 'MO-OFF-IDENTICAL OFF records nothing');
-  assert.deepStrictEqual(onRes.allocatedNow, [a.key]);
+  assert.deepStrictEqual(onRes.allocatedNow, [a.key], 'MO-NAME the minted key is what was allocated');
   assert.doesNotThrow(() => validateSource(onRes.source, RID), 'MO-VALID the minted product validates (frozen entry)');
   const built = buildSourceCandidate(RID, onRes.source).built;
   assert.ok(built.items.some((i) => i.key === a.key), 'MO-BUILD the build keys it by the minted key');
@@ -75,8 +75,9 @@ const seq = (...keys) => { let i = 0; return () => keys[Math.min(i++, keys.lengt
   const liveKey = base.items[0].key; const extraKey = base.extras[0].key;
   const stored = { ...base, frozen_keys: { 9999: 'i_frozenfrozen' } };
   const two = addTo(addTo(stored, 'tmp:mint0003', 'Pizza Uno', cat), 'tmp:mint0004', 'Pizza Dos', cat);
-  const r = AP.allocateAdditions({ incoming: two, stored, activeItems: base.items, keyMode: 'name', hwm: null, registryHasKey: () => false,
-    mint: { newKey: seq(liveKey, extraKey, 'i_bbbbbbbbbbbb', 'i_frozenfrozen', 'i_reservedkey2', 'i_cccccccccccc'), reserved: new Set(['i_reservedkey2']) } });
+  let r;
+  try { r = AP.allocateAdditions({ incoming: two, stored, activeItems: base.items, keyMode: 'name', hwm: null, registryHasKey: () => false,
+    mint: { newKey: seq(liveKey, extraKey, 'i_bbbbbbbbbbbb', 'i_frozenfrozen', 'i_reservedkey2', 'i_cccccccccccc'), reserved: new Set(['i_reservedkey2']) } }); } catch (e) { assert.fail(`MO-COLLIDE two collisions are redrawn, not refused (${e.code})`); }
   const keys = ['Pizza Uno', 'Pizza Dos'].map((nm) => r.source.items.find((i) => i.display.name === nm).key);
   assert.deepStrictEqual(keys, ['i_bbbbbbbbbbbb', 'i_cccccccccccc'], `MO-COLLIDE active, extra, frozen and reserved keys are redrawn (${keys})`);
   const r2 = AP.allocateAdditions({ incoming: two, stored, activeItems: base.items, keyMode: 'name', hwm: null, registryHasKey: () => false,
