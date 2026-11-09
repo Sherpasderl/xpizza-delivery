@@ -8,7 +8,9 @@ const { spawnSync } = require('child_process');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const CLI = path.join(__dirname, 'reserved-keys-audit.js');
 const env = { ...process.env }; delete env.GOOGLE_CLOUD_PROJECT; delete env.GCLOUD_PROJECT; delete env.GOOGLE_APPLICATION_CREDENTIALS;
-env.FIRESTORE_EMULATOR_HOST = '127.0.0.1:1';   // a refusal must come first; if one ever did not, nothing real is reachable
+for (const k of Object.keys(env)) if (/EMULATOR_HOST$|^FIREBASE_AUTH_EMULATOR/.test(k)) delete env[k];   // the project guard refuses a half-configured emulator set on its own
+// no credential can resolve: if a refusal ever regressed, the run fails at its first token fetch instead of reading a real project
+env.GOOGLE_APPLICATION_CREDENTIALS = path.join(__dirname, 'no-such-credential-file.json'); env.CLOUDSDK_CONFIG = path.join(__dirname, 'no-such-gcloud-config');
 const run = (...args) => spawnSync(process.execPath, [CLI, ...args], { env, encoding: 'utf8', timeout: 20000 });
 
 for (const [args, want, label] of [

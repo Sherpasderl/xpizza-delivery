@@ -1857,6 +1857,7 @@
   "xpizza-functions/catalog/publish-edited-handler.js",
   "xpizza-functions/catalog/publish-parity.js",
   "xpizza-functions/catalog/publish-request.js",
+  "xpizza-functions/catalog/reserved-keys-audit.js",
   "xpizza-functions/catalog/reset-draft.js",
   "xpizza-functions/catalog/source-store.js",
   "xpizza-functions/contract/applicability.js",
@@ -2361,6 +2362,7 @@
   "catalog/public-photos.js",
   "catalog/publish-edited-handler.js",
   "catalog/publish-request.js",
+  "catalog/reserved-keys-audit.js",
   "catalog/reserved-keys.js",
   "catalog/reset-draft.js",
   "catalog/resolve-lines.js",
@@ -2984,6 +2986,10 @@
    ]
   },
   "catalog/publish-request.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/reserved-keys-audit.js": {
    "pins": [],
    "lifts": []
   },
