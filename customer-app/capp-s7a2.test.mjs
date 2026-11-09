@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { payView, line as payLine } from './test/fake-sdk-pay.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, '..');
 const require = createRequire(import.meta.url);
@@ -251,7 +252,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   if (preMount) preMount(w);   // a host object present BEFORE the shell mounts (the installed app's Capacitor bridge)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -4173,5 +4174,98 @@ test('C-5 r2 rating sheet: contained too, and «Ahora no» / Escape / «Enviar»
     opener().focus(); S.click(opener()); await until(() => S.q('#layer .rate'));
     S.click('#layer [data-act="rate-star"][data-val="5"]'); await flush(); S.click('#layer [data-act="rate-send"]'); await until(() => !S.q('#layer .rate'));
     assert.equal(S.w.document.activeElement, opener(), '🔴 MD-3 rate/Enviar: focus back on the (re-rendered) entry');
+  } finally { S.w.close(); }
+});
+
+// ── S2: the total changes after the card hold — the shell wiring (CONTRACT-sdk-customer r4 §1–§3; runtime.sdkPay, dark until D4).
+// The view arrives through the strict test fake (exact key sets, the closed enum) on the projection's own node; GET / POST through a
+// logged fake server. A guest has no adjust grant yet (the SDK checkout is not built) ⇒ the view only, no calls.
+const PAY_EP = { getPayAdjust: '/x/ga', respondPayAdjust: '/x/ra' };
+const PAY_RT = (rt) => ({ ...rt, rtdbBase: 'https://rtdb.test', sdkPay: { endpoints: PAY_EP } });
+const payConsent = (outcome, o = {}) => ({ adjustment_id: 'adj-2', outcome, old_total_cents: 58500, new_total_cents: 62500, delta_cents: 4000, expires_at: T0 + 10 * 60e3, changes: [payLine('line_added', 'Agua Pura 600 ml', 4000)], ...o });
+const payDec = (seq) => payView({ seq, total_cents: 52000, revision: 1, card: { brand: 'visa', last4: '4242' }, notice: { kind: 'decrease', revision: 1, old_total_cents: 58500, new_total_cents: 52000, changes: [payLine('line_unavailable', 'Pan de ajo', -6500)] } });
+const payInc = (seq, outcome, v = {}, c = {}) => payView({ seq, total_cents: 58500, card: { brand: 'visa', last4: '4242' }, consent: payConsent(outcome, c), ...v });
+function payServer(reply) { const log = []; return { log, fetch: async (u, i = {}) => { const e = { u, method: i.method || 'GET', auth: (i.headers && i.headers.Authorization) || null, body: i.body ? JSON.parse(i.body) : null }; log.push(e); const r = reply(e); return { ok: !!r, status: r ? 200 : 503, json: async () => r }; } }; }
+
+test('S2 shell · guest: the projection streams beside order_tracking (its own node); A + the Pago block in place; C read-only (no grant ⇒ no calls); an older seq never replaces a newer view; the view is never persisted', async () => {
+  const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', storage = memStorage(), srv = payServer(() => null);
+  const S = bootShell({ storage, runtime: PAY_RT(RUNTIME), readPublic: async () => ({ ok: false }), mountExtra: { EventSource: ES, payFetch: srv.fetch }, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: TOKEN })), geolocation: GEO_OK2 });
+  try {
+    await flush(); await placeShellCash(S); await flush();
+    const pv = made.find((e) => e.url === `https://rtdb.test/order_pay_view/${TOKEN}.json`);
+    assert.ok(pv, `🔴 S2-shell: the projection streams by token (${made.map((e) => e.url).join(', ')})`);
+    assert.equal(S.q('.notecard'), null, 'no view yet ⇒ today\'s screen');
+    pv.emit('put', '/', payDec(1)); await flush();
+    assert.equal(txt(S.q('.notecard b')), 'Actualizamos tu total', '🔴 S2-shell-A: the decrease notice in place');
+    assert.equal(txt(S.q('.receipt .rbody p.note')), 'Se cobra al recibir tu pedido.', '🔴 S2-shell: the Pago block');
+    pv.emit('put', '/', payInc(3, 'pending')); await flush();
+    const sh = S.q('#layer .errsheet h2');
+    assert.equal(txt(sh), 'X Pizza cambió tu pedido', '🔴 S2-shell-C: the consent sheet, the restaurant from the directory');
+    assert.equal(S.q('#layer [data-act="adj-accept"]'), null, '🔴 S2-shell-C: a guest without a grant answers nothing (read-only)');
+    pv.emit('put', '/', payDec(2)); await flush();
+    assert.equal(txt(S.q('#layer .errsheet h2')), 'X Pizza cambió tu pedido', '🔴 S2-shell-seq: an older seq never replaces the newer view');
+    assert.equal(srv.log.length, 0, '🔴 S2-shell: no GET / POST without authority');
+    const tr = made.find((e) => e.url === `https://rtdb.test/order_tracking/${TOKEN}.json`); tr.emit('put', '/', trackingRecordOf(TOKEN)); tr.emit('put', '/status', 'preparing'); await flush();   // a live change re-saves the device record
+    const rec = JSON.parse(storage.getItem('capp:active_order') || 'null');
+    assert.ok(rec && rec.order && !('payAdj' in rec.order) && rec.order.pay === 'cash', '🔴 S2-shell: the projection is never written to the device record (the tender is)');
+  } finally { S.w.close(); }
+});
+
+test('S2 shell · dark: runtime.sdkPay absent ⇒ no projection stream, no notice, today\'s Pago rows', async () => {
+  const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12';
+  const S = bootShell({ runtime: { ...RUNTIME, rtdbBase: 'https://rtdb.test' }, readPublic: async () => ({ ok: false }), mountExtra: { EventSource: ES }, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: TOKEN })), geolocation: GEO_OK2 });
+  try {
+    await flush(); await placeShellCash(S); await flush();
+    assert.deepEqual(made.map((e) => e.url), [`https://rtdb.test/order_tracking/${TOKEN}.json`], '🔴 S2-dark-shell: ONE stream, no projection');
+  } finally { S.w.close(); }
+});
+
+const ACTIVE_REC = (TOKEN, placedAt) => JSON.stringify({ v: 1, exp: placedAt + 24 * 3600e3, order: { rid: 'x_pizza', order_id: 'XP-9', token: TOKEN, mode: 'delivery', status: 'new', owner: 'u:u_ana', placedAt, storeName: 'X. Pizza', branch: '', storeAddr: '',
+  lines: [{ n: 1, name: 'Carnivora', extras: '', total: 340, dish_id: null }], fee: 45, tip: 20, total: 405, pay: 'online', addr: 'Col. Trejo', details: '', notes: '', whenText: 'Lo antes posible', phoneText: '', display_number: null, windowText: null, driver: null, stacked: false, doneAt: null, offerDone: true } });
+function payMember({ reply }) {
+  const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', srv = payServer(reply), fb = fakeFirebase({ persisted: 'u_ana' });
+  const storage = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF), 'capp:active_order': ACTIVE_REC(TOKEN, T0) });
+  const S = routeShell('/r/x_pizza/pago', { auth: 'unresolved', storage, runtime: PAY_RT(SU_RUNTIME), readPublic: async () => ({ ok: false }), mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch, EventSource: ES, payFetch: srv.fetch } });
+  return { S, srv, made, TOKEN };
+}
+
+test('S2 shell · member: C anchors its countdown on the GET\'s server_now (Bearer); «Aceptar» POSTs {order_id, adjustment_id, accept} ⇒ the reply\'s view (E with the well); the stream\'s accepted ⇒ D', async () => {
+  const exp = T0 + 10 * 60e3;
+  const { S, srv, made, TOKEN } = payMember({ reply: (e) => e.method === 'GET' ? { view: payInc(2, 'pending'), server_now: exp - 120000 } : { outcome: 'action_required', view: payInc(3, 'action_required'), server_now: exp - 100000 } });
+  try {
+    await until(() => S.ui.state.member && made.some((e) => e.url.includes('/order_pay_view/'))); await flush();
+    const pv = made.find((e) => e.url === `https://rtdb.test/order_pay_view/${TOKEN}.json`);
+    pv.emit('put', '/', payInc(2, 'pending')); await until(() => srv.log.length >= 1); await flush();
+    const g = srv.log[0];
+    assert.ok(g && g.method === 'GET' && g.u === '/x/ga?order_id=XP-9' && /^Bearer \S+/.test(g.auth || ''), `🔴 S2-shell-GET: getPayAdjust by order with the member's token (${JSON.stringify(g)})`);
+    assert.equal(txt(S.q('#layer .cdown')), 'Tenés 2 min para responder', '🔴 S2-shell-anchor: the countdown from the server\'s clock, not the device\'s');
+    S.click('#layer [data-act="adj-accept"]'); await until(() => srv.log.length >= 2); await flush();
+    const p = srv.log[1];
+    assert.ok(p && p.method === 'POST' && p.u === '/x/ra' && /^Bearer /.test(p.auth || ''), '🔴 S2-shell-POST: respondPayAdjust with the member\'s token');
+    assert.deepEqual(p && p.body, { order_id: 'XP-9', adjustment_id: 'adj-2', accept: true }, '🔴 S2-shell-POST: exactly the contract\'s body (the customer supplies only accept)');
+    assert.ok(S.q('#layer .ring') && S.q('#layer #adj-3ds'), '🔴 S2-shell-E: the reply\'s view ⇒ E with the challenge well');
+    pv.emit('put', '/', payInc(4, 'accepted', { total_cents: 62500, revision: 1 })); await flush();
+    assert.equal(S.q('#layer .errsheet'), null, 'D has no sheet');
+    assert.match(txt(S.q('.mk-status, .statusrow .ssub')) || '', /^Nuevo total aceptado · /, '🔴 S2-shell-D: the status line leads');
+  } finally { S.w.close(); }
+});
+
+test('S2 shell · member: «Más información» opens B over C and «Entendido» returns to C; G\'s «Mantener mi pedido» calls nothing and lands on F', async () => {
+  const { S, srv, made, TOKEN } = payMember({ reply: () => null });
+  try {
+    await until(() => S.ui.state.member && made.some((e) => e.url.includes('/order_pay_view/'))); await flush();
+    const pv = made.find((e) => e.url === `https://rtdb.test/order_pay_view/${TOKEN}.json`);
+    pv.emit('put', '/', payInc(2, 'pending')); await flush();
+    S.click('#layer [data-act="adj-more"]'); await flush();
+    assert.equal(txt(S.q('#layer .errsheet h2')), '¿Cómo funciona el cobro?', '🔴 S2-shell-B: help over C');
+    S.click('#layer button[data-act="adj-ok"]'); await flush();
+    assert.equal(txt(S.q('#layer .errsheet h2')), 'X. Pizza cambió tu pedido', '🔴 S2-shell-B: back to C');
+    pv.emit('put', '/', payInc(3, 'declined')); await flush();
+    assert.equal(txt(S.q('#layer .errsheet h2')), 'No pudimos actualizar tu total', 'G');
+    const calls = srv.log.filter((e) => e.method === 'POST').length;
+    S.click('#layer [data-act="adj-keep"]'); await flush();
+    assert.equal(srv.log.filter((e) => e.method === 'POST').length, calls, '🔴 S2-shell-G: «Mantener mi pedido» on G calls nothing (the decline is final)');
+    assert.equal(S.q('#layer .errsheet'), null, 'G closed');
+    assert.equal(txt(S.q('.closednote span')), 'Tu pedido sigue como estaba. Total L 585.', '🔴 S2-shell-F: G dismissed ⇒ F');
   } finally { S.w.close(); }
 });

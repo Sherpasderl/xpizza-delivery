@@ -66,7 +66,8 @@
       ...(f.intlPhone === true ? { intlPhone: true } : {}),
       ...(f.guestCardOnly === true ? { guestCardOnly: true } : {}),
       ...(f.ratings === true ? { ratings: true } : {}),   // C-2: the rating sheet + its entries (dark until the rating server is live)
-      ...(f.sdkPay === true ? { sdkPay: true } : {}),   // S2: the in-app card adjustment screens (dark until the customer endpoints, D4, are live)
+      // S2: the in-app card adjustment screens + their two endpoints (CONTRACT-sdk-customer §3; dark until D4 is live)
+      ...(f.sdkPay === true ? { sdkPay: { endpoints: { getPayAdjust: url('getPayAdjust'), respondPayAdjust: url('respondPayAdjust') } } } : {}),
       ...(f.signup === true ? { signup: { firebase: rt.firebase, endpoints: Object.fromEntries(CappSignupApi.ENDPOINTS.map((n) => [n, url(n)])) } } : {}),
     };
   }

@@ -34,7 +34,8 @@ test('N2: the runtime from the REAL manifest block — every endpoint on the ONE
   assert.ok(r.intakeKey === RT0.intake_key && r.mapsKey === RT0.maps_key, 'the intake and Maps keys come from the manifest');
   for (const k of ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive', 'ratings', 'sdkPay']) assert.equal(k in r, false, `🔴 ${k} must be absent (dark) without its flag`);
   const on = Boot.runtimeFor(RT({ flags: { signup: true, intlPhone: true, guestCardOnly: true, schedulingLive: true, ratings: true, sdkPay: true } }), CappSignupApi);
-  assert.deepEqual([on.intlPhone, on.guestCardOnly, on.schedulingLive, on.ratings, on && on.sdkPay], [true, true, true, true, true], '🔴 S2: every named flag reaches the runtime (sdkPay = the in-app card adjustment screens, dark until D4)');
+  assert.deepEqual([on.intlPhone, on.guestCardOnly, on.schedulingLive, on.ratings], [true, true, true, true]);
+  assert.deepEqual(on && on.sdkPay, { endpoints: { getPayAdjust: `${RT0.functions_base}/getPayAdjust`, respondPayAdjust: `${RT0.functions_base}/respondPayAdjust` } }, '🔴 S2: sdkPay reaches the runtime with its two endpoints on the ONE functions host (CONTRACT-sdk-customer §3)');
   assert.deepEqual(Object.keys(on.signup.endpoints), [...CappSignupApi.ENDPOINTS], 'signup endpoints = CappSignupApi.ENDPOINTS');
   for (const [n, u] of Object.entries(on.signup.endpoints)) assert.equal(u, `${RT0.functions_base}/${n}`);
   assert.ok(on.signup.firebase === RT0.firebase, 'the Firebase web config is the manifest\'s');
