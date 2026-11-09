@@ -53,6 +53,18 @@ const POINTER = 'tx.set(pointerRef, {';
   assert.ok(at(LIMIT) < at(UNION) && at(UNION) < at(POINTER), '🔴 RKW-UNION-BEFORE-POINTER limit check → union write → pointer');
   ok('the union is written after the branch (every activation) and before the pointer moves, behind the limit check');
 }
+// ── 5 ── D3 at the activation: switch ON only, the ACTIVE version's items read with the other reads, the rename rule judged
+//    against the set as read (before the union), before the union and the pointer
+{
+  const AREAD = "const activeItemsSnap = (textEditCapabilities().enabled && liveActive && liveActive !== versionId) ? await tx.get(versionsColOf(db, rid).doc(liveActive).collection('menu_items')) : null;";
+  const CHECK = "const rkConflict = activeItemsSnap ? RK.renameConflicts({ items: candItemsSnap.docs.map((d) => d.data() || {}), activeItems: activeItemsSnap.docs.map((d) => d.data() || {}), reserved: RK.reservedKeySet(reservedDoc) })[0] : null;";
+  assert.strictEqual(count(AREAD), 1, '🔴 RKW-D3-AREAD the active items are read once, only with the switch on');
+  assert.ok(at(AREAD) < at(BRANCH), '🔴 RKW-D3-AREAD among the reads, before any write');
+  assert.strictEqual(count(CHECK), 1, '🔴 RKW-D3-CHECK');
+  assert.ok(at(CHECK) < at(LIMIT) && at(CHECK) < at(UNION) && at(CHECK) < at(POINTER), '🔴 RKW-D3-ORDER judged against the set as read, before the union and the pointer');
+  assert.strictEqual(src.split("const { textEditCapabilities } = require('./item-text-edit');").length - 1, 1, '🔴 RKW-D3 the switch is read from its one module');
+  ok('D3 at the activation: switch-gated read of the active items; the rename rule runs before the union and the pointer');
+}
 // ── 4 ── the slice's test-only inverse returns every pinned file it edits to its base byte for byte (every older pin peels it)
 {
   const I = require('../tools/reservedkeys-module-inverse');
