@@ -8,6 +8,9 @@ process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 const SWITCH = { enabled: false };
 require.cache[require.resolve('./item-text-edit')] = { id: require.resolve('./item-text-edit'), filename: require.resolve('./item-text-edit'), loaded: true,
   exports: { textEditCapabilities: () => ({ enabled: SWITCH.enabled }) } };
+const MINT = { enabled: false, next: null };   // S1c: the one-time minting switch, swapped like the text switch; `next` forces the token
+require.cache[require.resolve('./mint-opaque')] = { id: require.resolve('./mint-opaque'), filename: require.resolve('./mint-opaque'), loaded: true,
+  exports: { mintCapabilities: () => ({ enabled: MINT.enabled }), mintKey: () => (MINT.next ? MINT.next() : require('crypto').randomBytes(6).toString('hex').replace(/[^a-z2-7]/g, 'a').padEnd(12, 'a').slice(0, 12).replace(/^/, 'i_')) } };
 const { editCatalogCore } = require('./edit-catalog-handler');
 const { validateSource } = require('./source-store');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
@@ -396,6 +399,39 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     assert.deepStrictEqual([down.status, down.body.error], [503, 'store_unavailable'], 'HX-RK-DOWN an unreadable set is a retryable 503, never absence');
     RESERVED_IO.fail = false;
     ok('S1c: a rename onto a reserved key is refused at save (folded); its own key is free; OFF never reads the set; unreadable → 503');
+  }
+  // ── S1c D4 (owner 2026-11-09): with minting ON a new product gets a FRESH opaque key, recorded as a frozen key; a retired name
+  //    is re-added as a NEW product (never refused, never the old identity); a minted key the registry already holds is a
+  //    retryable 503; an unreadable reserved set is a retryable 503. OFF: today (the cells above) ──
+  {
+    const RK = require('./reserved-keys');
+    const addNew = (src, name) => { const d = clone(src); const T = `tmp:mint${String(name.length).padStart(4, '0')}x`; d.items.push({ ref: T, price: 150, display: { name, cat: 'ny', price: 150, desc: '' } }); d.structure.item_order.push(T); return d; };
+    MINT.enabled = true; SWITCH.enabled = false; RESERVED_IO.doc = undefined; RESERVED_IO.fail = false;
+    const db = stub(RID, seed);
+    const r = await save(db, RID, addNew(seed, 'Pizza Nueva'));
+    assert.strictEqual(r.status, 200, `HX-MINT a new product saves (${JSON.stringify(r.body).slice(0, 200)})`);
+    const st = db.state.source.data; const added = st.items.find((i) => i.display.name === 'Pizza Nueva');
+    assert.match(added.key, /^i_[a-z2-7]{12}$/, 'HX-MINT the stored key is minted');
+    assert.deepStrictEqual(st.frozen_keys, { [String(added.display.id)]: added.key }, 'HX-MINT the stored draft records (display.id → minted key)');
+    assert.doesNotThrow(() => validateSource(st, RID));
+    RETIRED.add('Pizza Vieja');
+    RESERVED_IO.doc = RK.unionReserved(RK.emptyReserved(), { dish: ['Pizza Vieja'], extra: [] }, 'v0').doc;
+    const db2 = stub(RID, seed);
+    const r2 = await save(db2, RID, addNew(seed, 'Pizza Vieja'));
+    RETIRED.delete('Pizza Vieja');
+    assert.strictEqual(r2.status, 200, `HX-MINT-READD a retired name is re-added as a new product (${JSON.stringify(r2.body).slice(0, 200)})`);
+    assert.match(db2.state.source.data.items.find((i) => i.display.name === 'Pizza Vieja').key, /^i_[a-z2-7]{12}$/, 'HX-MINT-READD under a fresh key, never the old one');
+    MINT.next = () => 'i_takentakenaa'; RETIRED.add('i_takentakenaa');
+    const db3 = stub(RID, seed);
+    const r3 = await save(db3, RID, addNew(seed, 'Pizza Choque'));
+    RETIRED.delete('i_takentakenaa'); MINT.next = null;
+    assert.deepStrictEqual([r3.status, r3.body.error, db3.state.writes.length], [503, 'mint_unavailable', 0], `HX-MINT-REGISTRY a minted key the registry holds is a retryable 503, nothing written (${JSON.stringify(r3.body).slice(0, 160)})`);
+    RESERVED_IO.fail = true;
+    const r4 = await save(stub(RID, seed), RID, addNew(seed, 'Pizza Caida'));
+    RESERVED_IO.fail = false; RESERVED_IO.doc = undefined;
+    assert.deepStrictEqual([r4.status, r4.body.error], [503, 'store_unavailable'], 'HX-MINT-DOWN an unreadable reserved set is a retryable 503');
+    MINT.enabled = false;
+    ok('S1c minting ON: a fresh opaque key recorded as frozen; a retired name re-added as a new product; registry collision / unreadable set → 503');
   }
   FINISHED = true;
   console.log(`\nfrozen-keys-handler: OK (${n})`);
