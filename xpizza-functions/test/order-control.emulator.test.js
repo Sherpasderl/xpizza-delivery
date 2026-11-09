@@ -216,6 +216,32 @@ function expectedChangedSD(goldenChanged) {
   const o = ['orders/<oid>/reorder_items/0/qty', 'orders/<oid>/status'];
   assert.deepStrictEqual(expectedChangedSD(o), [...o, ...SD_ORDER_SNAP].sort(), 'S-D: a pending order with reorder_items admits exactly the three order-level snapshot paths');
 }
+// S1d D4 (DECLARED, exact; PLAN-portal-item-edit r6 §2.5 "each order line stores item_key and menu_version_id (additive)"): wherever
+// the baseline wrote a factura / paid line (orders/<oid>/(items|factura_items)/<n>/qty) or a summary line (…/summary_lines/<n>/qty),
+// that line now also carries item_key; the line and the order (where the baseline wrote orders/<oid>/created_at) also carry
+// menu_version_id — ALL of them or NONE (a flat-route order stores a null version, which writes no path). Nothing else is admitted.
+function expectedChangedS1d(goldenChanged, actualChanged) {
+  const add = [];
+  for (const p of goldenChanged) {
+    const m = /^(orders\/<oid>\/(?:items|factura_items)\/\d+)\/qty$/.exec(p);
+    if (m) add.push(`${m[1]}/item_key`);
+    const s = /^((?:orders\/<oid>|order_tracking\/<tracking_token>)\/summary_lines\/\d+)\/qty$/.exec(p);
+    if (s) add.push(`${s[1]}/item_key`);
+  }
+  const versioned = (actualChanged || []).includes('orders/<oid>/menu_version_id');
+  if (versioned) {
+    for (const p of goldenChanged) { const m = /^(orders\/<oid>\/(?:items|factura_items)\/\d+)\/qty$/.exec(p); if (m) add.push(`${m[1]}/menu_version_id`); }
+    if (goldenChanged.includes('orders/<oid>/created_at')) add.push('orders/<oid>/menu_version_id');
+  }
+  return add.length ? [...goldenChanged, ...add].sort() : goldenChanged;
+}
+// sensitivity (pure): exactly those paths, only where the line / order was written; the version all-or-nothing
+{
+  const g = ['orders/<oid>/created_at', 'orders/<oid>/items/0/qty', 'order_tracking/<tracking_token>/summary_lines/0/qty'];
+  assert.deepStrictEqual(expectedChangedS1d(g, []), [...g, 'orders/<oid>/items/0/item_key', 'order_tracking/<tracking_token>/summary_lines/0/item_key'].sort(), 'S1d: flat route — item_key only');
+  assert.deepStrictEqual(expectedChangedS1d(g, ['orders/<oid>/menu_version_id']), [...g, 'orders/<oid>/items/0/item_key', 'orders/<oid>/items/0/menu_version_id', 'order_tracking/<tracking_token>/summary_lines/0/item_key', 'orders/<oid>/menu_version_id'].sort(), 'S1d: versioned — + the version on the line and the order');
+  assert.deepStrictEqual(expectedChangedS1d(['orders/<oid>/status'], ['orders/<oid>/menu_version_id']), ['orders/<oid>/status'], 'S1d: no line / order written → nothing admitted');
+}
 function checkD12(key, ops, goldenOps) {
   const rid = key.split(' | ')[2];
   const found = ops.filter(isD12Read).map((o) => o.path);
@@ -567,7 +593,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
           const neg = SD.compareShape(c.path === 'card' ? preExclusiveClaimOps(stripControl(planted, key), CLAIM_DELTA) : stripControl(planted, key), goldOps(g.ops),   /* DRYRUN (2e): S3a's stripControl(ops, label) — the label sets DR.without's expected:0 on SCHEDULED cells; without it the negative THROWS instead of diffing */ { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: `${key} (negative)` });
           assert.notDeepStrictEqual(neg.actual, neg.expected, `🔴 ${key}: NEGATIVE — an unexpected extra read must still turn the cell RED`);
         }
-        const ch = SD.changedShape(r.changed, expectedChangedD12b(g.changed), { content: s3c, bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
+        const ch = SD.changedShape(r.changed, expectedChangedS1d(expectedChangedD12b(g.changed), r.changed), { content: s3c, bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
         // §3 r3 (codex r3 P1): a card request that wrote its pending order PERSISTED the content keys of the content it stamped
         const post = POST_OF.get(r) || {};
         if (c.path === 'card' && cs.bound && s3c && post.payment_method === 'online' && post.items_text === s3c.itemsText) {

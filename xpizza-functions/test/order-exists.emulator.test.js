@@ -89,6 +89,32 @@ const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
 
 const CAPTURE = process.env.ORDER_EXISTS_CAPTURE || '';
 const GOLDEN = path.join(__dirname, 'order-exists-base.golden.json');
+// S1d D4 (DECLARED, exact; PLAN-portal-item-edit r6 §2.5 "each order line stores item_key and menu_version_id (additive)"): wherever
+// the baseline wrote a factura / paid line (orders/<oid>/(items|factura_items)/<n>/qty) or a summary line (…/summary_lines/<n>/qty),
+// that line now also carries item_key; the line and the order (where the baseline wrote orders/<oid>/created_at) also carry
+// menu_version_id — ALL of them or NONE (a flat-route order stores a null version, which writes no path). Nothing else is admitted.
+function expectedChangedS1d(goldenChanged, actualChanged) {
+  const add = [];
+  for (const p of goldenChanged) {
+    const m = /^(orders\/<oid>\/(?:items|factura_items)\/\d+)\/qty$/.exec(p);
+    if (m) add.push(`${m[1]}/item_key`);
+    const s = /^((?:orders\/<oid>|order_tracking\/<tracking_token>)\/summary_lines\/\d+)\/qty$/.exec(p);
+    if (s) add.push(`${s[1]}/item_key`);
+  }
+  const versioned = (actualChanged || []).includes('orders/<oid>/menu_version_id');
+  if (versioned) {
+    for (const p of goldenChanged) { const m = /^(orders\/<oid>\/(?:items|factura_items)\/\d+)\/qty$/.exec(p); if (m) add.push(`${m[1]}/menu_version_id`); }
+    if (goldenChanged.includes('orders/<oid>/created_at')) add.push('orders/<oid>/menu_version_id');
+  }
+  return add.length ? [...goldenChanged, ...add].sort() : goldenChanged;
+}
+// sensitivity (pure): exactly those paths, only where the line / order was written; the version all-or-nothing
+{
+  const g = ['orders/<oid>/created_at', 'orders/<oid>/items/0/qty', 'order_tracking/<tracking_token>/summary_lines/0/qty'];
+  assert.deepStrictEqual(expectedChangedS1d(g, []), [...g, 'orders/<oid>/items/0/item_key', 'order_tracking/<tracking_token>/summary_lines/0/item_key'].sort(), 'S1d: flat route — item_key only');
+  assert.deepStrictEqual(expectedChangedS1d(g, ['orders/<oid>/menu_version_id']), [...g, 'orders/<oid>/items/0/item_key', 'orders/<oid>/items/0/menu_version_id', 'order_tracking/<tracking_token>/summary_lines/0/item_key', 'orders/<oid>/menu_version_id'].sort(), 'S1d: versioned — + the version on the line and the order');
+  assert.deepStrictEqual(expectedChangedS1d(['orders/<oid>/status'], ['orders/<oid>/menu_version_id']), ['orders/<oid>/status'], 'S1d: no line / order written → nothing admitted');
+}
 // the plan §1 string — written out here (not required from ../order-exists) so this file runs unchanged at the base
 const DETAIL = 'Ya hay un pedido en curso con este número. Revisá tu pedido o pago anterior antes de volver a intentar.';
 const ENUM = new Set(['method', 'closed', 'cart', 'cart_unverifiable', 'binding_format_invalid', 'client_update_race', 'conflict']);
@@ -382,7 +408,7 @@ async function pageSends(dir, c, firstStatus, firstBody) {
         if (cs.bound) S3_BOUND += 1; else S3_UNBOUND += 1;
         if (JSON.stringify(DR.without(r.ops, L, { ignore: OE_HARNESS })) !== JSON.stringify(g.ops)) S3_DIFF += 1;
         assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${L}: the handler's database CALL SEQUENCE changed — a refusal must add no read and move no write — ${RD.opsDiff(cs.expected, cs.actual)}`);
-        const ch = SD.changedShape(r.changed, g.changed, { content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
+        const ch = SD.changedShape(r.changed, expectedChangedS1d(g.changed, r.changed), { content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
         assert.deepStrictEqual(ch.actual, ch.expected, `🔴 ${L}: the set of database paths the request changed is not the base's (cleanup / writes must be identical)`);
         if (c.kind === 'refusal') {
           assert.strictEqual(r.status, 409);
