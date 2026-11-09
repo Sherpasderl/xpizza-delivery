@@ -114,7 +114,7 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     const db2 = stub(RID, saved, saved);
     const { frozen_keys: _drop, ...noMap } = clone(saved);   // eslint-disable-line no-unused-vars
     const r2 = await save(db2, RID, noMap);
-    assert.strictEqual(r2.status, 200, 'an absent map keeps the stored one');
+    assert.strictEqual(r2.status, 200, `HX-KEEP an absent map keeps the stored one (${JSON.stringify(r2.body).slice(0, 160)})`);
     assert.deepStrictEqual(db2.state.source.data.frozen_keys, { [ID]: KEY }, 'HX-KEEP a client that never saw the field cannot drop it');
     ok('switch OFF after a rename: ordinary saves still pass, and the stored map is kept whether echoed or absent');
   }
@@ -153,6 +153,33 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     assert.strictEqual(r2.status, 400, 'HX-GROUP-OFF switch off: a parent-only rename still fails the variant rule');
     assert.match(r2.body.detail, /a variant's name must be/);
     ok('switch ON: a group renames as one unit; OFF: a parent-only rename fails as today');
+  }
+
+  // ── reset to the published menu: recorded renames are never dropped (stored ∪ version), and the projection validates by the
+  //    version's own map ──
+  {
+    const { resetDraftToLiveCore } = require('./reset-draft');
+    const { buildSourceCandidate } = require('./candidate-validate');
+    const published = { ...renamed(seed, 'Carnívora Suprema'), frozen_keys: { [ID]: KEY } };
+    const vb = buildSourceCandidate(RID, published).built;
+    const preview = (record) => async () => ({ items: vb.items, extras: vb.extras, structure: vb.structure, record });
+    const reset = (db, record) => resetDraftToLiveCore({ db, authorize: allow, readActiveVersionId: async () => 'v-live', previewVersion: preview(record) },
+      { restaurantId: RID, expectedRevision: db.state.source.updateTime }, {});
+    const db = stub(RID, { ...clone(published), frozen_keys: { [ID]: KEY, 999: 'Pizza Retirada' } });
+    const r = await reset(db, { key_mode: 'name', frozen_keys: { [ID]: KEY } });
+    assert.strictEqual(r.status, 200, `HX-RESET a renamed version resets (${JSON.stringify(r.body).slice(0, 200)})`);
+    assert.deepStrictEqual(db.state.source.data.frozen_keys, { [ID]: KEY, 999: 'Pizza Retirada' }, 'HX-RESET-UNION the stored entries survive the reset');
+    const db2 = stub(RID, { ...clone(seed), frozen_keys: { 999: 'Pizza Retirada' } });
+    const plainBuilt = buildSourceCandidate(RID, seed).built;
+    const r2 = await resetDraftToLiveCore({ db: db2, authorize: allow, readActiveVersionId: async () => 'v-live',
+      previewVersion: async () => ({ items: plainBuilt.items, extras: plainBuilt.extras, structure: plainBuilt.structure, record: { key_mode: 'name' } }) },
+    { restaurantId: RID, expectedRevision: db2.state.source.updateTime }, {});
+    assert.strictEqual(r2.status, 200);
+    assert.deepStrictEqual(db2.state.source.data.frozen_keys, { 999: 'Pizza Retirada' }, 'HX-RESET-KEEP a version with no map leaves the stored one in place');
+    const db3 = stub(RID, clone(seed));
+    const r3 = await reset(db3, { key_mode: 'name' });
+    assert.strictEqual(r3.status, 500, 'HX-RESET-SELF a renamed version WITHOUT its map does not validate (the projection is judged by the version\'s own map)');
+    ok('reset: the projection validates by the version\'s map; stored entries are never dropped');
   }
 
   FINISHED = true;
