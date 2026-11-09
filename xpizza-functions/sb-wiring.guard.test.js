@@ -24,9 +24,9 @@ const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], 
 const fold = (s) => unapplyCheckoutIndex(s);
 
 // 1. exact
-assert.notStrictEqual(unapplySbIndex(live), live, 'non-vacuity');
-assert.strictEqual(fold(require('./tools/sd-inverse').unapplySdIndex(unapplySbIndex(live))), fold(base),   /* DRYRUN: base = pre-3a, so S-D (an earlier 3a slice) is stripped too */ `🔴 index.js minus the sb hunks is not ${BASE}:index.js (outside the checkout endpoints block)`);
-assert.strictEqual(live.split('\n').length - unapplySbIndex(live).split('\n').length, HUNKS.length * 4, 'exactly the hunks\' whole lines (4 each) removed');
+assert.notStrictEqual(unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(live)), live, 'non-vacuity');
+assert.strictEqual(fold(require('./tools/sd-inverse').unapplySdIndex(unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(live)))), fold(base),   /* DRYRUN: base = pre-3a, so S-D (an earlier 3a slice) is stripped too */ `🔴 index.js minus the sb hunks is not ${BASE}:index.js (outside the checkout endpoints block)`);
+assert.strictEqual(require('./tools/tippref-inverse').unapplyTipprefIndex(live).split('\n').length - unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(live)).split('\n').length, HUNKS.length * 4, 'exactly the hunks\' whole lines (4 each) removed');   // measured on index.js minus the NEWER tippref layer
 ok(`exact: index.js minus the three sb hunks === ${BASE} byte-for-byte; exactly their whole lines removed`);
 
 // 2. placement
@@ -36,7 +36,7 @@ const H = Object.fromEntries(HUNKS.map((h) => [h.name, h]));
 assert.ok(prevLine(H['cash-dish-qty-held']).startsWith('    attachCustomerAttribution(heldUpdates, orderId, customer_uid,'), '🔴 the held hunk follows the held record\'s attribution');
 assert.ok(prevLine(H['cash-dish-qty']).startsWith('  attachCustomerAttribution(updates, orderId, customer_uid,'), '🔴 the cash hunk follows the immediate record\'s attribution');
 assert.strictEqual(prevLine(H['online-dish-qty']), '  /* sd:end reorder-price-snapshot */', '🔴 the online hunk follows the S-D snapshot hunk (the pending record is complete)');
-for (const h of HUNKS) assert.ok(!/dish_qty/.test(unapplySbIndex(live)), `no dish_qty outside the hunks (${h.name})`);
+for (const h of HUNKS) assert.ok(!/dish_qty/.test(unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(live))), `no dish_qty outside the hunks (${h.name})`);
 ok('placement: after the held record\'s attribution, after the immediate record\'s attribution, after the online pending record\'s S-D hunk; dish_qty appears nowhere else in index.js');
 
 // 3. behaviour — run each hunk as written
@@ -71,10 +71,10 @@ ok('behaviour: each hunk, run as written, ADDS dish_qty from THIS charge\'s tabl
 
 // 4. sensitivity
 const h0 = HUNKS[0];
-assert.throws(() => unapplySbIndex(live.replace(h0.begin, '/* sb:BEGIN x */')), /missing/, 'a missing begin');
-assert.throws(() => unapplySbIndex(live + `${h0.begin}\n${h0.end}\n`), /more than once/, 'a duplicated hunk');
-assert.throws(() => unapplySbIndex(live.replace(`    ${h0.begin}`, `    x; ${h0.begin}`)), /own lines/, 'a marker sharing a base line');
-assert.notStrictEqual(fold(unapplySbIndex(`\n${live}`)), fold(base), 'a byte OUTSIDE every hunk fails the pin');
+assert.throws(() => unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(live.replace(h0.begin, '/* sb:BEGIN x */'))), /missing/, 'a missing begin');
+assert.throws(() => unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(live + `${h0.begin}\n${h0.end}\n`)), /more than once/, 'a duplicated hunk');
+assert.throws(() => unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(live.replace(`    ${h0.begin}`, `    x; ${h0.begin}`))), /own lines/, 'a marker sharing a base line');
+assert.notStrictEqual(fold(unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(`\n${live}`))), fold(base), 'a byte OUTSIDE every hunk fails the pin');
 ok('sensitivity: missing / duplicated / shared-line markers throw; a byte outside every hunk fails the pin');
 
 console.log(`sb-wiring.guard: OK (${n})`);

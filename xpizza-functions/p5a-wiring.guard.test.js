@@ -27,7 +27,7 @@ for (const f of FILES) {
   // block with no inverse of their own — stripped by their EXACT generated text (tools/asm2-approved-additions.js) from the
   // actual side only; every other byte, checkout code included, must be base.
   const CO = (x) => x;
-  const src = f === 'index.js' ? require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/asm2-approved-additions').stripApprovedAdditions(read(f)))) : read(f);
+  const src = f === 'index.js' ? require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(require('./tools/asm2-approved-additions').stripApprovedAdditions(read(f))))) : read(f);
   const b = CO(baseOf(f));
   assert.notStrictEqual(CO(src), b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(CO(unapplyP5aModule(f, src)), b, `🔴 ${f} minus the P5a hunks is not ${BELOW[f] || ASM_BASE}:${f}`);
@@ -40,7 +40,7 @@ for (const f of FILES) {
 }
 ok(`each of ${FILES.length} files: unapplyP5aModule → ${BASE} byte-for-byte; inside / duplicate / outside each caught (${HUNKS.length} hunks)`);
 // asm2 (5f): index.js's fold to the assembly base — the ONE definition the loop and the sensitivity cell share
-const foldIndexToBase = (raw) => unapplyP5aModule('index.js', require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/asm2-approved-additions').stripApprovedAdditions(raw))));
+const foldIndexToBase = (raw) => unapplyP5aModule('index.js', require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(require('./tools/asm2-approved-additions').stripApprovedAdditions(raw)))));
 const indexBase = () => baseOf('index.js');
 
 // ASM2-CHECKOUT-SENSITIVITY (Codex asm2 r1 P2): a change to EXISTING checkout logic must fail the index.js base pin — the
@@ -55,8 +55,8 @@ const indexBase = () => baseOf('index.js');
   ok('ASM2-CHECKOUT-SENSITIVITY: an edit to existing checkout logic is caught');
 }
 
-{ const x = require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(read('index.js'))); assert.strictEqual(unapplyP5aIndex(x), unapplyP5aModule('index.js', x), 'unapplyP5aIndex is the index.js case'); assert.notStrictEqual(unapplyP5aIndex(x), x, 'non-vacuity: it strips the P5a hunks'); }
-{ const x = require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/asm2-approved-additions').stripApprovedAdditions(read('index.js')))); assert.strictEqual(x.split('\n').length, baseOf('index.js').split('\n').length, 'index.js: same-line edits only (no line moved)'); }   // asm2 (5f): the P5a layer alone (newer layers stripped)
+{ const x = require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(read('index.js')))); assert.strictEqual(unapplyP5aIndex(x), unapplyP5aModule('index.js', x), 'unapplyP5aIndex is the index.js case'); assert.notStrictEqual(unapplyP5aIndex(x), x, 'non-vacuity: it strips the P5a hunks'); }
+{ const x = require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(require('./tools/asm2-approved-additions').stripApprovedAdditions(read('index.js'))))); assert.strictEqual(x.split('\n').length, baseOf('index.js').split('\n').length, 'index.js: same-line edits only (no line moved)'); }   // asm2 (5f): the P5a layer alone (newer layers stripped)
 const other = 'tb unowned source\n';
 assert.strictEqual(unapplyP5aModule('tb-unowned.js', other), other, 'a file the slice does not own passes through untouched');
 ok('unapplyP5aIndex = the index.js case; index.js line count unchanged; unowned files pass through');

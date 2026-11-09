@@ -293,6 +293,46 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
   }
   ok('APP coverage: entry_mode:app quotes refuse beyond min(bands, radius) and report it, matching the order radius check; legacy quotes are unchanged');
 
+  // ── 8. PLAN-capp-tip-step r6 §1: the member's last tip — user_private/{uid}/last_tip = {cents, at}, best-effort AFTER acceptance, from
+  //        the VERIFIED token uid only, delivery + tip_choice:true only, `at` = the accepted order's resolved created_at, newer-only ──
+  await setPricing({ x_pizza: { active: true, free_delivery: true }, la_musa: { active: false } });
+  {
+    const lastTip = async (uid) => (await rtdb.ref(`user_private/${uid}/last_tip`).get()).val();
+    const M = (uid) => ({ 'x-firebase-id-token': uid });
+    await rtdb.ref('user_private').remove();
+    // cash, immediate: written with the resolved created_at
+    const a = await cash({ extra: { tip_cents: 2000, tip_choice: true } }, M('m_pref'));
+    assert.strictEqual(a.status, 200, a.text.slice(0, 200));
+    const la = await lastTip('m_pref');
+    assert.deepStrictEqual(la, { cents: 2000, at: a.rec.created_at }, '🔴 PREF-E cash: {cents, at = the order\'s resolved created_at}');
+    assert.ok(Number.isFinite(la.at), 'PREF-E: `at` is numeric');
+    // explicit «Sin propina» (no tip_cents) ⇒ 0
+    const z = await cash({ extra: { tip_choice: true } }, M('m_pref'));
+    assert.deepStrictEqual(await lastTip('m_pref'), { cents: 0, at: z.rec.created_at }, '🔴 PREF-E: «Sin propina» ⇒ cents 0 (a newer order)');
+    // an older order's idempotent retry (same id, same body) never replaces the newer choice
+    const retry = await cash({ body: a.b }, M('m_pref'));
+    assert.deepStrictEqual([retry.status, (await lastTip('m_pref')).cents], [200, 0], '🔴 PREF-E: retrying the OLDER order is a no-op for the preference');
+    // a forged body uid is ignored
+    const f = await cash({ extra: { tip_cents: 4000, tip_choice: true, uid: 'm_evil', customer_uid: 'm_evil' } }, M('m_real'));
+    assert.deepStrictEqual([f.status, (await lastTip('m_real')).cents, await lastTip('m_evil')], [200, 4000, null], '🔴 PREF-E: written under the VERIFIED uid only; a body uid never');
+    // not eligible: guest / absent tip_choice / pickup ⇒ nothing
+    await cash({ extra: { tip_cents: 2000, tip_choice: true } });
+    await cash({ extra: { tip_cents: 6000 } }, M('m_nochoice'));
+    await cash({ type: 'pickup', extra: { tip_choice: true } }, M('m_pickup'));
+    assert.deepStrictEqual([await lastTip('m_nochoice'), await lastTip('m_pickup')], [null, null], '🔴 PREF-E: no tip_choice / pickup ⇒ nothing; a guest has no uid');
+    // a refused order writes nothing
+    const bad = await cash({ extra: { tip_cents: 2000, tip_choice: true, payment_method: '' } }, M('m_refused'));
+    assert.deepStrictEqual([bad.status, await lastTip('m_refused')], [400, null], 'PREF-E: a refused order (D0) ⇒ nothing');
+    // hosted card: written only once the charge ISSUED; an unchanged-commit refusal (the same order with a different tip ⇒ tip conflict) writes nothing
+    const k = await card({ extra: { tip_cents: 6000, tip_choice: true } }, M('m_card'));
+    assert.strictEqual(k.status, 200, k.text.slice(0, 200));
+    assert.deepStrictEqual(await lastTip('m_card'), { cents: 6000, at: k.rec.created_at }, '🔴 PREF-E card: written after the charge issued, at = the pending order\'s created_at');
+    const conflict = await card({ body: { ...k.b, tip_cents: 4000 } }, M('m_card'));
+    assert.ok(conflict.status === 409, `premise: a changed tip on the same order is refused (${conflict.status})`);
+    assert.strictEqual((await lastTip('m_card')).cents, 6000, '🔴 PREF-E card: an unchanged-commit refusal never writes the preference');
+  }
+  ok('last tip: cash and card write {cents, at = the accepted order\'s created_at} for the verified member only; «Sin propina» = 0; an older retry, a forged body uid, a guest, no tip_choice, pickup, a refused order and a hosted conflict write nothing');
+
   FINISHED = true;
   console.log(`\ns2tip (emulator): ${n} passed`);
   process.exit(0);

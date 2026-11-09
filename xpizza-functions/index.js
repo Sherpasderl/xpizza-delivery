@@ -89,6 +89,9 @@ const { confirmOnlinePayment, confirmAndMaterialize, escalateStaleCapture } = re
 const N2 = require('./n2-paid-strand-decision');   // N2: sweep re-drives a stranded PAID hosted order (paid attempt + still-pending order)
 const { buildMaterializeUpdates } = require('./materialize');
 const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config'); const DW = require('./delivery/delivery-wire'); const TIP = require('./tip'); const PE = require('./payer-email');   // S2-srv-tip (tip.js, payer-email.js; tools/s2tip-inverse.js) · S3a envío (delivery/; tools/s3a-inverse.js)
+/* tippref:begin require */
+const TP = require('./tip-pref');   // PLAN-capp-tip-step r6 §1: the member's last tip, best-effort after acceptance
+/* tippref:end require */
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
 const { claimPrefillCore } = require('./claim-prefill');   // Track A — profile-claim soft-fill (pure core; wrapper below)
 const { claimOrderCore } = require('./claim-order');       // claimOrder — retro-credit a guest order's earn (pure core; wrapper below)
@@ -1288,6 +1291,9 @@ createOrderApp.all('*', async (req, res) => {
       if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});   // all-or-nothing: never leave a hold with no order
       return res.status(500).json({ error: 'Database write failed', detail: e.message });
     }
+    /* tippref:begin cash-held */
+    await TP.recordLastTip(db, { uid: customer_uid, body, orderType, orderId });   // after the held commit; non-fatal
+    /* tippref:end cash-held */
     // No tracking token, no "order received" WhatsApp — the customer got a scheduled confirmation client-side.
     return res.status(200).json({ ok: true, scheduled: true, order_id: orderId, scheduled_for: scheduledForRaw, release_at: releaseAt });
   }
@@ -1333,6 +1339,9 @@ createOrderApp.all('*', async (req, res) => {
     if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});   // all-or-nothing: never leave a hold with no order
     return res.status(500).json({ error: 'Database write failed', detail: e.message });
   }
+  /* tippref:begin cash-live */
+  await TP.recordLastTip(db, { uid: customer_uid, body, orderType, orderId });   // after the live commit; non-fatal
+  /* tippref:end cash-live */
 
   // Send WhatsApp "order received". We AWAIT this — Cloud Functions
   // doesn't guarantee execution of non-awaited promises (the runtime can
@@ -2332,6 +2341,9 @@ chargeOnlineApp.all('*', async (req, res) => {
   }
   /* checkout:end gate-grant */
   if (flow.respond) return res.status(flow.respond.status).json(flow.respond.body);
+  /* tippref:begin card-issued */
+  await TP.recordLastTip(db, { uid: customer_uid, body, orderType, orderId });   // a charge that actually ISSUED: every acceptance check, the gate and the claim passed; non-fatal
+  /* tippref:end card-issued */
   const hosted = flow.hosted;
 
   /* Collect-if-settled, exactly as the cash path does — the response is never held. Keyed by
