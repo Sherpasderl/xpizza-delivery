@@ -2808,6 +2808,12 @@
       "tools/keymode-module-inverse.js",
       "tools/s1d-module-inverse.js"
      ]
+    },
+    {
+     "file": "xpizza-functions/s1d-wiring.guard.test.js",
+     "inverses": [
+      "tools/s1d-module-inverse.js"
+     ]
     }
    ],
    "lifts": []
@@ -2856,6 +2862,12 @@
       "tools/reservedkeys-module-inverse.js",
       "tools/s1d-module-inverse.js"
      ]
+    },
+    {
+     "file": "xpizza-functions/s1d-wiring.guard.test.js",
+     "inverses": [
+      "tools/s1d-module-inverse.js"
+     ]
     }
    ],
    "lifts": [
@@ -2868,7 +2880,14 @@
    "lifts": []
   },
   "catalog/catalog.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/s1d-wiring.guard.test.js",
+     "inverses": [
+      "tools/s1d-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": []
   },
   "catalog/charge-inputs.js": {
@@ -2982,6 +3001,12 @@
       "tools/mirrorkeys-module-inverse.js",
       "tools/s1d-module-inverse.js"
      ]
+    },
+    {
+     "file": "xpizza-functions/s1d-wiring.guard.test.js",
+     "inverses": [
+      "tools/s1d-module-inverse.js"
+     ]
     }
    ],
    "lifts": []
@@ -2998,6 +3023,12 @@
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
       "tools/keymode-module-inverse.js",
+      "tools/s1d-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/s1d-wiring.guard.test.js",
+     "inverses": [
       "tools/s1d-module-inverse.js"
      ]
     }
@@ -3022,6 +3053,12 @@
      "inverses": [
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js",
+      "tools/s1d-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/s1d-wiring.guard.test.js",
+     "inverses": [
       "tools/s1d-module-inverse.js"
      ]
     }
@@ -3089,6 +3126,12 @@
      "inverses": [
       "tools/keymode-module-inverse.js",
       "tools/mirrorkeys-module-inverse.js",
+      "tools/s1d-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/s1d-wiring.guard.test.js",
+     "inverses": [
       "tools/s1d-module-inverse.js"
      ]
     }
@@ -3224,6 +3267,12 @@
       "tools/d12b-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/sd-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/s1d-wiring.guard.test.js",
+     "inverses": [
+      "tools/s1d-module-inverse.js"
      ]
     },
     {
@@ -4604,6 +4653,12 @@
      ]
     },
     {
+     "file": "xpizza-functions/s1d-wiring.guard.test.js",
+     "inverses": [
+      "tools/s1d-module-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/s2app-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
@@ -5467,6 +5522,12 @@
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js"
      ]
+    },
+    {
+     "file": "xpizza-functions/s1d-wiring.guard.test.js",
+     "inverses": [
+      "tools/s1d-module-inverse.js"
+     ]
     }
    ],
    "lifts": [
@@ -6114,6 +6175,12 @@
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
       "tools/keymode-module-inverse.js",
+      "tools/s1d-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/s1d-wiring.guard.test.js",
+     "inverses": [
       "tools/s1d-module-inverse.js"
      ]
     }

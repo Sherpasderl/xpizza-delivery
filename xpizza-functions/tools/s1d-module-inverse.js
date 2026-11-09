@@ -7,8 +7,28 @@ const BASE = 'a79f66c5';
 const HUNKS = Object.freeze([
  {
   "file": "catalog/catalog-firestore.js",
-  "now": "    seen.add(v.key);\n    return { key: v.key, price: v.price, ...(v.display && typeof v.display === 'object' && typeof v.display.name === 'string' ? { label: v.display.name } : {}) };\n  });\n",
-  "was": "    seen.add(v.key);\n    return { key: v.key, price: v.price };\n  });\n"
+  "now": "// with no separate publish-side change.\nconst { buildTablesFromDocs, labelsFromSnap } = require('./catalog-transform');\nconst { assertComplete } = require('./catalog-integrity');\n",
+  "was": "// with no separate publish-side change.\nconst { buildTablesFromDocs } = require('./catalog-transform');\nconst { assertComplete } = require('./catalog-integrity');\n"
+ },
+ {
+  "file": "catalog/catalog-firestore.js",
+  "now": "  const where = `${restaurantId}/versions/${versionId}`;\n  const itemDocs = mapDocs(items, where); const itemLabels = labelsFromSnap(items);   // S1d: dish labels BESIDE the price docs (never inside them)\n  const extraDocs = mapDocs(extras, where);\n",
+  "was": "  const where = `${restaurantId}/versions/${versionId}`;\n  const itemDocs = mapDocs(items, where);\n  const extraDocs = mapDocs(extras, where);\n"
+ },
+ {
+  "file": "catalog/catalog-firestore.js",
+  "now": "  // never as distance-zero, so a pre-ordinal mirror can never read as perfectly fresh.\n  return { itemDocs, extraDocs, seq: record.seq, ...keyModeField(record.key_mode, where), ...(itemLabels ? { itemLabels } : {}) };\n}\n",
+  "was": "  // never as distance-zero, so a pre-ordinal mirror can never read as perfectly fresh.\n  return { itemDocs, extraDocs, seq: record.seq, ...keyModeField(record.key_mode, where) };\n}\n"
+ },
+ {
+  "file": "catalog/catalog-firestore.js",
+  "now": "  if (items.empty) throw new Error(`catalog_empty: ${restaurantId}`);              // known restaurant, no menu items\n  return { itemDocs: mapDocs(items, restaurantId), extraDocs: mapDocs(extras, restaurantId), ...keyModeField((profile.data() || {}).pricing_key_mode, restaurantId), ...(labelsFromSnap(items) ? { itemLabels: labelsFromSnap(items) } : {}) };\n}\n",
+  "was": "  if (items.empty) throw new Error(`catalog_empty: ${restaurantId}`);              // known restaurant, no menu items\n  return { itemDocs: mapDocs(items, restaurantId), extraDocs: mapDocs(extras, restaurantId), ...keyModeField((profile.data() || {}).pricing_key_mode, restaurantId) };\n}\n"
+ },
+ {
+  "file": "catalog/catalog-firestore.js",
+  "now": "    const flat = await readFlatDocs(db, restaurantId);            // clean-absent → flat (throws if flat also absent)\n    return { versionId: null, seq: null, itemDocs: flat.itemDocs, extraDocs: flat.extraDocs, ...keyModeField(flat.keyMode, restaurantId), ...(flat.itemLabels ? { itemLabels: flat.itemLabels } : {}) };   // 2b: flat layout has no version/ordinal\n  }\n  const { itemDocs, extraDocs, seq, keyMode, itemLabels } = await readVersionDocs(db, restaurantId, versionId);   // throws on version-missing / completeness fail\n  // 2b: `seq` rides along so the resolver can learn WHICH ordinal it served. Additive — every existing\n  // consumer destructures only itemDocs/extraDocs and is byte-unchanged.\n  return { versionId, seq, itemDocs, extraDocs, ...keyModeField(keyMode, restaurantId), ...(itemLabels ? { itemLabels } : {}) };\n}\n",
+  "was": "    const flat = await readFlatDocs(db, restaurantId);            // clean-absent → flat (throws if flat also absent)\n    return { versionId: null, seq: null, itemDocs: flat.itemDocs, extraDocs: flat.extraDocs, ...keyModeField(flat.keyMode, restaurantId) };   // 2b: flat layout has no version/ordinal\n  }\n  const { itemDocs, extraDocs, seq, keyMode } = await readVersionDocs(db, restaurantId, versionId);   // throws on version-missing / completeness fail\n  // 2b: `seq` rides along so the resolver can learn WHICH ordinal it served. Additive — every existing\n  // consumer destructures only itemDocs/extraDocs and is byte-unchanged.\n  return { versionId, seq, itemDocs, extraDocs, ...keyModeField(keyMode, restaurantId) };\n}\n"
  },
  {
   "file": "catalog/catalog-publish.js",
@@ -22,17 +42,17 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/catalog-publish.js",
-  "now": "    await flipPointer(db, rid, token, targetVersionId, snapshot, expected, { rollback: true });\n    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable, ...(targetDocs.keyMode != null ? { keyMode: targetDocs.keyMode } : {}), labels: labelsFromDocs(targetDocs.itemDocs) });\n    return { versionId: targetVersionId, rolledBack: true, mirrored: mirrorResult.mirrored };\n",
+  "now": "    await flipPointer(db, rid, token, targetVersionId, snapshot, expected, { rollback: true });\n    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable, ...(targetDocs.keyMode != null ? { keyMode: targetDocs.keyMode } : {}), labels: targetDocs.itemLabels || null });\n    return { versionId: targetVersionId, rolledBack: true, mirrored: mirrorResult.mirrored };\n",
   "was": "    await flipPointer(db, rid, token, targetVersionId, snapshot, expected, { rollback: true });\n    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable, ...(targetDocs.keyMode != null ? { keyMode: targetDocs.keyMode } : {}) });\n    return { versionId: targetVersionId, rolledBack: true, mirrored: mirrorResult.mirrored };\n"
  },
  {
   "file": "catalog/catalog.js",
-  "now": "'use strict';\nconst { buildTablesFromDocs, labelsFromDocs } = require('./catalog-transform');\n// Reads a restaurant's pricing tables from the (injected) Firestore doc source, shaped exactly like\n",
-  "was": "'use strict';\nconst { buildTablesFromDocs } = require('./catalog-transform');\n// Reads a restaurant's pricing tables from the (injected) Firestore doc source, shaped exactly like\n"
+  "now": "  async function fullRead(rid) {\n    const { versionId, seq, itemDocs, extraDocs, keyMode, itemLabels } = await getRestaurantDocs(rid);   // throw propagates → NOTHING cached\n    // 2b: attach the version witness + ordinal to the served tables so the resolver can record which\n",
+  "was": "  async function fullRead(rid) {\n    const { versionId, seq, itemDocs, extraDocs, keyMode } = await getRestaurantDocs(rid);   // throw propagates → NOTHING cached\n    // 2b: attach the version witness + ordinal to the served tables so the resolver can record which\n"
  },
  {
   "file": "catalog/catalog.js",
-  "now": "    // DI'd test double whose doc source predates the version/seq surfacing.\n    const tables = { ...buildTablesFromDocs(itemDocs, extraDocs), versionId: versionId === undefined ? null : versionId, seq: Number.isSafeInteger(seq) ? seq : null   /* a counted ordinal — see catalog-publish.js's isSafeInteger note */, ...(keyMode === undefined ? {} : { keyMode }), labels: labelsFromDocs(itemDocs) };\n    if (versionId == null) flatCache.set(rid, { at: now(), tables });          // flat → short-TTL entry\n",
+  "now": "    // DI'd test double whose doc source predates the version/seq surfacing.\n    const tables = { ...buildTablesFromDocs(itemDocs, extraDocs), versionId: versionId === undefined ? null : versionId, seq: Number.isSafeInteger(seq) ? seq : null   /* a counted ordinal — see catalog-publish.js's isSafeInteger note */, ...(keyMode === undefined ? {} : { keyMode }), ...(itemLabels ? { labels: itemLabels } : {}) };\n    if (versionId == null) flatCache.set(rid, { at: now(), tables });          // flat → short-TTL entry\n",
   "was": "    // DI'd test double whose doc source predates the version/seq surfacing.\n    const tables = { ...buildTablesFromDocs(itemDocs, extraDocs), versionId: versionId === undefined ? null : versionId, seq: Number.isSafeInteger(seq) ? seq : null   /* a counted ordinal — see catalog-publish.js's isSafeInteger note */, ...(keyMode === undefined ? {} : { keyMode }) };\n    if (versionId == null) flatCache.set(rid, { at: now(), tables });          // flat → short-TTL entry\n"
  },
  {
