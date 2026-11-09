@@ -943,10 +943,28 @@
       return { kind: 'offline' };
     }
 
+    // PLAN-capp-tip-step r6: the member's LAST TIP — ONE authenticated read of their OWN leaf user_private/{uid}/last_tip (owner-read
+    // rules; the server writes it after an accepted order). A UX hint: any failure / other identity ⇒ cents null (the step's L 20).
+    // Answers { uid, cents } so the caller binds it to the identity it was read for; nothing is stored on the device.
+    async function lastTip() {
+      const m = memberOf();
+      const base = typeof cfg.rtdbBase === 'string' && /^https:\/\/[a-z0-9.-]+(:\d+)?\/?$/i.test(cfg.rtdbBase) ? cfg.rtdbBase.replace(/\/+$/, '') : null;
+      if (!m || typeof m.uid !== 'string' || !m.uid || !base) return { uid: m && m.uid != null ? String(m.uid) : null, cents: null };
+      const tok = await memberToken(m);
+      if (!tok || memberOf() !== m) return { uid: m.uid, cents: null };
+      try {
+        const r = await sfetch(`${base}/user_private/${encodeURIComponent(m.uid)}/last_tip.json?auth=${encodeURIComponent(tok)}`, { method: 'GET' });
+        if (!r || r.status !== 200 || memberOf() !== m) return { uid: m.uid, cents: null };
+        let j = null; try { j = await r.json(); } catch (_) { j = null; }
+        const c = j && typeof j === 'object' ? j.cents : undefined;
+        return { uid: m.uid, cents: Number.isSafeInteger(c) && c >= 0 && c <= 200000 ? c : null };
+      } catch (_) { return { uid: m.uid, cents: null }; }
+    }
+
     // the order body a card send stashed (the return restores the checkout from it)
     function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
 
-    return { quote, latestQuote, place, placeSdk, sdkStatus, sdkResolve, sdkSwitchToCash, sdkLive, listCards, sdkPayStatus, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
+    return { quote, latestQuote, place, placeSdk, sdkStatus, sdkResolve, sdkSwitchToCash, sdkLive, listCards, sdkPayStatus, lastTip, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
       confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
   }

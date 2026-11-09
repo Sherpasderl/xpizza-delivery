@@ -447,6 +447,8 @@ const CK = require('./capp-checkout.js');
 const CA = require('./capp-api.js');
 const EP = { quoteOrder: 'https://fn.test/quoteOrder', createOrder: 'https://fn.test/createOrder', chargeOnlineOrder: 'https://fn.test/chargeOnlineOrder', paymentStatus: 'https://fn.test/paymentStatus',
   // S2-checkout (inert unless config.sdkCheckout)
+  // PLAN-capp-tip-step r6: the member's last tip, one RTDB leaf (inert unless config.rtdbBase)
+  lastTip: 'https://rtdb.test/user_private/',
   placeSdkOrder: 'https://fn.test/placeSdkOrder', placeSdkStatus: 'https://fn.test/placeSdkStatus', cancelSdkPending: 'https://fn.test/cancelSdkPending', listCards: 'https://fn.test/listCards', sdkPayStatus: 'https://fn.test/sdkPayStatus' };
 const memStore = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), _m: m }; };
 const FEE = 4500;
@@ -624,12 +626,12 @@ test('S2b totals: Subtotal / Envío / Total come from the quote — Total = net_
   assert.equal(b.text('.ostot .sumrow.tot'), `Total ${L_(food + FEE + 4000 + 7)}`);
 });
 
-test('S2b tip step: presets from TIP_PRESETS + «Otro»; «Hacer pedido» disabled until a choice AND its quote; «Otro» capped at TIP_MAX', async () => {
+test('S2b tip step: presets from TIP_PRESETS + «Otro»; the step opens on the default (r6) and «Hacer pedido» waits for ITS quote; «Otro» capped at TIP_MAX', async () => {
   const b = bootCo(); await filled(b); await b.click('#cta');
   assert.ok(b.q('.screen .tipwrap'), 'the tip screen inside .screen');
   assert.deepEqual(b.qa('.tipchips .chip').map((c) => c.textContent), [...CK.TIP_PRESETS.map((v) => (v ? `L ${v}` : 'Sin propina')), 'Otro']);
-  assert.ok(b.q('[data-act="tip-place"]').disabled, 'nothing chosen ⇒ disabled');
-  assert.equal(b.text('.tipfoot .sumrow'), 'Propina —');
+  assert.deepEqual(b.qa('.tipchips .chip[aria-pressed="true"]').map((c) => c.textContent), ['L 20'], 'r6 (MOCKUP-capp-tip-step-r2): the step opens on L 20 — no longer «nothing chosen»');
+  assert.equal(b.text('.tipfoot .sumrow'), `Propina ${L_(2000)}`);
   await b.click('[data-act="tipc"][data-val="0"]');
   assert.ok(!b.q('[data-act="tip-place"]').disabled, '«Sin propina» is a choice');
   assert.equal(b.text('.tipfoot .sumrow'), 'Propina Sin propina');
@@ -3370,3 +3372,139 @@ test('Codex r3 P2-4 repro (advisor r3 C): a PICKUP member switch completed after
   assert.ok(co, 'premise: the completed switch placed the cash order');
   assert.deepEqual([co.body.order_type, co.body.customer_name, co.body.notes], ['pickup', 'Otra persona', 'Sin cebolla'], '🔴 SDKUI-restore: the stored recipient and notes win over the fresh defaults');
 });
+
+
+// ── PLAN-capp-tip-step r6 (owner-approved MOCKUP-capp-tip-step-r2, 11-09): the step opens WITH a choice — the member's last tip
+// (server-side, user_private/{uid}/last_tip, one authenticated leaf read started at checkout open) else L 20; resolved BEFORE the
+// step renders (the chip never moves); «Otro · L N»; tip_choice:true on the order. Guests: L 20, no read. ──
+const TIP_BASE = 'https://rtdb.test';
+const leaf = (cents, at = 1) => ({ status: 200, json: cents == null ? null : { cents, at } });
+const pressedChips = (b) => b.qa('.tipchips .chip[aria-pressed="true"]').map((c) => c.textContent);
+const TIP_MEMBER = (uid = 'u1') => ({ uid, name: 'Ana Pérez', phone: '96123344', email: 'ana@x.com', idToken: `${Buffer.from('{"alg":"RS256"}').toString('base64url')}.${Buffer.from(JSON.stringify({ sub: uid, exp: Math.floor((NOON().getTime() + 3600e3) / 1000) })).toString('base64url')}.sig` });
+const bootTip = ({ member = null, last, script = {}, storage } = {}) => bootCo({ member, storage, config: { rtdbBase: TIP_BASE }, script: { ...(last !== undefined ? { lastTip: Array.isArray(last) ? last : [last] } : {}), ...script } });
+async function memberToTip(b) { await toCheckout(b); await settle(); await b.type('#f-details', 'Portón negro'); await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]'); await b.click('[data-act="pay"][data-val="cash"]'); await settle(); }
+
+test('tip r6 F1: a guest opens the step with «L 20» pressed — no read; the step\'s quote is ONE new logical quote (tip 2000); «Hacer pedido» once it lands', async () => {
+  const b = bootTip(); await filled(b); await settle();
+  const before = b.srv.of('quoteOrder').length;
+  await b.click('#cta'); await settle();
+  assert.ok(b.q('.screen .tipwrap'), 'premise: the tip step');
+  assert.deepEqual(pressedChips(b), ['L 20'], '🔴 TIP-F1: «L 20» pressed on entry');
+  assert.equal(b.text('.tipfoot .sumrow'), `Propina ${L_(2000)}`, 'TIP-F1: the footer shows the default');
+  assert.equal(b.srv.of('quoteOrder').length - before, 1, '🔴 TIP-F1: exactly one new logical quote on entry');
+  assert.equal(b.srv.of('quoteOrder').at(-1).body.tip_cents, 2000, 'TIP-F1: that quote carries the default tip');
+  assert.equal(b.srv.of('lastTip').length, 0, '🔴 TIP-F1: a guest never reads a last tip');
+  assert.ok(!b.q('[data-act="tip-place"]').disabled, 'TIP-F1: «Hacer pedido» enabled once the quote landed');
+});
+
+test('tip r6 F2 / F5: «Sin propina» ⇒ the cash order carries tip_choice:true and no tip_cents; the L 20 default ⇒ tip_choice:true + tip_cents 2000 (cash)', async () => {
+  for (const [tap, want] of [['0', { tip_choice: true, tip_cents: undefined }], [null, { tip_choice: true, tip_cents: 2000 }]]) {
+    const b = bootTip({ script: { createOrder: [{ status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } }] } });
+    await filled(b); await b.click('#cta'); await settle();
+    if (tap) await b.click(`[data-act="tipc"][data-val="${tap}"]`);
+    await settle(); await b.click('[data-act="tip-place"]'); b.timers.flush(); await settle();
+    const body = b.srv.of('createOrder')[0] && b.srv.of('createOrder')[0].body;
+    assert.ok(body, `premise: placed (${tap})`);
+    assert.deepEqual([body.payment_method, body.tip_choice, body.tip_cents], ['cash', want.tip_choice, want.tip_cents], `🔴 TIP-F2/F5 (${tap || 'default'}): the order body`);
+  }
+});
+
+test('tip r6 F3 / 3b: «Otro» L 35 ⇒ the chip reads «Otro · L 35»; reopening shows 35; one re-quote with 3500', async () => {
+  const b = bootTip(); await filled(b); await b.click('#cta'); await settle();
+  await b.click('[data-act="tipc"][data-val="other"]');
+  for (const k of ['3', '5']) await b.click(`#layer [data-act="tk"][data-val="${k}"]`);
+  const before = b.srv.of('quoteOrder').length;
+  await b.click('#layer [data-act="tip-save"]'); await settle();
+  assert.deepEqual(pressedChips(b), ['Otro · L 35'], '🔴 TIP-F3b: the chip reads «Otro · L 35»');
+  assert.equal(b.srv.of('quoteOrder').length - before, 1, 'TIP-F3b: one re-quote');
+  assert.equal(b.srv.of('quoteOrder').at(-1).body.tip_cents, 3500);
+  await b.click('[data-act="tipc"][data-val="other"]');
+  assert.equal(b.q('#layer [data-field="tipOther"]').value, '35', 'TIP-F3b: reopening shows 35');
+});
+
+test('tip r6 F4: a member\'s last tip preselects — 4000 ⇒ «L 40», 0 ⇒ «Sin propina», 3500 ⇒ «Otro · L 35», malformed / none ⇒ «L 20»; ONE read of the member\'s own leaf; nothing stored on the device', async () => {
+  for (const [last, want] of [[leaf(4000), ['L 40']], [leaf(0), ['Sin propina']], [leaf(3500), ['Otro · L 35']], [leaf(null), ['L 20']], [{ status: 200, json: { cents: '4000', at: 1 } }, ['L 20']], [{ status: 401, json: { error: 'Permission denied' } }, ['L 20']]]) {
+    const storage = memStore();
+    const b = bootTip({ member: TIP_MEMBER('u1'), last, storage });
+    await memberToTip(b); await b.click('#cta'); await settle();
+    assert.deepEqual(pressedChips(b), want, `🔴 TIP-F4: ${JSON.stringify(last.json)} ⇒ ${want}`);
+    const reads = b.srv.of('lastTip');
+    assert.equal(reads.length, 1, 'TIP-F4: one read per mount');
+    assert.ok(/^https:\/\/rtdb\.test\/user_private\/u1\/last_tip\.json\?auth=/.test(reads[0].url), `🔴 TIP-F4: the member's OWN leaf, with the ID token (${reads[0].url.slice(0, 60)})`);
+    assert.ok(![...storage._m.keys()].some((k) => /tip/i.test(k)), '🔴 TIP-F4: no tip memory on the device');
+  }
+});
+
+test('tip r6 resolve-before-render: a pending read holds «Continuar» (no step yet); its answer opens the step with that chip; no answer within 1.5 s ⇒ «L 20», and a late answer never moves the chip', async () => {
+  const d = deferred(leaf(4000));
+  const b = bootTip({ member: TIP_MEMBER('u1'), last: d.fn });
+  await memberToTip(b); await b.click('#cta'); await settle();
+  assert.equal(b.q('.screen .tipwrap'), null, '🔴 TIP-R: the step does not render while the default is unresolved');
+  d.go(); await settle(); await settle();
+  assert.deepEqual(pressedChips(b), ['L 40'], '🔴 TIP-R: the answer opens the step with its chip');
+  const late = deferred(leaf(6000));
+  const c = bootTip({ member: TIP_MEMBER('u1'), last: late.fn });
+  await memberToTip(c); await c.click('#cta'); await settle();
+  assert.ok([...c.timers.ms.values()].includes(1500), 'premise: the 1.5 s bound is armed');
+  c.timers.flush(); await settle();
+  assert.deepEqual(pressedChips(c), ['L 20'], '🔴 TIP-R: timeout ⇒ «L 20»');
+  late.go(); await settle(); await settle();
+  assert.deepEqual(pressedChips(c), ['L 20'], '🔴 TIP-R: a late answer never moves the chip');
+});
+
+test('tip r6 continuation: duplicate «Continuar» taps coalesce (one step); Back while the default is pending cancels it (the answer never navigates)', async () => {
+  const d = deferred(leaf(4000));
+  const b = bootTip({ member: TIP_MEMBER('u1'), last: d.fn });
+  await memberToTip(b);
+  const depth = b.ui.state.stack.length;
+  await b.click('#cta'); await b.click('#cta'); await settle();
+  d.go(); await settle(); await settle();
+  assert.equal(b.ui.state.stack.length, depth + 1, '🔴 TIP-C: two taps ⇒ ONE navigation');
+  const e = deferred(leaf(4000));
+  const c = bootTip({ member: TIP_MEMBER('u1'), last: e.fn });
+  await memberToTip(c); await c.click('#cta'); await settle();
+  c.w.history.back(); await popped();
+  e.go(); await settle(); await settle();
+  assert.notEqual(c.ui.state.screen, 'tip', '🔴 TIP-C: Back cancelled the pending entry');
+  const p = deferred(leaf(4000));
+  const k = bootTip({ member: TIP_MEMBER('u1'), last: p.fn });
+  await memberToTip(k); await k.click('#cta'); await settle();
+  await k.click('[data-act="type"][data-val="pickup"]'); await settle();
+  p.go(); await settle(); await settle();
+  assert.notEqual(k.ui.state.screen, 'tip', '🔴 TIP-C: a switch to pickup cancelled the pending entry');
+});
+
+test('tip r6 identity: a DEFAULT applied for A is cleared when B signs in (B\'s own read decides); an EXPLICIT tap is kept; A\'s late answer never lands under B', async () => {
+  const b = bootTip({ member: TIP_MEMBER('u1'), last: [leaf(4000), leaf(6000)] });
+  await memberToTip(b); await b.click('#cta'); await settle();
+  assert.deepEqual(pressedChips(b), ['L 40'], 'premise: A\'s default');
+  await b.click('[data-act="back"]'); await settle();
+  b.ui.setMember(TIP_MEMBER('u2')); await settle();
+  assert.equal(b.ui.state.flow.tipChoice, null, '🔴 TIP-ID: A\'s DEFAULT is cleared on the identity change');
+  await b.click('#cta'); await settle();
+  assert.deepEqual(pressedChips(b), ['L 60'], '🔴 TIP-ID: B\'s own last tip');
+  assert.ok(/user_private\/u2\//.test(b.srv.of('lastTip').at(-1).url), 'TIP-ID: B\'s own leaf');
+  const c = bootTip({ member: TIP_MEMBER('u1'), last: [leaf(4000), leaf(6000)] });
+  await memberToTip(c); await c.click('#cta'); await settle();
+  await c.click('[data-act="tipc"][data-val="20"]'); await c.click('[data-act="back"]'); await settle();
+  c.ui.setMember(TIP_MEMBER('u2')); await settle();
+  assert.deepEqual(J(c.ui.state.flow.tipChoice), { kind: 'preset', lempiras: 20 }, '🔴 TIP-ID: an EXPLICIT tap is the person\'s choice — kept');
+  const a = deferred(leaf(4000));
+  const g = bootTip({ member: TIP_MEMBER('u1'), last: [a.fn, leaf(6000)] });
+  await memberToTip(g); await settle();
+  g.ui.setMember(TIP_MEMBER('u2')); await settle();
+  a.go(); await settle();
+  await g.click('#cta'); await settle();
+  assert.deepEqual(pressedChips(g), ['L 60'], '🔴 TIP-ID: A\'s delayed answer is dropped; B\'s read decides');
+});
+
+test('tip r6 pickup: never reaches the step and carries no tip_choice', async () => {
+  const b = bootTip({ script: { createOrder: [{ status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } }] } });
+  await toCheckout(b); await b.click('[data-act="type"][data-val="pickup"]'); await settle();
+  await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000'); await b.click('[data-act="pay"][data-val="cash"]'); await settle();
+  await b.click('#cta'); b.timers.flush(); await settle();
+  assert.notEqual(b.ui.state.screen, 'tip', 'TIP-P: no tip step');
+  const body = b.srv.of('createOrder')[0] && b.srv.of('createOrder')[0].body;
+  if (body) assert.ok(!('tip_choice' in body), '🔴 TIP-P: pickup ⇒ no marker');
+});
+

@@ -25,6 +25,7 @@
 
   const TIP_PRESETS = [0, 20, 40, 60];   // lempiras — the platform's fixed presets (prototype SH.tips :1148, ruling 12)
   const TIP_MAX_LEMPIRAS = 2000;          // the server's TIP_MAX_CENTS / 100 (owner Q7; the functions' tip.js) — pinned by a test
+  const TIP_DEFAULT_LEMPIRAS = 20;        // r6 (owner 11-09): the step's preselected chip for guests / first orders — one of the presets
   const ENTRY_MODE = 'app';
   // G0 (Q2, finding #11): the closed store's CTA — the prototype's own ASAP-card copy (checkoutHtml :1838)
   const COPY = {
@@ -135,6 +136,16 @@
   }
   const tipCentsOf = (f) => (f.mode === 'delivery' && f.tipChoice ? f.tipCents : 0);
   const tipChosen = (f) => f.mode !== 'delivery' || f.tipChoice !== null;   // «Hacer pedido» disabled until a preset or «Sin propina»
+  // PLAN-capp-tip-step r6 (MOCKUP-capp-tip-step-r2, owner 11-09): the step OPENS with a choice — the member's last tip (server-side,
+  // user_private/{uid}/last_tip, read by the host) else the platform default; a redeemed flow opens on «Sin propina» (tip + reward is
+  // refused server-side). Returns a chooseTip choice: a preset (lempiras) or { other: lempiras }.
+  function tipDefault({ lastCents, redeem } = {}) {
+    if (redeem) return 0;
+    const c = lastCents;
+    if (!Number.isSafeInteger(c) || c < 0 || c > TIP_MAX_LEMPIRAS * 100 || c % 100 !== 0) return TIP_DEFAULT_LEMPIRAS;
+    const l = c / 100;
+    return TIP_PRESETS.includes(l) ? l : { other: l };
+  }
 
   // ── hours (the store config's [h1,m1,h2,m2] | null ×7, Sun..Sat — the same reader capp-ui.js uses) ──
   const rangeOf = (hours, day) => { const h = hours && hours[day]; return Array.isArray(h) && h.length === 4 ? [h[0] * 60 + h[1], h[2] * 60 + h[3]] : null; };
@@ -212,6 +223,7 @@
     if (del) { b.lat = f.pin.lat; b.lng = f.pin.lng; b.pin_confirmed = true; b.address_details = (f.details || '').trim(); const a = areaOf(f); if (a) b.address_area = a; }
     const em = validEmail(f.email); if (em) b.customer_email = em;
     const t = tipCentsOf(f); if (t > 0) b.tip_cents = t;
+    if (del && f.tipChoice) b.tip_choice = true;   // r6: an explicit tip-step choice (incl. «Sin propina») — the server's last-tip preference marker
     if (b.payment_method === 'cash') { const ct = Number(f.tendered); if (Number.isFinite(ct) && ct > 0) b.cash_tendered = ct; if (ctx.appCash === true) b.entry_mode = ENTRY_MODE; }   // S4 r2 §7: the app contract on cash, under schedulingLive
     else b.entry_mode = ENTRY_MODE;
     // S4: the slot START (epoch ms) only for a scheduled order — never in the quote body, never in the cart signature
@@ -252,7 +264,7 @@
   // Unit prices in LEMPIRAS (the caller converts cents). Rendered by capp-ui's cart sheet (frame 13, approved 2026-10-27).
   function priceNoticeText(e){ return 'Cambió el precio de ' + e.name + ': antes L ' + Number(e.from).toFixed(0) + ', ahora L ' + Number(e.to).toFixed(0) + '.'; }
 
-  return { TIP_PRESETS, TIP_MAX_LEMPIRAS, ENTRY_MODE, COPY, CLOSED_SHEET, freshFlow, setMode, setPin, chooseTip, tipCentsOf, tipChosen,
+  return { TIP_PRESETS, TIP_MAX_LEMPIRAS, TIP_DEFAULT_LEMPIRAS, tipDefault, ENTRY_MODE, COPY, CLOSED_SHEET, freshFlow, setMode, setPin, chooseTip, tipCentsOf, tipChosen,
     isOpenAt, closingAt, missingStep, canonicalJson, sigInput, cartSig, quoteBody, orderBody, totals, changeCents, fullPhone,
     areaFromGeocode, routeFrom, applyGeocode, displayArea, addrLine, menuFingerprint, priceNoticeText, validEmail };
 });

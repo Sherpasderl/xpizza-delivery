@@ -254,3 +254,33 @@ test('S2b-geo body: NO address_area when the area is superseded, empty (street o
   const pk = ready(); C.applyGeocode(pk, pk.pinV, GC.full); C.setMode(pk, 'pickup');
   assert.ok(!('address_area' in C.orderBody(pk, ctxO)), '🔴 pickup ⇒ no key');
 });
+
+// ── PLAN-capp-tip-step r6 (owner-approved MOCKUP-capp-tip-step-r2): the step's DEFAULT and the explicit marker ──
+test('tip step r6: tipDefault — L 20 (TIP_DEFAULT_LEMPIRAS) unless the member\'s last tip says otherwise; 0 ⇒ «Sin propina»; a preset ⇒ that chip; another whole lempira ⇒ «Otro»; malformed ⇒ L 20; a redemption ⇒ «Sin propina»', () => {
+  assert.equal(C.TIP_DEFAULT_LEMPIRAS, 20, 'the platform default sits beside the presets (ruling 12)');
+  assert.ok(C.TIP_PRESETS.includes(C.TIP_DEFAULT_LEMPIRAS), 'the default is one of the presets');
+  const cases = [
+    [{}, 20], [{ lastCents: null }, 20], [{ lastCents: undefined }, 20],
+    [{ lastCents: 0 }, 0], [{ lastCents: 2000 }, 20], [{ lastCents: 4000 }, 40], [{ lastCents: 6000 }, 60],
+    [{ lastCents: 3500 }, { other: 35 }], [{ lastCents: 200000 }, { other: 2000 }],
+    [{ lastCents: 200100 }, 20], [{ lastCents: -100 }, 20], [{ lastCents: 3550 }, 20], [{ lastCents: '4000' }, 20], [{ lastCents: NaN }, 20],
+    [{ lastCents: 4000, redeem: true }, 0], [{ redeem: true }, 0],
+  ];
+  for (const [arg, want] of cases) assert.deepEqual(C.tipDefault(arg), want, `🔴 TD: tipDefault(${JSON.stringify(arg)}) ⇒ ${JSON.stringify(want)}`);
+  for (const [arg] of cases) { const f = ready(); assert.ok(C.chooseTip(f, C.tipDefault(arg)), `TD: every default is a valid chooseTip choice (${JSON.stringify(arg)})`); }
+});
+
+test('tip step r6: tip_choice:true rides every DELIVERY order body once a tip was chosen (incl. «Sin propina»); never on pickup, never before a choice, never on the quote body', () => {
+  const ctx = ctxOf({ orderId: 'XP251025-120000-AAAA' });
+  const f = ready();
+  assert.ok(!('tip_choice' in C.orderBody(f, ctx)), 'TC: no choice yet ⇒ no marker');
+  C.chooseTip(f, 0);
+  const b0 = C.orderBody(f, ctx);
+  assert.equal(b0.tip_choice, true, '🔴 TC: «Sin propina» is an explicit choice ⇒ tip_choice:true');
+  assert.ok(!('tip_cents' in b0), 'TC: and still no tip_cents');
+  C.chooseTip(f, 40);
+  assert.deepEqual([C.orderBody(f, ctx).tip_choice, C.orderBody(f, ctx).tip_cents], [true, 4000], '🔴 TC: a preset ⇒ the marker + the tip');
+  assert.ok(!('tip_choice' in C.quoteBody(f, ctx)), 'TC: the quote body never carries the marker (it is not an amount)');
+  C.setMode(f, 'pickup');
+  assert.ok(!('tip_choice' in C.orderBody(f, ctx)), '🔴 TC: pickup ⇒ no marker');
+});
