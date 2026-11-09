@@ -43,8 +43,8 @@ test('1 before the quote (advisor ruling 11-09, option 1 — a state v7 does not
   }
 });
 test('1 before / after the quote: the bar keeps ONE layout — in the pay bar the sentence fills its row and «Más información» always sits on the line below (frame 1 at L 585), so the line count does not depend on the amount (the renders: the Chrome batch, S2ck-1q)', () => {
-  const css = readFileSync(new URL('./capp.css', import.meta.url), 'utf8').replace(/\s+/g, ' ');
-  const rule = css.match(/\.paybar\.pay \.payline span\{([^}]*)\}/);
+  const css = readFileSync(new URL('./capp.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ');
+  const rule = css.split('}').map((r) => r.split('{')).find((r) => r.length === 2 && r[0].split(',').map((x) => x.trim()).includes('.paybar.pay .payline span'));
   assert.ok(rule && /flex-basis:100%/.test(rule[1]), `🔴 CO-PQ-h: .paybar.pay .payline span takes the whole row (${rule ? rule[1] : 'no rule'})`);
 });
 
@@ -81,6 +81,16 @@ test('6 contrast (advisor 11-09 — IMPROVED vs v7): the expired card\'s row sta
     const bg = tok(scope, 'bg'), mute = tok(scope, 'mute');
     assert.ok(bg && mute, `premise: ${theme} tokens (${scope})`);
     assert.ok(ratio(mute, bg) >= 4.5, `🔴 CO-6C ${theme}: --mute on --bg ${ratio(mute, bg).toFixed(2)}:1 ≥ 4.5`);
+  }
+});
+
+test('1 in the TIP footer (tip-step SBS 11-09): the charge line under .tipfoot is styled exactly as in the pay bar (13 px, muted, the sentence fills its row) — v7 draws one charge line, wherever the row sits', () => {
+  const css = readFileSync(new URL('./capp.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ');
+  const rules = css.split('}').map((r) => r.split('{')).filter((r) => r.length === 2).map(([sel, body]) => ({ sels: sel.split(',').map((x) => x.trim()), body }));
+  const bodyOf = (sel) => rules.filter((r) => r.sels.includes(sel)).map((r) => r.body.trim()).join(';');
+  for (const [bar, foot] of [['.paybar.pay .payline', '.tipfoot .payline'], ['.paybar.pay .payline span', '.tipfoot .payline span'], ['.paybar.pay .payline .lnk', '.tipfoot .payline .lnk']]) {
+    assert.ok(bodyOf(bar), `premise: ${bar}`);
+    assert.strictEqual(bodyOf(foot), bodyOf(bar), `🔴 CO-TF: ${foot} carries the same declarations as ${bar}`);
   }
 });
 

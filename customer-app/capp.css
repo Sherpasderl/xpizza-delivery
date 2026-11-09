@@ -1342,9 +1342,9 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .paybar.pay{display:flex;flex-direction:column;gap:8px}
 .paybar.pay .urows{margin:-4px 0 0}
 .paybar.pay .urow.payrow{min-height:56px;padding:4px 0}
-.paybar.pay .payline{font-size:13px;color:var(--mute);margin-top:-2px}
-.paybar.pay .payline span{color:var(--mute);flex-basis:100%}
-.paybar.pay .payline .lnk{font-size:13px}
+.paybar.pay .payline,.tipfoot .payline{font-size:13px;color:var(--mute);margin-top:-2px}   /* tip r6: the tip footer's charge line is the bar's (v7) */
+.paybar.pay .payline span,.tipfoot .payline span{color:var(--mute);flex-basis:100%}
+.paybar.pay .payline .lnk,.tipfoot .payline .lnk{font-size:13px}
 .bb{width:40px;height:26px;flex:none;display:block}
 .urow .tick{color:var(--ink);width:22px;height:22px;margin-right:4px}
 .urow[aria-pressed="true"] .t b{font-weight:700}
