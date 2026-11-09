@@ -33,8 +33,8 @@ const codes = (ps) => ps.map((p) => `${p.key}:${p.field}:${p.code}`).sort();
   const liveLong = clone(live); liveLong.items.find((i) => i.key === 'Carnivora').display.desc = 'g'.repeat(250);
   assert.deepStrictEqual(AP.textCapProblems({ draft: clone(liveLong), live: liveLong }), [], 'TC-GRANDFATHER an untouched live value is not judged');
   // a NEW product is newly authored throughout
-  const add = clone(live); add.items.push({ ref: 'tmp_1', price: 100, display: { name: 'A'.repeat(61), cat: 'individual' } });
-  assert.deepStrictEqual(codes(AP.textCapProblems({ draft: add, live })), ['tmp_1:name:name_too_long'], 'TC-NEW a new product\'s name is capped');
+  const add = clone(live); add.items.push({ ref: 'tmp:newdish01', price: 100, display: { name: 'A'.repeat(61), cat: 'individual' } });
+  assert.deepStrictEqual(codes(AP.textCapProblems({ draft: add, live })), ['tmp:newdish01:name:name_too_long'], 'TC-NEW a new product\'s name is capped');
   ok('caps: name ≤ 60 (attribute rule), desc ≤ 200, newly authored only; live values grandfathered; new products capped');
 }
 

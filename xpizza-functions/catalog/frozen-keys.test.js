@@ -93,7 +93,7 @@ const idOf = (src, key) => itemOf(src, key).display.id;
   const builtOf = (s) => buildSourceCandidate(RID, s).built;
   const edited = clone(base); const e = itemOf(edited, KEY).display;
   e.name = 'Carnívora Suprema'; e.desc = 'Nueva descripción'; edited.frozen_keys = { [String(e.id)]: KEY };
-  const args = (textEdit) => ({ draftBuilt: builtOf(edited), activeBuilt: builtOf(base), draftAuthored: edited, renderedCategories: base.structure.categories.map((c) => c.id), textEdit });
+  const args = (textEdit) => ({ draftBuilt: builtOf(edited), activeBuilt: builtOf(base), draftAuthored: Object.keys(edited.structure), renderedCategories: base.structure.categories.map((c) => c.id), textEdit });
   assert.doesNotThrow(() => AP.compareToActive(args(true)), 'FK-COMPARE switch ON: name / desc of an existing item may change');
   assert.throws(() => AP.compareToActive(args(false)), /can only have its price changed/, 'FK-COMPARE switch OFF: refused exactly as today');
   ok('compareToActive frees name / desc only with item_text_edit');
@@ -104,11 +104,65 @@ const idOf = (src, key) => itemOf(src, key).display.id;
   const base = live();
   const stored = { ...base, frozen_keys: { 999: 'Pizza Retirada' } };   // an inert entry: its item is gone
   const incoming = clone(stored);
-  incoming.items.push({ ref: 'tmp_1', price: 150, display: { name: 'Pizza Retirada', cat: 'individual', desc: '' } });
-  incoming.structure.item_order.push('tmp_1');
+  incoming.items.push({ ref: 'tmp:newdish01', price: 150, display: { name: 'Pizza Retirada', cat: 'individual', desc: '' } });
+  incoming.structure.item_order.push('tmp:newdish01');
   assert.throws(() => AP.allocateAdditions({ incoming, stored, activeItems: base.items, keyMode: 'name', hwm: 24, registryHasKey: () => false }),
     /name_previously_used|previously|taken/i, 'FK-TAKEN a frozen key (even inert) is never minted for a new item');
   ok('allocation treats every frozen key as taken');
+}
+
+// ── resolveKeyMode: a live renamed item agrees with the mode by its entry (exactly) ──
+{
+  const base = live();
+  const r = { ...renamed(base, KEY, 'Carnívora Suprema'), frozen_keys: { [String(idOf(base, KEY))]: KEY } };
+  assert.throws(() => AP.resolveKeyMode('name', r.items), /key_mode_inconsistent/, 'premise: without the map the renamed live item reads as inconsistent');
+  assert.strictEqual(AP.resolveKeyMode('name', r.items, r.frozen_keys), 'name', 'FK-MODE the entry makes it consistent');
+  assert.throws(() => AP.resolveKeyMode('name', r.items, { [String(idOf(base, KEY))]: 'Other' }), /key_mode_inconsistent/, 'FK-MODE an entry for another key does not');
+  ok('resolveKeyMode accepts a live renamed item by its exact entry only');
+}
+
+// ── validation: a renamed product may not take another product's key as its name ──
+{
+  const base = live();
+  const other = base.items.find((i) => i.key !== KEY && i.display.variantOf == null);
+  const r = { ...renamed(base, KEY, other.key), frozen_keys: { [String(idOf(base, KEY))]: KEY } };
+  assert.throws(() => validateSource(r, RID), /another product's key/, 'FK-SHADOW a renamed name equal to another key is refused');
+  ok('validation: a renamed product\'s name can never shadow another product\'s pricing key');
+}
+
+// ── recordRenames: a display id already frozen to another key is a conflict, never overwritten ──
+{
+  const base = live();
+  const draft = renamed(base, KEY, 'Carnívora Suprema');
+  const stored = { ...base, frozen_keys: { [String(idOf(base, KEY))]: 'Old Key' } };
+  const r = FK.recordRenames({ draft, live: base, stored, textEdit: true });
+  assert.deepStrictEqual([r.ok, r.error], [false, 'rename_id_conflict'], 'FK-CONFLICT a reused id holding another frozen key refuses');
+  ok('recordRenames refuses to overwrite an entry held by the same display id for another key');
+}
+
+// ── allocation: every frozen display id stays used (a new product never gets a renamed product's old id) ──
+{
+  const base = live();
+  const stored = { ...base, frozen_keys: { 999: 'Pizza Retirada' } };
+  const incoming = clone(stored);
+  incoming.items.push({ ref: 'tmp:newdish02', price: 150, display: { name: 'Pizza Nueva', cat: 'individual', desc: '' } });
+  incoming.structure.item_order.push('tmp:newdish02');
+  const res = AP.allocateAdditions({ incoming, stored, activeItems: base.items, keyMode: 'name', hwm: null, registryHasKey: () => false });
+  const added = res.source.items.find((i) => i.key === 'Pizza Nueva');
+  assert.strictEqual(added.display.id, 1000, `FK-ID the next id is past every frozen id (${added.display.id})`);
+  ok('allocation counts every frozen display id as used');
+}
+
+// ── compareToActive: a moved product must land in a section the order page shows ──
+{
+  const base = live();
+  const builtOf = (s) => buildSourceCandidate(RID, s).built;
+  const moved = clone(base); itemOf(moved, KEY).display.cat = 'ny';
+  const args = (rendered) => ({ draftBuilt: builtOf(moved), activeBuilt: builtOf(base), draftAuthored: Object.keys(moved.structure), renderedCategories: rendered, textEdit: true });
+  assert.doesNotThrow(() => AP.compareToActive(args(base.structure.categories.map((c) => c.id))), 'FK-CAT a move into a shown section passes');
+  assert.throws(() => AP.compareToActive(args(['individual'])), /category_not_renderable/, 'FK-CAT a move into a section not shown is refused');
+  assert.throws(() => AP.compareToActive({ ...args(base.structure.categories.map((c) => c.id)), textEdit: false }), /can only have its price changed/, 'FK-CAT switch OFF refuses the move as today');
+  ok('compareToActive: with the switch on a product may move only into a shown section');
 }
 
 console.log(`\nfrozen-keys: OK (${n})`);

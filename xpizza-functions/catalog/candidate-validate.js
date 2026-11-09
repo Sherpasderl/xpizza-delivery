@@ -24,8 +24,8 @@ const { buildCatalogV2 } = require('./form-menu-source');
 // A candidate in source shape. `extras` is the RECORD array (key/price/display), never the numeric
 // charging table — the publisher carries both and they are easy to confuse, so the one that names
 // options is the one named here.
-function candidateSource(restaurantId, { items, extras, structure, key_mode }) {
-  return { restaurant_id: restaurantId, schema_version: SCHEMA_VERSION, ...(key_mode == null ? {} : { key_mode }), items, extras, structure };
+function candidateSource(restaurantId, { items, extras, structure, key_mode, frozen_keys }) {
+  return { restaurant_id: restaurantId, schema_version: SCHEMA_VERSION, ...(key_mode == null ? {} : { key_mode }), ...(frozen_keys == null ? {} : { frozen_keys }), items, extras, structure };
 }
 
 function assertCandidateValid(restaurantId, candidate, where) {
@@ -48,12 +48,12 @@ function assertCandidateValid(restaurantId, candidate, where) {
 // CLIs alike; with an unedited source (extras equal to code today) the output is byte-identical to the old call.
 function buildSourceCandidate(restaurantId, source) {
   const inputs = sourceToBuildInputs(source);
-  const built = buildCatalogV2(restaurantId, { formData: inputs.formData, priceTable: inputs.priceTable, extrasTable: inputs.extras, keyMode: inputs.keyMode });
+  const built = buildCatalogV2(restaurantId, { formData: inputs.formData, priceTable: inputs.priceTable, extrasTable: inputs.extras, keyMode: inputs.keyMode, frozenKeys: inputs.frozenKeys });
   return { inputs, built };
 }
 // …and the built candidate is validated exactly as PUBLISH validates it (pre-publish), so a draft that cannot publish
 // is refused when it is SAVED rather than discovered at publish.
 const assertBuiltValid = (restaurantId, built, where) =>
-  assertCandidateValid(restaurantId, candidateSource(restaurantId, { items: built.items, extras: built.extras, structure: built.structure, key_mode: built.key_mode }), where);
+  assertCandidateValid(restaurantId, candidateSource(restaurantId, { items: built.items, extras: built.extras, structure: built.structure, key_mode: built.key_mode, frozen_keys: built.frozen_keys }), where);
 
 module.exports = { candidateSource, assertCandidateValid, buildSourceCandidate, assertBuiltValid };

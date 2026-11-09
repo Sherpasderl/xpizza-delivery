@@ -153,7 +153,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   const dishes = fd ? fd.dishes : readLiteral(src, 'MENU');
 
   const items = dishes.map((dish) => {
-    const key = pricingKeyOf(restaurantId, dish, opts.keyMode);
+    const key = fd && fd.frozen_keys && dish && dish.id != null && Object.prototype.hasOwnProperty.call(fd.frozen_keys, String(dish.id)) ? fd.frozen_keys[String(dish.id)] : pricingKeyOf(restaurantId, dish, opts.keyMode);   // S1a: a recorded rename keeps its key
     if (typeof key !== 'string' || !key) throw new Error(`bootstrap_bad_key: ${restaurantId}/${JSON.stringify(dish).slice(0, 60)}`);
     if (!Object.prototype.hasOwnProperty.call(priceTable, key)) throw new Error(`bootstrap_unpriced_item: ${restaurantId}/${key}`);
     const price = priceTable[key];                                          // menu-pricing is the AUTHORITY
@@ -305,7 +305,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   } else {
     attachRedeemFields(restaurantId, structure, items, opts.extrasTable || EXTRAS_BY_RESTAURANT[restaurantId]);
   }
-  return { items, extras, structure, ...(opts.keyMode == null ? {} : { key_mode: opts.keyMode }) };
+  return { items, extras, structure, ...(opts.keyMode == null ? {} : { key_mode: opts.keyMode }), ...(opts.frozenKeys == null ? {} : { frozen_keys: opts.frozenKeys }) };
 }
 
 // 🔴 "DESDE" IS DERIVED, EVERY TIME. The launcher keeps its own authoritative price — a bare launcher

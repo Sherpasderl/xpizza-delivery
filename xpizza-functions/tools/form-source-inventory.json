@@ -116,6 +116,8 @@
     "xpizza-functions/catalog/extras-intake.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-keys-handler.test.js",
+    "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
     "xpizza-functions/catalog/group-index.test.js",
     "xpizza-functions/catalog/group-intake.test.js",
@@ -152,6 +154,7 @@
     "xpizza-functions/catalog/renderer-contract.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
+    "xpizza-functions/catalog/text-edit-rules.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
     "xpizza-functions/checkout-guest-lib.test.js",
     "xpizza-functions/checkout-wiring.guard.test.js",
@@ -445,6 +448,8 @@
     "xpizza-functions/catalog/extras-intake.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-keys-handler.test.js",
+    "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
     "xpizza-functions/catalog/group-intake.test.js",
     "xpizza-functions/catalog/group-rules.test.js",
@@ -475,6 +480,7 @@
     "xpizza-functions/catalog/redeem-exclusion.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
+    "xpizza-functions/catalog/text-edit-rules.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
     "xpizza-functions/checkout-wiring.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -790,6 +796,8 @@
     "xpizza-functions/catalog/extras-intake.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-keys-handler.test.js",
+    "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
     "xpizza-functions/catalog/group-index.test.js",
     "xpizza-functions/catalog/group-intake.test.js",
@@ -825,6 +833,7 @@
     "xpizza-functions/catalog/renderer-contract.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
+    "xpizza-functions/catalog/text-edit-rules.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
     "xpizza-functions/checkout-guest-lib.test.js",
     "xpizza-functions/checkout-wiring.guard.test.js",
@@ -1114,6 +1123,8 @@
     "xpizza-functions/catalog/extras-intake.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-keys-handler.test.js",
+    "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
     "xpizza-functions/catalog/group-intake.test.js",
     "xpizza-functions/catalog/group-rules.test.js",
@@ -1145,6 +1156,7 @@
     "xpizza-functions/catalog/redeem-exclusion.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
+    "xpizza-functions/catalog/text-edit-rules.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
     "xpizza-functions/checkout-wiring.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
@@ -1809,6 +1821,7 @@
   "xpizza-functions/catalog/draft-assess.js",
   "xpizza-functions/catalog/edit-catalog-handler.js",
   "xpizza-functions/catalog/form-menu-source.js",
+  "xpizza-functions/catalog/frozen-keys.js",
   "xpizza-functions/catalog/generate-form-bundle.js",
   "xpizza-functions/catalog/identity-bootstrap.js",
   "xpizza-functions/catalog/identity-integrity-monitor.js",
@@ -2308,10 +2321,12 @@
   "catalog/extras-intake.js",
   "catalog/form-menu-source.js",
   "catalog/form-rebake.js",
+  "catalog/frozen-keys.js",
   "catalog/group-intake.js",
   "catalog/identity-grace.js",
   "catalog/identity-record-verifier.js",
   "catalog/identity-record.js",
+  "catalog/item-text-edit.js",
   "catalog/key-mode.js",
   "catalog/menu-gates.js",
   "catalog/menu-structure-rows.js",
@@ -2812,6 +2827,10 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/frozen-keys.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/group-intake.js": {
    "pins": [],
    "lifts": [
@@ -2833,6 +2852,10 @@
    "lifts": [
     "xpizza-functions/catalog/identity-record-guards.test.js"
    ]
+  },
+  "catalog/item-text-edit.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/key-mode.js": {
    "pins": [],

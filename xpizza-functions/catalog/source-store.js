@@ -12,7 +12,7 @@
 // to EXTRAS as well as items. x_pizza keys both by NAME; la_musa keys both by ID. The store carries
 // `key` explicitly and validates it against the display record, so the two can never drift apart.
 // ---------------------------------------------------------------------------
-const { pricingKeyOf, deriveStartingPrice } = require('./form-menu-source');
+const { pricingKeyOf, deriveStartingPrice } = require('./form-menu-source'); const FK = require('./frozen-keys');   // S1a: recorded renames keep their key
 const { assertDisplaySafe, checkValue: assertFieldSafe } = require('./display-safety');
 const { REWARD_ICONS } = require('./reward-icons');
 
@@ -204,7 +204,7 @@ const dishIdTypeFor = (rid, keyMode) => (pricingKeyOf(rid, { id: ID_S, name: NAM
 // identity → shape → values → bijection → structural coverage, so the error names the first real problem.
 function validateSource(source, rid) {
   if (!source || typeof source !== 'object') fail(`${rid} — source is not an object`);
-  if (source.restaurant_id !== rid) fail(`${rid} — restaurant_id mismatch (${String(source.restaurant_id)})`); const keyMode = source.key_mode; if (keyMode !== undefined && keyMode !== 'id' && keyMode !== 'name') fail(`${rid} — key_mode must be 'id' or 'name' (${JSON.stringify(keyMode).slice(0, 30)})`);
+  if (source.restaurant_id !== rid) fail(`${rid} — restaurant_id mismatch (${String(source.restaurant_id)})`); const keyMode = source.key_mode; if (keyMode !== undefined && keyMode !== 'id' && keyMode !== 'name') fail(`${rid} — key_mode must be 'id' or 'name' (${JSON.stringify(keyMode).slice(0, 30)})`); const fkProblem = source.frozen_keys === undefined ? null : FK.frozenKeysProblem(source.frozen_keys); if (fkProblem) fail(`${rid} — ${fkProblem}`); const frozen = FK.activeFrozenKeys(source); const itemKeys = new Set((Array.isArray(source.items) ? source.items : []).map((i) => i && i.key));
   if (!Array.isArray(source.items) || source.items.length === 0) fail(`${rid} — items must be a non-empty array`);
   if (!Array.isArray(source.extras)) fail(`${rid} — extras must be an array`);
   const st = source.structure;
@@ -255,7 +255,7 @@ function validateSource(source, rid) {
     // The key IS the pricing identity; it must agree with the display record it describes, or an edit
     // to the display name would silently reprice (x_pizza) or orphan (la_musa) the item.
     const derived = pricingKeyOf(rid, it.display, keyMode);
-    if (derived !== it.key) fail(`${rid}/${it.key} — key does not match its display record (derived ${String(derived)})`);
+    if (derived !== it.key && frozen.get(String(it.display.id)) !== it.key) fail(`${rid}/${it.key} — key does not match its display record (derived ${String(derived)})`); if (derived !== it.key && itemKeys.has(derived)) fail(`${rid}/${it.key} — renamed to ${JSON.stringify(derived)}, another product's key`);
     if (seen.has(it.key)) fail(`${rid}/${it.key} — duplicate item key`);
     seen.add(it.key);
     if (it.display.cat != null && !catIds.has(it.display.cat)) fail(`${rid}/${it.key} — references unknown category ${it.display.cat}`);
@@ -768,7 +768,7 @@ function sourceToBuildInputs(source) {
   if (Array.isArray(source.extras) && source.extras.some((e) => e.display)) {
     formData.extras_display = source.extras.map((e) => e.display).filter(Boolean);
   }
-  return { priceTable, formData, extras, ...(source.key_mode === undefined ? {} : { keyMode: source.key_mode }) };
+  const fz = source.frozen_keys === undefined ? null : FK.activeFrozenKeys(source); if (fz) formData.frozen_keys = Object.fromEntries(fz); return { priceTable, formData, extras, ...(source.key_mode === undefined ? {} : { keyMode: source.key_mode }), ...(fz ? { frozenKeys: source.frozen_keys } : {}) };
 }
 
 // Read + validate in one step. There is deliberately no "read without validating" export: every

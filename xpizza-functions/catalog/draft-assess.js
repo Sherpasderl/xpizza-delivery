@@ -9,7 +9,7 @@
 const { validateSource, rendererContract } = require('./source-store');
 const { buildSourceCandidate, assertBuiltValid } = require('./candidate-validate');
 const AP = require('./add-product');
-const { groupCapabilities } = require('./platform-groups');
+const { groupCapabilities } = require('./platform-groups'); const { textEditCapabilities } = require('./item-text-edit');   // S1a: judged by the switch a save is judged by
 const { extrasCapabilities } = require('./platform-extras');   // 1D add-product B: the SAME authoring switch a save is judged by
 
 // activeRes: { built: {items, structure}, extraRecords } (readActiveBuilt's shape)
@@ -36,7 +36,7 @@ function assessDraft(rid, source, activeRes) {
       // 1D add-product B (PB-3): judged by the switch the save was judged by — without it a SAVED, unpublished group read as
       // choices_not_supported_yet once authoring is on, and the reloaded editor offered "Volver al menú publicado" instead
       authoring: groupCapabilities().authoring,
-      extrasAuthoring: extrasCapabilities().authoring,   // per-product extras (the narrow deny_extras / extras_policy exception)
+      extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled,   // per-product extras (the narrow deny_extras / extras_policy exception)
     });
     // PLAN-public-menu-display T1 (portal r1 #3) — what the saved draft has PENDING against the published menu, from the SAME
     // comparison a save and a publish are judged by: the section names that differ (paired by index — compareToActive has

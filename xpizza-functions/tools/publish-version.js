@@ -84,7 +84,7 @@ function buildPublishCandidate(rid, baseline, { source_sha = 'unknown' } = {}) {
     // The draft expectation is the revision the candidate was BUILT FROM. Present by KEY, so
     // "no draft" and "a draft I did not look at" can never be the same statement.
     expected.draftRevision = revision === undefined ? null : revision;
-    return { input: { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha, ...(built.key_mode == null ? {} : { key_mode: built.key_mode }) }, expected };
+    return { input: { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha, ...(built.key_mode == null ? {} : { key_mode: built.key_mode }), ...(built.frozen_keys == null ? {} : { frozen_keys: built.frozen_keys }) }, expected };
   }
   const built = buildCatalogV2(rid);   // schema-v2 items + EXTRAS display records + structure
   return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, extraRecords: built.extras, source_sha, key_mode: require('../menu-pricing').defaultKeyMode(rid) }, expected };   // S0: the code path IS the seed — the same default mode
