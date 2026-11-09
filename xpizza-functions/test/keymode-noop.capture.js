@@ -89,7 +89,9 @@ function carts(rid) {
   const m = MENU[rid]; const out = [];
   const p = orderableDish(m); const plain = createCart(m); plain.inc(p.key); out.push(['plain', plain]);
   const d = configurable(m);
-  if (d) { const [e1, e2] = m.extrasFor(d.key); const t = createCart(m); t.add(d.key, [e1.key], 2); t.add(d.key, [e1.key, e2.key], 1); out.push(['extras', t]); }
+  // ONE extra per line: the serializer orders a line's extras by key, and the keys are identity ids minted at random per publish, so a
+  // multi-extra line's text (and the payment fingerprint over it) would differ between two publishes of the same menu — not a no-op signal
+  if (d) { const [e1, e2] = m.extrasFor(d.key); const t = createCart(m); t.add(d.key, [e1.key], 2); t.add(d.key, [e2.key], 1); out.push(['extras', t]); }
   const g = Object.values(m.groups)[0];
   if (g) { const c = createCart(m); c.add(g.choices[0], [], 1); c.add(g.choices[1], [], 2); out.push(['launcher choices', c]); }
   return out;
