@@ -735,7 +735,10 @@
     let payStream = null, payTickT = null;
     const payEp = () => { const e = runtime.sdkPay && runtime.sdkPay.endpoints; return e && typeof e.getPayAdjust === 'string' && typeof e.respondPayAdjust === 'string' ? e : null; };
     const payOn = () => !!(CappPayAdjust && payEp());
-    const payFetchFn = () => (typeof o.payFetch === 'function' ? o.payFetch : win && typeof win.fetch === 'function' ? (u, i) => win.fetch(u, i) : null);
+    // getPayAdjust / respondPayAdjust are platform functions ⇒ the forms' canonical wrapper (pselfupdate-wrapper-lint): the page loads
+    // sherpa-client.js first, so the fallback arm is dead
+    function sherpaFetch(u, o){ var S = win && win.SherpaClient; return (S && typeof S.fetch === 'function') ? S.fetch(u, o) : fetch(u, o); }
+    const payFetchFn = () => (typeof o.payFetch === 'function' ? o.payFetch : win && ((win.SherpaClient && typeof win.SherpaClient.fetch === 'function') || typeof win.fetch === 'function') ? sherpaFetch : null);
     const mono = () => { try { const pf = win && win.performance; return pf && typeof pf.now === 'function' ? pf.now() : Number(nowMs()); } catch (_) { return Number(nowMs()); } };
     const payOf = (od) => { if (!od.payAdj) od.payAdj = { view: null, help: false, dismissed: {}, anchor: null, busy: false, seen: null, getting: false }; return od.payAdj; };
     // the anchor belongs to ONE adjustment (Codex r1 #2): another adjustment's — say an expired one's — never counts

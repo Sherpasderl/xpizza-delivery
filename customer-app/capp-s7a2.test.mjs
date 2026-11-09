@@ -4226,12 +4226,27 @@ test('S2 shell · dark: runtime.sdkPay absent ⇒ no projection stream, no notic
 
 const ACTIVE_REC = (TOKEN, placedAt) => JSON.stringify({ v: 1, exp: placedAt + 24 * 3600e3, order: { rid: 'x_pizza', order_id: 'XP-9', token: TOKEN, mode: 'delivery', status: 'new', owner: 'u:u_ana', placedAt, storeName: 'X. Pizza', branch: '', storeAddr: '',
   lines: [{ n: 1, name: 'Carnivora', extras: '', total: 340, dish_id: null }], fee: 45, tip: 20, total: 405, pay: 'online', addr: 'Col. Trejo', details: '', notes: '', whenText: 'Lo antes posible', phoneText: '', display_number: null, windowText: null, driver: null, stacked: false, doneAt: null, offerDone: true } });
-function payMember({ reply, rt = {} }) {
-  const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', srv = payServer(reply), fb = fakeFirebase({ persisted: 'u_ana' });
+// wrapper: no injected payFetch — the production path, the page's SherpaClient present before mount (sherpa-client.js loads first)
+function payMember({ reply, rt = {}, wrapper = false }) {
+  const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', srv = payServer(reply), fb = fakeFirebase({ persisted: 'u_ana' }), via = [];
   const storage = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF), 'capp:active_order': ACTIVE_REC(TOKEN, T0) });
-  const S = routeShell('/r/x_pizza/pago', { auth: 'unresolved', storage, runtime: { ...PAY_RT(SU_RUNTIME), ...rt }, readPublic: async () => ({ ok: false }), mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch, EventSource: ES, payFetch: srv.fetch } });
-  return { S, srv, made, TOKEN };
+  const preMount = wrapper ? (w) => { w.SherpaClient = { fetch: (u, i) => { via.push(String(u)); return srv.fetch(u, i); } }; } : null;
+  const S = routeShell('/r/x_pizza/pago', { auth: 'unresolved', storage, preMount, runtime: { ...PAY_RT(SU_RUNTIME), ...rt }, readPublic: async () => ({ ok: false }), mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch, EventSource: ES, ...(wrapper ? {} : { payFetch: srv.fetch }) } });
+  return { S, srv, made, TOKEN, via };
 }
+
+test('S2 shell · member, the production path (no injected payFetch): getPayAdjust and respondPayAdjust go through SherpaClient.fetch (pselfupdate-wrapper-lint)', async () => {
+  const exp = T0 + 10 * 60e3;
+  const { S, srv, made, TOKEN, via } = payMember({ wrapper: true, reply: (e) => e.method === 'GET' ? { view: payInc(2, 'pending'), server_now: exp - 120000 } : { outcome: 'action_required', view: payInc(3, 'action_required'), server_now: exp - 100000 } });
+  try {
+    await until(() => S.ui.state.member && made.some((e) => e.url.includes('/order_pay_view/'))); await flush();
+    made.find((e) => e.url === `https://rtdb.test/order_pay_view/${TOKEN}.json`).emit('put', '/', payInc(2, 'pending'));
+    await until(() => srv.log.length >= 1); await flush();
+    assert.deepEqual(via, ['/x/ga?order_id=XP-9'], `🔴 S2-shell-wrap: getPayAdjust through SherpaClient.fetch (${JSON.stringify(via)})`);
+    S.click('#layer [data-act="adj-accept"]'); await until(() => srv.log.length >= 2); await flush();
+    assert.deepEqual(via, ['/x/ga?order_id=XP-9', '/x/ra'], '🔴 S2-shell-wrap: respondPayAdjust through SherpaClient.fetch');
+  } finally { S.w.close(); }
+});
 
 test('S2 shell · member: C anchors its countdown on the GET\'s server_now (Bearer); «Aceptar» POSTs {order_id, adjustment_id, accept} ⇒ the reply\'s view (E with the well); the stream\'s accepted ⇒ D', async () => {
   const exp = T0 + 10 * 60e3;
