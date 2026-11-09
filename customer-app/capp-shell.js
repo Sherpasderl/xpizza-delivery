@@ -52,6 +52,9 @@
       // entry's, P1) the picker computes from. FLIP PRECONDITIONS (advisor 2026-10-27): signup LIVE (G6) + PIN owner records
       // (platform_config/delivery_pin.generate === true); the «revisando» / tracker transitions need the (d) owner lookup
       ...(rt.schedulingLive === true ? { schedulingLive: true, schedule: d.schedule && typeof d.schedule === 'object' ? d.schedule : null } : {}),
+      // S2-checkout (advisor Q7): the in-app card checkout — the INSTALLED app only, under runtime.sdkPay; its endpoints join the
+      // transport's (one config). The website keeps the hosted page
+      ...(rt.native === true && rt.sdkPay && rt.sdkPay.endpoints && typeof rt.sdkPay.endpoints === 'object' ? { sdkCheckout: true, endpoints: { ...rt.endpoints, ...rt.sdkPay.endpoints } } : {}),
     };
   }
 

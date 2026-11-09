@@ -4434,3 +4434,17 @@ test('harness · REAL frames (advisor 11-08): with jsdom\'s own timer-driven req
     assert.ok(S.ui.store(), '🔴 HARNESS-real: the store opened under real frame timing');
   } finally { S.w.close(); }
 });
+
+test('S2-checkout 8 (v7): an order placed with the in-app card shows its card in «Pago y entrega» — «Pago · Visa ···· 4242», the Total, «Se cobra al recibir tu pedido.» — before any adjustment projection exists', async () => {
+  const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', fb = fakeFirebase({ persisted: 'u_ana' });
+  const rec = JSON.parse(ACTIVE_REC(TOKEN, T0)); rec.order.sdkCard = { brand: 'visa', last4: '4242' };
+  const storage = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF), 'capp:active_order': JSON.stringify(rec) });
+  const S = routeShell('/r/x_pizza/pago', { auth: 'unresolved', storage, runtime: PAY_RT(SU_RUNTIME), readPublic: async () => ({ ok: false }), mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch, EventSource: ES, payFetch: payServer(() => null).fetch } });
+  try {
+    await until(() => S.ui.state.member && made.some((e) => e.url.includes('/order_pay_view/'))); await flush();
+    const rows = S.qa('.receipt2 .rrow').map((r) => txt(r));
+    assert.ok(rows.includes('Pago Visa ···· 4242') && rows.includes('Total L 405'), `🔴 SDK8: the card + Total rows (${rows.join(' | ')})`);
+    assert.equal(txt(S.q('.receipt2 .payline .mute')), 'Se cobra al recibir tu pedido.', '🔴 SDK8: the charge line');
+    assert.ok(!rows.some((r) => /Pagado en línea|Confirmado/.test(r)), '🔴 SDK8: never «Pagado en línea / Confirmado» for a held card');
+  } finally { S.w.close(); }
+});

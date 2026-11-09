@@ -41,13 +41,23 @@
   const brandTile = (b) => (Object.prototype.hasOwnProperty.call(TILE, b) ? TILE[b] : IC.card);
   const btn = (cls, act, label, disabled) => `<button class="${cls}" data-act="${act}"${disabled ? ' disabled' : ''}>${esc(label)}</button>`;
 
-  // 1 — method: { kind: 'card', brand, label } | { kind: 'cash' } | null (no usable method: 6 / 7's well stands in)
-  function payBarHtml({ method, total_cents, cta }) {
+  // 1 (+ 6 / 7) — method: { kind: 'card', brand, label, sub?, dim? } | { kind: 'cash' } | null; gate: frame 6 / 7's well (gateHtml),
+  // between the row and the primary — no charge line under a well; cta: { label, enabled, act? = 'place', id? } (the host's hooks)
+  function payBarHtml({ method, total_cents, cta, gate }) {
     const c = cta || { label: '', enabled: false };
+    const sub = method && typeof method.sub === 'string' && method.sub ? `<span>${esc(method.sub)}</span>` : '';
     const row = !method ? '' : method.kind === 'cash'
       ? `<div class="urows"><button class="urow payrow" aria-label="Cambiar forma de pago" data-act="paysheet">${IC.cash}<span class="t"><b>Efectivo al entregar</b></span>${IC.chev}</button></div>`
-      : `<div class="urows"><button class="urow payrow" aria-label="Cambiar forma de pago" data-act="paysheet">${brandTile(method.brand)}<span class="t"><b>${esc(method.label)}</b></span>${IC.chev}</button></div><p class="payline"><span>Total ${moneyC(total_cents)} · Se cobra al recibir tu pedido.</span><button class="lnk" data-act="adj-more">Más información</button></p>`;
-    return `<div class="paybar pay">${row}<button class="primary" data-act="place"${c.enabled ? '' : ' disabled'}>${esc(c.label)}</button></div>`;
+      : `<div class="urows"><button class="urow payrow${method.dim ? ' dim' : ''}" aria-label="Cambiar forma de pago" data-act="paysheet">${brandTile(method.brand)}<span class="t"><b>${esc(method.label)}</b>${sub}</span>${IC.chev}</button></div>`;
+    const line = method && method.kind !== 'cash' && !gate ? `<p class="payline"><span>Total ${moneyC(total_cents)} · Se cobra al recibir tu pedido.</span><button class="lnk" data-act="adj-more">Más información</button></p>` : '';
+    const id = typeof c.id === 'string' && c.id ? ` id="${esc(c.id)}"` : '';
+    return `<div class="paybar pay">${row}${line}${gate || ''}<button class="primary"${id} data-act="${esc(c.act || 'place')}"${c.enabled ? '' : ' disabled'}>${esc(c.label)}</button></div>`;
+  }
+
+  // the row + the charge line alone — the tip step's footer, where «Hacer pedido» lives for a delivery (advisor ruling 3: one component)
+  function payRowHtml(method, total_cents) {
+    const h = payBarHtml({ method, total_cents, cta: { label: '', enabled: false } });
+    return h.slice('<div class="paybar pay">'.length, h.lastIndexOf('<button class="primary"'));
   }
 
   // 2 — cards: CappPayCard.cardsVm; selected: { kind: 'card', card_id } | { kind: 'cash' } | null; cash: members where allowed
@@ -119,5 +129,5 @@
     return '<div class="gate" role="status"><b>El pago con tarjeta no está disponible ahora</b><span class="note">Podés pagar en efectivo al recibir tu pedido. Todo lo demás sigue igual.</span><div class="row2"><button class="btn2 dark" data-act="decl-cash">Pagar en efectivo</button></div></div>';
   }
 
-  return { payBarHtml, chooserHtml, formHtml, procHtml, declineHtml, gateHtml, brandTile };
+  return { payBarHtml, payRowHtml, chooserHtml, formHtml, procHtml, declineHtml, gateHtml, brandTile };
 });

@@ -284,6 +284,17 @@ test('S7a-1 config split: configFor maps the public entry + runtime (mapsKey) + 
   assert.equal(SH.configFor({}, rt), null);
 });
 
+test('S2-checkout: configFor turns the SDK checkout on ONLY for the installed app with runtime.sdkPay — its endpoints merged into the transport\'s; the web never', () => {
+  const entry = { restaurant_id: 'rid_a', name: 'Uno', hub_lat: 15.5, hub_lng: -88, schedule: null };
+  const SDK_EP = { getPayAdjust: 'https://fn.test/getPayAdjust', placeSdkOrder: 'https://fn.test/placeSdkOrder', listCards: 'https://fn.test/listCards' };
+  const nat = SH.configFor(entry, { endpoints: E, native: true, sdkPay: { endpoints: SDK_EP } });
+  assert.equal(nat.sdkCheckout, true, '🔴 SDKCFG: the installed app with sdkPay');
+  assert.deepEqual(nat.endpoints, { ...E, ...SDK_EP }, '🔴 SDKCFG: the transport carries both sets of endpoints');
+  const web = SH.configFor(entry, { endpoints: E, sdkPay: { endpoints: SDK_EP } });
+  assert.deepEqual(['sdkCheckout' in web, web.endpoints], [false, E], '🔴 SDKCFG: the website keeps the hosted page (advisor Q7)');
+  assert.equal('sdkCheckout' in SH.configFor(entry, { endpoints: E, native: true }), false, 'no sdkPay ⇒ dark');
+});
+
 test('S7a-1 return ownership: EXACT records only — one ⇒ owner; zero / several ⇒ null (neutral); a stash whose rid binding mismatches is ignored', () => {
   const st = memStorage();
   const ka = SH.keysFor('rid_a'), kb = SH.keysFor('rid_b');
@@ -352,7 +363,7 @@ test('Codex r3 #5: an UNREADABLE placement record is UNKNOWN in the lock and fre
   assert.equal(N.api.readPlace(), null, 'readPlace (S2) still reads a failure as absence');
 });
 
-// «Volver a pedir» advisor ruling 2026-11-02: placement is the BASE, byte for byte (no cart lock). This cell PROVES it on behaviour: the
+// «Volver a pedir» advisor ruling 2026-11-02: placement is the BASE (no cart lock). This cell PROVES it on behaviour: the
 // base capp-api.js (blob 543d9d71~1, before any «Volver a pedir» change) is compiled here and both modules run the same scenarios on a
 // TRACED storage — every read / write / remove, every request body, every outcome identical
 async function baseApiModule() {
@@ -364,7 +375,10 @@ async function baseApiModule() {
 test('placement = the BASE module (543d9d71~1): identical storage traces, request bodies and outcomes — success, failure + retry, refusal, overlap, expiry, an in-memory ABA, cash and card', async () => {
   const B = await baseApiModule();
   const { readFileSync } = await import('node:fs');
-  assert.equal(readFileSync(new URL('./capp-api.js', import.meta.url), 'utf8'), B.src, '🔴 VP-base: capp-api.js IS the base blob, byte for byte');
+  // S2-checkout (advisor design A, 11-08) changed capp-api.js ON PURPOSE (placeSdk inside the placement machinery; the hosted gate and
+  // the first-dispatch freeze factored into shared helpers): the byte-for-byte pin is retired, and THIS behavioural proof is the guard —
+  // every legacy placement below still leaves the base's exact storage trace, request bodies and outcomes
+  assert.notEqual(readFileSync(new URL('./capp-api.js', import.meta.url), 'utf8'), B.src, 'premise: the module differs from the base (S2-checkout)');
   const OK_CARD = { status: 200, json: { ok: true, order_id: 'X', checkout_url: 'https://pay.test/c', poll_token: 'pt' } };
   const run = async (Mod, scenario) => {
     const trace = [], st = memStorage(), clock = { t: T0 }; let rng = 0;

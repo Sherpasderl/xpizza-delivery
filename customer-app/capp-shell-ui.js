@@ -806,7 +806,15 @@
       const p = od && od.payAdj; if (!payOn() || !p || !p.view) return null;
       return CappPayAdjust.frameOf(p.view, od.status, { help: p.help, dismissed: p.dismissed, left: payLeft(p), readOnly: !S.member });
     }
-    function payPieces(od) { const fr = payFrame(od); return fr ? { notice: CappPayAdjust.noticeHtml(od.payAdj.view, fr), rows: CappPayAdjust.payHtml(od.payAdj.view), statusSub: fr.statusSub } : null; }
+    // S2-checkout 8 (v7): an order placed with the in-app card shows ITS card before any projection exists — the same rows, from the card
+    // the placement returned (display only: brand + last4) and the total as sent; the projection, once streamed, takes over
+    const sdkCardOk = (c) => !!c && ['visa', 'mastercard', 'amex', 'other'].includes(c.brand) && typeof c.last4 === 'string' && /^\d{4}$/.test(c.last4);
+    function payPieces(od) {
+      const fr = payFrame(od);
+      if (fr) return { notice: CappPayAdjust.noticeHtml(od.payAdj.view, fr), rows: CappPayAdjust.payHtml(od.payAdj.view), statusSub: fr.statusSub };
+      if (!CappPayAdjust || !runtime.sdkPay || !sdkCardOk(od.sdkCard) || !Number.isFinite(od.total)) return null;
+      return { notice: '', rows: CappPayAdjust.payHtml({ v: 1, seq: 0, total_cents: Math.round(od.total * 100), revision: 0, card: { brand: od.sdkCard.brand, last4: od.sdkCard.last4 }, consent: null, notice: null }), statusSub: null };
+    }
     function paySheetHtml() {
       const od = S.order, fr = od ? payFrame(od) : null; if (!fr || !fr.sheet) return '';
       const h = CappPayAdjust.sheetHtml(od.payAdj.view, fr, { left: payLeft(od.payAdj) }, od.storeName);
@@ -924,6 +932,7 @@
       S.order = { ...d.order, rid, order_id: d.order_id || null, token: typeof d.tracking_token === 'string' ? d.tracking_token : null, status: 'new',
         storeName: e.name || '', branch: e.branch || '', storeAddr: e.pickup_addr || '', display_number: null,
         grant: d.signup_grant && typeof d.signup_grant.token === 'string' ? { token: d.signup_grant.token, expires_at: d.signup_grant.expires_at } : null, offerDone: false,
+        sdkCard: sdkCardOk(d.card) ? { brand: d.card.brand, last4: d.card.last4 } : null,   // S2-checkout 8: the placed card (display only)
         placedAt: Number(nowMs()), windowText: null, driver: null, stacked: false, doneAt: null, owner: ownerNow() || 'guest' };
       windowOrder(S.order); streamOrder(S.order); streamPay(S.order); saveActive();
       const ON = OrderNumberMod(), base = typeof runtime.rtdbBase === 'string' ? runtime.rtdbBase : null;

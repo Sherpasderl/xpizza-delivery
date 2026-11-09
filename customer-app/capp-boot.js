@@ -118,5 +118,5 @@
     });
   }
 
-  return { boot, runtimeFor, storeFor, ORDER_ENDPOINTS, MODES };
+  return { boot, runtimeFor, storeFor, ORDER_ENDPOINTS, SDK_ENDPOINTS, MODES };
 });

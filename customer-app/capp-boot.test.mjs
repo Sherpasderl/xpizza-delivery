@@ -21,9 +21,13 @@ const res = (status, body, etag) => ({ status, headers: { get: (h) => (h === 'ET
 // a fake CappShellUI that captures the mount options (the unit cells); the integration cell mounts the REAL one
 const capture = () => { const c = {}; return { c, CappShellUI: { mount: (doc, opts) => { c.doc = doc; c.opts = opts; return { fake: true }; } } }; };
 
-test('N2: the order endpoint list is EXACTLY capp-api.js\'s (one source)', () => {
+test('N2: the order endpoint list is EXACTLY capp-api.js\'s (one source) — the always-on list, plus the S2-checkout ones behind sdkPay', () => {
   const used = [...new Set([...readFileSync(join(HERE, 'capp-api.js'), 'utf8').matchAll(/\bE\.([a-zA-Z]+)/g)].map((m) => m[1]))].sort();
-  assert.deepEqual([...Boot.ORDER_ENDPOINTS].sort(), used, '🔴 the boot builds a different endpoint set than capp-api calls');
+  const sdk = new Set(Boot.SDK_ENDPOINTS || []);
+  assert.deepEqual([...Boot.ORDER_ENDPOINTS].sort(), used.filter((n) => !sdk.has(n)), '🔴 the boot builds a different endpoint set than capp-api calls');
+  const unbuilt = used.filter((n) => sdk.has(n) === false && !Boot.ORDER_ENDPOINTS.includes(n));
+  assert.deepEqual(unbuilt, [], '🔴 every endpoint capp-api calls is built by the boot (always-on, or behind sdkPay)');
+  assert.ok(used.some((n) => sdk.has(n)), 'premise: capp-api calls the S2-checkout endpoints');
 });
 
 test('N2: the runtime from the REAL manifest block — every endpoint on the ONE functions host; the keys passed through; every flag DARK when absent', () => {

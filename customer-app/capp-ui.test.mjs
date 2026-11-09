@@ -445,7 +445,9 @@ test('r2 #5: the Tab trap counts only VISIBLE controls — a hidden «+» is nev
 // ══ S2b — the checkout UI over the REAL capp-checkout + capp-api against a SCRIPTED server (capp-api.test.mjs's server() pattern) ══
 const CK = require('./capp-checkout.js');
 const CA = require('./capp-api.js');
-const EP = { quoteOrder: 'https://fn.test/quoteOrder', createOrder: 'https://fn.test/createOrder', chargeOnlineOrder: 'https://fn.test/chargeOnlineOrder', paymentStatus: 'https://fn.test/paymentStatus' };
+const EP = { quoteOrder: 'https://fn.test/quoteOrder', createOrder: 'https://fn.test/createOrder', chargeOnlineOrder: 'https://fn.test/chargeOnlineOrder', paymentStatus: 'https://fn.test/paymentStatus',
+  // S2-checkout (inert unless config.sdkCheckout)
+  placeSdkOrder: 'https://fn.test/placeSdkOrder', placeSdkStatus: 'https://fn.test/placeSdkStatus', cancelSdkPending: 'https://fn.test/cancelSdkPending', listCards: 'https://fn.test/listCards', sdkPayStatus: 'https://fn.test/sdkPayStatus' };
 const memStore = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), _m: m }; };
 const FEE = 4500;
 // the quote answers from the body actually sent: food = Σ line subtotals; net deliberately ≠ food + fee + tip (+ 7 cents) so a
@@ -482,7 +484,7 @@ const GEO_OK = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, lon
 const GEO_NO = { getCurrentPosition: (_ok, no) => no({ code: 1 }) };
 let RB = 0;
 const INTAKE = 'k_intake_test';   // a test value; production's is deploy-time config, never committed
-function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza', pre, realSheet = false, mountOpts = {} } = {}) {
+function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza', pre, realSheet = false, mountOpts = {}, rng = null } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(HERE, 'index.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const w = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true }).window;
@@ -494,7 +496,7 @@ function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search 
     config: { ...CONFIG[rid], restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: EP, branch: 'Centro', intakeKey: INTAKE, ...config },
     CappCheckout: CK, CappApi: CA, member, geolocation: geo, navigate: (u) => nav.push(u), search, timers,
     priceSheet: realSheet ? undefined : priceSheet || ((o) => { sheets.push(o); return Promise.resolve(false); }),   // realSheet: the ported confirmPriceSheet
-    apiOpts: { fetch: srv.fetch, storage, now: () => NOON().getTime(), sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RB++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} }, ...mountOpts });
+    apiOpts: { fetch: srv.fetch, storage, now: () => NOON().getTime(), sleep: async () => {}, randomBytes: rng || ((k) => Uint8Array.from({ length: k }, () => (RB++ * 7) % 256)), setInterval: () => 0, clearInterval: () => {} }, ...mountOpts });
   const q = (sel) => w.document.querySelector(sel); const qa = (sel) => [...w.document.querySelectorAll(sel)];
   const click = async (sel) => { const el = typeof sel === 'string' ? q(sel) : sel; assert.ok(el, `premise: ${sel} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await settle(); };
   const type = async (sel, v) => { const el = q(sel); assert.ok(el, `premise: ${sel}`); el.value = v; el.dispatchEvent(new w.Event('input', { bubbles: true })); await settle(); };
@@ -3020,4 +3022,140 @@ test('cart core (advisor 11-02): the store\'s INJECTED deps reach its cart path 
   assert.equal(core.mutate((c) => c.inc(d.key), true).ok, true, '🔴 VP-deps: the core works under CommonJS (no CappCart global)');
   const rej = CJS.createCartCore({ menu, cfg: {}, api: () => null, mods: () => false, CappSerialize: tooLongSer });
   assert.deepEqual([rej.mutate((c) => c.inc(d.key), true), rej.cart.count()], [{ ok: false, tooLong: true }, 0], '🔴 VP-deps: an injected serializer is the one used');
+});
+
+
+// ── S2-checkout — the capp-ui wiring (MOCKUP-capp-S2-sdk-checkout v7, owner 11-08; advisor design A–D + rulings 1–5, 11-08). Dark unless
+// config.sdkCheckout (the shell sets it only for the INSTALLED app with runtime.sdkPay). Bodies from the strict fake.
+const SDKF = await import('./test/fake-sdk-checkout.mjs');
+const SDK_JWT = `${Buffer.from('{"alg":"RS256"}').toString('base64url')}.${Buffer.from(JSON.stringify({ sub: 'u1', exp: Math.floor((NOON().getTime() + 3600e3) / 1000) })).toString('base64url')}.sig`;
+const SDK_MEMBER = () => ({ uid: 'u1', name: 'Ana Pérez', phone: '96123344', email: 'ana@x.com', idToken: SDK_JWT, lastPay: 'online' });
+const SDK_CARDS = (cards) => ({ status: 200, json: SDKF.listCards(cards || [{ card_id: 'c_v', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false }]) });
+const SDK_AVAIL = (a = true) => ({ status: 200, json: SDKF.sdkPayStatus(a, a ? 0 : 120) });
+const SDK_R = (outcome, f) => ({ status: 200, json: SDKF.placeResp(outcome, f) });
+const loadSdkMods = (w) => { for (const f of ['capp-pay-card.js', 'capp-pay-checkout.js']) w.eval(readFileSync(join(HERE, f), 'utf8')); };
+function bootSdk({ script = {}, member = SDK_MEMBER(), config = {}, mountOpts = {}, storage } = {}) {
+  // an LCG: the default test bytes repeat every 32 — an 8-byte order id + a 24-byte attempt id would mint the same id again
+  let x = 7; const rng = (k) => Uint8Array.from({ length: k }, () => { x = (x * 1103515245 + 12345) >>> 0; return (x >>> 16) & 255; });
+  return bootCo({ rng, member, storage, config: { sdkCheckout: true, ...config }, pre: loadSdkMods, mountOpts, script: { listCards: [SDK_CARDS()], sdkPayStatus: [SDK_AVAIL()], ...script } });
+}
+// a member's delivery checkout, filled, on «Entrega & Pago» with the card list read
+async function sdkCheckout(b) { await toCheckout(b); await settle(); await b.type('#f-details', 'Portón negro'); await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]'); await settle(); }
+async function sdkPlace(b) { await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]'); await settle(); }
+
+test('S2-checkout dark: without config.sdkCheckout the checkout is today\'s — the «Pago» section, no pay-bar row, no SDK call', async () => {
+  const b = bootCo({ member: SDK_MEMBER(), pre: loadSdkMods, script: { listCards: [SDK_CARDS()], sdkPayStatus: [SDK_AVAIL()] } });
+  await sdkCheckout(b);
+  assert.ok(b.q('section[aria-label="Pago"]'), 'premise: today\'s «Pago» section');
+  assert.equal(b.q('.paybar.pay'), null, '🔴 SDKUI-dark: no v7 pay bar');
+  assert.equal(b.srv.of('listCards').length + b.srv.of('sdkPayStatus').length, 0, '🔴 SDKUI-dark: no SDK read');
+});
+
+test('S2-checkout 1: the member\'s saved card preselected — the v7 payment row above the primary, the charge line; no «Pago» section; the TIP footer carries the same row (advisor ruling 3)', async () => {
+  const b = bootSdk(); await sdkCheckout(b);
+  assert.equal(b.q('section[aria-label="Pago"]'), null, '🔴 SDKUI-1: the «Pago» section is gone (v7)');
+  assert.equal(b.text('.paybar.pay .urow.payrow .t b'), 'Visa ···· 4242', '🔴 SDKUI-1: the saved card preselected (the first non-expired)');
+  assert.match(b.text('.paybar.pay .payline span') || '', /^Total L [\d,]+ · Se cobra al recibir tu pedido\.$/, '🔴 SDKUI-1: the charge line');
+  assert.ok(b.q('.paybar.pay #cta'), 'the primary in the same bar');
+  await b.click('#cta');
+  assert.ok(b.q('.tipfoot .urow.payrow') && b.text('.tipfoot .urow.payrow .t b') === 'Visa ···· 4242', '🔴 SDKUI-1: the tip step\'s footer carries the payment row');
+});
+
+test('S2-checkout 2: the row opens «Elegí cómo pagar»; picking «Efectivo al entregar» makes the order cash (the row says so)', async () => {
+  const b = bootSdk(); await sdkCheckout(b);
+  await b.click('.paybar.pay [data-act="paysheet"]');
+  assert.equal(b.text('#layer .sheet .topbar h2'), 'Elegí cómo pagar', '🔴 SDKUI-2: the chooser');
+  assert.ok(b.q('#layer [data-act="paypick"][data-card="c_v"][aria-pressed="true"]'), 'the selected card checked');
+  await b.click('#layer [data-act="paypick"][data-card="cash"]');
+  assert.equal(b.q('#layer .sheet'), null, 'the sheet closes');
+  assert.deepEqual([b.ui.state.flow.pay, b.text('.paybar.pay .urow.payrow .t b')], ['cash', 'Efectivo al entregar'], '🔴 SDKUI-2: cash chosen');
+});
+
+test('S2-checkout 3 (advisor ruling 5): «Agregar tarjeta» without the native field host draws NO card inputs in the webview', async () => {
+  const b = bootSdk(); await sdkCheckout(b);
+  await b.click('.paybar.pay [data-act="paysheet"]'); await b.click('#layer [data-act="addcard"]');
+  assert.equal(b.text('.flow.px .flowtitle'), 'Agregar tarjeta', 'premise: the form');
+  assert.equal(b.qa('input[autocomplete^="cc-"], #c-num, #c-cvv').length, 0, '🔴 SDKUI-3: no raw DOM card input without the host');
+  assert.ok(b.q('[data-act="addcard-save"][disabled]'), '«Guardar tarjeta» stays disabled');
+});
+
+test('S2-checkout 4 → 8: «Hacer pedido» keeps the 2-s window, then the processing sheet over the checkout; placeSdkOrder with the saved card; placed ⇒ the order, with its card', async () => {
+  const b = bootSdk({ script: { placeSdkOrder: [(body) => SDK_R('placed', { order_id: body.order_id, tracking_token: 'tok_abcdefgh12', card: { brand: 'visa', last4: '4242' } })] } });
+  await sdkCheckout(b);
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]');
+  assert.ok(b.q('#layer [data-act="placing-go"]'), '🔴 SDKUI-4: the 2-s «Realizando pedido…» window first (advisor ruling 2)');
+  assert.equal(b.srv.of('placeSdkOrder').length, 0, 'nothing sent during the window');
+  await b.click('#layer [data-act="placing-go"]'); await settle();
+  const c = b.srv.of('placeSdkOrder')[0];
+  assert.deepEqual(c && c.body.card, { kind: 'saved', card_id: 'c_v' }, '🔴 SDKUI-4: the saved card by id');
+  assert.equal(b.srv.of('chargeOnlineOrder').length, 0, '🔴 SDKUI-4: never the hosted charge');
+  b.timers.flush(); await settle();
+  const placed = b.events.find(([n]) => n === 'placed');
+  assert.ok(placed && placed[1].card && placed[1].card.last4 === '4242', '🔴 SDKUI-8: the placed event carries the card (frame 8)');
+});
+
+test('S2-checkout 4: while the bank answers (bank_pending) the processing sheet stays and the STATUS is polled; placed ⇒ the order', async () => {
+  const b = bootSdk({ script: { placeSdkOrder: [(body) => SDK_R('bank_pending', { order_id: body.order_id, attempt_id: 'x'.repeat(16) })], placeSdkStatus: [(_, url) => SDK_R('placed', { order_id: new URL(url).searchParams.get('order_id'), tracking_token: 'tok_abcdefgh12', card: { brand: 'visa', last4: '4242' } })] } });
+  await sdkCheckout(b); await sdkPlace(b);
+  assert.equal(b.text('#layer .sheet.proc h2'), 'Procesando tu pago…', '🔴 SDKUI-4: the processing sheet');
+  assert.equal(b.srv.of('placeSdkStatus').length, 0, 'premise: not yet polled');
+  b.timers.flush(); await settle(); b.timers.flush(); await settle();
+  assert.equal(b.srv.of('placeSdkStatus').length >= 1, true, '🔴 SDKUI-4: the status is polled');
+  assert.equal(b.srv.of('placeSdkOrder').length, 1, '🔴 SDKUI-4: never a second placement');
+  assert.ok(b.events.some(([n]) => n === 'placed'), 'placed');
+});
+
+test('S2-checkout 4b: under_review ⇒ the processing sheet with the owner\'s line', async () => {
+  const b = bootSdk({ script: { placeSdkOrder: [(body) => SDK_R('under_review', { order_id: body.order_id })] } });
+  await sdkCheckout(b); await sdkPlace(b);
+  assert.equal(b.text('#layer .sheet.proc .note.review'), 'Estamos confirmando tu pago con el banco. Te avisamos en cuanto esté listo.', '🔴 SDKUI-4b');
+});
+
+const sdkDeclined = (more = {}) => bootSdk({ script: { placeSdkOrder: [(body) => SDK_R('declined', { order_id: body.order_id, attempt_id: 'x'.repeat(16), decline: 'retryable', pay_deadline_at: NOON().getTime() + 600e3 })], ...more } });
+test('S2-checkout 5: a decline ⇒ the bucket\'s sheet with its two actions; «Probar otra tarjeta» opens the chooser', async () => {
+  const b = sdkDeclined(); await sdkCheckout(b); await sdkPlace(b);
+  assert.equal(b.text('#layer .errsheet h2'), 'Tu banco no autorizó el pago', '🔴 SDKUI-5: the decline sheet');
+  assert.deepEqual(b.qa('#layer .errsheet button').map((x) => x.dataset.act), ['decl-other_card', 'decl-cash'], '🔴 SDKUI-5: its two actions (a member, cash allowed)');
+  await b.click('#layer [data-act="decl-other_card"]');
+  assert.equal(b.text('#layer .sheet .topbar h2'), 'Elegí cómo pagar', '🔴 SDKUI-5: «Probar otra tarjeta» ⇒ the chooser');
+});
+
+test('S2-checkout 5: «Pagar en efectivo» on the decline sheet switches (§5) — cancelSdkPending ⇒ safe ⇒ createOrder as a NEW order with replaces_order_id', async () => {
+  const b = sdkDeclined({ cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, true) }], createOrder: [(body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })] });
+  await sdkCheckout(b); await sdkPlace(b);
+  const old = b.srv.of('placeSdkOrder')[0].body.order_id;
+  await b.click('#layer [data-act="decl-cash"]'); await settle(); b.timers.flush(); await settle();
+  assert.equal(b.srv.of('cancelSdkPending').length, 1, '🔴 SDKUI-5: the switch asks cancelSdkPending first');
+  const co = b.srv.of('createOrder')[0];
+  assert.ok(co && co.body.replaces_order_id === old && co.body.order_id !== old, '🔴 SDKUI-5: cash as a NEW order replacing the declined one');
+  assert.equal(co.body.payment_method, 'cash', 'cash');
+});
+
+test('S2-checkout 5: «Pagar en efectivo» while the old order is not yet safe_to_switch ⇒ the processing sheet + polling; never cash', async () => {
+  const b = sdkDeclined({ cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, false) }], placeSdkStatus: ['network'] });
+  await sdkCheckout(b); await sdkPlace(b);
+  await b.click('#layer [data-act="decl-cash"]'); await settle();
+  assert.equal(b.srv.of('createOrder').length, 0, '🔴 SDKUI-5: never cash before safe_to_switch');
+  assert.equal(b.text('#layer .sheet.proc h2'), 'Procesando tu pago…', 'the processing sheet while it settles');
+});
+
+test('S2-checkout 6 / 7: an expired saved card ⇒ the gate well (add a card / cash); card payment unavailable ⇒ the well (member cash; never for a guest)', async () => {
+  const e = bootSdk({ script: { listCards: [SDK_CARDS([{ card_id: 'c_x', brand: 'visa', last4: '4242', exp_month: 10, exp_year: 2026, expired: true }])] } });
+  await sdkCheckout(e);
+  assert.equal(e.text('.gate b'), 'Tu tarjeta guardada venció', '🔴 SDKUI-6: the well'); assert.ok(e.q('.gate [data-act="addcard"]') && e.q('.gate [data-act="decl-cash"]'));
+  const u = bootSdk({ script: { sdkPayStatus: [SDK_AVAIL(false)] } });
+  await sdkCheckout(u);
+  assert.equal(u.text('.gate b'), 'El pago con tarjeta no está disponible ahora', '🔴 SDKUI-7: the well'); assert.ok(u.q('.gate [data-act="decl-cash"]'), 'a member: cash');
+});
+
+test('S2-checkout resume (advisor condition): a live SDK attempt on this device ⇒ the status FIRST at mount, the processing sheet — never a new placement', async () => {
+  const storage = memStore();
+  const b1 = bootSdk({ storage, script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });
+  await sdkCheckout(b1); await sdkPlace(b1);
+  assert.equal(b1.srv.of('placeSdkOrder').length, 1, 'premise: one placement, unknown');
+  const b2 = bootSdk({ storage, script: { placeSdkStatus: [(_, url) => SDK_R('bank_pending', { order_id: new URL(url).searchParams.get('order_id'), attempt_id: 'x'.repeat(16) })] } });
+  await settle();
+  assert.equal(b2.srv.of('placeSdkStatus').length >= 1, true, '🔴 SDKUI-resume: the status first');
+  assert.equal(b2.srv.of('placeSdkOrder').length, 0, '🔴 SDKUI-resume: no placement');
+  assert.equal(b2.text('#layer .sheet.proc h2'), 'Procesando tu pago…', '🔴 SDKUI-resume: the processing sheet');
 });

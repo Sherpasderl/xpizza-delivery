@@ -71,6 +71,15 @@ test('5: the decline sheet (v2, owner preference) — per bucket, «Probar otra 
   assert.ok(s('wrong_data', { guest: false, cashAllowed: true }).includes('<h2>Revisá los datos de la tarjeta</h2>') && s('wrong_data', { guest: false, cashAllowed: true }).includes('<button class="primary" data-act="decl-fix">Corregir datos</button>'), 'wrong data');
 });
 
+test('6 / 7 in the pay bar (v7 frames 6, 7): the expired card\'s row dimmed with «Venció en», then the well, then the disabled «Elegí cómo pagar»; 7 the well alone', () => {
+  const ctx = { guest: false, cashAllowed: true };
+  const six = flat(H.payBarHtml({ method: { kind: 'card', brand: 'visa', label: 'Visa ···· 4242', sub: 'Venció en 10/26', dim: true }, total_cents: 58500, cta: { label: 'Elegí cómo pagar', enabled: false }, gate: H.gateHtml('token_expired', ctx) }));
+  assert.equal(six, flat(`<div class="paybar pay"><div class="urows"><button class="urow payrow dim" aria-label="Cambiar forma de pago" data-act="paysheet">${VISA}<span class="t"><b>Visa ···· 4242</b><span>Venció en 10/26</span></span><svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button></div>${H.gateHtml('token_expired', ctx)}<button class="primary" data-act="place" disabled>Elegí cómo pagar</button></div>`), '🔴 CO-6-bar: frame 6\'s bar (no charge line under a well)');
+  const seven = flat(H.payBarHtml({ method: null, total_cents: 58500, cta: { label: 'Elegí cómo pagar', enabled: false }, gate: H.gateHtml('unavailable', ctx) }));
+  assert.equal(seven, flat(`<div class="paybar pay">${H.gateHtml('unavailable', ctx)}<button class="primary" data-act="place" disabled>Elegí cómo pagar</button></div>`), '🔴 CO-7-bar: frame 7\'s bar');
+  assert.ok(flat(H.payBarHtml({ method: null, total_cents: 1, cta: { label: 'x', enabled: true, act: 'confirm', id: 'cta' } })).includes('<button class="primary" id="cta" data-act="confirm">x</button>'), 'the host\'s primary hooks (id, act)');
+});
+
 test('6 / 7: the gate wells (v2, owner preference) — expired saved card; card payment unavailable (member: cash; guest: «Reintentar»)', () => {
   assert.equal(flat(H.gateHtml('token_expired', { guest: false, cashAllowed: true })), flat('<div class="gate" role="status"><b>Tu tarjeta guardada venció</b><span class="note">Agregá una tarjeta para pagar en línea, o pagá en efectivo al recibir tu pedido.</span><div class="row2"><button class="btn2 dark" data-act="addcard">Agregar tarjeta</button><button class="btn2" data-act="decl-cash">Pagar en efectivo</button></div></div>'), '🔴 CO-6: the mockup\'s well');
   assert.equal(flat(H.gateHtml('unavailable', { guest: false, cashAllowed: true })), flat('<div class="gate" role="status"><b>El pago con tarjeta no está disponible ahora</b><span class="note">Podés pagar en efectivo al recibir tu pedido. Todo lo demás sigue igual.</span><div class="row2"><button class="btn2 dark" data-act="decl-cash">Pagar en efectivo</button></div></div>'), '🔴 CO-7: the mockup\'s well');
