@@ -2353,6 +2353,7 @@
   "catalog/public-photos.js",
   "catalog/publish-edited-handler.js",
   "catalog/publish-request.js",
+  "catalog/reserved-keys.js",
   "catalog/reset-draft.js",
   "catalog/resolve-lines.js",
   "catalog/restaurant-registry.js",
@@ -2966,6 +2967,10 @@
    ]
   },
   "catalog/publish-request.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/reserved-keys.js": {
    "pins": [],
    "lifts": []
   },
