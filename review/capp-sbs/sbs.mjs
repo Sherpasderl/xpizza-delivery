@@ -1,5 +1,5 @@
 // Customer app — the Chrome side-by-side harness (advisor 11-02, the Chrome batch; owner usage rule: automatic diffs, ONE review page).
-//   node review/capp-sbs/sbs.mjs --pkg <package-capp web bundle> --out <dir> [--only a,b] [--mock <D4c-grill dir>] [--set main|s2]
+//   node review/capp-sbs/sbs.mjs --pkg <package-capp web bundle> --out <dir> [--only a,b] [--mock <D4c-grill dir>] [--set main|s2|tip]
 //   (--set s2: the S2 checkout + adjustment scenes, scenes-s2.mjs — the bundle packaged WITH the sdkPay flag)
 // What it does, per scene in scenes.mjs:
 //   · serves the PACKAGED bundle (package-capp at the tip) and the mockups on 127.0.0.1 only;
@@ -18,7 +18,8 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { router, DIRECTORY_ENDPOINT, CLOCK_SHIM } from './fixtures.mjs';
 import { SCENES } from './scenes.mjs';
-import { S2_SCENES } from './scenes-s2.mjs';   // --set s2: a bundle packaged WITH the sdkPay flag (S2 method (A), advisor 11-09)
+import { S2_SCENES } from './scenes-s2.mjs';
+import { TIP_SCENES } from './scenes-tip.mjs';   // --set tip: PLAN-capp-tip-step r6 vs MOCKUP-capp-tip-step-r2 (a bundle WITH the sdkPay flag)   // --set s2: a bundle packaged WITH the sdkPay flag (S2 method (A), advisor 11-09)
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : d; };
@@ -156,8 +157,8 @@ async function diffPair(id, a, b, tag) {
 // ── the run ──
 const results = [];
 const SET = arg('--set', 'main');
-if (!['main', 's2'].includes(SET)) throw new Error(`--set ${SET}: main | s2`);
-const want = (SET === 's2' ? S2_SCENES : SCENES).filter((s) => !ONLY.length || ONLY.includes(s.name));
+if (!['main', 's2', 'tip'].includes(SET)) throw new Error(`--set ${SET}: main | s2 | tip`);
+const want = (SET === 's2' ? S2_SCENES : SET === 'tip' ? TIP_SCENES : SCENES).filter((s) => !ONLY.length || ONLY.includes(s.name));
 const write = (f, buf) => fs.writeFileSync(path.join(OUT, 'img', f), buf);
 for (const sc of want) {
   for (const theme of sc.themes || ['light']) {

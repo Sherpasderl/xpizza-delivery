@@ -316,6 +316,11 @@ export function s2Extra(opts = {}) {
       // the order screen's prep read (capp-shell-ui readPublic → form-live-status prepFor): no prep_stats / prep_eta_min written for the
       // store — a real production state (the nightly writer has not run for it); the window then comes from the fallback
       if (/^\/restaurants\/[a-z0-9_-]+\/public\.json$/.test(u.pathname)) return json(null);
+      // PLAN-capp-tip-step r6: the member's last-tip leaf — owner-read rules: only u_ana's OWN path, only with the run's member token
+      // (?auth=<ID token>); anything else is the RTDB's 401 «Permission denied». opts.lastTip: cents (≥ 0) | null (no preference)
+      { const m = u.pathname.match(/^\/user_private\/([^/]+)\/last_tip\.json$/);
+        if (m) { if (m[1] !== 'u_ana' || u.searchParams.get('auth') !== MEMBER_TOKEN) return json({ error: 'Permission denied' }, 401);
+          return json(Number.isSafeInteger(opts.lastTip) ? { cents: opts.lastTip, at: S2_EXP - 86400000 } : null); } }
       return null;
     }
     if (!u.host.endsWith('cloudfunctions.net')) return null;
