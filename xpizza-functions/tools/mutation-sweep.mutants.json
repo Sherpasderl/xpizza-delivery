@@ -29193,8 +29193,8 @@
   "slice": "formbake",
   "label": "PLAN 4 §4: overlayIdentity:false is ignored — the reconciler's read carries identity keys the deployed bundle never has (every rid reads as stale forever)",
   "file": "catalog/public-menu.js",
-  "from": "  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, body);",
-  "to": "  const enriched = await applyIdentityToServedBody(db, restaurantId, body);",
+  "from": "  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(",
+  "to": "  const enriched = await applyIdentityToServedBody(",
   "command": [
    "node",
    "catalog/plan4-display-fields.test.js"

@@ -134,6 +134,16 @@ const HUNKS = Object.freeze([
   "file": "rewards-redeem-pricing.js",
   "now": "  // marked `redeemed` so it lands ONLY in factura_items — never in `items` / order.items / the earn base.\n  const compedLine = { qty: freeQty, description: freeDesc, line_gross_cents: compedGross, redeemed: true };\n  const factura_items = priced.items.concat([compedLine]);\n",
   "was": "  // marked `redeemed` so it lands ONLY in factura_items — never in `items` / order.items / the earn base.\n  const compedLine = { qty: freeQty, description: freeName, line_gross_cents: compedGross, redeemed: true };\n  const factura_items = priced.items.concat([compedLine]);\n"
+ },
+ {
+  "file": "catalog/public-menu.js",
+  "now": "  // required — a decoration omitted on any trouble (catalog/public-photos.js), so its absence is not a half-menu.\n  photos: { type: 'object' }, avail_identity: { required: true, type: 'object' }, item_keys: { type: 'object' },   /* S1d: { [String(dish.id)]: item_key }, endpoint-only (never the bake's body) */   // PLAN-avail-identity r1: { field } — the restaurant's availability identity, from the server's ONE rule\n});\n",
+  "was": "  // required — a decoration omitted on any trouble (catalog/public-photos.js), so its absence is not a half-menu.\n  photos: { type: 'object' }, avail_identity: { required: true, type: 'object' },   // PLAN-avail-identity r1: { field } — the restaurant's availability identity, from the server's ONE rule\n});\n"
+ },
+ {
+  "file": "catalog/public-menu.js",
+  "now": "  // `overlayIdentity: false` — the same body minus the overlay. Every other caller (the endpoint) gets the overlay, unchanged.\n  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, require('./identity-overlay').withServedItemKeys(restaurantId, body, require('./identity-overlay').servedKeyMap(menu)), { keyById: require('./identity-overlay').servedKeyMap(menu) });   // S1d: keyed by display.id; item_key on the endpoint body only\n  body = enriched.body;\n",
+  "was": "  // `overlayIdentity: false` — the same body minus the overlay. Every other caller (the endpoint) gets the overlay, unchanged.\n  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, body);\n  body = enriched.body;\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

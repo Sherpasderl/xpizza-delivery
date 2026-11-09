@@ -411,6 +411,7 @@
   "catalog/resolve-lines.js#resolveLines": "intake",
   "catalog/resolve-lines.js#rewardLines": "intake",
   "catalog/identity-backfill.js#liveKeys": "catalog",
+  "catalog/identity-overlay.js#servedKeyMap": "catalog",
   "catalog/identity-bootstrap.js#bootstrapIdentityStamps": "catalog",
   "catalog/identity-bootstrap.js#bootstrapIdentityStamps>anon": "catalog",
   "catalog/identity-bootstrap.js#enrich>anon": "catalog",
