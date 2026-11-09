@@ -39,11 +39,28 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
   assert.deepStrictEqual(resolveLines('x_pizza', b, XP), { ok: true }, 'RL-KEY-AGREE');
   assert.strictEqual(stampOf(b.items[0]), 'Carnivora');
   const only = body([{ item_key: 'Carnivora', qty: 1 }]);
-  assert.deepStrictEqual(resolveLines('x_pizza', only, XP), { ok: false, code: 'menu_changed', at: 'items', index: 0 }, 'RL-KEY-ONLY an item_key line with no legacy field refuses menu_changed in S1b (advisor Q1)');
-  assert.strictEqual(stampOf(only.items[0]), undefined, 'RL-KEY-ONLY never stamped, never priced');
+  assert.deepStrictEqual(resolveLines('x_pizza', only, XP), { ok: true }, 'RL-KEY-ONLY S1d (ruling Q2): an item_key line with no legacy field resolves when the tables hold the key');
+  assert.strictEqual(stampOf(only.items[0]), 'Carnivora', 'RL-KEY-ONLY stamped with its key');
+  const onlyUnknown = body([{ item_key: 'Nope', qty: 1 }]);
+  assert.deepStrictEqual(resolveLines('x_pizza', onlyUnknown, XP), { ok: false, code: 'menu_changed', at: 'items', index: 0 }, 'RL-KEY-ONLY-UNKNOWN an unknown item_key alone refuses menu_changed');
   const lm = body([{ item_key: 'dimsum_01', id: 'dimsum_01', qty: 1 }]);
   assert.deepStrictEqual(resolveLines('la_musa', lm, LM), { ok: true }, 'RL-KEY-AGREE-ID');
-  ok('an item_key line resolves only when it agrees with its legacy field; an item_key alone refuses (S1b)');
+  ok('an item_key line resolves when it agrees with its legacy field, or alone (S1d); an unknown item_key refuses menu_changed');
+}
+
+// ── S1d D2 (ruling Q2): agreement widens to the version's LABEL when the tables carry labels; without them, strict as S1b ──
+{
+  const { attachTablesLabels, keyModeOfTables: keyModeOf } = require('../menu-pricing');
+  const labelled = (t, labels) => attachTablesLabels(attachTablesKeyMode({ restaurantId: t.restaurantId, menu: t.menu, extras: t.extras }, keyModeOf(t)), labels);
+  const XPL = labelled(XP, { Carnivora: 'Carnívora Suprema' });
+  const agree = body([{ item_key: 'Carnivora', name: 'Carnívora Suprema', qty: 1 }]);
+  assert.deepStrictEqual(resolveLines('x_pizza', agree, XPL), { ok: true }, 'RL-LABEL-AGREE a renamed dish: item_key + its current label resolves');
+  assert.strictEqual(stampOf(agree.items[0]), 'Carnivora', 'RL-LABEL-AGREE stamped with the KEY, never the label');
+  assert.deepStrictEqual(resolveLines('x_pizza', body([{ item_key: 'Carnivora', name: 'Carnívora Suprema', qty: 1 }]), XP), { ok: false, code: 'invalid_line', at: 'items', index: 0 }, 'RL-LABEL-NONE a route without labels stays strict');
+  assert.deepStrictEqual(resolveLines('x_pizza', body([{ item_key: 'Carnivora', name: 'Otra', qty: 1 }]), XPL), { ok: false, code: 'invalid_line', at: 'items', index: 0 }, 'RL-LABEL-WRONG a name that is neither the key nor its label refuses');
+  assert.deepStrictEqual(resolveLines('x_pizza', body([{ name: 'Carnívora Suprema', qty: 1 }]), XPL), { ok: false, code: 'menu_changed', at: 'items', index: 0 }, 'RL-LEGACY-NEWNAME a legacy line naming the NEW label (an old client) refuses menu_changed — legacy lines stay exact-key');
+  assert.deepStrictEqual(resolveLines('x_pizza', body([{ item_key: 'Nope', name: 'Carnívora Suprema', qty: 1 }]), XPL), { ok: false, code: 'menu_changed', at: 'items', index: 0 }, 'RL-LABEL-UNKNOWN-KEY an unknown item_key refuses menu_changed even if the name is a label');
+  ok('S1d: item_key agrees with its legacy field OR the version\'s label; without labels strict; legacy lines exact-key');
 }
 
 // ── unknown: menu_changed, the FIRST refused line named ──
