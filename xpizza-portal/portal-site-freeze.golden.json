@@ -2549,6 +2549,12 @@
    ],
    [
     "",
+    ".phwait",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".phzl",
     "color",
     "var(--mute)"

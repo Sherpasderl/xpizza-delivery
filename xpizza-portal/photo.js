@@ -13,6 +13,7 @@ const ICONS = {
   upload: [['path', { d: 'M12 16V4M8 8l4-4 4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3' }]],
   gallery: [['rect', { x: '3', y: '5', width: '18', height: '14', rx: '2' }], ['path', { d: 'M3 16l5-5 4 4 3-3 6 6' }], ['circle', { cx: '16', cy: '9', r: '1.5' }]],
   warn: [['path', { d: 'M12 3l9 16H3z' }], ['path', { d: 'M12 10v4' }], ['path', { d: 'M12 17.5v.01' }]],
+  clock: [['circle', { cx: '12', cy: '12', r: '9' }], ['path', { d: 'M12 7v5l3 2' }]],
   minus: [['path', { d: 'M5 12h14' }]],
   plus: [['path', { d: 'M12 5v14M5 12h14' }]],
 };
@@ -93,6 +94,13 @@ function ferr(text) {
   f.append(icon('warn'), el('span', null, text));
   return f;
 }
+// P5-L: the upload limit — a neutral status (grey, a clock), not an alert: nothing went wrong on the merchant's side
+function fwait(text) {
+  const f = el('div', 'phwait');
+  f.setAttribute('role', 'status');
+  f.append(icon('clock'), el('span', null, text));
+  return f;
+}
 // P1 / P2: the zone. The whole zone is a button (P1; on a desktop it opens the system picker). On a phone, choosing (P2) is
 // the SAME zone expanded in place into two buttons — «Tomar foto» (the camera) and «Elegir de la galería» (the picker).
 function zone({ invalid, expanded, onPick }) {
@@ -151,7 +159,8 @@ export function photoField({ name, view, job, enabled, expanded = false, held = 
     f.append(u);
     return f;
   }
-  const failed = (job && job.phase === 'failed') || (view.kind === 'photo' && view.missing && !job);
+  const limited = !!(job && job.phase === 'failed' && P.errorCopy(job.code).kind === 'limited');   // P5-L
+  const failed = !limited && ((job && job.phase === 'failed') || (view.kind === 'photo' && view.missing && !job));
   const invalid = !!(job && job.phase === 'invalid');
   if (shows) {
     const u = el('div', 'uphoto');
@@ -173,6 +182,7 @@ export function photoField({ name, view, job, enabled, expanded = false, held = 
       r.append(ferr(P.COPY.failed), again);
       f.append(r);
     }
+    if (limited) f.append(fwait(P.COPY.limited));
     if (invalid) { f.classList.add('invalid'); f.append(ferr(P.COPY.invalid[job.code])); }
     return f;
   }
@@ -186,6 +196,7 @@ export function photoField({ name, view, job, enabled, expanded = false, held = 
     r.append(again);
     f.append(r);
   }
+  if (limited) f.append(fwait(P.COPY.limited));
   if (invalid) f.append(ferr(P.COPY.invalid[job.code]));
   if (view.kind === 'removing' && enabled) {
     const r = el('div', 'phrm');

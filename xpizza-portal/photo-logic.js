@@ -50,6 +50,7 @@ export const COPY = Object.freeze({
   uploading: 'Subiendo foto…',
   uploadingAria: 'Subiendo foto',
   failed: 'No se pudo subir la foto.',
+  limited: 'Subiste muchas fotos seguidas. Probá de nuevo más tarde.',   // P5-L (owner-approved ratelimit mockup, option B)
   retry: 'Reintentar',
   invalid: Object.freeze({
     too_large: 'Ese archivo pesa más de 10 MB. Elegí una foto más liviana.',
@@ -188,9 +189,11 @@ export function pendingPhotoKeys(photos, orig) {
 }
 
 // ── errors (§2.2 codes, mapped by `error`, never by status) ──────────────────────────────────────────────────────────
-// P6 (the file itself) — a new file is needed; everything else is P5 «No se pudo subir la foto.» + Reintentar.
+// P6 (the file itself) — a new file is needed; P5-L (the server's upload limit, `rate_limited`) — a neutral note, nothing to
+// retry until the window passes; everything else is P5 «No se pudo subir la foto.» + Reintentar.
 export const INVALID_CODES = Object.freeze(['too_large', 'bad_type', 'too_small']);
-export const errorCopy = (code) => (INVALID_CODES.includes(code) ? { kind: 'invalid', text: COPY.invalid[code] } : { kind: 'failed', text: COPY.failed });
+export const errorCopy = (code) => (INVALID_CODES.includes(code) ? { kind: 'invalid', text: COPY.invalid[code] }
+  : code === 'rate_limited' ? { kind: 'limited', text: COPY.limited } : { kind: 'failed', text: COPY.failed });
 // «Reintentar» (§2.2 Cancellation / retry): the SAME uploadId + crops through E-P2 when the bytes reached Storage and the
 // failure was transient; otherwise start over at E-P1 with a NEW op_id (a new upload; quota-charged).
 // §2.2 E-P2: `attempts < 3` — the THIRD processing failure makes that upload terminal (`unavailable` from then on), so after
