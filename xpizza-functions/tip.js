@@ -40,7 +40,12 @@ function orderRefusal(body) {
   const t = ofBody(body);
   if (Number.isNaN(t)) return { status: 400, error: 'tip_invalid' };
   if (t > 0 && body.redeem != null) return { status: 409, error: 'tip_reward_unsupported' };
-  if (t > 0 && !paymentMethodOf(body.payment_method)) return { status: 400, error: 'tip_payment_method_invalid' };   // D0
+  if (t > 0) {
+    const pm = paymentMethodOf(body.payment_method);
+    if (!pm) return { status: 400, error: 'tip_payment_method_invalid' };   // D0: an omitted / empty / unknown method
+    // OWNER 11-09 (PLAN-capp-tip-step r7): the in-app tip is CARD-ONLY (online | card_delivery) — a cash customer tips in hand
+    if (pm === 'cash') return { status: 400, error: 'tip_cash_unsupported' };
+  }
   return null;
 }
 

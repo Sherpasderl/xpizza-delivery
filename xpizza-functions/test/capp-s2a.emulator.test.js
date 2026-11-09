@@ -207,11 +207,12 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
   // ── E: equality, cash and card, envío + tip; the dark brand with no tip ──
   {
     await clean();
-    const pg = page('x_pizza'); const f = flowOf('cash');
+    // OWNER 11-09 (PLAN-capp-tip-step r7): the in-app tip is CARD-ONLY — a cash order carries no tip (the server refuses cash + tip)
+    const pg = page('x_pizza'); const f = flowOf('cash', { tip: 0 });
     const { out, T } = await quoteAndPlace(pg, f, cartOf('x_pizza'));
     assert.strictEqual(out.kind, 'placed', JSON.stringify(out));
     const o = await order(out.order_id);
-    assert.deepStrictEqual([T.envio, T.tip, o.total_cents, o.tip_cents], [3000, 2000, T.total, 2000], '🔴 cash: displayed Total == recorded total_cents (envío + tip once)');
+    assert.deepStrictEqual([T.envio, T.tip, o.total_cents, 'tip_cents' in o], [3000, 0, T.total, false], '🔴 cash: displayed Total == recorded total_cents (envío once; no tip on cash)');
     assert.strictEqual(T.total, T.subtotal + T.envio + T.tip, 'the server net = food + envío + tip, exactly once');
     assert.strictEqual(placeOf(pg), null, 'placed ⇒ pending_place cleared');
     await clean(); CHARGED.length = 0; RETURNS.length = 0;
