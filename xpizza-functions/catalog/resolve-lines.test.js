@@ -67,6 +67,8 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
     ['la_musa', LM, { id: ['dimsum_01'], qty: 1 }, 'RL-ARRAY-ID an array id'],
     ['x_pizza', XP, { item_key: 5, name: 'Carnivora', qty: 1 }, 'RL-KEY-TYPE a non-string item_key'],
     ['x_pizza', XP, { item_key: '', name: 'Carnivora', qty: 1 }, 'RL-KEY-EMPTY an empty item_key'],
+    ['x_pizza', XP, { item_key: ['Carnivora'], qty: 1 }, 'RL-KEY-TYPE-ALONE a non-string item_key with no legacy field'],
+    ['x_pizza', XP, { item_key: '', qty: 1 }, 'RL-KEY-EMPTY-ALONE an empty item_key with no legacy field'],
     ['x_pizza', XP, { item_key: 'Carnivora', name: 'Margherita', qty: 1 }, 'RL-DISAGREE item_key and name disagree'],
     ['x_pizza', XP, { item_key: 'Carnivora', name: ['Carnivora'], qty: 1 }, 'RL-DISAGREE-TYPE a non-string legacy field beside item_key'],
   ];
@@ -80,7 +82,7 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
 
 // ── a cart the stage does not judge passes through untouched (validateOrderPayload keeps today's errors) ──
 {
-  for (const b of [{}, { items: null }, { items: 'x' }, { items: [] }, { items: [null] }, { items: [{ name: 'Carnivora', qty: 1 }, 7] }]) {
+  for (const b of [{ items: [{ name: 'Carnivora', qty: 1 }, 7] }, { items: [{ name: 'Carnivora', qty: 1 }, null] }, {}, { items: null }, { items: 'x' }, { items: [] }, { items: [null] }]) {
     const before = JSON.stringify(b);
     assert.deepStrictEqual(resolveLines('x_pizza', b, XP), { ok: true }, `RL-PASS ${before}`);
     assert.strictEqual(JSON.stringify(b), before, 'untouched');
