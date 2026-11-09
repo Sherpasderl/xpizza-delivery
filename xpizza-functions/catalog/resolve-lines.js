@@ -3,7 +3,8 @@
 // S1b (PLAN-portal-item-edit r6 §2.4; design D4c-grill/item-s1/S1b-DESIGN.md + the advisor's rulings) — THE RESOLUTION STAGE.
 // Every cart endpoint runs it before any check, price, reward step or fingerprint: each line (and each reward line) must name
 // a key the request's own tables hold, by EXACT string equality on that key — never by coercion — and the key it resolved to
-// is stamped on the line (PRICING_KEY_STAMP), which every accessor-reading consumer already prefers.
+// is stamped on the line (PRICING_KEY_STAMP), which every accessor-reading consumer already prefers. Reward lines are stamped
+// when they resolve and otherwise left to today's reward refusal (advisor ruling Q3; the frozen forms key on it).
 // STRICT in S1b: a line carrying `item_key` must ALSO carry its legacy field (name on a name-keyed menu, id on an id-keyed one)
 // and the two must be equal. So every accepted line resolves to exactly the key it priced by before this stage existed — a
 // no-op on money by construction. S1d widens the agreement to the version's label (and only then may a key differ from it).
@@ -51,13 +52,12 @@ function resolveLines(rid, body, tables) {
     if (r.code) return { ok: false, code: r.code, at: 'items', index: i };
     stamps.push([items[i], r.key]);
   }
-  const rewards = rewardLines(body.redeem);
-  for (let i = 0; i < rewards.length; i++) {
-    const [line, f] = rewards[i];
-    if (!isObj(line)) return { ok: false, code: 'invalid_line', at: 'redeem', index: i };
-    // a reward line's legacy field is item_id (x_pizza style) or items[].id; it agrees with item_key exactly as a cart line
+  // reward lines (advisor ruling Q3): stamped only when they resolve. Any other reward line is NOT refused here — it falls
+  // through to prepareRedemption and today's 409 redemption_invalid, which the frozen forms' classifyRedeemError handles.
+  for (const [line, f] of rewardLines(body.redeem)) {
+    if (!isObj(line)) continue;
     const r = resolveOne(f === 'item_id' ? { item_key: line.item_key, item_id: line.item_id } : line, f === 'item_id' ? 'item_id' : field, menu);
-    if (r.code) return { ok: false, code: r.code, at: 'redeem', index: i };
+    if (r.key) stamps.push([line, r.key]);
   }
   for (const [line, key] of stamps) line[PRICING_KEY_STAMP] = key;
   return { ok: true };

@@ -90,18 +90,26 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
   ok('a malformed cart (not a non-empty array of objects) or absent tables pass through untouched');
 }
 
-// ── reward lines: the same rule (advisor Q3) ──
+// ── reward lines (advisor Q3 ruling: legacy refusal codes kept until the frozen forms retire) — stamped only when they
+//    resolve; an unknown, malformed or item_key-only reward line is NOT refused here: it falls through to prepareRedemption,
+//    whose 409 redemption_invalid the frozen forms' classifyRedeemError handles ──
 {
   const r = body([{ name: 'Carnivora', qty: 1 }], { item_id: 'Carnivora' });
   assert.deepStrictEqual(resolveLines('x_pizza', r, XP), { ok: true }, 'RL-REDEEM-ID');
-  assert.deepStrictEqual(resolveLines('x_pizza', body([{ name: 'Carnivora', qty: 1 }], { item_id: 'Nope' }), XP), { ok: false, code: 'menu_changed', at: 'redeem', index: 0 }, 'RL-REDEEM-UNKNOWN');
-  assert.deepStrictEqual(resolveLines('x_pizza', body([{ name: 'Carnivora', qty: 1 }], { item_id: ['Carnivora'] }), XP), { ok: false, code: 'invalid_line', at: 'redeem', index: 0 }, 'RL-REDEEM-ARRAY');
+  assert.strictEqual(stampOf(r.redeem), 'Carnivora', 'RL-REDEEM-STAMP a resolved reward line is stamped');
+  for (const [redeem, label] of [[{ item_id: 'Nope' }, 'RL-REDEEM-UNKNOWN'], [{ item_id: ['Carnivora'] }, 'RL-REDEEM-ARRAY'], [{ item_key: 'Carnivora' }, 'RL-REDEEM-KEY-ONLY'],
+    [{ item_id: 'Carnivora', item_key: 'Margherita' }, 'RL-REDEEM-DISAGREE']]) {
+    const b = body([{ name: 'Carnivora', qty: 1 }], redeem);
+    assert.deepStrictEqual(resolveLines('x_pizza', b, XP), { ok: true }, `${label} falls through to today's reward refusal`);
+    assert.strictEqual(stampOf(b.redeem), undefined, `${label}: never stamped`);
+    assert.strictEqual(stampOf(b.items[0]), 'Carnivora', `${label}: the cart lines still resolve and are stamped`);
+  }
   assert.deepStrictEqual(resolveLines('x_pizza', body([{ name: 'Carnivora', qty: 1 }], { item_id: 'Carnivora', item_key: 'Carnivora' }), XP), { ok: true }, 'RL-REDEEM-KEY-AGREE');
-  assert.deepStrictEqual(resolveLines('x_pizza', body([{ name: 'Carnivora', qty: 1 }], { item_key: 'Carnivora' }), XP), { ok: false, code: 'menu_changed', at: 'redeem', index: 0 }, 'RL-REDEEM-KEY-ONLY');
-  assert.deepStrictEqual(resolveLines('la_musa', body([{ id: 'dimsum_01', qty: 1 }], { items: [{ id: 'dimsum_01' }, { id: 'nope_99' }] }), LM), { ok: false, code: 'menu_changed', at: 'redeem', index: 1 }, 'RL-REDEEM-ITEMS');
-  assert.deepStrictEqual(resolveLines('la_musa', body([{ id: 'dimsum_01', qty: 1 }], { items: [{ id: 'dimsum_01' }] }), LM), { ok: true }, 'RL-REDEEM-ITEMS-OK');
-  assert.deepStrictEqual(resolveLines('x_pizza', body([{ name: 'Carnivora', qty: 1 }], { points: 10 }), XP), { ok: true }, 'RL-REDEEM-NONE a redeem with no item is not judged');
-  ok('reward lines (redeem.item_id / items[].id / item_key) follow the same rule');
+  const li = body([{ id: 'dimsum_01', qty: 1 }], { items: [{ id: 'dimsum_01' }, { id: 'nope_99' }, 'x'] });
+  assert.deepStrictEqual(resolveLines('la_musa', li, LM), { ok: true }, 'RL-REDEEM-ITEMS an unknown la_musa reward item falls through');
+  assert.deepStrictEqual([stampOf(li.redeem.items[0]), stampOf(li.redeem.items[1])], ['dimsum_01', undefined], 'RL-REDEEM-ITEMS only the resolved one is stamped');
+  assert.deepStrictEqual(resolveLines('x_pizza', body([{ name: 'Carnivora', qty: 1 }], { points: 10 }), XP), { ok: true }, 'RL-REDEEM-NONE');
+  ok('reward lines are stamped only when they resolve; any other reward line falls through to today\'s refusal (Q3)');
 }
 
 // ── the refusal each endpoint sends ──
