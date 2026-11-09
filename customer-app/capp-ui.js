@@ -135,7 +135,7 @@
   // apiConfigOf: the store's transport config (the ONE source — the store's own api and the shell's are built from it)
   function apiConfigOf(cfg) {
     return { restaurantId: cfg.restaurantId, orderIdPrefix: cfg.orderIdPrefix, pendingPayKey: cfg.pendingPayKey, endpoints: cfg.endpoints, hours: cfg.hours,
-      cartKey: cfg.cartKey, placedKey: cfg.placedKey, guestCardOnly: cfg.guestCardOnly === true, ...(cfg.schedulingLive === true ? { schedulingLive: true } : {}) };   // S7a-1: hosted by the shell (both absent ⇒ the S2 path, unchanged); §3.2 the guest tender rule
+      cartKey: cfg.cartKey, placedKey: cfg.placedKey, guestCardOnly: cfg.guestCardOnly === true, ...(cfg.schedulingLive === true ? { schedulingLive: true } : {}), ...(cfg.sdkCheckout === true ? { sdkCheckout: true } : {}) };   // S7a-1: hosted by the shell (both absent ⇒ the S2 path, unchanged); §3.2 the guest tender rule
   }
   // the cart, its generation and every guard on it: o = { menu, cfg, api: () => the store's api, mods: () => true once it exists,
   // CappCart, CappSerialize } — the deps are the CALLER's resolved ones (Codex VP r5 #1: never globals), else the same resolution
@@ -1863,7 +1863,8 @@
       if (k === 'sdk_switched') {
         SDK.replaces = out.replaces; SDK.declId = null;
         // Codex r2 P2: after a reload the flow is empty — the switch's stored inputs (a cash body) restore it, so the SAME transition completes
-        if (out.body && (!S.flow || need())) { const rf = flowFromBody(out.body); if (rf) { S.flow = rf; S.mode = rf.mode; S.flowRestored = true; } }
+        // advisor r3 C: the switch's stored inputs ALWAYS win over fresh defaults (recipient, notes, tip, pin — pickup and delivery alike)
+        if (out.body) { const rf = flowFromBody(out.body); if (rf) { S.flow = rf; S.mode = rf.mode; S.flowRestored = true; } }
         if (S.flow) S.flow.pay = 'cash';
         if (S.screen !== 'checkout' && S.screen !== 'tip') S.screen = S.flow && S.flow.mode === 'delivery' ? 'tip' : 'checkout';
         SDK.placeWhenReady = true; render(); sdkPlaceIfReady(); return;   // the cash order goes once the checkout is ready (a reload re-quotes first)

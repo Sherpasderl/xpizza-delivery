@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { placeResp, cancelPending } from './test/fake-sdk-checkout.mjs';
+import { placeResp, cancelPending, noSdkOrder } from './test/fake-sdk-checkout.mjs';
 const require = createRequire(import.meta.url);
 const C = require('./capp-checkout.js');
 const A = require('./capp-api.js');
@@ -36,7 +36,7 @@ const ANA = { uid: 'u_ana', idToken: null, getIdToken: async () => JWT };
 const JWT = (() => { const b = (o) => Buffer.from(JSON.stringify(o)).toString('base64url'); return `${b({ alg: 'RS256' })}.${b({ exp: Math.floor(at(23) / 1000) })}.sig`; })();
 function rig({ script, storage = memStorage(), member = ANA, guestCardOnly = false } = {}) {
   const srv = server(script, storage); const clock = { t: at(12) };
-  const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, ...(guestCardOnly ? { guestCardOnly: true } : {}) },
+  const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, sdkCheckout: true, ...(guestCardOnly ? { guestCardOnly: true } : {}) },   // the app's setting under the SDK checkout
     fetch: srv.fetch, storage, now: () => clock.t, sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => { RNG = (RNG * 1103515245 + 12345) >>> 0; return (RNG >>> 16) & 255; }),
     setInterval: () => 0, clearInterval: () => {}, member: () => member });
   return { api: make(), reload: make, srv, storage, clock };
@@ -307,12 +307,41 @@ test('Codex r2 P1: a place() WAITING behind an SDK operation is registered at on
   relCancel(); await b; await c;
 });
 
-test('Codex r2 P2: a PRE-ADMISSION refusal on an order the server never admitted leaves no SDK order to switch from — cash goes straight to createOrder (no cancel)', async () => {
-  const s = rig({ script: { placeSdkOrder: [{ status: 409, json: { error: 'quote_invalid' } }], createOrder: [OK_CASH_FN] } });
+test('advisor r3 A: after a PRE-ADMISSION refusal the order is still an SDK order — cash ALWAYS goes through cancelSdkPending; the server\'s «never admitted» answer (safe_to_switch:true, nothing cancelled) ⇒ a NEW cash order with replaces_order_id', async () => {
+  const s = rig({ script: { placeSdkOrder: [{ status: 409, json: { error: 'quote_invalid' } }], cancelSdkPending: [{ status: 200, json: noSdkOrder() }], createOrder: [OK_CASH_FN] } });   // r3b A1: the server's «no SDK order» answer
   await s.api.placeSdk(args(SAVED));
+  const old = s.srv.of('placeSdkOrder')[0].body.order_id;
   const out = await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 });
-  assert.equal(s.srv.of('cancelSdkPending').length, 0, '🔴 SDK-preadmit: no cancel for an order the server never admitted');
-  assert.equal(out.kind, 'placed', '🔴 SDK-preadmit: cash placed');
+  assert.equal(s.srv.of('cancelSdkPending').length, 1, '🔴 SDK-server-decides: the switch, always (no client-side admission guess)');
+  const co = s.srv.of('createOrder')[0];
+  assert.ok(co && co.body.order_id !== old && co.body.replaces_order_id === old, '🔴 SDK-server-decides: a NEW cash order replacing it');
+  assert.equal(out.kind, 'placed');
+});
+
+test('Codex r3 P1-1 repro: quote_invalid → cash (switched) whose answer is LOST → reload: the cash retry re-sends ITS order (no second cancel); a card tap never pays over that dispatched cash order', async () => {
+  const s = rig({ script: { placeSdkOrder: [{ status: 409, json: { error: 'quote_invalid' } }], cancelSdkPending: [{ status: 200, json: noSdkOrder() }], createOrder: ['network', OK_CASH_FN] } });
+  await s.api.placeSdk(args(SAVED));
+  await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 });   // the cash send's answer is lost
+  const cashId = s.srv.of('createOrder')[0].body.order_id;
+  const card = await s.reload().placeSdk(args(NEW));
+  assert.equal(s.srv.of('placeSdkOrder').length, 1, '🔴 SDK-r3: no card attempt over the dispatched cash order');
+  void card;
+  const again = await s.reload().place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 });
+  assert.equal(s.srv.of('cancelSdkPending').length, 1, '🔴 SDK-r3: the cash retry never cancels again (it is a cash order now)');
+  assert.equal(s.srv.of('createOrder')[1] && s.srv.of('createOrder')[1].body.order_id, cashId, '🔴 SDK-r3: the retry re-sends THE SAME cash order (idempotent)');
+  assert.equal(again.kind, 'placed');
+});
+
+test('Codex r3 P2-3 repro: SDK A in flight, SDK B queued, then place() C — ONE FIFO queue: A, B, C all finish, in order (no deadlock)', async () => {
+  let relA = null; const order = [];
+  const s = rig({ script: { placeSdkOrder: [(c) => new Promise((r) => { relA = () => r(DECL_OF(c.body.order_id, c.body.attempt_id)); }), (c) => { order.push('B'); return DECL_OF(c.body.order_id, c.body.attempt_id); }],
+    cancelSdkPending: [() => { order.push('C-cancel'); return { status: 200, json: cancelPending(true, true) }; }], createOrder: [(c) => { order.push('C-cash'); return OK_CASH_FN(c); }] } });
+  const a = s.api.placeSdk(args(SAVED)); await ticks();
+  const b = s.api.placeSdk(args(NEW)); const c = s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 });
+  await ticks(); relA();
+  const done = await Promise.race([Promise.all([a, b, c]).then(() => 'done'), new Promise((r) => setTimeout(() => r('stuck'), 2000))]);
+  assert.equal(done, 'done', '🔴 SDK-fifo: no deadlock — every queued operation completes');
+  assert.deepEqual(order, ['B', 'C-cancel', 'C-cash'], '🔴 SDK-fifo: first in, first out');
 });
 
 test('Codex r2 P2 (guard): once an attempt WAS admitted (declined), a later pre-admission refusal keeps the server order — cash still goes through the switch', async () => {

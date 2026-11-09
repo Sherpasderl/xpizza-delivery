@@ -32707,8 +32707,8 @@
   "slice": "s2ck",
   "label": "an unknown answer read as a decline (no status)",
   "file": "../customer-app/capp-api.js",
-  "from": "      if (r.network || r.status >= 500 || !r.json) { markClaimed(id); return sdkStatus(id, p); }",
-  "to": "      if (r.network || r.status >= 500 || !r.json) { return { kind: 'sdk_declined', order_id: id, bucket: 'hard' }; }",
+  "from": "      if (r.network || r.status >= 500 || !r.json) return sdkStatus(id, p);                        // unknown ⇒ the status, never a new attempt",
+  "to": "      if (r.network || r.status >= 500 || !r.json) return { kind: 'sdk_declined', order_id: id, bucket: 'hard' };",
   "command": [
    "node",
    "--test",
@@ -32791,7 +32791,7 @@
   "slice": "s2ck",
   "label": "unavailable left locked",
   "file": "../customer-app/capp-api.js",
-  "from": "        case 'unavailable': settlePreAdmission(id, null); return",
+  "from": "        case 'unavailable': settleSdk(id, 'none'); return",
   "to": "        case 'unavailable': return",
   "command": [
    "node",
@@ -32833,8 +32833,8 @@
   "slice": "s2ck",
   "label": "no placement lock (Codex r1 P1-1)",
   "file": "../customer-app/capp-api.js",
-  "from": "const placeSdk = (p) => sdkExclusive(() => placeSdkInner(p));",
-  "to": "const placeSdk = (p) => placeSdkInner(p);",
+  "from": "    const placeSdk = (p) => enqueue(() => placeSdkInner(p));",
+  "to": "    const placeSdk = (p) => placeSdkInner(p);",
   "command": [
    "node",
    "--test",
@@ -32893,7 +32893,7 @@
   "slice": "s2ck",
   "label": "a quote refusal treated as uncertain (Codex r1 P2-6)",
   "file": "../customer-app/capp-api.js",
-  "from": "      if (cq.classify(r.json)) { settlePreAdmission(id, attemptId); return { kind: 'replay_requote', order_id: id }; }\n",
+  "from": "      if (cq.classify(r.json)) { settleSdk(id, 'none', attemptId); return { kind: 'replay_requote', order_id: id }; }\n",
   "to": "",
   "command": [
    "node",
@@ -33175,48 +33175,6 @@
   "kills_with": "SDK8: the card + Total rows"
  },
  {
-  "id": "s2ck-r10",
-  "slice": "s2ck",
-  "label": "a waiting place() registered only after it resumes (Codex r2 P1)",
-  "file": "../customer-app/capp-api.js",
-  "from": "        let started = null; const waiter = new Promise((r) => { started = r; });\n        legacyRuns.add(waiter);\n",
-  "to": "        let started = () => {}; const waiter = null;\n",
-  "command": [
-   "node",
-   "--test",
-   "../customer-app/capp-api-sdk.test.mjs"
-  ],
-  "kills_with": "SDK-queue"
- },
- {
-  "id": "s2ck-r11",
-  "slice": "s2ck",
-  "label": "a pre-admission refusal keeps the order dispatched (Codex r2 P2)",
-  "file": "../customer-app/capp-api.js",
-  "from": "      try { patchPlace(id, { attempt_state: 'none', unresolved: false, dispatched: 0 }); } catch (_) {}\n",
-  "to": "      settleSdk(id, 'none', attemptId);\n",
-  "command": [
-   "node",
-   "--test",
-   "../customer-app/capp-api-sdk.test.mjs"
-  ],
-  "kills_with": "SDK-preadmit: no cancel"
- },
- {
-  "id": "s2ck-r12",
-  "slice": "s2ck",
-  "label": "an answered attempt never marks the order admitted (Codex r2 P2)",
-  "file": "../customer-app/capp-api.js",
-  "from": "      if (['declined', 'bank_pending', 'action_required', 'under_review', 'expired'].includes(out.outcome)) markClaimed(id);\n",
-  "to": "",
-  "command": [
-   "node",
-   "--test",
-   "../customer-app/capp-api-sdk.test.mjs"
-  ],
-  "kills_with": "SDK-preadmit: an admitted order is always switched"
- },
- {
   "id": "s2ck-a12",
   "slice": "s2ck",
   "label": "the switch forgets the cash order's inputs (Codex r2 P2)",
@@ -33247,16 +33205,18 @@
  {
   "id": "s2ck-u17",
   "slice": "s2ck",
-  "label": "the switch's stored inputs never restore the flow (Codex r2 P2)",
+  "label": "the switch's stored inputs restore only when the flow looks incomplete (Codex r3 P2-4 — the old rule)",
   "file": "../customer-app/capp-ui.js",
-  "from": "        if (out.body && (!S.flow || need())) { const rf = flowFromBody(out.body); if (rf) { S.flow = rf; S.mode = rf.mode; S.flowRestored = true; } }\n",
-  "to": "",
+  "from": "        if (out.body) { const rf = flowFromBody(out.body); if (rf) { S.flow = rf; S.mode = rf.mode; S.flowRestored = true; } }",
+  "to": "        if (out.body && (!S.flow || need())) { const rf = flowFromBody(out.body); if (rf) { S.flow = rf; S.mode = rf.mode; S.flowRestored = true; } }",
   "command": [
    "node",
    "--test",
    "../customer-app/capp-ui.test.mjs"
   ],
-  "kills_with": "SDKUI-reload-switch"
+  "kills_with": [
+   "SDKUI-restore"
+  ]
  },
  {
   "id": "s2ck-u18",
@@ -33271,5 +33231,54 @@
    "../customer-app/capp-ui.test.mjs"
   ],
   "kills_with": "SDKUI-reload-switch"
+ },
+ {
+  "id": "s2ck-r13",
+  "slice": "s2ck",
+  "label": "place() outside the money queue under the SDK checkout (advisor r3 B)",
+  "file": "../customer-app/capp-api.js",
+  "from": "    const place = SDK_Q ? (p) => enqueue(() => placeLegacy(p)) : (p) => placeLegacy(p);",
+  "to": "    const place = (p) => placeLegacy(p);",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": [
+   "SDK-fifo",
+   "SDK-queue",
+   "SDK-lock"
+  ]
+ },
+ {
+  "id": "s2ck-r14",
+  "slice": "s2ck",
+  "label": "the switch trusts only a CANCELLED answer — the server's «no SDK order» left polling (advisor r3 A / r3b A1)",
+  "file": "../customer-app/capp-pay-card.js",
+  "from": "  const switchStep = (r) => (obj(r) && r.safe_to_switch === true ? 'cash' : 'poll');",
+  "to": "  const switchStep = (r) => (obj(r) && r.cancelled === true && r.safe_to_switch === true ? 'cash' : 'poll');",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-pay-card.test.mjs"
+  ],
+  "kills_with": "SC-switch: the server's «no SDK order»"
+ },
+ {
+  "id": "s2ck-u19",
+  "slice": "s2ck",
+  "label": "the switch's stored inputs never restore the flow (a reload)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        if (out.body) { const rf = flowFromBody(out.body); if (rf) { S.flow = rf; S.mode = rf.mode; S.flowRestored = true; } }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "SDKUI-reload-switch",
+   "SDKUI-restore"
+  ]
  }
 ]

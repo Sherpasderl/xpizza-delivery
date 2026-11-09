@@ -514,18 +514,12 @@
       if (!writeStrict(CART_KEY, { ...snap, v: cs ? cs.v : snap.v, rid: cfg.restaurantId, mode: p.flow && p.flow.mode, lines: cs ? cs.lines : snap.lines, cart_gen: gen, frozen_for: rec.order_id })) return { stop: { kind: 'offline', order_id: rec.order_id, freeze_failed: true } };
       return { rec: rec.cart_gen !== gen ? patchPlace(rec.order_id, { cart_gen: gen }) : rec };
     }
-    // Codex r1 P1-1: never alongside an SDK placement / switch on this page. With none in flight, place() returns placeLegacy's OWN
-    // promise (no added await): the legacy overlap interleaving stays the base's exactly (capp-s7a1 VP-base)
-    function place(p) {
-      if (sdkRun) {
-        // Codex r2 P1: registered the moment it starts WAITING, so an SDK operation queued after it waits for it too
-        let started = null; const waiter = new Promise((r) => { started = r; });
-        legacyRuns.add(waiter);
-        return sdkRun.then(() => {}, () => {}).then(() => { const run = trackLegacy(p); legacyRuns.delete(waiter); started(); return run; });
-      }
-      return trackLegacy(p);
-    }
-    function trackLegacy(p) { const run = placeLegacy(p); legacyRuns.add(run); const done = () => { legacyRuns.delete(run); }; run.then(done, done); return run; }
+    // Codex r3 (advisor B): with the SDK checkout on, ONE FIFO queue for EVERY money operation (place(), placeSdk(), the cash switch) — no
+    // cross-waiting between structures, so no deadlock by construction. With it off, place() IS placeLegacy (the base, VP-base)
+    const SDK_Q = cfg.sdkCheckout === true;
+    let moneyChain = Promise.resolve();
+    function enqueue(fn) { const run = moneyChain.then(fn, fn); moneyChain = run.then(() => {}, () => {}); return run; }
+    const place = SDK_Q ? (p) => enqueue(() => placeLegacy(p)) : (p) => placeLegacy(p);
     async function placeLegacy(p) {
       // Codex G7 r1 #1 / r2 (advisor (a)): another account's unresolved send (scheduled or ASAP) is on this device ⇒ refused HERE — before any gate,
       // record write or request; it places normally once that record resolves or expires
@@ -751,38 +745,11 @@
       } catch (_) { return { network: true }; }
     }
     // an attempt that ended with nothing in flight (declined, or never claimed): the record stays (the same order), unlocked
-    // ONE money operation at a time on this page (Codex r1 P1-1): an SDK placement / switch waits for every in-flight place() and the
-    // previous SDK operation; a place() waits for an in-flight SDK operation. Legacy place() calls are NOT serialized among themselves
-    // (their overlap behaviour is the base's — capp-s7a1 VP-base)
-    let sdkRun = null;
-    const legacyRuns = new Set();
-    function sdkExclusive(fn) {
-      const prev = sdkRun;
-      const run = (async () => {
-        if (prev) { try { await prev; } catch (_) {} }
-        while (legacyRuns.size) { try { await Promise.all([...legacyRuns]); } catch (_) {} }
-        return fn();
-      })();
-      sdkRun = run;
-      const done = () => { if (sdkRun === run) sdkRun = null; };
-      run.then(done, done);
-      return run;
-    }
     // settlement is bound to THE attempt it answers (Codex r1 P1-2): a write only while the record still holds that attempt
     function settleSdk(id, state, attemptId) {
       const cur = readPlace();
       if (!cur || cur.order_id !== id || (attemptId != null && cur.attempt_id !== attemptId)) return false;
       try { patchPlace(id, { attempt_state: state, unresolved: false }); return true; } catch (_) { return false; }
-    }
-    // Codex r2 P2: did the server ever ADMIT an attempt of this order? (any answer about an attempt, or an UNKNOWN one — conservatively)
-    // A proven pre-admission refusal on an order never admitted leaves no server order: the identity goes back to undispatched, so
-    // cash is an ordinary placement; once admitted, the order exists server-side and cash is always the §5 switch
-    function markClaimed(id) { const cur = readPlace(); if (cur && cur.order_id === id && cur.sdk_claimed !== true) { try { patchPlace(id, { sdk_claimed: true }); } catch (_) {} } }
-    function settlePreAdmission(id, attemptId) {
-      const cur = readPlace();
-      if (!cur || cur.order_id !== id || (attemptId != null && cur.attempt_id !== attemptId)) return;
-      if (cur.sdk_claimed === true) { settleSdk(id, 'none', attemptId); return; }
-      try { patchPlace(id, { attempt_state: 'none', unresolved: false, dispatched: 0 }); } catch (_) {}
     }
     // an answer about an EARLIER attempt than the record's current one says nothing about the current one
     function staleAttempt(id, out) {
@@ -792,7 +759,6 @@
     }
     function sdkApply(id, out) {
       if ((out.outcome === 'declined' || out.outcome === 'bank_pending' || out.outcome === 'action_required') && staleAttempt(id, out)) return { kind: 'sdk_pending', order_id: id, stale: true };
-      if (['declined', 'bank_pending', 'action_required', 'under_review', 'expired'].includes(out.outcome)) markClaimed(id);
       switch (out.outcome) {
         case 'placed': { const ok = resolvePlace(id, 'placed'); return { kind: 'placed', order_id: id, tracking_token: out.tracking_token, card: { ...out.card }, sdk: true, ...(typeof out.adjust_grant === 'string' ? { adjust_grant: out.adjust_grant } : {}), ...settledOf(ok) }; }
         case 'declined': settleSdk(id, 'declined', out.attempt_id); return { kind: 'sdk_declined', order_id: id, bucket: out.decline };
@@ -806,8 +772,8 @@
           let body = null; try { body = cur && typeof cur.switch_body === 'string' ? JSON.parse(cur.switch_body) : null; } catch (_) { body = null; }
           return intent ? { kind: 'sdk_switched', replaces: id, ...(body ? { body } : {}), ...settledOf(ok) } : { kind: 'sdk_expired', order_id: id, safe: true, ...settledOf(ok) };
         }
-        case 'unavailable': settlePreAdmission(id, null); return { kind: 'sdk_unavailable', order_id: id, retry_after_s: out.retry_after_s };
-        case 'not_allowed': settlePreAdmission(id, null); return { kind: 'sdk_not_allowed', order_id: id, reason: out.reason };
+        case 'unavailable': settleSdk(id, 'none'); return { kind: 'sdk_unavailable', order_id: id, retry_after_s: out.retry_after_s };
+        case 'not_allowed': settleSdk(id, 'none'); return { kind: 'sdk_not_allowed', order_id: id, reason: out.reason };
         default: return { kind: 'sdk_pending', order_id: id };
       }
     }
@@ -820,7 +786,7 @@
       const out = PC.readPlacement(r.json);
       return out.outcome === 'invalid' ? { kind: 'sdk_pending', order_id: id } : sdkApply(id, out);
     }
-    const placeSdk = (p) => sdkExclusive(() => placeSdkInner(p));
+    const placeSdk = (p) => enqueue(() => placeSdkInner(p));
     async function placeSdkInner(p) {
       if (!E.placeSdkOrder || !PC) return { kind: 'sdk_unavailable', local: true };
       // the authority FIRST (the one await before the dispatch, Codex r1 P1-1): everything after it is checked and sent with no await between
@@ -850,18 +816,20 @@
       const id = rec.order_id;
       if (typeof p.onDispatch === 'function') { try { p.onDispatch(id); } catch (_) {} }   // the UI keeps the sent order for a reload (Codex r1 P1-4)
       const r = await sdkCall('POST', E.placeSdkOrder, body, h);
-      if (r.network || r.status >= 500 || !r.json) { markClaimed(id); return sdkStatus(id, p); }   // unknown ⇒ maybe admitted; the status, never a new attempt
-      if (r.status === 200) { const out = PC.readPlacement(r.json); if (out.outcome === 'invalid') { markClaimed(id); return sdkStatus(id, p); } return sdkApply(id, out); }
+      if (r.network || r.status >= 500 || !r.json) return sdkStatus(id, p);                        // unknown ⇒ the status, never a new attempt
+      if (r.status === 200) { const out = PC.readPlacement(r.json); return out.outcome === 'invalid' ? sdkStatus(id, p) : sdkApply(id, out); }
       // Codex r1 P2-6: a quote refusal is pre-admission (nothing claimed): the attempt released, the checkout re-quotes
-      if (cq.classify(r.json)) { settlePreAdmission(id, attemptId); return { kind: 'replay_requote', order_id: id }; }
+      if (cq.classify(r.json)) { settleSdk(id, 'none', attemptId); return { kind: 'replay_requote', order_id: id }; }
       const cr = commonRefusal({ status: r.status, json: r.json, parsed: true });
-      if (cr) { settlePreAdmission(id, attemptId); return { ...cr, order_id: id }; }                   // the intake gates refuse before any claim
+      if (cr) { settleSdk(id, 'none', attemptId); return { ...cr, order_id: id }; }                   // the intake gates refuse before any claim
       if (r.status === 401 || r.status === 404) return recoverySheet(id);
-      markClaimed(id); return sdkStatus(id, p);
+      return sdkStatus(id, p);
     }
-    // §5 «Pagar en efectivo»: cash only once the pending order is safe_to_switch; otherwise poll (never cash). A switch not yet safe is
+    // §5 «Pagar en efectivo»: cash only once the SERVER says safe_to_switch (advisor r3 A: an order that ever touched the SDK path is ALWAYS
+    // switched — never a client-side guess about admission; a never-admitted / unknown order answers safe_to_switch:true); otherwise poll
+    // (never cash). A switch not yet safe is
     // REMEMBERED on the record (Codex r1 P2-9) and completes when a later status says «expired, safe»
-    const sdkSwitchToCash = (id, p) => sdkExclusive(() => sdkSwitchInner(id, p));
+    const sdkSwitchToCash = (id, p) => enqueue(() => sdkSwitchInner(id, p));
     async function sdkSwitchInner(id, p) {
       if (!E.cancelSdkPending || !PC) return { kind: 'sdk_pending', order_id: id };
       const h = await sdkHeaders(p, id); if (!h) return recoverySheet(id);

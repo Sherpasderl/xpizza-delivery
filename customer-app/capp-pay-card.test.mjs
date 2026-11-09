@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { placeResp, listCards, cancelPending, OUTCOMES, BUCKETS } from './test/fake-sdk-checkout.mjs';
+import { placeResp, listCards, cancelPending, noSdkOrder, OUTCOMES, BUCKETS } from './test/fake-sdk-checkout.mjs';
 const require = createRequire(import.meta.url);
 const P = require('./capp-pay-card.js');
 
@@ -90,6 +90,7 @@ test('switching to cash (§5): only once the pending order is safe_to_switch; ot
   assert.equal(P.switchStep(cancelPending(true, true)), 'cash', '🔴 SC-switch: safe ⇒ cash (a NEW order_id + replaces_order_id)');
   assert.equal(P.switchStep(cancelPending(true, false)), 'poll', '🔴 SC-switch: not yet safe ⇒ poll, never cash');
   assert.equal(P.switchStep({ cancelled: true }), 'poll', 'malformed ⇒ poll');
+  assert.equal(P.switchStep(noSdkOrder()), 'cash', '🔴 SC-switch: the server\'s «no SDK order» answer (r3b A1: cancelled:false, safe_to_switch:true) is safe');
 });
 
 test('frame 3 form over an ABSTRACT field interface (advisor Q9): per-field states → ONE pinned «Guardar tarjeta», disabled until valid (mockup v7); errors only once touched; the save switch for members only, ON by default (owner ruling 2)', () => {

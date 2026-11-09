@@ -108,8 +108,9 @@
   const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
   const newAttemptId = (randomBytes) => { const b = randomBytes(24); let s = 'att_'; for (let i = 0; i < b.length; i++) s += B64[b[i] & 63]; return s; };
 
-  // §5 — cash only once the pending order is safe_to_switch; otherwise keep polling
-  const switchStep = (r) => (obj(r) && r.cancelled === true && r.safe_to_switch === true ? 'cash' : 'poll');
+  // §5 — cash only once the SERVER says safe_to_switch (advisor r3: a never-admitted / unknown order answers safe_to_switch:true, whether or
+  // not anything was cancelled); otherwise keep polling
+  const switchStep = (r) => (obj(r) && r.safe_to_switch === true ? 'cash' : 'poll');
 
   // frame 3 over the abstract field interface — states only (`value` is never read)
   const FIELDS = ['number', 'expiry', 'cvv', 'name'];

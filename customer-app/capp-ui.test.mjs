@@ -3284,3 +3284,21 @@ test('Codex r2 P2: a reload DURING a pending cash switch restores the checkout\'
   assert.ok(co.body.replaces_order_id === old && co.body.order_id !== old && co.body.payment_method === 'cash', '🔴 SDKUI-reload-switch: a NEW cash order replacing the SDK one');
   assert.ok(Number.isFinite(co.body.lat) && Number.isFinite(co.body.lng), 'the restored inputs (the pin) rode along');
 });
+
+test('Codex r3 P2-4 repro (advisor r3 C): a PICKUP member switch completed after a reload places the stored recipient and notes — never the fresh member defaults', async () => {
+  const storage = memStore(), HOST = HOSTED_KEYS;
+  const b1 = bootSdk({ storage, config: HOST, script: { placeSdkOrder: [(body) => SDK_R('declined', { order_id: body.order_id, attempt_id: body.attempt_id, decline: 'retryable', pay_deadline_at: NOON().getTime() + 600e3 })],
+    cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, false) }], placeSdkStatus: ['network'] } });
+  await b1.click(`.qty-add-btn[data-id="${b1.plain.key}"]`); b1.ui.render(); await b1.click('#cart-bar'); await b1.click('[data-act="checkout"]'); await settle();
+  await b1.click('[data-act="type"][data-val="pickup"]'); await b1.click('[data-act="editwho"]'); await b1.type('#f-name', 'Otra persona');
+  await b1.click('[data-act="more"]'); await b1.type('#f-notes', 'Sin cebolla'); await settle();
+  await b1.click('#cta'); await b1.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b1.text('#layer .errsheet h2'), 'Tu banco no autorizó el pago', 'premise: declined');
+  await b1.click('#layer [data-act="decl-cash"]'); await settle();
+  const b2 = bootSdk({ storage, config: HOST, script: { placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })], createOrder: [(body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })] } });
+  b2.ui.restore(JSON.parse(storage.getItem(HOSTED_KEYS.cartKey)));
+  await settle(); b2.timers.flush(); await settle(); b2.timers.flush(); await settle();
+  const co = b2.srv.of('createOrder')[0];
+  assert.ok(co, 'premise: the completed switch placed the cash order');
+  assert.deepEqual([co.body.order_type, co.body.customer_name, co.body.notes], ['pickup', 'Otra persona', 'Sin cebolla'], '🔴 SDKUI-restore: the stored recipient and notes win over the fresh defaults');
+});

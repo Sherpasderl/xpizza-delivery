@@ -47,4 +47,6 @@ export function listCards(cards) {
 }
 export const sdkPayStatus = (available, retry_after_s = 0) => exact(snap({ available, retry_after_s }), { available: bool, retry_after_s: int }, 'sdkPayStatus');
 export const cancelPending = (cancelled, safe_to_switch) => exact(snap({ cancelled, safe_to_switch }), { cancelled: bool, safe_to_switch: bool }, 'cancelSdkPending');
+// CONTRACT-sdk-checkout r3b A1: an ABSENT or FOREIGN order answers the identical 200 (no 404 oracle) — exact keys, exact values
+export const noSdkOrder = () => exact(snap({ cancelled: false, safe_to_switch: true, reason: 'no_sdk_order' }), { cancelled: (x) => x === false, safe_to_switch: (x) => x === true, reason: (x) => x === 'no_sdk_order' }, 'cancelSdkPending(no_sdk_order)');
 export { OUTCOMES, BUCKETS };
