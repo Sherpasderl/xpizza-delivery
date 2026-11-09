@@ -1,5 +1,7 @@
 'use strict';
 const { isValidPrice } = require('../price-valid');   // 1d-1a EXTENSION: the ONE price-validity rule
+const { PRICING_KEY_STAMP } = require('../menu-pricing');
+const { OPAQUE_SYNTAX } = require('../catalog/mint-opaque');
 
 /**
  * Per-line gross cents for the factura, mirroring index.js computeServerTotal's validation
@@ -10,13 +12,16 @@ const { isValidPrice } = require('../price-valid');   // 1d-1a EXTENSION: the ON
  * adds each extra once to the item) and appended to the description; they are not separate
  * lines. Returns { items: [{qty, description, line_gross_cents}], error } — items null on error.
  */
-function pricedLineItems(items, menuPrices, extraPrices) {
+// S1d (owner 11-08): a line is priced by its RESOLVED key (the resolution stage's stamp, else its name) and described by that
+// key's label from the version that priced the order. No label: a legacy key is its own description (today's); an opaque
+// key is refused (labels_unavailable) — a minted token never lands on a factura.
+function pricedLineItems(items, menuPrices, extraPrices, labels = null) {
   if (!Array.isArray(items) || items.length === 0) {
     return { items: null, error: 'items must be a non-empty array' };
   }
   const out = [];
   for (const it of items) {
-    const name = it && it.name;
+    const name = it && typeof it[PRICING_KEY_STAMP] === 'string' ? it[PRICING_KEY_STAMP] : (it && it.name);
     const qty = Number(it && it.qty);
     if (!name || !Object.prototype.hasOwnProperty.call(menuPrices, name)) {
       return { items: null, error: `unknown menu item: ${String(name).slice(0, 40)}` };
@@ -49,7 +54,9 @@ function pricedLineItems(items, menuPrices, extraPrices) {
       lineGrossCents += eprice * 100;
       extraNames.push(ename);
     }
-    const description = extraNames.length ? `${name} (+${extraNames.join(', ')})` : name;
+    const label = labels && typeof labels[name] === 'string' ? labels[name] : (OPAQUE_SYNTAX.test(name) ? null : name);
+    if (label === null) return { items: null, error: 'labels_unavailable' };
+    const description = extraNames.length ? `${label} (+${extraNames.join(', ')})` : label;
     out.push({ qty, description, line_gross_cents: lineGrossCents });
   }
   return { items: out, error: null };

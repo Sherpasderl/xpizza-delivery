@@ -825,7 +825,7 @@ createOrderApp.all('*', async (req, res) => {
      getFirestore is passed as a GETTER so a cold-instance throw is caught inside the guard rather than
      failing the request — the lesson D3 paid for. */
   const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP, keyMode: keyModeOfTables(pricingTables) });
-  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements); { const rl = RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); } }   // S1b: every line resolves to a key the tables hold, before any check or price
+  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements); { const rl = RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); } if (usesPlatformFactura(restaurantId) && RL.labelGap(body, pricingTables)) return res.status(503).json({ error: 'labels_unavailable', retryable: true }); }   // S1b: every line resolves to a key the tables hold, before any check or price
 
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [create]
   if (errors.length > 0) {
@@ -1215,7 +1215,7 @@ createOrderApp.all('*', async (req, res) => {
     ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
         factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn base); factura_items = paid + comped (SAR doc)
     : (usesPlatformFactura(restaurantId)
-      ? pricedLineItems(body.items, facturaMenu, facturaExtras)
+      ? pricedLineItems(body.items, facturaMenu, facturaExtras, require('./menu-pricing').labelsOfTables(pricingTables))
       : { items: null, error: null });
   /* serial3:begin factura-cash-order */
   // §3 FISCAL: the factura's lines in the MENU order of the version that priced this order (byte-identical to before §3,
@@ -1545,7 +1545,7 @@ chargeOnlineApp.all('*', async (req, res) => {
      getFirestore is passed as a GETTER so a cold-instance throw is caught inside the guard rather than
      failing the request — the lesson D3 paid for. */
   const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP, keyMode: keyModeOfTables(pricingTables) });
-  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements); { const rl = RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); } }   // S1b: every line resolves to a key the tables hold, before any check or price
+  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements); { const rl = RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); } if (usesPlatformFactura(restaurantId) && RL.labelGap(body, pricingTables)) return res.status(503).json({ error: 'labels_unavailable', retryable: true }); }   // S1b: every line resolves to a key the tables hold, before any check or price
 
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [charge]
   if (errors.length > 0) return badRequest(res, errors.join('; '));
@@ -1927,7 +1927,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
         factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn); factura_items = paid + comped (SAR doc)
     : (usesPlatformFactura(restaurantId)
-      ? pricedLineItems(body.items, facturaMenu, facturaExtras)
+      ? pricedLineItems(body.items, facturaMenu, facturaExtras, require('./menu-pricing').labelsOfTables(pricingTables))
       : { items: null, error: null });  // non-platform (la_musa) → no factura line items
   /* serial3:begin factura-card-order */
   // §3 FISCAL: the factura's lines in the MENU order of the version that priced this order (byte-identical to before §3,

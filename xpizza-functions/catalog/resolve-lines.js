@@ -73,10 +73,19 @@ function resolveLines(rid, body, tables) {
   return { ok: true };
 }
 
+// S1d D3: true when a line (or the reward line) resolved to an OPAQUE key this route has no label for — such a key may never be
+// a factura description, so the order endpoints of a platform-factura restaurant refuse it (retryable) before any write.
+function labelGap(body, tables) {
+  const { OPAQUE_SYNTAX } = require('./mint-opaque');
+  const labels = labelsOfTables(tables);
+  const lines = [...((isObj(body) && Array.isArray(body.items)) ? body.items : []), ...(isObj(body) ? rewardLines(body.redeem).map(([l]) => l) : [])];
+  return lines.some((l) => isObj(l) && typeof l[PRICING_KEY_STAMP] === 'string' && OPAQUE_SYNTAX.test(l[PRICING_KEY_STAMP]) && !(labels && typeof labels[l[PRICING_KEY_STAMP]] === 'string'));
+}
+
 // The order endpoints' refusal. (The quotes keep their own fail-soft envelope and read `code` directly.)
 function resolutionRefusal(res) {
   if (res && res.code === 'menu_changed') return { status: 409, body: { error: 'menu_changed', detail: MENU_CHANGED_DETAIL, retryable: false } };
   return { status: 400, body: { error: 'invalid_line', at: res && res.at, index: res && res.index } };
 }
 
-module.exports = { resolveLines, resolutionRefusal, MENU_CHANGED_DETAIL };
+module.exports = { resolveLines, labelGap, resolutionRefusal, MENU_CHANGED_DETAIL };

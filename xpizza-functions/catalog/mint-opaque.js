@@ -13,6 +13,7 @@
 const crypto = require('crypto');
 
 const MINT_OPAQUE = false;
+const OPAQUE_SYNTAX = /^i_[a-z2-7]{12}$/i;   // the one definition of a minted key's shape
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567';
 
 function mintCapabilities() {
@@ -30,4 +31,4 @@ function mintKey(randomBytes = crypto.randomBytes) {
   return `i_${out}`;
 }
 
-module.exports = { mintCapabilities, mintKey };
+module.exports = { mintCapabilities, mintKey, OPAQUE_SYNTAX };

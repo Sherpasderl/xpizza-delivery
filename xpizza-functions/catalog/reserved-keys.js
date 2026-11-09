@@ -69,7 +69,7 @@ function assertWithinLimit(doc) {
 // D3 (owner 2026-11-09): only a RENAME is judged — an item whose display.id the active version also holds, under a different
 // display name. Its new name may not fold to a reserved key other than its own, nor take the opaque-key syntax. An addition is
 // never judged here: it is a new item (with minting on, under a fresh key), and history stays with the old one.
-const OPAQUE_SYNTAX = /^i_[a-z2-7]{12}$/i;
+const { OPAQUE_SYNTAX } = require('./mint-opaque');
 function renameConflicts({ items, activeItems, reserved }) {
   const { normalizeName } = require('./add-product');
   const wasName = new Map((activeItems || []).filter((it) => isPlainObj(it) && isPlainObj(it.display) && it.display.id != null).map((it) => [String(it.display.id), it.display.name]));
