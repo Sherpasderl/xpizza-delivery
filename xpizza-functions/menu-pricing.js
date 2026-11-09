@@ -62,7 +62,7 @@ function weekendOnlyViolation(items, restaurantId, fulfillmentMs, weekendOnlyKey
   const keys = injected || (restaurantId === 'x_pizza' ? X_PIZZA_WEEKEND_ONLY : null);
   if (!keys || keys.size === 0) return null;                                     // no gate for this restaurant
   if (WEEKEND_DAYS.has(hnDayFromMs(fulfillmentMs))) return null;                 // Fri/Sat/Sun → everything allowed
-  const hit = items.find((it) => it && keys.has(it.name));
+  const hit = items.find((it) => it && keys.has(itemPricingKey(it, restaurantId)));   // S1b: the resolved key (the stamp), as pricing reads it
   return hit ? hit.name : null;
 }
 

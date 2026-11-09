@@ -1,0 +1,153 @@
+'use strict';
+// S1b (PLAN-portal-item-edit r6 §2.4; D4c-grill/item-s1/S1b-DESIGN.md + the advisor's rulings) — the resolution stage through
+// the four REAL cart endpoints on the emulator (x_pizza name-keyed, la_musa id-keyed, both published through the real path).
+//   U  an unknown item: createOrder / the charge → 409 menu_changed «El menú se actualizó, recargá la página» (not retryable),
+//      nothing written, nothing charged; quoteOrder → 200 { ok:false, error:'menu_changed' } (fail-soft); quoteRedemption →
+//      409 { ok:false, error:'menu_changed', detail }
+//   I  the intentional tightening: an array name → 400 invalid_line on the order endpoints, fail-soft on quoteOrder
+//   K  item_key: an agreeing item_key prices exactly as its legacy twin (same stored total); an item_key-only line refuses
+//      menu_changed (S1b: never priced)
+//   F  one key across endpoints: quoteOrder signs the SAME cart fingerprint for an item_key cart and its legacy twin, and the
+//      order carrying the legacy quote's token is accepted for the item_key cart
+// The reward refusal's byte-identity (base vs tip) is test/s1b-reward-parity.capture.js. Run: npm run test:resolve-lines
+require('./_emulator-required')('database', 'firestore');
+
+const assert = require('assert');
+const http = require('http');
+const express = require('express');
+process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
+process.env.MAKE_SECRET = process.env.MAKE_SECRET || 's1b-secret';
+process.env.QUOTE_TOKEN_SECRET = process.env.QUOTE_TOKEN_SECRET || 's1b-quote-secret';
+process.env.PIXELPAY_RETURN_URL_LA_MUSA = process.env.PIXELPAY_RETURN_URL_LA_MUSA || 'https://lamusa.test';
+const stub = (rel, exportsOf) => { const p = require.resolve(rel); const real = require(rel); require.cache[p] = { id: p, filename: p, loaded: true, children: [], paths: [], exports: exportsOf(real) }; };
+const CHARGED = [];
+stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
+stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CHARGED.push(q.pixelpayOrderId); return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
+stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));
+
+const app = require('../index.js');
+const admin = require('firebase-admin');
+const rtdb = admin.database();
+const fs = admin.firestore();
+const { buildPublishCandidate } = require('../tools/publish-version');
+const { buildSourceFromCode } = require('../tools/seed-source-store');
+const { sourceRefOf, canonicalize } = require('../catalog/source-store');
+const { publishVersion } = require('../catalog/catalog-publish');
+const { backfillIdentities } = require('../catalog/identity-backfill');
+const { catalogSnapshot } = require('../catalog/generate-form-bundle');
+const { getActivePointer } = require('../catalog/catalog-firestore');
+const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
+const { verifyQuoteToken } = require('../quote-token');
+
+let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+let FINISHED = false;
+process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('resolve-lines(emulator): FAILED — exited without completing'); process.exitCode = 1; } });
+
+const MENU_CHANGED = { error: 'menu_changed', detail: 'El menú se actualizó, recargá la página', retryable: false };
+function post(handler, body, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const w = express(); w.use(express.json()); w.use(handler);
+    const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
+      try {
+        const res = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}`, ...headers }, body: JSON.stringify(body) });
+        const t = await res.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
+        s.close(() => resolve({ status: res.status, json: j, text: t }));
+      } catch (e) { s.close(() => reject(e)); }
+    });
+  });
+}
+const OPEN = { open: true, start: '00:00', end: '24:00' };
+const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, hub_lat: 14.1, hub_lng: -87.2, delivery_radius_km: 8, version: 1,
+  hours: { sun: OPEN, mon: OPEN, tue: OPEN, wed: OPEN, thu: OPEN, fri: OPEN, sat: OPEN } });
+async function seed(rid) {
+  await sourceRefOf(fs, rid).set(canonicalize(buildSourceFromCode(rid)));
+  const { input } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: `s1b-${rid}` });
+  await publishVersion(fs, rid, input, { expected: { activeVersionId: null }, mirror: makeRtdbMirror(rtdb) });
+  await backfillIdentities(fs, rid, catalogSnapshot(rid), { captured: await getActivePointer(fs, rid) });
+  await rtdb.ref(`restaurants/${rid}/identity`).set(identityFor(rid));
+}
+const dish = (rid) => catalogSnapshot(rid).items.find((i) => (rid === 'x_pizza' ? i.key === 'Carnivora' : i.key === 'dimsum_01'));
+const lineOf = (rid, over = {}) => { const it = dish(rid); return { ...(rid === 'x_pizza' ? { name: it.display.name } : { id: it.key, name: it.display.name, cat: it.display.cat }), qty: 1, price: it.price, extras: [], ...over }; };
+const bodyFor = (rid, oid, phone, items, extra = {}) => ({ restaurant_id: rid, order_id: oid, customer_name: 'S1b Test', customer_phone: phone, customer_email: 's1b@example.com',
+  items_text: '1x test', order_type: 'pickup', payment_method: 'cash', items, ...extra });
+let seq = 0;
+const fresh = async () => { await rtdb.ref('rate_limits').remove(); seq += 1; return { oid: `s1b_${seq}_${Date.now() % 100000}`, phone: `9945${String(1000 + seq).slice(-4)}` }; };
+const written = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).exists();
+
+(async () => {
+  for (const rid of ['x_pizza', 'la_musa']) await seed(rid);
+  await rtdb.ref('config/redemption_enabled').set(true);
+  const uid = 'u_s1b';
+  for (const rid of ['x_pizza', 'la_musa']) await rtdb.ref(`user_rewards/${uid}/${rid}`).set({ balance: 100000, reserved: 0 });
+  { const f = await fresh(); const w = await post(app.createOrder, bodyFor('x_pizza', f.oid, f.phone, [lineOf('x_pizza')]), { 'x-firebase-id-token': uid });
+    assert.strictEqual(w.status, 200, `premise: a plain cash order places (${w.text.slice(0, 200)})`); }
+
+  // ── U: an unknown item ──
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const unknown = lineOf(rid, rid === 'x_pizza' ? { name: 'Pizza Que No Existe' } : { id: 'nope_99' });
+    const f = await fresh();
+    const co = await post(app.createOrder, bodyFor(rid, f.oid, f.phone, [lineOf(rid), unknown]), { 'x-firebase-id-token': uid });
+    assert.deepStrictEqual([co.status, co.json], [409, MENU_CHANGED], `U-CREATE ${rid} an unknown item is 409 menu_changed (${co.text.slice(0, 160)})`);
+    assert.strictEqual(await written(f.oid), false, `U-CREATE ${rid} nothing written`);
+    const g = await fresh(); const before = CHARGED.length;
+    const ch = await post(app.chargeOnlineOrder, bodyFor(rid, g.oid, g.phone, [unknown], { payment_method: 'online' }), { 'x-firebase-id-token': uid });
+    assert.deepStrictEqual([ch.status, ch.json], [409, MENU_CHANGED], `U-CHARGE ${rid} an unknown item is 409 menu_changed (${ch.text.slice(0, 160)})`);
+    assert.strictEqual(CHARGED.length, before, `U-CHARGE ${rid} nothing charged`);
+    assert.strictEqual(await written(g.oid), false, `U-CHARGE ${rid} nothing written`);
+    const q = await post(app.quoteOrder, { restaurant_id: rid, items: [unknown], order_type: 'pickup' });
+    assert.deepStrictEqual([q.status, q.json], [200, { ok: false, error: 'menu_changed' }], `U-QUOTE ${rid} fail-soft menu_changed (${q.text.slice(0, 160)})`);
+    const qr = await post(app.quoteRedemption, { restaurant_id: rid, items: [unknown], order_type: 'pickup', redeem: rid === 'x_pizza' ? { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' } : { type: 'points_ala_carte', items: [{ id: 'rice_white', qty: 1, name: 'Arroz' }] } }, { 'x-firebase-id-token': uid });
+    assert.deepStrictEqual([qr.status, qr.json], [409, { ok: false, ...MENU_CHANGED }], `U-QUOTE-REDEEM ${rid} an unknown cart line is 409 { ok:false, menu_changed } (${qr.text.slice(0, 160)})`);
+  }
+  ok('an unknown item: 409 menu_changed on createOrder and the charge (nothing written or charged); quoteOrder fail-soft; quoteRedemption 409 { ok:false }');
+
+  // ── I: the intentional tightening ──
+  {
+    const f = await fresh();
+    const co = await post(app.createOrder, bodyFor('x_pizza', f.oid, f.phone, [lineOf('x_pizza', { name: ['Carnivora'] })]), { 'x-firebase-id-token': uid });
+    assert.deepStrictEqual([co.status, co.json], [400, { error: 'invalid_line', at: 'items', index: 0 }], `I-ARRAY an array name is 400 invalid_line (${co.text.slice(0, 160)})`);
+    assert.strictEqual(await written(f.oid), false);
+    const g = await fresh();
+    const ch = await post(app.chargeOnlineOrder, bodyFor('la_musa', g.oid, g.phone, [lineOf('la_musa', { id: ['dimsum_01'] })], { payment_method: 'online' }), { 'x-firebase-id-token': uid });
+    assert.deepStrictEqual([ch.status, ch.json], [400, { error: 'invalid_line', at: 'items', index: 0 }], `I-ARRAY-ID an array id is 400 invalid_line (${ch.text.slice(0, 160)})`);
+    const q = await post(app.quoteOrder, { restaurant_id: 'x_pizza', items: [lineOf('x_pizza', { name: ['Carnivora'] })], order_type: 'pickup' });
+    assert.deepStrictEqual([q.status, q.json], [200, { ok: false, error: 'invalid_line' }], 'I-QUOTE fail-soft');
+  }
+  ok('a non-string name / id: 400 invalid_line on the order endpoints, fail-soft on quoteOrder (the intentional tightening)');
+
+  // ── K: item_key ──
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const key = dish(rid).key;
+    const a = await fresh(); const b = await fresh();
+    const legacy = await post(app.createOrder, bodyFor(rid, a.oid, a.phone, [lineOf(rid)]), { 'x-firebase-id-token': uid });
+    const keyed = await post(app.createOrder, bodyFor(rid, b.oid, b.phone, [lineOf(rid, { item_key: key })]), { 'x-firebase-id-token': uid });
+    assert.deepStrictEqual([legacy.status, keyed.status], [200, 200], `K-AGREE ${rid} both place (${keyed.text.slice(0, 160)})`);
+    const [oa, ob] = [(await rtdb.ref(`orders/${a.oid}`).get()).val(), (await rtdb.ref(`orders/${b.oid}`).get()).val()];
+    for (const f of ['total', 'total_cents', 'subtotal', 'tax', 'items_text']) assert.deepStrictEqual(ob[f], oa[f], `K-AGREE ${rid} the item_key twin stores the same ${f}`);
+    const c = await fresh();
+    const only = await post(app.createOrder, bodyFor(rid, c.oid, c.phone, [{ item_key: key, qty: 1, price: dish(rid).price, extras: [] }]), { 'x-firebase-id-token': uid });
+    assert.deepStrictEqual([only.status, only.json], [409, MENU_CHANGED], `K-ONLY ${rid} an item_key-only line is 409 menu_changed in S1b (${only.text.slice(0, 160)})`);
+    assert.strictEqual(await written(c.oid), false);
+  }
+  ok('an agreeing item_key prices exactly as its legacy twin; an item_key-only line refuses menu_changed (never priced in S1b)');
+
+  // ── F: one key across endpoints ──
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const key = dish(rid).key;
+    const ql = await post(app.quoteOrder, { restaurant_id: rid, items: [lineOf(rid)], order_type: 'pickup' });
+    const qk = await post(app.quoteOrder, { restaurant_id: rid, items: [lineOf(rid, { item_key: key })], order_type: 'pickup' });
+    assert.ok(ql.json && ql.json.ok && ql.json.quote_token && qk.json && qk.json.ok && qk.json.quote_token, `premise: ${rid} both quotes signed (${qk.text.slice(0, 160)})`);
+    const [pl, pk] = [verifyQuoteToken(ql.json.quote_token, process.env.QUOTE_TOKEN_SECRET, Date.now()), verifyQuoteToken(qk.json.quote_token, process.env.QUOTE_TOKEN_SECRET, Date.now())];
+    assert.ok(pl.ok && pk.ok, 'premise: both tokens verify');
+    assert.strictEqual(pk.payload.cart_fingerprint, pl.payload.cart_fingerprint, `F-FP ${rid} the item_key cart and its legacy twin are ONE fingerprint`);
+    assert.strictEqual(qk.json.net_total_cents, ql.json.net_total_cents, `F-FP ${rid} one net total`);
+    const f = await fresh();
+    const co = await post(app.createOrder, bodyFor(rid, f.oid, f.phone, [lineOf(rid, { item_key: key })], { quote_token: ql.json.quote_token }), { 'x-firebase-id-token': uid });
+    assert.strictEqual(co.status, 200, `F-ORDER ${rid} the order with the item_key cart accepts the legacy cart's quote (${co.text.slice(0, 200)})`);
+  }
+  ok('quoteOrder and the order fingerprint one key: an item_key cart and its legacy twin sign the same fingerprint; the order accepts either\'s quote');
+
+  FINISHED = true;
+  console.log(`\nresolve-lines(emulator): OK (${n})`);
+  process.exit(0);
+})().catch((e) => { console.error('resolve-lines(emulator) FAILED:', e); process.exit(1); });

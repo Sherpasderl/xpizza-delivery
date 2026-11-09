@@ -75,7 +75,7 @@ const { getDatabase, ServerValue } = require('firebase-admin/database');
 const { getFirestore } = require('firebase-admin/firestore');   // Phase 1b-1 — index.js's FIRST Firestore touch (the pricing catalog)
 const { startShadowCheck, reportIdentityShadow } = require('./catalog/identity-shadow-validate');
 const { resolveGraceKeys, reportForwardCoverage } = require('./catalog/identity-grace');   // 1D D4-grace — forward resolution, money no-op
-const { PRICING_KEY_STAMP } = require('./menu-pricing');
+const { PRICING_KEY_STAMP } = require('./menu-pricing'); const RL = require('./catalog/resolve-lines');   // S1b — the resolution stage
 const { sweepAllIdentityIntegrity } = require('./catalog/identity-sweep');   // 1D D4 — registry integrity, off the order path   // 1D D3 — shadow identity check (reads nothing into a decision)
 const { getAuth } = require('firebase-admin/auth');
 const webpush = require('web-push');
@@ -825,7 +825,7 @@ createOrderApp.all('*', async (req, res) => {
      getFirestore is passed as a GETTER so a cold-instance throw is caught inside the guard rather than
      failing the request — the lesson D3 paid for. */
   const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP, keyMode: keyModeOfTables(pricingTables) });
-  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
+  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements); { const rl = RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); } }   // S1b: every line resolves to a key the tables hold, before any check or price
 
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [create]
   if (errors.length > 0) {
@@ -1545,7 +1545,7 @@ chargeOnlineApp.all('*', async (req, res) => {
      getFirestore is passed as a GETTER so a cold-instance throw is caught inside the guard rather than
      failing the request — the lesson D3 paid for. */
   const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP, keyMode: keyModeOfTables(pricingTables) });
-  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
+  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements); { const rl = RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); } }   // S1b: every line resolves to a key the tables hold, before any check or price
 
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [charge]
   if (errors.length > 0) return badRequest(res, errors.join('; '));
@@ -7425,7 +7425,7 @@ exports.quoteOrder = onRequest(
       const tables = await resolvePricingTables(restaurantId);
       // 2c: a quote is display-only, so it fails SOFT — the client keeps its own total and checkout is
       // never blocked by a pricing outage. (The ORDER still fail-closes; only the preview degrades.)
-      if (!tables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' });
+      if (!tables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' }); { const rl = RL.resolveLines(restaurantId, body, tables); if (!rl.ok) return res.status(200).json({ ok: false, error: rl.code }); }   // S1b: fail-soft, as every quote refusal
       // 1D add-product B: a bare launcher quotes as choice_required (render capability on only — no read otherwise)
       if (groupCapabilities().render) {
         const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, keyMode: keyModeOfTables(tables) }));
@@ -7495,7 +7495,7 @@ exports.quoteRedemption = onRequest(
       // 2c: fail SOFT, and this one MUST be guarded rather than left to throw — quoteRedemptionCore
       // calls requireTables, which throws on a null and would surface as a 500 instead of a clean
       // ok:false the client can degrade from.
-      if (!quoteTables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' });
+      if (!quoteTables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' }); { const rl = RL.resolveLines(restaurantId, body, quoteTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json({ ok: false, ...rf.body }); } }   // S1b: its own envelope ({ ok:false, … })
       // 2a: the quote must preview on the SAME allowlist the order enforces, or a customer is shown a
       // redemption the order then refuses (or vice versa).
       const quoteEligible = await gateReader().redeemEligibleFor(restaurantId);

@@ -1,4 +1,5 @@
 'use strict';
+const PRICING_KEY_STAMP = Symbol.for('xpizza.d4.pricingKeyStamp');   // the resolution stage's stamp (menu-pricing's own; pinned equal by test)
 // §3 FISCAL (PLAN-menu-ordering §3, codex serialization r1 + the advisor's fiscal ruling) — THE FACTURA'S LINES IN MENU ORDER.
 //
 // The forms used to send an order's lines in MENU order; they now send them in cart INSERTION order (form-serial-order.js).
@@ -82,6 +83,9 @@ function facturaLinesInMenuOrder(priced, bodyItems, itemOrder, log = (...a) => c
   }
   const rank = new Map(itemOrder.map((k, i) => [String(k), i]));
   const rankOf = (it) => {
+    // S1b: the key the resolution stage stamped (the key that priced the line) ranks first; then today's fields
+    const stamped = it && it[PRICING_KEY_STAMP];
+    if (typeof stamped === 'string' && rank.has(stamped)) return rank.get(stamped);
     for (const f of ['name', 'id', 'dish_id']) { if (it && it[f] != null && rank.has(String(it[f]))) return rank.get(String(it[f])); }
     return Infinity;
   };

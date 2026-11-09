@@ -406,6 +406,8 @@
   "catalog/group-index.js#groupIndexFrom": "catalog",
   "catalog/group-intake.js#groupIssues": "catalog",
   "catalog/group-intake.js#rewardKeysOf": "catalog",
+  "catalog/resolve-lines.js#resolveLines": "intake",
+  "catalog/resolve-lines.js#rewardLines": "intake",
   "catalog/identity-backfill.js#liveKeys": "catalog",
   "catalog/identity-bootstrap.js#bootstrapIdentityStamps": "catalog",
   "catalog/identity-bootstrap.js#bootstrapIdentityStamps>anon": "catalog",
