@@ -107,7 +107,8 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
 {
   for (const b of [{ items: [{ name: 'Carnivora', qty: 1 }, 7] }, { items: [{ name: 'Carnivora', qty: 1 }, null] }, {}, { items: null }, { items: 'x' }, { items: [] }, { items: [null] }]) {
     const before = JSON.stringify(b);
-    assert.deepStrictEqual(resolveLines('x_pizza', b, XP), { ok: true }, `RL-PASS ${before}`);
+    let r; try { r = resolveLines('x_pizza', b, XP); } catch (e) { assert.fail(`RL-PASS ${before} threw (an order DROP at the endpoint): ${e.message}`); }
+    assert.deepStrictEqual(r, { ok: true }, `RL-PASS ${before}`);
     assert.strictEqual(JSON.stringify(b), before, 'untouched');
     for (const it of Array.isArray(b.items) ? b.items : []) if (it && typeof it === 'object') assert.strictEqual(stampOf(it), undefined, 'RL-PASS a cart that is not judged is not stamped');
   }
