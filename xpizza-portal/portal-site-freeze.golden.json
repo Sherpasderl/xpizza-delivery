@@ -37,6 +37,7 @@
   "fonts/archivo-latin-ext.a999e009fd.woff2",
   "fonts/archivo-latin.7150c0ec5a.woff2",
   "fonts/archivo-vietnamese.2518e8eb97.woff2",
+  "gate-early.js",
   "index.html",
   "invite-mail.js",
   "netlify.toml",
@@ -98,8 +99,8 @@
    "bytes": 5905
   },
   "aceptar.html": {
-   "sha256": "abd66fa4defe1a91506de73be318523c4bbf11a47478346e9ffead9139013b0d",
-   "bytes": 6298
+   "sha256": "954c3e3374acbc9f1077db36a087587d83cb7af629b41f1977cf45b3ae04bb14",
+   "bytes": 6656
   },
   "fonts/OFL.txt": {
    "sha256": "8961013dbda3464baefca27c97a068539c798ee7c0be1d1f6b4254a9b20d7518",
@@ -118,8 +119,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "007259874002903a744f0d7dc68710edd963fc75520bd9fb80c19d5fe4c15617",
-   "bytes": 11491
+   "sha256": "e762da0201b12fc9c52c31e89c7dfd98f79e32647ba026a74c697933e0726033",
+   "bytes": 12430
   },
   "netlify.toml": {
    "sha256": "6398e8dec6883e51292f9754d59d4eb97a378ac957b9deaffd5a1970fc79b520",
@@ -146,8 +147,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "d04eb168699501344b032471a416d2543570ad41d921523e914957781a2a3e79",
-   "bytes": 109371
+   "sha256": "0a3671b3de55a3e74c121fb9b446788ff6e79d39adcf3928fbb034545fd535e4",
+   "bytes": 111252
   }
  },
  "diff_aid": {
