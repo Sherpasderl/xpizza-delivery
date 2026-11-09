@@ -41,6 +41,10 @@
   const fmtT = (h, m) => `${((h + 11) % 12) + 1}:${pad2(m)} ${h < 12 ? 'a.m.' : 'p.m.'}`;
   const fmtMin = (mins) => fmtT(Math.floor(mins / 60) % 24, mins % 60);
   const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  // S2-checkout: the status poll while the bank answers / a review is open (the contract names no client interval — proposed values)
+  const POLL_SDK_MS = 3000, POLL_SDK_REVIEW_MS = 15000;
+  // advisor 11-08: a long bank delay never hammers the server — after the first minute of pending (20 polls at 3 s) every 10 s
+  const POLL_SDK_SLOW_MS = 10000, POLL_SDK_FAST_N = 20;
   const FULL_CART = 'Tu carrito está lleno. Empezá otro carrito con el resto de tu pedido.';   // owner-approved 2026-10-24 (cart_text_too_long)
 
   // ── icons (the prototype's, one stroke, one weight) ──
@@ -131,7 +135,7 @@
   // apiConfigOf: the store's transport config (the ONE source — the store's own api and the shell's are built from it)
   function apiConfigOf(cfg) {
     return { restaurantId: cfg.restaurantId, orderIdPrefix: cfg.orderIdPrefix, pendingPayKey: cfg.pendingPayKey, endpoints: cfg.endpoints, hours: cfg.hours,
-      cartKey: cfg.cartKey, placedKey: cfg.placedKey, guestCardOnly: cfg.guestCardOnly === true, ...(cfg.schedulingLive === true ? { schedulingLive: true } : {}) };   // S7a-1: hosted by the shell (both absent ⇒ the S2 path, unchanged); §3.2 the guest tender rule
+      cartKey: cfg.cartKey, placedKey: cfg.placedKey, guestCardOnly: cfg.guestCardOnly === true, ...(cfg.schedulingLive === true ? { schedulingLive: true } : {}), ...(cfg.sdkCheckout === true ? { sdkCheckout: true } : {}) };   // S7a-1: hosted by the shell (both absent ⇒ the S2 path, unchanged); §3.2 the guest tender rule
   }
   // the cart, its generation and every guard on it: o = { menu, cfg, api: () => the store's api, mods: () => true once it exists,
   // CappCart, CappSerialize } — the deps are the CALLER's resolved ones (Codex VP r5 #1: never globals), else the same resolution
@@ -737,6 +741,9 @@
       else if (k === 'pin') L.innerHTML = pinStepHtml();
       else if (k === 'feeinfo') L.innerHTML = feeInfoHtml();
       else if (k === 'cc') L.innerHTML = ccSheetHtml();
+      else if (k === 'paysheet') L.innerHTML = sdkChooserHtml();   // S2-checkout 2
+      else if (k === 'sdkproc') L.innerHTML = SDK.proc ? PCO.procHtml(SDK.proc) : '';   // 4 / 4b
+      else if (k === 'sdkdecl') L.innerHTML = SDK.decl ? PCO.declineHtml(SDK.decl, sdkCtx()) : '';   // 5
       syncInert();
       if (fresh) { const first = k === 'ssearch' ? $('sq') : L.querySelector(FOCUSABLE); focusTo(first); }
       else if (keep && lost()) focusTo(refind(keep));
@@ -899,7 +906,7 @@
       const n = need(); if (n) return n;
       if (S.flow.mode === 'delivery') return 'Continuar';   // delivery continues to the tip step
       const amt = T.ready ? ' · ' + moneyC(T.total) : '';   // pickup places from here (no tip); no amount until the quote is ready
-      return S.flow.pay === 'online' ? 'Pagar' + amt : 'Confirmar pedido' + amt;
+      return S.flow.pay === 'online' ? (sdkOn() ? 'Hacer pedido' : 'Pagar') + amt : 'Confirmar pedido' + amt;   // S2-checkout v7: «Hacer pedido · L X»
     }
     // cash-chips lock: on 10b the fields need() reads are FIXED and the replay re-sends the recorded body — they never block «Reintentar»
     // (a remounted 10b with an empty flow would otherwise be a dead end)
@@ -1099,11 +1106,12 @@
       const pago = g ? pagoGuest : `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
         ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D Secure'}</span></span><button class="act" data-act="showpay"${lp !== null ? ' disabled' : ''}>Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
       const ctaBtn = `<button class="primary" id="cta" data-act="confirm"${ctaOff(T) ? ' disabled' : ''}>${esc(ctaLabel(T))}</button>`;
-      const bar = `<div class="paybar">${ctaBtn}</div>`;
+      const sdkC = sdkOn() && !S.desk;   // S2-checkout (v7): the payment row in the bar replaces the «Pago» section (the installed app only)
+      const bar = sdkC ? sdkBar(T, { label: ctaLabel(T), enabled: !ctaOff(T), act: 'confirm', id: 'cta' }) : `<div class="paybar">${ctaBtn}</div>`;
       if (S.desk) return checkoutDeskHtml({ entrega, datos, pago, ctaBtn, T, tip, del, g, lines, nItems });
       // the prototype's footer «¿Problemas con tu pedido? Escribinos al …» (:1886) is omitted — pending a ruling
       return `<div class="flow" id="flow"><div class="flowbar plain"><h1>Entrega &amp; Pago</h1></div>
-    <div class="col-a">${entrega}${datos}${S.desk ? pago : pedido + pago}</div>${S.desk ? `<div class="col-b">${pedido}</div>` : ''}${bar}</div>`;   // v6 :1886-1887 — desk MOVES «Tu pedido» to col-b
+    <div class="col-a">${entrega}${datos}${S.desk ? pago : pedido + (sdkC ? '' : pago)}</div>${S.desk ? `<div class="col-b">${pedido}</div>` : ''}${bar}</div>`;   // v6 :1886-1887 — desk MOVES «Tu pedido» to col-b
     }
     // the cash panel: chips + the change line against the QUOTED Total (no chips until that Total exists)
     const tenderNote = (T) => { const f = S.flow; if (!T.ready || !f.tendered) return ''; const ch = C.changeCents(f, T.total); return ch === null ? 'Ese monto es menor que el total (' + moneyC(T.total) + ').' : ch > 0 ? 'Tu cambio: ' + moneyC(ch) : 'Pago exacto, sin cambio.'; };
@@ -1125,7 +1133,7 @@
       return `<div class="topbar"><button class="iconbtn" data-act="back" aria-label="Volver a Entrega y Pago">${IC.back}</button><h1></h1><span class="sp"></span></div>
     <div class="tipwrap"><div class="tiphero">${RIDER}<h1>Agregá una propina</h1><p>La propina va completa a tu repartidor.</p></div>
     <div class="tipchips" role="group" aria-label="Propina">${C.TIP_PRESETS.map((v) => chip(v, v ? money(v) : 'Sin propina')).join('')}${chip('other', 'Otro')}</div>
-    <div class="tipfoot"><div class="sumrow"><span>Propina</span><span>${c === null ? '—' : f.tipCents ? moneyC(f.tipCents) : 'Sin propina'}</span></div><div class="sumrow tot"><span>Total</span><span>${tot}</span></div><button class="primary" data-act="tip-place"${tipReady(T) ? '' : ' disabled'}>Hacer pedido · ${tot}</button></div></div>`;
+    <div class="tipfoot"><div class="sumrow"><span>Propina</span><span>${c === null ? '—' : f.tipCents ? moneyC(f.tipCents) : 'Sin propina'}</span></div><div class="sumrow tot"><span>Total</span><span>${tot}</span></div>${sdkOn() && !S.desk ? sdkTipRow(T) : ''}<button class="primary" data-act="tip-place"${tipReady(T) ? '' : ' disabled'}>Hacer pedido · ${tot}</button></div></div>`;
     }
     const tipOtherHtml = () => { const d = S.tipDraft || ''; return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Otro monto"><div class="grab"></div><div class="sheethead"><div><h2>Otro monto</h2><small>Propina para tu repartidor</small></div><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div><div class="tipother"><label class="tipamt"><span>L</span><input inputmode="numeric" data-field="tipOther" value="${esc(d || '0')}" style="width:calc(${Math.max(1, (d || '0').length)}ch + 6px)" aria-label="Monto de la propina"></label><div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button data-act="tk" data-val="${n}">${n}</button>`).join('')}<span></span><button data-act="tk" data-val="0">0</button><button data-act="tk" data-val="del" aria-label="Borrar">${BKSP}</button></div><button class="primary" data-act="tip-save">Guardar</button></div></div>`; };
     // the draft never exceeds the server's cap (TIP_MAX_LEMPIRAS): a digit that would is refused
@@ -1322,7 +1330,8 @@
       let c; try { c = { ...ctxBase(), headers: intakeHeaders() }; } catch (_) { return; }   // the key only where the server requires it
       const attempt = ++attemptSeq; S.terminal = null;   // Codex r4 #2: THIS attempt's settled outcome only
       S.sentOrder = sentOrderOf(f, T, rb);   // «Pedido recibido»: what THIS send stands behind, handed to the host with 'placed'
-      S.screen = 'sending'; S.sendHint = null; S.sendTotals = rb ? { total: Number.isFinite(rb.expected_net_cents) ? rb.expected_net_cents : null, tip: Number.isFinite(rb.tip_cents) ? rb.tip_cents : 0 } : { total: T.total, tip: T.tip }; render();
+      const sdkPath = sdkOn() && f.pay === 'online';   // S2-checkout: frame 4 is a sheet over the screen of the tap (v7), never «Enviando»
+      if (!sdkPath) S.screen = 'sending'; S.sendHint = null; S.sendTotals = rb ? { total: Number.isFinite(rb.expected_net_cents) ? rb.expected_net_cents : null, tip: Number.isFinite(rb.tip_cents) ? rb.tip_cents : 0 } : { total: T.total, tip: T.tip }; render();
       let has = soldOf;
       if (typeof opts.readAvailability === 'function') {
         const fresh = await recheckAvailability(attempt);   // the FRESH read decides (a stale sold-out is cleared on failure, never trusted)
@@ -1335,8 +1344,12 @@
       if (soldNow.length) { for (const l of soldNow) refused.add(l.key); emit('dispatch_refused', { reason: 'unavailable', keys: soldNow.map((l) => l.key) }); backTo(); openLayer('cart'); return; }
       // S2b r1 P2-7: an accepted price change ⇒ «Enviando» shows the ceiling actually sent
       const onExpected = (cents) => { if (dead || !Number.isFinite(cents)) return; S.sendTotals = { total: cents, tip: T.tip }; if (S.screen === 'sending') render(); };
+      if (sdkOn() && f.pay === 'online') {   // S2-checkout: the in-app card (placeSdk, capp-api) — never the hosted charge
+        const card = sdkCard(); if (!card) { backTo(); openLayer('paysheet'); return; }
+        return sdkSend({ flow: f, ctx: c, sig: S.q ? S.q.sig : null, expectedNetCents: T.total, totals: T, card, ...sdkAuth(), cartSnapshot: { ...cart.snapshot(), cart_gen: genNow() }, alive: () => !dead }, attempt);
+      }
       let out;
-      try { out = await api.place({ flow: f, ctx: c, freshOk: !!T.ready, sig: rb ? (S.q ? S.q.sig : null) : S.q.sig, checkoutTicket: cardOnlyGuest() ? S.ticket : undefined, expectedNetCents: rb ? rb.expected_net_cents : T.total, totals: rb && !T.ready ? null : T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: api.hosted ? { ...cart.snapshot(), cart_gen: genNow() } : cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
+      try { out = await api.place({ flow: f, ctx: c, replacesOrderId: SDK.replaces || undefined, freshOk: !!T.ready, sig: rb ? (S.q ? S.q.sig : null) : S.q.sig, checkoutTicket: cardOnlyGuest() ? S.ticket : undefined, expectedNetCents: rb ? rb.expected_net_cents : T.total, totals: rb && !T.ready ? null : T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: api.hosted ? { ...cart.snapshot(), cart_gen: genNow() } : cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
       if (!dead) onOutcome(out, attempt);
     }
     // «Pedido recibido» (v6 orderHtml): the order as SENT — the lines, the economics (the recorded body's on a replay), the
@@ -1460,7 +1473,9 @@
       if (!S.flow) { S.flow = newFlow(); C.setMode(S.flow, S.mode); }
       onOutcome(out);
     }
+    const SDK_KINDS = new Set(['sdk_pending', 'sdk_review', 'sdk_declined', 'sdk_expired', 'sdk_unavailable', 'sdk_not_allowed', 'sdk_bad_card', 'sdk_switched', 'sdk_card_unavailable']);
     function onOutcome(out, attempt) {
+      if (out && SDK_KINDS.has(out.kind) && sdkOn()) { emit('outcome', out); onSdkOutcome(out); return; }   // Codex r2 P2: an SDK outcome from ANY entry point (send, «Ver estado»)
       emit('outcome', out);   // S7a-2 (Codex s7a2 r1 #4): every outcome reaches the host (a return handoff settles on a LATER terminal one)
       const k = out && out.kind;
       if (k === 'redirect') {
@@ -1533,6 +1548,7 @@
       if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }
       C.setMode(S.flow, S.mode);
       if (cardOnlyGuest()) S.flow.pay = 'online';   // §3.1: one option, card, already selected
+      sdkAdopt();   // S2-checkout: a card adopted by an earlier visit is still the tender of a new flow
       // S4 P2: the schedule revalidated in the background, never awaited; a CHANGED one is held and applied at the next user picker
       // action (never under a finger); a failure leaves the schedule in hand
       if (sched() && api && typeof api.scheduleOnly === 'function') { const at = cfg.restaurantId; api.scheduleOnly().then((x) => { if (!dead && x && at === cfg.restaurantId && JSON.stringify(x) !== JSON.stringify(servedSched())) S.schedHeld = x; }, () => {}); }
@@ -1735,6 +1751,194 @@
       return out;   // S7a-2: the shell settles its return handoff on an AUTHORITATIVE outcome (CappShell.settleHandoff)
     }
 
+    // ── S2-checkout: card payment INSIDE the installed app (MOCKUP-capp-S2-sdk-checkout v7, owner 11-08; advisor design A–D and rulings
+    // 1–5, 11-08; CONTRACT-sdk-checkout r3). Dark unless cfg.sdkCheckout (the shell sets it only for the INSTALLED app with
+    // runtime.sdkPay); the web keeps the hosted page. The money path is capp-api's (placeSdk inside the placement machinery); this block
+    // only paints and routes: the payment row (checkout bar + tip footer), the chooser, «Agregar tarjeta» (its inputs come from the native
+    // field host — none in the webview without it, ruling 5), the processing sheet (frames 4 / 4b, after the kept 2-s window, ruling 2),
+    // the decline sheet (5), the wells (6 / 7), the status poll while the bank answers, and the cash switch (§5).
+    const sdkMod = (n, f) => { try { return opts[n] || (typeof self !== 'undefined' && self[n]) || (typeof require === 'function' ? require(f) : null); } catch (_) { return null; } };
+    let PCARD = null, PCO = null;
+    function sdkOn() {
+      if (cfg.sdkCheckout !== true || !mods() || typeof api.placeSdk !== 'function') return false;
+      PCARD = PCARD || sdkMod('CappPayCard', './capp-pay-card.js'); PCO = PCO || sdkMod('CappPayCheckout', './capp-pay-checkout.js');
+      return !!(PCARD && PCO);
+    }
+    // Codex r1 P1: the saved cards belong to the identity that LISTED them (owner: «u:<uid>» | «guest»); gen drops a late answer
+    const sdkOwner = (m) => (m && m.uid != null ? 'u:' + m.uid : 'guest');
+    const SDK = { owner: null, gen: 0, cards: null, avail: null, sel: null, loading: false, loaded: false, decl: null, declId: null, proc: null, pollT: null, pollN: 0, save: true, form: {}, replaces: null, back: null };
+    const sdkCtx = () => ({ guest: !member(), cashAllowed: !cardOnlyGuest() });
+    const sdkHost = () => (opts.paySdk && opts.paySdk.fieldHost && typeof opts.paySdk.fieldHost.input === 'function' ? opts.paySdk.fieldHost : null);
+    const sdkAuth = () => ({ checkoutTicket: cardOnlyGuest() ? S.ticket : undefined });
+    // the saved cards (members) and the card path's availability — read once per mount, when the checkout first shows
+    function sdkLoad() {
+      if (SDK.loading || SDK.loaded || !sdkOn()) return;
+      SDK.loading = true;
+      const gen = ++SDK.gen, who = sdkOwner(member());
+      Promise.all([member() ? Promise.resolve().then(() => api.listCards()).catch(() => null) : null, Promise.resolve().then(() => api.sdkPayStatus()).catch(() => null)]).then(([list, st]) => {
+        if (dead || gen !== SDK.gen || who !== sdkOwner(member())) return;   // an identity change since: not this member's cards
+        SDK.loading = false; SDK.loaded = true; SDK.owner = who;
+        SDK.cards = PCARD.cardsVm(list);
+        SDK.avail = st ? st.available : null;   // unknown ⇒ the server decides at placement (its `unavailable`)
+        if (!SDK.sel && SDK.cards.selected) SDK.sel = { kind: 'card', card_id: SDK.cards.selected };
+        sdkAdopt();
+        if (S.screen === 'checkout' || S.screen === 'tip') render();
+      });
+    }
+    // the method the row shows: cash, the chosen saved / new card, else the expired one (frame 6, dimmed), else none
+    function sdkMethod() {
+      if (S.flow && S.flow.pay === 'cash') return { kind: 'cash' };
+      const s = SDK.sel;
+      if (s && s.kind === 'new') return { kind: 'card', brand: s.display.brand, label: PCARD.cardLabel(s.display.brand, s.display.last4) };
+      const row = s && s.kind === 'card' && SDK.cards ? SDK.cards.rows.find((r) => r.card_id === s.card_id && !r.expired) : null;
+      if (row) return { kind: 'card', brand: row.brand, label: row.label };
+      const exp = SDK.cards && !SDK.cards.selected ? SDK.cards.rows.find((r) => r.expired) : null;
+      return exp ? { kind: 'card', brand: exp.brand, label: exp.label, sub: exp.sub, dim: true, expired: true } : null;
+    }
+    // the selection placeSdk sends (CappPayCard.placeBody's card), or null
+    // v7 frame 1 «the member's last card is preselected»: with no last method known on this device the listed card IS the tender (the
+    // row shows it, so the primary must not ask «Elegí cómo pagar»); a known last method (v6 preselects it) wins
+    function sdkAdopt() { if (sdkOn() && S.flow && !S.flow.pay && sdkCard()) { S.flow.pay = 'online'; SDK.adopted = true; } }
+    // an identity change (sign-in, another member, sign-out): drop the cards, any in-flight list (gen), the selection and an adopted
+    // tender — the next checkout render lists the new identity's own cards
+    function sdkIdentity() {
+      SDK.gen++; SDK.cards = null; SDK.sel = null; SDK.owner = null; SDK.loading = false; SDK.loaded = false; SDK.avail = null;
+      if (S.flow && S.flow.pay === 'online' && SDK.adopted) S.flow.pay = '';
+      SDK.adopted = false;
+    }
+    function sdkCard() {
+      const s = SDK.sel; if (!s) return null;
+      if (s.kind === 'new') return { kind: 'new', sdk_token: s.sdk_token, save: s.save, authentication_identifier: s.authentication_identifier, display: { ...s.display } };
+      if (SDK.owner !== sdkOwner(member())) return null;   // never another identity's card (Codex r1 P1)
+      return SDK.cards && SDK.cards.rows.some((r) => r.card_id === s.card_id && !r.expired) ? { kind: 'saved', card_id: s.card_id } : null;
+    }
+    function sdkGate() {
+      const m = sdkMethod(), ctx = sdkCtx();
+      if (S.flow && S.flow.pay === 'cash') return '';
+      if (SDK.avail === false) return PCO.gateHtml('unavailable', ctx);
+      return m && m.expired ? PCO.gateHtml('token_expired', ctx) : '';
+    }
+    // the bar: a well ⇒ the disabled «Elegí cómo pagar»; no card chosen ⇒ «Elegí cómo pagar» opens the chooser; else the host's primary
+    function sdkBar(T, cta) {
+      const m = sdkMethod(), gate = sdkGate(), cardless = S.flow && S.flow.pay !== 'cash' && !sdkCard();
+      const c = gate ? { label: 'Elegí cómo pagar', enabled: false } : cardless ? { label: 'Elegí cómo pagar', enabled: true, act: 'paysheet', id: cta.id } : cta;
+      return PCO.payBarHtml({ method: gate && !(m && m.expired) ? null : m, total_cents: T.ready ? T.total : null, cta: c, gate });   // null: no amount before the quote
+    }
+    const sdkTipRow = (T) => (sdkGate() ? '' : PCO.payRowHtml(sdkMethod(), T.ready ? T.total : null));
+    function sdkChooserHtml() {
+      const sel = S.flow && S.flow.pay === 'cash' ? { kind: 'cash' } : SDK.sel && SDK.sel.kind === 'card' ? SDK.sel : null;
+      return PCO.chooserHtml({ cards: SDK.cards || { rows: [], selected: null }, selected: sel, cash: sdkCtx().cashAllowed });
+    }
+    const sdkFormHtml = () => PCO.formHtml(PCARD.formVm(SDK.form, { member: !!member(), save: SDK.save }), sdkHost());
+    // Codex r1 P2-10: the field host reports its per-field STATES (never values) through onChange(states) ⇒ the form re-renders
+    function sdkHostSubscribe() {
+      sdkHostUnsub();
+      const h = sdkHost(); if (!h || typeof h.onChange !== 'function') return;
+      let un = null; try { un = h.onChange((st) => { if (dead) return; SDK.form = st && typeof st === 'object' ? st : {}; if (S.screen === 'addcard') render(); }); } catch (_) { un = null; }
+      SDK.unsub = typeof un === 'function' ? un : null;
+    }
+    function sdkHostUnsub() { if (SDK.unsub) { try { SDK.unsub(); } catch (_) {} } SDK.unsub = null; }
+    // the completed switch's cash order: placed ONCE, as soon as the checkout can send (the restored flow's quote landed)
+    function sdkPlaceIfReady() {
+      if (!SDK.placeWhenReady || dead || !S.flow || need() || !C.tipChosen(S.flow) || !totalsNow().ready) return;
+      SDK.placeWhenReady = false; placeNow();
+    }
+    function sdkStopPoll() { if (SDK.pollT !== null) { T_.clearTimeout(SDK.pollT); SDK.pollT = null; } }
+    function sdkPollLater(id, ms) {
+      sdkStopPoll();
+      SDK.pollT = T_.setTimeout(async () => {
+        SDK.pollT = null; if (dead) return;
+        let out; try { out = await api.sdkResolve(id, sdkAuth()); } catch (_) { out = { kind: 'sdk_pending', order_id: id }; }   // a pending switch re-sends its cancel (Codex r4)
+        if (!dead) onSdkOutcome(out);
+      }, ms);
+    }
+    function sdkProc(review) {
+      const total = S.sendTotals && Number.isFinite(S.sendTotals.total) ? S.sendTotals.total : (totalsNow().ready ? totalsNow().total : 0);
+      const m = sdkMethod();
+      SDK.proc = { total_cents: total, card: m && m.kind === 'card' ? { brand: m.brand, label: m.label } : null, review: !!review };
+      if (S.layerKind === 'sdkproc') renderLayer(); else openLayerNoPush('sdkproc');
+    }
+    // one outcome of placeSdk / sdkStatus / sdkSwitchToCash → the screen (the money decisions are capp-api's)
+    function onSdkOutcome(out) {
+      const k = out && out.kind;
+      sdkStopPoll();
+      if (k === 'sdk_pending') { sdkProc(SDK.proc && SDK.proc.review); sdkPollLater(out.order_id, SDK.pollN++ < POLL_SDK_FAST_N ? POLL_SDK_MS : POLL_SDK_SLOW_MS); return; }
+      if (k === 'sdk_review') { sdkProc(true); sdkPollLater(out.order_id, POLL_SDK_REVIEW_MS); return; }
+      SDK.pollN = 0;   // any settled outcome restarts the backoff
+      if (S.layerKind === 'sdkproc') { S.layerKind = null; renderLayer(); }
+      if (k === 'placed') { SDK.replaces = null; onOutcome(out); return; }
+      if (k === 'sdk_declined') {
+        SDK.declId = out.order_id;
+        SDK.decl = PCARD.nextStep({ outcome: 'declined', decline: out.bucket }, sdkCtx());
+        if (out.bucket === 'token_expired' || out.bucket === 'hard') SDK.sel = null;   // the declined card is unselected (frame 5)
+        backTo(); openLayerNoPush('sdkdecl'); return;
+      }
+      if (k === 'sdk_expired') { backTo('checkout'); if (!out.safe) sdkPollLater(out.order_id, POLL_SDK_MS); return; }
+      if (k === 'sdk_unavailable') { SDK.avail = false; backTo(); return; }
+      if (k === 'sdk_not_allowed' || k === 'sdk_bad_card') { backTo('checkout'); return; }
+      // CONTRACT A3: the card is gone / not this member's — unselected, the list read again, the chooser open (nothing was charged)
+      if (k === 'sdk_card_unavailable') { SDK.sel = null; SDK.cards = null; SDK.loaded = false; SDK.loading = false; SDK.gen++; backTo('checkout'); sdkLoad(); openLayer('paysheet'); return; }
+      if (k === 'sdk_switched') {
+        SDK.replaces = out.replaces; SDK.declId = null;
+        // Codex r2 P2: after a reload the flow is empty — the switch's stored inputs (a cash body) restore it, so the SAME transition completes
+        // advisor r3 C: the switch's stored inputs ALWAYS win over fresh defaults (recipient, notes, tip, pin — pickup and delivery alike)
+        if (out.body) { const rf = flowFromBody(out.body); if (rf) { S.flow = rf; S.mode = rf.mode; S.flowRestored = true; } }
+        if (S.flow) S.flow.pay = 'cash';
+        if (S.screen !== 'checkout' && S.screen !== 'tip') S.screen = S.flow && S.flow.mode === 'delivery' ? 'tip' : 'checkout';
+        SDK.placeWhenReady = true; render(); sdkPlaceIfReady(); return;   // the cash order goes once the checkout is ready (a reload re-quotes first)
+      }
+      onOutcome(out);   // the shared refusals (closed, offline, the recovery sheet, …)
+    }
+    // send(): the SDK card path (after the kept 2-s window); the processing sheet over the screen of the tap
+    async function sdkSend(p, attempt) {
+      sdkProc(false);
+      let out; try { out = await api.placeSdk({ ...p, onDispatch: (id) => keepSent(id) }); } catch (_) { out = { kind: 'sdk_pending', order_id: null }; }   // Codex r1 P1-4: the sent order kept for a reload
+      if (dead || attempt !== attemptSeq) return;
+      if (out && out.kind === 'sdk_pending' && !out.order_id) { const id = api.sdkLive(); out = id ? { ...out, order_id: id } : { kind: 'offline' }; }
+      onSdkOutcome(out);
+    }
+    async function sdkCash() {
+      const id = SDK.declId;
+      if (S.layerKind) { S.layerKind = null; renderLayer(); }
+      if (!id) { if (S.flow) S.flow.pay = 'cash'; render(); return; }   // nothing was attempted: simply cash
+      sdkProc(false);
+      let ctx = null; try { ctx = { ...ctxBase(), headers: intakeHeaders() }; } catch (_) { ctx = null; }
+      let out; try { out = await api.sdkSwitchToCash(id, { ...sdkAuth(), ...(S.flow && ctx ? { flow: { ...S.flow, pay: 'cash' }, ctx } : {}) }); } catch (_) { out = { kind: 'sdk_pending', order_id: id }; }
+      if (!dead) onSdkOutcome(out);
+    }
+    async function sdkSaveCard() {
+      const b = opts.paySdk; const host = sdkHost(); if (!b || !host) return;
+      const r = await b.tokenize(host);
+      if (dead || !r || r.ok !== true) { toast('No pudimos guardar la tarjeta. Revisá los datos.'); return; }
+      SDK.sel = { kind: 'new', sdk_token: r.sdk_token, save: !!member() && SDK.save, authentication_identifier: r.authentication_identifier, display: { ...r.display } };
+      if (S.flow) S.flow.pay = 'online';
+      sdkHostUnsub(); S.screen = SDK.back || 'checkout'; SDK.back = null; render();   // owner ruling 1: back to checkout with the card selected
+    }
+    // the SDK acts (the chooser, the form, the sheets, the wells) — true when handled
+    function sdkAct(t) {
+      const a = t.dataset.act; if (!sdkOn() || !S.flow) return false;
+      if (a === 'paysheet') { openLayer('paysheet'); return true; }
+      if (a === 'paysheet-close') { closeLayer(); return true; }
+      if (a === 'paypick') { const v = t.dataset.card; if (v === 'cash') S.flow.pay = 'cash'; else { S.flow.pay = 'online'; SDK.sel = { kind: 'card', card_id: v }; } closeLayer(); render(); return true; }
+      if (a === 'addcard' || a === 'decl-fix' || a === 'decl-add_card') { if (S.layerKind) { S.layerKind = null; renderLayer(); } SDK.back = S.screen === 'addcard' ? SDK.back : S.screen; SDK.form = {}; SDK.save = true; S.screen = 'addcard'; sdkHostSubscribe(); render(); return true; }
+      if (a === 'addcard-back') { sdkHostUnsub(); S.screen = SDK.back || 'checkout'; SDK.back = null; render(); openLayer('paysheet'); return true; }   // back to the chooser, nothing saved
+      if (a === 'savecard') { SDK.save = !SDK.save; render(); return true; }
+      if (a === 'cvv-info') { toast('Son los 3 dígitos al reverso de tu tarjeta.'); return true; }
+      if (a === 'addcard-save') { sdkSaveCard(); return true; }
+      if (a === 'decl-other_card') { S.layerKind = null; renderLayer(); openLayer('paysheet'); return true; }
+      if (a === 'decl-cash') { sdkCash(); return true; }
+      if (a === 'sdk-retry') { SDK.loaded = false; SDK.avail = null; sdkLoad(); render(); return true; }
+      return false;
+    }
+    // mount: a live SDK attempt on this device ⇒ its status FIRST (advisor condition), the processing sheet meanwhile
+    function sdkResume() {
+      if (!sdkOn()) return;
+      const id = api.sdkLive(); if (!id) return;
+      if (!S.flow) { S.flow = newFlow(); C.setMode(S.flow, S.mode); S.flow.pay = 'online'; }   // Codex r1 P1-4: a fresh mount has no flow; the outcome screens read one
+      sdkProc(false);
+      Promise.resolve().then(() => api.sdkResolve(id, sdkAuth())).catch(() => ({ kind: 'sdk_pending', order_id: id })).then((out) => { if (!dead) onSdkOutcome(out); });
+    }
+
     function render() {
       if (dead) return;
       app.classList.toggle('narrow', app.clientWidth > 0 && app.clientWidth < 375);
@@ -1746,7 +1950,7 @@
       const keepToast = $('toast');
       const prevFlow = $('flow'); const flowY = prevFlow ? prevFlow.scrollTop : null; const prevScreen = app.dataset.screen;
       // the S2b router: every screen inside <div class="screen"> (the prototype's mount)
-      const html = S.screen === 'checkout' ? checkoutHtml() : S.screen === 'tip' ? tipHtml() : S.screen === 'sending' ? sendingHtml() : storeHtml();
+      const html = S.screen === 'checkout' ? checkoutHtml() : S.screen === 'tip' ? tipHtml() : S.screen === 'sending' ? sendingHtml() : S.screen === 'addcard' && sdkOn() ? sdkFormHtml() : storeHtml();
       app.innerHTML = `<div class="screen">${html}</div>${detailSkeleton()}<div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`;   // the prototype's mount (render())
       app.dataset.screen = S.screen;
       if (keepSearch) app.replaceChild(keepSearch, $('layer'));
@@ -1758,6 +1962,7 @@
       syncInert(); reportRoute();
       if (had && lost()) { focusTo(refind(had)); if (caret && doc.activeElement && doc.activeElement.id === caret[0]) { try { doc.activeElement.setSelectionRange(caret[1], caret[2]); } catch (_) {} } }
       if (S.screen === 'checkout') wireMaps();
+      if ((S.screen === 'checkout' || S.screen === 'tip') && cfg.sdkCheckout === true) { sdkLoad(); if (SDK.placeWhenReady) Promise.resolve().then(sdkPlaceIfReady); }   // S2-checkout: the cards + availability, once; a pending switch's cash order
       if (S.screen === 'checkout' || S.screen === 'tip') requote();
       geocodePin();
     }
@@ -1766,6 +1971,7 @@
       const act = t.dataset.act, id = t.dataset.id;
       if (S.open && ['qty', 'extra', 'variant', 'staged', 'dcta'].includes(act)) { detailAct(t); return; }
       if (act === 'dclose') { closeDetail(); return; }
+      if (cfg.sdkCheckout === true && /^(paysheet|paypick|addcard|savecard|cvv-info|decl-|sdk-retry)/.test(act) && sdkAct(t)) return;   // S2-checkout
       // S2b: the open layer's controls, then the current screen's
       if (S.layerKind && ['err', 'placing', 'tipother', 'pin', 'feeinfo', 'otp', 'cc'].includes(S.layerKind)) { if (act === 'lclose') { closeLayer(); return; } if (layerAct(t)) return; }
       if (S.screen === 'checkout' && !S.layerKind) {
@@ -1876,6 +2082,7 @@
     // S2b: a hosted-checkout return (?pay=…)
     const search = opts.search != null ? String(opts.search) : (doc.defaultView && doc.defaultView.location ? doc.defaultView.location.search : '');
     const returning = /[?&]pay=/.test(search || '') ? handlePayReturn(search) : null;
+    if (!returning) sdkResume();   // S2-checkout: a live SDK attempt ⇒ its status first
     return {
       cart, menu, render, state: S, openCheckout, returning,
       // D-2: the viewport crossed the breakpoint — re-render THIS screen in the other view; every piece of state (cart, screen, flow,
@@ -1928,6 +2135,7 @@
         if (dead) return;
         const prevCtx = memberCtx;
         memberCtx = m && typeof m === 'object' ? m : null;
+        if (sdkOwner(prevCtx) !== sdkOwner(memberCtx)) sdkIdentity();   // Codex r1 P1: another identity ⇒ its own cards, nothing carried
         if (!memberCtx) S.schedAfterSignin = false;
         const f = S.flow;
         if (!memberCtx && f && sched() && f.time === 'schedule' && !hasSlotLock()) { f.time = 'asap'; f.slot = null; }   // signed out ⇒ no scheduling (G=B)

@@ -1,5 +1,6 @@
 // Customer app — the Chrome side-by-side harness (advisor 11-02, the Chrome batch; owner usage rule: automatic diffs, ONE review page).
-//   node review/capp-sbs/sbs.mjs --pkg <package-capp web bundle> --out <dir> [--only a,b] [--mock <D4c-grill dir>]
+//   node review/capp-sbs/sbs.mjs --pkg <package-capp web bundle> --out <dir> [--only a,b] [--mock <D4c-grill dir>] [--set main|s2]
+//   (--set s2: the S2 checkout + adjustment scenes, scenes-s2.mjs — the bundle packaged WITH the sdkPay flag)
 // What it does, per scene in scenes.mjs:
 //   · serves the PACKAGED bundle (package-capp at the tip) and the mockups on 127.0.0.1 only;
 //   · drives headless Chrome over raw CDP (no npm dependency); EVERY request leaving 127.0.0.1 is fulfilled from the fixture router
@@ -17,6 +18,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { router, DIRECTORY_ENDPOINT, CLOCK_SHIM } from './fixtures.mjs';
 import { SCENES } from './scenes.mjs';
+import { S2_SCENES } from './scenes-s2.mjs';   // --set s2: a bundle packaged WITH the sdkPay flag (S2 method (A), advisor 11-09)
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : d; };
@@ -76,6 +78,12 @@ async function openPage({ width, height, dark }) {
     if (d.sessionId !== sessionId || d.method !== 'Fetch.requestPaused') return;
     const { requestId, request } = d.params;
     try {
+      // S2 method (A), advisor 11-09: a scene's runtime injection (mode 'native') is applied HERE, per page, to the served capp-runtime.js
+      if (page.rtPatch && request.url.startsWith(ORIGIN) && new URL(request.url).pathname === '/capp-runtime.js') {
+        const src = await (await fetch(request.url)).text(), out = page.rtPatch(src);
+        if (out === src) throw new Error('S2 runtime injection anchor missing');
+        return void await S('Fetch.fulfillRequest', { requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'text/javascript' }, { name: 'Cache-Control', value: 'no-store' }], body: Buffer.from(out).toString('base64') });
+      }
       if (request.url.startsWith(ORIGIN) || request.url.startsWith('data:') || request.url.startsWith('blob:')) return void await S('Fetch.continueRequest', { requestId });
       let hit = null;
       try { hit = page.route ? await page.route(request) : null; }   // a route may be async (the real-composed quoteOrder)
@@ -88,7 +96,7 @@ async function openPage({ width, height, dark }) {
     } catch (_) {}
   };
   handlers.add(onPaused);
-  const page = { S, sessionId, scene: '', route: null, trace: [],
+  const page = { S, sessionId, browserContextId, scene: '', route: null, rtPatch: null, trace: [],
     async eval(expr) { const r = await S('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(`eval: ${r.exceptionDetails.exception ? r.exceptionDetails.exception.description : r.exceptionDetails.text}`); return r.result.value; },
     async until(expr, ms = 15000) { const t0 = Date.now(); for (;;) { if (await page.eval(`!!(${expr})`).catch(() => false)) return; if (Date.now() - t0 > ms) throw new Error(`until timed out: ${expr}`); await sleep(100); } },
     async shot(clip) { const r = await S('Page.captureScreenshot', { format: 'png', ...(clip ? { clip: { ...clip, scale: 1 } } : {}), captureBeyondViewport: !!clip }); return Buffer.from(r.data, 'base64'); },
@@ -147,14 +155,21 @@ async function diffPair(id, a, b, tag) {
 }
 // ── the run ──
 const results = [];
-const want = SCENES.filter((s) => !ONLY.length || ONLY.includes(s.name));
+const SET = arg('--set', 'main');
+if (!['main', 's2'].includes(SET)) throw new Error(`--set ${SET}: main | s2`);
+const want = (SET === 's2' ? S2_SCENES : SCENES).filter((s) => !ONLY.length || ONLY.includes(s.name));
 const write = (f, buf) => fs.writeFileSync(path.join(OUT, 'img', f), buf);
 for (const sc of want) {
   for (const theme of sc.themes || ['light']) {
-    const id = `${sc.name}-${theme}`, row = { scene: sc.name, theme, width: sc.width, height: sc.height, note: sc.note || '' }; let p = null;
+    const id = `${sc.name}-${theme}`, row = { scene: sc.name, theme, width: sc.width, height: sc.height, note: sc.note || '', ...(sc.injections ? { injections: sc.injections } : {}) }; let p = null;
     try {
       // the REAL scene, from the packaged entry
       p = await openPage({ width: sc.width, height: sc.height, dark: theme === 'dark' }); p.scene = id; p.route = router(sc.fixtures || {});
+      // S2 method (A): the scene's stated injections — runtime mode 'native' (the bundle must already carry the sdkPay flag), the stand-in
+      // pay binding (standin-paysdk.mjs, before any page script), a device position (the checkout's delivery pin)
+      if (sc.native) p.rtPatch = (src) => (src.includes('"sdkPay":true') ? src.replace('"mode":"web"', '"mode":"native"') : src);
+      if (sc.preboot) await p.S('Page.addScriptToEvaluateOnNewDocument', { source: typeof sc.preboot === 'function' ? sc.preboot(theme) : sc.preboot });
+      if (sc.geo) { await send('Browser.grantPermissions', { origin: ORIGIN, permissions: ['geolocation'], browserContextId: p.browserContextId }); await p.S('Emulation.setGeolocationOverride', { ...sc.geo, accuracy: 10 }); }
       if (sc.seed) { await p.S('Page.navigate', { url: `${ORIGIN}/__mock/` }); await sleep(300); await p.eval(sc.seed); }   // same-origin storage BEFORE the app boots
       if (sc.cls) await p.S('Page.addScriptToEvaluateOnNewDocument', { source: 'window.__cls = 0; new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; }).observe({ type: "layout-shift", buffered: true });' });
       await p.S('Page.navigate', { url: `${ORIGIN}${sc.path || '/'}` });
@@ -190,7 +205,7 @@ for (const sc of want) {
 fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ origin: 'package-capp bundle at the tip', unmapped, results }, null, 1));
 // ── the ONE review page ──
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const rows = results.map((r) => { const id = `${r.scene}-${r.theme}`; return `<section><h2>${esc(r.scene)} · ${r.theme} · ${r.width}×${r.height}</h2><p class="n">${r.error ? `<b class="bad">ERROR</b> ${esc(r.error)}` : `pixels <b>${r.diffPct ?? '—'}%</b> · layout (text + images masked) <b>${r.layoutPct ?? '—'}%</b>${r.mock ? ` vs ${esc(r.mock)}` : ' (no mockup of this theme: contrast only)'} · contrast fails <b>${r.contrast.fails.length}</b> of ${r.contrast.checked} (${r.contrast.unknown} on images)${r.cls !== undefined ? ` · CLS <b>${r.cls}</b>` : ''}`}${r.note ? ` · ${esc(r.note)}` : ''} · <i>runtime + directory_endpoint (injected)</i></p>
+const rows = results.map((r) => { const id = `${r.scene}-${r.theme}`; return `<section><h2>${esc(r.scene)} · ${r.theme} · ${r.width}×${r.height}</h2><p class="n">${r.error ? `<b class="bad">ERROR</b> ${esc(r.error)}` : `pixels <b>${r.diffPct ?? '—'}%</b> · layout (text + images masked) <b>${r.layoutPct ?? '—'}%</b>${r.mock ? ` vs ${esc(r.mock)}` : ' (no mockup of this theme: contrast only)'} · contrast fails <b>${r.contrast.fails.length}</b> of ${r.contrast.checked} (${r.contrast.unknown} on images)${r.cls !== undefined ? ` · CLS <b>${r.cls}</b>` : ''}`}${r.note ? ` · ${esc(r.note)}` : ''} · <i>runtime + directory_endpoint (injected)${r.injections ? ' + ' + esc(r.injections) : ''}</i></p>
   <div class="row"><figure><img src="img/${id}-real.png" loading="lazy"><figcaption>real (packaged)</figcaption></figure>${fs.existsSync(path.join(OUT, 'img', `${id}-mock.png`)) ? `<figure><img src="img/${id}-mock.png" loading="lazy"><figcaption>mockup</figcaption></figure><figure><img src="img/${id}-diff.png" loading="lazy"><figcaption>pixel diff (magenta = differs)</figcaption></figure><figure><img src="img/${id}-ldiff.png" loading="lazy"><figcaption>layout diff (text + images masked)</figcaption></figure>` : ''}</div>
   ${r.contrast && r.contrast.fails.length ? `<details><summary>contrast failures</summary><ul>${r.contrast.fails.map((f) => `<li>«${esc(f.text)}» ${f.ratio}:1 (needs ${f.need}) <code>${esc(f.sel)}</code></li>`).join('')}</ul></details>` : ''}</section>`; }).join('\n');
 fs.writeFileSync(path.join(OUT, 'index.html'), `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Capp side-by-sides</title>
@@ -200,4 +215,8 @@ body{margin:0;padding:16px;background:var(--bg);color:var(--ink);font:14px/1.45 
 <h1>Customer app · side-by-sides</h1><p class="n">The PACKAGED bundle (package-capp at the tip) + ONE injected runtime field, <code>directory_endpoint</code> (production has no directory endpoint yet — a launch gap; ruling (A)), every outside request served from fixtures${unmapped.length ? ` — <b class="bad">${unmapped.length} unmapped request(s)</b>` : ' (0 unmapped)'}. Diff = % of pixels whose RGB distance exceeds 48.</p>${rows}`);
 console.log(`\n${results.length} renders · ${unmapped.length} unmapped request(s) · ${path.join(OUT, 'index.html')}`);
 ws.close(); chrome.kill('SIGTERM'); server.close(); try { fs.rmSync(udd, { recursive: true, force: true }); } catch (_) {}
-if (unmapped.length) { console.error('UNMAPPED (the run FAILS):\n  ' + unmapped.join('\n  ')); process.exit(1); }
+// Codex r1 P2: a scene error (a step timeout, a failed in-page check such as S2ck-1's bar height) FAILS the run like an unmapped request
+const errored = results.filter((r) => r.error);
+if (errored.length) console.error(`SCENE ERRORS (the run FAILS):\n  ` + errored.map((r) => `${r.scene}-${r.theme}: ${r.error}`).join('\n  '));
+if (unmapped.length) console.error('UNMAPPED (the run FAILS):\n  ' + unmapped.join('\n  '));
+if (errored.length || unmapped.length) process.exit(1);

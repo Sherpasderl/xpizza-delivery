@@ -21,9 +21,13 @@ const res = (status, body, etag) => ({ status, headers: { get: (h) => (h === 'ET
 // a fake CappShellUI that captures the mount options (the unit cells); the integration cell mounts the REAL one
 const capture = () => { const c = {}; return { c, CappShellUI: { mount: (doc, opts) => { c.doc = doc; c.opts = opts; return { fake: true }; } } }; };
 
-test('N2: the order endpoint list is EXACTLY capp-api.js\'s (one source)', () => {
+test('N2: the order endpoint list is EXACTLY capp-api.js\'s (one source) — the always-on list, plus the S2-checkout ones behind sdkPay', () => {
   const used = [...new Set([...readFileSync(join(HERE, 'capp-api.js'), 'utf8').matchAll(/\bE\.([a-zA-Z]+)/g)].map((m) => m[1]))].sort();
-  assert.deepEqual([...Boot.ORDER_ENDPOINTS].sort(), used, '🔴 the boot builds a different endpoint set than capp-api calls');
+  const sdk = new Set(Boot.SDK_ENDPOINTS || []);
+  assert.deepEqual([...Boot.ORDER_ENDPOINTS].sort(), used.filter((n) => !sdk.has(n)), '🔴 the boot builds a different endpoint set than capp-api calls');
+  const unbuilt = used.filter((n) => sdk.has(n) === false && !Boot.ORDER_ENDPOINTS.includes(n));
+  assert.deepEqual(unbuilt, [], '🔴 every endpoint capp-api calls is built by the boot (always-on, or behind sdkPay)');
+  assert.ok(used.some((n) => sdk.has(n)), 'premise: capp-api calls the S2-checkout endpoints');
 });
 
 test('N2: the runtime from the REAL manifest block — every endpoint on the ONE functions host; the keys passed through; every flag DARK when absent', () => {
@@ -32,14 +36,16 @@ test('N2: the runtime from the REAL manifest block — every endpoint on the ONE
   assert.deepEqual(Object.keys(r.endpoints).sort(), [...Boot.ORDER_ENDPOINTS].sort());
   for (const [n, u] of Object.entries(r.endpoints)) assert.equal(u, `${RT0.functions_base}/${n}`);
   assert.ok(r.intakeKey === RT0.intake_key && r.mapsKey === RT0.maps_key, 'the intake and Maps keys come from the manifest');
-  for (const k of ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive', 'ratings']) assert.equal(k in r, false, `🔴 ${k} must be absent (dark) without its flag`);
-  const on = Boot.runtimeFor(RT({ flags: { signup: true, intlPhone: true, guestCardOnly: true, schedulingLive: true, ratings: true } }), CappSignupApi);
+  for (const k of ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive', 'ratings', 'sdkPay']) assert.equal(k in r, false, `🔴 ${k} must be absent (dark) without its flag`);
+  const on = Boot.runtimeFor(RT({ flags: { signup: true, intlPhone: true, guestCardOnly: true, schedulingLive: true, ratings: true, sdkPay: true } }), CappSignupApi);
   assert.deepEqual([on.intlPhone, on.guestCardOnly, on.schedulingLive, on.ratings], [true, true, true, true]);
+  const SDK_EP = ['getPayAdjust', 'respondPayAdjust', 'placeSdkOrder', 'placeSdkStatus', 'cancelSdkPending', 'continueSdkPayment', 'listCards', 'removeCard', 'sdkPayStatus', 'recoverOrderAccess'];
+  assert.deepEqual(on && on.sdkPay, { endpoints: Object.fromEntries(SDK_EP.map((n) => [n, `${RT0.functions_base}/${n}`])) }, '🔴 S2: sdkPay reaches the runtime with its endpoints on the ONE functions host (CONTRACT-sdk-customer §3; CONTRACT-sdk-checkout r3 §1.3, §2, §4, §5, §6, §8, §9)');
   assert.deepEqual(Object.keys(on.signup.endpoints), [...CappSignupApi.ENDPOINTS], 'signup endpoints = CappSignupApi.ENDPOINTS');
   for (const [n, u] of Object.entries(on.signup.endpoints)) assert.equal(u, `${RT0.functions_base}/${n}`);
   assert.ok(on.signup.firebase === RT0.firebase, 'the Firebase web config is the manifest\'s');
-  const truthy = Boot.runtimeFor(RT({ flags: { signup: 'yes', intlPhone: 1, ratings: 'true' } }), CappSignupApi);
-  assert.equal('signup' in truthy || 'intlPhone' in truthy || 'ratings' in truthy, false, 'only a literal true flips a flag');
+  const truthy = Boot.runtimeFor(RT({ flags: { signup: 'yes', intlPhone: 1, ratings: 'true', sdkPay: 'true' } }), CappSignupApi);
+  assert.equal('signup' in truthy || 'intlPhone' in truthy || 'ratings' in truthy || 'sdkPay' in truthy, false, 'only a literal true flips a flag');
 });
 
 test('Pedido recibido: the help WhatsApp derives from the ONE manifest key (runtime.support_whatsapp, E.164) — digits only, malformed ⇒ absent; the tracker links pass through only as exact https origins; the RTDB base is availability_base', () => {

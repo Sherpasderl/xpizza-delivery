@@ -11,6 +11,7 @@ const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, '..');
 const require = createRequire(import.meta.url);
 const { JSDOM } = createRequire(join(ROOT, 'xpizza-functions/x.js'))('jsdom');
 const CappOrder = require('./capp-order.js');
+import { payView, line } from './test/fake-sdk-pay.mjs';
 
 const T0 = Date.UTC(2026, 9, 22, 0, 0, 0);
 const ORDER = { order_id: 'XP-1', mode: 'delivery', status: 'new', storeName: 'X. Pizza', branch: 'Centro', storeAddr: 'Av. 1',
@@ -174,4 +175,30 @@ test('the live order screen = the pre-receipt CappOrder byte for byte (base blob
       assert.equal(CappOrder.orderHtml(o, c), BASE.orderHtml(o, c), `🔴 RC-base: live render drifted (redeem ${redeem}, ${pay}, ${mode}, ${status}, open ${receiptOpen}, ${JSON.stringify(flags)})`); n++;
     }
   assert.equal(n, 896);
+});
+
+test('S2 mount points (MOCKUP-capp-S2-adjustment r3): an sdk order\'s c.pay — the notice after the status row, «Nuevo total aceptado» leading the subline, the Pago block in place of «Pagado en línea / Confirmado»; a malformed c.pay changes nothing', () => {
+  const PA = require('./capp-pay-adjust.js');
+  const view = payView({ total_cents: 87500, revision: 1, card: { brand: 'visa', last4: '4242' }, notice: { kind: 'decrease', revision: 1, old_total_cents: 92000, new_total_cents: 87500, changes: [line('line_removed', 'Crispy Bacon', -4500)] } });
+  const fr = PA.frameOf(view, 'preparing', {});
+  const pay = { notice: PA.noticeHtml(view, fr), rows: PA.payHtml(view), statusSub: null };
+  for (const status of ['new', 'preparing', 'out']) {   // out: the driver card follows the status row — the notice comes first
+    const r = dom(CappOrder.orderHtml({ ...ORDER, status, driver: status === 'out' ? 'Carlos' : null }, { ...CTX, pay }));
+    const note = r.querySelector('.notecard'), row = r.querySelector(status === 'new' ? '.mk-status' : '.statusrow');
+    assert.ok(note && row && row.compareDocumentPosition(note) === 4 && row.nextElementSibling === note, `🔴 S2-mount: the notice sits right after the status row (${status})`);
+    const pe = [...r.querySelectorAll('.receipt, .receipt2')].pop(), keys = pe ? [...pe.querySelectorAll('.rrow')].map((x) => txt(x)) : [];
+    assert.ok(!keys.some((k) => /Pagado en línea|Confirmado|^Estado/.test(k)), `🔴 S2-mount: no «Pagado en línea» / «Confirmado» rows on an sdk order (${status}: ${keys.join(' | ')})`);
+    assert.deepEqual(keys.slice(0, 2), ['PagoVisa ···· 4242', 'TotalL 875'], `🔴 S2-mount: the card + Total rows lead «Pago y entrega» (v2 frame 8; ${status})`);
+    assert.equal(txt(pe && pe.querySelector('.payline .mute')), 'Se cobra al recibir tu pedido.', `🔴 S2-mount: the charge line inside «Pago y entrega» (${status})`);
+    assert.equal(txt(pe && pe.querySelector('.payline + .rrow .k')), 'Cuándo', `the delivery rows follow (${status})`);
+  }
+  const d = dom(CappOrder.orderHtml({ ...ORDER, status: 'preparing' }, { ...CTX, pay: { ...pay, notice: '', statusSub: 'Nuevo total aceptado' } }));
+  assert.equal(txt(d.querySelector('.statusrow .ssub')), 'Nuevo total aceptado · Te avisaremos cuando vaya en camino', '🔴 S2-D: the status line leads the subline');
+  const cx = dom(CappOrder.orderHtml({ ...ORDER, status: 'cancelled' }, { ...CTX, pay }));
+  assert.equal(txt(cx.querySelector('.statusrow .ssub')), 'No se hizo ningún cargo a tu tarjeta.', '🔴 S2-cancel: a held card never charged says so (advisor 11-08), never the refund line');
+  assert.equal(cx.querySelector('.payline'), null, '🔴 S2-cancel: no «Se cobra al recibir tu pedido.» on a cancelled order');
+  assert.equal(txt(dom(CappOrder.orderHtml({ ...ORDER, status: 'cancelled' }, CTX)).querySelector('.statusrow .ssub')), 'Si pagaste por adelantado, te contactaremos sobre el reembolso', 'a legacy (charged) order keeps the refund line');
+  for (const bad of [null, {}, { notice: '<b>x</b>' }, { rows: '' }, { rows: 5 }, 'x']) {
+    for (const status of ['new', 'cancelled']) assert.equal(CappOrder.orderHtml({ ...ORDER, status }, { ...CTX, pay: bad }), CappOrder.orderHtml({ ...ORDER, status }, CTX), `🔴 S2-mount: a malformed c.pay (${JSON.stringify(bad)}) changes nothing (${status})`);
+  }
 });

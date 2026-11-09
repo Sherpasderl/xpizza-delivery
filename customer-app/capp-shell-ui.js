@@ -38,6 +38,7 @@
     const CappShellNav = pick(o, 'CappShellNav', './capp-shell-nav.js'), CappHome = pick(o, 'CappHome', './capp-home.js');
     const CappOrder = pick(o, 'CappOrder', './capp-order.js');   // «Pedido recibido» (the host's order screen)
     const CappRate = pick(o, 'CappRate', './capp-rate.js');   // C-2: the post-delivery rating sheet (presenter)
+    const CappPayAdjust = pick(o, 'CappPayAdjust', './capp-pay-adjust.js');   // S2: the total changes after the card hold (presenter)
     // the native store-update: an INSTALLED app with a store to update from never reloads its bundled assets (that cannot update it)
     // and the store sheet replaces the shared «Actualización pendiente» notice — a no-reload adapter for the shared coordinator
     if (o.runtime && o.runtime.store) { try { const SC = o.SherpaClient || g.SherpaClient; if (SC && !SC.inert && typeof SC.registerAdapter === 'function') SC.registerAdapter({ canReload: () => false, notice: () => {} }); } catch (_) {} }
@@ -686,6 +687,7 @@
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
+      reconcilePay();   // S2: the adjustment sheet follows what is now on screen
       containLayer();   // C-5 r2: a rebuilt screen behind an open sheet stays inert
       reflect();
       if (S.tab === 'home' && !S.store && !S.neutral) { askLegal(); rowArrows(); askRateNudge(); }
@@ -724,7 +726,133 @@
       es.addEventListener('put', apply); es.addEventListener('patch', apply);
       es.addEventListener('cancel', () => closeStream()); es.addEventListener('auth_revoked', () => closeStream());
     }
-    function closeStream() { if (orderStream) { try { orderStream.close(); } catch (_) {} } orderStream = null; }
+    function closeStream() { if (orderStream) { try { orderStream.close(); } catch (_) {} } orderStream = null; closePay(); }
+    // ── S2: the total changes after the card hold (CONTRACT-sdk-customer r4; runtime.sdkPay — dark until D4). The order's customer-safe
+    // projection order_pay_view/{token} streams beside order_tracking (absent ⇒ no adjustment UI, §1.1); the newest seq wins (§1.2);
+    // GET getPayAdjust anchors the countdown on the server's clock, monotonic (§1.4); POST respondPayAdjust answers with the member's ID
+    // token (§3.2). A guest holds no adjust grant until the SDK checkout ships ⇒ the view only (read-only, no calls). Nothing here decides
+    // money: the view does — a failed call changes nothing (the server decides, the stream follows). Never persisted (the device record).
+    let payStream = null, payTickT = null;
+    const payEp = () => { const e = runtime.sdkPay && runtime.sdkPay.endpoints; return e && typeof e.getPayAdjust === 'string' && typeof e.respondPayAdjust === 'string' ? e : null; };
+    const payOn = () => !!(CappPayAdjust && payEp());
+    // getPayAdjust / respondPayAdjust are platform functions ⇒ the forms' canonical wrapper (pselfupdate-wrapper-lint): the page loads
+    // sherpa-client.js first, so the fallback arm is dead
+    function sherpaFetch(u, o){ var S = win && win.SherpaClient; return (S && typeof S.fetch === 'function') ? S.fetch(u, o) : fetch(u, o); }
+    const payFetchFn = () => (typeof o.payFetch === 'function' ? o.payFetch : win && ((win.SherpaClient && typeof win.SherpaClient.fetch === 'function') || typeof win.fetch === 'function') ? sherpaFetch : null);
+    const mono = () => { try { const pf = win && win.performance; return pf && typeof pf.now === 'function' ? pf.now() : Number(nowMs()); } catch (_) { return Number(nowMs()); } };
+    const payOf = (od) => { if (!od.payAdj) od.payAdj = { view: null, help: false, dismissed: {}, anchor: null, busy: false, seen: null, getting: false }; return od.payAdj; };
+    // the anchor belongs to ONE adjustment (Codex r1 #2): another adjustment's — say an expired one's — never counts
+    const payLeft = (p) => { const c = p && p.view && p.view.consent; return p && p.anchor && c && p.anchor.id === c.adjustment_id ? p.anchor.left - (mono() - p.anchor.at) : null; };
+    function takeView(od, v) {
+      const p = payOf(od);
+      if (!v || typeof v !== 'object' || !Number.isInteger(v.seq) || (p.view && v.seq < p.view.seq)) return false;   // §1.2: never an older snapshot
+      p.view = v; return true;
+    }
+    function anchorPay(od, serverNow) {
+      const p = payOf(od), c = p.view && p.view.consent;
+      if (c && c.outcome === 'pending' && Number.isInteger(c.expires_at) && Number.isFinite(serverNow)) p.anchor = { at: mono(), left: c.expires_at - serverNow, id: c.adjustment_id };
+    }
+    async function payHeaders() { if (!S.member || !fbAuth) return null; let t = null; try { t = await fbAuth.idToken(); } catch (_) { t = null; } return t ? { Authorization: `Bearer ${t}` } : null; }
+    // §1.4: GET on the first sight of a pending consent, on every stream (re)open, when the app becomes visible and on resume; a failed
+    // GET keeps the last anchor and is retried by the next of those (Codex r1 #4). A reply's timing comes WITH its view: a stale view
+    // (an older seq) brings no anchor (Codex r1 #3)
+    async function payGet(od) {
+      const ep = payEp(), f = payFetchFn(), p = payOf(od); if (!ep || !f || typeof od.order_id !== 'string') return;
+      if (p.getting) { p.again = true; return; }   // one GET at a time; a request meanwhile (a newer adjustment) runs once it ends (Codex r2 #1)
+      p.getting = true;
+      const h = await payHeaders();
+      const gen = orderGen; let r = null;
+      if (h) { try { const res = await f(`${ep.getPayAdjust}?order_id=${encodeURIComponent(od.order_id)}`, { headers: h }); r = res && res.ok ? await res.json() : null; } catch (_) { r = null; } }
+      p.getting = false;
+      const again = p.again === true; p.again = false;
+      if (dead || gen !== orderGen || S.order !== od) return;
+      if (r && takeView(od, r.view)) { anchorPay(od, r.server_now); const c = p.view.consent; if (c) p.seen = c.adjustment_id; }
+      if (r) paintPay(od);
+      if (again && h) repay(od);
+    }
+    const payPending = (od) => { const c = od && od.payAdj && od.payAdj.view && od.payAdj.view.consent; return !!c && c.outcome === 'pending'; };
+    function repay(od) { if (payOn() && od && S.order === od && payPending(od)) payGet(od); }
+    async function payRespond(od, accept) {
+      const ep = payEp(), f = payFetchFn(), p = payOf(od), c = p.view && p.view.consent;
+      if (!ep || !f || !c || p.busy || typeof od.order_id !== 'string') return;
+      const h = await payHeaders(); if (!h) return;
+      p.busy = true; paintPay(od);
+      const gen = orderGen; let r = null;
+      try { const res = await f(ep.respondPayAdjust, { method: 'POST', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify({ order_id: od.order_id, adjustment_id: c.adjustment_id, accept }) }); r = res && res.ok ? await res.json() : null; } catch (_) { r = null; }
+      if (dead || gen !== orderGen || S.order !== od) return;
+      p.busy = false;
+      if (r && takeView(od, r.view)) anchorPay(od, r.server_now);   // a stale reply brings neither its view nor its timing (Codex r1 #3)
+      paintPay(od);
+    }
+    function streamPay(od) {
+      const ES = o.EventSource || (win && win.EventSource), base = typeof runtime.rtdbBase === 'string' ? runtime.rtdbBase : null;
+      if (!payOn() || payStream || typeof ES !== 'function' || !base || typeof od.token !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(od.token)) return;
+      let es; try { es = new ES(`${base}/order_pay_view/${encodeURIComponent(od.token)}.json`); } catch (_) { return; }
+      payStream = es; let rec = null; const gen = orderGen;
+      const apply = (ev) => {
+        if (dead || gen !== orderGen || S.order !== od) return;
+        let m = null; try { m = JSON.parse(ev.data); } catch (_) { return; }
+        if (!m || typeof m !== 'object' || typeof m.path !== 'string') return;
+        rec = applyRtdb(rec, ev.type, m.path, m.data);
+        if (!takeView(od, rec)) return;
+        const p = payOf(od), c = p.view.consent;
+        // §1.4: anchor on the first sight of a pending consent (and on every resume — resumeOrder)
+        if (c && c.outcome === 'pending' && p.seen !== c.adjustment_id) payGet(od);   // `seen` is set only by a successful GET
+        paintPay(od);
+      };
+      es.addEventListener('put', apply); es.addEventListener('patch', apply);
+      es.addEventListener('open', () => { if (!dead && gen === orderGen) repay(od); });   // a (re)connect re-anchors (§1.4)
+      es.addEventListener('cancel', () => closePay()); es.addEventListener('auth_revoked', () => closePay());
+    }
+    function closePay() { if (payStream) { try { payStream.close(); } catch (_) {} } payStream = null; if (payTickT !== null) { T.clearTimeout(payTickT); payTickT = null; } }
+    function payFrame(od) {
+      const p = od && od.payAdj; if (!payOn() || !p || !p.view) return null;
+      return CappPayAdjust.frameOf(p.view, od.status, { help: p.help, dismissed: p.dismissed, left: payLeft(p), readOnly: !S.member });
+    }
+    // S2-checkout 8 (v7): an order placed with the in-app card shows ITS card before any projection exists — the same rows, from the card
+    // the placement returned (display only: brand + last4) and the total as sent; the projection, once streamed, takes over
+    const sdkCardOk = (c) => !!c && ['visa', 'mastercard', 'amex', 'other'].includes(c.brand) && typeof c.last4 === 'string' && /^\d{4}$/.test(c.last4);
+    function payPieces(od) {
+      const fr = payFrame(od);
+      if (fr) return { notice: CappPayAdjust.noticeHtml(od.payAdj.view, fr), rows: CappPayAdjust.payHtml(od.payAdj.view), statusSub: fr.statusSub };
+      if (!CappPayAdjust || !runtime.sdkPay || !sdkCardOk(od.sdkCard) || !Number.isFinite(od.total)) return null;
+      return { notice: '', rows: CappPayAdjust.payHtml({ v: 1, seq: 0, total_cents: Math.round(od.total * 100), revision: 0, card: { brand: od.sdkCard.brand, last4: od.sdkCard.last4 }, consent: null, notice: null }), statusSub: null };
+    }
+    function paySheetHtml() {
+      const od = S.order, fr = od ? payFrame(od) : null; if (!fr || !fr.sheet) return '';
+      const h = CappPayAdjust.sheetHtml(od.payAdj.view, fr, { left: payLeft(od.payAdj) }, od.storeName);
+      return od.payAdj.busy ? h.replace(/ data-act="adj-(accept|keep)"/g, ' data-act="adj-$1" disabled') : h;
+    }
+    // the sheet follows the frame: opened over the order screen when the view asks (never over another open sheet), closed when not;
+    // the consent's minute line re-paints at each minute boundary of the anchored deadline (and F at zero)
+    // the sheet follows the frame AND the screen: reconciled at the end of every render (an order-status change — a cancellation, Codex
+    // r1 P1 —, entering the order screen, Codex r1 #5) and whenever another sheet closes; never over another open sheet
+    function reconcilePay() {
+      if (dead || !payOn()) return;
+      const od = S.order, fr = od && S.tab === 'order' && !S.store ? payFrame(od) : null, want = !!(fr && fr.sheet);
+      if (want) { if (S.layer === 'payadj') renderLayer(); else if (!S.layer) openLayer('payadj'); } else if (S.layer === 'payadj') closeLayer(false);
+    }
+    function paintPay(od) {
+      if (dead || S.order !== od) return;
+      const fr = payFrame(od);
+      if (S.tab === 'order' && !S.store) renderNow(); else reconcilePay();
+      if (payTickT !== null) { T.clearTimeout(payTickT); payTickT = null; }
+      const left = payLeft(od.payAdj);
+      if (fr && fr.sheet === 'consent' && Number.isFinite(left) && left > 0) payTickT = T.setTimeout(() => { payTickT = null; paintPay(od); }, Math.max(250, left % 60000 || 60000));
+    }
+    function payAct(a) {
+      const od = S.order, p = od && od.payAdj; if (!od || !p || !payOn()) return false;
+      if (a === 'adj-more') { p.help = true; paintPay(od); return true; }
+      if (a === 'adj-ok') { p.help = false; paintPay(od); return true; }
+      if (a === 'adj-accept') { payRespond(od, true); return true; }
+      if (a === 'adj-keep') {
+        const fr = payFrame(od);
+        if (fr && fr.sheet === 'declined') { p.dismissed[p.view.consent.adjustment_id] = true; paintPay(od); }   // G: the decline is final ⇒ F, no call
+        else payRespond(od, false);
+        return true;
+      }
+      return false;
+    }
     // v6's «Llega a – b» / «Listo para recoger a – b»: S5's own window (form-live-status, synced bytes) — the placement window from the
     // restaurant's public prep (measured ▸ configured ▸ neutral) + its drive fallback (the capp runs no Directions); painted at once from
     // the neutral prep (no pop-in), refined IN PLACE when the public prep lands
@@ -764,7 +892,8 @@
     function saveActive() {
       const od = S.order; if (!storage) return;
       try { if (!od || CappOrder.FINAL.has(od.status) || !validAge(od) || !od.owner) { storage.removeItem(ACTIVE_KEY); return; }
-        storage.setItem(ACTIVE_KEY, JSON.stringify({ v: 1, order: { ...od, grant: null }, exp: od.placedAt + ACTIVE_MS })); } catch (_) {}
+        const { payAdj: _pa, ...keep } = od;   // S2: the projection is live state, never the device record
+        storage.setItem(ACTIVE_KEY, JSON.stringify({ v: 1, order: { ...keep, grant: null }, exp: od.placedAt + ACTIVE_MS })); } catch (_) {}
     }
     function restoreActive() {
       let r = null; try { r = storage ? JSON.parse(storage.getItem(ACTIVE_KEY) || 'null') : null; } catch (_) { r = null; }
@@ -772,7 +901,7 @@
       const ok = r && r.v === 1 && o2 && typeof o2 === 'object' && typeof o2.rid === 'string' && typeof o2.order_id === 'string' && typeof o2.owner === 'string'
         && Number.isFinite(r.exp) && r.exp === o2.placedAt + ACTIVE_MS && validAge(o2) && !CappOrder.FINAL.has(o2.status);
       if (!ok) { try { if (storage && r) storage.removeItem(ACTIVE_KEY); } catch (_) {} return; }
-      S.order = { ...o2, grant: null, offerDone: true };   // shown only to its owner (activeOrder)
+      S.order = { ...o2, grant: null, offerDone: true, payAdj: null };   // shown only to its owner (activeOrder)
     }
     function identityChanged() {
       ordersGen++; S.ordersRead = null;   // any in-flight history read is void; nothing of the previous identity is shown
@@ -798,7 +927,7 @@
       if ((S.tab === 'orders' || S.tab === 'order') && activeOrder()) resumeOrder();
       if (S.tab === 'orders' && !S.store) { loadOrders(); renderNow(); }
     }
-    function resumeOrder() { const od = activeOrder(); if (!od || orderStream) return; if (!od.windowText) windowOrder(od); streamOrder(od); }
+    function resumeOrder() { const od = activeOrder(); if (od && orderStream) { repay(od); return; } if (!od || orderStream) return; if (!od.windowText) windowOrder(od); streamOrder(od); streamPay(od); if (od.payAdj) od.payAdj.seen = null; }
     function stopOrder() { orderGen++; closeStream(); if (orderNum) { try { orderNum.stop(); } catch (_) {} } orderNum = null; if (orderFlipT !== null) { T.clearTimeout(orderFlipT); orderFlipT = null; } }
     function showOrder(rid, d) {
       stopOrder();
@@ -806,8 +935,9 @@
       S.order = { ...d.order, rid, order_id: d.order_id || null, token: typeof d.tracking_token === 'string' ? d.tracking_token : null, status: 'new',
         storeName: e.name || '', branch: e.branch || '', storeAddr: e.pickup_addr || '', display_number: null,
         grant: d.signup_grant && typeof d.signup_grant.token === 'string' ? { token: d.signup_grant.token, expires_at: d.signup_grant.expires_at } : null, offerDone: false,
+        sdkCard: sdkCardOk(d.card) ? { brand: d.card.brand, last4: d.card.last4 } : null,   // S2-checkout 8: the placed card (display only)
         placedAt: Number(nowMs()), windowText: null, driver: null, stacked: false, doneAt: null, owner: ownerNow() || 'guest' };
-      windowOrder(S.order); streamOrder(S.order); saveActive();
+      windowOrder(S.order); streamOrder(S.order); streamPay(S.order); saveActive();
       const ON = OrderNumberMod(), base = typeof runtime.rtdbBase === 'string' ? runtime.rtdbBase : null;
       if (ON && base && typeof o.readPublic === 'function' && !S.order.scheduled) {
         const mine = S.order;
@@ -824,7 +954,7 @@
     function orderScreenHtml(v) {
       const od = S.order;
       return CappHome.shellWrap(v, CappOrder.orderHtml(od, { entry: 'app', now: Number(nowMs()), dark: app.classList.contains('dark'), helpOk: !!supportWa(), desk: !!v.desk,
-        shareOk: !!(od.token && trackBaseOf(od.rid)), receiptOpen: !!S.orderReceipt, offerHtml: offerHtml(od), rateHtml: orderRateHtml(od) }));
+        shareOk: !!(od.token && trackBaseOf(od.rid)), receiptOpen: !!S.orderReceipt, offerHtml: offerHtml(od), rateHtml: orderRateHtml(od), pay: payPieces(od) }));
     }
     // MOCKUP-capp-guest-checkout frame 7 (owner 10-27) in v6's .rw slot: a GUEST whose card order returned a live signup grant (the
     // phone already verified — no second code), under the shell's own sign-in (runtime.signup); «Ahora no» hides it for this order
@@ -1247,7 +1377,7 @@
     function renderLayer() {
       const L = $('layer'); if (!L) return;
       pinGen++; pinMap = null;   // any open pin map is obsolete
-      L.innerHTML = S.layer === 'help' && S.help ? CappOrder.helpSheetHtml(S.help) : S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
+      L.innerHTML = S.layer === 'payadj' ? paySheetHtml() : S.layer === 'help' && S.help ? CappOrder.helpSheetHtml(S.help) : S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
       if (S.layer !== 'pin') return;
       const firstHub = dir.view().rows.map((r) => r.entry).find((e) => Number.isFinite(e.hub_lat) && Number.isFinite(e.hub_lng));
       pinDraft = S.loc ? { lat: S.loc.lat, lng: S.loc.lng } : null;   // the editor's VIEW starts on the city when there is no location — never a pin
@@ -1269,7 +1399,7 @@
     }
     // C-5 r2 (Codex C-5 r1): the help and rating sheets are CONTAINED modals — the screen behind is inert while one is open, Tab stays
     // inside (onKey), and every close path gives focus back to the control that opened it (the opener, refound in the current DOM)
-    const MODAL = new Set(['help', 'rate']);
+    const MODAL = new Set(['help', 'rate', 'payadj']);
     let layerOpener = null, lastTap = null;   // lastTap: the control a click came from (a click does not always focus it — Safari)
     function containLayer() {
       const scr = app.querySelector(':scope > .screen'); if (!scr) return;
@@ -1284,7 +1414,7 @@
       if (MODAL.has(k) && !MODAL.has(S.layer)) { const ae = doc.activeElement; layerOpener = (ae && ae.dataset && ae.dataset.act ? { act: ae.dataset.act, oid: ae.dataset.oid || null } : null) || lastTap; }
       S.layer = k; renderLayer(); containLayer();
     }
-    function closeLayer(restore = true) { const was = S.layer; S.layer = null; renderLayer(); containLayer(); if (restore && MODAL.has(was)) restoreOpener(); }
+    function closeLayer(restore = true) { const was = S.layer; S.layer = null; renderLayer(); containLayer(); if (restore && MODAL.has(was)) restoreOpener(); if (was !== 'payadj') reconcilePay(); }
     let pending = null;
     const raf = win && typeof win.requestAnimationFrame === 'function' ? (f) => win.requestAnimationFrame(f) : (f) => T.setTimeout(f, 16);
     function schedule() { if (pending || dead) return; pending = true; raf(() => { pending = null; renderNow(); }); }
@@ -1305,6 +1435,7 @@
         if (id === 'home' || id === 'search' || id === 'account' || id === 'orders') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
       if (S.tab === 'receipt' && a.startsWith('order-')) return void receiptAct(a);
       if (a.startsWith('order-') && orderAct(a)) return;
+      if (a.startsWith('adj-') && payAct(a)) return;   // S2
       if (a === 'otab') { S.ordersTab = t.dataset.val === 'again' ? 'again' : 'past'; return renderNow(); }   // v6 Pedidos tabs
       if (a === 'reorder') return reorder(t.dataset.oid);
       if (a === 'add-past') return addPast(t.dataset.rid, t.dataset.id);
@@ -1369,13 +1500,13 @@
       if (el.dataset.field !== 'q') return;
       S.q = el.value; renderNow();
     }
-    function onVisible() { if (doc.visibilityState === 'visible' && !S.store) { dir.revalidate(); loadMenus(); } }
+    function onVisible() { if (doc.visibilityState === 'visible') repay(S.order); if (doc.visibilityState === 'visible' && !S.store) { dir.revalidate(); loadMenus(); } }   // S2 §1.4: re-anchor
     doc.addEventListener('click', onClick);
     doc.addEventListener('input', onInput);
     // C-2 / C-5: Escape dismisses the rating sheet («Ahora no») and the help sheet
     const onKey = (ev) => {
       if (dead || !MODAL.has(S.layer)) return;
-      if (ev.key === 'Escape') { if (S.layer === 'rate' && S.rate) closeRate(); else { S.help = null; closeLayer(); } return; }
+      if (ev.key === 'Escape') { if (S.layer === 'payadj') { if (S.order && S.order.payAdj && S.order.payAdj.help) payAct('adj-ok'); return; } if (S.layer === 'rate' && S.rate) closeRate(); else { S.help = null; closeLayer(); } return; }
       if (ev.key !== 'Tab') return;   // C-5 r2: Tab cycles INSIDE the open sheet
       const L = $('layer'), f = L ? [...L.querySelectorAll('button:not([disabled]),textarea:not([disabled]),input:not([disabled]),a[href]')] : [];
       if (!f.length) return;

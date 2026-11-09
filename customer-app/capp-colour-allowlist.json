@@ -439,6 +439,26 @@
   "disposition": "v6-parity",
   "why": "the v6 cuisine illustrations' palette, verbatim (P:1406-1478)"
  },
+ "js capp-pay-checkout.js @TILE #1A1F71 ×1": {
+  "disposition": "fixed",
+  "why": "the card network's brand tile (MOCKUP-capp-S2-sdk-checkout v7, owner-approved 11-08): the network's own colours on a white tile, drawn identically in the light and dark frames"
+ },
+ "js capp-pay-checkout.js @TILE #D2D5DB ×2": {
+  "disposition": "fixed",
+  "why": "the card network's brand tile (MOCKUP-capp-S2-sdk-checkout v7, owner-approved 11-08): the network's own colours on a white tile, drawn identically in the light and dark frames"
+ },
+ "js capp-pay-checkout.js @TILE #EB001B ×1": {
+  "disposition": "fixed",
+  "why": "the card network's brand tile (MOCKUP-capp-S2-sdk-checkout v7, owner-approved 11-08): the network's own colours on a white tile, drawn identically in the light and dark frames"
+ },
+ "js capp-pay-checkout.js @TILE #F79E1B ×1": {
+  "disposition": "fixed",
+  "why": "the card network's brand tile (MOCKUP-capp-S2-sdk-checkout v7, owner-approved 11-08): the network's own colours on a white tile, drawn identically in the light and dark frames"
+ },
+ "js capp-pay-checkout.js @TILE #FFFFFF ×2": {
+  "disposition": "fixed",
+  "why": "the card network's brand tile (MOCKUP-capp-S2-sdk-checkout v7, owner-approved 11-08): the network's own colours on a white tile, drawn identically in the light and dark frames"
+ },
  "js capp-signup.js @GOOGLE_G #1976D2 ×1": {
   "disposition": "fixed",
   "why": "Google's «G» mark: its brand colours, never themed"

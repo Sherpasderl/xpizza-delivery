@@ -284,6 +284,17 @@ test('S7a-1 config split: configFor maps the public entry + runtime (mapsKey) + 
   assert.equal(SH.configFor({}, rt), null);
 });
 
+test('S2-checkout: configFor turns the SDK checkout on ONLY for the installed app with runtime.sdkPay — its endpoints merged into the transport\'s; the web never', () => {
+  const entry = { restaurant_id: 'rid_a', name: 'Uno', hub_lat: 15.5, hub_lng: -88, schedule: null };
+  const SDK_EP = { getPayAdjust: 'https://fn.test/getPayAdjust', placeSdkOrder: 'https://fn.test/placeSdkOrder', listCards: 'https://fn.test/listCards' };
+  const nat = SH.configFor(entry, { endpoints: E, native: true, sdkPay: { endpoints: SDK_EP } });
+  assert.equal(nat.sdkCheckout, true, '🔴 SDKCFG: the installed app with sdkPay');
+  assert.deepEqual(nat.endpoints, { ...E, ...SDK_EP }, '🔴 SDKCFG: the transport carries both sets of endpoints');
+  const web = SH.configFor(entry, { endpoints: E, sdkPay: { endpoints: SDK_EP } });
+  assert.deepEqual(['sdkCheckout' in web, web.endpoints], [false, E], '🔴 SDKCFG: the website keeps the hosted page (advisor Q7)');
+  assert.equal('sdkCheckout' in SH.configFor(entry, { endpoints: E, native: true }), false, 'no sdkPay ⇒ dark');
+});
+
 test('S7a-1 return ownership: EXACT records only — one ⇒ owner; zero / several ⇒ null (neutral); a stash whose rid binding mismatches is ignored', () => {
   const st = memStorage();
   const ka = SH.keysFor('rid_a'), kb = SH.keysFor('rid_b');
@@ -352,7 +363,7 @@ test('Codex r3 #5: an UNREADABLE placement record is UNKNOWN in the lock and fre
   assert.equal(N.api.readPlace(), null, 'readPlace (S2) still reads a failure as absence');
 });
 
-// «Volver a pedir» advisor ruling 2026-11-02: placement is the BASE, byte for byte (no cart lock). This cell PROVES it on behaviour: the
+// «Volver a pedir» advisor ruling 2026-11-02: placement is the BASE (no cart lock). This cell PROVES it on behaviour: the
 // base capp-api.js (blob 543d9d71~1, before any «Volver a pedir» change) is compiled here and both modules run the same scenarios on a
 // TRACED storage — every read / write / remove, every request body, every outcome identical
 async function baseApiModule() {
@@ -364,13 +375,16 @@ async function baseApiModule() {
 test('placement = the BASE module (543d9d71~1): identical storage traces, request bodies and outcomes — success, failure + retry, refusal, overlap, expiry, an in-memory ABA, cash and card', async () => {
   const B = await baseApiModule();
   const { readFileSync } = await import('node:fs');
-  assert.equal(readFileSync(new URL('./capp-api.js', import.meta.url), 'utf8'), B.src, '🔴 VP-base: capp-api.js IS the base blob, byte for byte');
+  // S2-checkout (advisor design A, 11-08) changed capp-api.js ON PURPOSE (placeSdk inside the placement machinery; the hosted gate and
+  // the first-dispatch freeze factored into shared helpers): the byte-for-byte pin is retired, and THIS behavioural proof is the guard —
+  // every legacy placement below still leaves the base's exact storage trace, request bodies and outcomes
+  assert.notEqual(readFileSync(new URL('./capp-api.js', import.meta.url), 'utf8'), B.src, 'premise: the module differs from the base (S2-checkout)');
   const OK_CARD = { status: 200, json: { ok: true, order_id: 'X', checkout_url: 'https://pay.test/c', poll_token: 'pt' } };
   const run = async (Mod, scenario) => {
     const trace = [], st = memStorage(), clock = { t: T0 }; let rng = 0;
     const tr = { getItem: (k) => { const v = st.getItem(k); trace.push(['get', k, v]); return v; }, setItem: (k, v) => { trace.push(['set', k, v]); st.setItem(k, v); }, removeItem: (k) => { trace.push(['del', k]); st.removeItem(k); } };
     const srv = server(JSON.parse(JSON.stringify(scenario.script)));   // each run its own script (server() consumes it)
-    const api = Mod.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: K.pay, endpoints: E, hours: OPEN_ALL, cartKey: K.cart, placedKey: K.placed }, fetch: srv.fetch, storage: tr, now: () => clock.t, sleep: async () => {},
+    const api = Mod.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: K.pay, endpoints: E, hours: OPEN_ALL, cartKey: K.cart, placedKey: K.placed, ...(scenario.config || {}) }, ...(scenario.member ? { member: () => scenario.member } : {}), fetch: srv.fetch, storage: tr, now: () => clock.t, sleep: async () => {},
       randomBytes: (k) => Uint8Array.from({ length: k }, () => (rng++ * 13) % 256), setInterval: () => 0, clearInterval: () => {} });
     const out = await scenario.go(api, tr, clock);
     return { trace, bodies: srv.calls.map((c) => [c.ep, c.body]), out: JSON.parse(JSON.stringify(out)) };
@@ -386,6 +400,16 @@ test('placement = the BASE module (543d9d71~1): identical storage traces, reques
     'overlapping card placements': { script: { chargeOnlineOrder: [OK_CARD] }, go: async (a, tr) => { seed(tr); return Promise.all([a.place(args('online')), a.place(args('online'))]); } },
     'a retry after the record expired': { script: { createOrder: ['network', OK_CASH] }, go: async (a, tr, clock) => { seed(tr); const x = await a.place(args()); clock.t += 3 * 3600e3; return [x, await a.place(args())]; } },
     'an in-memory cart, no persisted cart (null → X → null)': { script: { createOrder: [OK_CASH] }, go: async (a) => Promise.all([a.place(args()), a.place(args())]) },
+    // Codex S2-checkout r1: the differential extended — guest and scheduled placement, quote acceptance, storage failures
+    'a guest card placement with its checkout ticket (guestCardOnly)': { config: { guestCardOnly: true }, script: { chargeOnlineOrder: [OK_CARD] }, go: async (a, tr) => { seed(tr); const id = a.orderIdForCode(args('online')); return a.place({ ...args('online'), checkoutTicket: { ticket: 'tk_1', order_id: id, expires_at: T0 + 600e3 } }); } },
+    'a guest without a ticket, and a guest cash attempt (refused locally)': { config: { guestCardOnly: true }, script: {}, go: async (a, tr) => { seed(tr); return [await a.place(args('online')), await a.place(args('cash'))]; } },
+    'a scheduled member cash order (schedulingLive)': { config: { schedulingLive: true }, member: { uid: 'u1', idToken: null }, script: { createOrder: [OK_CASH] }, go: async (a, tr) => { seed(tr); const p = args(); p.flow.time = 'schedule'; p.flow.slot = T0 + 3 * 3600e3; return a.place(p); } },
+    'a scheduled send whose answer is lost, then the replay of the recorded bytes': { config: { schedulingLive: true }, member: { uid: 'u1', idToken: null }, script: { createOrder: ['network', OK_CASH] }, go: async (a, tr) => { seed(tr); const p = args(); p.flow.time = 'schedule'; p.flow.slot = T0 + 3 * 3600e3; return [await a.place(p), await a.place({ ...p, freshOk: false })]; } },
+    'a price increase, accepted on the sheet': { script: { createOrder: [{ status: 409, json: { error: 'price_increased', net_total_cents: 33000 } }, OK_CASH] }, go: async (a, tr) => { seed(tr); return a.place({ ...args(), sheet: async () => true }); } },
+    'a price increase, declined on the sheet': { script: { createOrder: [{ status: 409, json: { error: 'price_increased', net_total_cents: 33000 } }] }, go: async (a, tr) => { seed(tr); return a.place({ ...args(), sheet: async () => false }); } },
+    'a stale quote (quote_invalid) recovered once, silently': { script: { createOrder: [{ status: 409, json: { error: 'quote_invalid' } }, OK_CASH] }, go: async (a, tr) => { seed(tr); return a.place(args()); } },
+    'the placement record cannot be written (quota)': { script: { createOrder: [OK_CASH] }, go: async (a, tr) => { seed(tr); const set = tr.setItem; tr.setItem = (k, v) => { if (k === K.place) throw new Error('quota'); return set(k, v); }; return a.place(args()); } },
+    'the record write lands, its re-read is lost (a replaced record mid-send)': { script: { createOrder: [OK_CASH] }, go: async (a, tr) => { seed(tr); const get = tr.getItem; let n = 0; tr.getItem = (k) => (k === K.place && ++n === 3 ? null : get(k)); return a.place(args()); } },
   };
   for (const [name, sc] of Object.entries(SC)) {
     const base = await run(B.exports, sc), head = await run(A, sc);

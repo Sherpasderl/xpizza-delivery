@@ -13,6 +13,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import * as SDKF from '../../customer-app/test/fake-sdk-checkout.mjs';
+import * as PAYF from '../../customer-app/test/fake-sdk-pay.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 // the harness's injected runtime field (ruling (A)) — mirrors 3a's APPROVED contract: GET …/getRestaurantDirectory, no query; ETag /
@@ -76,10 +78,12 @@ const json = (body, status = 200, headers = []) => ({ status, body, type: 'appli
 // an unknown item → the handler's 200 {ok:false, error:'bad_cart'}; the envío = delivery-wire quoteDeliveryFor itself (mode, pin,
 // coverage, member promo, refusals) over a pricing config matching the s7a2 directory (from L 45; x_pizza free for members; each
 // identity's hub + radius = the directory row's hub / coverage_km). Only the I/O is stubbed: the config read, the identity read, and
-// the ID-token check (the harness's member token → u_ana, anything else a guest — as getAuth refuses a foreign token). No quote_token
-// (an unprovisioned secret: the issuer's own fallback). Not the rate limit, extras gate or redemption path.
+// the ID-token check (the harness's member token → u_ana, anything else a guest — as getAuth refuses a foreign token). The signed-quote
+// fields come from the REAL issuer (quote-issue.js issueQuote, as the handler calls it): with no QUOTE_TOKEN_SECRET in the harness it
+// takes its own fallback — net_total_cents, quote_token null (omitted, as the handler spreads only a truthy token). Not the rate
+// limit, extras gate or redemption path.
 const FN = path.join(ROOT, 'xpizza-functions'), freq = createRequire(path.join(FN, 'index.js'));
-const { computeServerTotal } = freq('./menu-pricing.js'), { orderBreakdownCents } = freq('./order-money.js'), DW = freq('./delivery/delivery-wire.js'), DP = freq('./delivery/delivery-pricing.js');
+const { computeServerTotal } = freq('./menu-pricing.js'), { orderBreakdownCents } = freq('./order-money.js'), { issueQuote } = freq('./quote-issue.js'), DW = freq('./delivery/delivery-wire.js'), DP = freq('./delivery/delivery-pricing.js');
 const ROWS = Object.fromEntries(FX.scenarios.complete.body.restaurants.map((r) => [r.restaurant_id, r]));
 const PRICING_RAW = { policy_version: 1, bands: [{ max_km: 4, cents: 4500 }, { max_km: 10, cents: 6500 }],
   restaurants: Object.fromEntries(Object.values(ROWS).map((r) => [r.restaurant_id, { active: true, free_delivery: !!(r.promo && r.promo.free_delivery) }])) };
@@ -98,7 +102,10 @@ async function quoteOrder(req) {
       getAuth: () => ({ verifyIdToken: async (t) => { if (t !== MEMBER_TOKEN) throw new Error('foreign token'); return { uid: 'u_ana', customer: true }; } }),
       attributionUid: (dec, deleted) => (deleted ? null : dec.uid) });
   if (dq.refuse) return json(dq.refuse, dq.httpStatus || 200);
-  return json({ ok: true, total_cents: bd.total_cents, subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents, ...DW.quoteFields(dq.ctx) });
+  if (process.env.QUOTE_TOKEN_SECRET) throw new Error('the harness runs the issuer\'s unsigned fallback — unset QUOTE_TOKEN_SECRET');
+  const issued = issueQuote({ items: body.items, reward: null, rid, tables: prov.tables, deliveryContext: dq.ctx, customerId: dq.uid, nowMs: Date.now() });
+  return json({ ok: true, total_cents: bd.total_cents, subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents,
+    ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}), ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}), ...DW.quoteFields(dq.ctx) });
 }
 // opts: { directory: 'complete' | <scenario>, sold: { rid: <item_availability node from kdsSoldNode> }, quote: true }
 export function router(opts = {}) {
@@ -122,7 +129,7 @@ export function router(opts = {}) {
       // the client-version heartbeat (main's P-SELFUPDATE telemetry): its accepted answer is 204, no body (client-version.js handleReport)
       if (p.endsWith('/reportClientVersion') && req.method === 'POST') return { status: 204, body: '', type: 'text/plain' };
       if (p.endsWith('/getSignupConfig')) return json({ ok: true, terms_url: 'https://legal.sherpa.test/terminos', privacy_url: 'https://legal.sherpa.test/privacidad', legal_ready: true, google_enabled: false });
-      if (p.endsWith('/quoteOrder') && req.method === 'POST' && opts.quote !== false) return quoteOrder(req);
+      if (p.endsWith('/quoteOrder') && req.method === 'POST' && opts.quote !== false) return opts.quoteDelay ? quoteOrder(req).then((r) => ({ ...r, delay: opts.quoteDelay })) : quoteOrder(req);   // quoteDelay: the pre-quote state (S2ck-1q)
       if (opts.extra) { const x = opts.extra(req, u); if (x) return x; }
       return null;
     }
@@ -217,3 +224,127 @@ export function memberExtra({ receiptDelay = 0, active = false } = {}) {
     return null;
   };
 }
+
+// ── S2 (sdkPay): the SDK checkout + the order's payment view (advisor 11-09, SBS method (A)) ──
+// Every body is built by the STRICT test fakes (customer-app/test/fake-sdk-checkout.mjs = CONTRACT-sdk-checkout r3/r3b; fake-sdk-pay.mjs
+// = CONTRACT-sdk-customer r4 payViewOf) — exact keys and types, never laxer than the server. The order_tracking node is the REAL writer's
+// (create-order-build.buildCreateOrderUpdates, as capp-s7a2's trackingRecordOf), on the status path index.js writes. Both RTDB nodes are
+// served as the REST stream does: text/event-stream, ONE `put` at path "/" (the connection then ends; EventSource reconnects and
+// receives the same snapshot — same seq, so the view is unchanged).
+const FN_REQ = createRequire(path.join(ROOT, 'xpizza-functions/x.js'));
+const S2_TOKEN = 'tok_sbsS2order01';
+const sse = (data) => ({ status: 200, body: `event: put\ndata: ${JSON.stringify({ path: '/', data })}\n\n`, type: 'text/event-stream', headers: [{ name: 'Cache-Control', value: 'no-cache' }] });
+function trackingNode(status) {
+  const { buildCreateOrderUpdates } = FN_REQ('./create-order-build'), { orderBreakdownCents } = FN_REQ('./order-money');
+  const fields = { customer_name: 'Ana', customer_phone: '96123344', customer_email: 'ana.perez@gmail.com', notes: '', pickup_time: 'standard', items_text: '1x Plato',
+    payment_method: 'online', address_detected: 'Col. Jardines del Valle, SPS', address_details: 'Portón negro', maps_link: 'm', waze_link: 'w', items: [{ name: 'Plato', qty: 1 }] };
+  const u = buildCreateOrderUpdates({ orderId: 'LMS-SBS-1', orderType: 'delivery', now: nowMs(), trackingToken: S2_TOKEN, total: 585, lat: 15.52, lng: -88.04, fields,
+    hubSnap: { hub_lat: 15.5, hub_lng: -88.0, restaurant_name: 'La Musa', restaurant_phone: '+504' }, restaurantId: 'la_musa', priceBreakdown: orderBreakdownCents(585, 'la_musa'),
+    facturaPriced: { items: [] }, cashTenderedCents: null, freeOrder: false, rewardStamp: {} });
+  const rec = u[`order_tracking/${S2_TOKEN}`]; if (!rec || rec.status !== 'new') throw new Error('S2 fixture: the writer wrote no tracking node');
+  return { ...rec, status };   // the status path index.js writes
+}
+// the A–G views — EXACTLY capp-pay-adjust.test.mjs's (which copy MOCKUP-capp-S2-adjustment r3's data)
+const S2_CARD = { brand: 'visa', last4: '4242' };
+const S2_EXP = 1762564980000;
+const consentOf = (outcome) => ({ adjustment_id: 'adj-2', outcome, old_total_cents: 58500, new_total_cents: 62500, delta_cents: 4000, expires_at: S2_EXP, changes: [PAYF.line('line_added', 'Agua Pura 600 ml', 4000)] });
+export const S2_VIEWS = {
+  plain: () => PAYF.payView({ total_cents: 58500, card: S2_CARD }),
+  A: () => PAYF.payView({ total_cents: 52000, revision: 1, card: S2_CARD, notice: { kind: 'decrease', revision: 1, old_total_cents: 58500, new_total_cents: 52000, changes: [PAYF.line('line_unavailable', 'Pan de ajo', -6500)] } }),
+  C: () => PAYF.payView({ total_cents: 58500, card: S2_CARD, consent: consentOf('pending') }),
+  D: () => PAYF.payView({ total_cents: 62500, card: S2_CARD, consent: consentOf('accepted') }),
+  E: () => PAYF.payView({ total_cents: 58500, card: S2_CARD, consent: consentOf('action_required') }),
+  F: () => PAYF.payView({ total_cents: 58500, card: S2_CARD, consent: consentOf('expired') }),
+  G: () => PAYF.payView({ total_cents: 58500, card: S2_CARD, consent: consentOf('declined') }),
+};
+// opts: { cards: [listCards rows], available: bool, place: <outcome> | 'slow', decline: bucket, view: <S2_VIEWS key> (default plain; null = no node), status: tracking status }
+// the priced-order fields placeSdkOrder requires — CONTRACT-sdk-checkout §2.1 «as chargeOnlineOrder»: read from the server's OWN
+// validateOrderPayload `required` list (index.js), never a copy, plus its order_id / order_type rules
+const ORDER_REQUIRED = (() => {
+  const src = fs.readFileSync(path.join(FN, 'index.js'), 'utf8'), i = src.indexOf('function validateOrderPayload(');
+  const m = i >= 0 && src.slice(i, i + 600).match(/const required = \[([^\]]+)\]/);
+  if (!m) throw new Error('fixtures: validateOrderPayload\'s required list not found in index.js');
+  return m[1].split(',').map((x) => x.trim().replace(/^'|'$/g, ''));
+})();
+const SDK_BRANDS = ['visa', 'mastercard', 'amex', 'other'];
+// §2.1 body (the SDK keys exact by NAME and VALUE; the priced order's required fields): a list of violations, [] when valid
+export function placeBodyViolations(b, { nowYear = new Date().getFullYear() } = {}) {
+  const v = [], str = (x) => typeof x === 'string' && x !== '';
+  for (const f of ORDER_REQUIRED) if (b[f] == null || b[f] === '') v.push(`missing ${f}`);
+  if (b.order_id != null && !/^[A-Za-z0-9_-]{1,64}$/.test(String(b.order_id))) v.push('order_id format');
+  if (b.order_type != null && !['delivery', 'pickup'].includes(b.order_type)) v.push('order_type');
+  if (!str(b.restaurant_id)) v.push('restaurant_id');
+  if (!Array.isArray(b.items) || !b.items.length) v.push('items');
+  if (typeof b.attempt_id !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(b.attempt_id)) v.push(`attempt_id ${JSON.stringify(b.attempt_id)}`);
+  if (!('replaces_order_id' in b) || !(b.replaces_order_id === null || str(b.replaces_order_id))) v.push('replaces_order_id');
+  if ('amount_cents' in b || 'total_cents' in b) v.push('a client amount');
+  const c = b.card, ck = c && typeof c === 'object' ? Object.keys(c).sort().join() : '';
+  if (c && c.kind === 'saved') { if (ck !== 'card_id,kind' || !str(c.card_id)) v.push(`saved card ${ck}`); }
+  else if (c && c.kind === 'new') {
+    if (ck !== 'authentication_identifier,display,kind,save,sdk_token') v.push(`new card keys ${ck}`);
+    if (!str(c.sdk_token)) v.push('sdk_token');
+    if (typeof c.save !== 'boolean') v.push('save');
+    if (!(c.authentication_identifier === null || str(c.authentication_identifier))) v.push('authentication_identifier');
+    const d = c.display, dk = d && typeof d === 'object' ? Object.keys(d).sort().join() : '';
+    if (dk !== 'brand,exp_month,exp_year,last4') v.push(`display keys ${dk}`);
+    else {
+      if (!SDK_BRANDS.includes(d.brand)) v.push('display.brand');
+      if (typeof d.last4 !== 'string' || !/^\d{4}$/.test(d.last4)) v.push('display.last4');
+      if (!Number.isInteger(d.exp_month) || d.exp_month < 1 || d.exp_month > 12) v.push('display.exp_month');
+      if (!Number.isInteger(d.exp_year) || d.exp_year < 1000 || d.exp_year > 9999 || d.exp_year < nowYear) v.push('display.exp_year');
+    }
+  } else v.push(`card.kind ${c && c.kind}`);
+  return v;
+}
+
+export function s2Extra(opts = {}) {
+  const cards = opts.cards || [{ card_id: 'c_visa', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false }];
+  const viewOf = () => (opts.view === null ? null : S2_VIEWS[opts.view || 'plain']());   // an SDK order's node exists (plain) unless a scene says none
+  const placed = new Map();   // order_id → the outcome served (placeSdkStatus answers the same)
+  const respOf = (id, att) => {
+    const o = opts.place || 'placed';
+    if (o === 'placed') return SDKF.placeResp('placed', { order_id: id, tracking_token: S2_TOKEN, card: S2_CARD });
+    if (o === 'declined') return SDKF.placeResp('declined', { order_id: id, attempt_id: att, decline: opts.decline || 'retryable', pay_deadline_at: nowMs() + 10 * 60e3 });
+    if (o === 'under_review') return SDKF.placeResp('under_review', { order_id: id });
+    throw new Error(`S2 fixture: no placement outcome ${o}`);
+  };
+  return (req, u) => {
+    if (u.host.endsWith('firebaseio.com')) {
+      if (u.pathname === `/order_tracking/${S2_TOKEN}.json`) return sse(trackingNode(opts.status || 'preparing'));
+      if (u.pathname === `/order_tracking/${S2_TOKEN}/display_number.json`) return json(4833);
+      if (u.pathname === `/order_pay_view/${S2_TOKEN}.json`) return sse(viewOf());
+      // the order screen's prep read (capp-shell-ui readPublic → form-live-status prepFor): no prep_stats / prep_eta_min written for the
+      // store — a real production state (the nightly writer has not run for it); the window then comes from the fallback
+      if (/^\/restaurants\/[a-z0-9_-]+\/public\.json$/.test(u.pathname)) return json(null);
+      return null;
+    }
+    if (!u.host.endsWith('cloudfunctions.net')) return null;
+    const ep = u.pathname.split('/').pop();
+    // as strict as the contract (Codex r1 P2): §1.1 member authority on every SDK call (the harness's ONE member token → u_ana; a
+    // missing / foreign token is refused, never served); §2.1 the placement body's SDK keys exact; A3 a saved card must be one of
+    // THIS member's listed, usable cards, else the one identical 409; status / getPayAdjust only for an order this member placed
+    const SDK_EPS = new Set(['listCards', 'placeSdkOrder', 'placeSdkStatus', 'getPayAdjust']);
+    const hdr = (k) => { const e = Object.entries(req.headers || {}).find(([h]) => h.toLowerCase() === k); return e ? e[1] : undefined; };
+    const uid = hdr('authorization') === `Bearer ${MEMBER_TOKEN}` ? 'u_ana' : null;
+    if (SDK_EPS.has(ep) && !uid) return json({ error: 'auth_required' }, 401);
+    if (ep === 'listCards' && req.method === 'GET') return json(SDKF.listCards(cards));
+    if (ep === 'sdkPayStatus' && req.method === 'GET') return json(SDKF.sdkPayStatus(opts.available !== false, opts.available === false ? 300 : 0));
+    if (ep === 'placeSdkOrder' && req.method === 'POST') {
+      let b = null; try { b = JSON.parse(req.postData || 'null'); } catch (_) { b = null; }
+      if (!b || typeof b !== 'object' || Array.isArray(b)) return null;   // not a JSON object ⇒ unmapped (fails the run)
+      const viol = placeBodyViolations(b);   // a route that throws is UNMAPPED ⇒ the run fails
+      if (viol.length) throw new Error(`placeSdkOrder 400 (contract §2.1): ${viol.join('; ')}`);
+      if (b.card.kind === 'saved' && !cards.some((c) => c.card_id === b.card.card_id && !c.expired)) { const r = SDKF.savedCardUnavailable(); return json(r.json, r.status); }   // A3: the strict fake's exact 409
+      if (opts.place === 'slow') return { ...json(SDKF.placeResp('bank_pending', { order_id: b.order_id, attempt_id: b.attempt_id })), delay: 60000 };   // frame 4: still answering at the shot
+      const r = respOf(b.order_id, b.attempt_id); placed.set(b.order_id, r); return json(r);
+    }
+    if (ep === 'placeSdkStatus' && req.method === 'GET') { const id = u.searchParams.get('order_id'); const r = placed.get(id); if (!r) return json({ error: 'not_found' }, 404); return r ? json(SDKF.placeResp(r.outcome, Object.fromEntries(Object.entries(r).filter(([k]) => k !== 'outcome' && k !== 'adjust_grant')), { replay: true })) : null; }
+    if (ep === 'getPayAdjust' && req.method === 'GET') {
+      if (![...placed.keys()].includes(u.searchParams.get('order_id'))) return json({ error: 'not_found' }, 404);   // only this member's order
+      const v = viewOf(); return v ? json({ view: v, server_now: S2_EXP - 180000 }) : null;
+    }
+    return null;
+  };
+}
+// two extras in order (a member's + the S2 surface)
+export const chainExtra = (...fs) => (req, u) => { for (const f of fs) { const x = f && f(req, u); if (x) return x; } return null; };

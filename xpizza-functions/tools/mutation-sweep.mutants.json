@@ -23893,7 +23893,7 @@
   "slice": "s2a",
   "label": "the expiry check removed",
   "file": "../customer-app/capp-api.js",
-  "from": "      if (now() >= r.expires_at) { removeKey(PLACE_KEY); return null; }\n",
+  "from": "      if (now() >= r.expires_at && !sdkUnresolved(r)) { removeKey(PLACE_KEY); return null; }   // Codex r1 P2-8: never an SDK attempt still in doubt\n",
   "to": "",
   "command": [
    "node",
@@ -23902,7 +23902,8 @@
   ],
   "kills_with": [
    "cleared at 22:00"
-  ]
+  ],
+  "repointed": "S2-checkout (ee9e16c5 / a4293749): the same mutation in its refactored home (hostedGate / freezeFirst / readPlace / the sdkC term)"
  },
  {
   "id": "s2a-u12",
@@ -25111,7 +25112,7 @@
   "slice": "s7a1",
   "label": "dispatch without a verified freeze (a failed freeze write ignored)",
   "file": "../customer-app/capp-api.js",
-  "from": "frozen_for: rec.order_id })) return { kind: 'offline', order_id: rec.order_id, freeze_failed: true };",
+  "from": "frozen_for: rec.order_id })) return { stop: { kind: 'offline', order_id: rec.order_id, freeze_failed: true } };",
   "to": "frozen_for: rec.order_id })) {}",
   "command": [
    "node",
@@ -25120,7 +25121,8 @@
   ],
   "kills_with": [
    "failed freeze write ⇒ zero sends"
-  ]
+  ],
+  "repointed": "S2-checkout (ee9e16c5 / a4293749): the same mutation in its refactored home (hostedGate / freezeFirst / readPlace / the sdkC term)"
  },
  {
   "id": "s7a1-03",
@@ -25160,7 +25162,7 @@
   "slice": "s7a1",
   "label": "place() skips reconciliation (not blocked on a read error)",
   "file": "../customer-app/capp-api.js",
-  "from": "        if (!rc.ok) return { kind: 'offline', reconcile: rc.step };   // blocked until reconciliation completes (nothing sent)",
+  "from": "      if (!rc.ok) return { kind: 'offline', reconcile: rc.step };   // blocked until reconciliation completes (nothing sent)",
   "to": "",
   "command": [
    "node",
@@ -25169,14 +25171,15 @@
   ],
   "kills_with": [
    "blocked until reconciliation completes"
-  ]
+  ],
+  "repointed": "S2-checkout (ee9e16c5 / a4293749): the same mutation in its refactored home (hostedGate / freezeFirst / readPlace / the sdkC term)"
  },
  {
   "id": "s7a1-06",
   "slice": "s7a1",
   "label": "a frozen cart with an expired lock is placed anew (auto-unlock)",
   "file": "../customer-app/capp-api.js",
-  "from": "        if (fz.frozen && !fz.live) return recoverySheet(fz.order_id);",
+  "from": "      if (fz.frozen && !fz.live) return recoverySheet(fz.order_id);",
   "to": "",
   "command": [
    "node",
@@ -25185,7 +25188,8 @@
   ],
   "kills_with": [
    "existing_order"
-  ]
+  ],
+  "repointed": "S2-checkout (ee9e16c5 / a4293749): the same mutation in its refactored home (hostedGate / freezeFirst / readPlace / the sdkC term)"
  },
  {
   "id": "s7a1-07",
@@ -25385,7 +25389,7 @@
   "slice": "s7a1",
   "label": "P1-3: the freeze's own cart read error is ignored (frozen over nothing)",
   "file": "../customer-app/capp-api.js",
-  "from": "const sr = readStrict(CART_KEY); if (!sr.ok) return { kind: 'offline', order_id: rec.order_id, freeze_failed: true };",
+  "from": "const sr = readStrict(CART_KEY); if (!sr.ok) return { stop: { kind: 'offline', order_id: rec.order_id, freeze_failed: true } };",
   "to": "const sr = readStrict(CART_KEY);",
   "command": [
    "node",
@@ -25394,7 +25398,8 @@
   ],
   "kills_with": [
    "an unreadable cart at the freeze"
-  ]
+  ],
+  "repointed": "S2-checkout (ee9e16c5 / a4293749): the same mutation in its refactored home (hostedGate / freezeFirst / readPlace / the sdkC term)"
  },
  {
   "id": "s7a1-27",
@@ -31255,8 +31260,8 @@
   "slice": "s4",
   "label": "place() no longer refuses a non-owner's placement (another account's retained send)",
   "file": "../customer-app/capp-api.js",
-  "from": "      if (retainedByOther()) return { kind: 'held_other_account', local: true };\n",
-  "to": "",
+  "from": "      if (retainedByOther()) return { kind: 'held_other_account', local: true };\n      let method = p.flow.pay === 'online' ? 'online' : 'cash';",
+  "to": "      let method = p.flow.pay === 'online' ? 'online' : 'cash';",
   "command": [
    "node",
    "--test",
@@ -31265,7 +31270,8 @@
   ],
   "kills_with": [
    "S4-held"
-  ]
+  ],
+  "repointed": "S2-checkout (ee9e16c5): the same line also opens placeSdkInner — the anchor now names place()'s (placeLegacy) by its next line"
  },
  {
   "id": "s4-34",
@@ -34080,8 +34086,8 @@
   "slice": "desk",
   "label": "desktop checkout DUPLICATES «Tu pedido» (col-b added, not moved)",
   "file": "../customer-app/capp-ui.js",
-  "from": "${S.desk ? pago : pedido + pago}</div>",
-  "to": "${pedido + pago}</div>",
+  "from": "${S.desk ? pago : pedido + (sdkC ? '' : pago)}</div>",
+  "to": "${pedido + (sdkC ? '' : pago)}</div>",
   "command": [
    "node",
    "--test",
@@ -34092,7 +34098,10 @@
   "kills_with": [
    "not also in col-a",
    "exactly once"
-  ]
+  ],
+  "repointed": "S2-checkout (ee9e16c5 / a4293749): the same mutation in its refactored home (hostedGate / freezeFirst / readPlace / the sdkC term)",
+  "equivalent": true,
+  "why": "EQUIVALENT (proven at d476032c, before S2-checkout: the original mutant survived there too): checkoutHtml returns checkoutDeskHtml(...) whenever S.desk is true, so the S.desk branch of this ternary is dead — the desktop «Tu pedido» move is guarded by checkoutDeskHtml itself"
  },
  {
   "id": "dsk-05",
@@ -34917,5 +34926,640 @@
    "--test",
    "../xpizza-portal/platform-notice.test.mjs"
   ]
+ },
+ {
+  "id": "s2ck-a01",
+  "slice": "s2ck",
+  "label": "the SDK token written into the durable record",
+  "file": "../customer-app/capp-api.js",
+  "from": "rec = confirmSend(rec.order_id, 'online', { sdk: true, attempt_id: attemptId, attempt_state: 'sent', card_ref: cardRef(p.card),",
+  "to": "rec = confirmSend(rec.order_id, 'online', { sdk: true, attempt_id: attemptId, attempt_state: 'sent', sdk_token: p.card && p.card.sdk_token, card_ref: cardRef(p.card),",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-rec: the record never holds a token or a body"
+ },
+ {
+  "id": "s2ck-a02",
+  "slice": "s2ck",
+  "label": "an unknown answer read as a decline (no status)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (r.network || r.status >= 500 || !r.json) return sdkStatus(id, p);                        // unknown ⇒ the status, never a new attempt",
+  "to": "      if (r.network || r.status >= 500 || !r.json) return { kind: 'sdk_declined', order_id: id, bucket: 'hard' };",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-unknown: the status is asked"
+ },
+ {
+  "id": "s2ck-a03",
+  "slice": "s2ck",
+  "label": "placeSdk dispatches over a live attempt",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (live && live.sdk === true && live.attempt_state === 'sent') return sdkStatus(live.order_id, p);   // in flight: status first",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-live: placeSdk never dispatches over a live attempt"
+ },
+ {
+  "id": "s2ck-a05",
+  "slice": "s2ck",
+  "label": "a decline not made final",
+  "file": "../customer-app/capp-api.js",
+  "from": "        case 'declined': settleSdk(id, 'declined', out.attempt_id); return",
+  "to": "        case 'declined': return",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-decl: the attempt is final, the order kept"
+ },
+ {
+  "id": "s2ck-a06",
+  "slice": "s2ck",
+  "label": "cash before safe_to_switch",
+  "file": "../customer-app/capp-api.js",
+  "from": "if (r.network || r.status !== 200 || !r.json || PC.switchStep(r.json) !== 'cash') return { kind: 'sdk_pending', order_id: id, switching: true };",
+  "to": "if (r.network || r.status !== 200 || !r.json) return { kind: 'sdk_pending', order_id: id, switching: true };",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-switch: not yet safe ⇒ poll, never cash"
+ },
+ {
+  "id": "s2ck-a07",
+  "slice": "s2ck",
+  "label": "no replaces_order_id on the switch's cash order",
+  "file": "../customer-app/capp-api.js",
+  "from": "body && body.payment_method !== 'online' ? { ...body, replaces_order_id: p.replacesOrderId } : body);",
+  "to": "body ? body : body);",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-switch: a NEW order replacing the old one"
+ },
+ {
+  "id": "s2ck-a08",
+  "slice": "s2ck",
+  "label": "the legacy token header instead of Bearer",
+  "file": "../customer-app/capp-api.js",
+  "from": "if (m) { const tok = await memberToken(m); return tok && memberOf() === m ? { Authorization: `Bearer ${tok}` } : null; }",
+  "to": "if (m) { const tok = await memberToken(m); return tok && memberOf() === m ? { 'x-firebase-id-token': tok } : null; }",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-auth: member Bearer"
+ },
+ {
+  "id": "s2ck-a09",
+  "slice": "s2ck",
+  "label": "unavailable left locked",
+  "file": "../customer-app/capp-api.js",
+  "from": "        case 'unavailable': settleSdk(id, 'none'); return",
+  "to": "        case 'unavailable': return",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-unavail: no unresolved attempt"
+ },
+ {
+  "id": "s2ck-a10",
+  "slice": "s2ck",
+  "label": "paying over a dispatched legacy placement",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (live && live.sdk !== true && Number(live.dispatched) > 0) return resolveExisting(live.order_id);   // a DISPATCHED",
+  "to": "      if (false) return resolveExisting(live.order_id);   // a DISPATCHED",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-legacy: never paid over a dispatched placement"
+ },
+ {
+  "id": "s2ck-a11",
+  "slice": "s2ck",
+  "label": "expired always released",
+  "file": "../customer-app/capp-api.js",
+  "from": "          if (out.safe_to_switch !== true) return { kind: 'sdk_expired', order_id: id, safe: false };\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-exp: not yet safe"
+ },
+ {
+  "id": "s2ck-r01",
+  "slice": "s2ck",
+  "label": "no placement lock (Codex r1 P1-1)",
+  "file": "../customer-app/capp-api.js",
+  "from": "    const placeSdk = (p) => enqueue(() => placeSdkInner(p));",
+  "to": "    const placeSdk = (p) => placeSdkInner(p);",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": [
+   "SDK-lock"
+  ]
+ },
+ {
+  "id": "s2ck-r02",
+  "slice": "s2ck",
+  "label": "alive() not checked before the dispatch (Codex r1 P1-1)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded' };\n      if (retainedByOther())",
+  "to": "      if (retainedByOther())",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-alive: no POST after teardown"
+ },
+ {
+  "id": "s2ck-r03",
+  "slice": "s2ck",
+  "label": "a stale attempt's answer applied (Codex r1 P1-2)",
+  "file": "../customer-app/capp-api.js",
+  "from": "&& staleAttempt(id, out)) return { kind: 'sdk_pending', order_id: id, stale: true };",
+  "to": "&& false) return { kind: 'sdk_pending', order_id: id, stale: true };",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": [
+   "SDK-stale"
+  ]
+ },
+ {
+  "id": "s2ck-r05",
+  "slice": "s2ck",
+  "label": "cash over a dispatched SDK order without the switch (Codex r1 P1-3)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (live && live.sdk === true && Number(live.dispatched) > 0) {\n        if (method !== 'cash') return sdkStatus(live.order_id, p);",
+  "to": "      if (false) {\n        if (method !== 'cash') return sdkStatus(live.order_id, p);",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-cash-fence: the switch first"
+ },
+ {
+  "id": "s2ck-r06",
+  "slice": "s2ck",
+  "label": "a quote refusal treated as uncertain (Codex r1 P2-6)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (cq.classify(r.json)) { settleSdk(id, 'none', attemptId); return { kind: 'replay_requote', order_id: id }; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-quote: no status poll"
+ },
+ {
+  "id": "s2ck-r07",
+  "slice": "s2ck",
+  "label": "the legacy resolver on a retained SDK order (Codex r1 P2-7)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (live && live.order_id === id && live.sdk === true) return sdkStatus(id, null);   // Codex r1 P2-7",
+  "to": "      if (false) return sdkStatus(id, null);   // Codex r1 P2-7",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-recover: the SDK resolver"
+ },
+ {
+  "id": "s2ck-r08",
+  "slice": "s2ck",
+  "label": "the legacy expiry deletes an unresolved SDK attempt (Codex r1 P2-8)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (now() >= r.expires_at && !sdkUnresolved(r)) { removeKey(PLACE_KEY); return null; }",
+  "to": "      if (now() >= r.expires_at) { removeKey(PLACE_KEY); return null; }",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-expiry: the attempt is still live"
+ },
+ {
+  "id": "s2ck-r09",
+  "slice": "s2ck",
+  "label": "the switch intent forgotten (Codex r1 P2-9)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      try { patchPlace(id, { switch_intent: true, ...(sb ? { switch_body: sb } : {}) }); } catch (_) {}",
+  "to": "      try { patchPlace(id, { ...(sb ? { switch_body: sb } : {}) }); } catch (_) {}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-switch-intent: the switch completes once safe"
+ },
+ {
+  "id": "s2ck-u01",
+  "slice": "s2ck",
+  "label": "the SDK card sent through the hosted charge",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (sdkOn() && f.pay === 'online') {   // S2-checkout: the in-app card",
+  "to": "      if (false) {   // S2-checkout: the in-app card",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-4: the saved card by id"
+ },
+ {
+  "id": "s2ck-u03",
+  "slice": "s2ck",
+  "label": "no status-first resume at mount",
+  "file": "../customer-app/capp-ui.js",
+  "from": "    if (!returning) sdkResume();",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-resume: the status first"
+ },
+ {
+  "id": "s2ck-u04",
+  "slice": "s2ck",
+  "label": "no status poll while the bank answers",
+  "file": "../customer-app/capp-ui.js",
+  "from": "sdkPollLater(out.order_id, SDK.pollN++ < POLL_SDK_FAST_N ? POLL_SDK_MS : POLL_SDK_SLOW_MS); return; }",
+  "to": "return; }",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-4: the status is polled"
+ },
+ {
+  "id": "s2ck-u05",
+  "slice": "s2ck",
+  "label": "the poll never backs off",
+  "file": "../customer-app/capp-ui.js",
+  "from": "SDK.pollN++ < POLL_SDK_FAST_N ? POLL_SDK_MS : POLL_SDK_SLOW_MS",
+  "to": "POLL_SDK_MS",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-poll: then 10 s"
+ },
+ {
+  "id": "s2ck-u06",
+  "slice": "s2ck",
+  "label": "the backoff never restarts",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      SDK.pollN = 0;   // any settled outcome restarts the backoff\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-poll: the new attempt polls at 3 s"
+ },
+ {
+  "id": "s2ck-u07",
+  "slice": "s2ck",
+  "label": "the «Pago» section kept",
+  "file": "../customer-app/capp-ui.js",
+  "from": "${S.desk ? pago : pedido + (sdkC ? '' : pago)}",
+  "to": "${S.desk ? pago : pedido + pago}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-1: the «Pago» section is gone"
+ },
+ {
+  "id": "s2ck-u08",
+  "slice": "s2ck",
+  "label": "no payment row in the tip footer",
+  "file": "../customer-app/capp-ui.js",
+  "from": "${sdkOn() && !S.desk ? sdkTipRow(T) : ''}<button class=\"primary\" data-act=\"tip-place\"",
+  "to": "<button class=\"primary\" data-act=\"tip-place\"",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-1: the tip step's footer carries the payment row"
+ },
+ {
+  "id": "s2ck-u09",
+  "slice": "s2ck",
+  "label": "raw DOM card inputs without the native host",
+  "file": "../customer-app/capp-ui.js",
+  "from": "    const sdkHost = () => (opts.paySdk && opts.paySdk.fieldHost && typeof opts.paySdk.fieldHost.input === 'function' ? opts.paySdk.fieldHost : null);",
+  "to": "    const sdkHost = () => ({ input: (f) => '<input id=\"c-' + f + '\" autocomplete=\"cc-number\">' });",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-3: no raw DOM card input without the host"
+ },
+ {
+  "id": "s2ck-u12",
+  "slice": "s2ck",
+  "label": "no «card unavailable» well",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (SDK.avail === false) return PCO.gateHtml('unavailable', ctx);\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-7: the well"
+ },
+ {
+  "id": "s2ck-u13",
+  "slice": "s2ck",
+  "label": "a reload without a flow (Codex r1 P1-4)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (!S.flow) { S.flow = newFlow(); C.setMode(S.flow, S.mode); S.flow.pay = 'online'; }   // Codex r1 P1-4",
+  "to": "      // Codex r1 P1-4",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "SDKUI-reload",
+   "Cannot read properties of null (reading 'mode')"
+  ],
+  "why_crash": "the mutant reproduces Codex's crash itself (render reads f.mode of a null flow) before the named assertion"
+ },
+ {
+  "id": "s2ck-u14",
+  "slice": "s2ck",
+  "label": "the sent order not kept at dispatch (Codex r1 P1-4)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "out = await api.placeSdk({ ...p, onDispatch: (id) => keepSent(id) });",
+  "to": "out = await api.placeSdk(p);",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-reload: the sent order was kept at dispatch"
+ },
+ {
+  "id": "s2ck-u15",
+  "slice": "s2ck",
+  "label": "the field host's states never reach the form (Codex r1 P2-10)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "SDK.form = {}; SDK.save = true; S.screen = 'addcard'; sdkHostSubscribe(); render(); return true; }",
+  "to": "SDK.form = {}; SDK.save = true; S.screen = 'addcard'; render(); return true; }",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "SDKUI-host"
+  ]
+ },
+ {
+  "id": "s2ck-c01",
+  "slice": "s2ck",
+  "label": "the save switch ignores the customer's choice (Codex r1 P2-10)",
+  "file": "../customer-app/capp-pay-card.js",
+  "from": "on: !(obj(ctx) && ctx.save === false) }",
+  "to": "on: true }",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-pay-card.test.mjs"
+  ],
+  "kills_with": "SC-form: the customer"
+ },
+ {
+  "id": "s2ck-s01",
+  "slice": "s2ck",
+  "label": "the shipped page omits the checkout modules (Codex r1 P1-5)",
+  "file": "../customer-app/shell.html",
+  "from": "<script src=\"capp-pay-card.js\"></script>\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDK-ship: shell.html loads capp-pay-card.js"
+ },
+ {
+  "id": "s2ck-h01",
+  "slice": "s2ck",
+  "label": "the website gets the SDK checkout",
+  "file": "../customer-app/capp-shell.js",
+  "from": "      ...(rt.native === true && rt.sdkPay",
+  "to": "      ...(rt.sdkPay",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-s7a1.test.mjs"
+  ],
+  "kills_with": "SDKCFG: the website keeps the hosted page"
+ },
+ {
+  "id": "s2ck-h02",
+  "slice": "s2ck",
+  "label": "frame 8 card rows dropped",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!CappPayAdjust || !runtime.sdkPay || !sdkCardOk(od.sdkCard) || !Number.isFinite(od.total)) return null;",
+  "to": "      return null;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": "SDK8: the card + Total rows"
+ },
+ {
+  "id": "s2ck-a12",
+  "slice": "s2ck",
+  "label": "the switch forgets the cash order's inputs (Codex r2 P2)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      try { patchPlace(id, { switch_intent: true, ...(sb ? { switch_body: sb } : {}) }); } catch (_) {}",
+  "to": "      try { patchPlace(id, { switch_intent: true }); } catch (_) {}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-reload-switch"
+ },
+ {
+  "id": "s2ck-u16",
+  "slice": "s2ck",
+  "label": "an SDK outcome from a legacy entry point dropped (Codex r2 P2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (out && SDK_KINDS.has(out.kind) && sdkOn()) { emit('outcome', out); onSdkOutcome(out); return; }",
+  "to": "      if (false) { emit('outcome', out); onSdkOutcome(out); return; }",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-route"
+ },
+ {
+  "id": "s2ck-u17",
+  "slice": "s2ck",
+  "label": "the switch's stored inputs restore only when the flow looks incomplete (Codex r3 P2-4 — the old rule)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        if (out.body) { const rf = flowFromBody(out.body); if (rf) { S.flow = rf; S.mode = rf.mode; S.flowRestored = true; } }",
+  "to": "        if (out.body && (!S.flow || need())) { const rf = flowFromBody(out.body); if (rf) { S.flow = rf; S.mode = rf.mode; S.flowRestored = true; } }",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "SDKUI-restore"
+  ]
+ },
+ {
+  "id": "s2ck-u18",
+  "slice": "s2ck",
+  "label": "the completed switch places before the checkout is ready (Codex r2 P2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        SDK.placeWhenReady = true; render(); sdkPlaceIfReady(); return;",
+  "to": "        render(); placeNow(); return;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-reload-switch"
+ },
+ {
+  "id": "s2ck-r13",
+  "slice": "s2ck",
+  "label": "place() outside the money queue under the SDK checkout (advisor r3 B)",
+  "file": "../customer-app/capp-api.js",
+  "from": "    const place = SDK_Q ? (p) => enqueue(() => placeLegacy(p)) : (p) => placeLegacy(p);",
+  "to": "    const place = (p) => placeLegacy(p);",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": [
+   "SDK-fifo",
+   "SDK-queue",
+   "SDK-lock"
+  ]
+ },
+ {
+  "id": "s2ck-r14",
+  "slice": "s2ck",
+  "label": "the switch trusts only a CANCELLED answer — the server's «no SDK order» left polling (advisor r3 A / r3b A1)",
+  "file": "../customer-app/capp-pay-card.js",
+  "from": "  const switchStep = (r) => (obj(r) && r.safe_to_switch === true ? 'cash' : 'poll');",
+  "to": "  const switchStep = (r) => (obj(r) && r.cancelled === true && r.safe_to_switch === true ? 'cash' : 'poll');",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-pay-card.test.mjs"
+  ],
+  "kills_with": "SC-switch: the server's «no SDK order»"
+ },
+ {
+  "id": "s2ck-u19",
+  "slice": "s2ck",
+  "label": "the switch's stored inputs never restore the flow (a reload)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        if (out.body) { const rf = flowFromBody(out.body); if (rf) { S.flow = rf; S.mode = rf.mode; S.flowRestored = true; } }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "SDKUI-reload-switch",
+   "SDKUI-restore"
+  ]
+ },
+ {
+  "id": "s2ck-r15",
+  "slice": "s2ck",
+  "label": "a pending switch resolved by its status, never by re-sending the cancel (Codex r4 P2-1)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (cur && cur.order_id === id && cur.sdk === true && cur.switch_intent === true) return enqueue(() => sdkSwitchInner(id, p));\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-cancel-retry: the cancel is re-sent"
+ },
+ {
+  "id": "s2ck-r16",
+  "slice": "s2ck",
+  "label": "the cancel's completion drops the stored cash inputs (Codex r4 P2-1)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      return { kind: 'sdk_switched', replaces: id, ...(body ? { body } : {}), ...settledOf(ok) };\n    }",
+  "to": "      return { kind: 'sdk_switched', replaces: id, ...settledOf(ok) };\n    }",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": "SDK-cancel-retry: the stored cash inputs kept"
+ },
+ {
+  "id": "s2ck-u20",
+  "slice": "s2ck",
+  "label": "the UI poll reads the status instead of the resolver (Codex r4 P2-1)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        let out; try { out = await api.sdkResolve(id, sdkAuth()); }",
+  "to": "        let out; try { out = await api.sdkStatus(id, sdkAuth()); }",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": "SDKUI-route: the pending switch is re-resolved"
  }
 ]
