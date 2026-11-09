@@ -35,7 +35,8 @@ test('N2: the runtime from the REAL manifest block — every endpoint on the ONE
   for (const k of ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive', 'ratings', 'sdkPay']) assert.equal(k in r, false, `🔴 ${k} must be absent (dark) without its flag`);
   const on = Boot.runtimeFor(RT({ flags: { signup: true, intlPhone: true, guestCardOnly: true, schedulingLive: true, ratings: true, sdkPay: true } }), CappSignupApi);
   assert.deepEqual([on.intlPhone, on.guestCardOnly, on.schedulingLive, on.ratings], [true, true, true, true]);
-  assert.deepEqual(on && on.sdkPay, { endpoints: { getPayAdjust: `${RT0.functions_base}/getPayAdjust`, respondPayAdjust: `${RT0.functions_base}/respondPayAdjust` } }, '🔴 S2: sdkPay reaches the runtime with its two endpoints on the ONE functions host (CONTRACT-sdk-customer §3)');
+  const SDK_EP = ['getPayAdjust', 'respondPayAdjust', 'placeSdkOrder', 'placeSdkStatus', 'cancelSdkPending', 'continueSdkPayment', 'listCards', 'removeCard', 'sdkPayStatus', 'recoverOrderAccess'];
+  assert.deepEqual(on && on.sdkPay, { endpoints: Object.fromEntries(SDK_EP.map((n) => [n, `${RT0.functions_base}/${n}`])) }, '🔴 S2: sdkPay reaches the runtime with its endpoints on the ONE functions host (CONTRACT-sdk-customer §3; CONTRACT-sdk-checkout r3 §1.3, §2, §4, §5, §6, §8, §9)');
   assert.deepEqual(Object.keys(on.signup.endpoints), [...CappSignupApi.ENDPOINTS], 'signup endpoints = CappSignupApi.ENDPOINTS');
   for (const [n, u] of Object.entries(on.signup.endpoints)) assert.equal(u, `${RT0.functions_base}/${n}`);
   assert.ok(on.signup.firebase === RT0.firebase, 'the Firebase web config is the manifest\'s');

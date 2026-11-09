@@ -36,6 +36,8 @@
   // the order endpoints the app calls (capp-api.js's E.*) — capp-boot.test.mjs pins this list EQUAL to capp-api's
   const MODES = Object.freeze(['web', 'native']);
   const ORDER_ENDPOINTS = Object.freeze(['quoteOrder', 'createOrder', 'chargeOnlineOrder', 'paymentStatus', 'requestCheckoutCode', 'verifyCheckoutCode']);
+  // S2 (sdkPay): the adjustment (CONTRACT-sdk-customer §3) and checkout (CONTRACT-sdk-checkout r3) endpoints
+  const SDK_ENDPOINTS = Object.freeze(['getPayAdjust', 'respondPayAdjust', 'placeSdkOrder', 'placeSdkStatus', 'cancelSdkPending', 'continueSdkPayment', 'listCards', 'removeCard', 'sdkPayStatus', 'recoverOrderAccess']);
   const g = typeof self !== 'undefined' ? self : {};
   const pick = (o, name) => o[name] || g[name];
   const avail = (o) => { const A = pick(o, 'CappAvailability'), R = pick(o, 'availabilityReducer'), K = pick(o, 'availKey');
@@ -66,8 +68,8 @@
       ...(f.intlPhone === true ? { intlPhone: true } : {}),
       ...(f.guestCardOnly === true ? { guestCardOnly: true } : {}),
       ...(f.ratings === true ? { ratings: true } : {}),   // C-2: the rating sheet + its entries (dark until the rating server is live)
-      // S2: the in-app card adjustment screens + their two endpoints (CONTRACT-sdk-customer §3; dark until D4 is live)
-      ...(f.sdkPay === true ? { sdkPay: { endpoints: { getPayAdjust: url('getPayAdjust'), respondPayAdjust: url('respondPayAdjust') } } } : {}),
+      // S2: the in-app card screens + their endpoints (CONTRACT-sdk-customer §3 + CONTRACT-sdk-checkout r3; dark until D4 is live)
+      ...(f.sdkPay === true ? { sdkPay: { endpoints: Object.fromEntries(SDK_ENDPOINTS.map((n) => [n, url(n)])) } } : {}),
       ...(f.signup === true ? { signup: { firebase: rt.firebase, endpoints: Object.fromEntries(CappSignupApi.ENDPOINTS.map((n) => [n, url(n)])) } } : {}),
     };
   }
