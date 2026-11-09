@@ -103,6 +103,7 @@ const written = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).exists();
   const projection = async (id) => { const o = (await rtdb.ref(`orders/${id}`).get()).val(); return o ? Object.fromEntries(MONEY.map((f) => [f, o[f] === undefined ? null : o[f]])) : null; };
   for (const setting of ['off', 'enforce']) {
     await rtdb.ref('platform_config/extras_eligibility').set(setting);
+    await new Promise((r) => setTimeout(r, 31000));   // the per-instance mode cache (30 s): the setting is live only after it expires
     for (const [rid, field] of [['x_pizza', 'name'], ['la_musa', 'id']]) for (const [kind, v] of [['array', [rid === 'x_pizza' ? 'Carnivora' : 'dimsum_01']], ['null', null]]) {
       const k = `mf_${setting}_${rid}_${field}_${kind}`; const line = () => lineOf(rid, { [field]: v });
       for (const [ep, handler, pm] of [['createOrder', app.createOrder, 'cash'], ['chargeOnlineOrder', app.chargeOnlineOrder, 'online']]) {

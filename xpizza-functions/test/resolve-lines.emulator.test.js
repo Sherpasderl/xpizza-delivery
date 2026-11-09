@@ -119,6 +119,7 @@ const written = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).exists();
     const REDEEM = { x_pizza: { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' }, la_musa: { type: 'points_ala_carte', items: [{ id: 'rice_white', qty: 1, name: 'Arroz Blanco' }] } };
     for (const setting of ['enforce', 'off']) {
       await rtdb.ref('platform_config/extras_eligibility').set(setting);
+      await new Promise((r) => setTimeout(r, 31000));   // the per-instance mode cache (30 s): the setting is live only after it expires
       // enforce: today's 400 item_malformed + copy, nothing written or charged. off: the extras check is skipped at the base too,
       // so the stage must simply not answer (its codes never appear); the byte-identity with the base is the capture's
       // (test/s1b-reward-parity.capture.js, both settings)
