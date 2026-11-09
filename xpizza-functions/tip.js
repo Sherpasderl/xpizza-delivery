@@ -23,7 +23,9 @@ const ofBody = (body) => normTip(body && typeof body === 'object' ? body.tip_cen
 // PLAN-capp-tip-step r6 D0: the payment method exactly as intake will see it — index.js validateOrderPayload's
 // sanitizeText(v, 30) then its ALLOWED_PAYMENT_METHODS (s2tip.test.js reads both from index.js: parity, never a drifting copy).
 // An omitted / empty / unknown method becomes '' at intake, so a POSITIVE tip on it would be neither kept by the driver's
-// cuadre (cash) nor accrued by the ledger (card methods): it is refused before anything is read or written.
+// cuadre (cash) nor accrued by the ledger (card methods): it is refused before any WRITE, in the same seam (and with the same
+// precedence) as tip_invalid / tip_reward_unsupported — after the handler's floor / registry / pricing reads (a below-floor client
+// still gets its 426 first; Codex slice-C r1, advisor ruling: the seam is not moved).
 const PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 function paymentMethodOf(v) {
   let s = (v == null ? '' : String(v));

@@ -31,10 +31,22 @@ stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CH
 stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));
 // the P-C race (as test/s3a-envio.emulator.test.js): the live checkout EXPIRES after the handler's classify and before the acquire
 let EXPIRE_BEFORE_ACQUIRE = null;
+let INJECT_AT_CAS = null;   // tip-pref §8: (orderId) ⇒ the record planted between the pre-read and the CAS
 // codex r1 P2: the read-only classifier fails the next N calls (the handler's classify, then P-C's re-check)
 let CLASSIFY_FAIL = 0; let CLASSIFY_CALLS = 0;
 stub('../pixelpay-hosted-charge', (r) => ({ ...r,
-  acquireHostedAttempt: async (db, orderId, ...a) => { if (EXPIRE_BEFORE_ACQUIRE) { const f = EXPIRE_BEFORE_ACQUIRE; EXPIRE_BEFORE_ACQUIRE = null; await f(orderId); } return r.acquireHostedAttempt(db, orderId, ...a); },
+  acquireHostedAttempt: async (db, orderId, ...a) => {
+    if (EXPIRE_BEFORE_ACQUIRE) { const f = EXPIRE_BEFORE_ACQUIRE; EXPIRE_BEFORE_ACQUIRE = null; await f(orderId); }
+    // tip-pref §8 (Codex slice-C r1 #2): a REAL pre-read → CAS conflict — the pre-read saw no order; the record appears just before the
+    // CAS, so the transaction commits it UNCHANGED and the post-transaction acceptance checks refuse (the unchanged-commit path)
+    if (INJECT_AT_CAS) {
+      const rec = INJECT_AT_CAS; INJECT_AT_CAS = null;
+      const wrapped = Object.create(db);
+      wrapped.ref = (p) => { const ref = db.ref(p); if (p !== `orders/${orderId}`) return ref; const w = Object.create(ref); w.transaction = async (fn, ...x) => { await ref.set(rec(orderId)); return ref.transaction(fn, ...x); }; return w; };
+      return r.acquireHostedAttempt(wrapped, orderId, ...a);
+    }
+    return r.acquireHostedAttempt(db, orderId, ...a);
+  },
   classifyHostedAttempt: async (...a) => { CLASSIFY_CALLS++; if (CLASSIFY_FAIL > 0) { CLASSIFY_FAIL--; throw new Error('injected classify read failure'); } return r.classifyHostedAttempt(...a); } }));
 const { orderFingerprint } = require('../pixelpay-charge');
 
@@ -184,7 +196,15 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
       assert.notStrictEqual(r.json && r.json.error, 'tip_payment_method_invalid', `D0: ${m} + tip is not refused by D0`);
     }
   }
-  ok('D0: a tip with an omitted / empty / unknown payment_method ⇒ 400 tip_payment_method_invalid on cash and card, nothing written, no checkout; without a tip ⇒ today\'s path; known methods pass');
+  {   // Codex slice-C r1 #1: ZERO writes on a D0 refusal (every order / attempt / member node byte-identical before and after)
+    const snapOf = async () => JSON.stringify(await Promise.all(['orders', 'payment_attempts', 'user_orders', 'user_private', 'order_tracking', 'tasks', 'checkout_claims'].map(async (p) => (await rtdb.ref(p).get()).val())));
+    const before = await snapOf();
+    const c = await cash({ body: (() => { const b = body('cash', { extra: { tip_cents: 2000 } }); delete b.payment_method; return b; })() }, { 'x-firebase-id-token': 'm_d0' });
+    const k = await card({ body: body('bitcoin', { extra: { tip_cents: 2000, tip_choice: true } }) }, { 'x-firebase-id-token': 'm_d0' });
+    assert.deepStrictEqual([c.status, k.status], [400, 400], 'premise: both refused by D0');
+    assert.strictEqual(await snapOf(), before, '🔴 D0: ZERO writes on the refusal (orders, attempts, history, preference, tracking, tasks, claims)');
+  }
+  ok('D0: a tip with an omitted / empty / unknown payment_method ⇒ 400 tip_payment_method_invalid on cash and card, ZERO writes, no checkout; without a tip ⇒ today\'s path; known methods pass');
 
   // ── 4. idempotency: same id + same tip → the same order; a changed tip → order_exists reason 'tip' ──
   {
@@ -327,11 +347,40 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     const k = await card({ extra: { tip_cents: 6000, tip_choice: true } }, M('m_card'));
     assert.strictEqual(k.status, 200, k.text.slice(0, 200));
     assert.deepStrictEqual(await lastTip('m_card'), { cents: 6000, at: k.rec.created_at }, '🔴 PREF-E card: written after the charge issued, at = the pending order\'s created_at');
-    const conflict = await card({ body: { ...k.b, tip_cents: 4000 } }, M('m_card'));
-    assert.ok(conflict.status === 409, `premise: a changed tip on the same order is refused (${conflict.status})`);
-    assert.strictEqual((await lastTip('m_card')).cents, 6000, '🔴 PREF-E card: an unchanged-commit refusal never writes the preference');
+    // hosted UNCHANGED-COMMIT refusals (Codex slice-C r1 #2): a REAL pre-read → CAS conflict (INJECT_AT_CAS); the preference is seeded
+    // ABSENT (m_cas_a) or OLDER (m_cas_o: at 1) so an erroneous write would show; zero preference transactions either way
+    const planted = (o) => (id) => ({ order_id: id, restaurant_id: RID, status: 'pending_payment', payment_method: 'online', total_cents: 1, created_at: 1, ...o });
+    for (const [what, rec, outcome] of [
+      ['already paid', planted({ payment_status: 'confirmed' }), 200],
+      ['tip conflict', planted({ tip_cents: 9900 }), 409],
+      ['fingerprint conflict', planted({ tip_cents: 2000, payment_fingerprint: 'zz-foreign-fingerprint' }), 409],
+    ]) {
+      await rtdb.ref('user_private/m_cas_o/last_tip').set({ cents: 100, at: 1 });
+      await rtdb.ref('user_private/m_cas_a').remove();
+      for (const uid of ['m_cas_a', 'm_cas_o']) {
+        INJECT_AT_CAS = rec;
+        const r = await card({ extra: { tip_cents: 2000, tip_choice: true } }, M(uid));
+        assert.strictEqual(INJECT_AT_CAS, null, `premise (${what}): the conflict was planted between the pre-read and the CAS`);
+        assert.ok(r.status === outcome || (outcome === 409 && r.status === 409), `premise (${what}): refused (${r.status} ${r.text.slice(0, 120)})`);
+        assert.strictEqual(r.charged.length, 0, `premise (${what}): no checkout issued`);
+      }
+      assert.deepStrictEqual([await lastTip('m_cas_a'), await lastTip('m_cas_o')], [null, { cents: 100, at: 1 }], `🔴 PREF-E card (${what}): an unchanged-commit refusal performs ZERO preference writes (absent stays absent, older stays older)`);
+    }
+    // foreign identity (guestForeign) applies only to capp GUESTS (pending.guest_verified, pixelpay-hosted-charge.js:67-68): a guest has
+    // no verified uid, so prefOf is null by construction (tip-pref.test.js PREF-1 «a guest») — no preference path exists to refuse
   }
-  ok('last tip: cash and card write {cents, at = the accepted order\'s created_at} for the verified member only; «Sin propina» = 0; an older retry, a forged body uid, a guest, no tip_choice, pickup, a refused order and a hosted conflict write nothing');
+  ok('last tip: cash and card write {cents, at = the accepted order\'s created_at} for the verified member only; «Sin propina» = 0; an older retry, a forged body uid, a guest, no tip_choice, pickup, a refused order and a REAL hosted unchanged-commit refusal (already paid / tip / fingerprint conflict, planted at the CAS) write nothing');
+
+  // ── 9. Codex slice-C r1 #1: D0 keeps today's precedence — a below-floor client gets its 426 FIRST (the floor read precedes the tip seam) ──
+  {
+    await rtdb.ref('platform_config/client_floor/orders').set(5);
+    await new Promise((r) => setTimeout(r, 31000));   // the floor reader's 30 s cache (client-floor.js FLOOR_TTL_MS)
+    const OLD = { 'x-client-app': 'orders', 'x-client-deployment': 'orders-app', 'x-client-build': 'old', 'x-client-compat': '1' };
+    const c = await cash({ body: body('bitcoin', { extra: { tip_cents: 2000 } }) }, OLD);
+    assert.deepStrictEqual([c.status, c.json && c.json.error], [426, 'client_update_required'], `🔴 D0: below the floor ⇒ 426 first, never D0's 400 (${c.text.slice(0, 120)})`);
+    await rtdb.ref('platform_config/client_floor/orders').remove();
+  }
+  ok('D0 precedence: a below-floor client with a D0-refusable body still gets 426 client_update_required first');
 
   FINISHED = true;
   console.log(`\ns2tip (emulator): ${n} passed`);

@@ -2260,6 +2260,7 @@
   "stats/stats-build.js",
   "support/support-tickets.js",
   "test-push-core.js",
+  "tip-pref.js",
   "tip.js",
   "token-gate.js",
   "tracking/claims-txn.js",
@@ -5638,6 +5639,10 @@
    "lifts": []
   },
   "test-push-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "tip-pref.js": {
    "pins": [],
    "lifts": []
   },
