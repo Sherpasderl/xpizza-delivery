@@ -21,7 +21,7 @@ const RESP = {
 };
 function exact(o, spec, what, optional = {}) {
   if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error(`fake-sdk-checkout: ${what} is not an object`);
-  for (const k of Object.keys(o)) if (!(k in spec) && !(k in optional)) throw new Error(`fake-sdk-checkout: ${what} has a key the contract does not: ${k}`);
+  for (const k of Object.keys(o)) if (!Object.prototype.hasOwnProperty.call(spec, k) && !Object.prototype.hasOwnProperty.call(optional, k)) throw new Error(`fake-sdk-checkout: ${what} has a key the contract does not: ${k}`);
   for (const [k, ok] of Object.entries(spec)) {
     if (!(k in o) || o[k] === undefined) throw new Error(`fake-sdk-checkout: ${what} lacks ${k}`);
     if (!ok(o[k])) throw new Error(`fake-sdk-checkout: ${what}.${k} has the wrong type (${JSON.stringify(o[k])})`);

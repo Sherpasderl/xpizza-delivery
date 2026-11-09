@@ -30,6 +30,9 @@ test('the fake is no laxer than the contract: unknown keys, an outcome outside t
   assert.throws(() => INC('pending', { changes: [line('line_added', 'Agua', 4000, { config: undefined })] }), /config/, '🔴 S2-fake: a nested undefined is refused');
   assert.throws(() => INC('pending', { changes: [line('line_added', 'Agua', 4000, { qty_new: 'dos' })] }), /qty_new/, '🔴 S2-fake: a nested wrong type is refused');
   assert.throws(() => payView({ total_cents: 1, card: { brand: 'visa', last4: undefined } }), /card|last4/, 'card values');
+  // Codex r2 #2: an OWN key named like an inherited property (toString, constructor) is a key the contract does not name
+  assert.throws(() => INC('pending', { toString: 'x' }), /key the contract does not/, '🔴 S2-fake: consent.toString is refused');
+  assert.throws(() => INC('pending', { changes: [{ ...line('line_added', 'Agua', 4000), constructor: 'x' }] }), /key the contract does not/, '🔴 S2-fake: Change.constructor is refused');
   assert.throws(() => payView({ total_cents: 1, notice: { kind: 'decrease', revision: '1', old_total_cents: 1, new_total_cents: 1, changes: [] } }), /revision/, 'notice values');
 });
 

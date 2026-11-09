@@ -17,7 +17,7 @@ const SPEC = {
 };
 function exact(o, spec, what, optional = []) {
   if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error(`fake-sdk-pay: ${what} is not an object`);
-  for (const k of Object.keys(o)) if (!(k in spec)) throw new Error(`fake-sdk-pay: ${what} has a key the contract does not: ${k}`);
+  for (const k of Object.keys(o)) if (!Object.prototype.hasOwnProperty.call(spec, k)) throw new Error(`fake-sdk-pay: ${what} has a key the contract does not: ${k}`);   // own keys only (Codex r2 #2)
   for (const [k, ok] of Object.entries(spec)) {
     if (optional.includes(k) && !(k in o)) continue;
     if (!(k in o) || o[k] === undefined) throw new Error(`fake-sdk-pay: ${what} lacks ${k}`);

@@ -249,6 +249,9 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: url || 'https://app.test/' });
   const w = dom.window;
   if (media) w.matchMedia = media.matchMedia;   // D-2: the viewport the shell reads at mount (a controllable matchMedia)
+  // the paint frame is a MICROTASK (2e: test 35 flaky under load — a fixed flush raced jsdom's timer-driven frame): a render the shell
+  // schedules lands in the same microtask drain as the data it paints, before any timer, whatever the load (no sleep, no timeout)
+  let frameId = 0; w.requestAnimationFrame = (f) => { const id = ++frameId; queueMicrotask(() => f(w.performance.now())); return id; }; w.cancelAnimationFrame = () => {};
   if (preMount) preMount(w);   // a host object present BEFORE the shell mounts (the installed app's Capacitor bridge)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
@@ -4376,5 +4379,45 @@ test('S2 shell · Codex r1 #3 (GET): a stale GET reply (an older seq) brings no 
     assert.equal(txt(S.q('#layer .cdown')), 'Tenés 1 min para responder', 'premise: anchored at 60 s');
     S.w.document.dispatchEvent(new S.w.Event('visibilitychange')); await until(() => srv.log.length >= 2); await flush();
     assert.equal(txt(S.q('#layer .cdown')), 'Tenés 1 min para responder', '🔴 S2-shell-stale-get: the stale GET\'s server_now never re-anchors');
+  } finally { S.w.close(); }
+});
+
+test('harness (2e: test 35 flaky under load): a paint frame the shell requests runs BEFORE any timer — the home list is drawn by the time a fixed flush ends, at any load', async () => {
+  const S = bootShell();
+  try {
+    const order = []; S.w.requestAnimationFrame(() => order.push('frame')); setTimeout(() => order.push('timer'), 0);
+    await flush();
+    assert.deepEqual(order, ['frame', 'timer'], '🔴 HARNESS-frame: the frame lands in the microtask drain, before a 0 ms timer');
+    assert.ok(S.q('.rlist .rcard[data-rid="x_pizza"]'), 'the list is painted after one flush');
+  } finally { S.w.close(); }
+});
+
+// ── Codex narrow r2 on S2 (4cf1e229..26f43ac9) ──
+test('S2 shell · Codex r2 #1: a newer adjustment arriving while the older one\'s GET is in flight is refreshed once that GET ends (never left unanchored)', async () => {
+  const exp = T0 + 10 * 60e3; let releaseA = null; let n = 0;
+  const { S, srv, made, TOKEN } = payMember({ reply: (e) => (e.method !== 'GET' ? null : ++n === 1 ? new Promise((r) => { releaseA = () => r({ view: payInc(2, 'pending'), server_now: exp - 170000 }); }) : { view: payInc(3, 'pending', {}, { adjustment_id: 'adj-3' }), server_now: exp - 100000 }) });
+  try {
+    await until(() => S.ui.state.member && payPv(made, TOKEN)); await flush();
+    payPv(made, TOKEN).emit('put', '/', payInc(2, 'pending')); await until(() => srv.log.length >= 1); await flush();
+    payPv(made, TOKEN).emit('put', '/', payInc(3, 'pending', {}, { adjustment_id: 'adj-3' })); await flush();
+    assert.equal(srv.log.length, 1, 'premise: A\'s GET still in flight (one at a time)');
+    releaseA(); await until(() => srv.log.length >= 2).catch(() => {}); await flush();
+    assert.equal(srv.log.filter((e) => e.method === 'GET').length, 2, '🔴 S2-shell-queued: B\'s refresh runs once A\'s GET ends');
+    assert.equal(txt(S.q('#layer .cdown')), 'Tenés 2 min para responder', '🔴 S2-shell-queued: B is anchored on its own GET');
+  } finally { S.w.close(); }
+});
+
+test('S2 shell · Codex r2 #3: resuming the order screen with the stream alive GETs again and re-anchors (§1.4)', async () => {
+  const exp = T0 + 10 * 60e3; let n = 0;
+  const { S, srv, made, TOKEN } = payMember({ reply: (e) => (e.method === 'GET' ? { view: payInc(2, 'pending'), server_now: ++n === 1 ? exp - 170000 : exp - 50000 } : null) });
+  try {
+    await until(() => S.ui.state.member && payPv(made, TOKEN)); await flush();
+    payPv(made, TOKEN).emit('put', '/', payInc(2, 'pending')); await until(() => srv.log.length >= 1); await flush();
+    assert.equal(txt(S.q('#layer .cdown')), 'Tenés 3 min para responder', 'premise: the first anchor');
+    S.click('.tabbar [data-tab="home"]'); await flush();
+    assert.ok(!payPv(made, TOKEN).closed, 'premise: the stream stays alive off the order screen');
+    S.ui.nav.go({ name: 'order' }); await until(() => srv.log.length >= 2).catch(() => {}); await flush();
+    assert.equal(srv.log.filter((e) => e.method === 'GET').length, 2, '🔴 S2-shell-resume: resuming GETs again');
+    assert.equal(txt(S.q('#layer .cdown')), 'Tenés 1 min para responder', '🔴 S2-shell-resume: the countdown re-anchored');
   } finally { S.w.close(); }
 });

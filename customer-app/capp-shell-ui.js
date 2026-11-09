@@ -754,14 +754,18 @@
     // GET keeps the last anchor and is retried by the next of those (Codex r1 #4). A reply's timing comes WITH its view: a stale view
     // (an older seq) brings no anchor (Codex r1 #3)
     async function payGet(od) {
-      const ep = payEp(), f = payFetchFn(), p = payOf(od); if (!ep || !f || typeof od.order_id !== 'string' || p.getting) return;
-      const h = await payHeaders(); if (!h) return;
-      const gen = orderGen; let r = null; p.getting = true;
-      try { const res = await f(`${ep.getPayAdjust}?order_id=${encodeURIComponent(od.order_id)}`, { headers: h }); r = res && res.ok ? await res.json() : null; } catch (_) { r = null; }
+      const ep = payEp(), f = payFetchFn(), p = payOf(od); if (!ep || !f || typeof od.order_id !== 'string') return;
+      if (p.getting) { p.again = true; return; }   // one GET at a time; a request meanwhile (a newer adjustment) runs once it ends (Codex r2 #1)
+      p.getting = true;
+      const h = await payHeaders();
+      const gen = orderGen; let r = null;
+      if (h) { try { const res = await f(`${ep.getPayAdjust}?order_id=${encodeURIComponent(od.order_id)}`, { headers: h }); r = res && res.ok ? await res.json() : null; } catch (_) { r = null; } }
       p.getting = false;
-      if (dead || gen !== orderGen || S.order !== od || !r) return;
-      if (takeView(od, r.view)) { anchorPay(od, r.server_now); const c = p.view.consent; if (c) p.seen = c.adjustment_id; }
-      paintPay(od);
+      const again = p.again === true; p.again = false;
+      if (dead || gen !== orderGen || S.order !== od) return;
+      if (r && takeView(od, r.view)) { anchorPay(od, r.server_now); const c = p.view.consent; if (c) p.seen = c.adjustment_id; }
+      if (r) paintPay(od);
+      if (again && h) repay(od);
     }
     const payPending = (od) => { const c = od && od.payAdj && od.payAdj.view && od.payAdj.view.consent; return !!c && c.outcome === 'pending'; };
     function repay(od) { if (payOn() && od && S.order === od && payPending(od)) payGet(od); }
