@@ -3034,6 +3034,7 @@
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
+      "tools/tippref-charge-inputs-inverse.js",
       "tools/tippref-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -4107,6 +4108,7 @@
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
+      "tools/tippref-charge-inputs-inverse.js",
       "tools/tippref-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -4323,6 +4325,13 @@
       "tools/checkout-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
+      "tools/sdkpay-module-inverse.js",
+      "tools/tippref-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/sdkpay-wiring.guard.test.js",
+     "inverses": [
       "tools/sdkpay-module-inverse.js",
       "tools/tippref-inverse.js"
      ]
