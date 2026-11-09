@@ -50,7 +50,7 @@ const { judgePlanDestinations } = require('./identity-destination');
 const { applyIdentityPlan } = require('./identity-writer');
 const { reconcileOnRollback } = require('./identity-reconcile');
 const { REGISTRY_AGREEMENT_REFUSALS } = require('./identity-stampmap');
-const { renameEnabled } = require('./identity-flags');
+const { renameEnabled } = require('./identity-flags'); const RK = require('./reserved-keys');   // S1c: the reserved-key set
 /* c2a-evidence:begin */
 // 1D D4-c2a — binding evidence recorded at activation (PLAN-D4c2a rev 9 §2). Dormant: nothing reads it in this slice.
 const { buildActivationEvidence, activationEvidenceDoc, evidenceRefOf, withAt, translateEvidenceCollision } = require('./identity-evidence');
@@ -365,7 +365,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
     /* Every read before any write — Firestore refuses a read after a write — and this one is the
        candidate's own version doc, so the eligibility predicate is evaluated against the record as it
        stands at the serialization point rather than as it looked when the candidate was built. */
-    const candidateSnap = await tx.get(versionsColOf(db, rid).doc(versionId));
+    const candidateSnap = await tx.get(versionsColOf(db, rid).doc(versionId)); const reservedSnap = await tx.get(RK.reservedRefOf(db, rid)); const [candItemsSnap, candExtrasSnap] = await Promise.all([tx.get(versionsColOf(db, rid).doc(versionId).collection('menu_items')), tx.get(versionsColOf(db, rid).doc(versionId).collection('extras'))]); const reservedDoc = RK.readReserved(reservedSnap.exists ? reservedSnap.data() : undefined);   // S1c: read before any write; every activation reserves its keys
     const l = snap.exists ? (snap.data() || {}) : {};
     if (l.owner_token !== token) throw new Error(`lease_lost: not owner (versionId=${versionId})`);
     if (!(l.expires_at && l.expires_at.toMillis() > nowServer.toMillis())) throw new Error(`lease_expired: cannot flip (versionId=${versionId})`);
@@ -709,7 +709,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
     if (certifiedCandidate) {
       const vref = versionsColOf(db, rid).doc(versionId);
       const [itemsSnap, extrasSnap, dishKeys, extraKeys, dishIds, extraIds] = await Promise.all([
-        tx.get(vref.collection('menu_items')), tx.get(vref.collection('extras')),
+        candItemsSnap, candExtrasSnap,
         tx.get(keysColOf(db, rid, 'dish')), tx.get(keysColOf(db, rid, 'extra')),
         tx.get(idsColOf(db, rid, 'dish')), tx.get(idsColOf(db, rid, 'extra')),
       ]);
@@ -1089,7 +1089,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
       currentGeneration: priorGeneration,          // read from the pointer in THIS transaction, a few lines above
       intent: isRollback ? 'rollback' : 'activate',
     });
-    if (!verdict.ok) throw new Error(`${verdict.code}: ${rid}/${versionId} — ${verdict.detail}`);
+    if (!verdict.ok) throw new Error(`${verdict.code}: ${rid}/${versionId} — ${verdict.detail}`); const reservedNext = RK.unionReserved(reservedDoc, { dish: candItemsSnap.docs.map((d) => (d.data() || {}).key), extra: candExtrasSnap.docs.map((d) => (d.data() || {}).key) }, versionId); RK.assertWithinLimit(reservedNext.doc); if (reservedNext.added > 0) tx.set(RK.reservedRefOf(db, rid), reservedNext.doc);   // S1c: add-only, never removes
 
     tx.set(pointerRef, {
       version: versionId,

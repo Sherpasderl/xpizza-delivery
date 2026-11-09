@@ -66,4 +66,6 @@ function assertWithinLimit(doc) {
   }
 }
 
-module.exports = { emptyReserved, readReserved, unionReserved, reservedKeySet, assertWithinLimit, RESERVED_LIMIT_BYTES };
+const reservedRefOf = (db, rid) => db.collection('restaurants').doc(rid).collection('meta').doc('reserved_keys');
+
+module.exports = { reservedRefOf, emptyReserved, readReserved, unionReserved, reservedKeySet, assertWithinLimit, RESERVED_LIMIT_BYTES };
