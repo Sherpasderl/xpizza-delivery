@@ -905,13 +905,16 @@
     function ctaLabel(T) {
       if (hasSlotLock()) return 'Reintentar';   // row 10b: the drawn «Reintentar» re-sends the SAME order
       const n = need(); if (n) return n;
-      if (S.flow.mode === 'delivery') return 'Continuar';   // delivery continues to the tip step
+      if (C.tipped(S.flow)) return 'Continuar';   // a card delivery continues to the tip step (r7: cash places from here)
+      if (S.flow.mode === 'delivery') return 'Hacer pedido' + (T.ready ? ' · ' + moneyC(T.total) : '');   // r7 (owner 11-09): cash ⇒ «Hacer pedido · L X»
       const amt = T.ready ? ' · ' + moneyC(T.total) : '';   // pickup places from here (no tip); no amount until the quote is ready
       return S.flow.pay === 'online' ? (sdkOn() ? 'Hacer pedido' : 'Pagar') + amt : 'Confirmar pedido' + amt;   // S2-checkout v7: «Hacer pedido · L X»
     }
     // cash-chips lock: on 10b the fields need() reads are FIXED and the replay re-sends the recorded body — they never block «Reintentar»
     // (a remounted 10b with an empty flow would otherwise be a dead end)
-    const ctaOff = (T) => (!hasSlotLock() && !!need()) || soldBlock() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));   // pickup places from here
+    // pickup and (r7) a cash delivery place from here: they need the quote + the intake key — except a 10b replay (the slot lock) of a cash
+    // delivery, which re-sends its RECORDED body exactly as before r7 (delivery never gated here)
+    const ctaOff = (T) => (!hasSlotLock() && !!need()) || soldBlock() || ((S.flow.mode !== 'delivery' || (S.flow.pay === 'cash' && !hasSlotLock())) && (!T.ready || !intakeOk()));
     function syncCta() { const b = $('cta'); if (!b || !S.flow) return; const T = totalsNow(); b.disabled = ctaOff(T); b.textContent = ctaLabel(T); }
 
     // ── the map: the drawn chrome; a real Google map inside it when a key is configured, else the schematic SVG ──
@@ -1698,7 +1701,7 @@
       if (a === 'signin') { const ctx = t.dataset.ctx || 'checkout'; let dev = null; if (ctx === 'checkout-returning') { try { dev = opts.deviceAccount(); } catch (_) { dev = null; } }
         emit('signin', { ctx, ...(dev && dev.e164 ? { prefill: dev.e164 } : {}) }); return true; }
       if (a === 'confirm' && hasSlotLock()) { if (!ctaOff(totalsNow())) send(); return true; }   // S4 row 10b: «Reintentar» re-sends the SAME order (its tip already chosen)
-      if (a === 'confirm') { if (ctaOff(totalsNow())) return true; if (f.mode === 'delivery') enterTip(); else placeTap(); return true; }
+      if (a === 'confirm') { if (ctaOff(totalsNow())) return true; if (C.tipped(f)) enterTip(); else placeTap(); return true; }   // r7: cash never reaches the step
       return false;
     }
     function tipAct(t) {
@@ -1932,7 +1935,7 @@
         // advisor r3 C: the switch's stored inputs ALWAYS win over fresh defaults (recipient, notes, tip, pin — pickup and delivery alike)
         if (out.body) { const rf = flowFromBody(out.body); if (rf) { S.flow = rf; S.mode = rf.mode; S.flowRestored = true; } }
         if (S.flow) S.flow.pay = 'cash';
-        if (S.screen !== 'checkout' && S.screen !== 'tip') S.screen = S.flow && S.flow.mode === 'delivery' ? 'tip' : 'checkout';
+        if (S.screen !== 'checkout' && S.screen !== 'tip') S.screen = S.flow && C.tipped(S.flow) ? 'tip' : 'checkout';   // r7: cash places from the checkout
         SDK.placeWhenReady = true; render(); sdkPlaceIfReady(); return;   // the cash order goes once the checkout is ready (a reload re-quotes first)
       }
       onOutcome(out);   // the shared refusals (closed, offline, the recovery sheet, …)
@@ -1989,6 +1992,11 @@
 
     function render() {
       if (dead) return;
+      // r7 (owner 11-09): the tip is card-only — a cash flow holds no tip choice; a switch to cash ON the step returns to the checkout
+      if (S.flow && S.flow.mode === 'delivery' && S.flow.pay === 'cash' && (S.flow.tipChoice !== null || S.screen === 'tip')) {
+        S.flow.tipChoice = null; S.flow.tipCents = 0; S.tipDefaultFlow = null; tipCancel();
+        if (S.screen === 'tip') { const top = S.stack[S.stack.length - 1]; if (top && top.screen === 'checkout') back(); else { S.screen = 'checkout'; render(); } return; }   // the stack + history stay in step
+      }
       app.classList.toggle('narrow', app.clientWidth > 0 && app.clientWidth < 375);
       if (view) app.classList.toggle('desk', S.desk);   // D-2 (v6 :1384); never touched without a view
       const keepSearch = S.layerKind === 'ssearch' && $('layer') && $('layer').querySelector('#sq') ? $('layer') : null;

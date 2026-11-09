@@ -654,7 +654,7 @@ test('stamp: shell.html is stamped as orders-app; on the stamped shell SherpaCli
       S.click('[data-act="pin"]'); await flush(); S.click('[data-act="pin-done"]'); await flush();
       type('#f-details', 'Portón negro'); type('#f-name', 'Ana'); type('#f-phone', '9999 0000'); await flush();
       S.click('[data-act="pay"][data-val="cash"]'); await flush();
-      S.click('#cta'); await flush(); await until(() => S.q('[data-act="tipc"][data-val="0"]'), 4000); S.click('[data-act="tipc"][data-val="0"]');   /* r6: the step opens once its default resolves (a member's unanswered last-tip read is bounded at 1.5 s) */ await flush(); S.click('[data-act="tip-place"]'); await flush();
+      S.click('#cta'); await flush();   /* r7 (owner 11-09): cash never reaches the tip step — «Hacer pedido» places directly */
       S.click('#layer [data-act="placing-go"]'); await flush(); await flush();
       const co = sent.filter((s) => s.ep === 'createOrder');
       assert.equal(co.length, 1, 'premise: the shell sent ONE createOrder');
@@ -1900,7 +1900,7 @@ async function placeShellCash(S, reply) {
   S.click('[data-act="pin"]'); await flush(); S.click('[data-act="pin-done"]'); await flush();
   type('#f-details', 'Portón negro'); type('#f-name', 'Ana'); type('#f-phone', '9999 0000'); await flush();
   S.click('[data-act="pay"][data-val="cash"]'); await flush();
-  S.click('#cta'); await flush(); await until(() => S.q('[data-act="tipc"][data-val="0"]'), 4000); S.click('[data-act="tipc"][data-val="0"]');   /* r6: the step opens once its default resolves (a member's unanswered last-tip read is bounded at 1.5 s) */ await flush(); S.click('[data-act="tip-place"]'); await flush();
+  S.click('#cta'); await flush();   /* r7 (owner 11-09): cash never reaches the tip step — «Hacer pedido» places directly */
   S.click('#layer [data-act="placing-go"]'); await flush(); await flush();
   await flush(700);   // the 600 ms happy beat
   return ui;
@@ -2090,7 +2090,7 @@ async function toShellPlace(S) {
   S.click('[data-act="pin"]'); await flush(); S.click('[data-act="pin-done"]'); await flush();
   type('#f-details', 'Portón negro'); type('#f-name', 'Ana'); type('#f-phone', '9999 0000'); await flush();
   S.click('[data-act="pay"][data-val="cash"]'); await flush();
-  S.click('#cta'); await flush(); await until(() => S.q('[data-act="tipc"][data-val="0"]'), 4000); S.click('[data-act="tipc"][data-val="0"]');   /* r6: the step opens once its default resolves (a member's unanswered last-tip read is bounded at 1.5 s) */ await flush(); S.click('[data-act="tip-place"]'); await flush();
+  S.click('#cta'); await flush();   /* r7 (owner 11-09): cash never reaches the tip step — «Hacer pedido» places directly */
   S.click('#layer [data-act="placing-go"]'); await flush(); await flush();
 }
 const GEO_OK2 = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) };
@@ -2459,7 +2459,7 @@ async function shellPlaceTolerant(S) {   // a placement that types only the fiel
   S.click('[data-act="pin"]'); await flush(); S.click('[data-act="pin-done"]'); await flush();
   type('#f-details', 'Portón negro'); type('#f-name', 'Ana'); type('#f-phone', '9999 0000'); await flush();
   if (S.q('[data-act="pay"][data-val="cash"]')) { S.click('[data-act="pay"][data-val="cash"]'); await flush(); }
-  S.click('#cta'); await flush(); await until(() => S.q('[data-act="tipc"][data-val="0"]'), 4000); S.click('[data-act="tipc"][data-val="0"]');   /* r6: the step opens once its default resolves (a member's unanswered last-tip read is bounded at 1.5 s) */ await flush(); S.click('[data-act="tip-place"]'); await flush();
+  S.click('#cta'); await flush();   /* r7 (owner 11-09): cash never reaches the tip step — «Hacer pedido» places directly */
   S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); await flush(700);
 }
 test('Pedidos r2 P1 shared device: a GUEST\'s active order is dropped when a DIFFERENT member signs in (unclaimed); a MEMBER\'s is hidden from the next person — no card, no restore, no URL', async () => {
