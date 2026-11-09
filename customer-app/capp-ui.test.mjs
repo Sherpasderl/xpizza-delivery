@@ -3416,6 +3416,9 @@ test('tip r6 F3 / 3b: «Otro» L 35 ⇒ the chip reads «Otro · L 35»; reopeni
   const before = b.srv.of('quoteOrder').length;
   await b.click('#layer [data-act="tip-save"]'); await settle();
   assert.deepEqual(pressedChips(b), ['Otro · L 35'], '🔴 TIP-F3b: the chip reads «Otro · L 35»');
+  assert.ok(b.q('.tipchips .chip.two[data-val="other"]'), '🔴 TIP-F3b: the amount-bearing «Otro» chip takes the double width (the mockup\'s .chip.two)');
+  const css = readFileSync(join(HERE, 'capp.css'), 'utf8').replace(/\s+/g, ' ');
+  assert.ok(css.includes('.tipchips .chip.two{flex:2 1 0;padding:0 6px}') && css.includes('.tipchips:has(.chip.two) .chip{min-width:48px}'), '🔴 TIP-F3b: the mockup\'s .chip.two rules (MOCKUP-capp-tip-step-r2)');
   assert.equal(b.srv.of('quoteOrder').length - before, 1, 'TIP-F3b: one re-quote');
   assert.equal(b.srv.of('quoteOrder').at(-1).body.tip_cents, 3500);
   await b.click('[data-act="tipc"][data-val="other"]');

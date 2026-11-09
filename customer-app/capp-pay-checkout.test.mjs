@@ -94,6 +94,15 @@ test('1 in the TIP footer (tip-step SBS 11-09): the charge line under .tipfoot i
   }
 });
 
+test('1 cash (tip-step r2 frame 5, owner-approved 11-09): the cash row carries its own charge line — «Total L X · Pagás cuando llegue tu pedido.», no «Más información» (no hold); before the quote, the sentence alone', () => {
+  const cash = { kind: 'cash' }, cta = { label: 'Hacer pedido · L 585', enabled: true };
+  const line = (h) => { const m = flat(h).match(/<p class="payline">(.*?)<\/p>/); return m ? m[1] : null; };
+  assert.strictEqual(line(H.payBarHtml({ method: cash, total_cents: 58500, cta })), '<span>Total L 585 · Pagás cuando llegue tu pedido.</span>', '🔴 CO-CASH: the cash line (frame 5)');
+  assert.strictEqual(line(H.payBarHtml({ method: cash, total_cents: null, cta })), '<span>Pagás cuando llegue tu pedido.</span>', '🔴 CO-CASH: before the quote, no amount');
+  assert.strictEqual(line(H.payRowHtml(cash, 58500)), '<span>Total L 585 · Pagás cuando llegue tu pedido.</span>', '🔴 CO-CASH: the same line in the tip footer');
+  assert.ok(!/L 0\b|NaN/.test(flat(H.payBarHtml({ method: cash, total_cents: 20, cta }))), 'CO-CASH: never «L 0» / «NaN»');
+});
+
 test('2: the chooser sheet — ✕, the saved cards (tile, label, expiry, a checkmark on the selected), «Agregar tarjeta», «Efectivo al entregar» for members where allowed', () => {
   const h = H.chooserHtml({ cards: CARDS, selected: { kind: 'card', card_id: 'c_v' }, cash: true });
   assert.equal(flat(h), flat(`<div class="scrim" data-act="paysheet-close"></div><div class="sheet" role="dialog" aria-label="Elegí cómo pagar"><div class="grab"></div>

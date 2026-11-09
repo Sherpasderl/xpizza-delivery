@@ -53,7 +53,11 @@
     // «Total L X · » in place — only a real total (a positive integer of cents), never «L 0» / «NaN»
     // the guard is on the RENDERED amount (Codex r1 P2): moneyC rounds to whole lempiras, so 1–49 cents would print «L 0»
     const amt = Number.isInteger(total_cents) && Math.round(total_cents / 100) >= 1 ? `Total ${moneyC(total_cents)} · ` : '';
-    const line = method && method.kind !== 'cash' && !gate ? `<p class="payline"><span>${amt}Se cobra al recibir tu pedido.</span><button class="lnk" data-act="adj-more">Más información</button></p>` : '';
+    // the charge line: a card ⇒ «… Se cobra al recibir tu pedido.» + «Más información» (v7); cash ⇒ «… Pagás cuando llegue tu pedido.»
+    // (tip-step r2 frame 5, owner-approved 11-09 — no hold, so no help link); none under a gate well (6 / 7)
+    const line = !method || gate ? ''
+      : method.kind === 'cash' ? `<p class="payline"><span>${amt}Pagás cuando llegue tu pedido.</span></p>`
+      : `<p class="payline"><span>${amt}Se cobra al recibir tu pedido.</span><button class="lnk" data-act="adj-more">Más información</button></p>`;
     const id = typeof c.id === 'string' && c.id ? ` id="${esc(c.id)}"` : '';
     return `<div class="paybar pay">${row}${line}${gate || ''}<button class="primary"${id} data-act="${esc(c.act || 'place')}"${c.enabled ? '' : ' disabled'}>${esc(c.label)}</button></div>`;
   }

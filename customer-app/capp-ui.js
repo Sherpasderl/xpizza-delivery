@@ -1175,11 +1175,11 @@
     const tipReady = (T) => C.tipChosen(S.flow) && T.ready && !need() && !soldBlock() && intakeOk();
     function tipHtml() {
       const f = S.flow, T = totalsNow(), c = tipKey();
-      const chip = (v, label) => `<button class="chip" aria-pressed="${c === v}" data-act="tipc" data-val="${v}">${label}</button>`;
+      const chip = (v, label, cls = '') => `<button class="chip${cls}" aria-pressed="${c === v}" data-act="tipc" data-val="${v}">${label}</button>`;
       const tot = T.ready ? moneyC(T.total) : '—';
       return `<div class="topbar"><button class="iconbtn" data-act="back" aria-label="Volver a Entrega y Pago">${IC.back}</button><h1></h1><span class="sp"></span></div>
     <div class="tipwrap"><div class="tiphero">${RIDER}<h1>Agregá una propina</h1><p>La propina va completa a tu repartidor.</p></div>
-    <div class="tipchips" role="group" aria-label="Propina">${C.TIP_PRESETS.map((v) => chip(v, v ? money(v) : 'Sin propina')).join('')}${chip('other', f.tipChoice && f.tipChoice.kind === 'other' && f.tipCents > 0 ? `Otro · ${money(f.tipCents / 100)}` : 'Otro')}</div>
+    <div class="tipchips" role="group" aria-label="Propina">${C.TIP_PRESETS.map((v) => chip(v, v ? money(v) : 'Sin propina')).join('')}${f.tipChoice && f.tipChoice.kind === 'other' && f.tipCents > 0 ? chip('other', `Otro · ${money(f.tipCents / 100)}`, ' two') : chip('other', 'Otro')}</div>
     <div class="tipfoot"><div class="sumrow"><span>Propina</span><span>${c === null ? '—' : f.tipCents ? moneyC(f.tipCents) : 'Sin propina'}</span></div><div class="sumrow tot"><span>Total</span><span>${tot}</span></div>${sdkOn() && !S.desk ? sdkTipRow(T) : ''}<button class="primary" data-act="tip-place"${tipReady(T) ? '' : ' disabled'}>Hacer pedido · ${tot}</button></div></div>`;
     }
     const tipOtherHtml = () => { const d = S.tipDraft || ''; return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Otro monto"><div class="grab"></div><div class="sheethead"><div><h2>Otro monto</h2><small>Propina para tu repartidor</small></div><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div><div class="tipother"><label class="tipamt"><span>L</span><input inputmode="numeric" data-field="tipOther" value="${esc(d || '0')}" style="width:calc(${Math.max(1, (d || '0').length)}ch + 6px)" aria-label="Monto de la propina"></label><div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button data-act="tk" data-val="${n}">${n}</button>`).join('')}<span></span><button data-act="tk" data-val="0">0</button><button data-act="tk" data-val="del" aria-label="Borrar">${BKSP}</button></div><button class="primary" data-act="tip-save">Guardar</button></div></div>`; };
