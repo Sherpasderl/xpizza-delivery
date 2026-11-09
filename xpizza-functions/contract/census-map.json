@@ -406,6 +406,7 @@
   "catalog/group-index.js#groupIndexFrom": "catalog",
   "catalog/group-intake.js#groupIssues": "catalog",
   "catalog/group-intake.js#rewardKeysOf": "catalog",
+  "catalog/reserved-keys.js#opaqueNameProblems": "catalog",
   "catalog/reserved-keys.js#renameConflicts": "catalog",
   "catalog/resolve-lines.js#resolveLines": "intake",
   "catalog/resolve-lines.js#rewardLines": "intake",
