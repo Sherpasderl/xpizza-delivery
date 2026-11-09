@@ -3077,6 +3077,35 @@ test('S2-checkout 1 (v7 «the member\'s last card is preselected»): a member wh
   assert.equal(c.text('.paybar.pay .urow.payrow .t b'), 'Efectivo al entregar', '🔴 SDKUI-1b: a known last method (cash) still wins — v6 preselects the LAST method');
 });
 
+test('S2-checkout identity (Codex r1 P1): the cards belong to the member who listed them — A\'s held listCards, then setMember(B), then A\'s answer: dropped; B\'s own card is the tender; never A\'s card under B\'s token', async () => {
+  const { lastPay, ...A } = SDK_MEMBER();
+  const jwtB = `${Buffer.from('{"alg":"RS256"}').toString('base64url')}.${Buffer.from(JSON.stringify({ sub: 'u2', exp: Math.floor((NOON().getTime() + 3600e3) / 1000) })).toString('base64url')}.sig`;
+  const B = { uid: 'u2', name: 'Beto Ruiz', phone: '96554433', email: 'beto@x.com', idToken: jwtB };
+  let releaseA; const heldA = new Promise((r) => { releaseA = r; });
+  const listA = async () => { await heldA; return SDK_CARDS([{ card_id: 'c_a', brand: 'visa', last4: '1111', exp_month: 12, exp_year: 2028, expired: false }]); };
+  const listB = SDK_CARDS([{ card_id: 'c_b', brand: 'mastercard', last4: '2222', exp_month: 12, exp_year: 2028, expired: false }]);
+  const b = bootSdk({ member: A, script: { listCards: [listA, listB] } }); await sdkCheckout(b);
+  assert.equal(b.srv.of('listCards').length, 1, 'premise: A\'s list is in flight');
+  b.ui.setMember(B); await settle();
+  releaseA(); await settle(); await settle();
+  assert.ok(b.srv.of('listCards').length >= 2, '🔴 SDKUI-ID: the new identity\'s cards are listed again');
+  assert.ok(!/1111/.test(b.text('.paybar.pay') || ''), '🔴 SDKUI-ID: A\'s late answer never lands under B (no «···· 1111»)');
+  assert.equal(b.text('.paybar.pay .urow.payrow .t b'), 'Mastercard ···· 2222', '🔴 SDKUI-ID: B\'s own card is the row');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]'); await settle();
+  const p = b.srv.of('placeSdkOrder')[0];
+  assert.deepEqual(p && p.body && p.body.card, { kind: 'saved', card_id: 'c_b' }, '🔴 SDKUI-ID: placed with B\'s card — never A\'s card id under B\'s token');
+});
+
+test('S2-checkout A3 (contract r3b): placeSdkOrder 409 saved_card_unavailable ⇒ the card unselected, the list read again, the chooser open — one placement, nothing retried on its own', async () => {
+  const b = bootSdk({ script: { placeSdkOrder: [SDKF.savedCardUnavailable()], listCards: [SDK_CARDS(), SDK_CARDS([{ card_id: 'c_n', brand: 'mastercard', last4: '2222', exp_month: 12, exp_year: 2028, expired: false }])] } });
+  await sdkCheckout(b); await sdkPlace(b);
+  assert.equal(b.srv.of('placeSdkOrder').length, 1, 'premise: one placement sent');
+  assert.equal(b.srv.of('listCards').length, 2, '🔴 SDKUI-A3: the saved cards read again');
+  assert.ok(b.q('#layer .sheet[aria-label="Elegí cómo pagar"]'), '🔴 SDKUI-A3: the chooser open');
+  assert.ok(!/4242/.test(b.text('#layer') || ''), '🔴 SDKUI-A3: the refused card is gone from the chooser');
+  assert.equal(b.srv.of('placeSdkOrder').length, 1, '🔴 SDKUI-A3: nothing re-sent on its own');
+});
+
 test('S2-checkout 1 before the quote (advisor ruling 11-09): «Se cobra al recibir tu pedido. Más información» without an amount until the quote, then «Total L X · » in place — the bar never shows «L 0» / «NaN»', async () => {
   let release; const held = new Promise((r) => { release = r; });   // the quote answers only when the test releases it
   const b = bootSdk({ script: { quoteOrder: [async (body, url) => { await held; return QUOTE(body, url); }] } }); await sdkCheckout(b);

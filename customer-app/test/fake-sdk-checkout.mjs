@@ -49,4 +49,6 @@ export const sdkPayStatus = (available, retry_after_s = 0) => exact(snap({ avail
 export const cancelPending = (cancelled, safe_to_switch) => exact(snap({ cancelled, safe_to_switch }), { cancelled: bool, safe_to_switch: bool }, 'cancelSdkPending');
 // CONTRACT-sdk-checkout r3b A1: an ABSENT or FOREIGN order answers the identical 200 (no 404 oracle) — exact keys, exact values
 export const noSdkOrder = () => exact(snap({ cancelled: false, safe_to_switch: true, reason: 'no_sdk_order' }), { cancelled: (x) => x === false, safe_to_switch: (x) => x === true, reason: (x) => x === 'no_sdk_order' }, 'cancelSdkPending(no_sdk_order)');
+// CONTRACT-sdk-checkout r3b A3: a saved card_id absent / foreign / removed / unusable under the CALLER's uid ⇒ ONE identical 409, exact body
+export const savedCardUnavailable = () => ({ status: 409, json: exact(snap({ error: 'saved_card_unavailable' }), { error: (x) => x === 'saved_card_unavailable' }, 'placeSdkOrder(409 saved_card_unavailable)') });
 export { OUTCOMES, BUCKETS };

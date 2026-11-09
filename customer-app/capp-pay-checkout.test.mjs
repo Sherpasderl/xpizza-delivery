@@ -36,6 +36,11 @@ test('1 before the quote (advisor ruling 11-09, option 1 — a state v7 does not
     }
   }
   assert.equal(line(H.payBarHtml({ method: visa, total_cents: 58500, cta })), '<span>Total L 585 · Se cobra al recibir tu pedido.</span><button class="lnk" data-act="adj-more">Más información</button>', '🔴 CO-PQ: the quote prefixes «Total L X · » in place (the same two children)');
+  // Codex r1 P2: the guard is on the RENDERED amount (moneyC rounds to whole lempiras) — 1–49 cents would print «L 0»
+  for (const [c, want] of [[0, null], [1, null], [49, null], [50, 'Total L 1 · '], [100, 'Total L 1 · ']]) {
+    const sp = (line(H.payBarHtml({ method: visa, total_cents: c, cta })) || '').match(/^<span>(.*?)Se cobra/);
+    assert.equal(sp && sp[1] ? sp[1] : null, want, `🔴 CO-PQ boundary ${c} cents: ${want ? `«${want}»` : 'no amount (never «L 0»)'}`);
+  }
 });
 test('1 before / after the quote: the bar keeps ONE layout — in the pay bar the sentence fills its row and «Más información» always sits on the line below (frame 1 at L 585), so the line count does not depend on the amount (the renders: the Chrome batch, S2ck-1q)', () => {
   const css = readFileSync(new URL('./capp.css', import.meta.url), 'utf8').replace(/\s+/g, ' ');

@@ -1473,7 +1473,7 @@
       if (!S.flow) { S.flow = newFlow(); C.setMode(S.flow, S.mode); }
       onOutcome(out);
     }
-    const SDK_KINDS = new Set(['sdk_pending', 'sdk_review', 'sdk_declined', 'sdk_expired', 'sdk_unavailable', 'sdk_not_allowed', 'sdk_bad_card', 'sdk_switched']);
+    const SDK_KINDS = new Set(['sdk_pending', 'sdk_review', 'sdk_declined', 'sdk_expired', 'sdk_unavailable', 'sdk_not_allowed', 'sdk_bad_card', 'sdk_switched', 'sdk_card_unavailable']);
     function onOutcome(out, attempt) {
       if (out && SDK_KINDS.has(out.kind) && sdkOn()) { emit('outcome', out); onSdkOutcome(out); return; }   // Codex r2 P2: an SDK outcome from ANY entry point (send, «Ver estado»)
       emit('outcome', out);   // S7a-2 (Codex s7a2 r1 #4): every outcome reaches the host (a return handoff settles on a LATER terminal one)
@@ -1764,7 +1764,9 @@
       PCARD = PCARD || sdkMod('CappPayCard', './capp-pay-card.js'); PCO = PCO || sdkMod('CappPayCheckout', './capp-pay-checkout.js');
       return !!(PCARD && PCO);
     }
-    const SDK = { cards: null, avail: null, sel: null, loading: false, loaded: false, decl: null, declId: null, proc: null, pollT: null, pollN: 0, save: true, form: {}, replaces: null, back: null };
+    // Codex r1 P1: the saved cards belong to the identity that LISTED them (owner: «u:<uid>» | «guest»); gen drops a late answer
+    const sdkOwner = (m) => (m && m.uid != null ? 'u:' + m.uid : 'guest');
+    const SDK = { owner: null, gen: 0, cards: null, avail: null, sel: null, loading: false, loaded: false, decl: null, declId: null, proc: null, pollT: null, pollN: 0, save: true, form: {}, replaces: null, back: null };
     const sdkCtx = () => ({ guest: !member(), cashAllowed: !cardOnlyGuest() });
     const sdkHost = () => (opts.paySdk && opts.paySdk.fieldHost && typeof opts.paySdk.fieldHost.input === 'function' ? opts.paySdk.fieldHost : null);
     const sdkAuth = () => ({ checkoutTicket: cardOnlyGuest() ? S.ticket : undefined });
@@ -1772,9 +1774,10 @@
     function sdkLoad() {
       if (SDK.loading || SDK.loaded || !sdkOn()) return;
       SDK.loading = true;
+      const gen = ++SDK.gen, who = sdkOwner(member());
       Promise.all([member() ? Promise.resolve().then(() => api.listCards()).catch(() => null) : null, Promise.resolve().then(() => api.sdkPayStatus()).catch(() => null)]).then(([list, st]) => {
-        if (dead) return;
-        SDK.loading = false; SDK.loaded = true;
+        if (dead || gen !== SDK.gen || who !== sdkOwner(member())) return;   // an identity change since: not this member's cards
+        SDK.loading = false; SDK.loaded = true; SDK.owner = who;
         SDK.cards = PCARD.cardsVm(list);
         SDK.avail = st ? st.available : null;   // unknown ⇒ the server decides at placement (its `unavailable`)
         if (!SDK.sel && SDK.cards.selected) SDK.sel = { kind: 'card', card_id: SDK.cards.selected };
@@ -1795,10 +1798,18 @@
     // the selection placeSdk sends (CappPayCard.placeBody's card), or null
     // v7 frame 1 «the member's last card is preselected»: with no last method known on this device the listed card IS the tender (the
     // row shows it, so the primary must not ask «Elegí cómo pagar»); a known last method (v6 preselects it) wins
-    function sdkAdopt() { if (sdkOn() && S.flow && !S.flow.pay && sdkCard()) S.flow.pay = 'online'; }
+    function sdkAdopt() { if (sdkOn() && S.flow && !S.flow.pay && sdkCard()) { S.flow.pay = 'online'; SDK.adopted = true; } }
+    // an identity change (sign-in, another member, sign-out): drop the cards, any in-flight list (gen), the selection and an adopted
+    // tender — the next checkout render lists the new identity's own cards
+    function sdkIdentity() {
+      SDK.gen++; SDK.cards = null; SDK.sel = null; SDK.owner = null; SDK.loading = false; SDK.loaded = false; SDK.avail = null;
+      if (S.flow && S.flow.pay === 'online' && SDK.adopted) S.flow.pay = '';
+      SDK.adopted = false;
+    }
     function sdkCard() {
       const s = SDK.sel; if (!s) return null;
       if (s.kind === 'new') return { kind: 'new', sdk_token: s.sdk_token, save: s.save, authentication_identifier: s.authentication_identifier, display: { ...s.display } };
+      if (SDK.owner !== sdkOwner(member())) return null;   // never another identity's card (Codex r1 P1)
       return SDK.cards && SDK.cards.rows.some((r) => r.card_id === s.card_id && !r.expired) ? { kind: 'saved', card_id: s.card_id } : null;
     }
     function sdkGate() {
@@ -1865,6 +1876,8 @@
       if (k === 'sdk_expired') { backTo('checkout'); if (!out.safe) sdkPollLater(out.order_id, POLL_SDK_MS); return; }
       if (k === 'sdk_unavailable') { SDK.avail = false; backTo(); return; }
       if (k === 'sdk_not_allowed' || k === 'sdk_bad_card') { backTo('checkout'); return; }
+      // CONTRACT A3: the card is gone / not this member's — unselected, the list read again, the chooser open (nothing was charged)
+      if (k === 'sdk_card_unavailable') { SDK.sel = null; SDK.cards = null; SDK.loaded = false; SDK.loading = false; SDK.gen++; backTo('checkout'); sdkLoad(); openLayer('paysheet'); return; }
       if (k === 'sdk_switched') {
         SDK.replaces = out.replaces; SDK.declId = null;
         // Codex r2 P2: after a reload the flow is empty — the switch's stored inputs (a cash body) restore it, so the SAME transition completes
@@ -2122,6 +2135,7 @@
         if (dead) return;
         const prevCtx = memberCtx;
         memberCtx = m && typeof m === 'object' ? m : null;
+        if (sdkOwner(prevCtx) !== sdkOwner(memberCtx)) sdkIdentity();   // Codex r1 P1: another identity ⇒ its own cards, nothing carried
         if (!memberCtx) S.schedAfterSignin = false;
         const f = S.flow;
         if (!memberCtx && f && sched() && f.time === 'schedule' && !hasSlotLock()) { f.time = 'asap'; f.slot = null; }   // signed out ⇒ no scheduling (G=B)

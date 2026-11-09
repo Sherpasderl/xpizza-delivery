@@ -820,6 +820,8 @@
       if (r.status === 200) { const out = PC.readPlacement(r.json); return out.outcome === 'invalid' ? sdkStatus(id, p) : sdkApply(id, out); }
       // Codex r1 P2-6: a quote refusal is pre-admission (nothing claimed): the attempt released, the checkout re-quotes
       if (cq.classify(r.json)) { settleSdk(id, 'none', attemptId); return { kind: 'replay_requote', order_id: id }; }
+      // CONTRACT A3: the saved card is not the caller's usable card — refused before any claim or write: the attempt released, the card re-chosen
+      if (r.status === 409 && r.json && r.json.error === 'saved_card_unavailable') { settleSdk(id, 'none', attemptId); return { kind: 'sdk_card_unavailable', order_id: id }; }
       const cr = commonRefusal({ status: r.status, json: r.json, parsed: true });
       if (cr) { settleSdk(id, 'none', attemptId); return { ...cr, order_id: id }; }                   // the intake gates refuse before any claim
       if (r.status === 401 || r.status === 404) return recoverySheet(id);

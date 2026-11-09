@@ -51,7 +51,8 @@
       : `<div class="urows"><button class="urow payrow${method.dim ? ' dim' : ''}" aria-label="Cambiar forma de pago" data-act="paysheet">${brandTile(method.brand)}<span class="t"><b>${esc(method.label)}</b>${sub}</span>${IC.chev}</button></div>`;
     // before the quote (advisor ruling 11-09 — a state v7 does not draw): frame 8's sentence without an amount; the quote prefixes
     // «Total L X · » in place — only a real total (a positive integer of cents), never «L 0» / «NaN»
-    const amt = Number.isInteger(total_cents) && total_cents > 0 ? `Total ${moneyC(total_cents)} · ` : '';
+    // the guard is on the RENDERED amount (Codex r1 P2): moneyC rounds to whole lempiras, so 1–49 cents would print «L 0»
+    const amt = Number.isInteger(total_cents) && Math.round(total_cents / 100) >= 1 ? `Total ${moneyC(total_cents)} · ` : '';
     const line = method && method.kind !== 'cash' && !gate ? `<p class="payline"><span>${amt}Se cobra al recibir tu pedido.</span><button class="lnk" data-act="adj-more">Más información</button></p>` : '';
     const id = typeof c.id === 'string' && c.id ? ` id="${esc(c.id)}"` : '';
     return `<div class="paybar pay">${row}${line}${gate || ''}<button class="primary"${id} data-act="${esc(c.act || 'place')}"${c.enabled ? '' : ' disabled'}>${esc(c.label)}</button></div>`;
