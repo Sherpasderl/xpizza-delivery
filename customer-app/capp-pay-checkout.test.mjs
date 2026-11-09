@@ -6,6 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { listCards } from './test/fake-sdk-checkout.mjs';
 const require = createRequire(import.meta.url);
 const H = require('./capp-pay-checkout.js');
@@ -22,6 +23,24 @@ test('1: the pay bar — the payment row (brand tile · label · chevron), the c
   assert.ok(flat(H.payBarHtml({ method: { kind: 'card', brand: 'visa', label: 'Visa ···· 4242' }, total_cents: 58500, cta: { label: 'Elegí cómo pagar', enabled: false } })).includes('<button class="primary" data-act="place" disabled>Elegí cómo pagar</button>'), 'a disabled primary names the step');
   const none = flat(H.payBarHtml({ method: null, total_cents: 58500, cta: { label: 'Elegí cómo pagar', enabled: false } }));
   assert.ok(!none.includes('urow payrow') && !none.includes('payline'), '🔴 CO-1: no method (6 / 7) ⇒ no row, no charge line — the gate well stands in');
+});
+
+test('1 before the quote (advisor ruling 11-09, option 1 — a state v7 does not draw): the charge line without an amount — frame 8\'s «Se cobra al recibir tu pedido.» + «Más información»; «Total L X · » only for a real total; never «L 0» / «NaN»', () => {
+  const visa = { kind: 'card', brand: 'visa', label: 'Visa ···· 4242' }, cta = { label: 'Ajustá el pin a tu dirección', enabled: false };
+  const line = (h) => { const m = flat(h).match(/<p class="payline">(.*?)<\/p>/); return m ? m[1] : null; };
+  const BARE = '<span>Se cobra al recibir tu pedido.</span><button class="lnk" data-act="adj-more">Más información</button>';
+  for (const t of [null, undefined, 0, NaN, -500, 585.5, '58500', Infinity]) {
+    for (const [what, h] of [['bar', H.payBarHtml({ method: visa, total_cents: t, cta })], ['tip row', H.payRowHtml(visa, t)]]) {
+      assert.equal(line(h), BARE, `🔴 CO-PQ ${what} (${String(t)}): no quoted total ⇒ the line without an amount`);
+      assert.ok(!/L 0\b|NaN|undefined|Infinity/.test(flat(h)), `🔴 CO-PQ ${what} (${String(t)}): never «L 0» / «NaN» in the bar`);
+    }
+  }
+  assert.equal(line(H.payBarHtml({ method: visa, total_cents: 58500, cta })), '<span>Total L 585 · Se cobra al recibir tu pedido.</span><button class="lnk" data-act="adj-more">Más información</button>', '🔴 CO-PQ: the quote prefixes «Total L X · » in place (the same two children)');
+});
+test('1 before / after the quote: the bar keeps ONE layout — in the pay bar the sentence fills its row and «Más información» always sits on the line below (frame 1 at L 585), so the line count does not depend on the amount (the renders: the Chrome batch, S2ck-1q)', () => {
+  const css = readFileSync(new URL('./capp.css', import.meta.url), 'utf8').replace(/\s+/g, ' ');
+  const rule = css.match(/\.paybar\.pay \.payline span\{([^}]*)\}/);
+  assert.ok(rule && /flex-basis:100%/.test(rule[1]), `🔴 CO-PQ-h: .paybar.pay .payline span takes the whole row (${rule ? rule[1] : 'no rule'})`);
 });
 
 test('2: the chooser sheet — ✕, the saved cards (tile, label, expiry, a checkmark on the selected), «Agregar tarjeta», «Efectivo al entregar» for members where allowed', () => {

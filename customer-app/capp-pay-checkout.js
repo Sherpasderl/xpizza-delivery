@@ -49,7 +49,10 @@
     const row = !method ? '' : method.kind === 'cash'
       ? `<div class="urows"><button class="urow payrow" aria-label="Cambiar forma de pago" data-act="paysheet">${IC.cash}<span class="t"><b>Efectivo al entregar</b></span>${IC.chev}</button></div>`
       : `<div class="urows"><button class="urow payrow${method.dim ? ' dim' : ''}" aria-label="Cambiar forma de pago" data-act="paysheet">${brandTile(method.brand)}<span class="t"><b>${esc(method.label)}</b>${sub}</span>${IC.chev}</button></div>`;
-    const line = method && method.kind !== 'cash' && !gate ? `<p class="payline"><span>Total ${moneyC(total_cents)} · Se cobra al recibir tu pedido.</span><button class="lnk" data-act="adj-more">Más información</button></p>` : '';
+    // before the quote (advisor ruling 11-09 — a state v7 does not draw): frame 8's sentence without an amount; the quote prefixes
+    // «Total L X · » in place — only a real total (a positive integer of cents), never «L 0» / «NaN»
+    const amt = Number.isInteger(total_cents) && total_cents > 0 ? `Total ${moneyC(total_cents)} · ` : '';
+    const line = method && method.kind !== 'cash' && !gate ? `<p class="payline"><span>${amt}Se cobra al recibir tu pedido.</span><button class="lnk" data-act="adj-more">Más información</button></p>` : '';
     const id = typeof c.id === 'string' && c.id ? ` id="${esc(c.id)}"` : '';
     return `<div class="paybar pay">${row}${line}${gate || ''}<button class="primary"${id} data-act="${esc(c.act || 'place')}"${c.enabled ? '' : ' disabled'}>${esc(c.label)}</button></div>`;
   }

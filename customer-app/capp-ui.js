@@ -1548,6 +1548,7 @@
       if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }
       C.setMode(S.flow, S.mode);
       if (cardOnlyGuest()) S.flow.pay = 'online';   // §3.1: one option, card, already selected
+      sdkAdopt();   // S2-checkout: a card adopted by an earlier visit is still the tender of a new flow
       // S4 P2: the schedule revalidated in the background, never awaited; a CHANGED one is held and applied at the next user picker
       // action (never under a finger); a failure leaves the schedule in hand
       if (sched() && api && typeof api.scheduleOnly === 'function') { const at = cfg.restaurantId; api.scheduleOnly().then((x) => { if (!dead && x && at === cfg.restaurantId && JSON.stringify(x) !== JSON.stringify(servedSched())) S.schedHeld = x; }, () => {}); }
@@ -1777,6 +1778,7 @@
         SDK.cards = PCARD.cardsVm(list);
         SDK.avail = st ? st.available : null;   // unknown ⇒ the server decides at placement (its `unavailable`)
         if (!SDK.sel && SDK.cards.selected) SDK.sel = { kind: 'card', card_id: SDK.cards.selected };
+        sdkAdopt();
         if (S.screen === 'checkout' || S.screen === 'tip') render();
       });
     }
@@ -1791,6 +1793,9 @@
       return exp ? { kind: 'card', brand: exp.brand, label: exp.label, sub: exp.sub, dim: true, expired: true } : null;
     }
     // the selection placeSdk sends (CappPayCard.placeBody's card), or null
+    // v7 frame 1 «the member's last card is preselected»: with no last method known on this device the listed card IS the tender (the
+    // row shows it, so the primary must not ask «Elegí cómo pagar»); a known last method (v6 preselects it) wins
+    function sdkAdopt() { if (sdkOn() && S.flow && !S.flow.pay && sdkCard()) S.flow.pay = 'online'; }
     function sdkCard() {
       const s = SDK.sel; if (!s) return null;
       if (s.kind === 'new') return { kind: 'new', sdk_token: s.sdk_token, save: s.save, authentication_identifier: s.authentication_identifier, display: { ...s.display } };
@@ -1806,9 +1811,9 @@
     function sdkBar(T, cta) {
       const m = sdkMethod(), gate = sdkGate(), cardless = S.flow && S.flow.pay !== 'cash' && !sdkCard();
       const c = gate ? { label: 'Elegí cómo pagar', enabled: false } : cardless ? { label: 'Elegí cómo pagar', enabled: true, act: 'paysheet', id: cta.id } : cta;
-      return PCO.payBarHtml({ method: gate && !(m && m.expired) ? null : m, total_cents: T.ready ? T.total : 0, cta: c, gate });
+      return PCO.payBarHtml({ method: gate && !(m && m.expired) ? null : m, total_cents: T.ready ? T.total : null, cta: c, gate });   // null: no amount before the quote
     }
-    const sdkTipRow = (T) => (sdkGate() ? '' : PCO.payRowHtml(sdkMethod(), T.ready ? T.total : 0));
+    const sdkTipRow = (T) => (sdkGate() ? '' : PCO.payRowHtml(sdkMethod(), T.ready ? T.total : null));
     function sdkChooserHtml() {
       const sel = S.flow && S.flow.pay === 'cash' ? { kind: 'cash' } : SDK.sel && SDK.sel.kind === 'card' ? SDK.sel : null;
       return PCO.chooserHtml({ cards: SDK.cards || { rows: [], selected: null }, selected: sel, cash: sdkCtx().cashAllowed });

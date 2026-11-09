@@ -3063,6 +3063,31 @@ test('S2-checkout 1: the member\'s saved card preselected — the v7 payment row
   assert.ok(b.q('.tipfoot .urow.payrow') && b.text('.tipfoot .urow.payrow .t b') === 'Visa ···· 4242', '🔴 SDKUI-1: the tip step\'s footer carries the payment row');
 });
 
+test('S2-checkout 1 (v7 «the member\'s last card is preselected»): a member whose last method this device does not know — the listed card IS the tender: the primary continues, never a disabled «Elegí cómo pagar» beside the card', async () => {
+  const { lastPay, ...noLast } = SDK_MEMBER();
+  assert.equal(lastPay, 'online', 'premise: the stock member carries lastPay');
+  const b = bootSdk({ member: noLast }); await sdkCheckout(b);
+  assert.equal(b.text('.paybar.pay .urow.payrow .t b'), 'Visa ···· 4242', 'premise: the listed card in the row');
+  assert.equal(b.text('#cta'), 'Continuar', '🔴 SDKUI-1b: the listed card is the tender — the primary continues to the tip step');
+  assert.equal(b.q('#cta').disabled, false, '🔴 SDKUI-1b: the primary is enabled');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]'); await settle();
+  const p = b.srv.of('placeSdkOrder')[0];
+  assert.deepEqual(p && p.body && p.body.card, { kind: 'saved', card_id: 'c_v' }, '🔴 SDKUI-1b: placed with the preselected card');
+  const c = bootSdk({ member: { ...noLast, lastPay: 'cash' } }); await sdkCheckout(c);
+  assert.equal(c.text('.paybar.pay .urow.payrow .t b'), 'Efectivo al entregar', '🔴 SDKUI-1b: a known last method (cash) still wins — v6 preselects the LAST method');
+});
+
+test('S2-checkout 1 before the quote (advisor ruling 11-09): «Se cobra al recibir tu pedido. Más información» without an amount until the quote, then «Total L X · » in place — the bar never shows «L 0» / «NaN»', async () => {
+  let release; const held = new Promise((r) => { release = r; });   // the quote answers only when the test releases it
+  const b = bootSdk({ script: { quoteOrder: [async (body, url) => { await held; return QUOTE(body, url); }] } }); await sdkCheckout(b);
+  assert.equal(b.text('.paybar.pay .urow.payrow .t b'), 'Visa ···· 4242', 'premise: the card row is drawn');
+  assert.ok(b.srv.of('quoteOrder').length >= 1, 'premise: the quote is in flight');
+  assert.equal(b.text('.paybar.pay .payline span'), 'Se cobra al recibir tu pedido.', '🔴 SDKUI-PQ: no quote yet ⇒ the line without an amount');
+  assert.ok(!/L 0\b|NaN/.test(b.text('.paybar.pay') || ''), '🔴 SDKUI-PQ: never «L 0» / «NaN» before the quote');
+  release(); await settle(); await settle();
+  assert.match(b.text('.paybar.pay .payline span') || '', /^Total L [1-9][\d,]* · Se cobra al recibir tu pedido\.$/, '🔴 SDKUI-PQ: the quote prefixes the amount in place');
+});
+
 test('S2-checkout 2: the row opens «Elegí cómo pagar»; picking «Efectivo al entregar» makes the order cash (the row says so)', async () => {
   const b = bootSdk(); await sdkCheckout(b);
   await b.click('.paybar.pay [data-act="paysheet"]');
