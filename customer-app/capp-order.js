@@ -116,7 +116,9 @@
 
   // o: { order_id, display_number?, mode, status, storeName, branch, storeAddr, lines: [{ n, name, extras, total }], fee, tip, total,
   //      pay, addr, details, notes, whenText, phoneText, scheduled, scheduledFor, driver?, stacked?, pin?, etaMin?, windowText?, doneAt? }
-  // c: { entry: 'app' | 'link', now, dark, offerHtml, helpOk, shareOk }
+  // c: { entry: 'app' | 'link', now, dark, offerHtml, helpOk, shareOk, pay? }
+  //    pay (S2, an sdk_auth_v1 order under runtime.sdkPay — CappPayAdjust's pieces, built by the shell): { notice, block, statusSub }
+  //    — absent ⇒ the screen is byte-identical to the base (a cell compares against the pinned original)
   function orderHtml(o, c) {
     const del = o.mode === 'delivery', ph = schedPhase(o, c.now), sc = ph ? SCHED[ph] : null;
     const st = sc ? 'new' : (o.status || 'new');
@@ -137,9 +139,11 @@
     const title = sc ? sc.t : st === 'new' ? 'Pedido recibido' : cc.t;
     const num = sc ? `<div class="mk-num"><span>${esc(sc.line)}</span></div>`
       : o.display_number != null && String(o.display_number) !== '' ? `<div class="mk-num">Orden #${esc(o.display_number)} <span>· Te avisamos por WhatsApp</span></div>` : '';
-    const statusrow = sc ? `<div class="mk-status mute" style="font-size:13.5px;text-align:center">${esc(sc.s)}</div>`
-      : st === 'new' ? `<div class="mk-status mute" style="font-size:13.5px;text-align:center">${esc(cc.s)}</div>`
-        : `<div class="statusrow">${(st === 'out' || st === 'arriving') && o.driver ? `<span class="av" aria-hidden="true">${esc(String(o.driver)[0])}</span>` : ''}<div class="st"><div class="ssub${cc.big ? ' big' : ''}" style="margin-top:0">${esc(cc.s)}</div>${cc.live ? '<div class="live"><i></i>Actualizando en tiempo real</div>' : ''}</div></div>`;
+    // S2 D (MOCKUP-capp-S2-adjustment r3): «Nuevo total aceptado» leads the status subline (owner: a status line only)
+    const pay = c.pay && typeof c.pay === 'object' && typeof c.pay.block === 'string' && c.pay.block ? c.pay : null, sub = (t) => (pay && pay.statusSub ? `${esc(pay.statusSub)}${t ? ' · ' + esc(t) : ''}` : esc(t));
+    const statusrow = sc ? `<div class="mk-status mute" style="font-size:13.5px;text-align:center">${sub(sc.s)}</div>`
+      : st === 'new' ? `<div class="mk-status mute" style="font-size:13.5px;text-align:center">${sub(cc.s)}</div>`
+        : `<div class="statusrow">${(st === 'out' || st === 'arriving') && o.driver ? `<span class="av" aria-hidden="true">${esc(String(o.driver)[0])}</span>` : ''}<div class="st"><div class="ssub${cc.big ? ' big' : ''}" style="margin-top:0">${sub(cc.s)}</div>${cc.live ? '<div class="live"><i></i>Actualizando en tiempo real</div>' : ''}</div></div>`;
     const driverCard = !sc && (st === 'out' || st === 'arriving') && o.driver ? `<div class="drivercard"><span class="av statusrow-av" style="width:40px;height:40px;border-radius:50%;background:var(--surf);display:flex;align-items:center;justify-content:center;font-weight:700">${esc(String(o.driver)[0])}</span><div class="t"><b>${esc(o.driver)}</b><span>Tu repartidor · moto</span></div>${c.driverActs || ''}</div>
     ${typeof o.pin === 'string' && /^\d{4,6}$/.test(o.pin) ? `<div class="pincard"><span class="pin">${o.pin.split('').join(' ')}</span><span class="t">Dale este código a tu repartidor al recibir tu pedido.</span></div>` : ''}` : '';
     const details = del ? `<div class="mk-card"><span class="k">Detalles de entrega</span><span class="v">${esc(o.addr)}</span>${o.details ? `<span class="n">${esc(o.details)}</span>` : ''}${o.notes ? `<span class="n">Nota: ${esc(o.notes)}</span>` : ''}</div>`
@@ -154,7 +158,8 @@
     // advisor 11-01: a past order states no payment status it cannot know — «Se cobra al …» is false once done, and a cancelled card
     // order's refund is not ours to guess ⇒ Estado only for a card order that was delivered / collected («Confirmado»)
     const estado = !c.past || ((o.pay === 'card' || o.pay === 'online') && (st === 'delivered' || st === 'collected'));
-    const payLines = `${payKnown ? `<div class="rrow"><span class="k">Pago</span><span>${payText}</span></div>${estado ? `<div class="rrow"><span class="k">Estado</span><span>${o.pay === 'online' || (c.past && o.pay === 'card') ? 'Confirmado' : 'Se cobra al ' + (del ? 'entregar' : 'recoger')}</span></div>` : ''}` : ''}${c.past && !o.whenText ? '' : `<div class="rrow"><span class="k">Cuándo</span><span>${esc(o.whenText || 'Lo antes posible')}</span></div>`}${o.phoneText ? `<div class="rrow"><span class="k">WhatsApp</span><span>${esc(o.phoneText)}</span></div>` : ''}`;
+    // S2: an sdk order's card is HELD, charged on delivery — «Pagado en línea / Confirmado» would be false: the Pago block (pay.block) says it
+    const payLines = `${payKnown && !pay ? `<div class="rrow"><span class="k">Pago</span><span>${payText}</span></div>${estado ? `<div class="rrow"><span class="k">Estado</span><span>${o.pay === 'online' || (c.past && o.pay === 'card') ? 'Confirmado' : 'Se cobra al ' + (del ? 'entregar' : 'recoger')}</span></div>` : ''}` : ''}${c.past && !o.whenText ? '' : `<div class="rrow"><span class="k">Cuándo</span><span>${esc(o.whenText || 'Lo antes posible')}</span></div>`}${o.phoneText ? `<div class="rrow"><span class="k">WhatsApp</span><span>${esc(o.phoneText)}</span></div>` : ''}`;
     // the confirmation («new», C, R) carries the receipt blocks in the open; the live tracker folds them (v6)
     const open = sc || st === 'new';
     const receipt = open ? `<div class="receipt2"><h3>Tu pedido</h3>${lineRows}</div>`
@@ -168,11 +173,11 @@
     // C-6d (D-3 r3 frame 5, approved): the LIVE desktop panel follows the leaders' order — «Orden #N» after the receipt, before the
     // share line (c.desk; a past receipt keeps its order: its tail is streamed in place). Without c.desk: byte-identical
     const deskOrder = !!c.desk && !c.past;
-    const tail = `${del ? details : ''}${receipt}${payrows}
+    const tail = `${del ? details : ''}${receipt}${pay && pay.block ? pay.block : ''}${payrows}
     ${deskOrder ? num : ''}${share}<button class="btn2 again" data-act="order-again">Hacer otro pedido</button>${c.entry === 'link' ? '<div class="credit">Enviado por <b>Sherpa</b></div>' : ''}`;
     if (c.past && c.tailOnly) return tail;   // past-only (Codex rcpt r2): the live screen ignores hold / tailOnly
     const sheet = `<div class="mk-sheet"><div class="mk-handle"></div><div class="mk-title${cc.ok && !sc ? ' success' : ''}${cc.danger && !sc ? ' danger' : ''}">${esc(title)}</div>${windowLine}
-    ${deskOrder ? '' : num}${segbar}${statusrow}${driverCard}${c.rateHtml || ''}${c.offerHtml || ''}${del ? '' : details}${c.past && c.hold ? '<div data-rc-tail></div>' : tail}</div>`;
+    ${deskOrder ? '' : num}${segbar}${statusrow}${pay && pay.notice ? pay.notice : ''}${driverCard}${c.rateHtml || ''}${c.offerHtml || ''}${del ? '' : details}${c.past && c.hold ? '<div data-rc-tail></div>' : tail}</div>`;
     return `<div class="scroller"><div class="orderwrap">${map}${sheet}</div></div>`;
   }
 

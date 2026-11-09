@@ -11,6 +11,7 @@ const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, '..');
 const require = createRequire(import.meta.url);
 const { JSDOM } = createRequire(join(ROOT, 'xpizza-functions/x.js'))('jsdom');
 const CappOrder = require('./capp-order.js');
+import { payView, line } from './test/fake-sdk-pay.mjs';
 
 const T0 = Date.UTC(2026, 9, 22, 0, 0, 0);
 const ORDER = { order_id: 'XP-1', mode: 'delivery', status: 'new', storeName: 'X. Pizza', branch: 'Centro', storeAddr: 'Av. 1',
@@ -174,4 +175,26 @@ test('the live order screen = the pre-receipt CappOrder byte for byte (base blob
       assert.equal(CappOrder.orderHtml(o, c), BASE.orderHtml(o, c), `🔴 RC-base: live render drifted (redeem ${redeem}, ${pay}, ${mode}, ${status}, open ${receiptOpen}, ${JSON.stringify(flags)})`); n++;
     }
   assert.equal(n, 896);
+});
+
+test('S2 mount points (MOCKUP-capp-S2-adjustment r3): an sdk order\'s c.pay — the notice after the status row, «Nuevo total aceptado» leading the subline, the Pago block in place of «Pagado en línea / Confirmado»; a malformed c.pay changes nothing', () => {
+  const PA = require('./capp-pay-adjust.js');
+  const view = payView({ total_cents: 87500, revision: 1, card: { brand: 'visa', last4: '4242' }, notice: { kind: 'decrease', revision: 1, old_total_cents: 92000, new_total_cents: 87500, changes: [line('line_removed', 'Crispy Bacon', -4500)] } });
+  const fr = PA.frameOf(view, 'preparing', {});
+  const pay = { notice: PA.noticeHtml(view, fr), block: PA.payHtml(view), statusSub: null };
+  for (const status of ['new', 'preparing', 'out']) {   // out: the driver card follows the status row — the notice comes first
+    const r = dom(CappOrder.orderHtml({ ...ORDER, status, driver: status === 'out' ? 'Carlos' : null }, { ...CTX, pay }));
+    const note = r.querySelector('.notecard'), row = r.querySelector(status === 'new' ? '.mk-status' : '.statusrow');
+    assert.ok(note && row && row.compareDocumentPosition(note) === 4 && row.nextElementSibling === note, `🔴 S2-mount: the notice sits right after the status row (${status})`);
+    const rows = [...r.querySelectorAll('.rrow .k')].map(txt);
+    assert.ok(!rows.includes('Pago') && !rows.includes('Estado'), `🔴 S2-mount: no «Pagado en línea» / «Confirmado» rows on an sdk order (${status}: ${rows.join(', ')})`);
+    const blocks = [...r.querySelectorAll('.receipt, .receipt2')], pb = r.querySelector('.receipt .rbody p.note');
+    assert.equal(txt(pb), 'Se cobra al recibir tu pedido.', `🔴 S2-mount: the Pago block is drawn (${status})`);
+    assert.ok(blocks.indexOf(pb && pb.closest('.receipt')) === blocks.length - 2, `the Pago block sits before «Pago y entrega» (${status})`);
+  }
+  const d = dom(CappOrder.orderHtml({ ...ORDER, status: 'preparing' }, { ...CTX, pay: { ...pay, notice: '', statusSub: 'Nuevo total aceptado' } }));
+  assert.equal(txt(d.querySelector('.statusrow .ssub')), 'Nuevo total aceptado · Te avisaremos cuando vaya en camino', '🔴 S2-D: the status line leads the subline');
+  for (const bad of [null, {}, { notice: '<b>x</b>' }, { block: '' }, { block: 5 }, 'x']) {
+    assert.equal(CappOrder.orderHtml(ORDER, { ...CTX, pay: bad }), CappOrder.orderHtml(ORDER, CTX), `🔴 S2-mount: a malformed c.pay (${JSON.stringify(bad)}) changes nothing`);
+  }
 });
