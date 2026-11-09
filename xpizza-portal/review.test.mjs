@@ -138,19 +138,24 @@ test('every server change is shown — including fields this slice cannot edit',
   // The diff is against the LIVE version, so a draft can differ in ways this editor never touched
   // (someone else edited the store, or an older draft was left behind). Hiding those would let a
   // merchant approve a publish carrying changes the screen never mentioned.
+  // S4 «Editar producto» (advisor ruling 2026-11-08): a product's name / description / section line now belongs to the
+  // «Productos» group (review-products.test.mjs), not to «Precios» — still shown, exactly once. A field NO slice edits (tags)
+  // keeps this test's point: it still gets a row of its own among the changes.
   const diff = SERVER_DIFF();
   diff.changed.push({ key: 'Focaccia', surface: 'item', field: 'desc', old: 'vieja', new: 'nueva' });
+  diff.changed.push({ key: 'Focaccia', surface: 'item', field: 'tags', old: [], new: ['picante'] });
   diff.added.push({ key: 'Nueva Pizza', surface: 'item', price: 500 });
   diff.removed.push({ key: 'Vieja Pizza', surface: 'item', price: 200 });
   const m = reviewModel(diff);
-  assert.strictEqual(m.rows.length, 4, 'every changed entry gets a row, price or not');
-  const desc = m.rows.find((r) => r.field === 'desc');
-  assert.ok(desc, 'the non-price change is present');
-  assert.strictEqual(desc.isPrice, false, '...and marked as not a price, so the screen can say so');
+  assert.strictEqual(m.rows.length, 4, 'every changed entry outside «Productos» gets a row, price or not');
+  const tags = m.rows.find((r) => r.field === 'tags');
+  assert.ok(tags, 'the non-price change is present');
+  assert.strictEqual(tags.isPrice, false, '...and marked as not a price, so the screen can say so');
+  assert.deepStrictEqual(m.products.map((p) => [p.key, p.lines.map((l) => l.kind)]), [['Focaccia', ['desc']]], 'the description is shown in «Productos»');
   assert.strictEqual(m.rows.filter((r) => r.isPrice).length, 3, 'the three price changes are marked as prices');
   assert.deepStrictEqual(m.added.map((a) => a.key), ['Nueva Pizza'], 'additions are surfaced');
   assert.deepStrictEqual(m.removed.map((r) => r.key), ['Vieja Pizza'], '...and removals');
-  assert.strictEqual(m.total, 6, 'the total counts everything that will publish');
+  assert.strictEqual(m.total, 7, 'the total counts everything that will publish');
 });
 
 test('the review renders one row per change, with the values as text', () => {

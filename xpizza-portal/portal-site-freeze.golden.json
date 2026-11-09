@@ -28,6 +28,8 @@
   "firebase.js",
   "index.html",
   "invite-mail.js",
+  "item-edit-logic.js",
+  "item-edit.test.mjs",
   "netlify.toml",
   "ops-dom.js",
   "package-lock.json",
@@ -35,16 +37,12 @@
   "pausas.js",
   "photo-contract-fake.mjs",
   "photo-flow.test.mjs",
-  "photo-flow.test.mjs",
-  "photo-flow.test.mjs",
   "photo-logic.js",
   "photo-logic.test.mjs",
   "photo.js",
   "photos-b-fold.mjs",
   "portal-logic.js",
   "portal-look.test.mjs",
-  "portal-site-freeze.golden.json",
-  "portal-site-freeze.golden.json",
   "portal-site-freeze.golden.json",
   "portal-wiring.test.mjs",
   "portalui-guards.t1-hunks.json",
@@ -55,6 +53,7 @@
   "render.test.mjs",
   "review.js",
   "review.test.mjs",
+  "s4-fold.mjs",
   "shell-dom.test.mjs",
   "shell.js",
   "shell.test.mjs",
@@ -108,8 +107,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "fb989f12f36f42a87e55d114c04dbd90c3e92b022c2cd5d2544da5c5197a7d76",
-   "bytes": 100097
+   "sha256": "db2191ffaa671ad14dd1ea6a3e2953ffa1362229494f84cbe16bcf450614043c",
+   "bytes": 101076
   }
  },
  "diff_aid": {
@@ -1357,6 +1356,12 @@
    ],
    [
     "",
+    ".mk-cdot",
+    "background",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".modal",
     "background",
     "var(--card)"
@@ -2374,6 +2379,12 @@
     ".prow .arr",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".prow .mk-cons",
+    "color",
+    "var(--mute)"
    ],
    [
     "",

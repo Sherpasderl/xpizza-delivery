@@ -33,12 +33,67 @@ const idOf = (x) => `${x && x.surface}::${x && x.key}`;
 // The view model. Every row's `was`/`now` come from the server's `old`/`new` by name, and `big` is
 // MEMBERSHIP in largeChangeSet keyed by surface AND key — an item and an extra can legitimately share
 // a key, and flagging by key alone would light the wrong row.
-export function reviewModel(diff) {
+// S4 «Editar producto» (MOCKUP-portal-item-edit frame E; advisor rulings 2026-11-08) — an EXISTING product's text and
+// section lines are their own group, «Productos»: name / description / section (+ subsection) as was → now, and the section's
+// GATE lines as the drawer's consequence sentences. A group's OPTION lines fold under their product («Opciones (n)»); an
+// option's line that repeats its product's own line (the move it shares) is ABSORBED by it — recorded in `absorbed`, so
+// every server line is still accounted for exactly once. `ctx.optionParent(key)` → the product key of an option, from the
+// caller's draft (arrangement only: nothing here re-derives the diff). Without it, an option line is a product of its own.
+const TEXT_FIELDS = ['name', 'desc', 'cat', 'subcat'];
+const GATES = [['pickup_only', 'Queda solo para recoger', 'Vuelve a entregarse a domicilio'],
+  ['weekend_only', 'Pasa a venderse solo los fines de semana', 'Pasa a venderse todos los días'],
+  ['redeem_eligible', 'Pasa a canjearse con puntos', 'Deja de canjearse con puntos']];
+// Plan slice S2 (server diff) adds the extras gained / lost line; it is read HERE once the server sends it — until then
+// the review shows only what the server sends (advisor ruling 1).
+export const EXTRAS_LINE = null;
+const isProductLine = (c) => !!c && c.surface === 'item' && (TEXT_FIELDS.includes(c.field) || GATES.some(([f]) => f === c.field));
+function productsOf(lines, optionParent) {
+  const parentOf = typeof optionParent === 'function' ? optionParent : () => null;
+  const byKey = new Map();
+  const productOf = (key) => {
+    if (!byKey.has(key)) byKey.set(key, { key, lines: [], consequences: [], options: [], absorbed: [], sources: [] });
+    return byKey.get(key);
+  };
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const own = lines.filter((c) => !parentOf(c.key));
+  for (const c of lines) {
+    const parent = parentOf(c.key);
+    const p = productOf(parent || c.key);
+    p.sources.push(c);
+    if (parent) {
+      let o = p.options.find((x) => x.key === c.key);
+      if (!o) { o = { key: c.key, was: null, now: null, extra: [] }; p.options.push(o); }
+      if (c.field === 'name') { o.was = c.old; o.now = c.new; continue; }
+      if (own.some((x) => x.key === parent && x.field === c.field && same(x.old, c.old) && same(x.new, c.new))) { p.absorbed.push(c); continue; }
+      o.extra.push(c.field === 'cat' || c.field === 'subcat' ? { kind: 'cat', field: c.field, was: c.old, now: c.new } : { kind: c.field, was: c.old, now: c.new });
+      continue;
+    }
+    if (c.field === 'name' || c.field === 'desc') p.lines.push({ kind: c.field, was: c.old, now: c.new });
+    else if (c.field === 'cat' || c.field === 'subcat') {
+      let l = p.lines.find((x) => x.kind === 'cat');
+      if (!l) { l = { kind: 'cat', cat: null, subcat: null }; p.lines.push(l); }
+      l[c.field] = { was: c.old, now: c.new };
+    } else {
+      const g = GATES.find(([f]) => f === c.field);
+      p.consequences.push(c.new ? g[1] : g[2]);
+    }
+  }
+  const order = ['name', 'desc', 'cat'];
+  for (const p of byKey.values()) {
+    p.lines.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+    p.consequences.sort((a, b) => GATES.findIndex((g) => g.includes(a)) - GATES.findIndex((g) => g.includes(b)));
+  }
+  return [...byKey.values()];
+}
+
+export function reviewModel(diff, ctx = {}) {
   const d = diff || {};
   // DISH PHOTOS B (§2.1) — the server's photo lines ({field:'photo', old, new} three-state) are their own group, «Fotos»;
   // arranged, never derived: every line the server sent is shown exactly once.
   const all = Array.isArray(d.changed) ? d.changed : [];
-  const changed = all.filter((c) => !isPhotoLine(c));
+  const productLines = all.filter((c) => !isPhotoLine(c) && isProductLine(c));
+  const products = productsOf(productLines, ctx && ctx.optionParent);
+  const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c));
   const photos = all.filter(isPhotoLine);
   const added = Array.isArray(d.added) ? d.added : [];
   const removed = Array.isArray(d.removed) ? d.removed : [];
@@ -72,12 +127,13 @@ export function reviewModel(diff) {
   return {
     rows,
     sections,
+    products,
     added,
     removed,
     renamed,
     photos,
     // everything that will publish, so the header cannot understate it
-    total: rows.length + sections.length + added.length + removed.length + renamed.length + photos.length,
+    total: rows.length + sections.length + productLines.length + added.length + removed.length + renamed.length + photos.length,
   };
 }
 
@@ -132,6 +188,67 @@ export function renderReview(root, model, opts = {}) {
       val.append(el('span', 'now', sectionName(r.now)));
       row.append(val);
       g.append(row);
+    }
+    root.append(g);
+  }
+
+  // S4 «Productos» (frame E): one row per changed field, «Nombre» / «Descripción» / «Categoría», was → now as separate nodes;
+  // the consequence sentences under the section row; a group's options folded beneath. Text rows wrap under the product name.
+  const products = Array.isArray(model.products) ? model.products : [];
+  if (products.length) {
+    const po = opts.products || {};
+    const nameOf = typeof po.nameOf === 'function' ? po.nameOf : (k) => String(k);
+    const catName = typeof po.categoryName === 'function' ? po.categoryName : (id) => String(id);
+    const sectionOf = typeof po.sectionOf === 'function' ? po.sectionOf : () => ({ cat: null, subcat: null });
+    const textOrDash = (v) => (typeof v === 'string' && v.trim() ? v : '\u2014');
+    const place = (cat, sub) => [cat == null ? null : catName(cat), typeof sub === 'string' && sub ? sub : null].filter(Boolean).join(' \u00b7 ') || '\u2014';
+    const g = el('div', 'mgroup');
+    g.append(groupHead('Productos', products.reduce((n, p) => n + p.lines.length, 0)));
+    const LABEL = { name: 'Nombre', desc: 'Descripción', cat: 'Categoría' };
+    for (const p of products) {
+      const now = sectionOf(p.key) || {};
+      const textRow = (sub) => {
+        const row = el('div', 'prow mk-trow');
+        const main = el('div', 'pmain');
+        main.append(el('div', 'pname', nameOf(p.key)), el('div', 'psub', sub));
+        row.append(main);
+        return row;
+      };
+      const wasNow = (was, now2) => { const v = el('div', 'pval'); v.append(el('span', 'was', was), el('span', 'arr', '\u2192'), el('span', 'now', now2)); return v; };
+      const cons = () => { const ul = el('ul', 'mk-cons'); for (const c of p.consequences) { const li = el('li'); li.append(el('span', 'mk-cdot'), el('span', null, c)); ul.append(li); } return ul; };
+      const catLine = p.lines.find((l) => l.kind === 'cat');
+      for (const l of p.lines) {
+        const row = textRow(LABEL[l.kind]);
+        row.dataset.k = `item::${p.key}::${l.kind}`;
+        if (l.kind === 'cat') {
+          const cw = l.cat ? l.cat.was : now.cat, cn = l.cat ? l.cat.now : now.cat;
+          const sw = l.subcat ? l.subcat.was : now.subcat, sn = l.subcat ? l.subcat.now : now.subcat;
+          row.append(wasNow(place(cw, sw), place(cn, sn)));
+        } else row.append(wasNow(textOrDash(l.was), textOrDash(l.now)));
+        // the consequence sentences sit under the section line (frame E); with no section line, under the product's last line
+        if (p.consequences.length && (l === catLine || (!catLine && l === p.lines[p.lines.length - 1]))) row.append(cons());
+        g.append(row);
+      }
+      if (!p.lines.length && p.consequences.length) { const row = textRow(LABEL.cat); row.append(cons()); g.append(row); }
+      // advisor ruling 2: a group's option lines fold under their product — «Opciones (n)», each derived name was → now
+      if (p.options.length) {
+        const label = 'Opciones';
+        const row = textRow(`${label} (${p.options.length})`);
+        row.dataset.k = `item::${p.key}::options`;
+        for (const o of p.options) {
+          const v = o.was !== null || o.now !== null ? wasNow(textOrDash(o.was), textOrDash(o.now)) : el('div', 'pval', nameOf(o.key));
+          v.dataset.k = `item::${o.key}`;
+          row.append(v);
+          for (const x of o.extra) {
+            const lab = x.kind === 'cat' ? (x.field === 'subcat' ? 'Subcategoría' : 'Categoría') : String(x.kind);
+            const show = (val) => (x.field === 'cat' ? (val == null ? '\u2014' : catName(val)) : (val === true ? 'Sí' : val === false ? 'No' : textOrDash(val)));
+            const xv = el('div', 'pval');
+            xv.append(el('span', 'psub', `${lab}: `), el('span', 'was', show(x.was)), el('span', 'arr', '\u2192'), el('span', 'now', show(x.now)));
+            row.append(xv);
+          }
+        }
+        g.append(row);
+      }
     }
     root.append(g);
   }

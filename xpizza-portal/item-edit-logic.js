@@ -22,7 +22,9 @@ export const COPY = {
   cat: { section_empty: 'No podés dejar la sección vacía. Agregá otro producto primero.',
     subsection_empty: 'No podés dejar la subcategoría vacía. Agregá otro producto primero.' },
   save: { none: 'No hay cambios que guardar', fixName: 'Corregí el nombre para guardar', shortName: 'Acortá el nombre para guardar',
-    otherCat: 'Elegí otra categoría para guardar' },
+    otherCat: 'Elegí otra categoría para guardar',
+    // advisor ruling 2026-11-08 (Q4): the three holds the mockup draws no title for
+    fixDesc: 'Corregí la descripción para guardar', pickSubcat: 'Elegí una subcategoría', uploading: 'Esperá a que termine de subir la foto' },
   movedTo: (section) => `Al mover a ${section}:`,
   extraLost: (x) => `Deja de aceptar el extra ${x}`,
   extraGained: (x) => `Acepta el extra ${x}`,
@@ -136,9 +138,12 @@ export function view(draft, s) {
   const uploading = !!(s.upload && s.upload.state === 'busy');
   let title = null;
   if (!ch.length) title = COPY.save.none;
+  else if (uploading) title = COPY.save.uploading;
   else if (nameP === 'long' || nameP === 'option_long') title = COPY.save.shortName;
   else if (nameP) title = COPY.save.fixName;
+  else if (descP) title = COPY.save.fixDesc;
   else if (errors.cat) title = COPY.save.otherCat;
+  else if (catP === 'subcat_required') title = COPY.save.pickSubcat;
   const blocked = !ch.length || nameP || descP || catP || errors.price || badOption || uploading;
   return {
     fields: { name: w.name, desc: w.desc, cat: w.cat, subcat: w.subcat, price: w.price },

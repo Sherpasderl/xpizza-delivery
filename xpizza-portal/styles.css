@@ -520,6 +520,17 @@
   /* inside a flagged (amber) row the secondary text darkens to --mute: --mute2 on --amber-soft is 4.50:1 rounded but 4.4966:1 exact (codex r2 S2) */
   .prow.big .psub,.prow.big .arr{color:var(--mute)}
   .prow .pflag{flex-basis:100%;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;color:var(--amber);padding-top:2px;border-top:1px solid var(--amber-line);margin-top:2px}
+  /* S4 «Productos» (MOCKUP-portal-item-edit frame E, verbatim): text rows wrap under the name instead of right-aligning; the
+     section line's consequence sentences sit under it as a calm list */
+  .prow.mk-trow{flex-direction:column;align-items:stretch;gap:6px}
+  .prow.mk-trow .pval{text-align:left;white-space:normal;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
+  .prow.mk-trow .now{font-size:13.5px}
+  .mk-cons{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+  .mk-cons li{display:flex;gap:9px;align-items:flex-start}
+  /* the mockup's li::before dot as a real element: a plain class is the AA grammar's modelled form (a pseudo-element painting a
+     background is not); same size, colour and offset */
+  .mk-cdot{width:5px;height:5px;border-radius:50%;background:var(--mute2);flex:none;margin-top:7px}
+  .prow .mk-cons{padding-top:8px;border-top:1px solid var(--line2);margin-top:2px;font-size:12.5px;color:var(--mute)}
   .prow .pflag svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2;flex:none}
   .brow{display:flex;align-items:center;gap:11px;padding:11px 14px;border:1px solid var(--line2);border-radius:11px;margin-bottom:8px;background:var(--board-2);font-size:13.5px}
   .brow:last-child{margin-bottom:0}

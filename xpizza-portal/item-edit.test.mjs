@@ -229,6 +229,22 @@ test('drawer C — every name error is the mockup\'s line, and each keeps «Guar
   assert.equal(IE.view(d, s).save.enabled, false);
 });
 
+test('drawer — the holds the mockup draws no title for (advisor Q4): description, subcategory, photo upload', () => {
+  const d = createDraft(BASE());
+  const s = IE.open(d, 'Pizza Cacio e Pepe');
+  IE.set(s, 'desc', 'Con <b>queso</b>');
+  assert.equal(IE.view(d, s).save.title, 'Corregí la descripción para guardar', 'markup in the description');
+  IE.set(s, 'desc', 'd'.repeat(201));
+  assert.equal(IE.view(d, s).save.title, 'Corregí la descripción para guardar', 'over 200');
+  const s2 = IE.open(d, 'Lasaña');
+  IE.set(s2, 'cat', 'pz');
+  assert.equal(IE.view(d, s2).save.title, 'Elegí una subcategoría');
+  const s3 = IE.open(d, 'Lasaña');
+  IE.set(s3, 'name', 'Lasaña boloñesa');
+  IE.uploadBinding(s3).started();
+  assert.equal(IE.view(d, s3).save.title, 'Esperá a que termine de subir la foto');
+});
+
 test('drawer D — a move lists exactly its consequences, «Al mover a Pastas:» + one line per fact; Subcategoría disappears', () => {
   const d = createDraft(BASE());
   const s = IE.open(d, 'Pizza Cacio e Pepe');

@@ -1,0 +1,147 @@
+// S4 «Editar producto» — the review's «Productos» group (MOCKUP-portal-item-edit frame E; advisor rulings 2026-11-08):
+// the review ARRANGES the server's lines and derives nothing. An existing product's name / description / section lines
+// (catalog-edit.js `{key, surface:'item', field, old, new}`) leave «Precios» for «Productos»; the section's gate lines
+// (pickup_only / weekend_only / redeem_eligible) read as the drawer's consequence lines; a group's option lines fold under
+// their product as «Opciones (n)». Every server line is accounted for exactly once. Run: node --test xpizza-portal/review-products.test.mjs
+import { test } from 'node:test';
+import assert from 'node:assert';
+import { reviewModel, renderReview } from './review.js';
+
+const L = (key, field, old, nw) => ({ key, surface: 'item', field, old, new: nw });
+// frame E: Cacio e Pepe renamed, described, moved Pizzas · Especiales → Pastas, price 270 → 285
+const FRAME_E = () => ({
+  changed: [
+    L('Pizza Cacio e Pepe', 'price', 270, 285),
+    L('Pizza Cacio e Pepe', 'name', 'Pizza Cacio e Pepe', 'Cacio e Pepe'),
+    L('Pizza Cacio e Pepe', 'desc', 'Parmesano, mozzarella y pimienta.', 'Pecorino, mozzarella y pimienta negra.'),
+    L('Pizza Cacio e Pepe', 'cat', 'pz', 'pa'),
+    L('Pizza Cacio e Pepe', 'subcat', 'Especiales', null),
+    L('Pizza Cacio e Pepe', 'pickup_only', false, true),
+    L('Pizza Cacio e Pepe', 'weekend_only', false, true),
+    L('Pizza Cacio e Pepe', 'redeem_eligible', true, false),
+  ],
+  added: [], removed: [], renamed: [], largeChangeSet: [],
+});
+// a group rename: the product's line + one derived line per option
+const GROUP = () => ({
+  changed: [
+    L('Pizza Cuatro Quesos', 'name', 'Pizza Cuatro Quesos', 'Pizza Cuatro Quesos Especial'),
+    ...['Personal', 'Mediana', 'Familiar'].map((c) => L(`Pizza Cuatro Quesos - ${c}`, 'name', `Pizza Cuatro Quesos - ${c}`, `Pizza Cuatro Quesos Especial - ${c}`)),
+    L('Pizza Cuatro Quesos', 'cat', 'pz', 'pa'),
+    ...['Personal', 'Mediana', 'Familiar'].map((c) => L(`Pizza Cuatro Quesos - ${c}`, 'cat', 'pz', 'pa')),
+  ],
+  added: [], removed: [], renamed: [], largeChangeSet: [],
+});
+const parentOf = (k) => (/^Pizza Cuatro Quesos - /.test(k) ? 'Pizza Cuatro Quesos' : null);
+
+test('«Productos» — name / description / section lines leave «Precios»: the price row stays, the text lines move', () => {
+  const m = reviewModel(FRAME_E());
+  assert.deepStrictEqual(m.rows.map((r) => r.field), ['price'], '«Precios» keeps only the price (its +6% chip untouched)');
+  assert.strictEqual(m.products.length, 1);
+  const p = m.products[0];
+  assert.strictEqual(p.key, 'Pizza Cacio e Pepe');
+  assert.deepStrictEqual(p.lines.map((l) => l.kind), ['name', 'desc', 'cat']);
+  assert.deepStrictEqual(p.lines[0], { kind: 'name', was: 'Pizza Cacio e Pepe', now: 'Cacio e Pepe' });
+  assert.deepStrictEqual(p.lines[2], { kind: 'cat', cat: { was: 'pz', now: 'pa' }, subcat: { was: 'Especiales', now: null } });
+});
+
+test('«Productos» — the gate lines read as the drawer\'s consequence lines, in the drawer\'s order (frame D = frame E)', () => {
+  const p = reviewModel(FRAME_E()).products[0];
+  assert.deepStrictEqual(p.consequences, ['Queda solo para recoger', 'Pasa a venderse solo los fines de semana', 'Deja de canjearse con puntos']);
+  const back = FRAME_E();
+  back.changed = back.changed.filter((c) => /only|eligible/.test(c.field)).map((c) => ({ ...c, old: c.new, new: c.old }));
+  assert.deepStrictEqual(reviewModel(back).products[0].consequences, ['Vuelve a entregarse a domicilio', 'Pasa a venderse todos los días', 'Pasa a canjearse con puntos']);
+});
+
+test('«Productos» — EVERY server line is accounted for exactly once (shown, or absorbed by the product line it repeats)', () => {
+  for (const diff of [FRAME_E(), GROUP()]) {
+    const m = reviewModel(diff, { optionParent: parentOf });
+    const seen = [
+      ...m.rows.map((r) => `${r.key}|${r.field}`),
+      ...m.products.flatMap((p) => p.sources.map((c) => `${c.key}|${c.field}`)),
+    ].sort();
+    assert.deepStrictEqual(seen, diff.changed.map((c) => `${c.key}|${c.field}`).sort());
+  }
+});
+
+test('«Productos» — a group rename FOLDS its option lines under the product: «Opciones (3)», the derived old → new names', () => {
+  const m = reviewModel(GROUP(), { optionParent: parentOf });
+  assert.strictEqual(m.products.length, 1, 'one product, not four');
+  const p = m.products[0];
+  assert.deepStrictEqual(p.options.map((o) => [o.was, o.now]), ['Personal', 'Mediana', 'Familiar'].map((c) => [`Pizza Cuatro Quesos - ${c}`, `Pizza Cuatro Quesos Especial - ${c}`]));
+  assert.deepStrictEqual(p.lines.map((l) => l.kind), ['name', 'cat'], 'the options\' section lines repeat the product\'s: absorbed (it moves with them)');
+  assert.strictEqual(p.absorbed.length, 3);
+});
+
+test('«Productos» — an option line that does NOT repeat its product\'s line is shown under the option, never absorbed', () => {
+  const diff = GROUP();
+  diff.changed = diff.changed.filter((c) => !(c.field === 'cat' && c.key === 'Pizza Cuatro Quesos'));   // the product's own cat line is absent
+  const p = reviewModel(diff, { optionParent: parentOf }).products[0];
+  assert.strictEqual(p.absorbed.length, 0);
+  assert.deepStrictEqual(p.options.map((o) => o.extra.map((l) => l.kind)), [['cat'], ['cat'], ['cat']]);
+});
+
+test('«Productos» — without the caller\'s optionParent an option line is a product of its own (arranged, never hidden)', () => {
+  const m = reviewModel(GROUP());
+  assert.strictEqual(m.products.length, 4);
+});
+
+test('«Productos» — total counts every line that will publish, so the header never understates it', () => {
+  const diff = FRAME_E();
+  assert.strictEqual(reviewModel(diff).total, diff.changed.length);
+  const g = GROUP();
+  assert.strictEqual(reviewModel(g, { optionParent: parentOf }).total, g.changed.length);
+});
+
+test('«Productos» renders frame E: the group with its count, «Nombre» / «Descripción» / «Categoría» was → now, the consequences, before «Precios»', () => {
+  const root = fakeDom();
+  renderReview(root, reviewModel(FRAME_E()), {
+    products: { nameOf: (k) => k, categoryName: (id) => ({ pz: 'Pizzas', pa: 'Pastas' }[id] || id), sectionOf: () => ({ cat: 'pa', subcat: null }) },
+  });
+  const labels = byClass(root, 'mglabel').map(textOf);
+  assert.deepStrictEqual(labels, ['Productos 3', 'Precios 1'], 'Productos first; its count is the three field lines');
+  const rows = byClass(byClass(root, 'mgroup')[0], 'prow');
+  assert.deepStrictEqual(rows.map((r) => textOf(byClass(r, 'psub')[0])), ['Nombre', 'Descripción', 'Categoría']);
+  assert.strictEqual(textOf(byClass(rows[2], 'pval')[0]), 'Pizzas · Especiales → Pastas');
+  assert.ok(rows.every((r) => r._class.split(' ').includes('mk-trow')), 'text rows wrap under the product name (the mockup\'s .prow.mk-trow)');
+  const ul = byClass(rows[2], 'mk-cons');
+  assert.strictEqual(ul.length, 1, 'the consequences sit inside the section row, as the mockup\'s <ul class="mk-cons">');
+  assert.deepStrictEqual(ul[0].children.map((li) => [li.tag, textOf(li)]), [['li', 'Queda solo para recoger'], ['li', 'Pasa a venderse solo los fines de semana'], ['li', 'Deja de canjearse con puntos']]);
+  assert.ok(ul[0].children.every((li) => byClass(li, 'mk-cdot').length === 1), 'each sentence carries its dot');
+});
+
+test('«Productos» renders a group\'s «Opciones (3)» with the derived names indented beneath', () => {
+  const root = fakeDom();
+  renderReview(root, reviewModel(GROUP(), { optionParent: parentOf }), { products: { nameOf: (k) => k, categoryName: (id) => id, sectionOf: () => ({ cat: 'pa', subcat: null }) } });
+  const optRow = byClass(root, 'prow').find((r) => r.dataset.k === 'item::Pizza Cuatro Quesos::options');
+  assert.ok(optRow, 'one «Opciones» row under the product');
+  assert.strictEqual(textOf(byClass(optRow, 'psub')[0]), 'Opciones (3)');
+  assert.deepStrictEqual(byClass(optRow, 'pval').map(textOf), ['Personal', 'Mediana', 'Familiar'].map((c) => `Pizza Cuatro Quesos - ${c} → Pizza Cuatro Quesos Especial - ${c}`));
+});
+
+// Plan slice S2 (5f, server diff) adds the extras gained / lost line; the review shows it through the named hook
+// (review.js EXTRAS_LINE) once the server sends it. Until then the review shows only what the server sends.
+test.todo('«Productos» — S2: the server\'s extras gained / lost line reads «Acepta el extra {grupo}» / «Deja de aceptar el extra {grupo}»');
+test.todo('«Productos» — Phase 2: these cells take their lines from the REAL catalogDiff (S1 approved tip), not the line shape');
+
+// the review tests' shim (only what review.js touches)
+function fakeDom() {
+  const mk = (tag) => {
+    const n = {
+      tag, children: [], attrs: {}, listeners: {}, _class: '', dataset: {}, textContent: undefined,
+      get className() { return n._class; },
+      set className(v) { n._class = v; },
+      classList: { add: (c) => { n._class = `${n._class} ${c}`.trim(); } },
+      append: (...cs) => n.children.push(...cs.map((c) => (typeof c === 'string' ? { tag: '#text', children: [], textContent: c, _class: '' } : c))),
+      replaceChildren: (...cs) => { n.children = [...cs]; },
+      setAttribute: (k, v) => { n.attrs[k] = v; },
+      addEventListener: (ev, fn) => { (n.listeners[ev] = n.listeners[ev] || []).push(fn); },
+    };
+    return n;
+  };
+  globalThis.document = { createElement: mk, createElementNS: (_ns, tag) => mk(tag) };
+  return mk('div');
+}
+function walk(n, out = []) { out.push(n); for (const c of n.children || []) walk(c, out); return out; }
+function byClass(root, cls) { return walk(root).filter((n) => String(n._class || '').split(/\s+/).includes(cls)); }
+function textOf(n) { return walk(n).map((x) => x.textContent).filter((t) => t !== undefined).join(' '); }
