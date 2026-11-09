@@ -174,4 +174,15 @@ const idOf = (src, key) => itemOf(src, key).display.id;
   ok('compareToActive: with the switch on a product may move only into a shown section');
 }
 
+// ── renamedLabels: the labels a draft newly gives products held by an ACTIVE entry (group members included) ──
+{
+  const base = live();
+  const d = { ...renamed(base, KEY, 'Carnívora Suprema'), frozen_keys: { [String(idOf(base, KEY))]: KEY, 999: 'Gone' } };
+  assert.deepStrictEqual(FK.renamedLabels({ draft: d, live: base }), [{ key: KEY, name: 'Carnívora Suprema', field: 'name' }], 'FK-LABELS the renamed label is listed');
+  const back = { ...renamed(base, KEY, KEY), frozen_keys: { [String(idOf(base, KEY))]: KEY } };
+  assert.deepStrictEqual(FK.renamedLabels({ draft: back, live: renamed(base, KEY, 'Antes') }), [], 'FK-LABELS a rename back to the own key is not new');
+  assert.deepStrictEqual(FK.renamedLabels({ draft: d, live: d }), [], 'FK-LABELS an unchanged label is not new');
+  ok('renamedLabels lists exactly the new labels of products held by an active entry');
+}
+
 console.log(`\nfrozen-keys: OK (${n})`);

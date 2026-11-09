@@ -42,6 +42,14 @@ const codes = (ps) => ps.map((p) => `${p.key}:${p.field}:${p.code}`).sort();
   const exName = live.extras.find((e) => e.display && typeof e.display.name === 'string').display.name;
   const dupX = clone(live); dupX.items.find((i) => i.key === 'Carnivora').display.name = exName;
   assert.ok(codes(AP.textCapProblems({ draft: dupX, live })).includes('Carnivora:name:name_taken'), 'TC-TAKEN an option (extra) name is refused');
+  // a RESERVED key — any key the draft's frozen_keys names, active or retired — is refused as a newly authored name, except the
+  // product's own key (a rename back) (codex S1a r1 P1)
+  const res = { ...clone(live), frozen_keys: { 999: 'Pizza Retirada', 1000: 'Carnivora' } };
+  res.items.find((i) => i.key === 'Carnivora').display.name = 'pizza  retirada';
+  assert.deepStrictEqual(codes(AP.textCapProblems({ draft: res, live })), ['Carnivora:name:name_previously_used'], 'TC-RESERVED a retired frozen key (any case / spacing) is refused');
+  const back = { ...clone(live), frozen_keys: { 1000: 'Carnivora' } };
+  back.items.find((i) => i.key === 'Carnivora').display.name = 'Carnivora ';
+  assert.deepStrictEqual(AP.textCapProblems({ draft: back, live: { ...live, items: live.items.map((i) => (i.key === 'Carnivora' ? { ...i, display: { ...i.display, name: 'Otra' } } : i)) } }), [], 'TC-RESERVED-OWN a rename back to the product\'s own key is not refused');
   ok('caps: name ≤ 60 (attribute rule), desc ≤ 200, newly authored only; live values grandfathered; new products capped');
 }
 

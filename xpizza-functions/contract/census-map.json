@@ -348,6 +348,7 @@
   "catalog/add-product.js#textCapProblems": "catalog",
   "catalog/frozen-keys.js#activeFrozenKeys": "catalog",
   "catalog/frozen-keys.js#recordRenames": "catalog",
+  "catalog/frozen-keys.js#renamedLabels": "catalog",
   "catalog/add-product.js#changesNothingElse": "catalog",
   "catalog/add-product.js#classifyItems": "catalog",
   "catalog/add-product.js#compareToActive": "catalog",

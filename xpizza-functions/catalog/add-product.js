@@ -587,7 +587,8 @@ function assertSameAuthoredFields(incomingStructure, storedStructure, { activeHa
    with no < or > (the section-name rule), a description ≤ 200, and every DERIVED option name ≤ 60 (a group's options are named
    "{launcher} - {choice}", so a long launcher name is refused through them). A product with no live counterpart is newly
    authored throughout. A newly authored name may not be another product's name or key, or an option's (extra's) name — on a
-   name-keyed menu that name IS a pricing key (name_taken). Returns [{ key, field, code }] (key = the tmp reference for an unallocated product); [] = none. */
+   name-keyed menu that name IS a pricing key (name_taken) — nor a RESERVED key: any key the draft's frozen_keys map names, active
+   or retired, other than the product's own (name_previously_used; codex S1a r1 P1). Returns [{ key, field, code }] (key = the tmp reference for an unallocated product); [] = none. */
 const NAME_MAX = 60;
 const DESC_MAX = 200;
 const chars = (s) => [...String(s)].length;
@@ -596,6 +597,7 @@ function textCapProblems({ draft, live }) {
   const out = [];
   const items = ((draft && draft.items) || []).filter((it) => isObj(it) && isObj(it.display));
   const extraNames = ((draft && draft.extras) || []).map((e) => (isObj(e) && isObj(e.display) && typeof e.display.name === 'string' ? normalizeName(e.display.name) : null)).filter(Boolean);
+  const reserved = new Set((isObj(draft && draft.frozen_keys) ? Object.values(draft.frozen_keys) : []).filter((k) => typeof k === 'string').map(normalizeName));
   const taken = (self, name) => {
     const n = normalizeName(name);
     return extraNames.includes(n) || items.some((o) => o !== self && ((typeof o.display.name === 'string' && normalizeName(o.display.name) === n) || (typeof o.key === 'string' && normalizeName(o.key) === n)));
@@ -611,6 +613,7 @@ function textCapProblems({ draft, live }) {
         if (/[<>]/.test(d.name)) out.push({ key: id, field: 'name', code: 'text_unsafe' });
       }
       if (taken(it, d.name)) out.push({ key: id, field: isGroupVariant(it) ? 'choice' : 'name', code: 'name_taken' });
+      else if (reserved.has(normalizeName(d.name)) && !(typeof it.key === 'string' && !own(it, 'ref') && normalizeName(it.key) === normalizeName(d.name))) out.push({ key: id, field: isGroupVariant(it) ? 'choice' : 'name', code: 'name_previously_used' });
     }
     if (typeof d.desc === 'string' && (!was || was.desc !== d.desc) && chars(d.desc) > DESC_MAX) out.push({ key: id, field: 'desc', code: 'desc_too_long' });
   }

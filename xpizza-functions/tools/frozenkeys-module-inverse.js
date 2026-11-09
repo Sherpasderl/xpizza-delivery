@@ -82,12 +82,12 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/publish-edited-handler.js",
-  "now": "}\nconst { textEditCapabilities } = require('./item-text-edit');   // S1a: the product-text switch (below the reviewed NUL, so its offset stands)\nasync function publishEditedCore({ db, authorize, readActiveBuilt, readDraft, publishVersion, mirror, alarm, sourceSha, addProduct = null, photos = null }, body, req) {\n",
+  "now": "}\nconst { textEditCapabilities } = require('./item-text-edit'); const FK = require('./frozen-keys');   // S1a: the product-text switch (below the reviewed NUL, so its offset stands)\nasync function publishEditedCore({ db, authorize, readActiveBuilt, readDraft, publishVersion, mirror, alarm, sourceSha, addProduct = null, photos = null }, body, req) {\n",
   "was": "}\n\nasync function publishEditedCore({ db, authorize, readActiveBuilt, readDraft, publishVersion, mirror, alarm, sourceSha, addProduct = null, photos = null }, body, req) {\n"
  },
  {
   "file": "catalog/publish-edited-handler.js",
-  "now": "    const activeKeys = new Set((live.items || []).map((it) => it && it.key));\n    const additions = (draft.items || []).filter((it) => !(it && activeKeys.has(it.key))); const capProblem = textEditCapabilities().enabled ? AP.textCapProblems({ draft, live })[0] : null; if (capProblem) return reply(400, { error: capProblem.code, field: capProblem.field, key: capProblem.key });   // S1a: newly authored text, judged on PUBLISH too\n    if (additions.length && !can(auth, 'catalog.add_product')) {\n",
+  "now": "    const activeKeys = new Set((live.items || []).map((it) => it && it.key));\n    const additions = (draft.items || []).filter((it) => !(it && activeKeys.has(it.key))); const capProblem = textEditCapabilities().enabled ? AP.textCapProblems({ draft, live })[0] : null; if (capProblem) return reply(400, { error: capProblem.code, field: capProblem.field, key: capProblem.key }); const renamed = textEditCapabilities().enabled ? FK.renamedLabels({ draft, live }) : []; if (renamed.length) { if (!addProduct) return reply(503, { error: 'add_product_unavailable', retryable: false }); let used; try { used = await addProduct.registryKeysTaken(rid, renamed.map((x) => x.name), 'name'); } catch (_) { return reply(503, { error: 'store_unavailable', retryable: true }); } const hit = renamed.find((x) => used.has(x.name)); if (hit) return reply(400, { error: 'name_previously_used', field: hit.field, key: hit.key }); }   // S1a: newly authored text, judged on PUBLISH too; renamed labels against the reserved keys (codex r1)\n    if (additions.length && !can(auth, 'catalog.add_product')) {\n",
   "was": "    const activeKeys = new Set((live.items || []).map((it) => it && it.key));\n    const additions = (draft.items || []).filter((it) => !(it && activeKeys.has(it.key)));\n    if (additions.length && !can(auth, 'catalog.add_product')) {\n"
  },
  {
@@ -127,13 +127,18 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/edit-catalog-handler.js",
-  "now": "  // same commit as the draft below.\n  let candidate = canonicalize(FK.withFrozenKeys(withServerKeyMode(source, keyModeOwn.key_mode), fkOwn.frozen_keys)); if (textEdit) { candidate = canonicalize(AP.rederiveOptionNames(candidate)); const cap = AP.textCapProblems({ draft: candidate, live })[0]; if (cap) return reply(400, { error: cap.code, field: cap.field, key: cap.key }); const rec = FK.recordRenames({ draft: candidate, live, stored, textEdit }); if (!rec.ok) return reply(409, { error: rec.error, key: rec.key }); candidate = canonicalize(FK.withFrozenKeys(candidate, rec.frozen_keys)); }   // S1a: with the switch on, a group renames as one unit, new text is capped, and every rename is recorded under its kept key\n  let hwmPlan = null;\n",
+  "now": "  // same commit as the draft below.\n  let candidate = canonicalize(FK.withFrozenKeys(withServerKeyMode(source, keyModeOwn.key_mode), fkOwn.frozen_keys)); if (textEdit) { candidate = canonicalize(AP.rederiveOptionNames(candidate)); const rec = FK.recordRenames({ draft: candidate, live, stored, textEdit }); if (!rec.ok) return reply(409, { error: rec.error, key: rec.key }); candidate = canonicalize(FK.withFrozenKeys(candidate, rec.frozen_keys)); }   // S1a: with the switch on, a group renames as one unit, new text is capped, and every rename is recorded under its kept key\n  let hwmPlan = null;\n",
   "was": "  // same commit as the draft below.\n  let candidate = canonicalize(withServerKeyMode(source, keyModeOwn.key_mode));\n  let hwmPlan = null;\n"
  },
  {
   "file": "catalog/edit-catalog-handler.js",
   "now": "    try {\n      const keyMode = AP.resolveKeyMode(await addProduct.readKeyMode(rid), live.items, candidate.frozen_keys);\n      const hwmRef = addProduct.hwmRef(rid);\n",
   "was": "    try {\n      const keyMode = AP.resolveKeyMode(await addProduct.readKeyMode(rid), live.items);\n      const hwmRef = addProduct.hwmRef(rid);\n"
+ },
+ {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "     that DIFFERS from the stored draft's is refused; the unchanged stored map always passes, so other edits never block. */\n  let photoMap = null; if (textEdit) { const cap = AP.textCapProblems({ draft: candidate, live })[0]; if (cap) return reply(400, { error: cap.code, field: cap.field, key: cap.key, ...(Object.prototype.hasOwnProperty.call(refOfKey, cap.key) ? { ref: refOfKey[cap.key] } : {}) }); const rn = FK.renamedLabels({ draft: candidate, live }); if (rn.length) { if (!addProduct) return reply(503, { error: 'add_product_unavailable', retryable: false }); let used; try { used = await addProduct.registryKeysTaken(rid, rn.map((x) => x.name), 'name'); } catch (_) { return reply(503, { error: 'store_unavailable', retryable: true }); } const hit = rn.find((x) => used.has(x.name)); if (hit) return reply(400, { error: 'name_previously_used', field: hit.field, key: hit.key }); } }   // S1a (codex r1): the FULLY derived candidate — new groups' option names included — is capped, and every renamed label is checked against the reserved keys, before anything is written\n  if (photos) {\n",
+  "was": "     that DIFFERS from the stored draft's is refused; the unchanged stored map always passes, so other edits never block. */\n  let photoMap = null;\n  if (photos) {\n"
  },
  {
   "file": "catalog/edit-catalog-handler.js",

@@ -82,4 +82,21 @@ function recordRenames({ draft, live, stored, textEdit }) {
   return { ok: true, frozen_keys: Object.keys(out).length || kept ? out : undefined };
 }
 
-module.exports = { frozenKeysProblem, activeFrozenKeys, serverOwnedFrozenKeys, withFrozenKeys, recordRenames };
+// The labels a draft newly gives its RENAMED products: an existing product (same key and display.id as live) held by an ACTIVE entry
+// whose name differs from live — every group member included. A label equal to the product's own key (a rename back) is not new.
+// The writers check these against the identity registry's retired keys (codex S1a r1 P1): a name used before stays reserved.
+function renamedLabels({ draft, live }) {
+  const active = activeFrozenKeys(draft);
+  const liveByKey = new Map(((live && live.items) || []).filter((it) => isPlain(it) && isPlain(it.display)).map((it) => [it.key, it]));
+  const out = [];
+  for (const d of ((draft && draft.items) || [])) {
+    if (!isPlain(d) || !isPlain(d.display) || typeof d.key !== 'string' || own(d, 'ref') || typeof d.display.name !== 'string') continue;
+    const id = d.display.id == null ? null : String(d.display.id);
+    const l = liveByKey.get(d.key);
+    if (id === null || active.get(id) !== d.key || !l || String(l.display.id) !== id || l.display.name === d.display.name || d.display.name === d.key) continue;
+    out.push({ key: d.key, name: d.display.name, field: d.display.variantOf != null ? 'choice' : 'name' });
+  }
+  return out;
+}
+
+module.exports = { frozenKeysProblem, activeFrozenKeys, serverOwnedFrozenKeys, withFrozenKeys, recordRenames, renamedLabels };
