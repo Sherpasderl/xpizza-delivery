@@ -1367,4 +1367,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .sheet.proc .cardl .bb{width:34px;height:22px}
 .sheet.proc .note{font-size:14px;max-width:30ch}
 .sheet.proc .note.review{color:var(--ink);font-weight:600}
-.urow.payrow.dim{opacity:.6}   /* v7 frame 6: the expired card's row (the mockup's inline .6) */
+/* v7 frame 6: the expired card's row, dimmed — IMPROVED vs v7 (advisor 11-09): the mockup's .6 on the whole row put «Venció en»
+   at 2.6:1; the dim is on the tile + chevron only and the text reads in --mute at full opacity (≥ 4.5:1 in both themes) */
+.urow.payrow.dim .bb,.urow.payrow.dim .chev{opacity:.6}
+.urow.payrow.dim .t b{color:var(--mute)}

@@ -58,6 +58,27 @@ test('3 layout (the SBS, 11-09): «Guardar tarjeta» PINNED to the bottom (the m
   }
 });
 
+test('6 contrast (advisor 11-09 — IMPROVED vs v7): the expired card\'s row stays dimmed, but its TEXT reads at ≥ 4.5:1 in both themes — the dim is on the tile + chevron only; label and «Venció en» in --mute at full opacity', () => {
+  const css = readFileSync(new URL('./capp.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ');
+  const rules = css.split('}').map((r) => r.split('{')).filter((r) => r.length === 2).map(([sel, body]) => ({ sels: sel.split(',').map((x) => x.trim()), body }));
+  const tok = (scope, name) => { const r = rules.find((x) => x.sels.some((s) => s === scope)); const m = r && r.body.match(new RegExp(`--${name}:\\s*(#[0-9A-Fa-f]{6})`)); return m ? m[1] : null; };
+  const lum = (hex) => { const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const dimSel = (s) => s.startsWith('.urow.payrow.dim');
+  // no opacity < 1 on the row itself or on its text
+  for (const r of rules.filter((x) => x.sels.some(dimSel))) {
+    const op = r.body.match(/opacity:\s*([\d.]+)/);
+    if (!op || Number(op[1]) >= 1) continue;
+    for (const s of r.sels.filter(dimSel)) assert.ok(/ \.bb$| \.chev$/.test(s), `🔴 CO-6C: an opacity < 1 reaches the row's text («${s}{opacity:${op[1]}}») — only the tile / chevron dim`);
+  }
+  assert.ok(rules.some((x) => x.sels.includes('.urow.payrow.dim .t b') && /color:\s*var\(--mute\)/.test(x.body)), '🔴 CO-6C: the dimmed label in --mute (still reads as dimmed beside --ink)');
+  for (const [theme, scope] of [['light', '.app'], ['dark', '.app.dark']]) {
+    const bg = tok(scope, 'bg'), mute = tok(scope, 'mute');
+    assert.ok(bg && mute, `premise: ${theme} tokens (${scope})`);
+    assert.ok(ratio(mute, bg) >= 4.5, `🔴 CO-6C ${theme}: --mute on --bg ${ratio(mute, bg).toFixed(2)}:1 ≥ 4.5`);
+  }
+});
+
 test('2: the chooser sheet — ✕, the saved cards (tile, label, expiry, a checkmark on the selected), «Agregar tarjeta», «Efectivo al entregar» for members where allowed', () => {
   const h = H.chooserHtml({ cards: CARDS, selected: { kind: 'card', card_id: 'c_v' }, cash: true });
   assert.equal(flat(h), flat(`<div class="scrim" data-act="paysheet-close"></div><div class="sheet" role="dialog" aria-label="Elegí cómo pagar"><div class="grab"></div>
