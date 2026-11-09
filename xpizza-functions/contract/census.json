@@ -50,7 +50,7 @@
    "form-composer": 55
   },
   "sendSites": 24,
-  "fieldsWritten": 116,
+  "fieldsWritten": 117,
   "opaqueWrites": 23,
   "opaque": 118,
   "projections": 146,
@@ -55581,6 +55581,9 @@
    "key": "xpizza-functions/index.js#createOrderApp.all#payment_fingerprint#update"
   },
   {
+   "key": "xpizza-functions/index.js#createOrderApp.all#menu_version_id#update"
+  },
+  {
    "key": "xpizza-functions/index.js#createOrderApp.all#lat#update"
   },
   {
@@ -56160,6 +56163,9 @@
    "key": "xpizza-functions/index.js#chargeOnlineApp.all#cash_tendered_cents#transaction-updater/via:acquireHostedAttempt"
   },
   {
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#menu_version_id#transaction-updater/via:acquireHostedAttempt"
+  },
+  {
    "key": "xpizza-functions/index.js#chargeOnlineApp.all#items#transaction-updater/via:acquireHostedAttempt"
   },
   {
@@ -56500,6 +56506,10 @@
   {
    "field": "materialized_at",
    "class": "stamp"
+  },
+  {
+   "field": "menu_version_id",
+   "class": "pointer"
   },
   {
    "field": "notes",

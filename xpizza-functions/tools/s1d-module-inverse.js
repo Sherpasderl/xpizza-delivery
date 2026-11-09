@@ -92,8 +92,18 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "index.js",
-  "now": "        factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn base); factura_items = paid + comped (SAR doc)\n    : (usesPlatformFactura(restaurantId)\n      ? pricedLineItems(body.items, facturaMenu, facturaExtras, require('./menu-pricing').labelsOfTables(pricingTables))\n      : { items: null, error: null });\n  /* serial3:begin factura-cash-order */\n",
+  "now": "        factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn base); factura_items = paid + comped (SAR doc)\n    : (usesPlatformFactura(restaurantId)\n      ? pricedLineItems(body.items, facturaMenu, facturaExtras, require('./menu-pricing').labelsOfTables(pricingTables), menuOrderVersionOf(pricingTables))\n      : { items: null, error: null });\n  /* serial3:begin factura-cash-order */\n",
   "was": "        factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn base); factura_items = paid + comped (SAR doc)\n    : (usesPlatformFactura(restaurantId)\n      ? pricedLineItems(body.items, facturaMenu, facturaExtras)\n      : { items: null, error: null });\n  /* serial3:begin factura-cash-order */\n"
+ },
+ {
+  "file": "index.js",
+  "now": "    const heldUpdates = buildScheduledOrderRecord({\n      orderId, orderType, now, trackingToken, total: DW.totalLempiras(dq, effectiveTotal), lat, lng, fields, hubSnap,\n      restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp, menuVersionId: menuOrderVersionOf(pricingTables),\n      scheduledFor: scheduledForRaw, releaseAt, paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare\n    });\n",
+  "was": "    const heldUpdates = buildScheduledOrderRecord({\n      orderId, orderType, now, trackingToken, total: DW.totalLempiras(dq, effectiveTotal), lat, lng, fields, hubSnap,\n      restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,\n      scheduledFor: scheduledForRaw, releaseAt, paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare\n    });\n"
+ },
+ {
+  "file": "index.js",
+  "now": "  Object.assign(updates, buildCreateOrderUpdates({\n    orderId, orderType, now, trackingToken, total: DW.totalLempiras(dq, effectiveTotal), lat, lng, fields, hubSnap,\n    restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp, menuVersionId: menuOrderVersionOf(pricingTables),\n    paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare (idempotent retry recomputes identical)\n  }));\n",
+  "was": "  Object.assign(updates, buildCreateOrderUpdates({\n    orderId, orderType, now, trackingToken, total: DW.totalLempiras(dq, effectiveTotal), lat, lng, fields, hubSnap,\n    restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,\n    paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare (idempotent retry recomputes identical)\n  }));\n"
  },
  {
   "file": "index.js",
@@ -102,8 +112,13 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "index.js",
-  "now": "        factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn); factura_items = paid + comped (SAR doc)\n    : (usesPlatformFactura(restaurantId)\n      ? pricedLineItems(body.items, facturaMenu, facturaExtras, require('./menu-pricing').labelsOfTables(pricingTables))\n      : { items: null, error: null });  // non-platform (la_musa) → no factura line items\n  /* serial3:begin factura-card-order */\n",
+  "now": "        factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn); factura_items = paid + comped (SAR doc)\n    : (usesPlatformFactura(restaurantId)\n      ? pricedLineItems(body.items, facturaMenu, facturaExtras, require('./menu-pricing').labelsOfTables(pricingTables), menuOrderVersionOf(pricingTables))\n      : { items: null, error: null });  // non-platform (la_musa) → no factura line items\n  /* serial3:begin factura-card-order */\n",
   "was": "        factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn); factura_items = paid + comped (SAR doc)\n    : (usesPlatformFactura(restaurantId)\n      ? pricedLineItems(body.items, facturaMenu, facturaExtras)\n      : { items: null, error: null });  // non-platform (la_musa) → no factura line items\n  /* serial3:begin factura-card-order */\n"
+ },
+ {
+  "file": "index.js",
+  "now": "    restaurant_id: restaurantId,\n    factura_status: 'not_due',\n    cash_tendered_cents: 0, menu_version_id: menuOrderVersionOf(pricingTables),   // online: no cash, CAMBIO 0; S1d: the pricing version (additive)\n    ...(facturaPriced.items ? { items: facturaPriced.items } : {}),\n    ...(facturaPriced.factura_items ? { factura_items: facturaPriced.factura_items } : {}),   // A-F: paid + comped SAR line set (redeemed x_pizza only; build-record reads factura_items || items)\n",
+  "was": "    restaurant_id: restaurantId,\n    factura_status: 'not_due',\n    cash_tendered_cents: 0,                     // online: no cash, CAMBIO 0\n    ...(facturaPriced.items ? { items: facturaPriced.items } : {}),\n    ...(facturaPriced.factura_items ? { factura_items: facturaPriced.factura_items } : {}),   // A-F: paid + comped SAR line set (redeemed x_pizza only; build-record reads factura_items || items)\n"
  },
  {
   "file": "menu-pricing.js",
@@ -112,8 +127,8 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "menu-pricing.js",
-  "now": "    }\n    const name = byId ? summaryLineName(it && it.name, key) : (((labelsOfTables(tables) || {})[key]) || key);   // S1d: a name-keyed line shows its key's current label\n    lines.push({ name, qty, cents: lineL * 100 });\n",
-  "was": "    }\n    const name = byId ? summaryLineName(it && it.name, key) : key;\n    lines.push({ name, qty, cents: lineL * 100 });\n"
+  "now": "    }\n    const name = byId ? summaryLineName(it && it.name, key) : (((labelsOfTables(tables) || {})[key]) || key);   // S1d: a name-keyed line shows its key's current label\n    lines.push({ name, qty, cents: lineL * 100, item_key: key });   // S1d: the key that priced the line (additive)\n  }\n",
+  "was": "    }\n    const name = byId ? summaryLineName(it && it.name, key) : key;\n    lines.push({ name, qty, cents: lineL * 100 });\n  }\n"
  },
  {
   "file": "menu-pricing.js",
@@ -122,7 +137,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "rewards-redeem-pricing.js",
-  "now": "  const menu = t.menu, extra = t.extraPrices; if (!require('./factura/eligibility').fiscalKeyModeOk('x_pizza', t.keyMode)) return { ok: false, error: 'fiscal_key_mode_unsupported' };   // S0: the effective mode must be name\n  const lab = require('./menu-pricing').labelsOfTables(tables); const priced = pricedLineItems(items, menu, extra, lab);                                  // the PAID cart lines (mirrors computeServerTotal)\n  if (priced.error) return { ok: false, error: priced.error };\n",
+  "now": "  const menu = t.menu, extra = t.extraPrices; if (!require('./factura/eligibility').fiscalKeyModeOk('x_pizza', t.keyMode)) return { ok: false, error: 'fiscal_key_mode_unsupported' };   // S0: the effective mode must be name\n  const lab = require('./menu-pricing').labelsOfTables(tables); const env = tables ? require('./catalog/pricing-tables').envelopeOf(tables) : undefined; const ver = env ? env.versionId : undefined; const priced = pricedLineItems(items, menu, extra, lab, ver);                                  // the PAID cart lines (mirrors computeServerTotal)\n  if (priced.error) return { ok: false, error: priced.error };\n",
   "was": "  const menu = t.menu, extra = t.extraPrices; if (!require('./factura/eligibility').fiscalKeyModeOk('x_pizza', t.keyMode)) return { ok: false, error: 'fiscal_key_mode_unsupported' };   // S0: the effective mode must be name\n  const priced = pricedLineItems(items, menu, extra);                                  // the PAID cart lines (mirrors computeServerTotal)\n  if (priced.error) return { ok: false, error: priced.error };\n"
  },
  {
@@ -132,7 +147,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "rewards-redeem-pricing.js",
-  "now": "  // marked `redeemed` so it lands ONLY in factura_items — never in `items` / order.items / the earn base.\n  const compedLine = { qty: freeQty, description: freeDesc, line_gross_cents: compedGross, redeemed: true };\n  const factura_items = priced.items.concat([compedLine]);\n",
+  "now": "  // marked `redeemed` so it lands ONLY in factura_items — never in `items` / order.items / the earn base.\n  const compedLine = { qty: freeQty, description: freeDesc, line_gross_cents: compedGross, redeemed: true, item_key: freeName, ...(ver === undefined ? {} : { menu_version_id: ver }) };\n  const factura_items = priced.items.concat([compedLine]);\n",
   "was": "  // marked `redeemed` so it lands ONLY in factura_items — never in `items` / order.items / the earn base.\n  const compedLine = { qty: freeQty, description: freeName, line_gross_cents: compedGross, redeemed: true };\n  const factura_items = priced.items.concat([compedLine]);\n"
  },
  {
@@ -144,6 +159,16 @@ const HUNKS = Object.freeze([
   "file": "catalog/public-menu.js",
   "now": "  // `overlayIdentity: false` — the same body minus the overlay. Every other caller (the endpoint) gets the overlay, unchanged.\n  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, require('./identity-overlay').withServedItemKeys(restaurantId, body, require('./identity-overlay').servedKeyMap(menu)), { keyById: require('./identity-overlay').servedKeyMap(menu) });   // S1d: keyed by display.id; item_key on the endpoint body only\n  body = enriched.body;\n",
   "was": "  // `overlayIdentity: false` — the same body minus the overlay. Every other caller (the endpoint) gets the overlay, unchanged.\n  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, body);\n  body = enriched.body;\n"
+ },
+ {
+  "file": "create-order-build.js",
+  "now": "  restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,\n  paymentFingerprint = null, menuVersionId = undefined,   // F1: content hash (order_id+total_cents+items_text+extra) → binds the idempotent-return to THIS cart; S1d: the pricing version (additive)\n}) {\n",
+  "was": "  restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,\n  paymentFingerprint = null,   // F1: content hash (order_id+total_cents+items_text+extra) → binds the idempotent-return to THIS cart\n}) {\n"
+ },
+ {
+  "file": "create-order-build.js",
+  "now": "    ...(fields.rtn_cliente ? { rtn_cliente: fields.rtn_cliente } : {}),\n    ...(paymentFingerprint ? { payment_fingerprint: paymentFingerprint } : {}), ...(menuVersionId === undefined ? {} : { menu_version_id: menuVersionId }),   // F1: idempotent-return content bind (additive; absent → byte-identical to pre-F1); S1d: the pricing version\n  };\n",
+  "was": "    ...(fields.rtn_cliente ? { rtn_cliente: fields.rtn_cliente } : {}),\n    ...(paymentFingerprint ? { payment_fingerprint: paymentFingerprint } : {}),   // F1: idempotent-return content bind (additive; absent → byte-identical to pre-F1)\n  };\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

@@ -1072,6 +1072,10 @@
   "xpizza-portal/shell.js#showBootError": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders"
  },
  "writtenFields": {
+  "menu_version_id": {
+   "class": "pointer",
+   "reason": "S1d (PLAN-portal-item-edit r6 §2.5): the catalog version that priced the order — provenance bookkeeping beside the stored item keys, never displayed as an order fact"
+  },
   "payment_fingerprint_text_version": {
    "class": "pointer",
    "reason": "PLAN-A A-1 (A8a): the binding's text-version marker beside payment_fingerprint ('a8' present only for an a8 binding) — bookkeeping that selects how the fingerprint's text is read, never displayed as an order fact"
