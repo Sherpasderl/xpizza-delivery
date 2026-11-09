@@ -165,6 +165,27 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
   }
   ok('refusals: tip_invalid 400 (string / over L 2,000 / negative), tip_reward_unsupported 409 (orders + quoteRedemption), tip_pickup 400 — each before any write or checkout; L 2,000 itself accepted');
 
+  // ── 3b. PLAN-capp-tip-step r6 D0: a positive tip needs a known payment method (intake sanitizes an omitted / empty / unknown
+  //        method to ''); refused 400 tip_payment_method_invalid before any write or checkout; a no-tip order is unchanged ──
+  {
+    const withMethod = (method, extra) => { const b = body(method === undefined ? 'cash' : method, { extra }); if (method === undefined) delete b.payment_method; return b; };
+    for (const m of [undefined, '', 'bitcoin']) {
+      const c = await cash({ body: withMethod(m, { tip_cents: 2000 }) });
+      assert.deepStrictEqual([c.status, c.json && c.json.error, c.rec], [400, 'tip_payment_method_invalid', null], `🔴 D0 cash: method ${JSON.stringify(m)} + tip ⇒ 400, nothing written`);
+      const k = await card({ body: withMethod(m, { tip_cents: 2000 }) });
+      assert.deepStrictEqual([k.status, k.json && k.json.error, k.charged.length, k.attempts, k.rec], [400, 'tip_payment_method_invalid', 0, 0, null], `🔴 D0 card: method ${JSON.stringify(m)} + tip ⇒ 400, no checkout`);
+      const c0 = await cash({ body: withMethod(m, {}) });
+      assert.notStrictEqual(c0.json && c0.json.error, 'tip_payment_method_invalid', `D0: method ${JSON.stringify(m)} without a tip keeps today's path`);
+      const k0 = await card({ body: withMethod(m, {}) });
+      assert.notStrictEqual(k0.json && k0.json.error, 'tip_payment_method_invalid', `D0: card, method ${JSON.stringify(m)} without a tip keeps today's path`);
+    }
+    for (const [fn, m] of [[cash, 'cash'], [card, 'online']]) {
+      const r = await fn({ body: body(m, { extra: { tip_cents: 2000 } }) });
+      assert.notStrictEqual(r.json && r.json.error, 'tip_payment_method_invalid', `D0: ${m} + tip is not refused by D0`);
+    }
+  }
+  ok('D0: a tip with an omitted / empty / unknown payment_method ⇒ 400 tip_payment_method_invalid on cash and card, nothing written, no checkout; without a tip ⇒ today\'s path; known methods pass');
+
   // ── 4. idempotency: same id + same tip → the same order; a changed tip → order_exists reason 'tip' ──
   {
     const first = await cash({ extra: { tip_cents: 2000 } });

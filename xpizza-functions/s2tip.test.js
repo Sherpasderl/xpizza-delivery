@@ -84,7 +84,7 @@ const seq = (...ids) => { let i = 0; return () => ids[i++]; };
     assert.deepStrictEqual([TIP.normTip(undefined), TIP.normTip(0), TIP.normTip(1), TIP.normTip(200000)], [0, 0, 1, 200000]);
     for (const bad of [200001, -1, 1.5, '0', '100', null, true, NaN, Infinity, {}]) assert.ok(Number.isNaN(TIP.normTip(bad)), `${JSON.stringify(bad)} → NaN`);
     assert.strictEqual(TIP.TIP_MAX_CENTS, 200000, 'TIP_MAX = L 2,000 (Q7, owner 2026-10-25)');
-    assert.deepStrictEqual([TIP.orderRefusal({}), TIP.orderRefusal({ tip_cents: 0 }), TIP.orderRefusal({ tip_cents: 500 }), TIP.orderRefusal({ tip_cents: 0, redeem: { x: 1 } })], [null, null, null, null]);
+    assert.deepStrictEqual([TIP.orderRefusal({}), TIP.orderRefusal({ tip_cents: 0 }), TIP.orderRefusal({ tip_cents: 500, payment_method: 'cash' }), TIP.orderRefusal({ tip_cents: 0, redeem: { x: 1 } })], [null, null, null, null]);
     assert.deepStrictEqual(TIP.orderRefusal({ tip_cents: '500' }), { status: 400, error: 'tip_invalid' });
     assert.deepStrictEqual(TIP.orderRefusal({ tip_cents: 200001 }), { status: 400, error: 'tip_invalid' });
     assert.deepStrictEqual(TIP.orderRefusal({ tip_cents: 500, redeem: { x: 1 } }), { status: 409, error: 'tip_reward_unsupported' }, 'tip + reward → 409 tip_reward_unsupported');
@@ -92,6 +92,31 @@ const seq = (...ids) => { let i = 0; return () => ids[i++]; };
     assert.deepStrictEqual([TIP.tipBindingConflict({}, 0), TIP.tipBindingConflict({ tip_cents: 500 }, 500), TIP.tipBindingConflict(null, 500)], [null, null, null]);
     assert.deepStrictEqual([TIP.tipBindingConflict({}, 500), TIP.tipBindingConflict({ tip_cents: 500 }, 0), TIP.tipBindingConflict({ tip_cents: 500 }, 600)], [{ reason: 'tip' }, { reason: 'tip' }, { reason: 'tip' }]);
     ok('tip.js: absent / undefined / 0 = no tip; 1..200000 accepted; anything else 400 tip_invalid; tip + reward 409; tipExtra "" without a tip; the direct compare refuses any change, never no-tip vs no-tip');
+  }
+
+  // ── 1b. PLAN-capp-tip-step r6 D0 (Codex r6 P1): a POSITIVE tip needs a known payment method. Intake sanitizes an omitted / empty /
+  //        unknown payment_method to '' (index.js validateOrderPayload); a tip on such an order would be neither kept by the
+  //        driver's cuadre nor accrued by the ledger. Refused BEFORE anything is read or written; a no-tip order is unchanged. ──
+  {
+    for (const pm of [undefined, '', 'bitcoin', '  ', null, 7]) {
+      const body = pm === undefined ? { tip_cents: 2000 } : { tip_cents: 2000, payment_method: pm };
+      assert.deepStrictEqual(TIP.orderRefusal(body), { status: 400, error: 'tip_payment_method_invalid' }, `🔴 D0: tip 2000 with method ${JSON.stringify(pm)} ⇒ 400 tip_payment_method_invalid`);
+      const noTip = pm === undefined ? {} : { payment_method: pm };
+      assert.strictEqual(TIP.orderRefusal(noTip), null, `D0: no tip with method ${JSON.stringify(pm)} ⇒ unchanged (proceeds)`);
+      assert.strictEqual(TIP.orderRefusal({ ...noTip, tip_cents: 0 }), null, `D0: tip 0 with method ${JSON.stringify(pm)} ⇒ unchanged`);
+    }
+    for (const pm of ['cash', 'online', 'card_delivery', ' cash ', 'cash\u0000', '<online>']) {
+      assert.strictEqual(TIP.orderRefusal({ tip_cents: 2000, payment_method: pm }), null, `🔴 D0: tip with method ${JSON.stringify(pm)} — the SAME normalization intake applies (sanitizeText + the allowlist) ⇒ accepted`);
+    }
+    assert.deepStrictEqual(TIP.orderRefusal({ tip_cents: 2000, redeem: { x: 1 } }), { status: 409, error: 'tip_reward_unsupported' }, 'D0: the reward refusal still answers first');
+    // parity: the allowlist and the normalization are intake's own (index.js), read from source — never a drifting copy
+    const src = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+    const al = src.match(/const ALLOWED_PAYMENT_METHODS = (\[[^\]]*\]);/);
+    assert.ok(al, 'premise: index.js ALLOWED_PAYMENT_METHODS');
+    assert.deepStrictEqual(TIP.PAYMENT_METHODS, JSON.parse(al[1].replace(/'/g, '"')), '🔴 D0: tip.js PAYMENT_METHODS === index.js ALLOWED_PAYMENT_METHODS');
+    const san = src.match(/function sanitizeText\(v, maxLen = 500\) \{([\s\S]*?)\n\}/);
+    assert.ok(san && san[1].includes(".replace(/[<>]/g, '').replace(/[\\x00-\\x1f\\x7f]/g, ' ').trim()"), '🔴 D0 parity: intake\'s sanitizeText still strips <>, maps control chars to spaces and trims (tip.js mirrors it)');
+    ok('D0: a positive tip with an omitted / empty / unknown payment_method ⇒ 400 tip_payment_method_invalid before any write; no tip ⇒ unchanged; known methods (intake\'s normalization) accepted; parity with index.js');
   }
 
   // ── 2. the net includes the tip EXACTLY ONCE; no tip → byte-identical net + components ──
