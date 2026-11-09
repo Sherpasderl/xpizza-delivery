@@ -2,8 +2,8 @@
 // S1d D6 (S1b ruling Q4: the overlay + the plan's display.id test move to S1d; D4c-grill/item-s1/S1d-DESIGN.md D6) — a SERVED dish
 // record is keyed by its display.id through the version's own (display.id → key) map, so a RENAMED dish (key kept, name changed)
 // and an OPAQUE dish (minted key) keep their identity on the served menu; a dish the map does not hold is keyed exactly as today.
-// The endpoint body also names each dish's item_key from the same map (the overlay-free body the reconciler and the bake read
-// does not). Run: node catalog/identity-overlay-displayid.test.js
+// The endpoint body also names every dish's item_key, in one top-level map from the same map (the overlay-free body the
+// reconciler and the bake read does not). Run: node catalog/identity-overlay-displayid.test.js
 const assert = require('assert');
 const OV = require('./identity-overlay');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -34,9 +34,10 @@ const lmMenu = { items: [{ key: 'dimsum_01', price: 249, display: { id: 'dimsum_
   const before = JSON.parse(JSON.stringify(body));
   const out = OV.withServedItemKeys('x_pizza', body, OV.servedKeyMap(menu));
   assert.deepStrictEqual(body, before, 'OV-PURE the input body is not mutated');
-  assert.deepStrictEqual(out.dishes.map((d) => d.item_key), ['Dish One', 'i_aaaaaaaaaaab', 'Ghost'], 'OV-ITEMKEY each served dish names its item_key');
+  assert.deepStrictEqual(out.item_keys, { 2: 'Dish One', 7: 'i_aaaaaaaaaaab', 99: 'Ghost' }, 'OV-ITEMKEY one top-level map (display.id → item_key)');
+  assert.deepStrictEqual(out.dishes, body.dishes, 'OV-RECORDS dish records are untouched (the frozen forms serialize them into the order)');
   assert.deepStrictEqual(out.extras, body.extras, 'OV-ITEMKEY extras are unchanged');
-  ok('the endpoint body names each dish\'s item_key from the same map; the input is never mutated');
+  ok('the endpoint body names every dish\'s item_key in one top-level map; records untouched; the input is never mutated');
 }
 
 console.log(`\nidentity-overlay-displayid: OK (${n})`);
