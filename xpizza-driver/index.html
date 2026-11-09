@@ -3822,8 +3822,8 @@ function renderGanancias(view) {
     const range = `${fmt(ws)} a ${fmt(ws + 6 * 86400000)}`;
     const rangeSub = (n > 0) ? `${n} ${n === 1 ? 'entrega' : 'entregas'} · ${range}` : range;
     const tarifa = (curRate != null)
-      ? `Tarifa: L ${lemp(curRate)} por entrega, fija por la plataforma. Sin propinas ni bonos en el app.`
-      : 'La tarifa la fija la plataforma. Sin propinas ni bonos en el app.';
+      ? `Tarifa: L ${lemp(curRate)} por entrega, fija por la plataforma. Las propinas en efectivo son tuyas al momento; las de tarjeta llegan en tu pago semanal. Sin bonos en el app.`
+      : 'La tarifa la fija la plataforma. Las propinas en efectivo son tuyas al momento; las de tarjeta llegan en tu pago semanal. Sin bonos en el app.';
     body = `${seg}
       <div class="gn-card gn-earn"><div class="gn-lbl">Ganado esta semana</div>${big(earnCents)}<div class="gn-sub">${escapeHtml(rangeSub)}</div></div>
       <div class="gn-card"><div class="gn-lbl gn-lbl-in">Por día</div><div class="gn-bars">${bars}</div></div>
