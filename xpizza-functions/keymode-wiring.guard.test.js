@@ -13,7 +13,7 @@ const { execFileSync } = require('child_process');
 const { parse } = require('acorn');
 const { BASE, HUNKS, FILES, unapplyKeyModeModule } = require('./tools/keymode-module-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))));   // S1a's newer layer is peeled first
+const read = (f) => require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('./tools/s1d-module-inverse').unapplyS1dModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')))));   // S1a's newer layer is peeled first
 
 // ── 2 ──
 const BRAND = /'la_musa'|'x_pizza'|"la_musa"|"x_pizza"/;
@@ -136,7 +136,7 @@ const ALLOWED = {
 // The inverse round-trip runs LAST: a mutant in an owned file breaks it, so every named pin above must get its turn first.
 // ── 1 ──
 const pinnedElsewhere = new Set();
-for (const t of fs.readdirSync(path.join(__dirname, 'tools')).filter((x) => /-inverse\.js$/.test(x) && x !== 'keymode-module-inverse.js' && x !== 'frozenkeys-module-inverse.js' && x !== 'reservedkeys-module-inverse.js')) {   // newer layers are not older pins
+for (const t of fs.readdirSync(path.join(__dirname, 'tools')).filter((x) => /-inverse\.js$/.test(x) && x !== 'keymode-module-inverse.js' && x !== 'frozenkeys-module-inverse.js' && x !== 'reservedkeys-module-inverse.js' && x !== 's1d-module-inverse.js')) {   // newer layers are not older pins
   const txt = fs.readFileSync(path.join(__dirname, 'tools', t), 'utf8');
   for (const f of FILES) if (txt.includes(`"${f}"`) || txt.includes(`'${f}'`)) pinnedElsewhere.add(f);
 }

@@ -15,7 +15,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 for (const m of Object.keys(HUNKS)) {
-  const real = require('./tools/keymode-module-inverse').unapplyKeyModeModule(m, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(m, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(m, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(m, fs.readFileSync(path.join(__dirname, m), 'utf8')))));   // S0 key mode (newest) reversed first
+  const real = require('./tools/keymode-module-inverse').unapplyKeyModeModule(m, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(m, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(m, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(m, require('./tools/s1d-module-inverse').unapplyS1dModule(m, fs.readFileSync(path.join(__dirname, m), 'utf8'))))));   // S0 key mode (newest) reversed first
   const base = git(['show', `${BASE}:xpizza-functions/${m}`]);
   assert.notStrictEqual(real, base, `non-vacuity: ${m} carries the directory hunks`);
   assert.strictEqual(require('./tools/formbake-module-inverse').unapplyFormbakeModule(m, unapplyDirectoryModule(m, require('./tools/avail-identity-inverse').unapplyAvailIdentity(m, require('./tools/photos-module-inverse').unapplyPhotosModule(m, real)))), base,   // DRYRUN R-WIRE (2e): photos A2 (newest) innermost, then avail-identity, then directory, then PLAN 4's module hunks
