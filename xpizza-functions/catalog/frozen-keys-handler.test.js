@@ -218,10 +218,6 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     SWITCH.enabled = false;
     const HWM = `restaurants/${RID}/meta/display_id_hwm`;
     const withAddition = () => { const d = clone(seed); const T = 'tmp:hwmrace0001'; d.items.push({ ref: T, price: 150, display: { name: 'Pizza Nueva', cat: 'ny', price: 150, desc: '' } }); d.structure.item_order.push(T); return d; };
-    const ctl = stub(RID, seed);
-    const c = await save(ctl, RID, withAddition());
-    assert.strictEqual(c.status, 200, `premise: the addition saves (${JSON.stringify(c.body).slice(0, 160)})`);
-    assert.ok(Number.isInteger(ctl.state.docs.get(HWM).data.value), 'HX-HWM-PERSIST the high-water mark is created with the draft');
     // (a) create conflict: absent at read, created by another save before the commit
     const a = stub(RID, seed, null, { race: { [HWM]: (docs) => docs.set(HWM, { data: { value: 777 }, updateTime: 'racer' }) } });
     const ra = await save(a, RID, withAddition());
@@ -232,6 +228,11 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     const rb = await save(b, RID, withAddition());
     assert.deepStrictEqual([rb.status, rb.body.error], [409, 'stale_edit'], `HX-HWM-ATOMIC a mark moved concurrently refuses the save (${JSON.stringify(rb.body).slice(0, 160)})`);
     assert.deepStrictEqual([b.state.source.data, b.state.source.updateTime, b.state.docs.get(HWM).data.value, b.state.writes.length], [seed, T0, 60, 0], 'HX-HWM-ATOMIC the draft untouched — nothing of the batch applied');
+    // the control, after the race cells (so each race mutant meets its own cell first): with no race the addition saves
+    const ctl = stub(RID, seed);
+    const c = await save(ctl, RID, withAddition());
+    assert.strictEqual(c.status, 200, `HX-HWM-PERSIST the addition saves (${JSON.stringify(c.body).slice(0, 160)})`);
+    assert.ok(Number.isInteger(ctl.state.docs.get(HWM).data.value), 'HX-HWM-PERSIST the high-water mark is created with the draft');
     ok('an addition\'s draft + high-water mark commit atomically: a concurrent create or move refuses the save and leaves the draft untouched');
   }
 
