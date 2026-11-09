@@ -76,6 +76,7 @@ const allow = async () => ({ ok: true, uid: 'u_owner', role: 'owner', actor: 'o@
 // the add-product I/O (catalog/add-product-io.js shape): the profile's mode, the id high-water mark, and the identity registry's
 // key rows — RETIRED holds the names used before; an unknown key mode throws exactly as production does
 const RETIRED = new Set();
+const RESERVED_IO = { doc: undefined, fail: false, reads: 0 };   // S1c: the reserved-key set the io reads
 const addProductOf = (db, mode) => ({
   readKeyMode: async () => mode,
   hwmRef: (rid) => (db ? db.doc(`restaurants/${rid}/meta/display_id_hwm`) : { path: null, get: async () => ({ exists: false, data: () => undefined }) }),   // the production path (add-product-io hwmRefOf)
@@ -84,6 +85,7 @@ const addProductOf = (db, mode) => ({
     return new Set([...new Set(keys)].filter((k) => RETIRED.has(k)));
   },
   syncKds: async () => ({ pending: false, written: false, reason: 'superseded' }),   // production's shape when another publish won
+  readReservedKeys: async () => { RESERVED_IO.reads += 1; if (RESERVED_IO.fail) throw new Error('UNAVAILABLE'); return require('./reserved-keys').reservedKeySet(RESERVED_IO.doc); },   // S1c: production's shape (add-product-io)
 });
 const save = (db, rid, source, mode = rid === 'la_musa' ? 'id' : 'name') => editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt, addProduct: addProductOf(db, mode) }, { restaurantId: rid, source, baseSourceUpdateTime: db.state.source.updateTime }, {});
 const itemOf = (s, key) => s.items.find((i) => i.key === key);
@@ -340,6 +342,10 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     const p3 = await publish(lmd, 'la_musa');
     RETIRED.delete('retired_key');
     assert.deepStrictEqual([p3.r.status, p3.r.body.error, p3.r.body.key, p3.publishes.length], [400, 'name_previously_used', 'dimsum_01', 0], `HX-PUB-RESERVED-IDKEY an id-keyed rename onto a registry-reserved key never reaches the publisher (${JSON.stringify(p3.r.body).slice(0, 160)})`);
+    RESERVED_IO.doc = require('./reserved-keys').unionReserved(require('./reserved-keys').emptyReserved(), { dish: ['Pizza Movida'], extra: [] }, 'v0').doc;
+    const p4 = await publish({ ...renamed(seed, 'Pizza Movida'), frozen_keys: { [ID]: KEY } });
+    RESERVED_IO.doc = undefined;
+    assert.deepStrictEqual([p4.r.status, p4.r.body.error, p4.publishes.length], [400, 'name_previously_used', 0], `HX-RK-PUB a rename onto a reserved key never reaches the publisher (${JSON.stringify(p4.r.body).slice(0, 160)})`);
     ok('publish: a recorded rename publishes with its map; renames onto reserved keys are refused before the publisher');
   }
 
@@ -370,6 +376,27 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     ok('reset: the projection validates by the version\'s map; stored entries are never dropped');
   }
 
+  // ── S1c D3 (owner 2026-11-09): a RENAME may not take another item's RESERVED key (the add-only set: a key whose registry row
+  //    is gone is still in it), at save AND publish; switch OFF reads nothing; a read failure is a retryable 503 ──
+  {
+    const RK = require('./reserved-keys');
+    RESERVED_IO.doc = RK.unionReserved(RK.emptyReserved(), { dish: ['Pizza Movida', KEY], extra: [] }, 'v0').doc; RESERVED_IO.fail = false;
+    SWITCH.enabled = false; RESERVED_IO.reads = 0;
+    const off = stub(RID, seed);
+    await save(off, RID, renamed(seed, 'pizza movida'));
+    assert.strictEqual(RESERVED_IO.reads, 0, 'HX-RK-OFF switch off: the set is never read (today, byte for byte)');
+    SWITCH.enabled = true;
+    const db = stub(RID, seed);
+    const r = await save(db, RID, renamed(seed, '  Pizza  MOVIDA'));
+    assert.deepStrictEqual([r.status, r.body.error, r.body.key, db.state.writes.length], [400, 'name_previously_used', KEY, 0], `HX-RK-SAVE a rename onto a reserved key (folded) is refused at save, nothing written (${JSON.stringify(r.body).slice(0, 160)})`);
+    const own = await save(stub(RID, seed), RID, renamed(seed, 'Carnívora'));
+    assert.strictEqual(own.status, 200, `HX-RK-OWN a rename that folds to its own key saves (${JSON.stringify(own.body).slice(0, 160)})`);
+    RESERVED_IO.fail = true;
+    const down = await save(stub(RID, seed), RID, renamed(seed, 'Carnivora Suprema'));
+    assert.deepStrictEqual([down.status, down.body.error], [503, 'store_unavailable'], 'HX-RK-DOWN an unreadable set is a retryable 503, never absence');
+    RESERVED_IO.fail = false;
+    ok('S1c: a rename onto a reserved key is refused at save (folded); its own key is free; OFF never reads the set; unreadable → 503');
+  }
   FINISHED = true;
   console.log(`\nfrozen-keys-handler: OK (${n})`);
 })().catch((e) => { console.error('frozen-keys-handler FAILED:', e); process.exit(1); });
