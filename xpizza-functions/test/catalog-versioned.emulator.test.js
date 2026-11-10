@@ -503,8 +503,9 @@ const buildReader = (codeMap = null) => {
     const mirror = mkMirror();
     const res = await publishAt(rid, mkVersion({ A: 7 }), { mirror: mirror.fn });
     assert.strictEqual(mirror.writes.length, 1, 'the mirror was written exactly once');
-    assert.deepStrictEqual(mirror.writes[0], { rid, version: res.versionId, seq: 1, menu: { A: 7 }, extras: {} },
-      'the mirror payload is fully self-describing — version witness AND ordinal, so a reader needs no Firestore');
+    // S1d (PLAN r6 §2.5): the dish LABELS travel beside the tables in the mirror payload ({key: display.name}; mkVersion names A «A»)
+    assert.deepStrictEqual(mirror.writes[0], { rid, version: res.versionId, seq: 1, menu: { A: 7 }, extras: {}, labels: { A: 'A' } },
+      'the mirror payload is fully self-describing — version witness AND ordinal (and S1d labels), so a reader needs no Firestore');
     assert.strictEqual(res.mirrored, true, 'publish reports the mirror acked');
     ok('1b mirror: written once, awaited, self-describing (carries its own version witness)');
   }
