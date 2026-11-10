@@ -10,7 +10,8 @@
 //   4  MINT (la_musa, S1c's allocator): the minted dish's line carries item_key ALONE (no id — it would disagree); it resolves; the
 //      same line with its display id is the server's invalid_line
 //   5  REWARD: the picker's key is the dish's item_key (a renamed x_pizza dish, a minted la_musa dish) — rewards resolve by exact key
-//   6  AVAILABILITY: an 86 under the item_key (the portal's writer key, ops-core.js:385-390) marks the renamed / minted dish sold
+//   6  AVAILABILITY: an 86 under the item_key (the portal's writer key, ops-core.js:385-390) marks a minted dish sold, in both forms
+//      (a minted dish, never a renamed one: the form's own key history already holds a renamed dish's old name = its key)
 //   7  Q3-A DEPLOY-SPANNING: a stash written by the pre-S3 page (af69a266) resumes here — with the map served — byte-identically:
 //      order_id, items (no item_key), items_text, orderFingerprint, charge_inputs_fp; card and cash
 //   8  Q3-B: an S3 stash (lines WITH item_key) resumed BEFORE the live map arrives keeps item_key byte-identically
@@ -190,18 +191,21 @@ for (const rid of ['x_pizza', 'la_musa']) {
 
 // ── 6. AVAILABILITY ──
 {
-  const P = await quiet(() => published('x_pizza', { rename: { key: 'Carnivora', to: 'Carnívora Suprema' } }));
+  // a MINTED x_pizza dish: its name never was its key on this page (a renamed one is not a fair cell — the baked menu showed it
+  // under its old name, which the form's own key history already keeps, so the history alone would mark it sold)
+  const P = await quiet(() => published('x_pizza', { mint: { name: 'Pizza Nueva', key: 'i_aaaaaaaaaaab' } }));
   const { w } = await boot('xpizza-orders', P);
-  const d = w.liveMenuGlobalGet('MENU').find((x) => x.name === 'Carnívora Suprema');
+  const d = w.liveMenuGlobalGet('MENU').find((x) => x.name === 'Pizza Nueva');
+  assert.ok(d && P.body.item_keys[String(d.id)] === 'i_aaaaaaaaaaab', 'premise: the minted x_pizza dish is served with its opaque key');
   assert.strictEqual(w.isSoldOut(d), false, 'premise: available before the 86');
-  await loadAvail(w, { [w.availKey('Carnivora')]: { available: false, updated_at: 1 } });
-  assert.strictEqual(w.isSoldOut(d), true, '🔴 xpizza-orders: an 86 under the item_key marks the renamed dish sold (S3-AVAIL-XP)');
+  await loadAvail(w, { [w.availKey('i_aaaaaaaaaaab')]: { available: false, updated_at: 1 } });
+  assert.strictEqual(w.isSoldOut(d), true, '🔴 xpizza-orders: an 86 under the item_key marks the minted dish sold (S3-AVAIL-XP)');
   const L = await quiet(() => published('la_musa', { mint: { name: 'Bao Nuevo', key: 'i_aaaaaaaaaaac' } }));
   const lw = (await boot('la-musa-orders', L)).w;
   const ld = lw.liveMenuGlobalGet('MENU').find((x) => x.name === 'Bao Nuevo');
   await loadAvail(lw, { [lw.availKey('i_aaaaaaaaaaac')]: { available: false, updated_at: 1 } });
   assert.strictEqual(lw.isSoldOut(ld), true, '🔴 la-musa-orders: an 86 under the minted item_key marks the dish sold (S3-AVAIL-LM)');
-  ok('AVAILABILITY — an 86 under the item_key (the portal writer\'s key) marks a renamed / minted dish sold');
+  ok('AVAILABILITY — an 86 under the item_key (the portal writer\'s key) marks a minted dish sold, in both forms');
 }
 
 // ── 7. Q3-A: the pre-S3 page's stash resumes here byte-identically, the map served ──
@@ -248,9 +252,25 @@ for (const rid of ['x_pizza', 'la_musa']) {
   w.restoreOrderForm(); await settle();
   const body = await send(w, sent, 'card');
   assert.strictEqual(body.order_id, firstBody.order_id, `${dir}: the same order_id`);
-  assert.deepStrictEqual(body.items, firstBody.items, `🔴 ${dir}: the resumed items keep their item_key byte-identically with no live map (S3-Q3B-ITEMS)`);
-  assert.strictEqual(chargeInputsFingerprint(body), chargeInputsFingerprint(firstBody), `🔴 ${dir}: the same charge_inputs_fp (S3-Q3B-FP)`);
-  ok(`${dir}: Q3-B — an S3 stash resumed before the live map arrives keeps item_key byte-identically`);
+  assert.deepStrictEqual(body.items.map((l) => [l.item_key, 'item_key' in l, Object.keys(l).at(-1), 'id' in l]), firstBody.items.map((l) => [l.item_key, 'item_key' in l, Object.keys(l).at(-1), 'id' in l]),
+    `🔴 ${dir}: the resumed lines keep their item_key (and id presence) exactly as first sent, with no live map (S3-Q3B-ITEMS)`);
+  // the ONE other difference is dish_id: the baked menu carries no identity until the live apply (post-bake-artifact.test.mjs), so a
+  // resume before it lands drops dish_id — PRE-EXISTING: the pre-S3 page does exactly the same (proved below), not this slice's
+  const noDish = (items) => items.map((l) => { const { dish_id, ...rest } = l; return rest; });
+  assert.deepStrictEqual(noDish(body.items), noDish(firstBody.items), `🔴 ${dir}: apart from the pre-existing dish_id, the resumed items are byte-identical (S3-Q3B-REST)`);
+  {
+    materializeOld(dir);
+    const o1 = await boot(dir, P, { old: true });
+    await add(o1.w, B.id); await add(o1.w, A.id);
+    const ob = await send(o1.w, o1.sent, 'card');
+    const ostash = o1.w.localStorage.getItem(STASH[dir]);
+    const o2 = await boot(dir, P, { old: true, live: false });
+    o2.w.localStorage.setItem(STASH[dir], ostash);
+    o2.w.restoreOrderForm(); await settle();
+    const orb = await send(o2.w, o2.sent, 'card');
+    assert.ok(ob.items.every((l) => typeof l.dish_id === 'string') && orb.items.every((l) => !('dish_id' in l)), `premise (base ${OLD_SHA}): a resume before the live apply drops dish_id on the pre-S3 page too`);
+  }
+  ok(`${dir}: Q3-B — an S3 stash resumed before the live map arrives keeps each line's item_key (and id presence) as first sent; dish_id's drop there is pre-existing (base ${OLD_SHA} does the same)`);
 }
 
 closeAll();

@@ -83,10 +83,15 @@ async function run(dir, body, marker) {
     assert.notDeepStrictEqual(rs.createOrder, r0.createOrder, `${dir}: sensitivity — and the createOrder body`);
     ok(`${dir}: + avail_identity (same marker) the REAL page commits the same globals, paints the same page, sends the same createOrder/quote and fingerprint; a renamed dish moves them`);
   }
+  // S3 (the owner's rule-40 exception, D4c-grill/item-s1/S3-DESIGN.md D3): the forms carry the item_key hunks — composed OUT by their
+  // exact inverse (tools/item-s3-forms-inverse.js: each hunk once, or it throws), so every byte outside S3 is still pinned to BASE
+  const { unapplyItemS3Forms } = require('./tools/item-s3-forms-inverse');
   for (const dir of DIRS) {
     const was = execFileSync('git', ['show', `${BASE}:${dir}/index.html`], { cwd: new URL('.', import.meta.url).pathname, encoding: 'utf8', maxBuffer: 1 << 27 });
-    assert.strictEqual(readFileSync(new URL(`./${dir}/index.html`, import.meta.url), 'utf8'), was, `🔴 AVAIL-ID-FORMS-BYTE-IDENTICAL ${dir}/index.html differs from ${BASE}`);
+    const live = readFileSync(new URL(`./${dir}/index.html`, import.meta.url), 'utf8');
+    assert.notStrictEqual(unapplyItemS3Forms(dir, live), live, `${dir}: non-vacuity — the S3 hunks are present`);
+    assert.strictEqual(unapplyItemS3Forms(dir, live), was, `🔴 AVAIL-ID-FORMS-BYTE-IDENTICAL ${dir}/index.html minus the S3 hunks differs from ${BASE}`);
   }
-  ok(`both form files are byte-identical to ${BASE}`);
+  ok(`both form files, minus exactly the S3 item_key hunks, are byte-identical to ${BASE}`);
   console.log(`\navail-identity-forms-noop: OK (${count()})`);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -44836,7 +44836,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals#total_cents#0",
-   "line": 3214,
+   "line": 3224,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -44848,7 +44848,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#requestServerQuote>anon#total_cents#0",
-   "line": 3426,
+   "line": 3436,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -44860,7 +44860,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#requestServerQuote>anon#total_cents#1",
-   "line": 3426,
+   "line": 3436,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -44872,7 +44872,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#requestServerQuote>anon#total_cents#2",
-   "line": 3426,
+   "line": 3436,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -44884,7 +44884,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#successTotalCents#total_cents#0",
-   "line": 3486,
+   "line": 3496,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -44896,7 +44896,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#successTotalCents#total_cents#1",
-   "line": 3486,
+   "line": 3496,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -44908,7 +44908,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#successTotalCents#redeem_total_cents#0",
-   "line": 3488,
+   "line": 3498,
    "kind": "member",
    "facts": [
     "MONEY"
@@ -44918,7 +44918,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#successTotalCents#redeem_total_cents#1",
-   "line": 3488,
+   "line": 3498,
    "kind": "member",
    "facts": [
     "MONEY"
@@ -44928,7 +44928,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#successTotalCents#total#0",
-   "line": 3489,
+   "line": 3499,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -44940,7 +44940,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#geoLocationUnestablished#lat#0",
-   "line": 3832,
+   "line": 3842,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -44950,7 +44950,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#geoLocationUnestablished#lng#0",
-   "line": 3832,
+   "line": 3842,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -44960,7 +44960,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyGeoWhenReady#lat#0",
-   "line": 3872,
+   "line": 3882,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -44970,7 +44970,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyGeoWhenReady#lng#0",
-   "line": 3872,
+   "line": 3882,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -44980,7 +44980,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyGeoWhenReady#lat#1",
-   "line": 3873,
+   "line": 3883,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -44990,7 +44990,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyGeoWhenReady#lng#1",
-   "line": 3873,
+   "line": 3883,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45000,7 +45000,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#initMap#lat#0",
-   "line": 3896,
+   "line": 3906,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45010,7 +45010,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#initMap#lng#0",
-   "line": 3896,
+   "line": 3906,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45020,7 +45020,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#placePin>anon#lat#0",
-   "line": 3920,
+   "line": 3930,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45030,7 +45030,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#placePin>anon#lng#0",
-   "line": 3921,
+   "line": 3931,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45040,7 +45040,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#openFullscreenMap>anon#lat#0",
-   "line": 3962,
+   "line": 3972,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45050,7 +45050,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#openFullscreenMap>anon#lng#0",
-   "line": 3962,
+   "line": 3972,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45060,7 +45060,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#openFullscreenMap>anon#lat#1",
-   "line": 3966,
+   "line": 3976,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45070,7 +45070,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#openFullscreenMap>anon#lng#1",
-   "line": 3966,
+   "line": 3976,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45080,7 +45080,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#closeFullscreenMap#lat#0",
-   "line": 3983,
+   "line": 3993,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45090,7 +45090,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#closeFullscreenMap#lng#0",
-   "line": 3983,
+   "line": 3993,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45100,7 +45100,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#locPickPred#lat#0",
-   "line": 4175,
+   "line": 4185,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45110,7 +45110,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#locPickPred#lat#1",
-   "line": 4180,
+   "line": 4190,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45120,7 +45120,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#locPickPred#lng#0",
-   "line": 4180,
+   "line": 4190,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45130,7 +45130,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPayment#cash_tendered#0",
-   "line": 4380,
+   "line": 4390,
    "kind": "member",
    "facts": [
     "TENDER"
@@ -45140,71 +45140,6 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#0",
-   "line": 4642,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "form-composer",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#1",
-   "line": 4644,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "form-composer",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#2",
-   "line": 4645,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "form-composer",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#3",
-   "line": 4646,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "form-composer",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#4",
-   "line": 4646,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "form-composer",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#5",
    "line": 4653,
    "kind": "member",
    "facts": [
@@ -45217,8 +45152,73 @@
    "exempt": true
   },
   {
+   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#1",
+   "line": 4655,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "form-composer",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#2",
+   "line": 4656,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "form-composer",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#3",
+   "line": 4657,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "form-composer",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#4",
+   "line": 4657,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "form-composer",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#5",
+   "line": 4664,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "form-composer",
+   "exempt": true
+  },
+  {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#6",
-   "line": 4665,
+   "line": 4676,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45231,7 +45231,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#7",
-   "line": 4666,
+   "line": 4677,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45244,7 +45244,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#8",
-   "line": 4669,
+   "line": 4680,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45257,7 +45257,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#9",
-   "line": 4676,
+   "line": 4687,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45270,7 +45270,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#10",
-   "line": 4676,
+   "line": 4687,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45283,7 +45283,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#redeem#0",
-   "line": 4689,
+   "line": 4700,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45293,7 +45293,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#11",
-   "line": 4705,
+   "line": 4716,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45306,7 +45306,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#12",
-   "line": 4717,
+   "line": 4728,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45319,7 +45319,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#13",
-   "line": 4721,
+   "line": 4732,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45332,7 +45332,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#order_id#0",
-   "line": 4736,
+   "line": 4747,
    "kind": "member",
    "facts": [
     "NUM"
@@ -45342,7 +45342,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#order_id#1",
-   "line": 4741,
+   "line": 4752,
    "kind": "member",
    "facts": [
     "NUM"
@@ -45352,7 +45352,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#clearPendingPayFor#order_id#0",
-   "line": 4763,
+   "line": 4774,
    "kind": "member",
    "facts": [
     "NUM"
@@ -45362,7 +45362,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#scheduled_for#0",
-   "line": 4772,
+   "line": 4783,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -45372,7 +45372,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#order_id#0",
-   "line": 4773,
+   "line": 4784,
    "kind": "member",
    "facts": [
     "NUM"
@@ -45382,7 +45382,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#scheduled_for#1",
-   "line": 4774,
+   "line": 4785,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -45392,7 +45392,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#total_cents#0",
-   "line": 4775,
+   "line": 4786,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -45404,7 +45404,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#total_cents#1",
-   "line": 4775,
+   "line": 4786,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -45416,7 +45416,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#redemption#0",
-   "line": 4776,
+   "line": 4787,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45426,7 +45426,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#redemption#1",
-   "line": 4776,
+   "line": 4787,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45436,7 +45436,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#items#0",
-   "line": 4787,
+   "line": 4798,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45446,7 +45446,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#order_id#1",
-   "line": 4787,
+   "line": 4798,
    "kind": "member",
    "facts": [
     "NUM"
@@ -45456,7 +45456,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#total_cents#2",
-   "line": 4789,
+   "line": 4800,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -45468,7 +45468,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#total_cents#3",
-   "line": 4789,
+   "line": 4800,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -45480,7 +45480,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#redemption#2",
-   "line": 4790,
+   "line": 4801,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45490,7 +45490,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#redemption#3",
-   "line": 4790,
+   "line": 4801,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45500,7 +45500,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#handlePaymentReturn#order_id#0",
-   "line": 4815,
+   "line": 4826,
    "kind": "member",
    "facts": [
     "NUM"
@@ -45510,7 +45510,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#order_id#0",
-   "line": 4879,
+   "line": 4890,
    "kind": "member",
    "facts": [
     "NUM"
@@ -45520,7 +45520,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#order_id#1",
-   "line": 4879,
+   "line": 4890,
    "kind": "member",
    "facts": [
     "NUM"
@@ -45530,7 +45530,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#order_id#2",
-   "line": 4893,
+   "line": 4904,
    "kind": "member",
    "facts": [
     "NUM"
@@ -45540,7 +45540,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#order_id#3",
-   "line": 4893,
+   "line": 4904,
    "kind": "member",
    "facts": [
     "NUM"
@@ -45550,7 +45550,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#items#0",
-   "line": 4893,
+   "line": 4904,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45560,7 +45560,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#items#1",
-   "line": 4893,
+   "line": 4904,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45570,7 +45570,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#address_detected#0",
-   "line": 4899,
+   "line": 4910,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -45581,7 +45581,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#address_details#0",
-   "line": 4899,
+   "line": 4910,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -45592,7 +45592,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#redeem#0",
-   "line": 4908,
+   "line": 4919,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45602,7 +45602,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#redeem#1",
-   "line": 4908,
+   "line": 4919,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45612,7 +45612,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#order_type#0",
-   "line": 4915,
+   "line": 4926,
    "kind": "projection",
    "facts": [
     "FULFIL"
@@ -45623,7 +45623,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#order_type#1",
-   "line": 4916,
+   "line": 4927,
    "kind": "projection",
    "facts": [
     "FULFIL"
@@ -45634,7 +45634,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#lat#0",
-   "line": 4917,
+   "line": 4928,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45644,7 +45644,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#lng#0",
-   "line": 4917,
+   "line": 4928,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45654,7 +45654,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#lat#1",
-   "line": 4918,
+   "line": 4929,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45664,7 +45664,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#lng#1",
-   "line": 4918,
+   "line": 4929,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45674,7 +45674,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#lat#2",
-   "line": 4918,
+   "line": 4929,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45684,7 +45684,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#lng#2",
-   "line": 4918,
+   "line": 4929,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45694,7 +45694,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#lat#3",
-   "line": 4919,
+   "line": 4930,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45704,7 +45704,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#lng#3",
-   "line": 4919,
+   "line": 4930,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -45714,7 +45714,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#0",
-   "line": 5070,
+   "line": 5081,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45727,7 +45727,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#1",
-   "line": 5070,
+   "line": 5081,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45740,7 +45740,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#2",
-   "line": 5072,
+   "line": 5083,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45753,7 +45753,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#3",
-   "line": 5074,
+   "line": 5085,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45766,7 +45766,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#4",
-   "line": 5076,
+   "line": 5087,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45779,7 +45779,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#redeem#0",
-   "line": 5105,
+   "line": 5116,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45789,7 +45789,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#5",
-   "line": 5134,
+   "line": 5145,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45802,7 +45802,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#6",
-   "line": 5159,
+   "line": 5170,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45815,7 +45815,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#7",
-   "line": 5164,
+   "line": 5175,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45828,7 +45828,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#8",
-   "line": 5165,
+   "line": 5176,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45841,7 +45841,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#9",
-   "line": 5178,
+   "line": 5189,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45854,7 +45854,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#scheduled_for#0",
-   "line": 5335,
+   "line": 5346,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -45864,7 +45864,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#items#0",
-   "line": 5339,
+   "line": 5350,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45874,7 +45874,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redeem#0",
-   "line": 5354,
+   "line": 5365,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45884,7 +45884,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redeem#1",
-   "line": 5355,
+   "line": 5366,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45894,7 +45894,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redeem#2",
-   "line": 5355,
+   "line": 5366,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45904,7 +45904,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redeem#3",
-   "line": 5355,
+   "line": 5366,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45914,7 +45914,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#items#0",
-   "line": 5355,
+   "line": 5366,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45924,7 +45924,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redeem#4",
-   "line": 5355,
+   "line": 5366,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45934,7 +45934,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#items#1",
-   "line": 5355,
+   "line": 5366,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45944,7 +45944,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redeem#5",
-   "line": 5355,
+   "line": 5366,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45954,7 +45954,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#order_type#0",
-   "line": 5363,
+   "line": 5374,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -45964,7 +45964,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#total#0",
-   "line": 5367,
+   "line": 5378,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -45976,7 +45976,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redemption#0",
-   "line": 5367,
+   "line": 5378,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45986,7 +45986,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redeem#6",
-   "line": 5367,
+   "line": 5378,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -45996,7 +45996,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#payment_method#0",
-   "line": 5374,
+   "line": 5385,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -46009,7 +46009,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#payment_method#1",
-   "line": 5378,
+   "line": 5389,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -46022,7 +46022,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#payment_status#0",
-   "line": 5378,
+   "line": 5389,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -46035,7 +46035,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#maps_link#0",
-   "line": 5385,
+   "line": 5396,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -46045,7 +46045,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#total#0",
-   "line": 5411,
+   "line": 5422,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -46057,7 +46057,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#items#1",
-   "line": 5412,
+   "line": 5423,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -46067,7 +46067,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#redemption#0",
-   "line": 5413,
+   "line": 5424,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -46077,7 +46077,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#redeem#0",
-   "line": 5413,
+   "line": 5424,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -46087,7 +46087,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#order_id#0",
-   "line": 5416,
+   "line": 5427,
    "kind": "member",
    "facts": [
     "NUM"
@@ -46097,7 +46097,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#order_type#1",
-   "line": 5417,
+   "line": 5428,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -46107,7 +46107,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#address_detected#0",
-   "line": 5418,
+   "line": 5429,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -46117,7 +46117,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#address_details#0",
-   "line": 5419,
+   "line": 5430,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -46127,7 +46127,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#lat#0",
-   "line": 5420,
+   "line": 5431,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -46137,7 +46137,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#lat#1",
-   "line": 5420,
+   "line": 5431,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -46147,7 +46147,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#lng#0",
-   "line": 5421,
+   "line": 5432,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -46157,7 +46157,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#lng#1",
-   "line": 5421,
+   "line": 5432,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -46167,7 +46167,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#order_type#2",
-   "line": 5429,
+   "line": 5440,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -46177,7 +46177,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#address_details#1",
-   "line": 5437,
+   "line": 5448,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -46187,7 +46187,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#address_detected#1",
-   "line": 5438,
+   "line": 5449,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -46197,7 +46197,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#address_detected#2",
-   "line": 5439,
+   "line": 5450,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -46207,7 +46207,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#order_id#1",
-   "line": 5443,
+   "line": 5454,
    "kind": "member",
    "facts": [
     "NUM"
@@ -46217,7 +46217,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#order_type#3",
-   "line": 5447,
+   "line": 5458,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -46227,7 +46227,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#order_type#4",
-   "line": 5448,
+   "line": 5459,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -46237,7 +46237,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#lat#2",
-   "line": 5448,
+   "line": 5459,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -46247,7 +46247,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#lng#2",
-   "line": 5448,
+   "line": 5459,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -46257,7 +46257,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#lat#3",
-   "line": 5448,
+   "line": 5459,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -46267,7 +46267,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#lng#3",
-   "line": 5448,
+   "line": 5459,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -46277,7 +46277,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#updateDetailCta#total#0",
-   "line": 5817,
+   "line": 5828,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -46289,7 +46289,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#handleProfileClaim#order_id#0",
-   "line": 6325,
+   "line": 6336,
    "kind": "member",
    "facts": [
     "NUM"
@@ -46299,7 +46299,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#handleProfileClaim#order_id#1",
-   "line": 6329,
+   "line": 6340,
    "kind": "member",
    "facts": [
     "NUM"
@@ -46309,7 +46309,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#handleProfileClaim#order_id#2",
-   "line": 6332,
+   "line": 6343,
    "kind": "member",
    "facts": [
     "NUM"
@@ -48446,7 +48446,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyRedeemQuoteToTotals#total_cents#0",
-   "line": 3634,
+   "line": 3645,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -48458,7 +48458,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#requestServerQuote>anon#total_cents#0",
-   "line": 3846,
+   "line": 3857,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -48470,7 +48470,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#requestServerQuote>anon#total_cents#1",
-   "line": 3846,
+   "line": 3857,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -48482,7 +48482,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#requestServerQuote>anon#total_cents#2",
-   "line": 3846,
+   "line": 3857,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -48494,7 +48494,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#successTotalCents#total_cents#0",
-   "line": 3906,
+   "line": 3917,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -48506,7 +48506,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#successTotalCents#total_cents#1",
-   "line": 3906,
+   "line": 3917,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -48518,7 +48518,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#successTotalCents#redeem_total_cents#0",
-   "line": 3908,
+   "line": 3919,
    "kind": "member",
    "facts": [
     "MONEY"
@@ -48528,7 +48528,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#successTotalCents#redeem_total_cents#1",
-   "line": 3908,
+   "line": 3919,
    "kind": "member",
    "facts": [
     "MONEY"
@@ -48538,7 +48538,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#successTotalCents#total#0",
-   "line": 3909,
+   "line": 3920,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -48550,7 +48550,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#geoLocationUnestablished#lat#0",
-   "line": 4233,
+   "line": 4244,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48560,7 +48560,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#geoLocationUnestablished#lng#0",
-   "line": 4233,
+   "line": 4244,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48570,7 +48570,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyGeoWhenReady#lat#0",
-   "line": 4273,
+   "line": 4284,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48580,7 +48580,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyGeoWhenReady#lng#0",
-   "line": 4273,
+   "line": 4284,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48590,7 +48590,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyGeoWhenReady#lat#1",
-   "line": 4274,
+   "line": 4285,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48600,7 +48600,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyGeoWhenReady#lng#1",
-   "line": 4274,
+   "line": 4285,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48610,7 +48610,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#initMap#lat#0",
-   "line": 4298,
+   "line": 4309,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48620,7 +48620,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#initMap#lng#0",
-   "line": 4298,
+   "line": 4309,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48630,7 +48630,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#initMap#lat#1",
-   "line": 4300,
+   "line": 4311,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48640,7 +48640,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#initMap#lng#1",
-   "line": 4300,
+   "line": 4311,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48650,7 +48650,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#placePin>anon#lat#0",
-   "line": 4324,
+   "line": 4335,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48660,7 +48660,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#placePin>anon#lng#0",
-   "line": 4325,
+   "line": 4336,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48670,7 +48670,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#openFullscreenMap>anon#lat#0",
-   "line": 4365,
+   "line": 4376,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48680,7 +48680,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#openFullscreenMap>anon#lng#0",
-   "line": 4365,
+   "line": 4376,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48690,7 +48690,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#openFullscreenMap>anon#lat#1",
-   "line": 4369,
+   "line": 4380,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48700,7 +48700,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#openFullscreenMap>anon#lng#1",
-   "line": 4369,
+   "line": 4380,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48710,7 +48710,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#closeFullscreenMap#lat#0",
-   "line": 4386,
+   "line": 4397,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48720,7 +48720,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#closeFullscreenMap#lng#0",
-   "line": 4386,
+   "line": 4397,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48730,7 +48730,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#locPickPred#lat#0",
-   "line": 4577,
+   "line": 4588,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48740,7 +48740,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#locPickPred#lat#1",
-   "line": 4582,
+   "line": 4593,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48750,7 +48750,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#locPickPred#lng#0",
-   "line": 4582,
+   "line": 4593,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -48760,7 +48760,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPayment#cash_tendered#0",
-   "line": 4741,
+   "line": 4752,
    "kind": "member",
    "facts": [
     "TENDER"
@@ -48770,7 +48770,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#status#0",
-   "line": 5046,
+   "line": 5059,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48783,7 +48783,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#status#1",
-   "line": 5048,
+   "line": 5061,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48796,7 +48796,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#status#2",
-   "line": 5049,
+   "line": 5062,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48809,7 +48809,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#status#3",
-   "line": 5050,
+   "line": 5063,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48822,7 +48822,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#status#4",
-   "line": 5050,
+   "line": 5063,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48835,7 +48835,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#status#5",
-   "line": 5056,
+   "line": 5069,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48848,7 +48848,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#status#6",
-   "line": 5064,
+   "line": 5077,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48861,7 +48861,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#status#7",
-   "line": 5065,
+   "line": 5078,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48874,7 +48874,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#status#8",
-   "line": 5071,
+   "line": 5084,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48887,7 +48887,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#status#9",
-   "line": 5071,
+   "line": 5084,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48900,7 +48900,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#redeem#0",
-   "line": 5084,
+   "line": 5097,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -48910,7 +48910,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#status#10",
-   "line": 5100,
+   "line": 5113,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48923,7 +48923,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#status#11",
-   "line": 5112,
+   "line": 5125,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48936,7 +48936,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#status#12",
-   "line": 5116,
+   "line": 5129,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -48949,7 +48949,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#order_id#0",
-   "line": 5129,
+   "line": 5142,
    "kind": "member",
    "facts": [
     "NUM"
@@ -48959,7 +48959,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#processPixelPay#order_id#1",
-   "line": 5134,
+   "line": 5147,
    "kind": "member",
    "facts": [
     "NUM"
@@ -48969,7 +48969,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#clearPendingPayFor#order_id#0",
-   "line": 5153,
+   "line": 5166,
    "kind": "member",
    "facts": [
     "NUM"
@@ -48979,7 +48979,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyPollState#scheduled_for#0",
-   "line": 5161,
+   "line": 5174,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -48989,7 +48989,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyPollState#order_id#0",
-   "line": 5162,
+   "line": 5175,
    "kind": "member",
    "facts": [
     "NUM"
@@ -48999,7 +48999,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyPollState#scheduled_for#1",
-   "line": 5163,
+   "line": 5176,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -49009,7 +49009,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyPollState#total_cents#0",
-   "line": 5164,
+   "line": 5177,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -49021,7 +49021,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyPollState#total_cents#1",
-   "line": 5164,
+   "line": 5177,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -49033,7 +49033,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyPollState#redemption#0",
-   "line": 5165,
+   "line": 5178,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49043,7 +49043,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyPollState#redemption#1",
-   "line": 5165,
+   "line": 5178,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49053,7 +49053,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyPollState#items#0",
-   "line": 5172,
+   "line": 5185,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -49063,7 +49063,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyPollState#order_id#1",
-   "line": 5172,
+   "line": 5185,
    "kind": "member",
    "facts": [
     "NUM"
@@ -49073,7 +49073,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyPollState#total_cents#2",
-   "line": 5174,
+   "line": 5187,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -49085,7 +49085,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyPollState#total_cents#3",
-   "line": 5174,
+   "line": 5187,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -49097,7 +49097,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyPollState#redemption#2",
-   "line": 5175,
+   "line": 5188,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49107,7 +49107,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#applyPollState#redemption#3",
-   "line": 5175,
+   "line": 5188,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49117,7 +49117,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#handlePaymentReturn#order_id#0",
-   "line": 5198,
+   "line": 5211,
    "kind": "member",
    "facts": [
     "NUM"
@@ -49127,7 +49127,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#order_id#0",
-   "line": 5259,
+   "line": 5272,
    "kind": "member",
    "facts": [
     "NUM"
@@ -49137,7 +49137,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#order_id#1",
-   "line": 5259,
+   "line": 5272,
    "kind": "member",
    "facts": [
     "NUM"
@@ -49147,7 +49147,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#order_id#2",
-   "line": 5272,
+   "line": 5285,
    "kind": "member",
    "facts": [
     "NUM"
@@ -49157,7 +49157,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#order_id#3",
-   "line": 5272,
+   "line": 5285,
    "kind": "member",
    "facts": [
     "NUM"
@@ -49167,7 +49167,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#items#0",
-   "line": 5272,
+   "line": 5285,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -49177,7 +49177,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#items#1",
-   "line": 5272,
+   "line": 5285,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -49187,7 +49187,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#address_detected#0",
-   "line": 5278,
+   "line": 5291,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -49198,7 +49198,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#address_details#0",
-   "line": 5278,
+   "line": 5291,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -49209,7 +49209,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#redeem#0",
-   "line": 5286,
+   "line": 5299,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49219,7 +49219,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#redeem#1",
-   "line": 5286,
+   "line": 5299,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49229,7 +49229,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#order_type#0",
-   "line": 5293,
+   "line": 5306,
    "kind": "projection",
    "facts": [
     "FULFIL"
@@ -49240,7 +49240,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#order_type#1",
-   "line": 5294,
+   "line": 5307,
    "kind": "projection",
    "facts": [
     "FULFIL"
@@ -49251,7 +49251,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#lat#0",
-   "line": 5295,
+   "line": 5308,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49261,7 +49261,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#lng#0",
-   "line": 5295,
+   "line": 5308,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49271,7 +49271,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#lat#1",
-   "line": 5296,
+   "line": 5309,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49281,7 +49281,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#lng#1",
-   "line": 5296,
+   "line": 5309,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49291,7 +49291,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#lat#2",
-   "line": 5296,
+   "line": 5309,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49301,7 +49301,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#lng#2",
-   "line": 5296,
+   "line": 5309,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49311,7 +49311,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#lat#3",
-   "line": 5297,
+   "line": 5310,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49321,7 +49321,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#restoreOrderForm#lng#3",
-   "line": 5297,
+   "line": 5310,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49331,7 +49331,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#submitOrder#status#0",
-   "line": 5397,
+   "line": 5410,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -49344,7 +49344,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#submitOrder#status#1",
-   "line": 5397,
+   "line": 5410,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -49357,7 +49357,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#submitOrder#status#2",
-   "line": 5399,
+   "line": 5412,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -49370,7 +49370,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#submitOrder#status#3",
-   "line": 5401,
+   "line": 5414,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -49383,7 +49383,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#submitOrder#status#4",
-   "line": 5403,
+   "line": 5416,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -49396,7 +49396,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#submitOrder#redeem#0",
-   "line": 5425,
+   "line": 5438,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49406,7 +49406,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#submitOrder#status#5",
-   "line": 5454,
+   "line": 5467,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -49419,7 +49419,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#submitOrder#status#6",
-   "line": 5477,
+   "line": 5490,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -49432,7 +49432,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#submitOrder#status#7",
-   "line": 5482,
+   "line": 5495,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -49445,7 +49445,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#submitOrder#status#8",
-   "line": 5483,
+   "line": 5496,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -49458,7 +49458,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#submitOrder#status#9",
-   "line": 5492,
+   "line": 5505,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -49471,7 +49471,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#scheduled_for#0",
-   "line": 5674,
+   "line": 5687,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -49481,7 +49481,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#items#0",
-   "line": 5678,
+   "line": 5691,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -49491,7 +49491,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess>anon#redeem#0",
-   "line": 5693,
+   "line": 5706,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49501,7 +49501,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess>anon#redeem#1",
-   "line": 5694,
+   "line": 5707,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49511,7 +49511,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess>anon#redeem#2",
-   "line": 5694,
+   "line": 5707,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49521,7 +49521,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess>anon#redeem#3",
-   "line": 5694,
+   "line": 5707,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49531,7 +49531,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess>anon#items#0",
-   "line": 5694,
+   "line": 5707,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -49541,7 +49541,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess>anon#redeem#4",
-   "line": 5694,
+   "line": 5707,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49551,7 +49551,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess>anon#items#1",
-   "line": 5694,
+   "line": 5707,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -49561,7 +49561,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess>anon#redeem#5",
-   "line": 5694,
+   "line": 5707,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49571,7 +49571,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess>anon#total#0",
-   "line": 5705,
+   "line": 5718,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -49583,7 +49583,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess>anon#redemption#0",
-   "line": 5705,
+   "line": 5718,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49593,7 +49593,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess>anon#redeem#6",
-   "line": 5705,
+   "line": 5718,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49603,7 +49603,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#payment_method#0",
-   "line": 5712,
+   "line": 5725,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -49616,7 +49616,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#payment_method#1",
-   "line": 5716,
+   "line": 5729,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -49629,7 +49629,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#payment_status#0",
-   "line": 5716,
+   "line": 5729,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -49642,7 +49642,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#maps_link#0",
-   "line": 5723,
+   "line": 5736,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49652,7 +49652,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#total#0",
-   "line": 5748,
+   "line": 5761,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -49664,7 +49664,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#items#1",
-   "line": 5749,
+   "line": 5762,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -49674,7 +49674,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#redemption#0",
-   "line": 5750,
+   "line": 5763,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49684,7 +49684,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#redeem#0",
-   "line": 5750,
+   "line": 5763,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -49694,7 +49694,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#order_id#0",
-   "line": 5753,
+   "line": 5766,
    "kind": "member",
    "facts": [
     "NUM"
@@ -49704,7 +49704,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#order_type#0",
-   "line": 5754,
+   "line": 5767,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -49714,7 +49714,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#address_detected#0",
-   "line": 5755,
+   "line": 5768,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49724,7 +49724,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#address_details#0",
-   "line": 5756,
+   "line": 5769,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49734,7 +49734,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#lat#0",
-   "line": 5757,
+   "line": 5770,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49744,7 +49744,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#lat#1",
-   "line": 5757,
+   "line": 5770,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49754,7 +49754,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#lng#0",
-   "line": 5758,
+   "line": 5771,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49764,7 +49764,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#lng#1",
-   "line": 5758,
+   "line": 5771,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49774,7 +49774,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#order_type#1",
-   "line": 5766,
+   "line": 5779,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -49784,7 +49784,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#address_details#1",
-   "line": 5774,
+   "line": 5787,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49794,7 +49794,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#address_detected#1",
-   "line": 5775,
+   "line": 5788,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49804,7 +49804,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#address_detected#2",
-   "line": 5776,
+   "line": 5789,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49814,7 +49814,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#order_id#1",
-   "line": 5780,
+   "line": 5793,
    "kind": "member",
    "facts": [
     "NUM"
@@ -49824,7 +49824,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#order_type#2",
-   "line": 5784,
+   "line": 5797,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -49834,7 +49834,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#order_type#3",
-   "line": 5785,
+   "line": 5798,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -49844,7 +49844,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#lat#2",
-   "line": 5785,
+   "line": 5798,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49854,7 +49854,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#lng#2",
-   "line": 5785,
+   "line": 5798,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49864,7 +49864,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#lat#3",
-   "line": 5785,
+   "line": 5798,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49874,7 +49874,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#showSuccess#lng#3",
-   "line": 5785,
+   "line": 5798,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -49884,7 +49884,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#updateDetailCta#total#0",
-   "line": 6192,
+   "line": 6205,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -49896,7 +49896,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#handleProfileClaim#order_id#0",
-   "line": 6646,
+   "line": 6659,
    "kind": "member",
    "facts": [
     "NUM"
@@ -49906,7 +49906,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#handleProfileClaim#order_id#1",
-   "line": 6650,
+   "line": 6663,
    "kind": "member",
    "facts": [
     "NUM"
@@ -49916,7 +49916,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#handleProfileClaim#order_id#2",
-   "line": 6653,
+   "line": 6666,
    "kind": "member",
    "facts": [
     "NUM"
@@ -52089,7 +52089,7 @@
    "file": "xpizza-orders/index.html<script@2>",
    "fn": "pizzaExtrasTotal",
    "base": "data",
-   "line": 3159,
+   "line": 3169,
    "how": "Object.values",
    "rule": "page-fn"
   },
@@ -52133,7 +52133,7 @@
    "file": "la-musa-orders/index.html<script@2>",
    "fn": "pizzaExtrasTotal",
    "base": "data",
-   "line": 3579,
+   "line": 3590,
    "how": "Object.values",
    "rule": "page-fn"
   },
@@ -53225,7 +53225,7 @@
    "file": "xpizza-orders/index.html<script@2>",
    "alias": "claimOrderId",
    "field": "order_id",
-   "line": 5416,
+   "line": 5427,
    "round": 1
   },
   {
@@ -53233,7 +53233,7 @@
    "file": "xpizza-orders/index.html<script@2>",
    "alias": "orderType",
    "field": "order_type",
-   "line": 5417,
+   "line": 5428,
    "round": 1
   },
   {
@@ -53241,7 +53241,7 @@
    "file": "xpizza-orders/index.html<script@2>",
    "alias": "addressDetected",
    "field": "address_detected",
-   "line": 5418,
+   "line": 5429,
    "round": 1
   },
   {
@@ -53249,7 +53249,7 @@
    "file": "xpizza-orders/index.html<script@2>",
    "alias": "addressDetails",
    "field": "address_details",
-   "line": 5419,
+   "line": 5430,
    "round": 1
   },
   {
@@ -53257,7 +53257,7 @@
    "file": "la-musa-orders/index.html<script@2>",
    "alias": "claimOrderId",
    "field": "order_id",
-   "line": 5753,
+   "line": 5766,
    "round": 1
   },
   {
@@ -53265,7 +53265,7 @@
    "file": "la-musa-orders/index.html<script@2>",
    "alias": "orderType",
    "field": "order_type",
-   "line": 5754,
+   "line": 5767,
    "round": 1
   },
   {
@@ -53273,7 +53273,7 @@
    "file": "la-musa-orders/index.html<script@2>",
    "alias": "addressDetected",
    "field": "address_detected",
-   "line": 5755,
+   "line": 5768,
    "round": 1
   },
   {
@@ -53281,7 +53281,7 @@
    "file": "la-musa-orders/index.html<script@2>",
    "alias": "addressDetails",
    "field": "address_details",
-   "line": 5756,
+   "line": 5769,
    "round": 1
   },
   {

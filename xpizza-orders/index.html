@@ -1862,6 +1862,12 @@ let EXTRAS = _bootSelect('extras', _okRecords, [], true);
 // PLAN 4 r3 §1 / §8.3 — the option groups each dish offers: the published maps (a value is an option category or one extra)
 let EXTRAS_BY_CATEGORY = _bootSelect('extras_by_category', _okMap, {}, false);
 let EXTRAS_BY_ITEM = _bootSelect('extras_by_item', _okMap, {}, false);
+/* S3 (D4c-grill/item-s1/S3-DESIGN.md D1/D3): the served { "<dish id>": item_key } map — the LIVE menu's only (the baked body never
+   carries it), applied with MENU all-or-nothing; a body without one empties it. liveItemKey: a dish's key, or null (no map ⇒ today's
+   lines). itemKeyFor: a pinned order's key AS FIRST SENT (form-serial-order.js), else the live map's. */
+let ITEM_KEYS = {};
+function liveItemKey(p){ const k = p && ITEM_KEYS[String(p.id)]; return typeof k === 'string' && k ? k : null; }
+function itemKeyFor(p, lineKey){ const pinned = SERIAL.itemKey(lineKey, serialPinLive()); return pinned !== undefined ? pinned : liveItemKey(p); }
 
 // Track extras per pizza: { pizzaId: { extraId: qty } }
 const pizzaExtras = {};
@@ -2358,10 +2364,10 @@ function liveMenuPriceVersion(){
   } catch (_) { return null; }
 }
 try { window.__LIVE_MENU_PRICE_VERSION = liveMenuPriceVersion; } catch (_) {}
-const LIVE_MENU_GLOBALS = ['MENU', 'EXTRAS', 'PICKUP_ONLY_CATS', 'WEEKEND_ONLY_CATS', 'VARIANT_ITEMS', 'EXTRAS_BY_CATEGORY', 'EXTRAS_BY_ITEM'];   // PLAN 4 §8.4: + the option maps
+const LIVE_MENU_GLOBALS = ['MENU', 'EXTRAS', 'PICKUP_ONLY_CATS', 'WEEKEND_ONLY_CATS', 'VARIANT_ITEMS', 'EXTRAS_BY_CATEGORY', 'EXTRAS_BY_ITEM', 'ITEM_KEYS'];   // PLAN 4 §8.4: + the option maps
 function liveMenuGlobalGet(n){
   return n === 'MENU' ? MENU : n === 'EXTRAS' ? EXTRAS : n === 'PICKUP_ONLY_CATS' ? PICKUP_ONLY_CATS : n === 'VARIANT_ITEMS' ? VARIANT_ITEMS
-    : n === 'EXTRAS_BY_CATEGORY' ? EXTRAS_BY_CATEGORY : n === 'EXTRAS_BY_ITEM' ? EXTRAS_BY_ITEM : WEEKEND_ONLY_CATS;
+    : n === 'EXTRAS_BY_CATEGORY' ? EXTRAS_BY_CATEGORY : n === 'EXTRAS_BY_ITEM' ? EXTRAS_BY_ITEM : n === 'ITEM_KEYS' ? ITEM_KEYS : WEEKEND_ONLY_CATS;
 }
 function liveMenuGlobalSet(n, v){
   if (n === 'MENU') MENU = v;
@@ -2370,6 +2376,7 @@ function liveMenuGlobalSet(n, v){
   else if (n === 'VARIANT_ITEMS') VARIANT_ITEMS = v;
   else if (n === 'EXTRAS_BY_CATEGORY') EXTRAS_BY_CATEGORY = v;
   else if (n === 'EXTRAS_BY_ITEM') EXTRAS_BY_ITEM = v;
+  else if (n === 'ITEM_KEYS') ITEM_KEYS = v;
   else WEEKEND_ONLY_CATS = v;
 }
 function liveMenuContainers(){ return ['menu-individual', 'menu-ny']; }
@@ -2412,6 +2419,8 @@ function liveMenuPrepare(body){
     // PLAN 4 §8.4 — absent keeps what is in force (la_musa's rule for its maps); present is the published map, validated above
     EXTRAS_BY_CATEGORY: isMap(body.extras_by_category) ? body.extras_by_category : EXTRAS_BY_CATEGORY,
     EXTRAS_BY_ITEM: isMap(body.extras_by_item) ? body.extras_by_item : EXTRAS_BY_ITEM,
+    // S3: the served item-key map — ABSENT EMPTIES it (never «keep in force»: an older snapshot's keys must never label a newer MENU)
+    ITEM_KEYS: isMap(body.item_keys) ? body.item_keys : {},
   };
 }
 
@@ -2813,6 +2822,7 @@ function availKeysFor(item){
   const seen = availKeyHistory[id] || (availKeyHistory[id] = []);
   const current = window.availKey(availIdentityOf(item));
   if (seen.indexOf(current) === -1) seen.push(current);
+  const ik = liveItemKey(item); if (ik) { const k = window.availKey(ik); if (seen.indexOf(k) === -1) seen.push(k); }   // S3: the portal / KDS write the item_key
   return seen;
 }
 // x_pizza is priced — and therefore 86'd — by NAME.
@@ -3493,7 +3503,7 @@ function successTotalCents(o){
 // pizzas, each with a per-topping fine-line icon. 18" NY pies excluded (the server enforces this too).
 function buildRedeemCatalog(){
   // 1D add-product B: eligibility is this brand's data (12" individual pizzas); the shared rule drops launchers
-  return GroupPicker.rewardDishes(MENU, VARIANT_ITEMS, p=>p.cat==='individual').map(p=>({ key:p.name, name:p.name, price_cents:Math.round(p.price*100), icon:p.reward_icon||'star' }));   // PLAN 4 GATED: the published reward_icon (the name-keyed literal map is gone)
+  return GroupPicker.rewardDishes(MENU, VARIANT_ITEMS, p=>p.cat==='individual').map(p=>({ key:liveItemKey(p)||p.name, name:p.name, price_cents:Math.round(p.price*100), icon:p.reward_icon||'star' }));   // PLAN 4 GATED: the published reward_icon (the name-keyed literal map is gone)
 }
 
 function calcTotal(){
@@ -4420,6 +4430,7 @@ function redeemCartItems(){
     // 1D D2 — the dish's identity, on the same terms: last, and only when the record carries one.
     const out = {name:p.name,qty:line.qty,price:p.price,subtotal:p.price*line.qty,extras:extrasArr,extrasTotal};
     if(p.dish_id) out.dish_id = p.dish_id;
+    const ik = itemKeyFor(p, line.key); if(ik) out.item_key = ik;   // S3 D1: appended LAST; a pinned order resends its first key (or none)
     return out;
   });
 }
@@ -4487,7 +4498,7 @@ function orderIdForThisCart(){
   const sig = cartSig();
   if (window.__resumeOrderId){ const id = window.__resumeOrderId; window.__resumeOrderId = null; window.__pendingOrder = { id, sig }; return id; }
   if (window.__pendingOrder && window.__pendingOrder.sig === sig) return window.__pendingOrder.id;
-  const id = genOrderId(); SERIAL.mint(resolvedCartLines()); window.__pendingOrder = { id, sig }; return id;   // §3: pin this order's serialization
+  const id = genOrderId(); SERIAL.mint(resolvedCartLines(), (l) => liveItemKey(l.record)); window.__pendingOrder = { id, sig }; return id;   // §3: pin this order's serialization
 }
 /* 🔴 THE MONEY GATE LIVES HERE, AT THE CHOKEPOINT BOTH PAYMENT PATHS SHARE. It used to live only in
    submitOrder(), which is the CASH/free path — so an unresolved line reached the ONLINE charge
