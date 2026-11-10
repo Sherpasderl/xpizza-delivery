@@ -260,3 +260,11 @@ test('«Productos» (frame E) — the rows head with the PUBLISHED name (the nam
   assert.deepStrictEqual(prows.map((r) => textOf(byClass(r, 'pname')[0])), ['Pizza Cacio e Pepe', 'Pizza Cacio e Pepe', 'Pizza Cacio e Pepe']);
   assert.strictEqual(textOf(byClass(byClass(byClass(root, 'mgroup')[1], 'prow')[0], 'pname')[0]), 'Cacio e Pepe');
 });
+test('the review prints prices «L 285» (a space after the L, as the mockup and every other Sherpa surface) — rows and seal alike', () => {
+  const root = fakeDom();
+  renderReview(root, reviewModel(FRAME_E()), {});
+  const price = byClass(byClass(root, 'mgroup')[1], 'prow')[0];
+  assert.deepStrictEqual([textOf(byClass(price, 'was')[0]), textOf(byClass(price, 'now')[0])], ['L 270', 'L 285']);
+  const s = sealOf({ changed: [L('Pizza Cacio e Pepe', 'price', 270, 285)], added: [], removed: [], renamed: [], largeChangeSet: [] });
+  assert.match(s.rows[0][1], /L 270\s*→\s*L 285/);
+});

@@ -159,7 +159,7 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-const shown = (v) => (Number.isInteger(v) && v > 0 ? `L${v}` : (v === null || v === undefined ? '—' : String(v)));
+const shown = (v) => (Number.isInteger(v) && v > 0 ? `L ${v}` : (v === null || v === undefined ? '—' : String(v)));
 // A section's name as the review shows it: no name is «Sin nombre», never a dash or the raw id.
 const sectionName = (v) => (typeof v === 'string' && v.trim() ? v : 'Sin nombre');
 // The section a line is about: its name before the change, or its id while it has none (as the rail shows it).
