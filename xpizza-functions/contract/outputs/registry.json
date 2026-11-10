@@ -34,6 +34,12 @@
   "la-musa-orders/index.html#renderStage2Summary@la-musa-orders/index.html<script@2>#requestServerQuote>anon": {
    "status": "pending"
   },
+  "la-musa-orders/index.html#renderStage2Summary@la-musa-orders/index.html<script@2>#itemReloadMenu": {
+   "status": "pending"
+  },
+  "la-musa-orders/index.html#renderStage2Summary@la-musa-orders/index.html<script@2>#itemRemoveDenied": {
+   "status": "pending"
+  },
   "la-musa-orders/index.html#renderStage2Summary@la-musa-orders/index.html<script@2>#updateTotal": {
    "status": "pending"
   },
@@ -2151,6 +2157,16 @@
    "status": "via",
    "target": "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#_showStageSwap",
    "reason": "server quote re-renders the pay-step summary"
+  },
+  "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#itemReloadMenu": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#_showStageSwap",
+   "reason": "S3 C1→C2: «Recargar la página» re-renders the pay-step summary after the in-place menu refresh"
+  },
+  "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#itemRemoveDenied": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#_showStageSwap",
+   "reason": "S3 D1→D2: «Quitar extra y seguir» re-renders the pay-step summary (the re-quote and the notice)"
   },
   "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#updateTotal": {
    "status": "via",

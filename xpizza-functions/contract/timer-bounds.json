@@ -220,7 +220,7 @@
    "reachesAsserted": true,
    "reason": "the createOrder retry BACKOFF (attempt*1500 with attempt ≤ MAX_TRIES − 1 = 2 → ≤ 3000 ms): ON the asserted submit path, only after a failed attempt (S1’s first createOrder answers 200); bound 3000 ms is within the 10 s horizon — PLAN 3 formSignal re-review (f338a9dd): submitOrder gains ONE synchronous sendFormSignal (navigator.sendBeacon, never awaited, no timer) inside the cart-conflict early return, before orderSubmitting / any timer; no loop, retry limit or delay changed → bound unchanged",
    "sha": "de6c6db54ecf5d11861a4f726e1404d6942127f9803bb48080293b05be0098f3",
-   "ctrlSha": "088f732f8281763143bb25845ec09de0d4930670b651ef7c3087aa75bbc0425d"
+   "ctrlSha": "ce7f4901797a145f82fe64f1a6e915b922afc6e5e1c0d92a7deea8eb9614f2c0"
   },
   {
    "key": "xpizza-orders/form-order-number.js#next:setTimeout#0",
@@ -556,7 +556,7 @@
    "reachesAsserted": false,
    "reason": "account.js rewards-key debounce re-armed on each keystroke of the reward/claim flow; no order output",
    "sha": "bf487578908ef92771f568ad76efbde6b15f80d1d8fe926d80b69f234282816e",
-   "ctrlSha": "80d9cdc1f231b57a971351687dc2c8ffeaf1d753377beb6cc0c56db0d63eb714"
+   "ctrlSha": "c2b68b76b5299fd9fe8123a1770c789616eaa786baceb902356e4bf0b7a78efc"
   },
   {
    "key": "xpizza-orders/account.js#startResendCountdown:setInterval#0 → xpizza-orders/account.js#startResendCountdown:setInterval#0",
@@ -566,7 +566,7 @@
    "reachesAsserted": false,
    "reason": "the OTP resend countdown (1 s ticks, stops at 0 / 60 s): profile sign-in only — not in S1 (guest checkout, precondition no-otp)",
    "sha": "2918ed1daf9d7c8e2109079da11d777c06d6eb7314817ce55042db589df5bdc8",
-   "ctrlSha": "80d9cdc1f231b57a971351687dc2c8ffeaf1d753377beb6cc0c56db0d63eb714"
+   "ctrlSha": "c2b68b76b5299fd9fe8123a1770c789616eaa786baceb902356e4bf0b7a78efc"
   },
   {
    "key": "xpizza-orders/account.js#openAcctFullscreenMap:setTimeout#0 → xpizza-orders/account.js#openAcctFullscreenMap:setTimeout#0",
@@ -576,7 +576,7 @@
    "reachesAsserted": false,
    "reason": "account address map preview retries until Maps is ready; it touches only the account map preview",
    "sha": "fc8f59810c1d44ea2173db0a9712d02f7ee1af634b5d972cbdd789b6c2ad600f",
-   "ctrlSha": "80d9cdc1f231b57a971351687dc2c8ffeaf1d753377beb6cc0c56db0d63eb714"
+   "ctrlSha": "c2b68b76b5299fd9fe8123a1770c789616eaa786baceb902356e4bf0b7a78efc"
   },
   {
    "key": "xpizza-orders/account.js#openAcctFullscreenMap:setTimeout#0 → xpizza-orders/account.js#initAcctPreviewMap:setTimeout#0 → xpizza-orders/account.js#initAcctPreviewMap:setTimeout#0",
@@ -586,7 +586,7 @@
    "reachesAsserted": false,
    "reason": "account address map preview retries until Maps is ready; it touches only the account map preview",
    "sha": "87e80d87e79634ce994c8c6bbaaf4b43df24f0e36757acfb3d9a45a3908db02f",
-   "ctrlSha": "854398e83d7f0ed62bc85730de4607d042434e42a24e4fe721899d45faaa3717"
+   "ctrlSha": "dfe32a12227d8c8dbd56e4871295b0dee0f349985ff8dd6644290561971bef43"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#scheduleBeat:setT#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#0",
@@ -696,7 +696,7 @@
    "reachesAsserted": false,
    "reason": "the PixelPay charge retry (ONCE, 1.5 s): ONLINE payment only (precondition not-online-payment)",
    "sha": "05b25fb8e9e20e749421a879832a8c11bd05f6b765e6a5325190c549f754d747",
-   "ctrlSha": "5c734b5ba1cc4e69203c020baa635479f7d957884902638a72ccd9f1399814b6"
+   "ctrlSha": "7738e99d8c8df73f46402c1a3cd80be7cb06c676fa41b3761c1e9042224684b9"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#restoreOrderForm:setTimeout#0 → xpizza-orders/index.html<script@2>#initMap:setTimeout#0 → xpizza-orders/index.html<script@2>#initMap:setTimeout#0",
@@ -709,17 +709,17 @@
    "ctrlSha": "cf843e664f4c9eed36ec00944685266fde563edb1d34ae896ec6b1c6c27b9edc"
   },
   {
-   "key": "await@xpizza-orders/index.html<script@2>:4286 → xpizza-orders/index.html<script@2>#processPayment>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#processPixelPay>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0",
+   "key": "await@xpizza-orders/index.html<script@2>:4292 → xpizza-orders/index.html<script@2>#processPayment>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#processPixelPay>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0",
    "cumulativeBoundMs": 7500,
    "repeats": false,
    "repeatLimit": 3,
    "reachesAsserted": true,
    "reason": "processPayment’s awaited steps: the address-pick cap (only while an address pick is in flight — not on S1’s GPS-OK path), then submitOrder’s token race (≤ 1500 ms) and retry backoff (≤ 1500 + 3000 ms, MAX_TRIES 3); the demo-branch and PixelPay steps are not on the cash path. On S1’s path the bound is 6000 ms, within the 10 s horizon — 6f353ed: submitOrder now also races the createOrder body for the tracking token (confirmTokenOf, ≤ 1500 ms, once on success) → bound 7500 ms ≤ the horizon — PLAN 3 formSignal re-review (f338a9dd): submitOrder gains ONE synchronous sendFormSignal (navigator.sendBeacon, never awaited, no timer) inside the cart-conflict early return, before orderSubmitting / any timer; no loop, retry limit or delay changed → bound unchanged",
    "sha": "9ca9222901cc40dfd5f6822a0063cc3d5e028a95237bfa6f6a73d5b58608bab1",
-   "ctrlSha": "126c578b8ca527f3affda43daeacc53238549ea8a30cbc64aef3a424bb764332"
+   "ctrlSha": "406a5fbe87d0c6fd00585aff759d9bd8ab28a64e16a5b6e136d368c385c035d3"
   },
   {
-   "key": "await@xpizza-orders/index.html<script@2>:4819 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#1",
+   "key": "await@xpizza-orders/index.html<script@2>:4826 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#1",
    "cumulativeBoundMs": null,
    "repeats": true,
    "repeatLimit": "unbounded",
@@ -729,14 +729,14 @@
    "ctrlSha": "371207e409e9d8f745432e00143bf01c19a560b0fa7ee59cbb6bcc0c76b4e047"
   },
   {
-   "key": "await@xpizza-orders/index.html<script@2>:5003 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#1 → xpizza-orders/index.html<script@2>#confirmTokenOf>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
+   "key": "await@xpizza-orders/index.html<script@2>:5088 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#1 → xpizza-orders/index.html<script@2>#confirmTokenOf>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
    "cumulativeBoundMs": 7500,
    "repeats": true,
    "repeatLimit": 3,
    "reachesAsserted": true,
    "reason": "submitOrder's awaited steps on the real submit: the ID-token race (≤ 1500 ms), the retry backoff (1500, 3000 ms; MAX_TRIES 3) and — 6f353ed — the tracking-token race on the createOrder 200 body (confirmTokenOf, ≤ 1500 ms, once) before showSuccess; the 1500 ms demo sleep is the unconfigured-endpoint branch only. Bound 7500 ms ≤ the horizon; S1's first attempt succeeds — PLAN 3 formSignal re-review (f338a9dd): submitOrder gains ONE synchronous sendFormSignal (navigator.sendBeacon, never awaited, no timer) inside the cart-conflict early return, before orderSubmitting / any timer; no loop, retry limit or delay changed → bound unchanged",
    "sha": "87eca4668459cc1fd137eb3ec8c0421e93df3f9c91ad0fce86b9abfd60ace384",
-   "ctrlSha": "40f1bad46d8b56d3306e1a4d0c1b413c255e4645d9f8e61f8af6069f6c2eb93e"
+   "ctrlSha": "3a8882d1a89c88fc2ee1c9802572feed6a9035aa60cad1314d1af8d00249aa80"
   },
   {
    "key": "xpizza-orders/form-order-number.js#next:setTimeout#0 → xpizza-orders/form-order-number.js#next:setTimeout#0",
@@ -992,7 +992,7 @@
    "mayChangeSelectors": [],
    "changesAsserted": false,
    "sha": "425dce5f41ee83fc2ec0297889164ec4cb18849ae35bd517aa50be582b0255e8",
-   "ctrlSha": "8a5f1f5b6ecf098b86e7dadacc53050028118ae00eb3d6db07d0befbcd78bbde"
+   "ctrlSha": "cefe1fdd56e5a77cd981f7f8615642143371e73611533433e951a46ac3f9f278"
   }
  ]
 }

@@ -5094,6 +5094,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.newAddrId = newAddrId;
   window.__ACCOUNT.saveAddress = saveAddress;
   window.__ACCOUNT.profileComplete = profileComplete;
+  window.__ACCOUNT.toast = toast;   // S3 C2: the form's item-refusal flow reuses this pill (textContent; no new copy)
   window.__ACCOUNT.profileNamed = profileNamed;   // Task 1 — recognition gate (full name >=2 words)
   window.__ACCOUNT.setPaymentVisible = setPaymentVisible;                     // Task 1 test hook (gate state)
   window.__ACCOUNT.redeemSig = redeemSig;   // 1D D2 test hook — the reward-freshness signature must stay id-blind

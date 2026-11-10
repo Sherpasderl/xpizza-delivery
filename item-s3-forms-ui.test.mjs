@@ -17,7 +17,7 @@
 //      on screen; nothing is re-sent. «Revisar pedido» opens the existing cart review.
 import assert from 'node:assert';
 import { createRequire } from 'node:module';
-import { counter, settle, loadForm, res, serve, closeAll } from './form-harness.mjs';
+import { counter, settle, stageSettle, loadForm, res, serve, closeAll } from './form-harness.mjs';
 import { published } from './item-s3-fixtures.mjs';
 
 const require = createRequire(new URL('./xpizza-functions/x.js', import.meta.url));
@@ -72,7 +72,7 @@ async function send(w, path) {
   assert.ok(w.buildOrder(), `premise — the cart composes an order (${path})`);
   if (path === 'cash') { try { await quiet(() => w.submitOrder('confirmed')); } catch (_) {} }
   else { const p = w.processPixelPay(); if (p && p.catch) p.catch(() => {}); }
-  await settle(); await settle();
+  await settle(); await settle(); await stageSettle();   // showStage('s2', 50) lands on a timer
 }
 const gate = (w) => w.document.getElementById('item-gate');
 const shown = (el) => !!el && el.style.display !== 'none' && !el.hidden;
@@ -84,6 +84,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
   BASE[rid] = await quiet(() => published(rid));
   const env = plain(BASE[rid].env); const b = env.menu.dishes.find((d) => d.name === CASE[rid].B);
   env.menu.dishes = env.menu.dishes.filter((d) => d !== b); delete env.menu.item_keys[String(b.id)];
+  env.menu.dishes.find((d) => d.name === CASE[rid].A).price += 5;   // …and dish A repriced: a conflict that must NOT be dropped
   LESS[rid] = env;   // the later menu: dish B is gone
 }
 
@@ -93,7 +94,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
   {
     const { w, ctl } = await boot('x_pizza', BASE.x_pizza);
     await add(w, dish(w, 'Carnivora').id);
-    ctl.P = REN; await quiet(() => serve(w, plain(REN.env)));
+    ctl.P = REN; ctl.menu = () => REN.env; await quiet(() => serve(w, plain(REN.env))); wire(w, 'x_pizza', ctl);   // serve() installs its own responder
     const l = plain(w.eval('resolvedCartLines()'))[0];
     assert.ok(!l.unresolved, `🔴 a live rename keeps the open line orderable (S3-FORM-REN-OPEN): ${l.unresolved}`);
     await send(w, 'card');
@@ -160,7 +161,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
     assert.ok(!shown(gate(f.w)), `🔴 ${dir}: the gate closes once the fresh menu is in (S3-FORM-C2-CLOSE)`);
     assert.strictEqual(stage(f.w), 's2', `${dir}: still on Paso 2`);
     const keys = plain(f.w.eval('resolvedCartLines().map(l => String(l.key))'));
-    assert.deepStrictEqual(keys, [String(dish(f.w, c.A).id)], `🔴 ${dir}: ONLY the gone dish is dropped (S3-FORM-C2-DROP)`);
+    assert.deepStrictEqual(keys, [String(dish(f.w, c.A).id)], `🔴 ${dir}: ONLY the gone dish is dropped — the repriced one stays (S3-FORM-C2-DROP)`);
     assert.strictEqual(txt(f.w.document.getElementById('acct-toast')), '1 producto ya no está disponible', `🔴 ${dir}: the existing toast (S3-FORM-C2-TOAST)`);
     assert.ok(f.ctl.quotes.length > q0 && f.ctl.quotes.at(-1).items.length === 1, `🔴 ${dir}: the total is re-quoted for what is left (S3-FORM-C2-QUOTE)`);
     assert.strictEqual(f.ctl.sent.length, 1, `${dir}: nothing re-sent — the customer confirms again`);
@@ -174,11 +175,14 @@ for (const rid of ['x_pizza', 'la_musa']) {
     const ex = pre.w.liveMenuGlobalGet('EXTRAS').find((e) => e.id === c.extraId);
     assert.ok(ex, `premise: ${dir} serves ${c.extraId}`);
     const legacy = rid === 'la_musa' ? ex.id : ex.name;   // the extra's legacy key, as the server names it
+    // a second option the dish is ALLOWED, kept by the repair (x_pizza: Pepperoni; la_musa: another option its category offers)
+    const secondId = rid === 'x_pizza' ? 'e7' : P.body.extras.find((e) => e.id !== c.extraId && (P.body.extras_by_category[String(a0.cat)] || []).includes(e.cat)).id;
+    const second = (w, a) => (rid === 'x_pizza' ? w.toggleDetailExtra(secondId, a.id, 0) : w.chgDetailExtra(secondId, a.id, 1));
     const XR = { outcome: 'denied', denied: [{ item: P.body.item_keys[String(a0.id)], extra: legacy }] };
     for (const path of ['cash', 'card']) {
       const { w, ctl } = await boot(rid, P, [{ status: EI.refusalStatus(XR), body: { ...EI.refusalBody(XR), order_id: 'X' } }]);
       const a = dish(w, c.A);
-      await add(w, a.id); c.extra(w, a); await settle(); await add(w, dish(w, c.B).id);
+      await add(w, a.id); c.extra(w, a); await settle(); second(w, a); await settle(); await add(w, dish(w, c.B).id);
       await send(w, path);
       assert.strictEqual(stage(w), 's2', `🔴 ${dir} ${path}: extra_not_allowed returns to Paso 2 (S3-FORM-D1-STAGE)`);
       assert.ok(shown(gate(w)), `🔴 ${dir} ${path}: the gate (S3-FORM-D1-GATE)`);
@@ -194,7 +198,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
       gate(w).querySelector('.pickup-gate-btn.primary').click(); await settle(); await settle();
       const left = plain(w.eval('pizzaExtras'))[String(a.id)];
       const on = rid === 'la_musa' ? Object.entries(left || {}).filter(([, q]) => q > 0) : Object.values(left || {}).flatMap((inst) => Object.entries(inst).filter(([, q]) => q > 0));
-      assert.deepStrictEqual(on, [], `🔴 ${dir}: the denied extra is removed (S3-FORM-D2-REMOVE)`);
+      assert.deepStrictEqual(on, [[secondId, 1]], `🔴 ${dir}: ONLY the denied extra is removed; the other stays (S3-FORM-D2-REMOVE)`);
       assert.deepStrictEqual(plain(w.eval('resolvedCartLines().map(l => String(l.key))')).sort(), [String(a.id), String(dish(w, c.B).id)].sort(), `${dir}: both dishes stay`);
       assert.ok(!shown(gate(w)), `${dir}: the gate closes`);
       assert.ok(ctl.quotes.length > q0, `🔴 ${dir}: the order is re-quoted (S3-FORM-D2-QUOTE)`);

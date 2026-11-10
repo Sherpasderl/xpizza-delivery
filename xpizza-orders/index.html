@@ -766,6 +766,8 @@ textarea{resize:none;height:80px;line-height:1.4}
 .pickup-gate-actions{display:flex;gap:8px}
 .pickup-gate-btn{flex:1;text-align:center;border:0;border-radius:9px;padding:10px 8px;font-family:var(--sans);font-size:12.5px;font-weight:700;cursor:pointer}
 .pickup-gate-btn.primary{background:var(--red);color:#fff}
+.gate-line{font-family:var(--sans);font-size:13px;color:var(--charcoal);line-height:1.4;margin:-6px 0 11px}   /* S3: the line naming the dish and the option inside the item gate (the approved mockup's one form addition) */
+.gate-line b{font-weight:700}
 .pickup-gate-btn.ghost{background:#fff;color:var(--charcoal);border:1px solid var(--border)}
 .pk-modal-scrim{position:fixed;inset:0;z-index:9999;background:rgba(23,19,15,.52);display:flex;align-items:center;justify-content:center;padding:22px}
 .pk-modal{background:#fff;border-radius:18px;padding:22px 20px 18px;width:100%;max-width:300px;box-shadow:0 24px 60px -12px rgba(0,0,0,.5);text-align:center;font-family:var(--sans)}
@@ -1367,6 +1369,7 @@ body.s5-active .header{display:none}
         <button type="button" class="pickup-gate-btn primary" onclick="removeWeekendOnly()">Quitar del carrito</button>
       </div>
     </div>
+    <div class="pickup-gate" id="item-gate" role="alert" style="display:none"></div>
 
     <!-- ── Scheduled Orders: Checkout time selector (Estándar = ASAP / Programar = real scheduled_for) ── -->
     <div class="time-select" id="time-select">
@@ -1945,7 +1948,7 @@ MENU.forEach(p => qty[p.id] = 0);
    had before — dish records in MENU order — so nothing downstream of them changed. */
 const CART = window.createCart({ adapter: {
   itemKey:         (r) => String(r.id),
-  pricingKey:      (r) => r.name,     // x_pizza is priced server-side BY NAME — a rename is a different product
+  pricingKey:      (r) => liveItemKey(r) || r.name,     // x_pizza is priced server-side BY NAME — a rename is a different product; S3 (ruling 2026-11-10): with the served map the line's identity is the item key, so a rename keeps it
   extraKey:        (r) => r.id,
   extraPricingKey: (r) => r.name,     // ditto for options: createOrder re-prices them by name
   extraKeysFor: (key) => extraKeysForItem(key),
@@ -2232,7 +2235,9 @@ function priceNoticeChanges(){
 function priceNoticeText(e){ return 'Cambió el precio de ' + e.name + ': antes L ' + Number(e.from).toFixed(0) + ', ahora L ' + Number(e.to).toFixed(0) + '.'; }
 function priceNoticeHtml(){
   const d = CART.disclosed();
-  return d.length ? '<div class="price-change-notice" role="status">' + d.map(e => '<div>' + safeText(priceNoticeText(e)) + '</div>').join('') + '</div>' : '';
+  const rows = d.map(e => '<div>' + safeText(priceNoticeText(e)) + '</div>');
+  const s3 = itemNoteText(); if (s3) rows.push('<div>' + safeText(s3) + '</div>');   // S3 D2: what «Quitar extra y seguir» removed + the new total
+  return rows.length ? '<div class="price-change-notice" role="status">' + rows.join('') + '</div>' : '';
 }
 // The struck price beside a changed line's subtotal: the OLD subtotal at the same quantity and options.
 function priceWasHtml(id, subtotal, n, stacked){
@@ -2443,6 +2448,7 @@ function liveMenuTerminal(){ return activeStageId() === 's5'; }
    held and applied when the form goes idle. */
 function liveMenuBusy(){
   if (orderSubmitting || window.__paySubmitting) return true;              // a submit is in flight
+  if (window.__itemMenuReload === true) return false;                      // S3 C1: the customer asked for the fresh menu (at Paso 2)
   if (activeStageId() !== 's1') return true;                              // checkout is open
   if (currentDetailPizzaId !== null) return true;                         // a dish modal is open
   const ov = document.getElementById('cart-overlay');
@@ -4654,6 +4660,7 @@ async function processPixelPay(){
     // D4-c4 "Pausar pedidos": the restaurant paused NEW orders — say so; the cart, order id and reward stay as they are
     if(res.status===423 && cfg && cfg.error==='ordering_paused'){ return paymentFallback(cfg.detail || 'Este restaurante no está recibiendo pedidos en este momento. Probá de nuevo más tarde.'); }
     if(res.status===409 && cfg && cfg.error==='Already paid'){ orderSubmitting=false; currentOrder.payment_status='confirmed'; showSuccess(); return; }
+    if(itemRefused(res.status, cfg)) return;   // S3: menu_changed / extra_not_allowed → Paso 2's item gate (no checkout issued)
     if(res.status===202 && cfg && cfg.status==='in_progress'){
       // A checkout is already being created for this order (one-live-checkout) — brief wait + one retry.
       orderSubmitting=false; setSending('Preparando tu pago…');
@@ -4990,6 +4997,84 @@ function clientUpdateRequired(){
 // existing id logic untouched: no new id, no pending/resume/current id write, no stash write, no resend.
 function oeBack(){ OrderExists.resetOrderExists(document); showStage('s2', 50); }
 
+/* ── S3 (D4c-grill/item-s1/S3-DESIGN.md D3 + the advisor's rulings 2026-11-10; OWNER-APPROVED MOCKUP-item-s3-refusals.html C1/D1/C2/D2):
+   the ITEM REFUSALS of a send. Both land back on Paso 2 with the form's own cart gate (.pickup-gate, #item-gate) in its slot under
+   the Delivery/Pickup toggle. menu_changed: ONE «Recargar la página» — the live menu refreshed IN PLACE through the form's own feed
+   (ruling C1 (A)); only lines whose dish is GONE are dropped, with the existing toast; every other conflict keeps today's block.
+   extra_not_allowed: the server's detail, one naming line per denied option, «Quitar extra y seguir» (removes ONLY those options
+   through the form's own option writer, then the summary re-quotes and the Plan 5 notice says what left and the new total) and
+   «Revisar pedido» (the existing cart review). Nothing is ever re-sent: the customer confirms again. ── */
+const ITEM_EXTRA_WORD = 'extra';
+let __itemReloading = false;
+function itemRefused(status, err){
+  if(status !== 409 || !err) return false;
+  if(err.error === 'menu_changed'){ orderSubmitting = false; showStage('s2', 50); showItemGate('menu', null); return true; }
+  if(err.error === 'extra_not_allowed'){
+    const den = itemDenied(err.lines); if(!den.length) return false;   // nothing in this cart matches: today's generic answer
+    orderSubmitting = false; showStage('s2', 50); showItemGate('extra', den); return true;
+  }
+  return false;
+}
+// the cart's (line, option) pairs a refusal names: a dish by its item key (or a legacy key), an option by its legacy key (id or name)
+function itemDenied(lines){
+  const out = [];
+  (Array.isArray(lines) ? lines : []).forEach(function(x){
+    if(!x || typeof x.item !== 'string' || typeof x.extra !== 'string') return;
+    resolvedCartLines().forEach(function(l){
+      const p = l.record; if(!p || !(liveItemKey(p) === x.item || p.name === x.item || String(p.id) === x.item)) return;
+      const inst = pizzaExtras[l.key] || {};
+      Object.keys(inst).forEach(function(i){ Object.keys(inst[i] || {}).forEach(function(eid){
+        if(!(inst[i][eid] > 0)) return;
+        const e = lineExtra(l, eid) || findMenuExtra(eid);
+        if(e && (e.name === x.extra || String(e.id) === x.extra)) out.push({ key: l.key, inst: i, eid: eid, dish: p.name, extra: e.name });
+      }); });
+    });
+  });
+  return out;
+}
+function showItemGate(kind, den){
+  const g = document.getElementById('item-gate'); if(!g) return;
+  window.__itemDenied = den || null;
+  if(kind === 'menu'){
+    g.innerHTML = '<div class="pickup-gate-title">El menú se actualizó, recargá la página</div><div class="pickup-gate-actions"><button type="button" class="pickup-gate-btn primary" onclick="itemReloadMenu()">Recargar la página</button></div>';
+  } else {
+    const named = []; den.forEach(function(d){ if(!named.some(function(n){ return n.dish === d.dish && n.extra === d.extra; })) named.push(d); });
+    g.innerHTML = '<div class="pickup-gate-title">Uno de los extras ya no está disponible para ese producto. Revisá tu pedido.</div>'
+      + named.map(function(d){ return '<div class="gate-line"><b>' + safeText(d.dish) + '</b> · ' + ITEM_EXTRA_WORD + ': ' + safeText(d.extra) + '</div>'; }).join('')
+      + '<div class="pickup-gate-actions"><button type="button" class="pickup-gate-btn primary" onclick="itemRemoveDenied()">Quitar extra y seguir</button><button type="button" class="pickup-gate-btn ghost" onclick="toggleCartReview()">Revisar pedido</button></div>';
+  }
+  g.style.display = 'block';
+}
+function hideItemGate(){ const g = document.getElementById('item-gate'); if(g){ g.style.display = 'none'; g.innerHTML = ''; } window.__itemDenied = null; }
+async function itemReloadMenu(){
+  if(__itemReloading) return;   // one fetch per tap: a second tap while the first is in flight does nothing
+  __itemReloading = true;
+  const btn = document.querySelector('#item-gate .pickup-gate-btn'); if(btn) btn.disabled = true;
+  let st = null;
+  window.__itemMenuReload = true;   // liveMenuBusy: the customer asked for the fresh menu — it applies now, at Paso 2
+  try { st = await window.__liveMenu.feed.refresh(); } catch(_){ st = null; }
+  window.__itemMenuReload = false; __itemReloading = false;
+  if(!st || st.phase !== 'live' || st.lastError){ if(btn) btn.disabled = false; return; }   // the gate stays, its button live
+  const gone = resolvedCartLines().filter(function(l){ return l.unresolved === 'removed'; }).map(function(l){ return l.key; });
+  gone.forEach(function(k){ const id = /^\d+$/.test(String(k)) ? Number(k) : k; chg(id, -(CART.qtyOf(k) || 0)); });
+  hideItemGate();
+  try { renderStage2Summary(); } catch(_){}
+  if(gone.length){ try { window.__ACCOUNT.toast(gone.length === 1 ? '1 producto ya no está disponible' : gone.length + ' productos ya no están disponibles'); } catch(_){} }
+}
+function itemRemoveDenied(){
+  const den = window.__itemDenied || []; hideItemGate();
+  den.forEach(function(d){ const pid = /^\d+$/.test(String(d.key)) ? Number(d.key) : d.key; if(((pizzaExtras[d.key] || {})[d.inst] || {})[d.eid] > 0) toggleDetailExtra(d.eid, pid, Number(d.inst)); });   // the form's own option writer
+  const byDish = []; den.forEach(function(d){ let e = byDish.find(function(x){ return x.dish === d.dish; }); if(!e){ e = { dish: d.dish, ex: [] }; byDish.push(e); } if(e.ex.indexOf(d.extra) === -1) e.ex.push(d.extra); });
+  window.__itemNote = { text: byDish.map(function(e){ return 'Quitamos ' + (e.ex.length > 1 ? e.ex.slice(0, -1).join(', ') + ' y ' + e.ex[e.ex.length - 1] : e.ex[0]) + ' de ' + e.dish + '.'; }).join(' '), sig: cartSig() };
+  try { renderStage2Summary(); } catch(_){}
+}
+// the D2 note — only while the repaired cart is the one on screen; its total is the one the summary shows
+function itemNoteText(){
+  const n = window.__itemNote; if(!n) return '';
+  if(n.sig !== cartSig()){ window.__itemNote = null; return ''; }
+  return n.text + ' Total nuevo: L ' + redeemAdjustedTotal().toFixed(0) + '.';
+}
+
 function paymentFallback(msg){
   orderSubmitting=false;
   showStage('s2',50);
@@ -5085,6 +5170,7 @@ async function submitOrder(paymentStatus){
         if(res.status===426 && err && err.error==='client_update_required'){ clientUpdateRequired(); return; }   // P-SELFUPDATE §5: terminal, pre-mutation
         // D4-c4 "Pausar pedidos": a definitive refusal of THIS request — no resend, no new id; cart and reward kept
         if(res.status===423 && err && err.error==='ordering_paused'){ document.getElementById('sending-msg').innerHTML = ICON_X_CIRCLE + escapeHtml(err.detail || 'Este restaurante no está recibiendo pedidos en este momento. Probá de nuevo más tarde.'); return; }
+        if(itemRefused(res.status, err)) return;   // S3: menu_changed / extra_not_allowed → Paso 2's item gate (nothing created)
         // KDS 2b: server rejected because a line was 86'd between add + submit. Name the item(s)
         // + tell the customer to remove it — NOT the generic "Revisá los datos" (which triggers
         // confused retries). Handled BEFORE the generic 4xx branch. The item stays in the cart.

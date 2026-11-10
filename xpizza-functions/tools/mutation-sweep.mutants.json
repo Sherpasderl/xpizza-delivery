@@ -1700,12 +1700,13 @@
   "slice": "b5",
   "label": "x_pizza stops pricing by name — a rename would no longer block",
   "file": "../xpizza-orders/index.html",
-  "from": "  pricingKey:      (r) => r.name,     // x_pizza is priced server-side BY NAME — a rename is a different product",
-  "to": "  pricingKey:      (r) => String(r.id),     // x_pizza is priced server-side BY NAME — a rename is a different product",
+  "from": "  pricingKey:      (r) => liveItemKey(r) || r.name,     // x_pizza is priced server-side BY NAME — a rename is a different product; S3 (ruling 2026-11-10): with the served map the line's identity is the item key, so a rename keeps it",
+  "to": "  pricingKey:      (r) => String(r.id),     // x_pizza is priced server-side BY NAME — a rename is a different product; S3 (ruling 2026-11-10): with the served map the line's identity is the item key, so a rename keeps it",
   "command": [
    "node",
    "../cart-decoupling.test.mjs"
-  ]
+  ],
+  "repointed": "S3 item_key: the identity is the item key when the map is served, else the name; the mutant still keys by the display id, so a rename with NO map would no longer block"
  },
  {
   "id": "b5-21",

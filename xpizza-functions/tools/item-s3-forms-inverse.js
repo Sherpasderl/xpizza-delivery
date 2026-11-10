@@ -1,7 +1,8 @@
 'use strict';
 // S3 (D4c-grill/item-s1/S3-DESIGN.md D3; the owner's rule-40 exception for the two order forms, 11-08) — THE FORMS' S3 HUNKS, as data.
 // unapplyItemS3Forms(key, text) removes exactly these hunks — key 'xpizza-orders' | 'la-musa-orders' (a form's index.html) or
-// 'form-serial-order' (the shared pin module, both byte-identical copies) — and returns the bytes it had before S3, so a
+// 'form-serial-order' (the shared pin module, both byte-identical copies) or 'account' (account.js, both byte-identical copies)
+// — and returns the bytes it had before S3, so a
 // guard that pins a form byte-for-byte to an older base (avail-identity-forms-noop) keeps pinning EVERYTHING outside S3. Each hunk must
 // occur EXACTLY once (an insertion with the newline before it) — a missing, duplicated or edited hunk throws, so a later edit to an
 // S3 line is caught here, and a byte outside every hunk still fails the caller's pin. Generated from the slice's own diff; never hand-edit
@@ -10,8 +11,28 @@ const HUNKS = {
  "xpizza-orders": [
   {
    "kind": "insert",
+   "new": ".gate-line{font-family:var(--sans);font-size:13px;color:var(--charcoal);line-height:1.4;margin:-6px 0 11px}   /* S3: the line naming the dish and the option inside the item gate (the approved mockup's one form addition) */\n.gate-line b{font-weight:700}",
+   "old": ""
+  },
+  {
+   "kind": "insert",
+   "new": "    <div class=\"pickup-gate\" id=\"item-gate\" role=\"alert\" style=\"display:none\"></div>",
+   "old": ""
+  },
+  {
+   "kind": "insert",
    "new": "/* S3 (D4c-grill/item-s1/S3-DESIGN.md D1/D3): the served { \"<dish id>\": item_key } map — the LIVE menu's only (the baked body never\n   carries it), applied with MENU all-or-nothing; a body without one empties it. liveItemKey: a dish's key, or null (no map ⇒ today's\n   lines). itemKeyFor: a pinned order's key AS FIRST SENT (form-serial-order.js), else the live map's. */\nlet ITEM_KEYS = {};\nfunction liveItemKey(p){ const k = p && ITEM_KEYS[String(p.id)]; return typeof k === 'string' && k ? k : null; }\nfunction itemKeyFor(p, lineKey){ const pinned = SERIAL.itemKey(lineKey, serialPinLive()); return pinned !== undefined ? pinned : liveItemKey(p); }",
    "old": ""
+  },
+  {
+   "kind": "replace",
+   "new": "  pricingKey:      (r) => liveItemKey(r) || r.name,     // x_pizza is priced server-side BY NAME — a rename is a different product; S3 (ruling 2026-11-10): with the served map the line's identity is the item key, so a rename keeps it",
+   "old": "  pricingKey:      (r) => r.name,     // x_pizza is priced server-side BY NAME — a rename is a different product"
+  },
+  {
+   "kind": "replace",
+   "new": "  const rows = d.map(e => '<div>' + safeText(priceNoticeText(e)) + '</div>');\n  const s3 = itemNoteText(); if (s3) rows.push('<div>' + safeText(s3) + '</div>');   // S3 D2: what «Quitar extra y seguir» removed + the new total\n  return rows.length ? '<div class=\"price-change-notice\" role=\"status\">' + rows.join('') + '</div>' : '';",
+   "old": "  return d.length ? '<div class=\"price-change-notice\" role=\"status\">' + d.map(e => '<div>' + safeText(priceNoticeText(e)) + '</div>').join('') + '</div>' : '';"
   },
   {
    "kind": "replace",
@@ -35,6 +56,11 @@ const HUNKS = {
   },
   {
    "kind": "insert",
+   "new": "  if (window.__itemMenuReload === true) return false;                      // S3 C1: the customer asked for the fresh menu (at Paso 2)",
+   "old": ""
+  },
+  {
+   "kind": "insert",
    "new": "  const ik = liveItemKey(item); if (ik) { const k = window.availKey(ik); if (seen.indexOf(k) === -1) seen.push(k); }   // S3: the portal / KDS write the item_key",
    "old": ""
   },
@@ -52,13 +78,43 @@ const HUNKS = {
    "kind": "replace",
    "new": "  const id = genOrderId(); SERIAL.mint(resolvedCartLines(), (l) => liveItemKey(l.record)); window.__pendingOrder = { id, sig }; return id;   // §3: pin this order's serialization",
    "old": "  const id = genOrderId(); SERIAL.mint(resolvedCartLines()); window.__pendingOrder = { id, sig }; return id;   // §3: pin this order's serialization"
+  },
+  {
+   "kind": "insert",
+   "new": "    if(itemRefused(res.status, cfg)) return;   // S3: menu_changed / extra_not_allowed → Paso 2's item gate (no checkout issued)",
+   "old": ""
+  },
+  {
+   "kind": "insert",
+   "new": "/* ── S3 (D4c-grill/item-s1/S3-DESIGN.md D3 + the advisor's rulings 2026-11-10; OWNER-APPROVED MOCKUP-item-s3-refusals.html C1/D1/C2/D2):\n   the ITEM REFUSALS of a send. Both land back on Paso 2 with the form's own cart gate (.pickup-gate, #item-gate) in its slot under\n   the Delivery/Pickup toggle. menu_changed: ONE «Recargar la página» — the live menu refreshed IN PLACE through the form's own feed\n   (ruling C1 (A)); only lines whose dish is GONE are dropped, with the existing toast; every other conflict keeps today's block.\n   extra_not_allowed: the server's detail, one naming line per denied option, «Quitar extra y seguir» (removes ONLY those options\n   through the form's own option writer, then the summary re-quotes and the Plan 5 notice says what left and the new total) and\n   «Revisar pedido» (the existing cart review). Nothing is ever re-sent: the customer confirms again. ── */\nconst ITEM_EXTRA_WORD = 'extra';\nlet __itemReloading = false;\nfunction itemRefused(status, err){\n  if(status !== 409 || !err) return false;\n  if(err.error === 'menu_changed'){ orderSubmitting = false; showStage('s2', 50); showItemGate('menu', null); return true; }\n  if(err.error === 'extra_not_allowed'){\n    const den = itemDenied(err.lines); if(!den.length) return false;   // nothing in this cart matches: today's generic answer\n    orderSubmitting = false; showStage('s2', 50); showItemGate('extra', den); return true;\n  }\n  return false;\n}\n// the cart's (line, option) pairs a refusal names: a dish by its item key (or a legacy key), an option by its legacy key (id or name)\nfunction itemDenied(lines){\n  const out = [];\n  (Array.isArray(lines) ? lines : []).forEach(function(x){\n    if(!x || typeof x.item !== 'string' || typeof x.extra !== 'string') return;\n    resolvedCartLines().forEach(function(l){\n      const p = l.record; if(!p || !(liveItemKey(p) === x.item || p.name === x.item || String(p.id) === x.item)) return;\n      const inst = pizzaExtras[l.key] || {};\n      Object.keys(inst).forEach(function(i){ Object.keys(inst[i] || {}).forEach(function(eid){\n        if(!(inst[i][eid] > 0)) return;\n        const e = lineExtra(l, eid) || findMenuExtra(eid);\n        if(e && (e.name === x.extra || String(e.id) === x.extra)) out.push({ key: l.key, inst: i, eid: eid, dish: p.name, extra: e.name });\n      }); });\n    });\n  });\n  return out;\n}\nfunction showItemGate(kind, den){\n  const g = document.getElementById('item-gate'); if(!g) return;\n  window.__itemDenied = den || null;\n  if(kind === 'menu'){\n    g.innerHTML = '<div class=\"pickup-gate-title\">El menú se actualizó, recargá la página</div><div class=\"pickup-gate-actions\"><button type=\"button\" class=\"pickup-gate-btn primary\" onclick=\"itemReloadMenu()\">Recargar la página</button></div>';\n  } else {\n    const named = []; den.forEach(function(d){ if(!named.some(function(n){ return n.dish === d.dish && n.extra === d.extra; })) named.push(d); });\n    g.innerHTML = '<div class=\"pickup-gate-title\">Uno de los extras ya no está disponible para ese producto. Revisá tu pedido.</div>'\n      + named.map(function(d){ return '<div class=\"gate-line\"><b>' + safeText(d.dish) + '</b> · ' + ITEM_EXTRA_WORD + ': ' + safeText(d.extra) + '</div>'; }).join('')\n      + '<div class=\"pickup-gate-actions\"><button type=\"button\" class=\"pickup-gate-btn primary\" onclick=\"itemRemoveDenied()\">Quitar extra y seguir</button><button type=\"button\" class=\"pickup-gate-btn ghost\" onclick=\"toggleCartReview()\">Revisar pedido</button></div>';\n  }\n  g.style.display = 'block';\n}\nfunction hideItemGate(){ const g = document.getElementById('item-gate'); if(g){ g.style.display = 'none'; g.innerHTML = ''; } window.__itemDenied = null; }\nasync function itemReloadMenu(){\n  if(__itemReloading) return;   // one fetch per tap: a second tap while the first is in flight does nothing\n  __itemReloading = true;\n  const btn = document.querySelector('#item-gate .pickup-gate-btn'); if(btn) btn.disabled = true;\n  let st = null;\n  window.__itemMenuReload = true;   // liveMenuBusy: the customer asked for the fresh menu — it applies now, at Paso 2\n  try { st = await window.__liveMenu.feed.refresh(); } catch(_){ st = null; }\n  window.__itemMenuReload = false; __itemReloading = false;\n  if(!st || st.phase !== 'live' || st.lastError){ if(btn) btn.disabled = false; return; }   // the gate stays, its button live\n  const gone = resolvedCartLines().filter(function(l){ return l.unresolved === 'removed'; }).map(function(l){ return l.key; });\n  gone.forEach(function(k){ const id = /^\\d+$/.test(String(k)) ? Number(k) : k; chg(id, -(CART.qtyOf(k) || 0)); });\n  hideItemGate();\n  try { renderStage2Summary(); } catch(_){}\n  if(gone.length){ try { window.__ACCOUNT.toast(gone.length === 1 ? '1 producto ya no está disponible' : gone.length + ' productos ya no están disponibles'); } catch(_){} }\n}\nfunction itemRemoveDenied(){\n  const den = window.__itemDenied || []; hideItemGate();\n  den.forEach(function(d){ const pid = /^\\d+$/.test(String(d.key)) ? Number(d.key) : d.key; if(((pizzaExtras[d.key] || {})[d.inst] || {})[d.eid] > 0) toggleDetailExtra(d.eid, pid, Number(d.inst)); });   // the form's own option writer\n  const byDish = []; den.forEach(function(d){ let e = byDish.find(function(x){ return x.dish === d.dish; }); if(!e){ e = { dish: d.dish, ex: [] }; byDish.push(e); } if(e.ex.indexOf(d.extra) === -1) e.ex.push(d.extra); });\n  window.__itemNote = { text: byDish.map(function(e){ return 'Quitamos ' + (e.ex.length > 1 ? e.ex.slice(0, -1).join(', ') + ' y ' + e.ex[e.ex.length - 1] : e.ex[0]) + ' de ' + e.dish + '.'; }).join(' '), sig: cartSig() };\n  try { renderStage2Summary(); } catch(_){}\n}\n// the D2 note — only while the repaired cart is the one on screen; its total is the one the summary shows\nfunction itemNoteText(){\n  const n = window.__itemNote; if(!n) return '';\n  if(n.sig !== cartSig()){ window.__itemNote = null; return ''; }\n  return n.text + ' Total nuevo: L ' + redeemAdjustedTotal().toFixed(0) + '.';\n}\n",
+   "old": ""
+  },
+  {
+   "kind": "insert",
+   "new": "        if(itemRefused(res.status, err)) return;   // S3: menu_changed / extra_not_allowed → Paso 2's item gate (nothing created)",
+   "old": ""
   }
  ],
  "la-musa-orders": [
   {
    "kind": "insert",
+   "new": "/* S3 (OWNER-APPROVED MOCKUP-item-s3-refusals.html E1/F1): the item gate — the X. Pizza form's cart gate, in this form's own tokens */\n.pickup-gate{margin:12px 16px 0;border:1px solid #E7B4A8;background:#FBEAE6;border-radius:12px;padding:13px 14px}\n.pickup-gate-title{font-family:var(--sans);font-size:13.5px;font-weight:700;color:#8f2413;line-height:1.4;margin-bottom:11px}\n.pickup-gate-actions{display:flex;gap:8px}\n.pickup-gate-btn{flex:1;text-align:center;border:0;border-radius:9px;padding:10px 8px;font-family:var(--sans);font-size:12.5px;font-weight:700;cursor:pointer}\n.pickup-gate-btn.primary{background:var(--red);color:#fff}\n.pickup-gate-btn.ghost{background:#fff;color:var(--charcoal);border:1px solid var(--border)}\n.gate-line{font-family:var(--sans);font-size:13px;color:var(--charcoal);line-height:1.4;margin:-6px 0 11px}\n.gate-line b{font-weight:700}",
+   "old": ""
+  },
+  {
+   "kind": "insert",
+   "new": "    <div class=\"pickup-gate\" id=\"item-gate\" role=\"alert\" style=\"display:none\"></div>",
+   "old": ""
+  },
+  {
+   "kind": "insert",
    "new": "/* S3 (D4c-grill/item-s1/S3-DESIGN.md D1/D3): the served { \"<dish id>\": item_key } map — the LIVE menu's only (the baked body never\n   carries it), applied with MENU all-or-nothing; a body without one empties it. liveItemKey: a dish's key, or null (no map ⇒ today's\n   lines). itemKeyFor: a pinned order's key AS FIRST SENT (form-serial-order.js), else the live map's. */\nlet ITEM_KEYS = {};\nfunction liveItemKey(p){ const k = p && ITEM_KEYS[String(p.id)]; return typeof k === 'string' && k ? k : null; }\nfunction itemKeyFor(p, lineKey){ const pinned = SERIAL.itemKey(lineKey, serialPinLive()); return pinned !== undefined ? pinned : liveItemKey(p); }",
    "old": ""
+  },
+  {
+   "kind": "replace",
+   "new": "  const rows = d.map(e => '<div>' + safeText(priceNoticeText(e)) + '</div>');\n  const s3 = itemNoteText(); if (s3) rows.push('<div>' + safeText(s3) + '</div>');   // S3 D2: what «Quitar extra y seguir» removed + the new total\n  return rows.length ? '<div class=\"price-change-notice\" role=\"status\">' + rows.join('') + '</div>' : '';",
+   "old": "  return d.length ? '<div class=\"price-change-notice\" role=\"status\">' + d.map(e => '<div>' + safeText(priceNoticeText(e)) + '</div>').join('') + '</div>' : '';"
   },
   {
    "kind": "replace",
@@ -82,6 +138,11 @@ const HUNKS = {
   },
   {
    "kind": "insert",
+   "new": "  if (window.__itemMenuReload === true) return false;                      // S3 C1: the customer asked for the fresh menu (at Paso 2)",
+   "old": ""
+  },
+  {
+   "kind": "insert",
    "new": "  const ik = liveItemKey(item); if (ik) { const k = window.availKey(ik); if (seen.indexOf(k) === -1) seen.push(k); }   // S3: the portal / KDS write the item_key",
    "old": ""
   },
@@ -99,6 +160,21 @@ const HUNKS = {
    "kind": "replace",
    "new": "  const id = genOrderId(); SERIAL.mint(resolvedCartLines(), (l) => liveItemKey(l.record)); window.__pendingOrder = { id, sig }; return id;   // §3: pin this order's serialization",
    "old": "  const id = genOrderId(); SERIAL.mint(resolvedCartLines()); window.__pendingOrder = { id, sig }; return id;   // §3: pin this order's serialization"
+  },
+  {
+   "kind": "insert",
+   "new": "/* ── S3 (D4c-grill/item-s1/S3-DESIGN.md D3 + the advisor's rulings 2026-11-10; OWNER-APPROVED MOCKUP-item-s3-refusals.html E1/F1/E2/F2):\n   the ITEM REFUSALS of a send. Both land back on Paso 2 with the form's own cart gate (.pickup-gate, #item-gate) in its slot under\n   the Delivery/Pickup toggle. menu_changed: ONE «Recargar la página» — the live menu refreshed IN PLACE through the form's own feed\n   (ruling C1 (A)); only lines whose dish is GONE are dropped, with the existing toast; every other conflict keeps today's block.\n   extra_not_allowed: the server's detail, one naming line per denied option, «Quitar extra y seguir» (removes ONLY those options\n   through the form's own option writer, then the summary re-quotes and the Plan 5 notice says what left and the new total) and\n   «Revisar pedido» (the existing cart review). Nothing is ever re-sent: the customer confirms again. ── */\nconst ITEM_EXTRA_WORD = 'acompañamiento';\nlet __itemReloading = false;\nfunction itemRefused(status, err){\n  if(status !== 409 || !err) return false;\n  if(err.error === 'menu_changed'){ orderSubmitting = false; showStage('s2', 50); showItemGate('menu', null); return true; }\n  if(err.error === 'extra_not_allowed'){\n    const den = itemDenied(err.lines); if(!den.length) return false;   // nothing in this cart matches: today's generic answer\n    orderSubmitting = false; showStage('s2', 50); showItemGate('extra', den); return true;\n  }\n  return false;\n}\n// the cart's (line, option) pairs a refusal names: a dish by its item key (or a legacy key), an option by its legacy key (id or name)\nfunction itemDenied(lines){\n  const out = [];\n  (Array.isArray(lines) ? lines : []).forEach(function(x){\n    if(!x || typeof x.item !== 'string' || typeof x.extra !== 'string') return;\n    resolvedCartLines().forEach(function(l){\n      const p = l.record; if(!p || !(liveItemKey(p) === x.item || p.name === x.item || String(p.id) === x.item)) return;\n      const ex = pizzaExtras[l.key] || {};\n      Object.keys(ex).forEach(function(eid){\n        if(!(ex[eid] > 0)) return;\n        const e = lineExtra(l, eid) || findMenuExtra(eid);\n        if(e && (e.name === x.extra || String(e.id) === x.extra)) out.push({ key: l.key, eid: eid, dish: p.name, extra: e.name });\n      });\n    });\n  });\n  return out;\n}\nfunction showItemGate(kind, den){\n  const g = document.getElementById('item-gate'); if(!g) return;\n  window.__itemDenied = den || null;\n  if(kind === 'menu'){\n    g.innerHTML = '<div class=\"pickup-gate-title\">El menú se actualizó, recargá la página</div><div class=\"pickup-gate-actions\"><button type=\"button\" class=\"pickup-gate-btn primary\" onclick=\"itemReloadMenu()\">Recargar la página</button></div>';\n  } else {\n    const named = []; den.forEach(function(d){ if(!named.some(function(n){ return n.dish === d.dish && n.extra === d.extra; })) named.push(d); });\n    g.innerHTML = '<div class=\"pickup-gate-title\">Uno de los extras ya no está disponible para ese producto. Revisá tu pedido.</div>'\n      + named.map(function(d){ return '<div class=\"gate-line\"><b>' + safeText(d.dish) + '</b> · ' + ITEM_EXTRA_WORD + ': ' + safeText(d.extra) + '</div>'; }).join('')\n      + '<div class=\"pickup-gate-actions\"><button type=\"button\" class=\"pickup-gate-btn primary\" onclick=\"itemRemoveDenied()\">Quitar extra y seguir</button><button type=\"button\" class=\"pickup-gate-btn ghost\" onclick=\"toggleCartReview()\">Revisar pedido</button></div>';\n  }\n  g.style.display = 'block';\n}\nfunction hideItemGate(){ const g = document.getElementById('item-gate'); if(g){ g.style.display = 'none'; g.innerHTML = ''; } window.__itemDenied = null; }\nasync function itemReloadMenu(){\n  if(__itemReloading) return;   // one fetch per tap: a second tap while the first is in flight does nothing\n  __itemReloading = true;\n  const btn = document.querySelector('#item-gate .pickup-gate-btn'); if(btn) btn.disabled = true;\n  let st = null;\n  window.__itemMenuReload = true;   // liveMenuBusy: the customer asked for the fresh menu — it applies now, at Paso 2\n  try { st = await window.__liveMenu.feed.refresh(); } catch(_){ st = null; }\n  window.__itemMenuReload = false; __itemReloading = false;\n  if(!st || st.phase !== 'live' || st.lastError){ if(btn) btn.disabled = false; return; }   // the gate stays, its button live\n  const gone = resolvedCartLines().filter(function(l){ return l.unresolved === 'removed'; }).map(function(l){ return l.key; });\n  gone.forEach(function(k){ const id = k; chg(id, -(CART.qtyOf(k) || 0)); });\n  hideItemGate();\n  try { renderStage2Summary(); } catch(_){}\n  if(gone.length){ try { window.__ACCOUNT.toast(gone.length === 1 ? '1 producto ya no está disponible' : gone.length + ' productos ya no están disponibles'); } catch(_){} }\n}\nfunction itemRemoveDenied(){\n  const den = window.__itemDenied || []; hideItemGate();\n  den.forEach(function(d){ const q = (pizzaExtras[d.key] || {})[d.eid] || 0; if(q > 0) chgDetailExtra(d.eid, d.key, -q); });   // the form's own option writer\n  const byDish = []; den.forEach(function(d){ let e = byDish.find(function(x){ return x.dish === d.dish; }); if(!e){ e = { dish: d.dish, ex: [] }; byDish.push(e); } if(e.ex.indexOf(d.extra) === -1) e.ex.push(d.extra); });\n  window.__itemNote = { text: byDish.map(function(e){ return 'Quitamos ' + (e.ex.length > 1 ? e.ex.slice(0, -1).join(', ') + ' y ' + e.ex[e.ex.length - 1] : e.ex[0]) + ' de ' + e.dish + '.'; }).join(' '), sig: cartSig() };\n  try { renderStage2Summary(); } catch(_){}\n}\n// the D2 note — only while the repaired cart is the one on screen; its total is the one the summary shows\nfunction itemNoteText(){\n  const n = window.__itemNote; if(!n) return '';\n  if(n.sig !== cartSig()){ window.__itemNote = null; return ''; }\n  return n.text + ' Total nuevo: L ' + redeemAdjustedTotal().toFixed(0) + '.';\n}\n",
+   "old": ""
+  },
+  {
+   "kind": "insert",
+   "new": "    if(itemRefused(res.status, cfg)) return;   // S3: menu_changed / extra_not_allowed → Paso 2's item gate (no checkout issued)",
+   "old": ""
+  },
+  {
+   "kind": "insert",
+   "new": "        if(itemRefused(res.status, err)) return;   // S3: menu_changed / extra_not_allowed → Paso 2's item gate (nothing created)",
+   "old": ""
   }
  ],
  "form-serial-order": [
@@ -141,6 +217,13 @@ const HUNKS = {
    "kind": "replace",
    "new": "  // S3: the item_key a pinned line was first sent with — a string, or null (sent without one); undefined when the pin does not\n  // hold that line or is not live (the caller then reads the live map)\n  function itemKey(key, live = true) { return pin && live && iks && iks.has(String(key)) ? iks.get(String(key)) : undefined; }\n  return { order, mint, resume, clear, current, itemKey };",
    "old": "  return { order, mint, resume, clear, current };"
+  }
+ ],
+ "account": [
+  {
+   "kind": "insert",
+   "new": "  window.__ACCOUNT.toast = toast;   // S3 C2: the form's item-refusal flow reuses this pill (textContent; no new copy)",
+   "old": ""
   }
  ]
 };
