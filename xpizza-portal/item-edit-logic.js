@@ -190,8 +190,9 @@ export function view(draft, s) {
   const uploading = !!(s.upload && s.upload.state === 'busy');
   const seTitle = se ? ({ name: COPY.save.fixName, options: COPY.save.shortName, desc: COPY.save.fixDesc, cat: COPY.save.otherCat, subcat: COPY.save.pickSubcat }[se.field] || COPY.save.fixName) : null;
   let title = null;
-  if (!ch.length) title = COPY.save.none;
-  else if (uploading) title = COPY.save.uploading;
+  // a photo on its way IS the merchant's change: the upload's hold is said even when nothing else changed
+  if (uploading) title = COPY.save.uploading;
+  else if (!ch.length) title = COPY.save.none;
   else if (nameP === 'long' || nameP === 'option_long') title = COPY.save.shortName;
   else if (nameP) title = COPY.save.fixName;
   else if (descP) title = COPY.save.fixDesc;

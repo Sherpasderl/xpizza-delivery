@@ -175,6 +175,9 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
       for (const k of Object.keys(fake.legacy)) if (fake.legacy[k]) lg[k] = fake.legacy[k] === 'nourl' ? {} : { card: legacyCard(k) };
       if (Object.keys(lg).length) out.legacyPreviews = lg;
       if (fake.flags.uploads) out.photosEnabled = true;
+      // S2-DESIGN §1.1: textEditEnabled is ALWAYS present (false = today's drawer); reservedNames only when it is on
+      out.textEditEnabled = fake.flags.textEdit === true;
+      if (out.textEditEnabled) out.reservedNames = [];
       // pendingRenames (portal-reads.js) is NOT served: production derives it with draft-assess.assessDraft, which only accepts a
       // complete schema-2 source — this fake's catalog is not one, so it reports none (advisor ruling B, Codex held r3). Tests that
       // need a pending name make it through the page's own rename path; the server's derivation is proven by the emulator cells.

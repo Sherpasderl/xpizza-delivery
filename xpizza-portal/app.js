@@ -1274,6 +1274,8 @@ function setDrawerInert(on) {
   if (on) d.setAttribute('inert', ''); else d.removeAttribute('inert');
   for (const el of d.querySelectorAll('input, button')) el.disabled = on === true || lockedControls.has(el);
   if (on && document.activeElement && d.contains(document.activeElement)) document.activeElement.blur();
+  // S4: un-inerting enabled every button — «Guardar» must say what the working copy says (nothing to save / a hold) again
+  if (!on) syncEdit();
 }
 
 export function openDrawer(key) {

@@ -1115,3 +1115,37 @@ test('P5-L is ONLY the limit: a transient failure is still P5 «No se pudo subir
   assert.ok(!drawer(d).querySelector('.phwait'));
   assert.ok(btnText(drawer(d), 'Reintentar'));
 });
+
+// ── S4 «Editar producto» (PLAN-portal-item-edit r6 addendum S4): with the text-edit switch on, the drawer is a working copy — an
+// upload started in it lands in the COPY (never the draft) until «Guardar»; «Cancelar» while it is in flight means it never lands.
+test('S4 — an upload started in the edit drawer lands in the COPY: the draft takes it only with «Guardar», once', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  fake.flags.textEdit = true;
+  const { d, w, mods } = await boot(fake);
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => drawer(d).querySelector('.dwf') && !drawer(d).querySelector('.phcrop'), 'back in the edit drawer');
+  await until(() => btnText(drawer(d), 'Guardar') && !btnText(drawer(d), 'Guardar').disabled, 'the upload landed in the copy');
+  const photosOf = () => JSON.parse(JSON.stringify((mods.app.state.draft.state.photos) || {}));
+  assert.deepEqual(photosOf(), {}, 'nothing in the draft yet');
+  btnText(drawer(d), 'Guardar').click();
+  await settle(20);
+  assert.equal(photosOf().Pepperoni && photosOf().Pepperoni.state, 'pid', '«Guardar»: the photo, in the draft');
+  assert.match(d.getElementById('rbtxt').textContent, /· 1 foto/);
+});
+test('S4 — «Guardar» waits for an upload in flight; «Cancelar» then means the late answer NEVER lands (draft untouched)', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  fake.flags.textEdit = true;
+  const { d, w, mods } = await boot(fake);
+  const release = fake.holdPut();
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => btnText(drawer(d), 'Guardar'), 'the edit drawer while the upload runs');
+  const g = btnText(drawer(d), 'Guardar');
+  assert.equal(g.disabled, true);
+  assert.equal(g.title, 'Esperá a que termine de subir la foto');
+  drawer(d).querySelector('.dwf .btn.ghost').click();   // the DRAWER's «Cancelar» (the photo field carries the upload's own, P4)
+  await settle(10);
+  release();
+  await settle(120);
+  assert.deepEqual(JSON.parse(JSON.stringify((mods.app.state.draft.state.photos) || {})), {}, 'the late answer never reached the draft');
+  assert.ok(!drawer(d).classList.contains('show'));
+});

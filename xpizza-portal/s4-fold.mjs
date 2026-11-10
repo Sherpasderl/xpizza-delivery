@@ -118,6 +118,10 @@ export const S4_FOLD = {
    ""
   ],
   [
+   "  // S4: un-inerting enabled every button — «Guardar» must say what the working copy says (nothing to save / a hold) again\n  if (!on) syncEdit();\n",
+   ""
+  ],
+  [
    "  if (editSess && editSess.key !== key) endEditSession();   // S4: another product's drawer drops the open copy\n",
    ""
   ],

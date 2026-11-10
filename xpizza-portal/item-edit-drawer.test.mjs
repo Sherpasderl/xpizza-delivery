@@ -425,3 +425,11 @@ test('reserved_key_conflict at PUBLISH — the same panel on the named product',
   assert.equal(panel(p).title, 'Ese nombre no está disponible');
   assert.equal(panel(p).detail, 'Es en «Sichuan Spicy Wonton». Tus otros cambios siguen en el borrador.');
 });
+test('stale CAS (S4 addendum) — a drawer edit then a stale save: today\'s «Tu borrador cambió» panel, never the product panel; the edit stays in the draft', async () => {
+  const p = await page({ on: { editCatalog: () => errJson(409, { error: 'stale_edit', detail: 'base moved' }) } });
+  await p.signIn();
+  await renameAndReview(p, 'dimsum_01', 'Wonton picante');
+  assert.equal(panel(p).title, 'Tu borrador cambió');
+  assert.equal(panel(p).action.textContent, 'Recargar y reaplicar');
+  assert.equal(p.src().items.find((i) => i.key === 'dimsum_01').display.name, 'Wonton picante', 'nothing is lost before the merchant decides');
+});
