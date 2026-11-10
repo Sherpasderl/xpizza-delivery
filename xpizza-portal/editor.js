@@ -715,7 +715,7 @@ export const ITEM_DESC_MAX = 200;
 const charCount = (s) => [...String(s)].length;
 // The server's own folds: tidyName (stored form) and normalizeName (what counts as the same name) — catalog/add-product.js.
 export const tidyItemName = (raw) => (typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim() : '');
-const foldName = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const foldName = (s) => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 // A name reaches an attribute sink (display-safety.js `attribute`): markup, an entity that decodes to it, or a quote.
 const QUOTE = /["'`]/;
 // The opaque id syntax new products are keyed by (plan §2.2): a name may never look like one.
@@ -725,8 +725,10 @@ const membersOf = (st, row) => { const g = groupOfRow(st, row); return g ? g.opt
 const derivedName = (name, opt) => `${name} - ${opt && opt.display && typeof opt.display.choice === 'string' ? opt.display.choice : ''}`;
 
 // 'empty' | 'long' | 'quote' | 'unavailable' | 'taken' | 'option_long' | null. A value equal to the LOADED one is grandfathered
-// (the server caps only newly authored values), however long.
-export function itemNameProblem(draft, key, raw) {
+// (the server caps only newly authored values), however long. `reserved`: getEditableCatalog's reservedNames (already folded
+// by the server's normalizeName) — a name may not take one, unless it is the OWN key of the record the name belongs to (the
+// product's key for its name; each option's key for its derived name), so a rename back always passes (S2 §1.1, G4).
+export function itemNameProblem(draft, key, raw, reserved = null) {
   const row = existingRow(draft.state, key);
   if (!row) return null;
   const v = tidyItemName(raw);
@@ -741,9 +743,12 @@ export function itemNameProblem(draft, key, raw) {
   const names = (n) => others.some((o) => (o.display && typeof o.display.name === 'string' && foldName(o.display.name) === n) || (typeof o.key === 'string' && foldName(o.key) === n))
     || rowsOf(draft.state, 'extra').some((e) => e && e.display && typeof e.display.name === 'string' && foldName(e.display.name) === n);
   if (names(foldName(v))) return 'taken';
+  const held = (n, rec) => !!reserved && typeof reserved.has === 'function' && reserved.has(foldName(n)) && foldName(n) !== foldName(rec.key);
+  if (held(v, row)) return 'unavailable';
   const opts = membersOf(draft.state, row);
   if (opts.some((o) => charCount(derivedName(v, o)) > ITEM_NAME_MAX)) return 'option_long';
   if (opts.some((o) => names(foldName(derivedName(v, o))))) return 'taken';
+  if (opts.some((o) => held(derivedName(v, o), o))) return 'unavailable';
   return null;
 }
 // 'long' | 'markup' | null (the `body` rule). Empty is fine: the description is optional.
@@ -774,9 +779,10 @@ export function itemCategoryProblem(draft, key, { cat, subcat = null } = {}) {
   return null;
 }
 
-// The whole drawer, once. `edit`: any of { name, desc, cat, subcat, price, optionPrices: {[optionKey]: raw}, photo }; an absent
-// field is unchanged. Returns true when written, false when refused (and then NOTHING was written).
-export function editItem(draft, key, edit = {}) {
+// The whole drawer, once. `edit`: any of { name, desc, cat, subcat, price, optionPrices: {[optionKey]: raw}, photo,
+// extraPrices: {[extraKey]: raw} }; an absent field is unchanged. `reserved`: the served reservedNames (itemNameProblem).
+// Returns true when written, false when refused (and then NOTHING was written).
+export function editItem(draft, key, edit = {}, { reserved = null } = {}) {
   if (!canEditContent(draft)) return false;
   const row = existingRow(draft.state, key);
   if (!row || !row.display) return false;
@@ -784,7 +790,7 @@ export function editItem(draft, key, edit = {}) {
   const d = row.display;
   const opts = membersOf(draft.state, row);
   const name = own(e, 'name') ? tidyItemName(e.name) : d.name;
-  if (own(e, 'name') && itemNameProblem(draft, key, e.name) !== null) return false;
+  if (own(e, 'name') && itemNameProblem(draft, key, e.name, reserved) !== null) return false;
   const desc = own(e, 'desc') ? (typeof e.desc === 'string' ? e.desc : '') : undefined;
   if (desc !== undefined && itemDescProblem(draft, key, desc) !== null) return false;
   const moving = own(e, 'cat') || own(e, 'subcat');
@@ -800,6 +806,15 @@ export function editItem(draft, key, edit = {}) {
     if (!o || p === null) return false;
     optPrices.push([o, p]);
   }
+  // the extras-group price blocks below the drawer's fields (advisor Q2, 11-10): one save behaviour per drawer, so their prices
+  // ride the same all-or-nothing write — a usable price on an existing extra, or nothing is written
+  const exPrices = [];
+  for (const [k, raw] of Object.entries(e.extraPrices && typeof e.extraPrices === 'object' ? e.extraPrices : {})) {
+    const x = rowsOf(draft.state, 'extra').find((r) => r && r.key === k);
+    const p = parsePrice(raw);
+    if (!x || p === null) return false;
+    exPrices.push([k, raw]);
+  }
   const photo = own(e, 'photo') ? e.photo : undefined;
   if (photo !== undefined && !(photo === null || (photo && photo.state === 'removed' && Object.keys(photo).length === 1)
       || (photo && photo.state === 'pid' && typeof photo.pid === 'string' && photo.pid && Object.keys(photo).length === 2))) return false;
@@ -812,6 +827,7 @@ export function editItem(draft, key, edit = {}) {
   if (price !== undefined) setRowPrice(row, price);
   for (const [o, p] of optPrices) setRowPrice(o, p);
   if (photo !== undefined) setPhoto(draft, key, photo);
+  for (const [k, raw] of exPrices) setPrice(draft, 'extra', k, raw);
   return true;
 }
 

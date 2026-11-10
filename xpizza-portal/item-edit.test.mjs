@@ -18,11 +18,16 @@ import {
 import * as IE from './item-edit-logic.js';
 
 const AP = createRequire(import.meta.url)('../xpizza-functions/catalog/add-product.js');
+const { validateSource } = createRequire(import.meta.url)('../xpizza-functions/catalog/source-store.js');
+// THE ONE eligibility rule (S2 §1.6): the page loads it as a classic script (globals, the avail-key pattern); the tests install
+// the SERVER's own module the same way — the real writer, never a laxer fake.
+const EE = createRequire(import.meta.url)('../xpizza-functions/catalog/extras-eligibility.js');
+Object.assign(globalThis, { projectEligibility: EE.projectEligibility, eligibleSet: EE.eligibleSet });
 
 // Pizzas has subsections (Clásicas / Especiales); Pastas, Ensaladas none; Bebidas holds one product (the D2 refusal).
 const BASE = () => ({
   restaurant_id: 'merch_a',
-  schema_version: 1,
+  schema_version: 2,
   items: [
     { key: 'Pizza Margarita', price: 220, display: { id: 1, cat: 'pz', subcat: 'Clásicas', name: 'Pizza Margarita', price: 220, desc: 'Tomate, mozzarella fresca y albahaca' } },
     { key: 'Pizza Cacio e Pepe', price: 260, display: { id: 2, cat: 'pz', subcat: 'Especiales', name: 'Pizza Cacio e Pepe', price: 260, desc: 'Parmesano, mozzarella y pimienta.' } },
@@ -32,14 +37,16 @@ const BASE = () => ({
     { key: 'Limonada de hierbabuena', price: 60, display: { id: 6, cat: 'be', name: 'Limonada de hierbabuena', price: 60, desc: 'Con hielo y menta fresca' } },
   ],
   extras: [
-    { key: 'Orilla rellena', price: 50, display: { id: 'e1', cat: 'Orilla rellena', name: 'Orilla rellena', price: 50 } },
-    { key: 'Pan de ajo', price: 45, display: { id: 'e2', cat: 'Pan de ajo', name: 'Pan de ajo', price: 45 } },
+    { key: 'Orilla de queso', price: 50, display: { id: 'e1', cat: 'Orilla rellena', name: 'Orilla de queso', price: 50 } },
+    { key: 'Pan de ajo con queso', price: 45, display: { id: 'e2', cat: 'Pan de ajo', name: 'Pan de ajo con queso', price: 45 } },
   ],
   structure: {
     schema_version: 2,
     item_order: ['Pizza Margarita', 'Pizza Cacio e Pepe', 'Pizza Pepperoni', 'Lasaña', 'Ravioles', 'Limonada de hierbabuena'],
     categories: [{ id: 'pz', name: 'Pizzas', subcats: ['Clásicas', 'Especiales'] }, { id: 'pa', name: 'Pastas' }, { id: 'be', name: 'Bebidas' }],
-    extras_by_category: { pz: ['Orilla rellena'], pa: ['Pan de ajo'] },
+    // the eligibility AUTHORITY (S2 §1.1): exposure.category_allow, read by the shared evaluator — not extras_by_category
+    extra_categories: ['Orilla rellena', 'Pan de ajo'],
+    exposure: { category_allow: { pz: ['Orilla rellena'], pa: ['Pan de ajo'] }, item_overrides: {} },
     pickup_only_cats: ['pa'],
     weekend_only_cats: ['pa'],
     redeem_eligible_cats: ['pz'],
@@ -86,7 +93,7 @@ test('editItem — ANY invalid field refuses the WHOLE edit: nothing is written 
   assert.equal(editItem(d, 'Pizza Cacio e Pepe', { name: 'Pizza "Cacio"', price: '300' }), false, 'a quote in a name');
   assert.equal(editItem(d, 'Pizza Cacio e Pepe', { desc: 'd'.repeat(201) }), false, 'a description over 200');
   assert.equal(editItem(d, 'Pizza Cacio e Pepe', { name: 'pizza pepperoni' }), false, 'another product\'s name (case / accent folded)');
-  assert.equal(editItem(d, 'Pizza Cacio e Pepe', { name: 'Pan de ajo' }), false, 'an extra\'s name');
+  assert.equal(editItem(d, 'Pizza Cacio e Pepe', { name: 'Pan de ajo con queso' }), false, 'an extra\'s name');
   assert.equal(editItem(d, 'Pizza Cacio e Pepe', { name: 'i_abcdefghjkmn' }), false, 'the opaque id syntax');
   assert.equal(editItem(d, 'Limonada de hierbabuena', { cat: 'pa' }), false, 'it would leave Bebidas empty');
   assert.equal(editItem(d, 'Pizza Cacio e Pepe', { subcat: 'Clásicas', cat: 'pz', name: '' }), false, 'an empty name');
@@ -279,7 +286,7 @@ test('drawer D — a move with no consequence shows NO note; a menu that declare
   const s = IE.open(d, 'César');
   IE.set(s, 'cat', 'be');
   assert.equal(IE.view(d, s).consequences, null);
-  delete src.structure.extras_by_category;
+  delete src.structure.exposure;
   const d2 = createDraft(src);
   const s2 = IE.open(d2, 'Pizza Margarita');
   IE.set(s2, 'cat', 'pa');
@@ -325,7 +332,8 @@ test('drawer F — a group previews every derived option name; one over 60 is th
   assert.deepEqual(v.options.map((o) => o.counter), ['39/60', '38/60', '39/60'], 'mockup F: each option name has its own counter');
   IE.set(s, 'name', 'Pizza Cuatro Quesos con Orilla Rellena de Requesón');
   v = IE.view(d, s);
-  assert.equal(v.errors.name, 'El nombre completo de la opción supera 60 letras');
+  assert.equal(v.errors.options, 'El nombre completo de la opción supera 60 letras', 'mockup F2: the line sits under the Opciones block');
+  assert.equal(v.errors.name, null, 'mockup F2: the Nombre field itself is not marked invalid');
   assert.deepEqual(v.options.map((o) => o.tooLong), [true, false, true], 'only the two 8-letter choices pass 60');
   assert.equal(v.save.enabled, false);
   assert.equal(v.save.title, 'Acortá el nombre para guardar');
@@ -434,4 +442,174 @@ test('drawer — a stale draft (the session opened on a draft that was reloaded)
   const d2 = createDraft(BASE());                    // a reload built a new draft object
   assert.deepEqual(IE.save(d2, s), { ok: false, error: 'stale' });
   assert.equal(item(d2, 'Pizza Cacio e Pepe').display.name, 'Pizza Cacio e Pepe');
+});
+
+// ── Phase 2: the S2 contract (S2-DESIGN §1 r2, approved 11-10) ──────────────────────────────────────────────────────────
+test('premise — the fixture is a source the SERVER accepts (validateSource), the eligibility authority included', () => {
+  assert.doesNotThrow(() => validateSource(BASE(), 'merch_a'));
+  assert.doesNotThrow(() => validateSource(draftSource(withGroup()), 'merch_a'));
+});
+
+test('C5 live — a served reserved name reads «Ese nombre no está disponible»; the record\'s OWN key never does (a rename back passes)', () => {
+  const d = createDraft(BASE());
+  const ctx = { reservedNames: ['hawaiana', 'pizza cacio e pepe'] };   // as served: folded by the server's normalizeName
+  const s = IE.open(d, 'Pizza Cacio e Pepe', ctx);
+  IE.set(s, 'name', '  HAWAIANA ');
+  assert.equal(IE.view(d, s).errors.name, 'Ese nombre no está disponible', 'normalized: case and spaces folded');
+  IE.set(s, 'name', 'Háwaiana');
+  assert.equal(IE.view(d, s).errors.name, 'Ese nombre no está disponible', 'normalized: accents folded');
+  IE.set(s, 'name', 'Cacio e Pepe');
+  assert.equal(IE.view(d, s).errors.name, null);
+  const back = createDraft(BASE());
+  editItem(back, 'Pizza Cacio e Pepe', { name: 'Cacio e Pepe' });
+  const s2 = IE.open(createDraft(draftSource(back)), 'Pizza Cacio e Pepe', ctx);
+  IE.set(s2, 'name', 'Pizza Cacio e Pepe');
+  assert.equal(IE.view(s2.draft, s2).errors.name, null, 'the product\'s own key is reserved for it alone: the rename back passes');
+  const noCtx = IE.open(createDraft(BASE()), 'Pizza Cacio e Pepe');
+  IE.set(noCtx, 'name', 'Hawaiana');
+  assert.equal(IE.view(noCtx.draft, noCtx).errors.name, null, 'reservedNames absent (degraded): the server decides on «Guardar»');
+  IE.set(noCtx, 'name', 'i_abcdefghijk2');
+  assert.equal(IE.view(noCtx.draft, noCtx).errors.name, 'Ese nombre no está disponible', 'the opaque syntax, always');
+});
+
+test('C5 live, a group — each derived option name is judged with ITS OWN key exempt; another record\'s key is not', () => {
+  const d = withGroup();
+  const optKeys = IE.view(d, IE.open(d, launcherKey)).options.map((o) => o.key);
+  const ctx = { reservedNames: [launcherKey, ...optKeys].map((k) => k.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()) };
+  const renamed = createDraft(draftSource(d));
+  editItem(renamed, launcherKey, { name: 'Pizza Cuatro Quesos Especial' });
+  const s = IE.open(createDraft(draftSource(renamed)), launcherKey, ctx);
+  IE.set(s, 'name', 'Pizza Cuatro Quesos');
+  assert.equal(IE.view(s.draft, s).errors.name, null, 'every option takes back its own key: the group rename back passes');
+  const other = { reservedNames: [...ctx.reservedNames, 'pizza cuatro quesos clasica - personal'] };
+  const s3 = IE.open(createDraft(draftSource(renamed)), launcherKey, other);
+  IE.set(s3, 'name', 'Pizza Cuatro Quesos Clásica');
+  assert.equal(IE.view(s3.draft, s3).errors.name, 'Ese nombre no está disponible', 'a derived name held by ANOTHER record is refused');
+  assert.equal(editItem(createDraft(draftSource(renamed)), launcherKey, { name: 'Pizza Cuatro Quesos Clásica' }, { reserved: new Set(other.reservedNames) }), false, 'the commit gate judges the same set');
+});
+
+test('G1 — a description with < > reads «Quitá los signos < >» (quotes are fine there) and holds «Guardar»', () => {
+  const d = createDraft(BASE());
+  const s = IE.open(d, 'Pizza Cacio e Pepe');
+  IE.set(s, 'desc', 'La "clásica" de Roma');
+  assert.equal(IE.view(d, s).errors.desc, null, 'quotes are allowed in a description');
+  IE.set(s, 'desc', 'Pecorino <b>romano</b>');
+  const v = IE.view(d, s);
+  assert.equal(v.errors.desc, 'Quitá los signos < >');
+  assert.equal(v.save.enabled, false);
+  assert.equal(v.save.title, 'Corregí la descripción para guardar');
+});
+
+test('D — extras by THE ONE rule: a group\'s line is the UNION over its members, each with its own overrides (Codex r2 probe)', () => {
+  const g = withGroup();
+  const src = draftSource(g);
+  const opt = (choice) => src.items.find((r) => r.display && r.display.choice === choice).key;
+  src.structure.exposure.item_overrides = { [launcherKey]: { deny: ['*'] }, [opt('Personal')]: { add: ['Pan de ajo'] } };
+  assert.doesNotThrow(() => validateSource(src, 'merch_a'), 'premise: a source the server accepts');
+  const d = createDraft(src);
+  const s = IE.open(d, launcherKey);
+  IE.set(s, 'cat', 'pa');
+  const lines = IE.view(d, s).consequences.lines.filter((l) => /extra/.test(l));
+  assert.deepEqual(lines, ['Deja de aceptar el extra Orilla rellena'],
+    'the launcher (deny *) accepts nothing either side; Personal loses Orilla rellena and keeps Pan de ajo — reported on the launcher');
+});
+
+test('D — a product that denied every extra of a group accepted none: moving it away says nothing about that group', () => {
+  const src = BASE();
+  src.structure.exposure.item_overrides = { 'Pizza Cacio e Pepe': { deny: ['Orilla rellena'] } };
+  const d = createDraft(src);
+  const s = IE.open(d, 'Pizza Cacio e Pepe');
+  IE.set(s, 'cat', 'pa');
+  assert.deepEqual(IE.view(d, s).consequences.lines.filter((l) => /extra/.test(l)), ['Acepta el extra Pan de ajo']);
+});
+
+test('D — without the shared evaluator a move is HELD (never a guessed consequence); nothing else is', () => {
+  const saved = { p: globalThis.projectEligibility, e: globalThis.eligibleSet };
+  delete globalThis.projectEligibility; delete globalThis.eligibleSet;
+  try {
+    const d = createDraft(BASE());
+    const s = IE.open(d, 'Pizza Cacio e Pepe');
+    IE.set(s, 'name', 'Cacio e Pepe');
+    assert.equal(IE.view(d, s).save.enabled, true, 'a rename does not need the evaluator');
+    IE.set(s, 'cat', 'pa');
+    const v = IE.view(d, s);
+    assert.equal(v.save.enabled, false);
+    assert.equal(v.save.title, 'Elegí otra categoría para guardar');
+    assert.ok(!v.consequences.lines.some((l) => /extra/.test(l)));
+  } finally { Object.assign(globalThis, { projectEligibility: saved.p, eligibleSet: saved.e }); }
+});
+
+test('Q2 — the extras-group prices ride the working copy: «Cancelar» discards them, «Guardar» writes them with the rest, once', () => {
+  const d = createDraft(BASE());
+  const before = JSON.stringify(draftSource(d));
+  const s = IE.open(d, 'Pizza Cacio e Pepe');
+  IE.set(s, 'extraPrice', { key: 'Pan de ajo con queso', raw: '55' });
+  assert.deepEqual(IE.view(d, s).changed, ['extraPrices']);
+  IE.cancel(s);
+  assert.equal(JSON.stringify(draftSource(d)), before, '«Cancelar»: the draft is untouched');
+  const s2 = IE.open(d, 'Pizza Cacio e Pepe');
+  IE.set(s2, 'name', 'Cacio e Pepe');
+  IE.set(s2, 'extraPrice', { key: 'Pan de ajo con queso', raw: 'abc' });
+  assert.equal(IE.view(d, s2).save.enabled, false, 'an unusable extra price holds the whole save');
+  assert.equal(IE.save(d, s2).ok, false);
+  assert.equal(JSON.stringify(draftSource(d)), before, 'refused: nothing written');
+  IE.set(s2, 'extraPrice', { key: 'Pan de ajo con queso', raw: '55' });
+  assert.deepEqual(IE.save(d, s2), { ok: true });
+  const src = draftSource(d);
+  assert.equal(src.extras.find((x) => x.key === 'Pan de ajo con queso').price, 55);
+  assert.equal(src.items.find((x) => x.key === 'Pizza Cacio e Pepe').display.name, 'Cacio e Pepe');
+});
+
+test('Q1 — «Mismo precio para todas» sets every option to the cheapest usable price; editing one option turns it off', () => {
+  const d = withGroup();
+  const s = IE.open(d, launcherKey);
+  assert.equal(IE.view(d, s).same, false, 'unequal prices: off');
+  IE.set(s, 'samePrice', true);
+  let v = IE.view(d, s);
+  assert.deepEqual(v.options.map((o) => o.price), ['190', '190', '190']);
+  assert.equal(v.same, true);
+  IE.set(s, 'optionPrice', { key: v.options[2].key, raw: '400' });
+  v = IE.view(d, s);
+  assert.equal(v.same, false);
+  assert.deepEqual(IE.save(d, s), { ok: true });
+  assert.deepEqual(draftSource(d).items.filter((r) => r.display && r.display.choice).map((r) => r.price), [190, 190, 400]);
+});
+
+test('refusalLine — every field-tagged S2 code lands on its field with the approved line; options carry the F2 placement', () => {
+  const L = (body) => { const r = IE.refusalLine({ key: 'Pizza Cacio e Pepe', ...body }); return r && [r.field, r.message]; };
+  assert.deepEqual(L({ error: 'name_required', field: 'name' }), ['name', 'Escribí un nombre']);
+  assert.deepEqual(L({ error: 'name_too_long', field: 'name' }), ['name', 'Hasta 60 letras']);
+  assert.deepEqual(L({ error: 'option_name_too_long', field: 'name', option_key: 'x' }), ['options', 'El nombre completo de la opción supera 60 letras']);
+  assert.deepEqual(L({ error: 'desc_too_long', field: 'desc' }), ['desc', 'Hasta 200 letras']);
+  assert.deepEqual(L({ error: 'text_unsafe', field: 'name' }), ['name', 'Quitá las comillas y los signos < >']);
+  assert.deepEqual(L({ error: 'text_unsafe', field: 'desc' }), ['desc', 'Quitá los signos < >']);
+  assert.deepEqual(L({ error: 'name_taken', field: 'name' }), ['name', 'Ya hay un producto con ese nombre']);
+  assert.deepEqual(L({ error: 'name_taken', field: 'name', option_key: 'x' }), ['options', 'Ya hay un producto con ese nombre']);
+  for (const e of ['name_previously_used', 'rename_id_conflict', 'reserved_key_conflict']) assert.deepEqual(L({ error: e, field: 'name' }), ['name', 'Ese nombre no está disponible'], e);
+  assert.deepEqual(L({ error: 'subcat_invalid', field: 'subcat' }), ['subcat', 'Elegí una subcategoría']);
+  assert.deepEqual(L({ error: 'section_emptied', field: 'cat' }), ['cat', 'No podés dejar la sección vacía. Agregá otro producto primero.']);
+  assert.deepEqual(L({ error: 'subsection_emptied', field: 'subcat' }), ['subcat', 'No podés dejar la subcategoría vacía. Agregá otro producto primero.']);
+  assert.deepEqual(L({ error: 'subsection_emptied', field: 'cat' }), ['cat', 'No podés dejar la subcategoría vacía. Agregá otro producto primero.'], 'a cross-section move: the line under Categoría');
+  assert.deepEqual(L({ error: 'category_not_renderable', field: 'cat' }), ['cat', 'Esa sección no se muestra en tu página de pedidos']);
+  assert.equal(IE.refusalLine({ error: 'category_not_renderable', key: 'k', field: 'cat' }).reread, true, 'C-1: the drawer re-reads the sections');
+  assert.equal(IE.refusalLine({ error: 'stale_edit' }), null);
+  assert.equal(IE.refusalLine({ error: 'name_taken', field: 'name' }), null, 'no key: not a product refusal');
+});
+
+test('a server line shows on its field and holds «Guardar» until the merchant changes THAT field', () => {
+  const d = createDraft(BASE());
+  const s = IE.open(d, 'Pizza Cacio e Pepe');
+  IE.setServerError(s, IE.refusalLine({ error: 'name_previously_used', key: 'Pizza Cacio e Pepe', field: 'name' }));
+  IE.set(s, 'desc', 'Pecorino');
+  let v = IE.view(d, s);
+  assert.equal(v.errors.name, 'Ese nombre no está disponible');
+  assert.equal(v.save.enabled, false);
+  assert.equal(v.save.title, 'Corregí el nombre para guardar');
+  IE.set(s, 'name', 'Cacio e Pepe');
+  v = IE.view(d, s);
+  assert.equal(v.errors.name, null);
+  assert.equal(v.save.enabled, true);
+  const other = IE.open(d, 'Pizza Margarita');
+  IE.setServerError(other, IE.refusalLine({ error: 'name_taken', key: 'Pizza Cacio e Pepe', field: 'name' }));
+  assert.equal(other.serverError, null, 'a line for another product never lands here');
 });

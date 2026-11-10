@@ -18,9 +18,11 @@ export const COPY = {
   name: { empty: 'Escribí un nombre', long: 'Hasta 60 letras', quote: 'Quitá las comillas y los signos < >',
     taken: 'Ya hay un producto con ese nombre', unavailable: 'Ese nombre no está disponible',
     option_long: 'El nombre completo de la opción supera 60 letras' },
-  desc: { long: 'Hasta 200 letras' },
+  desc: { long: 'Hasta 200 letras', markup: 'Quitá los signos < >' },   // markup: advisor G1 (11-10; descriptions allow quotes)
   cat: { section_empty: 'No podés dejar la sección vacía. Agregá otro producto primero.',
-    subsection_empty: 'No podés dejar la subcategoría vacía. Agregá otro producto primero.' },
+    subsection_empty: 'No podés dejar la subcategoría vacía. Agregá otro producto primero.',
+    // S2 contract C-1 (advisor 11-10): the review panel's own title, as the field line; only a race reaches it
+    not_renderable: 'Esa sección no se muestra en tu página de pedidos' },
   save: { none: 'No hay cambios que guardar', fixName: 'Corregí el nombre para guardar', shortName: 'Acortá el nombre para guardar',
     otherCat: 'Elegí otra categoría para guardar',
     // advisor ruling 2026-11-08 (Q4): the three holds the mockup draws no title for
@@ -41,7 +43,8 @@ const rowOf = (draft, key) => (draftSource(draft).items || []).find((r) => r && 
 
 let seq = 0;
 // The drawer for an existing product, or null (an unknown key, an option, an unsaved addition).
-export function open(draft, key) {
+// `ctx`: what getEditableCatalog served for this restaurant — { reservedNames } (absent ⇒ the C5 check waits for the server).
+export function open(draft, key, ctx = {}) {
   const row = rowOf(draft, key);
   if (!row || !row.display || row.display.variantOf != null || 'ref' in row) return null;
   const d = row.display;
@@ -53,9 +56,13 @@ export function open(draft, key) {
     price: g ? null : (Number.isInteger(row.price) ? String(row.price) : ''),
     optionPrices: g ? Object.fromEntries(g.options.map((o) => [o.key, Number.isInteger(o.price) ? String(o.price) : ''])) : {},
     photo: Object.prototype.hasOwnProperty.call(photos, key) ? { ...photos[key] } : undefined,
+    // the extras-group price blocks shown under the fields (advisor Q2): their prices are part of the copy too
+    extraPrices: Object.fromEntries((draftSource(draft).extras || []).filter((x) => x && typeof x.key === 'string')
+      .map((x) => [x.key, Number.isInteger(x.price) ? String(x.price) : ''])),
   };
+  const reserved = ctx && Array.isArray(ctx.reservedNames) ? new Set(ctx.reservedNames.map(String)) : null;
   return { id: ++seq, draft, key, group: !!g, base, work: JSON.parse(JSON.stringify({ ...base, photo: base.photo === undefined ? null : base.photo })),
-    photoTouched: false, upload: null, closed: false };
+    photoTouched: false, upload: null, closed: false, reserved, same: null, serverError: null };
 }
 
 // One field of the copy. A section change clears the subsection (moving INTO one with subsections asks for a choice: no preselect).
@@ -68,6 +75,20 @@ export function set(s, field, value) {
   else if (field === 'price') w.price = typeof value === 'string' ? value : String(value ?? '');
   else if (field === 'optionPrice' && value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(w.optionPrices, value.key)) w.optionPrices[value.key] = String(value.raw ?? '');
   else if (field === 'photo') { w.photo = value; s.photoTouched = true; s.upload = null; }
+  else if (field === 'extraPrice' && value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(w.extraPrices, value.key)) w.extraPrices[value.key] = String(value.raw ?? '');
+  // «Mismo precio para todas» (advisor Q1): on → every option takes the cheapest usable price; off → each keeps its own
+  else if (field === 'samePrice') {
+    s.same = value === true;
+    if (s.same) {
+      const ps = Object.values(w.optionPrices).map(parsePrice).filter((p) => p !== null);
+      if (ps.length) { const v = String(Math.min(...ps)); for (const k of Object.keys(w.optionPrices)) w.optionPrices[k] = v; }
+    }
+  }
+  if (field === 'optionPrice') s.same = false;
+  // the server's line (a review-time refusal) goes once the merchant changes what it is about: the name also owns the
+  // derived option names; the section also owns its subsection
+  const clears = { name: ['name', 'options'], desc: ['desc'], cat: ['cat', 'subcat'], subcat: ['subcat'] }[field] || [];
+  if (s.serverError && clears.includes(s.serverError.field)) s.serverError = null;
   return s;
 }
 
@@ -82,26 +103,47 @@ function changed(s) {
   if (w.subcat !== b.subcat) out.push('subcat');
   if (!s.group && w.price.trim() !== b.price) out.push('price');
   if (s.group && Object.keys(w.optionPrices).some((k) => w.optionPrices[k].trim() !== b.optionPrices[k])) out.push('optionPrices');
+  if (Object.keys(w.extraPrices).some((k) => w.extraPrices[k].trim() !== b.extraPrices[k])) out.push('extraPrices');
   return out;
 }
 
-// What a move changes for this product, from the document's own section rules — the lines that apply, or null.
-// Extras: the groups the old / new section exposes (an extras group exposed to the PRODUCT directly does not change); a menu
-// that declares no exposure says nothing (never a guess). Rewards: an item listed by key keeps its eligibility.
+// The extras groups a move changes — by THE ONE eligibility rule the server's review line uses (catalog/extras-eligibility.js,
+// shipped byte-identical as xpizza-portal/extras-eligibility.js, a classic script: S2 §1.6, advisor G2). A group «accepts X»
+// when the evaluator lets at least one of its members carry an extra of category X; the product's line is the UNION over the
+// launcher and every option, each with its own overrides (S2 §1.3). → { lost, gained } (sorted), or null when the evaluator
+// is not loaded (the move is then held — a consequence is never guessed).
+function extrasChange(draft, s) {
+  const E = globalThis;
+  if (typeof E.projectEligibility !== 'function' || typeof E.eligibleSet !== 'function') return null;
+  const src = draftSource(draft);
+  const after = JSON.parse(JSON.stringify(src));
+  const g = choiceGroup(draft, s.key);
+  const members = [s.key, ...(g ? g.options.map((o) => o.key) : [])];
+  for (const r of after.items || []) {
+    if (!r || !members.includes(r.key) || !r.display) continue;
+    r.display.cat = s.work.cat;
+    if (s.work.subcat == null) delete r.display.subcat; else r.display.subcat = s.work.subcat;
+  }
+  try {
+    const accepts = (proj) => {
+      const out = new Set();
+      for (const k of members) for (const x of E.eligibleSet(proj, k)) out.add(proj.extraCat[x]);
+      return out;
+    };
+    const was = accepts(E.projectEligibility(src)), now = accepts(E.projectEligibility(after));
+    return { lost: [...was].filter((c) => !now.has(c)).sort(), gained: [...now].filter((c) => !was.has(c)).sort() };
+  } catch (_) { return null; }
+}
+
+// What a move changes for this product — the lines that apply, or null. Extras: extrasChange (the shared rule); the gates:
+// the document's own section lists. Rewards: an item listed by key keeps its eligibility.
 function consequences(draft, s) {
   const w = s.work, b = s.base;
   if (w.cat === b.cat || w.cat == null) return null;
   const st = draftSource(draft).structure || {};
-  const row = rowOf(draft, s.key);
   const lines = [];
-  const noExtras = row && row.display && row.display.extras_policy === 'none';
-  if (!noExtras && st.extras_by_category && typeof st.extras_by_category === 'object') {
-    const direct = new Set(((st.extras_by_item || {})[s.key]) || []);
-    const from = ((st.extras_by_category[b.cat]) || []).filter((x) => !direct.has(x));
-    const to = ((st.extras_by_category[w.cat]) || []).filter((x) => !direct.has(x));
-    for (const x of from) if (!to.includes(x)) lines.push(COPY.extraLost(x));
-    for (const x of to) if (!from.includes(x)) lines.push(COPY.extraGained(x));
-  }
+  const ex = extrasChange(draft, s);
+  if (ex) { for (const x of ex.lost) lines.push(COPY.extraLost(x)); for (const x of ex.gained) lines.push(COPY.extraGained(x)); }
   const flag = (f, on, off) => {
     if (!Array.isArray(st[f])) return;
     const a = st[f].map(String).includes(b.cat), c = st[f].map(String).includes(w.cat);
@@ -118,37 +160,50 @@ function consequences(draft, s) {
 // For the tests and the field: the section problem of a target, by the editor's rule.
 export const categoryProblem = (draft, key, target) => itemCategoryProblem(draft, key, target);
 
-// Everything the drawer shows, derived from the copy.
+// Everything the drawer shows, derived from the copy. errors: { name, desc, cat, subcat, options, price } — the line under
+// each field (options: frame F2's line under the Opciones block); a server refusal (setServerError) shows on its field until
+// the merchant changes that field.
 export function view(draft, s) {
   const w = s.work;
   const ch = changed(s);
-  const errors = { name: null, desc: null, cat: null, price: null };
-  const nameP = ch.includes('name') ? itemNameProblem(draft, s.key, w.name) : null;
-  if (nameP) errors.name = COPY.name[nameP];
+  const errors = { name: null, desc: null, cat: null, subcat: null, options: null, price: null };
+  const nameP = ch.includes('name') ? itemNameProblem(draft, s.key, w.name, s.reserved) : null;
+  if (nameP === 'option_long') errors.options = COPY.name.option_long;
+  else if (nameP) errors.name = COPY.name[nameP];
   const descP = ch.includes('desc') ? itemDescProblem(draft, s.key, w.desc) : null;
   if (descP) errors.desc = COPY.desc[descP] || null;
   const subcats = subcatsOf(draft, w.cat);
   const catP = catChanged(s) ? itemCategoryProblem(draft, s.key, { cat: w.cat, subcat: w.subcat }) : null;
   if (catP === 'section_empty' || catP === 'subsection_empty') errors.cat = COPY.cat[catP];
+  // a move whose consequences cannot be computed (the shared evaluator absent) is held: nothing changes silently
+  const moved = w.cat !== s.base.cat && w.cat != null;
+  const consequenceGap = moved && extrasChange(draft, s) === null;
   if (ch.includes('price') && parsePrice(w.price) === null) errors.price = true;
   const badOption = s.group && Object.values(w.optionPrices).some((v) => parsePrice(v) === null);
+  const badExtra = ch.includes('extraPrices') && Object.keys(w.extraPrices).some((k) => w.extraPrices[k].trim() !== s.base.extraPrices[k] && parsePrice(w.extraPrices[k]) === null);
+  const se = s.serverError;
+  if (se && !errors[se.field]) errors[se.field] = se.message;
   const g = s.group ? choiceGroup(draft, s.key) : null;
   const tidy = tidyItemName(w.name);
-  const options = g ? g.options.map((o) => { const fullName = `${tidy} - ${o.display.choice}`; return { key: o.key, choice: o.display.choice, fullName, counter: `${chars(fullName)}/${ITEM_NAME_MAX}`, tooLong: chars(fullName) > ITEM_NAME_MAX }; }) : null;
+  const options = g ? g.options.map((o) => { const fullName = `${tidy} - ${o.display.choice}`; return { key: o.key, choice: o.display.choice, fullName, counter: `${chars(fullName)}/${ITEM_NAME_MAX}`, tooLong: chars(fullName) > ITEM_NAME_MAX, price: w.optionPrices[o.key] }; }) : null;
+  const same = s.group ? (s.same === null ? new Set(Object.values(w.optionPrices).map((v) => v.trim())).size <= 1 : s.same) : null;
   const uploading = !!(s.upload && s.upload.state === 'busy');
+  const seTitle = se ? ({ name: COPY.save.fixName, options: COPY.save.shortName, desc: COPY.save.fixDesc, cat: COPY.save.otherCat, subcat: COPY.save.pickSubcat }[se.field] || COPY.save.fixName) : null;
   let title = null;
   if (!ch.length) title = COPY.save.none;
   else if (uploading) title = COPY.save.uploading;
   else if (nameP === 'long' || nameP === 'option_long') title = COPY.save.shortName;
   else if (nameP) title = COPY.save.fixName;
   else if (descP) title = COPY.save.fixDesc;
-  else if (errors.cat) title = COPY.save.otherCat;
+  else if (errors.cat && !se) title = COPY.save.otherCat;
   else if (catP === 'subcat_required') title = COPY.save.pickSubcat;
-  const blocked = !ch.length || nameP || descP || catP || errors.price || badOption || uploading;
+  else if (se) title = seTitle;
+  else if (consequenceGap) title = COPY.save.otherCat;
+  const blocked = !ch.length || nameP || descP || catP || errors.price || badOption || badExtra || uploading || !!se || consequenceGap;
   return {
-    fields: { name: w.name, desc: w.desc, cat: w.cat, subcat: w.subcat, price: w.price },
+    fields: { name: w.name, desc: w.desc, cat: w.cat, subcat: w.subcat, price: w.price, extraPrices: { ...w.extraPrices } },
     counters: { name: `${chars(w.name)}/${ITEM_NAME_MAX}`, desc: `${chars(w.desc)}/${ITEM_DESC_MAX}` },
-    subcats, errors, changed: ch, options, consequences: consequences(draft, s),
+    subcats, errors, changed: ch, options, same, consequences: consequences(draft, s),
     photo: { entry: w.photo, uploading, failed: !!(s.upload && s.upload.state === 'failed') },
     save: { enabled: !blocked, title: blocked ? title : null },
   };
@@ -166,7 +221,8 @@ export function save(draft, s) {
   if (ch.includes('price')) e.price = w.price;
   if (ch.includes('optionPrices')) e.optionPrices = Object.fromEntries(Object.entries(w.optionPrices).filter(([k, v]) => v.trim() !== s.base.optionPrices[k]));
   if (ch.includes('photo')) e.photo = w.photo;
-  if (!editItem(draft, s.key, e)) return { ok: false, error: 'invalid' };
+  if (ch.includes('extraPrices')) e.extraPrices = Object.fromEntries(Object.entries(w.extraPrices).filter(([k, v]) => v.trim() !== s.base.extraPrices[k]));
+  if (!editItem(draft, s.key, e, { reserved: s.reserved })) return { ok: false, error: 'invalid' };
   s.closed = true;
   return { ok: true };
 }
@@ -191,4 +247,36 @@ export function uploadBinding(s) {
       return true;
     },
   };
+}
+
+// A field-tagged refusal from the server (S2 contract §1.2 / §1.3: { error, key, field, option_key? }) → where its line goes in
+// the drawer and what it says — the approved frame copy, nothing new. A derived option name's refusal sits on the Opciones
+// block (frame F2). null: not a field refusal of an existing product's edit (the review's own panels answer it).
+export function refusalLine(body) {
+  if (!body || typeof body !== 'object' || typeof body.error !== 'string' || typeof body.key !== 'string') return null;
+  const opt = typeof body.option_key === 'string' && body.option_key ? body.option_key : null;
+  const T = {
+    name_required: ['name', COPY.name.empty],
+    name_too_long: ['name', COPY.name.long],
+    option_name_too_long: ['options', COPY.name.option_long],
+    desc_too_long: ['desc', COPY.desc.long],
+    text_unsafe: body.field === 'desc' ? ['desc', COPY.desc.markup] : ['name', COPY.name.quote],
+    name_taken: ['name', COPY.name.taken],
+    name_previously_used: ['name', COPY.name.unavailable],
+    rename_id_conflict: ['name', COPY.name.unavailable],
+    reserved_key_conflict: ['name', COPY.name.unavailable],
+    subcat_invalid: ['subcat', COPY.save.pickSubcat],
+    section_emptied: ['cat', COPY.cat.section_empty],
+    subsection_emptied: [body.field === 'cat' ? 'cat' : 'subcat', COPY.cat.subsection_empty],
+    category_not_renderable: ['cat', COPY.cat.not_renderable],
+  }[body.error];
+  if (!T) return null;
+  const field = opt && T[0] === 'name' ? 'options' : T[0];
+  return { code: body.error, key: body.key, field, optionKey: opt, message: T[1], reread: body.error === 'category_not_renderable' };
+}
+// The drawer reopened by «Corregir»: the server's line on its field, until the merchant changes that field.
+export function setServerError(s, line) {
+  if (!s || s.closed || !line || line.key !== s.key) return s;
+  s.serverError = { field: line.field, message: line.message };
+  return s;
 }
