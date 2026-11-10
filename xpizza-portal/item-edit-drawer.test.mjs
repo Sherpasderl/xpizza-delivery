@@ -486,3 +486,30 @@ test('S2 §1.6 — the page loads THE ONE rule as a classic script BEFORE the mo
   assert.ok(Buffer.compare(readFileSync(join(DIR, 'extras-eligibility.js')), readFileSync(join(DIR, '..', 'xpizza-functions', 'catalog', 'extras-eligibility.js'))) === 0, 'byte-identical to the server module (tools/sync-client.js)');
   assert.equal(typeof EE.projectEligibility, 'function', 'the shipped file defines the ExtrasEligibility global the drawer reads');
 });
+// AA review (advisor 11-10): every new field is labelled; an error line is TIED to its control (aria-invalid + aria-describedby) and
+// untied when it clears; the tab order is the visual order (no positive tabindex)
+test('AA — labels, error ties and tab order in the edit drawer', async () => {
+  const p = await page({ read: () => editable({ reservedNames: ['hawaiana'] }) });
+  await p.signIn();
+  await p.open('noodle_01');
+  const dr = p.drawer();
+  const nm = p.fld('Nombre').querySelector('input');
+  assert.equal(dr.querySelector(`label[for="${nm.id}"]`).firstChild.textContent, 'Nombre');
+  const ds = p.fld('Descripción').querySelector('textarea');
+  assert.ok(dr.querySelector(`label[for="${ds.id}"]`), 'Descripción is labelled');
+  assert.equal(p.fld('Categoría').querySelector('select').getAttribute('aria-label'), 'Categoría');
+  assert.ok([...dr.querySelectorAll('.mk-dopt input')].every((i) => /^Precio de /.test(i.getAttribute('aria-label') || '')), 'each option price is labelled');
+  assert.equal([...dr.querySelectorAll('[tabindex]')].filter((e) => Number(e.getAttribute('tabindex')) > 0).length, 0, 'no positive tabindex: the tab order is the DOM order');
+  p.type(nm, 'Hawaiana');
+  const line = p.fld('Nombre').querySelector('.ferr');
+  assert.ok(line.id, 'the error line has an id');
+  assert.equal(nm.getAttribute('aria-invalid'), 'true');
+  assert.equal(nm.getAttribute('aria-describedby'), line.id, 'the control is described by its error line');
+  p.type(nm, 'Pad Thai Especial');
+  assert.equal(nm.hasAttribute('aria-invalid'), false, 'cleared with the line');
+  assert.equal(nm.hasAttribute('aria-describedby'), false);
+  p.type(nm, 'Pad Thai de la casa con salsa de tamarindo y maní tostado');
+  const ob = p.fld('Opciones');
+  const oline = ob.querySelector('.ferr');
+  assert.ok([...ob.querySelectorAll('.mk-dopt input')].every((i) => i.getAttribute('aria-describedby') === oline.id), 'F2: the option price boxes are described by the block line');
+});

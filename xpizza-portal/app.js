@@ -1457,7 +1457,7 @@ function renderEditDrawer(d, it, keepScroll) {
   if (!s) return false;                       // not a product this drawer edits (an option, an unsaved addition): today's drawer
   const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
   const v0 = IE.view(state.draft, s);
-  const R = { flds: {}, cnts: {}, errs: {} };
+  const R = { flds: {}, cnts: {}, errs: {}, ctl: {} };   // ctl: the control(s) each field's line describes (AA)
   const relayout = () => { renderDrawer(); holdDrawerForRename(); };   // only on a structural change (a section), never per keystroke
   const errSlot = (f, field) => { R.flds[field] = f; R.errs[field] = null; };
 
@@ -1480,7 +1480,7 @@ function renderEditDrawer(d, it, keepScroll) {
   ieName.type = 'text'; ieName.id = nmId; ieName.value = v0.fields.name; ieName.placeholder = 'Nombre del producto';
   ieName.addEventListener('input', bound(() => { IE.set(s, 'name', ieName.value); syncEdit(); }));
   focusKey(ieName, 'ie-name');
-  fName.append(lr1, ieName); errSlot(fName, 'name');
+  fName.append(lr1, ieName); errSlot(fName, 'name'); R.ctl.name = [ieName];
   body.append(fName);
 
   // «Descripción · opcional» — maxlength 200 as drawn
@@ -1494,7 +1494,7 @@ function renderEditDrawer(d, it, keepScroll) {
   ieDesc.id = dsId; ieDesc.rows = 2; ieDesc.maxLength = 200; ieDesc.placeholder = 'Qué lleva, cómo viene'; ieDesc.value = v0.fields.desc;
   ieDesc.addEventListener('input', bound(() => { IE.set(s, 'desc', ieDesc.value); syncEdit(); }));
   focusKey(ieDesc, 'ie-desc');
-  fDesc.append(lr2, ieDesc); errSlot(fDesc, 'desc');
+  fDesc.append(lr2, ieDesc); errSlot(fDesc, 'desc'); R.ctl.desc = [ieDesc];
   body.append(fDesc);
 
   // «Categoría» — the sections the order page shows (the product's own section always listed)
@@ -1510,7 +1510,7 @@ function renderEditDrawer(d, it, keepScroll) {
   }
   ieCat.addEventListener('change', bound(() => { IE.set(s, 'cat', ieCat.value); relayout(); refocus(['ie-cat']); }));
   focusKey(ieCat, 'ie-cat');
-  fCat.append(ieCat); errSlot(fCat, 'cat');
+  fCat.append(ieCat); errSlot(fCat, 'cat'); R.ctl.cat = [ieCat];
   R.note = mk('div', 'mk-note'); R.note.setAttribute('role', 'status');
   fCat.append(R.note);
   body.append(fCat);
@@ -1525,7 +1525,7 @@ function renderEditDrawer(d, it, keepScroll) {
     for (const sc of v0.subcats) { const o = mk('option', null, sc); o.value = sc; o.selected = sc === v0.fields.subcat; ieSub.append(o); }
     ieSub.addEventListener('change', bound(() => { IE.set(s, 'subcat', ieSub.value); relayout(); refocus(['ie-subcat']); }));
     focusKey(ieSub, 'ie-subcat');
-    fSub.append(ieSub); errSlot(fSub, 'subcat');
+    fSub.append(ieSub); errSlot(fSub, 'subcat'); R.ctl.subcat = [ieSub];
     body.append(fSub);
   }
 
@@ -1567,7 +1567,7 @@ function renderEditDrawer(d, it, keepScroll) {
     lab.append(ieSame, document.createTextNode('Mismo precio para todas'));
     R.same = ieSame;
     fOpt.append(lr3, block, lab, mk('div', 'mk-sub', 'El nombre de cada opción se arma solo: nombre del producto + opción. Cambia junto con el producto.'));
-    errSlot(fOpt, 'options');
+    errSlot(fOpt, 'options'); R.ctl.options = R.opts.map((o) => o.pi);
     R.optBlock = block;
     body.append(fOpt);
   } else {
@@ -1577,7 +1577,7 @@ function renderEditDrawer(d, it, keepScroll) {
     iePrice.type = 'text'; iePrice.inputMode = 'numeric'; iePrice.setAttribute('aria-label', 'Precio'); iePrice.placeholder = 'Sin precio'; iePrice.value = v0.fields.price;
     iePrice.addEventListener('input', bound(() => { IE.set(s, 'price', iePrice.value); syncEdit(); }));
     focusKey(iePrice, 'ie-price');
-    fPr.append(iePrice); errSlot(fPr, 'price');
+    fPr.append(iePrice); errSlot(fPr, 'price'); R.ctl.price = [iePrice];
     body.append(fPr);
   }
 
@@ -1612,11 +1612,18 @@ function syncEdit() {
     f.classList.toggle('chg', !!chg[field] && !v.errors[field]);
     f.classList.toggle('invalid', !!v.errors[field]);
     if (R.errs[field]) { R.errs[field].remove(); R.errs[field] = null; }
+    let lineId = null;
     if (msg) {
       const line = mk('div', 'ferr mk-ferr'); line.setAttribute('role', 'alert');
+      lineId = `ie-err-${field}-${s.id}`; line.id = lineId;
       line.append(warnTri(), mk('span', null, msg));
       R.errs[field] = line;
       f.append(line);
+    }
+    // AA: the control is invalid while its field has a problem, and described by the line that says which (cleared with it)
+    for (const c of R.ctl[field] || []) {
+      if (v.errors[field]) c.setAttribute('aria-invalid', 'true'); else c.removeAttribute('aria-invalid');
+      if (lineId) c.setAttribute('aria-describedby', lineId); else c.removeAttribute('aria-describedby');
     }
   }
   const over = (txt) => { const [a, b] = txt.split('/').map(Number); return a > b; };
