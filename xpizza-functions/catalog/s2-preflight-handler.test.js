@@ -243,6 +243,27 @@ const want = (r, status, b, label) => { assert.strictEqual(r.status, status, `${
     }
     ok('a rename back to its own key (exact or a case / accent variant) passes the save and the publish');
   }
+  // ── Codex S2 code r1 P2-3: the preflight REPLACES the old checks — one registry read at publish; rename_id_conflict attributed ──
+  {
+    const { publishEditedCore } = require('./publish-edited-handler');
+    const AP = require('./add-product');
+    const draft = AP.rederiveOptionNames((() => { const s = clone(LM); itemOf(s, 'noodle_01').display.name = 'Pad Thai Nuevo'; return s; })());
+    const db = stub('la_musa', LM); const saved = await save(db, 'la_musa', clone(draft));
+    assert.strictEqual(saved.status, 200, `premise: the group rename saves (${JSON.stringify(saved.body).slice(0, 160)})`);
+    let registryReads = 0;
+    const io = { ...addProductOf(null, 'id'), registryKeysTaken: async (_r, keys) => { registryReads += 1; return registryReads === 1 ? new Set() : new Set(keys.filter((k) => /Pollo/.test(k))); } };
+    const deps = { db: {}, authorize: allow, addProduct: io, readActiveBuilt: db.readActiveBuilt,
+      readDraft: async () => ({ source: db.state.source.data, updateTime: saved.body.updateTime }), publishVersion: async () => ({ versionId: 'v-new', item_count: 0, extra_count: 0 }) };
+    const pub = await publishEditedCore(deps, { restaurantId: 'la_musa', token: saved.body.token, acknowledgedChanges: (saved.body.diff.largeChangeSet || []).map((l) => ({ key: l.key, surface: l.surface })), fiscalAck: true }, {});
+    assert.strictEqual(registryReads, 1, `S2H-ONE-PASS the publish reads the registry ONCE (the preflight), never a second unattributed pass (${JSON.stringify(pub.body).slice(0, 160)})`);
+    // rename_id_conflict: the stored map binds the product's display id to ANOTHER key → refused, attributed under the name field
+    const id = String(itemOf(XP, 'Carnivora').display.id);
+    const stored = { ...clone(XP), frozen_keys: { [id]: 'Otra Clave' } };
+    const s2 = clone(stored); itemOf(s2, 'Carnivora').display.name = 'Carnívora Suprema';
+    const r = await save(stub('x_pizza', stored), 'x_pizza', s2);
+    want(r, 409, { error: 'rename_id_conflict', key: 'Carnivora', field: 'name' }, 'S2H-RENAME-ID the rename-id conflict is attributed under the name field');
+    ok('the preflight replaces the old publish checks (one registry pass); rename_id_conflict carries field:name');
+  }
   // ── OFF: exactly today (none of the S2 codes) ──
   {
     SWITCH.enabled = false;
