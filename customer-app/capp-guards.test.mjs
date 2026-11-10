@@ -32,7 +32,7 @@ import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = '2ce3198d';
-const CAPP_TIP = '4732d4bd';
+const CAPP_TIP = 'bd794556';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
@@ -163,13 +163,15 @@ test(`the live forms are byte-unchanged by the capp range ${BASE}..${CAPP_TIP}`,
 // blocks (platform-manifest.js, platform/sites.json — already listed) and the per-deployment version floor (client-floor.js).
 // The FULL light chain's guard debts (advisor 11-02, added on top): the R3 applicability pin contract/region-applicability.json — a
 // comment re-pin of chargeOnlineOrder's count in client-floor.js (its sibling contract/regions.json is already listed).
+// Tip step FULL light (advisor 11-09, added on top): the inventory generator skips the repo-root review/ tree (= train asm4 908df7df's
+// tool hunk), so review/capp-sbs never reaches the generated inventory (test tooling; never deployed).
 const S2TIP_SERVER = new Set(['address-area.js', 'create-order-build.js', 'contract/census.js', 'tools/area-inverse.js', 'tools/area-charge-inputs-inverse.js', 'catalog/charge-inputs.js', 'compute-server-net.js', 'createorder-classify.js', 'delivery/delivery-pricing.js',
   'delivery/delivery-wire.js', 'driver-ledger/ledger-core.js', 'factura/build-record.js', 'index.js', 'order-exists.js', 'payer-email.js',
   'pixelpay-hosted-charge.js', 'quote-issue.js', 'rewards-redeem-intake.js', 'stats/stats-api.js', 'stats/stats-build.js', 'tip.js', 'whatsapp.js',
   'tools/s2tip-inverse.js', 'tools/s2tip-module-inverse.js', 'tools/mutation-sweep.mutants.json',
   'contract/census-map.json', 'contract/census.json', 'contract/regions.json',
   'platform/sites.json', 'platform-manifest.js', 'pixelpay-return-url.js', 'tools/sync-client.js', 'tools/s2app-inverse.js',
-  'tools/s3c-module-inverse.js', 'client-floor.js', 'contract/region-applicability.json'].map((f) => `xpizza-functions/${f}`));
+  'tools/s3c-module-inverse.js', 'client-floor.js', 'contract/region-applicability.json', 'tools/form-source-inventory.js'].map((f) => `xpizza-functions/${f}`));
 test(`no server change beyond S2-srv-tip + S2-srv-app + colonia: the capp range ${BASE}..${CAPP_TIP} changes xpizza-functions/ only in tests, fixtures, generated inventories, the test chain and the slices' allowlist`, () => {
   const [, tip] = capRange();
   const changed = laneChanged(tip, ['xpizza-functions'])
