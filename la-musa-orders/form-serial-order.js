@@ -22,7 +22,9 @@
 // The pin clears when the order completes. No request field is added and the server is unchanged.
 //   • S3 (D4c-grill/item-s1/S3-DESIGN.md, advisor Q3 ruling): beside its order, the pin keeps each pinned line's `item_key` AS FIRST
 //     SENT — the map's value at the mint, or exactly what the stashed item carried on a resume (present, or absent → null) — so a
-//     retried or resumed order resends its first body byte-identically whatever the live map says now.
+//     retried or resumed order resends its first body byte-identically whatever the live map says now. The line's NAME is kept the
+//     same way (Codex S3 r1 P2-3): a dish renamed while the payment is pending would otherwise change `items` and `items_text`, and
+//     with them the order's bound fingerprint.
 //
 // Brand-agnostic: lines are the cart's resolved lines ({ key, record, added }); a stashed item is matched on every identity
 // field it carries (name always; dish_id and id when present), whichever brand wrote it.
@@ -42,7 +44,7 @@ function serialItemMatches(line, item) {
 
 function createSerialOrder() {
   let pin = null;   // line keys, in the order this pending order first serialized them; null = no pending order
-  let iks = null;   // S3: line key → the item_key that line was first sent with (null = none); null = nothing recorded
+  let iks = null;   // S3: line key → { k: the item_key that line was first sent with (null = none), n: its name }; null = nothing recorded
   // the lines in serialization order: pinned keys first (in pin order), then every other line in insertion order.
   // `live` is the form's answer to "is the pinned order still the one being sent?" — false → insertion order
   function order(lines, live = true) {
@@ -57,7 +59,7 @@ function createSerialOrder() {
   function mint(lines, itemKeyOf) {
     const list = Array.isArray(lines) ? lines : [];
     pin = list.map((l) => String(l.key));
-    iks = typeof itemKeyOf === "function" ? new Map(list.map((l) => [String(l.key), itemKeyOf(l) || null])) : null;
+    iks = typeof itemKeyOf === "function" ? new Map(list.map((l) => [String(l.key), { k: itemKeyOf(l) || null, n: l.record && typeof l.record.name === "string" ? l.record.name : null }])) : null;
   }
   // a RESUMED order_id: pin the order of the payload it was first sent with
   function resume(lines, items) {
@@ -70,7 +72,7 @@ function createSerialOrder() {
       const hit = list.find((l) => !used.has(String(l.key)) && serialItemMatches(l, it));
       if (hit) {
         used.add(String(hit.key)); keys.push(String(hit.key));
-        sent.set(String(hit.key), Object.prototype.hasOwnProperty.call(it, "item_key") && typeof it.item_key === "string" && it.item_key ? it.item_key : null);
+        sent.set(String(hit.key), { k: Object.prototype.hasOwnProperty.call(it, "item_key") && typeof it.item_key === "string" && it.item_key ? it.item_key : null, n: typeof it.name === "string" ? it.name : null });
       }
     }
     pin = keys;
@@ -81,8 +83,10 @@ function createSerialOrder() {
   function current() { return pin ? pin.slice() : null; }
   // S3: the item_key a pinned line was first sent with — a string, or null (sent without one); undefined when the pin does not
   // hold that line or is not live (the caller then reads the live map)
-  function itemKey(key, live = true) { return pin && live && iks && iks.has(String(key)) ? iks.get(String(key)) : undefined; }
-  return { order, mint, resume, clear, current, itemKey };
+  function itemKey(key, live = true) { return pin && live && iks && iks.has(String(key)) ? iks.get(String(key)).k : undefined; }
+  // the NAME a pinned line was first sent with; undefined when the pin does not hold that line, is not live, or recorded none
+  function sentName(key, live = true) { const e = pin && live && iks && iks.get(String(key)); return e && typeof e.n === "string" ? e.n : undefined; }
+  return { order, mint, resume, clear, current, itemKey, sentName };
 }
 
 if (typeof module !== "undefined" && module.exports) module.exports = { createSerialOrder, serialItemMatches };

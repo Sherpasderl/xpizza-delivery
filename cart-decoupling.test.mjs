@@ -118,7 +118,7 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
   // §3: the REAL shared serial-order module the form loads after form-cart.js (the cart block builds SERIAL from it)
   const { createSerialOrder } = require(`./${dir}/form-serial-order.js`);
   // S3: the REAL item-key block (the live map + liveItemKey + itemKeyFor) the line builder and the mint read — lifted with the rest
-  const itemKeyBlock = grab(html, /\nlet ITEM_KEYS = \{\};\nfunction liveItemKey\(p\)\{[^\n]*\}\nfunction itemKeyFor\(p, lineKey\)\{[^\n]*\}\n/, 'the S3 item-key block');
+  const itemKeyBlock = grab(html, /\nlet ITEM_KEYS = \{\};\nfunction liveItemKey\(p\)\{[^\n]*\}\nfunction itemKeyFor\(p, lineKey\)\{[^\n]*\}\nfunction itemNameFor\(p, lineKey\)\{[^\n]*\n/, 'the S3 item-key block');
   // S3: the REAL item-refusal block submitOrder / processPixelPay now consult first (only a 409 menu_changed / extra_not_allowed acts)
   const itemRefusalBlock = grab(html, /\nconst ITEM_EXTRA_WORD = [\s\S]*?\nfunction itemNoteText\(\)\{[\s\S]*?\n\}\n/, 'the S3 item-refusal block');
   const cartBlock = grab(html, /const CART = window\.createCart\(\{[\s\S]*?__onCartConflict\(conflicts\)[\s\S]*?\n\}/, 'the cart block');

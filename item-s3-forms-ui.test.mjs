@@ -43,9 +43,12 @@ function wire(w, rid, ctl) {
     const body = JSON.parse((init && init.body) || '{}');
     if (url.includes('quoteOrder')) {
       ctl.quotes.push(body);
-      const b = plain(body); const r = resolveLines(rid, b, ctl.P.tables); if (!r.ok) return res({ ok: false, error: r.code });
-      const t = computeServerTotal(b.items, rid, ctl.P.tables);
-      return res(t.error ? { ok: false } : { ok: true, total_cents: Math.round(t.total * 100) });
+      if (ctl.quoteAnswer) { const a = ctl.quoteAnswer(body); if (a) return Promise.resolve({ ok: a.status < 300, status: a.status, headers: { get: () => null }, json: () => Promise.resolve(plain(a.body)) }); }
+      const b = plain(body); const r = resolveLines(rid, b, ctl.P.tables);
+      const t = r.ok ? computeServerTotal(b.items, rid, ctl.P.tables) : null;
+      const answer = () => res(!r.ok ? { ok: false, error: r.code } : t.error ? { ok: false } : { ok: true, total_cents: Math.round(t.total * 100) });
+      if (ctl.holdQuotes) return new Promise((go) => { ctl.held.push(() => go(answer())); });   // P1-2: a quote still on its way
+      return answer();
     }
     if (url.includes('quoteRedemption')) return new Promise(() => {});
     if (/createOrder|chargeOnlineOrder/.test(url)) {
@@ -59,7 +62,8 @@ function wire(w, rid, ctl) {
 }
 async function boot(rid, P, sends = []) {
   const w = loadForm(DIR[rid]); await settle();
-  const ctl = { P, menu: () => P.env, menuCalls: 0, quotes: [], sent: [], sends };
+  w.HTMLElement.prototype.scrollIntoView = function () {};   // jsdom has no layout: processPayment's own validation scrolls
+  const ctl = { P, menu: () => P.env, menuCalls: 0, quotes: [], sent: [], sends, held: [], holdQuotes: false, quoteAnswer: null };
   await quiet(() => serve(w, plain(P.env)));
   wire(w, rid, ctl);
   return { w, ctl };
@@ -208,6 +212,133 @@ for (const rid of ['x_pizza', 'la_musa']) {
     }
   }
   ok(`${dir}: D1/D2 — extra_not_allowed → the gate naming the dish and the ${c.word}; «Quitar extra y seguir» removes only it, re-quotes, shows the new total; «Revisar pedido» opens the cart`);
+}
+
+// ════ Codex S3 r1 fold (advisor rulings 2026-11-10) ════
+const ERR3 = (w) => txt(w.document.getElementById('err3'));
+const RETRY_PRICE = 'No pudimos confirmar el precio en este momento. Volvé a intentar en unos segundos — tu pedido está intacto.';   // the forms' EXISTING sentence
+const releaseQuotes = async (ctl) => { ctl.holdQuotes = false; const h = ctl.held.splice(0); h.forEach((go) => go()); await settle(); await settle(); };
+for (const rid of ['x_pizza', 'la_musa']) {
+  const dir = DIR[rid], P = BASE[rid], c = CASE[rid];
+  const MC = resolutionRefusal({ code: 'menu_changed' });
+  // ── P1-2 (MONEY): after the repair (D2) and after the reload (C2), NOTHING is sent until the server quote for THAT cart is in ──
+  {
+    const pre = await boot(rid, P); const a0 = dish(pre.w, c.A);
+    const ex = pre.w.liveMenuGlobalGet('EXTRAS').find((e) => e.id === c.extraId);
+    const XR = { outcome: 'denied', denied: [{ item: P.body.item_keys[String(a0.id)], extra: rid === 'la_musa' ? ex.id : ex.name }] };
+    const { w, ctl } = await boot(rid, P, [{ status: EI.refusalStatus(XR), body: { ...EI.refusalBody(XR), order_id: 'X' } }]);
+    const a = dish(w, c.A); await add(w, a.id); c.extra(w, a); await settle(); await add(w, dish(w, c.B).id);
+    await send(w, 'card');
+    ctl.holdQuotes = true;
+    gate(w).querySelector('.pickup-gate-btn.primary').click(); await settle(); await settle();
+    assert.ok(ctl.held.length >= 1, `premise: ${dir} the repaired cart's quote is on its way`);
+    assert.ok(!/Total nuevo/.test(txt(w.document.getElementById('s2-price-notice')) || ''), `🔴 ${dir}: no «Total nuevo» before the server quote (S3-FORM-P12-NOTOTAL)`);
+    const sent0 = ctl.sent.length;
+    await quiet(() => w.processPayment()); await settle(); await settle();
+    assert.strictEqual(ctl.sent.length, sent0, `🔴 ${dir}: «Confirmar y enviar» sends NOTHING before the repaired cart is quoted (S3-FORM-P12-BLOCK)`);
+    assert.strictEqual(ERR3(w), RETRY_PRICE, `🔴 ${dir}: …and says so with the existing sentence (S3-FORM-P12-SAY)`);
+    await releaseQuotes(ctl);
+    const q = ctl.quotes.at(-1); const b = plain(q); resolveLines(rid, b, P.tables);
+    const cents = Math.round(computeServerTotal(b.items, rid, P.tables).total * 100);
+    assert.ok(new RegExp(`Total nuevo: L ${(cents / 100).toFixed(0)}\\.`).test(txt(w.document.getElementById('s2-price-notice')) || ''), `🔴 ${dir}: the note's total IS the server quote (S3-FORM-P12-QUOTED)`);
+    assert.strictEqual(w.eval('itemAwaitingQuote()'), false, `🔴 ${dir}: once quoted, «Confirmar y enviar» is no longer held (S3-FORM-P12-GO)`);
+    await send(w, 'card');   // past processPayment's gate the harness sends as everywhere (its own validation chain needs layout jsdom lacks)
+    assert.strictEqual(ctl.sent.length, sent0 + 1, `${dir}: …and the order goes`);
+  }
+  {
+    const { w, ctl } = await boot(rid, P, [{ status: MC.status, body: MC.body }]);
+    await add(w, dish(w, c.A).id); await add(w, dish(w, c.B).id);
+    await send(w, 'cash');
+    ctl.menu = () => LESS[rid]; ctl.holdQuotes = true;
+    gate(w).querySelector('.pickup-gate-btn').click(); await settle(); await settle(); await settle();
+    const sent0 = ctl.sent.length;
+    w.selectPay('cash'); await quiet(() => w.processPayment()); await settle(); await settle();
+    assert.strictEqual(ctl.sent.length, sent0, `🔴 ${dir}: after the reload, nothing is sent before the new cart is quoted (S3-FORM-P12-RELOAD)`);
+    assert.strictEqual(ERR3(w), RETRY_PRICE, `🔴 ${dir}: …the form's held-price sentence, not its validation (S3-FORM-P12-RELOAD-SAY)`);
+    await releaseQuotes(ctl);
+  }
+  ok(`${dir}: P1-2 — after «Quitar extra y seguir» and after «Recargar la página», no «Total nuevo» and no send until the server quote for that cart is in; then the note shows the SERVER total and the order goes`);
+
+  // ── P2-4: a newer menu DEFERRED while on Paso 2, then the reload's 304 — the deferred menu is applied, never a false success ──
+  {
+    const { w, ctl } = await boot(rid, P, [{ status: MC.status, body: MC.body }]);
+    await add(w, dish(w, c.A).id); await add(w, dish(w, c.B).id);
+    await send(w, 'cash');
+    ctl.menu = () => LESS[rid];
+    await quiet(() => w.__liveMenu.feed.refresh()); await settle();   // a background refresh lands while Paso 2 is open → DEFERRED
+    assert.ok(w.__liveMenu.applier.hasPending(), `premise: ${dir} the newer menu is held (deferred)`);
+    const notModified = () => Promise.resolve({ ok: false, status: 304, headers: { get: () => null }, json: () => Promise.reject(new Error('304')) });
+    const prev = w.__respond; w.__respond = (url, init) => (url.includes('/menu/') ? (ctl.menuCalls++, notModified()) : prev(url, init));
+    gate(w).querySelector('.pickup-gate-btn').click(); await settle(); await settle(); await settle();
+    assert.ok(!w.__liveMenu.applier.hasPending(), `🔴 ${dir}: the deferred menu is applied by the reload (S3-FORM-P24-FLUSH)`);
+    assert.deepStrictEqual(plain(w.eval('resolvedCartLines().map(l => String(l.key))')), [String(dish(w, c.A).id)], `🔴 ${dir}: the gone dish is dropped — never a false success (S3-FORM-P24-DROP)`);
+  }
+  ok(`${dir}: P2-4 — a newer menu deferred on Paso 2 is applied by «Recargar la página» even when its fetch answers 304`);
+
+  // ── P2-5: the QUOTE's item refusals open the same gate ──
+  for (const kind of ['menu_changed', 'extra_not_allowed']) {
+    const { w, ctl } = await boot(rid, P);
+    const a = dish(w, c.A); await add(w, a.id); c.extra(w, a); await settle();
+    const legacy = rid === 'la_musa' ? c.extraId : w.liveMenuGlobalGet('EXTRAS').find((e) => e.id === c.extraId).name;
+    w.showStage('s2', 50); await stageSettle();
+    ctl.quoteAnswer = () => (kind === 'menu_changed' ? { status: 200, body: { ok: false, error: 'menu_changed' } }
+      : { status: 409, body: { ok: false, ...EI.refusalBody({ outcome: 'denied', denied: [{ item: P.body.item_keys[String(a.id)], extra: legacy }] }) } });
+    w.requestServerQuote(true); await settle(); await settle();
+    assert.ok(shown(gate(w)), `🔴 ${dir}: a QUOTE ${kind} opens the item gate (S3-FORM-P25-GATE)`);
+    assert.strictEqual(txt(gate(w).querySelector('.pickup-gate-title')), kind === 'menu_changed' ? 'El menú se actualizó, recargá la página' : 'Uno de los extras ya no está disponible para ese producto. Revisá tu pedido.', `${dir}: the ${kind} gate`);
+  }
+  ok(`${dir}: P2-5 — a quote's menu_changed / extra_not_allowed opens the same gate as the send's`);
+}
+
+// ── P2-3: a resumed payment keeps its bound fingerprint across a rename (both forms: the pinned line keeps the name it was sent with) ──
+{
+  const { chargeInputsFingerprint } = require('./catalog/charge-inputs');
+  const STASHK = { 'xpizza-orders': 'xpizza_pending_pay', 'la-musa-orders': 'lamusa_pending_pay' };
+  for (const [rid, key, to] of [['x_pizza', 'Carnivora', 'Carnívora Suprema'], ['la_musa', 'dimsum_02', 'Pork Belly Buns de la casa']]) {
+    const dir = DIR[rid], P = BASE[rid];
+    const REN = await quiet(() => published(rid, { rename: { key, to } }));
+    // a rename keeps the dish's IDENTITY (S1's registry); two fixture publishes mint two registries, so carry the base's over
+    for (const coll of ['dishes', 'extras']) for (const r of REN.env.menu[coll]) { const o = P.env.menu[coll].find((x) => String(x.id) === String(r.id)); if (o) { if (o.dish_id) r.dish_id = o.dish_id; if (o.extra_id) r.extra_id = o.extra_id; } }
+    const first = await boot(rid, P);
+    const id = rid === 'x_pizza' ? dish(first.w, 'Carnivora').id : 'dimsum_02';
+    await add(first.w, id); await add(first.w, dish(first.w, CASE[rid].B).id);
+    await send(first.w, 'card');
+    const firstBody = first.ctl.sent.at(-1).body;
+    const stash = first.w.localStorage.getItem(STASHK[dir]);
+    const r = await boot(rid, REN);   // the page now serves the RENAMED dish (same id, same key, same price)
+    assert.ok(dish(r.w, to), `premise: ${dir} serves the rename`);
+    r.w.localStorage.setItem(STASHK[dir], stash);
+    r.w.restoreOrderForm(); await settle();
+    await send(r.w, 'card');
+    const body = r.ctl.sent.at(-1).body;
+    assert.strictEqual(body.order_id, firstBody.order_id, `${dir}: the resumed order keeps its id`);
+    assert.deepStrictEqual(body.items, firstBody.items, `🔴 ${dir}: the resumed items are byte-identical across the rename (S3-FORM-P23-ITEMS)`);
+    assert.strictEqual(body.items_text, firstBody.items_text, `🔴 ${dir}: …items_text too (S3-FORM-P23-TEXT)`);
+    assert.strictEqual(chargeInputsFingerprint(body), chargeInputsFingerprint(firstBody), `🔴 ${dir}: the bound fingerprint holds (S3-FORM-P23-FP)`);
+    assert.deepStrictEqual(resolveLines(rid, plain(body), REN.tables), { ok: true }, `${dir}: the server still resolves the resumed lines`);
+  }
+  ok('P2-3 — a resumed payment keeps items, items_text and its bound fingerprint across a rename (both forms)');
+}
+
+// ── P2-7: a stored reorder recipe (reorder_items[].key = the resolved pricing key = the item key) resolves by the item key ──
+{
+  const MARK = { x_pizza: 'xpizza_acct', la_musa: 'lamusa_acct' };
+  const fb = (entry) => { const snap = (v) => ({ exists: () => v != null, val: () => v }); const user = { uid: 'u_s3', getIdToken: async () => 'tok', phoneNumber: '+50499990000' };
+    return { app: {}, db: {}, auth: { currentUser: user, authStateReady: async () => {} }, authMod: { onAuthStateChanged: (a, cb) => { cb(user); return () => {}; }, signOut: async () => {} },
+      dbMod: { ref: (db, path) => ({ path }), get: async (r) => snap(r && r.path === `user_orders/${user.uid}` ? { o_s3: entry } : null), onValue: (r, cb) => { cb(snap(null)); return () => {}; }, off: () => {} } }; };
+  const signed = (marker) => ({ 'account.js': (code) => `try { localStorage.setItem(${JSON.stringify(marker)}, ${JSON.stringify(JSON.stringify({ uid: 'u_s3', name: 'Ana Pérez', phone: '+50499990000' }))}); } catch (_) {}\n` + code.replace('async function ensureFirebase() {', 'async function ensureFirebase() { if (window.__FB_FAKE) return window.__FB_FAKE;') });
+  for (const [rid, opts, recipeKey, want] of [['x_pizza', { rename: { key: 'Carnivora', to: 'Carnívora Suprema' } }, 'Carnivora', '2'], ['la_musa', { mint: { name: 'Bao Nuevo', key: 'i_aaaaaaaaaaac' } }, 'i_aaaaaaaaaaac', 'bao_nuevo']]) {
+    const dir = DIR[rid];
+    const P = await quiet(() => published(rid, opts));
+    const w = loadForm(dir, { transforms: signed(MARK[rid]) });
+    w.__FB_FAKE = fb({ ts: 1791500000000, total: 340, order_type: 'pickup', restaurant: rid, status: 'completed', items_text: '1x x (L1)', items: [{ key: recipeKey, qty: 1 }] });
+    await settle(); await quiet(() => serve(w, plain(P.env)));
+    w.document.querySelector('#acct-chip button').click(); await settle();
+    w.document.getElementById('acct-row-orders').click(); await settle(); await settle();
+    w.document.querySelector('#acct-pane-orders .acct-ordreorder').click(); await settle(); await settle();
+    assert.deepStrictEqual(plain(w.eval('resolvedCartLines().map(l => [String(l.key), l.qty])')), [[want, 1]], `🔴 ${dir}: the recipe's item key finds the dish (S3-FORM-P27-REORDER)`);
+  }
+  ok('P2-7 — a stored reorder recipe resolves a renamed (x_pizza) and a minted (la_musa) dish by its item key');
 }
 
 closeAll();

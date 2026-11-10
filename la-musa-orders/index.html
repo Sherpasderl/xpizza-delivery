@@ -2248,6 +2248,7 @@ let BADGE_PRIORITY = _bootSelect('badge_priority', (v) => _okStrArr(v) && _DISPL
 let ITEM_KEYS = {};
 function liveItemKey(p){ const k = p && ITEM_KEYS[String(p.id)]; return typeof k === 'string' && k ? k : null; }
 function itemKeyFor(p, lineKey){ const pinned = SERIAL.itemKey(lineKey, serialPinLive()); return pinned !== undefined ? pinned : liveItemKey(p); }
+function itemNameFor(p, lineKey){ const n = SERIAL.sentName(lineKey, serialPinLive()); return n !== undefined ? n : p.name; }   // Codex S3 r1 P2-3: a pinned line keeps the name it was sent with
 _announceBootBroken();   // PLAN 4: after the LAST boot selection — one announcement for every unusable structure
 
 function itemHasExtras(item) {
@@ -3860,15 +3861,17 @@ function requestServerQuote(force){
     // response lands the cart on screen may be a different cart. Placed BELOW the inflight assignment
     // so the `++__quoteSeq` → `inflight = token` adjacency quote-order.test.js pins stays intact.
     const sigAtRequest = confirmQuoteCartSig();
+    let httpStatus = 0;   // S3 P2-5
     // NOT awaited on any tap: the client total renders immediately and reconciles when this lands.
     sherpaFetch(QUOTEORDER_URL, { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ restaurant_id: (typeof RESTAURANT_ID!=='undefined' ? RESTAURANT_ID : undefined), items }) })
-      .then(function(r){ return r.json(); })
+      .then(function(r){ httpStatus = r.status; return r.json(); })   // S3 P2-5: the HTTP status, kept for the item-refusal routing below
       .then(function(j){
         if(__serverQuote.inflight!==token) return;   // a different request is current — ignore
         __serverQuote.inflight = null; __serverQuote.inflightKey = null;
         if(j && j.ok===true && typeof j.total_cents==='number' && isFinite(j.total_cents)){ __serverQuote.key=key; __serverQuote.cents=j.total_cents; __serverQuote.failedKey=null; }
-        else { __serverQuote.key=null; __serverQuote.cents=null; __serverQuote.failedKey=key; }   // ok:false → fail open to calcTotal(), and do not ask again for THIS cart
+        else { __serverQuote.key=null; __serverQuote.cents=null; __serverQuote.failedKey=key;   // ok:false → fail open to calcTotal(), and do not ask again for THIS cart
+          try { if(j && activeStageId()==='s2') itemRefused(httpStatus, j, true); } catch(_){} }   // Codex S3 r1 P2-5: an item refusal → the item gate
         /* 1C Task 7 — store the signed quote alongside the displayed one, INSIDE this guard and only
            after the `inflight!==token` check above, which is the same discipline __serverQuote.key
            already follows: a response that a newer request has superseded must not install a token
@@ -4676,6 +4679,12 @@ async function processPayment(){
   window.__conflictHealed = false;              // F4: this user-initiated submit gets exactly ONE auto-heal on a 409 order_conflict
   window.__cqRequoted = false;                  // 1C T8: …and exactly ONE silent re-quote+resend on a stale quote
   const _payCta = document.getElementById('btn-pay'); if(_payCta) _payCta.disabled = true;
+  if(itemAwaitingQuote()){   // Codex S3 r1 P1-2: the repaired / reloaded cart is not quoted yet — nothing is sent
+    window.__paySubmitting = false; if(_payCta) _payCta.disabled = false;
+    try { requestServerQuote(true); } catch(_){}
+    const _e = document.getElementById('err3'); if(_e){ _e.style.display = 'block'; _e.textContent = 'No pudimos confirmar el precio en este momento. Volvé a intentar en unos segundos — tu pedido está intacto.'; }
+    return;
+  }
   try {
   // Location escape hatch (Phase 1): if a fail-state address pick is resolving, WAIT (BOUNDED) for it so the
   // order carries the PICKED coords, not the pre-pick fallback. __locPickPromise is null on the GPS-OK happy
@@ -4804,7 +4813,7 @@ function redeemCartItems(){
     const extrasTotal = extrasArr.reduce((s,e) => s + e.price * e.qty, 0);
     // 1D D2 — `id` stays the legacy slug the server prices by; `dish_id` is additive, appended last.
     const out = {
-      id: p.id, name: p.name, cat: p.cat, qty: line.qty,
+      id: p.id, name: itemNameFor(p, line.key), cat: p.cat, qty: line.qty,
       price: p.price,
       subtotal: p.price * line.qty + extrasTotal,
       extras: extrasArr, extrasTotal
@@ -4936,7 +4945,7 @@ function buildOrder(){
           return ex ? (q > 1 ? q + 'x ' : '') + ex.name : null;
         }).filter(Boolean);
       const extrasStr = names.length ? ' [+ ' + names.join(', ') + ']' : '';
-      return `${qty[p.id]}x ${p.name} (L${p.price})${extrasStr}`;
+      return `${qty[p.id]}x ${itemNameFor(p, String(p.id))} (L${p.price})${extrasStr}`;
     }).join(' | '),
     total: total,
     notes: document.getElementById('notes').value.trim()||'—',
@@ -5020,8 +5029,19 @@ function oeBack(){ OrderExists.resetOrderExists(document); showStage('s2', 50); 
    «Revisar pedido» (the existing cart review). Nothing is ever re-sent: the customer confirms again. ── */
 const ITEM_EXTRA_WORD = 'acompañamiento';
 let __itemReloading = false;
-function itemRefused(status, err){
-  if(status !== 409 || !err) return false;
+// Codex S3 r1 P1-2 (advisor, MONEY): after a repair or a reload the order is NEVER sent until a successful server quote for THAT
+// cart is in (the redemption's own quote while one is pending, else the order quote), and «Total nuevo» is that quote — never the
+// client arithmetic. processPayment refuses before anything else and says so with the form's existing sentence.
+function itemQuotedCents(){
+  try {
+    if(window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()){ const rc = window.__ACCOUNT.getRedeemQuoteTotalCents ? window.__ACCOUNT.getRedeemQuoteTotalCents() : null; return rc == null ? null : rc; }
+    return getServerQuoteTotalCents();
+  } catch(_){ return null; }
+}
+function itemAwaitingQuote(){ if(!window.__itemAwait) return false; if(itemQuotedCents() != null){ window.__itemAwait = false; return false; } return true; }
+// fromQuote (Codex S3 r1 P2-5): a quote's item refusal opens the same gate — menu_changed is the quote's fail-soft 200
+function itemRefused(status, err, fromQuote){
+  if(!err || !(status === 409 || (fromQuote && status === 200 && err.error === 'menu_changed'))) return false;
   if(err.error === 'menu_changed'){ orderSubmitting = false; showStage('s2', 50); showItemGate('menu', null); return true; }
   if(err.error === 'extra_not_allowed'){
     const den = itemDenied(err.lines); if(!den.length) return false;   // nothing in this cart matches: today's generic answer
@@ -5066,19 +5086,25 @@ async function itemReloadMenu(){
   const btn = document.querySelector('#item-gate .pickup-gate-btn'); if(btn) btn.disabled = true;
   let st = null;
   window.__itemMenuReload = true;   // liveMenuBusy: the customer asked for the fresh menu — it applies now, at Paso 2
+  const A = window.__liveMenu && window.__liveMenu.applier, refused0 = A ? A.state().counts.refused : 0;
   try { st = await window.__liveMenu.feed.refresh(); } catch(_){ st = null; }
+  // Codex S3 r1 P2-4: a newer menu DEFERRED while Paso 2 was open is applied now too (a 304 never reaches the applier); anything
+  // still pending, or refused, is a FAILED reload — never a false success
+  try { if(A) A.flush(); } catch(_){}
   window.__itemMenuReload = false; __itemReloading = false;
-  if(!st || st.phase !== 'live' || st.lastError){ if(btn) btn.disabled = false; return; }   // the gate stays, its button live
+  if(!st || st.phase !== 'live' || st.lastError || (A && (A.hasPending() || A.state().counts.refused > refused0))){ if(btn) btn.disabled = false; return; }   // the gate stays, its button live
   const gone = resolvedCartLines().filter(function(l){ return l.unresolved === 'removed'; }).map(function(l){ return l.key; });
   gone.forEach(function(k){ const id = k; chg(id, -(CART.qtyOf(k) || 0)); });
-  hideItemGate();
+  hideItemGate(); window.__itemAwait = true;   // P1-2: the new cart is sent only once quoted
   try { renderStage2Summary(); } catch(_){}
+  try { requestServerQuote(true); } catch(_){}
   if(gone.length){ try { window.__ACCOUNT.toast(gone.length === 1 ? '1 producto ya no está disponible' : gone.length + ' productos ya no están disponibles'); } catch(_){} }
 }
 function itemRemoveDenied(){
   const den = window.__itemDenied || []; hideItemGate();
   den.forEach(function(d){ const q = (pizzaExtras[d.key] || {})[d.eid] || 0; if(q > 0) chgDetailExtra(d.eid, d.key, -q); });   // the form's own option writer
   const byDish = []; den.forEach(function(d){ let e = byDish.find(function(x){ return x.dish === d.dish; }); if(!e){ e = { dish: d.dish, ex: [] }; byDish.push(e); } if(e.ex.indexOf(d.extra) === -1) e.ex.push(d.extra); });
+  window.__itemAwait = true;   // P1-2: the repaired cart is sent only once quoted
   window.__itemNote = { text: byDish.map(function(e){ return 'Quitamos ' + (e.ex.length > 1 ? e.ex.slice(0, -1).join(', ') + ' y ' + e.ex[e.ex.length - 1] : e.ex[0]) + ' de ' + e.dish + '.'; }).join(' '), sig: cartSig() };
   try { renderStage2Summary(); } catch(_){}
 }
@@ -5086,7 +5112,8 @@ function itemRemoveDenied(){
 function itemNoteText(){
   const n = window.__itemNote; if(!n) return '';
   if(n.sig !== cartSig()){ window.__itemNote = null; return ''; }
-  return n.text + ' Total nuevo: L ' + redeemAdjustedTotal().toFixed(0) + '.';
+  const c = itemQuotedCents(); if(c == null) return '';   // P1-2: shown only with the SERVER quote for this cart
+  return n.text + ' Total nuevo: L ' + (c / 100).toFixed(0) + '.';
 }
 
 function paymentFallback(msg){

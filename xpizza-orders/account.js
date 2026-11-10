@@ -2200,7 +2200,10 @@ ${phone ? `<div class="acct-su-facts"><div><span>Cuenta</span><b>${escapeHtml(ph
       let dropped = 0;
       for (const rl of lines) {
         if (!rl || rl.key == null) { dropped++; continue; }
-        const item = byId ? MENU.find((p) => p.id === rl.key) : MENU.find((p) => p.name === rl.key);   // la_musa by id / x_pizza by name (recipe key)
+        // S3 (Codex r1 P2-7): a stored recipe's key IS the resolved pricing key (reorder-normalize.js: itemPricingKey → the stamp), i.e. the
+        // item key — matched FIRST through the served map (a renamed / minted dish), then today's legacy match
+        const ikOf = (p) => (typeof liveItemKey === 'function' ? liveItemKey(p) : null);
+        const item = MENU.find((p) => ikOf(p) === rl.key) || (byId ? MENU.find((p) => p.id === rl.key) : MENU.find((p) => p.name === rl.key));   // la_musa by id / x_pizza by name (recipe key)
         if (!item) { dropped++; continue; }                                   // not on today's menu → drop
         // 1D add-product B: a bare LAUNCHER (a legacy line from before its group) is never a cart line — dropped, and counted in the notice
         if (typeof itemIsLauncher === 'function' && itemIsLauncher(item)) { dropped++; continue; }
@@ -2242,7 +2245,7 @@ ${phone ? `<div class="acct-su-facts"><div><span>Cuenta</span><b>${escapeHtml(ph
       const k = parse(rl.key);
       const dish = (k && k.kind === 'dish' && typeof MENU !== 'undefined') ? MENU.find((p) => p.dish_id === k.cid) : null;
       if (!dish) return { ...rl, key: null };
-      const out = { ...rl, key: byId ? dish.id : dish.name };
+      const out = { ...rl, key: (typeof liveItemKey === 'function' && liveItemKey(dish)) || (byId ? dish.id : dish.name) };   // S3: the item key when served
       if (Array.isArray(rl.options)) {
         out.options = [];
         for (const o of rl.options) {

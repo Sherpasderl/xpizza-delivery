@@ -5220,13 +5220,14 @@
   "slice": "d2",
   "label": "🔴 an id VALUE leaks into items_text — hashed by two server bindings and printed on the KDS ticket",
   "file": "../xpizza-orders/index.html",
-  "from": "      return `${qty[p.id]}x ${p.name} (L${p.price})${extrasStr2}`;",
-  "to": "      return `${qty[p.id]}x ${p.name} (L${p.price})${extrasStr2}${p.dish_id?' '+p.dish_id:''}`;",
+  "from": "      return `${qty[p.id]}x ${itemNameFor(p, String(p.id))} (L${p.price})${extrasStr2}`;",
+  "to": "      return `${qty[p.id]}x ${itemNameFor(p, String(p.id))} (L${p.price})${extrasStr2}${p.dish_id?' '+p.dish_id:''}`;",
   "command": [
    "node",
    "../cart-identity-order.test.mjs"
   ],
-  "kills_with": "is in items_text"
+  "kills_with": "is in items_text",
+  "repointed": "S3 (Codex r1 P2-3): items_text names a pinned line by the name it was first sent with; the mutant still appends the dish_id"
  },
  {
   "id": "d2-10",
