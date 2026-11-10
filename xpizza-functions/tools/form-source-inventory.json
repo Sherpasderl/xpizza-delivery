@@ -2952,7 +2952,9 @@
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/s2-wiring.guard.test.js"
+   ]
   },
   "catalog/edit-preflight.js": {
    "pins": [],
@@ -3143,7 +3145,8 @@
     }
    ],
    "lifts": [
-    "xpizza-functions/catalog/publish-paths.test.js"
+    "xpizza-functions/catalog/publish-paths.test.js",
+    "xpizza-functions/s2-wiring.guard.test.js"
    ]
   },
   "catalog/publish-request.js": {
@@ -5550,6 +5553,7 @@
     "xpizza-functions/resolvelines-wiring.guard.test.js",
     "xpizza-functions/restaurant-config.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
+    "xpizza-functions/s2-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
     "xpizza-functions/sequencing/writer.test.js",
     "xpizza-functions/serial3-confirm-cold.test.js",

@@ -37,7 +37,7 @@ const idx = read('index.js');
   assert.strictEqual(save.split("require('./edit-preflight').runEditPreflight(").length - 1, 1, '🔴 S2W-PREFLIGHT-SAVE the save runs the edit preflight once');
   assert.strictEqual(pub.split("require('./edit-preflight').runEditPreflight(").length - 1, 1, '🔴 S2W-PREFLIGHT-PUB the publish runs the edit preflight once');
   assert.ok(pub.indexOf("require('./edit-preflight').runEditPreflight(") < pub.indexOf('validateSource(draft, rid);'), '🔴 S2W-PREFLIGHT-PUB before its validator');
-  assert.strictEqual((pub.match(/registryKeysTaken\(/g) || []).length, 0, '🔴 S2W-ONE-PASS the publish handler itself never reads the registry (the preflight does)');
+  assert.ok(!pub.includes('FK.renamedLabels(') && !pub.includes('RK.renameConflicts('), '🔴 S2W-ONE-PASS the publish handler never re-judges renamed labels itself (the preflight does; additions keep their own registry check)');
   ok('both edit handlers run the one preflight (the publish before its validator); no second registry pass');
 }
 // ── 4 ──

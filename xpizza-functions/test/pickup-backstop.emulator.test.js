@@ -129,7 +129,7 @@ const PICKUP_ONLY = { ok: false, error: 'pickup_only_item', item_key: NY.key };
     assert.strictEqual(form.status, 200, 'S2PK-FORM-QUOTE premise');
     assert.notStrictEqual(form.json && form.json.error, 'pickup_only_item', `S2PK-FORM-QUOTE the frozen form's quote (no mode) is never refused for it (${form.text.slice(0, 200)})`);
     const capp = await post(app.quoteOrder, { restaurant_id: RID, items: [line(NY)], mode: 'delivery', pin: { lat: 14.11, lng: -87.19, confirmed: true } });
-    assert.deepStrictEqual([capp.status, capp.json], [200, PICKUP_ONLY], `S2PK-CAPP-QUOTE capp's explicit delivery quote is refused early, fail-soft (${capp.text.slice(0, 200)})`);
+    assert.deepStrictEqual([capp.status, capp.json], [409, PICKUP_ONLY], `S2PK-CAPP-QUOTE capp's explicit delivery quote is refused early with 409 (${capp.text.slice(0, 200)})`);
     const inval = await post(app.quoteOrder, { restaurant_id: RID, items: [line(NY)], mode: 'drone' });
     assert.notStrictEqual(inval.json && inval.json.error, 'pickup_only_item', 'S2PK-QUOTE-INVALID an invalid mode is not refused for it');
     const redeem = { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' };
@@ -138,7 +138,7 @@ const PICKUP_ONLY = { ok: false, error: 'pickup_only_item', item_key: NY.key };
     assert.notStrictEqual(rForm.json && rForm.json.error, 'pickup_only_item', `S2PK-FORM-REDEEM the frozen form's reward quote is never refused for it (${rForm.text.slice(0, 200)})`);
     const rDel = await post(app.quoteRedemption, { restaurant_id: RID, items: [line(NY)], redeem, mode: 'delivery' }, { 'x-firebase-id-token': uid });
     assert.deepStrictEqual([rDel.status, rDel.json], [409, PICKUP_ONLY], `S2PK-REDEEM-DELIVERY an explicit delivery reward quote → 409 (${rDel.text.slice(0, 200)})`);
-    ok('quotes: the frozen forms\' bodies (no mode) are never refused for it; an explicit delivery quote is (quoteOrder fail-soft 200, quoteRedemption 409)');
+    ok('quotes: the frozen forms\' bodies (no mode) are never refused for it; an explicit delivery quote is (409 on both quotes)');
   }
   FINISHED = true;
   console.log(`\npickup-backstop(emulator): OK (${n})`);
