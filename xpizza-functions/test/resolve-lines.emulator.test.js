@@ -8,8 +8,8 @@
 //      enforce an array name / id is today's 400 item_malformed with its customer copy at createOrder, the charge, quoteOrder
 //      and quoteRedemption (nothing written or charged); under off the stage never answers (the base-vs-tip bytes for both
 //      settings, null included: test/s1b-reward-parity.capture.js)
-//   K  item_key: an agreeing item_key prices exactly as its legacy twin (same stored total); an item_key-only line refuses
-//      menu_changed (S1b: never priced)
+//   K  item_key: an agreeing item_key prices exactly as its legacy twin (same stored total); an item_key-only line (S1d: it
+//      resolves) prices and stores exactly as its legacy twin too
 //   F  one key across endpoints: quoteOrder signs the SAME cart fingerprint for an item_key cart and its legacy twin, and the
 //      order carrying the legacy quote's token is accepted for the item_key cart
 //   W  the REAL writer (codex S1b r1): the served menu → the capp's own menu adapter, cart and serializer → quoteOrder ok and
@@ -155,10 +155,12 @@ const written = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).exists();
     for (const f of ['total', 'total_cents', 'subtotal', 'tax', 'items_text']) assert.deepStrictEqual(ob[f], oa[f], `K-AGREE ${rid} the item_key twin stores the same ${f}`);
     const c = await fresh();
     const only = await post(app.createOrder, bodyFor(rid, c.oid, c.phone, [{ item_key: key, qty: 1, price: dish(rid).price, extras: [] }]), { 'x-firebase-id-token': uid });
-    assert.deepStrictEqual([only.status, only.json], [409, MENU_CHANGED], `K-ONLY ${rid} an item_key-only line is 409 menu_changed in S1b (${only.text.slice(0, 160)})`);
-    assert.strictEqual(await written(c.oid), false);
+    // S1d D2 (ruling Q2): an item_key ALONE resolves on every route — it is priced, described and stored exactly as its legacy twin
+    assert.strictEqual(only.status, 200, `K-ONLY ${rid} an item_key-only line places (S1d: an item_key alone resolves) (${only.text.slice(0, 160)})`);
+    const oc = (await rtdb.ref(`orders/${c.oid}`).get()).val();
+    for (const f of ['total', 'total_cents', 'subtotal', 'tax', 'items_text']) assert.deepStrictEqual(oc[f], oa[f], `K-ONLY ${rid} the item_key-only line stores the same ${f} as its legacy twin`);
   }
-  ok('an agreeing item_key prices exactly as its legacy twin; an item_key-only line refuses menu_changed (never priced in S1b)');
+  ok('an agreeing item_key, and an item_key alone (S1d), each price and store exactly as the legacy twin');
 
   // ── F: one key across endpoints ──
   for (const rid of ['x_pizza', 'la_musa']) {
