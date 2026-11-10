@@ -168,7 +168,9 @@ function livePrepareOf(rid, probeBody) {
   assert.fail(`premise — could not satisfy ${FORM_DIR[rid]}'s liveMenuPrepare within 24 resolutions (lifted ${extras.length}, stubbed ${[...stubs.keys()].join(', ')})`);
 }
 
-function cartAdapterOf(rid) {
+// S3: the x_pizza adapter keys a line by the form's own liveItemKey (the served item_keys map, as the form's liveMenuPrepare
+// accepted it) — lifted from the SAME form and bound to that payload's ITEM_KEYS, exactly as the form runs it.
+function cartAdapterOf(rid, itemKeys) {
   const html = formHtml(rid);
   const at = html.indexOf('window.createCart({ adapter: {');
   assert.ok(at > 0, `premise — ${FORM_DIR[rid]} constructs its cart with an inline adapter`);
@@ -176,7 +178,9 @@ function cartAdapterOf(rid) {
   const pick = (name) => {
     const m = new RegExp(`${name}:\\s*(\\([^)]*\\)\\s*=>\\s*[^,\\n]+)`).exec(block);
     assert.ok(m, `premise — ${FORM_DIR[rid]}'s adapter defines ${name}, which is what money is keyed on`);
-    return new Function(`return ${m[1]};`)();
+    const dep = /\bliveItemKey\(/.test(m[1]) ? functionDeclarationOf(html, 'liveItemKey') : '';
+    assert.ok(dep !== null, `premise — ${FORM_DIR[rid]}'s adapter calls liveItemKey, which the form declares`);
+    return new Function('ITEM_KEYS', `${dep}\nreturn ${m[1]};`)(itemKeys || {});
   };
   return { itemKey: pick('itemKey'), pricingKey: pick('pricingKey') };
 }
@@ -248,7 +252,6 @@ function cartAdapterOf(rid) {
     const certified = await state(rid, { certify: true });
     const plain = await state(rid, { certify: false });
     const { fn: prepare, lifted, stubbed } = livePrepareOf(rid, certified.body);
-    const adapter = cartAdapterOf(rid);
 
     const accepted = {};
     for (const [label, s] of [['certified', certified], ['uncertified', plain]]) {
@@ -283,9 +286,11 @@ function cartAdapterOf(rid) {
 
     /* THE CART KEYS — where Rules 2 and 3 meet: `adapter.pricingKey(record)` is what money is keyed on, and
        it must be unmoved by identity appearing on the record. */
-    const keysOf = (menu) => menu.map((r) => ({ itemKey: adapter.itemKey(r), pricingKey: adapter.pricingKey(r), price: r.price }));
-    const keysC = keysOf(accepted.certified.MENU);
-    assert.deepStrictEqual(keysC, keysOf(accepted.uncertified.MENU),
+    const keysOf = (menu, itemKeys) => { const adapter = cartAdapterOf(rid, itemKeys); return menu.map((r) => ({ itemKey: adapter.itemKey(r), pricingKey: adapter.pricingKey(r), price: r.price })); };
+    assert.ok(Object.keys(accepted.certified.ITEM_KEYS || {}).length === accepted.certified.MENU.length,
+      `premise — ${rid}: the form accepted the served item_keys map for every dish, so the adapter's key map is real`);
+    const keysC = keysOf(accepted.certified.MENU, accepted.certified.ITEM_KEYS);
+    assert.deepStrictEqual(keysC, keysOf(accepted.uncertified.MENU, accepted.uncertified.ITEM_KEYS),
       `🔴 ${rid}: the form's OWN adapter produced different cart/pricing keys for the certified payload — identity_id has become a pricing key`);
     /* 🔴 THE ASSERTION THAT BELONGS HERE IS "REMOVING identity_id CHANGES NOTHING", NOT
        "pricingKey !== identity_id". I wrote the latter first and la_musa failed it — correctly. la_musa
@@ -296,7 +301,7 @@ function cartAdapterOf(rid) {
        What IS the claim: identity_id is not an INPUT to the key. Proven by feeding the adapter the same
        record with the field deleted and requiring the same answer. */
     const withoutStamp = accepted.certified.MENU.map((r) => { const { identity_id: _drop, ...rest } = r; return rest; });
-    assert.deepStrictEqual(keysOf(withoutStamp), keysC,
+    assert.deepStrictEqual(keysOf(withoutStamp, accepted.certified.ITEM_KEYS), keysC,
       `🔴 ${rid}: deleting identity_id changed the form's own cart/pricing keys — the field is an INPUT to them, which Rule 2 forbids`);
     assert.ok(accepted.certified.MENU.some((r) => 'identity_id' in r),
       'premise — the records fed to the adapter really carried the stamp, so removing it was a real change');

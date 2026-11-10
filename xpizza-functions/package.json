@@ -32,6 +32,7 @@
     "test:reserved-keys-flip": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/reserved-keys-flip.emulator.test.js\"",
     "test:reserved-keys-audit": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/reserved-keys-audit.emulator.test.js\"",
     "test:reserved-keys-rename-flip": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/reserved-keys-rename-flip.emulator.test.js\"",
+    "test:item-s3-rename": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/item-s3-rename.emulator.test.js\"",
     "test:intake-availability": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/intake-availability.emulator.test.js\"",
     "test:pickup-ready": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/pickup-ready.emulator.test.js\"",
     "test:preparing-ready": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/preparing-ready.emulator.test.js\"",
