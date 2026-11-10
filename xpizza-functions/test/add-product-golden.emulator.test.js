@@ -229,6 +229,12 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
     const rqExpected = /getEditableCatalog \(owner\)/.test(c.name) && c.status === 200 && require('../factura/eligibility').usesPlatformFactura(rqRid) ? 1 : 0;
     assert.strictEqual(left.filter(isPublishRequestRead).length, rqExpected, `${c.name}: publish-request slot reads`);
     for (let k = left.length - 1; k >= 0; k -= 1) if (isPublishRequestRead(left[k])) left.splice(k, 1);
+    // F-1 (DECLARED, exact): getEditableCatalog reads the platform-pending stamp ONCE on its own (portal-reads.js readPlatformPending,
+    // before any 200 reply, so every 200 reached it); never on any other call
+    const isPlatformPendingRead = (x) => /^get restaurants\/[^/]+\/meta\/platform_pending$/.test(x);
+    const ppExpected = /getEditableCatalog/.test(c.name) && c.status === 200 ? 1 : 0;
+    assert.strictEqual(left.filter(isPlatformPendingRead).length, ppExpected, `${c.name}: platform-pending stamp reads`);
+    for (let k = left.length - 1; k >= 0; k -= 1) if (isPlatformPendingRead(left[k])) left.splice(k, 1);
     const allowExtra = (/publish/.test(c.name) && c.status === 200) ? left.every((x) => isKdsSyncRead(x) || isOverlapBaselineRead(x) || isEligibilityCreate(x))
       : /getEditableCatalog|stale save/.test(c.name) ? left.every(isKdsSyncRead)
       : /invalid source/.test(c.name) ? left.every((x) => isKdsSyncRead(x) || isSourceRead(x)) : left.length === 0;
