@@ -79,6 +79,11 @@
     function get(rid) {
       const cur = entries.get(rid);
       if (cur && cur.state === 'fresh' && now() - cur.fetched_at < FRESH_MS) return Promise.resolve(cur);
+      return revalidate(rid);
+    }
+    // S3 (D4c-grill/item-s1/S3-DESIGN.md D2): the server said the menu changed — ask NOW, whatever the body's age (its etag is sent:
+    // an unchanged menu is a 304 and keeps the body); an in-flight load is shared
+    function revalidate(rid) {
       if (inflight.has(rid)) return inflight.get(rid);
       landed.delete(rid);
       const p = slot(() => load(rid)).finally(() => inflight.delete(rid));
@@ -119,7 +124,7 @@
     const complete = (rids) => rids.every((rid) => { const e = peek(rid); return !!e && e.state === 'fresh'; });
     // S7a-2 frame 15: a load for this rid is queued or running and has not produced its answer yet
     const pending = (rid) => inflight.has(rid) && !landed.has(rid);
-    return { get, peek, seed, subscribe, complete, pending, _active: () => active, _queued: () => queue.length };
+    return { get, revalidate, peek, seed, subscribe, complete, pending, _active: () => active, _queued: () => queue.length };
   }
 
   return { createMenuCache, CONCURRENCY, FRESH_MS, STALE_MS, PRESENT_MS, SKEW_MS };

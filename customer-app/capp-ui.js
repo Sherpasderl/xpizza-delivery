@@ -240,7 +240,7 @@
   function errSheetHtml(e) {
     const acts = e.acts.map((a) => `<button class="${a.primary ? 'primary' : 'btn2 wide'}" data-act="${a.act}"${a.disabled ? ' disabled' : ''}${a.id ? ` id="${a.id}"` : ''}>${esc(a.label)}</button>`).join('');
     const ic = e.ic ? IC[e.ic] : e.icon === 'ok' ? IC.check : e.icon === 'warn' || e.icon === 'calm' ? IC.alert : IC.close;
-    return `<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="${esc(e.title)}"><div class="grab"></div><div class="errsheet"><div class="icon${e.icon ? ' ' + e.icon : ''}">${ic}</div><h2>${esc(e.title)}</h2><p>${e.bodyHtml != null ? e.bodyHtml : esc(e.body)}</p>${e.note ? `<p class="note">${e.note}</p>` : ''}<div class="acts">${acts}</div></div></div>`;
+    return `<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="${esc(e.title)}"><div class="grab"></div><div class="errsheet"><div class="icon${e.icon ? ' ' + e.icon : ''}">${ic}</div><h2>${esc(e.title)}</h2><p>${e.bodyHtml != null ? e.bodyHtml : esc(e.body)}</p>${e.note ? `<p class="note">${e.note}</p>` : ''}${Array.isArray(e.notes) ? e.notes.map((n) => `<p class="note">${n}</p>`).join('') : ''}<div class="acts">${acts}</div></div></div>`;
   }
   function mount(doc, opts) {
     const CappMenu = opts.CappMenu || (typeof self !== 'undefined' && self.CappMenu) || require('./capp-menu.js');
@@ -884,6 +884,7 @@
       if (dead || r.kind === 'superseded') return;
       // S2b r1 P2-6: a failed quote is never a silent dead end — the key is released and the generic held state offers «Reintentar»
       if (r.kind === 'offline' || r.kind === 'try_again' || r.kind === 'refused') { S.askedKey = null; S.quoteErr = key; quoteFailed(); }
+      else if (r.kind === 'menu_changed' || r.kind === 'extra_not_allowed' || r.kind === 'pickup_only') { S.askedKey = null; S.quoteErr = key; if (S.screen === 'checkout' || S.screen === 'tip') { itemRefused(r); return; } }
       else S.quoteErr = null;
       if (r.kind === 'ok') { S.q = r.record; S.qKey = key; if (f.mode === 'delivery') { S.outZone = false; if (r.record.resp.delivery) S.lastDelivery = r.record.resp.delivery; } }
       else if (r.kind === 'out_of_zone') { S.outZone = true; }
@@ -1030,7 +1031,7 @@
       const next = g ? '<div class="guestline"><b>Después del código de WhatsApp</b> se abre el pago seguro con tarjeta.</div>' : '';
       const open = S.sumOpen !== false;   // frame 4a: open by default on the desk
       const tipRow = tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : del ? '<div class="sumrow"><span>Propina</span><span class="r mute">Se elige en el siguiente paso</span></div>' : '';   // call 3
-      const pedido = `<section class="fsec" aria-label="Resumen del pedido"><div class="osum box"><button class="toggle" data-act="sumtoggle" aria-expanded="${open}"><span class="tt">Tu pedido<span> · ${esc(unitOf(nItems))}</span></span>${open ? IC.up : IC.down}</button>
+      const pedido = `<section class="fsec" aria-label="Resumen del pedido">${extraNoteHtml()}<div class="osum box"><button class="toggle" data-act="sumtoggle" aria-expanded="${open}"><span class="tt">Tu pedido<span> · ${esc(unitOf(nItems))}</span></span>${open ? IC.up : IC.down}</button>
       ${open ? `<div class="lines">${lines.map((d) => `<div class="osline">${lineName(d, 'n')}${lineStep(d)}<span class="p">${money(d.total)}</span></div>`).join('')}<button class="addmore" data-act="addmore">${IC.plus}Agregar más platos</button></div>` : ''}
       <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${tipRow}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
       // call 6: the Terms sentence only with the platform's real (https) Terms link; «Sherpa lo entrega» only on a delivery
@@ -1094,7 +1095,7 @@
       const sumRow = `<button class="urow" data-act="sumtoggle" aria-expanded="${!!S.sumOpen}">${logoChip('lg')}<span class="t"><b>${storeLine()}</b><span>${esc(unitOf(nItems))}${S.sumOpen ? '' : ' · ' + esc(lines.map((d) => d.n + '× ' + d.item.n).join(', '))}</span></span>${IC.down.replace('class="i"', 'class="i chev"')}</button>`;
       const sumBody = S.sumOpen ? `<div class="sumbody">${lines.map((d) => `<div class="osline">${lineName(d, 'n')}${lineStep(d)}<span class="p">${money(d.total)}</span></div>`).join('')}<button class="addmore" data-act="addmore">${IC.plus}Agregar más platos</button></div>` : '';
       const tip = T.ready ? T.tip : C.tipCentsOf(f);
-      const pedido = `<section class="fsec" aria-label="Resumen del pedido"><h2>Tu pedido</h2>
+      const pedido = `<section class="fsec" aria-label="Resumen del pedido"><h2>Tu pedido</h2>${extraNoteHtml()}
     <div class="osum flat">${sumRow}${sumBody}
       <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : ''}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
       // Pago — row 10: a retained scheduled send fixes its tender (the other option in the drawn disabled .45, as the other slots)
@@ -1464,6 +1465,56 @@
       S.screen = target; render();
     }
     function showErr(e) { S.err = e; openLayer('err'); }
+    // ── S3 (D4c-grill/item-s1/S3-DESIGN.md D2): the item refusals, on the quote and the order alike ──
+    // a refusal names a dish by its ITEM KEY (or, from an older server, a legacy key) and an extra by its legacy key (id or name)
+    const namesDish = (d, k) => !!d && typeof k === 'string' && (d.item_key === k || d.name === k || String(d.id) === k);
+    function deniedOf(lines) {   // → one entry per (cart line, extra) the refusal names: { key, ek, dish, extra }
+      const out = [], seen = new Set();
+      for (const x of Array.isArray(lines) ? lines : []) for (const l of cart.lines()) {
+        const d = menu.dish(l.key); if (!namesDish(d, x.item)) continue;
+        for (const inst of l.ex) for (const k of Object.keys(inst || {})) {
+          const e = menu.extra(k); const id = l.key + '\0' + k;
+          if (e && (e.name === x.extra || String(e.id) === x.extra) && !seen.has(id)) { seen.add(id); out.push({ key: l.key, ek: k, dish: d.name, extra: e.name }); }
+        }
+      }
+      return out;
+    }
+    function itemRefused(out) {
+      if (out.kind === 'menu_changed') { backTo('checkout'); showErr(ERR.menuChanged()); return true; }
+      if (out.kind === 'extra_not_allowed') {
+        const den = deniedOf(out.lines);
+        backTo('checkout');
+        if (!den.length) { showErr(ERR.generic()); return true; }   // nothing in this cart matches: never a repair that removes nothing
+        S.denied = den; showErr(ERR.extraDenied(den.map((x) => `<b>${esc(x.dish)}</b> · extra: ${esc(x.extra)}`)));
+        return true;
+      }
+      if (out.kind === 'pickup_only') {   // the server knows the dish is pickup-only: the EXISTING gate (no new copy)
+        for (const d of menu.dishes) if (namesDish(d, out.item_key)) poKeys.add(d.key);
+        backTo('checkout'); return true;
+      }
+      return false;
+    }
+    // B2: «Quitar extra y seguir» — ONLY the denied extras leave their lines; the quote is asked again and the note shows the NEW total
+    // before any tap (nothing is re-sent: the customer taps again)
+    function removeDenied() {
+      const den = S.denied || []; S.denied = null;
+      const byLine = new Map(); for (const x of den) { if (!byLine.has(x.key)) byLine.set(x.key, new Set()); byLine.get(x.key).add(x.ek); }
+      mutate(() => {
+        for (const [key, ks] of byLine) {
+          const l = cart.lines().find((y) => y.key === key); if (!l) continue;
+          l.ex.forEach((inst, i) => { const cur = Object.keys(inst || {}); if (cur.some((k) => ks.has(k))) cart.setInstance(key, i, cur.filter((k) => !ks.has(k))); });
+        }
+      });
+      const byDish = new Map(); for (const x of den) { if (!byDish.has(x.dish)) byDish.set(x.dish, []); if (!byDish.get(x.dish).includes(x.extra)) byDish.get(x.dish).push(x.extra); }
+      S.extraNote = { text: [...byDish].map(([dish, ex]) => `Quitamos ${ex.length > 1 ? ex.slice(0, -1).join(', ') + ' y ' + ex[ex.length - 1] : ex[0]} de ${dish}.`).join(' '), key: null };
+      closeLayer(); S.askedKey = null; S.quoteErr = null; S.extraNote.key = stateKey(); backTo('checkout');   // the checkout's render asks the quote for the repaired state
+    }
+    // the B2 note: only while the repaired state is the one on screen, with the quote that stands for it
+    function extraNoteHtml() {
+      if (!S.extraNote || !S.flow || S.extraNote.key !== stateKey()) return '';
+      const T = totalsNow(); if (!T.ready) return '';
+      return `<div class="cartnote" role="status">${IC.info}<span>${esc(S.extraNote.text + ' Total nuevo: ' + moneyC(T.total) + '.')}</span></div>`;
+    }
     // MOCKUP-capp-native-store-update state 4 (owner: ONE cart line, no sheet): back from the store on a new build, the cart says so
     // once — gone when the cart is closed (the host owns the one-shot)
     const appUpdated = () => { try { return typeof opts.appUpdated === 'function' && opts.appUpdated() === true; } catch (_) { return false; } };
@@ -1481,6 +1532,11 @@
       closed: () => (sched() ? { title: C.CLOSED_SHEET.title(cfg.name || '', closesText()), body: C.CLOSED_SHEET.body + ' ' + C.CLOSED_SHEET.scheduleHint, icon: 'warn', acts: [{ act: 'err-sched', label: 'Programar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }
         : { title: C.CLOSED_SHEET.title(cfg.name || '', closesText()), body: C.CLOSED_SHEET.body, icon: 'warn', acts: [{ act: 'lclose', label: 'Cerrar' }] }),   // S4 (P:1974): «Programar»
       // S4 N1 (owner, Option 1) and row 9 (owner-approved; the calm held sheet of #mk-pending, one action)
+      // S3 (OWNER-APPROVED MOCKUP-item-s3-refusals.html A1 / B1, 2026-11-10): A1's title is the APP's own (owner change (a): «recargá el
+      // menú» — the server's detail is the forms' «…la página», never shown here); ONE action. B1: one naming line per denied extra (c);
+      // «Cerrar» kept (d).
+      menuChanged: () => ({ title: 'El menú se actualizó, recargá el menú', body: 'Tu pedido no se envió ni se cobró nada. Al recargar, tu pedido se arma de nuevo con el menú actual.', icon: 'warn', acts: [{ act: 'menu-reload', label: 'Recargar', primary: true }] }),
+      extraDenied: (notes) => ({ title: 'Un extra ya no está disponible', body: 'Uno de los extras ya no está disponible para ese producto. Revisá tu pedido.', icon: 'warn', notes, acts: [{ act: 'extra-remove', label: 'Quitar extra y seguir', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
       slotRefused: () => ({ title: 'Ese horario ya no está disponible', body: 'Tu pedido no se envió ni se cobró nada. Elegí otro horario; tu pedido está intacto.', icon: 'warn', acts: [{ act: 'err-slot', label: 'Elegir otro horario', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
       schedReview: () => ({ title: 'Tu pago está hecho; estamos revisando tu horario', body: 'Tu horario ya no estaba disponible cuando se confirmó el pago. No hace falta pagar de nuevo: te escribimos por WhatsApp para acordar otro horario.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }], held: true }),
       // TODO(ruling pending): «Pagar en efectivo» is a host event only
@@ -1577,6 +1633,7 @@
       if (k === 'slot_refused') { backTo('checkout'); showErr(ERR.slotRefused()); return; }   // S4 N1
       if (k === 'scheduled_review') { backTo('checkout'); showErr(ERR.schedReview()); return; }   // S4 row 9: paid, the slot under review
       if (k === 'out_of_zone') { S.outZone = true; backTo('checkout'); return; }
+      if (itemRefused(out)) return;   // S3: menu_changed (A1) / extra_not_allowed (B1) / pickup_only_item (the existing gate)
       // Codex cash-chips r1 P1-1: the replayed bytes were refused on their quote — the lock is released; «Entrega & Pago» quotes again
       // and the customer re-confirms (its own notices: the price note, the CTA), nothing was rebuilt or re-sent
       if (k === 'replay_requote') { backTo('checkout'); S.askedKey = null; S.quoteErr = null; requote(); return; }
@@ -1757,7 +1814,9 @@
         closeLayer(); render(); return true;
       }
       if (a === 'store-open') { if (storeNow()) emit('store-open', { url: storeNow().url }); return true; }   // the host leaves for the store; the sheet stays
-      if (a === 'err-retry') { closeLayer(); send(); return true; }   // the SAME placement (capp-api keeps the id)
+      if (a === 'err-retry') { closeLayer(); send(); return true; }
+      if (a === 'menu-reload') { closeLayer(); emit('menu_reload', { rid: cfg.restaurantId }); return true; }   // S3 A1 → the shell re-fetches and adopts (A2)
+      if (a === 'extra-remove') { removeDenied(); return true; }   // S3 B1 → B2   // the SAME placement (capp-api keeps the id)
       if ((a === 'err-sched' || a === 'err-slot') && sched() && S.flow && !canSchedule()) { closeLayer(); backTo('checkout'); scheduleGate(); return true; }   // frame G
       if (a === 'err-sched' && sched() && S.flow) { closeLayer(); S.closedRefused = false; applyHeldSched(); S.flow.time = 'schedule'; S.flow.slot = null; backTo('checkout'); return true; }   // P:2287: the picker
       if (a === 'err-slot' && sched() && S.flow) { closeLayer(); applyHeldSched(); S.flow.time = 'schedule'; S.flow.slot = null; backTo('checkout'); return true; }   // N1: the picker, the slot cleared

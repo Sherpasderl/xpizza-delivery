@@ -2516,12 +2516,13 @@
   "slice": "b7",
   "label": "the key history is never accumulated, so only the newest key is ever consulted",
   "file": "../xpizza-orders/index.html",
-  "from": "  const current = window.availKey(availIdentityOf(item));\n  if (seen.indexOf(current) === -1) seen.push(current);\n  return seen;",
-  "to": "  const current = window.availKey(availIdentityOf(item));\n  return [current];",
+  "from": "  if (seen.indexOf(current) === -1) seen.push(current);\n  const ik = liveItemKey(item); if (ik) { const k = window.availKey(ik); if (seen.indexOf(k) === -1) seen.push(k); }   // S3: the portal / KDS write the item_key\n  return seen;",
+  "to": "  const ik = liveItemKey(item);\n  return ik ? [current, window.availKey(ik)] : [current];",
   "command": [
    "node",
    "../live-apply.test.mjs"
-  ]
+  ],
+  "repointed": "S3 item_key: the history push is followed by the item_key's push; the mutant still keeps no history (only the CURRENT key, plus the current item_key)"
  },
  {
   "id": "b7-3",
@@ -2568,14 +2569,15 @@
   "slice": "b7",
   "label": "la_musa: the key history is never accumulated, so only the newest key is ever consulted",
   "file": "../la-musa-orders/index.html",
-  "from": "  const current = window.availKey(availIdentityOf(item));\n  if (seen.indexOf(current) === -1) seen.push(current);\n  return seen;",
-  "to": "  const current = window.availKey(availIdentityOf(item));\n  return [current];",
+  "from": "  if (seen.indexOf(current) === -1) seen.push(current);\n  const ik = liveItemKey(item); if (ik) { const k = window.availKey(ik); if (seen.indexOf(k) === -1) seen.push(k); }   // S3: the portal / KDS write the item_key\n  return seen;",
+  "to": "  const ik = liveItemKey(item);\n  return ik ? [current, window.availKey(ik)] : [current];",
   "command": [
    "node",
    "../live-apply.test.mjs"
   ],
   "equivalent": true,
-  "why": "ONE EQUIVALENCE CLASS (b7-10/b7-11): la_musa is 86'd BY ID, and a catalog rename does not change an id — so the key history for that brand can only ever hold one entry, and consulting 'every key this dish has had' is identical to consulting the current one. No input distinguishes them. The code is shared-shaped anyway because the hazard is real on the other brand: b7-1/b7-2 are the same mutations on x_pizza, which IS 86'd by name, and both die. b7-12 (fail-open inverted) dies here too, so la_musa's own availability rule is pinned — it is only the RENAME-awareness that is vacuous for it, and it stops being vacuous the moment la_musa's key strategy changes, which is exactly when it would be needed."
+  "why": "ONE EQUIVALENCE CLASS (b7-10/b7-11): la_musa is 86'd BY ID, and a catalog rename does not change an id — so the key history for that brand can only ever hold one entry, and consulting 'every key this dish has had' is identical to consulting the current one. No input distinguishes them. The code is shared-shaped anyway because the hazard is real on the other brand: b7-1/b7-2 are the same mutations on x_pizza, which IS 86'd by name, and both die. b7-12 (fail-open inverted) dies here too, so la_musa's own availability rule is pinned — it is only the RENAME-awareness that is vacuous for it, and it stops being vacuous the moment la_musa's key strategy changes, which is exactly when it would be needed.",
+  "repointed": "S3 item_key: the history push is followed by the item_key's push; the mutant still keeps no history (only the CURRENT key, plus the current item_key)"
  },
  {
   "id": "b7-12",

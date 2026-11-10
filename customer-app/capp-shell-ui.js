@@ -209,7 +209,7 @@
         onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
-        onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) { keepHandoff(entry.rid); openExternal(runtime.store.url); } return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
+        onEvent: (name, detail) => { if (name === 'menu_reload') { if (S.store && S.store.ui === ui) reloadMenu(S.store); return; } if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) { keepHandoff(entry.rid); openExternal(runtime.store.url); } return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
       S.store = { rid: entry.rid, ui, entry, body: e.body, fp: null, adopt: null };
       watchMenu(S.store);
       const carry = !carried && S.carry && S.carry.rid === entry.rid ? S.carry.snap : null; S.carry = null;   // «+» from Pedidos whose persist failed
@@ -244,6 +244,16 @@
       };
       st.unwatch = cache.subscribe(st.rid, () => { check(); });
       check();
+    }
+    // S3 A2 (OWNER-APPROVED MOCKUP-item-s3-refusals.html): the store asked for the fresh menu after the server's menu_changed. A changed
+    // body is adopted at once through adoptInto (the mount rebuilt, the IN-MEMORY cart carried; what no longer exists is dropped and
+    // the cart sheet says so); an unchanged one opens the cart as it is. A locked mount is never torn down (adoptInto's own rule).
+    function reloadMenu(st) {
+      cache.revalidate(st.rid).then((e) => {
+        if (S.store !== st) return;
+        if (e && e.state === 'fresh' && e.body && e.body !== st.body) { st.adopt = e.body; if (!(st.ui.lockedNow && st.ui.lockedNow()) && adoptInto(st)) { S.store.ui.openCart(); return; } }
+        st.ui.openCart();
+      }, () => {});
     }
     function adoptBeforeCheckout() {
       const st = S.store; if (!st || !st.adopt) return true;

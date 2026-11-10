@@ -6,6 +6,9 @@
 // A dish is keyed by its served dish_id (else its own served id). Its legacy pricing fields (`id`, `name`) are kept verbatim so
 // the serializer can send BOTH and the server's own rule picks (menu-pricing.js itemPricingKey). An extra is SUPPORTED only when
 // it carries no quantity semantics (S1 is toggles only); an unsupported extra is never offered.
+// S3 (D4c-grill/item-s1/S3-DESIGN.md D2): a dish also carries its `item_key` — the endpoint body's ONE top-level map
+// { "<display id>": key } (S1d) — or null (no map, a non-string or empty entry: today's lines). The eligibility deny list is keyed
+// by the item key (extras-eligibility.js denyLegacy[itemKey]), so a renamed / minted dish's deny entry is matched by it too.
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -45,11 +48,12 @@
     const rvm = /^1d\.(\d+)$/.exec(String(envelope.representation_version || '')), legacyPhotos = !envelope.representation_version || (!!rvm && Number(rvm[1]) < 2);
     const served = obj(m.photos), httpsUrl = (u) => typeof u === 'string' && /^https:\/\/[^\s"'<>\\]+$/.test(u);
     const photoOf = (d) => { const p = served[String(d.id)]; return p && httpsUrl(p.card) && httpsUrl(p.hero) ? Object.freeze({ card: p.card, hero: p.hero }) : null; };
+    const itemKeys = obj(m.item_keys), itemKeyOf = (d) => { const k = itemKeys[String(d.id)]; return typeof k === 'string' && k ? k : null; };
     const dishes = list(m.dishes).map((d) => {
       const isLauncher = Object.prototype.hasOwnProperty.call(variants, String(d.id));
       return Object.freeze({ key: keyOf(d), id: d.id, name: String(d.name || ''), dish_id: d.dish_id, price: Number(d.price), cat: d.cat, desc: d.desc || '',
         img: d.img || null, photo: photoOf(d), tags: list(d.tags), launcher: isLauncher, variantOf: d.variantOf != null ? String(d.variantOf) : (choiceOf.get(String(d.id)) || null),
-        choice: d.choice || null });
+        choice: d.choice || null, item_key: itemKeyOf(d) });
     });
     const dishByKey = new Map(dishes.map((d) => [d.key, d]));
     const dishById = new Map(dishes.map((d) => [String(d.id), d]));
@@ -63,7 +67,7 @@
       if (!d) return [];
       const fromCat = list(byCat[String(d.cat)]); const seen = new Set(fromCat);
       const cats = [...fromCat, ...list(byItem[String(d.id)]).filter((c) => !seen.has(c))];
-      const denied = new Set([...list(deny[String(d.id)]), ...list(deny[d.name])].map(String));
+      const denied = new Set([...list(deny[String(d.id)]), ...list(deny[d.name]), ...(d.item_key ? list(deny[d.item_key]) : [])].map(String));
       return extras.filter((e) => cats.includes(e.cat) && !denied.has(String(e.id)) && !denied.has(e.name));
     }
     const groups = {};

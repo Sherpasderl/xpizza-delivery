@@ -325,6 +325,7 @@
       if (r.status >= 500) return { kind: 'try_again' };
       const err = j.error;
       if (err === 'outside_delivery_bands') return { kind: 'out_of_zone' };
+      const ir = itemRefusal(r.status, j); if (ir) return ir;   // S3: menu_changed (fail-soft 200) / extra_not_allowed / pickup_only_item
       if (err === 'pin_required') return { kind: 'pin' };
       if (err === 'rate_limited' || r.status === 429) return { kind: 'try_again' };
       if (r.status === 426) return { kind: 'update_required' };
@@ -415,9 +416,20 @@
       return recoverySheet(id);
     }
 
+    // S3 (D4c-grill/item-s1/S3-DESIGN.md D2): the item refusals — resolve-lines.js resolutionRefusal (409 menu_changed; the quote's
+    // fail-soft 200), extras-intake.js (409 extra_not_allowed + its denied { item, extra } lines), S2's 409 pickup_only_item + item_key
+    const deniedLines = (v) => (Array.isArray(v) ? v.filter((x) => x && typeof x.item === 'string' && typeof x.extra === 'string').map((x) => ({ item: x.item, extra: x.extra })) : []);
+    function itemRefusal(status, j) {
+      if (!j || typeof j !== 'object') return null;
+      if (j.error === 'menu_changed' && (status === 409 || status === 200)) return { kind: 'menu_changed' };
+      if (j.error === 'extra_not_allowed' && status === 409) return { kind: 'extra_not_allowed', lines: deniedLines(j.lines) };
+      if (j.error === 'pickup_only_item' && status === 409) return { kind: 'pickup_only', item_key: typeof j.item_key === 'string' ? j.item_key : null };
+      return null;
+    }
     // the refusals both order paths share → an outcome, or null when the path must handle it
     function commonRefusal(r) {
       const j = r.json || {};
+      { const ir = itemRefusal(r.status, j); if (ir && r.status === 409) return ir; }
       if (r.status === 426) return { kind: 'update_required' };
       if (r.status === 400 && (j.error === 'Restaurant closed' || (j.error === 'Bad Request' && j.detail === 'Cerrado — programá tu pedido'))) return { kind: 'closed' };
       if (r.status === 400 && j.error === 'Bad Request' && typeof j.detail === 'string' && j.detail.indexOf('Outside delivery zone') === 0) return { kind: 'out_of_zone' };

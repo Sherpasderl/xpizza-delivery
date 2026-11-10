@@ -3612,8 +3612,9 @@ test('S3 A1: menu_changed on the order ⇒ «El menú se actualizó, recargá el
   assert.ok(MC.body.detail !== 'El menú se actualizó, recargá el menú', 'premise: the server\'s detail is the FORMS\' copy — the app never shows it');
   await placeVia(b);
   assert.deepEqual(sheetOf(b), { label: 'El menú se actualizó, recargá el menú', h2: 'El menú se actualizó, recargá el menú',
-    p: 'Tu pedido no se envió ni se cobró nada. Al recargar, tu pedido se arma de nuevo con el menú actual.', icon: 'icon warn', clock: false,
+    p: 'Tu pedido no se envió ni se cobró nada. Al recargar, tu pedido se arma de nuevo con el menú actual.', icon: 'icon warn', clock: true,
     acts: [['primary', 'Recargar', 'menu-reload']] }, '🔴 the A1 sheet, exactly as approved (S3-CAPP-A1)');
+  assert.ok(b.q('#layer .errsheet .icon svg path[d="M12 8v5"]'), 'the alert glyph (the mockup\'s I:alert; `clock` above is only "an svg circle")');
   assert.ok(b.q('.screen .flow'), 'over «Entrega & Pago», as drawn');
   const lines = J(b.ui.cart.lines());
   await b.click('#layer [data-act="menu-reload"]');
@@ -3644,8 +3645,9 @@ test('S3 B1 → B2: extra_not_allowed ⇒ «Un extra ya no está disponible», o
   await s3Filled(b, d, [e1.key, e2.key]);
   await s3Place(b);
   assert.deepEqual(sheetOf(b), { label: 'Un extra ya no está disponible', h2: 'Un extra ya no está disponible',
-    p: 'Uno de los extras ya no está disponible para ese producto. Revisá tu pedido.', icon: 'icon warn', clock: false,
+    p: 'Uno de los extras ya no está disponible para ese producto. Revisá tu pedido.', icon: 'icon warn', clock: true,
     acts: [['primary', 'Quitar extra y seguir', 'extra-remove'], ['btn2 wide', 'Cerrar', 'lclose']] }, '🔴 the B1 sheet, exactly as approved (S3-CAPP-B1)');
+  assert.ok(b.q('#layer .errsheet .icon svg path[d="M12 8v5"]'), 'the alert glyph (I:alert)');
   assert.deepEqual(b.qa('#layer .errsheet p.note').map((p) => [p.querySelector('b').textContent, b.text(p)]), [[d.name, `${d.name} · extra: ${e1.name}`]], '🔴 one naming line per denied extra (S3-CAPP-B1-NOTE)');
   const before = quotes;
   await b.click('#layer [data-act="extra-remove"]'); await settle();

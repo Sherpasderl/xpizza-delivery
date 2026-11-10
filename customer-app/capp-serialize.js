@@ -9,6 +9,8 @@
 //              `${n}x ${name} (L${price})` + ` [${extra names joined by ' + '}]` when configured. No ',', '|', '+', '[' or ']'
 //              inside a bracket (the driver splits on ',', dispatch on '|', extras join on '+' — «B + A» would read as two extras
 //              and collide with a real «B»+«A» configuration's text and content key) — such an extra label is refused.
+//   S3 (D4c-grill/item-s1/S3-DESIGN.md D1): a dish with an item_key (the served map) adds it, appended LAST; its name is kept, and its
+//              id ONLY when the id IS the key (a minted / name-keyed dish sends no disagreeing id). No map ⇒ today's exact line.
 //   DETERMINISTIC: lines in first-add order, instances by index, extras sorted by key → re-serializing an unchanged cart is
 //   byte-identical (charge-input / payment fingerprints, quote tokens). LIMIT: items_text ≤ 1,500 characters, the server's own
 //   cap (index.js sanitizeText 1500) — over it the serializer refuses, so the server never truncates this text.
@@ -41,8 +43,10 @@
           return e;
         });
         const extrasTotal = extras.reduce((s, e) => s + e.price, 0);
-        items.push({ id: d.id, name: d.name, dish_id: d.dish_id, qty: 1, price: d.price, subtotal: d.price + extrasTotal,
-          extras: extras.map((e) => ({ id: e.id, name: e.name, extra_id: e.extra_id, qty: 1, instance: 0 })), extrasTotal });
+        const line = { id: d.id, name: d.name, dish_id: d.dish_id, qty: 1, price: d.price, subtotal: d.price + extrasTotal,
+          extras: extras.map((e) => ({ id: e.id, name: e.name, extra_id: e.extra_id, qty: 1, instance: 0 })), extrasTotal };
+        if (d.item_key) { if (String(d.id) !== d.item_key) delete line.id; line.item_key = d.item_key; }   // S3 D1
+        items.push(line);
         subtotalCents += (d.price + extrasTotal) * 100;
         const s = sigOf(inst);
         if (!groups.has(s)) groups.set(s, { n: 0, names: extras.map((e) => e.name) });

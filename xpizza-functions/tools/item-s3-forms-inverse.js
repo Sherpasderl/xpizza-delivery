@@ -1,6 +1,7 @@
 'use strict';
 // S3 (D4c-grill/item-s1/S3-DESIGN.md D3; the owner's rule-40 exception for the two order forms, 11-08) — THE FORMS' S3 HUNKS, as data.
-// unapplyItemS3Forms(dir, text) removes exactly these hunks from a form's index.html and returns the bytes the form had before S3, so a
+// unapplyItemS3Forms(key, text) removes exactly these hunks — key 'xpizza-orders' | 'la-musa-orders' (a form's index.html) or
+// 'form-serial-order' (the shared pin module, both byte-identical copies) — and returns the bytes it had before S3, so a
 // guard that pins a form byte-for-byte to an older base (avail-identity-forms-noop) keeps pinning EVERYTHING outside S3. Each hunk must
 // occur EXACTLY once (an insertion with the newline before it) — a missing, duplicated or edited hunk throws, so a later edit to an
 // S3 line is caught here, and a byte outside every hunk still fails the caller's pin. Generated from the slice's own diff; never hand-edit
@@ -98,6 +99,48 @@ const HUNKS = {
    "kind": "replace",
    "new": "  const id = genOrderId(); SERIAL.mint(resolvedCartLines(), (l) => liveItemKey(l.record)); window.__pendingOrder = { id, sig }; return id;   // §3: pin this order's serialization",
    "old": "  const id = genOrderId(); SERIAL.mint(resolvedCartLines()); window.__pendingOrder = { id, sig }; return id;   // §3: pin this order's serialization"
+  }
+ ],
+ "form-serial-order": [
+  {
+   "kind": "insert",
+   "new": "//   • S3 (D4c-grill/item-s1/S3-DESIGN.md, advisor Q3 ruling): beside its order, the pin keeps each pinned line's `item_key` AS FIRST\n//     SENT — the map's value at the mint, or exactly what the stashed item carried on a resume (present, or absent → null) — so a\n//     retried or resumed order resends its first body byte-identically whatever the live map says now.",
+   "old": ""
+  },
+  {
+   "kind": "insert",
+   "new": "  let iks = null;   // S3: line key → the item_key that line was first sent with (null = none); null = nothing recorded",
+   "old": ""
+  },
+  {
+   "kind": "replace",
+   "new": "  function mint(lines, itemKeyOf) {\n    const list = Array.isArray(lines) ? lines : [];\n    pin = list.map((l) => String(l.key));\n    iks = typeof itemKeyOf === \"function\" ? new Map(list.map((l) => [String(l.key), itemKeyOf(l) || null])) : null;\n  }",
+   "old": "  function mint(lines) { pin = (Array.isArray(lines) ? lines : []).map((l) => String(l.key)); }"
+  },
+  {
+   "kind": "insert",
+   "new": "    const sent = new Map();",
+   "old": ""
+  },
+  {
+   "kind": "replace",
+   "new": "      if (hit) {\n        used.add(String(hit.key)); keys.push(String(hit.key));\n        sent.set(String(hit.key), Object.prototype.hasOwnProperty.call(it, \"item_key\") && typeof it.item_key === \"string\" && it.item_key ? it.item_key : null);\n      }",
+   "old": "      if (hit) { used.add(String(hit.key)); keys.push(String(hit.key)); }"
+  },
+  {
+   "kind": "insert",
+   "new": "    iks = sent;",
+   "old": ""
+  },
+  {
+   "kind": "replace",
+   "new": "  function clear() { pin = null; iks = null; }",
+   "old": "  function clear() { pin = null; }"
+  },
+  {
+   "kind": "replace",
+   "new": "  // S3: the item_key a pinned line was first sent with — a string, or null (sent without one); undefined when the pin does not\n  // hold that line or is not live (the caller then reads the live map)\n  function itemKey(key, live = true) { return pin && live && iks && iks.has(String(key)) ? iks.get(String(key)) : undefined; }\n  return { order, mint, resume, clear, current, itemKey };",
+   "old": "  return { order, mint, resume, clear, current };"
   }
  ]
 };

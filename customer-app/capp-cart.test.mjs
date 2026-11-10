@@ -150,14 +150,16 @@ test('cart: hydrate drops (and counts) what no longer fits — unknown dish, lau
   assert.deepEqual(c.lines().map((l) => [l.key, l.qty]), [[d.key, 1]]);
 });
 
-test('serializer: per-instance lines with BOTH legacy keys; the REAL server total == the displayed subtotal == Σ groups; factura reconciles', () => {
+test('serializer: per-instance lines with the legacy keys S3 D1 keeps (name always; id where it IS the item key); the REAL server total == the displayed subtotal == Σ groups; factura reconciles', () => {
   for (const rid of BRANDS) {
     const m = MENU[rid]; const d = configurable(m); const [e1, e2] = m.extrasFor(d.key); const p = plainDish(m, d.key);
     const c = createCart(m); c.add(d.key, [e1.key], 2); c.add(d.key, [e1.key, e2.key], 1); c.inc(d.key); c.inc(p.key); c.inc(p.key);
     const grp = Object.values(m.groups)[0]; if (grp) c.add(grp.choices[0], [], 1);
     const s = serialize(c, m);
     assert.equal(s.items.length, c.count(), 'one items[] line per instance');
-    assert.ok(s.items.every((it) => it.qty === 1 && 'id' in it && 'name' in it && it.dish_id != null));
+    // S3 D1 (advisor-approved 2026-11-10): the name always; the id only where it IS the item key (x_pizza's numeric id never is — the
+    // server ignores it there, menu-pricing.js:14); no served key ⇒ both legacy keys, as before
+    assert.ok(s.items.every((it) => { const d = m.dish(String(it.dish_id)); return it.qty === 1 && 'name' in it && it.dish_id != null && ('id' in it) === (!d.item_key || String(d.id) === d.item_key); }));
     assert.ok(s.items.every((it) => it.subtotal === it.price + it.extras.reduce((a, e) => a + m.extra(e.extra_id).price, 0)), 'F1: subtotal incl. extras');
     assert.equal(s.subtotal_cents, c.subtotalCents());
     assert.equal(serverCents(rid, s.items), s.subtotal_cents, `${rid}: computeServerTotal == displayed subtotal`);
