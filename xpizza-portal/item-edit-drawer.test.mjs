@@ -513,3 +513,29 @@ test('AA — labels, error ties and tab order in the edit drawer', async () => {
   const oline = ob.querySelector('.ferr');
   assert.ok([...ob.querySelectorAll('.mk-dopt input')].every((i) => i.getAttribute('aria-describedby') === oline.id), 'F2: the option price boxes are described by the block line');
 });
+// AA rulings 11-10: «Corregir» puts focus on the field the server's line names (a derived option name → Nombre, where it is fixed);
+// the counters announce nothing (no aria-live: the error line's role=alert + describedby already speak for over-60)
+test('AA — «Corregir» focuses the field the server named; a derived option name focuses Nombre', async () => {
+  const p = await page({ on: { editCatalog: () => errJson(400, { error: 'name_previously_used', key: 'dimsum_01', field: 'name' }) } });
+  await p.signIn();
+  await renameAndReview(p, 'dimsum_01', 'Hawaiana');
+  panel(p).action.click(); await settle(20);
+  assert.equal(p.d.activeElement, p.fld('Nombre').querySelector('input'));
+  const q = await page({ on: { editCatalog: () => errJson(400, { error: 'category_not_renderable', key: 'dimsum_01', field: 'cat' }), getEditableCatalog: () => null } });
+  await q.signIn();
+  await renameAndReview(q, 'dimsum_01', 'Wonton picante');
+  panel(q).action.click(); await settle(40);
+  assert.equal(q.d.activeElement, q.fld('Categoría').querySelector('select'));
+  const r = await page({ on: { editCatalog: () => errJson(400, { error: 'name_taken', key: 'noodle_01', field: 'name', option_key: 'noodle_01_pollo' }) } });
+  await r.signIn();
+  await renameAndReview(r, 'noodle_01', 'Pad Thai Especial');
+  panel(r).action.click(); await settle(20);
+  assert.equal(r.d.activeElement, r.fld('Nombre').querySelector('input'), 'a derived option name is fixed in Nombre');
+});
+test('AA — the counters carry no aria-live (an announcement on every keystroke is noise)', async () => {
+  const p = await page();
+  await p.signIn();
+  await p.open('noodle_01');
+  assert.equal(p.drawer().querySelectorAll('.mk-cnt[aria-live]').length, 0);
+  assert.ok(p.drawer().querySelectorAll('.mk-cnt').length >= 5, 'premise: the counters are there (name, description, each option)');
+});

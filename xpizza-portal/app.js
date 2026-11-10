@@ -1474,7 +1474,7 @@ function renderEditDrawer(d, it, keepScroll) {
   const lr1 = mk('div', 'mk-lrow');
   const nmId = `ie-nm-${s.id}`;
   const lab1 = mk('label', null, 'Nombre'); lab1.htmlFor = nmId;
-  R.cnts.name = mk('span', 'mk-cnt'); R.cnts.name.setAttribute('aria-live', 'polite');
+  R.cnts.name = mk('span', 'mk-cnt');   // no aria-live (AA ruling 11-10): the error line announces over-60
   lr1.append(lab1, R.cnts.name);
   const ieName = document.createElement('input');
   ieName.type = 'text'; ieName.id = nmId; ieName.value = v0.fields.name; ieName.placeholder = 'Nombre del producto';
@@ -1488,7 +1488,7 @@ function renderEditDrawer(d, it, keepScroll) {
   const lr2 = mk('div', 'mk-lrow');
   const dsId = `ie-ds-${s.id}`;
   const lab2 = mk('label', null, 'Descripción'); lab2.htmlFor = dsId; lab2.append(mk('span', 'mk-opt', ' · opcional'));
-  R.cnts.desc = mk('span', 'mk-cnt'); R.cnts.desc.setAttribute('aria-live', 'polite');
+  R.cnts.desc = mk('span', 'mk-cnt');
   lr2.append(lab2, R.cnts.desc);
   const ieDesc = document.createElement('textarea');
   ieDesc.id = dsId; ieDesc.rows = 2; ieDesc.maxLength = 200; ieDesc.placeholder = 'Qué lleva, cómo viene'; ieDesc.value = v0.fields.desc;
@@ -1546,7 +1546,7 @@ function renderEditDrawer(d, it, keepScroll) {
       const dn = mk('span', 'mk-dn');
       const base = document.createTextNode('');
       dn.append(base, mk('span', null, ` - ${o.choice}`));
-      const cnt = mk('span', 'mk-cnt'); cnt.setAttribute('aria-live', 'polite');
+      const cnt = mk('span', 'mk-cnt');
       const dp = mk('span', 'dp');
       const pr = mk('span', 'mopr');
       const ieOptPrice = document.createElement('input');
@@ -2636,7 +2636,12 @@ function showOutcome(outcome) {
       paint(); syncUi();
       if (line.reread) await rereadSections();
       openDrawer(line.key);
-      if (editSess && editSess.key === line.key) { IE.setServerError(editSess, line); syncEdit(); }
+      if (editSess && editSess.key === line.key) {
+        IE.setServerError(editSess, line); syncEdit();
+        // AA ruling 11-10: focus the field the line names (a derived option name is fixed in Nombre)
+        const ctl = editRefs && (editRefs.ctl[line.field === 'options' ? 'name' : line.field] || [])[0];
+        if (ctl && typeof ctl.focus === 'function') ctl.focus();
+      }
       return;
     }
     if (id === PUBLISH_ACTIONS.FIX) {

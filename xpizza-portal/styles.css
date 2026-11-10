@@ -29,7 +29,7 @@
   /* ── BOLD EDITORIAL — dark variant (black base · white type · luminous green) ── */
   :root[data-theme="dark"]{
     --board:#0B0B0C; --board-2:#141416; --panel:#0E0E10; --line:#26262A; --line2:#1C1C1F;
-    --card:#131315; --card-2:#1B1B1E; --ink:#F4F4F2; --on-dark:#F4F4F2; --mute:#A2A2A6; --mute2:#7C7C80;
+    --card:#131315; --card-2:#1B1B1E; --ink:#F4F4F2; --on-dark:#F4F4F2; --mute:#A2A2A6; --mute2:#7E7E82;
     --tmute:#939398;
     --accent:#3FD98A; --accent-2:#33C77B; --accent-ink:#06130C; --accent-line:rgba(63,217,138,.32);
     --gold:#E3B54A; --gold-line:#4E4126; --gold-soft:#241D0E;
@@ -42,7 +42,7 @@
   }
   @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
     --board:#0B0B0C; --board-2:#141416; --panel:#0E0E10; --line:#26262A; --line2:#1C1C1F;
-    --card:#131315; --card-2:#1B1B1E; --ink:#F4F4F2; --on-dark:#F4F4F2; --mute:#A2A2A6; --mute2:#7C7C80;
+    --card:#131315; --card-2:#1B1B1E; --ink:#F4F4F2; --on-dark:#F4F4F2; --mute:#A2A2A6; --mute2:#7E7E82;
     --tmute:#939398;
     --accent:#3FD98A; --accent-2:#33C77B; --accent-ink:#06130C; --accent-line:rgba(63,217,138,.32);
     --gold:#E3B54A; --gold-line:#4E4126; --gold-soft:#241D0E;

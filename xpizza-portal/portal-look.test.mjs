@@ -743,3 +743,44 @@ test('every .tog builder makes a <button>, and the base .tog rule resets the UA 
   assert.match(base, /(^|;)border:none(;|$)/, 'the base .tog rule resets the UA border');
   assert.match(base, /(^|;)padding:0(;|$)/, 'the base .tog rule resets the UA padding');
 });
+
+// ── AA on the PLAIN grounds, BOTH themes (advisor 11-10, S4 AA review: dark --mute2 sat at 4.46 on --card unseen — the soft sweep
+// above covers only text on a -soft ground, and only light). Every token a rule uses as TEXT without painting its own background
+// must clear 4.5:1 on the page grounds (--card, --board-2), light AND dark (the dark blocks ship for the coming theme toggle).
+// The reviewed exceptions sit on a coloured ancestor, not on the plain ground (each named, with why).
+const PLAIN_GROUND_EXCEPTIONS = {
+  '.kidhead .dot': 'a decorative dot glyph (a UI mark, not text)',
+  '.btn.accent[data-busy] .spin': 'the busy spinner on the ACCENT button (ground = the button)',
+  '.tslot.on .ap': 'text on the selected slot\'s accent fill (ground = .tslot.on)',
+};
+function plainGroundFailures(cssText) {
+  const s = cssText.replace(/\/\*[\s\S]*?\*\//g, '');
+  const themes = { light: /:root,\s*:root\[data-theme="light"\]\s*\{([^}]*)\}/, dark: /:root\[data-theme="dark"\]\s*\{([^}]*)\}/, 'dark (OS)': /:root:not\(\[data-theme="light"\]\)\s*\{([^}]*)\}/ };
+  const uses = new Map();
+  for (const [, sel, body] of s.matchAll(/([^{}@]+)\{([^{}]*)\}/g)) {
+    if (sel.includes(':root') || /(?:^|;)\s*background(?:-color)?\s*:/.test(body)) continue;
+    const name = sel.trim().replace(/\s+/g, ' ');
+    if (Object.prototype.hasOwnProperty.call(PLAIN_GROUND_EXCEPTIONS, name)) continue;
+    for (const [, t] of body.matchAll(/(?:^|;)\s*color\s*:\s*var\(--([\w-]+)\)/g)) { if (!uses.has(t)) uses.set(t, name); }
+  }
+  const bad = [];
+  for (const [th, re] of Object.entries(themes)) {
+    const m = s.match(re); assert.ok(m, `the ${th} token block`);
+    const T = Object.fromEntries([...m[1].matchAll(/--([\w-]+)\s*:\s*(#[0-9A-Fa-f]{6})/g)].map((x) => [x[1], x[2]]));
+    for (const [t, where] of uses) for (const g of ['card', 'board-2']) {
+      if (!T[t] || !T[g]) continue;
+      const r = contrast(T[t], T[g]);
+      if (!(r >= 4.5)) bad.push(`${th}: --${t} ${T[t]} on --${g} ${T[g]} = ${r.toFixed(3)}:1 (e.g. ${where})`);
+    }
+  }
+  return { bad, uses };
+}
+test('AA PLAIN GROUNDS: every text token on --card / --board-2 clears 4.5:1 in light AND dark (the dark-theme sweep)', () => {
+  const { bad, uses } = plainGroundFailures(css);
+  assert.ok(uses.size >= 8 && uses.has('mute2') && uses.has('mute'), `non-vacuity: the text tokens were discovered (${[...uses.keys()].join(', ')})`);
+  assert.deepEqual(bad, [], `🔴 text on a plain ground below 4.5:1:\n  ${bad.join('\n  ')}`);
+});
+test('AA PLAIN GROUNDS catches what it exists for (fixtures)', () => {
+  assert.ok(plainGroundFailures(css + '\n.zzq{color:var(--line)}').bad.length > 0, 'a new pale text token fails');
+  assert.ok(plainGroundFailures(css.replace(/(:root\[data-theme="dark"\]\s*\{[^}]*--mute2:)#[0-9A-Fa-f]{6}/, '$1#7C7C80')).bad.some((b) => /^dark: --mute2/.test(b)), 'the old dark --mute2 (4.46) fails');
+});
