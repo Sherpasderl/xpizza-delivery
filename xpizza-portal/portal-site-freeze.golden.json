@@ -32,6 +32,7 @@
   "editor.js",
   "editor.test.mjs",
   "equipos.js",
+  "extras-eligibility.js",
   "firebase.js",
   "fonts/OFL.txt",
   "fonts/archivo-latin-ext.a999e009fd.woff2",
@@ -40,6 +41,9 @@
   "gate-early.js",
   "index.html",
   "invite-mail.js",
+  "item-edit-drawer.test.mjs",
+  "item-edit-logic.js",
+  "item-edit.test.mjs",
   "netlify.toml",
   "ops-dom.js",
   "package-lock.json",
@@ -66,8 +70,10 @@
   "pubreq.test.mjs",
   "render.js",
   "render.test.mjs",
+  "review-products.test.mjs",
   "review.js",
   "review.test.mjs",
+  "s4-fold.mjs",
   "shell-dom.test.mjs",
   "shell-wait-writes.test.mjs",
   "shell-wait.test.mjs",
@@ -119,8 +125,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "e762da0201b12fc9c52c31e89c7dfd98f79e32647ba026a74c697933e0726033",
-   "bytes": 12430
+   "sha256": "877712302c677225d6ed50eb4359f20cef740c4538a53a08515e1752acc0f486",
+   "bytes": 12607
   },
   "netlify.toml": {
    "sha256": "6398e8dec6883e51292f9754d59d4eb97a378ac957b9deaffd5a1970fc79b520",
@@ -147,8 +153,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "0a3671b3de55a3e74c121fb9b446788ff6e79d39adcf3928fbb034545fd535e4",
-   "bytes": 111252
+   "sha256": "b9618289026e53355d9690d520f8b162787f41008a4956d87987c7ace7cfcdba",
+   "bytes": 115400
   }
  },
  "diff_aid": {
@@ -994,6 +1000,12 @@
    ],
    [
     "",
+    ".dwb.ie-edit .fld.invalid .modblock",
+    "border-color",
+    "var(--red)"
+   ],
+   [
+    "",
     ".dwf .delx",
     "background",
     "transparent"
@@ -1237,6 +1249,18 @@
     ".fld input[type=text],.fld textarea,.fld select",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    ".fld.chg input,.fld.chg textarea,.fld.chg select",
+    "background",
+    "var(--tint2)"
+   ],
+   [
+    "",
+    ".fld.chg input,.fld.chg textarea,.fld.chg select",
+    "border-color",
+    "var(--accent)"
    ],
    [
     "",
@@ -1540,9 +1564,99 @@
    ],
    [
     "",
+    ".mk-cdot",
+    "background",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-cnt",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-cnt.over",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".mk-cnterr",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".mk-dopt .dp",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-dopt .mk-dn span",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-dopt.over .mk-dn,.mk-dopt.over .mk-dn span",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".mk-lrow label .mk-opt",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-lrow label",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-modhr",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-note b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk-note",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-note",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-sub",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".modal",
     "background",
     "var(--card)"
+   ],
+   [
+    "",
+    ".modblock.mk-inv",
+    "border-color",
+    "var(--red)"
    ],
    [
     "",
@@ -2923,6 +3037,12 @@
     ".prow .arr",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".prow .mk-cons",
+    "color",
+    "var(--mute)"
    ],
    [
     "",

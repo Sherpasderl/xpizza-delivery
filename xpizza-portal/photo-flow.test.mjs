@@ -1115,3 +1115,70 @@ test('P5-L is ONLY the limit: a transient failure is still P5 «No se pudo subir
   assert.ok(!drawer(d).querySelector('.phwait'));
   assert.ok(btnText(drawer(d), 'Reintentar'));
 });
+
+// ── S4 «Editar producto» (PLAN-portal-item-edit r6 addendum S4): with the text-edit switch on, the drawer is a working copy — an
+// upload started in it lands in the COPY (never the draft) until «Guardar»; «Cancelar» while it is in flight means it never lands.
+test('S4 — an upload started in the edit drawer lands in the COPY: the draft takes it only with «Guardar», once', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  fake.flags.textEdit = true;
+  const { d, w, mods } = await boot(fake);
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => drawer(d).querySelector('.dwf') && !drawer(d).querySelector('.phcrop'), 'back in the edit drawer');
+  await until(() => btnText(drawer(d), 'Guardar') && !btnText(drawer(d), 'Guardar').disabled, 'the upload landed in the copy');
+  const photosOf = () => JSON.parse(JSON.stringify((mods.app.state.draft.state.photos) || {}));
+  assert.deepEqual(photosOf(), {}, 'nothing in the draft yet');
+  btnText(drawer(d), 'Guardar').click();
+  await settle(20);
+  assert.equal(photosOf().Pepperoni && photosOf().Pepperoni.state, 'pid', '«Guardar»: the photo, in the draft');
+  assert.match(d.getElementById('rbtxt').textContent, /· 1 foto/);
+});
+test('S4 — «Guardar» waits for an upload in flight; «Cancelar» then means the late answer NEVER lands (draft untouched)', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  fake.flags.textEdit = true;
+  const { d, w, mods } = await boot(fake);
+  const release = fake.holdPut();
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => btnText(drawer(d), 'Guardar'), 'the edit drawer while the upload runs');
+  const g = btnText(drawer(d), 'Guardar');
+  assert.equal(g.disabled, true);
+  assert.equal(g.title, 'Esperá a que termine de subir la foto');
+  // OWNER 11-10: in the EDIT drawer the upload's own button reads «Detener subida»; the footer keeps «Cancelar» (one each)
+  assert.equal(drawer(d).querySelector('.uprm').textContent, 'Detener subida');
+  assert.deepEqual([...drawer(d).querySelectorAll('button')].filter((b) => b.textContent.trim() === 'Cancelar').map((b) => b.closest('.dwf') !== null), [true], 'one «Cancelar», the footer\'s');
+  drawer(d).querySelector('.dwf .btn.ghost').click();   // the DRAWER's «Cancelar» (the photo field carries the upload's own, P4)
+  await settle(10);
+  release();
+  await settle(120);
+  assert.deepEqual(JSON.parse(JSON.stringify((mods.app.state.draft.state.photos) || {})), {}, 'the late answer never reached the draft');
+  assert.ok(!drawer(d).classList.contains('show'));
+});
+
+test('S4 — OFF: today\'s drawer keeps the approved P4 «Cancelar» on an upload in flight (the owner\'s «Detener subida» is the edit drawer\'s only)', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, w } = await boot(fake);
+  const release = fake.holdPut();
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => drawer(d).querySelector('.uprm'), 'the upload in flight');
+  assert.equal(drawer(d).querySelector('.uprm').textContent, 'Cancelar');
+  release(); await settle(60);
+});
+test('S4 (Codex S4P2 r1 P2-3) — «Detener subida» stops the upload AND frees «Guardar»: the other edits save, no photo lands', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  fake.flags.textEdit = true;
+  const { d, w, mods } = await boot(fake);
+  const release = fake.holdPut();
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => btnText(drawer(d), 'Guardar'), 'the edit drawer while the upload runs');
+  const nm = [...drawer(d).querySelectorAll('.dwb > .fld')].find((f) => f.querySelector('label') && f.querySelector('label').firstChild.textContent.trim() === 'Nombre').querySelector('input');
+  nm.value = 'Pepperoni picante'; nm.dispatchEvent(new w.Event('input', { bubbles: true }));
+  assert.equal(btnText(drawer(d), 'Guardar').disabled, true, 'premise: held by the upload');
+  drawer(d).querySelector('.uprm').click();   // «Detener subida»
+  await settle(30);
+  const g = btnText(drawer(d), 'Guardar');
+  assert.equal(g.disabled, false, '«Guardar» is free again');
+  g.click(); await settle(20);
+  release(); await settle(80);
+  const st = mods.app.state.draft.state;
+  assert.equal(st.items.find((i) => i.key === 'Pepperoni').display.name, 'Pepperoni picante', 'the name saved');
+  assert.deepEqual(JSON.parse(JSON.stringify(st.photos || {})), {}, 'no photo landed');
+});

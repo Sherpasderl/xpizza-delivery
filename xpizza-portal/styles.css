@@ -29,7 +29,7 @@
   /* ── BOLD EDITORIAL — dark variant (black base · white type · luminous green) ── */
   :root[data-theme="dark"]{
     --board:#0B0B0C; --board-2:#141416; --panel:#0E0E10; --line:#26262A; --line2:#1C1C1F;
-    --card:#131315; --card-2:#1B1B1E; --ink:#F4F4F2; --on-dark:#F4F4F2; --mute:#A2A2A6; --mute2:#7C7C80;
+    --card:#131315; --card-2:#1B1B1E; --ink:#F4F4F2; --on-dark:#F4F4F2; --mute:#A2A2A6; --mute2:#7E7E82;
     --tmute:#939398;
     --accent:#3FD98A; --accent-2:#33C77B; --accent-ink:#06130C; --accent-line:rgba(63,217,138,.32);
     --gold:#E3B54A; --gold-line:#4E4126; --gold-soft:#241D0E;
@@ -42,7 +42,7 @@
   }
   @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
     --board:#0B0B0C; --board-2:#141416; --panel:#0E0E10; --line:#26262A; --line2:#1C1C1F;
-    --card:#131315; --card-2:#1B1B1E; --ink:#F4F4F2; --on-dark:#F4F4F2; --mute:#A2A2A6; --mute2:#7C7C80;
+    --card:#131315; --card-2:#1B1B1E; --ink:#F4F4F2; --on-dark:#F4F4F2; --mute:#A2A2A6; --mute2:#7E7E82;
     --tmute:#939398;
     --accent:#3FD98A; --accent-2:#33C77B; --accent-ink:#06130C; --accent-line:rgba(63,217,138,.32);
     --gold:#E3B54A; --gold-line:#4E4126; --gold-soft:#241D0E;
@@ -520,6 +520,50 @@
   /* inside a flagged (amber) row the secondary text darkens to --mute: --mute2 on --amber-soft is 4.50:1 rounded but 4.4966:1 exact (codex r2 S2) */
   .prow.big .psub,.prow.big .arr{color:var(--mute)}
   .prow .pflag{flex-basis:100%;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;color:var(--amber);padding-top:2px;border-top:1px solid var(--amber-line);margin-top:2px}
+  /* S4 «Productos» (MOCKUP-portal-item-edit frame E, verbatim): text rows wrap under the name instead of right-aligning; the
+     section line's consequence sentences sit under it as a calm list */
+  .prow.mk-trow{flex-direction:column;align-items:stretch;gap:6px}
+  .prow.mk-trow .pval{text-align:left;white-space:normal;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
+  .prow.mk-trow .now{font-size:13.5px}
+  .mk-cons{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+  .mk-cons li{display:flex;gap:9px;align-items:flex-start}
+  /* the mockup's li::before dot as a real element: a plain class is the AA grammar's modelled form (a pseudo-element painting a
+     background is not); same size, colour and offset */
+  .mk-cdot{width:5px;height:5px;border-radius:50%;background:var(--mute2);flex:none;margin-top:7px}
+  .prow .mk-cons{padding-top:8px;border-top:1px solid var(--line2);margin-top:2px;font-size:12.5px;color:var(--mute)}
+  /* S4 «Editar producto» drawer (MOCKUP-portal-item-edit frames A–F, its ITEM-EDIT ADDITIONS verbatim on the portal's tokens).
+     Rules that would also reach today's add drawer (.fld inputs' 44 px, .modh as a flex row, a red .modblock) are scoped to
+     the edit drawer's body (.dwb.ie-edit) — the approved add drawer stays exactly as it is. */
+  .mk-lrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .mk-lrow label{font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--mute2)}
+  .mk-lrow label .mk-opt{text-transform:none;letter-spacing:0;font-weight:600;color:var(--mute2)}
+  .mk-cnt{font-size:12px;color:var(--mute2);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .mk-cnt.over{color:var(--red-text);font-weight:650}
+  /* modelled forms (portal-look AA grammar, as .mk-cdot): no attribute selector on the change mark; the invalid field's counter and
+     the option name carry their OWN classes (.mk-cnterr / .mk-dn) instead of crossing .mk-cnt.over / the review's .dn — same look */
+  .fld.chg input,.fld.chg textarea,.fld.chg select{border-color:var(--accent);background:var(--tint2)}
+  .mk-cnterr{color:var(--red-text)}
+  .dwb.ie-edit .fld input[type=text],.dwb.ie-edit .fld textarea,.dwb.ie-edit .fld select{min-height:44px}
+  .mk-sel{appearance:none;-webkit-appearance:none;padding-right:38px!important;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236E6E72' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 13px center;background-size:15px}
+  .mk-note{border:1px solid var(--line);background:var(--board-2);border-radius:11px;padding:11px 13px;font-size:12.5px;color:var(--mute);line-height:1.5}
+  .mk-note b{display:block;color:var(--ink);font-weight:650;margin-bottom:5px}
+  .mk-sub{font-size:12px;color:var(--mute2);line-height:1.45}
+  .dwf .mk-sp{flex:1}
+  .dwb.ie-edit .modh{display:flex;align-items:center;gap:10px}
+  .mk-modhr{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:600;color:var(--mute2)}
+  .mk-dopt{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line2);font-size:13px}
+  .mk-dopt:last-child{border-bottom:0}
+  .mk-dopt .mk-dn{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
+  .mk-dopt .mk-dn span{color:var(--mute2);font-weight:400}
+  .mk-dopt .dp{color:var(--mute);font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:650}
+  .mk-dopt.over .mk-dn,.mk-dopt.over .mk-dn span{color:var(--red-text)}
+  .modblock.mk-inv{border-color:var(--red)}
+  .dwb.ie-edit .fld.invalid .modblock{border-color:var(--red)}
+  .mk-ferr{display:flex;align-items:flex-start;gap:6px}
+  .tag.mk-ftag{font-weight:650;letter-spacing:0;white-space:nowrap}
+  .nm:has(.mk-ftag){flex-wrap:wrap;row-gap:3px}
+  .thumb.mk-chg{border:1.5px solid var(--accent);box-shadow:0 0 0 3px var(--tint2)}
+  .mk-ferr svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;flex:none;margin-top:1px}
   .prow .pflag svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2;flex:none}
   .brow{display:flex;align-items:center;gap:11px;padding:11px 14px;border:1px solid var(--line2);border-radius:11px;margin-bottom:8px;background:var(--board-2);font-size:13.5px}
   .brow:last-child{margin-bottom:0}

@@ -33,12 +33,77 @@ const idOf = (x) => `${x && x.surface}::${x && x.key}`;
 // The view model. Every row's `was`/`now` come from the server's `old`/`new` by name, and `big` is
 // MEMBERSHIP in largeChangeSet keyed by surface AND key — an item and an extra can legitimately share
 // a key, and flagging by key alone would light the wrong row.
-export function reviewModel(diff) {
+// S4 «Editar producto» (MOCKUP-portal-item-edit frame E; advisor rulings 2026-11-08) — an EXISTING product's text and
+// section lines are their own group, «Productos»: name / description / section (+ subsection) as was → now, and the section's
+// GATE lines as the drawer's consequence sentences. A group's OPTION lines fold under their product («Opciones (n)»); an
+// option's line that repeats its product's own line (the move it shares) is ABSORBED by it — recorded in `absorbed`, so
+// every server line is still accounted for exactly once. `ctx.optionParent(key)` → the product key of an option, from the
+// caller's draft (arrangement only: nothing here re-derives the diff). Without it, an option line is a product of its own.
+const TEXT_FIELDS = ['name', 'desc', 'cat', 'subcat'];
+const GATES = [['pickup_only', 'Queda solo para recoger', 'Vuelve a entregarse a domicilio'],
+  ['weekend_only', 'Pasa a venderse solo los fines de semana', 'Pasa a venderse todos los días'],
+  ['redeem_eligible', 'Pasa a canjearse con puntos', 'Deja de canjearse con puntos']];
+// S2-DESIGN §1.3 — the server's extras consequences: diff.consequences, ONE { key, kind:'extras', gained, lost } per product (on
+// the launcher: the union over its options), never in `changed`. Read as the drawer's frame D sentences, before the gates.
+const EXTRA_LOST = (x) => `Deja de aceptar el extra ${x}`;
+const EXTRA_GAINED = (x) => `Acepta el extra ${x}`;
+const isExtrasConsequence = (c) => !!c && c.kind === 'extras' && typeof c.key === 'string' && Array.isArray(c.gained) && Array.isArray(c.lost);
+const isProductLine = (c) => !!c && c.surface === 'item' && (TEXT_FIELDS.includes(c.field) || GATES.some(([f]) => f === c.field));
+function productsOf(lines, optionParent, optionIndex) {
+  const parentOf = typeof optionParent === 'function' ? optionParent : () => null;
+  const byKey = new Map();
+  const productOf = (key) => {
+    if (!byKey.has(key)) byKey.set(key, { key, lines: [], consequences: [], options: [], absorbed: [], sources: [] });
+    return byKey.get(key);
+  };
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const own = lines.filter((c) => !parentOf(c.key));
+  for (const c of lines) {
+    const parent = parentOf(c.key);
+    const p = productOf(parent || c.key);
+    p.sources.push(c);
+    if (parent) {
+      let o = p.options.find((x) => x.key === c.key);
+      if (!o) { o = { key: c.key, was: null, now: null, extra: [] }; p.options.push(o); }
+      if (c.field === 'name') { o.was = c.old; o.now = c.new; continue; }
+      if (own.some((x) => x.key === parent && x.field === c.field && same(x.old, c.old) && same(x.new, c.new))) { p.absorbed.push(c); continue; }
+      o.extra.push(c.field === 'cat' || c.field === 'subcat' ? { kind: 'cat', field: c.field, was: c.old, now: c.new } : { kind: c.field, was: c.old, now: c.new });
+      continue;
+    }
+    if (c.field === 'name' || c.field === 'desc') p.lines.push({ kind: c.field, was: c.old, now: c.new });
+    else if (c.field === 'cat' || c.field === 'subcat') {
+      let l = p.lines.find((x) => x.kind === 'cat');
+      if (!l) { l = { kind: 'cat', cat: null, subcat: null }; p.lines.push(l); }
+      l[c.field] = { was: c.old, now: c.new };
+    } else {
+      const g = GATES.find(([f]) => f === c.field);
+      p.consequences.push(c.new ? g[1] : g[2]);
+    }
+  }
+  const order = ['name', 'desc', 'cat'];
+  // the options in their product's own choice order (the caller's draft), never the diff's key order
+  const idx = typeof optionIndex === 'function' ? optionIndex : () => 0;
+  for (const p of byKey.values()) {
+    p.options.sort((a, b) => idx(a.key) - idx(b.key));
+    p.lines.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+    p.consequences.sort((a, b) => GATES.findIndex((g) => g.includes(a)) - GATES.findIndex((g) => g.includes(b)));
+  }
+  return [...byKey.values()];
+}
+
+export function reviewModel(diff, ctx = {}) {
   const d = diff || {};
   // DISH PHOTOS B (§2.1) — the server's photo lines ({field:'photo', old, new} three-state) are their own group, «Fotos»;
   // arranged, never derived: every line the server sent is shown exactly once.
   const all = Array.isArray(d.changed) ? d.changed : [];
-  const changed = all.filter((c) => !isPhotoLine(c));
+  const productLines = all.filter((c) => !isPhotoLine(c) && isProductLine(c));
+  const products = productsOf(productLines, ctx && ctx.optionParent, ctx && ctx.optionIndex);
+  for (const c of (Array.isArray(d.consequences) ? d.consequences : []).filter(isExtrasConsequence)) {
+    let p = products.find((x) => x.key === c.key);
+    if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [] }; products.push(p); }
+    p.consequences = [...c.lost.map((x) => EXTRA_LOST(String(x))), ...c.gained.map((x) => EXTRA_GAINED(String(x))), ...p.consequences];
+  }
+  const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c));
   const photos = all.filter(isPhotoLine);
   const added = Array.isArray(d.added) ? d.added : [];
   const removed = Array.isArray(d.removed) ? d.removed : [];
@@ -72,12 +137,13 @@ export function reviewModel(diff) {
   return {
     rows,
     sections,
+    products,
     added,
     removed,
     renamed,
     photos,
     // everything that will publish, so the header cannot understate it
-    total: rows.length + sections.length + added.length + removed.length + renamed.length + photos.length,
+    total: rows.length + sections.length + productLines.length + added.length + removed.length + renamed.length + photos.length,
   };
 }
 
@@ -93,7 +159,7 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-const shown = (v) => (Number.isInteger(v) && v > 0 ? `L${v}` : (v === null || v === undefined ? '—' : String(v)));
+const shown = (v) => (Number.isInteger(v) && v > 0 ? `L ${v}` : (v === null || v === undefined ? '—' : String(v)));
 // A section's name as the review shows it: no name is «Sin nombre», never a dash or the raw id.
 const sectionName = (v) => (typeof v === 'string' && v.trim() ? v : 'Sin nombre');
 // The section a line is about: its name before the change, or its id while it has none (as the rail shows it).
@@ -136,6 +202,70 @@ export function renderReview(root, model, opts = {}) {
     root.append(g);
   }
 
+  // S4 «Productos» (frame E): one row per changed field, «Nombre» / «Descripción» / «Categoría», was → now as separate nodes;
+  // the consequence sentences under the section row; a group's options folded beneath. Text rows wrap under the product name.
+  const products = Array.isArray(model.products) ? model.products : [];
+  if (products.length) {
+    const po = opts.products || {};
+    const nameOf = typeof po.nameOf === 'function' ? po.nameOf : (k) => String(k);
+    const catName = typeof po.categoryName === 'function' ? po.categoryName : (id) => String(id);
+    const sectionOf = typeof po.sectionOf === 'function' ? po.sectionOf : () => ({ cat: null, subcat: null });
+    const textOrDash = (v) => (typeof v === 'string' && v.trim() ? v : '\u2014');
+    const place = (cat, sub) => [cat == null ? null : catName(cat), typeof sub === 'string' && sub ? sub : null].filter(Boolean).join(' \u00b7 ') || '\u2014';
+    const g = el('div', 'mgroup');
+    g.append(groupHead('Productos', products.reduce((n, p) => n + p.lines.length, 0)));
+    const LABEL = { name: 'Nombre', desc: 'Descripción', cat: 'Categoría' };
+    for (const p of products) {
+      const now = sectionOf(p.key) || {};
+      // frame E: the rows head with the PUBLISHED name — a renamed product's name line carries it (old); otherwise the lookup
+      const nl = p.lines.find((l) => l.kind === 'name');
+      const head = nl && typeof nl.was === 'string' && nl.was.trim() ? nl.was : nameOf(p.key);
+      const textRow = (sub) => {
+        const row = el('div', 'prow mk-trow');
+        const main = el('div', 'pmain');
+        main.append(el('div', 'pname', head), el('div', 'psub', sub));
+        row.append(main);
+        return row;
+      };
+      const wasNow = (was, now2) => { const v = el('div', 'pval'); v.append(el('span', 'was', was), el('span', 'arr', '\u2192'), el('span', 'now', now2)); return v; };
+      const cons = () => { const ul = el('ul', 'mk-cons'); for (const c of p.consequences) { const li = el('li'); li.append(el('span', 'mk-cdot'), el('span', null, c)); ul.append(li); } return ul; };
+      const catLine = p.lines.find((l) => l.kind === 'cat');
+      for (const l of p.lines) {
+        const row = textRow(LABEL[l.kind]);
+        row.dataset.k = `item::${p.key}::${l.kind}`;
+        if (l.kind === 'cat') {
+          const cw = l.cat ? l.cat.was : now.cat, cn = l.cat ? l.cat.now : now.cat;
+          const sw = l.subcat ? l.subcat.was : now.subcat, sn = l.subcat ? l.subcat.now : now.subcat;
+          row.append(wasNow(place(cw, sw), place(cn, sn)));
+        } else row.append(wasNow(textOrDash(l.was), textOrDash(l.now)));
+        // the consequence sentences sit under the section line (frame E); with no section line, under the product's last line
+        if (p.consequences.length && (l === catLine || (!catLine && l === p.lines[p.lines.length - 1]))) row.append(cons());
+        g.append(row);
+      }
+      if (!p.lines.length && p.consequences.length) { const row = textRow(LABEL.cat); row.append(cons()); g.append(row); }
+      // advisor ruling 2: a group's option lines fold under their product — «Opciones (n)», each derived name was → now
+      if (p.options.length) {
+        const label = 'Opciones';
+        const row = textRow(`${label} (${p.options.length})`);
+        row.dataset.k = `item::${p.key}::options`;
+        for (const o of p.options) {
+          const v = o.was !== null || o.now !== null ? wasNow(textOrDash(o.was), textOrDash(o.now)) : el('div', 'pval', nameOf(o.key));
+          v.dataset.k = `item::${o.key}`;
+          row.append(v);
+          for (const x of o.extra) {
+            const lab = x.kind === 'cat' ? (x.field === 'subcat' ? 'Subcategoría' : 'Categoría') : String(x.kind);
+            const show = (val) => (x.field === 'cat' ? (val == null ? '\u2014' : catName(val)) : (val === true ? 'Sí' : val === false ? 'No' : textOrDash(val)));
+            const xv = el('div', 'pval');
+            xv.append(el('span', 'psub', `${lab}: `), el('span', 'was', show(x.was)), el('span', 'arr', '\u2192'), el('span', 'now', show(x.now)));
+            row.append(xv);
+          }
+        }
+        g.append(row);
+      }
+    }
+    root.append(g);
+  }
+
   if (model.rows.length) {
     const g = el('div', 'mgroup');
     g.append(groupHead('Precios', model.rows.length));
@@ -144,7 +274,16 @@ export function renderReview(root, model, opts = {}) {
       row.dataset.k = `${r.surface}::${r.key}`;
 
       const main = el('div', 'pmain');
-      main.append(el('div', 'pname', String(r.key)));      // textContent: a dish name is data
+      // S4 (frame E): with the products lookup (the text-edit switch on) the row names the product by its CURRENT name and its
+      // section beneath; without it, today's row exactly
+      const pl = r.surface === 'item' && opts.products && typeof opts.products.nameOf === 'function' ? opts.products : null;
+      main.append(el('div', 'pname', pl ? pl.nameOf(r.key) : String(r.key)));      // textContent: a dish name is data
+      if (pl && r.isPrice && typeof pl.sectionOf === 'function') {
+        const sec = pl.sectionOf(r.key) || {};
+        const cn = typeof pl.categoryName === 'function' ? pl.categoryName : (id) => String(id);
+        const where = [sec.cat == null ? null : cn(sec.cat), typeof sec.subcat === 'string' && sec.subcat ? sec.subcat : null].filter(Boolean).join(' \u00b7 ');
+        if (where) main.append(el('div', 'psub', where));
+      }
       // a non-price change still gets a row; the sub line names the field, so nothing publishes unseen
       if (!r.isPrice) main.append(el('div', 'psub', String(r.field)));
       if (r.pct !== null) {
@@ -337,13 +476,21 @@ export function attestationModel(diff, ctx = {}) {
   // from the legacy previews the caller had — the record is evidence and does not change afterwards.
   const m = reviewModel(diff);
   const photoRows = m.photos.map((c) => ({ key: c.key, kind: lineKind(c, ctx.legacy) }));
-  const photosOnly = photoRows.length > 0 && m.rows.length === 0 && m.added.length === 0 && m.removed.length === 0 && m.renamed.length === 0;
+  // S4 (Codex S4P2 r1 P1-2): a product line (name / description / section — moved out of `rows` into `products`) is NOT a photo:
+  // any of them ends «photos only», exactly as a description line did before S4; a rename then puts its name on the seal
+  const photosOnly = photoRows.length > 0 && m.rows.length === 0 && m.products.length === 0 && m.added.length === 0 && m.removed.length === 0 && m.renamed.length === 0;
 
   // PLAN-public-menu-display T1 — the section names this publish changes (a rename publishes alone, so on a fiscal brand
   // these are the seal's only lines): listed with the same was → now as the prices.
   const sectionRows = reviewModel(diff).sections;
+  // S4 (frame E; OWNER-approved copy 11-10) — only display.name reaches a factura description (S2 §1.3): the products this publish
+  // RENAMES, one row each; a group's options (derived names) fold under their product (ctx.optionParent, the caller's draft)
+  const parentOf = typeof ctx.optionParent === 'function' ? ctx.optionParent : () => null;
+  const nameRows = ((diff && Array.isArray(diff.changed)) ? diff.changed : [])
+    .filter((c) => c && c.surface === 'item' && c.field === 'name' && !parentOf(c.key)).map((c) => ({ key: c.key, was: c.old, now: c.new }));
   return {
     isFiscal,
+    nameRows,
     hasNothing,
     sectionRows,
     needsSeal: isFiscal && !hasNothing,
@@ -418,7 +565,8 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
     // PLAN-public-menu-display T1 (owner-approved mockup R5b): a publish that changes only SECTION NAMES prints no price, so
     // the seal says what is true — the publish needs the owner's authorization — and never that the name is on the factura.
     const namesOnly = (model.sectionRows || []).length > 0 && !model.sealRows.length && !(model.addedRows || []).length;
-    ht.append(el('span', null, namesOnly ? 'Esta publicación requiere tu autorización como propietario' : 'Estos precios se imprimen en tu factura fiscal'));
+    const renames = Array.isArray(model.nameRows) ? model.nameRows : [];
+    ht.append(el('span', null, namesOnly || renames.length ? 'Esta publicación requiere tu autorización como propietario' : 'Estos precios se imprimen en tu factura fiscal'));
     h.append(ht);
     seal.append(h);
 
@@ -446,15 +594,36 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
       root.append(seal);
       return root;
     }
-    body.append(el('p', null,
-      'Como propietario, autorizás que estos precios se cobren en el documento tributario. La factura describe cada línea con el precio que publiques.'));
+    if (renames.length) {
+      // the owner-approved sentences (11-10): 1 price + 1 name is frame E's, verbatim
+      const N = model.sealRows.length, M = renames.length;
+      const names = M === 1 ? 'el nombre de un producto' : `el nombre de ${M} productos`;
+      body.append(el('p', null, `Como propietario, autorizás esta publicación. ${N === 0 ? `Cambia ${names}: ${M === 1 ? 'aparece' : 'aparecen'} en la factura.`
+        : (N === 1 && M === 1 ? 'Cambia un precio y el nombre de un producto: los dos aparecen en la factura.' : `Cambia ${N === 1 ? 'un precio' : `${N} precios`} y ${names}: aparecen en la factura.`)}`));
+    } else {
+      body.append(el('p', null,
+        'Como propietario, autorizás que estos precios se cobren en el documento tributario. La factura describe cada línea con el precio que publiques.'));
+    }
+    // S4 (frame E): with the products lookup a price row reads the product's CURRENT name (as printed after this publish)
+    const nowName = (k) => (opts.products && typeof opts.products.nameOf === 'function' ? opts.products.nameOf(k) : String(k));
     for (const r of model.sealRows) {
       const c = el('div', 'seachg');
-      c.append(el('span', 'sn', String(r.key)));          // textContent: a dish name is data
+      c.append(el('span', 'sn', nowName(r.key)));          // textContent: a dish name is data
       const v = el('span', 'sv');
       v.append(el('span', 'was', shown(r.was)));
       v.append(el('span', 'arr', '→'));
       v.append(el('span', 'now', shown(r.now)));
+      c.append(v);
+      body.append(c);
+    }
+    // S4 (frame E): one «Nombre en factura» row per renamed product, after the price rows
+    for (const r of renames) {
+      const c = el('div', 'seachg');
+      c.append(el('span', 'sn', 'Nombre en factura'));
+      const v = el('span', 'sv');
+      v.append(el('span', 'was', String(r.was)));
+      v.append(el('span', 'arr', '→'));
+      v.append(el('span', 'now', String(r.now)));
       c.append(v);
       body.append(c);
     }
@@ -489,7 +658,7 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
         }
       }
     }
-    if (!model.sealRows.length && !added.length) {
+    if (!model.sealRows.length && !added.length && !renames.length) {
       // Honest, and clearable: the merchant is fiscal, so the server will demand the attestation even
       // though this particular edit moves no price.
       body.append(el('p', 'seachg', 'Esta edición no cambia ningún precio, pero afecta el documento fiscal.'));
@@ -506,7 +675,7 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
       const a = products.length;
       const prices = n === 1 ? 'este cambio de precio' : `estos ${n} cambios de precio`;
       const adds = (a === 1 ? '1 producto nuevo' : `${a} productos nuevos`) + (optionCount ? ` y sus ${optionCount} opciones` : '');
-      t.append(a === 0
+      t.append(renames.length ? ' esta edición en la factura fiscal.' : a === 0
         ? (n === 1 ? ' este cambio de precio en la factura fiscal.' : (n === 0 ? ' esta edición en la factura fiscal.' : ` estos ${n} cambios de precio en la factura fiscal.`))
         : (n === 0 ? ` ${adds} con sus precios en la factura fiscal.` : ` ${prices} y ${adds} en la factura fiscal.`));
       return t;
@@ -808,6 +977,7 @@ export function outcomeFor(err, op = 'publish') {
     const target = typeof b.ref === 'string' ? b.ref : (typeof b.key === 'string' ? b.key : null);
     if (target) base.target = target;
     if (typeof b.field === 'string') base.field = b.field;
+    if (typeof b.option_key === 'string' && b.option_key) base.optionKey = b.option_key;   // S4: a derived option name's refusal
   }
   // the description has its own (looser) rule: quotes are fine there, the signs < and > are not
   if (code === 'text_unsafe' && base.field === 'desc') {

@@ -69,10 +69,10 @@ test('the prefers-color-scheme dark tokens equal the explicit dark theme (one da
   assert.ok(Object.keys(DARK).length > 15, 'non-vacuity: the palette was parsed');
 });
 
-test('every 1b text class clears 4.5:1 in light AND dark (dark --mute2 on --card is 4.46 — small text uses --mute)', () => {
+test('every 1b text class clears 4.5:1 in light AND dark (dark --mute2 was 4.46 on --card until the 11-10 token fix — small text still uses --mute)', () => {
   sweep(TEXT);
-  // non-vacuity: the pair the gate found really fails, and the swap really passes
-  assert.ok(ratio(DARK.mute2, DARK.card) < 4.5 && ratio(DARK.mute, DARK.card) >= 4.5 && ratio(LIGHT.mute, LIGHT.card) >= 4.5);
+  // the pair the gate once found is FIXED (advisor AA ruling 11-10: dark --mute2 #7C7C80 → #7E7E82, ≥ 4.5 on --card), and --mute still passes
+  assert.ok(ratio(DARK.mute2, DARK.card) >= 4.5 && ratio(DARK.mute, DARK.card) >= 4.5 && ratio(LIGHT.mute, LIGHT.card) >= 4.5);
 });
 
 // ── discovery: every colour declaration on an .ops selector ──
@@ -143,7 +143,7 @@ const MUTANTS = [
   ['a selector list with an uncovered .ops member', '.other, .ops .uncovered{color:var(--ink)}', /\.ops \.uncovered/],
   ['a selector list with :hover in it', '.ops .fnote:hover, .ops .uncov2{color:var(--ink)}', /\.ops \.uncov2/],
   ['a theme-prefixed uncovered selector', ':root[data-theme="dark"] .ops .uncov3{color:var(--ink)}', /\.ops \.uncov3/],
-  ['a theme-prefixed low-contrast override', ':root[data-theme="dark"] .ops .fnote{color:var(--mute2)}', /\.ops \.fnote \(dark\): var\(--mute2\)/],
+  ['a theme-prefixed low-contrast override', ':root[data-theme="dark"] .ops .fnote{color:var(--line)}', /\.ops \.fnote \(dark\): var\(--line\)/],   // --line (1.23 on dark --card): --mute2 passes since the 11-10 token fix
   ['a literal colour below 4.5', '.ops .fnote{color:#777777}', /\.ops \.fnote \(light\): #777777/],
   ['a value the sweep cannot evaluate', '.ops .fnote{color:gray}', /«gray» cannot be evaluated/],
 ];

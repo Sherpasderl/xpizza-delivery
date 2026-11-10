@@ -138,19 +138,24 @@ test('every server change is shown — including fields this slice cannot edit',
   // The diff is against the LIVE version, so a draft can differ in ways this editor never touched
   // (someone else edited the store, or an older draft was left behind). Hiding those would let a
   // merchant approve a publish carrying changes the screen never mentioned.
+  // S4 «Editar producto» (advisor ruling 2026-11-08): a product's name / description / section line now belongs to the
+  // «Productos» group (review-products.test.mjs), not to «Precios» — still shown, exactly once. A field NO slice edits (tags)
+  // keeps this test's point: it still gets a row of its own among the changes.
   const diff = SERVER_DIFF();
   diff.changed.push({ key: 'Focaccia', surface: 'item', field: 'desc', old: 'vieja', new: 'nueva' });
+  diff.changed.push({ key: 'Focaccia', surface: 'item', field: 'tags', old: [], new: ['picante'] });
   diff.added.push({ key: 'Nueva Pizza', surface: 'item', price: 500 });
   diff.removed.push({ key: 'Vieja Pizza', surface: 'item', price: 200 });
   const m = reviewModel(diff);
-  assert.strictEqual(m.rows.length, 4, 'every changed entry gets a row, price or not');
-  const desc = m.rows.find((r) => r.field === 'desc');
-  assert.ok(desc, 'the non-price change is present');
-  assert.strictEqual(desc.isPrice, false, '...and marked as not a price, so the screen can say so');
+  assert.strictEqual(m.rows.length, 4, 'every changed entry outside «Productos» gets a row, price or not');
+  const tags = m.rows.find((r) => r.field === 'tags');
+  assert.ok(tags, 'the non-price change is present');
+  assert.strictEqual(tags.isPrice, false, '...and marked as not a price, so the screen can say so');
+  assert.deepStrictEqual(m.products.map((p) => [p.key, p.lines.map((l) => l.kind)]), [['Focaccia', ['desc']]], 'the description is shown in «Productos»');
   assert.strictEqual(m.rows.filter((r) => r.isPrice).length, 3, 'the three price changes are marked as prices');
   assert.deepStrictEqual(m.added.map((a) => a.key), ['Nueva Pizza'], 'additions are surfaced');
   assert.deepStrictEqual(m.removed.map((r) => r.key), ['Vieja Pizza'], '...and removals');
-  assert.strictEqual(m.total, 6, 'the total counts everything that will publish');
+  assert.strictEqual(m.total, 7, 'the total counts everything that will publish');
 });
 
 test('the review renders one row per change, with the values as text', () => {
@@ -350,8 +355,8 @@ test('the seal renders the exact rows, with one Autorizo that gates publish', ()
   const rows = byClass(root, 'seachg');
   assert.strictEqual(rows.length, 1, 'one row per fiscal price change');
   const t = textOf(rows[0]);
-  assert.ok(t.includes('Pizza Margherita') && t.includes('L299') && t.includes('L310'), 'naming the dish and both prices');
-  assert.ok(t.indexOf('L299') < t.indexOf('L310'), 'was before now');
+  assert.ok(t.includes('Pizza Margherita') && t.includes('L 299') && t.includes('L 310'), 'naming the dish and both prices');   // «L 299»: the review's price format (advisor 11-10)
+  assert.ok(t.indexOf('L 299') < t.indexOf('L 310'), 'was before now');
 
   const boxes = walk(root).filter((n) => n.tag === 'input');
   assert.strictEqual(boxes.length, 1, 'exactly ONE Autorizo — it satisfies the fiscal ack and the large-change ack together');
@@ -1178,11 +1183,11 @@ test('🔴 review (add-product B): the options sit UNDER their product; every se
   assert.deepStrictEqual(rowsWith(root, 'sub').map((r) => r.dataset.k).length, 3, 'the three options are nested rows');
   const t = textOf(root);
   assert.ok(t.includes('Elección requerida: Salsa · el cliente elige 1 · Sin extras'), t);
-  assert.ok(t.includes('desde L624'), 'unequal options → "desde L {min}", from the SERVER’s option prices');
+  assert.ok(t.includes('desde L 624'), 'unequal options → "desde L {min}", from the SERVER’s option prices');
   assert.ok(t.includes('Recomendada'), 'the recommended option is tagged');
   assert.ok(textOf(rowsWith(root, 'mglabel')[0]).includes('4'), 'the header counts what the server listed');
   const eq = fakeDom(); renderReview(eq, reviewModel(GROUP_DIFF([624, 624, 624])), { describe: GROUP_DESCRIBE });
-  assert.ok(textOf(eq).includes('L624') && !textOf(eq).includes('desde'), 'equal options → "L {price}"');
+  assert.ok(textOf(eq).includes('L 624') && !textOf(eq).includes('desde'), 'equal options → "L {price}"');
   // an option whose product is NOT in the list stays a row of its own (nothing vanishes)
   const orphan = GROUP_DIFF(); orphan.added.shift();
   const o = fakeDom(); renderReview(o, reviewModel(orphan), { describe: GROUP_DESCRIBE });
@@ -1199,7 +1204,7 @@ test('🔴 seal (add-product B): every OPTION is a factura line, by its full nam
   assert.ok(t.includes('Vas a agregar 1 producto nuevo. La factura imprimirá cada opción con su precio:'), t);
   for (const [n, p] of [['NY Plain Slice - Salsa Roja', 624], ['NY Plain Slice - Salsa Vodka', 644], ['NY Plain Slice - Combinada', 654]]) {
     const row = rowsWith(root, 'seachg').find((r) => textOf(r).includes(n));
-    assert.ok(row && textOf(row).includes(`L${p}`), `${n} at L${p}`);
+    assert.ok(row && textOf(row).includes(`L ${p}`), `${n} at L ${p}`);
   }
   const head = rowsWith(root, 'seachg').find((r) => textOf(r).trim().startsWith('NY Plain Slice') && !textOf(r).includes(' - '));
   assert.ok(head && !/L\d/.test(textOf(head)), 'the product itself carries no factura price');

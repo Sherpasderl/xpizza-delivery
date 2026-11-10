@@ -239,6 +239,8 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   // DISH PHOTOS B — the caller builds the row's thumb (+ its tag) from the photo state, or answers null (uploads off and no
   // photo: today's placeholder, exactly). The camera opens the drawer with the picker; render.js only places what it gets.
   const photoOf = typeof opts.photoOf === 'function' ? opts.photoOf : () => null;
+  // S4 «Editar producto» (mockup frame B) — the row's unpublished-text tag, «Nombre sin publicar» / «Cambios sin publicar», or null
+  const textTagOf = typeof opts.textTagOf === 'function' ? opts.textTagOf : () => null;
   const onPhoto = typeof opts.onPhoto === 'function' ? opts.onPhoto : (id) => onOpen && onOpen(id);
   const onAdd = editable && typeof opts.onAdd === 'function' && group && opts.canAdd && opts.canAdd(group.category.id) ? opts.onAdd : null;
   // PLAN-public-menu-display T1 — a section's NAME (owner-approved mockup R1–R3b). All three are the caller's answers:
@@ -299,6 +301,8 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     // name in the body font AND dressed unwritable text as editable — the wrong class in both senses.
     const nmEl = el('div', 'nm', typeof d.name === 'string' && d.name.trim() ? d.name : (it.key ? String(it.key) : 'Nuevo producto'));
     if (isAddition(it)) nmEl.append(el('span', 'newtag', 'Nuevo'));
+    const ttag = textTagOf(it);
+    if (ttag) nmEl.append(el('span', 'tag mk-ftag', ttag));
     info.append(nmEl);
     if (typeof d.desc === 'string' && d.desc.trim()) info.append(el('div', 'idesc', d.desc));
     const grp = groupOf(it);
@@ -322,6 +326,7 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       // DISH PHOTOS B — the caller's photo view for this row, or null (uploads off and no photo: today's placeholder, exactly)
       const ph = photoOf(it, { name: label, open: () => onOpen(id), upload: () => onPhoto(id) });
       if (ph && ph.thumb) {
+        if (ttag) ph.thumb.classList.add('mk-chg');   // S4 (B): the changed product's thumb takes the green change mark
         cells.push(ph.thumb);
         if (ph.tag) nmEl.append(ph.tag);
       } else {
