@@ -165,6 +165,39 @@ const want = (r, status, b, label) => { assert.strictEqual(r.status, status, `${
     want(await save(stub('la_musa', LM), 'la_musa', s), 400, { error: 'name_too_long', key: 'noodle_01' }, 'S2H-ORDER the first refusal is the text rule');
     ok('precedence: text before moves');
   }
+  // ── PUBLISH: the same preflight, against CURRENT state, before the validator (the real publishEditedCore) ──
+  {
+    const { publishEditedCore } = require('./publish-edited-handler');
+    const { catalogDiff, issueEditToken, sha256 } = require('./catalog-edit');
+    const { sourceToBuildInputs } = require('./source-store');
+    const { buildCatalogV2 } = require('./form-menu-source');
+    const AP = require('./add-product');
+    const builtOf = (src, rid) => { const i = sourceToBuildInputs(src); return { ...buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable, keyMode: i.keyMode, frozenKeys: i.frozenKeys }), extras: i.extras }; };
+    const T = '2026-11-08T12:00:00.000000Z';
+    const publish = async (draft, rid) => {
+      const live = buildSourceFromCode(rid);
+      const deps = { db: {}, authorize: allow, addProduct: addProductOf(null, rid === 'la_musa' ? 'id' : 'name'),
+        readActiveBuilt: async () => { const i = sourceToBuildInputs(live); const b = buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable, keyMode: i.keyMode }); return { built: { ...b, extras: i.extras }, versionId: 'v-live', extraRecords: b.extras }; },
+        readDraft: async () => ({ source: draft, updateTime: T }),
+        publishVersion: async () => ({ versionId: 'v-new', item_count: 0, extra_count: 0 }) };
+      let diff; try { diff = catalogDiff(builtOf(live, rid), builtOf(draft, rid)); } catch (_) { diff = { largeChangeSet: [] }; }
+      const token = issueEditToken({ rid, baseActiveVersionId: 'v-live', sourceUpdateTime: T, sourceHash: sha256(draft), diff });
+      return publishEditedCore(deps, { restaurantId: rid, token, acknowledgedChanges: (diff.largeChangeSet || []).map((l) => ({ key: l.key, surface: l.surface })), fiscalAck: true }, {});
+    };
+    // a registry row gained between the save and the publish, on a derived option name
+    const renamedGroup = AP.rederiveOptionNames((() => { const s = clone(LM); itemOf(s, 'noodle_01').display.name = 'Pad Thai Nuevo'; return s; })());
+    RETIRED.add('Pad Thai Nuevo - Pollo');
+    want(await publish(renamedGroup, 'la_musa'), 400, { error: 'name_previously_used', key: 'noodle_01', field: 'name', option_key: 'noodle_01_pollo' }, 'S2H-PUB-REGISTRY refused at publish, attributed to the launcher');
+    RETIRED.clear();
+    // a draft stored by an older server with a quote in a name: the typed refusal, not the validator's untagged one
+    const q = clone(XP); itemOf(q, 'Carnivora').display.name = "Carnivora's";
+    want(await publish(q, 'x_pizza'), 400, { error: 'text_unsafe', key: 'Carnivora', field: 'name' }, 'S2H-PUB-TEXT the text rule at publish is field-tagged');
+    // the SAME first refusal at save and at publish for a draft with several problems
+    const multi = clone(LM); itemOf(multi, 'noodle_01').display.name = 'x'.repeat(61); const md = multi.items.find((i) => i.display.cat === 'dim_sum'); md.display.cat = 'bebidas'; delete md.display.subcat;
+    const rs = await save(stub('la_musa', LM), 'la_musa', clone(multi)); const rp = await publish(AP.rederiveOptionNames(clone(multi)), 'la_musa');
+    assert.deepStrictEqual([rp.status, rp.body], [rs.status, rs.body], 'S2H-PUB-SAME the publish answers the save\'s first refusal');
+    ok('publish: the same preflight against current state — a later registry row, a stored unsafe name, the same first refusal');
+  }
   // ── OFF: exactly today (none of the S2 codes) ──
   {
     SWITCH.enabled = false;

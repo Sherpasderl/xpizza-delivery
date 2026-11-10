@@ -140,6 +140,7 @@
     "xpizza-functions/catalog/migration-parity.test.js",
     "xpizza-functions/catalog/mint-opaque.test.js",
     "xpizza-functions/catalog/mirror-key-encoding.test.js",
+    "xpizza-functions/catalog/move-rules-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/plan4-display-fields.test.js",
@@ -156,6 +157,7 @@
     "xpizza-functions/catalog/renderer-contract.test.js",
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
+    "xpizza-functions/catalog/s2-preflight-handler.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/text-edit-rules.test.js",
@@ -481,6 +483,7 @@
     "xpizza-functions/catalog/migration-parity.test.js",
     "xpizza-functions/catalog/mint-opaque.test.js",
     "xpizza-functions/catalog/mirror-key-encoding.test.js",
+    "xpizza-functions/catalog/move-rules-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
@@ -494,6 +497,7 @@
     "xpizza-functions/catalog/redeem-exclusion.test.js",
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
+    "xpizza-functions/catalog/s2-preflight-handler.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/text-edit-rules.test.js",
@@ -842,6 +846,7 @@
     "xpizza-functions/catalog/migration-parity.test.js",
     "xpizza-functions/catalog/mint-opaque.test.js",
     "xpizza-functions/catalog/mirror-key-encoding.test.js",
+    "xpizza-functions/catalog/move-rules-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/plan4-display-fields.test.js",
@@ -858,6 +863,7 @@
     "xpizza-functions/catalog/renderer-contract.test.js",
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
+    "xpizza-functions/catalog/s2-preflight-handler.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/text-edit-rules.test.js",
@@ -1179,6 +1185,7 @@
     "xpizza-functions/catalog/migration-parity.test.js",
     "xpizza-functions/catalog/mint-opaque.test.js",
     "xpizza-functions/catalog/mirror-key-encoding.test.js",
+    "xpizza-functions/catalog/move-rules-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
@@ -1193,6 +1200,7 @@
     "xpizza-functions/catalog/redeem-exclusion.test.js",
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
+    "xpizza-functions/catalog/s2-preflight-handler.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/text-edit-rules.test.js",
@@ -2366,6 +2374,7 @@
   "catalog/charge-inputs.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
+  "catalog/edit-preflight.js",
   "catalog/exposure-source.js",
   "catalog/extras-intake.js",
   "catalog/form-menu-source.js",
@@ -2384,6 +2393,7 @@
   "catalog/mint-opaque.js",
   "catalog/mirror-keys.js",
   "catalog/mirror-rtdb.js",
+  "catalog/move-rules.js",
   "catalog/pickup-backstop.js",
   "catalog/portal-reads.js",
   "catalog/pricing-tables.js",
@@ -2916,10 +2926,15 @@
     {
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
-      "tools/reservedkeys-module-inverse.js"
+      "tools/reservedkeys-module-inverse.js",
+      "tools/s2-module-inverse.js"
      ]
     }
    ],
+   "lifts": []
+  },
+  "catalog/edit-preflight.js": {
+   "pins": [],
    "lifts": []
   },
   "catalog/exposure-source.js": {
@@ -3022,6 +3037,10 @@
    ],
    "lifts": []
   },
+  "catalog/move-rules.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/pickup-backstop.js": {
    "pins": [],
    "lifts": []
@@ -3089,7 +3108,8 @@
     {
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
-      "tools/reservedkeys-module-inverse.js"
+      "tools/reservedkeys-module-inverse.js",
+      "tools/s2-module-inverse.js"
      ]
     }
    ],

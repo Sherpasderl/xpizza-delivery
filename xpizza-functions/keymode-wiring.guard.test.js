@@ -136,7 +136,7 @@ const ALLOWED = {
 // The inverse round-trip runs LAST: a mutant in an owned file breaks it, so every named pin above must get its turn first.
 // ── 1 ──
 const pinnedElsewhere = new Set();
-for (const t of fs.readdirSync(path.join(__dirname, 'tools')).filter((x) => /-inverse\.js$/.test(x) && x !== 'keymode-module-inverse.js' && x !== 'frozenkeys-module-inverse.js' && x !== 'reservedkeys-module-inverse.js' && x !== 's1d-module-inverse.js')) {   // newer layers are not older pins
+for (const t of fs.readdirSync(path.join(__dirname, 'tools')).filter((x) => /-inverse\.js$/.test(x) && x !== 'keymode-module-inverse.js' && x !== 'frozenkeys-module-inverse.js' && x !== 'reservedkeys-module-inverse.js' && x !== 's1d-module-inverse.js' && x !== 's2-module-inverse.js')) {   // newer layers are not older pins
   const txt = fs.readFileSync(path.join(__dirname, 'tools', t), 'utf8');
   for (const f of FILES) if (txt.includes(`"${f}"`) || txt.includes(`'${f}'`)) pinnedElsewhere.add(f);
 }
