@@ -253,3 +253,10 @@ test('seal — a group rename: ONE «Nombre en factura» row for the product (it
   assert.match(s.rows[0][1], /Pizza Cuatro Quesos\s*→\s*Pizza Cuatro Quesos Especial/);
   assert.deepStrictEqual(s.p, ['Como propietario, autorizás esta publicación. Cambia el nombre de un producto: aparece en la factura.']);
 });
+test('«Productos» (frame E) — the rows head with the PUBLISHED name (the name line\'s old value), while «Precios» reads the current one', () => {
+  const root = fakeDom();
+  renderReview(root, reviewModel(FRAME_E()), { products: { nameOf: (k) => (k === 'Pizza Cacio e Pepe' ? 'Cacio e Pepe' : k), categoryName: (id) => id, sectionOf: () => ({ cat: 'pa', subcat: null }) } });
+  const prows = byClass(byClass(root, 'mgroup')[0], 'prow');
+  assert.deepStrictEqual(prows.map((r) => textOf(byClass(r, 'pname')[0])), ['Pizza Cacio e Pepe', 'Pizza Cacio e Pepe', 'Pizza Cacio e Pepe']);
+  assert.strictEqual(textOf(byClass(byClass(byClass(root, 'mgroup')[1], 'prow')[0], 'pname')[0]), 'Cacio e Pepe');
+});

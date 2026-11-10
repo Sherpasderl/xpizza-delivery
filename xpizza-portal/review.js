@@ -217,10 +217,13 @@ export function renderReview(root, model, opts = {}) {
     const LABEL = { name: 'Nombre', desc: 'Descripción', cat: 'Categoría' };
     for (const p of products) {
       const now = sectionOf(p.key) || {};
+      // frame E: the rows head with the PUBLISHED name — a renamed product's name line carries it (old); otherwise the lookup
+      const nl = p.lines.find((l) => l.kind === 'name');
+      const head = nl && typeof nl.was === 'string' && nl.was.trim() ? nl.was : nameOf(p.key);
       const textRow = (sub) => {
         const row = el('div', 'prow mk-trow');
         const main = el('div', 'pmain');
-        main.append(el('div', 'pname', nameOf(p.key)), el('div', 'psub', sub));
+        main.append(el('div', 'pname', head), el('div', 'psub', sub));
         row.append(main);
         return row;
       };
