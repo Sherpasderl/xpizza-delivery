@@ -113,4 +113,4 @@ const db = admin.firestore();
     : `  kitchen (KDS) list: ${kds.written ? 'updated' : `not written (${kds.reason})`}`);
   console.log('now run: node tools/verify-catalog.js');
   process.exit(0);
-})().catch((e) => { console.error('rollback failed (pointer NOT moved unless stated above):', e && e.message); process.exit(1); });
+})().catch((e) => { console.error('rollback failed (pointer NOT moved unless stated above):', e && e.message); if (e && e.code === 'reserved_key_conflict') console.error(`  reserved_key_conflict: «${e.name}» (key ${e.option_key || e.key}) — the rollback target names a product with a reserved name`); process.exit(1); });

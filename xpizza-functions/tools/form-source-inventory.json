@@ -2857,7 +2857,8 @@
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2-module-inverse.js"
      ]
     },
     {
@@ -2868,14 +2869,16 @@
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
       "tools/reservedkeys-module-inverse.js",
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2-module-inverse.js"
      ]
     },
     {
@@ -2885,13 +2888,15 @@
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2-module-inverse.js"
      ]
     }
    ],
