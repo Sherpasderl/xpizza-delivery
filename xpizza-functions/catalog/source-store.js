@@ -12,8 +12,9 @@
 // to EXTRAS as well as items. x_pizza keys both by NAME; la_musa keys both by ID. The store carries
 // `key` explicitly and validates it against the display record, so the two can never drift apart.
 // ---------------------------------------------------------------------------
-const { pricingKeyOf, deriveStartingPrice } = require('./form-menu-source');
+const { pricingKeyOf, deriveStartingPrice } = require('./form-menu-source'); const FK = require('./frozen-keys');   // S1a: recorded renames keep their key
 const { assertDisplaySafe, checkValue: assertFieldSafe } = require('./display-safety');
+const { REWARD_ICONS } = require('./reward-icons');
 
 // The COMPLETE display schema. A source stamped with this validates as a full customer-display
 // payload — every dish priced and described, every extra a first-class record, exposure resolvable,
@@ -50,6 +51,7 @@ const KNOWN_STRUCTURE_FIELDS = Object.freeze([
   'schema_version', 'item_order', 'extra_order', 'categories', 'extra_categories',
   'variant_items', 'badges', 'exposure', 'extras_by_category', 'extras_by_item',
   'pickup_only_cats', 'weekend_only_cats',
+  'badge_priority',
   'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras',
 ]);
 
@@ -195,14 +197,14 @@ const ID_S = 'sentinel_id';
 const NAME_S = 'sentinel_name';
 // A numeric UI id is a DOM handle and an argument to an inline handler — it must be a positive
 // integer, not merely a number. -0.5 was accepted and would produce `openDetailModal(-0.5)`.
-const dishIdTypeFor = (rid) => (pricingKeyOf(rid, { id: ID_S, name: NAME_S }) === ID_S ? 'string' : 'int_positive');
+const dishIdTypeFor = (rid, keyMode) => (pricingKeyOf(rid, { id: ID_S, name: NAME_S }, keyMode) === ID_S ? 'string' : 'int_positive');
 
 
 // Reject anything that could produce a wrong or partial build. Ordering of checks is deliberate:
 // identity → shape → values → bijection → structural coverage, so the error names the first real problem.
 function validateSource(source, rid) {
   if (!source || typeof source !== 'object') fail(`${rid} — source is not an object`);
-  if (source.restaurant_id !== rid) fail(`${rid} — restaurant_id mismatch (${String(source.restaurant_id)})`);
+  if (source.restaurant_id !== rid) fail(`${rid} — restaurant_id mismatch (${String(source.restaurant_id)})`); const keyMode = source.key_mode; if (keyMode !== undefined && keyMode !== 'id' && keyMode !== 'name') fail(`${rid} — key_mode must be 'id' or 'name' (${JSON.stringify(keyMode).slice(0, 30)})`); const fkProblem = source.frozen_keys === undefined ? null : FK.frozenKeysProblem(source.frozen_keys); if (fkProblem) fail(`${rid} — ${fkProblem}`); const frozen = FK.activeFrozenKeys(source); const itemKeys = new Set((Array.isArray(source.items) ? source.items : []).map((i) => i && i.key));
   if (!Array.isArray(source.items) || source.items.length === 0) fail(`${rid} — items must be a non-empty array`);
   if (!Array.isArray(source.extras)) fail(`${rid} — extras must be an array`);
   const st = source.structure;
@@ -252,8 +254,8 @@ function validateSource(source, rid) {
     if (!it.display || typeof it.display !== 'object') fail(`${rid}/${it.key} — item missing its display record`);
     // The key IS the pricing identity; it must agree with the display record it describes, or an edit
     // to the display name would silently reprice (x_pizza) or orphan (la_musa) the item.
-    const derived = pricingKeyOf(rid, it.display);
-    if (derived !== it.key) fail(`${rid}/${it.key} — key does not match its display record (derived ${String(derived)})`);
+    const derived = pricingKeyOf(rid, it.display, keyMode);
+    if (derived !== it.key && frozen.get(String(it.display.id)) !== it.key) fail(`${rid}/${it.key} — key does not match its display record (derived ${String(derived)})`); if (derived !== it.key && itemKeys.has(derived)) fail(`${rid}/${it.key} — renamed to ${JSON.stringify(derived)}, another product's key`);
     if (seen.has(it.key)) fail(`${rid}/${it.key} — duplicate item key`);
     seen.add(it.key);
     if (it.display.cat != null && !catIds.has(it.display.cat)) fail(`${rid}/${it.key} — references unknown category ${it.display.cat}`);
@@ -269,7 +271,7 @@ function validateSource(source, rid) {
     // price by that id. A seed that keyed x_pizza extras by `e1` would round-trip cleanly and hash
     // stably — and price nothing, because no cart line would ever match. Fail closed on it.
     if (ex.display) {
-      const derived = extrasKeyOf(rid, ex.display);
+      const derived = extrasKeyOf(rid, ex.display, keyMode);
       if (derived !== ex.key) fail(`${rid}/extra ${ex.key} — key does not match its display record (derived ${String(derived)}; x_pizza extras key by NAME, la_musa by id)`);
     }
   }
@@ -298,7 +300,7 @@ function validateSource(source, rid) {
   // The STRUCTURE carries its own version, distinct from the source's. It was ruled exempt and so was
   // never checked at all — the census refuses an exemption, which is how this surfaced.
   checkField(st.schema_version, { required: false, type: 'int_positive' }, `${rid}`, 'structure.schema_version');
-  const dishIdType = dishIdTypeFor(rid);
+  const dishIdType = dishIdTypeFor(rid, keyMode);
   const ITEM_RULES = {
     key: { required: true, type: 'string', nonEmpty: true },
     price: { required: true, type: 'int_positive' },
@@ -321,6 +323,8 @@ function validateSource(source, rid) {
     // 1D add-product B (rev 6, §0b.7): the ONE "no extras" representation, stamped on a launcher and every variant.
     // Absent = today's behaviour; the only authored value is 'none'.
     extras_policy: { required: false, type: 'string', enum: ['none'] },
+    // PLAN 4 r3 §8.1 (OWNER RULING (a)): the reward-picker icon, from the closed set the shipped sprite draws.
+    reward_icon: { required: false, type: 'string', enum: REWARD_ICONS },
   };
   const uiIds = new Map();
   for (const it of source.items) {
@@ -390,6 +394,8 @@ function validateSource(source, rid) {
       cat: { required: true, type: 'string', nonEmpty: true, sink: 'body' },
       name: { required: true, type: 'string', nonEmpty: true, sink: 'body' },
       price: { required: true, type: 'int_positive' },
+      // PLAN 4 r3 §8.1 (advisor ruling, flag 2): an extra the reward picker offers carries its icon too
+      reward_icon: { required: false, type: 'string', enum: REWARD_ICONS },
     };
     for (const [f, rule] of Object.entries(EXTRA_RULES)) checkField(ex.display[f], rule, `${rid}/extra ${ex.key}`, `display.${f}`);
     if (ex.display.price !== ex.price) fail(`${rid}/extra ${ex.key} — display price ${String(ex.display.price)} must be present and equal to the authoritative price ${ex.price}`);
@@ -634,6 +640,14 @@ function validateSource(source, rid) {
       if (!contract.badges.has(k)) fail(`${rid} — badge ${k} is not one the renderer can select (the badge set is fixed by the shipped form, not by this document)`);
     }
   }
+  // PLAN 4 r3 §8.1 — the ORDER badges are chosen in. Every entry names a badge THIS document declares, once: a priority
+  // entry naming no definition would be chosen and then render nothing.
+  if (st.badge_priority !== undefined) {
+    checkField(st.badge_priority, { required: false, type: 'string_array', unique: true }, `${rid}`, 'structure.badge_priority');
+    for (const k of st.badge_priority) {
+      if (!st.badges || !Object.prototype.hasOwnProperty.call(st.badges, k)) fail(`${rid} — badge_priority names ${k}, which this document declares no badge for`);
+    }
+  }
   // ALWAYS the contract's set — never the source's own keys. A brand with no badge renderer has an
   // EMPTY set, so any tag on it is refused; falling back to what the document declares would hand the
   // decision back to the document.
@@ -748,13 +762,13 @@ function sourceToBuildInputs(source) {
   // 1A Task 4: extra_categories (the ordered option-group namespace) and badges (the definitions a tag
   // resolves against) join the list. Both are display data the build was silently dropping, so a
   // catalog built from a source could not group its options or render a badge.
-  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'exposure', 'extra_categories', 'badges', 'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']) {
+  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'exposure', 'extra_categories', 'badges', 'badge_priority', 'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']) {
     if (source.structure[f] !== undefined) formData[f] = source.structure[f];
   }
   if (Array.isArray(source.extras) && source.extras.some((e) => e.display)) {
     formData.extras_display = source.extras.map((e) => e.display).filter(Boolean);
   }
-  return { priceTable, formData, extras };
+  const fz = source.frozen_keys === undefined ? null : FK.activeFrozenKeys(source); if (fz) formData.frozen_keys = Object.fromEntries(fz); return { priceTable, formData, extras, ...(source.key_mode === undefined ? {} : { keyMode: source.key_mode }), ...(fz ? { frozenKeys: source.frozen_keys } : {}) };
 }
 
 // Read + validate in one step. There is deliberately no "read without validating" export: every

@@ -13,6 +13,7 @@
 const crypto = require('crypto');
 const { genAttemptId, orderFingerprint, centsToLempiras } = require('./pixelpay-charge');
 const { paymentBindingConflict, conflictOutcome, once, formatOf, FORMAT_CANONICAL, installFingerprint } = require('./catalog/canonical-binding');   // 1D D4-b §A.3
+const { tipBindingConflict } = require('./tip');   // S2-srv-tip §3.2: the direct stored-tip compare, BEFORE the binding check at every site
 
 // Hosted checkout validity window (the `expired_at` we send PixelPay). After this, the
 // old checkout is no longer payable → a fresh attempt may be created.
@@ -59,7 +60,13 @@ function genPollToken() {
    lazy thunk for the untruncated-text candidate, compared ONLY against a record marked 'a8'; `fresh` is the text version of
    THIS request's fresh binding ('legacy' | 'a8'): 'a8' only when a retained 'a8' reservation selected it, and then the
    create CAS writes the a8 fingerprint (pendingOrderRecord already carries the a8 text + marker). */
-async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false, controlRefuseFresh = false, menuRefuseFresh = false, choiceRefuseFresh = false, extrasRefuseFresh = null, textBinding = null) {
+/* PLAN-guest-checkout-server S2 (Codex r1 P1-2): a capp GUEST's pending record carries `guest_verified` (forms / members never
+   do ⇒ every existing path is unchanged). An EXISTING order under the id must carry the SAME verified phone, or this call is a
+   foreign phone: it is refused at the pre-read AND inside the CAS (a no-op), so it can never install / recover / rotate another
+   guest's attempt — the caller answers guest_ticket_invalid, nothing written. */
+const guestForeign = (order, pending) => !!(pending && pending.guest_verified)
+  && !(order && order.guest_verified && order.guest_verified.phone_hash === pending.guest_verified.phone_hash);
+async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false, controlRefuseFresh = false, menuRefuseFresh = false, choiceRefuseFresh = false, extrasRefuseFresh = null, textBinding = null, incomingTip = 0, payerRefuseFresh = false) {
   const canon = once(canonicalFp);
   const a8 = once(textBinding && textBinding.a8Fp);
   const freshFp = (textBinding && textBinding.fresh === 'a8') ? a8() : fingerprint;
@@ -69,8 +76,10 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
     const order = (await orderRef.once('value')).val();
 
     // Order-level terminal reads.
-    if (order) {
+    if (order) { if (require('./payments/sdk/flow').isSdkOrder(order)) return { outcome: 'closed', reason: 'sdk_flow' };
+      if (guestForeign(order, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };   // S2: before ANY answer about it
       if (order.payment_status === 'confirmed') return { outcome: 'already_paid' };
+      { const t = tipBindingConflict(order, incomingTip); if (t) return conflictOutcome(t); }   // S2: a changed tip → 'tip' (precedes the fingerprint, which also binds it)
       { const d = paymentBindingConflict(order, fingerprint, canon, a8); if (d) return conflictOutcome(d); }   // advisory
       if (['refunded', 'refund_pending'].includes(order.payment_status) || order.status === 'cancelled') {
         return { outcome: 'closed', reason: order.payment_status || order.status };
@@ -127,6 +136,9 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
     // P-SELFUPDATE §5 (2): a below-floor request reaching ANY fresh issuance (create / install / recover / rotate) — a race
     // after it was admitted as a reuse — is refused here, before the CAS. NOT a 426: it is not safe-to-reload proof.
     if (refuseFresh === true) return { outcome: 'conflict', reason: 'client_update_race' };
+    // S2 P-C (§4.1): no payer email for a FRESH checkout (the pre-reserve check passed on a reuse that raced to fresh, or the
+    // classify failed) → refused here, BEFORE the CAS: no attempt is created or retired; the caller releases only its own hold.
+    if (payerRefuseFresh === true) return { outcome: 'conflict', reason: 'payer_email_unconfigured' };
 
     // CAS on orders/{id} (the lock). Admin SDK calls the fn with null on its first uncached
     // invocation; for non-create paths fall back to the pre-read `order` (return a value, never
@@ -137,10 +149,11 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
         if (!freshFp) return;                                           // A8a: an 'a8' fresh binding with no candidate → never a mixed record
         return { ...pendingOrderRecord, active_attempt_id: decided.newAaid, payment_fingerprint: freshFp };
       }
-      const c = cur || order;
+      const c = cur || order; if (require('./payments/sdk/flow').isSdkOrder(c)) return;
       if (!c) return;
+      if (guestForeign(c, pendingOrderRecord)) return c;                    // S2: a foreign guest phone never mutates the order (re-read refuses)
       if (c.payment_status === 'confirmed') return c;
-      if (paymentBindingConflict(c, fingerprint, canon, a8)) return c;     // the CAS: (format, fingerprint) on the record held
+      if (tipBindingConflict(c, incomingTip) || paymentBindingConflict(c, fingerprint, canon, a8)) return c;     // the CAS: (tip, format, fingerprint) on the record held
       if (decided.kind === 'install') {
         if (c.active_attempt_id) return c;
         const fill = c.payment_fingerprint || installFingerprint(c, fingerprint, canon, a8);   // 1D D4-b: legacy record → `fingerprint`, unchanged
@@ -160,7 +173,11 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
 
     if (!tx.committed) continue;
     const committed = tx.snapshot.val();
+    // S2 (Codex r2 P1): the guarded CAS answers a foreign phone with the record UNCHANGED — still a committed transaction — so the
+    // AUTHORITATIVE record is re-checked here, before every claim / recovery write: a foreign phone writes NO payment_attempts row
+    if (guestForeign(committed, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };
     if (committed.payment_status === 'confirmed') return { outcome: 'already_paid' };
+    { const t = tipBindingConflict(committed, incomingTip); if (t) return conflictOutcome(t); }   // S2: post-txn tip
     { const d = paymentBindingConflict(committed, fingerprint, canon, a8); if (d) return conflictOutcome(d); }   // advisory post-txn
     const winner = committed.active_attempt_id;
 
@@ -174,15 +191,23 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
       // Persist the create-claim BEFORE the caller calls PixelPay (I7/R2-1): the deterministic
       // hosted_order_id is stored now, so a paid callback that races our hosted/other response
       // still finds the binding and can recover a crashed `creating`.
-      await db.ref(`payment_attempts/${attemptId}`).update({
-        order_id: orderId,
-        hosted_state: 'creating',
-        hosted_order_id: hostedOrderId,
-        hosted_created_at: now,
-        hosted_expires_at: expiresAt,
-        poll_token: pollToken,
-        total_cents: pendingOrderRecord.total_cents
+      // The claim is EXCLUSIVE: only the request that moves the attempt record from ABSENT to `creating` may mint a
+      // checkout. The order CAS above cannot give that guarantee for `recover` (it commits unchanged for every racer
+      // whose pre-read landed between the pointer write and this one), so every racer that loses here re-reads
+      // and answers in_progress — one payable checkout per attempt, never N.
+      const claim = await db.ref(`payment_attempts/${attemptId}`).transaction((cur) => {
+        if (cur !== null) return;                                       // already claimed (or real record) → abort
+        return {
+          order_id: orderId,
+          hosted_state: 'creating',
+          hosted_order_id: hostedOrderId,
+          hosted_created_at: now,
+          hosted_expires_at: expiresAt,
+          poll_token: pollToken,
+          total_cents: pendingOrderRecord.total_cents
+        };
       });
+      if (!claim.committed) continue;                                   // another request claimed it → re-read (→ in_progress)
       return { outcome: 'claimed', attempt_id: attemptId, hosted_order_id: hostedOrderId, poll_token: pollToken, expires_at: expiresAt };
     }
     continue;                                                           // someone else won → re-read (→ reuse/in_progress)
@@ -205,21 +230,22 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
 //
 // Returns { willIssueFreshUrl: boolean, outcome? }. Read errors propagate to the caller, which fails
 // OPEN (treats as "do not gate") — a DB hiccup must never block a sale.
-async function classifyHostedAttempt(db, orderId, fingerprint, now, canonicalFp = null, a8Fp = null) {
+async function classifyHostedAttempt(db, orderId, fingerprint, now, canonicalFp = null, a8Fp = null, incomingTip = 0) {
   const order = (await db.ref(`orders/${orderId}`).once('value')).val();
-  const r = await classifyFromOrder(db, order, fingerprint, now, canonicalFp, a8Fp);
+  const r = await classifyFromOrder(db, order, fingerprint, now, canonicalFp, a8Fp, incomingTip);
   /* 1D D4-b §A.6: the order binding FORMAT this request is bound to, from the SAME snapshot. Reported ONLY when the
      record is tagged canonical, so every untagged result object is byte-identical to today's. */
   const f = formatOf(order, 'fp_format');
   return (order && f.ok && f.format === FORMAT_CANONICAL) ? { ...r, bindingFormat: FORMAT_CANONICAL } : r;
 }
-async function classifyFromOrder(db, order, fingerprint, now, canonicalFp, a8Fp = null) {
+async function classifyFromOrder(db, order, fingerprint, now, canonicalFp, a8Fp = null, incomingTip = 0) {
   const canon = once(canonicalFp);
   const a8 = once(a8Fp);   // PLAN-A A8a step 1: compared only against a record marked 'a8'
 
   // Order-level terminal reads (mirror acquireHostedAttempt L44-49).
   if (order) {
     if (order.payment_status === 'confirmed') return { willIssueFreshUrl: false, outcome: 'already_paid' };
+    { const t = tipBindingConflict(order, incomingTip); if (t) return conflictOutcome(t, { willIssueFreshUrl: false }); }   // S2: parity with acquire
     { const d = paymentBindingConflict(order, fingerprint, canon, a8); if (d) return conflictOutcome(d, { willIssueFreshUrl: false }); }   // advisory classify
     if (['refunded', 'refund_pending'].includes(order.payment_status) || order.status === 'cancelled') {
       return { willIssueFreshUrl: false, outcome: 'closed' };

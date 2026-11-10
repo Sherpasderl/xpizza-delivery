@@ -1,0 +1,29 @@
+[build]
+  publish = "dist"
+  # PLAN-capp-desktop-website r2 D-1 (advisor ruling 2026-11-01): the site serves the MULTI-STORE SHELL, built by the ONE packager
+  # (web target) from the deployed commit: customer-app/shell.html published AS dist/index.html + the shared boot (capp-boot.js),
+  # the vendored SDK, the CSP, the identity stamp (deployment orders-app, env = Netlify's CONTEXT) and a matching /version.json.
+  # FAIL-CLOSED, unlike the forms: a failed packaging FAILS the build, so Netlify keeps the PREVIOUS deploy live — never an inert
+  # or half-built shell. (P-SELFUPDATE ruling CP2 Q2's "ship unstamped, exit 0" applies to the order forms' stamp-version.js,
+  # whose pages work without a stamp; this shell does not.) ⚠ DEPLOY-IMPACTING: the first deploy after this merges switches
+  # this site from the single-store page to the multi-store shell (owner deploys).
+  command = "node ../platform/native/package-capp.js --target web --env $CONTEXT --sha $COMMIT_REF --out dist --flags guestCardOnly"
+
+[build.environment]
+  # Netlify secrets scanning vs PUBLIC client keys: the web build carries the app's runtime keys (the Maps key and the Firebase
+  # web apiKey, from platform/sites.json `runtime` — browser-restricted, already served in the forms' public HTML). EXACTLY those
+  # values are omitted; scanning stays ON for everything else. secrets-scan-omit.guard.test.js keeps this list equal.
+  SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "AIzaSyAuzSLAELV_MaK2xeXrNjS6_lhNXmD_Y0A,AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU"
+
+# PLAN-capp-S7a r3.3 F4: the self-hosted fonts are content-hashed (a new file = a new name), so they are cached forever.
+[[headers]]
+  for = "/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# C-6a (PLAN-capp-website-and-leader-features §C-6; D-3 r3 DECIDED): NOT indexed until Phase S (server HTML, sitemap, the slug layer)
+# opens the site to crawlers — the header AND shell.html's <meta name="robots" content="noindex"> (customer-app/capp-seo.test.mjs)
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Robots-Tag = "noindex"

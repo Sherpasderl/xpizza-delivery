@@ -15,7 +15,7 @@
 // The sweep, grammar and computed pairs are aids with no completeness claim.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
@@ -40,13 +40,12 @@ test('OS dark mode cannot override the explicit light attribute; the dark blocks
   assert.ok(/:root,\s*:root\[data-theme="light"\]\s*\{/.test(css), 'the light tokens apply to :root and [data-theme="light"]');
 });
 
-test('fonts: exactly one Google Fonts stylesheet — Archivo, weight range 600..800; no Hanken anywhere', () => {
-  const sheets = [...html.matchAll(/<link\b[^>]*href="(https:\/\/fonts\.googleapis\.com\/[^"]+)"[^>]*>/g)].map((m) => m[0]);
-  const stylesheets = sheets.filter((l) => /rel="stylesheet"/.test(l));
-  assert.equal(stylesheets.length, 1, `exactly one Google Fonts stylesheet (got ${stylesheets.length})`);
-  assert.match(stylesheets[0], /href="https:\/\/fonts\.googleapis\.com\/css2\?family=Archivo:wght@600\.\.800&display=swap"/);
-  assert.ok(/<link rel="preconnect" href="https:\/\/fonts\.googleapis\.com">/.test(html), 'preconnect to the CSS host kept');
-  assert.ok(/<link rel="preconnect" href="https:\/\/fonts\.gstatic\.com" crossorigin>/.test(html), 'preconnect to the font host kept');
+// PLAN-portal-fonts r1.1 §5 (moved pin): Archivo is SELF-HOSTED now (platform/fonts → portal-fonts.css), no Google stylesheet;
+// the full font guards live in portal-fonts.test.mjs.
+test('fonts: Archivo self-hosted (portal-fonts.css, the 600..800 range), no Google stylesheet; no Hanken anywhere', () => {
+  assert.ok(!/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(html), 'no Google font host in the shell');
+  assert.ok(/<link rel="stylesheet" href="\.\/portal-fonts\.css">/.test(html), 'the self-hosted font css is linked');
+  assert.match(read('./portal-fonts.css'), /font-family:'Archivo';font-style:normal;font-weight:600 800;/, 'the hosted face is the 600..800 range');
   assert.ok(!/Hanken/i.test(html) && !/Hanken/i.test(css), 'Hanken Grotesk is gone (nothing referenced it)');
   assert.match(css, /--disp:'Archivo'/, 'the display stack leads with Archivo — the face now loaded');
 });
@@ -721,8 +720,26 @@ test('the dark theme keeps its green/red text values (dark unchanged)', () => {
   }
 });
 
-test('the CSP already admits the two Google font hosts (unchanged)', () => {
+// PLAN-portal-fonts r1.1 §5 (moved pin, inverted): the fonts are same-origin, so the CSP no longer admits the Google hosts.
+test('the CSP admits NO Google font host: style-src and font-src are \'self\'', () => {
   const csp = (toml.match(/Content-Security-Policy\s*=\s*"([^"]+)"/) || [])[1] || '';
-  assert.match(csp, /style-src [^;]*https:\/\/fonts\.googleapis\.com/, 'style-src allows fonts.googleapis.com');
-  assert.match(csp, /font-src [^;]*https:\/\/fonts\.gstatic\.com/, 'font-src allows fonts.gstatic.com');
+  assert.match(csp, /style-src 'self';/, "style-src 'self'");
+  assert.match(csp, /font-src 'self';/, "font-src 'self'");
+  assert.ok(!/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(csp), 'no Google font host');
+});
+
+// DECISIONS 2026-10-23 follow-up: every switch is a <button class="tog"> (ops-dom toggle(), team.js, branches-view.js), and a button
+// carries the UA's outset border + padding — the BASE .tog rule resets both, so no builder depends on a scoped patch (the .teamv /
+// .ops .hrow1b resets predate it and stay harmless)
+test('every .tog builder makes a <button>, and the base .tog rule resets the UA border and padding', () => {
+  const builders = [];
+  for (const f of readdirSync(new URL('./', import.meta.url)).filter((n) => n.endsWith('.js'))) {
+    for (const m of read(`./${f}`).matchAll(/el\('([a-z]+)',\s*[`']tog(?:\$\{[^}]*\}|[ '`])/g)) builders.push({ f, tag: m[1] });
+  }
+  assert.ok(builders.length >= 2, `non-vacuity: at least two .tog builders found (${builders.length})`);
+  for (const b of builders) assert.equal(b.tag, 'button', `${b.f}: a .tog is built as <${b.tag}>`);
+  const base = (/(^|\n)\s*\.tog\{([^}]*)\}/.exec(css) || [])[2] || '';
+  assert.ok(base, 'the base .tog rule exists');
+  assert.match(base, /(^|;)border:none(;|$)/, 'the base .tog rule resets the UA border');
+  assert.match(base, /(^|;)padding:0(;|$)/, 'the base .tog rule resets the UA padding');
 });

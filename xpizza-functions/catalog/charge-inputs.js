@@ -20,6 +20,8 @@ const CHARGE_INPUT_FIELDS = Object.freeze([
   'order_id', 'restaurant_id', 'items', 'redeem', 'order_type', 'scheduled_for', 'pickup_time',
   'lat', 'lng', 'address_detected', 'address_details', 'payment_method', 'total', 'items_text',
   'razon_social', 'rtn_cliente',
+  'pin_confirmed',   // S3a envío: the client's pin confirmation decides whether a delivery is priced or refused (codex P1-2)
+  'tip_cents',       // S2: the tip joins the charged total (PLAN-capp-S2-r4 §3.1) — 0 is normalized OUT of the projection below
 ]);
 const NON_CHARGE_FIELDS = Object.freeze({
   customer_name: 'contact display only (and the PixelPay cardholder name padding); never priced',
@@ -30,6 +32,9 @@ const NON_CHARGE_FIELDS = Object.freeze({
   expected_net_cents: 'the client\'s view of the net, checked only by the confirmed-net gate on a FRESH issuance',
   cash_tendered: 'the cash path\'s change-to-bring; never priced, never read by the card path',
   free_order: 'the cash path\'s $0 routing claim; the server re-prices regardless and the card path refuses $0',
+  entry_mode: 'S3b: selects only WHICH allowlisted order site PixelPay returns to (direct | app); never priced',
+  address_area: 'the pre-accept area label for the driver (display only); never priced, routed, deduped, receipted or bound',
+  checkout_ticket: 'PLAN-guest-checkout-server §2.3: the capp guest\'s verified-phone evidence, checked read-only by the guest gate; never priced',
 });
 // Fields the order forms SEND that NO order path reads (the census proves it) — non-charge by construction.
 const UNREAD_FORM_FIELDS = Object.freeze({
@@ -46,7 +51,8 @@ function chargeInputsFingerprint(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
   for (const k of Object.keys(body)) if (!CHARGE_INPUT_FIELDS.includes(k) && !own(NON_CHARGE_FIELDS, k) && !own(UNREAD_FORM_FIELDS, k)) return null;
   const picked = {};
-  for (const k of CHARGE_INPUT_FIELDS) if (own(body, k) && body[k] !== undefined) picked[k] = body[k];
+  // S2: `tip_cents: 0` is the no-tip case, so it is skipped like `undefined` — absent / undefined / 0 hash identically (= pre-S2)
+  for (const k of CHARGE_INPUT_FIELDS) if (own(body, k) && body[k] !== undefined && !(k === 'tip_cents' && body[k] === 0)) picked[k] = body[k];
   let text;
   try { text = canonicalJson(picked); } catch (_) { return null; }
   return crypto.createHash('sha256').update(text).digest('hex');

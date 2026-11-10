@@ -63,6 +63,22 @@ function productionFiles(dir = ROOT, out = []) {
    "the adoption changed nothing measurable". Both copies are now one definition of "is this line
    code". */
 const stripComments = require('../tools/strip-comments.js');
+// A CALL of flipPointer (bare or as a method), found by parsing — string data that merely quotes the call is not one.
+function callsFlipPointer(code) {
+  let ast;
+  try { ast = require('acorn').parse(code, { ecmaVersion: 'latest', sourceType: 'script', allowHashBang: true, allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true }); }
+  catch (_) { try { ast = require('acorn').parse(code, { ecmaVersion: 'latest', sourceType: 'module' }); } catch (e) { return /\bflipPointer\s*\(/.test(code); } }
+  let found = false;
+  (function visit(n) {
+    if (found || !n || typeof n.type !== 'string') return;
+    if (n.type === 'CallExpression') {
+      const c = n.callee;
+      if ((c.type === 'Identifier' && c.name === 'flipPointer') || (c.type === 'MemberExpression' && !c.computed && c.property.name === 'flipPointer')) { found = true; return; }
+    }
+    for (const k of Object.keys(n)) { const v = n[k]; if (Array.isArray(v)) v.forEach(visit); else if (v && typeof v.type === 'string') visit(v); }
+  })(ast);
+  return found;
+}
 
 const pointerOf = async (db, rid) => {
   const s = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();
@@ -118,9 +134,15 @@ const publishFresh = async (db, rid, over = {}) => publishVersion(db, rid, input
       const code = stripComments(readFileSync(full, 'utf8'));
       const rel = relative(ROOT, full);
       if (rel === 'catalog/catalog-publish.js') continue;
-      if (/\bflipPointer\s*\(/.test(code)) callers.push(rel);
+      if (callsFlipPointer(code)) callers.push(rel);
     }
     assert.deepStrictEqual(callers, [], `🔴 flipPointer is called outside its own module: ${callers.join(', ')}`);
+    // the census counts CALLS, not text: a hunk's string data that quotes the call is not a caller; a real call, bare or
+    // as a method, still is (and a file the parser refuses is judged by the text, so it can only over-count)
+    assert.strictEqual(callsFlipPointer('const HUNKS = [{ now: "await flipPointer(db, rid, token)" }];'), false, 'PP-CENSUS a quoted call in string data is not a caller');
+    assert.strictEqual(callsFlipPointer('async function f(db) { await flipPointer(db, "r", "t", "v"); }'), true, 'PP-CENSUS a real external caller is still caught');
+    assert.strictEqual(callsFlipPointer('async function f(p, db) { await p.flipPointer(db); }'), true, 'PP-CENSUS a method call is still caught');
+    assert.strictEqual(callsFlipPointer('this is ( not { javascript flipPointer('), true, 'PP-CENSUS an unparsable file falls back to the text and over-counts');
     const flipCalls = (pub.match(/await flipPointer\(/g) || []).length;
     assert.strictEqual(flipCalls, 2, `exactly two flips — publish and rollback — found ${flipCalls}`);
     // ...and both of them validate the candidate first.

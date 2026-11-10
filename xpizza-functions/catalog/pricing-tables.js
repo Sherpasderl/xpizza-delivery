@@ -52,6 +52,7 @@ function diffSummary(cat, code) {
 // the handler's await until the 30s function timeout and DROP the order — a pricing-cutover-caused
 // intake outage. 1500ms is far below the function timeout; warm reads are cache-instant and a cold read
 // is sub-second, so a healthy read never approaches this.
+const { attachTablesKeyMode } = require('../menu-pricing');   // the served mode rides the tables as a hidden symbol
 const CATALOG_READ_DEADLINE_MS = 1500;
 function withDeadline(promise, deadlineMs) {
   let timer;
@@ -167,7 +168,7 @@ function finalize(contextSource, restaurantId, served, tables) {
     }
     _envelopes.set(tables, Object.freeze({
       rid: restaurantId, versionId: served.versionId, seq: served.seq, source: served.source,
-      prices, context,
+      prices, context, ...(served.keyMode == null ? {} : { keyMode: served.keyMode }),
     }));
   } catch (_) { /* the envelope is a projection; it must never break pricing */ }
   return tables;
@@ -197,15 +198,15 @@ function createPricingResolver({ reader, alarm, deadlineMs = CATALOG_READ_DEADLI
       // that propagates on purpose and the caller turns it into a clean order reject.
       if (!ladder) throw new Error(`pricing_unavailable: ${restaurantId} — no catalog and no fallback ladder`);
       const snap = await ladder.snapshotFor(restaurantId);
-      return finalize(context, restaurantId, { versionId: snap.versionId === undefined ? null : snap.versionId, seq: snap.seq === undefined ? null : snap.seq, source: snap.source },
-        { restaurantId, menu: snap.menu, extras: snap.extras });
+      return finalize(context, restaurantId, { versionId: snap.versionId === undefined ? null : snap.versionId, seq: snap.seq === undefined ? null : snap.seq, source: snap.source, keyMode: snap.keyMode },
+        attachTablesKeyMode({ restaurantId, menu: snap.menu, extras: snap.extras }, snap.keyMode));
     }
     // 2c: the catalog serves UNCONDITIONALLY. No parity gate — a portal edit MUST take effect.
     heartbeat(restaurantId, now());
     serveFingerprint(restaurantId, cat, now(), fire);     // replaces catalog_parity_mismatch's visibility
-    try { if (ladder) ladder.recordGood(restaurantId, { versionId: cat.versionId, seq: cat.seq, menu: cat.menu, extras: cat.extras }); } catch (_) {}
-    return finalize(context, restaurantId, { versionId: cat.versionId == null ? null : cat.versionId, seq: cat.seq == null ? null : cat.seq, source: cat.versionId == null ? 'flat' : 'live' },
-      { restaurantId, menu: cat.menu, extras: cat.extras });
+    try { if (ladder) ladder.recordGood(restaurantId, { versionId: cat.versionId, seq: cat.seq, menu: cat.menu, extras: cat.extras, keyMode: cat.keyMode }); } catch (_) {}
+    return finalize(context, restaurantId, { versionId: cat.versionId == null ? null : cat.versionId, seq: cat.seq == null ? null : cat.seq, source: cat.versionId == null ? 'flat' : 'live', keyMode: cat.keyMode },
+      attachTablesKeyMode({ restaurantId, menu: cat.menu, extras: cat.extras }, cat.keyMode));
   }
   return { getPricingTables };
 }

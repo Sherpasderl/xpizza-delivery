@@ -67,7 +67,7 @@ function buildCreateOrderUpdates({
     orderRecord.lat = lat;
     orderRecord.lng = lng;
     orderRecord.address_detected = fields.address_detected;
-    orderRecord.address_details = fields.address_details;
+    orderRecord.address_details = fields.address_details; if (fields.address_area) orderRecord.address_area = fields.address_area;   // colonia (PLAN-colonia r1): only when kept
     orderRecord.maps_link = `https://www.google.com/maps?q=${lat},${lng}`;
     orderRecord.pickup_task_id = pickupTaskId;
     orderRecord.delivery_task_id = deliveryTaskId;
@@ -180,6 +180,10 @@ function attachCustomerAttribution(updates, orderId, customer_uid, meta) {
     status: orderRec.status || meta.status || null,            // P3 — order's initial status (new / scheduled), kept fresh by the status trigger
     items: normalizeReorderItems(meta.items, meta.restaurantId, meta.tables), // P3 — menu-allowlisted reorder recipe (never raw client strings); 2a: allowlist = the CATALOG menu
   };
+  // S-D: the reorder price snapshot — aligned 1:1 with `items` (the same normalizer, line by line), priced by the existing
+  // computeServerTotal from the SAME committed tables that charged this order; absent ⇒ the client's generic disclosure.
+  const priceSnapshot = require('./reorder-normalize').reorderPriceSnapshot(meta.items, meta.restaurantId, meta.tables);
+  if (priceSnapshot) updates[`user_orders/${customer_uid}/${orderId}`].price_snapshot = priceSnapshot;
   return updates;
 }
 

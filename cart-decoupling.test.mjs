@@ -20,6 +20,7 @@
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { readInlineConfig } from './xpizza-functions/contract/capp/brand-config.mjs';
 const require = createRequire(import.meta.url);
 
 let n = 0, failures = 0;
@@ -172,12 +173,14 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
   const ctlRef = {};
   const api = new Function('ctx', `
     let MENU = ctx.MENU, EXTRAS = ctx.EXTRAS;
+    const RESTAURANT_CONFIG = ctx.RESTAURANT_CONFIG;   // S0-prod: the page's own inline config (genOrderId reads its prefix)
     const pizzaExtras = ctx.pizzaExtras, qty = ctx.qty;
     const window = ctx.window, document = ctx.document;
     const console = { warn: (...a) => ctx.notices.push(a), log: () => {}, error: () => {} };
     const soldOutById = () => false, registerOutsideClick = () => {}, refreshCardExtrasIndicator = () => {};
     const updateDetailModal = () => {}, updateDetailCta = () => {}, updateTotal = () => {}, updateCart = () => {};
     const refreshPickupGate = () => {}, itemIsLauncher = () => false;
+    const _MENU_BROKEN = false;   // PLAN 4 r2: the boot latch — this harness models a page whose bundle booted whole
     // 1D add-product B: the REAL shared group rules (cartLines / cartRestore / buildOrder ask them); no groups in this menu
     const GroupPicker = ctx.GroupPicker, VARIANT_ITEMS = {};
     const OrderExists = ctx.OrderExists;   // G2: the send entry resets the order_exists recovery screen (form-order-exists.js)
@@ -265,7 +268,7 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
              asPickup: () => { orderType = 'pickup'; }, paySelect: (m) => { selectedPayment = m; },
              optionControl: ${dir === 'xpizza-orders' ? '(eid, pid) => toggleDetailExtra(eid, pid, 0)' : '(eid, pid, d) => chgDetailExtra(eid, pid, d === undefined ? 1 : d)'},
              liveMenu: () => MENU, setMenu: (m, e) => { MENU = m; if (e) EXTRAS = e; } };
-  `)({ MENU, EXTRAS, pizzaExtras, qty, window: win, document: doc, notices, fetchCalls,
+  `)({ MENU, EXTRAS, pizzaExtras, qty, window: win, document: doc, notices, fetchCalls, RESTAURANT_CONFIG: readInlineConfig(html, dir).config,
        rid: dir === 'xpizza-orders' ? 'x_pizza' : 'la_musa', plan, stages, GroupPicker: require(`./${dir}/form-group-picker.js`), OrderExists: require(`./${dir}/form-order-exists.js`), createSerialOrder,
        get onFetch() { return ctlRef.onFetch; },
        getStash: () => stash, setStash: (v) => { stash = v; } });

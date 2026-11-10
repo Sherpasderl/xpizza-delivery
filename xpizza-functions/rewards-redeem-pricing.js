@@ -42,7 +42,7 @@ function freeLinesFrom(redemption) {
 
 function applyXPizza(items, redemption, totalLempiras, tables = null) {
   const t = resolvePriceTables('x_pizza', tables);                       // PIN B asserts the tag
-  const menu = t.menu, extra = t.extraPrices;
+  const menu = t.menu, extra = t.extraPrices; if (!require('./factura/eligibility').fiscalKeyModeOk('x_pizza', t.keyMode)) return { ok: false, error: 'fiscal_key_mode_unsupported' };   // S0: the effective mode must be name
   const priced = pricedLineItems(items, menu, extra);                                  // the PAID cart lines (mirrors computeServerTotal)
   if (priced.error) return { ok: false, error: priced.error };
   const free_lines = freeLinesFrom(redemption);

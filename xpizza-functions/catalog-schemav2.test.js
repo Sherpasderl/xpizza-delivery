@@ -18,7 +18,8 @@ const V2 = { x_pizza: buildCatalogV2('x_pizza'), la_musa: buildCatalogV2('la_mus
 // ── 1. LOSSLESS DISPLAY ROUND-TRIP: catalog → form arrays, byte-identical, both brands ──────────
 for (const rid of ['x_pizza', 'la_musa']) {
   const src = formSource(rid);
-  const formDishes = readLiteral(src, 'MENU');
+  // PLAN 4 GATED (G1): the form literal + the ONE reviewed data file's rows (the bootstrap's record set)
+  const formDishes = require('./catalog/menu-structure-rows').withBootstrapRows(rid, { dishes: readLiteral(src, 'MENU'), extras: readLiteral(src, 'EXTRAS') }).dishes;
   const { items, extras, structure } = V2[rid];
   const rebuilt = rebuildFormMenu(rid, items, structure, extras);
   assert.deepStrictEqual(rebuilt.dishes, formDishes, `${rid}: the rebuilt dish array must equal the form's, field for field AND in order`);

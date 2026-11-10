@@ -864,6 +864,11 @@ const PANELS = {
   item_order_changed: { icon: 'warn', title: 'Tu borrador no coincide con el menú publicado',
     detail: 'Tu borrador cambia el orden de los productos. Volvé al menú publicado y aplicá tus cambios de nuevo.',
     action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
+  // F-2 (owner-approved mockup ENrjdkJmw3mzy9PkFCy4D1, N2) — Sherpa wrote fields into this draft that live does not carry yet; the
+  // server refuses the reset. Nothing went wrong on the merchant's side (info, not warn); «Entendido» only closes (FIX, no target).
+  platform_changes_pending: { icon: 'info', title: 'Sherpa está actualizando tu menú',
+    detail: 'No se guardó ni se publicó nada. Cuando Sherpa termine vas a poder publicar de nuevo; tus cambios de precio podés hacerlos después.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' } },
   draft_unbuildable: { icon: 'warn', title: 'Tu borrador no se puede publicar',
     detail: 'Volvé al menú publicado y aplicá tus cambios de nuevo.',
     action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
@@ -961,6 +966,8 @@ export function outcomeFor(err, op = 'publish') {
     // PLAN-public-menu-display T1 — EXCEPT rename_not_alone: its words state the RULE ("a rename is published on its own"),
     // never that this operation published, and they are as true of the save that refused it as of a publish (mockup R4).
     if (code === 'rename_not_alone') return base;
+    // F-2 (mockup N2) — likewise: «No se guardó ni se publicó nada» is the literal truth of a refused reset, in the approved words
+    if (code === 'platform_changes_pending') return base;
     if (base.generic || /public/i.test(base.title)) base.title = 'No se pudo guardar el borrador';
     if (base.generic || /verific|en vivo|public/i.test(base.detail)) {
       base.detail = 'No pudimos guardar tu borrador. Tus cambios siguen en pantalla — probá de nuevo; si sigue fallando, recargá la página.';

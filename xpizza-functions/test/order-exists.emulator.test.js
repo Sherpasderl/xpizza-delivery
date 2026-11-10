@@ -18,6 +18,8 @@
 // written (codex build r1 SF — recorded and composed like the other six).
 require('./_emulator-required')('database', 'firestore');
 
+const DR = require('./_delivery-read');   // S3a: the declared envío config read
+const OE_HARNESS = (e) => e.db === 'rtdb' && e.op === 'remove' && e.path === 'rate_limits';   // the suite's own cleanup, recorded ahead of the request
 const assert = require('assert');
 const http = require('http');
 const path = require('path');
@@ -49,6 +51,10 @@ const RD = require('./_render-delta');
 // §3 serialization r1 (codex): the DECLARED delta (test/_serial3-delta.js) — the order-independent content key, bound to the
 // content the request persisted where it did, else the declared unbound mode; (the factura's item_order comes from the gate reader's cached snapshot — no new read)
 const SD = require('./_serial3-delta');
+// FINDING-hosted-charge-recover-race: the claim fix's ONE declared I/O delta (catalog/_hosted-claim-delta.js) — the hosted attempt
+// claim is an exclusive `transaction` where the base did an `update` of the same fields; mapped for CARD cases only, counted, pinned.
+const { preExclusiveClaimOps } = require('../catalog/_hosted-claim-delta');
+const CLAIM_DELTA = { n: 0 };
 const POST_OF = new WeakMap();
 const SENT_OF = new WeakMap();   // recorded result → the body the request POSTED (what the content stamp hashed)   // recorded result → the order record after the request (the content a stamp may bind to)
 let S3_BOUND = 0, S3_UNBOUND = 0, S3_DIFF = 0;
@@ -194,6 +200,7 @@ async function traced(c, rid, setupState) {
   // outran the 10 s TTL, so the handler re-read order_control/<rid>/current — one call the pre-c4 golden never had.
   await CTL.controlWarm(rtdb, rid);
   await CFG.warm();   // the client floor + extras mode caches: freshly read, OUTSIDE the recording (test/_config-warm.js)
+  await require('./_catalog-clock').warmPhoneFlag(rtdb);   // the phone flag (30 s, never-awaited refresh) freshly read with the recorder OFF — no refresh lands inside the recording (advisor ruling B, 2026-11-01)
   const mark = CLOCK.loads().length;   // R1c: which rids THIS request cold-loads — observed, not inferred from the trace's shape
   REC = [];
   const r = await c.request(rid, setupState);
@@ -370,10 +377,11 @@ async function pageSends(dir, c, firstStatus, firstBody) {
         // it does not persist (unbound); every other case is bound to the content it POSTED (the stamp's real input — e.g.
         // ACQUIRE FAILS stamps its qty-2 cart although the order keeps qty 1)
         const mode = (c.kind === 'refusal' || /chang|VANISH/i.test(c.name)) ? 'unbound' : 'bound';
-        const cs = SD.compareShape(r.ops, g.ops, { mode, content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
+        const rOps = c.path === 'card' ? preExclusiveClaimOps(r.ops, CLAIM_DELTA) : r.ops;   // the claim fix's declared delta (card only), then S3a's declared strip
+        const cs = SD.compareShape(DR.without(rOps, L, { ignore: OE_HARNESS }), g.ops, { mode, content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
         if (cs.bound) S3_BOUND += 1; else S3_UNBOUND += 1;
-        if (JSON.stringify(r.ops) !== JSON.stringify(g.ops)) S3_DIFF += 1;
-        assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${L}: the handler's database CALL SEQUENCE changed — a refusal must add no read and move no write`);
+        if (JSON.stringify(DR.without(r.ops, L, { ignore: OE_HARNESS })) !== JSON.stringify(g.ops)) S3_DIFF += 1;
+        assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${L}: the handler's database CALL SEQUENCE changed — a refusal must add no read and move no write — ${RD.opsDiff(cs.expected, cs.actual)}`);
         const ch = SD.changedShape(r.changed, g.changed, { content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
         assert.deepStrictEqual(ch.actual, ch.expected, `🔴 ${L}: the set of database paths the request changed is not the base's (cleanup / writes must be identical)`);
         if (c.kind === 'refusal') {
@@ -424,16 +432,17 @@ async function pageSends(dir, c, firstStatus, firstBody) {
           // set aside on both sides, unrelated to render: the client floor's read (30 s, real clock, as the d4b / quote
           // companions do) and the process's ONE COLD catalog load per restaurant (test/_render-delta.js makeColdOnly);
           // under the R1c catalog clock no other catalog refill can be due, so any GATE / CTX re-read stays IN and shows
-          const noFill = (r, side) => FILL.strip(r.ops, rid, r, `${L}${side}`, { ignore: (e) => e.db === 'rtdb' && e.op === 'remove' && e.path === 'rate_limits', cold: COLD_OF.get(r) });
+          const noFill = (r, side) => FILL.strip(DR.without(r.ops, `${L}${side}`, { ignore: OE_HARNESS }), rid, r, `${L}${side}`, { ignore: (e) => e.db === 'rtdb' && e.op === 'remove' && e.path === 'rate_limits', cold: COLD_OF.get(r) });
           const offOps = RD.normOps(noFill(off, ' [render-OFF side]')); const onOps = RD.normOps(noFill(on, ''));
           if (c.path === 'card' && carriesReward(off, rid)) { RD.assertInserted(offOps, onOps, RD.afterUidCheck(offOps, L), RD.PROBE_ABSENT(), L); probed += 1; }
-          else assert.deepStrictEqual(onOps, offOps, `🔴 ${L}: the call sequence must equal the render-OFF one`);
+          else RD.assertSameOps(offOps, onOps, L);
         });
       }
     }
     check(() => assert.ok(probed > 0, 'render-ON companion: premise — at least one card request carries a reward (the delta is exercised)'));
     check(() => { fill = FILL.assertBounded('render-ON companion'); });
   }
+  if (!CAPTURE) check(() => assert.ok(CLAIM_DELTA.n > 0, `non-vacuity: the declared exclusive-claim delta was applied (${CLAIM_DELTA.n} mapping(s)) — the ROTATE cases claim a fresh attempt`));
   if (!CAPTURE) { check(() => assert.ok(S3_DIFF > 0, 'non-vacuity: WITHOUT the §3 declared delta at least one case differs from the base')); console.log(`  ✓ §3 r1 declared delta: ${S3_DIFF} case(s) differ only by the declared delta — ${S3_BOUND} content-bound, ${S3_UNBOUND} unbound (one key per request)`); }
   const caseFails = FAILS.length;
   const kinds = (k) => CASES.filter((c) => c.kind === k).length * 2;

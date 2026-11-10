@@ -125,7 +125,13 @@ async function wipe() {
     const pm = await buildPublicMenu(db, rid, { known: new Set([rid]), isActive: async () => true });
     assert.ok(pm.body.variant_items && pm.body.variant_items[String(added[0].display.id)], `${rid}: the public menu serves the group`);
     assert.strictEqual(pm.body.variant_items[String(added[0].display.id)].basePrice, 600, `${rid}: "desde" derived from the choices`);
-    assert.ok(pm.body.dishes.filter((d) => d.extras_policy === 'none').length === 4, `${rid}: extras_policy reaches the body on the launcher and every choice`);
+    { // the group's launcher + every choice carry extras_policy 'none' in the body; beyond them, EXACTLY the dishes PLAN 4 G1's reviewed
+      // rows author as 'none' (x_pizza: Nutella) — an exact id set, not a count, so one more or one fewer 'none' dish still fails
+      const rowsNone = Object.entries(((require('../tools/migrations/2026-10-26-menu-structure.json').restaurants || {})[rid] || {}).items || {})
+        .filter(([, r]) => r && r.display && r.display.extras_policy === 'none').map(([k]) => String(active.items.find((i) => i.key === k).display.id));
+      const want = [...added.map((v) => String(v.display.id)), ...rowsNone].sort();
+      assert.deepStrictEqual(pm.body.dishes.filter((d) => d.extras_policy === 'none').map((d) => String(d.id)).sort(), want, `${rid}: extras_policy reaches the body on the launcher and every choice (+ exactly the reviewed rows' 'none' dishes)`);
+    }
     // the KDS: a whole-dish row + one row per choice (publish's writer)
     const rows = (await manifest(rid)).filter((r) => added.some((a) => a.key === r.key));
     assert.deepStrictEqual(rows.map((r) => r.key), added.map((a) => a.key), `${rid}: KDS whole-dish row + per-choice rows`);

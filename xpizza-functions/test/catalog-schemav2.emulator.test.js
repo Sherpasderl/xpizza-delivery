@@ -14,7 +14,7 @@ const { seedCatalog } = require('../catalog/seed-catalog-core');
 const { getRestaurantDocs } = require('../catalog/catalog-firestore');       // PRICING reader (unchanged)
 const { getRestaurantMenu, readFlatMenu } = require('../catalog/catalog-menu');   // DISPLAY reader (new, dormant)
 const { buildTablesFromDocs } = require('../catalog/catalog-transform');
-const { buildCatalogV2, rebuildFormMenu, formSource, readLiteral, readSetLiteral } = require('../catalog/form-menu-source');
+const { buildCatalogV2, rebuildFormMenu, formSource, readLiteral, readSetLiteral } = require('../catalog/form-menu-source'); const { withBootstrapRows } = require('../catalog/menu-structure-rows');   // PLAN 4 GATED (G1): the reviewed bootstrap rows
 
 admin.initializeApp({ projectId: 'demo-xpizza' });
 const db = admin.firestore();
@@ -45,7 +45,7 @@ const R = (over = {}) => ({
     const { items, extras, structure } = await readFlatMenu(db, rid);
     assert.notStrictEqual(items, V2[rid].items, 'the records really came from Firestore');
     const rebuilt = rebuildFormMenu(rid, items, structure, extras);
-    assert.deepStrictEqual(rebuilt.dishes, readLiteral(formSource(rid), 'MENU'), `${rid}: form dish array reconstructed byte-identical from the REAL catalog`);
+    assert.deepStrictEqual(rebuilt.dishes, withBootstrapRows(rid, { dishes: readLiteral(formSource(rid), 'MENU'), extras: readLiteral(formSource(rid), 'EXTRAS') }).dishes, `${rid}: form dish array (+ PLAN 4's reviewed bootstrap rows, as catalog-form-bundle.test.js BR) reconstructed byte-identical from the REAL catalog`);
     ok(`display parity ${rid}: ${rebuilt.dishes.length} dishes reconstructed byte-identical off the REAL Firestore read`);
   }
   {

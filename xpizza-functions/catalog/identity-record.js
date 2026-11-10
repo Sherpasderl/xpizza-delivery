@@ -32,7 +32,7 @@ const SCHEMA_V = 1;
 const MAX_RECORDS = 8;
 // §3b — the record bound: 4 × the larger of the two live restaurants' records, in UTF-8 bytes of the serialized RTDB
 // value. Measured and pinned in identity-record.test.js (the measurement is reproduced there from the real writers).
-const RECORD_BOUND_BYTES = 87148;   // = EXACTLY 4 × 21787 (la_musa certified, the larger) — measured 2026-10-06 (advisor amendment: fixture-derived, no rounding)
+const RECORD_BOUND_BYTES = 91744;   // = EXACTLY 4 × 22936 (la_musa certified, the larger) — re-measured 2026-11-01 for PLAN 4's reward_icon / badge_priority (was 4 × 21787, 2026-10-06; advisor amendment: fixture-derived, no rounding)
 const NODE_OVERHEAD_BYTES = 4096;   // head + 8 seen entries + keys
 const NODE_CAP_BYTES = MAX_RECORDS * RECORD_BOUND_BYTES + NODE_OVERHEAD_BYTES;
 

@@ -18,6 +18,7 @@
 //   the diff has to be against the live version — but never moves it. A save is not a price change.
 // ---------------------------------------------------------------------------
 const { validateSource, sourceRefOf, canonicalize } = require('./source-store');
+const PS = require('../photos/photo-state');   // DISH PHOTOS A2: the three-state vocabulary (pure)
 const { checkValue, FIELD_SINKS } = require('./display-safety');
 const { groupCapabilities } = require('./platform-groups');
 const { extrasCapabilities } = require('./platform-extras');   // 1D add-product B: the ONE platform authoring switch
@@ -34,6 +35,7 @@ const { catalogDiff, issueEditToken, sha256 } = require('./catalog-edit');
 const AP = require('./add-product');
 const { rendererContract } = require('./source-store');
 const { buildSourceCandidate, assertBuiltValid } = require('./candidate-validate');
+const { serverOwnedKeyMode, withServerKeyMode } = require('./key-mode'); const FK = require('./frozen-keys'); const { textEditCapabilities } = require('./item-text-edit');   // S1a
 
 const { can } = require('../access/membership');   // PLAN-portal-membership r3 §3.2 — the ONE capability table
 const reply = (status, body) => ({ status, body });
@@ -52,7 +54,7 @@ const isPreconditionFailure = (e) =>
 // An add-product refusal, typed and field-mapped for the portal.
 const refusal = (e) => reply(e.status || 400, { error: e.code, detail: e.detail, ...(e.field ? { field: e.field } : {}), ...(e.key ? { key: e.key } : {}), ...(e.ref ? { ref: e.ref } : {}) });
 
-async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition = (v) => v, addProduct = null }, body, req) {
+async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition = (v) => v, addProduct = null, photos = null }, body, req) {
   const rid = body && body.restaurantId;
 
   // AUTH FIRST — before any read. Its typed status/error pass through verbatim so the caller can tell
@@ -102,16 +104,19 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   }
   if (!snap || !snap.exists) return reply(409, { error: 'source_missing', detail: 'no draft to edit — seed the store first' });
   const stored = (snap.data && snap.data()) || {};
+  // S0: the key mode is server-owned — a draft may echo the stored one, never change or add one; an absent one keeps it.
+  const keyModeOwn = serverOwnedKeyMode(source, stored);
+  if (!keyModeOwn.ok) return reply(409, { error: keyModeOwn.error }); const fkOwn = FK.serverOwnedFrozenKeys(source, stored); if (!fkOwn.ok) return reply(409, { error: fkOwn.error }); const textEdit = textEditCapabilities().enabled;   // S1a: the rename map is server-owned too
 
   // SERVER ALLOCATION (§2): tmp references become keys/ids here, once; the high-water mark advances in the
   // same commit as the draft below.
-  let candidate = canonicalize(source);
+  let candidate = canonicalize(FK.withFrozenKeys(withServerKeyMode(source, keyModeOwn.key_mode), fkOwn.frozen_keys)); if (textEdit) { candidate = canonicalize(AP.rederiveOptionNames(candidate)); const rec = FK.recordRenames({ draft: candidate, live, stored, textEdit }); if (!rec.ok) return reply(409, { error: rec.error, key: rec.key }); candidate = canonicalize(FK.withFrozenKeys(candidate, rec.frozen_keys)); }   // S1a: with the switch on, a group renames as one unit, new text is capped, and every rename is recorded under its kept key
   let hwmPlan = null;
   let refOfKey = {};          // fresh additions: allocated key → the tmp reference the portal still holds
   if (hasAdditions) {
     if (!addProduct) return reply(503, { error: 'add_product_unavailable', retryable: false });
     try {
-      const keyMode = AP.resolveKeyMode(await addProduct.readKeyMode(rid), live.items);
+      const keyMode = AP.resolveKeyMode(await addProduct.readKeyMode(rid), live.items, candidate.frozen_keys);
       const hwmRef = addProduct.hwmRef(rid);
       const hwmSnap = await hwmRef.get();
       const hwmVal = hwmSnap.exists ? (hwmSnap.data() || {}).value : null;
@@ -131,6 +136,32 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
     } catch (e) {
       if (e instanceof AP.AddProductError) return refusal(e);
       return reply(503, { error: 'store_unavailable', retryable: true });
+    }
+  }
+
+  /* ── DISH PHOTOS A2 step 8 (PLAN-dish-photos r2 §2.1 / §2.8; amendment 2026-10-27) — the draft photo map ───────────────
+     Only when the photos dependency is wired (production); without it this block is skipped and the save is today's.
+     `source.photos` is taken OFF the candidate (the builder never sees it), re-keyed from tmp refs to the keys allocated
+     above, validated against this draft's item keys, and put back on the stored draft only when non-empty. Flag OFF: a map
+     that DIFFERS from the stored draft's is refused; the unchanged stored map always passes, so other edits never block. */
+  let photoMap = null; if (textEdit) { const cap = AP.textCapProblems({ draft: candidate, live })[0]; if (cap) return reply(400, { error: cap.code, field: cap.field, key: cap.key, ...(Object.prototype.hasOwnProperty.call(refOfKey, cap.key) ? { ref: refOfKey[cap.key] } : {}) }); const rn = FK.renamedLabels({ draft: candidate, live }); if (rn.length) { if (!addProduct) return reply(503, { error: 'add_product_unavailable', retryable: false }); let used; try { used = await addProduct.registryKeysTaken(rid, rn.map((x) => x.name), 'name'); } catch (_) { return reply(503, { error: 'store_unavailable', retryable: true }); } const hit = rn.find((x) => used.has(x.name)); if (hit) return reply(400, { error: 'name_previously_used', field: hit.field, key: hit.key }); } }   // S1a (codex r1): the FULLY derived candidate — new groups' option names included — is capped, and every renamed label is checked against the reserved keys, before anything is written
+  if (photos) {
+    const raw = candidate.photos;
+    delete candidate.photos;
+    if (raw !== undefined && raw !== null) {
+      if (typeof raw !== 'object' || Array.isArray(raw)) return reply(400, { error: 'invalid_source', detail: 'photos_malformed: photos must be an object keyed by item key' });
+      const refToKey = new Map(Object.entries(refOfKey).map(([key, r]) => [r, key]));
+      const rk = PS.rekeyTmp(raw, refToKey);
+      if (!rk.ok) return reply(400, { error: 'invalid_source', detail: `${rk.code}: ${rk.detail}` });
+      const liveKeys = new Set((Array.isArray(candidate.items) ? candidate.items : []).map((it) => it && it.key).filter((k) => typeof k === 'string'));
+      const v = PS.validateDraftMap(rk.map, { liveKeys });
+      if (!v.ok) return reply(400, { error: 'invalid_source', detail: `${v.code}: ${v.detail}` });
+      photoMap = v.map;
+    }
+    let enabled;
+    try { enabled = (await photos.enabled()) === true; } catch (_) { enabled = false; }
+    if (!enabled && !PS.sameStates(photoMap, stored.photos || null)) {
+      return reply(409, { error: 'photo_change_disabled', detail: 'photo changes are switched off; the photos already in the draft are kept' });
     }
   }
 
@@ -322,16 +353,21 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
 
   /* THE STRUCTURAL COMPARISON (§1), after the deletion claim is settled so it can honour it (advisor ruling A:
      ADD-ONLY for portal-authored changes; the pre-existing D4-P1 server-owned deletion claim is preserved). */
+  // DISH PHOTOS A2: the ACTIVE version's meta/photos (what is serving) — the rename rule compares the draft map against it
+  let activePhotos = null;
+  if (photos) {
+    try { activePhotos = await photos.readActive(rid, baseActiveVersionId); } catch (_) { return reply(503, { error: 'live_version_unavailable', retryable: true }); }
+  }
   try {
     AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined });
     AP.compareToActive({
-      draftBuilt: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure },
-      activeBuilt: { items: live.items, extras: liveRes.extraRecords, structure: live.structure },
+      draftBuilt: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure, ...(photos ? { photos: photoMap } : {}) },
+      activeBuilt: { items: live.items, extras: liveRes.extraRecords, structure: live.structure, ...(photos ? { photos: activePhotos } : {}) },
       draftAuthored: Object.keys(next.structure || {}),
       renderedCategories: rendererContract(rid).renderedCategories,
       deletedIds: next.deleted_ids && Array.isArray(next.deleted_ids.ids) ? next.deleted_ids.ids : [],
       authoring: groupCapabilities().authoring,
-      extrasAuthoring: extrasCapabilities().authoring,   // per-product extras (the narrow deny_extras / extras_policy exception)
+      extrasAuthoring: extrasCapabilities().authoring, textEdit,   // per-product extras (the narrow deny_extras / extras_policy exception)
     });
   } catch (e) {
     if (e instanceof AP.AddProductError) {
@@ -339,6 +375,20 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
       return refusal(e);
     }
     return reply(500, { error: 'structural_check_failed', detail: String((e && e.message) || e).slice(0, 200) });
+  }
+
+  if (photoMap) next.photos = photoMap;   // DISH PHOTOS A2: stored only when non-empty (absent ⇒ legacy everywhere)
+  /* DISH PHOTOS A2 §2.6 ATTACH — every pid this draft NEWLY references must be draft|published in the registry; its last_ref_at
+     is bumped in that same check (a transaction in the photos dependency). It runs BEFORE the conditional draft write: a sweeper
+     claim needs an UNCHANGED last_ref_at older than its grace, so a bump makes any in-flight claim skip, and a pid already
+     `deleting` refuses here. A save that then loses its CAS has only delayed sweeping (harmless). Today's write is unchanged. */
+  if (photos) {
+    const fresh = PS.newlyReferencedPids(stored.photos || null, photoMap);
+    if (fresh.length) {
+      let a;
+      try { a = await photos.attach(rid, fresh); } catch (_) { return reply(503, { error: 'store_unavailable', retryable: true }); }
+      if (!a || a.ok !== true) return reply(409, { error: 'photo_unavailable', detail: 'a photo in this draft is no longer available — upload it again' });
+    }
   }
 
   const stale = Object.keys((snap.data && snap.data()) || {}).filter((k) => !Object.prototype.hasOwnProperty.call(next, k));
@@ -373,7 +423,8 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
 
   // Everything below is read-only and in memory: the live catalog and the built draft were read and built
   // BEFORE the write (above).
-  const diff = catalogDiff(live, draftBuilt);
+  // DISH PHOTOS A2 step 9: the reviewed diff carries the photo lines (active meta/photos vs the stored draft map) when wired
+  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: photoMap } : draftBuilt);
   /* 🔴 THE TOKEN MUST HASH WHAT PUBLISH WILL HASH, AND THAT IS THE STORED DRAFT — NOT THE BODY.
      This hashed the incoming `source`, and publish hashes the draft it reads BACK. Those agreed only
      while the two were the same bytes, which stopped being true the moment the server began owning a

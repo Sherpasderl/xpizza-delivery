@@ -1021,6 +1021,9 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.renderedCategories':  [2, 'guarded', 'the sections a product may be added to (the renderer contract via getEditableCatalog) — load path, behind the generation check'],
     'state.restaurantName':      [2, 'guarded', 'the fiscal note\u2019s restaurant name from data — load path, behind the generation check'],
     'state.draftUnpublishable':  [2, 'guarded', 'whether the saved draft can publish (getEditableCatalog) — load path, behind the generation check; it only OFFERS the reset'],
+    // ── F-2 (owner-approved mockup ENrjdkJmw3mzy9PkFCy4D1) ──
+    'state.platformPending':     [3, 'guarded', 'Sherpa wrote fields into the draft that live lacks (getEditableCatalog platform_changes_pending) — reset at the start of a load (after the generation capture), set on the load settle path behind the generation check, and set by the reset\u2019s 409 platform_changes_pending behind the same generation + tenant check; it only makes the menu READ-ONLY (the server refuses the reset regardless)'],
+    'menulockText':              [3, 'view',    'F-2: the shared header lock\u2019s own line, kept while «Solo lectura mientras Sherpa actualiza» borrows it — declared, captured, restored; presentational'],
     'state.settle':              [3, 'guarded', 'codex build r1 #1/#3 — the post-publish reload is OWED: set on publish success (lock still held), cleared when the fresh source is ADOPTED (which releases the lock) and by the ender; while set, "Listo" is disabled and closeReview refuses'],
     'state.drawerError':         [6, 'view',    '[1D add-product B: + "Ninguna" clearing it] the field error shown in the add drawer after a refused save — presentational; the server re-checks every save'],
     // ── 1D add-product B ──
@@ -1226,6 +1229,7 @@ const LISTENERS = {
   "chev::click":                  ['view', ['toggle'], 'expands an option group'],
   "pi::input":                    ['bound', [], 'the option price field'],
   "document::portal:restaurant":  ['singleton', ['loadMenu'], 'the tenant switch, dispatched by switchTo which has already revalidated'],
+  "document::portal:abandon":     ['ender', [], 'PLAN-portal-shell-no-shift (Codex r2 + r3): before its recovery box shell.js cancels the editor\u2019s abandoned catalog READ (readGeneration) — writes always settle'],
   "$('discard')::click":          ['singleton', ['discard', 'closeDrawer', 'repaintFromDraft'], 'throws away local edits — a DRAFT write, refused by the canEdit boundary whenever an operation owns the draft'],
   "$('review')::click":           ['singleton', ['openReviewFlow'], 'admission-controlled: it acquires the edit lock or returns'],
   "$('pubback')::click":          ['singleton', ['closeReview'], 'closing is refused while this world has a publish in flight'],

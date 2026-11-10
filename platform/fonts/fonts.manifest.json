@@ -1,0 +1,353 @@
+{
+  "_doc": "PLAN-forms-fonts-preconnect r6.1 §2.1 — the ONE shared font manifest. Primary faces + descriptors come VERBATIM from each surface's pinned Google baseline (baseline/<surface>.google.css + .pin.json); this file adds the site list, the fallback faces, the preload set and the metric inputs. build-fonts.mjs generates from it; metrics.py derives/checks the fallback overrides.",
+  "sample": {
+    "file": "sample.es.txt",
+    "sha256": "650fecd68aa4d87f349cc287de587010b6183c7c7d32297082769e15d5c1f7a0"
+  },
+  "surfaces": {
+    "orders-form": {
+      "baseline": "baseline/orders-form",
+      "sites": [
+        "xpizza-orders",
+        "la-musa-orders"
+      ],
+      "css": "orders-fonts.css",
+      "families": {
+        "DM Sans": {
+          "slug": "dm-sans",
+          "fallbacks": [
+            {
+              "name": "DM Sans Fallback",
+              "weights": "300 500",
+              "local": [
+                "Arial",
+                "ArialMT"
+              ],
+              "metricsAt": 400,
+              "against": "arial-regular"
+            },
+            {
+              "name": "DM Sans Fallback",
+              "weights": "600 800",
+              "local": [
+                "Arial Bold",
+                "Arial-BoldMT"
+              ],
+              "metricsAt": 700,
+              "against": "arial-bold"
+            },
+            {
+              "name": "DM Sans Fallback Roboto",
+              "weights": "300 500",
+              "local": [
+                "Roboto",
+                "Roboto-Regular"
+              ],
+              "metricsAt": 400,
+              "against": "roboto-400"
+            },
+            {
+              "name": "DM Sans Fallback Roboto",
+              "weights": "600 800",
+              "local": [
+                "Roboto Bold",
+                "Roboto-Bold"
+              ],
+              "metricsAt": 700,
+              "against": "roboto-700"
+            }
+          ],
+          "copyright": "Copyright 2014 The DM Sans Project Authors (https://github.com/googlefonts/dm-fonts)"
+        },
+        "Playfair Display": {
+          "slug": "playfair-display",
+          "fallbacks": [
+            {
+              "name": "Playfair Display Fallback",
+              "weights": "600 900",
+              "local": [
+                "Georgia Bold",
+                "Georgia-Bold"
+              ],
+              "metricsAt": 700,
+              "against": "georgia-bold"
+            },
+            {
+              "name": "Playfair Display Fallback Noto",
+              "weights": "600 900",
+              "local": [
+                "Noto Serif Bold",
+                "NotoSerif-Bold"
+              ],
+              "metricsAt": 700,
+              "against": "noto-serif-700"
+            }
+          ],
+          "copyright": "Copyright 2017 The Playfair Display Project Authors (https://github.com/clauseggers/Playfair-Display), with Reserved Font Name \"Playfair Display\"."
+        }
+      },
+      "preload": [
+        {
+          "family": "DM Sans",
+          "subset": "latin"
+        },
+        {
+          "family": "Playfair Display",
+          "subset": "latin",
+          "decidedBy": "the §4.1 census 2026-10-27: la_musa s1 paints Playfair 700 («DIM SUM», y=312) in the first 390×844 viewport; x_pizza has none — one surface, one preload set (union)"
+        }
+      ],
+      "metrics": {
+        "DM Sans Fallback|300 500": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.492918,
+            "ascentEm": 0.992,
+            "descentEm": 0.31,
+            "lineGapEm": 0.0
+          },
+          "against": "arial-regular",
+          "overrides": {
+            "size-adjust": "102.34%",
+            "ascent-override": "96.93%",
+            "descent-override": "30.29%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "DM Sans Fallback|600 800": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.528577,
+            "ascentEm": 0.992,
+            "descentEm": 0.31,
+            "lineGapEm": 0.0
+          },
+          "against": "arial-bold",
+          "overrides": {
+            "size-adjust": "102.50%",
+            "ascent-override": "96.78%",
+            "descent-override": "30.24%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "DM Sans Fallback Roboto|300 500": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.492918,
+            "ascentEm": 0.992,
+            "descentEm": 0.31,
+            "lineGapEm": 0.0
+          },
+          "against": "roboto-400",
+          "overrides": {
+            "size-adjust": "103.11%",
+            "ascent-override": "96.21%",
+            "descent-override": "30.07%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "DM Sans Fallback Roboto|600 800": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.528577,
+            "ascentEm": 0.992,
+            "descentEm": 0.31,
+            "lineGapEm": 0.0
+          },
+          "against": "roboto-700",
+          "overrides": {
+            "size-adjust": "108.36%",
+            "ascent-override": "91.55%",
+            "descent-override": "28.61%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "Playfair Display Fallback|600 900": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.501227,
+            "ascentEm": 1.082,
+            "descentEm": 0.251,
+            "lineGapEm": 0.0
+          },
+          "against": "georgia-bold",
+          "overrides": {
+            "size-adjust": "88.88%",
+            "ascent-override": "121.73%",
+            "descent-override": "28.24%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "Playfair Display Fallback Noto|600 900": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.501227,
+            "ascentEm": 1.082,
+            "descentEm": 0.251,
+            "lineGapEm": 0.0
+          },
+          "against": "noto-serif-700",
+          "overrides": {
+            "size-adjust": "91.46%",
+            "ascent-override": "118.31%",
+            "descent-override": "27.45%",
+            "line-gap-override": "0.00%"
+          }
+        }
+      }
+    },
+    "portal": {
+      "baseline": "baseline/portal",
+      "sites": [
+        "xpizza-portal"
+      ],
+      "css": "portal-fonts.css",
+      "families": {
+        "Archivo": {
+          "slug": "archivo",
+          "fallbacks": [
+            {
+              "name": "Archivo Fallback",
+              "weights": "600 800",
+              "local": [
+                "Arial Bold",
+                "Arial-BoldMT"
+              ],
+              "metricsAt": 800,
+              "against": "arial-bold"
+            },
+            {
+              "name": "Archivo Fallback Roboto",
+              "weights": "600 800",
+              "local": [
+                "Roboto Bold",
+                "Roboto-Bold"
+              ],
+              "metricsAt": 800,
+              "against": "roboto-700"
+            }
+          ],
+          "copyright": "Copyright 2020 The Archivo Project Authors (https://github.com/Omnibus-Type/Archivo)"
+        }
+      },
+      "preload": [
+        {
+          "family": "Archivo",
+          "subset": "latin",
+          "decidedBy": "PLAN-portal-fonts r1.1 §2.1: expected (the «Sherpa» wordmark .bname and the h1 at 800 sit in the first viewport of L-login and I-email); to be RATIFIED by the §4 census (P2, heavy slot) — the guard ties the preload to this list"
+        }
+      ],
+      "metrics": {
+        "Archivo Fallback|600 800": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.548158,
+            "ascentEm": 0.878,
+            "descentEm": 0.21,
+            "lineGapEm": 0.0
+          },
+          "against": "arial-bold",
+          "overrides": {
+            "size-adjust": "106.30%",
+            "ascent-override": "82.60%",
+            "descent-override": "19.76%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "Archivo Fallback Roboto|600 800": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.548158,
+            "ascentEm": 0.878,
+            "descentEm": 0.21,
+            "lineGapEm": 0.0
+          },
+          "against": "roboto-700",
+          "overrides": {
+            "size-adjust": "112.37%",
+            "ascent-override": "78.13%",
+            "descent-override": "18.69%",
+            "line-gap-override": "0.00%"
+          }
+        }
+      }
+    }
+  },
+  "systemFonts": {
+    "arial-regular": {
+      "path": "/System/Library/Fonts/Supplemental/Arial.ttf",
+      "provenance": "macOS system font (Darwin 25.3.0)",
+      "sha256": "525979822591a3447cfc49d943d6f7683508e25543407871c0ed8fed05fd2bd9",
+      "inputs": {
+        "upm": 2048,
+        "avgAdvanceEm": 0.481629,
+        "ascentEm": 0.905273,
+        "descentEm": 0.211914,
+        "lineGapEm": 0.032715
+      }
+    },
+    "arial-bold": {
+      "path": "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+      "provenance": "macOS system font (Darwin 25.3.0)",
+      "sha256": "d72db21f9242aedd6b917d8549ad5921766b24d5f8d0becfda2ff4c620b3c2e0",
+      "inputs": {
+        "upm": 2048,
+        "avgAdvanceEm": 0.515667,
+        "ascentEm": 0.905273,
+        "descentEm": 0.211914,
+        "lineGapEm": 0.032715
+      }
+    },
+    "georgia-bold": {
+      "path": "/System/Library/Fonts/Supplemental/Georgia Bold.ttf",
+      "provenance": "macOS system font (Darwin 25.3.0)",
+      "sha256": "1cfa9abd55be746c798c22ef4eba88fce82257934897404be2dae53ed0a4142a",
+      "inputs": {
+        "upm": 2048,
+        "avgAdvanceEm": 0.563917,
+        "ascentEm": 0.916992,
+        "descentEm": 0.219238,
+        "lineGapEm": 0.0
+      }
+    },
+    "roboto-400": {
+      "url": "https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBHMdazQ.woff2",
+      "instanceAt": 400,
+      "provenance": "Google Fonts Roboto v51 latin (variable), instanced at 400 — Android's system sans",
+      "sha256": "0a44e0bb6ba5c8537e8814c148ef7755f1bce12112361231f595ecc584a18d7a",
+      "inputs": {
+        "upm": 2048,
+        "avgAdvanceEm": 0.478065,
+        "ascentEm": 0.927734,
+        "descentEm": 0.244141,
+        "lineGapEm": 0.0
+      }
+    },
+    "roboto-700": {
+      "url": "https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBHMdazQ.woff2",
+      "instanceAt": 700,
+      "provenance": "Google Fonts Roboto v51 latin (variable), instanced at 700",
+      "sha256": "0a44e0bb6ba5c8537e8814c148ef7755f1bce12112361231f595ecc584a18d7a",
+      "inputs": {
+        "upm": 2048,
+        "avgAdvanceEm": 0.487801,
+        "ascentEm": 0.927734,
+        "descentEm": 0.244141,
+        "lineGapEm": 0.0
+      }
+    },
+    "noto-serif-700": {
+      "url": "https://fonts.gstatic.com/s/notoserif/v33/ga6iaw1J5X9T9RW6j9bNVls-hfgvz8JcMofYTa32J4wsL2JAlAhZT1eTx8cKpKrCzi0i.woff2",
+      "instanceAt": 700,
+      "provenance": "Google Fonts Noto Serif v33 latin, instanced at 700 — Android's system serif",
+      "sha256": "6d68191c633e79b3b7b52796940764c22bf21c125268467260a2b884345ad33a",
+      "inputs": {
+        "upm": 1000,
+        "avgAdvanceEm": 0.548055,
+        "ascentEm": 1.069,
+        "descentEm": 0.293,
+        "lineGapEm": 0.0
+      }
+    }
+  }
+}

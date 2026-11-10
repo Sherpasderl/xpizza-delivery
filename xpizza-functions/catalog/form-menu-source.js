@@ -23,7 +23,8 @@ const { readFileSync } = require('fs');
 const { join } = require('path');
 const { attachRedeemFields } = require('./redeem-source');
 const { attachExposure } = require('./exposure-source');
-const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./../menu-pricing');
+const { applyBootstrapRows } = require('./menu-structure-rows');
+const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, effectiveKeyMode } = require('./../menu-pricing');
 
 // Relative to this file (xpizza-functions/catalog/) → up two, to the repo root.
 const FORM_PATH = {
@@ -123,7 +124,7 @@ function formSiblingSource(restaurantId, file, root) {
 
 // PIN 2 — `key` is the IMMUTABLE pricing identity; `name` is display DATA. x_pizza prices by NAME so
 // key === name there (guarded by a test); la_musa prices by the id slug.
-const pricingKeyOf = (restaurantId, dish) => (restaurantId === 'la_musa' ? dish.id : dish.name);
+const pricingKeyOf = (restaurantId, dish, keyMode) => (effectiveKeyMode(restaurantId, keyMode) === 'id' ? dish.id : dish.name);
 
 // The EXTRAS pricing key — the mirror of the rule above, carrying the same per-brand asymmetry:
 // x_pizza extras price by NAME (their display `id` is a form-local handle like 'e1' that prices
@@ -131,7 +132,7 @@ const pricingKeyOf = (restaurantId, dish) => (restaurantId === 'la_musa' ? dish.
 //
 // It lived in source-store.js under a comment saying it was "kept beside the item rule so the two
 // cannot drift apart" — while sitting in a different module from it. Moved here, where that is true.
-const extrasKeyOf = (restaurantId, display) => (restaurantId === 'la_musa' ? (display && display.id) : (display && display.name));
+const extrasKeyOf = (restaurantId, display, keyMode) => (effectiveKeyMode(restaurantId, keyMode) === 'id' ? (display && display.id) : (display && display.name));
 
 // Build the schema-v2 records for one restaurant: items (key + authoritative price + verbatim display)
 // and the structure doc (category order/labels, variants, gate flags, and the ITEM ORDER — Firestore
@@ -152,7 +153,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   const dishes = fd ? fd.dishes : readLiteral(src, 'MENU');
 
   const items = dishes.map((dish) => {
-    const key = pricingKeyOf(restaurantId, dish);
+    const key = fd && fd.frozen_keys && dish && dish.id != null && Object.prototype.hasOwnProperty.call(fd.frozen_keys, String(dish.id)) ? fd.frozen_keys[String(dish.id)] : pricingKeyOf(restaurantId, dish, opts.keyMode);   // S1a: a recorded rename keeps its key
     if (typeof key !== 'string' || !key) throw new Error(`bootstrap_bad_key: ${restaurantId}/${JSON.stringify(dish).slice(0, 60)}`);
     if (!Object.prototype.hasOwnProperty.call(priceTable, key)) throw new Error(`bootstrap_unpriced_item: ${restaurantId}/${key}`);
     const price = priceTable[key];                                          // menu-pricing is the AUTHORITY
@@ -178,7 +179,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   const extras = [];
   const byKey = new Set();
   for (const display of (extrasDisplay || [])) {
-    const key = extrasKeyOf(restaurantId, display);
+    const key = extrasKeyOf(restaurantId, display, opts.keyMode);
     if (typeof key !== 'string' || !key) throw new Error(`bootstrap_bad_extra_key: ${restaurantId}`);
     if (byKey.has(key)) throw new Error(`bootstrap_duplicate_extra_key: ${restaurantId}/${key}`);
     if (!Object.prototype.hasOwnProperty.call(extrasTable, key)) throw new Error(`bootstrap_unpriced_extra: ${restaurantId}/${key}`);
@@ -194,6 +195,9 @@ function buildCatalogV2(restaurantId, opts = {}) {
   for (const key of Object.keys(extrasTable)) {
     if (!byKey.has(key)) throw new Error(`bootstrap_missing_extra_display_record: ${restaurantId}/${key}`);
   }
+  // PLAN 4 GATED (G1): the TEXT bootstrap takes the post-migration data from the ONE reviewed data file (additive; the store
+  // path already carries it once the migration ran). Before the exposure is derived — "no options" is the data's extras_policy.
+  const bootstrapStructure = fd ? {} : applyBootstrapRows(restaurantId, { items, extras });
   // 🔴 EXTRA_ORDER IS THE MIRROR OF ITEM_ORDER, and it exists for the same reason: Firestore hands
   // docs back in hashed-id order, so an ordering that is not carried explicitly is an ordering that
   // is lost. Items have had this since 1c-a; extras never did, because nothing read them back. Once
@@ -259,6 +263,9 @@ function buildCatalogV2(restaurantId, opts = {}) {
   // The namespace is DERIVED from the extras' own categories when the form is the source, exactly as
   // the seed derives it, so both bootstrap paths produce the same ordering.
   carryStructure('badges', () => readLiteral(src, 'TAG_BADGES', '{', '}'));
+  // PLAN 4 r3 §8.1 — the ORDER badges are chosen in: STORE-ONLY. It reaches the store through the additive migration
+  // (§8.2), never the bootstrap text, so the text path stays byte-identical (and so do the goldens it feeds).
+  carryStructure('badge_priority', () => bootstrapStructure.badge_priority);
   // 🔴 THE STORE WINS ONCE IT HAS AUTHORED ONE. This read `structure.extra_categories === undefined`
   // without ever COPYING fd.extra_categories, so the check always fell through and a merchant who
   // reordered their option groups had that order silently replaced by first-appearance .cat order.
@@ -298,7 +305,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   } else {
     attachRedeemFields(restaurantId, structure, items, opts.extrasTable || EXTRAS_BY_RESTAURANT[restaurantId]);
   }
-  return { items, extras, structure };
+  return { items, extras, structure, ...(opts.keyMode == null ? {} : { key_mode: opts.keyMode }), ...(opts.frozenKeys == null ? {} : { frozen_keys: opts.frozenKeys }) };
 }
 
 // 🔴 "DESDE" IS DERIVED, EVERY TIME. The launcher keeps its own authoritative price — a bare launcher

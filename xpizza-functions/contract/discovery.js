@@ -61,6 +61,14 @@ function sourceInventory(file = INDEX) {
           let ref = null;
           if (opts && opts.type === 'ObjectExpression') { const p = opts.properties.find((q) => q.key && (q.key.name === 'ref' || q.key.value === 'ref')); if (p && p.value.type === 'Literal') ref = p.value.value; }
           out.push({ name, line, how: 'direct', category: CTOR_CATEGORY[ctor], kind: DB_KIND[ctor] || null, ref: ref ? normRef(ref) : null });
+        } else if (r.type === 'CallExpression' && r.callee.type === 'MemberExpression' && !r.callee.computed && requireChain(r.callee.object)) {
+          // 2e 11-01 (r3-p0-scheduler D0): a FACTORY-CALL export, `exports.X = require('./m').f(…)` — classified STATICALLY by the
+          // constructor f RETURNS in ./m (e.g. whatsappInstanceHealth: instance-health.js makeHealthFunction → return onSchedule(…)).
+          // Any other shape is pushed to `unclassified` with a reason — never silently dropped.
+          const mod = requireChain(r.callee.object); const fname = r.callee.property.name;
+          const f = factoryCtor(path.resolve(path.dirname(file), mod.module), [...mod.chain, fname]);
+          if (f.ctor) out.push({ name, line, how: 'factory', module: mod.module, factory: fname, category: CTOR_CATEGORY[f.ctor], kind: DB_KIND[f.ctor] || null, ref: f.ref ? normRef(f.ref) : null });
+          else unclassified.push({ name, line, type: 'factory-call', module: mod.module, factory: fname, why: f.why });
         } else {
           let rc = requireChain(r);
           const base = rc ? null : baseOf(r);
@@ -92,6 +100,76 @@ function sourceInventory(file = INDEX) {
 }
 
 const normRef = (r) => String(r).replace(/^\/+/, '');
+
+// a factory's RETURNED constructor, statically: module file + export chain [name] → { ctor, ref } | { why }. FAIL CLOSED (codex r1):
+//  • the EXPORT BINDING is resolved, not a name match: `module.exports = { f }` / `{ f: g }` / `module.exports.f = g` / `exports.f = g`
+//    → the top-level function it NAMES (declaration, or const = function / arrow). A missing, remapped-to-nothing or non-function
+//    export → { why } (an unexported function that merely shares the name is NOT followed);
+//  • EVERY code path must return the SAME constructor with the SAME ref: the body must END in a return (no fallthrough), every
+//    return must be a constructor call, one constructor, one ref. Anything else → { why }.
+function factoryCtor(absModule, chain) {
+  if (chain.length !== 1) return { why: `nested export chain ${chain.join('.')}` };
+  const fname = chain[0];
+  let file = absModule; if (!/\.m?js$/.test(file)) file = fs.existsSync(`${file}.js`) ? `${file}.js` : path.join(file, 'index.js');
+  if (!fs.existsSync(file)) return { why: `module not found: ${path.relative(path.dirname(INDEX), file)}` };
+  const ast = parse(file);
+  const fns = new Map();   // top-level name → function node
+  for (const st of ast.body) {
+    if (st.type === 'FunctionDeclaration' && st.id) fns.set(st.id.name, st);
+    if (st.type === 'VariableDeclaration') for (const d of st.declarations) if (d.id.type === 'Identifier' && d.init && /Function/.test(d.init.type)) fns.set(d.id.name, d.init);
+  }
+  // the identifier the module EXPORTS under `fname` (null = not exported)
+  let target; let seen = 0;
+  const isModExports = (n) => n.type === 'MemberExpression' && !n.computed && n.object.type === 'Identifier' && n.object.name === 'module' && n.property.name === 'exports';
+  for (const st of ast.body) {
+    if (st.type !== 'ExpressionStatement' || st.expression.type !== 'AssignmentExpression') continue;
+    const { left, right } = st.expression;
+    if (isModExports(left) && right.type === 'ObjectExpression') {
+      for (const pr of right.properties) {
+        if (pr.type !== 'Property' || pr.computed) continue;
+        const key = pr.key.type === 'Identifier' ? pr.key.name : pr.key.value;
+        if (key === fname) { seen += 1; target = pr.value.type === 'Identifier' ? pr.value.name : null; }
+      }
+    } else if (left.type === 'MemberExpression' && !left.computed && left.property.name === fname
+      && ((left.object.type === 'Identifier' && left.object.name === 'exports') || isModExports(left.object))) {
+      seen += 1; target = right.type === 'Identifier' ? right.name : (/Function/.test(right.type) ? right : null);
+    }
+  }
+  // advisor verify of 94f8a213 — an export assignment anywhere but a TOP-LEVEL statement (inside an if / a function / an
+  // expression) cannot be resolved statically ⇒ fail closed. The whole AST is walked, not just ast.body.
+  const isExportLhs = (l) => isModExports(l) || (l.type === 'MemberExpression' && !l.computed && ((l.object.type === 'Identifier' && l.object.name === 'exports') || isModExports(l.object)));
+  const topLevel = new Set(ast.body.filter((st) => st.type === 'ExpressionStatement').map((st) => st.expression));
+  let nested = 0;
+  (function walkX(n) { if (!n || typeof n.type !== 'string') return; if (n.type === 'AssignmentExpression' && isExportLhs(n.left) && !topLevel.has(n)) nested += 1; for (const k of Object.keys(n)) { const v = n[k]; if (Array.isArray(v)) v.forEach(walkX); else if (v && typeof v === 'object' && typeof v.type === 'string') walkX(v); } })(ast);
+  if (nested) return { why: `an export assignment is not a top-level statement (${nested}×) in ${path.basename(file)}` };
+  // codex r2 P2 — FAIL CLOSED on any overwritten / spread export surface (no attempt to resolve a final binding):
+  const modAssigns = ast.body.filter((st) => st.type === 'ExpressionStatement' && st.expression.type === 'AssignmentExpression' && isModExports(st.expression.left));
+  if (modAssigns.length > 1) return { why: `module.exports is assigned ${modAssigns.length}× in ${path.basename(file)}` };
+  const lit = modAssigns[0] && modAssigns[0].expression.right.type === 'ObjectExpression' ? modAssigns[0].expression.right : null;
+  if (lit && lit.properties.some((pr) => pr.type === 'SpreadElement')) return { why: `module.exports literal contains a spread in ${path.basename(file)}` };
+  if (lit && lit.properties.some((pr) => pr.type === 'Property' && pr.computed)) return { why: `module.exports literal has a computed key in ${path.basename(file)}` };
+  if (lit) { const keys = lit.properties.filter((pr) => pr.type === 'Property' && !pr.computed).map((pr) => (pr.key.type === 'Identifier' ? pr.key.name : pr.key.value)); if (new Set(keys).size !== keys.length) return { why: `module.exports literal repeats a key in ${path.basename(file)}` }; }
+  const viaExports = ast.body.some((st) => st.type === 'ExpressionStatement' && st.expression.type === 'AssignmentExpression' && st.expression.left.type === 'MemberExpression' && st.expression.left.object.type === 'Identifier' && st.expression.left.object.name === 'exports');
+  if (modAssigns.length && viaExports) return { why: `module.exports is reassigned while exports.* is also used in ${path.basename(file)}` };
+  if (!seen) return { why: `${fname} is not exported by ${path.basename(file)}` };
+  if (seen > 1) return { why: `${fname} is exported more than once in ${path.basename(file)}` };
+  const fnNode = target && typeof target === 'object' ? target : (typeof target === 'string' ? fns.get(target) : null);
+  if (!fnNode) return { why: `${fname}: its export does not name a top-level function (${target === null ? 'non-identifier value' : `\`${target}\` is not a function`})` };
+  if (fnNode.body.type !== 'BlockStatement') {
+    const c = fnNode.body; return c.type === 'CallExpression' && CTOR_CATEGORY[calleeName(c.callee)] ? { ctor: calleeName(c.callee), ref: refOf(c.arguments[0]) } : { why: `${fname}: expression body is not a constructor call` };
+  }
+  const body = fnNode.body.body;
+  if (!body.length || body[body.length - 1].type !== 'ReturnStatement') return { why: `${fname}: a code path can fall through (the body does not end in a return)` };
+  const rets = [];
+  (function walkR(n) { if (!n || typeof n.type !== 'string') return; if (n !== fnNode && /Function/.test(n.type)) return; if (n.type === 'ReturnStatement') rets.push(n.argument); for (const k of Object.keys(n)) { const v = n[k]; if (Array.isArray(v)) v.forEach(walkR); else if (v && typeof v === 'object' && typeof v.type === 'string') walkR(v); } })(fnNode.body);
+  const ctors = rets.map((x) => (x && x.type === 'CallExpression' && CTOR_CATEGORY[calleeName(x.callee)] ? calleeName(x.callee) : null));
+  if (ctors.some((c) => !c)) return { why: `${fname}: a return is not a constructor call` };
+  if (new Set(ctors).size !== 1) return { why: `${fname}: returns different constructors (${[...new Set(ctors)].join(', ')})` };
+  const refs = rets.map((x) => refOf(x.arguments[0]));
+  if (new Set(refs.map((r) => JSON.stringify(r))).size !== 1) return { why: `${fname}: returns the same constructor with different refs` };
+  return { ctor: ctors[0], ref: refs[0] };
+}
+function refOf(opts) { if (!opts || opts.type !== 'ObjectExpression') return null; const p = opts.properties.find((q) => q.key && (q.key.name === 'ref' || q.key.value === 'ref')); return p && p.value.type === 'Literal' ? p.value.value : null; }
 
 // (a) one runtime export → { category, kind, ref } or null when it is not a Cloud Function
 function classifyRuntime(fn) {

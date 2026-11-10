@@ -20,7 +20,7 @@ const { isOpenAt } = require('../scheduled-orders');
 const { writePause } = require('../merchant/merchant-control');
 const { availKey } = require('../avail-key');
 const { getActiveVersionId } = require('../catalog/catalog-firestore');
-const { readVersionMenu } = require('../catalog/catalog-menu');
+const { readVersionMenu } = require('../catalog/catalog-menu'); const { branchPhotosOf } = require('../photos/branch-photos');   // DISH PHOTOS A2 step 12 (E-P4)
 const { hnDateISO } = require('../lib/hn-date');
 const { displayName } = require('./location-name');
 const { PAUSE_REASONS } = require('./pause-reasons');
@@ -309,7 +309,7 @@ async function publishedMenuOf(fs, rid, log) {
     const versionId = await getActiveVersionId(fs, rid);
     if (versionId == null) return { rid, published: false, items: [] };
     const menu = await readVersionMenu(fs, rid, versionId);
-    return { rid, published: true, items: projectMenu(menu) };
+    return { rid, published: true, items: projectMenu(menu), versionId };   // DISH PHOTOS A2 step 12: the version its photos come from (not sent)
   } catch (e) {
     log.warn(JSON.stringify({ evt: 'branch_menu_unavailable', rid, code: (e && (e.code || e.cause_code)) || 'error' }));
     return { rid, published: null, error: 'menu_unavailable', items: [] };
@@ -322,7 +322,7 @@ async function soldOutOf(db, rid, items) {
   return items.filter((it) => isObj(node[availKey(it.key)]) && node[availKey(it.key)].available === false).map((it) => it.key);
 }
 
-async function getBranchAvailabilityCore({ db, fs, verifyIdToken, env = process.env, log = console }, req) {
+async function getBranchAvailabilityCore({ db, fs, verifyIdToken, env = process.env, log = console, readVersionPhotos = null }, req) {
   if (!req || req.method !== 'GET') return reply(405, { error: 'method_not_allowed' });
   const q = (req && req.query) || {};
   const one = q.restaurantId, brand = q.brandId;
@@ -358,7 +358,7 @@ async function getBranchAvailabilityCore({ db, fs, verifyIdToken, env = process.
     else if (m.published) {
       try { row.unavailable = await soldOutOf(db, rid, m.items); } catch (_) { row.error = 'availability_unavailable'; }
     }
-    return row;
+    if (readVersionPhotos && m.published === true && !row.error) { const ph = await branchPhotosOf(fs, rid, m.versionId, readVersionPhotos, log); if (ph) row.photos = ph; } return row;   // DISH PHOTOS A2 step 12 (E-P4): this branch's published cards, omitted when none
   }));
   if (out.every((r) => r.error)) return reply(503, { error: 'unavailable', retryable: true });
   return reply(200, { branches: out });

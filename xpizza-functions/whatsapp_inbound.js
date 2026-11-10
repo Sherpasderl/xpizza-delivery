@@ -307,12 +307,12 @@ function tplUnhandled(cfg, { isOpen, opensLabel }) {
 // auto-reply to that customer for a window so the bot doesn't talk over the human. Pure — the
 // admin RTDB reads/writes live in onIncomingWhatsApp.
 
-// The mute leaf key for a phone: the SAME last-8-digit suffix the order-matching uses
-// (fromPhoneRaw.slice(-8)), so the inbound `data.from` key and the outbound `data.to` key resolve
-// to ONE leaf per customer. Strips a trailing @c.us (harmless if already stripped). '' on empty
-// input (the caller skips the write) — and last-8-digits is always a valid RTDB key.
+// The mute leaf key for a phone — INTL S-match (PLAN-intl-phone r1 §5): the FULL identity digits (phone/match.js), no longer the
+// last-8 suffix (which let a staff reply to +502 9795-0000 mute +504 9795-0000). The inbound `data.from` key and the outbound
+// `data.to` key still resolve to ONE leaf per customer. '' when it is not a phone (the caller skips the write); digits only, always
+// a valid RTDB key. Existing last-8 leaves expire with their window (pruned at 6× it); no suffix fallback.
 function muteKeyFor(phone) {
-  return String(phone == null ? '' : phone).replace(/@c\.us$/, '').slice(-8);
+  return require('./phone/match').muteKeyFor(phone);
 }
 
 // A HUMAN staff app-reply worth muting on, vs the bot's own API send. UltraMsg marks any outbound

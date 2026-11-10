@@ -6,6 +6,9 @@
 <title>La Musa Gastropub — Pedido en línea</title>
 <script src="sherpa-client.js"></script>
 <script>
+/* RESTAURANT-CONFIG:BEGIN — this restaurant's DATA (PLAN-shared-order-form §5 S0-prod). Read by this page and account.js; validated by capp-s0prod-config.test.mjs. Data only: never code, never a factura flag (that is a server capability). */
+window.RESTAURANT_CONFIG = Object.freeze({schema:"sherpa-restaurant-config/1",rid:"la_musa",display_name:"La Musa",branding:Object.freeze({accent:"#B61218",palette:Object.freeze({screen:"#FFFDFA",tint:"#FBF6EE",tint2:"#F4EEE4",chip:"#F0E8DA",fillA:"#EFE7DA",line:"#EDE5D9",fillB:"#E7DFD3",mapbg:"#E4DAC7",line2:"#E2D8C8",line3:"#D8CBB8",dot:"#CFC2B1"})}),map:Object.freeze({latitude:15.504137854561979,longitude:-88.03848413956527,radius_km:9.66}),hours:Object.freeze({"0":Object.freeze({open:720,close:1185}),"1":null,"2":Object.freeze({open:1020,close:1245}),"3":Object.freeze({open:1020,close:1245}),"4":Object.freeze({open:1020,close:1245}),"5":Object.freeze({open:1020,close:1305}),"6":Object.freeze({open:1020,close:1305})}),min_order_lempiras:250,payment_methods:Object.freeze(["cash","online"]),rewards:Object.freeze({kind:"points",unit:"pts",perCents:3000,ptsPer:10,welcome:100,goal:300,redeemFrom:133,paneIntro:"Ganás puntos en cada pedido y los canjeás por comida gratis."}),order_id_prefix:"PZX-",storage_keys:Object.freeze({pending_pay:"lamusa_pending_pay",account_marker:"lamusa_acct",account_intent:"xpizza_acct_intent"}),empty_cart_noun:"un item",item_key:"id"});
+/* RESTAURANT-CONFIG:END */
 /* Track A (MF1): capture the profile-claim deep-link token from the URL FRAGMENT (#t=…) — a fragment is NEVER
    sent to servers or in Referer — and SCRUB it from the URL/history IMMEDIATELY, before any third-party
    resource (Fonts/Maps/Firebase) is even referenced. order_id stays in the query (not a capability).
@@ -22,8 +25,8 @@
   }catch(_){}
 })();
 </script>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Playfair+Display:wght@600;700;900&family=DM+Sans:wght@300;400;500;600;700;800&display=swap"/>
+<link rel="preload" href="fonts/dm-sans-latin.468d56b6b2.woff2" as="font" type="font/woff2" crossorigin/><link rel="preload" href="fonts/playfair-display-latin.5d91eb5d52.woff2" as="font" type="font/woff2" crossorigin/><link rel="stylesheet" href="orders-fonts.css"/>   <!-- PLAN-forms-fonts-preconnect r6.1: self-hosted, font-display:optional (platform/fonts) -->
+<link rel="preconnect" href="https://us-central1-xpizza-delivery.cloudfunctions.net" crossorigin/><link rel="preconnect" href="https://xpizza-delivery-default-rtdb.firebaseio.com" crossorigin/>   <!-- the boot fetches: getPublicMenu + availability -->
 
 <style>
 :root {
@@ -57,10 +60,10 @@
   --bronze:        #A8814E;
 
   --radius:   14px;
-  --display:  'Playfair Display', Georgia, serif;
-  --sans:     'DM Sans', system-ui, sans-serif;
-  --stamp:    'Playfair Display', Georgia, serif;
-  --body:     'DM Sans', system-ui, sans-serif;
+  --display:  'Playfair Display', 'Playfair Display Fallback', 'Playfair Display Fallback Noto', Georgia, serif;
+  --sans:     'DM Sans', 'DM Sans Fallback', 'DM Sans Fallback Roboto', system-ui, sans-serif;
+  --stamp:    'Playfair Display', 'Playfair Display Fallback', 'Playfair Display Fallback Noto', Georgia, serif;
+  --body:     'DM Sans', 'DM Sans Fallback', 'DM Sans Fallback Roboto', system-ui, sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{background:var(--cream)}
@@ -1715,7 +1718,7 @@ body.s5-active .header{display:none}
 <script src="form-apply.js"></script>
 <script src="account.js"></script>
 <!-- FORM-MENU-BUNDLE:BEGIN -->
-<script id="form-menu-bundle">window.__FORM_MENU_BUNDLE__ = {"dishes":[{"id":"dimsum_01","cat":"dim_sum","name":"Sichuan Spicy Wonton","price":249,"desc":"Wonton de cerdo, aceite de chili, vinagre Chinkiang y soya","tags":["chefs_pick","most_ordered"],"color":"#A8814E","emoji":"🥟"},{"id":"dimsum_02","cat":"dim_sum","name":"Pork Belly Buns","price":248,"desc":"Bao al vapor, panceta braseada, hoisin, daikon encurtido","tags":["must_try"],"color":"#A8814E","emoji":"🥟"},{"id":"dimsum_03","cat":"dim_sum","name":"Shrimp Dumplings","price":286,"desc":"Dumplings al vapor, camaron, hongo shiitake, sésamo, soya con jengibre","tags":[],"color":"#A8814E","emoji":"🥟"},{"id":"dimsum_04","cat":"dim_sum","name":"Fried Wontons","price":288,"desc":"Wonton frito de cerdo, hongos shiitake, salsa sweet chili","tags":[],"color":"#A8814E","emoji":"🥟"},{"id":"dimsum_05","cat":"dim_sum","name":"Shrimp Tempura Buns","price":260,"desc":"Bao al vapor, tempura crocante, sriracha mayo","tags":[],"color":"#A8814E","emoji":"🥟"},{"id":"starter_01","cat":"starters","name":"Korean BBQ Wings","price":262,"desc":"Glaseadas con gochujang, sésamo, cebollín, kewpie","tags":["crowd_favourite"],"color":"#13100E","emoji":"🍢"},{"id":"starter_02","cat":"starters","name":"Chorizo Parrillero","price":252,"desc":"A la parrilla, mostaza dijon","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"starter_03","cat":"starters","name":"Costillitas Chinas","price":265,"desc":"Costillas de cerdo glaseadas, hoisin, cinco especias, sésamo","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"starter_04","cat":"starters","name":"Camaron Que Se Duerme","price":378,"desc":"A la parrilla, aji amarillo","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"starter_05","cat":"starters","name":"Camaron Asiatico","price":413,"desc":"Camarones salteados, frijol negro, ajo, chile","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"starter_06","cat":"starters","name":"Spicy Camaron Tempura","price":409,"desc":"Camarones tempura crocantes, mayo picante, cítricos","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"special_01","cat":"house_specials","name":"Cantonese Lobster Tail","price":588,"desc":"Langosta al wok, jengibre, cebollín, salsa de ostras, crispy garlic","tags":["signature_special"],"color":"#B61218","emoji":"✦"},{"id":"special_02","cat":"house_specials","name":"Tuna Tartare","price":478,"desc":"Atún yellowfin, aceite de sésamo, aguacate, jengibre, chips wonton","tags":["must_try"],"color":"#B61218","emoji":"✦"},{"id":"special_04","cat":"house_specials","name":"Asado de Tira","price":624,"desc":"Costilla corta braseada, adobo asiático, ají amarillo","tags":[],"color":"#B61218","emoji":"✦"},{"id":"special_05","cat":"house_specials","name":"Filete La Muse","price":384,"desc":"Filete sellado, mantequilla miso, jengibre encurtido, microverdes","tags":[],"color":"#B61218","emoji":"✦"},{"id":"crudo_01","cat":"crudo","name":"Tuna Crudo","price":452,"desc":"Atún laminado, leche de tigre, ají amarillo, microverdes","tags":["must_try"],"color":"#2D5447","emoji":"🐟"},{"id":"crudo_02","cat":"crudo","name":"Ceviche Peruano","price":346,"desc":"Pescado fresco, leche de tigre, cebolla morada, camote, choclo","tags":[],"color":"#2D5447","emoji":"🐟"},{"id":"crudo_03","cat":"crudo","name":"Ceviche de Camaron","price":337,"desc":"Camarones tigre, leche de tigre, ají amarillo, pepino","tags":[],"color":"#2D5447","emoji":"🐟"},{"id":"noodle_01","cat":"noodles","name":"Pad Thai","price":414,"desc":"Fideos wok, tamarindo, maní, brotes, huevo","tags":["most_ordered"],"color":"#8A7B6B","emoji":"🍜"},{"id":"noodle_01_sin","cat":"noodles","name":"Pad Thai - Sin Proteína","price":307,"color":"#8A7B6B","emoji":"🍜","variantOf":"noodle_01","choice":"Sin Proteína"},{"id":"noodle_01_pollo","cat":"noodles","name":"Pad Thai - Pollo","price":342,"color":"#8A7B6B","emoji":"🍜","variantOf":"noodle_01","choice":"Pollo"},{"id":"noodle_01_camaron","cat":"noodles","name":"Pad Thai - Camarones","price":414,"color":"#8A7B6B","emoji":"🍜","variantOf":"noodle_01","choice":"Camarones"},{"id":"noodle_02","cat":"noodles","name":"Broccoli Beef","price":492,"desc":"Res tierna, brócoli, salsa de ostras y jengibre","tags":[],"color":"#8A7B6B","emoji":"🍜"},{"id":"noodle_03","cat":"noodles","name":"Hunan Chicken","price":340,"desc":"Pollo salteado, chiles secos, frijol negro, bok choy","tags":[],"color":"#8A7B6B","emoji":"🍜"},{"id":"rice_01","cat":"rice","name":"General Tso Chicken","price":270,"desc":"Pollo crocante al wok, salsa Tso dulce-picante, sésamo, arroz jazmín","tags":["most_ordered"],"color":"#A8814E","emoji":"🍚"},{"id":"rice_02","cat":"rice","name":"Mongolian Beef","price":456,"desc":"Res al wok, hoisin, jengibre, cebollín, arroz","tags":[],"color":"#A8814E","emoji":"🍚"},{"id":"rice_03","cat":"rice","name":"Chicken Fried Rice","price":448,"desc":"Arroz jazmín al wok, huevo, vegetales, salsa de ostras","tags":[],"color":"#A8814E","emoji":"🍚"},{"id":"rice_04","cat":"rice","name":"Broccoli Chicken","price":392,"desc":"lascas de pollo, brócoli salteado, salsa de ostras preparada","tags":[],"color":"#A8814E","emoji":"🍚"},{"id":"rice_05","cat":"rice","name":"Lap Cheong","price":292,"desc":"longaniza china, arroz blanco, arvejas chinas salteadas","tags":[],"color":"#A8814E","emoji":"🍚"},{"id":"soup_01","cat":"soups_salads","name":"Cantonese Noodle Soup","price":255,"desc":"Caldo de huesos, fideos de huevo, char siu, bok choy","tags":[],"color":"#2D5447","emoji":"🥣"},{"id":"soup_02","cat":"soups_salads","name":"Wonton Soup","price":288,"desc":"Wonton de cerdo y camarón, caldo de la casa, jengibre, cebollín","tags":[],"color":"#2D5447","emoji":"🥣"},{"id":"soup_03","cat":"soups_salads","name":"Sunomono Salad","price":192,"desc":"Pepino japonés, wakame, sésamo, vinagre de arroz","tags":[],"color":"#2D5447","emoji":"🥣"},{"id":"beer_01","cat":"bebidas","name":"Corona","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_02","cat":"bebidas","name":"Miller Draft","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_03","cat":"bebidas","name":"Miller Lite","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_04","cat":"bebidas","name":"Toña","price":98,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_05","cat":"bebidas","name":"Michelob Ultra","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_06","cat":"bebidas","name":"Coors Light","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_07","cat":"bebidas","name":"Salvavida","price":81,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_08","cat":"bebidas","name":"Imperial","price":81,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"soft_01","cat":"bebidas","name":"Coca Cola","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas"},{"id":"soft_02","cat":"bebidas","name":"Coca Cola Zero","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas"},{"id":"soft_03","cat":"bebidas","name":"Sprite","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas"},{"id":"soft_04","cat":"bebidas","name":"Agua","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas"}],"extras":[{"id":"rice_white","cat":"Acompañamientos","name":"Arroz Blanco","price":50},{"id":"rice_chinese","cat":"Acompañamientos","name":"Arroz Chino","price":85},{"id":"papas_fritas","cat":"Acompañamientos","name":"Papas Fritas","price":75},{"id":"sauce_chili_oil","cat":"Salsas","name":"Aceite Hot Chili","price":30},{"id":"sauce_aioli","cat":"Salsas","name":"Salsa Aioli","price":30},{"id":"sauce_chipotle","cat":"Salsas","name":"Salsa Chipotle","price":30},{"id":"sauce_dumpling","cat":"Salsas","name":"Salsa Dumplings","price":30},{"id":"sauce_wonton","cat":"Salsas","name":"Salsa Wontons","price":30},{"id":"sauce_pad_thai","cat":"Salsas","name":"Salsa Pad Thai","price":30},{"id":"sauce_spicy_mayo","cat":"Salsas","name":"Salsa Spicy Mayo","price":30},{"id":"sauce_tuna_tartar","cat":"Salsas","name":"Salsa Tuna Tartar","price":30},{"id":"protein_chicken","cat":"Proteínas","name":"Extra Pollo","price":65},{"id":"protein_beef","cat":"Proteínas","name":"Extra Filete Res","price":155},{"id":"protein_shrimp","cat":"Proteínas","name":"Extra Camaron","price":135}],"categories":[{"id":"dim_sum","name":"Dim Sum"},{"id":"starters","name":"Starters"},{"id":"house_specials","name":"House Specials"},{"id":"crudo","name":"Crudo"},{"id":"noodles","name":"Noodles"},{"id":"rice","name":"Rice"},{"id":"soups_salads","name":"Soups & Salads"},{"id":"bebidas","name":"Bebidas","subcats":["Sodas","Cervezas"],"layout":"list"}],"variant_items":{"noodle_01":{"label":"Proteína","basePrice":307,"variantIds":["noodle_01_sin","noodle_01_pollo","noodle_01_camaron"]}},"has_photo":["crudo_01","crudo_02","crudo_03","dimsum_01","dimsum_02","dimsum_03","dimsum_04","dimsum_05","noodle_01","noodle_02","noodle_03","rice_01","rice_02","rice_03","rice_04","rice_05","soup_01","soup_03","special_01","special_02","special_04","special_05","starter_01","starter_02","starter_03","starter_04","starter_05","starter_06"]};</script>
+<script id="form-menu-bundle">window.__FORM_MENU_BUNDLE__ = {"dishes":[{"id":"dimsum_01","cat":"dim_sum","name":"Sichuan Spicy Wonton","price":249,"desc":"Wonton de cerdo, aceite de chili, vinagre Chinkiang y soya","tags":["chefs_pick","most_ordered"],"color":"#A8814E","emoji":"🥟","reward_icon":"dumpling"},{"id":"dimsum_02","cat":"dim_sum","name":"Pork Belly Buns","price":248,"desc":"Bao al vapor, panceta braseada, hoisin, daikon encurtido","tags":["must_try"],"color":"#A8814E","emoji":"🥟","reward_icon":"dumpling"},{"id":"dimsum_03","cat":"dim_sum","name":"Shrimp Dumplings","price":286,"desc":"Dumplings al vapor, camaron, hongo shiitake, sésamo, soya con jengibre","tags":[],"color":"#A8814E","emoji":"🥟","reward_icon":"dumpling"},{"id":"dimsum_04","cat":"dim_sum","name":"Fried Wontons","price":288,"desc":"Wonton frito de cerdo, hongos shiitake, salsa sweet chili","tags":[],"color":"#A8814E","emoji":"🥟","reward_icon":"dumpling"},{"id":"dimsum_05","cat":"dim_sum","name":"Shrimp Tempura Buns","price":260,"desc":"Bao al vapor, tempura crocante, sriracha mayo","tags":[],"color":"#A8814E","emoji":"🥟","reward_icon":"dumpling"},{"id":"starter_01","cat":"starters","name":"Korean BBQ Wings","price":262,"desc":"Glaseadas con gochujang, sésamo, cebollín, kewpie","tags":["crowd_favourite"],"color":"#13100E","emoji":"🍢","reward_icon":"skewer"},{"id":"starter_02","cat":"starters","name":"Chorizo Parrillero","price":252,"desc":"A la parrilla, mostaza dijon","tags":[],"color":"#13100E","emoji":"🍢","reward_icon":"skewer"},{"id":"starter_03","cat":"starters","name":"Costillitas Chinas","price":265,"desc":"Costillas de cerdo glaseadas, hoisin, cinco especias, sésamo","tags":[],"color":"#13100E","emoji":"🍢","reward_icon":"skewer"},{"id":"starter_04","cat":"starters","name":"Camaron Que Se Duerme","price":378,"desc":"A la parrilla, aji amarillo","tags":[],"color":"#13100E","emoji":"🍢","reward_icon":"skewer"},{"id":"starter_05","cat":"starters","name":"Camaron Asiatico","price":413,"desc":"Camarones salteados, frijol negro, ajo, chile","tags":[],"color":"#13100E","emoji":"🍢","reward_icon":"skewer"},{"id":"starter_06","cat":"starters","name":"Spicy Camaron Tempura","price":409,"desc":"Camarones tempura crocantes, mayo picante, cítricos","tags":[],"color":"#13100E","emoji":"🍢","reward_icon":"skewer"},{"id":"special_01","cat":"house_specials","name":"Cantonese Lobster Tail","price":588,"desc":"Langosta al wok, jengibre, cebollín, salsa de ostras, crispy garlic","tags":["signature_special"],"color":"#B61218","emoji":"✦","reward_icon":"star"},{"id":"special_02","cat":"house_specials","name":"Tuna Tartare","price":478,"desc":"Atún yellowfin, aceite de sésamo, aguacate, jengibre, chips wonton","tags":["must_try"],"color":"#B61218","emoji":"✦","reward_icon":"star"},{"id":"special_04","cat":"house_specials","name":"Asado de Tira","price":624,"desc":"Costilla corta braseada, adobo asiático, ají amarillo","tags":[],"color":"#B61218","emoji":"✦","reward_icon":"star"},{"id":"special_05","cat":"house_specials","name":"Filete La Muse","price":384,"desc":"Filete sellado, mantequilla miso, jengibre encurtido, microverdes","tags":[],"color":"#B61218","emoji":"✦","reward_icon":"star"},{"id":"crudo_01","cat":"crudo","name":"Tuna Crudo","price":452,"desc":"Atún laminado, leche de tigre, ají amarillo, microverdes","tags":["must_try"],"color":"#2D5447","emoji":"🐟","reward_icon":"fish"},{"id":"crudo_02","cat":"crudo","name":"Ceviche Peruano","price":346,"desc":"Pescado fresco, leche de tigre, cebolla morada, camote, choclo","tags":[],"color":"#2D5447","emoji":"🐟","reward_icon":"fish"},{"id":"crudo_03","cat":"crudo","name":"Ceviche de Camaron","price":337,"desc":"Camarones tigre, leche de tigre, ají amarillo, pepino","tags":[],"color":"#2D5447","emoji":"🐟","reward_icon":"fish"},{"id":"noodle_01","cat":"noodles","name":"Pad Thai","price":414,"desc":"Fideos wok, tamarindo, maní, brotes, huevo","tags":["most_ordered"],"color":"#8A7B6B","emoji":"🍜","reward_icon":"noodle"},{"id":"noodle_01_sin","cat":"noodles","name":"Pad Thai - Sin Proteína","price":307,"color":"#8A7B6B","emoji":"🍜","variantOf":"noodle_01","choice":"Sin Proteína","reward_icon":"noodle"},{"id":"noodle_01_pollo","cat":"noodles","name":"Pad Thai - Pollo","price":342,"color":"#8A7B6B","emoji":"🍜","variantOf":"noodle_01","choice":"Pollo","reward_icon":"noodle"},{"id":"noodle_01_camaron","cat":"noodles","name":"Pad Thai - Camarones","price":414,"color":"#8A7B6B","emoji":"🍜","variantOf":"noodle_01","choice":"Camarones","reward_icon":"noodle"},{"id":"noodle_02","cat":"noodles","name":"Broccoli Beef","price":492,"desc":"Res tierna, brócoli, salsa de ostras y jengibre","tags":[],"color":"#8A7B6B","emoji":"🍜","reward_icon":"noodle"},{"id":"noodle_03","cat":"noodles","name":"Hunan Chicken","price":340,"desc":"Pollo salteado, chiles secos, frijol negro, bok choy","tags":[],"color":"#8A7B6B","emoji":"🍜","reward_icon":"noodle"},{"id":"rice_01","cat":"rice","name":"General Tso Chicken","price":270,"desc":"Pollo crocante al wok, salsa Tso dulce-picante, sésamo, arroz jazmín","tags":["most_ordered"],"color":"#A8814E","emoji":"🍚","reward_icon":"rice"},{"id":"rice_02","cat":"rice","name":"Mongolian Beef","price":456,"desc":"Res al wok, hoisin, jengibre, cebollín, arroz","tags":[],"color":"#A8814E","emoji":"🍚","reward_icon":"rice"},{"id":"rice_03","cat":"rice","name":"Chicken Fried Rice","price":448,"desc":"Arroz jazmín al wok, huevo, vegetales, salsa de ostras","tags":[],"color":"#A8814E","emoji":"🍚","reward_icon":"rice"},{"id":"rice_04","cat":"rice","name":"Broccoli Chicken","price":392,"desc":"lascas de pollo, brócoli salteado, salsa de ostras preparada","tags":[],"color":"#A8814E","emoji":"🍚","reward_icon":"rice"},{"id":"rice_05","cat":"rice","name":"Lap Cheong","price":292,"desc":"longaniza china, arroz blanco, arvejas chinas salteadas","tags":[],"color":"#A8814E","emoji":"🍚","reward_icon":"rice"},{"id":"soup_01","cat":"soups_salads","name":"Cantonese Noodle Soup","price":255,"desc":"Caldo de huesos, fideos de huevo, char siu, bok choy","tags":[],"color":"#2D5447","emoji":"🥣","reward_icon":"soup"},{"id":"soup_02","cat":"soups_salads","name":"Wonton Soup","price":288,"desc":"Wonton de cerdo y camarón, caldo de la casa, jengibre, cebollín","tags":[],"color":"#2D5447","emoji":"🥣","reward_icon":"soup"},{"id":"soup_03","cat":"soups_salads","name":"Sunomono Salad","price":192,"desc":"Pepino japonés, wakame, sésamo, vinagre de arroz","tags":[],"color":"#2D5447","emoji":"🥣","reward_icon":"soup"},{"id":"beer_01","cat":"bebidas","name":"Corona","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_02","cat":"bebidas","name":"Miller Draft","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_03","cat":"bebidas","name":"Miller Lite","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_04","cat":"bebidas","name":"Toña","price":98,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_05","cat":"bebidas","name":"Michelob Ultra","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_06","cat":"bebidas","name":"Coors Light","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_07","cat":"bebidas","name":"Salvavida","price":81,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_08","cat":"bebidas","name":"Imperial","price":81,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"soft_01","cat":"bebidas","name":"Coca Cola","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas","reward_icon":"glass"},{"id":"soft_02","cat":"bebidas","name":"Coca Cola Zero","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas","reward_icon":"glass"},{"id":"soft_03","cat":"bebidas","name":"Sprite","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas","reward_icon":"glass"},{"id":"soft_04","cat":"bebidas","name":"Agua","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas","reward_icon":"glass"}],"extras":[{"id":"rice_white","cat":"Acompañamientos","name":"Arroz Blanco","price":50,"reward_icon":"rice"},{"id":"rice_chinese","cat":"Acompañamientos","name":"Arroz Chino","price":85,"reward_icon":"rice"},{"id":"papas_fritas","cat":"Acompañamientos","name":"Papas Fritas","price":75,"reward_icon":"rice"},{"id":"sauce_chili_oil","cat":"Salsas","name":"Aceite Hot Chili","price":30},{"id":"sauce_aioli","cat":"Salsas","name":"Salsa Aioli","price":30},{"id":"sauce_chipotle","cat":"Salsas","name":"Salsa Chipotle","price":30},{"id":"sauce_dumpling","cat":"Salsas","name":"Salsa Dumplings","price":30},{"id":"sauce_wonton","cat":"Salsas","name":"Salsa Wontons","price":30},{"id":"sauce_pad_thai","cat":"Salsas","name":"Salsa Pad Thai","price":30},{"id":"sauce_spicy_mayo","cat":"Salsas","name":"Salsa Spicy Mayo","price":30},{"id":"sauce_tuna_tartar","cat":"Salsas","name":"Salsa Tuna Tartar","price":30},{"id":"protein_chicken","cat":"Proteínas","name":"Extra Pollo","price":65},{"id":"protein_beef","cat":"Proteínas","name":"Extra Filete Res","price":155},{"id":"protein_shrimp","cat":"Proteínas","name":"Extra Camaron","price":135}],"categories":[{"id":"dim_sum","name":"Dim Sum"},{"id":"starters","name":"Starters"},{"id":"house_specials","name":"House Specials"},{"id":"crudo","name":"Crudo"},{"id":"noodles","name":"Noodles"},{"id":"rice","name":"Rice"},{"id":"soups_salads","name":"Soups & Salads"},{"id":"bebidas","name":"Bebidas","subcats":["Sodas","Cervezas"],"layout":"list"}],"variant_items":{"noodle_01":{"label":"Proteína","basePrice":307,"variantIds":["noodle_01_sin","noodle_01_pollo","noodle_01_camaron"]}},"has_photo":["crudo_01","crudo_02","crudo_03","dimsum_01","dimsum_02","dimsum_03","dimsum_04","dimsum_05","noodle_01","noodle_02","noodle_03","rice_01","rice_02","rice_03","rice_04","rice_05","soup_01","soup_03","special_01","special_02","special_04","special_05","starter_01","starter_02","starter_03","starter_04","starter_05","starter_06"],"extras_by_category":{"dim_sum":["Acompañamientos","Salsas"],"starters":["Acompañamientos","Salsas"],"house_specials":["Acompañamientos","Salsas"],"crudo":["Acompañamientos","Salsas"],"noodles":["Acompañamientos","Salsas"],"rice":["Acompañamientos","Salsas"],"soups_salads":["Acompañamientos","Salsas"]},"extras_by_item":{"rice_03":["Proteínas"]},"badges":{"signature_special":{"label":"Especial de la casa","cls":"menu-badge--bronze"},"chefs_pick":{"label":"Selección del chef","cls":"menu-badge--bronze"},"must_try":{"label":"Imperdible","cls":"menu-badge--red"},"crowd_favourite":{"label":"Favorito","cls":"menu-badge--red"},"most_ordered":{"label":"Más pedido","cls":"menu-badge--jade"},"price_pending":{"label":"Precio próximamente","cls":"menu-badge--muted"}},"badge_priority":["signature_special","chefs_pick","must_try","crowd_favourite","most_ordered","price_pending"]};</script>
 <!-- FORM-MENU-BUNDLE:END -->
 <script>
 /* ── Category tab switching ── */
@@ -1809,7 +1812,7 @@ const LA_MUSA_FALLBACK_EMAIL = 'pedidos@lamusa.hn';
 // Server-side createOrder uses this to route to the right kitchen,
 // driver pool, and WhatsApp template. X. Pizza will get its own
 // equivalent constant when its order form is forked next.
-const RESTAURANT_ID = 'la_musa';
+const RESTAURANT_ID = RESTAURANT_CONFIG.rid;
 
 // LA_MUSA_PREVIEW_MODE — dev/QA bypass for the open/closed schedule.
 // When true, isOpen() returns true regardless of actual hours so the
@@ -1935,8 +1938,9 @@ const FALLBACK_CATEGORIES = [
 // LA_MUSA_BADGES — tag-to-pill mapping for menu item cards (chunk 2).
 // Multiple tags per item allowed in data; only the highest-priority one
 // renders to keep the card visually clean. To show a different label,
-// edit TAG_BADGES; to change priority, reorder TAG_PRIORITY.
-const TAG_BADGES = {
+// edit the published badges; to change priority, the published badge_priority (PLAN 4).
+// PLAN 4: the in-repo seed / test bootstrap only — the page boots TAG_BADGES from the bundle's `badges`
+const FALLBACK_TAG_BADGES = {
   signature_special: { label: 'Especial de la casa', cls: 'menu-badge--bronze' },
   chefs_pick:        { label: 'Selección del chef',  cls: 'menu-badge--bronze' },
   must_try:          { label: 'Imperdible',          cls: 'menu-badge--red'    },
@@ -1944,14 +1948,16 @@ const TAG_BADGES = {
   most_ordered:      { label: 'Más pedido',          cls: 'menu-badge--jade'   },
   price_pending:     { label: 'Precio próximamente', cls: 'menu-badge--muted'  },
 };
-const TAG_PRIORITY = [
+// PLAN 4 GATED: seed / test bootstrap only (the renderer-contract generator reads it by name) — badges are ordered by the
+// published badge_priority
+const FALLBACK_TAG_PRIORITY = [
   'signature_special', 'chefs_pick', 'must_try',
   'crowd_favourite',   'most_ordered', 'price_pending'
 ];
 function pickBadge(tags) {
   if (!tags || !tags.length) return null;
-  for (const t of TAG_PRIORITY) {
-    if (tags.includes(t)) return TAG_BADGES[t];
+  for (const t of BADGE_PRIORITY) {   // PLAN 4: the published order
+    if (tags.includes(t) && TAG_BADGES[t]) return TAG_BADGES[t];
   }
   return null;
 }
@@ -1960,19 +1966,11 @@ function badgeHtmlFor(p) {
   return b ? '<div class="menu-badge ' + b.cls + '">' + b.label + '</div>' : '';
 }
 
-const MIN_ORDER = 250;
+const MIN_ORDER = RESTAURANT_CONFIG.min_order_lempiras;
 
 // LA_MUSA_HOURS — Honduras local time, UTC-6, no DST.
 // null = closed for the day. open/close are minutes from midnight.
-const HOURS = {
-  0: { open: 12*60,    close: 19*60+45 }, // Sunday
-  1: null,                                // Monday   — CLOSED (only closed day)
-  2: { open: 17*60,    close: 20*60+45 }, // Tuesday
-  3: { open: 17*60,    close: 20*60+45 }, // Wednesday
-  4: { open: 17*60,    close: 20*60+45 }, // Thursday
-  5: { open: 17*60,    close: 21*60+45 }, // Friday
-  6: { open: 17*60,    close: 21*60+45 }, // Saturday
-};
+const HOURS = RESTAURANT_CONFIG.hours;   // 0=Sunday … 6=Saturday; null = closed; minutes from midnight, Honduras (UTC-6)
 
 // True when the restaurant is currently accepting orders.
 function isOpen() {
@@ -2026,7 +2024,8 @@ function getNextOpenText() {
 // detail modal only shows applicable categories per item (see
 // EXTRAS_BY_CATEGORY below). Edit prices/names inline; ids are
 // stable slugs that survive POS sync.
-let EXTRAS = [
+// PLAN 4: the in-repo seed / test bootstrap only — the page boots EXTRAS from the bundle
+const FALLBACK_EXTRAS = [
   { id:"rice_white", cat:"Acompañamientos", name:"Arroz Blanco", price:50 },
   { id:"rice_chinese", cat:"Acompañamientos", name:"Arroz Chino", price:85 },
   { id:"papas_fritas", cat:"Acompañamientos", name:"Papas Fritas", price:75 },
@@ -2046,7 +2045,8 @@ let EXTRAS = [
 // Maps menu item-category → list of modifier-categories that
 // apply at the category level. Items in unlisted categories may
 // still have modifiers via EXTRAS_BY_ITEM below.
-let EXTRAS_BY_CATEGORY = {
+// PLAN 4: seed / test bootstrap only — the page boots the map from the bundle's `extras_by_category`
+const FALLBACK_EXTRAS_BY_CATEGORY = {
   "dim_sum": [
     "Acompañamientos",
     "Salsas"
@@ -2081,7 +2081,8 @@ let EXTRAS_BY_CATEGORY = {
 // when a single item exposes options no sibling does — e.g.,
 // Chicken Fried Rice (rice_03) accepts extra proteins while
 // other rice dishes do not.
-let EXTRAS_BY_ITEM = {
+// PLAN 4: seed / test bootstrap only — the page boots the map from the bundle's `extras_by_item`
+const FALLBACK_EXTRAS_BY_ITEM = {
   "rice_03": [
     "Proteínas"
   ]
@@ -2102,13 +2103,10 @@ function itemIsVariant(p)  { return GroupPicker.isVariant(p); }
 // is tappable) and by renderDetailModal (to scope the modifier
 // list to the right categories). Combine cat-level and per-item
 // extras, with cat-level rendered first.
-function extrasCatsForItem(item) {
-  if (GroupPicker.noExtras(item)) return [];   // 1D add-product B: extras_policy 'none' — no extras anywhere this item is offered
-  const fromCat  = EXTRAS_BY_CATEGORY[item.cat] || [];
-  const fromItem = EXTRAS_BY_ITEM[item.id] || [];
-  const seen = new Set(fromCat);
-  return [...fromCat, ...fromItem.filter(c => !seen.has(c))];
-}
+// PLAN 4 r3 §8.3 — ONE shared resolver (form-group-picker.js offeredExtraGroups): a map value is an option category (all its
+// extras) OR one extra; the category's entries first, then the item's; extras_policy 'none' offers nothing.
+function extrasGroupsForItem(item) { return GroupPicker.offeredExtraGroups(item, EXTRAS, EXTRAS_BY_CATEGORY, EXTRAS_BY_ITEM); }
+function extrasCatsForItem(item) { return extrasGroupsForItem(item).map(g => g.cat); }
 
 // LA_MUSA_DISH_PHOTOS — items that have a real photo on disk.
 // Rendered conditionally in the card and modal; missing items
@@ -2125,6 +2123,53 @@ const _okDishes = (a) => Array.isArray(a) && a.length > 0 && a.every((d) => d &&
 const _okCats = (a) => Array.isArray(a) && a.length > 0 && a.every((c) => c && typeof c.id === 'string');
 const _okObj = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
 const _okStrArr = (a) => Array.isArray(a) && a.every((s) => typeof s === 'string');
+/* ── PLAN 4 (bake from published, r3 §3) — THE BUNDLE IS THE ONLY BOOT SOURCE ─────────────────────────────────────────────
+   Every deploy BAKES the bundle above from the brand's published catalog, and the bake refuses (the build fails, the previous
+   deploy stays live) anything this page's own rules would refuse — so an unusable structure cannot reach a deployed page. If
+   one does anyway, the page never substitutes a literal: that structure boots EMPTY, the page says so (announceMenuBroken,
+   once the page is ready) and waits for the live menu, whose apply replaces it. A REQUIRED collection that is absent is
+   unusable; an OPTIONAL one that is absent is simply none. The literal declarations in this file stay ONLY as the in-repo
+   seed / test bootstrap the catalog readers read by name; xpizza-functions/form-runtime-literals.guard.test.js fails any runtime reference. */
+const _BOOT_BROKEN = [];
+/* PLAN 4 r2 (Codex r1 #2): the COMPLETE menu contract at boot — the same shared rule (form-group-picker.js validateMenu) the bake
+   ran on this bundle and every live apply runs. A bundle that fails it boots NOTHING: a page that cannot vouch for its menu shows
+   none of it, and the latch below keeps it from taking an order. */
+const _MENU_OK = (function(){
+  try { GroupPicker.validateMenu(_BUNDLE, { variantItems: _BUNDLE.variant_items, origin: 'bundle' }); return true; }
+  catch (e) { _BOOT_BROKEN.push(String(e && e.message)); return false; }
+})();
+const _DISPLAY_OK = _MENU_OK;   // the display structures are part of the complete contract
+/* PLAN 4 r2 (Codex r1 P1) — A BROKEN BOOT IS NOT ORDERABLE, VISIBLY. Latched at boot when anything was unusable: adding to the cart
+   and sending both refuse, and the existing menu-broken announcement shows in the stage the customer is on. ONLY a successful
+   commit of a COMPLETE live menu (liveMenuCommit, after liveMenuPrepare's full contract) clears it. */
+let _MENU_BROKEN = false;
+function _menuBrokenClear(){
+  if (!_MENU_BROKEN) return;
+  _MENU_BROKEN = false;
+  _BOOT_BROKEN.length = 0;
+  ['err1', 'err3'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el && /No pudimos actualizar el menú/.test(el.textContent || '')) { el.textContent = ''; el.style.display = 'none'; }
+  });
+}
+function _bootSelect(field, ok, empty, required){
+  if (!_MENU_OK) return empty;
+  const v = _BUNDLE[field];
+  if (v === undefined && !required) return empty;
+  if (ok(v)) return v;
+  _BOOT_BROKEN.push('boot_' + field);
+  return empty;
+}
+const _okRecords = (a) => Array.isArray(a) && a.every((r) => r && r.id != null && String(r.id) !== '' && r.name && typeof r.price === 'number' && isFinite(r.price) && r.price > 0);
+const _okMap = (o) => !!o && typeof o === 'object' && !Array.isArray(o) && _DISPLAY_OK;
+function _announceBootBroken(){
+  if (!_BOOT_BROKEN.length) return;
+  _MENU_BROKEN = true;   // PLAN 4 r2: latched — not orderable until a complete live menu applies
+  try { console.error('menu_boot_broken', JSON.stringify(_BOOT_BROKEN)); } catch(_){}
+  const go = () => { try { announceMenuBroken(); } catch(_){} };
+  if (typeof document === 'undefined') return;
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+}
 /* 1D D1 — the catalog id is stripped where served records become BROWSER records. Both boundaries
    are covered (this one and liveMenuPrepare below) rather than only the one that carries ids today:
    the spliced bundle is built offline and so has none, but "which boundary happens to be id-less
@@ -2175,17 +2220,25 @@ function _legacyCartForSig(items) {
     return out;
   });
 }
-let MENU = _okDishes(_BUNDLE.dishes) ? _BUNDLE.dishes : FALLBACK_MENU;   // 1D D2 — un-stripped: the id rides into the cart
-let CATEGORIES = _okCats(_BUNDLE.categories) ? _BUNDLE.categories : FALLBACK_CATEGORIES;
-let VARIANT_ITEMS = _okObj(_BUNDLE.variant_items) ? _BUNDLE.variant_items : FALLBACK_VARIANT_ITEMS;
-let HAS_PHOTO = new Set(_okStrArr(_BUNDLE.has_photo) ? _BUNDLE.has_photo : FALLBACK_HAS_PHOTO);
+let MENU = _bootSelect('dishes', _okDishes, [], true);   // 1D D2 — un-stripped: the id rides into the cart. PLAN 4: never a literal
+let CATEGORIES = _bootSelect('categories', _okCats, [], true);
+let VARIANT_ITEMS = _bootSelect('variant_items', _okObj, {}, false);
+let HAS_PHOTO = new Set(_bootSelect('has_photo', _okStrArr, [], false));
+let EXTRAS = _bootSelect('extras', _okRecords, [], true);
+// PLAN 4 r3 §1 / §8.3 — the option groups each dish offers: the published maps (a value is an option category or one extra)
+let EXTRAS_BY_CATEGORY = _bootSelect('extras_by_category', _okMap, {}, false);
+let EXTRAS_BY_ITEM = _bootSelect('extras_by_item', _okMap, {}, false);
+// PLAN 4 r3 §1 — the badge DEFINITIONS and the ORDER they are chosen in, both published (the order arrives by the §8.2
+// migration, verified before this GATED commit lands). Absent, no badge is chosen: there is no literal order to fall back to.
+let TAG_BADGES = _bootSelect('badges', _okMap, {}, false);
+let BADGE_PRIORITY = _bootSelect('badge_priority', (v) => _okStrArr(v) && _DISPLAY_OK, [], false);
+_announceBootBroken();   // PLAN 4: after the LAST boot selection — one announcement for every unusable structure
 
 function itemHasExtras(item) {
   return extrasCatsForItem(item).length > 0;
 }
 function extrasForItem(item) {
-  const cats = extrasCatsForItem(item);
-  return EXTRAS.filter(e => cats.includes(e.cat));
+  return extrasGroupsForItem(item).reduce((all, g) => all.concat(g.extras), []);
 }
 
 // Track extras per pizza: { pizzaId: { extraId: qty } }
@@ -2201,9 +2254,9 @@ let pickupMarker = null;
 // the same radius — this client-side check exists for UX only (immediate
 // feedback when the customer drops a pin out of zone). A bypassed client
 // gets rejected by createOrder server-side.
-const RESTAURANT_LAT = 15.504137854561979;
-const RESTAURANT_LNG = -88.03848413956527;
-const DELIVERY_RADIUS_KM = 9.66;  // 6 mi
+const RESTAURANT_LAT = RESTAURANT_CONFIG.map.latitude;
+const RESTAURANT_LNG = RESTAURANT_CONFIG.map.longitude;
+const DELIVERY_RADIUS_KM = RESTAURANT_CONFIG.map.radius_km;
 
 // Haversine distance in km between two lat/lng coords.
 function haversineKm(lat1, lng1, lat2, lng2){
@@ -2407,7 +2460,11 @@ function cartRestore(stashedCart){
 /* The customer is TOLD, and told the one thing that actually helps: reload. A blocked submit must never
    be silent — the same rule the conflict announcement follows, for the same reason. */
 function announceMenuBroken(){
-  const err = document.getElementById('err3') || document.getElementById('err1');
+  /* PLAN 4 r2 (Codex r1 P1): the error box of the stage the customer is ON (err1 on the menu stage s1, err3 at checkout) — an
+     announcement written into a hidden stage tells nobody. */
+  const active = document.querySelector('.stage.active');
+  const err = ['err3', 'err1'].map(function (id) { return document.getElementById(id); }).find(function (el) { return el && active && active.contains(el); })
+    || document.getElementById('err3') || document.getElementById('err1');
   if (err) {
     err.textContent = 'No pudimos actualizar el menú. Recargá la página para continuar con tu pedido.';
     err.style.display = 'block';
@@ -2415,6 +2472,12 @@ function announceMenuBroken(){
 }
 
 function refuseConflictedSend(where){
+  // PLAN 4 r2 (Codex r1 P1): a boot that could not vouch for its menu takes no order until a complete live menu applies
+  if (_MENU_BROKEN) {
+    try { console.warn('cart_blocked_send_menu_broken', JSON.stringify({ at: where, error: 'boot' })); } catch (_) {}
+    announceMenuBroken();
+    return true;
+  }
   /* 🔴 1B Task 9 — A PAGE THAT ADMITS IT IS BROKEN DOES NOT ASK FOR MONEY.
      When a live apply fails AND its recovery also fails, the applier reports 'broken' and records the
      cause in state().fatal. Until now that was recorded and nothing more: the screen may agree with
@@ -2618,7 +2681,7 @@ function liveMenuRid(){ return RESTAURANT_ID; }
 /* 🔴 A REFERENCE MARKER, NOT A GATE. Kept only so validateSnapshot can say out loud when the served
    representation is not the one this form was written against. It refuses nothing — see the note at
    that comparison for what that trades away and what covers it. */
-const LIVE_MENU_REPRESENTATION = '1d.1';
+const LIVE_MENU_REPRESENTATION = '1d.3';   // PLAN 4 r3 §8.1: the served marker (1d.1 / 1d.2 bodies still apply, with the existing warning)
 /* 🔴 THE PRICED-MENU VERSION — what a reward quote was actually computed against.
    The gate asked for representation_version in the reward signature. That field is the FORMAT marker
    above ('1d.1'); it is constant across publishes, so including it would have changed nothing and the
@@ -2639,7 +2702,7 @@ function liveMenuPriceVersion(){
   } catch (_) { return null; }
 }
 try { window.__LIVE_MENU_PRICE_VERSION = liveMenuPriceVersion; } catch (_) {}
-const LIVE_MENU_GLOBALS = ['MENU', 'EXTRAS', 'CATEGORIES', 'VARIANT_ITEMS', 'HAS_PHOTO', 'EXTRAS_BY_CATEGORY', 'EXTRAS_BY_ITEM'];
+const LIVE_MENU_GLOBALS = ['MENU', 'EXTRAS', 'CATEGORIES', 'VARIANT_ITEMS', 'HAS_PHOTO', 'EXTRAS_BY_CATEGORY', 'EXTRAS_BY_ITEM', 'TAG_BADGES', 'BADGE_PRIORITY'];   // PLAN 4 §8.4: + the badges and their order
 function liveMenuGlobalGet(n){
   switch (n) {
     case 'MENU': return MENU;
@@ -2648,6 +2711,8 @@ function liveMenuGlobalGet(n){
     case 'VARIANT_ITEMS': return VARIANT_ITEMS;
     case 'HAS_PHOTO': return HAS_PHOTO;
     case 'EXTRAS_BY_CATEGORY': return EXTRAS_BY_CATEGORY;
+    case 'TAG_BADGES': return TAG_BADGES;
+    case 'BADGE_PRIORITY': return BADGE_PRIORITY;
     default: return EXTRAS_BY_ITEM;
   }
 }
@@ -2659,6 +2724,8 @@ function liveMenuGlobalSet(n, v){
     case 'VARIANT_ITEMS': VARIANT_ITEMS = v; break;
     case 'HAS_PHOTO': HAS_PHOTO = v; break;
     case 'EXTRAS_BY_CATEGORY': EXTRAS_BY_CATEGORY = v; break;
+    case 'TAG_BADGES': TAG_BADGES = v; break;
+    case 'BADGE_PRIORITY': BADGE_PRIORITY = v; break;
     default: EXTRAS_BY_ITEM = v; break;
   }
 }
@@ -2685,60 +2752,17 @@ function liveMenuRenderAll(){ renderCategoryShell(); renderMenu(); }
 function sameDishId(a, b) { return GroupPicker.sameDishId(a, b); }   // 1D add-product B: the shared rule (strict within a type)
 
 function liveMenuPrepare(body){
-  if (!body || typeof body !== 'object') throw new Error('apply_body_missing');
-  const dishes = body.dishes, extras = body.extras;
-  if (!Array.isArray(dishes) || !dishes.length) throw new Error('apply_dishes_missing');
-  if (!Array.isArray(extras)) throw new Error('apply_extras_missing');
-  /* 🔴 AN EMPTY ID IS NOT AN ID. `r.id !== undefined && r.id !== null` let '' through, and an empty id
-     is a latent trap rather than a harmless oddity: it keys prices, 86s and cart lines, it renders as
-     id="card-", and it resolves against ITSELF — sameDishId('', '') is true — so it satisfies every
-     cross-reference check while naming nothing. A mutant on the variant type-check is what exposed it,
-     which is the argument for mutating validators and not only behaviour. */
-  const okRecord = (r) => r && typeof r === 'object'
-    && r.id !== undefined && r.id !== null && String(r.id) !== ''
-    && typeof r.name === 'string' && r.name !== ''
-    && typeof r.price === 'number' && isFinite(r.price) && r.price > 0;
-  dishes.forEach((d, i) => { if (!okRecord(d)) throw new Error('apply_dish_malformed@' + i); });
-  extras.forEach((e, i) => { if (!okRecord(e)) throw new Error('apply_extra_malformed@' + i); });
-  // 🔴 THE SET-LEVEL CHECK, the same one hydrate() had to learn: every record being well-formed is not
-  // the same as the collection being well-formed. Two dishes sharing an id means one silently wins
-  // every lookup — cart reconciliation, pricing, availability — and which one is an accident of order.
-  if (new Set(dishes.map((d) => String(d.id))).size !== dishes.length) throw new Error('apply_dish_duplicate');
-  if (new Set(extras.map((e) => String(e.id))).size !== extras.length) throw new Error('apply_extra_duplicate');
-  const cats = body.categories;
-  if (!Array.isArray(cats) || !cats.length) throw new Error('apply_categories_missing');
-  cats.forEach((c, i) => { if (!c || typeof c !== 'object' || typeof c.id !== 'string' || !c.id) throw new Error('apply_category_malformed@' + i); });
-  if (new Set(cats.map((c) => c.id)).size !== cats.length) throw new Error('apply_category_duplicate');
-  // 🔴 CROSS-REFERENCE: every dish must land in a category that exists, or it renders into a container
-  // that is not there and disappears from the page while still being in MENU — a dish that is sellable,
-  // priced, and invisible.
-  const catIds = new Set(cats.map((c) => c.id));
-  dishes.forEach((d, i) => { if (!catIds.has(d.cat)) throw new Error('apply_dish_orphan@' + i); });
-  /* 🔴 THE NESTED VALUES GET THE SAME CHECK THE TOP-LEVEL PRICES GET. variant_items was accepted as
-     "an object" and never looked inside — so a launcher's basePrice could be anything at all while every
-     ordinary price had to be a positive integer, and that price is rendered ("desde L …") and used to
-     compute the CTA total. A validation that stops at the outer shape is not validation of the thing it
-     is guarding; the same rule applies wherever a price lives. variantIds must also name dishes that
-     exist, or the launcher offers a choice that resolves to nothing. */
-  /* 🔴 THE RETAINED BLOCK IS VALIDATED TOO, AGAINST THE DISHES THAT ARE ARRIVING. "Absent means keep
-     what is in force" is right for structure, but a variant block is not self-contained — it is a set
-     of REFERENCES into the dish list, and the dish list is exactly what this snapshot replaces. So a
-     snapshot that simply omits variant_items while dropping or renaming the variant dishes left a
-     launcher pointing at dishes that no longer exist: the card still says "desde L …", the modal still
-     opens, and the required single-select group inside it has NOTHING in it. Unorderable, and silent.
-     Validating only the SUPPLIED block checked the one case that came with its own evidence and
-     skipped the one that did not. The origin is carried into the error so the two are distinguishable
-     once a caller starts reporting them. */
-  // 1D add-product B: the variant-map rule is the shared picker's (form-group-picker.js), judged against the arriving dishes
-  const validateVariantBlock = (vi, origin) => GroupPicker.validateVariantBlock(vi, dishes, origin);
-  GroupPicker.validateExtrasPolicy(dishes);   // 1D add-product B: extras_policy ∈ {'none'} or absent — the same boundary in every form
-  let variantItems = VARIANT_ITEMS;
-  if (body.variant_items !== undefined) {
-    validateVariantBlock(body.variant_items, 'supplied');
-    variantItems = body.variant_items;
-  } else if (variantItems && Object.keys(variantItems).length) {
-    validateVariantBlock(variantItems, 'retained');
-  }
+  /* PLAN 4 r2 (Codex r1 #2) — THE COMPLETE MENU CONTRACT is ONE shared rule (form-group-picker.js validateMenu): the same one the
+     bake ran on this page's bundle and the boot runs on it. Records (non-empty ids — an empty id resolves against itself and
+     names nothing; names; positive-integer prices), unique ids (two dishes sharing one silently win every lookup), categories
+     that hold every dish (a dish in a missing category is sellable, priced and invisible), the extras_policy boundary, a
+     drawable variant map with REVERSE coverage, and the display structures. A snapshot that omits variant_items is judged
+     against the map IN FORCE — the retained map is a set of references into the dish list this snapshot replaces, so dropping
+     or renaming the choices can never leave a launcher with nothing to choose. Throws the typed reason. */
+  const supplied = !!body && typeof body === 'object' && body.variant_items !== undefined;
+  const variantItems = supplied ? body.variant_items : VARIANT_ITEMS;
+  GroupPicker.validateMenu(body, { variantItems, origin: supplied ? 'supplied' : 'retained' });
+  const dishes = body.dishes, extras = body.extras, cats = body.categories;
   return {
     // 1D D1 — the SECOND boundary: the live refresh. This one really does carry ids (the served body
     // is overlaid), and it is the path that replaces MENU/EXTRAS under a running form.
@@ -2751,6 +2775,9 @@ function liveMenuPrepare(body){
     HAS_PHOTO: Array.isArray(body.has_photo) ? new Set(body.has_photo) : HAS_PHOTO,
     EXTRAS_BY_CATEGORY: (body.extras_by_category && typeof body.extras_by_category === 'object') ? body.extras_by_category : EXTRAS_BY_CATEGORY,
     EXTRAS_BY_ITEM: (body.extras_by_item && typeof body.extras_by_item === 'object') ? body.extras_by_item : EXTRAS_BY_ITEM,
+    // PLAN 4 §8.4 — absent keeps what is in force; present is published, validated above
+    TAG_BADGES: (body.badges && typeof body.badges === 'object' && !Array.isArray(body.badges)) ? body.badges : TAG_BADGES,
+    BADGE_PRIORITY: Array.isArray(body.badge_priority) ? body.badge_priority : BADGE_PRIORITY,
   };
 }
 
@@ -2964,6 +2991,7 @@ function liveMenuCommit(prepared){
   } catch (_) {}
   liveMenuPaint(prepared);
   liveMenuUiRestore(ui);
+  _menuBrokenClear();   // PLAN 4 r2: a COMPLETE live menu applied successfully — the page can vouch for its menu again
 }
 
 /* THE ADAPTER the coordinator validates through. A snapshot is accepted WHOLE or not at all: the same
@@ -3196,7 +3224,7 @@ let cashExactMode=false;   // true while the cash "pay-with" equals the exact to
 
 function genOrderId(){
   const d=new Date();
-  const ts='PZX-'+d.getFullYear().toString().slice(-2)+
+  const ts=RESTAURANT_CONFIG.order_id_prefix+d.getFullYear().toString().slice(-2)+
     String(d.getMonth()+1).padStart(2,'0')+
     String(d.getDate()).padStart(2,'0')+'-'+
     String(d.getHours()).padStart(2,'0')+
@@ -3437,6 +3465,7 @@ function renderMenu() {
 }
 
 function chg(id,d){
+  if(d>0 && _MENU_BROKEN){ announceMenuBroken(); return; }   // PLAN 4 r2: a broken boot adds nothing (removing still works)
   if(d>0 && itemIsLauncher(MENU.find(p => p.id === id))) return;   // 1D add-product B: a launcher is never a cart line — its choice is
   if(d>0 && soldOutById(id)) return;   // KDS 2b: item 86'd — freeze add/increment (decrements still allowed so an in-cart item can be removed). Fail-open: soldOutById is false on any doubt.
   // (qty[id]||0): a dish that arrives with a live upgrade has no entry yet, and undefined+1 is NaN —
@@ -3883,11 +3912,11 @@ function successTotalCents(o){
 // Redemption v2 picker catalog (brand-specific — OUTSIDE the parity block): every non-alcohol MENU dish grouped
 // by category (per-category fine-line icon) PLUS the 3 acompañamientos from EXTRAS. Alcohol (beer_*) is excluded.
 function buildRedeemCatalog(){
-  const CAT={ dim_sum:['Dim Sum','dumpling'], starters:['Starters','skewer'], soups_salads:['Sopas y ensaladas','soup'], noodles:['Noodles','noodle'], rice:['Rice','rice'], crudo:['Crudo','fish'], house_specials:['Especiales','star'], bebidas:['Bebidas','glass'] };
+  const CAT={ dim_sum:'Dim Sum', starters:'Starters', soups_salads:'Sopas y ensaladas', noodles:'Noodles', rice:'Rice', crudo:'Crudo', house_specials:'Especiales', bebidas:'Bebidas' };
   const out=[];
   // 1D add-product B: eligibility is this brand's data (its categories, no alcohol); the shared rule drops launchers
-  GroupPicker.rewardDishes(MENU, VARIANT_ITEMS, p => String(p.id).indexOf('beer_')!==0 && !!CAT[p.cat]).forEach(p=>{ const c=CAT[p.cat]; out.push({ key:p.id, name:p.name, price_cents:Math.round(p.price*100), section:c[0], icon:c[1] }); });
-  (typeof EXTRAS!=='undefined'?EXTRAS:[]).forEach(e=>{ if(e.cat!=='Acompañamientos') return; out.push({ key:e.id, name:e.name, price_cents:Math.round(e.price*100), section:'Acompañamientos', icon:'rice' }); });
+  GroupPicker.rewardDishes(MENU, VARIANT_ITEMS, p => String(p.id).indexOf('beer_')!==0 && !!CAT[p.cat]).forEach(p=>{ const c=CAT[p.cat]; out.push({ key:p.id, name:p.name, price_cents:Math.round(p.price*100), section:c, icon:p.reward_icon||'star' }); });   // PLAN 4 GATED: the published reward_icon (CAT keeps only the section)
+  (typeof EXTRAS!=='undefined'?EXTRAS:[]).forEach(e=>{ if(e.cat!=='Acompañamientos') return; out.push({ key:e.id, name:e.name, price_cents:Math.round(e.price*100), section:'Acompañamientos', icon:e.reward_icon||'star' }); });   // PLAN 4 GATED: the published reward_icon
   return out;
 }
 
@@ -4170,7 +4199,7 @@ function goToLocation(){
   const err=document.getElementById('err1');
   // Closed-hours no longer blocks Paso 1 — the customer proceeds to Checkout and schedules there
   // (Estándar disabled / Programar required). The server still fail-closed-rejects ASAP-while-closed.
-  if(!has){ err.style.display='block'; err.textContent='Seleccioná al menos un item.'; return; }
+  if(!has){ err.style.display='block'; err.textContent='Seleccioná al menos '+RESTAURANT_CONFIG.empty_cart_noun+'.'; return; }
   if(calcTotal()<MIN_ORDER){ err.style.display='block'; err.textContent='Agrega L '+(MIN_ORDER-calcTotal()).toFixed(0)+' más para alcanzar el mínimo de L '+MIN_ORDER+'.'; return; }
   const phoneDigits=phone.replace(/[^\d]/g,'');
   const needLen=phoneCountry().len;
@@ -5102,7 +5131,7 @@ async function processPixelPay(){
   // currentOrder.redeem) so the online-return success screen can show the discounted total even though the
   // in-memory quote is gone after the redirect. The paymentStatus summary is preferred on return; this is the fallback.
   try{ const __rq=(window.__ACCOUNT&&window.__ACCOUNT.getRedeemQuoteTotalCents)?window.__ACCOUNT.getRedeemQuoteTotalCents():null; if(__rq!=null) currentOrder.redeem_total_cents=__rq; }catch(_){}
-  try { localStorage.setItem('lamusa_pending_pay', JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder, form: snapshotForm(), ts: Date.now() })); } catch(_){}
+  try { localStorage.setItem(RESTAURANT_CONFIG.storage_keys.pending_pay, JSON.stringify({ order_id: cfg.order_id, t: cfg.poll_token, order: currentOrder, form: snapshotForm(), ts: Date.now() })); } catch(_){}
   setSending('Redirigiendo a pago seguro…');
   window.location.href = cfg.checkout_url;
 }
@@ -5118,12 +5147,12 @@ async function processPixelPay(){
 // not atomic (localStorage has no compare-and-delete) — an accepted residual.
 function clearPendingPayFor(orderId){
   try{
-    const raw = localStorage.getItem('lamusa_pending_pay');
+    const raw = localStorage.getItem(RESTAURANT_CONFIG.storage_keys.pending_pay);
     if(raw === null) return;                                              // absent → no-op
     let s; try{ s = JSON.parse(raw); }catch(_){ s = undefined; }         // unparseable → removed below
     const id = (s && typeof s === 'object') ? s.order_id : undefined;
     if(typeof id === 'string' && id !== '' && id !== orderId) return;     // ANOTHER order's stash → keep
-    localStorage.removeItem('lamusa_pending_pay');                                     // this order's, or malformed → today's removal
+    localStorage.removeItem(RESTAURANT_CONFIG.storage_keys.pending_pay);                                     // this order's, or malformed → today's removal
   }catch(_){}                                                            // storage unavailable → nothing (as today)
 }
 function applyPollState(st, j, orderId, stashedOrder){
@@ -5166,7 +5195,7 @@ async function handlePaymentReturn(){
   const pay = q.get('pay');
   if(!pay) return false;
   let orderId = q.get('order'), token = q.get('t'), stashedOrder = null;
-  try { const s = JSON.parse(localStorage.getItem('lamusa_pending_pay')||'null'); if(s){ orderId = orderId||s.order_id; token = token||s.t; stashedOrder = s.order || null; } } catch(_){}
+  try { const s = JSON.parse(localStorage.getItem(RESTAURANT_CONFIG.storage_keys.pending_pay)||'null'); if(s){ orderId = orderId||s.order_id; token = token||s.t; stashedOrder = s.order || null; } } catch(_){}
   // N4: a genuinely-PAID order can land on the cancel redirect (back-button after complete / double-redirect /
   // cancel-after-capture). Do ONE bounded paymentStatus check before asserting "Pago cancelado" — if it's
   // actually paid, show the REAL terminal screen. Can't verify (no id/token) → cancel (unchanged fallback).
@@ -5227,7 +5256,7 @@ function snapshotForm(){
 function restoreOrderForm(){
   __geoGen++; __geoResult = null;   // a GPS request pending from before the restore never applies, retries or records
   let snap = null;
-  try { const s = JSON.parse(localStorage.getItem('lamusa_pending_pay')||'null'); snap = s && s.form; if(s && s.ts && (Date.now()-s.ts) > 3600000){ snap=null; try{ localStorage.removeItem('lamusa_pending_pay'); }catch(_){} }   /* D/#6/#11(revise): CLEAR a STALE stash (>1h > hosted TTL), don't just ignore it — never restore a day-old order/reservation */ else if(s&&s.order_id){ window.__resumeOrderId = s.order_id;   /* D: a resumed retry REUSES the original order_id → the server reuses the ONE reservation (no double-reserve) */ } } catch(_){}
+  try { const s = JSON.parse(localStorage.getItem(RESTAURANT_CONFIG.storage_keys.pending_pay)||'null'); snap = s && s.form; if(s && s.ts && (Date.now()-s.ts) > 3600000){ snap=null; try{ localStorage.removeItem(RESTAURANT_CONFIG.storage_keys.pending_pay); }catch(_){} }   /* D/#6/#11(revise): CLEAR a STALE stash (>1h > hosted TTL), don't just ignore it — never restore a day-old order/reservation */ else if(s&&s.order_id){ window.__resumeOrderId = s.order_id;   /* D: a resumed retry REUSES the original order_id → the server reuses the ONE reservation (no double-reserve) */ } } catch(_){}
   if(!snap){ location.href='/'; return; }
   try {
     // R4: the snapshot holds this order's ACTUAL delivery data — suppress the logged-in account
@@ -5240,7 +5269,7 @@ function restoreOrderForm(){
     cartRestore(snap.cart);   // 1B Task 4 — rebuild the CART, not just the quantities
     /* §3 — a RESUMED order keeps the line order it was first sent with (its stashed payload), so a stash written by an
        older, menu-ordered page resumes byte-identically; a line the payload lacks follows in insertion order. */
-    try { const _ps = JSON.parse(localStorage.getItem('lamusa_pending_pay')||'null'); if (_ps && _ps.order_id && window.__resumeOrderId === _ps.order_id && _ps.order && Array.isArray(_ps.order.items)) SERIAL.resume(resolvedCartLines(), _ps.order.items); } catch(_){}
+    try { const _ps = JSON.parse(localStorage.getItem(RESTAURANT_CONFIG.storage_keys.pending_pay)||'null'); if (_ps && _ps.order_id && window.__resumeOrderId === _ps.order_id && _ps.order && Array.isArray(_ps.order.items)) SERIAL.resume(resolvedCartLines(), _ps.order.items); } catch(_){}
     const setV = (id,val)=>{ const el=document.getElementById(id); if(el) el.value = val||''; };
     setV('cname',snap.fields.cname);
     const _savedPhone = snap.fields.cphoneCC ? ('+'+snap.fields.cphoneCC+' '+(snap.fields.cphone||'')) : (snap.fields.cphone||'');
@@ -5302,7 +5331,7 @@ function showPayReturn(kind){
   }
   const retry = v.retry ? `<a href="#" onclick="restoreOrderForm();return false;" style="display:inline-block;margin-top:26px;padding:13px 26px;background:var(--red,#C8321A);color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px;letter-spacing:.3px;">Volver a intentar</a>` : '';
   el.innerHTML = logo + visual
-    + `<div style="font-family:var(--display,'Playfair Display',Georgia,serif);font-size:25px;font-weight:800;margin-bottom:10px;color:var(--charcoal,#1E1B18);">${v.t}</div>`
+    + `<div style="font-family:var(--display,'Playfair Display','Playfair Display Fallback','Playfair Display Fallback Noto',Georgia,serif);font-size:25px;font-weight:800;margin-bottom:10px;color:var(--charcoal,#1E1B18);">${v.t}</div>`
     + `<div style="font-size:15px;color:var(--muted,#8C7B6E);max-width:360px;line-height:1.6;">${v.m}</div>${retry}`;
 }
 
@@ -6008,11 +6037,10 @@ function renderDetailModal() {
   // scoped to the modifier categories that apply to this item's category.
   // Items with no applicable extras (beer, soft drinks) skip this block.
   if (pizzaQty > 0 && itemHasExtras(pizza)) {  // LA_MUSA_EXTRAS_STEPPER
-    const allowedCats = extrasCatsForItem(pizza);
+    const allowedGroups = extrasGroupsForItem(pizza);
     /* LA_MUSA_PURE_XP_MODAL — extras read from cart. */
     const itemExtras  = pizzaExtras[pizzaId] || {};
-    allowedCats.forEach(cat => {
-      const inCat = EXTRAS.filter(e => e.cat === cat);
+    allowedGroups.forEach(({ cat, extras: inCat }) => {
       if (!inCat.length) return;
       html += `<div class="detail-cat-label">${escapeHtml(cat)}</div>`;
       html += `<div class="detail-extras-list">`;
@@ -6085,8 +6113,8 @@ function renderLauncherModal(pizza) {
   html += `</div>`;
 
   // Optional extras (staged, always visible)
-  extrasCatsForItem(pizza).forEach(cat => {
-    const inCat = EXTRAS.filter(e => e.cat === cat); if (!inCat.length) return;
+  extrasGroupsForItem(pizza).forEach(({ cat, extras: inCat }) => {
+    if (!inCat.length) return;
     html += `<div class="detail-cat-label">${escapeHtml(cat)}</div><div class="detail-extras-list">`;
     inCat.forEach(e => {
       const q = stagedExtras[e.id] || 0;
@@ -6209,6 +6237,7 @@ function updateDetailCta() {
 function detailCtaTap() {
   const pizzaId = currentDetailPizzaId;
   if (pizzaId === null) return;
+  if (_MENU_BROKEN) { announceMenuBroken(); return; }   // PLAN 4 r2: a broken boot adds nothing
   const _pizza = MENU.find(p => p.id === pizzaId);
   if (itemIsLauncher(_pizza)) {
     if (!stagedVariantId) return;                        // required — no-op until chosen

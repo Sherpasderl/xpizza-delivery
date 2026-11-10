@@ -128,6 +128,7 @@ const GOLDEN = {
 const ORDER_GOLDEN = {
   "xpizza-orders": {
     "cash": {
+      "restaurant_id": "x_pizza",   // §A1 (S0-prod): the X. Pizza form now names its restaurant on every order
       "order_id": "<frozen>",
       "customer_name": "Cliente Prueba",
       "customer_phone": "+504 9876-5432",
@@ -168,6 +169,7 @@ const ORDER_GOLDEN = {
       "expected_net_cents": 71900
     },
     "card": {
+      "restaurant_id": "x_pizza",   // §A1 (S0-prod): the X. Pizza form now names its restaurant on every order
       "order_id": "<frozen>",
       "customer_name": "Cliente Prueba",
       "customer_phone": "+504 9876-5432",

@@ -21,9 +21,11 @@ const RULES = JSON.parse(RULES_TEXT).rules;
 const UID = 'dev-uid';                      // the device's own uid — and, in the human control, the same person-less uid
 const RID = 'tb_centro';
 const BIND = { $uid: UID, $driver_id: UID, $restaurant_id: RID, $order_id: 'O1', $task_id: 'O1_delivery', $token: 'tok1',
-  $alert_id: 'a1', $msg_id: 'm1', $shift_id: 's1', $hash: 'h1', $key: 'k1', $rid: RID };
+  $alert_id: 'a1', $msg_id: 'm1', $shift_id: 's1', $hash: 'h1', $key: 'k1', $rid: RID,
+  $stack_id: 'S1', $oid: 'O1' };   // 2e 11-01: the stackseq + drvc leaves (unbound before → read at …/undefined, so the human control was denied)
 const PUBLIC = ['/config/rewards_public/redemption_live', '/public/brands', '/order_tracking/$token',
-  '/restaurants/$restaurant_id/item_availability', '/restaurants/$restaurant_id/public', '/menus', '/menus/_meta'];   // S5: the status screen's public restaurant facts
+  '/restaurants/$restaurant_id/item_availability', '/restaurants/$restaurant_id/public', '/menus', '/menus/_meta',
+  '/public_stats'];   // S5 ratings (advisor ruling E): the public social-proof projection — read by everyone, written by no client   // S5: the status screen's public restaurant facts
 
 function readLeaves(n, p = '', out = []) {
   for (const [k, v] of Object.entries(n)) {
@@ -40,7 +42,7 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
     const db = ctx.database();
     await db.ref().update({
       [`dispatchers/${UID}`]: true, [`kitchen/${UID}`]: true,
-      [`restaurants/${RID}/kitchen_staff/${UID}`]: true, [`restaurants/${RID}/identity/name`]: 'Centro',
+      [`restaurants/${RID}/kitchen_staff/${UID}`]: true, [`restaurants/${RID}/identity/name`]: 'Centro', [`restaurants/${RID}/identity/version`]: 1,   // 2e 11-01: the identity .validate requires version === data.version + 1 (IDENT writes 2); unseeded → the control write was denied (masked while the read cell failed)
       [`restaurants/${RID}/availability_audit/k1`]: { at: 1 },
       [`restaurants/${RID}/item_availability/k1`]: { available: true },
       [`driver_accounts/${UID}`]: { role: 'driver' }, [`drivers/${UID}`]: { name: 'Dev Person', status: 'off_shift', ingest_token_hash: 'h1', current_shift_id: 's1' },
@@ -59,6 +61,12 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
     });
   });
   const human = env.authenticatedContext(UID, {}).database();
+  // 3a favorites S-C: customer-owned leaves (user_favorites/$uid) need auth.token.customer === true, while staff leaves need
+  // customer !== true — so a leaf's control is the staff human OR the customer human (same uid), and its device twin carries
+  // the SAME claims plus handheld, so a device denial is the handheld exclusion, never a missing claim
+  const custHuman = env.authenticatedContext(UID, { customer: true }).database();
+  const custDevice = env.authenticatedContext(UID, { handheld: true, rid: RID, customer: true }).database();
+  const custAnonDevice = env.authenticatedContext('dev-2', { handheld: true, rid: RID, customer: true }).database();
   const device = env.authenticatedContext(UID, { handheld: true, rid: RID }).database();
   const anonDevice = env.authenticatedContext('dev-2', { handheld: true, rid: RID }).database();   // a device with NO roles at all
   const svcHuman = env.authenticatedContext('svc-assigner', { svc_assigner: true }).database();
@@ -68,16 +76,21 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
   // ── every non-public .read leaf: human control allowed, device denied (own + descendant) ──
   const leaves = readLeaves(RULES).filter((p) => !PUBLIC.includes(p));
   assert.ok(leaves.length >= 20, `premise: the read inventory is derived from the rules (${leaves.length})`);
-  const humanDenied = [];
+  const humanDenied = [], CUST_LEAVES = [];
   for (const p of leaves) {
     const at = bind(p);
-    try { await assertSucceeds(human.ref(at).once('value')); } catch (_) { humanDenied.push(p); continue; }
-    await assertFails(device.ref(at).once('value'));
-    await assertFails(device.ref(`${at}/zz_descendant`).once('value'));
-    await assertFails(anonDevice.ref(at).once('value'));
+    let dev = device, anon = anonDevice;
+    try { await assertSucceeds(human.ref(at).once('value')); } catch (_) {
+      try { await assertSucceeds(custHuman.ref(at).once('value')); dev = custDevice; anon = custAnonDevice; CUST_LEAVES.push(p); } catch (__) { humanDenied.push(p); continue; }
+    }
+    await assertFails(dev.ref(at).once('value'));
+    await assertFails(dev.ref(`${at}/zz_descendant`).once('value'));
+    await assertFails(anon.ref(at).once('value'));
   }
   // the human control must cover every leaf the role-collision uid can hold; the only ones it cannot are pinned below
   assert.deepStrictEqual(humanDenied, [], `human control must pass every read leaf (else the device cell is vacuous): ${humanDenied.join(', ')}`);
+  // the customer control is used EXACTLY for the customer-only leaves (pinned: a new one is a reviewed addition, never silent)
+  assert.deepStrictEqual(CUST_LEAVES, ['/user_favorites/$uid'], `the customer-claim control covers exactly the customer-only read leaves: ${CUST_LEAVES.join(', ')}`);
   pass(`${leaves.length} non-public read leaves (derived from the rules): the human control (same uid, every role) reads each; the device token — with the same roles, and a role-less device — is DENIED on each and on a descendant`);
 
   // ── public reads stay open to devices ──
@@ -144,6 +157,21 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
     '/restaurants/$restaurant_id/availability_audit/$key/.write': [`restaurants/${RID}/availability_audit/k2`, { at: 2 }],
     '/menus/$rid/.write': [`menus/${RID}/b`, 2, { descendant: true }],
     '/user_profiles/$uid/.write': [`user_profiles/${UID}`, { name: 'Dev' }, { op: 'update' }],
+    // 2e 11-01 — the train's new write leaves (previously masked: the read cell aborted first), each in its REAL writer's shape:
+    //   drvf «Problema con este pedido»: xpizza-driver/index.html:2843-2844 — a create-only { reason, by, at: serverTimestamp() } by the
+    //   assigned driver (the human control is assigned tasks/O1_delivery above)
+    '/driver_problems/$oid/$pushId/.write': ['driver_problems/O1/p1', { reason: 'other', by: UID, at: { '.sv': 'timestamp' } }],
+    //   Pausa: the svc-assigner's CLEAR-only grant — index.js:4495 / :4531 write drivers/{uid}/break_since = null
+    '/drivers/$driver_id/break_since/.write': [`drivers/${UID}/break_since`, null, SVC],
+    //   stackseq finalize: sequencing/plan-stack.js:133-143 stackCopies — the five task-copy leaves on tasks/{oid}_delivery
+    '/tasks/$task_id/stack_id/.write': ['tasks/O1_delivery/stack_id', 'S1', SVC],
+    '/tasks/$task_id/stop_seq/.write': ['tasks/O1_delivery/stop_seq', 2, SVC],
+    '/tasks/$task_id/stack_uid/.write': ['tasks/O1_delivery/stack_uid', UID, SVC],
+    '/tasks/$task_id/stack_at/.write': ['tasks/O1_delivery/stack_at', { '.sv': 'timestamp' }, SVC],
+    '/tasks/$task_id/stack_plus_min/.write': ['tasks/O1_delivery/stack_plus_min', 4, SVC],
+    //   favorites S-C (client-direct, members only): the rules' pinned shape — user_favorites/{uid}/{rid} = { createdAt ≤ now+60 s }
+    //   on a seeded identity; control = the customer human, device = the customer device (handheld is the only difference)
+    '/user_favorites/$uid/.write': [`user_favorites/${UID}/${RID}`, { createdAt: { '.sv': 'timestamp' } }, { cust: true }],
   };
   const writeLeaves = [];
   (function walkW(node, p) {
@@ -158,8 +186,9 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
   for (const leaf of writeLeaves) {
     const [p, v, opt] = WRITE_CASES[leaf];
     const svc = opt === SVC || !!(opt && opt.svc);
-    const dev = svc ? svcDevice : device;
-    const ctl = svc ? svcHuman : human;
+    const cust = !!(opt && opt.cust);
+    const dev = svc ? svcDevice : cust ? custDevice : device;
+    const ctl = svc ? svcHuman : cust ? custHuman : human;
     const at = (db) => (p === '' ? db.ref() : db.ref(p));
     const op = (db) => (opt && opt.op === 'update' ? at(db).update(v) : at(db).set(v));
     await assertFails(op(dev));                                              // device FIRST, same state, same value

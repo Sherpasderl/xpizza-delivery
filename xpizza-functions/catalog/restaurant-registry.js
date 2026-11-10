@@ -86,7 +86,25 @@ function createRestaurantRegistry({ listIds, ttlMs = REGISTRY_TTL_MS, deadlineMs
   // Cold-start warm. Awaits the FIRST read only; a no-op once the registry has ever answered.
   const ready = () => ((at === -Infinity && listIds) ? refresh() : Promise.resolve());
 
-  return { known, ready, refresh, _state: () => ({ learned: [...learned], at }) };
+  // S7a directory (PLAN-capp-S7a-r2 §1.2 / r3 §3): ADDITIVE, NON-swallowing read. The same listIds under the same deadline;
+  // on success it updates learned/at exactly as refresh() does, and returns the SAME union known() serves
+  // (sanitized floor ∪ last-good ∪ fresh) plus freshness evidence. A failure is reported, never hidden.
+  // known / ready / refresh are unchanged.
+  async function readNow() {
+    if (!listIds) return { ok: true, ids: [...new Set([...base, ...learned])], fresh_ids: [], at: now(), fresh: false };
+    try {
+      const p = Promise.resolve(listIds());
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+      const fresh = sanitize(await withDeadline(p, deadlineMs, 'registry_read'));
+      if (fresh.length) learned = fresh;
+      at = now();
+      return { ok: true, ids: [...new Set([...base, ...learned])], fresh_ids: fresh, at, fresh: true };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 160) };
+    }
+  }
+
+  return { known, ready, refresh, readNow, _state: () => ({ learned: [...learned], at }) };
 }
 
 // The production reader: the ids of the `restaurants` collection's documents. listDocuments() returns

@@ -168,6 +168,9 @@ export async function loadRestaurants() {
 // world can change while the continuation is running.
 let opGeneration = 0;
 const bumpGeneration = () => { opGeneration += 1; };
+// PLAN-portal-shell-no-shift (Codex r3): the catalog READ's own generation — shell.js's recovery (portal:abandon) cancels an
+// abandoned load and nothing else; a save / publish in flight always settles, reconciles and runs its authoritative reload.
+let readGeneration = 0;
 
 // ── THE SHARED-STATE CALLBACK GUARD ────────────────────────────────────────────────────────────
 // canEdit covers every writer of the DRAFT. This covers the other class: callbacks that write shared
@@ -403,8 +406,8 @@ function syncUi() {
   const rev = $('review');
   if (rev) {
     const valid = !!state.draft && isPublishable(state.draft);
-    rev.disabled = owned || state.menuLoading === true || !state.draft || !valid || uploader.busy();
-    rev.title = (state.draft && !valid) ? 'Hay un precio sin valor válido' : '';
+    rev.disabled = owned || state.menuLoading === true || !state.draft || !valid || uploader.busy() || state.platformPending === true;
+    rev.title = state.platformPending === true ? PLATFORM_COPY.bar : ((state.draft && !valid) ? 'Hay un precio sin valor válido' : '');
   }
   // "Listo" on the receipt is not pressable while the post-publish reload is owed (derived, like every other control)
   if (PUBBACK) PUBBACK.disabled = !!state.settle;
@@ -441,8 +444,10 @@ export async function loadMenu(rid) {
   state.samePrice = new Map();                // "Mismo precio para todas", per product; DERIVED again on every load
   state.rawPrice = new Map();                 // typed price text that is not (yet) a price, per field (codex PB-3 P2-2)
   invalidateReview();                        // clears tenant-bound state AND bumps the generation
-  const gen = opGeneration;
+  const gen = opGeneration, rgen = readGeneration;
   state.renameEdit = null;                    // PLAN-public-menu-display T1 — the section title being edited, if any
+  state.platformPending = false;              // F-2 — per-load server fact (platform_changes_pending): today's path until it arrives;
+  paintPlatformLock();                        //   the shared header lock line goes back NOW, at the transition (a failed load never paints)
   closeNameAll();
   endPhotoWorld();                            // DISH PHOTOS B — uploads and previews belong to the tenant world that is ending
   $('detail').replaceChildren();
@@ -454,7 +459,7 @@ export async function loadMenu(rid) {
       // THE CHECK COMES FIRST, before ANY mutation. It sat BELOW the two lines that follow, so a slow
       // failure from the tenant the merchant had already left blanked the menu of the tenant they were
       // on — the current rail erased by an error about a different restaurant.
-    if (gen !== opGeneration) return;
+    if (gen !== opGeneration || rgen !== readGeneration) return;
     // Degrade to a message, never to an empty menu that reads as "you have no products". The typed
     // kind decides the sentence: an outage says try again, a refusal says this account cannot see it.
     state.menuLoading = false;               // it is not coming; the entry must stop saying "wait"
@@ -473,12 +478,12 @@ export async function loadMenu(rid) {
   // response — so an edit shows up because the underlying source changed, not because a view model was
   // nudged to agree. The response is kept only for what the draft is not: the CAS baseline and the
   // fiscal capability.
-  if (gen !== opGeneration) return;        // a newer switch won; this response is for a tenant the merchant left
+  if (gen !== opGeneration || rgen !== readGeneration) return;        // a newer switch won; this response is for a tenant the merchant left
   // The draft carries the boundary: it may be edited only while nobody owns it for a review or a
   // publish. Every mutator asks this, so a retained or detached listener is refused at the state
   // rather than at the DOM.
   state.draft = createDraft(withPhotos((data && data.source) || { items: [], extras: [], structure: {} }, data),
-    { canEdit: () => editLockHolder === null, held: savedHold });
+    { canEdit: () => editLockHolder === null && state.platformPending !== true, held: savedHold });
   state.sourceUpdateTime = (data && data.sourceUpdateTime) || null;
   state.usesPlatformFactura = (data && data.usesPlatformFactura) === true;
   applyPhotoFacts(data);                    // DISH PHOTOS B — behind the same generation check
@@ -520,6 +525,9 @@ function applyAddProductFacts(data) {
   state.renderedCategories = Array.isArray(data && data.renderedCategories) ? data.renderedCategories.filter((c) => typeof c === 'string') : [];
   state.restaurantName = (data && typeof data.restaurantName === 'string') ? data.restaurantName : '';
   state.draftUnpublishable = (data && data.draft_unpublishable && typeof data.draft_unpublishable === 'object') ? data.draft_unpublishable : null;
+  // F-2 (owner-approved mockup ENrjdkJmw3mzy9PkFCy4D1) — Sherpa wrote fields into this draft that live does not carry yet: the menu is
+  // READ-ONLY with the calm notice, and «Volver al menú publicado» is never offered (resetDraftToLive refuses it anyway; the server decides)
+  state.platformPending = !!(data && data.platform_changes_pending && typeof data.platform_changes_pending === 'object');
   // 1D add-product B — whether the drawer may OFFER a required choice (the platform authoring switch the save is judged by) and
   // which badges this brand's picker draws on an option. Strictly from the server; absent = off / none.
   state.groupAuthoring = !!(data && data.groupAuthoring === true);
@@ -598,8 +606,9 @@ const photoNameOf = (key) => {
 // render.js asks per row: today's placeholder (null) unless uploads are on or the dish has a photo to show
 function rowPhoto(it, { name, open, upload }) {
   const v = photoViewOf(rowId(it));
-  if (!photo.enabled && !(v.kind === 'photo' && (v.url || v.neutral))) return null;
-  return { thumb: rowThumb({ view: v, name, enabled: photo.enabled, onOpen: open, onUpload: upload, onImgError: onPhotoImgError }), tag: rowTag(v) };
+  const enabled = photo.enabled && state.platformPending !== true;   // F-2: a photo is content like a price — read-only while Sherpa updates
+  if (!enabled && !(v.kind === 'photo' && (v.url || v.neutral))) return null;
+  return { thumb: rowThumb({ view: v, name, enabled, onOpen: open, onUpload: upload, onImgError: onPhotoImgError }), tag: rowTag(v) };
 }
 // P2 — choosing a photo for one product. `capture` null = the zone / the row camera: on a phone that EXPANDS the zone in place
 // into «Tomar foto» / «Elegir de la galería» (the mockup's P1 cajón → P2 at 390); elsewhere it opens the system picker.
@@ -765,11 +774,13 @@ const RENAME_NOTICE = {
 const isDeclaredCategory = (id) => categoriesOf().some((c) => c && String(c.id) === String(id));
 const declaredName = (id) => { const c = categoriesOf().find((x) => x && String(x.id) === String(id)); return (c && typeof c.name === 'string') ? c.name : ''; };
 function renameStart(catId) {
+  if (state.platformPending === true) return;   // F-2: refused at admission while Sherpa updates (the control is not drawn)
   if (!state.draft || othersPending() || categoriesUnnamed(state.draft) || !isDeclaredCategory(catId)) return;
   state.renameEdit = { catId: String(catId) };
   paint();
 }
 function renameSave(catId, value) {
+  if (state.platformPending === true) return;   // F-2: refused at admission while Sherpa updates
   if (!state.draft || othersPending() || categoryNameProblem(value) !== null) return;
   setCategoryNames(state.draft, [[catId, value]]);
   state.renameEdit = null;
@@ -898,7 +909,7 @@ function renameNote(text) {
 function holdDrawerForRename() {
   // the held-state mockup: the hold's locked controls are DIMMED like the list's prices (styles.css #drawer.namehold …:disabled);
   // the class itself is synced in ONE place, paint() (Codex r1)
-  if (!renamesPending()) return;
+  if (!renamesPending() && state.platformPending !== true) return;   // F-2: the same hold while Sherpa updates the menu
   for (const c of $('drawer').querySelectorAll('input, textarea, select')) lockControl(c, true);
   // ruling A — the «Foto» field's controls too (zone, Cambiar / Quitar, Reintentar, Deshacer); a photo is content like a price
   // …except a held upload's «Cancelar» (data-held): its way out (Codex r1 #1)
@@ -991,6 +1002,16 @@ async function resetToLive(rid, expectedRevision) {
   }
   if (gen !== opGeneration || (state.currentRid && state.currentRid !== rid)) return;   // the merchant is elsewhere now
   releaseEditLock(lock);
+  // F-2 (mockup N2) — the server refused because Sherpa is updating this menu: the designed panel, and the screen behind it
+  // becomes the read-only notice (a stale page that still showed the reset offer)
+  if (failed && failed.code === 'platform_changes_pending') {
+    state.platformPending = true;
+    paint(); refreshBar();
+    showOutcome(outcomeFor(failed, 'edit'));
+    $('scrim').classList.add('show');
+    syncUi();
+    return;
+  }
   if (failed) {
     const [t, d] = messageFor(failed);
     showEmpty(t, d);
@@ -999,6 +1020,46 @@ async function resetToLive(rid, expectedRevision) {
   }
   await loadMenu(rid);
 }
+// F-2 (owner-approved mockup ENrjdkJmw3mzy9PkFCy4D1, N1 / P1) — the portal's own quiet callout, no button: nothing for the merchant to do
+export const PLATFORM_COPY = Object.freeze({
+  title: 'Sherpa está actualizando tu menú',
+  body: 'Estamos actualizando cómo se ve tu menú. Mientras tanto podés verlo, pero no guardar ni publicar cambios. Si necesitás cambiar un precio ya, escribinos.',
+  bar: 'Publicar se habilita cuando Sherpa termine.',
+  lock: 'Solo lectura mientras Sherpa actualiza',
+});
+function offerPlatformNotice(host) {
+  const c = document.createElement('div');
+  c.className = 'callout calloutquiet1b';
+  c.setAttribute('role', 'status');
+  const ns = 'http://www.w3.org/2000/svg';
+  const v = document.createElementNS(ns, 'svg'); v.setAttribute('viewBox', '0 0 24 24'); v.setAttribute('aria-hidden', 'true');
+  const ci = document.createElementNS(ns, 'circle'); ci.setAttribute('cx', '12'); ci.setAttribute('cy', '12'); ci.setAttribute('r', '9');
+  const pa = document.createElementNS(ns, 'path'); pa.setAttribute('d', 'M12 11v5M12 8h.01');
+  v.append(ci, pa);
+  const t = document.createElement('div');
+  const b = document.createElement('b'); b.textContent = `${PLATFORM_COPY.title}.`;
+  t.append(b, document.createTextNode(` ${PLATFORM_COPY.body}`));
+  c.append(v, t);
+  host.prepend(c);
+}
+// the header lock the read-only menu already uses (#menulock), with this state's own line; restored when the state ends
+let menulockText = null;
+function paintPlatformLock() {
+  const lock = $('menulock');
+  const label = lock && lock.querySelector('.lock');
+  if (!label) return;
+  const text = Array.from(label.childNodes).find((n) => n.nodeType === 3);
+  if (state.platformPending) {
+    if (menulockText === null) menulockText = text ? text.nodeValue : '';
+    if (text) text.nodeValue = PLATFORM_COPY.lock; else label.append(document.createTextNode(PLATFORM_COPY.lock));
+    lock.classList.remove('hidden');
+  } else if (menulockText !== null) {
+    if (text) text.nodeValue = menulockText;
+    menulockText = null;
+    lock.classList.add('hidden');
+  }
+}
+
 function offerResetToLive(host, rid, rev) {
   const box = document.createElement('div');
   box.className = 'unpub';
@@ -1043,6 +1104,7 @@ function refreshBar() {
   // Nothing typed, nothing to throw away. The review is the way forward here; discard would be a
   // control that looks live and does nothing.
   $('discard').classList.toggle('hidden', n === 0);
+  if (state.platformPending === true) { $('rbtxt').textContent = PLATFORM_COPY.bar; $('discard').classList.add('hidden'); }   // F-2: the reason, said where the action is
   syncRenameHold();                          // PLAN-public-menu-display T1 — a typed price turns the rename control off, in place
   // A price we cannot vouch for blocks the way forward — HERE, where the merchant can still see which
   // row it is, rather than at the server after the review and the attestation. The RULE lives here; the
@@ -1094,7 +1156,7 @@ function paint() {
   const nameHold = renamesPending();
   const otherHold = !nameHold && othersPending();
   const editing = !!(state.renameEdit && state.renameEdit.catId === catId);
-  const rename = (state.draft && catId !== null && isDeclaredCategory(catId) && !categoriesUnnamed(state.draft)) ? {
+  const rename = (state.platformPending !== true && state.draft && catId !== null && isDeclaredCategory(catId) && !categoriesUnnamed(state.draft)) ? {   // F-2: no «Cambiar nombre» while Sherpa updates (mockup N1/P1)
     mode: editing ? 'edit' : (otherHold ? 'blocked' : 'idle'),
     value: declaredName(catId),
     focus: editing,
@@ -1105,7 +1167,7 @@ function paint() {
   } : null;
   renderDetail($('detail'), state.groups.find((g) => g.category.id === state.selectedCat), state.extras, {
     rename,
-    locked: nameHold,
+    locked: nameHold || state.platformPending === true,   // F-2: Sherpa is updating the menu — prices and «Agregar producto» read-only
     notice: nameHold ? RENAME_NOTICE.renames : (otherHold && (rename || categoriesUnnamed(state.draft)) ? RENAME_NOTICE.others : null),
     editable: true,
     changed: (surface, key) => changed.has(`${surface}::${key}`),
@@ -1125,7 +1187,10 @@ function paint() {
     photoOf: rowPhoto,             // DISH PHOTOS B — null with uploads off and no photo: today's placeholder
     onPhoto: bound((id) => { photoExpandedKey = null; openDrawer(id); pickPhoto(id, null); }),   // the camera: the drawer with the picker open
   });
-  if (state.draftUnpublishable && state.draftRid) offerResetToLive($('detail'), state.draftRid, state.sourceUpdateTime);
+  // F-2 — a Sherpa-written draft gets the calm notice INSTEAD of the reset offer; a merchant's own unpublishable draft keeps today's
+  if (state.platformPending) offerPlatformNotice($('detail'));
+  else if (state.draftUnpublishable && state.draftRid) offerResetToLive($('detail'), state.draftRid, state.sourceUpdateTime);
+  paintPlatformLock();
 }
 
 // ── the item drawer (Task 3: PRICE ONLY) ───────────────────────────────────────────────────────
@@ -1737,7 +1802,9 @@ function syncRow(surface, key, value) {
   markChanged(surface, key);
 }
 
-document.addEventListener('portal:restaurant', (e) => { loadMenu(e.detail && e.detail.rid); });
+// shell-wait r7 (R2): the load this event started, so openEditor can hand it to the shell's bounded reveal (it settles, never throws)
+let lastMenuLoad = null;
+document.addEventListener('portal:restaurant', (e) => { lastMenuLoad = loadMenu(e.detail && e.detail.rid); });
 
 // The review bar's own controls. Wired here, not inline: the CSP has no 'unsafe-inline', so an
 // onclick attribute would be inert and the button would look enabled while doing nothing.
@@ -1758,6 +1825,7 @@ $('discard').addEventListener('click', () => {
 // how a merchant approves a change they were never shown.
 async function openReviewFlow() {
   if (state.publishViaRequest) return sendToOwnerFlow();   // T-d: this caller sends; the owner's path below is untouched
+  if (state.platformPending === true) return;   // F-2 r2 (Codex r1 P2-2): Sherpa is updating the menu — no save, no review, at ADMISSION (each flow owns its own)
   // 🔴 ADMISSION CONTROL, FIRST — before the generation is bumped and before anything is sent.
   //
   // An operation that cannot acquire the edit lock is REFUSED, not admitted-then-collided. Letting a
@@ -2069,7 +2137,7 @@ async function settlePublish() {
     syncUi();
     return;
   }
-  state.draft = createDraft(withPhotos(fresh.source, fresh), { canEdit: () => editLockHolder === null, held: savedHold });
+  state.draft = createDraft(withPhotos(fresh.source, fresh), { canEdit: () => editLockHolder === null && state.platformPending !== true, held: savedHold });
   state.sourceUpdateTime = fresh.sourceUpdateTime || null;
   state.usesPlatformFactura = fresh.usesPlatformFactura === true;
   applyPhotoFacts(fresh);                   // DISH PHOTOS B — the published photos' previews (public URLs) replace the draft ones
@@ -2112,6 +2180,7 @@ function restorePublishFooter() {
 // catalogRequestPublish records the request with the edit token that save returned. No review, no attestation, no publishEdited.
 // Every failure lands on the designed panels (outcomeFor), like the review's own save.
 async function sendToOwnerFlow() {
+  if (state.platformPending === true) return;   // F-2 r2 (Codex r1 P2-2): the same admission refusal for «Enviar al dueño»
   if (state.menuLoading) return;
   if (!state.draft || !state.draftRid) return;
   if (state.currentRid && state.currentRid !== state.draftRid) return;
@@ -2298,7 +2367,13 @@ try {
 export function openEditor(rid, { name = rid, sales } = {}) {
   state.restaurants = [{ rid, name }];
   state.currentRid = rid;
+  lastMenuLoad = null;
   document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid, sales } }));
+  return lastMenuLoad;   // shell-wait r7: the catalog's first load — the shell's reveal waits for it (bounded)
 }
 // The self-update guard, reused verbatim to block a branch switch while the merchant has unsaved work or an operation open.
 export const editorCanLeave = () => portalCanReload(portalReloadFacts());
+
+// PLAN-portal-shell-no-shift (Codex r2 P1): shell.js presents its recovery box after a boot failure / the discovery deadline;
+// the editor's held catalog LOAD belongs to an abandoned world and must not repaint over it — reads only (Codex r3).
+document.addEventListener('portal:abandon', () => { readGeneration += 1; });

@@ -273,13 +273,29 @@ function trackingUrl(token, restaurantId = 'x_pizza') {
   return `${base}/${token}`;
 }
 
-function renderOrderReceived({ customerName, orderId, itemsText, total, trackingToken, restaurantId, brand }) {
+// S3c: the «Envío» line (order-received for a DELIVERY only — a pickup never carries envío) — only when delivery_cents > 0;
+// absent (every order while envío is dark) → no line, byte-identical. A free-delivery promo covering it reads «Gratis». `total` is the CHARGED total.
+function envioLines(envio) {
+  if (!envio || !Number.isSafeInteger(envio.cents) || envio.cents <= 0) return [];
+  const net = Math.max(0, envio.cents - (Number.isSafeInteger(envio.promo_cents) ? envio.promo_cents : 0));
+  return [net === 0 ? '🛵 Envío: Gratis' : `🛵 Envío: L${net / 100}`];
+}
+
+// S2: the «Propina» line beside «Envío» — only when the order carries a tip (> 0); absent → no line, byte-identical.
+function propinaLines(propina) {
+  if (!propina || !Number.isSafeInteger(propina.cents) || propina.cents <= 0) return [];
+  return [`🤝 Propina: L${propina.cents / 100}`];
+}
+
+function renderOrderReceived({ customerName, orderId, itemsText, total, trackingToken, restaurantId, brand, envio, propina }) {
   return [
     `¡Hola ${customerName || ''}! 👋`,
     ``,
     brand ? `Recibimos tu pedido en ${brand} ✅` : 'Recibimos tu pedido ✅',
     ``,
     `${itemsEmojiFor(restaurantId)} ${itemsText || ''}`,
+    ...envioLines(envio),
+    ...propinaLines(propina),
     `💰 Total: L${total}`,
     ``,
     `Tu pedido está siendo preparado. Te avisamos cuando esté en camino 🛵`,

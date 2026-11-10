@@ -228,32 +228,53 @@ test('INTEGRATION startup: __startApp wires exactly one driver_problem subscript
   assert.ok(REC.pill >= 1 && REC.sheet >= 1, 'an alert update refreshes the pill and the owned sheet');
 });
 
-test('INTEGRATION logout: the onAuth !user branch unsubscribes and resets pill/sheet/nav state', () => {
+test('INTEGRATION logout: the onAuth !user branch tears alerts down via teardownAlerts, THEN reloads (authorized) or shows login (fresh)', () => {
   const body = innerBlock(html, 'if (!user) {');
-  assert.ok(body.includes('alertsUnsub') && body.includes('alertNavToken'), 'extracted the logout branch');
-  const REC = { unsubCalls: 0, pill: 0, pillSawLen: -1, shown: null };
-  const run = new Function('REC', `
-    let started = true;
-    let alertsUnsub = () => { REC.unsubCalls++; };
-    let alertsList = [{ id: 'a', alert: { type: 'driver_problem' } }];
-    let alertsSheetOwner = true;
-    let alertNavToken = 0;
-    const show = (s) => { REC.shown = s; };
-    const renderAlertsPill = () => { REC.pill++; REC.pillSawLen = alertsList.length; };
-    (() => {
+  // Restack (reload session model, PLAN-dispatch-maps-decouple §2): the teardown now lives in ONE function,
+  // teardownAlerts — called by requestReload (authorized logout AND account switch) and directly on a fresh-page
+  // logout. Extract the REAL teardownAlerts and assert its statements; assert the branch routes through it.
+  const teardownSrc = 'function teardownAlerts(){' + innerBlock(html, 'function teardownAlerts() {') + '}';
+  assert.ok(teardownSrc.includes('alertsUnsub') && teardownSrc.includes('alertNavToken'), 'teardownAlerts carries the unsub + nav-token reset');
+  assert.ok(body.includes('teardownAlerts') && body.includes('requestReload'), 'the logout branch routes through teardownAlerts / requestReload');
+  // an AUTHORIZED-session logout routes to a full page reload; a fresh-page logout (never authorized) routes to
+  // show('login'). teardownAlerts runs BEFORE either route in BOTH cases (requestReload tears down first).
+  const runBranch = (priorUid) => {
+    const REC = { unsubCalls: 0, pill: 0, pillSawLen: -1, shown: null, reload: 0 };
+    const run = new Function('REC', 'priorUid', `
+      let started = true;
+      let reloading = false;
+      let alertsUnsub = () => { REC.unsubCalls++; };
+      let alertsList = [{ id: 'a', alert: { type: 'driver_problem' } }];
+      let alertsSheetOwner = true;
+      let alertNavToken = 0;
+      const show = (s) => { REC.shown = s; };
+      const renderAlertsPill = () => { REC.pill++; REC.pillSawLen = alertsList.length; };
+      ${teardownSrc}
+      const requestReload = () => { teardownAlerts(); REC.reload++; };   // prod: requestReload tears down FIRST
+      (() => {
 ${body}
-    })();
-    return { listLen: alertsList.length, owner: alertsSheetOwner, nav: alertNavToken, unsubNulled: alertsUnsub === null, started };
-  `);
-  const out = run(REC);
-  assert.equal(REC.unsubCalls, 1, 'the live subscription is unsubscribed on logout');
-  assert.equal(out.unsubNulled, true, 'the handle is nulled so the next sign-in re-subscribes');
-  assert.equal(out.listLen, 0, 'the rendered list is cleared');
-  assert.equal(out.owner, false, 'sheet ownership is released');
-  assert.equal(out.nav, 1, 'the nav token is invalidated so a pending alert fetch is dropped');
-  assert.equal(REC.pill, 1, 'the pill is re-rendered (cleared) on logout');
-  assert.equal(REC.pillSawLen, 0, 'the pill clears AFTER the list is emptied (no stale count on next sign-in)');
-  assert.equal(REC.shown, 'login', 'routed to the login screen');
+      })();
+      return { listLen: alertsList.length, owner: alertsSheetOwner, nav: alertNavToken, unsubNulled: alertsUnsub === null, started };
+    `);
+    const out = run(REC, priorUid);
+    // teardown + reset — IDENTICAL in both routes (the shipped alerts-surface guarantee; dropping any line fails here)
+    assert.equal(REC.unsubCalls, 1, 'the live subscription is unsubscribed on logout');
+    assert.equal(out.unsubNulled, true, 'the handle is nulled so the next sign-in re-subscribes');
+    assert.equal(out.listLen, 0, 'the rendered list is cleared');
+    assert.equal(out.owner, false, 'sheet ownership is released');
+    assert.equal(out.nav, 1, 'the nav token is invalidated so a pending alert fetch is dropped');
+    assert.equal(REC.pill, 1, 'the pill is re-rendered (cleared) on logout');
+    assert.equal(REC.pillSawLen, 0, 'the pill clears AFTER the list is emptied (no stale count on next sign-in)');
+    return REC;
+  };
+  // fresh page (never authorized): teardown runs, NO reload, routed to login
+  const fresh = runBranch(null);
+  assert.equal(fresh.reload, 0, 'a fresh-page logout does not reload (loop-safe)');
+  assert.equal(fresh.shown, 'login', 'a fresh-page logout routes to the login screen');
+  // authorized session (had a prior uid this page life): teardown runs, THEN reload; no show(login) fall-through
+  const authed = runBranch('U1');
+  assert.equal(authed.reload, 1, 'an authorized-session logout reloads to a clean login (after teardown)');
+  assert.equal(authed.shown, null, 'the reload replaces the page — no show(login) fall-through');
 });
 
 test('INTEGRATION delegated click: the alert selectors route, and dismiss is guarded + passes the record', () => {

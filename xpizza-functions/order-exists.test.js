@@ -17,7 +17,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('order-exi
 
 const PLAN_DETAIL = 'Ya hay un pedido en curso con este número. Revisá tu pedido o pago anterior antes de volver a intentar.';
 const PLAN_ABSENT = ['paid_during_resolve', 'active_attempt_id', 'payment_reference', 'cancel_claim_id', 'resolving_claim_id', 'payment_uuid', 'capture_verified', 'hosted_callback_verified'];
-const ENUM = ['method', 'closed', 'cart', 'cart_unverifiable', 'binding_format_invalid', 'client_update_race', 'conflict'];
+const ENUM = ['method', 'closed', 'cart', 'cart_unverifiable', 'binding_format_invalid', 'client_update_race', 'conflict', 'tip'];   // S2-srv-tip (PLAN-capp-S2-r4 §3.2): + 'tip', a changed tip on an existing order id
 
 // the real writer's order records, one per intake combo, per terminal-safe method
 const written = [];

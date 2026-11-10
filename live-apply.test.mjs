@@ -13,6 +13,7 @@
 // remote script is REMOVED and fetch is stubbed before a single form script runs, so nothing here can
 // reach the network.
 import assert from 'node:assert';
+import { createRequire } from 'node:module';
 /* The rig lives in form-harness.mjs so Task 9's whole-flow matrix runs on the SAME one. Every note that
    used to sit here — why the default responder never settles, why availability is driven through the
    form's own loader, why windows are closed — moved with it. */
@@ -1406,9 +1407,16 @@ for (const dir of Object.keys(BRAND)) {
       const m4 = B.menu(w);
       const liveVI = w.liveMenuGlobalGet('VARIANT_ITEMS');
       const srcKey = Object.keys(liveVI)[0];
-      m4.dishes = m4.dishes.concat([{ ...m4.dishes[0], id: lId, name: 'Launcher Amp', img: undefined }]);
+      // PLAN 4 r3 (Codex r2): a PRODUCTION-VALID second group — the launcher gets its OWN correctly parented choices (production's
+      // catalog/group-index.js refuses a choice shared by two launchers), and the map in force is kept for the existing groups.
+      const launcher = { ...m4.dishes[0], id: lId, name: 'Launcher Amp', img: undefined };
+      const src = liveVI[srcKey].variantIds.map((vid) => m4.dishes.find((d) => d.id === vid));
+      const own = src.map((v, i) => ({ ...v, id: `${lId}_c${i + 1}`, cat: launcher.cat, subcat: launcher.subcat, variantOf: lId,
+        choice: `Opción ${i + 1}`, name: `Launcher Amp - Opción ${i + 1}` }));
+      own.forEach((c) => { if (c.subcat === undefined) delete c.subcat; });
+      m4.dishes = m4.dishes.concat([launcher, ...own]);
       m4.has_photo = [lId];
-      m4.variant_items = { [lId]: { ...liveVI[srcKey] } };
+      m4.variant_items = { ...liveVI, [lId]: { ...liveVI[srcKey], variantIds: own.map((c) => c.id) } };
       await serve(w, envelope(B.rid, m4));
       assert.ok(w.liveMenuGlobalGet('VARIANT_ITEMS')[lId], 'la_musa: non-vacuity — the ampersand launcher applied');
       w.openDetailModal(lId);
@@ -1609,9 +1617,11 @@ for (const dir of Object.keys(BRAND)) {
     await w.submitOrder('confirmed');
     assert.deepStrictEqual(chargeUrls(w.__calls), [],
       `${dir}: 🔴 …and the real submit path reached NO charge endpoint (${JSON.stringify(chargeUrls(w.__calls))})`);
-    const err = w.document.getElementById('err3') || w.document.getElementById('err1');
+    // PLAN 4 r2 (Codex r1 P1): the announcement is in the error box of the stage the customer is ON — not a hidden one
+    const active = w.document.querySelector('.stage.active');
+    const err = ['err3', 'err1'].map((id) => w.document.getElementById(id)).find((el) => el && active && active.contains(el));
     assert.match((err && err.textContent) || '', /[Rr]ecarg/,
-      `${dir}: 🔴 …and the customer is told to reload rather than left guessing`);
+      `${dir}: 🔴 …and the customer is told to reload rather than left guessing — in the VISIBLE stage`);
     ok(`${dir}: a renderer that cannot draw the old menu either is reported fatal — and blocks the charge`);
   }
 
@@ -1941,6 +1951,44 @@ for (const dir of Object.keys(BRAND)) {
     w.closeDetailModal();
     ok(`${dir}: the variant renderer is strict and skips what it cannot resolve — it never dereferences a miss`);
   }
+}
+
+// ── PLAN 4 r4 (Codex r3 #2) — A PRODUCTION-VALID SECOND GROUP, the positive twin of the adversarial ampersand case above ──
+// A second launcher in the REAL la_musa seed source with its OWN correctly parented choices, accepted by validateSource (the
+// portal's own gate) → the real candidate build → the ONE composer → the ONE menu contract → a live apply on the real page, where
+// it draws as a launcher with exactly its own choices. (The ampersand id stays adversarial: validateSource refuses it, by design.)
+{
+  const rq = createRequire(new URL('./xpizza-functions/x.js', import.meta.url));
+  const { buildSourceFromCode } = rq('./tools/seed-source-store');
+  const { validateSource } = rq('./catalog/source-store');
+  const { buildSourceCandidate } = rq('./catalog/candidate-validate');
+  const { composeServedMenu } = rq('./catalog/public-menu');
+  const src = JSON.parse(JSON.stringify(buildSourceFromCode('la_musa')));
+  const [lk, spec] = Object.entries(src.structure.variant_items)[0];
+  const L = src.items.find((i) => i.key === lk);
+  const newL = `${lk}_dos`; const name = `${L.display.name} Dos`;
+  const choices = spec.variantIds.map((vid, i) => {
+    const orig = src.items.find((it) => it.key === String(vid));
+    const key = `${newL}_${i + 1}`;
+    return { ...JSON.parse(JSON.stringify(orig)), key, display: { ...orig.display, id: key, variantOf: newL, name: `${name} - ${orig.display.choice}` } };
+  });
+  src.items.push({ ...JSON.parse(JSON.stringify(L)), key: newL, display: { ...L.display, id: newL, name } }, ...choices);
+  src.structure.item_order.push(newL, ...choices.map((c) => c.key));
+  src.structure.variant_items[newL] = { ...spec, variantIds: choices.map((c) => c.key) };
+  assert.doesNotThrow(() => validateSource(src, 'la_musa'), 'la_musa: the second group passes validateSource — production-valid');
+  const { inputs, built } = buildSourceCandidate('la_musa', src);
+  void inputs;
+  const body = composeServedMenu('la_musa', { items: built.items, structure: built.structure, extras: built.extras });
+  const w = loadForm('la-musa-orders');
+  assert.doesNotThrow(() => w.GroupPicker.validateMenu(body, { variantItems: body.variant_items }), 'la_musa: …and the ONE menu contract accepts it');
+  await serve(w, envelope('la_musa', body, '1d.3'));
+  assert.ok(w.liveMenuGlobalGet('VARIANT_ITEMS')[newL], 'la_musa: the second group applied live');
+  w.openDetailModal(newL);
+  const rows = w.document.getElementById('detail-scroll').querySelectorAll('.detail-variant-row').length;
+  assert.strictEqual(rows, choices.length, `la_musa: it draws as a LAUNCHER with exactly its own ${choices.length} choices`);
+  w.closeDetailModal();
+  assert.ok(w.liveMenuGlobalGet('VARIANT_ITEMS')[lk], 'la_musa: the first group is untouched');
+  ok(`la_musa: a production-valid second group (validateSource ✓, its own ${choices.length} choices) builds, passes the ONE contract and applies live as a launcher`);
 }
 
 closeAll();

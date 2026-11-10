@@ -39,6 +39,8 @@ function loadAccount(formDir) {
     setTimeout: () => 0, setInterval: () => 0, clearTimeout() {}, clearInterval() {},
     fetch: () => Promise.resolve({ ok: false, json: () => Promise.resolve({}) }), firebase: undefined };
   sandbox.window = sandbox; sandbox.globalThis = sandbox;
+  // S0-prod: account.js reads its restaurant from the page's RESTAURANT-CONFIG block — the SHIPPED block of this form, executed.
+  sandbox.RESTAURANT_CONFIG = require('./contract/capp/brand-config.mjs').readInlineConfig(readFileSync(join(__dirname, '..', formDir, 'index.html'), 'utf8'), formDir).config;
   vm.createContext(sandbox);
   vm.runInContext(src, sandbox, { filename: `${formDir}/account.js` });
   assert.ok(sandbox.window.__ACCOUNT, `${formDir}: window.__ACCOUNT not published`);

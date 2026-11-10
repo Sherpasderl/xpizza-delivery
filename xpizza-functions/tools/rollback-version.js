@@ -20,20 +20,21 @@ try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; th
 const admin = require('firebase-admin');
 const { readPointerSnap } = require('../catalog/catalog-firestore');
 const { requireProject } = require('./require-project');
+const { checkRegistered } = require('./registered-roster');   // the roster is the registry, never a list in code
 const { rollbackVersion } = require('../catalog/catalog-publish');
 const { makeRtdbMirror, RTDB_URL } = require('../catalog/mirror-rtdb');
 
-const arg = (name) => {
-  const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
-  return hit ? hit.slice(name.length + 3).trim() : null;
-};
-const RID = arg('rid');
-const TO = arg('to');
-const KNOWN = ['x_pizza', 'la_musa'];
 
 // THE PROJECT GUARD, before anything resolves a credential or constructs a client: a refusal
 // here cannot have read or written a byte. See tools/require-project.js.
 const PROJECT_ID = requireProject();
+// STRICT arguments (Codex cert r1 #1): only --rid=<rid> and --to=<versionId>, each at most once; anything else — an unknown
+// flag (`--dry-run`, `--apply`), a repeat, an empty value, the `--rid <rid>` space form — is refused before any client.
+const ARGS = require('./cert-cli-args').parseCertArgs('rollback-version', process.argv.slice(2), { options: ['rid', 'to'] });
+if (ARGS.refused) { console.error(ARGS.refused); process.exit(1); }
+const arg = (name) => (ARGS[name] === undefined ? null : ARGS[name]);   // the strictly parsed value, null when absent
+const RID = arg('rid');
+const TO = arg('to');
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
   projectId: PROJECT_ID,   // NEVER the ambient gcloud default — that is what nearly wrote a catalog into another project
@@ -48,7 +49,11 @@ const db = admin.firestore();
                   '       omit --to to LIST the retained versions (read-only)');
     process.exit(2);
   }
-  if (!KNOWN.includes(RID)) console.warn(`note: ${RID} is not one of the two founding brands (${KNOWN.join(', ')})`);
+  const reg = await checkRegistered(db, RID);
+  if (!reg.ok) {
+    console.error(`rollback-version: REFUSED — ${reg.reason}${reg.reason === 'not_registered' ? ` (${RID} is not a registered restaurant)` : ''}`);
+    process.exit(1);
+  }
 
   const col = db.collection('restaurants').doc(RID).collection('versions');
   const [snap, pointer] = await Promise.all([col.get(), db.collection('restaurants').doc(RID).collection('meta').doc('active_version').get()]);

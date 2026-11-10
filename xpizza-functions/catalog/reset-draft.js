@@ -15,11 +15,13 @@
 const { validateSource, sourceRefOf, canonicalize, encodeUpdateTime } = require('./source-store');
 const { candidateSource } = require('./candidate-validate');
 const { isPreconditionFailure } = require('./edit-catalog-handler');
+const PS = require('../photos/photo-state');   // DISH PHOTOS A2: the three-state vocabulary (pure)
+const { resolvePlatformPending } = require('./platform-pending');   // F-1 (2026-11-07): Sherpa-written draft fields are never reset away
 
 const { can } = require('../access/membership');   // PLAN-portal-membership r3 §3.2 — the ONE capability table
 const reply = (status, body) => ({ status, body });
 
-async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previewVersion, toPrecondition = (v) => v }, body, req) {
+async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previewVersion, toPrecondition = (v) => v, readActivePhotos = null, attach = null, alertMalformed = null }, body, req) {
   const rid = body && body.restaurantId;
   const auth = await authorize(rid, req);
   if (!auth || !auth.ok) return reply((auth && auth.status) || 403, { error: (auth && auth.error) || 'not_authorized' });
@@ -35,8 +37,14 @@ async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previe
   } catch (e) {
     return reply(503, { error: 'live_version_unavailable', retryable: true });
   }
+  // DISH PHOTOS A2 step 11 (§2.1): the draft photo map comes back from the ACTIVE version's meta/photos (pid / removed; legacy = absent).
+  // Without the dependency, or with no photo doc on the active version, nothing is added (a stale draft map is cleared below).
+  let photoMap = null;
+  if (readActivePhotos) {
+    try { photoMap = PS.resetMapFromActive(await readActivePhotos(rid, versionId)); } catch (e) { return reply(503, { error: 'live_version_unavailable', retryable: true }); }
+  }
 
-  const projected = canonicalize({ ...candidateSource(rid, { items: preview.items, extras: preview.extras, structure: preview.structure }), deleted_ids: null });
+  const projected = canonicalize({ ...candidateSource(rid, { items: preview.items, extras: preview.extras, structure: preview.structure, key_mode: preview.record && preview.record.key_mode, frozen_keys: preview.record && preview.record.frozen_keys }), deleted_ids: null, ...(photoMap ? { photos: photoMap } : {}) });
   try {
     validateSource(projected, rid);
   } catch (e) {
@@ -44,12 +52,36 @@ async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previe
     return reply(500, { error: 'projection_invalid', detail: String((e && e.message) || e).slice(0, 200) });
   }
 
+  /* F-1 (BRIEF-portal-stale-draft-clobber, ruled 2026-11-07) — a draft carrying fields a SHERPA tool wrote (the platform-pending
+     stamp) that live does not carry yet is NOT the merchant's to throw away: going back to live would silently discard them (the
+     11-02 loss). Refused until live carries them; a draft that merely differs from live (a rollback) still resets — the stamp,
+     not the difference, decides. Live already carrying every stamped field clears the stamp here. Fails CLOSED. */
+  let pend;
+  try { pend = await resolvePlatformPending(db, rid, projected); } catch (e) { return reply(503, { error: 'store_unavailable', retryable: true }); }
+  if (pend.pending) {
+    // a malformed stamp: still refused (fail closed), and never silent — the one deduped owner alert (best effort)
+    if (pend.malformed && alertMalformed) { try { await alertMalformed(rid); } catch (e) { console.error('platform_pending_alert_failed', JSON.stringify({ rid })); } }
+    return reply(409, { error: 'platform_changes_pending', detail: 'Sherpa is updating this menu; the draft cannot be reset until that update is published', fields: pend.fields });
+  }
+
+  /* codex r1 P1-3 — the restored pids go through the SAME fenced attach editCatalog uses (registry draft|published + last_ref_at bump,
+     one transaction) BEFORE the CAS below: a concurrent publish + prune + sweep can no longer delete a photo this reset is about to
+     reference. A pid already deleting/deleted refuses (the owner re-uploads); an attach I/O failure fails closed. */
+  if (attach && photoMap) {
+    const pids = PS.referencedPids(photoMap);
+    if (pids.length) {
+      let a;
+      try { a = await attach(rid, pids); } catch (e) { return reply(503, { error: 'store_unavailable', retryable: true }); }
+      if (!a || a.ok !== true) return reply(409, { error: 'photo_unavailable', detail: 'a published photo is no longer available — publish again or upload it again' });
+    }
+  }
+
   const ref = sourceRefOf(db, rid);
   let snap;
   try { snap = await ref.get(); } catch (e) { return reply(503, { error: 'store_unavailable', retryable: true }); }
   if (!snap || !snap.exists) return reply(409, { error: 'source_missing' });
   const payload = { ...projected };
-  for (const k of Object.keys((snap.data && snap.data()) || {})) if (!Object.prototype.hasOwnProperty.call(projected, k)) payload[k] = null;
+  const storedFk = ((snap.data && snap.data()) || {}).frozen_keys; const keepFk = !!storedFk && typeof storedFk === 'object' && !Array.isArray(storedFk); for (const k of Object.keys((snap.data && snap.data()) || {})) if (!Object.prototype.hasOwnProperty.call(projected, k) && k !== 'key_mode' && !(k === 'frozen_keys' && keepFk)) payload[k] = null; if (keepFk) payload.frozen_keys = { ...storedFk, ...(projected.frozen_keys || {}) };   // S0: a version with no recorded mode leaves the stored mode in place; S1a: recorded renames are never dropped (stored ∪ version)
 
   let writeTime;
   try {

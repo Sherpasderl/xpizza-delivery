@@ -8,7 +8,8 @@
       "emoji": "🥩",
       "color": "#7A2515",
       "desc": "Mixed meats, rich tomato sauce",
-      "img": "images/02-carnivora.jpg"
+      "img": "images/02-carnivora.jpg",
+      "reward_icon": "meat"
     },
     {
       "id": 3,
@@ -18,7 +19,8 @@
       "emoji": "🥓",
       "color": "#6B3020",
       "desc": "Crispy bacon, mozzarella",
-      "img": "images/03-crispy-bacon.jpg"
+      "img": "images/03-crispy-bacon.jpg",
+      "reward_icon": "bacon"
     },
     {
       "id": 4,
@@ -28,7 +30,8 @@
       "emoji": "🌽",
       "color": "#B8860B",
       "desc": "Sweet corn, spicy calabrian chili",
-      "img": "images/04-sweet-corn.jpg"
+      "img": "images/04-sweet-corn.jpg",
+      "reward_icon": "chili"
     },
     {
       "id": 5,
@@ -38,7 +41,8 @@
       "emoji": "🍄",
       "color": "#5A4A3A",
       "desc": "Wild mushrooms, garlic, herbs",
-      "img": "images/05-mushroom.jpg"
+      "img": "images/05-mushroom.jpg",
+      "reward_icon": "mushroom"
     },
     {
       "id": 6,
@@ -48,7 +52,8 @@
       "emoji": "🌿",
       "color": "#2D5A27",
       "desc": "Fresh spinach, ricotta, garlic",
-      "img": "images/06-spinach.jpg"
+      "img": "images/06-spinach.jpg",
+      "reward_icon": "leaf"
     },
     {
       "id": 7,
@@ -58,7 +63,8 @@
       "emoji": "🍅",
       "color": "#A0321A",
       "desc": "Pancetta, creamy vodka tomato sauce",
-      "img": "images/07-pancetta-vodka.jpg"
+      "img": "images/07-pancetta-vodka.jpg",
+      "reward_icon": "tomato"
     },
     {
       "id": 8,
@@ -68,7 +74,8 @@
       "emoji": "🍅",
       "color": "#C8321A",
       "desc": "San Marzano tomato, fresh mozzarella",
-      "img": "images/08-margherita.jpg"
+      "img": "images/08-margherita.jpg",
+      "reward_icon": "tomato"
     },
     {
       "id": 9,
@@ -78,7 +85,8 @@
       "emoji": "🔴",
       "color": "#9E2412",
       "desc": "Classic pepperoni, mozzarella",
-      "img": "images/09-pepperoni.jpg"
+      "img": "images/09-pepperoni.jpg",
+      "reward_icon": "slice"
     },
     {
       "id": 10,
@@ -88,7 +96,8 @@
       "emoji": "🐟",
       "color": "#3A5A7A",
       "desc": "Salted anchovies, capers, olives",
-      "img": "images/10-anchovies.jpg"
+      "img": "images/10-anchovies.jpg",
+      "reward_icon": "fish"
     },
     {
       "id": 11,
@@ -98,7 +107,8 @@
       "emoji": "🍤",
       "color": "#C87A3A",
       "desc": "Garlic shrimp, lemon, white wine",
-      "img": "images/11-shrimp-scampi.jpg"
+      "img": "images/11-shrimp-scampi.jpg",
+      "reward_icon": "fish"
     },
     {
       "id": 12,
@@ -108,7 +118,8 @@
       "emoji": "💚",
       "color": "#3A6A2A",
       "desc": "Pistachio cream, mortadella, stracciatella",
-      "img": "images/12-pistaccio-mortadella.jpg"
+      "img": "images/12-pistaccio-mortadella.jpg",
+      "reward_icon": "meat"
     },
     {
       "id": 13,
@@ -118,7 +129,8 @@
       "emoji": "🥩",
       "color": "#8A3A2A",
       "desc": "Prosciutto crudo, arugula, parmesan",
-      "img": "images/13-prosciutto.jpg"
+      "img": "images/13-prosciutto.jpg",
+      "reward_icon": "meat"
     },
     {
       "id": 14,
@@ -128,7 +140,8 @@
       "emoji": "🥔",
       "color": "#7A6A3A",
       "desc": "Roasted potato, dill, house sausage",
-      "img": "images/14-potato-sausage.jpg"
+      "img": "images/14-potato-sausage.jpg",
+      "reward_icon": "meat"
     },
     {
       "id": 15,
@@ -138,7 +151,8 @@
       "emoji": "🧀",
       "color": "#8A7A5A",
       "desc": "Pecorino, black pepper, olive oil",
-      "img": "images/15-cacio-pepe.jpg"
+      "img": "images/15-cacio-pepe.jpg",
+      "reward_icon": "cheese"
     },
     {
       "id": 16,
@@ -148,7 +162,8 @@
       "emoji": "🐷",
       "color": "#C87A8A",
       "desc": "Classic ham, mozzarella",
-      "img": "images/16-ham.jpg"
+      "img": "images/16-ham.jpg",
+      "reward_icon": "meat"
     },
     {
       "id": 1,
@@ -157,7 +172,8 @@
       "price": 385,
       "emoji": "🍕",
       "color": "#8B3A1A",
-      "desc": "Sopressatta, chili, honey drizzle"
+      "desc": "Sopressatta, chili, honey drizzle",
+      "reward_icon": "meat"
     },
     {
       "id": 17,
@@ -167,7 +183,9 @@
       "emoji": "🍫",
       "color": "#5A3A20",
       "desc": "Nutella, powdered sugar, banana option",
-      "img": "images/17-nutella.jpg"
+      "img": "images/17-nutella.jpg",
+      "reward_icon": "slice",
+      "extras_policy": "none"
     },
     {
       "id": 18,
@@ -332,5 +350,17 @@
   ],
   "weekend_only_cats": [
     "ny"
-  ]
+  ],
+  "extras_by_category": {
+    "individual": [
+      "Salsas & Queso",
+      "Carnes",
+      "Vegetales & Hierbas"
+    ],
+    "ny": [
+      "Salsas & Queso",
+      "Carnes",
+      "Vegetales & Hierbas"
+    ]
+  }
 }

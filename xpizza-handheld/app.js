@@ -12,6 +12,7 @@ import { startFeeds } from './feeds.js';
 import { createEta, googleRoute } from './eta.js';
 import { startPairing, createSessionStore, hashPin, createPinGate, signOut } from './setup.js';
 import { createBridge, webAudioSound, NATIVE_PLUGIN } from './bridge.js';
+import { connecting, createConnectPoll, repairAction } from './readiness.js';
 import { COPY, BOARD } from './copy.js';
 import { buildVM } from './view.js';
 import { createAuthWatch, runBoot, runPair, signedOutPatch } from './boot.js';
@@ -42,6 +43,8 @@ const sound = webAudioSound(window);
 const cap = window.Capacitor;
 const bridge = createBridge({ isNative: () => !!(cap && cap.isNativePlatform && cap.isNativePlatform()), plugin: cap && cap.Plugins ? cap.Plugins[NATIVE_PLUGIN] || null : null,
   sound, doc: document, wakeLock: navigator.wakeLock || null });
+const repairNow = repairAction(bridge);
+const connectPoll = createConnectPoll({ refresh: () => refreshStatus() });
 const clock = makeClock();
 const rtdb = {
   onQuery(path, child, value, h) {
@@ -89,7 +92,8 @@ function render() {
   });
 }
 root.addEventListener('click', (e) => { const t = e.target.closest('[data-act]'); if (t && acts[t.dataset.act]) { sound.unlock(); acts[t.dataset.act](); } });
-const set = (patch) => { Object.assign(S, patch); render(); };
+// codex b4 r1 P2: every state change re-syncs the «Conectando…» poll (it starts, or stops once the push row is ready / the screen left)
+const set = (patch) => { Object.assign(S, patch); connectPoll.sync(connecting(S.phase, S.status)); render(); };
 let toastTimer = null;
 function toast(msg, undoId = null) {
   clearTimeout(toastTimer);
@@ -135,6 +139,8 @@ function vm() {
     now: now(), online: online(), orders: viewOrders(), base: base(), sess, driverOf, set,
     act: { doLogin, doPair, refreshStatus, pinPress, doSignOut, control, openOrder, handed, doReject, doMore, undoReady, doAccept, doReady,
       stopEta: () => stopEta(), checksContinue,
+      // readiness rows: the repair buttons open the matching system screen (the resume refresh re-reads the status afterwards)
+      openSettings: repairNow,
       testAlert: () => { sound.unlock(); bridge.alarm.start(['__prueba__']); setTimeout(() => bridge.alarm.stop(), 2500); toast('Sonando la alerta de prueba a todo volumen…'); } },
   });
 }
@@ -211,7 +217,7 @@ async function doLogin() {
   const email = (document.getElementById('em') || {}).value || ''; const password = (document.getElementById('pw') || {}).value || '';
   set({ working: true, loginErr: '' });
   try {
-    const p = await startPairing({ auth: pairingAuth, call: humanCall, store }, { email: email.trim(), password });
+    const p = await startPairing({ auth: pairingAuth, call: humanCall, store, native: bridge }, { email: email.trim(), password });
     set({ phase: 'branch', pairing: p, sel: p.selected || (p.rows.length === 1 ? p.rows[0] : null), pairErr: '', working: false });
   } catch (_) { set({ loginErr: BOARD.loginWrong, working: false }); }
 }
@@ -230,7 +236,7 @@ async function doPair() {
   if (S.working || !S.sel || !S.pairing) return;
   set({ working: true, pairErr: '' });
   const out = await runPair({ pairing: S.pairing, sel: S.sel, label: 'Equipo de la sucursal', genNow: () => gen.n, isLive: live,
-    refreshStatus: () => bridge.status(),
+    refreshStatus: readStatus,
     onSession: (s2) => { sess = s2; },
     onDone: (st) => set({ status: st, working: false, phase: 'checks' }),
     // codex H1b r1 P2-9: a failed token exchange happens AFTER the human was signed out — back to the login, never a dead picker
@@ -239,7 +245,9 @@ async function doPair() {
       : set({ working: false, pairErr: COPY.pairRefused })) });
   void out;                                            // 'stale': the teardown already reset the screen (signedOutPatch) — touch nothing
 }
-async function refreshStatus() { set({ status: await bridge.status() }); }
+// H1c: the checks read statusEx() when the native shell has it (push readiness, full-screen, the alarm channel), else the frozen status()
+function readStatus() { return bridge.statusEx ? bridge.statusEx() : bridge.status(); }
+async function refreshStatus() { set({ status: await readStatus() }); }
 async function pinPress(k) {
   const e = S.pinEntry + k;
   if (e.length < 4) { set({ pinEntry: e, pinErr: '' }); return; }
@@ -302,14 +310,19 @@ function onFeed(st) {
   render();
 }
 let lastRing = '';
+// H1c: every update is a FEED snapshot — start(ids, {known}) with every order id the feed holds (an empty one included); stop() only at
+// logout / session loss (setup.signOut), so a push for an order the feed does not know yet keeps ringing natively
 function ringSync() {
   if (S.phase !== 'main') return;
   const ids = M.alarmSet(S.feed.orders).filter((id) => !S.opened[id]);
-  const key = ids.join(',');
+  const known = Object.keys(S.feed.orders).sort();
+  const key = `${ids.join(',')}|${known.join(',')}`;
   if (key === lastRing) return;
   lastRing = key;
-  if (ids.length) bridge.alarm.start(ids); else bridge.alarm.stop();
+  bridge.alarm.start(ids, { known });
 }
+// H1c: any native mutation (a push, a reconcile, the 10-min bound) voids the cache, so the next feed update is always re-sent
+bridge.onAlarmChanged(() => { lastRing = ''; });
 
 // the 1 s heartbeat: countdowns, the undo window, the re-ring of an order opened 1 min without a decision (prototype)
 setInterval(() => {
@@ -318,7 +331,7 @@ setInterval(() => {
   if (online() && queue && queue.items().length) api.flush();
   const p = performance.now(); let reRing = false;
   for (const [id, at] of Object.entries(S.opened)) if (p - at >= MIN && S.cur !== id) { delete S.opened[id]; reRing = true; }
-  if (reRing) { lastRing = ''; bridge.alarm.stop(); ringSync(); }
+  if (reRing) { lastRing = ''; ringSync(); }         // the re-rung id re-enters the snapshot as new (it left it when opened)
   render();
 }, 1000);
 setInterval(() => {
@@ -339,7 +352,9 @@ function loadMaps() {
   s.onerror = () => { mapsRequested = false; };      // retried at the next session start; until then the name only
   document.head.appendChild(s);
 }
-bridge.onResume(() => { undo && undo.onResume(); if (online() && api) api.flush(); render(); });
+bridge.onResume(() => { undo && undo.onResume(); if (online() && api) api.flush(); if (S.phase === 'checks' || S.phase === 'main') refreshStatus(); render(); });
+// H1c: the readiness re-check — on every resume (above), hourly (F2), and at the cold start (runBoot's statusP)
+setInterval(() => { if (S.phase === 'checks' || S.phase === 'main') refreshStatus(); }, 60 * MIN);
 
 // ── boot ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // A paired device (session + PIN) opens straight onto the list — also offline at a cold start (the banner shows until the feed's
@@ -357,7 +372,7 @@ if (saved) authWatch.expect(saved.uid);
 let firstAuth; const firstAuthP = new Promise((r) => { firstAuth = r; });
 let authCalls = 0;
 onAuthStateChanged(auth, (u) => { if (authCalls++ === 0) firstAuth(u); authWatch.observe(u); });
-runBoot({ saved, hasPin: !!pinGate.record(), statusP: bridge.status(), firstAuthP, genNow: () => gen.n, isLive: live,
+runBoot({ saved, hasPin: !!pinGate.record(), statusP: readStatus(), firstAuthP, genNow: () => gen.n, isLive: live,
   signOut: async (why) => { sess = saved; await doSignOut(why); },
   route: (d) => {
     if (d.route === 'login') { set({ phase: 'login' }); return; }

@@ -95,7 +95,7 @@
     "site": "try { if (typeof updateCart === 'function') updateCart(); } catch (_) {}",
     "siteSha": "8e9511fb74406398df18571e5a8de35ae34ab5f4df1cecc50381fd9ba19930c8",
     "scope": "la-musa-orders/account.js#applyReorderToCart",
-    "scopeSha": "f8a207f78131bba32e4b52f098a7e737ee529657df402e39e2713ee1ee1c9147"
+    "scopeSha": "b4ffab42377145f891df4374eb53b68cda30589b03454cccad0779d8efb36c42"
    },
    "guards": [
     {
@@ -163,7 +163,7 @@
     "site": "renderMenu(); updateCart(); updateTotal();",
     "siteSha": "6630cac25bc5d73a9f0919210f5db616a6418b072f19b1e4a3b640416f9d2b7e",
     "scope": "la-musa-orders/index.html<script@2>#restoreOrderForm",
-    "scopeSha": "bb960af7d051e19ef5db74ff93f5f0bd8d148e8cddca6aa04eac91ec980a9866"
+    "scopeSha": "891062adefb19afe983b7f4992e509d57064105e787ec679a2fca5ee9d01cd95"
    },
    "guards": [
     {
@@ -379,7 +379,7 @@
     "site": "if(res.status===409 && cfg && cfg.error==='Already paid'){ orderSubmitting=false; currentOrder.payment_status='confirmed'; showSuccess(); return; }",
     "siteSha": "4e9b968f324d42bb67df8eb7cfbfe906df0f850c43835566a72083939654667c",
     "scope": "la-musa-orders/index.html<script@2>#processPixelPay",
-    "scopeSha": "fd521e8b08e1b4c35dc5f4e7aeb43704b342c6fb0589bc2acba327a3b15730d9"
+    "scopeSha": "dac3c649fae787e3cecd86111368f402656fdca20991862db3fcf23c68ac0779"
    },
    "guards": [
     {
@@ -520,7 +520,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
+     "scopeSha": "4a71bd98ed388c1cfa99ab183a673134693ffd6ed7964e4a3e26913564a52491"
     },
     {
      "kind": "C",
@@ -534,7 +534,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -586,7 +589,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
+     "scopeSha": "4a71bd98ed388c1cfa99ab183a673134693ffd6ed7964e4a3e26913564a52491"
     },
     {
      "kind": "C",
@@ -600,7 +603,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -723,7 +729,7 @@
     "site": "<span class=\"av rd\" style=\"background:${driverColorVar(dObj)}\">${escapeHtml(String(r.name || '?').charAt(0).toUpperCase())}</span>",
     "siteSha": "9504fac0d0ecea6393fab75c5e3a2208addf67b45666b9e3d60a0c240e2a1d34",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#rowOf",
-    "scopeSha": "7acab7f8f9f79922746408fcd6a89907d309a53c3a7409aeb9ad73266d63e0c2"
+    "scopeSha": "7a70207d866d1578d939b32395d44fd1659a91eccf05a59295f7803de9d1e243"
    },
    "guards": [
     {
@@ -742,7 +748,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
+     "scopeSha": "4a71bd98ed388c1cfa99ab183a673134693ffd6ed7964e4a3e26913564a52491"
     },
     {
      "kind": "C",
@@ -756,7 +762,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -930,7 +939,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
+     "scopeSha": "4a71bd98ed388c1cfa99ab183a673134693ffd6ed7964e4a3e26913564a52491"
     },
     {
      "kind": "C",
@@ -944,7 +953,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -977,7 +989,7 @@
     "site": "(r) => {",
     "siteSha": "12d962f7ad91324fecd0ba221c0973dfbfd06de7b9aef8571ec489c7a97abd9d",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#rowOf",
-    "scopeSha": "7acab7f8f9f79922746408fcd6a89907d309a53c3a7409aeb9ad73266d63e0c2"
+    "scopeSha": "7a70207d866d1578d939b32395d44fd1659a91eccf05a59295f7803de9d1e243"
    },
    "guards": [
     {
@@ -996,7 +1008,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
+     "scopeSha": "4a71bd98ed388c1cfa99ab183a673134693ffd6ed7964e4a3e26913564a52491"
     },
     {
      "kind": "C",
@@ -1010,7 +1022,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -1079,7 +1094,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -1157,7 +1175,7 @@
     "site": "const list = driverPickList({ order, orderId, drivers:STORE.drivers, tasks:STORE.tasks, hub, now:Date.now(), isStale:XPD.isStalePing });",
     "siteSha": "c7158f71157aa2dde3c65c614284780e24504ff7c55605ff7ebfd1959d72eeb5",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
-    "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
+    "scopeSha": "4a71bd98ed388c1cfa99ab183a673134693ffd6ed7964e4a3e26913564a52491"
    },
    "guards": [
     {
@@ -1176,7 +1194,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
+     "scopeSha": "4a71bd98ed388c1cfa99ab183a673134693ffd6ed7964e4a3e26913564a52491"
     },
     {
      "kind": "C",
@@ -1190,7 +1208,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -1259,7 +1280,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     },
     {
@@ -1824,7 +1848,7 @@
     "site": "const newHub = resolvePickupHub(allTasks[`${orderId}_pickup`]);",
     "siteSha": "4c5117695686308367b67620c194b4a9491e5dcaf7f3e63d532d71dc35d11e7d",
     "scope": "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver",
-    "scopeSha": "53f69a95fa76233c04e26627465c6fe58cdce8f46c222b813ee6300df7bc0547"
+    "scopeSha": "8ccf1c428237c4ff2169625cc0994a2c9089776b17de900358c943ded01e03d9"
    },
    "guards": [
     {
@@ -1957,7 +1981,7 @@
     "site": "const h = resolvePickupHub(allTasks[`${t.order_id}_pickup`]);",
     "siteSha": "ba46ccb8fd3abdc4079cf2a748f45de5c339849a14d56f25ed2f1993c2d84fc7",
     "scope": "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver",
-    "scopeSha": "53f69a95fa76233c04e26627465c6fe58cdce8f46c222b813ee6300df7bc0547"
+    "scopeSha": "8ccf1c428237c4ff2169625cc0994a2c9089776b17de900358c943ded01e03d9"
    },
    "guards": [
     {
@@ -2162,7 +2186,7 @@
      "kind": "C",
      "output": "xpizza-dispatch/index.html<script@0>#showLastLocation",
      "callers": [
-      "xpizza-dispatch/index.html<script@0>#action"
+      "xpizza-dispatch/index.html<script@0>#action>anon"
      ]
     },
     {
@@ -2367,7 +2391,7 @@
     "site": "$('picker-title').textContent = isReassign ? `Reasignar ${displayOrderLabel(orderId)}` : `Asignar ${displayOrderLabel(orderId)}`;",
     "siteSha": "7e94fc97ed4c1c7b15c26081c72c68e7fea1759391ef31d1a1d98cfaccf50a82",
     "scope": "xpizza-dispatch/index.html<script@0>#openPicker",
-    "scopeSha": "1d092cad5d093caabe45097751140ff434251b2cb34a1c7acee37fdcd3eb06a2"
+    "scopeSha": "bda753d40ad3a94e7322c3fcc3542bcb1ffbf07b214e893729528e609e62d5ca"
    },
    "guards": [
     {
@@ -2392,7 +2416,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     }
    ],
@@ -2418,7 +2445,7 @@
     "site": "$('picker-title').textContent = isReassign ? `Reasignar ${displayOrderLabel(orderId)}` : `Asignar ${displayOrderLabel(orderId)}`;",
     "siteSha": "7e94fc97ed4c1c7b15c26081c72c68e7fea1759391ef31d1a1d98cfaccf50a82",
     "scope": "xpizza-dispatch/index.html<script@0>#openPicker",
-    "scopeSha": "1d092cad5d093caabe45097751140ff434251b2cb34a1c7acee37fdcd3eb06a2"
+    "scopeSha": "bda753d40ad3a94e7322c3fcc3542bcb1ffbf07b214e893729528e609e62d5ca"
    },
    "guards": [
     {
@@ -2443,7 +2470,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     }
    ],
@@ -2798,7 +2828,7 @@
     "site": "<span class=\"status-dot ${getDotClass(driver)}\"></span>",
     "siteSha": "5851274d23204dba9aac8ff9505daa0284424e99c0a4f6068ffbb65165cb4c30",
     "scope": "xpizza-dispatch/index.html<script@0>#openPicker>anon",
-    "scopeSha": "d1038692f3065226a213187c0b0920cda5c857b0c7a01ca7227c103dfbcd2a27"
+    "scopeSha": "86c172b9d19768942e49d3bb485e725d46f4b3374fdb6ef3e11ddece32c4731b"
    },
    "guards": [
     {
@@ -2823,7 +2853,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     }
    ],
@@ -2849,7 +2882,7 @@
     "site": "([uid, d]) => {",
     "siteSha": "7d4d62a78a65131448eb29b3717839d563bd4e92a487b5130941cd62caa93622",
     "scope": "xpizza-dispatch/index.html<script@0>#openPicker>anon",
-    "scopeSha": "d1038692f3065226a213187c0b0920cda5c857b0c7a01ca7227c103dfbcd2a27"
+    "scopeSha": "86c172b9d19768942e49d3bb485e725d46f4b3374fdb6ef3e11ddece32c4731b"
    },
    "guards": [
     {
@@ -2874,7 +2907,10 @@
      "name": "openPicker",
      "counts": {
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11,
+      "xpizza-portal/app.js#xpizza-portal": 2,
+      "xpizza-portal/photo.js#xpizza-portal": 1,
+      "xpizza-portal/photos-b-fold.mjs#xpizza-portal": 2
      }
     }
    ],
@@ -2900,7 +2936,7 @@
     "site": "if (order) items.push({ label: `Reasignar ${displayOrderLabel(order)}`, icon: ICONS.refresh, action: () => openPicker(order.order_id, true) });",
     "siteSha": "0aafb617c2bfce15b4b2fbc9c65c1414455992c134542a7d854f203e5090944a",
     "scope": "xpizza-dispatch/index.html<script@0>#action",
-    "scopeSha": "9ab7fa7cd92c1a635bc62a56beec284c459e998ca1381ebb0f3bbf1ebde69447"
+    "scopeSha": "14419a48ccf4df88eaa491143b348a2bf51bfd8958836387ff90eb549ae7aac1"
    },
    "guards": [
     {
@@ -2919,7 +2955,7 @@
      "kind": "C",
      "output": "xpizza-dispatch/index.html<script@0>#showLastLocation",
      "callers": [
-      "xpizza-dispatch/index.html<script@0>#action"
+      "xpizza-dispatch/index.html<script@0>#action>anon"
      ]
     },
     {
@@ -2959,7 +2995,7 @@
     "site": "action: () => openPicker(oid, true)",
     "siteSha": "36542afb7a4a2d8d0176c677c8861d676e25455c97fd4f90d5e076c69a4ad6b8",
     "scope": "xpizza-dispatch/index.html<script@0>#action",
-    "scopeSha": "9ab7fa7cd92c1a635bc62a56beec284c459e998ca1381ebb0f3bbf1ebde69447"
+    "scopeSha": "14419a48ccf4df88eaa491143b348a2bf51bfd8958836387ff90eb549ae7aac1"
    },
    "guards": [
     {
@@ -2978,7 +3014,7 @@
      "kind": "C",
      "output": "xpizza-dispatch/index.html<script@0>#showLastLocation",
      "callers": [
-      "xpizza-dispatch/index.html<script@0>#action"
+      "xpizza-dispatch/index.html<script@0>#action>anon"
      ]
     },
     {
@@ -3018,7 +3054,7 @@
     "site": "openPicker(btn.dataset.reassignOrder, true);",
     "siteSha": "33be600626dddb4d1588eaa625b46336b8e90c39b748b6999c3def94de09ea7d",
     "scope": "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon",
-    "scopeSha": "353dad8417a0011ca81919810edd86ef48e9d9a8cd83ed6d504ed9770ad53547"
+    "scopeSha": "bf9a5eda361ff83e7d063df541c9812f680d81acdc31868f78a4e4eac2b9a9d9"
    },
    "guards": [
     {
@@ -3333,7 +3369,7 @@
     "site": "renderCommsThread();",
     "siteSha": "8d3166152200b26af1e3cadc596092ced3b6f7aa28d1da7cabd45a58696038a6",
     "scope": "xpizza-dispatch/index.html<script@0>#openCommsThread",
-    "scopeSha": "a4fd4231792a738a2af35611ff2b8b8169e6742e3de563756c7ad0e57504751d"
+    "scopeSha": "a93c3c69dd5f2fd5210af027f1094b9749c34a3dc7ca23dd9c7627226fdf1fec"
    },
    "guards": [
     {
@@ -3517,65 +3553,6 @@
      "S1t-a|x_pizza|assigned"
     ],
     "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-alert-id, no-ui:xpizza-dispatch:attr=data-order-id, no-ui:xpizza-dispatch:attr=data-detail-order, no-ui:xpizza-dispatch:class=task-row, no-ui:xpizza-dispatch:class=delivered-card): excluded only when the context is established; required otherwise"
-   }
-  },
-  "xpizza-dispatch/index.html<script@0>#showLastLocation@xpizza-dispatch/index.html<script@0>#action": {
-   "group": "dispatch-ui",
-   "appliesWhenAny": [],
-   "context": [
-    "no-exec:xpizza-dispatch/index.html<script@0>#showLastLocation"
-   ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through showLastLocation, so a trace that probed showLastLocation and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
-   "whyFalseExcludes": "showLastLocation was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
-   "bind": {
-    "site": "if (!d.active && Number.isFinite(d.lat) && Number.isFinite(d.lng)) items.push({ label: 'Ver última ubicación', icon: ICONS.pin, action: () => showLastLocation(uid) });",
-    "siteSha": "557267caa19743a50b9d636eff143613926ec27bb4c66585db984f66fe7d09f0",
-    "scope": "xpizza-dispatch/index.html<script@0>#action",
-    "scopeSha": "9ab7fa7cd92c1a635bc62a56beec284c459e998ca1381ebb0f3bbf1ebde69447"
-   },
-   "guards": [
-    {
-     "kind": "S",
-     "scope": "xpizza-dispatch/index.html<script@0>#showActionMenu",
-     "text": "menu.querySelectorAll('[data-action-idx]').forEach(btn => {",
-     "scopeSha": "5da9bed9fcc5af760917135b3092038003140dc8acb42e4fd8a967e907b65dcc"
-    },
-    {
-     "kind": "K",
-     "file": "xpizza-dispatch/index.html",
-     "text": "showActionMenu(",
-     "count": 4
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-dispatch/index.html<script@0>#showLastLocation",
-     "callers": [
-      "xpizza-dispatch/index.html<script@0>#action"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "showActionMenu",
-     "counts": {
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 4
-     }
-    },
-    {
-     "kind": "R",
-     "name": "showLastLocation",
-     "counts": {
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 2
-     }
-    }
-   ],
-   "cases": {
-    "required": [],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned"
-    ],
-    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx): excluded only when the context is established; required otherwise"
    }
   },
   "xpizza-dispatch/index.html<script@0>#showLookupPin@xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon": {
@@ -4059,7 +4036,7 @@
     "site": "const newHub = resolvePickupHub(allTasks[`${orderId}_pickup`]);",
     "siteSha": "4c5117695686308367b67620c194b4a9491e5dcaf7f3e63d532d71dc35d11e7d",
     "scope": "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver",
-    "scopeSha": "53f69a95fa76233c04e26627465c6fe58cdce8f46c222b813ee6300df7bc0547"
+    "scopeSha": "8ccf1c428237c4ff2169625cc0994a2c9089776b17de900358c943ded01e03d9"
    },
    "guards": [
     {
@@ -4164,7 +4141,7 @@
     "site": "const h = resolvePickupHub(allTasks[`${t.order_id}_pickup`]);",
     "siteSha": "ba46ccb8fd3abdc4079cf2a748f45de5c339849a14d56f25ed2f1993c2d84fc7",
     "scope": "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver",
-    "scopeSha": "53f69a95fa76233c04e26627465c6fe58cdce8f46c222b813ee6300df7bc0547"
+    "scopeSha": "8ccf1c428237c4ff2169625cc0994a2c9089776b17de900358c943ded01e03d9"
    },
    "guards": [
     {
@@ -4352,25 +4329,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -4379,6 +4356,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -4392,7 +4370,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -4406,7 +4384,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -4542,9 +4520,15 @@
      "callers": [
       "xpizza-driver/brand-helpers.js#brandMeta",
       "xpizza-driver/brand-helpers.js#driverGreeting",
+      "xpizza-driver/index.html<script@0>#drv2CaptureReturnTarget",
+      "xpizza-driver/index.html<script@0>#renderGanancias>anon",
       "xpizza-driver/single-order-view.js#singleOrderCardHtml",
+      "xpizza-driver/stacked-view.js#contactRowHtml",
       "xpizza-driver/stacked-view.js#destinationLabel",
-      "xpizza-driver/stacked-view.js#offerScreenHtml>anon"
+      "xpizza-driver/stacked-view.js#offerScreenHtml>anon",
+      "xpizza-driver/stacked-view.js#pickupSubLabel",
+      "xpizza-driver/stacked-view.js#pickupToRestaurantHtml",
+      "xpizza-driver/stacked-view.js#soloPickupHeaderInfo"
      ]
     },
     {
@@ -4552,8 +4536,10 @@
      "name": "brandLabel",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/single-order-view.js#xpizza-driver": 4,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 12,
       "xpizza-functions/staff-push.js#functions": 3
      }
     },
@@ -4581,9 +4567,8 @@
      "name": "driverGreeting",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 4,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 4,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 4
      }
     },
     {
@@ -4641,25 +4626,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -4668,6 +4653,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -4681,7 +4667,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -4695,7 +4681,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -4831,9 +4817,15 @@
      "callers": [
       "xpizza-driver/brand-helpers.js#brandMeta",
       "xpizza-driver/brand-helpers.js#driverGreeting",
+      "xpizza-driver/index.html<script@0>#drv2CaptureReturnTarget",
+      "xpizza-driver/index.html<script@0>#renderGanancias>anon",
       "xpizza-driver/single-order-view.js#singleOrderCardHtml",
+      "xpizza-driver/stacked-view.js#contactRowHtml",
       "xpizza-driver/stacked-view.js#destinationLabel",
-      "xpizza-driver/stacked-view.js#offerScreenHtml>anon"
+      "xpizza-driver/stacked-view.js#offerScreenHtml>anon",
+      "xpizza-driver/stacked-view.js#pickupSubLabel",
+      "xpizza-driver/stacked-view.js#pickupToRestaurantHtml",
+      "xpizza-driver/stacked-view.js#soloPickupHeaderInfo"
      ]
     },
     {
@@ -4841,8 +4833,10 @@
      "name": "brandLabel",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/single-order-view.js#xpizza-driver": 4,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 12,
       "xpizza-functions/staff-push.js#functions": 3
      }
     },
@@ -4870,9 +4864,8 @@
      "name": "driverGreeting",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 4,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 4,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 4
      }
     },
     {
@@ -4930,25 +4923,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -4957,6 +4950,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -4970,7 +4964,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -4984,7 +4978,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -5120,9 +5114,15 @@
      "callers": [
       "xpizza-driver/brand-helpers.js#brandMeta",
       "xpizza-driver/brand-helpers.js#driverGreeting",
+      "xpizza-driver/index.html<script@0>#drv2CaptureReturnTarget",
+      "xpizza-driver/index.html<script@0>#renderGanancias>anon",
       "xpizza-driver/single-order-view.js#singleOrderCardHtml",
+      "xpizza-driver/stacked-view.js#contactRowHtml",
       "xpizza-driver/stacked-view.js#destinationLabel",
-      "xpizza-driver/stacked-view.js#offerScreenHtml>anon"
+      "xpizza-driver/stacked-view.js#offerScreenHtml>anon",
+      "xpizza-driver/stacked-view.js#pickupSubLabel",
+      "xpizza-driver/stacked-view.js#pickupToRestaurantHtml",
+      "xpizza-driver/stacked-view.js#soloPickupHeaderInfo"
      ]
     },
     {
@@ -5130,8 +5130,10 @@
      "name": "brandLabel",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/single-order-view.js#xpizza-driver": 4,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 12,
       "xpizza-functions/staff-push.js#functions": 3
      }
     },
@@ -5159,9 +5161,8 @@
      "name": "driverGreeting",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 4,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 4,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 4
      }
     },
     {
@@ -5233,6 +5234,8 @@
      "output": "xpizza-driver/cash-helpers.js#shiftDeliveries",
      "callers": [
       "xpizza-driver/cash-helpers.js#computeShiftCash",
+      "xpizza-driver/index.html<script@0>#drv2DayEarned",
+      "xpizza-driver/index.html<script@0>#renderGanancias",
       "xpizza-driver/index.html<script@0>#renderHistoryModal"
      ]
     },
@@ -5240,15 +5243,16 @@
      "kind": "R",
      "name": "shiftDeliveries",
      "counts": {
+      "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
      }
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`orders/${task.order_id}/delivered_at`] = now;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "R",
@@ -5261,10 +5265,15 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
+      "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/cash-helpers.js#xpizza-driver": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 11,
+      "xpizza-driver/pay-rate.js#xpizza-driver": 3,
+      "xpizza-functions/driver-ledger/ledger-core.js#functions": 10,
+      "xpizza-functions/driver-ledger/ledger-store.js#functions": 4,
       "xpizza-functions/index.js#functions": 1,
+      "xpizza-functions/pay-rate.js#functions": 3,
       "xpizza-functions/ready-time-quality-run.js#functions": 1,
       "xpizza-functions/stats/stats-build.js#functions": 1,
       "xpizza-functions/stats/stats-fixtures.js#functions": 2,
@@ -5293,7 +5302,10 @@
      "kind": "C",
      "output": "xpizza-driver/cash-helpers.js#computeShiftCash",
      "callers": [
+      "xpizza-driver/index.html<script@0>#drv2ShowResumen",
       "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
+      "xpizza-driver/index.html<script@0>#renderGanancias",
+      "xpizza-driver/index.html<script@0>#renderOffshift",
       "xpizza-driver/index.html<script@0>#syncIdleStats"
      ]
     },
@@ -5301,8 +5313,10 @@
      "kind": "R",
      "name": "computeShiftCash",
      "counts": {
+      "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 9,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 2,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1
      }
     },
@@ -5365,25 +5379,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -5392,6 +5406,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -5405,7 +5420,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -5419,7 +5434,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -5630,25 +5645,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -5657,6 +5672,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -5670,7 +5686,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -5684,7 +5700,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -5895,25 +5911,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -5922,6 +5938,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -5935,7 +5952,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -5949,7 +5966,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -6160,25 +6177,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -6187,6 +6204,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -6200,7 +6218,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -6214,7 +6232,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -6402,25 +6420,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -6429,6 +6447,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -6442,7 +6461,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -6456,7 +6475,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -6644,25 +6663,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -6671,6 +6690,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -6684,7 +6704,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -6698,7 +6718,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -6978,6 +6998,8 @@
      "output": "xpizza-driver/cash-helpers.js#shiftDeliveries",
      "callers": [
       "xpizza-driver/cash-helpers.js#computeShiftCash",
+      "xpizza-driver/index.html<script@0>#drv2DayEarned",
+      "xpizza-driver/index.html<script@0>#renderGanancias",
       "xpizza-driver/index.html<script@0>#renderHistoryModal"
      ]
     },
@@ -6985,15 +7007,16 @@
      "kind": "R",
      "name": "shiftDeliveries",
      "counts": {
+      "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
      }
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`orders/${task.order_id}/delivered_at`] = now;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "R",
@@ -7006,10 +7029,15 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
+      "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/cash-helpers.js#xpizza-driver": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 11,
+      "xpizza-driver/pay-rate.js#xpizza-driver": 3,
+      "xpizza-functions/driver-ledger/ledger-core.js#functions": 10,
+      "xpizza-functions/driver-ledger/ledger-store.js#functions": 4,
       "xpizza-functions/index.js#functions": 1,
+      "xpizza-functions/pay-rate.js#functions": 3,
       "xpizza-functions/ready-time-quality-run.js#functions": 1,
       "xpizza-functions/stats/stats-build.js#functions": 1,
       "xpizza-functions/stats/stats-fixtures.js#functions": 2,
@@ -7038,7 +7066,10 @@
      "kind": "C",
      "output": "xpizza-driver/cash-helpers.js#computeShiftCash",
      "callers": [
+      "xpizza-driver/index.html<script@0>#drv2ShowResumen",
       "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
+      "xpizza-driver/index.html<script@0>#renderGanancias",
+      "xpizza-driver/index.html<script@0>#renderOffshift",
       "xpizza-driver/index.html<script@0>#syncIdleStats"
      ]
     },
@@ -7046,8 +7077,10 @@
      "kind": "R",
      "name": "computeShiftCash",
      "counts": {
+      "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 9,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 2,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1
      }
     },
@@ -7110,25 +7143,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -7137,6 +7170,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -7150,7 +7184,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -7164,7 +7198,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -7305,6 +7339,7 @@
       "xpizza-driver/single-order-view.js#singleOrderCardHtml",
       "xpizza-driver/stacked-view.js#activeCardHtml",
       "xpizza-driver/stacked-view.js#incomingBannerHtml>anon",
+      "xpizza-driver/stacked-view.js#pickupToRestaurantHtml",
       "xpizza-driver/stacked-view.js#queueDetailHtml",
       "xpizza-driver/stacked-view.js#queueHtml>anon"
      ]
@@ -7314,9 +7349,9 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 11,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 8,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 10
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 13,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 7,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 12
      }
     }
    ],
@@ -7359,25 +7394,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -7386,6 +7421,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -7399,7 +7435,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -7413,7 +7449,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -7554,6 +7590,7 @@
       "xpizza-driver/single-order-view.js#singleOrderCardHtml",
       "xpizza-driver/stacked-view.js#activeCardHtml",
       "xpizza-driver/stacked-view.js#incomingBannerHtml>anon",
+      "xpizza-driver/stacked-view.js#pickupToRestaurantHtml",
       "xpizza-driver/stacked-view.js#queueDetailHtml",
       "xpizza-driver/stacked-view.js#queueHtml>anon"
      ]
@@ -7563,9 +7600,9 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 11,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 8,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 10
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 13,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 7,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 12
      }
     }
    ],
@@ -7608,25 +7645,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -7635,6 +7672,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -7648,7 +7686,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -7662,7 +7700,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -7803,6 +7841,7 @@
       "xpizza-driver/single-order-view.js#singleOrderCardHtml",
       "xpizza-driver/stacked-view.js#activeCardHtml",
       "xpizza-driver/stacked-view.js#incomingBannerHtml>anon",
+      "xpizza-driver/stacked-view.js#pickupToRestaurantHtml",
       "xpizza-driver/stacked-view.js#queueDetailHtml",
       "xpizza-driver/stacked-view.js#queueHtml>anon"
      ]
@@ -7812,9 +7851,9 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 11,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 8,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 10
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 13,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 7,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 12
      }
     }
    ],
@@ -7857,25 +7896,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -7884,6 +7923,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -7897,7 +7937,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -7911,7 +7951,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -8052,6 +8092,7 @@
       "xpizza-driver/single-order-view.js#singleOrderCardHtml",
       "xpizza-driver/stacked-view.js#activeCardHtml",
       "xpizza-driver/stacked-view.js#incomingBannerHtml>anon",
+      "xpizza-driver/stacked-view.js#pickupToRestaurantHtml",
       "xpizza-driver/stacked-view.js#queueDetailHtml",
       "xpizza-driver/stacked-view.js#queueHtml>anon"
      ]
@@ -8061,9 +8102,9 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 11,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 8,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 10
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 13,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 7,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 12
      }
     }
    ],
@@ -8106,25 +8147,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -8133,6 +8174,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -8146,7 +8188,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -8160,7 +8202,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -8295,10 +8337,10 @@
      "name": "displayOrderLabel",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2,
       "xpizza-driver/single-order-view.js#xpizza-driver": 2,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 9
+      "xpizza-driver/stacked-view.js#xpizza-driver": 12
      }
     }
    ],
@@ -8341,25 +8383,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -8368,6 +8410,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -8381,7 +8424,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -8395,7 +8438,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -8530,10 +8573,10 @@
      "name": "displayOrderLabel",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2,
       "xpizza-driver/single-order-view.js#xpizza-driver": 2,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 9
+      "xpizza-driver/stacked-view.js#xpizza-driver": 12
      }
     }
    ],
@@ -8576,25 +8619,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -8603,6 +8646,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -8616,7 +8660,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -8630,7 +8674,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -8765,10 +8809,10 @@
      "name": "displayOrderLabel",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2,
       "xpizza-driver/single-order-view.js#xpizza-driver": 2,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 9
+      "xpizza-driver/stacked-view.js#xpizza-driver": 12
      }
     }
    ],
@@ -8811,25 +8855,25 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
+     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
     },
     {
      "kind": "C",
@@ -8838,6 +8882,7 @@
       "xpizza-driver/index.html<script@0>#<top>>anon",
       "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
       "xpizza-driver/index.html<script@0>#drv2LiveBoard",
+      "xpizza-driver/index.html<script@0>#drv2PauseShift",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -8851,7 +8896,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/stacked-view.js#xpizza-driver": 4,
@@ -8865,7 +8910,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -9000,10 +9045,10 @@
      "name": "displayOrderLabel",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2,
       "xpizza-driver/single-order-view.js#xpizza-driver": 2,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 9
+      "xpizza-driver/stacked-view.js#xpizza-driver": 12
      }
     }
    ],
@@ -9039,13 +9084,14 @@
      "kind": "K",
      "file": "xpizza-driver/index.html",
      "text": "XPD.acceptSecondOrder(",
-     "count": 1
+     "count": 2
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#acceptSecondOrder",
      "callers": [
-      "xpizza-driver/index.html<script@0>#attachIncomingBannerHandlers>anon"
+      "xpizza-driver/index.html<script@0>#attachIncomingBannerHandlers>anon",
+      "xpizza-driver/index.html<script@0>#mountOfferTakeover>anon"
      ]
     },
     {
@@ -9055,7 +9101,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 1,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 11,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1
      }
@@ -9090,13 +9136,14 @@
      "kind": "K",
      "file": "xpizza-driver/index.html",
      "text": "XPD.acceptSecondOrder(",
-     "count": 1
+     "count": 2
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#acceptSecondOrder",
      "callers": [
-      "xpizza-driver/index.html<script@0>#attachIncomingBannerHandlers>anon"
+      "xpizza-driver/index.html<script@0>#attachIncomingBannerHandlers>anon",
+      "xpizza-driver/index.html<script@0>#mountOfferTakeover>anon"
      ]
     },
     {
@@ -9106,7 +9153,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 1,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 11,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1
      }
@@ -9134,7 +9181,7 @@
     "site": "const p = XPD.acceptTask(currentUser.uid, o.pickupTask.id);",
     "siteSha": "656e0bf9f6b48da30c1722f2db6335bceabdc420a6db2036ab0d9a919f54786a",
     "scope": "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon",
-    "scopeSha": "8cbc755873f5b82423a77f8a2787bea909f73a390efc0d03b88cdf6d9a86e73d"
+    "scopeSha": "c31299ca78eb82723c066890f0ac30fd791dfd3f4e76a8737e4e8579dca80979"
    },
    "guards": [
     {
@@ -9157,7 +9204,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/index.js#functions": 1,
@@ -9187,7 +9234,7 @@
     "site": "await XPD.arriveAtRestaurant(currentUser.uid);",
     "siteSha": "0f8cf0137e7d9e23868daa9b056e8ebffe93e608e96f0c33e7a483bde9735f2a",
     "scope": "xpizza-driver/index.html<script@0>#<top>>anon",
-    "scopeSha": "e3bf546c3a118ad45cb4629a5380addff4fb027ca8fd3075a11395188cd86dbd"
+    "scopeSha": "c21f7a9c592df8e4d64d3d5ad0895d44aaa2bd39321c74e7d03e675132e3957d"
    },
    "guards": [
     {
@@ -9244,7 +9291,7 @@
     "site": "const p = XPD.completeTask(actingUid, o.deliveryTask.id);",
     "siteSha": "3ed443e0e56b3d96567038aec540e76074280e71a9308031c4459aa8d5b5038e",
     "scope": "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon",
-    "scopeSha": "8cbc755873f5b82423a77f8a2787bea909f73a390efc0d03b88cdf6d9a86e73d"
+    "scopeSha": "c31299ca78eb82723c066890f0ac30fd791dfd3f4e76a8737e4e8579dca80979"
    },
    "guards": [
     {
@@ -9323,7 +9370,7 @@
     "site": "await XPD.pickupComplete(currentUser.uid, o.pickupTask.id);",
     "siteSha": "9e794452016d96cf9a83d2e669db4b893545fcaa3d4a6e609b5a65f1d952a271",
     "scope": "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon",
-    "scopeSha": "8cbc755873f5b82423a77f8a2787bea909f73a390efc0d03b88cdf6d9a86e73d"
+    "scopeSha": "c31299ca78eb82723c066890f0ac30fd791dfd3f4e76a8737e4e8579dca80979"
    },
    "guards": [
     {
@@ -9346,9 +9393,9 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
-      "xpizza-driver/driver-complete.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 1,
+      "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 2,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1,
       "xpizza-functions/index.js#functions": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
@@ -9987,10 +10034,12 @@
       "xpizza-functions/availability-gate.js#functions": 1,
       "xpizza-functions/catalog/extras-intake.js#functions": 1,
       "xpizza-functions/catalog/group-intake.js#functions": 1,
-      "xpizza-functions/client-floor.js#functions": 2,
+      "xpizza-functions/checkout-guest-gate.js#functions": 2,
+      "xpizza-functions/checkout-guest-lib.js#functions": 1,
+      "xpizza-functions/client-floor.js#functions": 3,
       "xpizza-functions/compute-server-net.js#functions": 1,
       "xpizza-functions/hosted-charge-flow.js#functions": 4,
-      "xpizza-functions/index.js#functions": 33,
+      "xpizza-functions/index.js#functions": 34,
       "xpizza-functions/materialize-guard.js#functions": 2,
       "xpizza-functions/materialize.js#functions": 1,
       "xpizza-functions/order-control-state.js#functions": 1,
@@ -10029,7 +10078,7 @@
     "site": "o => {",
     "siteSha": "e11a39d909aa3289fa248d2557e3c320228524007c7c674b82f8f339152acc83",
     "scope": "xpizza-functions/index.js#onIncomingWhatsApp>anon",
-    "scopeSha": "e9677520cc4c1e52e91942e0de3eb4c5f64865f63874ed07381342c61e73a1d1"
+    "scopeSha": "3aa86d7b8d0de00f5f4f8f57619b6a6561c2b9f983be5d04a2eb562f3ff25f0c"
    },
    "guards": [
     {
@@ -10063,7 +10112,7 @@
     "site": "async (req, res) => {",
     "siteSha": "479d04be0606d25cbfe9359aae247a83c172b9098027c8a1ac144fbef4eece81",
     "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
-    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+    "scopeSha": "90ba3e08f5e7323f9fcca5a50ea3c19458fd82b2ce0ed1363a5fc2d192836af9"
    },
    "guards": [
     {
@@ -10097,7 +10146,7 @@
     "site": "return res.status(405).send('Method Not Allowed');",
     "siteSha": "c79a4298fdd0a8a2662572147553c67ded5b3b7711e937479f175694736c68cc",
     "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
-    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+    "scopeSha": "90ba3e08f5e7323f9fcca5a50ea3c19458fd82b2ce0ed1363a5fc2d192836af9"
    },
    "guards": [
     {
@@ -10131,7 +10180,7 @@
     "site": "return res.status(200).send('muted');",
     "siteSha": "d29394bc35256f4c7e369dca529b7ed522943e9ae8a9fe06afcc32e0dbf7158f",
     "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
-    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+    "scopeSha": "90ba3e08f5e7323f9fcca5a50ea3c19458fd82b2ce0ed1363a5fc2d192836af9"
    },
    "guards": [
     {
@@ -10165,7 +10214,7 @@
     "site": "return res.status(200).send('ok');",
     "siteSha": "769f044fdb95775d1d28ff3a5f7186ded3e526bd9f0a523621b4a19bacf38cd4",
     "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
-    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+    "scopeSha": "90ba3e08f5e7323f9fcca5a50ea3c19458fd82b2ce0ed1363a5fc2d192836af9"
    },
    "guards": [
     {
@@ -10199,7 +10248,7 @@
     "site": "return res.status(500).send('Server not configured');",
     "siteSha": "252107eb90cac2561d69c54ae3677593342a45a917934c8356c5434dd3f52478",
     "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
-    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+    "scopeSha": "90ba3e08f5e7323f9fcca5a50ea3c19458fd82b2ce0ed1363a5fc2d192836af9"
    },
    "guards": [
     {
@@ -10233,7 +10282,7 @@
     "site": "return res.status(401).send('Unauthorized');",
     "siteSha": "4d1f450c4a4f3d05ec241cb7b3273528f6be02ee6825bad258e04d9e6673b9a5",
     "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
-    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+    "scopeSha": "90ba3e08f5e7323f9fcca5a50ea3c19458fd82b2ce0ed1363a5fc2d192836af9"
    },
    "guards": [
     {
@@ -10267,7 +10316,7 @@
     "site": "return res.status(200).send('handled: message_create');",
     "siteSha": "aacf422bb659c85ef7719c599879e461515a76bb587a03f1e350166a0008bf66",
     "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
-    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+    "scopeSha": "90ba3e08f5e7323f9fcca5a50ea3c19458fd82b2ce0ed1363a5fc2d192836af9"
    },
    "guards": [
     {
@@ -10301,7 +10350,7 @@
     "site": "return res.status(200).send('ignored: event_type');",
     "siteSha": "485db9127a80369c2d640b0feefc7e9ced8a33986a794c5f5f53c22fd7c78648",
     "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
-    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+    "scopeSha": "90ba3e08f5e7323f9fcca5a50ea3c19458fd82b2ce0ed1363a5fc2d192836af9"
    },
    "guards": [
     {
@@ -10335,7 +10384,7 @@
     "site": "return res.status(200).send('ignored: fromMe');",
     "siteSha": "117115ad070ce556cd958a7c7c402808b809e5e615b701336ed0f26b20d1f01f",
     "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
-    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+    "scopeSha": "90ba3e08f5e7323f9fcca5a50ea3c19458fd82b2ce0ed1363a5fc2d192836af9"
    },
    "guards": [
     {
@@ -10369,7 +10418,7 @@
     "site": "return res.status(200).send('ignored: non-chat');",
     "siteSha": "8ba7352df80afbaac450863ce5cf784528647928b9bffea8966a08e2ca85244d",
     "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
-    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+    "scopeSha": "90ba3e08f5e7323f9fcca5a50ea3c19458fd82b2ce0ed1363a5fc2d192836af9"
    },
    "guards": [
     {
@@ -10403,7 +10452,7 @@
     "site": "return res.status(200).send('ignored: no from');",
     "siteSha": "eb8853ae2adf9294595262dd042205ed442dd57470118b8decf88d1b255a3f2e",
     "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
-    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+    "scopeSha": "90ba3e08f5e7323f9fcca5a50ea3c19458fd82b2ce0ed1363a5fc2d192836af9"
    },
    "guards": [
     {
@@ -10437,7 +10486,7 @@
     "site": "return res.status(200).send('ignored: disabled');",
     "siteSha": "51cf24ffed8cdacc1e0e86d5e8cec5b380df991ca1a9065a47c03891adbc638e",
     "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
-    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+    "scopeSha": "90ba3e08f5e7323f9fcca5a50ea3c19458fd82b2ce0ed1363a5fc2d192836af9"
    },
    "guards": [
     {
@@ -10761,14 +10810,14 @@
     "site": "try { await sendPaidAfterCloseRefund(db, { orderId, order: o }); notifyRecovered++; } catch (_) {}",
     "siteSha": "89061984e006b424b14d86cb5113e77b3e903f44c68f838d2ec3e8cfb50b2800",
     "scope": "xpizza-functions/index.js#refundReconciler",
-    "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+    "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     }
    ],
    "cases": {
@@ -10799,20 +10848,20 @@
     "site": "try { await sendPaidAfterCloseRefund(db, { orderId, order: o }); } catch (_) {}",
     "siteSha": "b380c4b5d362470c21afb81b9dc9ed29173bcf18033e59bf198a790a98ed025a",
     "scope": "xpizza-functions/index.js#refundReconciler",
-    "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+    "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (!isPac) continue;",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (dec.action === 'finalize_refunded') {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     }
    ],
    "cases": {
@@ -10881,14 +10930,14 @@
     "site": "if (didNotify && deps.sendScheduledSlotClosed) { try { await deps.sendScheduledSlotClosed(db, { orderId, order }); } catch (_) {} }",
     "siteSha": "893a10464deb4f02f240ce89d6f56ab6620dde110064ea556d8b8a8617438fb9",
     "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
-    "scopeSha": "625e4e2596ed2a59060449e50a2a61636b06851431986896ea68efb03e66d066"
+    "scopeSha": "d16ef5cb75dbeb876a155454f5d57f6734e463392892d64f60c00de7ad6bc6dd"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
      "text": "if (Number.isFinite(Number(order.scheduled_for))) {",
-     "scopeSha": "625e4e2596ed2a59060449e50a2a61636b06851431986896ea68efb03e66d066"
+     "scopeSha": "d16ef5cb75dbeb876a155454f5d57f6734e463392892d64f60c00de7ad6bc6dd"
     }
    ],
    "cases": {
@@ -10919,14 +10968,14 @@
     "site": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
     "siteSha": "cebf5cdd793a080b49b30e8c96304fa4acf25d87a8aed2618c4304063c654e83",
     "scope": "xpizza-functions/index.js#refundReconciler",
-    "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+    "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     }
    ],
    "cases": {
@@ -11219,7 +11268,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'cancelled') {",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     },
     {
      "kind": "F",
@@ -11270,7 +11319,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'delivered') {",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     },
     {
      "kind": "F",
@@ -11368,7 +11417,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#createOrderApp.all>anon",
      "text": "if (orderType === 'pickup') {",
-     "scopeSha": "1bd0107d0f0dc2c82ff8677fb6bcb7b8a90f96ee85495ef428e7f7281651c9e5"
+     "scopeSha": "b36a045e2246f16fb974c49771eb3a8f2f0c7488e78d541cddd11538699e05eb"
     },
     {
      "kind": "F",
@@ -11555,7 +11604,7 @@
     "site": "await whatsapp.sendMessage(fromPhoneRaw, replyBody, restaurantId);   // reply via the texted restaurant's instance",
     "siteSha": "9abd63fecaa854820630aecd24d4920ae62cfe3ff12cacf3c1ce92eb9884b297",
     "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
-    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+    "scopeSha": "90ba3e08f5e7323f9fcca5a50ea3c19458fd82b2ce0ed1363a5fc2d192836af9"
    },
    "guards": [
     {
@@ -11589,7 +11638,7 @@
     "site": "await whatsapp.sendMessage(phone, whatsapp.tplOtp({ code }), restaurantId);   // D12b: the brand from this restaurant's config, never a literal",
     "siteSha": "c010876b3f6275d6d7b9286943dd885112439552e06d06fc4d1d568faddf47fb",
     "scope": "xpizza-functions/index.js#requestOtp",
-    "scopeSha": "cf0737b6bd9cceb181762d6fa042c99e07dabf6fdefc376d381f48180b46c41f"
+    "scopeSha": "493ca021073a0ed333d0d806cb9df3947459ee8cf9b2d927b39cb62396aedf9d"
    },
    "guards": [
     {
@@ -11633,32 +11682,32 @@
     "site": "await whatsapp.sendMessage(order.customer_phone, body, restaurantId);",
     "siteSha": "de950982ac799734df60e476f575dc87f00303c69c8a3c049a2867439b7394c8",
     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
-    "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+    "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'delivered') {",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'cancelled') {",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (!body) return;",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     }
    ],
    "cases": {
@@ -11699,13 +11748,13 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (dec.action === 'finalize_refunded') {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",
@@ -11749,7 +11798,7 @@
      "kind": "S",
      "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
      "text": "if (Number.isFinite(Number(order.scheduled_for))) {",
-     "scopeSha": "625e4e2596ed2a59060449e50a2a61636b06851431986896ea68efb03e66d066"
+     "scopeSha": "d16ef5cb75dbeb876a155454f5d57f6734e463392892d64f60c00de7ad6bc6dd"
     }
    ],
    "cases": {
@@ -11785,7 +11834,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     }
    ],
    "cases": {
@@ -11816,14 +11865,14 @@
     "site": "body = whatsapp.tplOutForDelivery({",
     "siteSha": "915ce8b4ba6ac92e28a0e2b083d95cc51ba0dd093677945be0e7d82b7b2aa9ee",
     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
-    "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+    "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     }
    ],
    "cases": {
@@ -11864,13 +11913,13 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (dec.action === 'finalize_refunded') {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",
@@ -13370,7 +13419,7 @@
     "site": "if(res.status===409 && cfg && cfg.error==='Already paid'){ orderSubmitting=false; currentOrder.payment_status='confirmed'; showSuccess(); return; }",
     "siteSha": "4e9b968f324d42bb67df8eb7cfbfe906df0f850c43835566a72083939654667c",
     "scope": "xpizza-orders/index.html<script@2>#processPixelPay",
-    "scopeSha": "5eeb69388b1144911c95f2902e26236d1fd495f23603d94e488659f63b29c394"
+    "scopeSha": "b436d4b61221b33b072e695885183ddea454a4972490214c97cf1534ae820a86"
    },
    "guards": [
     {
@@ -13437,7 +13486,7 @@
     "site": "try { if (typeof updateCart === 'function') updateCart(); } catch (_) {}",
     "siteSha": "8e9511fb74406398df18571e5a8de35ae34ab5f4df1cecc50381fd9ba19930c8",
     "scope": "xpizza-orders/account.js#applyReorderToCart",
-    "scopeSha": "f8a207f78131bba32e4b52f098a7e737ee529657df402e39e2713ee1ee1c9147"
+    "scopeSha": "b4ffab42377145f891df4374eb53b68cda30589b03454cccad0779d8efb36c42"
    },
    "guards": [
     {
@@ -13471,7 +13520,7 @@
     "site": "refreshCardExtrasIndicator(vid); updateTotal(); updateCart();",
     "siteSha": "c8b7767b2aded04dab87995ab4a4457588b1d74740a5fe1b5002f10396ff133f",
     "scope": "xpizza-orders/index.html<script@2>#detailCtaTap",
-    "scopeSha": "04b19dc37792fce34bf054e41b7eacb534339175037f6896ad8b8fef3d17cc63"
+    "scopeSha": "0a9182549541c7ed5f3f67f2ccd852d5a829d4edb7408f38b804884b700ff9ea"
    },
    "guards": [
     {
@@ -13505,7 +13554,7 @@
     "site": "renderMenu(); updateCart(); updateTotal();",
     "siteSha": "6630cac25bc5d73a9f0919210f5db616a6418b072f19b1e4a3b640416f9d2b7e",
     "scope": "xpizza-orders/index.html<script@2>#restoreOrderForm",
-    "scopeSha": "cfb2766314b4ccf1efe1141e6a86bc0ce3bcc96319b3dfd2d351c6107dd69962"
+    "scopeSha": "97ba037bc12195d4c3ee5ab2f28f25843af2c35fb5440f48a2c6adec3f7ecbae"
    },
    "guards": [
     {
@@ -13745,7 +13794,7 @@
     "site": "if(res.status===409 && cfg && cfg.error==='Already paid'){ orderSubmitting=false; currentOrder.payment_status='confirmed'; showSuccess(); return; }",
     "siteSha": "4e9b968f324d42bb67df8eb7cfbfe906df0f850c43835566a72083939654667c",
     "scope": "xpizza-orders/index.html<script@2>#processPixelPay",
-    "scopeSha": "5eeb69388b1144911c95f2902e26236d1fd495f23603d94e488659f63b29c394"
+    "scopeSha": "b436d4b61221b33b072e695885183ddea454a4972490214c97cf1534ae820a86"
    },
    "guards": [
     {
@@ -14078,6 +14127,65 @@
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|assigned"
     ]
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#showLastLocation@xpizza-dispatch/index.html<script@0>#action>anon": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-exec:xpizza-dispatch/index.html<script@0>#showLastLocation"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through showLastLocation, so a trace that probed showLastLocation and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "showLastLocation was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
+   "bind": {
+    "site": "if (!d.active && Number.isFinite(d.lat) && Number.isFinite(d.lng)) items.push({ label: 'Ver última ubicación', icon: ICONS.pin, action: () => runOnMap(() => showLastLocation(uid)) });",
+    "siteSha": "67f55b2864d30c5e6f60a50ce3c4b1f79b87a7ccf67be7152183c7cd19c6eeae",
+    "scope": "xpizza-dispatch/index.html<script@0>#action>anon",
+    "scopeSha": "3d35fb0f7d8f246065c485f5308c1ca6f76d7cd6503334f51408f600818f9a1d"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch/index.html<script@0>#showActionMenu",
+     "text": "menu.querySelectorAll('[data-action-idx]').forEach(btn => {",
+     "scopeSha": "5da9bed9fcc5af760917135b3092038003140dc8acb42e4fd8a967e907b65dcc"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "showActionMenu(",
+     "count": 4
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#showLastLocation",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#action>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "showActionMenu",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 4
+     }
+    },
+    {
+     "kind": "R",
+     "name": "showLastLocation",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx): excluded only when the context is established; required otherwise"
    }
   }
  }

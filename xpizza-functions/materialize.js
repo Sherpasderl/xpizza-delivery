@@ -59,6 +59,9 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
       // 1D D4-b §B.5/§D (advisor Q3): the recipe's format travels with its lines, ONLY IF PRESENT — never written in
       // D4-b, so this entry is byte-identical to today's (pinned); a D4-c canonical recipe keeps its tag through the copy.
       ...(order.recipe_format !== undefined ? { recipe_format: order.recipe_format } : {}),
+      // S-D: the reorder price snapshot (captured at the online charge from the committed prices) travels with its recipe, ONLY IF
+      // PRESENT and VERBATIM — never re-priced here; a legacy pending order without one keeps today's entry byte-identical.
+      ...(order.reorder_price_snapshot !== undefined ? { price_snapshot: order.reorder_price_snapshot } : {}),
     };
   }
 

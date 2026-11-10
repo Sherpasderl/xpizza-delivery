@@ -130,10 +130,10 @@ Every activation/certification CLI (`publish-version.js`, `rollback-version.js`,
    - Then pause the job immediately (command above) and confirm it is PAUSED.
 3. **The boundary** (WRITE-ONCE; the advisor's ruling N2):
    - The input is the recorded observation `tools/identity-boundary-records/2026-10-09.json` (DECISIONS 2026-10-09 "c2b N2 BOUNDARY"). G0 is never derived from today's pointer.
-   - Dry run first, review, then apply:
+   - ONE restaurant per run: `--rid <rid>` (space-separated) is required. An absent `--rid`, the `--rid=<rid>` form or any unrecognised argument is REFUSED (exit 2), so the write-once boundary is never applied to every restaurant by accident. Dry run first, review (exactly ONE row line, for that rid), then apply; repeat per restaurant:
      ```bash
-     node tools/record-evidence-boundary.js --project xpizza-delivery --from-rollout-record tools/identity-boundary-records/2026-10-09.json
-     node tools/record-evidence-boundary.js --project xpizza-delivery --from-rollout-record tools/identity-boundary-records/2026-10-09.json --apply
+     node tools/record-evidence-boundary.js --project xpizza-delivery --from-rollout-record tools/identity-boundary-records/2026-10-09.json --rid <rid>
+     node tools/record-evidence-boundary.js --project xpizza-delivery --from-rollout-record tools/identity-boundary-records/2026-10-09.json --rid <rid> --apply
      ```
    - It is accepted only if the pointer is unchanged since the record, or every generation since then has evidence. A gap is REFUSED; stop and report.
 4. **Record each restaurant's `publishedited` POST-200 latency baseline** (for the passive guard).

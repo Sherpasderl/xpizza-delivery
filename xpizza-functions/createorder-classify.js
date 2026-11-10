@@ -4,6 +4,7 @@ const { formatOf, FORMAT_LEGACY, canonicalOrderFingerprint } = require('./catalo
 /* a1:begin text-version-require */
 const TV = require('./catalog/text-version');   // PLAN-A A8a step 1
 /* a1:end text-version-require */
+const TIP = require('./tip');   // S2-srv-tip: the direct stored-tip compare + the fingerprint component (PLAN-capp-S2-r4 §3.2)
 
 // createorder-classify.js — hardens createOrder's idempotency branch so a re-submit of an EXISTING order_id
 // returns idempotent-200 ONLY when it is genuinely the SAME LIVE cash order; every other existing-order state
@@ -39,7 +40,7 @@ const LIVE_TERMINAL_STATUSES = new Set(['cancelled', 'pending_payment', 'deliver
 /* PLAN-A A8a step 1: a legacy-format record marked 'a8' is compared ONLY against `a8Incoming` (the untruncated paid-text
    fingerprint, computed by the caller only for such a record); absent → `incomingFp` exactly; a malformed marker → 409
    binding_format_invalid. A null candidate keeps today's fail-open (case 4 skipped). */
-function classifyExistingOrder(existing, { paymentMethod, restaurantMatches }, incomingFp, { isPaymentStatusClosed, canonicalIncoming = null, a8Incoming = null } = {}) {
+function classifyExistingOrder(existing, { paymentMethod, restaurantMatches, incomingTip = 0 }, incomingFp, { isPaymentStatusClosed, canonicalIncoming = null, a8Incoming = null } = {}) {
 /* a1:end classify-signature */
   if (!existing) return { action: '200' };                                             // caller only enters this on exists()
   if (!restaurantMatches) return { action: '409', reason: 'restaurant' };              // case 1 — order_id owned by another brand
@@ -49,6 +50,9 @@ function classifyExistingOrder(existing, { paymentMethod, restaurantMatches }, i
     && typeof isPaymentStatusClosed === 'function'
     && isPaymentStatusClosed(existing.payment_status);
   if (closedByStatus || closedByPayment) return { action: '409', reason: 'closed' };   // case 3 — dead/paid/awaiting order
+  // S2 §3.2: a changed tip is a different order — compared DIRECTLY, before every fingerprint (a null recompute skips case 4),
+  // and after `closed` on purpose so the terminal-safe self-heal (order-exists.js) is unchanged. No tip vs no tip never refuses.
+  if (TIP.tipBindingConflict(existing, incomingTip)) return { action: '409', reason: 'tip' };
   const fmt = formatOf(existing, 'fp_format');
   if (!fmt.ok) return { action: '409', reason: 'binding_format_invalid' };
   /* a1:begin classify-select */
@@ -74,8 +78,9 @@ function classifyExistingOrder(existing, { paymentMethod, restaurantMatches }, i
 // Returns the hex fingerprint, or null on ANY failure (FAIL-OPEN: a recompute failure must never 409/500 a
 // legit retry — the caller skips case 4 and returns 200).
 async function computeIncomingFingerprint(ctx, deps) {
-  const { orderId, restaurantId, total, itemsText, items, redeem, customerUid, scheduledForRaw, orderType } = ctx;
+  const { orderId, restaurantId, total, itemsText, items, redeem, customerUid, scheduledForRaw, orderType, tipCents = 0 } = ctx;
   const { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra, db, tables, eligible = null } = deps;
+  const tipX = TIP.tipExtra(tipCents);   // S2: '' with no tip → filtered → byte-identical
   // GRILL-FIX #1 (1b-1b) — the dedup fingerprint MUST price a redemption on the SAME source as the reserve
   // and the order total — which since 2a Task 6 means the same catalog-authored ELIGIBILITY too, not
   // just the same prices: an eligibility divergence flips prep.ok and changes the fingerprint just as
@@ -88,12 +93,12 @@ async function computeIncomingFingerprint(ctx, deps) {
     const schedExtra = isScheduled ? schedFingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '';
     if (redeem == null) {
       const totalCents = orderBreakdownCents(total, restaurantId).total_cents;
-      return orderFingerprint(orderId, totalCents, itemsText, [schedExtra].filter(Boolean).join('|'));
+      return orderFingerprint(orderId, totalCents, itemsText, [schedExtra, tipX].filter(Boolean).join('|'));
     }
     // Redemption cash order — read-only prepare (NEVER resolveRedemptionForOrder, which reserves/debits).
     const prep = await prepareRedemption(db, { redeem, items, restaurantId, itemsText, totalLempiras: total, customerUid, tables, eligible });
     if (!prep || !prep.ok) return null;   // e.g. reward_unavailable (free item 86'd after the original) → fail-open
-    const extra = [schedExtra, prep.redemptionFp ? `rf:${prep.redemptionFp}` : ''].filter(Boolean).join('|');
+    const extra = [schedExtra, prep.redemptionFp ? `rf:${prep.redemptionFp}` : '', tipX].filter(Boolean).join('|');
     return orderFingerprint(orderId, prep.priced.total_cents, prep.itemsText, extra);
   } catch (_) {
     return null;   // FAIL-OPEN — a fingerprint recompute failure never blocks a legit idempotent retry
@@ -105,11 +110,11 @@ async function computeIncomingFingerprint(ctx, deps) {
    prepareRedemption — with items_text replaced by the canonical cart+reward digest and `rf:` by the canonical
    redemption fp. NEVER returns null: any failure is { ok:false } and the caller REFUSES (§A.5). */
 async function computeCanonicalIncomingFingerprint(ctx, deps) {
-  const { orderId, restaurantId, total, items, redeem, customerUid, scheduledForRaw, orderType, itemsText } = ctx;
+  const { orderId, restaurantId, total, items, redeem, customerUid, scheduledForRaw, orderType, itemsText, tipCents = 0 } = ctx;
   const { orderBreakdownCents, prepareRedemption, schedFingerprintExtra, db, tables, eligible = null, context } = deps;
   try {
     const isScheduled = Number.isFinite(scheduledForRaw);
-    const schedExtra = isScheduled ? schedFingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '';
+    const schedExtra = [isScheduled ? schedFingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', TIP.tipExtra(tipCents)].filter(Boolean).join('|');   // S2: + the tip component ('' → unchanged)
     if (redeem == null) {
       const totalCents = orderBreakdownCents(total, restaurantId).total_cents;
       return canonicalOrderFingerprint({ orderId, totalCents, items, redemption: null, rid: restaurantId, context, schedExtra });

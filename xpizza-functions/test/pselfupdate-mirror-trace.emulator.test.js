@@ -38,6 +38,7 @@ const REAL_NOW = Date.now.bind(Date);
 let CLOCK_OFFSET = 0;
 Date.now = () => REAL_NOW() + CLOCK_OFFSET;
 
+const DR = require('./_delivery-read');   // S3a: the declared envío config read
 const assert = require('assert');
 const http = require('http');
 const path = require('path');
@@ -195,6 +196,7 @@ function bodyFor(rid, oid, phone, { redeem: withRedeem = false, qty = 1 } = {}) 
 async function traced(rid, oid, uid, phone, opts = {}) {
   const kind = opts.kind || 'quote';
   await rtdb.ref('rate_limits').remove();   // every test request is 127.0.0.1 — the per-IP limit is reset between charges (test env only)
+  await require('./_catalog-clock').warmPhoneFlag(rtdb);   // the phone flag (30 s, never-awaited refresh) freshly read with the recorder OFF — no refresh lands inside the recording (advisor ruling B, 2026-11-01)
   REC = [];
   const b = bodyFor(rid, oid, phone, { redeem: kind === 'redeem' });
   const r = kind === 'cash'
@@ -426,7 +428,7 @@ async function capturePhase() {
       assert.ok(floorCalls.length <= 1, `🔴 ${rid} ${k}: at most one floor read per request — got ${floorCalls.length}`);
       const opts = ctlOpts(rid, k);
       const rest = CTL.withoutControlRead(out[rid][k], rid, opts);
-      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the MIRROR-route call sequence differs from the frozen ba29282 trace`);
+      { const got = DR.without(rest, `${rid} ${k}`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)); assert.deepStrictEqual(got, golden[rid][k], `🔴 ${rid} ${k}: the MIRROR-route call sequence differs from the frozen ba29282 trace — ${RD.opsDiff(golden[rid][k], got)}`); }
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get, +${opts.expected} switch read)`);
     }
     // ── RENDER-ON COMPANION (1D add-product B, PB-2): ON == OFF + exactly the declared delta, the OFF side recorded in the SAME
@@ -440,7 +442,7 @@ async function capturePhase() {
       const noFloor = (t, L) => {
         const f = t.filter(isFloorRead);
         assert.ok(f.length <= 1 && f.every((e) => e.op === 'get'), `🔴 ${L}: the floor calls are not exactly ≤ 1 rtdb get (${JSON.stringify(f)})`);
-        return t.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e));
+        return DR.without(t, 'render companion').filter((e) => !isFloorRead(e) && !isExtrasModeRead(e));
       };
       let pairs = 0;
       for (const rid of ['x_pizza', 'la_musa']) for (const [name, { off, on }] of Object.entries(companion[rid])) {

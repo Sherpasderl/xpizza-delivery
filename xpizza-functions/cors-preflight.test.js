@@ -18,6 +18,8 @@ require.cache[sitesPath] = { id: sitesPath, filename: sitesPath, loaded: true, c
 const app = require('./index.js');
 
 const XPIZZA = 'https://orders.xpizza.hn', LAMUSA = 'https://orders.lamusa.hn', SYNTH = 'https://orders.synthetic.test', EVIL = 'https://evil.example';
+// S2-srv-app: the customer APP's origin(s), read from the manifest (never a host literal; PLAN-capp-S2-r4 §2.1a)
+const APP_ORIGINS = real.deployments.filter((d) => d.app === 'orders' && d.context === 'platform').flatMap((d) => d.origins);
 const CLIENT_HEADERS = 'content-type,x-client-app,x-client-deployment,x-client-build,x-client-compat';
 
 function preflight(handler, origin) {
@@ -40,16 +42,29 @@ const EXTRA = (process.env.CORS_EXTRA_ENDPOINTS || '').split(',').filter(Boolean
 
 (async () => {
   for (const ep of [...ORDER_SITE_LISTED, ...ORDER_SITE_OPEN, ...EXTRA]) assert.strictEqual(typeof app[ep], 'function', `export ${ep} exists`);
+  assert.ok(APP_ORIGINS.length >= 1, 'premise: the manifest declares the app origin(s)');
   for (const ep of ORDER_SITE_LISTED) {
-    for (const o of [XPIZZA, LAMUSA, SYNTH]) {
+    for (const o of [XPIZZA, LAMUSA, ...APP_ORIGINS, SYNTH]) {
       const r = await preflight(app[ep], o);
       assert.strictEqual(r.allowOrigin, o, `🔴 ${ep}: preflight from configured origin ${o} must be allowed (got ${JSON.stringify(r)})`);
       for (const h of CLIENT_HEADERS.split(',')) assert.ok(r.allowHeaders.includes(h), `${ep} ${o}: request header ${h} allowed`);
     }
     const e = await preflight(app[ep], EVIL);
     assert.ok(e.allowOrigin !== EVIL && e.allowOrigin !== '*', `🔴 ${ep}: an UNCONFIGURED origin must not be allowed (${JSON.stringify(e)})`);
-    ok(`${ep}: preflight allowed for x_pizza, la_musa AND the synthetic third origin (with the X-Client-* headers); an unconfigured origin is not`);
+    ok(`${ep}: preflight allowed for x_pizza, la_musa, the customer app AND the synthetic third origin (with the X-Client-* headers); an unconfigured origin is not`);
   }
+  // S2-srv-app: widening the customer lists never reaches the PORTAL — its write endpoints refuse the app origin
+  for (const ep of ['editCatalog', 'publishEdited']) {
+    assert.strictEqual(typeof app[ep], 'function', `export ${ep} exists`);
+    for (const o of APP_ORIGINS) {
+      const r = await preflight(app[ep], o);
+      assert.ok(r.allowOrigin !== o && r.allowOrigin !== '*', `🔴 ${ep}: the customer app origin ${o} must NOT be allowed on a portal write endpoint (${JSON.stringify(r)})`);
+    }
+    const PORTAL = require('./portal/origins').PORTAL_ORIGINS.find((o) => typeof o === 'string');
+    const p = await preflight(app[ep], PORTAL);
+    assert.strictEqual(p.allowOrigin, PORTAL, `non-vacuity: ${ep} does allow the portal origin`);
+  }
+  ok('portal write endpoints (editCatalog, publishEdited) refuse the customer app origin and still allow the portal');
   for (const ep of [...ORDER_SITE_OPEN, ...EXTRA]) {
     for (const o of [XPIZZA, LAMUSA, SYNTH]) {
       const r = await preflight(app[ep], o);

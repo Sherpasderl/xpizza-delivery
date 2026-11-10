@@ -25,6 +25,7 @@
 //     today's block; the manual release is refused without clearing a block; a stale releasing claim is held.
 require('./_emulator-required')('database', 'firestore');
 
+const DR = require('./_delivery-read');   // S3a: the declared envío config read
 const assert = require('assert');
 const http = require('http');
 const path = require('path');
@@ -63,6 +64,10 @@ const RD = require('./_render-delta');
 // §3 serialization r1 (codex): the DECLARED delta (test/_serial3-delta.js) — the order-independent content key (bound to
 // the content the request persisted, else the declared unbound mode) and (the factura's item_order comes from the gate reader's cached snapshot — no new read)
 const SD = require('./_serial3-delta');
+// FINDING-hosted-charge-recover-race: the claim fix's ONE declared I/O delta (catalog/_hosted-claim-delta.js) — mapped for CARD
+// cases only, counted, pinned (non-vacuous).
+const { preExclusiveClaimOps } = require('../catalog/_hosted-claim-delta');
+const CLAIM_DELTA = { n: 0 };
 let S3_KEYS = 0, S3_PROV = 0;   // §3 r3: card cases whose pending order's persisted content keys were checked
 const POST_OF = new WeakMap();
 const SENT_OF = new WeakMap();   // recorded result → the body the request POSTED (what the content stamp hashed)
@@ -147,6 +152,32 @@ function assertExtrasDeclared(key, ops) {
 // release's hours read. checkD12 asserts that shape where it is due and its absence everywhere else; only then are they
 // stripped, so nothing else can hide behind the declaration.
 const isD12Read = (o) => o.db === 'rtdb' && o.op === 'once' && /^restaurants\/[^/]+\/identity\/(display_name|name)$/.test(o.path);
+// ORCHESTRATION O1a §5 (DECLARED, exact): the scheduled-release sweep reads restaurants/<rid>/identity/active ONCE (the INACTIVE
+// hold), after the pause return and before the release's hours read. The frozen baseline (5e1d0002, 2026-10-08) predates O1a, so the
+// read is asserted where it is due — exactly one plain read, for THIS restaurant, before the hours read — and absent on every other
+// admitted case; only then is it stripped, so nothing else can hide behind the declaration (the golden is NOT re-captured).
+const isO1aActiveRead = (o) => o.db === 'rtdb' && o.op === 'once' && /^restaurants\/[^/]+\/identity\/active$/.test(o.path);
+function checkO1a(key, ops) {
+  const rid = key.split(' | ')[2];
+  const found = ops.filter((o) => /\/identity\/active$/.test(String(o.path || '')));
+  if (!/^SCHEDULED sweep release \|/.test(key)) { assert.deepStrictEqual(found.map((o) => o.path), [], `🔴 ${key}: an identity/active read where O1a makes none`); return; }
+  assert.strictEqual(found.length, 1, `🔴 ${key}: O1a's INACTIVE-hold read — exactly one (got ${found.length})`);
+  assert.deepStrictEqual([found[0].db, found[0].op, found[0].path], ['rtdb', 'once', `restaurants/${rid}/identity/active`], `🔴 ${key}: O1a's INACTIVE-hold read — ONE plain read of THIS restaurant's identity/active`);
+  const at = ops.indexOf(found[0]), hrs = ops.findIndex((o) => o.path === `restaurants/${rid}/identity/hours`);
+  assert.ok(hrs === -1 || at < hrs, `🔴 ${key}: O1a's read precedes the release's hours read`);
+}
+// sensitivity (pure): a missing / doubled / foreign-restaurant / non-plain / misplaced O1a read, and one on another case, are each caught
+{
+  const act = (rid, op = 'once') => ({ db: 'rtdb', op, path: `restaurants/${rid}/identity/active` });
+  const hours = { db: 'rtdb', op: 'once', path: 'restaurants/x_pizza/identity/hours' };
+  const K = 'SCHEDULED sweep release | open | x_pizza';
+  assert.doesNotThrow(() => checkO1a(K, [act('x_pizza'), hours]));
+  for (const [label, bad] of [['missing', [hours]], ['doubled', [act('x_pizza'), act('x_pizza'), hours]], ['foreign rid', [act('la_musa'), hours]],
+    ['not a plain read', [act('x_pizza', 'transaction'), hours]], ['after hours', [hours, act('x_pizza')]]]) {
+    assert.throws(() => checkO1a(K, bad), /O1a/, `O1a sensitivity: ${label}`);
+  }
+  assert.throws(() => checkO1a('createOrder ok | open | x_pizza', [act('x_pizza')]), /O1a makes none/, 'O1a sensitivity: a read on another case');
+}
 // codex D12 r1 P2-2: a REFUSED request (paused / unavailable / race / a refused scheduled release) makes NO brand read either
 function assertNoD12(key, ops) {
   assert.deepStrictEqual(ops.filter(isD12Read).map((o) => o.path), [], `🔴 ${key}: an identity brand read where D12 makes none`);
@@ -157,7 +188,20 @@ function assertNoD12(key, ops) {
 const D12B_TRACK = 'order_tracking/<tracking_token>/restaurant_display_name';
 function expectedChangedD12b(goldenChanged) {
   const wroteTracking = goldenChanged.includes('order_tracking/<tracking_token>/restaurant_id');
-  return wroteTracking ? [...goldenChanged, D12B_TRACK].sort() : goldenChanged;
+  return expectedChangedSD(wroteTracking ? [...goldenChanged, D12B_TRACK].sort() : goldenChanged);
+}
+// S-D (DECLARED, exact; 3a 1fd123ff, NOTE-S-D-price-snapshot-build §1, confirmed 2026-11-08): wherever the baseline wrote the MEMBER's
+// order-history entry (user_orders/<uid>/<oid>), it now also carries price_snapshot {v, lines/<n>/unit_cents, line_cents} — the
+// fixtures' carts are one line, so exactly these three paths. No member entry → nothing extra (guests write neither).
+const SD_USER_SNAP = ['user_orders/<uid>/<oid>/price_snapshot/lines/0/line_cents', 'user_orders/<uid>/<oid>/price_snapshot/lines/0/unit_cents', 'user_orders/<uid>/<oid>/price_snapshot/v'];
+// ONLINE: the pending order carries reorder_price_snapshot beside reorder_items (index.js sd:begin — same customer_uid condition), so
+// exactly where the baseline wrote orders/<oid>/reorder_items it now also writes these three paths (materialize copies them at confirm).
+const SD_ORDER_SNAP = ['orders/<oid>/reorder_price_snapshot/lines/0/line_cents', 'orders/<oid>/reorder_price_snapshot/lines/0/unit_cents', 'orders/<oid>/reorder_price_snapshot/v'];
+function expectedChangedSD(goldenChanged) {
+  let out = goldenChanged;
+  if (out.includes('user_orders/<uid>/<oid>/ts')) out = [...out, ...SD_USER_SNAP];
+  if (out.some((p) => p.startsWith('orders/<oid>/reorder_items/'))) out = [...out, ...SD_ORDER_SNAP];
+  return out === goldenChanged ? goldenChanged : out.sort();
 }
 // sensitivity (pure): the declaration admits exactly that one path, only where the tracking record was written
 {
@@ -165,6 +209,12 @@ function expectedChangedD12b(goldenChanged) {
   assert.deepStrictEqual(expectedChangedD12b(g), [...g, D12B_TRACK].sort());
   assert.deepStrictEqual(expectedChangedD12b(['orders/<oid>/status']), ['orders/<oid>/status'], 'no tracking record → no extra path');
   assert.notDeepStrictEqual([...g, D12B_TRACK, 'order_tracking/<tracking_token>/other'].sort(), expectedChangedD12b(g), 'a second extra path is NOT admitted');
+  const m = ['orders/<oid>/status', 'user_orders/<uid>/<oid>/ts'];
+  assert.deepStrictEqual(expectedChangedSD(m), [...m, ...SD_USER_SNAP].sort(), 'S-D: a member entry admits exactly the three snapshot paths');
+  assert.deepStrictEqual(expectedChangedSD(['orders/<oid>/status']), ['orders/<oid>/status'], 'S-D: no member entry → nothing extra');
+  assert.notDeepStrictEqual([...m, ...SD_USER_SNAP, 'user_orders/<uid>/<oid>/price_snapshot/lines/1/unit_cents'].sort(), expectedChangedSD(m), 'S-D: a further snapshot path is NOT admitted');
+  const o = ['orders/<oid>/reorder_items/0/qty', 'orders/<oid>/status'];
+  assert.deepStrictEqual(expectedChangedSD(o), [...o, ...SD_ORDER_SNAP].sort(), 'S-D: a pending order with reorder_items admits exactly the three order-level snapshot paths');
 }
 function checkD12(key, ops, goldenOps) {
   const rid = key.split(' | ')[2];
@@ -274,6 +324,7 @@ async function traced(oid, rid, request) {
   const before = await tree();
   const pre = (await rtdb.ref(`orders/${oid}`).get()).val() || {};
   FAIL_PREFIX = prevFail;
+  await require('./_catalog-clock').warmPhoneFlag(rtdb);   // the phone flag (30 s, never-awaited refresh) freshly read with the recorder OFF — no refresh lands inside the recording (advisor ruling B, 2026-11-01)
   const mark = CLOCK.loads().length;   // R1c: which rids THIS request cold-loads — observed, not inferred from the trace's shape
   REC = [];
   const r = await request();
@@ -480,9 +531,10 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
     const tx = r.ops.filter((o) => o.db === 'rtdb' && o.op === 'transaction' && o.path === `user_rewards/<uid>/${rid}`);
     assert.strictEqual(tx.length, 2, `🔴 ${key}: exactly the reserve + release transactions on the reward balance (got ${tx.length})`);
   };
-  const stripControl = (ops) => ops.filter((o) => !isControlRead(o) && !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o) && !isD12Read(o));
-  const goldOps = (ops) => ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o));
+  const stripControl = (ops, label) => DR.without(ops, label, { ignore: isTestOp, ...(/^SCHEDULED sweep release/.test(label) ? { expected: 0 } : {}) }).filter((o) => !isControlRead(o) && !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o) && !isD12Read(o) && !isO1aActiveRead(o));   // DRYRUN (2e): + 5f's O1a INACTIVE-hold read (b85245ef) on S3a's DR.without form
+  const goldOps = (ops) => ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o));   // the frozen golden predates the envío read
   const tally = { same: 0, refused: 0 };
+  let O1A_SEEN = 0;   // O1a §5: the six declared cells, counted
   for (const [key, r] of Object.entries(results)) {
     const [name, state] = key.split(' | ');
     const c = CASES.find((x) => x.name === name) || { name, expect: 'scheduled' };
@@ -501,12 +553,20 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         assert.deepStrictEqual(r.body, g.body, `🔴 ${key}: body changed`);
         assert.deepStrictEqual(r.headers, g.headers, `🔴 ${key}: headers changed`);
         checkD12(key, r.ops, g.ops);
+        checkO1a(key, r.ops);
         const s3c = SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) });   // the content the route stamped (createOrder: posted; charge: posted + server reward lines)
         // codex r2 P2 — the mode is DECLARED from what the case IS (a changed cart / a vanished order stamps content it does not persist)
         const mode = /chang|VANISH/i.test(c.name) ? 'unbound' : 'bound';
-        const cs = SD.compareShape(stripControl(r.ops), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
-        if (JSON.stringify(stripControl(r.ops)) !== JSON.stringify(goldOps(g.ops))) S3_DIFF += 1;
-        assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${key}: the call sequence changed beyond the control read`);
+        const cs = SD.compareShape(c.path === 'card' ? preExclusiveClaimOps(stripControl(r.ops, key), CLAIM_DELTA) : stripControl(r.ops, key), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
+        if (JSON.stringify(stripControl(r.ops, key)) !== JSON.stringify(goldOps(g.ops))) S3_DIFF += 1;
+        assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${key}: the call sequence changed beyond the control read — ${RD.opsDiff(cs.expected, cs.actual)}`);
+        if (/^SCHEDULED sweep release \|/.test(key)) {
+          O1A_SEEN += 1;
+          // NEGATIVE (in-suite, O1a §5): the declaration strips exactly O1a's read — an unexpected extra read on the same cell is still a diff
+          const planted = [...r.ops, { db: 'rtdb', op: 'once', path: `restaurants/${key.split(' | ')[2]}/identity/unexpected` }];
+          const neg = SD.compareShape(c.path === 'card' ? preExclusiveClaimOps(stripControl(planted, key), CLAIM_DELTA) : stripControl(planted, key), goldOps(g.ops),   /* DRYRUN (2e): S3a's stripControl(ops, label) — the label sets DR.without's expected:0 on SCHEDULED cells; without it the negative THROWS instead of diffing */ { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: `${key} (negative)` });
+          assert.notDeepStrictEqual(neg.actual, neg.expected, `🔴 ${key}: NEGATIVE — an unexpected extra read must still turn the cell RED`);
+        }
         const ch = SD.changedShape(r.changed, expectedChangedD12b(g.changed), { content: s3c, bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
         // §3 r3 (codex r3 P1): a card request that wrote its pending order PERSISTED the content keys of the content it stamped
         const post = POST_OF.get(r) || {};
@@ -555,6 +615,8 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
     });
   }
 
+  if (!CAPTURE) check(() => assert.strictEqual(O1A_SEEN, 6, `🔴 O1a §5: exactly the 6 SCHEDULED sweep release cells (absent/open/expired × x_pizza/la_musa) were compared (got ${O1A_SEEN})`));
+
   // ── RENDER-ON COMPANION (1D add-product B, PB-2 ruling (A)) ─────────────────────────────────────────────────────────
   // Each render-ON result is compared with the render-OFF result of the SAME case, state and restaurant in THIS process
   // (itself == the frozen baseline above). What render ON changes, by the code that changes it:
@@ -574,7 +636,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
   // A GATE / CTX re-read is never set aside: it stays in the comparison and shows.
   let companion = { on: 0, ont: 0, probed: 0, bound: 0, mut: 0 };
   if (!CAPTURE) {
-    const NO = (ops) => RD.normOps(ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o)));
+    const NO = (ops) => RD.normOps(ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o)));   // inputs already through DR.without
     const REUSE_REF = 'card REUSE of a live checkout holding a reward (the hold stays)';
     const BOUND = new Set([REUSE_REF, 'RACE with a REUSED reward hold (kept)']);
     const compare = (pass, key, on, c, steady) => {
@@ -582,7 +644,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
       const off = results[key];
       const L = `${key} (render ON${steady ? '' : ', issued with render OFF'})`;
       assert.ok(off && on, `${L}: ran on both sides`);
-      const offOps = NO(FILL.strip(off.ops, rid, off, `${L} [render-OFF side]`, { ignore: isTestOp, cold: COLD_OF.get(off) })); const onOps = NO(FILL.strip(on.ops, rid, on, L, { ignore: isTestOp, cold: COLD_OF.get(on) }));
+      const offOps = NO(FILL.strip(DR.without(off.ops, `${L} [render-OFF side]`, { ignore: isTestOp }), rid, off, `${L} [render-OFF side]`, { ignore: isTestOp, cold: COLD_OF.get(off) })); const onOps = NO(FILL.strip(DR.without(on.ops, L, { ignore: isTestOp }), rid, on, L, { ignore: isTestOp, cold: COLD_OF.get(on) }));   // S3a: the declared envío read is set aside first (it leads the request)
       const reward = c.path === 'card' && isRewardCase(c);
       if (steady && BOUND.has(c.name)) {
         const ref = results[`${REUSE_REF} | ${state} | ${rid}`];
@@ -603,7 +665,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
       if (wroteBinding) assert.strictEqual(typeof (on.orderAfter && on.orderAfter.charge_inputs_fp), 'string', `${L}: premise — the order carries its bound charge-input fingerprint`);
       const wantChanged = [...off.changed, ...(wroteBinding ? ['orders/<oid>/charge_inputs_fp'] : [])].map(RD.contentHash).sort();
       assert.deepStrictEqual(on.changed.map(RD.contentHash).sort(), wantChanged, `🔴 ${L}: the changed-path set`);
-      if (!reward) { assert.deepStrictEqual(onOps, offOps, `🔴 ${L}: the call sequence must equal the render-OFF one`); return; }
+      if (!reward) { RD.assertSameOps(offOps, onOps, L); return; }
       const probe = steady && isHoldRelease(c) ? RD.PROBE_FULL(rid) : RD.PROBE_ABSENT();
       RD.assertInserted(offOps, onOps, RD.afterUidCheck(offOps, L), probe, L);
       companion.probed += 1;
@@ -727,6 +789,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
     console.log(`order-control: baseline written to ${CAPTURE} (${Object.keys(out.cases).length} cases)`);
   } else {
     check(() => assert.deepStrictEqual(Object.keys(results).sort(), Object.keys(golden.cases).sort(), 'the same cases as the baseline'));
+    if (!CAPTURE) check(() => assert.ok(CLAIM_DELTA.n > 0, `non-vacuity: the declared exclusive-claim delta was applied (${CLAIM_DELTA.n} mapping(s))`));
   }
   // collected (not thrown) so it never masks the per-cell failures that would explain it
   if (!CAPTURE) check(() => assert.ok(S3_DIFF > 0, 'non-vacuity: WITHOUT the §3 declared delta at least one UNCHANGED case differs from the baseline'));

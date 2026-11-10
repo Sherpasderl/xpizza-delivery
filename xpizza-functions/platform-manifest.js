@@ -23,6 +23,10 @@ const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;          // app / deployment ids: pat
 const PLATFORM_CONTEXT = 'platform';
 // Local development against production data — public menu only (kept from the pre-manifest literal list).
 const LOCALHOST_DEV_RE = /^http:\/\/localhost(:\d+)?$/;
+// PLAN-capp-native-shell §1.1 (Codex #1, P1): the bundled native shell's WebView origins — iOS (WKWebView, capacitor scheme) and
+// Android (Capacitor's https://localhost). EXACTLY these two, and only in the platform orders deployment's `native` block: they are
+// not https sites, so they never enter `origins` (the pay-return allowlist, the stamp, the domain swap) — only the CORS lists.
+const NATIVE_ORIGINS = Object.freeze(['capacitor://localhost', 'https://localhost']);
 
 function isExactHttpsOrigin(o) {
   if (typeof o !== 'string' || o.includes('*')) return false;
@@ -51,12 +55,71 @@ function validateManifest(m) {
     if (!Array.isArray(d.entrypoints) || !d.entrypoints.length
       || d.entrypoints.some((e) => typeof e !== 'string' || !/^[a-z0-9][a-z0-9_/-]*\.html$/.test(e) || e.includes('..'))) errs.push(`${tag}: bad entrypoints`);
     if (!(d.context === PLATFORM_CONTEXT || (typeof d.context === 'string' && RID_RE.test(d.context)))) errs.push(`${tag}: bad context`);
+    // S3b: the hosted-checkout RETURN routing (pixelpay-return-url.js) — only an `orders` deployment may carry it: the env key
+    // naming its base, and an optional exact https default (absent → fail-closed when the env is unset)
+    if (d.pay_return !== undefined) {
+      const pr = d.pay_return;
+      if (d.app !== 'orders') errs.push(`${tag}: pay_return is only for an orders deployment`);
+      else if (!pr || typeof pr !== 'object' || Array.isArray(pr) || Object.keys(pr).some((k) => k !== 'env' && k !== 'default')) errs.push(`${tag}: pay_return must be { env, default? }`);
+      else {
+        if (typeof pr.env !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(pr.env)) errs.push(`${tag}: pay_return.env must be an ENV_KEY`);
+        if (pr.default !== undefined && !isExactHttpsOrigin(pr.default)) errs.push(`${tag}: pay_return.default must be an exact https origin`);
+      }
+    }
+    if (d.native !== undefined) {
+      const nv = d.native;
+      if (d.app !== 'orders' || d.context !== PLATFORM_CONTEXT) errs.push(`${tag}: native is only for the platform orders deployment`);
+      else if (!nv || typeof nv !== 'object' || Array.isArray(nv) || Object.keys(nv).some((k) => k !== 'deployment' && k !== 'origins')) errs.push(`${tag}: native must be { deployment, origins }`);
+      else if (typeof nv.deployment !== 'string' || !ID_RE.test(nv.deployment) || nv.deployment === d.id) errs.push(`${tag}: native.deployment must be its own deployment id`);
+      else if (deps.some((x) => x && x.id === nv.deployment)) errs.push(`${tag}: native.deployment ${JSON.stringify(nv.deployment)} collides with a deployment id`);
+      else if (!Array.isArray(nv.origins) || !nv.origins.length) errs.push(`${tag}: native.origins must be a non-empty array`);
+      else {
+        for (const o of nv.origins) if (!NATIVE_ORIGINS.includes(o)) errs.push(`${tag}: native origin ${JSON.stringify(o)} is not one of ${NATIVE_ORIGINS.join(', ')}`);
+        if (new Set(nv.origins).size !== nv.origins.length) errs.push(`${tag}: native origins must be unique`);
+      }
+    }
+    // PLAN-capp-native-shell D3: the customer app's RUNTIME transport (functions base, menu endpoint, availability base, and the
+    // PUBLIC client keys the live forms already serve) — only on the platform orders deployment, exact keys, exact shapes
+    if (d.runtime !== undefined) {
+      const rt = d.runtime, FB = ['apiKey', 'authDomain', 'databaseURL', 'projectId', 'messagingSenderId', 'appId'];
+      const KEYS = ['note', 'functions_base', 'menu_endpoint', 'availability_base', 'intake_key', 'maps_key', 'firebase'];
+      // OPTIONAL (owner 2026-11-01): the platform's customer-help WhatsApp («Ayuda» on «Pedido recibido»), E.164 — absent ⇒ no help control
+      const OPTIONAL = ['support_whatsapp', 'store_urls'];   // store_urls (owner fills at listing time): the native store-update's «Abrir App Store / Google Play»
+      const keysOk = (o) => { const ks = Object.keys(o); return KEYS.every((k) => ks.includes(k)) && ks.every((k) => KEYS.includes(k) || OPTIONAL.includes(k)); };
+      if (d.app !== 'orders' || d.context !== PLATFORM_CONTEXT) errs.push(`${tag}: runtime is only for the platform orders deployment`);
+      else if (!rt || typeof rt !== 'object' || Array.isArray(rt) || !keysOk(rt)) errs.push(`${tag}: runtime must be exactly { ${KEYS.join(', ')} } (optional: ${OPTIONAL.join(', ')})`);
+      else {
+        if (typeof rt.note !== 'string' || !rt.note) errs.push(`${tag}: runtime.note must say these are public client keys`);
+        for (const k of ['functions_base', 'availability_base']) if (!isExactHttpsOrigin(rt[k])) errs.push(`${tag}: runtime.${k} must be an exact https origin`);
+        if (typeof rt.menu_endpoint !== 'string' || !/^[a-z][A-Za-z0-9]{1,62}$/.test(rt.menu_endpoint)) errs.push(`${tag}: runtime.menu_endpoint must be a function name`);
+        if (typeof rt.intake_key !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(rt.intake_key)) errs.push(`${tag}: runtime.intake_key malformed`);
+        if (typeof rt.maps_key !== 'string' || !/^[A-Za-z0-9_-]{20,80}$/.test(rt.maps_key)) errs.push(`${tag}: runtime.maps_key malformed`);
+        if (rt.support_whatsapp !== undefined && (typeof rt.support_whatsapp !== 'string' || !/^\+[1-9]\d{7,14}$/.test(rt.support_whatsapp))) errs.push(`${tag}: runtime.support_whatsapp must be E.164 (+<digits>)`);
+        if (rt.store_urls !== undefined) {
+          const su = rt.store_urls, HOSTS = { ios: 'apps.apple.com', android: 'play.google.com' };
+          const okUrl = (u, host) => { try { const x = new URL(u); return x.protocol === 'https:' && x.hostname === host && !x.username && !x.password; } catch (_) { return false; } };
+          if (!su || typeof su !== 'object' || Array.isArray(su) || !Object.keys(su).length || Object.keys(su).some((k) => !HOSTS[k] || !okUrl(su[k], HOSTS[k]))) errs.push(`${tag}: runtime.store_urls must be { ios?: https://apps.apple.com/…, android?: https://play.google.com/… }`);
+        }
+        const fb = rt.firebase;
+        if (!fb || typeof fb !== 'object' || Array.isArray(fb) || Object.keys(fb).sort().join() !== [...FB].sort().join() || FB.some((k) => typeof fb[k] !== 'string' || !fb[k])) errs.push(`${tag}: runtime.firebase must be exactly { ${FB.join(', ')} } (non-empty strings)`);
+        else if (fb.databaseURL !== rt.availability_base) errs.push(`${tag}: runtime.availability_base must be the firebase databaseURL`);
+      }
+    }
     if (!Array.isArray(d.origins)) errs.push(`${tag}: origins must be an array`);
     else for (const o of d.origins) {
       if (!isExactHttpsOrigin(o)) errs.push(`${tag}: origin ${JSON.stringify(o)} is not an exact https origin`);
       if (origins.has(o)) errs.push(`${tag}: origin ${o} listed twice`);
       origins.add(o);
     }
+  }
+  // S2 P-A: the customer APP's orders deployment (context 'platform', never a rid's own) — at most ONE, and it must carry a
+  // pay_return whose default is one of its OWN declared origins (pixelpay-return-url.js only ever returns to a declared origin)
+  const appDeps = deps.filter((d) => d && d.app === 'orders' && d.context === PLATFORM_CONTEXT);
+  if (appDeps.length > 1) errs.push('at most one orders deployment may have context platform');
+  for (const d of appDeps) {
+    const pr = d.pay_return;
+    if (!pr || typeof pr !== 'object' || pr.default === undefined) errs.push(`${JSON.stringify(d.id)}: the platform orders deployment needs pay_return with a default`);
+    else if (!Array.isArray(d.origins) || !d.origins.includes(pr.default)) errs.push(`${JSON.stringify(d.id)}: pay_return.default must be one of its own origins`);
   }
   return errs;
 }
@@ -74,8 +137,10 @@ function validateCompat(c, apps) {
 
 // The order sites' exact origins, in manifest order (the CORS audience of the shared order-site constants).
 const orderOrigins = (m) => m.deployments.filter((d) => d.app === 'orders').flatMap((d) => d.origins);
+// …then the native shell's WebView origins (§1.1), AFTER every site origin (today's lists keep their members and order)
+const nativeOrigins = (m) => m.deployments.filter((d) => d.app === 'orders' && d.context === PLATFORM_CONTEXT && d.native).flatMap((d) => d.native.origins);
 function deriveCorsLists(m) {
-  const o = orderOrigins(m);
+  const o = [...orderOrigins(m), ...nativeOrigins(m)];
   return { ACCOUNT_ORIGINS: [...o], PUBLIC_MENU_ORIGINS: [LOCALHOST_DEV_RE, ...o] };
 }
 
@@ -83,14 +148,25 @@ function loadPlatform(sites = SITES, compat = COMPAT) {
   const errs = [...validateManifest(sites), ...validateCompat(compat, (sites && sites.apps) || [])];
   if (errs.length) throw new Error(`platform manifest invalid: ${errs.join('; ')}`);
   const byId = new Map(sites.deployments.map((d) => [d.id, d]));
+  // N1b (PLAN-capp-native-shell D1): the native shell is its OWN client deployment of the platform orders app — the id its stamp
+  // sends as X-Client-Deployment — declared in that deployment's `native` block (no folder, no site: it inherits app + context)
+  for (const d of sites.deployments) if (d.native) byId.set(d.native.deployment, { id: d.native.deployment, app: d.app, context: d.context });
+  // the customer APP's client deployments: the platform orders deployment + its native one. ONE predicate for every "is this the
+  // capp?" rule (the guest checkout's card-only + ticket gates key on it), so a declared native shell is the capp, never a form.
+  // No native block ⇒ exactly { the platform orders deployment } (today: 'orders-app').
+  const appIds = new Set(sites.deployments.filter((d) => d.app === 'orders' && d.context === PLATFORM_CONTEXT).flatMap((d) => (d.native ? [d.id, d.native.deployment] : [d.id])));
   return {
     sites, compat, ...deriveCorsLists(sites),
     // a heartbeat's (app, deployment, context) must be exactly a manifest combination
     isValidCombination: (app, deployment, context) => { const d = byId.get(deployment); return !!d && d.app === app && d.context === context; },
+    isAppDeployment: (id) => typeof id === 'string' && appIds.has(id),
+    // the app's runtime transport (D3) — null when the manifest carries none
+    appRuntime: () => { const d = sites.deployments.find((x) => x.app === 'orders' && x.context === PLATFORM_CONTEXT && x.runtime); return d ? d.runtime : null; },
+    nativeDeployment: () => { const d = sites.deployments.find((x) => x.app === 'orders' && x.context === PLATFORM_CONTEXT && x.native); return d ? d.native.deployment : null; },
     maxCompat: (app) => (Number.isInteger(compat.generations[app]) ? compat.generations[app] : 0),
     isKnownApp: (app) => sites.apps.includes(app),
   };
 }
 
 const PLATFORM = loadPlatform();
-module.exports = { PLATFORM, loadPlatform, validateManifest, validateCompat, deriveCorsLists, isExactHttpsOrigin, LOCALHOST_DEV_RE, PLATFORM_CONTEXT, RID_RE, ID_RE };
+module.exports = { PLATFORM, loadPlatform, validateManifest, validateCompat, deriveCorsLists, isExactHttpsOrigin, LOCALHOST_DEV_RE, NATIVE_ORIGINS, PLATFORM_CONTEXT, RID_RE, ID_RE };

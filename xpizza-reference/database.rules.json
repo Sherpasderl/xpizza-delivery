@@ -18,6 +18,7 @@
         },
         "active":           { ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'" },
         "shift_started_at": { ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'" },
+        "break_since": { ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner' && !newData.exists()", ".validate": "newData.isNumber() && newData.val() === now" },
         "last_ping":        { ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'" },
         "current_task_id":  { ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'" },
         "lat": { ".validate": "newData.isNumber() || newData.val() === null" },
@@ -92,13 +93,21 @@
       ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true",
       ".indexOn": ["status", "created_at", "order_type", "restaurant_id", "delivered_by_driver_uid", "delivered_by_uid", "delivered_at", "cancelled_at", "completed_at"],
       "$order_id": {
-        ".write": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists()",
+        ".write": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists() && (newData.child('payment_flow').val() === data.child('payment_flow').val() && newData.child('payment_total_cents').val() === data.child('payment_total_cents').val() && newData.child('sdk_live_pending').val() === data.child('sdk_live_pending').val() && newData.child('payment_placed/leg_id').val() === data.child('payment_placed/leg_id').val() && newData.child('payment_placed/at').val() === data.child('payment_placed/at').val() && newData.child('payment_commit/revision').val() === data.child('payment_commit/revision').val() && newData.child('payment_commit/pid').val() === data.child('payment_commit/pid').val() && newData.child('payment_terminal/revision').val() === data.child('payment_terminal/revision').val() && newData.child('payment_terminal/at').val() === data.child('payment_terminal/at').val() && newData.child('payment_cancel/kind').val() === data.child('payment_cancel/kind').val() && newData.child('payment_cancel/at').val() === data.child('payment_cancel/at').val() && newData.child('payment_placed').exists() === data.child('payment_placed').exists() && newData.child('payment_commit').exists() === data.child('payment_commit').exists() && newData.child('payment_terminal').exists() === data.child('payment_terminal').exists() && newData.child('payment_cancel').exists() === data.child('payment_cancel').exists()) && (!data.child('payment_flow').exists() || (data.child('status').val() !== 'delivered' && data.child('status').val() !== 'completed') || newData.child('status').val() === data.child('status').val())",
 
-        ".validate": "((root.child('dispatchers').child(auth.uid).exists() && auth.token.customer !== true) || !data.child('delivered_by_driver_uid').exists() || newData.child('delivered_by_driver_uid').val() === data.child('delivered_by_driver_uid').val()) && (!data.child('restaurant_id').exists() || newData.child('restaurant_id').val() === data.child('restaurant_id').val()) && (!data.child('brand_id').exists() || newData.child('brand_id').val() === data.child('brand_id').val())",
+        ".validate": "((root.child('dispatchers').child(auth.uid).exists() && auth.token.customer !== true) || !data.child('delivered_by_driver_uid').exists() || newData.child('delivered_by_driver_uid').val() === data.child('delivered_by_driver_uid').val()) && (!data.child('restaurant_id').exists() || newData.child('restaurant_id').val() === data.child('restaurant_id').val()) && (!data.child('brand_id').exists() || newData.child('brand_id').val() === data.child('brand_id').val()) && (!data.child('payment_flow').exists() || (data.child('status').val() !== 'delivered' && data.child('status').val() !== 'completed') || newData.child('status').val() === data.child('status').val())",
 
         "status": {
-          ".write": "auth != null && auth.token.handheld !== true && (root.child('dispatchers').child(auth.uid).exists() || root.child('kitchen').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid) && !(newData.val() === 'cancelled' && root.child('orders').child($order_id).child('payment_method').val() === 'online' && (root.child('orders').child($order_id).child('payment_status').val() === 'confirmed' || root.child('orders').child($order_id).child('payment_status').val() === 'pending')) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner' && !(root.child('kitchen').child(auth.uid).exists() && root.child('orders').child($order_id).child('restaurant_id').isString() && root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('order_surface').val() === 'handheld')"
+          ".write": "auth != null && auth.token.handheld !== true && (root.child('dispatchers').child(auth.uid).exists() || root.child('kitchen').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid) && !(newData.val() === 'cancelled' && root.child('orders').child($order_id).child('payment_method').val() === 'online' && (root.child('orders').child($order_id).child('payment_status').val() === 'confirmed' || root.child('orders').child($order_id).child('payment_status').val() === 'pending')) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner' && !(root.child('kitchen').child(auth.uid).exists() && root.child('orders').child($order_id).child('restaurant_id').isString() && root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('order_surface').val() === 'handheld') && (newData.exists() || root.child('dispatchers').child(auth.uid).exists() || root.child('kitchen').child(auth.uid).exists())",
+          ".validate": "(root.child('dispatchers').child(auth.uid).exists() || root.child('kitchen').child(auth.uid).exists() || newData.val() === data.val() || (data.val() !== 'cancelled' && data.val() !== 'delivered' && data.val() !== 'completed' && ((newData.val() === 'out_for_delivery' && root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid && root.child('tasks').child($order_id + '_pickup').child('status').val() !== 'cancelled') || (newData.val() === 'delivered' && root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid && root.child('tasks').child($order_id + '_delivery').child('status').val() !== 'cancelled')))) && (!data.parent().child('payment_flow').exists() || (data.val() !== 'delivered' && data.val() !== 'completed') || newData.val() === data.val())"
         },
+        "payment_flow": { ".validate": "newData.val() === data.val()" },
+        "payment_total_cents": { ".validate": "newData.val() === data.val()" },
+        "sdk_live_pending": { ".validate": "newData.val() === data.val()" },
+        "payment_placed": { ".validate": "newData.hasChildren(['leg_id', 'at'])", "leg_id": { ".validate": "newData.val() === data.val()" }, "at": { ".validate": "newData.val() === data.val()" }, "$other": { ".validate": false } },
+        "payment_commit": { ".validate": "newData.hasChildren(['revision', 'pid'])", "revision": { ".validate": "newData.val() === data.val()" }, "pid": { ".validate": "newData.val() === data.val()" }, "$other": { ".validate": false } },
+        "payment_terminal": { ".validate": "newData.hasChildren(['revision', 'at'])", "revision": { ".validate": "newData.val() === data.val()" }, "at": { ".validate": "newData.val() === data.val()" }, "$other": { ".validate": false } },
+        "payment_cancel": { ".validate": "newData.hasChildren(['kind', 'at'])", "kind": { ".validate": "newData.val() === data.val()" }, "at": { ".validate": "newData.val() === data.val()" }, "$other": { ".validate": false } },
         "picked_up_at": {
           ".write": "auth != null && auth.token.handheld !== true && (root.child('dispatchers').child(auth.uid).exists() || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner'"
         },
@@ -172,6 +181,15 @@
       }
     },
 
+    "order_ratings": { ".read": false, ".write": false },
+    "ratings_v2": { ".read": false, ".write": false, ".indexOn": ["owner_uid"] },
+    "rating_index": { ".read": false, ".write": false },
+    "stats_buckets": { ".read": false, ".write": false },
+    "stats_agg": { ".read": false, ".write": false },
+    "support_tickets": { ".read": false, ".write": false },
+    "support_ticket_counts": { ".read": false, ".write": false },
+    "ratings_redact_pending": { ".read": false, ".write": false, ".indexOn": ["at", "last_attempt"] },
+    "public_stats": { ".read": true, ".write": false },
     "order_tracking": {
       "$token": {
         ".read": true,
@@ -299,10 +317,30 @@
     "platform_config":       { ".read": false, ".write": false },
     "form_signals":          { ".read": false, ".write": false },
     "form_signal_limits":    { ".read": false, ".write": false, ".indexOn": ["window_start"] },
+    "platform_rates": {
+      ".read": "auth != null && auth.token.customer !== true && auth.token.handheld !== true",
+      ".write": false,
+      "driver_per_delivery": {
+        "$entry": {
+          ".validate": "newData.hasChildren(['cents', 'effective_from']) && newData.child('cents').isNumber() && newData.child('cents').val() % 1 === 0 && newData.child('cents').val() >= 100 && newData.child('cents').val() <= 100000 && newData.child('effective_from').isNumber() && newData.child('effective_from').val() % 1 === 0 && newData.child('effective_from').val() >= 1767225600000 && newData.child('effective_from').val() <= now + 31622400000",
+          "cents": { ".validate": true },
+          "effective_from": { ".validate": true },
+          "$other": { ".validate": false }
+        }
+      }
+    },
 
+    "form_rebake": {
+      ".read": false,
+      ".write": false
+    },
     "payment_attempts": { ".read": false, ".write": false, ".indexOn": ["paid_at", "uncertain_at"] },
     "pending_paid_alerts": { ".read": false, ".write": false, ".indexOn": ["at"] },
     "webhook_events":   { ".read": false, ".write": false },
+    "extra_payment_pending": { ".read": false, ".write": false },
+    "extra_payment_quarantine": { ".read": false, ".write": false },
+    "payment_sdk": { ".read": false, ".write": false },
+    "payment_sdk_due": { ".read": false, ".write": false },
     "outbox":           { ".read": false, ".write": false },
     "refund_attempts":  { ".read": false, ".write": false },
     "payment_audit":    { ".read": false, ".write": false },
@@ -315,6 +353,7 @@
     "restaurants": {
       "$restaurant_id": {
         "factura_config": { ".read": false, ".write": false },
+        "platform_config": { ".read": false, ".write": false },
         "legal": { ".read": false, ".write": false },
         "identity": {
           ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true",
@@ -414,7 +453,7 @@
     "user_profiles": {
       "$uid": {
         ".read":  "auth != null && auth.token.handheld !== true && auth.uid === $uid",
-        ".write": "auth != null && auth.token.handheld !== true && auth.uid === $uid && newData.exists() && newData.hasChildren(['phone', 'phone_hash', 'created_at', 'last_login']) && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && (!newData.child('default_address').exists() || newData.child('default_address').val() === null || newData.child('addresses').hasChild(newData.child('default_address').val()))",
+        ".write": "auth != null && auth.token.handheld !== true && auth.uid === $uid && newData.exists() && newData.hasChildren(['phone', 'phone_hash', 'created_at', 'last_login']) && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !data.child('deleting_at').exists() && (!newData.child('default_address').exists() || newData.child('default_address').val() === null || newData.child('addresses').hasChild(newData.child('default_address').val()))",
         "name":       { ".validate": "newData.isString() && newData.val().length <= 80" },
         "phone":      { ".validate": "newData.isString() && (!data.exists() || newData.val() === data.val())" },
         "created_at": { ".validate": "newData.isNumber() && (!data.exists() || newData.val() === data.val())" },
@@ -438,12 +477,29 @@
         "$other":     { ".validate": false }
       }
     },
+    "user_favorites": {
+      "$uid": {
+        ".read":  "auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()",
+        ".write": "auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()",
+        ".validate": "newData.hasChildren()",
+        "$rid": {
+          ".validate": "$rid.matches(/^[a-z0-9][a-z0-9_-]{1,39}$/) && root.child('restaurants').child($rid).child('identity').exists() && newData.hasChildren(['createdAt'])",
+          "createdAt": { ".validate": "newData.isNumber() && newData.val() <= now + 60000" },
+          "$other":    { ".validate": false }
+        }
+      }
+    },
     "user_orders":  { "$uid": { ".read": "auth != null && auth.token.handheld !== true && auth.uid === $uid", ".write": false, ".indexOn": ["ts"] } },
     "user_rewards": { "$uid": { ".read": "auth != null && auth.token.handheld !== true && auth.uid === $uid", ".write": false, ".validate": "!newData.isString() && !newData.isNumber() && !newData.isBoolean()" } },
+    "driver_ledger_weeks": { ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists()", ".write": false },
     "reward_welcome": { ".read": false, ".write": false },
     "otp":          { ".read": false, ".write": false },
     "otp_ip":       { ".read": false, ".write": false },
     "phone_index":  { ".read": false, ".write": false },
+    "checkout_otp": { ".read": false, ".write": false, ".indexOn": ["expires_at"] },
+    "otp_budget":   { ".read": false, ".write": false, ".indexOn": ["last"] },
+    "checkout_tickets": { ".read": false, ".write": false, ".indexOn": ["exp"] },
+    "grants_used": { ".read": false, ".write": false },
     "merchant_reject_notices": { ".read": false, ".write": false },
     "merchant_push_tokens": { ".read": false, ".write": false, ".indexOn": ["rid"] },
     "merchant_push_log": { ".read": false, ".write": false },

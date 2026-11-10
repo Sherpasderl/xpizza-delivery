@@ -8,13 +8,16 @@ const INACTIVE_MS = 180 * 24 * 3600e3;   // ~6 months of dormancy before an acco
 // The atomic null-map that clears ONE account's three nodes. phoneHash may be absent (legacy profile) —
 // then the phone_index entry is left (it will resolve to a re-created profile at the same uid on next login).
 function accountDeleteUpdates(uid, phoneHash, tombstoneAt = null) {
-  const updates = { [`user_profiles/${uid}`]: null, [`user_orders/${uid}`]: null, [`user_rewards/${uid}`]: null };
+  // S-C (PLAN §S-C): the member's favorites go with the account — a SUBTREE-ROOT null, so every rid under it is purged
+  const updates = { [`user_profiles/${uid}`]: null, [`user_orders/${uid}`]: null, [`user_rewards/${uid}`]: null, [`user_favorites/${uid}`]: null };
   // Rewards Phase A: purge balances + ledger with the account, but NEVER null reward_welcome — that
   // per-phone_hash-per-brand tombstone must survive deletion so a delete+re-login can't re-earn the welcome.
   if (phoneHash) updates[`phone_index/${phoneHash}`] = null;
-  // H10 durability: user-initiated deletion writes a server-only tombstone so the still-valid custom-token
-  // session can't recreate the profile or re-accrue attribution. The inactivity sweep passes no tombstoneAt
-  // (2-arg) — its accounts are 6-month-dormant with no live session, and tombstoning would grow unbounded.
+  // H10 durability: deletion writes a server-only tombstone so a still-valid custom-token session can't recreate
+  // the profile or re-accrue attribution. BOTH deletion paths pass tombstoneAt (security backlog 2026-11-01): a dormant
+  // device can still hold a refresh token, and the sweep already keeps user_private/{uid} = {deleted_at} per swept
+  // account (BC2), so this is one more equal-size key per account, not a new unbounded class. The legacy 2-arg
+  // form (pruneUpdates) is kept for its tests only; no caller deletes through it.
   if (tombstoneAt != null) updates[`deleted_uids/${uid}`] = tombstoneAt;
   return updates;
 }

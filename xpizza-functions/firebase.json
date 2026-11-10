@@ -43,5 +43,8 @@
         "firebase-export-*"
       ]
     }
-  ]
+  ],
+  "storage": {
+    "rules": "storage.rules"
+  }
 }

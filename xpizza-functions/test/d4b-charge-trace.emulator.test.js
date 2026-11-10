@@ -27,6 +27,7 @@ const CLOCK_BASE = REAL_NOW() + 3600 * 1000;
 let CLOCK_OFFSET = 0;
 Date.now = () => CLOCK_BASE + CLOCK_OFFSET;
 
+const DR = require('./_delivery-read');   // S3a: the declared envío config read
 const assert = require('assert');
 const http = require('http');
 const path = require('path');
@@ -74,6 +75,10 @@ const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
 const { rateLimitKey } = require('../order-dedup');
 
 const GOLDEN = path.join(__dirname, '..', 'catalog', 'd4b-charge-trace.golden.json');
+// FINDING-hosted-charge-recover-race: the claim fix's ONE declared I/O delta (catalog/_hosted-claim-delta.js) — the attempt claim is an
+// exclusive `transaction` where the frozen trace has an `update` of the same fields; mapped, counted, pinned (non-vacuous).
+const { preExclusiveClaimOps } = require('../catalog/_hosted-claim-delta');
+const CLAIM_DELTA = { n: 0 };
 const CAPTURE = process.env.D4B_TRACE_CAPTURE || '';
 let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('d4b-charge-trace(emulator): FAILED — exited without completing'); process.exitCode = 1; } });
@@ -173,6 +178,7 @@ function bodyFor(rid, oid, phone) {
 // one handler call, recorded; request-local ids normalised AFTER the call (the attempt id / poll token are read back)
 async function traced(rid, oid, uid, phone) {
   await rtdb.ref('rate_limits').remove();   // every test request is 127.0.0.1 — the per-IP limit is reset between charges (test env only)
+  await require('./_catalog-clock').warmPhoneFlag(rtdb);   // the phone flag (30 s, never-awaited refresh) freshly read with the recorder OFF — no refresh lands inside the recording (advisor ruling B, 2026-11-01)
   REC = [];
   const r = await post(app.chargeOnlineOrder, bodyFor(rid, oid, phone), { 'x-firebase-id-token': uid });
   await Q.quiescent();   // R1b: every fire-and-forget write the handler issued has SETTLED inside the recording (was a fixed wait(300))
@@ -278,15 +284,16 @@ async function traced(rid, oid, uid, phone) {
       // codex r2 P2: every d4b case is a charge that persists its own content → DECLARED bound (never inferred from the trace)
       const s3 = (ops, content, label) => SD.compareShape(ops, [], { mode: 'bound', content, route: 'chargeOnlineOrder', label }).actual;
       assert.ok(CONTENT[rid][k], `${rid} ${k}: premise — the request persisted its order (the content-key delta is content-bound)`);
-      assert.deepStrictEqual(s3(rest.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), CONTENT[rid][k], `${rid} ${k}`), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen 717f97e trace`);
-      if (JSON.stringify(rest.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))) !== JSON.stringify(golden[rid][k])) S3_DELTA_SEEN += 1;
+      { const got = s3(preExclusiveClaimOps(DR.without(rest, `${rid} ${k}`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), CLAIM_DELTA), CONTENT[rid][k], `${rid} ${k}`); assert.deepStrictEqual(got, golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen 717f97e trace — ${RD.opsDiff(golden[rid][k], got)}`); }
+      if (JSON.stringify(DR.without(rest, `${rid} ${k}`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))) !== JSON.stringify(golden[rid][k])) S3_DELTA_SEEN += 1;
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to 717f97e (+${floorCalls.length} allowlisted floor get)`);
     }
+    assert.ok(CLAIM_DELTA.n > 0, `non-vacuity: the declared exclusive-claim delta was applied (${CLAIM_DELTA.n} mapping(s))`);
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());
     assert.ok(S3_DELTA_SEEN > 0, 'non-vacuity: WITHOUT the §3 declared delta at least one case differs from the golden (the content key really changed)');
     { // sensitivity: a content binding of DIFFERENT content does not map — the comparison stays RED
       const k = 'a_normal_fresh', rid = Object.keys(golden).find((r) => JSON.stringify(out[r][k]) !== JSON.stringify(golden[r][k])) || 'x_pizza';
-      const rest = CTL.withoutControlRead(out[rid][k], rid, { expected: 0, label: `${rid} ${k} (sensitivity)` }).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e));
+      const rest = DR.without(CTL.withoutControlRead(out[rid][k], rid, { expected: 0, label: `${rid} ${k} (sensitivity)` }), `${rid} ${k} (sensitivity)`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e));
       const wrong = { ...CONTENT[rid][k], itemsText: `${CONTENT[rid][k].itemsText} | 1x Otra (L1)` };
       let stillRed = false; try { stillRed = JSON.stringify(SD.compareShape(rest, golden[rid][k], { mode: 'bound', content: wrong, route: 'chargeOnlineOrder' }).actual) !== JSON.stringify(golden[rid][k]); } catch (_) { stillRed = true; }
       assert.ok(stillRed, '🔴 a corrupted (different-content) binding must leave the comparison RED');
@@ -323,7 +330,7 @@ async function traced(rid, oid, uid, phone) {
       const ctlOpts = { expected: 1, label: 'x_pizza post-TTL a_normal_retry (switch cache cold)',
         anchor: ({ after }) => !!after && after.db === 'rtdb' && after.op === 'once' && after.path === 'orders/<oid>' };
       const rest = CTL.withoutControlRead(t.trace, 'x_pizza', ctlOpts);
-      assert.deepStrictEqual(SD.compareShape(rest.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), [], { mode: 'bound', content: t.content, route: 'chargeOnlineOrder', label: 'post-TTL' }).actual, golden.x_pizza.a_normal_retry, '🔴 the post-TTL request, minus its floor GET and its switch read, equals the frozen golden');
+      assert.deepStrictEqual(SD.compareShape(DR.without(rest, 'post-TTL').filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), [], { mode: 'bound', content: t.content, route: 'chargeOnlineOrder', label: 'post-TTL' }).actual, golden.x_pizza.a_normal_retry, '🔴 the post-TTL request, minus its floor GET and its switch read, equals the frozen golden');
       CTL.assertOtherRidRefused(t.trace, 'x_pizza', 'la_musa', ctlOpts);
       console.log(`  ✓ x_pizza post-TTL a_normal_retry: exactly 1 allowlisted floor GET + exactly 1 switch read (before the classifier's order read); the rest identical to the golden; a switch read on la_musa's path is refused`);
     }
@@ -339,7 +346,7 @@ async function traced(rid, oid, uid, phone) {
         const on = await RP.withRender(true, onReq);
         for (const [s, v] of [['OFF', off], ['ON', on]]) assert.strictEqual(v.status, 200, `${label} (${s}): premise — charged (${v.status})`);
         assert.deepStrictEqual(on.body, off.body, `🔴 ${label}: the render-ON answer differs from the render-OFF one`);
-        return { off: RD.normOps(off.trace.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))), on: RD.normOps(on.trace.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))) };
+        return { off: RD.normOps(DR.without(off.trace, 'render-OFF companion').filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))), on: RD.normOps(DR.without(on.trace, 'render-ON companion').filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))) };
       };
       let W = 0;   // each warm-up its own phone: the duplicate-order guard keys on phone + content
       // DETERMINISTIC warm (gate flake on A-1 87275fbf, 2026-10-18 — the class 3e34706c fixed in pselfupdate-mirror-trace): the warm

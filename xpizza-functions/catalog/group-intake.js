@@ -50,7 +50,7 @@ function rewardNamespaceIn(restaurantId, tables) {
   return (key) => (has(t.menu, key) ? 'dish' : has(t.extraPrices, key) ? 'extra' : null);
 }
 
-async function groupIssues({ caps, gates, items, restaurantId, rewardKeys = [], readAvailability = null, rewardNamespace = null }) {
+async function groupIssues({ caps, gates, items, restaurantId, keyMode = undefined, rewardKeys = [], readAvailability = null, rewardNamespace = null }) {
   if (!caps || caps.render !== true) return null;
   if (!gates || gates.groups == null) return { unclassifiable: true };
   const { launchers, parentOf } = gates.groups;
@@ -69,7 +69,7 @@ async function groupIssues({ caps, gates, items, restaurantId, rewardKeys = [], 
       if (!member) return { unclassifiable: true };
     }
   }
-  const lines = (Array.isArray(items) ? items : []).map((it) => ({ it, key: itemPricingKey(it, restaurantId) })).filter((l) => typeof l.key === 'string' && l.key);
+  const lines = (Array.isArray(items) ? items : []).map((it) => ({ it, key: itemPricingKey(it, restaurantId, keyMode) })).filter((l) => typeof l.key === 'string' && l.key);
   const bare = [...new Set(lines.filter((l) => launchers.has(l.key)).map((l) => l.key))];
   const rewardBare = rewardKeys.filter((k) => launchers.has(k) && (!nsOf || nsOf(k) !== 'extra'));   // a key that resolves to an EXTRA is never a launcher
   // parent-or-variant: one availability read, only when some line or reward has a launcher

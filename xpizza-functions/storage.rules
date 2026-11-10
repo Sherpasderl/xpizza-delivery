@@ -1,0 +1,11 @@
+rules_version = '2';
+// DISH PHOTOS A1 (PLAN-dish-photos r2 §2.3) — the DEFAULT bucket is closed to every client. Uploads arrive ONLY through E-P1's signed,
+// create-only, size-ranged PUT (a V4 signed URL bypasses these rules by design); draft previews ONLY through E-P2/E-P3's 1 h signed GET.
+// The public photo bucket is a SEPARATE bucket with its own get-only IAM role (A0 runbook) — not governed by this file.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

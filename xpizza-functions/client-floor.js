@@ -58,14 +58,15 @@ function createFloorReader({ getDb, ttlMs = FLOOR_TTL_MS, timeoutMs = FLOOR_READ
   const inflight = new Map();
   const alarm = (kind, app, detail) => { try { log.error('client_floor_alarm', JSON.stringify({ kind, app, detail: String(detail || '').slice(0, 160) })); } catch (_) {} };
 
-  function read(app) {
+  // `app` is the cache key; `refPath` the node (an app's floor by default; the native key reads client_floor_native/{deployment})
+  function read(app, refPath = `platform_config/client_floor/${app}`) {
     if (inflight.has(app)) return inflight.get(app);
     const p = (async () => {
       const prev = state.get(app);
       let timer;
       try {
         const snap = await Promise.race([
-          getDb().ref(`platform_config/client_floor/${app}`).get(),
+          getDb().ref(refPath).get(),
           new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('floor_read_timeout')), timeoutMs); }),
         ]);
         const v = snap.val();
@@ -92,11 +93,45 @@ function createFloorReader({ getDb, ttlMs = FLOOR_TTL_MS, timeoutMs = FLOOR_READ
     await read(app);
     return { floor: state.get(app).value, source: 'read' };
   }
-  return { floorFor, _state: () => new Map(state) };
+  // PLAN-capp-native-shell D1 (c): a native deployment's OWN floor, platform_config/client_floor_native/{deployment} — the same
+  // TTL / timeout / last-known-valid / fail-open rules as an app's, in its own cache slot
+  async function floorForNative(deployment) {
+    const k = `native:${deployment}`, s = state.get(k);
+    if (s && now() - s.checkedAt < ttlMs) return { floor: s.value, source: 'cache' };
+    await read(k, `platform_config/client_floor_native/${deployment}`);
+    return { floor: state.get(k).value, source: 'read' };
+  }
+  return { floorFor, floorForNative, _state: () => new Map(state) };
 }
 
-function isBelowFloor(h, endpointApp, floor) {
+// PLAN-capp-native-shell D1 (c) — a store-installed native shell updates on the STORE's schedule, so the web app's floor must
+// never refuse it: the manifest-declared native deployment (X-Client-Deployment === PLATFORM.nativeDeployment()) is EXEMPT from
+// the APP floor and answers only to its own floor (floorForRequest / isBelowFloorFor). Every other request — forms, the web capp,
+// header-less, an unknown id — keeps exactly today's app floor. A FORGED native header can at most dodge a compatibility floor,
+// which only hurts the forger (an incompatible client fails on its own); it can never dodge the guest checkout's rules, because
+// PLATFORM.isAppDeployment counts the native id as the capp (card-only + ticket apply to it exactly as to orders-app).
+// ⚠ HARD OBLIGATION c2 (Codex N1–N4 r1 P1; advisor ruling (ii) — TRAIN-NEXT-INVENTORY «NATIVE RELEASE TRAIN OBLIGATIONS» N1):
+// the native's OWN floor is not yet ENFORCED — index.js's 4 floor sites (createOrder, chargeOnlineOrder, quoteOrder,
+// quoteRedemption; locate by `floorFor('orders')`) must switch to floorForRequest + isBelowFloorFor, with tools/native-floor-inverse.js
+// registered in every guard that sha-pins index.js, BEFORE the first store build is published (else a broken native can never
+// be force-upgraded). Until then a native is exempt from the app floor and bound by no floor.
+const nativeIdOf = (platform) => { try { return (platform || require('./platform-manifest').PLATFORM).nativeDeployment(); } catch (_) { return null; } };
+const isNativeRequest = (h, platform) => { const id = nativeIdOf(platform); return !!id && !!h && h.deployment === id; };
+// → { floor, scope: 'app' | 'native' }
+async function floorForRequest(reader, h, endpointApp, platform) {
+  if (isNativeRequest(h, platform)) return { floor: (await reader.floorForNative(h.deployment)).floor, scope: 'native' };
+  return { floor: (await reader.floorFor(endpointApp)).floor, scope: 'app' };
+}
+function isBelowFloorFor(h, endpointApp, r, platform) {
+  if (!r || !validFloor(r.floor)) return false;
+  if (r.scope === 'native') { const compat = h && h.app === endpointApp ? h.compat : null; return !(Number.isInteger(compat) && compat >= r.floor); }
+  return isBelowFloor(h, endpointApp, r.floor, platform);
+}
+
+// `floor` is the endpoint APP's floor — the declared native deployment is exempt from it (D1 (c), above)
+function isBelowFloor(h, endpointApp, floor, platform) {
   if (!validFloor(floor)) return false;                                   // OFF (absent / fail-open)
+  if (isNativeRequest(h, platform)) return false;                         // a web floor raise never 426s a store-lagged native
   const compat = (h && h.app === endpointApp) ? h.compat : null;          // header-less / foreign → mapped, no compat
   return !(Number.isInteger(compat) && compat >= floor);
 }
@@ -127,6 +162,6 @@ async function liveCheckoutProbe(db, rawOrderId, now) {
 }
 
 module.exports = {
-  readClientHeaders, logClientVersion, createFloorReader, isBelowFloor, updateRequired, existingOrderProbe, liveCheckoutProbe,
+  readClientHeaders, logClientVersion, createFloorReader, isBelowFloor, floorForRequest, isBelowFloorFor, updateRequired, existingOrderProbe, liveCheckoutProbe,
   FLOOR_TTL_MS, FLOOR_READ_TIMEOUT_MS,
 };

@@ -20,6 +20,8 @@
   "onOrderCancelled": 1,
   "predictReadyTimeOnNew": 1,
   "sendOrderStatusNotifications": 1,
+  "settleSdkOnStatus": 1,
+  "stampRatingFulfilment": 1,
   "trackerOnOrderStatus": 1,
   "trackerOnTaskStatus": 2,
   "voidFacturaOnCancel": 3

@@ -1413,244 +1413,19 @@
  },
  {
   "journey": "reassign",
-  "step": "pickup",
-  "path": "/tracking/driver_name",
-  "from": "Uno",
-  "to": "(absent)",
-  "reason": "name-live-noloc: live with no location yet → legacy (null, null): no gen-1 countdown with a name and an absent flag (D-defect)"
- },
- {
-  "journey": "reassign",
-  "step": "pickup",
-  "path": "/tracking/picked_up_at",
-  "from": "T@tracking/picked_up_at",
-  "to": "T@order/picked_up_at",
-  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
- },
- {
-  "journey": "reassign",
-  "step": "pickup",
-  "path": "/tracking/mx",
-  "from": "(absent)",
-  "to": {
-   "epoch": 2,
-   "mode": "live",
-   "name": "Uno",
-   "owner_tag": "5f44abd393e27db0",
-   "pins": {
-    "dest": {
-     "lat": 15.52,
-     "lng": -88.01
-    },
-    "hub": {
-     "lat": 15.5,
-     "lng": -88.03
-    }
-   },
-   "seq": 27,
-   "shift_id": "ID1",
-   "smp": {
-    "owner_tag": "5f44abd393e27db0",
-    "sample_at": 0,
-    "shift_id": "ID1"
-   }
-  },
-  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
- },
- {
-  "journey": "reassign",
-  "step": "pickup",
-  "path": "/_ts_order",
-  "from": [
-   "T@order/created_at",
-   "T@tracking/ready_at",
-   "T@order/picked_up_at",
-   "T@tracking/picked_up_at"
-  ],
-  "to": [
-   "T@order/created_at",
-   "T@tracking/ready_at",
-   "T@order/picked_up_at"
-  ],
-  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
- },
- {
-  "journey": "reassign",
-  "step": "ingest 1",
-  "path": "/tracking/picked_up_at",
-  "from": "T@tracking/picked_up_at",
-  "to": "T@order/picked_up_at",
-  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
- },
- {
-  "journey": "reassign",
-  "step": "ingest 1",
-  "path": "/tracking/mx",
-  "from": "(absent)",
-  "to": {
-   "epoch": 2,
-   "mode": "live",
-   "name": "Uno",
-   "owner_tag": "5f44abd393e27db0",
-   "pins": {
-    "dest": {
-     "lat": 15.52,
-     "lng": -88.01
-    },
-    "hub": {
-     "lat": 15.5,
-     "lng": -88.03
-    }
-   },
-   "seq": 27,
-   "shift_id": "ID1",
-   "smp": {
-    "owner_tag": "5f44abd393e27db0",
-    "sample_at": "T@tracking/driver_location/at",
-    "shift_id": "ID1"
-   }
-  },
-  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
- },
- {
-  "journey": "reassign",
-  "step": "ingest 1",
-  "path": "/_ts_order",
-  "from": [
-   "T@order/created_at",
-   "T@tracking/ready_at",
-   "T@order/picked_up_at",
-   "T@tracking/picked_up_at"
-  ],
-  "to": [
-   "T@order/created_at",
-   "T@tracking/ready_at",
-   "T@order/picked_up_at"
-  ],
-  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
- },
- {
-  "journey": "reassign",
-  "step": "clock-in u_drv_golden_20000000000",
-  "path": "/tracking/picked_up_at",
-  "from": "T@tracking/picked_up_at",
-  "to": "T@order/picked_up_at",
-  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
- },
- {
-  "journey": "reassign",
   "step": "clock-in u_drv_golden_20000000000",
   "path": "/tracking/mx",
   "from": "(absent)",
   "to": {
-   "epoch": 2,
-   "mode": "live",
+   "epoch": 1,
+   "mode": "pre",
    "name": "Uno",
-   "owner_tag": "5f44abd393e27db0",
-   "pins": {
-    "dest": {
-     "lat": 15.52,
-     "lng": -88.01
-    },
-    "hub": {
-     "lat": 15.5,
-     "lng": -88.03
-    }
-   },
-   "seq": 27,
-   "shift_id": "ID1",
-   "smp": {
-    "owner_tag": "5f44abd393e27db0",
-    "sample_at": "T@tracking/driver_location/at",
-    "shift_id": "ID1"
-   }
-  },
-  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
- },
- {
-  "journey": "reassign",
-  "step": "clock-in u_drv_golden_20000000000",
-  "path": "/_ts_order",
-  "from": [
-   "T@order/created_at",
-   "T@tracking/ready_at",
-   "T@order/picked_up_at",
-   "T@tracking/picked_up_at"
-  ],
-  "to": [
-   "T@order/created_at",
-   "T@tracking/ready_at",
-   "T@order/picked_up_at"
-  ],
-  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
- },
- {
-  "journey": "reassign",
-  "step": "reassign to D2",
-  "path": "/tracking/dest_lat",
-  "from": 15.52,
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "reassign to D2",
-  "path": "/tracking/dest_lng",
-  "from": -88.01,
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "reassign to D2",
-  "path": "/tracking/driver_location",
-  "from": {
-   "at": "T@tracking/driver_location/at",
-   "lat": 15.504,
-   "lng": -88.026
-  },
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "reassign to D2",
-  "path": "/tracking/driver_name",
-  "from": "Uno",
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "reassign to D2",
-  "path": "/tracking/is_active_drop",
-  "from": true,
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "reassign to D2",
-  "path": "/tracking/picked_up_at",
-  "from": "T@tracking/picked_up_at",
-  "to": "T@order/picked_up_at",
-  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
- },
- {
-  "journey": "reassign",
-  "step": "reassign to D2",
-  "path": "/tracking/mx",
-  "from": "(absent)",
-  "to": {
-   "epoch": 3,
-   "mode": "neutral",
-   "name": "Dos",
    "owner_tag": "none",
-   "seq": 35,
+   "seq": 20,
    "smp": {
-    "owner_tag": "fb449faafc0234ef",
+    "owner_tag": "5f44abd393e27db0",
     "sample_at": 0,
-    "shift_id": "ID2"
+    "shift_id": "ID1"
    }
   },
   "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
@@ -1658,83 +1433,14 @@
  {
   "journey": "reassign",
   "step": "reassign to D2",
-  "path": "/_ts_order",
-  "from": [
-   "T@order/created_at",
-   "T@tracking/ready_at",
-   "T@order/picked_up_at",
-   "T@tracking/picked_up_at"
-  ],
-  "to": [
-   "T@order/created_at",
-   "T@tracking/ready_at",
-   "T@order/picked_up_at"
-  ],
-  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
- },
- {
-  "journey": "reassign",
-  "step": "D2 accept",
-  "path": "/tracking/dest_lat",
-  "from": 15.52,
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "D2 accept",
-  "path": "/tracking/dest_lng",
-  "from": -88.01,
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "D2 accept",
-  "path": "/tracking/driver_location",
-  "from": {
-   "at": "T@tracking/driver_location/at",
-   "lat": 15.504,
-   "lng": -88.026
-  },
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "D2 accept",
-  "path": "/tracking/driver_name",
-  "from": "Uno",
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "D2 accept",
-  "path": "/tracking/is_active_drop",
-  "from": true,
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "D2 accept",
-  "path": "/tracking/picked_up_at",
-  "from": "T@tracking/picked_up_at",
-  "to": "T@order/picked_up_at",
-  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
- },
- {
-  "journey": "reassign",
-  "step": "D2 accept",
   "path": "/tracking/mx",
   "from": "(absent)",
   "to": {
-   "epoch": 3,
-   "mode": "neutral",
+   "epoch": 1,
+   "mode": "pre",
    "name": "Dos",
    "owner_tag": "none",
-   "seq": 38,
+   "seq": 26,
    "smp": {
     "owner_tag": "fb449faafc0234ef",
     "sample_at": 0,
@@ -1746,83 +1452,14 @@
  {
   "journey": "reassign",
   "step": "D2 accept",
-  "path": "/_ts_order",
-  "from": [
-   "T@order/created_at",
-   "T@tracking/ready_at",
-   "T@order/picked_up_at",
-   "T@tracking/picked_up_at"
-  ],
-  "to": [
-   "T@order/created_at",
-   "T@tracking/ready_at",
-   "T@order/picked_up_at"
-  ],
-  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
- },
- {
-  "journey": "reassign",
-  "step": "end (background handlers settled)",
-  "path": "/tracking/dest_lat",
-  "from": 15.52,
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "end (background handlers settled)",
-  "path": "/tracking/dest_lng",
-  "from": -88.01,
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "end (background handlers settled)",
-  "path": "/tracking/driver_location",
-  "from": {
-   "at": "T@tracking/driver_location/at",
-   "lat": 15.504,
-   "lng": -88.026
-  },
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "end (background handlers settled)",
-  "path": "/tracking/driver_name",
-  "from": "Uno",
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "end (background handlers settled)",
-  "path": "/tracking/is_active_drop",
-  "from": true,
-  "to": "(absent)",
-  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
- },
- {
-  "journey": "reassign",
-  "step": "end (background handlers settled)",
-  "path": "/tracking/picked_up_at",
-  "from": "T@tracking/picked_up_at",
-  "to": "T@order/picked_up_at",
-  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
- },
- {
-  "journey": "reassign",
-  "step": "end (background handlers settled)",
   "path": "/tracking/mx",
   "from": "(absent)",
   "to": {
-   "epoch": 3,
-   "mode": "neutral",
+   "epoch": 1,
+   "mode": "pre",
    "name": "Dos",
    "owner_tag": "none",
-   "seq": 38,
+   "seq": 29,
    "smp": {
     "owner_tag": "fb449faafc0234ef",
     "sample_at": 0,
@@ -1834,18 +1471,20 @@
  {
   "journey": "reassign",
   "step": "end (background handlers settled)",
-  "path": "/_ts_order",
-  "from": [
-   "T@order/created_at",
-   "T@tracking/ready_at",
-   "T@order/picked_up_at",
-   "T@tracking/picked_up_at"
-  ],
-  "to": [
-   "T@order/created_at",
-   "T@tracking/ready_at",
-   "T@order/picked_up_at"
-  ],
-  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Dos",
+   "owner_tag": "none",
+   "seq": 29,
+   "smp": {
+    "owner_tag": "fb449faafc0234ef",
+    "sample_at": 0,
+    "shift_id": "ID2"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
  }
 ]

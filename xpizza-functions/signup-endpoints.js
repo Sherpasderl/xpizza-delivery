@@ -9,7 +9,11 @@
 //   googleSignIn     POST {restaurant_id, session_id, id_token}    → {ok, linked:true, token, name} | {ok, linked:false, ticket, email, name}
 //   completeProfile  POST {restaurant_id, email, accept_terms, promos}  (customer ID token) → {ok} | {ok:false, reason}
 //   setPromos        POST {restaurant_id, value}                         (customer ID token) → {ok} | {ok:false, reason}
+//                    platform: POST {context:'platform', value}          (customer ID token) → {ok, value} (the stored value) | {ok:false, reason}
 //   getSignupConfig  GET  ?restaurant_id=                           → {terms_url, privacy_url, legal_ready, google_enabled, email_login_enabled}
+// PLAN-guest-checkout-server S3a: every endpoint above takes EITHER restaurant_id (the forms, byte-identical) OR context:'platform'
+// (the customer app → consent/_platform, platform_config/legal, GOOGLE_OAUTH_AUDIENCES__PLATFORM); both / neither → 400.
+// ADDITIVE for the platform only: googleSignIn linked → + completion, profile; completeProfile accepts + name (both scopes).
 // Hooks (index.js): bindOtpTicket (requestOtp, only with a link_ticket), redeemOtpTicket (verifyOtp, only with a link_ticket),
 // refreshActivity (verifyOtp, BC3 — bounded, fail-open), deleteAccountCore (deleteAccount + the inactivity sweep), pruneDeadLinks.
 const crypto = require('crypto');
@@ -24,6 +28,15 @@ const challengeIdOf = (otp) => (otp && typeof otp.code_hash === 'string' && otp.
 
 function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = process.env, oauthClient = null, now = () => Date.now() }) {
   const signupRidOf = (raw) => { const r = resolveRid(raw); return r && !r.error && !r.defaulted && r.restaurantId ? r.restaurantId : null; };   // a KNOWN rid, explicitly sent — never a default brand
+  // PLAN-guest-checkout-server S3a: EITHER a known restaurant_id (the forms — today's exact path, the key `context` absent) OR
+  // context:'platform' (the customer app) — never both, never neither. → the scope (a rid or '_platform') | null (bad_request)
+  const scopeOf = (o) => {
+    const src = o || {};
+    if (!Object.prototype.hasOwnProperty.call(src, 'context')) return signupRidOf(src.restaurant_id);   // the forms: today's exact path
+    // Codex S3 r1 P2: EXACTLY one selector — the restaurant_id KEY at all (null included) refuses a platform request
+    return src.context === 'platform' && !Object.prototype.hasOwnProperty.call(src, 'restaurant_id') ? S.PLATFORM_SCOPE : null;
+  };
+  const isPlatform = (scope) => scope === S.PLATFORM_SCOPE;
   const ipOf = (req) => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
   const limited = async (db, family, req, res) => {
     const { allowed, retryAfterSec } = await checkRateLimit(db, `signup_${family}`, ipOf(req), SIGNUP_RATE);
@@ -50,7 +63,7 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
   const googleStart = async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
-      const b = req.body || {}; const db = getDatabase(); const rid = signupRidOf(b.restaurant_id);
+      const b = req.body || {}; const db = getDatabase(); const rid = scopeOf(b);
       if (!rid) return res.status(400).json({ ok: false, reason: 'bad_request' });
       if (await limited(db, 'google', req, res)) return;
       if (!S.audiencesFor(rid, env)) return res.status(200).json({ ok: false, reason: 'google_unconfigured' });
@@ -62,7 +75,7 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
   const googleSignIn = async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
-      const b = req.body || {}; const db = getDatabase(); const rid = signupRidOf(b.restaurant_id);
+      const b = req.body || {}; const db = getDatabase(); const rid = scopeOf(b);
       if (!rid) return res.status(400).json({ ok: false, reason: 'bad_request' });
       if (await limited(db, 'google', req, res)) return;
       if (!S.audiencesFor(rid, env)) return res.status(200).json({ ok: false, reason: 'google_unconfigured' });
@@ -71,6 +84,10 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
       if (r.linked) {
         const token = await getAuth().createCustomToken(r.uid, { customer: true });   // the SAME claim as verifyOtp's
         const name = (await db.ref(`user_profiles/${r.uid}/name`).once('value')).val() || null;
+        if (isPlatform(rid)) {   // S3a ADDITIVE (the app only; the forms' answer is byte-identical): no RTDB read needed after sign-in
+          const [completion, profile] = await Promise.all([S.completionState(db, r.uid, rid, env), S.profileOf(db, r.uid, rid)]);
+          return res.status(200).json({ ok: true, linked: true, token, name, completion, profile });
+        }
         return res.status(200).json({ ok: true, linked: true, token, name });
       }
       return res.status(200).json({ ok: true, linked: false, ticket: r.ticket, email: r.email, name: r.name });
@@ -80,11 +97,15 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
   const completeProfile = async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
-      const b = req.body || {}; const db = getDatabase(); const rid = signupRidOf(b.restaurant_id);
+      const b = req.body || {}; const db = getDatabase(); const rid = scopeOf(b);
       if (!rid) return res.status(400).json({ ok: false, reason: 'bad_request' });
       if (await limited(db, 'profile', req, res)) return;   // codex build r1 P2-9: like the other account endpoints
       const uid = await customerOf(req, db); if (!uid) return res.status(401).json({ ok: false, reason: 'unauthenticated' });
+      // S3a ADDITIVE `name` (1..80, trimmed): written server-side so the app needs no Database SDK; the forms never send it
+      const nm = b.name === undefined ? undefined : (typeof b.name === 'string' ? b.name.trim() : '');
+      if (nm !== undefined && !(nm.length >= 1 && nm.length <= 80)) return res.status(400).json({ ok: false, reason: 'bad_request' });
       const r = await S.completeProfile(db, { uid, rid, email: b.email, acceptTerms: b.accept_terms, promos: b.promos, now: now() });
+      if (r.ok && nm !== undefined) await db.ref(`user_profiles/${uid}/name`).set(nm);
       return res.status(r.ok ? 200 : (r.reason === 'deleted' ? 403 : 400)).json(r);
     } catch (e) { console.error('completeProfile', e && e.message); return res.status(500).json({ ok: false }); }
   };
@@ -92,11 +113,12 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
   const setPromos = async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
-      const b = req.body || {}; const db = getDatabase(); const rid = signupRidOf(b.restaurant_id);
+      const b = req.body || {}; const db = getDatabase(); const rid = scopeOf(b);
       if (!rid) return res.status(400).json({ ok: false, reason: 'bad_request' });
       if (await limited(db, 'profile', req, res)) return;
       const uid = await customerOf(req, db); if (!uid) return res.status(401).json({ ok: false, reason: 'unauthenticated' });
-      const r = await S.setPromos(db, { uid, rid, value: b.value, now: now() });
+      // the platform (the app's member Cuenta): + `value`, the stored choice read back from the committed record; the forms: unchanged
+      const r = isPlatform(rid) ? await S.setPromos(db, { uid, rid, value: b.value, now: now(), confirm: true }) : await S.setPromos(db, { uid, rid, value: b.value, now: now() });
       return res.status(r.ok ? 200 : (r.reason === 'deleted' ? 403 : 400)).json(r);
     } catch (e) { console.error('setPromos', e && e.message); return res.status(500).json({ ok: false }); }
   };
@@ -104,7 +126,7 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
   const getSignupConfig = async (req, res) => {
     try {
       if (req.method !== 'GET') return res.status(405).json({ ok: false });
-      const rid = signupRidOf(req.query && req.query.restaurant_id);
+      const rid = scopeOf(req.query);
       if (!rid) { res.set('Cache-Control', 'no-store'); return res.status(400).json({ ok: false, reason: 'bad_request' }); }
       const cfg = await S.signupConfig(getDatabase(), rid, env);
       res.set('Cache-Control', 'public, max-age=60');
@@ -148,20 +170,160 @@ async function refreshActivity(db, uid, nowMs, deadlineMs = ACTIVITY_DEADLINE_MS
     await Promise.race([S.touchActivity(db, uid, nowMs).catch(() => false), new Promise((r) => { timer = setTimeout(r, deadlineMs); })]);
   } catch (_) { /* fail-open */ } finally { clearTimeout(timer); }
 }
-// ONE deletion core (deleteAccount AND the inactivity sweep): (i) the BC2 tombstone FIRST (the sweep's commits only while
-// last_active is still older than its cutoff); (ii) today's removals, unchanged (account-lib); (iii) every auth_links row by uid.
-// Returns false when the sweep's stale decision lost to a fresher login (nothing removed).
-async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff = null }) {
-  const stands = await S.tombstone(db, uid, { now, staleBefore: sweepCutoff });
-  if (!stands) return false;
-  await db.ref().update(sweepCutoff == null ? ACCOUNT.accountDeleteUpdates(uid, phoneHash, now) : ACCOUNT.accountDeleteUpdates(uid, phoneHash));
+// ONE deletion core (deleteAccount AND the inactivity sweep) — security backlog r2 (Codex r1 P1-b/P1-c, advisor rulings):
+//   the sweep first CLAIMS the account on user_profiles/{uid} (S.sweepClaim — linearized with every login's gate; a fresher login
+//   ⇒ abort, nothing written); then ONE multi-path update writes BOTH tombstones (user_private/{uid} = {deleted_at}, BC2 — the node
+//   REPLACED, so every Admin txn on it still aborts — and deleted_uids/{uid}, the ONE tombstone every server check reads) TOGETHER
+//   with today's removals: no window with one tombstone and not the other, nor a removed profile without a tombstone. A retry keeps
+//   the FIRST deletion instant. phone_index is removed by a CAS (only while it still names this uid — a login may have repointed it
+//   to a fresh uid). Then the auth_links rows, then the refresh tokens revoked — best-effort, deadline-bounded, FAIL-OPEN (the
+//   deletion is complete), a failure LOGGED + ALERTED with an allowlisted reason. An already-minted ID token stays valid ≤ 1 h: the
+//   tombstones remain the hard guard. Returns false when the sweep lost to a fresher login (nothing written, nothing revoked).
+const REVOKE_DEADLINE_MS = 1500;
+const defaultRevoke = (uid) => require('firebase-admin/auth').getAuth().revokeRefreshTokens(uid);
+async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff = null, revoke = defaultRevoke, revokeDeadlineMs = REVOKE_DEADLINE_MS }) {
+  if (sweepCutoff != null) {
+    const la = (await db.ref(`user_private/${uid}/last_active`).once('value')).val();
+    if (typeof la === 'number' && la >= sweepCutoff) return false;   // a recent (pre-gate, Google-era) activity still spares it
+    if ((await S.sweepClaim(db, uid, sweepCutoff, now)) !== 'claimed') return false;
+  }
+  // S-A1 r2 (Codex r1 P1-2/P1-3): the history's order ids are READ now (the update below removes the history); the ratings are redacted
+  // AFTER the update, whose deleted_uids/{uid} is the account-level fence a paused rating write re-checks after its own commit
+  const historyIds = Object.keys((await db.ref(`user_orders/${uid}`).once('value')).val() || {});
+  const prior = (await db.ref(`user_private/${uid}/deleted_at`).once('value')).val();
+  const at = typeof prior === 'number' ? prior : now;
+  // S-A1 r3 (Codex r2): the DURABLE redaction obligation rides the SAME atomic update as the tombstone (a failed deletion leaves no trace);
+  // the inline redaction is best-effort — a failure is drained by pruneResidual's drainRatingRedactions via the owner_uid index
+  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}/at`]: now });   // r4: `at` only — a fence's version v is never clobbered
+  try { await redactRatings(db, uid, historyIds); } catch (e) { console.error(`deleteAccountCore: inline rating redaction for ${uid} failed (${e && e.code ? e.code : 'error'}) — the journal drains it`); }
+  if (phoneHash) await db.ref(`phone_index/${phoneHash}`).transaction((cur) => (cur === null ? null : (cur === uid ? null : undefined)));
   await S.removeLinks(db, uid);
+  await revokeSessions(db, uid, now, revoke, revokeDeadlineMs);
   return true;
+}
+// S-A1 (PLAN §S-A (d)): account deletion REDACTS the account's ratings IN PLACE — ratings_v2/{orderId} for every order in its own
+// history gets state=deleted (terminal) with comment + owner_uid nulled, ONE transaction per node, so the vote leaves every aggregate
+// and the node remains only as the deletion fence. Runs before the history is removed; re-running is a no-op (already deleted).
+async function redactRatings(db, uid, historyIds = null) {
+  // the account's ratings by the server-only owner_uid INDEX (ratings_v2 .indexOn) ∪ its own history — the history is best-effort
+  // (claim-order writes it best-effort), so it is never the only discovery (Codex r1 P1-3). Runs AFTER deletion's atomic update: its
+  // deleted_uids/{uid} is the fence (Codex r1 P1-2) — a rating write committing after this scan sees it and redacts itself.
+  const hist = historyIds || Object.keys((await db.ref(`user_orders/${uid}`).once('value')).val() || {});
+  const V2 = require('./ratings/rating-v2');
+  const ids = [...new Set([...hist, ...(await V2.ownedRatingIds(db, uid))])];
+  for (const id of ids) {
+    if (!V2.ORDER_ID_RE.test(id)) continue;
+    await V2.ratingRef(db, id).transaction(V2.deletionUpdater({}));
+  }
+  return ids.length;
+}
+// S-A1 r3–r5 (Codex r2–r4): DRAIN the durable redaction journal ratings_redact_pending/{uid} = {at, v?, last_attempt?, attempts?}.
+// DESIGN CLOSURE (Codex r4): no timeout margin bounds a paused execution (Cloud Run does not cancel it), so EXPOSURE is prevented on the
+// READ side — every reader goes through rating-v2.readCountable (live AND owner not tombstoned; deleted_uids is permanent) — and this
+// drain is best-effort cleanup behind it: every entry is re-checked on every run for REDACT_RETAIN_MS (30 days) after the deletion and
+// only then retired, with the {at, v} CAS (a concurrent fence touch, v + 1, keeps it). FAIRNESS (r4 #3): entries are taken by OLDEST
+// last_attempt (never-attempted first — RTDB orders a missing child first), and each attempt is recorded BEFORE the work, so failing
+// entries cannot starve the rest. REDACT_GRACE_FLOOR_MS stays only as a sanity floor (ratings-grace.guard: ≥ 2× every writer's timeout).
+const REDACT_RETAIN_MS = 30 * 24 * 60 * 60 * 1000;
+const REDACT_GRACE_FLOOR_MS = 2 * 60 * 60 * 1000;
+const REDACT_BATCH = 50;
+async function drainRatingRedactions(db, now = Date.now(), { retainMs = REDACT_RETAIN_MS, batch = REDACT_BATCH } = {}) {
+  const V2 = require('./ratings/rating-v2');
+  const pending = (await db.ref('ratings_redact_pending').orderByChild('last_attempt').limitToFirst(batch).once('value')).val() || {};
+  let redacted = 0, cleared = 0, failed = 0;
+  for (const [uid, entry] of Object.entries(pending)) {
+    const at = entry && typeof entry.at === 'number' ? entry.at : 0;
+    const v = entry && Number.isInteger(entry.v) ? entry.v : 0;   // read BEFORE the attempt, the pass and the check (r4 P1-2)
+    try {
+      // record the attempt FIRST (fairness) — never re-creates a removed entry, never touches at / v
+      await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => (cur && typeof cur === 'object' ? { ...cur, last_attempt: now, attempts: (Number.isInteger(cur.attempts) ? cur.attempts : 0) + 1 } : cur));
+      redacted += await redactRatings(db, uid, []);
+      const left = await V2.ownedRatingIds(db, uid);
+      if (left.length === 0 && now - at >= retainMs) {
+        // retire ONLY the exact version judged: a concurrent fence (v moved) or a re-deletion (at moved) keeps the entry
+        const tx = await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => (cur && cur.at === at && (Number.isInteger(cur.v) ? cur.v : 0) === v ? null : cur));
+        if (tx.committed && !tx.snapshot.exists()) cleared += 1;
+      }
+    } catch (e) { failed += 1; console.error(`drainRatingRedactions: ${uid} (${e && e.code ? e.code : 'error'}) — retried next run`); }
+  }
+  return { pending: Object.keys(pending).length, redacted, cleared, failed };
+}
+// the persisted / logged reason is an ALLOWLISTED code — never an error message (it can carry PII)
+const REVOKE_REASON_CODES = new Set(['auth/user-not-found', 'auth/internal-error', 'auth/network-request-failed', 'auth/too-many-requests', 'auth/insufficient-permission', 'app/network-error']);
+const reasonOf = (e) => (e && typeof e === 'object' ? (REVOKE_REASON_CODES.has(e.code) ? e.code : 'revoke_failed') : 'unknown');
+const withDeadline = (p, ms) => { let t = null; return Promise.race([Promise.resolve(p).then(() => 'ok'), new Promise((res) => { t = setTimeout(() => res('timeout'), ms); })]).finally(() => clearTimeout(t)); };
+async function revokeSessions(db, uid, now, revoke, deadlineMs) {
+  let reason = null;
+  try { if ((await withDeadline(Promise.resolve().then(() => revoke(uid)), deadlineMs)) !== 'ok') reason = 'timeout'; } catch (e) { reason = reasonOf(e); }
+  if (reason == null) return true;
+  console.error(`deleteAccountCore: revokeRefreshTokens FAILED for ${uid} (${reason}) — deletion complete; tombstones guard until the ID token expires`);
+  try {   // create-only (a retry never rewrites the first alert), and bounded too: a hanging alert write never blocks the deletion
+    const w = await withDeadline(db.ref(`dispatcher_alerts/account_revoke_failed_${uid}`).transaction((cur) => (cur == null ? { type: 'account_revoke_failed', uid, reason, created_at: now } : undefined)), deadlineMs);
+    if (w !== 'ok') console.error(`deleteAccountCore: the revoke-failure alert write for ${uid}: timeout (${deadlineMs}ms) — the log line above stands`);
+  } catch (e) { console.error(`deleteAccountCore: the revoke-failure alert for ${uid} failed (${reasonOf(e)})`); }
+  return false;
+}
+// Codex r2 P2: the phone's uid CLAIM, create-if-absent in ONE transaction (the same contract as signup-platform's claimUid) —
+// a concurrent first login on another path converges on the winner's uid; an existing entry is adopted, never overwritten.
+// A fresh uid is drawn ONLY to create (slot 69b045de, the signup-http forms differential): a returning login reads its entry and
+// draws nothing, as the base did (it drew only in `if (!uid)`), so the forms' uid stream is byte-identical. The draw is memoized:
+// the Admin SDK runs the updater first on an uncached null, so a merely-lazy draw would still consume one for an existing entry.
+// (signup-platform's claimUid draws eagerly: a new path, no byte-identity duty — advisor 2026-11-01.)
+async function claimPhoneUid(db, pHash, newUid) {
+  const ref = db.ref(`phone_index/${pHash}`);
+  const seen = (await ref.get()).val();
+  if (typeof seen === 'string' && seen) return seen;
+  let cand = null;
+  const tx = await ref.transaction((cur) => (typeof cur === 'string' && cur ? undefined : (cand = cand || newUid())));
+  const uid = tx.committed ? cand : tx.snapshot.val();
+  if (typeof uid !== 'string' || !uid) throw new Error('claimPhoneUid: phone_index unreadable');
+  return uid;
+}
+// THE login uid (security backlog r2, Codex r1 P1-a, advisor ruling 2), for every phone login path (forms verifyOtp, platform
+// verifyOtp, redeemSignupGrant): the uid phone_index names is used ONLY if it is live — the gate (S.loginTouch) bumps last_login on
+// a live profile; a profile a sweep CLAIMED, or a TOMBSTONED uid with NO profile, is never handed to a login: a FRESH uid is
+// minted and phone_index CAS-repointed (only while it still names the dead uid — concurrent logins converge on one fresh uid).
+// A REVIVED account (profile present, no claim — a stale tombstone; the owner migration repairs it) is LIVE: it keeps its uid.
+// An untombstoned uid with no profile (a brand-new uid) passes through: the caller creates the profile, as today.
+// FAIL-CLOSED: an infra failure propagates — the caller answers its generic retryable error and mints nothing.
+async function loginUid(db, { pHash, uid, now, newUid }) {
+  let cur = uid;
+  for (let i = 0; i < 4; i += 1) {
+    const g = await S.loginTouch(db, cur, now);
+    if (g === 'live') return cur;
+    if (g === 'absent' && !(await S.isTombstoned(db, cur))) return cur;
+    const cand = newUid();
+    const tx = await db.ref(`phone_index/${pHash}`).transaction((v) => (v === null || v === cur ? cand : undefined));
+    cur = tx.committed ? cand : tx.snapshot.val();
+    if (typeof cur !== 'string' || !cur) throw new Error('loginUid: phone_index unreadable');
+  }
+  throw new Error('loginUid: no live uid after bounded retries');
 }
 // the periodic sweep's residual cleanup, run EVERY time (codex build r1 P2-10 — also when no profiles remain): links to
 // deleted accounts, expired challenges / tickets
 async function pruneResidual(db, now = Date.now()) {
-  return { deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now) };
+  // r4 P2: the rating-redaction drain runs FIRST and ISOLATED — a failing link / expiry / backfill cleanup can never starve it (it also
+  // has its own schedule, drainRatingRedactions in index.js)
+  let ratings;
+  try { ratings = await drainRatingRedactions(db, now); } catch (e) { ratings = { error: true }; console.error('pruneResidual: rating drain failed', e && e.code ? e.code : 'error'); }
+  return { ratings, deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db) };
+}
+// security backlog 2026-11-01: an account tombstoned in user_private BEFORE the sweep wrote deleted_uids gets it now (its OWN
+// deleted_at), create-if-absent — so every deleted_uids-only check refuses it too. Live / revived accounts are never touched.
+async function backfillDeletedUids(db) {
+  const rows = (await db.ref('user_private').orderByChild('deleted_at').startAt(0).once('value')).val() || {};
+  let added = 0;
+  for (const [uid, row] of Object.entries(rows)) {
+    if (!row || typeof row.deleted_at !== 'number') continue;
+    // r2 (Codex P1-a): ONLY a uid with NO profile — a profile present is a LIVE (revived) account carrying a stale tombstone (the
+    // owner migration repairs it). No re-read needed: every login path refuses a tombstoned uid with no profile (loginUid), the
+    // client-writable profile rule denies on either tombstone, and nothing else creates a profile at an existing uid.
+    if ((await db.ref(`user_profiles/${uid}`).once('value')).exists()) continue;
+    let wrote = false;
+    await db.ref(`deleted_uids/${uid}`).transaction((cur) => { wrote = false; if (cur != null) return undefined; wrote = true; return row.deleted_at; });
+    if (wrote) added += 1;
+  }
+  return added;
 }
 // a link that raced a deletion points at a tombstoned uid — inert at login, removed here
 async function pruneDeadLinks(db) {
@@ -179,4 +341,4 @@ async function pruneDeadLinks(db) {
   return removed;
 }
 
-module.exports = { makeSignup, bindOtpTicket, redeemOtpTicket, refreshActivity, deleteAccountCore, pruneDeadLinks, pruneResidual, challengeIdOf, SIGNUP_RATE, ACTIVITY_DEADLINE_MS };
+module.exports = { redactRatings, drainRatingRedactions, REDACT_RETAIN_MS, REDACT_GRACE_FLOOR_MS, makeSignup, bindOtpTicket, redeemOtpTicket, refreshActivity, deleteAccountCore, revokeSessions, claimPhoneUid, loginUid, backfillDeletedUids, REVOKE_DEADLINE_MS, REVOKE_REASON_CODES, pruneDeadLinks, pruneResidual, challengeIdOf, SIGNUP_RATE, ACTIVITY_DEADLINE_MS };

@@ -214,32 +214,73 @@ export function singleOrderCardHtml(o, deps) {
   const pill = PHASE_PILL[phase] || { cls: '', label: esc(phase) };
   const label = esc(displayOrderLabel(order));
 
-  // ── OFFER (awaiting_acceptance): ring countdown + slide-accept + no-reject footnote. NO earnings (slice 4). ──
+/* ===== SLICE3:OFERTA-OFFER:START — the awaiting_acceptance OFFER rebuilt to the prototype S.oferta (:581); reused by the fresh single offer AND the cross-hub takeover. Everything OUTSIDE this span is pinned by the guards. ===== */
+  // ── OFFER (awaiting_acceptance): prototype S.oferta. Header (Sola mark + «Nuevo pedido» + the countdown ring,
+  //    reusing the of-head/of-ring styling + the frozen .accept-countdown tick); the overview MAP (the caller
+  //    renders overviewMapSvg with real coords → deps.mapHtml); the card (rchip + #num + «X km» only when computed;
+  //    a Recoger/Entregar timeline; «N artículos · 1 bolsa» + the cash rows; the hidden «Tu pago» mount, R2); the
+  //    foot (slide + the real-deadline reassign note). R4 colonia + R1 times come from the caller (deps.area /
+  //    deps.ready / deps.deliverBy — omitted when no real field). CASH is collectionFor/computeVuelto — the SAME
+  //    values svPay shows today, NO new money math.
   if (phase === 'awaiting_acceptance') {
     const dl = o.pickupTask && o.pickupTask.assignment_deadline;
-    // Resume the drain from the real elapsed fraction: remaining = (deadline - now), clamped to the
-    // window; animation-duration = the window, animation-delay = -(elapsed). A later re-render passes a
-    // fresh nowMs → a larger negative delay → the ring picks up where it was, never restarting at full.
-    // nowMs is injected by the (impure) call site; absent or non-positive (tests / no clock) → full ring.
     const nowMs = Number(d.nowMs);
-    const remaining = (Number.isFinite(nowMs) && nowMs > 0)
-      ? Math.max(0, Math.min(OFFER_RING_SECS, (Number(dl) - nowMs) / 1000))
-      : OFFER_RING_SECS;
-    const ringStyle = ` style="animation-duration:${OFFER_RING_SECS}s;animation-delay:-${(OFFER_RING_SECS - remaining).toFixed(3)}s"`;
+    const secsLeft = (dl && Number.isFinite(nowMs) && nowMs > 0) ? Math.max(0, Math.round((Number(dl) - nowMs) / 1000)) : (dl ? OFFER_RING_SECS : null);
+    const OF_SOLA = '<svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect width="48" height="48" rx="11" fill="#14306B"/><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="4.4" fill="none" stroke-linecap="round"/><path d="M24 12.6L28 24L20 24Z" fill="#8EC0FF"/><path d="M28 24L24 31.6L20 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="2.1" fill="#14306B"/></svg>';
+    const OF_STORE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 10l1.5-5h13L20 10"/><path d="M4 10a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0"/><path d="M5 12v8h14v-8M10 20v-5h4v5"/></svg>';
+    const OF_FLAG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 21V4h12l-2 4 2 4H5"/></svg>';
+    const OF_BAG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 8h12l-1 12H7z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg>';
+    const OF_CASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5" stroke-linecap="round"/></svg>';
     const ring = dl
-      ? `<div class="sv-ring" data-deadline="${dl}"><svg viewBox="0 0 128 128"><circle class="sv-ring-trk" cx="64" cy="64" r="56"/><circle class="sv-ring-run" cx="64" cy="64" r="56"${ringStyle}/></svg><span class="accept-countdown sv-ring-num" data-deadline="${dl}">--s</span></div>`
+      ? `<span class="of-ring"><svg class="of-ring-svg" viewBox="0 0 46 46" aria-hidden="true"><circle class="of-ring-track" cx="23" cy="23" r="20"/><circle class="of-ring-arc" cx="23" cy="23" r="20"/></svg><span class="of-ring-num accept-countdown" data-deadline="${dl}" data-total="${OFFER_RING_SECS}">--</span></span>`
       : '';
-    return `<div class="sv-card sv-offer">
-      <div class="sv-offer-head">${svChip(order, esc)}<span class="sv-onum">${label}</span>${ring}</div>
-      ${scheduledBadge(order)}
-      ${svItems(order, esc, ICONS)}
-      ${svPay(order, esc, computeVuelto)}
-    </div>
-    <div class="sv-actions">
-      ${svSlide('btn-accept', 'Aceptar pedido', 'accept')}
-      <div class="sv-foot-note">Si no aceptás a tiempo, despacho lo reasigna. No hay botón de rechazar.</div>
-    </div>`;
+    const mapHtml = d.mapHtml || '';
+    const area = d.area ? esc(d.area) : '';
+    const kmChip = d.offerKm ? `<span class="of-dist">${esc(d.offerKm)}</span>` : '';   // only if computed from real coords
+    const recoger = d.ready ? `Recoger <b>${esc(d.ready)}</b>` : 'Recoger';                // R1: readyTimeLabel already carries «~H:MM»; shown only with a real prep.ready_at
+    const entregar = 'Entregar' + (area ? ` <span class="of2-dim">· ${area}</span>` : '');  // R4: no deliver-by field exists; colonia only when coloniaOf resolves (today '')
+    const lines = itemLines(order);
+    const count = lines ? lines.reduce((a, l) => a + l.qty, 0) : (order && order.items_text ? String(order.items_text).split(',').map((s) => s.trim()).filter(Boolean).length : 0);
+    const itemsSummary = (order && order.items_text) ? esc(order.items_text) : (lines ? esc(lines.map((l) => l.name).join(', ')) : '');
+    const itemsRow = count ? `<div class="of2-row"><span class="of2-ic">${OF_BAG}</span><div class="of2-tx"><div class="of2-t">${count} artículo${count === 1 ? '' : 's'} · 1 bolsa</div>${itemsSummary ? `<div class="of2-d">${itemsSummary}</div>` : ''}</div></div>` : '';
+    const c = collectionFor(order);
+    let cashRow = '';
+    if (c.kind === 'cash') {
+      const tendered = (Number(order.cash_tendered_cents) || 0) / 100;
+      const change = computeVuelto(order.total, tendered);
+      const sub = (tendered > 0 && change != null) ? `Paga con <b>L ${tendered.toLocaleString('es-HN')}</b> · llevá vuelto` : '';
+      cashRow = `<div class="of2-row"><span class="of2-ic ok">${OF_CASH}</span><div class="of2-tx"><div class="of2-t">Cobrar <b>L ${Number(c.amount).toLocaleString('es-HN')}</b> en efectivo</div>${sub ? `<div class="of2-d">${sub}</div>` : ''}</div></div>`;
+    } else if (c.kind === 'card') {
+      cashRow = `<div class="of2-row"><span class="of2-ic">${OF_CASH}</span><div class="of2-tx"><div class="of2-t">Cobrar <b>L ${Number(c.amount).toLocaleString('es-HN')}</b> con tarjeta</div></div></div>`;
+    } else if (c.kind === 'paid_online') {
+      cashRow = `<div class="of2-row"><span class="of2-ic">${OF_CASH}</span><div class="of2-tx"><div class="of2-t">Pagado en línea</div><div class="of2-d">No cobrés nada en la puerta</div></div></div>`;
+    } else if (c.kind === 'free') {
+      cashRow = `<div class="of2-row"><span class="of2-ic">${OF_CASH}</span><div class="of2-tx"><div class="of2-t">Sin costo</div></div></div>`;
+    } else {   // 'warning' — unconfirmed/unknown payment: NEVER a collect amount, send to dispatch (R11 live safety; same copy as svPay)
+      cashRow = `<div class="of2-row of2-warn"><span class="of2-ic of2-ic-warn">${OF_CASH}</span><div class="of2-tx"><div class="of2-t">Pago no confirmado</div><div class="of2-d">Revisar</div></div></div>`;
+    }
+    // R2: «Tu pago por esta entrega · + L 70» stays HIDDEN until Pagos ships (deps.showEarnings, default false). The
+    // mount is kept so Pagos flips it on with the real rate — never a fabricated amount here.
+    const payMount = (d.showEarnings === true) ? '' : '';
+    const note = (secsLeft != null) ? `Si no aceptás en ${secsLeft} s, despacho lo reasigna. No hay botón de rechazar.` : 'Si no aceptás, despacho lo reasigna. No hay botón de rechazar.';
+    return `<div class="of-head of2-head"><span class="of-sola">${OF_SOLA}</span><div class="of-title">Nuevo pedido</div>${ring}</div>
+      ${mapHtml}
+      <div class="offer-card of2-card">
+        <div class="of2-chiprow">${svChip(order, esc)}<span class="of2-onum">${label}</span>${kmChip}</div>
+        <div class="of2-timeline">
+          <div class="of2-trow"><span class="of2-tic">${OF_STORE}</span><span>${recoger}</span></div>
+          <div class="of2-trow"><span class="of2-tic">${OF_FLAG}</span><span>${entregar}</span></div>
+        </div>
+        ${itemsRow}
+        ${cashRow}
+        ${payMount}
+      </div>
+      <div class="sv-actions">
+        ${svSlide('btn-accept', 'Aceptar pedido', 'accept')}
+        <div class="of2-foot-note">${note}</div>
+      </div>`;
   }
+/* ===== SLICE3:OFERTA-OFFER:END ===== */
 
   // ── AT-RESTAURANT review (pickup + arrived/tapped): order-# protagonist + items + static reminder. ──
   if (review) {

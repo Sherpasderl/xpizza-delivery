@@ -58,7 +58,7 @@ const b64u = (buf) => Buffer.from(buf).toString('base64url');
  * still served, and the client falls back to the unsigned floor. Refusing to fingerprint garbage is
  * not the same as refusing the customer.
  */
-function normalizeCartForFingerprint(items, rid) {
+function normalizeCartForFingerprint(items, rid, keyMode) {
   /* 🔴 THE IDENTITY IS THE BRAND'S PRICING KEY, TAKEN FROM THE PRICING ITSELF.
      This used to prefer `id` and fall back to `name`, which is not what either brand does: x_pizza
      prices by NAME and la_musa by ID (itemPricingKey, menu-pricing.js). For x_pizza that made the
@@ -72,7 +72,7 @@ function normalizeCartForFingerprint(items, rid) {
      same call serves options — which key the same way their brand's items do. */
   const key = (o) => {
     try {
-      const raw = itemPricingKey(o, rid);
+      const raw = itemPricingKey(o, rid, keyMode);
       if (raw === undefined || raw === null) return null;
       const k = String(raw);
       return k === '' ? null : k;

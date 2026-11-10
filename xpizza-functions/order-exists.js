@@ -16,7 +16,7 @@
 
 const ORDER_EXISTS = 'order_exists';
 const ORDER_EXISTS_DETAIL = 'Ya hay un pedido en curso con este número. Revisá tu pedido o pago anterior antes de volver a intentar.';
-const ORDER_EXISTS_REASONS = Object.freeze(new Set(['method', 'closed', 'cart', 'cart_unverifiable', 'binding_format_invalid', 'client_update_race', 'conflict']));
+const ORDER_EXISTS_REASONS = Object.freeze(new Set(['method', 'closed', 'cart', 'cart_unverifiable', 'binding_format_invalid', 'client_update_race', 'conflict', 'tip']));   // S2: + 'tip' (a changed tip on an existing order id — tip.js tipBindingConflict)
 
 // §1 table — every row must hold, else the snapshot is not provably safe to self-heal.
 const TERMINAL_SAFE_METHODS = Object.freeze(new Set(['cash', 'card_delivery']));

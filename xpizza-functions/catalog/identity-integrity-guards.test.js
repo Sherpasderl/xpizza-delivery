@@ -12,7 +12,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const ROOT = path.join(__dirname, '..');
-const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
+const read = (f) => require('../tools/keymode-module-inverse').unapplyKeyModeModule(f, require('../tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, fs.readFileSync(path.join(ROOT, f), 'utf8')));   // S0 key mode (newest) reversed first
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -39,7 +39,16 @@ try {
   // PLAN-public-menu-display landed after extras: its exact module inverse (tools/pmdisplay-module-inverse.js, proven by
   // pmdisplay-wiring.guard) is reversed FIRST (newest first) — source-store.js gains only the all-or-nothing category-name rule
   const { unapplyPmdisplayModule, FILES: PMD_FILES } = require('../tools/pmdisplay-module-inverse');
-  const pmdRead = (f) => (PMD_FILES.includes(f) ? unapplyPmdisplayModule(f, read(f)) : read(f));
+  // S7a directory core (merged newest in this assembly): its exact module inverse (tools/directory-module-inverse.js, proven by
+  // directory-wiring.guard) is applied FIRST (innermost), returning restaurant-registry.js / public-menu.js to the pre-S7a bytes
+  const { unapplyDirectoryModule, FILES: DIR_FILES } = require('../tools/directory-module-inverse');
+  const phRead = (f) => require('../tools/photos-module-inverse').unapplyPhotosModule(f, read(f));   // DRYRUN R-WIRE (2e): DISH PHOTOS A2 (newest) innermost
+  const dirRead = (f) => (DIR_FILES.includes(f) ? unapplyDirectoryModule(f, phRead(f)) : phRead(f));
+  // PLAN 4 (bake from published) landed after public-menu-display: its exact module inverse (tools/formbake-module-inverse.js,
+  // proven by formbake-module-wiring.guard) is reversed next — source-store.js gains badge_priority / reward_icon
+  const { unapplyFormbakeModule, FILES: FB_FILES } = require('../tools/formbake-module-inverse');
+  const fbRead = (f) => (FB_FILES.includes(f) ? unapplyFormbakeModule(f, dirRead(f)) : dirRead(f));
+  const pmdRead = (f) => (PMD_FILES.includes(f) ? unapplyPmdisplayModule(f, fbRead(f)) : fbRead(f));
   const pinned = (f) => (EXTRAS_FILES.includes(f) ? unapplyExtrasModule(f, pmdRead(f)) : pmdRead(f));
   for (const [f, want] of Object.entries(PINS)) assert.strictEqual(sha(pinned(f)), want, `🔴 ${f} changed — c2b imports it and must never edit it`);
   assert.notStrictEqual(sha(`${read('catalog/catalog-verifier.js')} `), PINS['catalog/catalog-verifier.js'], 'sensitivity');

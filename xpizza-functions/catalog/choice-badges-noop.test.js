@@ -29,7 +29,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
   for (const f of ['extras_by_category', 'extras_by_item', 'badges']) if (menu.structure[f] !== undefined) body[f] = menu.structure[f];   // public-menu.js CARRIED_FROM_STRUCTURE
   assert.strictEqual(menu.structure.badges, rid === 'x_pizza' ? undefined : menu.structure.badges, 'x_pizza: structure.badges stays ABSENT (no item uses a badge)');
   out[rid] = {
-    source: h(src),
+    source: h((({ key_mode: km, ...rest }) => { assert.strictEqual(km, require('../menu-pricing').defaultKeyMode(rid), `${rid}: S0's one source field is the default key mode`); return rest; })(src)),   // S0 adds key_mode; the 2.7 claim is about everything else
     built: h(built),
     bundle: h(rebuildFormMenu(rid, built.items, built.structure, built.extras)),
     publicBody: h(body),

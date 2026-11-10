@@ -34,6 +34,11 @@ function formDataFromText(rid) {
     fd.pickup_only_cats = readLiteral(src, 'PICKUP_ONLY_CATS');
     fd.weekend_only_cats = readLiteral(src, 'WEEKEND_ONLY_CATS');
   }
+  // PLAN 4 GATED (G1): the post-migration rows, from the ONE reviewed data file, exactly as the bootstrap and the seed apply them
+  const { applyBootstrapRows } = require('./menu-structure-rows');
+  const { pricingKeyOf, extrasKeyOf } = require('./form-menu-source');
+  const st = applyBootstrapRows(rid, { items: dishes.map((d) => ({ key: pricingKeyOf(rid, d), display: d })), extras: fd.extras_display.map((e) => ({ key: extrasKeyOf(rid, e), display: e })) });
+  if (st.badge_priority) fd.badge_priority = st.badge_priority;
   return fd;
 }
 

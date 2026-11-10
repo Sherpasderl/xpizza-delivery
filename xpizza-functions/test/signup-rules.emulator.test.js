@@ -102,6 +102,19 @@ const ADDR = { label: 'Casa', detected: 'Col. Palmira', details: '', lat: 14.1, 
   }
   ok(`the server-only nodes (auth_links, link_tickets, auth_challenges, signup_config, restaurants/$rid/legal): ${denied} client reads / writes / deletes denied across 4 roles`);
 
+  // ── 5. security r2: the sweep's CLAIM (user_profiles/$uid/deleting_at) is Admin-only — the owner can neither strip nor forge it ──
+  {
+    await seed();
+    await assertFails(owner.ref(`user_profiles/${U}/deleting_at`).set(123));                                  // forge: an unknown child
+    await assertFails(owner.ref(`user_profiles/${U}`).set({ ...PROFILE('ph_a'), deleting_at: 123 }));          // forge: a whole profile carrying it
+    await env.withSecurityRulesDisabled(async (ctx) => { await ctx.database().ref(`user_profiles/${U}/deleting_at`).set(500); });
+    await assertFails(owner.ref(`user_profiles/${U}`).set(PROFILE('ph_a')));                                  // strip: rewrite the claimed profile
+    await assertFails(owner.ref(`user_profiles/${U}/name`).set('x'));                                         // any write to a claimed profile
+    await assertFails(owner.ref(`user_profiles/${U}/deleting_at`).set(null));                                 // strip: remove the claim
+    await assertSucceeds(other.ref(`user_profiles/${U2}/name`).set('Beto'));                                  // only THAT account is barred
+  }
+  ok('security r2: a sweep claim (deleting_at) is Admin-only — the owner can neither forge it (child / whole profile) nor strip it, and a claimed profile takes no client write');
+
   await env.cleanup();
   console.log(`\nsignup-rules.emulator: OK (${n})`);
   process.exit(0);

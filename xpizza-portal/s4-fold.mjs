@@ -2,7 +2,7 @@
 // held-state + rate-limit merge the slice is built on). Folded out FIRST by portalui-guards (the newest layer), so every older
 // pin judges exactly what it judged before. Regenerated only from the slice diff (D4c-grill/review-portal/portal-item-edit/
 // gen_s4_fold.py); an edit outside these hunks, or inside one, fails.
-export const S4_BASE = 'a6d1dd81';
+export const S4_BASE = '6d7f8207';
 export const S4_FOLD = {
  "editor.js": [
   [

@@ -15,10 +15,36 @@ import { canReassign, isPostPickup, isUnassignedDelivery, sectionForOrder } from
 const here = dirname(fileURLToPath(import.meta.url));
 const sdk = readFileSync(join(here, '..', 'xpizza-dispatch', 'xpizza-delivery.js'), 'utf8');
 const driverSdk = readFileSync(join(here, '..', 'xpizza-driver', 'xpizza-delivery.js'), 'utf8');
+// Since stackseq, the real pickupComplete sequences a coherent 2-stop stack via pickStackPointer → validPair. Those
+// live in sibling driver modules, so lift them from their REAL sources (not stubs) and inject them below.
+const driverComplete = readFileSync(join(here, '..', 'xpizza-driver', 'driver-complete.js'), 'utf8');
+const stackValidity = readFileSync(join(here, '..', 'xpizza-driver', 'stack-validity.js'), 'utf8');
 
 const sliceFn = (src, sig) => { const s = src.indexOf(sig); assert.ok(s > -1, `${sig} present`); return src.slice(s, src.indexOf('\n}', s) + 2); };
 const sliceObj = (src, sig) => { const s = src.indexOf(sig); assert.ok(s > -1, `${sig} present`); return src.slice(s, src.indexOf('\n};', s) + 3); };
 const sliceLine = (src, sig) => { const s = src.indexOf(sig); assert.ok(s > -1, `${sig} present`); return src.slice(s, src.indexOf('\n', s)); };
+// A helper reassignOrder MIGHT depend on — extracted BY NAME and brace-matched. Returns null when the SDK does
+// not define it, so this test tracks the SDK whether or not the dependency has landed yet.
+const optionalFn = (src, name) => {
+  const m = new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
+  if (!m) return null;
+  let i = src.indexOf('{', m.index), depth = 0;
+  for (; i < src.length; i++) { if (src[i] === '{') depth++; else if (src[i] === '}') { depth--; if (!depth) break; } }
+  return src.slice(m.index, i + 1);
+};
+
+const reassignOrderSrc = sliceFn(sdk, 'export async function reassignOrder(');
+// reassignOrder gained an `await targetOnBreak(...)` «Pausa» guard on feat/pausa-server. Pull in any such helper
+// the SDK now defines (omitted when absent — green both before and after pausa lands); and FAIL LOUDLY if
+// reassignOrder references one the SDK can't supply, so a missing dependency is a clear assertion here rather
+// than a cryptic `targetOnBreak is not defined` ReferenceError when the extracted code runs.
+const DEPS = ['targetOnBreak'];
+const depSrcs = DEPS.map((name) => {
+  const fnSrc = optionalFn(sdk, name);
+  const referenced = new RegExp(`\\b${name}\\s*\\(`).test(reassignOrderSrc);
+  assert.ok(!(referenced && !fnSrc), `reassignOrder references ${name}() but it is not extractable from the SDK — add it to the extracted set`);
+  return fnSrc;
+}).filter(Boolean);
 
 const SRC = [
   sliceObj(sdk, 'export const DRIVER_STATUS = {'),
@@ -27,7 +53,15 @@ const SRC = [
   sliceObj(sdk, 'export const ORDER_STATUS = {'),
   sliceLine(sdk, 'export const ACCEPT_TIMEOUT_MS ='),
   sliceFn(sdk, 'function casAssign(expected, target) {'),
-  sliceFn(sdk, 'export async function reassignOrder('),
+  reassignOrderSrc,
+  ...depSrcs,
+  // pickupComplete's stackseq deps — the REAL helpers (byte-pinned to the server validity rule), in dependency order,
+  // so the lifted writer composes exactly as in production rather than against a laxer stub. sliceFn/sliceLine assert
+  // each signature is present, so a rename fails loudly here instead of as a cryptic ReferenceError at run time.
+  sliceLine(stackValidity, 'const fin ='),
+  sliceFn(stackValidity, 'function validCopy('),
+  sliceFn(stackValidity, 'function validPair('),
+  sliceFn(driverComplete, 'export function pickStackPointer('),
   sliceFn(driverSdk, 'export async function pickupComplete('),    // the REAL driver writer
   'return { reassignOrder, pickupComplete };',
 ].join('\n').replace(/export /g, '');

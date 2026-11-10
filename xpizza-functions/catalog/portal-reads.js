@@ -20,6 +20,7 @@
 // ---------------------------------------------------------------------------
 const { sourceRefOf, validateSource, rendererContract } = require('./source-store');
 const { assessDraft } = require('./draft-assess');   // 1D add-product A
+const { readPlatformPending, gapsIn } = require('./platform-pending');   // F-1: the Sherpa-written-fields flag (read-only here)
 const { groupCapabilities } = require('./platform-groups');   // 1D add-product B: the ONE platform authoring switch (no brand)
 const { usesPlatformFactura } = require('../factura/eligibility');   // 2b-2b: the fiscal capability, server-owned
 // The EXISTING codec from the 2b-1 write path, imported rather than reimplemented. `sourceUpdateTime`
@@ -98,9 +99,10 @@ async function getMyRestaurantsCore({ db, verifyIdToken }, req) {
 // the CAS — laundered into a publish by a UI that displayed it as normal. 503, and the document is not
 // returned at all.
 //
-// READ-ONLY. Nothing in this module writes.
+// READ-ONLY. Nothing in this module writes catalog or merchant state. (F-1: the ONE exception is a best-effort, deduped owner ALERT
+// when a platform-pending stamp is malformed — a permanent lock must never be silent; injected as `alertMalformed`.)
 // ---------------------------------------------------------------------------
-async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource, _readPublishRequest = null, _resolveAccess = resolveAccess, now = () => Date.now() }, req) {
+async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, photoReads = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource, _readPublishRequest = null, alertMalformed = null, _resolveAccess = resolveAccess, now = () => Date.now() }, req) {
   if (!req || req.method !== 'GET') return reply(405, { error: 'method_not_allowed' });
   const rid = req.query && req.query.restaurantId;
 
@@ -170,9 +172,11 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
   let pendingAdditions = null;
   let pendingRenames = null;
   let pendingOther = false;
+  let liveRead = null;   // F-1: the same live read answers the platform-pending question below (no second read)
   if (readActiveBuilt && activeVersionId != null) {
     try {
-      const a = assessDraft(rid, source, await readActiveBuilt(rid));
+      liveRead = await readActiveBuilt(rid);
+      const a = assessDraft(rid, source, liveRead);
       if (!a.publishable) draftUnpublishable = { code: a.code, detail: a.detail, ...(a.key ? { key: a.key } : {}) };
       // the saved draft's products that are NOT published yet (keys), so a reloaded editor still marks them NUEVO
       // and lets the owner remove them ("Quitar") — present only when there are some
@@ -186,6 +190,34 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
       }
     } catch (e) {
       console.warn('portal_draft_assessment_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
+    }
+  }
+
+  /* F-1 (BRIEF-portal-stale-draft-clobber, ruled 2026-11-07) — platform_changes_pending: a SHERPA tool wrote fields into this draft
+     (the platform-pending stamp) that live does not carry yet. The portal then shows the calm notice INSTEAD of «Volver al menú
+     publicado», which resetDraftToLive refuses anyway (the server decides). READ-ONLY here: the stamp is only read, never cleared
+     (clearing is the reset's / Sherpa's publish tools'). Undeterminable ⇒ a retryable 503 (below), never a silent unlock. */
+  let platformPending = null;
+  // Codex r1 P2-1: the stamp is read ON ITS OWN (not inside the live read's success), and an existing stamp UNLOCKS only after a
+  // SUCCESSFUL gap evaluation. Undeterminable (the stamp or live unreadable) ⇒ a retryable 503, never a silent unlock. No stamp ⇒
+  // today's response exactly.
+  let st;
+  try { st = await readPlatformPending(fsdb, rid); } catch (e) {
+    console.warn('portal_platform_pending_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
+    return reply(503, { error: 'source_unavailable', retryable: true });
+  }
+  if (st) {
+    if (st.malformed) {
+      platformPending = { fields: [] };   // fails CLOSED, and never silent
+      if (alertMalformed) { try { await alertMalformed(rid); } catch (_) { console.error('platform_pending_alert_failed', JSON.stringify({ rid })); } }
+    } else if (activeVersionId == null) {
+      platformPending = { fields: st.fields };   // nothing is published: live carries none of them
+    } else if (!liveRead || !liveRead.built) {
+      console.warn('portal_platform_pending_undeterminable', JSON.stringify({ rid }));
+      return reply(503, { error: 'live_version_unavailable', retryable: true });
+    } else {
+      const gaps = gapsIn({ items: liveRead.built.items, extras: liveRead.extraRecords, structure: liveRead.built.structure }, st.fields);
+      if (gaps.length) platformPending = { fields: gaps };
     }
   }
 
@@ -215,6 +247,20 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     catch (_) { publishViaRequest = false; }
   }
 
+  /* DISH PHOTOS A2 step 9 (E-P3) — photos / photoPreviews / legacyPreviews / photosEnabled, each OMITTED when empty or off (a restaurant
+     without photo data gets today's response byte-for-byte). Best effort: a failed photo read omits them and the editor still loads
+     (the draft map is in `source` regardless). A pending photo change counts as «something besides a name» (pendingOther). */
+  let photoOut = {};
+  if (photoReads) {
+    try {
+      const { photosPending, ...fields } = (await photoReads.fieldsFor({ rid, source, activeVersionId: activeVersionId == null ? null : activeVersionId })) || {};
+      photoOut = fields;
+      if (photosPending === true && !draftUnpublishable) pendingOther = true;
+    } catch (e) {
+      console.warn('portal_photo_fields_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
+    }
+  }
+
   return reply(200, {
     renderedCategories,
     groupAuthoring,
@@ -223,9 +269,11 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     choiceBadges,
     restaurantName,
     ...(draftUnpublishable ? { draft_unpublishable: draftUnpublishable } : {}),
+    ...(platformPending ? { platform_changes_pending: platformPending } : {}),   // F-1
     ...(pendingAdditions ? { pendingAdditions } : {}),
     ...(pendingRenames ? { pendingRenames } : {}),
     ...(pendingOther ? { pendingOther: true } : {}),
+    ...photoOut,   // DISH PHOTOS A2 step 9 (E-P3)
     source,
     // The CAS baseline. Byte-identical to editCatalog's baseSourceUpdateTime by construction.
     sourceUpdateTime: doc.updateTime ? encodeUpdateTime(doc.updateTime) : null,

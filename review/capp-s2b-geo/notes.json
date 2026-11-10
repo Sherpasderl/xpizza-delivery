@@ -1,0 +1,42 @@
+{
+ "addr-a1": [
+  "identical: «Entrega & Pago», Delivery/Pickup, «Lo antes posible ≈ 30 min», the schematic map + «PIN CONFIRMADO» tag + «Ajustar pin», «Detalles adicionales *» placeholder, «Tus datos», «Agregá Detalles adicionales» CTA",
+  "identical: bold «Calle 10, Col. Jardines del Valle» (route long_name only — street_number «10» not appended), sub «Pin confirmado»",
+  "data rule, not drawn (advisor ruling 2026-10-26) #2: geocoded once per CONFIRMED pin version (GPS fix / «Listo» / restored return; same-coordinate re-set ⇒ no second geocode)",
+  "data rule, not drawn (advisor ruling 2026-10-26) #3: once a confirmed pin has a geo line it replaces «Mové el pin a tu puerta»; pending / none keeps today's copy (not drawn in a frame)"
+ ],
+ "addr-a-long": [
+  "identical: «Entrega & Pago», Delivery/Pickup, «Lo antes posible ≈ 30 min», the schematic map + «PIN CONFIRMADO» tag + «Ajustar pin», «Detalles adicionales *» placeholder, «Tus datos», «Agregá Detalles adicionales» CTA",
+  "identical: bold «21 Avenida Noroeste, Col. Jardines del…» cut by the existing .urow .t b ellipsis (capp.css) — no new style"
+ ],
+ "addr-b": [
+  "identical: «Entrega & Pago», Delivery/Pickup, «Lo antes posible ≈ 30 min», the schematic map + «PIN CONFIRMADO» tag + «Ajustar pin», «Detalles adicionales *» placeholder, «Tus datos», «Agregá Detalles adicionales» CTA",
+  "identical: bold «Calle 10» (street only; no «Col.» invented), sub «Pin confirmado»"
+ ],
+ "addr-b2": [
+  "identical: «Entrega & Pago», Delivery/Pickup, «Lo antes posible ≈ 30 min», the schematic map + «PIN CONFIRMADO» tag + «Ajustar pin», «Detalles adicionales *» placeholder, «Tus datos», «Agregá Detalles adicionales» CTA",
+  "identical: bold «Col. Jardines del Valle» (Google «Unnamed Road» = no street; never an invented street)",
+  "data rule, not drawn (advisor ruling 2026-10-26) #1: displayArea — a name already starting Colonia / Col. / Barrio / Bo. / Residencial / Res. (whole word) is shown as given, else «Col. {X}» («Colonial Hills» ⇒ «Col. Colonial Hills»); address_area would stay raw"
+ ],
+ "addr-c": [
+  "identical: «Entrega & Pago», Delivery/Pickup, «Lo antes posible ≈ 30 min», the schematic map + «PIN CONFIRMADO» tag + «Ajustar pin», «Detalles adicionales *» placeholder, «Tus datos», «Agregá Detalles adicionales» CTA",
+  "identical, byte for byte: «Tu ubicación» / «Pin confirmado» — no result (ZERO_RESULTS), a failure, or still pending; the no-regression floor"
+ ],
+ "addr-placing": [
+  "identical: «Realizando pedido…», «Llega 7:35 p.m. – 7:50 p.m. · Delivery», «X. Pizza · Los Próceres» + sub «Calle 10, Col. Jardines del Valle», «3 pizzas …», «Efectivo al entregar · Total L 1,094 · incluye propina L 20», «Se ve bien (0:02)», «Volver»",
+  "a11y (S1 FOCUS note, unchanged from S2b): focus ring on «Se ve bien» (the layer focuses its first control)",
+  "build note (Codex r1 P1/P3): a geocode reply never re-renders — it patches the [data-addr] text in place, so an open pin editor, the «Realizando» countdown and «Enviando»'s completion check all survive"
+ ],
+ "addr-sending": [
+  "identical: promo background, live rider, «Enviando tu pedido…» + spinner, bold «Calle 10, Col. Jardines del Valle» + sub «Entrega», the logo row, «Efectivo al entregar · L 1,094», «Incluye propina L 20», «Esto toma unos segundos»",
+  "animation phase only: the spinner arc's angle at capture"
+ ],
+ "addr-placing-b2": [
+  "identical: the same card with sub «Col. Jardines del Valle» (b2)",
+  "a11y (S1 FOCUS note, unchanged from S2b): focus ring on «Se ve bien»"
+ ],
+ "addr-sending-b2": [
+  "identical: bold «Col. Jardines del Valle» + sub «Entrega» (b2); every other row as addr-sending",
+  "animation phase only: the spinner arc's angle at capture"
+ ]
+}

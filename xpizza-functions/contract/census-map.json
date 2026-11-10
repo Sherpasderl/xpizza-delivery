@@ -152,9 +152,51 @@
   {
    "key": "normEmail",
    "reason": "lib/driver-admin-ops.js exports its email normalizer (trim + lowercase of a driver INVITE email) by name in module.exports — a helper, not an order field; §1 \"no order email\" stands"
+  },
+  {
+   "key": "tip_cents",
+   "sites": [{"file": "index.js", "fn": "createOrderApp.all"}, {"file": "index.js", "fn": "chargeOnlineApp.all"}, {"file": "compute-server-net.js", "fn": "computeServerNet"}, {"file": "delivery/delivery-pricing.js", "fn": "storedCtx"}, {"file": "delivery/delivery-pricing.js", "fn": "withTip"}, {"file": "delivery/delivery-wire.js", "fn": "withDelivery"}, {"file": "delivery/delivery-wire.js", "fn": "orderFields"}, {"file": "quote-issue.js", "fn": "issueQuoteInner"}],   
+   "reason": "S2-srv-tip (SCOPED by 2e at assembly, obligation 3: exactly the reviewed write / object-key sites; a NEW tip_cents write elsewhere is a §1 decision): tips ARE implemented (PLAN-capp-S2-r4 §3, owner Q7 TIP_MAX L 2,000): the order's tip_cents (written only when > 0 by the existing atomic order write — cash via the spread breakdown, card via the pending order) and the same key on the server envío ctx / the signed quote payload / computeServerNet components. §1's 'no tip' is superseded for this field only; covered by s2tip.test.js + delivery/tip-consumers.test.mjs. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tip",
+   "reason": "S2-srv-tip: deliveryFor's parameter key (the request's raw tip_cents, validated) — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tipCents",
+   "reason": "S2-srv-tip: the cash fingerprint context key (tip.js normTip output) feeding tipExtra — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tipCentsOf",
+   "reason": "S2-srv-tip: delivery-pricing's exported reader of a server ctx's tip (a module.exports key) — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tipExtra",
+   "reason": "S2-srv-tip: tip.js's exported fingerprint-component helper (a module.exports key) — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tipBindingConflict",
+   "reason": "S2-srv-tip: tip.js's exported direct stored-tip compare (a module.exports key) — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "validEmail",
+   "reason": "S2 P-C: payer-email.js exports its PixelPay payer-email VALIDATOR (a module.exports key) — the hosted charge's payer email, not an order-email sender; §1's 'no order email' stands (per-module entry, as normEmail's)"
+  },
+  {
+   "key": "payerEmail",
+   "reason": "S2 P-C: payer-email.js's exported PixelPay payer-email resolver (a module.exports key) — the hosted charge's payer email, not an order-email SENDER; §1's 'no order email' stands. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tip_cents",
+   "sites": [{ "file": "cart-sig.js", "fn": "cartSigInput" }, { "file": "checkout-guest-lib.js", "fn": "cartSigFieldsFromBody" }],
+   "reason": "PLAN-guest-checkout-server §1.4 (3a, S2): the capp cart SIGNATURE's input key — cart-sig.js cartSigInput / checkout-guest-lib.js cartSigFieldsFromBody build the six-field object the capp signed (the ticket's cart_fp binding); a hash input, never an order field, a charge or a tip write. §1's 'no tip' is untouched by this slice. 2e REVIEWED 2026-10-27: ACCEPTED, SCOPED to these two sites (both verified: each returns the hashed six-field object, no order write). The same key anywhere else stays a §1 sentinel decision, e.g. a real tip write when the capp tip slice lands"
   }
  ],
  "timerReview": {
+  "xpizza-functions/checkout-guest-gate.js:chargeUidOf>anon:setTimeout": {
+   "class": "io-deadline",
+   "reason": "PLAN-guest-checkout-server, Codex S2 r1 P2-4 (3a): chargeUidOf races chargeOnlineOrder's own identity resolution (verifyIdToken + the tombstone read) against deadlineMs (default 1500, mirroring the handler's 1.5 s identity deadline); on expiry (or any error) it resolves UNDEFINED = unresolved, which FAILS CLOSED: the caller then takes the generic online-only 400, byte-identical to today, never the guest path (Codex r2 P2, 7ef9fb2d); only a VERIFIED null selects the typed guest_cash_not_allowed reason. Never delays an answer past 1.5 s; never writes. 2e REVIEWED 2026-10-31: io-deadline CONFIRMED; REAL"
+  },
   "xpizza-functions/sequencing/bounded.js:bounded>anon:setTimeout": {
    "class": "io-deadline",
    "reason": "BUILD-stacked-seq-server r5 (r4 P2-4): bounded() races each await of a stack decision (and the post-claim re-check) against the remaining decision budget (≤ 5 s planning, 3 s post-claim) — on expiry the writer goes single / rolls back; REAL"
@@ -204,6 +246,7 @@
   "tracking/tombstones.js": "R8",
   "payment-poll-state.js": "R16",
   "claim-order.js": "R17",
+  "my-orders.js": "R17",
   "claim-prefill.js": "R17",
   "factura/build-record.js": "R10",
   "factura/eligibility.js": "R10",
@@ -258,11 +301,19 @@
   "prepstats": "S5 daily prep summary (prepStatsDaily) — reads order_timelines + exactly two order leaves per candidate (restaurant_id, customer_phone) for ATTRIBUTION and the ready-time EXCLUSIONS only; publishes per restaurant × bucket aggregates {median_min, p80_min, n} — never an order fact, an amount or a phone",
   "merchant": "merchant HANDHELD writer (H1a, PLAN-H1a r2 + amendment A-R1) — device-scoped order transitions on orders/{oid} (status CAS + prep + handheld_answered + handheld_ops receipts + reject_intent in ONE transaction), the reject executor (the EXISTING cancelOrderCore, injected) and its op-matched reject_outcome, the reject repair pass (reads persisted reject/cancel/payment state only to decide a dispatch notice — never displays or moves money), busy / pause / agotado; its reads only GATE its own writes — no customer display; persisted outputs covered as writer evidence (census writtenFields / opaqueWriteResolutions). PROPOSED by the handheld session for 2e review (D6).",
   "branches": "branch LIFECYCLE writer + Sherpa-admin CLI (ORCHESTRATION O1a) — identity / brand membership / reservations / op records; reads an order's STATUS only to COUNT live orders (the pin-move guard and the deactivation consequences) — never displayed as an order fact, never a writer of /orders",
-  "driverreport": "DRIVER F «Problema con este pedido» alert WRITER (alertOnDriverProblem) — reads exactly two order leaves (display_number, restaurant_id) only to LABEL an internal dispatcher_alerts row for the Torre; no customer surface, never a writer of /orders or /tasks"
+  "driverpay": "DRIVER PAY-RATE reader (pay-rate.js, PROPOSAL-driver-pay-rate-reader r2) — reads a delivery's delivered_at ONLY to pick the platform rate in effect (platform_rates/driver_per_delivery, admin-written) and sums driver earnings; never a customer amount, an order status or a selector of an order write. PROPOSED by 2e for advisor review; the ledger slice re-reviews when it reads it",
+  "driverreport": "DRIVER F «Problema con este pedido» alert WRITER (alertOnDriverProblem) — reads exactly two order leaves (display_number, restaurant_id) only to LABEL an internal dispatcher_alerts row for the Torre; no customer surface, never a writer of /orders or /tasks",
+  "ratings": "S5 RATINGS WRITER (Customer App): reads ONE order (orders/{id} customer_uid / status / restaurant_id) for the VERIFIED signed-in customer who placed it (+ its deleted_uids tombstone) to decide whether it may be rated, and writes ONLY order_ratings/{order_id} (create-if-absent, no customer identity) — never an order field; `status` in its handler is the Express HTTP status; covered by ratings/rating-core.test.js + test/s5-ratings.emulator.test.js S-A1 (ratings_v2): + the fulfilment stamp's orders/{id}/status + restaurant_id (the status trigger) and the member's OWN user_orders/{uid}/{id}.items recipe keys (dish-vote validation through the one resolver) — never an amount or a collector.",
+  "support": "S-F support tickets (NOTE-S-F-support-tickets-build): the createSupportTicket validator + owner check + ticket / alert writer. It reads the order's customer_uid / tracking_token (ownership) and restaurant_id (copied onto the ticket), never as a displayed order fact; the ticket and its dispatcher alert carry order_id + reason only",
+  "delivery_pricing": "ENVÍO (Customer App S3a): derives the delivery fee + free-delivery promo for ONE request from Sherpa config (platform_config/delivery_pricing), the restaurant hub (identity hub_lat/hub_lng) and the request pin (lat/lng + pin_confirmed); on the card path ALSO reads the stored order (orders/{id} order_type / lat / lng / payment_status / active_attempt_id + its payment_attempts state) to keep a live checkout's stored economics or refuse a changed context; writes NOTHING itself — its result reaches the order only through the existing atomic order write (delivery_cents / promo_discount_cents / delivery_snapshot) and the confirmed-net gate; a refusal is an HTTP status on a refusal object, never an order status; covered by delivery/delivery-pricing.test.js + test/s3a-envio.emulator.test.js",
+  "driver_pay": "driver payable LEDGER writer (Customer App S8): reads a delivered order's protected attribution (delivered_by_driver_uid / delivered_at / order_type) through the bounded delivered_at range query and writes ONLY driver_ledger_weeks/{week} (one create-if-absent node per closed week, then .paid) — never an order field, never cash-to-remit; covered by test/driver-ledger.emulator.test.js"
  },
  "serverFunctions": {
   "alert-prune.js#alertOrderIds": "infra",
   "alert-prune.js#orderStillFlagged": "infra",
+  "catalog/form-rebake.js#postHook": "infra",
+  "index.js#post>anon": "infra",
+  "index.js#getText>anon": "infra",
   "assign-hub.js#resolveAssignHub": "dispatch",
   "assign-hub.js#hubOf": "dispatch",
   "availability-reset.js#resetRestaurant": "infra",
@@ -270,7 +321,8 @@
   "cancel-order-core.js#cancelOrderCore": "payment",
   "cancel-order-core.js#cleanupTasksAndDriver": "payment",
   "cancel-order-core.js#finalize": "payment",
-  "cancel-order-core.js#retryRewardLedgerRepair": "payment",
+  "cancel-order-core.js#healLedgerRepair": "payment",
+  "cancel-order-core.js#escalateConfirmedRefunds": "payment",
   "cancel-order.js#cancelledDecision": "payment",
   "cancel-order.js#claimDecision": "payment",
   "cancel-order.js#gate": "payment",
@@ -290,7 +342,13 @@
   "branches/branch-store.js#setBranchActive>anon": "branches",
   "branches/branches-admin-core.js#locationInput": "branches",
   "catalog/add-product-io.js#syncKds": "catalog",
+  "catalog/menu-structure-rows.js#applyBootstrapRows": "catalog",
   "catalog/add-product.js#allocateAdditions": "catalog",
+  "catalog/add-product.js#rederiveOptionNames": "catalog",
+  "catalog/add-product.js#textCapProblems": "catalog",
+  "catalog/frozen-keys.js#activeFrozenKeys": "catalog",
+  "catalog/frozen-keys.js#recordRenames": "catalog",
+  "catalog/frozen-keys.js#renamedLabels": "catalog",
   "catalog/add-product.js#changesNothingElse": "catalog",
   "catalog/add-product.js#classifyItems": "catalog",
   "catalog/add-product.js#compareToActive": "catalog",
@@ -398,6 +456,9 @@
   "create-order-build.js#attachCustomerAttribution": "intake",
   "create-order-build.js#buildCreateOrderUpdates": "intake",
   "createorder-classify.js#classifyExistingOrder": "intake",
+  "tip.js#orderRefusal": "intake",
+  "tip.js#refuse": "intake",
+  "payer-email.js#refuse": "intake",
   "createorder-classify.js#computeCanonicalIncomingFingerprint": "intake",
   "createorder-classify.js#computeIncomingFingerprint": "intake",
   "driver-attribution.js#shouldBackstopAttribution": "dispatch",
@@ -432,6 +493,9 @@
   "index.js#deleteTasksOnOrderTerminal": "dispatch",
   "index.js#earnRewardsOnCompletion": "rewards",
   "index.js#getPublicMenu": "intake",
+  "directory/directory.js#handleDirectory": "intake",
+  "directory/directory.js#identityFields": "intake",
+  "directory/directory.js#sendJson": "intake",
   "index.js#healthz": "infra",
   "index.js#ingestDriverLocation": "dispatch",
   "index.js#logOrderLifecycle": "readytime",
@@ -447,6 +511,7 @@
   "index.js#predictReadyTimeOnNew": "readytime",
   "index.js#pricingUnavailable": "intake",
   "index.js#quoteOrder": "intake",
+  "schedule/schedule-only.js#handle": "intake",
   "index.js#quoteRedemption": "intake",
   "index.js#reassertAssignable": "dispatch",
   "index.js#reconcilePayments": "payment",
@@ -498,10 +563,15 @@
   "pixelpay-charge.js#acquireOnlineAttempt>anon": "payment",
   "pixelpay-client.js#interpretStatus": "payment",
   "pixelpay-client.js#ppPost": "payment",
+  "pixelpay-client.js#hasActionEvidence": "payment",
   "pixelpay-confirm.js#confirmAndMaterialize": "payment",
   "pixelpay-confirm.js#confirmAndMaterialize>anon": "payment",
   "pixelpay-confirm.js#confirmOnlinePayment": "payment",
   "pixelpay-confirm.js#confirmOnlinePayment>anon": "payment",
+  "pixelpay-confirm.js#routeManualReconciliation": "payment",
+  "pixelpay-confirm.js#escalateStaleCapture": "payment",
+  "pixelpay-confirm.js#escalateStaleCapture>anon": "payment",
+  "pixelpay-confirm.js#escalatable": "payment",
   "pixelpay-hosted-charge.js#acquireHostedAttempt": "payment",
   "pixelpay-hosted-charge.js#acquireHostedAttempt>anon": "payment",
   "pixelpay-hosted-charge.js#classifyFromOrder": "payment",
@@ -510,6 +580,7 @@
   "pixelpay-webhook.js#classifySweepCandidate": "payment",
   "pixelpay-webhook.js#extractWebhookNudge": "payment",
   "platform-manifest.js#deriveCorsLists": "infra",
+  "platform-manifest.js#keysOk": "infra",
   "portal/functions.js#editCatalog": "catalog",
   "portal/functions.js#getEditableCatalog": "catalog",
   "portal/functions.js#getMyRestaurants": "catalog",
@@ -656,12 +727,69 @@
   "merchant/merchant-push.js#stillPending": "merchant",
   "merchant/merchant-push.js#pendingOf": "merchant",
   "merchant/merchant-push.js#pendingOf>anon": "merchant",
+  "checkout-otp.js#common": "infra",
+  "checkout-otp.js#json": "infra",
+  "checkout-otp.js#requestCheckoutCode": "infra",
+  "checkout-otp.js#verifyCheckoutCode": "infra",
+  "checkout-otp.js#verifyCheckoutCode>anon": "infra",
+  "checkout-guest-lib.js#guestBodyRefusal": "intake",
+  "checkout-guest-lib.js#cartSigFieldsFromBody": "intake",
+  "cart-sig.js#cartSigInput": "intake",
+  "checkout-guest-lib.js#ticketValid": "intake",
+  "checkout-guest-lib.js#signGrant": "intake",
+  "checkout-guest-lib.js#verifyGrant": "infra",
   "signup-endpoints.js#googleStart": "infra",
   "signup-endpoints.js#googleSignIn": "infra",
   "signup-endpoints.js#limited": "infra",
   "signup-endpoints.js#getSignupConfig": "infra",
   "signup-endpoints.js#setPromos": "infra",
   "signup-endpoints.js#completeProfile": "infra",
+  "ratings/rate-order.js#rateOrderCore": "ratings",
+  "ratings/rate-order.js#<top>>anon": "ratings",
+  "ratings/rating-core.js#eligibility": "ratings",
+  "ratings/rating-core.js#parseRequest": "ratings",
+  "index.js#stampRatingFulfilment": "ratings",
+  "ratings/rate-order.js#purchasedDishIds": "ratings",
+  "ratings/rating-fulfilment.js#stampRatingFulfilment": "ratings",
+  "ratings/rating-v2.js#parseRequest": "ratings",
+  "ratings/rating-v2.js#freshNode": "ratings",
+  "ratings/rating-v2.js#normalize": "ratings",
+  "platform-config/schema.js#checkRewards": "infra",
+  "platform-config/schema.js#exact": "infra",
+  "platform-config/rtdb-encoding.js#encodeFields": "infra",
+  "platform-config/rtdb-encoding.js#decodeFields": "infra",
+  "ratings/aggregate.js#bucketFromOrders": "ratings",
+  "ratings/aggregate.js#publish": "ratings",
+  "ratings/merchant-comments.js#merchantRatingCommentsCore": "ratings",
+  "ratings/merchant-comments.js#getMerchantRatingComments": "ratings",
+  "ratings/my-rating.js#myRatingCore": "ratings",
+  "ratings/my-rating.js#getMyRating": "ratings",
+  "ratings/rating-v2.js#indexNode": "ratings",
+  "reorder-normalize.js#normalizeReorderItemsWithPrices": "intake",
+  "support/support-tickets.js#parse": "support",
+  "support/support-tickets.js#createSupportTicketCore": "support",
+  "support/support-tickets.js#createSupportTicket": "support",
+  "ratings/rating-v2.js#v1Updater": "ratings",
+  "ratings/rating-v2.js#fulfilmentUpdater": "ratings",
+  "delivery/delivery-pricing.js#quoteDelivery": "delivery_pricing",
+  "delivery/delivery-pricing.js#placeOf": "delivery_pricing",
+  "delivery/delivery-wire.js#chargeContext": "delivery_pricing",
+  "delivery/delivery-wire.js#deliveryFor": "delivery_pricing",
+  "delivery/delivery-wire.js#orderPin": "delivery_pricing",
+  "delivery/delivery-wire.js#quotePin": "delivery_pricing",
+  "delivery/delivery-wire.js#withDelivery": "delivery_pricing",
+  "delivery/delivery-wire.js#quoteDeliveryFor": "delivery_pricing",
+  "driver-ledger/ledger-core.js#computeWeek": "driver_pay",
+  "signup-endpoints.js#scopeOf": "infra",
+  "signup-platform.js#limited": "infra",
+  "signup-platform.js#bad": "infra",
+  "signup-platform.js#fail": "infra",
+  "signup-platform.js#uniform": "infra",
+  "signup-platform.js#requestOtp": "infra",
+  "signup-platform.js#verifyOtp": "infra",
+  "signup-platform.js#redeemSignupGrant": "infra",
+  "signup-platform.js#redeemSignupGrant>anon": "infra",
+  "signup-platform.js#getMyProfile": "infra",
   "access/membership-admin-core.js#myRestaurants": "access",
   "access/membership-admin-core.js#census": "access",
   "access/membership-admin-core.js#expectedIndex": "access",
@@ -700,7 +828,43 @@
   "driver-problem-alert.js#alertOnDriverProblem": "driverreport",
   "whatsapp/instance-health.js#checkInstances>anon": "infra",
   "whatsapp/instance-health.js#checkInstances>anon>anon": "infra",
-  "whatsapp/instance-health.js#readAccountStatus": "infra"
+  "whatsapp/instance-health.js#readAccountStatus": "infra",
+  "driver-ledger/ledger-core.js#isAccruable": "driver_pay",
+  "pay-rate.js#shiftEarningsCents": "driverpay",
+  "photos/functions.js#authorize": "catalog",
+  "photos/functions.js#fail": "catalog",
+  "photos/functions.js#handle": "catalog",
+  "photos/functions.js#sendPhotoReply": "catalog",
+  "photos/process.js#fail": "catalog",
+  "photos/process.js#without": "catalog",
+  "photos/upload-start.js#fail": "catalog",
+  "photos/editable-io.js#fieldsFor": "catalog",
+  "photos/editable-photos.js#editablePhotoFields": "catalog",
+  "photos/served-photos.js#overlay": "catalog",
+  "payments/sdk/coordinator.js#isTerminalOrder": "payment",
+  "payments/sdk/coordinator.js#placeOriginal": "payment",
+  "payments/sdk/coordinator.js#placeOriginal>anon": "payment",
+  "payments/sdk/coordinator.js#settleTerminal": "payment",
+  "payments/sdk/coordinator.js#settleTerminal>anon": "payment",
+  "payments/sdk/coordinator.js#orderOpen": "payment",
+  "payments/sdk/coordinator.js#commitProposal>anon": "payment",
+  "payments/sdk/coordinator.js#classifyLostProposals": "payment",
+  "payments/sdk/coordinator.js#cancelSdkOrder": "payment",
+  "payments/sdk/coordinator.js#cancelSdkOrder>anon": "payment",
+  "payments/sdk/sweeper.js#visitDueOrder": "payment",
+  "payments/sdk/coordinator.js#orderRevision": "payment",
+  "payments/sdk/flow.js#markerFault": "payment",
+  "payments/sdk/flow.js#sdkGoLiveAdmits": "payment",
+  "payments/sdk/flow.js#goLiveInFlight": "payment",
+  "payments/sdk/flow.js#goLiveRedrivable": "payment",
+  "payments/sdk/flow.js#consumeBackstopDue": "payment",
+  "payments/sdk/flow.js#terminalConsumeDue": "payment",
+  "payments/sdk/coordinator.js#consumeFulfilledRedemption": "payment",
+  "payments/sdk/materialize-sdk.js#setIn": "payment",
+  "payments/sdk/materialize-sdk.js#writeSdkLive>anon": "payment",
+  "payments/sdk/materialize-sdk.js#completeSdkLive": "payment",
+  "payments/sdk/materialize-sdk.js#fillMissing": "payment",
+  "payments/sdk/record.js#isFinanciallyClosed": "payment"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
@@ -912,6 +1076,12 @@
    "class": "pointer",
    "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
   },
+  "address_area": {
+   "class": "fact",
+   "facts": [
+    "PLACE"
+   ]
+  },
   "address_details": {
    "class": "fact",
    "facts": [
@@ -992,6 +1162,7 @@
    "class": "identity",
    "reason": "customer / restaurant identity (contact) — shown as-is, not a contract fact (§1)"
   },
+  "guest_verified": { "class": "identity", "reason": "PLAN-guest-checkout-server §2.3 (3a, S2): the capp guest's VERIFIED phone {phone, phone_hash} from the checkout ticket, written only for a capp guest in the same pending-order CAS write (acquireHostedAttempt) — customer identity (contact evidence) for the phone binding + the signup grant, not a contract fact (§1). 2e REVIEWED 2026-10-27: ACCEPTED as identity — written once (index.js chargeOnlineOrder pending-order CAS, capp guests only); read only by checkout-guest-gate.js to bind the order to the ticket\u0027s verified phone_hash (an access-control input, never priced / never a status / never an order output) and to sign the signup grant" },
   "customer_uid": {
    "class": "identity",
    "reason": "customer / restaurant identity (contact) — shown as-is, not a contract fact (§1)"
@@ -1012,6 +1183,10 @@
    "class": "pointer",
    "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
   },
+  "delivery_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
+  "tip_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
+  "promo_discount_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
+  "delivery_snapshot": { "class": "pointer", "reason": "S3a envío provenance (mode, policy_version, km, band, promo id) — the pricing inputs the fee was computed from, kept for audit; never displayed as an order fact" },
   "desc_rebaja_cents": {
    "class": "fact",
    "facts": [
@@ -1157,6 +1332,34 @@
    "class": "lifecycle",
    "reason": "lifecycle bookkeeping (reasons, holds, active-drop flag, driver location snapshot) — not a contract fact"
   },
+  "extra_payment_review": {
+   "class": "lifecycle",
+   "reason": "manual-review FLAG (owner 2026-11-02): a second distinct verified payment on the order was recorded for a person to refund in PixelPay — lifecycle bookkeeping like paid_during_resolve; the money facts stay on the payment attempt's extra_payments record; not a contract fact"
+  },
+  "payment_placed": {
+   "class": "lifecycle",
+   "reason": "SDK card payments (BRIEF-sdk-payment-coordinator r5 §4 / §4a / §8): the server-only GO-LIVE decision ({leg_id, at}) written by the coordinator in an orders transaction when the original authorization is approved; payment bookkeeping (the money facts live in the server-only payment_sdk record), not a contract fact"
+  },
+  "payment_commit": {
+   "class": "lifecycle",
+   "reason": "SDK card payments (BRIEF-sdk-payment-coordinator r5 §4 / §4a / §8): the server-only adjustment DECISION ({revision, pid}) won in an orders transaction; it names the committed proposal in payment_sdk; payment bookkeeping, not a contract fact"
+  },
+  "payment_terminal": {
+   "class": "lifecycle",
+   "reason": "SDK card payments (BRIEF-sdk-payment-coordinator r5 §4 / §4a / §8): the server-only, rules-immutable marker that the order reached delivered / completed for payments ({revision, at}) — written by the coordinator or by the merchant handed transition in the same transaction; lifecycle bookkeeping, not a contract fact"
+  },
+  "payment_cancel": {
+   "class": "lifecycle",
+   "reason": "SDK card payments (BRIEF-sdk-payment-coordinator r5 §4 / §4a / §8): the server-only cancel / TTL-expiry DECISION ({kind, at}) won in an orders transaction before any hold is reclassified or resource released; lifecycle bookkeeping, not a contract fact"
+  },
+  "payment_total_cents": {
+   "class": "lifecycle",
+   "reason": "SDK card payments (BRIEF-sdk-payment-coordinator r5 §4 / §4a / §8): a MIRROR of the committed fulfillment total for the SDK coordinator, written with payment_commit in the same orders transaction that writes the order revision (items, total_cents, total and its breakdown — the §1 money facts, Codex r1 #10); this mirror is read by no reader"
+  },
+  "sdk_live_pending": {
+   "class": "lifecycle",
+   "reason": "SDK go-live bookkeeping (Codex r2 P1-A): the server-only list of the go-live's remaining CREATE-ONLY paths (tasks, tracking, history) written in the same guarded orders transaction as the live order fields; replayed by the sweeper after a crash and then cleared; never displayed, never a money fact"
+  },
   "paid_strand_seen_at": {
    "class": "stamp",
    "reason": "audit / notification timestamp — bookkeeping"
@@ -1250,6 +1453,14 @@
   "reorder_items": {
    "class": "pointer",
    "reason": "the reorder RECIPE carried on the pending order to materialize, which copies it into user_orders/{uid}.items at confirm (asserted S12 / S12b) — never read as an order fact"
+  },
+  "reorder_price_snapshot": {
+   "class": "pointer",
+   "reason": "S-D: the reorder price snapshot carried on the online pending order to materialize, which copies it VERBATIM into user_orders/{uid}.price_snapshot (asserted reorder-price-snapshot.test) — never read as an order fact, never re-priced"
+  },
+  "dish_qty": {
+   "class": "pointer",
+   "reason": "S-B ruling F1: the order's canonical dish snapshot {canonicalDishId: qty}, stamped at intake (cash held / immediate / the online pending record) through the ONE identity resolver — the aggregate producer's input (a ratings/aggregate-producer leaf read), never displayed or charged as an order fact"
   },
   "resolution": {
    "class": "claim",
@@ -1529,9 +1740,123 @@
    "fields": [],
    "reason": "BUILD-stacked-seq-server r5 T5: sweepPendingOrders's finalize merges stackCopies(decision, uid) — its keys are always `tasks/<oid>_delivery/stack_plus_min` for the two stack members (sequencing/plan-stack.js stackCopies is the only producer), never an /orders path, so no order field is written. A new producer or a new key shape makes this resolution stale and the census RED until reviewed",
    "count": 1
+  },
+  {
+   "file": "xpizza-functions/ratings/aggregate.js",
+   "fn": "publish",
+   "how": "unmodelled-member-base",
+   "detail": "ds(id).orders_30d",
+   "fields": [],
+   "reason": "S-B: an IN-MEMORY aggregate object (the public_stats doc / the summed 30-90-day bucket accumulator `acc` and its `orders` COUNT) — pure computation in ratings/aggregate.js, never an /orders path; the producer writes only stats_buckets/{rid}/{day} and public_stats/{rid}",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ratings/aggregate.js",
+   "fn": "publish>anon",
+   "how": "unmodelled-member-base",
+   "detail": "ds(id).top_rank",
+   "fields": [],
+   "reason": "S-B: an IN-MEMORY aggregate object (the public_stats doc / the summed 30-90-day bucket accumulator `acc` and its `orders` COUNT) — pure computation in ratings/aggregate.js, never an /orders path; the producer writes only stats_buckets/{rid}/{day} and public_stats/{rid}",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ratings/aggregate.js",
+   "fn": "publish",
+   "how": "unmodelled-member-base",
+   "detail": "ds(id).pairs",
+   "fields": [],
+   "reason": "S-B: an IN-MEMORY aggregate object (the public_stats doc / the summed 30-90-day bucket accumulator `acc` and its `orders` COUNT) — pure computation in ratings/aggregate.js, never an /orders path; the producer writes only stats_buckets/{rid}/{day} and public_stats/{rid}",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ratings/aggregate.js",
+   "fn": "sumBuckets",
+   "how": "write-above-orders",
+   "detail": "orders: acc.orders += Number.isInteger(b.orders) ? b.orders : 0 — unmodelled-assign-+=",
+   "fields": [],
+   "reason": "S-B: an IN-MEMORY aggregate object (the public_stats doc / the summed 30-90-day bucket accumulator `acc` and its `orders` COUNT) — pure computation in ratings/aggregate.js, never an /orders path; the producer writes only stats_buckets/{rid}/{day} and public_stats/{rid}",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ratings/aggregate.js",
+   "fn": "sumBuckets",
+   "how": "computed-key-at-root",
+   "detail": "f",
+   "fields": [],
+   "reason": "S-B: an IN-MEMORY aggregate object (the public_stats doc / the summed 30-90-day bucket accumulator `acc` and its `orders` COUNT) — pure computation in ratings/aggregate.js, never an /orders path; the producer writes only stats_buckets/{rid}/{day} and public_stats/{rid}",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/ratings/rating-v2.js",
+   "fn": "indexNode",
+   "how": "dynamic-root-path",
+   "detail": "*/*/*",
+   "fields": [],
+   "reason": "S-A(d): `${INDEX_ROOT}/${rid}/${key}` with INDEX_ROOT = 'rating_index' — the server-only merchant comment index (value = an order id), never an /orders path",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/payments/sdk/coordinator.js",
+   "fn": "commitProposal",
+   "how": "spread-in-order-write",
+   "detail": "p.order_revision",
+   "fields": [
+    "items",
+    "total_cents",
+    "total",
+    "delivery_cents",
+    "tip_cents",
+    "promo_discount_cents"
+   ],
+   "reason": "SDK card payments (Codex r1 #10, BRIEF r5 §2.10): the adjustment commit writes the validated ORDER REVISION in the same orders transaction as payment_commit — orderRevision (payments/sdk/coordinator.js) returns exactly { items, total_cents, total = total_cents / 100 } plus any of delivery_cents / tip_cents / promo_discount_cents the caller supplied as integer cents; total_cents must equal the committed new total. Asserted by SDK-ADJUST-COMMITS-ORDER-REVISION",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/payments/sdk/materialize-sdk.js",
+   "fn": "writeSdkLive",
+   "how": "dynamic-field-segment",
+   "detail": "orders/*/[segs[i]]",
+   "fields": [
+    "status",
+    "tracking_token",
+    "materialized_at",
+    "payment_status",
+    "charged_at",
+    "payment_reference",
+    "customer_uid",
+    "pickup_task_id",
+    "delivery_task_id",
+    "inactive_materialize_alerted_at",
+    "sdk_live_pending"
+   ],
+   "reason": "SDK go-live FINAL write (Codex r2 P1-A): the order-field part of the SHARED materialization update (buildMaterializeUpdates' orders/{id}/* keys — status, tracking_token, materialized_at, payment_status, charged_at, payment_reference, customer_uid, pickup/delivery task ids — plus confirmAndMaterialize's inactive_materialize_alerted_at) applied inside ONE guarded orders transaction, with the sdk_live_pending list of the remaining create-only paths. Asserted by SDK-GOLIVE-PLACED-MATERIALIZES / -OVERLAP-NEVER-REOPENS / -CRASH-AFTER-ORDER-TXN-REPLAYED",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/payments/sdk/materialize-sdk.js",
+   "fn": "clear",
+   "how": "dynamic-field-segment",
+   "detail": "orders/*/*",
+   "fields": [
+    "sdk_live_pending"
+   ],
+   "reason": "SDK go-live: clears the pending create-only list (PENDING = 'sdk_live_pending') once its paths are written; conditional on the list it read",
+   "count": 1
   }
  ],
  "moneyPathNonFactReads": {
+  "tip_cents@xpizza-functions/driver-ledger/ledger-core.js#computeWeek": "S2-srv-tip (PLAN-capp-S2-r4 §3.4, OWNER-CONFIRMED 2026-10-25): the S8 driver PAYABLE accrual — the order’s tip joins the driver’s base_cents (this week) / adjustments_cents (late) at delivered; never a customer-charged amount, a collection or a display (the charged total is total_cents, unchanged). Asserted by delivery/tip-consumers.test.mjs (6) + driver-ledger/ledger-core.test.js; the scope guard allows exactly this read. PROPOSED by the Customer App session for 2e review — ACCEPTED by 2e (review of 9757ac5c): the read IS the driver PAYABLE, asserted by delivery/tip-consumers.test.mjs; registering tip_cents in census FIELD_FACTS is a later 2e tooling chore, not this slice.",
+  "active_attempt_id@xpizza-functions/delivery/delivery-wire.js#chargeContext": "S3a envío: decides only WHETHER the card request is a live-checkout reuse (its STORED economics are kept) — the money effect is asserted through the OUTCOME (the reused checkout's stored total_cents, test/s3a-envio.emulator.test.js §3.3 / P1-2), never through this field",
+  "order@xpizza-driver/single-order-view.js#singleOrderCardHtml": "NOT an order field: the getDriverOrders entry's wrapper order object (o.order, single-order-view.js:209) — the display + contact data source for the exactly-one-active-order card. The card reads order.total / order.cash_tendered_cents directly and payment_method via collectionFor(order) for the collect row — EACH separately registered as its own money FACT; this wrapper-dereference entry stands in for none of them and hides no amount dependency. 2f review, STOP-5 (ASSEMBLY-DRYRUN §2.5); same view-model as activeCardHtml.",
+  "phase@xpizza-driver/single-order-view.js#singleOrderCardHtml": "the stop phase (awaiting_acceptance / pickup / delivery, o.phase, single-order-view.js:210) that selects which single-card UI renders (offer / at-restaurant review / to-restaurant / to-customer) and gates pre-accept privacy — never an amount or a payment decision. 2f review, STOP-5.",
+  "pickupTask@xpizza-driver/single-order-view.js#singleOrderCardHtml": "NOT an order field: the getDriverOrders entry's wrapper pickup task (o.pickupTask, single-order-view.js:226/303) — the offer assignment_deadline (countdown ring) + the restaurant destination_address, both display only; never money. 2f review, STOP-5.",
+  "deliveryTask@xpizza-driver/single-order-view.js#singleOrderCardHtml": "NOT an order field: the getDriverOrders entry's wrapper delivery task (o.deliveryTask, single-order-view.js:291/316/317) — the recipient_name display fallback + the destination_address for display; never money. 2f review, STOP-5.",
+  "customer_name@xpizza-driver/single-order-view.js#singleOrderCardHtml": "the customer display name on the single-order card (order.customer_name, single-order-view.js:291/316, with the o.deliveryTask.recipient_name fallback) — display only, never an amount, a collector or a selector of money. 2f review, STOP-5; same as customer_name@activeCardHtml.",
+  "phase@xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon": "the stop phase (o.phase, index.html:6067/6085/6293/6294) that partitions the on-shift board — active-work detection, the pause-board boundary, and the pending-accept vs stacked-queue split — never an amount or a payment decision. 2f review, STOP-5.",
+  "orderId@xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon": "NOT an order field: the getDriverOrders entry's wrapper id (o.orderId, index.html:6297) used as the collapsed-banners Set key (pending-banner collapse/expand UI state) — wiring only, never money. 2f review, STOP-5; same as orderId@activeCardHtml.",
+  "pickupTask@xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon": "NOT an order field: the wrapper pickup task (o.pickupTask, index.html:6393) — the restaurant destination_lat/lng for the «X km total» haversine display; never money. 2f review, STOP-5.",
+  "order@xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon": "NOT an order field: the getDriverOrders entry's wrapper order (o.order, index.html:6394) — its lat/lng for the «X km total» display (each PLACE field separately registered as its own fact); never an amount. 2f review, STOP-5.",
+  "deliveryTask@xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon": "NOT an order field: the wrapper delivery task (o.deliveryTask, index.html:6394) — the destination_lat/lng fallback for the «X km total» display; never money. 2f review, STOP-5.",
   "cancelled_at@xpizza-functions/tracking/reconcile-core.js#windowOrders": "the order's terminal TIMESTAMP — selects the reconcile window (terminal within 24 h); never an amount, a collector or a selector of money",
   "completed_at@xpizza-functions/tracking/reconcile-core.js#windowOrders": "the order's terminal TIMESTAMP — selects the reconcile window (terminal within 24 h); never an amount, a collector or a selector of money",
   "_doc": "codex rebase-r1/r2 P1: every NON-FIELD_FACTS read on an order-ish object (dot, literal bracket, optional, destructuring) INSIDE A FUNCTION THAT READS MONEY / CASH / COLLECT is either a registered fact (census FIELD_FACTS) or reviewed HERE, per SITE (field@file#fn) — a review never extends to another function. A read that SELECTS which orders enter a displayed / collected amount names the agreement cells that would fail on a wrong selector. Reviewed at the rebase onto 239632b.",
@@ -1640,6 +1965,7 @@
   "customer_phone@xpizza-kitchen/xpizza-delivery.js#createOrderWithTasks": "customer contact / dedupe key (who) — never an amount, a collector or a selector of money",
   "customer_phone@xpizza-orders/index.html<script@2>#showSuccess": "customer contact / dedupe key (who) — never an amount, a collector or a selector of money",
   "customer_uid@xpizza-functions/cancel-order-core.js#cancelOrderCore": "reward attribution / reversal key (whose balance) — the REWARD outcome is asserted in S4 and S8 (P2), not an amount",
+  "customer_uid@xpizza-functions/cancel-order-core.js#healLedgerRepair": "reward attribution / reversal key (whose balance) — the REWARD outcome is asserted in S4 and S8 (P2), not an amount",
   "customer_uid@xpizza-functions/materialize.js#buildMaterializeUpdates": "reward attribution / reversal key (whose balance) — the REWARD outcome is asserted in S4 and S8 (P2), not an amount",
   "deliveryTask@xpizza-driver/index.html<script@0>#renderIncomingBanners>anon": "NOT an order field: the banner wrapper's task pair",
   "delivery_task_id@xpizza-functions/index.js#sendOrderStatusNotifications": "task routing id — not an amount",
@@ -1702,6 +2028,7 @@
   "razon_social@xpizza-functions/resolve-manual.js#resolveManualReconciliationCore": "customer fiscal identity printed on the factura cliente line — not an amount, tax or eligibility",
   "ready_at@xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard": "a lifecycle timestamp projected onto the KDS card for display — not an amount or a money selector",
   "recipe_format@xpizza-functions/materialize.js#buildMaterializeUpdates": "recipe snapshot format flag for Reordenar — RECIPE plumbing asserted in S12 (P2), not money",
+  "reorder_price_snapshot@xpizza-functions/materialize.js#buildMaterializeUpdates": "S-D: the reorder price snapshot copied VERBATIM into the history entry's price_snapshot (only if present) — RECIPE display data for the client's per-line delta, asserted in reorder-price-snapshot.test (sd-1 / sd-13); never a charged amount, a collection or an order total",
   "recipient_name@xpizza-functions/index.js#autoAssignOnOrderCreate": "the task's customer label for the driver push — display only",
   "recipient_name@xpizza-functions/index.js#monitorAssignmentTimeout": "the task's customer label for the driver push — display only",
   "recipient_name@xpizza-functions/index.js#releaseAndAlert": "the customer label for the dispatcher SIN ASIGNAR alert body — display only",
@@ -1735,7 +2062,14 @@
   "handheld_answered@xpizza-functions/merchant/merchant-reject-repair.js#needs": "NOT a fact: A-R1 repair selection — kind 'rejected' marks a handheld reject; selects no amount",
   "reject_outcome@xpizza-functions/merchant/merchant-reject-repair.js#needs": "NOT a fact: A-R1 repair selection — an existing op-matched outcome means the reject was settled; selects no amount",
   "resolving_action@xpizza-functions/merchant/merchant-reject-repair.js#needs": "NOT a fact: A-R1 repair — a held cancel claim (resolving_action==='cancel') chooses the claim_held notice; read only, never cleared here, selects no amount",
-  "cancel_claim_id@xpizza-functions/merchant/merchant-reject-repair.js#needs": "NOT a fact: A-R1 repair — a held cancel claim chooses the claim_held notice; read only, never cleared here, selects no amount"
+  "cancel_claim_id@xpizza-functions/merchant/merchant-reject-repair.js#needs": "NOT a fact: A-R1 repair — a held cancel claim chooses the claim_held notice; read only, never cleared here, selects no amount",
+  "payment_placed@xpizza-functions/payments/sdk/flow.js#goLiveInFlight": "SDK card payments (ruling #9 A): the server-only GO-LIVE decision marker, read as a presence test to decide whether the shared go-live claim is in flight / may be re-driven; never an amount or an identity",
+  "materialized_at@xpizza-functions/payments/sdk/flow.js#goLiveInFlight": "lifecycle timestamp, read as a presence test (an SDK order already live is never re-driven; a cancel waits only while the go-live is in flight); never an amount or an identity",
+  "payment_placed@xpizza-functions/payments/sdk/flow.js#goLiveRedrivable": "SDK card payments (ruling #9 A): the server-only GO-LIVE decision marker, read as a presence test to decide whether the shared go-live claim is in flight / may be re-driven; never an amount or an identity",
+  "materialized_at@xpizza-functions/payments/sdk/flow.js#goLiveRedrivable": "lifecycle timestamp, read as a presence test (an SDK order already live is never re-driven; a cancel waits only while the go-live is in flight); never an amount or an identity",
+  "materialized_at@xpizza-functions/payments/sdk/flow.js#consumeBackstopDue": "lifecycle timestamp, read as a presence test: only a LIVE (materialized) SDK order gets the redemption consume backstop (ruling A on the redemption gap); never an amount or an identity",
+  "customer_uid@xpizza-functions/payments/sdk/flow.js#consumeBackstopDue": "read only to require that the order names its customer (the reservation path user_rewards/{uid}/{rid}) before the consume backstop re-enters the shared go-live; never compared, displayed or used as an amount",
+  "sdk_live_pending@xpizza-functions/payments/sdk/flow.js#goLiveInFlight": "SDK go-live bookkeeping (Codex r2 P1-A): a presence test \u2014 while the go-live's create-only paths are pending a cancel waits; never an amount or an identity"
  },
  "unreachableOnSurface": {
   "_doc": "P1-a (reviewed): a page function that NOTHING in its page scope references (no identifier, NS.member or inline HTML handler) cannot run on that surface — reachability is a FIXPOINT from top-level code, registered callbacks and inline HTML handlers, so a function referenced only by unreachable functions is unreachable too, so its order reads are not that surface's outputs. census.js marks them (over-approximating reachability); this list must EQUAL the marked set — a function that becomes referenced again makes its entry stale (RED: review its mapping); a new unreferenced one is RED until reviewed here.",

@@ -17,7 +17,7 @@
  * The Cuadra restyle is CSS-only (SLICE2:PRESENTATION) on these same classes; geometry/hooks stay baseline.
  */
 import { navTarget, wazeHref, mapsHref, brandLabel, waPhone, itemLines } from './single-order-view.js';
-import { brandMeta, driverGreeting } from './brand-helpers.js';
+import { brandMeta } from './brand-helpers.js';
 import { displayOrderLabel } from './order-helpers.js';
 import { collectionFor, paymentRowHtml, queuePayHtml } from './cash-helpers.js';
 
@@ -170,6 +170,14 @@ export function navBtnHtml(target, navPref, label, deps = {}) {
  * entry; `ordinal` its board position (2…). PRIVACY: an awaiting_acceptance next stop shows no name/area (S7).
  * Pure. Carries data-order-id so the frozen tap handler resolves it by id (S8).
  */
+// «+N min» for a demoted/queued stop, from the server's stack_plus_min (the rank-2 member's extra minutes vs going
+// first). POSITIVE-ONLY (owner rule, [[plus-n-min-positive-only]]): shown only for an integer N ≥ 1; null / 0 /
+// negative / absent → '' (no badge). Pure.
+export function stackPlusMinLabel(next, esc = String) {
+  const n = next && next.deliveryTask ? next.deliveryTask.stack_plus_min : null;
+  return (Number.isFinite(n) && n >= 1) ? `<span class="after-plusmin">+${esc(String(Math.round(n)))} min</span>` : '';
+}
+
 export function queuedPreviewHtml(next, ordinal, deps = {}) {
   if (!next) return '';
   const { ICONS = {}, esc = String } = deps;
@@ -180,7 +188,7 @@ export function queuedPreviewHtml(next, ordinal, deps = {}) {
   const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
   const after = area ? `${esc(name)} · ${esc(area)}` : esc(name);
   return `<div class="after-card" data-order-id="${esc(next.orderId)}">
-      <div class="after-head">${bagTagHtml(ordinal, esc)}<span class="after-title">Después: ${after}</span><span class="qchev">${CHEV}</span></div>
+      <div class="after-head">${bagTagHtml(ordinal, esc)}<span class="after-title">Después: ${after}</span>${stackPlusMinLabel(next, esc)}<span class="qchev">${CHEV}</span></div>
       <div class="after-hint">Se activa sola al entregar la 1 · sin navegación aún · tocá para ver qué lleva</div>
     </div>`;
 }
@@ -191,14 +199,73 @@ export function queuedPreviewHtml(next, ordinal, deps = {}) {
  * omits the location line today and a real colonia field wires in later ADDITIVELY (advisor 2026-10-24). Pure.
  */
 export function coloniaOf(o) {
-  // Returns '' UNCONDITIONALLY today (Codex r2 P2-8). There is NO verified locality field on the order, and we
-  // never GUESS one: not a comma-split of the formatted address (its first segment can be the exact house, e.g.
-  // «Casa 14 Calle 3», which would leak the address pre-accept), and not an unverified alias like
-  // order.colonia/locality/barrio (none exists in the schema). So every caller OMITS the location line — the
-  // offer never invents «Zona por confirmar»; post-accept the subtitle is name-only. ADDITIVE: when a real,
-  // verified locality field is confirmed, read THAT one here and the whole app surfaces it at once.
-  void o;
-  return '';
+  // The ONE verified locality field is order.address_area (the customer-app geo field; the SERVER privacy filter is
+  // the authority on what it may contain). Read ONLY that — never a comma-split of the formatted address (its first
+  // segment can be the exact house, «Casa 14 Calle 3», leaking the address pre-accept) and never an unverified alias
+  // (order.colonia/locality/barrio). Absent → '' and every caller OMITS the line. ADDITIVE: the whole app surfaces it
+  // at once now the field exists (advisor 2026-10-26).
+  const raw = o && o.order && typeof o.order.address_area === 'string' ? o.order.address_area.trim() : '';
+  return raw ? formatColonia(raw) : '';
+}
+// displayArea parity (same rule as the customer app, advisor 2026-10-26): if the value already opens with a locality
+// word — Colonia / Col. / Barrio / Bo. / Residencial / Res. (whole FIRST word, case- and accent-insensitive) — show it
+// verbatim; otherwise prepend «Col. ». Never fabricates when empty (caller guards that). Pure.
+function formatColonia(v) {
+  const first = (String(v).split(/\s+/)[0] || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\.$/, '');
+  const PREFIXES = ['colonia', 'col', 'barrio', 'bo', 'residencial', 'res'];
+  return PREFIXES.includes(first) ? v : 'Col. ' + v;
+}
+
+/**
+ * The restaurant PICKUP ready time «~H:MM» from the order's REAL merchant prep (Owner ruling #2, 2026-10-24).
+ * Source is ONLY orders/{id}/prep/ready_at — the epoch (ms) the handheld sets on accept (accepted_at +
+ * committed_min), bumped on «más», finalized on «ready». When it is absent → '' (NO estimate, NO fallback; the
+ * ETA/traffic deadline «antes de …» stays hidden until the parked stop-order/ETA project). Pure: formats in
+ * America/Tegucigalpa (UTC-6, no DST) with plain arithmetic, never `new Date` (purity). DISPLAY ONLY, never money.
+ */
+export function readyTimeHHMM(ms) {
+  const n = Number(ms);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  const mins = Math.floor((n - 6 * 3600000) / 60000);   // America/Tegucigalpa = UTC-6 year-round
+  const h = ((Math.floor(mins / 60) % 24) + 24) % 24;
+  const m = ((mins % 60) + 60) % 60;
+  return h + ':' + String(m).padStart(2, '0');
+}
+export function readyTimeLabel(order) {
+  const hhmm = readyTimeHHMM(order && order.prep && order.prep.ready_at);
+  return hhmm ? '~' + hhmm : '';
+}
+/**
+ * The apRecoger header subtitle (ruling #2): «{brand} ~H:MM · {brand} ~H:MM» across the DISTINCT pickup restaurants,
+ * in the order they first appear. The ready time is appended only where prep.ready_at exists (per restaurant); a
+ * brand with no ready time shows the brand alone — never a fabricated time. Returns '' when no brand resolves.
+ * Pure: brandLabel + readyTimeLabel only. The caller escapes the result (stopHeaderHtml does).
+ */
+export function pickupSubLabel(orders) {
+  const seen = new Set();
+  const parts = [];
+  for (const o of (orders || [])) {
+    const ord = o || {};
+    const brand = brandLabel(ord);
+    if (!brand || seen.has(brand)) continue;
+    seen.add(brand);
+    const rt = readyTimeLabel(ord);
+    parts.push(rt ? `${brand} ${rt}` : brand);
+  }
+  return parts.join(' · ');
+}
+/**
+ * The solo-pickup two-step header {title, sub} (ruling #2 ready time). Step 1 (to-restaurant): «Recoger ~H:MM»
+ * (or «Recoger» with no ready time) + the brand sub. Step 2 (review, atRestaurant): «Revisá el pedido» + «{brand}
+ * · listo ~H:MM» (brand alone when no ready time). Pure — the caller (stopHeaderHtml) escapes both strings.
+ */
+export function soloPickupHeaderInfo(order, atRestaurant) {
+  const brand = brandLabel(order) || '';
+  const rt = readyTimeLabel(order);
+  if (atRestaurant === true) {
+    return { title: 'Revisá el pedido', sub: rt ? (brand ? `${brand} · listo ${rt}` : `listo ${rt}`) : brand };
+  }
+  return { title: rt ? `Recoger ${rt}` : 'Recoger', sub: brand };
 }
 
 // The collect-aware pay PHRASE for the pickup-bag rows (P1-3, Codex r1): the FULL collectionFor classification —
@@ -235,17 +302,23 @@ const phasePillMap = {
  * `deliveredText` (pre-escaped) overrides the delivery label → «Entregado · {Nombre} · L {monto}» (cash) /
  * «Entregado · {Nombre}» (paid) per the ledger slide copy; the accept/pickup labels are unchanged.
  */
+// The slide-confirm control markup. Shared by actionSlide (phase-driven) and the solo-pickup two-step builders
+// (btn-at-restaurant / btn-pickup), so every slide the frozen attachSlideConfirm handlers bind to is byte-identical.
+// `label` is caller-escaped where it carries data (deliveredText); the two-step labels are static literals.
+function slideConfirmHtml(id, cls, label) {
+  return `<div class="slide-confirm ${cls}" id="${id}">
+      <div class="slide-fill"></div>
+      <div class="slide-text">${label}</div>
+      <div class="slide-hint">deslizá</div>
+      <div class="slide-thumb">${SLIDE_ARROW}</div>
+    </div>`;
+}
 function actionSlide(phase, deliveredText) {
   let actionLabel, actionClass, actionId;
   if (phase === 'awaiting_acceptance') { actionLabel = 'Aceptar pedido'; actionClass = 'accept'; actionId = 'btn-accept'; }
   else if (phase === 'pickup') { actionLabel = 'Recogí el pedido'; actionClass = 'pickup'; actionId = 'btn-pickup'; }
   else { actionLabel = deliveredText || 'Entregado'; actionClass = 'delivered'; actionId = 'btn-delivered'; }
-  return `<div class="slide-confirm ${actionClass}" id="${actionId}">
-      <div class="slide-fill"></div>
-      <div class="slide-text">${actionLabel}</div>
-      <div class="slide-hint">deslizá</div>
-      <div class="slide-thumb">${SLIDE_ARROW}</div>
-    </div>`;
+  return slideConfirmHtml(actionId, actionClass, actionLabel);
 }
 
 /** First name only (for the «Llegué · avisar a {Nombre}» button + privacy-light labels). Pure. */
@@ -284,6 +357,11 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   const accepted = phase !== 'awaiting_acceptance';
   const target = navTarget(o, isPickup, RESTAURANT);   // IDENTICAL precedence to the baseline (?? pickup / || delivery)
   const arrived = opts.arrived === true;
+  // Codex P2-4: the prototype S.llegue restyle (hidden chiprow/street, .ac-arrived, items card, arrival banner, body
+  // problema, «cobré» slide) is for the SOLO arrived-at-customer card ONLY. An explicit discriminator keeps STACKED
+  // and PROMOTED-SURVIVOR delivery cards byte-identical (they never set opts.soloArrival). `arrived` is already the
+  // freshness-qualified predicate the solo call passes (Codex P2-5).
+  const soloArrival = opts.soloArrival === true && arrived && !isPickup && accepted;
   const ordinal = opts.ordinal != null ? opts.ordinal : 1;
   const solo = opts.solo === true;
   const showActualPill = opts.showActualPill === true;
@@ -295,13 +373,23 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   let deliveredText = '';
   if (accepted && !isPickup) {
     const cash = collectionFor(order).kind === 'cash';
-    const amt = cash ? ` · L ${(Number(order.total) || 0).toLocaleString('es-HN')}` : '';
-    deliveredText = `Entregado · ${esc(firstName(name))}${esc(amt)}`;   // first name keeps the slide one line
+    if (soloArrival) {
+      // prototype S.llegue (solo, arrived): «Entregado · cobré L {amt}» (cash) / «Entregado» (online-paid) — no name
+      deliveredText = cash ? `Entregado · cobré L ${(Number(order.total) || 0).toLocaleString('es-HN')}` : 'Entregado';
+    } else {
+      const amt = cash ? ` · L ${(Number(order.total) || 0).toLocaleString('es-HN')}` : '';
+      deliveredText = `Entregado · ${esc(firstName(name))}${esc(amt)}`;   // en-route / stacked keep the named slide
+    }
   }
-  // «Llegué · avisar a {Nombre}» (L1): a TAP that notifies the customer. R9 — rendered ONLY when the arrival-
-  // notification capability exists (opts.canNotifyArrival); until the endpoint lands it is hidden (no dead control).
-  const llegueBtn = (opts.canNotifyArrival === true && accepted && !isPickup && !arrived)
-    ? `<button class="llegue-btn" id="btn-llegue" data-order-id="${esc(o.orderId)}" data-recipient="${esc(firstName(name))}"><span class="ico">${ICONS.bell || ''}</span>Llegué · avisar a ${esc(firstName(name))}</button>`
+  // «Llegué · avisar a {Nombre}» (L1): a TAP that notifies the customer — the driver's own create of tasks/{id}/arrived
+  // (dep C). Rendered ONLY when the capability exists (opts.canNotifyArrival) AND the driver has NOT yet notified.
+  // Codex r2 P2-6: `notified` is the driver's OWN ACKNOWLEDGED write — opts.arrivalAck, which the caller sets true
+  // only when its local update() promise RESOLVED for THIS task AND tasks/{id}/arrived.by === the acting uid. A raw
+  // `arrived` leaf is NOT enough: a pending offline write or a foreign driver's arrived.by must keep «Llegué» showing
+  // and claim nothing. Pure: the ack decision stays in the caller; this builder only reads the flag it is handed.
+  const notified = opts.arrivalAck === true;
+  const llegueBtn = (opts.canNotifyArrival === true && accepted && !isPickup && !notified)
+    ? `<button class="llegue-btn" id="btn-llegue" data-order-id="${esc(o.orderId)}" data-task-id="${esc((o.deliveryTask && o.deliveryTask.id) || '')}" data-recipient="${esc(firstName(name))}"><span class="ico">${ICONS.bell || ''}</span>Llegué · avisar a ${esc(firstName(name))}</button>`
     : '';
 
   let countdownChip = '';
@@ -322,35 +410,160 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   let navBlock;
   if (phase === 'awaiting_acceptance') { navBlock = ''; }
   else if (arrived) {
-    navBlock = `<div class="arrived-note">${ICONS.check}<span>Has llegado ${isPickup ? 'al restaurante' : 'donde el cliente'}</span></div>`;
+    // flag-ON delivery: the arrival banner below conveys arrival (prototype S.llegue has no «Has llegado» note), so
+    // drop the redundant note. flag-OFF (and pickup) keep the note byte-identical to today.
+    navBlock = (soloArrival && opts.canNotifyArrival === true && notified)
+      ? ''
+      : `<div class="arrived-note">${ICONS.check}<span>Has llegado ${isPickup ? 'al restaurante' : 'donde el cliente'}</span></div>`;
   } else {
     navBlock = navBtnHtml(target, navPref, navLabel, { ...deps, navTaskId });
   }
+
+  // Prototype S.llegue additions (arrived-at-customer delivery). All DARK behind their flags / state:
+  // • the arrival banner is a notification claim → canNotifyArrival + arrived + delivery (R9, no false control);
+  // • the items card («entregá todo») shows the order lines once arrived (display-only, from existing order data);
+  // • the body «Problema con este pedido» is gated on the problem-report capability (R9/F).
+  const arrivalBanner = (soloArrival && opts.canNotifyArrival === true && notified)
+    ? `<div class="arrival-banner">${ICONS.bell || ''}<div><b>${esc(firstName(name))} ya sabe que llegaste</b><span>Le avisamos por su seguimiento. Si no sale en un par de minutos, escribile.</span></div></div>`
+    : '';
+  const deliverItems = soloArrival ? itemLines(order) : null;
+  const itemsCard = deliverItems
+    ? `<div class="sv-deliver-items"><div class="sdi-head"><span class="sdi-count">${esc(deliverItems.reduce((a, l) => a + l.qty, 0))} artículo${deliverItems.reduce((a, l) => a + l.qty, 0) === 1 ? '' : 's'}</span><span class="sdi-chip">entregá todo</span></div>${deliverItems.map((l) => `<div class="sdi-row"><b>${esc(l.qty)}×</b><span>${esc(l.name)}</span></div>`).join('')}</div>`
+    : '';
+  // «Problema con este pedido» — advisor ruling 2026-10-27: MATCH THE PROTOTYPE. The link shows on the delivery leg
+  // (solo / non-stacked stop, accepted, not pickup) across BOTH en-route AND arrived — gated on the capability flag
+  // ONLY (DRV2_CAN_REPORT_PROBLEM), NOT on arrival. The earlier soloArrival coupling (= needs `arrived`) was an
+  // implementation side effect of building it in the S.llegue block; the items card + arrival banner above stay
+  // arrived-only, as the prototype has them. Scope is opts.soloArrival (= !spStacked), so the first stacked stop
+  // (apParada1, more stops ahead) keeps NO body link, exactly as the prototype.
+  const problemaBtnHtml = (opts.soloArrival === true && accepted && !isPickup && opts.canReportProblem === true)
+    ? `<button class="problema-btn" id="btn-problema-body" data-order-id="${esc(o.orderId)}"><span class="ico">${ICONS.warn || ''}</span>Problema con este pedido</button>`
+    : '';
 
   const flowTop = solo ? '<div class="ao-spacer ao-spacer-top"></div>' : '';
   const flowBot = solo ? '<div class="ao-spacer ao-spacer-bot"></div>' : '';
   const actualPill = showActualPill ? '<span class="pactual">Parada actual</span>' : '';
   return `${flowTop}
-    <div class="active-card" data-order-id="${esc(o.orderId)}">
-      <div class="ac-chiprow">${bagTagHtml(ordinal, esc)}${rchip(order, esc)}<span class="order-num">${esc(displayOrderLabel(order))}</span>${actualPill}</div>
+    ${arrivalBanner}
+    <div class="active-card${soloArrival ? ' ac-arrived' : ''}" data-order-id="${esc(o.orderId)}">
+      ${soloArrival ? '' : `<div class="ac-chiprow">${bagTagHtml(ordinal, esc)}${rchip(order, esc)}<span class="order-num">${esc(displayOrderLabel(order))}</span>${actualPill}</div>`}
       <div class="ac-head">
         <div class="recipient-name">${esc(name)}</div>
         ${countdownChip ? `<div class="ac-meta">${countdownChip}</div>` : ''}
       </div>
       ${scheduledBadge(order)}
-      ${accepted ? `<div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${esc(order.address_detected || (o.deliveryTask && o.deliveryTask.destination_address) || '—')}</div></div></div>` : ''}
+      ${accepted && !soloArrival ? `<div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${esc(order.address_detected || (o.deliveryTask && o.deliveryTask.destination_address) || '—')}</div></div></div>` : ''}
       ${accepted && order.address_details ? `<div class="instr"><span class="ico">${ICONS.door || DOOR_SVG}</span><div class="instr-main">${esc(order.address_details)}</div></div>` : ''}
-      ${accepted && order.customer_phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(order.customer_phone).replace(/[^\d+]/g, '')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${waPhone(order.customer_phone)}?text=${encodeURIComponent(driverGreeting(order))}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
+      ${accepted && order.customer_phone ? contactRowHtml(order, { ICONS, esc }) : ''}
       <div class="ac-hr"></div>
       ${collectionFor(order).kind === 'warning' ? paymentRowHtml(order, esc).replace('>COBRO<', '>PAGO<') : paymentRowHtml(order, esc)}
       ${vueltoLine(order, deps)}
     </div>
     ${navBlock}
+    ${itemsCard}
+    ${problemaBtnHtml}
     ${opts.previewHtml || ''}
     <div class="action-zone">
       ${llegueBtn}
       ${actionSlide(phase, deliveredText)}
     </div>${flowBot}`;
+}
+
+// The structured items-card (count + brand + line list), reused by the solo-pickup review. Mirrors the
+// queueDetailHtml items block (itemLines → summary_lines, else items_text) so solo review + queued sheet read
+// identically. Returns '' when the order has no item data. Pure.
+function reviewItemsCardHtml(order, esc, ICONS) {
+  const struct = itemLines(order);
+  let count, body;
+  if (struct) {
+    count = struct.reduce((a, l) => a + l.qty, 0);
+    body = struct.map((l) => `<div class="item"><b>${esc(l.qty)}×</b> <span>${esc(l.name)}</span></div>`).join('');
+  } else if (order.items_text) {
+    const parts = String(order.items_text).split(',').map((s) => s.trim()).filter(Boolean);
+    count = parts.length;
+    body = parts.map((s) => { const m = s.match(/^(\d+)\s*[x×]?\s+(.*)$/i); const qty = m ? m[1] : '1'; const nm = m ? m[2] : s; return `<div class="item"><b>${esc(qty)}×</b> <span>${esc(nm)}</span></div>`; }).join('');
+  } else { return ''; }
+  // Single-order review: the header right is the «1 bolsa» bag indicator (one order = one bag, same convention as the
+  // stacked bag tags — advisor 2026-10-26), and the «Revisá bebidas y salsas» reminder is NESTED inside the card with
+  // the cup glyph (the app ICONS has no 'cup' key, so reuse CUP_SVG — the same fallback the combined pickup uses).
+  const reminder = `<div class="sv-reminder">${ICONS.cup || CUP_SVG}<div><b>Revisá bebidas y salsas</b><span>Son lo que más se olvida.</span></div></div>`;
+  return `<div class="items-card"><div class="items-head"><span class="lbl">${count} artículo${count === 1 ? '' : 's'}</span><span class="bag-chip">1 bolsa</span></div><div class="items-list">${body}</div>${reminder}</div>`;
+}
+
+// The solo-pickup review pay row, DISPLAY-only and driven by collectionFor (the single classification source —
+// never a literal, affirmative-only, never «pagado» for a pending online charge). The cash case uses the
+// owner-approved prototype copy «Cobrar L X al entregar» + the «No cobrés aquí …» reassurance; every other class
+// reuses the established queueDetailHtml / payPhrase copy. The reassurance subtitle shows only where the driver
+// actually collects at the door (collectionFor().collect === true: cash + card_delivery). Pure.
+function reviewPayRowHtml(order, esc, ICONS) {
+  const c = collectionFor(order);
+  const amt = `L ${(Number(order.total) || 0).toLocaleString('es-HN')}`;
+  let t, d, ic;   // ic = the icon tile tint: green for the collect cases (prototype), amber for the unconfirmed one
+  if (c.kind === 'cash') { t = `Cobrar ${amt} al entregar`; d = 'No cobrés aquí; el restaurante no recibe efectivo del cliente'; ic = 'ok'; }
+  else if (c.kind === 'card') { t = `Cobrar ${amt} al entregar`; d = 'Con tarjeta; no cobrés aquí'; ic = 'ok'; }   // card_delivery is COLLECTED at delivery (P1-3)
+  else if (c.kind === 'paid_online') { t = 'Pagado en línea'; d = 'No cobrés nada'; ic = ''; }
+  else if (c.kind === 'free') { t = 'Pedido gratis'; d = 'Nada que cobrar'; ic = ''; }
+  else { t = 'Pago no confirmado'; d = 'Consultá a despacho'; ic = 'warn'; }
+  return `<div class="pay-ro-card"><span class="ico ${ic}">${ICONS.cash || ''}</span><div><div class="pay-ro-t">${esc(t)}</div><div class="pay-ro-d">${esc(d)}</div></div></div>`;
+}
+
+/**
+ * SOLO-PICKUP step 1 «alRestaurante» (owner prototype, supersedes the r2 unified card FOR THE PICKUP PHASE ONLY):
+ * heading-to-the-restaurant card + the single nav + the «Ya estoy en el restaurante» slide (btn-at-restaurant —
+ * the existing client-only review latch; NO server write). Composed below the stop header + overview map by the
+ * index.html solo branch. The restaurant is the order's brand (brandLabel) at the pickup task's address; the
+ * kitchen-ready note «Cocina: listo ~H:MM» shows only when orders/{id}/prep/ready_at exists (ruling #2 — no
+ * fabricated time, the parked «+ tráfico» ETA stays out). The prototype's «Llegás justo; no hace falta correr»
+ * reassurance is HELD: it is a claim about the driver's ARRIVAL, which needs the parked traffic ETA — restore it
+ * with the ready note when that ETA ships (advisor 2026-10-24). No «Instrucciones del restaurante» row: no such
+ * field exists in the data today (omitted, not invented). Pure; does not mutate `o`/`deps`.
+ */
+export function pickupToRestaurantHtml(o, deps = {}) {
+  const { ICONS = {}, esc = String, scheduledBadge = () => '', RESTAURANT = {}, navPref } = deps;
+  const order = o.order || {};
+  const restName = esc(brandLabel(order) || 'el restaurante');
+  const restAddr = esc((o.pickupTask && o.pickupTask.destination_address) || '');
+  const rt = readyTimeLabel(order);
+  const target = navTarget(o, true, RESTAURANT);
+  const navTaskId = o.pickupTask && o.pickupTask.id;
+  return `<div class="active-card" data-order-id="${esc(o.orderId)}">
+      <div class="ac-chiprow">${rchip(order, esc)}<span class="order-num">${esc(displayOrderLabel(order))}</span><span class="phase-pill pickup" style="margin-left:auto">Recoger</span></div>
+      <div class="ac-head"><div class="recipient-name">${restName}</div></div>
+      ${restAddr ? `<div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${restAddr}</div></div></div>` : ''}
+      ${scheduledBadge(order)}
+      ${rt ? `<div class="ac-hr"></div><div class="sv-sub">Cocina: listo ${esc(rt)}.</div>` : ''}
+    </div>
+    ${navBtnHtml(target, navPref, brandLabel(order) || 'el restaurante', { ...deps, navTaskId })}
+    <div class="action-zone">${slideConfirmHtml('btn-at-restaurant', 'at-restaurant', 'Ya estoy en el restaurante')}</div>`;
+}
+
+/**
+ * SOLO-PICKUP step 2 «enRestaurante» review (owner prototype): order-# protagonist + brand + customer-name chip
+ * (KEPT — R4 restricts identity only BEFORE acceptance; this screen is post-accept, ruling 2026-10-24) + the
+ * structured items with the «Revisá bebidas y salsas» reminder + the collectionFor-driven pay row + the «Recogí
+ * el pedido» slide (btn-pickup — the existing frozen server pickupComplete). A body «Problema» control is NOT
+ * rendered: the capability is off (DRV2_CAN_REPORT_PROBLEM) and the header's gated Ayuda icon is the single help
+ * affordance until the report endpoint lands (R9/F). Pure; does not mutate `o`/`deps`.
+ */
+export function pickupReviewHtml(o, deps = {}) {
+  const { ICONS = {}, esc = String } = deps;
+  const order = o.order || {};
+  const name = order.customer_name || (o.deliveryTask && o.deliveryTask.recipient_name) || '—';
+  // The name chip is first name + last initial «Daniela M.» (advisor «exactly as shown» — a privacy-minded short
+  // form, not the full surname). A single-token name shows alone.
+  const np = String(name).trim().split(/\s+/).filter(Boolean);
+  const nameChip = np.length > 1 ? `${np[0]} ${np[1][0]}.` : (np[0] || '—');
+  const items = reviewItemsCardHtml(order, esc, ICONS);   // carries the «1 bolsa» chip + the nested cup reminder
+  return `<div class="active-card">
+      <div class="sv-review-top">
+        <div class="sv-lbl">Número de pedido · decilo en ventanilla</div>
+        <div class="sv-bignum">${esc(displayOrderLabel(order))}</div>
+        <div class="sv-review-chips">${rchip(order, esc)}<span class="rchip neutral">${esc(nameChip)}</span></div>
+      </div>
+    </div>
+    ${items}
+    ${reviewPayRowHtml(order, esc, ICONS)}
+    <div class="action-zone">${actionSlide('pickup')}</div>`;
 }
 
 /**
@@ -460,7 +673,9 @@ export function incomingBannerHtml(pending, deps = {}) {
     const collapsed = collapsedBanners.has(o.orderId);
     const total = order.total != null ? `L ${Number(order.total).toLocaleString('es-HN')}` : '';
     // PRIVACY (Codex r1/r2 P1): the incoming banner is ALWAYS pre-acceptance — it shows NO customer-identifying
-    // field (no name, NO exact address/destination, no phone). Only the order #, brand, total and "otro hub".
+    // field (no name, NO exact address/destination, no phone). Only the order #, brand and total. The legacy
+    // «otro hub» sub-label is REMOVED (SLICE3): a cross-hub 2nd order now renders as the S.oferta takeover, not this
+    // banner, so «otro hub» must never ship (asserted in offer-takeover.test.js).
     const cd = o.pickupTask.assignment_deadline
       ? `<span class="accept-countdown" data-deadline="${o.pickupTask.assignment_deadline}">--s</span>` : '';
     return `<div class="incoming-banner${collapsed ? ' collapsed' : ''}" data-order-id="${esc(o.orderId)}">
@@ -469,7 +684,7 @@ export function incomingBannerHtml(pending, deps = {}) {
         <div class="ib-right">${cd}<span class="ib-chev">${CHEV}</span></div>
       </div>
       <div class="ib-body">
-        <div class="ib-sub">${total} · otro hub</div>
+        <div class="ib-sub">${total}</div>
         ${scheduledBadge(order)}
         <div class="slide-confirm accept" id="btn-accept-inc-${esc(o.orderId)}">
           <div class="slide-fill"></div>
@@ -507,18 +722,36 @@ const CUP_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 
 export function stopHeaderHtml(info = {}, deps = {}) {
   const { ICONS = {}, esc = String } = deps;
-  const { ordinal, total, name, area, deadline, single, canReportProblem, pickupCount } = info;
-  const title = pickupCount ? `Recoger ${esc(pickupCount)} pedidos` : single ? 'Única parada' : `Parada ${esc(ordinal)} de ${esc(total)}`;
+  const { ordinal, total, name, area, deadline, single, canReportProblem, pickupCount, sub: subOverride, title: titleOverride,
+    arrivedCustomer, canNotifyArrival, notifiedAt } = info;
+  // The ARRIVED-at-customer header (prototype S.llegue): «Estás donde {Nombre}» — true by geofence regardless of the
+  // arrival-notification capability. An explicit `title` (the solo-pickup two-step) still wins over everything.
+  const title = titleOverride != null ? esc(titleOverride)
+    : arrivedCustomer ? `Estás donde ${esc(firstName(name))}`
+    : pickupCount ? `Recoger ${esc(pickupCount)} pedidos` : single ? 'Única parada' : `Parada ${esc(ordinal)} de ${esc(total)}`;
   const dl = deadline ? ` · antes de ${esc(deadline)}` : '';
-  const sub = [name, area].filter(Boolean).map(esc).join(' · ');
+  const titleDl = arrivedCustomer ? '' : dl;   // arrived puts the deadline in the SUB, not after the «Estás donde» title
+  // An explicit `sub` wins. For the arrived header: the «avisamos a las {t} · antes de {t}» line is an ARRIVAL-
+  // NOTIFICATION claim, shown ONLY when the capability is live AND a notify time exists (R9 — no false claim); the
+  // truthful flag-OFF variant is «{area}» (or «antes de {deadline}» when a real deadline exists). Else the name·area sub.
+  let sub;
+  if (subOverride != null) sub = esc(subOverride);
+  else if (arrivedCustomer) {
+    sub = (canNotifyArrival === true && notifiedAt)
+      ? `avisamos a las ${esc(notifiedAt)}${dl}`
+      : (area ? esc(area) : (deadline ? `antes de ${esc(deadline)}` : ''));
+  } else sub = [name, area].filter(Boolean).map(esc).join(' · ');
   // Right cluster (header ruling, option a): «Terminar turno» power icon — ALWAYS present (the one end-shift
   // entry during a delivery → the existing end-shift path → O4 sheet → cuadre, unchanged) — then the Ayuda icon,
   // gated on the Problema capability (R9/F; hidden until that endpoint exists). Left: the subtle Sola brand mark.
   const endShift = `<button class="ib sh-end" id="btn-end-shift" aria-label="Terminar turno" title="Terminar turno">${ICONS.power || POWER_SVG}</button>`;
-  const ayuda = canReportProblem === true ? `<button class="ib sh-ayuda" id="btn-problema" aria-label="Ayuda" title="Ayuda">${ICONS.help || '?'}</button>` : '';
+  // Codex r2 P2-7: render the Ayuda/«Problema» icon ONLY when there is a real order id to report against. A header
+  // that reaches here without one (an unaccepted offer, or a caller that forgot to thread it) renders NO button
+  // instead of a dead `data-order-id=""` whose tap silently returns.
+  const ayuda = (canReportProblem === true && info.orderId) ? `<button class="ib sh-ayuda" id="btn-problema" data-order-id="${esc(info.orderId)}" aria-label="Ayuda" title="Ayuda">${ICONS.help || '?'}</button>` : '';
   return `<div class="stop-header">
       <div class="sh-logo">${ICONS.sola || SOLA_SVG}</div>
-      <div class="sh-titles"><div class="sh-title">${title}${dl}</div>${sub ? `<div class="sh-sub">${sub}</div>` : ''}</div>
+      <div class="sh-titles"><div class="sh-title">${title}${titleDl}</div>${sub ? `<div class="sh-sub">${sub}</div>` : ''}</div>
       <div class="sh-actions">${endShift}${ayuda}</div>
     </div>`;
 }
@@ -569,7 +802,9 @@ export function interludeHtml(info = {}, deps = {}) {
   const bits = [];
   if (cash != null) bits.push(`Cobraste L ${Number(cash).toLocaleString('es-HN')}`);
   if (vuelto != null) bits.push(`vuelto L ${Number(vuelto).toLocaleString('es-HN')}`);
-  if (showEarnings === true) bits.push('+L 70');
+  // Earnings are NO LONGER rendered by the builder (was a hardcoded «+L 70» gated by showEarnings). The per-delivery
+  // pay is injected post-render from the platform pay-rate reader (SLICE3:INTERLUDE-EARN in drv2ShowInterlude) — pure builder can't
+  // read the rate. showEarnings is vestigial (kept so the frozen call site may still pass it, ignored).
   const sub = bits.length ? `<p class="il-sub">${bits.map(esc).join(' · ')}</p>` : '';
   const dl = next.deadline ? ` · antes de ${esc(next.deadline)}` : '';
   const liveSentence = liveTracking === true ? `${esc(next.name || '')} pasó a seguimiento en vivo. ` : '';
@@ -585,6 +820,230 @@ export function interludeHtml(info = {}, deps = {}) {
       </div>
       <div class="il-foot-note">Esta pantalla pasa sola en 3 s · el navegador siempre va a la parada actual</div>
       <button class="btn primary il-go" id="btn-interlude-go">Ir a la parada 2 ${SLIDE_ARROW}</button>
+    </div>`;
+}
+
+/**
+ * The end-of-run DELIVERY SUMMARY overlay (resumen / S16) — shown after the FINAL «Entregado» of a run, on the way
+ * back to disponible (NEVER between stops; that is the interlude/apAvance). DISPLAY-only and affirmative-only: the
+ * per-delivery «Cobraste» line is collectionFor-driven (the single classification authority, same as the pay
+ * rows), «Diste de vuelto» is the caller's computeVuelto result, and «Efectivo a entregar hoy» is the money-grade
+ * computeShiftCash().cashOwed the caller passes in — NEVER re-derived, so the summary can never disagree with the
+ * cuadre. «Tu pago +L 70» and «Ganado hoy» are HIDDEN until Pagos ships (showEarnings, default false). Pure.
+ * `info` = { order, deliveredName, time, vuelto, showEarnings, dayCashOwed }.
+ */
+export function deliverySummaryHtml(info = {}, deps = {}) {
+  const { ICONS = {}, esc = String } = deps;
+  const { order = {}, deliveredName = '', time = '', vuelto = null, showEarnings = false, dayCashOwed = null } = info;
+  const c = collectionFor(order);
+  const amt = `L ${(Number(order.total) || 0).toLocaleString('es-HN')}`;
+  let cobT, cobSub, cobV;
+  if (c.kind === 'cash') { cobT = 'Cobraste'; cobSub = 'Efectivo que llevás para el cuadre'; cobV = amt; }
+  else if (c.kind === 'card') { cobT = 'Cobraste'; cobSub = 'Con tarjeta, en la terminal'; cobV = amt; }   // card_delivery: collected, not cash owed
+  else if (c.kind === 'paid_online') { cobT = 'No cobraste nada'; cobSub = 'Ya estaba pagado en línea'; cobV = ''; }
+  else if (c.kind === 'free') { cobT = 'Pedido gratis'; cobSub = 'Nada que cobrar'; cobV = ''; }
+  else { cobT = 'Sin cobro confirmado'; cobSub = 'Consultá a despacho'; cobV = ''; }   // warning — never «cobraste»
+  const rsRow = (icon, t, sub, v, variant = '') => `<div class="rs-row"><span class="ico ${variant}">${icon}</span><div class="rs-rtext"><div class="rs-rt">${esc(t)}</div>${sub ? `<div class="rs-rd">${esc(sub)}</div>` : ''}</div>${v ? `<div class="rs-rv">${v}</div>` : ''}</div>`;
+  const vueltoRow = (c.kind === 'cash' && vuelto != null)
+    ? rsRow(ICONS.cash || '', 'Diste de vuelto', '', `L ${Number(vuelto).toLocaleString('es-HN')}`) : '';
+  const earnRow = '';   // earnings NO LONGER rendered by the builder (was a hardcoded «+ L 70»); the «Tu pago por esta entrega» row is injected post-render from the platform pay-rate reader (SLICE3:RESUMEN-EARN in drv2ShowResumen). showEarnings is vestigial.
+  const stat = dayCashOwed != null
+    ? `<div class="rs-stat"><b>L ${Number(dayCashOwed).toLocaleString('es-HN')}</b><small>Efectivo a entregar hoy</small></div>` : '';
+  const sub = [displayOrderLabel(order), time].filter(Boolean).map(esc).join(' · ');
+  return `<div class="rs-sheet" role="dialog" aria-modal="true" aria-live="polite">
+      <div class="rs-head"><span class="rs-illus">${ICONS.check || '✓'}</span><div><div class="rs-title">Entregado${deliveredName ? ' a ' + esc(firstName(deliveredName)) : ''}</div>${sub ? `<div class="rs-sub">${sub}</div>` : ''}</div></div>
+      <div class="rs-card">${rsRow(ICONS.cash || '', cobT, cobSub, cobV, c.collect === true ? 'ok' : '')}${vueltoRow}${earnRow}</div>
+      ${stat}
+      <button class="rs-done" id="btn-resumen-done">Listo</button>
+    </div>`;
+}
+
+/**
+ * SLICE3:SPLASH — the launch splash (prototype S.splash): the Sola compass on the Sherpa navy, with «Sherpa»
+ * beneath. Pure markup only; the host animates the draw-in (ring stroke + damped needle swing) via the Web
+ * Animations API and fades it out on its own timer — NEVER awaiting auth. The compass paths carry .k-ring /
+ * .k-needle so the host can target them; colours match the established driver-app Sola mark (navy/white/sky).
+ */
+export function splashHtml() {
+  return `<div class="splash" id="drv2-splash" role="status" aria-label="Sherpa">`
+    + `<svg class="sp-mark" width="120" height="120" viewBox="0 0 48 48" aria-hidden="true">`
+    + `<path class="k-ring" d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="3.4" fill="none" stroke-linecap="round"/>`
+    + `<g class="k-needle"><path d="M24 12.6L27.3 24L20.7 24Z" fill="#8EC0FF"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="1.7" fill="#14306B"/></g>`
+    + `</svg>`
+    + `<div class="sp-word" id="drv2-splash-word">Sherpa</div>`
+    + `</div>`;
+}
+
+// SLICE3:HELP — a self-contained GPS/location glyph (no ICONS.gps key exists; ICONS is out-of-region).
+const HELP_GPS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
+/**
+ * SLICE3:HELP — a truthful relative-age label «hace N s|min|h» (the prototype's «3 s» is sample data). Pure: takes
+ * elapsed ms. Returns '' when unknown/negative, so the caller shows a no-signal variant instead of a fake time.
+ */
+export function relativeAgeLabel(ms) {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return '';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `hace ${s} s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `hace ${m} min`;
+  return `hace ${Math.round(m / 60)} h`;
+}
+/**
+ * SLICE3:HELP — the «¿Por qué no veo pedidos?» diagnosis sheet (prototype S.help). Three rows: on-shift-OK (the
+ * sheet is only reachable from the on-shift idle screen), the REAL GPS freshness (age from last_location_ts; a
+ * truthful no-signal / stale variant when the fix is old or absent — the prototype only draws the live case), and
+ * a static dispatch reassurance. Dismissible «Entendido». Pure; the host passes the measured age + live flag.
+ */
+export function helpDiagnosisHtml(info = {}, deps = {}) {
+  const { ICONS = {}, esc = String } = deps;
+  const { gpsAgeMs = null, gpsLive = true } = info;
+  const age = relativeAgeLabel(gpsAgeMs);
+  const hrow = (icon, title, sub, ok) =>
+    `<div class="help-row${ok ? ' ok' : ''}"><span class="ico">${icon}</span><div class="help-rtext"><div class="help-rt">${esc(title)}</div>${sub ? `<div class="help-rd">${esc(sub)}</div>` : ''}</div></div>`;
+  const gpsRow = gpsLive
+    ? hrow(HELP_GPS_SVG, age ? `Tu GPS se vio ${age}` : 'Tu GPS está activo', 'Despacho ve dónde estás')
+    : hrow(HELP_GPS_SVG, age ? `No se ve tu GPS desde ${age}` : 'No se ve tu GPS', 'Activá la ubicación para que despacho te vea');
+  return `<div class="sheet help-sheet" role="dialog" aria-modal="true">
+      <div class="grab"></div>
+      <h4 class="help-h4">¿Por qué no veo pedidos?</h4>
+      <div class="help-card">
+        ${hrow(ICONS.check || '', 'Estás en turno y disponible', 'Todo bien de tu lado', true)}
+        ${gpsRow}
+        ${hrow(ICONS.store || '', 'Despacho asigna en cuanto entra un pedido cerca', '')}
+      </div>
+      <button class="help-done" id="btn-help-done">Entendido</button>
+    </div>`;
+}
+
+// SLICE3 gpsoff — the full-screen «Activá tu ubicación» state over the IDLE screen (prototype S.gpsoff :952). DATA-DRIVEN
+// by the real OS state the caller resolves: permission ('granted'|'denied'|'prompt') and, on native, the location
+// PROVIDER (GPS/location-services switch) + battery. Shows BOTH causes as rows and lets «Abrir ajustes» route to the
+// one that's wrong (the opener is native-only). «Más tarde» is always present. Self-contained SVGs (ICONS has no gps/
+// power key). deps: { native, permission, providerEnabled, batteryUnrestricted, esc }. Pure; never blocks an order in
+// hand (the caller only mounts this on the idle screen).
+const GPSOFF_GPS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4" stroke-linecap="round"/></svg>';
+const GPSOFF_POWER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>';
+export function gpsoffHtml(info = {}, deps = {}) {
+  const { esc = String } = deps;
+  const { native = false, permission = 'denied', providerEnabled = true, batteryUnrestricted = null } = info;
+  const permDenied = permission !== 'granted';
+  const providerOff = native && providerEnabled === false;
+  const chip = (ok, txt) => `<span class="go-chip ${ok ? 'ok' : 'err'}">${esc(txt)}</span>`;
+  const row = (icon, title, sub, chipHtml) => `<div class="go-row"><span class="go-ic">${icon}</span><div class="go-rtext"><div class="go-rt">${esc(title)}</div><div class="go-rd">${esc(sub)}</div></div>${chipHtml}</div>`;
+  // permission row (the prototype's first row) — shown wherever we can read permission (native + web)
+  const permRow = row(GPSOFF_GPS, 'Permiso de ubicación', '“Permitir siempre”', chip(!permDenied, permDenied ? 'Negado' : 'Ok'));
+  // provider row (native only) — shown when the phone's location switch is OFF (the second real cause)
+  const provRow = providerOff ? row(GPSOFF_GPS, 'Ubicación del teléfono', 'Encendé el GPS', chip(false, 'Apagada')) : '';
+  // battery row (native only, when known) — the prototype's second row
+  const battRow = (native && batteryUnrestricted != null) ? row(GPSOFF_POWER, 'Batería', 'Sin restricción', chip(!!batteryUnrestricted, batteryUnrestricted ? 'Ok' : 'Revisar')) : '';
+  // «Abrir ajustes» appears ONLY when a native opener exists; it routes to the switch when that's off, else to app
+  // details (to grant permission). On web there is no opener → «Más tarde» only.
+  const cause = providerOff ? 'provider' : 'permission';
+  const openBtn = native ? `<button class="big-btn primary" id="gpsoff-settings" data-cause="${cause}">Abrir ajustes de ubicación</button>` : '';
+  return `<div class="gpsoff-center">
+      <div class="gpsoff-illus">${GPSOFF_GPS}</div>
+      <div class="gpsoff-h">Activá tu ubicación</div>
+      <div class="gpsoff-sub">Despacho necesita verte en el mapa para asignarte pedidos. Sin GPS no se bloquea nada que ya tengás en mano.</div>
+      <div class="gpsoff-card">${permRow}${provRow}${battRow}</div>
+    </div>
+    <div class="gpsoff-foot">${openBtn}<button class="big-btn txt" id="gpsoff-later">Más tarde</button></div>`;
+}
+
+// SLICE3:CIERRE-REJECT — a self-contained warning triangle (the prototype's I.warn); index.html's ICONS object is
+// out-of-region, so the banner carries its own, same posture as OE_CLOCK / HELP_GPS_SVG.
+const CR_WARN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>';
+/**
+ * SLICE3:CIERRE-REJECT — the cuadre close-REJECTION screen BODY (prototype S.cierreRechazado). The host (index.html
+ * showCierreRechazado) wraps this in the full-screen cuadre shell (hdr back → cuadre + a danger/txt foot) ONLY when
+ * recordCuadre is REJECTED by the server; a no-ack TIMEOUT is NOT a rejection (it keeps today's toast — saying «el
+ * servidor rechazó» on a timeout would be a lie). Pure. Returns the err banner as a SIBLING ABOVE the white receipt
+ * card (matching the prototype), then the receipt: title, the DATE-ONLY line (the shift did not close, so no
+ * end-time/duration), and the hero. It reuses the EXACT cash already computed + shown for the submit (screen._cash)
+ * — the amount is the one the server rejected, ZERO new money math — and the date string the host builds (no invented
+ * format). The hero is NEUTRAL (.rc-big is neutral dark inside the receipt), never a fabricated «L 0» if cash is absent.
+ */
+export function cierreRechazadoHtml(cash, dateStr = '') {
+  // cash.cashOwed is already money-grade (computeShiftCash); render blank rather than a fabricated number if absent.
+  const owed = (cash && Number.isFinite(cash.cashOwed)) ? cash.cashOwed.toLocaleString('es-HN') : '';
+  return `<div class="rc-reject-banner" role="alert"><span class="rc-reject-ico">${CR_WARN}</span><div><b>No se pudo cerrar el turno</b>El servidor rechazó el cierre. Tu efectivo NO quedó registrado y seguís en turno. Reintentá; si sigue, llamá a despacho.</div></div>`
+    + `<div class="receipt"><div class="rc-title">Cierre de turno</div><div class="rc-date">${dateStr}</div><hr class="dash">`
+    + `<div class="rc-big"><div class="l">Efectivo a entregar</div><div class="v"><span>L</span> ${owed}</div></div></div>`;
+}
+
+// SLICE3:OFERTA-EXPIRADA — a self-contained clock glyph (no ICONS key exists; index.html's ICONS object is
+// out-of-region, so the banner carries its own).
+const OE_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+/**
+ * SLICE3:OFERTA-EXPIRADA — the dismissible «offer expired» banner (prototype S.ofertaExpirada), shown on the
+ * disponible screen when an offer the driver was shown reached its countdown expiry AND left the board without
+ * being accepted. Copy follows the prototype MINUS «Despacho se la pasó a otro repartidor.» — the client cannot
+ * know the offer went to another driver (no server signal); it only knows it expired un-accepted. «no afecta tu
+ * cuenta» reassures (truthful: an un-accepted offer never touched cash or the cuadre). Pure.
+ */
+export function offerExpiredBannerHtml(info = {}, deps = {}) {
+  const { esc = String } = deps;
+  const { num = '' } = info;
+  return `<div class="oe-banner" role="status"><span class="ico">${OE_CLOCK}</span>`
+    + `<div><b>Se venció la oferta${num ? ' ' + esc(num) : ''}</b>Seguís disponible; no afecta tu cuenta.</div>`
+    + `<button type="button" class="oe-x" id="btn-offer-expired-ok">Ok</button></div>`;
+}
+
+/**
+ * SLICE3:WHATSAPP — the contact row (Llamar + WhatsApp), shared by every post-accept card. «Llamar» stays a
+ * tel: link; «WhatsApp» is now a BUTTON that opens the phase-template sheet (waTemplatesHtml) instead of jumping
+ * straight to a single greeting. It carries the order-derived strings the sheet needs (phone, customer name,
+ * brand-from-order) as data-attrs; the open-handler adds the session driver name. Caller gates on accept + phone.
+ */
+export function contactRowHtml(order = {}, deps = {}) {
+  const { ICONS = {}, esc = String } = deps;
+  const phone = String(order.customer_phone || '');
+  const tel = phone.replace(/[^\d+]/g, '');
+  const brand = brandLabel(order) || '';
+  return `<div class="contact-row">`
+    + `<a class="recipient-phone" href="tel:${tel}"><span class="ico">${ICONS.phone}</span>Llamar</a>`
+    + `<button type="button" class="recipient-whatsapp" data-wa-phone="${esc(phone)}" data-wa-name="${esc(String(order.customer_name || ''))}" data-wa-brand="${esc(brand)}"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</button>`
+    + `</div>`;
+}
+
+/**
+ * SLICE3:WHATSAPP — the per-phase WhatsApp template sheet (prototype S.whatsapp). Three phase templates + a free
+ * message, each opening wa.me PRE-FILLED with an EDITABLE draft (the driver reviews/edits before sending). The
+ * restaurant name comes from the ORDER (brand, resolved by the caller via brandLabel) — never hardwired; the
+ * driver's own name comes from the session. Pure: takes plain strings so the open-handler can build it from the
+ * contact-row's data-attrs + the session name. Each button carries the full wa.me href; the free button opens the
+ * chat with NO prefilled text. Customer identity is already gated upstream (the contact-row only renders post-accept).
+ */
+export function waTemplatesHtml(info = {}, deps = {}) {
+  const { ICONS = {}, esc = String } = deps;
+  const { name = '', brand = '', phone = '', driverName = '' } = info;
+  const fn = firstName(name);
+  const num = waPhone(phone);
+  const soy = driverName ? `soy ${driverName}, ` : 'soy ';
+  const deBrand = brand ? ` de ${brand}` : '';
+  const tpls = [
+    // «En camino»: the prototype's «llego en unos 6 minutos» is SAMPLE DATA (like «Daniela»/«Marvin») — the driver
+    // app holds NO live ETA to the customer (computeReturnEta targets the restaurant, and traffic ETAs are parked),
+    // so shipping a literal 6 would put false copy in front of every customer. Clause dropped until a real per-order
+    // customer ETA exists (advisor 2026-10-25, ruling pending the owner). The draft is editable, so the driver can add a time.
+    { label: 'En camino', msg: `${fn ? 'Hola ' + fn + ', ' : 'Hola, '}${soy}su repartidor${deBrand}. Voy en camino.` },
+    { label: 'Al llegar', msg: `Ya estoy afuera con su pedido${deBrand}. ¿Me abre, por favor?` },
+    { label: 'Dirección', msg: 'No encuentro la dirección. ¿Me manda su ubicación por aquí?' },
+  ];
+  const wa = ICONS.whatsapp || '';
+  // Preview-only: bold the brand in the DRAFT PREVIEW (prototype styling). The sent wa.me text stays plain — WhatsApp
+  // messages can't carry bold — so data-href uses the un-bolded msg; only the on-screen preview wraps the brand in <b>.
+  const previewMsg = (m) => brand ? esc(m).replace(` de ${esc(brand)}`, ` de <b>${esc(brand)}</b>`) : esc(m);
+  const tplBtn = (msg, label) =>
+    `<button class="wa-tpl" data-href="https://wa.me/${num}?text=${encodeURIComponent(msg)}"><span class="ico">${wa}</span><span class="wa-txt">${previewMsg(msg)}<small>${esc(label)}</small></span></button>`;
+  const freeBtn =
+    `<button class="wa-tpl" data-href="https://wa.me/${num}"><span class="ico">${wa}</span><span class="wa-txt">Escribir mi propio mensaje<small>Sin plantilla</small></span></button>`;
+  return `<div class="sheet wa-sheet" role="dialog" aria-modal="true">
+      <div class="grab"></div>
+      <h4 class="wa-h4">Escribirle${fn ? ' a ' + esc(fn) : ''}</h4>
+      <p class="wa-sub">Se abre WhatsApp con el mensaje listo. Podés editarlo antes de enviar.</p>
+      <div class="wa-tpls">${tpls.map((t) => tplBtn(t.msg, t.label)).join('')}${freeBtn}</div>
+      <div class="wa-tiny">El nombre del restaurante viene del pedido; nunca va fijo en el app.</div>
+      <button class="sheet-close" id="wa-cancel">Cancelar</button>
     </div>`;
 }
 
@@ -611,7 +1070,11 @@ export function offerScreenHtml(offers, deps = {}, opts = {}) {
   // Pickup-timing line: with ready-time (dep B) it reads «Recogés primero en X (~HH:MM) y luego en Y»; until then the
   // order WITHOUT times, which is true today.
   const brands = offers.map((o) => brandLabel(o.order || {}) || (o.pickupTask && o.pickupTask.destination_address) || 'el restaurante');
-  const pickupLine = brands.length >= 2 ? `Recogés primero en ${esc(brands[0])} y luego en ${esc(brands[1])}.` : '';
+  // Per-restaurant pickup ready time «(~H:MM)» from each order's real prep.ready_at (Owner ruling #2); hidden when
+  // absent (no estimate). «ambos listos cuando pasás» only when BOTH are known.
+  const rt = offers.map((o) => readyTimeLabel(o.order || {}));
+  const bt = (i) => (rt[i] ? `${esc(brands[i])} (${rt[i]})` : esc(brands[i]));
+  const pickupLine = brands.length >= 2 ? `Recogés primero en ${bt(0)} y luego en ${bt(1)}${(rt[0] && rt[1]) ? ': ambos listos cuando pasás' : ''}.` : '';
   const rows = offers.map((o, i) => {
     const order = o.order || {};
     const area = coloniaOf(o);   // R4: COLONIA only, never a customer name before accept
@@ -647,5 +1110,46 @@ export function cancelBannerHtml(info = {}, deps = {}) {
       <span class="ico">${ICONS.warn || '!'}</span>
       <div><b>Pedido ${esc(cancelledNum)} (${esc(cancelledName)}) cancelado</b>${esc(money)}${bagReturn}</div>
       <button class="x" id="btn-cancel-ack" aria-label="Entendido">Entendido</button>
+    </div>`;
+}
+
+// «Problema con este pedido» (dep F, prototype S.problema): the 6 reasons mapped 1:1 to the SERVER REASONS keys
+// (by key, NOT display string). Pure. The host writes driver_problems/{oid}/{pid} = {reason, by, at} on «Avisar a
+// despacho», then shows problemaEnviadoHtml. The send button is disabled until a reason is picked + in-flight (dep F
+// is create-only → idempotent per report: a fresh pid, the button disabled while writing).
+const PB_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" stroke-linecap="round"/></svg>';
+const PB_BAG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 8h12l-1 12H7z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg>';
+const PB_INFO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01" stroke-linecap="round"/></svg>';
+const PB_HELP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg>';
+// {key: the CONTRACT key, t/d: display, ic: glyph}. The order + copy mirror the prototype S.problema.
+export const PROBLEMA_REASONS = [
+  { key: 'waiting_restaurant', t: 'Estoy esperando en el restaurante', d: 'Llevo rato y no me lo entregan', ic: PB_CLOCK },
+  { key: 'not_ready_incomplete', t: 'El pedido no está listo o está incompleto', d: '', ic: PB_BAG },
+  { key: 'customer_no_answer', t: 'El cliente no contesta', d: 'Ya llamé y escribí', ic: null },
+  { key: 'address_not_found', t: 'No encuentro la dirección', d: '', ic: null },
+  { key: 'restaurant_closed', t: 'El local está cerrado', d: '', ic: null },
+  { key: 'other', t: 'Otro', d: '', ic: PB_HELP },
+];
+export function problemaReasonLabel(key) { const r = PROBLEMA_REASONS.find((x) => x.key === key); return r ? r.t : ''; }
+export function problemaSheetHtml(deps = {}) {
+  const { ICONS = {}, esc = String } = deps;
+  const iconFor = (r) => r.ic || (r.key === 'customer_no_answer' ? (ICONS.phone || '') : r.key === 'address_not_found' ? (ICONS.pin || '') : r.key === 'restaurant_closed' ? (ICONS.store || '') : '');
+  const opts = PROBLEMA_REASONS.map((r) => `<button type="button" class="pb-opt" data-reason="${esc(r.key)}"><span class="pb-ic">${iconFor(r)}</span><span class="pb-t">${esc(r.t)}${r.d ? `<span class="pb-d">${esc(r.d)}</span>` : ''}</span></button>`).join('');
+  return `<div class="sheet" role="dialog" aria-modal="true">
+      <div class="grab"></div>
+      <h4>Problema con este pedido</h4>
+      <p class="sub" style="margin:0">Avisá a despacho al instante. Ellos deciden qué hacer y te escriben; el pedido no cambia solo.</p>
+      <div class="pb-opts">${opts}</div>
+      <div class="pb-note">${ICONS.info || PB_INFO}<span>Sin cronómetros ni cierres automáticos: nada se cancela ni se cobra sin que despacho lo decida.</span></div>
+      <div class="pb-brow"><button type="button" class="pb-cancel" id="btn-problema-cancel">Cancelar</button><button type="button" class="pb-send" id="btn-problema-send" disabled>Avisar a despacho</button></div>
+    </div>`;
+}
+export function problemaEnviadoHtml(reasonLabel, timeStr, deps = {}) {
+  const { ICONS = {}, esc = String } = deps;
+  return `<div class="sheet" role="dialog" aria-modal="true">
+      <div class="grab"></div>
+      <div class="pb-done-head"><span class="pb-done-ic">${ICONS.check || ''}</span><div><h4>Despacho ya lo sabe</h4><div class="pb-done-sub">"${esc(reasonLabel)}"${timeStr ? ` · ${esc(timeStr)}` : ''}</div></div></div>
+      <p class="pb-done-sub" style="margin:0">Seguí intentando mientras tanto. Despacho te llama o te escribe por WhatsApp con lo que toca: esperar, dejar en caseta o regresar.</p>
+      <button type="button" class="pb-send" id="btn-problema-done">Entendido</button>
     </div>`;
 }

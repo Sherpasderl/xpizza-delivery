@@ -1,0 +1,9 @@
+{
+  "_doc": "PLAN-capp-native-shell D4 \u2014 the Firebase JS SDK the native shell BUNDLES (no runtime gstatic): the exact gstatic files the web capp (customer-app/capp-auth-firebase.js) and the forms (account.js) load, byte-for-byte as fetched; vendor.test.js pins the version three ways and these hashes. The packager rewrites ONE import specifier in firebase-auth.js (the absolute gstatic firebase-app URL \u2192 ./firebase-app.js).",
+  "version": "10.12.2",
+  "source": "https://www.gstatic.com/firebasejs/10.12.2/",
+  "files": {
+    "firebase-app.js": "08b83f02859328aabb9acea9370d600ffe739d9e2c251b6668b6f6ff56a2e1d1",
+    "firebase-auth.js": "9b2ebba6ffced4657e12300f4187d53c8fc1762e98188e5e2005407a86e926b6"
+  }
+}

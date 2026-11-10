@@ -649,7 +649,9 @@
         "census:BRAND",
         "census:PAYLIFE",
         "census:NUM",
-        "census:FULFIL"
+        "census:FULFIL",
+        "census:PLACE",
+        "census:TENDER"
       ],
       "shows": {
         "*form": [
@@ -657,7 +659,8 @@
           "completed"
         ]
       },
-      "_p1a": "P1-a (reviewed): census:PLACE removed — its only reader was the legacy renderConfirmCard, now census-exempt as unreachable on the account surface (referenced only in comments)"
+      "_p1a": "P1-a (reviewed): census:PLACE removed — its only reader was the legacy renderConfirmCard, now census-exempt as unreachable on the account surface (referenced only in comments)",
+      "_receipt": "REINSTATED (advisor ruling 2026-11-02): census:PLACE + census:TENDER — the getMyOrders RECEIPT (my-orders.js#projectReceipt; D4c-grill/NOTE-getMyOrders-receipt.md §3, approved) is a REAL account-surface reader of the customer's OWN delivery address (address_detected / details / area — never coordinates) and cash tender (cash_tendered_cents), returned only to the verified owner"
     },
     "R18": {
       "name": "Reordenar",
@@ -990,6 +993,14 @@
         "la-musa-orders/form-group-picker.js#choiceRows"
       ],
       "reason": "pre-order: the group picker renders menu prices"
+    },
+    "R18:BRAND": {
+      "kind": "output",
+      "outputs": [
+        "xpizza-orders/account.js#reorderFromEntry",
+        "la-musa-orders/account.js#reorderFromEntry"
+      ],
+      "reason": "S0-prod (Customer App): the reorder's brand fact is the page's RESTAURANT-CONFIG item_key (account.js CONFIG.ITEM_KEY) — restaurant DATA, not a persisted-order field read; the census attributed only the removed brand branch (CONFIG.restaurant_id === 'la_musa'). S1 deletes item_key with by-id pricing"
     }
   },
   "siteApplicability": {

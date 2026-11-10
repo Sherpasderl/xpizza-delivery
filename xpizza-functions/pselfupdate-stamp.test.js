@@ -161,7 +161,7 @@ ok(`all ${SITES.deployments.length} manifest deployments stamp from their netlif
   assert.ok(h.coverage.filter((c) => c.deployment !== 'track-lamusa').every((c) => c.status === 'COMPLETE'));
   const partial = R.aggregateHistory({ [hours[0]]: stats[hours[0]] }, deps, hours, {});
   assert.ok(partial.coverage.filter((c) => c.deployment !== 'track-lamusa').every((c) => c.status === 'PARTIAL'));
-  assert.strictEqual(deps.length, 12, 'every manifest deployment is a coverage row');
+  assert.strictEqual(deps.length, 13, 'every manifest deployment is a coverage row');
   ok('coverage report: a deployment with no heartbeat in the window (e.g. shipped unstamped) is MISSING; partial = PARTIAL; full = COMPLETE');
 }
 

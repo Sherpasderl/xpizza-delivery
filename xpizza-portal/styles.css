@@ -23,7 +23,7 @@
     --tint:rgba(14,159,91,.07); --tint2:rgba(14,159,91,.13); --rbar-bg:#FFFFFF;
     --shadow:0 1px 2px rgba(10,10,11,.05),0 16px 40px -30px rgba(10,10,11,.26); --shadow-lg:0 44px 96px -40px rgba(10,10,11,.34);
     --body:'Söhne','Helvetica Neue',system-ui,-apple-system,'Segoe UI',sans-serif;
-    --disp:'Archivo','Söhne','Helvetica Neue',system-ui,sans-serif; --r:14px;
+    --disp:'Archivo','Archivo Fallback','Archivo Fallback Roboto','Söhne','Helvetica Neue',system-ui,sans-serif; --r:14px;
     --focus:0 0 0 2px var(--board),0 0 0 4px var(--ink);
   }
   /* ── BOLD EDITORIAL — dark variant (black base · white type · luminous green) ── */
@@ -183,7 +183,7 @@
   .price input:focus{outline:none;border-color:var(--accent)}
   .price.chg input{border-color:var(--accent);background:var(--tint2);color:var(--accent)}
   .avail{display:flex;justify-content:center}
-  .tog{width:40px;height:23px;border-radius:999px;background:var(--green);position:relative;cursor:pointer;transition:background .2s;flex:none}
+  .tog{width:40px;height:23px;border-radius:999px;background:var(--green);position:relative;cursor:pointer;transition:background .2s;flex:none;border:none;padding:0}
   .tog.off{background:var(--line)}
   .tog i{position:absolute;top:2px;left:19px;width:19px;height:19px;border-radius:50%;background:#fff;transition:left .2s cubic-bezier(.3,.8,.4,1);box-shadow:0 1px 3px rgba(0,0,0,.35)}
   .tog.off i{left:2px}
@@ -665,6 +665,10 @@
   .gatebrand{display:flex;align-items:center;gap:11px;margin-bottom:22px}
   .gatecard h1{font-size:20px;margin-bottom:5px}
   .gatecard .lede{margin-bottom:22px}
+  .gatecard .lede.wait{margin-bottom:0}   /* option A (MOCKUP-portal-shell-wait): the card's one quiet line while the session opens */
+  /* the card's three states, driven by a class on <html> so gate-early.js can set the first one before the first paint */
+  html:not(.sw-wait) #gatewait, html:not(.sw-fail) #gatefail{display:none}
+  html.sw-wait #gatelede, html.sw-wait #loginform, html.sw-fail #gatelede, html.sw-fail #gatewait, html.sw-fail #loginform{display:none}
   .field{display:block;margin-bottom:13px}
   .field span{display:block;font-size:12px;font-weight:650;color:var(--mute);margin-bottom:6px}
   .field input{width:100%;background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px;color:var(--ink);transition:border-color .15s}
@@ -834,12 +838,12 @@
   .ops .callout svg{width:17px;height:17px;stroke:var(--amber);fill:none;stroke-width:2;flex:none;margin-top:2px}
   .ops .callout b{color:var(--amber)}
   .ops .callout.dcallout{margin-top:22px}
-  .ops .errbox,#detail .errbox{margin-top:24px;padding:18px 20px;border:1px solid var(--red-line);background:var(--red-soft);border-radius:14px;display:flex;gap:14px;align-items:flex-start}
+  .ops .errbox,#detail .errbox,#gatefail{margin-top:24px;padding:18px 20px;border:1px solid var(--red-line);background:var(--red-soft);border-radius:14px;display:flex;gap:14px;align-items:flex-start}
   #detail .errbox{margin:16px 20px}
-  .ops .errbox svg,#detail .errbox svg{width:20px;height:20px;stroke:var(--red-text);fill:none;stroke-width:2;flex:none;margin-top:1px}
-  .ops .errbox b,#detail .errbox b{display:block;color:var(--red-text);font-size:14px}
-  .ops .errbox p,#detail .errbox p{color:var(--ink);font-size:13px;margin-top:3px}
-  .ops .errbox .btn,#detail .errbox .btn{margin-left:auto;flex:none}
+  .ops .errbox svg,#detail .errbox svg,#gatefail svg{width:20px;height:20px;stroke:var(--red-text);fill:none;stroke-width:2;flex:none;margin-top:1px}
+  .ops .errbox b,#detail .errbox b,#gatefail b{display:block;color:var(--red-text);font-size:14px}
+  .ops .errbox p,#detail .errbox p,#gatefail p{color:var(--ink);font-size:13px;margin-top:3px}
+  .ops .errbox .btn,#detail .errbox .btn,#gatefail .btn{margin-left:auto;flex:none}
   .skel{margin-top:24px;display:flex;flex-direction:column;gap:10px}
   #detail .skel{margin:16px 20px}
   .skel i{display:block;height:54px;border-radius:12px;background:var(--board-2);animation:opssk 1.2s ease-in-out infinite alternate}
@@ -856,14 +860,14 @@
   .ops .dcol{display:flex;flex-direction:column;gap:16px;min-width:0}
   .ops .sec{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;gap:14px;min-width:0}
   .ops .sec h3{font-family:var(--disp);font-size:16px;font-weight:800;letter-spacing:-.03em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .ops .sec h3 .hint{margin-left:auto;font-family:var(--body);font-size:12px;font-weight:600;color:var(--mute2);letter-spacing:0;display:inline-flex;align-items:center;gap:5px}
+  .ops .sec h3 .hint{margin-left:auto;font-family:var(--body);font-size:12px;font-weight:600;color:var(--mute);letter-spacing:0;display:inline-flex;align-items:center;gap:5px}
   .ops .sec h3 .hint svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}
   .ops .sec p.help{color:var(--mute);font-size:12.5px;line-height:1.5}
   .ops .fld{display:flex;flex-direction:column;gap:7px;min-width:0}
-  .ops .fld .lab{font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--mute2)}
+  .ops .fld .lab{font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--mute)}
   .ops .inval{background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:14px;color:var(--ink);width:100%;min-height:42px;display:flex;align-items:center}
   .ops .inval.inro{color:var(--mute);background:var(--card);border-style:dashed}
-  .ops .fnote{font-size:12px;color:var(--mute2);line-height:1.45}
+  .ops .fnote{font-size:12px;color:var(--mute);line-height:1.45}
   .ops .hoursro{display:flex;flex-direction:column;gap:6px}
   .ops .hrow{display:grid;grid-template-columns:52px 1fr 1fr;gap:8px;align-items:center;font-size:13px}
   .ops .hrow .d{font-weight:700;color:var(--mute)}
@@ -928,7 +932,7 @@
   .drawer.ops .bt{flex:1;min-width:0}
   .drawer.ops .bt b{display:block;font-family:var(--disp);font-weight:750;letter-spacing:-.02em}
   .drawer.ops .bt span{color:var(--mute);font-size:12.5px}
-  .drawer.ops .fnote{font-size:12px;color:var(--mute2);line-height:1.45}
+  .drawer.ops .fnote{font-size:12px;color:var(--mute);line-height:1.45}
   #opstoast.show{display:flex;align-items:center;gap:9px}
   #opstoast:not(.show){visibility:hidden}
   @media(max-width:920px){
@@ -1091,6 +1095,106 @@
     .prow .pmain{flex:1 1 100%}
     .prow .pval{margin-left:auto}
   }
+/* ═══ PORTAL-UI 1b — Sucursales v2 detail: editable WhatsApp / hours / prep (PLAN-portal-ui-slice1b-sucursales r4 §2) ═════
+   Ported from the owner-approved «Sucursales · v2» frames + the 2026-10-25 / 2026-10-26 deltas (canvas CvvXXuDUijMvA1pRZ4L2rd).
+   ADDITIONS ONLY: every colour-setting rule targets a NEW single 1b class (no crossing with an existing class), so no existing
+   selector's meaning changes and the AA sweep models every pair. Tokens are the portal's own. Small secondary text on a card
+   surface is --mute, not --mute2 (dark --mute2 on --card is 4.46:1; AA gate 2026-10-26) — branches-1b-aa.test.mjs, both themes. */
+  .ops .tel1b{background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:14px;color:var(--ink);width:100%;min-height:42px;transition:border-color .15s;font-family:inherit}
+  .ops .tel1b:focus{outline:none;border-color:var(--accent)}
+  .ops .tel1b:disabled{opacity:.6;cursor:not-allowed}
+  .ops .telbad1b{border-color:var(--red)}
+  .ops .ferr1b{display:flex;gap:7px;align-items:flex-start;color:var(--red-text);font-size:12px;line-height:1.45}
+  .ops .ferr1b svg,.ops .herr1b svg{width:14px;height:14px;stroke:var(--red-text);fill:none;stroke-width:2;flex:none;margin-top:2px}
+  .ops .hours1b{display:flex;flex-direction:column;gap:6px}
+  .ops .hrow1b{display:grid;grid-template-columns:52px 1fr 1fr 40px;gap:8px;align-items:center;font-size:13px}
+  .ops .hday1b{font-weight:700;color:var(--mute)}
+  .ops .htime1b{background:var(--board-2);border:1px solid var(--line);border-radius:10px;min-height:36px;padding:7px 10px;font-variant-numeric:tabular-nums;font-size:13px;text-align:center;width:100%;color:var(--ink);font-family:inherit}
+  .ops .htime1b:focus{outline:none;border-color:var(--accent)}
+  .ops .htime1b:disabled{opacity:.6}
+  .ops .htimebad1b{border-color:var(--red);background:var(--red-soft)}
+  .ops .hoff1b{min-height:36px;padding:7px 10px;font-size:13px;color:var(--mute);display:flex;align-items:center;justify-content:center;grid-column:span 2;border:1px dashed var(--line);border-radius:10px;background:var(--card)}
+  .ops .hmiss1b{color:var(--amber);border-color:var(--amber-line);background:var(--amber-soft)}
+  .ops .hrow1b .tog{border:none;padding:0}
+  .ops .hrow1b .tog:disabled{opacity:.42;cursor:not-allowed}
+  .ops .herr1b{grid-column:1/-1;display:flex;gap:7px;align-items:flex-start;color:var(--red-text);font-size:12px;line-height:1.45;padding:0 0 4px 60px}
+  .ops .chips1b{display:flex;gap:8px;flex-wrap:wrap}
+  .ops .chip1b{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:650;min-height:36px;display:inline-flex;align-items:center;gap:6px;color:var(--ink);cursor:pointer;font-family:inherit}
+  .ops .chip1b:hover{border-color:var(--mute2)}
+  .ops .chipq1b{border-style:dashed;color:var(--mute)}
+  .ops .chip1b:disabled{opacity:.42;cursor:not-allowed}
+  .ops .sherpa1b{position:absolute;right:10px;top:10px;font-size:11px;font-weight:650;color:var(--mute);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:4px 8px;display:inline-flex;align-items:center;gap:5px}
+  .ops .sherpa1b svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2}
+  .ops .lock1b{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute);font-weight:600}
+  .ops .lock1b svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}
+  .pillstaged1b{color:var(--amber);background:var(--amber-soft);border-color:var(--amber-line)}.pillstaged1b i{background:var(--amber)}
+  .pillinactive1b{color:var(--mute);background:var(--board-2)}
+  .rbdoterr1b{background:var(--red)}
+  @media(max-width:920px){ .ops .herr1b{padding-left:0} }
+  /* commit (b): the lifecycle — S2 cards + drafts, S8 / S8b / S8c, S7 / S9 / S10 confirms */
+  .ops .carddraft1b{border-style:dashed}
+  .ops .csub1b{font-size:13px;color:var(--mute);line-height:1.5}
+  .ops .calloutok1b{border-color:var(--green-line);background:var(--green-soft)}
+  .ops .calloutok1b svg{stroke:var(--green-text)}
+  .ops .calloutok1b b{color:var(--green-text)}
+  .ops .calloutquiet1b{border-color:var(--line);background:var(--board-2)}
+  .ops .calloutquiet1b svg{stroke:var(--mute)}
+  .ops .calloutquiet1b b{color:var(--ink)}
+  .ops .addcard1b{margin-top:16px;display:flex;align-items:center;gap:9px;justify-content:center;padding:16px;border:1.5px dashed var(--line);border-radius:14px;color:var(--mute);font-weight:650;font-size:13px;background:var(--card);width:100%;cursor:pointer;font-family:inherit;min-height:48px}
+  .ops .addcard1b:hover{border-color:var(--accent);color:var(--accent)}
+  .addcard1b{cursor:pointer}
+  .ops .addcard1b svg,.ops .topact .btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2}
+  .ops .empty1b{margin-top:24px;padding:28px 0 8px;display:flex;flex-direction:column;gap:6px}
+  .ops .emptyline1b{font-size:14px;line-height:1.5;color:var(--ink)}
+  .ops .emptynote1b{font-size:12.5px;line-height:1.45;color:var(--mute2)}
+  .ops .legend1b{margin-top:18px;padding:13px 16px;border:1px dashed var(--line);border-radius:12px;font-size:12.5px;color:var(--mute);line-height:1.5}
+  .ops .secwide1b{grid-column:1/-1}
+  .ops .actrow1b{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .ops .brows1b{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .ops .brow1b{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line2);border-radius:11px}
+  .ops .browmiss1b{border-color:var(--amber-line)}
+  .ops .browwait1b{border-style:dashed}
+  .ops .bt1b{flex:1;min-width:0}
+  .ops .bt1b b{display:block;font-weight:650}
+  .ops .bt1b span{font-size:12px;color:var(--mute)}
+  .pillok1b{color:var(--green-text);background:var(--green-soft);border-color:var(--green-line)}
+  .pillwarn1b{color:var(--amber);background:var(--amber-soft);border-color:var(--amber-line)}
+  .pillwait1b{color:var(--mute);background:var(--card);border-style:dashed}.pillwait1b i{background:transparent;border:1.5px dashed var(--mute2)}
+  .pilldraft1b{color:var(--mute);background:var(--card);border-style:dashed}.pilldraft1b i{background:transparent;border:1.5px dashed var(--mute2)}
+  .cq1b{display:flex;gap:14px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line2)}
+  .cq1b:last-child{border-bottom:none}
+  .cqt1b{flex:1;min-width:0;font-size:13.5px;line-height:1.5}
+  .cqt1b b{display:block;font-weight:700}
+  .cqt1b span{color:var(--mute);font-size:12.5px}
+  .cqfoot1b{font-size:13px;line-height:1.5;color:var(--mute)}
+  .mtext1b{font-size:13.5px;line-height:1.5}
+  .frow1b{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .nvin1b{background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:14px;color:var(--ink);width:100%;min-height:42px;font-family:inherit}
+  .nvin1b:focus{outline:none;border-color:var(--accent)}
+  .chipon1b{border-color:var(--accent);background:var(--tint);color:var(--accent)}
+  #sucmodal.sm{max-width:440px}
+  #sucmodal .mb{display:flex;flex-direction:column;gap:14px}
+  #sucmodal .tel1b{background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:14px;color:var(--ink);width:100%;min-height:42px;font-family:inherit}
+  #sucmodal .chips1b{display:flex;gap:8px;flex-wrap:wrap}
+  #sucmodal .chip1b{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:650;min-height:44px;display:inline-flex;align-items:center;color:var(--ink);cursor:pointer;font-family:inherit}
+  #sucmodal .chip1b.chipon1b{border-color:var(--accent);background:var(--tint);color:var(--accent)}
+  #sucmodal .ferr1b{display:flex;gap:7px;align-items:flex-start;color:var(--red-text);font-size:12px;line-height:1.45}
+  #sucmodal .ferr1b svg{width:14px;height:14px;stroke:var(--red-text);fill:none;stroke-width:2;flex:none;margin-top:2px}
+  #sucmodal .telbad1b{border-color:var(--red)}
+  #sucmodal .fld .lab{font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--mute)}
+  #sucmodal .fnote{font-size:12px;color:var(--mute);line-height:1.45}
+  #sucmodal .step{display:flex;align-items:center;gap:10px}
+  #sucmodal .step .val{font-family:var(--disp);font-size:30px;font-weight:800;letter-spacing:-.04em;min-width:88px;font-variant-numeric:tabular-nums}
+  #sucmodal .step .val span{font-family:var(--body);font-size:13px;font-weight:600;color:var(--mute);margin-left:6px;letter-spacing:0}
+  #sucmodal .stepb{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card);font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;color:var(--ink);cursor:pointer}
+  #sucmodal .callout{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:12px;font-size:13px;line-height:1.5;color:var(--ink);border:1px solid var(--line);background:var(--board-2)}
+  #sucmodal .callout svg{width:17px;height:17px;stroke:var(--mute);fill:none;stroke-width:2;flex:none;margin-top:2px}
+  /* side-by-side s2-empty / s2-onedraft at 390: a short ops page must not stretch the stacked shell rows (top bar, nav) */
+  @media(max-width:920px){ .app.opsview{align-content:start} }
+  /* shell-wait r5 (Codex r5: screen-isolated): the Menú view — neither ops nor Ventas — keeps its rows at content height too:
+     a short first frame stretched #mtop / #mnav, which snapped back after the reveal (post-reveal CLS). Ventas (.vview) untouched. */
+  @media(max-width:920px){ .app:not(.opsview):not(.vview){align-content:start} }
+  @media(max-width:920px){ .ops .secwide1b{grid-column:auto} .frow1b{grid-template-columns:1fr} .ops .brows1b{grid-template-columns:1fr} .ops .brow1b{flex-wrap:wrap} .ops .bt1b{min-width:60%} }
 
   /* ── DISH PHOTOS B (MOCKUP-portal-dish-photo.html, owner-approved 2026-10-26) — the mockup's new pieces as product classes.
      Existing tokens only. Small text on --card uses --mute, not the mockup's --mute2 (4.46:1 in dark; the 1a/1b AA rule). ── */
@@ -1162,3 +1266,9 @@
   .phoname.phoh{font-family:'Playfair Display',Georgia,serif;font-size:17px;letter-spacing:-.4px;margin-bottom:5px}
   .phodesc{font-size:11.5px;color:#5A4F47;line-height:1.4;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .phoprice{font-family:'DM Sans',system-ui,sans-serif;font-size:14px;font-weight:700;color:#7A5A08;font-variant-numeric:tabular-nums}
+  /* F-2 (owner-approved mockup ENrjdkJmw3mzy9PkFCy4D1) — the quiet callout inside the Productos card: the portal's own .calloutquiet1b
+     declarations (styles.css scopes them under .ops) with the margins .unpub already uses inside #detail */
+  #detail .callout{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:var(--board-2);font-size:13px;line-height:1.5;color:var(--ink);margin:14px 20px 0}
+  #detail .callout svg{width:17px;height:17px;stroke:var(--mute);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none;margin-top:2px}
+  #detail .callout b{color:var(--ink)}
+  #detail .callout div{min-width:0}

@@ -29,7 +29,16 @@ test('exactly three mutation sites: 1 assign + 1 reassign + 1 unassign + 1 own s
   const staffPushWrites = (html.match(/set\(\s*ref\(\s*XPD\.getDb\(\)\s*,\s*`staff_push\//g) || []).length;
   assert.equal(staffPushWrites, 1, `expected exactly 1 staff_push write, found ${staffPushWrites}`);
   // no OTHER writes: no XPD write helpers (cancel included), and the staff_push set() is the ONLY set/update/remove(ref(…)).
-  assert.ok(!/XPD\.(set|update|remove|push|runTransaction|setOrderStatus|cancel)/.test(html), 'unexpected XPD write helper');
+  // Only the EXACT identifier `setAuthedRequestGuard` is exempt (it registers the reload-session barrier predicate,
+  // PLAN-dispatch-maps-decouple §4 — not a write). The `\b` after it keeps a hypothetical `setAuthedRequestGuardX`
+  // write still flagged; every actual write helper still matches.
+  const WRITE_HELPER = /XPD\.(set(?!AuthedRequestGuard\b)|update|remove|push|runTransaction|setOrderStatus|cancel)/;
+  assert.ok(!WRITE_HELPER.test(html), 'unexpected XPD write helper');
+  // Sensitivity cells: the exempt name passes, but near-miss identifiers and real writes are still flagged.
+  assert.ok(!WRITE_HELPER.test('XPD.setAuthedRequestGuard(fn)'), 'the exact barrier registration is exempt');
+  assert.ok(WRITE_HELPER.test('XPD.setAuthedRequestGuardX(x)'), 'a setAuthedRequestGuardX write is still flagged');
+  assert.ok(WRITE_HELPER.test('XPD.setAuthedRequestGuardOther(x)'), 'a setAuthedRequestGuardOther write is still flagged');
+  assert.ok(WRITE_HELPER.test('XPD.set(ref(db), v)') && WRITE_HELPER.test('XPD.update(x)'), 'real write helpers still flagged');
   const otherSet = (html.match(/\b(set|update|remove)\s*\(\s*ref\(/g) || []).length;
   assert.equal(otherSet, 1, `only the staff_push set may write; found ${otherSet} ref-writes`);
 });

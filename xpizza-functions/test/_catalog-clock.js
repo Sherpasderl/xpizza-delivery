@@ -30,6 +30,12 @@ const path = require('path');
 const FN = path.join(__dirname, '..');
 const INDEX = require.resolve(path.join(FN, 'index.js'));
 const HOLD_MS = 24 * 3600 * 1000;   // longer than any suite: a held TTL never expires inside a run
+// the phone flag module, or null at a BASELINE that predates it (the trace suites run unchanged at their capture baselines);
+// any other load error is thrown
+const FLAG = path.join(FN, 'phone/flag.js');
+function phoneFlag() {
+  try { return require(FLAG); } catch (e) { if (e && e.code === 'MODULE_NOT_FOUND' && !require('fs').existsSync(FLAG)) return null; throw e; }
+}
 
 // [module, factory, { option: 'virtual' | 'hold' }]
 const HOOKS = [
@@ -68,6 +74,9 @@ function install({ start = Date.now() } = {}) {
       return real.call(this, { ...(opts || {}), ...seen, ...add });
     };
   }
+  // the PHONE FLAG (phone/flag.js config/phone_wire_strict, 30 s): a module singleton, not a factory — its TTL clock is set
+  // directly (advisor ruling B, 2026-11-01: its never-awaited refresh landed inside random order-control traces by wall time)
+  const flag = phoneFlag(); if (flag) flag._useClock(now);
   installed = {
     now,
     advance(ms) { if (!(Number.isFinite(ms) && ms >= 0)) throw new Error(`catalog-clock: advance(${ms})`); v += ms; },
@@ -85,4 +94,8 @@ function install({ start = Date.now() } = {}) {
   return installed;
 }
 
-module.exports = { install, HOOKS, HOLD_MS };
+// the phone flag put in a KNOWN state with the recorder OFF (the caller's job): any in-flight refresh settled, then one fresh
+// read — fresh for a full TTL on whichever clock drives it (this one when installed; a suite's logical Date.now otherwise)
+const warmPhoneFlag = async (db) => { const flag = phoneFlag(); return flag ? flag._warmForTest(db) : null; };
+
+module.exports = { install, HOOKS, HOLD_MS, warmPhoneFlag };

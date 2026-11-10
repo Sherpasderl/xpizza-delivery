@@ -3,7 +3,7 @@
 // portal/functions.js (the five handlers + their dependencies) and this file stops here. Unset (deploy / emulator
 // discovery, tests), unknown, or wrong-case → the FULL load below, exactly as before. Exact, case-sensitive Set.has —
 // no lowercasing, prefixes, K_SERVICE or object-property lookup.
-const PORTAL_ISOLATED_TARGETS = Object.freeze(new Set(['getMyRestaurants', 'getEditableCatalog', 'editCatalog', 'publishEdited', 'getSalesStats'])); const PORTAL_OPS_TARGETS = Object.freeze(new Set(['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability', 'getBranchDevices', 'revokeBranchDevice', 'createBranchDraft', 'updateBranchProfile', 'setBranchActive', 'deleteBranchDraft'])); if (PORTAL_OPS_TARGETS.has(process.env.FUNCTION_TARGET)) { console.log('portal_ops_entry', process.env.FUNCTION_TARGET); module.exports = require('./portal/ops-functions'); return; }   // PORTAL-UI 1a + slice 2: the branch-ops functions, isolated the same way (portal/ops-functions.js)
+const PORTAL_ISOLATED_TARGETS = Object.freeze(new Set(['getMyRestaurants', 'getEditableCatalog', 'editCatalog', 'publishEdited', 'getSalesStats'])); const PORTAL_OPS_TARGETS = Object.freeze(new Set(['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability', 'getBranchDevices', 'revokeBranchDevice', 'createBranchDraft', 'updateBranchProfile', 'setBranchActive', 'deleteBranchDraft'])); if (PORTAL_OPS_TARGETS.has(process.env.FUNCTION_TARGET)) { console.log('portal_ops_entry', process.env.FUNCTION_TARGET); module.exports = require('./portal/ops-functions'); return; } const PHOTOS_TARGETS = Object.freeze(new Set(['photoUploadStart', 'photoProcess', 'photoSweep'])); if (PHOTOS_TARGETS.has(process.env.FUNCTION_TARGET)) { console.log('photos_entry', process.env.FUNCTION_TARGET); module.exports = require('./photos/functions'); return; }   // PORTAL-UI 1a + slice 2: the branch-ops functions, isolated the same way (portal/ops-functions.js)
 if (PORTAL_ISOLATED_TARGETS.has(process.env.FUNCTION_TARGET)) {
   console.log('portal_isolated_entry', process.env.FUNCTION_TARGET);   // §8 deploy check: the isolated branch ran
   module.exports = require('./portal/functions');
@@ -85,10 +85,10 @@ const whatsapp = require('./whatsapp');
 const { resolvePixelPayConfig, pixelPayCallbackUrl, pixelPayChargeAmountLempiras } = require('./pixelpay-config');
 const pixelpayClient = require('./pixelpay-client');
 const ppCrypto = require('./pixelpay');
-const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
+const { confirmOnlinePayment, confirmAndMaterialize, escalateStaleCapture } = require('./pixelpay-confirm');
 const N2 = require('./n2-paid-strand-decision');   // N2: sweep re-drives a stranded PAID hosted order (paid attempt + still-pending order)
 const { buildMaterializeUpdates } = require('./materialize');
-const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
+const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config'); const DW = require('./delivery/delivery-wire'); const TIP = require('./tip'); const PE = require('./payer-email');   // S2-srv-tip (tip.js, payer-email.js; tools/s2tip-inverse.js) · S3a envío (delivery/; tools/s3a-inverse.js)
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
 const { claimPrefillCore } = require('./claim-prefill');   // Track A — profile-claim soft-fill (pure core; wrapper below)
 const { claimOrderCore } = require('./claim-order');       // claimOrder — retro-credit a guest order's earn (pure core; wrapper below)
@@ -129,7 +129,7 @@ const { getMessaging } = require('firebase-admin/messaging');
 // factura/sync.test.js). Allocation/void fire from DB triggers (allocateFacturaOnSale /
 // voidFacturaOnCancel) defined below. FACTURA_PLAN.md + ADR-0003/0004.
 const { pricedLineItems } = require('./factura/pricing');
-const { facturaSaleEligible, facturaVoidEligible, usesPlatformFactura } = require('./factura/eligibility');
+const { facturaSaleEligible, facturaVoidEligible, usesPlatformFactura, fiscalKeyModeOk } = require('./factura/eligibility');
 const { allocateFacturaNumber, voidFactura } = require('./factura/factura-helpers');
 const { decideDisplayNumber, displayNumberEligible } = require('./order-display-number');   // per-restaurant daily #N (display-only)
 const { hnDateISO } = require('./factura/build-record');   // YYYY-MM-DD in America/Tegucigalpa (the factura day boundary)
@@ -178,7 +178,7 @@ const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineS
 const { computeFreshnessAlerts } = require('./driver-freshness');   // Driver Tracking C1: freshness-alarm reconcile core
 const MR = require('./manual-resolve');   // atomic-claim money state machine (RECON_ATOMIC_CLAIM_PLAN rev-5)
 const { resolveManualReconciliationCore, recoverStaleResolve } = require('./resolve-manual');   // the resolver core + sweep recovery (emulator-driven)
-const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, isReconcilerRetryable } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5) + [A] ledger-repair retry
+const { cancelOrderCore, cleanupTasksAndDriver, recoverStaleCancel, retryRewardLedgerRepair, isReconcilerRetryable, noteRefundRetry, escalateConfirmedRefunds } = require('./cancel-order-core');   // universal dispatcher-cancel core (CANCEL_PAID_ORDER_FIX_PLAN rev-5) + [A] ledger-repair retry
 const { runPrediction, runLabelAndUpdate } = require('./ready-time-predict-core');   // Phase-1 Step-3 shadow predictor + prediction-logging (PURE SHADOW)
 const { computeGraduation, buildGraduationRows } = require('./ready-time-graduation');   // Phase 1b-i graduation core (writes ONLY ready_time_graduation)
 const { hashConfig } = require('./ready-time-quality-run');          // reuse the signed-config hash (extended to cover graduation_thresholds)
@@ -310,7 +310,7 @@ const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 // had already moved to the resolved tables. Dead imports of a retired authority are exactly what a
 // future edit reaches for, so they are gone and catalog/no-code-authority.guard.test.js keeps them gone.
 // ---------------------------------------------------------------------------
-const { computeServerTotal, summaryLines, weekendOnlyViolation, resolvePriceTables } = require('./menu-pricing');
+const { computeServerTotal, summaryLines, weekendOnlyViolation, resolvePriceTables, keyModeOfTables } = require('./menu-pricing');
 const { orderContentKey, isContentRetap, rateLimitKey } = require('./order-dedup');   // Layer 2 — content-aware phone rate limit; rateLimitKey shared with the F3 guard
 /* serial3:begin require */
 const { readContentStamp, contentKeysRecord } = require('./order-dedup');   // §3: the content stamp under the order-independent OR the pre-§3 verbatim key; r3: the keys persisted on the pending order
@@ -565,7 +565,7 @@ function buildRewardStamp(items, restaurantId, subtotalCents, redemptionCanonica
   return { earn_preview, ...(summary_lines ? { summary_lines } : {}) };
 }
 const { resolveRestaurantId, sameRestaurant } = require('./restaurant-id');
-const { resolveReturnBase } = require('./pixelpay-return-url');
+const { resolveReturnBase, resolveReturnBaseForCharge } = require('./pixelpay-return-url');   // S3b: routing as data (platform/sites.json)
 const { resolveAssignHub, hubForFresh, makeHubPeek } = require('./assign-hub');   // brand-agnostic X1: hubs from each restaurant's identity
 const hubForPeek = makeHubPeek();   // X1 r3 §D: per-instance identity-hub cache for the high-frequency ingest geofence
 
@@ -643,7 +643,7 @@ function validateOrderPayload(body, restaurantId, tables = null) {
     notes: sanitizeText(body.notes, 500),
     payment_method: payment,
     address_detected: sanitizeText(body.address_detected, 300),
-    address_details: sanitizeText(body.address_details, 300),
+    address_details: sanitizeText(body.address_details, 300), address_area: body.order_type === 'delivery' ? require('./address-area').addressAreaFrom(body.address_area) : '',   // colonia (PLAN-colonia r1): server policy, '' = omitted
     pickup_time: sanitizeText(body.pickup_time, 40) || 'standard',
     // Factura-with-RTN (D3). razon_social replaces CLIENTE; rtn_cliente validated server-side
     // as 14 digits (never trust the client) — blank if absent/invalid (= consumidor final).
@@ -792,7 +792,7 @@ createOrderApp.all('*', async (req, res) => {
   const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
   if (ridError) return badRequest(res, ridError);
   if (!ridDefaulted) console.log(`createOrder: restaurant_id=${restaurantId}`);
-  const db = getDatabase();                                            // 1b-1: hoisted above validation (the RTDB alarm sink)
+  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId); if (TIP.refuse(res, body)) return;   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads
   const pricingTables = await resolvePricingTables(restaurantId);      // 2c: catalog-authoritative; null = fail-closed
   // 2c FAIL-CLOSED GUARD — the FIRST statement after the resolver, deliberately. Everything below can
   // reach a pricing seam: validateOrderPayload → computeServerTotal, which silently falls back to the
@@ -815,7 +815,7 @@ createOrderApp.all('*', async (req, res) => {
   // AFTER the resolver → fail-closed guard → eligibility chain, which is pinned contiguous elsewhere.
   // T6 ships the READING only; the flip to true is an owner action once the client has shipped and the
   // no-token rate has reached ~0 (server and client must both be live before enforcing).
-  const tokenEnforce = await tokenEnforceEnabled(db);
+  const tokenEnforce = await tokenEnforceEnabled(db); if (!fiscalKeyModeOk(restaurantId, keyModeOfTables(pricingTables))) return pricingUnavailable(res);   // S0 fiscal fence: refused before any write or hold
 
   /* ── 1D D4-grace — RESOLVE THE IDENTITY FORWARD, ONCE, BEFORE PRICING ────────────────────────
      Placed here because everything below prices through itemPricingKey, and the stamp is what that
@@ -824,10 +824,10 @@ createOrderApp.all('*', async (req, res) => {
      would have been selected anyway. A disagreement stamps nothing and is logged.
      getFirestore is passed as a GETTER so a cold-instance throw is caught inside the guard rather than
      failing the request — the lesson D3 paid for. */
-  const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP });
+  const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP, keyMode: keyModeOfTables(pricingTables) });
   reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
 
-  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [create]
   if (errors.length > 0) {
     return badRequest(res, errors.join('; '));
   }
@@ -861,6 +861,12 @@ createOrderApp.all('*', async (req, res) => {
       }
     } catch (_) { /* malformed/expired/foreign/tomb-read-failure → ignore, treat as guest */ }
   }
+  /* checkout:begin gate-create */
+  // PLAN-guest-checkout-server r4 §2.3 INVARIANT: createOrder never places a capp-guest order — refused HERE, after identity and
+  // BEFORE the existence read and every write. Forms + members: null with zero I/O (checkout-guest-gate.js).
+  const cappGuestRefusal = require('./checkout-guest-gate').createOrderRefusal(clientHdr, customer_uid, body);
+  if (cappGuestRefusal) return res.status(400).json({ error: cappGuestRefusal });
+  /* checkout:end gate-create */
 
   // Content fingerprint for THIS request — computed ONCE, read-only, and threaded to BOTH the idempotency
   // content-check (below) AND the stored payment_fingerprint (create-order-build), so store==compare can never
@@ -872,7 +878,7 @@ createOrderApp.all('*', async (req, res) => {
   /* a1:end cash-paid-text-full */
   const incomingFp = await computeIncomingFingerprint(
     { orderId, restaurantId, total, itemsText: fields.items_text, items: body.items, redeem: body.redeem,
-      customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType },
+      customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType, tipCents: TIP.ofBody(body) },
     { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra: SCHED.fingerprintExtra, db, tables: pricingTables, eligible: redeemEligible });   // 1b-1b GRILL-FIX #1: classifier prices redemption on the SAME source as the reserve
 
   // Idempotency check — a re-submit of an EXISTING order_id returns idempotent-200 ONLY for the SAME LIVE cash
@@ -889,7 +895,7 @@ createOrderApp.all('*', async (req, res) => {
       const canonicalIncoming = (ev && ev.fp_format !== undefined && ev.fp_format === 'canonical')
         ? await computeCanonicalIncomingFingerprint(
           { orderId, restaurantId, total, itemsText: fields.items_text, items: body.items, redeem: body.redeem,
-            customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType },
+            customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType, tipCents: TIP.ofBody(body) },
           { orderBreakdownCents, prepareRedemption, schedFingerprintExtra: SCHED.fingerprintExtra, db, tables: pricingTables, eligible: redeemEligible, context: contextOfTables(pricingTables) })
         : null;
       /* a1:begin cash-a8-incoming */
@@ -897,12 +903,12 @@ createOrderApp.all('*', async (req, res) => {
       const a8Incoming = (ev && ev[TV.ORDER_FIELD] === TV.TEXT_A8)
         ? await computeIncomingFingerprint(
           { orderId, restaurantId, total, itemsText: paidTextFull, items: body.items, redeem: body.redeem,
-            customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType },
+            customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType, tipCents: TIP.ofBody(body) },
           { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra: SCHED.fingerprintExtra, db, tables: pricingTables, eligible: redeemEligible })
         : null;
       /* a1:end cash-a8-incoming */
       const cls = classifyExistingOrder(ev,
-        { paymentMethod: fields.payment_method, restaurantMatches: sameRestaurant(ev.restaurant_id, restaurantId) },
+        { paymentMethod: fields.payment_method, restaurantMatches: sameRestaurant(ev.restaurant_id, restaurantId), incomingTip: TIP.ofBody(body) },
         incomingFp, { isPaymentStatusClosed: MR.isStatusChangeClosedToAutomation, canonicalIncoming, a8Incoming });
       if (cls.action === '409') {
         // D4-c5 P1: today's self-heal literal ONLY for a `closed` order provably terminal and money-free (from `ev`, no read)
@@ -969,7 +975,7 @@ createOrderApp.all('*', async (req, res) => {
   // increment and any order/scheduled write — so a blocked (86'd) cash attempt writes NOTHING (no
   // orders/{id}, no rate_limits). checkItemAvailability is fail-open internally (a read error/absent
   // node ⇒ blocked:[] ⇒ the sale proceeds), so a Firebase hiccup can never wrongly reject.
-  const availGate = await checkItemAvailability(db, body.items, restaurantId);
+  const availGate = await checkItemAvailability(db, body.items, restaurantId, keyModeOfTables(pricingTables));
   if (availGate.blocked.length > 0) {
     console.warn(`createOrder: rejecting ${orderId} — unavailable item(s): ${availGate.blocked.join(', ')}`);
     return res.status(400).json({ error: 'item_unavailable', blocked: availGate.blocked });
@@ -986,7 +992,7 @@ createOrderApp.all('*', async (req, res) => {
     // 1D add-product A §0b.1: from the SAME snapshot, the known-key membership — a key it cannot classify (a product
     // added after this snapshot, or a portal addition while the read fails) is refused, retryably, before any write.
     const intakeGates = await gateReader().intakeGatesFor(restaurantId);
-    const unknownKeys = absentFromMenu(body.items, restaurantId, intakeGates.known);
+    const unknownKeys = absentFromMenu(body.items, restaurantId, intakeGates.known, keyModeOfTables(pricingTables));
     if (unknownKeys.length) {
       console.warn(`createOrder: ${orderId} — 503 menu_updating (keys the gate snapshot does not know: ${unknownKeys.join(', ')})`);
       res.set('Retry-After', '2');
@@ -995,7 +1001,7 @@ createOrderApp.all('*', async (req, res) => {
     // 1D add-product B (rev 6): the group rules, render capability on only — a bare launcher line or reward → 409
     // choice_required; a choice whose launcher is 86'd → item_unavailable; an unreadable variant map → 503. Same snapshot,
     // after the dedupe, before any write or reserve.
-    const groupRefusal = GI.cashRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId,
+    const groupRefusal = GI.cashRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId, keyMode: keyModeOfTables(pricingTables),
       rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables), readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }));
     if (groupRefusal) { if (groupRefusal.retryAfter) res.set('Retry-After', String(groupRefusal.retryAfter)); return res.status(groupRefusal.status).json(groupRefusal.body); }
     /* extras:begin cash */
@@ -1116,7 +1122,7 @@ createOrderApp.all('*', async (req, res) => {
     const a1Cash = { paidTextFull, writeMode: TV.WRITE_MODE };   // PLAN-A A8a: the reservation's own marker selects the binding
     const rd = await resolveRedemptionForOrder(db, {
       redeem: body.redeem, items: body.items, restaurantId, orderId,
-      customerUid: customer_uid, itemsText: fields.items_text, totalLempiras: total, schedExtra: '', now: Date.now(),
+      customerUid: customer_uid, itemsText: fields.items_text, totalLempiras: total, schedExtra: TIP.extraOf(body), now: Date.now(),
       tables: pricingTables,                                                            // 1b-1b: same guarded tables as the order total
       eligible: redeemEligible,                                                         // 2a: same catalog-authored allowlist as the fingerprint above
       context: contextOfTables(pricingTables),   // 1D D4-b
@@ -1138,10 +1144,10 @@ createOrderApp.all('*', async (req, res) => {
 
   const trackingToken = generateTrackingToken();
   // Redeemed → the discounted breakdown + split factura lines (Task 4); else today's pricing, byte-identical.
-  const priceBreakdown = redemptionPriced
+  const dq = await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents }); const priceBreakdown = DW.withDelivery(dq, redemptionPriced
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
-    : orderBreakdownCents(total, restaurantId);  // platform → ISV 15% incl.; non-platform → no split
+    : orderBreakdownCents(total, restaurantId));  // platform → ISV 15% incl.; non-platform → no split
 
   // Reward-card display fields (earn_preview + summary_lines) — stamped for ALL orders on the order record +
   // order_tracking. summary_lines uses the DISCOUNTED subtotal-driven footing so it matches the charged total.
@@ -1172,7 +1178,7 @@ createOrderApp.all('*', async (req, res) => {
      A refusal after the redemption was reserved MUST release the hold, exactly as free_order_stale
      does below: an order that never exists must not strand a customer's reward. */
   {
-    const applied = await applyConfirmedNetGate({
+    const applied = (await DW.refusalGate(dq, async () => { if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {}); }, orderId)) || await applyConfirmedNetGate({
       // The request→gate mapping lives in ONE place (token-gate.js) and is driven end-to-end by
       // composition.test.mjs — a renamed field here used to survive the whole suite.
       gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,
@@ -1181,7 +1187,7 @@ createOrderApp.all('*', async (req, res) => {
       releaseHold: async () => {
         if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});
       },
-      orderId,
+      orderId, ...DW.gateExtra(dq),
     });
     if (applied.refuse) return res.status(applied.refuse.status).json(applied.refuse.body);
     quoteProvenance = applied.provenance;
@@ -1237,13 +1243,13 @@ createOrderApp.all('*', async (req, res) => {
     try {
       const _schedExtra = Number.isFinite(scheduledForRaw) ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '';
       storeFp = orderFingerprint(orderId, redemptionPriced.total_cents, fields.items_text,
-        [_schedExtra, `rf:${redemptionFingerprint(redemptionCanonical)}`].filter(Boolean).join('|'));
+        [_schedExtra, `rf:${redemptionFingerprint(redemptionCanonical)}`, TIP.extraOf(body)].filter(Boolean).join('|'));
     } catch (_) { storeFp = incomingFp; }
   }
   /* a1:begin cash-a8-store-fp */
   if (cashTextVersion === TV.TEXT_A8 && redemptionCanonical && redemptionPriced) {   // the retained binding's text (fields.items_text is the a8 text)
     const _schedExtraA8 = Number.isFinite(scheduledForRaw) ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '';
-    storeFp = orderFingerprint(orderId, redemptionPriced.total_cents, fields.items_text, [_schedExtraA8, `rf:${redemptionFingerprint(redemptionCanonical)}`].filter(Boolean).join('|'));
+    storeFp = orderFingerprint(orderId, redemptionPriced.total_cents, fields.items_text, [_schedExtraA8, `rf:${redemptionFingerprint(redemptionCanonical)}`, TIP.extraOf(body)].filter(Boolean).join('|'));
   }
   /* a1:end cash-a8-store-fp */
 
@@ -1253,11 +1259,15 @@ createOrderApp.all('*', async (req, res) => {
   // (nothing between the reserve and this write may fail — that's the orphaned-hold fix).
   if (isScheduled) {
     const heldUpdates = buildScheduledOrderRecord({
-      orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
+      orderId, orderType, now, trackingToken, total: DW.totalLempiras(dq, effectiveTotal), lat, lng, fields, hubSnap,
       restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
       scheduledFor: scheduledForRaw, releaseAt, paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare
     });
-    attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
+    attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: DW.totalLempiras(dq, effectiveTotal), orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
+    /* sb:begin cash-dish-qty-held */
+    // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
+    { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables), require('./menu-pricing').keyModeOfTables(pricingTables)); if (dishQty) heldUpdates[`orders/${orderId}`].dish_qty = dishQty; }
+    /* sb:end cash-dish-qty-held */
     if (redemptionCanonical) heldUpdates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until release→completion)
     /* a1:begin cash-marker-held */
     Object.assign(heldUpdates[`orders/${orderId}`], TV.markerFields(cashTextVersion));   // PLAN-A A8a: presence for 'a8' only, beside the fingerprint
@@ -1289,12 +1299,16 @@ createOrderApp.all('*', async (req, res) => {
   // (create-order-build.js) so the cash path is golden-tested for byte-identical output. The
   // field names are load-bearing (driver app, KDS, tracking site, factura trigger).
   Object.assign(updates, buildCreateOrderUpdates({
-    orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
+    orderId, orderType, now, trackingToken, total: DW.totalLempiras(dq, effectiveTotal), lat, lng, fields, hubSnap,
     restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
     paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare (idempotent retry recomputes identical)
   }));
 
-  attachCustomerAttribution(updates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
+  attachCustomerAttribution(updates, orderId, customer_uid, { now, total: DW.totalLempiras(dq, effectiveTotal), orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
+  /* sb:begin cash-dish-qty */
+  // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
+  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables), require('./menu-pricing').keyModeOfTables(pricingTables)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }
+  /* sb:end cash-dish-qty */
   // Track A (MF2): immediate (cash/live) path — order_tracking is built HERE (not via buildMaterializeUpdates),
   // so stamp has_profile from the resolved server customer_uid. Guest → omitted → order_tracking byte-identical.
   if (customer_uid && updates[`order_tracking/${trackingToken}`]) updates[`order_tracking/${trackingToken}`].has_profile = true;
@@ -1371,7 +1385,7 @@ createOrderApp.all('*', async (req, res) => {
             customerName: String(updates[`orders/${orderId}`].customer_name || ''),
             orderId,
             itemsText: String(updates[`orders/${orderId}`].items_text || ''),
-            total: effectiveTotal,
+            total: DW.totalLempiras(dq, effectiveTotal), ...DW.waEnvio(priceBreakdown),   // S3c: the charged total + the «Envío» line
             trackingToken,
             restaurantId
           });
@@ -1421,7 +1435,7 @@ exports.createOrder = onRequest(
     region: 'us-central1',
     cors: true,            // browser-callable — order form posts directly (no Make.com relay)
     timeoutSeconds: 30,
-    memory: '256MiB',
+    memory: '512MiB',
     minInstances: 1,       // keep one warm — the cash order path is customer-facing; avoid cold-start lag
     maxInstances: 10       // blast-radius cap: the intake secret is public, so bound
                            // how much concurrent order-spam can fan out. Tune up if
@@ -1502,7 +1516,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
   if (ridError) return badRequest(res, ridError);
   if (!ridDefaulted) console.log(`chargeOnlineOrder: restaurant_id=${restaurantId}`);
-  const db = getDatabase();                                            // 1b-1: hoisted above validation (the RTDB alarm sink)
+  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId); if (TIP.refuse(res, body)) return;   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads
   const pricingTables = await resolvePricingTables(restaurantId);      // 2c: catalog-authoritative; null = fail-closed
   // 2c FAIL-CLOSED GUARD — first statement after the resolver, ahead of pending-order assembly, the
   // availability read, the rate-limit write, the reward reserve, acquireHostedAttempt and
@@ -1521,7 +1535,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // AFTER the resolver → fail-closed guard → eligibility chain, which is pinned contiguous elsewhere.
   // T6 ships the READING only; the flip to true is an owner action once the client has shipped and the
   // no-token rate has reached ~0 (server and client must both be live before enforcing).
-  const tokenEnforce = await tokenEnforceEnabled(db);
+  const tokenEnforce = await tokenEnforceEnabled(db); if (!fiscalKeyModeOk(restaurantId, keyModeOfTables(pricingTables))) return pricingUnavailable(res);   // S0 fiscal fence: refused before any write or hold
 
   /* ── 1D D4-grace — RESOLVE THE IDENTITY FORWARD, ONCE, BEFORE PRICING ────────────────────────
      Placed here because everything below prices through itemPricingKey, and the stamp is what that
@@ -1530,12 +1544,21 @@ chargeOnlineApp.all('*', async (req, res) => {
      would have been selected anyway. A disagreement stamps nothing and is logged.
      getFirestore is passed as a GETTER so a cold-instance throw is caught inside the guard rather than
      failing the request — the lesson D3 paid for. */
-  const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP });
+  const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP, keyMode: keyModeOfTables(pricingTables) });
   reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
 
-  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [charge]
   if (errors.length > 0) return badRequest(res, errors.join('; '));
 
+  /* checkout:begin gate-method */
+  // PLAN-guest-checkout-server §2.2 (Codex r1 P2-4): a capp GUEST's non-online body is answered with its typed reason, not the
+  // generic online-only 400 below. Only a request stamped orders-app pays the identity check here (the handler's own rules,
+  // checkout-guest-gate.js chargeUidOf); forms do no I/O and members get the line below, byte-identical.
+  if (fields.payment_method !== 'online' && clientHdr.deployment === 'orders-app'
+    && (await require('./checkout-guest-gate').chargeUidOf(req, { getAuth, getDatabase, attributionUid })) === null) {
+    return res.status(400).json({ error: 'guest_cash_not_allowed' });
+  }
+  /* checkout:end gate-method */
   // This endpoint is ONLY for online card payments. cash/card_delivery use createOrder.
   if (fields.payment_method !== 'online') {
     return badRequest(res, 'chargeOnlineOrder is for payment_method "online" only');
@@ -1574,6 +1597,19 @@ chargeOnlineApp.all('*', async (req, res) => {
       ]);
     } catch (_) { customer_uid = null; }   // any error → guest
   }
+  /* checkout:begin gate-charge */
+  // PLAN-guest-checkout-server r4 §2.2/§2.3: the capp-guest gate — refusals (payment → scheduling → email → ticket) returned
+  // DIRECTLY, before any write. Forms + members: null with zero I/O. otp-lib loads lazily (guest path only).
+  let cappGuest = null;
+  try {
+    cappGuest = await require('./checkout-guest-gate').chargeGate({ clientHdr, uid: customer_uid, body, rid: restaurantId, orderId, db,
+      now: Date.now(), OTP: { phoneHash: (d) => require('./otp-lib').phoneHash(d) }, normalizePhone: require('./whatsapp').normalizePhone });
+  } catch (e) {
+    console.error(`chargeOnlineOrder: capp-guest gate failed for ${orderId}`, e.message);
+    return res.status(500).json({ error: 'Database error', detail: 'guest gate unavailable' });
+  }
+  if (cappGuest && cappGuest.refuse) return res.status(400).json({ error: cappGuest.refuse });
+  /* checkout:end gate-charge */
 
   // ── Rewards Phase B1 (online): PREPARE the redemption BEFORE both fingerprint sites, so the reservation
   // binding AND the PixelPay payment fingerprint carry the discounted total + appended items_text. The RESERVE
@@ -1612,7 +1648,7 @@ chargeOnlineApp.all('*', async (req, res) => {
       // render capability FIRST (codex PB-1 r2 P2-a): with it off this branch reads nothing and returns the preparation's error
       if (groupCapabilities().render) {
         const pr = GI.prepFailureRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId),
-          items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables) }));
+          items: body.items, restaurantId, keyMode: keyModeOfTables(pricingTables), rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables) }));
         if (pr) { if (pr.retryAfter) res.set('Retry-After', String(pr.retryAfter)); return res.status(pr.status).json({ ...pr.body, order_id: orderId }); }
       }
       return res.status(prep.status).json({ ...prep.body, order_id: orderId });   // non-payable, nothing written, NO reserve yet
@@ -1628,10 +1664,10 @@ chargeOnlineApp.all('*', async (req, res) => {
     fields.items_text = prep.itemsText;   // free-item display line → flows into BOTH fingerprints + the pending order
   }
   // Effective (discounted) breakdown used by both fingerprint sites, the pending record, and the charge amount.
-  const effBreakdown = redemptionPriced
+  const dq = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents }), body, Date.now()); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const effBreakdown = DW.withDelivery(dq, redemptionPriced
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
-    : orderBreakdownCents(total, restaurantId);
+    : orderBreakdownCents(total, restaurantId));
 
   // Reward-card display fields — stamped on the pending order (materialize copies them onto order_tracking at confirm/release).
   const onlineRewardStamp = buildRewardStamp(body.items, restaurantId, effBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName, redemptionFreeItems, pricingTables);
@@ -1688,18 +1724,18 @@ chargeOnlineApp.all('*', async (req, res) => {
     const schedForRawG = SCHED.normalizeScheduledFor(body.scheduled_for);
     const isScheduledG = Number.isFinite(schedForRawG);
     const totalCentsG = effBreakdown.total_cents;   // discounted when redeemed → the read-only classify fingerprint matches the authoritative one
-    const fingerprintG = orderFingerprint(orderId, totalCentsG, fields.items_text, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));   // v2: bind the redeemed SET into payment_fingerprint (design-gate #2)
+    const fingerprintG = orderFingerprint(orderId, totalCentsG, fields.items_text, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : '', TIP.extraOf(body)].filter(Boolean).join('|'));   // v2: bind the redeemed SET into payment_fingerprint (design-gate #2)
     let clsG;
     // 1D D4-b: a LAZY, request-local memoized thunk — evaluated only for a canonical-tagged order.
     canonicalFpG = CB.once(() => CB.canonicalOrderFingerprint({ orderId, totalCents: totalCentsG,
       items: body.items, redemption: redemptionResolved, rid: restaurantId, context: contextOfTables(pricingTables),
-      schedExtra: isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '' }));
+      schedExtra: [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', TIP.extraOf(body)].filter(Boolean).join('|') }));
     const ctlP = OC.orderControlFor(db, restaurantId);   // D4-c4: read alongside the classify below; decided at the pre-gate
     try {
       /* a1:begin card-classify-a8 */
-      const a8FpG = () => orderFingerprint(orderId, totalCentsG, `${paidTextFullC}${fields.items_text.slice(legacyPaidTextC.length)}`, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));
+      const a8FpG = () => orderFingerprint(orderId, totalCentsG, `${paidTextFullC}${fields.items_text.slice(legacyPaidTextC.length)}`, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : '', TIP.extraOf(body)].filter(Boolean).join('|'));
       /* a1:end card-classify-a8 */
-      clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs, canonicalFpG, a8FpG);
+      clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs, canonicalFpG, a8FpG, TIP.ofBody(body));
       clsForMenu = clsG;   // 1D add-product A
       orderBindingFormat = (clsG && clsG.bindingFormat === CB.FORMAT_CANONICAL) ? CB.FORMAT_CANONICAL : CB.FORMAT_LEGACY;   // classify's snapshot
     } catch (e) {
@@ -1739,7 +1775,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     const MONOTONIC_TERMINAL = ['already_paid', 'conflict', 'closed'];
     const bypassGate = clsG && MONOTONIC_TERMINAL.includes(clsG.outcome);
     if (!bypassGate) {
-      const availGate = await checkItemAvailability(db, body.items, restaurantId);
+      const availGate = await checkItemAvailability(db, body.items, restaurantId, keyModeOfTables(pricingTables));
       cartBlocked = availGate.blocked;
     }
   }
@@ -1754,7 +1790,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     // FRESH checkout (or a failed classifier) is refused here, before reserving; anything else (reuse, in_progress,
     // paid, closed) is honoured and ARMS the guard in acquireHostedAttempt against a drift to a fresh issuance.
     const intakeGates = await gateReader().intakeGatesFor(restaurantId);
-    const unknownKeys = absentFromMenu(body.items, restaurantId, intakeGates.known);
+    const unknownKeys = absentFromMenu(body.items, restaurantId, intakeGates.known, keyModeOfTables(pricingTables));
     if (unknownKeys.length) {
       const mg = OCS.chargePreGate('menu_updating', clsForMenu);
       if (mg.refuse) {
@@ -1768,7 +1804,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     // is refused here; a verified reuse keeps its BOUND snapshot and only arms the guard in acquireHostedAttempt (so a
     // reuse → fresh rotation is refused there); parent-86'd choices join cartBlocked (acquire enforces it the same way).
     {
-      const gd = GI.chargeDecision(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId,
+      const gd = GI.chargeDecision(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId, keyMode: keyModeOfTables(pricingTables),
         rewardKeys: (redemptionFreeItems || []).map((fi) => fi.item_id), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables),
         readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }), clsForMenu);
       if (gd.respond) { if (gd.respond.retryAfter) res.set('Retry-After', String(gd.respond.retryAfter)); return res.status(gd.respond.status).json({ ...gd.respond.body, order_id: orderId }); }
@@ -1863,16 +1899,16 @@ chargeOnlineApp.all('*', async (req, res) => {
   // Bind the slot into the fingerprint (R2-#3): a reused cart can't be charged against a different slot. When
   // redeemed, total_cents (discounted) + items_text (free line appended) make this fingerprint carry the reward
   // — the SAME fingerprint the reservation binds to (below), so hold ↔ order ↔ charge are one identity.
-  const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text, [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));   // v2: + redeemed-SET hash (design-gate #2)
+  const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text, [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : '', TIP.extraOf(body)].filter(Boolean).join('|'));   // v2: + redeemed-SET hash (design-gate #2)
   /* a1:begin card-a8-candidate */
   const a8TextC = `${paidTextFullC}${fields.items_text.slice(legacyPaidTextC.length)}`;   // the same reward append over the untruncated paid text
-  const a8FingerprintC = orderFingerprint(orderId, total_cents, a8TextC, [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));
+  const a8FingerprintC = orderFingerprint(orderId, total_cents, a8TextC, [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : '', TIP.extraOf(body)].filter(Boolean).join('|'));
   /* a1:end card-a8-candidate */
   // 1D D4-b §B.3: the CANONICAL counterpart of `fingerprint` — same inputs, items_text → the canonical digest. A lazy,
   // memoized thunk: only a canonical-tagged order or reservation record ever evaluates it.
   const canonicalChargeFp = CB.once(() => CB.canonicalOrderFingerprint({ orderId, totalCents: total_cents, items: body.items,
     redemption: redemptionResolved, rid: restaurantId, context: contextOfTables(pricingTables),
-    schedExtra: isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '' }));
+    schedExtra: [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', TIP.extraOf(body)].filter(Boolean).join('|') }));
 
   // Factura inputs (FACTURA_PLAN §2) — structured priced items for the factura trigger.
   // factura_status starts 'not_due': a pending_payment order is NOT yet a Sale, so it's
@@ -1911,9 +1947,9 @@ chargeOnlineApp.all('*', async (req, res) => {
     customer_name: fields.customer_name,
     customer_phone: fields.customer_phone,
     items_text: fields.items_text,            // includes the La Musa free-item display line when redeemed
-    total: effTotal,                          // discounted total (== total when no redeem)
+    total: DW.totalLempiras(dq, effTotal),    // discounted total (== total when no redeem); + net envío when active (S3a)
     total_cents, subtotal_cents, tax_cents,   // discounted breakdown when redeemed; else x_pizza ISV 15% incl. / la_musa no split
-    ...(effBreakdown.desc_rebaja_cents ? { desc_rebaja_cents: effBreakdown.desc_rebaja_cents } : {}),   // A-F: factura comp rebaja (x_pizza only)
+    ...(effBreakdown.desc_rebaja_cents ? { desc_rebaja_cents: effBreakdown.desc_rebaja_cents } : {}), ...DW.orderFields(effBreakdown),   // A-F: factura comp rebaja (x_pizza only)
     ...onlineRewardStamp,   // reward-card earn_preview + summary_lines (materialize copies to order_tracking at confirm/release)
     ...(redemptionCanonical ? { redemption: redemptionCanonical } : {}),   // bind the reward to the order (reserved until confirm consumes/holds)
     // 1D add-product B (codex PB-1 r1 P1-3): the CHARGE-INPUT fingerprint this reward order is bound to (render capability only)
@@ -1937,6 +1973,18 @@ chargeOnlineApp.all('*', async (req, res) => {
     // pending order so materialize.js can copy it into user_orders/{uid}.items at CONFIRM (never pending).
     ...(customer_uid ? { reorder_items: normalizeReorderItems(body.items, restaurantId, pricingTables) } : {})   // 2a: allowlist = the CATALOG menu
   };
+  /* sd:begin reorder-price-snapshot */
+  // S-D (PLAN §S-D): the reorder price snapshot beside reorder_items — the committed prices of THIS charge (pricingTables), aligned
+  // 1:1 with the recipe; materialize / claim copy it verbatim into user_orders.price_snapshot (never re-priced).
+  if (customer_uid) {
+    const reorderPriceSnapshot = require('./reorder-normalize').reorderPriceSnapshot(body.items, restaurantId, pricingTables);
+    if (reorderPriceSnapshot) pendingOrderRecord.reorder_price_snapshot = reorderPriceSnapshot;
+  }
+  /* sd:end reorder-price-snapshot */
+  /* sb:begin online-dish-qty */
+  // S-B (ruling F1): the order's canonical dish snapshot — every order, guests included — through the ONE resolver (this charge's tables); absent when unusable
+  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables), require('./menu-pricing').keyModeOfTables(pricingTables)); if (dishQty) pendingOrderRecord.dish_qty = dishQty; }
+  /* sb:end online-dish-qty */
   /* serial3:begin card-content-keys */
   // §3 r3 (codex r3 P1): the order's content keys, computed HERE where the pricing version's catalog snapshot is warm, and
   // persisted on the pending order — the confirm-side duplicate guard (other instances, cold cache) reads them, never menu names.
@@ -1949,7 +1997,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     pendingOrderRecord.lat = lat;
     pendingOrderRecord.lng = lng;
     pendingOrderRecord.address_detected = fields.address_detected;
-    pendingOrderRecord.address_details = fields.address_details;
+    pendingOrderRecord.address_details = fields.address_details; if (fields.address_area) pendingOrderRecord.address_area = fields.address_area;   // colonia: only when kept
     pendingOrderRecord.maps_link = `https://www.google.com/maps?q=${lat},${lng}`;
   } else {
     pendingOrderRecord.pickup_time = fields.pickup_time;
@@ -1961,6 +2009,9 @@ chargeOnlineApp.all('*', async (req, res) => {
     pendingOrderRecord.release_at = scheduledReleaseAt;
   }
 
+  /* checkout:begin gate-verified */
+  if (cappGuest && cappGuest.guest) pendingOrderRecord.guest_verified = { phone: cappGuest.guest.phone, phone_hash: cappGuest.guest.phone_hash };   // §2.3: in the SAME CAS write, capp guests only
+  /* checkout:end gate-verified */
   // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a
   // customer reusing a live hosted checkout during a config outage is NOT failed closed. The CAS
   // in acquireHostedAttempt stays authoritative; on a probe-fresh/CAS-reuse race the only cost is
@@ -1991,11 +2042,11 @@ chargeOnlineApp.all('*', async (req, res) => {
       if (!c || !c.ok) return res.status(409).json({ error: 'redemption_reserve_failed', reason: 'cart_unverifiable', order_id: orderId });
     }
   }
-  if (!probeOrder) {
+  let s3bIdentity = null; if (!probeOrder) {   // S3b: the identity a fresh order reads also selects its return site
     // Fresh pending-order creation → gate + zone + immutable charge-time snapshot BEFORE persistence.
     let id;
     try {
-      id = await getRestaurantIdentity(db, restaurantId);
+      id = await getRestaurantIdentity(db, restaurantId); s3bIdentity = id;
     } catch (e) {
       console.error(`chargeOnlineOrder: config unavailable for ${orderId}: ${e.message}`);
       res.set('Retry-After', '2');
@@ -2026,7 +2077,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     console.error('chargeOnlineOrder: PixelPay config error', e.message);
     return res.status(500).json({ error: 'Payment not configured', detail: e.message });
   }
-  const returnBase = resolveReturnBase(restaurantId, process.env);
+  const returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });
   if (returnBase.error) {
     console.error(`chargeOnlineOrder: ${returnBase.error} for ${orderId} (${restaurantId})`);
     return res.status(500).json({ error: 'Payment not configured', detail: 'return URL not configured for restaurant' });
@@ -2036,7 +2087,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // so the only post-reserve failures are the acquire outcomes + hosted-create, each released below. Bound to
   // the SAME payment fingerprint the attempt uses → hold ↔ order ↔ charge are one identity. Idempotent: a
   // retry/reuse returns 'reused' (a prior attempt's hold → we do NOT own the debit).
-  let redemptionOwnsHold = false;
+  let redemptionOwnsHold = false; if (await PE.refusesFresh(clsForMenu, body, process.env, () => classifyHostedAttempt(db, orderId, fingerprint, nowTs, canonicalChargeFp, () => a8FingerprintC, TIP.ofBody(body)))) return PE.refuse(res, orderId);   // S2 P-C: a FRESH checkout with no payer email → refused before the reserve and the acquire (recovery is never refused)
   if (redemptionCanonical) {
     // hosted_expires_at bound AT RESERVE = nowTs + HOSTED_TTL_MS — IDENTICAL to acquireHostedAttempt's
     // expires_at (same nowTs, same TTL) — so an unattached hold is sweep-visible immediately; attach refines
@@ -2098,7 +2149,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     /* extras:begin card-acquire */
     acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp, floorBelow, controlArmed !== null, menuArmed, choiceArmed, extrasArmed,
       /* a1:begin card-acquire-binding */
-      { a8Fp: () => a8FingerprintC, fresh: cardTextVersion },   // PLAN-A A8a: the a8 candidate (compared only against an 'a8' record) + this request's fresh version
+      { a8Fp: () => a8FingerprintC, fresh: cardTextVersion }, TIP.ofBody(body), PE.unconfigured(body, process.env),   // PLAN-A A8a: the a8 candidate (compared only against an 'a8' record) + this request's fresh version
       /* a1:end card-acquire-binding */
     );   // P-SELFUPDATE §5 (2): refuseFresh; D4-c4: the race guard; add-product A: the menu guard; per-product extras: the extras guard
     /* extras:end card-acquire */
@@ -2108,6 +2159,13 @@ chargeOnlineApp.all('*', async (req, res) => {
     return res.status(500).json({ error: 'Database error', detail: e.message });
   }
 
+  /* checkout:begin gate-bind */
+  // §2.5: an order that now exists under this id must carry THIS request's verified phone, before any outcome answers with it.
+  // No hold to release: a capp guest has no verified uid, so it can never have reserved a redemption hold.
+  if (cappGuest && cappGuest.guest && !(await require('./checkout-guest-gate').boundToGuest({ db, orderId, guest: cappGuest.guest }))) {
+    return res.status(400).json({ error: 'guest_ticket_invalid' });
+  }
+  /* checkout:end gate-bind */
   // Authoritative intake gate (Slice-4): a fresh/rotated payable URL was about to be minted for a 86'd
   // cart → the CAS aborted BEFORE any write. Respond 400 with the blocked labels; nothing was persisted.
   if (acq.outcome === 'item_unavailable') {
@@ -2143,8 +2201,8 @@ chargeOnlineApp.all('*', async (req, res) => {
     }
     /* extras:end card-map */
     // 1D D4-b: a TYPED conflict (binding_format_invalid / cart_unverifiable) keeps its reason; a legacy mismatch → the neutral 'conflict'
-    console.warn(`chargeOnlineOrder: ${orderId} — 409 order_exists (acquire conflict${acq.reason ? `: ${acq.reason}` : ''})`);
-    return res.status(409).json(OE.orderExistsBody(acq.reason || 'conflict', orderId));
+    console.warn(`chargeOnlineOrder: ${orderId} — ${acq.reason === 'payer_email_unconfigured' ? '503 payer_email_unconfigured' : '409 order_exists'} (acquire conflict${acq.reason ? `: ${acq.reason}` : ''})`);   // S2 P-C: the log names the status actually sent
+    return acq.reason === 'payer_email_unconfigured' ? PE.refuse(res, orderId) : res.status(409).json(OE.orderExistsBody(acq.reason || 'conflict', orderId));   // S2 P-C: the acquire's fresh-issuance payer check (no attempt written; the hold was released above)
   }
   if (acq.outcome === 'closed') {
     await releaseHoldIfOwned();   // abandoned: order is in a terminal-closed state
@@ -2170,12 +2228,12 @@ chargeOnlineApp.all('*', async (req, res) => {
     retireAttempt: (aid, reason) => retireUnissuedAttempt(db, aid, reason, Date.now()),
     // 🔴 ONE number. The module passes back the very total it will charge, so the gate cannot be
     // checking a different figure from the one that travels to PixelPay.
-    runGate: (recordedTotalCents) => applyConfirmedNetGate({
+    runGate: async (recordedTotalCents) => (await DW.refusalGate(dq, releaseHoldIfOwned, orderId)) || applyConfirmedNetGate({
       gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,
         tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: tokenEnforce, nowMs: Date.now() }),
       recordedTotalCents,                        // === totalCents === the amount handed to createHostedCharge
       releaseHold: releaseHoldIfOwned,
-      orderId,
+      orderId, ...DW.gateExtra(dq),
     }),
     // Stamped on the pending order, which already exists by now — the same two facts the cash path
     // records. Best-effort: an audit write must not cost the customer a checkout they are entitled to.
@@ -2207,7 +2265,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // intermittently rejects it ({"_email": invalid}), failing card checkout for every blank-email order.
   // PIXELPAY_MERCHANT_EMAIL is PixelPay's own registered merchant user (a real gmail.com address, valid MX)
   // so it can never be rejected. A customer-supplied valid email is used unchanged — only the fallback moves.
-  const fallbackEmail = process.env.PIXELPAY_MERCHANT_EMAIL || 'pedidos@lamusa.hn';   // both deliverable (MX-valid)
+  const fallbackEmail = PE.validEmail(process.env.PIXELPAY_MERCHANT_EMAIL);   // S2 P-C: the env ONLY, fail-closed (no brand literal; a fresh checkout without it was refused before the reserve)
   const email = (typeof rawEmail === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rawEmail.trim())) ? rawEmail.trim() : fallbackEmail;
 
   // Customer-facing return URLs + the AUTHENTICATED server callback (?secret=…).
@@ -2218,7 +2276,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // x_pizza → PIXELPAY_RETURN_URL || the orders site (unchanged); la_musa → its own origin.
   const siteBase = returnBase.base;
   const completeUrl = `${siteBase}/?pay=complete&order=${encodeURIComponent(orderId)}&t=${encodeURIComponent(pollToken)}`;
-  const cancelUrl = `${siteBase}/?pay=cancel&order=${encodeURIComponent(orderId)}`;
+  const cancelUrl = `${siteBase}/?pay=cancel&order=${encodeURIComponent(orderId)}&t=${encodeURIComponent(pollToken)}`;   // S3b: the poll token, so a paid order landing on cancel verifies even with the stash cleared
   const wsecret = process.env.PIXELPAY_WEBHOOK_SECRET || '';
   if (!wsecret) console.warn('chargeOnlineOrder: PIXELPAY_WEBHOOK_SECRET not set — hosted callback will be unauthenticated');
   const callbackUrl = pixelPayCallbackUrl() + (wsecret ? `?secret=${encodeURIComponent(wsecret)}` : '');
@@ -2261,6 +2319,18 @@ chargeOnlineApp.all('*', async (req, res) => {
      refusals, the reuse, AND a checkout-creation or persistence failure — so returning on it means a
      charge that never issued emits no heartbeat and no alert, without that being a separate rule
      somebody has to remember. Reporting below is reached only by a charge that actually issued. */
+  /* checkout:begin gate-grant */
+  // §2.5: the stateless signup grant, recomputed from the STORED order (same bytes on replay / reuse / concurrent success)
+  let cappGrant = null;
+  if (cappGuest && cappGuest.guest && (!flow.respond || flow.respond.status === 200)) {
+    let grantSecret = '';
+    try { grantSecret = SIGNUP_GRANT_SECRET.value() || ''; } catch (_) { grantSecret = ''; }
+    const g = await require('./checkout-guest-gate').grantFor({ db, orderId, guest: cappGuest.guest, secret: grantSecret, now: Date.now() });
+    if (g.refuse) return res.status(400).json({ error: g.refuse });
+    cappGrant = g.grant;
+    if (cappGrant && flow.respond) flow.respond.body = { ...flow.respond.body, signup_grant: cappGrant };
+  }
+  /* checkout:end gate-grant */
   if (flow.respond) return res.status(flow.respond.status).json(flow.respond.body);
   const hosted = flow.hosted;
 
@@ -2285,6 +2355,9 @@ chargeOnlineApp.all('*', async (req, res) => {
     pixelpay_order_id: pixelpayOrderId,
     poll_token: pollToken,
     checkout_url: hosted.url,
+    /* checkout:begin gate-grant-field */
+    ...(cappGrant ? { signup_grant: cappGrant } : {}),
+    /* checkout:end gate-grant-field */
     payment_status: 'pending'
   });
 });
@@ -2298,12 +2371,22 @@ chargeOnlineApp.use((err, req, res, next) => {
   next(err);
 });
 
+/* checkout:begin grant-secret */
+const SIGNUP_GRANT_SECRET = defineSecret('SIGNUP_GRANT_SECRET');   // PLAN-guest-checkout-server §2.5: the signup-grant HMAC key (owner-set; ≥ 32 chars)
+// OTP_SALT for the three NEW otp-lib readers ONLY (requestCheckoutCode, verifyCheckoutCode, redeemSignupGrant): a new function gets no
+// plain env at a dotenv-free deploy. The EXISTING readers keep their deployed plain OTP_SALT — never bound here (no secret/plain
+// overlap). The owner creates the secret with the SAME value as the live plain OTP_SALT (cross-function phone hashes must match).
+const OTP_SALT_SECRET = defineSecret('OTP_SALT');
+/* checkout:end grant-secret */
 exports.chargeOnlineOrder = onRequest(
   {
     region: 'us-central1',
     cors: true,
+    /* checkout:begin grant-secret-bind */
+    secrets: [SIGNUP_GRANT_SECRET],
+    /* checkout:end grant-secret-bind */
     timeoutSeconds: 30,
-    memory: '256MiB',
+    memory: '512MiB',
     maxInstances: 10
   },
   chargeOnlineApp
@@ -2395,7 +2478,7 @@ confirmOnlineApp.all('*', async (req, res) => {
     return res.status(200).json({ ok: true, payment_status: 'manual_reconciliation', order_id: orderId });
   }
   if (o === 'capture_failed' || o === 'failed' || o === 'mismatch_voided') {
-    return res.status(200).json({ ok: false, payment_status: o === 'mismatch_voided' ? 'failed' : 'failed', order_id: orderId, detail: result.message || result.reason || 'payment not completed' });
+    return res.status(200).json({ ok: false, payment_status: o === 'mismatch_voided' && result.voided !== true ? 'refund_pending' : 'failed', order_id: orderId, detail: result.message || result.reason || 'payment not completed' });
   }
   if (o === 'cancelled' || o === 'cancelled_during_confirm') {
     return res.status(200).json({ ok: false, payment_status: 'cancelled', order_id: orderId });
@@ -2883,7 +2966,7 @@ exports.sweepStalePending = onSchedule(
     let flagged = 0, left = 0, recovered = 0;
 
     for (const orderId of Object.keys(orders)) {
-      const order = orders[orderId];
+      const order = orders[orderId]; if (require('./payments/sdk/flow').isSdkOrder(order)) continue;
       if (order.payment_method !== 'online') continue;
       // [rev-5 D / R2-#2] Phase-aware recovery for a CRASHED resolve. Pre-side-effect stale → revert to
       // manual_reconciliation (safe, no money moved); post-side-effect stale → manual_review + alert, NEVER
@@ -2896,7 +2979,7 @@ exports.sweepStalePending = onSchedule(
       const attempt = order.active_attempt_id
         ? (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val()
         : null;
-      if (!attempt) { left++; continue; }
+      if (!attempt) { left++; continue; } if (attempt.status === 'capturing' || attempt.status === 'capture_unverified') { if (await escalateStaleCapture(confirmDeps(db), { orderId, attemptId: order.active_attempt_id, now })) flagged++; else left++; continue; }   // a lost/crashed SDK capture → durable manual escalation (never re-captured, never declined)
       if (attempt.hosted_state === 'paid') {
         // N2: a paid hosted attempt whose ORDER is still pending_payment (not confirmed/materialized) is STRANDED
         // — the webhook captured the money but confirmAndMaterialize threw before the confirm-claim committed →
@@ -2948,10 +3031,10 @@ exports.sweepStalePending = onSchedule(
     // reversal failed): re-run both reversals (idempotent), clear when consistent. Fail-open — never breaks the sweep.
     let repair = { healed: 0, pending: 0 };
     try { repair = await retryRewardLedgerRepair({ db, alert: (k, d) => paymentAlert(db, k, d) }, { now }); }
-    catch (e) { console.error('sweepStalePending: ledger-repair retry failed', e && e.message); }
+    catch (e) { console.error('sweepStalePending: ledger-repair retry failed', e && e.message); } try { await require('./extra-payment-repair').repairPendingExtraPayments({ db, now }); } catch (e) { console.warn('sweepStalePending: extra-payment repair failed', e && e.message); }
     console.log(`sweepStalePending: manual_flagged=${flagged} left=${left} paid_strand_recovered=${recovered} ledger_healed=${repair.healed} ledger_pending=${repair.pending}`);
   }
-);
+); const SDK_PAY_FUNCTIONS = require('./payments/sdk/functions'); exports.sweepSdkPayments = SDK_PAY_FUNCTIONS.sweepSdkPayments; exports.settleSdkOnStatus = SDK_PAY_FUNCTIONS.settleSdkOnStatus; require('./payments/sdk/deps').setSdkGoLive((db, orderId) => { const { voidOrRefund, client, ...sdkConfirm } = confirmDeps(db); return confirmAndMaterialize(sdkConfirm, { orderId, attemptId: null, now: Date.now(), trackingToken: generateTrackingToken(), sdkGoLive: true }); });
 
 // ============================================================
 // resetItemAvailability — KDS Phase 2b: end-of-business-day availability auto-reset
@@ -3070,7 +3153,7 @@ exports.reconcilePayments = onSchedule(
     const breaches = [];
 
     for (const orderId of Object.keys(orders)) {
-      const o = orders[orderId];
+      const o = orders[orderId]; if (require('./payments/sdk/flow').isSdkOrder(o)) continue;
       // [B.10] Phase-aware recovery for a stale resolving_action='cancel' claim (ANY method — a crashed cancel;
       // checked BEFORE the online-only filter since cash cancels can strand a claim too). Full order scan is the
       // only place these live claims are reachable (they aren't pending_payment). CAS on cancel_claim_id.
@@ -3594,14 +3677,14 @@ exports.refundReconciler = onSchedule(
       // Re-drive a failed void (refund_pending) OR a STALE reversing (crash after the reversal CAS, before the
       // terminal write) — skip FRESH reversing (in-flight void; re-driving would double-void). Same 2-min
       // threshold as the CAS. Selector is the shared pure predicate so it can't drift from the CAS's freshness rule.
-      if (!isReconcilerRetryable(a, now, 2 * 60 * 1000)) continue;
+      if (!isReconcilerRetryable(a, now, 2 * 60 * 1000)) continue; if (require('./payments/sdk/flow').isSdkOrder((await db.ref(`orders/${a.order_id}`).once('value')).val())) continue;
       const pixelpayOrderId = `${a.order_id}-${attemptId}`;
       /* h0:begin reconciler-no-uuid */
       // PLAN-H0 §4 — never call voidOrRefund without a uuid (its no-uuid branch reports 'refunded' without reversing anything):
       // park the attempt for staff; the H0 sweep alerts it as reversal_uncertain.
       if (!a.payment_uuid) { await H0.parkReconcilerNoUuid(db, attemptId, now); continue; }
       /* h0:end reconciler-no-uuid */
-      const r = await voidOrRefund(deps, { orderId: a.order_id, attemptId, pixelpayOrderId, paymentUuid: a.payment_uuid, reason: 'xpizza_refund_retry', now });
+      try { await noteRefundRetry(db, { attemptId, orderId: a.order_id, now }); } catch (e) { console.warn(`refundReconciler: review marker failed for ${attemptId} — void deferred`, e && e.message); continue; } const r = await voidOrRefund(deps, { orderId: a.order_id, attemptId, pixelpayOrderId, paymentUuid: a.payment_uuid, reason: 'xpizza_refund_retry', now });   // the durable to-do BEFORE the void
       retried++;
       if (!r.voided) {
         stillPending++;
@@ -3609,7 +3692,7 @@ exports.refundReconciler = onSchedule(
         if (age > 24 * 3600 * 1000) await paymentAlert(db, 'aged_refund_pending', { orderId: a.order_id, attemptId });
       }
     }
-    console.log(`refundReconciler: retried=${retried} stillPending=${stillPending}`);
+    let escalated = 0; try { escalated = await escalateConfirmedRefunds({ db }, { now }); } catch (e) { console.warn('refundReconciler: escalation pass failed (retried next run)', e && e.message); } console.log(`refundReconciler: retried=${retried} stillPending=${stillPending} escalated=${escalated}`);   // confirmed refunds → staff release the points (never automatic)
 
     // REVISE-5: stale-refunding recovery — an order stuck at 'refunding_paid_after_close' (a crash between the
     // guard's voidOrRefund and its order-update; money already safe via the attempt's own CAS/idempotency).
@@ -3617,7 +3700,7 @@ exports.refundReconciler = onSchedule(
     const orders = (await db.ref('orders').once('value')).val() || {};
     let recovered = 0, notifyRecovered = 0;
     for (const orderId of Object.keys(orders)) {
-      const o = orders[orderId];
+      const o = orders[orderId]; if (require('./payments/sdk/flow').isSdkOrder(o)) continue;
       // 🔴 NOTIFICATION RECOVERY (add-only): a paid-after-close refund that already FINALIZED (refunded +
       // 'refunded_paid_after_close') but never CONFIRMED its customer message — a crash after the terminal write
       // before the send, or a send that returned null. sendPaidAfterCloseRefund is idempotent on
@@ -4429,6 +4512,7 @@ exports.startDriverShift = onCall({ region: 'us-central1' }, async (request) => 
     [`drivers/${uid}/current_restaurant_id`]: null,
     [`drivers/${uid}/current_hub_task_id`]: null,
     [`drivers/${uid}/current_shift_id`]: shiftId,
+    [`drivers/${uid}/break_since`]: null,   // Pausa: a new shift never starts paused (svc-assigner clear-only grant)
     [`drivers/${uid}/location_source`]: isNativeClient ? 'native' : 'pwa'
   };
 
@@ -4464,6 +4548,7 @@ exports.endDriverShift = onCall({ region: 'us-central1' }, async (request) => {
     [`drivers/${uid}/active`]: false,
     [`drivers/${uid}/status`]: 'off_shift',
     [`drivers/${uid}/shift_ended_at`]: ServerValue.TIMESTAMP,
+    [`drivers/${uid}/break_since`]: null,   // Pausa: clocking off ends the pause
     [`drivers/${uid}/current_shift_id`]: null,
     [`drivers/${uid}/current_task_id`]: null,
     [`drivers/${uid}/current_hub_lat`]: null,
@@ -4730,7 +4815,7 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, 
   return res.status(200).json({ ok: true, accepted: accepted.length, dropped: points.length - accepted.length, status });
 });
 
-exports.driverDiagIngest = require('./driver-diag').driverDiagIngest;
+exports.driverDiagIngest = require('./driver-diag').driverDiagIngest; exports.closeDriverPayWeeks = require('./driver-ledger/functions').closeDriverPayWeeks; exports.getDriverPayWeek = require('./driver-ledger/functions').getDriverPayWeek; exports.markDriverWeekPaid = require('./driver-ledger/functions').markDriverWeekPaid;   // S8 driver payable ledger (driver-ledger/; tools/driver-ledger-inverse.js)
 
 // clearTrackerMirrorOnDone (Phase A) — when an order leaves 'out_for_delivery' (delivered/cancelled/etc.),
 // null its public tracking node's live-driver fields so no stale location lingers (privacy + hygiene). The
@@ -5071,7 +5156,7 @@ exports.sendOrderStatusNotifications = onValueWritten(
 
       const body = (order.order_type === 'pickup')
         ? whatsapp.tplPickupReceived({ customerName: order.customer_name, orderId, itemsText: order.items_text, total: order.total, pickupTime: order.pickup_time || 'standard', trackingToken, restaurantId })
-        : whatsapp.tplOrderReceived({ customerName: order.customer_name, orderId, itemsText: order.items_text, total: order.total, trackingToken, restaurantId });
+        : whatsapp.tplOrderReceived({ customerName: order.customer_name, orderId, itemsText: order.items_text, total: order.total, ...DW.waEnvio(order), trackingToken, restaurantId });
 
       // sendMessage RETURNS null on failure (bad phone / no config / provider error) — it does NOT throw.
       // Marker already committed (at-most-once, no auto-retry — same tradeoff as notifyPickupReady). Record
@@ -5780,7 +5865,7 @@ exports.onIncomingWhatsApp = onRequest(
     try {
       const mdb = getDatabase();
       const windowMs = inbound.resolveMuteWindowMs((await mdb.ref('config/whatsapp_mute_window_ms').once('value')).val());
-      const muteRec = (await mdb.ref(`whatsapp_mute/${restaurantId}/${inbound.muteKeyFor(fromPhoneRaw)}`).once('value')).val();
+      const muteRec = await require('./phone/match').readMute(mdb, restaurantId, fromPhoneRaw);   // INTL S-match (codex r1 #4): the identity leaf + the legacy last-8 leaf, latest wins — no mute lost at deploy
       if (inbound.shouldSuppressAutoReply(muteRec, Date.now(), windowMs)) {
         await mdb.ref('incoming_messages').push({
           from: data.from, restaurant_id: restaurantId, body,
@@ -5827,9 +5912,9 @@ exports.onIncomingWhatsApp = onRequest(
           // wrong restaurant's number falls through to tplStatusCheckNotFound (no cross-restaurant leak).
           if ((o.restaurant_id || 'x_pizza') !== restaurantId) return false;
           const orderPhoneDigits = String(o.customer_phone).replace(/[^\d]/g, '');
-          // Match by suffix (handles +504, 504, or just 8-digit local)
-          if (!orderPhoneDigits.endsWith(fromPhoneRaw.slice(-8))
-              && !fromPhoneRaw.endsWith(orderPhoneDigits.slice(-8))) {
+          // Match the FULL number (handles +504, 504, or just 8-digit local) — INTL S-match: phone/match.js samePhone
+          if (!require('./phone/match').samePhone(o.customer_phone, fromPhoneRaw)) {   // null / invalid never matches
+            // (was a two-way last-8 suffix match, which let +502 9795-0000 see +504 9795-0000's order)
             return false;
           }
           // Active = not delivered, not cancelled
@@ -5989,7 +6074,8 @@ function constantTimeEqual(a, b) {
  *   - assigned: has task, hasn't accepted yet (rare in pick context;
  *     mostly relevant when stacking onto same driver)
  *   - en_route_delivery: out delivering — last resort for stacking
- *   - on_break / unknown: deprioritize via the ?? 99 fallback
+ *   - on_break: NEVER offered (Pausa — skipped in pickEligibleDriver, refused in reassertAssignable)
+ *   - unknown: deprioritize via the ?? 99 fallback
  */
 const STATUS_PRIORITY = {
   at_restaurant: 0,
@@ -6078,6 +6164,7 @@ async function pickEligibleDriver(db, excludeDriverIds, hubLat, hubLng, opts) {
     // the driver as if they're at the restaurant. They probably are if their
     // phone hasn't pinged.
     if (d.status === 'off_shift') continue;
+    if (d.status === 'on_break') continue;   // Pausa: a paused driver is never offered an order
     // computePushReachable on the driver record only sees web push_subscription
     // (FCM tokens are server-only), which is exactly the legacy fallback we want.
     const reachable = (typeof d.push_reachable === 'boolean') ? d.push_reachable : computePushReachable(d);
@@ -6210,6 +6297,7 @@ async function reassertAssignable(db, driverId, newOrderId = null) {
   const d = dSnap.val();
   if (!d) return { ok: false, reason: 'no_driver' };
   if (d.status === 'off_shift') return { ok: false, reason: 'off_shift' };
+  if (d.status === 'on_break') return { ok: false, reason: 'on_break' };   // Pausa: refused right before the write
   const reachable = (typeof d.push_reachable === 'boolean')
     ? d.push_reachable : !!(d.push_subscription && d.push_subscription.endpoint);
   if (!reachable) return { ok: false, reason: 'unreachable' };
@@ -7112,7 +7200,7 @@ const sendJson = (res, status, payload) => {
 };
 
 exports.getPublicMenu = onRequest(
-  { region: 'us-central1', cors: PUBLIC_MENU_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 20, minInstances: 1 },   // PLAN 2: one warm instance — the live menu must not wait on a cold start
+  { region: 'us-central1', cors: PUBLIC_MENU_ORIGINS, timeoutSeconds: 20, memory: '512MiB', maxInstances: 20, minInstances: 1 },   // PLAN 2: one warm instance — the live menu must not wait on a cold start
   async (req, res) => {
     // Two headers on EVERY response, including the failures: a cache that varies by origin must be
     // told so even when the answer is an error, and a browser cannot read the validator it is
@@ -7183,10 +7271,13 @@ exports.requestOtp = onRequest(
     catch (e) { console.error('requestOtp: OTP_SALT misconfigured — failing closed', e.message); return res.status(500).json({ ok: false }); }
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
+      /* checkout:begin s3a-request */
+      if ((req.body || {}).context !== undefined) return SIGNUP_PLATFORM.requestOtp(req, res, OTP);   // S3a: the app's scope (the forms never send `context`)
+      /* checkout:end s3a-request */
       const { phone, restaurant_id } = req.body || {};
       const { restaurantId } = resolveRestaurantId(restaurant_id, restaurantRegistry().known());
       const pHash = OTP.phoneHash(phone);
-      if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration
+      if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 }); if (!(await require('./phone/login-gate').otpLoginAllowed({ db: getDatabase(), phone, restaurantId, strict: () => require('./phone/flag').phoneWireStrictNow(getDatabase()) }))) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration (INTL S-core step 4: the per-sender login gate refuses uniformly)
       const now = Date.now();
       const db = getDatabase();
       // per-IP soft cap (secondary; req.ip is the Cloud Run-trusted peer, NOT spoofable XFF — H4)
@@ -7223,6 +7314,9 @@ exports.verifyOtp = onRequest(
     catch (e) { console.error('verifyOtp: OTP_SALT misconfigured — failing closed', e.message); return res.status(500).json({ ok: false }); }
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
+      /* checkout:begin s3a-verify */
+      if ((req.body || {}).context !== undefined) return SIGNUP_PLATFORM.verifyOtp(req, res, OTP);   // S3a: the app's scope (the forms never send `context`)
+      /* checkout:end s3a-verify */
       const { phone, code } = req.body || {};
       const pHash = OTP.phoneHash(phone);
       if (!pHash || !/^\d{6}$/.test(String(code || ''))) return res.status(200).json({ ok: false });   // generic
@@ -7239,8 +7333,19 @@ exports.verifyOtp = onRequest(
       // UIDs by construction (staff sign in with email/password; their UIDs are never `u_...`), so a
       // customer:true token can never collide with a staff uid in the uid-match rules.
       const idxRef = db.ref('phone_index/' + pHash);
+      /* lifecycle:begin login-claim */
+      // security r2 (Codex r2 P2): claim the phone's uid CREATE-IF-ABSENT in ONE transaction before the read below — a concurrent first
+      // login on the platform path converges on the winner's uid, and the `if (!uid)` set below never fires on a live entry
+      const lcUid = await SE.claimPhoneUid(db, pHash, () => 'u_' + require('crypto').randomBytes(12).toString('hex'));
+      /* lifecycle:end login-claim */
       let uid = (await idxRef.get()).val();
       if (!uid) { uid = 'u_' + require('crypto').randomBytes(12).toString('hex'); await idxRef.set(uid); }
+      /* lifecycle:begin login-uid */
+      // security r2 (Codex P1-a/P1-b): THE lifecycle gate — a profile a sweep claimed, or a tombstoned uid with no profile, is never
+      // handed to this login: a FRESH uid, phone_index CAS-repointed; a live profile's last_login bumped (linearized with the sweep's
+      // claim on user_profiles/{uid}). FAIL-CLOSED: a failure lands in the catch below (the generic retryable answer), no mint.
+      uid = await SE.loginUid(db, { pHash, uid: lcUid, now: Date.now(), newUid: () => 'u_' + require('crypto').randomBytes(12).toString('hex') });
+      /* lifecycle:end login-uid */
       const now2 = Date.now();
       const profRef = db.ref('user_profiles/' + uid);
       const prof = (await profRef.get()).val();
@@ -7293,7 +7398,7 @@ exports.verifyOtp = onRequest(
 // what is DISPLAYED. Correspondingly it fails SOFT: a bad cart returns ok:false with HTTP 200 so the
 // client can silently fall back to its own total rather than blocking checkout.
 exports.quoteOrder = onRequest(
-  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '512MiB', maxInstances: 10 },
   async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
@@ -7309,8 +7414,8 @@ exports.quoteOrder = onRequest(
       // Public + unauthenticated (a non-redemption cart's price is not user-specific), so it is
       // rate-limited like the other public endpoints.
       const db = getDatabase();
-      const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
-      const { allowed, retryAfterSec } = await checkRateLimit(db, 'quote_ip', clientIp, RATE_LIMIT_BUCKETS.quote_ip);
+      const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown'; /* s4hours:begin */ if (body.schedule_only === true && await require('./schedule/schedule-only').handle({ res, body, db, restaurantId, clientIp, checkRateLimit })) return; /* s4hours:end */
+      const dpP = DW.loadPricing(db, restaurantId); const { allowed, retryAfterSec } = await checkRateLimit(db, 'quote_ip', clientIp, RATE_LIMIT_BUCKETS.quote_ip);   // S3a: envío config read in parallel
       if (!allowed) {
         res.set('Retry-After', String(retryAfterSec));
         return res.status(429).json({ ok: false, error: 'rate_limited' });
@@ -7323,7 +7428,7 @@ exports.quoteOrder = onRequest(
       if (!tables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' });
       // 1D add-product B: a bare launcher quotes as choice_required (render capability on only — no read otherwise)
       if (groupCapabilities().render) {
-        const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId }));
+        const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, keyMode: keyModeOfTables(tables) }));
         if (qr) return res.status(200).json({ ok: false, ...qr });
       }
       /* extras:begin quote */
@@ -7344,12 +7449,12 @@ exports.quoteOrder = onRequest(
          unchanged (byte-identical response for every existing client); the token and net_total_cents
          are additive. Issued through the shared issuer so this endpoint and the redemption quote
          cannot develop divergent issuance math — the thing 1C exists to prevent, one layer up. */
-      const issued = issueQuote({ items: body.items, reward: null, rid: restaurantId, tables,
-        customerId: null, nowMs: Date.now() });
+      const dq = await DW.quoteDeliveryFor(req, db, restaurantId, body, { getIdentity: getRestaurantIdentity, getAuth, attributionUid, pricingP: dpP }); if (dq.refuse) return res.status(dq.httpStatus || 200).json(dq.refuse); const issued = issueQuote({ items: body.items, reward: null, rid: restaurantId, tables, deliveryContext: dq.ctx,
+        customerId: dq.uid, nowMs: Date.now() });
       return res.status(200).json({
         ok: true, total_cents: bd.total_cents, subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents,
         ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}),
-        ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}),
+        ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}), ...DW.quoteFields(dq.ctx),
       });
     } catch (e) {
       console.error('quoteOrder', e && e.message);
@@ -7371,7 +7476,7 @@ exports.quoteRedemption = onRequest(
       const body = req.body || {};
       const { restaurantId, error: ridError } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
       if (ridError) return res.status(400).json({ ok: false, error: 'bad_request', detail: ridError });
-      const db = getDatabase();
+      const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId);   // S3a: envío config read in parallel with the auth reads
       // Verified non-guest uid — SAME as intake (customer:true + tombstone check); a client-supplied uid is never used.
       let customerUid = null;
       const idTok = req.get('x-firebase-id-token');
@@ -7386,7 +7491,7 @@ exports.quoteRedemption = onRequest(
       }
       // 1b-1b: quoteRedemption is NEW to the resolver — the quote must price on the same source as the
       // order it previews, or a customer sees one number and is charged from another.
-      const quoteTables = await resolvePricingTables(restaurantId);
+      const dq = await DW.quoteDeliveryFor(req, db, restaurantId, body, { getIdentity: getRestaurantIdentity, knownUid: customerUid, pricingP: dpP }); if (dq.refuse) return res.status(dq.httpStatus || 200).json(dq.refuse);  const quoteTables = await resolvePricingTables(restaurantId);
       // 2c: fail SOFT, and this one MUST be guarded rather than left to throw — quoteRedemptionCore
       // calls requireTables, which throws on a null and would surface as a 500 instead of a clean
       // ok:false the client can degrade from.
@@ -7396,7 +7501,7 @@ exports.quoteRedemption = onRequest(
       const quoteEligible = await gateReader().redeemEligibleFor(restaurantId);
       // 1D add-product B: a bare launcher (line or reward) quotes as choice_required (render capability on only)
       if (groupCapabilities().render) {
-        const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, quoteTables) }));
+        const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, keyMode: keyModeOfTables(quoteTables), rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, quoteTables) }));
         if (qr) return res.status(409).json({ ok: false, ...qr });
       }
       /* extras:begin quote-redemption */
@@ -7406,7 +7511,7 @@ exports.quoteRedemption = onRequest(
         if (EI.refuses(xr)) return EI.sendRefusal(res, xr, { ok: false });
       }
       /* extras:end quote-redemption */
-      const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId, customerUid, tables: quoteTables, eligible: quoteEligible });
+      const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId, customerUid, tables: quoteTables, eligible: quoteEligible, deliveryContext: dq.ctx });
       if (!q.ok) return res.status(q.status).json({ ok: false, ...q.body });   // same typed errors as intake (+ bad_cart)
       return res.status(200).json(q);   // { ok:true, discount_cents, total_cents, subtotal_cents, tax_cents, free_item:{name} }
     } catch (e) {
@@ -7478,7 +7583,7 @@ exports.pruneInactiveAccounts = onSchedule(
 // instances, so these plain values are ignored at deploy). Let the RTDB emulator suites exercise the
 // per-token claimPrefill throttle (checkRateLimit + the claim_token bucket) directly.
 module.exports.checkRateLimit = checkRateLimit;
-module.exports.RATE_LIMIT_BUCKETS = RATE_LIMIT_BUCKETS;
+module.exports.RATE_LIMIT_BUCKETS = RATE_LIMIT_BUCKETS; exports.rateOrder = require('./ratings/rate-order').rateOrder;   // S5 ratings writer (ratings/; tools/s5r-inverse.js)
 // paid-after-close refund-notify composition test drives the REAL sender directly (finalize-path call) alongside
 // app.refundReconciler.run() (the sweep) against the RTDB emulator + a mocked provider.
 module.exports.sendPaidAfterCloseRefund = sendPaidAfterCloseRefund;   /* membership:begin team — PLAN-portal-membership (codex build r1 P1-1): the team endpoints, DARK behind platform_config/membership_writes_enabled */ const MEMBERSHIP_TEAM = require('./access/team-http'); exports.memberInvite = MEMBERSHIP_TEAM.memberInvite; exports.memberAcceptInvite = MEMBERSHIP_TEAM.memberAcceptInvite; exports.memberCancelInvite = MEMBERSHIP_TEAM.memberCancelInvite; exports.memberReissueInvite = MEMBERSHIP_TEAM.memberReissueInvite; exports.memberRevoke = MEMBERSHIP_TEAM.memberRevoke; exports.memberSetMenuPermission = MEMBERSHIP_TEAM.memberSetMenuPermission; exports.memberList = MEMBERSHIP_TEAM.memberList; exports.memberUpdate = MEMBERSHIP_TEAM.memberUpdate; exports.catalogRequestPublish = MEMBERSHIP_TEAM.catalogRequestPublish; exports.memberPasswordSet = MEMBERSHIP_TEAM.memberPasswordSet; exports.memberInvitePreview = MEMBERSHIP_TEAM.memberInvitePreview;   /* membership:end team */
@@ -7487,7 +7592,7 @@ module.exports.sendPaidAfterCloseRefund = sendPaidAfterCloseRefund;   /* members
 const portalFunctions = require('./portal/functions');
 exports.editCatalog = portalFunctions.editCatalog;
 exports.publishEdited = portalFunctions.publishEdited;
-exports.resetDraftToLive = require('./portal/reset-draft').resetDraftToLive; exports.getMyBranches = require('./portal/ops-functions').getMyBranches; exports.updateBranch = require('./portal/ops-functions').updateBranch; exports.setBranchPause = require('./portal/ops-functions').setBranchPause; exports.getBranchAvailability = require('./portal/ops-functions').getBranchAvailability; exports.setBranchAvailability = require('./portal/ops-functions').setBranchAvailability; exports.getBranchDevices = require('./portal/ops-functions').getBranchDevices; exports.revokeBranchDevice = require('./portal/ops-functions').revokeBranchDevice; exports.createBranchDraft = require('./portal/ops-functions').createBranchDraft; exports.updateBranchProfile = require('./portal/ops-functions').updateBranchProfile; exports.setBranchActive = require('./portal/ops-functions').setBranchActive; exports.deleteBranchDraft = require('./portal/ops-functions').deleteBranchDraft;   // PORTAL-UI 1a + slice 2: + the branch-ops endpoints (portal/ops-functions.js, full load) · 1D add-product A §0.1: "Volver al menú publicado" (full load; not an isolated portal fn)
+exports.resetDraftToLive = require('./portal/reset-draft').resetDraftToLive; exports.getMyBranches = require('./portal/ops-functions').getMyBranches; exports.updateBranch = require('./portal/ops-functions').updateBranch; exports.setBranchPause = require('./portal/ops-functions').setBranchPause; exports.getBranchAvailability = require('./portal/ops-functions').getBranchAvailability; exports.setBranchAvailability = require('./portal/ops-functions').setBranchAvailability; exports.getBranchDevices = require('./portal/ops-functions').getBranchDevices; exports.revokeBranchDevice = require('./portal/ops-functions').revokeBranchDevice; exports.createBranchDraft = require('./portal/ops-functions').createBranchDraft; exports.updateBranchProfile = require('./portal/ops-functions').updateBranchProfile; exports.setBranchActive = require('./portal/ops-functions').setBranchActive; exports.deleteBranchDraft = require('./portal/ops-functions').deleteBranchDraft; exports.photoUploadStart = require('./photos/functions').photoUploadStart; exports.photoProcess = require('./photos/functions').photoProcess; exports.photoSweep = require('./photos/functions').photoSweep;   // PORTAL-UI 1a + slice 2: + the branch-ops endpoints (portal/ops-functions.js, full load) · 1D add-product A §0.1: "Volver al menú publicado" (full load; not an isolated portal fn)
 
 // PORTAL SPEED P1: the Portal 2b-2a block (getMyRestaurants, getEditableCatalog) moved verbatim to portal/functions.js.
 exports.getMyRestaurants = portalFunctions.getMyRestaurants;
@@ -7660,3 +7765,141 @@ exports.sweepFormSignals = onSchedule(
   },
 );
 /* formsignal:end */
+
+/* formbake:begin */
+// PLAN 4 (bake from published) r3 §4 / §5 — a publish rebuilds its brand's form (best-effort, on the mirror write) and a
+// reconciler proves the DEPLOYED form carries the PUBLISHED menu. All logic is catalog/form-rebake.js; this block only wires
+// it. No platform retry, bounded instances and deadlines, off the publish and money paths. Dormant until FORM_BUILD_HOOKS is set.
+const FORM_REBAKE = require('./catalog/form-rebake');
+const formRebakeDeps = () => ({
+  db: getDatabase(),
+  env: process.env,
+  now: () => Date.now(),
+  alarm: (kind, detail) => paymentAlert(getDatabase(), kind, detail),
+  registry: restaurantRegistry(),
+  sites: require('./platform-manifest').PLATFORM.sites,
+  // the published menu WITHOUT the identity overlay: what a bake writes, so nothing needs stripping and the comparator ignores no key
+  // the overlay-free published menu + the ACTIVATION GENERATION it was read at (the budget's fence — it advances on rollbacks too)
+  readPublished: (rid) => FORM_REBAKE.readFencedPublished(rid, {
+    getPointer: (r) => require('./catalog/catalog-firestore').getActivePointer(getFirestore(), r),
+    readMenu: (r) => buildPublicMenu(getFirestore(), r, { known: () => restaurantRegistry().known(), isActive: defaultIsActive(getDatabase()), overlayIdentity: false }),
+  }),
+  http: {
+    post: (url) => fetch(url, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(FORM_REBAKE.HOOK_DEADLINE_MS) }).then((r) => ({ status: r.status })),
+    getText: (url, opts) => fetch(url, { headers: (opts && opts.headers) || {}, redirect: 'follow', signal: AbortSignal.timeout(15000) })
+      .then((r) => { if (!r.ok) throw new Error(`answered ${r.status}`); return r.text(); }),
+  },
+});
+exports.rebakeFormOnMirror = onValueWritten(
+  { ref: '/catalog_snapshot/{rid}', region: 'us-central1', timeoutSeconds: 30, memory: '256MiB', maxInstances: 2, retry: false },
+  async (event) => {
+    try { await FORM_REBAKE.onMirrorWrite(event.params.rid, formRebakeDeps()); } catch (e) {
+      console.error('form_rebake_trigger_failed', JSON.stringify({ rid: event.params.rid }));
+    }
+  },
+);
+exports.reconcileFormBundles = onSchedule(
+  { schedule: 'every 10 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB', maxInstances: 1, retryCount: 0 },
+  async () => {
+    try { await FORM_REBAKE.reconcile(formRebakeDeps()); } catch (e) { console.error('form_rebake_reconcile_failed', (e && e.code) || 'error'); }
+  },
+);
+/* formbake:end */
+/* checkout:begin endpoints */
+// PLAN-guest-checkout-server r4 (FINAL) §1 — S1: the checkout-purpose WhatsApp code for the customer app's guest checkout.
+// NEW endpoints only; requestOtp / verifyOtp are untouched (the forms' wire and the signup inverse are unaffected). The
+// handlers live in checkout-otp.js; this block is folded back by tools/checkout-inverse.js (checkout-wiring.guard.test.js).
+const CHECKOUT_OTP = require('./checkout-otp').makeCheckoutOtp({
+  getDatabase,
+  registry: restaurantRegistry,   // checkout-otp warms it and checks a KNOWN rid (never defaulted, never resolveRestaurantId's default)
+});
+exports.requestCheckoutCode = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET] },
+  CHECKOUT_OTP.requestCheckoutCode,
+);
+exports.verifyCheckoutCode = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET] },
+  CHECKOUT_OTP.verifyCheckoutCode,
+);
+exports.pruneCheckoutState = onSchedule(
+  { schedule: 'every 60 minutes', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const out = await require('./checkout-otp').pruneCheckoutState(getDatabase(), Date.now());
+    if (out.tickets || out.codes || out.budgets) console.log(`pruneCheckoutState: ${JSON.stringify(out)}`);
+  },
+);
+// S3 (PLAN §3, CONTRACT-capp-signup-platform-wire.md): the customer app's signup family, context:'platform'. requestOtp /
+// verifyOtp hand a body carrying `context` to these handlers (the s3a-request / s3a-verify hunks); two NEW endpoints.
+const SIGNUP_PLATFORM = require('./signup-platform').makeSignupPlatform({
+  getDatabase, getAuth, checkRateLimit,
+  sendPlatformOtp: require('./checkout-otp').sendPlatformOtp, senderConfigured: require('./checkout-otp').platformSenderConfigured, isSendConfirmed: (d) => whatsapp.isSendConfirmed(d),
+  grantSecret: () => { try { return SIGNUP_GRANT_SECRET.value() || ''; } catch (_) { return ''; } },
+});
+exports.redeemSignupGrant = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET, SIGNUP_GRANT_SECRET] },
+  SIGNUP_PLATFORM.redeemSignupGrant,
+);
+exports.getMyProfile = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  SIGNUP_PLATFORM.getMyProfile,
+);
+// NOTE-getMyOrders: the capp «Pedidos» history read — member-only (x-firebase-id-token), ONE bounded user_orders query, a whitelist projection
+exports.getMyOrders = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  require('./my-orders').makeMyOrders({ getDatabase, getAuth, checkRateLimit, resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) }).getMyOrders,
+);
+// S-A1 (NOTE-S-A-ratings-v2-build): the rating FULFILMENT stamp — ratings_v2/{id}.fulfilled_at set-if-absent at delivered / completed
+// (members AND guests); a SEPARATE trigger (no hunk inside mirrorStatusToHistory, so no new index.js inverse); retried on failure.
+exports.stampRatingFulfilment = onValueWritten(
+  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true, timeoutSeconds: 60 },
+  async (event) => {
+    // Codex S-A1 r1 P2: a failure PROPAGATES (retry on) — the stamp is set-once and idempotent, so a retried event is safe
+    try { await require('./ratings/rating-fulfilment').stampRatingFulfilment(getDatabase(), { orderId: event.params.orderId, status: event.data.after.val(), now: Date.now() }); }
+    catch (e) { console.error('stampRatingFulfilment', e && e.message); throw e; }
+  },
+);
+// S-A1 r4 (Codex r3 P2): the durable rating-redaction journal has its OWN small schedule — the daily account sweep's budget can never
+// starve it (pruneResidual also runs it first, isolated)
+exports.drainRatingRedactions = onSchedule(
+  { schedule: 'every 30 minutes', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const out = await SE.drainRatingRedactions(getDatabase(), Date.now());
+    if (out.pending || out.failed) console.log(`drainRatingRedactions: ${JSON.stringify(out)}`);
+  },
+);
+// S-A(d) (NOTE-S-Ad-merchant-comments-build): the P-1 merchant view — anonymous rating COMMENTS for ONE rid the caller is a member of
+// (resolveAccess + can 'stats.read'), bounded reads of the server-only rating_index through rating-v2.readCountable; the opaque cursor
+// is sealed with an OTP_SALT-derived key (HKDF, its own label)
+exports.getMerchantRatingComments = onRequest(
+  { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET] },
+  require('./ratings/merchant-comments').makeMerchantRatingComments({ getDatabase, getAuth, checkRateLimit }).getMerchantRatingComments,
+);
+// S-A (d) customer read: getMyRating — the C-2 sheet's read of the caller's OWN rating, the writer's predicate (customerUidOf + the
+// order's customer_uid), the payload only through rating-v2.readCountable
+exports.getMyRating = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  require('./ratings/my-rating').makeMyRating({ getDatabase, getAuth, checkRateLimit }).getMyRating,
+);
+// S-B (NOTE-S-B-aggregates-build): the INCREMENTAL public_stats producer — closes each complete HN day from rating_index (the
+// fulfilled-order log) into a server-only bucket, sums 30 / 90 days, publishes counts only; repeat-customer keys are HMAC'd under an
+// OTP_SALT-derived key (HKDF) and expire with their 90-day bucket. A per-rid failure is LOUD and never blocks the other restaurants.
+exports.publishRatingAggregates = onSchedule(
+  { schedule: '30 4 * * *', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB', maxInstances: 1, secrets: [OTP_SALT_SECRET] },
+  async () => {
+    const AP = require('./ratings/aggregate-producer');
+    const out = await AP.runAggregates({ db: getDatabase(), nowMs: Date.now(), salt: process.env.OTP_SALT,
+      listRids: async () => { const r = await restaurantRegistry().readNow(); if (!r || r.ok !== true) throw new Error('aggregate: registry unavailable'); return r.ids; },
+      priceOfFor: async (rid) => { const t = await resolvePricingTables(rid); return AP.priceOfFromTables(t, t ? contextOfTables(t) : null); } });
+    if (out.failed.length) console.error('publishRatingAggregates FAILED', JSON.stringify(out.failed));
+    console.log('publishRatingAggregates', JSON.stringify({ ok: out.ok.length, failed: out.failed.length }));
+  },
+);
+// S-F (NOTE-S-F-support-tickets-build): the customer's «Ayuda» ticket for an order it OWNS (member: the ONE customer predicate; guest: the
+// order's tracking_token, constant-time); no identity in the ticket; ≤ 5 per order; server-only (Central's surface is X-1)
+exports.createSupportTicket = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  require('./support/support-tickets').makeSupportTickets({ getDatabase, getAuth, checkRateLimit }).createSupportTicket,
+);
+// S-A1: rateOrder's dish votes resolve through the ONE resolver (the expression getMyOrders and the live displayLabel path use)
+require('./ratings/rate-order').configure({ resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) });
+/* checkout:end endpoints */

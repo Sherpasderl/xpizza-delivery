@@ -34,7 +34,11 @@ function sendReserve(v, now){
 
 // verify + one-time consume: returns { next, outcome }. Checks expiry/consumed/attempt-cap, then
 // constant-time code compare. success → mark consumed (BEFORE any mint); mismatch → attempts++.
-function verifyConsume(v, now, code){
+// PLAN-guest-checkout-server S3a: `scope` — the challenge's scope must EQUAL the caller's, inside this same transaction. The
+// forms pass none (an unscoped record, exactly today); the app passes '_platform' (written only by a platform requestOtp). A
+// cross-scope use fails like a wrong code, untouched (no attempt counted, no oracle).
+function verifyConsume(v, now, code, scope){
+  if (v && (v.scope === undefined ? undefined : v.scope) !== scope) return { next: v, outcome: 'fail' };
   if (!v || v.consumed || v.expires_at < now || (v.attempts||0) >= LIMITS.MAX_ATTEMPTS) return { next: v, outcome: 'fail' };
   if (constEq(v.code_hash, hashCode(String(code)))) return { next: { ...v, consumed: true }, outcome: 'ok' };
   return { next: { ...v, attempts: (v.attempts||0) + 1 }, outcome: 'fail' };

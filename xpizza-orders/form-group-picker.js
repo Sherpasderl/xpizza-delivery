@@ -174,8 +174,134 @@ function ctaDecision(opts) {
   return { kind: "add", total: (v ? v.price : 0) + extrasSum };
 }
 
+/* ── PLAN 4 (bake from published, r3 §3 / §8.3 / §8.4) — THE MENU'S DISPLAY STRUCTURES, ONE RULE ─────────────────────────
+   The bake (tools/bake-form-bundle.js loads THIS file from the form it bakes), the form's boot and every live apply ask the
+   same questions of the same fields, so a bake can never ship what a live apply would refuse, and no form keeps a private
+   copy of the rule. Brand-agnostic: a dish or an extra is named by its id OR its name (one brand keys by id, another by name).
+   REWARD_ICONS is the sprite's row-icon set; catalog/reward-icons.js holds the server's copy and a test pins them equal. */
+const REWARD_ICONS = ["bacon", "cheese", "chili", "dumpling", "fish", "glass", "leaf", "meat", "mushroom", "noodle", "rice",
+  "skewer", "slice", "soup", "star", "tomato"];
+const isPlainObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+const isNameList = (v) => Array.isArray(v) && v.every(x => typeof x === "string" && x !== "") && new Set(v).size === v.length;
+function extraNamed(extras, v) {
+  return extras.find(e => e && String(e.id) === v) || extras.find(e => e && e.name === v) || null;
+}
+function dishNamed(dishes, k) { return dishes.some(d => d && (String(d.id) === k || d.name === k)); }
+
+/* Throws the FIRST problem as an apply-rejection code; returns nothing when the structures are drawable. */
+function validateDisplayStructures(body) {
+  const dishes = Array.isArray(body.dishes) ? body.dishes : [];
+  const extras = Array.isArray(body.extras) ? body.extras : [];
+  const catIds = new Set((Array.isArray(body.categories) ? body.categories : []).map(c => c && c.id));
+  const extraCats = new Set(extras.map(e => e && e.cat));
+  ["extras_by_category", "extras_by_item"].forEach(function (f) {
+    const map = body[f];
+    if (map === undefined) return;
+    if (!isPlainObj(map)) throw new Error("apply_option_map_malformed:" + f);
+    Object.keys(map).forEach(function (k) {
+      if (f === "extras_by_category" ? !catIds.has(k) : !dishNamed(dishes, k)) throw new Error("apply_option_map_key:" + f + "." + k);
+      if (!isNameList(map[k])) throw new Error("apply_option_map_value_malformed:" + f + "." + k);
+      map[k].forEach(function (v) { if (!extraCats.has(v) && !extraNamed(extras, v)) throw new Error("apply_option_map_value:" + f + "." + k + "=" + v); });
+    });
+  });
+  ["pickup_only_cats", "weekend_only_cats"].forEach(function (f) {
+    const g = body[f];
+    if (g === undefined) return;
+    if (!isNameList(g)) throw new Error("apply_gate_malformed:" + f);
+    g.forEach(function (c) { if (!catIds.has(c)) throw new Error("apply_gate_unknown_category:" + f + "=" + c); });
+  });
+  if (body.badges !== undefined) {
+    if (!isPlainObj(body.badges)) throw new Error("apply_badges_malformed");
+    Object.keys(body.badges).forEach(function (k) {
+      const b = body.badges[k];
+      if (!isPlainObj(b) || typeof b.cls !== "string" || !b.cls || typeof b.label !== "string" || !b.label) throw new Error("apply_badge_malformed:" + k);
+    });
+  }
+  if (body.badge_priority !== undefined) {
+    if (!isNameList(body.badge_priority)) throw new Error("apply_badge_priority_malformed");
+    body.badge_priority.forEach(function (k) { if (!isPlainObj(body.badges) || !Object.prototype.hasOwnProperty.call(body.badges, k)) throw new Error("apply_badge_priority_unknown:" + k); });
+  }
+  [["dish", dishes], ["extra", extras]].forEach(function (pair) {
+    pair[1].forEach(function (x, i) { if (x && x.reward_icon !== undefined && REWARD_ICONS.indexOf(x.reward_icon) === -1) throw new Error("apply_reward_icon:" + pair[0] + "@" + i); });
+  });
+}
+
+/* ── PLAN 4 r2 (Codex r1 #2 / #3) — THE COMPLETE MENU CONTRACT, ONE RULE for the bake, the boot and every live apply ──────
+   A usable menu: well-formed dish and extra records (non-empty ids, names, POSITIVE INTEGER prices — the server's int_positive),
+   unique ids, categories that exist and hold every dish, the extras_policy boundary, a drawable variant map, REVERSE coverage
+   (every dish with variantOf belongs to an existing launcher map that lists it — a missing map is a refusal, never "no groups"),
+   and the display structures above. `opts.variantItems` is the map in force for the check (the live apply's retained map when a
+   snapshot omits one; the bundle's / body's own otherwise). Throws the FIRST problem as an apply-rejection code. */
+const isPosInt = (p) => typeof p === "number" && Number.isInteger(p) && p > 0;
+function validateMenu(body, opts) {
+  const o = opts || {};
+  if (!isPlainObj(body)) throw new Error("apply_body_missing");
+  const dishes = body.dishes, extras = body.extras;
+  if (!Array.isArray(dishes) || !dishes.length) throw new Error("apply_dishes_missing");
+  if (!Array.isArray(extras)) throw new Error("apply_extras_missing");
+  const okRecord = (r) => isPlainObj(r) && r.id !== undefined && r.id !== null && String(r.id) !== ""
+    && typeof r.name === "string" && r.name !== "" && isPosInt(r.price);
+  dishes.forEach(function (d, i) { if (!okRecord(d)) throw new Error("apply_dish_malformed@" + i); });
+  extras.forEach(function (e, i) { if (!okRecord(e)) throw new Error("apply_extra_malformed@" + i); });
+  if (new Set(dishes.map(d => String(d.id))).size !== dishes.length) throw new Error("apply_dish_duplicate");
+  if (new Set(extras.map(e => String(e.id))).size !== extras.length) throw new Error("apply_extra_duplicate");
+  const cats = body.categories;
+  if (!Array.isArray(cats) || !cats.length) throw new Error("apply_categories_missing");
+  cats.forEach(function (c, i) { if (!isPlainObj(c) || typeof c.id !== "string" || !c.id) throw new Error("apply_category_malformed@" + i); });
+  if (new Set(cats.map(c => c.id)).size !== cats.length) throw new Error("apply_category_duplicate");
+  const catIds = new Set(cats.map(c => c.id));
+  dishes.forEach(function (d, i) { if (!catIds.has(d.cat)) throw new Error("apply_dish_orphan@" + i); });
+  validateExtrasPolicy(dishes);
+  const vi = Object.prototype.hasOwnProperty.call(o, "variantItems") ? o.variantItems : body.variant_items;
+  if (vi !== undefined) validateVariantBlock(vi, dishes, o.origin || "supplied");
+  // ONE launcher per choice (production's catalog/group-index.js refuses a choice listed twice or by two launchers)
+  const listedBy = new Map();
+  if (isPlainObj(vi)) Object.keys(vi).forEach(function (k) {
+    (Array.isArray(vi[k] && vi[k].variantIds) ? vi[k].variantIds : []).forEach(function (v) {
+      if (listedBy.has(String(v))) throw new Error("apply_variant_listed_twice:" + String(v));
+      listedBy.set(String(v), k);
+    });
+  });
+  dishes.forEach(function (d, i) {
+    if (d.variantOf === undefined || d.variantOf === null) return;
+    // STRICT parent resolution — exactly the browser's parentOf (sameDishId: "30" is not 30). A choice whose parent does not
+    // resolve would not inherit its launcher's sold-out state (Codex r2 #2).
+    const parent = dishes.find(p => sameDishId(p.id, d.variantOf));
+    if (!parent) throw new Error("apply_variantOf_orphan@" + i);
+    const cfg = isPlainObj(vi) ? vi[String(parent.id)] : null;
+    if (!cfg || !Array.isArray(cfg.variantIds) || !cfg.variantIds.some(v => sameDishId(v, d.id))) throw new Error("apply_variant_uncovered@" + i);
+  });
+  validateDisplayStructures(body);
+}
+
+/* The extras a dish offers, GROUPED by option category: the dish category's entries first, then the dish's own, each value
+   EITHER an option category (all its extras, in EXTRAS order) OR one extra named by id or name (§8.3). [] = none offered. */
+function offeredExtraGroups(dish, extras, byCategory, byItem) {
+  if (!dish || noExtras(dish)) return [];
+  const fromCat = (isPlainObj(byCategory) && byCategory[dish.cat]) || [];
+  const fromItem = (isPlainObj(byItem) && (byItem[String(dish.id)] || byItem[dish.name])) || [];
+  const vals = [];
+  fromCat.concat(fromItem).forEach(function (v) { if (vals.indexOf(v) === -1) vals.push(v); });
+  const cats = new Set(extras.map(e => e && e.cat));
+  const groups = [];
+  const groupOf = function (c) { let g = groups.find(x => x.cat === c); if (!g) { g = { cat: c, extras: [] }; groups.push(g); } return g; };
+  vals.forEach(function (v) {
+    if (cats.has(v)) { const g = groupOf(v); extras.forEach(function (e) { if (e.cat === v && g.extras.indexOf(e) === -1) g.extras.push(e); }); }
+    else { const e = extraNamed(extras, v); if (e) { const g = groupOf(e.cat); if (g.extras.indexOf(e) === -1) g.extras.push(e); } }
+  });
+  return groups.filter(g => g.extras.length);
+}
+
+/* The badge a dish shows: the first of `priority` its tags carry, resolved against `badges`. */
+function pickBadge(tags, badges, priority) {
+  if (!Array.isArray(tags) || !tags.length || !isPlainObj(badges) || !Array.isArray(priority)) return null;
+  for (let i = 0; i < priority.length; i += 1) if (tags.indexOf(priority[i]) !== -1 && badges[priority[i]]) return badges[priority[i]];
+  return null;
+}
+
 const GroupPicker = { GROUP_PICKER_V1, RECOMMENDED_LABEL, sameDishId, isLauncher, isVariant, validateVariantBlock, priceRange, priceText, choiceDelta,
   promptText, isRecommended, choiceRows, noExtras, validateExtrasPolicy, rewardDishes, parentOf, soldOutWithParent, ctaDecision,
-  markLauncherLines, launcherKeys, launcherQty, reChooseText, CHOICE_INPUT_CLASS, choiceInputHtml, choiceHasFocus, refocusChoice, wireChoiceKeys };
+  markLauncherLines, launcherKeys, launcherQty, reChooseText, CHOICE_INPUT_CLASS, choiceInputHtml, choiceHasFocus, refocusChoice, wireChoiceKeys,
+  REWARD_ICONS, validateDisplayStructures, validateMenu, offeredExtraGroups, pickBadge };
 if (typeof module !== "undefined" && module.exports) module.exports = GroupPicker;
 if (typeof window !== "undefined") { window.GroupPicker = GroupPicker; }

@@ -12,7 +12,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { PORTAL_ORIGINS } = require('./origins');
 const { withPreflightMaxAge } = require('./preflight-max-age');
-const C = require('./ops-core');
+const C = require('./ops-core'); const { defaultReadVersionPhotos } = require('../photos/served-photos');   // DISH PHOTOS A2 step 12 (E-P4)
 
 const PORTAL_OPS_TARGETS = Object.freeze(['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability', 'getBranchDevices', 'revokeBranchDevice', 'createBranchDraft', 'updateBranchProfile', 'setBranchActive', 'deleteBranchDraft']);
 const verifyIdToken = (t) => getAuth().verifyIdToken(t);
@@ -48,7 +48,7 @@ exports.setBranchPause = onRequest(WRITE_OPTS, handler('setBranchPause', C.setBr
   })));
 
 exports.getBranchAvailability = onRequest(READ_OPTS, handler('getBranchAvailability', C.getBranchAvailabilityCore,
-  () => ({ db: getDatabase(), fs: getFirestore(), verifyIdToken })));
+  () => ({ db: getDatabase(), fs: getFirestore(), verifyIdToken, readVersionPhotos: defaultReadVersionPhotos })));   // DISH PHOTOS A2 step 12 (E-P4)
 
 exports.setBranchAvailability = onRequest(WRITE_OPTS, handler('setBranchAvailability', C.setBranchAvailabilityCore,
   () => ({ db: getDatabase(), fs: getFirestore(), verifyIdToken, timestamp: () => ServerValue.TIMESTAMP })));
