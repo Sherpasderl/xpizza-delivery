@@ -223,6 +223,11 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
         declared.body.add(`${c.name}: ${seen} reviewed-row field(s)`);
       }
     }
+    // S2-5 (S2-DESIGN §1.1, the ONE declared additive field): getEditableCatalog states the text-edit switch, false while it is off
+    if (/getEditableCatalog/.test(c.name) && c.status === 200 && body && !(g.body && Object.prototype.hasOwnProperty.call(g.body, 'textEditEnabled'))) {
+      assert.strictEqual(body.textEditEnabled, false, `${c.name}: textEditEnabled:false (S2, switch off)`);
+      delete body.textEditEnabled; declared.body.add(`${c.name}: textEditEnabled (S2)`);
+    }
     assert.deepStrictEqual(body, g.body, `${c.name}: body (beyond the declared fields)`);
     // calls: golden ⊆ candidate (as a multiset), and every EXTRA call is a declared read
     const left = [...c.calls];
