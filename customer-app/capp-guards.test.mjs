@@ -32,7 +32,7 @@ import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = '2ce3198d';
-const CAPP_TIP = '3a2590a6';
+const CAPP_TIP = 'b203b0bd';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
@@ -151,7 +151,8 @@ test('customer-app/ is the one platform orders deployment, with exactly the appr
 // byte-identical to that file just before the FIRST S3 commit. Anything else in the forms is still a red.
 const S3_FORM_FILES = { 'xpizza-orders/index.html': 'xpizza-orders', 'la-musa-orders/index.html': 'la-musa-orders',
   'xpizza-orders/form-serial-order.js': 'form-serial-order', 'la-musa-orders/form-serial-order.js': 'form-serial-order',
-  'xpizza-orders/account.js': 'account', 'la-musa-orders/account.js': 'account' };
+  'xpizza-orders/account.js': 'account', 'la-musa-orders/account.js': 'account',
+  'xpizza-orders/form-identity-strip.copy.test.mjs': 'identity-strip-copy' };   // r3: the guard counts the payload check's projection
 test(`the live forms are byte-unchanged by the capp range ${BASE}..${CAPP_TIP} — except EXACTLY the S3 item_key hunks`, () => {
   const [, tip] = capRange(), changed = laneChanged(tip, ['xpizza-orders', 'la-musa-orders']);
   const untracked = git('ls-files', '--others', '--exclude-standard', '--', 'xpizza-orders', 'la-musa-orders').trim();

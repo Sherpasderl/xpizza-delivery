@@ -1,7 +1,7 @@
 'use strict';
 // S3 (D4c-grill/item-s1/S3-DESIGN.md D3; the owner's rule-40 exception for the two order forms, 11-08) — THE FORMS' S3 HUNKS, as data.
 // unapplyItemS3Forms(key, text) removes exactly these hunks — key 'xpizza-orders' | 'la-musa-orders' (a form's index.html) or
-// 'form-serial-order' (the shared pin module, both byte-identical copies) or 'account' (account.js, both byte-identical copies)
+// 'form-serial-order' (the shared pin module, both byte-identical copies) or 'account' (account.js, both byte-identical copies) or 'identity-strip-copy' (the identity guard's raw-signature count, r3)
 // — and returns the bytes it had before S3, so a
 // guard that pins a form byte-for-byte to an older base (avail-identity-forms-noop) keeps pinning EVERYTHING outside S3. Each hunk must
 // occur EXACTLY once (an insertion with the newline before it) — a missing, duplicated or edited hunk throws, so a later edit to an
@@ -333,6 +333,18 @@ const HUNKS = {
   {
    "kind": "insert",
    "new": "  window.__ACCOUNT.toast = toast;   // S3 C2: the form's item-refusal flow reuses this pill (textContent; no new copy)",
+   "old": ""
+  }
+ ],
+ "identity-strip-copy": [
+  {
+   "kind": "replace",
+   "new": "    assert.strictEqual((html.match(/_legacyCartForSig\\(/g) || []).length, 5,\n      `${dir}: one definition plus four applications — confirmQuoteCartSig, serverQuoteCartKey, requestServerQuote, itemPayloadQuoted`);",
+   "old": "    assert.strictEqual((html.match(/_legacyCartForSig\\(/g) || []).length, 4,\n      `${dir}: one definition plus three applications — confirmQuoteCartSig, serverQuoteCartKey, requestServerQuote`);"
+  },
+  {
+   "kind": "insert",
+   "new": "    // S3 r3: the send boundary compares the PAYLOAD to the producer's key, so it hashes the same projection\n    assert.ok(/return __serverQuote\\.cents != null && __serverQuote\\.key === JSON\\.stringify\\(_legacyCartForSig\\(items\\)\\);/.test(html),\n      `${dir}: 🔴 itemPayloadQuoted hashes the projection — the payload check and the producer agree`);",
    "old": ""
   }
  ]
