@@ -187,3 +187,19 @@ function fakeDom() {
 function walk(n, out = []) { out.push(n); for (const c of n.children || []) walk(c, out); return out; }
 function byClass(root, cls) { return walk(root).filter((n) => String(n._class || '').split(/\s+/).includes(cls)); }
 function textOf(n) { return walk(n).map((x) => x.textContent).filter((t) => t !== undefined).join(' '); }
+
+// SBS 11-10 (frame E): the «Precios» row names the product by its CURRENT name, its section beneath — with the products lookup
+// (the text-edit switch on); without it, today's row exactly (the key, no sub line).
+test('«Precios» (frame E) — the price row reads the current name and the section; without the lookup, today\'s row', () => {
+  const diff = FRAME_E();
+  const root = fakeDom();
+  renderReview(root, reviewModel(diff), { products: { nameOf: (k) => (k === 'Pizza Cacio e Pepe' ? 'Cacio e Pepe' : k), categoryName: (id) => ({ pz: 'Pizzas', pa: 'Pastas' }[id] || id), sectionOf: () => ({ cat: 'pa', subcat: null }) } });
+  const price = byClass(byClass(root, 'mgroup')[1], 'prow')[0];
+  assert.strictEqual(textOf(byClass(price, 'pname')[0]), 'Cacio e Pepe');
+  assert.strictEqual(textOf(byClass(price, 'psub')[0]), 'Pastas');
+  const today = fakeDom();
+  renderReview(today, reviewModel(diff), {});
+  const p0 = byClass(byClass(today, 'mgroup')[1], 'prow')[0];
+  assert.strictEqual(textOf(byClass(p0, 'pname')[0]), 'Pizza Cacio e Pepe');
+  assert.strictEqual(byClass(p0, 'psub').length, 0, 'no sub line without the lookup');
+});

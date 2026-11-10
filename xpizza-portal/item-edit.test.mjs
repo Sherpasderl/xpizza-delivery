@@ -288,7 +288,7 @@ test('drawer D — a move with no consequence shows NO note; a menu that declare
   assert.equal(IE.view(d, s).consequences, null);
   delete src.structure.exposure;
   const d2 = createDraft(src);
-  const s2 = IE.open(d2, 'Pizza Margarita');
+  const s2 = IE.open(d2, 'Pizza Pepperoni');   // a move that is NOT refused (Especiales keeps Cacio e Pepe): a refused move shows no note
   IE.set(s2, 'cat', 'pa');
   assert.ok(!IE.view(d2, s2).consequences.lines.some((l) => /extra/.test(l)), 'no exposure declared: no extras line (never a guess)');
 });

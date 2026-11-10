@@ -1421,6 +1421,7 @@ function productReviewCtx() {
   return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0) };
 }
 function productReviewOpts() {
+  if (state.textEditEnabled !== true) return null;   // switch off: today's review rows exactly
   const items = ((draftSource(state.draft) || {}).items || []).filter((r) => r && r.display && typeof r.key === 'string');
   const section = (k) => { const r = items.find((x) => x.key === k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; };
   return { nameOf: (k) => { const r = items.find((x) => x.key === k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },
@@ -1532,7 +1533,8 @@ function renderEditDrawer(d, it, keepScroll) {
     const g = choiceGroup(state.draft, key);
     const fOpt = mk('div', 'fld');
     const lr3 = mk('div', 'mk-lrow');
-    lr3.append(mk('label', null, 'Opciones'), mk('span', 'mk-cnt', 'precio por opción'));
+    R.optCnt = mk('span', 'mk-cnt', 'precio por opción');
+    lr3.append(mk('label', null, 'Opciones'), R.optCnt);
     const block = mk('div', 'modblock');
     const mh = mk('div', 'modh', `${(g && typeof g.label === 'string' && g.label.trim()) ? g.label : 'Elección'} · elección requerida`);
     mh.append(mk('span', 'mk-modhr', 'Se mueve con su producto'));
@@ -1633,6 +1635,7 @@ function syncEdit() {
   if (R.opts && v.options) {
     const bad = !!v.errors.options;
     R.optBlock.classList.toggle('mk-inv', bad);
+    R.optCnt.classList.toggle('mk-cnterr', bad);   // the mockup's `.fld.invalid .mk-cnt` red (F2)
     v.options.forEach((o, i) => {
       const r = R.opts[i];
       r.base.textContent = o.fullName.slice(0, o.fullName.length - ` - ${o.choice}`.length);

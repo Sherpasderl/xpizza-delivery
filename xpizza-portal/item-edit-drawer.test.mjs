@@ -224,6 +224,11 @@ test('D2 — the move that would empty a section is refused in the field; «Guar
   p2.choose(p2.fld('Subcategoría').querySelector('select'), 'Cervezas');
   await settle(5);
   assert.equal(lineOf(p2.fld('Categoría')), 'No podés dejar la subcategoría vacía. Agregá otro producto primero.');
+  // SBS D2: a refused move to ANOTHER section (it has consequences) shows its line, not the consequence note
+  p2.choose(p2.fld('Categoría').querySelector('select'), 'dim_sum');
+  await settle(5);
+  assert.equal(lineOf(p2.fld('Categoría')), 'No podés dejar la subcategoría vacía. Agregá otro producto primero.');
+  assert.ok(p2.fld('Categoría').querySelector('.mk-note').hidden, 'SBS D2: the refused move shows no consequence note');
   assert.equal(p2.btn('Guardar').disabled, true);
   assert.equal(p2.btn('Guardar').title, 'Elegí otra categoría para guardar');
 });
@@ -246,6 +251,7 @@ test('F — a product with a required choice: «Se mueve con su producto», each
   assert.equal(lineOf(f), 'El nombre completo de la opción supera 60 letras', 'F2: the line under the Opciones block');
   assert.equal(lineOf(p.fld('Nombre')), null, 'F2: Nombre itself is not marked');
   assert.ok(f.querySelector('.modblock').classList.contains('mk-inv'));
+  assert.ok(f.querySelector('.mk-lrow .mk-cnt').classList.contains('mk-cnterr'), 'SBS F2: «precio por opción» turns red with the block');
   assert.ok(rows().some((r) => r.classList.contains('over')));
   assert.equal(p.btn('Guardar').title, 'Acortá el nombre para guardar');
   p.type(nm, 'Pad Thai Especial');

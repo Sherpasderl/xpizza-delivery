@@ -271,7 +271,16 @@ export function renderReview(root, model, opts = {}) {
       row.dataset.k = `${r.surface}::${r.key}`;
 
       const main = el('div', 'pmain');
-      main.append(el('div', 'pname', String(r.key)));      // textContent: a dish name is data
+      // S4 (frame E): with the products lookup (the text-edit switch on) the row names the product by its CURRENT name and its
+      // section beneath; without it, today's row exactly
+      const pl = r.surface === 'item' && opts.products && typeof opts.products.nameOf === 'function' ? opts.products : null;
+      main.append(el('div', 'pname', pl ? pl.nameOf(r.key) : String(r.key)));      // textContent: a dish name is data
+      if (pl && r.isPrice && typeof pl.sectionOf === 'function') {
+        const sec = pl.sectionOf(r.key) || {};
+        const cn = typeof pl.categoryName === 'function' ? pl.categoryName : (id) => String(id);
+        const where = [sec.cat == null ? null : cn(sec.cat), typeof sec.subcat === 'string' && sec.subcat ? sec.subcat : null].filter(Boolean).join(' \u00b7 ');
+        if (where) main.append(el('div', 'psub', where));
+      }
       // a non-price change still gets a row; the sub line names the field, so nothing publishes unseen
       if (!r.isPrice) main.append(el('div', 'psub', String(r.field)));
       if (r.pct !== null) {

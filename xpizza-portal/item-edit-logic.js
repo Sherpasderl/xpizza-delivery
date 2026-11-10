@@ -206,7 +206,8 @@ export function view(draft, s) {
   return {
     fields: { name: w.name, desc: w.desc, cat: w.cat, subcat: w.subcat, price: w.price, extraPrices: { ...w.extraPrices } },
     counters: { name: `${chars(w.name)}/${ITEM_NAME_MAX}`, desc: `${chars(w.desc)}/${ITEM_DESC_MAX}` },
-    subcats, errors, changed: ch, options, same, consequences: consequences(draft, s),
+    // a refused move shows its line, not what it would have changed (mockup D2)
+    subcats, errors, changed: ch, options, same, consequences: errors.cat ? null : consequences(draft, s),
     photo: { entry: w.photo, uploading, failed: !!(s.upload && s.upload.state === 'failed') },
     save: { enabled: !blocked, title: blocked ? title : null },
   };
