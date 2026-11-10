@@ -223,6 +223,26 @@ const want = (r, status, b, label) => { assert.strictEqual(r.status, status, `${
     assert.ok(sp.status === 200 && !('consequences' in sp.body.diff), 'S2H-XC-ABSENT no consequence ⇒ no key (today\'s diff, and its token hash, byte-identical)');
     ok('extras consequences: carried by the save\'s diff, re-computed identically at publish (round trip 200); absent when none');
   }
+  // ── S2-9 (G4): a rename back to the product's OWN key — exact or a case / accent variant — passes the save AND the publish,
+  //    even where the registry and the reserved set hold that key (the record's own key is always exempt, normalized) ──
+  {
+    const { publishEditedCore } = require('./publish-edited-handler');
+    const live = clone(XP); live.frozen_keys = { [String(itemOf(live, 'Carnivora').display.id)]: 'Carnivora' }; itemOf(live, 'Carnivora').display.name = 'Carnívora Suprema';
+    for (const back of ['Carnivora', 'CARNÍVORA']) {
+      const d = clone(live); itemOf(d, 'Carnivora').display.name = back;
+      RETIRED.add(back); RETIRED.add('Carnivora');
+      RESERVED_IO.doc = require('./reserved-keys').unionReserved(require('./reserved-keys').emptyReserved(), { dish: ['Carnivora'], extra: [] }, 'v0').doc;
+      const db = stub('x_pizza', live, live);
+      const saved = await save(db, 'x_pizza', d);
+      assert.strictEqual(saved.status, 200, `S2H-OWN-SAVE «${back}»: a rename back to its own key saves (${JSON.stringify(saved.body).slice(0, 200)})`);
+      const deps = { db: {}, authorize: allow, addProduct: addProductOf(null, 'name'), readActiveBuilt: db.readActiveBuilt,
+        readDraft: async () => ({ source: db.state.source.data, updateTime: saved.body.updateTime }), publishVersion: async () => ({ versionId: 'v-new', item_count: 0, extra_count: 0 }) };
+      const pub = await publishEditedCore(deps, { restaurantId: 'x_pizza', token: saved.body.token, acknowledgedChanges: (saved.body.diff.largeChangeSet || []).map((l) => ({ key: l.key, surface: l.surface })), fiscalAck: true }, {});
+      assert.strictEqual(pub.status, 200, `S2H-OWN-PUB «${back}»: and publishes (${JSON.stringify(pub.body).slice(0, 200)})`);
+      RETIRED.clear(); RESERVED_IO.doc = undefined;
+    }
+    ok('a rename back to its own key (exact or a case / accent variant) passes the save and the publish');
+  }
   // ── OFF: exactly today (none of the S2 codes) ──
   {
     SWITCH.enabled = false;
