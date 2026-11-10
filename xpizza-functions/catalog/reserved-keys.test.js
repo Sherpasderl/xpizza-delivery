@@ -92,13 +92,12 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   const active = [it('Carnivora', 1, 'Carnivora'), it('i_aaaaaaaaaaab', 2, 'Pizza Nueva')];
   const judge = (items) => RK.opaqueNameProblems({ items, activeItems: active }).map((c) => c.key || c.ref);
   assert.deepStrictEqual(judge([...active]), [], 'RKO-UNTOUCHED untouched names are not judged');
-  assert.deepStrictEqual(judge([it('i_aaaaaaaaaaab', 2, 'i_aaaaaaaaaaab')].map((x) => x)).length, 1, 'premise: that name is in the syntax');
+  assert.deepStrictEqual(judge([it('i_aaaaaaaaaaab', 2, 'i_aaaaaaaaaaab')]), ['i_aaaaaaaaaaab'], 'RKO-OWN a rename to its OWN minted key is refused too');
   const activeOpq = [it('i_aaaaaaaaaaab', 2, 'i_aaaaaaaaaaab')];
   assert.deepStrictEqual(RK.opaqueNameProblems({ items: [it('i_aaaaaaaaaaab', 2, 'i_aaaaaaaaaaab')], activeItems: activeOpq }), [], 'RKO-UNTOUCHED-OPAQUE an UNCHANGED minted-syntax name is not judged');
   assert.deepStrictEqual(judge([{ ref: 'tmp:x1', display: { name: 'i_abcdefghijk2' } }]), ['tmp:x1'], 'RKO-ADDITION a new product named like a minted key');
   assert.deepStrictEqual(judge([{ ref: 'tmp:x2', display: { name: '  I_ABCDEFGHIJK2 ' } }]), ['tmp:x2'], 'RKO-ADDITION-CASE case and spaces do not help');
   assert.deepStrictEqual(judge([it('Carnivora', 1, 'i_zzzzzzzzzzzz')]), ['Carnivora'], 'RKO-RENAME a rename into the syntax');
-  assert.deepStrictEqual(judge([it('i_aaaaaaaaaaab', 2, 'i_aaaaaaaaaaab')]), ['i_aaaaaaaaaaab'], 'RKO-OWN a rename to its OWN minted key is refused too');
   assert.deepStrictEqual(judge([{ ref: 'tmp:x3', display: { name: 'i_short' } }, it('Carnivora', 1, 'Pizza i_aaaaaaaaaaab')]), [], 'RKO-FREE names merely containing the prefix are fine');
   ok('a name in the minted-key syntax is refused for additions and renames (own key too); untouched names are not judged');
 }
