@@ -1084,6 +1084,10 @@ test('🔴 EVERY merchant-reachable add-product refusal has a designed panel —
   const { extrasCapabilities } = createRequire(import.meta.url)('../xpizza-functions/catalog/platform-extras.js');
   const EXTRAS_CODES = ['exposure_ref_mismatch', 'extras_not_supported_yet'];
   if (!extrasCapabilities().authoring) for (const c of EXTRAS_CODES) GENERIC_BY_DESIGN.add(c);
+  // S1c opaque minting: a minted-key collision (mint_unavailable) is unreachable ONLY while the one-time minting switch is OFF —
+  // allocation draws no opaque key. The exemption is TIED to the switch: turning minting on turns this test red until the code has a panel.
+  const { mintCapabilities } = createRequire(import.meta.url)('../xpizza-functions/catalog/mint-opaque.js');
+  if (!mintCapabilities().enabled) GENERIC_BY_DESIGN.add('mint_unavailable');
   // PLAN-public-menu-display T1: a category rename beside another change (rename_not_alone) is unreachable from this portal
   // ONLY while it has no category-rename control — it never writes a category's name. The exemption is TIED to that: the
   // first portal source line that assigns a category `.name` turns this test red until the code has a designed panel.
