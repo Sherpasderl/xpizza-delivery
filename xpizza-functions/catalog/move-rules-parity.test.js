@@ -21,7 +21,13 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   const covStart = src.indexOf('// ── SUBCATEGORY COVERAGE'); const covEnd = src.indexOf('// ── EXTRAS AS FIRST-CLASS DISPLAY RECORDS');
   const empStart = src.indexOf('const usedExtraCats = new Set(source.extras'); const empEnd = src.indexOf('}', src.indexOf('for (const sc of c.subcats) {', empStart) + 40);
   assert.ok(covStart > 0 && covEnd > covStart && empStart > covEnd && empEnd > empStart, 'premise: both validator blocks located');
-  const reasons = (block) => [...block.matchAll(/fail\(`([^`]*)`\)/g)].map((m) => m[1].replace(/\$\{[^}]*\}/g, '…'));
+  // EVERY fail( call in the blocks, in any quoting style (Codex S2 code r1 P2-5): each must be a single literal this guard can read
+  const reasons = (block) => {
+    const calls = (block.match(/\bfail\(/g) || []).length;
+    const lits = [...block.matchAll(/\bfail\((`[^`]*`|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")\)/g)].map((m) => m[1].slice(1, -1).replace(/\$\{[^}]*\}/g, '…'));
+    assert.strictEqual(lits.length, calls, `🔴 MR-REASONS every fail( call in the block is one readable literal (${lits.length} of ${calls})`);
+    return lits;
+  };
   const found = [...reasons(src.slice(covStart, covEnd)), ...reasons(src.slice(empStart, empEnd + 200))].sort();
   const STATED = [
     '…/… — category … groups by subcategory, so an item without a subcat would not render at all',
@@ -40,6 +46,13 @@ const validatorFailure = (rid, source) => {
   try { validateSource(source, rid); return null; } catch (e) { return String(e.message).replace(/^source_malformed: /, ''); }
 };
 const isMoveReason = (m) => /groups by subcategory|is not declared by category|declares no subcategories|no dish is in it/.test(m || '');
+// Other validator reasons a single-product move can trip, deliberately LEFT to the validator (not move rules): reviewed, exact.
+const OTHER_REASONS = [
+  // a group's launcher moved without its options (or an option alone): the save re-derives every option's section from its
+  // launcher before any check (add-product.js rederiveOptionNames), so the edit handlers never present this draft
+  /— a variant must share its launcher's category\/subcategory \(/,
+];
+const unclassified = [];
 const seen = new Set();
 const check = (rid, source, label) => {
   const v = validatorFailure(rid, source);
@@ -50,6 +63,7 @@ const check = (rid, source, label) => {
     seen.add(p.reason);
   } else {
     assert.strictEqual(p, null, `🔴 MR-PARITY ${label}: move-rules refuses (${p && p.message}) where the validator does not on a move reason (${v})`);
+    if (v !== null && !OTHER_REASONS.some((re) => re.test(v))) unclassified.push(`${label}: ${v}`);
   }
 };
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -71,7 +85,8 @@ for (const rid of ['x_pizza', 'la_musa']) {
     }
   }
 }
-ok(`every single-product move of both real sources (${moves} drafts) gets the validator's exact answer`);
+assert.deepStrictEqual(unclassified.slice(0, 5), [], `🔴 MR-UNCLASSIFIED every validator failure on a move-only draft is a move reason or a reviewed other reason (${unclassified.length} unclassified)`);
+ok(`every single-product move of both real sources (${moves} drafts) gets the validator's exact answer; no unclassified failure`);
 
 // ── 3. crafted edge cases ──
 {
