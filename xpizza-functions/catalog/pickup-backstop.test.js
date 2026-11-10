@@ -38,8 +38,8 @@ const decide = (o) => pickupRefusal({ restaurantId: 'x_pizza', versionId: 'v1', 
   {
     const { r, reads } = readerOf({ v1: XB });
     const deliv = await decide({ kind: 'binding', body: { order_type: 'delivery', items: [stamped({ name: NY, qty: 1 }, NY)] }, gates: r });
-    assert.deepStrictEqual(deliv, { status: 409, body: { ok: false, error: 'pickup_only_item', item_key: NY } }, 'S2P-BIND-DELIVERY a pickup-only item on a delivery order → 409 pickup_only_item naming it');
     assert.deepStrictEqual(reads, ['v1'], 'S2P-PROVENANCE the gate read is the PRICED version, not the active pointer (v2)');
+    assert.deepStrictEqual(deliv, { status: 409, body: { ok: false, error: 'pickup_only_item', item_key: NY } }, 'S2P-BIND-DELIVERY a pickup-only item on a delivery order → 409 pickup_only_item naming it');
     const pick = await decide({ kind: 'binding', body: { order_type: 'pickup', items: [stamped({ name: NY, qty: 1 }, NY)] }, gates: r });
     assert.strictEqual(pick, null, 'S2P-BIND-PICKUP a pickup order passes');
     const plain = await decide({ kind: 'binding', body: { order_type: 'delivery', items: [stamped({ name: IND, qty: 1 }, IND)] }, gates: r });
