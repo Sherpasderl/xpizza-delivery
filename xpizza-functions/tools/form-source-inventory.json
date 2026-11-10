@@ -4332,6 +4332,16 @@
      ]
     },
     {
+     "file": "xpizza-functions/keymode-wiring.guard.test.js",
+     "inverses": [
+      "tools/keymode-module-inverse.js",
+      "tools/resolvelines-module-inverse.js",
+      "tools/s1d-module-inverse.js",
+      "tools/s2-module-inverse.js",
+      "tools/tippref-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/lifecycle-wiring.guard.test.js",
      "inverses": [
       "tools/lifecycle-inverse.js",
@@ -4841,7 +4851,15 @@
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
       "tools/s1d-module-inverse.js",
-      "tools/s2-module-inverse.js"
+      "tools/s2-module-inverse.js",
+      "tools/tippref-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/s2-wiring.guard.test.js",
+     "inverses": [
+      "tools/s2-module-inverse.js",
+      "tools/tippref-inverse.js"
      ]
     },
     {
@@ -5387,6 +5405,10 @@
     {
      "file": "xpizza-functions/tippref-wiring.guard.test.js",
      "inverses": [
+      "tools/keymode-module-inverse.js",
+      "tools/resolvelines-module-inverse.js",
+      "tools/s1d-module-inverse.js",
+      "tools/s2-module-inverse.js",
       "tools/tippref-inverse.js"
      ]
     },
@@ -5673,7 +5695,6 @@
     "xpizza-functions/identity-shadow-placement.test.js",
     "xpizza-functions/intake-gate-placement.test.js",
     "xpizza-functions/intl-intake-wire-sync.test.js",
-    "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/materialize-hub.test.js",
     "xpizza-functions/merchant-no-money.guard.test.js",
     "xpizza-functions/n2-paid-strand-decision.test.js",
@@ -5693,7 +5714,6 @@
     "xpizza-functions/resolvelines-wiring.guard.test.js",
     "xpizza-functions/restaurant-config.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
-    "xpizza-functions/s2-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
     "xpizza-functions/sequencing/writer.test.js",
     "xpizza-functions/serial3-confirm-cold.test.js",
