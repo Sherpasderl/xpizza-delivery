@@ -114,7 +114,11 @@ const strip = (o, volatile) => {
     assert.strictEqual(res.status, 200, `${rid}: the order succeeded: ${res.text}`);
     const stored = (await db.ref(`orders/${id}`).once('value')).val();
 
-    assert.deepStrictEqual(strip(stored, g.volatile_fields), strip(g.stored_order, g.volatile_fields),
+    // S1d (PLAN r6 §2.5, declared additive): the order stores menu_version_id; its factura and summary lines store item_key (and
+    // the factura lines menu_version_id). Compared with exactly those provenance fields projected away; their presence is asserted.
+    const S1D = (v) => JSON.parse(JSON.stringify(v, (k, x) => (k === 'item_key' || k === 'menu_version_id' ? undefined : x)));
+    assert.ok(Object.prototype.hasOwnProperty.call(stored, 'menu_version_id'), `S1d ${rid}: the order stores menu_version_id`);
+    assert.deepStrictEqual(S1D(strip(stored, g.volatile_fields)), S1D(strip(g.stored_order, g.volatile_fields)),
       `🔴 ${rid}: P1 changed the STORED ORDER against the pre-P1 control — every field, not just the money ones`);
     ok(`${rid}: the whole stored order is byte-identical to pre-P1 (${Object.keys(g.stored_order).length} fields, ${g.volatile_fields.length} measured-volatile normalized)`);
 
