@@ -5,6 +5,7 @@
 // extra keys, and every frozen_keys entry (source and version records). The dry run reads only; the apply is one transaction that
 // reads the set and writes the union (it never removes a key), behind the limit check. Run: npm run test:reserved-keys-audit
 require('./_emulator-required').harness(['firestore', 'database']);
+process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'reserved-keys-audit-'.padEnd(48, 'x');   // the portal save signs its edit token
 const assert = require('assert');
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 const admin = require('firebase-admin');
@@ -13,6 +14,7 @@ const db = admin.firestore();
 const rtdb = admin.database();
 const { fixture } = require('./_c2b-fixture');
 const { sourceRefOf } = require('../catalog/source-store');
+const { readActiveVersion } = require('../catalog/identity-bootstrap');
 const RK = require('../catalog/reserved-keys');
 const AUDIT = require('../catalog/reserved-keys-audit');
 
@@ -34,9 +36,14 @@ const snapshotAll = async () => { const out = {}; for (const c of await db.listC
   await F.merchant(RID, { dishes: 3, certify: true });
   await F.addDish(RID, 'Plato Viejo'); await F.publish(RID, 'a-v2');
   const src = (await sourceRefOf(db, RID).get()).data();
-  await sourceRefOf(db, RID).update({ items: src.items.filter((i) => i.key !== 'Plato Viejo'),
-    structure: { ...src.structure, item_order: src.structure.item_order.filter((k) => k !== 'Plato Viejo') }, frozen_keys: { 424242: 'Clave Congelada' } });
-  await F.publish(RID, 'a-v3');
+  // the drop is DECLARED (identity partition), through the real portal save + publish
+  const oldId = (await readActiveVersion(db, RID)).dishes.find((d) => d.data.key === 'Plato Viejo').data.display.identity_id;
+  await F.portalSaveAndPublish(RID, (s, base) => ({ ...s, items: s.items.filter((i) => i.key !== 'Plato Viejo'),
+    structure: { ...s.structure, item_order: s.structure.item_order.filter((k) => k !== 'Plato Viejo') },
+    deleted_ids: { ids: [oldId] }, deleted_ids_loaded_base: base }), 'a-v3');
+  // frozen entries are server-owned (the portal save refuses them): written to the source as the server would, then published
+  await sourceRefOf(db, RID).update({ frozen_keys: { 424242: 'Clave Congelada' } });
+  await F.publish(RID, 'a-v4');
   await reservedRef.delete();
 
   // ── dry run: reads only ──

@@ -5,6 +5,7 @@
 // by a later version, or by a rollback, stays reserved. A malformed stored set refuses the activation (nothing moves), and so
 // does a set past the doc limit. Run: npm run test:reserved-keys-flip
 require('./_emulator-required').harness(['firestore', 'database']);
+process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'reserved-keys-flip-'.padEnd(48, 'x');   // the portal save signs its edit token
 const assert = require('assert');
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 const admin = require('firebase-admin');
@@ -14,6 +15,7 @@ const rtdb = admin.database();
 const { fixture } = require('./_c2b-fixture');
 const { sourceRefOf } = require('../catalog/source-store');
 const { getActivePointer } = require('../catalog/catalog-firestore');
+const { readActiveVersion } = require('../catalog/identity-bootstrap');
 const RK = require('../catalog/reserved-keys');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -24,7 +26,13 @@ const reservedRef = (rid) => db.collection('restaurants').doc(rid).collection('m
 const reserved = async (rid) => RK.reservedKeySet((await reservedRef(rid).get()).data());
 const certifiedOf = async (rid, v) => ((await db.collection('restaurants').doc(rid).collection('versions').doc(v).get()).data() || {}).identity_certified === true;
 const keysOf = async (rid) => ((await sourceRefOf(db, rid).get()).data().items || []).map((i) => i.key);
-const dropDish = async (rid, key) => {
+// a certified restaurant must DECLARE a removed dish's id (identity partition): through the real portal save + publish
+const dropDish = async (rid, key, certified) => {
+  if (certified) {
+    const id = (await readActiveVersion(db, rid)).dishes.find((d) => d.data.key === key).data.display.identity_id;
+    return F.portalSaveAndPublish(rid, (s, base) => ({ ...s, items: s.items.filter((i) => i.key !== key), structure: { ...s.structure, item_order: s.structure.item_order.filter((k) => k !== key) },
+      deleted_ids: { ids: [id] }, deleted_ids_loaded_base: base }), `${rid}-drop`);
+  }
   const src = (await sourceRefOf(db, rid).get()).data();
   await sourceRefOf(db, rid).update({ items: src.items.filter((i) => i.key !== key), structure: { ...src.structure, item_order: src.structure.item_order.filter((k) => k !== key) } });
 };
@@ -47,7 +55,7 @@ const dropDish = async (rid, key) => {
 
     // v2: one dish removed, one added — the removed key stays, the added one joins
     const gone = k1[0];
-    await dropDish(rid, gone); await F.addDish(rid, 'Plato Nuevo');
+    await dropDish(rid, gone, certify); await F.addDish(rid, 'Plato Nuevo');
     const v2 = await F.publish(rid, `${rid}-v2`);
     const r2 = await reserved(rid);
     assert.ok(r2.has(gone), `RKF-ADDONLY-${tag} a key the new version dropped stays reserved`);
