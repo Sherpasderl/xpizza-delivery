@@ -44,6 +44,11 @@ const HUNKS = Object.freeze([
   "file": "catalog/menu-gates.js",
   "now": "    },\n    getPickupOnlyKeys: async (rid, versionId) => (await gatesFor(rid, versionId)).pickup, pickupGateFor: async (rid, versionId) => { if (versionId == null) return { state: 'unauthored' }; const g = await gatesFor(rid, versionId); return g.fallback ? { state: 'unavailable' } : (g.pickup instanceof Set ? { state: 'ok', keys: g.pickup } : { state: 'unauthored' }); },   // S2-8: the PRICED version's pickup gate in three states — a read failure is never read as «unauthored»\n    // §3 r1: the version's item_order (null when the snapshot could not be read — a static fallback carries none)\n",
   "was": "    },\n    getPickupOnlyKeys: async (rid, versionId) => (await gatesFor(rid, versionId)).pickup,\n    // §3 r1: the version's item_order (null when the snapshot could not be read — a static fallback carries none)\n"
+ },
+ {
+  "file": "menu-pricing.js",
+  "now": "    const stamped = item[PRICING_KEY_STAMP];\n    /* Preferred whenever it is a real string. Since S1d and S2 («item_key wins») it CAN differ from `raw`:\n       a renamed dish's line names its new label, or a held item_key decides a line whose legacy field\n       disagrees. The stamp is the resolved key, so price, gates and descriptions follow it, never `raw`. */\n    if (typeof stamped === 'string' && stamped) return stamped;\n",
+  "was": "    const stamped = item[PRICING_KEY_STAMP];\n    /* Preferred only when it is a real string. It is never DIFFERENT from `raw` — the stamper only\n       stamps on agreement — so this selects the same value either way; what it exercises is the path\n       enforce will one day depend on. */\n    if (typeof stamped === 'string' && stamped) return stamped;\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

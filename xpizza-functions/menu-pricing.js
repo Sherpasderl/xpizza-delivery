@@ -145,9 +145,9 @@ const defaultKeyMode = (rid) => (rid === 'la_musa' ? 'id' : 'name'); const effec
   const raw = item && item[availIdentityField(restaurantId, keyMode)];
   if (item && typeof item === 'object') {
     const stamped = item[PRICING_KEY_STAMP];
-    /* Preferred only when it is a real string. It is never DIFFERENT from `raw` — the stamper only
-       stamps on agreement — so this selects the same value either way; what it exercises is the path
-       enforce will one day depend on. */
+    /* Preferred whenever it is a real string. Since S1d and S2 («item_key wins») it CAN differ from `raw`:
+       a renamed dish's line names its new label, or a held item_key decides a line whose legacy field
+       disagrees. The stamp is the resolved key, so price, gates and descriptions follow it, never `raw`. */
     if (typeof stamped === 'string' && stamped) return stamped;
   }
   return raw;

@@ -5583,7 +5583,8 @@
       "tools/avail-identity-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2-module-inverse.js"
      ]
     },
     {
@@ -5594,13 +5595,15 @@
       "tools/keymode-module-inverse.js",
       "tools/price-sync-inverse.js",
       "tools/resolvelines-module-inverse.js",
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2-module-inverse.js"
      ]
     }
    ],
