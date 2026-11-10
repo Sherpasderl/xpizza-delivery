@@ -204,6 +204,25 @@ const want = (r, status, b, label) => { assert.strictEqual(r.status, status, `${
     want(await publish(renamedGroup, 'la_musa', optConflict), 409, { error: 'reserved_key_conflict', key: 'noodle_01', option_key: 'noodle_01_pollo', name: 'Pad Thai Nuevo - Pollo', field: 'name' }, 'S2H-RKC-OPT an option conflict: the launcher + option_key');
     ok('publish: the same preflight against current state — a later registry row, a stored unsafe name, the same first refusal');
   }
+  // ── S2-6 (§1.3, Codex r1 P2-4): the extras consequences ride the reviewed diff at BOTH sites — a save → publish round trip
+  //    with a non-empty consequence publishes with the save's own token (never edit_superseded) ──
+  {
+    const { publishEditedCore } = require('./publish-edited-handler');
+    const s = clone(LM); const beer = itemOf(s, 'beer_01'); beer.display.cat = 'dim_sum'; delete beer.display.subcat;
+    const db = stub('la_musa', LM);
+    const saved = await save(db, 'la_musa', s);
+    assert.strictEqual(saved.status, 200, `premise: the move saves (${JSON.stringify(saved.body).slice(0, 200)})`);
+    assert.deepStrictEqual(saved.body.diff.consequences, [{ key: 'beer_01', kind: 'extras', gained: ['Acompañamientos', 'Salsas'], lost: [] }], 'S2H-XC-SAVE the reviewed diff carries the extras consequence');
+    const deps = { db: {}, authorize: allow, addProduct: addProductOf(null, 'id'), readActiveBuilt: db.readActiveBuilt,
+      readDraft: async () => ({ source: db.state.source.data, updateTime: saved.body.updateTime }),
+      publishVersion: async () => ({ versionId: 'v-new', item_count: 0, extra_count: 0 }) };
+    const pub = await publishEditedCore(deps, { restaurantId: 'la_musa', token: saved.body.token, acknowledgedChanges: (saved.body.diff.largeChangeSet || []).map((l) => ({ key: l.key, surface: l.surface })), fiscalAck: true }, {});
+    assert.strictEqual(pub.status, 200, `S2H-XC-ROUNDTRIP the publish re-computes the same consequence and accepts the save's token (${JSON.stringify(pub.body).slice(0, 200)})`);
+    const plain = clone(LM); itemOf(plain, 'beer_01').price += 1; itemOf(plain, 'beer_01').display.price += 1;
+    const sp = await save(stub('la_musa', LM), 'la_musa', plain);
+    assert.ok(sp.status === 200 && !('consequences' in sp.body.diff), 'S2H-XC-ABSENT no consequence ⇒ no key (today\'s diff, and its token hash, byte-identical)');
+    ok('extras consequences: carried by the save\'s diff, re-computed identically at publish (round trip 200); absent when none');
+  }
   // ── OFF: exactly today (none of the S2 codes) ──
   {
     SWITCH.enabled = false;
