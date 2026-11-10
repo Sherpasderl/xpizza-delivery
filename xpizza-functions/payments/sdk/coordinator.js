@@ -411,7 +411,13 @@ async function voidSurplus(deps, orderId, eligible = deps.voidEligible) {
     if (!eligible(leg, deps.clock())) continue;
     await dispatch(deps, orderId, {
       legId, action: 'void',
-      pre: (r) => { const l = R.legsOfRecord(r)[legId]; if (!l || l.role !== 'surplus' || l.state !== 'approved') return undefined; return r; },
+      // the one-void rule and the eligibility are re-checked IN the journal transaction, right before the call (Codex r1 #1, #2)
+      pre: (r) => {
+        const l = R.legsOfRecord(r)[legId];
+        if (!l || l.role !== 'surplus' || l.state !== 'approved') return undefined;
+        if (Object.values(R.opsOf(r)).some((o) => o.leg_id === legId && o.action === 'void') || !eligible(l, deps.clock())) return undefined;
+        return r;
+      },
       call: (opId) => deps.psp.pspVoid({ uuid: leg.pp_uuid, op_id: opId }),
       apply: (r, l, out, opId) => applyVoid(deps, r, l, out, opId),
     });
