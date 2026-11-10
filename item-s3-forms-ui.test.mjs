@@ -431,6 +431,67 @@ for (const rid of ['x_pizza', 'la_musa']) {
   ok(`${dir}: r2 P2 — «Recargar la página» clears only after the fetched menu applied; a failed apply then a 304 keeps the gate`);
 }
 
+// ════ Codex S3 r3 (advisor: small fixes, display-truth only) ════
+for (const rid of ['x_pizza', 'la_musa']) {
+  const dir = DIR[rid], P = BASE[rid], c = CASE[rid];
+  const pre = await boot(rid, P); const a0 = dish(pre.w, c.A);
+  const ex0 = pre.w.liveMenuGlobalGet('EXTRAS').find((e) => e.id === c.extraId);
+  const XR = { outcome: 'denied', denied: [{ item: P.body.item_keys[String(a0.id)], extra: rid === 'la_musa' ? ex0.id : ex0.name }] };
+  const XREF = { status: EI.refusalStatus(XR), body: { ...EI.refusalBody(XR), order_id: 'X' } };
+  // ── 1: the boundary judges the PAYLOAD — an order built for an unquoted cart, then the displayed cart restored to the quoted one ──
+  for (const path of ['cash', 'card']) {
+    const { w, ctl } = await boot(rid, P, [XREF]);
+    const a = dish(w, c.A), b = dish(w, c.B);
+    await add(w, a.id); c.extra(w, a); await settle();
+    await send(w, path);
+    gate(w).querySelector('.pickup-gate-btn.primary').click(); await settle(); await settle();   // repaired; its one-item cart quoted
+    ctl.holdQuotes = true;
+    await add(w, b.id);                                                // the edit — its quote pending
+    w.selectPay(path === 'cash' ? 'cash' : 'online'); assert.ok(w.buildOrder(), 'premise: the two-item order is built');
+    w.chg(/^\d+$/.test(String(b.id)) ? Number(b.id) : b.id, -1); await settle();   // the displayed cart is back to the quoted one…
+    assert.ok(w.getServerQuoteTotalCents() != null, `premise: ${dir} the DISPLAYED cart has its quote`);
+    assert.strictEqual(w.eval('currentOrder.items.length'), 2, `premise: ${dir} …while the built payload is the unquoted two-item order`);
+    const n = ctl.sent.length;
+    if (path === 'cash') { try { await quiet(() => w.submitOrder('confirmed')); } catch (_) {} } else { const pp = w.processPixelPay(); if (pp && pp.catch) pp.catch(() => {}); }
+    await settle(); await settle(); await stageSettle();
+    assert.strictEqual(ctl.sent.length, n, `🔴 ${dir} ${path}: the send judges the PAYLOAD it carries — an unquoted order is never sent (S3-FORM-R3-PAYLOAD)`);
+    await releaseQuotes(ctl);
+  }
+  ok(`${dir}: r3 1 — the send boundary judges the payload, not the displayed cart (cash + card)`);
+}
+// ── 2: a FAILED reward re-quote does not latch — the next confirmation asks again ──
+for (const rid of ['x_pizza', 'la_musa']) {
+  const dir = DIR[rid], P = BASE[rid], c = CASE[rid];
+  const pre = await boot(rid, P); const a0 = dish(pre.w, c.A);
+  const ex0 = pre.w.liveMenuGlobalGet('EXTRAS').find((e) => e.id === c.extraId);
+  const XR = { outcome: 'denied', denied: [{ item: P.body.item_keys[String(a0.id)], extra: rid === 'la_musa' ? ex0.id : ex0.name }] };
+  const w = loadForm(dir, { transforms: signedIn(rid) }); w.__FB_FAKE = rewardsFirebase(); await settle();
+  w.HTMLElement.prototype.scrollIntoView = function () {};
+  const ctl = { P, menu: () => P.env, menuCalls: 0, quotes: [], sent: [], sends: [{ status: EI.refusalStatus(XR), body: { ...EI.refusalBody(XR), order_id: 'X' } }], held: [], holdQuotes: false, quoteAnswer: null };
+  await quiet(() => serve(w, plain(P.env))); wire(w, rid, ctl);
+  let redFail = false; const redq = [];
+  const prev = w.__respond;
+  w.__respond = (url, init) => {
+    if (!url.includes('quoteRedemption')) return prev(url, init);
+    const body = JSON.parse((init && init.body) || '{}'); redq.push(body.items);
+    if (redFail) return Promise.resolve({ ok: false, status: 503, headers: { get: () => null }, json: () => Promise.resolve({ ok: false, error: 'Service temporarily unavailable', retryable: true }) });
+    const b = plain(body); resolveLines(rid, b, P.tables); const t = computeServerTotal(b.items, rid, P.tables); const cents = Math.round(t.total * 100);
+    return res({ ok: true, total_cents: cents, net_total_cents: cents, discount_cents: 0, subtotal_cents: cents, tax_cents: 0, free_items: [], free_item: { name: null }, total_cost: 0, remaining: 0, savings_cents: 0 });
+  };
+  const a = dish(w, c.A); await add(w, a.id); c.extra(w, a); await settle(); await add(w, dish(w, c.B).id);
+  if (rid === 'la_musa') await add(w, 'dimsum_05');
+  w.__ACCOUNT.restoreRedeem(REWARD[rid], null, null); await w.__ACCOUNT.requoteRedeem(w.redeemCartItems()); await settle();
+  await send(w, 'card');
+  redFail = true;
+  gate(w).querySelector('.pickup-gate-btn.primary').click(); await settle(); await settle(); await settle();
+  assert.ok(!w.__ACCOUNT.redeemQuoteMatches(w.redeemCartItems()), `premise: ${dir} the repaired cart's reward re-quote FAILED`);
+  redFail = false;   // the service recovers
+  const asked = redq.length;
+  await quiet(() => w.processPayment()); await settle(); await settle(); await settle();
+  assert.ok(redq.length > asked, `🔴 ${dir}: the next confirmation re-quotes the reward — a failure never latches (S3-FORM-R3-REDEEM-RETRY)`);
+  ok(`${dir}: r3 2 — a failed reward re-quote does not latch; the next confirmation asks again`);
+}
+
 closeAll();
 clearTimeout(WATCHDOG);
 console.log('\nitem-s3-forms-ui: OK');

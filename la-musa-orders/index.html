@@ -5040,7 +5040,7 @@ function itemQuotedCents(){
       const items = redeemCartItems();
       const fresh = typeof window.__ACCOUNT.redeemQuoteMatches === 'function' && window.__ACCOUNT.redeemQuoteMatches(items);
       const rc = fresh && window.__ACCOUNT.getRedeemQuoteTotalCents ? window.__ACCOUNT.getRedeemQuoteTotalCents() : null;
-      if(rc == null){ const k = JSON.stringify(items); if(window.__itemRedeemAsked !== k){ window.__itemRedeemAsked = k; try { Promise.resolve(window.__ACCOUNT.requoteRedeem(items)).then(function(){ try { renderStage2Summary(); } catch(_){} }, function(){}); } catch(_){} } }
+      if(rc == null){ const k = JSON.stringify(items); if(window.__itemRedeemAsked !== k){ window.__itemRedeemAsked = k; try { Promise.resolve(window.__ACCOUNT.requoteRedeem(items)).then(function(){ if(window.__ACCOUNT.redeemQuoteMatches(items)){ try { renderStage2Summary(); } catch(_){} } else window.__itemRedeemAsked = null; }, function(){ window.__itemRedeemAsked = null; }); } catch(_){ window.__itemRedeemAsked = null; } } }   // r3: a failed re-quote never latches — and never re-renders (that would re-ask in a loop); the next confirmation asks again
       return rc == null ? null : rc;
     }
     return getServerQuoteTotalCents();
@@ -5049,8 +5049,16 @@ function itemQuotedCents(){
 // Codex S3 r2 P1: the requirement holds from the repair / reload until an order COMPLETES (never cleared at a confirmation), and is
 // judged against the cart being sent — at processPayment AND at both send boundaries (the cash send and the card send)
 function itemQuoteMissing(){ return window.__itemQuoteRequired === true && itemQuotedCents() == null; }
+// Codex S3 r3: the PAYLOAD being sent is what must be quoted — never the cart on screen (they can drift between build and send)
+function itemPayloadQuoted(){
+  try {
+    const items = currentOrder && currentOrder.items;
+    if(window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()) return typeof window.__ACCOUNT.redeemQuoteMatches === 'function' && window.__ACCOUNT.redeemQuoteMatches(items);
+    return __serverQuote.cents != null && __serverQuote.key === JSON.stringify(_legacyCartForSig(items));
+  } catch(_){ return false; }
+}
 function itemSendRefused(){
-  if(!itemQuoteMissing()) return false;
+  if(window.__itemQuoteRequired !== true || (!itemQuoteMissing() && itemPayloadQuoted())) return false;
   orderSubmitting = false;
   try { requestServerQuote(true); } catch(_){}
   showStage('s2', 50);

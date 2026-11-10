@@ -140,14 +140,17 @@ test('both forms project at EVERY raw-items signature, and no longer strip at th
     /* …and every signature that hashes raw emitted items goes through the projection. Counted: the
        wrapper's definition plus B, D-consumer and D-producer. A new raw-items signature added later
        shows up as a count mismatch rather than as a token that quietly stops attaching. */
-    assert.strictEqual((html.match(/_legacyCartForSig\(/g) || []).length, 4,
-      `${dir}: one definition plus three applications — confirmQuoteCartSig, serverQuoteCartKey, requestServerQuote`);
+    assert.strictEqual((html.match(/_legacyCartForSig\(/g) || []).length, 5,
+      `${dir}: one definition plus four applications — confirmQuoteCartSig, serverQuoteCartKey, requestServerQuote, itemPayloadQuoted`);
     assert.ok(/return JSON\.stringify\(\{ items: _legacyCartForSig\(redeemCartItems\(\)\), reward/.test(html),
       `${dir}: 🔴 confirmQuoteCartSig hashes the projection`);
     assert.ok(/function serverQuoteCartKey\(\)\{ try\{ return JSON\.stringify\(_legacyCartForSig\(redeemCartItems\(\)\)\)/.test(html),
       `${dir}: 🔴 the serverQuoteCartKey CONSUMER hashes the projection`);
     assert.ok(/const key = JSON\.stringify\(_legacyCartForSig\(items\)\);/.test(html),
       `${dir}: 🔴 the requestServerQuote PRODUCER hashes the projection — both D sites or neither`);
+    // S3 r3: the send boundary compares the PAYLOAD to the producer's key, so it hashes the same projection
+    assert.ok(/return __serverQuote\.cents != null && __serverQuote\.key === JSON\.stringify\(_legacyCartForSig\(items\)\);/.test(html),
+      `${dir}: 🔴 itemPayloadQuoted hashes the projection — the payload check and the producer agree`);
     assert.ok(!/JSON\.stringify\(redeemCartItems\(\)\)(?!\))/.test(html.replace(/_legacyCartForSig\(redeemCartItems\(\)\)/g, '')),
       `${dir}: 🔴 a raw-items signature survives somewhere`);
 
