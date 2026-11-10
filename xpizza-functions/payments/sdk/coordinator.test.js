@@ -394,7 +394,13 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
       await cancel(w);
       assert.strictEqual(w.fake.callCount('void'), 0, `${L}: ${label}: no void after the cutoff`);
       assert.deepStrictEqual([w.rec().legs.L1.role, w.rec().legs.L1.state], ['surplus', 'approved'], `${L}: ${label}: the hold is surplus, tracked`);
-      w.tick(R.HOLD_MS);
+      // the 15-day tracking, by explicit elapsed-day boundaries (Codex r1 #3c)
+      const at = w.rec().legs.L1.created_at, DAY = 86400000;
+      assert.strictEqual(w.rec().legs.L1.hold_expires_at, at + 15 * DAY, `${L}: ${label}: the hold is tracked for 15 days`);
+      w.tick(at + 15 * DAY - 1 - w.at());
+      await C().trackExpiry(w.deps, OID);
+      assert.deepStrictEqual([w.rec().legs.L1.state, w.fake.callCount('status')], ['approved', 0], `${L}: ${label}: 15 days minus 1 ms — still tracked, no status asked`);
+      w.tick(1);
       await C().trackExpiry(w.deps, OID);
       assert.deepStrictEqual([w.rec().legs.L1.state, w.fake.callCount('capture')], ['expired', 0], `${L}: ${label}: it expires, never captured`);
     }
@@ -412,6 +418,40 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     w2.tick(3 * 60 * 1000); await C().reconcileSdkOps(w2.deps, { orderId: OID });
     await cancel(w2);
     assert.deepStrictEqual([w2.rec().legs.L1.role, w2.rec().legs.L1.state, w2.fake.callCount('void'), w2.fake.callCount('capture')], ['surplus', 'approved', 1, 0], `${L}: status 'authorized' → refused: surplus, tracked to expiry, never voided again`);
+  });
+  // Codex r1 #1/#2: the prior-void check and the cancel rule are re-checked INSIDE the journal transaction, right before the call
+  const atJournal = (getW, fn) => { let fired = false; return { beforeTx: async (p, api) => {
+    const legsNow = api.getAt(`payment_sdk/${OID}/legs`) || {}; const opsNow = Object.values(api.getAt(`payment_sdk/${OID}/ops`) || {});
+    if (!fired && p === `payment_sdk/${OID}` && legsNow.L1 && legsNow.L1.role === 'surplus' && !opsNow.some((o) => o.action === 'void')) { fired = true; await fn(getW()); }
+  } }; };
+  await cell('SDK-CANCEL-CONCURRENT-NEVER-VOIDS-TWICE', async (L) => {
+    let wRef = null;
+    const w = await placedAt({ script: { void: [{ outcome: 'refused' }, { outcome: 'refused' }] }, hooks: atJournal(() => wRef, (x) => cancel(x)) });
+    wRef = w; w.tick(3600 * 1000);
+    await cancel(w);   // a second cancel runs to its end between this one's read and its journal
+    assert.strictEqual(w.fake.callCount('void'), 1, `${L}: two overlapping cancels send ONE void (got ${w.fake.callCount('void')})`);
+    assert.deepStrictEqual([w.rec().legs.L1.role, w.rec().legs.L1.state, w.fake.callCount('capture')], ['surplus', 'approved', 0], `${L}: refused → surplus, tracked, never captured`);
+  });
+  await cell('SDK-CANCEL-CUTOFF-CROSSED-BEFORE-THE-CALL', async (L) => {
+    let wRef = null;
+    const w = await placedAt({ hooks: atJournal(() => wRef, async (x) => { x.tick(1000); }) });   // 21:49:59 → 21:50:00 at the journal
+    wRef = w; w.tick(HN(21, 49) + 59 * 1000 - w.at());
+    await cancel(w);
+    assert.strictEqual(w.fake.callCount('void'), 0, `${L}: the cutoff passed before the call → no void sent`);
+    assert.deepStrictEqual([w.rec().legs.L1.role, w.rec().legs.L1.state, !!w.rec().lock], ['surplus', 'approved', false], `${L}: the hold stays tracked, no lock`);
+  });
+  // Codex r1 #3a/#3b: the two rules never stand in for each other
+  await cell('SDK-CANCEL-WITHOUT-ITS-RULE-NEVER-VOIDS', async (L) => {
+    const w = await placed({ t0: HN(12), eligible: ELIGIBLE }); await live(w);
+    w.tick(3600 * 1000);
+    await cancel(w);
+    assert.strictEqual(w.fake.callCount('void'), 0, `${L}: no cancel rule → never voided, even when the adjustment rule would allow it`);
+  });
+  await cell('SDK-SURPLUS-CLEANUP-KEEPS-THE-ADJUSTMENT-RULE', async (L) => {
+    const w = await placedAt({ eligible: ELIGIBLE, cancelEligible: () => false });
+    const r = await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 9000, revision: REV(9000) });
+    assert.strictEqual(r.outcome, 'replaced', `${L}: PREMISE — the replacement path (got ${JSON.stringify(r)})`);
+    assert.deepStrictEqual([w.fake.callCount('void'), w.rec().legs.L1.state], [1, 'voided'], `${L}: the adjustment's surplus is voided by the adjustment rule, never the cancel rule`);
   });
   await cell('SDK-DECREASE-UNCHANGED-WITH-PRODUCTION-DEPS', async (L) => {
     const pd = require('./deps').productionDeps({});
