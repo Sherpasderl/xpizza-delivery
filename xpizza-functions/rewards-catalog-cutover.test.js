@@ -245,8 +245,9 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
     // 2c inserted the fail-closed guard between the resolver and the core call, widening this window.
     // The property is unchanged: quoteRedemption resolves the guarded tables and passes THOSE along.
     // 1D add-product B inserted the group check (render capability only) before the core call, widening it again (800 → 1600).
-    // S0 key mode: that group check now passes the tables' mode (1600 → 1700). S1b: the resolution stage rides the guard's line (1700 → 2000). Same property.
-    assert.ok(/const quoteTables = await resolvePricingTables\(restaurantId\)[\s\S]{0,2000}?quoteRedemptionCore\(db, \{[^)]*tables: quoteTables/.test(IDX),
+    // S0 key mode: that group check now passes the tables' mode (1600 → 1700). S1b: the resolution stage rides the guard's line (1700 → 2000).
+    // S2: the pickup-only backstop rides the stage's line (2000 → 2300). Same property.
+    assert.ok(/const quoteTables = await resolvePricingTables\(restaurantId\)[\s\S]{0,2300}?quoteRedemptionCore\(db, \{[^)]*tables: quoteTables/.test(IDX),
       'quoteRedemption must resolve the guarded tables and pass them to quoteRedemptionCore');
     ok('quote↔order parity: both quote computeServerTotal calls and the quote seam price from the guarded tables');
   }

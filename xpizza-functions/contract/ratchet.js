@@ -24,7 +24,7 @@ const SHRINK = path.join(__dirname, 'p1-hits-shrink.json');
 const APPROVED_NONDETERMINISTIC = Object.freeze([
   Object.freeze({
     context: 'S1/x_pizza/new',
-    site: 'xpizza-functions/index.js#createOrderApp.all#status#29',   // was #25, then #26 (guest-checkout gate-create, 2e review 2026-10-27), then #28: the S1b resolution refusal line adds two status sites before it, then #29: S1d's label gate on the same line adds one (same siteLine / justification / controlPath)
+    site: 'xpizza-functions/index.js#createOrderApp.all#status#32',   // was #25, then #26 (guest-checkout gate-create, 2e review 2026-10-27), then #28: the S1b resolution refusal line adds two status sites before it, then #29: S1d's label gate on the same line adds one, then #32: S2's pickup-only backstop line (after the group rules) adds three (same siteLine / justification / controlPath)
     scope: 'xpizza-functions/index.js#createOrderApp.all',
     justification: 'const shadowResult = (shadowCheck && shadowCheck.isSettled()) ? shadowCheck.value() : null;',
     siteLine: "outcome: shadowResult ? (shadowResult.status === 'ok' ? 'reported' : shadowResult.status) : 'dropped',",
