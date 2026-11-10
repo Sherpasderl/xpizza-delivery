@@ -613,3 +613,13 @@ test('a server line shows on its field and holds «Guardar» until the merchant 
   IE.setServerError(other, IE.refusalLine({ error: 'name_taken', key: 'Pizza Cacio e Pepe', field: 'name' }));
   assert.equal(other.serverError, null, 'a line for another product never lands here');
 });
+
+test('editItem — an unusable extras-group price refuses the WHOLE edit (the commit gate itself, not only the drawer\'s hold)', () => {
+  const d = createDraft(BASE());
+  const before = JSON.stringify(draftSource(d));
+  assert.equal(editItem(d, 'Pizza Cacio e Pepe', { name: 'Cacio e Pepe', extraPrices: { 'Pan de ajo con queso': 'abc' } }), false);
+  assert.equal(editItem(d, 'Pizza Cacio e Pepe', { name: 'Cacio e Pepe', extraPrices: { 'No existe': '40' } }), false, 'an unknown extra');
+  assert.equal(JSON.stringify(draftSource(d)), before, 'nothing written');
+  assert.equal(editItem(d, 'Pizza Cacio e Pepe', { name: 'Cacio e Pepe', extraPrices: { 'Pan de ajo con queso': '55' } }), true);
+  assert.equal(draftSource(d).extras.find((x) => x.key === 'Pan de ajo con queso').price, 55);
+});

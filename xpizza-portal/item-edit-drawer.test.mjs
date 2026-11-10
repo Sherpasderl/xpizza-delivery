@@ -345,8 +345,10 @@ test('B/E — a multi-field edit reads «Cambios sin publicar»; two products �
 test('after a reload the SAVED text edits keep their tags (pendingTexts, S2 §1.1) — the client cannot see them on its own', async () => {
   const p = await page({ read: () => { const b = editable({ pendingTexts: [{ key: 'dimsum_01', fields: ['name'] }, { key: 'dimsum_02', fields: ['desc', 'cat'] }] }); return b; } });
   await p.signIn();
-  assert.equal(rowOf(p, 'Sichuan Spicy Wonton').querySelector('.tag.mk-ftag').textContent, 'Nombre sin publicar');
-  assert.equal(rowOf(p, 'Pork Belly Buns').querySelector('.tag.mk-ftag').textContent, 'Cambios sin publicar');
+  const t1 = rowOf(p, 'Sichuan Spicy Wonton').querySelector('.tag.mk-ftag'), t2 = rowOf(p, 'Pork Belly Buns').querySelector('.tag.mk-ftag');
+  assert.ok(t1 && t2, 'the saved edits are tagged after the reload');
+  assert.equal(t1.textContent, 'Nombre sin publicar');
+  assert.equal(t2.textContent, 'Cambios sin publicar');
   assert.equal(rowOf(p, 'Shrimp Dumplings').querySelector('.tag.mk-ftag'), null, 'only the products the server names');
 });
 
