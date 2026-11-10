@@ -111,6 +111,7 @@
     "xpizza-functions/catalog/draft-assess-groups.test.js",
     "xpizza-functions/catalog/edit-catalog.test.js",
     "xpizza-functions/catalog/evidence-enc2.test.js",
+    "xpizza-functions/catalog/extras-eligibility-umd.test.js",
     "xpizza-functions/catalog/extras-eligibility.test.js",
     "xpizza-functions/catalog/extras-exposure.test.js",
     "xpizza-functions/catalog/extras-intake.test.js",
@@ -458,6 +459,7 @@
     "xpizza-functions/catalog/draft-assess-groups.test.js",
     "xpizza-functions/catalog/edit-catalog.test.js",
     "xpizza-functions/catalog/evidence-enc2.test.js",
+    "xpizza-functions/catalog/extras-eligibility-umd.test.js",
     "xpizza-functions/catalog/extras-eligibility.test.js",
     "xpizza-functions/catalog/extras-exposure.test.js",
     "xpizza-functions/catalog/extras-intake.test.js",
@@ -820,6 +822,7 @@
     "xpizza-functions/catalog/draft-assess-groups.test.js",
     "xpizza-functions/catalog/edit-catalog.test.js",
     "xpizza-functions/catalog/evidence-enc2.test.js",
+    "xpizza-functions/catalog/extras-eligibility-umd.test.js",
     "xpizza-functions/catalog/extras-eligibility.test.js",
     "xpizza-functions/catalog/extras-exposure.test.js",
     "xpizza-functions/catalog/extras-intake.test.js",
@@ -1162,6 +1165,7 @@
     "xpizza-functions/catalog/draft-assess-groups.test.js",
     "xpizza-functions/catalog/edit-catalog.test.js",
     "xpizza-functions/catalog/evidence-enc2.test.js",
+    "xpizza-functions/catalog/extras-eligibility-umd.test.js",
     "xpizza-functions/catalog/extras-eligibility.test.js",
     "xpizza-functions/catalog/extras-exposure.test.js",
     "xpizza-functions/catalog/extras-intake.test.js",
@@ -2380,6 +2384,7 @@
   "catalog/edit-catalog-handler.js",
   "catalog/edit-preflight.js",
   "catalog/exposure-source.js",
+  "catalog/extras-eligibility.js",
   "catalog/extras-intake.js",
   "catalog/form-menu-source.js",
   "catalog/form-rebake.js",
@@ -2947,6 +2952,10 @@
    "lifts": []
   },
   "catalog/exposure-source.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/extras-eligibility.js": {
    "pins": [],
    "lifts": []
   },
