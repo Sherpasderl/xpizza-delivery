@@ -8,7 +8,8 @@
 // Run: node hosted-refusal-reused-hold.test.js
 const assert = require('assert');
 const { resolveAndIssueHostedCheckout } = require('./hosted-charge-flow');
-const { reserveRedemption, releaseReusedHoldIfSafe } = require('./rewards-reserve');
+const { reserveRedemption } = require('./rewards-reserve');
+const { releaseReusedHoldIfSafe } = require('./rewards-reuse-release');
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;

@@ -12,7 +12,7 @@ const { unapplyFormbakeModule, FILES, HUNKS } = require('./tools/formbake-module
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const BASE = '486f71aa';
-const read = (f) => require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('./tools/s1d-module-inverse').unapplyS1dModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))))));   // S0 key mode (newest) reversed first
+const read = (f) => require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('./tools/s1d-module-inverse').unapplyS1dModule(f, require('./tools/s2-module-inverse').unapplyS2Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8')))))));   // S0 key mode (newest) reversed first
 const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.deepStrictEqual([...FILES].sort(), ['catalog/form-menu-source.js', 'catalog/public-menu.js', 'catalog/source-store.js']);

@@ -2141,7 +2141,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // reuse PRESERVE the hold (a creating/live checkout is backed by it — releasing would strand a payable URL).
   const releaseHoldIfOwned = async () => {
     if (redemptionOwnsHold) await releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }).catch(() => {});
-  };
+  }; const releaseReusedIfSafe = (body.redeem != null && customer_uid) ? () => require('./rewards-reuse-release').releaseReusedHoldIfSafe(db, { uid: customer_uid, rid: restaurantId, orderId, owned: redemptionOwnsHold, now: Date.now() }) : null;   // S2 B2 (owner 2026-11-10): a REUSED hold on a refused fresh attempt is released only when definitively not captured
 
   // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
   let acq;
@@ -2224,7 +2224,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   const hostedFlowOpts = {
     acq, orderId, log: console,
     totalCents: effBreakdown.total_cents,   // the SERVER total: gated against, and charged — one value, named once
-    releaseHold: releaseHoldIfOwned,            // owned-only: a reused / in-progress hold is preserved
+    releaseHold: releaseHoldIfOwned, releaseReusedIfSafe,            // owned-only: a reused / in-progress hold is preserved
     retireAttempt: (aid, reason) => retireUnissuedAttempt(db, aid, reason, Date.now()),
     // 🔴 ONE number. The module passes back the very total it will charge, so the gate cannot be
     // checking a different figure from the one that travels to PixelPay.

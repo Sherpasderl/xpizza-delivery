@@ -63,7 +63,7 @@ const GATE = " if (usesPlatformFactura(restaurantId) && RL.labelGap(body, pricin
   assert.deepStrictEqual([...I.FILES].sort(), Object.keys(BASE_SHA).sort(), 'S1DW-INVERSE the slice edits exactly these pinned files');
   for (const [f, want] of Object.entries(BASE_SHA)) {
     const now = read(f);
-    const back = I.unapplyS1dModule(f, now);
+    const back = I.unapplyS1dModule(f, require('./tools/s2-module-inverse').unapplyS2Module(f, now));
     assert.strictEqual(crypto.createHash('sha256').update(Buffer.from(back, 'utf8')).digest('hex'), want, `🔴 S1DW-INVERSE ${f} round trip to a79f66c5`);
     assert.strictEqual(back.split('\n').length, now.split('\n').length, `🔴 S1DW-SAME-LINE ${f}: no line added`);
   }
