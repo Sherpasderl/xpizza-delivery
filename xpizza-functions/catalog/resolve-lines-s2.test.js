@@ -94,7 +94,9 @@ const refused = (r) => [r.ok, r.code];
 {
   const refusedAt = (r) => [r.ok, r.code, r.at];
   const xUnknown = { items: [{ name: XA, qty: 1 }], redeem: { type: 'free_pizza_choice', item_key: 'not-held', item_id: XA } };
-  assert.deepStrictEqual(refusedAt(resolveLines('x_pizza', xUnknown, XP)), [false, 'menu_changed', 'redeem'], 'S2A2-UNKNOWN-KEY a keyed reward whose key the tables do not hold is refused, never fulfilled by its legacy id');
+  assert.deepStrictEqual(refusedAt(resolveLines('x_pizza', xUnknown, XP)), [false, 'invalid_line', 'redeem'], 'S2A2-UNKNOWN-KEY a keyed reward naming a key the tables do not hold beside another id is refused (a mismatch), never fulfilled by its legacy id');
+  const xNotHeld = { items: [{ name: XA, qty: 1 }], redeem: { type: 'free_pizza_choice', item_key: 'not-held', item_id: 'not-held' } };
+  assert.deepStrictEqual(refusedAt(resolveLines('x_pizza', xNotHeld, XP)), [false, 'menu_changed', 'redeem'], 'S2A2-NOT-HELD an agreeing keyed reward the tables do not hold → menu_changed (refused, never discarded)');
   const extraKey = Object.keys(LM.extras)[0];
   const lMismatch = { items: [{ id: LA, name: 'x', qty: 1 }], redeem: { type: 'points_ala_carte', items: [{ item_key: extraKey, id: LB, qty: 1 }] } };
   assert.deepStrictEqual(refusedAt(resolveLines('la_musa', lMismatch, LM)), [false, 'invalid_line', 'redeem'], 'S2A2-L-EXTRA-MISMATCH a keyed la_musa reward naming an EXTRA key with another id is refused (never redeems the id)');

@@ -50,8 +50,29 @@ function rewardLines(redeem, rid) {
   return [];
 }
 
+// S2 A2 (Codex S2 code r1 P1-2): a KEYED reward line is judged FIRST and on its own — before any cart early return or the
+// legacy-cart passthrough — against the namespace its CALCULATOR consumes (points_ala_carte: the dishes, then the extras;
+// free_pizza_choice: the dishes). A malformed key, or a legacy id that is not the key → invalid_line; a key the namespace does
+// not hold → menu_changed. Never discarded, so a keyed reward can never be fulfilled by its legacy id. A key-less reward line
+// keeps today's passthrough (advisor ruling Q3).
+function keyedRewardRefusal(rid, redeem, tables) {
+  const model = (require('../rewards-redeem-config').REDEMPTION_CONFIG[rid] || {}).reward;
+  const ns = model === 'points_ala_carte' ? { ...(isObj(tables.extras) ? tables.extras : {}), ...tables.menu } : tables.menu;
+  const rls = rewardLines(redeem, rid);
+  for (let i = 0; i < rls.length; i++) {
+    const [line, f] = rls[i];
+    if (!isObj(line) || !(own(line, 'item_key') && line.item_key !== undefined)) continue;
+    const k = line.item_key;
+    if (typeof k !== 'string' || !k) return { ok: false, code: 'invalid_line', at: 'redeem', index: i };
+    if (own(line, f) && line[f] !== undefined && line[f] !== k) return { ok: false, code: 'invalid_line', at: 'redeem', index: i };
+    if (!own(ns, k)) return { ok: false, code: 'menu_changed', at: 'redeem', index: i };
+  }
+  return null;
+}
+
 function resolveLines(rid, body, tables) {
   if (!isObj(body) || !isObj(tables) || !isObj(tables.menu)) return { ok: true };
+  { const rk = keyedRewardRefusal(rid, body.redeem, tables); if (rk) return rk; }
   const items = body.items;
   if (!Array.isArray(items) || items.length === 0 || !items.every(isObj)) return { ok: true };
   const field = availIdentityField(rid, keyModeOfTables(tables));
