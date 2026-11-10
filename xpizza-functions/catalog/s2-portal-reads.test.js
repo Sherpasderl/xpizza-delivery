@@ -7,7 +7,7 @@
 const assert = require('assert');
 const SWITCH = { enabled: false };
 require.cache[require.resolve('./item-text-edit')] = { id: require.resolve('./item-text-edit'), filename: require.resolve('./item-text-edit'), loaded: true,
-  exports: { textEditCapabilities: () => ({ enabled: SWITCH.enabled }) } };
+  exports: { textEditCapabilities: () => { if (SWITCH.throws) throw new Error('switch unreadable'); return { enabled: SWITCH.enabled }; } } };
 const { getEditableCatalogCore } = require('./portal-reads');
 const { sourceToBuildInputs } = require('./source-store');
 const { buildCatalogV2 } = require('./form-menu-source');
@@ -48,6 +48,15 @@ const reservedDoc = (keys) => unionReserved(emptyReserved(), { dish: keys, extra
     assert.ok(!('reservedNames' in r.body) && !('pendingTexts' in r.body), 'S2R-OFF no reservedNames, no pendingTexts');
     assert.strictEqual(calls.reserved, 0, 'S2R-OFF the reserved set is not read');
     ok('switch OFF: textEditEnabled:false is the one additive field; nothing else is read or served');
+  }
+  // ── the switch cannot be read → fail CLOSED (textEditEnabled:false; nothing served) ──
+  {
+    SWITCH.enabled = true; SWITCH.throws = true;
+    const { r, calls } = await read('x_pizza', XP, { reserved: reservedDoc(['Plato Viejo']) });
+    SWITCH.throws = false;
+    assert.strictEqual(r.body.textEditEnabled, false, 'S2R-THROW an unreadable switch reads as OFF (fail-closed)');
+    assert.ok(!('reservedNames' in r.body) && calls.reserved === 0, 'S2R-THROW and nothing ON-only is read or served');
+    ok('an unreadable switch fails closed: textEditEnabled:false');
   }
   SWITCH.enabled = true;
   // ── switch ON: the normalized reserved names (reserved doc ∪ frozen values) ──
