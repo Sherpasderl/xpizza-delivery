@@ -669,6 +669,7 @@ function photoFieldFor(it, sess = null) {
     }),
     onCancel: bound(() => uploader.cancel(key)),
     onImgError: onPhotoImgError,
+    ...(sess ? { stopLabel: IE.COPY.photoStop } : {}),   // S4 (owner 11-10): «Detener subida» beside the drawer's own «Cancelar»
   });
 }
 // P3 — «Ajustar foto», the drawer's own step: Cancelar / Cerrar discard the file and upload nothing; Listo uploads.

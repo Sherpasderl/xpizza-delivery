@@ -1142,10 +1142,23 @@ test('S4 — «Guardar» waits for an upload in flight; «Cancelar» then means 
   const g = btnText(drawer(d), 'Guardar');
   assert.equal(g.disabled, true);
   assert.equal(g.title, 'Esperá a que termine de subir la foto');
+  // OWNER 11-10: in the EDIT drawer the upload's own button reads «Detener subida»; the footer keeps «Cancelar» (one each)
+  assert.equal(drawer(d).querySelector('.uprm').textContent, 'Detener subida');
+  assert.deepEqual([...drawer(d).querySelectorAll('button')].filter((b) => b.textContent.trim() === 'Cancelar').map((b) => b.closest('.dwf') !== null), [true], 'one «Cancelar», the footer\'s');
   drawer(d).querySelector('.dwf .btn.ghost').click();   // the DRAWER's «Cancelar» (the photo field carries the upload's own, P4)
   await settle(10);
   release();
   await settle(120);
   assert.deepEqual(JSON.parse(JSON.stringify((mods.app.state.draft.state.photos) || {})), {}, 'the late answer never reached the draft');
   assert.ok(!drawer(d).classList.contains('show'));
+});
+
+test('S4 — OFF: today\'s drawer keeps the approved P4 «Cancelar» on an upload in flight (the owner\'s «Detener subida» is the edit drawer\'s only)', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, w } = await boot(fake);
+  const release = fake.holdPut();
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => drawer(d).querySelector('.uprm'), 'the upload in flight');
+  assert.equal(drawer(d).querySelector('.uprm').textContent, 'Cancelar');
+  release(); await settle(60);
 });

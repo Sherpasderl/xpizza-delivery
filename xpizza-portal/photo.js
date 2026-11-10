@@ -123,7 +123,9 @@ function zone({ invalid, expanded, onPick }) {
   return [ph];
 }
 // Returns the field, or null when there is nothing to show (uploads off and no photo: today's drawer, unchanged).
-export function photoField({ name, view, job, enabled, expanded = false, held = false, onPick, onRemove, onUndo, onRetry, onCancel, onImgError }) {
+// `stopLabel`: the upload's own stop button — today's approved P4 «Cancelar»; the S4 edit drawer passes the owner's «Detener subida»
+// (its footer already says «Cancelar» for the whole edit, owner 11-10).
+export function photoField({ name, view, job, enabled, expanded = false, held = false, onPick, onRemove, onUndo, onRetry, onCancel, onImgError, stopLabel = P.COPY.cancel }) {
   const shows = view.kind === 'photo' && !!(view.url || view.neutral);
   if (!enabled && !shows) return null;
   const f = el('div', 'fld');
@@ -138,7 +140,7 @@ export function photoField({ name, view, job, enabled, expanded = false, held = 
     bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-label', P.COPY.uploadingAria);
     bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100'); bar.setAttribute('aria-valuenow', String(pct));
     const fill = el('i'); fill.style.width = `${pct}%`; bar.append(fill);
-    const stop = el('button', 'uprm', P.COPY.cancel); stop.type = 'button';
+    const stop = el('button', 'uprm', stopLabel); stop.type = 'button';
     stop.addEventListener('click', onCancel);
     ov.append(bar, el('span', null, P.COPY.uploading), stop);
     u.append(ov);
@@ -152,7 +154,7 @@ export function photoField({ name, view, job, enabled, expanded = false, held = 
     u.append(img('gimg', job.url, P.COPY.alt(name)));
     const a = el('div', 'phacts');
     a.dataset.held = '1';
-    const stop = el('button', 'uprm', P.COPY.cancel); stop.type = 'button';
+    const stop = el('button', 'uprm', stopLabel); stop.type = 'button';
     stop.addEventListener('click', onCancel);
     a.append(stop);
     u.append(a);

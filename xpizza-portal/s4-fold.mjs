@@ -102,6 +102,10 @@ export const S4_FOLD = {
    "    onRetry: bound(() => { if (renamesPending()) return; const j = uploader.jobOf(key); if (j && j.phase === 'failed') uploader.retry(key); else pickPhoto(key, null); }),\n"
   ],
   [
+   "    ...(sess ? { stopLabel: IE.COPY.photoStop } : {}),   // S4 (owner 11-10): «Detener subida» beside the drawer's own «Cancelar»\n",
+   ""
+  ],
+  [
    "    onDone: bound(() => {\n      if (renamesPending()) return;\n      // S4: an upload started inside an edit drawer belongs to its working copy (session-bound: a cancelled or replaced drawer never takes it)\n      if (editSess && !editSess.closed && editSess.key === key) { editUpload = IE.uploadBinding(editSess); editUpload.started(); }\n      uploader.upload(key);\n    }),\n    onClose: bound(() => { state.drawerKey = null; endEditSession(); uploader.cancel(key); d.classList.remove('show'); d.replaceChildren(); }),\n",
    "    onDone: bound(() => { if (!renamesPending()) uploader.upload(key); }),\n    onClose: bound(() => { state.drawerKey = null; uploader.cancel(key); d.classList.remove('show'); d.replaceChildren(); }),\n"
   ],

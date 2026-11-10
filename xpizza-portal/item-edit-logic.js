@@ -27,6 +27,8 @@ export const COPY = {
     otherCat: 'Elegí otra categoría para guardar',
     // advisor ruling 2026-11-08 (Q4): the three holds the mockup draws no title for
     fixDesc: 'Corregí la descripción para guardar', pickSubcat: 'Elegí una subcategoría', uploading: 'Esperá a que termine de subir la foto' },
+  // OWNER 11-10: the photo field's upload stop in the EDIT drawer (its footer's «Cancelar» drops the whole edit)
+  photoStop: 'Detener subida',
   movedTo: (section) => `Al mover a ${section}:`,
   extraLost: (x) => `Deja de aceptar el extra ${x}`,
   extraGained: (x) => `Acepta el extra ${x}`,
