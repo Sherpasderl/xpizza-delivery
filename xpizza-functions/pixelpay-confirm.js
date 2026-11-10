@@ -31,7 +31,7 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
   const orderRef = db.ref(`orders/${orderId}`);
 
   const order = (await orderRef.once('value')).val();
-  if (!order) return { outcome: 'no_order' };
+  if (!order) return { outcome: 'no_order' }; if (require('./payments/sdk/flow').isSdkOrder(order)) return { outcome: 'sdk_flow' };
   if (order.payment_method !== 'online') return { outcome: 'not_online' };
   if (order.status === 'cancelled') return { outcome: 'cancelled' };
   if (order.payment_status === 'manual_reconciliation') return { outcome: 'manual_reconciliation' };
@@ -162,21 +162,21 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
     // Disambiguate via getStatus: manual_reconciliation ONLY if PixelPay shows it paid;
     // otherwise it's a plain failure (no money moved).
     const recheck = deps.client.interpretStatus(await deps.client.getStatus({ payment_uuid: uuid }));
-    if (recheck.paid) {
-      await routeManualReconciliation(deps, { orderId, attemptId, uuid, now });
+    if (recheck.paid || !recheck.status) {   // paid → settled-but-lost; NO status at all → not evidence of "no money moved"
+      await routeManualReconciliation(deps, { orderId, attemptId, uuid, now, reason: recheck.paid ? undefined : 'capture_412_status_unknown' });
       return { outcome: 'manual_reconciliation' };
     }
-    await attemptRef.update({ status: 'declined', failed_at: now, decline_message: cap.message || 'capture_not_found' });
+    await attemptRef.update({ status: 'declined', failed_at: now, ...require('./pixelpay-cancel').captureDecline('capture_not_found', cap) });
     await orderRef.update({ payment_status: 'failed' });
     await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly
-    return { outcome: 'capture_failed', message: cap.message || 'capture not found' };
+    return { outcome: 'capture_failed', message: require('./pixelpay-cancel').CAPTURE_MESSAGES.capture_not_found };
   }
   if (!cap.ok) {
     // Declined / amount>auth / etc. — no money moved. Open for COD fallback.
-    await attemptRef.update({ status: 'declined', failed_at: now, decline_message: cap.message || null });
+    await attemptRef.update({ status: 'declined', failed_at: now, ...require('./pixelpay-cancel').captureDecline('capture_declined', cap) });
     await orderRef.update({ payment_status: 'failed' });
     await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly
-    return { outcome: 'capture_failed', message: cap.message };
+    return { outcome: 'capture_failed', message: require('./pixelpay-cancel').CAPTURE_MESSAGES.capture_declined };
   }
 
   // ---- 4. Verify the capture response (authoritative, server-obtained binding) ----
@@ -188,6 +188,7 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
       const vd = await deps.client.voidTransaction({ payment_uuid: uuid, pixelpayOrderId, voidReason: 'xpizza_mismatch_void' });
       voided = !!vd.ok;
     } catch (_) { /* void failed → refund_pending below */ }
+    if (!voided) await holdRedemptionForManual(db, { orderId, order, now, alert: deps.alert });   // unconfirmed void → money may still be held → secure the hold
     await attemptRef.update({ status: voided ? 'voided' : 'refund_pending', mismatch_reason: v.reason, failed_at: now });
     await orderRef.update({ payment_status: voided ? 'failed' : 'refund_pending' });
     deps.alert && deps.alert('capture_mismatch', { orderId, attemptId, uuid, reason: v.reason, voided });
@@ -228,16 +229,16 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
 
 // Claim payment_status pending→confirmed (CAS on the order) then materialize atomically.
 // Idempotent: safe to re-enter for an already-confirmed-but-unmaterialized order.
-async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingToken, paymentReference = null }) {
+async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingToken, paymentReference = null, sdkGoLive = false }) {
   const { db, buildMaterializeUpdates } = deps;
   const orderRef = db.ref(`orders/${orderId}`);
 
   // Pre-read to avoid the Admin SDK first-call-null transaction abort (see §1).
   const preOrder = (await orderRef.once('value')).val();
-  if (!preOrder) return { outcome: 'no_order' };
+  if (!preOrder) return { outcome: 'no_order' }; if (require('./payments/sdk/flow').isSdkOrder(preOrder) && !(sdkGoLive === true && require('./payments/sdk/flow').sdkGoLiveAdmits(preOrder))) return { outcome: 'sdk_flow' };
 
   const claim = await orderRef.transaction((cur) => {
-    const o = cur || preOrder;
+    const o = cur || preOrder; if (require('./payments/sdk/flow').isSdkOrder(o) && !(sdkGoLive === true && require('./payments/sdk/flow').sdkGoLiveAdmits(o))) return o;
     if (o.status === 'cancelled') return o;
     if (attemptId && o.active_attempt_id !== attemptId) return o; // attempt no longer active
     if (o.payment_status === 'confirmed') return o;               // already (idempotent)
@@ -245,7 +246,7 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
     return { ...o, payment_status: 'confirmed', charged_at: now, ...(paymentReference != null ? { payment_reference: paymentReference } : {}) };
   });
 
-  const order = claim.snapshot.val() || preOrder;
+  const order = claim.snapshot.val() || preOrder; if (require('./payments/sdk/flow').isSdkOrder(order) && !(sdkGoLive === true && require('./payments/sdk/flow').sdkGoLiveAdmits(order))) return { outcome: 'sdk_flow' };
   if (!order || order.status === 'cancelled') return { outcome: 'cancelled_during_confirm' };
   if (attemptId && order.active_attempt_id !== attemptId) return { outcome: 'attempt_superseded' };
   if (order.payment_status !== 'confirmed') return { outcome: 'confirm_claim_failed' };
@@ -342,7 +343,7 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
     liveIdentity,
   });
   if (inactiveRid) updates[`orders/${orderId}/inactive_materialize_alerted_at`] = now;
-  await db.ref().update(updates);
+  if (require('./payments/sdk/flow').isSdkOrder(order)) { if (!(await require('./payments/sdk/materialize-sdk').writeSdkLive(db, orderId, updates)).written) return { outcome: 'sdk_live_refused' }; } else await db.ref().update(updates);
   // AWAIT the alert (it's an async DB write): a fire-and-forget alert can be dropped if the
   // instance freezes after the update, and the committed marker would then suppress it on
   // re-entry — losing it permanently. On alert failure, LOG only: the order is already
@@ -359,11 +360,11 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
 }
 
 // Route a paid-but-unverifiable capture to the audited manual-reconciliation queue.
-async function routeManualReconciliation(deps, { orderId, attemptId, uuid, now }) {
+async function routeManualReconciliation(deps, { orderId, attemptId, uuid, now, reason }) {
   await deps.db.ref(`payment_attempts/${attemptId}`).update({
     status: 'capture_unverified',
     payment_uuid: uuid,
-    manual_reason: 'paid_lost_capture_response',
+    manual_reason: reason || 'paid_lost_capture_response',
     flagged_at: now
   });
   // [B] paid-but-unverifiable capture → POSSIBLY paid → secure the redemption as held_paid BEFORE advertising
@@ -375,4 +376,46 @@ async function routeManualReconciliation(deps, { orderId, attemptId, uuid, now }
   deps.alert && deps.alert('manual_reconciliation', { orderId, attemptId, uuid });
 }
 
-module.exports = { confirmOnlinePayment, confirmAndMaterialize, routeManualReconciliation };
+// A capturing claim nobody finished (the capture response was lost, or the confirm crashed mid-capture) past this
+// age is ESCALATED to manual reconciliation — never re-captured from the sweep, never declined. Far above the
+// confirm's own stale window and function timeout, so an in-flight confirm is never touched.
+const STALE_CAPTURE_ESCALATE_MS = 15 * 60 * 1000;
+
+// Sweep entry: CAS the attempt capturing → capture_unverified (only if it is still the SAME stale claim), secure the
+// redemption hold, then advertise manual_reconciliation. Returns true when it escalated.
+async function escalateStaleCapture(deps, { orderId, attemptId, now, staleMs = STALE_CAPTURE_ESCALATE_MS }) {
+  const ref = deps.db.ref(`payment_attempts/${attemptId}`);
+  const pre = (await ref.once('value')).val();
+  if (!pre) return false;
+  if (pre.status === 'capture_unverified') return finishEscalation(deps, { orderId, attemptId, now, uuid: pre.payment_uuid || null });   // RESUME: the attempt was escalated, the order may not have been
+  if (pre.status !== 'capturing') return false;
+  if (now - (Number(pre.capturing_started_at) || 0) <= staleMs) return false;   // a missing start time counts as stale
+  const tx = await ref.transaction((cur) => {
+    if (cur === null) return null;                                               // null-first-safe
+    if (!cur || cur.status !== 'capturing' || cur.capturing_started_at !== pre.capturing_started_at) return;
+    return { ...cur, status: 'capture_unverified', manual_reason: 'stale_capturing_unrecovered', flagged_at: now };
+  });
+  if (!tx.committed) return false;
+  return finishEscalation(deps, { orderId, attemptId, now, uuid: pre.payment_uuid || null });
+}
+
+// The order half of an escalation — idempotent, so a sweep that finds the attempt already capture_unverified completes
+// it: secure the hold, then advertise manual_reconciliation. A no-op (false) once the order is already there.
+// Only an order still waiting on its payment may be escalated — never one a resolver, a refund or a cancel has touched.
+const escalatable = (o) => !!o && o.status === 'pending_payment' && (o.payment_status == null || o.payment_status === 'pending');
+async function finishEscalation(deps, { orderId, attemptId, now, uuid }) {
+  const ref = deps.db.ref(`orders/${orderId}`);
+  const order = (await ref.once('value')).val();
+  if (!escalatable(order)) return false;
+  await holdRedemptionForManual(deps.db, { orderId, order, now, alert: deps.alert });   // secure first; it never re-acquires a freed hold
+  const tx = await ref.transaction((cur) => {
+    if (cur === null) return null;                                     // null-first-safe
+    if (!escalatable(cur)) return;                                     // settled meanwhile (resolver / refund / cancel) → refuse
+    return { ...cur, payment_status: 'manual_reconciliation' };
+  });
+  if (!tx.committed) return false;
+  deps.alert && deps.alert('manual_reconciliation', { orderId, attemptId, uuid, reason: 'stale_capturing_unrecovered' });
+  return true;
+}
+
+module.exports = { confirmOnlinePayment, confirmAndMaterialize, routeManualReconciliation, escalateStaleCapture, STALE_CAPTURE_ESCALATE_MS };

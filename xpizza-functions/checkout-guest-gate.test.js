@@ -83,11 +83,14 @@ const wire = (b) => JSON.parse(JSON.stringify(b));   // as the wire delivers it
     const platformOrders = P.sites.deployments.filter((d) => d.app === 'orders' && d.context === PM.PLATFORM_CONTEXT);
     assert.deepStrictEqual(platformOrders.map((d) => d.id), [G.CAPP_DEPLOYMENT], '🔴 the discriminator names THE platform orders deployment');
     assert.ok(entry.origins.every((o) => P.ACCOUNT_ORIGINS.includes(o)), 'its origins join ACCOUNT_ORIGINS by derivation (the checkout endpoints\' CORS)');
-    // …and the INSTALLED app's two WebView origins (the native shell, advisor ruling 11-02 (5) — the portal-reads precedent): READ from
-    // the app entry's own `native` block and pinned exactly; they belong to the app, so they are not the forms' either
-    const NATIVE = entry.native && Array.isArray(entry.native.origins) ? entry.native.origins : [];
-    assert.deepStrictEqual([...NATIVE].sort(), ['capacitor://localhost', 'https://localhost'], '🔴 the native shell\'s origins are exactly the iOS and Android WebView origins');
-    assert.deepStrictEqual(P.ACCOUNT_ORIGINS.filter((o) => !entry.origins.includes(o) && !NATIVE.includes(o)), formsOrigins, 'the forms\' origins are unchanged');
+    // ACCEPTED native-origin widening (advisor ruling 2026-11-02, TRAIN-NEXT2-INVENTORY §CORS; 11-02 (5) — the portal-reads precedent):
+    // the INSTALLED app's two WebView origins (capacitor://localhost, https://localhost — PLAN-capp-native-shell §1.1) are READ from the
+    // app entry's own `native` block, pinned exactly, ALSO join ACCOUNT_ORIGINS by derivation, and belong to the app — not the forms
+    // (assembly composition: 3a's join assertion + capp's exact pin)
+    const nativeOrigins = entry.native && Array.isArray(entry.native.origins) ? entry.native.origins : [];
+    assert.deepStrictEqual([...nativeOrigins].sort(), ['capacitor://localhost', 'https://localhost'], '🔴 the native shell\'s origins are exactly the iOS and Android WebView origins');
+    assert.ok(nativeOrigins.every((o) => P.ACCOUNT_ORIGINS.includes(o)), 'the native WebView origins join ACCOUNT_ORIGINS (the accepted widening)');
+    assert.deepStrictEqual(P.ACCOUNT_ORIGINS.filter((o) => !entry.origins.includes(o) && !nativeOrigins.includes(o)), formsOrigins, 'the forms\' origins are unchanged');
     // the header the capp stamps from that id parses to exactly the discriminator's value
     const hdr = CF.readClientHeaders({ headers: { 'x-client-app': 'orders', 'x-client-deployment': entry.id } });
     assert.strictEqual(G.isCappGuest(hdr, null), true);

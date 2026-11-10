@@ -64,6 +64,10 @@ const RD = require('./_render-delta');
 // §3 serialization r1 (codex): the DECLARED delta (test/_serial3-delta.js) — the order-independent content key (bound to
 // the content the request persisted, else the declared unbound mode) and (the factura's item_order comes from the gate reader's cached snapshot — no new read)
 const SD = require('./_serial3-delta');
+// FINDING-hosted-charge-recover-race: the claim fix's ONE declared I/O delta (catalog/_hosted-claim-delta.js) — mapped for CARD
+// cases only, counted, pinned (non-vacuous).
+const { preExclusiveClaimOps } = require('../catalog/_hosted-claim-delta');
+const CLAIM_DELTA = { n: 0 };
 let S3_KEYS = 0, S3_PROV = 0;   // §3 r3: card cases whose pending order's persisted content keys were checked
 const POST_OF = new WeakMap();
 const SENT_OF = new WeakMap();   // recorded result → the body the request POSTED (what the content stamp hashed)
@@ -184,7 +188,20 @@ function assertNoD12(key, ops) {
 const D12B_TRACK = 'order_tracking/<tracking_token>/restaurant_display_name';
 function expectedChangedD12b(goldenChanged) {
   const wroteTracking = goldenChanged.includes('order_tracking/<tracking_token>/restaurant_id');
-  return wroteTracking ? [...goldenChanged, D12B_TRACK].sort() : goldenChanged;
+  return expectedChangedSD(wroteTracking ? [...goldenChanged, D12B_TRACK].sort() : goldenChanged);
+}
+// S-D (DECLARED, exact; 3a 1fd123ff, NOTE-S-D-price-snapshot-build §1, confirmed 2026-11-08): wherever the baseline wrote the MEMBER's
+// order-history entry (user_orders/<uid>/<oid>), it now also carries price_snapshot {v, lines/<n>/unit_cents, line_cents} — the
+// fixtures' carts are one line, so exactly these three paths. No member entry → nothing extra (guests write neither).
+const SD_USER_SNAP = ['user_orders/<uid>/<oid>/price_snapshot/lines/0/line_cents', 'user_orders/<uid>/<oid>/price_snapshot/lines/0/unit_cents', 'user_orders/<uid>/<oid>/price_snapshot/v'];
+// ONLINE: the pending order carries reorder_price_snapshot beside reorder_items (index.js sd:begin — same customer_uid condition), so
+// exactly where the baseline wrote orders/<oid>/reorder_items it now also writes these three paths (materialize copies them at confirm).
+const SD_ORDER_SNAP = ['orders/<oid>/reorder_price_snapshot/lines/0/line_cents', 'orders/<oid>/reorder_price_snapshot/lines/0/unit_cents', 'orders/<oid>/reorder_price_snapshot/v'];
+function expectedChangedSD(goldenChanged) {
+  let out = goldenChanged;
+  if (out.includes('user_orders/<uid>/<oid>/ts')) out = [...out, ...SD_USER_SNAP];
+  if (out.some((p) => p.startsWith('orders/<oid>/reorder_items/'))) out = [...out, ...SD_ORDER_SNAP];
+  return out === goldenChanged ? goldenChanged : out.sort();
 }
 // sensitivity (pure): the declaration admits exactly that one path, only where the tracking record was written
 {
@@ -192,6 +209,43 @@ function expectedChangedD12b(goldenChanged) {
   assert.deepStrictEqual(expectedChangedD12b(g), [...g, D12B_TRACK].sort());
   assert.deepStrictEqual(expectedChangedD12b(['orders/<oid>/status']), ['orders/<oid>/status'], 'no tracking record → no extra path');
   assert.notDeepStrictEqual([...g, D12B_TRACK, 'order_tracking/<tracking_token>/other'].sort(), expectedChangedD12b(g), 'a second extra path is NOT admitted');
+  const m = ['orders/<oid>/status', 'user_orders/<uid>/<oid>/ts'];
+  assert.deepStrictEqual(expectedChangedSD(m), [...m, ...SD_USER_SNAP].sort(), 'S-D: a member entry admits exactly the three snapshot paths');
+  assert.deepStrictEqual(expectedChangedSD(['orders/<oid>/status']), ['orders/<oid>/status'], 'S-D: no member entry → nothing extra');
+  assert.notDeepStrictEqual([...m, ...SD_USER_SNAP, 'user_orders/<uid>/<oid>/price_snapshot/lines/1/unit_cents'].sort(), expectedChangedSD(m), 'S-D: a further snapshot path is NOT admitted');
+  const o = ['orders/<oid>/reorder_items/0/qty', 'orders/<oid>/status'];
+  assert.deepStrictEqual(expectedChangedSD(o), [...o, ...SD_ORDER_SNAP].sort(), 'S-D: a pending order with reorder_items admits exactly the three order-level snapshot paths');
+}
+// S1d D4 (DECLARED, exact; PLAN-portal-item-edit r6 §2.5 "each order line stores item_key and menu_version_id (additive)"): wherever
+// the baseline wrote a factura / paid line (orders/<oid>/(items|factura_items)/<n>/qty) or a summary line (…/summary_lines/<n>/qty),
+// that line now also carries item_key; the line and the order (where the baseline wrote orders/<oid>/created_at) also carry
+// menu_version_id — on a VERSIONED route all of them (a flat-route order stores a null version, which writes no path). Whether the
+// route is versioned comes from the FIXTURE's provenance, never from the observed paths (codex S1d r1 #4). Nothing else is admitted.
+const FIXTURES_VERSIONED = true;   // every order in these suites is priced from a catalog published through publishVersion
+function expectedChangedS1d(goldenChanged, { versioned }) {
+  const add = [];
+  for (const p of goldenChanged) {
+    const m = /^(orders\/<oid>\/(?:items|factura_items)\/\d+)\/qty$/.exec(p);
+    if (m) add.push(`${m[1]}/item_key`);
+    const s = /^((?:orders\/<oid>|order_tracking\/<tracking_token>)\/summary_lines\/\d+)\/qty$/.exec(p);
+    if (s) add.push(`${s[1]}/item_key`);
+  }
+  if (versioned) {
+    for (const p of goldenChanged) { const m = /^(orders\/<oid>\/(?:items|factura_items)\/\d+)\/qty$/.exec(p); if (m) add.push(`${m[1]}/menu_version_id`); }
+    if (goldenChanged.includes('orders/<oid>/created_at')) add.push('orders/<oid>/menu_version_id');
+  }
+  return add.length ? [...goldenChanged, ...add].sort() : goldenChanged;
+}
+// sensitivity (pure): exactly those paths, only where the line / order was written; the version all-or-nothing
+{
+  const g = ['orders/<oid>/created_at', 'orders/<oid>/items/0/qty', 'order_tracking/<tracking_token>/summary_lines/0/qty'];
+  assert.deepStrictEqual(expectedChangedS1d(g, { versioned: false }), [...g, 'orders/<oid>/items/0/item_key', 'order_tracking/<tracking_token>/summary_lines/0/item_key'].sort(), 'S1d: flat route — item_key only');
+  assert.deepStrictEqual(expectedChangedS1d(g, { versioned: true }), [...g, 'orders/<oid>/items/0/item_key', 'orders/<oid>/items/0/menu_version_id', 'order_tracking/<tracking_token>/summary_lines/0/item_key', 'orders/<oid>/menu_version_id'].sort(), 'S1d: versioned — + the version on the line and the order');
+  assert.deepStrictEqual(expectedChangedS1d(['orders/<oid>/status'], { versioned: true }), ['orders/<oid>/status'], 'S1d: no line / order written → nothing admitted');
+  // codex S1d r1 #4: losing EVERY menu_version_id on a versioned fixture is a failure, not a different expectation
+  const want = expectedChangedS1d(g, { versioned: FIXTURES_VERSIONED });
+  const lost = want.filter((p) => !/menu_version_id$/.test(p));
+  assert.notDeepStrictEqual(lost, want, '🔴 S1d: a versioned fixture whose orders lost every menu_version_id must not match');
 }
 function checkD12(key, ops, goldenOps) {
   const rid = key.split(' | ')[2];
@@ -534,17 +588,17 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         const s3c = SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) });   // the content the route stamped (createOrder: posted; charge: posted + server reward lines)
         // codex r2 P2 — the mode is DECLARED from what the case IS (a changed cart / a vanished order stamps content it does not persist)
         const mode = /chang|VANISH/i.test(c.name) ? 'unbound' : 'bound';
-        const cs = SD.compareShape(stripControl(r.ops, key), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
+        const cs = SD.compareShape(c.path === 'card' ? preExclusiveClaimOps(stripControl(r.ops, key), CLAIM_DELTA) : stripControl(r.ops, key), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
         if (JSON.stringify(stripControl(r.ops, key)) !== JSON.stringify(goldOps(g.ops))) S3_DIFF += 1;
         assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${key}: the call sequence changed beyond the control read — ${RD.opsDiff(cs.expected, cs.actual)}`);
         if (/^SCHEDULED sweep release \|/.test(key)) {
           O1A_SEEN += 1;
           // NEGATIVE (in-suite, O1a §5): the declaration strips exactly O1a's read — an unexpected extra read on the same cell is still a diff
           const planted = [...r.ops, { db: 'rtdb', op: 'once', path: `restaurants/${key.split(' | ')[2]}/identity/unexpected` }];
-          const neg = SD.compareShape(stripControl(planted, key), goldOps(g.ops),   /* DRYRUN (2e): S3a's stripControl(ops, label) — the label sets DR.without's expected:0 on SCHEDULED cells; without it the negative THROWS instead of diffing */ { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: `${key} (negative)` });
+          const neg = SD.compareShape(c.path === 'card' ? preExclusiveClaimOps(stripControl(planted, key), CLAIM_DELTA) : stripControl(planted, key), goldOps(g.ops),   /* DRYRUN (2e): S3a's stripControl(ops, label) — the label sets DR.without's expected:0 on SCHEDULED cells; without it the negative THROWS instead of diffing */ { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: `${key} (negative)` });
           assert.notDeepStrictEqual(neg.actual, neg.expected, `🔴 ${key}: NEGATIVE — an unexpected extra read must still turn the cell RED`);
         }
-        const ch = SD.changedShape(r.changed, expectedChangedD12b(g.changed), { content: s3c, bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
+        const ch = SD.changedShape(r.changed, expectedChangedS1d(expectedChangedD12b(g.changed), { versioned: FIXTURES_VERSIONED }), { content: s3c, bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
         // §3 r3 (codex r3 P1): a card request that wrote its pending order PERSISTED the content keys of the content it stamped
         const post = POST_OF.get(r) || {};
         if (c.path === 'card' && cs.bound && s3c && post.payment_method === 'online' && post.items_text === s3c.itemsText) {
@@ -766,6 +820,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
     console.log(`order-control: baseline written to ${CAPTURE} (${Object.keys(out.cases).length} cases)`);
   } else {
     check(() => assert.deepStrictEqual(Object.keys(results).sort(), Object.keys(golden.cases).sort(), 'the same cases as the baseline'));
+    if (!CAPTURE) check(() => assert.ok(CLAIM_DELTA.n > 0, `non-vacuity: the declared exclusive-claim delta was applied (${CLAIM_DELTA.n} mapping(s))`));
   }
   // collected (not thrown) so it never masks the per-cell failures that would explain it
   if (!CAPTURE) check(() => assert.ok(S3_DIFF > 0, 'non-vacuity: WITHOUT the §3 declared delta at least one UNCHANGED case differs from the baseline'));

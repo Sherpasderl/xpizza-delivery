@@ -157,7 +157,7 @@ const NEG = [
   ['resolver bypassed', (s) => s.split(RESOLVE).join('({ restaurantId: body.restaurant_id, error: null, defaulted: false })')],
   ['ridError return removed', (s) => s.split('  if (ridError) return badRequest(res, ridError);\n').join('')],
   ['binding reassigned to raw input', (s) => s.split('  if (ridError) return badRequest(res, ridError);\n').join('  if (ridError) return badRequest(res, ridError);\n  restaurantId = body.restaurant_id || restaurantId;\n')],
-  ['builder fed the raw input', (s) => s.replace('    restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,\n    paymentFingerprint: storeFp,', '    restaurantId: body.restaurant_id, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,\n    paymentFingerprint: storeFp,')],
+  ['builder fed the raw input', (s) => s.replace('    restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp, menuVersionId: menuOrderVersionOf(pricingTables),\n    paymentFingerprint: storeFp,', '    restaurantId: body.restaurant_id, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,\n    paymentFingerprint: storeFp,')],
 ];
 for (const [label, mut] of NEG) {
   const m = mut(SRC);

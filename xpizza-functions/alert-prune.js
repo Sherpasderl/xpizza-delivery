@@ -39,11 +39,18 @@ function orderStillFlagged(order, alert) {
 
 // dispatcher_alerts keys to prune: order-scoped alerts whose referenced orders are ALL resolved.
 // Non-order-scoped alerts (no detail orderId/breaches) are never auto-dismissed here.
+// An extra-payment alert is a MONEY obligation, not an order flag: it stays until the person who reviews / returns the second
+// payment dismisses it, whatever the order's state (on a cancelled order by design).
+// A «refund confirmed — release points» escalation is a points OBLIGATION, not an order flag: it stays until the staff
+// member who releases the points dismisses it, whatever the order's state (the order is cancelled/refunded by design).
+// (assembly composition: both lanes' never-auto-prune alert types — extra-pay's money obligations (received + quarantined) + P5a's points obligation)
+const NEVER_AUTO_PRUNE = new Set(['payment_extra_payment_received', 'payment_extra_payment_quarantined', 'payment_refund_confirmed_release_points']);
 function alertsToPrune(alerts, orders) {
   const prune = [];
   for (const [key, alert] of Object.entries(alerts || {})) {
+    if (alert && NEVER_AUTO_PRUNE.has(alert.type)) continue;
     const ids = alertOrderIds(alert);
-    if (ids.length === 0) continue;
+    if (ids.length === 0) continue; if (alert && String(alert.type || '').startsWith('payment_sdk_')) continue;
     if (ids.every((id) => !orderStillFlagged((orders || {})[id], alert))) prune.push(key);
   }
   return prune;

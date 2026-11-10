@@ -27,7 +27,10 @@ const base = () => ({ [`orders/${ORDER}`]: { customer_name: 'A', total: 250, sta
   const out = attachCustomerAttribution(base(), ORDER, uid, meta);
   assert.equal(out[`orders/${ORDER}`].customer_uid, uid); ok('order record stamped with customer_uid');
   const idx = out[`user_orders/${uid}/${ORDER}`];
-  assert.deepStrictEqual(idx, { ts: meta.now, total: 250, order_type: 'delivery', items_text: '1x Pizza', restaurant: 'x_pizza', status: 'new', items: [{ key: 'Margherita', qty: 1 }] });
+  // S-D: + the reorder price snapshot, aligned with items, priced by the in-code tables this meta carries (meta.tables absent)
+  const P = require('./menu-pricing').MENU_BY_RESTAURANT.x_pizza.Margherita * 100;
+  assert.deepStrictEqual(idx, { ts: meta.now, total: 250, order_type: 'delivery', items_text: '1x Pizza', restaurant: 'x_pizza', status: 'new', items: [{ key: 'Margherita', qty: 1 }],
+    price_snapshot: { v: 1, lines: [{ unit_cents: P, line_cents: P }] } });
   ok('user_orders index written {ts,total,order_type,items_text,restaurant,status,items[]}');
 }
 // status is read from the order record (per-path: new / scheduled) not hardcoded

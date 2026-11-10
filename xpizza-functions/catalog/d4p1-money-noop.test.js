@@ -34,6 +34,9 @@ let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('d4p1-money-noop: FAILED — exited without completing'); process.exitCode = 1; } });
 
 const json = (v) => JSON.parse(JSON.stringify(v));
+/* S1d (PLAN-portal-item-edit r6 §2.5): factura lines now also STORE the key and pricing version that produced them — additive
+   provenance, not money. The control stays frozen; the comparison projects those two fields away and nothing else. */
+const money = (v) => JSON.parse(JSON.stringify(v, (k, x) => (k === 'item_key' || k === 'menu_version_id' ? undefined : x)));
 
 {
   assert.match(GOLDEN._provenance.captured_from, /^[0-9a-f]{40}$/, 'the golden records the commit it was captured from');
@@ -53,10 +56,10 @@ for (const rid of ['x_pizza', 'la_musa']) {
       `🔴 ${rid}: P1 moved the 1C NET against pre-P1`);
     assert.deepStrictEqual(json(computeServerNet({ items: json(cart), reward, rid, tables })), g.net_reward,
       `🔴 ${rid}: P1 moved the 1C NET under a reward against pre-P1`);
-    assert.deepStrictEqual(json(applyRedemptionToPricing({ items: json(cart), restaurantId: rid, redemption: reward, totalLempiras: g.total.total, tables })), g.redemption,
+    assert.deepStrictEqual(money(applyRedemptionToPricing({ items: json(cart), restaurantId: rid, redemption: reward, totalLempiras: g.total.total, tables })), g.redemption,
       `🔴 ${rid}: P1 moved the REDEMPTION pricing (desc_rebaja / comped factura line) against pre-P1`);
     if (rid === 'x_pizza') {
-      assert.deepStrictEqual(json(pricedLineItems(json(cart), tables.menu, tables.extras)), g.factura,
+      assert.deepStrictEqual(money(pricedLineItems(json(cart), tables.menu, tables.extras)), g.factura,
         `🔴 ${rid}: P1 moved the FISCAL LINES against pre-P1`);
     }
     ok(`${rid}: charged total, 1C net (plain + reward), redemption pricing${rid === 'x_pizza' ? ' and factura lines' : ''} are byte-identical to pre-P1`);
@@ -106,10 +109,10 @@ for (const rid of ['x_pizza', 'la_musa']) {
       `🔴 ${rid}: the 1C NET moved on a forged client price`);
     assert.deepStrictEqual(json(computeServerNet({ items: json(forged), reward, rid, tables })), g.net_reward,
       `🔴 ${rid}: the 1C NET under a reward moved on a forged client price`);
-    assert.deepStrictEqual(json(applyRedemptionToPricing({ items: json(forged), restaurantId: rid, redemption: reward, totalLempiras: g.total.total, tables })), g.redemption,
+    assert.deepStrictEqual(money(applyRedemptionToPricing({ items: json(forged), restaurantId: rid, redemption: reward, totalLempiras: g.total.total, tables })), g.redemption,
       `🔴 ${rid}: the REDEMPTION pricing moved on a forged client price — a discount computed from a client-supplied price is a discount the client chooses`);
     if (rid === 'x_pizza') {
-      assert.deepStrictEqual(json(pricedLineItems(json(forged), tables.menu, tables.extras)), g.factura,
+      assert.deepStrictEqual(money(pricedLineItems(json(forged), tables.menu, tables.extras)), g.factura,
         '🔴 x_pizza: THE FISCAL LINES moved on a forged client price — the SAR line would carry a number the client picked');
     }
     ok(`${rid}: every priced output is IDENTICAL when the cart claims price=1 — the server prices from its own tables, and a regression that trusted the client would fail here`);
@@ -161,7 +164,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
        whole chain selection → pricing → net/factura is inside the control. */
     assert.deepStrictEqual(json(computeServerNet({ items: json(cart), reward: resolved, rid, tables })), g.net_reward,
       `🔴 ${rid}: the 1C NET moved when the reward came from the REAL producer instead of the stored literal`);
-    assert.deepStrictEqual(json(applyRedemptionToPricing({ items: json(cart), restaurantId: rid, redemption: resolved, totalLempiras: g.total.total, tables })), g.redemption,
+    assert.deepStrictEqual(money(applyRedemptionToPricing({ items: json(cart), restaurantId: rid, redemption: resolved, totalLempiras: g.total.total, tables })), g.redemption,
       `🔴 ${rid}: the REDEMPTION pricing moved when the reward came from the REAL producer`);
     /* ── 🔴 POINTS ARE CUSTOMER CURRENCY, AND THE CONTROL COULD NOT SEE THEM MOVE ──────────────────
        THE HOLE: the loop above compares only the fields the GOLDEN froze, and the pre-P1 capture froze

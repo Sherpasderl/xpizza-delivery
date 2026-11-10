@@ -113,6 +113,12 @@ const r = enumerate();
     'tools/bootstrap-identity.js::(module scope)',
     'tools/membership-admin.js::(module scope)',   // the cutover CLI → compare (above): static reach only, sentinel at runtime
     'tools/migrate-catalog-display.js::(module scope)',
+    /* PLAN 4 §8.2 — the OWNER-RUN admin publish (tools/migrate-menu-structure.js --publish, 1c1b6d0b + e0a3f974; advisor-approved
+       2026-11-02): LIVE + the absent reviewed rows, published through publishVersion with the activeVersionId CAS. Same class as
+       migrate-catalog-display / publish-version: an owner CLI that reaches the writer only through the fenced publish. */
+    'tools/migrate-menu-structure.js::(module scope)',
+    'tools/migrate-menu-structure.js::publishMenuStructure',
+    'tools/migrate-menu-structure.js::publishRestaurant',
     'tools/publish-version.js::(module scope)',
     /* 🔴 ROLLBACK REACHES A REGISTRY WRITER NOW, AND THIS CELL IS WHERE THAT SURFACED — the third time
        the walk has named a new writer or caller before anyone said anything about fencing it.

@@ -88,8 +88,8 @@ ok('PIN B: UNTAGGED tables → THROWS (a tag is mandatory)');
 // ── 6. STRUCTURAL: both non-redeem factura sites are cut, and the branches that must NOT move ──
 {
   const SRC = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
-  assert.strictEqual((SRC.match(/pricedLineItems\(body\.items, facturaMenu, facturaExtras\)/g) || []).length, 2,
-    'BOTH non-redeem factura sites must price from the guarded tables');
+  assert.strictEqual((SRC.match(/pricedLineItems\(body\.items, facturaMenu, facturaExtras, require\('\.\/menu-pricing'\)\.labelsOfTables\(pricingTables\), menuOrderVersionOf\(pricingTables\)\)/g) || []).length, 2,
+    'BOTH non-redeem factura sites must price from the guarded tables (S1d: and describe by the SAME tables\' labels)');
   assert.ok(!/pricedLineItems\(body\.items, MENU_PRICES, EXTRA_PRICES\)/.test(SRC),
     'no non-redeem factura site may still read the raw code tables');
   assert.strictEqual((SRC.match(/resolvePriceTables\(restaurantId, pricingTables\)/g) || []).length, 2,

@@ -226,6 +226,10 @@ const identityFor = (rid, active) => ({
     // the order-site origins, recomputed independently from the manifest
     const orderOrigins = PLATFORM.sites.deployments.filter((d) => d.app === 'orders').flatMap((d) => d.origins);
     assert.ok(orderOrigins.length >= 2, 'non-vacuity: the manifest names the order sites');
+    // capp native N1 (PLAN-capp-native-shell §1.1): the platform orders deployment's `native` block — the bundled shell's WebView
+    // origins, EXACTLY these two — joins the CORS lists after the order sites (the intended widening)
+    const nativeOrigins = PLATFORM.sites.deployments.filter((d) => d.app === 'orders' && d.native).flatMap((d) => d.native.origins);
+    assert.deepStrictEqual([...nativeOrigins].sort(), ['capacitor://localhost', 'https://localhost'], 'the native origins are exactly the two WebView origins');
     // PORTAL_ORIGINS — still a literal in index.js; evaluated and compared with its ba29282 value
     const pm = src.match(/const PORTAL_ORIGINS = (\[[\s\S]*?\]);/);
     assert.ok(pm, 'PORTAL_ORIGINS is still its own literal list');
@@ -235,11 +239,11 @@ const identityFor = (rid, active) => ({
     assert.ok(Array.isArray(PUBLIC_MENU_ORIGINS) && Array.isArray(ACCOUNT_ORIGINS));
     assert.notStrictEqual(wire(PUBLIC_MENU_ORIGINS), wire(PORTAL_ORIGINS), '(1) the public-menu list is not the portal list');
     // (2) exactly [the localhost development pattern, ...the order-site origins]
-    assert.strictEqual(wire(PUBLIC_MENU_ORIGINS), wire([/^http:\/\/localhost(:\d+)?$/, ...orderOrigins]), '(2) public menu = localhost pattern + exactly the order sites');
+    assert.strictEqual(wire(PUBLIC_MENU_ORIGINS), wire([/^http:\/\/localhost(:\d+)?$/, ...orderOrigins, ...nativeOrigins]), '(2) public menu = localhost pattern + exactly the order sites + the native origins');
     assert.strictEqual(LOCALHOST_DEV_RE.source, '^http:\\/\\/localhost(:\\d+)?$');
     // (3) the account list has NO localhost pattern and only the order sites; the portal list is unchanged from ba29282
     assert.ok(!ACCOUNT_ORIGINS.some((o) => o instanceof RegExp), '(3) ACCOUNT_ORIGINS carries no pattern (no localhost)');
-    assert.deepStrictEqual(ACCOUNT_ORIGINS, orderOrigins, '(3) ACCOUNT_ORIGINS = exactly the order sites');
+    assert.deepStrictEqual(ACCOUNT_ORIGINS, [...orderOrigins, ...nativeOrigins], '(3) ACCOUNT_ORIGINS = exactly the order sites + the native origins');
     assert.strictEqual(wire(PORTAL_ORIGINS), wire([/^http:\/\/localhost(:\d+)?$/, 'https://sherpa-portal.netlify.app']), '(3) PORTAL_ORIGINS is unchanged from ba29282');
     // (4) getPublicMenu's options carry `cors: PUBLIC_MENU_ORIGINS` — structurally, inside ITS onRequest options object
     const start = src.indexOf('exports.getPublicMenu = onRequest(');

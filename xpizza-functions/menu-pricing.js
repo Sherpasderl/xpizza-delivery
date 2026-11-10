@@ -62,8 +62,8 @@ function weekendOnlyViolation(items, restaurantId, fulfillmentMs, weekendOnlyKey
   const keys = injected || (restaurantId === 'x_pizza' ? X_PIZZA_WEEKEND_ONLY : null);
   if (!keys || keys.size === 0) return null;                                     // no gate for this restaurant
   if (WEEKEND_DAYS.has(hnDayFromMs(fulfillmentMs))) return null;                 // Fri/Sat/Sun → everything allowed
-  const hit = items.find((it) => it && keys.has(it.name));
-  return hit ? hit.name : null;
+  const hit = items.find((it) => it && keys.has(itemPricingKey(it, restaurantId)));   // S1b: the resolved key (the stamp), as pricing reads it
+  return hit ? ((typeof hit.name === 'string' && hit.name) ? hit.name : itemPricingKey(hit, restaurantId)) : null;
 }
 
 // La Musa — keyed by stable `id` slug. In sync with the MENU const in the La Musa
@@ -139,10 +139,10 @@ const EXTRAS_BY_RESTAURANT = { x_pizza: EXTRA_PRICES, la_musa: LA_MUSA_EXTRAS };
    remembering to strip on every path including the error ones; this cannot be supplied at all.
 
    The raw accessor stays exactly as it was, and is what the agreement check compares against. */
-const PRICING_KEY_STAMP = Symbol.for('xpizza.d4.pricingKeyStamp');
+const PRICING_KEY_STAMP = Symbol.for('xpizza.d4.pricingKeyStamp'); const TABLES_KEY_MODE = Symbol.for('xpizza.s0.tablesKeyMode'); const keyModeOfTables = (tables) => (tables && typeof tables === 'object' ? tables[TABLES_KEY_MODE] : undefined); const attachTablesKeyMode = (tables, keyMode) => { if (keyMode == null) return tables; if (keyMode !== 'id' && keyMode !== 'name') throw new Error(`key_mode_invalid: ${typeof keyMode === 'string' ? keyMode.slice(0, 20) : typeof keyMode}`); Object.defineProperty(tables, TABLES_KEY_MODE, { value: keyMode, enumerable: false, writable: false, configurable: false }); return tables; }; const TABLES_LABELS = Symbol.for('xpizza.s1d.tablesLabels'); const labelsOfTables = (tables) => (tables && typeof tables === 'object' && tables[TABLES_LABELS] ? tables[TABLES_LABELS] : null); const attachTablesLabels = (tables, labels) => { if (labels && typeof labels === 'object' && !Array.isArray(labels)) Object.defineProperty(tables, TABLES_LABELS, { value: Object.freeze({ ...labels }), enumerable: false, writable: false, configurable: false }); return tables; };   // S1d: dish labels beside the prices (null = this route has none)
 
-const availIdentityField = (rid) => (rid === 'la_musa' ? 'id' : 'name'); function itemPricingKey(item, restaurantId) {   // PLAN-avail-identity r1: the ONE availability-identity rule, also served in the public menu
-  const raw = item && item[availIdentityField(restaurantId)];
+const defaultKeyMode = (rid) => (rid === 'la_musa' ? 'id' : 'name'); const effectiveKeyMode = (rid, keyMode) => { if (keyMode == null) return defaultKeyMode(rid); if (keyMode === 'id' || keyMode === 'name') return keyMode; throw new Error(`key_mode_invalid: ${typeof keyMode === 'string' ? keyMode.slice(0, 20) : typeof keyMode}`); }; const availIdentityField = (rid, keyMode) => effectiveKeyMode(rid, keyMode); function itemPricingKey(item, restaurantId, keyMode) {   // PLAN-avail-identity r1: the ONE availability-identity rule, also served in the public menu
+  const raw = item && item[availIdentityField(restaurantId, keyMode)];
   if (item && typeof item === 'object') {
     const stamped = item[PRICING_KEY_STAMP];
     /* Preferred only when it is a real string. It is never DIFFERENT from `raw` — the stamper only
@@ -158,8 +158,8 @@ const availIdentityField = (rid) => (rid === 'la_musa' ? 'id' : 'name'); functio
 // the extra's key THROUGH this, and so does the per-product extras eligibility check (catalog/extras-intake.js): an extra
 // is judged by exactly the key it is charged by, so a forged id beside a real name can never be judged as one extra and
 // charged as another.
-function extraPricingKey(ex, restaurantId) {
-  return restaurantId === 'la_musa' ? (ex && ex.id) : (ex && ex.name);
+function extraPricingKey(ex, restaurantId, keyMode) {
+  return effectiveKeyMode(restaurantId, keyMode) === 'id' ? (ex && ex.id) : (ex && ex.name);
 }
 
 // Phase 1b-1 — resolve WHICH price tables price this order. Omitting `tables` keeps today's exact
@@ -180,7 +180,7 @@ function resolvePriceTables(restaurantId, tables) {
   if (tables.restaurantId !== restaurantId) {
     throw new Error(`pricing_tables_restaurant_mismatch: tables=${String(tables.restaurantId)} expected=${String(restaurantId)}`);
   }
-  return { menu: tables.menu, extraPrices: tables.extras || {} };
+  return { menu: tables.menu, extraPrices: tables.extras || {}, keyMode: keyModeOfTables(tables) };
 }
 
 // Recompute the order total from the server price tables for `restaurantId`.
@@ -189,7 +189,7 @@ function resolvePriceTables(restaurantId, tables) {
 // la_musa is id-keyed and qty-aware/standalone with anti-tamper guards (non-array/unknown/qty/dup).
 // restaurantId defaults to 'x_pizza' so existing x_pizza callers are byte-identical.
 function computeServerTotal(items, restaurantId = 'x_pizza', tables = null) {
-  const { menu, extraPrices } = resolvePriceTables(restaurantId, tables);
+  const { menu, extraPrices, keyMode } = resolvePriceTables(restaurantId, tables);
   if (!menu) {
     return { total: NaN, error: `unknown restaurant: ${String(restaurantId).slice(0, 40)}` };
   }
@@ -199,7 +199,7 @@ function computeServerTotal(items, restaurantId = 'x_pizza', tables = null) {
   const byId = restaurantId === 'la_musa';
   let total = 0;
   for (const it of items) {
-    const key = itemPricingKey(it, restaurantId);
+    const key = itemPricingKey(it, restaurantId, keyMode);
     const qty = Number(it && it.qty);
     if (!key || !Object.prototype.hasOwnProperty.call(menu, key)) {
       return { total: NaN, error: `unknown menu item: ${String(key).slice(0, 40)}` };
@@ -227,7 +227,7 @@ function computeServerTotal(items, restaurantId = 'x_pizza', tables = null) {
     const seenExtraIds = byId ? new Set() : null;
     for (const ex of extras) {
       if (byId) {  // la_musa — id-keyed, qty-aware, standalone (independent of dish qty)
-        const eid = extraPricingKey(ex, restaurantId);
+        const eid = extraPricingKey(ex, restaurantId, keyMode);
         if (!eid || !Object.prototype.hasOwnProperty.call(extraPrices, eid)) {
           return { total: NaN, error: `unknown extra: ${String(eid).slice(0, 40)}` };
         }
@@ -245,7 +245,7 @@ function computeServerTotal(items, restaurantId = 'x_pizza', tables = null) {
         }
         total += eprice * eqty;            // server table only — client ex.price ignored
       } else {  // x_pizza — original name-keyed / count-once logic, verbatim
-        const ename = extraPricingKey(ex, restaurantId);
+        const ename = extraPricingKey(ex, restaurantId, keyMode);
         if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices, ename)) {
           return { total: NaN, error: `unknown extra: ${String(ename).slice(0, 40)}` };
         }
@@ -273,12 +273,12 @@ function summaryLineName(v, fallback) {
   return s || fallback;
 }
 function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables = null) {
-  const { menu, extraPrices } = resolvePriceTables(restaurantId, tables);
+  const { menu, extraPrices, keyMode } = resolvePriceTables(restaurantId, tables);
   if (!menu || !Array.isArray(items) || items.length === 0) return null;
   const byId = restaurantId === 'la_musa';
   const lines = [];
   for (const it of items) {
-    const key = itemPricingKey(it, restaurantId);
+    const key = itemPricingKey(it, restaurantId, keyMode);
     const qty = Number(it && it.qty);
     if (!key || !Object.prototype.hasOwnProperty.call(menu, key)) return null;
     if (!Number.isInteger(qty) || qty < 1 || qty > 50) return null;
@@ -293,7 +293,7 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
     const seen = byId ? new Set() : null;
     for (const ex of extras) {
       if (byId) {
-        const eid = extraPricingKey(ex, restaurantId);
+        const eid = extraPricingKey(ex, restaurantId, keyMode);
         if (!eid || !Object.prototype.hasOwnProperty.call(extraPrices, eid)) return null;
         if (seen.has(eid)) return null; seen.add(eid);
         const eqty = Number(ex && ex.qty);
@@ -301,14 +301,14 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
         if (!isValidPrice(extraPrices[eid])) return null;                 // 1d-1a: same rule, null convention
         lineL += extraPrices[eid] * eqty;
       } else {
-        const ename = extraPricingKey(ex, restaurantId);
+        const ename = extraPricingKey(ex, restaurantId, keyMode);
         if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices, ename)) return null;
         if (!isValidPrice(extraPrices[ename])) return null;               // 1d-1a: same rule, null convention
         lineL += extraPrices[ename];
       }
     }
-    const name = byId ? summaryLineName(it && it.name, key) : key;
-    lines.push({ name, qty, cents: lineL * 100 });
+    const name = byId ? summaryLineName(it && it.name, key) : (((labelsOfTables(tables) || {})[key]) || key);   // S1d: a name-keyed line shows its key's current label
+    lines.push({ name, qty, cents: lineL * 100, item_key: key });   // S1d: the key that priced the line (additive)
   }
   if (redemption && redemption.model === 'discount' && Number.isInteger(redemption.discount_cents) && redemption.discount_cents > 0) {
     lines.push({ name: summaryLineName(redemption.name, 'Recompensa') + ' · Recompensa', qty: 1, cents: -redemption.discount_cents });   // legacy (unused in v2)
@@ -318,13 +318,13 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
     for (const f of freeArr) {
       const q = Number(f && f.qty);
       if (!Number.isInteger(q) || q < 1 || q > 50) return null;
-      lines.push({ name: summaryLineName(f && f.name, 'Recompensa'), qty: q, cents: 0 });   // added free item → GRATIS
+      const fk = f && typeof f.item_key === 'string' && f.item_key ? f.item_key : null; const fn = summaryLineName(f && f.name, 'Recompensa'); lines.push({ name: (byId || !fk) ? fn : (((labelsOfTables(tables) || {})[fk]) || fn), qty: q, cents: 0, ...(fk ? { item_key: fk } : {}) });   // added free item → GRATIS; S1d: its key (+ a name-keyed label)
     }
   }
   return lines;
 }
 
-module.exports = { PRICING_KEY_STAMP, availIdentityField,
+module.exports = { PRICING_KEY_STAMP, availIdentityField, defaultKeyMode, effectiveKeyMode, TABLES_KEY_MODE, keyModeOfTables, attachTablesKeyMode, TABLES_LABELS, labelsOfTables, attachTablesLabels,
   MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal, itemPricingKey, extraPricingKey, summaryLines,
   resolvePriceTables,   // 1b-1b: the shared PIN-B-asserting table resolver, reused across the redemption graph
   X_PIZZA_WEEKEND_ONLY, hnDayFromMs, weekendOnlyViolation,

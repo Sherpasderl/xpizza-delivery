@@ -63,12 +63,13 @@ function claimLanded(committedNodeVal, action, claimId) {
 }
 
 // ── Paid-evidence detection (universal — pre-claim window, during resolve, or post-terminal) ───────
-// Any of: the order's paid_during_resolve flag, or the attempt's persisted UUID / verified capture.
+// Any of: the order's paid_during_resolve flag, or the attempt's persisted UUID / verified capture / unverified callback
+// evidence (a paid callback that failed verification — possibly real money, kept apart from the binding).
 // BROAD — used to ROUTE AMBIGUITY (a bare UUID may be a declined auth) to manual_review, NEVER to gate a void.
 function hasPaidEvidence(order, attempt) {
   return !!(
     (order && order.paid_during_resolve === true) ||
-    (attempt && (attempt.payment_uuid || attempt.capture_verified === true))
+    (attempt && (attempt.payment_uuid || attempt.capture_verified === true || attempt.unverified_callbacks))
   );
 }
 

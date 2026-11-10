@@ -92,8 +92,8 @@
   "slice": "t56",
   "label": "the pre-flip verify goes back to the item_order-only check",
   "file": "tools/publish-version.js",
-  "from": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, extraRecords: built.extras, source_sha }, expected };",
-  "to": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, source_sha }, expected };"
+  "from": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, extraRecords: built.extras, source_sha, key_mode: require('../menu-pricing').defaultKeyMode(rid) }, expected };   // S0: the code path IS the seed — the same default mode",
+  "to": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, source_sha, key_mode: require('../menu-pricing').defaultKeyMode(rid) }, expected };   // S0: the code path IS the seed — the same default mode"
  },
  {
   "id": "t56-13",
@@ -198,7 +198,7 @@
   "slice": "task7",
   "label": "publishVersion stops validating the candidate pre-publish",
   "file": "catalog/catalog-publish.js",
-  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure }), `${rid} (pre-publish)`);",
+  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure, key_mode: input && input.key_mode, frozen_keys: input && input.frozen_keys }), `${rid} (pre-publish)`);",
   "to": "  void assertCandidateValid;"
  },
  {
@@ -206,7 +206,7 @@
   "slice": "task7",
   "label": "the pre-flip gate drops the validator and only re-reads",
   "file": "catalog/catalog-publish.js",
-  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure }),\n    `${rid}/versions/${versionId} (pre-flip)`);",
+  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode, frozen_keys: served.frozenKeys }),\n    `${rid}/versions/${versionId} (pre-flip)`);",
   "to": "  void candidateSource;"
  },
  {
@@ -304,8 +304,8 @@
   "slice": "task7",
   "label": "the cutover CLI stops carrying extras display records",
   "file": "tools/publish-version.js",
-  "from": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, extraRecords: built.extras, source_sha }, expected };",
-  "to": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, source_sha }, expected };"
+  "from": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, extraRecords: built.extras, source_sha, key_mode: require('../menu-pricing').defaultKeyMode(rid) }, expected };   // S0: the code path IS the seed — the same default mode",
+  "to": "  return { input: { items: built.items, structure: built.structure, extras: EXTRAS_BY_RESTAURANT[rid] || {}, source_sha, key_mode: require('../menu-pricing').defaultKeyMode(rid) }, expected };   // S0: the code path IS the seed — the same default mode"
  },
  {
   "id": "task7-13",
@@ -3639,7 +3639,7 @@
   "slice": "c3",
   "label": "the fingerprint keys id-preferred again, so x_pizza's name swap is invisible",
   "file": "quote-token.js",
-  "from": "      const raw = itemPricingKey(o, rid);",
+  "from": "      const raw = itemPricingKey(o, rid, keyMode);",
   "to": "      const raw = (o && o.id !== undefined && o.id !== null) ? o.id : (o && o.name);",
   "command": [
    "node",
@@ -5318,8 +5318,8 @@
   "slice": "d2",
   "label": "🔴 pricedLineItems returns CONSTANT fiscal lines",
   "file": "factura/pricing.js",
-  "from": "function pricedLineItems(items, menuPrices, extraPrices) {",
-  "to": "function pricedLineItems(items, menuPrices, extraPrices) {\n  if (true) return { items: [{ qty: 1, description: 'X', line_gross_cents: 1 }] };",
+  "from": "function pricedLineItems(items, menuPrices, extraPrices, labels = null, versionId = undefined) {",
+  "to": "function pricedLineItems(items, menuPrices, extraPrices, labels = null, versionId = undefined) {\n  if (true) return { items: [{ qty: 1, description: 'X', line_gross_cents: 1 }] };",
   "command": [
    "node",
    "../cart-identity.test.mjs"
@@ -5749,8 +5749,8 @@
   "slice": "d4",
   "label": "🔴 the agreement check compares against the STAMP instead of the raw client fields - it agrees with itself",
   "file": "catalog/identity-grace.js",
-  "from": "const rawLegacyKey = (rid, node) => (rid === 'la_musa' ? (node && node.id) : (node && node.name));",
-  "to": "const rawLegacyKey = (rid, node) => require('../menu-pricing').itemPricingKey(node, rid);",
+  "from": "const rawLegacyKey = (rid, node, keyMode) => (effectiveKeyMode(rid, keyMode) === 'id' ? (node && node.id) : (node && node.name));",
+  "to": "const rawLegacyKey = (rid, node, keyMode) => require('../menu-pricing').itemPricingKey(node, rid, keyMode);",
   "command": [
    "node",
    "catalog/identity-grace.test.js"
@@ -9755,8 +9755,8 @@
   "id": "e15-01",
   "slice": "e15",
   "file": "tools/bootstrap-identity.js",
-  "from": "const APPLY = process.argv.includes('--apply');",
-  "to": "const APPLY = !process.argv.includes('--dry-run');",
+  "from": "const APPLY = ARGS.apply === true;",
+  "to": "const APPLY = ARGS.apply !== false;",
   "label": "🔴 --apply BECOMES THE DEFAULT AND --dry-run THE OPT-IN — a one-way door against a live menu opens for anyone who runs the tool without reading its flags",
   "kills_with": [
    "does not announce itself as a rehearsal",
@@ -16060,8 +16060,8 @@
   "slice": "tracker",
   "label": "derive ignore tie",
   "file": "tracking/derive.js",
-  "from": "  const tie = first && D.some(",
-  "to": "  const tie = false && D.some(",
+  "from": "  const tie = first && !seqMode && D.some(",
+  "to": "  const tie = false && !seqMode && D.some(",
   "command": [
    "node",
    "tracking/tracking-core.test.js"
@@ -29198,8 +29198,8 @@
   "slice": "formbake",
   "label": "PLAN 4 §4: overlayIdentity:false is ignored — the reconciler's read carries identity keys the deployed bundle never has (every rid reads as stale forever)",
   "file": "catalog/public-menu.js",
-  "from": "  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, body);",
-  "to": "  const enriched = await applyIdentityToServedBody(db, restaurantId, body);",
+  "from": "  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(",
+  "to": "  const enriched = await applyIdentityToServedBody(",
   "command": [
    "node",
    "catalog/plan4-display-fields.test.js"
@@ -30322,8 +30322,8 @@
   "slice": "sec",
   "label": "security backlog: the inactivity sweep writes no deleted_uids again (the gap: deleted_uids-only checks miss swept accounts)",
   "file": "signup-endpoints.js",
-  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at } });",
-  "to": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, sweepCutoff == null ? at : null), [`user_private/${uid}`]: { deleted_at: at } });",
+  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}/at`]: now });",
+  "to": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, sweepCutoff == null ? at : null), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}/at`]: now });",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -30442,8 +30442,8 @@
   "slice": "sec",
   "label": "security backlog: r2 P1-c: the two tombstones written in TWO steps (a failure between them leaves user_private.deleted_at without deleted_uids)",
   "file": "signup-endpoints.js",
-  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at } });",
-  "to": "await db.ref(`user_private/${uid}`).set({ deleted_at: at }); await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at) });",
+  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}/at`]: now });",
+  "to": "await db.ref(`user_private/${uid}`).set({ deleted_at: at }); await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`ratings_redact_pending/${uid}/at`]: now });",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -31799,6 +31799,2022 @@
   "command": [
    "node",
    "otp-salt-secret.test.js"
+  ]
+ },
+ {
+  "id": "mo-1",
+  "slice": "mo",
+  "label": "getMyOrders: any verified token (the customer claim dropped)",
+  "file": "my-orders.js",
+  "from": "if (dec && dec.customer === true && typeof dec.uid",
+  "to": "if (dec && typeof dec.uid",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-2",
+  "slice": "mo",
+  "label": "getMyOrders: reads the SHARED node (another account's history reachable)",
+  "file": "my-orders.js",
+  "from": "let qr = db.ref(`user_orders/${uid}`).orderByChild('ts');",
+  "to": "let qr = db.ref('user_orders').orderByChild('ts');",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-3",
+  "slice": "mo",
+  "label": "getMyOrders: the projection spreads the stored entry (internal fields leave)",
+  "file": "my-orders.js",
+  "from": "  return {\n    order_id: id, ts: num(x.ts),",
+  "to": "  return { ...x,\n    order_id: id, ts: num(x.ts),",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-4",
+  "slice": "mo",
+  "label": "getMyOrders: the page size is unbounded",
+  "file": "my-orders.js",
+  "from": "  return n <= LIMIT_MAX ? n : null;",
+  "to": "  return n;",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-5",
+  "slice": "mo",
+  "label": "getMyOrders: the page keeps the probe row (a duplicate across pages)",
+  "file": "my-orders.js",
+  "from": "const page = (more ? asc.slice(asc.length - limit) : asc).reverse();",
+  "to": "const page = asc.slice().reverse();",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-6",
+  "slice": "mo",
+  "label": "getMyOrders: 'delivered' counts as active",
+  "file": "my-orders.js",
+  "from": "const isActive = (status) => typeof status === 'string' && status !== '' && !TERMINAL.has(status);",
+  "to": "const isActive = (status) => typeof status === 'string' && status !== '' && (status === 'delivered' || !TERMINAL.has(status));",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-7",
+  "slice": "mo",
+  "label": "getMyOrders: the cursor is not validated",
+  "file": "my-orders.js",
+  "from": "    if (!(ts === null || Number.isFinite(ts)) || typeof id !== 'string' || !ORDER_ID_RE.test(id)) return null;",
+  "to": "    if (false) return null;",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-8",
+  "slice": "mo",
+  "label": "getMyOrders: a tombstoned account still reads its history",
+  "file": "my-orders.js",
+  "from": "      if (await S.isTombstoned(db, uid)) return res.status(403).json({ ok: false, reason: 'deleted' });\n",
+  "to": "",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-9",
+  "slice": "mo",
+  "label": "getMyOrders: an unmapped line GUESSES its dish id from the stored key",
+  "file": "my-orders.js",
+  "from": "dish_id: (map && typeof l.key === 'string' && map.dish.get(l.key)) || null }",
+  "to": "dish_id: (map && typeof l.key === 'string' && map.dish.get(l.key)) || l.key || null }",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-10",
+  "slice": "mo",
+  "label": "getMyOrders: an unstamped order shows the long id as its number",
+  "file": "my-orders.js",
+  "from": "...(dns[i] !== null ? { display_number: dns[i] } : {})",
+  "to": "display_number: dns[i] !== null ? dns[i] : row.order_id",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-11",
+  "slice": "mo",
+  "label": "getMyOrders: every row resolves through the FIRST restaurant's context (a la_musa line mapped by x_pizza's)",
+  "file": "my-orders.js",
+  "from": "items: withDishIds(row.items, mapBy.get(row.restaurant) || null)",
+  "to": "items: withDishIds(row.items, maps[0] || null)",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-12",
+  "slice": "mo",
+  "label": "getMyOrders: the export's context resolver returns nothing (every dish_id silently null in prod)",
+  "file": "index.js",
+  "from": "resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) }).getMyOrders,",
+  "to": "resolveContext: async () => undefined }).getMyOrders,",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "mo-13",
+  "slice": "mo",
+  "label": "getMyOrders: a non-empty raw body ({} / []) is accepted (Codex r1 P2)",
+  "file": "my-orders.js",
+  "from": "      const hasBody = (Buffer.isBuffer(req.rawBody) && req.rawBody.length > 0)\n        || (b != null && (typeof b !== 'object' || Array.isArray(b) || Object.keys(b).length > 0));",
+  "to": "      const hasBody = b != null && (typeof b !== 'object' || Object.keys(b).length > 0);",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-14",
+  "slice": "mo",
+  "label": "getMyOrders receipt: another account's order is readable (the customer_uid check dropped)",
+  "file": "my-orders.js",
+  "from": " || order.customer_uid !== uid) return res.status(404)",
+  "to": ") return res.status(404)",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-15",
+  "slice": "mo",
+  "label": "getMyOrders receipt: an order without the caller's history entry is readable",
+  "file": "my-orders.js",
+  "from": "if (!entry || typeof entry !== 'object' || !order",
+  "to": "if (!order",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-16",
+  "slice": "mo",
+  "label": "getMyOrders receipt: the address carries coordinates",
+  "file": "my-orders.js",
+  "from": "area: str(o.address_area) } } : {}),",
+  "to": "area: str(o.address_area), lat: o.lat, lng: o.lng } } : {}),",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-17",
+  "slice": "mo",
+  "label": "getMyOrders receipt: the receipt spreads the whole order (PII / tokens leave)",
+  "file": "my-orders.js",
+  "from": "    order_id: id, ...(Number.isFinite(o.display_number)",
+  "to": "    ...o, order_id: id, ...(Number.isFinite(o.display_number)",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-18",
+  "slice": "mo",
+  "label": "getMyOrders receipt: absent totals are 0-filled",
+  "file": "my-orders.js",
+  "from": "for (const k of TOTAL_KEYS) if (isInt(o[k])) totals[k] = o[k];",
+  "to": "for (const k of TOTAL_KEYS) totals[k] = isInt(o[k]) ? o[k] : 0;",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "mo-19",
+  "slice": "mo",
+  "label": "getMyOrders receipt: the tender leaks the payment reference",
+  "file": "my-orders.js",
+  "from": "    tender: { method, ...(method === 'cash'",
+  "to": "    tender: { method, ref: o.payment_reference || null, ...(method === 'cash'",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "sa-1",
+  "slice": "sa",
+  "label": "S-A1 ratings v2: legacy_thumb is NOT write-once (a v1 retry overwrites it)",
+  "file": "ratings/rating-v2.js",
+  "from": "    if (cur && cur.legacy_thumb != null) { out.outcome = 'kept'; return raw; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-2",
+  "slice": "sa",
+  "label": "S-A1 ratings v2: a v2 rating without the fulfilment stamp",
+  "file": "ratings/rating-v2.js",
+  "from": "    if (!cur || !Number.isFinite(cur.fulfilled_at)) { out.outcome = 'not_fulfilled'; return raw; }",
+  "to": "    if (!cur) { out.outcome = 'not_fulfilled'; return raw; }",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-3",
+  "slice": "sa",
+  "label": "S-A1 ratings v2: the 7-day window is not enforced",
+  "file": "ratings/rating-v2.js",
+  "from": "    if (now > cur.fulfilled_at + WINDOW_MS) { out.outcome = 'window_closed'; return raw; }",
+  "to": "    if (false) { out.outcome = 'window_closed'; return raw; }",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-4",
+  "slice": "sa",
+  "label": "S-A1 ratings v2: fulfilled_at is re-stamped (not set-once)",
+  "file": "ratings/rating-v2.js",
+  "from": "    if (cur && (cur.state === STATES.DELETED || Number.isFinite(cur.fulfilled_at))) { out.outcome = 'kept'; return raw; }",
+  "to": "    if (cur && cur.state === STATES.DELETED) { out.outcome = 'kept'; return raw; }",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-5",
+  "slice": "sa",
+  "label": "S-A1 ratings v2: a non-terminal status stamps fulfilment",
+  "file": "ratings/rating-fulfilment.js",
+  "from": " || !V2.ORDER_ID_RE.test(orderId) || !V2.FULFILLED.has(status)) return 'skip';",
+  "to": " || !V2.ORDER_ID_RE.test(orderId)) return 'skip';",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-6",
+  "slice": "sa",
+  "label": "S-A1 ratings v2: a dish vote for a dish NOT purchased is accepted",
+  "file": "ratings/rate-order.js",
+  "from": "    else if (Object.keys(fields.dishes).some((id) => !bought.has(id))) return { httpStatus: 400, body: { ok: false, error: 'dish_not_purchased' } };\n",
+  "to": "",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-7",
+  "slice": "sa",
+  "label": "S-A1 ratings v2: deletion keeps the comment",
+  "file": "ratings/rating-v2.js",
+  "from": "    return { ...cur, state: STATES.DELETED, comment: null, owner_uid: null, rev: (cur.rev || 0) + 1 };",
+  "to": "    return { ...cur, state: STATES.DELETED, owner_uid: null, rev: (cur.rev || 0) + 1 };",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-8",
+  "slice": "sa",
+  "label": "S-A1 ratings v2: account deletion does not redact the ratings",
+  "file": "signup-endpoints.js",
+  "from": "  try { await redactRatings(db, uid, historyIds); }",
+  "to": "  try { }",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-9",
+  "slice": "sa",
+  "label": "S-A1 ratings v2: a paused edit resurrects a deleted rating",
+  "file": "ratings/rating-v2.js",
+  "from": "    if (cur.state === STATES.DELETED) { out.outcome = 'closed'; return raw; }\n    if (now > cur.fulfilled_at",
+  "to": "    if (now > cur.fulfilled_at",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-10",
+  "slice": "sa",
+  "label": "S-A1 ratings v2: another account can rate (the owner check dropped)",
+  "file": "ratings/rate-order.js",
+  "from": "  if (!order || order.customer_uid !== uid) return GENERIC;",
+  "to": "  if (!order) return GENERIC;",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-11",
+  "slice": "sa",
+  "label": "S-A1 ratings v2: the deploy-order guard always passes",
+  "file": "tools/ratings-v1-guard.js",
+  "from": "  return { ok: n === 0, count: n };",
+  "to": "  return { ok: true, count: n };",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-12",
+  "slice": "sa",
+  "label": "S-A1 ratings v2: an unusable context still records the unvalidated dish votes",
+  "file": "ratings/rate-order.js",
+  "from": "    if (!bought) { delete fields.dishes; dishesUnavailable = true; }",
+  "to": "    if (!bought) { dishesUnavailable = true; }",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-13",
+  "slice": "sa",
+  "label": "S-A1 ratings v2: rateOrder's resolver is unwired (dish votes silently unavailable in prod)",
+  "file": "index.js",
+  "from": "require('./ratings/rate-order').configure({ resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) });",
+  "to": "require('./ratings/rate-order').configure({ resolveContext: null });",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-14",
+  "slice": "sa",
+  "label": "S-A1 ratings v2: the fulfilment trigger listens on the wrong path",
+  "file": "index.js",
+  "from": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true, timeoutSeconds: 60 },",
+  "to": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}', region: 'us-central1', retry: true, timeoutSeconds: 60 },",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-15",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r2): no post-commit fence on the legacy path (a paused v1 write survives a complete deletion)",
+  "file": "ratings/rate-order.js",
+  "from": "    if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref, now)) return GENERIC;\n    return out.outcome === 'closed'",
+  "to": "    return out.outcome === 'closed'",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-16",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r2): deletion discovers ratings by the history ONLY (no owner_uid index)",
+  "file": "signup-endpoints.js",
+  "from": "  const ids = [...new Set([...hist, ...(await V2.ownedRatingIds(db, uid))])];",
+  "to": "  const ids = [...new Set([...hist])];",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-17",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r2): the fulfilment trigger swallows a failure",
+  "file": "index.js",
+  "from": "catch (e) { console.error('stampRatingFulfilment', e && e.message); throw e; }",
+  "to": "catch (e) { console.error('stampRatingFulfilment', e && e.message); }",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-18",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r2): the fulfilment trigger has retry OFF",
+  "file": "index.js",
+  "from": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true, timeoutSeconds: 60 },",
+  "to": "exports.stampRatingFulfilment = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1', timeoutSeconds: 60 },",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-19",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r2): the v2 updater aborts on RTDB's speculative null (no server round-trip)",
+  "file": "ratings/rating-v2.js",
+  "from": "    if (!cur || !Number.isFinite(cur.fulfilled_at)) { out.outcome = 'not_fulfilled'; return raw; }",
+  "to": "    if (!cur || !Number.isFinite(cur.fulfilled_at)) { out.outcome = 'not_fulfilled'; return undefined; }",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-20",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r2): the deletion updater aborts on RTDB's speculative null (a live comment survives deletion)",
+  "file": "ratings/rating-v2.js",
+  "from": "    if (!cur || cur.state === STATES.DELETED) { out.outcome = cur ? 'kept' : 'absent'; return raw; }",
+  "to": "    if (!cur || cur.state === STATES.DELETED) { out.outcome = cur ? 'kept' : 'absent'; return undefined; }",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-21",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r2): no post-commit fence on the v2 path",
+  "file": "ratings/rate-order.js",
+  "from": "  await ref.transaction(V2.v2Updater({ fields, uid, now }, out));\n  if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref, now)) return GENERIC;\n",
+  "to": "  await ref.transaction(V2.v2Updater({ fields, uid, now }, out));\n",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-22",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r3): the redaction journal is NOT in the deletion's atomic update",
+  "file": "signup-endpoints.js",
+  "from": ", [`ratings_redact_pending/${uid}/at`]: now });",
+  "to": " });",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-23",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r3): the drain clears an entry whose uid still has a live rating",
+  "file": "signup-endpoints.js",
+  "from": "      if (left.length === 0 && now - at >= retainMs) {",
+  "to": "      if (now - at >= retainMs) {",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-24",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): the drain retires an entry before its retention has passed",
+  "file": "signup-endpoints.js",
+  "from": "      if (left.length === 0 && now - at >= retainMs) {",
+  "to": "      if (left.length === 0) {",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-25",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r3): the post-commit fence does not ensure the journal entry",
+  "file": "ratings/rate-order.js",
+  "from": "  await touchRedactJournal(db, uid, now);\n",
+  "to": "",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-26",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r3): an inline redaction failure fails the deletion",
+  "file": "signup-endpoints.js",
+  "from": "  try { await redactRatings(db, uid, historyIds); } catch (e) { console.error(`deleteAccountCore: inline rating redaction for ${uid} failed (${e && e.code ? e.code : 'error'}) — the journal drains it`); }",
+  "to": "  await redactRatings(db, uid, historyIds);",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-27",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r3): pruneResidual does not drain the journal",
+  "file": "signup-endpoints.js",
+  "from": "  try { ratings = await drainRatingRedactions(db, now); }",
+  "to": "  try { ratings = null; }",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-28",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r3): the drain never redacts (it only checks)",
+  "file": "signup-endpoints.js",
+  "from": "      redacted += await redactRatings(db, uid, []);\n",
+  "to": "",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-29",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): the grace is sized from a soft 20 s deadline, not the writers' hard ceiling",
+  "file": "signup-endpoints.js",
+  "from": "const REDACT_GRACE_FLOOR_MS = 2 * 60 * 60 * 1000;",
+  "to": "const REDACT_GRACE_FLOOR_MS = 60 * 1000;",
+  "command": [
+   "node",
+   "ratings/ratings-grace.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-30",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): the fence only creates the journal entry (no touch / version bump)",
+  "file": "ratings/rate-order.js",
+  "from": "    at: cur && typeof cur.at === 'number' ? cur.at : now, v: (cur && Number.isInteger(cur.v) ? cur.v : 0) + 1 }));",
+  "to": "    at: cur && typeof cur.at === 'number' ? cur.at : now, v: (cur && Number.isInteger(cur.v) ? cur.v : 0) }));",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-31",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): the drain removes the entry without checking its version",
+  "file": "signup-endpoints.js",
+  "from": "(cur) => (cur && cur.at === at && (Number.isInteger(cur.v) ? cur.v : 0) === v ? null : cur));",
+  "to": "(cur) => (cur && cur.at === at ? null : cur));",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-32",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): the drain runs AFTER the other cleanups (a failing link cleanup starves it)",
+  "file": "signup-endpoints.js",
+  "from": "  let ratings;\n  try { ratings = await drainRatingRedactions(db, now); } catch (e) { ratings = { error: true }; console.error('pruneResidual: rating drain failed', e && e.code ? e.code : 'error'); }\n  return { ratings, deadLinks: await pruneDeadLinks(db),",
+  "to": "  return { deadLinks: await pruneDeadLinks(db), ratings: await drainRatingRedactions(db, now),",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-33",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): the drain has no schedule of its own",
+  "file": "index.js",
+  "from": "exports.drainRatingRedactions = onSchedule(",
+  "to": "exports.drainRatingRedactionsUnused = onSchedule(",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-34",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): the reader predicate ignores a tombstoned owner",
+  "file": "ratings/rating-v2.js",
+  "from": "node.state === STATES.LIVE && ownerTombstoned !== true;",
+  "to": "node.state === STATES.LIVE;",
+  "command": [
+   "node",
+   "ratings/ratings-reader-contract.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-35",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r4): a writer's timeout raised past grace / 2",
+  "file": "ratings/rate-order.js",
+  "from": "const RATE_ORDER_TIMEOUT_S = 20;",
+  "to": "const RATE_ORDER_TIMEOUT_S = 3601;",
+  "command": [
+   "node",
+   "ratings/ratings-grace.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-36",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r5): the journal is retired after 2 h (no 30-day re-check)",
+  "file": "signup-endpoints.js",
+  "from": "const REDACT_RETAIN_MS = 30 * 24 * 60 * 60 * 1000;",
+  "to": "const REDACT_RETAIN_MS = 2 * 60 * 60 * 1000;",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-37",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r5): a writer builds the ratings_v2 ref itself (bypassing rating-v2.js)",
+  "file": "ratings/rate-order.js",
+  "from": "  const ref = V2.ratingRef(db, req.orderId);",
+  "to": "  const ref = db.ref('ratings' + '_v2/' + req.orderId);",
+  "command": [
+   "node",
+   "ratings/ratings-reader-contract.guard.test.js"
+  ]
+ },
+ {
+  "id": "sa-38",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r5): the single reader ignores a tombstoned owner",
+  "file": "ratings/rating-v2.js",
+  "from": "  return countable(node, tomb) ? node : null;",
+  "to": "  return countable(node, false) ? node : null;",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-39",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r5): the drain takes entries by deletion time (failing entries starve the rest)",
+  "file": "signup-endpoints.js",
+  "from": "orderByChild('last_attempt').limitToFirst(batch)",
+  "to": "orderByChild('at').limitToFirst(batch)",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-40",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r5): the drain does not record its attempts",
+  "file": "signup-endpoints.js",
+  "from": "      await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => (cur && typeof cur === 'object' ? { ...cur, last_attempt: now, attempts: (Number.isInteger(cur.attempts) ? cur.attempts : 0) + 1 } : cur));\n",
+  "to": "",
+  "command": [
+   "node",
+   "ratings/rating-v2.test.js"
+  ]
+ },
+ {
+  "id": "sa-41",
+  "slice": "sa",
+  "label": "S-A1 ratings v2 (r5): a DERIVED writer's timeout (deleteAccount) raised past the floor / 2",
+  "file": "index.js",
+  "from": "exports.deleteAccount = onRequest(\n  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },",
+  "to": "exports.deleteAccount = onRequest(\n  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 3601, memory: '256MiB', maxInstances: 10 },",
+  "command": [
+   "node",
+   "ratings/ratings-grace.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-1",
+  "slice": "sc",
+  "label": "S-C favorites: account deletion keeps the member's favorites",
+  "file": "account-lib.js",
+  "from": ", [`user_rewards/${uid}`]: null, [`user_favorites/${uid}`]: null };",
+  "to": ", [`user_rewards/${uid}`]: null };",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sc-2",
+  "slice": "sc",
+  "label": "S-C favorites: a deleted_uids-tombstoned account can still write favorites",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-3",
+  "slice": "sc",
+  "label": "S-C favorites: a sweep-claimed account can still write favorites",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists()\"",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-4",
+  "slice": "sc",
+  "label": "S-C favorites: a non-member (no customer claim) can read favorites",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-5",
+  "slice": "sc",
+  "label": "S-C favorites: any key is accepted as a favorite rid",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\".validate\": \"$rid.matches(/^[a-z0-9][a-z0-9_-]{1,39}$/) && root.child('restaurants').child($rid).child('identity').exists() && newData.hasChildren(['createdAt'])\"",
+  "to": "\".validate\": \"root.child('restaurants').child($rid).child('identity').exists() && newData.hasChildren(['createdAt'])\"",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-6",
+  "slice": "sc",
+  "label": "S-C favorites: a favorite may carry any extra field",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\"createdAt\": { \".validate\": \"newData.isNumber() && newData.val() <= now + 60000\" },\n          \"$other\":    { \".validate\": false }",
+  "to": "\"createdAt\": { \".validate\": \"newData.isNumber() && newData.val() <= now + 60000\" },\n          \"$other\":    { \".validate\": true }",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-7",
+  "slice": "sc",
+  "label": "S-C favorites (Codex r1 #1): a scalar may replace the whole favorites node",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\n        \".validate\": \"newData.hasChildren()\",\n        \"$rid\": {",
+  "to": "\n        \"$rid\": {",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-8",
+  "slice": "sc",
+  "label": "S-C favorites (Codex r1 #2): a regex-valid but non-existent restaurant id is accepted (unbounded storage)",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\".validate\": \"$rid.matches(/^[a-z0-9][a-z0-9_-]{1,39}$/) && root.child('restaurants').child($rid).child('identity').exists() && newData.hasChildren(['createdAt'])\"",
+  "to": "\".validate\": \"$rid.matches(/^[a-z0-9][a-z0-9_-]{1,39}$/) && newData.hasChildren(['createdAt'])\"",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-9",
+  "slice": "sc",
+  "label": "S-C favorites (Codex r1): a deleted_uids-tombstoned account can still READ favorites",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sc-10",
+  "slice": "sc",
+  "label": "S-C favorites (Codex r1): a sweep-claimed account can still READ favorites",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists()\"",
+  "command": [
+   "node",
+   "favorites-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "sd-1",
+  "slice": "sd",
+  "label": "S-D: materialize RE-PRICES the snapshot from the current (code) menu instead of copying it",
+  "file": "materialize.js",
+  "from": "{ price_snapshot: order.reorder_price_snapshot }",
+  "to": "{ price_snapshot: require('./reorder-normalize').reorderPriceSnapshot((order.reorder_items || []).map((l) => ({ name: l.key, id: l.key, qty: l.qty })), order.restaurant_id) }",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-2",
+  "slice": "sd",
+  "label": "S-D: claim RE-PRICES the snapshot from the current (code) menu instead of copying it",
+  "file": "claim-order.js",
+  "from": "{ price_snapshot: committed.reorder_price_snapshot }",
+  "to": "{ price_snapshot: require('./reorder-normalize').reorderPriceSnapshot((committed.reorder_items || []).map((l) => ({ name: l.key, id: l.key, qty: l.qty })), committed.restaurant_id) }",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-3",
+  "slice": "sd",
+  "label": "S-D: the snapshot is priced from the BODY's client prices",
+  "file": "reorder-normalize.js",
+  "from": "    const r = require('./menu-pricing').computeServerTotal([it], restaurantId, tables);",
+  "to": "    const r = { error: null, total: Number(it && it.price) * Number(it && it.qty) || menu[one[0].key] * one[0].qty };",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-4",
+  "slice": "sd",
+  "label": "S-D: misalignment — a dropped body line still adds a snapshot line",
+  "file": "reorder-normalize.js",
+  "from": "    if (one.length !== 1) continue;\n    if (items.length >= MAX_LINES) { truncated = true; break; }",
+  "to": "    if (one.length !== 1) { lines.push({ unit_cents: 0, line_cents: 0 }); continue; }\n    if (items.length >= MAX_LINES) { truncated = true; break; }",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-5",
+  "slice": "sd",
+  "label": "S-D: a partial snapshot is written when a line is refused",
+  "file": "reorder-normalize.js",
+  "from": "snapshot: priced && !truncated && items.length > 0 ?",
+  "to": "snapshot: !truncated && items.length > 0 ?",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-6",
+  "slice": "sd",
+  "label": "S-D: line_cents = unit × qty (drops extras — not the line as charged)",
+  "file": "reorder-normalize.js",
+  "from": "    lines.push({ unit_cents: unit * 100, line_cents: r.total * 100 });",
+  "to": "    lines.push({ unit_cents: unit * 100, line_cents: unit * 100 * one[0].qty });",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-7",
+  "slice": "sd",
+  "label": "S-D: the cash intake bumps recipe_format (both forms' readers would blank every line)",
+  "file": "create-order-build.js",
+  "from": "  if (priceSnapshot) updates[`user_orders/${customer_uid}/${orderId}`].price_snapshot = priceSnapshot;",
+  "to": "  if (priceSnapshot) { updates[`user_orders/${customer_uid}/${orderId}`].price_snapshot = priceSnapshot; updates[`user_orders/${customer_uid}/${orderId}`].recipe_format = 2; }",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-8",
+  "slice": "sd",
+  "label": "S-D: the cash intake prices from the CODE tables, not the committed tables that charged it",
+  "file": "create-order-build.js",
+  "from": "reorderPriceSnapshot(meta.items, meta.restaurantId, meta.tables);",
+  "to": "reorderPriceSnapshot(meta.items, meta.restaurantId, null);",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-9",
+  "slice": "sd",
+  "label": "S-D: the online pending record prices from the CODE tables, not this charge's pricingTables",
+  "file": "index.js",
+  "from": "require('./reorder-normalize').reorderPriceSnapshot(body.items, restaurantId, pricingTables);",
+  "to": "require('./reorder-normalize').reorderPriceSnapshot(body.items, restaurantId, null);",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-10",
+  "slice": "sd",
+  "label": "S-D: the online pending record never carries the snapshot",
+  "file": "index.js",
+  "from": "    if (reorderPriceSnapshot) pendingOrderRecord.reorder_price_snapshot = reorderPriceSnapshot;\n",
+  "to": "",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-11",
+  "slice": "sd",
+  "label": "S-D: a GUEST pending record carries a snapshot",
+  "file": "index.js",
+  "from": "  if (customer_uid) {\n    const reorderPriceSnapshot",
+  "to": "  if (true) {\n    const reorderPriceSnapshot",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sd-12",
+  "slice": "sd",
+  "label": "S-D: getMyOrders drops price_snapshot from the Row",
+  "file": "my-orders.js",
+  "from": "    ...(x.price_snapshot !== undefined ? { price_snapshot: x.price_snapshot } : {}),   // S-D: verbatim, like items\n",
+  "to": "",
+  "command": [
+   "node",
+   "my-orders.test.js"
+  ]
+ },
+ {
+  "id": "sd-13",
+  "slice": "sd",
+  "label": "S-D: materialize writes price_snapshot:undefined-shaped key for a legacy order (entry no longer byte-identical)",
+  "file": "materialize.js",
+  "from": "...(order.reorder_price_snapshot !== undefined ? { price_snapshot: order.reorder_price_snapshot } : {}),",
+  "to": "...({ price_snapshot: order.reorder_price_snapshot || null }),",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sad-1",
+  "slice": "sad",
+  "label": "S-A(d): serve a non-live comment (read the node raw, skipping readCountable)",
+  "file": "ratings/merchant-comments.js",
+  "from": "? V2.readCountable(db, oid) : null)));",
+  "to": "? db.ref(`ratings_${'v2'}/${oid}`).once('value').then((s) => V2.normalize(s.val())) : null)));",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-2",
+  "slice": "sad",
+  "label": "S-A(d): skip the restaurant_id re-verify (a foreign-rid node under this index is served)",
+  "file": "ratings/merchant-comments.js",
+  "from": "if (nd && nd.restaurant_id === rid && typeof nd.comment",
+  "to": "if (nd && typeof nd.comment",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-3",
+  "slice": "sad",
+  "label": "S-A(d): return the order id with each comment",
+  "file": "ratings/merchant-comments.js",
+  "from": "comments.push({ comment: nd.comment, store:",
+  "to": "comments.push({ order_id: chunk[j][1], comment: nd.comment, store:",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-4",
+  "slice": "sad",
+  "label": "S-A(d): surface the delivery thumb",
+  "file": "ratings/merchant-comments.js",
+  "from": "comments.push({ comment: nd.comment, store:",
+  "to": "comments.push({ delivery: nd.delivery, comment: nd.comment, store:",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-5",
+  "slice": "sad",
+  "label": "S-A(d): authorize by can() alone — no membership resolution for THAT rid (any portal member reads any tenant)",
+  "file": "ratings/merchant-comments.js",
+  "from": "  try { access = await resolveAccess({ db }, ctx, rid); } catch (_) { access = { ok: false, code: 'unavailable' }; }",
+  "to": "  access = { ok: true, caps: ['stats.read'] };",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-6",
+  "slice": "sad",
+  "label": "S-A(d): an uncapped candidate read (the whole index per call)",
+  "file": "ratings/merchant-comments.js",
+  "from": "  const snap = await query.limitToFirst(CANDIDATES).once('value');",
+  "to": "  const snap = await query.once('value');",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-7",
+  "slice": "sad",
+  "label": "S-A(d): an empty page resets the cursor (stale entries force a restart / full scan)",
+  "file": "ratings/merchant-comments.js",
+  "from": "  const cursor = exhausted || !lastScanned ? null : seal(",
+  "to": "  const cursor = exhausted || !lastScanned || !comments.length ? null : seal(",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-8",
+  "slice": "sad",
+  "label": "S-A(d): an UNSEALED cursor (the index key — order id — in clear)",
+  "file": "ratings/merchant-comments.js",
+  "from": "  const cursor = exhausted || !lastScanned ? null : seal(key, { v: 1, rid, uid: dec.uid, k: lastScanned });",
+  "to": "  const cursor = exhausted || !lastScanned ? null : seal(key, { v: 1, rid, uid: dec.uid, k: lastScanned }) + '.' + Buffer.from(lastScanned).toString('base64url');",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-9",
+  "slice": "sad",
+  "label": "S-A(d): the cursor is not bound to the caller (another user's cursor accepted)",
+  "file": "ratings/merchant-comments.js",
+  "from": "if (!p || p.v !== 1 || p.rid !== rid || p.uid !== uid ||",
+  "to": "if (!p || p.v !== 1 || p.rid !== rid ||",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-10",
+  "slice": "sad",
+  "label": "S-A(d): the cursor is not bound to the rid (another tenant's cursor accepted)",
+  "file": "ratings/merchant-comments.js",
+  "from": "if (!p || p.v !== 1 || p.rid !== rid || p.uid !== uid ||",
+  "to": "if (!p || p.v !== 1 || p.uid !== uid ||",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-11",
+  "slice": "sad",
+  "label": "S-A(d): the fulfilment stamp does not re-index on kept (a lost entry is never healed)",
+  "file": "ratings/rating-fulfilment.js",
+  "from": "if (out.outcome === 'stamped' || out.outcome === 'kept') await",
+  "to": "if (out.outcome === 'stamped') await",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-12",
+  "slice": "sad",
+  "label": "S-A(d): a dispatcher (catalog-tier staff) reads comments — the wrong capability",
+  "file": "ratings/merchant-comments.js",
+  "from": "const CAP = 'stats.read';",
+  "to": "const CAP = 'catalog.edit';",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-13",
+  "slice": "sad",
+  "label": "S-A(d): the index keys from the trigger time, not the COMMITTED fulfilment (a retry re-keys / duplicates)",
+  "file": "ratings/rating-v2.js",
+  "from": "  const key = indexKey(node.fulfilled_at, orderId);",
+  "to": "  const key = indexKey(Date.now(), orderId);",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "smr-1",
+  "slice": "smr",
+  "label": "getMyRating: no order-ownership check (any verified customer reads any order's rating)",
+  "file": "ratings/my-rating.js",
+  "from": "  if (order !== uid) return GENERIC;\n",
+  "to": "",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-2",
+  "slice": "smr",
+  "label": "getMyRating: a tombstoned caller is served (the writer's predicate dropped)",
+  "file": "ratings/my-rating.js",
+  "from": "  const uid = await customerUidOf(db, typeof req.get === 'function' ? req.get('x-firebase-id-token') : null, verifyIdToken);",
+  "to": "  let uid = null; try { const d = await verifyIdToken(req.get('x-firebase-id-token')); uid = d && d.customer === true && d.handheld !== true ? d.uid : null; } catch (_) {}",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-3",
+  "slice": "smr",
+  "label": "getMyRating: the payload is read RAW (withdrawn / deleted payloads leave)",
+  "file": "ratings/my-rating.js",
+  "from": "  const node = await V2.readCountable(db, orderId);",
+  "to": "  const node = V2.normalize((await V2.ratingRef(db, orderId).once('value')).val());",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-4",
+  "slice": "smr",
+  "label": "getMyRating: another owner's node is returned (no owner_uid === caller check)",
+  "file": "ratings/my-rating.js",
+  "from": "  const mine = node && node.owner_uid === uid ? node : null;",
+  "to": "  const mine = node || null;",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-5",
+  "slice": "smr",
+  "label": "getMyRating: authority fields leak (owner_uid / token_hash)",
+  "file": "ratings/my-rating.js",
+  "from": "legacy_thumb: mine.legacy_thumb ?? null, rated_at:",
+  "to": "legacy_thumb: mine.legacy_thumb ?? null, owner_uid: mine.owner_uid, token_hash: mine.token_hash, rated_at:",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-6",
+  "slice": "smr",
+  "label": "getMyRating: a deleted node still reports a rating window",
+  "file": "ratings/my-rating.js",
+  "from": "  const until = w.state !== V2.STATES.DELETED && Number.isFinite(w.fulfilled_at)",
+  "to": "  const until = Number.isFinite(w.fulfilled_at)",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-7",
+  "slice": "smr",
+  "label": "getMyRating: can_rate ignores the 7-day window",
+  "file": "ratings/my-rating.js",
+  "from": "    can_rate: until != null && now() <= until,",
+  "to": "    can_rate: until != null,",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-8",
+  "slice": "smr",
+  "label": "the shared predicate accepts a handheld token as a customer (writer + reader)",
+  "file": "ratings/rate-order.js",
+  "from": "if (!dec || dec.customer !== true || dec.handheld === true || !dec.uid) return null;",
+  "to": "if (!dec || dec.customer !== true || !dec.uid) return null;",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "smr-9",
+  "slice": "smr",
+  "label": "getMyRating: a refusal reveals existence (unknown order ⇒ 404 instead of the generic 403)",
+  "file": "ratings/my-rating.js",
+  "from": "  if (order !== uid) return GENERIC;",
+  "to": "  if (order == null) return reply(404, { ok: false, error: 'not_found' }); if (order !== uid) return GENERIC;",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "sb-1",
+  "slice": "sb",
+  "label": "S-B: rating threshold off-by-one (9 ratings publish)",
+  "file": "ratings/aggregate.js",
+  "from": "if (stars >= T.RATINGS) {",
+  "to": "if (stars >= T.RATINGS - 1) {",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-2",
+  "slice": "sb",
+  "label": "S-B: %liked threshold off-by-one",
+  "file": "ratings/aggregate.js",
+  "from": "if (likes >= T.LIKED) doc.pct_liked",
+  "to": "if (likes >= T.LIKED - 1) doc.pct_liked",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-3",
+  "slice": "sb",
+  "label": "S-B: dish-vote threshold off-by-one",
+  "file": "ratings/aggregate.js",
+  "from": "if (v.up + v.down >= T.DISH_VOTES)",
+  "to": "if (v.up + v.down >= T.DISH_VOTES - 1)",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-4",
+  "slice": "sb",
+  "label": "S-B: orders_30d threshold off-by-one",
+  "file": "ratings/aggregate.js",
+  "from": "filter(([, k]) => k >= T.DISH_ORDERS)",
+  "to": "filter(([, k]) => k >= T.DISH_ORDERS - 1)",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-5",
+  "slice": "sb",
+  "label": "S-B: pairs threshold off-by-one",
+  "file": "ratings/aggregate.js",
+  "from": "    if (c < T.PAIR) continue;",
+  "to": "    if (c < T.PAIR - 1) continue;",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-6",
+  "slice": "sb",
+  "label": "S-B: repeat threshold off-by-one",
+  "file": "ratings/aggregate.js",
+  "from": "if (repeat >= T.REPEAT) doc.repeatCustomers",
+  "to": "if (repeat >= T.REPEAT - 1) doc.repeatCustomers",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-7",
+  "slice": "sb",
+  "label": "S-B: non-fulfilled orders counted",
+  "file": "ratings/aggregate.js",
+  "from": "if (!isObj(o) || o.restaurant_id !== rid || !FULFILLED.has(o.status)) continue;",
+  "to": "if (!isObj(o) || o.restaurant_id !== rid) continue;",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-8",
+  "slice": "sb",
+  "label": "S-B: qty multiplies the dish count (not distinct orders)",
+  "file": "ratings/aggregate.js",
+  "from": "    for (const d of ids) b.dish[d] = (b.dish[d] || 0) + 1;",
+  "to": "    for (const d of ids) b.dish[d] = (b.dish[d] || 0) + o.dish_qty[d];",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-9",
+  "slice": "sb",
+  "label": "S-B: a below-threshold field published as zero instead of omitted",
+  "file": "ratings/aggregate.js",
+  "from": "  if (repeat >= T.REPEAT) doc.repeatCustomers = repeat;",
+  "to": "  doc.repeatCustomers = repeat >= T.REPEAT ? repeat : 0;",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-10",
+  "slice": "sb",
+  "label": "S-B: the pairs price cap dropped",
+  "file": "ratings/aggregate.js",
+  "from": "return Number.isInteger(pr) && pr > 0 && pr < T.PAIR_PRICE_CENTS;",
+  "to": "return true;",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-11",
+  "slice": "sb",
+  "label": "S-B: a non-live rating counted (no contract check)",
+  "file": "ratings/aggregate.js",
+  "from": "    if (!isObj(r) || r.state !== 'live') throw new Error(",
+  "to": "    if (!isObj(r)) throw new Error(",
+  "command": [
+   "node",
+   "ratings/aggregate.test.js"
+  ]
+ },
+ {
+  "id": "sb-12",
+  "slice": "sb",
+  "label": "S-B: publication MERGES instead of replacing the doc",
+  "file": "ratings/aggregate-producer.js",
+  "from": "    await db.ref(`public_stats/${rid}`).set(doc);",
+  "to": "    await db.ref(`public_stats/${rid}`).update(doc);",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-13",
+  "slice": "sb",
+  "label": "S-B: the lease is skipped (overlapping runs both publish)",
+  "file": "ratings/aggregate-producer.js",
+  "from": "  if (!(await takeLease(db, rid, runId, nowMs))) return { rid, skipped: 'leased' };",
+  "to": "  await takeLease(db, rid, runId, nowMs);",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-14",
+  "slice": "sb",
+  "label": "S-B: the producer reads ratings RAW (bypassing readCountable)",
+  "file": "ratings/aggregate-producer.js",
+  "from": "? V2.readCountable(db, id) : null));",
+  "to": "? V2.ratingRef(db, id).once('value').then((s) => V2.normalize(s.val())) : null));",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-15",
+  "slice": "sb",
+  "label": "S-B: a day bucket is ADDED to instead of replaced (re-run double counts)",
+  "file": "ratings/aggregate-producer.js",
+  "from": "  await db.ref(`stats_buckets/${rid}/${day}`).set(bucket);",
+  "to": "  { const prev = (await db.ref(`stats_buckets/${rid}/${day}`).once('value')).val(); if (prev && prev.dish) for (const [k, v] of Object.entries(prev.dish)) bucket.dish[k] = (bucket.dish[k] || 0) + v; await db.ref(`stats_buckets/${rid}/${day}`).set(bucket); }",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-16",
+  "slice": "sb",
+  "label": "S-B: raw phone digits stored as the repeat key",
+  "file": "ratings/aggregate-producer.js",
+  "from": "  return (digits) => crypto.createHmac('sha256', k).update(String(digits)).digest('base64url').slice(0, 22);",
+  "to": "  return (digits) => String(digits);",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-17",
+  "slice": "sb",
+  "label": "S-B: no bucket expiry (pseudonymous keys kept past 90 d)",
+  "file": "ratings/aggregate-producer.js",
+  "from": "  if (drop.length) await db.ref(`stats_buckets/${rid}`).update(Object.fromEntries(drop.map((d) => [d, null])));\n  return drop.length;",
+  "to": "  return drop.length;",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-18",
+  "slice": "sb",
+  "label": "S-B: the budget never aborts (an oversized day is processed)",
+  "file": "ratings/aggregate-producer.js",
+  "from": "  if (ids.length > DAY_BUDGET) throw new Error(",
+  "to": "  if (false) throw new Error(",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-19",
+  "slice": "sb",
+  "label": "S-B: the watermark ignored — every run re-reads from yesterday back 7 days (history read)",
+  "file": "ratings/aggregate-producer.js",
+  "from": "    let day = typeof wm === 'string' && DAY_RE.test(wm) ? nextDay(wm) : yesterday;",
+  "to": "    let day = hnDateISO(nowMs - 7 * AG.DAY_MS);",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "sb-20",
+  "slice": "sb",
+  "label": "S-B F1: a partial identity — an unmapped line is skipped instead of voiding the snapshot",
+  "file": "ratings/dish-qty.js",
+  "from": "    if (!cid || !Number.isInteger(qty) || qty < 1 || qty > 50) return null;",
+  "to": "    if (!cid || !Number.isInteger(qty) || qty < 1 || qty > 50) continue;",
+  "command": [
+   "node",
+   "ratings/dish-qty.test.js"
+  ]
+ },
+ {
+  "id": "sb-21",
+  "slice": "sb",
+  "label": "S-B F1: la_musa keyed by the client display name, not the charge's key",
+  "file": "ratings/dish-qty.js",
+  "from": "    const key = itemPricingKey(it, restaurantId, keyMode);",
+  "to": "    const key = it && it.name;",
+  "command": [
+   "node",
+   "ratings/dish-qty.test.js"
+  ]
+ },
+ {
+  "id": "sb-22",
+  "slice": "sb",
+  "label": "S-B F1: the cash hunk reads a context that is not this charge's tables",
+  "file": "index.js",
+  "from": "  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(pricingTables), require('./menu-pricing').keyModeOfTables(pricingTables)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }",
+  "to": "  { const dishQty = require('./ratings/dish-qty').dishQtyOf(body.items, restaurantId, contextOfTables(null), require('./menu-pricing').keyModeOfTables(pricingTables)); if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }",
+  "command": [
+   "node",
+   "sb-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sb-23",
+  "slice": "sb",
+  "label": "S-B F1: the online pending record never carries dish_qty",
+  "file": "index.js",
+  "from": "if (dishQty) pendingOrderRecord.dish_qty = dishQty; }",
+  "to": "}",
+  "command": [
+   "node",
+   "sb-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sb-24",
+  "slice": "sb",
+  "label": "S-B F1: the held (scheduled) cash record never carries dish_qty",
+  "file": "index.js",
+  "from": "if (dishQty) heldUpdates[`orders/${orderId}`].dish_qty = dishQty; }",
+  "to": "}",
+  "command": [
+   "node",
+   "sb-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sb-25",
+  "slice": "sb",
+  "label": "S-B F1: the cash hunk also rewrites another field (pricing / placement output changed)",
+  "file": "index.js",
+  "from": "if (dishQty) updates[`orders/${orderId}`].dish_qty = dishQty; }",
+  "to": "if (dishQty) { updates[`orders/${orderId}`].dish_qty = dishQty; updates[`orders/${orderId}`].total_cents += 0.5; } }",
+  "command": [
+   "node",
+   "sb-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "sf-1",
+  "slice": "sf",
+  "label": "S-F: the member path drops the order-ownership check",
+  "file": "support/support-tickets.js",
+  "from": "  if (uid) { if (order && order.customer_uid === uid) via = 'member'; }",
+  "to": "  if (uid) { if (order) via = 'member'; }",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-2",
+  "slice": "sf",
+  "label": "S-F: a guest token PREFIX matches",
+  "file": "support/support-tickets.js",
+  "from": "  return crypto.timingSafeEqual(x, y) && a.length === b.length;",
+  "to": "  return b.startsWith(a);",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-3",
+  "slice": "sf",
+  "label": "S-F: identity written into the ticket",
+  "file": "support/support-tickets.js",
+  "from": "reason: p.reason, text: p.text, channel: p.channel, created_at: at, status: 'received', via },",
+  "to": "reason: p.reason, text: p.text, channel: p.channel, created_at: at, status: 'received', via, phone: order.customer_phone || null },",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-4",
+  "slice": "sf",
+  "label": "S-F: no per-order cap",
+  "file": "support/support-tickets.js",
+  "from": "    if (Object.keys(committed).length + Object.keys(held).length >= MAX_PER_ORDER) return undefined;\n",
+  "to": "",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-5",
+  "slice": "sf",
+  "label": "S-F: reason other accepted without text",
+  "file": "support/support-tickets.js",
+  "from": "  if (reason === 'other' && !text) return null;\n",
+  "to": "",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-6",
+  "slice": "sf",
+  "label": "S-F: a non-customer predicate (a handheld / tombstoned token accepted)",
+  "file": "support/support-tickets.js",
+  "from": "  if (idToken) { uid = await require('../ratings/rate-order').customerUidOf(db, idToken, verifyIdToken); if (!uid) return GENERIC; }",
+  "to": "  if (idToken) { try { uid = (await verifyIdToken(idToken)).uid; } catch (_) {} if (!uid) return GENERIC; }",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-7",
+  "slice": "sf",
+  "label": "S-F F3: the ticket is never raised to the Central (no dispatcher alert)",
+  "file": "support/support-tickets.js",
+  "from": "    [`dispatcher_alerts/support_ticket_${id}`]: { type: 'support_ticket_received', order_id: p.orderId, reason: p.reason, created_at: at },\n",
+  "to": "",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-8",
+  "slice": "sf",
+  "label": "S-F F3: the Central alert carries the customer text (beyond order_id + reason)",
+  "file": "support/support-tickets.js",
+  "from": "order_id: p.orderId, reason: p.reason, created_at: at },",
+  "to": "order_id: p.orderId, reason: p.reason, text: p.text, created_at: at },",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sb-26",
+  "slice": "sb",
+  "label": "S-B step 4: a stats outage makes the directory PARTIAL (de-validates its ETag)",
+  "file": "directory/directory.js",
+  "from": "catch (_) { row.ratings = null; degraded.push('ratings'); }",
+  "to": "catch (_) { row.ratings = null; degraded.push('ratings'); partial = true; }",
+  "command": [
+   "node",
+   "directory/directory-ratings.test.js"
+  ]
+ },
+ {
+  "id": "sb-27",
+  "slice": "sb",
+  "label": "S-B step 4: a stats outage fails the whole entry",
+  "file": "directory/directory.js",
+  "from": "    try { row.ratings = ratingsOf(await deps.readStats(rid)); } catch (_) { row.ratings = null; degraded.push('ratings'); }",
+  "to": "    row.ratings = ratingsOf(await deps.readStats(rid));",
+  "command": [
+   "node",
+   "directory/directory-ratings.test.js"
+  ]
+ },
+ {
+  "id": "sb-28",
+  "slice": "sb",
+  "label": "S-B step 4: the published doc passes through raw (dish_stats / unknown fields surface)",
+  "file": "directory/directory.js",
+  "from": "  if (!doc || typeof doc !== 'object') return null;\n  const out = {};",
+  "to": "  if (!doc || typeof doc !== 'object') return null;\n  const out = { ...doc };",
+  "command": [
+   "node",
+   "directory/directory-ratings.test.js"
+  ]
+ },
+ {
+  "id": "sb-29",
+  "slice": "sb",
+  "label": "S-B step 4: a below-threshold rating surfaces (the directory trusts the doc blindly)",
+  "file": "directory/directory.js",
+  "from": "if (Number.isInteger(doc.rating_count) && doc.rating_count >= 10 &&",
+  "to": "if (Number.isInteger(doc.rating_count) &&",
+  "command": [
+   "node",
+   "directory/directory-ratings.test.js"
+  ]
+ },
+ {
+  "id": "sb-30",
+  "slice": "sb",
+  "label": "S-B step 4: the version is not bumped",
+  "file": "directory/directory.js",
+  "from": "const REPRESENTATION_VERSION = 'directory-2';",
+  "to": "const REPRESENTATION_VERSION = 'directory-1';",
+  "command": [
+   "node",
+   "directory/directory-ratings.test.js"
+  ]
+ },
+ {
+  "id": "pc-1",
+  "slice": "pc",
+  "label": "config plane: the reader accepts an OLDER source_version (a stale downgrade)",
+  "file": "platform-config/reader.js",
+  "from": "    if (prev && raw.source_version < prev.source_version) return fromLkg(rid);   // older than accepted ⇒ rejected\n",
+  "to": "",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-2",
+  "slice": "pc",
+  "label": "config plane: last-known-good never expires (no TTL ⇒ never closed)",
+  "file": "platform-config/reader.js",
+  "from": "    return age <= ttlMs ? {",
+  "to": "    return true ? {",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-3",
+  "slice": "pc",
+  "label": "config plane: requireFresh accepts last-known-good (money / fiscal on stale config)",
+  "file": "platform-config/reader.js",
+  "from": "const requireFresh = (r) => (r && r.ok && r.fresh ? r :",
+  "to": "const requireFresh = (r) => (r && r.ok ? r :",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-4",
+  "slice": "pc",
+  "label": "config plane: a malformed projection is trusted",
+  "file": "platform-config/reader.js",
+  "from": "      fields = S.validateFields(decodeFields(raw.fields));\n    } catch (_) { return fromLkg(rid); }",
+  "to": "      fields = decodeFields(raw.fields);\n    } catch (_) { return fromLkg(rid); }",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-5",
+  "slice": "pc",
+  "label": "config plane: the generator downgrades a projection ahead of its source",
+  "file": "platform-config/generate.js",
+  "from": "    if (v > next.source_version) { out.outcome = 'stale_refused'; return raw; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-6",
+  "slice": "pc",
+  "label": "config plane: the generator overwrites a same-version conflict",
+  "file": "platform-config/generate.js",
+  "from": "'unchanged' : 'conflict';\n      return raw;",
+  "to": "'unchanged' : 'conflict';\n      return next;",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-7",
+  "slice": "pc",
+  "label": "config plane: the source writer has no compare-and-set",
+  "file": "platform-config/source.js",
+  "from": "    if ((expectedVersion ?? null) !== curV) {",
+  "to": "    if (false) {",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-8",
+  "slice": "pc",
+  "label": "config plane: the source writer skips validation",
+  "file": "platform-config/source.js",
+  "from": "  const clean = S.validateFields(fields);                       // throws platform_config_invalid — nothing written",
+  "to": "  const clean = fields;",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-9",
+  "slice": "pc",
+  "label": "config plane: the schema accepts an unknown section",
+  "file": "platform-config/schema.js",
+  "from": "  if (!exact(f, SECTIONS)) throw bad('sections');",
+  "to": "  if (!isObj(f)) throw bad('sections');",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-10",
+  "slice": "pc",
+  "label": "config plane: the break-glass seed overwrites an existing source",
+  "file": "platform-config/admin-core.js",
+  "from": "  if (await SRC.readPlatformSource(fs, rid).catch(() => 'invalid')) return { rid, state: 'refused_source_exists' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-11",
+  "slice": "pc",
+  "label": "config plane: the CLI accepts --rid= (the boundary-tool fan-out trap)",
+  "file": "platform-config/admin-core.js",
+  "from": "    else if (t.startsWith('--rid=') || t.startsWith('--project=')) return refuse(",
+  "to": "    else if (false) return refuse(",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-12",
+  "slice": "pc",
+  "label": "config plane: earn and redemption kinds may differ (the hand-synced unit split)",
+  "file": "platform-config/schema.js",
+  "from": "  if (!isObj(d) || d.kind !== e.kind) throw bad('rewards.redemption.kind');",
+  "to": "  if (!isObj(d)) throw bad('rewards.redemption.kind');",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "sd-14",
+  "slice": "sd",
+  "label": "S-D r1: a TRUNCATED recipe still gets a snapshot (Σ line_cents ≠ charged)",
+  "file": "reorder-normalize.js",
+  "from": "snapshot: priced && !truncated && items.length > 0 ?",
+  "to": "snapshot: priced && items.length > 0 ?",
+  "command": [
+   "node",
+   "reorder-price-snapshot.test.js"
+  ]
+ },
+ {
+  "id": "sf-9",
+  "slice": "sf",
+  "label": "S-F r1: checkRateLimit without its policy (fails OPEN in production)",
+  "file": "support/support-tickets.js",
+  "from": "`g:${p.orderId}`, RATE);",
+  "to": "`g:${p.orderId}`);",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-10",
+  "slice": "sf",
+  "label": "S-F r1: a member is throttled per ORDER, not per caller",
+  "file": "support/support-tickets.js",
+  "from": "uid ? `u:${uid}` : `g:${p.orderId}`",
+  "to": "`g:${p.orderId}`",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-11",
+  "slice": "sf",
+  "label": "S-F r1: a guest probe on a MISSING order skips the comparison (timing reveals existence)",
+  "file": "support/support-tickets.js",
+  "from": "else if (tokenEquals(p.trackingToken, order && typeof order.tracking_token === 'string' ? order.tracking_token : DUMMY_TOKEN) && order) via = 'guest';",
+  "to": "else if (order && tokenEquals(p.trackingToken, order.tracking_token)) via = 'guest';",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-12",
+  "slice": "sf",
+  "label": "S-F r1: a hold never expires (a failed write burns capacity forever)",
+  "file": "support/support-tickets.js",
+  "from": "if (Number.isFinite(at) && nowMs - at < HOLD_MS) held[k] = at;",
+  "to": "if (Number.isFinite(at)) held[k] = at;",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "sf-13",
+  "slice": "sf",
+  "label": "S-F r1: the committed mark is not written with the ticket (the count never advances)",
+  "file": "support/support-tickets.js",
+  "from": "    [`support_ticket_counts/${p.orderId}/committed/${id}`]: true,\n",
+  "to": "",
+  "command": [
+   "node",
+   "support/support-tickets.test.js"
+  ]
+ },
+ {
+  "id": "smr-10",
+  "slice": "smr",
+  "label": "getMyRating: checkRateLimit without its policy (fails OPEN in production)",
+  "file": "ratings/my-rating.js",
+  "from": "'get_my_rating', uid, RATE);",
+  "to": "'get_my_rating', uid);",
+  "command": [
+   "node",
+   "ratings/my-rating.test.js"
+  ]
+ },
+ {
+  "id": "sad-14",
+  "slice": "sad",
+  "label": "S-A(d): checkRateLimit without its policy (fails OPEN in production)",
+  "file": "ratings/merchant-comments.js",
+  "from": "'merchant_rating_comments', dec.uid, RATE);",
+  "to": "'merchant_rating_comments', dec.uid);",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sad-15",
+  "slice": "sad",
+  "label": "S-A(d) run 3: a FIXED cursor bound (400) refuses a valid long cursor ⇒ page 2 400s",
+  "file": "ratings/merchant-comments.js",
+  "from": "const CURSOR_RE = new RegExp(`^[A-Za-z0-9_-]{40,${MAX_CURSOR_CHARS}}$`);",
+  "to": "const CURSOR_RE = /^[A-Za-z0-9_-]{40,400}$/;",
+  "command": [
+   "node",
+   "ratings/merchant-comments.test.js"
+  ]
+ },
+ {
+  "id": "sb-31",
+  "slice": "sb",
+  "label": "S-B run 4: retention only after the days close (repeated budget aborts keep expired customer keys)",
+  "file": "ratings/aggregate-producer.js",
+  "from": "    try { dropped = await applyRetention(db, rid, nowMs); } catch (e) { console.error('aggregate retention', rid, e && e.message); }\n",
+  "to": "",
+  "command": [
+   "node",
+   "ratings/aggregate-producer.test.js"
+  ]
+ },
+ {
+  "id": "pc-14",
+  "slice": "pc",
+  "label": "§1 run 5: the reader validates the raw RTDB node (no decode ⇒ unavailable)",
+  "file": "platform-config/reader.js",
+  "from": "      fields = S.validateFields(decodeFields(raw.fields));",
+  "to": "      fields = S.validateFields(raw.fields);",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-15",
+  "slice": "pc",
+  "label": "§1 run 5: the generator compares the raw node (a regen reports conflict)",
+  "file": "platform-config/generate.js",
+  "from": "canonical(decodeFields(raw.fields)) === canonical(next.fields)",
+  "to": "canonical(raw.fields) === canonical(next.fields)",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
+  ]
+ },
+ {
+  "id": "pc-16",
+  "slice": "pc",
+  "label": "§1 run 5: drift compares the raw node (reports drift when in sync)",
+  "file": "platform-config/drift.js",
+  "from": "canonical(decodeFields(proj.fields)) === canonical(src.fields)",
+  "to": "canonical(proj.fields) === canonical(src.fields)",
+  "command": [
+   "node",
+   "platform-config/platform-config.test.js"
   ]
  },
  {

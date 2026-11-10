@@ -29,6 +29,7 @@ const { getDatabase } = require('firebase-admin/database');
 const fns = require('../index');
 const { validPair } = require('../sequencing/validity');
 const { stackIdFor } = require('../sequencing/id');
+const { cleanupTasksAndDriver } = require('../cancel-order-core');   // (b): the REAL cancel core (two-flag gated) driven directly against the emulator
 
 const db = getDatabase();
 assert.match(db.ref().toString(), /^http:\/\/(127\.0\.0\.1|localhost)/);
@@ -84,7 +85,7 @@ function scenario(k, { newStatus = 'new', crossHub = false } = {}) {
   };
 }
 const seedAll = async (scs, flag) => {
-  await db.ref().set({ config: { auto_assign_enabled: true, sweep_pending_enabled: true, ...(flag === undefined ? {} : { stack_sequencing_enabled: flag }) } });
+  await db.ref().set({ config: { auto_assign_enabled: true, sweep_pending_enabled: true, ...(flag === undefined ? {} : { stack_sequencing_enabled: flag }), ...(flag === true ? { tracker_fixes_enabled: true } : {}) } });   // ON needs BOTH flags (Codex r1 P1)
   const u = {}; for (const s of scs) Object.assign(u, s.seed); await db.ref().update(u);
 };
 // autoAssign fires on the order BECOMING new
@@ -259,6 +260,66 @@ const expectUntouched = async (s, label) => {
   assert.ok(!hasCopies(on.a.tasks.n_delivery), 'no copies on a timeout reassign');
   assert.strictEqual(on.calls, 0, 'no Routes call from the timeout writer');
   ok('timeout (D12): a reassign onto a same-hub 1-order driver and a two-strike release are BYTE-IDENTICAL with the flag ON and false; no copies, no call');
+
+  // ═════ (a) ASYMMETRIC flags (advisor / Codex P2): stack_sequencing ON × tracker_fixes OFF must FAIL CLOSED ═════
+  // The two-flag gate (sequencing/flags.js) reads BOTH; with tracker_fixes OFF the assignment must write NO stop_seq and
+  // behave byte-identically to flags-absent. Proven by running the SAME same-hub pair under asymmetric and absent configs.
+  {
+    const runCfg = async (cfg) => {
+      const s = scenario(30);
+      await db.ref().set({ config: { auto_assign_enabled: true, sweep_pending_enabled: true, ...cfg } });
+      await db.ref().update(s.seed);
+      calls.length = 0;
+      await fireAuto(s.n);
+      return { snap: await snap(s), calls: calls.length,
+        copies: hasCopies(await val(`tasks/${s.n}_delivery`)) || hasCopies(await val(`tasks/${s.i}_delivery`)) };
+    };
+    const asym = await runCfg({ stack_sequencing_enabled: true, tracker_fixes_enabled: false });
+    const absent = await runCfg({});
+    assert.deepStrictEqual(asym.snap, absent.snap, '🔴 (a) asymmetric (stack_sequencing ON × tracker_fixes OFF) differs from flags-absent');
+    assert.strictEqual(asym.calls, 0, '(a) asymmetric: no Routes call (the gate is OFF)');
+    assert.ok(!asym.copies, '(a) asymmetric: no stop_seq / stack copies written');
+    ok('(a) asymmetric (stack_sequencing ON × tracker_fixes OFF) ≡ flags-absent — fail-closed: no Routes call, no copies, byte-identical to today');
+  }
+
+  // ═════ (b) post-pickup cancel of STOP 1 via the REAL cancel core (cancel-order-core.cleanupTasksAndDriver), BOTH flag states ═════
+  // ON → the cancels land first, then the pointer moves to the SURVIVOR's delivery, driver stays en_route_delivery (still loaded).
+  // tracker_fixes OFF → today's single update(): tasks cancelled, pointer null, status available; the survivor is NOT promoted.
+  {
+    const seedStack = async (cfg) => {
+      await db.ref().set({ config: cfg });
+      const X = 'cb_x', Y = 'cb_y', D = 'cb_d'; const SID = stackIdFor(D, X, Y).stack_id;
+      const vc = (oid, seq) => ({ order_id: oid, type: 'delivery', assigned_driver_id: D, status: 'accepted', linked_task_id: `${oid}_pickup`, stack_id: SID, stop_seq: seq, stack_uid: D, assigned_at: 1000, stack_at: 1000 });
+      const pk = (oid) => ({ order_id: oid, type: 'pickup', assigned_driver_id: D, status: 'completed', linked_task_id: `${oid}_delivery` });
+      await db.ref().update({
+        [`orders/${X}`]: { order_id: X, order_type: 'delivery', status: 'out_for_delivery' },
+        [`orders/${Y}`]: { order_id: Y, order_type: 'delivery', status: 'out_for_delivery' },
+        [`tasks/${X}_pickup`]: pk(X), [`tasks/${X}_delivery`]: vc(X, 1),
+        [`tasks/${Y}_pickup`]: pk(Y), [`tasks/${Y}_delivery`]: vc(Y, 2),
+        [`drivers/${D}`]: { name: D, status: 'en_route_delivery', current_task_id: `${X}_delivery`, active: true },
+      });
+      assert.ok(validPair(vc(X, 1), vc(Y, 2)), '(b) premise: the seeded pair is a valid coherent stack');
+      return { X, Y, D };
+    };
+    {   // both ON: promotion to the survivor, status unchanged
+      const { X, Y, D } = await seedStack({ stack_sequencing_enabled: true, tracker_fixes_enabled: true });
+      await cleanupTasksAndDriver({ db }, X, { order_type: 'delivery' }, Date.now());
+      assert.strictEqual(await val(`tasks/${X}_delivery/status`), 'cancelled', '(b) ON: stop-1 delivery cancelled first');
+      assert.strictEqual(await val(`tasks/${X}_pickup/status`), 'cancelled', '(b) ON: stop-1 pickup cancelled');
+      assert.strictEqual(await val(`drivers/${D}/current_task_id`), `${Y}_delivery`, '(b) ON: pointer moves to the survivor (stop 2) delivery');
+      assert.strictEqual(await val(`drivers/${D}/status`), 'en_route_delivery', '(b) ON: driver stays en_route_delivery (still loaded)');
+      assert.strictEqual(await val(`tasks/${Y}_delivery/status`), 'accepted', '(b) ON: the survivor delivery is untouched');
+    }
+    {   // tracker_fixes OFF: today's single update()
+      const { X, Y, D } = await seedStack({ stack_sequencing_enabled: true, tracker_fixes_enabled: false });
+      await cleanupTasksAndDriver({ db }, X, { order_type: 'delivery' }, Date.now());
+      assert.strictEqual(await val(`tasks/${X}_delivery/status`), 'cancelled', '(b) OFF: stop-1 delivery cancelled');
+      assert.strictEqual((await val(`drivers/${D}/current_task_id`)) || null, null, '(b) OFF: pointer null (today)');
+      assert.strictEqual(await val(`drivers/${D}/status`), 'available', '(b) OFF: driver available (today)');
+      assert.strictEqual(await val(`tasks/${Y}_delivery/status`), 'accepted', '(b) OFF: the survivor is NOT promoted (untouched)');
+    }
+    ok('(b) post-pickup cancel of stop 1 via the REAL cancel core: ON → pointer→survivor + stays en_route_delivery; tracker_fixes OFF → pointer null + available (today), no promotion');
+  }
 
   FINISHED = true;
   console.log(`\nstackseq-writers(emulator): OK (${n})`);

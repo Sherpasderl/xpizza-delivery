@@ -55,7 +55,7 @@ const D = {
   [F('test/d4p1-capture-order-control.js')]: 'harness', [F('deploy/emulator-e2e.js')]: 'harness', [F('deploy/config-read-probe.js')]: 'harness',
   [F('deploy/check-seed-readiness.js')]: 'harness', [F('deploy/emu-seed.js')]: 'harness', [F('tools/menus-identity-publish.js')]: 'harness',
   [F('test/portal-emulator-workers.probe.js')]: 'harness', [F('test/_kds-writer-worker.js')]: 'harness', [F('test/emu-isolation.proof.js')]: 'harness',
-  [F('test/measure-identity-fence.js')]: 'harness',
+  [F('test/measure-identity-fence.js')]: 'harness', [F('test/keymode-noop.capture.js')]: 'harness',
   // TRACKER FIXES T9: the cost harness — `_emulator-required('database')` before index.js is loaded (driven below like every harness)
   [F('test/tracker-measure.mjs')]: 'harness',
   // H1a gate G-1: the handheld isolation ACCEPTANCE check A1 runs before enabling pairing (expected red until F2(c)) —
@@ -80,6 +80,8 @@ const D = {
     'brands-admin',
     // ORCHESTRATION O1a — the Sherpa-admin branches CLI: requireProject({ requireFlag: true }) before any client
     'branches-admin',
+    // S1c — the reservation audit owner CLI: requireProject({ requireFlag: true }) before any client
+    'reserved-keys-audit',
     // PLATFORM F2 Q1 — the access census + kitchen roster owner CLIs: requireProject({ requireFlag: true }) before any client
     'access-census', 'kitchen-roster',
     // BRAND-AGNOSTIC SERVER — the B1 factura-flag projection owner CLI: requireProject({ requireFlag: true }) before any client
@@ -113,7 +115,13 @@ const D = {
     'platform-legal',
     // security backlog r2 — the one-time owner migration (revived accounts' stale tombstones; DRY RUN unless --apply):
     // requireProject({ requireFlag: true }) before any client
-    'repair-revived-tombstones'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
+    'repair-revived-tombstones', 'ratings-v1-guard',
+    // P5a follow-up — the READ-ONLY identity-usable check (booleans/counts per restaurant; Firestore writes patched to throw):
+    // requireProject({ requireFlag: true }) before any client
+    'identity-usable-check',
+    // convergence §1 — the owner platform-config CLI (portal source ↔ RTDB projection; DRY RUN unless --apply):
+    // requireProject({ requireFlag: true }) before argument parsing and before any client
+    'platform-config-admin'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
   [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/set-driver-enforcement-mode.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
@@ -153,6 +161,11 @@ const D = {
   [F('tools/identity-factura-flag.test.js')]: 'unit: drives the factura-flag CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/identity-display-name.test.js')]: 'unit: drives the CLI\'s require-project refusals (no data I/O); its spawned CLI is pointed at a dead loopback RTDB port with void credentials',
   [F('catalog/identity-integrity-guards.test.js')]: 'unit: drives the two c2b prod CLIs into require-project refusals — dead-port hosts, no credential (no data I/O)',
+  [F('tools/cert-rid-form.test.js')]: 'unit: spawns the three --rid= cert/recovery CLIs into their wrong-form refusal before any client, and the right form into the nonexistent-credential stop — dead-port hosts, never --apply (no data I/O)',
+  [F('tools/registered-roster.test.js')]: 'unit: the roster over a fake registry; spawns the three cert/recovery CLIs with a locally generated never-registered key and BOTH data hosts on the dead loopback 127.0.0.1:1, never --apply — they refuse on the unreadable registry before any catalog read (no data I/O)',
+  [F('tools/record-evidence-boundary-args.test.js')]: 'unit: drives the boundary CLI into its argument refusals before any client, and one accepted run into the void-credential refusal — dead-port hosts, no credential, never --apply (no data I/O)',
+  [F('test/identity-coverage.test.js')]: 'unit: the coverage core over an injected builder and the real builder on the in-memory Firestore fake; spawns the usable-check CLI only into its pre-client argument/file refusals with a nonexistent credential and no emulator hosts (no data I/O)',
+  [F('test/identity-usable-check.test.js')]: 'unit: a NAMED never-connected Admin app whose writes are refused synchronously by the class guards (no op reaches the network), the real manifest builder over catalog/firestore-fake, and CLI refusals before any client (no data I/O)',
   [F('tools/verify-first-group.test.js')]: 'unit: drives the CLI\'s require-project + argument refusals before any client (no data I/O); its spawned CLI points at a dead loopback RTDB port with void credentials',
   [F('test/kds-writer-capture.mjs')]: 'unit: a STUB initializeApp (returns {})', [F('portal/portal-split.test.js')]: 'unit: fold-guard text',
   [F('portal/ops-split.test.js')]: 'unit: static require closure + module-load checks only — no handler is invoked; its emulator hosts are DELETED or set to the dead loopback 127.0.0.1:1 (no data I/O)',
@@ -263,7 +276,7 @@ const FOREIGN = { FIRESTORE_EMULATOR_HOST: 'evil.example:8080', FIREBASE_DATABAS
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r1-dotenv-'));
     fs.writeFileSync(path.join(dir, '.env'), 'FIRESTORE_EMULATOR_HOST=evil.example:8080\n');
     // the arguments / env each needs to REACH client construction (a usage exit would prove nothing about the re-check)
-    const ARGS2 = { 'stats-rollup.js': ['backfill', '--from', '2026-01-01', '--to', '2026-01-02'] };
+    const ARGS2 = { 'stats-rollup.js': ['backfill', '--from', '2026-01-01', '--to', '2026-01-02'], 'reserved-keys-audit.js': ['--rid=tb_census'] };
     const ENV2 = { 'stats-rollup.js': { STATS_HMAC_SECRET: 'r1-census-dummy-secret-0123456789abcdef' } };
     const passed = [];
     try {

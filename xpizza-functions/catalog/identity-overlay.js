@@ -43,12 +43,41 @@ const keyOf = (rid, record) => {
   return typeof k === 'string' && k ? k : null;
 };
 
+/* S1d D6: the version's own (display.id → key) map — a renamed dish keeps its key under a new name, and a minted dish's key is
+   not derivable from anything served, so a served record is keyed by its display.id FIRST, and only a record the map does not
+   hold falls back to today's derivation. */
+function servedKeyMap(menu) {
+  const m = new Map();
+  for (const it of ((menu && Array.isArray(menu.items)) ? menu.items : [])) {
+    if (it && typeof it.key === 'string' && it.key && it.display && it.display.id != null) m.set(String(it.display.id), it.key);
+  }
+  return m;
+}
+const keyOfServed = (rid, record, keyById) => {
+  if (keyById && record && record.id != null && keyById.has(String(record.id))) return keyById.get(String(record.id));
+  return keyOf(rid, record);
+};
+/* S1d D7 (Q5 resolution (a)): the ENDPOINT body names each served dish's item_key from the same map — as ONE top-level map
+   { "<display.id>": key }, never on a dish record (the frozen order forms serialize served records into the order and strip
+   only the identity fields; the photos precedent). Never on the overlay-free body the reconciler and the form bake read, so
+   the bake and every baked bundle stay byte-identical. Returns a new body; the input is never mutated. */
+function withServedItemKeys(rid, body, keyById) {
+  if (!body || typeof body !== 'object' || !Array.isArray(body.dishes)) return body;
+  const item_keys = {};
+  for (const rec of body.dishes) {
+    if (!rec || typeof rec !== 'object' || rec.id == null) continue;
+    const k = keyOfServed(rid, rec, keyById);
+    if (k) item_keys[String(rec.id)] = k;
+  }
+  return { ...body, item_keys };
+}
+
 /* Decorate one array of served display records. Returns a NEW array; the input is never mutated,
    because the caller's body may be shared with something that has already been hashed. */
-function decorate(records, rid, map, field) {
+function decorate(records, rid, map, field, keyById = null) {
   return records.map((rec) => {
     if (!rec || typeof rec !== 'object') return rec;
-    const k = keyOf(rid, rec);
+    const k = keyOfServed(rid, rec, keyById);
     const id = k === null ? undefined : map.get(k);
     return id ? { ...rec, [field]: id } : rec;      // unresolved → served exactly as it was
   });
@@ -56,14 +85,14 @@ function decorate(records, rid, map, field) {
 
 /* Apply identity to a served bundle body. Never throws. Returns { body, applied, reason } — the
    caller serves `body` whatever happens, and `applied` exists for a diagnostic, not a decision. */
-async function applyIdentityToServedBody(db, rid, body, { timeoutMs = OVERLAY_TIMEOUT_MS } = {}) {
+async function applyIdentityToServedBody(db, rid, body, { timeoutMs = OVERLAY_TIMEOUT_MS, keyById = null } = {}) {
   try {
     if (!body || typeof body !== 'object') return { body, applied: false, reason: 'no_body' };
     const dishes = Array.isArray(body.dishes) ? body.dishes : null;
     const extras = Array.isArray(body.extras) ? body.extras : null;
     if (!dishes && !extras) return { body, applied: false, reason: 'nothing_to_enrich' };
 
-    const dishKeys = dishes ? dishes.map((r) => keyOf(rid, r)).filter(Boolean) : [];
+    const dishKeys = dishes ? dishes.map((r) => keyOfServed(rid, r, keyById)).filter(Boolean) : [];
     const extraKeys = extras ? extras.map((r) => keyOf(rid, r)).filter(Boolean) : [];
 
     const [dishMap, extraMap] = await withTimeout(Promise.all([
@@ -72,7 +101,7 @@ async function applyIdentityToServedBody(db, rid, body, { timeoutMs = OVERLAY_TI
     ]), timeoutMs, rid);
 
     const next = { ...body };
-    if (dishes) next.dishes = decorate(dishes, rid, dishMap, 'dish_id');
+    if (dishes) next.dishes = decorate(dishes, rid, dishMap, 'dish_id', keyById);
     if (extras) next.extras = decorate(extras, rid, extraMap, 'extra_id');
     const resolved = dishMap.size + extraMap.size;
     return { body: next, applied: resolved > 0, reason: resolved > 0 ? 'ok' : 'no_identities' };
@@ -84,4 +113,4 @@ async function applyIdentityToServedBody(db, rid, body, { timeoutMs = OVERLAY_TI
   }
 }
 
-module.exports = { applyIdentityToServedBody, keyOf, OVERLAY_TIMEOUT_MS };
+module.exports = { applyIdentityToServedBody, keyOf, keyOfServed, servedKeyMap, withServedItemKeys, OVERLAY_TIMEOUT_MS };

@@ -15,7 +15,7 @@
 //
 // Run (owner, controlled):  GOOGLE_CLOUD_PROJECT=xpizza-delivery node tools/seed-source-store.js
 // ---------------------------------------------------------------------------
-const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
+const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, defaultKeyMode } = require('../menu-pricing');
 const { formSource, readLiteral, readSetLiteral, pricingKeyOf } = require('../catalog/form-menu-source');
 const { attachRedeemFields } = require('../catalog/redeem-source');
 const { attachExposure } = require('../catalog/exposure-source');
@@ -125,7 +125,7 @@ function buildSourceFromCode(restaurantId) {
     byItem: safeLiteral('EXTRAS_BY_ITEM'),
   });
 
-  const source = { restaurant_id: restaurantId, schema_version: 2, items, extras, structure };
+  const source = { restaurant_id: restaurantId, schema_version: 2, key_mode: defaultKeyMode(restaurantId), items, extras, structure };   // S0: the legacy code-seeded brands' mode is their default (= their seeded profile pricing_key_mode)
   validateSource(source, restaurantId);   // fail closed at assembly, not at publish time
   return source;
 }

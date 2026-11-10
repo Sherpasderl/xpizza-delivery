@@ -14,6 +14,7 @@
 //     brand's renderer contract); both are code-derived, no read;
 //   • (codex PB-1 r3 P2-2) a successful publish whose candidate has a dish↔extra key overlap (x_pizza's existing Pepperoni /
 //     Prosciutto) reads exactly those keys' docs in the active version to prove the overlap is not new;
+//   • (S0/S1a) getEditableCatalog's source echoes the restaurant's server-owned key_mode: asserted equal to its stored mode, then dropped;
 //   • (PLAN 4 GATED G1) getEditableCatalog's source records + structure carry the REVIEWED data file's rows (reward_icon /
 //     extras_policy / badge_priority): each value asserted equal to its row, then dropped;
 //   Anything else — a status, a body field, a write, a missing or extra read of another kind — fails.
@@ -26,6 +27,7 @@ process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'add-product-go
 const admin = require('firebase-admin');
 admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-xpizza', databaseURL: `http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}?ns=demo-xpizza` });
 const realDb = admin.firestore();
+const SEEDED_MODE = {};   // S0/S1a: the pricing_key_mode each restaurant's profile was seeded with (the declared key_mode drop asserts it)
 const rtdb = admin.database();
 const CAPTURE = process.env.AP_GOLDEN_CAPTURE === '1';
 const GOLDEN = path.join(__dirname, 'add-product-base.golden.json');
@@ -119,7 +121,7 @@ async function scenario(name, fn) {
 }
 
 async function seedBrand(rid) {
-  await realDb.collection('restaurants').doc(rid).set({ name: rid, pricing_key_mode: rid === 'la_musa' ? 'id' : 'name', active: true, schema_version: 2 });
+  SEEDED_MODE[rid] = rid === 'la_musa' ? 'id' : 'name'; await realDb.collection('restaurants').doc(rid).set({ name: rid, pricing_key_mode: SEEDED_MODE[rid], active: true, schema_version: 2 });
   await sourceRefOf(realDb, rid).set(canonicalize(buildSourceFromCode(rid)));
   const { input } = require('../tools/publish-version').buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: 'seed' });
   await publishVersion(realDb, rid, input, { expected: { activeVersionId: null }, mirror: makeRtdbMirror(rtdb) });
@@ -180,6 +182,17 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
       // PLAN 4 GATED (G1, declared): the bootstrap source carries the REVIEWED data file's rows (catalog/menu-structure-rows.js:
       // reward_icon / extras_policy …). Each authored field the base record lacked is asserted EQUAL to its reviewed row, then
       // dropped; a field the base already carried stays compared (the rows are additive). Nothing else is excused.
+      // S0/S1a (declared): the editable draft echoes the restaurant's server-owned key mode (withServerKeyMode). Its VALUE is
+      // asserted equal to the restaurant's STORED mode, then dropped — only where the base body lacked it. No golden re-baseline.
+      if (c.status === 200 && body.source && typeof body.source === 'object' && Object.prototype.hasOwnProperty.call(body.source, 'key_mode')
+        && !Object.prototype.hasOwnProperty.call(((g.body || {}).source || {}), 'key_mode')) {
+        const rid = c.name.split(':')[0];
+        const stored = SEEDED_MODE[rid];
+        assert.ok(stored === 'name' || stored === 'id', `premise: ${rid} was seeded with a key mode`);
+        assert.strictEqual(body.source.key_mode, stored, `${c.name}: source.key_mode is the restaurant's stored mode (S0 server-owned)`);
+        body.source = { ...body.source }; delete body.source.key_mode;
+        declared.body.add(`${c.name}: source.key_mode`);
+      }
       if (c.status === 200 && body.source && typeof body.source === 'object') {
         const rid = c.name.split(':')[0];
         const rows = (require('../tools/migrations/2026-10-26-menu-structure.json').restaurants || {})[rid] || {};
@@ -222,6 +235,13 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
     const isEligibilityCreate = (x) => /^batch\.create restaurants\/[^/]+\/versions\/<v>\/meta\/extras_eligibility$/.test(x);
     if (/publish/.test(c.name) && c.status === 200) assert.strictEqual(left.filter(isEligibilityCreate).length, 1, `${c.name}: exactly one eligibility-document create per publish`);
     else assert.strictEqual(left.filter(isEligibilityCreate).length, 0, `${c.name}: no eligibility-document write without a publish`);
+    // S1c (DECLARED, exact): every activation reads the restaurant's reserved-key set and the candidate version's dish and extra
+    // docs inside its transaction, before any write — exactly ONE of each per successful publish, none on any other call
+    const isReservedRead = (x) => /^tx\.get restaurants\/[^/]+\/(meta\/reserved_keys|versions\/<v>\/(menu_items|extras))$/.test(x);
+    const rkWant = (/publish/.test(c.name) && c.status === 200) ? 3 : 0;
+    assert.strictEqual(left.filter(isReservedRead).length, rkWant, `${c.name}: reserved-key activation reads`);
+    if (rkWant) for (const re of [/meta\/reserved_keys$/, /versions\/<v>\/menu_items$/, /versions\/<v>\/extras$/]) assert.strictEqual(left.filter((x) => isReservedRead(x) && re.test(x)).length, 1, `${c.name}: one ${re}`);
+    for (let k = left.length - 1; k >= 0; k -= 1) if (isReservedRead(left[k])) left.splice(k, 1);
     // T-a G3 (DECLARED, exact): the OWNER's getEditableCatalog on a platform-factura brand reads the publish-request slot ONCE
     // (its pointer reads are the declared active-version reads above); never on any other call or brand
     const isPublishRequestRead = (x) => /^get restaurants\/[^/]+\/meta\/publish_request$/.test(x);

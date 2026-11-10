@@ -76,7 +76,8 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     const r = await voidOrRefund({ db, client, alert: () => {} }, { orderId: 'O1', attemptId: 'A', pixelpayOrderId: 'O1-A', paymentUuid: null, reason: 'cancel', now: 4000 });
     assert.strictEqual(r.outcome, 'refunded');
     assert.strictEqual(client.calls.void, 0, 'no void call when nothing to reverse');
-    assert.strictEqual(db.getAt('refund_attempts/A-4000').message, 'no_payment_to_void');
+    assert.strictEqual(db.getAt('refund_attempts/A-4000').message, 'no payment to void');   // a FIXED message (no provider text)
+    assert.strictEqual(db.getAt('refund_attempts/A-4000').code, 'no_payment_to_void');
     ok('no payment to reverse → refunded no-op (no void call)');
   }
 

@@ -187,13 +187,66 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
     if (typeof la === 'number' && la >= sweepCutoff) return false;   // a recent (pre-gate, Google-era) activity still spares it
     if ((await S.sweepClaim(db, uid, sweepCutoff, now)) !== 'claimed') return false;
   }
+  // S-A1 r2 (Codex r1 P1-2/P1-3): the history's order ids are READ now (the update below removes the history); the ratings are redacted
+  // AFTER the update, whose deleted_uids/{uid} is the account-level fence a paused rating write re-checks after its own commit
+  const historyIds = Object.keys((await db.ref(`user_orders/${uid}`).once('value')).val() || {});
   const prior = (await db.ref(`user_private/${uid}/deleted_at`).once('value')).val();
   const at = typeof prior === 'number' ? prior : now;
-  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at } });
+  // S-A1 r3 (Codex r2): the DURABLE redaction obligation rides the SAME atomic update as the tombstone (a failed deletion leaves no trace);
+  // the inline redaction is best-effort — a failure is drained by pruneResidual's drainRatingRedactions via the owner_uid index
+  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}/at`]: now });   // r4: `at` only — a fence's version v is never clobbered
+  try { await redactRatings(db, uid, historyIds); } catch (e) { console.error(`deleteAccountCore: inline rating redaction for ${uid} failed (${e && e.code ? e.code : 'error'}) — the journal drains it`); }
   if (phoneHash) await db.ref(`phone_index/${phoneHash}`).transaction((cur) => (cur === null ? null : (cur === uid ? null : undefined)));
   await S.removeLinks(db, uid);
   await revokeSessions(db, uid, now, revoke, revokeDeadlineMs);
   return true;
+}
+// S-A1 (PLAN §S-A (d)): account deletion REDACTS the account's ratings IN PLACE — ratings_v2/{orderId} for every order in its own
+// history gets state=deleted (terminal) with comment + owner_uid nulled, ONE transaction per node, so the vote leaves every aggregate
+// and the node remains only as the deletion fence. Runs before the history is removed; re-running is a no-op (already deleted).
+async function redactRatings(db, uid, historyIds = null) {
+  // the account's ratings by the server-only owner_uid INDEX (ratings_v2 .indexOn) ∪ its own history — the history is best-effort
+  // (claim-order writes it best-effort), so it is never the only discovery (Codex r1 P1-3). Runs AFTER deletion's atomic update: its
+  // deleted_uids/{uid} is the fence (Codex r1 P1-2) — a rating write committing after this scan sees it and redacts itself.
+  const hist = historyIds || Object.keys((await db.ref(`user_orders/${uid}`).once('value')).val() || {});
+  const V2 = require('./ratings/rating-v2');
+  const ids = [...new Set([...hist, ...(await V2.ownedRatingIds(db, uid))])];
+  for (const id of ids) {
+    if (!V2.ORDER_ID_RE.test(id)) continue;
+    await V2.ratingRef(db, id).transaction(V2.deletionUpdater({}));
+  }
+  return ids.length;
+}
+// S-A1 r3–r5 (Codex r2–r4): DRAIN the durable redaction journal ratings_redact_pending/{uid} = {at, v?, last_attempt?, attempts?}.
+// DESIGN CLOSURE (Codex r4): no timeout margin bounds a paused execution (Cloud Run does not cancel it), so EXPOSURE is prevented on the
+// READ side — every reader goes through rating-v2.readCountable (live AND owner not tombstoned; deleted_uids is permanent) — and this
+// drain is best-effort cleanup behind it: every entry is re-checked on every run for REDACT_RETAIN_MS (30 days) after the deletion and
+// only then retired, with the {at, v} CAS (a concurrent fence touch, v + 1, keeps it). FAIRNESS (r4 #3): entries are taken by OLDEST
+// last_attempt (never-attempted first — RTDB orders a missing child first), and each attempt is recorded BEFORE the work, so failing
+// entries cannot starve the rest. REDACT_GRACE_FLOOR_MS stays only as a sanity floor (ratings-grace.guard: ≥ 2× every writer's timeout).
+const REDACT_RETAIN_MS = 30 * 24 * 60 * 60 * 1000;
+const REDACT_GRACE_FLOOR_MS = 2 * 60 * 60 * 1000;
+const REDACT_BATCH = 50;
+async function drainRatingRedactions(db, now = Date.now(), { retainMs = REDACT_RETAIN_MS, batch = REDACT_BATCH } = {}) {
+  const V2 = require('./ratings/rating-v2');
+  const pending = (await db.ref('ratings_redact_pending').orderByChild('last_attempt').limitToFirst(batch).once('value')).val() || {};
+  let redacted = 0, cleared = 0, failed = 0;
+  for (const [uid, entry] of Object.entries(pending)) {
+    const at = entry && typeof entry.at === 'number' ? entry.at : 0;
+    const v = entry && Number.isInteger(entry.v) ? entry.v : 0;   // read BEFORE the attempt, the pass and the check (r4 P1-2)
+    try {
+      // record the attempt FIRST (fairness) — never re-creates a removed entry, never touches at / v
+      await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => (cur && typeof cur === 'object' ? { ...cur, last_attempt: now, attempts: (Number.isInteger(cur.attempts) ? cur.attempts : 0) + 1 } : cur));
+      redacted += await redactRatings(db, uid, []);
+      const left = await V2.ownedRatingIds(db, uid);
+      if (left.length === 0 && now - at >= retainMs) {
+        // retire ONLY the exact version judged: a concurrent fence (v moved) or a re-deletion (at moved) keeps the entry
+        const tx = await db.ref(`ratings_redact_pending/${uid}`).transaction((cur) => (cur && cur.at === at && (Number.isInteger(cur.v) ? cur.v : 0) === v ? null : cur));
+        if (tx.committed && !tx.snapshot.exists()) cleared += 1;
+      }
+    } catch (e) { failed += 1; console.error(`drainRatingRedactions: ${uid} (${e && e.code ? e.code : 'error'}) — retried next run`); }
+  }
+  return { pending: Object.keys(pending).length, redacted, cleared, failed };
 }
 // the persisted / logged reason is an ALLOWLISTED code — never an error message (it can carry PII)
 const REVOKE_REASON_CODES = new Set(['auth/user-not-found', 'auth/internal-error', 'auth/network-request-failed', 'auth/too-many-requests', 'auth/insufficient-permission', 'app/network-error']);
@@ -249,7 +302,11 @@ async function loginUid(db, { pHash, uid, now, newUid }) {
 // the periodic sweep's residual cleanup, run EVERY time (codex build r1 P2-10 — also when no profiles remain): links to
 // deleted accounts, expired challenges / tickets
 async function pruneResidual(db, now = Date.now()) {
-  return { deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db) };
+  // r4 P2: the rating-redaction drain runs FIRST and ISOLATED — a failing link / expiry / backfill cleanup can never starve it (it also
+  // has its own schedule, drainRatingRedactions in index.js)
+  let ratings;
+  try { ratings = await drainRatingRedactions(db, now); } catch (e) { ratings = { error: true }; console.error('pruneResidual: rating drain failed', e && e.code ? e.code : 'error'); }
+  return { ratings, deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db) };
 }
 // security backlog 2026-11-01: an account tombstoned in user_private BEFORE the sweep wrote deleted_uids gets it now (its OWN
 // deleted_at), create-if-absent — so every deleted_uids-only check refuses it too. Live / revived accounts are never touched.
@@ -284,4 +341,4 @@ async function pruneDeadLinks(db) {
   return removed;
 }
 
-module.exports = { makeSignup, bindOtpTicket, redeemOtpTicket, refreshActivity, deleteAccountCore, revokeSessions, claimPhoneUid, loginUid, backfillDeletedUids, REVOKE_DEADLINE_MS, REVOKE_REASON_CODES, pruneDeadLinks, pruneResidual, challengeIdOf, SIGNUP_RATE, ACTIVITY_DEADLINE_MS };
+module.exports = { redactRatings, drainRatingRedactions, REDACT_RETAIN_MS, REDACT_GRACE_FLOOR_MS, makeSignup, bindOtpTicket, redeemOtpTicket, refreshActivity, deleteAccountCore, revokeSessions, claimPhoneUid, loginUid, backfillDeletedUids, REVOKE_DEADLINE_MS, REVOKE_REASON_CODES, pruneDeadLinks, pruneResidual, challengeIdOf, SIGNUP_RATE, ACTIVITY_DEADLINE_MS };

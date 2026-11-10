@@ -4329,19 +4329,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -4384,7 +4384,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -4626,19 +4626,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -4681,7 +4681,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -4923,19 +4923,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -4978,7 +4978,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -5252,7 +5252,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`orders/${task.order_id}/delivered_at`] = now;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "R",
@@ -5379,19 +5379,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -5434,7 +5434,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -5645,19 +5645,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -5700,7 +5700,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -5911,19 +5911,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -5966,7 +5966,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -6177,19 +6177,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -6232,7 +6232,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -6420,19 +6420,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -6475,7 +6475,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -6663,19 +6663,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -6718,7 +6718,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -7016,7 +7016,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`orders/${task.order_id}/delivered_at`] = now;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "R",
@@ -7143,19 +7143,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -7198,7 +7198,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -7394,19 +7394,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -7449,7 +7449,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -7645,19 +7645,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -7700,7 +7700,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -7896,19 +7896,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -7951,7 +7951,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -8147,19 +8147,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -8202,7 +8202,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -8383,19 +8383,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -8438,7 +8438,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -8619,19 +8619,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -8674,7 +8674,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -8855,19 +8855,19 @@
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
      "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
+     "scopeSha": "c21df75d057d8306414767fcc4b4ca63345396558eefbecc6becfbc045978f54"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
+     "scopeSha": "94ddf3ec9f66d737cea9b4ef858f6939f2e40e457575dbb1c8a0241a5e6c508b"
     },
     {
      "kind": "S",
@@ -8910,7 +8910,7 @@
      "kind": "S",
      "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
      "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
+     "scopeSha": "3adba8b12f8c061406bcda5d486e9b1388d9d133b61577702bcc2ea1a4dde8d5"
     },
     {
      "kind": "S",
@@ -9393,7 +9393,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
-      "xpizza-driver/driver-complete.js#xpizza-driver": 1,
+      "xpizza-driver/driver-complete.js#xpizza-driver": 3,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
       "xpizza-driver/stacked-view.js#xpizza-driver": 2,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1,
@@ -10810,14 +10810,14 @@
     "site": "try { await sendPaidAfterCloseRefund(db, { orderId, order: o }); notifyRecovered++; } catch (_) {}",
     "siteSha": "89061984e006b424b14d86cb5113e77b3e903f44c68f838d2ec3e8cfb50b2800",
     "scope": "xpizza-functions/index.js#refundReconciler",
-    "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+    "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     }
    ],
    "cases": {
@@ -10848,20 +10848,20 @@
     "site": "try { await sendPaidAfterCloseRefund(db, { orderId, order: o }); } catch (_) {}",
     "siteSha": "b380c4b5d362470c21afb81b9dc9ed29173bcf18033e59bf198a790a98ed025a",
     "scope": "xpizza-functions/index.js#refundReconciler",
-    "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+    "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (!isPac) continue;",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (dec.action === 'finalize_refunded') {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     }
    ],
    "cases": {
@@ -10930,14 +10930,14 @@
     "site": "if (didNotify && deps.sendScheduledSlotClosed) { try { await deps.sendScheduledSlotClosed(db, { orderId, order }); } catch (_) {} }",
     "siteSha": "893a10464deb4f02f240ce89d6f56ab6620dde110064ea556d8b8a8617438fb9",
     "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
-    "scopeSha": "625e4e2596ed2a59060449e50a2a61636b06851431986896ea68efb03e66d066"
+    "scopeSha": "d16ef5cb75dbeb876a155454f5d57f6734e463392892d64f60c00de7ad6bc6dd"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
      "text": "if (Number.isFinite(Number(order.scheduled_for))) {",
-     "scopeSha": "625e4e2596ed2a59060449e50a2a61636b06851431986896ea68efb03e66d066"
+     "scopeSha": "d16ef5cb75dbeb876a155454f5d57f6734e463392892d64f60c00de7ad6bc6dd"
     }
    ],
    "cases": {
@@ -10968,14 +10968,14 @@
     "site": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
     "siteSha": "cebf5cdd793a080b49b30e8c96304fa4acf25d87a8aed2618c4304063c654e83",
     "scope": "xpizza-functions/index.js#refundReconciler",
-    "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+    "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     }
    ],
    "cases": {
@@ -11748,13 +11748,13 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (dec.action === 'finalize_refunded') {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",
@@ -11798,7 +11798,7 @@
      "kind": "S",
      "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
      "text": "if (Number.isFinite(Number(order.scheduled_for))) {",
-     "scopeSha": "625e4e2596ed2a59060449e50a2a61636b06851431986896ea68efb03e66d066"
+     "scopeSha": "d16ef5cb75dbeb876a155454f5d57f6734e463392892d64f60c00de7ad6bc6dd"
     }
    ],
    "cases": {
@@ -11913,13 +11913,13 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#refundReconciler",
      "text": "if (dec.action === 'finalize_refunded') {",
-     "scopeSha": "0e7ed5ae712d63a2946aa56d79afbb647c115c57cb2fef56f5912d8a23b071ae"
+     "scopeSha": "8a72189b8f6892f3f5cd7a66f55a74ae5bc60a2f232fadc91cfbc906335019c9"
     },
     {
      "kind": "S",

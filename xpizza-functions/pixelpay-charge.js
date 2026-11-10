@@ -57,7 +57,7 @@ async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint
     const order = (await orderRef.once('value')).val();
 
     // Terminal reads that need no write.
-    if (order) {
+    if (order) { if (require('./payments/sdk/flow').isSdkOrder(order)) return { outcome: 'closed', reason: 'sdk_flow' };
       if (order.payment_status === 'confirmed') return { outcome: 'already_paid' };
       { const d = paymentBindingConflict(order, fingerprint, canon, a8); if (d) return conflictOutcome(d); }   // advisory
     }
@@ -98,7 +98,7 @@ async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint
         if (!freshFp) return;                           // A8a: an 'a8' fresh binding with no candidate → never a mixed record
         return { ...pendingOrderRecord, active_attempt_id: decided.newAaid, payment_fingerprint: freshFp };
       }
-      const c = cur || order;                           // non-create: avoid first-call-null abort
+      const c = cur || order; if (require('./payments/sdk/flow').isSdkOrder(c)) return;   // non-create: avoid first-call-null abort
       if (!c) return;                                   // genuinely absent
       if (c.payment_status === 'confirmed') return c;
       if (paymentBindingConflict(c, fingerprint, canon, a8)) return c;     // the CAS: (format, fingerprint) on the record held

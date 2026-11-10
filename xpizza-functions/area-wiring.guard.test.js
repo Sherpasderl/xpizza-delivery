@@ -15,12 +15,12 @@ const stripComments = require('./tools/strip-comments');
 const { HUNKS, FILES, BASE, unapplyAreaIndex, unapplyAreaModule } = require('./tools/area-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');   // this slice is the NEWEST: nothing composes on top
+const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('./tools/s1d-module-inverse').unapplyS1dModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')))))));   // this slice is the NEWEST: nothing composes on top
 const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // ── (i) the inverse ──
 {
-  const live = require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(require('./tools/pausa-inverse').unapplyPausaIndex(require('./tools/mem512-inverse').unapplyMem512Index(require('./tools/checkout-inverse').unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(require('./tools/intl-inverse').unapplyIntlIndex(require('./tools/photos-inverse').unapplyPhotosIndex(read('index.js')))))))))))))))); const baseIdx = baseOf('index.js');   // DRYRUN R-WIRE (2e): 10 cross-side layers innermost (the line-67 AST read stays raw)
+  const live = require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/s4hours-inverse').unapplyS4HoursIndex(require('./tools/pausa-inverse').unapplyPausaIndex(require('./tools/mem512-inverse').unapplyMem512Index(require('./tools/checkout-inverse').unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(require('./tools/intl-inverse').unapplyIntlIndex(require('./tools/photos-inverse').unapplyPhotosIndex(require('./tools/hostedrace-module-inverse').unapplyHostedRaceModule('index.js', require('./tools/p5a-inverse').unapplyP5aIndex(require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(read('index.js')))))))))))))))))))); const baseIdx = baseOf('index.js');   // DRYRUN R-WIRE (2e): 10 cross-side layers innermost (the line-67 AST read stays raw)
   assert.strictEqual(unapplyAreaIndex(live), baseIdx, `🔴 index.js minus the colonia hunks is not ${BASE}:index.js`);
   assert.notStrictEqual(live, baseIdx, 'non-vacuity: the slice is present in index.js');
   assert.strictEqual(live.split('\n').length, baseIdx.split('\n').length, 'index.js same-line: no line inserted');
@@ -32,7 +32,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 
   assert.deepStrictEqual([...FILES], ['create-order-build.js']);
   for (const f of FILES) {
-    const src = read(f); const base = baseOf(f);
+    const src = require('./tools/sd-inverse').unapplySdModuleIfAny(f, read(f)); const base = baseOf(f);   // S-D (newest) reversed first
     assert.strictEqual(unapplyAreaModule(f, src), base, `🔴 ${f} minus the colonia hunks is not ${BASE}:${f}`);
     assert.notStrictEqual(src, base, `non-vacuity: ${f} carries the slice`);
     assert.strictEqual(src.split('\n').length, base.split('\n').length, `${f} same-line: no line inserted`);
@@ -64,7 +64,7 @@ ok(`charge-inputs line inverse: unapplyAreaChargeInputs → ${BASE}:catalog/char
 
 // ── (ii) structure ──
 {
-  const idx = stripComments(read('index.js')); const cob = stripComments(read('create-order-build.js'));
+  const idx = stripComments(require('./tools/hostedrace-module-inverse').unapplyHostedRaceModule('index.js', require('./tools/p5a-inverse').unapplyP5aIndex(read('index.js')))); const cob = stripComments(read('create-order-build.js'));
   const uses = (src) => (src.match(/address_area/g) || []).length;
   const v0 = idx.indexOf('function validateOrderPayload('); const v1 = idx.indexOf('return { errors, total, lat, lng, fields };', v0);
   assert.ok(v0 > 0 && v1 > v0, 'premise: validateOrderPayload');

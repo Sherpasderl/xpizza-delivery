@@ -1445,6 +1445,24 @@
   "xpizza-functions/claim-order.js#claimOrderCore@xpizza-functions/index.js#claimOrder": {
    "status": "pending"
   },
+  "xpizza-functions/my-orders.js#getMyOrders@self": {
+   "status": "pending"
+  },
+  "xpizza-functions/my-orders.js#getMyOrders>anon@self": {
+   "status": "via",
+   "target": "xpizza-functions/my-orders.js#getMyOrders@self",
+   "reason": "getMyOrders' own inline async handler — every byte it produces leaves through getMyOrders' HTTP response"
+  },
+  "xpizza-functions/my-orders.js#projectReceipt@xpizza-functions/my-orders.js#getMyOrders": {
+   "status": "via",
+   "target": "xpizza-functions/my-orders.js#getMyOrders@self",
+   "reason": "builds the receipt-detail response body (NOTE-getMyOrders-receipt) — rendered only through getMyOrders' response"
+  },
+  "xpizza-functions/my-orders.js#projectRow@xpizza-functions/my-orders.js#getMyOrders>anon": {
+   "status": "via",
+   "target": "xpizza-functions/my-orders.js#getMyOrders@self",
+   "reason": "projects each history Row (the whitelist) of getMyOrders' response — no other consumer"
+  },
   "xpizza-functions/claim-prefill.js#claimPrefillCore@xpizza-functions/index.js#claimPrefill": {
    "status": "pending"
   },

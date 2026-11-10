@@ -20,26 +20,26 @@
 // stage does not make the id authoritative: enforce would refuse a renamed dish. Rename-stability is
 // its own later stage.
 // ---------------------------------------------------------------------------
-const { resolveAcrossKinds } = require('./identity-registry');
+const { resolveAcrossKinds } = require('./identity-registry'); const { effectiveKeyMode } = require('../menu-pricing');
 
 /* The RAW legacy accessor, duplicated here deliberately and for one reason: the agreement check must
    compare against what the client actually sent, computed BEFORE anything is stamped. Calling
    itemPricingKey would read the stamp once one exists, so the check would be comparing the resolved
    key against itself and would agree with everything. A copy that can never see a stamp is the point;
    it is pinned against menu-pricing's own accessor by test. */
-const rawLegacyKey = (rid, node) => (rid === 'la_musa' ? (node && node.id) : (node && node.name));
+const rawLegacyKey = (rid, node, keyMode) => (effectiveKeyMode(rid, keyMode) === 'id' ? (node && node.id) : (node && node.name));
 
 /* Every id-carrying node a cart holds — dish lines and their nested extras — with the raw key each
    would price by. Mirrors D3's occurrence walk so the two stages cannot disagree about what a cart
    contains. */
-function occurrences(rid, items) {
+function occurrences(rid, items, keyMode) {
   const out = [];
   (Array.isArray(items) ? items : []).forEach((line, i) => {
     if (!line || typeof line !== 'object') return;
-    out.push({ node: line, line: i, kind: 'dish', id: line.dish_id, raw: rawLegacyKey(rid, line) });
+    out.push({ node: line, line: i, kind: 'dish', id: line.dish_id, raw: rawLegacyKey(rid, line, keyMode) });
     (Array.isArray(line.extras) ? line.extras : []).forEach((ex, j) => {
       if (!ex || typeof ex !== 'object') return;
-      out.push({ node: ex, line: i, slot: j, kind: 'extra', id: ex.extra_id, raw: rawLegacyKey(rid, ex) });
+      out.push({ node: ex, line: i, slot: j, kind: 'extra', id: ex.extra_id, raw: rawLegacyKey(rid, ex, keyMode) });
     });
   });
   return out;
@@ -47,11 +47,11 @@ function occurrences(rid, items) {
 
 /* Resolve forward, then stamp ONLY where the registry agrees. Never throws: this runs on the charge
    path, and a verification shim that can fail an order is worse than no verification at all. */
-async function applyGraceResolution(fs, rid, items, { stamp, timeoutMs, maxLookups } = {}) {
+async function applyGraceResolution(fs, rid, items, { stamp, timeoutMs, maxLookups, keyMode } = {}) {
   const coverage = { checked: 0, resolved: 0, agree: 0, disagree: 0, absent: 0, read_error: 0, unresolved: 0, incomplete: false };
   const disagreements = [];
   try {
-    const occ = occurrences(rid, items);
+    const occ = occurrences(rid, items, keyMode);
     const carrying = occ.filter((o) => typeof o.id === 'string' && o.id);
     coverage.absent = occ.length - carrying.length;
     coverage.checked = carrying.length;

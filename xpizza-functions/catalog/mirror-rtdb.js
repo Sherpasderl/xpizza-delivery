@@ -18,7 +18,7 @@ const RTDB_URL = 'https://xpizza-delivery-default-rtdb.firebaseio.com';
 const { encodeMirrorTables } = require('./mirror-keys');   // hotfix 2026-10-26: RTDB-unsafe name keys
 function makeRtdbMirror(rtdb) {
   return async function mirrorToRtdb(restaurantId, payload) {
-    const enc = encodeMirrorTables(payload.menu, payload.extras);   // today's tables unless a key needs encoding
+    const enc = encodeMirrorTables(payload.menu, payload.extras, payload.labels);   // today's tables unless a key needs encoding
     await rtdb.ref(`catalog_snapshot/${restaurantId}`).set({
       version: payload.version,
       seq: payload.seq,      // 2b-pre: the monotonic ordinal — lets a reader compute version distance
@@ -27,7 +27,7 @@ function makeRtdbMirror(rtdb) {
       menu: enc.menu,
       extras: enc.extras,
       at: Date.now(),        // wall-clock stamp for staleness triage; the VERSION is the authority
-      ...(enc.key_encoding ? { key_encoding: enc.key_encoding } : {}),
+      ...(enc.key_encoding ? { key_encoding: enc.key_encoding } : {}), ...(payload.keyMode == null ? {} : { key_mode: payload.keyMode }), ...(enc.labels ? { labels: enc.labels } : {}),   // S0: + the version's key mode, only when it has one
     });
   };
 }

@@ -39,7 +39,7 @@ const { ensureIdentitiesForKeys } = require('./identity-backfill');
    publish's. Generous — this is a per-publish migration step, not a serving path — but finite, so a
    registry outage cannot hold a publish response open. */
 const IDENTITY_PRESERVE_TIMEOUT_MS = 5000;
-const { candidateSource, assertCandidateValid } = require('./candidate-validate');
+const { candidateSource, assertCandidateValid } = require('./candidate-validate'); const { frozenKeysProblem } = require('./frozen-keys');   // S1a
 const { sourceRefOf, encodeUpdateTime } = require('./source-store');
 const { validateDeletionClaim, validatePartition } = require('./identity-partition');
 const { walkDraftIdentities, judgeStampMap } = require('./identity-stampmap');
@@ -50,7 +50,7 @@ const { judgePlanDestinations } = require('./identity-destination');
 const { applyIdentityPlan } = require('./identity-writer');
 const { reconcileOnRollback } = require('./identity-reconcile');
 const { REGISTRY_AGREEMENT_REFUSALS } = require('./identity-stampmap');
-const { renameEnabled } = require('./identity-flags');
+const { renameEnabled } = require('./identity-flags'); const RK = require('./reserved-keys'); const { labelsFromDocs } = require('./catalog-transform'); const { textEditCapabilities } = require('./item-text-edit');   // S1c: the reserved-key set; renames are judged only with the text switch on
 /* c2a-evidence:begin */
 // 1D D4-c2a — binding evidence recorded at activation (PLAN-D4c2a rev 9 §2). Dormant: nothing reads it in this slice.
 const { buildActivationEvidence, activationEvidenceDoc, evidenceRefOf, withAt, translateEvidenceCollision } = require('./identity-evidence');
@@ -84,8 +84,8 @@ const snapshotRefOf = (db, rid) => db.collection('restaurants').doc(rid).collect
 // on both ends the 2b max-version-distance (K) check has nothing to measure from: `version` is an
 // opaque id, not an ordinal, and resolving it to one would require a Firestore lookup — the very
 // dependency the RTDB mirror exists to remove.
-const snapshotOf = (rid, versionId, seq, menuTable, extraTable) => ({
-  version: versionId, seq, rid, menu: menuTable, extras: extraTable, at: FieldValue.serverTimestamp(),
+const snapshotOf = (rid, versionId, seq, menuTable, extraTable, keyMode) => ({
+  version: versionId, seq, rid, menu: menuTable, extras: extraTable, at: FieldValue.serverTimestamp(), ...(keyMode == null ? {} : { key_mode: keyMode }),
 });
 
 // The RTDB mirror is the Firestore-INDEPENDENT disaster fallback, so it must be bounded: a hung write
@@ -365,7 +365,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
     /* Every read before any write — Firestore refuses a read after a write — and this one is the
        candidate's own version doc, so the eligibility predicate is evaluated against the record as it
        stands at the serialization point rather than as it looked when the candidate was built. */
-    const candidateSnap = await tx.get(versionsColOf(db, rid).doc(versionId));
+    const candidateSnap = await tx.get(versionsColOf(db, rid).doc(versionId)); const reservedSnap = await tx.get(RK.reservedRefOf(db, rid)); const [candItemsSnap, candExtrasSnap] = await Promise.all([tx.get(versionsColOf(db, rid).doc(versionId).collection('menu_items')), tx.get(versionsColOf(db, rid).doc(versionId).collection('extras'))]); const reservedDoc = RK.readReserved(reservedSnap.exists ? reservedSnap.data() : undefined);   // S1c: read before any write; every activation reserves its keys
     const l = snap.exists ? (snap.data() || {}) : {};
     if (l.owner_token !== token) throw new Error(`lease_lost: not owner (versionId=${versionId})`);
     if (!(l.expires_at && l.expires_at.toMillis() > nowServer.toMillis())) throw new Error(`lease_expired: cannot flip (versionId=${versionId})`);
@@ -385,7 +385,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        BOTH fields now come from ONE readPointerSnap: there is no independent parse of this document
        left anywhere, which is the property E-1 was for. */
     const livePointer = readPointerSnap(pointerSnap, rid);
-    const liveActive = livePointer.version;
+    const liveActive = livePointer.version; const activeItemsSnap = (textEditCapabilities().enabled && liveActive && liveActive !== versionId) ? await tx.get(versionsColOf(db, rid).doc(liveActive).collection('menu_items')) : null;
     if (liveActive !== expected.activeVersionId) {
       throw new Error(`flip_cas_stale: ${rid} — validated against active ${JSON.stringify(expected.activeVersionId)} but ${JSON.stringify(liveActive)} is live; this publish would overwrite a newer one`);
     }
@@ -709,7 +709,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
     if (certifiedCandidate) {
       const vref = versionsColOf(db, rid).doc(versionId);
       const [itemsSnap, extrasSnap, dishKeys, extraKeys, dishIds, extraIds] = await Promise.all([
-        tx.get(vref.collection('menu_items')), tx.get(vref.collection('extras')),
+        candItemsSnap, candExtrasSnap,
         tx.get(keysColOf(db, rid, 'dish')), tx.get(keysColOf(db, rid, 'extra')),
         tx.get(idsColOf(db, rid, 'dish')), tx.get(idsColOf(db, rid, 'extra')),
       ]);
@@ -1089,7 +1089,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
       currentGeneration: priorGeneration,          // read from the pointer in THIS transaction, a few lines above
       intent: isRollback ? 'rollback' : 'activate',
     });
-    if (!verdict.ok) throw new Error(`${verdict.code}: ${rid}/${versionId} — ${verdict.detail}`);
+    if (!verdict.ok) throw new Error(`${verdict.code}: ${rid}/${versionId} — ${verdict.detail}`); const reservedNext = RK.unionReserved(reservedDoc, { dish: candItemsSnap.docs.map((d) => (d.data() || {}).key), extra: candExtrasSnap.docs.map((d) => (d.data() || {}).key) }, versionId); const rkConflict = activeItemsSnap ? RK.renameConflicts({ items: candItemsSnap.docs.map((d) => d.data() || {}), activeItems: activeItemsSnap.docs.map((d) => d.data() || {}), reserved: RK.reservedKeySet(reservedDoc) })[0] : null; if (rkConflict) { const e = new Error(`reserved_key_conflict: ${rid}/${versionId} — a renamed item may not take a reserved key (${JSON.stringify(rkConflict.key)})`); e.status = 409; throw e; } RK.assertWithinLimit(reservedNext.doc); if (reservedNext.added > 0) tx.set(RK.reservedRefOf(db, rid), reservedNext.doc);   // S1c: add-only, never removes
 
     tx.set(pointerRef, {
       version: versionId,
@@ -1211,7 +1211,7 @@ function normalizeInputs({ items, extras, extraRecords }) {
    function was not given is a stamp that does not exist, which is what keeps a draft field from ever
    becoming certification. The discriminator is what later separates "certified but a stamp is
    broken" (an anomaly) from "genuinely unstamped, pre-P1" (serve by name, as today). */
-async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha, stamps = null, baseline = null, stampsResolvedAgainst = undefined }, nowServer) {
+async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha, stamps = null, baseline = null, stampsResolvedAgainst = undefined, key_mode = undefined, frozen_keys = undefined }, nowServer) { if (key_mode != null && key_mode !== 'id' && key_mode !== 'name') throw new Error(`write_version_key_mode_invalid: ${rid}`); if (frozen_keys != null && frozenKeysProblem(frozen_keys)) throw new Error(`write_version_frozen_keys_invalid: ${rid}`);
   /* 🔴 THE BASELINE IS REQUIRED, SO "RECORDLESS" STOPS BEING A STATE ANYONE CAN CREATE. It defaulted
      to null and the record was omitted when absent — and the eligibility predicate then treated an
      absent record as permitted, so a version with no record at all was creatable through this exported
@@ -1399,7 +1399,7 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
     item_count: desc.item_count, extra_count: desc.extra_count,
     menu_hash: desc.menu_hash, extras_hash: desc.extras_hash,
     content_hash,
-    source_sha: source_sha || 'unknown', created_at: FieldValue.serverTimestamp(),
+    source_sha: source_sha || 'unknown', created_at: FieldValue.serverTimestamp(), ...(key_mode == null ? {} : { key_mode }), ...(frozen_keys == null ? {} : { frozen_keys }),
   });
   return { versionId, descriptor: desc, seq, menuTable, extraTable };   // 1b: tables for the coherent snapshot; 2b-pre: + the ordinal
 }
@@ -1525,7 +1525,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
   // and rollbackVersion are the only two functions that reach flipPointer, and flipPointer is the
   // only thing that moves the pointer, so validating here covers every path that exists AND every
   // path anyone adds later.
-  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure }), `${rid} (pre-publish)`);
+  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure, key_mode: input && input.key_mode, frozen_keys: input && input.frozen_keys }), `${rid} (pre-publish)`);
 
   // §3.3 — the whole draft accounts for the active certified set before anything is minted or moved.
   /* …and it hands back the stamp map it validated, plus the pointer pair it validated AGAINST. Both
@@ -1590,7 +1590,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
     // VERIFY by re-reading via the REAL reader path (proves counts + BOTH hashes + structure BEFORE the flip).
     await readVersionDocs(db, rid, versionId);        // throws on completeness fail (counts + both hashes)
     await verifyVersionStructure(db, rid, versionId); if (input && input.photos) await input.photos.commit(db, rid, versionId); // throws on a broken menu_structure bijection; DISH PHOTOS A2 step 10: meta/photos + registry refs in ONE transaction, BEFORE the flip
-    const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable);
+    const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable, input && input.key_mode);
     /* READ ONCE, OUTSIDE THE TRANSACTION (identity-flags.js explains why once). */
     const renameOn = await renameEnabled(db, rid);
     const flipped = await flipPointer(db, rid, token, versionId, snapshot, expected, { renameOn,
@@ -1598,7 +1598,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
     identityPair = { version: flipped.version, generation: flipped.generation };
     certifiedActivation = flipped.certified === true;
     // Mirror AFTER the flip and BEFORE releasing the lease — see writeMirror for why both matter.
-    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable });
+    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable, ...(input && input.key_mode != null ? { keyMode: input.key_mode } : {}), labels: labelsFromDocs(((input && input.items) || []).map((i) => ({ key: i && i.key, label: i && i.display && i.display.name }))) });
     await pruneRetention(db, rid, { protect: [versionId] }).catch(() => {});   // never let prune fail the publish
 
     identityKeys = { dish: Object.keys(menuTable || {}), extra: Object.keys(extraTable || {}) };
@@ -1700,7 +1700,7 @@ async function verifyVersionStructure(db, rid, versionId) {
   // (2) ...and what was PERSISTED is a valid candidate, not merely a readable one. The pre-publish
   // check validated the publisher's intention; this validates the fact. They are not the same claim,
   // and only the second one describes what customers would get.
-  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure }),
+  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode, frozen_keys: served.frozenKeys }),
     `${rid}/versions/${versionId} (pre-flip)`);
   return served;
 }
@@ -1719,9 +1719,9 @@ async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm, expect
     // per-product extras §4: never a pre-baseline target while non-off — judged only once the target is known to EXIST and
     // verify (a missing / torn target keeps its own refusal), and before the pointer moves
     await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode);
-    const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable);
+    const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable, targetDocs.keyMode);
     await flipPointer(db, rid, token, targetVersionId, snapshot, expected, { rollback: true });
-    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable });
+    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable, ...(targetDocs.keyMode != null ? { keyMode: targetDocs.keyMode } : {}), labels: targetDocs.itemLabels || null });
     return { versionId: targetVersionId, rolledBack: true, mirrored: mirrorResult.mirrored };
   } finally {
     await releaseLease(db, rid, token);

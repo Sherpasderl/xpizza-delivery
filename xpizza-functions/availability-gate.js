@@ -24,7 +24,7 @@ const { availKey } = require('./avail-key');
 const { itemPricingKey } = require('./menu-pricing');
 const availabilityReducer = require('./availability-reducer');   // 1D D4-b: the ONE 86 rule (any_false active)
 
-async function checkItemAvailability(db, items, restaurantId) {
+async function checkItemAvailability(db, items, restaurantId, keyMode) {
   if (!Array.isArray(items) || items.length === 0) return { blocked: [] };
 
   let node;
@@ -41,7 +41,7 @@ async function checkItemAvailability(db, items, restaurantId) {
   const blocked = [];
   const seen = new Set();
   for (const it of items) {
-    const raw = itemPricingKey(it, restaurantId);
+    const raw = itemPricingKey(it, restaurantId, keyMode);
     if (raw == null || raw === '') continue;            // unkeyed line ⇒ can't be 86'd ⇒ available
     // Block ONLY on an explicit boolean false. Anything else (absent/null/non-object/non-boolean) ⇒ available.
     // 1D D4-b: decided by the shared reducer in 'any_false' mode over this reader's ONE candidate key (the

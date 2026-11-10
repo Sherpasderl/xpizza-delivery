@@ -48,9 +48,14 @@ const active = { d1: new Set(['o1']), d2: new Set(['o2']), d3: new Set(['o3']) }
     const db = createFakeDb({});
     assert.strictEqual(await W.readSeqFlag(db), false, 'absent → OFF');
     for (const v of [false, 'true', 1, {}]) { db.put('config/stack_sequencing_enabled', v); assert.strictEqual(await W.readSeqFlag(db), false, `${JSON.stringify(v)} → OFF`); }
-    db.put('config/stack_sequencing_enabled', true); assert.strictEqual(await W.readSeqFlag(db), true, 'true → ON');
+    // Codex r1 P1 ruling: stop-order sequencing REQUIRES the tracker-fixes tracker — BOTH flags `true`, each failing OFF
+    for (const [seq, trk, want] of [[true, true, true], [true, false, false], [true, 'ABSENT', false], [true, 'true', false], [false, true, false], ['ABSENT', true, false]]) {
+      const d = createFakeDb({ config: { ...(seq === 'ABSENT' ? {} : { stack_sequencing_enabled: seq }), ...(trk === 'ABSENT' ? {} : { tracker_fixes_enabled: trk }) } });
+      assert.strictEqual(await W.readSeqFlag(d), want, `stack_sequencing ${JSON.stringify(seq)} × tracker_fixes ${JSON.stringify(trk)} → ${want ? 'ON' : 'OFF'}`);
+    }
+    db.put('config/stack_sequencing_enabled', true); db.put('config/tracker_fixes_enabled', true); assert.strictEqual(await W.readSeqFlag(db), true, 'both true → ON');
     db.failReads.add('config'); assert.strictEqual(await W.readSeqFlag(db), false, 'a read error → OFF');
-    ok('readSeqFlag: only === true is ON; absent / false / junk / read error → OFF');
+    ok('readSeqFlag: ON only when stack_sequencing_enabled AND tracker_fixes_enabled are === true; every other combination, junk or a read error → OFF');
   }
 
   // ── 2. the candidate filter (D7) ────────────────────────────────────────────────────────────────────────────

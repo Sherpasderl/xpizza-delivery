@@ -464,6 +464,7 @@ const GOOD = () => ({
   const CONTRACT = {
     'restaurant_id':            { invalid: (s) => { s.restaurant_id = 'someone_else'; }, refs: NA('the rid is the identity, not a reference') },
     'schema_version':           { invalid: (s) => { s.schema_version = 1; }, refs: NA('a version number is a value, not a reference to another entity') },
+    'key_mode':                 { absent: NA('optional — a legacy source has none and validates through the restaurant default'), invalid: (s) => { s.key_mode = 'ID'; }, refs: NA('a key mode is a value, not a reference to another entity') },
     'items':                    { invalid: (s) => { s.items = []; }, refs: NA('the collection itself names nothing') },
     'extras':                   { invalid: NA('an empty extras list is legitimate — a menu may sell no add-ons'), refs: NA('this value is content, not a reference to another catalog entity') },
     'structure':                { invalid: NA('an empty structure fails its required members, which are covered per field'), refs: NA('this value is content, not a reference to another catalog entity') },
@@ -673,7 +674,7 @@ const GOOD = () => ({
     // choosing a record that carries the field, removes coverage without failing anything — the
     // census would simply do less and still report success. Pinning the counts makes any reduction a
     // build failure, and any genuine addition a deliberate edit.
-    const EXPECTED = { x_pizza: { paths: 49, planted: 215, exempt: 133 }, la_musa: { paths: 72, planted: 309, exempt: 207 } }[rid];
+    const EXPECTED = { x_pizza: { paths: 50, planted: 218, exempt: 137 }, la_musa: { paths: 73, planted: 312, exempt: 211 } }[rid];   // S0 key_mode: +1 path, +3 plants (wrongType / nullValue / invalid), +4 stated (absent / refs / duplicate / collectionAbsent)
     assert.strictEqual(paths.length, EXPECTED.paths, `${rid} — path count moved; the walker or the seed changed`);
     assert.strictEqual(planted, EXPECTED.planted, `${rid} — plant count moved (got ${planted}); coverage was added or removed`);
     // The EXEMPTION count is pinned too. Only the plants were, so an exemption could be added — turning
@@ -806,7 +807,7 @@ const GOOD = () => ({
     ['checkField :: rule.unique && Array.isArray(value) && new Set(value).size !== value.length', 'shape', 'this predicate IS the type test'],
     ['checkField :: rule.sink', 'post-type', 'reports or dispatches on a check that has already run'],
     ['checkField :: unsafe', 'post-type', 'reports or dispatches on a check that has already run'],
-    ['<module> :: pricingKeyOf(rid, { id: ID_S, name: NAME_S }) === ID_S', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ['<module> :: pricingKeyOf(rid, { id: ID_S, name: NAME_S }, keyMode) === ID_S', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
     ["validateSource :: !source || typeof source !== 'object'", 'shape', 'this predicate IS the type test'],
     ['validateSource :: source.restaurant_id !== rid', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
     ['validateSource :: !Array.isArray(source.items) || source.items.length === 0', 'shape', 'this predicate IS the type test'],
@@ -824,7 +825,6 @@ const GOOD = () => ({
     ["validateSource :: typeof it.key !== 'string' || !it.key", 'shape', 'this predicate IS the type test'],
     ['validateSource :: !isPositiveInt(it.price)', 'shape', 'this predicate IS the type test'],
     ["validateSource :: !it.display || typeof it.display !== 'object'", 'shape', 'this predicate IS the type test'],
-    ['validateSource :: derived !== it.key', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
     ['validateSource :: seen.has(it.key)', 'post-type', 'membership, asked after the value has been typed'],
     ['validateSource :: it.display.cat != null && !catIds.has(it.display.cat)', 'post-type', 'membership, asked after the value has been typed'],
     ["validateSource :: !ex || typeof ex.key !== 'string' || !ex.key", 'shape', 'this predicate IS the type test'],
@@ -953,6 +953,17 @@ const GOOD = () => ({
     ['validateSource :: cat', 'requiredness', 'counts the categories whose name is PRESENT (undefined only is absence, as checkField reads it); every element is still typed by CATEGORY_RULES just below'],
     ['validateSource :: namedCount !== 0 && namedCount !== st.categories.length', 'requiredness', 'the all-or-nothing rule itself: some but not all category names present is refused'],
     // ── PLAN 4 r3 §8.1: badge_priority — optional, typed, and every entry names a badge this document declares ──
+    ["validateSource :: keyMode !== undefined && keyMode !== 'id' && keyMode !== 'name'", 'requiredness', 'S0: key_mode is optional — undefined only is absence (a legacy source validates through the restaurant default); a present value, null included, must be id or name'],
+    ['validateSource :: source.frozen_keys === undefined', 'requiredness', 'S1a: frozen_keys is optional — undefined only is absence (no product was ever renamed under a kept key); a present value, null included, reaches its shape check'],
+    ['validateSource :: fkProblem', 'shape', 'S1a: the shape check\'s verdict on a PRESENT frozen_keys (an object of non-empty id → non-empty key); a reason refuses'],
+    ['validateSource :: Array.isArray(source.items)', 'shape', 'S1a: collects the item keys for the rename-shadow rule; a non-array is refused by its own rule just below'],
+    ['validateSource :: i', 'post-type', 'S1a: reads the key of each item for the rename-shadow set; a non-object item is refused by the item rules'],
+    ['validateSource :: derived !== it.key && frozen.get(String(it.display.id)) !== it.key', 'not-a-presence-test', 'S1a: the key rule — derived from the display, OR held by an ACTIVE frozen entry for exactly this (display.id, key)'],
+    ['validateSource :: derived !== it.key && itemKeys.has(derived)', 'not-a-presence-test', 'S1a: a renamed product\'s name may not be another product\'s pricing key (on a name-keyed menu that name prices the other product)'],
+    ['sourceToBuildInputs :: source.frozen_keys === undefined', 'post-type', 'S1a: forwards a frozen_keys validateSource already accepted; an absent one keeps the inputs in their legacy shape'],
+    ['sourceToBuildInputs :: fz', 'post-type', 'S1a: the active entries go to the builder only when the source carries a map'],
+    ['sourceToBuildInputs :: fz #2', 'post-type', 'S1a: the whole map rides the inputs only when the source carries one'],
+    ['sourceToBuildInputs :: source.key_mode === undefined', 'post-type', 'S0: forwards a key_mode validateSource already accepted into the build inputs; an absent one keeps the inputs in their legacy shape'],
     ['validateSource :: st.badge_priority !== undefined', 'requiredness', 'undefined only; a present value (null included) reaches its type check'],
     ['validateSource :: !st.badges || !Object.prototype.hasOwnProperty.call(st.badges, k)', 'post-type', 'membership of an already-typed priority entry in the declared badges; no declared badges refuses every entry (fail closed)'],
   ];
@@ -966,7 +977,7 @@ const GOOD = () => ({
     ...enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8')),
     ...enumeratePredicates(readFileSync(join(__dirname, 'canonical-json.js'), 'utf8')),
   ];
-  assert.strictEqual(preds.length, 175, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
+  assert.strictEqual(preds.length, 185, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
 
   const unruled = preds.filter((p) => !RULED.has(p.key)).map((p) => `${p.line}: ${p.key}`);
   assert.deepStrictEqual(unruled, [],
@@ -980,7 +991,7 @@ const GOOD = () => ({
   }
   const counts = {};
   for (const p of preds) counts[RULED.get(p.key).kind] = (counts[RULED.get(p.key).kind] || 0) + 1;
-  assert.deepStrictEqual(counts, { requiredness: 25, 'post-type': 78, shape: 50, 'not-a-presence-test': 22 },   // plan 4: +1 requiredness, +1 post-type (badge_priority); public-menu-display T1: +3 requiredness (all-or-nothing names); add-product B: +10 group rules; +5 choiceBadges (net); per-product extras: +8 post-type, +1 requiredness, +1 shape (typed deny_extras, no variant list, no unknown field, no ambiguous legacy entry)
+  assert.deepStrictEqual(counts, { requiredness: 27, 'post-type': 83, shape: 52, 'not-a-presence-test': 23 },   // S1a: +1 requiredness (frozen_keys), +4 post-type (the shadow set's item read, 3 forwards), +2 shape (the map's shape verdict, the items array), +1 not-a-presence (the key rule split in two, the shadow rule);   // S0: +1 requiredness (key_mode), +1 post-type (its forward);   // plan 4: +1 requiredness, +1 post-type (badge_priority); public-menu-display T1: +3 requiredness (all-or-nothing names); add-product B: +10 group rules; +5 choiceBadges (net); per-product extras: +8 post-type, +1 requiredness, +1 shape (typed deny_extras, no variant list, no unknown field, no ambiguous legacy entry)
     'the mix of rulings moved — a predicate changed meaning, which is a thing to look at rather than re-pin');
   ok(`all ${preds.length} control predicates ruled (${counts.requiredness} requiredness, ${counts['post-type']} post-type, ${counts.shape} shape, ${counts['not-a-presence-test']} not-a-presence-test)`);
 

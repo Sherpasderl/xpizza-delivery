@@ -19,10 +19,10 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('cancel-pr
 const UID = 'drv_tb_1';
 const ORD = { order_type: 'delivery', status: 'cancelled' };
 // the driver picked up BOTH a and b (a stacked pair, a = stop 1 live); `current` names a's delivery
-function world({ flag = true, current = 'ord_a_delivery', status = 'en_route_delivery', bPicked = true, bOrder = 'out_for_delivery', extra = {} } = {}) {
+function world({ flag = true, tracker = true, current = 'ord_a_delivery', status = 'en_route_delivery', bPicked = true, bOrder = 'out_for_delivery', extra = {} } = {}) {
   const leg = (oid, type, st) => ({ order_id: oid, type, status: st, assigned_driver_id: UID });
   return createFakeDb({
-    config: flag === 'ABSENT' ? {} : { stack_sequencing_enabled: flag },
+    config: { ...(flag === 'ABSENT' ? {} : { stack_sequencing_enabled: flag }), ...(tracker === 'ABSENT' ? {} : { tracker_fixes_enabled: tracker }) },
     drivers: { [UID]: { name: 'D', status, current_task_id: current } },
     orders: { ord_a: { status: 'cancelled' }, ord_b: { status: bOrder } },
     tasks: {
@@ -49,6 +49,13 @@ const clean = (db, oid = 'ord_a') => cleanupTasksAndDriver({ db }, oid, ORD, 1);
     assert.deepStrictEqual(base.get(`drivers/${UID}`), { name: 'D', status: 'available' }, 'today: pointer null + available');
   }
   ok('flag OFF / absent: ONE update() exactly as today (tasks cancelled, pointer null, status available)');
+  // Codex r1 P1 ruling: sequencing ON but the tracker-fixes tracker OFF / absent → today's path (no promotion)
+  for (const tracker of [false, 'ABSENT']) {
+    const base = world({ tracker }); const s = spy(base);
+    await clean(s.db);
+    assert.deepStrictEqual(s.log, [['update', '', ['drivers/drv_tb_1/current_task_id', 'drivers/drv_tb_1/status', 'tasks/ord_a_delivery/status', 'tasks/ord_a_pickup/status']]], `tracker_fixes ${tracker}: one update() as today`);
+  }
+  ok('stack_sequencing ON × tracker_fixes OFF / absent: ONE update() exactly as today (the promotion requires both flags)');
 
   // ── 2. ON: a post-pickup cancel of stop 1 → stop 2 live, driver still en_route_delivery ─────────────────────
   {

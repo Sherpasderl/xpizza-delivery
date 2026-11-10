@@ -34,4 +34,18 @@ function facturaVoidEligible(before, after) {
 const FACTURA_PLATFORM_RESTAURANTS = new Set(['x_pizza']);
 function usesPlatformFactura(restaurantId) { return FACTURA_PLATFORM_RESTAURANTS.has(restaurantId); }
 
-module.exports = { facturaSaleEligible, facturaVoidEligible, usesPlatformFactura, FACTURA_PLATFORM_RESTAURANTS };
+// The platform factura pricer keys lines by NAME, so a platform-factura restaurant must price by name. This judges the
+// EFFECTIVE mode (absent = the restaurant's default): a version published before the mode was recorded carries none, and
+// judging the raw value would refuse every live factura. Fail closed: a refusal here refuses the order.
+function assertFiscalKeyMode(restaurantId, keyMode) {
+  const mode = require('../menu-pricing').effectiveKeyMode(restaurantId, keyMode);
+  if (usesPlatformFactura(restaurantId) && mode !== 'name') throw new Error(`fiscal_key_mode_unsupported: ${restaurantId} prices by ${mode}`);
+}
+// The same fence as a verdict, for the request handlers: false refuses the request before anything is written, and logs why.
+function fiscalKeyModeOk(restaurantId, keyMode) {
+  try { assertFiscalKeyMode(restaurantId, keyMode); return true; } catch (e) {
+    console.error('fiscal_key_mode_unsupported', JSON.stringify({ restaurantId, error: String((e && e.message) || e).slice(0, 160) }));
+    return false;
+  }
+}
+module.exports = { facturaSaleEligible, facturaVoidEligible, usesPlatformFactura, FACTURA_PLATFORM_RESTAURANTS, assertFiscalKeyMode, fiscalKeyModeOk };

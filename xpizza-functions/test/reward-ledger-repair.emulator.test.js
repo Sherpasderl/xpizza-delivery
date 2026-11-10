@@ -54,7 +54,9 @@ const { reverseEarnForOrder } = require('../rewards-earn');
     assert.strictEqual(await bal('u1', 'x_pizza'), 8); assert.strictEqual((await lkey('u1', 'x_pizza', 'reverse_ORD')).delta, -3); ok('retry idempotent: no repair record → no re-reversal (balance still 8)');
 
     // 3 — [A revise] a PURGED order must NOT orphan a diverged ledger: an ENRICHED record (uid/rid/has_redemption)
-    //     heals INDEPENDENTLY of the order node. Seed the divergence with NO orders/PURGED present.
+    //     heals the EARN independently of the order node. Seed the divergence with NO orders/PURGED present.
+    //     P5a hold policy: a record without a redemption_mode on an order that is GONE is a HOLD — the redemption is never
+    //     released automatically (its money may have moved); the record stays pending for a person.
     await db.ref('user_rewards/u3/x_pizza').set({ balance: 3, lifetime: 3, reserved: 0,
       ledger: { earn_PURGED: { type: 'earn', delta: 3, order_id: 'PURGED', ts: 1, config_version: 2 } },
       reservations: { PURGED: { state: 'consumed', cost: 8, debit_applied: 8, seq: 1, updated_at: 1 } } });
@@ -62,8 +64,10 @@ const { reverseEarnForOrder } = require('../rewards-earn');
       uid: 'u3', rid: 'x_pizza', has_redemption: true, earn_failed: true, redemption_failed: true, attempts: 0 });
     r = await retryRewardLedgerRepair(deps, { now: 1200 });
     assert.strictEqual((await lkey('u3', 'x_pizza', 'reverse_PURGED')).delta, -3);
-    assert.strictEqual(await resvState('u3', 'x_pizza', 'PURGED'), 'refunded');
-    assert.strictEqual(await bal('u3', 'x_pizza'), 8); assert.strictEqual(await repair('PURGED'), null); ok('retry: a PURGED order with an enriched record still HEALS from stored coords (never silently orphaned)');
+    assert.strictEqual(await resvState('u3', 'x_pizza', 'PURGED'), 'consumed');   // HOLD: never auto-released (P5a)
+    assert.strictEqual(await bal('u3', 'x_pizza'), 0);                            // the earn reversed (3 − 3); no redemption credit
+    { const rr = await repair('PURGED'); assert.ok(rr && rr.earn_failed === false && rr.redemption_failed === true, `PURGED record kept pending (got ${JSON.stringify(rr)})`); }
+    ok('retry: a PURGED order with an enriched record heals the EARN from stored coords; its redemption is HELD (P5a: gone order → hold, never auto-release) and the record stays pending — never silently orphaned');
 
     // 3b — a legacy (pre-enrich) record with NO uid AND a purged order → CANNOT heal → orphan ALERT + record KEPT
     //      (never silently dropped: the divergence stays visible to a human, not lost).

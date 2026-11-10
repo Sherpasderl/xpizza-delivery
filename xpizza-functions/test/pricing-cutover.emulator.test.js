@@ -112,7 +112,11 @@ const build = () => {
     const total = MENU_BY_RESTAURANT.x_pizza.Ham;
     const pCat = applyRedemptionToPricing({ items: paid, restaurantId: 'x_pizza', redemption: rCat, totalLempiras: total, tables: t });
     const pCode = applyRedemptionToPricing({ items: paid, restaurantId: 'x_pizza', redemption: rCode, totalLempiras: total });
-    assert.deepStrictEqual(pCat, pCode, 'redeemed FACTURA value (factura_items + desc_rebaja) byte-identical off the real catalog');
+    // S1d (PLAN r6 §2.5): factura lines read off a VERSIONED catalog also STORE the key and the pricing version (additive). The value
+    // is compared with those two provenance fields projected away; the fields themselves are asserted, never ignored.
+    const S1D = (v) => JSON.parse(JSON.stringify(v, (k, x) => (k === 'item_key' || k === 'menu_version_id' ? undefined : x)));
+    assert.deepStrictEqual(S1D(pCat), S1D(pCode), 'redeemed FACTURA value (factura_items + desc_rebaja) byte-identical off the real catalog');
+    assert.ok(pCat.factura_items.every((l) => typeof l.item_key === 'string' && l.item_key && Object.prototype.hasOwnProperty.call(l, 'menu_version_id')), 'S1d: every catalog-priced factura line stores its item_key and menu_version_id');
     ok(`PIN E 1b-1b: redemption + redeemed factura off the REAL catalog == code (rebaja ${pCat.desc_rebaja_cents})`);
   }
   // (6) 1b-1b falsifiable — a diverged catalog price → the resolver serves CODE, so redemption prices on

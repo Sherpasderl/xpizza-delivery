@@ -4,11 +4,12 @@
 // record builder + its REAL member attribution (attachCustomerAttribution → customer_uid); a PICKUP is completed by the REAL
 // kitchen writer (xpizza-kitchen/xpizza-delivery.js setOrderStatus, firebase stubbed to the emulator), a delivery as the driver
 // flow stamps it.
-//   · the order's own customer rates → ONE order_ratings record { thumb, rated_at, restaurant_id } — no identity
+//   · the order's own customer rates → ONE ratings_v2 node (S-A1: legacy_thumb ±1, write-once; owner_uid server-only) — no name/phone;
+//     order_ratings is never written again (S-A1, NOTE-S-A-ratings-v2-build: prod held zero v1 records)
 //   · ANY repeat (same or other thumb) → the same 200 {ok:true}, the first thumb kept (never revealed)
 //   · own order not yet fulfilled → 409 not_fulfilled; not signed in / a staff (non-customer) token / a tombstoned account /
 //     another customer's order / a guest order / unknown / malformed → the SAME generic 403; nothing written for any refusal
-//   · RULES (the real database.rules.json, rules-enabled namespace): no client reads/writes order_ratings or writes public_stats
+//   · RULES (the real database.rules.json, rules-enabled namespace): no client reads/writes order_ratings / ratings_v2 or writes public_stats
 // Run: npm run test:s5-ratings
 require('./_emulator-required')('database');
 
@@ -97,7 +98,8 @@ async function placeOrder({ type = 'delivery', uid = 'u_ana' } = {}) {
   return orderId;
 }
 const deliver = (oid) => rtdb.ref(`orders/${oid}`).update({ status: 'delivered', delivered_at: Date.now() });
-const rating = async (oid) => (await rtdb.ref(`order_ratings/${oid}`).get()).val();
+const rating = async (oid) => (await rtdb.ref(`ratings_v2/${oid}`).get()).val();   // S-A1: the ONE v2 node
+const legacyRecord = async (oid) => (await rtdb.ref(`order_ratings/${oid}`).get()).val();
 
 (async () => {
   await wipe();
@@ -109,10 +111,12 @@ const rating = async (oid) => (await rtdb.ref(`order_ratings/${oid}`).get()).val
   const r1 = await post({ order_id: a, thumb: 'up' }, 'cust:u_ana');
   assert.deepStrictEqual([r1.status, r1.json], [200, { ok: true }]);
   const rec = await rating(a);
-  assert.deepStrictEqual(Object.keys(rec).sort(), ['rated_at', 'restaurant_id', 'thumb']);
-  assert.deepStrictEqual([rec.thumb, rec.restaurant_id], ['up', 'x_pizza']);
-  assert.ok(!/u_ana|Ana|9999/.test(JSON.stringify(rec)), 'no uid, name or phone in the record');
-  ok('the order\'s own signed-in customer rates a delivered order → ONE order_ratings record { thumb, rated_at, restaurant_id } — no identity');
+  // S-A1 (ruled change): the record is the v2 node — legacy_thumb +1 (write-once), owner_uid kept SERVER-ONLY (the S-A3 / deletion
+  // predicate), never a name or phone; order_ratings is never written again
+  assert.deepStrictEqual([rec.rating_format, rec.legacy_thumb, rec.restaurant_id, rec.state, rec.owner_uid], [2, 1, 'x_pizza', 'live', 'u_ana']);
+  assert.ok(!/Ana|9999/.test(JSON.stringify(rec)), 'no name or phone in the node');
+  assert.strictEqual(await legacyRecord(a), null, 'order_ratings is never written');
+  ok('the order\'s own signed-in customer rates a delivered order → ONE ratings_v2 node (legacy_thumb +1, owner_uid server-only) — no name or phone; order_ratings never written');
 
   // 2. ANY repeat → the same 200, the first thumb kept, never revealed
   const same = await post({ order_id: a, thumb: 'up' }, 'cust:u_ana'), other = await post({ order_id: a, thumb: 'down' }, 'cust:u_ana');
@@ -125,7 +129,7 @@ const rating = async (oid) => (await rtdb.ref(`order_ratings/${oid}`).get()).val
   assert.strictEqual(await KDS.setOrderStatus(p, 'completed'), true, 'premise: the real KDS setOrderStatus wrote');
   const po = (await rtdb.ref(`orders/${p}`).get()).val();
   assert.deepStrictEqual([po.status, po.completed_at, po.delivered_at], ['completed', undefined, undefined], 'premise: the KDS completion stamps NO timestamp');
-  assert.deepStrictEqual([(await post({ order_id: p, thumb: 'down' }, 'cust:u_ana')).status, (await rating(p)).thumb], [200, 'down']);
+  assert.deepStrictEqual([(await post({ order_id: p, thumb: 'down' }, 'cust:u_ana')).status, (await rating(p)).legacy_thumb], [200, -1]);
   ok('a pickup completed by the REAL kitchen writer (setOrderStatus → completed, no timestamp) is rateable');
 
   // 4. own order not yet fulfilled → 409; every other refusal → the SAME generic 403; nothing written
@@ -156,13 +160,14 @@ const rating = async (oid) => (await rtdb.ref(`order_ratings/${oid}`).get()).val
   for (const oid of [guestOrder, bob, bobUnfulfilled, gone]) assert.strictEqual(await rating(oid), null, 'nothing written');
   ok(`own unfulfilled order → 409 not_fulfilled; ${cases.length} other refusals (no / invalid / STAFF token, another customer's order — fulfilled or not —, a guest order, a tombstoned account, unknown, malformed) → the SAME 403; nothing written`);
 
-  // 5. RULES: no client reads/writes order_ratings or writes public_stats; public_stats reads are public
+  // 5. RULES: no client reads/writes order_ratings / ratings_v2 or writes public_stats; public_stats reads are public
   const RULES_TEXT = fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-reference', 'database.rules.json'), 'utf8');
   const env = await initializeTestEnvironment({ projectId: 'demo-xpizza-s5-ratings', database: { rules: RULES_TEXT } });
   try {
     await env.withSecurityRulesDisabled(async (c) => {
       await c.database().ref('dispatchers/disp1').set(true); await c.database().ref('kitchen/kit1').set(true);
       await c.database().ref('order_ratings/o1').set({ thumb: 'up', rated_at: 1, restaurant_id: 'x_pizza' });
+      await c.database().ref('ratings_v2/o1').set({ rating_format: 2, legacy_thumb: 1, state: 'live', restaurant_id: 'x_pizza', owner_uid: 'cust1', comment: 'x', rev: 0 });
       await c.database().ref('public_stats/x_pizza').set({ schema_version: 1 });
     });
     const who = {
@@ -173,12 +178,15 @@ const rating = async (oid) => (await rtdb.ref(`order_ratings/${oid}`).get()).val
       const d = c.database();
       await assertFails(d.ref('order_ratings/o1').get());
       await assertFails(d.ref('order_ratings/o2').set({ thumb: 'up', rated_at: 1, restaurant_id: 'x_pizza' }));
+      // S-A1: the v2 node is server-only for EVERY role — even its own customer (owner_uid / comment are never client-readable)
+      await assertFails(d.ref('ratings_v2/o1').get()); await assertFails(d.ref('ratings_v2/o1/comment').get());
+      await assertFails(d.ref('ratings_v2/o2').set({ rating_format: 2, store: 5 })); await assertFails(d.ref('ratings_v2/o1/state').set('live'));
       await assertFails(d.ref('public_stats/x_pizza').set({ forged: true }));
       await assertFails(d.ref('public_stats/x_pizza/dish_stats').set([]));
       await assertSucceeds(d.ref('public_stats/x_pizza').get());
     }
   } finally { await env.cleanup(); }
-  ok('rules: anonymous / customer / dispatcher / kitchen / handheld can neither read nor write order_ratings, nor write public_stats; everyone can read public_stats');
+  ok('rules: anonymous / customer (even the node\'s own) / dispatcher / kitchen / handheld can neither read nor write order_ratings or ratings_v2, nor write public_stats; everyone can read public_stats');
 
   FINISHED = true;
   console.log(`\ns5-ratings: OK (${n})`);

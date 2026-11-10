@@ -17,11 +17,11 @@ const crypto = require('crypto');
 const { SERVED_FIELDS, pickPresentation } = require('./presentation-shape');
 const { toPublicSchedule } = require('../schedule/schedule-only');   // the SAME public schedule shape schedule_only serves
 
-const REPRESENTATION_VERSION = 'directory-1';
+const REPRESENTATION_VERSION = 'directory-2';   // S-B step 4: + the per-store `ratings` entry field (capp-only; old adapters allowlist it out)
 // the per-restaurant allowlist, in output order
 const ENTRY_FIELDS = Object.freeze(['restaurant_id', 'name', 'kicker', 'unit', 'cuisines', 'logo_url', 'logo_wide', 'hero_url', 'asset_base',
   'branch', 'pickup_addr', 'coverage_km', 'hub_lat', 'hub_lng', 'eta_delivery_min', 'eta_pickup_min', 'payments', 'pickup',
-  'schedule', 'schedule_state', 'fee', 'promo', 'order_id_prefix', 'house', 'meals', 'degraded']);
+  'schedule', 'schedule_state', 'fee', 'promo', 'order_id_prefix', 'house', 'meals', 'ratings', 'degraded']);
 const BODY_FIELDS = Object.freeze(['representation_version', 'complete', 'platform', 'restaurants', 'unavailable']);
 const FEE_STATES = new Set(['priced', 'none', 'invalid', 'unavailable']);
 
@@ -46,6 +46,21 @@ function feeOf(f) {
 function promoOf(p) {
   if (!p || typeof p !== 'object') return null;
   return { free_delivery: p.free_delivery === true, label: typeof p.label === 'string' && p.label.length ? p.label : null };
+}
+
+// S-B step 4 (advisor ruling 2026-11-02, directory only): the store's PUBLISHED social proof from public_stats/{rid} (the S-B producer's
+// whole-doc, below-threshold-OMITTED projection), re-allowlisted field by field — counts only. Nothing present ⇒ null. A read failure
+// is DEGRADED, never partial: an aggregate outage drops the badge, it never blocks or de-validates the directory (plan (b)).
+function ratingsOf(doc) {
+  if (!doc || typeof doc !== 'object') return null;
+  const out = {};
+  if (Number.isInteger(doc.rating_count) && doc.rating_count >= 10 && typeof doc.rating_avg === 'number' && doc.rating_avg >= 1 && doc.rating_avg <= 5) {
+    out.rating_avg = doc.rating_avg; out.rating_count = doc.rating_count;
+  }
+  if (Number.isInteger(doc.pct_liked) && doc.pct_liked >= 0 && doc.pct_liked <= 100) out.pct_liked = doc.pct_liked;
+  if (Number.isInteger(doc.repeatCustomers) && doc.repeatCustomers >= 25) out.repeat_customers = doc.repeatCustomers;
+  if (Number.isFinite(doc.new_until)) out.new_until = doc.new_until;
+  return Object.keys(out).length ? out : null;
 }
 
 async function buildEntry(rid, identity, deps) {
@@ -76,6 +91,10 @@ async function buildEntry(rid, identity, deps) {
     row.coverage_km = num(pv && pv.coverage_km);
     if (row.fee.state === 'unavailable') partial = true;
   } catch (_) { row.fee = { state: 'unavailable' }; row.promo = null; row.coverage_km = null; partial = true; }
+
+  if (typeof deps.readStats === 'function') {
+    try { row.ratings = ratingsOf(await deps.readStats(rid)); } catch (_) { row.ratings = null; degraded.push('ratings'); }
+  } else row.ratings = null;
 
   row.degraded = [...new Set(degraded)].sort();
   const out = {};
@@ -137,4 +156,4 @@ async function handleDirectory(req, res, deps) {
   return sendJson(res, 200, r.body);
 }
 
-module.exports = { buildDirectory, handleDirectory, ENTRY_FIELDS, BODY_FIELDS, REPRESENTATION_VERSION, etagOf, canonicalJson };
+module.exports = { ratingsOf, buildDirectory, handleDirectory, ENTRY_FIELDS, BODY_FIELDS, REPRESENTATION_VERSION, etagOf, canonicalJson };

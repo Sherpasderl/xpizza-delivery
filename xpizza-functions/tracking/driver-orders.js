@@ -3,6 +3,8 @@
 // and the enums it uses (xpizza-driver/driver-complete.js), so the server can compute EXACTLY which order the driver app shows as
 // its active card (element 0). driver-orders.guard.test.js extracts both from the SDK and asserts byte equality — edit the SDK, not
 // this file, then re-copy.
+// the copied sort calls validPair — the server rule (sequencing/validity.js) the driver's stack-validity.js is byte-pinned to
+const { validPair } = require('../sequencing/validity');
 // ── BEGIN COPY: enums (driver-complete.js) ──
 const TASK_STATUS = {
   PENDING: 'pending',
@@ -54,11 +56,21 @@ function getDriverOrders(driverId, allTasks, allOrders, includeCompleted = false
     });
   }
 
-  // Sort: in-progress orders first, then by created_at
+  // Sort: in-progress orders first, then by the server's stop_seq (a coherent sequenced stack), else by created_at.
   const phaseRank = { delivery: 0, pickup: 1, awaiting_acceptance: 2, completed: 3 };
+  // Sequence ONLY a coherent 2-stop DELIVERY stack: the whole delivery-phase set is EXACTLY one valid pair (server
+  // validPair provenance — same stack_id/driver, ranks 1+2, no reassignment after the stack write). This is a
+  // SET-LEVEL decision computed once, so the comparator is consistent/transitive (never a pairwise mix with a 3rd
+  // order). Non-delivery phases, a non-coherent delivery set (3+ orders, partial/mismatched/stale metadata) → legacy
+  // created_at. The server (sequencing/plan-stack) is the only writer of stop_seq/stack_id on tasks/{oid}_delivery;
+  // flag-OFF writes none. (This whole block is mirrored verbatim into tracking/driver-orders.js by platform-core,
+  // which imports validPair from the same byte-pinned rule.)
+  const deliveryPhase = result.filter((o) => o.phase === 'delivery');
+  const seqMode = deliveryPhase.length === 2 && validPair(deliveryPhase[0].deliveryTask, deliveryPhase[1].deliveryTask);
   result.sort((a, b) => {
     const r = phaseRank[a.phase] - phaseRank[b.phase];
     if (r !== 0) return r;
+    if (seqMode && a.phase === 'delivery' && b.phase === 'delivery') return a.deliveryTask.stop_seq - b.deliveryTask.stop_seq;
     return (a.deliveryTask.created_at || 0) - (b.deliveryTask.created_at || 0);
   });
 

@@ -6,7 +6,7 @@
 // the menu doesn't recognize is DROPPED, never stored. NO raw client names/prices are persisted (they
 // would be an XSS/trust vector) — only menu-recognized keys + qty. Display uses the sanitized
 // items_text; reorder re-resolves today's name/price from the menu by key. Guest/empty/malformed → [].
-const { itemPricingKey, resolvePriceTables } = require('./menu-pricing');
+const { itemPricingKey, extraPricingKey, resolvePriceTables } = require('./menu-pricing');
 
 const MAX_LINES = 100;   // bounded to a real order's line count (defensive cap)
 
@@ -20,13 +20,13 @@ const MAX_LINES = 100;   // bounded to a real order's line count (defensive cap)
 // today's exact behaviour — a reorder recipe is never worth failing an order over, and the allowlist
 // still fails CLOSED either way: an unrecognized key is dropped, never persisted.
 function normalizeReorderItems(bodyItems, restaurantId, tables = null) {
-  const { menu, extraPrices } = resolvePriceTables(restaurantId, tables);   // PIN B asserts the tag
+  const { menu, extraPrices, keyMode } = resolvePriceTables(restaurantId, tables);   // PIN B asserts the tag
   if (!menu || !Array.isArray(bodyItems)) return [];
   const byId = restaurantId === 'la_musa';   // la_musa extras are id-keyed/qty-aware; x_pizza name-keyed/count-once
   const out = [];
   for (const it of bodyItems) {
     if (out.length >= MAX_LINES) break;
-    const key = itemPricingKey(it, restaurantId);
+    const key = itemPricingKey(it, restaurantId, keyMode);
     if (!key || !Object.prototype.hasOwnProperty.call(menu, key)) continue;   // unknown item → drop
     const qty = Number(it && it.qty);
     if (!Number.isInteger(qty) || qty < 1 || qty > 50) continue;              // invalid qty → drop
@@ -37,7 +37,7 @@ function normalizeReorderItems(bodyItems, restaurantId, tables = null) {
       // la_musa — id-keyed, qty-aware, standalone; dedup by id (already faithful)
       const seen = new Set();
       for (const ex of extras) {
-        const eid = ex && ex.id;
+        const eid = extraPricingKey(ex, restaurantId, keyMode);
         if (!eid || !Object.prototype.hasOwnProperty.call(extraPrices || {}, eid) || seen.has(eid)) continue;
         const eqty = Number(ex && ex.qty);
         if (!Number.isInteger(eqty) || eqty < 1 || eqty > 50) continue;
@@ -51,7 +51,7 @@ function normalizeReorderItems(bodyItems, restaurantId, tables = null) {
       // count is bounded to the item qty: an extra can't be on more instances than there are pizzas.
       const counts = {};
       for (const ex of extras) {
-        const ename = ex && ex.name;
+        const ename = extraPricingKey(ex, restaurantId, keyMode);
         if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices || {}, ename)) continue;
         counts[ename] = (counts[ename] || 0) + 1;
       }
@@ -72,3 +72,40 @@ function normalizeReorderItemsCanonical(bodyItems, restaurantId, tables, context
 }
 
 module.exports = { normalizeReorderItems, normalizeReorderItemsCanonical };
+
+/* S-D (PLAN §S-D) — the reorder PRICE SNAPSHOT: an additive sibling of the recipe (recipe_format is NOT bumped), captured from the
+   COMMITTED prices when the recipe is first written and copied verbatim afterwards (materialize / claim never re-price).
+     { v:1, lines:[{ unit_cents, line_cents }] }  — aligned 1:1 with the recipe lines normalizeReorderItems keeps
+   unit_cents = the dish's menu price; line_cents = the line EXACTLY as charged. ONE pricer, untouched: line_cents is the existing
+   computeServerTotal on a ONE-LINE cart — its loop carries no state across lines (per-line validation, per-line extras dedup, a plain
+   running sum), so Σ line_cents === the cart's charged subtotal (proven over a generated corpus for both brands). x_pizza extras
+   count once per entry, la_musa extras by their own qty — whatever computeServerTotal charges. The pairing is single-pass: each body
+   line is normalized on its own (normalizeReorderItems carries no cross-line state either, only the MAX_LINES cap, applied here) and
+   priced on its own, so a dropped line drops from BOTH. Any line the pricer refuses ⇒ NO snapshot at all (never a partial one — the
+   client's generic disclosure covers it; a charged cart always prices). Client price fields on the body are never read. */
+function normalizeReorderItemsWithPrices(bodyItems, restaurantId, tables = null) {
+  const { menu } = resolvePriceTables(restaurantId, tables);   // PIN B asserts the tag
+  if (!menu || !Array.isArray(bodyItems)) return { items: [], snapshot: null };
+  const items = [];
+  const lines = [];
+  let priced = true;
+  let truncated = false;
+  for (const it of bodyItems) {
+    const one = normalizeReorderItems([it], restaurantId, tables);
+    if (one.length !== 1) continue;
+    if (items.length >= MAX_LINES) { truncated = true; break; }   // the recipe is capped; the CHARGE is not (Codex S-D r1)
+    items.push(one[0]);
+    const unit = menu[one[0].key];
+    const r = require('./menu-pricing').computeServerTotal([it], restaurantId, tables);
+    if (r.error || !Number.isInteger(r.total) || !Number.isInteger(unit)) { priced = false; continue; }
+    lines.push({ unit_cents: unit * 100, line_cents: r.total * 100 });
+  }
+  // a TRUNCATED recipe ⇒ NO snapshot (Σ line_cents would no longer equal the charge; the client's generic disclosure covers it)
+  return { items, snapshot: priced && !truncated && items.length > 0 ? { v: 1, lines } : null };
+}
+// the snapshot alone (the online pending writer's insert-only hunk: reorder_items itself is written by the unchanged base line)
+function reorderPriceSnapshot(bodyItems, restaurantId, tables = null) {
+  return normalizeReorderItemsWithPrices(bodyItems, restaurantId, tables).snapshot;
+}
+module.exports.normalizeReorderItemsWithPrices = normalizeReorderItemsWithPrices;
+module.exports.reorderPriceSnapshot = reorderPriceSnapshot;

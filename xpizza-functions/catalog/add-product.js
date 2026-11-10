@@ -67,12 +67,15 @@ const keyOfDisplay = (mode, display) => (mode === 'name' ? display.name : String
 // every live item already agrees with it — a profile that says 'name' over a menu keyed by id would allocate
 // keys the pricing path can never find. Either failure refuses ADDITIONS (fail-closed); price edits are
 // untouched by it.
-function resolveKeyMode(profileMode, activeItems) {
+// S1a: a live item renamed under a recorded frozen key (frozenKeys = the draft's server-owned map) agrees with the mode by
+// that entry — exactly (display.id, key), as validation reads it.
+function resolveKeyMode(profileMode, activeItems, frozenKeys = null) {
+  const frozenOk = (it) => isObj(frozenKeys) && it.display.id != null && own(frozenKeys, String(it.display.id)) && frozenKeys[String(it.display.id)] === it.key;
   if (!KEY_MODES.has(profileMode)) {
     refuse('key_mode_unknown', `the restaurant profile has no usable pricing_key_mode (${JSON.stringify(profileMode)}); products cannot be added until it is set`, { status: 409 });
   }
   for (const it of activeItems || []) {
-    if (!it || !isObj(it.display) || it.key !== keyOfDisplay(profileMode, it.display)) {
+    if (!it || !isObj(it.display) || (it.key !== keyOfDisplay(profileMode, it.display) && !frozenOk(it))) {
       refuse('key_mode_inconsistent', `pricing_key_mode '${profileMode}' does not match the live item ${JSON.stringify(it && it.key)}; products cannot be added`, { status: 409 });
     }
   }
@@ -105,8 +108,12 @@ function classifyItems(incoming, activeKeys) {
 // validator that runs after allocation still refuses — this only names the field).
 // authoring — the ONE platform authoring switch (catalog/platform-groups.js, §0c.7). Off ⇒ a new required-choice group is
 // refused for EVERY brand (choices_not_supported_yet); on ⇒ a group arrives as ONE atomic unit (see allocateGroups).
-function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, registryHasKey, fieldProblem = () => null, authoring = false }) {
+function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, registryHasKey, fieldProblem = () => null, authoring = false, mint = null }) {
   const source = JSON.parse(JSON.stringify(incoming));
+  // S1a: every frozen key — active or inert — stays TAKEN, and every frozen display id stays USED, so a renamed product's key is
+  // never minted for another product and its id is never handed to a new one (D1 ruling condition 1).
+  const frozen = [incoming, stored].filter((s) => isObj(s) && isObj(s.frozen_keys)).flatMap((s) => Object.entries(s.frozen_keys));
+  const frozenKeys = new Set(frozen.map(([, k]) => k));
   const activeKeys = new Set((activeItems || []).map((it) => it.key));
   const storedByKey = new Map(((stored && stored.items) || []).filter((it) => isObj(it) && typeof it.key === 'string').map((it) => [it.key, it]));
   const { existing, fresh, allocated } = classifyItems(source, activeKeys);
@@ -169,6 +176,7 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
     const id = isObj(it) && isObj(it.display) ? it.display.id : undefined;
     if (Number.isInteger(id) && id > 0) numericIds.push(id);
   }
+  for (const [id] of frozen) if (/^[1-9][0-9]*$/.test(id) && Number.isSafeInteger(Number(id))) numericIds.push(Number(id));
   let next = Math.max(Number.isInteger(hwm) && hwm >= 0 ? hwm : 0, ...numericIds, 0);
   const allocatedNow = [];
   const refToKey = new Map();
@@ -177,6 +185,8 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
   // has, and never an existing product that happens to share the key.
   const at = (key) => { for (const [r, k] of refToKey) if (k === key) return { key, ref: r }; return { key }; };
   const refToId = new Map();   // 1D add-product B: tmp ref → DISPLAY id (the namespace variantOf / variant_items use)
+  const mintedNow = new Set();
+  const mintExtraKeys = new Set(((incoming && incoming.extras) || []).map((e) => (isObj(e) ? e.key : null)).filter((k) => typeof k === 'string'));
   for (const { item } of fresh) {
     const name = tidyName(item.display.name);
     let key; let id;
@@ -184,6 +194,16 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
       key = slugify(name);
       if (!key) refuse('name_unusable', `"${name}" has no letters or digits to build an identifier from`, { ref: item.ref, field: 'name' });
       id = key;
+    }
+    // S1c: with minting on, the pricing key is a fresh opaque token (the id is still today's) and the server records it as a
+    // frozen key, so nothing downstream needs a new rule. It never equals an active, saved, same-batch, extra, frozen or
+    // reserved key: ONE draw, and a collision refuses (retryable) rather than reuse one (codex S1c r1 P2-5).
+    if (mint) {
+      const used = (k) => activeKeys.has(k) || frozenKeys.has(k) || storedByKey.has(k) || mintedNow.has(k) || mintExtraKeys.has(k) || (mint.reserved && mint.reserved.has(k));
+      const k = mint.newKey(); const drawn = used(k) ? null : k;
+      if (drawn === null) refuse('mint_unavailable', 'could not allocate a new product identifier — try again', { status: 503, ref: item.ref, field: 'name' });
+      key = drawn; mintedNow.add(key);
+      source.frozen_keys = { ...(isObj(source.frozen_keys) ? source.frozen_keys : {}), [String(id)]: key };
     }
     refToKey.set(item.ref, key);
     refToId.set(item.ref, id);
@@ -258,7 +278,7 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
   // identity, and the merchant would be publishing a "new" product that carries an old one's history.
   const addedByKey = new Map(additions.map((a) => [a.key, a]));
   for (const key of allocatedNow) {
-    if (registryHasKey(key)) refuse('name_previously_used', 'Ese nombre ya existió en tu menú — usá otro nombre.', { ...at(key), field: nameField(addedByKey.get(key)) });
+    if (registryHasKey(key) || frozenKeys.has(key)) refuse('name_previously_used', 'Ese nombre ya existió en tu menú — usá otro nombre.', { ...at(key), field: nameField(addedByKey.get(key)) });
   }
 
   return { source, hwm: keyMode === 'name' ? next : (Number.isInteger(hwm) ? hwm : null), additions: additions.map((a) => ({ key: a.key, name: a.display.name })), allocatedNow,
@@ -395,11 +415,12 @@ function rewriteGroupRefs(source, refToId) {
                              Nothing else may be removed. A draft that both removes declared items and adds products is
                              accepted only when each half passes its own checks (removals here, additions below).
    Returns { additions:[keys], removals:[keys] }; throws AddProductError on the first violation. */
+const TEXT_FIELDS = Object.freeze(['name', 'desc', 'cat', 'subcat']);
 const ALWAYS_COMPARED = ['categories', 'variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extra_order'];
 const COMPARED_WHEN_AUTHORED = ['extra_categories', 'badges', 'exposure', 'extras_by_category', 'extras_by_item',
   'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras'];
 
-function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null, authoring = false, extrasAuthoring = false }) {
+function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null, authoring = false, extrasAuthoring = false, textEdit = false }) {
   const active = new Map(activeBuilt.items.map((it) => [it.key, it]));
   const draft = new Map(draftBuilt.items.map((it) => [it.key, it]));
   const declared = deletedIds instanceof Set ? deletedIds : new Set(Array.isArray(deletedIds) ? deletedIds : []);
@@ -418,7 +439,12 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
     }
     // per-product extras (§8): with the extras authoring switch ON, the `extras_policy` toggle (absent ⇄ 'none', typed by the
     // validator) is the ONE other field an existing product may change; with it OFF, it is compared like any other field
-    const free = extrasAuthoring ? ['price', 'identity_id', 'extras_policy'] : ['price', 'identity_id'];
+    // S1a: with the item_text_edit switch ON an existing product's text joins them — name, description, category, subcategory
+    // (its pricing key is kept by a recorded frozen key); OFF, they are compared exactly as before
+    const free = [...(extrasAuthoring ? ['price', 'identity_id', 'extras_policy'] : ['price', 'identity_id']), ...(textEdit ? TEXT_FIELDS : [])];
+    if (textEdit && d.display && a.display && d.display.cat !== a.display.cat && !(renderedCategories || []).includes(d.display.cat)) {
+      refuse('category_not_renderable', `the section ${JSON.stringify(d.display.cat)} is not shown on your order page`, { key, field: 'cat' });
+    }
     if (!sameJson(without(d.display, free), without(a.display, free)) || !!d.has_photo !== !!a.has_photo) {
       if (!extrasAuthoring && (d.display && d.display.extras_policy) !== (a.display && a.display.extras_policy)
         && sameJson(without(d.display, [...free, 'extras_policy']), without(a.display, [...free, 'extras_policy']))) {
@@ -568,7 +594,65 @@ function assertSameAuthoredFields(incomingStructure, storedStructure, { activeHa
   if (!sameJson(a, b)) refuse('structure_changed', `the menu's structure fields cannot be added or removed here (${a.join(',')} vs ${b.join(',')})`, { field: 'structure' });
 }
 
+/* ── S1a TEXT RULES (PLAN-portal-item-edit r6 §4.4 + the r6 group-rename addendum) ───────────────────────────────────────────
+   Caps on NEWLY AUTHORED values only — a value equal to the live record's is grandfathered, however long: a product name ≤ 60
+   with no < or > (the section-name rule), a description ≤ 200, and every DERIVED option name ≤ 60 (a group's options are named
+   "{launcher} - {choice}", so a long launcher name is refused through them). A product with no live counterpart is newly
+   authored throughout. A newly authored name may not be another product's name or key, or an option's (extra's) name — on a
+   name-keyed menu that name IS a pricing key (name_taken) — nor a RESERVED key: any key the draft's frozen_keys map names, active
+   or retired, other than the product's own (name_previously_used; codex S1a r1 P1). Returns [{ key, field, code }] (key = the tmp reference for an unallocated product); [] = none. */
+const NAME_MAX = 60;
+const DESC_MAX = 200;
+const chars = (s) => [...String(s)].length;
+function textCapProblems({ draft, live, mint = false }) {
+  const liveByKey = new Map(((live && live.items) || []).filter((it) => isObj(it) && typeof it.key === 'string').map((it) => [it.key, it]));
+  const out = [];
+  const items = ((draft && draft.items) || []).filter((it) => isObj(it) && isObj(it.display));
+  const extraNames = ((draft && draft.extras) || []).map((e) => (isObj(e) && isObj(e.display) && typeof e.display.name === 'string' ? normalizeName(e.display.name) : null)).filter(Boolean);
+  const reserved = new Set((isObj(draft && draft.frozen_keys) ? Object.values(draft.frozen_keys) : []).filter((k) => typeof k === 'string').map(normalizeName));
+  const taken = (self, name) => {
+    const n = normalizeName(name);
+    return extraNames.includes(n) || items.some((o) => o !== self && ((typeof o.display.name === 'string' && normalizeName(o.display.name) === n) || (typeof o.key === 'string' && normalizeName(o.key) === n)));
+  };
+  for (const it of items) {
+    const l = typeof it.key === 'string' && !own(it, 'ref') ? liveByKey.get(it.key) : null;
+    const was = l && isObj(l.display) ? l.display : null;
+    const id = own(it, 'ref') ? it.ref : it.key;
+    const d = it.display;
+    if (typeof d.name === 'string' && (!was || was.name !== d.name)) {
+      if (isGroupVariant(it)) { if (chars(d.name) > NAME_MAX) out.push({ key: id, field: 'name', code: 'option_name_too_long' }); } else {
+        if (chars(d.name) > NAME_MAX) out.push({ key: id, field: 'name', code: 'name_too_long' });
+        if (/[<>]/.test(d.name)) out.push({ key: id, field: 'name', code: 'text_unsafe' });
+      }
+      if (taken(it, d.name)) out.push({ key: id, field: isGroupVariant(it) ? 'choice' : 'name', code: 'name_taken' });
+      else if (!(mint && !l) && reserved.has(normalizeName(d.name)) && !(l && normalizeName(it.key) === normalizeName(d.name))) out.push({ key: id, field: isGroupVariant(it) ? 'choice' : 'name', code: 'name_previously_used' });
+    }
+    if (typeof d.desc === 'string' && (!was || was.desc !== d.desc) && chars(d.desc) > DESC_MAX) out.push({ key: id, field: 'desc', code: 'desc_too_long' });
+  }
+  return out;
+}
+
+/* The group rename: every option of an EXISTING group takes its name from the submitted launcher — "{launcher} - {choice}",
+   exactly the validator's rule — and the launcher's category and subcategory. Keys, display ids, choices, prices and the group
+   refs are untouched (an option's key, once its name moves, is held by a recorded frozen key). A group being created in this
+   save (a launcher or option still on a tmp reference) is left to the allocation, which derives it. Never mutates its input. */
+function rederiveOptionNames(source) {
+  const out = JSON.parse(JSON.stringify(source));
+  const items = Array.isArray(out.items) ? out.items : [];
+  const byId = new Map(items.filter((it) => isObj(it) && isObj(it.display) && it.display.id != null).map((it) => [String(it.display.id), it]));
+  for (const m of items) {
+    if (!isObj(m) || !isObj(m.display) || m.display.variantOf == null || own(m, 'ref')) continue;
+    const launcher = byId.get(String(m.display.variantOf));
+    if (!launcher || own(launcher, 'ref') || !isObj(launcher.display) || typeof launcher.display.name !== 'string' || typeof m.display.choice !== 'string') continue;
+    m.display.name = `${launcher.display.name} - ${m.display.choice}`;
+    m.display.cat = launcher.display.cat;
+    if (launcher.display.subcat == null) delete m.display.subcat; else m.display.subcat = launcher.display.subcat;
+  }
+  return out;
+}
+
 module.exports = {
+  textCapProblems, rederiveOptionNames, TEXT_FIELDS,   // S1a
   MAX_ADDITIONS, TMP_RE, AddProductError, normalizeName, tidyName, slugify, sameJson,
   resolveKeyMode, classifyItems, allocateAdditions, compareToActive, assertSameAuthoredFields, isGroupVariant, optionName, prospectiveAdditionNames,
   samePhotoStates,      // DISH PHOTOS A2: parity-tested against photos/photo-state.js
