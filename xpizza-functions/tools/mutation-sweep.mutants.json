@@ -3914,8 +3914,8 @@
   "slice": "c5",
   "label": "the card path open-codes a release instead of the owned-only one, over-releasing a shared hold",
   "file": "index.js",
-  "from": "    releaseHold: releaseHoldIfOwned, releaseReusedIfSafe,",
-  "to": "    releaseHold: async () => { await releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }).catch(() => {}); }, releaseReusedIfSafe,",
+  "from": "    releaseHold: releaseHoldIfOwned,            // owned-only: a reused / in-progress hold is preserved",
+  "to": "    releaseHold: async () => { await releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }).catch(() => {}); },",
   "command": [
    "node",
    "charge-gate-placement.test.js"
@@ -3987,8 +3987,8 @@
   "slice": "c5",
   "label": "a refusal still authorises a checkout (the refusal stops returning)",
   "file": "hosted-charge-flow.js",
-  "from": "    if (releaseReusedIfSafe) { try { await releaseReusedIfSafe(); } catch (_) { /* the sweep still owns it */ } }\n    return { respond: { status: applied.refuse.status, body: applied.refuse.body } };",
-  "to": "    if (releaseReusedIfSafe) { try { await releaseReusedIfSafe(); } catch (_) { /* the sweep still owns it */ } }",
+  "from": "    await retireAttempt(acq.attempt_id, 'quote_gate_refused');\n    return { respond: { status: applied.refuse.status, body: applied.refuse.body } };",
+  "to": "    await retireAttempt(acq.attempt_id, 'quote_gate_refused');",
   "command": [
    "node",
    "hosted-charge-flow.test.js"

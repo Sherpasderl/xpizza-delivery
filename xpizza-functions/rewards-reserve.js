@@ -509,5 +509,5 @@ module.exports = {
   // bindingFp: 1D D4-b — the canonical projection reuses the SAME function (PLAN-D4b §B.4)
   reserveRedemption, attachAttempt, consumeRedemption, bindingFp, markHeldPaid, releaseRedemption,
   reverseRedemptionForRefund, reverseRedemptionForOrder, sweepStaleReservations, settleRedemptionAtConfirm,
-  holdRedemptionForManual, redemptionHoldSecured, sweepConsumeRecovery, consumeEligible, CASH_STALE_MS, definitivelyNotCaptured,
+  holdRedemptionForManual, redemptionHoldSecured, sweepConsumeRecovery, consumeEligible, CASH_STALE_MS,
 };

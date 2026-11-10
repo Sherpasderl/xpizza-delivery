@@ -40,7 +40,7 @@ async function retireUnissuedAttempt(db, attemptId, reason, now) {
  *   retireAttempt(id)  — retire a claimed-but-unissued attempt
  *   runGate()          — the confirmed-net gate (applyConfirmedNetGate, pre-bound by the caller)
  */
-async function resolveHostedAttemptAction({ acq, orderId, totalCents, releaseHold, retireAttempt, runGate, releaseReusedIfSafe = null, log = console }) {
+async function resolveHostedAttemptAction({ acq, orderId, totalCents, releaseHold, retireAttempt, runGate, log = console }) {
   /* 🔴 THESE TWO RETURN BEFORE THE GATE IS EVEN CONSULTED, and that is the guarantee — not an
      accident of where the call happens to sit. A customer resuming from PixelPay is holding a checkout
      that was already minted at an already-agreed amount; re-deciding it against a price that moved
@@ -71,9 +71,6 @@ async function resolveHostedAttemptAction({ acq, orderId, totalCents, releaseHol
   if (applied.refuse) {
     // The hold is released by applyConfirmedNetGate itself; the ATTEMPT is this path's own cleanup.
     await retireAttempt(acq.attempt_id, 'quote_gate_refused');
-    /* S2 B2 (owner 2026-11-10): the owned-only release above leaves a REUSED hold; it is released only when the earlier attempt is
-       definitively not captured (the sweep's rule), else held as today. Never fatal: the refusal stands, the sweep remains. */
-    if (releaseReusedIfSafe) { try { await releaseReusedIfSafe(); } catch (_) { /* the sweep still owns it */ } }
     return { respond: { status: applied.refuse.status, body: applied.refuse.body } };
   }
   /* The amount the gate APPROVED travels with the decision. The handler must hand exactly this number

@@ -2453,7 +2453,6 @@
   "factura/eligibility.js",
   "factura/pricing.js",
   "form-signal.js",
-  "hosted-charge-flow.js",
   "index.js",
   "lib/driver-admin-ops.js",
   "lib/driver-callable-guard.js",
@@ -2572,7 +2571,6 @@
   "rewards-redeem-intake.js",
   "rewards-redeem-pricing.js",
   "rewards-reserve.js",
-  "rewards-reuse-release.js",
   "schedule/hours-grammar.js",
   "schedule/load-schedule.js",
   "schedule/schedule-only.js",
@@ -3452,13 +3450,6 @@
   "form-signal.js": {
    "pins": [],
    "lifts": []
-  },
-  "hosted-charge-flow.js": {
-   "pins": [],
-   "lifts": [
-    "xpizza-functions/catalog/identity-shadow.test.js",
-    "xpizza-functions/charge-gate-placement.test.js"
-   ]
   },
   "index.js": {
    "pins": [
@@ -5535,6 +5526,7 @@
     "xpizza-functions/driver-callable-guard-coverage.guard.test.js",
     "xpizza-functions/factura-catalog-cutover.test.js",
     "xpizza-functions/fail-closed-reject.test.js",
+    "xpizza-functions/hosted-refusal-reused-hold.test.js",
     "xpizza-functions/identity-shadow-placement.test.js",
     "xpizza-functions/intake-gate-placement.test.js",
     "xpizza-functions/intl-intake-wire-sync.test.js",
@@ -6320,10 +6312,6 @@
    "lifts": [
     "xpizza-functions/sdkpay-wiring.guard.test.js"
    ]
-  },
-  "rewards-reuse-release.js": {
-   "pins": [],
-   "lifts": []
   },
   "schedule/hours-grammar.js": {
    "pins": [],
