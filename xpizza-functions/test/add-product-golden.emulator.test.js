@@ -235,6 +235,13 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
     const isEligibilityCreate = (x) => /^batch\.create restaurants\/[^/]+\/versions\/<v>\/meta\/extras_eligibility$/.test(x);
     if (/publish/.test(c.name) && c.status === 200) assert.strictEqual(left.filter(isEligibilityCreate).length, 1, `${c.name}: exactly one eligibility-document create per publish`);
     else assert.strictEqual(left.filter(isEligibilityCreate).length, 0, `${c.name}: no eligibility-document write without a publish`);
+    // S1c (DECLARED, exact): every activation reads the restaurant's reserved-key set and the candidate version's dish and extra
+    // docs inside its transaction, before any write — exactly ONE of each per successful publish, none on any other call
+    const isReservedRead = (x) => /^tx\.get restaurants\/[^/]+\/(meta\/reserved_keys|versions\/<v>\/(menu_items|extras))$/.test(x);
+    const rkWant = (/publish/.test(c.name) && c.status === 200) ? 3 : 0;
+    assert.strictEqual(left.filter(isReservedRead).length, rkWant, `${c.name}: reserved-key activation reads`);
+    if (rkWant) for (const re of [/meta\/reserved_keys$/, /versions\/<v>\/menu_items$/, /versions\/<v>\/extras$/]) assert.strictEqual(left.filter((x) => isReservedRead(x) && re.test(x)).length, 1, `${c.name}: one ${re}`);
+    for (let k = left.length - 1; k >= 0; k -= 1) if (isReservedRead(left[k])) left.splice(k, 1);
     // T-a G3 (DECLARED, exact): the OWNER's getEditableCatalog on a platform-factura brand reads the publish-request slot ONCE
     // (its pointer reads are the declared active-version reads above); never on any other call or brand
     const isPublishRequestRead = (x) => /^get restaurants\/[^/]+\/meta\/publish_request$/.test(x);
