@@ -3,7 +3,7 @@
 // BRIEF-sdk-payment-coordinator r5). Every PSP call is journaled by a record CAS BEFORE it is made and answered by another CAS
 // after; an unknown outcome LOCKS the record (no new money op until a bound status answer resolves it). Decisions that race
 // the order's own life (going live, adjusting, cancelling, settling) are won by a transaction on orders/{id} (§4, §4a, §8).
-// deps: { db, psp (makeAdapter), clock(), voidEligible(leg, now), releaseResources(deps, orderId, order), goLive(deps, orderId) }.
+// deps: { db, psp (makeAdapter), clock(), voidEligible(leg, now), cancelVoidEligible(leg, now), releaseResources(deps, orderId, order), goLive(deps, orderId) }.
 const R = require('./record');
 const F = require('./flow');
 const { boundStatus } = require('./psp-adapter');
@@ -402,13 +402,13 @@ async function classifyLostProposals(deps, orderId, order) {
   });
 }
 
-// Void every surplus hold that is still void-eligible (production: never); a refused / unknown void leaves it SURPLUS.
-async function voidSurplus(deps, orderId) {
+// Void every surplus hold the caller's rule allows (adjustments, production: never; cancel: same HN day, before 21:50); a refused / unknown void leaves it SURPLUS.
+async function voidSurplus(deps, orderId, eligible = deps.voidEligible) {
   const rec = await readRecord(deps.db, orderId);
   for (const [legId, leg] of Object.entries(R.legsOfRecord(rec))) {
     if (leg.role !== 'surplus' || leg.state !== 'approved' || !leg.pp_uuid) continue;
     if (Object.values(R.opsOf(rec)).some((o) => o.leg_id === legId && o.action === 'void')) continue;   // one void per leg
-    if (!deps.voidEligible(leg, deps.clock())) continue;
+    if (!eligible(leg, deps.clock())) continue;
     await dispatch(deps, orderId, {
       legId, action: 'void',
       pre: (r) => { const l = R.legsOfRecord(r)[legId]; if (!l || l.role !== 'surplus' || l.state !== 'approved') return undefined; return r; },
@@ -569,13 +569,14 @@ async function cancelSdkOrder(deps, { orderId, kind = 'cancel' }) {
   await recoverProjection(deps, orderId, order);
   await classifyLostProposals(deps, orderId, order);
   await reconcileSdkOps(deps, { orderId });
-  // 4. every live hold (a late approval included) is SURPLUS — voided only if eligible (production: never)
+  // 4. every live hold (a late approval included) is SURPLUS — voided while the cancel rule allows it (same HN day, before 21:50);
+  //    no cancel rule ⇒ never (fail closed)
   await R.casRecord(deps.db, orderId, (r) => {
     let changed = false;
     for (const l of Object.values(R.legsOfRecord(r))) if (l.state === 'approved' && l.role !== 'surplus') { l.role = 'surplus'; changed = true; }
     return changed ? r : undefined;
   });
-  await voidSurplus(deps, orderId);
+  await voidSurplus(deps, orderId, typeof deps.cancelVoidEligible === 'function' ? deps.cancelVoidEligible : () => false);
   // 5. cleanup — claimed in the record so concurrent workers release once; a stale claim (a crash) is resumed
   const claim = await R.casRecord(deps.db, orderId, (r) => {
     const c = r.cleanup || {};
