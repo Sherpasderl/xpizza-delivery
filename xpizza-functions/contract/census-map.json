@@ -183,6 +183,16 @@
    "reason": "S2 P-C: payer-email.js exports its PixelPay payer-email VALIDATOR (a module.exports key) — the hosted charge's payer email, not an order-email sender; §1's 'no order email' stands (per-module entry, as normEmail's)"
   },
   {
+   "key": "tip_choice",
+   "sites": [
+    {
+     "file": "catalog/charge-inputs.js",
+     "fn": "<top>"
+    }
+   ],
+   "reason": "PLAN-capp-tip-step r7 §1: charge-inputs NON_CHARGE_FIELDS' entry for the capp's explicit tip-choice marker (an object key naming a request field that is never priced) — not an order write; scoped to this one site so a future real tip_choice order write still trips the sentinel. PROPOSED by the Customer App session (capp-tip-step slice C) for 2e review"
+  },
+  {
    "key": "payerEmail",
    "reason": "S2 P-C: payer-email.js's exported PixelPay payer-email resolver (a module.exports key) — the hosted charge's payer email, not an order-email SENDER; §1's 'no order email' stands. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
   },

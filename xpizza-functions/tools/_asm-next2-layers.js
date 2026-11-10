@@ -7,7 +7,7 @@
 //   stripNewer(file, src, 'p5a')     strip only the layers NEWER than p5a (sb, sd) — for p5a's own guard
 // Each step is the layer's own inverse; an inverse that does not own `file` passes it through unchanged.
 const NEWEST_FIRST = [
-  ['sb', (f, s) => (f === 'index.js' ? require('./sb-inverse').unapplySbIndex(s) : s)],
+  ['sb', (f, s) => (f === 'index.js' ? require('./sb-inverse').unapplySbIndex(require('./tippref-inverse').unapplyTipprefIndex(s)) : s)],
   ['sd', (f, s) => (f === 'index.js' ? require('./sd-inverse').unapplySdIndex(s) : require('./sd-inverse').unapplySdModuleIfAny(f, s))],
   ['p5a', (f, s) => require('./p5a-inverse').unapplyP5aModule(f, s)],
   ['alertsan', (f, s) => require('./alertsan-module-inverse').unapplyAlertSanModule(f, s)],

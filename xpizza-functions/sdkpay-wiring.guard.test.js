@@ -7,10 +7,12 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplySdkPayModule } = require('./tools/sdkpay-module-inverse');
+const { unapplyTipprefIndex } = require('./tools/tippref-inverse');   // PLAN-capp-tip-step §1: the last-tip hunks, composed INNERMOST (as every index chain)
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['alert-prune.js', 'cancel-order-core.js', 'index.js', 'merchant/merchant-transitions.js', 'pixelpay-charge.js', 'pixelpay-confirm.js', 'pixelpay-hosted-charge.js', 'pixelpay-hosted-webhook.js', 'resolve-manual.js', 'rewards-reserve.js', 'scheduled-release-core.js'], 'the slice owns exactly these files');
 for (const f of FILES) {
-  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+  const raw = fs.readFileSync(path.join(__dirname, f), 'utf8');
+  const src = f === 'index.js' ? unapplyTipprefIndex(raw) : raw;
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('./tools/s1d-module-inverse').unapplyS1dModule(f, require('./tools/s2-module-inverse').unapplyS2Module(f, src))))))), b, `🔴 ${f} minus the SDK-payments hunks is not ${BASE}:${f}`);

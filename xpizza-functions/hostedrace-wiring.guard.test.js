@@ -19,7 +19,7 @@ for (const f of FILES) {
   // (tools/asm2-approved-additions.js) from the actual side only; every other byte, checkout code included, must be base.
   const raw = f === 'index.js' ? require('./tools/asm2-approved-additions').stripApprovedAdditions(require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('./tools/s1d-module-inverse').unapplyS1dModule(f, require('./tools/s2-module-inverse').unapplyS2Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))))))))) : require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('./tools/s1d-module-inverse').unapplyS1dModule(f, require('./tools/s2-module-inverse').unapplyS2Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))))))));
   const CO = (x) => x;
-  const src = require('./tools/p5a-inverse').unapplyP5aModule(f, f === 'index.js' ? require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(raw)) : raw);
+  const src = require('./tools/p5a-inverse').unapplyP5aModule(f, f === 'index.js' ? require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(raw))) : raw);
   const b = CO(execFileSync('git', ['show', `${ASM_BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 }));
   assert.notStrictEqual(CO(src), b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(CO(unapplyHostedRaceModule(f, src)), b, `🔴 ${f} minus the hosted-race hunks is not ${ASM_BASE}:${f}`);
@@ -32,7 +32,7 @@ for (const f of FILES) {
 }
 assert.strictEqual(unapplyHostedRaceModule('tb-unowned.js', 'x\n'), 'x\n', 'an unowned file passes through');
 // asm2 (5f): index.js's fold to the assembly base — the ONE definition the loop and the sensitivity cell share
-const foldIndexToBase = (raw) => unapplyHostedRaceModule('index.js', require('./tools/p5a-inverse').unapplyP5aModule('index.js', require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/asm2-approved-additions').stripApprovedAdditions(raw)))));
+const foldIndexToBase = (raw) => unapplyHostedRaceModule('index.js', require('./tools/p5a-inverse').unapplyP5aModule('index.js', require('./tools/sd-inverse').unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(require('./tools/asm2-approved-additions').stripApprovedAdditions(raw))))));
 const indexBase = () => execFileSync('git', ['show', `${ASM_BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 // ASM2-CHECKOUT-SENSITIVITY (Codex asm2 r1 P2): a change to EXISTING checkout logic must fail the index.js base pin — the

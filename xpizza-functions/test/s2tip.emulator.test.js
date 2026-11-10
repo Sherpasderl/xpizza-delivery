@@ -31,10 +31,27 @@ stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CH
 stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));
 // the P-C race (as test/s3a-envio.emulator.test.js): the live checkout EXPIRES after the handler's classify and before the acquire
 let EXPIRE_BEFORE_ACQUIRE = null;
+let INJECT_AT_CAS = null;   // tip-pref §8: the conflicting patch applied to orders/{id} between the pre-read and the CAS
+let LAST_CAS = null;        // tip-pref §8: { committed, unchanged } of that CAS
 // codex r1 P2: the read-only classifier fails the next N calls (the handler's classify, then P-C's re-check)
 let CLASSIFY_FAIL = 0; let CLASSIFY_CALLS = 0;
 stub('../pixelpay-hosted-charge', (r) => ({ ...r,
-  acquireHostedAttempt: async (db, orderId, ...a) => { if (EXPIRE_BEFORE_ACQUIRE) { const f = EXPIRE_BEFORE_ACQUIRE; EXPIRE_BEFORE_ACQUIRE = null; await f(orderId); } return r.acquireHostedAttempt(db, orderId, ...a); },
+  acquireHostedAttempt: async (db, orderId, ...a) => {
+    if (EXPIRE_BEFORE_ACQUIRE) { const f = EXPIRE_BEFORE_ACQUIRE; EXPIRE_BEFORE_ACQUIRE = null; await f(orderId); }
+    // tip-pref §8 (Codex slice-C r1 #2 / r2 #1): a REAL unchanged-COMMIT refusal — the pre-read saw a COMPATIBLE existing order (install
+    // path); the conflicting change is applied just before the CAS, so the transaction COMMITS the record unchanged and the
+    // post-transaction acceptance checks refuse. The CAS result is recorded (LAST_CAS) so the cell can prove that path was taken.
+    if (INJECT_AT_CAS) {
+      const patch = INJECT_AT_CAS; INJECT_AT_CAS = null;
+      const wrapped = Object.create(db);
+      wrapped.ref = (p) => { const ref = db.ref(p); if (p !== `orders/${orderId}`) return ref; const w = Object.create(ref);
+        w.transaction = async (fn, ...x) => { await ref.update(patch); const before = (await ref.once('value')).val(); const res = await ref.transaction(fn, ...x);
+          LAST_CAS = { committed: res.committed, unchanged: JSON.stringify(res.snapshot.val()) === JSON.stringify(before) }; return res; };
+        return w; };
+      return r.acquireHostedAttempt(wrapped, orderId, ...a);
+    }
+    return r.acquireHostedAttempt(db, orderId, ...a);
+  },
   classifyHostedAttempt: async (...a) => { CLASSIFY_CALLS++; if (CLASSIFY_FAIL > 0) { CLASSIFY_FAIL--; throw new Error('injected classify read failure'); } return r.classifyHostedAttempt(...a); } }));
 const { orderFingerprint } = require('../pixelpay-charge');
 
@@ -84,7 +101,7 @@ const body = (method, { type = 'delivery', km = 4, extra = {}, id = null } = {})
     ...(type === 'delivery' ? { lat: p.lat, lng: p.lng, address_detected: 'Col. Prueba', address_details: 'Casa 1', pin_confirmed: true } : {}), ...extra };
 };
 const attemptsOf = async (oid) => Object.values((await rtdb.ref('payment_attempts').get()).val() || {}).filter((a) => a && a.order_id === oid);
-async function cash(opts = {}, hdr = {}) { await clean(); const b = opts.body || body('cash', opts); const r = await post(app.createOrder, b, hdr); return { ...r, b, rec: (await rtdb.ref(`orders/${b.order_id}`).get()).val() }; }
+async function cash(opts = {}, hdr = {}) { await clean(); const b = opts.body || body(opts.method || 'cash', opts);   /* r7: tipped orders on the createOrder path use card_delivery (cash + tip is refused) */ const r = await post(app.createOrder, b, hdr); return { ...r, b, rec: (await rtdb.ref(`orders/${b.order_id}`).get()).val() }; }
 async function card(opts = {}, hdr = {}) {
   await clean(); CHARGED.length = 0;
   const b = opts.body || body('online', opts);
@@ -111,7 +128,7 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
   {
     const q = await quote({ tip_cents: 2000 });
     assert.deepStrictEqual([q.status, q.json], [409, { ok: false, error: 'tip_not_enabled' }], `dark quote + tip (${q.text.slice(0, 160)})`);
-    const c = await cash({ extra: { tip_cents: 2000 } });
+    const c = await cash({ method: 'card_delivery', extra: { tip_cents: 2000 } });
     assert.deepStrictEqual([c.status, c.json && c.json.error, c.rec], [409, 'tip_not_enabled', null], `dark cash + tip: refused, no order (${c.text.slice(0, 160)})`);
     const k = await card({ extra: { tip_cents: 2000 } });
     assert.deepStrictEqual([k.status, k.json && k.json.error, k.charged.length, k.attempts, k.rec], [409, 'tip_not_enabled', 0, 0, null], `dark card + tip: refused, no checkout, nothing written (${k.text.slice(0, 160)})`);
@@ -129,13 +146,13 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     assert.strictEqual(q.json.net_total_cents, food + 5000 + 2000, 'the quote net = food + envío (4 km band) + tip, once');
     assert.strictEqual(q.json.total_cents, food, 'the quote total_cents stays the FOOD total (the client\'s Subtotal)');
     assert.deepStrictEqual([q.json.delivery.from_cents, q.json.delivery.max_km], [3000, 7], 'public facts: from_cents = lowest band, max_km = last band');
-    const c = await cash({ extra: { tip_cents: 2000, quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents } });
+    const c = await cash({ method: 'card_delivery', extra: { tip_cents: 2000, quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents } });
     assert.strictEqual(c.status, 200, c.text.slice(0, 200));
     assert.deepStrictEqual([c.rec.total_cents, c.rec.tip_cents, c.rec.delivery_cents, Math.round(c.rec.total * 100), c.rec.subtotal_cents + c.rec.tax_cents], [food + 7000, 2000, 5000, food + 7000, food], 'recorded = quoted = food + envío + tip; total (lempiras) agrees; the FOOD split untouched');
     assert.strictEqual(c.rec.payment_fingerprint, orderFingerprint(c.b.order_id, food, c.b.items_text, 'tp:2000'), 'the cash order\'s stored fingerprint binds the tip (tp:2000)');
     const task = (await rtdb.ref(`tasks/${c.b.order_id}_delivery`).get()).val();
     assert.strictEqual(Math.round(task.total * 100), food + 7000, 'the delivery task carries the full total (what the driver collects)');
-    const promo = await cash({ extra: { tip_cents: 2000 } }, { 'x-firebase-id-token': 'member1' });
+    const promo = await cash({ method: 'card_delivery', extra: { tip_cents: 2000 } }, { 'x-firebase-id-token': 'member1' });
     assert.deepStrictEqual([promo.status, promo.rec.total_cents, promo.rec.tip_cents], [200, food + 2000, 2000], 'member promo: envío free, the tip still charged (food + 0 + tip)');
     const qk = await quote({ tip_cents: 2000 });
     const k = await card({ extra: { tip_cents: 2000, quote_token: qk.json.quote_token, expected_net_cents: qk.json.net_total_cents } });
@@ -143,7 +160,7 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     assert.deepStrictEqual([k.charged[0].amount * 100, k.rec.total_cents, k.rec.tip_cents], [food + 7000, food + 7000, 2000], 'PixelPay is asked for food + envío + tip; the pending order (what capture charges: total_cents / 100) carries the same');
     assert.strictEqual(k.rec.payment_fingerprint, orderFingerprint(k.b.order_id, food + 7000, k.b.items_text, 'tp:2000'), 'the card order\'s stored fingerprint binds the tip (tp:2000)');
     tipped = k;
-    const low = await cash({ extra: { tip_cents: 3000, quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents } });
+    const low = await cash({ method: 'card_delivery', extra: { tip_cents: 3000, quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents } });
     assert.deepStrictEqual([low.status, low.json && low.json.error, low.rec], [409, 'quote_invalid', null], 'a token signed for L20 never authorises a L30 tip (re-quote)');
   }
   ok('ACTIVE: quote(tip) net = food + envío + tip once (Subtotal = food total_cents; public {from_cents, max_km}); createOrder records it (total, task, tip_cents, food split intact); promo keeps the tip; PixelPay + the pending order carry the same amount; a token never carries a different tip');
@@ -156,21 +173,63 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
       const k = await card({ extra });
       assert.deepStrictEqual([k.status, k.json && k.json.error, k.charged.length, k.attempts, k.rec], [status, error, 0, 0, null], `card ${JSON.stringify(extra)}`);
     }
-    const p = await cash({ type: 'pickup', extra: { tip_cents: 500 } });
+    const p = await cash({ method: 'card_delivery', type: 'pickup', extra: { tip_cents: 500 } });
     assert.deepStrictEqual([p.status, p.json && p.json.error, p.rec], [400, 'tip_pickup', null], 'pickup + tip → 400 tip_pickup, no order');
-    const ok200 = await cash({ extra: { tip_cents: 200000 } });
+    const ok200 = await cash({ method: 'card_delivery', extra: { tip_cents: 200000 } });
     assert.deepStrictEqual([ok200.status, ok200.rec.tip_cents], [200, 200000], 'TIP_MAX (L 2,000) itself is accepted');
     const qr = await post(app.quoteRedemption, { restaurant_id: RID, items: [LINE], redeem: { type: 'free_pizza_choice', item_id: 'Carnivora' }, tip_cents: 500, mode: 'delivery', pin: { ...north(4), confirmed: true } }, { 'x-firebase-id-token': 'member1' });
     assert.deepStrictEqual([qr.status, qr.json && qr.json.error], [409, 'tip_reward_unsupported'], `quoteRedemption + tip (${qr.text.slice(0, 160)})`);
   }
   ok('refusals: tip_invalid 400 (string / over L 2,000 / negative), tip_reward_unsupported 409 (orders + quoteRedemption), tip_pickup 400 — each before any write or checkout; L 2,000 itself accepted');
 
+  // ── 3b. PLAN-capp-tip-step r6 D0: a positive tip needs a known payment method (intake sanitizes an omitted / empty / unknown
+  //        method to ''); refused 400 tip_payment_method_invalid before any write or checkout; a no-tip order is unchanged ──
+  {
+    const withMethod = (method, extra) => { const b = body(method === undefined ? 'cash' : method, { extra }); if (method === undefined) delete b.payment_method; return b; };
+    for (const m of [undefined, '', 'bitcoin']) {
+      const c = await cash({ body: withMethod(m, { tip_cents: 2000 }) });
+      assert.deepStrictEqual([c.status, c.json && c.json.error, c.rec], [400, 'tip_payment_method_invalid', null], `🔴 D0 cash: method ${JSON.stringify(m)} + tip ⇒ 400, nothing written`);
+      const k = await card({ body: withMethod(m, { tip_cents: 2000 }) });
+      assert.deepStrictEqual([k.status, k.json && k.json.error, k.charged.length, k.attempts, k.rec], [400, 'tip_payment_method_invalid', 0, 0, null], `🔴 D0 card: method ${JSON.stringify(m)} + tip ⇒ 400, no checkout`);
+      const c0 = await cash({ body: withMethod(m, {}) });
+      assert.notStrictEqual(c0.json && c0.json.error, 'tip_payment_method_invalid', `D0: method ${JSON.stringify(m)} without a tip keeps today's path`);
+      const k0 = await card({ body: withMethod(m, {}) });
+      assert.notStrictEqual(k0.json && k0.json.error, 'tip_payment_method_invalid', `D0: card, method ${JSON.stringify(m)} without a tip keeps today's path`);
+    }
+    for (const [fn, m] of [[cash, 'cash'], [card, 'online']]) {
+      const r = await fn({ body: body(m, { extra: { tip_cents: 2000 } }) });
+      assert.notStrictEqual(r.json && r.json.error, 'tip_payment_method_invalid', `D0: ${m} + tip is not refused by D0`);
+    }
+  }
+  {   // Codex slice-C r1 #1: ZERO writes on a D0 refusal (every order / attempt / member node byte-identical before and after)
+    const snapOf = async () => JSON.stringify(await Promise.all(['orders', 'payment_attempts', 'user_orders', 'user_private', 'order_tracking', 'tasks', 'checkout_claims'].map(async (p) => (await rtdb.ref(p).get()).val())));
+    const before = await snapOf();
+    const c = await cash({ body: (() => { const b = body('cash', { extra: { tip_cents: 2000 } }); delete b.payment_method; return b; })() }, { 'x-firebase-id-token': 'm_d0' });
+    const k = await card({ body: body('bitcoin', { extra: { tip_cents: 2000, tip_choice: true } }) }, { 'x-firebase-id-token': 'm_d0' });
+    assert.deepStrictEqual([c.status, k.status], [400, 400], 'premise: both refused by D0');
+    assert.strictEqual(await snapOf(), before, '🔴 D0: ZERO writes on the refusal (orders, attempts, history, preference, tracking, tasks, claims)');
+  }
+  {   // OWNER 11-09 (r7): the in-app tip is CARD-ONLY — cash + a positive tip ⇒ 400 tip_cash_unsupported on createOrder AND charge, zero writes;
+      // card_delivery + a tip is accepted; cash WITHOUT a tip is unchanged
+    const snapOf = async () => JSON.stringify(await Promise.all(['orders', 'payment_attempts', 'user_orders', 'user_private'].map(async (p) => (await rtdb.ref(p).get()).val())));
+    const before = await snapOf();
+    const c = await cash({ extra: { tip_cents: 2000, tip_choice: true } }, { 'x-firebase-id-token': 'm_cashtip' });
+    const k = await card({ body: body('cash', { extra: { tip_cents: 2000 } }) });
+    assert.deepStrictEqual([c.status, c.json && c.json.error, k.status, k.json && k.json.error, k.charged.length], [400, 'tip_cash_unsupported', 400, 'tip_cash_unsupported', 0], '🔴 D0-cash: cash + tip ⇒ 400 tip_cash_unsupported (createOrder and charge)');
+    assert.strictEqual(await snapOf(), before, '🔴 D0-cash: ZERO writes (no order, attempt, history or preference)');
+    const cd = await cash({ method: 'card_delivery', extra: { tip_cents: 2000 } });
+    assert.deepStrictEqual([cd.status, cd.rec && cd.rec.tip_cents, cd.rec && cd.rec.payment_method], [200, 2000, 'card_delivery'], '🔴 D0-cash: card_delivery + tip is accepted');
+    const plain = await cash({});
+    assert.strictEqual(plain.status, 200, 'D0-cash: cash without a tip is unchanged');
+  }
+  ok('D0: a tip with an omitted / empty / unknown payment_method ⇒ 400 tip_payment_method_invalid on cash and card, ZERO writes, no checkout; cash + tip ⇒ 400 tip_cash_unsupported (owner 11-09, card-only tip), zero writes; card_delivery + tip accepted; without a tip ⇒ today\'s path');
+
   // ── 4. idempotency: same id + same tip → the same order; a changed tip → order_exists reason 'tip' ──
   {
-    const first = await cash({ extra: { tip_cents: 2000 } });
+    const first = await cash({ method: 'card_delivery', extra: { tip_cents: 2000 } });
     const again = await cash({ body: first.b });
     assert.deepStrictEqual([again.status, again.json.idempotent || again.json.ok], [200, true], `same id + same tip → idempotent 200 (${again.text.slice(0, 160)})`);
-    const changed = await cash({ body: { ...first.b, tip_cents: 3000 } });
+    const changed = await cash({ body: { ...first.b, tip_cents: 3000 } });   /* first.b is card_delivery (r7) */
     assert.deepStrictEqual([changed.status, changed.json.error, changed.json.reason], [409, 'order_exists', 'tip'], `changed tip → order_exists/tip (${changed.text.slice(0, 160)})`);
     const dropped = await cash({ body: { ...first.b, tip_cents: undefined } });
     assert.strictEqual(dropped.json.reason, 'tip', 'dropping the tip is a change too');
@@ -271,6 +330,88 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     await setRadius(8);
   }
   ok('APP coverage: entry_mode:app quotes refuse beyond min(bands, radius) and report it, matching the order radius check; legacy quotes are unchanged');
+
+  // ── 8. PLAN-capp-tip-step r6 §1: the member's last tip — user_private/{uid}/last_tip = {cents, at}, best-effort AFTER acceptance, from
+  //        the VERIFIED token uid only, delivery + tip_choice:true only, `at` = the accepted order's resolved created_at, newer-only ──
+  await setPricing({ x_pizza: { active: true, free_delivery: true }, la_musa: { active: false } });
+  {
+    const lastTip = async (uid) => (await rtdb.ref(`user_private/${uid}/last_tip`).get()).val();
+    const M = (uid) => ({ 'x-firebase-id-token': uid });
+    await rtdb.ref('user_private').remove();
+    // cash, immediate: written with the resolved created_at
+    const a = await cash({ method: 'card_delivery', extra: { tip_cents: 2000, tip_choice: true } }, M('m_pref'));
+    assert.strictEqual(a.status, 200, a.text.slice(0, 200));
+    const la = await lastTip('m_pref');
+    assert.deepStrictEqual(la, { cents: 2000, at: a.rec.created_at }, '🔴 PREF-E cash: {cents, at = the order\'s resolved created_at}');
+    assert.ok(Number.isFinite(la.at), 'PREF-E: `at` is numeric');
+    // explicit «Sin propina» (no tip_cents) ⇒ 0
+    const z = await cash({ extra: { tip_choice: true } }, M('m_pref'));
+    assert.deepStrictEqual(await lastTip('m_pref'), { cents: 0, at: z.rec.created_at }, '🔴 PREF-E: «Sin propina» ⇒ cents 0 (a newer order)');
+    // an older order's idempotent retry (same id, same body) never replaces the newer choice
+    const retry = await cash({ body: a.b }, M('m_pref'));
+    assert.deepStrictEqual([retry.status, (await lastTip('m_pref')).cents], [200, 0], '🔴 PREF-E: retrying the OLDER order is a no-op for the preference');
+    // a forged body uid is ignored
+    const f = await cash({ method: 'card_delivery', extra: { tip_cents: 4000, tip_choice: true, uid: 'm_evil', customer_uid: 'm_evil' } }, M('m_real'));
+    assert.deepStrictEqual([f.status, (await lastTip('m_real')).cents, await lastTip('m_evil')], [200, 4000, null], '🔴 PREF-E: written under the VERIFIED uid only; a body uid never');
+    // not eligible: guest / absent tip_choice / pickup ⇒ nothing
+    await cash({ method: 'card_delivery', extra: { tip_cents: 2000, tip_choice: true } });
+    await cash({ method: 'card_delivery', extra: { tip_cents: 6000 } }, M('m_nochoice'));
+    await cash({ type: 'pickup', extra: { tip_choice: true } }, M('m_pickup'));
+    assert.deepStrictEqual([await lastTip('m_nochoice'), await lastTip('m_pickup')], [null, null], '🔴 PREF-E: no tip_choice / pickup ⇒ nothing; a guest has no uid');
+    // a refused order writes nothing
+    const bad = await cash({ method: 'card_delivery', extra: { tip_cents: 2000, tip_choice: true, payment_method: '' } }, M('m_refused'));
+    assert.deepStrictEqual([bad.status, await lastTip('m_refused')], [400, null], 'PREF-E: a refused order (D0) ⇒ nothing');
+    // hosted card: written only once the charge ISSUED; an unchanged-commit refusal (the same order with a different tip ⇒ tip conflict) writes nothing
+    const k = await card({ extra: { tip_cents: 6000, tip_choice: true } }, M('m_card'));
+    assert.strictEqual(k.status, 200, k.text.slice(0, 200));
+    assert.deepStrictEqual(await lastTip('m_card'), { cents: 6000, at: k.rec.created_at }, '🔴 PREF-E card: written after the charge issued, at = the pending order\'s created_at');
+    // hosted UNCHANGED-COMMIT refusals (Codex slice-C r1 #2, r2 #1-#2): seed a COMPATIBLE existing order (a real first card attempt,
+    // then its attempt pointer cleared ⇒ the pre-read decides INSTALL), patch the conflict in just before the CAS, and prove the
+    // transaction COMMITTED unchanged and the request was refused. The preference is seeded ABSENT or strictly OLDER than the order's
+    // created_at, and every preference transaction is COUNTED (a spy on the admin Reference) — the count must stay 0.
+    const RefProto = Object.getPrototypeOf(rtdb.ref('x'));
+    const realTx = RefProto.transaction; let prefTx = 0;
+    RefProto.transaction = function (...x) { if (/\/user_private\//.test(String(this.toString()))) prefTx++; return realTx.apply(this, x); };
+    try {
+      for (const [what, patch, outcome] of [
+        ['already paid', { payment_status: 'confirmed' }, 'already_paid'],
+        ['tip conflict', { tip_cents: 9900 }, 'conflict'],
+        ['fingerprint conflict', { payment_fingerprint: 'zz-foreign-fingerprint' }, 'conflict'],
+      ]) {
+        for (const seed of ['absent', 'older']) {
+          const uid = `m_cas_${what.replace(/\W+/g, '_')}_${seed}`;
+          const first = await card({ extra: { tip_cents: 2000, tip_choice: true } }, M(uid));
+          assert.strictEqual(first.status, 200, `premise (${what}): the compatible order exists (${first.text.slice(0, 120)})`);
+          const createdAt = first.rec.created_at;
+          await rtdb.ref(`orders/${first.b.order_id}/active_attempt_id`).remove();   // ⇒ the next pre-read decides INSTALL (compatible order, no lock)
+          if (seed === 'absent') await rtdb.ref(`user_private/${uid}`).remove(); else await rtdb.ref(`user_private/${uid}/last_tip`).set({ cents: 100, at: createdAt - 1000 });
+          const seeded = await lastTip(uid);
+          prefTx = 0; LAST_CAS = null; INJECT_AT_CAS = patch;
+          const r = await card({ body: first.b }, M(uid));
+          assert.strictEqual(INJECT_AT_CAS, null, `premise (${what}/${seed}): the patch was applied at the CAS`);
+          assert.deepStrictEqual(LAST_CAS, { committed: true, unchanged: true }, `🔴 premise (${what}/${seed}): the CAS COMMITTED the record UNCHANGED (the unchanged-commit path)`);
+          assert.strictEqual(r.charged.length, 0, `premise (${what}/${seed}): refused — no checkout issued (${r.status} ${r.text.slice(0, 120)})`);
+          assert.ok(outcome === 'already_paid' ? r.status === 200 || r.status === 409 : r.status === 409, `premise (${what}/${seed}): the post-transaction refusal answered (${r.status})`);
+          assert.strictEqual(prefTx, 0, `🔴 PREF-E card (${what}/${seed}): ZERO preference transactions on an unchanged-commit refusal`);
+          assert.deepStrictEqual(await lastTip(uid), seeded, `🔴 PREF-E card (${what}/${seed}): the preference is exactly as seeded (${seed}; the order's created_at ${createdAt} is NEWER)`);
+        }
+      }
+    } finally { RefProto.transaction = realTx; }
+    // foreign identity (guestForeign) applies only to capp GUESTS (pending.guest_verified, pixelpay-hosted-charge.js:67-68): a guest has
+    // no verified uid, so prefOf is null by construction (tip-pref.test.js PREF-1 «a guest») — no preference path exists to refuse
+  }
+  ok('last tip: cash and card write {cents, at = the accepted order\'s created_at} for the verified member only; «Sin propina» = 0; an older retry, a forged body uid, a guest, no tip_choice, pickup, a refused order and a REAL hosted unchanged-COMMIT refusal (already paid / tip / fingerprint conflict patched in at the CAS of a compatible order) performs ZERO preference transactions');
+
+  // ── 9. Codex slice-C r1 #1: D0 keeps today's precedence — a below-floor client gets its 426 FIRST (the floor read precedes the tip seam) ──
+  {
+    await rtdb.ref('platform_config/client_floor/orders').set(5);
+    await new Promise((r) => setTimeout(r, 31000));   // the floor reader's 30 s cache (client-floor.js FLOOR_TTL_MS)
+    const OLD = { 'x-client-app': 'orders', 'x-client-deployment': 'orders-app', 'x-client-build': 'old', 'x-client-compat': '1' };
+    const c = await cash({ body: body('bitcoin', { extra: { tip_cents: 2000 } }) }, OLD);
+    assert.deepStrictEqual([c.status, c.json && c.json.error], [426, 'client_update_required'], `🔴 D0: below the floor ⇒ 426 first, never D0's 400 (${c.text.slice(0, 120)})`);
+    await rtdb.ref('platform_config/client_floor/orders').remove();
+  }
+  ok('D0 precedence: a below-floor client with a D0-refusable body still gets 426 client_update_required first');
 
   FINISHED = true;
   console.log(`\ns2tip (emulator): ${n} passed`);

@@ -20,12 +20,32 @@ function normTip(v) {
 }
 const ofBody = (body) => normTip(body && typeof body === 'object' ? body.tip_cents : undefined);
 
+// PLAN-capp-tip-step r6 D0: the payment method exactly as intake will see it — index.js validateOrderPayload's
+// sanitizeText(v, 30) then its ALLOWED_PAYMENT_METHODS (s2tip.test.js reads both from index.js: parity, never a drifting copy).
+// An omitted / empty / unknown method becomes '' at intake, so a POSITIVE tip on it would be neither kept by the driver's
+// cuadre (cash) nor accrued by the ledger (card methods): it is refused before any WRITE, in the same seam (and with the same
+// precedence) as tip_invalid / tip_reward_unsupported — after the handler's floor / registry / pricing reads (a below-floor client
+// still gets its 426 first; Codex slice-C r1, advisor ruling: the seam is not moved).
+const PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
+function paymentMethodOf(v) {
+  let s = (v == null ? '' : String(v));
+  s = s.replace(/[<>]/g, '').replace(/[\x00-\x1f\x7f]/g, ' ').trim();
+  if (s.length > 30) s = s.slice(0, 30);
+  return PAYMENT_METHODS.includes(s) ? s : '';
+}
+
 // The order paths' early refusal, BEFORE any classification, reserve or write: a malformed tip, or a tip on a reward
 // order (tip + reward is not supported in S2, §3.5 — so a reward reservation can never carry a tip). null → proceed.
 function orderRefusal(body) {
   const t = ofBody(body);
   if (Number.isNaN(t)) return { status: 400, error: 'tip_invalid' };
   if (t > 0 && body.redeem != null) return { status: 409, error: 'tip_reward_unsupported' };
+  if (t > 0) {
+    const pm = paymentMethodOf(body.payment_method);
+    if (!pm) return { status: 400, error: 'tip_payment_method_invalid' };   // D0: an omitted / empty / unknown method
+    // OWNER 11-09 (PLAN-capp-tip-step r7): the in-app tip is CARD-ONLY (online | card_delivery) — a cash customer tips in hand
+    if (pm === 'cash') return { status: 400, error: 'tip_cash_unsupported' };
+  }
   return null;
 }
 
@@ -50,4 +70,4 @@ function tipBindingConflict(record, incomingTip) {
   return normTip(record.tip_cents) !== normTip(incomingTip) ? { reason: 'tip' } : null;
 }
 
-module.exports = { TIP_MAX_CENTS, normTip, ofBody, orderRefusal, refuse, tipExtra, extraOf, tipBindingConflict };
+module.exports = { TIP_MAX_CENTS, PAYMENT_METHODS, paymentMethodOf, normTip, ofBody, orderRefusal, refuse, tipExtra, extraOf, tipBindingConflict };

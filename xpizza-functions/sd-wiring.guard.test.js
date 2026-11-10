@@ -20,11 +20,11 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 
 // 1. exact
 const live = read('index.js');
-assert.notStrictEqual(unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(live)), live, 'non-vacuity: index.js carries the hunk');
+assert.notStrictEqual(unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(live))), live, 'non-vacuity: index.js carries the hunk');
 // the checkout endpoints block (my newer S-A(d) / getMyRating / S-B exports live INSIDE it) is folded out on BOTH sides: S-D's
 // guarantee is the code outside it — that block is pinned whole by checkout-wiring.guard
 const { unapplyCheckoutIndex } = require('./tools/checkout-inverse');
-assert.strictEqual(unapplyCheckoutIndex(unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(live))), unapplyCheckoutIndex(baseOf('index.js')), `🔴 index.js minus the S-D hunk (outside the checkout endpoints block) is not ${BASE}:index.js`);
+assert.strictEqual(unapplyCheckoutIndex(unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(live)))), unapplyCheckoutIndex(baseOf('index.js')), `🔴 index.js minus the S-D hunk (outside the checkout endpoints block) is not ${BASE}:index.js`);
 assert.deepStrictEqual(FILES, ['create-order-build.js', 'materialize.js', 'claim-order.js', 'reorder-normalize.js'], 'the slice\'s pinned modules');
 for (const f of FILES) {
   const src = read(f);
@@ -49,9 +49,9 @@ ok('every hunk is whole lines INSERTED after one unchanged anchor; the index.js 
 
 // 3. sensitivity
 const H = HUNKS[0];
-assert.throws(() => unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(live.replace(H.begin, '/* sd:BEGIN reorder-price-snapshot */'))), /missing/, 'a missing begin');
-assert.throws(() => unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(live + `${H.begin}\n${H.end}\n`)), /more than once/, 'a duplicated hunk');
-assert.throws(() => unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(live.replace(`  ${H.begin}`, `  x; ${H.begin}`))), /own lines/, 'a marker sharing a base line');
+assert.throws(() => unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(live.replace(H.begin, '/* sd:BEGIN reorder-price-snapshot */')))), /missing/, 'a missing begin');
+assert.throws(() => unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(live + `${H.begin}\n${H.end}\n`))), /more than once/, 'a duplicated hunk');
+assert.throws(() => unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(live.replace(`  ${H.begin}`, `  x; ${H.begin}`)))), /own lines/, 'a marker sharing a base line');
 for (const h of MODULE_HUNKS) {
   const src = read(h.file);
   const k = h.was.length + 5;
@@ -59,7 +59,7 @@ for (const h of MODULE_HUNKS) {
   assert.throws(() => unapplySdModule(h.file, src + h.now), /occurs 2 times/, `${h.file}: a duplicated hunk`);
   assert.notStrictEqual(unapplySdModule(h.file, '\n' + src), baseOf(h.file), `${h.file}: a byte OUTSIDE the hunk fails the base pin`);
 }
-assert.notStrictEqual(unapplyCheckoutIndex(unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(`\n${live}`))), unapplyCheckoutIndex(baseOf('index.js')), 'index.js: a byte OUTSIDE the hunk fails the base pin');
+assert.notStrictEqual(unapplyCheckoutIndex(unapplySdIndex(require('./tools/sb-inverse').unapplySbIndex(require('./tools/tippref-inverse').unapplyTipprefIndex(`\n${live}`)))), unapplyCheckoutIndex(baseOf('index.js')), 'index.js: a byte OUTSIDE the hunk fails the base pin');
 ok('sensitivity: missing / duplicated / shared-line markers, a byte inside or a duplicated module hunk throw; a byte outside every hunk fails the pin');
 
 console.log(`sd-wiring.guard: OK (${n})`);

@@ -143,7 +143,8 @@ function page(rid, storage = memStorage()) {
   return { api, storage, rid, reload: () => page(rid, storage) };
 }
 function cartOf(rid, extraDish = false) { const c = createCart(MENU[rid]); c.inc(dishOf(MENU[rid]).key); if (extraDish) c.inc(dishOf(MENU[rid], 1).key); return c; }
-function flowOf(pay, { tip = 20, km = 1, phone } = {}) {
+// PLAN-capp-tip-step r7 (OWNER 11-09, card-only tip): the capp never tips a cash delivery (tipped(f)), so a cash flow defaults to no tip
+function flowOf(pay, { tip = pay === 'cash' ? null : 20, km = 1, phone } = {}) {
   const f = C.freshFlow(null); C.setPin(f, HUB.lat + km * KM, HUB.lng, true);
   Object.assign(f, { details: 'Portón negro', name: 'Ana S2a', phone: phone || `9966${String(PH += 1).padStart(4, '0')}`, pay });
   if (tip !== null) C.chooseTip(f, tip);
@@ -179,14 +180,13 @@ function mountUi(rid, { geo, storage = memStorage(), cfg = {} } = {}) {
   const type = async (sel, v) => { assert.ok(await until(() => q(sel)), `premise: ${sel}`); q(sel).value = v; q(sel).dispatchEvent(new w.Event('input', { bubbles: true })); };
   return { w, ui, q, click, type, events, nav, storage };
 }
-// through the UI to a cash placement: the device fix, the form, «Continuar», no tip, «Hacer pedido», «Se ve bien»
+// through the UI to a cash placement: the device fix, the form, «Hacer pedido · L X» (r7: a cash delivery never reaches the tip step), «Se ve bien»
 async function uiCash(u, name) {
   u.ui.cart.inc(dishOf(MENU.x_pizza).key); u.ui.render();
   await u.click('#cart-bar'); await u.click('[data-act="checkout"]');
   assert.ok(await until(() => u.ui.state.flow.pin && u.ui.state.flow.pin.confirmed === true), 'premise: the device fix');
   await u.type('#f-details', 'Portón negro'); await u.type('#f-name', name); await u.type('#f-phone', `9955${String(PH += 1).padStart(4, '0')}`);
-  await u.click('[data-act="pay"][data-val="cash"]'); await u.click('#cta'); await u.click('[data-act="tipc"][data-val="0"]');
-  await u.click('[data-act="tip-place"]'); await u.click('#layer [data-act="placing-go"]');
+  await u.click('[data-act="pay"][data-val="cash"]'); await u.click('#cta'); await u.click('#layer [data-act="placing-go"]');
 }
 const stashOf = (pg) => JSON.parse(pg.storage.getItem(`${pg.rid}_s2a_pending_pay`) || 'null');
 const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_place`) || 'null');
@@ -207,11 +207,12 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
   // ── E: equality, cash and card, envío + tip; the dark brand with no tip ──
   {
     await clean();
-    const pg = page('x_pizza'); const f = flowOf('cash');
+    // OWNER 11-09 (PLAN-capp-tip-step r7): the in-app tip is CARD-ONLY — a cash order carries no tip (the server refuses cash + tip)
+    const pg = page('x_pizza'); const f = flowOf('cash', { tip: 0 });
     const { out, T } = await quoteAndPlace(pg, f, cartOf('x_pizza'));
     assert.strictEqual(out.kind, 'placed', JSON.stringify(out));
     const o = await order(out.order_id);
-    assert.deepStrictEqual([T.envio, T.tip, o.total_cents, o.tip_cents], [3000, 2000, T.total, 2000], '🔴 cash: displayed Total == recorded total_cents (envío + tip once)');
+    assert.deepStrictEqual([T.envio, T.tip, o.total_cents, 'tip_cents' in o], [3000, 0, T.total, false], '🔴 cash: displayed Total == recorded total_cents (envío once; no tip on cash)');
     assert.strictEqual(T.total, T.subtotal + T.envio + T.tip, 'the server net = food + envío + tip, exactly once');
     assert.strictEqual(placeOf(pg), null, 'placed ⇒ pending_place cleared');
     await clean(); CHARGED.length = 0; RETURNS.length = 0;
@@ -324,14 +325,9 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     const again = await quoteAndPlace(pg.reload(), f, cartOf('x_pizza'));   // AFTER A RELOAD, the unedited cart
     assert.deepStrictEqual([again.out.kind, again.out.order_id, again.out.idempotent], ['placed', id, true], 'the unedited retry (after a reload) ⇒ idempotent 200 ⇒ placed');
     assert.strictEqual(await orderCount(), before + 1);
-    // order_exists reason tip: the same lost response, the tip changed
-    await clean();
-    const tp = page('x_pizza'); const tf = flowOf('cash');
-    DROP_NEXT = 'createOrder';
-    const t1 = await quoteAndPlace(tp, tf, cartOf('x_pizza'));
-    C.chooseTip(tf, 40); await clean();
-    const t2 = await quoteAndPlace(tp, tf, cartOf('x_pizza'));
-    assert.deepStrictEqual([t2.out.kind, t2.out.order_id], ['existing_order', t1.out.order_id], `a changed tip ⇒ order_exists tip ⇒ the sheet, no mint (${JSON.stringify(t2.out)})`);
+    // order_exists reason tip: no longer reachable from a capp CASH flow — the tip is card-only (PLAN-capp-tip-step r7, OWNER
+    // 11-09; the server refuses cash + tip, 400 tip_cash_unsupported). The server's reason 'tip' (card_delivery +
+    // the hosted card) is pinned by test/s2tip.emulator.test.js §4; the capp's order_exists ⇒ sheet is reason-agnostic (the cart cell above)
     // method: a card placement, then cash on the same identity — with creds one poll first (pending ⇒ confirming); without ⇒ the sheet
     await clean();
     const mp = page('x_pizza'); const mf = flowOf('online');
@@ -551,8 +547,9 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
       assert.deepStrictEqual([f.pin.lat, f.pin.lng, u.ui.state.pinStepOk], [FIX.lat, FIX.lng, false], 'the device fix, with NO pin step');
       await u.type('#f-details', 'Portón negro'); await u.type('#f-name', 'Ana UI'); await u.type('#f-phone', `9955${String(PH += 1).padStart(4, '0')}`);
       await u.click(`[data-act="pay"][data-val="${pay}"]`);
-      await u.click('#cta'); await u.click('[data-act="tipc"][data-val="20"]');
-      await u.click('[data-act="tip-place"]'); await u.click('#layer [data-act="placing-go"]');
+      await u.click('#cta');   // r7 (card-only tip): cash places from the checkout; a card goes through the tip step
+      if (pay !== 'cash') { await u.click('[data-act="tipc"][data-val="20"]'); await u.click('[data-act="tip-place"]'); }
+      await u.click('#layer [data-act="placing-go"]');
       assert.ok(await until(() => LOG.some((x) => x.ep === ep && x.body && x.body.customer_name === 'Ana UI' && x.body.lat === FIX.lat)), `premise: the UI sent ${ep}`);
       const sent = LOG.slice(l0).filter((x) => x.ep === ep).at(-1);
       assert.deepStrictEqual([sent.auth, sent.status], [true, 200], `🔴 the UI's request carries the intake key and is admitted (${pay}: ${sent.status} ${JSON.stringify(sent.json)})`);
