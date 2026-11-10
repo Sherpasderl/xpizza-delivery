@@ -3672,3 +3672,34 @@ test('S3 pickup_only_item on a DELIVERY order ⇒ the existing pickup-only state
   assert.equal(b.q('#layer').innerHTML, '', 'no sheet: the existing gate state');
   assert.equal(b.srv.of('createOrder').length, 1);
 });
+
+// ── S3 Codex r1 P1-1 (advisor ruling): an item refusal is DEFINITIVE and pre-mutation (nothing created, no checkout issued), and its
+//    recovery CHANGES the cart (remove the extra, adopt the fresh menu, switch to pickup) — so the hosted freeze of that placement is
+//    RELEASED (capp-api resolvePlace 'released'; the UI's reconcile unfreezes the cart), on the cash and the card send alike ──
+test('S3 Codex r1 P1-1: menu_changed / extra_not_allowed / pickup_only_item release the hosted freeze (cash + card); each recovery acts', async () => {
+  const pre = bootCo(); const d = s3Configurable(pre); const [e1, e2] = pre.ui.menu.extrasFor(d.key);
+  const MC = S3RL.resolutionRefusal({ code: 'menu_changed' });
+  const XR = { outcome: 'denied', denied: [{ item: s3ItemKey('x_pizza', d), extra: e1.name }] };
+  const PO = { status: 409, json: { ok: false, error: 'pickup_only_item', item_key: s3ItemKey('x_pizza', pre.plain) } };
+  const refusals = { menu_changed: { status: MC.status, json: MC.body }, extra_not_allowed: { status: S3EI.refusalStatus(XR), json: { ...S3EI.refusalBody(XR), order_id: 'X' } }, pickup_only_item: PO };
+  for (const pay of ['cash', 'online']) for (const [kind, resp] of Object.entries(refusals)) {
+    const storage = memStore();
+    const ep = pay === 'cash' ? 'createOrder' : 'chargeOnlineOrder';
+    const b = bootCo({ storage, config: HOSTED_KEYS, script: { [ep]: [resp] } });
+    b.ui.cart.add(d.key, [e1.key, e2.key], 1);
+    await filled(b, pay); await ctaTip0(b); await tipPlace(b); await b.click('#layer [data-act="placing-go"]'); await settle();
+    assert.equal(b.srv.of(ep).length, 1, `premise: ${pay} ${kind} sent once`);
+    assert.equal(b.ui.lockedNow(), false, `🔴 ${pay} ${kind}: the placement's lock is released (S3-CAPP-P11-UNLOCK)`);
+    assert.ok(!(JSON.parse(storage.getItem(HOSTED_KEYS.cartKey) || '{}').frozen_for), `🔴 ${pay} ${kind}: the cart is no longer frozen (S3-CAPP-P11-UNFROZEN)`);
+    if (kind === 'extra_not_allowed') {
+      await b.click('#layer [data-act="extra-remove"]'); await settle();
+      assert.deepEqual(J(b.ui.cart.lines()).find((l) => l.key === d.key).ex, [{ [e2.key]: 1 }], `🔴 ${pay}: the repair lands on the cart (S3-CAPP-P11-REPAIR)`);
+    } else if (kind === 'pickup_only_item') {
+      await b.click('[data-act="type"][data-val="pickup"]'); await settle();
+      assert.equal(b.ui.state.flow.mode, 'pickup', `🔴 ${pay}: switching to pickup lands (S3-CAPP-P11-PICKUP)`);
+    } else {
+      await b.click('#layer [data-act="menu-reload"]'); await settle();
+      assert.equal(b.events.filter(([n]) => n === 'menu_reload').length, 1, `${pay}: «Recargar» asks the shell (its adoption needs the unfrozen cart — the A2 cell)`);
+    }
+  }
+});

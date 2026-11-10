@@ -419,6 +419,9 @@
     // S3 (D4c-grill/item-s1/S3-DESIGN.md D2): the item refusals — resolve-lines.js resolutionRefusal (409 menu_changed; the quote's
     // fail-soft 200), extras-intake.js (409 extra_not_allowed + its denied { item, extra } lines), S2's 409 pickup_only_item + item_key
     const deniedLines = (v) => (Array.isArray(v) ? v.filter((x) => x && typeof x.item === 'string' && typeof x.extra === 'string').map((x) => ({ item: x.item, extra: x.extra })) : []);
+    // Codex S3 r1 P1-1 (advisor): an item refusal is definitive and pre-mutation (nothing created, no checkout issued, no SDK claim),
+    // and its recovery CHANGES the cart — so the placement is RELEASED (the cart unfrozen at the next reconcile), never left frozen
+    const ITEM_REFUSALS = new Set(['menu_changed', 'extra_not_allowed', 'pickup_only']);
     function itemRefusal(status, j) {
       if (!j || typeof j !== 'object') return null;
       if (j.error === 'menu_changed' && (status === 409 || status === 200)) return { kind: 'menu_changed' };
@@ -655,6 +658,7 @@
         }
         if (isExisting(r)) return resolveExisting(id);
         const cr = commonRefusal(r);
+        if (cr && ITEM_REFUSALS.has(cr.kind)) { const ok = resolvePlace(id, 'released'); return { ...cr, order_id: id, ...settledOf(ok) }; }
         if (cr) return { ...cr, order_id: id };
         // r3 P2-3: a late answer after teardown is PERSISTED above (settle / issue / clear) but never rendered — no price sheet
         if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded', order_id: id };
@@ -835,7 +839,7 @@
       // CONTRACT A3: the saved card is not the caller's usable card — refused before any claim or write: the attempt released, the card re-chosen
       if (r.status === 409 && r.json && r.json.error === 'saved_card_unavailable') { settleSdk(id, 'none', attemptId); return { kind: 'sdk_card_unavailable', order_id: id }; }
       const cr = commonRefusal({ status: r.status, json: r.json, parsed: true });
-      if (cr) { settleSdk(id, 'none', attemptId); return { ...cr, order_id: id }; }                   // the intake gates refuse before any claim
+      if (cr) { settleSdk(id, 'none', attemptId); if (ITEM_REFUSALS.has(cr.kind)) { const ok = resolvePlace(id, 'released'); return { ...cr, order_id: id, ...settledOf(ok) }; } return { ...cr, order_id: id }; }                   // the intake gates refuse before any claim
       if (r.status === 401 || r.status === 404) return recoverySheet(id);
       return sdkStatus(id, p);
     }
