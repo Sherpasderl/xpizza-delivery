@@ -90,4 +90,23 @@ const refused = (r) => [r.ok, r.code];
   ok('key-less rewards pass through as today; each brand is judged on the shape its calculator consumes');
 }
 
+// ── A2 (Codex S2 code r1 P1-2): a KEYED reward line is judged FIRST, on its own, against the namespace its calculator consumes ──
+{
+  const refusedAt = (r) => [r.ok, r.code, r.at];
+  const xUnknown = { items: [{ name: XA, qty: 1 }], redeem: { type: 'free_pizza_choice', item_key: 'not-held', item_id: XA } };
+  assert.deepStrictEqual(refusedAt(resolveLines('x_pizza', xUnknown, XP)), [false, 'menu_changed', 'redeem'], 'S2A2-UNKNOWN-KEY a keyed reward whose key the tables do not hold is refused, never fulfilled by its legacy id');
+  const extraKey = Object.keys(LM.extras)[0];
+  const lMismatch = { items: [{ id: LA, name: 'x', qty: 1 }], redeem: { type: 'points_ala_carte', items: [{ item_key: extraKey, id: LB, qty: 1 }] } };
+  assert.deepStrictEqual(refusedAt(resolveLines('la_musa', lMismatch, LM)), [false, 'invalid_line', 'redeem'], 'S2A2-L-EXTRA-MISMATCH a keyed la_musa reward naming an EXTRA key with another id is refused (never redeems the id)');
+  const lExtra = { items: [{ id: LA, name: 'x', qty: 1 }], redeem: { type: 'points_ala_carte', items: [{ item_key: extraKey, id: extraKey, qty: 1 }] } };
+  assert.deepStrictEqual(resolveLines('la_musa', lExtra, LM), { ok: true }, 'S2A2-L-EXTRA an agreeing keyed reward on an EXTRA (the calculator\'s second namespace) resolves');
+  const bypass = { items: [{ name: [XB], qty: 1 }], redeem: { type: 'free_pizza_choice', item_key: XA, item_id: XB } };
+  assert.deepStrictEqual(refusedAt(resolveLines('x_pizza', bypass, XP)), [false, 'invalid_line', 'redeem'], 'S2A2-PASSTHROUGH-BYPASS a malformed legacy cart never lets a keyed reward mismatch through');
+  const emptyCart = { items: [], redeem: { type: 'free_pizza_choice', item_key: XA, item_id: XB } };
+  assert.deepStrictEqual(refusedAt(resolveLines('x_pizza', emptyCart, XP)), [false, 'invalid_line', 'redeem'], 'S2A2-EMPTY-CART an empty cart never lets a keyed reward mismatch through');
+  const keyless = { items: [{ name: [XB], qty: 1 }], redeem: { type: 'free_pizza_choice', item_id: 'No Existe' } };
+  assert.deepStrictEqual(resolveLines('x_pizza', keyless, XP), { ok: true }, 'S2A2-KEYLESS-PASSTHROUGH a key-less reward on a legacy cart keeps today\'s passthrough');
+  ok('a keyed reward is judged first against its consumed namespace: unknown → menu_changed, mismatch → invalid_line, never bypassed');
+}
+
 console.log(`\nresolve-lines-s2: OK (${n})`);
