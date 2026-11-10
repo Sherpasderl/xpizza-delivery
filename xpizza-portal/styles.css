@@ -454,6 +454,7 @@
   /* ═══ ELEVATION: browser surfaces the design system should own ═══ */
   :focus-visible{outline:none;box-shadow:var(--focus)}
   .tab:focus-visible,.railitem:focus-visible,.nav:focus-visible,.ochip:focus-visible,.daychip:focus-visible,.fchip:focus-visible{box-shadow:var(--focus);border-radius:9px}
+  h1[tabindex="-1"]:focus,.errbox[tabindex="-1"]:focus,#gatewait[tabindex="-1"]:focus{outline:none;box-shadow:none}   /* the reveal's focus TARGETS (boot.js focusPortal / focusGate): not controls, so no keyboard ring — the focus move stays for screen readers */
   a{color:var(--accent)}
   ::selection{background:var(--tint2);color:var(--ink)}
   input,textarea{caret-color:var(--accent)}
