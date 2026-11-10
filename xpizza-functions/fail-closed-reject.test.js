@@ -72,7 +72,7 @@ ok('typed reject: 503 { error: pricing_unavailable, retryable: true }');
   const qo = SRC.slice(at('exports.quoteOrder = onRequest('), at('exports.quoteRedemption = onRequest('));
   assert.ok(/if \(!tables\) return res\.status\(200\)\.json\(\{ ok: false, error: 'pricing_unavailable' \}\);/.test(qo),
     'quoteOrder fails soft — a preview outage must not block checkout');
-  const qr = SRC.slice(at('exports.quoteRedemption = onRequest('), at('exports.quoteRedemption = onRequest(') + 4000);
+  const qr = SRC.slice(at('exports.quoteRedemption = onRequest('), at('exports.quoteRedemption = onRequest(') + 4400);   // S1b: the resolution stage rides the guard's line (4000 → 4400)
   const qrCall = qr.indexOf('const quoteTables = await resolvePricingTables(restaurantId);');
   const qrGuard = qr.indexOf('if (!quoteTables) return res.status(200).json({ ok: false');
   assert.ok(qrGuard > qrCall && qrGuard < qr.indexOf('quoteRedemptionCore(db,'),

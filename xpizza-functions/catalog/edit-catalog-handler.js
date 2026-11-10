@@ -35,7 +35,7 @@ const { catalogDiff, issueEditToken, sha256 } = require('./catalog-edit');
 const AP = require('./add-product');
 const { rendererContract } = require('./source-store');
 const { buildSourceCandidate, assertBuiltValid } = require('./candidate-validate');
-const { serverOwnedKeyMode, withServerKeyMode } = require('./key-mode'); const FK = require('./frozen-keys'); const { textEditCapabilities } = require('./item-text-edit');   // S1a
+const { serverOwnedKeyMode, withServerKeyMode } = require('./key-mode'); const FK = require('./frozen-keys'); const RK = require('./reserved-keys'); const MO = require('./mint-opaque'); const { textEditCapabilities } = require('./item-text-edit');   // S1a
 
 const { can } = require('../access/membership');   // PLAN-portal-membership r3 §3.2 — the ONE capability table
 const reply = (status, body) => ({ status, body });
@@ -110,8 +110,8 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
 
   // SERVER ALLOCATION (§2): tmp references become keys/ids here, once; the high-water mark advances in the
   // same commit as the draft below.
-  let candidate = canonicalize(FK.withFrozenKeys(withServerKeyMode(source, keyModeOwn.key_mode), fkOwn.frozen_keys)); if (textEdit) { candidate = canonicalize(AP.rederiveOptionNames(candidate)); const rec = FK.recordRenames({ draft: candidate, live, stored, textEdit }); if (!rec.ok) return reply(409, { error: rec.error, key: rec.key }); candidate = canonicalize(FK.withFrozenKeys(candidate, rec.frozen_keys)); }   // S1a: with the switch on, a group renames as one unit, new text is capped, and every rename is recorded under its kept key
-  let hwmPlan = null;
+  let candidate = canonicalize(FK.withFrozenKeys(withServerKeyMode(source, keyModeOwn.key_mode), fkOwn.frozen_keys)); if (textEdit) { candidate = canonicalize(AP.rederiveOptionNames(candidate)); const rec = FK.recordRenames({ draft: candidate, live, stored, textEdit }); if (!rec.ok) return reply(409, rec.key ? require('./edit-preflight').attributor(candidate)(rec.key, 'name', rec.error) : { error: rec.error }); candidate = canonicalize(FK.withFrozenKeys(candidate, rec.frozen_keys)); }   // S1a: with the switch on, a group renames as one unit, new text is capped, and every rename is recorded under its kept key
+  let hwmPlan = null; { const op = RK.opaqueNameProblems({ items: candidate.items, activeItems: live.items })[0]; if (op) return reply(400, { error: 'name_previously_used', field: 'name', ...op }); }   // S1c (codex r1): never a name in the minted-key syntax
   let refOfKey = {};          // fresh additions: allocated key → the tmp reference the portal still holds
   if (hasAdditions) {
     if (!addProduct) return reply(503, { error: 'add_product_unavailable', retryable: false });
@@ -121,7 +121,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
       const hwmSnap = await hwmRef.get();
       const hwmVal = hwmSnap.exists ? (hwmSnap.data() || {}).value : null;
       // every name a fresh addition WILL carry — an option's derived "{launcher} - {choice}" included (codex PB-1 r1 P2-4)
-      const prospective = AP.prospectiveAdditionNames(candidate)
+      const mintOn = MO.mintCapabilities().enabled; const prospective = (mintOn ? [] : AP.prospectiveAdditionNames(candidate))   // S1c: a minted key never derives from a name, so names are not pre-checked
         .map((n) => (keyMode === 'name' ? n : AP.slugify(n)))
         .filter(Boolean);
       const taken = prospective.length ? await addProduct.registryKeysTaken(rid, prospective, keyMode) : new Set();
@@ -129,8 +129,8 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
         hwm: Number.isInteger(hwmVal) ? hwmVal : null, registryHasKey: (k) => taken.has(k),
         // the validator's own sinks: item fields by FIELD_SINKS.item; a group's label / prompt by FIELD_SINKS.variant (body)
         fieldProblem: (f, v) => checkValue(v, Object.prototype.hasOwnProperty.call(FIELD_SINKS.item, f) ? FIELD_SINKS.item[f] : FIELD_SINKS.variant.label),
-        authoring: groupCapabilities().authoring });
-      candidate = res.source;
+        authoring: groupCapabilities().authoring, mint: mintOn ? { newKey: MO.mintKey, reserved: await addProduct.readReservedKeys(rid) } : null });
+      candidate = res.source; if (mintOn && res.allocatedNow.length && (await addProduct.registryKeysTaken(rid, res.allocatedNow, keyMode)).size) return reply(503, { error: 'mint_unavailable', retryable: true });   // S1c: the minted tokens, checked against the registry after allocation
       refOfKey = res.refs || {};
       if (res.allocatedNow.length) hwmPlan = { ref: hwmRef, snap: hwmSnap, value: res.hwm };
     } catch (e) {
@@ -144,7 +144,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
      `source.photos` is taken OFF the candidate (the builder never sees it), re-keyed from tmp refs to the keys allocated
      above, validated against this draft's item keys, and put back on the stored draft only when non-empty. Flag OFF: a map
      that DIFFERS from the stored draft's is refused; the unchanged stored map always passes, so other edits never block. */
-  let photoMap = null; if (textEdit) { const cap = AP.textCapProblems({ draft: candidate, live })[0]; if (cap) return reply(400, { error: cap.code, field: cap.field, key: cap.key, ...(Object.prototype.hasOwnProperty.call(refOfKey, cap.key) ? { ref: refOfKey[cap.key] } : {}) }); const rn = FK.renamedLabels({ draft: candidate, live }); if (rn.length) { if (!addProduct) return reply(503, { error: 'add_product_unavailable', retryable: false }); let used; try { used = await addProduct.registryKeysTaken(rid, rn.map((x) => x.name), 'name'); } catch (_) { return reply(503, { error: 'store_unavailable', retryable: true }); } const hit = rn.find((x) => used.has(x.name)); if (hit) return reply(400, { error: 'name_previously_used', field: hit.field, key: hit.key }); } }   // S1a (codex r1): the FULLY derived candidate — new groups' option names included — is capped, and every renamed label is checked against the reserved keys, before anything is written
+  let photoMap = null; if (textEdit) { const pf = await require('./edit-preflight').runEditPreflight({ rid, draft: candidate, live, addProduct, mint: MO.mintCapabilities().enabled, renderedCategories: rendererContract(rid).renderedCategories }); if (pf) return reply(pf.status, { ...pf.body, ...(pf.body.key && !pf.body.ref && Object.prototype.hasOwnProperty.call(refOfKey, pf.body.key) ? { ref: refOfKey[pf.body.key] } : {}) }); }   // S2 (§2 r1 E/F): with the switch on, ONE ordered preflight answers the first refusal, field-tagged — the publish runs the same pass
   if (photos) {
     const raw = candidate.photos;
     delete candidate.photos;
@@ -424,7 +424,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   // Everything below is read-only and in memory: the live catalog and the built draft were read and built
   // BEFORE the write (above).
   // DISH PHOTOS A2 step 9: the reviewed diff carries the photo lines (active meta/photos vs the stored draft map) when wired
-  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: photoMap } : draftBuilt);
+  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: photoMap } : draftBuilt); if (textEdit) { const xc = require('./extras-consequences').extrasConsequences({ live: { items: live.items, extras: liveRes.extraRecords, structure: live.structure }, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); if (xc.length) diff.consequences = xc; }   // S2-6: the extras consequences ride the reviewed (token-bound) diff; the publish recomputes them identically
   /* 🔴 THE TOKEN MUST HASH WHAT PUBLISH WILL HASH, AND THAT IS THE STORED DRAFT — NOT THE BODY.
      This hashed the incoming `source`, and publish hashes the draft it reads BACK. Those agreed only
      while the two were the same bytes, which stopped being true the moment the server began owning a

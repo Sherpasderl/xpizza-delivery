@@ -93,7 +93,7 @@ function renamedLabels({ draft, live }) {
     if (!isPlain(d) || !isPlain(d.display) || typeof d.key !== 'string' || own(d, 'ref') || typeof d.display.name !== 'string') continue;
     const id = d.display.id == null ? null : String(d.display.id);
     const l = liveByKey.get(d.key);
-    if (id === null || !l || String(l.display.id) !== id || l.display.name === d.display.name || d.display.name === d.key) continue;
+    if (id === null || !l || String(l.display.id) !== id || l.display.name === d.display.name || require('./add-product').normalizeName(d.display.name) === require('./add-product').normalizeName(d.key)) continue;   // S2-9 (G4): the record's OWN key is exempt, normalized as every other judge compares
     out.push({ key: d.key, name: d.display.name, field: d.display.variantOf != null ? 'choice' : 'name' });
   }
   return out;

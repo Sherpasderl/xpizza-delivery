@@ -62,8 +62,8 @@ function weekendOnlyViolation(items, restaurantId, fulfillmentMs, weekendOnlyKey
   const keys = injected || (restaurantId === 'x_pizza' ? X_PIZZA_WEEKEND_ONLY : null);
   if (!keys || keys.size === 0) return null;                                     // no gate for this restaurant
   if (WEEKEND_DAYS.has(hnDayFromMs(fulfillmentMs))) return null;                 // Fri/Sat/Sun → everything allowed
-  const hit = items.find((it) => it && keys.has(it.name));
-  return hit ? hit.name : null;
+  const hit = items.find((it) => it && keys.has(itemPricingKey(it, restaurantId)));   // S1b: the resolved key (the stamp), as pricing reads it
+  return hit ? ((typeof hit.name === 'string' && hit.name) ? hit.name : itemPricingKey(hit, restaurantId)) : null;
 }
 
 // La Musa — keyed by stable `id` slug. In sync with the MENU const in the La Musa
@@ -139,15 +139,15 @@ const EXTRAS_BY_RESTAURANT = { x_pizza: EXTRA_PRICES, la_musa: LA_MUSA_EXTRAS };
    remembering to strip on every path including the error ones; this cannot be supplied at all.
 
    The raw accessor stays exactly as it was, and is what the agreement check compares against. */
-const PRICING_KEY_STAMP = Symbol.for('xpizza.d4.pricingKeyStamp'); const TABLES_KEY_MODE = Symbol.for('xpizza.s0.tablesKeyMode'); const keyModeOfTables = (tables) => (tables && typeof tables === 'object' ? tables[TABLES_KEY_MODE] : undefined); const attachTablesKeyMode = (tables, keyMode) => { if (keyMode == null) return tables; if (keyMode !== 'id' && keyMode !== 'name') throw new Error(`key_mode_invalid: ${typeof keyMode === 'string' ? keyMode.slice(0, 20) : typeof keyMode}`); Object.defineProperty(tables, TABLES_KEY_MODE, { value: keyMode, enumerable: false, writable: false, configurable: false }); return tables; };
+const PRICING_KEY_STAMP = Symbol.for('xpizza.d4.pricingKeyStamp'); const TABLES_KEY_MODE = Symbol.for('xpizza.s0.tablesKeyMode'); const keyModeOfTables = (tables) => (tables && typeof tables === 'object' ? tables[TABLES_KEY_MODE] : undefined); const attachTablesKeyMode = (tables, keyMode) => { if (keyMode == null) return tables; if (keyMode !== 'id' && keyMode !== 'name') throw new Error(`key_mode_invalid: ${typeof keyMode === 'string' ? keyMode.slice(0, 20) : typeof keyMode}`); Object.defineProperty(tables, TABLES_KEY_MODE, { value: keyMode, enumerable: false, writable: false, configurable: false }); return tables; }; const TABLES_LABELS = Symbol.for('xpizza.s1d.tablesLabels'); const labelsOfTables = (tables) => (tables && typeof tables === 'object' && tables[TABLES_LABELS] ? tables[TABLES_LABELS] : null); const attachTablesLabels = (tables, labels) => { if (labels && typeof labels === 'object' && !Array.isArray(labels)) Object.defineProperty(tables, TABLES_LABELS, { value: Object.freeze({ ...labels }), enumerable: false, writable: false, configurable: false }); return tables; };   // S1d: dish labels beside the prices (null = this route has none)
 
 const defaultKeyMode = (rid) => (rid === 'la_musa' ? 'id' : 'name'); const effectiveKeyMode = (rid, keyMode) => { if (keyMode == null) return defaultKeyMode(rid); if (keyMode === 'id' || keyMode === 'name') return keyMode; throw new Error(`key_mode_invalid: ${typeof keyMode === 'string' ? keyMode.slice(0, 20) : typeof keyMode}`); }; const availIdentityField = (rid, keyMode) => effectiveKeyMode(rid, keyMode); function itemPricingKey(item, restaurantId, keyMode) {   // PLAN-avail-identity r1: the ONE availability-identity rule, also served in the public menu
   const raw = item && item[availIdentityField(restaurantId, keyMode)];
   if (item && typeof item === 'object') {
     const stamped = item[PRICING_KEY_STAMP];
-    /* Preferred only when it is a real string. It is never DIFFERENT from `raw` — the stamper only
-       stamps on agreement — so this selects the same value either way; what it exercises is the path
-       enforce will one day depend on. */
+    /* Preferred whenever it is a real string. Since S1d and S2 («item_key wins») it CAN differ from `raw`:
+       a renamed dish's line names its new label, or a held item_key decides a line whose legacy field
+       disagrees. The stamp is the resolved key, so price, gates and descriptions follow it, never `raw`. */
     if (typeof stamped === 'string' && stamped) return stamped;
   }
   return raw;
@@ -307,8 +307,8 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
         lineL += extraPrices[ename];
       }
     }
-    const name = byId ? summaryLineName(it && it.name, key) : key;
-    lines.push({ name, qty, cents: lineL * 100 });
+    const name = byId ? summaryLineName(it && it.name, key) : (((labelsOfTables(tables) || {})[key]) || key);   // S1d: a name-keyed line shows its key's current label
+    lines.push({ name, qty, cents: lineL * 100, item_key: key });   // S1d: the key that priced the line (additive)
   }
   if (redemption && redemption.model === 'discount' && Number.isInteger(redemption.discount_cents) && redemption.discount_cents > 0) {
     lines.push({ name: summaryLineName(redemption.name, 'Recompensa') + ' · Recompensa', qty: 1, cents: -redemption.discount_cents });   // legacy (unused in v2)
@@ -318,13 +318,13 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
     for (const f of freeArr) {
       const q = Number(f && f.qty);
       if (!Number.isInteger(q) || q < 1 || q > 50) return null;
-      lines.push({ name: summaryLineName(f && f.name, 'Recompensa'), qty: q, cents: 0 });   // added free item → GRATIS
+      const fk = f && typeof f.item_key === 'string' && f.item_key ? f.item_key : null; const fn = summaryLineName(f && f.name, 'Recompensa'); lines.push({ name: (byId || !fk) ? fn : (((labelsOfTables(tables) || {})[fk]) || fn), qty: q, cents: 0, ...(fk ? { item_key: fk } : {}) });   // added free item → GRATIS; S1d: its key (+ a name-keyed label)
     }
   }
   return lines;
 }
 
-module.exports = { PRICING_KEY_STAMP, availIdentityField, defaultKeyMode, effectiveKeyMode, TABLES_KEY_MODE, keyModeOfTables, attachTablesKeyMode,
+module.exports = { PRICING_KEY_STAMP, availIdentityField, defaultKeyMode, effectiveKeyMode, TABLES_KEY_MODE, keyModeOfTables, attachTablesKeyMode, TABLES_LABELS, labelsOfTables, attachTablesLabels,
   MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal, itemPricingKey, extraPricingKey, summaryLines,
   resolvePriceTables,   // 1b-1b: the shared PIN-B-asserting table resolver, reused across the redemption graph
   X_PIZZA_WEEKEND_ONLY, hnDayFromMs, weekendOnlyViolation,

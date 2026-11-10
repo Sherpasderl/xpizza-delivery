@@ -15,7 +15,7 @@ const { execFileSync } = require('child_process');
 const { unapplyD4c4, HUNKS } = require('./tools/d4c4-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))));
+const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('./tools/s1d-module-inverse').unapplyS1dModule(f, require('./tools/s2-module-inverse').unapplyS2Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))))))));
 // 1D add-product A landed on top of D4-c4: its index.js hunks (tools/addproduct-inverse.js) are reversed before the D4-c4 proof —
 // after add-product B's (tools/addproduct-b-inverse.js), which landed on top of A; the stacked-tracker slice's
 // (tools/stacked-tracker-inverse.js), which landed on top of PB-2; and D4-c2b's one delimited block (tools/d4c2b-inverse.js,

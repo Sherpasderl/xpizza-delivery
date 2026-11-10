@@ -50,7 +50,7 @@ const { judgePlanDestinations } = require('./identity-destination');
 const { applyIdentityPlan } = require('./identity-writer');
 const { reconcileOnRollback } = require('./identity-reconcile');
 const { REGISTRY_AGREEMENT_REFUSALS } = require('./identity-stampmap');
-const { renameEnabled } = require('./identity-flags');
+const { renameEnabled } = require('./identity-flags'); const RK = require('./reserved-keys'); const { labelsFromDocs } = require('./catalog-transform'); const { textEditCapabilities } = require('./item-text-edit');   // S1c: the reserved-key set; renames are judged only with the text switch on
 /* c2a-evidence:begin */
 // 1D D4-c2a — binding evidence recorded at activation (PLAN-D4c2a rev 9 §2). Dormant: nothing reads it in this slice.
 const { buildActivationEvidence, activationEvidenceDoc, evidenceRefOf, withAt, translateEvidenceCollision } = require('./identity-evidence');
@@ -365,7 +365,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
     /* Every read before any write — Firestore refuses a read after a write — and this one is the
        candidate's own version doc, so the eligibility predicate is evaluated against the record as it
        stands at the serialization point rather than as it looked when the candidate was built. */
-    const candidateSnap = await tx.get(versionsColOf(db, rid).doc(versionId));
+    const candidateSnap = await tx.get(versionsColOf(db, rid).doc(versionId)); const reservedSnap = await tx.get(RK.reservedRefOf(db, rid)); const [candItemsSnap, candExtrasSnap] = await Promise.all([tx.get(versionsColOf(db, rid).doc(versionId).collection('menu_items')), tx.get(versionsColOf(db, rid).doc(versionId).collection('extras'))]); const reservedDoc = RK.readReserved(reservedSnap.exists ? reservedSnap.data() : undefined);   // S1c: read before any write; every activation reserves its keys
     const l = snap.exists ? (snap.data() || {}) : {};
     if (l.owner_token !== token) throw new Error(`lease_lost: not owner (versionId=${versionId})`);
     if (!(l.expires_at && l.expires_at.toMillis() > nowServer.toMillis())) throw new Error(`lease_expired: cannot flip (versionId=${versionId})`);
@@ -385,7 +385,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        BOTH fields now come from ONE readPointerSnap: there is no independent parse of this document
        left anywhere, which is the property E-1 was for. */
     const livePointer = readPointerSnap(pointerSnap, rid);
-    const liveActive = livePointer.version;
+    const liveActive = livePointer.version; const activeItemsSnap = (textEditCapabilities().enabled && liveActive && liveActive !== versionId) ? await tx.get(versionsColOf(db, rid).doc(liveActive).collection('menu_items')) : null;
     if (liveActive !== expected.activeVersionId) {
       throw new Error(`flip_cas_stale: ${rid} — validated against active ${JSON.stringify(expected.activeVersionId)} but ${JSON.stringify(liveActive)} is live; this publish would overwrite a newer one`);
     }
@@ -709,7 +709,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
     if (certifiedCandidate) {
       const vref = versionsColOf(db, rid).doc(versionId);
       const [itemsSnap, extrasSnap, dishKeys, extraKeys, dishIds, extraIds] = await Promise.all([
-        tx.get(vref.collection('menu_items')), tx.get(vref.collection('extras')),
+        candItemsSnap, candExtrasSnap,
         tx.get(keysColOf(db, rid, 'dish')), tx.get(keysColOf(db, rid, 'extra')),
         tx.get(idsColOf(db, rid, 'dish')), tx.get(idsColOf(db, rid, 'extra')),
       ]);
@@ -1089,7 +1089,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
       currentGeneration: priorGeneration,          // read from the pointer in THIS transaction, a few lines above
       intent: isRollback ? 'rollback' : 'activate',
     });
-    if (!verdict.ok) throw new Error(`${verdict.code}: ${rid}/${versionId} — ${verdict.detail}`);
+    if (!verdict.ok) throw new Error(`${verdict.code}: ${rid}/${versionId} — ${verdict.detail}`); const reservedNext = RK.unionReserved(reservedDoc, { dish: candItemsSnap.docs.map((d) => (d.data() || {}).key), extra: candExtrasSnap.docs.map((d) => (d.data() || {}).key) }, versionId); const rkConflict = activeItemsSnap ? RK.renameConflicts({ items: candItemsSnap.docs.map((d) => d.data() || {}), activeItems: activeItemsSnap.docs.map((d) => d.data() || {}), reserved: RK.reservedKeySet(reservedDoc) })[0] : null; if (rkConflict) { const e = new Error(`reserved_key_conflict: ${rid}/${versionId} — a renamed item may not take a reserved key (${JSON.stringify(rkConflict.key)})`); e.status = 409; const at = require('./edit-preflight').attributor({ items: candItemsSnap.docs.map((d) => d.data() || {}) })(rkConflict.key, 'name', 'reserved_key_conflict'); Object.assign(e, { code: 'reserved_key_conflict', key: at.key, field: 'name', name: rkConflict.name, ...(at.option_key ? { option_key: at.option_key } : {}) }); throw e; } RK.assertWithinLimit(reservedNext.doc); if (reservedNext.added > 0) tx.set(RK.reservedRefOf(db, rid), reservedNext.doc);   // S1c: add-only, never removes
 
     tx.set(pointerRef, {
       version: versionId,
@@ -1598,7 +1598,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
     identityPair = { version: flipped.version, generation: flipped.generation };
     certifiedActivation = flipped.certified === true;
     // Mirror AFTER the flip and BEFORE releasing the lease — see writeMirror for why both matter.
-    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable, ...(input && input.key_mode != null ? { keyMode: input.key_mode } : {}) });
+    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable, ...(input && input.key_mode != null ? { keyMode: input.key_mode } : {}), labels: labelsFromDocs(((input && input.items) || []).map((i) => ({ key: i && i.key, label: i && i.display && i.display.name }))) });
     await pruneRetention(db, rid, { protect: [versionId] }).catch(() => {});   // never let prune fail the publish
 
     identityKeys = { dish: Object.keys(menuTable || {}), extra: Object.keys(extraTable || {}) };
@@ -1721,7 +1721,7 @@ async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm, expect
     await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode);
     const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable, targetDocs.keyMode);
     await flipPointer(db, rid, token, targetVersionId, snapshot, expected, { rollback: true });
-    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable, ...(targetDocs.keyMode != null ? { keyMode: targetDocs.keyMode } : {}) });
+    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable, ...(targetDocs.keyMode != null ? { keyMode: targetDocs.keyMode } : {}), labels: targetDocs.itemLabels || null });
     return { versionId: targetVersionId, rolledBack: true, mirrored: mirrorResult.mirrored };
   } finally {
     await releaseLease(db, rid, token);

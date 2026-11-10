@@ -5318,8 +5318,8 @@
   "slice": "d2",
   "label": "🔴 pricedLineItems returns CONSTANT fiscal lines",
   "file": "factura/pricing.js",
-  "from": "function pricedLineItems(items, menuPrices, extraPrices) {",
-  "to": "function pricedLineItems(items, menuPrices, extraPrices) {\n  if (true) return { items: [{ qty: 1, description: 'X', line_gross_cents: 1 }] };",
+  "from": "function pricedLineItems(items, menuPrices, extraPrices, labels = null, versionId = undefined) {",
+  "to": "function pricedLineItems(items, menuPrices, extraPrices, labels = null, versionId = undefined) {\n  if (true) return { items: [{ qty: 1, description: 'X', line_gross_cents: 1 }] };",
   "command": [
    "node",
    "../cart-identity.test.mjs"
@@ -29198,8 +29198,8 @@
   "slice": "formbake",
   "label": "PLAN 4 §4: overlayIdentity:false is ignored — the reconciler's read carries identity keys the deployed bundle never has (every rid reads as stale forever)",
   "file": "catalog/public-menu.js",
-  "from": "  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, body);",
-  "to": "  const enriched = await applyIdentityToServedBody(db, restaurantId, body);",
+  "from": "  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(",
+  "to": "  const enriched = await applyIdentityToServedBody(",
   "command": [
    "node",
    "catalog/plan4-display-fields.test.js"

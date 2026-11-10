@@ -102,7 +102,7 @@ async function getMyRestaurantsCore({ db, verifyIdToken }, req) {
 // READ-ONLY. Nothing in this module writes catalog or merchant state. (F-1: the ONE exception is a best-effort, deduped owner ALERT
 // when a platform-pending stamp is malformed — a permanent lock must never be silent; injected as `alertMalformed`.)
 // ---------------------------------------------------------------------------
-async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, photoReads = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource, _readPublishRequest = null, alertMalformed = null, _resolveAccess = resolveAccess, now = () => Date.now() }, req) {
+async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, photoReads = null, readReservedKeys = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource, _readPublishRequest = null, alertMalformed = null, _resolveAccess = resolveAccess, now = () => Date.now() }, req) {
   if (!req || req.method !== 'GET') return reply(405, { error: 'method_not_allowed' });
   const rid = req.query && req.query.restaurantId;
 
@@ -168,6 +168,25 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
   try { choiceBadges = [...rendererContract(rid).choiceBadges]; } catch (_) { choiceBadges = []; }
   let restaurantName = rid;
   try { restaurantName = await displayName(db, rid); } catch (_) { restaurantName = rid; }
+  /* S2-5 (S2-DESIGN §1.1; advisor rulings 2 + 3): the item_text_edit switch, ALWAYS stated (fail-closed like groupAuthoring) —
+     false ⇒ today's drawer; while it is on, THIS restaurant's reserved names, normalized exactly as the server judges them
+     (the reserved-key doc ∪ the draft's frozen values), for the drawer's live «Ese nombre no está disponible». Advisory: the
+     save and the publish re-judge. Unreadable ⇒ absent (declared degraded mode: C5 on «Guardar»), never a failed read. */
+  let textEditEnabled = false;
+  try { textEditEnabled = require('./item-text-edit').textEditCapabilities().enabled === true; } catch (_) { textEditEnabled = false; }
+  let reservedNames = null;
+  if (textEditEnabled) {
+    try {
+      const { normalizeName } = require('./add-product'); const RK = require('./reserved-keys');
+      const set = readReservedKeys ? await readReservedKeys(rid) : RK.reservedKeySet((await RK.reservedRefOf(fsdb, rid).get()).data());   // the restaurant's own reserved-key doc (production reads it through fsdb)
+      const frozen = source && source.frozen_keys && typeof source.frozen_keys === 'object' ? Object.values(source.frozen_keys) : [];
+      reservedNames = [...new Set([...set.keys(), ...frozen].filter((k) => typeof k === 'string').map(normalizeName))].sort();
+    } catch (e) {
+      console.warn('portal_reserved_names_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
+      reservedNames = null;
+    }
+  }
+  let pendingTexts = null;
   let draftUnpublishable = null;
   let pendingAdditions = null;
   let pendingRenames = null;
@@ -175,7 +194,7 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
   let liveRead = null;   // F-1: the same live read answers the platform-pending question below (no second read)
   if (readActiveBuilt && activeVersionId != null) {
     try {
-      liveRead = await readActiveBuilt(rid);
+      liveRead = await readActiveBuilt(rid); const activeRes = liveRead;   // asm5: F-1's liveRead and S1c's activeRes name the SAME one read
       const a = assessDraft(rid, source, liveRead);
       if (!a.publishable) draftUnpublishable = { code: a.code, detail: a.detail, ...(a.key ? { key: a.key } : {}) };
       // the saved draft's products that are NOT published yet (keys), so a reloaded editor still marks them NUEVO
@@ -187,6 +206,20 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
         // anything else does. Present only when there is something, exactly like pendingAdditions.
         if (Array.isArray(a.renames) && a.renames.length) pendingRenames = a.renames;
         if (a.other === true) pendingOther = true;
+        // S2-4 (§1.1, G5): the saved-but-unpublished TEXT edits per product against live — a launcher or plain product, never an
+        // option row; served only for a publishable draft and only while the switch is on (pendingOther keeps its meaning)
+        if (textEditEnabled) {
+          const liveByKey = new Map(((activeRes && activeRes.built && activeRes.built.items) || []).map((it) => [it && it.key, it]));
+          const texts = [];
+          for (const it of Array.isArray(source && source.items) ? source.items : []) {
+            if (!it || !it.display || typeof it.key !== 'string' || it.display.variantOf != null) continue;
+            const was = liveByKey.get(it.key); if (!was || !was.display) continue;
+            const norm = (v) => (v === undefined ? null : v);
+            const fields = ['name', 'desc', 'cat', 'subcat'].filter((f) => norm(it.display[f]) !== norm(was.display[f]));
+            if (fields.length) texts.push({ key: it.key, fields });
+          }
+          if (texts.length) pendingTexts = texts;
+        }
       }
     } catch (e) {
       console.warn('portal_draft_assessment_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
@@ -273,6 +306,9 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     ...(pendingAdditions ? { pendingAdditions } : {}),
     ...(pendingRenames ? { pendingRenames } : {}),
     ...(pendingOther ? { pendingOther: true } : {}),
+    ...(pendingTexts ? { pendingTexts } : {}),
+    textEditEnabled,
+    ...(reservedNames ? { reservedNames } : {}),
     ...photoOut,   // DISH PHOTOS A2 step 9 (E-P3)
     source,
     // The CAS baseline. Byte-identical to editCatalog's baseSourceUpdateTime by construction.

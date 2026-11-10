@@ -18,7 +18,7 @@ const { pickupLabel, brandOf } = require('./pickup-label');   // R3-FIX D12 (+ D
 function buildCreateOrderUpdates({
   orderId, orderType, now, trackingToken, total, lat, lng, fields, hubSnap,
   restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
-  paymentFingerprint = null,   // F1: content hash (order_id+total_cents+items_text+extra) → binds the idempotent-return to THIS cart
+  paymentFingerprint = null, menuVersionId = undefined,   // F1: content hash (order_id+total_cents+items_text+extra) → binds the idempotent-return to THIS cart; S1d: the pricing version (additive)
 }) {
   // Reward-card display fields (earn_preview + summary_lines) — stamped for ALL orders on BOTH the order
   // record (so a scheduled order's materialize can copy them onto order_tracking) AND order_tracking (the
@@ -60,7 +60,7 @@ function buildCreateOrderUpdates({
     ...(facturaPriced.factura_items ? { factura_items: facturaPriced.factura_items } : {}),   // A-F: paid + comped SAR line set (redeemed x_pizza only; build-record reads factura_items || items)
     ...(fields.razon_social ? { razon_social: fields.razon_social } : {}),
     ...(fields.rtn_cliente ? { rtn_cliente: fields.rtn_cliente } : {}),
-    ...(paymentFingerprint ? { payment_fingerprint: paymentFingerprint } : {}),   // F1: idempotent-return content bind (additive; absent → byte-identical to pre-F1)
+    ...(paymentFingerprint ? { payment_fingerprint: paymentFingerprint } : {}), ...(menuVersionId === undefined ? {} : { menu_version_id: menuVersionId }),   // F1: idempotent-return content bind (additive; absent → byte-identical to pre-F1); S1d: the pricing version
   };
 
   if (orderType === 'delivery') {

@@ -19,7 +19,7 @@ const { MENU_BY_RESTAURANT } = require('./menu-pricing');
 
 const BASE = 'a61adad5';   // DRYRUN (2e, TRAIN-NEXT2 A4): the pre-3a ASSEMBLY commit (was c887daeb, S-B step 3's parent on feat/security-lifecycle)
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const live = require('./tools/sdkpay-module-inverse').unapplySdkPayModule('index.js', require('./tools/keymode-module-inverse').unapplyKeyModeModule('index.js', require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule('index.js', fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))));
+const live = require('./tools/sdkpay-module-inverse').unapplySdkPayModule('index.js', require('./tools/keymode-module-inverse').unapplyKeyModeModule('index.js', require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule('index.js', require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule('index.js', require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule('index.js', require('./tools/s1d-module-inverse').unapplyS1dModule('index.js', require('./tools/s2-module-inverse').unapplyS2Module('index.js', fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))))));
 const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 const fold = (s) => unapplyCheckoutIndex(s);
 

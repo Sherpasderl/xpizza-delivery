@@ -80,6 +80,8 @@ const D = {
     'brands-admin',
     // ORCHESTRATION O1a — the Sherpa-admin branches CLI: requireProject({ requireFlag: true }) before any client
     'branches-admin',
+    // S1c — the reservation audit owner CLI: requireProject({ requireFlag: true }) before any client
+    'reserved-keys-audit',
     // PLATFORM F2 Q1 — the access census + kitchen roster owner CLIs: requireProject({ requireFlag: true }) before any client
     'access-census', 'kitchen-roster',
     // BRAND-AGNOSTIC SERVER — the B1 factura-flag projection owner CLI: requireProject({ requireFlag: true }) before any client
@@ -278,7 +280,7 @@ const FOREIGN = { FIRESTORE_EMULATOR_HOST: 'evil.example:8080', FIREBASE_DATABAS
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r1-dotenv-'));
     fs.writeFileSync(path.join(dir, '.env'), 'FIRESTORE_EMULATOR_HOST=evil.example:8080\n');
     // the arguments / env each needs to REACH client construction (a usage exit would prove nothing about the re-check)
-    const ARGS2 = { 'stats-rollup.js': ['backfill', '--from', '2026-01-01', '--to', '2026-01-02'] };
+    const ARGS2 = { 'stats-rollup.js': ['backfill', '--from', '2026-01-01', '--to', '2026-01-02'], 'reserved-keys-audit.js': ['--rid=tb_census'] };
     const ENV2 = { 'stats-rollup.js': { STATS_HMAC_SECRET: 'r1-census-dummy-secret-0123456789abcdef' } };
     const passed = [];
     try {

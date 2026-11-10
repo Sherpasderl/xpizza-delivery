@@ -75,7 +75,7 @@ const { getDatabase, ServerValue } = require('firebase-admin/database');
 const { getFirestore } = require('firebase-admin/firestore');   // Phase 1b-1 — index.js's FIRST Firestore touch (the pricing catalog)
 const { startShadowCheck, reportIdentityShadow } = require('./catalog/identity-shadow-validate');
 const { resolveGraceKeys, reportForwardCoverage } = require('./catalog/identity-grace');   // 1D D4-grace — forward resolution, money no-op
-const { PRICING_KEY_STAMP } = require('./menu-pricing');
+const { PRICING_KEY_STAMP } = require('./menu-pricing'); const RL = require('./catalog/resolve-lines');   // S1b — the resolution stage
 const { sweepAllIdentityIntegrity } = require('./catalog/identity-sweep');   // 1D D4 — registry integrity, off the order path   // 1D D3 — shadow identity check (reads nothing into a decision)
 const { getAuth } = require('firebase-admin/auth');
 const webpush = require('web-push');
@@ -557,8 +557,8 @@ function buildRewardStamp(items, restaurantId, subtotalCents, redemptionCanonica
     const arr = format === CB.FORMAT_CANONICAL
       ? CB.canonicalRewardRows(freeItems, redemptionCanonical.free_item_key, contextOfTables(tables))
       : (Array.isArray(freeItems) && freeItems.length)
-        ? freeItems.map((fi) => ({ name: fi.name || fi.item_id, qty: Number(fi.qty) || 1 }))
-        : (freeName ? [{ name: freeName, qty: 1 }] : (redemptionCanonical.free_item_key ? [{ name: redemptionCanonical.free_item_key, qty: 1 }] : []));
+        ? freeItems.map((fi) => ({ name: fi.name || fi.item_id, qty: Number(fi.qty) || 1, ...(typeof fi.item_id === 'string' && fi.item_id ? { item_key: fi.item_id } : {}) }))
+        : (freeName ? [{ name: freeName, qty: 1, ...(typeof redemptionCanonical.free_item_key === 'string' && redemptionCanonical.free_item_key ? { item_key: redemptionCanonical.free_item_key } : {}) }] : (redemptionCanonical.free_item_key ? [{ name: redemptionCanonical.free_item_key, qty: 1, item_key: redemptionCanonical.free_item_key }] : []));
     redArg = { model: 'add_free', items: arr };
   }
   const summary_lines = summaryLines(items, restaurantId, redArg, tables);   // 1b-1: guarded catalog tables (null → code default)
@@ -825,7 +825,7 @@ createOrderApp.all('*', async (req, res) => {
      getFirestore is passed as a GETTER so a cold-instance throw is caught inside the guard rather than
      failing the request — the lesson D3 paid for. */
   const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP, keyMode: keyModeOfTables(pricingTables) });
-  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
+  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements); { const rl = RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); } if (usesPlatformFactura(restaurantId) && RL.labelGap(body, pricingTables)) return res.status(503).json({ error: 'labels_unavailable', retryable: true }); }   // S1b: every line resolves to a key the tables hold, before any check or price
 
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [create]
   if (errors.length > 0) {
@@ -1003,7 +1003,7 @@ createOrderApp.all('*', async (req, res) => {
     // after the dedupe, before any write or reserve.
     const groupRefusal = GI.cashRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId, keyMode: keyModeOfTables(pricingTables),
       rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables), readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }));
-    if (groupRefusal) { if (groupRefusal.retryAfter) res.set('Retry-After', String(groupRefusal.retryAfter)); return res.status(groupRefusal.status).json(groupRefusal.body); }
+    if (groupRefusal) { if (groupRefusal.retryAfter) res.set('Retry-After', String(groupRefusal.retryAfter)); return res.status(groupRefusal.status).json(groupRefusal.body); } { const pk = await require('./catalog/pickup-backstop').pickupRefusal({ restaurantId, versionId: menuOrderVersionOf(pricingTables), keyMode: keyModeOfTables(pricingTables), kind: 'binding', body, gates: gateReader() }); if (pk) { if (pk.status === 503) res.set('Retry-After', '2'); return res.status(pk.status).json(pk.body); } }   // S2-8: pickup-only items on a delivery order, before any write or reserve
     /* extras:begin cash */
     {   // per-product extras: after the dedupe and the group rules, before any write or reserve
       const xr = await extrasCheckFor(restaurantId, pricingTables, body.items);
@@ -1215,7 +1215,7 @@ createOrderApp.all('*', async (req, res) => {
     ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
         factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn base); factura_items = paid + comped (SAR doc)
     : (usesPlatformFactura(restaurantId)
-      ? pricedLineItems(body.items, facturaMenu, facturaExtras)
+      ? pricedLineItems(body.items, facturaMenu, facturaExtras, require('./menu-pricing').labelsOfTables(pricingTables), menuOrderVersionOf(pricingTables))
       : { items: null, error: null });
   /* serial3:begin factura-cash-order */
   // §3 FISCAL: the factura's lines in the MENU order of the version that priced this order (byte-identical to before §3,
@@ -1260,7 +1260,7 @@ createOrderApp.all('*', async (req, res) => {
   if (isScheduled) {
     const heldUpdates = buildScheduledOrderRecord({
       orderId, orderType, now, trackingToken, total: DW.totalLempiras(dq, effectiveTotal), lat, lng, fields, hubSnap,
-      restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
+      restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp, menuVersionId: menuOrderVersionOf(pricingTables),
       scheduledFor: scheduledForRaw, releaseAt, paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare
     });
     attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: DW.totalLempiras(dq, effectiveTotal), orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
@@ -1300,7 +1300,7 @@ createOrderApp.all('*', async (req, res) => {
   // field names are load-bearing (driver app, KDS, tracking site, factura trigger).
   Object.assign(updates, buildCreateOrderUpdates({
     orderId, orderType, now, trackingToken, total: DW.totalLempiras(dq, effectiveTotal), lat, lng, fields, hubSnap,
-    restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
+    restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp, menuVersionId: menuOrderVersionOf(pricingTables),
     paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare (idempotent retry recomputes identical)
   }));
 
@@ -1545,7 +1545,7 @@ chargeOnlineApp.all('*', async (req, res) => {
      getFirestore is passed as a GETTER so a cold-instance throw is caught inside the guard rather than
      failing the request — the lesson D3 paid for. */
   const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP, keyMode: keyModeOfTables(pricingTables) });
-  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
+  reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements); { const rl = RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); } if (usesPlatformFactura(restaurantId) && RL.labelGap(body, pricingTables)) return res.status(503).json({ error: 'labels_unavailable', retryable: true }); }   // S1b: every line resolves to a key the tables hold, before any check or price
 
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [charge]
   if (errors.length > 0) return badRequest(res, errors.join('; '));
@@ -1927,7 +1927,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
         factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn); factura_items = paid + comped (SAR doc)
     : (usesPlatformFactura(restaurantId)
-      ? pricedLineItems(body.items, facturaMenu, facturaExtras)
+      ? pricedLineItems(body.items, facturaMenu, facturaExtras, require('./menu-pricing').labelsOfTables(pricingTables), menuOrderVersionOf(pricingTables))
       : { items: null, error: null });  // non-platform (la_musa) → no factura line items
   /* serial3:begin factura-card-order */
   // §3 FISCAL: the factura's lines in the MENU order of the version that priced this order (byte-identical to before §3,
@@ -1963,7 +1963,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     // --- factura (SAR) fields ---
     restaurant_id: restaurantId,
     factura_status: 'not_due',
-    cash_tendered_cents: 0,                     // online: no cash, CAMBIO 0
+    cash_tendered_cents: 0, menu_version_id: menuOrderVersionOf(pricingTables),   // online: no cash, CAMBIO 0; S1d: the pricing version (additive)
     ...(facturaPriced.items ? { items: facturaPriced.items } : {}),
     ...(facturaPriced.factura_items ? { factura_items: facturaPriced.factura_items } : {}),   // A-F: paid + comped SAR line set (redeemed x_pizza only; build-record reads factura_items || items)
     ...(fields.razon_social ? { razon_social: fields.razon_social } : {}),
@@ -2141,7 +2141,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // reuse PRESERVE the hold (a creating/live checkout is backed by it — releasing would strand a payable URL).
   const releaseHoldIfOwned = async () => {
     if (redemptionOwnsHold) await releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }).catch(() => {});
-  };
+  }; const pickupGate = () => require('./catalog/pickup-backstop').pickupGateRefusal({ restaurantId, versionId: menuOrderVersionOf(pricingTables), keyMode: keyModeOfTables(pricingTables), kind: 'binding', body, gates: gateReader() }, releaseHoldIfOwned);   // S2-8: the pickup-only backstop in the card path's fresh-only gate chain
 
   // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
   let acq;
@@ -2228,7 +2228,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     retireAttempt: (aid, reason) => retireUnissuedAttempt(db, aid, reason, Date.now()),
     // 🔴 ONE number. The module passes back the very total it will charge, so the gate cannot be
     // checking a different figure from the one that travels to PixelPay.
-    runGate: async (recordedTotalCents) => (await DW.refusalGate(dq, releaseHoldIfOwned, orderId)) || applyConfirmedNetGate({
+    runGate: async (recordedTotalCents) => (await DW.refusalGate(dq, releaseHoldIfOwned, orderId)) || (await pickupGate()) || applyConfirmedNetGate({
       gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,
         tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: tokenEnforce, nowMs: Date.now() }),
       recordedTotalCents,                        // === totalCents === the amount handed to createHostedCharge
@@ -7425,7 +7425,7 @@ exports.quoteOrder = onRequest(
       const tables = await resolvePricingTables(restaurantId);
       // 2c: a quote is display-only, so it fails SOFT — the client keeps its own total and checkout is
       // never blocked by a pricing outage. (The ORDER still fail-closes; only the preview degrades.)
-      if (!tables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' });
+      if (!tables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' }); { const rl = RL.resolveLines(restaurantId, body, tables); if (!rl.ok) return res.status(200).json({ ok: false, error: rl.code }); } { const pk = await require('./catalog/pickup-backstop').pickupRefusal({ restaurantId, versionId: menuOrderVersionOf(tables), keyMode: keyModeOfTables(tables), kind: 'quote', body, gates: gateReader() }); if (pk) { if (pk.status === 503) res.set('Retry-After', '2'); return res.status(pk.status).json(pk.body); } }   // S1b: fail-soft, as every quote refusal (S2-8, Codex r1 P2-4: the backstop's own 409 / retryable 503, as the contract states)
       // 1D add-product B: a bare launcher quotes as choice_required (render capability on only — no read otherwise)
       if (groupCapabilities().render) {
         const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, keyMode: keyModeOfTables(tables) }));
@@ -7495,7 +7495,7 @@ exports.quoteRedemption = onRequest(
       // 2c: fail SOFT, and this one MUST be guarded rather than left to throw — quoteRedemptionCore
       // calls requireTables, which throws on a null and would surface as a 500 instead of a clean
       // ok:false the client can degrade from.
-      if (!quoteTables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' });
+      if (!quoteTables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' }); { const rl = RL.resolveLines(restaurantId, body, quoteTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json({ ok: false, ...rf.body }); } } { const pk = await require('./catalog/pickup-backstop').pickupRefusal({ restaurantId, versionId: menuOrderVersionOf(quoteTables), keyMode: keyModeOfTables(quoteTables), kind: 'quote', body, gates: gateReader() }); if (pk) return res.status(pk.status).json(pk.body); }   // S1b: its own envelope ({ ok:false, … }) (S2-8: an explicit delivery quote with a pickup-only item)
       // 2a: the quote must preview on the SAME allowlist the order enforces, or a customer is shown a
       // redemption the order then refuses (or vice versa).
       const quoteEligible = await gateReader().redeemEligibleFor(restaurantId);

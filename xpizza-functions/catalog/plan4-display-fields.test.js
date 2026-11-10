@@ -125,10 +125,12 @@ const refuses = (fn, re, label) => assert.throws(fn, (e) => re.test(String(e && 
       const db = await publish(rid, src);
       const full = await buildPublicMenu(db, rid, deps);
       const bare = await buildPublicMenu(db, rid, { ...deps, overlayIdentity: false });
-      const strip = (b) => { const c = clone(b); for (const k of ['dishes', 'extras']) c[k] = c[k].map((r) => Object.fromEntries(Object.entries(r).filter(([f]) => !['identity_id', 'dish_id', 'extra_id'].includes(f)))); return c; };
+      const strip = (b) => { const c = clone(b); for (const k of ['dishes', 'extras']) c[k] = c[k].map((r) => Object.fromEntries(Object.entries(r).filter(([f]) => !['identity_id', 'dish_id', 'extra_id'].includes(f)))); delete c.item_keys; return c; };   // S1d Q5: item_keys is endpoint-only
       assert.deepStrictEqual(bare.body, strip(full.body), `${rid}: the same body, minus only the identity overlay`);
       assert.ok(full.body.dishes.some((d) => d.dish_id !== undefined || d.identity_id !== undefined), `premise: the endpoint's default still overlays (${rid})`);
       assert.ok(bare.body.dishes.every((d) => d.dish_id === undefined && d.identity_id === undefined));
+      assert.strictEqual(bare.body.item_keys, undefined, `🔴 S1d Q5: the bake / reconciler body carries NO item_keys (${rid})`);
+      assert.ok(full.body.dishes.length && full.body.dishes.every((d) => d.item_key === undefined && typeof full.body.item_keys[String(d.id)] === 'string'), `S1d Q5: the endpoint body maps every dish's display id to its item_key; no record carries it (${rid})`);
     }
     ok('overlayIdentity:false (the reconciler\'s read) = the served body minus exactly the identity overlay; the endpoint default still overlays');
   }

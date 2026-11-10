@@ -85,12 +85,12 @@ function createSnapshotFallback({ mirrorReader, alarm, K = DEFAULT_K, deadlineMs
     _lastWarm.set(rid, t);
     console.log('pricing_ladder_warm', JSON.stringify({ restaurantId: rid, version: rec.versionId, seq: rec.seq, items: Object.keys(rec.menu || {}).length }));
   }
-  function recordGood(rid, { versionId, seq, menu, extras, keyMode }) {
+  function recordGood(rid, { versionId, seq, menu, extras, keyMode, labels }) {
     // Symmetry with the mirror rung: never remember a table the ladder would refuse to serve, so rung 1
     // cannot hand out something rung 2 would have rejected. A served happy-path table cannot be corrupt
     // today (the reader and the 1a guard already reject one) — the ladder simply does not depend on that.
     if (!pricesOk(menu) || !pricesOk(extras)) return;
-    const rec = { versionId: versionId || null, seq: Number.isInteger(seq) ? seq : null, menu, extras, ...(keyMode === 'id' || keyMode === 'name' ? { keyMode } : {}) };
+    const rec = { versionId: versionId || null, seq: Number.isInteger(seq) ? seq : null, menu, extras, ...(keyMode === 'id' || keyMode === 'name' ? { keyMode } : {}), labels: labels && typeof labels === 'object' ? labels : null };
     lastGood.set(rid, rec);
     if (Number.isInteger(seq)) recordActive(rid, versionId, seq);
     try { warmSignal(rid, rec); } catch (_) { /* observability must never break pricing */ }
@@ -100,7 +100,7 @@ function createSnapshotFallback({ mirrorReader, alarm, K = DEFAULT_K, deadlineMs
     // ── Rung 1: in-memory last-good. By construction its seq ≥ any older mirror's, so no check needed.
     const good = lastGood.get(rid);
     if (good) {
-      return { source: 'last_good', versionId: good.versionId, seq: good.seq, menu: good.menu, extras: good.extras, keyMode: good.keyMode };
+      return { source: 'last_good', versionId: good.versionId, seq: good.seq, menu: good.menu, extras: good.extras, keyMode: good.keyMode, labels: good.labels || null };
     }
 
     // ── Rung 2: the RTDB mirror, version-checked. Bounded — a hung RTDB must not hang an order.
@@ -116,7 +116,7 @@ function createSnapshotFallback({ mirrorReader, alarm, K = DEFAULT_K, deadlineMs
       if (known && Number.isInteger(known.seq)) {
         const distance = known.seq - mirror.seq;
         if (distance <= K) {
-          return { source: 'mirror', versionId: mirror.version || null, seq: mirror.seq, menu: mirror.menu, extras: mirror.extras, keyMode: mirror.key_mode };
+          return { source: 'mirror', versionId: mirror.version || null, seq: mirror.seq, menu: mirror.menu, extras: mirror.extras, keyMode: mirror.key_mode, labels: mirror.labels && typeof mirror.labels === 'object' ? mirror.labels : null };
         }
         fire('catalog_mirror_too_stale', { restaurantId: rid, activeSeq: known.seq, mirrorSeq: mirror.seq, distance, K });
       } else {
@@ -124,7 +124,7 @@ function createSnapshotFallback({ mirrorReader, alarm, K = DEFAULT_K, deadlineMs
         // mirror's self-described ordinal is all we have. Serve it as the bounded disaster fallback and
         // say so loudly — this is the one rung that serves without a second opinion.
         fire('catalog_served_from_mirror_cold', { restaurantId: rid, version: mirror.version || null, seq: mirror.seq });
-        return { source: 'mirror_cold', versionId: mirror.version || null, seq: mirror.seq, menu: mirror.menu, extras: mirror.extras, keyMode: mirror.key_mode };
+        return { source: 'mirror_cold', versionId: mirror.version || null, seq: mirror.seq, menu: mirror.menu, extras: mirror.extras, keyMode: mirror.key_mode, labels: mirror.labels && typeof mirror.labels === 'object' ? mirror.labels : null };
       }
     } else if (mirror) {
       // Present but not self-describing — an ordinal-less (pre-2b-pre) or malformed mirror.

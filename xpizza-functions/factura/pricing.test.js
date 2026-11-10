@@ -17,7 +17,7 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   {
     const r = pricedLineItems([{ name: 'Pizza Pepperoni', qty: 2 }], MENU, EXTRA);
     assert.equal(r.error, null);
-    assert.deepEqual(r.items, [{ qty: 2, description: 'Pizza Pepperoni', line_gross_cents: 40000 }]);
+    assert.deepEqual(r.items, [{ qty: 2, description: 'Pizza Pepperoni', line_gross_cents: 40000, item_key: 'Pizza Pepperoni' }]);   // S1d: + the resolved key (additive)
     ok('single item -> line_gross_cents');
   }
 

@@ -1,0 +1,286 @@
+{
+ "la_musa_array/chargeOnlineOrder": {
+  "body": "{\"error\":\"redemption_invalid\",\"reason\":\"bad_request\",\"order_id\":\"rwp_la_musa_array_chargeOnlineOrder\"}",
+  "status": 409,
+  "written": false
+ },
+ "la_musa_array/createOrder": {
+  "body": "{\"error\":\"redemption_invalid\",\"reason\":\"bad_request\",\"order_id\":\"rwp_la_musa_array_createOrder\"}",
+  "status": 409,
+  "written": false
+ },
+ "la_musa_unknown/chargeOnlineOrder": {
+  "body": "{\"error\":\"menu_updating\",\"detail\":\"El menú se está actualizando — probá de nuevo en un momento\",\"retryable\":true,\"order_id\":\"rwp_la_musa_unknown_chargeOnlineOrder\"}",
+  "status": 503,
+  "written": false
+ },
+ "la_musa_unknown/createOrder": {
+  "body": "{\"error\":\"menu_updating\",\"detail\":\"El menú se está actualizando — probá de nuevo en un momento\",\"retryable\":true}",
+  "status": 503,
+  "written": false
+ },
+ "mf_enforce_la_musa_id_array/chargeOnlineOrder": {
+  "body": "{\"error\":\"item_malformed\",\"detail\":\"Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.\",\"order_id\":\"rwp_mf_enforce_la_musa_id_array_chargeOnlineOrder\"}",
+  "charged": 0,
+  "order": null,
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_la_musa_id_array/createOrder": {
+  "body": "{\"error\":\"item_malformed\",\"detail\":\"Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.\",\"order_id\":\"rwp_mf_enforce_la_musa_id_array_createOrder\"}",
+  "charged": 0,
+  "order": null,
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_la_musa_id_array/quoteOrder": {
+  "body": "{\"ok\":false,\"error\":\"item_malformed\",\"detail\":\"Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.\"}",
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_la_musa_id_array/quoteRedemption": {
+  "body": "{\"ok\":false,\"error\":\"item_malformed\",\"detail\":\"Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.\"}",
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_la_musa_id_null/chargeOnlineOrder": {
+  "body": "{\"error\":\"Bad Request\",\"detail\":\"unknown menu item: null\"}",
+  "charged": 0,
+  "order": null,
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_la_musa_id_null/createOrder": {
+  "body": "{\"error\":\"Bad Request\",\"detail\":\"unknown menu item: null\"}",
+  "charged": 0,
+  "order": null,
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_la_musa_id_null/quoteOrder": {
+  "body": "{\"ok\":false,\"error\":\"item_malformed\",\"detail\":\"Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.\"}",
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_la_musa_id_null/quoteRedemption": {
+  "body": "{\"ok\":false,\"error\":\"item_malformed\",\"detail\":\"Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.\"}",
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_x_pizza_name_array/chargeOnlineOrder": {
+  "body": "{\"error\":\"item_malformed\",\"detail\":\"Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.\",\"order_id\":\"rwp_mf_enforce_x_pizza_name_array_chargeOnlineOrder\"}",
+  "charged": 0,
+  "order": null,
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_x_pizza_name_array/createOrder": {
+  "body": "{\"error\":\"item_malformed\",\"detail\":\"Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.\",\"order_id\":\"rwp_mf_enforce_x_pizza_name_array_createOrder\"}",
+  "charged": 0,
+  "order": null,
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_x_pizza_name_array/quoteOrder": {
+  "body": "{\"ok\":false,\"error\":\"item_malformed\",\"detail\":\"Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.\"}",
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_x_pizza_name_array/quoteRedemption": {
+  "body": "{\"ok\":false,\"error\":\"item_malformed\",\"detail\":\"Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.\"}",
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_x_pizza_name_null/chargeOnlineOrder": {
+  "body": "{\"error\":\"Bad Request\",\"detail\":\"unknown menu item: null\"}",
+  "charged": 0,
+  "order": null,
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_x_pizza_name_null/createOrder": {
+  "body": "{\"error\":\"Bad Request\",\"detail\":\"unknown menu item: null\"}",
+  "charged": 0,
+  "order": null,
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_x_pizza_name_null/quoteOrder": {
+  "body": "{\"ok\":false,\"error\":\"item_malformed\",\"detail\":\"Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.\"}",
+  "status": 400,
+  "written": false
+ },
+ "mf_enforce_x_pizza_name_null/quoteRedemption": {
+  "body": "{\"ok\":false,\"error\":\"item_malformed\",\"detail\":\"Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.\"}",
+  "status": 400,
+  "written": false
+ },
+ "mf_off_la_musa_id_array/chargeOnlineOrder": {
+  "body": "{\"ok\":true,\"order_id\":\"rwp_mf_off_la_musa_id_array_chargeOnlineOrder\",\"attempt_id\":\"<volatile>\",\"pixelpay_order_id\":\"rwp_mf_off_la_musa_id_array_chargeOnlineOrder-acf09cc54581612c\",\"poll_token\":\"<volatile>\",\"checkout_url\":\"<volatile>\",\"payment_status\":\"pending\"}",
+  "charged": 1,
+  "order": {
+   "items": null,
+   "items_text": "1x test",
+   "payment_method": "online",
+   "status": "pending_payment",
+   "subtotal": null,
+   "tax": null,
+   "total": 249,
+   "total_cents": 24900
+  },
+  "status": 200,
+  "written": true
+ },
+ "mf_off_la_musa_id_array/createOrder": {
+  "body": "{\"ok\":true,\"order_id\":\"rwp_mf_off_la_musa_id_array_createOrder\",\"tracking_token\":\"<volatile>\"}",
+  "charged": 0,
+  "order": {
+   "items": null,
+   "items_text": "1x test",
+   "payment_method": "cash",
+   "status": "new",
+   "subtotal": null,
+   "tax": null,
+   "total": 249,
+   "total_cents": 24900
+  },
+  "status": 200,
+  "written": true
+ },
+ "mf_off_la_musa_id_array/quoteOrder": {
+  "body": "{\"ok\":true,\"total_cents\":24900,\"subtotal_cents\":24900,\"tax_cents\":0,\"net_total_cents\":24900,\"quote_token\":\"<volatile>\"}",
+  "status": 200,
+  "written": false
+ },
+ "mf_off_la_musa_id_array/quoteRedemption": {
+  "body": "{\"ok\":true,\"discount_cents\":0,\"total_cents\":24900,\"subtotal_cents\":24900,\"tax_cents\":0,\"free_items\":[{\"item_id\":\"rice_white\",\"qty\":1,\"name\":\"Arroz Blanco\",\"price_cents\":5000}],\"free_item\":{\"name\":\"Arroz Blanco\"},\"total_cost\":167,\"remaining\":99833,\"savings_cents\":5000,\"net_total_cents\":24900,\"quote_token\":\"<volatile>\"}",
+  "status": 200,
+  "written": false
+ },
+ "mf_off_la_musa_id_null/chargeOnlineOrder": {
+  "body": "{\"error\":\"Bad Request\",\"detail\":\"unknown menu item: null\"}",
+  "charged": 0,
+  "order": null,
+  "status": 400,
+  "written": false
+ },
+ "mf_off_la_musa_id_null/createOrder": {
+  "body": "{\"error\":\"Bad Request\",\"detail\":\"unknown menu item: null\"}",
+  "charged": 0,
+  "order": null,
+  "status": 400,
+  "written": false
+ },
+ "mf_off_la_musa_id_null/quoteOrder": {
+  "body": "{\"ok\":false,\"error\":\"bad_cart\"}",
+  "status": 200,
+  "written": false
+ },
+ "mf_off_la_musa_id_null/quoteRedemption": {
+  "body": "{\"ok\":false,\"error\":\"bad_cart\"}",
+  "status": 400,
+  "written": false
+ },
+ "mf_off_x_pizza_name_array/chargeOnlineOrder": {
+  "body": "{\"ok\":true,\"order_id\":\"rwp_mf_off_x_pizza_name_array_chargeOnlineOrder\",\"attempt_id\":\"<volatile>\",\"pixelpay_order_id\":\"rwp_mf_off_x_pizza_name_array_chargeOnlineOrder-91104147562d4901\",\"poll_token\":\"<volatile>\",\"checkout_url\":\"<volatile>\",\"payment_status\":\"pending\"}",
+  "charged": 1,
+  "order": {
+   "items": [
+    {
+     "description": [
+      "Carnivora"
+     ],
+     "line_gross_cents": 34000,
+     "qty": 1
+    }
+   ],
+   "items_text": "1x test",
+   "payment_method": "online",
+   "status": "pending_payment",
+   "subtotal": null,
+   "tax": null,
+   "total": 340,
+   "total_cents": 34000
+  },
+  "status": 200,
+  "written": true
+ },
+ "mf_off_x_pizza_name_array/createOrder": {
+  "body": "{\"ok\":true,\"order_id\":\"rwp_mf_off_x_pizza_name_array_createOrder\",\"tracking_token\":\"<volatile>\"}",
+  "charged": 0,
+  "order": {
+   "items": [
+    {
+     "description": [
+      "Carnivora"
+     ],
+     "line_gross_cents": 34000,
+     "qty": 1
+    }
+   ],
+   "items_text": "1x test",
+   "payment_method": "cash",
+   "status": "new",
+   "subtotal": null,
+   "tax": null,
+   "total": 340,
+   "total_cents": 34000
+  },
+  "status": 200,
+  "written": true
+ },
+ "mf_off_x_pizza_name_array/quoteOrder": {
+  "body": "{\"ok\":true,\"total_cents\":34000,\"subtotal_cents\":29565,\"tax_cents\":4435,\"net_total_cents\":34000,\"quote_token\":\"<volatile>\"}",
+  "status": 200,
+  "written": false
+ },
+ "mf_off_x_pizza_name_array/quoteRedemption": {
+  "body": "{\"ok\":true,\"discount_cents\":0,\"total_cents\":34000,\"subtotal_cents\":29565,\"tax_cents\":4435,\"free_items\":[{\"item_id\":\"Margherita\",\"qty\":1,\"name\":\"Margherita\",\"price_cents\":29900}],\"free_item\":{\"name\":\"Margherita\"},\"total_cost\":8,\"remaining\":99992,\"savings_cents\":29900,\"net_total_cents\":34000,\"quote_token\":\"<volatile>\"}",
+  "status": 200,
+  "written": false
+ },
+ "mf_off_x_pizza_name_null/chargeOnlineOrder": {
+  "body": "{\"error\":\"Bad Request\",\"detail\":\"unknown menu item: null\"}",
+  "charged": 0,
+  "order": null,
+  "status": 400,
+  "written": false
+ },
+ "mf_off_x_pizza_name_null/createOrder": {
+  "body": "{\"error\":\"Bad Request\",\"detail\":\"unknown menu item: null\"}",
+  "charged": 0,
+  "order": null,
+  "status": 400,
+  "written": false
+ },
+ "mf_off_x_pizza_name_null/quoteOrder": {
+  "body": "{\"ok\":false,\"error\":\"bad_cart\"}",
+  "status": 200,
+  "written": false
+ },
+ "mf_off_x_pizza_name_null/quoteRedemption": {
+  "body": "{\"ok\":false,\"error\":\"bad_cart\"}",
+  "status": 400,
+  "written": false
+ },
+ "x_pizza_array/chargeOnlineOrder": {
+  "body": "{\"error\":\"redemption_invalid\",\"reason\":\"bad_request\",\"order_id\":\"rwp_x_pizza_array_chargeOnlineOrder\"}",
+  "status": 409,
+  "written": false
+ },
+ "x_pizza_array/createOrder": {
+  "body": "{\"error\":\"redemption_invalid\",\"reason\":\"bad_request\",\"order_id\":\"rwp_x_pizza_array_createOrder\"}",
+  "status": 409,
+  "written": false
+ },
+ "x_pizza_unknown/chargeOnlineOrder": {
+  "body": "{\"error\":\"menu_updating\",\"detail\":\"El menú se está actualizando — probá de nuevo en un momento\",\"retryable\":true,\"order_id\":\"rwp_x_pizza_unknown_chargeOnlineOrder\"}",
+  "status": 503,
+  "written": false
+ },
+ "x_pizza_unknown/createOrder": {
+  "body": "{\"error\":\"menu_updating\",\"detail\":\"El menú se está actualizando — probá de nuevo en un momento\",\"retryable\":true}",
+  "status": 503,
+  "written": false
+ }
+}

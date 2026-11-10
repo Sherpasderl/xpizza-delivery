@@ -10,6 +10,7 @@
 // ---------------------------------------------------------------------------
 const { keysColOf, idsColOf, encodeKey } = require('./identity-registry');
 const { previewVersion } = require('./catalog-publish');
+const RK = require('./reserved-keys');
 const { syncKdsManifest } = require('./kds-manifest');
 const { getActivePointer } = require('./catalog-firestore');
 
@@ -42,6 +43,8 @@ function addProductIo({ fs, rtdb }) {
       }));
       return new Set(uniq.filter((k, i) => taken[i]));
     },
+    // S1c: the restaurant's reserved-key set (add-only); a read error propagates, and a malformed set refuses — never absence.
+    readReservedKeys: async (rid) => RK.reservedKeySet((await RK.reservedRefOf(fs, rid).get()).data()),
     /* The activation's generation comes from the ACTIVE POINTER, read after the publish (catalog-publish.js is pinned
        and is not modified to return it). If the pointer already names a NEWER version, this activation was superseded:
        that publish writes its own list, and this one is skipped (the generation-conditional writer would no-op it). */
