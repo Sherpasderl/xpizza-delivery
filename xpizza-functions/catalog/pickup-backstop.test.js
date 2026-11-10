@@ -84,6 +84,14 @@ const decide = (o) => pickupRefusal({ restaurantId: 'x_pizza', versionId: 'v1', 
     assert.deepStrictEqual(flat.reads, [], 'S2P-FLAT and reads nothing');
     ok('unauthored → no check; a read failure → 503 menu_updating; the flat route → no check, no read');
   }
+  // ── a successful read whose WEEKEND gate is unauthored (la_musa has none) is NOT a read failure ──
+  {
+    const noWeekend = { ...XB, structure: { ...XB.structure } }; delete noWeekend.structure.weekend_only_cats;
+    const { r } = readerOf({ v1: noWeekend });
+    const d = await decide({ kind: 'binding', body: { order_type: 'delivery', items: [stamped({ name: NY, qty: 1 }, NY)] }, gates: r });
+    assert.deepStrictEqual(d, { status: 409, body: { ok: false, error: 'pickup_only_item', item_key: NY } }, 'S2P-NOWEEKEND an unauthored weekend gate never reads as «unavailable» (the pickup gate is judged)');
+    ok('a snapshot without a weekend gate is read normally: the pickup gate is judged, never 503');
+  }
   // ── reads: one per version per instance (cached), served = active shares the intake cache ──
   {
     const { r, reads } = readerOf({ v1: XB, v2: XB });
