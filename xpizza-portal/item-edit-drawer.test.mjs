@@ -306,3 +306,51 @@ test('D — without the shared evaluator loaded, a move is held (never a guessed
   assert.equal(p.btn('Guardar').disabled, true);
   assert.equal(p.btn('Guardar').title, 'Elegí otra categoría para guardar');
 });
+
+// ── frame B, the list after «Guardar»: the row's tag and the bar's «· N producto» (the P7 «· 1 foto» pattern) ──
+const rowOf = (p, name) => [...p.d.querySelectorAll('#detail .irow')].find((r) => { const nm = r.querySelector('.nm'); return nm && nm.firstChild && nm.firstChild.textContent === name; });
+test('B — after «Guardar» the row shows the new name with «Nombre sin publicar»; the bar counts it «· 1 producto»', async () => {
+  const p = await page();
+  await p.signIn();
+  await p.open('dimsum_01');
+  p.type(p.fld('Nombre').querySelector('input'), 'Wonton picante');
+  p.btn('Guardar').click();
+  await settle(10);
+  const row = rowOf(p, 'Wonton picante');
+  assert.ok(row, 'the row shows the new name');
+  const tag = row.querySelector('.nm .tag.mk-ftag');
+  assert.ok(tag, 'the amber tag');
+  assert.equal(tag.textContent, 'Nombre sin publicar');
+  assert.match(p.d.getElementById('rbtxt').textContent, /^1 cambio sin publicar · 1 producto$/);
+});
+
+test('B/E — a multi-field edit reads «Cambios sin publicar»; two products → «· 2 productos»', async () => {
+  const p = await page();
+  await p.signIn();
+  await p.open('dimsum_01');
+  p.type(p.fld('Nombre').querySelector('input'), 'Wonton picante');
+  p.type(p.fld('Descripción').querySelector('textarea'), 'Cerdo y chile');
+  p.btn('Guardar').click();
+  await settle(10);
+  assert.equal(rowOf(p, 'Wonton picante').querySelector('.tag.mk-ftag').textContent, 'Cambios sin publicar');
+  await p.open('dimsum_02');
+  p.type(p.fld('Descripción').querySelector('textarea'), 'Bao y panceta');
+  p.btn('Guardar').click();
+  await settle(10);
+  assert.equal(rowOf(p, 'Pork Belly Buns').querySelector('.tag.mk-ftag').textContent, 'Cambios sin publicar', 'a description alone is a «Cambios» edit');
+  assert.match(p.d.getElementById('rbtxt').textContent, / · 2 productos$/);
+});
+
+test('after a reload the SAVED text edits keep their tags (pendingTexts, S2 §1.1) — the client cannot see them on its own', async () => {
+  const p = await page({ read: () => { const b = editable({ pendingTexts: [{ key: 'dimsum_01', fields: ['name'] }, { key: 'dimsum_02', fields: ['desc', 'cat'] }] }); return b; } });
+  await p.signIn();
+  assert.equal(rowOf(p, 'Sichuan Spicy Wonton').querySelector('.tag.mk-ftag').textContent, 'Nombre sin publicar');
+  assert.equal(rowOf(p, 'Pork Belly Buns').querySelector('.tag.mk-ftag').textContent, 'Cambios sin publicar');
+  assert.equal(rowOf(p, 'Shrimp Dumplings').querySelector('.tag.mk-ftag'), null, 'only the products the server names');
+});
+
+test('OFF — no tags and no «· producto» suffix without the switch (today\'s list)', async () => {
+  const p = await page({ read: () => editable({ textEditEnabled: false, pendingTexts: [{ key: 'dimsum_01', fields: ['name'] }] }) });
+  await p.signIn();
+  assert.equal(p.d.querySelector('#detail .tag.mk-ftag'), null);
+});

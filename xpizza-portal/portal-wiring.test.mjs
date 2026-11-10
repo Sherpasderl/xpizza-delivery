@@ -1511,6 +1511,8 @@ const ALLOWED_CONSUMERS = new Set([
   // S4 «Editar producto» — the drawer's working copy (item-edit-logic.js): open SNAPSHOTS the draft (and copies the served
   // reservedNames into its own Set), view is a pure reader, save commits ONLY through editor.js editItem (canEdit-guarded)
   'IE.open', 'IE.view', 'IE.save',
+  // and editor.js pendingTexts: a pure reader (the draft's text edits against what was loaded — the row tags and the bar)
+  'pendingTexts',
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.

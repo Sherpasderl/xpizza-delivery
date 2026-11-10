@@ -7,6 +7,7 @@ import { apiFetch, editCatalog, publishEdited, resetDraftToLive, requestPublish 
 import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
 // 1D add-product B — the required choice on a NEW product ("Elección requerida — el cliente elige 1")
 import { parsePrice } from './editor.js';
+import { pendingTexts } from './editor.js';   // S4 — the session's unpublished text edits (row tags, the bar)
 // PLAN-public-menu-display T1 — a section's display NAME (owner-approved mockup «Cambiar nombre de sección», 2026-10-25)
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
@@ -1122,6 +1123,9 @@ function refreshBar() {
   // DISH PHOTOS B (P7) — «1 cambio sin publicar · 1 foto»: the photo share of the count, said where the count is
   const nPhotos = state.draft ? pendingPhotos(state.draft).length : 0;
   if (nPhotos) { const sfx = document.createElement('span'); sfx.textContent = PL.COPY.barSuffix(nPhotos); $('rbtxt').append(sfx); }
+  // S4 (mockup B) — «1 cambio sin publicar · 1 producto»: the products with unpublished text, said where the count is
+  const nTexts = n > 0 ? textEditedKeys().size : 0;
+  if (nTexts) { const sfx = document.createElement('span'); sfx.textContent = ` · ${nTexts} ${nTexts === 1 ? 'producto' : 'productos'}`; $('rbtxt').append(sfx); }
   // T-d (mockup v8 D2): who publishes, said where the merchant decides — text only
   if (state.publishViaRequest) { const note = document.createElement('span'); note.textContent = ' · el dueño confirma y publica con la autorización fiscal'; $('rbtxt').append(note); }
   // Nothing typed, nothing to throw away. The review is the way forward here; discard would be a
@@ -1208,6 +1212,7 @@ function paint() {
     onAdd: bound(onAddProduct),
     groupOf: listGroupOf,          // 1D add-product B (a group's option rows are folded out in repaintFromDraft)
     photoOf: rowPhoto,             // DISH PHOTOS B — null with uploads off and no photo: today's placeholder
+    textTagOf: rowTextTag,         // S4 (B) — «Nombre sin publicar» / «Cambios sin publicar», only with the text-edit switch on
     onPhoto: bound((id) => { photoExpandedKey = null; openDrawer(id); pickPhoto(id, null); }),   // the camera: the drawer with the picker open
   });
   // F-2 — a Sherpa-written draft gets the calm notice INSTEAD of the reset offer; a merchant's own unpublishable draft keeps today's
@@ -1382,6 +1387,22 @@ function endEditSession() {
   if (uploader.jobOf(s.key)) uploader.cancel(s.key);
 }
 // a new load: the S2 §1.1 facts fail closed — today's drawer, no served names, no saved text edits — and any open copy goes
+// The products with unpublished text: this session's (the draft vs what was loaded) ∪ the SAVED draft's (pendingTexts, S2 §1.1)
+// — key → the fields; empty without the switch (today's list).
+function textEditedKeys() {
+  const out = new Map();
+  if (state.textEditEnabled !== true || !state.draft) return out;
+  // copied as PRIMITIVES (a state object never leaves its scope)
+  const mark = (key, field) => { const f = out.get(key) || new Set(); f.add(field === 'subcat' ? 'cat' : field); out.set(key, f); };
+  for (const t of state.savedTexts) for (const x of t.fields) mark(`${t.key}`, `${x}`);
+  for (const t of pendingTexts(state.draft)) for (const x of t.fields) mark(`${t.key}`, `${x}`);
+  return out;
+}
+function rowTextTag(it) {
+  const f = textEditedKeys().get(rowId(it));
+  if (!f) return null;
+  return f.size === 1 && f.has('name') ? 'Nombre sin publicar' : 'Cambios sin publicar';
+}
 function resetEditFacts() {
   state.textEditEnabled = false;
   state.reservedNames = null;

@@ -560,6 +560,9 @@
   .modblock.mk-inv{border-color:var(--red)}
   .dwb.ie-edit .fld.invalid .modblock{border-color:var(--red)}
   .mk-ferr{display:flex;align-items:flex-start;gap:6px}
+  .tag.mk-ftag{font-weight:650;letter-spacing:0;white-space:nowrap}
+  .nm:has(.mk-ftag){flex-wrap:wrap;row-gap:3px}
+  .thumb.mk-chg{border:1.5px solid var(--accent);box-shadow:0 0 0 3px var(--tint2)}
   .mk-ferr svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;flex:none;margin-top:1px}
   .prow .pflag svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2;flex:none}
   .brow{display:flex;align-items:center;gap:11px;padding:11px 14px;border:1px solid var(--line2);border-radius:11px;margin-bottom:8px;background:var(--board-2);font-size:13.5px}
