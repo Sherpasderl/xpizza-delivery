@@ -48,7 +48,11 @@ const reserve = async (keys) => { const ref = RK.reservedRefOf(fs, RID); const c
 
   // switch ON: a rename onto the reserved key is refused at the flip; the pointer does not move
   SWITCH.enabled = true;
-  await assert.rejects(pub(source('  plato MOVIDO', MAP), 'rk-bad', v1.versionId), /reserved_key_conflict/, 'RKRF-PUBLISH a rename onto a reserved key (folded) is refused at the activation');
+  const e1 = await pub(source('  plato MOVIDO', MAP), 'rk-bad', v1.versionId).then(() => null, (e) => e);
+  assert.ok(e1 && /reserved_key_conflict/.test(e1.message), 'RKRF-PUBLISH a rename onto a reserved key (folded) is refused at the activation');
+  // S2-7 (S2-DESIGN §1.3; Codex P2-8): the refusal carries structured properties naming the product
+  assert.deepStrictEqual([e1.code, e1.key, e1.field, e1.status], ['reserved_key_conflict', KEY, 'name', 409], 'S2-RKC-PUBLISH code, key, field, status');
+  assert.strictEqual(require('../catalog/add-product').normalizeName(e1.name), 'plato movido', 'S2-RKC-PUBLISH name = the renamed display name');
   assert.strictEqual((await getActivePointer(fs, RID)).version, v1.versionId, 'RKRF-PUBLISH the pointer did not move');
   // an ADDITION named like the reserved key is not judged (owner): it activates
   const v2 = await pub(source('Dish One', null, 'Plato Movido'), 'rk-add', v1.versionId);
@@ -67,7 +71,9 @@ const reserve = async (keys) => { const ref = RK.reservedRefOf(fs, RID); const c
   assert.strictEqual((await getActivePointer(fs, RID)).version, v5.versionId, 'RKRF-OFF switch OFF: nothing is judged at the activation (today)');
   const v6 = await pub(source('Dish One Nuevo', MAP), 'rk-v6', v5.versionId);
   SWITCH.enabled = true;
-  await assert.rejects(rollbackVersion(fs, RID, v5.versionId, { mirror: mirror(), expected: { activeVersionId: v6.versionId } }), /reserved_key_conflict/, 'RKRF-ROLLBACK a rollback onto a reserved name is refused');
+  const e2 = await rollbackVersion(fs, RID, v5.versionId, { mirror: mirror(), expected: { activeVersionId: v6.versionId } }).then(() => null, (e) => e);
+  assert.ok(e2 && /reserved_key_conflict/.test(e2.message), 'RKRF-ROLLBACK a rollback onto a reserved name is refused');
+  assert.deepStrictEqual([e2.code, e2.key, e2.name], ['reserved_key_conflict', KEY, 'Dish One Nuevo Dos'], 'S2-RKC-ROLLBACK the ROLLBACK TARGET\'s product and name');
   assert.strictEqual((await getActivePointer(fs, RID)).version, v6.versionId, 'RKRF-ROLLBACK the pointer did not move');
   ok('a rollback whose renamed name is now reserved is refused (switch ON); switch OFF judges nothing');
 

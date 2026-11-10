@@ -174,12 +174,12 @@ const want = (r, status, b, label) => { assert.strictEqual(r.status, status, `${
     const AP = require('./add-product');
     const builtOf = (src, rid) => { const i = sourceToBuildInputs(src); return { ...buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable, keyMode: i.keyMode, frozenKeys: i.frozenKeys }), extras: i.extras }; };
     const T = '2026-11-08T12:00:00.000000Z';
-    const publish = async (draft, rid) => {
+    const publish = async (draft, rid, throws = null) => {
       const live = buildSourceFromCode(rid);
       const deps = { db: {}, authorize: allow, addProduct: addProductOf(null, rid === 'la_musa' ? 'id' : 'name'),
         readActiveBuilt: async () => { const i = sourceToBuildInputs(live); const b = buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable, keyMode: i.keyMode }); return { built: { ...b, extras: i.extras }, versionId: 'v-live', extraRecords: b.extras }; },
         readDraft: async () => ({ source: draft, updateTime: T }),
-        publishVersion: async () => ({ versionId: 'v-new', item_count: 0, extra_count: 0 }) };
+        publishVersion: async () => { if (throws) throw throws; return { versionId: 'v-new', item_count: 0, extra_count: 0 }; } };
       let diff; try { diff = catalogDiff(builtOf(live, rid), builtOf(draft, rid)); } catch (_) { diff = { largeChangeSet: [] }; }
       const token = issueEditToken({ rid, baseActiveVersionId: 'v-live', sourceUpdateTime: T, sourceHash: sha256(draft), diff });
       return publishEditedCore(deps, { restaurantId: rid, token, acknowledgedChanges: (diff.largeChangeSet || []).map((l) => ({ key: l.key, surface: l.surface })), fiscalAck: true }, {});
@@ -196,6 +196,12 @@ const want = (r, status, b, label) => { assert.strictEqual(r.status, status, `${
     const multi = clone(LM); itemOf(multi, 'noodle_01').display.name = 'x'.repeat(61); const md = multi.items.find((i) => i.display.cat === 'dim_sum'); md.display.cat = 'bebidas'; delete md.display.subcat;
     const rs = await save(stub('la_musa', LM), 'la_musa', clone(multi)); const rp = await publish(AP.rederiveOptionNames(clone(multi)), 'la_musa');
     assert.deepStrictEqual([rp.status, rp.body], [rs.status, rs.body], 'S2H-PUB-SAME the publish answers the save\'s first refusal');
+    // S2-7 (§1.3; Codex P2-8): the activation's reserved_key_conflict NAMES the product — key + display name (+ option_key)
+    const okDraft = (() => { const s = clone(XP); s.frozen_keys = { [String(itemOf(s, 'Carnivora').display.id)]: 'Carnivora' }; itemOf(s, 'Carnivora').display.name = 'Carnívora Suprema'; return s; })();
+    const conflict = Object.assign(new Error('reserved_key_conflict: x_pizza/v-new — a renamed item may not take a reserved key ("Carnivora")'), { status: 409, code: 'reserved_key_conflict', key: 'Carnivora', name: 'Carnívora Suprema', field: 'name' });
+    want(await publish(okDraft, 'x_pizza', conflict), 409, { error: 'reserved_key_conflict', key: 'Carnivora', name: 'Carnívora Suprema', field: 'name' }, 'S2H-RKC the activation conflict names its product');
+    const optConflict = Object.assign(new Error('reserved_key_conflict: la_musa/v-new — a renamed item may not take a reserved key ("noodle_01_pollo")'), { status: 409, code: 'reserved_key_conflict', key: 'noodle_01', option_key: 'noodle_01_pollo', name: 'Pad Thai Nuevo - Pollo', field: 'name' });
+    want(await publish(renamedGroup, 'la_musa', optConflict), 409, { error: 'reserved_key_conflict', key: 'noodle_01', option_key: 'noodle_01_pollo', name: 'Pad Thai Nuevo - Pollo', field: 'name' }, 'S2H-RKC-OPT an option conflict: the launcher + option_key');
     ok('publish: the same preflight against current state — a later registry row, a stored unsafe name, the same first refusal');
   }
   // ── OFF: exactly today (none of the S2 codes) ──
