@@ -2384,6 +2384,7 @@
   "catalog/edit-catalog-handler.js",
   "catalog/edit-preflight.js",
   "catalog/exposure-source.js",
+  "catalog/extras-consequences.js",
   "catalog/extras-eligibility.js",
   "catalog/extras-intake.js",
   "catalog/form-menu-source.js",
@@ -2952,6 +2953,10 @@
    "lifts": []
   },
   "catalog/exposure-source.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/extras-consequences.js": {
    "pins": [],
    "lifts": []
   },

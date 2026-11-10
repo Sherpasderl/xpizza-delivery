@@ -405,6 +405,7 @@
   "catalog/generate-form-bundle.js#generateFormBundle": "catalog",
   "catalog/generate-form-bundle.js#generateKdsManifest": "catalog",
   "catalog/group-index.js#groupIndexFrom": "catalog",
+  "catalog/extras-consequences.js#extrasConsequences": "catalog",
   "catalog/edit-preflight.js#attributor": "catalog",
   "catalog/edit-preflight.js#editPreflight": "catalog",
   "catalog/group-intake.js#groupIssues": "catalog",
