@@ -206,6 +206,47 @@ test('P2 focus — the reveal focuses a deliberate target: the error box\'s «Re
   assert.equal(h.getAttribute('tabindex'), '-1', 'focusable without entering the tab order');
 });
 
+// Owner-reported 11-10 (live, 6d7f8207): a restaurant switch reloads the page (shell.js select → reload), and the reveal's focus on
+// the view heading drew the global keyboard ring (styles.css `:focus-visible{box-shadow:var(--focus)}`) as a thick black box round
+// «Productos». A script focus on a freshly loaded page DOES match :focus-visible, so the ring is removed on the reveal's own
+// non-interactive targets (tabindex=-1 heading / error box / wait line) — the focus move itself stays.
+const ringOf = (w, el) => { const cs = w.getComputedStyle(el); return { shadow: cs.boxShadow, outline: cs.outlineStyle || cs.outline }; };
+test('focus ring — after a restaurant switch (a reload with a session) the view heading takes focus with NO ring', async () => {
+  const { w, d, signIn } = await bootPage({ hint: true });
+  signIn();
+  d.getElementById('detail').replaceChildren();
+  ready(d);
+  const h = d.querySelector('#viewmenu h1');
+  assert.equal(d.activeElement, h, 'the focus move stays (screen readers land on the view)');
+  assert.ok(h.matches(':focus-visible'), 'premise: a script focus after a load matches :focus-visible (as in Chrome)');
+  assert.deepEqual(ringOf(w, h), { shadow: 'none', outline: 'none' }, 'no ring on the focused heading');
+});
+test('focus ring — the reveal\'s other non-interactive targets (a bare error box, the wait line) draw no ring either', async () => {
+  const p = await bootPage();
+  p.signIn();
+  const box = p.d.createElement('div'); box.className = 'errbox'; box.textContent = 'No tenés acceso a este portal';
+  p.d.getElementById('detail').replaceChildren(box);
+  ready(p.d);
+  assert.equal(p.d.activeElement, box, 'premise: an error box without a button takes the focus');
+  assert.deepEqual(ringOf(p.w, box), { shadow: 'none', outline: 'none' });
+  const wait = p.d.getElementById('gatewait');
+  wait.setAttribute('tabindex', '-1'); wait.focus();
+  assert.deepEqual(ringOf(p.w, wait), { shadow: 'none', outline: 'none' });
+});
+test('focus ring — KEYBOARD rings on real controls are unchanged: the ring rules stay as they were, and no control loses its ring', async () => {
+  assert.ok(CSS.includes(':focus-visible{outline:none;box-shadow:var(--focus)}'), 'the global keyboard ring rule, verbatim');
+  assert.ok(CSS.includes('.tab:focus-visible,.railitem:focus-visible,.nav:focus-visible,.ochip:focus-visible,.daychip:focus-visible,.fchip:focus-visible{box-shadow:var(--focus);border-radius:9px}'), 'the chips\' ring rule, verbatim');
+  const { w, d, signIn } = await bootPage();
+  signIn(); d.getElementById('detail').replaceChildren(); ready(d);
+  const controls = [...d.querySelectorAll('button, a[href], input, select, textarea, [tabindex="0"]')];
+  assert.ok(controls.length > 10, `premise: the real page has controls (${controls.length})`);
+  for (const c of controls) {
+    c.focus();
+    if (d.activeElement !== c) continue;   // hidden / disabled: not focusable here
+    assert.notEqual(ringOf(w, c).shadow, 'none', `${c.outerHTML.slice(0, 80)} keeps its keyboard ring`);
+  }
+});
+
 // ── shell.js: `portal:ready` on every terminal outcome ───────────────────────────────────────────────────────────────
 const OWNER = capsFor({ owner: true }, 'member');
 const WEEK = Object.fromEntries(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].map((k) => [k, { open: true, start: '11:00', end: '22:00' }]));
