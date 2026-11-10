@@ -831,6 +831,12 @@ export function editItem(draft, key, edit = {}, { reserved = null } = {}) {
   return true;
 }
 
+// The name an EXISTING product had when the draft was loaded (the one the merchant recognises), or null. Pure.
+export function loadedName(draft, key) {
+  const was = existingRow(draft.orig, key);
+  return was && was.display && typeof was.display.name === 'string' && was.display.name.trim() ? was.display.name : null;
+}
+
 // Existing products whose text or section differs from what was loaded: [{ key, fields: ['name' | 'desc' | 'cat'] }] in
 // document order ('cat' covers the subsection). A group's options are derived from their product and are not counted again.
 export function pendingTexts(draft) {

@@ -43,11 +43,13 @@ const TEXT_FIELDS = ['name', 'desc', 'cat', 'subcat'];
 const GATES = [['pickup_only', 'Queda solo para recoger', 'Vuelve a entregarse a domicilio'],
   ['weekend_only', 'Pasa a venderse solo los fines de semana', 'Pasa a venderse todos los días'],
   ['redeem_eligible', 'Pasa a canjearse con puntos', 'Deja de canjearse con puntos']];
-// Plan slice S2 (server diff) adds the extras gained / lost line; it is read HERE once the server sends it — until then
-// the review shows only what the server sends (advisor ruling 1).
-export const EXTRAS_LINE = null;
+// S2-DESIGN §1.3 — the server's extras consequences: diff.consequences, ONE { key, kind:'extras', gained, lost } per product (on
+// the launcher: the union over its options), never in `changed`. Read as the drawer's frame D sentences, before the gates.
+const EXTRA_LOST = (x) => `Deja de aceptar el extra ${x}`;
+const EXTRA_GAINED = (x) => `Acepta el extra ${x}`;
+const isExtrasConsequence = (c) => !!c && c.kind === 'extras' && typeof c.key === 'string' && Array.isArray(c.gained) && Array.isArray(c.lost);
 const isProductLine = (c) => !!c && c.surface === 'item' && (TEXT_FIELDS.includes(c.field) || GATES.some(([f]) => f === c.field));
-function productsOf(lines, optionParent) {
+function productsOf(lines, optionParent, optionIndex) {
   const parentOf = typeof optionParent === 'function' ? optionParent : () => null;
   const byKey = new Map();
   const productOf = (key) => {
@@ -79,7 +81,10 @@ function productsOf(lines, optionParent) {
     }
   }
   const order = ['name', 'desc', 'cat'];
+  // the options in their product's own choice order (the caller's draft), never the diff's key order
+  const idx = typeof optionIndex === 'function' ? optionIndex : () => 0;
   for (const p of byKey.values()) {
+    p.options.sort((a, b) => idx(a.key) - idx(b.key));
     p.lines.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
     p.consequences.sort((a, b) => GATES.findIndex((g) => g.includes(a)) - GATES.findIndex((g) => g.includes(b)));
   }
@@ -92,7 +97,12 @@ export function reviewModel(diff, ctx = {}) {
   // arranged, never derived: every line the server sent is shown exactly once.
   const all = Array.isArray(d.changed) ? d.changed : [];
   const productLines = all.filter((c) => !isPhotoLine(c) && isProductLine(c));
-  const products = productsOf(productLines, ctx && ctx.optionParent);
+  const products = productsOf(productLines, ctx && ctx.optionParent, ctx && ctx.optionIndex);
+  for (const c of (Array.isArray(d.consequences) ? d.consequences : []).filter(isExtrasConsequence)) {
+    let p = products.find((x) => x.key === c.key);
+    if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [] }; products.push(p); }
+    p.consequences = [...c.lost.map((x) => EXTRA_LOST(String(x))), ...c.gained.map((x) => EXTRA_GAINED(String(x))), ...p.consequences];
+  }
   const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c));
   const photos = all.filter(isPhotoLine);
   const added = Array.isArray(d.added) ? d.added : [];
@@ -925,6 +935,7 @@ export function outcomeFor(err, op = 'publish') {
     const target = typeof b.ref === 'string' ? b.ref : (typeof b.key === 'string' ? b.key : null);
     if (target) base.target = target;
     if (typeof b.field === 'string') base.field = b.field;
+    if (typeof b.option_key === 'string' && b.option_key) base.optionKey = b.option_key;   // S4: a derived option name's refusal
   }
   // the description has its own (looser) rule: quotes are fine there, the signs < and > are not
   if (code === 'text_unsafe' && base.field === 'desc') {

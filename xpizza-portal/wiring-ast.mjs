@@ -127,7 +127,7 @@ export const ALLOWED_CONSUMERS = new Set([
   // the served reservedNames into its own Set), view is a pure reader, save commits ONLY through editor.js editItem (canEdit-guarded)
   'IE.open', 'IE.view', 'IE.save',
   // and editor.js pendingTexts: a pure reader (the draft's text edits against what was loaded — the row tags and the bar)
-  'pendingTexts',
+  'pendingTexts', 'loadedName',
   // DISH PHOTOS B — the draft photo map's ONE setter (canEdit-guarded in editor.js; it writes only source.photos, from a pid
   // the server returned or the removed / restored states) and its pure readers
   'setPhoto', 'draftPhotos', 'origPhotos', 'pendingPhotos',

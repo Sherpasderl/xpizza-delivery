@@ -7,7 +7,7 @@ import { apiFetch, editCatalog, publishEdited, resetDraftToLive, requestPublish 
 import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
 // 1D add-product B — the required choice on a NEW product ("Elección requerida — el cliente elige 1")
 import { parsePrice } from './editor.js';
-import { pendingTexts } from './editor.js';   // S4 — the session's unpublished text edits (row tags, the bar)
+import { pendingTexts, loadedName } from './editor.js';   // S4 — the session's unpublished text edits (row tags, the bar); a product's loaded name
 // PLAN-public-menu-display T1 — a section's display NAME (owner-approved mockup «Cambiar nombre de sección», 2026-10-25)
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
@@ -1403,6 +1403,26 @@ function rowTextTag(it) {
   if (!f) return null;
   return f.size === 1 && f.has('name') ? 'Nombre sin publicar' : 'Cambios sin publicar';
 }
+// S4 «Productos» (frame E) — what the review needs from the draft to ARRANGE the server's lines (never to derive them): an
+// option's product, by pricing key (the diff's keys), and the product's own choice order.
+function productReviewCtx() {
+  const items = ((draftSource(state.draft) || {}).items || []).filter((r) => r && r.display && typeof r.key === 'string');
+  const keyOfId = new Map(items.map((r) => [String(r.display.id), r.key]));
+  const parent = new Map();
+  const index = new Map();
+  for (const r of items) {
+    if (r.display.variantOf == null) continue;
+    const pk = keyOfId.get(String(r.display.variantOf));
+    if (pk) { parent.set(r.key, pk); index.set(r.key, index.size); }
+  }
+  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0) };
+}
+function productReviewOpts() {
+  const items = ((draftSource(state.draft) || {}).items || []).filter((r) => r && r.display && typeof r.key === 'string');
+  const section = (k) => { const r = items.find((x) => x.key === k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; };
+  return { nameOf: (k) => { const r = items.find((x) => x.key === k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },
+    categoryName, sectionOf: section };
+}
 function resetEditFacts() {
   state.textEditEnabled = false;
   state.reservedNames = null;
@@ -2200,7 +2220,7 @@ async function openReviewFlow() {
     // 🔴 RENDERED FROM THE MINTED RECORD, not from the locals it was built out of. What the merchant
     // reads must be the same object the publish will send — rendering from the pre-freeze originals
     // would leave a second, mutable copy of the evidence alive for as long as this scope is.
-    renderReview($('mbody'), reviewModel(state.review.diff), { describe: describeAddition, photos: photoReviewOpts() });
+    renderReview($('mbody'), reviewModel(state.review.diff, productReviewCtx()), { describe: describeAddition, photos: photoReviewOpts(), products: productReviewOpts() });
     const attBox = document.createElement('div');
     $('mbody').append(attBox);
     // BOUND to this review and this world. Dispatching A's checkbox after B opened must acknowledge
@@ -2525,7 +2545,29 @@ async function sendToOwnerFlow() {
     if (gen === opGeneration) syncUi();
   }
 }
+// S4 (advisor ruling 11-10) — a field-tagged refusal of an EXISTING product's edit, with the text-edit switch on: the drawer's
+// approved line as the title, «Es en «{producto}». Tus otros cambios siguen en el borrador.», and «Corregir», which reopens that
+// product's drawer with the line under the field. Additions, and everything without the switch, keep today's panels exactly.
+function productRefusal(outcome) {
+  if (state.textEditEnabled !== true || !outcome || typeof outcome.target !== 'string' || !state.draft) return outcome;
+  const it = ((draftSource(state.draft) || {}).items || []).find((r) => r && r.key === outcome.target);
+  if (!it || isAddition(it) || (it.display && it.display.variantOf != null)) return outcome;
+  const line = IE.refusalLine({ error: outcome.code, key: outcome.target, field: outcome.field, option_key: outcome.optionKey });
+  if (!line) return outcome;
+  const name = loadedName(state.draft, outcome.target) || photoNameOf(outcome.target);
+  return { ...outcome, title: line.message, detail: `Es en «${name}». Tus otros cambios siguen en el borrador.`,
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Corregir' }, productLine: line };
+}
+// C-1: the sections the order page shows, read again — ONLY renderedCategories is taken; the merchant's draft is never replaced
+async function rereadSections() {
+  const rid = state.draftRid, gen = opGeneration;
+  let fresh = null;
+  try { fresh = await apiFetch('getEditableCatalog', { rid, token }); } catch (_) { fresh = null; }
+  if (gen !== opGeneration || rid !== state.draftRid || !fresh || !Array.isArray(fresh.renderedCategories)) return;
+  state.renderedCategories = fresh.renderedCategories.filter((c) => typeof c === 'string');
+}
 function showOutcome(outcome) {
+  outcome = productRefusal(outcome);
   // A panel is a SETTLED state: the operation is over and the merchant is deciding what to do next.
   // Editing is theirs again, and the recovery transitions must be able to acquire the lock.
   releaseEditLock(state.reviewLock);
@@ -2568,6 +2610,19 @@ function showOutcome(outcome) {
       // DIRECTLY: rendering this panel detached #pubbtn, so any lookup of it here is null.
       restorePublishFooter();
       await runPublish();
+      return;
+    }
+    if (id === PUBLISH_ACTIONS.FIX && outcome.productLine) {
+      // S4 — back to editing, with the existing product's drawer open and the server's line under the field it named
+      const line = outcome.productLine;
+      $('scrim').classList.remove('show');
+      clearReview();
+      const host = (draftSource(state.draft).items || []).find((i) => i && i.key === line.key);
+      if (host && host.display && host.display.cat) state.selectedCat = host.display.cat;
+      paint(); syncUi();
+      if (line.reread) await rereadSections();
+      openDrawer(line.key);
+      if (editSess && editSess.key === line.key) { IE.setServerError(editSess, line); syncEdit(); }
       return;
     }
     if (id === PUBLISH_ACTIONS.FIX) {

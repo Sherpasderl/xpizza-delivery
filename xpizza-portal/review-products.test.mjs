@@ -119,10 +119,52 @@ test('«Productos» renders a group\'s «Opciones (3)» with the derived names i
   assert.deepStrictEqual(byClass(optRow, 'pval').map(textOf), ['Personal', 'Mediana', 'Familiar'].map((c) => `Pizza Cuatro Quesos - ${c} → Pizza Cuatro Quesos Especial - ${c}`));
 });
 
-// Plan slice S2 (5f, server diff) adds the extras gained / lost line; the review shows it through the named hook
-// (review.js EXTRAS_LINE) once the server sends it. Until then the review shows only what the server sends.
-test.todo('«Productos» — S2: the server\'s extras gained / lost line reads «Acepta el extra {grupo}» / «Deja de aceptar el extra {grupo}»');
-test.todo('«Productos» — Phase 2: these cells take their lines from the REAL catalogDiff (S1 approved tip), not the line shape');
+// ── Phase 2 (S2-DESIGN §1.3, approved 11-10) ──────────────────────────────────────────────────────────────────────────
+// The extras consequences: diff.consequences — one { key, kind:'extras', gained, lost } per product, on the LAUNCHER (the union
+// over its options). Shape-pinned here until 5f's S2 server emits it (then the real-writer cell below takes it from the diff).
+test('«Productos» — S2 §1.3: the server\'s extras consequence reads «Deja de aceptar el extra …» / «Acepta el extra …», before the gate sentences', () => {
+  const diff = FRAME_E();
+  diff.consequences = [{ key: 'Pizza Cacio e Pepe', kind: 'extras', gained: ['Pan de ajo'], lost: ['Orilla rellena'] }];
+  const p = reviewModel(diff).products[0];
+  assert.deepStrictEqual(p.consequences, ['Deja de aceptar el extra Orilla rellena', 'Acepta el extra Pan de ajo',
+    'Queda solo para recoger', 'Pasa a venderse solo los fines de semana', 'Deja de canjearse con puntos'], 'the drawer\'s frame D order: extras lost, gained, then the gates');
+  assert.strictEqual(reviewModel(diff).total, diff.changed.length, 'a consequence is not a line that publishes: the total is unchanged');
+  const root = fakeDom();
+  renderReview(root, reviewModel(diff), { products: { nameOf: (k) => k, categoryName: (id) => id, sectionOf: () => ({ cat: 'pa', subcat: null }) } });
+  const ul = byClass(root, 'mk-cons')[0];
+  assert.deepStrictEqual(ul.children.slice(0, 2).map(textOf), ['Deja de aceptar el extra Orilla rellena', 'Acepta el extra Pan de ajo']);
+});
+test('«Productos» — a consequence for a product with no other line still shows (never dropped); a malformed one is ignored', () => {
+  const diff = { changed: [], added: [], removed: [], renamed: [], largeChangeSet: [],
+    consequences: [{ key: 'Lasaña', kind: 'extras', gained: [], lost: ['Pan de ajo'] }, { key: 'X', kind: 'nope' }, null, { kind: 'extras' }] };
+  const m = reviewModel(diff);
+  assert.deepStrictEqual(m.products.map((p) => [p.key, p.consequences]), [['Lasaña', ['Deja de aceptar el extra Pan de ajo']]]);
+});
+
+// The REAL writer: the server's catalogDiff over the real la_musa seed, the draft edited by the portal's own editItem.
+test('«Productos» — from the REAL catalogDiff: a group renamed and moved — one product, «Opciones (3)», every server line accounted once', async () => {
+  const { createRequire } = await import('node:module');
+  const req = createRequire(new URL('../xpizza-functions/package.json', import.meta.url));
+  const { buildSourceFromCode } = req('./tools/seed-source-store');
+  const { sourceToBuildInputs } = req('./catalog/source-store');
+  const { buildCatalogV2 } = req('./catalog/form-menu-source');
+  const { catalogDiff } = req('./catalog/catalog-edit');
+  const { createDraft, editItem, draftSource } = await import('./editor.js');
+  const build = (src) => { const i = sourceToBuildInputs(src); return buildCatalogV2('la_musa', { formData: i.formData, priceTable: i.priceTable }); };
+  const live = buildSourceFromCode('la_musa');
+  const d = createDraft(JSON.parse(JSON.stringify(live)));
+  assert.equal(editItem(d, 'noodle_01', { name: 'Pad Thai Especial', cat: 'rice' }), true, 'premise: the portal\'s own writer accepts the edit');
+  const diff = catalogDiff(build(live), build(draftSource(d)));
+  const opts = draftSource(d).items.filter((i) => i.display && i.display.variantOf === 'noodle_01').map((i) => i.key);
+  const parentOf = (k) => (opts.includes(k) ? 'noodle_01' : null);
+  const m = reviewModel(diff, { optionParent: parentOf, optionIndex: (k) => opts.indexOf(k) });
+  assert.deepStrictEqual(m.products.map((p) => p.key), ['noodle_01'], 'one product, its options folded');
+  const p = m.products[0];
+  assert.deepStrictEqual(p.lines.map((l) => l.kind), ['name', 'cat']);
+  assert.deepStrictEqual(p.options.map((o) => o.now), opts.map((k) => draftSource(d).items.find((i) => i.key === k).display.name));
+  const seen = [...m.rows.map((r) => `${r.key}|${r.field}`), ...m.products.flatMap((x) => x.sources.map((c) => `${c.key}|${c.field}`))].sort();
+  assert.deepStrictEqual(seen, diff.changed.map((c) => `${c.key}|${c.field}`).sort(), 'every server line exactly once');
+});
 
 // the review tests' shim (only what review.js touches)
 function fakeDom() {

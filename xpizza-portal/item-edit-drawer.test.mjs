@@ -51,7 +51,7 @@ async function loadAll() {
   } finally { for (const f of files) { try { unlinkSync(f); } catch (_) { /* best effort */ } } }
 }
 
-async function page({ read = () => editable(), evaluator = true } = {}) {
+async function page({ read = () => editable(), evaluator = true, on = {} } = {}) {
   const dom = new JSDOM(HTML, { url: 'https://portal.test/', pretendToBeVisual: true });
   const w = dom.window;
   w.scrollTo = () => {};
@@ -63,6 +63,7 @@ async function page({ read = () => editable(), evaluator = true } = {}) {
   globalThis.__branchesDirect = true;
   const st = { read };
   const calls = installFetch((fn) => {
+    if (on[fn]) { const r = on[fn](calls[calls.length - 1]); if (r) return r; }
     if (fn === 'getMyBranches') return okJson(E1());
     if (fn === 'getEditableCatalog') return okJson(st.read());
     if (fn === 'getBranchAvailability') return okJson({ branches: [] });
@@ -353,4 +354,74 @@ test('OFF — no tags and no «· producto» suffix without the switch (today\'s
   const p = await page({ read: () => editable({ textEditEnabled: false, pendingTexts: [{ key: 'dimsum_01', fields: ['name'] }] }) });
   await p.signIn();
   assert.equal(p.d.querySelector('#detail .tag.mk-ftag'), null);
+});
+
+// ── the review-time refusals of an EXISTING product (advisor ruling 11-10): the drawer's approved line as the panel title,
+// «Es en «{producto}». Tus otros cambios siguen en el borrador.», «Corregir» → that product's drawer with the line under the field ──
+const panel = (p) => { const b = p.d.querySelector('#mbody .conflict'); return b && { title: b.querySelector('h3').textContent, detail: b.querySelector('p').textContent, action: b.querySelector('button') }; };
+async function renameAndReview(p, key, name) {
+  await p.open(key);
+  p.type(p.fld('Nombre').querySelector('input'), name);
+  p.btn('Guardar').click();
+  await settle(10);
+  p.d.getElementById('review').click();
+  await settle(60);
+}
+test('review refusal on an existing product — the approved line, the detail with the loaded name, «Corregir» reopens it at Nombre', async () => {
+  const p = await page({ on: { editCatalog: () => errJson(400, { error: 'name_previously_used', key: 'dimsum_01', field: 'name' }) } });
+  await p.signIn();
+  await renameAndReview(p, 'dimsum_01', 'Hawaiana');
+  const pn = panel(p);
+  assert.ok(pn, 'the refusal panel');
+  assert.equal(pn.title, 'Ese nombre no está disponible');
+  assert.equal(pn.detail, 'Es en «Sichuan Spicy Wonton». Tus otros cambios siguen en el borrador.');
+  assert.equal(pn.action.textContent, 'Corregir');
+  pn.action.click();
+  await settle(20);
+  assert.ok(p.drawer().classList.contains('show'), 'the product\'s drawer');
+  assert.equal(p.fld('Nombre').querySelector('input').value, 'Hawaiana', 'the draft\'s value, to correct');
+  assert.equal(lineOf(p.fld('Nombre')), 'Ese nombre no está disponible', 'the line under the field the server named');
+  assert.equal(p.btn('Guardar').disabled, true);
+  p.type(p.fld('Nombre').querySelector('input'), 'Wonton picante');
+  assert.equal(lineOf(p.fld('Nombre')), null, 'changing that field clears the server\'s line');
+  assert.equal(p.btn('Guardar').disabled, false);
+});
+test('review refusal on a derived option name — the line sits on the Opciones block (frame F2 placement)', async () => {
+  const p = await page({ on: { editCatalog: () => errJson(400, { error: 'name_taken', key: 'noodle_01', field: 'name', option_key: 'noodle_01_pollo' }) } });
+  await p.signIn();
+  await renameAndReview(p, 'noodle_01', 'Pad Thai Especial');
+  assert.equal(panel(p).title, 'Ya hay un producto con ese nombre');
+  panel(p).action.click();
+  await settle(20);
+  assert.equal(lineOf(p.fld('Opciones')), 'Ya hay un producto con ese nombre');
+  assert.equal(lineOf(p.fld('Nombre')), null);
+});
+test('category_not_renderable — «Esa sección no se muestra en tu página de pedidos» under Categoría, and the sections are re-read', async () => {
+  let reads = 0;
+  const p = await page({ on: { editCatalog: () => errJson(400, { error: 'category_not_renderable', key: 'dimsum_01', field: 'cat' }),
+    getEditableCatalog: () => { reads += 1; return null; } } });
+  await p.signIn();
+  await renameAndReview(p, 'dimsum_01', 'Wonton picante');
+  const before = reads;
+  assert.equal(panel(p).title, 'Esa sección no se muestra en tu página de pedidos');
+  panel(p).action.click();
+  await settle(40);
+  assert.equal(lineOf(p.fld('Categoría')), 'Esa sección no se muestra en tu página de pedidos');
+  assert.ok(reads > before, 'C-1: the drawer re-reads the sections');
+  assert.equal(p.fld('Nombre').querySelector('input').value, 'Wonton picante', 'the re-read never replaces the merchant\'s draft');
+});
+test('reserved_key_conflict at PUBLISH — the same panel on the named product', async () => {
+  const p = await page({ on: {
+    editCatalog: () => okJson({ token: 'ET', updateTime: 'T2', baseActiveVersionId: 'v-live', sourceHash: 'h',
+      diff: { added: [], removed: [], renamed: [], largeChangeSet: [], changed: [{ key: 'dimsum_01', surface: 'item', field: 'name', old: 'Sichuan Spicy Wonton', new: 'Hawaiana' }] } }),
+    publishEdited: () => errJson(409, { error: 'reserved_key_conflict', key: 'dimsum_01', name: 'Hawaiana', field: 'name' }),
+  } });
+  await p.signIn();
+  await renameAndReview(p, 'dimsum_01', 'Hawaiana');
+  const pub = p.d.getElementById('pubbtn');
+  assert.ok(pub && !pub.disabled, 'premise: the review is up and publishable');
+  pub.click();
+  await settle(60);
+  assert.equal(panel(p).title, 'Ese nombre no está disponible');
+  assert.equal(panel(p).detail, 'Es en «Sichuan Spicy Wonton». Tus otros cambios siguen en el borrador.');
 });

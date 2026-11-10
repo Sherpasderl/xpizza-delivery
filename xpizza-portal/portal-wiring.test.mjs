@@ -390,11 +390,12 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // no display field and no item — the map is a separate top-level field of the source.
   // S4 «Editar producto» (PLAN-portal-item-edit r6) — an EXISTING product's name / description / section through ONE
   // whole-drawer mutator (editItem: all or nothing; never a key, display.id or identity stamp), the read-only judges
-  // itemNameProblem / itemDescProblem / itemCategoryProblem / pendingTexts / tidyItemName, and the two caps.
+  // itemNameProblem / itemDescProblem / itemCategoryProblem / pendingTexts / tidyItemName / loadedName (Phase 2: the panel's
+  // «Es en «{producto}»»), and the two caps.
   assert.deepStrictEqual(exported, [
     'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'canEditDraft', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
     'commit', 'commitTo', 'createDraft', 'discard', 'draftPhotos', 'draftSource', 'editItem', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
-    'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'optionGroups', 'optionParentId',
+    'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'optionGroups', 'optionParentId',
     'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingPhotos', 'pendingRenames', 'pendingTexts',
     'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
     'setChoiceRecommended', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
@@ -998,7 +999,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.savedRenames':        [2, 'guarded', 'PLAN-public-menu-display T1 (Codex r1 #3) — the SAVED draft\u2019s unpublished section names, from the server: set in applyAddProductFacts (load / post-publish settle, behind the generation check) and in sendToOwnerFlow\u2019s settle path from the server\u2019s own diff, behind its generation check. It only HOLDS edits (prices / names), it never writes the draft'],
     'state.savedOther':          [2, 'guarded', 'PLAN-public-menu-display T1 (Codex r1 #3) — whether the SAVED draft has anything unpublished besides a name, from the server: the same two settle paths as state.savedRenames, generation-checked; it only HOLDS a rename'],
     'state.renameEdit':          [5, 'view',    'PLAN-public-menu-display T1 — WHICH section title is being edited (an id, nothing else): reset by the load path, set by «Cambiar nombre», cleared by Guardar / Cancelar and by moving to another section. Presentational: the NAME itself reaches the draft only through setCategoryNames (canEdit), from bound() callbacks'],
-    'state.selectedCat':         [5, 'view',    '[1D add-product A: + the add drawer\u2019s section change and the FIX action, both presentational] which category the rail highlights — a stale write repaints, it cannot mis-price'],
+    'state.selectedCat':         [6, 'view',    '[S4: + the existing-product FIX action, presentational] [1D add-product A: + the add drawer\u2019s section change and the FIX action, both presentational] which category the rail highlights — a stale write repaints, it cannot mis-price'],
     'state.openGroups':          [6, 'view',    '[1D add-product B: + the same three for the "Elección requerida" chevron, keyed choice::<id>] which option groups are expanded in the drawer — one assignment plus the add/delete of the toggle; presentational only'],
     'state.drawerKey':           [7, 'view',    '[1D add-product A: + the add drawer\u2019s Cerrar and Listo] [1D add-product B: + renderDrawer redirecting a new product\u2019s OPTION to its product] [DISH PHOTOS B: + the crop step\u2019s Cerrar (bound), which closes the drawer and discards the picked file] which dish the drawer shows; the fields inside it are canEdit-guarded'],
     'state.restaurants':         [2, 'guarded', '[PORTAL-UI 1a: + openEditor, once per page at boot — the page\u2019s single selected restaurant] the switcher list, written by loadRestaurants behind its generation check'],
@@ -1009,7 +1010,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.menuLoading':         [3, 'guarded', 'loading represented explicitly rather than inferred from a null draft: set at the start of a switch, cleared on BOTH settle paths behind the generation check, and read by review admission'],
     // ── 1D add-product A ──
     'state.additionKeys':        [4, 'guarded', 'which rows are NEW (server-said pendingAdditions + the keys a save allocated) — reset at the start of a load, set on the load settle path, on the review save settle path and on the T-d send-to-owner save settle path, each behind the generation check'],
-    'state.renderedCategories':  [2, 'guarded', 'the sections a product may be added to (the renderer contract via getEditableCatalog) — load path, behind the generation check'],
+    'state.renderedCategories':  [3, 'guarded', 'the sections a product may be added to (the renderer contract via getEditableCatalog) — load path, behind the generation check; S4 C-1: + rereadSections, behind the same generation + rid check, taking ONLY this field (the draft is never replaced)'],
     'state.restaurantName':      [2, 'guarded', 'the fiscal note\u2019s restaurant name from data — load path, behind the generation check'],
     'state.draftUnpublishable':  [2, 'guarded', 'whether the saved draft can publish (getEditableCatalog) — load path, behind the generation check; it only OFFERS the reset'],
     // ── F-2 (owner-approved mockup ENrjdkJmw3mzy9PkFCy4D1) ──
@@ -1142,7 +1143,7 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo
                  // never caught up. That is the drift the cross-check below exists to end.
                  'endWrite', 'repaintFromDraft', 'showOutcome',
                  // S4 «Editar producto»: «Guardar» (the draft, through IE.save → editItem) and the per-load fact reset (inside invalidateReview)
-                 'saveEdit', 'resetEditFacts',
+                 'saveEdit', 'resetEditFacts', 'rereadSections',
                  // again found by the tree, not by hand — clearReview writes state.review
                  'clearReview',
                  // 1D add-product A — the add flow's writers (the tree found them; each is either canEdit-guarded via
@@ -1512,7 +1513,7 @@ const ALLOWED_CONSUMERS = new Set([
   // reservedNames into its own Set), view is a pure reader, save commits ONLY through editor.js editItem (canEdit-guarded)
   'IE.open', 'IE.view', 'IE.save',
   // and editor.js pendingTexts: a pure reader (the draft's text edits against what was loaded — the row tags and the bar)
-  'pendingTexts',
+  'pendingTexts', 'loadedName',
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.
@@ -1792,7 +1793,9 @@ test('🔴 the evidence has ONE home — nothing renders from the pre-mint local
   const app = codeOf('app.js');
   // (1D add-product A: + a `describe` option that names a NEW product from the adopted draft — a lookup, not evidence)
   // (DISH PHOTOS B: + `photos`, the names / card URLs of the photo lines — lookups, not evidence; the lines are the minted diff's)
-  assert.match(app, /renderReview\(\$\('mbody'\), reviewModel\(state\.review\.diff\)(?:, \{ describe: describeAddition(?:, photos: photoReviewOpts\(\))? \})?\)/,
+  // (S4 «Productos»: + productReviewCtx() — an option's product and the choice order, by key, from the adopted draft — and
+  //  `products`, the names / sections the rows show: lookups that ARRANGE the minted diff's lines, never evidence)
+  assert.match(app, /renderReview\(\$\('mbody'\), reviewModel\(state\.review\.diff(?:, productReviewCtx\(\))?\)(?:, \{ describe: describeAddition(?:, photos: photoReviewOpts\(\))?(?:, products: productReviewOpts\(\))? \})?\)/,
     '🔴 the review renders from the MINTED diff');
   assert.match(app, /renderAttestation\(attBox, state\.review\.attestation,/,
     '🔴 the attestation renders from the MINTED attestation, not the local it was computed into');
