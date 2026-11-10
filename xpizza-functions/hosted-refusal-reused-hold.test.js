@@ -1,15 +1,15 @@
 'use strict';
-// S2 B2 (D4c-grill/item-s1/S2-DESIGN.md §2 r1 B2; OWNER RULING 2026-11-10 «keep held until resolved») — a FRESH card attempt that a
-// fresh-only gate refuses, when the order's reward hold was REUSED (a retry of the same order after its earlier checkout ended),
-// releases that hold immediately ONLY when the earlier attempt is DEFINITIVELY not captured — the stale-hold sweep's own rule
-// (rewards-reserve.js definitivelyNotCaptured: payment failed, or the order cancelled). Otherwise the hold stays exactly as
-// today (held; the sweep or reconciliation resolves it), because an expired checkout with no bank callback may have been paid.
+// S2 B2 (D4c-grill/item-s1/S2-DESIGN.md §2 r1 B2; OWNER RULING 2026-11-10 «keep held until resolved»; Codex S2 code r1 P1-1 →
+// advisor: fall back to TODAY) — a FRESH card attempt that a fresh-only gate refuses NEVER releases a reward hold it REUSED (a
+// retry of the same order), whatever the earlier attempt's state: an early release cannot be made safe, because the hold
+// (user_rewards) and the attempts / order (payment_attempts, orders) are separate RTDB paths, so «no other attempt is payable or
+// in flight» cannot be checked atomically with the release — a concurrent retry can claim a NEW attempt and issue its checkout
+// against the same hold before attaching to it (Codex's A2→A3 race). The hold stays held; the sweep or reconciliation resolves it.
 // Runs the REAL decision (resolveAndIssueHostedCheckout) against the REAL reservation transactions.
 // Run: node hosted-refusal-reused-hold.test.js
 const assert = require('assert');
 const { resolveAndIssueHostedCheckout } = require('./hosted-charge-flow');
 const { reserveRedemption } = require('./rewards-reserve');
-const { releaseReusedHoldIfSafe } = require('./rewards-reuse-release');
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -44,13 +44,12 @@ async function lifecycle(order, { refuse = true } = {}) {
   const again = await reserve(db);
   assert.deepStrictEqual([again.ok, again.action], [true, 'reused'], 'premise: the retry REUSES the hold (classify-reuse)');
   const owned = again.action === 'created' || again.action === 're_reserved';   // index.js: redemptionOwnsHold
-  const calls = { checkout: 0, retire: [], ownedRelease: 0, reusedChecks: 0 };
+  const calls = { checkout: 0, retire: [], ownedRelease: 0 };
   const out = await resolveAndIssueHostedCheckout({
     acq: { outcome: 'claimed', attempt_id: 'A2', expires_at: 2_900_000 }, orderId: 'ORD-1', attemptId: 'A2', log: QUIET,
     totalCents: 10000, toLempiras: (c) => (c / 100).toFixed(2),
     chargeRequest: { pixelpayOrderId: 'ORD-1-A2', firstName: 'Ana', lastName: 'Paz', email: 'a@b.co' },
     releaseHold: async () => { if (owned) calls.ownedRelease += 1; },                       // the owned-only release (a no-op here)
-    releaseReusedIfSafe: async () => { calls.reusedChecks += 1; return releaseReusedHoldIfSafe(db, { uid: 'U1', rid: 'x_pizza', orderId: 'ORD-1', owned, now: 3_000_000 }); },
     retireAttempt: async (id, reason) => { calls.retire.push({ id, reason }); },
     stampProvenance: async () => {}, attachReservation: async () => {},
     createCheckout: async () => { calls.checkout += 1; return { ok: true, url: 'https://pay/new' }; },
@@ -63,15 +62,15 @@ async function lifecycle(order, { refuse = true } = {}) {
 // ── (a) the earlier attempt is DEFINITIVELY not captured (payment failed) → the reused hold is released now ──
 {
   (async () => {
-    const a = await lifecycle({ payment_status: 'failed', status: 'pending_payment', active_attempt_id: 'A1' });
-    assert.strictEqual(a.out.respond.status, 409, 'B2-A the fresh attempt is refused');
-    assert.strictEqual(a.calls.checkout, 0, 'B2-A zero checkouts');
-    assert.deepStrictEqual(a.calls.retire.map((r) => r.id), ['A2'], 'B2-A the claimed attempt is retired');
-    assert.strictEqual(hold(a.db).state, 'released', 'B2-A-RELEASED a reused hold whose earlier attempt definitively failed is RELEASED');
-    assert.strictEqual(reservedPts(a.db), 0, 'B2-A-RELEASED the points are returned');
-    const c = await lifecycle({ payment_status: 'pending', status: 'cancelled', active_attempt_id: 'A1' });
-    assert.strictEqual(hold(c.db).state, 'released', 'B2-A-CANCELLED a cancelled order is definitively not captured too');
-    ok('(a) earlier attempt definitively not captured → the reused hold is released, zero checkouts');
+    for (const [order, label] of [[{ payment_status: 'failed', status: 'pending_payment', active_attempt_id: 'A1' }, 'failed'], [{ payment_status: 'pending', status: 'cancelled', active_attempt_id: 'A1' }, 'cancelled']]) {
+      const a = await lifecycle(order);
+      assert.strictEqual(a.out.respond.status, 409, `B2-A ${label}: the fresh attempt is refused`);
+      assert.strictEqual(a.calls.checkout, 0, `B2-A ${label}: zero checkouts`);
+      assert.deepStrictEqual(a.calls.retire.map((r) => r.id), ['A2'], `B2-A ${label}: the claimed attempt is retired`);
+      assert.strictEqual(hold(a.db).state, 'reserved', `B2-A-HELD ${label}: even a definitively-uncaptured earlier attempt does NOT release the reused hold early (today)`);
+      assert.strictEqual(reservedPts(a.db), 100, `B2-A-HELD ${label}: the points stay reserved for the sweep`);
+    }
+    ok('(a) earlier attempt definitively not captured → still held (no early release: it cannot be made race-safe), zero checkouts');
 
     // ── (b) the earlier attempt is UNKNOWN (expired with no bank callback; possibly paid) → held, as today ──
     for (const [order, label] of [[{ payment_status: 'pending', status: 'pending_payment', active_attempt_id: 'A1' }, 'pending'],
@@ -84,20 +83,18 @@ async function lifecycle(order, { refuse = true } = {}) {
     }
     ok('(b) earlier attempt unknown → the hold stays reserved, exactly as today');
 
-    // ── an ACCEPTED fresh attempt never touches the reused hold ──
+    // ── an ACCEPTED fresh attempt keeps the hold for its own checkout ──
     const acc = await lifecycle({ payment_status: 'failed', status: 'pending_payment', active_attempt_id: 'A1' }, { refuse: false });
-    assert.strictEqual(acc.calls.reusedChecks, 0, 'B2-ACCEPT an accepted fresh attempt never runs the reused-hold release');
     assert.strictEqual(hold(acc.db).state, 'reserved', 'B2-ACCEPT the hold backs the new checkout');
     assert.strictEqual(acc.calls.checkout, 1, 'B2-ACCEPT premise: a checkout was issued');
     ok('an accepted fresh attempt keeps the hold for its own checkout');
 
-    // ── an OWNED hold is the owned release's job — the reused-hold release never double-releases ──
-    const db = mk({ payment_status: 'failed' }); await reserve(db);
-    const r = await releaseReusedHoldIfSafe(db, { uid: 'U1', rid: 'x_pizza', orderId: 'ORD-1', owned: true, now: 3_000_000 });
-    assert.strictEqual(hold(db).state, 'reserved', 'B2-OWNED an owned hold is left to the owned-only release');
-    assert.ok(r && r.released === false, 'B2-OWNED and the helper reports it did not release');
-    ok('an owned hold is never released by the reused-hold path');
-
+    // ── the PRODUCTION wiring carries no early release of a reused hold (the flow and the handler) ──
+    const flowSrc = require('fs').readFileSync(require('path').join(__dirname, 'hosted-charge-flow.js'), 'utf8');
+    const idxSrc = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
+    assert.ok(!/releaseReused/.test(flowSrc) && !/releaseReused|rewards-reuse-release/.test(idxSrc), 'B2-NO-EARLY-RELEASE neither the fresh-gate flow nor chargeOnline wires an early release of a reused hold');
+    assert.ok(!require('fs').existsSync(require('path').join(__dirname, 'rewards-reuse-release.js')), 'B2-NO-EARLY-RELEASE the early-release module is gone');
+    ok('the production card path never releases a reused hold early');
     FINISHED = true;
     console.log(`\nhosted-refusal-reused-hold: OK (${n})`);
   })().catch((e) => { console.error(e); process.exit(1); });
