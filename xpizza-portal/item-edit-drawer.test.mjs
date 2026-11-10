@@ -61,6 +61,7 @@ async function page({ read = () => editable(), evaluator = true, on = {} } = {})
   if (evaluator) Object.assign(globalThis, { projectEligibility: EE.projectEligibility, eligibleSet: EE.eligibleSet });
   else { delete globalThis.projectEligibility; delete globalThis.eligibleSet; }
   globalThis.__branchesDirect = true;
+  globalThis.CSS = { escape: (x) => String(x).replace(/["\\]/g, '\\$&') };   // jsdom has no CSS.escape (Codex S4P2 r1: uncaught «CSS is not defined»)
   const st = { read };
   const calls = installFetch((fn) => {
     if (on[fn]) { const r = on[fn](calls[calls.length - 1]); if (r) return r; }
@@ -223,7 +224,10 @@ test('D2 — the move that would empty a section is refused in the field; «Guar
   await p2.open(sodas[0]);
   p2.choose(p2.fld('Subcategoría').querySelector('select'), 'Cervezas');
   await settle(5);
-  assert.equal(lineOf(p2.fld('Categoría')), 'No podés dejar la subcategoría vacía. Agregá otro producto primero.');
+  // contract C-2 (Codex S4P2 r1 P2-4): staying in the section, the line is Subcategoría's
+  assert.equal(lineOf(p2.fld('Subcategoría')), 'No podés dejar la subcategoría vacía. Agregá otro producto primero.');
+  assert.equal(lineOf(p2.fld('Categoría')), null);
+  assert.equal(p2.btn('Guardar').title, 'Elegí una subcategoría');
   // SBS D2: a refused move to ANOTHER section (it has consequences) shows its line, not the consequence note
   p2.choose(p2.fld('Categoría').querySelector('select'), 'dim_sum');
   await settle(5);
@@ -457,4 +461,19 @@ test('fiscal brand (frame E) — the review seal after a rename + a price: the d
   assert.equal(seal.querySelector('.sealbody p').textContent, 'Como propietario, autorizás esta publicación. Cambia un precio y el nombre de un producto: los dos aparecen en la factura.');
   assert.deepEqual([...seal.querySelectorAll('.seachg .sn')].map((n) => n.textContent), ['Wonton picante', 'Nombre en factura']);
   assert.equal(seal.querySelector('.at').textContent.replace(/\s+/g, ' ').trim(), 'Autorizo esta edición en la factura fiscal.');
+});
+
+// Codex S4P2 r1 P1-1: with THE ONE rule loaded (the shipped page's classic script, S2 §1.6 — a hard prerequisite), a cross-category
+// move works end to end: the note, «Guardar», the draft (the product AND the section change), the row's tag
+test('P1-1 — the eligibility rule loaded: a cross-category move saves end to end (note, «Guardar», draft, tag)', async () => {
+  const p = await page();
+  await p.signIn();
+  await p.open('dimsum_01');
+  p.choose(p.fld('Categoría').querySelector('select'), 'starters');
+  await settle(5);
+  assert.ok(p.fld('Categoría').querySelector('.mk-note').hidden, 'Dim Sum → Starters changes nothing (same extras, both redeemable): no note, as the mockup');
+  assert.equal(p.btn('Guardar').disabled, false, '«Guardar» is free (no held move)');
+  p.btn('Guardar').click(); await settle(15);
+  assert.equal(p.src().items.find((i) => i.key === 'dimsum_01').display.cat, 'starters', 'the draft carries the move');
+  assert.ok(!p.drawer().classList.contains('show'));
 });

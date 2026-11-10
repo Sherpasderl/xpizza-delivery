@@ -176,7 +176,11 @@ export function view(draft, s) {
   if (descP) errors.desc = COPY.desc[descP] || null;
   const subcats = subcatsOf(draft, w.cat);
   const catP = catChanged(s) ? itemCategoryProblem(draft, s.key, { cat: w.cat, subcat: w.subcat }) : null;
-  if (catP === 'section_empty' || catP === 'subsection_empty') errors.cat = COPY.cat[catP];
+  // contract C-2 (Codex S4P2 r1 P2-4): emptying a subsection is Subcategoría's fault when the product stays in its section,
+  // Categoría's when it moves to another (the target may not even show Subcategoría)
+  const sameSection = w.cat === s.base.cat;
+  if (catP === 'section_empty' || (catP === 'subsection_empty' && !sameSection)) errors.cat = COPY.cat[catP];
+  else if (catP === 'subsection_empty') errors.subcat = COPY.cat.subsection_empty;
   // a move whose consequences cannot be computed (the shared evaluator absent) is held: nothing changes silently
   const moved = w.cat !== s.base.cat && w.cat != null;
   const consequenceGap = moved && extrasChange(draft, s) === null;
@@ -199,7 +203,7 @@ export function view(draft, s) {
   else if (nameP) title = COPY.save.fixName;
   else if (descP) title = COPY.save.fixDesc;
   else if (errors.cat && !se) title = COPY.save.otherCat;
-  else if (catP === 'subcat_required') title = COPY.save.pickSubcat;
+  else if (catP === 'subcat_required' || (errors.subcat && !se)) title = COPY.save.pickSubcat;
   else if (se) title = seTitle;
   else if (consequenceGap) title = COPY.save.otherCat;
   const blocked = !ch.length || nameP || descP || catP || errors.price || badOption || badExtra || uploading || !!se || consequenceGap;
@@ -207,7 +211,7 @@ export function view(draft, s) {
     fields: { name: w.name, desc: w.desc, cat: w.cat, subcat: w.subcat, price: w.price, extraPrices: { ...w.extraPrices } },
     counters: { name: `${chars(w.name)}/${ITEM_NAME_MAX}`, desc: `${chars(w.desc)}/${ITEM_DESC_MAX}` },
     // a refused move shows its line, not what it would have changed (mockup D2)
-    subcats, errors, changed: ch, options, same, consequences: errors.cat ? null : consequences(draft, s),
+    subcats, errors, changed: ch, options, same, consequences: errors.cat || errors.subcat ? null : consequences(draft, s),
     photo: { entry: w.photo, uploading, failed: !!(s.upload && s.upload.state === 'failed') },
     save: { enabled: !blocked, title: blocked ? title : null },
   };
@@ -233,6 +237,10 @@ export function save(draft, s) {
 
 // «Cancelar» / «Cerrar»: the copy goes; the draft keeps whatever it had before the drawer opened.
 export function cancel(s) { if (s) { s.closed = true; s.upload = null; } return s; }
+
+// «Detener subida» (Codex S4P2 r1 P2-3): the copy forgets the stopped upload — «Guardar» is no longer held by it; every other edit
+// stays. The upload's own late answer can no longer land (its binding is no longer the session's).
+export function stopUpload(s) { if (s && !s.closed) s.upload = null; return s; }
 
 // An upload's link to THIS drawer session. Each call replaces the session's current upload ( «Cambiar» again ); only the
 // current one, on an open session, may land — in the copy, never the draft.

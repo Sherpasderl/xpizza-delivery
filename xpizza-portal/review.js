@@ -476,7 +476,9 @@ export function attestationModel(diff, ctx = {}) {
   // from the legacy previews the caller had — the record is evidence and does not change afterwards.
   const m = reviewModel(diff);
   const photoRows = m.photos.map((c) => ({ key: c.key, kind: lineKind(c, ctx.legacy) }));
-  const photosOnly = photoRows.length > 0 && m.rows.length === 0 && m.added.length === 0 && m.removed.length === 0 && m.renamed.length === 0;
+  // S4 (Codex S4P2 r1 P1-2): a product line (name / description / section — moved out of `rows` into `products`) is NOT a photo:
+  // any of them ends «photos only», exactly as a description line did before S4; a rename then puts its name on the seal
+  const photosOnly = photoRows.length > 0 && m.rows.length === 0 && m.products.length === 0 && m.added.length === 0 && m.removed.length === 0 && m.renamed.length === 0;
 
   // PLAN-public-menu-display T1 — the section names this publish changes (a rename publishes alone, so on a fiscal brand
   // these are the seal's only lines): listed with the same was → now as the prices.

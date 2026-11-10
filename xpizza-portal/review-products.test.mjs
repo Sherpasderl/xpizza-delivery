@@ -181,7 +181,7 @@ function fakeDom() {
     };
     return n;
   };
-  globalThis.document = { createElement: mk, createElementNS: (_ns, tag) => mk(tag) };
+  globalThis.document = { createElement: mk, createElementNS: (_ns, tag) => mk(tag), createTextNode: (t) => ({ tag: '#text', children: [], textContent: String(t), _class: '' }) };
   return mk('div');
 }
 function walk(n, out = []) { out.push(n); for (const c of n.children || []) walk(c, out); return out; }
@@ -267,4 +267,26 @@ test('the review prints prices «L 285» (a space after the L, as the mockup and
   assert.deepStrictEqual([textOf(byClass(price, 'was')[0]), textOf(byClass(price, 'now')[0])], ['L 270', 'L 285']);
   const s = sealOf({ changed: [L('Pizza Cacio e Pepe', 'price', 270, 285)], added: [], removed: [], renamed: [], largeChangeSet: [] });
   assert.match(s.rows[0][1], /L 270\s*→\s*L 285/);
+});
+
+// ── Codex S4P2 r1 P1-2 (FISCAL): a rename on a fiscal brand ALWAYS puts the name on the seal, whatever else changed ──
+const PH = (key) => ({ surface: 'item', key, field: 'photo', old: { kind: 'legacy' }, new: { kind: 'pid', pid: 'P1' } });
+const NOMORE = { added: [], removed: [], renamed: [], largeChangeSet: [] };
+test('seal — photo + rename: the name copy and «Nombre en factura» (never the photos-only seal)', () => {
+  const s = sealOf({ ...NOMORE, changed: [PH('Pizza Cacio e Pepe'), nm('Pizza Cacio e Pepe', 'Pizza Cacio e Pepe', 'Cacio e Pepe')] });
+  assert.deepStrictEqual(s.p, ['Como propietario, autorizás esta publicación. Cambia el nombre de un producto: aparece en la factura.']);
+  assert.ok(s.rows.some((r) => r[0] === 'Nombre en factura'));
+  assert.strictEqual(s.ack, 'Autorizo esta edición en la factura fiscal.');
+});
+test('seal — description + rename: the name copy and «Nombre en factura»', () => {
+  const s = sealOf({ ...NOMORE, changed: [L('Pizza Cacio e Pepe', 'desc', 'a', 'b'), nm('Pizza Cacio e Pepe', 'Pizza Cacio e Pepe', 'Cacio e Pepe')] });
+  assert.deepStrictEqual(s.p, ['Como propietario, autorizás esta publicación. Cambia el nombre de un producto: aparece en la factura.']);
+  assert.ok(s.rows.some((r) => r[0] === 'Nombre en factura'));
+});
+test('seal — photos only: today\'s photos seal, unchanged (no name rows)', () => {
+  const root = fakeDom();
+  renderAttestation(root, attestationModel({ ...NOMORE, changed: [PH('Pizza Cacio e Pepe')] }, { usesPlatformFactura: true }), () => {}, {});
+  const seal = byClass(root, 'seal')[0];
+  assert.ok(seal._class.split(' ').includes('phseal'), 'the photos seal');
+  assert.ok(!byClass(seal, 'sn').some((n) => textOf(n) === 'Nombre en factura'));
 });

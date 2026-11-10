@@ -667,7 +667,8 @@ function photoFieldFor(it, sess = null) {
       const j = uploader.jobOf(key);
       if (j && j.phase === 'failed') { if (sess && !sess.closed) { editUpload = IE.uploadBinding(sess); editUpload.started(); } uploader.retry(key); } else pickPhoto(key, null);
     }),
-    onCancel: bound(() => uploader.cancel(key)),
+    // S4: in an edit drawer the stop also frees the copy («Guardar» no longer waits for an upload that will never land)
+    onCancel: bound(() => { if (sess) { IE.stopUpload(sess); editUpload = null; } uploader.cancel(key); }),
     onImgError: onPhotoImgError,
     ...(sess ? { stopLabel: IE.COPY.photoStop } : {}),   // S4 (owner 11-10): «Detener subida» beside the drawer's own «Cancelar»
   });

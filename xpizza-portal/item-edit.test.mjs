@@ -303,7 +303,7 @@ test('drawer D2 — the move that would empty a section is refused in the field:
   assert.equal(v.save.title, 'Elegí otra categoría para guardar');
   const s2 = IE.open(d, 'Pizza Margarita');
   IE.set(s2, 'subcat', 'Especiales');
-  assert.equal(IE.view(d, s2).errors.cat, 'No podés dejar la subcategoría vacía. Agregá otro producto primero.', 'the subsection reads «subcategoría»');
+  assert.equal(IE.view(d, s2).errors.subcat, 'No podés dejar la subcategoría vacía. Agregá otro producto primero.', 'the subsection reads «subcategoría» — under Subcategoría (same section, C-2)');
 });
 
 test('drawer — moving INTO a section with subsections: no preselect, «Guardar» off until one is chosen', () => {
@@ -622,4 +622,20 @@ test('editItem — an unusable extras-group price refuses the WHOLE edit (the co
   assert.equal(JSON.stringify(draftSource(d)), before, 'nothing written');
   assert.equal(editItem(d, 'Pizza Cacio e Pepe', { name: 'Cacio e Pepe', extraPrices: { 'Pan de ajo con queso': '55' } }), true);
   assert.equal(draftSource(d).extras.find((x) => x.key === 'Pan de ajo con queso').price, 55);
+});
+test('Codex S4P2 r1 P2-4 (contract C-2) — emptying a subsection: same section → the line under Subcategoría; another section → under Categoría', () => {
+  const d = createDraft(BASE());
+  const same = IE.open(d, 'Pizza Margarita');   // the only product in Clásicas
+  IE.set(same, 'subcat', 'Especiales');
+  let v = IE.view(d, same);
+  assert.equal(v.errors.subcat, 'No podés dejar la subcategoría vacía. Agregá otro producto primero.');
+  assert.equal(v.errors.cat, null, 'Categoría is not the field at fault');
+  assert.equal(v.save.enabled, false);
+  assert.equal(v.save.title, 'Elegí una subcategoría');
+  const cross = IE.open(d, 'Pizza Margarita');
+  IE.set(cross, 'cat', 'pa');
+  v = IE.view(d, cross);
+  assert.equal(v.errors.cat, 'No podés dejar la subcategoría vacía. Agregá otro producto primero.');
+  assert.equal(v.errors.subcat, null);
+  assert.equal(v.save.title, 'Elegí otra categoría para guardar');
 });

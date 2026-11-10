@@ -1162,3 +1162,23 @@ test('S4 — OFF: today\'s drawer keeps the approved P4 «Cancelar» on an uploa
   assert.equal(drawer(d).querySelector('.uprm').textContent, 'Cancelar');
   release(); await settle(60);
 });
+test('S4 (Codex S4P2 r1 P2-3) — «Detener subida» stops the upload AND frees «Guardar»: the other edits save, no photo lands', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  fake.flags.textEdit = true;
+  const { d, w, mods } = await boot(fake);
+  const release = fake.holdPut();
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => btnText(drawer(d), 'Guardar'), 'the edit drawer while the upload runs');
+  const nm = [...drawer(d).querySelectorAll('.dwb > .fld')].find((f) => f.querySelector('label') && f.querySelector('label').firstChild.textContent.trim() === 'Nombre').querySelector('input');
+  nm.value = 'Pepperoni picante'; nm.dispatchEvent(new w.Event('input', { bubbles: true }));
+  assert.equal(btnText(drawer(d), 'Guardar').disabled, true, 'premise: held by the upload');
+  drawer(d).querySelector('.uprm').click();   // «Detener subida»
+  await settle(30);
+  const g = btnText(drawer(d), 'Guardar');
+  assert.equal(g.disabled, false, '«Guardar» is free again');
+  g.click(); await settle(20);
+  release(); await settle(80);
+  const st = mods.app.state.draft.state;
+  assert.equal(st.items.find((i) => i.key === 'Pepperoni').display.name, 'Pepperoni picante', 'the name saved');
+  assert.deepEqual(JSON.parse(JSON.stringify(st.photos || {})), {}, 'no photo landed');
+});

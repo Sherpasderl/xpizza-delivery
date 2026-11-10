@@ -52,6 +52,10 @@ export const S4_FOLD = {
    "      main.append(el('div', 'pname', String(r.key)));      // textContent: a dish name is data\n"
   ],
   [
+   "  // S4 (Codex S4P2 r1 P1-2): a product line (name / description / section — moved out of `rows` into `products`) is NOT a photo:\n  // any of them ends «photos only», exactly as a description line did before S4; a rename then puts its name on the seal\n  const photosOnly = photoRows.length > 0 && m.rows.length === 0 && m.products.length === 0 && m.added.length === 0 && m.removed.length === 0 && m.renamed.length === 0;\n",
+   "  const photosOnly = photoRows.length > 0 && m.rows.length === 0 && m.added.length === 0 && m.removed.length === 0 && m.renamed.length === 0;\n"
+  ],
+  [
    "  // S4 (frame E; OWNER-approved copy 11-10) — only display.name reaches a factura description (S2 §1.3): the products this publish\n  // RENAMES, one row each; a group's options (derived names) fold under their product (ctx.optionParent, the caller's draft)\n  const parentOf = typeof ctx.optionParent === 'function' ? ctx.optionParent : () => null;\n  const nameRows = ((diff && Array.isArray(diff.changed)) ? diff.changed : [])\n    .filter((c) => c && c.surface === 'item' && c.field === 'name' && !parentOf(c.key)).map((c) => ({ key: c.key, was: c.old, now: c.new }));\n",
    ""
   ],
@@ -138,8 +142,8 @@ export const S4_FOLD = {
    "    onUndo: bound(() => { setPhoto(state.draft, key, PL.undoEntry(key, { orig: origPhotos(state.draft) })); photoChanged(key); }),\n"
   ],
   [
-   "    onRetry: bound(() => {\n      if (renamesPending()) return;\n      const j = uploader.jobOf(key);\n      if (j && j.phase === 'failed') { if (sess && !sess.closed) { editUpload = IE.uploadBinding(sess); editUpload.started(); } uploader.retry(key); } else pickPhoto(key, null);\n    }),\n",
-   "    onRetry: bound(() => { if (renamesPending()) return; const j = uploader.jobOf(key); if (j && j.phase === 'failed') uploader.retry(key); else pickPhoto(key, null); }),\n"
+   "    onRetry: bound(() => {\n      if (renamesPending()) return;\n      const j = uploader.jobOf(key);\n      if (j && j.phase === 'failed') { if (sess && !sess.closed) { editUpload = IE.uploadBinding(sess); editUpload.started(); } uploader.retry(key); } else pickPhoto(key, null);\n    }),\n    // S4: in an edit drawer the stop also frees the copy («Guardar» no longer waits for an upload that will never land)\n    onCancel: bound(() => { if (sess) { IE.stopUpload(sess); editUpload = null; } uploader.cancel(key); }),\n",
+   "    onRetry: bound(() => { if (renamesPending()) return; const j = uploader.jobOf(key); if (j && j.phase === 'failed') uploader.retry(key); else pickPhoto(key, null); }),\n    onCancel: bound(() => uploader.cancel(key)),\n"
   ],
   [
    "    ...(sess ? { stopLabel: IE.COPY.photoStop } : {}),   // S4 (owner 11-10): «Detener subida» beside the drawer's own «Cancelar»\n",
