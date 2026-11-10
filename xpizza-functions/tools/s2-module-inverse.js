@@ -7,7 +7,12 @@ const BASE = '0f27f26a';
 const HUNKS = Object.freeze([
  {
   "file": "index.js",
-  "now": "    if (redemptionOwnsHold) await releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }).catch(() => {});\n  }; const releaseReusedIfSafe = (body.redeem != null && customer_uid) ? () => require('./rewards-reuse-release').releaseReusedHoldIfSafe(db, { uid: customer_uid, rid: restaurantId, orderId, owned: redemptionOwnsHold, now: Date.now() }) : null;   // S2 B2 (owner 2026-11-10): a REUSED hold on a refused fresh attempt is released only when definitively not captured\n\n",
+  "now": "      rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables), readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }));\n    if (groupRefusal) { if (groupRefusal.retryAfter) res.set('Retry-After', String(groupRefusal.retryAfter)); return res.status(groupRefusal.status).json(groupRefusal.body); } { const pk = await require('./catalog/pickup-backstop').pickupRefusal({ restaurantId, versionId: menuOrderVersionOf(pricingTables), keyMode: keyModeOfTables(pricingTables), kind: 'binding', body, gates: gateReader() }); if (pk) { if (pk.status === 503) res.set('Retry-After', '2'); return res.status(pk.status).json(pk.body); } }   // S2-8: pickup-only items on a delivery order, before any write or reserve\n    /* extras:begin cash */\n",
+  "was": "      rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables), readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }));\n    if (groupRefusal) { if (groupRefusal.retryAfter) res.set('Retry-After', String(groupRefusal.retryAfter)); return res.status(groupRefusal.status).json(groupRefusal.body); }\n    /* extras:begin cash */\n"
+ },
+ {
+  "file": "index.js",
+  "now": "    if (redemptionOwnsHold) await releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }).catch(() => {});\n  }; const pickupGate = () => require('./catalog/pickup-backstop').pickupGateRefusal({ restaurantId, versionId: menuOrderVersionOf(pricingTables), keyMode: keyModeOfTables(pricingTables), kind: 'binding', body, gates: gateReader() }, releaseHoldIfOwned); const releaseReusedIfSafe = (body.redeem != null && customer_uid) ? () => require('./rewards-reuse-release').releaseReusedHoldIfSafe(db, { uid: customer_uid, rid: restaurantId, orderId, owned: redemptionOwnsHold, now: Date.now() }) : null;   // S2 B2 (owner 2026-11-10): a REUSED hold on a refused fresh attempt is released only when definitively not captured\n\n",
   "was": "    if (redemptionOwnsHold) await releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }).catch(() => {});\n  };\n\n"
  },
  {
@@ -16,9 +21,29 @@ const HUNKS = Object.freeze([
   "was": "    totalCents: effBreakdown.total_cents,   // the SERVER total: gated against, and charged — one value, named once\n    releaseHold: releaseHoldIfOwned,            // owned-only: a reused / in-progress hold is preserved\n    retireAttempt: (aid, reason) => retireUnissuedAttempt(db, aid, reason, Date.now()),\n"
  },
  {
+  "file": "index.js",
+  "now": "    // checking a different figure from the one that travels to PixelPay.\n    runGate: async (recordedTotalCents) => (await DW.refusalGate(dq, releaseHoldIfOwned, orderId)) || (await pickupGate()) || applyConfirmedNetGate({\n      gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,\n",
+  "was": "    // checking a different figure from the one that travels to PixelPay.\n    runGate: async (recordedTotalCents) => (await DW.refusalGate(dq, releaseHoldIfOwned, orderId)) || applyConfirmedNetGate({\n      gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,\n"
+ },
+ {
+  "file": "index.js",
+  "now": "      // never blocked by a pricing outage. (The ORDER still fail-closes; only the preview degrades.)\n      if (!tables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' }); { const rl = RL.resolveLines(restaurantId, body, tables); if (!rl.ok) return res.status(200).json({ ok: false, error: rl.code }); } { const pk = await require('./catalog/pickup-backstop').pickupRefusal({ restaurantId, versionId: menuOrderVersionOf(tables), keyMode: keyModeOfTables(tables), kind: 'quote', body, gates: gateReader() }); if (pk) return res.status(200).json(pk.body); }   // S1b: fail-soft, as every quote refusal (S2-8: an explicit delivery quote with a pickup-only item, fail-soft too)\n      // 1D add-product B: a bare launcher quotes as choice_required (render capability on only — no read otherwise)\n",
+  "was": "      // never blocked by a pricing outage. (The ORDER still fail-closes; only the preview degrades.)\n      if (!tables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' }); { const rl = RL.resolveLines(restaurantId, body, tables); if (!rl.ok) return res.status(200).json({ ok: false, error: rl.code }); }   // S1b: fail-soft, as every quote refusal\n      // 1D add-product B: a bare launcher quotes as choice_required (render capability on only — no read otherwise)\n"
+ },
+ {
+  "file": "index.js",
+  "now": "      // ok:false the client can degrade from.\n      if (!quoteTables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' }); { const rl = RL.resolveLines(restaurantId, body, quoteTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json({ ok: false, ...rf.body }); } } { const pk = await require('./catalog/pickup-backstop').pickupRefusal({ restaurantId, versionId: menuOrderVersionOf(quoteTables), keyMode: keyModeOfTables(quoteTables), kind: 'quote', body, gates: gateReader() }); if (pk) return res.status(pk.status).json(pk.body); }   // S1b: its own envelope ({ ok:false, … }) (S2-8: an explicit delivery quote with a pickup-only item)\n      // 2a: the quote must preview on the SAME allowlist the order enforces, or a customer is shown a\n",
+  "was": "      // ok:false the client can degrade from.\n      if (!quoteTables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' }); { const rl = RL.resolveLines(restaurantId, body, quoteTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json({ ok: false, ...rf.body }); } }   // S1b: its own envelope ({ ok:false, … })\n      // 2a: the quote must preview on the SAME allowlist the order enforces, or a customer is shown a\n"
+ },
+ {
   "file": "rewards-reserve.js",
   "now": "  reverseRedemptionForRefund, reverseRedemptionForOrder, sweepStaleReservations, settleRedemptionAtConfirm,\n  holdRedemptionForManual, redemptionHoldSecured, sweepConsumeRecovery, consumeEligible, CASH_STALE_MS, definitivelyNotCaptured,\n};\n",
   "was": "  reverseRedemptionForRefund, reverseRedemptionForOrder, sweepStaleReservations, settleRedemptionAtConfirm,\n  holdRedemptionForManual, redemptionHoldSecured, sweepConsumeRecovery, consumeEligible, CASH_STALE_MS,\n};\n"
+ },
+ {
+  "file": "catalog/menu-gates.js",
+  "now": "    },\n    getPickupOnlyKeys: async (rid, versionId) => (await gatesFor(rid, versionId)).pickup, pickupGateFor: async (rid, versionId) => { if (versionId == null) return { state: 'unauthored' }; const g = await gatesFor(rid, versionId); return g.fallback ? { state: 'unavailable' } : (g.pickup instanceof Set ? { state: 'ok', keys: g.pickup } : { state: 'unauthored' }); },   // S2-8: the PRICED version's pickup gate in three states — a read failure is never read as «unauthored»\n    // §3 r1: the version's item_order (null when the snapshot could not be read — a static fallback carries none)\n",
+  "was": "    },\n    getPickupOnlyKeys: async (rid, versionId) => (await gatesFor(rid, versionId)).pickup,\n    // §3 r1: the version's item_order (null when the snapshot could not be read — a static fallback carries none)\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

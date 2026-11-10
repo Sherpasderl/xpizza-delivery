@@ -141,6 +141,7 @@
     "xpizza-functions/catalog/mint-opaque.test.js",
     "xpizza-functions/catalog/mirror-key-encoding.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
+    "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/plan4-display-fields.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
@@ -481,6 +482,7 @@
     "xpizza-functions/catalog/mint-opaque.test.js",
     "xpizza-functions/catalog/mirror-key-encoding.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
+    "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
     "xpizza-functions/catalog/public-photos.test.js",
@@ -841,6 +843,7 @@
     "xpizza-functions/catalog/mint-opaque.test.js",
     "xpizza-functions/catalog/mirror-key-encoding.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
+    "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/plan4-display-fields.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
@@ -1177,6 +1180,7 @@
     "xpizza-functions/catalog/mint-opaque.test.js",
     "xpizza-functions/catalog/mirror-key-encoding.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
+    "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
     "xpizza-functions/catalog/public-menu.test.js",
@@ -2380,6 +2384,7 @@
   "catalog/mint-opaque.js",
   "catalog/mirror-keys.js",
   "catalog/mirror-rtdb.js",
+  "catalog/pickup-backstop.js",
   "catalog/portal-reads.js",
   "catalog/pricing-tables.js",
   "catalog/public-menu.js",
@@ -3015,6 +3020,10 @@
      ]
     }
    ],
+   "lifts": []
+  },
+  "catalog/pickup-backstop.js": {
+   "pins": [],
    "lifts": []
   },
   "catalog/portal-reads.js": {

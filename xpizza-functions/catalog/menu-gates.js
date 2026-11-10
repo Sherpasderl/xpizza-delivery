@@ -230,7 +230,7 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
         return null;                                            // static allowlist = today
       }
     },
-    getPickupOnlyKeys: async (rid, versionId) => (await gatesFor(rid, versionId)).pickup,
+    getPickupOnlyKeys: async (rid, versionId) => (await gatesFor(rid, versionId)).pickup, pickupGateFor: async (rid, versionId) => { if (versionId == null) return { state: 'unauthored' }; const g = await gatesFor(rid, versionId); return g.fallback ? { state: 'unavailable' } : (g.pickup instanceof Set ? { state: 'ok', keys: g.pickup } : { state: 'unauthored' }); },   // S2-8: the PRICED version's pickup gate in three states — a read failure is never read as «unauthored»
     // §3 r1: the version's item_order (null when the snapshot could not be read — a static fallback carries none)
     // §3 r2: the menu-ordered dish names of a snapshot ALREADY cached — for the version that priced an order, or for the
     // version the gate reader currently holds as active (its pointer cache). Neither ever reads; null when not cached.

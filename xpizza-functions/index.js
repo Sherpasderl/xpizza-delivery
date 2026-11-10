@@ -1003,7 +1003,7 @@ createOrderApp.all('*', async (req, res) => {
     // after the dedupe, before any write or reserve.
     const groupRefusal = GI.cashRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId, keyMode: keyModeOfTables(pricingTables),
       rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables), readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }));
-    if (groupRefusal) { if (groupRefusal.retryAfter) res.set('Retry-After', String(groupRefusal.retryAfter)); return res.status(groupRefusal.status).json(groupRefusal.body); }
+    if (groupRefusal) { if (groupRefusal.retryAfter) res.set('Retry-After', String(groupRefusal.retryAfter)); return res.status(groupRefusal.status).json(groupRefusal.body); } { const pk = await require('./catalog/pickup-backstop').pickupRefusal({ restaurantId, versionId: menuOrderVersionOf(pricingTables), keyMode: keyModeOfTables(pricingTables), kind: 'binding', body, gates: gateReader() }); if (pk) { if (pk.status === 503) res.set('Retry-After', '2'); return res.status(pk.status).json(pk.body); } }   // S2-8: pickup-only items on a delivery order, before any write or reserve
     /* extras:begin cash */
     {   // per-product extras: after the dedupe and the group rules, before any write or reserve
       const xr = await extrasCheckFor(restaurantId, pricingTables, body.items);
@@ -2141,7 +2141,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // reuse PRESERVE the hold (a creating/live checkout is backed by it — releasing would strand a payable URL).
   const releaseHoldIfOwned = async () => {
     if (redemptionOwnsHold) await releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }).catch(() => {});
-  }; const releaseReusedIfSafe = (body.redeem != null && customer_uid) ? () => require('./rewards-reuse-release').releaseReusedHoldIfSafe(db, { uid: customer_uid, rid: restaurantId, orderId, owned: redemptionOwnsHold, now: Date.now() }) : null;   // S2 B2 (owner 2026-11-10): a REUSED hold on a refused fresh attempt is released only when definitively not captured
+  }; const pickupGate = () => require('./catalog/pickup-backstop').pickupGateRefusal({ restaurantId, versionId: menuOrderVersionOf(pricingTables), keyMode: keyModeOfTables(pricingTables), kind: 'binding', body, gates: gateReader() }, releaseHoldIfOwned); const releaseReusedIfSafe = (body.redeem != null && customer_uid) ? () => require('./rewards-reuse-release').releaseReusedHoldIfSafe(db, { uid: customer_uid, rid: restaurantId, orderId, owned: redemptionOwnsHold, now: Date.now() }) : null;   // S2 B2 (owner 2026-11-10): a REUSED hold on a refused fresh attempt is released only when definitively not captured
 
   // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
   let acq;
@@ -2228,7 +2228,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     retireAttempt: (aid, reason) => retireUnissuedAttempt(db, aid, reason, Date.now()),
     // 🔴 ONE number. The module passes back the very total it will charge, so the gate cannot be
     // checking a different figure from the one that travels to PixelPay.
-    runGate: async (recordedTotalCents) => (await DW.refusalGate(dq, releaseHoldIfOwned, orderId)) || applyConfirmedNetGate({
+    runGate: async (recordedTotalCents) => (await DW.refusalGate(dq, releaseHoldIfOwned, orderId)) || (await pickupGate()) || applyConfirmedNetGate({
       gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,
         tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: tokenEnforce, nowMs: Date.now() }),
       recordedTotalCents,                        // === totalCents === the amount handed to createHostedCharge
@@ -7425,7 +7425,7 @@ exports.quoteOrder = onRequest(
       const tables = await resolvePricingTables(restaurantId);
       // 2c: a quote is display-only, so it fails SOFT — the client keeps its own total and checkout is
       // never blocked by a pricing outage. (The ORDER still fail-closes; only the preview degrades.)
-      if (!tables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' }); { const rl = RL.resolveLines(restaurantId, body, tables); if (!rl.ok) return res.status(200).json({ ok: false, error: rl.code }); }   // S1b: fail-soft, as every quote refusal
+      if (!tables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' }); { const rl = RL.resolveLines(restaurantId, body, tables); if (!rl.ok) return res.status(200).json({ ok: false, error: rl.code }); } { const pk = await require('./catalog/pickup-backstop').pickupRefusal({ restaurantId, versionId: menuOrderVersionOf(tables), keyMode: keyModeOfTables(tables), kind: 'quote', body, gates: gateReader() }); if (pk) return res.status(200).json(pk.body); }   // S1b: fail-soft, as every quote refusal (S2-8: an explicit delivery quote with a pickup-only item, fail-soft too)
       // 1D add-product B: a bare launcher quotes as choice_required (render capability on only — no read otherwise)
       if (groupCapabilities().render) {
         const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, keyMode: keyModeOfTables(tables) }));
@@ -7495,7 +7495,7 @@ exports.quoteRedemption = onRequest(
       // 2c: fail SOFT, and this one MUST be guarded rather than left to throw — quoteRedemptionCore
       // calls requireTables, which throws on a null and would surface as a 500 instead of a clean
       // ok:false the client can degrade from.
-      if (!quoteTables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' }); { const rl = RL.resolveLines(restaurantId, body, quoteTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json({ ok: false, ...rf.body }); } }   // S1b: its own envelope ({ ok:false, … })
+      if (!quoteTables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' }); { const rl = RL.resolveLines(restaurantId, body, quoteTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json({ ok: false, ...rf.body }); } } { const pk = await require('./catalog/pickup-backstop').pickupRefusal({ restaurantId, versionId: menuOrderVersionOf(quoteTables), keyMode: keyModeOfTables(quoteTables), kind: 'quote', body, gates: gateReader() }); if (pk) return res.status(pk.status).json(pk.body); }   // S1b: its own envelope ({ ok:false, … }) (S2-8: an explicit delivery quote with a pickup-only item)
       // 2a: the quote must preview on the SAME allowlist the order enforces, or a customer is shown a
       // redemption the order then refuses (or vice versa).
       const quoteEligible = await gateReader().redeemEligibleFor(restaurantId);

@@ -9,7 +9,7 @@
 // The gate reader is the REAL createGateReader over a real built catalog (x_pizza's live pickup-only section `ny`).
 // Run: node catalog/pickup-backstop.test.js
 const assert = require('assert');
-const { pickupRefusal } = require('./pickup-backstop');
+const { pickupRefusal, pickupGateRefusal } = require('./pickup-backstop');
 const { createGateReader } = require('./menu-gates');
 const { PRICING_KEY_STAMP } = require('../menu-pricing');
 const { buildSourceCandidate } = require('./candidate-validate');
@@ -95,6 +95,18 @@ const decide = (o) => pickupRefusal({ restaurantId: 'x_pizza', versionId: 'v1', 
     await pickupRefusal({ restaurantId: 'x_pizza', versionId: 'v2', kind: 'binding', body: body(), gates: r });
     assert.deepStrictEqual(reads, ['v1', 'v2'], 'S2P-READS served = active: the intake warm-up\'s read serves the backstop (no new read)');
     ok('the gate is read once per version per instance; served = active adds no read');
+  }
+  // ── the card path's fresh gate: the { refuse } shape; the owned-only release runs once on a refusal, never on a pass ──
+  {
+    const { r } = readerOf({ v1: XB });
+    let released = 0; const rel = async () => { released += 1; };
+    const g = await pickupGateRefusal({ restaurantId: 'x_pizza', versionId: 'v1', kind: 'binding', body: { order_type: 'delivery', items: [stamped({ name: NY, qty: 1 }, NY)] }, gates: r }, rel);
+    assert.deepStrictEqual(g, { refuse: { status: 409, body: { ok: false, error: 'pickup_only_item', item_key: NY } } }, 'S2P-CARD-REFUSE the gate shape');
+    assert.strictEqual(released, 1, 'S2P-CARD-RELEASE the owned-only release runs on a refusal');
+    const p = await pickupGateRefusal({ restaurantId: 'x_pizza', versionId: 'v1', kind: 'binding', body: { order_type: 'pickup', items: [stamped({ name: NY, qty: 1 }, NY)] }, gates: r }, rel);
+    assert.strictEqual(p, null, 'S2P-CARD-PASS a pickup charge passes');
+    assert.strictEqual(released, 1, 'S2P-CARD-PASS and releases nothing');
+    ok('card fresh gate: refusal in the gate shape with the owned-only release; a pass releases nothing');
   }
   FINISHED = true;
   console.log(`\npickup-backstop: OK (${n})`);
