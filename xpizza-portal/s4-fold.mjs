@@ -48,6 +48,38 @@ export const S4_FOLD = {
    "      main.append(el('div', 'pname', String(r.key)));      // textContent: a dish name is data\n"
   ],
   [
+   "  // S4 (frame E; OWNER-approved copy 11-10) — only display.name reaches a factura description (S2 §1.3): the products this publish\n  // RENAMES, one row each; a group's options (derived names) fold under their product (ctx.optionParent, the caller's draft)\n  const parentOf = typeof ctx.optionParent === 'function' ? ctx.optionParent : () => null;\n  const nameRows = ((diff && Array.isArray(diff.changed)) ? diff.changed : [])\n    .filter((c) => c && c.surface === 'item' && c.field === 'name' && !parentOf(c.key)).map((c) => ({ key: c.key, was: c.old, now: c.new }));\n",
+   ""
+  ],
+  [
+   "    nameRows,\n",
+   ""
+  ],
+  [
+   "    const renames = Array.isArray(model.nameRows) ? model.nameRows : [];\n    ht.append(el('span', null, namesOnly || renames.length ? 'Esta publicación requiere tu autorización como propietario' : 'Estos precios se imprimen en tu factura fiscal'));\n",
+   "    ht.append(el('span', null, namesOnly ? 'Esta publicación requiere tu autorización como propietario' : 'Estos precios se imprimen en tu factura fiscal'));\n"
+  ],
+  [
+   "    if (renames.length) {\n      // the owner-approved sentences (11-10): 1 price + 1 name is frame E's, verbatim\n      const N = model.sealRows.length, M = renames.length;\n      const names = M === 1 ? 'el nombre de un producto' : `el nombre de ${M} productos`;\n      body.append(el('p', null, `Como propietario, autorizás esta publicación. ${N === 0 ? `Cambia ${names}: ${M === 1 ? 'aparece' : 'aparecen'} en la factura.`\n        : (N === 1 && M === 1 ? 'Cambia un precio y el nombre de un producto: los dos aparecen en la factura.' : `Cambia ${N === 1 ? 'un precio' : `${N} precios`} y ${names}: aparecen en la factura.`)}`));\n    } else {\n      body.append(el('p', null,\n        'Como propietario, autorizás que estos precios se cobren en el documento tributario. La factura describe cada línea con el precio que publiques.'));\n    }\n    // S4 (frame E): with the products lookup a price row reads the product's CURRENT name (as printed after this publish)\n    const nowName = (k) => (opts.products && typeof opts.products.nameOf === 'function' ? opts.products.nameOf(k) : String(k));\n",
+   "    body.append(el('p', null,\n      'Como propietario, autorizás que estos precios se cobren en el documento tributario. La factura describe cada línea con el precio que publiques.'));\n"
+  ],
+  [
+   "      c.append(el('span', 'sn', nowName(r.key)));          // textContent: a dish name is data\n",
+   "      c.append(el('span', 'sn', String(r.key)));          // textContent: a dish name is data\n"
+  ],
+  [
+   "      c.append(v);\n      body.append(c);\n    }\n    // S4 (frame E): one «Nombre en factura» row per renamed product, after the price rows\n    for (const r of renames) {\n      const c = el('div', 'seachg');\n      c.append(el('span', 'sn', 'Nombre en factura'));\n      const v = el('span', 'sv');\n      v.append(el('span', 'was', String(r.was)));\n      v.append(el('span', 'arr', '→'));\n      v.append(el('span', 'now', String(r.now)));\n",
+   ""
+  ],
+  [
+   "    if (!model.sealRows.length && !added.length && !renames.length) {\n",
+   "    if (!model.sealRows.length && !added.length) {\n"
+  ],
+  [
+   "      t.append(renames.length ? ' esta edición en la factura fiscal.' : a === 0\n",
+   "      t.append(a === 0\n"
+  ],
+  [
    "    if (typeof b.option_key === 'string' && b.option_key) base.optionKey = b.option_key;   // S4: a derived option name's refusal\n",
    ""
   ]
@@ -158,8 +190,16 @@ export const S4_FOLD = {
    ""
   ],
   [
+   "    const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura, legacy: photo.legacy, optionParent: productReviewCtx().optionParent });   // S4: a group's options fold under its «Nombre en factura»\n",
+   "    const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura, legacy: photo.legacy });\n"
+  ],
+  [
    "    renderReview($('mbody'), reviewModel(state.review.diff, productReviewCtx()), { describe: describeAddition, photos: photoReviewOpts(), products: productReviewOpts() });\n",
    "    renderReview($('mbody'), reviewModel(state.review.diff), { describe: describeAddition, photos: photoReviewOpts() });\n"
+  ],
+  [
+   "    }), { describe: describeAddition, photos: photoReviewOpts(), products: productReviewOpts() });   // S4 (frame E): current names on the seal\n",
+   "    }), { describe: describeAddition, photos: photoReviewOpts() });\n"
   ],
   [
    "// S4 (advisor ruling 11-10) — a field-tagged refusal of an EXISTING product's edit, with the text-edit switch on: the drawer's\n// approved line as the title, «Es en «{producto}». Tus otros cambios siguen en el borrador.», and «Corregir», which reopens that\n// product's drawer with the line under the field. Additions, and everything without the switch, keep today's panels exactly.\nfunction productRefusal(outcome) {\n  if (state.textEditEnabled !== true || !outcome || typeof outcome.target !== 'string' || !state.draft) return outcome;\n  const it = ((draftSource(state.draft) || {}).items || []).find((r) => r && r.key === outcome.target);\n  if (!it || isAddition(it) || (it.display && it.display.variantOf != null)) return outcome;\n  const line = IE.refusalLine({ error: outcome.code, key: outcome.target, field: outcome.field, option_key: outcome.optionKey });\n  if (!line) return outcome;\n  const name = loadedName(state.draft, outcome.target) || photoNameOf(outcome.target);\n  return { ...outcome, title: line.message, detail: `Es en «${name}». Tus otros cambios siguen en el borrador.`,\n    action: { id: PUBLISH_ACTIONS.FIX, label: 'Corregir' }, productLine: line };\n}\n// C-1: the sections the order page shows, read again — ONLY renderedCategories is taken; the merchant's draft is never replaced\nasync function rereadSections() {\n  const rid = state.draftRid, gen = opGeneration;\n  let fresh = null;\n  try { fresh = await apiFetch('getEditableCatalog', { rid, token }); } catch (_) { fresh = null; }\n  if (gen !== opGeneration || rid !== state.draftRid || !fresh || !Array.isArray(fresh.renderedCategories)) return;\n  state.renderedCategories = fresh.renderedCategories.filter((c) => typeof c === 'string');\n}\n",

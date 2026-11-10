@@ -2208,7 +2208,7 @@ async function openReviewFlow() {
     // Computed BEFORE the record is minted, because the record is immutable once it exists — the whole
     // evidence set is fixed at the moment it is created, rather than assembled field by field
     // afterwards where anything could join in.
-    const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura, legacy: photo.legacy });
+    const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura, legacy: photo.legacy, optionParent: productReviewCtx().optionParent });   // S4: a group's options fold under its «Nombre en factura»
     const minted = mintReview({
       diff,
       editToken: res && res.token,
@@ -2237,7 +2237,7 @@ async function openReviewFlow() {
     renderAttestation(attBox, state.review.attestation, bound((v) => {
       minted.acknowledge(v);
       syncUi();
-    }), { describe: describeAddition, photos: photoReviewOpts() });
+    }), { describe: describeAddition, photos: photoReviewOpts(), products: productReviewOpts() });   // S4 (frame E): current names on the seal
     syncPublishButton();
     restorePublishFooter();
     // The drawer is z-index 26; the review scrim is 20. An open drawer therefore sits OVER the

@@ -478,8 +478,14 @@ export function attestationModel(diff, ctx = {}) {
   // PLAN-public-menu-display T1 — the section names this publish changes (a rename publishes alone, so on a fiscal brand
   // these are the seal's only lines): listed with the same was → now as the prices.
   const sectionRows = reviewModel(diff).sections;
+  // S4 (frame E; OWNER-approved copy 11-10) — only display.name reaches a factura description (S2 §1.3): the products this publish
+  // RENAMES, one row each; a group's options (derived names) fold under their product (ctx.optionParent, the caller's draft)
+  const parentOf = typeof ctx.optionParent === 'function' ? ctx.optionParent : () => null;
+  const nameRows = ((diff && Array.isArray(diff.changed)) ? diff.changed : [])
+    .filter((c) => c && c.surface === 'item' && c.field === 'name' && !parentOf(c.key)).map((c) => ({ key: c.key, was: c.old, now: c.new }));
   return {
     isFiscal,
+    nameRows,
     hasNothing,
     sectionRows,
     needsSeal: isFiscal && !hasNothing,
@@ -554,7 +560,8 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
     // PLAN-public-menu-display T1 (owner-approved mockup R5b): a publish that changes only SECTION NAMES prints no price, so
     // the seal says what is true — the publish needs the owner's authorization — and never that the name is on the factura.
     const namesOnly = (model.sectionRows || []).length > 0 && !model.sealRows.length && !(model.addedRows || []).length;
-    ht.append(el('span', null, namesOnly ? 'Esta publicación requiere tu autorización como propietario' : 'Estos precios se imprimen en tu factura fiscal'));
+    const renames = Array.isArray(model.nameRows) ? model.nameRows : [];
+    ht.append(el('span', null, namesOnly || renames.length ? 'Esta publicación requiere tu autorización como propietario' : 'Estos precios se imprimen en tu factura fiscal'));
     h.append(ht);
     seal.append(h);
 
@@ -582,15 +589,36 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
       root.append(seal);
       return root;
     }
-    body.append(el('p', null,
-      'Como propietario, autorizás que estos precios se cobren en el documento tributario. La factura describe cada línea con el precio que publiques.'));
+    if (renames.length) {
+      // the owner-approved sentences (11-10): 1 price + 1 name is frame E's, verbatim
+      const N = model.sealRows.length, M = renames.length;
+      const names = M === 1 ? 'el nombre de un producto' : `el nombre de ${M} productos`;
+      body.append(el('p', null, `Como propietario, autorizás esta publicación. ${N === 0 ? `Cambia ${names}: ${M === 1 ? 'aparece' : 'aparecen'} en la factura.`
+        : (N === 1 && M === 1 ? 'Cambia un precio y el nombre de un producto: los dos aparecen en la factura.' : `Cambia ${N === 1 ? 'un precio' : `${N} precios`} y ${names}: aparecen en la factura.`)}`));
+    } else {
+      body.append(el('p', null,
+        'Como propietario, autorizás que estos precios se cobren en el documento tributario. La factura describe cada línea con el precio que publiques.'));
+    }
+    // S4 (frame E): with the products lookup a price row reads the product's CURRENT name (as printed after this publish)
+    const nowName = (k) => (opts.products && typeof opts.products.nameOf === 'function' ? opts.products.nameOf(k) : String(k));
     for (const r of model.sealRows) {
       const c = el('div', 'seachg');
-      c.append(el('span', 'sn', String(r.key)));          // textContent: a dish name is data
+      c.append(el('span', 'sn', nowName(r.key)));          // textContent: a dish name is data
       const v = el('span', 'sv');
       v.append(el('span', 'was', shown(r.was)));
       v.append(el('span', 'arr', '→'));
       v.append(el('span', 'now', shown(r.now)));
+      c.append(v);
+      body.append(c);
+    }
+    // S4 (frame E): one «Nombre en factura» row per renamed product, after the price rows
+    for (const r of renames) {
+      const c = el('div', 'seachg');
+      c.append(el('span', 'sn', 'Nombre en factura'));
+      const v = el('span', 'sv');
+      v.append(el('span', 'was', String(r.was)));
+      v.append(el('span', 'arr', '→'));
+      v.append(el('span', 'now', String(r.now)));
       c.append(v);
       body.append(c);
     }
@@ -625,7 +653,7 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
         }
       }
     }
-    if (!model.sealRows.length && !added.length) {
+    if (!model.sealRows.length && !added.length && !renames.length) {
       // Honest, and clearable: the merchant is fiscal, so the server will demand the attestation even
       // though this particular edit moves no price.
       body.append(el('p', 'seachg', 'Esta edición no cambia ningún precio, pero afecta el documento fiscal.'));
@@ -642,7 +670,7 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
       const a = products.length;
       const prices = n === 1 ? 'este cambio de precio' : `estos ${n} cambios de precio`;
       const adds = (a === 1 ? '1 producto nuevo' : `${a} productos nuevos`) + (optionCount ? ` y sus ${optionCount} opciones` : '');
-      t.append(a === 0
+      t.append(renames.length ? ' esta edición en la factura fiscal.' : a === 0
         ? (n === 1 ? ' este cambio de precio en la factura fiscal.' : (n === 0 ? ' esta edición en la factura fiscal.' : ` estos ${n} cambios de precio en la factura fiscal.`))
         : (n === 0 ? ` ${adds} con sus precios en la factura fiscal.` : ` ${prices} y ${adds} en la factura fiscal.`));
       return t;

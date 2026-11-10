@@ -5,7 +5,7 @@
 // their product as «Opciones (n)». Every server line is accounted for exactly once. Run: node --test xpizza-portal/review-products.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { reviewModel, renderReview } from './review.js';
+import { reviewModel, renderReview, attestationModel, renderAttestation } from './review.js';
 
 const L = (key, field, old, nw) => ({ key, surface: 'item', field, old, new: nw });
 // frame E: Cacio e Pepe renamed, described, moved Pizzas · Especiales → Pastas, price 270 → 285
@@ -202,4 +202,54 @@ test('«Precios» (frame E) — the price row reads the current name and the sec
   const p0 = byClass(byClass(today, 'mgroup')[1], 'prow')[0];
   assert.strictEqual(textOf(byClass(p0, 'pname')[0]), 'Pizza Cacio e Pepe');
   assert.strictEqual(byClass(p0, 'psub').length, 0, 'no sub line without the lookup');
+});
+
+// ── the fiscal seal's product-NAME part (frame E; OWNER-approved copy 11-10). Only display.name reaches the factura (S2 §1.3):
+// a rename on a fiscal brand says so; a description / section change adds nothing. The publish gate is unchanged. ──
+const sealOf = (diff, opts = {}) => {
+  const root = fakeDom();
+  renderAttestation(root, attestationModel(diff, { usesPlatformFactura: true, ...(opts.ctx || {}) }), () => {}, opts.render || {});
+  const seal = byClass(root, 'seal')[0];
+  return { head: textOf(byClass(seal, 'sealh')[0]), p: byClass(seal, 'sealbody')[0].children.filter((c) => c.tag === 'p').map(textOf),
+    rows: byClass(seal, 'seachg').map((c) => [textOf(byClass(c, 'sn')[0]), textOf(byClass(c, 'sv')[0])]), ack: textOf(byClass(seal, 'at')[0]).replace(/\s+/g, ' ') };
+};
+const nm = (key, was, now) => L(key, 'name', was, now);
+const NOW = { products: { nameOf: (k) => ({ 'Pizza Cacio e Pepe': 'Cacio e Pepe', 'Lasaña': 'Lasaña de la casa' }[k] || k) } };
+test('seal (frame E) — 1 price + 1 name: the drawn copy exactly, the price under the current name, then «Nombre en factura»', () => {
+  const s = sealOf({ changed: [L('Pizza Cacio e Pepe', 'price', 270, 285), nm('Pizza Cacio e Pepe', 'Pizza Cacio e Pepe', 'Cacio e Pepe')], added: [], removed: [], renamed: [], largeChangeSet: [] }, { render: NOW });
+  assert.match(s.head, /Esta publicación requiere tu autorización como propietario/);
+  assert.deepStrictEqual(s.p, ['Como propietario, autorizás esta publicación. Cambia un precio y el nombre de un producto: los dos aparecen en la factura.']);
+  assert.deepStrictEqual(s.rows.map((r) => r[0]), ['Cacio e Pepe', 'Nombre en factura']);
+  assert.match(s.rows[1][1], /Pizza Cacio e Pepe\s*→\s*Cacio e Pepe/);
+  assert.strictEqual(s.ack, 'Autorizo esta edición en la factura fiscal.');
+});
+test('seal — names only: singular and plural', () => {
+  const one = sealOf({ changed: [nm('Pizza Cacio e Pepe', 'Pizza Cacio e Pepe', 'Cacio e Pepe')], added: [], removed: [], renamed: [], largeChangeSet: [] });
+  assert.deepStrictEqual(one.p, ['Como propietario, autorizás esta publicación. Cambia el nombre de un producto: aparece en la factura.']);
+  assert.deepStrictEqual(one.rows.map((r) => r[0]), ['Nombre en factura']);
+  const two = sealOf({ changed: [nm('Pizza Cacio e Pepe', 'Pizza Cacio e Pepe', 'Cacio e Pepe'), nm('Lasaña', 'Lasaña', 'Lasaña de la casa')], added: [], removed: [], renamed: [], largeChangeSet: [] });
+  assert.deepStrictEqual(two.p, ['Como propietario, autorizás esta publicación. Cambia el nombre de 2 productos: aparecen en la factura.']);
+  assert.deepStrictEqual(two.rows.map((r) => r[0]), ['Nombre en factura', 'Nombre en factura']);
+  assert.strictEqual(two.ack, 'Autorizo esta edición en la factura fiscal.');
+});
+test('seal — N prices + M names (not 1+1): «Cambia N precios y el nombre de M productos: aparecen en la factura.», singular forms where 1', () => {
+  const base = { added: [], removed: [], renamed: [], largeChangeSet: [] };
+  const a = sealOf({ ...base, changed: [L('A', 'price', 100, 110), L('B', 'price', 100, 110), nm('A', 'A', 'A2')] });
+  assert.deepStrictEqual(a.p, ['Como propietario, autorizás esta publicación. Cambia 2 precios y el nombre de un producto: aparecen en la factura.']);
+  const b = sealOf({ ...base, changed: [L('A', 'price', 100, 110), nm('A', 'A', 'A2'), nm('B', 'B', 'B2')] });
+  assert.deepStrictEqual(b.p, ['Como propietario, autorizás esta publicación. Cambia un precio y el nombre de 2 productos: aparecen en la factura.']);
+  assert.deepStrictEqual(b.rows.map((r) => r[0]), ['A', 'Nombre en factura', 'Nombre en factura'], 'the name rows after the price rows');
+});
+test('seal — a description / section change adds NOTHING (it never reaches the factura): today\'s price seal exactly', () => {
+  const diff = { changed: [L('Pizza Cacio e Pepe', 'price', 270, 285), L('Pizza Cacio e Pepe', 'desc', 'a', 'b'), L('Pizza Cacio e Pepe', 'cat', 'pz', 'pa')], added: [], removed: [], renamed: [], largeChangeSet: [] };
+  const s = sealOf(diff);
+  assert.match(s.head, /Estos precios se imprimen en tu factura fiscal/);
+  assert.ok(!s.rows.some((r) => r[0] === 'Nombre en factura'));
+  assert.strictEqual(s.ack, 'Autorizo este cambio de precio en la factura fiscal.');
+});
+test('seal — a group rename: ONE «Nombre en factura» row for the product (its options\' derived names are folded under it)', () => {
+  const s = sealOf(GROUP(), { ctx: { optionParent: parentOf } });
+  assert.deepStrictEqual(s.rows.map((r) => r[0]), ['Nombre en factura']);
+  assert.match(s.rows[0][1], /Pizza Cuatro Quesos\s*→\s*Pizza Cuatro Quesos Especial/);
+  assert.deepStrictEqual(s.p, ['Como propietario, autorizás esta publicación. Cambia el nombre de un producto: aparece en la factura.']);
 });

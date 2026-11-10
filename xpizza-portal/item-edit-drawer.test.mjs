@@ -441,3 +441,20 @@ test('stale CAS (S4 addendum) — a drawer edit then a stale save: today\'s «Tu
   assert.equal(panel(p).action.textContent, 'Recargar y reaplicar');
   assert.equal(p.src().items.find((i) => i.key === 'dimsum_01').display.name, 'Wonton picante', 'nothing is lost before the merchant decides');
 });
+test('fiscal brand (frame E) — the review seal after a rename + a price: the drawn sentence, the price under the new name, «Nombre en factura»', async () => {
+  const p = await page({ read: () => editable({ usesPlatformFactura: true }), on: {
+    editCatalog: () => okJson({ token: 'ET', updateTime: 'T2', baseActiveVersionId: 'v-live', sourceHash: 'h',
+      diff: { added: [], removed: [], renamed: [], largeChangeSet: [], changed: [{ key: 'dimsum_01', surface: 'item', field: 'price', old: 249, new: 259 },
+        { key: 'dimsum_01', surface: 'item', field: 'name', old: 'Sichuan Spicy Wonton', new: 'Wonton picante' }] } }) } });
+  await p.signIn();
+  await p.open('dimsum_01');
+  p.type(p.fld('Nombre').querySelector('input'), 'Wonton picante');
+  p.type(p.fld('Precio').querySelector('input'), '259');
+  p.btn('Guardar').click(); await settle(10);
+  p.d.getElementById('review').click(); await settle(60);
+  const seal = p.d.querySelector('#mbody .seal, .seal');
+  assert.ok(seal, 'the seal');
+  assert.equal(seal.querySelector('.sealbody p').textContent, 'Como propietario, autorizás esta publicación. Cambia un precio y el nombre de un producto: los dos aparecen en la factura.');
+  assert.deepEqual([...seal.querySelectorAll('.seachg .sn')].map((n) => n.textContent), ['Wonton picante', 'Nombre en factura']);
+  assert.equal(seal.querySelector('.at').textContent.replace(/\s+/g, ' ').trim(), 'Autorizo esta edición en la factura fiscal.');
+});
