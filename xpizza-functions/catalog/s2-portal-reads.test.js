@@ -9,6 +9,7 @@ const SWITCH = { enabled: false };
 require.cache[require.resolve('./item-text-edit')] = { id: require.resolve('./item-text-edit'), filename: require.resolve('./item-text-edit'), loaded: true,
   exports: { textEditCapabilities: () => { if (SWITCH.throws) throw new Error('switch unreadable'); return { enabled: SWITCH.enabled }; } } };
 const { getEditableCatalogCore } = require('./portal-reads');
+const { NO_STAMP } = require('../test/_no-stamp');   // asm5 (codex P2): F-1's fail-closed stamp read — fsdb: {} no longer means "no stamp"
 const { sourceToBuildInputs } = require('./source-store');
 const { buildCatalogV2 } = require('./form-menu-source');
 const { rederiveOptionNames } = require('./add-product');
@@ -26,7 +27,7 @@ const builtOf = (rid, src) => { const i = sourceToBuildInputs(src); const b = bu
 const read = async (rid, draft, { reserved = undefined, reservedThrows = false } = {}) => {
   const calls = { reserved: 0 };
   const r = await getEditableCatalogCore({
-    db: {}, fsdb: {}, authorize: asOwner, readActiveVersionId: async () => 'v-live',
+    db: {}, fsdb: NO_STAMP, authorize: asOwner, readActiveVersionId: async () => 'v-live',
     _sourceRefOf: () => ({ get: async () => ({ exists: true, data: () => clone(draft), updateTime: TS }) }),
     readActiveBuilt: async () => builtOf(rid, buildSourceFromCode(rid)),
     readReservedKeys: async () => { calls.reserved += 1; if (reservedThrows) throw new Error('UNAVAILABLE'); return reservedKeySet(reserved); },

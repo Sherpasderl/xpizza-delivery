@@ -20,6 +20,7 @@ swap('catalog/item-text-edit', () => ({ textEditCapabilities: () => ({ enabled: 
 const { editCatalogCore } = require(R('catalog/edit-catalog-handler'));
 const { publishEditedCore } = require(R('catalog/publish-edited-handler'));
 const { getEditableCatalogCore } = require(R('catalog/portal-reads'));
+const { NO_STAMP } = require('../test/_no-stamp');   // asm5 (codex P2): F-1's fail-closed stamp read — fsdb: {} no longer means "no stamp"
 const { buildSourceFromCode } = require(R('tools/seed-source-store'));
 const T0 = '2026-11-08T10:00:00.000000Z';
 const T1 = '2026-11-08T11:00:00.000000Z';
@@ -98,7 +99,7 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
   EXTRAS.authoring = true;   // the per-product extras switch ON: an extras-policy toggle saves and publishes (eligibility changes)
   await run('extras-policy', 'x_pizza', XP, (d) => { itemOf(d, 'Carnivora').display.extras_policy = 'none'; }, { pub: true });
   EXTRAS.authoring = false;
-  const ed = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: allow, readActiveVersionId: async () => 'v-live',
+  const ed = await getEditableCatalogCore({ db: {}, fsdb: NO_STAMP, authorize: allow, readActiveVersionId: async () => 'v-live',
     _sourceRefOf: () => ({ get: async () => ({ exists: true, data: () => clone(XP), updateTime: { seconds: 1788754374, nanoseconds: 634000000 } }) }),
     readActiveBuilt: stub('x_pizza', XP).readActiveBuilt }, { method: 'GET', query: { restaurantId: 'x_pizza' }, get: () => 'Bearer tok' });
   out['editor-read'] = { status: ed.status, body: ed.body };
