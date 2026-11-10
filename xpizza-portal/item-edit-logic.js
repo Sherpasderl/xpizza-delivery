@@ -110,13 +110,14 @@ function changed(s) {
 }
 
 // The extras groups a move changes — by THE ONE eligibility rule the server's review line uses (catalog/extras-eligibility.js,
-// shipped byte-identical as xpizza-portal/extras-eligibility.js, a classic script: S2 §1.6, advisor G2). A group «accepts X»
+// shipped byte-identical as xpizza-portal/extras-eligibility.js by tools/sync-client.js, a classic script that defines the
+// ExtrasEligibility global: S2 §1.6, advisor G2). A group «accepts X»
 // when the evaluator lets at least one of its members carry an extra of category X; the product's line is the UNION over the
 // launcher and every option, each with its own overrides (S2 §1.3). → { lost, gained } (sorted), or null when the evaluator
 // is not loaded (the move is then held — a consequence is never guessed).
 function extrasChange(draft, s) {
-  const E = globalThis;
-  if (typeof E.projectEligibility !== 'function' || typeof E.eligibleSet !== 'function') return null;
+  const E = globalThis.ExtrasEligibility;
+  if (!E || typeof E.projectEligibility !== 'function' || typeof E.eligibleSet !== 'function') return null;
   const src = draftSource(draft);
   const after = JSON.parse(JSON.stringify(src));
   const g = choiceGroup(draft, s.key);

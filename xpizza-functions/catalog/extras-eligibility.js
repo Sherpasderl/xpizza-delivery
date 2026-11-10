@@ -138,4 +138,10 @@ function publicDeny(proj) {
 // eligibleExtras returns the ORDERED array — the order is what a picker renders — and this is the Set over it).
 function eligibleSet(proj, itemKey) { return new Set(eligibleExtras(proj, itemKey)); }
 
-module.exports = { projectEligibility, eligibleExtras, eligibleSet, publicDeny, ALL };
+// S2-10 (S2-DESIGN §1.6, G2): UMD-lite, the avail-key.js pattern — CommonJS here, a global in the portal's classic script, so
+// the drawer and the server judge extras with the SAME bytes.
+(function (root) {
+  const api = { projectEligibility, eligibleExtras, eligibleSet, publicDeny, ALL };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.ExtrasEligibility = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);

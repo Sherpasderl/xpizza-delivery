@@ -2334,6 +2334,7 @@
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
   "catalog/exposure-source.js",
+  "catalog/extras-eligibility.js",
   "catalog/extras-intake.js",
   "catalog/form-menu-source.js",
   "catalog/form-rebake.js",
@@ -2835,6 +2836,10 @@
    "lifts": []
   },
   "catalog/exposure-source.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/extras-eligibility.js": {
    "pins": [],
    "lifts": []
   },

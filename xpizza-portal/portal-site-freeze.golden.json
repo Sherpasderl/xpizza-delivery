@@ -32,6 +32,7 @@
   "editor.js",
   "editor.test.mjs",
   "equipos.js",
+  "extras-eligibility.js",
   "firebase.js",
   "fonts/OFL.txt",
   "fonts/archivo-latin-ext.a999e009fd.woff2",
@@ -124,8 +125,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "e762da0201b12fc9c52c31e89c7dfd98f79e32647ba026a74c697933e0726033",
-   "bytes": 12430
+   "sha256": "877712302c677225d6ed50eb4359f20cef740c4538a53a08515e1752acc0f486",
+   "bytes": 12607
   },
   "netlify.toml": {
    "sha256": "6398e8dec6883e51292f9754d59d4eb97a378ac957b9deaffd5a1970fc79b520",

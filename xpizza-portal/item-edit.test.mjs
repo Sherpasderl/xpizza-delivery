@@ -21,8 +21,11 @@ const AP = createRequire(import.meta.url)('../xpizza-functions/catalog/add-produ
 const { validateSource } = createRequire(import.meta.url)('../xpizza-functions/catalog/source-store.js');
 // THE ONE eligibility rule (S2 §1.6): the page loads it as a classic script (globals, the avail-key pattern); the tests install
 // the SERVER's own module the same way — the real writer, never a laxer fake.
-const EE = createRequire(import.meta.url)('../xpizza-functions/catalog/extras-eligibility.js');
-Object.assign(globalThis, { projectEligibility: EE.projectEligibility, eligibleSet: EE.eligibleSet });
+// the PORTAL'S OWN copy (tools/sync-client.js), run as the page runs it: a classic script that defines ExtrasEligibility
+import { runInThisContext } from 'node:vm';
+import { readFileSync as readEE } from 'node:fs';
+runInThisContext(readEE(new URL('./extras-eligibility.js', import.meta.url), 'utf8'));
+const EE = globalThis.ExtrasEligibility;
 
 // Pizzas has subsections (Clásicas / Especiales); Pastas, Ensaladas none; Bebidas holds one product (the D2 refusal).
 const BASE = () => ({
@@ -524,8 +527,8 @@ test('D — a product that denied every extra of a group accepted none: moving i
 });
 
 test('D — without the shared evaluator a move is HELD (never a guessed consequence); nothing else is', () => {
-  const saved = { p: globalThis.projectEligibility, e: globalThis.eligibleSet };
-  delete globalThis.projectEligibility; delete globalThis.eligibleSet;
+  const saved = globalThis.ExtrasEligibility;
+  delete globalThis.ExtrasEligibility;
   try {
     const d = createDraft(BASE());
     const s = IE.open(d, 'Pizza Cacio e Pepe');
@@ -536,7 +539,7 @@ test('D — without the shared evaluator a move is HELD (never a guessed consequ
     assert.equal(v.save.enabled, false);
     assert.equal(v.save.title, 'Elegí otra categoría para guardar');
     assert.ok(!v.consequences.lines.some((l) => /extra/.test(l)));
-  } finally { Object.assign(globalThis, { projectEligibility: saved.p, eligibleSet: saved.e }); }
+  } finally { globalThis.ExtrasEligibility = saved; }
 });
 
 test('Q2 — the extras-group prices ride the working copy: «Cancelar» discards them, «Guardar» writes them with the rest, once', () => {

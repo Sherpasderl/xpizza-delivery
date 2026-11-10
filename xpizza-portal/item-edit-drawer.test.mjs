@@ -16,7 +16,10 @@ const req = createRequire(join(DIR, '..', 'xpizza-functions', 'package.json'));
 const { JSDOM } = req('jsdom');
 const { buildSourceFromCode } = req('./tools/seed-source-store');
 const { rendererContract } = req('./catalog/source-store');
-const EE = req('./catalog/extras-eligibility.js');
+// the page's classic script: the PORTAL'S OWN copy (tools/sync-client.js), run as the browser runs it — it defines ExtrasEligibility
+import { runInThisContext } from 'node:vm';
+runInThisContext(readFileSync(join(DIR, 'extras-eligibility.js'), 'utf8'));   // once per process, as once per page load
+const EE = globalThis.ExtrasEligibility;
 const HTML = readFileSync(join(DIR, 'index.html'), 'utf8');
 const RID = 'la_musa';
 const SRC = buildSourceFromCode(RID);
@@ -58,8 +61,7 @@ async function page({ read = () => editable(), evaluator = true, on = {} } = {})
   for (const k of ['window', 'document', 'CustomEvent', 'Event', 'HTMLElement', 'Node', 'MutationObserver', 'sessionStorage', 'localStorage']) {
     Object.defineProperty(globalThis, k, { value: k === 'window' ? w : w[k], configurable: true, writable: true });
   }
-  if (evaluator) Object.assign(globalThis, { projectEligibility: EE.projectEligibility, eligibleSet: EE.eligibleSet });
-  else { delete globalThis.projectEligibility; delete globalThis.eligibleSet; }
+  if (evaluator) globalThis.ExtrasEligibility = EE; else delete globalThis.ExtrasEligibility;
   globalThis.__branchesDirect = true;
   globalThis.CSS = { escape: (x) => String(x).replace(/["\\]/g, '\\$&') };   // jsdom has no CSS.escape (Codex S4P2 r1: uncaught «CSS is not defined»)
   const st = { read };
@@ -476,4 +478,11 @@ test('P1-1 — the eligibility rule loaded: a cross-category move saves end to e
   p.btn('Guardar').click(); await settle(15);
   assert.equal(p.src().items.find((i) => i.key === 'dimsum_01').display.cat, 'starters', 'the draft carries the move');
   assert.ok(!p.drawer().classList.contains('show'));
+});
+test('S2 §1.6 — the page loads THE ONE rule as a classic script BEFORE the modules (boot.js) that read it; the copy is the server\'s, byte for byte', () => {
+  const i = HTML.indexOf('<script src="extras-eligibility.js"></script>'), b = HTML.indexOf('src="./boot.js"');
+  assert.ok(i > -1, 'the classic <script>');
+  assert.ok(b > -1 && i < b, 'before boot.js');
+  assert.ok(Buffer.compare(readFileSync(join(DIR, 'extras-eligibility.js')), readFileSync(join(DIR, '..', 'xpizza-functions', 'catalog', 'extras-eligibility.js'))) === 0, 'byte-identical to the server module (tools/sync-client.js)');
+  assert.equal(typeof EE.projectEligibility, 'function', 'the shipped file defines the ExtrasEligibility global the drawer reads');
 });
