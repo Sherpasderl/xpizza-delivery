@@ -103,9 +103,9 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
     } catch (e) {
       // FALLBACK TO TODAY — the static set. Not cached, so the next order retries the catalog.
       console.warn('menu_gates_read_failed', JSON.stringify({ restaurantId, versionId: versionId || null, error: String((e && e.message) || e).slice(0, 160) }));
-      return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true, known: staticKnownFallback(restaurantId), knownExtras: staticKnownExtrasFallback(restaurantId), groups: staticGroupsFallback(restaurantId) };
+      return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true, readFailed: true, known: staticKnownFallback(restaurantId), knownExtras: staticKnownExtrasFallback(restaurantId), groups: staticGroupsFallback(restaurantId) };
     }
-    if (!built || !built.structure) return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true, known: staticKnownFallback(restaurantId), knownExtras: staticKnownExtrasFallback(restaurantId), groups: staticGroupsFallback(restaurantId) };
+    if (!built || !built.structure) return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true, readFailed: true, known: staticKnownFallback(restaurantId), knownExtras: staticKnownExtrasFallback(restaurantId), groups: staticGroupsFallback(restaurantId) };
     // 1D add-product B (rev 6, §0b.4): the group index comes from the SAME snapshot as `known`. A variant map that cannot
     // be read is NEVER "no launchers": it is reported as groups:null (UNCLASSIFIABLE), and the group rules — which run
     // only once the platform RENDER capability is on — refuse retryably on it. Every other gate is untouched, so a
@@ -230,7 +230,7 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
         return null;                                            // static allowlist = today
       }
     },
-    getPickupOnlyKeys: async (rid, versionId) => (await gatesFor(rid, versionId)).pickup, pickupGateFor: async (rid, versionId) => { if (versionId == null) return { state: 'unauthored' }; const g = await gatesFor(rid, versionId); return g.fallback ? { state: 'unavailable' } : (g.pickup instanceof Set ? { state: 'ok', keys: g.pickup } : { state: 'unauthored' }); },   // S2-8: the PRICED version's pickup gate in three states — a read failure is never read as «unauthored»
+    getPickupOnlyKeys: async (rid, versionId) => (await gatesFor(rid, versionId)).pickup, pickupGateFor: async (rid, versionId) => { if (versionId == null) return { state: 'unauthored' }; const g = await gatesFor(rid, versionId); return g.readFailed === true ? { state: 'unavailable' } : (g.pickup instanceof Set ? { state: 'ok', keys: g.pickup } : { state: 'unauthored' }); },   // S2-8: the PRICED version's pickup gate in three states — a read failure (readFailed, never the weekend fallback flag) is never read as «unauthored»
     // §3 r1: the version's item_order (null when the snapshot could not be read — a static fallback carries none)
     // §3 r2: the menu-ordered dish names of a snapshot ALREADY cached — for the version that priced an order, or for the
     // version the gate reader currently holds as active (its pointer cache). Neither ever reads; null when not cached.

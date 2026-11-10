@@ -30,6 +30,7 @@
     "test:resolve-lines": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/resolve-lines.emulator.test.js\"",
     "test:labels-routes": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/labels-routes.emulator.test.js\"",
     "test:item-key-wins": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/item-key-wins.emulator.test.js\"",
+    "test:pickup-backstop": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/pickup-backstop.emulator.test.js\"",
     "test:reserved-keys-flip": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/reserved-keys-flip.emulator.test.js\"",
     "test:reserved-keys-audit": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/reserved-keys-audit.emulator.test.js\"",
     "test:reserved-keys-rename-flip": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/reserved-keys-rename-flip.emulator.test.js\"",
