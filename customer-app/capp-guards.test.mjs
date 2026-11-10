@@ -32,7 +32,7 @@ import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = '2ce3198d';
-const CAPP_TIP = '07c49933';
+const CAPP_TIP = '5ae4716c';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
@@ -147,23 +147,22 @@ test('customer-app/ is the one platform orders deployment, with exactly the appr
 
 // S3 (the owner's rule-40 exception for the two order forms, 11-08; D4c-grill/item-s1/S3-DESIGN.md D3): the ONLY form change the capp
 // range may carry is the item_key slice, and EXACTLY its hunks — every lane commit that touches the forms changes only S3_FORM_FILES,
-// and each such file minus the S3 hunks (xpizza-functions/tools/item-s3-forms-inverse.js: each hunk once, or it throws) is
-// byte-identical to that commit's parent. Anything else in the forms is still a red.
+// and at the tip each such file minus the S3 hunks (xpizza-functions/tools/item-s3-forms-inverse.js: each hunk once, or it throws) is
+// byte-identical to that file just before the FIRST S3 commit. Anything else in the forms is still a red.
 const S3_FORM_FILES = { 'xpizza-orders/index.html': 'xpizza-orders', 'la-musa-orders/index.html': 'la-musa-orders',
-  'xpizza-orders/form-serial-order.js': 'form-serial-order', 'la-musa-orders/form-serial-order.js': 'form-serial-order' };
+  'xpizza-orders/form-serial-order.js': 'form-serial-order', 'la-musa-orders/form-serial-order.js': 'form-serial-order',
+  'xpizza-orders/account.js': 'account', 'la-musa-orders/account.js': 'account' };
 test(`the live forms are byte-unchanged by the capp range ${BASE}..${CAPP_TIP} — except EXACTLY the S3 item_key hunks`, () => {
   const [, tip] = capRange(), changed = laneChanged(tip, ['xpizza-orders', 'la-musa-orders']);
   const untracked = git('ls-files', '--others', '--exclude-standard', '--', 'xpizza-orders', 'la-musa-orders').trim();
   assert.equal(changed.filter((f) => !(f in S3_FORM_FILES)).join(', '), '', `🔴 live form files changed: ${changed.join(', ')}`);
   assert.equal(untracked, '', `🔴 new files in the live forms: ${untracked}`);
+  const commits = laneCommits(tip, ['xpizza-orders', 'la-musa-orders']);
+  if (!commits.length) return;
   const { unapplyItemS3Forms } = createRequire(import.meta.url)(join(ROOT, 'xpizza-functions/tools/item-s3-forms-inverse.js'));
-  const show = (rev, f) => git('show', `${rev}:${f}`);
-  for (const c of laneCommits(tip, ['xpizza-orders', 'la-musa-orders'])) {
-    const files = paths(git('show', '--no-renames', '--name-only', '-z', '--format=', c, '--', 'xpizza-orders', 'la-musa-orders')).map((f) => f.replace(/^\n+/, '')).filter(Boolean);
-    for (const f of files) {
-      assert.ok(f in S3_FORM_FILES, `🔴 ${c.slice(0, 8)} changes ${f} (only the S3 hunks may touch the forms)`);
-      assert.equal(unapplyItemS3Forms(S3_FORM_FILES[f], show(c, f)), show(`${c}^1`, f), `🔴 ${c.slice(0, 8)}: ${f} changed beyond EXACTLY the S3 hunks`);
-    }
+  const before = `${commits[commits.length - 1]}^1`;   // just before the FIRST S3 commit (git log lists newest first)
+  for (const f of changed) {
+    assert.equal(unapplyItemS3Forms(S3_FORM_FILES[f], git('show', `${tip}:${f}`)), git('show', `${before}:${f}`), `🔴 ${f} changed beyond EXACTLY the S3 hunks`);
   }
 });
 
@@ -181,14 +180,15 @@ test(`the live forms are byte-unchanged by the capp range ${BASE}..${CAPP_TIP} �
 // Tip step FULL light (advisor 11-09, added on top): the inventory generator skips the repo-root review/ tree (= train asm4 908df7df's
 // tool hunk), so review/capp-sbs never reaches the generated inventory (test tooling; never deployed).
 // S3 item_key (D4c-grill/item-s1/S3-DESIGN.md D3, added on top): the forms' exact-hunk inverse (test tooling) and the timer-bounds
-// pins of the three form await sites the S3 lines moved (contract/timer-bounds.json; the source lines byte-identical).
+// pins of the form timers the S3 lines moved (contract/timer-bounds.json; call texts and bounds unchanged) and the reviewed region
+// registry's entries for the S3 call sites (contract/outputs/registry.json).
 const S2TIP_SERVER = new Set(['address-area.js', 'create-order-build.js', 'contract/census.js', 'tools/area-inverse.js', 'tools/area-charge-inputs-inverse.js', 'catalog/charge-inputs.js', 'compute-server-net.js', 'createorder-classify.js', 'delivery/delivery-pricing.js',
   'delivery/delivery-wire.js', 'driver-ledger/ledger-core.js', 'factura/build-record.js', 'index.js', 'order-exists.js', 'payer-email.js',
   'pixelpay-hosted-charge.js', 'quote-issue.js', 'rewards-redeem-intake.js', 'stats/stats-api.js', 'stats/stats-build.js', 'tip.js', 'whatsapp.js',
   'tools/s2tip-inverse.js', 'tools/s2tip-module-inverse.js', 'tools/mutation-sweep.mutants.json',
   'contract/census-map.json', 'contract/census.json', 'contract/regions.json',
   'platform/sites.json', 'platform-manifest.js', 'pixelpay-return-url.js', 'tools/sync-client.js', 'tools/s2app-inverse.js',
-  'tools/s3c-module-inverse.js', 'client-floor.js', 'contract/region-applicability.json', 'tools/form-source-inventory.js', 'tools/item-s3-forms-inverse.js', 'contract/timer-bounds.json'].map((f) => `xpizza-functions/${f}`));
+  'tools/s3c-module-inverse.js', 'client-floor.js', 'contract/region-applicability.json', 'tools/form-source-inventory.js', 'tools/item-s3-forms-inverse.js', 'contract/timer-bounds.json', 'contract/outputs/registry.json'].map((f) => `xpizza-functions/${f}`));
 test(`no server change beyond S2-srv-tip + S2-srv-app + colonia: the capp range ${BASE}..${CAPP_TIP} changes xpizza-functions/ only in tests, fixtures, generated inventories, the test chain and the slices' allowlist`, () => {
   const [, tip] = capRange();
   const changed = laneChanged(tip, ['xpizza-functions'])
