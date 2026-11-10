@@ -13,6 +13,7 @@ const path = require('path');
 const crypto = require('crypto');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
+const peelTip = (f, s) => (f === 'index.js' ? require('./tools/tippref-inverse').unapplyTipprefIndex(s) : s);   /* DRYRUN R-WIRE (2e asm5): tip C's tippref layer is newer than this pin's base — peeled first */
 const src = read('index.js');
 const STAGE = 'RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); }';
 const GATE = " if (usesPlatformFactura(restaurantId) && RL.labelGap(body, pricingTables)) return res.status(503).json({ error: 'labels_unavailable', retryable: true }); }";
@@ -62,7 +63,7 @@ const GATE = " if (usesPlatformFactura(restaurantId) && RL.labelGap(body, pricin
   };
   assert.deepStrictEqual([...I.FILES].sort(), Object.keys(BASE_SHA).sort(), 'S1DW-INVERSE the slice edits exactly these pinned files');
   for (const [f, want] of Object.entries(BASE_SHA)) {
-    const now = read(f);
+    const now = peelTip(f, read(f));
     const back = I.unapplyS1dModule(f, require('./tools/s2-module-inverse').unapplyS2Module(f, now));
     assert.strictEqual(crypto.createHash('sha256').update(Buffer.from(back, 'utf8')).digest('hex'), want, `🔴 S1DW-INVERSE ${f} round trip to a79f66c5`);
     assert.strictEqual(back.split('\n').length, now.split('\n').length, `🔴 S1DW-SAME-LINE ${f}: no line added`);

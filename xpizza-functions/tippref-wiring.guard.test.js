@@ -23,7 +23,8 @@ const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], 
 
 // 1. exact
 assert.notStrictEqual(unapplyTipprefIndex(live), live, 'non-vacuity');
-assert.strictEqual(unapplyTipprefIndex(live), base, `🔴 index.js minus the tippref hunks is not ${BASE}:index.js`);
+const peelNewer = (s) => ['s2-module-inverse', 's1d-module-inverse', 'reservedkeys-module-inverse', 'resolvelines-module-inverse', 'frozenkeys-module-inverse', 'keymode-module-inverse'].reduce((acc, m) => { const M = require('./tools/' + m); return M[Object.keys(M).find((k) => /^unapply/.test(k))]('index.js', acc); }, s);   /* DRYRUN R-WIRE (2e asm5): main's S0/S1a + S1b–S2 layers are newer than BASE — peeled after tippref (same order as the composed chains) */
+assert.strictEqual(peelNewer(unapplyTipprefIndex(live)), base, `🔴 index.js minus the tippref hunks is not ${BASE}:index.js`);
 assert.strictEqual(live.split('\n').length - unapplyTipprefIndex(live).split('\n').length, 12, 'exactly the hunks\' whole lines removed (require 3 + three hooks × 3)');
 ok(`exact: index.js minus the four tippref hunks === ${BASE} byte-for-byte; exactly their 12 whole lines removed`);
 

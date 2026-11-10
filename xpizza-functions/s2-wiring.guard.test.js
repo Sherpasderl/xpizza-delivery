@@ -13,6 +13,7 @@ const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
+const peelTip = (f, s) => (f === 'index.js' ? require('./tools/tippref-inverse').unapplyTipprefIndex(s) : s);   /* DRYRUN R-WIRE (2e asm5): tip C's tippref layer is newer than this pin's base — peeled first */
 const idx = read('index.js');
 
 // ── 1 ──
@@ -44,7 +45,7 @@ const idx = read('index.js');
 {
   const I = require('./tools/s2-module-inverse');
   for (const f of I.FILES) {
-    const now = read(f);
+    const now = peelTip(f, read(f));
     const back = I.unapplyS2Module(f, now);
     const base = execFileSync('git', ['show', `${I.BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
     assert.strictEqual(crypto.createHash('sha256').update(back).digest('hex'), crypto.createHash('sha256').update(base).digest('hex'), `🔴 S2W-INVERSE ${f} round trip to ${I.BASE}`);
