@@ -56,8 +56,14 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
   const agree = body([{ item_key: 'Carnivora', name: 'Carnívora Suprema', qty: 1 }]);
   assert.deepStrictEqual(resolveLines('x_pizza', agree, XPL), { ok: true }, 'RL-LABEL-AGREE a renamed dish: item_key + its current label resolves');
   assert.strictEqual(stampOf(agree.items[0]), 'Carnivora', 'RL-LABEL-AGREE stamped with the KEY, never the label');
-  assert.deepStrictEqual(resolveLines('x_pizza', body([{ item_key: 'Carnivora', name: 'Carnívora Suprema', qty: 1 }]), XP), { ok: false, code: 'invalid_line', at: 'items', index: 0 }, 'RL-LABEL-NONE a route without labels stays strict');
-  assert.deepStrictEqual(resolveLines('x_pizza', body([{ item_key: 'Carnivora', name: 'Otra', qty: 1 }]), XPL), { ok: false, code: 'invalid_line', at: 'items', index: 0 }, 'RL-LABEL-WRONG a name that is neither the key nor its label refuses');
+  // S2 «item_key wins» (advisor 2026-11-10, reverses Q2's agreement clause): a held key decides the line on EVERY route, with or
+  // without labels, whatever the legacy name says (a fallback route may serve an older version than the client's menu)
+  const none = body([{ item_key: 'Carnivora', name: 'Carnívora Suprema', qty: 1 }]);
+  assert.deepStrictEqual(resolveLines('x_pizza', none, XP), { ok: true }, 'RL-LABEL-NONE a route without labels resolves by the key (S2)');
+  assert.strictEqual(stampOf(none.items[0]), 'Carnivora', 'RL-LABEL-NONE stamped with the key');
+  const wrong = body([{ item_key: 'Carnivora', name: 'Otra', qty: 1 }]);
+  assert.deepStrictEqual(resolveLines('x_pizza', wrong, XPL), { ok: true }, 'RL-LABEL-WRONG a name that is neither the key nor its label resolves by the key (S2)');
+  assert.strictEqual(stampOf(wrong.items[0]), 'Carnivora', 'RL-LABEL-WRONG stamped with the key');
   assert.deepStrictEqual(resolveLines('x_pizza', body([{ name: 'Carnívora Suprema', qty: 1 }]), XPL), { ok: false, code: 'menu_changed', at: 'items', index: 0 }, 'RL-LEGACY-NEWNAME a legacy line naming the NEW label (an old client) refuses menu_changed — legacy lines stay exact-key');
   assert.deepStrictEqual(resolveLines('x_pizza', body([{ item_key: 'Nope', name: 'Carnívora Suprema', qty: 1 }]), XPL), { ok: false, code: 'menu_changed', at: 'items', index: 0 }, 'RL-LABEL-UNKNOWN-KEY an unknown item_key refuses menu_changed even if the name is a label');
   // D3 early gate: on a route without a label for an OPAQUE resolved key, the order endpoints refuse before any write
@@ -74,8 +80,9 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
   assert.strictEqual(labelGap(g4, withOpaque(null)), true, 'RL-LABELGAP-REWARD a resolved opaque reward key with no label');
   // codex S1d r1 #2 (advisor): reward lines are NOT widened by label — item_id must equal the key exactly (today's rule)
   const rw = body([{ name: 'Carnivora', qty: 1 }], { type: 'free_pizza_choice', item_key: 'Margherita', item_id: 'Margarita Nueva' });
-  assert.deepStrictEqual(resolveLines('x_pizza', rw, labelled(XP, { Margherita: 'Margarita Nueva' })), { ok: true }, 'premise: the cart resolves');
-  assert.strictEqual(stampOf(rw.redeem), undefined, 'RL-REDEEM-LABEL-STRICT a reward whose item_id is only the LABEL is not stamped (today\'s refusal answers)');
+  // S2 A2 (advisor 2026-11-10): a KEYED reward whose item_id is only the label is a keyed mismatch → refused before preparation
+  assert.deepStrictEqual(resolveLines('x_pizza', rw, labelled(XP, { Margherita: 'Margarita Nueva' })), { ok: false, code: 'invalid_line', at: 'redeem', index: 0 }, 'RL-REDEEM-LABEL-STRICT a keyed reward whose item_id is only the LABEL is refused (S2 A2)');
+  assert.strictEqual(stampOf(rw.redeem), undefined, 'RL-REDEEM-LABEL-STRICT never stamped');
   // codex S1d r1 #3: the gate judges the reward actually CONSUMED (its raw item_id / items[].id), stamped or not
   const gapR = body([{ name: 'Carnivora', qty: 1 }], { type: 'free_pizza_choice', item_id: OPQ, items: [] });
   resolveLines('x_pizza', gapR, withOpaque(null));
@@ -118,10 +125,15 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
     ['la_musa', LM, { id: ['dimsum_01'], qty: 1 }, 'RL-ARRAY-ID an array id'],
     ['x_pizza', XP, { name: null, qty: 1 }, 'RL-NULL-NAME a null name on a name-keyed menu'],
     ['la_musa', LM, { id: null, name: 'Sichuan Spicy Wonton', qty: 1 }, 'RL-NULL-ID a null id on an id-keyed menu'],
-    ['x_pizza', XP, { item_key: 'Carnivora', name: ['Carnivora'], qty: 1 }, 'RL-DISAGREE-TYPE a non-string legacy field beside item_key'],
     ['x_pizza', XP, { qty: 1 }, 'RL-ABSENT no legacy field and no item_key'],
-    ['x_pizza', XP, { item_key: 'Carnivora', name: null, qty: 1 }, 'RL-NULL-NAME-KEY a null name beside an item_key (null is never read as absent)'],
   ];
+  // S2 A (advisor 2026-11-10): a KEYED cart is never passed through — a non-string legacy field beside an item_key is refused
+  for (const [line, label] of [[{ item_key: 'Carnivora', name: ['Carnivora'], qty: 1 }, 'RL-DISAGREE-TYPE a non-string legacy field beside item_key → invalid_line (S2)'],
+    [{ item_key: 'Carnivora', name: null, qty: 1 }, 'RL-NULL-NAME-KEY a null name beside an item_key → invalid_line (S2; null is never read as absent)']]) {
+    const b = body([line]);
+    assert.deepStrictEqual(resolveLines('x_pizza', b, XP), { ok: false, code: 'invalid_line', at: 'items', index: 0 }, label);
+    assert.strictEqual(stampOf(b.items[0]), undefined, `${label}: never stamped`);
+  }
   for (const [rid, t, line, label] of notJudged) {
     const good = rid === 'x_pizza' ? { name: 'Carnivora', qty: 1 } : { id: 'dimsum_01', qty: 1 };
     const b = body([good, line], { item_id: rid === 'x_pizza' ? 'Carnivora' : 'dimsum_01' });
@@ -139,8 +151,11 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
     ['x_pizza', XP, { item_key: ['Carnivora'], qty: 1 }, 'RL-KEY-TYPE-ALONE a non-string item_key with no legacy field'],
     ['x_pizza', XP, { item_key: '', qty: 1 }, 'RL-KEY-EMPTY-ALONE an empty item_key with no legacy field'],
     ['x_pizza', XP, { name: 'Carnivora', item_key: null, qty: 1 }, 'RL-NULL-KEY a null item_key beside a good name'],
-    ['x_pizza', XP, { item_key: 'Carnivora', name: 'Margherita', qty: 1 }, 'RL-DISAGREE item_key and name disagree'],
   ];
+  // S2 «item_key wins»: a held key with a disagreeing name RESOLVES to the key (was RL-DISAGREE → invalid_line before S2)
+  const dis = body([{ item_key: 'Carnivora', name: 'Margherita', qty: 1 }]);
+  assert.deepStrictEqual(resolveLines('x_pizza', dis, XP), { ok: true }, 'RL-DISAGREE item_key and name disagree → the key wins (S2)');
+  assert.strictEqual(stampOf(dis.items[0]), 'Carnivora', 'RL-DISAGREE stamped with the key');
   for (const [rid, t, line, label] of bad) {
     const b = body([line]);
     assert.deepStrictEqual(resolveLines(rid, b, t), { ok: false, code: 'invalid_line', at: 'items', index: 0 }, label);
@@ -173,13 +188,16 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
   const r = body([{ name: 'Carnivora', qty: 1 }], { item_id: 'Carnivora' });
   assert.deepStrictEqual(resolveLines('x_pizza', r, XP), { ok: true }, 'RL-REDEEM-ID');
   assert.strictEqual(stampOf(r.redeem), 'Carnivora', 'RL-REDEEM-STAMP a resolved reward line is stamped');
-  for (const [redeem, label] of [[{ item_id: 'Nope' }, 'RL-REDEEM-UNKNOWN'], [{ item_id: ['Carnivora'] }, 'RL-REDEEM-ARRAY'], [{ item_key: 'Carnivora' }, 'RL-REDEEM-KEY-ONLY'],
-    [{ item_id: 'Carnivora', item_key: 'Margherita' }, 'RL-REDEEM-DISAGREE']]) {
+  for (const [redeem, label] of [[{ item_id: 'Nope' }, 'RL-REDEEM-UNKNOWN'], [{ item_id: ['Carnivora'] }, 'RL-REDEEM-ARRAY'], [{ item_key: 'Carnivora' }, 'RL-REDEEM-KEY-ONLY']]) {
     const b = body([{ name: 'Carnivora', qty: 1 }], redeem);
     assert.deepStrictEqual(resolveLines('x_pizza', b, XP), { ok: true }, `${label} falls through to today's reward refusal`);
     assert.strictEqual(stampOf(b.redeem), undefined, `${label}: never stamped`);
     assert.strictEqual(stampOf(b.items[0]), 'Carnivora', `${label}: the cart lines still resolve and are stamped`);
   }
+  // S2 A2 (advisor 2026-11-10): a KEYED reward that disagrees is refused before preparation (was a fall-through before S2)
+  const dis = body([{ name: 'Carnivora', qty: 1 }], { item_id: 'Carnivora', item_key: 'Margherita' });
+  assert.deepStrictEqual(resolveLines('x_pizza', dis, XP), { ok: false, code: 'invalid_line', at: 'redeem', index: 0 }, 'RL-REDEEM-DISAGREE a keyed disagreeing reward → invalid_line (S2 A2)');
+  assert.deepStrictEqual([stampOf(dis.redeem), stampOf(dis.items[0])], [undefined, undefined], 'RL-REDEEM-DISAGREE nothing stamped on a refusal');
   assert.deepStrictEqual(resolveLines('x_pizza', body([{ name: 'Carnivora', qty: 1 }], { item_id: 'Carnivora', item_key: 'Carnivora' }), XP), { ok: true }, 'RL-REDEEM-KEY-AGREE');
   const li = body([{ id: 'dimsum_01', qty: 1 }], { items: [{ id: 'dimsum_01' }, { id: 'nope_99' }, 'x'] });
   assert.deepStrictEqual(resolveLines('la_musa', li, LM), { ok: true }, 'RL-REDEEM-ITEMS an unknown la_musa reward item falls through');

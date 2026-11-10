@@ -19,16 +19,17 @@ const MENU_CHANGED_DETAIL = 'El menú se actualizó, recargá la página';
 
 // One line's resolution: { key } or { code }. `field` is the legacy field ('name' | 'id'); `itemKeyField` names the line's
 // item_key property (always 'item_key').
-function resolveOne(line, field, menu, labels) {
+function resolveOne(line, field, menu, labels, strict = false) {
   const hasKey = own(line, 'item_key') && line.item_key !== undefined;   // an explicit null is malformed, not absent
   const hasLegacy = own(line, field) && line[field] !== undefined;
   if (hasKey && (typeof line.item_key !== 'string' || !line.item_key)) return { code: 'invalid_line' };
   if (hasLegacy && typeof line[field] !== 'string') return { code: 'invalid_line' };   // reached by reward lines only (a cart line is screened above)
   if (hasKey) {
-    // S1d (ruling Q2): the key must be held by the tables; a legacy field, when present, must equal the key or — when this
-    // route carries labels — the key's label (a renamed dish). An item_key alone resolves.
+    // S2 «item_key wins» (advisor 2026-11-10; reverses S1d Q2's agreement clause): a key the tables hold decides the line whatever
+    // its legacy field says — the legacy field is advisory, price and description follow the key. A reward line stays STRICT
+    // (S1d-R2): its legacy id must equal the key, so the reward calculators, which read the legacy id, see the resolved key.
     if (!own(menu, line.item_key)) return { code: 'menu_changed' };
-    if (hasLegacy && line[field] !== line.item_key && !(labels && own(labels, line.item_key) && labels[line.item_key] === line[field])) return { code: 'invalid_line' };
+    if (strict && hasLegacy && line[field] !== line.item_key) return { code: 'invalid_line' };
     return { key: line.item_key };
   }
   if (!hasLegacy) return { code: 'menu_changed' };
@@ -38,8 +39,12 @@ function resolveOne(line, field, menu, labels) {
 
 // The reward lines of a body, as [line, field] pairs: redeem.items[] when it is an array, else the redeem object itself
 // (its `item_id` read as the legacy field) when it names an item. A redeem naming no item is not judged.
-function rewardLines(redeem) {
+function rewardLines(redeem, rid) {
   if (!isObj(redeem)) return [];
+  // S2 A2: the line the brand's reward CALCULATOR consumes (rewards-redeem.js), by its reward model — never the body's shape
+  const model = (require('../rewards-redeem-config').REDEMPTION_CONFIG[rid] || {}).reward;
+  if (model === 'free_pizza_choice') return (own(redeem, 'item_id') || own(redeem, 'item_key')) ? [[redeem, 'item_id']] : [];
+  if (model === 'points_ala_carte') return Array.isArray(redeem.items) ? redeem.items.map((it) => [it, 'id']) : [];
   if (Array.isArray(redeem.items)) return redeem.items.map((it) => [it, 'id']);
   if (own(redeem, 'item_id') || own(redeem, 'item_key')) return [[redeem, 'item_id']];
   return [];
@@ -55,7 +60,9 @@ function resolveLines(rid, body, tables) {
   // advisor ruling (option A): only well-typed legacy keys are judged. A line whose legacy field is present but not a string
   // (null included), or that names nothing at all, is today's refusal (item_malformed with its customer copy, or pricing's
   // own 400) — the whole cart passes through unstamped so that refusal answers exactly as before this stage existed.
-  if (items.some((l) => (own(l, field) && l[field] !== undefined) ? typeof l[field] !== 'string' : !(own(l, 'item_key') && l.item_key !== undefined))) return { ok: true };
+  // S2 A: only a cart with NO item_key anywhere (today's clients) may pass through; a keyed cart is judged line by line.
+  const keyed = items.some((l) => own(l, 'item_key') && l.item_key !== undefined);
+  if (!keyed && items.some((l) => (own(l, field) && l[field] !== undefined) ? typeof l[field] !== 'string' : !(own(l, 'item_key') && l.item_key !== undefined))) return { ok: true };
   const stamps = [];
   for (let i = 0; i < items.length; i++) {
     const r = resolveOne(items[i], field, menu, labels);
@@ -64,9 +71,12 @@ function resolveLines(rid, body, tables) {
   }
   // reward lines (advisor ruling Q3): stamped only when they resolve. Any other reward line is NOT refused here — it falls
   // through to prepareRedemption and today's 409 redemption_invalid, which the frozen forms' classifyRedeemError handles.
-  for (const [line, f] of rewardLines(body.redeem)) {
+  const rls = rewardLines(body.redeem, rid);
+  for (let i = 0; i < rls.length; i++) {
+    const [line, f] = rls[i];
     if (!isObj(line)) continue;
-    const r = resolveOne(f === 'item_id' ? { item_key: line.item_key, item_id: line.item_id } : line, f === 'item_id' ? 'item_id' : field, menu, null);   // codex S1d r1 #2: reward lines are never widened by label (exact, as today)
+    const r = resolveOne(f === 'item_id' ? { item_key: line.item_key, item_id: line.item_id } : line, f === 'item_id' ? 'item_id' : field, menu, null, true);   // codex S1d r1 #2: reward lines are never widened by label (exact, as today)
+    if (r.code === 'invalid_line' && own(line, 'item_key') && line.item_key !== undefined) return { ok: false, code: 'invalid_line', at: 'redeem', index: i };   // S2 A2: a KEYED reward mismatch is refused before preparation
     if (r.key && own(line, f) && line[f] !== undefined) stamps.push([line, r.key]);   // S1d: a reward line still needs its legacy field (today's refusal answers otherwise)
   }
   for (const [line, key] of stamps) line[PRICING_KEY_STAMP] = key;
