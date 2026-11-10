@@ -210,6 +210,11 @@ const written = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).exists();
     const docs = await fs.collection('restaurants').doc('x_pizza').collection('versions').doc(v.versionId).collection('menu_items').where('key', '==', OPQ).get();
     assert.strictEqual(docs.size, 1, 'premise: the minted dish is in the version');
     await docs.docs[0].ref.update({ display: admin.firestore.FieldValue.delete() });   // the price docs (key, price) and their hash are untouched
+    // codex S1d r2 #2: the handler caches the active pointer for 45 s — wait it out, then PROVE the new version is the one served
+    // (the minted dish exists only there: a key-only line for it quotes ok) before asserting anything about it
+    await new Promise((r) => setTimeout(r, 46000));
+    const probe = await post(app.quoteOrder, { restaurant_id: 'x_pizza', items: [{ item_key: OPQ, qty: 1, price: 150, extras: [] }], order_type: 'pickup' });
+    assert.ok(probe.status === 200 && probe.json && probe.json.ok === true, `G-PREMISE the new version is the one served (${probe.text.slice(0, 160)})`);
     const redeem = { type: 'free_pizza_choice', item_id: OPQ, name: 'Pizza Nueva' };
     for (const [route, pay] of [['createOrder', 'cash'], ['chargeOnlineOrder', 'online']]) {
       const f = await fresh(); const before = JSON.stringify((await rtdb.ref().get()).val()); const charged = CHARGED.length;

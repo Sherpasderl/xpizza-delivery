@@ -84,8 +84,15 @@ const stampOf = (line) => line[PRICING_KEY_STAMP];
   const unknownR = body([{ name: 'Carnivora', qty: 1 }], { type: 'free_pizza_choice', item_id: 'i_zzzzzzzzzzzz' });
   resolveLines('x_pizza', unknownR, withOpaque(null));
   assert.strictEqual(labelGap(unknownR, withOpaque(null)), false, 'RL-LABELGAP-REWARD-UNKNOWN an opaque reward key the menu does not hold is left to today\'s refusal');
-  const itemsR = body([{ name: 'Carnivora', qty: 1 }], { type: 'points_ala_carte', items: [{ id: OPQ, qty: 1 }] });
-  assert.strictEqual(labelGap(itemsR, withOpaque(null)), true, 'RL-LABELGAP-REWARD-ITEMS redeem.items[].id too');
+  // codex S1d r2 #1: exactly the field the restaurant's calculator consumes (its configured reward model) — x_pizza's
+  // free_pizza_choice reads item_id; la_musa's points_ala_carte reads items[].id. An unused field is never judged.
+  const lmOpq = attachTablesLabels(attachTablesKeyMode({ restaurantId: 'la_musa', menu: { ...LM.menu, [OPQ]: 120 }, extras: LM.extras }, 'id'), null);
+  const itemsR = body([{ id: 'dimsum_01', qty: 1 }], { type: 'points_ala_carte', items: [{ id: OPQ, qty: 1 }] });
+  assert.strictEqual(labelGap(itemsR, lmOpq), true, 'RL-LABELGAP-REWARD-ITEMS la_musa: redeem.items[].id is what it consumes');
+  const unusedX = body([{ name: 'Carnivora', qty: 1 }], { type: 'free_pizza_choice', item_id: 'Margherita', items: [{ id: OPQ }] });
+  assert.strictEqual(labelGap(unusedX, withOpaque(null)), false, 'RL-LABELGAP-REWARD-UNUSED x_pizza: an unlabelled opaque key in the UNUSED items[] is not judged');
+  const unusedL = body([{ id: 'dimsum_01', qty: 1 }], { type: 'points_ala_carte', item_id: OPQ, items: [{ id: 'dimsum_01', qty: 1 }] });
+  assert.strictEqual(labelGap(unusedL, lmOpq), false, 'RL-LABELGAP-REWARD-UNUSED la_musa: an unlabelled opaque key in the UNUSED item_id is not judged');
   ok('S1d: item_key agrees with its legacy field OR the version\'s label; without labels strict; legacy lines exact-key');
 }
 
