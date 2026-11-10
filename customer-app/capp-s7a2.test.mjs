@@ -4463,3 +4463,31 @@ test('S2-checkout 8 (v7): an order placed with the in-app card shows its card in
     assert.ok(!rows.some((r) => /Pagado en línea|Confirmado/.test(r)), '🔴 SDK8: never «Pagado en línea / Confirmado» for a held card');
   } finally { S.w.close(); }
 });
+
+// ── S3 (D4c-grill/item-s1/S3-DESIGN.md D2; OWNER-APPROVED MOCKUP-item-s3-refusals.html frame A2): «Recargar» (the A1 sheet) asks the
+//    SHELL for the fresh menu — a revalidation through the menu cache — and adopts it through the existing adoption (adoptInto: the
+//    mount rebuilt, the IN-MEMORY cart carried); the store opens with its cart sheet, which discloses what no longer exists with the
+//    existing copy «1 plato ya no está disponible». Nothing was sent or charged. ──
+test('S3 A2: «Recargar» re-fetches the menu, adopts it, and opens the cart with «1 plato ya no está disponible»', async () => {
+  let refuse = false, hold = false;
+  const apiFetch = (u, i) => (u.startsWith('/x/q') ? (refuse ? Promise.resolve({ status: 200, ok: true, json: async () => ({ ok: false, error: 'menu_changed' }) }) : quoteOk(u, i)) : new Promise(() => {}));
+  const S = bootShell({ apiFetch, envelope: (rid) => (hold && rid === 'x_pizza' ? 'hold' : 'ok') }); await flush(); await flush();
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); await flush();
+  const ui0 = S.ui.store().ui; const m = ui0.menu;
+  const [plain, victim] = m.dishes.filter((d) => !d.launcher && !d.variantOf && !m.pickupOnlyCats.has(String(d.cat)));
+  ui0.cart.inc(plain.key); ui0.cart.inc(victim.key); ui0.render(); S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush(); await flush();
+  assert.equal(ui0.state.screen, 'checkout', 'premise: the checkout is mounted');
+  refuse = true; hold = true;
+  S.click('#app [data-act="type"][data-val="pickup"]'); await flush(); await flush();
+  assert.equal(S.q('#layer .errsheet h2') && S.q('#layer .errsheet h2').textContent, 'El menú se actualizó, recargá el menú', 'premise: the A1 sheet');
+  const calls = S.envCalls.length;
+  S.click('#layer [data-act="menu-reload"]'); await flush();
+  assert.ok(S.envCalls.length > calls && S.pend.x_pizza && S.pend.x_pizza.length, '🔴 «Recargar» asks the menu cache for the fresh menu (S3-CAPP-A2-FETCH)');
+  const fresh = J(PROV.x_pizza.envelope); fresh.menu.dishes = fresh.menu.dishes.filter((d) => d.name !== victim.name);
+  refuse = false; S.release('x_pizza', fresh); await flush(); await flush();
+  const ui1 = S.ui.store().ui;
+  assert.notEqual(ui1, ui0, '🔴 the fresh menu is ADOPTED (S3-CAPP-A2-ADOPT)');
+  assert.deepEqual([ui1.state.screen, ui1.state.layerKind], ['store', 'cart'], '🔴 the store opens with its cart sheet (S3-CAPP-A2-CART)');
+  assert.ok(txt(S.q('#layer .cartnote')).includes('1 plato ya no está disponible'), `🔴 the existing disclosure (S3-CAPP-A2-NOTE): ${txt(S.q('#layer .cartnote'))}`);
+  assert.deepEqual(J(ui1.cart.lines()).map((l) => l.key), [plain.key], 'the vanished dish is dropped; the rest is carried');
+});

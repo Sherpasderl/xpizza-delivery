@@ -3591,3 +3591,82 @@ test('tip r7: switching to CASH on the tip step (its footer payment row) clears 
   assert.deepEqual([b.ui.state.flow.tipChoice, b.ui.state.flow.tipCents], [null, 0], '🔴 R7: the tip is cleared');
   assert.match(b.text('#cta') || '', /^Hacer pedido/, 'R7: the checkout now places directly');
 });
+
+// ── S3 (D4c-grill/item-s1/S3-DESIGN.md D2; OWNER-APPROVED MOCKUP-item-s3-refusals.html, capp frames A1 / B1 / B2 + the owner's change
+//    (a): the app's own title «…recargá el menú», never the server's detail) — the item refusals, over «Entrega & Pago». Bodies from the
+//    REAL writers (resolve-lines.js resolutionRefusal; extras-intake.js refusalStatus/refusalBody); pickup_only_item is S2's wire shape
+//    (advisor-relayed 2026-11-10; S2 is not on this branch) ──
+const S3RL = require(join(ROOT, 'xpizza-functions/catalog/resolve-lines.js'));
+const S3EI = require(join(ROOT, 'xpizza-functions/catalog/extras-intake.js'));
+async function s3Filled(b, d, exKeys) {   // a delivery cash checkout holding ONE configured dish (plus the harness's plain one)
+  b.ui.cart.add(d.key, exKeys, 1);
+  await filled(b, 'cash');
+}
+async function s3Place(b) { await ctaTip0(b); await tipPlace(b); await b.click('#layer [data-act="placing-go"]'); }   // placeVia after the fill
+const s3Configurable = (b) => { const m = b.ui.menu; return m.dishes.find((x) => !x.launcher && !x.variantOf && !m.pickupOnlyCats.has(String(x.cat)) && m.extrasFor(x.key).length >= 2 && x.key !== b.plain.key); };
+const s3ItemKey = (rid, d) => PROV[rid].envelope.menu.item_keys[String(d.id)];
+
+test('S3 A1: menu_changed on the order ⇒ «El menú se actualizó, recargá el menú» + ONE «Recargar»; nothing sent or charged; the cart intact', async () => {
+  const MC = S3RL.resolutionRefusal({ code: 'menu_changed' });
+  const b = bootCo({ script: { createOrder: [{ status: MC.status, json: MC.body }] } });
+  assert.ok(MC.body.detail !== 'El menú se actualizó, recargá el menú', 'premise: the server\'s detail is the FORMS\' copy — the app never shows it');
+  await placeVia(b);
+  assert.deepEqual(sheetOf(b), { label: 'El menú se actualizó, recargá el menú', h2: 'El menú se actualizó, recargá el menú',
+    p: 'Tu pedido no se envió ni se cobró nada. Al recargar, tu pedido se arma de nuevo con el menú actual.', icon: 'icon warn', clock: false,
+    acts: [['primary', 'Recargar', 'menu-reload']] }, '🔴 the A1 sheet, exactly as approved (S3-CAPP-A1)');
+  assert.ok(b.q('.screen .flow'), 'over «Entrega & Pago», as drawn');
+  const lines = J(b.ui.cart.lines());
+  await b.click('#layer [data-act="menu-reload"]');
+  assert.equal(b.q('#layer').innerHTML, '', 'the sheet closes');
+  assert.deepEqual(b.events.filter(([n]) => n === 'menu_reload').length, 1, '🔴 «Recargar» asks the shell for the fresh menu (S3-CAPP-A1-RELOAD)');
+  assert.deepEqual(J(b.ui.cart.lines()), lines, 'the cart is untouched until the fresh menu is adopted');
+  assert.equal(b.srv.of('createOrder').length, 1, 'nothing re-sent');
+});
+
+test('S3 A1 (quote): a menu_changed QUOTE at «Entrega & Pago» shows the same sheet — never the generic one', async () => {
+  let refuse = false;
+  const b = bootCo({ script: { quoteOrder: [(body) => (refuse ? { status: 200, json: { ok: false, error: 'menu_changed' } } : QUOTE(body))] } });
+  await filled(b, 'cash'); await settle();
+  assert.equal(b.q('#layer').innerHTML, '', 'premise: the checkout quoted cleanly');
+  refuse = true;   // the menu changes under the open checkout: the next quote (a mode change re-quotes) is the server's menu_changed
+  await b.click('[data-act="type"][data-val="pickup"]'); await settle();
+  assert.ok(b.srv.of('quoteOrder').at(-1).body.mode === 'pickup', 'premise: the mode change re-quoted');
+  assert.equal(b.text('#layer .errsheet h2'), 'El menú se actualizó, recargá el menú', '🔴 the quote refusal is the A1 sheet (S3-CAPP-A1-QUOTE)');
+});
+
+test('S3 B1 → B2: extra_not_allowed ⇒ «Un extra ya no está disponible», one naming line per denied extra, [Quitar extra y seguir][Cerrar]; the repair removes ONLY the denied extra, re-quotes, and shows the new total before any tap', async () => {
+  const pre = bootCo(); const d = s3Configurable(pre); const [e1, e2] = pre.ui.menu.extrasFor(d.key);
+  assert.ok(d && e1 && e2, 'premise: a delivery dish with two extras');
+  const XR = { outcome: 'denied', denied: [{ item: s3ItemKey('x_pizza', d), extra: e1.name }] };
+  let quotes = 0;
+  const b = bootCo({ script: { createOrder: [{ status: S3EI.refusalStatus(XR), json: { ...S3EI.refusalBody(XR), order_id: 'X' } }],
+    quoteOrder: [(body) => { quotes++; return QUOTE(body); }] } });
+  await s3Filled(b, d, [e1.key, e2.key]);
+  await s3Place(b);
+  assert.deepEqual(sheetOf(b), { label: 'Un extra ya no está disponible', h2: 'Un extra ya no está disponible',
+    p: 'Uno de los extras ya no está disponible para ese producto. Revisá tu pedido.', icon: 'icon warn', clock: false,
+    acts: [['primary', 'Quitar extra y seguir', 'extra-remove'], ['btn2 wide', 'Cerrar', 'lclose']] }, '🔴 the B1 sheet, exactly as approved (S3-CAPP-B1)');
+  assert.deepEqual(b.qa('#layer .errsheet p.note').map((p) => [p.querySelector('b').textContent, b.text(p)]), [[d.name, `${d.name} · extra: ${e1.name}`]], '🔴 one naming line per denied extra (S3-CAPP-B1-NOTE)');
+  const before = quotes;
+  await b.click('#layer [data-act="extra-remove"]'); await settle();
+  assert.equal(b.q('#layer').innerHTML, '', 'the sheet closes');
+  const line = J(b.ui.cart.lines()).find((l) => l.key === d.key);
+  assert.deepEqual(line.ex, [{ [e2.key]: 1 }], '🔴 ONLY the denied extra is removed; the other stays (S3-CAPP-B2-REMOVE)');
+  assert.ok(quotes > before, '🔴 the repair re-quotes (S3-CAPP-B2-REQUOTE)');
+  const q = b.srv.of('quoteOrder').at(-1).body;
+  assert.ok(q.items.every((it) => !it.extras.some((x) => x.name === e1.name)), 'the new quote no longer carries the denied extra');
+  const total = QUOTE(q).json.net_total_cents;
+  const L = (c) => 'L ' + (c % 100 === 0 ? (c / 100).toLocaleString('en-US') : (c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  assert.equal(b.text('.flow .cartnote'), `Quitamos ${e1.name} de ${d.name}. Total nuevo: ${L(total)}.`, '🔴 the B2 note names what was removed and the NEW total (S3-CAPP-B2-NOTE)');
+  assert.ok(cta(b).includes(L(total)), `🔴 the primary carries the new total (S3-CAPP-B2-CTA): ${cta(b)}`);
+  assert.equal(b.srv.of('createOrder').length, 1, '🔴 nothing is re-sent: the customer taps again (S3-CAPP-B2-NOSEND)');
+});
+
+test('S3 pickup_only_item on a DELIVERY order ⇒ the existing pickup-only state («Quitá los platos solo para Pickup»), no new copy', async () => {
+  const pre = bootCo();
+  const b = bootCo({ script: { createOrder: [{ status: 409, json: { ok: false, error: 'pickup_only_item', item_key: s3ItemKey('x_pizza', pre.plain) } }] } });
+  await placeVia(b);
+  assert.equal(cta(b), 'Quitá los platos solo para Pickup', '🔴 the CTA is the existing pickup-only copy (S3-CAPP-PICKUP)');
+  assert.equal(b.q('#layer').innerHTML, '', 'no sheet: the existing gate state');
+  assert.equal(b.srv.of('createOrder').length, 1);
+});

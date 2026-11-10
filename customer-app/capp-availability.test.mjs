@@ -174,3 +174,18 @@ test('REGRESSION (Codex r1 P2): failed read → rename → old key false + new k
     assert.deepEqual(mapper().soldKeys(m2, node).filter((k) => k === ad.key), [], 'non-vacuity: with NO history the same node reads available — the recorded old key is what decides');
   } finally { closeAll(); }
 });
+
+// S3 (D4c-grill/item-s1/S3-DESIGN.md D2): the portal and the KDS write an 86 under the dish's ITEM KEY (portal/ops-core.js:385-390;
+// 5f: the KDS writes the frozen key). A MINTED dish's key is never its id or name, so the app must also read the item_key — over
+// the REAL published body (item-s3-fixtures: publish → buildPublicMenu's endpoint path, S1d item_keys), a FRESH session (no history).
+test('S3: a minted dish 86\'d under its item_key reads SOLD in a fresh session, in both identity modes', async () => {
+  const { published } = await import(join(ROOT, 'item-s3-fixtures.mjs'));
+  const quiet = async (fn) => { const w = console.warn, l = console.log; console.warn = console.log = () => {}; try { return await fn(); } finally { console.warn = w; console.log = l; } };
+  for (const [rid, name, key] of [['la_musa', 'Bao Nuevo', 'i_aaaaaaaaaaac'], ['x_pizza', 'Pizza Nueva', 'i_aaaaaaaaaaab']]) {
+    const P = await quiet(() => published(rid, { mint: { name, key } }));
+    const m = CappMenu.adaptMenu(P.env), d = m.dishes.find((x) => x.name === name);
+    assert.ok(d && P.env.menu.item_keys[String(d.id)] === key && m.availIdentity, `premise: the minted ${rid} dish is served with its opaque key and the identity field`);
+    assert.deepEqual(mapper().soldKeys(m, {}), [], `premise: nothing sold on an empty node (${rid})`);
+    assert.ok(mapper().soldKeys(m, { [availKey(key)]: OFF }).includes(d.key), `🔴 ${rid}: an 86 under the item_key marks the minted dish sold (S3-CAPP-AVAIL)`);
+  }
+});
