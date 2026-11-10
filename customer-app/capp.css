@@ -757,6 +757,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .oempty .primary{width:auto;padding:0 22px;margin-top:8px}
 .cartnote{display:flex;align-items:center;gap:8px;margin:0 20px 10px;padding:10px 12px;border-radius:12px;background:var(--surf);font-size:13.5px;color:var(--mute)}
 .cartnote svg.i{width:18px;height:18px;flex:none}
+.fsec .cartnote{margin:0}   /* S3 B2 (MOCKUP-item-s3-refusals): the repair note sits in «Tu pedido», flush with the section */
 
 /* ── v6 «Enviando tu pedido…» ── */
 .sending{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--promo-bg);overflow:hidden}

@@ -3660,6 +3660,7 @@ test('S3 B1 → B2: extra_not_allowed ⇒ «Un extra ya no está disponible», o
   const total = QUOTE(q).json.net_total_cents;
   const L = (c) => 'L ' + (c % 100 === 0 ? (c / 100).toLocaleString('en-US') : (c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   assert.equal(b.text('.flow .cartnote'), `Quitamos ${e1.name} de ${d.name}. Total nuevo: ${L(total)}.`, '🔴 the B2 note names what was removed and the NEW total (S3-CAPP-B2-NOTE)');
+  assert.equal(b.w.getComputedStyle(b.q('.flow .fsec .cartnote')).marginLeft, '0px', '🔴 the B2 note sits flush in «Tu pedido», no sheet margins (S3-CAPP-B2-FLUSH, the SBS)');
   assert.ok(cta(b).includes(L(total)), `🔴 the primary carries the new total (S3-CAPP-B2-CTA): ${cta(b)}`);
   assert.equal(b.srv.of('createOrder').length, 1, '🔴 nothing is re-sent: the customer taps again (S3-CAPP-B2-NOSEND)');
 });

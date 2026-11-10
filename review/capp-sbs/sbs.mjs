@@ -19,7 +19,8 @@ import { fileURLToPath } from 'node:url';
 import { router, DIRECTORY_ENDPOINT, CLOCK_SHIM } from './fixtures.mjs';
 import { SCENES } from './scenes.mjs';
 import { S2_SCENES } from './scenes-s2.mjs';
-import { TIP_SCENES } from './scenes-tip.mjs';   // --set tip: PLAN-capp-tip-step r6 vs MOCKUP-capp-tip-step-r2 (a bundle WITH the sdkPay flag)   // --set s2: a bundle packaged WITH the sdkPay flag (S2 method (A), advisor 11-09)
+import { TIP_SCENES } from './scenes-tip.mjs';
+import { S3_SCENES } from './scenes-s3.mjs';   // --set s3: item S3 refusals vs MOCKUP-item-s3-refusals (a bundle WITH the sdkPay flag)   // --set tip: PLAN-capp-tip-step r6 vs MOCKUP-capp-tip-step-r2 (a bundle WITH the sdkPay flag)   // --set s2: a bundle packaged WITH the sdkPay flag (S2 method (A), advisor 11-09)
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : d; };
@@ -157,15 +158,15 @@ async function diffPair(id, a, b, tag) {
 // ── the run ──
 const results = [];
 const SET = arg('--set', 'main');
-if (!['main', 's2', 'tip'].includes(SET)) throw new Error(`--set ${SET}: main | s2 | tip`);
-const want = (SET === 's2' ? S2_SCENES : SET === 'tip' ? TIP_SCENES : SCENES).filter((s) => !ONLY.length || ONLY.includes(s.name));
+if (!['main', 's2', 'tip', 's3'].includes(SET)) throw new Error(`--set ${SET}: main | s2 | tip | s3`);
+const want = (SET === 's2' ? S2_SCENES : SET === 'tip' ? TIP_SCENES : SET === 's3' ? S3_SCENES : SCENES).filter((s) => !ONLY.length || ONLY.includes(s.name));
 const write = (f, buf) => fs.writeFileSync(path.join(OUT, 'img', f), buf);
 for (const sc of want) {
   for (const theme of sc.themes || ['light']) {
     const id = `${sc.name}-${theme}`, row = { scene: sc.name, theme, width: sc.width, height: sc.height, note: sc.note || '', ...(sc.injections ? { injections: sc.injections } : {}) }; let p = null;
     try {
       // the REAL scene, from the packaged entry
-      p = await openPage({ width: sc.width, height: sc.height, dark: theme === 'dark' }); p.scene = id; p.route = router(sc.fixtures || {});
+      p = await openPage({ width: sc.width, height: sc.height, dark: theme === 'dark' }); p.scene = id; p.route = router(typeof sc.fixtures === 'function' ? sc.fixtures() : (sc.fixtures || {}));   // a factory: fresh fixture state per theme
       // S2 method (A): the scene's stated injections — runtime mode 'native' (the bundle must already carry the sdkPay flag), the stand-in
       // pay binding (standin-paysdk.mjs, before any page script), a device position (the checkout's delivery pin)
       if (sc.native) p.rtPatch = (src) => (src.includes('"sdkPay":true') ? src.replace('"mode":"web"', '"mode":"native"') : src);

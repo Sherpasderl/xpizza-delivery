@@ -167,6 +167,8 @@ for (const rid of ['x_pizza', 'la_musa']) {
     const keys = plain(f.w.eval('resolvedCartLines().map(l => String(l.key))'));
     assert.deepStrictEqual(keys, [String(dish(f.w, c.A).id)], `🔴 ${dir}: ONLY the gone dish is dropped — the repriced one stays (S3-FORM-C2-DROP)`);
     assert.strictEqual(txt(f.w.document.getElementById('acct-toast')), '1 producto ya no está disponible', `🔴 ${dir}: the existing toast (S3-FORM-C2-TOAST)`);
+    assert.strictEqual(f.w.getComputedStyle(f.w.document.getElementById('acct-toast')).position, 'fixed', `🔴 ${dir}: the toast is STYLED on screen for a customer who never opened the account sheet (S3-FORM-C2-TOAST-SHOWN, the SBS)`);
+    { const cs = f.w.getComputedStyle(f.w.document.getElementById('acct-toast')); assert.deepStrictEqual([cs.width, cs.maxWidth], ['max-content', `${f.w.innerWidth - 32}px`], `🔴 ${dir}: the toast takes its line's width (one line, as drawn), wrapping only at the screen's edge (S3-FORM-C2-TOAST-LINE, the SBS)`); }
     assert.ok(f.ctl.quotes.length > q0 && f.ctl.quotes.at(-1).items.length === 1, `🔴 ${dir}: the total is re-quoted for what is left (S3-FORM-C2-QUOTE)`);
     assert.strictEqual(f.ctl.sent.length, 1, `${dir}: nothing re-sent — the customer confirms again`);
   }

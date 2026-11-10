@@ -322,6 +322,16 @@ const HUNKS = {
  "account": [
   {
    "kind": "replace",
+   "new": ".acct-toast{position:fixed;left:50%;top:50%;transform:translate(-50%,calc(-50% + 12px));width:max-content;max-width:calc(100vw - 32px);background:#17130F;color:#fff;padding:12px 18px;border-radius:12px;font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;transition:all .3s;z-index:1100}",
+   "old": ".acct-toast{position:fixed;left:50%;top:50%;transform:translate(-50%,calc(-50% + 12px));background:#17130F;color:#fff;padding:12px 18px;border-radius:12px;font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;transition:all .3s;z-index:1100}"
+  },
+  {
+   "kind": "insert",
+   "new": "    injectSheetStyles();   // S3 (the SBS): its styles too — a customer who never opened the account sheet sees the toast",
+   "old": ""
+  },
+  {
+   "kind": "replace",
    "new": "        // S3 (Codex r1 P2-7): a stored recipe's key IS the resolved pricing key (reorder-normalize.js: itemPricingKey → the stamp), i.e. the\n        // item key — matched FIRST through the served map (a renamed / minted dish), then today's legacy match\n        const ikOf = (p) => (typeof liveItemKey === 'function' ? liveItemKey(p) : null);\n        const item = MENU.find((p) => ikOf(p) === rl.key) || (byId ? MENU.find((p) => p.id === rl.key) : MENU.find((p) => p.name === rl.key));   // la_musa by id / x_pizza by name (recipe key)",
    "old": "        const item = byId ? MENU.find((p) => p.id === rl.key) : MENU.find((p) => p.name === rl.key);   // la_musa by id / x_pizza by name (recipe key)"
   },

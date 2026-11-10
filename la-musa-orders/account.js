@@ -1097,7 +1097,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 .acct-signout button{background:none;border:none;font-family:inherit;font-size:14px;font-weight:650;color:#8C7B6E;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .acct-delete{margin-top:10px;text-align:center}
 .acct-delete button{background:none;border:none;font-family:inherit;font-size:12.5px;font-weight:600;color:#B3A594;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
-.acct-toast{position:fixed;left:50%;top:50%;transform:translate(-50%,calc(-50% + 12px));background:#17130F;color:#fff;padding:12px 18px;border-radius:12px;font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;transition:all .3s;z-index:1100}
+.acct-toast{position:fixed;left:50%;top:50%;transform:translate(-50%,calc(-50% + 12px));width:max-content;max-width:calc(100vw - 32px);background:#17130F;color:#fff;padding:12px 18px;border-radius:12px;font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;transition:all .3s;z-index:1100}
 .acct-toast.acct-show{opacity:1;transform:translate(-50%,-50%)}
 `;
     document.head.appendChild(st);
@@ -1496,6 +1496,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 
   // ── Toast (small transient message; no SDK involved) ──
   function toast(msg) {
+    injectSheetStyles();   // S3 (the SBS): its styles too — a customer who never opened the account sheet sees the toast
     let el = $('acct-toast');
     if (!el) {
       el = document.createElement('div');
