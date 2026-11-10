@@ -241,7 +241,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
     const q = ctl.quotes.at(-1); const b = plain(q); resolveLines(rid, b, P.tables);
     const cents = Math.round(computeServerTotal(b.items, rid, P.tables).total * 100);
     assert.ok(new RegExp(`Total nuevo: L ${(cents / 100).toFixed(0)}\\.`).test(txt(w.document.getElementById('s2-price-notice')) || ''), `🔴 ${dir}: the note's total IS the server quote (S3-FORM-P12-QUOTED)`);
-    assert.strictEqual(w.eval('itemAwaitingQuote()'), false, `🔴 ${dir}: once quoted, «Confirmar y enviar» is no longer held (S3-FORM-P12-GO)`);
+    assert.strictEqual(w.eval('itemQuoteMissing()'), false, `🔴 ${dir}: once quoted, «Confirmar y enviar» is no longer held (S3-FORM-P12-GO)`);
     await send(w, 'card');   // past processPayment's gate the harness sends as everywhere (its own validation chain needs layout jsdom lacks)
     assert.strictEqual(ctl.sent.length, sent0 + 1, `${dir}: …and the order goes`);
   }
@@ -339,6 +339,96 @@ for (const rid of ['x_pizza', 'la_musa']) {
     assert.deepStrictEqual(plain(w.eval('resolvedCartLines().map(l => [String(l.key), l.qty])')), [[want, 1]], `🔴 ${dir}: the recipe's item key finds the dish (S3-FORM-P27-REORDER)`);
   }
   ok('P2-7 — a stored reorder recipe resolves a renamed (x_pizza) and a minted (la_musa) dish by its item key');
+}
+
+// ════ Codex S3 r2 (advisor rulings 2026-11-10) ════
+const REWARD = { x_pizza: { type: 'free_pizza_choice', item_id: 'Carnivora', name: 'Carnivora' }, la_musa: { type: 'points_ala_carte', items: [{ id: 'dimsum_05', qty: 1, name: 'Wonton' }] } };
+const ACCT_MARK = { x_pizza: 'xpizza_acct', la_musa: 'lamusa_acct' };
+function rewardsFirebase() {   // the account module's SDK seam only (cart-serial-order.test.mjs §4b): a balance, redemption live
+  const snap = (v) => ({ exists: () => v != null, val: () => v });
+  const user = { uid: 'u_s3r', getIdToken: async () => 'tok', phoneNumber: '+50499990000' };
+  return { app: {}, db: {}, auth: { currentUser: user, authStateReady: async () => {} }, authMod: { onAuthStateChanged: (a, cb) => { cb(user); return () => {}; }, signOut: async () => {} },
+    dbMod: { ref: (db, path) => ({ path }), get: async () => snap(null), onValue: (r, cb) => { cb(snap(r && /^user_rewards\//.test(r.path) ? { balance: 100000, reserved: 0, canary: true } : null)); return () => {}; }, off: () => {} } };
+}
+const signedIn = (rid) => ({ 'account.js': (code) => `try { localStorage.setItem(${JSON.stringify(ACCT_MARK[rid])}, ${JSON.stringify(JSON.stringify({ uid: 'u_s3r', name: 'Ana Pérez', phone: '+50499990000' }))}); } catch (_) {}\n` + code.replace('async function ensureFirebase() {', 'async function ensureFirebase() { if (window.__FB_FAKE) return window.__FB_FAKE;') });
+for (const rid of ['x_pizza', 'la_musa']) {
+  const dir = DIR[rid], P = BASE[rid], c = CASE[rid];
+  const pre = await boot(rid, P); const a0 = dish(pre.w, c.A);
+  const ex0 = pre.w.liveMenuGlobalGet('EXTRAS').find((e) => e.id === c.extraId);
+  const XR = { outcome: 'denied', denied: [{ item: P.body.item_keys[String(a0.id)], extra: rid === 'la_musa' ? ex0.id : ex0.name }] };
+  const XREF = { status: EI.refusalStatus(XR), body: { ...EI.refusalBody(XR), order_id: 'X' } };
+  // ── P1 (MONEY): Codex's sequence — repair → quoted → confirm → EDIT → send while the edit's quote is pending: NOTHING is sent ──
+  for (const path of ['cash', 'card']) {
+    const { w, ctl } = await boot(rid, P, [XREF]);
+    const a = dish(w, c.A); await add(w, a.id); c.extra(w, a); await settle(); await add(w, dish(w, c.B).id);
+    await send(w, path);
+    gate(w).querySelector('.pickup-gate-btn.primary').click(); await settle(); await settle();   // repaired, and quoted (answered at once)
+    await quiet(() => w.processPayment()); await settle(); await settle();                     // a confirmation its own validation stops
+    ctl.holdQuotes = true;
+    await add(w, dish(w, c.B).id);                                                               // the EDIT: its quote stays pending
+    const n = ctl.sent.length;
+    await send(w, path);                                                                         // straight to the send boundary
+    assert.strictEqual(ctl.sent.length, n, `🔴 ${dir} ${path}: the send is refused while the edited cart has no server quote (S3-FORM-R2-BOUNDARY)`);
+    await releaseQuotes(ctl);
+    await send(w, path);
+    assert.strictEqual(ctl.sent.length, n + 1, `${dir} ${path}: once the edited cart is quoted, it goes`);
+  }
+  ok(`${dir}: r2 P1 — after a repair, an edit, then a send while the edit's quote is pending sends NOTHING (cash + card); quoted, it goes`);
+
+  // ── P2: a pending REWARD whose quote no longer matches the repaired cart → no «Total nuevo» until the reward is re-quoted for it ──
+  {
+    const w = loadForm(dir, { transforms: signedIn(rid) }); w.__FB_FAKE = rewardsFirebase(); await settle();
+    w.HTMLElement.prototype.scrollIntoView = function () {};
+    const ctl = { P, menu: () => P.env, menuCalls: 0, quotes: [], sent: [], sends: [XREF], held: [], holdQuotes: false, quoteAnswer: null };
+    await quiet(() => serve(w, plain(P.env))); wire(w, rid, ctl);
+    const redq = []; let holdRed = false; const heldRed = [];
+    const prev = w.__respond;
+    w.__respond = (url, init) => {
+      if (!url.includes('quoteRedemption')) return prev(url, init);
+      const body = JSON.parse((init && init.body) || '{}'); redq.push(body.items);
+      const b = plain(body); resolveLines(rid, b, P.tables); const t = computeServerTotal(b.items, rid, P.tables); const cents = Math.round(t.total * 100);
+      const ans = () => res(t.error ? { ok: false } : { ok: true, total_cents: cents, net_total_cents: cents, discount_cents: 0, subtotal_cents: cents, tax_cents: 0, free_items: [], free_item: { name: null }, total_cost: 0, remaining: 0, savings_cents: 0 });
+      return holdRed ? new Promise((go) => heldRed.push(() => go(ans()))) : ans();
+    };
+    const a = dish(w, c.A); await add(w, a.id); c.extra(w, a); await settle(); await add(w, dish(w, c.B).id);
+    if (rid === 'la_musa') await add(w, 'dimsum_05');
+    w.__ACCOUNT.restoreRedeem(REWARD[rid], null, null);
+    await w.__ACCOUNT.requoteRedeem(w.redeemCartItems()); await settle();
+    assert.ok(w.__ACCOUNT.getRedeemPayload() && w.__ACCOUNT.redeemQuoteMatches(w.redeemCartItems()), `premise: ${dir} holds a reward quoted for this cart`);
+    await send(w, 'card');
+    assert.ok(shown(gate(w)), `premise: ${dir} the extra gate`);
+    holdRed = true;
+    gate(w).querySelector('.pickup-gate-btn.primary').click(); await settle(); await settle();
+    assert.ok(!w.__ACCOUNT.redeemQuoteMatches(w.redeemCartItems()), `premise: ${dir} the stored reward quote no longer matches the repaired cart`);
+    assert.ok(!/Total nuevo/.test(txt(w.document.getElementById('s2-price-notice')) || ''), `🔴 ${dir}: no «Total nuevo» from a reward quote that does not match the repaired cart (S3-FORM-R2-REDEEM)`);
+    assert.ok(heldRed.length >= 1, `🔴 ${dir}: the reward is re-quoted for the repaired cart (S3-FORM-R2-REDEEM-REQUOTE)`);
+    holdRed = false; heldRed.splice(0).forEach((go) => go()); await settle(); await settle();
+    try { w.renderStage2Summary(); } catch (_) {}
+    assert.ok(w.__ACCOUNT.redeemQuoteMatches(w.redeemCartItems()), `premise: ${dir} the reward quote now matches`);
+    assert.ok(/Total nuevo: L \d+\./.test(txt(w.document.getElementById('s2-price-notice')) || ''), `${dir}: …then «Total nuevo» shows`);
+  }
+  ok(`${dir}: r2 P2 — with a reward pending, «Total nuevo» waits for a reward quote that matches the repaired cart`);
+
+  // ── P2: C1 clears only after the fetched menu was APPLIED — an apply failure followed by a 304 keeps the gate ──
+  {
+    const MC = resolutionRefusal({ code: 'menu_changed' });
+    const { w, ctl } = await boot(rid, P, [{ status: MC.status, body: MC.body }]);
+    await add(w, dish(w, c.A).id); await add(w, dish(w, c.B).id);
+    await send(w, 'cash');
+    ctl.menu = () => LESS[rid];
+    // the apply FAILS mid-commit, only while the NEW data is installed (live-apply.test.mjs's own hook), so the form restores the old menu
+    const realTender = w.onCashTenderedInput, bName = c.B;
+    w.onCashTenderedInput = function () { const out = realTender.apply(this, arguments); if (!w.liveMenuGlobalGet('MENU').some((d) => d.name === bName)) throw new Error('tender hint exploded'); return out; };
+    gate(w).querySelector('.pickup-gate-btn').click(); await settle(); await settle(); await settle();
+    w.onCashTenderedInput = realTender;
+    assert.ok(w.__liveMenu.applier.state().lastError, `premise: ${dir} the first reload's apply failed`);
+    assert.ok(shown(gate(w)), `premise: ${dir} …and the gate stayed`);
+    const prev = w.__respond; w.__respond = (url, init) => (url.includes('/menu/') ? Promise.resolve({ ok: false, status: 304, headers: { get: () => null }, json: () => Promise.reject(new Error('304')) }) : prev(url, init));
+    gate(w).querySelector('.pickup-gate-btn').click(); await settle(); await settle(); await settle();
+    assert.ok(shown(gate(w)), `🔴 ${dir}: a 304 after a failed apply keeps the gate — the fetched menu was never applied (S3-FORM-R2-C1)`);
+    assert.ok(!gate(w).querySelector('.pickup-gate-btn').disabled, `${dir}: …its button live`);
+  }
+  ok(`${dir}: r2 P2 — «Recargar la página» clears only after the fetched menu applied; a failed apply then a 304 keeps the gate`);
 }
 
 closeAll();

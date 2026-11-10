@@ -160,7 +160,7 @@
    "reachesAsserted": false,
    "reason": "the outer cap on a pending address-pick waiter at pay time: created only when __locPickPromise is set (an address pick in flight); S1 has none. Default bound 10000 ms = the horizon",
    "sha": "30b25d685b6afc199d6f07964a4b64bdb8e9abafa0a39dae927c051ad13d8580",
-   "ctrlSha": "eb986b73888b3a81996aa8482e5a692ba52777f4ae2ccc7ae0d95bfa3e83d4f3"
+   "ctrlSha": "64f83fbbb828f22fff47eea74b39436cb0da5ad75ec395278e7e353af1332fa4"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#<top>:setInterval#0",
@@ -220,7 +220,7 @@
    "reachesAsserted": true,
    "reason": "the createOrder retry BACKOFF (attempt*1500 with attempt ≤ MAX_TRIES − 1 = 2 → ≤ 3000 ms): ON the asserted submit path, only after a failed attempt (S1’s first createOrder answers 200); bound 3000 ms is within the 10 s horizon — PLAN 3 formSignal re-review (f338a9dd): submitOrder gains ONE synchronous sendFormSignal (navigator.sendBeacon, never awaited, no timer) inside the cart-conflict early return, before orderSubmitting / any timer; no loop, retry limit or delay changed → bound unchanged",
    "sha": "de6c6db54ecf5d11861a4f726e1404d6942127f9803bb48080293b05be0098f3",
-   "ctrlSha": "ce7f4901797a145f82fe64f1a6e915b922afc6e5e1c0d92a7deea8eb9614f2c0"
+   "ctrlSha": "0b303f1d31bbdf612c5df2e994f4e7950370554a5b626728764859a1d5eac82b"
   },
   {
    "key": "xpizza-orders/form-order-number.js#next:setTimeout#0",
@@ -696,7 +696,7 @@
    "reachesAsserted": false,
    "reason": "the PixelPay charge retry (ONCE, 1.5 s): ONLINE payment only (precondition not-online-payment)",
    "sha": "05b25fb8e9e20e749421a879832a8c11bd05f6b765e6a5325190c549f754d747",
-   "ctrlSha": "7738e99d8c8df73f46402c1a3cd80be7cb06c676fa41b3761c1e9042224684b9"
+   "ctrlSha": "d232f16c82adcc2c7b6da2c64af4767e6fecbff42e4558185d65165187ee01d9"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#restoreOrderForm:setTimeout#0 → xpizza-orders/index.html<script@2>#initMap:setTimeout#0 → xpizza-orders/index.html<script@2>#initMap:setTimeout#0",
@@ -716,10 +716,10 @@
    "reachesAsserted": true,
    "reason": "processPayment’s awaited steps: the address-pick cap (only while an address pick is in flight — not on S1’s GPS-OK path), then submitOrder’s token race (≤ 1500 ms) and retry backoff (≤ 1500 + 3000 ms, MAX_TRIES 3); the demo-branch and PixelPay steps are not on the cash path. On S1’s path the bound is 6000 ms, within the 10 s horizon — 6f353ed: submitOrder now also races the createOrder body for the tracking token (confirmTokenOf, ≤ 1500 ms, once on success) → bound 7500 ms ≤ the horizon — PLAN 3 formSignal re-review (f338a9dd): submitOrder gains ONE synchronous sendFormSignal (navigator.sendBeacon, never awaited, no timer) inside the cart-conflict early return, before orderSubmitting / any timer; no loop, retry limit or delay changed → bound unchanged",
    "sha": "9ca9222901cc40dfd5f6822a0063cc3d5e028a95237bfa6f6a73d5b58608bab1",
-   "ctrlSha": "65fd22074151dcfaa0dde11d23777b38c31511015ef1c9e3192f0cb568eba2fa"
+   "ctrlSha": "b98473c3dad3b7b1c4eac5310a6324630cc872b6dfc723f55eca050ad85ef5dc"
   },
   {
-   "key": "await@xpizza-orders/index.html<script@2>:4835 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#1",
+   "key": "await@xpizza-orders/index.html<script@2>:4836 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#1",
    "cumulativeBoundMs": null,
    "repeats": true,
    "repeatLimit": "unbounded",
@@ -729,14 +729,14 @@
    "ctrlSha": "371207e409e9d8f745432e00143bf01c19a560b0fa7ee59cbb6bcc0c76b4e047"
   },
   {
-   "key": "await@xpizza-orders/index.html<script@2>:5115 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#1 → xpizza-orders/index.html<script@2>#confirmTokenOf>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
+   "key": "await@xpizza-orders/index.html<script@2>:5134 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#1 → xpizza-orders/index.html<script@2>#confirmTokenOf>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
    "cumulativeBoundMs": 7500,
    "repeats": true,
    "repeatLimit": 3,
    "reachesAsserted": true,
    "reason": "submitOrder's awaited steps on the real submit: the ID-token race (≤ 1500 ms), the retry backoff (1500, 3000 ms; MAX_TRIES 3) and — 6f353ed — the tracking-token race on the createOrder 200 body (confirmTokenOf, ≤ 1500 ms, once) before showSuccess; the 1500 ms demo sleep is the unconfigured-endpoint branch only. Bound 7500 ms ≤ the horizon; S1's first attempt succeeds — PLAN 3 formSignal re-review (f338a9dd): submitOrder gains ONE synchronous sendFormSignal (navigator.sendBeacon, never awaited, no timer) inside the cart-conflict early return, before orderSubmitting / any timer; no loop, retry limit or delay changed → bound unchanged",
    "sha": "87eca4668459cc1fd137eb3ec8c0421e93df3f9c91ad0fce86b9abfd60ace384",
-   "ctrlSha": "3a8882d1a89c88fc2ee1c9802572feed6a9035aa60cad1314d1af8d00249aa80"
+   "ctrlSha": "9bf9988df7502748202a26556d35fdf7b918c1c0a4934a3fd8ab65f4390a49ec"
   },
   {
    "key": "xpizza-orders/form-order-number.js#next:setTimeout#0 → xpizza-orders/form-order-number.js#next:setTimeout#0",
@@ -959,7 +959,7 @@
    "reachesAsserted": false,
    "reason": "S3 (Codex r1): the PixelPay charge retry (ONCE, 1.5 s) whose answer is an item refusal lands on Paso 2 through showStage (itemRefused) — the same retry bound as the reviewed charge retry; ONLINE payment only",
    "sha": "04737fde5bd2e362861156846159e3620fabb3a9879f9c3c2b5e4a1dd8d2be69",
-   "ctrlSha": "e44cc01363e896bf827eef586792933d66f4808b93c9cdea5ba6bb7ecab92c8e"
+   "ctrlSha": "4319e7d38fc73607afb22b443ae1d3e77f02b07dd2c3977eb758b4bc488e2325"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#processPixelPay:setTimeout#0 → xpizza-orders/index.html<script@2>#clientUpdateRequired:setTimeout#0 → xpizza-orders/index.html<script@2>#showStage:setTimeout#0 → xpizza-orders/index.html<script@2>#showStage:setTimeout#0",
@@ -969,7 +969,7 @@
    "reachesAsserted": false,
    "reason": "S3 (Codex r1): the PixelPay charge retry (ONCE, 1.5 s) → a 426's clientUpdateRequired fallback (8 s) → Paso 2 through showStage; newly enumerated with the S3 send-path edits, the retry bound unchanged (as the reviewed charge retry); ONLINE payment only",
    "sha": "d55bf16b4cdfdec12d079bb06c1bdf7b7929417e08caffba817b5d5a31303b1d",
-   "ctrlSha": "e9bd911b56ee6923f29a69bc13e06b74a327bd5ecaa9f74f55a4e0c366dc2024"
+   "ctrlSha": "646b62f1a9ba154f3841454d4c548bedbb80954323b713b81f7598a8efee1ccf"
   }
  ],
  "periodic": [

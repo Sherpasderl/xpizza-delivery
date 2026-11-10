@@ -4298,7 +4298,7 @@ async function processPayment(){
   window.__conflictHealed = false;              // F4: this user-initiated submit gets exactly ONE auto-heal on a 409 order_conflict
   window.__cqRequoted = false;                  // 1C T8: …and exactly ONE silent re-quote+resend on a stale quote
   const _payCta = document.getElementById('btn-pay'); if(_payCta) _payCta.disabled = true;
-  if(itemAwaitingQuote()){   // Codex S3 r1 P1-2: the repaired / reloaded cart is not quoted yet — nothing is sent
+  if(itemQuoteMissing()){   // Codex S3 r1 P1-2 / r2: the repaired / reloaded cart is not quoted yet — nothing is sent
     window.__paySubmitting = false; if(_payCta) _payCta.disabled = false;
     try { requestServerQuote(true); } catch(_){}
     const _e = document.getElementById('err3'); if(_e){ _e.style.display = 'block'; _e.textContent = 'No pudimos confirmar el precio en este momento. Volvé a intentar en unos segundos — tu pedido está intacto.'; }
@@ -4648,6 +4648,7 @@ async function processPixelPay(){
     try{ const __hasRedeem=!!(window.__ACCOUNT&&window.__ACCOUNT.getRedeemPayload&&window.__ACCOUNT.getRedeemPayload()); if(__hasRedeem && !__idTok){ return paymentFallback('No pudimos verificar tu sesión. Tocá pagar de nuevo para no perder tu premio.'); } }catch(_){}
     // 🔴 THE OTHER PLACE MONEY IS ASKED FOR. processPixelPay is re-entered by its own retry paths
     // without rebuilding, so the entry gate alone does not cover them.
+    if(itemSendRefused()) return;   // Codex S3 r2 P1: no server quote for the cart being sent → nothing is sent
     if(refuseConflictedSend('chargeOnlineOrder')) return paymentFallback('Tu carrito cambió mientras iniciábamos el pago.');
     /* 1C Task 7 — ATTACH THE CONFIRMED-QUOTE TOKEN, at the send, behind the same choke the cart
        conflict gate uses. Conditional and additive: the token goes on only when it was issued for
@@ -5018,13 +5019,31 @@ let __itemReloading = false;
 // Codex S3 r1 P1-2 (advisor, MONEY): after a repair or a reload the order is NEVER sent until a successful server quote for THAT
 // cart is in (the redemption's own quote while one is pending, else the order quote), and «Total nuevo» is that quote — never the
 // client arithmetic. processPayment refuses before anything else and says so with the form's existing sentence.
+// Codex S3 r2: a pending reward's quote counts only when it MATCHES the cart on screen (redeemQuoteMatches — the account module's
+// own fail-closed answer); otherwise the reward is re-quoted for it, ONCE per cart, and there is no quote yet
 function itemQuotedCents(){
   try {
-    if(window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()){ const rc = window.__ACCOUNT.getRedeemQuoteTotalCents ? window.__ACCOUNT.getRedeemQuoteTotalCents() : null; return rc == null ? null : rc; }
+    if(window.__ACCOUNT && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()){
+      const items = redeemCartItems();
+      const fresh = typeof window.__ACCOUNT.redeemQuoteMatches === 'function' && window.__ACCOUNT.redeemQuoteMatches(items);
+      const rc = fresh && window.__ACCOUNT.getRedeemQuoteTotalCents ? window.__ACCOUNT.getRedeemQuoteTotalCents() : null;
+      if(rc == null){ const k = JSON.stringify(items); if(window.__itemRedeemAsked !== k){ window.__itemRedeemAsked = k; try { Promise.resolve(window.__ACCOUNT.requoteRedeem(items)).then(function(){ try { renderStage2Summary(); } catch(_){} }, function(){}); } catch(_){} } }
+      return rc == null ? null : rc;
+    }
     return getServerQuoteTotalCents();
   } catch(_){ return null; }
 }
-function itemAwaitingQuote(){ if(!window.__itemAwait) return false; if(itemQuotedCents() != null){ window.__itemAwait = false; return false; } return true; }
+// Codex S3 r2 P1: the requirement holds from the repair / reload until an order COMPLETES (never cleared at a confirmation), and is
+// judged against the cart being sent — at processPayment AND at both send boundaries (the cash send and the card send)
+function itemQuoteMissing(){ return window.__itemQuoteRequired === true && itemQuotedCents() == null; }
+function itemSendRefused(){
+  if(!itemQuoteMissing()) return false;
+  orderSubmitting = false;
+  try { requestServerQuote(true); } catch(_){}
+  showStage('s2', 50);
+  const _e = document.getElementById('err3'); if(_e){ _e.style.display = 'block'; _e.textContent = 'No pudimos confirmar el precio en este momento. Volvé a intentar en unos segundos — tu pedido está intacto.'; }
+  return true;
+}
 // fromQuote (Codex S3 r1 P2-5): a quote's item refusal opens the same gate — menu_changed is the quote's fail-soft 200
 function itemRefused(status, err, fromQuote){
   if(!err || !(status === 409 || (fromQuote && status === 200 && err.error === 'menu_changed'))) return false;
@@ -5078,10 +5097,10 @@ async function itemReloadMenu(){
   // still pending, or refused, is a FAILED reload — never a false success
   try { if(A) A.flush(); } catch(_){}
   window.__itemMenuReload = false; __itemReloading = false;
-  if(!st || st.phase !== 'live' || st.lastError || (A && (A.hasPending() || A.state().counts.refused > refused0))){ if(btn) btn.disabled = false; return; }   // the gate stays, its button live
+  if(!st || st.phase !== 'live' || st.lastError || (A && (A.hasPending() || A.state().counts.refused > refused0 || A.state().lastError))){ if(btn) btn.disabled = false; return; }   // the gate stays, its button live; r2: an unapplied menu (a failed apply, then a 304) is a failure
   const gone = resolvedCartLines().filter(function(l){ return l.unresolved === 'removed'; }).map(function(l){ return l.key; });
   gone.forEach(function(k){ const id = /^\d+$/.test(String(k)) ? Number(k) : k; chg(id, -(CART.qtyOf(k) || 0)); });
-  hideItemGate(); window.__itemAwait = true;   // P1-2: the new cart is sent only once quoted
+  hideItemGate(); window.__itemQuoteRequired = true;   // P1-2 / r2: from here every send needs the server quote of the cart it sends
   try { renderStage2Summary(); } catch(_){}
   try { requestServerQuote(true); } catch(_){}
   if(gone.length){ try { window.__ACCOUNT.toast(gone.length === 1 ? '1 producto ya no está disponible' : gone.length + ' productos ya no están disponibles'); } catch(_){} }
@@ -5090,7 +5109,7 @@ function itemRemoveDenied(){
   const den = window.__itemDenied || []; hideItemGate();
   den.forEach(function(d){ const pid = /^\d+$/.test(String(d.key)) ? Number(d.key) : d.key; if(((pizzaExtras[d.key] || {})[d.inst] || {})[d.eid] > 0) toggleDetailExtra(d.eid, pid, Number(d.inst)); });   // the form's own option writer
   const byDish = []; den.forEach(function(d){ let e = byDish.find(function(x){ return x.dish === d.dish; }); if(!e){ e = { dish: d.dish, ex: [] }; byDish.push(e); } if(e.ex.indexOf(d.extra) === -1) e.ex.push(d.extra); });
-  window.__itemAwait = true;   // P1-2: the repaired cart is sent only once quoted
+  window.__itemQuoteRequired = true;   // P1-2 / r2: from here every send needs the server quote of the cart it sends
   window.__itemNote = { text: byDish.map(function(e){ return 'Quitamos ' + (e.ex.length > 1 ? e.ex.slice(0, -1).join(', ') + ' y ' + e.ex[e.ex.length - 1] : e.ex[0]) + ' de ' + e.dish + '.'; }).join(' '), sig: cartSig() };
   try { renderStage2Summary(); } catch(_){}
 }
@@ -5167,6 +5186,7 @@ async function submitOrder(paymentStatus){
       // 🔴 INSIDE THE RETRY LOOP, not before it. The loop re-sends createOrder without rebuilding the
       // order, so a menu change landing between attempt 1 and attempt 2 would otherwise be charged:
       // first request 500s, the merchant republishes during the backoff, the retry sends the stale cart.
+      if(itemSendRefused()) return;   // Codex S3 r2 P1: no server quote for the cart being sent → nothing is sent
       if(refuseConflictedSend('createOrder')){ orderSubmitting=false; return; }
       /* 1C Task 7 — ATTACH THE CONFIRMED-QUOTE TOKEN, at the send, behind the same choke the cart
          conflict gate uses. Conditional and additive: the token goes on only when it was issued for
@@ -5315,6 +5335,7 @@ function startAnotherOrder(){
   __orderNumber.stop();           // this confirmation is over: its number poll must never paint the next one
   window.__pendingOrder = null;   // Layer 1: next distinct order mints a fresh id
   SERIAL.clear();                 // §3: the order is done — the next one serializes in insertion order
+  window.__itemQuoteRequired = false;   // S3 r2: the order is over — the next one starts without the requirement
   // Reset cart quantities
   Object.keys(qty).forEach(k => { qty[k] = 0; });
   CART.clear();          // 1B Task 4 — qty and CART are cleared together or not at all
@@ -5440,6 +5461,7 @@ async function confirmTokenOf(res){
 function showSuccess(){
   showStage('s5',100);
   SERIAL.clear();   // §3: this order is done
+  window.__itemQuoteRequired = false;   // S3 r2: the order succeeded (the success screen)
   window.__pendingOrder = null;   // Layer 1: this order is DONE — an identical follow-up cart must mint a fresh id (never reuse a completed order_id → idempotent-return "success" with no new order)
   // Default the order summary to COLLAPSED on every success render (reward card first).
   try{ const rt=document.getElementById('receipt-toggle'); if(rt) rt.setAttribute('aria-expanded','false'); const rb=document.getElementById('receipt-items'); if(rb) rb.classList.remove('receipt-open'); }catch(_){}
