@@ -170,8 +170,11 @@ for (const rid of ['x_pizza', 'la_musa']) {
   assert.ok(!Object.prototype.hasOwnProperty.call(line, 'id'), '🔴 la-musa-orders: …ALONE — no id that would disagree with it (S3-MINT-NOID)');
   assert.deepStrictEqual(resolveLines('la_musa', clone(body), P.tables), { ok: true }, '🔴 la-musa-orders: the server resolves the minted line (S3-MINT-RESOLVE)');
   const withId = clone(body); withId.items[0] = { id: 'bao_nuevo', ...withId.items[0] };
-  assert.strictEqual(resolveLines('la_musa', withId, P.tables).code, 'invalid_line', 'premise: the same line with its display id is the server\'s invalid_line');
-  ok('la-musa-orders: MINT — the minted line sends item_key alone and resolves; with its id it would be invalid_line');
+  // asm5 (S2 × S3, advisor ruling 11-10): S2's «item_key wins» reverses S1d's agreement clause — a held key decides the line and a
+  // disagreeing display id is advisory. The premise is restated under S2; MINT-NOID above still pins that the form never sends the id.
+  assert.deepStrictEqual(resolveLines('la_musa', withId, P.tables), { ok: true }, 'premise (S2 item_key wins): the same line WITH its disagreeing display id still resolves');
+  assert.strictEqual(withId.items[0][Symbol.for('xpizza.d4.pricingKeyStamp')], 'i_aaaaaaaaaaac', 'premise (S2 item_key wins): …and prices by its key, not the display id');
+  ok('la-musa-orders: MINT — the minted line sends item_key alone and resolves; with a disagreeing id it still resolves and prices by the key (S2)');
 }
 
 // ── 5. REWARD ──
