@@ -40,6 +40,7 @@
   "gate-early.js",
   "index.html",
   "invite-mail.js",
+  "item-edit-drawer.test.mjs",
   "item-edit-logic.js",
   "item-edit.test.mjs",
   "netlify.toml",
@@ -151,8 +152,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "4d875379541a09b2ace917468a5b0c17eaa265a877e1332e5923d7d6d7487a43",
-   "bytes": 112231
+   "sha256": "43e6e2a387a04d016ed1dcbbc05097b403b8bfde548a482d1962dcbf8a28e458",
+   "bytes": 115200
   }
  },
  "diff_aid": {
@@ -998,6 +999,12 @@
    ],
    [
     "",
+    ".dwb.ie-edit .fld.invalid .modblock",
+    "border-color",
+    "var(--red)"
+   ],
+   [
+    "",
     ".dwf .delx",
     "background",
     "transparent"
@@ -1241,6 +1248,18 @@
     ".fld input[type=text],.fld textarea,.fld select",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    ".fld.chg input,.fld.chg textarea,.fld.chg select",
+    "background",
+    "var(--tint2)"
+   ],
+   [
+    "",
+    ".fld.chg input,.fld.chg textarea,.fld.chg select",
+    "border-color",
+    "var(--accent)"
    ],
    [
     "",
@@ -1550,9 +1569,93 @@
    ],
    [
     "",
+    ".mk-cnt",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-cnt.over",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".mk-cnterr",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".mk-dopt .dp",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-dopt .mk-dn span",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-dopt.over .mk-dn,.mk-dopt.over .mk-dn span",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".mk-lrow label .mk-opt",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-lrow label",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-modhr",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-note b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk-note",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-note",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-sub",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".modal",
     "background",
     "var(--card)"
+   ],
+   [
+    "",
+    ".modblock.mk-inv",
+    "border-color",
+    "var(--red)"
    ],
    [
     "",

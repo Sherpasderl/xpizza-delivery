@@ -452,7 +452,7 @@ test('premise — the fixture is a source the SERVER accepts (validateSource), t
 
 test('C5 live — a served reserved name reads «Ese nombre no está disponible»; the record\'s OWN key never does (a rename back passes)', () => {
   const d = createDraft(BASE());
-  const ctx = { reservedNames: ['hawaiana', 'pizza cacio e pepe'] };   // as served: folded by the server's normalizeName
+  const ctx = ['hawaiana', 'pizza cacio e pepe'];   // reservedNames as served: folded by the server's normalizeName
   const s = IE.open(d, 'Pizza Cacio e Pepe', ctx);
   IE.set(s, 'name', '  HAWAIANA ');
   assert.equal(IE.view(d, s).errors.name, 'Ese nombre no está disponible', 'normalized: case and spaces folded');
@@ -475,17 +475,17 @@ test('C5 live — a served reserved name reads «Ese nombre no está disponible�
 test('C5 live, a group — each derived option name is judged with ITS OWN key exempt; another record\'s key is not', () => {
   const d = withGroup();
   const optKeys = IE.view(d, IE.open(d, launcherKey)).options.map((o) => o.key);
-  const ctx = { reservedNames: [launcherKey, ...optKeys].map((k) => k.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()) };
+  const ctx = [launcherKey, ...optKeys].map((k) => k.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim());
   const renamed = createDraft(draftSource(d));
   editItem(renamed, launcherKey, { name: 'Pizza Cuatro Quesos Especial' });
   const s = IE.open(createDraft(draftSource(renamed)), launcherKey, ctx);
   IE.set(s, 'name', 'Pizza Cuatro Quesos');
   assert.equal(IE.view(s.draft, s).errors.name, null, 'every option takes back its own key: the group rename back passes');
-  const other = { reservedNames: [...ctx.reservedNames, 'pizza cuatro quesos clasica - personal'] };
+  const other = [...ctx, 'pizza cuatro quesos clasica - personal'];
   const s3 = IE.open(createDraft(draftSource(renamed)), launcherKey, other);
   IE.set(s3, 'name', 'Pizza Cuatro Quesos Clásica');
   assert.equal(IE.view(s3.draft, s3).errors.name, 'Ese nombre no está disponible', 'a derived name held by ANOTHER record is refused');
-  assert.equal(editItem(createDraft(draftSource(renamed)), launcherKey, { name: 'Pizza Cuatro Quesos Clásica' }, { reserved: new Set(other.reservedNames) }), false, 'the commit gate judges the same set');
+  assert.equal(editItem(createDraft(draftSource(renamed)), launcherKey, { name: 'Pizza Cuatro Quesos Clásica' }, { reserved: new Set(other) }), false, 'the commit gate judges the same set');
 });
 
 test('G1 — a description with < > reads «Quitá los signos < >» (quotes are fine there) and holds «Guardar»', () => {

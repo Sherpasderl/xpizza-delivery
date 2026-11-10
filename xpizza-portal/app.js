@@ -15,6 +15,7 @@ import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestat
 import { token } from './auth.js';
 // DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
 import * as PL from './photo-logic.js';
+import * as IE from './item-edit-logic.js';   // S4 «Editar producto»: the drawer's working copy
 import { createUploader, photoField, cropStep, rowThumb, rowTag, decodeFile, openPicker } from './photo.js';
 import { setPhoto, draftPhotos, origPhotos, pendingPhotos, canEditDraft } from './editor.js';
 
@@ -40,6 +41,12 @@ const uploader = createUploader({
   alive: (w) => w === photoWorld,
   // the ONE write of an uploaded pid, through the guarded editor; refused (→ held, applied on the next repaint) while owned
   apply: (key, pid, preview) => {
+    // S4: the edit drawer of this product owns the upload — it lands in the COPY (or nowhere: a replaced binding), never the draft
+    if (editSess && !editSess.closed && editSess.key === key) {
+      if (preview && typeof preview === 'object') photo.previews[pid] = preview;
+      if (editUpload) editUpload.apply(pid);
+      return true;
+    }
     if (!state.draft || !canEditDraft(state.draft) || renamesPending()) return false;   // ruling A: held, never dropped, beside a name
     if (preview && typeof preview === 'object') photo.previews[pid] = preview;
     setPhoto(state.draft, key, { 'state': 'pid', pid });   // a quoted key: the census reads a bare `state:` as the state object
@@ -536,6 +543,11 @@ function applyAddProductFacts(data) {
   // truth), so «a rename publishes alone» survives a reload, a branch switch and «Enviar al dueño». Absent = nothing.
   state.savedRenames = Array.isArray(data && data.pendingRenames) ? data.pendingRenames.filter((r) => r && typeof r.id === 'string') : [];
   state.savedOther = !!(data && data.pendingOther === true);
+  // S4 (S2-DESIGN §1.1) — the text-edit switch (absent / not true = today's drawer), the names a rename may not take (already
+  // normalized by the server; absent = the C5 check waits for «Guardar»), and the SAVED draft's unpublished text edits
+  state.textEditEnabled = !!(data && data.textEditEnabled === true);
+  state.reservedNames = state.textEditEnabled && data && Array.isArray(data.reservedNames) ? data.reservedNames.filter((n) => typeof n === 'string') : null;
+  state.savedTexts = Array.isArray(data && data.pendingTexts) ? data.pendingTexts.filter((t) => t && typeof t.key === 'string' && Array.isArray(t.fields)) : [];
 }
 // PLAN-portal-team-invites T-d — the two per-load facts of «Enviar al dueño para publicar», strictly from the server:
 //   publish_via_request  this caller SENDS the draft to the owner instead of publishing (getEditableCatalog decides it with the
@@ -573,10 +585,10 @@ function endPhotoWorld() {
 }
 // The row's photo as the screen shows it; an image that failed to load (after its one renewal) is a missing preview —
 // visible as such, never a broken image.
-function photoViewOf(key) {
+function photoViewOf(key, photos = null) {
   // legacy images are shown (row / drawer) only with uploads ON: E-P3 sends legacyPreviews whatever the flag, and the dark
   // portal must look exactly as today; the review still reads them (a stored map's lines need the true «nueva / cambiada»)
-  const v = PL.photoView(key, { photos: draftPhotos(state.draft), orig: origPhotos(state.draft), previews: photo.previews, legacy: photo.enabled ? photo.legacy : {} });
+  const v = PL.photoView(key, { photos: photos || draftPhotos(state.draft), orig: origPhotos(state.draft), previews: photo.previews, legacy: photo.enabled ? photo.legacy : {} });
   // a picture that cannot be shown: a legacy image, or an upload whose renewal had nothing newer (codex r1 #2: an unsaved pid
   // is not in E-P3), keeps the NEUTRAL frame — still a photo; a pid the server no longer serves is MISSING (P5, a new upload)
   if (v.url && (photo.broken.has(v.url) || (v.pid && photo.stale.has(v.pid) && previewExpired(v.pid)))) {
@@ -629,25 +641,31 @@ function photoChanged(key, what) {
     if (job && bar) { const pct = Math.round((job.progress || 0) * 100); bar.setAttribute('aria-valuenow', String(pct)); const i = bar.querySelector('i'); if (i) i.style.width = `${pct}%`; }
     return;
   }
+  if (editSess && editSess.key === key && editUpload) { const j = uploader.jobOf(key); if (j && j.phase === 'failed') editUpload.failed(); }
   if (state.drawerKey === key && $('drawer').classList.contains('show')) renderDrawer();
   if (state.draft) { paint(); refreshBar(); }
 }
 // The drawer's «Foto» field for a product, or null (uploads off and no photo: the drawer exactly as today).
-function photoFieldFor(it) {
+// `sess`: an S4 edit drawer's working copy — «Quitar» / «Deshacer» / a retried upload then change the COPY, never the draft.
+function photoFieldFor(it, sess = null) {
   const key = rowId(it);
   const name = photoNameOf(key);
   const job = uploader.jobOf(key);
+  const setEntry = (entry) => { if (sess) { IE.set(sess, 'photo', entry); photoChanged(key); } else { setPhoto(state.draft, key, entry); photoChanged(key); } };
   return photoField({
-    name, view: photoViewOf(key), job, enabled: photo.enabled, expanded: photoExpandedKey === key && isPhone(), held: renamesPending(),
+    name, view: photoViewOf(key, sess ? editPhotos(sess) : null), job, enabled: photo.enabled, expanded: photoExpandedKey === key && isPhone(), held: renamesPending(),
     onPick: bound((capture) => pickPhoto(key, capture)),
     onRemove: bound(() => {
       uploader.clear(key);
-      setPhoto(state.draft, key, PL.removedEntry(key, { orig: origPhotos(state.draft), legacy: photo.legacy }));
-      photoChanged(key);
+      setEntry(PL.removedEntry(key, { orig: origPhotos(state.draft), legacy: photo.legacy }));
     }),
-    onUndo: bound(() => { setPhoto(state.draft, key, PL.undoEntry(key, { orig: origPhotos(state.draft) })); photoChanged(key); }),
+    onUndo: bound(() => setEntry(PL.undoEntry(key, { orig: origPhotos(state.draft) }))),
     // P5: the same upload again; a preview the server could not give (a pid it cannot show) needs a new file
-    onRetry: bound(() => { if (renamesPending()) return; const j = uploader.jobOf(key); if (j && j.phase === 'failed') uploader.retry(key); else pickPhoto(key, null); }),
+    onRetry: bound(() => {
+      if (renamesPending()) return;
+      const j = uploader.jobOf(key);
+      if (j && j.phase === 'failed') { if (sess && !sess.closed) { editUpload = IE.uploadBinding(sess); editUpload.started(); } uploader.retry(key); } else pickPhoto(key, null);
+    }),
     onCancel: bound(() => uploader.cancel(key)),
     onImgError: onPhotoImgError,
   });
@@ -662,8 +680,13 @@ function renderCropDrawer(d, it, job) {
     onFrame: bound((id) => uploader.setFrame(key, id)),
     onView: (id, v) => uploader.setView(key, id, v),
     onCancel: bound(() => uploader.cancel(key)),
-    onDone: bound(() => { if (!renamesPending()) uploader.upload(key); }),
-    onClose: bound(() => { state.drawerKey = null; uploader.cancel(key); d.classList.remove('show'); d.replaceChildren(); }),
+    onDone: bound(() => {
+      if (renamesPending()) return;
+      // S4: an upload started inside an edit drawer belongs to its working copy (session-bound: a cancelled or replaced drawer never takes it)
+      if (editSess && !editSess.closed && editSess.key === key) { editUpload = IE.uploadBinding(editSess); editUpload.started(); }
+      uploader.upload(key);
+    }),
+    onClose: bound(() => { state.drawerKey = null; endEditSession(); uploader.cancel(key); d.classList.remove('show'); d.replaceChildren(); }),
   });
   d.replaceChildren(head, body, foot);
   d.classList.add('show');
@@ -1201,6 +1224,7 @@ function paint() {
 // review opening (the drawer would otherwise overlay the attestation).
 function closeDrawer() {
   state.drawerKey = null;
+  endEditSession();                               // S4: closing the drawer is «Cancelar» for its working copy
   $('drawer').classList.remove('show');
   // EMPTIED, not just hidden. Its option-price handlers close over their own key, so leaving the
   // subtree in place keeps live listeners that would mutate the draft by that captured key — inertness
@@ -1248,6 +1272,7 @@ function setDrawerInert(on) {
 }
 
 export function openDrawer(key) {
+  if (editSess && editSess.key !== key) endEditSession();   // S4: another product's drawer drops the open copy
   state.drawerKey = key;
   state.openGroups = state.openGroups || new Set();
   renderDrawer(); holdDrawerForRename();
@@ -1275,6 +1300,8 @@ function renderDrawer() {
   const pjob = uploader.jobOf(rowId(it));
   if (pjob && pjob.phase === 'crop') { renderCropDrawer(d, it, pjob); return; }   // DISH PHOTOS B — P3, a step of the drawer
   if (isAddition(it)) { renderAddDrawer(d, it, keepScroll); return; }   // 1D add-product A
+  // S4 — the text-edit switch on (getEditableCatalog textEditEnabled): an existing product's drawer is the working copy; off: today's
+  if (state.textEditEnabled === true && renderEditDrawer(d, it, keepScroll)) return;
 
   const head = document.createElement('div');
   head.className = 'dwh';
@@ -1335,6 +1362,255 @@ function renderDrawer() {
   d.classList.add('show');
   body.scrollTop = keepScroll;
   } finally { holdDrawerForRename(); }
+}
+
+// ── S4 «Editar producto» — the drawer of an EXISTING product while the text-edit switch is on (MOCKUP-portal-item-edit.html
+// frames A–F, the approved target; S2-DESIGN §1 r2). The drawer edits a WORKING COPY (item-edit-logic.js): nothing it shows
+// writes the draft on its own — photo, name, description, section, subsection, price, the options' prices and the extras-group
+// prices (advisor Q1 / Q2) — and «Guardar» commits the whole edit ONCE; «Cancelar» / «Cerrar» drop it. Built ONCE per open;
+// typing updates the built nodes in place (a rebuild under the caret would break an accent typed with a dead key).
+// Module-private, never on the exported `state` (portal-wiring's census).
+let editSess = null;      // the open drawer's working copy (IE session)
+let editUpload = null;    // the upload bound to it (IE.uploadBinding), if one was started in this drawer
+let editRefs = null;      // the built nodes `syncEdit` updates in place
+function endEditSession() {
+  const s = editSess;
+  editSess = null; editUpload = null; editRefs = null;
+  if (!s || s.closed) return;
+  IE.cancel(s);
+  // an upload started in this drawer dies with it: cancelled, it can never land later (S4 addendum: late uploads never touch the draft)
+  if (uploader.jobOf(s.key)) uploader.cancel(s.key);
+}
+// a new load: the S2 §1.1 facts fail closed — today's drawer, no served names, no saved text edits — and any open copy goes
+function resetEditFacts() {
+  state.textEditEnabled = false;
+  state.reservedNames = null;
+  state.savedTexts = [];
+  endEditSession();
+}
+// The product's photo as this drawer shows it: the draft's map with the copy's entry in place of the stored one.
+function editPhotos(s) {
+  const photos = { ...draftPhotos(state.draft) };
+  if (s.photoTouched) { if (s.work.photo == null) delete photos[s.key]; else photos[s.key] = s.work.photo; }
+  return photos;
+}
+function warnTri() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+  for (const d of ['M12 3l9 16H3z', 'M12 10v4', 'M12 17.5v.01']) { const p = document.createElementNS(NS, 'path'); p.setAttribute('d', d); svg.append(p); }
+  return svg;
+}
+function renderEditDrawer(d, it, keepScroll) {
+  const key = rowId(it);
+  if (!editSess || editSess.closed || editSess.key !== key || editSess.draft !== state.draft) {
+    endEditSession();
+    editSess = IE.open(state.draft, key, state.reservedNames);
+  }
+  const s = editSess;
+  if (!s) return false;                       // not a product this drawer edits (an option, an unsaved addition): today's drawer
+  const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const v0 = IE.view(state.draft, s);
+  const R = { flds: {}, cnts: {}, errs: {} };
+  const relayout = () => { renderDrawer(); holdDrawerForRename(); };   // only on a structural change (a section), never per keystroke
+  const errSlot = (f, field) => { R.flds[field] = f; R.errs[field] = null; };
+
+  const head = mk('div', 'dwh');
+  head.append(mk('span', 'dwt', s.base.name || key), closeIcon(bound(() => closeDrawer())));   // the published name until the draft is saved (B)
+  const body = mk('div', 'dwb ie-edit');   // .ie-edit scopes the mockup rules that would otherwise reach the add drawer
+
+  // «Foto» — the approved dish-photo field (P7), its entry from the copy
+  const pf = photoFieldFor(it, s);
+  if (pf) body.append(pf);
+
+  // «Nombre» — no maxlength (C2: the owner types past 60 to see what to trim; advisor Q3)
+  const fName = mk('div', 'fld');
+  const lr1 = mk('div', 'mk-lrow');
+  const nmId = `ie-nm-${s.id}`;
+  const lab1 = mk('label', null, 'Nombre'); lab1.htmlFor = nmId;
+  R.cnts.name = mk('span', 'mk-cnt'); R.cnts.name.setAttribute('aria-live', 'polite');
+  lr1.append(lab1, R.cnts.name);
+  const ieName = document.createElement('input');
+  ieName.type = 'text'; ieName.id = nmId; ieName.value = v0.fields.name; ieName.placeholder = 'Nombre del producto';
+  ieName.addEventListener('input', bound(() => { IE.set(s, 'name', ieName.value); syncEdit(); }));
+  focusKey(ieName, 'ie-name');
+  fName.append(lr1, ieName); errSlot(fName, 'name');
+  body.append(fName);
+
+  // «Descripción · opcional» — maxlength 200 as drawn
+  const fDesc = mk('div', 'fld');
+  const lr2 = mk('div', 'mk-lrow');
+  const dsId = `ie-ds-${s.id}`;
+  const lab2 = mk('label', null, 'Descripción'); lab2.htmlFor = dsId; lab2.append(mk('span', 'mk-opt', ' · opcional'));
+  R.cnts.desc = mk('span', 'mk-cnt'); R.cnts.desc.setAttribute('aria-live', 'polite');
+  lr2.append(lab2, R.cnts.desc);
+  const ieDesc = document.createElement('textarea');
+  ieDesc.id = dsId; ieDesc.rows = 2; ieDesc.maxLength = 200; ieDesc.placeholder = 'Qué lleva, cómo viene'; ieDesc.value = v0.fields.desc;
+  ieDesc.addEventListener('input', bound(() => { IE.set(s, 'desc', ieDesc.value); syncEdit(); }));
+  focusKey(ieDesc, 'ie-desc');
+  fDesc.append(lr2, ieDesc); errSlot(fDesc, 'desc');
+  body.append(fDesc);
+
+  // «Categoría» — the sections the order page shows (the product's own section always listed)
+  const fCat = mk('div', 'fld');
+  fCat.append(mk('label', null, 'Categoría'));
+  const ieCat = document.createElement('select');
+  ieCat.className = 'mk-sel'; ieCat.setAttribute('aria-label', 'Categoría');
+  for (const c of categoriesOf()) {
+    const catId = String(c && c.id);
+    if (!canAddTo(catId) && catId !== s.base.cat) continue;
+    const o = mk('option', null, categoryName(catId)); o.value = catId; o.selected = catId === v0.fields.cat;
+    ieCat.append(o);
+  }
+  ieCat.addEventListener('change', bound(() => { IE.set(s, 'cat', ieCat.value); relayout(); refocus(['ie-cat']); }));
+  focusKey(ieCat, 'ie-cat');
+  fCat.append(ieCat); errSlot(fCat, 'cat');
+  R.note = mk('div', 'mk-note'); R.note.setAttribute('role', 'status');
+  fCat.append(R.note);
+  body.append(fCat);
+
+  // «Subcategoría» — only when the chosen section has subsections; moving INTO one asks for a choice (no preselect)
+  if (v0.subcats) {
+    const fSub = mk('div', 'fld');
+    fSub.append(mk('label', null, 'Subcategoría'));
+    const ieSub = document.createElement('select');
+    ieSub.className = 'mk-sel'; ieSub.setAttribute('aria-label', 'Subcategoría');
+    if (v0.fields.subcat == null) { const ph = mk('option', null, IE.COPY.save.pickSubcat); ph.value = ''; ph.disabled = true; ph.selected = true; ieSub.append(ph); }
+    for (const sc of v0.subcats) { const o = mk('option', null, sc); o.value = sc; o.selected = sc === v0.fields.subcat; ieSub.append(o); }
+    ieSub.addEventListener('change', bound(() => { IE.set(s, 'subcat', ieSub.value); relayout(); refocus(['ie-subcat']); }));
+    focusKey(ieSub, 'ie-subcat');
+    fSub.append(ieSub); errSlot(fSub, 'subcat');
+    body.append(fSub);
+  }
+
+  // a product with a required choice (F): the derived option names, each with its counter and — kept (advisor Q1) — its price
+  if (v0.options) {
+    const g = choiceGroup(state.draft, key);
+    const fOpt = mk('div', 'fld');
+    const lr3 = mk('div', 'mk-lrow');
+    lr3.append(mk('label', null, 'Opciones'), mk('span', 'mk-cnt', 'precio por opción'));
+    const block = mk('div', 'modblock');
+    const mh = mk('div', 'modh', `${(g && typeof g.label === 'string' && g.label.trim()) ? g.label : 'Elección'} · elección requerida`);
+    mh.append(mk('span', 'mk-modhr', 'Se mueve con su producto'));
+    block.append(mh);
+    R.opts = [];
+    for (const o of v0.options) {
+      const row = mk('div', 'mk-dopt');
+      const dn = mk('span', 'mk-dn');
+      const base = document.createTextNode('');
+      dn.append(base, mk('span', null, ` - ${o.choice}`));
+      const cnt = mk('span', 'mk-cnt'); cnt.setAttribute('aria-live', 'polite');
+      const dp = mk('span', 'dp');
+      const pr = mk('span', 'mopr');
+      const ieOptPrice = document.createElement('input');
+      ieOptPrice.type = 'text'; ieOptPrice.inputMode = 'numeric'; ieOptPrice.placeholder = 'Sin precio'; ieOptPrice.value = o.price;
+      ieOptPrice.setAttribute('aria-label', `Precio de ${o.choice}`);
+      ieOptPrice.addEventListener('input', bound(() => { IE.set(s, 'optionPrice', { key: o.key, raw: ieOptPrice.value }); syncEdit(); }));
+      focusKey(ieOptPrice, `ie-opt::${o.key}`);
+      pr.append(mk('span', 'mc', 'L'), ieOptPrice);
+      dp.append(pr);
+      row.append(dn, cnt, dp);
+      block.append(row);
+      R.opts.push({ key: o.key, row, base, cnt, pi: ieOptPrice });
+    }
+    const lab = mk('label', 'mgflag mgflag-same');
+    const ieSame = document.createElement('input'); ieSame.type = 'checkbox';
+    ieSame.addEventListener('change', bound(() => { IE.set(s, 'samePrice', ieSame.checked); syncEdit(); }));
+    focusKey(ieSame, 'ie-same');
+    lab.append(ieSame, document.createTextNode('Mismo precio para todas'));
+    R.same = ieSame;
+    fOpt.append(lr3, block, lab, mk('div', 'mk-sub', 'El nombre de cada opción se arma solo: nombre del producto + opción. Cambia junto con el producto.'));
+    errSlot(fOpt, 'options');
+    R.optBlock = block;
+    body.append(fOpt);
+  } else {
+    const fPr = mk('div', 'fld pr');
+    fPr.append(mk('label', null, 'Precio'), mk('span', 'cur2', 'L'));
+    const iePrice = document.createElement('input');
+    iePrice.type = 'text'; iePrice.inputMode = 'numeric'; iePrice.setAttribute('aria-label', 'Precio'); iePrice.placeholder = 'Sin precio'; iePrice.value = v0.fields.price;
+    iePrice.addEventListener('input', bound(() => { IE.set(s, 'price', iePrice.value); syncEdit(); }));
+    focusKey(iePrice, 'ie-price');
+    fPr.append(iePrice); errSlot(fPr, 'price');
+    body.append(fPr);
+  }
+
+  // the extras groups, as today — their prices through the copy (advisor Q2)
+  for (const g of optionGroups(state.draft)) body.append(groupBlock(g, s));
+
+  const foot = mk('div', 'dwf');
+  const ieCancel = document.createElement('button'); ieCancel.className = 'btn ghost'; ieCancel.type = 'button'; ieCancel.textContent = 'Cancelar';
+  ieCancel.addEventListener('click', bound(() => closeDrawer()));
+  const ieSave = document.createElement('button'); ieSave.className = 'btn accent'; ieSave.type = 'button'; ieSave.textContent = 'Guardar';
+  ieSave.addEventListener('click', bound(() => saveEdit()));
+  R.save = ieSave;
+  foot.append(ieCancel, mk('span', 'mk-sp'), ieSave);
+
+  editRefs = R;
+  d.setAttribute('aria-label', 'Editar producto');
+  d.append(head, body, foot);
+  d.classList.add('show');
+  syncEdit();
+  body.scrollTop = keepScroll;
+  return true;
+}
+// The copy → the built drawer, in place: counters, change marks, the lines under the fields, the note, the option rows, «Guardar».
+function syncEdit() {
+  const s = editSess, R = editRefs;
+  if (!s || !R || s.closed) return;
+  const v = IE.view(state.draft, s);
+  const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const chg = { name: v.changed.includes('name'), desc: v.changed.includes('desc'), cat: v.changed.includes('cat'), subcat: v.changed.includes('subcat'), price: v.changed.includes('price') };
+  for (const [field, f] of Object.entries(R.flds)) {
+    const msg = typeof v.errors[field] === 'string' ? v.errors[field] : null;
+    f.classList.toggle('chg', !!chg[field] && !v.errors[field]);
+    f.classList.toggle('invalid', !!v.errors[field]);
+    if (R.errs[field]) { R.errs[field].remove(); R.errs[field] = null; }
+    if (msg) {
+      const line = mk('div', 'ferr mk-ferr'); line.setAttribute('role', 'alert');
+      line.append(warnTri(), mk('span', null, msg));
+      R.errs[field] = line;
+      f.append(line);
+    }
+  }
+  const over = (txt) => { const [a, b] = txt.split('/').map(Number); return a > b; };
+  R.cnts.name.textContent = v.counters.name; R.cnts.name.classList.toggle('over', over(v.counters.name));
+  R.cnts.desc.textContent = v.counters.desc; R.cnts.desc.classList.toggle('over', over(v.counters.desc));
+  // the mockup's `.fld.invalid .mk-cnt` red, as the counter's own class (AA grammar)
+  R.cnts.name.classList.toggle('mk-cnterr', !!v.errors.name);
+  R.cnts.desc.classList.toggle('mk-cnterr', !!v.errors.desc);
+  // the consequence note (D): only the lines that apply; none ⇒ no note
+  R.note.replaceChildren();
+  R.note.hidden = !v.consequences;
+  if (v.consequences) {
+    const ul = mk('ul', 'mk-cons');
+    for (const l of v.consequences.lines) { const li = mk('li'); li.append(mk('span', 'mk-cdot'), mk('span', null, l)); ul.append(li); }
+    R.note.append(mk('b', null, v.consequences.title), ul);
+  }
+  if (R.opts && v.options) {
+    const bad = !!v.errors.options;
+    R.optBlock.classList.toggle('mk-inv', bad);
+    v.options.forEach((o, i) => {
+      const r = R.opts[i];
+      r.base.textContent = o.fullName.slice(0, o.fullName.length - ` - ${o.choice}`.length);
+      r.cnt.textContent = o.counter;
+      r.cnt.classList.toggle('over', o.tooLong);
+      r.row.classList.toggle('over', o.tooLong);
+      if (r.pi.value !== o.price && document.activeElement !== r.pi) r.pi.value = o.price;
+    });
+    R.same.checked = v.same === true;
+  }
+  R.save.disabled = !v.save.enabled;
+  if (v.save.title) R.save.title = v.save.title; else R.save.removeAttribute('title');
+}
+// «Guardar»: the whole edit into the shared draft, once; the drawer closes onto the list (the row shows its tag, the bar counts it).
+function saveEdit() {
+  const s = editSess;
+  if (!s || s.closed) return;
+  const r = IE.save(state.draft, s);
+  if (!r.ok) { syncEdit(); return; }
+  editSess = null; editUpload = null; editRefs = null;
+  closeDrawer();
+  paint(); refreshBar();
 }
 
 // ── A PUBLISHED group's choices, price-only (advisor ruling on portal A) ──────────────────────────────────────────────
@@ -1704,7 +1980,8 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
 // 2b-2c; the last is 2b-2d. The option name renders as TEXT, not in .moname — that class is styled as
 // an input box, and dressing unwritable text as a field is the same hazard that has bitten this slice
 // five times already.
-function groupBlock(g) {
+// `sess` (S4, advisor Q2): an edit drawer's working copy — the prices read from and write to the COPY; «Guardar» commits them.
+function groupBlock(g, sess = null) {
   const wrap = document.createElement('div');
   const isOpen = state.openGroups.has(g.name);
   wrap.className = `modgrp${isOpen ? ' open' : ''}`;
@@ -1767,11 +2044,12 @@ function groupBlock(g) {
     const pi = document.createElement('input');
     pi.type = 'text'; pi.inputMode = 'numeric';
     pi.setAttribute('aria-label', `Precio de ${(o.display && o.display.name) || o.key}`);
-    pi.value = (Number.isInteger(o.price) && o.price > 0) ? String(o.price) : '';
+    pi.value = sess ? sess.work.extraPrices[o.key] || '' : ((Number.isInteger(o.price) && o.price > 0) ? String(o.price) : '');
     pi.placeholder = 'Sin precio';
     // This one always hit the right ROW — o.key was captured — but in whatever draft happened to be
     // loaded. After a different person signed in, it priced THEIR menu.
     pi.addEventListener('input', bound(() => {
+      if (sess) { IE.set(sess, 'extraPrice', { key: o.key, raw: pi.value }); syncEdit(); return; }
       setExtraPrice(state.draft, o.key, pi.value);
       refreshBar();
       syncRow('extra', o.key, pi.value);          // the option's row in the detail list follows too
@@ -1811,6 +2089,7 @@ document.addEventListener('portal:restaurant', (e) => { lastMenuLoad = loadMenu(
 $('discard').addEventListener('click', () => {
   if (canEditDraft(state.draft)) uploader.abortAll();   // DISH PHOTOS B — an upload in flight belongs to the edits thrown away
   discard(state.draft);
+  endEditSession();                                     // S4: the drawer's working copy goes with the thrown-away edits
   $('drawer').classList.remove('show');
   repaintFromDraft();
 });
@@ -2315,6 +2594,7 @@ function invalidateReview() {
   state.settle = null;                     // an owed post-publish reload belongs to the world that ended
   clearReview();
   state.publishGen = null;                 // and it is not waiting on anything
+  resetEditFacts();                        // S4 — the world's per-load facts (S2 §1.1) fail closed until the next load sets them
   closeDrawer();
   $('scrim').classList.remove('show');
   // ONE derivation, last, after every piece of state has settled. There were three calls here (one

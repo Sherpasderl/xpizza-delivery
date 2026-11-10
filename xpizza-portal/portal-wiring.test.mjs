@@ -87,16 +87,7 @@ test('every module the portal ships is reachable from an entry page (index.html,
   for (const m of html.matchAll(/(?:from\s+|import\s+|src=")\.?\/?([\w-]+\.js)"?/g)) walk(m[1]);
   // the shell loads its boot script via <script src>, not an import
   for (const m of html.matchAll(/<script[^>]*src="\.\/([\w-]+\.js)"/g)) walk(m[1]);
-  // S4 «Editar producto» Phase 1 (advisor-approved slice plan, 2026-11-08): the drawer's working copy is built and tested
-  // before the drawer DOM is wired (Phase 2, after the server's S1). SELF-EXPIRING: the exception holds only while the
-  // module is NOT reachable — once Phase 2 wires it, this fails until the line is removed.
-  const PHASE1_UNWIRED = ['item-edit-logic.js'];
-  for (const f of PHASE1_UNWIRED) {
-    assert.ok(!seen.has(f), `${f} is wired now — remove it from PHASE1_UNWIRED`);
-    assert.ok(/from '\.\/item-edit-logic\.js'/.test(readFileSync(join(DIR, 'item-edit.test.mjs'), 'utf8')), `${f} is exercised by its tests`);
-  }
   for (const f of JS) {
-    if (PHASE1_UNWIRED.includes(f)) continue;
     assert.ok(seen.has(f), `${f} ships but nothing imports it — dead code on a money surface, or a missing wire`);
   }
 });
@@ -1027,6 +1018,11 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.settle':              [3, 'guarded', 'codex build r1 #1/#3 — the post-publish reload is OWED: set on publish success (lock still held), cleared when the fresh source is ADOPTED (which releases the lock) and by the ender; while set, "Listo" is disabled and closeReview refuses'],
     'state.drawerError':         [6, 'view',    '[1D add-product B: + "Ninguna" clearing it] the field error shown in the add drawer after a refused save — presentational; the server re-checks every save'],
     // ── 1D add-product B ──
+    // ── S4 «Editar producto» (S2-DESIGN §1.1) — per-load server facts: reset by resetEditFacts inside invalidateReview (the world ends),
+    //    set ONLY in applyAddProductFacts on the generation-checked settle paths; the server re-judges every save and publish
+    'state.textEditEnabled':     [2, 'guarded', 'S4 — whether an existing product\u2019s drawer is the text-edit working copy (getEditableCatalog textEditEnabled); fail closed (today\u2019s drawer) until a load sets it'],
+    'state.reservedNames':       [2, 'guarded', 'S4 — the names a rename may not take (server-normalized), for the live C5 line only; advisory — the save and the publish re-judge'],
+    'state.savedTexts':          [2, 'guarded', 'S4 — the SAVED draft\u2019s unpublished text edits (pendingTexts), for the row tags and the bar count after a reload; presentational'],
     'state.groupAuthoring':      [2, 'guarded', 'whether the drawer OFFERS a required choice (the platform authoring switch, from getEditableCatalog) — reset at the start of a load, set on the load settle path behind the generation check; the server enforces the same switch on every save'],
     'state.choiceBadges':        [2, 'guarded', 'the option badges this brand\u2019s picker draws (renderer contract via getEditableCatalog) — reset at the start of a load, set on the load settle path behind the generation check'],
     'state.samePrice':           [7, 'view',    '"Mismo precio para todas" per product — reset on load (DERIVED again from the prices), set/cleared by the drawer\u2019s controls (the new-product block and, portal A, the published-group block); it only chooses WHICH canEdit-guarded mutator a price field calls (setGroupPrice vs setChoicePrice, or onPrice per choice for a published group), it never writes the draft itself'],
@@ -1145,6 +1141,8 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo
                  // calling releaseEditLock and openReviewFlow — and a hand-maintained list had simply
                  // never caught up. That is the drift the cross-check below exists to end.
                  'endWrite', 'repaintFromDraft', 'showOutcome',
+                 // S4 «Editar producto»: «Guardar» (the draft, through IE.save → editItem) and the per-load fact reset (inside invalidateReview)
+                 'saveEdit', 'resetEditFacts',
                  // again found by the tree, not by hand — clearReview writes state.review
                  'clearReview',
                  // 1D add-product A — the add flow's writers (the tree found them; each is either canEdit-guarded via
@@ -1223,7 +1221,7 @@ function registrations(src) {
 //         'ender'       — the code that ends a world; it writes unconditionally on purpose
 const LISTENERS = {
   "item::click":                  ['revalidated', ['switchTo'], 'switchTo re-checks the rid against the CURRENT state.restaurants and refuses one the merchant does not own; re-selecting the current tenant is a no-op. Binding the tenant switcher to the world it was rendered in would refuse the one action whose whole purpose is to leave that world.'],
-  "close::click":                 ['view', ['state.drawerKey'], 'closes the drawer; presentational only'],
+  "close::click":                 ['view', ['state.drawerKey', 'closeDrawer'], 'closes the drawer; presentational only — S4: the edit drawer\u2019s «Cerrar» is closeDrawer, which also drops its working copy (never a draft write)'],
   "input::input":                 ['bound', [], 'the item price field'],
   "main::click":                  ['view', ['toggle'], 'expands an option group'],
   "chev::click":                  ['view', ['toggle'], 'expands an option group'],
@@ -1266,6 +1264,17 @@ const LISTENERS = {
   "nameIn::input":                ['view', [], 'one section\u2019s typed name: updates the modal\u2019s own «Falta N nombres» and «Guardar nombres», no shared state'],
   "nameCancel::click":            ['view', [], 'closes the naming modal; nothing is written'],
   "nameSave::click":              ['bound', [], '«Guardar nombres»: setCategoryNames (canEdit) for the WHOLE set at once, then a repaint'],
+  // S4 «Editar producto» — the existing product's drawer (text-edit switch on). Every handler writes only the drawer's WORKING COPY
+  // (item-edit-logic.js, module-private) and repaints it in place; the draft is written ONLY by «Guardar» → IE.save → editItem (canEdit).
+  "ieName::input":                ['bound', [], 'S4 — the name, into the working copy (IE.set); the drawer updates in place'],
+  "ieDesc::input":                ['bound', [], 'S4 — the description, into the working copy'],
+  "ieCat::change":                ['bound', [], 'S4 — the section, into the working copy (clears the subsection); the drawer re-lays out'],
+  "ieSub::change":                ['bound', [], 'S4 — the subsection, into the working copy'],
+  "ieOptPrice::input":            ['bound', [], 'S4 — an option\u2019s price, into the working copy (advisor Q1)'],
+  "ieSame::change":               ['bound', [], 'S4 — «Mismo precio para todas», into the working copy (advisor Q1)'],
+  "iePrice::input":               ['bound', [], 'S4 — the product\u2019s price, into the working copy'],
+  "ieCancel::click":              ['bound', ['closeDrawer'], 'S4 — «Cancelar»: the working copy is dropped (endEditSession); the draft keeps what it had'],
+  "ieSave::click":                ['bound', ['saveEdit'], 'S4 — «Guardar»: IE.save commits the whole edit ONCE through editItem (canEdit); then the drawer closes and the list repaints'],
 };
 
 test('🔴 every listener that writes is bound, or ruled — and nothing else is registered', () => {
@@ -1499,6 +1508,9 @@ const ALLOWED_CONSUMERS = new Set([
   // DISH PHOTOS B — the draft photo map's ONE setter (canEdit-guarded in editor.js; it writes only source.photos, from a pid
   // the server returned or the removed / restored states) and its pure readers
   'setPhoto', 'draftPhotos', 'origPhotos', 'pendingPhotos',
+  // S4 «Editar producto» — the drawer's working copy (item-edit-logic.js): open SNAPSHOTS the draft (and copies the served
+  // reservedNames into its own Set), view is a pure reader, save commits ONLY through editor.js editItem (canEdit-guarded)
+  'IE.open', 'IE.view', 'IE.save',
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.

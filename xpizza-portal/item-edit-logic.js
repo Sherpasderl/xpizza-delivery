@@ -43,8 +43,8 @@ const rowOf = (draft, key) => (draftSource(draft).items || []).find((r) => r && 
 
 let seq = 0;
 // The drawer for an existing product, or null (an unknown key, an option, an unsaved addition).
-// `ctx`: what getEditableCatalog served for this restaurant — { reservedNames } (absent ⇒ the C5 check waits for the server).
-export function open(draft, key, ctx = {}) {
+// `reservedNames`: what getEditableCatalog served for this restaurant (absent ⇒ the C5 check waits for the server).
+export function open(draft, key, reservedNames = null) {
   const row = rowOf(draft, key);
   if (!row || !row.display || row.display.variantOf != null || 'ref' in row) return null;
   const d = row.display;
@@ -60,7 +60,7 @@ export function open(draft, key, ctx = {}) {
     extraPrices: Object.fromEntries((draftSource(draft).extras || []).filter((x) => x && typeof x.key === 'string')
       .map((x) => [x.key, Number.isInteger(x.price) ? String(x.price) : ''])),
   };
-  const reserved = ctx && Array.isArray(ctx.reservedNames) ? new Set(ctx.reservedNames.map(String)) : null;
+  const reserved = Array.isArray(reservedNames) ? new Set(reservedNames.map(String)) : null;
   return { id: ++seq, draft, key, group: !!g, base, work: JSON.parse(JSON.stringify({ ...base, photo: base.photo === undefined ? null : base.photo })),
     photoTouched: false, upload: null, closed: false, reserved, same: null, serverError: null };
 }
