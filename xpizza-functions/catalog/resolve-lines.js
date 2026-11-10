@@ -81,9 +81,12 @@ function labelGap(body, tables) {
   const menu = isObj(tables) && isObj(tables.menu) ? tables.menu : {};
   const gap = (k) => typeof k === 'string' && OPAQUE_SYNTAX.test(k) && own(menu, k) && !(labels && typeof labels[k] === 'string');
   const cart = (isObj(body) && Array.isArray(body.items)) ? body.items : [];
-  // codex S1d r1 #3: the reward actually CONSUMED is its raw legacy key (redeem.item_id / redeem.items[].id), stamped or not
+  // codex S1d r1 #3 / r2 #1: the reward actually CONSUMED, stamped or not — exactly the field this restaurant's calculator reads
+  // (its configured reward model): free_pizza_choice → redeem.item_id; points_ala_carte → redeem.items[].id. Nothing else.
   const r = isObj(body) && isObj(body.redeem) ? body.redeem : {};
-  const rewards = [r.item_id, ...(Array.isArray(r.items) ? r.items.map((it) => (isObj(it) ? it.id : undefined)) : [])];   // both shapes, whichever the calculator reads
+  const cfg = require('../rewards-redeem-config').REDEMPTION_CONFIG[isObj(tables) ? tables.restaurantId : undefined];
+  const model = cfg && cfg.reward;
+  const rewards = model === 'free_pizza_choice' ? [r.item_id] : model === 'points_ala_carte' ? (Array.isArray(r.items) ? r.items.map((it) => (isObj(it) ? it.id : undefined)) : []) : [];
   return cart.some((l) => isObj(l) && gap(l[PRICING_KEY_STAMP])) || rewards.some(gap);
 }
 
