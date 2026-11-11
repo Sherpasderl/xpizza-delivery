@@ -68,6 +68,7 @@
     "s5-live-status.test.mjs",
     "signup-client.test.mjs",
     "stage-race.test.mjs",
+    "structure-s1-chain.test.mjs",
     "visibility-refetch.test.mjs",
     "whole-flow.test.mjs",
     "xp-stage2-summary.test.mjs",
@@ -793,6 +794,7 @@
     "s5-live-status.test.mjs",
     "signup-client.test.mjs",
     "stage-race.test.mjs",
+    "structure-s1-chain.test.mjs",
     "visibility-refetch.test.mjs",
     "whole-flow.test.mjs",
     "xp-stage2-summary.test.mjs",
@@ -3011,7 +3013,9 @@
   },
   "catalog/form-menu-source.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-portal/structure-s1.test.mjs"
+   ]
   },
   "catalog/form-rebake.js": {
    "pins": [],
@@ -3283,7 +3287,8 @@
     }
    ],
    "lifts": [
-    "xpizza-functions/frozenkeys-wiring.guard.test.js"
+    "xpizza-functions/frozenkeys-wiring.guard.test.js",
+    "xpizza-portal/structure-s1.test.mjs"
    ]
   },
   "catalog/text-version.js": {

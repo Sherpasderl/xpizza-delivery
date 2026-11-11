@@ -112,7 +112,8 @@ test('A — the drawer, default: Nombre (counter, no maxlength) · Descripción 
   assert.equal(dr.getAttribute('aria-label'), 'Editar producto');
   assert.equal(dr.querySelector('.dwt').textContent, 'Sichuan Spicy Wonton');
   const labels = [...dr.querySelectorAll('.dwb > .fld')].map((f) => f.querySelector('label').firstChild.textContent.trim());
-  assert.deepEqual(labels.filter((l) => l !== 'Foto'), ['Nombre', 'Descripción', 'Categoría', 'Precio'], 'frame A\'s order (no Subcategoría: Dim Sum has none)');
+  // STRUCTURE S1 (MOCKUP-portal-structure-edit v2 frame A): the drawer now ends with «Opciones» (the dish's extras cards)
+  assert.deepEqual(labels.filter((l) => l !== 'Foto'), ['Nombre', 'Descripción', 'Categoría', 'Precio', 'Opciones'], 'frame A\'s order (no Subcategoría: Dim Sum has none)');
   const nm = p.fld('Nombre').querySelector('input');
   assert.equal(nm.value, 'Sichuan Spicy Wonton');
   assert.equal(nm.placeholder, 'Nombre del producto');
@@ -239,15 +240,17 @@ test('D2 — the move that would empty a section is refused in the field; «Guar
   assert.equal(p2.btn('Guardar').title, 'Elegí otra categoría para guardar');
 });
 
-test('F — a product with a required choice: «Se mueve con su producto», each derived name with its counter and — kept (Q1) — its price box', async () => {
+test('F — a product with a required choice: its «Opciones» card (v2 frame A), each derived name with its counter and — kept (Q1 / R1) — its price box', async () => {
   const p = await page();
   await p.signIn();
   const dr = await p.open('noodle_01');
   const f = p.fld('Opciones');
   assert.ok(f, 'the Opciones block');
-  assert.equal(f.querySelector('.mk-lrow .mk-cnt').textContent, 'precio por opción');
-  assert.equal(f.querySelector('.modh').firstChild.textContent, 'Proteína · elección requerida');
-  assert.equal(f.querySelector('.mk-modhr').textContent, 'Se mueve con su producto');
+  // STRUCTURE S1: the S4 block's «precio por opción» / «… · elección requerida» / «Se mueve con su producto» are v2's card header
+  assert.equal(f.querySelector('.mk-lrow .mk-cnt').textContent, 'en el orden que las ve el cliente');
+  const card = f.querySelector('.mk-grp.mk-req');
+  assert.equal(card.querySelector('.mk-gtn').textContent, 'Proteína');
+  assert.equal(card.querySelector('.mk-gts').textContent, 'Elección requerida · el cliente elige 1');
   const rows = () => [...f.querySelectorAll('.mk-dopt')];
   assert.deepEqual(rows().map((r) => r.querySelector('.mk-dn').textContent), ['Pad Thai - Sin Proteína', 'Pad Thai - Pollo', 'Pad Thai - Camarones']);
   assert.ok(rows().every((r) => r.querySelector('.dp .mopr input')), 'advisor Q1: each option keeps its price box');
@@ -256,8 +259,7 @@ test('F — a product with a required choice: «Se mueve con su producto», each
   p.type(nm, 'Pad Thai de la casa con salsa de tamarindo y maní tostado');
   assert.equal(lineOf(f), 'El nombre completo de la opción supera 60 letras', 'F2: the line under the Opciones block');
   assert.equal(lineOf(p.fld('Nombre')), null, 'F2: Nombre itself is not marked');
-  assert.ok(f.querySelector('.modblock').classList.contains('mk-inv'));
-  assert.ok(f.querySelector('.mk-lrow .mk-cnt').classList.contains('mk-cnterr'), 'SBS F2: «precio por opción» turns red with the block');
+  assert.ok(card.classList.contains('mk-inv'), 'F2: the required-choice card is marked');
   assert.ok(rows().some((r) => r.classList.contains('over')));
   assert.equal(p.btn('Guardar').title, 'Acortá el nombre para guardar');
   p.type(nm, 'Pad Thai Especial');
@@ -279,10 +281,9 @@ test('«Cancelar» / «Cerrar» drop the WHOLE copy — text, section, price and
   const before = JSON.stringify(p.src());
   p.type(p.fld('Nombre').querySelector('input'), 'Otro nombre');
   p.type(p.fld('Precio').querySelector('input'), '999');
-  const grp = p.drawer().querySelector('.modgrp .mgmain');
-  grp.click(); await settle(5);
-  const ex = p.drawer().querySelector('.modgrp.open .mopr input');
-  assert.ok(ex, 'premise: an extras group opened, its price editable');
+  // STRUCTURE S1: the dish's extras cards are open by default; their prices editable as today (R4)
+  const ex = p.drawer().querySelector('.mk-ext.mk-open .mopr input');
+  assert.ok(ex, 'premise: an extras card, its price editable');
   p.type(ex, '77');
   p.btn('Cancelar').click();
   await settle(5);
@@ -300,8 +301,7 @@ test('Q2 — an extras-group price edited in the drawer is committed by «Guarda
   const p = await page();
   await p.signIn();
   await p.open('dimsum_01');
-  p.drawer().querySelector('.modgrp .mgmain').click(); await settle(5);
-  const ex = p.drawer().querySelector('.modgrp.open .mopr input');
+  const ex = p.drawer().querySelector('.mk-ext.mk-open .mopr input');   // STRUCTURE S1: the card's price (R4)
   const label = ex.getAttribute('aria-label').replace(/^Precio de /, '');
   p.type(ex, '77');
   assert.equal(p.btn('Guardar').disabled, false, 'an extras price alone is a change');
@@ -813,4 +813,120 @@ test('U-CONFIRM-AUTH-CLEANUP — an auth event while the confirm is open tears i
     assert.deepStrictEqual(inertNow(p), inert0, `U-CONFIRM-AUTH-CLEANUP (${uid}): nothing the confirm made inert stays inert`);
     assert.equal(tabTrapped(p), false, `U-CONFIRM-AUTH-CLEANUP (${uid}): Tab is no longer trapped`);
   }
+});
+
+// ── STRUCTURE S1 — the drawer's «Opciones» cards (MOCKUP-portal-structure-edit v2 frame A / A2 / A3; PLAN-portal-structure-S1-ui r3) ──
+const ON = () => editable({ extrasAuthoring: true });
+const cardOf = (p, cat) => [...p.drawer().querySelectorAll('.mk-grp.mk-ext')].find((c) => c.querySelector('.mk-gtn').textContent === cat);
+const rowsOfCard = (c) => [...c.querySelectorAll('.mk-xopt')];
+
+test('S1 A — «Opciones»: «Sin extras», one open card per extras group the dish offers (checklist + today\'s editable prices); no dead control', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('dimsum_01');   // Dim Sum offers Acompañamientos + Salsas
+  const f = p.fld('Opciones');
+  assert.equal(f.querySelector('.mk-lrow .mk-cnt').textContent, 'en el orden que las ve el cliente');
+  const sw = f.querySelector('.mk-opcsw');
+  assert.equal(sw.querySelector('.mk-opcb').textContent, 'Sin extras');
+  assert.equal(sw.querySelector('.mk-opcs').textContent, 'Apagalo si este producto no lleva extras');
+  const tog = sw.querySelector('button.tog');
+  assert.equal(tog.getAttribute('role'), 'switch'); assert.equal(tog.getAttribute('aria-checked'), 'false'); assert.equal(tog.disabled, false);
+  assert.deepEqual([...f.querySelectorAll('.mk-grp.mk-ext .mk-gtn')].map((b) => b.textContent), ['Acompañamientos', 'Salsas']);
+  const salsas = cardOf(p, 'Salsas');
+  assert.match(salsas.querySelector('.mk-gts').textContent, /^Extras · opcionales · en \d+ productos$/);
+  assert.equal(salsas.querySelector('.mk-gsumt').firstChild.textContent, 'Todos activos en este producto');
+  assert.equal(salsas.querySelector('.mk-apponly').hidden, true);
+  assert.equal(salsas.querySelector('.mk-lnk').textContent, 'Ninguno');
+  const rows = rowsOfCard(salsas);
+  assert.equal(rows.length, 8);
+  assert.ok(rows.every((r) => r.querySelector('input[type=checkbox]').checked));
+  assert.ok(rows.every((r) => r.querySelector('.mopr input').disabled === false), 'R4: the prices stay editable');
+  const txt = p.drawer().textContent;
+  for (const absent of ['Editar en Extras', 'Quitar de este producto', 'Agregar grupo de extras', 'Agregar elección requerida']) assert.ok(!txt.includes(absent), `no ${absent} before S2 / S3`);
+  assert.equal(p.drawer().querySelector('.mk-grip'), null, 'R2: no grip, ever');
+});
+
+test('S1 — uncheck → «N de M activos» + «Solo en la app Sherpa»; Guardar writes the exclusion; with the drawer CLOSED a reload / branch switch is still held; revert → clean', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('dimsum_01');
+  const salsas = cardOf(p, 'Salsas');
+  const cb = rowsOfCard(salsas)[1].querySelector('input[type=checkbox]');
+  cb.checked = false; cb.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+  assert.equal(salsas.querySelector('.mk-gsumt').firstChild.textContent, '7 de 8 activos en este producto');
+  assert.equal(salsas.querySelector('.mk-apponly').hidden, false);
+  assert.equal(salsas.querySelector('.mk-apponly').textContent, 'Solo en la app Sherpa');
+  assert.equal(salsas.querySelector('.mk-lnk').textContent, 'Marcar todos');
+  assert.ok(rowsOfCard(salsas)[1].classList.contains('mk-xoff'));
+  assert.equal(p.drawer().querySelector('.mk-dirty').hidden, false, '«Cambios sin guardar»');
+  p.btn('Guardar').click(); await settle(10);
+  assert.ok(!p.drawer().classList.contains('show'), 'the drawer closed');
+  const key = SRC.extras.filter((x) => x.display.cat === 'Salsas')[1].key;
+  assert.deepEqual(p.src().structure.exposure.item_overrides.dimsum_01.deny_extras, [key]);
+  p.d.body.focus();
+  assert.equal(p.mods.shell.canLeave(), false, 'Codex plan r1 #1: a saved checklist edit still holds the reload / branch-switch guard');
+  await p.open('dimsum_01');
+  const back = rowsOfCard(cardOf(p, 'Salsas'))[1].querySelector('input[type=checkbox]');
+  assert.equal(back.checked, false, 'reopened: the same');
+  back.checked = true; back.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(p.src().structure.exposure.item_overrides.dimsum_01, undefined, '[] deletes the field and the emptied override');
+  assert.equal(p.mods.shell.canLeave(), true, 'reverted → clean');
+});
+
+test('S1 A2 — «Sin extras» on: the extras cards grey out and their checks lock; the required choice stays; Guardar stamps the whole group', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('noodle_01');
+  p.drawer().querySelector('.mk-opcsw button.tog').click(); await settle(5);
+  const f = p.fld('Opciones');
+  assert.ok(f.querySelector('.mk-opc').classList.contains('mk-off'));
+  assert.equal(f.querySelector('.mk-opcs').textContent, 'Este producto no ofrece ningún extra');
+  assert.equal(f.querySelector('.mk-opcsw button.tog').getAttribute('aria-checked'), 'true');
+  assert.ok([...f.querySelectorAll('.mk-ext input[type=checkbox]')].every((c) => c.disabled));
+  assert.ok(f.querySelector('.mk-grp.mk-req'), 'the required choice stays');
+  p.btn('Guardar').click(); await settle(10);
+  for (const k of ['noodle_01', 'noodle_01_sin', 'noodle_01_pollo', 'noodle_01_camaron']) assert.equal(p.src().items.find((i) => i.key === k).display.extras_policy, 'none', k);
+});
+
+test('S1 A3 — a card folds on its own (one line: what it is and how many); folding is never a change', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('dimsum_01');
+  cardOf(p, 'Salsas').querySelector('.mk-gt').click(); await settle(5);
+  const c = cardOf(p, 'Salsas');
+  assert.ok(!c.classList.contains('mk-open'));
+  assert.equal(c.querySelector('.mk-gb'), null);
+  assert.match(c.querySelector('.mk-gts').textContent, /^Extras · opcionales · 8 opciones · en \d+ productos$/);
+  assert.equal(c.querySelector('.mk-gt').getAttribute('aria-expanded'), 'false');
+  assert.ok(cardOf(p, 'Acompañamientos').classList.contains('mk-open'), 'the other card keeps its own state');
+  assert.equal(p.btn('Guardar').disabled, true); assert.equal(p.drawer().querySelector('.mk-dirty').hidden, true);
+});
+
+test('S1 R5 — the server switch OFF (absent): the checklist and «Sin extras» are dark, the prices still save (no regression)', async () => {
+  const p = await page();   // editable() carries no extrasAuthoring
+  await p.signIn();
+  await p.open('dimsum_01');
+  const f = p.fld('Opciones');
+  assert.equal(f.querySelector('.mk-opcsw button.tog').disabled, true);
+  assert.ok([...f.querySelectorAll('.mk-ext input[type=checkbox]')].every((c) => c.disabled));
+  assert.ok([...f.querySelectorAll('.mk-ext .mk-lnk')].every((b) => b.disabled));
+  const pi = rowsOfCard(cardOf(p, 'Salsas'))[0].querySelector('.mopr input');
+  p.type(pi, '41');
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(p.src().extras.find((x) => x.key === SRC.extras.filter((y) => y.display.cat === 'Salsas')[0].key).price, 41);
+});
+
+test('S1 — a checklist edit counts as unsaved: closing asks first, «Cancelar» drops it', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('dimsum_01');
+  const before = JSON.stringify(p.src());
+  cardOf(p, 'Salsas').querySelector('.mk-lnk').click(); await settle(5);   // «Ninguno»
+  assert.ok(rowsOfCard(cardOf(p, 'Salsas')).every((r) => r.classList.contains('mk-xoff')));
+  p.drawer().querySelector('.dwh button').click(); await settle(5);
+  assert.ok(p.drawer().querySelector('.mk-cfscrim'), 'the unsaved-edits confirm');
+  [...p.drawer().querySelectorAll('.mk-cf button')].find((b) => b.textContent.trim() === 'Seguir editando').click(); await settle(5);
+  p.btn('Cancelar').click(); await settle(5);
+  assert.equal(JSON.stringify(p.src()), before, '«Cancelar»: nothing written');
 });

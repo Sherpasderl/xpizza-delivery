@@ -392,11 +392,14 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // whole-drawer mutator (editItem: all or nothing; never a key, display.id or identity stamp), the read-only judges
   // itemNameProblem / itemDescProblem / itemCategoryProblem / pendingTexts / tidyItemName / loadedName (Phase 2: the panel's
   // «Es en «{producto}»»), and the two caps.
+  // STRUCTURE S1 (PLAN-portal-structure-S1-ui r3) — a dish's extras checklist + «Sin extras» ride editItem (denyExtras /
+  // extrasPolicy, only with the server's extras switch); the read-only extrasBaseline (the checklist's universe, THE ONE rule),
+  // dishDenyExtras and pendingDishExtras (in pendingCount). No new mutator.
   assert.deepStrictEqual(exported, [
     'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'canEditDraft', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
-    'commit', 'commitTo', 'createDraft', 'discard', 'draftPhotos', 'draftSource', 'editItem', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
+    'commit', 'commitTo', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
     'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'optionGroups', 'optionParentId',
-    'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingPhotos', 'pendingRenames', 'pendingTexts',
+    'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRenames', 'pendingTexts',
     'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
     'setChoiceRecommended', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
     'tidyItemName',
@@ -1021,6 +1024,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     // ── 1D add-product B ──
     // ── S4 «Editar producto» (S2-DESIGN §1.1) — per-load server facts: reset by resetEditFacts inside invalidateReview (the world ends),
     //    set ONLY in applyAddProductFacts on the generation-checked settle paths; the server re-judges every save and publish
+    'state.extrasAuthoring':     [2, 'guarded', 'STRUCTURE S1 (R5) — the server\u2019s per-product extras switch (getEditableCatalog extrasAuthoring); fail closed (the checklist and «Sin extras» dark, prices as today) until a load sets it'],
     'state.textEditEnabled':     [2, 'guarded', 'S4 — whether an existing product\u2019s drawer is the text-edit working copy (getEditableCatalog textEditEnabled); fail closed (today\u2019s drawer) until a load sets it'],
     'state.reservedNames':       [2, 'guarded', 'S4 — the names a rename may not take (server-normalized), for the live C5 line only; advisory — the save and the publish re-judge'],
     'state.savedTexts':          [2, 'guarded', 'S4 — the SAVED draft\u2019s unpublished text edits (pendingTexts), for the row tags and the bar count after a reload; presentational'],
@@ -1276,6 +1280,14 @@ const LISTENERS = {
   "iePrice::input":               ['bound', [], 'S4 — the product\u2019s price, into the working copy'],
   "ieCancel::click":              ['bound', ['closeDrawer'], 'S4 — «Cancelar»: the working copy is dropped (endEditSession); the draft keeps what it had'],
   "ieSave::click":                ['bound', ['saveEdit'], 'S4 — «Guardar»: IE.save commits the whole edit ONCE through editItem (canEdit); then the drawer closes and the list repaints'],
+  // STRUCTURE S1 — the drawer's «Opciones» cards: every handler writes only the WORKING COPY (or view-only fold state); the draft is
+  // written ONLY by «Guardar» (IE.save → editItem, canEdit + the server's extras switch)
+  "ieFoldName::click":            ['bound', [], 'S1 — folds / unfolds one «Opciones» card: view state (opcFolded, per drawer session) and a drawer re-render'],
+  "ieFoldChev::click":            ['bound', [], 'S1 — the card\u2019s chevron: the same fold'],
+  "ieNoExtras::click":            ['bound', [], 'S1 — «Sin extras», into the working copy (IE.set extrasNone; inert while the server switch is off); the drawer re-lays out'],
+  "ieAllExtras::click":           ['bound', [], 'S1 — «Marcar todos» / «Ninguno» for one group, into the working copy (IE.set extraGroupOn: that group\u2019s current keys)'],
+  "ieExtraOn::change":            ['bound', [], 'S1 — one extra\u2019s check, into the working copy (IE.set extraOn)'],
+  "ieExtraPrice::input":          ['bound', [], 'S1 / R4 — an extra\u2019s price, into the working copy (IE.set extraPrice), as today until S2'],
   // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html) — the in-page confirm before an exit would drop a dirty working copy
   "cfKeep::click":                ['bound', [], 'unsaved edits — «Seguir editando»: dismisses the confirm; the working copy stays exactly as it was'],
   "cfDrop::click":                ['bound', [], 'unsaved edits — «Descartar»: drops the working copy (endEditSession), then the exit it held (close / open the other product); the draft is untouched'],

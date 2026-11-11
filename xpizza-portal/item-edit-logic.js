@@ -134,7 +134,7 @@ function changed(s) {
 const prospectBaseline = (s) => extrasBaseline(draftSource(s.draft), s.key, catChanged(s) ? { cat: s.work.cat, subcat: s.work.subcat } : null);
 // «en N productos»: the dishes (not options) whose own baseline offers the group — every dish's exclusions and «Sin extras»
 // set aside, legacy rules kept; one clone + one projection per read
-function groupUsage(draft) {
+function extrasGroupReach(draft) {
   const E = globalThis.ExtrasEligibility;
   const src = JSON.parse(JSON.stringify(draftSource(draft)));
   const io = src.structure && src.structure.exposure && src.structure.exposure.item_overrides;
@@ -155,13 +155,13 @@ function extrasCards(draft, s) {
   const b = prospectBaseline(s);
   if (!b) return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: w.extrasNone };
   let used;
-  try { used = groupUsage(draft); } catch (_) { return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: w.extrasNone }; }
+  try { used = extrasGroupReach(draft); } catch (_) { return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: w.extrasNone }; }
   const deny = new Set(w.denyExtras);
   const byKey = new Map((draftSource(draft).extras || []).map((x) => [x && x.key, x]));
   const cards = b.groups.map((g) => {
     const rows = g.keys.map((k) => { const x = byKey.get(k); const nm = x && x.display && typeof x.display.name === 'string' && x.display.name.trim() ? x.display.name : k;
       return { key: k, name: nm, price: w.extraPrices[k], on: !deny.has(k) }; });
-    return { cat: g.cat, rows, total: rows.length, active: rows.filter((r) => r.on).length, usedBy: used.get(g.cat) || 0, disabled: w.extrasNone || !s.extrasAuthoring };
+    return { cat: g.cat, rows, size: rows.length, active: rows.filter((r) => r.on).length, usedBy: used.get(g.cat) || 0, disabled: w.extrasNone || !s.extrasAuthoring };
   });
   // R6: «Sin extras» is offered when the dish has something to switch off, or is already off
   return { authoring: s.extrasAuthoring, none: w.extrasNone, cards, gap: false, show: cards.length > 0 || w.extrasNone };

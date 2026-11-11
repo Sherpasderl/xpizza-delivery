@@ -555,6 +555,8 @@ function applyAddProductFacts(data) {
   // S4 (S2-DESIGN §1.1) — the text-edit switch (absent / not true = today's drawer), the names a rename may not take (already
   // normalized by the server; absent = the C5 check waits for «Guardar»), and the SAVED draft's unpublished text edits
   state.textEditEnabled = !!(data && data.textEditEnabled === true);
+  // STRUCTURE S1 (R5): the server's per-product extras switch; absent ⇒ OFF — the checklist and «Sin extras» stay dark
+  state.extrasAuthoring = !!(data && data.extrasAuthoring === true);
   state.reservedNames = state.textEditEnabled && data && Array.isArray(data.reservedNames) ? data.reservedNames.filter((n) => typeof n === 'string') : null;
   state.savedTexts = Array.isArray(data && data.pendingTexts) ? data.pendingTexts.filter((t) => t && typeof t.key === 'string' && Array.isArray(t.fields)) : [];
 }
@@ -1507,6 +1509,7 @@ function productReviewOpts() {
 }
 function resetEditFacts() {
   state.textEditEnabled = false;
+  state.extrasAuthoring = false;
   state.reservedNames = null;
   state.savedTexts = [];
   endEditSession();
@@ -1524,11 +1527,26 @@ function warnTri() {
   for (const d of ['M12 3l9 16H3z', 'M12 10v4', 'M12 17.5v.01']) { const p = document.createElementNS(NS, 'path'); p.setAttribute('d', d); svg.append(p); }
   return svg;
 }
+// STRUCTURE S1 — the «Opciones» copy (MOCKUP-portal-structure-edit v2, table H) and the cards' fold state (view-only, per drawer
+// session: never part of the copy, never dirty)
+const OPC_COPY = Object.freeze({
+  noneOff: 'Apagalo si este producto no lleva extras', noneOn: 'Este producto no ofrece ningún extra',
+  req: 'Elección requerida · el cliente elige 1', ext: 'Extras · opcionales',
+  allOn: 'Todos activos en este producto', markAll: 'Marcar todos', none: 'Ninguno', appOnly: 'Solo en la app Sherpa',
+});
+const opcFolded = new Set();
+const opcN = (n) => `${n} ${n === 1 ? 'opción' : 'opciones'}`;
+const opcProducts = (n) => `en ${n} ${n === 1 ? 'producto' : 'productos'}`;
+// an extras card's header line: open → the group's reach; folded (A3) → also how many are active here, or how many there are
+function opcExtSub(c, open) {
+  if (open) return `${OPC_COPY.ext} · ${opcProducts(c.usedBy)}`;
+  return `${OPC_COPY.ext} · ${c.active < c.size ? `${c.active} de ${c.size} activos` : opcN(c.size)} · ${opcProducts(c.usedBy)}`;
+}
 function renderEditDrawer(d, it, keepScroll) {
   const key = rowId(it);
   if (!editSess || editSess.closed || editSess.key !== key || editSess.draft !== state.draft) {
     endEditSession();
-    editSess = IE.open(state.draft, key, state.reservedNames);
+    editSess = IE.open(state.draft, key, state.reservedNames, { extrasAuthoring: state.extrasAuthoring === true });
   }
   const s = editSess;
   if (!s) return false;                       // not a product this drawer edits (an option, an unsaved addition): today's drawer
@@ -1606,48 +1624,8 @@ function renderEditDrawer(d, it, keepScroll) {
     body.append(fSub);
   }
 
-  // a product with a required choice (F): the derived option names, each with its counter and — kept (advisor Q1) — its price
-  if (v0.options) {
-    const g = choiceGroup(state.draft, key);
-    const fOpt = mk('div', 'fld');
-    const lr3 = mk('div', 'mk-lrow');
-    R.optCnt = mk('span', 'mk-cnt', 'precio por opción');
-    lr3.append(mk('label', null, 'Opciones'), R.optCnt);
-    const block = mk('div', 'modblock');
-    const mh = mk('div', 'modh', `${(g && typeof g.label === 'string' && g.label.trim()) ? g.label : 'Elección'} · elección requerida`);
-    mh.append(mk('span', 'mk-modhr', 'Se mueve con su producto'));
-    block.append(mh);
-    R.opts = [];
-    for (const o of v0.options) {
-      const row = mk('div', 'mk-dopt');
-      const dn = mk('span', 'mk-dn');
-      const base = document.createTextNode('');
-      dn.append(base, mk('span', null, ` - ${o.choice}`));
-      const cnt = mk('span', 'mk-cnt');
-      const dp = mk('span', 'dp');
-      const pr = mk('span', 'mopr');
-      const ieOptPrice = document.createElement('input');
-      ieOptPrice.type = 'text'; ieOptPrice.inputMode = 'numeric'; ieOptPrice.placeholder = 'Sin precio'; ieOptPrice.value = o.price;
-      ieOptPrice.setAttribute('aria-label', `Precio de ${o.choice}`);
-      ieOptPrice.addEventListener('input', bound(() => { IE.set(s, 'optionPrice', { key: o.key, raw: ieOptPrice.value }); syncEdit(); }));
-      focusKey(ieOptPrice, `ie-opt::${o.key}`);
-      pr.append(mk('span', 'mc', 'L'), ieOptPrice);
-      dp.append(pr);
-      row.append(dn, cnt, dp);
-      block.append(row);
-      R.opts.push({ key: o.key, row, base, cnt, pi: ieOptPrice });
-    }
-    const lab = mk('label', 'mgflag mgflag-same');
-    const ieSame = document.createElement('input'); ieSame.type = 'checkbox';
-    ieSame.addEventListener('change', bound(() => { IE.set(s, 'samePrice', ieSame.checked); syncEdit(); }));
-    focusKey(ieSame, 'ie-same');
-    lab.append(ieSame, document.createTextNode('Mismo precio para todas'));
-    R.same = ieSame;
-    fOpt.append(lr3, block, lab, mk('div', 'mk-sub', 'El nombre de cada opción se arma solo: nombre del producto + opción. Cambia junto con el producto.'));
-    errSlot(fOpt, 'options'); R.ctl.options = R.opts.map((o) => o.pi);
-    R.optBlock = block;
-    body.append(fOpt);
-  } else {
+  // a plain product: its price, as today (a product with a required choice prices its options, in «Opciones» below)
+  if (!v0.options) {
     const fPr = mk('div', 'fld pr');
     fPr.append(mk('label', null, 'Precio'), mk('span', 'cur2', 'L'));
     const iePrice = document.createElement('input');
@@ -1658,8 +1636,147 @@ function renderEditDrawer(d, it, keepScroll) {
     body.append(fPr);
   }
 
-  // the extras groups, as today — their prices through the copy (advisor Q2)
-  for (const g of optionGroups(state.draft)) body.append(groupBlock(g, s));
+  // STRUCTURE S1 — «Opciones» (MOCKUP-portal-structure-edit v2 frame A / A2 / A3): «Sin extras», the required choice (R1: today's
+  // option-price inputs kept inside its card until S3), one card per extras group the dish offers, with the per-dish checklist
+  // (R4: today's editable prices until S2). Each card folds on its own (view-only). No grip (R2); no pencil, «Editar en Extras»,
+  // «Quitar de este producto» or dish actions until S2 / S3 — no dead control.
+  const ex = v0.extras;
+  if (v0.options || ex.show) {
+    const fOpc = mk('div', 'fld');
+    const lrO = mk('div', 'mk-lrow');
+    lrO.append(mk('label', null, 'Opciones'), mk('span', 'mk-cnt', 'en el orden que las ve el cliente'));
+    const box = mk('div', `mk-opc${ex.none ? ' mk-off' : ''}`);
+    const folded = (id) => opcFolded.has(`${s.id}|${id}`);
+    const fold = (id) => { const k = `${s.id}|${id}`; if (opcFolded.has(k)) opcFolded.delete(k); else opcFolded.add(k); relayout(); refocus([`ie-fold::${id}`]); };
+    const header = (id, name, sub, subCls, open) => {
+      const gh = mk('div', 'mk-gh');
+      const ieFoldName = document.createElement('button'); ieFoldName.type = 'button'; ieFoldName.className = 'mk-gt';
+      ieFoldName.setAttribute('aria-expanded', String(open));
+      const st = mk('span', subCls, sub);
+      ieFoldName.append(mk('b', 'mk-gtn', name), st);
+      ieFoldName.addEventListener('click', bound(() => fold(id)));
+      focusKey(ieFoldName, `ie-fold::${id}`);
+      const act = mk('div', 'mk-gact');
+      const ieFoldChev = document.createElement('button'); ieFoldChev.type = 'button'; ieFoldChev.className = 'mk-ib mk-chev';
+      ieFoldChev.setAttribute('aria-label', `${open ? 'Ocultar' : 'Mostrar'} ${name}`); ieFoldChev.setAttribute('aria-expanded', String(open));
+      ieFoldChev.append(svgChevron());
+      ieFoldChev.addEventListener('click', bound(() => fold(id)));
+      act.append(ieFoldChev);
+      gh.append(ieFoldName, act);
+      return { gh, st };
+    };
+    R.opc = { cards: [] };
+    if (ex.show) {
+      const sw = mk('div', 'mk-opcsw');
+      const lbl = mk('div', 'mk-opcl');
+      lbl.append(mk('b', 'mk-opcb', 'Sin extras'), mk('span', 'mk-opcs', ex.none ? OPC_COPY.noneOn : OPC_COPY.noneOff));
+      const ieNoExtras = document.createElement('button'); ieNoExtras.type = 'button'; ieNoExtras.className = 'tog';
+      if (!ex.none) ieNoExtras.classList.add('off');
+      ieNoExtras.setAttribute('role', 'switch'); ieNoExtras.setAttribute('aria-checked', String(ex.none)); ieNoExtras.setAttribute('aria-label', 'Sin extras');
+      ieNoExtras.append(document.createElement('i'));
+      lockControl(ieNoExtras, !ex.authoring);   // R5: shown, inert, until the server's switch is on (locked: setDrawerInert keeps it off)
+      ieNoExtras.addEventListener('click', bound(() => { IE.set(s, 'extrasNone', !s.work.extrasNone); relayout(); refocus(['ie-sinextras']); }));
+      focusKey(ieNoExtras, 'ie-sinextras');
+      sw.append(lbl, ieNoExtras);
+      box.append(sw);
+    }
+    if (v0.options) {
+      const g = choiceGroup(state.draft, key);
+      const label = (g && typeof g.label === 'string' && g.label.trim()) ? g.label : 'Elección';
+      const open = !folded('req');
+      const card = mk('div', `mk-grp mk-req${open ? ' mk-open' : ''}`);
+      const h = header('req', label, `${OPC_COPY.req}${open ? '' : ` · ${opcN(v0.options.length)}`}`, 'mk-gts mk-greq', open);
+      card.append(h.gh);
+      R.opts = [];
+      R.optCnt = mk('span', 'mk-cnt');   // the F2 line's counter class (kept for syncEdit's red), not drawn
+      if (open) {
+        const block = mk('div', 'mk-gb');
+        for (const o of v0.options) {
+          const row = mk('div', 'mk-dopt');
+          const dn = mk('span', 'mk-dn');
+          const base = document.createTextNode('');
+          dn.append(base, mk('span', null, ` - ${o.choice}`));
+          const opRow = g && g.options.find((x) => x.key === o.key);
+          if (opRow && opRow.display && Array.isArray(opRow.display.tags) && opRow.display.tags.includes('recommended')) dn.append(mk('span', 'mk-rec', 'Recomendada'));
+          const cnt = mk('span', 'mk-cnt');
+          const dp = mk('span', 'dp');
+          const pr = mk('span', 'mopr');
+          const ieOptPrice = document.createElement('input');
+          ieOptPrice.type = 'text'; ieOptPrice.inputMode = 'numeric'; ieOptPrice.placeholder = 'Sin precio'; ieOptPrice.value = o.price;
+          ieOptPrice.setAttribute('aria-label', `Precio de ${o.choice}`);
+          ieOptPrice.addEventListener('input', bound(() => { IE.set(s, 'optionPrice', { key: o.key, raw: ieOptPrice.value }); syncEdit(); }));
+          focusKey(ieOptPrice, `ie-opt::${o.key}`);
+          pr.append(mk('span', 'mc', 'L'), ieOptPrice);
+          dp.append(pr);
+          row.append(dn, cnt, dp);
+          block.append(row);
+          R.opts.push({ key: o.key, row, base, cnt, pi: ieOptPrice });
+        }
+        const lab = mk('label', 'mgflag mgflag-same mk-gsame');
+        const ieSame = document.createElement('input'); ieSame.type = 'checkbox';
+        ieSame.addEventListener('change', bound(() => { IE.set(s, 'samePrice', ieSame.checked); syncEdit(); }));
+        focusKey(ieSame, 'ie-same');
+        lab.append(ieSame, document.createTextNode('Mismo precio para todas'));
+        R.same = ieSame;
+        block.append(lab, mk('div', 'mk-gsub', 'El nombre de cada opción se arma solo: nombre del producto + opción. Cambia junto con el producto.'));
+        card.append(block);
+        R.ctl.options = R.opts.map((x) => x.pi);
+      }
+      R.optBlock = card;
+      errSlot(card, 'options');
+      box.append(card);
+    }
+    for (const c of ex.cards) {
+      const id = `x::${c.cat}`;
+      const open = !folded(id);
+      const card = mk('div', `mk-grp mk-ext${open ? ' mk-open' : ''}`);
+      const h = header(id, c.cat, opcExtSub(c, open), 'mk-gts', open);
+      card.append(h.gh);
+      const ref = { cat: c.cat, open, st: h.st, rows: [] };
+      if (open) {
+        const gb = mk('div', 'mk-gb');
+        const sum = mk('div', 'mk-gsum');
+        ref.sum = mk('span', 'mk-gsumt');
+        ref.app = mk('span', 'mk-apponly');
+        ref.app.append(mk('span', 'mk-apdot'), document.createTextNode(OPC_COPY.appOnly));
+        ref.sum.append(document.createTextNode(''), ref.app);
+        const ieAllExtras = document.createElement('button'); ieAllExtras.type = 'button'; ieAllExtras.className = 'mk-lnk';
+        ref.lnk = ieAllExtras;
+        lockControl(ieAllExtras, c.disabled);   // dark (R5) or under «Sin extras» (A2) — locked, so an un-inert never re-enables it
+        ieAllExtras.addEventListener('click', bound(() => {
+          const cur = IE.view(state.draft, s).extras.cards.find((x) => x.cat === c.cat);
+          IE.set(s, 'extraGroupOn', { cat: c.cat, on: !cur || cur.active !== cur.size }); syncEdit();
+        }));
+        focusKey(ieAllExtras, `ie-all::${c.cat}`);
+        sum.append(ref.sum, ieAllExtras);
+        gb.append(sum);
+        for (const r of c.rows) {
+          const row = mk('div', 'mopt mk-xopt');
+          const lab = mk('label', 'mk-xchk');
+          const ieExtraOn = document.createElement('input'); ieExtraOn.type = 'checkbox'; ieExtraOn.checked = r.on; lockControl(ieExtraOn, c.disabled);
+          ieExtraOn.addEventListener('change', bound(() => { IE.set(s, 'extraOn', { key: r.key, on: ieExtraOn.checked }); syncEdit(); }));
+          focusKey(ieExtraOn, `ie-x::${r.key}`);
+          lab.append(ieExtraOn, mk('span', 'mk-xnm', r.name));
+          // R4: the group's price, editable as today (it is the group's, not the dish's — shown for an unchecked extra too)
+          const pr = mk('span', 'mopr');
+          const ieExtraPrice = document.createElement('input');
+          ieExtraPrice.type = 'text'; ieExtraPrice.inputMode = 'numeric'; ieExtraPrice.placeholder = 'Sin precio'; ieExtraPrice.value = r.price || '';
+          ieExtraPrice.setAttribute('aria-label', `Precio de ${r.name}`);
+          ieExtraPrice.addEventListener('input', bound(() => { IE.set(s, 'extraPrice', { key: r.key, raw: ieExtraPrice.value }); syncEdit(); }));
+          focusKey(ieExtraPrice, `ie-xp::${r.key}`);
+          pr.append(mk('span', 'mc', 'L'), ieExtraPrice);
+          row.append(lab, pr);
+          gb.append(row);
+          ref.rows.push({ key: r.key, row, cb: ieExtraOn, pi: ieExtraPrice });
+        }
+        card.append(gb);
+      }
+      R.opc.cards.push(ref);
+      box.append(card);
+    }
+    fOpc.append(lrO, box);
+    body.append(fOpc);
+  }
 
   const foot = mk('div', 'dwf');
   const ieCancel = document.createElement('button'); ieCancel.className = 'btn ghost'; ieCancel.type = 'button'; ieCancel.textContent = 'Cancelar';
@@ -1733,6 +1850,26 @@ function syncEdit() {
       if (r.pi.value !== o.price && document.activeElement !== r.pi) r.pi.value = o.price;
     });
     R.same.checked = v.same === true;
+  }
+  // STRUCTURE S1 — the extras cards follow the copy in place (counts, the summary, the link, each row's check and price)
+  if (R.opc) {
+    for (const ref of R.opc.cards) {
+      const c = v.extras.cards.find((x) => x.cat === ref.cat);
+      if (!c) continue;
+      ref.st.textContent = opcExtSub(c, ref.open);
+      if (!ref.open) continue;
+      const custom = c.active < c.size;
+      ref.sum.firstChild.textContent = custom ? `${c.active} de ${c.size} activos en este producto` : OPC_COPY.allOn;
+      ref.app.hidden = !custom;
+      ref.lnk.textContent = custom ? OPC_COPY.markAll : OPC_COPY.none;
+      for (const r of ref.rows) {
+        const row = c.rows.find((x) => x.key === r.key);
+        if (!row) continue;
+        r.cb.checked = row.on;
+        r.row.classList.toggle('mk-xoff', !row.on);
+        if (r.pi.value !== (row.price || '') && document.activeElement !== r.pi) r.pi.value = row.price || '';
+      }
+    }
   }
   R.save.disabled = !v.save.enabled;
   if (v.save.title) R.save.title = v.save.title; else R.save.removeAttribute('title');

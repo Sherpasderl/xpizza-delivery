@@ -1,6 +1,6 @@
 // Structure S1 — the drawer's «Opciones» cards: the per-dish extras checklist + «Sin extras» (PLAN-portal-structure-S1-ui r3,
 // APPROVED 2026-11-11; MOCKUP-portal-structure-edit.html v2 frame A; PLAN-per-product-extras rev 2.2 §2 / §3 / §8 / §12.3).
-// The PURE half: editor.js (extrasBaseline, pendingExtras, editItem's denyExtras / extrasPolicy) and item-edit-logic.js (the
+// The PURE half: editor.js (extrasBaseline, pendingDishExtras, editItem's denyExtras / extrasPolicy) and item-edit-logic.js (the
 // drawer's working copy). Run: node --test xpizza-portal/structure-s1.test.mjs
 //
 // Fixtures come from the real writers: both brands' REAL seeds (tools/seed-source-store buildSourceFromCode, canonicalized —
@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { runInThisContext } from 'node:vm';
 import { readFileSync } from 'node:fs';
-import { createDraft, draftSource, pendingCount, editItem, extrasBaseline, pendingExtras, setExtraPrice } from './editor.js';
+import { createDraft, draftSource, pendingCount, editItem, extrasBaseline, pendingDishExtras, setExtraPrice } from './editor.js';
 import * as IE from './item-edit-logic.js';
 
 const req = createRequire(import.meta.url);
@@ -109,6 +109,7 @@ test('editItem — refused, nothing written: a variant\'s own list, an ADDED key
   const d = draftOf('la_musa'), src0 = clone(draftSource(d));
   const anySalsa = catKeys(src0, 'Salsas')[0];
   assert.equal(editItem(d, VARIANTS[1], { denyExtras: [anySalsa] }, ON), false, 'a variant never carries its own list');
+  assert.equal(editItem(d, VARIANTS[1], { extrasPolicy: 'none' }, ON), false, 'a variant never carries its own «Sin extras» (the launcher\'s governs the group)');
   const outside = catKeys(src0, 'Proteínas')[0];   // dimsum allows Acompañamientos + Salsas only
   assert.equal(editItem(d, 'dimsum_01', { denyExtras: [outside] }, ON), false, 'an added key outside the baseline');
   assert.equal(editItem(d, 'dimsum_01', { denyExtras: ['no_such_extra'] }, ON), false);
@@ -125,7 +126,7 @@ test('copy — the cards: one per baseline category, «N de M activos», «en N 
   const v0 = IE.view(d, s).extras;
   assert.deepEqual(v0.cards.map((c) => c.cat), ['Salsas & Queso', 'Carnes', 'Vegetales & Hierbas']);
   const carnes = v0.cards[1];
-  assert.equal(carnes.total, 5); assert.equal(carnes.active, 5);
+  assert.equal(carnes.size, 5); assert.equal(carnes.active, 5);
   // «en N productos»: the dishes whose baseline offers the group (x_pizza: every dish of individual + ny)
   const offering = draftSource(d).items.filter((r) => ['individual', 'ny'].includes(r.display.cat) && r.key !== 'Nutella').length;
   assert.equal(carnes.usedBy, offering);
@@ -206,6 +207,22 @@ test('move — a move AND an exclusion of the NEW section\'s extra, in one copy,
   assert.equal(IE.view(d, reopened).extras.cards.find((c) => c.cat === 'Acompañamientos').rows[0].on, false, 'reopened after save: the same');
 });
 
+test('move — an exclusion OUTSIDE the new section is kept and one INSIDE it is added, in ONE saved list (source.extras order)', () => {
+  // the real la_musa seed with one exposure variation the validator accepts: Bebidas offers Proteínas
+  const src = clone(SEED.la_musa); src.structure.exposure.category_allow.bebidas = ['Proteínas'];
+  assert.doesNotThrow(() => validateSource(src, 'la_musa'), 'premise: a source the server accepts');
+  const d = createDraft(src);
+  const salsa = catKeys(src, 'Salsas')[0], prot = catKeys(src, 'Proteínas')[0];
+  assert.ok(editItem(d, 'dimsum_01', { denyExtras: [salsa] }, ON));
+  const s = openOn(d, 'dimsum_01');
+  IE.set(s, 'cat', 'bebidas'); IE.set(s, 'subcat', firstSub(d, 'bebidas'));
+  assert.deepEqual(IE.view(d, s).extras.cards.map((c) => c.cat), ['Proteínas'], 'the prospective section\'s groups');
+  IE.set(s, 'extraOn', { key: prot, on: false });
+  assert.ok(IE.save(d, s).ok);
+  const order = src.extras.map((x) => x.key);
+  assert.deepEqual(ov(d, 'dimsum_01').deny_extras, [salsa, prot].sort((a, b) => order.indexOf(a) - order.indexOf(b)), 'the kept one AND the new one');
+});
+
 // ── the pending count after the drawer closed (Codex plan r1 #1, P1) ──────────────────────────────────────────────────
 for (const rid of ['x_pizza', 'la_musa']) {
   test(`pendingCount (${rid}) — a SAVED deny-only or policy-only change is pending work after the drawer closed; reverting is clean`, () => {
@@ -214,12 +231,12 @@ for (const rid of ['x_pizza', 'la_musa']) {
     const k = IE.view(d, s).extras.cards[0].rows[0].key;
     IE.set(s, 'extraOn', { key: k, on: false });
     assert.ok(IE.save(d, s).ok); assert.equal(IE.isDirty(s), false, 'the copy is closed');
-    assert.deepEqual(pendingExtras(d), [{ key, fields: ['denyExtras'] }]);
+    assert.deepEqual(pendingDishExtras(d), [{ key, fields: ['denyExtras'] }]);
     assert.equal(pendingCount(d), 1);
     const s2 = openOn(d, key); IE.set(s2, 'extraOn', { key: k, on: true }); assert.ok(IE.save(d, s2).ok);
     assert.equal(pendingCount(d), 0, 'reverted → clean');
     const s3 = openOn(d, key); IE.set(s3, 'extrasNone', true); assert.ok(IE.save(d, s3).ok);
-    assert.deepEqual(pendingExtras(d), [{ key, fields: ['extrasPolicy'] }]);
+    assert.deepEqual(pendingDishExtras(d), [{ key, fields: ['extrasPolicy'] }]);
     assert.equal(pendingCount(d), 1);
   });
 }

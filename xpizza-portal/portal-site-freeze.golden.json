@@ -73,6 +73,7 @@
   "review-products.test.mjs",
   "review.js",
   "review.test.mjs",
+  "s1-fold.mjs",
   "s4-fold.mjs",
   "shell-dom.test.mjs",
   "shell-wait-writes.test.mjs",
@@ -80,6 +81,7 @@
   "shell.js",
   "shell.test.mjs",
   "sherpa-client.js",
+  "structure-s1.test.mjs",
   "styles.css",
   "team-logic.js",
   "team.js",
@@ -154,8 +156,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "fd4f9de1581fc1898a7b5b12336123fc26871f64dc7e589848fb5433125afded",
-   "bytes": 117308
+   "sha256": "60138d3899152e852a133b71f42d8e0328533cf60ffc71b71a49fefcbd1ab716",
+   "bytes": 120867
   }
  },
  "diff_aid": {
@@ -1595,6 +1597,18 @@
    ],
    [
     "",
+    ".mk-apdot",
+    "background",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-apponly",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".mk-cdot",
     "background",
     "var(--mute2)"
@@ -1667,6 +1681,114 @@
    ],
    [
     "",
+    ".mk-gh",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-grp",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk-grp.chg",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk-grp.invalid,.mk-grp.mk-inv",
+    "border-color",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".mk-grp.mk-open .mk-chev",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk-gsub",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-gsum",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-gt",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-gt",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk-gts",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-gts.mk-greq",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk-ib",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-ib",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-ib:hover",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk-ib:hover",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk-lnk",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk-lnk",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk-lnk:disabled",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".mk-lrow label .mk-opt",
     "color",
     "var(--mute2)"
@@ -1703,13 +1825,37 @@
    ],
    [
     "",
+    ".mk-opcs",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".mk-rbhint",
     "color",
     "var(--mute)"
    ],
    [
     "",
+    ".mk-rec",
+    "background",
+    "var(--gold-soft)"
+   ],
+   [
+    "",
+    ".mk-rec",
+    "color",
+    "var(--gold)"
+   ],
+   [
+    "",
     ".mk-sub",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-xoff .mk-xnm",
     "color",
     "var(--mute2)"
    ],

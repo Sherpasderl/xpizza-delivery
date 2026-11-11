@@ -326,7 +326,7 @@ function foldNewGroups(draft, entries, saved) {
 // STRUCTURE S1 — and so is a dish's extras checklist or «Sin extras» (Codex S1 plan r1 #1): a SAVED one is pending work after the
 // drawer closed, so the reload / branch-switch / self-update guard (portalReloadFacts) still holds it.
 export const pendingCount = (draft, savedAdditions) => pendingChanges(draft, savedAdditions).length + pendingPhotos(draft).length
-  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingExtras(draft).reduce((n, t) => n + t.fields.length, 0);
+  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.fields.length, 0);
 
 // ── DISH PHOTOS B (PLAN-dish-photos §2.1 / §2.2) — THE DRAFT PHOTO MAP ────────────────────────────────────────────────
 // `source.photos` = {[itemKey]: {state:'pid', pid} | {state:'removed'}}; an absent key is LEGACY. It is part of the document
@@ -899,7 +899,7 @@ export function extrasBaseline(src, key, move = null) {
 }
 // Existing products whose checklist or «Sin extras» differs from what was loaded — [{ key, fields: ['denyExtras' | 'extrasPolicy'] }],
 // in document order; the list compares as a SET (order-free, absent ≡ empty), the policy as 'none' vs absent.
-export function pendingExtras(draft) {
+export function pendingDishExtras(draft) {
   const out = [];
   for (const row of rowsOf(draft.state, 'item')) {
     if (!row || isTmp(row) || isOptionRow(row) || typeof row.key !== 'string') continue;
