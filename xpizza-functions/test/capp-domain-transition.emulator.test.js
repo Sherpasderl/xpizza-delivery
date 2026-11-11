@@ -17,7 +17,11 @@
 //      ⇒ its just-minted record is cleared ⇒ the update path DOES reload (nothing unresolved blocks it).
 //   U  (S2b r2) the REAL UI in the REAL browser — CappUI mounted on the page, its own clicks, ctxBase + the order-intake key;
 //      the device fix from Chrome's geolocation (no pin step); the order is admitted, recorded at the fix and the Total shown.
-//      The one browser cell whose request headers are built by the app, not by the test.
+//      The one browser cell whose request headers are built by the app, not by the test. Delivery pricing is ACTIVE for x_pizza
+//      (asm5, advisor 11-10: every delivery carries the Sherpa envío; a restaurant without pricing is a setup gap), seeded as
+//      s2tip.emulator's setPricing does — the shape of delivery-pricing.js:8-12, the same BANDS.
+//   U-DARK the setup gap stays VISIBLE: with no delivery pricing the tip step's default tip is refused 409 tip_not_enabled
+//      (delivery-wire.js:37), the app shows its error sheet and «Hacer pedido» stays disabled — never a silent pass.
 //   GUEST CONTRACT (owner 10-27 FINAL; 3a's checkout-guest-gate; re-baselined at the web/guest composition, advisor 2026-11-01):
 //      every capp guest here runs as launch will — cfg.guestCardOnly, card only, the email, the WhatsApp code (sent through the
 //      REAL sendPlatformOtp to a captured UltraMsg call and read back from the message) ⇒ the checkout ticket ⇒ the charge. F1
@@ -126,6 +130,9 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
   const OPENH = { open: true, start: '00:00', end: '24:00' };
   const HOURS = { sun: OPENH, mon: OPENH, tue: OPENH, wed: OPENH, thu: OPENH, fri: OPENH, sat: OPENH };
   const HUB = { lat: 14.1, lng: -87.2 };
+  // asm5 (advisor 11-10, option 1): exactly s2tip.emulator.test.js:92/112 — a raw admin set of delivery-pricing.js:8-12's shape
+  const BANDS = [{ max_km: 2, cents: 3000 }, { max_km: 5, cents: 5000 }, { max_km: 7, cents: 7000 }];
+  const setPricing = (restaurants) => (restaurants === undefined ? rtdb.ref('platform_config/delivery_pricing').remove() : rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: BANDS, restaurants }));
   const edgeDeps = { db: rtdb, restaurant: { lat: HUB.lat, lng: HUB.lng, name: 'x_pizza', phone: '+504' }, buildMaterializeUpdates, genToken: () => 'TOK', alert: async () => {},
     client: { voidTransaction: async () => ({ ok: true }) }, getIdentity: async () => ({ active: true, hours: HOURS }), sanitizeText: (x) => String(x || ''), serverTimestamp: 1, voidOrRefund: async () => ({ ok: true }) };
   web.get('/pay', async (req, res) => {   // the "hosted page": the payment succeeds (the real confirm writer), then the redirect
@@ -277,6 +284,7 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
     // ── U: the REAL UI on the page (its ctxBase builds the headers) ──
     {
       await clean(); HDRS.length = 0;
+      await setPricing({ x_pizza: { active: true, free_delivery: true } });   // the launch state: x_pizza delivers with its envío
       const FIX = { lat: HUB.lat + 1.3 / 111.195, lng: HUB.lng + 0.4 / 111.195 };
       const u = await tab();
       try {
@@ -327,8 +335,50 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
         assert.ok(o, `premise: the card order exists (${id})`);
         assert.deepStrictEqual([Number(o.lat), Number(o.lng), o.total_cents], [FIX.lat, FIX.lng, r.total], 'recorded at the fix, at the displayed Total');
         assert.ok(o.guest_verified && typeof o.guest_verified.phone_hash === 'string', '🔴 the order carries the WhatsApp-verified guest phone (3a\'s phone binding)');
-      } finally { await u.close(); }
+        assert.ok(Number.isSafeInteger(o.delivery_cents) && o.delivery_cents > 0, `premise: delivery pricing is ACTIVE — the order carries its envío (${o.delivery_cents})`);
+      } finally { await u.close(); await setPricing(undefined); }
       ok('U the REAL UI in the REAL browser (guest contract): the device fix, the email typed, card only, the REAL WhatsApp code sheet (the code read from its send) ⇒ the ticket ⇒ the card checkout admitted at the hosted page, its own ctxBase + intake key, recorded at the fix and the Total shown, the verified phone bound');
+    }
+
+    // ── U-DARK: no delivery pricing ⇒ the tip step's default tip is refused, VISIBLY ──
+    {
+      await clean(); HDRS.length = 0; await setPricing(undefined);
+      const FIX = { lat: HUB.lat + 1.3 / 111.195, lng: HUB.lng + 0.4 / 111.195 };
+      const u = await tab();
+      try {
+        await send('Browser.grantPermissions', { permissions: ['geolocation'], origin: NEW });
+        await send('Emulation.setGeolocationOverride', { latitude: FIX.lat, longitude: FIX.lng, accuracy: 5 }, u.sid);
+        await u.go(`${NEW}/`);
+        const digits = `9944${String(PH += 1).padStart(4, '0')}`;
+        const r = await u.ev(`(async () => {
+          const wait = async (p, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (p()) return true; await new Promise((x) => setTimeout(x, 50)); } return false; };
+          const $ = (s) => document.querySelector(s);
+          const click = async (s) => { if (!(await wait(() => $(s) && !$(s).disabled))) throw new Error('missing or disabled ' + s); $(s).dispatchEvent(new MouseEvent('click', { bubbles: true })); await new Promise((x) => setTimeout(x, 40)); };
+          const type = (s, v) => { $(s).value = v; $(s).dispatchEvent(new Event('input', { bubbles: true })); };
+          const quotes = []; const of = window.fetch;
+          window.fetch = async (...a) => { const res = await of(...a); if (/quoteOrder/.test(String(a[0]))) { const b = JSON.parse((a[1] && a[1].body) || '{}'); const j = await res.clone().json().catch(() => null); quotes.push({ status: res.status, tip: b.tip_cents || 0, error: j && j.error }); } return res; };
+          const ui = CappUI.mount(document, { envelope: ${JSON.stringify(ENVELOPE)}, onEvent: () => {}, navigate: () => {},
+            config: { name: 'x_pizza', unit: ['pizza', 'pizzas'], hours: Array.from({ length: 7 }, () => [0, 0, 23, 59]), addr: 'Calle 1', etaDel: [30, 45], etaPick: [15, 20],
+              restaurantId: 'x_pizza', orderIdPrefix: 'TU', pendingPayKey: 'tu_pending_pay', intakeKey: '${process.env.MAKE_SECRET}', guestCardOnly: true, endpoints: ${EP} } });
+          ui.cart.inc(${JSON.stringify(DISH)}); ui.render();
+          await click('#cart-bar'); await click('[data-act="checkout"]');
+          if (!(await wait(() => ui.state.flow && ui.state.flow.pin && ui.state.flow.pin.confirmed === true))) return { err: 'no device fix' };
+          type('#f-details', 'Portón negro'); type('#f-name', 'Ana UI'); type('#f-phone', '${digits}'); type('#f-email', 'ana.dark@correo.test');
+          if ($('[data-act="pay"][data-val="online"]')) await click('[data-act="pay"][data-val="online"]');
+          await click('#cta');
+          const quoted = await wait(() => quotes.some((q) => q.tip > 0));
+          await wait(() => !!ui.state.err);
+          const place = $('[data-act="tip-place"]');
+          return { quoted, quotes, screen: ui.state.screen, tipCents: ui.state.flow.tipCents, err: ui.state.err && ui.state.err.title, placeDisabled: !place || place.disabled };
+        })()`);
+        const tipped = (r.quotes || []).filter((q) => q.tip > 0);
+        assert.ok(r.quoted && tipped.length > 0, `🔴 U-DARK: the tip step quoted its default tip (${JSON.stringify(r)})`);
+        assert.ok(tipped.every((q) => q.status === 409 && q.error === 'tip_not_enabled'), `🔴 U-DARK: dark + tip → 409 tip_not_enabled (${JSON.stringify(r.quotes)})`);
+        assert.ok((r.quotes || []).some((q) => q.tip === 0 && q.status === 200), `premise: dark without a tip quotes as before (${JSON.stringify(r.quotes)})`);
+        assert.deepStrictEqual([r.screen, typeof r.err === 'string' && r.err.length > 0, r.placeDisabled], ['tip', true, true], `🔴 U-DARK: the refusal is VISIBLE — the error sheet over the tip step, «Hacer pedido» disabled (${JSON.stringify(r)})`);
+        assert.strictEqual(HDRS.filter((h) => h.ep === 'chargeOnlineOrder' || h.ep === 'createOrder').length, 0, 'U-DARK: nothing is placed');
+      } finally { await u.close(); }
+      ok('U-DARK no delivery pricing (the setup gap): the tip step\'s default tip is refused 409 tip_not_enabled, the app shows its error sheet and «Hacer pedido» stays disabled — visible, never a silent pass; nothing placed');
     }
 
     // ── F: the client floor ENABLED ──
