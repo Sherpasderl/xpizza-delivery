@@ -660,7 +660,12 @@ const TWO = {
       assert.ok(!('draft_unpublishable' in r.body), `${rid}: a publishable draft carries no flag`);
     }
     const xp = canonicalize(buildSourceFromCode('x_pizza'));
-    const drift = JSON.parse(JSON.stringify(xp)); drift.items[0].display.desc = 'cambiada';
+    // item_text_edit ON (owner 2026-11-11): a TEXT change (here the description) is publishable — not reported
+    const textEdit = JSON.parse(JSON.stringify(xp)); textEdit.items[0].display.desc = 'cambiada';
+    const te = await call('x_pizza', textEdit, { readActiveBuilt: async () => activeOf('x_pizza', xp) });
+    assert.deepStrictEqual([te.status, 'draft_unpublishable' in te.body], [200, false], 'with name editing ON, a description change publishes (not reported)');
+    // a change the switch does NOT allow (the product's display id) is still a drift, reported
+    const drift = JSON.parse(JSON.stringify(xp)); drift.items[0].display.id = 99999;
     const d = await call('x_pizza', drift, { readActiveBuilt: async () => activeOf('x_pizza', xp) });
     assert.strictEqual(d.status, 200, 'a drifted draft still LOADS');
     assert.ok(d.body.draft_unpublishable, 'a drifted draft is REPORTED');

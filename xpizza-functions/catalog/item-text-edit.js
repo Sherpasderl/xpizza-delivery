@@ -5,8 +5,9 @@
 // restaurant together, and only after the resolution stage and the clients that send item_key have shipped.
 // OFF: every save, publish and assessment is judged exactly as before. Rollback = OFF; renames ALREADY recorded stay accepted
 // (catalog/frozen-keys.js), so switching off never strands a menu.
+// ON since 2026-11-11 (owner: name editing; Codex HIGH GO, codex-ite-flip.txt).
 // ---------------------------------------------------------------------------
-const ITEM_TEXT_EDIT = false;
+const ITEM_TEXT_EDIT = true;
 
 function textEditCapabilities() {
   return { enabled: ITEM_TEXT_EDIT === true };

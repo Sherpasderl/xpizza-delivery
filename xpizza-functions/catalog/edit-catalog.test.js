@@ -181,7 +181,9 @@ const withPrice = (delta) => {
       const r = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
         { restaurantId: RID, source: src, baseSourceUpdateTime: T0 }, {});
       assert.strictEqual(r.status, 400, `${label} → 400`);
-      assert.ok(re.test(r.body.detail || ''), `${label} → the message names the field (got: ${r.body.detail})`);
+      // the reason names the field — as free text (detail) or, with item_text_edit ON (2026-11-11), as the structured { error, field }
+      const why = r.body.detail || [r.body.error, r.body.field].filter(Boolean).join(' ');
+      assert.ok(re.test(why), `${label} → the message names the field (got: ${JSON.stringify(r.body)})`);
       assert.strictEqual(db.state.writes.length, 0, `${label} → NOTHING written (validation precedes the write)`);
     }
     // and a structurally absent source is refused too

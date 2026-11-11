@@ -11,7 +11,10 @@ const BASE = process.env.S1A_BASE_FN;
 assert.ok(BASE && path.isAbsolute(BASE) && require('fs').existsSync(path.join(BASE, 'catalog/edit-catalog-handler.js')), '🔴 S1A_BASE_FN must name the base functions dir');
 const TIP = path.join(__dirname, '..');
 assert.notStrictEqual(path.resolve(BASE), path.resolve(TIP), 'premise: two different checkouts');
-assert.strictEqual(require(path.join(TIP, 'catalog/item-text-edit')).textEditCapabilities().enabled, false, 'premise: the tip ships with the switch OFF');
+// the switch ships ON since 2026-11-11 (owner: name editing); this proof is about the OFF state — the ROLLBACK — so the tip side is
+// pinned OFF here, before any tip module loads (the base side predates the switch)
+{ const p = require.resolve(path.join(TIP, 'catalog/item-text-edit')); require.cache[p] = { id: p, filename: p, loaded: true, exports: { textEditCapabilities: () => ({ enabled: false }) } }; }
+assert.strictEqual(require(path.join(TIP, 'catalog/item-text-edit')).textEditCapabilities().enabled, false, 'premise: the tip is judged with the switch OFF (rollback)');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const clone = (o) => JSON.parse(JSON.stringify(o)); const label = (b) => JSON.stringify(b).slice(0, 160);
 const T0 = '2026-11-09T10:00:00.000000Z'; const T1 = '2026-11-09T11:00:00.000000Z';
