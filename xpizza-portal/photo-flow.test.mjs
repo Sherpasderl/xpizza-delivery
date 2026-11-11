@@ -1212,8 +1212,12 @@ test('U-PHOTO-CLOSE-DIRTY — the photo step\'s «Cerrar» with unsaved edits as
   await until(() => drawer(d).querySelector('.dwf') && !drawer(d).querySelector('.phcrop'), 'back in the edit drawer, the upload in flight');
   assert.equal(drawer(d).querySelector('input[aria-label="Precio"]').value, '330', 'U-KEEP-EDITING-BYTE-IDENTICAL (photo close): the typed price survived the step');
   // the upload binding survives a kept confirm: «Cerrar» → «Seguir editando» while it runs, then it lands in the COPY
+  const s0 = mods.app._openCopy(), up0 = s0 && s0.upload, json0 = JSON.stringify({ work: s0.work, base: s0.base, photoTouched: s0.photoTouched, upload: s0.upload });
   drawer(d).querySelector('.dwh .dwx').click(); await settle();
   btnText(drawer(d).querySelector('.mk-cf'), 'Seguir editando').click(); await settle();
+  const s1 = mods.app._openCopy();
+  assert.ok(s1 === s0 && s1.upload === up0 && up0 && up0.state === 'busy', 'U-KEEP-EDITING-BYTE-IDENTICAL (photo close): the SAME session and the SAME busy upload binding');
+  assert.strictEqual(JSON.stringify({ work: s1.work, base: s1.base, photoTouched: s1.photoTouched, upload: s1.upload }), json0, 'U-KEEP-EDITING-BYTE-IDENTICAL (photo close): work, base, photo flag, upload byte-identical');
   release();
   await until(() => btnText(drawer(d), 'Guardar') && !btnText(drawer(d), 'Guardar').disabled, 'U-KEEP-EDITING-BYTE-IDENTICAL (photo close): the held upload landed in the kept copy');
   assert.deepEqual([pep().price, photosOf()], [310, {}], 'U-KEEP-EDITING-BYTE-IDENTICAL (photo close): the draft still untouched before «Guardar»');
@@ -1226,6 +1230,7 @@ test('U-PHOTO-CLOSE-DISCARD — «Descartar» on the photo step\'s confirm close
   fake.flags.textEdit = true;
   const { d, w, mods } = await boot(fake);
   const pep = () => JSON.parse(JSON.stringify(mods.app.state.draft.state)).items.find((i) => i.key === 'Pepperoni');
+  const draft0 = JSON.stringify(mods.app.state.draft.state);
   await openDrawerFor(d, 'Pepperoni');
   assert.ok(drawer(d).querySelector('.dwf') && btnText(drawer(d).querySelector('.dwf'), 'Guardar'), 'premise: the ON edit drawer');
   const price = drawer(d).querySelector('input[aria-label="Precio"]');
@@ -1239,5 +1244,27 @@ test('U-PHOTO-CLOSE-DISCARD — «Descartar» on the photo step\'s confirm close
   btnText(drawer(d).querySelector('.mk-cf'), 'Descartar').click(); await settle();
   assert.equal(drawer(d).classList.contains('show'), false, 'U-PHOTO-CLOSE-DISCARD: «Descartar» closes the drawer');
   assert.deepStrictEqual([pep().price, pep().display.price], [310, 310], 'U-PHOTO-CLOSE-DISCARD: the draft never took the unsaved price');
+  assert.strictEqual(JSON.stringify(mods.app.state.draft.state), draft0, 'U-PHOTO-CLOSE-DISCARD: the COMPLETE draft byte-for-byte as before the drawer opened');
 });
 
+
+test('U-CONFIRM-UPLOAD-REDRAW — an upload landing while the confirm is open = «Seguir editando»: the confirm is torn down cleanly, the copy and its photo stay, the page is live', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  fake.flags.textEdit = true;
+  const { d, w, mods } = await boot(fake);
+  const inert0 = [...d.querySelectorAll('[inert]')];
+  const release = fake.holdPut();
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => btnText(drawer(d), 'Guardar') && drawer(d).querySelector('.dwf'), 'the edit drawer while the upload runs');
+  const s0 = mods.app._openCopy();
+  drawer(d).querySelector('.dwh .dwx').click(); await settle();
+  assert.ok(drawer(d).querySelector('.mk-cf'), 'premise: the confirm is open over a dirty copy (an upload on its way)');
+  release();
+  await until(() => !drawer(d).querySelector('.mk-cf'), 'U-CONFIRM-UPLOAD-REDRAW: the redraw tears the confirm down');
+  const tab = new w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }); d.body.dispatchEvent(tab);
+  assert.deepStrictEqual([[...d.querySelectorAll('[inert]')], tab.defaultPrevented], [inert0, false], 'U-CONFIRM-UPLOAD-REDRAW: nothing left inert, Tab not trapped');
+  assert.ok(mods.app._openCopy() === s0 && drawer(d).classList.contains('show'), 'U-CONFIRM-UPLOAD-REDRAW: the same copy stays open («Seguir editando»)');
+  await until(() => btnText(drawer(d), 'Guardar') && !btnText(drawer(d), 'Guardar').disabled, 'U-CONFIRM-UPLOAD-REDRAW: the photo landed in the copy');
+  btnText(drawer(d), 'Guardar').click(); await settle(20);
+  assert.equal((JSON.parse(JSON.stringify(mods.app.state.draft.state.photos || {})).Pepperoni || {}).state, 'pid', 'U-CONFIRM-UPLOAD-REDRAW: «Guardar» saves it');
+});

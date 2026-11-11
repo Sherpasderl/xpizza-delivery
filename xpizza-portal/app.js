@@ -1304,6 +1304,7 @@ function renderDrawer() {
   // whichever return it leaves by
   try {
   const d = $('drawer');
+  dismissConfirm();   // a redraw (e.g. an upload landing) while the confirm is open = «Seguir editando»: the copy stays, the page is live
   const scroller = d.querySelector('.dwb');
   const keepScroll = scroller ? scroller.scrollTop : 0;
 
@@ -1389,6 +1390,12 @@ function renderDrawer() {
 // typing updates the built nodes in place (a rebuild under the caret would break an accent typed with a dead key).
 // Module-private, never on the exported `state` (portal-wiring's census).
 let editSess = null;      // the open drawer's working copy (IE session)
+// the open unsaved-edits confirm, if any: its ONE cleanup (card, inert background, key trap) is owned here, not by its closure, so
+// every path that replaces the drawer or ends the world tears it down (Codex drawer r2 #3)
+let activeConfirm = null;
+function dismissConfirm() { const c = activeConfirm; activeConfirm = null; if (c) c(); }
+// read-only seam for the tests: the open copy itself (identity of the session, its work / base / upload binding)
+export const _openCopy = () => editSess;
 let editUpload = null;    // the upload bound to it (IE.uploadBinding), if one was started in this drawer
 let editRefs = null;      // the built nodes `syncEdit` updates in place
 // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html, owner-approved 2026-11-11): the open copy's unsaved work is never thrown
@@ -1422,6 +1429,7 @@ function requestClose(next) {
     el.setAttribute('inert', ''); inerted.push(el);
   }
   const close = () => {
+    if (activeConfirm === close) activeConfirm = null;
     scrim.remove();
     for (const el of inerted) el.removeAttribute('inert');
     document.removeEventListener('keydown', onDocKey, true);
@@ -1447,9 +1455,11 @@ function requestClose(next) {
   scrim.append(cfCard);
   d.append(scrim);
   document.addEventListener('keydown', onDocKey, true);
+  activeConfirm = close;
   cfKeep.focus();
 }
 function endEditSession() {
+  dismissConfirm();   // the copy's confirm goes with it — every world-ending path (closeDrawer, resetEditFacts / invalidateReview, auth) passes here
   const s = editSess;
   editSess = null; editUpload = null; editRefs = null;
   if (!s || s.closed) return;

@@ -553,6 +553,16 @@ const ctrls = (p) => [...p.drawer().querySelectorAll('.dwb input, .dwb textarea,
 const fieldsNow = (p) => ({ values: ctrls(p).map((c) => [c.getAttribute('aria-label') || c.tagName, c.type === 'checkbox' ? c.checked : c.value]),
   chg: [...p.drawer().querySelectorAll('.dwb .fld')].map((f) => f.classList.contains('chg')),
   save: [p.btn('Guardar').disabled, p.btn('Guardar').title], mark: p.drawer().querySelector('.dwf .mk-dirty').hidden });
+// the open COPY itself: the same session object, its work / base / photo flag byte-identical, the same upload binding
+const copyOf = (p) => { const s = p.mods.app._openCopy(); return { s, up: s && s.upload, json: s && JSON.stringify({ work: s.work, base: s.base, photoTouched: s.photoTouched, upload: s.upload }) }; };
+const sameCopy = (p, c0, L) => {
+  const c = copyOf(p);
+  assert.ok(c.s && c.s === c0.s, `${L}: the SAME working-copy session`);
+  assert.strictEqual(c.json, c0.json, `${L}: its work, base, photo flag and upload state byte-identical`);
+  assert.ok(c.up === c0.up, `${L}: the SAME upload binding`);
+};
+const inertNow = (p) => [...p.d.querySelectorAll('[inert]')];
+const tabTrapped = (p) => { const e = new p.w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }); p.d.body.dispatchEvent(e); return e.defaultPrevented; };
 const keepAssert = (p, f0, nodes0, draft0, L) => {
   assert.deepStrictEqual(fieldsNow(p), f0, `${L}: every control, mark and «Guardar» exactly as before`);
   const nodes = ctrls(p);
@@ -631,23 +641,25 @@ test('U-CERRAR-DIRTY — «Cerrar» with unsaved edits asks; «Seguir editando»
   await p.open('dimsum_01');
   const nm = p.fld('Nombre').querySelector('input');
   p.type(nm, 'Wonton picante'); p.type(priceIn(p), '285');
-  const f0 = fieldsNow(p), nodes0 = ctrls(p);
+  const f0 = fieldsNow(p), nodes0 = ctrls(p), c0 = copyOf(p);
   headClose(p).click(); await settle(10);
   assertCard(p, 'U-CERRAR-DIRTY');
   assert.ok(p.drawer().classList.contains('show'), 'U-CERRAR-DIRTY: the drawer stays while asking');
   cardBtn(p, 'Seguir editando').click(); await settle(10);
   assert.equal(card(p), null, 'U-CERRAR-DIRTY: «Seguir editando» dismisses the confirm');
   keepAssert(p, f0, nodes0, draft0, 'U-KEEP-EDITING-BYTE-IDENTICAL (Cerrar)');
+  sameCopy(p, c0, 'U-KEEP-EDITING-BYTE-IDENTICAL (Cerrar)');
   assert.equal(p.fld('Nombre').querySelector('input'), nm, 'U-KEEP-EDITING-BYTE-IDENTICAL (Cerrar): the SAME input node (no rebuild)');
   p.btn('Guardar').click(); await settle(30);
   const saved = p.src().items.find((i) => i.key === 'dimsum_01');
   assert.deepStrictEqual([saved.price, saved.display.name], [285, 'Wonton picante'], 'U-KEEP-EDITING-BYTE-IDENTICAL (Cerrar): the kept copy saves exactly the typed edits');
   await p.open('dimsum_01'); p.type(priceIn(p), '286');
+  const draftSaved = JSON.stringify(p.src());
   headClose(p).click(); await settle(10);
   cardBtn(p, 'Descartar').click(); await settle(10);
   assert.equal(p.drawer().classList.contains('show'), false, 'U-CERRAR-DIRTY: «Descartar» closes the drawer');
   const draft1 = JSON.stringify(JSON.parse(draft0)); void draft1;
-  assert.equal(p.src().items.find((i) => i.key === 'dimsum_01').price, 285, 'U-CERRAR-DIRTY: frame 3 — the draft keeps only what was saved (285), never the discarded 286');
+  assert.strictEqual(JSON.stringify(p.src()), draftSaved, 'U-CERRAR-DIRTY: frame 3 — the COMPLETE draft exactly as saved (285); the discarded 286 never reached it');
   assert.equal(p.d.getElementById('review').disabled, false, 'U-CERRAR-DIRTY: the bar is live again');
 });
 
@@ -669,12 +681,13 @@ test('U-OTHER-ROW-DIRTY — opening another product asks; «Seguir editando» st
   const draft0 = JSON.stringify(p.src());
   await p.open('dimsum_01');
   p.type(priceIn(p), '285');
-  const f0 = fieldsNow(p), nodes0 = ctrls(p); const pin = priceIn(p);
+  const f0 = fieldsNow(p), nodes0 = ctrls(p), c0 = copyOf(p); const pin = priceIn(p);
   await p.open('dimsum_02');
   assertCard(p, 'U-OTHER-ROW-DIRTY');
   assert.equal(p.drawer().querySelector('.dwt').textContent, 'Sichuan Spicy Wonton', 'U-OTHER-ROW-DIRTY: still the first product while asking');
   cardBtn(p, 'Seguir editando').click(); await settle(10);
   keepAssert(p, f0, nodes0, draft0, 'U-KEEP-EDITING-BYTE-IDENTICAL (other row)');
+  sameCopy(p, c0, 'U-KEEP-EDITING-BYTE-IDENTICAL (other row)');
   assert.equal(priceIn(p), pin, 'U-KEEP-EDITING-BYTE-IDENTICAL (other row): the SAME input node');
   await p.open('dimsum_02');
   cardBtn(p, 'Descartar').click(); await settle(10);
@@ -784,4 +797,20 @@ test('U-RESET-RECOVERY — the recovery panel\'s «Volver al menú publicado» w
   assertCard(p, 'U-RESET-RECOVERY', { pageScrim: true });
   cardBtn(p, 'Seguir editando').click(); await settle(10);
   assert.equal(p.n('resetDraftToLive').length, 0, 'U-RESET-RECOVERY: «Seguir editando» resets nothing');
+});
+
+test('U-CONFIRM-AUTH-CLEANUP — an auth event while the confirm is open tears it down: nothing left inert, no key trap (same person and another person)', async () => {
+  for (const uid of ['uOwnerIED', 'uSomeoneElse']) {
+    const p = await page();
+    await p.signIn();
+    const inert0 = inertNow(p);
+    await p.open('dimsum_01'); p.type(priceIn(p), '285');
+    headClose(p).click(); await settle(10);
+    assert.ok(card(p) && tabTrapped(p), `premise (${uid}): the confirm is open and holds Tab`);
+    p.d.dispatchEvent(new p.w.CustomEvent('portal:auth', { detail: { uid } }));
+    await settle(30);
+    assert.equal(p.d.querySelector('.mk-cf'), null, `U-CONFIRM-AUTH-CLEANUP (${uid}): the confirm is gone`);
+    assert.deepStrictEqual(inertNow(p), inert0, `U-CONFIRM-AUTH-CLEANUP (${uid}): nothing the confirm made inert stays inert`);
+    assert.equal(tabTrapped(p), false, `U-CONFIRM-AUTH-CLEANUP (${uid}): Tab is no longer trapped`);
+  }
 });
