@@ -38,5 +38,19 @@ for (const rid of ['x_pizza', 'la_musa']) {
   });
 }
 
+// T11 (§2.2): a group DETACHED from one dish (an item group-deny) is visible to the forms once the build emits the projection — the
+// legacy maps could not express a deny, so the real form picker kept offering the group on that dish
+cell('P1-DETACH-VISIBLE x_pizza: Margherita detached from «Carnes» — the REAL form picker and capp both omit it, siblings keep it', (L) => {
+  const src = buildSourceFromCode('x_pizza');
+  src.structure.exposure.item_overrides.Margherita = { deny: ['Carnes'] };
+  const built = buildSourceCandidate('x_pizza', src).built;
+  const body = composeServedMenu('x_pizza', { items: built.items, structure: built.structure, extras: built.extras });
+  const dish = (name) => body.dishes.find((d) => d.name === name);
+  const groups = (d) => GP.offeredExtraGroups(d, body.extras, body.extras_by_category, body.extras_by_item).map((g) => (g && (g.cat || g.name || g.category)) || g);
+  const flat = (d) => JSON.stringify(groups(d));
+  assert.ok(!flat(dish('Margherita')).includes('Carnes'), `${L}: forms omit Carnes on Margherita (${flat(dish('Margherita'))})`);
+  assert.ok(flat(dish('Pepperoni') || body.dishes.find((d) => d.name !== 'Margherita' && d.cat === dish('Margherita').cat && d.extras_policy !== 'none')).includes('Carnes'), `${L}: a sibling keeps Carnes`);
+});
+
 if (fails.length) { console.log(`extras-projection FAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }
 console.log(`extras-projection: OK (${n})`);
