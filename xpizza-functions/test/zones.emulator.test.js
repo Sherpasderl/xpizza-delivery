@@ -210,7 +210,7 @@ const reserved = async () => ((await rtdb.ref(`user_rewards/${MEMBER}/${RID}/res
   {
     const c = await post(app.createOrder, appBody('zc1'));
     assert.deepStrictEqual([c.status, c.json && c.json.error], [409, 'no_delivery_zone'], `Z2 cash (${c.text.slice(0, 160)})`);
-    assert.deepStrictEqual([await recOf('zc1'), (await rtdb.ref('tasks/dpao_zc1_delivery').get()).val(), (await rtdb.ref('order_tracking').orderByChild('order_id').equalTo('dpao_zc1').get()).val(), (await attemptsOf('zc1')).length],
+    assert.deepStrictEqual([await recOf('zc1'), (await rtdb.ref('tasks/dpao_zc1_delivery').get()).val(), Object.values((await rtdb.ref('order_tracking').get()).val() || {}).filter((t) => t && t.order_id === 'dpao_zc1').length || null, (await attemptsOf('zc1')).length],
       [null, null, null, 0], 'Z2: no order, no task, no tracking projection, no payment attempt');
     const before = await reserved();
     const cr = await post(app.createOrder, appBody('zc2', { extra: { redeem: REDEEM } }), { 'x-firebase-id-token': MEMBER });
