@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import {
   COPY, CAPS, okVersion, parseKm, parseFee, rowsFromBands, validate, removeRow, addRow, isDirty, saveBar, toBody, mapBands,
-  confirmDiff, limitCallout, pickerEntries, filterEntries, defaultPick, loadedState, startAttempt, classifyPost, classifyRecovery,
+  confirmDiff, limitCallout, pickerEntries, filterEntries, defaultPick, loadedState, startAttempt, classifyPost, postClaim, classifyRecovery,
 } from './envio-logic.js';
 
 const R = (km, fee) => ({ km, fee });
@@ -223,7 +223,7 @@ test('startAttempt(): an immutable snapshot (later draft edits can\'t reach it)'
   assert.throws(() => startAttempt({ uid: 'u1', sessionGen: 4, expectedVersion: 1e15, bands: src }), /version/);
 });
 
-test('classifyPost(): SAVED only on a parsed 200 with ok and expected+1; 409s, 400, 401, 403 are definite; ALL else UNKNOWN', () => {
+test('classifyPost(): SAVED only on a parsed 200 with ok and expected+1; EVERYTHING else — 409s, 400, 401, 403 included — is UNKNOWN (Codex r1 F2, locked ruling)', () => {
   const a = A();
   assert.strictEqual(classifyPost(a, { status: 200, body: { ok: true, policy_version: 8 } }), 'saved');
   assert.strictEqual(classifyPost(a, { status: 200, body: { ok: true, policy_version: 9 } }), 'unknown');
@@ -231,12 +231,15 @@ test('classifyPost(): SAVED only on a parsed 200 with ok and expected+1; 409s, 4
   assert.strictEqual(classifyPost(a, { status: 200, body: { policy_version: 8 } }), 'unknown');
   assert.strictEqual(classifyPost(a, { status: 200, body: null }), 'unknown', 'malformed 200');
   assert.strictEqual(classifyPost(a, { status: 200, malformed: true }), 'unknown');
-  assert.strictEqual(classifyPost(a, { status: 409, body: { error: 'superseded', current_version: 9 } }), 'superseded');
-  assert.strictEqual(classifyPost(a, { status: 409, body: { error: 'current_malformed' } }), 'current_malformed');
-  assert.strictEqual(classifyPost(a, { status: 409, body: { error: 'other' } }), 'unknown');
-  assert.strictEqual(classifyPost(a, { status: 400, body: { error: 'bad_request', field: 'bands' } }), 'refused');
-  assert.strictEqual(classifyPost(a, { status: 401, body: { error: 'unauthenticated' } }), 'unauthenticated');
-  assert.strictEqual(classifyPost(a, { status: 403, body: { error: 'not_authorized' } }), 'forbidden');
+  const claims = [[{ status: 409, body: { error: 'superseded', current_version: 9 } }, 'superseded'], [{ status: 409, body: { error: 'current_malformed' } }, 'current_malformed'],
+    [{ status: 409, body: { error: 'other' } }, null], [{ status: 400, body: { error: 'bad_request', field: 'bands' } }, 'refused'],
+    [{ status: 401, body: { error: 'unauthenticated' } }, 'unauthenticated'], [{ status: 403, body: { error: 'not_authorized' } }, 'forbidden']];
+  for (const [r, claim] of claims) {
+    assert.strictEqual(classifyPost(a, r), 'unknown', `${JSON.stringify(r)} is resolved by a fresh GET, never final`);
+    assert.strictEqual(postClaim(r), claim, `${JSON.stringify(r)} → what the server CLAIMED (a hint for after the GET)`);
+  }
+  assert.strictEqual(postClaim({ status: 200, body: { ok: true, policy_version: 8 } }), null);
+  assert.strictEqual(postClaim({ transport: true }), null);
   for (const r of [{ status: 503, body: { error: 'unavailable', retryable: true } }, { status: 500, body: null }, { status: 502 }, { transport: true }, { status: 0 }, null]) {
     assert.strictEqual(classifyPost(a, r), 'unknown', JSON.stringify(r));
   }
@@ -253,6 +256,12 @@ test('classifyRecovery(): a FRESH GET decides — expected+1 with the SENT bands
   assert.strictEqual(classifyRecovery(a, get({ policy_version: 0, bands: [] })), 'conflict');
   assert.strictEqual(classifyRecovery(a, get({ current_malformed: true, policy_version_raw: 8 })), 'conflict');
   assert.strictEqual(classifyRecovery(a, { status: 403, body: { error: 'not_authorized' } }), 'forbidden');
+  // the POST's claim matters only AFTER the GET: a refusal is final once nothing landed; anything that did land wins
+  assert.strictEqual(classifyRecovery(a, get({ policy_version: 7, bands: [] }), 'refused'), 'refused', 'refused + proven not landed → released');
+  assert.strictEqual(classifyRecovery(a, get({ policy_version: 8, bands: sent }), 'refused'), 'saved', 'the GET outranks the claim');
+  assert.strictEqual(classifyRecovery(a, get({ policy_version: 7, bands: [] }), 'unauthenticated'), 'not_landed', 'a token problem: retry later');
+  assert.strictEqual(classifyRecovery(a, get({ policy_version: 9, bands: sent }), 'superseded'), 'conflict');
+  assert.strictEqual(classifyRecovery(a, { transport: true }, 'refused'), 'unknown', 'a failed GET never lets a claim decide');
   for (const r of [{ status: 503, body: {} }, { transport: true }, { status: 200, body: null }, { status: 200, malformed: true }, null]) {
     assert.strictEqual(classifyRecovery(a, r), 'unknown', JSON.stringify(r));
   }

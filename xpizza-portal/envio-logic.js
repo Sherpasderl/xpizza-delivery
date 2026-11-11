@@ -228,21 +228,24 @@ export function startAttempt({ uid, sessionGen, expectedVersion, bands }) {
   return deepFreeze({ uid, sessionGen, expectedVersion, sentBands: bands.map((b) => ({ max_km: b.max_km, cents: b.cents })) });
 }
 
-// a POST's response → saved | superseded | current_malformed | refused | unauthenticated | forbidden | unknown
+// a POST's response → saved | unknown. Codex r1 F2 (the locked ruling): ONLY the clean success contract is final; every other
+// answer — a 409, 400, 401 or 403 included — is UNKNOWN and is resolved by a FRESH GET before anything is discarded.
 export function classifyPost(attempt, res) {
-  if (!res || res.transport) return 'unknown';
+  if (!res || res.transport || res.status !== 200) return 'unknown';
   const b = res.body;
-  if (res.status === 200) return plain(b) && b.ok === true && b.policy_version === attempt.expectedVersion + 1 ? 'saved' : 'unknown';
-  if (res.status === 409 && plain(b) && b.error === 'superseded') return 'superseded';
-  if (res.status === 409 && plain(b) && b.error === 'current_malformed') return 'current_malformed';
-  if (res.status === 400) return 'refused';
-  if (res.status === 401) return 'unauthenticated';
-  if (res.status === 403) return 'forbidden';
-  return 'unknown';
+  return plain(b) && b.ok === true && b.policy_version === attempt.expectedVersion + 1 ? 'saved' : 'unknown';
+}
+// what a non-success POST CLAIMED — a hint read only after the fresh GET (classifyRecovery), never acted on by itself
+export function postClaim(res) {
+  if (!res || res.transport) return null;
+  const b = res.body;
+  if (res.status === 409 && plain(b) && (b.error === 'superseded' || b.error === 'current_malformed')) return b.error;
+  return { 400: 'refused', 401: 'unauthenticated', 403: 'forbidden' }[res.status] || null;
 }
 
-// a FRESH GET after an UNKNOWN → saved | not_landed | conflict | forbidden | unknown (compared with the SENT bands, never the draft)
-export function classifyRecovery(attempt, res) {
+// a FRESH GET after an UNKNOWN → saved | not_landed | refused | conflict | forbidden | unknown (compared with the SENT bands,
+// never the draft). The POST's claim decides only once the GET proves nothing landed: a refusal is then final (released).
+export function classifyRecovery(attempt, res, claim = null) {
   if (!res || res.transport) return 'unknown';
   if (res.status === 403) return 'forbidden';
   if (res.status !== 200 || !plain(res.body)) return 'unknown';
@@ -250,6 +253,6 @@ export function classifyRecovery(attempt, res) {
   if (b.current_malformed === true) return 'conflict';
   if (!okVersion(b.policy_version) || !Array.isArray(b.bands)) return 'unknown';
   if (b.policy_version === attempt.expectedVersion + 1) return sameBands(b.bands, attempt.sentBands) ? 'saved' : 'conflict';
-  if (b.policy_version === attempt.expectedVersion) return 'not_landed';
+  if (b.policy_version === attempt.expectedVersion) return claim === 'refused' ? 'refused' : 'not_landed';
   return 'conflict';
 }

@@ -210,7 +210,7 @@ function dropAdminIfGone(fresh) {
   S.e1 = rest;
   const cached = store.get(CACHE_KEY(S.uid));
   if (cached && cached.platform_admin === true) { const { platform_admin: _c, ...c } = cached; store.set(CACHE_KEY(S.uid), c); }
-  if (S.sel) renderRegistered();
+  if (S.sel || navRendered) renderRegistered();
 }
 
 // codex 1b r2 #1: the eligibility of a fresh E1 lands even while its reload waits for unsaved work — the views repaint over it
@@ -278,6 +278,8 @@ function showNoBranches() {
       d.replaceChildren(e);
     }
     hideOpsChrome();
+    // Codex r1 F7: no merchant membership, but a platform admin — the admin views are still offered (they need no selection)
+    if (platformAdmin()) { renderRegistered(); $('mnav').classList.add('show'); }
   } finally { ready(); }
 }
 
@@ -477,7 +479,7 @@ function markNav(view) {
 export function goto(view, opts = {}) {
   if (view === 'menu' || view === 'ventas') { $(view === 'menu' ? 'navprod' : 'navventas').click(); return; }   // ventas.js owns those two
   const reg = REG.find((r) => r.id === view);
-  if (reg && !(S.sel && isVisible(reg))) { $('navprod').click(); return; }   // not offered on this page → the default view
+  if (reg && !canOffer(reg)) { $('navprod').click(); return; }   // not offered on this page → the default view
   if (reg && reg.mounted) return;   // codex follow-up r1: already showing → no second mount
   leaveRegistered(view);
   S.view = view;
@@ -488,7 +490,7 @@ export function goto(view, opts = {}) {
   $('viewpausas').classList.toggle('hidden', !isPausas);
   const isEquipos = view === 'equipos';
   $('viewequipos').classList.toggle('hidden', !isEquipos);
-  if (reg) { reg.main.classList.remove('hidden'); try { reg.mount(reg.main, viewSel()); } catch (e) { console.error('portal view mount', view, e && e.message); } }
+  if (reg) { reg.main.classList.remove('hidden'); try { reg.mount(reg.main, viewSel(reg)); } catch (e) { console.error('portal view mount', view, e && e.message); } }
   const app = $('app');
   app.classList.remove('vview');
   app.classList.add('opsview');
@@ -592,20 +594,26 @@ function paintBadge(viewId) {
   }
 }
 
-function viewSel() {
+// Codex r1 F7 (Envío): a platform admin needs no merchant membership — with no selection, ADMIN views get a context built from
+// the uid and the platform_admin hint alone (no brand, no caps, no scope); merchant views get none.
+const platformAdmin = () => !!(S.e1 && S.e1.platform_admin === true);
+const adminOnlySel = () => Object.freeze({ brandId: null, role: null, caps: Object.freeze([]), membership_writes_enabled: false, scope: null,
+  platform_admin: true, uid: S.uid });
+const canOffer = (r) => (S.sel ? true : r.admin && platformAdmin()) && isVisible(r);
+function viewSel(r) {
   const sel = S.sel;
-  if (!sel) return null;
+  if (!sel) return r && r.admin && platformAdmin() ? adminOnlySel() : null;
   const caps = [...new Set(sel.brand.branches.flatMap((b) => (Array.isArray(b.caps) ? b.caps : [])))].sort();
   return Object.freeze({ brandId: sel.brand_id, role: sel.owner ? 'owner' : 'manager', caps: Object.freeze(caps),
     membership_writes_enabled: !!(S.e1 && S.e1.membership_writes_enabled === true), scope: sel.scope === 'all' ? null : sel.scope,
     platform_admin: !!(S.e1 && S.e1.platform_admin === true), uid: S.uid });
 }
-function isVisible(r) { try { return r.visible(viewSel()) === true; } catch (e) { console.error('portal view visible', r.id, e && e.message); return false; } }
+function isVisible(r) { try { return r.visible(viewSel(r)) === true; } catch (e) { console.error('portal view visible', r.id, e && e.message); return false; } }
 function renderRegistered() {
   navRendered = true;
   let biz = false, adm = false;
   for (const r of REG) {
-    const on = !!S.sel && isVisible(r);
+    const on = canOffer(r);
     r.nav.classList.toggle('hidden', !on);
     r.mn.classList.toggle('hidden', !on);
     if (on && r.group === 'Negocio') biz = true;

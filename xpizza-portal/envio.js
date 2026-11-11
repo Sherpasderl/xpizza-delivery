@@ -72,7 +72,10 @@ const S = {
   status: 'idle',          // idle | loading | ready | offline | forbidden
   banner: null,            // null | 'conflict' | 'error'
   attempt: null, phase: null,   // the frozen save attempt and where it stands: sending | recovering | unknown | not_landed
-  confirm: false, picker: null, // picker: { q, hi } while open
+  confirm: null,           // Codex r1 F1: the REVIEWED body while the confirm is open (frozen): { body, was }; the POST is built from it
+  picker: null,            // { q, hi } while open
+  floor: 0,                // Codex r1 F4: the newest policy version this session adopted or confirmed — an older read is never adopted
+  inerted: [],             // Codex r1 F1: the background nodes the open confirm made inert (released on EVERY exit)
   map: null,               // { frame, mount, deadline, listening, ready, failed, onMsg }
   refs: null,
 };
@@ -100,7 +103,8 @@ function clearSession({ dropCache }) {
   stopMap();
   if (dropCache && S.uid) store.del(CACHE(S.uid));
   S.loaded = null; S.rows = null; S.note = null; S.entries = []; S.branchesUnavailable = false; S.pick = null;
-  S.banner = null; S.attempt = null; S.phase = null; S.confirm = false; S.picker = null; S.status = 'idle';
+  S.banner = null; S.attempt = null; S.phase = null; S.confirm = null; S.picker = null; S.status = 'idle'; S.floor = 0;
+  closeEnvioLayer();
 }
 function revoke() {
   const wasShowing = !!S.root;
@@ -116,8 +120,11 @@ document.addEventListener('portal:auth', (e) => {
 });
 
 // ── load ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+const bodyVersion = (b) => { const v = b && (b.current_malformed === true ? b.policy_version_raw : b.policy_version); return Number.isSafeInteger(v) && v >= 0 ? v : null; };
+const raiseFloor = (v) => { if (Number.isSafeInteger(v) && v > S.floor) S.floor = v; };
 function adoptBody(b) {
   S.loaded = EL.loadedState(b);
+  raiseFloor(bodyVersion(b));
   S.branchesUnavailable = !Array.isArray(b.branches);
   S.entries = EL.pickerEntries(b.branches);
   if (!S.pick || !S.entries.some((e) => e.rid === S.pick)) S.pick = EL.defaultPick(S.entries);
@@ -134,6 +141,10 @@ async function load({ fresh } = {}) {
     if (!S.loaded) { S.status = 'offline'; render(); }
     return;
   }
+  // Codex r1 F4: a read OLDER than what this session already adopted or saved (read before a save, delivered after it) is
+  // neither cached nor adopted
+  const rv = bodyVersion(res.body);
+  if (rv !== null && rv < S.floor) { if (S.status !== 'ready') { S.status = 'ready'; render(); } return; }
   store.set(CACHE(S.uid), cacheable(res.body));
   const keepDraft = !fresh && (S.attempt || (S.rows && S.loaded && S.loaded.kind === 'policy' && EL.isDirty(S.rows, S.loaded.bands)));
   if (keepDraft) {
@@ -149,12 +160,20 @@ async function load({ fresh } = {}) {
 }
 
 // ── save ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-function startSave() {
-  if (S.attempt || !S.loaded || S.loaded.version === null || S.loaded.version === undefined) return;
+// Codex r1 F1: «Guardar» captures the REVIEWED body (frozen) — the summary and the POST both come from it, never from the live rows
+function openEnvioConfirm() {
+  if (S.attempt || S.confirm || !S.loaded || S.loaded.version === null || S.loaded.version === undefined) return;
   const bar = EL.saveBar(S.rows, S.loaded.kind === 'policy' ? S.loaded.bands : []);
   if (!bar.canSave && !(S.loaded.kind === 'malformed' && EL.validate(S.rows).valid)) return;
   const body = EL.toBody(S.rows, S.loaded.version);
-  S.attempt = EL.startAttempt({ uid: S.uid, sessionGen: S.gen, expectedVersion: body.expected_policy_version, bands: body.bands });
+  const was = S.loaded.kind === 'policy' ? S.loaded.bands.map((b) => ({ ...b })) : [];
+  S.confirm = Object.freeze({ body: Object.freeze({ expected_policy_version: body.expected_policy_version, bands: Object.freeze(body.bands.map((b) => Object.freeze({ ...b }))) }), was: Object.freeze(was) });
+  render();
+}
+function startSave() {
+  const c = S.confirm;
+  if (S.attempt || !c) return;
+  S.attempt = EL.startAttempt({ uid: S.uid, sessionGen: S.gen, expectedVersion: c.body.expected_policy_version, bands: c.body.bands });
   send(S.attempt);
 }
 async function send(attempt) {
@@ -166,24 +185,30 @@ async function send(attempt) {
   } catch (err) {
     if (!g.alive() || S.attempt !== attempt) return;
     // withheld before sending (no token / obsolete): nothing landed
-    S.phase = 'not_landed'; S.banner = 'error'; S.confirm = false; render(); return;
+    S.phase = 'not_landed'; S.banner = 'error'; S.confirm = null; render(); return;
   }
   if (!g.alive() || S.attempt !== attempt) return;
-  outcome(attempt, EL.classifyPost(attempt, res));
+  // Codex r1 F2: only the clean success contract is final; anything else is resolved by a fresh GET (the claim is kept as a hint)
+  if (EL.classifyPost(attempt, res) === 'saved') { outcome(attempt, 'saved'); return; }
+  lastClaim = { attempt, claim: EL.postClaim(res) };
+  recover(attempt);
 }
+// the POST's claim stays with ITS attempt, so a «Reintentar» after a failed recovery GET still reads it
+let lastClaim = { attempt: null, claim: null };
 async function recover(attempt) {
   const g = snap();
   S.phase = 'recovering'; render();
   let res;
   try { res = await getDeliveryPricingRaw({ token, assertLive: g.assertLive }); } catch (_) { res = { transport: true }; }
   if (!g.alive() || S.attempt !== attempt) return;
-  outcome(attempt, EL.classifyRecovery(attempt, res), res);
+  outcome(attempt, EL.classifyRecovery(attempt, res, lastClaim.attempt === attempt ? lastClaim.claim : null), res);
 }
 function outcome(attempt, o, recoveryRes) {
-  S.confirm = false;
+  S.confirm = null;
   switch (o) {
     case 'saved': {
       const version = attempt.expectedVersion + 1;
+      raiseFloor(version);
       S.loaded = { kind: 'policy', version, bands: attempt.sentBands.map((b) => ({ ...b })) };
       S.rows = EL.rowsFromBands(S.loaded.bands);
       S.attempt = null; S.phase = null; S.banner = null;
@@ -202,12 +227,10 @@ function outcome(attempt, o, recoveryRes) {
       load({ fresh: true }); return;
     case 'forbidden': revoke(); return;
     case 'refused': case 'unauthenticated':
-      if (o === 'refused') console.warn('envio save: refused', recoveryRes && recoveryRes.body && recoveryRes.body.field);
+      if (o === 'refused') console.warn('envio save: refused');
       S.attempt = null; S.phase = null; S.banner = 'error'; render(); return;
     case 'not_landed': S.phase = 'not_landed'; S.banner = 'error'; render(); return;
-    case 'unknown':
-      if (S.phase === 'recovering') { S.phase = 'unknown'; S.banner = 'error'; render(); return; }
-      recover(attempt); return;
+    case 'unknown': S.phase = 'unknown'; S.banner = 'error'; render(); return;
     default: S.phase = 'unknown'; S.banner = 'error'; render();
   }
 }
@@ -217,9 +240,12 @@ function retry() {
   if (S.phase === 'not_landed') send(a);
   else if (S.phase === 'unknown') recover(a);
 }
+// Codex r1 F3: only a RESOLVED state can be discarded — no attempt, or one a fresh GET proved never landed (not_landed)
+const attemptUnresolved = () => !!S.attempt && S.phase !== 'not_landed';
 function discard() {
-  bump();   // a late answer for the dropped attempt is ignored
-  S.attempt = null; S.phase = null; S.banner = null; S.confirm = false; S.note = null;
+  if (attemptUnresolved()) return;
+  bump();   // a late answer for a request of the dropped state is ignored (the map has its own lifetime: F6)
+  S.attempt = null; S.phase = null; S.banner = null; S.confirm = null; S.note = null;
   S.rows = EL.rowsFromBands(S.loaded && S.loaded.kind === 'policy' ? S.loaded.bands : []);
   render();
 }
@@ -240,7 +266,9 @@ function renderMessage(view) {
 function postRender(view) {
   const m = S.map;
   if (!m || !m.listening || m.failed || !m.frame.contentWindow) return;
-  try { m.frame.contentWindow.postMessage(renderMessage(view), MP.MAP_ORIGIN); } catch (e) { console.warn('envio map: post', e && e.message); }
+  const v = m.postedPick !== S.pick ? 'reset' : view;   // a branch the map hasn't shown yet always recentres
+  m.postedPick = S.pick;
+  try { m.frame.contentWindow.postMessage(renderMessage(v), MP.MAP_ORIGIN); } catch (e) { console.warn('envio map: post', e && e.message); }
 }
 function mapFailed(cause) {
   const m = S.map;
@@ -254,10 +282,11 @@ function startMap(box) {
   if (S.map || typeof window === 'undefined') return;
   let mount;
   try { mount = MP.newMountId(window.crypto); } catch (_) { return; }
-  const g = snap();
-  const m = { frame: null, mount, deadline: null, listening: false, ready: false, failed: false, onMsg: null };
+  // Codex r1 F6: the frame's listener lives as long as THIS frame (S.map === m), not as long as one request generation: a
+  // discard / reload bumps the generation, the map stays; every session end (sign-out, revocation, unmount) stops the frame
+  const m = { frame: null, mount, deadline: null, listening: false, ready: false, failed: false, onMsg: null, postedPick: undefined };
   m.onMsg = (event) => {
-    if (!g.alive() || S.map !== m) return;
+    if (S.map !== m || !S.root) return;
     const msg = MP.acceptFromChild(event, { frameWindow: m.frame && m.frame.contentWindow, mount });
     if (!msg) return;
     if (msg.kind === 'listening') { m.listening = true; postRender('reset'); return; }   // never clears the deadline
@@ -313,17 +342,29 @@ function errbox(title, detail, action) {
   return box;
 }
 
+// Codex r1 F1: the open confirm makes every sibling on its path up to <body> inert (focus can't leave it); EVERY exit releases them
+function inertEnvioBackground(layer) {
+  releaseInert();
+  for (let n = layer; n && n.parentElement && n !== document.body; n = n.parentElement) {
+    for (const sib of n.parentElement.children) if (sib !== n && !sib.hasAttribute('inert')) { sib.setAttribute('inert', ''); S.inerted.push(sib); }
+  }
+}
+function releaseInert() { for (const n of S.inerted) n.removeAttribute('inert'); S.inerted = []; }
+function closeEnvioLayer() { releaseInert(); if (S.refs && S.refs.layer) S.refs.layer.replaceChildren(); }
+// Codex r1 F5: a page that replaces the editor drops its references, so the next render rebuilds it (never paints detached nodes)
+function dropPage() { closeEnvioLayer(); stopMap(); document.removeEventListener('click', onDocClick); S.refs = null; }
 function render() {
   if (!S.root) return;
   const R = S.root;
-  if (S.status === 'forbidden') { stopMap(); R.replaceChildren(topBlock(), errbox(COPY.forbidden, null, null)); hideBar(); return; }
+  if (S.status === 'forbidden') { dropPage(); R.replaceChildren(topBlock(), errbox(COPY.forbidden, null, null)); return; }
   if (S.status === 'offline') {
-    stopMap();
+    dropPage();
     R.replaceChildren(topBlock(), errbox(OFFLINE[0], OFFLINE[1], button('btn', COPY.retry, () => { S.status = 'loading'; render(); load(); })));
-    hideBar(); return;
+    return;
   }
   if (!S.refs) buildPage();
   paintBanner(); paintBands(); paintPicker(); paintMapBox(); paintLegend(); paintBar(); paintConfirm();
+  postRender('keep');   // Codex r1 F6: every adoption / restoration reaches the map
 }
 
 function buildPage() {
@@ -365,7 +406,7 @@ function buildPage() {
   const pk = el('span', 'pk'); pk.append(refs.pickName, refs.pickSub);
   refs.pick.append(ic('pin'), pk, refs.pickChev);
   refs.pick.addEventListener('click', () => (S.picker ? closeBranchPicker(true) : openBranchPicker()));
-  refs.menu = el('div', 'pickmenu hidden'); refs.menu.setAttribute('role', 'listbox');
+  refs.menu = el('div', 'pickmenu hidden');
   fld.append(refs.pick, refs.menu);
   refs.map = el('div', 'emap');
   refs.mapLine = el('p', 'mapline hidden'); refs.mapLine.setAttribute('role', 'status');
@@ -382,12 +423,13 @@ function buildPage() {
   refs.barDot = el('span', 'ebdot'); refs.barText = el('span', 'rb-t');
   const sp = el('div', 'rb-sp');
   refs.discard = button('btn ghost', COPY.discard, discard);
-  refs.save = button('btn accent', COPY.save, () => { if (!S.attempt) { S.confirm = true; render(); } });
+  refs.save = button('btn accent', COPY.save, openEnvioConfirm);
   sp.append(refs.discard, refs.save);
   refs.bar.append(refs.barDot, refs.barText, sp);
   refs.layer = el('div');
   R.replaceChildren(topBlock(), refs.banner, grid, refs.bar, refs.layer);
   S.refs = refs;
+  document.removeEventListener('click', onDocClick);
   document.addEventListener('click', onDocClick);
 }
 function onDocClick(e) {
@@ -531,8 +573,12 @@ function openBranchPicker() {
   const r = S.refs;
   const search = el('div', 'psearch');
   const inp = el('input'); inp.placeholder = COPY.search; inp.setAttribute('aria-label', COPY.search); inp.autocomplete = 'off';
+  // Codex r1 F8: a combobox that owns a listbox; the highlighted option is announced through aria-activedescendant
+  inp.setAttribute('role', 'combobox'); inp.setAttribute('aria-expanded', 'true'); inp.setAttribute('aria-autocomplete', 'list');
+  inp.setAttribute('aria-controls', 'envplist');
   search.append(ic('search'), inp);
-  r.plist = el('div', 'plist');
+  r.pinput = inp;
+  r.plist = el('div', 'plist'); r.plist.id = 'envplist'; r.plist.setAttribute('role', 'listbox'); r.plist.setAttribute('aria-label', COPY.pickLab);
   r.pmore = el('div', 'pmore hidden');
   r.menu.replaceChildren(search, r.plist, r.pmore);
   inp.addEventListener('input', () => { S.picker.q = inp.value; S.picker.hi = 0; paintMenu(); });
@@ -552,6 +598,7 @@ function paintMenu() {
   r.plist.replaceChildren(...(f.empty ? [el('div', 'pmore pnone', f.empty)] : f.shown.map((e, i) => {
     const b = el('button', `pitem${e.current ? ' pcur' : ''}${i === S.picker.hi ? ' phi' : ''}`);
     b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', e.current ? 'true' : 'false');
+    b.id = `envopt-${i}`; b.tabIndex = -1;
     const pt = el('span', 'pt', e.name);
     if (e.loc) pt.append(document.createTextNode(' '), el('span', null, `· ${e.loc}`));
     b.append(el('span', 'pi', e.initial), pt);
@@ -561,6 +608,8 @@ function paintMenu() {
   })));
   r.pmore.textContent = f.more || '';
   r.pmore.classList.toggle('hidden', !f.more);
+  if (f.shown.length && !f.empty) r.pinput.setAttribute('aria-activedescendant', `envopt-${Math.min(S.picker.hi, f.shown.length - 1)}`);
+  else r.pinput.removeAttribute('aria-activedescendant');
 }
 function closeBranchPicker(refocus) {
   S.picker = null;
@@ -574,7 +623,6 @@ function choose(rid) {
   postRender('reset');
 }
 
-function hideBar() { const b = S.refs && S.refs.bar; if (b) b.classList.remove('show'); }
 function paintBar() {
   const r = S.refs;
   const L0 = S.loaded;
@@ -586,17 +634,15 @@ function paintBar() {
   r.barDot.classList.toggle('ered', bar.state === 'invalid');
   r.barText.textContent = bar.state === 'invalid' ? bar.text : EL.COPY.dirty;
   r.save.disabled = !!S.attempt || !(bar.canSave || malformedValid);
-  r.discard.disabled = S.phase === 'sending' || S.phase === 'recovering';
+  r.discard.disabled = attemptUnresolved();
 }
 
 function paintConfirm() {
   const r = S.refs;
-  if (!S.confirm) { r.layer.replaceChildren(); return; }
+  if (!S.confirm) { closeEnvioLayer(); return; }
   const busy = S.phase === 'sending' || S.phase === 'recovering';
   if (r.layer.firstChild && r.confirmSave) { r.confirmSave.disabled = busy; r.confirmSave.setAttribute('aria-busy', busy ? 'true' : 'false'); r.confirmBack.disabled = busy; return; }
-  const was = S.loaded && S.loaded.kind === 'policy' ? S.loaded.bands : [];
-  const now = EL.validate(S.rows).bands || [];
-  const d = EL.confirmDiff(was, now);
+  const d = EL.confirmDiff(S.confirm.was, S.confirm.body.bands);
   const scrim = el('div', 'scrim show');
   const m = el('div', 'modal'); m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-labelledby', 'envctitle');
   const head = el('div', 'mhead'); const h2 = el('h2', null, COPY.cTitle); h2.id = 'envctitle';
@@ -632,14 +678,16 @@ function paintConfirm() {
     body.append(c);
   }
   const foot = el('div', 'mfoot');
-  r.confirmBack = button('btn ghost', COPY.cBack, () => { S.confirm = false; render(); S.refs.save.focus(); });
+  const back = () => { S.confirm = null; render(); if (S.refs) S.refs.save.focus(); };
+  r.confirmBack = button('btn ghost', COPY.cBack, back);
   r.confirmSave = button('btn accent', COPY.cSave, startSave);
   r.confirmSave.disabled = busy;
   foot.append(r.confirmBack, r.confirmSave);
   m.append(head, body, foot);
   scrim.append(m);
-  scrim.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !(S.phase === 'sending' || S.phase === 'recovering')) { S.confirm = false; render(); S.refs.save.focus(); } });
+  scrim.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !(S.phase === 'sending' || S.phase === 'recovering')) back(); });
   r.layer.replaceChildren(scrim);
+  inertEnvioBackground(r.layer);
   r.confirmBack.focus();
 }
 
@@ -654,23 +702,29 @@ registerView({
   revoke,
   mount(host, sel) {
     bump();
+    if (sel.uid !== S.uid) { S.attempt = null; S.phase = null; }
     S.uid = sel.uid;
     S.host = host;
     S.root = el('div', 'envio');
     host.replaceChildren(S.root);
     S.refs = null;
+    // Codex r1 F3: an attempt kept from before leaving shows with its own draft and is reconciled FIRST (a fresh GET)
+    const held = S.attempt && S.attempt.uid === S.uid && S.loaded ? S.attempt : null;
     const cached = S.uid ? store.get(CACHE(S.uid)) : null;
-    if (cached) { adoptBody(cached); S.status = 'ready'; } else { S.status = 'loading'; S.rows = [{ km: '', fee: '' }]; }
+    if (held) S.status = 'ready';
+    else if (cached) { adoptBody(cached); S.status = 'ready'; } else { S.status = 'loading'; S.rows = [{ km: '', fee: '' }]; }
     render();
     load();
+    if (held && S.phase !== 'not_landed') recover(held);
   },
   unmount() {
     bump();
-    stopMap();
-    document.removeEventListener('click', onDocClick);
-    S.attempt = null; S.phase = null; S.confirm = false; S.picker = null; S.banner = null; S.note = null;
+    dropPage();
+    // Codex r1 F3: an attemptUnresolved attempt (and its draft) outlives the view for this session; everything else is per visit
+    S.confirm = null; S.picker = null; S.note = null;
+    if (!S.attempt) { S.phase = null; S.banner = null; }
     if (S.host) S.host.replaceChildren();
-    S.host = null; S.root = null; S.refs = null; S.status = 'idle';
+    S.host = null; S.root = null; S.status = 'idle';
   },
   canLeave: () => !S.attempt && !(S.rows && S.loaded && S.loaded.kind === 'policy' && EL.isDirty(S.rows, S.loaded.bands)),
 });

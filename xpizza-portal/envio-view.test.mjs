@@ -43,7 +43,7 @@ function server({ policy = POLICY(3, B3), admins = { uAdmin: true }, registry } 
   const srv = {
     db, uid: null, at: 0, commits: 0, posts: [], gets: 0,
     fault: { post: null, get: null },   // post: 'before503' | 'after503' | 'afterDrop' | 'afterMalformed' | 'drop' ; get: 'fail' | 'hold'
-    hold: { get: null, post: null },
+    hold: { get: null, post: null, getAfter: null },
   };
   const deps = () => ({ db, verifyIdToken: async (t) => { if (t !== 'TK-test' || !srv.uid) throw new Error('bad'); return { uid: srv.uid }; },
     timestamp: () => ++srv.at, readRegistry: registry || (async () => ({ ok: true, fresh: true, ids: WORLD.ids })) });
@@ -57,7 +57,10 @@ function server({ policy = POLICY(3, B3), admins = { uAdmin: true }, registry } 
       srv.gets++;
       if (srv.hold.get) await srv.hold.get;
       if (srv.fault.get === 'fail') { srv.fault.get = null; throw new TypeError('Failed to fetch'); }
-      return answer(await CORE.getDeliveryPricingCore(deps(), req(undefined)));
+      const got = await CORE.getDeliveryPricingCore(deps(), req(undefined));
+      // Codex r1 F4: the server has READ; the answer is delivered later (one-shot)
+      if (srv.hold.getAfter) { const h = srv.hold.getAfter; srv.hold.getAfter = null; await h; }
+      return answer(got);
     }
     if (fn === 'setDeliveryPricing') {
       srv.posts.push(body);
@@ -65,6 +68,8 @@ function server({ policy = POLICY(3, B3), admins = { uAdmin: true }, registry } 
       const f = srv.fault.post; srv.fault.post = null;
       if (f === 'drop') throw new TypeError('Failed to fetch');
       if (f === 'before503') return answer({ status: 503, body: { error: 'unavailable', retryable: true } });
+      // Codex r1 F2: the real validator's 400 shape, nothing written (the screen never sends an invalid body, so a fault layer reaches it)
+      if (f === 'refuse400') return answer({ status: 400, body: { error: 'bad_request', field: 'bands' } });
       const before = await srv.version();
       const out = await CORE.setDeliveryPricingCore(deps(), req(body));
       if ((await srv.version()) !== before) srv.commits++;
@@ -638,4 +643,190 @@ test('the directory failed (branches_unavailable): the pricing still loads; the 
   assert.equal(P.host().querySelector('.mapline').textContent, 'No pudimos cargar las sucursales.');
   assert.ok(P.host().querySelector('.pick').disabled);
   assert.equal(P.frame(), null);
+});
+
+// ── Codex build r1 (advisor ruling 11-11: fix all 8, RED-first, one regression cell + one mutant each) ─────────────────────
+const SAVED10 = [{ max_km: 3, cents: 4000 }, { max_km: 6, cents: 6000 }, { max_km: 10, cents: 8000 }];
+const inertNodes = (P) => [...P.d.querySelectorAll('[inert]')];
+const XP_BRANCH = { rid: 'r_xp', brand_id: 'b_xp', brand_name: 'X. Pizza', location_name: 'Centro', hub: { lat: 15.5075, lng: -88.0398 } };
+
+test('Codex r1 F1: the confirm posts its IMMUTABLE reviewed body — an edit underneath changes neither the summary nor the POST; the background is inert', async () => {
+  const P = await page();
+  await P.signIn(); await P.open();
+  await editTo10(P);
+  P.btn('Guardar', P.bar()).click(); await settle();
+  const m = P.d.querySelector('[role="dialog"]');
+  assert.ok(inertNodes(P).some((n) => n.contains(P.input(1, 'fee'))), 'the band inputs are inert');
+  assert.ok(inertNodes(P).some((n) => n.contains(P.reg().nav)), 'the shell nav is inert (focus can\'t leave the dialog)');
+  assert.ok(!inertNodes(P).some((n) => n.contains(m)), 'the dialog itself is not');
+  P.type(1, 'fee', '99'); await settle();   // an edit that bypasses inert (programmatic)
+  assert.deepEqual([...m.querySelectorAll('.edrow')].map((r) => r.textContent), ['Hasta 3 kmL 40Igual', 'Hasta 6 kmL 50L 60Cambia', 'Hasta 10 kmL 80Nuevo']);
+  P.btn('Guardar tarifas', m).click(); await settle(30);
+  assert.deepEqual(P.srv.posts, [{ expected_policy_version: 3, bands: SAVED10 }], 'the POST is the reviewed body');
+  assert.equal(inertNodes(P).length, 0, 'closing releases every inert');
+});
+
+test('Codex r1 F1: every exit releases the background — «Volver» / Escape restore focus to Guardar; leaving the view and signing out leave nothing inert', async () => {
+  const P = await page();
+  await P.signIn(); await P.open();
+  await editTo10(P);
+  P.btn('Guardar', P.bar()).click(); await settle();
+  P.btn('Volver').click(); await settle();
+  assert.equal(inertNodes(P).length, 0);
+  assert.equal(P.d.activeElement, P.btn('Guardar', P.bar()));
+  P.btn('Guardar', P.bar()).click(); await settle();
+  P.d.querySelector('[role="dialog"]').dispatchEvent(new P.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+  assert.equal(inertNodes(P).length, 0);
+  assert.equal(P.d.activeElement, P.btn('Guardar', P.bar()));
+  P.btn('Guardar', P.bar()).click(); await settle();
+  assert.ok(inertNodes(P).length > 0, 'premise: open again');
+  P.d.getElementById('navprod').click(); await settle(20);
+  assert.equal(inertNodes(P).length, 0, 'unmount releases');
+  await P.open(); await editTo10(P);
+  P.btn('Guardar', P.bar()).click(); await settle();
+  assert.ok(inertNodes(P).length > 0, 'premise: open again');
+  P.d.dispatchEvent(new P.w.CustomEvent('portal:auth', { detail: { uid: null } })); await settle(20);
+  assert.equal(inertNodes(P).length, 0, 'sign-out releases');
+});
+
+test('Codex r1 F2: a recognised 409 is NOT final — a FRESH GET resolves it before the draft is dropped', async () => {
+  const P = await page();
+  await P.signIn(); await P.open();
+  await editTo10(P);
+  await P.srv.db.ref(CORE.PATH).set(POLICY(4, [{ max_km: 5, cents: 7000 }]));   // someone else saved meanwhile
+  P.btn('Guardar', P.bar()).click(); await settle();
+  const gets = P.srv.gets;
+  P.btn('Guardar tarifas').click(); await settle(30);
+  assert.equal(P.srv.gets, gets + 1, 'the 409 went through the recovery GET');
+  assert.ok(P.text().includes('Alguien más cambió las tarifas, recargá'));
+});
+
+test('Codex r1 F2: a 400 is resolved by a fresh GET too; only once the GET proves nothing landed is the attempt released (the draft kept)', async () => {
+  const P = await page();
+  await P.signIn(); await P.open();
+  await editTo10(P);
+  P.btn('Guardar', P.bar()).click(); await settle();
+  const gets = P.srv.gets;
+  P.srv.fault.post = 'refuse400';
+  P.btn('Guardar tarifas').click(); await settle(30);
+  assert.equal(P.srv.gets, gets + 1, 'the 400 went through the recovery GET');
+  assert.equal(P.mods.envio._envioState.attempt, null, 'proven not landed + refused → released');
+  assert.deepEqual(P.rows(), [['3', '40'], ['6', '60'], ['10', '80']], 'the draft is kept to fix');
+  assert.ok(P.text().includes('No se pudieron guardar las tarifas'));
+  assert.equal(P.srv.commits, 0);
+});
+
+test('Codex r1 F3: an UNRESOLVED attempt can\'t be discarded and survives leaving the view; on return a fresh GET reconciles it first', async () => {
+  const P = await page();
+  await P.signIn(); await P.open();
+  await editTo10(P);
+  P.btn('Guardar', P.bar()).click(); await settle();
+  P.srv.fault.post = 'afterDrop'; P.srv.fault.get = 'fail';
+  P.btn('Guardar tarifas').click(); await settle(40);
+  assert.equal(P.mods.envio._envioState.phase, 'unknown');
+  assert.ok(P.btn('Descartar', P.bar()).disabled, 'an unresolved attempt can\'t be discarded');
+  const a = P.mods.envio._envioState.attempt;
+  P.d.getElementById('navprod').click(); await settle(20);
+  assert.equal(P.mods.envio._envioState.attempt, a, 'kept across same-session navigation');
+  const gets = P.srv.gets;
+  await P.open(); await settle(40);
+  assert.ok(P.srv.gets > gets, 'a fresh GET on return');
+  assert.equal(P.mods.envio._envioState.attempt, null, 'reconciled');
+  assert.equal(P.d.getElementById('opstoast').textContent, 'Tarifas guardadas');
+  assert.equal(P.srv.posts.length, 1, 'never a blind resend');
+  assert.equal(P.srv.commits, 1);
+  assert.deepEqual(P.rows(), [['3', '40'], ['6', '60'], ['10', '80']]);
+});
+
+test('Codex r1 F3: leaving while the POST is still in flight — the late answer is ignored, and the return reconciles through a fresh GET', async () => {
+  const P = await page();
+  await P.signIn(); await P.open();
+  await editTo10(P);
+  P.btn('Guardar', P.bar()).click(); await settle();
+  let release; P.srv.hold.post = new Promise((r) => { release = r; });
+  P.btn('Guardar tarifas').click(); await settle(10);
+  P.d.getElementById('navprod').click(); await settle(10);
+  release(); await settle(30);
+  assert.equal(P.srv.commits, 1, 'premise: it landed while away');
+  assert.ok(P.mods.envio._envioState.attempt, 'still unresolved while away');
+  await P.open(); await settle(40);
+  assert.equal(P.mods.envio._envioState.attempt, null);
+  assert.equal(P.d.getElementById('opstoast').textContent, 'Tarifas guardadas');
+  assert.equal(P.srv.posts.length, 1);
+});
+
+test('Codex r1 F4: a GET the server READ before a save, delivered after it, never rolls the screen or the cache back', async () => {
+  const srv = server();
+  let release; srv.hold.getAfter = new Promise((r) => { release = r; });
+  const P = await page({ srv, cache: { policy_version: 3, bands: B3, branches: [] } });
+  await P.signIn(); await P.open();   // painted from the cache; the revalidation has READ v3 and is held
+  await editTo10(P);
+  P.btn('Guardar', P.bar()).click(); await settle();
+  P.btn('Guardar tarifas').click(); await settle(30);
+  assert.equal((await P.srv.node()).policy_version, 4, 'premise: saved');
+  release(); await settle(30);
+  assert.deepEqual(P.rows(), [['3', '40'], ['6', '60'], ['10', '80']], 'the saved table stays');
+  assert.equal(JSON.parse(P.w.sessionStorage.getItem('sherpa.portal.envio.uAdmin')).policy_version, 4, 'the cache keeps v4');
+  assert.ok(!P.bar().classList.contains('show'));
+});
+
+test('Codex r1 F5: a failed FIRST GET → «Reintentar» rebuilds the editor (no detached controls)', async () => {
+  const srv = server(); srv.fault.get = 'fail';
+  const P = await page({ srv });
+  await P.signIn(); await P.open();
+  assert.ok(P.btn('Reintentar'), 'premise: the offline box');
+  P.btn('Reintentar').click(); await settle(30);
+  assert.deepEqual(P.rows(), [['3', '40'], ['6', '50']]);
+  P.type(1, 'fee', '60'); await settle();
+  assert.ok(P.bar().classList.contains('show'), 'the live editor responds');
+});
+
+test('Codex r1 F6: «Descartar» posts the restored table to the map, and the map stays live after it', async () => {
+  const P = await page();
+  await P.signIn(); await P.open(); await settle(5);
+  const out = posted(P);
+  P.fromMap(childMessage('listening', P.mount())); await settle();
+  P.type(1, 'fee', '60'); await settle();
+  P.btn('Descartar', P.bar()).click(); await settle();
+  assert.deepEqual(out[out.length - 1][0].bands.map((b) => [b.km, b.fee]), [[3, 4000], [6, 5000]], 'the restored table reached the map');
+  P.fromMap(childMessage('ready', P.mount())); await settle();
+  assert.equal(P.mods.envio._envioState.map.ready, true, 'the map listener outlives the request generation');
+});
+
+test('Codex r1 F6: a GET answer adopted after the map is up is posted to it', async () => {
+  const srv = server({ policy: POLICY(4, [{ max_km: 2.5, cents: 3000 }]) });
+  let release; srv.hold.get = new Promise((r) => { release = r; });
+  const P = await page({ srv, cache: { policy_version: 3, bands: B3, branches: [XP_BRANCH] } });
+  await P.signIn(); await P.open(); await settle(5);
+  const out = posted(P);
+  P.fromMap(childMessage('listening', P.mount())); await settle();
+  release(); await settle(30);
+  assert.deepEqual(P.rows(), [['2.5', '30']], 'premise: adopted');
+  assert.deepEqual(out[out.length - 1][0].bands.map((b) => [b.km, b.fee]), [[2.5, 3000]]);
+});
+
+test('Codex r1 F7: a platform admin with NO merchant membership still gets «Envío» (the empty-membership boot path)', async () => {
+  const P = await page({ e1: { platform_admin: true, brands: [], branches: [], membership_writes_enabled: false } });
+  await P.signIn();
+  assert.ok(!P.reg().nav.classList.contains('hidden'), 'the nav item shows');
+  await P.open(); await settle(20);
+  assert.ok(!P.host().classList.contains('hidden'), 'the view mounts');
+  assert.deepEqual(P.rows(), [['3', '40'], ['6', '50']]);
+});
+
+test('Codex r1 F8: the picker is a combobox → listbox; aria-activedescendant follows the highlighted option', async () => {
+  const P = await page();
+  await P.signIn(); await P.open(); await settle(5);
+  P.host().querySelector('.pick').click(); await settle();
+  const inp = P.host().querySelector('.psearch input');
+  const lb = P.host().querySelector('[role="listbox"]');
+  assert.equal(inp.getAttribute('role'), 'combobox');
+  assert.equal(inp.getAttribute('aria-expanded'), 'true');
+  assert.ok(lb && lb.id && inp.getAttribute('aria-controls') === lb.id);
+  const opts = () => [...lb.querySelectorAll('[role="option"]')];
+  assert.ok(opts().length >= 2 && new Set(opts().map((o) => o.id)).size === opts().length, 'stable unique option ids');
+  assert.equal(inp.getAttribute('aria-activedescendant'), opts()[0].id);
+  inp.dispatchEvent(new P.w.KeyboardEvent('keydown', { key: 'ArrowDown' })); await settle();
+  assert.equal(inp.getAttribute('aria-activedescendant'), opts()[1].id);
+  assert.ok(P.d.getElementById(inp.getAttribute('aria-activedescendant')).classList.contains('phi'));
 });
