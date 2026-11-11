@@ -38,6 +38,8 @@
   "envio-map-protocol.test.mjs",
   "envio-map-site.test.mjs",
   "envio-server-parity.test.mjs",
+  "envio-view.test.mjs",
+  "envio.js",
   "equipos.js",
   "extras-eligibility.js",
   "firebase.js",
@@ -132,8 +134,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "877712302c677225d6ed50eb4359f20cef740c4538a53a08515e1752acc0f486",
-   "bytes": 12607
+   "sha256": "65666c836fc5a679d884d50713f4f17a7644fe73664ba3aa41d838460cffa393",
+   "bytes": 13457
   },
   "netlify.toml": {
    "sha256": "5a93ea30c46e1c38d4ce160b120f44352efada865893e66195709bb1da5582f1",
@@ -160,8 +162,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "7c93d0d8cb40db00054e4f201284068aff59f68839e36cbc1febd644bca72904",
-   "bytes": 115664
+   "sha256": "512f2619a05a3eb316fe9bb996db5b324f37f5be04036794d9449dff8ff6ec6f",
+   "bytes": 128609
   }
  },
  "diff_aid": {
@@ -204,7 +206,12 @@
    "--body": "'Söhne','Helvetica Neue',system-ui,-apple-system,'Segoe UI',sans-serif",
    "--disp": "'Archivo','Archivo Fallback','Archivo Fallback Roboto','Söhne','Helvetica Neue',system-ui,sans-serif",
    "--r": "14px",
-   "--focus": "0 0 0 2px var(--board),0 0 0 4px var(--ink)"
+   "--focus": "0 0 0 2px var(--board),0 0 0 4px var(--ink)",
+   "--env-map": "#F1F2EC",
+   "--env-band": "rgba(14,159,91,.25)",
+   "--env-limit": "rgba(14,159,91,.12)",
+   "--env-out": "rgba(10,10,11,.1)",
+   "--env-other": "#FFFFFF"
   },
   "declarations": [
    [
@@ -416,6 +423,18 @@
     ".addrow:hover",
     "background",
     "var(--tint)"
+   ],
+   [
+    "",
+    ".adm-tag",
+    "background",
+    "var(--gold-soft)"
+   ],
+   [
+    "",
+    ".adm-tag",
+    "color",
+    "var(--gold)"
    ],
    [
     "",
@@ -1080,6 +1099,420 @@
    [
     "",
     ".empty",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".envio .band .bdel",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".envio .band .bdel",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".envio .band .bn",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".envio .berr",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".envio .eadd",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".envio .eadd",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .ebdot",
+    "background",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".envio .ebdot.ered",
+    "background",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".envio .ecallout b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .ecallout",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".envio .ecallout",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .echip.echg",
+    "background",
+    "var(--amber-soft)"
+   ],
+   [
+    "",
+    ".envio .echip.echg",
+    "color",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".envio .echip.edel",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".envio .echip.edel",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".envio .echip.enew",
+    "background",
+    "var(--green-soft)"
+   ],
+   [
+    "",
+    ".envio .echip.enew",
+    "color",
+    "var(--green-text)"
+   ],
+   [
+    "",
+    ".envio .echip.esame",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .echip.esame",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .edrow .dwas",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .edrow",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".envio .eerr b",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".envio .eerr p",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .eerr",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".envio .efnote",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .elab",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .emap .emz",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .emap .emz",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .emap .mapline",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .emap",
+    "background",
+    "var(--env-map)"
+   ],
+   [
+    "",
+    ".envio .epill",
+    "background",
+    "var(--gold-soft)"
+   ],
+   [
+    "",
+    ".envio .epill",
+    "border-color",
+    "var(--gold-line)"
+   ],
+   [
+    "",
+    ".envio .epill",
+    "color",
+    "var(--gold)"
+   ],
+   [
+    "",
+    ".envio .esec h3 .ehint",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .esec p.ehelp",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .esec",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .inp input",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".envio .inp input",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .inp span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .inp",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".envio .inp.bad input",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".envio .inp.bad span",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".envio .inp.bad",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".envio .inp.bad",
+    "border-color",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".envio .legend .lg-band",
+    "background",
+    "var(--env-band)"
+   ],
+   [
+    "",
+    ".envio .legend .lg-limit",
+    "background",
+    "var(--env-limit)"
+   ],
+   [
+    "",
+    ".envio .legend .lg-other",
+    "background",
+    "var(--env-other)"
+   ],
+   [
+    "",
+    ".envio .legend .lg-out",
+    "background",
+    "var(--env-out)"
+   ],
+   [
+    "",
+    ".envio .legend",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .limit",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".envio .mhead p",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .pick .pchev",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".envio .pick .pk span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .pick",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .pick",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .pick[aria-expanded=\"true\"]",
+    "border-color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .pickmenu",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .pitem .pi",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".envio .pitem .pi",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .pitem .pt span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .pitem",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".envio .pitem",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .pitem.pcur",
+    "background",
+    "var(--tint2)"
+   ],
+   [
+    "",
+    ".envio .pitem.pcur",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".envio .pitem:hover,.envio .pitem.phi",
+    "background",
+    "var(--card-2)"
+   ],
+   [
+    "",
+    ".envio .pmore",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .psearch input",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".envio .psearch input",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .psearch input::placeholder",
     "color",
     "var(--mute2)"
    ],
