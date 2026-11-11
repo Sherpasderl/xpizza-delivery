@@ -12,21 +12,9 @@ const { projectEligibility } = require('./extras-eligibility');
 
 const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
 
-// itemKey → the ordered list of groups it is offered, or null when it is offered nothing by policy (the eligibleExtras group level)
-function effectiveGroups(proj) {
-  const out = {};
-  for (const [k, it] of Object.entries(proj.items)) {
-    const owner = it.launcherKey && proj.items[it.launcherKey] ? it.launcherKey : k;
-    if (proj.items[owner].policy === 'none') { out[k] = null; continue; }
-    const legacyKey = (own(proj.add, k) || own(proj.denyLegacy, k)) ? k : (it.launcherKey || k);
-    const dn = proj.denyLegacy[legacyKey] || { cats: [], keys: [], all: false };
-    if (dn.all) { out[k] = null; continue; }
-    const ad = proj.add[legacyKey] || { cats: [], keys: [] };
-    const allowed = new Set([...(proj.categoryAllow[it.cat] || []), ...ad.cats]);
-    out[k] = proj.extraCategories.filter((c) => allowed.has(c) && !dn.cats.includes(c));
-  }
-  return out;
-}
+// itemKey → the ordered list of groups it is offered (null: nothing by policy) and the one group order: exposure-transitions.js owns
+// both (the portal's writer runs the same bytes)
+const { effectiveGroups, groupMajorOrder } = require('./exposure-transitions');
 
 function projectExtrasMaps({ items, extras, structure }) {
   const proj = projectEligibility({ items, extras, structure });
@@ -64,16 +52,6 @@ function projectExtrasMaps({ items, extras, structure }) {
   for (const k of order) { const id = idOf.get(k); if (id !== undefined && own(byItem, id)) sorted[id] = byItem[id]; }
   for (const id of Object.keys(byItem)) if (!own(sorted, id)) sorted[id] = byItem[id];
   return { byCategory, byItem: sorted };
-}
-
-// §2.3 — the ONE group order: extra_order group-major in extra_categories order (stable: each group's extras keep their relative order;
-// an extra whose group is not listed keeps its place after the listed groups). On today's sources it is today's extra_order.
-function groupMajorOrder(order, extras, groups) {
-  if (!Array.isArray(order) || !Array.isArray(groups)) return order;
-  const catOf = new Map((extras || []).map((e) => [e.key, e && e.display && e.display.cat]));
-  const rank = new Map(groups.map((g, i) => [g, i]));
-  const r = (k) => (rank.has(catOf.get(k)) ? rank.get(catOf.get(k)) : groups.length);
-  return order.map((k, i) => [k, i]).sort((a, b) => r(a[0]) - r(b[0]) || a[1] - b[1]).map(([k]) => k);
 }
 
 module.exports = { projectExtrasMaps, effectiveGroups, groupMajorOrder };

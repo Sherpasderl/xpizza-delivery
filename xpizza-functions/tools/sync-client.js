@@ -28,4 +28,6 @@ const cartSigFolders = ['xpizza-functions', ...new Set(require(path.join(ROOT, '
 for (const f of cartSigFolders) fs.copyFileSync(CART_SIG_SRC, path.join(ROOT, f, 'cart-sig.js'));
 // S2-10 (S2-DESIGN §1.6): the ONE extras-eligibility rule → the portal's drawer, byte-identical (catalog/extras-eligibility-sync.guard.test.js)
 fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'catalog', 'extras-eligibility.js'), path.join(ROOT, 'xpizza-portal', 'extras-eligibility.js'));
+// S2-core (PLAN-structure-S2core-r3 §3.2): the ONE Extras-page writer → the portal, byte-identical (catalog/exposure-transitions-sync.guard.test.js)
+fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'catalog', 'exposure-transitions.js'), path.join(ROOT, 'xpizza-portal', 'exposure-transitions.js'));
 console.log(`sync-client: copied sherpa-client.js into ${folders.length} site folders, order-self-update.js into ${orderFolders.length}, order-control-state.js into xpizza-dispatch, pay-rate.js into xpizza-functions + xpizza-driver, cart-sig.js into ${cartSigFolders.length} folders`);
