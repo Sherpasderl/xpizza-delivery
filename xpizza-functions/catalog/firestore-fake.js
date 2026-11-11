@@ -86,6 +86,22 @@ function makeDb() {
         if (docs.has(path)) throw new Error(`already_exists: ${path}`);
         put(path, data);
       },
+      /* update() ENFORCES `lastUpdateTime`, BECAUSE FIRESTORE DOES (measured, per the note above: real update() with a stale
+         precondition refuses with code 9). A missing document refuses with code 5, as Firestore's update does. Top-level fields
+         MERGE into the stored document (update never drops a field it was not given). The precondition is compared as the instant
+         it names — a Timestamp, or the same instant in source-store's encodeUpdateTime spelling (what a handler's default identity
+         toPrecondition passes in tests) — never looser than that equality. */
+      update: async (data, opts) => {
+        const held = docs.get(path);
+        if (held === undefined) { const e = new Error(`not_found: ${path}`); e.code = 5; throw e; }
+        const want = opts && opts.lastUpdateTime;
+        if (want !== undefined) {
+          const enc = (ts) => (ts && typeof ts.seconds === 'number' ? `${ts.seconds}.${String(ts.nanoseconds || 0).padStart(9, '0')}` : String(ts));
+          if (enc(want) !== enc(held.updateTime)) { const e = new Error(`FAILED_PRECONDITION: ${path}`); e.code = 9; throw e; }
+        }
+        put(path, { ...held.data, ...data });
+        return { writeTime: docs.get(path).updateTime };
+      },
       delete: async () => { docs.delete(path); },
     };
   }
