@@ -56,7 +56,8 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
       [{ bands: {} }, 'bands'], [{ bands: [] }, 'bands'], [{ bands: [{ max_km: 3, cents: 3000, x: 1 }] }, 'bands'], [{ bands: [{ max_km: 3 }] }, 'bands'],
       [{ bands: [{ max_km: 3, cents: 3000 }, { max_km: 3, cents: 4000 }] }, 'bands'], [{ bands: [{ max_km: 0, cents: 0 }] }, 'bands'], [{ bands: [{ max_km: 3, cents: 30.5 }] }, 'bands'],
       [{ bands: [{ max_km: 3, cents: -1 }] }, 'bands'], [{ bands: [{ max_km: NaN, cents: 1 }] }, 'bands'],
-      [{ bands: [{ max_km: 9.25, cents: 1 }] }, 'bands'], [{ bands: [{ max_km: 0.3, cents: 1 }] }, 'bands'],
+      [{ bands: [{ max_km: 9.25, cents: 100 }] }, 'bands'], [{ bands: [{ max_km: 0.3, cents: 100 }] }, 'bands'],
+      [{ bands: [{ max_km: 3, cents: 250 }] }, 'bands'], [{ bands: [{ max_km: 3, cents: 3000 }, { max_km: 6, cents: 5050 }] }, 'bands'],   // whole lempiras only (advisor: the owner's screen shows L)
       [{ restaurants: { tb_r1: { active: true, free_delivery: false } } }, 'body'], [{ extra: 1 }, 'body'],
     ]) {
       const r = await w.set(body(over));
@@ -70,7 +71,7 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
     const w = world();
     const twenty = Array.from({ length: 20 }, (_, i) => ({ max_km: (i + 1) / 2, cents: 15000 }));
     assert.strictEqual((await w.set(body({ bands: twenty }))).status, 200, `${L}: 20 bands in 0.5 km steps up to 10 km, L 150 each, are accepted`);
-    for (const [bands, why] of [[[...twenty, { max_km: 10.5, cents: 1 }], '21 bands'], [[{ max_km: 10.5, cents: 1 }], 'beyond 10 km'], [[{ max_km: 3, cents: 15001 }], 'above L 150']]) {
+    for (const [bands, why] of [[[...twenty, { max_km: 10.5, cents: 100 }], '21 bands'], [[{ max_km: 10.5, cents: 100 }], 'beyond 10 km'], [[{ max_km: 3, cents: 15100 }], 'above L 150']]) {
       const r = await w.set(body({ expected_policy_version: 1, bands }));
       assert.deepStrictEqual([r.status, r.body], [400, { error: 'bad_request', field: 'band_caps' }], `${L}: ${why} → band_caps`);
     }
@@ -174,7 +175,7 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
 
   await cell('DPW-HISTORY-BOUNDED-TO-10', async (L) => {
     const w = world();
-    for (let v = 0; v < 11; v++) assert.strictEqual((await w.set(body({ expected_policy_version: v, bands: [{ max_km: 3, cents: 1000 + v }] }))).status, 200, `${L}: save ${v + 1}`);
+    for (let v = 0; v < 11; v++) assert.strictEqual((await w.set(body({ expected_policy_version: v, bands: [{ max_km: 3, cents: 1000 + 100 * v }] }))).status, 200, `${L}: save ${v + 1}`);
     assert.deepStrictEqual(w.db.get(PATH).history.map((e) => e.new_version), [11, 10, 9, 8, 7, 6, 5, 4, 3, 2], `${L}: the 11th save keeps exactly the 10 newest, newest first`);
   });
 
@@ -208,7 +209,7 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
   await cell('DPW-WRITER-SUBSET-OF-THE-APP-READER', async (L) => {
     const PIN = { lat: 14.1 + 0.4 / 111.195, lng: -87.2, confirmed: true };   // inside every table's first band
     const getIdentity = async () => ({ hub_lat: 14.1, hub_lng: -87.2 });
-    for (const bands of [BANDS, [{ max_km: 10, cents: 0 }], Array.from({ length: 20 }, (_, i) => ({ max_km: (i + 1) / 2, cents: 15000 - i }))]) {
+    for (const bands of [BANDS, [{ max_km: 10, cents: 0 }], Array.from({ length: 20 }, (_, i) => ({ max_km: (i + 1) / 2, cents: 15000 - 100 * i }))]) {
       const w = world();
       assert.strictEqual((await w.set(body({ bands }))).status, 200, `${L}: accepted by the writer`);
       const db = { ref: (p) => ({ get: async () => ({ val: () => (p === PATH ? w.db.get(PATH) : null) }) }) };
