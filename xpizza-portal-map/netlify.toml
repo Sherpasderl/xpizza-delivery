@@ -1,0 +1,18 @@
+# «Envío» map site (PLAN-portal-envio-step1 r2 §1) — its OWN Netlify site, sherpa-portal-map: one static page the merchant portal
+# frames. No build command (static files only; nothing to scan), no Firebase, no auth. ⚠️ ALWAYS deploy with an explicit
+# --dir xpizza-portal-map AND --site <sherpa-portal-map site id>.
+[build]
+  publish = "."
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    #   script-src / img-src / connect-src / style-src / font-src / worker-src / frame-src — exactly what the Google Maps
+    #       JavaScript API needs (Google's Maps JS CSP guide, allowlist form); 'unsafe-inline' styles because Maps injects them.
+    #       This policy lives ONLY on this origin: the portal keeps its strict one and only frames this page.
+    #   frame-ancestors  only the portal may frame it (no X-Frame-Options: it would conflict)
+    Content-Security-Policy = "default-src 'none'; script-src 'self' https://maps.googleapis.com https://*.gstatic.com; img-src 'self' data: https://*.googleapis.com https://*.gstatic.com https://*.google.com https://*.googleusercontent.com; connect-src https://*.googleapis.com https://*.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; worker-src blob:; frame-src https://*.google.com; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors https://sherpa-portal.netlify.app"
+    X-Content-Type-Options = "nosniff"
+    # the origin (not the full URL) still reaches Google, so the key's HTTP-referrer restriction can match this site
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Robots-Tag = "noindex, nofollow"

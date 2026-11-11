@@ -45,7 +45,7 @@
    "server fixtures": 5,
    "server support": 5,
    "unreachable-on-surface": 336,
-   "page-fn": 447,
+   "page-fn": 476,
    "form-account-profile": 14,
    "form-composer": 59
   },
@@ -50623,8 +50623,34 @@
    "exempt": true
   },
   {
+   "id": "xpizza-portal/api.js#rawCall#status#0",
+   "line": 113,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/api.js#rawCall#status#1",
+   "line": 114,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
    "id": "xpizza-portal/api.js#readTextResponse#status#0",
-   "line": 168,
+   "line": 188,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -50637,7 +50663,7 @@
   },
   {
    "id": "xpizza-portal/api.js#readTextResponse#status#1",
-   "line": 168,
+   "line": 188,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -50650,7 +50676,7 @@
   },
   {
    "id": "xpizza-portal/api.js#onload#status#0",
-   "line": 295,
+   "line": 315,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -50663,7 +50689,7 @@
   },
   {
    "id": "xpizza-portal/api.js#onload#status#1",
-   "line": 295,
+   "line": 315,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -50676,7 +50702,7 @@
   },
   {
    "id": "xpizza-portal/api.js#onload#status#2",
-   "line": 295,
+   "line": 315,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -50689,7 +50715,7 @@
   },
   {
    "id": "xpizza-portal/api.js#onload#status#3",
-   "line": 296,
+   "line": 316,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -50702,7 +50728,7 @@
   },
   {
    "id": "xpizza-portal/api.js#onload#status#4",
-   "line": 296,
+   "line": 316,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -51019,6 +51045,315 @@
    "kind": "member",
    "facts": [
     "ITEMS"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-logic.js#okHub#lat#0",
+   "line": 36,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-logic.js#okHub#lng#0",
+   "line": 36,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-logic.js#okHub#lat#1",
+   "line": 36,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-logic.js#okHub#lng#1",
+   "line": 36,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-logic.js#pickerEntries>anon#lat#0",
+   "line": 192,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-logic.js#pickerEntries>anon#lng#0",
+   "line": 192,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-logic.js#classifyPost#status#0",
+   "line": 234,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-logic.js#postClaim#status#0",
+   "line": 242,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-logic.js#postClaim#status#1",
+   "line": 243,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-logic.js#classifyRecovery#status#0",
+   "line": 250,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-logic.js#classifyRecovery#status#1",
+   "line": 251,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-map-protocol.js#isPoint#lat#0",
+   "line": 23,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-map-protocol.js#isPoint#lng#0",
+   "line": 23,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-map-protocol.js#isPoint#lat#1",
+   "line": 23,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio-map-protocol.js#isPoint#lng#1",
+   "line": 23,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio.js#load#status#0",
+   "line": 144,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio.js#load#status#1",
+   "line": 145,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio.js#load#status#2",
+   "line": 152,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio.js#renderMessage>anon#lat#0",
+   "line": 284,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio.js#renderMessage>anon#lng#0",
+   "line": 284,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio.js#renderMessage#lat#0",
+   "line": 285,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio.js#renderMessage#lng#0",
+   "line": 285,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio.js#render#status#0",
+   "line": 390,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio.js#render#status#1",
+   "line": 391,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio.js#frozen#status#0",
+   "line": 492,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio.js#paintBands#status#0",
+   "line": 498,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-portal/envio.js#paintMapBox#status#0",
+   "line": 588,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
    ],
    "rule": "page-fn",
    "exempt": true
@@ -51344,7 +51679,7 @@
   },
   {
    "id": "xpizza-portal/shell.js#showBootError#status#0",
-   "line": 253,
+   "line": 266,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -51357,7 +51692,7 @@
   },
   {
    "id": "xpizza-portal/shell.js#showBootError#status#1",
-   "line": 253,
+   "line": 266,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -52897,10 +53232,26 @@
    "rule": "page-fn"
   },
   {
+   "file": "xpizza-portal/envio-logic.js",
+   "fn": "deepFreeze",
+   "base": "o",
+   "line": 224,
+   "how": "Object.values",
+   "rule": "page-fn"
+  },
+  {
+   "file": "xpizza-portal/envio-map-protocol.js",
+   "fn": "keysAre",
+   "base": "o",
+   "line": 21,
+   "how": "Object.keys",
+   "rule": "page-fn"
+  },
+  {
    "file": "xpizza-portal/ventas-harness.mjs",
    "fn": "constructor",
    "base": "o",
-   "line": 93,
+   "line": 96,
    "how": "Object.assign",
    "rule": "page-fn"
   }
