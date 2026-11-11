@@ -375,19 +375,24 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
           await wait(() => !!shown(), 30000);
           const atSheet = quotes.length; await new Promise((x) => setTimeout(x, 30000));   // a retry loop cannot hide: 30 s more, no further quote
           const d = shown(), place = $('[data-act="tip-place"]');
-          const btn = (a) => { const b = d && d.querySelector('[data-act="' + a + '"]'); return b ? { enabled: b.disabled !== true } : null; };
+          // Codex asm5-final F3 (asm6): DRAWN, not merely present — laid out (a box), and neither it nor an ancestor hidden by
+          // display / visibility / opacity (checkVisibility walks the ancestors); a missing checkVisibility is its own red, never a pass
+          const drawn = (el) => { if (!el) return null; if (typeof el.checkVisibility !== 'function') return 'no checkVisibility'; const b = el.getBoundingClientRect();
+            return b.width > 0 && b.height > 0 && el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true, opacityProperty: true, visibilityProperty: true }); };
+          const btn = (a) => { const b = d && d.querySelector('[data-act="' + a + '"]'); return b ? { drawn: drawn(b), enabled: b.disabled !== true } : null; };
+          const h2 = d && d.querySelector('h2');
           return { quoted, quotes, atSheet, after: quotes.length, screen: ui.state.screen, tipCents: ui.state.flow.tipCents,
-            sheet: d ? { title: ((d.querySelector('h2') || {}).textContent || '').trim(), lines: d.innerText.split('\\n').map((x) => x.trim()).filter(Boolean), requote: btn('err-requote'), close: btn('lclose') } : null,
-            place: place ? { disabled: place.disabled === true } : null };
+            sheet: d ? { title: h2 ? { drawn: drawn(h2), text: h2.innerText.trim() } : null, lines: d.innerText.split('\\n').map((x) => x.trim()).filter(Boolean), requote: btn('err-requote'), close: btn('lclose') } : null,
+            place: place ? { drawn: drawn(place), disabled: place.disabled === true } : null };
         })()`);
         const Q503 = { status: 503, error: 'delivery_pricing_unavailable' };
         assert.deepStrictEqual((r.quotes || []).map((q) => [q.tip, q.status, q.error]), [0, 2000, 0, 2000, 0, 2000].map((t) => [t, Q503.status, Q503.error]),
           `🔴 U-DARK: no table ⇒ every app delivery quote is 503 delivery_pricing_unavailable — 3 × tip 0 + 3 × the default tip (${JSON.stringify(r.quotes)})`);
         assert.deepStrictEqual([r.atSheet, r.after], [6, 6], `🔴 U-DARK: no further quote in the 30 s after the sheet — no retry loop (${JSON.stringify(r)})`);
         assert.strictEqual(r.screen, 'tip', `U-DARK: the refusal is shown over the tip step (${JSON.stringify(r)})`);
-        assert.deepStrictEqual(r.sheet, { title: 'No pudimos enviar tu pedido', lines: ['No pudimos enviar tu pedido', 'Intentá de nuevo en un momento; tu pedido está intacto.', 'Reintentar', 'Cerrar'],
-          requote: { enabled: true }, close: { enabled: true } }, `🔴 U-DARK: the refusal is VISIBLE — the rendered error sheet, exactly (${JSON.stringify(r)})`);
-        assert.deepStrictEqual(r.place, { disabled: true }, `🔴 U-DARK: «Hacer pedido» is drawn and DISABLED (${JSON.stringify(r)})`);
+        assert.deepStrictEqual(r.sheet, { title: { drawn: true, text: 'No pudimos enviar tu pedido' }, lines: ['No pudimos enviar tu pedido', 'Intentá de nuevo en un momento; tu pedido está intacto.', 'Reintentar', 'Cerrar'],
+          requote: { drawn: true, enabled: true }, close: { drawn: true, enabled: true } }, `🔴 U-DARK: the refusal is VISIBLE — the rendered error sheet, its title and buttons DRAWN, exactly (${JSON.stringify(r)})`);
+        assert.deepStrictEqual(r.place, { drawn: true, disabled: true }, `🔴 U-DARK: «Hacer pedido» is drawn and DISABLED (${JSON.stringify(r)})`);
         assert.deepStrictEqual([HDRS.filter((h) => h.ep === 'createOrder').length, HDRS.filter((h) => h.ep === 'chargeOnlineOrder').length], [0, 0], 'U-DARK: nothing is placed (0 createOrder, 0 chargeOnlineOrder)');
       } finally { await u.close(); }
       ok('U-DARK no delivery pricing (the setup gap; dpao: no table fails closed (503) at the first quote): 6 quotes, all 503 delivery_pricing_unavailable, none more in 30 s; the rendered error sheet «No pudimos enviar tu pedido» with Reintentar / Cerrar; «Hacer pedido» disabled — visible, never a silent pass; nothing placed');
