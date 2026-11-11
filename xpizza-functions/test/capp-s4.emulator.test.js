@@ -122,8 +122,8 @@ function flowOf(pay, { mode = 'delivery', slot = null } = {}) {
   if (slot !== null) { f.time = 'schedule'; f.slot = slot; } else f.time = 'asap';
   return f;
 }
-// what the app sends: its own body; ctx.appCash = the app contract on cash under schedulingLive
-const ctxOf = (rid, cart) => { const s = serialize(cart, MENU[rid]); return { restaurantId: rid, items: s.items, itemsText: s.items_text, member: null, subtotal: s.subtotal_cents, appCash: true, headers: { Authorization: `Bearer ${process.env.MAKE_SECRET}` } }; };
+// what the app sends: its own body (entry_mode:'app' on every order, cash and card)
+const ctxOf = (rid, cart) => { const s = serialize(cart, MENU[rid]); return { restaurantId: rid, items: s.items, itemsText: s.items_text, member: null, subtotal: s.subtotal_cents, headers: { Authorization: `Bearer ${process.env.MAKE_SECRET}` } }; };
 async function quoteAndPlace(pg, f, cart) {
   const ctx = ctxOf(pg.rid, cart);
   const q = await pg.api.quote(f, ctx);

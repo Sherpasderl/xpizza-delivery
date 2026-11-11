@@ -867,7 +867,7 @@
     const finitePin = (p) => !!p && Number.isFinite(p.lat) && Number.isFinite(p.lng);
 
     // ── the order context, the state key (what a quote stands for) and the totals of the CURRENT state ──
-    function ctxBase() { const s = CappSerialize.serialize(cart, menu); return { restaurantId: cfg.restaurantId, items: s.items, itemsText: s.items_text, member: member(), ...(sched() ? { appCash: true } : {}) }; }
+    function ctxBase() { const s = CappSerialize.serialize(cart, menu); return { restaurantId: cfg.restaurantId, items: s.items, itemsText: s.items_text, member: member() }; }
     function stateKey() { const f = S.flow; const m = member(); return JSON.stringify([f.mode, f.mode === 'delivery' ? f.pin : null, C.tipCentsOf(f), cart.snapshot().lines, m && m.uid ? m.uid : null]); }
     function totalsNow() { if (!S.flow || !S.q || S.qKey !== stateKey()) return { ready: false }; return C.totals(S.flow, S.q, cart.subtotalCents(), S.q.sig); }
     // delivery is quoted only once there is an address to price: a confirmed pin, or the device location (never the branch fallback)

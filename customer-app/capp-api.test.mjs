@@ -755,7 +755,7 @@ function srig({ script, storage = memStorage(), member = { cur: MEMBER }, clock 
   return { api: make(), reload: make, srv, storage, member, clock };
 }
 const SLOT = at(15), SLOT2 = at(16);
-const sArgs = (slot = SLOT, x = {}) => { const f = flowOf('cash'); f.time = 'schedule'; f.slot = slot; return { flow: f, ctx: { ...CTX, appCash: true }, sig: 'sig1', expectedNetCents: 31500, ...x }; };
+const sArgs = (slot = SLOT, x = {}) => { const f = flowOf('cash'); f.time = 'schedule'; f.slot = slot; return { flow: f, ctx: CTX, sig: 'sig1', expectedNetCents: 31500, ...x }; };
 const SLOT_REFUSED = { status: 400, json: { error: 'Bad Request', detail: 'Invalid scheduled time (closed_at_slot)' } };
 const failPlaceWrites = (s, pred) => { const real = s.setItem; s.setItem = (k, v) => { if (k.endsWith(':pending_place') && pred(String(v))) throw new Error('quota'); real(k, v); }; };
 
@@ -867,7 +867,7 @@ test('S4 + guest: under schedulingLive a guest\'s ASAP card send still carries i
 // time (first send, replay, healed retry, accepted-price retry); a cash body with no member (guestCardOnly) is refused locally; the
 // record's owner rules EVERY retained send (ASAP included) ──
 const r2rig = (m, script) => grig({ member: m, extra: { schedulingLive: true }, script });
-const asap = (pay, x = {}) => ({ flow: flowOf(pay), ctx: { ...CTX, appCash: true }, sig: 'sig1', expectedNetCents: 31500, ...x });
+const asap = (pay, x = {}) => ({ flow: flowOf(pay), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, ...x });
 const sched = (pay, x = {}) => { const a = asap(pay, x); a.flow.time = 'schedule'; a.flow.slot = SLOT; return a; };
 const CONFLICT = { status: 409, json: { error: 'order_conflict' } }, PRICE = { status: 409, json: { error: 'price_increased', net_total_cents: 32500 } };
 const endpointsMatchBodies = (srv) => srv.calls.filter((c) => c.ep === 'createOrder' || c.ep === 'chargeOnlineOrder').every((c) => c.body && c.body.payment_method === (c.ep === 'createOrder' ? 'cash' : 'online'));
