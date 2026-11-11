@@ -1202,11 +1202,16 @@ test('U-PHOTO-CLOSE-DIRTY — the photo step\'s «Cerrar» with unsaved edits as
   await choose(d, w, mkFile(w));
   await until(() => drawer(d).querySelector('.phcrop'), 'the crop step');
   const crop = drawer(d).querySelector('.phcrop');
+  // the complete copy BEFORE the crop-close confirm: the session itself, its work / base / photo flag and its upload binding
+  const sc0 = mods.app._openCopy(), upc0 = sc0 && sc0.upload, jsonc0 = JSON.stringify({ work: sc0.work, base: sc0.base, photoTouched: sc0.photoTouched, upload: sc0.upload });
   drawer(d).querySelector('.dwh .dwx').click(); await settle();
   const cf = drawer(d).querySelector('.mk-cf');
   assert.ok(cf, 'U-PHOTO-CLOSE-DIRTY: the confirm is shown over the photo step');
   assert.equal(cf.querySelector('h3').textContent, '¿Descartar los cambios?', 'U-PHOTO-CLOSE-DIRTY: the title');
   btnText(cf, 'Seguir editando').click(); await settle();
+  const sc1 = mods.app._openCopy();
+  assert.ok(sc1 === sc0 && sc1.upload === upc0, 'U-KEEP-EDITING-BYTE-IDENTICAL (crop close): the SAME session and the SAME upload binding');
+  assert.strictEqual(JSON.stringify({ work: sc1.work, base: sc1.base, photoTouched: sc1.photoTouched, upload: sc1.upload }), jsonc0, 'U-KEEP-EDITING-BYTE-IDENTICAL (crop close): work, base, photo flag, upload byte-identical');
   assert.equal(drawer(d).querySelector('.phcrop'), crop, 'U-KEEP-EDITING-BYTE-IDENTICAL (photo close): the SAME crop step');
   btnText(drawer(d), 'Listo').click();
   await until(() => drawer(d).querySelector('.dwf') && !drawer(d).querySelector('.phcrop'), 'back in the edit drawer, the upload in flight');
