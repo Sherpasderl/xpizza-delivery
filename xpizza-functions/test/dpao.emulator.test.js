@@ -98,6 +98,7 @@ function mask(v, k = '') {
   if (Array.isArray(v)) return v.map((x) => mask(x));
   if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).sort().map((kk) => [kk, mask(v[kk], kk)]));
   if (VOLATILE.test(k)) return '·';
+  if (k === 'pixelpay_order_id' && typeof v === 'string') return v.replace(/-[0-9a-f]{16}$/, '-·');   // `${order_id}-${attempt_id}`: the order id compared, the attempt id masked
   if (typeof v === 'number' && v > 1.5e12) return 'T';
   return v;
 }
@@ -179,7 +180,7 @@ async function formRun(seedSnap) {
   assert.deepStrictEqual([dark.quoteRedemption.status, dark.quoteRedemption.json && dark.quoteRedemption.json.ok, 'delivery' in (dark.quoteRedemption.json || {})], [200, true, false], `quoteRedemption: ok, no delivery block (${JSON.stringify(dark.quoteRedemption.json).slice(0, 200)})`);
   {
     const c = dark['cash-reward'];
-    assert.ok(c.status === 200 && c.rec && c.rec.total_cents < FOOD && !ENVIO_KEYS.some((x) => x in c.rec), `cash-reward: placed below the food total (the reward), no envío field (${JSON.stringify(c.json).slice(0, 200)})`);
+    assert.ok(c.status === 200 && c.rec && c.rec.total_cents === FOOD && typeof c.rec.reward_text_appended === 'string' && c.rec.reward_text_appended.length > 0 && !ENVIO_KEYS.some((x) => x in c.rec), `cash-reward: placed at the food total with the free item appended (the reward), no envío field (${JSON.stringify(c.json).slice(0, 200)} ${JSON.stringify(c.rec && { total_cents: c.rec.total_cents, FOOD, keys: Object.keys(c.rec).filter((x) => ENVIO_KEYS.includes(x) || /redeem|reward|discount/.test(x)) })})`);
   }
   placed('cash-signed-form-token');
   assert.strictEqual(dark['cash-signed-form-token'].rec.quote && dark['cash-signed-form-token'].rec.quote.charged_net_cents, FOOD, 'cash-signed-form-token: charged the signed net');
