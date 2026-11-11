@@ -95,7 +95,8 @@ test('bodies are deterministic; entry_mode rides EVERY quote body; tip only when
   assert.ok(!('quote_token' in card) && !('expected_net_cents' in card), 'tokens are attached only by the module');
   f.pay = 'cash'; f.tendered = '500';
   const cash = C.orderBody(f, ctx);
-  assert.deepEqual([cash.payment_method, cash.entry_mode, cash.cash_tendered], ['cash', undefined, 500]);
+  assert.deepEqual([cash.payment_method, cash.entry_mode, cash.cash_tendered], ['cash', 'app', 500], '🔴 every app order body carries entry_mode app — cash too, scheduling or not (APP-ENTRY-CASH)');
+  assert.equal(C.orderBody(f, { ...ctx, orderId: 'XP251025-120000-BBBB' }).entry_mode, 'app', 'no ctx flag needed: the app contract is unconditional');
   C.chooseTip(f, 0);
   assert.ok(!('tip_cents' in C.orderBody(f, ctx)) && !('tip_cents' in C.quoteBody(f, ctx)), '«Sin propina» sends no tip_cents (the dark-compatible body)');
   f.email = 'ana@'; assert.ok(!('customer_email' in C.orderBody(f, ctx)), 'an invalid email is not sent');

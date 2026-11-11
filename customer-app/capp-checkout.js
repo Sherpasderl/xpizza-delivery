@@ -217,18 +217,18 @@
     const t = tipCentsOf(f); if (t > 0) b.tip_cents = t;
     return b;
   }
-  // ctx: { restaurantId, items, itemsText, orderId }
+  // ctx: { restaurantId, items, itemsText, orderId } — every app order (cash AND card) carries entry_mode:'app': the server prices the
+  // app's distance delivery fee only on it (owner ruling 11-10; the forms stay fee-free)
   function orderBody(f, ctx) {
     const del = f.mode === 'delivery';
     const b = { restaurant_id: ctx.restaurantId, order_id: ctx.orderId, customer_name: (f.name || '').trim(), customer_phone: f.cc ? phoneMod().toE164(f.cc, f.phone) : fullPhone(f.phone),
       items: ctx.items, items_text: ctx.itemsText, notes: (f.notes || '').trim() || '—', order_type: f.mode,
-      payment_method: f.pay === 'online' ? 'online' : 'cash', razon_social: f.rtn ? (f.razon || '').trim() : '', rtn_cliente: f.rtn ? (f.rtnNum || '').trim() : '' };
+      payment_method: f.pay === 'online' ? 'online' : 'cash', entry_mode: ENTRY_MODE, razon_social: f.rtn ? (f.razon || '').trim() : '', rtn_cliente: f.rtn ? (f.rtnNum || '').trim() : '' };
     if (del) { b.lat = f.pin.lat; b.lng = f.pin.lng; b.pin_confirmed = true; b.address_details = (f.details || '').trim(); const a = areaOf(f); if (a) b.address_area = a; }
     const em = validEmail(f.email); if (em) b.customer_email = em;
     const t = tipCentsOf(f); if (t > 0) b.tip_cents = t;
     if (tipped(f) && f.tipChoice) b.tip_choice = true;   // never on cash (r7)   // r6: an explicit tip-step choice (incl. «Sin propina») — the server's last-tip preference marker
-    if (b.payment_method === 'cash') { const ct = Number(f.tendered); if (Number.isFinite(ct) && ct > 0) b.cash_tendered = ct; if (ctx.appCash === true) b.entry_mode = ENTRY_MODE; }   // S4 r2 §7: the app contract on cash, under schedulingLive
-    else b.entry_mode = ENTRY_MODE;
+    if (b.payment_method === 'cash') { const ct = Number(f.tendered); if (Number.isFinite(ct) && ct > 0) b.cash_tendered = ct; }
     // S4: the slot START (epoch ms) only for a scheduled order — never in the quote body, never in the cart signature
     if (f.time === 'schedule' && Number.isFinite(f.slot)) b.scheduled_for = f.slot;
     return b;

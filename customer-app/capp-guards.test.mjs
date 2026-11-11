@@ -32,7 +32,7 @@ import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = '2ce3198d';
-const CAPP_TIP = '71b6a254';
+const CAPP_TIP = '1cd083e4';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
@@ -230,12 +230,7 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // the resolution itself (equal to parent 2 = the merged-in line's own change; equal to parent 1 = untouched). The sync-client and
 // PORTED copies are exempt (their byte-identity checks own them, re-asserted here); any other hit must sit in MERGE_ALLOW, keyed
 // «<merge sha8> <path>», with a one-line reason — reviewed, and an entry that no longer hits is stale and fails.
-const MERGE_ALLOW = {
-  // DRYRUN (2e, next-train dry assembly asm2; TRAIN-NEXT2 A4): 1bca1782 hand-wrote CAPP_TIP (the pre-B4 placeholder pin + a DRYRUN
-  // comment) in the first capp merge; the B4 merge 01d76176 then took capp's line verbatim. The REAL assembly merges the capp tip
-  // taking capp-guards VERBATIM, so this entry must NOT exist there (its stale check makes it RED if unused).
-  '1bca1782 customer-app/capp-guards.test.mjs': 'dry-run placeholder CAPP_TIP, superseded verbatim by the B4 merge',
-};
+const MERGE_ALLOW = {};
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
   for (const { src, dst } of synced) assert.ok(sameBytes(dst, src), `🔴 ${dst} differs from (or is missing beside) its source ${src} — the merge exemption no longer holds`);

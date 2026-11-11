@@ -667,6 +667,7 @@ test('S2b placing: «Realizando pedido…»; «Volver» sends NOTHING; «Se ve b
   b.timers.flush(); await settle();   // the 2 s fill
   assert.ok(b.q('.screen .sending'));
   assert.equal(b.srv.of('createOrder').length, 1);
+  assert.equal(b.srv.of('createOrder')[0].body.entry_mode, 'app', '🔴 an ASAP cash delivery (schedulingLive off) is sent as an app order (APP-ENTRY-UI-CASH)');
   const net = b.plain.price * 100 + FEE + 7;
   assert.ok(b.text('.sndcard').includes(`Efectivo al entregar · ${L_(net)}`) && !b.text('.sndcard').includes('propina'), 'r7: a cash order carries no tip');
   assert.ok(b.q('#sspin .sok'), 'the check beat');
