@@ -169,6 +169,7 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2core-public-maps.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -523,6 +524,7 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2core-public-maps.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -906,6 +908,7 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2core-public-maps.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -1258,6 +1261,7 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2core-public-maps.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -3184,7 +3188,8 @@
       "tools/avail-identity-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js",
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2core-module-inverse.js"
      ]
     },
     {
@@ -3192,17 +3197,21 @@
      "inverses": [
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js",
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2core-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2core-module-inverse.js"
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/s2core-wiring.guard.test.js"
+   ]
   },
   "catalog/public-photos.js": {
    "pins": [],
