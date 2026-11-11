@@ -463,7 +463,12 @@ async function requestDecrease(deps, { orderId, new_total_cents, revision }) {
   return r4.outcome === 'committed' ? { outcome: 'rule4' } : r4;
 }
 
+// owner 2026-11-10: a card order's total never goes up after ordering (more food = a new order). An increase is never offered
+// and never applied: refused first, before any read, write or provider call. The code below each refusal is kept, unreachable,
+// until the owner decides whether to delete it (NOTE-sdk-card-no-increase r0).
+const increaseNotOffered = () => ({ outcome: 'refused', reason: 'increase_not_offered' });
 async function recordConsent(deps, { orderId, adjustment_id, new_total_cents }) {
+  return increaseNotOffered();
   const now = deps.clock();
   const order = await readOrder(deps.db, orderId);
   const rec = await readRecord(deps.db, orderId);
@@ -478,6 +483,7 @@ async function recordConsent(deps, { orderId, adjustment_id, new_total_cents }) 
 }
 
 async function applyIncrease(deps, { orderId, adjustment_id, order_revision, new_total_cents, accept, revision }) {
+  return increaseNotOffered();
   const now = deps.clock();
   const ov = orderRevision(revision, new_total_cents);
   if (!ov) return { outcome: 'rejected', reason: 'bad_revision' };
