@@ -26,14 +26,29 @@ const HUNKS = Object.freeze([
   "was": "      extrasAuthoring: extrasCapabilities().authoring, textEdit,   // per-product extras (the narrow deny_extras / extras_policy exception)\n"
  },
  {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "  const diff = require('./review-diff').reviewDiff({ live, liveExtraRecords: liveRes.extraRecords, draftBuilt, draftExtraRecords, photos: photos ? { active: activePhotos, draft: photoMap } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog });   // S2-core §1.6: THE one canonical review diff (consequences ungated; the publish and the manager request compute the same)\n",
+  "was": "  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: photoMap } : draftBuilt); if (textEdit) { const xc = require('./extras-consequences').extrasConsequences({ live: { items: live.items, extras: liveRes.extraRecords, structure: live.structure }, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); if (xc.length) diff.consequences = xc; }   // S2-6: the extras consequences ride the reviewed (token-bound) diff; the publish recomputes them identically\n"
+ },
+ {
   "file": "catalog/draft-assess.js",
   "now": "      extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras (the narrow deny_extras / extras_policy exception)\n",
   "was": "      extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled,   // per-product extras (the narrow deny_extras / extras_policy exception)\n"
  },
  {
   "file": "catalog/publish-edited-handler.js",
+  "now": "  const diff = require('./review-diff').reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords, photos: photos ? { active: activePhotos, draft: draftPhotos } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog });   // S2-core §1.6: the same canonical review diff as the save, before the token re-match\n",
+  "was": "  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: draftPhotos } : draftBuilt); if (textEditCapabilities().enabled) { const xc = require('./extras-consequences').extrasConsequences({ live: { items: live.items, extras: liveExtraRecords, structure: live.structure }, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); if (xc.length) diff.consequences = xc; }   // S2-6: the same consequences as the save, before the token re-match\n"
+ },
+ {
+  "file": "catalog/publish-edited-handler.js",
   "now": "        extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras: judged on PUBLISH too, not only on save\n",
   "was": "        extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled,   // per-product extras: judged on PUBLISH too, not only on save\n"
+ },
+ {
+  "file": "catalog/source-store.js",
+  "now": "    { const ids = new Set(source.items.map((i) => String(i.display && i.display.id))); for (const k of Object.keys(st.extras_by_item)) if (!seen.has(k) && !ids.has(k)) fail(`${rid} — extras_by_item references unknown item ${k}`); }   // S2-core §2.2: the build's projection keys by display id (both readers try it first)\n",
+  "was": "    for (const k of Object.keys(st.extras_by_item)) if (!seen.has(k)) fail(`${rid} — extras_by_item references unknown item ${k}`);\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

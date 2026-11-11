@@ -15,12 +15,10 @@
 // a publish never makes an old request fresh again.
 const { validateSource, sourceRefOf, encodeUpdateTime, canonicalize } = require('./source-store');
 const { buildSourceCandidate } = require('./candidate-validate');
-const { catalogDiff, verifyEditToken, sha256 } = require('./catalog-edit');
+const { verifyEditToken, sha256 } = require('./catalog-edit');
 const { activePointerRef, readPointerSnap, getActivePointer } = require('./catalog-firestore');
 const { usesPlatformFactura } = require('../factura/eligibility');
 const { resolveAccess, refuseContext } = require('../access/membership');
-const { textEditCapabilities } = require('./item-text-edit');
-const { withConsequences } = require('./extras-consequences');
 
 const MAX_AGE_MS = 14 * 24 * 3600 * 1000;   // an older request is ignored (never shown)
 const requestRefOf = (fs, rid) => fs.collection('restaurants').doc(rid).collection('meta').doc('publish_request');
@@ -72,9 +70,8 @@ async function requestPublishCore(deps, ctx, body) {
   try {
     const { inputs, built } = buildSourceCandidate(rid, draft);
     const draftBuilt = { ...built, extras: inputs.extras };   // as the save builds it (edit-catalog-handler.js)
-    diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, { ...draftBuilt, ...(photos ? { photos: draftPhotos } : {}) });
-    // with item_text_edit ON the save and the owner publish fold the extras consequences into the token-bound diff; recompute it the same way
-    if (textEditCapabilities().enabled) diff = withConsequences(diff, { live, liveExtraRecords, draftBuilt, draftExtraRecords: built.extras });
+    // S2-core §1.6: THE one canonical review diff — the same function the save and the owner publish bind their token to
+    diff = require('./review-diff').reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords: built.extras, photos: photos ? { active: activePhotos, draft: draftPhotos } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog });
     sameStructure = JSON.stringify(canonicalize(built.structure || null)) === JSON.stringify(canonicalize((live && live.structure) || null));
   } catch (_) { return reply(500, { error: 'draft_build_failed' }); }
   const sourceHash = sha256(draft);

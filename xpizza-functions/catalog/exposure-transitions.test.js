@@ -86,17 +86,18 @@ for (const rid of ['x_pizza', 'la_musa']) {
     const s = buildSourceFromCode(rid);
     const cat = Object.keys(s.structure.exposure.category_allow)[0];
     const dish = s.items.find((i) => i.display.cat === cat && i.display.variantOf == null && i.display.extras_policy !== 'none').key;
-    const first = { ref: 'tmp:g1', name: 'Extra Del Grupo', price: 15 };
+    const first = { ref: 'tmp:group-new-1', name: 'Extra Del Grupo', price: 15 };
     const mk = (attach) => XT.apply(s, { op: 'group.create', group: 'Grupo Nuevo', extras: [first], attach }).source;
     const a = mk({ mode: 'cat', cat });
     assert.deepStrictEqual(a.structure.extra_categories, [...s.structure.extra_categories, 'Grupo Nuevo'], `${L}: appended to the group order`);
-    assert.deepStrictEqual(a.extras[a.extras.length - 1], { ref: 'tmp:g1', price: 15, display: { name: 'Extra Del Grupo', cat: 'Grupo Nuevo', price: 15 } }, `${L}: the allocator's input shape`);
+    assert.deepStrictEqual(a.extras[a.extras.length - 1], { ref: 'tmp:group-new-1', price: 15, display: { name: 'Extra Del Grupo', cat: 'Grupo Nuevo', price: 15 } }, `${L}: the allocator's input shape`);
     assert.ok(a.structure.exposure.category_allow[cat].includes('Grupo Nuevo'), `${L}: category mode`);
     const b = mk({ mode: 'items', items: [dish] });
     assert.deepStrictEqual(ov(b, dish).add, ['Grupo Nuevo'], `${L}: items mode attaches the chosen dish`);
     assert.ok(!b.structure.exposure.category_allow[cat].includes('Grupo Nuevo'), `${L}: items mode leaves the category`);
     const c = mk({ mode: 'none' });
     assert.deepStrictEqual(c.structure.exposure, s.structure.exposure, `${L}: none attaches nothing (m21)`);
+    for (const x of [a, b, c]) builds(rid, x);   // each mode passes the save's allocation + validation
     refused(() => XT.apply(s, { op: 'group.create', group: 'Grupo Nuevo', extras: [], attach: { mode: 'none' } }), 'extras_group_empty');
     refused(() => XT.apply(s, { op: 'group.create', group: s.structure.extra_categories[0], extras: [first], attach: { mode: 'none' } }), 'group_name_taken');
   });
@@ -127,8 +128,8 @@ cell('XT-REMOVE-CLOSURE la_musa (T6): extra.remove closes every reference in the
   builds('la_musa', r.source);
   const residual = clone(r.source); residual.structure.exposure.item_overrides.dimsum_02 = { add: ['rice_white'] };
   assert.throws(() => builds('la_musa', residual), /references rice_white/, `${L}: a residual reference refuses at save`);
-  const fresh = XT.apply(s, { op: 'extra.add', group: 'Salsas', ref: 'tmp:x', name: 'Salsa Nueva', price: 20 }).source;
-  const gone = XT.apply(fresh, { op: 'extra.remove', ref: 'tmp:x' });
+  const fresh = XT.apply(s, { op: 'extra.add', group: 'Salsas', ref: 'tmp:salsa-new-1', name: 'Salsa Nueva', price: 20 }).source;
+  const gone = XT.apply(fresh, { op: 'extra.remove', ref: 'tmp:salsa-new-1' });
   assert.deepStrictEqual(gone.source.extras, s.extras, `${L}: add-then-remove before publish is simply gone`);
   assert.deepStrictEqual(gone.deletedIds, [], `${L}: never published, no claim`);
 });

@@ -44,6 +44,8 @@ cell('P1-DETACH-VISIBLE x_pizza: Margherita detached from «Carnes» — the REA
   const src = buildSourceFromCode('x_pizza');
   src.structure.exposure.item_overrides.Margherita = { deny: ['Carnes'] };
   const built = buildSourceCandidate('x_pizza', src).built;
+  assert.ok(Object.keys(built.structure.extras_by_item).length, `${L}: premise — the projection emits per-dish entries (keyed by display id)`);
+  require('./candidate-validate').assertBuiltValid('x_pizza', built, 'x_pizza (projection)');   // publish's own validation accepts the display-id keys
   const body = composeServedMenu('x_pizza', { items: built.items, structure: built.structure, extras: built.extras });
   const dish = (name) => body.dishes.find((d) => d.name === name);
   const groups = (d) => GP.offeredExtraGroups(d, body.extras, body.extras_by_category, body.extras_by_item).map((g) => (g && (g.cat || g.name || g.category)) || g);

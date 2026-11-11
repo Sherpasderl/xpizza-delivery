@@ -82,9 +82,10 @@ const moveToNy = (...keys) => (d) => { for (const k of keys) d.items.find((i) =>
     assert.ok(s && s.by === 'mgrOn01' && s.counts.changed === saved.diff.changed.length, `${L}: the request is recorded with the reviewed counts (${JSON.stringify(s && s.counts)})`);
   });
 
-  await cell('MRC-OFF-UNCHANGED', async (L) => {
-    // switch OFF: the save cannot make a text edit, so the consequence-bearing draft is written as a draft and its token minted the
-    // pre-switch way (catalogDiff only, no fold) — the request must verify it exactly as before the fix
+  await cell('MRC-OFF-UNGATED', async (L) => {
+    // switch OFF: the save cannot make a text edit, so the consequence-bearing draft is written as a draft. S2-core §1.6 (PLAN-structure-
+    // S2core-r3): the ONE canonical review diff folds the consequences UNGATED — with item_text_edit OFF the request verifies the folded
+    // diff exactly as with it ON (prod runs ON, so no plain-diff token was ever minted there), and a plain-diff token is superseded
     SWITCH.enabled = false;
     const w = world(); await w.ready;
     const { source } = await PR.readDraftFrom(w.fs, FISCAL);
@@ -92,10 +93,14 @@ const moveToNy = (...keys) => (d) => { for (const k of keys) d.items.find((i) =>
     await w.meta('source').set(draft);
     const { source: stored, updateTime } = await PR.readDraftFrom(w.fs, FISCAL);
     const live = buildSourceCandidate(FISCAL, w.live); const d = buildSourceCandidate(FISCAL, stored);
-    const diff = catalogDiff({ ...live.built, extras: live.inputs.extras }, { ...d.built, extras: d.inputs.extras });
-    const token = issueEditToken({ rid: FISCAL, baseActiveVersionId: 'v1', sourceUpdateTime: updateTime, sourceHash: sha256(stored), diff });
-    const r = await w.request(token);
-    assert.deepStrictEqual([r.status, r.body.ok], [200, true], `${L}: with the switch OFF the request folds nothing and verifies the plain diff (got ${JSON.stringify(r)})`);
+    const plain = catalogDiff({ ...live.built, extras: live.inputs.extras }, { ...d.built, extras: d.inputs.extras });
+    const diff = require('./extras-consequences').withConsequences(plain, { live: { ...live.built, extras: live.inputs.extras }, liveExtraRecords: live.built.extras, draftBuilt: { ...d.built, extras: d.inputs.extras }, draftExtraRecords: d.built.extras });
+    assert.ok(diff.consequences && diff.consequences.length, `${L}: premise — the draft carries a consequence`);
+    const state = { rid: FISCAL, baseActiveVersionId: 'v1', sourceUpdateTime: updateTime, sourceHash: sha256(stored) };
+    const r = await w.request(issueEditToken({ ...state, diff }));
+    assert.deepStrictEqual([r.status, r.body.ok], [200, true], `${L}: with the switch OFF the request verifies the folded (canonical) diff (got ${JSON.stringify(r)})`);
+    const stale = await w.request(issueEditToken({ ...state, diff: plain }));
+    assert.deepStrictEqual([stale.status, stale.body.error], [409, 'edit_superseded'], `${L}: a plain-diff token is superseded (got ${JSON.stringify(stale)})`);
     SWITCH.enabled = true;
   });
 
