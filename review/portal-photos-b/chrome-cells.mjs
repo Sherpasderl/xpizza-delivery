@@ -164,13 +164,13 @@ await cell('5 CSP — inside the scoped prefixes: no violation; outside: the bro
   let r = null;
   for (let i = 0; i < 40 && !r; i++) { await sleep(250); r = await ev(sessionId, 'window.__csp || null'); }   // the probes run one by one
   const want = {
-    'img https://storage.googleapis.com/xpizza-delivery-photos/photos/r/P-card.webp': false,
+    'img https://storage.googleapis.com/sherpa-delivery-photos/photos/r/P-card.webp': false,
     'img https://storage.googleapis.com/xpizza-delivery.firebasestorage.app/drafts/r/P-card.webp?X-Goog-Signature=x': false,
     'img blob:': false,
     'put https://storage.googleapis.com/xpizza-delivery.firebasestorage.app/uploads/r/u1?X-Goog-Signature=x': false,
     'img https://storage.googleapis.com/xpizza-delivery.firebasestorage.app/uploads/r/u1': true,
     'img https://storage.googleapis.com/other-bucket/photos/r/P.webp': true,
-    'img https://xpizza-delivery-photos.storage.googleapis.com/photos/r/P.webp': true,
+    'img https://sherpa-delivery-photos.storage.googleapis.com/photos/r/P.webp': true,
     'img https://xpizza-orders.netlify.app/images/a.jpg': true,
     'put https://storage.googleapis.com/xpizza-delivery.firebasestorage.app/drafts/r/x': true,
     'put https://storage.googleapis.com/other-bucket/uploads/r/u1': true,

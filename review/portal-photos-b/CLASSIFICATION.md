@@ -7,7 +7,7 @@ Build: `feat/portal-dish-photos-b` (base bd777b6d). The approved mockup is `MOCK
   - Desktop 1280: P1, the P1 «Nuevo producto» inset, P2, P3, P4, P5, the P5 no-photo inset, P6a/b/c, P7, the P7 removal inset, the P7 row inset, P8, the P8 no-seal inset, P9, P10a, P10b.
   - Phone 390: P1, P1 cajón, P2, P3, P7.
 - **Dark:** set the way the theme toggle sets it (`data-theme="dark"` on both pages; both ship `data-theme="light"`).
-- **⚠️ UNCONFIRMED:** the public bucket name `xpizza-delivery-photos` (A0 has not created it). The captures do not depend on it; the CSP and its test pins do.
+- **Public bucket name:** `sherpa-delivery-photos` (owner 2026-11-11; not created yet — the owner's runbook creates it). The captures do not depend on it; the CSP and its test pins do.
 - **Review:** the advisor reviews the 46 overlays before any MATCH counts. The verdicts below are mine.
 
 ## The photo delta — every new piece, per frame

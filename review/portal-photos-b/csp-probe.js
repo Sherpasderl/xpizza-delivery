@@ -8,13 +8,13 @@
   document.addEventListener('securitypolicyviolation', () => { hits += 1; });
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const probes = [
-    ['img', 'https://storage.googleapis.com/xpizza-delivery-photos/photos/r/P-card.webp'],
+    ['img', 'https://storage.googleapis.com/sherpa-delivery-photos/photos/r/P-card.webp'],
     ['img', 'https://storage.googleapis.com/xpizza-delivery.firebasestorage.app/drafts/r/P-card.webp?X-Goog-Signature=x'],
     ['img', 'blob:'],
     ['put', 'https://storage.googleapis.com/xpizza-delivery.firebasestorage.app/uploads/r/u1?X-Goog-Signature=x'],
     ['img', 'https://storage.googleapis.com/xpizza-delivery.firebasestorage.app/uploads/r/u1'],
     ['img', 'https://storage.googleapis.com/other-bucket/photos/r/P.webp'],
-    ['img', 'https://xpizza-delivery-photos.storage.googleapis.com/photos/r/P.webp'],
+    ['img', 'https://sherpa-delivery-photos.storage.googleapis.com/photos/r/P.webp'],
     ['img', 'https://xpizza-orders.netlify.app/images/a.jpg'],
     ['put', 'https://storage.googleapis.com/xpizza-delivery.firebasestorage.app/drafts/r/x'],
     ['put', 'https://storage.googleapis.com/other-bucket/uploads/r/u1'],
