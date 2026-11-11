@@ -416,6 +416,8 @@
   "catalog/generate-form-bundle.js#generateKdsManifest": "catalog",
   "catalog/group-index.js#groupIndexFrom": "catalog",
   "catalog/extras-consequences.js#extrasConsequences": "catalog",
+  "catalog/extras-consequences.js#withConsequences": "catalog",
+  "catalog/firestore-fake.js#update": "fixtures",
   "catalog/edit-preflight.js#attributor": "catalog",
   "catalog/edit-preflight.js#editPreflight": "catalog",
   "catalog/group-intake.js#groupIssues": "catalog",

@@ -31,4 +31,13 @@ function extrasConsequences({ live, draft }) {
   return out.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
 
-module.exports = { extrasConsequences };
+// The S2-6 fold the save and the owner publish apply (PLAN-manager-request-consequences r0): the consequences ride the reviewed,
+// token-bound diff, so every recompute of that diff must apply it identically. Mutates and returns `diff`.
+function withConsequences(diff, { live, liveExtraRecords, draftBuilt, draftExtraRecords }) {
+  const xc = extrasConsequences({ live: { items: live.items, extras: liveExtraRecords, structure: live.structure },
+    draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } });
+  if (xc.length) diff.consequences = xc;
+  return diff;
+}
+
+module.exports = { extrasConsequences, withConsequences };

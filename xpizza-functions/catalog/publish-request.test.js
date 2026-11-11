@@ -46,7 +46,8 @@ function store(rid = FISCAL) {
   setPtr(fs, rid, { version: 'v1', generation: 3 });
   const liveBuilt = builtOf(live, rid);
   const deps = (db) => ({ fs, db, now: () => 5000,
-    readActiveBuilt: async () => ({ built: liveBuilt, versionId: await getActiveVersionId(fs, rid) }),
+    // the production reader's shape (publish-request.js readActiveBuiltFrom): the built catalog AND the live extra RECORDS
+    readActiveBuilt: async () => ({ built: liveBuilt, versionId: await getActiveVersionId(fs, rid), extraRecords: buildSourceCandidate(rid, live).built.extras }),
     readDraft: (r) => PR.readDraftFrom(fs, r) });
   const tokenFor = async () => {
     const { source, updateTime } = await PR.readDraftFrom(fs, rid);

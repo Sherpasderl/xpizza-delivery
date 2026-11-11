@@ -155,6 +155,7 @@
     "xpizza-functions/catalog/publish-edited.test.js",
     "xpizza-functions/catalog/publish-parity.test.js",
     "xpizza-functions/catalog/publish-paths.test.js",
+    "xpizza-functions/catalog/publish-request-consequences.test.js",
     "xpizza-functions/catalog/publish-request.test.js",
     "xpizza-functions/catalog/redeem-eligibility.test.js",
     "xpizza-functions/catalog/redeem-exclusion.test.js",
@@ -503,6 +504,7 @@
     "xpizza-functions/catalog/publish-edited.test.js",
     "xpizza-functions/catalog/publish-parity.test.js",
     "xpizza-functions/catalog/publish-paths.test.js",
+    "xpizza-functions/catalog/publish-request-consequences.test.js",
     "xpizza-functions/catalog/publish-request.test.js",
     "xpizza-functions/catalog/redeem-eligibility.test.js",
     "xpizza-functions/catalog/redeem-exclusion.test.js",
@@ -877,6 +879,7 @@
     "xpizza-functions/catalog/publish-edited.test.js",
     "xpizza-functions/catalog/publish-parity.test.js",
     "xpizza-functions/catalog/publish-paths.test.js",
+    "xpizza-functions/catalog/publish-request-consequences.test.js",
     "xpizza-functions/catalog/publish-request.test.js",
     "xpizza-functions/catalog/redeem-eligibility.test.js",
     "xpizza-functions/catalog/redeem-exclusion.test.js",
@@ -1222,6 +1225,7 @@
     "xpizza-functions/catalog/publish-edited.test.js",
     "xpizza-functions/catalog/publish-parity.test.js",
     "xpizza-functions/catalog/publish-paths.test.js",
+    "xpizza-functions/catalog/publish-request-consequences.test.js",
     "xpizza-functions/catalog/publish-request.test.js",
     "xpizza-functions/catalog/redeem-eligibility.test.js",
     "xpizza-functions/catalog/redeem-exclusion.test.js",
@@ -2415,6 +2419,7 @@
   "catalog/extras-consequences.js",
   "catalog/extras-eligibility.js",
   "catalog/extras-intake.js",
+  "catalog/firestore-fake.js",
   "catalog/form-menu-source.js",
   "catalog/form-rebake.js",
   "catalog/frozen-keys.js",
@@ -2997,6 +3002,10 @@
    "lifts": []
   },
   "catalog/extras-intake.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/firestore-fake.js": {
    "pins": [],
    "lifts": []
   },
