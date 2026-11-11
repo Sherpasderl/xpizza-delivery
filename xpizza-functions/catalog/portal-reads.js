@@ -178,6 +178,10 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
   try { extrasAuthoring = require('./platform-extras').extrasCapabilities().authoring === true; } catch (_) { extrasAuthoring = false; }
   let textEditEnabled = false;
   try { textEditEnabled = require('./item-text-edit').textEditCapabilities().enabled === true; } catch (_) { textEditEnabled = false; }
+  /* S2-core (the Extras page): the platform extrasCatalog switch, ALWAYS stated and fail-closed — the SAME constant the save's allocator,
+     compareToActive (save / draft check / publish) and the structure gate enforce, so the portal keeps the Extras page dark while it is off. */
+  let extrasCatalog = false;
+  try { extrasCatalog = require('./platform-structure').structureCapabilities().extrasCatalog === true; } catch (_) { extrasCatalog = false; }
   let reservedNames = null;
   if (textEditEnabled) {
     try {
@@ -314,6 +318,7 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     textEditEnabled,
     extrasAuthoring,
     ...(reservedNames ? { reservedNames } : {}),
+    extrasCatalog,
     ...photoOut,   // DISH PHOTOS A2 step 9 (E-P3)
     source,
     // The CAS baseline. Byte-identical to editCatalog's baseSourceUpdateTime by construction.
