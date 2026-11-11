@@ -1,6 +1,6 @@
 'use strict';
 // DISH PHOTOS A2 step 13 — photos/sweep-io.js: the sweep MODE (RTDB config/photos_sweep: exactly 'dry_run' | 'live', anything else /
-// absent / unreadable → 'off'; 'live' without PHOTOS_PUBLIC_BUCKET → 'dry_run'), the generation-matched GCS delete adapter, and runSweep
+// absent / unreadable → 'off'; 'live' without a configured public bucket → 'dry_run'), the generation-matched GCS delete adapter, and runSweep
 // over every restaurant in the registry (one rid's failure never stops the others). Run: node photos/sweep-io.test.js
 const assert = require('assert');
 const { modeOf, makeGcsDeleter, runSweep } = require('./sweep-io');

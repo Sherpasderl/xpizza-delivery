@@ -58,7 +58,12 @@ const meta = (fs, vid) => fs.collection('restaurants').doc(RID).collection('vers
     for (const k of ['card', 'hero']) s.put('default', `drafts/${RID}/${P1}-${k}.webp`);
     const mk = (over = {}) => makePublishPhotos({ fs, store: s, publicBucket: () => PUB, now: () => T, ...over });
     await assert.rejects(() => mk().prepare(RID, { tb_a: { state: 'pid', pid: P3 } }), (e) => e.code === 'photo_unavailable', 'PUB-DELETING-REFUSED');
-    await assert.rejects(() => mk({ publicBucket: () => '' }).prepare(RID, { tb_a: { state: 'pid', pid: P1 } }), (e) => e.code === 'photo_publish_failed', 'PUB-NO-BUCKET-FAILS-CLOSED');
+    { // no public bucket → fails closed BEFORE any photo write: the code, ZERO copies and an UNCHANGED registry doc, all in ONE named assert
+      const copiesBefore = s.copies.length; const regBefore = JSON.stringify((await reg(fs, P1).get()).data());
+      let code = null; try { await mk({ publicBucket: () => '' }).prepare(RID, { tb_a: { state: 'pid', pid: P1 } }); } catch (e) { code = e.code; }
+      const after = { code, copies: s.copies.length - copiesBefore, registry: JSON.stringify((await reg(fs, P1).get()).data()) };
+      assert.deepStrictEqual(after, { code: 'photo_publish_failed', copies: 0, registry: regBefore }, `PUB-NO-BUCKET-FAILS-CLOSED (no copy, no registry write) ${JSON.stringify(after)}`);
+    }
     s.fail.add(`photos/${RID}/${P1}-hero.webp`);
     await assert.rejects(() => mk().prepare(RID, { tb_a: { state: 'pid', pid: P1 } }), (e) => e.code === 'photo_publish_failed', 'PUB-COPY-FAILURE-FAILS-CLOSED');
     // codex r1 P2-4: the card copy that DID succeed is recorded at once, so an abandoned change leaves nothing the sweeper cannot remove

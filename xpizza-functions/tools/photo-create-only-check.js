@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // DISH PHOTOS E4 (3) — the OWNER's real-GCS create-only check (a deploy-time acceptance item; the executor never runs it against prod).
-// Run it from the DEPLOY checkout (its xpizza-functions/.env and .env.<project> hold the photo bucket params production reads):
+// Run it from the DEPLOY checkout (its committed platform/photos.json holds the photo bucket names production reads):
 //
 //   node tools/photo-create-only-check.js --project xpizza-delivery --bucket <the private photo bucket>          # prints the plan, writes nothing
 //   node tools/photo-create-only-check.js --project xpizza-delivery --bucket <the private photo bucket> --yes    # the owner
@@ -15,9 +15,8 @@
 // photo sweeper's own deleter (photos/sweep-io.js) pinned to its first generation → must be refused, the re-created object kept.
 // Exit = the worst of the three (3 cleanup > 2 REFUSED > 1 FAIL > 0 PASS). Logic, refusals and exit codes: tools/photo-create-only-check-core.js.
 // REFUSED (exit 2, nothing touched) before any client: no --project (require-project); a storage-emulator variable; a private or public
-// bucket identity that cannot be resolved (photos/buckets.js over the project's dotenv params — never the operator's shell); the two equal;
+// bucket identity that cannot be resolved (photos/buckets.js over the COMMITTED photos config for --project — never a dotenv or the shell); the two equal;
 // --bucket not the private one. There is deliberately NO privacy probe (bucket IAM alone cannot prove privacy; see the core's header).
-const path = require('path');
 const crypto = require('crypto');
 const { requireProject } = require('./require-project');
 const PROJECT_ID = requireProject({ requireFlag: true });   // before any client
@@ -28,10 +27,8 @@ const args = C.parseArgs(process.argv.slice(2));
 if (args.error) refuse(args.error);
 const emu = C.refuseEmulatorEnv(process.env);
 if (emu) refuse(emu);
-let params;
-try { params = C.readBucketParams(path.join(__dirname, '..'), PROJECT_ID); } catch (e) { refuse(`the project's dotenv could not be read — ${String((e && e.message) || e).slice(0, 120)}`); }
-const { privateBucket, publicBucket } = C.resolveTargets({ projectId: PROJECT_ID, params });
-const why = C.checkTarget({ bucket: args.bucket, privateBucket, publicBucket });
+const { privateBucket, publicBucket, reason } = C.resolveTargets({ projectId: PROJECT_ID });   // the committed photos config, never a dotenv
+const why = C.checkTarget({ bucket: args.bucket, privateBucket, publicBucket, reason });
 if (why) refuse(why);
 
 if (!args.yes) {

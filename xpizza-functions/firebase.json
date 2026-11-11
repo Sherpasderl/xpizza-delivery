@@ -19,7 +19,8 @@
       "codebase": "default",
       "predeploy": [
         "node \"$RESOURCE_DIR/tools/deploy-env-guard.js\" --root \"$RESOURCE_DIR\"",
-        "node \"$RESOURCE_DIR/tools/deploy-dotenv-guard.js\" --root \"$RESOURCE_DIR\""
+        "node \"$RESOURCE_DIR/tools/deploy-dotenv-guard.js\" --root \"$RESOURCE_DIR\"",
+        "node \"$RESOURCE_DIR/tools/platform-photos-check.js\" --root \"$RESOURCE_DIR\" --project \"$GCLOUD_PROJECT\""
       ],
       "runtime": "nodejs22",
       "ignore": [

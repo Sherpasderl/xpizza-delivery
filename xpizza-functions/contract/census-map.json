@@ -857,6 +857,7 @@
   "whatsapp/instance-health.js#readAccountStatus": "infra",
   "driver-ledger/ledger-core.js#isAccruable": "driver_pay",
   "pay-rate.js#shiftEarningsCents": "driverpay",
+  "photos/photos-config.js#deepFreeze": "catalog",
   "photos/functions.js#authorize": "catalog",
   "photos/functions.js#fail": "catalog",
   "photos/functions.js#handle": "catalog",

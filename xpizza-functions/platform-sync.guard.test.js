@@ -11,12 +11,12 @@ const M = require('./platform-manifest');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 // 1. DRIFT — the bundled copy is byte-identical to the canonical repo files
-for (const f of ['sites.json', 'compat.json']) {
+for (const f of ['sites.json', 'compat.json', 'photos.json']) {
   const canon = fs.readFileSync(path.join(__dirname, '..', 'platform', f));
   const bundled = fs.readFileSync(path.join(__dirname, 'platform', f));
   assert.ok(canon.equals(bundled), `🔴 platform/${f} drifted from <repo>/platform/${f} — run \`npm run sync:platform\``);
 }
-ok('bundled platform/sites.json + compat.json are byte-identical to the canonical <repo>/platform copies');
+ok('bundled platform/sites.json + compat.json + photos.json are byte-identical to the canonical <repo>/platform copies');
 
 // 2. SHAPE
 assert.deepStrictEqual(M.validateManifest(M.PLATFORM.sites), []);

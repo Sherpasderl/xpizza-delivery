@@ -19,7 +19,7 @@
 //   getBranchAvailability E-P4  branches[i].photos {[itemKey]: {card}} from THAT branch's active meta/photos, omitted when empty
 // Scenario hooks: fake.failNext(fn, status, body), fake.holdPut(), fake.flags, fake.caps.
 export const DEFAULT_BUCKET = 'xpizza-delivery.firebasestorage.app';
-export const PUBLIC_BUCKET = 'xpizza-delivery-photos';     // ⚠️ PLACEHOLDER until A0 names it (netlify.toml carries the same)
+export const PUBLIC_BUCKET = 'sherpa-delivery-photos';     // owner-named 2026-11-11 (netlify.toml carries the same)
 const GCS = 'https://storage.googleapis.com';
 const MAX = 10485760;
 const FRAMES = { card: { a: 4 / 3, w: 400, h: 300 }, hero: { a: 16 / 10, w: 496, h: 310 } };

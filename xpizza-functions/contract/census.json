@@ -52740,6 +52740,14 @@
    "rule": "server:payment"
   },
   {
+   "file": "xpizza-functions/photos/photos-config.js",
+   "fn": "deepFreeze",
+   "base": "o",
+   "line": 38,
+   "how": "Object.values",
+   "rule": "server:catalog"
+  },
+  {
    "file": "xpizza-functions/photos/process.js",
    "fn": "without",
    "base": "o",
