@@ -18,9 +18,15 @@ let n = 0; const fails = [];
 function cell(label, fn) { try { fn(label); console.log(`  ✓ ${++n} ${label}`); } catch (e) { fails.push(label); console.log(`  ✗ ${label}: ${e.message}`); } }
 const builtOf = (rid) => buildSourceCandidate(rid, buildSourceFromCode(rid)).built;
 
+// TODAY = the maps and order main 9269859d builds, captured from that tree (catalog/s2core-maps.golden.json) — never this branch's own
+// build, which now derives its maps through the projection itself (a self-comparison proves nothing: m30)
+const GOLDEN = require('./s2core-maps.golden.json');
 for (const rid of ['x_pizza', 'la_musa']) {
   const built = builtOf(rid);
-  const today = { byCategory: built.structure.extras_by_category || {}, byItem: built.structure.extras_by_item || {} };
+  const today = { byCategory: GOLDEN[rid].extras_by_category || {}, byItem: GOLDEN[rid].extras_by_item || {} };
+  cell(`T14 PROJ-TODAY-NOOP ${rid}: today's sources build today's extra_order exactly (the one group order changes nothing)`, (L) => {
+    assert.deepStrictEqual(built.structure.extra_order, GOLDEN[rid].extra_order, L);
+  });
   cell(`P0-MAP-DELTA-EXACT ${rid}: the projection derives today's maps byte-for-byte`, (L) => {
     const got = projectExtrasMaps({ items: built.items, extras: built.extras, structure: built.structure });
     assert.deepStrictEqual(got.byCategory, today.byCategory, `${L}: extras_by_category`);
