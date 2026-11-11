@@ -323,8 +323,10 @@ function foldNewGroups(draft, entries, saved) {
 // nowhere in pendingChanges, whose entries light PRICE cells by key.
 // S4 (item edit) — and so is an existing product's text or section: one per changed field (Nombre, Descripción, Categoría),
 // MOCKUP-portal-item-edit B («4 cambios sin publicar · 1 producto»).
+// STRUCTURE S1 — and so is a dish's extras checklist or «Sin extras» (Codex S1 plan r1 #1): a SAVED one is pending work after the
+// drawer closed, so the reload / branch-switch / self-update guard (portalReloadFacts) still holds it.
 export const pendingCount = (draft, savedAdditions) => pendingChanges(draft, savedAdditions).length + pendingPhotos(draft).length
-  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0);
+  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingExtras(draft).reduce((n, t) => n + t.fields.length, 0);
 
 // ── DISH PHOTOS B (PLAN-dish-photos §2.1 / §2.2) — THE DRAFT PHOTO MAP ────────────────────────────────────────────────
 // `source.photos` = {[itemKey]: {state:'pid', pid} | {state:'removed'}}; an absent key is LEGACY. It is part of the document
@@ -782,7 +784,7 @@ export function itemCategoryProblem(draft, key, { cat, subcat = null } = {}) {
 // The whole drawer, once. `edit`: any of { name, desc, cat, subcat, price, optionPrices: {[optionKey]: raw}, photo,
 // extraPrices: {[extraKey]: raw} }; an absent field is unchanged. `reserved`: the served reservedNames (itemNameProblem).
 // Returns true when written, false when refused (and then NOTHING was written).
-export function editItem(draft, key, edit = {}, { reserved = null } = {}) {
+export function editItem(draft, key, edit = {}, { reserved = null, extrasAuthoring = false } = {}) {
   if (!canEditContent(draft)) return false;
   const row = existingRow(draft.state, key);
   if (!row || !row.display) return false;
@@ -815,6 +817,28 @@ export function editItem(draft, key, edit = {}, { reserved = null } = {}) {
     if (!x || p === null) return false;
     exPrices.push([k, raw]);
   }
+  // STRUCTURE S1 (PLAN-per-product-extras §2 / §3 / §8): the dish's typed, key-only exclusions and «Sin extras». Only with the
+  // server's authoring switch ON; never on an option (existingRow refuses one: the launcher's list governs the group); every
+  // key an existing extra; a key the merchant ADDS must be in the dish's baseline AFTER this edit's move (a kept key outside
+  // it is preserved untouched — it excludes nothing there).
+  const denyEdit = own(e, 'denyExtras'), policyEdit = own(e, 'extrasPolicy');
+  if ((denyEdit || policyEdit) && extrasAuthoring !== true) return false;
+  if (policyEdit && !(e.extrasPolicy === 'none' || e.extrasPolicy === null)) return false;
+  let denyList = null;
+  if (denyEdit) {
+    const list = e.denyExtras;
+    if (!Array.isArray(list) || list.some((k) => typeof k !== 'string') || new Set(list).size !== list.length) return false;
+    const order = rowsOf(draft.state, 'extra').map((x) => x && x.key);
+    if (list.some((k) => !order.includes(k))) return false;
+    const expo = draft.state.structure && draft.state.structure.exposure;
+    if (!expo || typeof expo !== 'object') return false;
+    const kept = new Set(denyExtrasOf(draft.state, key));
+    const base = extrasBaseline(draft.state, key, moving ? { cat, subcat } : null);
+    if (!base) return false;
+    const inBase = new Set(base.groups.flatMap((g) => g.keys));
+    if (list.some((k) => !kept.has(k) && !inBase.has(k))) return false;
+    denyList = list.slice().sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  }
   const photo = own(e, 'photo') ? e.photo : undefined;
   if (photo !== undefined && !(photo === null || (photo && photo.state === 'removed' && Object.keys(photo).length === 1)
       || (photo && photo.state === 'pid' && typeof photo.pid === 'string' && photo.pid && Object.keys(photo).length === 2))) return false;
@@ -828,7 +852,66 @@ export function editItem(draft, key, edit = {}, { reserved = null } = {}) {
   for (const [o, p] of optPrices) setRowPrice(o, p);
   if (photo !== undefined) setPhoto(draft, key, photo);
   for (const [k, raw] of exPrices) setPrice(draft, 'extra', k, raw);
+  if (denyList) {
+    const expo = draft.state.structure.exposure;
+    if (!expo.item_overrides || typeof expo.item_overrides !== 'object') expo.item_overrides = {};
+    const io = expo.item_overrides;
+    // the validator refuses an empty list and an empty override (source-store.js:462-463, :473): [] DELETES them
+    if (denyList.length) io[key] = { ...(io[key] || {}), deny_extras: denyList };
+    else if (io[key]) { delete io[key].deny_extras; if (!Object.keys(io[key]).length) delete io[key]; }
+  }
+  // one extras_policy per group: the launcher AND every option (source-store.js:596-598)
+  if (policyEdit) for (const r of [row, ...opts]) { if (e.extrasPolicy === 'none') r.display.extras_policy = 'none'; else delete r.display.extras_policy; }
   return true;
+}
+
+// ── STRUCTURE S1 — A DISH'S EXTRAS (PLAN-portal-structure-S1-ui r3; PLAN-per-product-extras rev 2.2 §2 / §3 / §12.3) ─────────
+// The dish's typed exclusions: item_overrides[key].deny_extras (keys only), [] when absent.
+function denyExtrasOf(src, key) {
+  const io = src && src.structure && src.structure.exposure && src.structure.exposure.item_overrides;
+  const o = io && typeof io === 'object' ? io[key] : null;
+  return o && Array.isArray(o.deny_extras) ? o.deny_extras.slice() : [];
+}
+export const dishDenyExtras = (draft, key) => denyExtrasOf(draft && draft.state, key);
+// The checklist's universe (§12.3): what the dish would offer WITHOUT its own exclusions and «Sin extras» — its section's
+// extras ∪ its `add`, legacy rules still applied — grouped by extra-category in THE ONE rule's order (the page's
+// ExtrasEligibility, the server's byte copy). `move` = the section this edit moves it to (the prospective dish). null when the
+// evaluator is absent (nothing about extras is ever guessed).
+export function extrasBaseline(src, key, move = null) {
+  const E = globalThis.ExtrasEligibility;
+  if (!E || typeof E.projectEligibility !== 'function' || typeof E.eligibleExtras !== 'function') return null;
+  const s = clone(src);
+  const r = rowsOf(s, 'item').find((x) => x && x.key === key);
+  if (!r || !r.display || isOptionRow(r)) return { groups: [] };
+  const g = groupOfRow(s, r);
+  const members = [r, ...(g ? g.options : [])];
+  for (const m of members) {
+    if (move) { m.display.cat = move.cat; if (move.subcat == null) delete m.display.subcat; else m.display.subcat = move.subcat; }
+    delete m.display.extras_policy;
+  }
+  const io = s.structure && s.structure.exposure && s.structure.exposure.item_overrides;
+  if (io && io[key]) { delete io[key].deny_extras; if (!Object.keys(io[key]).length) delete io[key]; }
+  let keys;
+  try { const proj = E.projectEligibility(s); keys = E.eligibleExtras(proj, key).map((k) => [k, proj.extraCat[k]]); } catch (_) { return null; }
+  const groups = [];
+  for (const [k, c] of keys) { const last = groups[groups.length - 1]; if (last && last.cat === c) last.keys.push(k); else groups.push({ cat: c, keys: [k] }); }
+  return { groups };
+}
+// Existing products whose checklist or «Sin extras» differs from what was loaded — [{ key, fields: ['denyExtras' | 'extrasPolicy'] }],
+// in document order; the list compares as a SET (order-free, absent ≡ empty), the policy as 'none' vs absent.
+export function pendingExtras(draft) {
+  const out = [];
+  for (const row of rowsOf(draft.state, 'item')) {
+    if (!row || isTmp(row) || isOptionRow(row) || typeof row.key !== 'string') continue;
+    const was = existingRow(draft.orig, row.key);
+    if (!was || !was.display || !row.display) continue;
+    const a = new Set(denyExtrasOf(draft.orig, row.key)), b = new Set(denyExtrasOf(draft.state, row.key));
+    const fields = [];
+    if (a.size !== b.size || [...a].some((k) => !b.has(k))) fields.push('denyExtras');
+    if ((was.display.extras_policy === 'none') !== (row.display.extras_policy === 'none')) fields.push('extrasPolicy');
+    if (fields.length) out.push({ key: row.key, fields });
+  }
+  return out;
 }
 
 // The name an EXISTING product had when the draft was loaded (the one the merchant recognises), or null. Pure.

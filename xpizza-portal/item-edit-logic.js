@@ -11,7 +11,7 @@
 // hold (the merchant may save the rest, then retry or remove it).
 import {
   draftSource, choiceGroup, editItem, itemNameProblem, itemDescProblem, itemCategoryProblem, tidyItemName, parsePrice,
-  draftPhotos, ITEM_NAME_MAX, ITEM_DESC_MAX,
+  draftPhotos, ITEM_NAME_MAX, ITEM_DESC_MAX, extrasBaseline, dishDenyExtras,
 } from './editor.js';
 
 export const COPY = {
@@ -46,7 +46,9 @@ const rowOf = (draft, key) => (draftSource(draft).items || []).find((r) => r && 
 let seq = 0;
 // The drawer for an existing product, or null (an unknown key, an option, an unsaved addition).
 // `reservedNames`: what getEditableCatalog served for this restaurant (absent ⇒ the C5 check waits for the server).
-export function open(draft, key, reservedNames = null) {
+// `opts.extrasAuthoring`: the server's per-product extras switch (getEditableCatalog); absent ⇒ OFF — the checklist and «Sin
+// extras» are shown but inert (STRUCTURE S1, ruling R5); the prices keep working as today (R1 / R4).
+export function open(draft, key, reservedNames = null, opts = {}) {
   const row = rowOf(draft, key);
   if (!row || !row.display || row.display.variantOf != null || 'ref' in row) return null;
   const d = row.display;
@@ -61,10 +63,14 @@ export function open(draft, key, reservedNames = null) {
     // the extras-group price blocks shown under the fields (advisor Q2): their prices are part of the copy too
     extraPrices: Object.fromEntries((draftSource(draft).extras || []).filter((x) => x && typeof x.key === 'string')
       .map((x) => [x.key, Number.isInteger(x.price) ? String(x.price) : ''])),
+    // STRUCTURE S1: the dish's typed exclusions (source.extras order) and «Sin extras» are part of the copy too
+    denyExtras: dishDenyExtras(draft, key),
+    extrasNone: d.extras_policy === 'none',
   };
   const reserved = Array.isArray(reservedNames) ? new Set(reservedNames.map(String)) : null;
   return { id: ++seq, draft, key, group: !!g, base, work: JSON.parse(JSON.stringify({ ...base, photo: base.photo === undefined ? null : base.photo })),
-    photoTouched: false, upload: null, closed: false, reserved, same: null, serverError: null };
+    photoTouched: false, upload: null, closed: false, reserved, same: null, serverError: null,
+    extrasAuthoring: !!(opts && opts.extrasAuthoring === true) };
 }
 
 // One field of the copy. A section change clears the subsection (moving INTO one with subsections asks for a choice: no preselect).
@@ -86,6 +92,17 @@ export function set(s, field, value) {
       if (ps.length) { const v = String(Math.min(...ps)); for (const k of Object.keys(w.optionPrices)) w.optionPrices[k] = v; }
     }
   }
+  // STRUCTURE S1 — the checklist (only the keys the PROSPECTIVE dish shows; a kept key outside it is preserved) and «Sin extras».
+  // Inert while the server switch is off; the checklist is inert while «Sin extras» is on (A2).
+  else if ((field === 'extraOn' || field === 'extraGroupOn') && s.extrasAuthoring && !w.extrasNone && value && typeof value === 'object') {
+    const b = prospectBaseline(s);
+    const shown = b ? b.groups.flatMap((g) => g.keys) : [];
+    const keys = field === 'extraOn' ? (shown.includes(value.key) ? [value.key] : []) : ((b && b.groups.find((g) => g.cat === value.cat)) || { keys: [] }).keys;
+    const deny = new Set(w.denyExtras);
+    for (const k of keys) { if (value.on === false) deny.add(k); else deny.delete(k); }
+    const order = (draftSource(s.draft).extras || []).map((x) => x && x.key);
+    w.denyExtras = [...deny].sort((a, b2) => order.indexOf(a) - order.indexOf(b2));
+  } else if (field === 'extrasNone' && s.extrasAuthoring) w.extrasNone = value === true;
   if (field === 'optionPrice') s.same = false;
   // the server's line (a review-time refusal) goes once the merchant changes what it is about: the name also owns the
   // derived option names; the section also owns its subsection
@@ -106,7 +123,48 @@ function changed(s) {
   if (!s.group && w.price.trim() !== b.price) out.push('price');
   if (s.group && Object.keys(w.optionPrices).some((k) => w.optionPrices[k].trim() !== b.optionPrices[k])) out.push('optionPrices');
   if (Object.keys(w.extraPrices).some((k) => w.extraPrices[k].trim() !== b.extraPrices[k])) out.push('extraPrices');
+  const was = new Set(b.denyExtras);
+  if (w.denyExtras.length !== was.size || w.denyExtras.some((k) => !was.has(k))) out.push('denyExtras');
+  if (w.extrasNone !== b.extrasNone) out.push('extrasNone');
   return out;
+}
+
+// STRUCTURE S1 (Codex S1 plan r1 #2): the checklist's universe is the dish AS THIS COPY WOULD SAVE IT — its section after the
+// copy's move — recomputed on every read (the draft is mutable: no memo by object identity). null: the evaluator is absent.
+const prospectBaseline = (s) => extrasBaseline(draftSource(s.draft), s.key, catChanged(s) ? { cat: s.work.cat, subcat: s.work.subcat } : null);
+// «en N productos»: the dishes (not options) whose own baseline offers the group — every dish's exclusions and «Sin extras»
+// set aside, legacy rules kept; one clone + one projection per read
+function groupUsage(draft) {
+  const E = globalThis.ExtrasEligibility;
+  const src = JSON.parse(JSON.stringify(draftSource(draft)));
+  const io = src.structure && src.structure.exposure && src.structure.exposure.item_overrides;
+  if (io) for (const k of Object.keys(io)) { delete io[k].deny_extras; if (!Object.keys(io[k]).length) delete io[k]; }
+  for (const r of src.items || []) if (r && r.display) delete r.display.extras_policy;
+  const proj = E.projectEligibility(src);
+  const used = new Map();
+  for (const r of src.items || []) {
+    if (!r || typeof r.key !== 'string' || !r.display || r.display.variantOf != null) continue;
+    const cats = new Set(E.eligibleExtras(proj, r.key).map((k) => proj.extraCat[k]));
+    for (const c of cats) used.set(c, (used.get(c) || 0) + 1);
+  }
+  return used;
+}
+// The «Opciones» extras cards (frame A / A2 / A3), from the copy.
+function extrasCards(draft, s) {
+  const w = s.work;
+  const b = prospectBaseline(s);
+  if (!b) return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: w.extrasNone };
+  let used;
+  try { used = groupUsage(draft); } catch (_) { return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: w.extrasNone }; }
+  const deny = new Set(w.denyExtras);
+  const byKey = new Map((draftSource(draft).extras || []).map((x) => [x && x.key, x]));
+  const cards = b.groups.map((g) => {
+    const rows = g.keys.map((k) => { const x = byKey.get(k); const nm = x && x.display && typeof x.display.name === 'string' && x.display.name.trim() ? x.display.name : k;
+      return { key: k, name: nm, price: w.extraPrices[k], on: !deny.has(k) }; });
+    return { cat: g.cat, rows, total: rows.length, active: rows.filter((r) => r.on).length, usedBy: used.get(g.cat) || 0, disabled: w.extrasNone || !s.extrasAuthoring };
+  });
+  // R6: «Sin extras» is offered when the dish has something to switch off, or is already off
+  return { authoring: s.extrasAuthoring, none: w.extrasNone, cards, gap: false, show: cards.length > 0 || w.extrasNone };
 }
 
 // The extras groups a move changes — by THE ONE eligibility rule the server's review line uses (catalog/extras-eligibility.js,
@@ -207,13 +265,17 @@ export function view(draft, s) {
   else if (catP === 'subcat_required' || (errors.subcat && !se)) title = COPY.save.pickSubcat;
   else if (se) title = seTitle;
   else if (consequenceGap) title = COPY.save.otherCat;
-  const blocked = !ch.length || nameP || descP || catP || errors.price || badOption || badExtra || uploading || !!se || consequenceGap;
+  const extras = extrasCards(draft, s);
+  const extrasGap = (ch.includes('denyExtras') || ch.includes('extrasNone')) && extras.gap;
+  if (!title && extrasGap) title = COPY.save.none;
+  const blocked = !ch.length || nameP || descP || catP || errors.price || badOption || badExtra || uploading || !!se || consequenceGap || extrasGap;
   return {
     fields: { name: w.name, desc: w.desc, cat: w.cat, subcat: w.subcat, price: w.price, extraPrices: { ...w.extraPrices } },
     counters: { name: `${chars(w.name)}/${ITEM_NAME_MAX}`, desc: `${chars(w.desc)}/${ITEM_DESC_MAX}` },
     // a refused move shows its line, not what it would have changed (mockup D2)
     subcats, errors, changed: ch, options, same, consequences: errors.cat || errors.subcat ? null : consequences(draft, s),
     photo: { entry: w.photo, uploading, failed: !!(s.upload && s.upload.state === 'failed') },
+    extras,
     save: { enabled: !blocked, title: blocked ? title : null },
   };
 }
@@ -231,7 +293,11 @@ export function save(draft, s) {
   if (ch.includes('optionPrices')) e.optionPrices = Object.fromEntries(Object.entries(w.optionPrices).filter(([k, v]) => v.trim() !== s.base.optionPrices[k]));
   if (ch.includes('photo')) e.photo = w.photo;
   if (ch.includes('extraPrices')) e.extraPrices = Object.fromEntries(Object.entries(w.extraPrices).filter(([k, v]) => v.trim() !== s.base.extraPrices[k]));
-  if (!editItem(draft, s.key, e, { reserved: s.reserved })) return { ok: false, error: 'invalid' };
+  // STRUCTURE S1 (Codex S1 plan r1 #1): serialized explicitly — the FULL final list (kept keys outside the baseline included),
+  // and «Sin extras» as the server's field; absent = untouched
+  if (ch.includes('denyExtras')) e.denyExtras = w.denyExtras.slice();
+  if (ch.includes('extrasNone')) e.extrasPolicy = w.extrasNone ? 'none' : null;
+  if (!editItem(draft, s.key, e, { reserved: s.reserved, extrasAuthoring: s.extrasAuthoring })) return { ok: false, error: 'invalid' };
   s.closed = true;
   return { ok: true };
 }
