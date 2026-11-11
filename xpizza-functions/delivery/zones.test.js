@@ -28,7 +28,8 @@ cell('ZONES-SHAPE-RULES-AFTER-ROUNDING', (L) => {
   // a sliver that becomes zero-area once rounded
   bad(Z.normalizeInput([{ ...SQ(), points: [{ lat: 15.5, lng: -88.03 }, { lat: 15.5, lng: -88.02 }, { lat: 15.5000001, lng: -88.025 }] }]), 'zones', `${L} zero area after rounding`);
   // a bow-tie (self-crossing)
-  bad(Z.normalizeInput([{ ...SQ(), points: [{ lat: 15.5, lng: -88.03 }, { lat: 15.509, lng: -88.02 }, { lat: 15.5, lng: -88.02 }, { lat: 15.509, lng: -88.03 }] }]), 'zones', `${L} a self-crossing shape`);
+  // an ASYMMETRIC bow-tie (non-zero area, so only the crossing rule can refuse it)
+  bad(Z.normalizeInput([{ ...SQ(), points: [{ lat: 15.5, lng: -88.03 }, { lat: 15.509, lng: -88.02 }, { lat: 15.5, lng: -88.02 }, { lat: 15.506, lng: -88.03 }] }]), 'zones', `${L} a self-crossing shape`);
   // a spike back along an edge (collinear overlap of adjacent edges)
   bad(Z.normalizeInput([{ ...SQ(), points: [{ lat: 15.5, lng: -88.03 }, { lat: 15.5, lng: -88.02 }, { lat: 15.5, lng: -88.025 }, { lat: 15.509, lng: -88.03 }] }]), 'zones', `${L} a collinear spike`);
   bad(Z.normalizeInput([{ ...SQ(), points: [{ lat: 91, lng: 0 }, { lat: 0, lng: 1 }, { lat: 1, lng: 0 }] }]), 'zones', `${L} a latitude out of range`);
@@ -68,6 +69,9 @@ cell('ZONES-POINT-IN-POLYGON-EDGE-INCLUSIVE', (L) => {
   assert.strictEqual(Z.inZone(zs, { lat: 15.504, lng: -88.025 }), true, `${L}: inside`);
   assert.strictEqual(Z.inZone(zs, { lat: 15.52, lng: -88.025 }), false, `${L}: outside`);
   assert.strictEqual(Z.inZone(zs, { lat: 15.5, lng: -88.025 }), true, `${L}: ON an edge counts as inside (D5)`);
+  // the top and right edges: plain even-odd ray casting classifies these OUTSIDE — only the explicit edge rule makes them inside
+  assert.strictEqual(Z.inZone(zs, { lat: 15.509, lng: -88.025 }), true, `${L}: ON an edge counts as inside — the top edge (D5)`);
+  assert.strictEqual(Z.inZone(zs, { lat: 15.504, lng: -88.02 }), true, `${L}: ON an edge counts as inside — the right edge (D5)`);
   assert.strictEqual(Z.inZone(zs, { lat: 15.509, lng: -88.02 }), true, `${L}: ON a vertex counts as inside (D5)`);
   // a concave «L»: the notch is outside
   const Lz = ok(Z.normalizeInput([{ id: 'z_cccccccc', name: 'Ele', points: [{ lat: 15.5, lng: -88.03 }, { lat: 15.5, lng: -88.01 }, { lat: 15.505, lng: -88.01 }, { lat: 15.505, lng: -88.02 }, { lat: 15.51, lng: -88.02 }, { lat: 15.51, lng: -88.03 }] }]));
