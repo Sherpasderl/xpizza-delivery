@@ -206,7 +206,8 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
     // the TRUE worst case the writer can retain: UID-shaped (ASCII) 128-char uids, the largest safe-integer clocks, the largest
     // versions, both flags — every retained field is bounded by entryOk, so this is the ceiling on every order read
     const e = { actor_uid: 'Z'.repeat(128), prev_version: 1e15 - 2, new_version: 1e15 - 1, new: { bands: twenty }, at: Number.MAX_SAFE_INTEGER, prev_malformed: true, history_reset: true };
-    const node = { policy_version: 1e15 - 1, bands: twenty, history: Array(10).fill(e), updated_at: Number.MAX_SAFE_INTEGER, updated_by: 'Z'.repeat(128) };
+    // right after a save the newest entry and the policy can carry version 1e15 itself (16 digits); retained entries stay < 1e15
+    const node = { policy_version: 1e15, bands: twenty, history: [{ ...e, prev_version: 1e15 - 1, new_version: 1e15 }, ...Array(9).fill(e)], updated_at: Number.MAX_SAFE_INTEGER, updated_by: 'Z'.repeat(128) };
     const bytes = Buffer.byteLength(JSON.stringify(node), 'utf8');   // UTF-8 of the JSON encoding (all retained strings are ASCII by construction)
     assert.strictEqual(bytes, A.READ_BYTES_AT_CAPS, `${L}: the pinned worst case (20 bands, 10 entries, 128-char uids, the largest versions)`);
     assert.ok(bytes <= 10240, `${L}: ≤ 10 KB on every order read, independent of the restaurant count (got ${bytes})`);
