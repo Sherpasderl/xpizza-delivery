@@ -80,18 +80,51 @@ async function admit(deps, req) {
   return { uid };
 }
 
+// G2 (advisor 2026-11-10): EVERY registry branch for the admin picker — { rid, brand_id, brand_name, location_name, hub } and nothing
+// else (no phone, no address). The registry must be FRESH (readNow) and every read must succeed; otherwise null (the caller says
+// branches_unavailable) — never a partial list. A registered branch without an identity yet is listed with nulls.
+const str = (x) => (typeof x === 'string' && x.trim() ? x : null);
+const coord = (x) => typeof x === 'number' && Number.isFinite(x);
+async function branchesOf(deps) {
+  try {
+    const reg = await deps.readRegistry();
+    if (!reg || reg.ok !== true || reg.fresh !== true || !Array.isArray(reg.ids)) return null;
+    const ids = [...new Set(reg.ids)].filter((rid) => PATH_SAFE.test(rid)).sort();
+    const brandName = new Map();
+    const rows = await Promise.all(ids.map(async (rid) => {
+      const id = (await deps.db.ref(`restaurants/${rid}/identity`).once('value')).val();
+      const o = isObj(id) ? id : {};
+      const brand_id = str(o.brand_id) && PATH_SAFE.test(o.brand_id) ? o.brand_id : null;
+      if (brand_id && !brandName.has(brand_id)) brandName.set(brand_id, deps.db.ref(`brands/${brand_id}/name`).once('value').then((sn) => ({ ok: true, name: str(sn.val()) }), () => ({ ok: false })));
+      return { rid, brand_id, name: str(o.name), location_name: str(o.location_name), hub: coord(o.hub_lat) && coord(o.hub_lng) ? { lat: o.hub_lat, lng: o.hub_lng } : null };
+    }));
+    const out = [];
+    for (const r of rows) {
+      const b = r.brand_id ? await brandName.get(r.brand_id) : { ok: true, name: null };
+      if (!b.ok) return null;
+      out.push({ rid: r.rid, brand_id: r.brand_id, brand_name: b.name || r.name, location_name: r.location_name, hub: r.hub });
+    }
+    return out;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function getDeliveryPricingCore(deps, req) {
   const a = await admit(deps, req);
   if (a.fail) return a.fail;
   let cur;
+  const branchesP = branchesOf(deps);   // in parallel with the policy read; never rejects
   try { cur = (await deps.db.ref(PATH).once('value')).val(); } catch (_) { return UNAVAILABLE(); }
+  const list = await branchesP;
   const caps = { ...CAPS };
-  if (cur === null || cur === undefined) return reply(200, { policy_version: 0, bands: [], history: [], caps });
+  const dir = list ? { branches: list } : { branches_unavailable: true };
+  if (cur === null || cur === undefined) return reply(200, { policy_version: 0, bands: [], history: [], caps, ...dir });
   const pv = isObj(cur) ? cur.policy_version : undefined;
   if (!isObj(cur) || !(okVersion(pv) && pv >= 1) || !bandsOk(cur.bands)) {
-    return reply(200, { current_malformed: true, policy_version_raw: typeof pv === 'number' || typeof pv === 'string' ? pv : null, caps });
+    return reply(200, { current_malformed: true, policy_version_raw: typeof pv === 'number' || typeof pv === 'string' ? pv : null, caps, ...dir });
   }
-  return reply(200, { policy_version: pv, bands: cur.bands, history: historyOk(cur.history) ? cur.history : [], caps });
+  return reply(200, { policy_version: pv, bands: cur.bands, history: historyOk(cur.history) ? cur.history : [], caps, ...dir });
 }
 
 async function setDeliveryPricingCore(deps, req) {

@@ -106,6 +106,10 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
     flaky.db.ref = (p) => (String(p) === 'restaurants/tb_r2/identity' ? { once: async () => { throw new Error('down'); } } : fref(p));
     const f = await flaky.get();
     assert.deepStrictEqual([f.status, f.body.branches_unavailable, 'branches' in f.body], [200, true, false], `${L}: one unreadable branch → the whole list is unavailable (never a partial picker)`);
+    const bflaky = world(); const bref = bflaky.db.ref;
+    bflaky.db.ref = (p) => (String(p) === 'brands/tb_brand/name' ? { once: async () => { throw new Error('down'); } } : bref(p));
+    const bf = await bflaky.get();
+    assert.deepStrictEqual([bf.status, bf.body.branches_unavailable, 'branches' in bf.body], [200, true, false], `${L}: an unreadable brand name → unavailable too`);
     const staff = await world().get('staff');
     assert.deepStrictEqual([staff.status, 'branches' in staff.body], [403, false], `${L}: never shown to a non-admin`);
   });

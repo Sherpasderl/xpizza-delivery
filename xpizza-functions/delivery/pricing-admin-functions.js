@@ -4,14 +4,20 @@
 require('../lib/admin');   // the ONE Admin app — before any module that may touch it, as in index.js
 const { onRequest } = require('firebase-functions/v2/https');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
+const { getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { PORTAL_ORIGINS } = require('../portal/origins');
+const { createRestaurantRegistry, makeFirestoreRegistryReader } = require('../catalog/restaurant-registry');
 const C = require('./pricing-admin-core');
+
+let registry = null;   // G2: the branch directory for the admin picker (a FRESH read per GET — readNow)
+const registryOf = () => (registry || (registry = createRestaurantRegistry({ listIds: makeFirestoreRegistryReader(getFirestore()) })));
 
 const deps = () => ({
   db: getDatabase(),
   verifyIdToken: (t) => getAuth().verifyIdToken(t),
   timestamp: () => ServerValue.TIMESTAMP,
+  readRegistry: () => registryOf().readNow(),
 });
 
 function handler(name, core) {
