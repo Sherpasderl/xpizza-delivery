@@ -413,7 +413,7 @@ function extrasModeReader() {
 }
 const extrasEnvelopeOf = (tables) => require('./catalog/pricing-tables').envelopeOf(tables);
 const extrasReadEligibility = (rid, versionId) => require('./catalog/extras-eligibility-store').readEligibility(getFirestore(), rid, versionId);
-const extrasCheckFor = async (restaurantId, tables, items, body) => EI.extrasCheck({ mode: require('./catalog/extras-entry').modeForEntry(await extrasModeReader().getMode(), body), tables, items, rid: restaurantId,
+const extrasCheckFor = async (restaurantId, tables, items, body) => EI.extrasCheck({ mode: await require('./catalog/extras-entry').modeFor(body, () => extrasModeReader().getMode()), tables, items, rid: restaurantId,
   envelopeOf: extrasEnvelopeOf, readEligibility: extrasReadEligibility });
 /* extras:end wiring */
 /* serial3:begin wiring */

@@ -7,7 +7,7 @@ const BASE = '9269859d';
 const HUNKS = Object.freeze([
  {
   "file": "index.js",
-  "now": "const extrasReadEligibility = (rid, versionId) => require('./catalog/extras-eligibility-store').readEligibility(getFirestore(), rid, versionId);\nconst extrasCheckFor = async (restaurantId, tables, items, body) => EI.extrasCheck({ mode: require('./catalog/extras-entry').modeForEntry(await extrasModeReader().getMode(), body), tables, items, rid: restaurantId,\n  envelopeOf: extrasEnvelopeOf, readEligibility: extrasReadEligibility });\n",
+  "now": "const extrasReadEligibility = (rid, versionId) => require('./catalog/extras-eligibility-store').readEligibility(getFirestore(), rid, versionId);\nconst extrasCheckFor = async (restaurantId, tables, items, body) => EI.extrasCheck({ mode: await require('./catalog/extras-entry').modeFor(body, () => extrasModeReader().getMode()), tables, items, rid: restaurantId,\n  envelopeOf: extrasEnvelopeOf, readEligibility: extrasReadEligibility });\n",
   "was": "const extrasReadEligibility = (rid, versionId) => require('./catalog/extras-eligibility-store').readEligibility(getFirestore(), rid, versionId);\nconst extrasCheckFor = async (restaurantId, tables, items) => EI.extrasCheck({ mode: await extrasModeReader().getMode(), tables, items, rid: restaurantId,\n  envelopeOf: extrasEnvelopeOf, readEligibility: extrasReadEligibility });\n"
  },
  {
