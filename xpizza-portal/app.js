@@ -1442,10 +1442,10 @@ function requestClose(next) {
     if (e.key === 'Escape') { e.preventDefault(); dismiss(); return; }
     if (e.key === 'Tab') {   // contained: the card's two buttons, in order
       e.preventDefault();
-      const order = [cfDrop, cfKeep];
-      const at = order.indexOf(document.activeElement);
-      const to = e.shiftKey ? (at <= 0 ? order.length - 1 : at - 1) : (at === order.length - 1 ? 0 : at + 1);
-      order[to].focus();
+      const ring = [cfDrop, cfKeep];
+      const at = ring.indexOf(document.activeElement);
+      const to = e.shiftKey ? (at <= 0 ? ring.length - 1 : at - 1) : (at === ring.length - 1 ? 0 : at + 1);
+      ring[to].focus();
     }
   });
   cfKeep.addEventListener('click', bound(() => dismiss()));
