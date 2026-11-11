@@ -8,7 +8,7 @@
 //   3  RENAME (x_pizza, the editor's recordRenames): the renamed dish's line {name: new label, item_key: kept key} resolves and
 //      prices; the same line without item_key is the server's menu_changed (the field is load-bearing)
 //   4  MINT (la_musa, S1c's allocator): the minted dish's line carries item_key ALONE (no id — it would disagree); it resolves; the
-//      same line with its display id is the server's invalid_line
+//      same line with its display id still resolves by its key (asm5: S2 «item_key wins», advisor ruling 11-10)
 //   5  REWARD: the picker's key is the dish's item_key (a renamed x_pizza dish, a minted la_musa dish) — rewards resolve by exact key
 //   6  AVAILABILITY: an 86 under the item_key (the portal's writer key, ops-core.js:385-390) marks a minted dish sold, in both forms
 //      (a minted dish, never a renamed one: the form's own key history already holds a renamed dish's old name = its key)
