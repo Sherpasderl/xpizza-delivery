@@ -403,19 +403,19 @@ async function classifyLostProposals(deps, orderId, order) {
 }
 
 // Void every surplus hold the caller's rule allows (adjustments, production: never; cancel: same HN day, before 21:50); a refused / unknown void leaves it SURPLUS.
-async function voidSurplus(deps, orderId, eligible = deps.voidEligible) {
+async function voidSurplus(deps, orderId, voidRule = deps.voidEligible) {
   const rec = await readRecord(deps.db, orderId);
   for (const [legId, leg] of Object.entries(R.legsOfRecord(rec))) {
     if (leg.role !== 'surplus' || leg.state !== 'approved' || !leg.pp_uuid) continue;
     if (Object.values(R.opsOf(rec)).some((o) => o.leg_id === legId && o.action === 'void')) continue;   // one void per leg
-    if (!eligible(leg, deps.clock())) continue;
+    if (!voidRule(leg, deps.clock())) continue;
     await dispatch(deps, orderId, {
       legId, action: 'void',
       // the one-void rule and the eligibility are re-checked IN the journal transaction, right before the call (Codex r1 #1, #2)
       pre: (r) => {
         const l = R.legsOfRecord(r)[legId];
         if (!l || l.role !== 'surplus' || l.state !== 'approved') return undefined;
-        if (Object.values(R.opsOf(r)).some((o) => o.leg_id === legId && o.action === 'void') || !eligible(l, deps.clock())) return undefined;
+        if (Object.values(R.opsOf(r)).some((o) => o.leg_id === legId && o.action === 'void') || !voidRule(l, deps.clock())) return undefined;
         return r;
       },
       call: (opId) => deps.psp.pspVoid({ uuid: leg.pp_uuid, op_id: opId }),
