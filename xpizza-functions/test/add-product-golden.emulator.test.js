@@ -27,6 +27,7 @@ process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'add-product-go
 const admin = require('firebase-admin');
 admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-xpizza', databaseURL: `http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}?ns=demo-xpizza` });
 const realDb = admin.firestore();
+const RESERVED_AT = {};   // S2-5 with the switch ON: each brand's reserved names at its getEditableCatalog call (read from the stored docs right after it)
 const SEEDED_MODE = {};   // S0/S1a: the pricing_key_mode each restaurant's profile was seeded with (the declared key_mode drop asserts it)
 const rtdb = admin.database();
 const CAPTURE = process.env.AP_GOLDEN_CAPTURE === '1';
@@ -134,6 +135,12 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
   for (const rid of ['x_pizza', 'la_musa']) {
     await wipe(); await seedBrand(rid);
     out.push(await scenario(`${rid}: getEditableCatalog (owner)`, () => editable(rid)));
+    RESERVED_AT[rid] = await (async () => {   // the stored reserved-key doc ∪ the draft's frozen values, normalized as the server judges them
+      const { normalizeName } = require('../catalog/add-product'); const RK = require('../catalog/reserved-keys');
+      const src = (await sourceRefOf(realDb, rid).get()).data() || {};
+      const frozen = src.frozen_keys && typeof src.frozen_keys === 'object' ? Object.values(src.frozen_keys) : [];
+      return [...new Set([...RK.reservedKeySet((await RK.reservedRefOf(realDb, rid).get()).data()).keys(), ...frozen].filter((k) => typeof k === 'string').map(normalizeName))].sort();
+    })();
     const s1 = await save(rid, priced(await draftOf(rid), 5), 'owner', await rev(rid));
     out.push({ ...(await scenario(`${rid}: owner price save (replayed for the record)`, async () => save(rid, priced(await draftOf(rid), 1), 'owner', await rev(rid)))) });
     const s2 = await save(rid, priced(await draftOf(rid), 1), 'owner', await rev(rid));
@@ -159,6 +166,7 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
   }
   const golden = JSON.parse(fsys.readFileSync(GOLDEN, 'utf8'));
   assert.deepStrictEqual(out.map((o) => o.name), golden.map((g) => g.name), 'the same scenarios');
+  const isReservedKeysRead = (c) => /^get restaurants\/[^/]+\/meta\/reserved_keys$/.test(c);   // S2-5 (switch ON): getEditableCatalog's ONE reservedNames read
   const isKdsSyncRead = (c) => /^get (restaurants\/[^/]+\/meta\/active_version|restaurants\/[^/]+\/versions\/<v>(\/.*)?|query:restaurants\/[^/]+\/versions\/<v>\/[a-z_]+)$/.test(c);
   const declared = { body: new Set(), calls: [] };
   for (let i = 0; i < out.length; i += 1) {
@@ -223,10 +231,17 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
         declared.body.add(`${c.name}: ${seen} reviewed-row field(s)`);
       }
     }
-    // S2-5 (S2-DESIGN §1.1, the ONE declared additive field): getEditableCatalog states the text-edit switch, false while it is off
+    // S2-5 (S2-DESIGN §1.1, the ONE declared additive field): getEditableCatalog states the text-edit switch — true since the flip
     if (/getEditableCatalog/.test(c.name) && c.status === 200 && body && !(g.body && Object.prototype.hasOwnProperty.call(g.body, 'textEditEnabled'))) {
-      assert.strictEqual(body.textEditEnabled, false, `${c.name}: textEditEnabled:false (S2, switch off)`);
+      assert.strictEqual(body.textEditEnabled, true, `${c.name}: textEditEnabled:true (S2, the switch is ON)`);
       delete body.textEditEnabled; declared.body.add(`${c.name}: textEditEnabled (S2)`);
+    }
+    // S2-5 (declared, switch ON): the restaurant's reserved names — asserted EQUAL to the stored docs at the call, then dropped
+    if (/getEditableCatalog/.test(c.name) && c.status === 200 && body && !(g.body && Object.prototype.hasOwnProperty.call(g.body, 'reservedNames'))) {
+      const rid = c.name.split(':')[0];
+      assert.ok(Array.isArray(RESERVED_AT[rid]) && RESERVED_AT[rid].length > 0, `premise: ${rid}'s seed reserved names`);
+      assert.deepStrictEqual(body.reservedNames, RESERVED_AT[rid], `${c.name}: reservedNames = the stored reserved keys ∪ frozen values, normalized (S2, switch ON)`);
+      delete body.reservedNames; declared.body.add(`${c.name}: reservedNames (S2)`);
     }
     assert.deepStrictEqual(body, g.body, `${c.name}: body (beyond the declared fields)`);
     // calls: golden ⊆ candidate (as a multiset), and every EXTRA call is a declared read
@@ -243,9 +258,11 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
     // S1c (DECLARED, exact): every activation reads the restaurant's reserved-key set and the candidate version's dish and extra
     // docs inside its transaction, before any write — exactly ONE of each per successful publish, none on any other call
     const isReservedRead = (x) => /^tx\.get restaurants\/[^/]+\/(meta\/reserved_keys|versions\/<v>\/(menu_items|extras))$/.test(x);
-    const rkWant = (/publish/.test(c.name) && c.status === 200) ? 3 : 0;
-    assert.strictEqual(left.filter(isReservedRead).length, rkWant, `${c.name}: reserved-key activation reads`);
-    if (rkWant) for (const re of [/meta\/reserved_keys$/, /versions\/<v>\/menu_items$/, /versions\/<v>\/extras$/]) assert.strictEqual(left.filter((x) => isReservedRead(x) && re.test(x)).length, 1, `${c.name}: one ${re}`);
+    // S1a (DECLARED, exact, switch ON — catalog-publish.js, pinned by reserved-keys-wiring.guard): the activation also reads the LIVE
+    // version's dish docs in its transaction (the rename check), so a successful publish makes 4: one more menu_items (both ids are <v>)
+    const rkWant = (/publish/.test(c.name) && c.status === 200) ? 4 : 0;
+    assert.strictEqual(left.filter(isReservedRead).length, rkWant, `${c.name}: reserved-key activation reads ${JSON.stringify(left.filter(isReservedRead))}`);
+    if (rkWant) for (const [re, k] of [[/meta\/reserved_keys$/, 1], [/versions\/<v>\/menu_items$/, 2], [/versions\/<v>\/extras$/, 1]]) assert.strictEqual(left.filter((x) => isReservedRead(x) && re.test(x)).length, k, `${c.name}: ${k} × ${re}`);
     for (let k = left.length - 1; k >= 0; k -= 1) if (isReservedRead(left[k])) left.splice(k, 1);
     // T-a G3 (DECLARED, exact): the OWNER's getEditableCatalog on a platform-factura brand reads the publish-request slot ONCE
     // (its pointer reads are the declared active-version reads above); never on any other call or brand
@@ -261,7 +278,8 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
     assert.strictEqual(left.filter(isPlatformPendingRead).length, ppExpected, `${c.name}: platform-pending stamp reads`);
     for (let k = left.length - 1; k >= 0; k -= 1) if (isPlatformPendingRead(left[k])) left.splice(k, 1);
     const allowExtra = (/publish/.test(c.name) && c.status === 200) ? left.every((x) => isKdsSyncRead(x) || isOverlapBaselineRead(x) || isEligibilityCreate(x))
-      : /getEditableCatalog|stale save/.test(c.name) ? left.every(isKdsSyncRead)
+      : /getEditableCatalog/.test(c.name) ? left.every((x) => isKdsSyncRead(x) || isReservedKeysRead(x)) && left.filter(isReservedKeysRead).length === (c.status === 200 ? 1 : 0)
+      : /stale save/.test(c.name) ? left.every(isKdsSyncRead)
       : /invalid source/.test(c.name) ? left.every((x) => isKdsSyncRead(x) || isSourceRead(x)) : left.length === 0;
     assert.ok(allowExtra, `${c.name}: undeclared extra calls ${JSON.stringify(left)}`);
     if (left.length) declared.calls.push(`${c.name}: +${left.length} read(s)`);

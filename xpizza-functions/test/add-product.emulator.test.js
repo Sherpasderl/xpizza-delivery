@@ -135,7 +135,8 @@ const wipe = async () => {
       assert.deepStrictEqual([reused.status, reused.body.error, reused.body.detail], [400, 'name_previously_used', 'Ese nombre ya existió en tu menú — usá otro nombre.']);
       const many = await save(rid, withAdds(rid, cur, Array.from({ length: 21 }, (_, i) => `Muchos ${i}`)));
       assert.deepStrictEqual([many.status, many.body.error], [400, 'too_many_additions']);
-      const renamed = JSON.parse(JSON.stringify(cur)); renamed.items[0].display.desc = 'cambiada';
+      // with item_text_edit ON a description is an allowed text edit; an existing product's identity stamp is still never editable here
+      const renamed = JSON.parse(JSON.stringify(cur)); renamed.items[0].display.identity_id = 'zz-forged-stamp';
       const rn = await save(rid, renamed);
       assert.deepStrictEqual([rn.status, rn.body.error], [400, 'existing_item_changed']);
       const forged = withAdds(rid, cur, ['Con Llave']); forged.items.at(-1).key = 'Con Llave';
