@@ -421,6 +421,7 @@
   "catalog/extras-allocate.js#forSave": "catalog",
   "catalog/review-diff.js#nameOf": "catalog",
   "catalog/review-diff.js#recs": "catalog",
+  "catalog/structure-budget.js#enforce": "catalog",
   "catalog/extras-eligibility-store.js#buildEligibilityDoc": "catalog",
   "catalog/extras-intake.js#extrasCheck": "intake",
   "catalog/extras-intake.js#sendRefusal": "intake",

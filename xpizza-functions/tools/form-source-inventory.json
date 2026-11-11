@@ -179,6 +179,7 @@
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
     "xpizza-functions/catalog/structure-accounting.test.js",
+    "xpizza-functions/catalog/structure-budget.test.js",
     "xpizza-functions/catalog/text-edit-rules.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
     "xpizza-functions/checkout-guest-lib.test.js",
@@ -539,6 +540,7 @@
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
     "xpizza-functions/catalog/structure-accounting.test.js",
+    "xpizza-functions/catalog/structure-budget.test.js",
     "xpizza-functions/catalog/text-edit-rules.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
     "xpizza-functions/checkout-wiring.guard.test.js",
@@ -928,6 +930,7 @@
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
     "xpizza-functions/catalog/structure-accounting.test.js",
+    "xpizza-functions/catalog/structure-budget.test.js",
     "xpizza-functions/catalog/text-edit-rules.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
     "xpizza-functions/checkout-guest-lib.test.js",
@@ -1286,6 +1289,7 @@
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
     "xpizza-functions/catalog/structure-accounting.test.js",
+    "xpizza-functions/catalog/structure-budget.test.js",
     "xpizza-functions/catalog/text-edit-rules.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
     "xpizza-functions/checkout-wiring.guard.test.js",
@@ -1981,6 +1985,7 @@
   "xpizza-functions/catalog/reserved-keys-audit.js",
   "xpizza-functions/catalog/reset-draft.js",
   "xpizza-functions/catalog/source-store.js",
+  "xpizza-functions/catalog/structure-budget.js",
   "xpizza-functions/contract/applicability.js",
   "xpizza-functions/contract/census-build.js",
   "xpizza-functions/contract/census.js",
@@ -2005,6 +2010,7 @@
   "xpizza-functions/seed-kitchen-staff.mjs",
   "xpizza-functions/test/_c2b-fixture.js",
   "xpizza-functions/test/_kds-sdk-loader.mjs",
+  "xpizza-functions/test/_s2core-scale.js",
   "xpizza-functions/test/d4b-legacy-capture.js",
   "xpizza-functions/test/d4b-legacy-fixtures.js",
   "xpizza-functions/test/kds-writer-capture.mjs",
@@ -2510,6 +2516,7 @@
   "catalog/reward-icons.js",
   "catalog/snapshot-fallback.js",
   "catalog/source-store.js",
+  "catalog/structure-budget.js",
   "catalog/text-version.js",
   "checkout-guest-gate.js",
   "checkout-guest-lib.js",
@@ -3376,6 +3383,10 @@
    "lifts": [
     "xpizza-functions/frozenkeys-wiring.guard.test.js"
    ]
+  },
+  "catalog/structure-budget.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/text-version.js": {
    "pins": [],

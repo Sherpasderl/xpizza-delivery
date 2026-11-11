@@ -368,7 +368,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
       deletedIds: next.deleted_ids && Array.isArray(next.deleted_ids.ids) ? next.deleted_ids.ids : [],
       authoring: groupCapabilities().authoring,
       extrasAuthoring: extrasCapabilities().authoring, textEdit, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras (the narrow deny_extras / extras_policy exception) · S2-core: the Extras-page claims
-    });
+    }); require('./structure-budget').enforce({ rid, source: next, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure }, active: { items: live.items, extras: liveRes.extraRecords, structure: live.structure }, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog });   // S2-core §4: caps + byte budgets, before the write
   } catch (e) {
     if (e instanceof AP.AddProductError) {
       if (e.key && !e.ref && Object.prototype.hasOwnProperty.call(refOfKey, e.key)) e.ref = refOfKey[e.key];

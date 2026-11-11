@@ -22,8 +22,8 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/edit-catalog-handler.js",
-  "now": "      extrasAuthoring: extrasCapabilities().authoring, textEdit, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras (the narrow deny_extras / extras_policy exception) · S2-core: the Extras-page claims\n",
-  "was": "      extrasAuthoring: extrasCapabilities().authoring, textEdit,   // per-product extras (the narrow deny_extras / extras_policy exception)\n"
+  "now": "      extrasAuthoring: extrasCapabilities().authoring, textEdit, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras (the narrow deny_extras / extras_policy exception) · S2-core: the Extras-page claims\n    }); require('./structure-budget').enforce({ rid, source: next, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure }, active: { items: live.items, extras: liveRes.extraRecords, structure: live.structure }, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog });   // S2-core §4: caps + byte budgets, before the write\n",
+  "was": "      extrasAuthoring: extrasCapabilities().authoring, textEdit,   // per-product extras (the narrow deny_extras / extras_policy exception)\n    });\n"
  },
  {
   "file": "catalog/edit-catalog-handler.js",
@@ -42,8 +42,8 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/publish-edited-handler.js",
-  "now": "        extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras: judged on PUBLISH too, not only on save\n",
-  "was": "        extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled,   // per-product extras: judged on PUBLISH too, not only on save\n"
+  "now": "        extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras: judged on PUBLISH too, not only on save\n      }); require('./structure-budget').enforce({ rid, source: draft, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure }, active: { items: live.items, extras: liveExtraRecords, structure: live.structure }, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog });   // S2-core §4: caps + byte budgets, before the publish\n",
+  "was": "        extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled,   // per-product extras: judged on PUBLISH too, not only on save\n      });\n"
  },
  {
   "file": "catalog/source-store.js",
