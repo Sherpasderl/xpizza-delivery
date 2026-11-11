@@ -130,6 +130,18 @@ function catalogDiff(liveBuilt, draftBuilt) {
     }
   }
 
+  // ── S1 per-dish extras: the checklist (exposure.item_overrides[key].deny_extras) is a reviewed, token-bound line per dish, old → new
+  // (sorted keys). Emitted ONLY when a dish's list differs, so a diff with no checklist change is today's, byte for byte. A removed dish
+  // shows as its removal; a new one's list starts empty. («Sin extras» = display.extras_policy, already a display line above.)
+  { const denyOf = (b) => { const ov = (b && b.structure && b.structure.exposure && b.structure.exposure.item_overrides) || {}; const m = new Map();
+      for (const [k, o] of Object.entries(ov)) if (o && Array.isArray(o.deny_extras) && o.deny_extras.length) m.set(k, [...o.deny_extras].sort()); return m; };
+    const ld = denyOf(liveBuilt), dd = denyOf(draftBuilt);
+    for (const key of new Set([...ld.keys(), ...dd.keys()])) {
+      if (!draftItems.has(key)) continue;
+      const o = ld.get(key) || [], nx = dd.get(key) || [];
+      if (JSON.stringify(o) !== JSON.stringify(nx)) changed.push({ key, surface: 'item', field: 'deny_extras', old: o, new: nx });
+    } }
+
   // ── extras (money too: an extra is a priced line on the same order)
   const liveEx = extrasOf(liveBuilt), draftEx = extrasOf(draftBuilt);
   const rawAddedEx = [], rawRemovedEx = [];
