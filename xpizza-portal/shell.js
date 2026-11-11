@@ -46,6 +46,7 @@ function clearPersisted(uid) {
   store.del(CACHE_KEY(uid));
   try {
     for (let i = sessionStorage.length - 1; i >= 0; i--) { const k = sessionStorage.key(i); if (k && k.startsWith(`sherpa.portal.editor.${uid}.`)) sessionStorage.removeItem(k); }
+    sessionStorage.removeItem(`sherpa.portal.envio.${uid}`);   // ENVÍO (Codex r1 F4): the admin pricing cache never outlives its session
   } catch (_) { /* nothing to do */ }
 }
 
@@ -184,7 +185,7 @@ async function bootSteps() {
   const partial = Array.isArray(fresh && fresh.branches) && fresh.branches.some((b) => b && b.degraded);
   if (!partial) store.set(CACHE_KEY(uid), fresh);
   if (!S.e1) { apply(fresh, { persist: !partial }); return; }
-  if (partial) return;
+  if (partial) { dropAdminIfGone(fresh); return; }
   const sel = B.resolveSelection1b(fresh, store.get(SEL_KEY(uid)));
   if (decisionOf(sel) !== S.decision && !S.reloadedOnce) {   // the caps changed
     S.reloadedOnce = true;
@@ -198,6 +199,18 @@ async function bootSteps() {
   S.e1 = fresh; S.sel = sel;
   renderChrome();
   renderViews();
+}
+
+// ENVÍO (Codex r1 F4): platform_admin is a DISPLAY hint, and its removal lands even on a partial answer (which otherwise never
+// replaces the cached list): the cached flag is dropped and the admin nav re-evaluated — never the other way round (a partial
+// answer can't grant it).
+function dropAdminIfGone(fresh) {
+  if (!S.e1 || S.e1.platform_admin !== true || (fresh && fresh.platform_admin === true)) return;
+  const { platform_admin: _gone, ...rest } = S.e1;
+  S.e1 = rest;
+  const cached = store.get(CACHE_KEY(S.uid));
+  if (cached && cached.platform_admin === true) { const { platform_admin: _c, ...c } = cached; store.set(CACHE_KEY(S.uid), c); }
+  if (S.sel) renderRegistered();
 }
 
 // codex 1b r2 #1: the eligibility of a fresh E1 lands even while its reload waits for unsaved work — the views repaint over it
@@ -439,14 +452,20 @@ function toggleMenu(m, b) {
   closeMenus();
   if (open) { menu.classList.remove('hidden'); btn.setAttribute('aria-expanded', 'true'); }
 }
-$('switcher').addEventListener('click', (e) => { e.stopPropagation(); if (S.sel && B.brandsOf1b(S.e1).length > 1) toggleMenu('switchmenu', 'switcher'); });
+$('switcher').addEventListener('click', (e) => { e.stopPropagation(); if (adminView()) return; if (S.sel && B.brandsOf1b(S.e1).length > 1) toggleMenu('switchmenu', 'switcher'); });
 $('scopebtn').addEventListener('click', (e) => { e.stopPropagation(); if (S.sel && !S.sel.locked) toggleMenu('scopemenu', 'scopebtn'); });
-$('mswitch').addEventListener('click', (e) => { e.stopPropagation(); if (S.sel) toggleMenu('mscopemenu', 'mswitch'); });
+$('mswitch').addEventListener('click', (e) => { e.stopPropagation(); if (adminView()) return; if (S.sel) toggleMenu('mscopemenu', 'mswitch'); });
 document.addEventListener('click', (e) => { if (!e.target.closest || (!e.target.closest('.switchwrap') && !e.target.closest('#mtop') && !e.target.closest('#mscopemenu'))) closeMenus(); });
 
 // ── views ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const NAV = [['navprod', 'menu'], ['navventas', 'ventas'], ['navsuc', 'suc'], ['navpausas', 'pausas'], ['navequipos', 'equipos'], ['mnprod', 'menu'], ['mnventas', 'ventas'], ['mnsuc', 'suc'], ['mnpausas', 'pausas'], ['mnequipos', 'equipos']];
+// ENVÍO: on a Sherpa-admin view the chrome shows the neutral admin scope («Sherpa · Todas las marcas», a globe) instead of a
+// restaurant — same components (index.html .admonly / .admhide); the switcher opens nothing there
+const adminView = () => { const a = $('app'); return !!(a && a.classList.contains('admview')); };
 function markNav(view) {
+  const reg = REG.find((r) => r.id === view);
+  const app = $('app'); if (app) app.classList.toggle('admview', !!(reg && reg.admin));
+  if (reg && reg.admin) closeMenus();
   const pairs = [...NAV.map(([id, v]) => [$(id), v]), ...REG.flatMap((r) => [[r.nav, r.id], [r.mn, r.id]])];
   for (const [n, v] of pairs) {
     if (!n) continue;
@@ -506,8 +525,10 @@ $('mnventas').addEventListener('click', () => leaveOps('ventas'));
 // its own (the selection reload and the self-update; a nav switch is never blocked — ventas.js's handlers run first).
 // `sel` is frozen: { brandId, role, caps, membership_writes_enabled, scope } — caps = the union over the brand's
 // operational branches; scope = the selected branch rid, or null for «Todas».
-const GROUPS = Object.freeze({ 'Menú': 'navprod', 'Operación': 'navpausas', 'Negocio': 'navventas' });
-const MGROUPS = Object.freeze({ 'Menú': 'mnprod', 'Operación': 'mnpausas', 'Negocio': 'mnventas' });
+// ENVÍO: group 'Sherpa' = the Sherpa-admin area (the «SHERPA · ADMIN» label, after Negocio). Only `admin: true` views may join it,
+// and an admin view is shown only for platform_admin (a display hint; the server decides every request).
+const GROUPS = Object.freeze({ 'Menú': 'navprod', 'Operación': 'navpausas', 'Negocio': 'navventas', 'Sherpa': 'navadmlabel' });
+const MGROUPS = Object.freeze({ 'Menú': 'mnprod', 'Operación': 'mnpausas', 'Negocio': 'mnventas', 'Sherpa': 'mnadmanchor' });
 const BUILTIN = Object.freeze({ menu: ['navprod', 'mnprod'], ventas: ['navventas', 'mnventas'], suc: ['navsuc', 'mnsuc'], pausas: ['navpausas', 'mnpausas'] });
 const REG = [];
 const badges = new Map();   // viewId → text | null
@@ -522,14 +543,18 @@ export function registerView(def) {
   if (!Object.prototype.hasOwnProperty.call(GROUPS, d.group)) throw new Error(`registerView: unknown group ${d.group}`);
   if (typeof d.label !== 'string' || !d.label.trim()) throw new Error('registerView: label');
   for (const f of fns) if (typeof d[f] !== 'function') throw new Error(`registerView: ${f} must be a function`);
+  if ((d.group === 'Sherpa') !== (d.admin === true)) throw new Error('registerView: the Sherpa group is for admin views only');
+  if (d.revoke !== undefined && typeof d.revoke !== 'function') throw new Error('registerView: revoke must be a function');
   // optional icon: ONE SVG path `d` (path commands + numbers only), drawn like the built-in nav icons; absent → label only
   if (d.icon !== undefined && (typeof d.icon !== 'string' || d.icon.length > 512 || !/^[MmLlHhVvCcSsQqTtAaZz0-9 ,.\-]+$/.test(d.icon))) throw new Error('registerView: icon must be an SVG path d string');
   const nav = el('button', 'nav hidden');
+  if (d.admin) nav.classList.add('adm');
   nav.type = 'button';
   if (d.icon !== undefined) nav.append(svg(d.icon));
   nav.append(el('span', 'nt', d.label));
   const mn = el('button', 'mn hidden', d.label);
   mn.type = 'button';
+  if (d.admin) mn.append(document.createTextNode(' '), el('span', 'adm-tag', 'Admin'));
   const main = el('main', 'main ops hidden');
   main.setAttribute('aria-label', d.label);
   const anchor = () => { const same = REG.filter((r) => r.group === d.group); return same.length ? same[same.length - 1] : null; };
@@ -537,7 +562,8 @@ export function registerView(def) {
   placeAfter(last ? last.nav : $(GROUPS[d.group]), nav);
   placeAfter(last ? last.mn : $(MGROUPS[d.group]), mn);
   placeAfter(REG.length ? REG[REG.length - 1].main : $('viewpausas'), main);
-  const r = { id: d.id, group: d.group, label: d.label, visible: d.visible, mount: d.mount, unmount: d.unmount, canLeave: d.canLeave, nav, mn, main, mounted: false };
+  const r = { id: d.id, group: d.group, label: d.label, visible: d.visible, mount: d.mount, unmount: d.unmount, canLeave: d.canLeave, nav, mn, main, mounted: false,
+    admin: d.admin === true, revoke: d.revoke || null };
   const wrapMount = r.mount;
   r.mount = (elm, sel) => { r.mounted = true; return wrapMount(elm, sel); };
   nav.addEventListener('click', () => goto(r.id));
@@ -571,22 +597,28 @@ function viewSel() {
   if (!sel) return null;
   const caps = [...new Set(sel.brand.branches.flatMap((b) => (Array.isArray(b.caps) ? b.caps : [])))].sort();
   return Object.freeze({ brandId: sel.brand_id, role: sel.owner ? 'owner' : 'manager', caps: Object.freeze(caps),
-    membership_writes_enabled: !!(S.e1 && S.e1.membership_writes_enabled === true), scope: sel.scope === 'all' ? null : sel.scope });
+    membership_writes_enabled: !!(S.e1 && S.e1.membership_writes_enabled === true), scope: sel.scope === 'all' ? null : sel.scope,
+    platform_admin: !!(S.e1 && S.e1.platform_admin === true), uid: S.uid });
 }
 function isVisible(r) { try { return r.visible(viewSel()) === true; } catch (e) { console.error('portal view visible', r.id, e && e.message); return false; } }
 function renderRegistered() {
   navRendered = true;
-  let biz = false;
+  let biz = false, adm = false;
   for (const r of REG) {
     const on = !!S.sel && isVisible(r);
     r.nav.classList.toggle('hidden', !on);
     r.mn.classList.toggle('hidden', !on);
     if (on && r.group === 'Negocio') biz = true;
+    if (on && r.admin) adm = true;
     if (!on && S.view === r.id) goto('menu');
+    if (!on && r.revoke) { try { r.revoke(); } catch (e) { console.error('portal view revoke', r.id, e && e.message); } }
   }
   if (biz) $('navbiz').classList.remove('hidden');
+  $('navadmlabel').classList.toggle('hidden', !adm);
 }
 function hideRegistered() {
+  $('navadmlabel').classList.add('hidden');
+  const app = $('app'); if (app) app.classList.remove('admview');
   for (const r of REG) {
     if (S.view === r.id) leaveRegistered('menu');
     r.nav.classList.add('hidden'); r.mn.classList.add('hidden'); r.main.classList.add('hidden');

@@ -48,14 +48,17 @@
     <!-- the restaurant switcher; populated by getMyRestaurants (Task 5), switch interaction in app.js -->
     <div class="switchwrap">
       <button class="switch" id="switcher" type="button">
-        <div class="shop"><svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11a2 2 0 0 1-2 1.8H6.5a2 2 0 0 1-2-1.8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/></svg></div>
-        <div class="sinfo"><b id="shopname">—</b><span class="cv" id="shopsub">Cargando…</span></div>
+        <div class="shop admhide"><svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11a2 2 0 0 1-2 1.8H6.5a2 2 0 0 1-2-1.8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/></svg></div>
+        <div class="sinfo admhide"><b id="shopname">—</b><span class="cv" id="shopsub">Cargando…</span></div>
+        <!-- ENVÍO: the neutral Sherpa-admin scope, shown instead of the restaurant while an admin view is open (shell.js admview) -->
+        <div class="shop admonly"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/></svg></div>
+        <div class="sinfo admonly"><b>Sherpa</b><span class="cv">Todas las marcas</span></div>
         <div class="chev">▾</div>
       </button>
       <div class="switchmenu hidden" id="switchmenu"></div>
     </div>
     <!-- PORTAL-UI 1a: the branch scope (shell.js). Owner: «Todas las sucursales» or one; a single-branch manager: locked. -->
-    <div class="switchwrap hidden" id="scopewrap">
+    <div class="switchwrap hidden admhide" id="scopewrap">
       <button class="scope" id="scopebtn" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
       <div class="switchmenu hidden" id="scopemenu" role="listbox"></div>
       <p class="scopenote hidden" id="scopenote" role="status" aria-live="polite"></p>
@@ -70,9 +73,11 @@
     <!-- Stats S2: OWNER-ONLY. Hidden until app.js announces an owned restaurant (ventas.js); a non-owner never sees it. -->
     <div class="nlabel hidden" id="navbiz">Negocio</div>
     <button class="nav hidden" id="navventas" type="button"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15l4-5 3 3 5-6"/></svg>Ventas</button>
+    <!-- ENVÍO: the Sherpa-admin area (shell.js 'Sherpa' group) — shown only for platform_admin, a display hint -->
+    <div class="nlabel hidden" id="navadmlabel">Sherpa <span class="adm-tag">Admin</span></div>
     <div class="sfoot">
       <div class="av" id="avatar">·</div>
-      <div class="sinfo"><b id="whoami">—</b><span class="cv" id="whorole">Dueño</span></div>
+      <div class="sinfo"><b id="whoami">—</b><span class="cv admhide" id="whorole">Dueño</span><span class="cv admonly">Sherpa · administrador</span></div>
       <button class="btn ghost tbtn" id="logout" type="button" title="Cerrar sesión">
         <svg viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M12 3H5v18h7"/></svg>
       </button>
@@ -82,7 +87,7 @@
   <!-- PORTAL-UI 1a: the mobile top bar (≤920px): brand + scope, opening the scope menu (shell.js) -->
   <div class="mtop hidden" id="mtop">
     <div class="bmark">S</div>
-    <button class="mswitch" id="mswitch" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="sinfo"><b id="mbrand">—</b><span class="mcv" id="mscope"></span></span><span class="chev" id="mchev">▾</span></button>
+    <button class="mswitch" id="mswitch" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="sinfo admhide"><b id="mbrand">—</b><span class="mcv" id="mscope"></span></span><span class="sinfo admonly"><b>Sherpa</b><span class="mcv">Todas las marcas</span></span><span class="chev" id="mchev">▾</span></button>
   </div>
   <div class="mscopemenu hidden" id="mscopemenu" role="listbox"></div>
 
@@ -93,6 +98,7 @@
     <button class="mn hidden" id="mnpausas" type="button">Pausar pedidos</button>
     <button class="mn hidden" id="mnequipos" type="button">Equipos</button>
     <button class="mn" id="mnventas" type="button">Ventas</button>
+    <span class="hidden" id="mnadmanchor"></span>
   </nav>
 
   <main class="main" id="viewmenu">

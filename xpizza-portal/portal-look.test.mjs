@@ -384,6 +384,8 @@ const PINNED_COMPLEX = {
   '::selection': ['background:var(--tint2)', 'background:var(--tint2);color:var(--ink)'],   // two rules (:58, :396)
   '.tab.on::after': ['background:var(--green)'],
   '.search input::placeholder': ['color:var(--mute2)'],
+  // ENVÍO: the restaurant picker's «Buscar restaurante o sucursal» — the same placeholder ink as the menu search above
+  '.envio .psearch input::placeholder': ['color:var(--mute2)'],
   '::-webkit-scrollbar-thumb': ['background:var(--line)'],
   '::-webkit-scrollbar-thumb:hover': ['background:var(--mute2)'],
   '::-webkit-scrollbar-track': ['background:transparent'],

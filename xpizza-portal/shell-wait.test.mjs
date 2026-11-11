@@ -1,6 +1,6 @@
 // PLAN-portal-shell-no-shift R1 + R5 — owner-approved MOCKUP-portal-shell-wait.html, option A (2026-11-01): the sign-in card
 // holds with «Abriendo tu portal…» while the session opens, and the portal is revealed ONCE, already in its final shape.
-//   • boot.js (jsdom over the real index.html; its five feature modules stubbed — they are covered by their own suites): the
+//   • boot.js (jsdom over the real index.html; its six feature modules stubbed — they are covered by their own suites): the
 //     card's wait state, the single reveal on `portal:ready`, the form back on sign-out, and no login form on a reload that had a
 //     session (R5).
 //   • shell.js (the ventas harness, real modules, auth stubbed): `portal:ready` fires EXACTLY ONCE per page on every terminal
@@ -45,7 +45,7 @@ async function loadBoot(w) {
   const auth = put('auth', 'export const login = async () => {}; export const logout = async () => {}; export const authErrorMessage = () => "";\n'
     + 'export const watchAuth = (cb) => { globalThis.__authCb = cb; };\n');
   let src = readFileSync(join(DIR, 'boot.js'), 'utf8').replace("from './auth.js'", `from '${auth}'`);
-  for (const m of ['app.js', 'ventas.js', 'shell.js', 'team.js', 'pubreq.js']) {
+  for (const m of ['app.js', 'ventas.js', 'shell.js', 'team.js', 'envio.js', 'pubreq.js']) {
     const re = new RegExp(`import '\\./${m.replace('.', '\\.')}';`);
     assert.ok(re.test(src), `premise: boot.js imports ./${m}`);
     src = src.replace(re, `import '${empty}';`);

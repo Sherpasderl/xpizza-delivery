@@ -188,7 +188,7 @@ export function pickerEntries(branches) {
     const n = per.get(brandKey(b));
     const name = typeof b.brand_name === 'string' && b.brand_name.trim() ? b.brand_name.trim() : COPY.unnamedRestaurant;
     const loc = typeof b.location_name === 'string' && b.location_name.trim() ? b.location_name.trim() : COPY.unnamedBranch;
-    return { rid: b.rid, label: n > 1 ? `${name} · ${loc}` : name, sub: n === 1 ? '1 sucursal' : `${n} sucursales`,
+    return { rid: b.rid, label: n > 1 ? `${name} · ${loc}` : name, name, loc: n > 1 ? loc : null, sub: n === 1 ? '1 sucursal' : `${n} sucursales`,
       initial: name[0].toUpperCase(), hub: b.hub ? { lat: b.hub.lat, lng: b.hub.lng } : null };
   }).sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }) || a.rid.localeCompare(b.rid));
 }

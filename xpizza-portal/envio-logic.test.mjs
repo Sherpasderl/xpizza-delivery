@@ -156,6 +156,8 @@ test('pickerEntries(): one line per BRANCH; «Marca» alone for one branch, «Ma
   assert.deepStrictEqual(e.map((x) => x.sub), ['1 sucursal', '2 sucursales', '2 sucursales', '2 sucursales', '2 sucursales', '1 sucursal']);
   assert.deepStrictEqual(e.map((x) => x.initial), ['Á', 'M', 'M', 'P', 'P', 'Z']);
   assert.deepStrictEqual(e.find((x) => x.rid === 'r3').hub, null);
+  assert.deepStrictEqual(e.map((x) => [x.name, x.loc]), [['Ábaco', null], ['Mar', 'Playa'], ['Mar', 'Sucursal sin nombre'], ['Pizzería Centro', 'Norte'], ['Pizzería Centro', 'Sur'], ['Zeta', null]],
+    'the menu draws the branch part muted («Marca <span>· Sucursal</span>»)');
   assert.deepStrictEqual(pickerEntries([]), []);
   assert.deepStrictEqual(pickerEntries([{ bad: 1 }, null, { rid: '', brand_id: null, brand_name: 'X', location_name: null, hub: null }]), [], 'rows without a rid are skipped');
   // 5f 0021632f: a registered branch whose identity has no brand yet comes with brand_id / brand_name null — still listed

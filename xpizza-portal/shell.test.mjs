@@ -458,7 +458,8 @@ test('registerView: hidden while membership_writes_enabled is off; shown (Negoci
   assert.ok(hasClass(r.nav, 'hidden') && hasClass(r.mn, 'hidden'), 'flag off → no nav item');
   const sel = log.find((x) => x[0] === 'visible')[1];
   assert.ok(Object.isFrozen(sel) && Object.isFrozen(sel.caps));
-  assert.deepEqual({ ...sel, caps: [...sel.caps] }, { brandId: 'marca_s', role: 'owner', caps: [...new Set([...OWNER_CAPS, ...MGR_CAPS])].sort(), membership_writes_enabled: false, scope: null });
+  assert.deepEqual({ ...sel, caps: [...sel.caps] }, { brandId: 'marca_s', role: 'owner', caps: [...new Set([...OWNER_CAPS, ...MGR_CAPS])].sort(), membership_writes_enabled: false, scope: null,
+    platform_admin: false, uid: 'uOwner0201' });   // ENVÍO: + the display-only admin hint and the session's uid
   mods.shell.goto('equipo');
   assert.ok(!log.some((x) => x[0] === 'mount'), 'a hidden view never mounts');
   assert.ok(P.byId.get('navprod').clicks >= 1, '…and a direct goto falls back to Productos');
