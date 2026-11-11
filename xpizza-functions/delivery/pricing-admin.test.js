@@ -19,10 +19,19 @@ const BANDS = [{ max_km: 3, cents: 3000 }, { max_km: 6, cents: 5000 }, { max_km:
 const TOKENS = { admin: { uid: 'tb_owner' }, staff: { uid: 'tb_staff' }, cust: { uid: 'tb_c', customer: true }, hh: { uid: 'tb_h', handheld: true } };
 const req = (tok, body) => ({ get: (h) => (String(h).toLowerCase() === 'authorization' && tok ? `Bearer ${tok}` : null), body });
 let AT = 1762800000000;
-function world(init = {}, { adminReadFails = false } = {}) {
-  const db = fakeRtdb({ platform_admins: { tb_owner: true }, ...init }, { strict: true });
+const IDS = ['tb_r1', 'tb_r2', 'tb_r3'];
+const DIRECTORY = {
+  brands: { tb_brand: { name: 'Marca TB' } },
+  restaurants: {
+    tb_r1: { identity: { name: 'TB Uno', brand_id: 'tb_brand', location_name: 'Centro', hub_lat: 15.5, hub_lng: -88.0, phone: '+50499990000', address_line: 'Calle 1' } },
+    tb_r2: { identity: { name: 'TB Dos', hub_lat: 'x', hub_lng: -88.1 } },   // no brand record, an unusable hub
+  },                                                                          // tb_r3: registered, no identity yet
+};
+function world(init = {}, { adminReadFails = false, registry } = {}) {
+  const db = fakeRtdb({ platform_admins: { tb_owner: true }, ...DIRECTORY, ...init }, { strict: true });
   if (adminReadFails) { const ref = db.ref; db.ref = (p) => (String(p).startsWith('platform_admins') ? { once: async () => { throw new Error('down'); }, get: async () => { throw new Error('down'); } } : ref(p)); }
-  const deps = { db, verifyIdToken: async (t) => { if (!TOKENS[t]) throw new Error('bad'); return TOKENS[t]; }, timestamp: () => ++AT };
+  const deps = { db, verifyIdToken: async (t) => { if (!TOKENS[t]) throw new Error('bad'); return TOKENS[t]; }, timestamp: () => ++AT,
+    readRegistry: registry || (async () => ({ ok: true, fresh: true, ids: IDS })) };
   return { db, deps, set: (body, tok = 'admin') => A.setDeliveryPricingCore(deps, req(tok, body)), get: (tok = 'admin') => A.getDeliveryPricingCore(deps, req(tok)) };
 }
 const body = (over = {}) => ({ expected_policy_version: 0, bands: BANDS, ...over });
@@ -76,7 +85,29 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
     assert.deepStrictEqual([node.policy_version, node.bands, node.updated_by], [1, BANDS, 'tb_owner'], `${L}: the policy`);
     assert.deepStrictEqual(node.history, [{ actor_uid: 'tb_owner', prev_version: 0, new_version: 1, new: { bands: BANDS }, at: node.updated_at }], `${L}: its history entry, prev_version only`);
     const g = await w.get();
-    assert.deepStrictEqual(g, { status: 200, body: { policy_version: 1, bands: BANDS, history: node.history, caps: { max_bands: 20, max_km: 10, max_cents: 15000, km_step: 0.5 } } }, `${L}: GET returns it`);
+    assert.deepStrictEqual({ ...g.body, branches: undefined }, { policy_version: 1, bands: BANDS, history: node.history, caps: { max_bands: 20, max_km: 10, max_cents: 15000, km_step: 0.5 }, branches: undefined }, `${L}: GET returns it`);
+  });
+
+  await cell('G2-BRANCHES-FOR-THE-PICKER', async (L) => {
+    const w = world();
+    const g = await w.get();
+    assert.strictEqual(g.status, 200, `${L}: 200`);
+    assert.deepStrictEqual(g.body.branches, [
+      { rid: 'tb_r1', brand_id: 'tb_brand', brand_name: 'Marca TB', location_name: 'Centro', hub: { lat: 15.5, lng: -88.0 } },
+      { rid: 'tb_r2', brand_id: null, brand_name: 'TB Dos', location_name: null, hub: null },
+      { rid: 'tb_r3', brand_id: null, brand_name: null, location_name: null, hub: null },
+    ], `${L}: EVERY registry branch, sorted; brand / location / hub only (no phone, no address)`);
+    assert.strictEqual('branches_unavailable' in g.body, false, `${L}: no failure flag on success`);
+    for (const registry of [async () => ({ ok: false, error: 'x' }), async () => ({ ok: true, fresh: false, ids: IDS }), async () => { throw new Error('x'); }]) {
+      const r = await world({}, { registry }).get();
+      assert.deepStrictEqual([r.status, r.body.branches_unavailable, 'branches' in r.body, r.body.policy_version, r.body.caps.max_km], [200, true, false, 0, 10], `${L}: a directory that cannot be read freshly → branches_unavailable, the pricing read still succeeds`);
+    }
+    const flaky = world(); const fref = flaky.db.ref;
+    flaky.db.ref = (p) => (String(p) === 'restaurants/tb_r2/identity' ? { once: async () => { throw new Error('down'); } } : fref(p));
+    const f = await flaky.get();
+    assert.deepStrictEqual([f.status, f.body.branches_unavailable, 'branches' in f.body], [200, true, false], `${L}: one unreadable branch → the whole list is unavailable (never a partial picker)`);
+    const staff = await world().get('staff');
+    assert.deepStrictEqual([staff.status, 'branches' in staff.body], [403, false], `${L}: never shown to a non-admin`);
   });
 
   await cell('DPW-LEGACY-MAP-DROPPED', async (L) => {
