@@ -47,7 +47,7 @@ function parseLoaded(read) {
 
 let memo = null;
 function loadPhotosConfig() {
-  if (!memo) memo = parseLoaded(() => require(CONFIG_PATH));
+  if (!memo) memo = parseLoaded(() => require('../platform/photos.json'));
   return memo;
 }
 
