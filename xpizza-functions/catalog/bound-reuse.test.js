@@ -45,7 +45,7 @@ const ask = (db, over = {}) => probeBoundReuse(db, { orderId: 'LM-1', uid: 'u1',
 (async () => {
   {
     const db = fakeDb(world());
-    assert.deepStrictEqual(await ask(db), { outcome: 'reuse', attempt_id: 'att1', checkout_url: 'https://pay/x', poll_token: 'pt' }, 'every condition holds → the reuse acq');
+    assert.deepStrictEqual(await ask(db), { outcome: 'reuse', attempt_id: 'att1', checkout_url: 'https://pay/x', poll_token: 'pt', order: world()['orders/LM-1'] }, 'every condition holds → the reuse acq (+ the order record it read, for the envío resume guard)');
     assert.deepStrictEqual(db.writes, [], 'and nothing was written');
     assert.ok(await ask(fakeDb(world({ 'user_rewards/u1/la_musa/reservations/LM-1': { attempt_id: null } }))), 'a hold not yet attached to the attempt (attach is best-effort) is still this order\'s');
     ok('every condition holds → the same reuse acq acquire returns, with ZERO writes');

@@ -7,7 +7,7 @@ const BASE = '3bc87937';
 const HUNKS = Object.freeze([
  {
   "file": "index.js",
-  "now": "    if (boundAcq) { const zr = await DW.zoneResumeRefusalFor(db, orderId); if (zr) return res.status(zr.httpStatus).json({ error: zr.refusal, ...(zr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId });   // envío step 2 (F1): a stored app delivery in a zone is not resumed\n",
+  "now": "    if (boundAcq) { const zr = await DW.zoneResumeRefusal(db, boundAcq.order); if (zr) return res.status(zr.httpStatus).json({ error: zr.refusal, ...(zr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId });   // envío step 2 (F1): a stored app delivery in a zone is not resumed\n",
   "was": "    if (boundAcq) {\n"
  },
  {
