@@ -41,7 +41,6 @@ const PIN = { ...north(4), confirmed: true };
     assert.strictEqual(r.ctx.delivery_cents, 5000, `${L}: an app delivery on an active restaurant carries the envío`);
     assert.deepStrictEqual(await DW.deliveryFor(fakeDb(RAW), { rid: 'tb_r1', mode: 'delivery', pin: null, getIdentity, app: true }), { refusal: 'pin_required', httpStatus: 409 }, `${L}: an app delivery still needs its confirmed pin`);
     assert.strictEqual((await DW.deliveryFor(fakeDb(RAW), { rid: 'tb_r1', mode: 'delivery', pin: PIN, getIdentity, app: true, tip: 2000 })).ctx.tip_cents, 2000, `${L}: an app tip rides the ctx`);
-    assert.strictEqual(await DW.deliveryFor(fakeDb(null), { rid: 'tb_r1', mode: 'delivery', pin: PIN, getIdentity, app: true }), null, `${L}: an app request on a DARK restaurant stays dark`);
   });
 
   await cell('DPAO-QUOTE-NON-APP-IS-DARK', async (L) => {
@@ -58,6 +57,49 @@ const PIN = { ...north(4), confirmed: true };
   await cell('DPAO-QUOTE-APP-IS-PRICED', async (L) => {
     const q = await DW.quoteDeliveryFor({ get: () => null }, fakeDb(RAW), 'tb_r1', { mode: 'delivery', pin: PIN, entry_mode: 'app' }, { getIdentity, knownUid: null });
     assert.deepStrictEqual(DW.quoteFields(q.ctx).delivery.delivery_cents, 5000, `${L}: an app quote carries the envío`);
+  });
+
+  // Addendum A (owner 2026-11-10): the fee applies to EVERY restaurant on the app path — the stored per-restaurant map is
+  // ignored and free delivery is off; the band table is the app's only distance limit; an absent config refuses an app
+  // DELIVERY (503) and leaves an app PICKUP on today's dark path.
+  await cell('DPAO-APP-IGNORES-THE-RESTAURANT-MAP', async (L) => {
+    const priced = async (raw, uid = null) => (await DW.deliveryFor(fakeDb(raw), { rid: 'tb_r1', mode: 'delivery', pin: PIN, customerUid: uid, getIdentity, app: true })).ctx;
+    const B = { policy_version: 3, bands: RAW.bands };
+    assert.strictEqual((await priced({ ...B })).delivery_cents, 5000, `${L}: a restaurant with no map entry is priced`);
+    assert.strictEqual((await priced({ ...B, restaurants: { tb_r1: { active: false, free_delivery: false } } })).delivery_cents, 5000, `${L}: active:false in the map is ignored`);
+    const m = await priced({ ...B, restaurants: { tb_r1: { active: true, free_delivery: true } } }, 'tb_member');
+    assert.deepStrictEqual([m.delivery_cents, m.promo_discount_cents, m.promo], [5000, 0, null], `${L}: free delivery is off — a member pays the fee`);
+    const q = await DW.quoteDeliveryFor({ get: () => null }, fakeDb({ ...B, restaurants: { other: { active: true, free_delivery: false } } }), 'tb_r1', { mode: 'delivery', pin: PIN, entry_mode: 'app' }, { getIdentity, knownUid: 'tb_member' });
+    assert.strictEqual(DW.quoteFields(q.ctx).delivery.delivery_cents, 5000, `${L}: the quote path too`);
+  });
+
+  await cell('DPAO-APP-ABSENT-CONFIG', async (L) => {
+    const o = (mode, tip) => DW.deliveryFor(fakeDb(null), { rid: 'tb_r1', mode, pin: PIN, getIdentity, app: true, ...(tip ? { tip } : {}) });
+    assert.deepStrictEqual(await o('delivery'), { refusal: 'delivery_pricing_unavailable', httpStatus: 503 }, `${L}: an app delivery with no band table is refused (fail closed)`);
+    assert.deepStrictEqual(await o('delivery', 2000), { refusal: 'delivery_pricing_unavailable', httpStatus: 503 }, `${L}: with a tip too`);
+    assert.strictEqual(await o('pickup'), null, `${L}: an app pickup stays on today's dark path`);
+    assert.deepStrictEqual(await o('pickup', 2000), { refusal: 'tip_not_enabled', httpStatus: 409 }, `${L}: an app pickup tip, as today`);
+    const q = (body) => DW.quoteDeliveryFor({ get: () => null }, fakeDb(null), 'tb_r1', { entry_mode: 'app', ...body }, { getIdentity, knownUid: null });
+    assert.deepStrictEqual(await q({ mode: 'delivery', pin: PIN }), { refuse: { ok: false, error: 'delivery_pricing_unavailable', retryable: true }, httpStatus: 503 }, `${L}: an app delivery quote is refused`);
+    assert.deepStrictEqual(await q({ mode: 'pickup' }), { ctx: null, uid: null }, `${L}: an app pickup quote stays dark`);
+    assert.strictEqual(await DW.deliveryFor(fakeDb(null), { rid: 'tb_r1', mode: 'delivery', pin: PIN, getIdentity, app: false }), null, `${L}: a form delivery is unaffected`);
+    const bad = await DW.deliveryFor(fakeDb({ policy_version: 3, bands: [] }), { rid: 'tb_r1', mode: 'pickup', getIdentity, app: true });
+    assert.deepStrictEqual(bad, { refusal: 'delivery_pricing_invalid', httpStatus: 409 }, `${L}: an INVALID table refuses (never dark)`);
+  });
+
+  await cell('DPAO-APP-BANDS-ARE-THE-ONLY-LIMIT', async (L) => {
+    const tight = async () => ({ hub_lat: HUB.lat, hub_lng: HUB.lng, delivery_radius_km: 3.5 });
+    const q = await DW.quoteDeliveryFor({ get: () => null }, fakeDb(RAW), 'tb_r1', { mode: 'delivery', pin: PIN, entry_mode: 'app' }, { getIdentity: tight, knownUid: null });
+    assert.deepStrictEqual([DW.quoteFields(q.ctx).delivery.delivery_cents, DW.quoteFields(q.ctx).delivery.max_km], [5000, 8], `${L}: a pin beyond the restaurant radius but within the bands is priced; coverage = the last band`);
+    const far = { lat: HUB.lat + 8.5 / 111.195, lng: HUB.lng, confirmed: true };
+    const f = await DW.quoteDeliveryFor({ get: () => null }, fakeDb(RAW), 'tb_r1', { mode: 'delivery', pin: far, entry_mode: 'app' }, { getIdentity: tight, knownUid: null });
+    assert.deepStrictEqual(f.refuse, { ok: false, error: 'outside_delivery_bands' }, `${L}: beyond the last band is refused`);
+  });
+
+  await cell('DPAO-HALF-KM-BANDS', async (L) => {
+    const raw = { policy_version: 1, bands: [{ max_km: 9, cents: 6000 }, { max_km: 9.5, cents: 7000 }] };
+    const at = async (km) => DW.deliveryFor(fakeDb(raw), { rid: 'tb_r1', mode: 'delivery', pin: { lat: HUB.lat + km / 111.195, lng: HUB.lng, confirmed: true }, getIdentity, app: true });
+    assert.deepStrictEqual([(await at(9.4)).ctx.delivery_cents, (await at(9.4)).ctx.band, (await at(9.6)).refusal], [7000, 1, 'outside_delivery_bands'], `${L}: 9.4 km prices in the 9.5 band; 9.6 km is beyond it`);
   });
 
   // The live reader keeps its CURRENT outcomes (plan r2 F4: not tightened in this slice).
