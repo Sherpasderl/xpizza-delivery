@@ -197,6 +197,7 @@
     "xpizza-functions/createorder-selfheal-client.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
     "xpizza-functions/delivery/pricing-admin.test.js",
+    "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
     "xpizza-functions/directory-wiring.guard.test.js",
     "xpizza-functions/directory/directory.test.js",
@@ -540,6 +541,7 @@
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
     "xpizza-functions/delivery/pricing-admin.test.js",
+    "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
     "xpizza-functions/directory-wiring.guard.test.js",
     "xpizza-functions/directory/directory.test.js",
@@ -925,6 +927,7 @@
     "xpizza-functions/createorder-selfheal-client.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
     "xpizza-functions/delivery/pricing-admin.test.js",
+    "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
     "xpizza-functions/directory-wiring.guard.test.js",
     "xpizza-functions/directory/directory.test.js",
@@ -1268,6 +1271,7 @@
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
     "xpizza-functions/delivery/pricing-admin.test.js",
+    "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
     "xpizza-functions/directory-wiring.guard.test.js",
     "xpizza-functions/directory/directory.test.js",
@@ -2472,6 +2476,9 @@
   "delivery/delivery-wire.js",
   "delivery/pricing-admin-core.js",
   "delivery/pricing-admin-functions.js",
+  "delivery/zone-resume.js",
+  "delivery/zones-lock.js",
+  "delivery/zones.js",
   "directory/directory-deps.js",
   "directory/directory.js",
   "directory/platform-config.js",
@@ -3426,16 +3433,34 @@
    "lifts": []
   },
   "delivery/delivery-wire.js": {
-   "pins": [],
-   "lifts": [
-    "xpizza-functions/dpao-wiring.guard.test.js"
-   ]
+   "pins": [
+    {
+     "file": "xpizza-functions/dpao-wiring.guard.test.js",
+     "inverses": [
+      "tools/dpao-module-inverse.js",
+      "tools/zones-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
   },
   "delivery/pricing-admin-core.js": {
    "pins": [],
    "lifts": []
   },
   "delivery/pricing-admin-functions.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "delivery/zone-resume.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "delivery/zones-lock.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "delivery/zones.js": {
    "pins": [],
    "lifts": []
   },
@@ -3557,7 +3582,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3617,7 +3643,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3678,7 +3705,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3713,7 +3741,8 @@
       "tools/stackseq-inverse.js",
       "tools/tippref-charge-inputs-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3757,7 +3786,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3820,7 +3850,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3840,7 +3871,8 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3899,7 +3931,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3942,7 +3975,15 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/dpao-wiring.guard.test.js",
+     "inverses": [
+      "tools/dpao-module-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3982,7 +4023,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4018,7 +4060,8 @@
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4055,7 +4098,8 @@
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4112,7 +4156,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4151,7 +4196,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4185,7 +4231,8 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4240,7 +4287,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4290,7 +4338,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4339,7 +4388,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4355,7 +4405,8 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4371,7 +4422,8 @@
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
-      "tools/sdkpay-module-inverse.js"
+      "tools/sdkpay-module-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4382,7 +4434,8 @@
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4433,7 +4486,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4473,7 +4527,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4512,7 +4567,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4574,7 +4630,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4589,7 +4646,8 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4629,7 +4687,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4642,7 +4701,8 @@
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
-      "tools/sdkpay-module-inverse.js"
+      "tools/sdkpay-module-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4705,7 +4765,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4747,7 +4808,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4792,7 +4854,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4846,7 +4909,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4900,7 +4964,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4909,7 +4974,8 @@
       "tools/dpao-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4917,7 +4983,8 @@
      "inverses": [
       "tools/dpao-module-inverse.js",
       "tools/s2-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4951,7 +5018,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4990,7 +5058,8 @@
       "tools/stackseq-inverse.js",
       "tools/tippref-charge-inputs-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5029,7 +5098,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5067,7 +5137,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5104,7 +5175,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5135,7 +5207,8 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5186,7 +5259,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5222,7 +5296,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5237,7 +5312,8 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5252,7 +5328,8 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5264,7 +5341,8 @@
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5320,7 +5398,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5368,7 +5447,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5428,7 +5508,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5466,7 +5547,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5483,7 +5565,8 @@
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5531,7 +5614,8 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5607,7 +5691,8 @@
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5654,7 +5739,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5712,7 +5798,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5747,7 +5834,8 @@
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     }
    ],
@@ -5767,7 +5855,6 @@
     "xpizza-functions/contract/p1a-journey.emulator.test.mjs",
     "xpizza-functions/contract/scenario-state.js",
     "xpizza-functions/createorder-idempotent.test.js",
-    "xpizza-functions/dpao-wiring.guard.test.js",
     "xpizza-functions/driver-callable-guard-coverage.guard.test.js",
     "xpizza-functions/factura-catalog-cutover.test.js",
     "xpizza-functions/fail-closed-reject.test.js",

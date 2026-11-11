@@ -11,7 +11,7 @@ const { unapplyTipprefIndex } = require('./tools/tippref-inverse');   // PLAN-ca
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['alert-prune.js', 'cancel-order-core.js', 'index.js', 'merchant/merchant-transitions.js', 'pixelpay-charge.js', 'pixelpay-confirm.js', 'pixelpay-hosted-charge.js', 'pixelpay-hosted-webhook.js', 'resolve-manual.js', 'rewards-reserve.js', 'scheduled-release-core.js'], 'the slice owns exactly these files');
 for (const f of FILES) {
-  const raw = require('./tools/dpao-module-inverse').unapplyDpaoModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));
+  const raw = require('./tools/dpao-module-inverse').unapplyDpaoModule(f, require('./tools/zones-module-inverse').unapplyZonesModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')));
   const src = f === 'index.js' ? unapplyTipprefIndex(raw) : raw;
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);

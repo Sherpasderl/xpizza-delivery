@@ -18,7 +18,7 @@ const { unapplyTipprefIndex, HUNKS } = require('./tools/tippref-inverse');
 
 const BASE = 'ba47f627';   // origin/main at the slice's branch point (feat/capp-tip-server)
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const live = require('./tools/dpao-module-inverse').unapplyDpaoModule('index.js', fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));
+const live = require('./tools/dpao-module-inverse').unapplyDpaoModule('index.js', require('./tools/zones-module-inverse').unapplyZonesModule('index.js', fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')));
 const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // 1. exact

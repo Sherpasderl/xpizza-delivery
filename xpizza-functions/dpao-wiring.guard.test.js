@@ -10,7 +10,7 @@ const { BASE, HUNKS, FILES, unapplyDpaoModule } = require('./tools/dpao-module-i
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['delivery/delivery-wire.js', 'index.js'], 'the owned files');
 for (const f of FILES) {
-  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+  const src = require('./tools/zones-module-inverse').unapplyZonesModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyDpaoModule(f, src), b, `🔴 ${f} minus the app-only hunks is not ${BASE}:${f}`);
@@ -25,7 +25,7 @@ for (const f of FILES) {
 assert.strictEqual(unapplyDpaoModule('tb-unowned.js', 'x\n'), 'x\n', 'an unowned file passes through');
 ok(`${FILES.length} files → ${BASE} byte-for-byte, same-line only; inside / duplicate / outside caught (${HUNKS.length} hunks); unowned passes`);
 // the portal fold of index.js carries every index.js hunk exactly once (the guards that read the fold peel this layer)
-const fold = require('./tools/portal-split').foldPortalSplit();
+const fold = require('./tools/zones-module-inverse').unapplyZonesModule('index.js', require('./tools/portal-split').foldPortalSplit());
 for (const h of HUNKS.filter((x) => x.file === 'index.js')) assert.strictEqual(fold.split(h.now).length - 1, 1, 'an index.js hunk survives the portal fold exactly once');
 ok('the portal fold carries each index.js hunk exactly once');
 // the frozen order forms (rule 40): no byte under either form directory differs from the base, and both pages hash as pinned
