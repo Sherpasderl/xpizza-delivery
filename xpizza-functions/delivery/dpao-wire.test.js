@@ -65,12 +65,12 @@ const PIN = { ...north(4), confirmed: true };
   await cell('DPAO-APP-IGNORES-THE-RESTAURANT-MAP', async (L) => {
     const priced = async (raw, uid = null) => (await DW.deliveryFor(fakeDb(raw), { rid: 'tb_r1', mode: 'delivery', pin: PIN, customerUid: uid, getIdentity, app: true })).ctx;
     const B = { policy_version: 3, bands: RAW.bands };
-    assert.strictEqual((await priced({ ...B })).delivery_cents, 5000, `${L}: a restaurant with no map entry is priced`);
-    assert.strictEqual((await priced({ ...B, restaurants: { tb_r1: { active: false, free_delivery: false } } })).delivery_cents, 5000, `${L}: active:false in the map is ignored`);
+    assert.strictEqual((await priced({ ...B }))?.delivery_cents, 5000, `${L}: a restaurant with no map entry is priced`);
+    assert.strictEqual((await priced({ ...B, restaurants: { tb_r1: { active: false, free_delivery: false } } }))?.delivery_cents, 5000, `${L}: active:false in the map is ignored`);
     const m = await priced({ ...B, restaurants: { tb_r1: { active: true, free_delivery: true } } }, 'tb_member');
-    assert.deepStrictEqual([m.delivery_cents, m.promo_discount_cents, m.promo], [5000, 0, null], `${L}: free delivery is off — a member pays the fee`);
+    assert.deepStrictEqual([m?.delivery_cents, m?.promo_discount_cents, m?.promo], [5000, 0, null], `${L}: free delivery is off — a member pays the fee`);
     const q = await DW.quoteDeliveryFor({ get: () => null }, fakeDb({ ...B, restaurants: { other: { active: true, free_delivery: false } } }), 'tb_r1', { mode: 'delivery', pin: PIN, entry_mode: 'app' }, { getIdentity, knownUid: 'tb_member' });
-    assert.strictEqual(DW.quoteFields(q.ctx).delivery.delivery_cents, 5000, `${L}: the quote path too`);
+    assert.strictEqual(DW.quoteFields(q.ctx).delivery?.delivery_cents, 5000, `${L}: the quote path too`);
   });
 
   await cell('DPAO-APP-ABSENT-CONFIG', async (L) => {
@@ -90,7 +90,7 @@ const PIN = { ...north(4), confirmed: true };
   await cell('DPAO-APP-BANDS-ARE-THE-ONLY-LIMIT', async (L) => {
     const tight = async () => ({ hub_lat: HUB.lat, hub_lng: HUB.lng, delivery_radius_km: 3.5 });
     const q = await DW.quoteDeliveryFor({ get: () => null }, fakeDb(RAW), 'tb_r1', { mode: 'delivery', pin: PIN, entry_mode: 'app' }, { getIdentity: tight, knownUid: null });
-    assert.deepStrictEqual([DW.quoteFields(q.ctx).delivery.delivery_cents, DW.quoteFields(q.ctx).delivery.max_km], [5000, 8], `${L}: a pin beyond the restaurant radius but within the bands is priced; coverage = the last band`);
+    assert.deepStrictEqual([DW.quoteFields(q.ctx).delivery?.delivery_cents, DW.quoteFields(q.ctx).delivery?.max_km], [5000, 8], `${L}: a pin beyond the restaurant radius but within the bands is priced; coverage = the last band`);
     const far = { lat: HUB.lat + 8.5 / 111.195, lng: HUB.lng, confirmed: true };
     const f = await DW.quoteDeliveryFor({ get: () => null }, fakeDb(RAW), 'tb_r1', { mode: 'delivery', pin: far, entry_mode: 'app' }, { getIdentity: tight, knownUid: null });
     assert.deepStrictEqual(f.refuse, { ok: false, error: 'outside_delivery_bands' }, `${L}: beyond the last band is refused`);
