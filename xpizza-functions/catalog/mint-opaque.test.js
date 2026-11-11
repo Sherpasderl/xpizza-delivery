@@ -19,7 +19,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 
 // ── the switch and the token ──
 {
-  assert.strictEqual(MO.mintCapabilities().enabled, false, '🔴 MO-OFF the platform ships with minting OFF (one-time flip after S1d + S3 + the La Musa POS evidence)');
+  assert.strictEqual(MO.mintCapabilities().enabled, true, '🔴 MO-ON minting is ON (flipped once: S1d + S3 deployed in asm5; the La Musa ticket-names evidence green, kds-ticket-names)');
   const seen = new Set();
   for (let i = 0; i < 2000; i++) { const k = MO.mintKey(); assert.match(k, /^i_[a-z2-7]{12}$/, 'MO-SYNTAX'); assert.ok(RK.OPAQUE_SYNTAX.test(k)); seen.add(k); }
   assert.strictEqual(seen.size, 2000, 'MO-RANDOM 2000 draws, no repeat');

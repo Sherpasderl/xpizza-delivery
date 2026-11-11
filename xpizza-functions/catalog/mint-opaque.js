@@ -12,7 +12,7 @@
 // ---------------------------------------------------------------------------
 const crypto = require('crypto');
 
-const MINT_OPAQUE = false;
+const MINT_OPAQUE = true;
 const OPAQUE_SYNTAX = /^i_[a-z2-7]{12}$/i;   // the one definition of a minted key's shape
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567';
 
