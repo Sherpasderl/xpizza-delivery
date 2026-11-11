@@ -16,7 +16,7 @@ async function cell(label, fn) { try { await fn(label); console.log(`  ✓ ${++n
 
 const PATH = 'platform_config/delivery_pricing';
 const BANDS = [{ max_km: 3, cents: 3000 }, { max_km: 6, cents: 5000 }, { max_km: 9.5, cents: 7000 }];
-const TOKENS = { admin: { uid: 'tb_owner' }, staff: { uid: 'tb_staff' }, cust: { uid: 'tb_c', customer: true }, hh: { uid: 'tb_h', handheld: true } };
+const TOKENS = { admin: { uid: 'tbowner' }, staff: { uid: 'tbstaff' }, cust: { uid: 'tbc', customer: true }, hh: { uid: 'tbh', handheld: true }, uni: { uid: 'dueño' } };
 const req = (tok, body) => ({ get: (h) => (String(h).toLowerCase() === 'authorization' && tok ? `Bearer ${tok}` : null), body });
 let AT = 1762800000000;
 const IDS = ['tb_r1', 'tb_r2', 'tb_r3'];
@@ -28,7 +28,7 @@ const DIRECTORY = {
   },                                                                          // tb_r3: registered, no identity yet
 };
 function world(init = {}, { adminReadFails = false, registry } = {}) {
-  const db = fakeRtdb({ platform_admins: { tb_owner: true }, ...DIRECTORY, ...init }, { strict: true });
+  const db = fakeRtdb({ platform_admins: { tbowner: true, 'dueño': true }, ...DIRECTORY, ...init }, { strict: true });
   if (adminReadFails) { const ref = db.ref; db.ref = (p) => (String(p).startsWith('platform_admins') ? { once: async () => { throw new Error('down'); }, get: async () => { throw new Error('down'); } } : ref(p)); }
   const deps = { db, verifyIdToken: async (t) => { if (!TOKENS[t]) throw new Error('bad'); return TOKENS[t]; }, timestamp: () => ++AT,
     readRegistry: registry || (async () => ({ ok: true, fresh: true, ids: IDS })) };
@@ -44,6 +44,8 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
       const r = await w.set(body(), tok); const g = await w.get(tok);
       assert.deepStrictEqual([r.status, r.body.error, g.status, g.body.error], [st, err, st, err], `${L}: ${tok} → ${st} ${err}`);
     }
+    const uni = world();
+    assert.deepStrictEqual([(await uni.set(body(), 'uni')).status, (await uni.get('uni')).status], [403, 403], `${L}: a caller uid outside the Firebase-UID shape is refused, even if granted`);
     const down = world({}, { adminReadFails: true });
     assert.deepStrictEqual([(await down.set(body())).status, (await down.get()).status], [503, 503], `${L}: a failed admin read is an outage, never a lower role`);
     assert.strictEqual(w.db.get(PATH), null, `${L}: nothing written`);
@@ -83,8 +85,8 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
     assert.deepStrictEqual([r.status, r.body], [200, { ok: true, policy_version: 1 }], `${L}: the first save, through the speculative null pass`);
     const node = w.db.get(PATH);
     assert.deepStrictEqual(Object.keys(node).sort(), ['bands', 'history', 'policy_version', 'updated_at', 'updated_by'], `${L}: the node's keys — no per-restaurant map`);
-    assert.deepStrictEqual([node.policy_version, node.bands, node.updated_by], [1, BANDS, 'tb_owner'], `${L}: the policy`);
-    assert.deepStrictEqual(node.history, [{ actor_uid: 'tb_owner', prev_version: 0, new_version: 1, new: { bands: BANDS }, at: node.updated_at }], `${L}: its history entry, prev_version only`);
+    assert.deepStrictEqual([node.policy_version, node.bands, node.updated_by], [1, BANDS, 'tbowner'], `${L}: the policy`);
+    assert.deepStrictEqual(node.history, [{ actor_uid: 'tbowner', prev_version: 0, new_version: 1, new: { bands: BANDS }, at: node.updated_at }], `${L}: its history entry, prev_version only`);
     const g = await w.get();
     assert.deepStrictEqual({ ...g.body, branches: undefined }, { policy_version: 1, bands: BANDS, history: node.history, caps: { max_bands: 20, max_km: 10, max_cents: 15000, km_step: 0.5 }, branches: undefined }, `${L}: GET returns it`);
   });
@@ -156,11 +158,13 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
   });
 
   await cell('DPW-HISTORY-VALIDATED-ELSE-RESET', async (L) => {
-    const ok1 = { actor_uid: 'tb_owner', prev_version: 0, new_version: 1, new: { bands: BANDS }, at: 1 };
+    const ok1 = { actor_uid: 'tbowner', prev_version: 0, new_version: 1, new: { bands: BANDS }, at: 1 };
     for (const [history, why] of [
       ['x', 'not an array'], [{ 0: ok1, 2: ok1 }, 'gap-keyed object'], [[ok1, null, ok1], 'a hole'], [[{ ...ok1, extra: 1 }], 'an extra key'],
       [[{ ...ok1, new_version: '1' }], 'a mistyped field'], [[{ ...ok1, new: { bands: BANDS, restaurants: { tb_r1: { active: true, free_delivery: false } } } }], 'an extra key in new'],
       [[{ ...ok1, new: { bands: [{ max_km: 9.25, cents: 1 }] } }], 'off-step bands in new'], [Array(11).fill(ok1), 'more than 10'],
+      [[{ ...ok1, actor_uid: 'u'.repeat(200000) }], 'a 200,000-char actor uid'], [[{ ...ok1, actor_uid: 'ñandú' }], 'a Unicode actor uid'],
+      [[{ ...ok1, actor_uid: 'u'.repeat(129) }], 'a 129-char actor uid'], [[{ ...ok1, at: 1.5 }], 'a fractional at'], [[{ ...ok1, at: 1e300 }], 'an unsafe at'],
     ]) {
       const w = world(stored({ history }));
       assert.strictEqual((await w.set(body({ expected_policy_version: 1 }))).status, 200, `${L}: ${why}: saved`);
@@ -199,9 +203,11 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
 
   await cell('DPW-ORDER-PATH-READ-SIZE', (L) => {
     const twenty = Array.from({ length: 20 }, (_, i) => ({ max_km: (i + 1) / 2, cents: 15000 }));
-    const e = { actor_uid: 'x'.repeat(128), prev_version: 1e15 - 2, new_version: 1e15 - 1, new: { bands: twenty }, at: 1762800000000, prev_malformed: true, history_reset: true };
-    const node = { policy_version: 1e15 - 1, bands: twenty, history: Array(10).fill(e), updated_at: 1762800000000, updated_by: 'x'.repeat(128) };
-    const bytes = Buffer.byteLength(JSON.stringify(node), 'utf8');
+    // the TRUE worst case the writer can retain: UID-shaped (ASCII) 128-char uids, the largest safe-integer clocks, the largest
+    // versions, both flags — every retained field is bounded by entryOk, so this is the ceiling on every order read
+    const e = { actor_uid: 'Z'.repeat(128), prev_version: 1e15 - 2, new_version: 1e15 - 1, new: { bands: twenty }, at: Number.MAX_SAFE_INTEGER, prev_malformed: true, history_reset: true };
+    const node = { policy_version: 1e15 - 1, bands: twenty, history: Array(10).fill(e), updated_at: Number.MAX_SAFE_INTEGER, updated_by: 'Z'.repeat(128) };
+    const bytes = Buffer.byteLength(JSON.stringify(node), 'utf8');   // UTF-8 of the JSON encoding (all retained strings are ASCII by construction)
     assert.strictEqual(bytes, A.READ_BYTES_AT_CAPS, `${L}: the pinned worst case (20 bands, 10 entries, 128-char uids, the largest versions)`);
     assert.ok(bytes <= 10240, `${L}: ≤ 10 KB on every order read, independent of the restaurant count (got ${bytes})`);
   });
