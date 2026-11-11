@@ -13,6 +13,8 @@
 // The ORDER PATH's reader (delivery-wire.js loadPricing over readPricing) reads every node this writer accepts back exactly.
 const { isDeepStrictEqual } = require('util');
 const { verifiedContext, okVersion } = require('../portal/ops-core');
+const Z = require('./zones');            // envío step 2: drawn no-delivery zones (PLAN-envio-zones-step2-r2)
+const ZL = require('./zones-lock');      // envío step 2: zones change only while every restaurant is closed (owner D1)
 
 const PATH = 'platform_config/delivery_pricing';
 const CAPS = Object.freeze({ max_bands: 20, max_km: 10, max_cents: 15000, km_step: 0.5 });   // owner 2026-11-10: ≤ 20 bands, ≤ 10 km in 0.5 km steps, ≤ L 150 a band
@@ -50,10 +52,17 @@ const bandsOk = (bands) => bandsProblem(bands) === null;
 // The POST body (exactly { expected_policy_version, bands }) → { ok: true, value } | { ok: false, reply }.
 function validateWrite(body) {
   const bad = (field) => ({ ok: false, reply: reply(400, { error: 'bad_request', field }) });
-  if (!exactKeys(body, ['expected_policy_version', 'bands'])) return bad('body');
+  if (!exactKeys(body, ['expected_policy_version', 'bands'], ['no_delivery_zones'])) return bad('body');
   if (!okVersion(body.expected_policy_version)) return bad('version');
   const bp = bandsProblem(body.bands); if (bp) return bad(bp);
-  return { ok: true, value: { expected: body.expected_policy_version, bands: body.bands.map((b) => ({ max_km: b.max_km, cents: b.cents })) } };
+  // step 2: present → the full list REPLACES the stored one (normalized, every rule after rounding); absent → the stored list is kept
+  let zones;
+  if ('no_delivery_zones' in body) {
+    const zr = Z.normalizeInput(body.no_delivery_zones);
+    if (!zr.ok) return { ok: false, reply: reply(400, { error: 'bad_request', field: zr.problem, ...(zr.zone_id ? { zone_id: zr.zone_id } : {}), part: zr.field }) };
+    zones = zr.zones;
+  }
+  return { ok: true, value: { expected: body.expected_policy_version, bands: body.bands.map((b) => ({ max_km: b.max_km, cents: b.cents })), zones } };
 }
 
 // One stored history entry, exactly (C1): dense, exact keys, typed.
@@ -64,7 +73,9 @@ function entryOk(e) {
   if (!(Number.isSafeInteger(e.at) && e.at >= 0)) return false;
   if ('prev_malformed' in e && e.prev_malformed !== true) return false;
   if ('history_reset' in e && e.history_reset !== true) return false;
-  return exactKeys(e.new, ['bands']) && bandsOk(e.new.bands);
+  if (!exactKeys(e.new, ['bands'], ['zones']) || !bandsOk(e.new.bands)) return false;
+  // step 2: the zones are recorded by count + fingerprint only (owner D4: never the shapes — the order path reads this node)
+  return !('zones' in e.new) || (exactKeys(e.new.zones, ['count', 'sha256']) && Number.isSafeInteger(e.new.zones.count) && e.new.zones.count >= 0 && e.new.zones.count <= Z.CAPS.zones_max && typeof e.new.zones.sha256 === 'string' && /^[0-9a-f]{64}$/.test(e.new.zones.sha256));
 }
 function historyOk(h) {
   if (!Array.isArray(h) || h.length > HISTORY_MAX) return false;
@@ -121,14 +132,15 @@ async function getDeliveryPricingCore(deps, req) {
   const branchesP = branchesOf(deps);   // in parallel with the policy read; never rejects
   try { cur = (await deps.db.ref(PATH).once('value')).val(); } catch (_) { return UNAVAILABLE(); }
   const list = await branchesP;
-  const caps = { ...CAPS };
+  const caps = { ...CAPS, ...Z.CAPS };
   const dir = list ? { branches: list } : { branches_unavailable: true };
-  if (cur === null || cur === undefined) return reply(200, { policy_version: 0, bands: [], history: [], caps, ...dir });
+  const zones_editable = (await ZL.zonesLock(deps)).ok === true;   // advisory for the portal: the save re-runs the same check
+  if (cur === null || cur === undefined) return reply(200, { policy_version: 0, bands: [], history: [], no_delivery_zones: [], zones_editable, caps, ...dir });
   const pv = isObj(cur) ? cur.policy_version : undefined;
-  if (!isObj(cur) || !(okVersion(pv) && pv >= 1) || !bandsOk(cur.bands)) {
+  if (!isObj(cur) || !(okVersion(pv) && pv >= 1) || !bandsOk(cur.bands) || Z.storedProblem(cur.no_delivery_zones)) {
     return reply(200, { current_malformed: true, policy_version_raw: typeof pv === 'number' || typeof pv === 'string' ? pv : null, caps, ...dir });
   }
-  return reply(200, { policy_version: pv, bands: cur.bands, history: historyOk(cur.history) ? cur.history : [], caps, ...dir });
+  return reply(200, { policy_version: pv, bands: cur.bands, history: historyOk(cur.history) ? cur.history : [], no_delivery_zones: Z.toPortal(cur.no_delivery_zones), zones_editable, caps, ...dir });
 }
 
 async function setDeliveryPricingCore(deps, req) {
@@ -136,33 +148,53 @@ async function setDeliveryPricingCore(deps, req) {
   if (a.fail) return a.fail;
   const v = validateWrite(req && req.body);
   if (!v.ok) return v.reply;
-  const { expected, bands } = v.value;
+  const { expected, bands, zones } = v.value;
+  // step 2 (owner D1): a save that CHANGES the zones needs every restaurant closed — checked once, before the transaction (a
+  // point-in-time owner rule; Codex r1 F3: the seconds until the commit are an accepted residual). Bands-only saves never read hours.
+  let zonesCleared = false;
+  if (zones !== undefined) {
+    let pre;
+    try { pre = (await deps.db.ref(PATH).once('value')).val(); } catch (_) { return UNAVAILABLE(); }
+    if (!Z.sameLogical(zones, isObj(pre) ? pre.no_delivery_zones : undefined)) {
+      const lock = await ZL.zonesLock(deps);
+      if (!lock.ok) return reply(lock.status, lock.body);
+      zonesCleared = true;
+    }
+  }
   const at = deps.timestamp();
+  const zonesSummary = (z) => ({ count: Z.logical(z).length, sha256: Z.sha(z) });   // the history's record of the zones (D4)
   let last = null;   // the LAST callback's decision (reset on every invocation — the SDK re-runs the callback)
   let tx;
   try {
     tx = await deps.db.ref(PATH).transaction((cur) => {
-      const d = { why: null, current: null };
+      const d = { why: null, current: null, zones: undefined };
       last = d;
-      if (cur === null) {
+      const curZ = isObj(cur) ? cur.no_delivery_zones : undefined;
+      // step 2: an omitted field keeps the CURRENT stored list and its presence exactly (F6); a zones change not cleared by the lock
+      // (the stored list moved after the pre-read) is superseded
+      const newZ = zones === undefined ? curZ : zones;
+      d.zones = newZ;
+      if (cur === null) {   // the speculative null-first pass: a stale `expected` re-runs; expected 0 + an empty pre-read means any zones were cleared
         if (expected !== 0) { d.why = 'stale_null'; return null; }   // null-first safe: an existing node makes the server re-run us
         d.why = 'write';
-        return nodeOf({ prevVersion: 0, prevMalformed: false, kept: [], reset: false });
+        return nodeOf({ prevVersion: 0, prevMalformed: false, kept: [], reset: false, zonesNow: newZ });
       }
       const pv = isObj(cur) ? cur.policy_version : undefined;
-      if (!isObj(cur) || !(okVersion(pv) && pv >= 1)) { d.why = 'current_malformed'; return undefined; }
+      if (!isObj(cur) || !(okVersion(pv) && pv >= 1) || Z.storedProblem(curZ)) { d.why = 'current_malformed'; return undefined; }
       if (pv !== expected) { d.why = 'superseded'; d.current = pv; return undefined; }
+      if (zones !== undefined && !zonesCleared && !Z.sameLogical(zones, curZ)) { d.why = 'superseded'; d.current = pv; return undefined; }   // the zones moved after the pre-read
       const keep = historyOk(cur.history);
       d.why = 'write';
-      return nodeOf({ prevVersion: pv, prevMalformed: !bandsOk(cur.bands), kept: keep ? cur.history : [], reset: !keep && cur.history !== undefined });
+      return nodeOf({ prevVersion: pv, prevMalformed: !bandsOk(cur.bands), kept: keep ? cur.history : [], reset: !keep && cur.history !== undefined, zonesNow: newZ });
     }, undefined, false);
   } catch (_) {
     return UNAVAILABLE();
   }
-  function nodeOf({ prevVersion, prevMalformed, kept, reset }) {
-    const entry = { actor_uid: a.uid, prev_version: prevVersion, new_version: prevVersion + 1, new: { bands }, at,
+  function nodeOf({ prevVersion, prevMalformed, kept, reset, zonesNow }) {
+    const entry = { actor_uid: a.uid, prev_version: prevVersion, new_version: prevVersion + 1, new: { bands, zones: zonesSummary(zonesNow) }, at,
       ...(prevMalformed ? { prev_malformed: true } : {}), ...(reset ? { history_reset: true } : {}) };
-    return { policy_version: prevVersion + 1, bands, history: [entry, ...kept].slice(0, HISTORY_MAX), updated_at: at, updated_by: a.uid };
+    // an empty zone list is the field ABSENT (RTDB prunes empty arrays; F6)
+    return { policy_version: prevVersion + 1, bands, ...(Z.logical(zonesNow).length ? { no_delivery_zones: zonesNow } : {}), history: [entry, ...kept].slice(0, HISTORY_MAX), updated_at: at, updated_by: a.uid };
   }
   const why = last && last.why;
   if (why === 'superseded') return reply(409, { error: 'superseded', current_version: last.current });
@@ -173,8 +205,8 @@ async function setDeliveryPricingCore(deps, req) {
   if (why !== 'write' || !tx.committed || !isObj(s)) return UNAVAILABLE();
   const want = expected + 1;
   const h0 = Array.isArray(s.history) ? s.history[0] : null;
-  if (s.policy_version !== want || !isDeepStrictEqual(s.bands, bands) || 'restaurants' in s
-    || !isObj(h0) || h0.new_version !== want || !isDeepStrictEqual(h0.new, { bands })) return UNAVAILABLE();
+  if (s.policy_version !== want || !isDeepStrictEqual(s.bands, bands) || 'restaurants' in s || !Z.sameLogical(s.no_delivery_zones, last.zones)
+    || !isObj(h0) || h0.new_version !== want || !isDeepStrictEqual(h0.new, { bands, zones: zonesSummary(last.zones) })) return UNAVAILABLE();
   return reply(200, { ok: true, policy_version: want });
 }
 

@@ -9,6 +9,8 @@ const { getAuth } = require('firebase-admin/auth');
 const { PORTAL_ORIGINS } = require('../portal/origins');
 const { createRestaurantRegistry, makeFirestoreRegistryReader } = require('../catalog/restaurant-registry');
 const C = require('./pricing-admin-core');
+const { getIdentity } = require('../restaurant-config');   // envío step 2: the zones lock's hours, through the ONE schedule source
+const { readGraceMinutesStrict } = require('./zones-lock');
 
 let registry = null;   // G2: the branch directory for the admin picker (a FRESH read per GET — readNow)
 const registryOf = () => (registry || (registry = createRestaurantRegistry({ listIds: makeFirestoreRegistryReader(getFirestore()) })));
@@ -18,6 +20,9 @@ const deps = () => ({
   verifyIdToken: (t) => getAuth().verifyIdToken(t),
   timestamp: () => ServerValue.TIMESTAMP,
   readRegistry: () => registryOf().readNow(),
+  getIdentity,                                   // the lock accepts only FRESH reads (Codex r1 F2)
+  readGrace: readGraceMinutesStrict,             // a failed read → 503 for the lock only; materialization keeps its default
+  now: () => Date.now(),
 });
 
 function handler(name, core) {
