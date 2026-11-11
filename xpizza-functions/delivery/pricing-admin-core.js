@@ -17,18 +17,19 @@ const { verifiedContext, okVersion } = require('../portal/ops-core');
 const PATH = 'platform_config/delivery_pricing';
 const CAPS = Object.freeze({ max_bands: 20, max_km: 10, max_cents: 15000, km_step: 0.5 });   // owner 2026-11-10: ≤ 20 bands, ≤ 10 km in 0.5 km steps, ≤ L 150 a band
 const HISTORY_MAX = 10;
-// The order path reads this node on every order: its TRUE worst case (20 bands, 10 history entries, 128-char ASCII uids, safe-int clocks, the
+// The order path reads this node on every order: its TRUE worst case (20 bands, 10 history entries, 128-unit uids at 6 JSON bytes each, safe-int clocks, the
 // largest versions), UTF-8 bytes of the JSON — pinned by pricing-admin.test.js; independent of the restaurant count.
-const READ_BYTES_AT_CAPS = 9293;
+const READ_BYTES_AT_CAPS = 16333;
 
 const reply = (status, body) => ({ status, body });
 const UNAVAILABLE = () => reply(503, { error: 'unavailable', retryable: true });
 const isObj = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
 const exactKeys = (o, req, opt = []) => isObj(o) && req.every((k) => Object.prototype.hasOwnProperty.call(o, k)) && Object.keys(o).every((k) => req.includes(k) || opt.includes(k));
 const PATH_SAFE = /^[^.#$[\]/]{1,128}$/;
-// Codex build r1 F1: an actor (and so every retained history entry) is a Firebase-UID-shaped id — ASCII, so a retained entry's
-// bytes are bounded by construction (the pinned order-path read size is the true worst case).
-const UID_RE = /^[A-Za-z0-9]{1,128}$/;
+// Codex build r1 F1 + advisor r2: an actor uid is bounded by LENGTH only — Firebase's own limit, 1..128 UTF-16 code units, any
+// characters (custom UIDs need not be alphanumeric: an owner is never locked out). A retained history entry's bytes are then
+// bounded by construction (the pinned order-path read size is the true worst case).
+const uidOk = (u) => typeof u === 'string' && u.length >= 1 && u.length <= 128;
 
 // bands → null (ok) | 'bands' (shape) | 'band_caps'
 function bandsProblem(bands) {
@@ -58,7 +59,7 @@ function validateWrite(body) {
 // One stored history entry, exactly (C1): dense, exact keys, typed.
 function entryOk(e) {
   if (!exactKeys(e, ['actor_uid', 'prev_version', 'new_version', 'new', 'at'], ['prev_malformed', 'history_reset'])) return false;
-  if (typeof e.actor_uid !== 'string' || !UID_RE.test(e.actor_uid)) return false;
+  if (!uidOk(e.actor_uid)) return false;
   if (!okVersion(e.prev_version) || !okVersion(e.new_version) || e.new_version < 1) return false;
   if (!(Number.isSafeInteger(e.at) && e.at >= 0)) return false;
   if ('prev_malformed' in e && e.prev_malformed !== true) return false;
@@ -76,7 +77,7 @@ async function admit(deps, req) {
   const v = await verifiedContext({ verifyIdToken: deps.verifyIdToken }, req);
   if (v.fail) return { fail: v.fail };
   const uid = v.ctx.uid;
-  if (!UID_RE.test(uid)) return { fail: reply(403, { error: 'not_authorized' }) };
+  if (!uidOk(uid)) return { fail: reply(403, { error: 'not_authorized' }) };
   let admin;
   try { admin = (await deps.db.ref(`platform_admins/${uid}`).once('value')).val(); } catch (_) { return { fail: UNAVAILABLE() }; }
   if (admin !== true) return { fail: reply(403, { error: 'not_authorized' }) };
