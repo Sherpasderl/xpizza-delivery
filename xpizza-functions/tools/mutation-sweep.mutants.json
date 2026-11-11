@@ -23104,8 +23104,8 @@
   "slice": "s2tip",
   "label": "a dark restaurant accepts a tip on the order path",
   "file": "delivery/delivery-wire.js",
-  "from": "  if (!lp.pricing || app !== true) return t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;",
-  "to": "  if (!lp.pricing || app !== true) return null;",
+  "from": "app === true && mode === 'delivery' ? { refusal: 'delivery_pricing_unavailable', httpStatus: 503 } : t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;",
+  "to": "app === true && mode === 'delivery' ? { refusal: 'delivery_pricing_unavailable', httpStatus: 503 } : null;",
   "command": [
    "node",
    "s2tip.test.js"

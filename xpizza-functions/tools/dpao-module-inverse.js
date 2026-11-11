@@ -7,6 +7,11 @@ const BASE = '6d7f8207';
 const HUNKS = Object.freeze([
  {
   "file": "index.js",
+  "now": "    if (!DW.isApp(body) && distanceKm > restIdentity.delivery_radius_km) {   // owner 2026-11-10: an app order's limit is the platform band table\n",
+  "was": "    if (distanceKm > restIdentity.delivery_radius_km) {\n"
+ },
+ {
+  "file": "index.js",
   "now": "  const dq = await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }); const priceBreakdown = DW.withDelivery(dq, redemptionPriced\n",
   "was": "  const dq = await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents }); const priceBreakdown = DW.withDelivery(dq, redemptionPriced\n"
  },
@@ -17,8 +22,18 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "index.js",
+  "now": "      if (!DW.isApp(body) && distanceKm > id.delivery_radius_km) {   // owner 2026-11-10: an app order's limit is the platform band table\n",
+  "was": "      if (distanceKm > id.delivery_radius_km) {\n"
+ },
+ {
+  "file": "index.js",
   "now": "exports.resetDraftToLive = require('./portal/reset-draft').resetDraftToLive; exports.getMyBranches = require('./portal/ops-functions').getMyBranches; exports.updateBranch = require('./portal/ops-functions').updateBranch; exports.setBranchPause = require('./portal/ops-functions').setBranchPause; exports.getBranchAvailability = require('./portal/ops-functions').getBranchAvailability; exports.setBranchAvailability = require('./portal/ops-functions').setBranchAvailability; exports.getBranchDevices = require('./portal/ops-functions').getBranchDevices; exports.revokeBranchDevice = require('./portal/ops-functions').revokeBranchDevice; exports.createBranchDraft = require('./portal/ops-functions').createBranchDraft; exports.updateBranchProfile = require('./portal/ops-functions').updateBranchProfile; exports.setBranchActive = require('./portal/ops-functions').setBranchActive; exports.deleteBranchDraft = require('./portal/ops-functions').deleteBranchDraft; exports.photoUploadStart = require('./photos/functions').photoUploadStart; exports.photoProcess = require('./photos/functions').photoProcess; exports.photoSweep = require('./photos/functions').photoSweep; exports.getDeliveryPricing = require('./delivery/pricing-admin-functions').getDeliveryPricing; exports.setDeliveryPricing = require('./delivery/pricing-admin-functions').setDeliveryPricing;   // PORTAL-UI 1a + slice 2: + the branch-ops endpoints (portal/ops-functions.js, full load) · 1D add-product A §0.1: \"Volver al menú publicado\" (full load; not an isolated portal fn)\n",
   "was": "exports.resetDraftToLive = require('./portal/reset-draft').resetDraftToLive; exports.getMyBranches = require('./portal/ops-functions').getMyBranches; exports.updateBranch = require('./portal/ops-functions').updateBranch; exports.setBranchPause = require('./portal/ops-functions').setBranchPause; exports.getBranchAvailability = require('./portal/ops-functions').getBranchAvailability; exports.setBranchAvailability = require('./portal/ops-functions').setBranchAvailability; exports.getBranchDevices = require('./portal/ops-functions').getBranchDevices; exports.revokeBranchDevice = require('./portal/ops-functions').revokeBranchDevice; exports.createBranchDraft = require('./portal/ops-functions').createBranchDraft; exports.updateBranchProfile = require('./portal/ops-functions').updateBranchProfile; exports.setBranchActive = require('./portal/ops-functions').setBranchActive; exports.deleteBranchDraft = require('./portal/ops-functions').deleteBranchDraft; exports.photoUploadStart = require('./photos/functions').photoUploadStart; exports.photoProcess = require('./photos/functions').photoProcess; exports.photoSweep = require('./photos/functions').photoSweep;   // PORTAL-UI 1a + slice 2: + the branch-ops endpoints (portal/ops-functions.js, full load) · 1D add-product A §0.1: \"Volver al menú publicado\" (full load; not an isolated portal fn)\n"
+ },
+ {
+  "file": "delivery/delivery-wire.js",
+  "now": "    const raw = snap.val(); return { pricing: P.readPricing(raw && typeof raw === 'object' ? { ...raw, restaurants: { app: { active: true, free_delivery: false } } } : raw, 'app') };   // owner 2026-11-10: ONE platform-wide table — every restaurant priced, no per-restaurant map, free delivery off\n",
+  "was": "    return { pricing: P.readPricing(snap.val(), rid) };\n"
  },
  {
   "file": "delivery/delivery-wire.js",
@@ -27,13 +42,18 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "delivery/delivery-wire.js",
-  "now": "  if (!lp.pricing || app !== true) return t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;   // owner 2026-11-10: envío + tip are APP-only; any other request (the frozen forms) is dark\n",
+  "now": "  if (!lp.pricing || app !== true) return app === true && mode === 'delivery' ? { refusal: 'delivery_pricing_unavailable', httpStatus: 503 } : t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;   // owner 2026-11-10: envío + tip are APP-only (the frozen forms are dark); an app delivery with no table fails closed, an app pickup stays dark\n",
   "was": "  if (!lp.pricing) return t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;\n"
  },
  {
   "file": "delivery/delivery-wire.js",
-  "now": "  if (!lp.pricing || !isApp(body)) return t > 0 ? { refuse: { ok: false, error: 'tip_not_enabled' }, httpStatus: 409 } : { ctx: null, uid: knownUid === undefined ? null : knownUid };   // owner 2026-11-10: APP-only\n",
+  "now": "  if (!lp.pricing || !isApp(body)) return isApp(body) && body.mode === 'delivery' ? { refuse: { ok: false, error: 'delivery_pricing_unavailable', retryable: true }, httpStatus: 503 } : t > 0 ? { refuse: { ok: false, error: 'tip_not_enabled' }, httpStatus: 409 } : { ctx: null, uid: knownUid === undefined ? null : knownUid };   // owner 2026-11-10: APP-only; an app delivery with no table fails closed\n",
   "was": "  if (!lp.pricing) return t > 0 ? { refuse: { ok: false, error: 'tip_not_enabled' }, httpStatus: 409 } : { ctx: null, uid: knownUid === undefined ? null : knownUid };\n"
+ },
+ {
+  "file": "delivery/delivery-wire.js",
+  "now": "  // owner 2026-11-10: the platform band table is the app's ONLY distance limit — the restaurant radius is not part of it\n  return last;\n",
+  "was": "  const r = identity && identity.delivery_radius_km;\n  return isApp(body) && typeof r === 'number' && Number.isFinite(r) && r > 0 ? Math.min(last, r) : last;\n"
  },
  {
   "file": "delivery/delivery-wire.js",

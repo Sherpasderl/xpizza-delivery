@@ -966,7 +966,7 @@ createOrderApp.all('*', async (req, res) => {
   }
   if (orderType === 'delivery') {
     const distanceKm = haversineKm(lat, lng, restIdentity.hub_lat, restIdentity.hub_lng);
-    if (distanceKm > restIdentity.delivery_radius_km) {
+    if (!DW.isApp(body) && distanceKm > restIdentity.delivery_radius_km) {   // owner 2026-11-10: an app order's limit is the platform band table
       console.warn(`createOrder: order ${orderId} rejected — ${distanceKm.toFixed(2)}km > ${restIdentity.delivery_radius_km}km radius`);
       return badRequest(res, `Outside delivery zone (${distanceKm.toFixed(1)}km from restaurant, max ${restIdentity.delivery_radius_km}km)`);
     }
@@ -2067,7 +2067,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     }
     if (orderType === 'delivery') {
       const distanceKm = haversineKm(lat, lng, id.hub_lat, id.hub_lng);
-      if (distanceKm > id.delivery_radius_km) {
+      if (!DW.isApp(body) && distanceKm > id.delivery_radius_km) {   // owner 2026-11-10: an app order's limit is the platform band table
         return badRequest(res, `Outside delivery zone (${distanceKm.toFixed(1)}km from restaurant, max ${id.delivery_radius_km}km)`);
       }
     }

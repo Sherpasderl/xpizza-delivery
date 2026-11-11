@@ -211,13 +211,13 @@ const seq = (...ids) => { let i = 0; return () => ids[i++]; };
     assert.deepStrictEqual(await q({ mode: 'pickup', tip_cents: 500, entry_mode: 'app' }), { refuse: { ok: false, error: 'tip_pickup' }, httpStatus: 400 }, 'quote pickup + tip → 400 tip_pickup');
     // app coverage: the pin is 4 km; bands reach 6 km; the restaurant's radius is 3.5 km
     const appOut = await q(body({ entry_mode: 'app' }));
-    assert.strictEqual(appOut.refuse && appOut.refuse.error, 'outside_delivery_bands', 'APP: a pin between the radius and the last band is refused');
+    assert.strictEqual(appOut.ctx && appOut.ctx.delivery_cents, 5000, 'APP: a pin between the radius and the last band is PRICED (owner 2026-11-10: the band table is the only app limit)');
     assert.deepStrictEqual(await q(body({})), { ctx: null, uid: null }, 'legacy (no entry_mode): DARK on an active restaurant (owner 2026-11-10: envío is app-only)');
     const wide = await q(body({ entry_mode: 'app' }), async () => ({ hub_lat: HUB.lat, hub_lng: HUB.lng }));
     assert.deepStrictEqual(DW.quoteFields(wide.ctx).delivery, { delivery_cents: 5000, promo_discount_cents: 0, policy_version: 1, mode: 'delivery', from_cents: 3000, max_km: 6 }, 'public facts: from_cents = the lowest band, max_km = the last band');
     const near = { lat: HUB.lat + 1 / 111.195, lng: HUB.lng, confirmed: true };
     const app = await q({ mode: 'delivery', pin: near, entry_mode: 'app' });
-    assert.strictEqual(DW.quoteFields(app.ctx).delivery.max_km, 3.5, 'APP: max_km reports min(last band, radius)');
+    assert.strictEqual(DW.quoteFields(app.ctx).delivery.max_km, 6, 'APP: max_km reports the last band (the restaurant radius is not part of it)');
     const noRadius = await q({ mode: 'delivery', pin: near, entry_mode: 'app' }, async () => ({ hub_lat: HUB.lat, hub_lng: HUB.lng }));
     assert.strictEqual(DW.quoteFields(noRadius.ctx).delivery.max_km, 6, 'APP with no radius on the identity → the bands');
     const tq = await q(body({ tip_cents: 2000, entry_mode: 'app' }), async () => ({ hub_lat: HUB.lat, hub_lng: HUB.lng }));

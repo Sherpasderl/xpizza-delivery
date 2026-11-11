@@ -18,7 +18,7 @@ const REFUSAL_STATUS = { delivery_pricing_unavailable: 503 };
 async function loadPricing(db, rid) {
   try {
     const snap = await db.ref('platform_config/delivery_pricing').get();
-    return { pricing: P.readPricing(snap.val(), rid) };
+    const raw = snap.val(); return { pricing: P.readPricing(raw && typeof raw === 'object' ? { ...raw, restaurants: { app: { active: true, free_delivery: false } } } : raw, 'app') };   // owner 2026-11-10: ONE platform-wide table — every restaurant priced, no per-restaurant map, free delivery off
   } catch (e) {
     return { failed: true };
   }
@@ -34,7 +34,7 @@ async function deliveryFor(db, { rid, mode, pin, customerUid, getIdentity, prici
   if (Number.isNaN(t)) return { refusal: 'tip_invalid', httpStatus: 400 };
   const lp = await (pricingP || loadPricing(db, rid));   // pricingP: the handler started the read in parallel with its first reads
   if (lp.failed) return { refusal: 'delivery_pricing_unavailable', httpStatus: 503 };
-  if (!lp.pricing || app !== true) return t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;   // owner 2026-11-10: envío + tip are APP-only; any other request (the frozen forms) is dark
+  if (!lp.pricing || app !== true) return app === true && mode === 'delivery' ? { refusal: 'delivery_pricing_unavailable', httpStatus: 503 } : t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;   // owner 2026-11-10: envío + tip are APP-only (the frozen forms are dark); an app delivery with no table fails closed, an app pickup stays dark
   let identity = null;
   try { identity = await getIdentity(db, rid); } catch (_) { return { refusal: 'delivery_pricing_unavailable', httpStatus: 503 }; }
   const hub = identity && { lat: identity.hub_lat, lng: identity.hub_lng };
@@ -136,7 +136,7 @@ async function quoteDeliveryFor(req, db, rid, body, { getIdentity, getAuth, attr
   if (t > 0 && body.redeem != null) return { refuse: { ok: false, error: 'tip_reward_unsupported' }, httpStatus: 409 };
   const lp = await (pricingP || loadPricing(db, rid));
   if (lp.failed) return { refuse: { ok: false, error: 'delivery_pricing_unavailable', retryable: true }, httpStatus: 503 };
-  if (!lp.pricing || !isApp(body)) return t > 0 ? { refuse: { ok: false, error: 'tip_not_enabled' }, httpStatus: 409 } : { ctx: null, uid: knownUid === undefined ? null : knownUid };   // owner 2026-11-10: APP-only
+  if (!lp.pricing || !isApp(body)) return isApp(body) && body.mode === 'delivery' ? { refuse: { ok: false, error: 'delivery_pricing_unavailable', retryable: true }, httpStatus: 503 } : t > 0 ? { refuse: { ok: false, error: 'tip_not_enabled' }, httpStatus: 409 } : { ctx: null, uid: knownUid === undefined ? null : knownUid };   // owner 2026-11-10: APP-only; an app delivery with no table fails closed
   let uid = knownUid === undefined ? null : knownUid;
   if (knownUid === undefined) {
     const idTok = req.get && req.get('x-firebase-id-token');
@@ -164,8 +164,8 @@ const isApp = (body) => !!body && body.entry_mode === 'app';
 // restaurant's own delivery radius (the identity read just above — no new read). A missing/invalid radius → the bands.
 function coverageKm(pricing, identity, body) {
   const last = pricing.bands[pricing.bands.length - 1].max_km;
-  const r = identity && identity.delivery_radius_km;
-  return isApp(body) && typeof r === 'number' && Number.isFinite(r) && r > 0 ? Math.min(last, r) : last;
+  // owner 2026-11-10: the platform band table is the app's ONLY distance limit — the restaurant radius is not part of it
+  return last;
 }
 // The public delivery facts of an ACTIVE quote ctx (WeakMap: never a field on the money ctx, never signed or recorded).
 const PUBLIC = new WeakMap();

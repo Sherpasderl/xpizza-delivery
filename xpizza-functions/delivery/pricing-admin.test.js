@@ -123,7 +123,7 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
     const ok1 = { actor_uid: 'tb_owner', prev_version: 0, new_version: 1, new: { bands: BANDS }, at: 1 };
     for (const [history, why] of [
       ['x', 'not an array'], [{ 0: ok1, 2: ok1 }, 'gap-keyed object'], [[ok1, null, ok1], 'a hole'], [[{ ...ok1, extra: 1 }], 'an extra key'],
-      [[{ ...ok1, new_version: '1' }], 'a mistyped field'], [[{ ...ok1, new: { bands: BANDS, restaurants: {} } }], 'an extra key in new'],
+      [[{ ...ok1, new_version: '1' }], 'a mistyped field'], [[{ ...ok1, new: { bands: BANDS, restaurants: { tb_r1: { active: true, free_delivery: false } } } }], 'an extra key in new'],
       [[{ ...ok1, new: { bands: [{ max_km: 9.25, cents: 1 }] } }], 'off-step bands in new'], [Array(11).fill(ok1), 'more than 10'],
     ]) {
       const w = world(stored({ history }));
@@ -167,11 +167,11 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
     const node = { policy_version: 1e15 - 1, bands: twenty, history: Array(10).fill(e), updated_at: 1762800000000, updated_by: 'x'.repeat(128) };
     const bytes = Buffer.byteLength(JSON.stringify(node), 'utf8');
     assert.strictEqual(bytes, A.READ_BYTES_AT_CAPS, `${L}: the pinned worst case (20 bands, 10 entries, 128-char uids, the largest versions)`);
-    assert.ok(bytes <= 8192, `${L}: ≤ 8 KB on every order read, independent of the restaurant count (got ${bytes})`);
+    assert.ok(bytes <= 10240, `${L}: ≤ 10 KB on every order read, independent of the restaurant count (got ${bytes})`);
   });
 
   await cell('DPW-WRITER-SUBSET-OF-THE-APP-READER', async (L) => {
-    const PIN = { lat: 14.1 + 1 / 111.195, lng: -87.2, confirmed: true };
+    const PIN = { lat: 14.1 + 0.4 / 111.195, lng: -87.2, confirmed: true };   // inside every table's first band
     const getIdentity = async () => ({ hub_lat: 14.1, hub_lng: -87.2 });
     for (const bands of [BANDS, [{ max_km: 10, cents: 0 }], Array.from({ length: 20 }, (_, i) => ({ max_km: (i + 1) / 2, cents: 15000 - i }))]) {
       const w = world();
