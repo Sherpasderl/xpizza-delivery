@@ -186,34 +186,30 @@ const node = (w) => w.db.get(PATH);
 
   // ── F8: the order path's read size at caps, from the REAL writer's committed output ──
   await cell('ZWR-READ-BYTES-AT-CAPS', async (L) => {
-    // Codex build r1 #4: the COMPLETE node the REAL writer commits at its bound — never a hand-built copy. Driven to the worst case:
-    // 8 valid, unique, normalized 24-point shapes at the worst legal encoding (negative coordinates with the longest integer parts,
-    // six significant decimals; 30-unit names of 3-byte characters); 20 bands at the caps; 10 saves so the history is full; every
-    // save over malformed stored bands (injected) so every entry carries prev_malformed, and the first over an unreadable history
-    // (history_reset); a 128-unit uid of 3-byte characters; the largest versions (VERSION_LIMIT − 1) and safe-int clocks.
+    // Codex build r1 #4 / r2 #4: the TRUE legal maximum of the node every order reads, measured on what the REAL writer commits:
+    // ONE real save at the top version (VERSION_LIMIT − 1) over the worst history the writer RETAINS (historyOk/entryOk accept it):
+    // 9 entries with 128-unit actor uids that JSON-escape to 6 bytes each (\u00XX), both flags, versions at VERSION_LIMIT − 1,
+    // safe-int clocks, 20 band caps and an 8-zone summary. The saving admin: a 128-unit uid of 3-byte characters (the worst valid
+    // RTDB key). The zones: 8 × 24 at the worst legal encoding, inside |lat| ≤ 60 (20 bands at the caps; malformed stored bands).
     const r6 = (x) => Math.round(x * 1e6) / 1e6;
     const worst = (x) => { let v = r6(x); while (Math.abs(Math.round(v * 1e6)) % 10 === 0) v = r6(v - 1e-6); return v; };
     const shapes = Array.from({ length: 8 }, (_, z) => ({ id: `z_${String(z).padStart(8, '0')}`, name: '€'.repeat(29) + String.fromCharCode(0x4e00 + z),
-      points: Array.from({ length: 24 }, (_, i) => { const a = (2 * Math.PI * i) / 24; return { lat: worst(-89.123457 - z * 0.03 + 0.009 * Math.sin(a)), lng: worst(-179.123457 + 0.009 * Math.cos(a)) }; }) }));
+      points: Array.from({ length: 24 }, (_, i) => { const a = (2 * Math.PI * i) / 24; return { lat: worst(-59.123457 + z * 0.03 + 0.009 * Math.sin(a)), lng: worst(-179.123457 + 0.009 * Math.cos(a)) }; }) }));
     const twenty = Array.from({ length: 20 }, (_, i) => ({ max_km: (i + 1) / 2, cents: 15000 }));
-    const U = '\u20ac'.repeat(128);   // the worst legal uid: 128 UTF-16 units (uidOk) of 3-byte characters (a valid RTDB key; 4-byte characters cost 2 units)
-    const V0 = 1e15 - 11;
-    const w = world({ init: { platform_admins: { [U]: true }, [PATH.split('/')[0]]: { [PATH.split('/')[1]]: { policy_version: V0, bands: 'malformed', history: 'unreadable' } } } });
+    const TOP = 1e15 - 1;
+    const kept = { actor_uid: '\u0001'.repeat(128), prev_version: TOP, new_version: TOP, new: { bands: twenty, zones: { count: 8, sha256: 'f'.repeat(64) } }, at: Number.MAX_SAFE_INTEGER, prev_malformed: true, history_reset: true };
+    assert.ok(A.historyOk(Array(9).fill(kept)), `${L}: premise — the writer RETAINS such a history (historyOk)`);
+    const U = '€'.repeat(128);
+    const w = world({ init: { platform_admins: { [U]: true }, [PATH.split('/')[0]]: { [PATH.split('/')[1]]: { policy_version: TOP - 1, bands: 'malformed', history: Array(9).fill(kept) } } } });
     w.deps.verifyIdToken = async () => ({ uid: U });
-    let clock = Number.MAX_SAFE_INTEGER - 20; w.deps.timestamp = () => clock++;
-    const statuses = [];
-    for (let i = 0; i < 10; i++) {
-      if (i > 0) await w.db.ref(`${PATH}/bands`).set('malformed');   // the fault: the stored bands unreadable before every save
-      const r = await w.set(body({ expected_policy_version: V0 + i, bands: twenty, no_delivery_zones: shapes }));
-      statuses.push(r.status);
-    }
+    w.deps.timestamp = () => Number.MAX_SAFE_INTEGER;
+    const r = await w.set(body({ expected_policy_version: TOP - 1, bands: twenty, no_delivery_zones: shapes }));
     const committed = node(w);
     const bytes = Buffer.byteLength(JSON.stringify(committed), 'utf8');
     // the byte pin FIRST (the writer commits before its own verification answers), then the premises
     assert.strictEqual(bytes, A.READ_BYTES_AT_CAPS, `${L}: the pinned worst case of every order read — the complete committed node (got ${bytes})`);
-    assert.deepStrictEqual(statuses, Array(10).fill(200), `${L}: premise — the writer accepted all 10 saves`);
-    assert.deepStrictEqual([committed.policy_version, committed.history.length, committed.history.every((e) => e.prev_malformed === true), committed.history[9].history_reset === true, committed.no_delivery_zones.length],
-      [1e15 - 1, 10, true, true, 8], `${L}: premise — the node is at its bound`);
+    assert.strictEqual(r.status, 200, `${L}: premise — the writer accepted the save (${JSON.stringify(r.body)})`);
+    assert.deepStrictEqual([committed.policy_version, committed.history.length, committed.history[0].prev_malformed, committed.no_delivery_zones.length], [TOP, 10, true, 8], `${L}: premise — the node is at its bound`);
   });
 
   // ── Codex build r1 #1 (P1, driver safety): EXACT geometry on the 6-decimal grid — a saved diagonal edge's points are INSIDE ──
@@ -237,6 +233,21 @@ const node = (w) => w.db.get(PATH);
     assert.deepStrictEqual([r.status, r.body.error, r.body.field], [400, 'bad_request', 'zones'], `${L}: a collinear 3-point polygon has zero area (${JSON.stringify(r.body)})`);
     assert.strictEqual(node(w), null, `${L}: nothing written`);
   });
+  // ── Codex build r2 #1 (advisor ruling): every vertex |lat| ≤ 60 (zone_out_of_range); a polar or antimeridian zone is refused ──
+  await cell('ZWR-POLAR-ANTIMERIDIAN-REFUSED', async (L) => {
+    const w = world();
+    const polar = { id: 'z_pppppppp', name: 'Polo', points: [{ lat: 89.95, lng: -180 }, { lat: 89.95, lng: 180 }, { lat: 90, lng: 0 }] };
+    const r = await w.set(body({ no_delivery_zones: [polar] }));
+    assert.deepStrictEqual([r.status, r.body.error, r.body.field], [400, 'bad_request', 'zone_out_of_range'], `${L}: a polar zone (${JSON.stringify(r.body)})`);
+    const edge = { id: 'z_qqqqqqqq', name: 'Borde', points: [{ lat: 60.000001, lng: -88.03 }, { lat: 60.000001, lng: -88.02 }, { lat: 60.009, lng: -88.02 }] };
+    const r2 = await w.set(body({ no_delivery_zones: [edge] }));
+    assert.deepStrictEqual([r2.status, r2.body.field], [400, 'zone_out_of_range'], `${L}: a vertex just past 60° (${JSON.stringify(r2.body)})`);
+    const anti = { id: 'z_rrrrrrrr', name: 'Antimeridiano', points: [{ lat: 10, lng: 179.99 }, { lat: 10, lng: -179.99 }, { lat: 10.01, lng: -179.99 }, { lat: 10.01, lng: 179.99 }] };
+    const r3 = await w.set(body({ no_delivery_zones: [anti] }));
+    assert.deepStrictEqual([r3.status, r3.body.field], [400, 'zone_caps'], `${L}: an antimeridian zone spans 359.98° of longitude — over the box cap (${JSON.stringify(r3.body)})`);
+    assert.strictEqual(node(w), null, `${L}: nothing written`);
+  });
+
   // ── Codex build r1 #3: a zone id must be a STRING before the regex and the uniqueness check ──
   await cell('ZWR-ID-NOT-STRING-REFUSED', async (L) => {
     const w = world();

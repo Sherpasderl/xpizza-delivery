@@ -80,6 +80,14 @@ cell('ZONES-POINT-IN-POLYGON-EDGE-INCLUSIVE', (L) => {
   assert.strictEqual(Z.inZone([], { lat: 15.504, lng: -88.025 }), false, `${L}: no zones → never inside`);
 });
 
+cell('ZONES-PIN-BEYOND-60-OUTSIDE', (L) => {
+  // a zone stored at the 60° limit; a pin past it is simply outside every zone (no delivery happens there; the bound of the exact arithmetic)
+  const zs = ok(Z.normalizeInput([{ id: 'z_aaaaaaaa', name: 'Norte', points: [{ lat: 59.99, lng: -88.03 }, { lat: 59.99, lng: -88.02 }, { lat: 60, lng: -88.025 }] }]));
+  assert.strictEqual(Z.inZone(zs, { lat: 59.995, lng: -88.025 }), true, `${L}: inside`);
+  assert.strictEqual(Z.inZone(zs, { lat: 60.5, lng: -88.025 }), false, `${L}: a pin past 60° is outside every zone`);
+  assert.strictEqual(Z.inZone(zs, { lat: -89, lng: 0 }), false, `${L}: a polar pin is outside every zone`);
+});
+
 cell('ZONES-STORED-VALIDATION-AND-SHA', (L) => {
   const zs = ok(Z.normalizeInput([SQ(), SQ('z_bbbbbbbb', 'Sector B', 0.02)]));
   assert.strictEqual(Z.storedProblem(zs), null, `${L}: a writer-normalized list is valid stored data`);

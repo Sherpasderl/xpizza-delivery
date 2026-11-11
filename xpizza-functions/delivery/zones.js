@@ -11,6 +11,11 @@
 const crypto = require('crypto');
 
 const CAPS = Object.freeze({ zones_max: 8, points_max: 24, points_min: 3, name_max: 30, bbox_max_km: 20 });   // owner D3, measured (plan §6)
+// Codex build r2 #1 (advisor ruling): every vertex lies within |lat| ≤ 60 (no delivery happens beyond); a box of ≤ 20 km there spans at
+// most 20 / 111.195 = 0.17987° of latitude and 20 / (111.195 · cos 60°) = 0.35974° of longitude — on the grid ≤ 179,870 and ≤ 359,740
+// units. Both spans are ALSO capped in grid units (GRID_SPAN), so the bound the exact arithmetic relies on holds by construction.
+const LAT_ABS_MAX = 60;
+const GRID_SPAN = Object.freeze({ lat: 180000, lng: 360000 });
 const ID_RE = /^z_[a-z0-9]{8}$/;
 const isObj = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
 const exactKeys = (o, keys) => isObj(o) && Object.keys(o).length === keys.length && keys.every((k) => Object.prototype.hasOwnProperty.call(o, k));
@@ -33,9 +38,10 @@ function nameOk(s) {
 
 // EXACT geometry (Codex build r1 #1): every coordinate lives on the 6-decimal grid, so it is scaled to an INTEGER (×1e6) and every
 // orientation, area and crossing test is integer arithmetic — no floating `=== 0`, no tolerance. Exact in plain Numbers because every
-// operand is a DIFFERENCE inside one zone's bounding box: the box cap (≤ 20 km ≈ 0.19°, checked BEFORE any shape rule) bounds each
-// difference by < 4·10^5 grid units, so a product is < 1.6·10^11 and a 24-term area sum < 4·10^12, far below 2^53; a pin is first
-// rejected outside the zone's box, so the same bound holds for it. A pin is put on the same grid (≈ 0.1 m).
+// operand is a DIFFERENCE inside one zone's bounding box: |lat| ≤ 60 and the box caps (checked BEFORE any shape rule; GRID_SPAN) bound a
+// difference by 180,000 (lat) / 360,000 (lng) grid units, so a product is ≤ 6.48·10^10 and a 24-term area sum ≤ 1.6·10^12, far below
+// 2^53 ≈ 9.0·10^15; a pin is first rejected outside the zone's box (and beyond |lat| 60), so the same bound holds for it. A pin is put
+// on the same grid (≈ 0.1 m).
 const gridI = (x) => Math.round(x * 1e6);
 const gridPt = (p) => [gridI(p[0]), gridI(p[1])];
 const exact = (v) => { if (!Number.isSafeInteger(v)) throw new Error('zones_geometry_out_of_range'); return v; };   // tripwire for the bound above
@@ -98,7 +104,10 @@ function compactProblem(zones) {
       const p = z.points[k], q = z.points[(k + 1) % z.points.length];
       if (p[0] === q[0] && p[1] === q[1]) return fail('zones', 'points');
     }
+    if (z.points.some((p) => Math.abs(p[0]) > LAT_ABS_MAX)) return fail('zone_out_of_range', 'points');
     if (bboxKm(z.points) > CAPS.bbox_max_km) return fail('zone_caps', 'points');   // FIRST: it bounds the exact arithmetic below
+    { const g = z.points.map(gridPt); const span = (k) => Math.max(...g.map((q) => q[k])) - Math.min(...g.map((q) => q[k]));
+      if (span(0) > GRID_SPAN.lat || span(1) > GRID_SPAN.lng) return fail('zone_caps', 'points'); }
     { const g = z.points.map(gridPt); if (area2(g) === 0 || !simple(g)) return fail('zones', 'points'); }
   }
   return null;
@@ -135,7 +144,7 @@ const sameLogical = (a, b) => JSON.stringify(logical(a)) === JSON.stringify(logi
 
 // pin { lat, lng } inside ANY zone? An edge or vertex counts as inside (D5); then even-odd ray casting on (lng, lat).
 function inZone(zones, pin) {
-  if (!pin || !isLat(pin.lat) || !isLng(pin.lng)) return false;
+  if (!pin || !isLat(pin.lat) || !isLng(pin.lng) || Math.abs(pin.lat) > LAT_ABS_MAX) return false;   // beyond |lat| 60: outside every zone
   const r = gridPt([pin.lat, pin.lng]);   // the pin on the zones' grid (≈ 0.1 m)
   for (const z of logical(zones)) {
     const pts = z.points.map(gridPt); let inside = false;
