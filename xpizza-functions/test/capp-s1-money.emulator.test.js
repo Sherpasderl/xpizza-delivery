@@ -86,9 +86,12 @@ const HOURS = { sun: OPENH, mon: OPENH, tue: OPENH, wed: OPENH, thu: OPENH, fri:
 const HUB = { lat: 14.1, lng: -87.2 };
 const PIN = { lat: HUB.lat + 1 / 111.195, lng: HUB.lng };   // 1 km north → the first band
 const BANDS = [{ max_km: 2, cents: 3000 }, { max_km: 5, cents: 5000 }, { max_km: 7, cents: 7000 }];
-const setPricing = (on) => (on ? rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: BANDS,
+// APP-ONLY (owner 2026-11-10): envío prices only entry_mode:'app' requests, and an app delivery with no table is refused — so
+// "fee ON" drives APP-shaped requests against the table and "fee OFF" drives FORM-shaped requests (dark), as before.
+let APP_SHAPE = false;
+const setPricing = (on) => { APP_SHAPE = !!on; return on ? rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: BANDS,
   restaurants: { x_pizza: { active: true, free_delivery: false }, la_musa: { active: true, free_delivery: false }, [THIRD]: { active: true, free_delivery: false } } })
-  : rtdb.ref('platform_config/delivery_pricing').remove());
+  : rtdb.ref('platform_config/delivery_pricing').remove(); };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const clean = async () => { await rtdb.ref('rate_limits').remove(); await rtdb.ref('recent_order_content').remove(); };
 let PH = 0; const phone = () => `9955${String(PH += 1).padStart(4, '0')}`;
@@ -113,9 +116,9 @@ function bodyOf(rid, method, cart, extra = {}) {
   const s = serialize(cart, MENU[rid]);
   return { restaurant_id: rid, order_id: oid(`${rid}_${method}`), customer_name: 'Capp S1', customer_phone: phone(), customer_email: 'capp@example.com',
     order_type: 'delivery', payment_method: method, lat: PIN.lat, lng: PIN.lng, pin_confirmed: true, address_detected: 'Calle Principal', address_details: 'portón',
-    items: s.items, items_text: s.items_text, ...extra };
+    items: s.items, items_text: s.items_text, ...(APP_SHAPE ? { entry_mode: 'app' } : {}), ...extra };
 }
-const quote = (rid, items, hdr = {}) => post(app.quoteOrder, { restaurant_id: rid, items, mode: 'delivery', pin: { ...PIN, confirmed: true } }, hdr);
+const quote = (rid, items, hdr = {}) => post(app.quoteOrder, { restaurant_id: rid, items, mode: 'delivery', pin: { ...PIN, confirmed: true }, ...(APP_SHAPE ? { entry_mode: 'app' } : {}) }, hdr);
 const order = async (id) => (await rtdb.ref(`orders/${id}`).get()).val();
 const configurable = (m) => m.dishes.find((d) => !d.launcher && m.extrasFor(d.key).length >= 2);
 const plainDish = (m, not) => m.dishes.find((d) => !d.launcher && d.key !== not && !(m.weekendOnlyCats.has(String(d.cat)) || m.pickupOnlyCats.has(String(d.cat))));
@@ -187,12 +190,13 @@ async function oldBody(rid, build) {
         assert.strictEqual(co.total_cents, q.json.net_total_cents, `🔴 ${rid} ${label}: quote net == the STORED cash order's total_cents`);
         assert.strictEqual(co.items_text, cb.items_text, 'the stored text is the client text');
         await clean(); CHARGED.length = 0;
-        const kb = bodyOf(rid, 'online', cart, { quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents });
+        const kb = bodyOf(rid, 'online', cart, { quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents, ...(rid === THIRD ? { entry_mode: undefined } : {}) });   // THIRD: the FORM card (fail-closed without a deployment)
         const k = await post(app.chargeOnlineOrder, kb);
         if (rid === THIRD) {
           // S3b: the hosted-checkout return base comes from the restaurant's OWN orders deployment in platform/sites.json — the
           // synthetic brand has none, so card is refused FAIL-CLOSED by design (pixelpay-return-url.js); nothing is charged
           assert.ok(k.status >= 400 && /return URL not configured/.test(k.text) && CHARGED.length === 0, `${rid} ${label} card: fail-closed without a deployment (${k.text.slice(0, 160)})`);
+          if (!fee) continue;   // the APP card below needs the table (an app delivery with no table is refused — addendum A)
           // S2-srv-app (PLAN-capp-S2-r4 §2.1): the SAME brand through the customer APP (entry_mode 'app', quoted as the app
           // quotes) returns via the platform orders deployment — no rid deployment or brand read — so card ISSUES, for exactly
           // the quoted net. The return base is the manifest's pay_return.default (read, never named here).

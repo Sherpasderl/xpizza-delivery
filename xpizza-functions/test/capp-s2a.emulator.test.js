@@ -12,7 +12,7 @@
 //   D   the lost-response duplicate: edited retry ⇒ order_exists cart ⇒ the recovery sheet, still ONE order; unedited ⇒ placed;
 //       after a reload too; order_exists tip / method; the two non-self-clearing cases
 //   M   the proven-safe mints: legacy order_conflict ⇒ a fresh id + a second order; paymentStatus cancelled ⇒ cash on a fresh id
-//   X   refusal mapping: outside_delivery_bands, pin_required, both closure refusals, the radius 400, price_increased (the sheet,
+//   X   refusal mapping: outside_delivery_bands, pin_required, both closure refusals, an app order beyond the restaurant radius is placed (addendum A), price_increased (the sheet,
 //       agreed ⇒ the same id stands behind the new ceiling), quote_invalid (silent, one attempt)
 //   S2a r2 (Codex FULL r1):
 //   Z   a CHANGED issued card placement (pin / mode / delivery price) is resolved first and RESUMED through the stored
@@ -150,7 +150,7 @@ function flowOf(pay, { tip = pay === 'cash' ? null : 20, km = 1, phone } = {}) {
   if (tip !== null) C.chooseTip(f, tip);
   return f;
 }
-const ctxOf = (rid, cart) => { const s = serialize(cart, MENU[rid]); return { restaurantId: rid, items: s.items, itemsText: s.items_text, member: null, subtotal: s.subtotal_cents, headers: { Authorization: `Bearer ${process.env.MAKE_SECRET}` } }; };
+const ctxOf = (rid, cart) => { const s = serialize(cart, MENU[rid]); return { restaurantId: rid, items: s.items, itemsText: s.items_text, member: null, subtotal: s.subtotal_cents, headers: { Authorization: `Bearer ${process.env.MAKE_SECRET}` }, appCash: true }; };   // appCash: the capp marks EVERY cash body entry_mode:'app' (PLAN-delivery-pricing-app-only F1 — the capp lane's change ships in the same release; envío + tip are app-only)
 // the app's flow: quote for the selected tip → the Total shown → place standing behind THAT Total
 async function quoteAndPlace(pg, f, cart, { sheet, sigOverride, expected } = {}) {
   const ctx = ctxOf(pg.rid, cart);
@@ -225,8 +225,8 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     await clean();
     const dp = page('la_musa'); const df = flowOf('cash', { tip: 0 });
     const dark = await quoteAndPlace(dp, df, cartOf('la_musa'));
-    assert.deepStrictEqual([dark.out.kind, dark.T.envio, dark.T.tip, (await order(dark.out.order_id)).total_cents], ['placed', 0, 0, dark.T.total], 'the dark brand, no tip: placed at the food total');
-    ok('E equality: displayed Total == placing == recorded total_cents == PixelPay × 100 (cash + card, envío + tip once); card returns to the app deployment with creds stashed first; the dark brand without a tip');
+    assert.deepStrictEqual([dark.out.kind, dark.T.envio > 0, dark.T.tip, (await order(dark.out.order_id)).total_cents], ['placed', true, 0, dark.T.total], 'a brand NOT in the stored map, no tip: priced by the one platform table (addendum A) — displayed == recorded');
+    ok('E equality: displayed Total == placing == recorded total_cents == PixelPay × 100 (cash + card, envío + tip once); card returns to the app deployment with creds stashed first; a brand absent from the stored map is priced by the platform table');
   }
 
   // ── I (r3 rule i): a reload / a second page while the charge is in flight never re-sends — one gateway call ──
@@ -398,7 +398,7 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     await rtdb.ref('restaurants/x_pizza/identity').set(IDENT('x_pizza', { delivery_radius_km: 0.5, version: 3 }));
     await clean();
     const rz = await page('x_pizza').api.place({ flow: flowOf('cash', { km: 1 }), ctx: ctxOf('x_pizza', cartOf('x_pizza')), sig: 'none', expectedNetCents: null });
-    assert.strictEqual(rz.kind, 'out_of_zone', `the order handler's radius 400 ⇒ out-of-zone (${JSON.stringify(rz)})`);
+    assert.strictEqual(rz.kind, 'placed', `addendum A: the band table is the app's only limit — beyond the 0.5 km radius but inside the bands, the app order is placed (${JSON.stringify(rz)})`);
     await rtdb.ref('restaurants/x_pizza/identity').set(IDENT('x_pizza', { version: 4 }));
     // price_increased: the body stands behind a LOWER ceiling than the server's net, no usable token ⇒ the sheet; agreed ⇒ same id
     await clean();
@@ -418,7 +418,7 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     const qi = await qp.api.place({ flow: qf, ctx: ctxB, sig: qA.record.sig, expectedNetCents: TB.total, sheet: async () => { sheetCalls.push(1); return true; } });
     assert.deepStrictEqual([qi.kind, sheetCalls.length], ['placed', 0], `quote_invalid ⇒ recovered silently (${JSON.stringify(qi)})`);
     assert.strictEqual((await order(qi.order_id)).total_cents, TB.total);
-    ok('X refusals from the REAL server: outside_delivery_bands, pin_required, inactive + outside hours ⇒ G0, the radius 400 ⇒ out-of-zone, price_increased ⇒ the sheet (old → new) then the same id at the new ceiling, quote_invalid ⇒ silent');
+    ok('X refusals from the REAL server: outside_delivery_bands, pin_required, inactive + outside hours ⇒ G0, beyond the restaurant radius but inside the bands ⇒ placed (addendum A), price_increased ⇒ the sheet (old → new) then the same id at the new ceiling, quote_invalid ⇒ silent');
   }
 
   // ── Z (r2 P1 #1): a changed issued card placement ⇒ resolved first ⇒ resumed through the stored URL, ORIGINAL economics ──
