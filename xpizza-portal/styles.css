@@ -550,6 +550,21 @@
   .mk-note b{display:block;color:var(--ink);font-weight:650;margin-bottom:5px}
   .mk-sub{font-size:12px;color:var(--mute2);line-height:1.45}
   .dwf .mk-sp{flex:1}
+  /* UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html, owner-approved 2026-11-11) — the addendum's rules, on the portal's tokens */
+  .mk-dirty{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--mute);white-space:nowrap;margin-right:2px}
+  .mk-dirty::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);flex:none}
+  .mk-dirty[hidden],.mk-rbhint[hidden]{display:none}
+  .mk-rbhint{font-size:12.5px;color:var(--mute);align-self:center;white-space:nowrap}
+  .mk-cfscrim{position:absolute;inset:0;z-index:3;background:rgba(10,10,11,.34);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:22px}
+  .mk-cf{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);padding:22px 22px 18px}
+  .mk-cf h3{font-family:var(--disp);font-size:20px;font-weight:800;letter-spacing:-.03em;line-height:1.15}
+  .mk-cf p{font-size:13.5px;color:var(--mute);line-height:1.5;margin-top:8px}
+  .mk-cfa{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+  .btn.mk-quiet-danger{color:var(--red-text);border-color:transparent;background:transparent}
+  .btn.mk-quiet-danger:hover{background:var(--red-soft);border-color:transparent}
+  .mk-cf .btn.accent:focus-visible{box-shadow:var(--focus)}
+  @media(max-width:920px){#rbar .rb-sp{flex-wrap:wrap}.mk-rbhint{flex-basis:100%;white-space:normal;text-align:center;font-size:12px}.mk-cfscrim{padding:16px}}
+  @media(max-width:560px){.dwf{flex-wrap:wrap}.dwf .mk-dirty{flex-basis:100%;order:-1;justify-content:flex-end;margin:0 0 2px}}
   .dwb.ie-edit .modh{display:flex;align-items:center;gap:10px}
   .mk-modhr{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:600;color:var(--mute2)}
   .mk-dopt{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line2);font-size:13px}

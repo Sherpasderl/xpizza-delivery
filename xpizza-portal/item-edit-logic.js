@@ -239,6 +239,13 @@ export function save(draft, s) {
 // «Cancelar» / «Cerrar»: the copy goes; the draft keeps whatever it had before the drawer opened.
 export function cancel(s) { if (s) { s.closed = true; s.upload = null; } return s; }
 
+// Unsaved work in the copy (the unsaved-edits addendum): any changed field, a photo in the copy, or an upload on its way — the
+// same facts view() reports as «Guardar»'s reasons. A closed copy (or none) is never dirty.
+export function isDirty(s) {
+  if (!s || s.closed) return false;
+  return changed(s).length > 0 || !!(s.upload && s.upload.state === 'busy');
+}
+
 // «Detener subida» (Codex S4P2 r1 P2-3): the copy forgets the stopped upload — «Guardar» is no longer held by it; every other edit
 // stays. The upload's own late answer can no longer land (its binding is no longer the session's).
 export function stopUpload(s) { if (s && !s.closed) s.upload = null; return s; }

@@ -153,8 +153,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "7c93d0d8cb40db00054e4f201284068aff59f68839e36cbc1febd644bca72904",
-   "bytes": 115664
+   "sha256": "fd4f9de1581fc1898a7b5b12336123fc26871f64dc7e589848fb5433125afded",
+   "bytes": 117308
   }
  },
  "diff_aid": {
@@ -648,6 +648,36 @@
     "",
     ".btn.ghost",
     "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".btn.mk-quiet-danger",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".btn.mk-quiet-danger",
+    "border-color",
+    "transparent"
+   ],
+   [
+    "",
+    ".btn.mk-quiet-danger",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".btn.mk-quiet-danger:hover",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".btn.mk-quiet-danger:hover",
+    "border-color",
     "transparent"
    ],
    [
@@ -1570,6 +1600,24 @@
    ],
    [
     "",
+    ".mk-cf p",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-cf",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk-cfscrim",
+    "background",
+    "rgba(10,10,11,.34)"
+   ],
+   [
+    "",
     ".mk-cnt",
     "color",
     "var(--mute2)"
@@ -1585,6 +1633,18 @@
     ".mk-cnterr",
     "color",
     "var(--red-text)"
+   ],
+   [
+    "",
+    ".mk-dirty",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-dirty::before",
+    "background",
+    "var(--accent)"
    ],
    [
     "",
@@ -1637,6 +1697,12 @@
    [
     "",
     ".mk-note",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-rbhint",
     "color",
     "var(--mute)"
    ],

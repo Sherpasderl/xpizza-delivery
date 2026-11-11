@@ -642,3 +642,27 @@ test('Codex S4P2 r1 P2-4 (contract C-2) — emptying a subsection: same section 
   assert.equal(v.errors.subcat, null);
   assert.equal(v.save.title, 'Elegí otra categoría para guardar');
 });
+
+// ── unsaved-edits addendum (MOCKUP-portal-item-edit-unsaved.html, owner-approved 2026-11-11): the ONE dirty predicate ─────
+test('IE-DIRTY — isDirty is true exactly while the copy differs from the draft (any field, a photo, an upload on its way); false once closed', () => {
+  const d = createDraft(BASE());
+  const s = IE.open(d, 'Pizza Cacio e Pepe');
+  assert.equal(IE.isDirty(s), false, 'IE-DIRTY: a freshly opened copy is clean');
+  for (const [field, v, back] of [['name', 'Cacio e Pepe', 'Pizza Cacio e Pepe'], ['desc', 'Otra', 'Parmesano, mozzarella y pimienta.'], ['price', '285', '260']]) {
+    IE.set(s, field, v);
+    assert.equal(IE.isDirty(s), true, `IE-DIRTY: a typed ${field} is unsaved work`);
+    IE.set(s, field, back);
+    assert.equal(IE.isDirty(s), false, `IE-DIRTY: ${field} typed back to the draft's value is clean again`);
+  }
+  IE.set(s, 'cat', 'pa');
+  assert.equal(IE.isDirty(s), true, 'IE-DIRTY: a moved category is unsaved work');
+  IE.set(s, 'cat', 'pz'); IE.set(s, 'subcat', 'Especiales');
+  assert.equal(IE.isDirty(s), false, 'IE-DIRTY: moved back is clean');
+  const up = IE.uploadBinding(s); up.started();
+  assert.equal(IE.isDirty(s), true, 'IE-DIRTY: a photo upload on its way is the merchant\'s change');
+  assert.ok(up.apply('pidX'));
+  assert.equal(IE.isDirty(s), true, 'IE-DIRTY: a landed photo in the copy is unsaved work');
+  IE.cancel(s);
+  assert.equal(IE.isDirty(s), false, 'IE-DIRTY: a closed copy is never dirty');
+  assert.equal(IE.isDirty(null), false, 'IE-DIRTY: no copy is never dirty');
+});

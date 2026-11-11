@@ -1276,6 +1276,10 @@ const LISTENERS = {
   "iePrice::input":               ['bound', [], 'S4 — the product\u2019s price, into the working copy'],
   "ieCancel::click":              ['bound', ['closeDrawer'], 'S4 — «Cancelar»: the working copy is dropped (endEditSession); the draft keeps what it had'],
   "ieSave::click":                ['bound', ['saveEdit'], 'S4 — «Guardar»: IE.save commits the whole edit ONCE through editItem (canEdit); then the drawer closes and the list repaints'],
+  // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html) — the in-page confirm before an exit would drop a dirty working copy
+  "cfKeep::click":                ['bound', [], 'unsaved edits — «Seguir editando»: dismisses the confirm; the working copy stays exactly as it was'],
+  "cfDrop::click":                ['bound', [], 'unsaved edits — «Descartar»: drops the working copy (endEditSession), then the exit it held (close / open the other product); the draft is untouched'],
+  "cfCard::keydown":              ['bound', [], 'unsaved edits — Esc on the confirm = «Seguir editando» (keeps the work)'],
 };
 
 test('🔴 every listener that writes is bound, or ruled — and nothing else is registered', () => {

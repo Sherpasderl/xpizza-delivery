@@ -539,3 +539,142 @@ test('AA — the counters carry no aria-live (an announcement on every keystroke
   assert.equal(p.drawer().querySelectorAll('.mk-cnt[aria-live]').length, 0);
   assert.ok(p.drawer().querySelectorAll('.mk-cnt').length >= 5, 'premise: the counters are there (name, description, each option)');
 });
+
+// ── UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html, owner-approved 2026-11-11; PREP-ite-drawer-unsaved.md). Every string is the
+// addendum's copy table, verbatim. The real drawer has NO page backdrop; the confirm's own scrim covers the drawer only. ──────────
+const HINT = 'Guardá o cancelá los cambios del producto abierto';
+const card = (p) => p.drawer().querySelector('.mk-cf');
+const cardBtn = (p, t) => [...card(p).querySelectorAll('button')].find((b) => b.textContent.trim() === t);
+const headClose = (p) => p.drawer().querySelector('.dwh .dwx');
+const priceIn = (p) => p.drawer().querySelector('input[aria-label="Precio"]');
+const fieldsNow = (p) => ({ name: p.fld('Nombre').querySelector('input').value, desc: p.fld('Descripción').querySelector('textarea').value,
+  cat: p.fld('Categoría').querySelector('select').value, price: priceIn(p).value, save: !p.btn('Guardar').disabled });
+// the confirm, exactly as frame 2 draws it
+function assertCard(p, L) {
+  const c = card(p);
+  assert.ok(c, `${L}: the in-page confirm is shown`);
+  assert.equal(c.getAttribute('role'), 'dialog', `${L}: role dialog`);
+  assert.equal(c.getAttribute('aria-modal'), 'true', `${L}: aria-modal`);
+  assert.equal(c.querySelector('h3').textContent, '¿Descartar los cambios?', `${L}: the title`);
+  assert.equal(c.querySelector('p').textContent, 'Tenés cambios sin guardar en este producto.', `${L}: the line`);
+  assert.deepEqual([...c.querySelectorAll('.mk-cfa button')].map((b) => b.textContent), ['Descartar', 'Seguir editando'], `${L}: Descartar · Seguir editando`);
+  assert.ok(cardBtn(p, 'Descartar').classList.contains('mk-quiet-danger'), `${L}: «Descartar» is the quiet destructive action`);
+  assert.ok(cardBtn(p, 'Seguir editando').classList.contains('accent'), `${L}: «Seguir editando» is the primary`);
+  assert.equal(p.d.activeElement, cardBtn(p, 'Seguir editando'), `${L}: «Seguir editando» holds focus (Enter keeps the work)`);
+  assert.equal(p.d.querySelector('.dscrim.show, #scrim.show'), null, `${L}: no page backdrop is added (the real drawer has none)`);
+}
+
+test('U-MARK-AND-BAR — an unsaved edit: «Cambios sin guardar» beside «Guardar»; the whole bar waits (Revisar + Descartar disabled, the hint); live again after «Guardar»', async () => {
+  const p = await page();
+  await p.signIn();
+  await p.open('dimsum_01');
+  const mark = () => p.drawer().querySelector('.dwf .mk-dirty');
+  const rev = p.d.getElementById('review'), dis = p.d.getElementById('discard');
+  const hint = () => p.d.querySelector('#rbar .mk-rbhint');
+  assert.ok(mark() && mark().hidden, 'U-MARK-AND-BAR: premise — a clean copy shows no mark');
+  assert.ok(!hint() || hint().hidden, 'U-MARK-AND-BAR: premise — no hint while clean');
+  p.type(priceIn(p), '285');
+  assert.equal(mark().hidden, false, 'U-MARK-AND-BAR: the mark appears beside «Guardar»');
+  assert.equal(mark().textContent, 'Cambios sin guardar', 'U-MARK-AND-BAR: the mark\'s words');
+  assert.deepEqual([rev.disabled, dis.disabled], [true, true], 'U-MARK-AND-BAR: «Revisar y publicar» AND «Descartar» wait (the whole bar)');
+  assert.deepEqual([rev.title, dis.title], [HINT, HINT], 'U-MARK-AND-BAR: both say what to do');
+  assert.ok(hint() && !hint().hidden && hint().textContent === HINT, 'U-MARK-AND-BAR: the hint line in the bar');
+  const before = p.n('editCatalog').length;
+  rev.click(); dis.click(); await settle(30);
+  assert.equal(p.n('editCatalog').length, before, 'U-MARK-AND-BAR: nothing publishes or discards around the open copy');
+  assert.equal(p.src().items.find((i) => i.key === 'dimsum_01').price !== 285, true, 'U-MARK-AND-BAR: the draft does not know 285 until «Guardar»');
+  p.btn('Guardar').click(); await settle(30);
+  assert.equal(p.src().items.find((i) => i.key === 'dimsum_01').price, 285, 'premise: «Guardar» put it in the draft');
+  assert.equal(rev.disabled, false, 'U-MARK-AND-BAR: the bar is live again after «Guardar»');
+  assert.ok(!hint() || hint().hidden, 'U-MARK-AND-BAR: the hint goes with it');
+});
+
+test('U-REVIEW-ADMISSION — even reached programmatically, a review never starts over a dirty copy (Revisar under the drawer, keyboard)', async () => {
+  const p = await page();
+  await p.signIn();
+  await p.open('dimsum_01');
+  p.type(priceIn(p), '285');
+  const rev = p.d.getElementById('review');
+  rev.disabled = false;   // the keyboard path, defended in depth: the admission itself refuses
+  rev.click(); await settle(30);
+  assert.equal(p.n('editCatalog').length, 0, 'U-REVIEW-ADMISSION: no save, no review over a dirty copy');
+  assert.ok(p.drawer().classList.contains('show') && priceIn(p).value === '285', 'U-REVIEW-ADMISSION: the drawer and its copy are untouched');
+});
+
+test('U-CERRAR-CLEAN — «Cerrar» on a clean drawer closes at once, no confirm (nothing asks twice)', async () => {
+  const p = await page();
+  await p.signIn();
+  await p.open('dimsum_01');
+  headClose(p).click(); await settle(10);
+  assert.equal(p.drawer().classList.contains('show'), false, 'U-CERRAR-CLEAN: closed');
+  assert.equal(p.d.querySelector('.mk-cf'), null, 'U-CERRAR-CLEAN: no confirm');
+});
+
+test('U-CERRAR-DIRTY — «Cerrar» with unsaved edits asks; «Seguir editando» keeps the copy byte-identical; «Descartar» closes with the draft untouched', async () => {
+  const p = await page();
+  await p.signIn();
+  const draft0 = JSON.stringify(p.src());
+  await p.open('dimsum_01');
+  const nm = p.fld('Nombre').querySelector('input');
+  p.type(nm, 'Wonton picante'); p.type(priceIn(p), '285');
+  const f0 = fieldsNow(p);
+  headClose(p).click(); await settle(10);
+  assertCard(p, 'U-CERRAR-DIRTY');
+  assert.ok(p.drawer().classList.contains('show'), 'U-CERRAR-DIRTY: the drawer stays while asking');
+  cardBtn(p, 'Seguir editando').click(); await settle(10);
+  assert.equal(card(p), null, 'U-CERRAR-DIRTY: «Seguir editando» dismisses the confirm');
+  assert.deepEqual(fieldsNow(p), f0, 'U-KEEP-EDITING-BYTE-IDENTICAL (Cerrar): every field and «Guardar» exactly as before');
+  assert.equal(p.fld('Nombre').querySelector('input'), nm, 'U-KEEP-EDITING-BYTE-IDENTICAL (Cerrar): the SAME input node (no rebuild)');
+  assert.equal(JSON.stringify(p.src()), draft0, 'U-CERRAR-DIRTY: the draft never saw the copy');
+  headClose(p).click(); await settle(10);
+  cardBtn(p, 'Descartar').click(); await settle(10);
+  assert.equal(p.drawer().classList.contains('show'), false, 'U-CERRAR-DIRTY: «Descartar» closes the drawer');
+  assert.equal(JSON.stringify(p.src()), draft0, 'U-CERRAR-DIRTY: frame 3 — the draft byte-for-byte as before the drawer opened');
+  assert.equal(p.d.getElementById('review').disabled, false, 'U-CERRAR-DIRTY: the bar is live again');
+});
+
+test('U-ESC — Escape on the confirm keeps the work (as «Seguir editando»)', async () => {
+  const p = await page();
+  await p.signIn();
+  await p.open('dimsum_01');
+  p.type(priceIn(p), '285');
+  headClose(p).click(); await settle(10);
+  card(p).dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await settle(10);
+  assert.equal(card(p), null, 'U-ESC: the confirm is gone');
+  assert.ok(p.drawer().classList.contains('show') && priceIn(p).value === '285', 'U-ESC: the drawer and the copy stay');
+});
+
+test('U-OTHER-ROW-DIRTY — opening another product asks; «Seguir editando» stays on this one byte-identical; «Descartar» opens the other, clean', async () => {
+  const p = await page();
+  await p.signIn();
+  const draft0 = JSON.stringify(p.src());
+  await p.open('dimsum_01');
+  p.type(priceIn(p), '285');
+  const f0 = fieldsNow(p); const pin = priceIn(p);
+  await p.open('dimsum_02');
+  assertCard(p, 'U-OTHER-ROW-DIRTY');
+  assert.equal(p.drawer().querySelector('.dwt').textContent, 'Sichuan Spicy Wonton', 'U-OTHER-ROW-DIRTY: still the first product while asking');
+  cardBtn(p, 'Seguir editando').click(); await settle(10);
+  assert.deepEqual(fieldsNow(p), f0, 'U-KEEP-EDITING-BYTE-IDENTICAL (other row): the copy exactly as before');
+  assert.equal(priceIn(p), pin, 'U-KEEP-EDITING-BYTE-IDENTICAL (other row): the SAME input node');
+  await p.open('dimsum_02');
+  cardBtn(p, 'Descartar').click(); await settle(10);
+  assert.notEqual(p.drawer().querySelector('.dwt').textContent, 'Sichuan Spicy Wonton', 'U-OTHER-ROW-DIRTY: «Descartar» opens the other product');
+  assert.equal(p.btn('Guardar').disabled, true, 'U-OTHER-ROW-DIRTY: the other product opens clean («Guardar» off)');
+  assert.equal(JSON.stringify(p.src()), draft0, 'U-OTHER-ROW-DIRTY: the list is never updated from an unsaved copy');
+});
+
+test('U-RELOAD-DIRTY-COPY — the self-update / branch-switch guard counts a dirty copy as pending (canLeave false), focus elsewhere', async () => {
+  const p = await page();
+  await p.signIn();
+  await p.open('dimsum_01');
+  p.d.body.focus(); if (p.d.activeElement && p.d.activeElement.blur) p.d.activeElement.blur();
+  assert.equal(p.mods.app.editorCanLeave(), true, 'U-RELOAD-DIRTY-COPY: premise — a clean open drawer, nothing focused, may reload');
+  p.type(priceIn(p), '285');
+  priceIn(p).blur();
+  assert.equal(p.mods.app.editorCanLeave(), false, 'U-RELOAD-DIRTY-COPY: an unsaved copy blocks the reload');
+  p.btn('Cancelar').click(); await settle(10);
+  assert.equal(p.mods.app.editorCanLeave(), true, 'U-RELOAD-DIRTY-COPY: «Cancelar» releases it');
+});
+

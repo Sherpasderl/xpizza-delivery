@@ -1182,3 +1182,30 @@ test('S4 (Codex S4P2 r1 P2-3) — «Detener subida» stops the upload AND frees 
   assert.equal(st.items.find((i) => i.key === 'Pepperoni').display.name, 'Pepperoni picante', 'the name saved');
   assert.deepEqual(JSON.parse(JSON.stringify(st.photos || {})), {}, 'no photo landed');
 });
+
+// UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html, owner-approved 2026-11-11): the photo step's «Cerrar» is an exit that would
+// drop the working copy — with unsaved edits it asks first (frame 2), exactly as the drawer's own «Cerrar».
+test('U-PHOTO-CLOSE-DIRTY — the photo step\'s «Cerrar» with unsaved edits asks; «Seguir editando» keeps the step and the copy; «Descartar» drops both', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  fake.flags.textEdit = true;
+  const { d, mods } = await boot(fake);
+  const pep = () => JSON.parse(JSON.stringify(mods.app.state.draft.state)).items.find((i) => i.key === 'Pepperoni');
+  await openDrawerFor(d, 'Pepperoni');
+  const price = drawer(d).querySelector('input[aria-label="Precio"]');
+  assert.ok(price && drawer(d).querySelector('.dwf .mk-dirty'), 'premise: the ON drawer (the working copy) opened');
+  price.value = '330'; price.dispatchEvent(new window.Event('input', { bubbles: true }));
+  drawer(d).querySelector('button.uploader.phdesk').click();
+  await settle();
+  await choose(d, window, mkFile(window));
+  await until(() => drawer(d).querySelector('.phcrop'), 'the crop step');
+  drawer(d).querySelector('.dwh .dwx').click(); await settle();
+  const cf = drawer(d).querySelector('.mk-cf');
+  assert.ok(cf, 'U-PHOTO-CLOSE-DIRTY: the confirm is shown over the photo step');
+  assert.equal(cf.querySelector('h3').textContent, '¿Descartar los cambios?', 'U-PHOTO-CLOSE-DIRTY: the title');
+  btnText(cf, 'Seguir editando').click(); await settle();
+  assert.ok(drawer(d).querySelector('.phcrop') && drawer(d).classList.contains('show'), 'U-KEEP-EDITING-BYTE-IDENTICAL (photo close): the photo step stays');
+  drawer(d).querySelector('.dwh .dwx').click(); await settle();
+  btnText(drawer(d).querySelector('.mk-cf'), 'Descartar').click(); await settle();
+  assert.equal(drawer(d).classList.contains('show'), false, 'U-PHOTO-CLOSE-DIRTY: «Descartar» closes the drawer');
+  assert.deepEqual([pep().price, pep().display.price], [310, 310], 'U-PHOTO-CLOSE-DIRTY: the draft never took the unsaved price');
+});

@@ -352,6 +352,9 @@ const PINNED_LITERALS = [
   ['.phocard', 'background', '#fff'], ['.phocard', 'color', '#1E1B18'], ['.phodesc', 'color', '#5A4F47'], ['.phoprice', 'color', '#7A5A08'],
   ['.phshc', 'background', 'linear-gradient(to bottom,transparent 40%,rgba(0,0,0,.35) 100%)'],
   ['.phshh', 'background', 'linear-gradient(to bottom,transparent 50%,rgba(0,0,0,.25) 100%)'],
+  // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html, owner-approved 2026-11-11): the confirm's scrim over the DRAWER only
+  // (the .phov family: a dark veil in both themes)
+  ['.mk-cfscrim', 'background', 'rgba(10,10,11,.34)'],
 ];
 const PINNED_ICON_RULES = {
   top: [':root[data-theme="dark"] .tbtn .moon,:root[data-theme="dark"] .miconbtn .moon', ':root[data-theme="dark"] .tbtn .sun,:root[data-theme="dark"] .miconbtn .sun'],
@@ -391,6 +394,7 @@ const PINNED_COMPLEX = {
   '.fld input[type=text]': ['background:var(--board-2);color:var(--ink)'],
   '.hours input[type=time]': ['background:var(--board-2);color:var(--ink)'],
   '.btn.accent[data-busy] .spin': ['color:var(--card)'],
+  '.mk-dirty::before': ['background:var(--accent)'],   // UNSAVED EDITS: the mark's dot — the bar's own .rb-dot token
 };
 // the 10 C2 crossings — exact color/background declarations AND the frozen partner set
 const PINNED_CROSSINGS = {

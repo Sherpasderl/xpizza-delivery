@@ -414,9 +414,17 @@ function syncUi() {
   const rev = $('review');
   if (rev) {
     const valid = !!state.draft && isPublishable(state.draft);
-    rev.disabled = owned || state.menuLoading === true || !state.draft || !valid || uploader.busy() || state.platformPending === true;
-    rev.title = state.platformPending === true ? PLATFORM_COPY.bar : ((state.draft && !valid) ? 'Hay un precio sin valor válido' : '');
+    rev.disabled = owned || state.menuLoading === true || !state.draft || !valid || uploader.busy() || state.platformPending === true || copyDirty();
+    rev.title = state.platformPending === true ? PLATFORM_COPY.bar : (copyDirty() ? UNSAVED_HINT : ((state.draft && !valid) ? 'Hay un precio sin valor válido' : ''));
   }
+  // unsaved edits (frame 1): the WHOLE bar waits while the open product has unsaved edits — «Descartar» too — with one hint
+  const dirty = copyDirty();
+  const dis = $('discard');
+  if (dis) { dis.disabled = dirty; if (dirty) dis.title = UNSAVED_HINT; else dis.removeAttribute('title'); }
+  const sp = $('rbar') && $('rbar').querySelector('.rb-sp');
+  let hint = sp && sp.querySelector('.mk-rbhint');
+  if (sp && !hint && dirty) { hint = document.createElement('span'); hint.className = 'mk-rbhint'; hint.textContent = UNSAVED_HINT; sp.prepend(hint); }
+  if (hint) hint.hidden = !dirty;
   // "Listo" on the receipt is not pressable while the post-publish reload is owed (derived, like every other control)
   if (PUBBACK) PUBBACK.disabled = !!state.settle;
   setDrawerInert(owned);
@@ -689,7 +697,7 @@ function renderCropDrawer(d, it, job) {
       if (editSess && !editSess.closed && editSess.key === key) { editUpload = IE.uploadBinding(editSess); editUpload.started(); }
       uploader.upload(key);
     }),
-    onClose: bound(() => { state.drawerKey = null; endEditSession(); uploader.cancel(key); d.classList.remove('show'); d.replaceChildren(); }),
+    onClose: bound(() => requestClose(() => { state.drawerKey = null; endEditSession(); uploader.cancel(key); d.classList.remove('show'); d.replaceChildren(); })),
   });
   d.replaceChildren(head, body, foot);
   d.classList.add('show');
@@ -1281,6 +1289,7 @@ function setDrawerInert(on) {
 }
 
 export function openDrawer(key) {
+  if (editSess && editSess.key !== key && copyDirty()) { requestClose(() => openDrawer(key)); return; }   // unsaved edits: ask first
   if (editSess && editSess.key !== key) endEditSession();   // S4: another product's drawer drops the open copy
   state.drawerKey = key;
   state.openGroups = state.openGroups || new Set();
@@ -1382,6 +1391,38 @@ function renderDrawer() {
 let editSess = null;      // the open drawer's working copy (IE session)
 let editUpload = null;    // the upload bound to it (IE.uploadBinding), if one was started in this drawer
 let editRefs = null;      // the built nodes `syncEdit` updates in place
+// UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html, owner-approved 2026-11-11): the open copy's unsaved work is never thrown
+// away without asking. One predicate; the bar, the reload guard and every exit that would drop the copy read it.
+const UNSAVED_HINT = 'Guardá o cancelá los cambios del producto abierto';
+const copyDirty = () => !!editSess && !editSess.closed && IE.isDirty(editSess);
+// Frame 2 — an in-page confirm anchored to the drawer (its scrim covers the drawer only; the page gets no backdrop). «Seguir
+// editando» is the primary and holds focus (Enter / Esc keep the work and return the caret); «Descartar» drops the copy, then runs
+// `next` (close, or open the other product). Clean → `next` at once: nothing asks twice.
+function requestClose(next) {
+  if (!copyDirty()) { next(); return; }
+  const d = $('drawer');
+  if (d.querySelector('.mk-cfscrim')) return;
+  const back = document.activeElement;
+  const mkEl = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const scrim = mkEl('div', 'mk-cfscrim');
+  const cfCard = mkEl('div', 'mk-cf');
+  cfCard.setAttribute('role', 'dialog'); cfCard.setAttribute('aria-modal', 'true');
+  cfCard.setAttribute('aria-labelledby', 'mk-cf-t'); cfCard.setAttribute('aria-describedby', 'mk-cf-d');
+  const h = mkEl('h3', null, '¿Descartar los cambios?'); h.id = 'mk-cf-t';
+  const p = mkEl('p', null, 'Tenés cambios sin guardar en este producto.'); p.id = 'mk-cf-d';
+  const acts = mkEl('div', 'mk-cfa');
+  const cfDrop = document.createElement('button'); cfDrop.className = 'btn ghost mk-quiet-danger'; cfDrop.type = 'button'; cfDrop.textContent = 'Descartar';
+  const cfKeep = document.createElement('button'); cfKeep.className = 'btn accent'; cfKeep.type = 'button'; cfKeep.textContent = 'Seguir editando';
+  const dismiss = () => { scrim.remove(); if (back && back.isConnected && typeof back.focus === 'function') back.focus(); };
+  cfKeep.addEventListener('click', bound(() => dismiss()));
+  cfDrop.addEventListener('click', bound(() => { scrim.remove(); endEditSession(); next(); syncUi(); }));   // the bar is live again (frame 3)
+  cfCard.addEventListener('keydown', bound((e) => { if (e.key === 'Escape') { e.preventDefault(); dismiss(); } }));
+  acts.append(cfDrop, cfKeep);
+  cfCard.append(h, p, acts);
+  scrim.append(cfCard);
+  d.append(scrim);
+  cfKeep.focus();
+}
 function endEditSession() {
   const s = editSess;
   editSess = null; editUpload = null; editRefs = null;
@@ -1462,7 +1503,7 @@ function renderEditDrawer(d, it, keepScroll) {
   const errSlot = (f, field) => { R.flds[field] = f; R.errs[field] = null; };
 
   const head = mk('div', 'dwh');
-  head.append(mk('span', 'dwt', s.base.name || key), closeIcon(bound(() => closeDrawer())));   // the published name until the draft is saved (B)
+  head.append(mk('span', 'dwt', s.base.name || key), closeIcon(bound(() => requestClose(() => closeDrawer()))));   // the published name until the draft is saved (B)
   const body = mk('div', 'dwb ie-edit');   // .ie-edit scopes the mockup rules that would otherwise reach the add drawer
 
   // «Foto» — the approved dish-photo field (P7), its entry from the copy
@@ -1590,7 +1631,9 @@ function renderEditDrawer(d, it, keepScroll) {
   const ieSave = document.createElement('button'); ieSave.className = 'btn accent'; ieSave.type = 'button'; ieSave.textContent = 'Guardar';
   ieSave.addEventListener('click', bound(() => saveEdit()));
   R.save = ieSave;
-  foot.append(ieCancel, mk('span', 'mk-sp'), ieSave);
+  R.dirty = mk('span', 'mk-dirty', 'Cambios sin guardar');   // frame 1: the quiet mark beside «Guardar»
+  R.dirty.hidden = true;
+  foot.append(ieCancel, mk('span', 'mk-sp'), R.dirty, ieSave);
 
   editRefs = R;
   d.setAttribute('aria-label', 'Editar producto');
@@ -1656,6 +1699,11 @@ function syncEdit() {
   }
   R.save.disabled = !v.save.enabled;
   if (v.save.title) R.save.title = v.save.title; else R.save.removeAttribute('title');
+  const dirty = IE.isDirty(s);
+  R.dirty.hidden = !dirty;
+  // the bar waits while the copy is dirty — repainted by syncUi (the one derivation) only when that changes: syncUi → setDrawerInert →
+  // syncEdit would otherwise loop
+  if (R.lastDirty !== dirty) { R.lastDirty = dirty; syncUi(); }
 }
 // «Guardar»: the whole edit into the shared draft, once; the drawer closes onto the list (the row shows its tag, the bar counts it).
 function saveEdit() {
@@ -2142,6 +2190,7 @@ document.addEventListener('portal:restaurant', (e) => { lastMenuLoad = loadMenu(
 // The review bar's own controls. Wired here, not inline: the CSP has no 'unsafe-inline', so an
 // onclick attribute would be inert and the button would look enabled while doing nothing.
 $('discard').addEventListener('click', () => {
+  if (copyDirty()) return;   // unsaved edits: the whole bar waits (frame 1)
   if (canEditDraft(state.draft)) uploader.abortAll();   // DISH PHOTOS B — an upload in flight belongs to the edits thrown away
   discard(state.draft);
   endEditSession();                                     // S4: the drawer's working copy goes with the thrown-away edits
@@ -2158,6 +2207,7 @@ $('discard').addEventListener('click', () => {
 // opinion about money, and publishEdited re-checks the server's one anyway: the two disagreeing is
 // how a merchant approves a change they were never shown.
 async function openReviewFlow() {
+  if (copyDirty()) return;   // unsaved edits: never review around an open, dirty copy (the bar is inert; this is the admission)
   if (state.publishViaRequest) return sendToOwnerFlow();   // T-d: this caller sends; the owner's path below is untouched
   if (state.platformPending === true) return;   // F-2 r2 (Codex r1 P2-2): Sherpa is updating the menu — no save, no review, at ADMISSION (each flow owns its own)
   // 🔴 ADMISSION CONTROL, FIRST — before the generation is bumped and before anything is sent.
@@ -2727,7 +2777,7 @@ document.addEventListener('portal:auth', (e) => {
 function portalReloadFacts() {
   const a = document.activeElement;
   return { pendingWrite: !!pendingWrite || uploader.busy(), publishing: !!publisher.busy || !!state.settle, review: !!state.review, reviewLock: !!state.reviewLock,
-    pendingCount: state.draft ? pendingCount(state.draft, state.additionKeys) + pendingRenames(state.draft).length : 0, focusedTag: a ? a.tagName : null };
+    pendingCount: (state.draft ? pendingCount(state.draft, state.additionKeys) + pendingRenames(state.draft).length : 0) + (copyDirty() ? 1 : 0), focusedTag: a ? a.tagName : null };   // + an unsaved open copy (addendum note)
 }
 try {
   const S = window.SherpaClient;
