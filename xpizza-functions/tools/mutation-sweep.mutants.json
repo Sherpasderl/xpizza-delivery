@@ -11128,7 +11128,7 @@
   "id": "r1-26",
   "slice": "r1",
   "file": "firebase.json",
-  "from": "      \"predeploy\": [\n        \"node \\\"$RESOURCE_DIR/tools/deploy-env-guard.js\\\" --root \\\"$RESOURCE_DIR\\\"\",\n        \"node \\\"$RESOURCE_DIR/tools/deploy-dotenv-guard.js\\\" --root \\\"$RESOURCE_DIR\\\"\"\n      ],\n",
+  "from": "      \"predeploy\": [\n        \"node \\\"$RESOURCE_DIR/tools/deploy-env-guard.js\\\" --root \\\"$RESOURCE_DIR\\\"\",\n        \"node \\\"$RESOURCE_DIR/tools/deploy-dotenv-guard.js\\\" --root \\\"$RESOURCE_DIR\\\"\",\n        \"node \\\"$RESOURCE_DIR/tools/platform-photos-check.js\\\" --root \\\"$RESOURCE_DIR\\\" --project \\\"$GCLOUD_PROJECT\\\"\"\n      ],\n",
   "to": "",
   "label": "the deploy guard is not on the deploy path (no functions predeploy hook)",
   "kills_with": "the deploy-env guard is not the FIRST functions predeploy hook",
@@ -20674,7 +20674,7 @@
   "id": "dotenv-hook-off",
   "label": "the dotenv guard is not on the deploy path",
   "file": "firebase.json",
-  "from": ",\n        \"node \\\"$RESOURCE_DIR/tools/deploy-dotenv-guard.js\\\" --root \\\"$RESOURCE_DIR\\\"\"\n",
+  "from": "        \"node \\\"$RESOURCE_DIR/tools/deploy-dotenv-guard.js\\\" --root \\\"$RESOURCE_DIR\\\"\",\n",
   "to": "\n",
   "kills_with": [
    "DOTENV-HOOK"
