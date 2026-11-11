@@ -457,9 +457,12 @@ async function failingOrderWrite(oid, fn) {
       for (const k of a.keys()) { const m = k.match(/^(?:payment_attempts|order_tracking)\/([^/]+)/); if (m) toks.add(m[1]); }
       const norm = (s) => { let x = String(s); for (const t of toks) x = x.split(t).join('<tok>'); return x.replace(/https:\/\/pay\.test\/[^"\s]+/g, '<url>').replace(/\/-[A-Za-z0-9_-]{19}/g, '/<push>'); };
       const val = (k, v) => (typeof v === 'number' && v > 1.6e12 && v < 4e12 ? '<t>' : /(_at|timestamp|expires)$/.test(k) && typeof v === 'string' ? '<t>' : norm(v));
-      const changed = {};
-      for (const k of new Set([...b.keys(), ...a.keys()])) if (b.get(k) !== a.get(k)) changed[norm(k)] = a.has(k) ? val(k, a.get(k)) : '<deleted>';
-      return { status: resp.status, body: JSON.parse(norm(JSON.stringify(resp.json || null)).replace(/"(?:[a-z_]*_at|timestamp)":\d+/g, '"t":0')), changed };
+      const changed = {}, raw = {};
+      for (const k of new Set([...b.keys(), ...a.keys()])) if (b.get(k) !== a.get(k)) { changed[norm(k)] = a.has(k) ? val(k, a.get(k)) : '<deleted>'; raw[norm(k)] = a.get(k); }
+      const out = { status: resp.status, body: JSON.parse(norm(JSON.stringify(resp.json || null)).replace(/"(?:[a-z_]*_at|timestamp)":\d+/g, '"t":0')), changed };
+      // the RAW written values (Codex asm5 P2: `changed` is stringified) — non-enumerable, so the golden deepStrictEqual never sees it
+      Object.defineProperty(out, 'raw', { value: raw, enumerable: false });
+      return out;
     };
     for (const rid of ['x_pizza', 'la_musa', T3.THIRD]) for (const method of ['cash', 'online']) {
       const oid = `a1dq_${method}_${rid}`, phone = phoneFor();
@@ -500,7 +503,7 @@ async function failingOrderWrite(oid, fn) {
         const S1D = new RegExp(`^(orders/${oid}/menu_version_id|(orders/${oid}|order_tracking/<tok>)/summary_lines/\\d+/item_key)$`);
         const s1dOf = (o) => Object.keys(o.changed).filter((k) => S1D.test(k));
         const s1d = s1dOf(mine[i]).filter((k) => !(k in theirs[i].changed));
-        assert.ok(s1d.every((k) => typeof mine[i].changed[k] === 'string' && mine[i].changed[k]), `🔴 ${rid}/${method} step ${i}: S1d's declared provenance is a non-empty string (${s1d.join(', ')})`);
+        assert.ok(s1d.every((k) => typeof mine[i].raw[k] === 'string' && mine[i].raw[k]), `🔴 ${rid}/${method} step ${i}: S1d's declared provenance is a non-empty string as WRITTEN (${s1d.map((k) => `${k}=${typeof mine[i].raw[k]}`).join(', ')})`);
         if (i === 0) assert.ok(s1d.includes(`orders/${oid}/menu_version_id`), `🔴 ${rid}/${method}: the placement stores S1d's menu_version_id (non-vacuity)`);
         assert.ok(!(`orders/${oid}/menu_version_id` in theirs[i].changed), `premise: ${BASE} never wrote menu_version_id`);
         const stripped = { ...mine[i], changed: Object.fromEntries(Object.entries(mine[i].changed).filter(([k]) => !decl.includes(k) && !s1d.includes(k))) };

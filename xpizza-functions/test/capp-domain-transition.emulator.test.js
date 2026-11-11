@@ -367,15 +367,20 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
           if ($('[data-act="pay"][data-val="online"]')) await click('[data-act="pay"][data-val="online"]');
           await click('#cta');
           const quoted = await wait(() => quotes.some((q) => q.tip > 0));
-          await wait(() => !!ui.state.err);
-          const place = $('[data-act="tip-place"]');
-          return { quoted, quotes, screen: ui.state.screen, tipCents: ui.state.flow.tipCents, err: ui.state.err && ui.state.err.title, placeDisabled: !place || place.disabled };
+          // Codex asm5 P2: the RENDERED sheet, not the state — the alertdialog laid out and visible, its title as drawn
+          const shown = () => { const d = $('#layer .sheet[role="alertdialog"]'); if (!d) return null; const r = d.getBoundingClientRect(), cs = getComputedStyle(d);
+            return r.width > 0 && r.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) > 0 ? d : null; };
+          await wait(() => !!shown());
+          const d = shown(), place = $('[data-act="tip-place"]');
+          return { quoted, quotes, screen: ui.state.screen, tipCents: ui.state.flow.tipCents, sheet: d ? { title: (d.querySelector('h2') || {}).textContent || '', text: d.innerText.slice(0, 200) } : null,
+            place: place ? { disabled: place.disabled === true } : null };
         })()`);
         const tipped = (r.quotes || []).filter((q) => q.tip > 0);
         assert.ok(r.quoted && tipped.length > 0, `🔴 U-DARK: the tip step quoted its default tip (${JSON.stringify(r)})`);
         assert.ok(tipped.every((q) => q.status === 409 && q.error === 'tip_not_enabled'), `🔴 U-DARK: dark + tip → 409 tip_not_enabled (${JSON.stringify(r.quotes)})`);
         assert.ok((r.quotes || []).some((q) => q.tip === 0 && q.status === 200), `premise: dark without a tip quotes as before (${JSON.stringify(r.quotes)})`);
-        assert.deepStrictEqual([r.screen, typeof r.err === 'string' && r.err.length > 0, r.placeDisabled], ['tip', true, true], `🔴 U-DARK: the refusal is VISIBLE — the error sheet over the tip step, «Hacer pedido» disabled (${JSON.stringify(r)})`);
+        assert.deepStrictEqual([r.screen, r.sheet && r.sheet.title], ['tip', 'No pudimos enviar tu pedido'], `🔴 U-DARK: the refusal is VISIBLE — the rendered error sheet over the tip step (${JSON.stringify(r)})`);
+        assert.deepStrictEqual(r.place, { disabled: true }, `🔴 U-DARK: «Hacer pedido» is drawn and DISABLED (${JSON.stringify(r)})`);
         assert.strictEqual(HDRS.filter((h) => h.ep === 'chargeOnlineOrder' || h.ep === 'createOrder').length, 0, 'U-DARK: nothing is placed');
       } finally { await u.close(); }
       ok('U-DARK no delivery pricing (the setup gap): the tip step\'s default tip is refused 409 tip_not_enabled, the app shows its error sheet and «Hacer pedido» stays disabled — visible, never a silent pass; nothing placed');
