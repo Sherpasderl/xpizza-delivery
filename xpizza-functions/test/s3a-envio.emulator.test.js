@@ -180,7 +180,7 @@ const DELIVERY_KEYS = ['delivery_cents', 'promo_discount_cents', 'delivery_snaps
   {
     const food = DARK.x_pizza.total_cents;
     const member = await cash('x_pizza', { km: 4 }, { 'x-firebase-id-token': 'u_member1' });
-    assert.deepStrictEqual([member.status, member.rec.total_cents, member.rec.delivery_cents, member.rec.promo_discount_cents, member.rec.delivery_snapshot.promo], [200, food + 5000, 5000, 0, null], `a member pays envío (${member.text.slice(0, 160)})`);
+    assert.deepStrictEqual([member.status, member.rec.total_cents, member.rec.delivery_cents, member.rec.promo_discount_cents, 'promo' in member.rec.delivery_snapshot], [200, food + 5000, 5000, 0, false], `a member pays envío (${member.text.slice(0, 160)})`);
     const qm = await quote('x_pizza', { mode: 'delivery', pin: { ...north(4), confirmed: true } }, { 'x-firebase-id-token': 'u_member3' });
     assert.deepStrictEqual([qm.json.net_total_cents, qm.json.delivery.promo_discount_cents], [food + 5000, 0], 'the member quote shows no promo');
     const asGuest = await card('x_pizza', { km: 4, extra: { quote_token: qm.json.quote_token, expected_net_cents: qm.json.net_total_cents } });
