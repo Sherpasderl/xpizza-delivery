@@ -214,6 +214,8 @@ const livePrice = async (key) => (await previewVersion(db, RID, await getActiveV
       const papp = await page.loadPortalApp('TK-owner');
       const drawerInput = (label) => byId.get('drawer').querySelectorAll('input').find((i) => i.attrs['aria-label'] === label);
       const reviewAndPublish = async (tag) => {
+        // item_text_edit ON (S4): an existing product's drawer is a working copy — its own «Guardar» applies it before Revisar
+        { const g = byId.get('drawer').querySelectorAll('button').find((x) => x.textContent === 'Guardar'); assert.ok(g, `${tag}: premise — the ON drawer offers «Guardar»`); await page.fire(g); }
         await page.fire(byId.get('review'));
         assert.ok(portalCalls.includes('editCatalog'), `${tag}: Revisar SAVED through the real editCatalog`);
         await page.fire(byId.get('pubbtn'));
