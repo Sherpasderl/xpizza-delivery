@@ -177,7 +177,7 @@ async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), lo
     log.warn('portal_ops_unavailable', JSON.stringify({ fn: 'getMyBranches', error: String((e && e.message) || e).slice(0, 160) }));
     return reply(503, { error: 'read_unavailable', retryable: true });
   }
-  return reply(200, { brands, branches, membership_writes_enabled: (await writesFlag) === true });
+  return reply(200, { brands, branches, membership_writes_enabled: (await writesFlag) === true, ...((await val(db, `platform_admins/${v.ctx.uid}`).then((x) => x === true, () => false)) ? { platform_admin: true } : {}) });   // delivery pricing G1: display-only (the pricing callables enforce on their own); a failed read → absent
 }
 
 // ── E2 updateBranch (prep_default_min only) ───────────────────────────────────────────────────────────────────────────────

@@ -31,7 +31,7 @@
    "server branches": 30,
    "server payment": 417,
    "server intake": 502,
-   "server delivery_pricing": 30,
+   "server delivery_pricing": 33,
    "server driver_pay": 11,
    "server driverreport": 5,
    "server rewards": 72,
@@ -64,7 +64,7 @@
   "clocks": {
    "business-sample": 197,
    "display": 39,
-   "persisted-stamp": 61,
+   "persisted-stamp": 62,
    "business-comparison": 14,
    "io-deadline": 4
   }
@@ -6003,6 +6003,85 @@
    "kind": "member",
    "facts": [
     "PLACE"
+   ],
+   "rule": "server:delivery_pricing",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/delivery/pricing-admin-core.js#branchesOf>anon#hub_lat#0",
+   "line": 103,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/delivery/pricing-admin-core.js#branchesOf>anon#hub_lng#0",
+   "line": 103,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/delivery/pricing-admin-core.js#branchesOf>anon#hub_lat#1",
+   "line": 103,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/delivery/pricing-admin-core.js#branchesOf>anon#hub_lng#1",
+   "line": 103,
+   "kind": "member",
+   "facts": [
+    "PLACE"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/delivery/pricing-admin-functions.js#handler>anon#status#0",
+   "line": 27,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:delivery_pricing",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/delivery/pricing-admin-functions.js#handler>anon#status#1",
+   "line": 27,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:delivery_pricing",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/delivery/pricing-admin-functions.js#handler>anon#status#2",
+   "line": 30,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
    ],
    "rule": "server:delivery_pricing",
    "exempt": true
@@ -52026,6 +52105,14 @@
    "rule": "server:catalog"
   },
   {
+   "file": "xpizza-functions/delivery/pricing-admin-core.js",
+   "fn": "exactKeys",
+   "base": "o",
+   "line": 27,
+   "how": "Object.keys",
+   "rule": "server:delivery_pricing"
+  },
+  {
    "file": "xpizza-functions/index.js",
    "fn": "sweepStalePending",
    "base": "orders",
@@ -54781,6 +54868,11 @@
    "key": "xpizza-functions/client-version.js:sweepClientVersions:Date.now()",
    "line": 133,
    "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/delivery/pricing-admin-functions.js:timestamp:ServerValue.TIMESTAMP",
+   "line": 19,
+   "class": "persisted-stamp"
   },
   {
    "key": "xpizza-functions/driver-diag.js:<top>>anon:Date.now()",

@@ -20,8 +20,9 @@
 //      The one browser cell whose request headers are built by the app, not by the test. Delivery pricing is ACTIVE for x_pizza
 //      (asm5, advisor 11-10: every delivery carries the Sherpa envío; a restaurant without pricing is a setup gap), seeded as
 //      s2tip.emulator's setPricing does — the shape of delivery-pricing.js:8-12, the same BANDS.
-//   U-DARK the setup gap stays VISIBLE: with no delivery pricing the tip step's default tip is refused 409 tip_not_enabled
-//      (delivery-wire.js:37), the app shows its error sheet and «Hacer pedido» stays disabled — never a silent pass.
+//   U-DARK the setup gap stays VISIBLE (dpao: no table fails closed (503) at the first quote): with no delivery pricing every app
+//      delivery quote is 503 delivery_pricing_unavailable, tip or not (delivery-wire.js:37); after its retries the app shows its
+//      error sheet, quotes nothing more, and «Hacer pedido» stays disabled — never a silent pass, nothing placed.
 //   GUEST CONTRACT (owner 10-27 FINAL; 3a's checkout-guest-gate; re-baselined at the web/guest composition, advisor 2026-11-01):
 //      every capp guest here runs as launch will — cfg.guestCardOnly, card only, the email, the WhatsApp code (sent through the
 //      REAL sendPlatformOtp to a captured UltraMsg call and read back from the message) ⇒ the checkout ticket ⇒ the charge. F1
@@ -262,6 +263,7 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
   let code = 1;
   try {
     // ── T: the domain transition ──
+    await setPricing({ x_pizza: { active: true, free_delivery: true } });   // app-only envío: an app delivery needs the table (no table ⇒ 503), the launch state as in U
     process.env[ENV_KEY] = OLD;
     const pre = await run(OLD, () => { process.env[ENV_KEY] = NEW; });   // the env switches to NEW while the checkout is open
     assert.deepStrictEqual([pre.landed.origin, !!pre.landed.stash, pre.landed.out.kind], [OLD, true, 'placed'], `🔴 pre-switch checkout: lands on the OLD origin, finds the stash, polls to placed (${JSON.stringify(pre.landed)})`);
@@ -340,7 +342,7 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
       ok('U the REAL UI in the REAL browser (guest contract): the device fix, the email typed, card only, the REAL WhatsApp code sheet (the code read from its send) ⇒ the ticket ⇒ the card checkout admitted at the hosted page, its own ctxBase + intake key, recorded at the fix and the Total shown, the verified phone bound');
     }
 
-    // ── U-DARK: no delivery pricing ⇒ the tip step's default tip is refused, VISIBLY ──
+    // ── U-DARK: no delivery pricing ⇒ every app delivery quote fails closed (503), VISIBLY (advisor ruling 2026-11-11) ──
     {
       await clean(); HDRS.length = 0; await setPricing(undefined);
       const FIX = { lat: HUB.lat + 1.3 / 111.195, lng: HUB.lng + 0.4 / 111.195 };
@@ -370,23 +372,29 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
           // Codex asm5 P2: the RENDERED sheet, not the state — the alertdialog laid out and visible, its title as drawn
           const shown = () => { const d = $('#layer .sheet[role="alertdialog"]'); if (!d) return null; const r = d.getBoundingClientRect(), cs = getComputedStyle(d);
             return r.width > 0 && r.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) > 0 ? d : null; };
-          await wait(() => !!shown());
+          await wait(() => !!shown(), 30000);
+          const atSheet = quotes.length; await new Promise((x) => setTimeout(x, 30000));   // a retry loop cannot hide: 30 s more, no further quote
           const d = shown(), place = $('[data-act="tip-place"]');
-          return { quoted, quotes, screen: ui.state.screen, tipCents: ui.state.flow.tipCents, sheet: d ? { title: (d.querySelector('h2') || {}).textContent || '', text: d.innerText.slice(0, 200) } : null,
+          const btn = (a) => { const b = d && d.querySelector('[data-act="' + a + '"]'); return b ? { enabled: b.disabled !== true } : null; };
+          return { quoted, quotes, atSheet, after: quotes.length, screen: ui.state.screen, tipCents: ui.state.flow.tipCents,
+            sheet: d ? { title: ((d.querySelector('h2') || {}).textContent || '').trim(), lines: d.innerText.split('\\n').map((x) => x.trim()).filter(Boolean), requote: btn('err-requote'), close: btn('lclose') } : null,
             place: place ? { disabled: place.disabled === true } : null };
         })()`);
-        const tipped = (r.quotes || []).filter((q) => q.tip > 0);
-        assert.ok(r.quoted && tipped.length > 0, `🔴 U-DARK: the tip step quoted its default tip (${JSON.stringify(r)})`);
-        assert.ok(tipped.every((q) => q.status === 409 && q.error === 'tip_not_enabled'), `🔴 U-DARK: dark + tip → 409 tip_not_enabled (${JSON.stringify(r.quotes)})`);
-        assert.ok((r.quotes || []).some((q) => q.tip === 0 && q.status === 200), `premise: dark without a tip quotes as before (${JSON.stringify(r.quotes)})`);
-        assert.deepStrictEqual([r.screen, r.sheet && r.sheet.title], ['tip', 'No pudimos enviar tu pedido'], `🔴 U-DARK: the refusal is VISIBLE — the rendered error sheet over the tip step (${JSON.stringify(r)})`);
+        const Q503 = { status: 503, error: 'delivery_pricing_unavailable' };
+        assert.deepStrictEqual((r.quotes || []).map((q) => [q.tip, q.status, q.error]), [0, 2000, 0, 2000, 0, 2000].map((t) => [t, Q503.status, Q503.error]),
+          `🔴 U-DARK: no table ⇒ every app delivery quote is 503 delivery_pricing_unavailable — 3 × tip 0 + 3 × the default tip (${JSON.stringify(r.quotes)})`);
+        assert.deepStrictEqual([r.atSheet, r.after], [6, 6], `🔴 U-DARK: no further quote in the 30 s after the sheet — no retry loop (${JSON.stringify(r)})`);
+        assert.strictEqual(r.screen, 'tip', `U-DARK: the refusal is shown over the tip step (${JSON.stringify(r)})`);
+        assert.deepStrictEqual(r.sheet, { title: 'No pudimos enviar tu pedido', lines: ['No pudimos enviar tu pedido', 'Intentá de nuevo en un momento; tu pedido está intacto.', 'Reintentar', 'Cerrar'],
+          requote: { enabled: true }, close: { enabled: true } }, `🔴 U-DARK: the refusal is VISIBLE — the rendered error sheet, exactly (${JSON.stringify(r)})`);
         assert.deepStrictEqual(r.place, { disabled: true }, `🔴 U-DARK: «Hacer pedido» is drawn and DISABLED (${JSON.stringify(r)})`);
-        assert.strictEqual(HDRS.filter((h) => h.ep === 'chargeOnlineOrder' || h.ep === 'createOrder').length, 0, 'U-DARK: nothing is placed');
+        assert.deepStrictEqual([HDRS.filter((h) => h.ep === 'createOrder').length, HDRS.filter((h) => h.ep === 'chargeOnlineOrder').length], [0, 0], 'U-DARK: nothing is placed (0 createOrder, 0 chargeOnlineOrder)');
       } finally { await u.close(); }
-      ok('U-DARK no delivery pricing (the setup gap): the tip step\'s default tip is refused 409 tip_not_enabled, the app shows its error sheet and «Hacer pedido» stays disabled — visible, never a silent pass; nothing placed');
+      ok('U-DARK no delivery pricing (the setup gap; dpao: no table fails closed (503) at the first quote): 6 quotes, all 503 delivery_pricing_unavailable, none more in 30 s; the rendered error sheet «No pudimos enviar tu pedido» with Reintentar / Cerrar; «Hacer pedido» disabled — visible, never a silent pass; nothing placed');
     }
 
     // ── F: the client floor ENABLED ──
+    await setPricing({ x_pizza: { active: true, free_delivery: true } });   // app-only envío: the launch-state table again after U-DARK removed it (as T / U)
     const COMPAT = Number(VERSION.compat);
     await rtdb.ref('platform_config/client_floor/orders').set(COMPAT);
     await new Promise((r) => setTimeout(r, 31000));   // the floor cache TTL (client-floor.js FLOOR_TTL_MS)

@@ -126,6 +126,25 @@ const strip = (body) => ({ ...body, brands: body.brands.map((b) => Object.fromEn
     ok('an owned brand whose only branch is a draft is listed (caps, activation, its draft)');
   }
 
+  // ── G1 (delivery pricing, the portal «Envío» entry): `platform_admin: true` ONLY for platform_admins/{uid} === true — absent for
+  //    anyone else and on a failed read (display-only; the pricing callables enforce on their own) ──
+  {
+    const flagged = (db) => { const fake = db.fake; fake.ref('platform_admins/ownerTB').set(true); fake.ref('platform_admins/mgrSur').set('yes'); return db; };
+    const admin = await C.getMyBranchesCore(deps(flagged(world())), get('ownerTB'));
+    assert.deepStrictEqual([admin.status, admin.body.platform_admin], [200, true], 'G1-PLATFORM-ADMIN: the owner-granted admin is flagged');
+    const plain = await C.getMyBranchesCore(deps(world()), get('ownerTB'));
+    assert.deepStrictEqual([plain.status, 'platform_admin' in plain.body], [200, false], 'G1-PLATFORM-ADMIN: not granted → the key is absent');
+    const notTrue = await C.getMyBranchesCore(deps(flagged(world())), get('mgrSur'));
+    assert.deepStrictEqual([notTrue.status, 'platform_admin' in notTrue.body], [200, false], 'G1-PLATFORM-ADMIN: a non-true grant is not a grant');
+    const failing = world(); const fref = failing.ref;
+    failing.ref = (p) => (String(p).startsWith('platform_admins') ? { once: async () => { throw new Error('down'); }, get: async () => { throw new Error('down'); } } : fref(p));
+    const down = await C.getMyBranchesCore(deps(failing), get('ownerTB'));
+    assert.deepStrictEqual([down.status, 'platform_admin' in down.body, down.body.branches.length > 0], [200, false, true], 'G1-PLATFORM-ADMIN: a failed read → absent, never an error');
+    const { platform_admin: _pa, ...rest } = admin.body;
+    assert.deepStrictEqual(rest, plain.body, 'G1-PLATFORM-ADMIN: the flag is the only difference');
+    ok('G1: platform_admin:true only for platform_admins/{uid} === true; absent otherwise and on a failed read (never an error); nothing else changes');
+  }
+
   FINISHED = true;
   console.log(`\ne1-extend: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });
