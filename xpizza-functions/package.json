@@ -204,6 +204,7 @@
     "test:address-area": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/address-area.emulator.test.js\"",
     "test:extras-intake": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/extras-intake.emulator.test.js\"",
     "test:extras-eligibility-publish": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/extras-eligibility-publish.emulator.test.js\"",
+    "test:s2core": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/s2core.emulator.test.js\"",
     "test:driver-assignment-parity": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/driver-assignment-parity.emulator.test.js\"",
     "test:arrived-rules": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza-drvc \"node test/arrived-rules.emulator.test.js\"",
     "test:driver-problems-rules": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza-drvf \"node test/driver-problems-rules.emulator.test.js\"",
