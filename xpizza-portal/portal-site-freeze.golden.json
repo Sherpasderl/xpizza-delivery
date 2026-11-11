@@ -36,6 +36,7 @@
   "envio-logic.test.mjs",
   "envio-map-protocol.js",
   "envio-map-protocol.test.mjs",
+  "envio-map-site.test.mjs",
   "envio-server-parity.test.mjs",
   "equipos.js",
   "extras-eligibility.js",
