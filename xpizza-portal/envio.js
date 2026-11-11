@@ -108,8 +108,13 @@ function clearSession({ dropCache }) {
 }
 function revoke() {
   const wasShowing = !!S.root;
+  const wasOpen = !!S.confirm;   // Codex r3 F1: a revocation that closes the confirm lands focus on the forbidden message
   clearSession({ dropCache: true });
-  if (wasShowing) { S.status = 'forbidden'; render(); }
+  if (wasShowing) {
+    S.status = 'forbidden'; render();
+    const box = wasOpen && S.root && S.root.querySelector('.eerr');
+    if (box) { box.tabIndex = -1; box.focus(); }
+  }
 }
 
 document.addEventListener('portal:auth', (e) => {

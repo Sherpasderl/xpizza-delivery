@@ -655,7 +655,7 @@ test('Codex r1 F1: the confirm posts its IMMUTABLE reviewed body — an edit und
   await P.signIn(); await P.open();
   await editTo10(P);
   P.btn('Guardar', P.bar()).click(); await settle();
-  const m = P.d.querySelector('[role="dialog"]');
+  const m = P.host().querySelector('[role="dialog"]');
   assert.ok(inertNodes(P).some((n) => n.contains(P.input(1, 'fee'))), 'the band inputs are inert');
   assert.ok(inertNodes(P).some((n) => n.contains(P.reg().nav)), 'the shell nav is inert (focus can\'t leave the dialog)');
   assert.ok(!inertNodes(P).some((n) => n.contains(m)), 'the dialog itself is not');
@@ -675,7 +675,7 @@ test('Codex r1 F1: every exit releases the background — «Volver» / Escape re
   assert.equal(inertNodes(P).length, 0);
   assert.equal(P.d.activeElement, P.btn('Guardar', P.bar()));
   P.btn('Guardar', P.bar()).click(); await settle();
-  P.d.querySelector('[role="dialog"]').dispatchEvent(new P.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+  P.host().querySelector('[role="dialog"]').dispatchEvent(new P.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
   assert.equal(inertNodes(P).length, 0);
   assert.equal(P.d.activeElement, P.btn('Guardar', P.bar()));
   P.btn('Guardar', P.bar()).click(); await settle();
@@ -875,4 +875,21 @@ test('Codex r2 F7: an admin view ALWAYS gets the neutral admin context — never
   await P.open(); await settle(10);
   assert.ok(got, 'premise: mounted');
   assert.deepEqual({ ...got, caps: [...got.caps] }, { brandId: null, role: null, caps: [], membership_writes_enabled: false, scope: null, platform_admin: true, uid: 'uAdmin' });
+});
+
+test('Codex r3 F1: a revocation (the GET answers 403) while the confirm is open lands focus on the forbidden message, never <body>', async () => {
+  const srv = server();
+  let release; srv.hold.get = new Promise((r) => { release = r; });
+  const P = await page({ srv, cache: { policy_version: 3, bands: B3, branches: [] } });
+  await P.signIn(); await P.open();   // painted from the cache; the GET is held
+  await editTo10(P);
+  P.btn('Guardar', P.bar()).click(); await settle();
+  assert.ok(P.host().querySelector('[role="dialog"]'), 'premise: the confirm is open');
+  await srv.db.ref('platform_admins/uAdmin').set(false);   // the admin record goes before the server reads it
+  release(); await settle(30);
+  assert.ok(P.text().includes('No tenés acceso a esta sección.'), 'premise: revoked');
+  assert.equal(P.host().querySelector('[role="dialog"]'), null);
+  assert.equal(P.d.querySelectorAll('[inert]').length, 0);
+  assert.notEqual(P.d.activeElement, P.d.body, 'focus is not dropped on <body>');
+  assert.equal(P.d.activeElement, P.host().querySelector('.eerr'), 'the forbidden message');
 });
