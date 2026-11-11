@@ -100,7 +100,12 @@ function makeDb() {
           if (!(want instanceof Timestamp)) throw new TypeError('firestore-fake: update() precondition lastUpdateTime must be a Timestamp');
           if (!want.isEqual(held.updateTime)) { const e = new Error(`FAILED_PRECONDITION: ${path}`); e.code = 9; throw e; }
         }
-        const next = JSON.parse(JSON.stringify(held.data, (k, v) => (v instanceof Timestamp ? { __ts: [v.seconds, v.nanoseconds] } : v)), (k, v) => (v && Array.isArray(v.__ts) ? new Timestamp(v.__ts[0], v.__ts[1]) : v));
+        // a STRUCTURAL copy (no JSON round-trip, no magic keys): plain maps and arrays are copied, every other value — a Timestamp,
+        // NaN, ±Infinity, any non-plain object — is kept exactly, so an update never alters a field it was not given
+        const copy = (v) => (Array.isArray(v) ? v.map(copy)
+          : v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, copy(x)]))
+            : v);
+        const next = copy(held.data);
         for (const [k, v] of Object.entries(data)) {
           const segs = k.split('.');
           let o = next;

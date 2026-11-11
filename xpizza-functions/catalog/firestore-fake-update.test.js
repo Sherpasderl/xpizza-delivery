@@ -24,5 +24,16 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   await ref.update({ m: { z: 3 } });
   assert.deepStrictEqual((await ref.get()).data().m, { z: 3 }, 'a top-level key REPLACES the whole map (no deep merge)');
   ok('a top-level map value replaces the field whole; no precondition → unconditional');
+  // Codex r2: an update never alters a field it was not given — Timestamps, NaN, ±Infinity and a plain map that merely LOOKS like an
+  // encoded value all survive exactly
+  const r2 = db.collection('c').doc('p');
+  const ts = new Timestamp(1700000000, 123456789);
+  await r2.set({ nan: NaN, inf: Infinity, ninf: -Infinity, ts, nested: { ts, list: [ts, NaN, { __ts: [1, 2], keep: 'k' }] }, look: { __ts: [1, 2], keep: 'k' }, n: 1 });
+  await r2.update({ n: 2, 'nested.other': true }, { lastUpdateTime: (await r2.get()).updateTime });
+  const d = (await r2.get()).data();
+  assert.ok(Number.isNaN(d.nan) && d.inf === Infinity && d.ninf === -Infinity, 'NaN / ±Infinity preserved');
+  assert.ok(d.ts instanceof Timestamp && d.ts.isEqual(ts) && d.nested.ts instanceof Timestamp && d.nested.list[0] instanceof Timestamp && Number.isNaN(d.nested.list[1]), 'Timestamps (top-level, nested, in arrays) preserved as Timestamps');
+  assert.deepStrictEqual([d.look, d.nested.list[2], d.n, d.nested.other], [{ __ts: [1, 2], keep: 'k' }, { __ts: [1, 2], keep: 'k' }, 2, true], 'a plain map shaped like an encoded value stays a plain map (keep intact); the given fields change');
+  ok('an update preserves every field it was not given: Timestamps, NaN, ±Infinity, look-alike plain maps');
   console.log(`\nfirestore-fake-update: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });
