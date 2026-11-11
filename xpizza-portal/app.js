@@ -1403,9 +1403,8 @@ function requestClose(next) {
   if (!copyDirty()) return next();   // clean: the exit itself (its promise, for an async one)
   const d = $('drawer');
   if (d.querySelector('.mk-cfscrim')) return;
-  // the last edited field, with the selection it holds right now (a field keeps its selection while the close button has focus)
+  // the last edited field (it keeps its own selection while the close button has focus; focusing it again restores the caret)
   const lastEl = editRefs && editRefs.lastEdit && editRefs.lastEdit.el.isConnected ? editRefs.lastEdit.el : document.activeElement;
-  const last = { el: lastEl, s: lastEl && typeof lastEl.selectionStart === 'number' ? lastEl.selectionStart : null, e: lastEl && typeof lastEl.selectionEnd === 'number' ? lastEl.selectionEnd : null };
   const mkEl = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
   const scrim = mkEl('div', 'mk-cfscrim');
   const cfCard = mkEl('div', 'mk-cf');
@@ -1429,11 +1428,7 @@ function requestClose(next) {
   };
   const dismiss = () => {
     close();
-    const el = last.el;
-    if (el && el.isConnected && typeof el.focus === 'function') {
-      el.focus();
-      if (last.s !== null && typeof el.setSelectionRange === 'function') { try { el.setSelectionRange(last.s, last.e); } catch (_) { /* not a text control */ } }
-    }
+    if (lastEl && lastEl.isConnected && typeof lastEl.focus === 'function') lastEl.focus();
   };
   const onDocKey = bound((e) => {
     if (e.key === 'Escape') { e.preventDefault(); dismiss(); return; }
