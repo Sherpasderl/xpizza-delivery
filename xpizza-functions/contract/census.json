@@ -52,7 +52,7 @@
   "sendSites": 24,
   "fieldsWritten": 117,
   "opaqueWrites": 23,
-  "opaque": 119,
+  "opaque": 123,
   "projections": 146,
   "sentinel": 36,
   "timers": {
@@ -51917,8 +51917,40 @@
    "file": "xpizza-functions/catalog/firestore-fake.js",
    "fn": "update",
    "base": "data",
-   "line": 102,
-   "how": "spread",
+   "line": 104,
+   "how": "Object.entries",
+   "rule": "server:fixtures"
+  },
+  {
+   "file": "xpizza-functions/catalog/firestore-fake.js",
+   "fn": "update",
+   "base": "o",
+   "line": 107,
+   "how": "computed",
+   "rule": "server:fixtures"
+  },
+  {
+   "file": "xpizza-functions/catalog/firestore-fake.js",
+   "fn": "update",
+   "base": "o",
+   "line": 107,
+   "how": "computed",
+   "rule": "server:fixtures"
+  },
+  {
+   "file": "xpizza-functions/catalog/firestore-fake.js",
+   "fn": "update",
+   "base": "o",
+   "line": 107,
+   "how": "computed",
+   "rule": "server:fixtures"
+  },
+  {
+   "file": "xpizza-functions/catalog/firestore-fake.js",
+   "fn": "update",
+   "base": "o",
+   "line": 107,
+   "how": "computed",
    "rule": "server:fixtures"
   },
   {

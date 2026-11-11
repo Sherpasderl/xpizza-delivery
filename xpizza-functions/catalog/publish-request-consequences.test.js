@@ -16,6 +16,15 @@ const { catalogDiff, issueEditToken, sha256 } = require('./catalog-edit');
 const { editCatalogCore } = require('./edit-catalog-handler');
 const { publishEditedCore } = require('./publish-edited-handler');
 const PR = require('./publish-request');
+// the PRODUCTION precondition decoder, evaluated from its own source (portal/functions.js decodeUpdateTimeForEdit; not exported, and
+// requiring the deployed entry would initialize the Admin app) — the save gets exactly what production passes, and the fake accepts
+// only a real Timestamp, so this harness is never laxer than production
+const PROD_DECODE = (() => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../portal/functions.js'), 'utf8');
+  const m = src.match(/function decodeUpdateTimeForEdit\(v\) \{[\s\S]*?\n\}/);
+  assert.ok(m, 'premise: portal/functions.js still defines decodeUpdateTimeForEdit');
+  return new Function('FirestoreTimestamp', `${m[0]}; return decodeUpdateTimeForEdit;`)(require('firebase-admin/firestore').Timestamp);
+})();
 
 let n = 0; const fails = [];
 async function cell(label, fn) { try { await fn(label); console.log(`  ✓ ${++n} ${label}`); } catch (e) { fails.push(label); console.log(`  ✗ ${label}: ${e.message}`); } }
@@ -45,7 +54,7 @@ function world() {
     await ready;
     const { source, updateTime } = await PR.readDraftFrom(fs, FISCAL);
     const draft = JSON.parse(JSON.stringify(source)); mutate(draft);
-    const r = await editCatalogCore({ db: fs, authorize: owner, readActiveBuilt }, { restaurantId: FISCAL, source: draft, baseSourceUpdateTime: updateTime }, {});
+    const r = await editCatalogCore({ db: fs, authorize: owner, readActiveBuilt, toPrecondition: PROD_DECODE }, { restaurantId: FISCAL, source: draft, baseSourceUpdateTime: updateTime }, {});
     assert.strictEqual(r.status, 200, `premise: the REAL save accepts the draft (${JSON.stringify(r.body).slice(0, 200)})`);
     return r.body;
   };
@@ -105,6 +114,17 @@ const moveToNy = (...keys) => (d) => { for (const k of keys) d.items.find((i) =>
       const p = await w.ownerPublish(saved.token);
       assert.strictEqual(p.status, 200, `${L}: ${label} — the owner publish's recompute equals the save's (got ${JSON.stringify(p.body).slice(0, 200)})`);
     }
+  });
+
+  await cell('MRC-HELPER-PURE', (L) => {
+    const { withConsequences } = require('./extras-consequences');
+    const live = buildSourceFromCode(FISCAL); live.structure.exposure.category_allow.ny = ['Salsas & Queso'];
+    const draft = JSON.parse(JSON.stringify(live)); moveToNy('Carnivora')(draft);
+    const Lv = buildSourceCandidate(FISCAL, live); const Dr = buildSourceCandidate(FISCAL, draft);
+    const input = { added: [], removed: [], renamed: [], changed: [] }; const frozen = JSON.stringify(input);
+    const out = withConsequences(input, { live: Lv.built, liveExtraRecords: Lv.built.extras, draftBuilt: { ...Dr.built, extras: Dr.inputs.extras }, draftExtraRecords: Dr.built.extras });
+    assert.strictEqual(JSON.stringify(input), frozen, `${L}: the input diff is not mutated`);
+    assert.ok(out !== input && Array.isArray(out.consequences) && out.consequences.length === 1, `${L}: a NEW diff carries the consequences (${JSON.stringify(out.consequences)})`);
   });
 
   if (fails.length) { console.log(`FAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }

@@ -6246,6 +6246,7 @@
   "portal/functions.js": {
    "pins": [],
    "lifts": [
+    "xpizza-functions/catalog/publish-request-consequences.test.js",
     "xpizza-functions/portal/portal-split.test.js",
     "xpizza-functions/stats/stats-guard.test.js",
     "xpizza-functions/tools/portal-split.js"
@@ -6271,7 +6272,9 @@
   },
   "portal/reset-draft.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/catalog/platform-pending.test.js"
+   ]
   },
   "portal/reset-list.js": {
    "pins": [],

@@ -87,19 +87,27 @@ function makeDb() {
         put(path, data);
       },
       /* update() ENFORCES `lastUpdateTime`, BECAUSE FIRESTORE DOES (measured, per the note above: real update() with a stale
-         precondition refuses with code 9). A missing document refuses with code 5, as Firestore's update does. Top-level fields
-         MERGE into the stored document (update never drops a field it was not given). The precondition is compared as the instant
-         it names — a Timestamp, or the same instant in source-store's encodeUpdateTime spelling (what a handler's default identity
-         toPrecondition passes in tests) — never looser than that equality. */
+         precondition refuses with code 9). Faithful, never laxer:
+         · a missing document refuses with code 5, as Firestore's update does;
+         · the precondition must be a real Timestamp (the SDK's type; a caller passing a string is a bug production would hit);
+         · a top-level key REPLACES that field; a DOTTED key is a field path — it sets the nested field and keeps its siblings
+           (creating intermediate maps), exactly as Firestore's update(); every other field is kept. */
       update: async (data, opts) => {
         const held = docs.get(path);
         if (held === undefined) { const e = new Error(`not_found: ${path}`); e.code = 5; throw e; }
         const want = opts && opts.lastUpdateTime;
         if (want !== undefined) {
-          const enc = (ts) => (ts && typeof ts.seconds === 'number' ? `${ts.seconds}.${String(ts.nanoseconds || 0).padStart(9, '0')}` : String(ts));
-          if (enc(want) !== enc(held.updateTime)) { const e = new Error(`FAILED_PRECONDITION: ${path}`); e.code = 9; throw e; }
+          if (!(want instanceof Timestamp)) throw new TypeError('firestore-fake: update() precondition lastUpdateTime must be a Timestamp');
+          if (!want.isEqual(held.updateTime)) { const e = new Error(`FAILED_PRECONDITION: ${path}`); e.code = 9; throw e; }
         }
-        put(path, { ...held.data, ...data });
+        const next = JSON.parse(JSON.stringify(held.data, (k, v) => (v instanceof Timestamp ? { __ts: [v.seconds, v.nanoseconds] } : v)), (k, v) => (v && Array.isArray(v.__ts) ? new Timestamp(v.__ts[0], v.__ts[1]) : v));
+        for (const [k, v] of Object.entries(data)) {
+          const segs = k.split('.');
+          let o = next;
+          for (const sgm of segs.slice(0, -1)) { if (!o[sgm] || typeof o[sgm] !== 'object' || Array.isArray(o[sgm])) o[sgm] = {}; o = o[sgm]; }
+          o[segs[segs.length - 1]] = v;
+        }
+        put(path, next);
         return { writeTime: docs.get(path).updateTime };
       },
       delete: async () => { docs.delete(path); },

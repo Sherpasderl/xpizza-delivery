@@ -54,9 +54,14 @@ const slot = async () => { const s = await PR.requestRefOf(db, RID).get(); retur
 
 (async () => {
   await db.collection('restaurants').doc(RID).set({ name: RID, pricing_key_mode: 'name', active: true, schema_version: 2 });
-  await sourceRefOf(db, RID).set(canonicalize(buildSourceFromCode(RID)));
-  const { input } = require('../tools/publish-version').buildPublishCandidate(RID, { activeVersionId: null }, { source_sha: 'seed' });
-  await publishVersion(db, RID, input, { expected: { activeVersionId: null }, mirror: makeRtdbMirror(rtdb) });
+  // the seed takes DIFFERENT extras per category (data): 'ny' accepts one extra group, 'individual' all three — so a category move is
+  // a real extras CONSEQUENCE (§5). Published through the real source → candidate path (contract/third-brand.js).
+  const seedSrc = canonicalize(buildSourceFromCode(RID)); seedSrc.structure.exposure.category_allow.ny = ['Salsas & Queso'];
+  await sourceRefOf(db, RID).set(seedSrc);
+  const seedSnap = await sourceRefOf(db, RID).get();
+  const { candidateFromSource } = require('../contract/third-brand');
+  await publishVersion(db, RID, { ...candidateFromSource(RID, seedSnap.data()), source_sha: 'seed' },
+    { expected: { activeVersionId: null, draftRevision: encodeUpdateTime(seedSnap.updateTime) }, mirror: makeRtdbMirror(rtdb) });
   await backfillIdentities(db, RID, catalogSnapshot(RID), { captured: await getActivePointer(db, RID) });
   await rtdb.ref().update({
     [`brands/${RID}`]: { name: RID, active: true, locations: { [RID]: 'member' }, activation: { state: 'legacy', since: 1 } },
@@ -112,18 +117,18 @@ const slot = async () => { const s = await PR.requestRefOf(db, RID).get(); retur
   assert.deepStrictEqual(await slot(), before, 'neither race wrote the slot');
   ok('a concurrent real draft save or real publish during requestPublish → 409 raced, the slot untouched');
 
-  // 5. MRC (PLAN-manager-request-consequences r0): with item_text_edit ON (shipped), a manager's TEXT edit — a category move — goes through
-  //    the real save, the real request (which now applies the save's consequence fold) and the real owner publish. The seeded x_pizza
-  //    categories take the same extras, so this diff carries no consequence; the consequence-bearing case is
-  //    catalog/publish-request-consequences.test.js (real save + request + publish on one Firestore fake).
+  // 5. MRC (PLAN-manager-request-consequences r0): with item_text_edit ON (shipped), a manager's category move that CHANGES which extras
+  //    the product takes (the seed's 'ny' accepts fewer groups) → the real save's diff carries the consequence → the real request
+  //    (which now applies the save's fold) verifies it → the real owner publish.
   {
     const moved = JSON.parse(JSON.stringify(await draft())); moved.items.find((i) => i.key === 'Carnivora').display.cat = 'ny';
     const s5 = await save('mgrOn01', moved);
     assert.strictEqual(s5.status, 200, `manager category move: ${JSON.stringify(s5.body).slice(0, 200)}`);
+    assert.ok(Array.isArray(s5.body.diff.consequences) && s5.body.diff.consequences.length > 0, `premise: a REAL extras consequence in the save's diff (${JSON.stringify(s5.body.diff.consequences)})`);
     assert.strictEqual((await request({}, s5.body.token)).status, 200, 'the request verifies the save\'s diff');
     assert.strictEqual((await publish('ownerA', s5)).status, 200, 'and the owner publishes it');
   }
-  ok('MRC: a manager category move (item_text_edit ON) → real save → real request → real owner publish');
+  ok('MRC: a manager category move with a real extras consequence (item_text_edit ON) → real save → real request 200 → real owner publish');
 
   FINISHED = true;
   console.log(`publish-request(emulator): OK (${n})`);

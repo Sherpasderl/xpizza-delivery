@@ -74,7 +74,7 @@ async function requestPublishCore(deps, ctx, body) {
     const draftBuilt = { ...built, extras: inputs.extras };   // as the save builds it (edit-catalog-handler.js)
     diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, { ...draftBuilt, ...(photos ? { photos: draftPhotos } : {}) });
     // with item_text_edit ON the save and the owner publish fold the extras consequences into the token-bound diff; recompute it the same way
-    if (textEditCapabilities().enabled) withConsequences(diff, { live, liveExtraRecords, draftBuilt, draftExtraRecords: built.extras });
+    if (textEditCapabilities().enabled) diff = withConsequences(diff, { live, liveExtraRecords, draftBuilt, draftExtraRecords: built.extras });
     sameStructure = JSON.stringify(canonicalize(built.structure || null)) === JSON.stringify(canonicalize((live && live.structure) || null));
   } catch (_) { return reply(500, { error: 'draft_build_failed' }); }
   const sourceHash = sha256(draft);

@@ -60,9 +60,17 @@ function withUpdate(db) {
 }
 const liveOf = (s) => ({ items: clone(s.items), extras: clone(s.extras), structure: clone(s.structure) });   // a source-shaped live
 const owner = async () => ({ ok: true, uid: 'pp_owner', role: 'owner', actor: 'owner@x.hn', capabilities: undefined });
+// the PRODUCTION precondition decoder for reset (portal/reset-draft.js decodeUpdateTime, not exported), evaluated from its own source:
+// the Firestore fake's update() takes only a real Timestamp, as the SDK does, so the reset gets exactly what production passes
+const PROD_DECODE = (() => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../portal/reset-draft.js'), 'utf8');
+  const m = src.match(/function decodeUpdateTime\(v\) \{[\s\S]*?\n\}/);
+  assert.ok(m, 'premise: portal/reset-draft.js still defines decodeUpdateTime');
+  return new Function('Timestamp', `${m[0]}; return decodeUpdateTime;`)(require('firebase-admin/firestore').Timestamp);
+})();
 async function reset(db, rid, live, extra = {}) {
   const { revision } = await readSource(db, rid);
-  return resetDraftToLiveCore({ db, authorize: owner, readActiveVersionId: async () => 'v-live', previewVersion: async () => clone(live), ...extra },
+  return resetDraftToLiveCore({ db, authorize: owner, readActiveVersionId: async () => 'v-live', previewVersion: async () => clone(live), toPrecondition: PROD_DECODE, ...extra },
     { restaurantId: rid, expectedRevision: revision }, {});
 }
 async function editable(db, rid, live, extra = {}) {
@@ -265,7 +273,7 @@ const stampFields = async (db, rid, label = `${rid}: a stamp exists`) => { const
     const { inputs, built } = buildSourceCandidate(rid, clone(pre[rid]));
     await CP.publishVersion(dbP, rid, { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha: 'rollback' }, { expected: { activeVersionId: await getActiveVersionId(dbP, rid) } });
     const { revision } = await readSource(dbP, rid);
-    const res = await resetDraftToLiveCore({ db: dbP, authorize: owner, readActiveVersionId: (fs, r) => getActiveVersionId(fs, r), previewVersion: CP.previewVersion },
+    const res = await resetDraftToLiveCore({ db: dbP, authorize: owner, toPrecondition: PROD_DECODE, readActiveVersionId: (fs, r) => getActiveVersionId(fs, r), previewVersion: CP.previewVersion },
       { restaurantId: rid, expectedRevision: revision }, {});
     assert.strictEqual(res.status, 200, `the rollback's reset is NOT relocked by a stale stamp: ${JSON.stringify(res.body).slice(0, 160)}`);
     // the re-run is the RETRY path: a stamp left behind (e.g. a failed cleanup) is resolved by an already_current run
