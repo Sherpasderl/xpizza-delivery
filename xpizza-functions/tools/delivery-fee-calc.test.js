@@ -42,11 +42,10 @@ const run = (over = {}) => C.calculate({ bands: BANDS, free_delivery: false, hub
     assert.deepStrictEqual([on.guest_pays_cents, on.member_pays_cents], [3000, 0], `${L}: with the promo a member pays 0, a guest still pays`);
   });
 
-  await cell('FEECALC-APP-RADIUS-CAP', (L) => {
-    const r = run({ radius_km: 5 });
-    assert.deepStrictEqual(r.rows.map((x) => x.refusal || null), [null, null, 'outside_delivery_bands', 'outside_delivery_bands'], `${L}: the app's coverage is min(last band, the restaurant radius)`);
-    assert.strictEqual(r.max_km, 5, `${L}: the reported coverage`);
-    assert.strictEqual(run().max_km, 9, `${L}: no radius → the last band`);
+  // addendum A (owner 2026-11-10): the band table is the app's ONLY distance limit — there is no restaurant-radius input
+  await cell('FEECALC-COVERAGE-IS-THE-BANDS', (L) => {
+    assert.strictEqual(run().max_km, 9, `${L}: the coverage is the last band`);
+    assert.deepStrictEqual(run({ radius_km: 5 }), { ok: false, error: 'radius_not_supported' }, `${L}: a restaurant radius is refused, never silently applied or ignored`);
   });
 
   await cell('FEECALC-INVALID-BANDS-FAIL-CLOSED', (L) => {
@@ -59,7 +58,6 @@ const run = (over = {}) => C.calculate({ bands: BANDS, free_delivery: false, hub
   await cell('FEECALC-BAD-INPUT-REFUSED', (L) => {
     assert.deepStrictEqual(run({ hub: { lat: 'x', lng: 1 } }), { ok: false, error: 'hub_invalid' }, `${L}: a hub without coordinates`);
     assert.deepStrictEqual(run({ pins: 'x' }), { ok: false, error: 'pins_invalid' }, `${L}: pins must be a list`);
-    assert.deepStrictEqual(run({ radius_km: -2 }), { ok: false, error: 'radius_invalid' }, `${L}: a radius must be a positive number`);
     const r = run({ pins: [{ label: 'tb_bad', lat: 999, lng: 0 }] });
     assert.strictEqual(r.rows[0].refusal, 'pin_required', `${L}: a pin with impossible coordinates is refused as the order path would`);
   });
