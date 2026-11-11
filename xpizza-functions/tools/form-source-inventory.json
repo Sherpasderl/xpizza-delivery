@@ -408,6 +408,7 @@
     "xpizza-functions/unassign-wiring.guard.test.js",
     "xpizza-functions/wacancel-wiring.guard.test.js",
     "xpizza-functions/wahealth-wiring.guard.test.js",
+    "xpizza-functions/zones-wiring.guard.test.js",
     "xpizza-groupless-golden.test.mjs",
     "xpizza-orders/form-apply.test.mjs",
     "xpizza-orders/form-cart.copy.test.mjs",
@@ -1136,6 +1137,7 @@
     "xpizza-functions/unassign-wiring.guard.test.js",
     "xpizza-functions/wacancel-wiring.guard.test.js",
     "xpizza-functions/wahealth-wiring.guard.test.js",
+    "xpizza-functions/zones-wiring.guard.test.js",
     "xpizza-groupless-golden.test.mjs",
     "xpizza-orders/form-cart.copy.test.mjs",
     "xpizza-orders/form-confirm-quote.copy.test.mjs",
@@ -3430,7 +3432,9 @@
   },
   "delivery/delivery-pricing.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/zones-wiring.guard.test.js"
+   ]
   },
   "delivery/delivery-wire.js": {
    "pins": [
@@ -3442,7 +3446,9 @@
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/zones-wiring.guard.test.js"
+   ]
   },
   "delivery/pricing-admin-core.js": {
    "pins": [],
@@ -5895,7 +5901,8 @@
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/tools/portal-split.js",
     "xpizza-functions/tracker-hold-inertness.guard.test.js",
-    "xpizza-functions/whatsapp-brand.test.js"
+    "xpizza-functions/whatsapp-brand.test.js",
+    "xpizza-functions/zones-wiring.guard.test.js"
    ]
   },
   "lib/driver-admin-ops.js": {
