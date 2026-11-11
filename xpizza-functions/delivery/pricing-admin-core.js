@@ -35,7 +35,7 @@ function bandsProblem(bands) {
     const b = bands[i];
     if (!exactKeys(b, ['max_km', 'cents'])) return 'bands';
     if (!(typeof b.max_km === 'number' && Number.isFinite(b.max_km) && b.max_km > prev && Number.isInteger(b.max_km / CAPS.km_step))) return 'bands';   // 0.5 km steps: exact in binary
-    if (!(Number.isSafeInteger(b.cents) && b.cents >= 0)) return 'bands';
+    if (!(Number.isSafeInteger(b.cents) && b.cents >= 0 && b.cents % 100 === 0)) return 'bands';   // whole lempiras, as the owner's screen shows
     prev = b.max_km;
   }
   if (bands.length > CAPS.max_bands || bands.some((b) => b.max_km > CAPS.max_km || b.cents > CAPS.max_cents)) return 'band_caps';

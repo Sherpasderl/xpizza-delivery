@@ -28,4 +28,13 @@ ok(`${FILES.length} files → ${BASE} byte-for-byte, same-line only; inside / du
 const fold = require('./tools/portal-split').foldPortalSplit();
 for (const h of HUNKS.filter((x) => x.file === 'index.js')) assert.strictEqual(fold.split(h.now).length - 1, 1, 'an index.js hunk survives the portal fold exactly once');
 ok('the portal fold carries each index.js hunk exactly once');
+// the frozen order forms (rule 40): no byte under either form directory differs from the base, and both pages hash as pinned
+{
+  const crypto = require('crypto');
+  const REPO = path.join(__dirname, '..');
+  execFileSync('git', ['diff', '--quiet', BASE, '--', 'la-musa-orders/', 'xpizza-orders/'], { cwd: REPO });   // throws on any difference
+  const PIN = { 'la-musa-orders/index.html': 'b4af1ee165d8ae145e3158dff2b3e2cdfeab0ba73d8a7700b9b5131ccab1e7e0', 'xpizza-orders/index.html': '6b983ef6ed24703f8098b0c8c90305ef09bc0cdbbdce56bfc5f79a8f290951f5' };
+  for (const [f, h] of Object.entries(PIN)) assert.strictEqual(crypto.createHash('sha256').update(fs.readFileSync(path.join(REPO, f))).digest('hex'), h, `🔴 ${f} changed (rule 40: the forms are frozen)`);
+  ok('the two frozen order forms are byte-identical to the base (git diff + sha256 pins)');
+}
 console.log(`\ndpao-wiring.guard: OK (${n})`);
