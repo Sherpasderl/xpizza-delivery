@@ -1398,6 +1398,9 @@
   .envio .emap.nomap .mapframe{visibility:hidden}
   .envio .emap .mapline{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;font-size:13px;font-weight:600;color:var(--mute);padding:0 16px}
   .envio .emap .mapline.hidden{display:none}
+  /* the mockup's .mz caption, raised over Google's logo + attribution row (26px, measured on the real map 11-11) + 8px; Maps terms keep the logo visible */
+  .envio .emap .emz{position:absolute;left:10px;bottom:34px;z-index:1;pointer-events:none;font-size:11.5px;font-weight:650;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:4px 8px;max-width:70%;line-height:1.35}
+  .envio .emap .emz.hidden{display:none}
   .envio .legend{display:flex;flex-wrap:wrap;gap:12px 18px;font-size:12px;color:var(--mute)}
   .envio .legend i{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-2px;margin-right:6px}
   .envio .legend .lg-band{background:var(--env-band);border:1px dashed #0E9F5B}

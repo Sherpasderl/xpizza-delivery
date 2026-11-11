@@ -607,6 +607,30 @@ test('picker: search focused on open, filters, Enter picks, Esc closes; a pick r
   assert.ok(P.host().querySelector('.pickmenu').classList.contains('hidden'));
 });
 
+test('the map caption (mockup .mz; advisor ruling (a), Maps terms keep Google\'s logo visible): the picked label, follows a pick, gone with the line', async () => {
+  // X. Pizza gets a second branch, so the picker LABEL («X. Pizza · Centro») differs from the brand name
+  const srv = server({ registry: async () => ({ ok: true, fresh: true, ids: [...WORLD.ids, 'r_xp2'] }) });
+  await srv.db.ref('restaurants/r_xp2/identity').set({ brand_id: 'b_xp', name: 'X. Pizza', location_name: 'Norte', hub_lat: 15.53, hub_lng: -88.03 });
+  const P = await page({ srv });
+  await P.signIn(); await P.open(); await settle(5);
+  const chip = () => P.host().querySelector('.emap .emz');
+  assert.ok(chip(), 'the caption chip is in the map box');
+  assert.equal(chip().textContent, 'Anillos desde el pin de La Musa. Línea recta, no calles.');
+  assert.ok(!chip().classList.contains('hidden'));
+  P.host().querySelector('.pick').click(); await settle();
+  const search = P.host().querySelector('.psearch input');
+  search.value = 'pizza'; search.dispatchEvent(new P.w.Event('input'));
+  search.dispatchEvent(new P.w.KeyboardEvent('keydown', { key: 'Enter' })); await settle();
+  assert.equal(P.host().querySelector('.pick b').textContent, 'X. Pizza · Centro');
+  assert.equal(chip().textContent, 'Anillos desde el pin de X. Pizza · Centro. Línea recta, no calles.');
+  P.host().querySelector('.pick').click(); await settle();
+  const s2 = P.host().querySelector('.psearch input');
+  s2.value = 'sin'; s2.dispatchEvent(new P.w.Event('input'));
+  s2.dispatchEvent(new P.w.KeyboardEvent('keydown', { key: 'Enter' })); await settle();
+  assert.equal(P.host().querySelector('.mapline').textContent, 'Esta sucursal no tiene ubicación todavía.');
+  assert.ok(chip().classList.contains('hidden'), 'one line only: no caption over a box with no map');
+});
+
 test('the directory failed (branches_unavailable): the pricing still loads; the box says «No pudimos cargar las sucursales.»; no frame', async () => {
   const P = await page({ srv: server({ registry: async () => ({ ok: false }) }) });
   await P.signIn(); await P.open(); await settle(5);

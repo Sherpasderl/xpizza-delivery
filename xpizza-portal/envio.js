@@ -48,6 +48,7 @@ const COPY = Object.freeze({
   mapH: 'Mapa', mapHint: 'Anillos desde el pin', pickLab: 'Ver anillos desde…', search: 'Buscar restaurante o sucursal',
   mapNote: 'Los anillos se mueven mientras editás los tramos. Son distancias en línea recta: no siguen las calles.',
   mapNotePh: 'Los anillos se mueven mientras editás los tramos. Distancias en línea recta.',
+  mapCap: (name) => `Anillos desde el pin de ${name}. Línea recta, no calles.`,
   mapFail: 'No se pudo cargar el mapa.', noPin: 'Esta sucursal no tiene ubicación todavía.', noBranches: 'No pudimos cargar las sucursales.',
   legend: [['Tramo de tarifa', 'band'], ['Límite de entrega', 'limit'], ['Fuera del límite', 'out'], ['Otras sucursales', 'other']],
   legendBad: [['Tramo de tarifa', 'band'], ['Límite de entrega', 'limit'], ['Tramo rechazado', 'bad']],
@@ -368,7 +369,9 @@ function buildPage() {
   fld.append(refs.pick, refs.menu);
   refs.map = el('div', 'emap');
   refs.mapLine = el('p', 'mapline hidden'); refs.mapLine.setAttribute('role', 'status');
-  refs.map.append(refs.mapLine);
+  // the mockup's in-map caption (.mz); above Google's logo row, which Maps terms keep visible (advisor ruling (a), 11-11)
+  refs.mapCap = el('span', 'emz hidden');
+  refs.map.append(refs.mapLine, refs.mapCap);
   refs.legend = el('div', 'legend');
   refs.mapNote = el('p', 'efnote');
   sm.append(mh, fld, refs.map, refs.legend, refs.mapNote);
@@ -507,6 +510,8 @@ function paintMapBox() {
   r.mapLine.textContent = line || '';
   r.mapLine.classList.toggle('hidden', !line);
   r.map.classList.toggle('nomap', !!line);
+  r.mapCap.textContent = !line && p && p.hub ? COPY.mapCap(p.label) : '';
+  r.mapCap.classList.toggle('hidden', !!line || !(p && p.hub));
   if (p && p.hub && S.status === 'ready' && !S.map) { setTimeout(() => { if (S.root && !S.map) startMap(r.map); }, 0); }
 }
 
