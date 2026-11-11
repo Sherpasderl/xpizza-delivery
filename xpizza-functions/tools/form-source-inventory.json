@@ -169,6 +169,7 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2core-narrow-deny.test.js",
     "xpizza-functions/catalog/s2core-public-maps.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
@@ -524,6 +525,7 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2core-narrow-deny.test.js",
     "xpizza-functions/catalog/s2core-public-maps.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
@@ -908,6 +910,7 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2core-narrow-deny.test.js",
     "xpizza-functions/catalog/s2core-public-maps.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
@@ -1261,6 +1264,7 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2core-narrow-deny.test.js",
     "xpizza-functions/catalog/s2core-public-maps.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
@@ -2448,6 +2452,7 @@
   "catalog/edit-preflight.js",
   "catalog/exposure-source.js",
   "catalog/extras-consequences.js",
+  "catalog/extras-eligibility-store.js",
   "catalog/extras-eligibility.js",
   "catalog/extras-entry.js",
   "catalog/extras-intake.js",
@@ -3027,6 +3032,10 @@
    "lifts": []
   },
   "catalog/extras-consequences.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/extras-eligibility-store.js": {
    "pins": [],
    "lifts": []
   },

@@ -57,7 +57,9 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/exposure-source.js',
   'catalog/extras-eligibility-store.js',    // per-product extras: the per-version eligibility doc, written by catalog-publish.js
   'catalog/extras-eligibility.js',          // per-product extras: the ONE pure evaluator, via the eligibility store
-  'catalog/extras-exposure.js', 'catalog/form-menu-source.js',
+  'catalog/extras-exposure.js',
+  'catalog/extras-projection.js',          // S2-core: the consumer projection (the build's maps + the narrowed public deny), pure
+  'catalog/form-menu-source.js',
   'catalog/frozen-keys.js',                 // S1a: the server-owned rename map (pure; form-menu-source only), via source-store.js
   'catalog/generate-form-bundle.js',        // 1D add-product A: generateKdsManifest (pure over a catalog), via kds-manifest.js
   'catalog/identity-backfill.js',
