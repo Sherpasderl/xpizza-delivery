@@ -170,6 +170,7 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2core-compare.test.js",
     "xpizza-functions/catalog/s2core-narrow-deny.test.js",
     "xpizza-functions/catalog/s2core-public-maps.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
@@ -527,6 +528,7 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2core-compare.test.js",
     "xpizza-functions/catalog/s2core-narrow-deny.test.js",
     "xpizza-functions/catalog/s2core-public-maps.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
@@ -913,6 +915,7 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2core-compare.test.js",
     "xpizza-functions/catalog/s2core-narrow-deny.test.js",
     "xpizza-functions/catalog/s2core-public-maps.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
@@ -1268,6 +1271,7 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2core-compare.test.js",
     "xpizza-functions/catalog/s2core-narrow-deny.test.js",
     "xpizza-functions/catalog/s2core-public-maps.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
@@ -2482,6 +2486,7 @@
   "catalog/move-rules.js",
   "catalog/pickup-backstop.js",
   "catalog/platform-pending.js",
+  "catalog/platform-structure.js",
   "catalog/portal-reads.js",
   "catalog/pricing-tables.js",
   "catalog/public-menu.js",
@@ -3171,6 +3176,10 @@
    "lifts": []
   },
   "catalog/platform-pending.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/platform-structure.js": {
    "pins": [],
    "lifts": []
   },
