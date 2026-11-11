@@ -230,7 +230,15 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // the resolution itself (equal to parent 2 = the merged-in line's own change; equal to parent 1 = untouched). The sync-client and
 // PORTED copies are exempt (their byte-identity checks own them, re-asserted here); any other hit must sit in MERGE_ALLOW, keyed
 // «<merge sha8> <path>», with a one-line reason — reviewed, and an entry that no longer hits is stale and fails.
-const MERGE_ALLOW = {};
+const MERGE_ALLOW = {
+  // DRYRUN (2e, next-train dry assembly asm2; TRAIN-NEXT2 A4): 1bca1782 hand-wrote CAPP_TIP (the pre-B4 placeholder pin + a DRYRUN
+  // comment) in the first capp merge; the B4 merge 01d76176 then took capp's line verbatim. The REAL assembly merges the capp tip
+  // taking capp-guards VERBATIM, so this entry must NOT exist there (its stale check makes it RED if unused).
+  '1bca1782 customer-app/capp-guards.test.mjs': 'dry-run placeholder CAPP_TIP, superseded verbatim by the B4 merge',
+  // asm5 (2e, advisor ruling B 11-10): the S3 merge restates capp-cart's minted-line premise under S2 «item_key wins» — an S2 × S3
+  // interaction (red on S3 alone, true only once both are merged), so it lives in the merge resolution, not in either lane.
+  '8e6abdf6 customer-app/capp-cart.test.mjs': 'S2 × S3: the minted line WITH its display id resolves by its key (S2 item_key wins)',
+};
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
   for (const { src, dst } of synced) assert.ok(sameBytes(dst, src), `🔴 ${dst} differs from (or is missing beside) its source ${src} — the merge exemption no longer holds`);
