@@ -598,6 +598,9 @@ test('U-REVIEW-ADMISSION — even reached programmatically, a review never start
   rev.disabled = false;   // the keyboard path, defended in depth: the admission itself refuses
   rev.click(); await settle(30);
   assert.equal(p.n('editCatalog').length, 0, 'U-REVIEW-ADMISSION: no save, no review over a dirty copy');
+  const dis = p.d.getElementById('discard');
+  dis.disabled = false;   // the bar's «Descartar» refuses at admission too (the whole bar waits)
+  dis.click(); await settle(30);
   assert.ok(p.drawer().classList.contains('show') && priceIn(p).value === '285', 'U-REVIEW-ADMISSION: the drawer and its copy are untouched');
 });
 
