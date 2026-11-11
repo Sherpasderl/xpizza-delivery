@@ -157,7 +157,19 @@ test('pickerEntries(): one line per BRANCH; «Marca» alone for one branch, «Ma
   assert.deepStrictEqual(e.map((x) => x.initial), ['Á', 'M', 'M', 'P', 'P', 'Z']);
   assert.deepStrictEqual(e.find((x) => x.rid === 'r3').hub, null);
   assert.deepStrictEqual(pickerEntries([]), []);
-  assert.deepStrictEqual(pickerEntries([{ rid: 'x', brand_id: 'b', brand_name: '', location_name: null, hub: null }, { bad: 1 }, null]).map((x) => x.rid), [], 'malformed rows are skipped');
+  assert.deepStrictEqual(pickerEntries([{ bad: 1 }, null, { rid: '', brand_id: null, brand_name: 'X', location_name: null, hub: null }]), [], 'rows without a rid are skipped');
+  // 5f 0021632f: a registered branch whose identity has no brand yet comes with brand_id / brand_name null — still listed
+  // (every restaurant on the platform is pickable), as its own brand, never merged with another null-brand branch
+  const loose = pickerEntries([
+    { rid: 'r7', brand_id: null, brand_name: 'Solo', location_name: 'Centro', hub: null },
+    { rid: 'r8', brand_id: null, brand_name: 'Solo', location_name: null, hub: null },
+    { rid: 'r9', brand_id: 'b9', brand_name: null, location_name: null, hub: { lat: 1, lng: 2 } },
+    { rid: 'r10', brand_id: 'b9', brand_name: '  ', location_name: 'Norte', hub: null },
+  ]);
+  assert.deepStrictEqual(loose.map((x) => [x.rid, x.label, x.sub, x.initial]), [
+    ['r10', 'Restaurante sin nombre · Norte', '2 sucursales', 'R'], ['r9', 'Restaurante sin nombre · Sucursal sin nombre', '2 sucursales', 'R'],
+    ['r7', 'Solo', '1 sucursal', 'S'], ['r8', 'Solo', '1 sucursal', 'S'],
+  ]);
 });
 
 test('filterEntries(): accent- and case-insensitive; current first with a check; 9 shown, then «y N más · escribí para filtrar»; «Sin resultados»', () => {

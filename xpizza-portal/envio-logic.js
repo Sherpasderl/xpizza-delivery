@@ -28,6 +28,7 @@ export const COPY = Object.freeze({
   malformedRepair: 'No pudimos leer las tarifas guardadas. Escribinos.',
   noResults: 'Sin resultados',
   unnamedBranch: 'Sucursal sin nombre',
+  unnamedRestaurant: 'Restaurante sin nombre',
 });
 
 const plain = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
@@ -120,6 +121,14 @@ export function saveBar(rows, loadedBands) {
   return { state: 'dirty', text: COPY.dirty, canSave: true };
 }
 
+// a stored / candidate band table → would the screen accept it as is (exact shape, and it round-trips through the rows unchanged)?
+// envio-server-parity.test.mjs proves this equals the server's validateWrite over a generated domain.
+export function acceptsBands(bands) {
+  if (!Array.isArray(bands) || !bands.every((b) => okBand(b) && 'max_km' in b && 'cents' in b)) return false;
+  const v = validate(rowsFromBands(bands));
+  return v.valid && sameBands(v.bands, bands);
+}
+
 export function toBody(rows, expectedVersion) {
   if (!okVersion(expectedVersion)) throw new Error('envio: bad version');
   const v = validate(rows);
@@ -163,20 +172,24 @@ export function limitCallout(limit) {
 
 // ── the picker ────────────────────────────────────────────────────────────────────────────────────────────────────────
 const norm = (s) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-const okBranch = (b) => plain(b) && typeof b.rid === 'string' && b.rid !== '' && typeof b.brand_id === 'string' && b.brand_id !== ''
-  && typeof b.brand_name === 'string' && b.brand_name.trim() !== '' && (b.location_name === null || typeof b.location_name === 'string')
-  && (b.hub === null || okHub(b.hub));
+const strOrNull = (x) => x === null || typeof x === 'string';
+// getDeliveryPricing's `branches` (5f 0021632f): a registered branch whose identity has no brand yet carries brand_id /
+// brand_name null — it is still listed (every restaurant is pickable), as its own one-branch brand
+const okBranch = (b) => plain(b) && typeof b.rid === 'string' && b.rid !== '' && strOrNull(b.brand_id) && strOrNull(b.brand_name)
+  && strOrNull(b.location_name) && (b.hub === null || okHub(b.hub));
+const brandKey = (b) => (typeof b.brand_id === 'string' && b.brand_id ? `b:${b.brand_id}` : `r:${b.rid}`);
 
 // one line per BRANCH (rings are measured from a branch's pin): «Marca» alone, «Marca · Sucursal» when the brand has more
 export function pickerEntries(branches) {
   const rows = (Array.isArray(branches) ? branches : []).filter(okBranch);
   const per = new Map();
-  for (const b of rows) per.set(b.brand_id, (per.get(b.brand_id) || 0) + 1);
+  for (const b of rows) per.set(brandKey(b), (per.get(brandKey(b)) || 0) + 1);
   return rows.map((b) => {
-    const n = per.get(b.brand_id);
+    const n = per.get(brandKey(b));
+    const name = typeof b.brand_name === 'string' && b.brand_name.trim() ? b.brand_name.trim() : COPY.unnamedRestaurant;
     const loc = typeof b.location_name === 'string' && b.location_name.trim() ? b.location_name.trim() : COPY.unnamedBranch;
-    return { rid: b.rid, label: n > 1 ? `${b.brand_name.trim()} · ${loc}` : b.brand_name.trim(), sub: n === 1 ? '1 sucursal' : `${n} sucursales`,
-      initial: b.brand_name.trim()[0].toUpperCase(), hub: b.hub ? { lat: b.hub.lat, lng: b.hub.lng } : null };
+    return { rid: b.rid, label: n > 1 ? `${name} · ${loc}` : name, sub: n === 1 ? '1 sucursal' : `${n} sucursales`,
+      initial: name[0].toUpperCase(), hub: b.hub ? { lat: b.hub.lat, lng: b.hub.lng } : null };
   }).sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }) || a.rid.localeCompare(b.rid));
 }
 export function filterEntries(entries, query, currentRid) {
