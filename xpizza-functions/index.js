@@ -1642,7 +1642,7 @@ chargeOnlineApp.all('*', async (req, res) => {
      always meet current enforcement). Answered exactly as acquire's reuse is (the same hosted-flow reuse branch). */
   if (body.redeem != null && customer_uid && groupCapabilities().render) {
     const boundAcq = await BR.probeBoundReuse(db, { orderId, uid: customer_uid, rid: restaurantId, body, now: Date.now() });
-    if (boundAcq) {
+    if (boundAcq) { const zr = await DW.zoneResumeRefusalFor(db, orderId); if (zr) return res.status(zr.httpStatus).json({ error: zr.refusal, ...(zr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId });   // envío step 2 (F1): a stored app delivery in a zone is not resumed
       const never = () => { throw new Error('bound reuse never gates, releases or retires'); };
       const flow = await resolveBoundReuse({ acq: boundAcq, orderId, totalCents: null, releaseHold: never, retireAttempt: never, runGate: never, log: console });
       return res.status(flow.respond.status).json(flow.respond.body);

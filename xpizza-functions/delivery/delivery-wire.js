@@ -9,9 +9,9 @@
 //                           unreadable). The ORDER paths refuse through the gate step (refusalGate), which runs AFTER
 //                           a live issued PixelPay checkout is resumed (§3.3 grandfathering) and releases a reward hold.
 const P = require('./delivery-pricing');
-const TIP = require('../tip');   // S2-srv-tip (PLAN-capp-S2-r4 §3)
+const TIP = require('../tip'); const { zoneResumeRefusal, zoneResumeRefusalFor } = require('./zone-resume');   // S2-srv-tip (PLAN-capp-S2-r4 §3); envío step 2: the resume guard
 
-const REFUSAL_STATUS = { delivery_pricing_unavailable: 503 };
+const REFUSAL_STATUS = { delivery_pricing_unavailable: 503, delivery_zones_invalid: 503 };
 
 // One read of platform_config/delivery_pricing. NEVER rejects (a handler starts it early and may return before awaiting
 // it). A read FAILURE is a refusal (fail closed), never dark: an outage must not make an active restaurant's delivery free.
@@ -62,7 +62,7 @@ async function chargeContext(db, orderId, dq, body, now) {
     // LIVE now → GRANDFATHERED: priced at its STORED economics so the acquire can REUSE it. Whether it IS reused is decided
     // by the acquire, not by this clock read (codex S3a r2 P1): if the checkout expires before the acquire and a FRESH one
     // would be issued instead, the gate step refuses it (refusalGate → re-quote) — a fresh checkout is always priced now.
-    if (at && at.hosted_state === 'created' && Number(at.hosted_expires_at) > now) { const c = P.storedCtx(order); return c ? { ctx: c, grandfathered: true } : { grandfathered: true }; }
+    if (at && at.hosted_state === 'created' && Number(at.hosted_expires_at) > now) { const zr = await zoneResumeRefusal(db, order); if (zr) return zr; const c = P.storedCtx(order); return c ? { ctx: c, grandfathered: true } : { grandfathered: true }; }   // step 2 (F1): a live checkout whose STORED pin is in a zone is not resumed
   }
   const pin = orderPin(body);
   const same = order.order_type === (body && body.order_type)
@@ -151,7 +151,7 @@ async function quoteDeliveryFor(req, db, rid, body, { getIdentity, getAuth, attr
   try { identity = await getIdentity(db, rid); } catch (_) { return { refuse: { ok: false, error: 'delivery_pricing_unavailable', retryable: true }, httpStatus: 503 }; }
   const maxKm = lp.pricing.invalid ? null : coverageKm(lp.pricing, identity, body);   // an invalid config has no bands: quoteDelivery refuses it (delivery_pricing_invalid) exactly as before S2 — coverage is never read for it (codex S2-srv-tip r1 P2)
   const q = P.quoteDelivery({ pricing: lp.pricing, hub: identity && { lat: identity.hub_lat, lng: identity.hub_lng }, mode: body && body.mode, pin: quotePin(body), customerUid: uid, ...(isApp(body) ? { maxKm } : {}) });
-  if (q.refusal) return { refuse: { ok: false, error: q.refusal }, httpStatus: REFUSAL_STATUS[q.refusal] === 503 ? 503 : 200 };   // a config outage is a 503; a request refusal stays a fail-soft 200 body
+  if (q.refusal) return { refuse: { ok: false, error: q.refusal }, httpStatus: REFUSAL_STATUS[q.refusal] === 503 ? 503 : q.refusal === 'no_delivery_zone' ? 409 : 200 };   // a config outage is a 503; a request refusal stays a fail-soft 200 body
   if (t > 0 && q.ctx.mode === 'pickup') return { refuse: { ok: false, error: 'tip_pickup' }, httpStatus: 400 };
   const ctx = P.withTip(q.ctx, t);
   PUBLIC.set(ctx, { from_cents: lp.pricing.bands[0].cents, max_km: maxKm });
@@ -178,4 +178,4 @@ function quoteOutcome(dq) {
 // The additive quote response fields (absent when dark → byte-identical response).
 const quoteFields = (ctx) => (ctx ? { delivery: { delivery_cents: ctx.delivery_cents, promo_discount_cents: ctx.promo_discount_cents, policy_version: ctx.policy_version, mode: ctx.mode, ...(PUBLIC.get(ctx) || {}) } } : {});   // S2 §3.6: + { from_cents, max_km }
 
-module.exports = { loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf, isApp };
+module.exports = { zoneResumeRefusal, zoneResumeRefusalFor, loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf, isApp };
