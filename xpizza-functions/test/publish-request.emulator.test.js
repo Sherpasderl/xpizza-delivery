@@ -112,6 +112,19 @@ const slot = async () => { const s = await PR.requestRefOf(db, RID).get(); retur
   assert.deepStrictEqual(await slot(), before, 'neither race wrote the slot');
   ok('a concurrent real draft save or real publish during requestPublish → 409 raced, the slot untouched');
 
+  // 5. MRC (PLAN-manager-request-consequences r0): with item_text_edit ON (shipped), a manager's TEXT edit — a category move — goes through
+  //    the real save, the real request (which now applies the save's consequence fold) and the real owner publish. The seeded x_pizza
+  //    categories take the same extras, so this diff carries no consequence; the consequence-bearing case is
+  //    catalog/publish-request-consequences.test.js (real save + request + publish on one Firestore fake).
+  {
+    const moved = JSON.parse(JSON.stringify(await draft())); moved.items.find((i) => i.key === 'Carnivora').display.cat = 'ny';
+    const s5 = await save('mgrOn01', moved);
+    assert.strictEqual(s5.status, 200, `manager category move: ${JSON.stringify(s5.body).slice(0, 200)}`);
+    assert.strictEqual((await request({}, s5.body.token)).status, 200, 'the request verifies the save\'s diff');
+    assert.strictEqual((await publish('ownerA', s5)).status, 200, 'and the owner publishes it');
+  }
+  ok('MRC: a manager category move (item_text_edit ON) → real save → real request → real owner publish');
+
   FINISHED = true;
   console.log(`publish-request(emulator): OK (${n})`);
   process.exit(0);
