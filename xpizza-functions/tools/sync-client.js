@@ -31,6 +31,5 @@ fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'catalog', 'extras-eligibili
 // ENVÍO (PLAN-portal-envio-step1 r2 §1b): the ONE portal↔map message module and the map labels' Archivo face → the map site's
 // own folder (it is a separate origin, so it needs its own committed copies; envio-map-site.test.mjs pins them byte-identical)
 fs.copyFileSync(path.join(ROOT, 'xpizza-portal', 'envio-map-protocol.js'), path.join(ROOT, 'xpizza-portal-map', 'envio-map-protocol.js'));
-fs.mkdirSync(path.join(ROOT, 'xpizza-portal-map', 'fonts'), { recursive: true });
 fs.copyFileSync(path.join(ROOT, 'xpizza-portal', 'fonts', 'archivo-latin.7150c0ec5a.woff2'), path.join(ROOT, 'xpizza-portal-map', 'fonts', 'archivo-latin.7150c0ec5a.woff2'));
 console.log(`sync-client: copied sherpa-client.js into ${folders.length} site folders, order-self-update.js into ${orderFolders.length}, order-control-state.js into xpizza-dispatch, pay-rate.js into xpizza-functions + xpizza-driver, cart-sig.js into ${cartSigFolders.length} folders`);

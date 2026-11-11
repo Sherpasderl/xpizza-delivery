@@ -364,7 +364,7 @@ function buildPage() {
   refs.pickName = el('b'); refs.pickSub = el('span'); refs.pickChev = el('span', 'pchev', '▾');
   const pk = el('span', 'pk'); pk.append(refs.pickName, refs.pickSub);
   refs.pick.append(ic('pin'), pk, refs.pickChev);
-  refs.pick.addEventListener('click', () => (S.picker ? closePicker(true) : openPicker()));
+  refs.pick.addEventListener('click', () => (S.picker ? closeBranchPicker(true) : openBranchPicker()));
   refs.menu = el('div', 'pickmenu hidden'); refs.menu.setAttribute('role', 'listbox');
   fld.append(refs.pick, refs.menu);
   refs.map = el('div', 'emap');
@@ -394,7 +394,7 @@ function onDocClick(e) {
   if (!S.picker || !S.refs) return;
   const t = e.target;
   if (t && t.closest && t.closest('.pickfld')) return;
-  closePicker(false);
+  closeBranchPicker(false);
 }
 
 function paintBanner() {
@@ -526,7 +526,7 @@ function paintPicker() {
   r.menu.classList.toggle('hidden', !S.picker);
   if (S.picker) paintMenu();
 }
-function openPicker() {
+function openBranchPicker() {
   S.picker = { q: '', hi: 0 };
   const r = S.refs;
   const search = el('div', 'psearch');
@@ -541,7 +541,7 @@ function openPicker() {
     if (e.key === 'ArrowDown') { e.preventDefault(); S.picker.hi = Math.min(S.picker.hi + 1, f.shown.length - 1); paintMenu(); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); S.picker.hi = Math.max(S.picker.hi - 1, 0); paintMenu(); }
     else if (e.key === 'Enter') { e.preventDefault(); const it = f.shown[S.picker.hi]; if (it) choose(it.rid); }
-    else if (e.key === 'Escape') { e.preventDefault(); closePicker(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeBranchPicker(true); }
   });
   paintPicker();
   inp.focus();
@@ -562,14 +562,14 @@ function paintMenu() {
   r.pmore.textContent = f.more || '';
   r.pmore.classList.toggle('hidden', !f.more);
 }
-function closePicker(refocus) {
+function closeBranchPicker(refocus) {
   S.picker = null;
   paintPicker();
   if (refocus) S.refs.pick.focus();
 }
 function choose(rid) {
   S.pick = rid;
-  closePicker(true);
+  closeBranchPicker(true);
   paintMapBox();
   postRender('reset');
 }

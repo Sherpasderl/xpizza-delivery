@@ -422,6 +422,8 @@
     "xpizza-orders/form-serial-order.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/envio-server-parity.test.mjs",
+    "xpizza-portal/envio-view.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
@@ -729,7 +731,9 @@
     "xpizza-functions/wacancel-wiring.guard.test.js",
     "xpizza-functions/wahealth-wiring.guard.test.js",
     "xpizza-portal/branch-1b-logic.test.mjs",
-    "xpizza-portal/branches-1b-life.test.mjs"
+    "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/envio-server-parity.test.mjs",
+    "xpizza-portal/envio-view.test.mjs"
    ]
   },
   "la-musa-orders": {
@@ -1142,6 +1146,8 @@
     "xpizza-orders/form-serial-order.copy.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/envio-server-parity.test.mjs",
+    "xpizza-portal/envio-view.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
@@ -1457,7 +1463,9 @@
     "xpizza-functions/wahealth-wiring.guard.test.js",
     "xpizza-groupless-golden.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
-    "xpizza-portal/branches-1b-life.test.mjs"
+    "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/envio-server-parity.test.mjs",
+    "xpizza-portal/envio-view.test.mjs"
    ]
   },
   "xpizza-kitchen": {
@@ -1652,7 +1660,8 @@
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
     "xpizza-functions/test/driver-assignment-parity.emulator.test.js",
     "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
-    "xpizza-functions/test/unassign.emulator.test.js"
+    "xpizza-functions/test/unassign.emulator.test.js",
+    "xpizza-portal/envio-map-site.test.mjs"
    ],
    "via_helper": [
     "xpizza-dispatch-mobile/board-model.test.mjs",
@@ -3433,7 +3442,9 @@
   },
   "delivery/pricing-admin-core.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-portal/envio-view.test.mjs"
+   ]
   },
   "delivery/pricing-admin-functions.js": {
    "pins": [],
