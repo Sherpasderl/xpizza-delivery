@@ -131,6 +131,9 @@ export const ALLOWED_CONSUMERS = new Set([
   // DISH PHOTOS B — the draft photo map's ONE setter (canEdit-guarded in editor.js; it writes only source.photos, from a pid
   // the server returned or the removed / restored states) and its pure readers
   'setPhoto', 'draftPhotos', 'origPhotos', 'pendingPhotos',
+  // STRUCTURE S1 (Codex build r1 #1) — pure readers: the draft's dish extras changes against the submitted snapshot, and the minted
+  // review's copy of them (never a reference to the record)
+  'draftExtrasChanges', 'extrasOfReview',
 ]);
 // Method calls on a state property, by FULL CHAIN — so a mutating method is permitted on exactly the
 // collection it was ruled for and nowhere else.

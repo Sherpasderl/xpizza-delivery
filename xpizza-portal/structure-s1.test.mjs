@@ -12,7 +12,8 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { runInThisContext } from 'node:vm';
 import { readFileSync } from 'node:fs';
-import { createDraft, draftSource, pendingCount, editItem, extrasBaseline, pendingDishExtras, setExtraPrice } from './editor.js';
+import { createDraft, draftSource, pendingCount, editItem, extrasBaseline, pendingDishExtras, dishExtrasChanges, setExtraPrice } from './editor.js';
+import { reviewModel, attestationModel } from './review.js';
 import * as IE from './item-edit-logic.js';
 
 const req = createRequire(import.meta.url);
@@ -37,7 +38,7 @@ const LAUNCHER = 'noodle_01', VARIANTS = ['noodle_01_sin', 'noodle_01_pollo', 'n
 const firstSub = (d, cat) => { const c = draftSource(d).structure.categories.find((x) => String(x.id) === cat); return c && Array.isArray(c.subcats) && c.subcats.length ? String(c.subcats[0]) : null; };
 
 // the server's judgement of a portal-written source against the seed (the editCatalog order: validate, authored fields, compare)
-const build = (rid, src) => { const i = sourceToBuildInputs(src); const b = buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable }); return { items: b.items, extras: b.extras, structure: b.structure }; };
+const build = (rid, src) => { const i = sourceToBuildInputs(src); const b = buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable, extrasTable: i.extras }); return { items: b.items, extras: b.extras, structure: b.structure }; };
 function serverJudges(rid, src, extrasAuthoring) {
   validateSource(src, rid);
   AP.assertSameAuthoredFields(src.structure, SEED[rid].structure, { activeHasVariantItems: SEED[rid].structure.variant_items !== undefined });
@@ -173,6 +174,9 @@ test('copy — authoring OFF: the checklist and «Sin extras» are inert (no cop
   assert.ok(IE.save(d, s).ok);
   assert.equal(draftSource(d).extras.find((x) => x.key === ek).price, 99);
   assert.doesNotThrow(() => serverJudges('x_pizza', clone(draftSource(d)), false), 'a price edit with the switch OFF passes the server');
+  const built = build('x_pizza', clone(draftSource(d))).extras;
+  const bx = Array.isArray(built) ? built.find((x) => x.key === ek || (x.display && x.display.name === ek)) : built[ek];
+  assert.equal(bx && (bx.price !== undefined ? bx.price : bx), 99, 'Codex r1 #6: the build carries the EDITED price (extrasTable)');
 });
 
 // ── a move in the same copy (Codex plan r1 #2): the prospective universe, the preserved exclusions ────────────────────────
@@ -241,6 +245,46 @@ for (const rid of ['x_pizza', 'la_musa']) {
   });
 }
 
+// ── Codex build r1 #1: the review carries the dish's extras changes and counts them ─────────────────────────────────────
+test('review (Codex r1 #1) — a checklist / «Sin extras» change on an EMPTY server diff is shown and counted; nothing → «nothing to publish»', () => {
+  const d = draftOf('x_pizza');
+  const orig = clone(draftSource(d));
+  const s = openOn(d, PLAIN.x_pizza);
+  const xk = IE.view(d, s).extras.cards[0].rows[0].key;
+  IE.set(s, 'extraOn', { key: xk, on: false });
+  assert.ok(IE.save(d, s).ok);
+  const extras = dishExtrasChanges(orig, clone(draftSource(d)));
+  assert.deepEqual(extras, [{ key: PLAIN.x_pizza, denied: [xk], restored: [], policy: null, names: { [xk]: draftSource(d).extras.find((x) => x.key === xk).display.name } }]);
+  const EMPTY = { added: [], removed: [], renamed: [], largeChangeSet: [], changed: [] };
+  const m = reviewModel(EMPTY, { extras });
+  assert.equal(m.total, 1, 'it counts');
+  assert.deepEqual(m.products.find((p) => p.key === PLAIN.x_pizza).consequences, [`Sin ${xk} (solo en la app Sherpa)`]);
+  assert.equal(attestationModel(EMPTY, { extras }).hasNothing, false, 'not «nothing to publish»');
+  assert.equal(attestationModel(EMPTY, {}).hasNothing, true, 'premise: the server diff alone is empty');
+  const back = dishExtrasChanges(orig, orig);
+  assert.deepEqual(back, []);
+  // «Sin extras» on, and a restore + policy off, in words
+  const d2 = draftOf('x_pizza'); const s2 = openOn(d2, PLAIN.x_pizza); IE.set(s2, 'extrasNone', true); assert.ok(IE.save(d2, s2).ok);
+  const m2 = reviewModel(EMPTY, { extras: dishExtrasChanges(orig, clone(draftSource(d2))) });
+  assert.deepEqual(m2.products[0].consequences, ['Sin extras']);
+});
+
+// ── Codex build r1 #4: ONE prospect (section + checklist + «Sin extras») for the cards, the move consequences and the reach ──
+test('prospect (Codex r1 #4) — a move WITH «Sin extras» in one copy: the consequences say nothing is gained; the reach follows the copy\'s section live', () => {
+  const d = draftOf('la_musa');
+  const beer = draftSource(d).items.find((r) => r.display.cat === 'bebidas' && r.display.variantOf == null && !(draftSource(d).structure.variant_items || {})[String(r.display.id)]);
+  const s = openOn(d, beer.key);
+  IE.set(s, 'cat', 'noodles'); IE.set(s, 'subcat', firstSub(d, 'noodles'));
+  const salsasBefore = IE.view(d, openOn(draftOf('la_musa'), 'dimsum_01')).extras.cards.find((c) => c.cat === 'Salsas').usedBy;
+  const card = IE.view(d, s).extras.cards.find((c) => c.cat === 'Salsas');
+  assert.equal(card.usedBy, salsasBefore + 1, 'the reach counts the moving dish BEFORE save');
+  IE.set(s, 'extrasNone', true);
+  const cons = IE.view(d, s).consequences;
+  assert.ok(!cons || !cons.lines.some((l) => /^Acepta el extra/.test(l)), `with «Sin extras» the move gains nothing (${cons && cons.lines.join(' | ')})`);
+  // the reach is the group's (frame A2 keeps «en 4 productos» with «Sin extras» on): a dish's own switch does not change it
+  assert.equal(IE.view(d, s).extras.cards.find((c) => c.cat === 'Salsas').usedBy, salsasBefore + 1, 'unchanged by the dish\'s own «Sin extras» (A2)');
+});
+
 // ── key-only semantics (plan §2) ─────────────────────────────────────────────────────────────────────────────────────
 test('«Ninguno», then a NEW extra in that group: the new extra stays OFFERED on the dish; «Sin extras» still suppresses it', () => {
   const d = draftOf('x_pizza');
@@ -266,6 +310,20 @@ test('collision — an extra whose KEY equals a group name: deny_extras excludes
 });
 
 // ── the server's judgement of what the portal writes (Codex plan r1 #4; r2 (a)) ───────────────────────────────────────
+for (const [what, apply] of [['deny-only', (s, d) => IE.set(s, 'extraOn', { key: IE.view(d, s).extras.cards[0].rows[0].key, on: false })], ['policy-only', (s) => IE.set(s, 'extrasNone', true)]]) {
+  test(`server (Codex r1 #6) — a ${what} change from the portal: ON passes, OFF is refused extras_not_supported_yet (each alone)`, () => {
+    for (const rid of ['x_pizza', 'la_musa']) {
+      const d = draftOf(rid);
+      const s = openOn(d, PLAIN[rid]);
+      apply(s, d);
+      assert.ok(IE.save(d, s).ok);
+      assert.equal(pendingDishExtras(d).flatMap((x) => x.fields).length, 1, 'premise: exactly one extras field changed');
+      assert.doesNotThrow(() => serverJudges(rid, clone(draftSource(d)), true), `${rid} ON`);
+      refusedAs(() => serverJudges(rid, clone(draftSource(d)), false), 'extras_not_supported_yet');
+    }
+  });
+}
+
 test('server — the portal-written exclusion / policy pass with the switch ON and are refused extras_not_supported_yet with it OFF', () => {
   for (const rid of ['x_pizza', 'la_musa']) {
     const d = draftOf(rid), key = PLAIN[rid];

@@ -91,6 +91,11 @@ function productsOf(lines, optionParent, optionIndex) {
   return [...byKey.values()];
 }
 
+// STRUCTURE S1: the minted review's dish extras changes, as a copy (a pure reader of the review record)
+export function extrasOfReview(review) {
+  return review && Array.isArray(review.extras) ? JSON.parse(JSON.stringify(review.extras)) : [];
+}
+
 export function reviewModel(diff, ctx = {}) {
   const d = diff || {};
   // DISH PHOTOS B (§2.1) — the server's photo lines ({field:'photo', old, new} three-state) are their own group, «Fotos»;
@@ -102,6 +107,21 @@ export function reviewModel(diff, ctx = {}) {
     let p = products.find((x) => x.key === c.key);
     if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [] }; products.push(p); }
     p.consequences = [...c.lost.map((x) => EXTRA_LOST(String(x))), ...c.gained.map((x) => EXTRA_GAINED(String(x))), ...p.consequences];
+  }
+  // STRUCTURE S1 (Codex build r1 #1): a dish's checklist / «Sin extras» change — computed by the caller from the SUBMITTED snapshot
+  // the token is bound to (the server's diff carries no line for it) — joins its product's lines and the count
+  let extrasCount = 0;
+  for (const c of (ctx && Array.isArray(ctx.extras) ? ctx.extras : [])) {
+    const xname = (k) => (c.names && typeof c.names[k] === 'string' ? c.names[k] : String(k));
+    const lines = [];
+    if (c.denied && c.denied.length) lines.push(`Sin ${c.denied.map(xname).join(', ')} (solo en la app Sherpa)`);
+    if (c.restored && c.restored.length) lines.push(`Vuelve a ofrecer ${c.restored.map(xname).join(', ')}`);
+    if (c.policy === 'on') lines.push('Sin extras'); else if (c.policy === 'off') lines.push('Vuelve a ofrecer extras');
+    if (!lines.length) continue;
+    extrasCount += ((c.denied && c.denied.length) || (c.restored && c.restored.length) ? 1 : 0) + (c.policy ? 1 : 0);
+    let p = products.find((x) => x.key === c.key);
+    if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [] }; products.push(p); }
+    p.consequences = [...p.consequences, ...lines];
   }
   const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c));
   const photos = all.filter(isPhotoLine);
@@ -143,7 +163,7 @@ export function reviewModel(diff, ctx = {}) {
     renamed,
     photos,
     // everything that will publish, so the header cannot understate it
-    total: rows.length + sections.length + productLines.length + added.length + removed.length + renamed.length + photos.length,
+    total: rows.length + sections.length + productLines.length + added.length + removed.length + renamed.length + photos.length + extrasCount,
   };
 }
 
@@ -464,7 +484,7 @@ export function attestationModel(diff, ctx = {}) {
   // merchant record a SAR attestation against zero changes. A signature for nothing makes the fiscal
   // record say something untrue, which is the same class as a signature for someone else's changes —
   // so no signature is collected and the gate refuses outright.
-  const hasNothing = reviewModel(diff).total === 0;
+  const hasNothing = reviewModel(diff, ctx).total === 0;   // STRUCTURE S1: the extras lines count (ctx.extras)
   // A price we cannot vouch for blocks the publish outright, ahead of any acknowledgement — the server
   // would refuse it anyway, and no signature should be collected for something that cannot go live.
   // 1D add-product A — NEW products are priced lines too: they join the zero-price refusal and the attestation copy.
@@ -474,7 +494,7 @@ export function attestationModel(diff, ctx = {}) {
   // DISH PHOTOS B (§2.4) — a publish whose EVERY diff line is a photo line gets the photos seal copy (client-side, like the
   // names-only seal); the server's gate is unchanged (usesPlatformFactura only). The kind of each line is fixed HERE, at mint,
   // from the legacy previews the caller had — the record is evidence and does not change afterwards.
-  const m = reviewModel(diff);
+  const m = reviewModel(diff, ctx);
   const photoRows = m.photos.map((c) => ({ key: c.key, kind: lineKind(c, ctx.legacy) }));
   // S4 (Codex S4P2 r1 P1-2): a product line (name / description / section — moved out of `rows` into `products`) is NOT a photo:
   // any of them ends «photos only», exactly as a description line did before S4; a rename then puts its name on the seal
@@ -901,6 +921,16 @@ const PANELS = {
   // that renames and changes anything else. The draft is not publishable as it stands, so the way out is the published menu.
   rename_not_alone: { icon: 'warn', title: 'Un cambio de nombre se publica solo',
     detail: 'Tu borrador cambia el nombre de una sección y también otras cosas. Volvé al menú publicado, cambiá solo el nombre y publicalo; el resto hacelo después.',
+    action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
+  // STRUCTURE S1 (PLAN-portal-structure-S1-ui r3 §7, Codex build r1 #7): a dish's extras while the platform switch is off, and a
+  // new product's options whose reference did not resolve
+  extras_not_supported_yet: { icon: 'info', title: 'Todavía no se pueden cambiar los extras de un producto',
+    detail: 'Tus otros cambios siguen acá.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' } },
+  // deterministic for this draft (an unresolved new-product reference): a retry would be refused forever, so the way out is the
+  // published menu (the review guard's rule for deterministic refusals)
+  exposure_ref_mismatch: { icon: 'warn', title: 'No pudimos guardar las opciones de un producto nuevo',
+    detail: 'Volvé al menú publicado y aplicá tus cambios de nuevo; si sigue igual, escribinos.',
     action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
   structure_changed: { icon: 'warn', title: 'Tu borrador no coincide con el menú publicado',
     detail: 'Tu borrador cambia la estructura del menú. Volvé al menú publicado y aplicá tus cambios de nuevo.',

@@ -930,3 +930,76 @@ test('S1 — a checklist edit counts as unsaved: closing asks first, «Cancelar�
   p.btn('Cancelar').click(); await settle(5);
   assert.equal(JSON.stringify(p.src()), before, '«Cancelar»: nothing written');
 });
+
+// ── STRUCTURE S1 — Codex build r1 (advisor: fix all 9, RED-first) ───────────────────────────────────────────────────────
+const EMPTY_DIFF = { added: [], removed: [], renamed: [], largeChangeSet: [], changed: [] };
+const salsaName = (i) => SRC.extras.filter((x) => x.display.cat === 'Salsas')[i].display.name;
+test('S1 r1 #1 — a checklist-only change reaches the REVIEW: its line is shown, it counts, «Publicar» is enabled', async () => {
+  const p = await page({ read: ON, on: { editCatalog: () => okJson({ token: 'ET', updateTime: 'T2', baseActiveVersionId: 'v-live', sourceHash: 'h', diff: EMPTY_DIFF }) } });
+  await p.signIn();
+  await p.open('dimsum_01');
+  const cb = rowsOfCard(cardOf(p, 'Salsas'))[1].querySelector('input[type=checkbox]');
+  cb.checked = false; cb.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+  p.btn('Guardar').click(); await settle(10);
+  p.d.getElementById('review').click(); await settle(80);
+  const body = p.d.getElementById('mbody').textContent;
+  assert.ok(body.includes(`Sin ${salsaName(1)} (solo en la app Sherpa)`), `the review says what changes (${body.slice(0, 160)})`);
+  assert.ok(!body.includes('No hay cambios sin publicar'));
+  assert.equal(p.d.getElementById('pubbtn').disabled, false, 'it counts: «Publicar» is enabled');
+});
+
+test('S1 r1 #2 — a FOLDED required-choice card: no error, Guardar off while clean, the name rule still holds, save and reopen work', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('noodle_01');
+  p.drawer().querySelector('.mk-grp.mk-req .mk-gt').click(); await settle(5);
+  assert.ok(!p.drawer().querySelector('.mk-grp.mk-req').classList.contains('mk-open'), 'premise: folded');
+  assert.equal(p.btn('Guardar').disabled, true, 'a clean copy: Guardar off');
+  const nm = p.fld('Nombre').querySelector('input');
+  p.type(nm, 'Pad Thai de la casa con salsa de tamarindo y maní tostado');
+  assert.equal(p.btn('Guardar').title, 'Acortá el nombre para guardar', 'the derived-name rule still judges the folded options');
+  p.type(nm, 'Pad Thai Especial');
+  assert.equal(p.drawer().querySelector('.mk-dirty').hidden, false, 'the dirty mark follows');
+  assert.equal(p.btn('Guardar').disabled, false);
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(p.src().items.find((i) => i.key === 'noodle_01_pollo').display.name, 'Pad Thai Especial - Pollo');
+  await p.open('noodle_01');
+  assert.ok(p.drawer().querySelector('.mk-grp.mk-req'), 'reopened');
+});
+
+test('S1 r1 #3 — under «Sin extras» the prices and the fold stay usable (only the checklist is locked)', async () => {
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
+  assert.ok(!/\.mk-[^{]*\{[^}]*pointer-events\s*:\s*none/.test(css), 'no S1 rule blocks the pointer');
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('dimsum_01');
+  p.drawer().querySelector('.mk-opcsw button.tog').click(); await settle(5);
+  const pi = rowsOfCard(cardOf(p, 'Salsas'))[0].querySelector('.mopr input');
+  assert.equal(pi.disabled, false, 'the price stays editable (R4)');
+  p.type(pi, '43');
+  cardOf(p, 'Acompañamientos').querySelector('.mk-gt').click(); await settle(5);
+  assert.ok(!cardOf(p, 'Acompañamientos').classList.contains('mk-open'), 'the fold still works');
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(p.src().extras.find((x) => x.display.name === salsaName(0)).price, 43);
+});
+
+test('S1 r1 #8 — without the shared evaluator «Opciones» says «No pudimos cargar los extras.»; other fields still save', async () => {
+  const p = await page({ read: ON, evaluator: false });
+  await p.signIn();
+  await p.open('dimsum_01');
+  const f = p.fld('Opciones');
+  assert.ok(f, 'the block stays');
+  assert.equal(f.querySelector('.mk-opcgap').textContent, 'No pudimos cargar los extras.');
+  p.type(p.fld('Nombre').querySelector('input'), 'Wonton picante');
+  assert.equal(p.btn('Guardar').disabled, false, 'the hold is scoped to the extras fields');
+});
+
+test('S1 r1 #9 — the required choice\'s helper line is table H\'s, with the dish\'s real names, following the name as it is typed', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('noodle_01');
+  const line = () => p.drawer().querySelector('.mk-grp.mk-req .mk-gsub').textContent;
+  assert.equal(line(), 'En el menú cada opción se llama «Pad Thai - Sin Proteína», «… - Pollo»: el nombre se arma solo.');
+  p.type(p.fld('Nombre').querySelector('input'), 'Pad Thai Especial');
+  assert.equal(line(), 'En el menú cada opción se llama «Pad Thai Especial - Sin Proteína», «… - Pollo»: el nombre se arma solo.');
+});

@@ -581,7 +581,9 @@
   .mk-opcsw{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:11px}
   .mk-opcb{font-size:13.5px;font-weight:650;display:block}
   .mk-opcs{font-size:12px;color:var(--mute2)}
-  .mk-opc.mk-off .mk-ext{opacity:.45;pointer-events:none}
+  /* «Sin extras» greys the extras cards; ONLY their checks / selection lock (in the script) — prices and the fold stay usable (R4) */
+  .mk-opc.mk-off .mk-ext{opacity:.45}
+  .mk-opcgap{font-size:12.5px;color:var(--mute2);line-height:1.45;margin:0}
   .mk-grp{border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
   .mk-grp.chg{border-color:var(--accent);box-shadow:0 0 0 3px var(--tint2)}
   .mk-grp.invalid,.mk-grp.mk-inv{border-color:var(--red)}

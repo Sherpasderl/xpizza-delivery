@@ -1083,12 +1083,8 @@ test('🔴 EVERY merchant-reachable add-product refusal has a designed panel —
   // Not reachable from this portal (it never sends a key, an id, a malformed row or a mismatched ref), or a server
   // configuration fault the merchant cannot fix: the generic panel is the honest answer for these.
   const GENERIC_BY_DESIGN = new Set(['addition_malformed', 'client_supplied_key', 'item_order_ref_mismatch', 'id_taken', 'key_mode_unknown', 'key_mode_inconsistent']);
-  // per-product extras (stage 2): unreachable from this portal ONLY while the platform extras-authoring switch is OFF — it
-  // sends no tmp-ref override, no extras_policy toggle and no deny_extras change. The exemption is TIED to the switch: turning
-  // authoring on (with the extras form) turns this test red until both codes have designed panels.
-  const { extrasCapabilities } = createRequire(import.meta.url)('../xpizza-functions/catalog/platform-extras.js');
-  const EXTRAS_CODES = ['exposure_ref_mismatch', 'extras_not_supported_yet'];
-  if (!extrasCapabilities().authoring) for (const c of EXTRAS_CODES) GENERIC_BY_DESIGN.add(c);
+  // per-product extras: STRUCTURE S1 (Codex build r1 #7) built the extras form, so both codes have designed panels NOW,
+  // independent of the platform switch (no exemption tied to it any more)
   // S1c opaque minting: a minted-key collision (mint_unavailable) is unreachable ONLY while the one-time minting switch is OFF —
   // allocation draws no opaque key. The exemption is TIED to the switch: turning minting on turns this test red until the code has a panel.
   const { mintCapabilities } = createRequire(import.meta.url)('../xpizza-functions/catalog/mint-opaque.js');
@@ -1283,4 +1279,20 @@ test('T1: rename_not_alone has its designed panel, and the SAVE path keeps its w
   }
   // non-vacuity: another publish-worded panel IS still restated on the save path
   assert.strictEqual(outcomeFor({ code: 'store_unavailable', status: 503, body: {} }, 'edit').title, 'No se pudo guardar el borrador');
+});
+
+// ── STRUCTURE S1 (Codex build r1 #7): the per-product extras refusals have their own panels, whatever the platform switch says ──
+test('S1 — extras_not_supported_yet / exposure_ref_mismatch: designed panels, never the generic one (on a save and on a publish)', () => {
+  for (const op of ['edit', 'publish']) {
+    const a = outcomeFor({ code: 'extras_not_supported_yet', status: 409, body: { error: 'extras_not_supported_yet', field: 'deny_extras' } }, op);
+    assert.equal(a.generic, false, op);
+    assert.equal(a.title, 'Todavía no se pueden cambiar los extras de un producto');
+    assert.equal(a.detail, 'Tus otros cambios siguen acá.');
+    const b = outcomeFor({ code: 'exposure_ref_mismatch', status: 400, body: { error: 'exposure_ref_mismatch', field: 'deny_extras' } }, op);
+    assert.equal(b.generic, false, op);
+    assert.equal(b.title, 'No pudimos guardar las opciones de un producto nuevo');
+    // on a SAVE the publish-flavoured detail is restated by outcomeFor (as for every RESET panel, e.g. structure_changed)
+    if (op === 'publish') assert.equal(b.detail, 'Volvé al menú publicado y aplicá tus cambios de nuevo; si sigue igual, escribinos.');
+    assert.equal(b.action.id, PUBLISH_ACTIONS.RESET, 'deterministic: the way out is the published menu, never a retry');
+  }
 });

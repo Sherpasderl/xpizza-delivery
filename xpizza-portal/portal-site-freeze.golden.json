@@ -156,8 +156,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "60138d3899152e852a133b71f42d8e0328533cf60ffc71b71a49fefcbd1ab716",
-   "bytes": 120867
+   "sha256": "4bd34696af0fa8b644fa51239063b36d26421ebaf79c1dd7a5b2d25526a72982",
+   "bytes": 121062
   }
  },
  "diff_aid": {
@@ -1822,6 +1822,12 @@
     ".mk-note",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-opcgap",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",

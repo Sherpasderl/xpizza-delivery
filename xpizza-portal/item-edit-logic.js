@@ -131,12 +131,32 @@ function changed(s) {
 
 // STRUCTURE S1 (Codex S1 plan r1 #2): the checklist's universe is the dish AS THIS COPY WOULD SAVE IT — its section after the
 // copy's move — recomputed on every read (the draft is mutable: no memo by object identity). null: the evaluator is absent.
-const prospectBaseline = (s) => extrasBaseline(draftSource(s.draft), s.key, catChanged(s) ? { cat: s.work.cat, subcat: s.work.subcat } : null);
+// ONE prospect (Codex build r1 #4): the draft with this copy's section, checklist and «Sin extras» applied to the dish and its options
+// — the cards, the move consequences and the reach all read it, so they never disagree.
+function prospectSource(draft, s) {
+  const after = JSON.parse(JSON.stringify(draftSource(draft)));
+  const g = choiceGroup(draft, s.key);
+  const members = new Set([s.key, ...(g ? g.options.map((o) => o.key) : [])]);
+  for (const r of after.items || []) {
+    if (!r || !members.has(r.key) || !r.display) continue;
+    if (catChanged(s)) { r.display.cat = s.work.cat; if (s.work.subcat == null) delete r.display.subcat; else r.display.subcat = s.work.subcat; }
+    if (s.work.extrasNone) r.display.extras_policy = 'none'; else delete r.display.extras_policy;
+  }
+  const expo = after.structure && after.structure.exposure;
+  if (expo && typeof expo === 'object') {
+    if (!expo.item_overrides || typeof expo.item_overrides !== 'object') expo.item_overrides = {};
+    const io = expo.item_overrides;
+    if (s.work.denyExtras.length) io[s.key] = { ...(io[s.key] || {}), deny_extras: s.work.denyExtras.slice() };
+    else if (io[s.key]) { delete io[s.key].deny_extras; if (!Object.keys(io[s.key]).length) delete io[s.key]; }
+  }
+  return after;
+}
+const prospectBaseline = (s) => extrasBaseline(prospectSource(s.draft, s), s.key, null);
 // «en N productos»: the dishes (not options) whose own baseline offers the group — every dish's exclusions and «Sin extras»
 // set aside, legacy rules kept; one clone + one projection per read
-function extrasGroupReach(draft) {
+function extrasGroupReach(src0) {
   const E = globalThis.ExtrasEligibility;
-  const src = JSON.parse(JSON.stringify(draftSource(draft)));
+  const src = JSON.parse(JSON.stringify(src0));
   const io = src.structure && src.structure.exposure && src.structure.exposure.item_overrides;
   if (io) for (const k of Object.keys(io)) { delete io[k].deny_extras; if (!Object.keys(io[k]).length) delete io[k]; }
   for (const r of src.items || []) if (r && r.display) delete r.display.extras_policy;
@@ -153,9 +173,10 @@ function extrasGroupReach(draft) {
 function extrasCards(draft, s) {
   const w = s.work;
   const b = prospectBaseline(s);
-  if (!b) return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: w.extrasNone };
+  // Codex build r1 #8: the evaluator missing is SAID (the block stays, «No pudimos cargar los extras.»), never a silent absence
+  if (!b) return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: true };
   let used;
-  try { used = extrasGroupReach(draft); } catch (_) { return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: w.extrasNone }; }
+  try { used = extrasGroupReach(prospectSource(draft, s)); } catch (_) { return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: true }; }
   const deny = new Set(w.denyExtras);
   const byKey = new Map((draftSource(draft).extras || []).map((x) => [x && x.key, x]));
   const cards = b.groups.map((g) => {
@@ -177,14 +198,10 @@ function extrasChange(draft, s) {
   const E = globalThis.ExtrasEligibility;
   if (!E || typeof E.projectEligibility !== 'function' || typeof E.eligibleSet !== 'function') return null;
   const src = draftSource(draft);
-  const after = JSON.parse(JSON.stringify(src));
+  // STRUCTURE S1 (Codex build r1 #4): the move's consequences come from THE prospect — section, checklist and «Sin extras» of this copy
+  const after = prospectSource(draft, s);
   const g = choiceGroup(draft, s.key);
   const members = [s.key, ...(g ? g.options.map((o) => o.key) : [])];
-  for (const r of after.items || []) {
-    if (!r || !members.includes(r.key) || !r.display) continue;
-    r.display.cat = s.work.cat;
-    if (s.work.subcat == null) delete r.display.subcat; else r.display.subcat = s.work.subcat;
-  }
   try {
     const accepts = (proj) => {
       const out = new Set();

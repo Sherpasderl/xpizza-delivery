@@ -4,7 +4,7 @@
 // Nothing here decides what a merchant may see — every answer comes from the server, and the UI simply
 // shows what came back.
 import { apiFetch, editCatalog, publishEdited, resetDraftToLive, requestPublish } from './api.js';
-import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
+import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId, draftExtrasChanges } from './editor.js';
 // 1D add-product B — the required choice on a NEW product ("Elección requerida — el cliente elige 1")
 import { parsePrice } from './editor.js';
 import { pendingTexts, loadedName } from './editor.js';   // S4 — the session's unpublished text edits (row tags, the bar); a product's loaded name
@@ -12,7 +12,7 @@ import { pendingTexts, loadedName } from './editor.js';   // S4 — the session'
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
-import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
+import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS, extrasOfReview } from './review.js';
 import { token } from './auth.js';
 // DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
 import * as PL from './photo-logic.js';
@@ -1498,7 +1498,8 @@ function productReviewCtx() {
     const pk = keyOfId.get(String(r.display.variantOf));
     if (pk) { parent.set(r.key, pk); index.set(r.key, index.size); }
   }
-  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0) };
+  // STRUCTURE S1: the reviewed snapshot's dish extras changes, from the MINTED record (never re-derived from the draft)
+  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extras: extrasOfReview(state.review) };
 }
 function productReviewOpts() {
   if (state.textEditEnabled !== true) return null;   // switch off: today's review rows exactly
@@ -1533,7 +1534,18 @@ const OPC_COPY = Object.freeze({
   noneOff: 'Apagalo si este producto no lleva extras', noneOn: 'Este producto no ofrece ningún extra',
   req: 'Elección requerida · el cliente elige 1', ext: 'Extras · opcionales',
   allOn: 'Todos activos en este producto', markAll: 'Marcar todos', none: 'Ninguno', appOnly: 'Solo en la app Sherpa',
+  gap: 'No pudimos cargar los extras.',
 });
+// table H (Codex build r1 #9): «En el menú cada opción se llama «{producto} - {opción}», «… - {opción}»: el nombre se arma solo.» — the
+// recommended option first (the mockup's «Mediana»), else the first; then the one after it
+function opcNameLine(options, g) {
+  const opts = Array.isArray(options) ? options : [];
+  if (!opts.length) return '';
+  const rec = (k) => { const row = g && g.options.find((x) => x.key === k); return !!(row && row.display && Array.isArray(row.display.tags) && row.display.tags.includes('recommended')); };
+  const i = Math.max(0, opts.findIndex((o) => rec(o.key)));
+  const a = opts[i], b = opts.length > 1 ? opts[(i + 1) % opts.length] : null;
+  return `En el menú cada opción se llama «${a.fullName}»${b ? `, «… - ${b.choice}»` : ''}: el nombre se arma solo.`;
+}
 const opcFolded = new Set();
 const opcN = (n) => `${n} ${n === 1 ? 'opción' : 'opciones'}`;
 const opcProducts = (n) => `en ${n} ${n === 1 ? 'producto' : 'productos'}`;
@@ -1666,7 +1678,8 @@ function renderEditDrawer(d, it, keepScroll) {
       return { gh, st };
     };
     R.opc = { cards: [] };
-    if (ex.show) {
+    if (ex.gap) box.append(mk('p', 'mk-opcgap', OPC_COPY.gap));   // Codex build r1 #8: said, never a silent absence
+    else if (ex.show) {
       const sw = mk('div', 'mk-opcsw');
       const lbl = mk('div', 'mk-opcl');
       lbl.append(mk('b', 'mk-opcb', 'Sin extras'), mk('span', 'mk-opcs', ex.none ? OPC_COPY.noneOn : OPC_COPY.noneOff));
@@ -1718,7 +1731,8 @@ function renderEditDrawer(d, it, keepScroll) {
         focusKey(ieSame, 'ie-same');
         lab.append(ieSame, document.createTextNode('Mismo precio para todas'));
         R.same = ieSame;
-        block.append(lab, mk('div', 'mk-gsub', 'El nombre de cada opción se arma solo: nombre del producto + opción. Cambia junto con el producto.'));
+        R.gsub = mk('div', 'mk-gsub', opcNameLine(v0.options, g));
+        block.append(lab, R.gsub);
         card.append(block);
         R.ctl.options = R.opts.map((x) => x.pi);
       }
@@ -1841,15 +1855,18 @@ function syncEdit() {
     const bad = !!v.errors.options;
     R.optBlock.classList.toggle('mk-inv', bad);
     R.optCnt.classList.toggle('mk-cnterr', bad);   // the mockup's `.fld.invalid .mk-cnt` red (F2)
-    v.options.forEach((o, i) => {
-      const r = R.opts[i];
+    // STRUCTURE S1 (Codex build r1 #2): a FOLDED required-choice card draws no option rows — only the ones drawn are synced
+    v.options.forEach((o) => {
+      const r = R.opts.find((x) => x.key === o.key);
+      if (!r) return;
       r.base.textContent = o.fullName.slice(0, o.fullName.length - ` - ${o.choice}`.length);
       r.cnt.textContent = o.counter;
       r.cnt.classList.toggle('over', o.tooLong);
       r.row.classList.toggle('over', o.tooLong);
       if (r.pi.value !== o.price && document.activeElement !== r.pi) r.pi.value = o.price;
     });
-    R.same.checked = v.same === true;
+    if (R.same) R.same.checked = v.same === true;
+    if (R.gsub) R.gsub.textContent = opcNameLine(v.options, choiceGroup(state.draft, s.key));
   }
   // STRUCTURE S1 — the extras cards follow the copy in place (counts, the summary, the link, each row's check and price)
   if (R.opc) {
@@ -2414,6 +2431,7 @@ async function openReviewFlow() {
     // The exact document being submitted — captured BEFORE the await, so what is reviewed, saved and
     // later committed as the baseline is one snapshot rather than whatever the draft holds by then.
     const submitted = JSON.parse(JSON.stringify(draftSource(state.draft)));
+    const rx = draftExtrasChanges(state.draft, submitted);   // S1 (Codex build r1 #1): this snapshot's dish extras changes (rx)
     writeId = beginWrite(lock);   // admitted by construction: the lock was taken exclusively
     const res = await editCatalog({
       // 🔴 THE RID THE SOURCE WAS LOADED FOR, never "the tenant currently selected". They differ for
@@ -2443,7 +2461,8 @@ async function openReviewFlow() {
     // Computed BEFORE the record is minted, because the record is immutable once it exists — the whole
     // evidence set is fixed at the moment it is created, rather than assembled field by field
     // afterwards where anything could join in.
-    const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura, legacy: photo.legacy, optionParent: productReviewCtx().optionParent });   // S4: a group's options fold under its «Nombre en factura»
+    const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura, legacy: photo.legacy, optionParent: productReviewCtx().optionParent,
+      extras: rx });   // S4: a group's options fold under its «Nombre en factura»
     const minted = mintReview({
       diff,
       editToken: res && res.token,
@@ -2452,6 +2471,7 @@ async function openReviewFlow() {
       gen,                                    // the world this review belongs to
       rid: state.draftRid,
       attestation: att,
+      extras: rx,
     }, gen);
     state.review = minted.review;
     liveReview = minted.review;                 // this one, and only until it closes
