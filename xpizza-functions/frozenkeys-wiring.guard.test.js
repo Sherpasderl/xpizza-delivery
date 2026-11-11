@@ -15,10 +15,10 @@ const read = (f) => peelS1c(f, peelS1d(f, require('./tools/pp-module-inverse').u
 
 // ── 1 ──
 {
-  assert.match(read('catalog/item-text-edit.js'), /\nconst ITEM_TEXT_EDIT = false;\n/, '🔴 item_text_edit ships OFF');
-  assert.strictEqual(require('./catalog/item-text-edit').textEditCapabilities().enabled, false);
+  assert.match(read('catalog/item-text-edit.js'), /\nconst ITEM_TEXT_EDIT = true;\n/, '🔴 item_text_edit ships ON (owner 2026-11-11: name editing; Codex HIGH GO, codex-ite-flip.txt)');
+  assert.strictEqual(require('./catalog/item-text-edit').textEditCapabilities().enabled, true);
   assert.ok(!/'la_musa'|'x_pizza'|"la_musa"|"x_pizza"/.test(read('catalog/item-text-edit.js') + read('catalog/frozen-keys.js')), 'no brand literal in the switch or the map module');
-  ok('item_text_edit ships OFF, one platform constant; no brand literal in the S1a modules');
+  ok('item_text_edit ships ON, one platform constant; no brand literal in the S1a modules');
 }
 
 // ── 2 ──
