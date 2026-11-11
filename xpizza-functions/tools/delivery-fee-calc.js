@@ -5,9 +5,9 @@
 // No database, no network: the hub and the pins come from the input file.
 //
 //   node tools/delivery-fee-calc.js proposal.json
-//   proposal.json = { bands: [{ max_km, cents }, …], free_delivery: bool, hub: { lat, lng }, radius_km?: number,
-//                     pins: [{ label, lat, lng }, …] }
-// radius_km: the restaurant's own delivery radius — the app's coverage is min(last band, radius_km), as quoteDeliveryFor.
+//   proposal.json = { bands: [{ max_km, cents }, …], free_delivery: bool, hub: { lat, lng }, pins: [{ label, lat, lng }, …] }
+// The coverage is the last band (addendum A, owner 2026-11-10: the band table is the app's only distance limit); a radius_km
+// input is refused rather than silently applied or ignored.
 const fs = require('fs');
 const P = require('../delivery/delivery-pricing');
 
@@ -16,14 +16,14 @@ const PREVIEW_MEMBER = 'preview-member';
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 
 // → { ok: false, error } | { ok: true, max_km, rows: [{ label, lat, lng, km, band, fee_cents, guest_pays_cents, member_pays_cents, refusal? }] }
-function calculate({ bands, free_delivery = false, hub, pins, radius_km } = {}) {
+function calculate({ bands, free_delivery = false, hub, pins, ...rest } = {}) {
   const pricing = P.readPricing({ policy_version: 1, bands, restaurants: { [PREVIEW_RID]: { active: true, free_delivery: free_delivery === true } } }, PREVIEW_RID);
   if (!pricing || pricing.invalid) return { ok: false, error: 'bands_invalid' };
   if (!hub || !isNum(hub.lat) || !isNum(hub.lng)) return { ok: false, error: 'hub_invalid' };
   if (!Array.isArray(pins)) return { ok: false, error: 'pins_invalid' };
-  if (radius_km !== undefined && !(isNum(radius_km) && radius_km > 0)) return { ok: false, error: 'radius_invalid' };
+  if ('radius_km' in rest) return { ok: false, error: 'radius_not_supported' };
   const last = pricing.bands[pricing.bands.length - 1].max_km;
-  const maxKm = radius_km === undefined ? last : Math.min(last, radius_km);
+  const maxKm = last;
   const rows = pins.map((p, i) => {
     const pin = { lat: p && p.lat, lng: p && p.lng, confirmed: true };
     const label = p && typeof p.label === 'string' && p.label ? p.label : `pin${i + 1}`;
