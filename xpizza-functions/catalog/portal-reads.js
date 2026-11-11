@@ -172,6 +172,10 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
      false ⇒ today's drawer; while it is on, THIS restaurant's reserved names, normalized exactly as the server judges them
      (the reserved-key doc ∪ the draft's frozen values), for the drawer's live «Ese nombre no está disponible». Advisory: the
      save and the publish re-judge. Unreadable ⇒ absent (declared degraded mode: C5 on «Guardar»), never a failed read. */
+  /* S1 (per-dish extras): the platform EXTRAS-AUTHORING switch, ALWAYS stated and fail-closed like groupAuthoring — the SAME constant
+     editCatalog and publishEdited enforce, so the portal keeps the per-dish checklist and «Sin extras» dark while it is off. */
+  let extrasAuthoring = false;
+  try { extrasAuthoring = require('./platform-extras').extrasCapabilities().authoring === true; } catch (_) { extrasAuthoring = false; }
   let textEditEnabled = false;
   try { textEditEnabled = require('./item-text-edit').textEditCapabilities().enabled === true; } catch (_) { textEditEnabled = false; }
   let reservedNames = null;
@@ -308,6 +312,7 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     ...(pendingOther ? { pendingOther: true } : {}),
     ...(pendingTexts ? { pendingTexts } : {}),
     textEditEnabled,
+    extrasAuthoring,
     ...(reservedNames ? { reservedNames } : {}),
     ...photoOut,   // DISH PHOTOS A2 step 9 (E-P3)
     source,
