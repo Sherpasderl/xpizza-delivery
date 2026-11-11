@@ -19,7 +19,8 @@ const { TIP_MAX_CENTS } = require(join(ROOT, 'xpizza-functions/tip.js'));
 
 const ITEMS = [{ id: 'margherita', name: 'Margherita', dish_id: 'd_1', qty: 1, price: 250, subtotal: 250, extras: [], extrasTotal: 0 }];
 const ctxOf = (o = {}) => ({ restaurantId: 'rid_a', items: ITEMS, itemsText: '1x Margherita (L250)', member: null, ...o });
-const ready = () => { const f = C.freshFlow(null); C.setPin(f, 15.5, -88.0, true); Object.assign(f, { details: 'Portón negro', name: 'Ana', phone: '9999-0000', pay: 'cash' }); return f; };
+// r7 (owner 11-09): the in-app tip is card-only — a ready delivery flow pays by card so the tip cells exercise a tipped flow; cash cells set pay
+const ready = () => { const f = C.freshFlow(null); C.setPin(f, 15.5, -88.0, true); Object.assign(f, { details: 'Portón negro', name: 'Ana', phone: '9999-0000', pay: 'online' }); return f; };
 const OPEN = { open: true, closedRefused: false, pickupOnlyCount: 0, outZone: false, member: false };
 
 test('the ported quote module is byte-identical to BOTH form copies', () => {
@@ -85,7 +86,7 @@ test('bodies are deterministic; entry_mode rides EVERY quote body; tip only when
     f.pay = pay;
     const q = C.quoteBody(f, ctx);
     assert.equal(q.entry_mode, 'app', `${pay}: the quote body carries entry_mode app`);
-    assert.deepEqual(q, { restaurant_id: 'rid_a', items: ITEMS, mode: 'delivery', entry_mode: 'app', pin: { lat: 15.5, lng: -88, confirmed: true }, tip_cents: 2000 });
+    assert.deepEqual(q, { restaurant_id: 'rid_a', items: ITEMS, mode: 'delivery', entry_mode: 'app', pin: { lat: 15.5, lng: -88, confirmed: true }, ...(pay === 'cash' ? {} : { tip_cents: 2000 }) }, `${pay}: the tip rides card quotes only (r7)`);
   }
   f.pay = 'online';
   const card = C.orderBody(f, ctx);
@@ -253,4 +254,48 @@ test('S2b-geo body: NO address_area when the area is superseded, empty (street o
   assert.ok(!('address_area' in C.orderBody(un, ctxO)), '🔴 an unconfirmed pin ⇒ no key');
   const pk = ready(); C.applyGeocode(pk, pk.pinV, GC.full); C.setMode(pk, 'pickup');
   assert.ok(!('address_area' in C.orderBody(pk, ctxO)), '🔴 pickup ⇒ no key');
+});
+
+// ── PLAN-capp-tip-step r6 (owner-approved MOCKUP-capp-tip-step-r2): the step's DEFAULT and the explicit marker ──
+test('tip step r6: tipDefault — L 20 (TIP_DEFAULT_LEMPIRAS) unless the member\'s last tip says otherwise; 0 ⇒ «Sin propina»; a preset ⇒ that chip; another whole lempira ⇒ «Otro»; malformed ⇒ L 20; a redemption ⇒ «Sin propina»', () => {
+  assert.equal(C.TIP_DEFAULT_LEMPIRAS, 20, 'the platform default sits beside the presets (ruling 12)');
+  assert.ok(C.TIP_PRESETS.includes(C.TIP_DEFAULT_LEMPIRAS), 'the default is one of the presets');
+  const cases = [
+    [{}, 20], [{ lastCents: null }, 20], [{ lastCents: undefined }, 20],
+    [{ lastCents: 0 }, 0], [{ lastCents: 2000 }, 20], [{ lastCents: 4000 }, 40], [{ lastCents: 6000 }, 60],
+    [{ lastCents: 3500 }, { other: 35 }], [{ lastCents: 200000 }, { other: 2000 }],
+    [{ lastCents: 200100 }, 20], [{ lastCents: -100 }, 20], [{ lastCents: 3550 }, 20], [{ lastCents: '4000' }, 20], [{ lastCents: NaN }, 20],
+    [{ lastCents: 4000, redeem: true }, 0], [{ redeem: true }, 0],
+  ];
+  for (const [arg, want] of cases) assert.deepEqual(C.tipDefault(arg), want, `🔴 TD: tipDefault(${JSON.stringify(arg)}) ⇒ ${JSON.stringify(want)}`);
+  for (const [arg] of cases) { const f = ready(); assert.ok(C.chooseTip(f, C.tipDefault(arg)), `TD: every default is a valid chooseTip choice (${JSON.stringify(arg)})`); }
+});
+
+test('tip step r6: tip_choice:true rides every DELIVERY order body once a tip was chosen (incl. «Sin propina»); never on pickup, never before a choice, never on the quote body', () => {
+  const ctx = ctxOf({ orderId: 'XP251025-120000-AAAA' });
+  const f = ready();
+  assert.ok(!('tip_choice' in C.orderBody(f, ctx)), 'TC: no choice yet ⇒ no marker');
+  C.chooseTip(f, 0);
+  const b0 = C.orderBody(f, ctx);
+  assert.equal(b0.tip_choice, true, '🔴 TC: «Sin propina» is an explicit choice ⇒ tip_choice:true');
+  assert.ok(!('tip_cents' in b0), 'TC: and still no tip_cents');
+  C.chooseTip(f, 40);
+  assert.deepEqual([C.orderBody(f, ctx).tip_choice, C.orderBody(f, ctx).tip_cents], [true, 4000], '🔴 TC: a preset ⇒ the marker + the tip');
+  assert.ok(!('tip_choice' in C.quoteBody(f, ctx)), 'TC: the quote body never carries the marker (it is not an amount)');
+  C.setMode(f, 'pickup');
+  assert.ok(!('tip_choice' in C.orderBody(f, ctx)), '🔴 TC: pickup ⇒ no marker');
+});
+
+test('tip r7 (OWNER 11-09): the in-app tip is CARD-ONLY — a cash delivery has no tip (0), needs no tip choice, and its body carries neither tip_cents nor tip_choice', () => {
+  const ctx = ctxOf({ orderId: 'XP251025-120000-AAAA' });
+  const f = ready(); f.pay = 'cash'; C.chooseTip(f, 40);
+  assert.equal(C.tipCentsOf(f), 0, '🔴 R7: cash ⇒ no tip counted');
+  assert.equal(C.tipChosen(f), true, '🔴 R7: cash needs no tip choice (it never reaches the step)');
+  const b = C.orderBody(f, ctx);
+  assert.ok(!('tip_cents' in b) && !('tip_choice' in b), '🔴 R7: the cash body carries no tip and no marker');
+  assert.ok(!('tip_cents' in C.quoteBody(f, ctx)), 'R7: nor does its quote');
+  f.pay = 'online';
+  assert.deepEqual([C.tipCentsOf(f), C.orderBody(f, ctx).tip_choice], [4000, true], 'R7: card ⇒ the chosen tip counts again');
+  const g = ready(); g.pay = 'cash';
+  assert.equal(C.tipChosen(g), true, 'R7: a cash delivery with nothing chosen is complete');
 });

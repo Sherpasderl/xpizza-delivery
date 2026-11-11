@@ -150,14 +150,16 @@ test('cart: hydrate drops (and counts) what no longer fits — unknown dish, lau
   assert.deepEqual(c.lines().map((l) => [l.key, l.qty]), [[d.key, 1]]);
 });
 
-test('serializer: per-instance lines with BOTH legacy keys; the REAL server total == the displayed subtotal == Σ groups; factura reconciles', () => {
+test('serializer: per-instance lines with the legacy keys S3 D1 keeps (name always; id where it IS the item key); the REAL server total == the displayed subtotal == Σ groups; factura reconciles', () => {
   for (const rid of BRANDS) {
     const m = MENU[rid]; const d = configurable(m); const [e1, e2] = m.extrasFor(d.key); const p = plainDish(m, d.key);
     const c = createCart(m); c.add(d.key, [e1.key], 2); c.add(d.key, [e1.key, e2.key], 1); c.inc(d.key); c.inc(p.key); c.inc(p.key);
     const grp = Object.values(m.groups)[0]; if (grp) c.add(grp.choices[0], [], 1);
     const s = serialize(c, m);
     assert.equal(s.items.length, c.count(), 'one items[] line per instance');
-    assert.ok(s.items.every((it) => it.qty === 1 && 'id' in it && 'name' in it && it.dish_id != null));
+    // S3 D1 (advisor-approved 2026-11-10): the name always; the id only where it IS the item key (x_pizza's numeric id never is — the
+    // server ignores it there, menu-pricing.js:14); no served key ⇒ both legacy keys, as before
+    assert.ok(s.items.every((it) => { const d = m.dish(String(it.dish_id)); return it.qty === 1 && 'name' in it && it.dish_id != null && ('id' in it) === (!d.item_key || String(d.id) === d.item_key); }));
     assert.ok(s.items.every((it) => it.subtotal === it.price + it.extras.reduce((a, e) => a + m.extra(e.extra_id).price, 0)), 'F1: subtotal incl. extras');
     assert.equal(s.subtotal_cents, c.subtotalCents());
     assert.equal(serverCents(rid, s.items), s.subtotal_cents, `${rid}: computeServerTotal == displayed subtotal`);
@@ -320,4 +322,89 @@ test('cart: setInstance dresses ONE instance through the single write point (val
   const other = m.extras.find((e) => !m.extrasFor(d.key).some((x) => x.key === e.key));
   if (other) assert.throws(() => c.setInstance(d.key, 0, [other.key]), (e) => e.code === 'extra_not_offered');
   assert.deepEqual(c.lines()[0].ex, [{}, {}], 'a refused write changes nothing');
+});
+
+// ── S3 (D4c-grill/item-s1/S3-DESIGN.md D1/D2): the line's item_key from the served map; the server's own stage judges every body ──
+const { published: s3Published } = await import(join(ROOT, 'item-s3-fixtures.mjs'));
+const { resolveLines } = require(join(ROOT, 'xpizza-functions/catalog/resolve-lines.js'));
+const S3 = {
+  x_pizza: await quiet(() => s3Published('x_pizza')),
+  la_musa: await quiet(() => s3Published('la_musa')),
+  renamed: await quiet(() => s3Published('x_pizza', { rename: { key: 'Carnivora', to: 'Carnívora Suprema' } })),
+  minted: await quiet(() => s3Published('la_musa', { mint: { name: 'Bao Nuevo', key: 'i_aaaaaaaaaaac' } })),
+};
+const s3Body = (P, cart, m) => ({ items: serialize(cart, m).items });
+const noKey = (items) => items.map((l) => { const { item_key, ...rest } = l; return rest; });
+
+test('S3 adapter: each dish carries the served item_key (the map keyed by display id); absent / malformed → null', () => {
+  for (const rid of BRANDS) {
+    const env = S3[rid].env; const m = adaptMenu(env);
+    assert.ok(Object.keys(env.menu.item_keys).length === env.menu.dishes.length, `premise: the endpoint body maps every dish (${rid})`);
+    for (const d of m.dishes) assert.equal(d.item_key, env.menu.item_keys[String(d.id)], `🔴 ${rid}: a dish carries its served item_key (S3-CAPP-ADAPT)`);
+    const bare = JSON.parse(JSON.stringify(env)); delete bare.menu.item_keys;
+    assert.ok(adaptMenu(bare).dishes.every((d) => d.item_key === null), `🔴 ${rid}: no map → item_key null (S3-CAPP-ADAPT-ABSENT)`);
+    const bad = JSON.parse(JSON.stringify(env)); const [a, b] = bad.menu.dishes; bad.menu.item_keys[String(a.id)] = 7; bad.menu.item_keys[String(b.id)] = '';
+    const mb = adaptMenu(bad);
+    assert.deepEqual([mb.dish(m.dishes[0].key).item_key, mb.dish(m.dishes[1].key).item_key], [null, null], `🔴 ${rid}: a non-string or empty entry is no key (S3-CAPP-ADAPT-MALFORMED)`);
+  }
+});
+
+test('S3 serializer (D1): item_key appended LAST; name kept; id kept only when it IS the key; no map = today\'s exact lines; the stage accepts', () => {
+  for (const rid of BRANDS) {
+    const P = S3[rid]; const m = adaptMenu(P.env); const d = configurable(m); const [e1] = m.extrasFor(d.key); const p = plainDish(m, d.key);
+    const c = createCart(m); c.add(d.key, [e1.key], 1); c.inc(p.key);
+    const s = serialize(c, m);
+    for (const line of s.items) {
+      const dish = m.dishes.find((x) => String(x.dish_id) === String(line.dish_id));
+      assert.equal(line.item_key, dish.item_key, `🔴 ${rid}: the line carries the dish's item_key (S3-CAPP-LINE-KEY)`);
+      assert.equal(Object.keys(line).at(-1), 'item_key', `🔴 ${rid}: …appended LAST (S3-CAPP-LINE-LAST)`);
+      assert.equal(line.name, dish.name, `${rid}: the name is kept`);
+      assert.equal('id' in line, String(dish.id) === dish.item_key, `🔴 ${rid}: the id is kept exactly when it equals the key (S3-CAPP-LINE-ID)`);
+    }
+    assert.deepEqual(resolveLines(rid, JSON.parse(JSON.stringify({ items: s.items })), P.tables), { ok: true }, `${rid}: the server's stage accepts the body`);
+    // no map: the same cart serializes to today's exact lines (id AND name, no item_key)
+    const bare = JSON.parse(JSON.stringify(P.env)); delete bare.menu.item_keys;
+    const mb = adaptMenu(bare); const cb = createCart(mb); cb.add(d.key, [e1.key], 1); cb.inc(p.key);
+    const sb = serialize(cb, mb);
+    assert.ok(sb.items.every((l) => !('item_key' in l) && 'id' in l && 'name' in l), `🔴 ${rid}: no map → today's lines, both legacy keys (S3-CAPP-NOMAP)`);
+    assert.deepEqual(sb.items.map((l) => l.name), s.items.map((l) => l.name));
+    assert.equal(sb.items_text, s.items_text, `${rid}: items_text is untouched by S3`);
+  }
+});
+
+test('S3 serializer: a RENAMED x_pizza dish → {name: new label, item_key: kept key} resolves; a MINTED la_musa dish → item_key ALONE resolves', () => {
+  {
+    const P = S3.renamed; const m = adaptMenu(P.env); const d = m.dishes.find((x) => x.name === 'Carnívora Suprema');
+    assert.ok(d && d.item_key === 'Carnivora', 'premise: the renamed dish is served under its new label with its kept key');
+    const c = createCart(m); c.inc(d.key);
+    const body = s3Body(P, c, m); const line = body.items[0];
+    assert.deepEqual([line.name, line.item_key, 'id' in line], ['Carnívora Suprema', 'Carnivora', false], '🔴 the renamed line (S3-CAPP-RENAME-LINE)');
+    assert.deepEqual(resolveLines('x_pizza', JSON.parse(JSON.stringify(body)), P.tables), { ok: true }, '🔴 the server resolves it (S3-CAPP-RENAME-RESOLVE)');
+    assert.equal(resolveLines('x_pizza', { items: noKey(body.items) }, P.tables).code, 'menu_changed', 'premise: without item_key it is the server\'s menu_changed');
+  }
+  {
+    const P = S3.minted; const m = adaptMenu(P.env); const d = m.dishes.find((x) => x.name === 'Bao Nuevo');
+    assert.ok(d && d.id === 'bao_nuevo' && d.item_key === 'i_aaaaaaaaaaac', 'premise: the minted dish keeps today\'s id; its key is opaque');
+    const c = createCart(m); c.inc(d.key);
+    const body = s3Body(P, c, m); const line = body.items[0];
+    assert.deepEqual([line.item_key, 'id' in line], ['i_aaaaaaaaaaac', false], '🔴 the minted line sends item_key ALONE (S3-CAPP-MINT-NOID)');
+    assert.deepEqual(resolveLines('la_musa', JSON.parse(JSON.stringify(body)), P.tables), { ok: true }, '🔴 the server resolves it (S3-CAPP-MINT-RESOLVE)');
+    // asm5 (S2 × S3, advisor ruling 11-10): S2's «item_key wins» — a held key decides the line, a disagreeing display id is
+    // advisory. The premise is restated under S2; S3-CAPP-MINT-NOID above still pins that the app never sends the id.
+    const withId = { items: [{ id: 'bao_nuevo', ...line }] };
+    assert.deepEqual(resolveLines('la_musa', withId, P.tables), { ok: true }, 'premise (S2 item_key wins): the same line WITH its disagreeing display id still resolves');
+    assert.equal(withId.items[0][Symbol.for('xpizza.d4.pricingKeyStamp')], 'i_aaaaaaaaaaac', 'premise (S2 item_key wins): …and prices by its key, not the display id');
+  }
+});
+
+test('S3 deny list: a renamed dish\'s denied extra (the eligibility deny keyed by its item_key) is never offered', () => {
+  const P = S3.renamed; const env = JSON.parse(JSON.stringify(P.env)); const m0 = adaptMenu(env);
+  const d = m0.dishes.find((x) => x.name === 'Carnívora Suprema'); const offered = m0.extrasFor(d.key);
+  assert.ok(offered.length >= 2, 'premise: the renamed dish offers extras');
+  const victim = offered[0];
+  // the served eligibility deny map, keyed as the server keys it (extras-eligibility.js:89 denyLegacy[itemKey]) — by the ITEM KEY
+  env.menu.extras_eligibility = { ...(env.menu.extras_eligibility || {}), deny: { Carnivora: [victim.name] } };
+  const m = adaptMenu(env);
+  assert.ok(!m.extrasFor(d.key).some((e) => e.key === victim.key), '🔴 the extra denied under the item_key is not offered (S3-CAPP-DENY)');
+  assert.equal(m.extrasFor(d.key).length, offered.length - 1, 'only that one');
 });

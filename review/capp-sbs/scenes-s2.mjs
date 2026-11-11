@@ -88,3 +88,5 @@ export const S2_SCENES = [
   s2('S2adj-F-expired', { ...placed('F'), mock: adj('mk-f') }),
   s2('S2adj-G-declined', { ...placed('G', [{ until: 'document.querySelector("#layer [data-act]")', ms: 10000 }, { wait: 600 }]), mock: adj('mk-g') }),
 ];
+// shared with scenes-tip.mjs (PLAN-capp-tip-step r6): the same app steps, frame clip and injections
+export { s2frame, toCheckout, click, scrollEnd, GEO, NATIVE, pinSet, place, homeReady };   // + scenes-s3.mjs (item S3): the pin, the place steps, the home wait

@@ -125,6 +125,7 @@ export function router(opts = {}) {
         return json(scen.body, scen.status, [...(etag ? [{ name: 'ETag', value: etag }] : []), { name: 'Cache-Control', value: complete ? 'public, max-age=30' : 'no-store' }]);
       }
       const m = p.match(/\/getPublicMenu\/menu\/([a-z0-9_-]+)$/);
+      if (m && opts.menuOverride) { const o = opts.menuOverride(m[1]); if (o) return json(o.envelope, 200, [{ name: 'ETag', value: o.etag }]); }   // S3 SBS: the menu after a publish
       if (m) { const pv = PROV[m[1]]; return pv ? json(pv.envelope, 200, [{ name: 'ETag', value: pv.etag }]) : json({ ok: false }, 404); }
       // the client-version heartbeat (main's P-SELFUPDATE telemetry): its accepted answer is 204, no body (client-version.js handleReport)
       if (p.endsWith('/reportClientVersion') && req.method === 'POST') return { status: 204, body: '', type: 'text/plain' };
@@ -316,6 +317,11 @@ export function s2Extra(opts = {}) {
       // the order screen's prep read (capp-shell-ui readPublic → form-live-status prepFor): no prep_stats / prep_eta_min written for the
       // store — a real production state (the nightly writer has not run for it); the window then comes from the fallback
       if (/^\/restaurants\/[a-z0-9_-]+\/public\.json$/.test(u.pathname)) return json(null);
+      // PLAN-capp-tip-step r6: the member's last-tip leaf — owner-read rules: only u_ana's OWN path, only with the run's member token
+      // (?auth=<ID token>); anything else is the RTDB's 401 «Permission denied». opts.lastTip: cents (≥ 0) | null (no preference)
+      { const m = u.pathname.match(/^\/user_private\/([^/]+)\/last_tip\.json$/);
+        if (m) { if (m[1] !== 'u_ana' || u.searchParams.get('auth') !== MEMBER_TOKEN) return json({ error: 'Permission denied' }, 401);
+          return json(Number.isSafeInteger(opts.lastTip) ? { cents: opts.lastTip, at: S2_EXP - 86400000 } : null); } }
       return null;
     }
     if (!u.host.endsWith('cloudfunctions.net')) return null;
@@ -335,6 +341,9 @@ export function s2Extra(opts = {}) {
       const viol = placeBodyViolations(b);   // a route that throws is UNMAPPED ⇒ the run fails
       if (viol.length) throw new Error(`placeSdkOrder 400 (contract §2.1): ${viol.join('; ')}`);
       if (b.card.kind === 'saved' && !cards.some((c) => c.card_id === b.card.card_id && !c.expired)) { const r = SDKF.savedCardUnavailable(); return json(r.json, r.status); }   // A3: the strict fake's exact 409
+      // S3 SBS: the server's item refusal, pre-admission (opts.refusal = { status, json } built by the server's OWN writers — resolve-lines /
+      // extras-intake — in scenes-s3.mjs); served once, as the server answers the one tap
+      if (opts.place === 'refuse') { if (!opts.refusal || placed.has('__refused')) return null; placed.set('__refused', true); if (opts.onRefuse) opts.onRefuse(); return json(opts.refusal.json, opts.refusal.status); }
       if (opts.place === 'slow') return { ...json(SDKF.placeResp('bank_pending', { order_id: b.order_id, attempt_id: b.attempt_id })), delay: 60000 };   // frame 4: still answering at the shot
       const r = respOf(b.order_id, b.attempt_id); placed.set(b.order_id, r); return json(r);
     }

@@ -32,7 +32,7 @@ import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = '2ce3198d';
-const CAPP_TIP = '16f4ab09';
+const CAPP_TIP = '71b6a254';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
@@ -145,11 +145,26 @@ test('customer-app/ is the one platform orders deployment, with exactly the appr
   assert.ok(/^\s*publish = "dist"$/m.test(toml), '🔴 customer-app/netlify.toml must publish dist/');
 });
 
-test(`the live forms are byte-unchanged by the capp range ${BASE}..${CAPP_TIP}`, () => {
-  const [, tip] = capRange(), changed = laneChanged(tip, ['xpizza-orders', 'la-musa-orders']).join(', ');
+// S3 (the owner's rule-40 exception for the two order forms, 11-08; D4c-grill/item-s1/S3-DESIGN.md D3): the ONLY form change the capp
+// range may carry is the item_key slice, and EXACTLY its hunks — every lane commit that touches the forms changes only S3_FORM_FILES,
+// and at the tip each such file minus the S3 hunks (xpizza-functions/tools/item-s3-forms-inverse.js: each hunk once, or it throws) is
+// byte-identical to that file just before the FIRST S3 commit. Anything else in the forms is still a red.
+const S3_FORM_FILES = { 'xpizza-orders/index.html': 'xpizza-orders', 'la-musa-orders/index.html': 'la-musa-orders',
+  'xpizza-orders/form-serial-order.js': 'form-serial-order', 'la-musa-orders/form-serial-order.js': 'form-serial-order',
+  'xpizza-orders/account.js': 'account', 'la-musa-orders/account.js': 'account',
+  'xpizza-orders/form-identity-strip.copy.test.mjs': 'identity-strip-copy' };   // r3: the guard counts the payload check's projection
+test(`the live forms are byte-unchanged by the capp range ${BASE}..${CAPP_TIP} — except EXACTLY the S3 item_key hunks`, () => {
+  const [, tip] = capRange(), changed = laneChanged(tip, ['xpizza-orders', 'la-musa-orders']);
   const untracked = git('ls-files', '--others', '--exclude-standard', '--', 'xpizza-orders', 'la-musa-orders').trim();
-  assert.equal(changed, '', `🔴 live form files changed: ${changed}`);
+  assert.equal(changed.filter((f) => !(f in S3_FORM_FILES)).join(', '), '', `🔴 live form files changed: ${changed.join(', ')}`);
   assert.equal(untracked, '', `🔴 new files in the live forms: ${untracked}`);
+  const commits = laneCommits(tip, ['xpizza-orders', 'la-musa-orders']);
+  if (!commits.length) return;
+  const { unapplyItemS3Forms } = createRequire(import.meta.url)(join(ROOT, 'xpizza-functions/tools/item-s3-forms-inverse.js'));
+  const before = `${commits[commits.length - 1]}^1`;   // just before the FIRST S3 commit (git log lists newest first)
+  for (const f of changed) {
+    assert.equal(unapplyItemS3Forms(S3_FORM_FILES[f], git('show', `${tip}:${f}`)), git('show', `${before}:${f}`), `🔴 ${f} changed beyond EXACTLY the S3 hunks`);
+  }
 });
 
 // PLAN-capp-S2-r4 §2.2: this guard is re-pointed per slice to that slice's EXACT allowlist. S2-srv-tip: the server files the
@@ -163,13 +178,18 @@ test(`the live forms are byte-unchanged by the capp range ${BASE}..${CAPP_TIP}`,
 // blocks (platform-manifest.js, platform/sites.json — already listed) and the per-deployment version floor (client-floor.js).
 // The FULL light chain's guard debts (advisor 11-02, added on top): the R3 applicability pin contract/region-applicability.json — a
 // comment re-pin of chargeOnlineOrder's count in client-floor.js (its sibling contract/regions.json is already listed).
+// Tip step FULL light (advisor 11-09, added on top): the inventory generator skips the repo-root review/ tree (= train asm4 908df7df's
+// tool hunk), so review/capp-sbs never reaches the generated inventory (test tooling; never deployed).
+// S3 item_key (D4c-grill/item-s1/S3-DESIGN.md D3, added on top): the forms' exact-hunk inverse (test tooling) and the timer-bounds
+// pins of the form timers the S3 lines moved (contract/timer-bounds.json; call texts and bounds unchanged) and the reviewed region
+// registry's entries for the S3 call sites (contract/outputs/registry.json).
 const S2TIP_SERVER = new Set(['address-area.js', 'create-order-build.js', 'contract/census.js', 'tools/area-inverse.js', 'tools/area-charge-inputs-inverse.js', 'catalog/charge-inputs.js', 'compute-server-net.js', 'createorder-classify.js', 'delivery/delivery-pricing.js',
   'delivery/delivery-wire.js', 'driver-ledger/ledger-core.js', 'factura/build-record.js', 'index.js', 'order-exists.js', 'payer-email.js',
   'pixelpay-hosted-charge.js', 'quote-issue.js', 'rewards-redeem-intake.js', 'stats/stats-api.js', 'stats/stats-build.js', 'tip.js', 'whatsapp.js',
   'tools/s2tip-inverse.js', 'tools/s2tip-module-inverse.js', 'tools/mutation-sweep.mutants.json',
   'contract/census-map.json', 'contract/census.json', 'contract/regions.json',
   'platform/sites.json', 'platform-manifest.js', 'pixelpay-return-url.js', 'tools/sync-client.js', 'tools/s2app-inverse.js',
-  'tools/s3c-module-inverse.js', 'client-floor.js', 'contract/region-applicability.json'].map((f) => `xpizza-functions/${f}`));
+  'tools/s3c-module-inverse.js', 'client-floor.js', 'contract/region-applicability.json', 'tools/form-source-inventory.js', 'tools/item-s3-forms-inverse.js', 'contract/timer-bounds.json', 'contract/outputs/registry.json'].map((f) => `xpizza-functions/${f}`));
 test(`no server change beyond S2-srv-tip + S2-srv-app + colonia: the capp range ${BASE}..${CAPP_TIP} changes xpizza-functions/ only in tests, fixtures, generated inventories, the test chain and the slices' allowlist`, () => {
   const [, tip] = capRange();
   const changed = laneChanged(tip, ['xpizza-functions'])
@@ -180,7 +200,7 @@ test(`no server change beyond S2-srv-tip + S2-srv-app + colonia: the capp range 
   assert.deepEqual(bad, [], `🔴 production files changed: ${bad.join(', ')}`);
   if (changed.includes('xpizza-functions/package.json')) {
     const PKG = 'xpizza-functions/package.json', at = (rev) => { const b = blobAt(rev, PKG); return b ? JSON.parse(git('show', `${rev}:${PKG}`)) : null; };
-    const strip = (j) => { if (!j) return null; const c = { ...j, scripts: { ...j.scripts } }; delete c.scripts.test; for (const k of Object.keys(c.scripts)) if (/^test:(capp-s1|s2tip$|capp-s2a$|capp-s2a-browser$|address-area$|capp-s4$)/.test(k)) delete c.scripts[k]; return c; };
+    const strip = (j) => { if (!j) return null; const c = { ...j, scripts: { ...j.scripts } }; delete c.scripts.test; for (const k of Object.keys(c.scripts)) if (/^test:(capp-s1|s2tip$|capp-s2a$|capp-s2a-browser$|address-area$|capp-s4$|item-s3-rename$)/.test(k)) delete c.scripts[k]; return c; };
     // each lane commit changes it only in the test chain / the capp test scripts; a merge resolution takes ONE parent's rest verbatim
     for (const c of laneCommits(tip, [PKG])) assert.deepEqual(strip(at(c)), strip(at(`${c}^1`)), `🔴 package.json changed beyond the test chain / the capp-s1 test scripts in ${c.slice(0, 8)}`);
     for (const { m } of resolutionEdits(tip, [PKG])) {
@@ -210,12 +230,7 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // the resolution itself (equal to parent 2 = the merged-in line's own change; equal to parent 1 = untouched). The sync-client and
 // PORTED copies are exempt (their byte-identity checks own them, re-asserted here); any other hit must sit in MERGE_ALLOW, keyed
 // «<merge sha8> <path>», with a one-line reason — reviewed, and an entry that no longer hits is stale and fails.
-const MERGE_ALLOW = {
-  // DRYRUN (2e, next-train dry assembly asm2; TRAIN-NEXT2 A4): 1bca1782 hand-wrote CAPP_TIP (the pre-B4 placeholder pin + a DRYRUN
-  // comment) in the first capp merge; the B4 merge 01d76176 then took capp's line verbatim. The REAL assembly merges the capp tip
-  // taking capp-guards VERBATIM, so this entry must NOT exist there (its stale check makes it RED if unused).
-  '1bca1782 customer-app/capp-guards.test.mjs': 'dry-run placeholder CAPP_TIP, superseded verbatim by the B4 merge',
-};
+const MERGE_ALLOW = {};
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
   for (const { src, dst } of synced) assert.ok(sameBytes(dst, src), `🔴 ${dst} differs from (or is missing beside) its source ${src} — the merge exemption no longer holds`);

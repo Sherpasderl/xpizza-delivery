@@ -1700,12 +1700,13 @@
   "slice": "b5",
   "label": "x_pizza stops pricing by name — a rename would no longer block",
   "file": "../xpizza-orders/index.html",
-  "from": "  pricingKey:      (r) => r.name,     // x_pizza is priced server-side BY NAME — a rename is a different product",
-  "to": "  pricingKey:      (r) => String(r.id),     // x_pizza is priced server-side BY NAME — a rename is a different product",
+  "from": "  pricingKey:      (r) => liveItemKey(r) || r.name,     // x_pizza is priced server-side BY NAME — a rename is a different product; S3 (ruling 2026-11-10): with the served map the line's identity is the item key, so a rename keeps it",
+  "to": "  pricingKey:      (r) => String(r.id),     // x_pizza is priced server-side BY NAME — a rename is a different product; S3 (ruling 2026-11-10): with the served map the line's identity is the item key, so a rename keeps it",
   "command": [
    "node",
    "../cart-decoupling.test.mjs"
-  ]
+  ],
+  "repointed": "S3 item_key: the identity is the item key when the map is served, else the name; the mutant still keys by the display id, so a rename with NO map would no longer block"
  },
  {
   "id": "b5-21",
@@ -2516,12 +2517,13 @@
   "slice": "b7",
   "label": "the key history is never accumulated, so only the newest key is ever consulted",
   "file": "../xpizza-orders/index.html",
-  "from": "  const current = window.availKey(availIdentityOf(item));\n  if (seen.indexOf(current) === -1) seen.push(current);\n  return seen;",
-  "to": "  const current = window.availKey(availIdentityOf(item));\n  return [current];",
+  "from": "  if (seen.indexOf(current) === -1) seen.push(current);\n  const ik = liveItemKey(item); if (ik) { const k = window.availKey(ik); if (seen.indexOf(k) === -1) seen.push(k); }   // S3: the portal / KDS write the item_key\n  return seen;",
+  "to": "  const ik = liveItemKey(item);\n  return ik ? [current, window.availKey(ik)] : [current];",
   "command": [
    "node",
    "../live-apply.test.mjs"
-  ]
+  ],
+  "repointed": "S3 item_key: the history push is followed by the item_key's push; the mutant still keeps no history (only the CURRENT key, plus the current item_key)"
  },
  {
   "id": "b7-3",
@@ -2568,14 +2570,15 @@
   "slice": "b7",
   "label": "la_musa: the key history is never accumulated, so only the newest key is ever consulted",
   "file": "../la-musa-orders/index.html",
-  "from": "  const current = window.availKey(availIdentityOf(item));\n  if (seen.indexOf(current) === -1) seen.push(current);\n  return seen;",
-  "to": "  const current = window.availKey(availIdentityOf(item));\n  return [current];",
+  "from": "  if (seen.indexOf(current) === -1) seen.push(current);\n  const ik = liveItemKey(item); if (ik) { const k = window.availKey(ik); if (seen.indexOf(k) === -1) seen.push(k); }   // S3: the portal / KDS write the item_key\n  return seen;",
+  "to": "  const ik = liveItemKey(item);\n  return ik ? [current, window.availKey(ik)] : [current];",
   "command": [
    "node",
    "../live-apply.test.mjs"
   ],
   "equivalent": true,
-  "why": "ONE EQUIVALENCE CLASS (b7-10/b7-11): la_musa is 86'd BY ID, and a catalog rename does not change an id — so the key history for that brand can only ever hold one entry, and consulting 'every key this dish has had' is identical to consulting the current one. No input distinguishes them. The code is shared-shaped anyway because the hazard is real on the other brand: b7-1/b7-2 are the same mutations on x_pizza, which IS 86'd by name, and both die. b7-12 (fail-open inverted) dies here too, so la_musa's own availability rule is pinned — it is only the RENAME-awareness that is vacuous for it, and it stops being vacuous the moment la_musa's key strategy changes, which is exactly when it would be needed."
+  "why": "ONE EQUIVALENCE CLASS (b7-10/b7-11): la_musa is 86'd BY ID, and a catalog rename does not change an id — so the key history for that brand can only ever hold one entry, and consulting 'every key this dish has had' is identical to consulting the current one. No input distinguishes them. The code is shared-shaped anyway because the hazard is real on the other brand: b7-1/b7-2 are the same mutations on x_pizza, which IS 86'd by name, and both die. b7-12 (fail-open inverted) dies here too, so la_musa's own availability rule is pinned — it is only the RENAME-awareness that is vacuous for it, and it stops being vacuous the moment la_musa's key strategy changes, which is exactly when it would be needed.",
+  "repointed": "S3 item_key: the history push is followed by the item_key's push; the mutant still keeps no history (only the CURRENT key, plus the current item_key)"
  },
  {
   "id": "b7-12",
@@ -5217,13 +5220,14 @@
   "slice": "d2",
   "label": "🔴 an id VALUE leaks into items_text — hashed by two server bindings and printed on the KDS ticket",
   "file": "../xpizza-orders/index.html",
-  "from": "      return `${qty[p.id]}x ${p.name} (L${p.price})${extrasStr2}`;",
-  "to": "      return `${qty[p.id]}x ${p.name} (L${p.price})${extrasStr2}${p.dish_id?' '+p.dish_id:''}`;",
+  "from": "      return `${qty[p.id]}x ${itemNameFor(p, String(p.id))} (L${p.price})${extrasStr2}`;",
+  "to": "      return `${qty[p.id]}x ${itemNameFor(p, String(p.id))} (L${p.price})${extrasStr2}${p.dish_id?' '+p.dish_id:''}`;",
   "command": [
    "node",
    "../cart-identity-order.test.mjs"
   ],
-  "kills_with": "is in items_text"
+  "kills_with": "is in items_text",
+  "repointed": "S3 (Codex r1 P2-3): items_text names a pinned line by the name it was first sent with; the mutant still appends the dish_id"
  },
  {
   "id": "d2-10",
@@ -26361,7 +26365,7 @@
    "../customer-app/capp-ui.test.mjs"
   ],
   "kills_with": [
-   "the tip step's place button is disabled"
+   "the placing button (the tip step's, or the checkout's for cash) is disabled"
   ]
  },
  {
@@ -26420,8 +26424,8 @@
   "slice": "perf-core",
   "label": "r3.3-F2 r2-2: «Confirmar pedido» (pickup) can place an unavailable line",
   "file": "../customer-app/capp-ui.js",
-  "from": "const ctaOff = (T) => (!hasSlotLock() && !!need()) || soldBlock() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));",
-  "to": "const ctaOff = (T) => (!hasSlotLock() && !!need()) || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));",
+  "from": "const ctaOff = (T) => (!hasSlotLock() && !!need()) || soldBlock() || ((S.flow.mode !== 'delivery' || (S.flow.pay === 'cash' && !hasSlotLock())) && (!T.ready || !intakeOk()));",
+  "to": "const ctaOff = (T) => (!hasSlotLock() && !!need()) || ((S.flow.mode !== 'delivery' || (S.flow.pay === 'cash' && !hasSlotLock())) && (!T.ready || !intakeOk()));",
   "command": [
    "node",
    "--test",
@@ -26429,7 +26433,7 @@
    "../customer-app/capp-ui.test.mjs"
   ],
   "kills_with": [
-   "the pickup CTA is disabled for an unavailable line"
+   "the placing button (the tip step's, or the checkout's for cash) is disabled"
   ]
  },
  {

@@ -26,12 +26,13 @@
     const availKey = o.availKey, decide = o.decide;
     if (typeof availKey !== 'function' || typeof decide !== 'function') throw new Error('capp-availability: availKey and decide are required');
     const history = new Map();   // `${rid}\0${dish id}` → every key that dish has had this session (the forms' availKeysFor)
+    // S3 (D4c-grill/item-s1/S3-DESIGN.md D2): the portal and the KDS write an 86 under the dish's ITEM KEY (portal/ops-core.js), which a
+    // minted dish's id / name never equals — so its item_key (the served map; capp-menu.js) is one more key in the history
     function keysOf(rid, dish, field) {
       const raw = dish[field];
-      if (raw == null || raw === '') return null;
+      if ((raw == null || raw === '') && !dish.item_key) return null;
       const hk = `${rid}\0${String(dish.id)}`, seen = history.get(hk) || [];
-      const k = availKey(raw);
-      if (!seen.includes(k)) seen.push(k);
+      for (const v of [raw, dish.item_key]) { if (v == null || v === '') continue; const k = availKey(v); if (!seen.includes(k)) seen.push(k); }
       history.set(hk, seen);
       return seen;
     }

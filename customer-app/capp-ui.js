@@ -135,6 +135,7 @@
   // apiConfigOf: the store's transport config (the ONE source — the store's own api and the shell's are built from it)
   function apiConfigOf(cfg) {
     return { restaurantId: cfg.restaurantId, orderIdPrefix: cfg.orderIdPrefix, pendingPayKey: cfg.pendingPayKey, endpoints: cfg.endpoints, hours: cfg.hours,
+      ...(typeof cfg.rtdbBase === 'string' && cfg.rtdbBase ? { rtdbBase: cfg.rtdbBase } : {}),   // r6: the member's last-tip leaf
       cartKey: cfg.cartKey, placedKey: cfg.placedKey, guestCardOnly: cfg.guestCardOnly === true, ...(cfg.schedulingLive === true ? { schedulingLive: true } : {}), ...(cfg.sdkCheckout === true ? { sdkCheckout: true } : {}) };   // S7a-1: hosted by the shell (both absent ⇒ the S2 path, unchanged); §3.2 the guest tender rule
   }
   // the cart, its generation and every guard on it: o = { menu, cfg, api: () => the store's api, mods: () => true once it exists,
@@ -239,7 +240,7 @@
   function errSheetHtml(e) {
     const acts = e.acts.map((a) => `<button class="${a.primary ? 'primary' : 'btn2 wide'}" data-act="${a.act}"${a.disabled ? ' disabled' : ''}${a.id ? ` id="${a.id}"` : ''}>${esc(a.label)}</button>`).join('');
     const ic = e.ic ? IC[e.ic] : e.icon === 'ok' ? IC.check : e.icon === 'warn' || e.icon === 'calm' ? IC.alert : IC.close;
-    return `<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="${esc(e.title)}"><div class="grab"></div><div class="errsheet"><div class="icon${e.icon ? ' ' + e.icon : ''}">${ic}</div><h2>${esc(e.title)}</h2><p>${e.bodyHtml != null ? e.bodyHtml : esc(e.body)}</p>${e.note ? `<p class="note">${e.note}</p>` : ''}<div class="acts">${acts}</div></div></div>`;
+    return `<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="${esc(e.title)}"><div class="grab"></div><div class="errsheet"><div class="icon${e.icon ? ' ' + e.icon : ''}">${ic}</div><h2>${esc(e.title)}</h2><p>${e.bodyHtml != null ? e.bodyHtml : esc(e.body)}</p>${e.note ? `<p class="note">${e.note}</p>` : ''}${Array.isArray(e.notes) ? e.notes.map((n) => `<p class="note">${n}</p>`).join('') : ''}<div class="acts">${acts}</div></div></div>`;
   }
   function mount(doc, opts) {
     const CappMenu = opts.CappMenu || (typeof self !== 'undefined' && self.CappMenu) || require('./capp-menu.js');
@@ -883,6 +884,7 @@
       if (dead || r.kind === 'superseded') return;
       // S2b r1 P2-6: a failed quote is never a silent dead end — the key is released and the generic held state offers «Reintentar»
       if (r.kind === 'offline' || r.kind === 'try_again' || r.kind === 'refused') { S.askedKey = null; S.quoteErr = key; quoteFailed(); }
+      else if (r.kind === 'menu_changed' || r.kind === 'extra_not_allowed' || r.kind === 'pickup_only') { S.askedKey = null; S.quoteErr = key; if (S.screen === 'checkout' || S.screen === 'tip') { itemRefused(r); return; } }
       else S.quoteErr = null;
       if (r.kind === 'ok') { S.q = r.record; S.qKey = key; if (f.mode === 'delivery') { S.outZone = false; if (r.record.resp.delivery) S.lastDelivery = r.record.resp.delivery; } }
       else if (r.kind === 'out_of_zone') { S.outZone = true; }
@@ -904,13 +906,16 @@
     function ctaLabel(T) {
       if (hasSlotLock()) return 'Reintentar';   // row 10b: the drawn «Reintentar» re-sends the SAME order
       const n = need(); if (n) return n;
-      if (S.flow.mode === 'delivery') return 'Continuar';   // delivery continues to the tip step
+      if (C.tipped(S.flow)) return 'Continuar';   // a card delivery continues to the tip step (r7: cash places from here)
+      if (S.flow.mode === 'delivery') return 'Hacer pedido' + (T.ready ? ' · ' + moneyC(T.total) : '');   // r7 (owner 11-09): cash ⇒ «Hacer pedido · L X»
       const amt = T.ready ? ' · ' + moneyC(T.total) : '';   // pickup places from here (no tip); no amount until the quote is ready
       return S.flow.pay === 'online' ? (sdkOn() ? 'Hacer pedido' : 'Pagar') + amt : 'Confirmar pedido' + amt;   // S2-checkout v7: «Hacer pedido · L X»
     }
     // cash-chips lock: on 10b the fields need() reads are FIXED and the replay re-sends the recorded body — they never block «Reintentar»
     // (a remounted 10b with an empty flow would otherwise be a dead end)
-    const ctaOff = (T) => (!hasSlotLock() && !!need()) || soldBlock() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));   // pickup places from here
+    // pickup and (r7) a cash delivery place from here: they need the quote + the intake key — except a 10b replay (the slot lock) of a cash
+    // delivery, which re-sends its RECORDED body exactly as before r7 (delivery never gated here)
+    const ctaOff = (T) => (!hasSlotLock() && !!need()) || soldBlock() || ((S.flow.mode !== 'delivery' || (S.flow.pay === 'cash' && !hasSlotLock())) && (!T.ready || !intakeOk()));
     function syncCta() { const b = $('cta'); if (!b || !S.flow) return; const T = totalsNow(); b.disabled = ctaOff(T); b.textContent = ctaLabel(T); }
 
     // ── the map: the drawn chrome; a real Google map inside it when a key is configured, else the schematic SVG ──
@@ -1026,7 +1031,7 @@
       const next = g ? '<div class="guestline"><b>Después del código de WhatsApp</b> se abre el pago seguro con tarjeta.</div>' : '';
       const open = S.sumOpen !== false;   // frame 4a: open by default on the desk
       const tipRow = tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : del ? '<div class="sumrow"><span>Propina</span><span class="r mute">Se elige en el siguiente paso</span></div>' : '';   // call 3
-      const pedido = `<section class="fsec" aria-label="Resumen del pedido"><div class="osum box"><button class="toggle" data-act="sumtoggle" aria-expanded="${open}"><span class="tt">Tu pedido<span> · ${esc(unitOf(nItems))}</span></span>${open ? IC.up : IC.down}</button>
+      const pedido = `<section class="fsec" aria-label="Resumen del pedido">${extraNoteHtml()}<div class="osum box"><button class="toggle" data-act="sumtoggle" aria-expanded="${open}"><span class="tt">Tu pedido<span> · ${esc(unitOf(nItems))}</span></span>${open ? IC.up : IC.down}</button>
       ${open ? `<div class="lines">${lines.map((d) => `<div class="osline">${lineName(d, 'n')}${lineStep(d)}<span class="p">${money(d.total)}</span></div>`).join('')}<button class="addmore" data-act="addmore">${IC.plus}Agregar más platos</button></div>` : ''}
       <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${tipRow}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
       // call 6: the Terms sentence only with the platform's real (https) Terms link; «Sherpa lo entrega» only on a delivery
@@ -1090,7 +1095,7 @@
       const sumRow = `<button class="urow" data-act="sumtoggle" aria-expanded="${!!S.sumOpen}">${logoChip('lg')}<span class="t"><b>${storeLine()}</b><span>${esc(unitOf(nItems))}${S.sumOpen ? '' : ' · ' + esc(lines.map((d) => d.n + '× ' + d.item.n).join(', '))}</span></span>${IC.down.replace('class="i"', 'class="i chev"')}</button>`;
       const sumBody = S.sumOpen ? `<div class="sumbody">${lines.map((d) => `<div class="osline">${lineName(d, 'n')}${lineStep(d)}<span class="p">${money(d.total)}</span></div>`).join('')}<button class="addmore" data-act="addmore">${IC.plus}Agregar más platos</button></div>` : '';
       const tip = T.ready ? T.tip : C.tipCentsOf(f);
-      const pedido = `<section class="fsec" aria-label="Resumen del pedido"><h2>Tu pedido</h2>
+      const pedido = `<section class="fsec" aria-label="Resumen del pedido"><h2>Tu pedido</h2>${extraNoteHtml()}
     <div class="osum flat">${sumRow}${sumBody}
       <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : ''}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
       // Pago — row 10: a retained scheduled send fixes its tender (the other option in the drawn disabled .45, as the other slots)
@@ -1124,15 +1129,80 @@
     }
 
     // ── the tip step (prototype tipHtml :1954-1961) ──
+    // ── PLAN-capp-tip-step r6 (MOCKUP-capp-tip-step-r2): the step OPENS with a choice, resolved BEFORE it renders (the chip never
+    // moves). A member's last tip comes from ONE read of their own server-written leaf (api.lastTip), started at checkout open and
+    // bound to the identity it was read for; a guest / no answer within TIP_WAIT_MS ⇒ the platform default. A default-derived
+    // choice belongs to its identity (cleared on a change); an explicit tap is the person's and is kept.
+    const TIP_WAIT_MS = 1500;
+    const tipOwner = () => { const m = member(); return m && m.uid != null ? 'u:' + m.uid : 'guest'; };
+    const TIPD = { gen: 0, owner: null, state: 'idle', cents: null, p: null };
+    function tipLoad() {
+      const who = tipOwner();
+      if (TIPD.owner === who && TIPD.state !== 'idle') return;
+      TIPD.owner = who; TIPD.cents = null;
+      if (who === 'guest' || !api || typeof api.lastTip !== 'function') { TIPD.state = 'done'; TIPD.p = null; return; }
+      const gen = ++TIPD.gen; TIPD.state = 'loading';
+      TIPD.p = Promise.resolve().then(() => api.lastTip()).catch(() => null).then((r) => {
+        if (dead || gen !== TIPD.gen || who !== tipOwner()) return;   // another identity since: not this member's tip
+        TIPD.state = 'done'; TIPD.cents = r && 'u:' + r.uid === who ? r.cents : null;
+      });
+    }
+    function tipIdentity() {
+      TIPD.gen++; TIPD.owner = null; TIPD.state = 'idle'; TIPD.cents = null; TIPD.p = null;
+      tipCancel();
+      const f = S.flow;
+      if (f && S.tipDefaultFlow === f) { f.tipChoice = null; f.tipCents = 0; }   // a DEFAULT was this identity's; off the step an explicit tap is kept
+      S.tipDefaultFlow = null;
+      // Codex D-r2 (advisor: no machinery for a rare case): an identity change ON the step does what the cash switch does — no tip,
+      // back to the checkout; the next «Continuar» resolves the new identity's default fresh
+      if (S.screen === 'tip') tipLeave();
+    }
+    function tipCancel() { S.tipEntryGen = (S.tipEntryGen || 0) + 1; S.tipEntry = null; }
+    // leave the tip step for the checkout with NO tip: an open sheet on the step (a «Realizando pedido…» confirmation, «Otro») is
+    // abandoned — nothing is sent; the stack + history stay in step
+    function tipLeave() {
+      const f = S.flow; if (f) { f.tipChoice = null; f.tipCents = 0; }
+      S.tipDefaultFlow = null; tipCancel();
+      if (S.screen !== 'tip') return;   // off the step (the checkout's own cash pick): only the tip state is cleared
+      if (S.layerKind && S.layerKind !== 'cart') closeLayer();
+      const top = S.stack[S.stack.length - 1]; if (top && top.screen === 'checkout') back(); else { S.screen = 'checkout'; render(); }
+    }
+    const tipApply = (f) => { C.chooseTip(f, C.tipDefault({ lastCents: TIPD.state === 'done' ? TIPD.cents : null, redeem: !!f.redeem })); S.tipDefaultFlow = f; };
+    // wait ≤ TIP_WAIT_MS for the pending read, then apply once — only if still this flow, on the checkout, this identity, and a CARD
+    // delivery (Codex D-r1 P2a: a switch to cash meanwhile never lets the late answer open the step)
+    function tipWait(f, apply) {
+      tipCancel();
+      const gen = S.tipEntryGen, who = tipOwner(), tm = opts.timers || { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (h) => clearTimeout(h) };
+      let done = false, t = null;
+      const finish = () => {
+        if (done) return; done = true; if (t !== null) tm.clearTimeout(t);
+        if (dead || gen !== S.tipEntryGen) return;            // Back / pickup / cash / identity / teardown cancelled it
+        S.tipEntry = null;
+        if (S.flow !== f || S.screen !== 'checkout' || !C.tipped(f) || who !== tipOwner()) return;
+        apply();
+      };
+      S.tipEntry = { gen };
+      t = tm.setTimeout(finish, TIP_WAIT_MS);
+      TIPD.p.then(finish, finish);
+    }
+    function enterTip() {
+      const f = S.flow;
+      if (f.tipChoice !== null) { go('tip'); return; }   // a choice already made is never replaced
+      if (S.tipEntry) return;                               // duplicate taps coalesce into the pending entry
+      tipLoad();
+      const apply = () => { tipApply(f); go('tip'); };
+      if (TIPD.state !== 'loading' || !TIPD.p) { apply(); return; }
+      tipWait(f, () => { if (f.tipChoice === null) apply(); });
+    }
     const tipKey = () => { const c = S.flow.tipChoice; return c === null ? null : c.kind === 'none' ? 0 : c.kind === 'other' ? 'other' : c.lempiras; };
     const tipReady = (T) => C.tipChosen(S.flow) && T.ready && !need() && !soldBlock() && intakeOk();
     function tipHtml() {
       const f = S.flow, T = totalsNow(), c = tipKey();
-      const chip = (v, label) => `<button class="chip" aria-pressed="${c === v}" data-act="tipc" data-val="${v}">${label}</button>`;
+      const chip = (v, label, cls = '') => `<button class="chip${cls}" aria-pressed="${c === v}" data-act="tipc" data-val="${v}">${label}</button>`;
       const tot = T.ready ? moneyC(T.total) : '—';
       return `<div class="topbar"><button class="iconbtn" data-act="back" aria-label="Volver a Entrega y Pago">${IC.back}</button><h1></h1><span class="sp"></span></div>
     <div class="tipwrap"><div class="tiphero">${RIDER}<h1>Agregá una propina</h1><p>La propina va completa a tu repartidor.</p></div>
-    <div class="tipchips" role="group" aria-label="Propina">${C.TIP_PRESETS.map((v) => chip(v, v ? money(v) : 'Sin propina')).join('')}${chip('other', 'Otro')}</div>
+    <div class="tipchips" role="group" aria-label="Propina">${C.TIP_PRESETS.map((v) => chip(v, v ? money(v) : 'Sin propina')).join('')}${f.tipChoice && f.tipChoice.kind === 'other' && f.tipCents > 0 ? chip('other', `Otro · ${money(f.tipCents / 100)}`, ' two') : chip('other', 'Otro')}</div>
     <div class="tipfoot"><div class="sumrow"><span>Propina</span><span>${c === null ? '—' : f.tipCents ? moneyC(f.tipCents) : 'Sin propina'}</span></div><div class="sumrow tot"><span>Total</span><span>${tot}</span></div>${sdkOn() && !S.desk ? sdkTipRow(T) : ''}<button class="primary" data-act="tip-place"${tipReady(T) ? '' : ' disabled'}>Hacer pedido · ${tot}</button></div></div>`;
     }
     const tipOtherHtml = () => { const d = S.tipDraft || ''; return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Otro monto"><div class="grab"></div><div class="sheethead"><div><h2>Otro monto</h2><small>Propina para tu repartidor</small></div><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div><div class="tipother"><label class="tipamt"><span>L</span><input inputmode="numeric" data-field="tipOther" value="${esc(d || '0')}" style="width:calc(${Math.max(1, (d || '0').length)}ch + 6px)" aria-label="Monto de la propina"></label><div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button data-act="tk" data-val="${n}">${n}</button>`).join('')}<span></span><button data-act="tk" data-val="0">0</button><button data-act="tk" data-val="del" aria-label="Borrar">${BKSP}</button></div><button class="primary" data-act="tip-save">Guardar</button></div></div>`; };
@@ -1395,6 +1465,56 @@
       S.screen = target; render();
     }
     function showErr(e) { S.err = e; openLayer('err'); }
+    // ── S3 (D4c-grill/item-s1/S3-DESIGN.md D2): the item refusals, on the quote and the order alike ──
+    // a refusal names a dish by its ITEM KEY (or, from an older server, a legacy key) and an extra by its legacy key (id or name)
+    const namesDish = (d, k) => !!d && typeof k === 'string' && (d.item_key === k || d.name === k || String(d.id) === k);
+    function deniedOf(lines) {   // → one entry per (cart line, extra) the refusal names: { key, ek, dish, extra }
+      const out = [], seen = new Set();
+      for (const x of Array.isArray(lines) ? lines : []) for (const l of cart.lines()) {
+        const d = menu.dish(l.key); if (!namesDish(d, x.item)) continue;
+        for (const inst of l.ex) for (const k of Object.keys(inst || {})) {
+          const e = menu.extra(k); const id = l.key + '\0' + k;
+          if (e && (e.name === x.extra || String(e.id) === x.extra) && !seen.has(id)) { seen.add(id); out.push({ key: l.key, ek: k, dish: d.name, extra: e.name }); }
+        }
+      }
+      return out;
+    }
+    function itemRefused(out) {
+      if (out.kind === 'menu_changed') { backTo('checkout'); showErr(ERR.menuChanged()); return true; }
+      if (out.kind === 'extra_not_allowed') {
+        const den = deniedOf(out.lines);
+        backTo('checkout');
+        if (!den.length) { showErr(ERR.generic()); return true; }   // nothing in this cart matches: never a repair that removes nothing
+        S.denied = den; showErr(ERR.extraDenied(den.map((x) => `<b>${esc(x.dish)}</b> · extra: ${esc(x.extra)}`)));
+        return true;
+      }
+      if (out.kind === 'pickup_only') {   // the server knows the dish is pickup-only: the EXISTING gate (no new copy)
+        for (const d of menu.dishes) if (namesDish(d, out.item_key)) poKeys.add(d.key);
+        backTo('checkout'); return true;
+      }
+      return false;
+    }
+    // B2: «Quitar extra y seguir» — ONLY the denied extras leave their lines; the quote is asked again and the note shows the NEW total
+    // before any tap (nothing is re-sent: the customer taps again)
+    function removeDenied() {
+      const den = S.denied || []; S.denied = null;
+      const byLine = new Map(); for (const x of den) { if (!byLine.has(x.key)) byLine.set(x.key, new Set()); byLine.get(x.key).add(x.ek); }
+      mutate(() => {
+        for (const [key, ks] of byLine) {
+          const l = cart.lines().find((y) => y.key === key); if (!l) continue;
+          l.ex.forEach((inst, i) => { const cur = Object.keys(inst || {}); if (cur.some((k) => ks.has(k))) cart.setInstance(key, i, cur.filter((k) => !ks.has(k))); });
+        }
+      });
+      const byDish = new Map(); for (const x of den) { if (!byDish.has(x.dish)) byDish.set(x.dish, []); if (!byDish.get(x.dish).includes(x.extra)) byDish.get(x.dish).push(x.extra); }
+      S.extraNote = { text: [...byDish].map(([dish, ex]) => `Quitamos ${ex.length > 1 ? ex.slice(0, -1).join(', ') + ' y ' + ex[ex.length - 1] : ex[0]} de ${dish}.`).join(' '), key: null };
+      closeLayer(); S.askedKey = null; S.quoteErr = null; S.extraNote.key = stateKey(); backTo('checkout');   // the checkout's render asks the quote for the repaired state
+    }
+    // the B2 note: only while the repaired state is the one on screen, with the quote that stands for it
+    function extraNoteHtml() {
+      if (!S.extraNote || !S.flow || S.extraNote.key !== stateKey()) return '';
+      const T = totalsNow(); if (!T.ready) return '';
+      return `<div class="cartnote" role="status">${IC.info}<span>${esc(S.extraNote.text + ' Total nuevo: ' + moneyC(T.total) + '.')}</span></div>`;
+    }
     // MOCKUP-capp-native-store-update state 4 (owner: ONE cart line, no sheet): back from the store on a new build, the cart says so
     // once — gone when the cart is closed (the host owns the one-shot)
     const appUpdated = () => { try { return typeof opts.appUpdated === 'function' && opts.appUpdated() === true; } catch (_) { return false; } };
@@ -1412,6 +1532,11 @@
       closed: () => (sched() ? { title: C.CLOSED_SHEET.title(cfg.name || '', closesText()), body: C.CLOSED_SHEET.body + ' ' + C.CLOSED_SHEET.scheduleHint, icon: 'warn', acts: [{ act: 'err-sched', label: 'Programar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }
         : { title: C.CLOSED_SHEET.title(cfg.name || '', closesText()), body: C.CLOSED_SHEET.body, icon: 'warn', acts: [{ act: 'lclose', label: 'Cerrar' }] }),   // S4 (P:1974): «Programar»
       // S4 N1 (owner, Option 1) and row 9 (owner-approved; the calm held sheet of #mk-pending, one action)
+      // S3 (OWNER-APPROVED MOCKUP-item-s3-refusals.html A1 / B1, 2026-11-10): A1's title is the APP's own (owner change (a): «recargá el
+      // menú» — the server's detail is the forms' «…la página», never shown here); ONE action. B1: one naming line per denied extra (c);
+      // «Cerrar» kept (d).
+      menuChanged: () => ({ title: 'El menú se actualizó, recargá el menú', body: 'Tu pedido no se envió ni se cobró nada. Al recargar, tu pedido se arma de nuevo con el menú actual.', icon: 'warn', acts: [{ act: 'menu-reload', label: 'Recargar', primary: true }] }),
+      extraDenied: (notes) => ({ title: 'Un extra ya no está disponible', body: 'Uno de los extras ya no está disponible para ese producto. Revisá tu pedido.', icon: 'warn', notes, acts: [{ act: 'extra-remove', label: 'Quitar extra y seguir', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
       slotRefused: () => ({ title: 'Ese horario ya no está disponible', body: 'Tu pedido no se envió ni se cobró nada. Elegí otro horario; tu pedido está intacto.', icon: 'warn', acts: [{ act: 'err-slot', label: 'Elegir otro horario', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
       schedReview: () => ({ title: 'Tu pago está hecho; estamos revisando tu horario', body: 'Tu horario ya no estaba disponible cuando se confirmó el pago. No hace falta pagar de nuevo: te escribimos por WhatsApp para acordar otro horario.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }], held: true }),
       // TODO(ruling pending): «Pagar en efectivo» is a host event only
@@ -1508,6 +1633,7 @@
       if (k === 'slot_refused') { backTo('checkout'); showErr(ERR.slotRefused()); return; }   // S4 N1
       if (k === 'scheduled_review') { backTo('checkout'); showErr(ERR.schedReview()); return; }   // S4 row 9: paid, the slot under review
       if (k === 'out_of_zone') { S.outZone = true; backTo('checkout'); return; }
+      if (itemRefused(out)) return;   // S3: menu_changed (A1) / extra_not_allowed (B1) / pickup_only_item (the existing gate)
       // Codex cash-chips r1 P1-1: the replayed bytes were refused on their quote — the lock is released; «Entrega & Pago» quotes again
       // and the customer re-confirms (its own notices: the price note, the CTA), nothing was rebuilt or re-sent
       if (k === 'replay_requote') { backTo('checkout'); S.askedKey = null; S.quoteErr = null; requote(); return; }
@@ -1578,6 +1704,7 @@
     const ownHist = () => { try { if (H) return histN > 0 && H.owns() === true; const h = hist(); return histN > 0 && !!h.state && h.state.ca === histN; } catch (_) { return false; } };
     function go(screen) { S.stack.push({ screen: S.screen }); S.stack = S.stack.slice(-12); pushHist(); S.screen = screen; render(); const sc = $('flow'); if (sc) sc.scrollTop = 0; }
     function backInternal() {
+      tipCancel();   // r6: a pending tip-step entry never navigates after Back
       if (S.layerKind === 'cart') { closeLayer(); return; }   // closing the cart → the menu
       if (S.layerKind === 'placing') { placingStop(); closeLayer(); return; }   // a back during «Realizando pedido…» = «Volver» (nothing sent)
       if (S.screen === 'sending' || !S.stack.length) return;   // «Enviando» is not a back step
@@ -1621,7 +1748,7 @@
     function checkoutAct(t) {
       const f = S.flow, a = t.dataset.act, v = t.dataset.val;
       if (hasSlotLock() && (a === 'type' || a === 'editwho' || a === 'more' || a === 'editdetails' || a === 'tender' || a === 'pin' || a === 'cc')) return true;   // frame 10b: fixed (cash-chips lock)
-      if (a === 'type') { if (frozenNow()) return true; S.mode = v === 'pickup' ? 'pickup' : 'delivery'; C.setMode(f, S.mode); notifyCart(); if (S.mode === 'delivery' && !finitePin(f.pin) && S.geo === null) requestGeo(); render(); return true; }
+      if (a === 'type') { if (frozenNow()) return true; tipCancel(); S.mode = v === 'pickup' ? 'pickup' : 'delivery'; C.setMode(f, S.mode); notifyCart(); if (S.mode === 'delivery' && !finitePin(f.pin) && S.geo === null) requestGeo(); render(); return true; }
       if (a === 'rm-po') { for (const l of poLines()) mutate(() => cart.setQty(l.key, 0)); if (!cart.count()) toStore(); else render(); return true; }
       if (a === 'editwho') { f.editWho = true; render(); return true; }
       if (sched() && (a === 'time' || a === 'slotday' || a === 'slot')) {
@@ -1650,13 +1777,13 @@
       if (a === 'signin') { const ctx = t.dataset.ctx || 'checkout'; let dev = null; if (ctx === 'checkout-returning') { try { dev = opts.deviceAccount(); } catch (_) { dev = null; } }
         emit('signin', { ctx, ...(dev && dev.e164 ? { prefill: dev.e164 } : {}) }); return true; }
       if (a === 'confirm' && hasSlotLock()) { if (!ctaOff(totalsNow())) send(); return true; }   // S4 row 10b: «Reintentar» re-sends the SAME order (its tip already chosen)
-      if (a === 'confirm') { if (ctaOff(totalsNow())) return true; if (f.mode === 'delivery') go('tip'); else placeTap(); return true; }
+      if (a === 'confirm') { if (ctaOff(totalsNow())) return true; if (C.tipped(f)) enterTip(); else placeTap(); return true; }   // r7: cash never reaches the step
       return false;
     }
     function tipAct(t) {
       const f = S.flow, a = t.dataset.act;
       if (a === 'back') { back(); return true; }
-      if (a === 'tipc') { const v = t.dataset.val; if (v === 'other') { S.tipDraft = f.tipChoice && f.tipChoice.kind === 'other' && f.tipCents ? String(f.tipCents / 100) : ''; openLayer('tipother'); return true; } C.chooseTip(f, Number(v)); render(); return true; }
+      if (a === 'tipc') { const v = t.dataset.val; if (v === 'other') { S.tipDraft = f.tipChoice && f.tipChoice.kind === 'other' && f.tipCents ? String(f.tipCents / 100) : ''; openLayer('tipother'); return true; } C.chooseTip(f, Number(v)); S.tipDefaultFlow = null; render(); return true; }
       if (a === 'tip-place') { if (!tipReady(totalsNow())) return true; placeTap(); return true; }
       return false;
     }
@@ -1670,7 +1797,7 @@
       }
       const a = t.dataset.act;
       if (a === 'tk') { const v = t.dataset.val; S.tipDraft = v === 'del' ? (S.tipDraft || '').slice(0, -1) : capDraft((S.tipDraft || '') + v, S.tipDraft || ''); renderLayer(); return true; }
-      if (a === 'tip-save') { const n = Number(S.tipDraft) || 0; C.chooseTip(S.flow, { other: Math.min(n, C.TIP_MAX_LEMPIRAS) }); closeLayer(); render(); return true; }
+      if (a === 'tip-save') { const n = Number(S.tipDraft) || 0; C.chooseTip(S.flow, { other: Math.min(n, C.TIP_MAX_LEMPIRAS) }); S.tipDefaultFlow = null; closeLayer(); render(); return true; }
       if (a === 'placing-go') { placingGo(); return true; }
       if (a === 'placing-back') { placingStop(); closeLayer(); return true; }
       if (a === 'pin-done') {
@@ -1687,7 +1814,9 @@
         closeLayer(); render(); return true;
       }
       if (a === 'store-open') { if (storeNow()) emit('store-open', { url: storeNow().url }); return true; }   // the host leaves for the store; the sheet stays
-      if (a === 'err-retry') { closeLayer(); send(); return true; }   // the SAME placement (capp-api keeps the id)
+      if (a === 'err-retry') { closeLayer(); send(); return true; }
+      if (a === 'menu-reload') { closeLayer(); emit('menu_reload', { rid: cfg.restaurantId }); return true; }   // S3 A1 → the shell re-fetches and adopts (A2)
+      if (a === 'extra-remove') { removeDenied(); return true; }   // S3 B1 → B2   // the SAME placement (capp-api keeps the id)
       if ((a === 'err-sched' || a === 'err-slot') && sched() && S.flow && !canSchedule()) { closeLayer(); backTo('checkout'); scheduleGate(); return true; }   // frame G
       if (a === 'err-sched' && sched() && S.flow) { closeLayer(); S.closedRefused = false; applyHeldSched(); S.flow.time = 'schedule'; S.flow.slot = null; backTo('checkout'); return true; }   // P:2287: the picker
       if (a === 'err-slot' && sched() && S.flow) { closeLayer(); applyHeldSched(); S.flow.time = 'schedule'; S.flow.slot = null; backTo('checkout'); return true; }   // N1: the picker, the slot cleared
@@ -1884,7 +2013,7 @@
         // advisor r3 C: the switch's stored inputs ALWAYS win over fresh defaults (recipient, notes, tip, pin — pickup and delivery alike)
         if (out.body) { const rf = flowFromBody(out.body); if (rf) { S.flow = rf; S.mode = rf.mode; S.flowRestored = true; } }
         if (S.flow) S.flow.pay = 'cash';
-        if (S.screen !== 'checkout' && S.screen !== 'tip') S.screen = S.flow && S.flow.mode === 'delivery' ? 'tip' : 'checkout';
+        if (S.screen !== 'checkout' && S.screen !== 'tip') S.screen = S.flow && C.tipped(S.flow) ? 'tip' : 'checkout';   // r7: cash places from the checkout
         SDK.placeWhenReady = true; render(); sdkPlaceIfReady(); return;   // the cash order goes once the checkout is ready (a reload re-quotes first)
       }
       onOutcome(out);   // the shared refusals (closed, offline, the recovery sheet, …)
@@ -1941,6 +2070,11 @@
 
     function render() {
       if (dead) return;
+      // r7 (owner 11-09): the tip is card-only — a cash flow holds no tip choice; a switch to cash ON the step returns to the checkout
+      if (S.flow && S.flow.mode === 'delivery' && S.flow.pay === 'cash' && (S.flow.tipChoice !== null || S.screen === 'tip' || S.tipEntry)) {
+        const onStep = S.screen === 'tip'; tipLeave();
+        if (onStep) return;   // tipLeave rendered the checkout
+      }
       app.classList.toggle('narrow', app.clientWidth > 0 && app.clientWidth < 375);
       if (view) app.classList.toggle('desk', S.desk);   // D-2 (v6 :1384); never touched without a view
       const keepSearch = S.layerKind === 'ssearch' && $('layer') && $('layer').querySelector('#sq') ? $('layer') : null;
@@ -1963,7 +2097,7 @@
       if (had && lost()) { focusTo(refind(had)); if (caret && doc.activeElement && doc.activeElement.id === caret[0]) { try { doc.activeElement.setSelectionRange(caret[1], caret[2]); } catch (_) {} } }
       if (S.screen === 'checkout') wireMaps();
       if ((S.screen === 'checkout' || S.screen === 'tip') && cfg.sdkCheckout === true) { sdkLoad(); if (SDK.placeWhenReady) Promise.resolve().then(sdkPlaceIfReady); }   // S2-checkout: the cards + availability, once; a pending switch's cash order
-      if (S.screen === 'checkout' || S.screen === 'tip') requote();
+      if (S.screen === 'checkout' || S.screen === 'tip') { tipLoad(); requote(); }   // r6: the member's last tip, read once per identity
       geocodePin();
     }
     function onClick(ev) {
@@ -2135,7 +2269,7 @@
         if (dead) return;
         const prevCtx = memberCtx;
         memberCtx = m && typeof m === 'object' ? m : null;
-        if (sdkOwner(prevCtx) !== sdkOwner(memberCtx)) sdkIdentity();   // Codex r1 P1: another identity ⇒ its own cards, nothing carried
+        if (sdkOwner(prevCtx) !== sdkOwner(memberCtx)) { sdkIdentity(); tipIdentity(); }   // Codex r1 P1: another identity ⇒ its own cards, nothing carried
         if (!memberCtx) S.schedAfterSignin = false;
         const f = S.flow;
         if (!memberCtx && f && sched() && f.time === 'schedule' && !hasSlotLock()) { f.time = 'asap'; f.slot = null; }   // signed out ⇒ no scheduling (G=B)

@@ -975,3 +975,33 @@ for (const [label, bad] of [['invalid JSON', () => '{not json'], ['"null"', () =
   });
 }
 
+
+// S3 (D4c-grill/item-s1/S3-DESIGN.md D2; owner mockup MOCKUP-item-s3-refusals.html): the three item refusals get their OWN outcome
+// on both paths — never the generic one. Bodies from the REAL writers: resolve-lines.js resolutionRefusal (the order endpoints) and
+// quoteOrder's fail-soft `{ ok:false, error: code }` (index.js:7428); extras-intake.js refusalStatus/refusalBody (every intake, the
+// quote's sendRefusal included). pickup_only_item is S2's (not on this branch): its body is the advisor-relayed wire shape
+// (2026-11-10, after S2 Codex) — replaced by S2's writer when S2 is assembled.
+test('S3 refusals: menu_changed / extra_not_allowed / pickup_only_item map to their own outcomes on the quote AND the order', async () => {
+  const RL = require(join(ROOT, 'xpizza-functions/catalog/resolve-lines.js'));
+  const EI = require(join(ROOT, 'xpizza-functions/catalog/extras-intake.js'));
+  const MC = RL.resolutionRefusal({ code: 'menu_changed' });
+  const XR = { outcome: 'denied', denied: [{ item: 'Carnivora', extra: 'Pepperoni' }] };
+  const XS = EI.refusalStatus(XR), XB = EI.refusalBody(XR);
+  assert.deepEqual([MC.status, MC.body.error, XS, XB.error], [409, 'menu_changed', 409, 'extra_not_allowed'], 'premise: the real writers\' statuses and codes');
+  const PO = { status: 409, json: { ok: false, error: 'pickup_only_item', item_key: 'Margherita NY' } };
+  // the quote
+  const storage = memStorage();
+  const map = async (resp) => A.createApi({ config: { restaurantId: 'rid_a', endpoints: E }, fetch: async () => ({ status: resp.status, ok: false, json: async () => resp.json }), storage, sleep: async () => {}, setInterval: () => 0, clearInterval: () => {} }).quote(flowOf(), CTX);
+  assert.deepEqual(await map({ status: 200, json: { ok: false, error: 'menu_changed' } }), { kind: 'menu_changed' }, '🔴 quote: menu_changed (S3-CAPP-API-QMC)');
+  assert.deepEqual(await map({ status: XS, json: { ok: false, ...XB } }), { kind: 'extra_not_allowed', lines: [{ item: 'Carnivora', extra: 'Pepperoni' }] }, '🔴 quote: extra_not_allowed with its lines (S3-CAPP-API-QXN)');
+  assert.deepEqual(await map(PO), { kind: 'pickup_only', item_key: 'Margherita NY' }, '🔴 quote: pickup_only_item (S3-CAPP-API-QPO)');
+  assert.equal((await map({ status: 503, json: { ok: false, error: 'menu_updating' } })).kind, 'try_again', 'quote: menu_updating is the existing retry');
+  // the order
+  const place = async (resp) => rig({ script: { createOrder: [resp] } }).api.place(placeArgs('cash'));
+  assert.equal((await place({ status: MC.status, json: MC.body })).kind, 'menu_changed', '🔴 order: menu_changed (S3-CAPP-API-PMC)');
+  const xo = await place({ status: XS, json: { ...XB, order_id: 'X' } });
+  assert.deepEqual([xo.kind, xo.lines], ['extra_not_allowed', [{ item: 'Carnivora', extra: 'Pepperoni' }]], '🔴 order: extra_not_allowed with its lines (S3-CAPP-API-PXN)');
+  const po = await place(PO);
+  assert.deepEqual([po.kind, po.item_key], ['pickup_only', 'Margherita NY'], '🔴 order: pickup_only_item (S3-CAPP-API-PPO)');
+  assert.equal((await place({ status: 400, json: RL.resolutionRefusal({ code: 'invalid_line', at: 'items', index: 0 }).body })).kind, 'error', 'order: invalid_line stays the generic error (a client bug, never retried)');
+});

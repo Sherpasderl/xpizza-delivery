@@ -654,7 +654,7 @@ test('stamp: shell.html is stamped as orders-app; on the stamped shell SherpaCli
       S.click('[data-act="pin"]'); await flush(); S.click('[data-act="pin-done"]'); await flush();
       type('#f-details', 'Portón negro'); type('#f-name', 'Ana'); type('#f-phone', '9999 0000'); await flush();
       S.click('[data-act="pay"][data-val="cash"]'); await flush();
-      S.click('#cta'); await flush(); S.click('[data-act="tipc"][data-val="0"]'); await flush(); S.click('[data-act="tip-place"]'); await flush();
+      S.click('#cta'); await flush();   /* r7 (owner 11-09): cash never reaches the tip step — «Hacer pedido» places directly */
       S.click('#layer [data-act="placing-go"]'); await flush(); await flush();
       const co = sent.filter((s) => s.ep === 'createOrder');
       assert.equal(co.length, 1, 'premise: the shell sent ONE createOrder');
@@ -1900,7 +1900,7 @@ async function placeShellCash(S, reply) {
   S.click('[data-act="pin"]'); await flush(); S.click('[data-act="pin-done"]'); await flush();
   type('#f-details', 'Portón negro'); type('#f-name', 'Ana'); type('#f-phone', '9999 0000'); await flush();
   S.click('[data-act="pay"][data-val="cash"]'); await flush();
-  S.click('#cta'); await flush(); S.click('[data-act="tipc"][data-val="0"]'); await flush(); S.click('[data-act="tip-place"]'); await flush();
+  S.click('#cta'); await flush();   /* r7 (owner 11-09): cash never reaches the tip step — «Hacer pedido» places directly */
   S.click('#layer [data-act="placing-go"]'); await flush(); await flush();
   await flush(700);   // the 600 ms happy beat
   return ui;
@@ -1985,7 +1985,7 @@ test('Pedido recibido · frame 7: a guest card order\'s paid return shows the ac
     const type = (sel, v) => { const el = A.q(sel); assert.ok(el, `premise: ${sel}`); el.value = v; el.dispatchEvent(new A.w.Event('input', { bubbles: true })); };
     A.click('[data-act="pin"]'); await flush(); A.click('[data-act="pin-done"]'); await flush();
     type('#f-details', 'Portón negro'); type('#f-name', 'Ana'); type('#f-phone', '9999 0000'); type('#f-email', 'ana.perez@gmail.com'); await flush();
-    A.click('#cta'); await flush(); A.click('[data-act="tipc"][data-val="0"]'); await flush(); A.click('[data-act="tip-place"]'); await flush(); await flush();
+    A.click('#cta'); await flush(); await until(() => A.q('[data-act="tipc"][data-val="0"]'), 4000); A.click('[data-act="tipc"][data-val="0"]');   /* r6: the step opens once its default resolves (a member's unanswered last-tip read is bounded at 1.5 s) */ await flush(); A.click('[data-act="tip-place"]'); await flush(); await flush();
     if (!A.q('#layer .otp input[data-i="0"]') && A.q('#layer [data-act="placing-go"]')) { A.click('#layer [data-act="placing-go"]'); await flush(); await flush(); }
     const box = A.q('#layer .otp input[data-i="0"]'); assert.ok(box, 'premise: the code sheet'); box.value = '482913'; box.dispatchEvent(new A.w.Event('input', { bubbles: true })); await flush();
     A.click('#layer [data-act="otp-verify"]'); await flush(); await flush();
@@ -2090,7 +2090,7 @@ async function toShellPlace(S) {
   S.click('[data-act="pin"]'); await flush(); S.click('[data-act="pin-done"]'); await flush();
   type('#f-details', 'Portón negro'); type('#f-name', 'Ana'); type('#f-phone', '9999 0000'); await flush();
   S.click('[data-act="pay"][data-val="cash"]'); await flush();
-  S.click('#cta'); await flush(); S.click('[data-act="tipc"][data-val="0"]'); await flush(); S.click('[data-act="tip-place"]'); await flush();
+  S.click('#cta'); await flush();   /* r7 (owner 11-09): cash never reaches the tip step — «Hacer pedido» places directly */
   S.click('#layer [data-act="placing-go"]'); await flush(); await flush();
 }
 const GEO_OK2 = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) };
@@ -2459,7 +2459,7 @@ async function shellPlaceTolerant(S) {   // a placement that types only the fiel
   S.click('[data-act="pin"]'); await flush(); S.click('[data-act="pin-done"]'); await flush();
   type('#f-details', 'Portón negro'); type('#f-name', 'Ana'); type('#f-phone', '9999 0000'); await flush();
   if (S.q('[data-act="pay"][data-val="cash"]')) { S.click('[data-act="pay"][data-val="cash"]'); await flush(); }
-  S.click('#cta'); await flush(); S.click('[data-act="tipc"][data-val="0"]'); await flush(); S.click('[data-act="tip-place"]'); await flush();
+  S.click('#cta'); await flush();   /* r7 (owner 11-09): cash never reaches the tip step — «Hacer pedido» places directly */
   S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); await flush(700);
 }
 test('Pedidos r2 P1 shared device: a GUEST\'s active order is dropped when a DIFFERENT member signs in (unclaimed); a MEMBER\'s is hidden from the next person — no card, no restore, no URL', async () => {
@@ -4462,4 +4462,32 @@ test('S2-checkout 8 (v7): an order placed with the in-app card shows its card in
     assert.equal(txt(S.q('.receipt2 .payline .mute')), 'Se cobra al recibir tu pedido.', '🔴 SDK8: the charge line');
     assert.ok(!rows.some((r) => /Pagado en línea|Confirmado/.test(r)), '🔴 SDK8: never «Pagado en línea / Confirmado» for a held card');
   } finally { S.w.close(); }
+});
+
+// ── S3 (D4c-grill/item-s1/S3-DESIGN.md D2; OWNER-APPROVED MOCKUP-item-s3-refusals.html frame A2): «Recargar» (the A1 sheet) asks the
+//    SHELL for the fresh menu — a revalidation through the menu cache — and adopts it through the existing adoption (adoptInto: the
+//    mount rebuilt, the IN-MEMORY cart carried); the store opens with its cart sheet, which discloses what no longer exists with the
+//    existing copy «1 plato ya no está disponible». Nothing was sent or charged. ──
+test('S3 A2: «Recargar» re-fetches the menu, adopts it, and opens the cart with «1 plato ya no está disponible»', async () => {
+  let refuse = false, hold = false;
+  const apiFetch = (u, i) => (u.startsWith('/x/q') ? (refuse ? Promise.resolve({ status: 200, ok: true, json: async () => ({ ok: false, error: 'menu_changed' }) }) : quoteOk(u, i)) : new Promise(() => {}));
+  const S = bootShell({ apiFetch, envelope: (rid) => (hold && rid === 'x_pizza' ? 'hold' : 'ok') }); await flush(); await flush();
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); await flush();
+  const ui0 = S.ui.store().ui; const m = ui0.menu;
+  const [plain, victim] = m.dishes.filter((d) => !d.launcher && !d.variantOf && !m.pickupOnlyCats.has(String(d.cat)));
+  ui0.cart.inc(plain.key); ui0.cart.inc(victim.key); ui0.render(); S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush(); await flush();
+  assert.equal(ui0.state.screen, 'checkout', 'premise: the checkout is mounted');
+  refuse = true; hold = true;
+  S.click('#app [data-act="type"][data-val="pickup"]'); await flush(); await flush();
+  assert.equal(S.q('#layer .errsheet h2') && S.q('#layer .errsheet h2').textContent, 'El menú se actualizó, recargá el menú', 'premise: the A1 sheet');
+  const calls = S.envCalls.length;
+  S.click('#layer [data-act="menu-reload"]'); await flush();
+  assert.ok(S.envCalls.length > calls && S.pend.x_pizza && S.pend.x_pizza.length, '🔴 «Recargar» asks the menu cache for the fresh menu (S3-CAPP-A2-FETCH)');
+  const fresh = J(PROV.x_pizza.envelope); fresh.menu.dishes = fresh.menu.dishes.filter((d) => d.name !== victim.name);
+  refuse = false; S.release('x_pizza', fresh); await flush(); await flush();
+  const ui1 = S.ui.store().ui;
+  assert.notEqual(ui1, ui0, '🔴 the fresh menu is ADOPTED (S3-CAPP-A2-ADOPT)');
+  assert.deepEqual([ui1.state.screen, ui1.state.layerKind], ['store', 'cart'], '🔴 the store opens with its cart sheet (S3-CAPP-A2-CART)');
+  assert.ok(txt(S.q('#layer .cartnote')).includes('1 plato ya no está disponible'), `🔴 the existing disclosure (S3-CAPP-A2-NOTE): ${txt(S.q('#layer .cartnote'))}`);
+  assert.deepEqual(J(ui1.cart.lines()).map((l) => l.key), [plain.key], 'the vanished dish is dropped; the rest is carried');
 });

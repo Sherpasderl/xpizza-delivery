@@ -1097,7 +1097,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 .acct-signout button{background:none;border:none;font-family:inherit;font-size:14px;font-weight:650;color:#8C7B6E;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .acct-delete{margin-top:10px;text-align:center}
 .acct-delete button{background:none;border:none;font-family:inherit;font-size:12.5px;font-weight:600;color:#B3A594;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
-.acct-toast{position:fixed;left:50%;top:50%;transform:translate(-50%,calc(-50% + 12px));background:#17130F;color:#fff;padding:12px 18px;border-radius:12px;font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;transition:all .3s;z-index:1100}
+.acct-toast{position:fixed;left:50%;top:50%;transform:translate(-50%,calc(-50% + 12px));width:max-content;max-width:calc(100vw - 32px);background:#17130F;color:#fff;padding:12px 18px;border-radius:12px;font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;transition:all .3s;z-index:1100}
 .acct-toast.acct-show{opacity:1;transform:translate(-50%,-50%)}
 `;
     document.head.appendChild(st);
@@ -1496,6 +1496,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 
   // ── Toast (small transient message; no SDK involved) ──
   function toast(msg) {
+    injectSheetStyles();   // S3 (the SBS): its styles too — a customer who never opened the account sheet sees the toast
     let el = $('acct-toast');
     if (!el) {
       el = document.createElement('div');
@@ -2200,7 +2201,10 @@ ${phone ? `<div class="acct-su-facts"><div><span>Cuenta</span><b>${escapeHtml(ph
       let dropped = 0;
       for (const rl of lines) {
         if (!rl || rl.key == null) { dropped++; continue; }
-        const item = byId ? MENU.find((p) => p.id === rl.key) : MENU.find((p) => p.name === rl.key);   // la_musa by id / x_pizza by name (recipe key)
+        // S3 (Codex r1 P2-7): a stored recipe's key IS the resolved pricing key (reorder-normalize.js: itemPricingKey → the stamp), i.e. the
+        // item key — matched FIRST through the served map (a renamed / minted dish), then today's legacy match
+        const ikOf = (p) => (typeof liveItemKey === 'function' ? liveItemKey(p) : null);
+        const item = MENU.find((p) => ikOf(p) === rl.key) || (byId ? MENU.find((p) => p.id === rl.key) : MENU.find((p) => p.name === rl.key));   // la_musa by id / x_pizza by name (recipe key)
         if (!item) { dropped++; continue; }                                   // not on today's menu → drop
         // 1D add-product B: a bare LAUNCHER (a legacy line from before its group) is never a cart line — dropped, and counted in the notice
         if (typeof itemIsLauncher === 'function' && itemIsLauncher(item)) { dropped++; continue; }
@@ -2242,7 +2246,7 @@ ${phone ? `<div class="acct-su-facts"><div><span>Cuenta</span><b>${escapeHtml(ph
       const k = parse(rl.key);
       const dish = (k && k.kind === 'dish' && typeof MENU !== 'undefined') ? MENU.find((p) => p.dish_id === k.cid) : null;
       if (!dish) return { ...rl, key: null };
-      const out = { ...rl, key: byId ? dish.id : dish.name };
+      const out = { ...rl, key: (typeof liveItemKey === 'function' && liveItemKey(dish)) || (byId ? dish.id : dish.name) };   // S3: the item key when served
       if (Array.isArray(rl.options)) {
         out.options = [];
         for (const o of rl.options) {
@@ -5094,6 +5098,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.newAddrId = newAddrId;
   window.__ACCOUNT.saveAddress = saveAddress;
   window.__ACCOUNT.profileComplete = profileComplete;
+  window.__ACCOUNT.toast = toast;   // S3 C2: the form's item-refusal flow reuses this pill (textContent; no new copy)
   window.__ACCOUNT.profileNamed = profileNamed;   // Task 1 — recognition gate (full name >=2 words)
   window.__ACCOUNT.setPaymentVisible = setPaymentVisible;                     // Task 1 test hook (gate state)
   window.__ACCOUNT.redeemSig = redeemSig;   // 1D D2 test hook — the reward-freshness signature must stay id-blind

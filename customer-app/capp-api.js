@@ -325,6 +325,7 @@
       if (r.status >= 500) return { kind: 'try_again' };
       const err = j.error;
       if (err === 'outside_delivery_bands') return { kind: 'out_of_zone' };
+      const ir = itemRefusal(r.status, j); if (ir) return ir;   // S3: menu_changed (fail-soft 200) / extra_not_allowed / pickup_only_item
       if (err === 'pin_required') return { kind: 'pin' };
       if (err === 'rate_limited' || r.status === 429) return { kind: 'try_again' };
       if (r.status === 426) return { kind: 'update_required' };
@@ -415,9 +416,23 @@
       return recoverySheet(id);
     }
 
+    // S3 (D4c-grill/item-s1/S3-DESIGN.md D2): the item refusals — resolve-lines.js resolutionRefusal (409 menu_changed; the quote's
+    // fail-soft 200), extras-intake.js (409 extra_not_allowed + its denied { item, extra } lines), S2's 409 pickup_only_item + item_key
+    const deniedLines = (v) => (Array.isArray(v) ? v.filter((x) => x && typeof x.item === 'string' && typeof x.extra === 'string').map((x) => ({ item: x.item, extra: x.extra })) : []);
+    // Codex S3 r1 P1-1 (advisor): an item refusal is definitive and pre-mutation (nothing created, no checkout issued, no SDK claim),
+    // and its recovery CHANGES the cart — so the placement is RELEASED (the cart unfrozen at the next reconcile), never left frozen
+    const ITEM_REFUSALS = new Set(['menu_changed', 'extra_not_allowed', 'pickup_only']);
+    function itemRefusal(status, j) {
+      if (!j || typeof j !== 'object') return null;
+      if (j.error === 'menu_changed' && (status === 409 || status === 200)) return { kind: 'menu_changed' };
+      if (j.error === 'extra_not_allowed' && status === 409) return { kind: 'extra_not_allowed', lines: deniedLines(j.lines) };
+      if (j.error === 'pickup_only_item' && status === 409) return { kind: 'pickup_only', item_key: typeof j.item_key === 'string' ? j.item_key : null };
+      return null;
+    }
     // the refusals both order paths share → an outcome, or null when the path must handle it
     function commonRefusal(r) {
       const j = r.json || {};
+      { const ir = itemRefusal(r.status, j); if (ir && r.status === 409) return ir; }
       if (r.status === 426) return { kind: 'update_required' };
       if (r.status === 400 && (j.error === 'Restaurant closed' || (j.error === 'Bad Request' && j.detail === 'Cerrado — programá tu pedido'))) return { kind: 'closed' };
       if (r.status === 400 && j.error === 'Bad Request' && typeof j.detail === 'string' && j.detail.indexOf('Outside delivery zone') === 0) return { kind: 'out_of_zone' };
@@ -643,6 +658,7 @@
         }
         if (isExisting(r)) return resolveExisting(id);
         const cr = commonRefusal(r);
+        if (cr && ITEM_REFUSALS.has(cr.kind)) { const ok = resolvePlace(id, 'released'); return { ...cr, order_id: id, ...settledOf(ok) }; }
         if (cr) return { ...cr, order_id: id };
         // r3 P2-3: a late answer after teardown is PERSISTED above (settle / issue / clear) but never rendered — no price sheet
         if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded', order_id: id };
@@ -823,7 +839,7 @@
       // CONTRACT A3: the saved card is not the caller's usable card — refused before any claim or write: the attempt released, the card re-chosen
       if (r.status === 409 && r.json && r.json.error === 'saved_card_unavailable') { settleSdk(id, 'none', attemptId); return { kind: 'sdk_card_unavailable', order_id: id }; }
       const cr = commonRefusal({ status: r.status, json: r.json, parsed: true });
-      if (cr) { settleSdk(id, 'none', attemptId); return { ...cr, order_id: id }; }                   // the intake gates refuse before any claim
+      if (cr) { settleSdk(id, 'none', attemptId); if (ITEM_REFUSALS.has(cr.kind)) { const ok = resolvePlace(id, 'released'); return { ...cr, order_id: id, ...settledOf(ok) }; } return { ...cr, order_id: id }; }                   // the intake gates refuse before any claim
       if (r.status === 401 || r.status === 404) return recoverySheet(id);
       return sdkStatus(id, p);
     }
@@ -943,10 +959,28 @@
       return { kind: 'offline' };
     }
 
+    // PLAN-capp-tip-step r6: the member's LAST TIP — ONE authenticated read of their OWN leaf user_private/{uid}/last_tip (owner-read
+    // rules; the server writes it after an accepted order). A UX hint: any failure / other identity ⇒ cents null (the step's L 20).
+    // Answers { uid, cents } so the caller binds it to the identity it was read for; nothing is stored on the device.
+    async function lastTip() {
+      const m = memberOf();
+      const base = typeof cfg.rtdbBase === 'string' && /^https:\/\/[a-z0-9.-]+(:\d+)?\/?$/i.test(cfg.rtdbBase) ? cfg.rtdbBase.replace(/\/+$/, '') : null;
+      if (!m || typeof m.uid !== 'string' || !m.uid || !base) return { uid: m && m.uid != null ? String(m.uid) : null, cents: null };
+      const tok = await memberToken(m);
+      if (!tok || memberOf() !== m) return { uid: m.uid, cents: null };
+      try {
+        const r = await sfetch(`${base}/user_private/${encodeURIComponent(m.uid)}/last_tip.json?auth=${encodeURIComponent(tok)}`, { method: 'GET' });
+        if (!r || r.status !== 200 || memberOf() !== m) return { uid: m.uid, cents: null };
+        let j = null; try { j = await r.json(); } catch (_) { j = null; }
+        const c = j && typeof j === 'object' ? j.cents : undefined;
+        return { uid: m.uid, cents: Number.isSafeInteger(c) && c >= 0 && c <= 200000 ? c : null };
+      } catch (_) { return { uid: m.uid, cents: null }; }
+    }
+
     // the order body a card send stashed (the return restores the checkout from it)
     function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
 
-    return { quote, latestQuote, place, placeSdk, sdkStatus, sdkResolve, sdkSwitchToCash, sdkLive, listCards, sdkPayStatus, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
+    return { quote, latestQuote, place, placeSdk, sdkStatus, sdkResolve, sdkSwitchToCash, sdkLive, listCards, sdkPayStatus, lastTip, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
       confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
   }
