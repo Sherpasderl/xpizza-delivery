@@ -286,6 +286,17 @@
     "reason": "R1 false positive: the catalog profile field list (catalog seed), not identity hours"
   },
   {
+    "file": "delivery/pricing-admin-core.js",
+    "line_sha256": "3ebacac16ed633087187171ea991dfda398b6c1e591ee4e713d05724df60c645",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 99,
+    "text": "const id = (await deps.db.ref(`restaurants/${rid}/identity`).once('value')).val();",
+    "reason": "G2 admin picker: name/location/brand/hub only, no hours (advisor 2026-11-11)"
+  },
+  {
     "file": "deploy/check-seed-readiness.js",
     "line_sha256": "df4cf5d4b7f9187daa8165bb2ebf55b6c547787693d0cd1f51131b4680c4215f",
     "occurrence": 1,
