@@ -247,7 +247,7 @@ test('F — a product with a required choice: its «Opciones» card (v2 frame A)
   const f = p.fld('Opciones');
   assert.ok(f, 'the Opciones block');
   // STRUCTURE S1: the S4 block's «precio por opción» / «… · elección requerida» / «Se mueve con su producto» are v2's card header
-  assert.equal(f.querySelector('.mk-lrow .mk-cnt').textContent, 'en el orden que las ve el cliente');
+  assert.equal(f.querySelector('.mk-lrow .mk-cnt').textContent, 'El orden de los grupos se define en Extras');   // mockup v3 (owner 11-11)
   const card = f.querySelector('.mk-grp.mk-req');
   assert.equal(card.querySelector('.mk-gtn').textContent, 'Proteína');
   assert.equal(card.querySelector('.mk-gts').textContent, 'Elección requerida · el cliente elige 1');
@@ -825,7 +825,7 @@ test('S1 A — «Opciones»: «Sin extras», one open card per extras group the 
   await p.signIn();
   await p.open('dimsum_01');   // Dim Sum offers Acompañamientos + Salsas
   const f = p.fld('Opciones');
-  assert.equal(f.querySelector('.mk-lrow .mk-cnt').textContent, 'en el orden que las ve el cliente');
+  assert.equal(f.querySelector('.mk-lrow .mk-cnt').textContent, 'El orden de los grupos se define en Extras');   // mockup v3 (owner 11-11)
   const sw = f.querySelector('.mk-opcsw');
   assert.equal(sw.querySelector('.mk-opcb').textContent, 'Sin extras');
   assert.equal(sw.querySelector('.mk-opcs').textContent, 'Apagalo si este producto no lleva extras');

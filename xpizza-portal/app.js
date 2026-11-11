@@ -1656,7 +1656,7 @@ function renderEditDrawer(d, it, keepScroll) {
   if (v0.options || ex.show) {
     const fOpc = mk('div', 'fld');
     const lrO = mk('div', 'mk-lrow');
-    lrO.append(mk('label', null, 'Opciones'), mk('span', 'mk-cnt', 'en el orden que las ve el cliente'));
+    lrO.append(mk('label', null, 'Opciones'), mk('span', 'mk-cnt', 'El orden de los grupos se define en Extras'));   // mockup v3 (owner 11-11): the order is set on the Extras page
     const box = mk('div', `mk-opc${ex.none ? ' mk-off' : ''}`);
     const folded = (id) => opcFolded.has(`${s.id}|${id}`);
     const fold = (id) => { const k = `${s.id}|${id}`; if (opcFolded.has(k)) opcFolded.delete(k); else opcFolded.add(k); relayout(); refocus([`ie-fold::${id}`]); };
