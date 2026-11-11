@@ -8,10 +8,10 @@ const Z = require('./zones');
 
 const num = (x) => (typeof x === 'number' ? x : typeof x === 'string' && x.trim() !== '' ? Number(x) : NaN);
 
-async function zoneResumeRefusal(db, order) {
+async function zoneResumeRefusal(db, order, pricingP) {
   const s = order && order.delivery_snapshot;
   if (!s || typeof s !== 'object' || s.mode !== 'delivery') return null;
-  const lp = await require('./delivery-wire').loadPricing(db);   // the ONE pricing reader (lazy: delivery-wire requires this module)
+  const lp = await (pricingP || require('./delivery-wire').loadPricing(db));   // the request's ONE pricing read when the caller has it (Codex build r1 #2)   // the ONE pricing reader (lazy: delivery-wire requires this module)
   if (lp.failed) return { refusal: 'delivery_pricing_unavailable', httpStatus: 503 };
   const pr = lp.pricing;
   if (!pr || pr.invalid) return null;   // no table / invalid bands: step 1's grandfathering, unchanged

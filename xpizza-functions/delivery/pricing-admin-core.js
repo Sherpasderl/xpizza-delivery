@@ -19,10 +19,12 @@ const ZL = require('./zones-lock');      // envío step 2: zones change only whi
 const PATH = 'platform_config/delivery_pricing';
 const CAPS = Object.freeze({ max_bands: 20, max_km: 10, max_cents: 15000, km_step: 0.5 });   // owner 2026-11-10: ≤ 20 bands, ≤ 10 km in 0.5 km steps, ≤ L 150 a band
 const HISTORY_MAX = 10;
-// The order path reads this node on every order: its TRUE worst case (20 bands, 10 history entries, 128-unit uids at 6 JSON bytes each, safe-int clocks, the
-// largest versions; envío step 2: + 8 × 24-point zones at the worst legal encoding, and each history entry's zones { count, sha256 }), UTF-8 bytes
-// of the JSON — pinned from the REAL writer's committed zones by delivery/zones-writer.test.js; independent of the restaurant count.
-const READ_BYTES_AT_CAPS = 23163;
+// The order path reads this node on every order: its TRUE worst case, MEASURED on the complete node the REAL writer commits at its bound
+// (Codex zones build r1 #4): 20 bands at the caps, a full 10-entry history (every entry prev_malformed, the oldest history_reset),
+// 128-unit uids of 3-byte characters, safe-int clocks, versions at VERSION_LIMIT − 1, and 8 × 24-point zones at the worst legal
+// encoding with each entry's zones { count, sha256 } — UTF-8 bytes of the JSON; pinned by delivery/zones-writer.test.js; independent
+// of the restaurant count.
+const READ_BYTES_AT_CAPS = 18748;
 
 const reply = (status, body) => ({ status, body });
 const UNAVAILABLE = () => reply(503, { error: 'unavailable', retryable: true });

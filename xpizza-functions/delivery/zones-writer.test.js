@@ -186,26 +186,34 @@ const node = (w) => w.db.get(PATH);
 
   // ── F8: the order path's read size at caps, from the REAL writer's committed output ──
   await cell('ZWR-READ-BYTES-AT-CAPS', async (L) => {
-    // 8 valid, unique, normalized 24-point shapes at the WORST legal encoding: negative coordinates with the longest integer parts,
-    // six significant decimals each; 30-unit names of 3-byte characters (lone surrogates are refused, so 3 bytes is the ceiling)
+    // Codex build r1 #4: the COMPLETE node the REAL writer commits at its bound — never a hand-built copy. Driven to the worst case:
+    // 8 valid, unique, normalized 24-point shapes at the worst legal encoding (negative coordinates with the longest integer parts,
+    // six significant decimals; 30-unit names of 3-byte characters); 20 bands at the caps; 10 saves so the history is full; every
+    // save over malformed stored bands (injected) so every entry carries prev_malformed, and the first over an unreadable history
+    // (history_reset); a 128-unit uid of 3-byte characters; the largest versions (VERSION_LIMIT − 1) and safe-int clocks.
     const r6 = (x) => Math.round(x * 1e6) / 1e6;
     const worst = (x) => { let v = r6(x); while (Math.abs(Math.round(v * 1e6)) % 10 === 0) v = r6(v - 1e-6); return v; };
-    const shapes = Array.from({ length: 8 }, (_, z) => ({ id: `z_${String(z).padStart(8, '0')}`, name: '\u20ac'.repeat(29) + String.fromCharCode(0x4e00 + z),
+    const shapes = Array.from({ length: 8 }, (_, z) => ({ id: `z_${String(z).padStart(8, '0')}`, name: '€'.repeat(29) + String.fromCharCode(0x4e00 + z),
       points: Array.from({ length: 24 }, (_, i) => { const a = (2 * Math.PI * i) / 24; return { lat: worst(-89.123457 - z * 0.03 + 0.009 * Math.sin(a)), lng: worst(-179.123457 + 0.009 * Math.cos(a)) }; }) }));
-    const w = world();
-    const r = await w.set(body({ no_delivery_zones: shapes }));
-    assert.strictEqual(r.status, 200, `${L}: premise — the writer accepts the 8 × 24 worst-case shapes (${JSON.stringify(r.body)})`);
-    const committed = node(w).no_delivery_zones;
-    assert.deepStrictEqual([committed.length, committed.every((z) => z.points.length === 24)], [8, true], `${L}: 8 × 24 committed`);
-    // the rest of the node at its step-1 caps (20 bands, 10 history entries with 128-unit uids at 6 JSON bytes, safe-int clocks,
-    // the largest versions, both flags) — every history entry now carrying the zones' { count, sha256 } (never the shapes)
     const twenty = Array.from({ length: 20 }, (_, i) => ({ max_km: (i + 1) / 2, cents: 15000 }));
-    const U = '\u0001'.repeat(128);
-    const zs = { count: 8, sha256: Z.sha(committed) };
-    const e = { actor_uid: U, prev_version: 1e15 - 2, new_version: 1e15 - 1, new: { bands: twenty, zones: zs }, at: Number.MAX_SAFE_INTEGER, prev_malformed: true, history_reset: true };
-    const atCaps = { policy_version: 1e15, bands: twenty, no_delivery_zones: committed, history: [{ ...e, prev_version: 1e15 - 1, new_version: 1e15 }, ...Array(9).fill(e)], updated_at: Number.MAX_SAFE_INTEGER, updated_by: U };
-    const bytes = Buffer.byteLength(JSON.stringify(atCaps), 'utf8');
-    assert.strictEqual(bytes, A.READ_BYTES_AT_CAPS, `${L}: the pinned worst case of every order read (got ${bytes})`);
+    const U = '\u20ac'.repeat(128);   // the worst legal uid: 128 UTF-16 units (uidOk) of 3-byte characters (a valid RTDB key; 4-byte characters cost 2 units)
+    const V0 = 1e15 - 11;
+    const w = world({ init: { platform_admins: { [U]: true }, [PATH.split('/')[0]]: { [PATH.split('/')[1]]: { policy_version: V0, bands: 'malformed', history: 'unreadable' } } } });
+    w.deps.verifyIdToken = async () => ({ uid: U });
+    let clock = Number.MAX_SAFE_INTEGER - 20; w.deps.timestamp = () => clock++;
+    const statuses = [];
+    for (let i = 0; i < 10; i++) {
+      if (i > 0) await w.db.ref(`${PATH}/bands`).set('malformed');   // the fault: the stored bands unreadable before every save
+      const r = await w.set(body({ expected_policy_version: V0 + i, bands: twenty, no_delivery_zones: shapes }));
+      statuses.push(r.status);
+    }
+    const committed = node(w);
+    const bytes = Buffer.byteLength(JSON.stringify(committed), 'utf8');
+    // the byte pin FIRST (the writer commits before its own verification answers), then the premises
+    assert.strictEqual(bytes, A.READ_BYTES_AT_CAPS, `${L}: the pinned worst case of every order read — the complete committed node (got ${bytes})`);
+    assert.deepStrictEqual(statuses, Array(10).fill(200), `${L}: premise — the writer accepted all 10 saves`);
+    assert.deepStrictEqual([committed.policy_version, committed.history.length, committed.history.every((e) => e.prev_malformed === true), committed.history[9].history_reset === true, committed.no_delivery_zones.length],
+      [1e15 - 1, 10, true, true, 8], `${L}: premise — the node is at its bound`);
   });
 
   // ── Codex build r1 #1 (P1, driver safety): EXACT geometry on the 6-decimal grid — a saved diagonal edge's points are INSIDE ──

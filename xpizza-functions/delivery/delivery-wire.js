@@ -52,7 +52,7 @@ async function deliveryFor(db, { rid, mode, pin, customerUid, getIdentity, prici
      · otherwise a different fulfilment or pin than the stored order's → refused order_context_changed: the client starts a
        fresh order; mixed contexts are never re-priced
    A refusal dq is answered by the handler BEFORE any pending order or hold exists. */
-async function chargeContext(db, orderId, dq, body, now) {
+async function chargeContext(db, orderId, dq, body, now, pricingP) {
   if (!dq) return dq;
   const order = (await db.ref(`orders/${orderId}`).get()).val();
   if (!order || order.payment_status === 'confirmed') return dq;   // fresh, or already paid (the acquire answers already_paid as today)
@@ -62,7 +62,7 @@ async function chargeContext(db, orderId, dq, body, now) {
     // LIVE now → GRANDFATHERED: priced at its STORED economics so the acquire can REUSE it. Whether it IS reused is decided
     // by the acquire, not by this clock read (codex S3a r2 P1): if the checkout expires before the acquire and a FRESH one
     // would be issued instead, the gate step refuses it (refusalGate → re-quote) — a fresh checkout is always priced now.
-    if (at && at.hosted_state === 'created' && Number(at.hosted_expires_at) > now) { const zr = await zoneResumeRefusal(db, order); if (zr) return zr; const c = P.storedCtx(order); return c ? { ctx: c, grandfathered: true } : { grandfathered: true }; }   // step 2 (F1): a live checkout whose STORED pin is in a zone is not resumed
+    if (at && at.hosted_state === 'created' && Number(at.hosted_expires_at) > now) { const zr = await zoneResumeRefusal(db, order, pricingP); if (zr) return zr; const c = P.storedCtx(order); return c ? { ctx: c, grandfathered: true } : { grandfathered: true }; }   // step 2 (F1): a live checkout whose STORED pin is in a zone is not resumed
   }
   const pin = orderPin(body);
   const same = order.order_type === (body && body.order_type)

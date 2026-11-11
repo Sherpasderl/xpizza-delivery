@@ -7,8 +7,13 @@ const BASE = '3bc87937';
 const HUNKS = Object.freeze([
  {
   "file": "index.js",
-  "now": "    if (boundAcq) { const zr = await DW.zoneResumeRefusal(db, boundAcq.order); if (zr) return res.status(zr.httpStatus).json({ error: zr.refusal, ...(zr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId });   // envío step 2 (F1): a stored app delivery in a zone is not resumed\n",
+  "now": "    if (boundAcq) { const zr = await DW.zoneResumeRefusal(db, boundAcq.order, dpP); if (zr) return res.status(zr.httpStatus).json({ error: zr.refusal, ...(zr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId });   // envío step 2 (F1): a stored app delivery in a zone is not resumed\n",
   "was": "    if (boundAcq) {\n"
+ },
+ {
+  "file": "index.js",
+  "now": "  const dq = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }), body, Date.now(), dpP); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const effBreakdown = DW.withDelivery(dq, redemptionPriced\n",
+  "was": "  const dq = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }), body, Date.now()); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const effBreakdown = DW.withDelivery(dq, redemptionPriced\n"
  },
  {
   "file": "delivery/delivery-wire.js",
@@ -22,7 +27,12 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "delivery/delivery-wire.js",
-  "now": "    if (at && at.hosted_state === 'created' && Number(at.hosted_expires_at) > now) { const zr = await zoneResumeRefusal(db, order); if (zr) return zr; const c = P.storedCtx(order); return c ? { ctx: c, grandfathered: true } : { grandfathered: true }; }   // step 2 (F1): a live checkout whose STORED pin is in a zone is not resumed\n",
+  "now": "async function chargeContext(db, orderId, dq, body, now, pricingP) {\n",
+  "was": "async function chargeContext(db, orderId, dq, body, now) {\n"
+ },
+ {
+  "file": "delivery/delivery-wire.js",
+  "now": "    if (at && at.hosted_state === 'created' && Number(at.hosted_expires_at) > now) { const zr = await zoneResumeRefusal(db, order, pricingP); if (zr) return zr; const c = P.storedCtx(order); return c ? { ctx: c, grandfathered: true } : { grandfathered: true }; }   // step 2 (F1): a live checkout whose STORED pin is in a zone is not resumed\n",
   "was": "    if (at && at.hosted_state === 'created' && Number(at.hosted_expires_at) > now) { const c = P.storedCtx(order); return c ? { ctx: c, grandfathered: true } : { grandfathered: true }; }\n"
  },
  {

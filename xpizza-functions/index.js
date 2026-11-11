@@ -1642,7 +1642,7 @@ chargeOnlineApp.all('*', async (req, res) => {
      always meet current enforcement). Answered exactly as acquire's reuse is (the same hosted-flow reuse branch). */
   if (body.redeem != null && customer_uid && groupCapabilities().render) {
     const boundAcq = await BR.probeBoundReuse(db, { orderId, uid: customer_uid, rid: restaurantId, body, now: Date.now() });
-    if (boundAcq) { const zr = await DW.zoneResumeRefusal(db, boundAcq.order); if (zr) return res.status(zr.httpStatus).json({ error: zr.refusal, ...(zr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId });   // envío step 2 (F1): a stored app delivery in a zone is not resumed
+    if (boundAcq) { const zr = await DW.zoneResumeRefusal(db, boundAcq.order, dpP); if (zr) return res.status(zr.httpStatus).json({ error: zr.refusal, ...(zr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId });   // envío step 2 (F1): a stored app delivery in a zone is not resumed
       const never = () => { throw new Error('bound reuse never gates, releases or retires'); };
       const flow = await resolveBoundReuse({ acq: boundAcq, orderId, totalCents: null, releaseHold: never, retireAttempt: never, runGate: never, log: console });
       return res.status(flow.respond.status).json(flow.respond.body);
@@ -1673,7 +1673,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     fields.items_text = prep.itemsText;   // free-item display line → flows into BOTH fingerprints + the pending order
   }
   // Effective (discounted) breakdown used by both fingerprint sites, the pending record, and the charge amount.
-  const dq = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }), body, Date.now()); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const effBreakdown = DW.withDelivery(dq, redemptionPriced
+  const dq = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }), body, Date.now(), dpP); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const effBreakdown = DW.withDelivery(dq, redemptionPriced
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
     : orderBreakdownCents(total, restaurantId));

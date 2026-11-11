@@ -31,8 +31,16 @@ function nameOk(s) {
   return true;
 }
 
-// orientation of (p, q, r) on the (lng, lat) plane: > 0 left, < 0 right, 0 collinear
-const orient = (p, q, r) => (q[1] - p[1]) * (r[0] - p[0]) - (q[0] - p[0]) * (r[1] - p[1]);
+// EXACT geometry (Codex build r1 #1): every coordinate lives on the 6-decimal grid, so it is scaled to an INTEGER (×1e6) and every
+// orientation, area and crossing test is integer arithmetic — no floating `=== 0`, no tolerance. Exact in plain Numbers because every
+// operand is a DIFFERENCE inside one zone's bounding box: the box cap (≤ 20 km ≈ 0.19°, checked BEFORE any shape rule) bounds each
+// difference by < 4·10^5 grid units, so a product is < 1.6·10^11 and a 24-term area sum < 4·10^12, far below 2^53; a pin is first
+// rejected outside the zone's box, so the same bound holds for it. A pin is put on the same grid (≈ 0.1 m).
+const gridI = (x) => Math.round(x * 1e6);
+const gridPt = (p) => [gridI(p[0]), gridI(p[1])];
+const exact = (v) => { if (!Number.isSafeInteger(v)) throw new Error('zones_geometry_out_of_range'); return v; };   // tripwire for the bound above
+// orientation of (p, q, r) on the (lng, lat) plane: > 0 left, < 0 right, 0 collinear — exact on grid points within one box
+const orient = (p, q, r) => exact((q[1] - p[1]) * (r[0] - p[0]) - (q[0] - p[0]) * (r[1] - p[1]));
 const onSeg = (p, q, r) => Math.min(p[0], q[0]) <= r[0] && r[0] <= Math.max(p[0], q[0]) && Math.min(p[1], q[1]) <= r[1] && r[1] <= Math.max(p[1], q[1]);
 function segsCross(a, b, c, d) {
   const o1 = orient(a, b, c), o2 = orient(a, b, d), o3 = orient(c, d, a), o4 = orient(c, d, b);
@@ -53,7 +61,7 @@ function simple(pts) {
   }
   return true;
 }
-const area2 = (pts) => { let s = 0; for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; s += p[1] * q[0] - q[1] * p[0]; } return s; };
+const area2 = (pts) => { const o = pts[0]; let s = 0; for (let i = 1; i + 1 < pts.length; i++) s += orient(o, pts[i], pts[i + 1]); return exact(s); };   // exact, on grid points: a fan of orientations from the first vertex (differences only)
 const KM_PER_DEG = 111.195;
 function bboxKm(pts) {
   let lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
@@ -73,7 +81,7 @@ function compactProblem(zones) {
     const zid = isObj(z) && typeof z.id === 'string' ? z.id : null;
     const fail = (problem, field) => ({ problem, ...(zid ? { zone_id: zid } : {}), field });
     if (!exactKeys(z, ['id', 'name', 'points'])) return fail('zones', 'zone');
-    if (!ID_RE.test(z.id) || ids.has(z.id)) return fail('zones', 'id');
+    if (typeof z.id !== 'string' || !ID_RE.test(z.id) || ids.has(z.id)) return fail('zones', 'id');   // a STRING first (Codex build r1 #3)
     ids.add(z.id);
     if (!nameOk(z.name) || z.name !== z.name.trim()) return fail('zones', 'name');
     const folded = z.name.toLowerCase();
@@ -90,8 +98,8 @@ function compactProblem(zones) {
       const p = z.points[k], q = z.points[(k + 1) % z.points.length];
       if (p[0] === q[0] && p[1] === q[1]) return fail('zones', 'points');
     }
-    if (area2(z.points) === 0 || !simple(z.points)) return fail('zones', 'points');
-    if (bboxKm(z.points) > CAPS.bbox_max_km) return fail('zone_caps', 'points');
+    if (bboxKm(z.points) > CAPS.bbox_max_km) return fail('zone_caps', 'points');   // FIRST: it bounds the exact arithmetic below
+    { const g = z.points.map(gridPt); if (area2(g) === 0 || !simple(g)) return fail('zones', 'points'); }
   }
   return null;
 }
@@ -128,13 +136,19 @@ const sameLogical = (a, b) => JSON.stringify(logical(a)) === JSON.stringify(logi
 // pin { lat, lng } inside ANY zone? An edge or vertex counts as inside (D5); then even-odd ray casting on (lng, lat).
 function inZone(zones, pin) {
   if (!pin || !isLat(pin.lat) || !isLng(pin.lng)) return false;
-  const r = [pin.lat, pin.lng];
+  const r = gridPt([pin.lat, pin.lng]);   // the pin on the zones' grid (≈ 0.1 m)
   for (const z of logical(zones)) {
-    const pts = z.points; let inside = false;
+    const pts = z.points.map(gridPt); let inside = false;
+    { let lo0 = Infinity, hi0 = -Infinity, lo1 = Infinity, hi1 = -Infinity; for (const q of pts) { lo0 = Math.min(lo0, q[0]); hi0 = Math.max(hi0, q[0]); lo1 = Math.min(lo1, q[1]); hi1 = Math.max(hi1, q[1]); }
+      if (r[0] < lo0 || r[0] > hi0 || r[1] < lo1 || r[1] > hi1) continue; }   // outside the box: neither inside nor on an edge
     for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
       const a = pts[i], b = pts[j];
       if (orient(a, b, r) === 0 && onSeg(a, b, r)) return true;
-      if ((a[0] > r[0]) !== (b[0] > r[0]) && r[1] < ((b[1] - a[1]) * (r[0] - a[0])) / (b[0] - a[0]) + a[1]) inside = !inside;
+      // the ray to +lng crosses edge ab: r.lng < a.lng + (b.lng − a.lng)(r.lat − a.lat)/(b.lat − a.lat), cross-multiplied by the signed denominator
+      if ((a[0] > r[0]) !== (b[0] > r[0])) {
+        const d = b[0] - a[0], lhs = (r[1] - a[1]) * d, rhs = (b[1] - a[1]) * (r[0] - a[0]);
+        if (d > 0 ? exact(lhs) < exact(rhs) : exact(lhs) > exact(rhs)) inside = !inside;
+      }
     }
     if (inside) return true;
   }
