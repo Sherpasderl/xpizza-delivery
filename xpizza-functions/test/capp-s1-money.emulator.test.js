@@ -262,7 +262,7 @@ async function oldBody(rid, build) {
     assert.ok(cost > 0 && BALANCE[rid] >= cost, `premise: the balance covers the reward (${cost})`);
     await rtdb.ref(`user_rewards/${UID}/${rid}`).set({ balance: BALANCE[rid], reserved: 0 });
     await clean();
-    const qr = await post(app.quoteRedemption, { restaurant_id: rid, items: s.items, redeem: REWARD[rid], mode: 'delivery', pin: { ...PIN, confirmed: true } }, auth);
+    const qr = await post(app.quoteRedemption, { restaurant_id: rid, items: s.items, redeem: REWARD[rid], mode: 'delivery', pin: { ...PIN, confirmed: true }, ...(APP_SHAPE ? { entry_mode: 'app' } : {}) }, auth);   // the reward quote is the app's (APP_SHAPE is ON here: the fee is on)
     assert.ok(qr.json && qr.json.ok && typeof qr.json.quote_token === 'string' && qr.json.quote_token, `${rid}: quoteRedemption issues a SIGNED quote — ${qr.text.slice(0, 220)}`);
     assert.deepStrictEqual([qr.json.total_cents, qr.json.net_total_cents, qr.json.total_cost], [paid, net, cost], `🔴 ${rid}: the reward quote: food == the PAID subtotal (free item excluded), net == food + envío, cost == the config`);
     // cash: exact total; the reservation RESERVED for exactly the cost; balance untouched
@@ -279,7 +279,7 @@ async function oldBody(rid, build) {
     // consumes exactly the cost; then a second reward checkout, cancelled → released exactly
     await rtdb.ref(`user_rewards/${UID}/${rid}`).set({ balance: BALANCE[rid], reserved: 0 });
     await clean(); CHARGED.length = 0;
-    const qk = await post(app.quoteRedemption, { restaurant_id: rid, items: s.items, redeem: REWARD[rid], mode: 'delivery', pin: { ...PIN, confirmed: true } }, auth);
+    const qk = await post(app.quoteRedemption, { restaurant_id: rid, items: s.items, redeem: REWARD[rid], mode: 'delivery', pin: { ...PIN, confirmed: true }, ...(APP_SHAPE ? { entry_mode: 'app' } : {}) }, auth);   // the reward quote is the app's (APP_SHAPE is ON here: the fee is on)
     const signedQuote = (q, label) => {
       assert.ok(q.json && q.json.ok && typeof q.json.quote_token === 'string' && q.json.quote_token, `${rid} ${label}: a SIGNED reward quote — ${q.text.slice(0, 200)}`);
       assert.deepStrictEqual([q.json.total_cents, q.json.net_total_cents, q.json.total_cost], [paid, net, cost], `🔴 ${rid} ${label}: exact quote money (food, net, cost)`);
@@ -306,7 +306,7 @@ async function oldBody(rid, build) {
     assert.deepStrictEqual([r.state, r.debit_applied, wl.balance, wl.reserved], ['consumed', cost, BALANCE[rid] - cost, 0], `🔴 ${rid}: the confirm CONSUMES exactly the cost and leaves nothing reserved`);
     await rtdb.ref(`user_rewards/${UID}/${rid}`).set({ balance: BALANCE[rid], reserved: 0 });
     await clean();
-    const qc = await post(app.quoteRedemption, { restaurant_id: rid, items: s.items, redeem: REWARD[rid], mode: 'delivery', pin: { ...PIN, confirmed: true } }, auth);
+    const qc = await post(app.quoteRedemption, { restaurant_id: rid, items: s.items, redeem: REWARD[rid], mode: 'delivery', pin: { ...PIN, confirmed: true }, ...(APP_SHAPE ? { entry_mode: 'app' } : {}) }, auth);   // the reward quote is the app's (APP_SHAPE is ON here: the fee is on)
     signedQuote(qc, 'cancel-cell quote');
     const rb = bodyOf(rid, 'online', cart, { redeem: REWARD[rid], quote_token: qc.json.quote_token, expected_net_cents: qc.json.net_total_cents });
     assert.strictEqual((await post(app.chargeOnlineOrder, rb, auth)).status, 200);
