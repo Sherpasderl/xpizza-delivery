@@ -64,7 +64,7 @@ async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, t
   const nameMap = nameMapFrom(redeem);
   const freeItems = redemption.freeItems.map((fi) => ({
     item_id: fi.item_id, qty: fi.qty, price_cents: fi.price_cents,
-    name: nameMap[fi.item_id] || sanitizeName(fi.item_id, 80),
+    name: (require('./catalog/mint-opaque').OPAQUE_SYNTAX.test(fi.item_id) && typeof (require('./menu-pricing').labelsOfTables(tables) || {})[fi.item_id] === 'string') ? sanitizeName(require('./menu-pricing').labelsOfTables(tables)[fi.item_id], 80) : (nameMap[fi.item_id] || sanitizeName(fi.item_id, 80)),   // a minted key names its version label (the factura's rule); others as before
     ...(fi.cost_pts != null ? { cost_pts: fi.cost_pts } : {}),
   }));
 

@@ -223,6 +223,7 @@
     "xpizza-functions/intl-otp-endpoint.test.js",
     "xpizza-functions/intl-wiring.guard.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
+    "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -564,6 +565,7 @@
     "xpizza-functions/intl-otp-endpoint.test.js",
     "xpizza-functions/intl-wiring.guard.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
+    "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -957,6 +959,7 @@
     "xpizza-functions/intl-otp-endpoint.test.js",
     "xpizza-functions/intl-wiring.guard.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
+    "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -1298,6 +1301,7 @@
     "xpizza-functions/intl-otp-endpoint.test.js",
     "xpizza-functions/intl-wiring.guard.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
+    "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -1496,6 +1500,7 @@
     "xpizza-functions/contract/timer-bounds.guard.test.js",
     "xpizza-functions/contract/token.guard.test.js",
     "xpizza-functions/contract/tracer.test.js",
+    "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/kitchen-compat-floor.test.js",
     "xpizza-functions/kitchen-sdk-harness.guard.test.js",
     "xpizza-functions/pselfupdate-stamp.test.js",
@@ -1893,6 +1898,7 @@
     "customer-app/capp-price-notice-copy.test.mjs",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/form-bundle-splice.test.js",
+    "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/menus.test.mjs",
     "xpizza-functions/platform-runtime.test.js",
     "xpizza-functions/platform-sync.guard.test.js",
@@ -6540,6 +6546,7 @@
      "file": "xpizza-functions/a1-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
+      "tools/kdsnames-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
@@ -6549,6 +6556,7 @@
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
       "tools/a1-inverse.js",
+      "tools/kdsnames-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
@@ -6556,6 +6564,7 @@
     }
    ],
    "lifts": [
+    "xpizza-functions/kdsnames-wiring.guard.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
     "xpizza-functions/serial3-wiring.guard.test.js"
    ]
