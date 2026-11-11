@@ -185,7 +185,8 @@ async function send(attempt) {
   } catch (err) {
     if (!g.alive() || S.attempt !== attempt) return;
     // withheld before sending (no token / obsolete): nothing landed
-    S.phase = 'not_landed'; S.banner = 'error'; S.confirm = null; render(); return;
+    const wasOpen = !!S.confirm;
+    S.phase = 'not_landed'; S.banner = 'error'; S.confirm = null; render(); if (wasOpen) focusAfterEnvioClose(); return;
   }
   if (!g.alive() || S.attempt !== attempt) return;
   // Codex r1 F2: only the clean success contract is final; anything else is resolved by a fresh GET (the claim is kept as a hint)
@@ -203,7 +204,23 @@ async function recover(attempt) {
   if (!g.alive() || S.attempt !== attempt) return;
   outcome(attempt, EL.classifyRecovery(attempt, res, lastClaim.attempt === attempt ? lastClaim.claim : null), res);
 }
+// Codex r2 F1: an outcome that closes the confirm puts focus somewhere meaningful — the result box, else Guardar (bar shown),
+// else the page heading — never <body>
+function focusAfterEnvioClose() {
+  if (!S.root) return;
+  const a = document.activeElement;
+  if (a && a !== document.body && S.root.contains(a)) return;
+  const box = S.refs && S.refs.banner.querySelector('.eerr');
+  if (box) { box.tabIndex = -1; box.focus(); return; }
+  if (S.refs && S.refs.bar.classList.contains('show') && !S.refs.save.disabled) { S.refs.save.focus(); return; }
+  const h = S.root.querySelector('h1');
+  if (h) h.focus();
+}
 function outcome(attempt, o, recoveryRes) {
+  const wasOpen = !!S.confirm;
+  try { settleEnvioOutcome(attempt, o, recoveryRes); } finally { if (wasOpen) focusAfterEnvioClose(); }
+}
+function settleEnvioOutcome(attempt, o, recoveryRes) {
   S.confirm = null;
   switch (o) {
     case 'saved': {
@@ -727,6 +744,8 @@ registerView({
     S.host = null; S.root = null; S.status = 'idle';
   },
   canLeave: () => !S.attempt && !(S.rows && S.loaded && S.loaded.kind === 'policy' && EL.isDirty(S.rows, S.loaded.bands)),
+  // Codex r2 F3: an attempt kept while the view is unmounted holds the shell's reload guard (selection / self-update)
+  pending: () => !!S.attempt,
 });
 
 export const _envioState = S;   // test-only view of the state (never read by the page)

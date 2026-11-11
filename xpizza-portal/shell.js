@@ -541,6 +541,9 @@ export function registerView(def) {
   if (navRendered) throw new Error('registerView: register at module top level, before the nav is first drawn');
   const d = def || {};
   const fns = ['visible', 'mount', 'unmount', 'canLeave'];
+  // optional pending(): work a view keeps while UNMOUNTED (Envío: an unresolved save attempt) — it holds the reload guard
+  // (selection / self-update) but never ordinary navigation (Codex Envío r2 F3)
+  if (d.pending !== undefined && typeof d.pending !== 'function') throw new Error('registerView: pending must be a function');
   if (typeof d.id !== 'string' || !/^[a-z][a-z0-9-]{0,31}$/.test(d.id) || BUILTIN[d.id] || REG.some((r) => r.id === d.id)) throw new Error(`registerView: bad or duplicate id ${d.id}`);
   if (!Object.prototype.hasOwnProperty.call(GROUPS, d.group)) throw new Error(`registerView: unknown group ${d.group}`);
   if (typeof d.label !== 'string' || !d.label.trim()) throw new Error('registerView: label');
@@ -565,7 +568,7 @@ export function registerView(def) {
   placeAfter(last ? last.mn : $(MGROUPS[d.group]), mn);
   placeAfter(REG.length ? REG[REG.length - 1].main : $('viewpausas'), main);
   const r = { id: d.id, group: d.group, label: d.label, visible: d.visible, mount: d.mount, unmount: d.unmount, canLeave: d.canLeave, nav, mn, main, mounted: false,
-    admin: d.admin === true, revoke: d.revoke || null };
+    admin: d.admin === true, revoke: d.revoke || null, pending: d.pending || null };
   const wrapMount = r.mount;
   r.mount = (elm, sel) => { r.mounted = true; return wrapMount(elm, sel); };
   nav.addEventListener('click', () => goto(r.id));
@@ -594,15 +597,16 @@ function paintBadge(viewId) {
   }
 }
 
-// Codex r1 F7 (Envío): a platform admin needs no merchant membership — with no selection, ADMIN views get a context built from
-// the uid and the platform_admin hint alone (no brand, no caps, no scope); merchant views get none.
+// Codex r1 F7 + r2 (Envío): an ADMIN view ALWAYS gets the neutral admin context — the uid and the platform_admin hint alone (no
+// brand, role, caps or scope), with or without merchant membership; merchant views are unchanged (and need a selection).
 const platformAdmin = () => !!(S.e1 && S.e1.platform_admin === true);
 const adminOnlySel = () => Object.freeze({ brandId: null, role: null, caps: Object.freeze([]), membership_writes_enabled: false, scope: null,
   platform_admin: true, uid: S.uid });
-const canOffer = (r) => (S.sel ? true : r.admin && platformAdmin()) && isVisible(r);
+const canOffer = (r) => (r.admin ? platformAdmin() : !!S.sel) && isVisible(r);
 function viewSel(r) {
+  if (r && r.admin) return platformAdmin() ? adminOnlySel() : null;
   const sel = S.sel;
-  if (!sel) return r && r.admin && platformAdmin() ? adminOnlySel() : null;
+  if (!sel) return null;
   const caps = [...new Set(sel.brand.branches.flatMap((b) => (Array.isArray(b.caps) ? b.caps : [])))].sort();
   return Object.freeze({ brandId: sel.brand_id, role: sel.owner ? 'owner' : 'manager', caps: Object.freeze(caps),
     membership_writes_enabled: !!(S.e1 && S.e1.membership_writes_enabled === true), scope: sel.scope === 'all' ? null : sel.scope,
@@ -641,7 +645,11 @@ function leaveRegistered(next) {
 }
 function registeredCanLeave() {
   for (const r of REG) {
-    if (!r.mounted) continue;
+    if (!r.mounted) {
+      // an unmounted view with kept work (pending) still says NO; a throwing hook fails closed
+      if (r.pending) { let held = true; try { held = r.pending() === true; } catch (_) { held = true; } if (held) return false; }
+      continue;
+    }
     let okv = false;
     try { okv = r.canLeave() === true; } catch (_) { okv = false; }
     if (!okv) return false;

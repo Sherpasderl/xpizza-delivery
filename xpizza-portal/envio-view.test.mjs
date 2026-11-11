@@ -830,3 +830,49 @@ test('Codex r1 F8: the picker is a combobox → listbox; aria-activedescendant f
   assert.equal(inp.getAttribute('aria-activedescendant'), opts()[1].id);
   assert.ok(P.d.getElementById(inp.getAttribute('aria-activedescendant')).classList.contains('phi'));
 });
+
+// ── Codex build r2 (narrow): the three partials ─────────────────────────────────────────────────────────────────────────
+test('Codex r2 F1: an OUTCOME closes the confirm with meaningful focus — saved → the page heading; conflict → the result box (never <body>)', async () => {
+  const P = await page();
+  await P.signIn(); await P.open();
+  await editTo10(P);
+  P.btn('Guardar', P.bar()).click(); await settle();
+  P.btn('Guardar tarifas').click(); await settle(30);
+  assert.equal(P.d.getElementById('opstoast').textContent, 'Tarifas guardadas', 'premise: saved');
+  assert.notEqual(P.d.activeElement, P.d.body, 'focus is not dropped on <body>');
+  assert.equal(P.d.activeElement, P.host().querySelector('h1'), 'saved → the page heading');
+  P.type(1, 'fee', '70'); await settle();
+  await P.srv.db.ref(CORE.PATH).set(POLICY(9, [{ max_km: 5, cents: 7000 }]));
+  P.btn('Guardar', P.bar()).click(); await settle();
+  P.btn('Guardar tarifas').click(); await settle(30);
+  assert.ok(P.text().includes('Alguien más cambió las tarifas'), 'premise: conflict');
+  assert.equal(P.d.activeElement, P.host().querySelector('.eerr'), 'conflict → the result box');
+});
+
+test('Codex r2 F3: an attempt kept while «Envío» is unmounted still holds the reload guard; ordinary navigation stays allowed; reconciled → released', async () => {
+  const P = await page();
+  await P.signIn(); await P.open();
+  await editTo10(P);
+  P.btn('Guardar', P.bar()).click(); await settle();
+  P.srv.fault.post = 'afterDrop'; P.srv.fault.get = 'fail';
+  P.btn('Guardar tarifas').click(); await settle(40);
+  assert.equal(P.mods.envio._envioState.phase, 'unknown', 'premise: UNKNOWN');
+  P.d.getElementById('navprod').click(); await settle(20);
+  assert.ok(!P.d.getElementById('viewmenu').classList.contains('hidden'), 'ordinary navigation is allowed');
+  assert.equal(P.mods.shell.canLeave(), false, 'away from the view, the kept attempt still says NO to a reload / selection / self-update');
+  await P.open(); await settle(40);
+  assert.equal(P.mods.envio._envioState.attempt, null, 'premise: reconciled on return');
+  P.d.getElementById('navprod').click(); await settle(20);
+  assert.equal(P.mods.shell.canLeave(), true, 'nothing kept → released');
+});
+
+test('Codex r2 F7: an admin view ALWAYS gets the neutral admin context — never the merchant brand, role, caps or scope (with membership)', async () => {
+  const P = await page();
+  await P.signIn();
+  let got = null;
+  const real = P.reg().mount;
+  P.reg().mount = (elm, sel) => { got = sel; return real(elm, sel); };
+  await P.open(); await settle(10);
+  assert.ok(got, 'premise: mounted');
+  assert.deepEqual({ ...got, caps: [...got.caps] }, { brandId: null, role: null, caps: [], membership_writes_enabled: false, scope: null, platform_admin: true, uid: 'uAdmin' });
+});
