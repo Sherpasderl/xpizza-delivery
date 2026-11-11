@@ -109,7 +109,11 @@ async function intake(rid, { redeem, items, itemsText, tables, eligible }) {
       assert.ok(!KEY_RE.test(paid.items_text), `${L}: no minted key in the client text: ${paid.items_text}`);
       assert.ok(paid.items_text.includes('Especial de la Casa') && paid.items_text.includes('Pizza Nueva'), `${L}: both names: ${paid.items_text}`);
     });
-    if (offered.length) {
+    assert.ok(offered.length, `premise: ${rid} the minted dish is offered extras`);
+    // the cart the ticket cells carry: the renamed dish + the minted dish WITH an offered extra (Codex build r1 P2)
+    const cx = createCart(m); cx.inc(renamedDish.key); cx.inc(mintedDish.key); cx.setInstance(mintedDish.key, 0, [offered[0].key]);
+    const paidX = serialize(cx, m);
+    {
       const c2 = createCart(m); c2.inc(mintedDish.key);
       await cell(`KDS-NAMES-CAPP-EXTRA ${rid}: the minted dish's extra prints by its name`, (L) => {
         c2.setInstance(mintedDish.key, 0, [offered[0].key]);
@@ -134,13 +138,15 @@ async function intake(rid, { redeem, items, itemsText, tables, eligible }) {
       });
     }
 
-    await cell(`KDS-NAMES-TICKET ${rid}: the kitchen ticket and the handheld show the renamed dish, the minted dish and the reward by name`, async (L) => {
-      const r = await intake(rid, { redeem: redeemOf(null), items, itemsText: paid.items_text, tables: v.tables, eligible });
+    await cell(`KDS-NAMES-TICKET ${rid}: the kitchen ticket and the handheld show the renamed dish, the minted dish, its extra and the reward by name`, async (L) => {
+      const r = await intake(rid, { redeem: redeemOf(null), items: paidX.items, itemsText: paidX.items_text, tables: v.tables, eligible });
+      assert.ok(r.ok, `${L}: premise: the extra-bearing cart's redemption prepares (${JSON.stringify(r.body || {})})`);
       const kds = ticketText(render(r.itemsText));
-      for (const name of ['Especial de la Casa', 'Pizza Nueva']) assert.ok(kds.includes(name), `${L}: kitchen shows «${name}»: ${kds}`);
+      for (const name of ['Especial de la Casa', 'Pizza Nueva', offered[0].name]) assert.ok(kds.includes(name), `${L}: kitchen shows «${name}»: ${kds}`);
       assert.ok(!KEY_RE.test(kds), `${L}: no minted key on the kitchen ticket: ${kds}`);
       const hv = JSON.stringify(orderView({ items_text: r.itemsText }));
-      assert.ok(hv.includes('Pizza Nueva') && !KEY_RE.test(hv), `${L}: handheld view: ${hv}`);
+      for (const name of ['Especial de la Casa', 'Pizza Nueva', offered[0].name]) assert.ok(hv.includes(name), `${L}: handheld shows «${name}»: ${hv}`);
+      assert.ok(!KEY_RE.test(hv), `${L}: no minted key on the handheld: ${hv}`);
     });
   }
 
