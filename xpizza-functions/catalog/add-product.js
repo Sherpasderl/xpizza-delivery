@@ -525,7 +525,37 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
     if (!sameJson(exposureWithoutDenyExtras(de), exposureWithoutDenyExtras(ae))) refuse('structure_changed', "the menu's exposure cannot change here", { field: 'exposure' });
     if (!sameJson(denyExtrasOf(de), denyExtrasOf(ae)) && !extrasAuthoring) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
   }
+  accountResidual({ draftBuilt, activeBuilt, authored });
   return { additions: additions.map((it) => it.key), removals };
+}
+
+/* S2-core (PLAN-structure-S2core-r3 §1.2; Codex #4, ruling R1) — EXHAUSTIVE ACCOUNTING, the final gate. The rules above explain a
+   change only through the fields they compare; anything else that differs and is not code-derived is a RESIDUAL and refuses
+   `structure_unexplained` naming its path: a structure field the draft AUTHORS that no rule handles (badge_priority, schema_version,
+   an unknown field), an unknown field on an existing item or extra row, an unknown top-level field, or a key-mode change. An
+   UNAUTHORED structure field stays skipped (it is derived from code; a code change must not refuse every save). */
+const HANDLED_STRUCTURE = new Set([...ALWAYS_COMPARED, ...COMPARED_WHEN_AUTHORED, 'item_order']);
+const HANDLED_TOP = new Set(['items', 'extras', 'structure', 'key_mode', 'frozen_keys', 'photos']);   // frozen_keys / photos: their own rules
+function accountResidual({ draftBuilt, activeBuilt, authored }) {
+  const residual = (path) => refuse('structure_unexplained', `this change is not one the menu editor can make (${path})`, { field: path });
+  const ds = draftBuilt.structure || {}; const as = activeBuilt.structure || {};
+  for (const f of new Set([...Object.keys(ds), ...Object.keys(as)])) {
+    if (HANDLED_STRUCTURE.has(f) || !authored.has(f)) continue;
+    if (!sameJson(ds[f], as[f])) residual(`structure.${f}`);
+  }
+  for (const f of new Set([...Object.keys(draftBuilt), ...Object.keys(activeBuilt)])) {
+    if (!HANDLED_TOP.has(f) && !sameJson(draftBuilt[f], activeBuilt[f])) residual(f);
+  }
+  if (draftBuilt.key_mode !== activeBuilt.key_mode) residual('key_mode');
+  const rows = (kind, list, other, known) => {
+    const byKey = new Map((other || []).map((r) => [r.key, r]));
+    for (const r of list || []) {
+      const prev = byKey.get(r.key); if (!prev) continue;
+      for (const f of new Set([...Object.keys(r), ...Object.keys(prev)])) if (!known.includes(f) && !sameJson(r[f], prev[f])) residual(`${kind}.${r.key}.${f}`);
+    }
+  };
+  rows('items', draftBuilt.items, activeBuilt.items, ['key', 'price', 'display', 'has_photo']);
+  rows('extras', draftBuilt.extras, activeBuilt.extras, ['key', 'price', 'display']);
 }
 
 // Two category lists that differ at most in `name`: same length, and at each index every field but `name` equal — the id

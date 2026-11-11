@@ -362,6 +362,7 @@
   "catalog/add-product.js#changesNothingElse": "catalog",
   "catalog/add-product.js#classifyItems": "catalog",
   "catalog/add-product.js#compareToActive": "catalog",
+  "catalog/add-product.js#accountResidual": "catalog",
   "catalog/add-product.js#constructor": "catalog",
   "catalog/add-product.js#others": "catalog",
   "catalog/add-product.js#prospectiveAdditionNames": "catalog",

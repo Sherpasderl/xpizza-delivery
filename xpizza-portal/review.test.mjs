@@ -1082,7 +1082,7 @@ test('🔴 EVERY merchant-reachable add-product refusal has a designed panel —
   assert.ok(codes.length >= 15, `the server source was actually read (${codes.length} codes)`);
   // Not reachable from this portal (it never sends a key, an id, a malformed row or a mismatched ref), or a server
   // configuration fault the merchant cannot fix: the generic panel is the honest answer for these.
-  const GENERIC_BY_DESIGN = new Set(['addition_malformed', 'client_supplied_key', 'item_order_ref_mismatch', 'id_taken', 'key_mode_unknown', 'key_mode_inconsistent']);
+  const GENERIC_BY_DESIGN = new Set(['addition_malformed', 'client_supplied_key', 'item_order_ref_mismatch', 'id_taken', 'key_mode_unknown', 'key_mode_inconsistent', 'structure_unexplained']);   // S2-core accounting: the portal writers never produce a residual (proven by the zero-residual cells)
   // per-product extras (stage 2): unreachable from this portal ONLY while the platform extras-authoring switch is OFF — it
   // sends no tmp-ref override, no extras_policy toggle and no deny_extras change. The exemption is TIED to the switch: turning
   // authoring on (with the extras form) turns this test red until both codes have designed panels.
