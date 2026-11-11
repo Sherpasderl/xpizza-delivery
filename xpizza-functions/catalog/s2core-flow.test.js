@@ -102,6 +102,16 @@ async function served(rid, captured) {
     const p2 = publishDeps(rid, stored);
     const off = await publishEditedCore(p2.deps, { restaurantId: rid, token: r.body.token, acknowledgedChanges: r.body.diff.largeChangeSet, ...(rid === 'x_pizza' ? { fiscalAck: true } : {}) }, {});
     assert.ok(off.status >= 400 && p2.state.publishes.length === 0, `SF-SWITCH-OFF-PUBLISH ${rid}: refused, nothing published (${off.status} ${JSON.stringify(off.body).slice(0, 160)})`);
+    // m3: the publish's OWN structural judgment follows the switch — even a token bound to the switch-OFF diff of that very draft
+    // (the token re-match cannot be what refuses here) cannot publish the extras change
+    {
+      const L0 = await liveRead(rid)(); const { inputs: i, built: b } = require('./candidate-validate').buildSourceCandidate(rid, stored);
+      const offDiff = require('./review-diff').reviewDiff({ live: L0.built, liveExtraRecords: L0.extraRecords, draftBuilt: { ...b, extras: i.extras }, draftExtraRecords: b.extras, extrasCatalog: false });
+      const tok = issueEditToken({ rid, baseActiveVersionId: ACTIVE, sourceUpdateTime: T1, sourceHash: sha256(stored), diff: offDiff });
+      const p3 = publishDeps(rid, stored);
+      const judged = await publishEditedCore(p3.deps, { restaurantId: rid, token: tok, acknowledgedChanges: offDiff.largeChangeSet, ...(rid === 'x_pizza' ? { fiscalAck: true } : {}) }, {});
+      assert.deepStrictEqual([judged.status, judged.body.error, p3.state.publishes.length], [400, 'extras_changed', 0], `SF-SWITCH-OFF-COMPARE ${rid}: the publish's compare refuses the extras change (${judged.status} ${JSON.stringify(judged.body).slice(0, 160)})`);
+    }
     const { r: r2 } = await save(rid, draft);
     assert.deepStrictEqual([r2.status, r2.body.error], [400, 'extras_catalog_not_supported_yet'], `SF-SWITCH-OFF-SAVE ${rid}: (${JSON.stringify(r2.body).slice(0, 160)})`);
     STRUCT.extrasCatalog = true;

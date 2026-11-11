@@ -3,8 +3,8 @@
 // GROUPS per sellable dish, expressed in the two legacy maps so BOTH readers render it exactly:
 //   forms  (form-group-picker.js offeredExtraGroups): byCategory[cat] THEN byItem[String(id)] || byItem[name], first appearance wins
 //   capp   (capp-menu.js extrasFor):                  byCategory[cat] THEN byItem[String(id)] (display id only), groups only
-// Per category: one common list on the category (when non-empty) and, per dish, only what follows it in the one group order; a
-// category whose dishes cannot be written that way carries no category entry and every dish its COMPLETE list. A dish whose
+// Per category: one common list on the category (when non-empty) and, per dish, only what follows it in the one group order (every
+// list is in that order, so the common PREFIX plus each remainder is always exact). A dish whose
 // extras_policy is 'none' renders empty in both readers already (forms noExtras; capp via the eligibility deny) and takes no part.
 // Keys are display ids (both readers try them first); values are group names. Typed per-extra denies stay in the eligibility doc.
 // PURE.
@@ -20,7 +20,6 @@ function projectExtrasMaps({ items, extras, structure }) {
   const proj = projectEligibility({ items, extras, structure });
   const E = effectiveGroups(proj);
   const idOf = new Map(items.map((i) => [i.key, String(i.display && i.display.id)]));
-  const rank = new Map(proj.extraCategories.map((c, i) => [c, i]));
   // categories in today's order: the authored category_allow keys first, then any other category a dish carries
   const cats = [...Object.keys(proj.categoryAllow)];
   const members = new Map();
@@ -37,14 +36,10 @@ function projectExtrasMaps({ items, extras, structure }) {
     const lists = ks.map((k) => E[k]);
     let common = lists[0].slice();
     for (const l of lists) { let i = 0; while (i < common.length && i < l.length && common[i] === l[i]) i++; common = common.slice(0, i); }
-    const last = common.length ? rank.get(common[common.length - 1]) : -1;
-    const suffixOk = lists.every((l) => l.slice(common.length).every((g) => rank.get(g) > last));
-    if (suffixOk) {
-      if (common.length) byCategory[cat] = common;
-      for (const k of ks) { const rest = E[k].slice(common.length); if (rest.length) byItem[idOf.get(k)] = rest; }
-    } else {
-      for (const k of ks) if (E[k].length) byItem[idOf.get(k)] = E[k].slice();
-    }
+    // every list is in the one group order, so each dish's remainder follows the common prefix: category list + item remainder
+    // reproduces it exactly in both readers (category first, first appearance wins)
+    if (common.length) byCategory[cat] = common;
+    for (const k of ks) { const rest = E[k].slice(common.length); if (rest.length) byItem[idOf.get(k)] = rest; }
   }
   // byItem in the menu's item order (today's object order)
   const order = (structure && structure.item_order) || items.map((i) => i.key);

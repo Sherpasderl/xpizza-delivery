@@ -46,9 +46,9 @@ function reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords, pho
   if (!same(lc, dc)) out.structure = { extra_categories: { old: lc === undefined ? null : lc, new: dc === undefined ? null : dc } };
 
   const nameOf = (surface, key) => { const r = surface === 'extra' ? dx.get(key) : (draftBuilt.items || []).find((i) => i.key === key); return r && r.display ? r.display.name : null; };
-  const seen = new Set(); const once = (r) => { const id = `${r.surface}:${r.key}`; if (seen.has(id)) return false; seen.add(id); return true; };
-  const added = diff.added.filter((a) => a.surface === 'item' || a.surface === 'extra').map((a) => ({ surface: a.surface, key: a.key, name: nameOf(a.surface, a.key), price: a.price })).filter(once);
-  const repriced = diff.changed.filter((c) => c.field === 'price' && (c.surface === 'item' || c.surface === 'extra')).map((c) => ({ surface: c.surface, key: c.key, name: nameOf(c.surface, c.key), old: c.old, new: c.new })).filter(once);
+  // one row per key: catalogDiff lists each added key once and each price change once (no duplicates by construction)
+  const added = diff.added.filter((a) => a.surface === 'item' || a.surface === 'extra').map((a) => ({ surface: a.surface, key: a.key, name: nameOf(a.surface, a.key), price: a.price }));
+  const repriced = diff.changed.filter((c) => c.field === 'price' && (c.surface === 'item' || c.surface === 'extra')).map((c) => ({ surface: c.surface, key: c.key, name: nameOf(c.surface, c.key), old: c.old, new: c.new }));
   out.fiscal = { added, repriced };
   return out;
 }

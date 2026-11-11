@@ -65,14 +65,13 @@ cell('P1-DETACH-VISIBLE x_pizza: Margherita detached from «Carnes» — the REA
 // (each group's extras keep their relative order), so the capp (which walks EXTRAS order) and the forms show the same group order
 cell('P2-ONE-GROUP-ORDER x_pizza: reversing extra_categories reorders extra_order group-major, and the REAL capp follows', (L) => {
   const src = buildSourceFromCode('x_pizza');
-  const before = buildSourceCandidate('x_pizza', src).built;
   src.structure.extra_categories = [...src.structure.extra_categories].reverse();
   const built = buildSourceCandidate('x_pizza', src).built;
   const catOf = new Map(built.extras.map((e) => [e.key, e.display.cat]));
   const groupsInOrder = [...new Set(built.structure.extra_order.map((k) => catOf.get(k)))];
   assert.deepStrictEqual(groupsInOrder, src.structure.extra_categories, `${L}: extra_order is group-major in the new order`);
   for (const g of src.structure.extra_categories) {
-    assert.deepStrictEqual(built.structure.extra_order.filter((k) => catOf.get(k) === g), before.structure.extra_order.filter((k) => catOf.get(k) === g), `${L}: «${g}» keeps its extras' relative order`);
+    assert.deepStrictEqual(built.structure.extra_order.filter((k) => catOf.get(k) === g), src.extras.filter((e) => e.display.cat === g).map((e) => e.key), `${L}: «${g}» keeps its extras' authored relative order`);
   }
   const body = composeServedMenu('x_pizza', { items: built.items, structure: built.structure, extras: built.extras });
   const m = adaptMenu({ rid: 'x_pizza', representation_version: 1, menu: body });

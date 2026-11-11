@@ -38,7 +38,10 @@ function saveDb(rid) {
     set: async (data) => { state.source = { data, updateTime: T1 }; return { writeTime: T1 }; },
     update: async (data, pre) => { if (!pre || pre.lastUpdateTime !== state.source.updateTime) { const e = new Error('FAILED_PRECONDITION'); e.code = 9; throw e; } state.source = { data, updateTime: T1 }; return { writeTime: T1 }; },
   });
-  return { collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }) };
+  // a new product commits the draft and the high-water mark TOGETHER (edit-catalog-handler.js): a batch whose draft update keeps its
+  // precondition; the mark's create is recorded (this harness has no mark store — frozen-keys-handler.test.js's shape)
+  const batch = () => { const ops = []; return { update: (ref, data, pre) => ops.push(() => ref.update(data, pre)), create: () => ops.push(async () => ({ writeTime: T1 })), commit: async () => { const out = []; for (const op of ops) out.push(await op()); return out; } }; };
+  return { batch, collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }) };
 }
 // the add-product dependency as frozen-keys-handler.test.js supplies it with no store (no retired names, no reserved keys)
 const addProductOf = (mode) => ({ readKeyMode: async () => mode, hwmRef: () => ({ path: null, get: async () => ({ exists: false, data: () => undefined }) }),
@@ -83,10 +86,15 @@ for (const rid of ['x_pizza', 'la_musa']) {
   test(`T1-FLOW-NEW-PRODUCT ${rid}: «Agregar producto»`, async () => {
     const draft = ED.createDraft(base(rid));
     const cat = require('./source-store').rendererContract(rid).renderedCategories[0];
-    ED.addProduct(draft, { ref: 'tmp_1', cat });
-    ED.setAddition(draft, 'tmp_1', 'name', 'Plato Nuevo de Prueba');
-    ED.setAddition(draft, 'tmp_1', 'price', '123');
-    noResidual(await save(rid, ED.draftSource(draft)), 'new product');
+    const REF = 'tmp:newprod-0001';   // the editor's own ref rule (tmp:…) — a bad ref is silently ignored, so the premise below is asserted
+    ED.addProduct(draft, { ref: REF, cat });
+    ED.setAddition(draft, REF, 'name', 'Plato Nuevo de Prueba');
+    ED.setAddition(draft, REF, 'price', '123');
+    const src = ED.draftSource(draft);
+    assert.ok(src.items.some((i) => i.ref === REF) && src.structure.item_order.includes(REF), 'premise: the editor added the product');
+    const r = await save(rid, src);
+    noResidual(r, 'new product');
+    assert.ok(r.body.diff.added.some((a) => a.surface === 'item'), `new product: the review lists the addition (${JSON.stringify(r.body.diff.added)})`);
   });
   test(`T1-FLOW-SECTION-RENAME ${rid}: a section rename alone`, async () => {
     const draft = ED.createDraft(base(rid));

@@ -33,6 +33,9 @@ cell('XT-ATTACH-ITEM la_musa: dimsum_01 + «Proteínas» — offered, every extr
   const s = buildSourceFromCode('la_musa');
   const t = XT.apply(s, { op: 'attach.item', item: 'dimsum_01', group: 'Proteínas' }).source;
   assert.ok(groupsOf(t, 'dimsum_01').includes('Proteínas'), `${L}: offered`);
+  const stale = clone(s); stale.structure.exposure.item_overrides.dimsum_01 = { deny_extras: [keysOf(s, 'Proteínas')[0]] };   // a stale unticked extra of the group
+  const t2 = XT.apply(stale, { op: 'attach.item', item: 'dimsum_01', group: 'Proteínas' }).source;
+  assert.deepStrictEqual(eligible(t2, 'dimsum_01'), eligible(t, 'dimsum_01'), `${L}: attach starts the group ALL CHECKED (a stale unticked extra is cleared)`);
   for (const k of keysOf(t, 'Proteínas')) assert.ok(eligible(t, 'dimsum_01').includes(k), `${L}: ${k} eligible`);
   assert.deepStrictEqual(ov(t, 'dimsum_01'), { add: ['Proteínas'] }, `${L}: minimal write`);
   assert.ok(!ov(s, 'dimsum_01'), `${L}: the input is not mutated`);

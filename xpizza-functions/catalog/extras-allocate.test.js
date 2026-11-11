@@ -29,6 +29,17 @@ cell('XA-NAME-MODE x_pizza: key = name, display.id = next e-number, price mirror
   const maxE = Math.max(...buildSourceFromCode('x_pizza').extras.map((e) => Number(String(e.display.id).slice(1))));
   assert.deepStrictEqual([row.display.id, row.display.name, row.price, row.display.price, 'ref' in row], [`e${maxE + 1}`, 'Jalapeño', 15, 15, false], L);
 });
+cell('XA-PRICE-MIRROR both modes (T4, m4): a new extra priced only at the top level leaves with display.price mirrored, and the reverse', (L) => {
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const s = buildSourceFromCode(rid); const g = s.extras[0].display.cat;
+    s.extras.push({ ref: 'tmp:mirror-top-1', price: 21, display: { name: 'Solo Arriba', cat: g } });
+    s.extras.push({ ref: 'tmp:mirror-dsp-1', display: { name: 'Solo Adentro', cat: g, price: 22 } });
+    const { source } = run(rid, s);
+    const a = source.extras.find((e) => e.display.name === 'Solo Arriba'); const b = source.extras.find((e) => e.display.name === 'Solo Adentro');
+    assert.deepStrictEqual([a.price, a.display.price, b.price, b.display.price], [21, 21, 22, 22], `${L}: ${rid}`);
+    require('./source-store').validateSource(source, rid);   // the 2a validator's inline-price agreement holds
+  }
+});
 cell('XA-ID-MODE la_musa: key = display.id = slug', (L) => {
   const { source } = run('la_musa', withNew('la_musa', { name: 'Salsa Verde', cat: 'Salsas' }));
   const row = source.extras.find((e) => e.display.name === 'Salsa Verde');
