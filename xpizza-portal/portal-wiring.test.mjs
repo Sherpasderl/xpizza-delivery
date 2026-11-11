@@ -1025,6 +1025,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     // ── S4 «Editar producto» (S2-DESIGN §1.1) — per-load server facts: reset by resetEditFacts inside invalidateReview (the world ends),
     //    set ONLY in applyAddProductFacts on the generation-checked settle paths; the server re-judges every save and publish
     'state.extrasAuthoring':     [2, 'guarded', 'STRUCTURE S1 (R5) — the server\u2019s per-product extras switch (getEditableCatalog extrasAuthoring); fail closed (the checklist and «Sin extras» dark, prices as today) until a load sets it'],
+    'state.extrasCatalog':       [2, 'guarded', 'advisor Q8 (11-11) — whether the server serves the Extras page (getEditableCatalog extrasCatalog); fail closed (S1\u2019s «Opciones» line) until a load sets it; presentational'],
     'state.textEditEnabled':     [2, 'guarded', 'S4 — whether an existing product\u2019s drawer is the text-edit working copy (getEditableCatalog textEditEnabled); fail closed (today\u2019s drawer) until a load sets it'],
     'state.reservedNames':       [2, 'guarded', 'S4 — the names a rename may not take (server-normalized), for the live C5 line only; advisory — the save and the publish re-judge'],
     'state.savedTexts':          [2, 'guarded', 'S4 — the SAVED draft\u2019s unpublished text edits (pendingTexts), for the row tags and the bar count after a reload; presentational'],

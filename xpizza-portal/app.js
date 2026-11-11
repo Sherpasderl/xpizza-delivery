@@ -557,6 +557,8 @@ function applyAddProductFacts(data) {
   state.textEditEnabled = !!(data && data.textEditEnabled === true);
   // STRUCTURE S1 (R5): the server's per-product extras switch; absent ⇒ OFF — the checklist and «Sin extras» stay dark
   state.extrasAuthoring = !!(data && data.extrasAuthoring === true);
+  // advisor Q8 (11-11): whether the server serves the Extras page (getEditableCatalog extrasCatalog); absent ⇒ OFF — S1's «Opciones» line
+  state.extrasCatalog = !!(data && data.extrasCatalog === true);
   state.reservedNames = state.textEditEnabled && data && Array.isArray(data.reservedNames) ? data.reservedNames.filter((n) => typeof n === 'string') : null;
   state.savedTexts = Array.isArray(data && data.pendingTexts) ? data.pendingTexts.filter((t) => t && typeof t.key === 'string' && Array.isArray(t.fields)) : [];
 }
@@ -1511,6 +1513,7 @@ function productReviewOpts() {
 function resetEditFacts() {
   state.textEditEnabled = false;
   state.extrasAuthoring = false;
+  state.extrasCatalog = false;
   state.reservedNames = null;
   state.savedTexts = [];
   endEditSession();
@@ -1656,7 +1659,7 @@ function renderEditDrawer(d, it, keepScroll) {
   if (v0.options || ex.show) {
     const fOpc = mk('div', 'fld');
     const lrO = mk('div', 'mk-lrow');
-    lrO.append(mk('label', null, 'Opciones'), mk('span', 'mk-cnt', 'El orden de los grupos se define en Extras'));   // mockup v3 (owner 11-11): the order is set on the Extras page
+    lrO.append(mk('label', null, 'Opciones'), mk('span', 'mk-cnt', state.extrasCatalog === true ? 'El orden de los grupos se define en Extras' : 'en el orden que las ve el cliente'));   // mockup v3 (owner 11-11): the order is set on the Extras page — once that page exists
     const box = mk('div', `mk-opc${ex.none ? ' mk-off' : ''}`);
     const folded = (id) => opcFolded.has(`${s.id}|${id}`);
     const fold = (id) => { const k = `${s.id}|${id}`; if (opcFolded.has(k)) opcFolded.delete(k); else opcFolded.add(k); relayout(); refocus([`ie-fold::${id}`]); };
