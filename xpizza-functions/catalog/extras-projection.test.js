@@ -51,6 +51,13 @@ cell('P1-DETACH-VISIBLE x_pizza: Margherita detached from «Carnes» — the REA
   const groups = (d) => GP.offeredExtraGroups(d, body.extras, body.extras_by_category, body.extras_by_item).map((g) => (g && (g.cat || g.name || g.category)) || g);
   const flat = (d) => JSON.stringify(groups(d));
   assert.ok(!flat(dish('Margherita')).includes('Carnes'), `${L}: forms omit Carnes on Margherita (${flat(dish('Margherita'))})`);
+  // the capp reads extras_by_item by DISPLAY id only (m12: a map keyed by the pricing key — the name here — leaves the capp on the
+  // category list, still offering Carnes on Margherita)
+  const m = adaptMenu({ rid: 'x_pizza', representation_version: 1, menu: body });
+  const md = m.dishes.find((x) => x.name === 'Margherita');
+  assert.ok(md && !m.extrasFor(md.key).some((e) => e.cat === 'Carnes'), `${L}: the capp omits Carnes on Margherita`);
+  const sib = m.dishes.find((x) => x.name !== 'Margherita' && x.cat === md.cat && !x.launcher && m.extrasFor(x.key).length);
+  assert.ok(sib && m.extrasFor(sib.key).some((e) => e.cat === 'Carnes'), `${L}: the capp keeps Carnes on a sibling (${sib && sib.name})`);
   assert.ok(flat(dish('Pepperoni') || body.dishes.find((d) => d.name !== 'Margherita' && d.cat === dish('Margherita').cat && d.extras_policy !== 'none')).includes('Carnes'), `${L}: a sibling keeps Carnes`);
 });
 

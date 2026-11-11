@@ -1,6 +1,7 @@
 'use strict';
 // S2-core (PLAN-structure-S2core-r3 §4; owner Q4 caps) — the Extras page's caps and byte budgets, judged on the save and on the publish
-// BEFORE any write, and only behind the extrasCatalog switch (OFF: nothing is measured — today's save, byte for byte).
+// BEFORE any write, and only behind the extrasCatalog switch (OFF: nothing is measured — today's save, byte for byte). First, the exact
+// claim on the derived maps (structure_unexplained when the built extras_by_category / extras_by_item are not the projection).
 //   structure_caps   ≤ 20 groups · ≤ 30 extras in a group · ≤ 600 extras · ≤ 60 ops in one draft against the live version
 //   structure_bytes  source doc ≤ 512 KiB · eligibility doc ≤ 512 KiB · served public-menu body ≤ 768 KiB
 // An OP is one authored Extras-page change: an extra added or removed, the group order / set changed (one), or one group entering or
@@ -35,6 +36,12 @@ function opsOf(draft, active) {
 function enforce({ rid, source, draft, active, extrasCatalog }) {
   if (!extrasCatalog) return null;
   const st = draft.structure || {};
+  // T21 (§1.3 DERIVED-CLAIM-EXACT): under the switch compareToActive CLAIMS the two maps (they move with every attach / detach), so the
+  // claim is exact here — the built maps ARE the projection of the draft's own records, nothing else (add-product.js requires nothing)
+  const maps = require('./extras-projection').projectExtrasMaps({ items: draft.items, extras: draft.extras, structure: st });
+  for (const [f, want] of [['extras_by_category', maps.byCategory], ['extras_by_item', maps.byItem]]) {
+    if (JSON.stringify(st[f] || {}) !== JSON.stringify(want)) refuse('structure_unexplained', f, `the menu's ${f} is not the one its extras groups derive`);
+  }
   const groups = list(st.extra_categories);
   if (groups.length > LIMITS.groups) refuse('structure_caps', 'extra_categories', `at most ${LIMITS.groups} extras groups (${groups.length})`);
   const per = new Map();

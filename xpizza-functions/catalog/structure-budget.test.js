@@ -49,6 +49,20 @@ const SCALE = { x_pizza: scaledSource('x_pizza'), la_musa: scaledSource('la_musa
     judge('x_pizza', s, base);
     refused(() => judge('x_pizza', XT.apply(s, { op: 'group.order', order: [...s.structure.extra_categories].reverse() }).source, base), 'structure_caps', 'ops');
   });
+  await cell('DERIVED-CLAIM-EXACT (T21): after attach / detach / create the built maps ARE the projection; a stray map edit is structure_unexplained', (L) => {
+    let s = buildSourceFromCode('la_musa');
+    s = XT.apply(s, { op: 'attach.item', item: 'dimsum_01', group: 'Proteínas' }).source;
+    s = XT.apply(s, { op: 'detach.item', item: 'rice_03', group: 'Proteínas' }).source;
+    s = allocate(XT.apply(s, { op: 'group.create', group: 'Grupo Nuevo', extras: [{ ref: 'tmp:grp-new-ex0-x', name: 'Uno Nuevo', price: 10 }], attach: { mode: 'items', items: ['dimsum_02'] } }).source);
+    const base = buildSourceFromCode('la_musa');
+    judge('la_musa', s, base);
+    const d = records('la_musa', s);
+    assert.ok(Object.keys(d.structure.extras_by_item || {}).length, `${L}: premise — per-dish entries were derived`);
+    for (const [f, mutate] of [['extras_by_item', (st) => { st.extras_by_item = { ...st.extras_by_item, dimsum_03: ['Proteínas'] }; }], ['extras_by_category', (st) => { st.extras_by_category = { ...st.extras_by_category, dim_sum: ['Salsas'] }; }]]) {
+      const stray = clone(d); mutate(stray.structure);
+      refused(() => SB.enforce({ rid: 'la_musa', source: s, draft: stray, active: records('la_musa', base), extrasCatalog: true }), 'structure_unexplained', f);
+    }
+  });
   await cell('BYTES-REFUSE-OVER la_musa: every dish unticking all but one extra pushes the source past 512 KiB — structure_bytes (source)', () => {
     const s = clone(SCALE.la_musa); const keys = s.extras.map((e) => e.key);
     for (const it of s.items) if (it.display.variantOf == null) s.structure.exposure.item_overrides[it.key] = { deny_extras: keys.slice(1) };
