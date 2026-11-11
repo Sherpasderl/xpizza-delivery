@@ -410,6 +410,8 @@
   "catalog/extras-eligibility.js#publicDeny": "catalog",
   "catalog/extras-projection.js#effectiveGroups": "catalog",
   "catalog/extras-projection.js#projectExtrasMaps": "catalog",
+  "catalog/extras-allocate.js#allocateExtras": "catalog",
+  "catalog/extras-allocate.js#forSave": "catalog",
   "catalog/extras-eligibility-store.js#buildEligibilityDoc": "catalog",
   "catalog/extras-intake.js#extrasCheck": "intake",
   "catalog/extras-intake.js#sendRefusal": "intake",

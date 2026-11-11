@@ -112,7 +112,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   // same commit as the draft below.
   let candidate = canonicalize(FK.withFrozenKeys(withServerKeyMode(source, keyModeOwn.key_mode), fkOwn.frozen_keys)); if (textEdit) { candidate = canonicalize(AP.rederiveOptionNames(candidate)); const rec = FK.recordRenames({ draft: candidate, live, stored, textEdit }); if (!rec.ok) return reply(409, rec.key ? require('./edit-preflight').attributor(candidate)(rec.key, 'name', rec.error) : { error: rec.error }); candidate = canonicalize(FK.withFrozenKeys(candidate, rec.frozen_keys)); }   // S1a: with the switch on, a group renames as one unit, new text is capped, and every rename is recorded under its kept key
   let hwmPlan = null; { const op = RK.opaqueNameProblems({ items: candidate.items, activeItems: live.items })[0]; if (op) return reply(400, { error: 'name_previously_used', field: 'name', ...op }); }   // S1c (codex r1): never a name in the minted-key syntax
-  let refOfKey = {};          // fresh additions: allocated key → the tmp reference the portal still holds
+  let refOfKey = {}; { const xa = await require('./extras-allocate').forSave({ candidate, stored, live, extrasLive: liveRes.extraRecords, addProduct, rid, switchOn: require('./platform-structure').structureCapabilities().extrasCatalog }); if (xa.error) return refusal(xa.error); if (xa.unavailable) return reply(503, { error: 'store_unavailable', retryable: true }); candidate = xa.source; }   // fresh additions: allocated key → the tmp reference the portal still holds · S2-core §3.1: new extras allocated (switch-gated)
   if (hasAdditions) {
     if (!addProduct) return reply(503, { error: 'add_product_unavailable', retryable: false });
     try {
@@ -367,7 +367,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
       renderedCategories: rendererContract(rid).renderedCategories,
       deletedIds: next.deleted_ids && Array.isArray(next.deleted_ids.ids) ? next.deleted_ids.ids : [],
       authoring: groupCapabilities().authoring,
-      extrasAuthoring: extrasCapabilities().authoring, textEdit,   // per-product extras (the narrow deny_extras / extras_policy exception)
+      extrasAuthoring: extrasCapabilities().authoring, textEdit, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras (the narrow deny_extras / extras_policy exception) · S2-core: the Extras-page claims
     });
   } catch (e) {
     if (e instanceof AP.AddProductError) {

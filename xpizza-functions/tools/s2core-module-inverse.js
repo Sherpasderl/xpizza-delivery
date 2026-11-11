@@ -14,6 +14,26 @@ const HUNKS = Object.freeze([
   "file": "catalog/form-menu-source.js",
   "now": "  } structure.extra_order = require('./extras-projection').groupMajorOrder(structure.extra_order, extras, structure.extra_categories);   // S2-core §2.3: the ONE group order (group-major)\n",
   "was": "  }\n"
+ },
+ {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "  let refOfKey = {}; { const xa = await require('./extras-allocate').forSave({ candidate, stored, live, extrasLive: liveRes.extraRecords, addProduct, rid, switchOn: require('./platform-structure').structureCapabilities().extrasCatalog }); if (xa.error) return refusal(xa.error); if (xa.unavailable) return reply(503, { error: 'store_unavailable', retryable: true }); candidate = xa.source; }   // fresh additions: allocated key → the tmp reference the portal still holds · S2-core §3.1: new extras allocated (switch-gated)\n",
+  "was": "  let refOfKey = {};          // fresh additions: allocated key → the tmp reference the portal still holds\n"
+ },
+ {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "      extrasAuthoring: extrasCapabilities().authoring, textEdit, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras (the narrow deny_extras / extras_policy exception) · S2-core: the Extras-page claims\n",
+  "was": "      extrasAuthoring: extrasCapabilities().authoring, textEdit,   // per-product extras (the narrow deny_extras / extras_policy exception)\n"
+ },
+ {
+  "file": "catalog/draft-assess.js",
+  "now": "      extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras (the narrow deny_extras / extras_policy exception)\n",
+  "was": "      extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled,   // per-product extras (the narrow deny_extras / extras_policy exception)\n"
+ },
+ {
+  "file": "catalog/publish-edited-handler.js",
+  "now": "        extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras: judged on PUBLISH too, not only on save\n",
+  "was": "        extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled,   // per-product extras: judged on PUBLISH too, not only on save\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

@@ -76,4 +76,21 @@ function allocateExtras({ incoming, stored = null, activeExtras = [], activeItem
   return { source, allocated: allocatedNow };
 }
 
-module.exports = { allocateExtras, EXTRA_LABEL_UNSAFE };
+// The save's step (edit-catalog-handler): nothing to do when no new extra arrives (today's drafts, byte for byte); otherwise the key mode
+// and the reserved keys are read through the save's own add-product I/O, and the allocation's refusal is returned for the handler's map.
+async function forSave({ candidate, stored, live, extrasLive, addProduct, rid, switchOn }) {
+  const fresh = (Array.isArray(candidate && candidate.extras) ? candidate.extras : []).some((e) => isObj(e) && typeof e.key !== 'string');
+  if (!fresh) return { source: candidate };
+  if (!switchOn) return { error: new AddProductError('extras_catalog_not_supported_yet', 'adding extras is not available yet', { field: 'extras' }) };
+  if (!addProduct) return { error: new AddProductError('add_product_unavailable', 'the add-product I/O is not wired', { status: 503 }) };
+  let keyMode, reserved;
+  try {
+    keyMode = require('./add-product').resolveKeyMode(await addProduct.readKeyMode(rid), live.items, candidate.frozen_keys);
+    reserved = await addProduct.readReservedKeys(rid);
+  } catch (_) { return { unavailable: true }; }
+  try {
+    return { source: allocateExtras({ incoming: candidate, stored, activeExtras: extrasLive || [], activeItems: live.items || [], keyMode, reserved, switchOn }).source };
+  } catch (e) { if (e instanceof AddProductError) return { error: e }; throw e; }
+}
+
+module.exports = { allocateExtras, forSave, EXTRA_LABEL_UNSAFE };
