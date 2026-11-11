@@ -23104,8 +23104,8 @@
   "slice": "s2tip",
   "label": "a dark restaurant accepts a tip on the order path",
   "file": "delivery/delivery-wire.js",
-  "from": "  if (!lp.pricing) return t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;",
-  "to": "  if (!lp.pricing) return null;",
+  "from": "  if (!lp.pricing || app !== true) return t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;",
+  "to": "  if (!lp.pricing || app !== true) return null;",
   "command": [
    "node",
    "s2tip.test.js"
@@ -23329,8 +23329,8 @@
   "slice": "s2tip",
   "label": "createOrder no longer threads the tip into deliveryFor",
   "file": "index.js",
-  "from": "pricingP: dpP, tip: body.tip_cents }); const priceBreakdown",
-  "to": "pricingP: dpP }); const priceBreakdown",
+  "from": "pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }); const priceBreakdown",
+  "to": "pricingP: dpP, app: DW.isApp(body) }); const priceBreakdown",
   "command": [
    "npm",
    "run",
@@ -23346,8 +23346,8 @@
   "slice": "s2tip",
   "label": "chargeOnlineOrder no longer threads the tip into deliveryFor",
   "file": "index.js",
-  "from": "pricingP: dpP, tip: body.tip_cents }), body, Date.now());",
-  "to": "pricingP: dpP }), body, Date.now());",
+  "from": "pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }), body, Date.now());",
+  "to": "pricingP: dpP, app: DW.isApp(body) }), body, Date.now());",
   "command": [
    "npm",
    "run",

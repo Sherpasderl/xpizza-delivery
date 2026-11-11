@@ -12,7 +12,7 @@ const { applyS1aIndex } = require('./tools/s1a-inverse');
 const { unapplyA1Index } = require('./tools/a1-inverse'); // S1b now restacks on A-1; A-1 sits between S1b and S1a
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('./tools/s1d-module-inverse').unapplyS1dModule(f, require('./tools/s2-module-inverse').unapplyS2Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))))))));
+const read = (f) => require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('./tools/s1d-module-inverse').unapplyS1dModule(f, require('./tools/s2-module-inverse').unapplyS2Module(f, require('./tools/dpao-module-inverse').unapplyDpaoModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')))))))));
 const S2 = 'c83f2f9';
 const s2Idx = execFileSync('git', ['show', `${S2}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 const s1aIdx = applyS1aIndex(s2Idx); // the S1a index.js layer S1b sits on (deterministic across rebases)
