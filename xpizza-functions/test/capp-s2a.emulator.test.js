@@ -150,7 +150,7 @@ function flowOf(pay, { tip = pay === 'cash' ? null : 20, km = 1, phone } = {}) {
   if (tip !== null) C.chooseTip(f, tip);
   return f;
 }
-const ctxOf = (rid, cart) => { const s = serialize(cart, MENU[rid]); return { restaurantId: rid, items: s.items, itemsText: s.items_text, member: null, subtotal: s.subtotal_cents, headers: { Authorization: `Bearer ${process.env.MAKE_SECRET}` }, appCash: true }; };   // appCash: the capp marks EVERY cash body entry_mode:'app' (PLAN-delivery-pricing-app-only F1 — the capp lane's change ships in the same release; envío + tip are app-only)
+const ctxOf = (rid, cart) => { const s = serialize(cart, MENU[rid]); return { restaurantId: rid, items: s.items, itemsText: s.items_text, member: null, subtotal: s.subtotal_cents, headers: { Authorization: `Bearer ${process.env.MAKE_SECRET}` } }; };
 // the app's flow: quote for the selected tip → the Total shown → place standing behind THAT Total
 async function quoteAndPlace(pg, f, cart, { sheet, sigOverride, expected } = {}) {
   const ctx = ctxOf(pg.rid, cart);

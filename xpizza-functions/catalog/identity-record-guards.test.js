@@ -155,7 +155,7 @@ try {
 
   // ── The new modules: what they write, and nothing else ───────────────────────────────────────────────────────
   const NEW = ['catalog/identity-record.js', 'catalog/identity-record-writer.js', 'catalog/identity-record-verifier.js'];
-  const code = Object.fromEntries(NEW.map((f) => [f, strip(require('../tools/dpao-module-inverse').unapplyDpaoModule(f, read(f)))]));
+  const code = Object.fromEntries(NEW.map((f) => [f, strip(read(f))]));
   {
     const writes = /\b(tx|batch|b|vref|ref|docRef|snapRef|db|rtdb|fs|cref|rref)\.(set|update|delete|create|push|remove)\(|\.(ref|child|doc)\([^)]*\)\.(set|update|delete|create|push|remove)\(|\.batch\(\)/;
     for (const [f, src] of Object.entries(code)) assert.ok(!writes.test(src), `🔴 ${f} performs a datastore write other than its transactions`);

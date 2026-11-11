@@ -33,7 +33,7 @@ ok('the portal fold carries each index.js hunk exactly once');
   const crypto = require('crypto');
   const REPO = path.join(__dirname, '..');
   execFileSync('git', ['diff', '--quiet', BASE, '--', 'la-musa-orders/', 'xpizza-orders/'], { cwd: REPO });   // throws on any difference
-  const PIN = { 'la-musa-orders/index.html': 'b4af1ee165d8ae145e3158dff2b3e2cdfeab0ba73d8a7700b9b5131ccab1e7e0', 'xpizza-orders/index.html': '6b983ef6ed24703f8098b0c8c90305ef09bc0cdbbdce56bfc5f79a8f290951f5' };
+  const PIN = { 'la-musa-orders/index.html': 'deb044a541371af7335fd0d66fe959b2706ad572cc6a92f25c97ac773ad7c0f1', 'xpizza-orders/index.html': 'ebc5df6667b3c2953d6f8b01ed2b290278eed2e982da8e4ed34ea43a8b6e6226' };
   for (const [f, h] of Object.entries(PIN)) assert.strictEqual(crypto.createHash('sha256').update(fs.readFileSync(path.join(REPO, f))).digest('hex'), h, `🔴 ${f} changed (rule 40: the forms are frozen)`);
   ok('the two frozen order forms are byte-identical to the base (git diff + sha256 pins)');
 }

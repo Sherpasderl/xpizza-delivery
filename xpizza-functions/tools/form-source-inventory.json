@@ -4377,6 +4377,7 @@
     {
      "file": "xpizza-functions/keymode-wiring.guard.test.js",
      "inverses": [
+      "tools/dpao-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -4905,6 +4906,7 @@
     {
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
+      "tools/dpao-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/tippref-inverse.js"
@@ -4913,6 +4915,7 @@
     {
      "file": "xpizza-functions/s2-wiring.guard.test.js",
      "inverses": [
+      "tools/dpao-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/tippref-inverse.js"
      ]
@@ -5255,6 +5258,7 @@
     {
      "file": "xpizza-functions/sdkpay-wiring.guard.test.js",
      "inverses": [
+      "tools/dpao-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5474,6 +5478,7 @@
     {
      "file": "xpizza-functions/tippref-wiring.guard.test.js",
      "inverses": [
+      "tools/dpao-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
