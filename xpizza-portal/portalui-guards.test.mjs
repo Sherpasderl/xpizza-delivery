@@ -19,15 +19,18 @@ import { PP_FOLD } from './pp-fold.mjs';
 import { S4_BASE, S4_FOLD } from './s4-fold.mjs';
 import { UNSAVED_BASE, UNSAVED_FOLD } from './unsaved-fold.mjs';
 import { HF_BASE, HF_FOLD } from './hotfix-1112-fold.mjs';
+import { MINT_BASE, MINT_FOLD } from './mint-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
 // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html, owner-approved 2026-11-11) is the NEWEST layer of all: its named hunks are
 // folded out at the lowest read, so every layer and pin below judges exactly what it judged before; the UNSAVED test pins the
 // layer itself on the file on disk (an edit outside or inside one of its hunks fails).
-// LIVE HOTFIX 2026-11-12 (hotfix-1112-fold.mjs) is the NEWEST layer of all, above UNSAVED: folded out at the very lowest read, so
-// every older pin judges exactly what it judged before; the HOTFIX cell pins the layer itself on disk.
+// LIVE HOTFIX 2026-11-12 (hotfix-1112-fold.mjs) and the S1c MINT panel (mint-fold.mjs, advisor 11-11) are the NEWEST layers, above
+// UNSAVED: each is folded out at the very lowest read (they fold DISJOINT files — HOTFIX app.js, MINT review.js — so their order is
+// immaterial), so every older pin judges exactly what it judged before; the HOTFIX and MINT cells pin each layer on disk.
 const hotfixBytes = (f) => readFileSync(join(DIR, f), 'utf8');
+const fileRead = hotfixBytes;
 function withoutHotfix(f, src) {
   let out = src;
   for (const [now, was] of HF_FOLD[f] || []) {
@@ -36,7 +39,15 @@ function withoutHotfix(f, src) {
   }
   return out;
 }
-const diskRead = (f) => withoutHotfix(f, hotfixBytes(f));
+function withoutMint(f, src) {
+  let out = src;
+  for (const [now, was] of MINT_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `MINT hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const diskRead = (f) => withoutMint(f, withoutHotfix(f, hotfixBytes(f)));
 function withoutUnsaved(f, src) {
   let out = src;
   for (const [now, was] of UNSAVED_FOLD[f] || []) {
@@ -369,6 +380,18 @@ test('LIVE HOTFIX 11-12: app.js gains exactly the named hunk (the uploader\u2019
     assert.equal(withoutHotfix(f, hotfixBytes(f)), was, `${f} minus the HOTFIX hunk ≠ ${HF_BASE}`);
     assert.notEqual(withoutHotfix(f, hotfixBytes(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
   }
+});
+
+test('S1c MINT panel: review.js gains exactly the named hunks — folding them out gives MINT_BASE byte-for-byte', () => {
+  for (const f of Object.keys(MINT_FOLD)) {
+    const was = execFileSync('git', ['show', `${MINT_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.notEqual(withoutMint(f, fileRead(f)), fileRead(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(withoutMint(f, fileRead(f)), was, `${f} minus the MINT hunks ≠ ${MINT_BASE}`);
+    assert.notEqual(withoutMint(f, fileRead(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+  }
+  const inside = MINT_FOLD['review.js'].map(([now]) => now).find((t) => t.includes('mint_unavailable:'));
+  assert.ok(inside, 'premise: the panel is one of the hunks');
+  assert.throws(() => withoutMint('review.js', fileRead('review.js').replace(inside, inside.replace('momentáneo', 'momentaneo'))), 'an edit inside a hunk breaks it');
 });
 
 test('UNSAVED EDITS: app.js / item-edit-logic.js gain exactly the named hunks — folding them out gives UNSAVED_BASE byte-for-byte', () => {

@@ -56,6 +56,7 @@
   "item-edit-drawer.test.mjs",
   "item-edit-logic.js",
   "item-edit.test.mjs",
+  "mint-fold.mjs",
   "netlify.toml",
   "ops-dom.js",
   "package-lock.json",

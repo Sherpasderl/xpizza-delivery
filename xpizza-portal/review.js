@@ -888,6 +888,11 @@ const PANELS = {
   category_not_renderable: { icon: 'warn', title: 'Esa sección no se muestra en tu página de pedidos',
     detail: 'Elegí una de las secciones que tus clientes ven al pedir.',
     action: { id: PUBLISH_ACTIONS.FIX, label: 'Elegir la sección' } },
+  // S1c opaque minting (advisor 11-11): a new product's minted key collided — TRANSIENT (the server says retryable), so the same
+  // draft is simply sent again
+  mint_unavailable: { icon: 'warn', title: 'No pudimos guardar el producto nuevo',
+    detail: 'Fue un problema momentáneo. Intentá de nuevo.',
+    action: { id: PUBLISH_ACTIONS.RETRY, label: 'Reintentar' } },
   too_many_additions: { icon: 'warn', title: 'Demasiados productos nuevos a la vez',
     detail: 'Podés agregar hasta 20 productos por publicación. Quitá algunos, publicá, y agregá el resto después.',
     action: { id: PUBLISH_ACTIONS.BACK, label: 'Entendido' } },
