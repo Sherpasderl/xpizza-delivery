@@ -493,7 +493,17 @@ async function failingOrderWrite(oid, fn) {
         else assert.ok(decl.every((k) => SNAP.test(k)), `🔴 ${rid}/online step ${i}: only {v, lines/n/unit_cents, lines/n/line_cents} are declared (${decl.join(', ')})`);
         if (method === 'online' && i === 0) assert.ok(decl.includes(`orders/${oid}/reorder_price_snapshot/v`), `🔴 ${rid}/online: the member placement writes the declared snapshot (non-vacuity)`);
         assert.deepStrictEqual(declaredOf(theirs[i]), [], `premise: ${BASE} never wrote reorder_price_snapshot`);
-        const stripped = { ...mine[i], changed: Object.fromEntries(Object.entries(mine[i].changed).filter(([k]) => !decl.includes(k))) };
+        // DECLARED (S1d 081ffbf7, PLAN r6 §2.5 / D4 ruling Q3 — the additive provenance S1d's 3c79e3ff declares in its emulator
+        // controls): a placement also stores orders/<oid>/menu_version_id, and item_key on its summary lines (the order's and the
+        // tracking mirror's) on lines the BASE left without one (its own item_key lines stay compared). Exactly those are stripped,
+        // each a non-empty string; the first placement must carry menu_version_id.
+        const S1D = new RegExp(`^(orders/${oid}/menu_version_id|(orders/${oid}|order_tracking/<tok>)/summary_lines/\\d+/item_key)$`);
+        const s1dOf = (o) => Object.keys(o.changed).filter((k) => S1D.test(k));
+        const s1d = s1dOf(mine[i]).filter((k) => !(k in theirs[i].changed));
+        assert.ok(s1d.every((k) => typeof mine[i].changed[k] === 'string' && mine[i].changed[k]), `🔴 ${rid}/${method} step ${i}: S1d's declared provenance is a non-empty string (${s1d.join(', ')})`);
+        if (i === 0) assert.ok(s1d.includes(`orders/${oid}/menu_version_id`), `🔴 ${rid}/${method}: the placement stores S1d's menu_version_id (non-vacuity)`);
+        assert.ok(!(`orders/${oid}/menu_version_id` in theirs[i].changed), `premise: ${BASE} never wrote menu_version_id`);
+        const stripped = { ...mine[i], changed: Object.fromEntries(Object.entries(mine[i].changed).filter(([k]) => !decl.includes(k) && !s1d.includes(k))) };
         assert.deepStrictEqual(stripped, theirs[i], `🔴 ${rid}/${method} step ${i}: today's handler differs from ${BASE}`);
       }
       assert.strictEqual(mine[2].status, 200, `${rid}/${method}: a LEGACY order with a cart differing only past char 1500 → idempotent, exactly as ${BASE} (int10 truncation)`);
