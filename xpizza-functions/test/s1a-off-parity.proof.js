@@ -1,5 +1,5 @@
 'use strict';
-// S1a — with item_text_edit OFF (as shipped), the REAL save / publish / reset / assessment handlers of this tip answer and write
+// S1a — with item_text_edit OFF (the ROLLBACK state; the switch ships ON since 2026-11-11), the REAL save / publish / reset / assessment handlers of this tip answer and write
 // exactly what the base's do, draft for draft. The base is another checkout's functions dir (S1A_BASE_FN, the S0 tip); both
 // module sets are loaded side by side (distinct absolute paths ⇒ distinct module instances) and driven through identical stubs.
 // Pre-flip, publish-through-Firestore and rollback are proven by the S0 no-op capture (test/keymode-noop.capture.js) re-run at
