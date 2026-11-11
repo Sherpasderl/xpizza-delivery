@@ -51275,7 +51275,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#render#status#0",
-   "line": 381,
+   "line": 390,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -51288,7 +51288,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#render#status#1",
-   "line": 382,
+   "line": 391,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -51301,7 +51301,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#frozen#status#0",
-   "line": 483,
+   "line": 492,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -51314,7 +51314,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#paintBands#status#0",
-   "line": 489,
+   "line": 498,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -51327,7 +51327,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#paintMapBox#status#0",
-   "line": 579,
+   "line": 588,
    "kind": "member",
    "facts": [
     "STATUS",

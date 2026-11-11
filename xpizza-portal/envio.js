@@ -364,6 +364,15 @@ function errbox(title, detail, action) {
   return box;
 }
 
+// Tab cycles INSIDE the open confirm (WAI-ARIA modal, as the Sucursales modal does): the enabled controls are computed live,
+// so a busy-disabled «Guardar tarifas» is skipped; with none enabled, Tab goes nowhere (advisor 11-11, real-Chrome probe)
+function wrapEnvioConfirmTab(e, dialog) {
+  const f = Array.from(dialog.querySelectorAll('input, button')).filter((n) => !n.disabled);
+  if (!f.length) { e.preventDefault(); return; }
+  const i = f.indexOf(document.activeElement);
+  if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
+  else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+}
 // Codex r1 F1: the open confirm makes every sibling on its path up to <body> inert (focus can't leave it); EVERY exit releases them
 function inertEnvioBackground(layer) {
   releaseInert();
@@ -707,7 +716,10 @@ function paintConfirm() {
   foot.append(r.confirmBack, r.confirmSave);
   m.append(head, body, foot);
   scrim.append(m);
-  scrim.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !(S.phase === 'sending' || S.phase === 'recovering')) back(); });
+  scrim.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !(S.phase === 'sending' || S.phase === 'recovering')) { back(); return; }
+    if (e.key === 'Tab') wrapEnvioConfirmTab(e, m);
+  });
   r.layer.replaceChildren(scrim);
   inertEnvioBackground(r.layer);
   r.confirmBack.focus();

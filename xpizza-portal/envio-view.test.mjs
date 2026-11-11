@@ -893,3 +893,23 @@ test('Codex r3 F1: a revocation (the GET answers 403) while the confirm is open 
   assert.notEqual(P.d.activeElement, P.d.body, 'focus is not dropped on <body>');
   assert.equal(P.d.activeElement, P.host().querySelector('.eerr'), 'the forbidden message');
 });
+
+test('Tab wrap (advisor 11-11, after the real-Chrome probe): Tab on the confirm\'s last enabled control → its first; Shift+Tab on the first → its last', async () => {
+  const P = await page();
+  await P.signIn(); await P.open();
+  await editTo10(P);
+  P.btn('Guardar', P.bar()).click(); await settle();
+  const m = P.host().querySelector('[role="dialog"]');
+  const back = P.btn('Volver', m), save = P.btn('Guardar tarifas', m);
+  const tab = (shiftKey) => { const e = new P.w.KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true }); P.d.activeElement.dispatchEvent(e); return e; };
+  save.focus();
+  const e1 = tab(false);
+  assert.ok(e1.defaultPrevented, 'the browser\'s own Tab is taken over at the edge');
+  assert.equal(P.d.activeElement, back, 'Tab on the last → the first');
+  const e2 = tab(true);
+  assert.ok(e2.defaultPrevented);
+  assert.equal(P.d.activeElement, save, 'Shift+Tab on the first → the last');
+  back.focus();
+  const e3 = tab(false);
+  assert.ok(!e3.defaultPrevented, 'inside the list the browser moves focus itself');
+});
