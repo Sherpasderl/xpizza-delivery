@@ -7,6 +7,7 @@ const assert = require('assert');
 const { fakeRtdb } = require('../test/_fake-rtdb-sdk');
 const A = require('./pricing-admin-core');
 const Z = require('./zones');
+const P = require('./delivery-pricing');
 const ZL = require('./zones-lock');
 const RC = require('../restaurant-config');
 const { loadSchedule } = require('../schedule/load-schedule');
@@ -205,6 +206,35 @@ const node = (w) => w.db.get(PATH);
     const atCaps = { policy_version: 1e15, bands: twenty, no_delivery_zones: committed, history: [{ ...e, prev_version: 1e15 - 1, new_version: 1e15 }, ...Array(9).fill(e)], updated_at: Number.MAX_SAFE_INTEGER, updated_by: U };
     const bytes = Buffer.byteLength(JSON.stringify(atCaps), 'utf8');
     assert.strictEqual(bytes, A.READ_BYTES_AT_CAPS, `${L}: the pinned worst case of every order read (got ${bytes})`);
+  });
+
+  // ── Codex build r1 #1 (P1, driver safety): EXACT geometry on the 6-decimal grid — a saved diagonal edge's points are INSIDE ──
+  const orderPath = (w, pin) => { const pr = P.readPricing({ ...node(w), restaurants: { app: { active: true, free_delivery: false } } }, 'app');
+    return P.quoteDelivery({ pricing: pr, hub: { lat: 15.5, lng: -88.0 }, mode: 'delivery', pin: { ...pin, confirmed: true }, customerUid: null }); };
+  await cell('ZWR-DIAGONAL-EDGE-INSIDE', async (L) => {
+    const w = world();
+    const tri = { id: 'z_tttttttt', name: 'Triángulo', points: [{ lat: 15.5, lng: -88.03 }, { lat: 15.501, lng: -88.026 }, { lat: 15.49, lng: -88.01 }] };
+    const r = await w.set(body({ no_delivery_zones: [tri] }));
+    assert.deepStrictEqual([r.status, r.body.ok], [200, true], `${L}: premise: the writer saves the triangle (${JSON.stringify(r.body)})`);
+    for (const pin of [{ lat: 15.5005, lng: -88.028 }, { lat: 15.5, lng: -88.03 }, { lat: 15.501, lng: -88.026 }, { lat: 15.4955, lng: -88.018 }]) {
+      assert.strictEqual(orderPath(w, pin).refusal, 'no_delivery_zone', `${L}: the border point ${JSON.stringify(pin)} is inside (D5: border = inside)`);
+    }
+    assert.ok(!orderPath(w, { lat: 15.52, lng: -88.028 }).refusal, `${L}: a point well outside is priced`);
+  });
+  await cell('ZWR-COLLINEAR-REFUSED', async (L) => {
+    const w = world();
+    // exactly collinear on the 6-decimal grid (step +0.002149 / +0.001163); the float area is not 0, so only exact arithmetic sees it
+    const line = { id: 'z_llllllll', name: 'Línea', points: [{ lat: 15.804975, lng: -88.024646 }, { lat: 15.807124, lng: -88.023483 }, { lat: 15.809273, lng: -88.02232 }] };
+    const r = await w.set(body({ no_delivery_zones: [line] }));
+    assert.deepStrictEqual([r.status, r.body.error, r.body.field], [400, 'bad_request', 'zones'], `${L}: a collinear 3-point polygon has zero area (${JSON.stringify(r.body)})`);
+    assert.strictEqual(node(w), null, `${L}: nothing written`);
+  });
+  // ── Codex build r1 #3: a zone id must be a STRING before the regex and the uniqueness check ──
+  await cell('ZWR-ID-NOT-STRING-REFUSED', async (L) => {
+    const w = world();
+    const r = await w.set(body({ no_delivery_zones: [{ ...ZONE(), id: ['z_aaaaaaaa'] }, { ...ZONE('z_aaaaaaaa', 'Sector B', 0.02), id: ['z_aaaaaaaa'] }] }));
+    assert.deepStrictEqual([r.status, r.body.error, r.body.field], [400, 'bad_request', 'zones'], `${L}: an array id is refused (${JSON.stringify(r.body)})`);
+    assert.strictEqual(node(w), null, `${L}: nothing written`);
   });
 
   if (fails.length) { console.log(`zones-writer FAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }
