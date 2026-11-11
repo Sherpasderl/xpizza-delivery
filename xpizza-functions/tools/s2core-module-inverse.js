@@ -9,6 +9,11 @@ const HUNKS = Object.freeze([
   "file": "catalog/public-menu.js",
   "now": "    if (menu.eligibility) body.extras_eligibility = menu.eligibility; body.avail_identity = { field: availIdentityField(restaurantId, menu.keyMode) }; if (menu.structure && menu.structure.exposure) { for (const f of ['extras_by_category', 'extras_by_item']) if (!(f in body)) body[f] = {}; }   // the NORMALIZED rid (codex P1)\n",
   "was": "    if (menu.eligibility) body.extras_eligibility = menu.eligibility; body.avail_identity = { field: availIdentityField(restaurantId, menu.keyMode) };   // the NORMALIZED rid (codex P1)\n"
+ },
+ {
+  "file": "catalog/form-menu-source.js",
+  "now": "  } structure.extra_order = require('./extras-projection').groupMajorOrder(structure.extra_order, extras, structure.extra_categories);   // S2-core §2.3: the ONE group order (group-major)\n",
+  "was": "  }\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

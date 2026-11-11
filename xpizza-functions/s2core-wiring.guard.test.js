@@ -8,7 +8,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyS2coreModule } = require('./tools/s2core-module-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-assert.deepStrictEqual([...FILES].sort(), ['catalog/public-menu.js'], 'the owned files');
+assert.deepStrictEqual([...FILES].sort(), ['catalog/form-menu-source.js', 'catalog/public-menu.js'], 'the owned files');
 for (const f of FILES) {
   const src = fs.readFileSync(path.join(__dirname, f), 'utf8');   // the NEWEST layer: the file on disk
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });

@@ -3061,7 +3061,9 @@
   },
   "catalog/form-menu-source.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/s2core-wiring.guard.test.js"
+   ]
   },
   "catalog/form-rebake.js": {
    "pins": [],

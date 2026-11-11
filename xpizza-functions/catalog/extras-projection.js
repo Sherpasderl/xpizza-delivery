@@ -66,4 +66,14 @@ function projectExtrasMaps({ items, extras, structure }) {
   return { byCategory, byItem: sorted };
 }
 
-module.exports = { projectExtrasMaps, effectiveGroups };
+// §2.3 — the ONE group order: extra_order group-major in extra_categories order (stable: each group's extras keep their relative order;
+// an extra whose group is not listed keeps its place after the listed groups). On today's sources it is today's extra_order.
+function groupMajorOrder(order, extras, groups) {
+  if (!Array.isArray(order) || !Array.isArray(groups)) return order;
+  const catOf = new Map((extras || []).map((e) => [e.key, e && e.display && e.display.cat]));
+  const rank = new Map(groups.map((g, i) => [g, i]));
+  const r = (k) => (rank.has(catOf.get(k)) ? rank.get(catOf.get(k)) : groups.length);
+  return order.map((k, i) => [k, i]).sort((a, b) => r(a[0]) - r(b[0]) || a[1] - b[1]).map(([k]) => k);
+}
+
+module.exports = { projectExtrasMaps, effectiveGroups, groupMajorOrder };
