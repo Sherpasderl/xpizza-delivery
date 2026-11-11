@@ -9,7 +9,7 @@
 //                           unreadable). The ORDER paths refuse through the gate step (refusalGate), which runs AFTER
 //                           a live issued PixelPay checkout is resumed (§3.3 grandfathering) and releases a reward hold.
 const P = require('./delivery-pricing');
-const TIP = require('../tip'); const { zoneResumeRefusal, zoneResumeRefusalFor } = require('./zone-resume');   // S2-srv-tip (PLAN-capp-S2-r4 §3); envío step 2: the resume guard
+const TIP = require('../tip'); const { zoneResumeRefusal } = require('./zone-resume');   // S2-srv-tip (PLAN-capp-S2-r4 §3); envío step 2: the resume guard
 
 const REFUSAL_STATUS = { delivery_pricing_unavailable: 503, delivery_zones_invalid: 503 };
 
@@ -178,4 +178,4 @@ function quoteOutcome(dq) {
 // The additive quote response fields (absent when dark → byte-identical response).
 const quoteFields = (ctx) => (ctx ? { delivery: { delivery_cents: ctx.delivery_cents, promo_discount_cents: ctx.promo_discount_cents, policy_version: ctx.policy_version, mode: ctx.mode, ...(PUBLIC.get(ctx) || {}) } } : {});   // S2 §3.6: + { from_cents, max_km }
 
-module.exports = { zoneResumeRefusal, zoneResumeRefusalFor, loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf, isApp };
+module.exports = { zoneResumeRefusal, loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf, isApp };

@@ -12,7 +12,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "delivery/delivery-wire.js",
-  "now": "const TIP = require('../tip'); const { zoneResumeRefusal, zoneResumeRefusalFor } = require('./zone-resume');   // S2-srv-tip (PLAN-capp-S2-r4 §3); envío step 2: the resume guard\n",
+  "now": "const TIP = require('../tip'); const { zoneResumeRefusal } = require('./zone-resume');   // S2-srv-tip (PLAN-capp-S2-r4 §3); envío step 2: the resume guard\n",
   "was": "const TIP = require('../tip');   // S2-srv-tip (PLAN-capp-S2-r4 §3)\n"
  },
  {
@@ -32,7 +32,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "delivery/delivery-wire.js",
-  "now": "module.exports = { zoneResumeRefusal, zoneResumeRefusalFor, loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf, isApp };\n",
+  "now": "module.exports = { zoneResumeRefusal, loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf, isApp };\n",
   "was": "module.exports = { loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf, isApp };\n"
  },
  {

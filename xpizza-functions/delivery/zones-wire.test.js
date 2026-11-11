@@ -82,7 +82,7 @@ const PRICING = 'platform_config/delivery_pricing';
     assert.strictEqual(gp.grandfathered, true, `${L}: a stored PICKUP is never checked against zones`);
   });
 
-  await cell('ZW-RESUME-GUARD-HELPER', async (L) => {
+  await cell('ZW-RESUME-GUARD', async (L) => {
     const app = { order_type: 'delivery', lat: PIN.lat, lng: PIN.lng, delivery_snapshot: { mode: 'delivery', policy_version: 3 } };
     assert.deepStrictEqual(await DW.zoneResumeRefusal(fakeDb({ [PRICING]: RAW({ no_delivery_zones: ZONES }) }), app), { refusal: 'no_delivery_zone', httpStatus: 409 }, `${L}: a stored app delivery in a zone`);
     assert.strictEqual(await DW.zoneResumeRefusal(fakeDb({ [PRICING]: RAW({ no_delivery_zones: ZONES }) }), { ...app, lat: north(1).lat }), null, `${L}: outside → null`);
@@ -91,8 +91,6 @@ const PRICING = 'platform_config/delivery_pricing';
     assert.strictEqual(await DW.zoneResumeRefusal(fakeDb({}), app), null, `${L}: no table → null (step 1 unchanged)`);
     const failDb = { ref: () => ({ get: async () => { throw new Error('down'); } }) };
     assert.deepStrictEqual(await DW.zoneResumeRefusal(failDb, app), { refusal: 'delivery_pricing_unavailable', httpStatus: 503 }, `${L}: a failed read → 503`);
-    assert.deepStrictEqual(await DW.zoneResumeRefusalFor(fakeDb({ [PRICING]: RAW({ no_delivery_zones: ZONES }), 'orders/o2': app }), 'o2'), { refusal: 'no_delivery_zone', httpStatus: 409 }, `${L}: by order id (the reward-bound resume)`);
-    assert.strictEqual(await DW.zoneResumeRefusalFor(fakeDb({ [PRICING]: RAW({ no_delivery_zones: ZONES }) }), 'nope'), null, `${L}: no stored order → null`);
   });
 
   await cell('ZW-READ-COUNT-PINNED', async (L) => {

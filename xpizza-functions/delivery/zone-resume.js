@@ -19,10 +19,4 @@ async function zoneResumeRefusal(db, order) {
   return pr.zones && Z.inZone(pr.zones, { lat: num(order.lat), lng: num(order.lng) }) ? { refusal: 'no_delivery_zone', httpStatus: 409 } : null;
 }
 
-// by order id — the reward-bound resume has no order in hand (one read of orders/{id}; absent → null)
-async function zoneResumeRefusalFor(db, orderId) {
-  const order = (await db.ref(`orders/${orderId}`).get()).val();
-  return order ? zoneResumeRefusal(db, order) : null;
-}
-
-module.exports = { zoneResumeRefusal, zoneResumeRefusalFor };
+module.exports = { zoneResumeRefusal };
