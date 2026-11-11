@@ -1185,27 +1185,59 @@ test('S4 (Codex S4P2 r1 P2-3) — «Detener subida» stops the upload AND frees 
 
 // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html, owner-approved 2026-11-11): the photo step's «Cerrar» is an exit that would
 // drop the working copy — with unsaved edits it asks first (frame 2), exactly as the drawer's own «Cerrar».
-test('U-PHOTO-CLOSE-DIRTY — the photo step\'s «Cerrar» with unsaved edits asks; «Seguir editando» keeps the step and the copy; «Descartar» drops both', async () => {
+test('U-PHOTO-CLOSE-DIRTY — the photo step\'s «Cerrar» with unsaved edits asks; «Seguir editando» keeps the step, the copy and the upload binding; «Descartar» drops both', async () => {
   const fake = createPhotoFake({ items: ITEMS() });
   fake.flags.textEdit = true;
-  const { d, mods } = await boot(fake);
+  const { d, w, mods } = await boot(fake);
   const pep = () => JSON.parse(JSON.stringify(mods.app.state.draft.state)).items.find((i) => i.key === 'Pepperoni');
+  const photosOf = () => JSON.parse(JSON.stringify(mods.app.state.draft.state.photos || {}));
   await openDrawerFor(d, 'Pepperoni');
+  // the existing ON premise: the edit drawer's own footer («Cancelar» · «Guardar»), not this change's new mark
+  assert.ok(drawer(d).querySelector('.dwf') && btnText(drawer(d).querySelector('.dwf'), 'Cancelar') && btnText(drawer(d).querySelector('.dwf'), 'Guardar'), 'premise: the ON edit drawer (the working copy)');
   const price = drawer(d).querySelector('input[aria-label="Precio"]');
-  assert.ok(price && drawer(d).querySelector('.dwf .mk-dirty'), 'premise: the ON drawer (the working copy) opened');
-  price.value = '330'; price.dispatchEvent(new window.Event('input', { bubbles: true }));
+  price.value = '330'; price.dispatchEvent(new w.Event('input', { bubbles: true }));
+  const release = fake.holdPut();
   drawer(d).querySelector('button.uploader.phdesk').click();
   await settle();
-  await choose(d, window, mkFile(window));
+  await choose(d, w, mkFile(w));
   await until(() => drawer(d).querySelector('.phcrop'), 'the crop step');
+  const crop = drawer(d).querySelector('.phcrop');
   drawer(d).querySelector('.dwh .dwx').click(); await settle();
   const cf = drawer(d).querySelector('.mk-cf');
   assert.ok(cf, 'U-PHOTO-CLOSE-DIRTY: the confirm is shown over the photo step');
   assert.equal(cf.querySelector('h3').textContent, '¿Descartar los cambios?', 'U-PHOTO-CLOSE-DIRTY: the title');
   btnText(cf, 'Seguir editando').click(); await settle();
-  assert.ok(drawer(d).querySelector('.phcrop') && drawer(d).classList.contains('show'), 'U-KEEP-EDITING-BYTE-IDENTICAL (photo close): the photo step stays');
+  assert.equal(drawer(d).querySelector('.phcrop'), crop, 'U-KEEP-EDITING-BYTE-IDENTICAL (photo close): the SAME crop step');
+  btnText(drawer(d), 'Listo').click();
+  await until(() => drawer(d).querySelector('.dwf') && !drawer(d).querySelector('.phcrop'), 'back in the edit drawer, the upload in flight');
+  assert.equal(drawer(d).querySelector('input[aria-label="Precio"]').value, '330', 'U-KEEP-EDITING-BYTE-IDENTICAL (photo close): the typed price survived the step');
+  // the upload binding survives a kept confirm: «Cerrar» → «Seguir editando» while it runs, then it lands in the COPY
   drawer(d).querySelector('.dwh .dwx').click(); await settle();
-  btnText(drawer(d).querySelector('.mk-cf'), 'Descartar').click(); await settle();
-  assert.equal(drawer(d).classList.contains('show'), false, 'U-PHOTO-CLOSE-DIRTY: «Descartar» closes the drawer');
-  assert.deepEqual([pep().price, pep().display.price], [310, 310], 'U-PHOTO-CLOSE-DIRTY: the draft never took the unsaved price');
+  btnText(drawer(d).querySelector('.mk-cf'), 'Seguir editando').click(); await settle();
+  release();
+  await until(() => btnText(drawer(d), 'Guardar') && !btnText(drawer(d), 'Guardar').disabled, 'U-KEEP-EDITING-BYTE-IDENTICAL (photo close): the held upload landed in the kept copy');
+  assert.deepEqual([pep().price, photosOf()], [310, {}], 'U-KEEP-EDITING-BYTE-IDENTICAL (photo close): the draft still untouched before «Guardar»');
+  btnText(drawer(d), 'Guardar').click(); await settle(20);
+  assert.deepEqual([pep().price, photosOf().Pepperoni && photosOf().Pepperoni.state], [330, 'pid'], 'U-KEEP-EDITING-BYTE-IDENTICAL (photo close): «Guardar» saves the kept price AND the kept upload');
 });
+
+test('U-PHOTO-CLOSE-DISCARD — «Descartar» on the photo step\'s confirm closes the drawer; the draft never takes the unsaved price', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  fake.flags.textEdit = true;
+  const { d, w, mods } = await boot(fake);
+  const pep = () => JSON.parse(JSON.stringify(mods.app.state.draft.state)).items.find((i) => i.key === 'Pepperoni');
+  await openDrawerFor(d, 'Pepperoni');
+  assert.ok(drawer(d).querySelector('.dwf') && btnText(drawer(d).querySelector('.dwf'), 'Guardar'), 'premise: the ON edit drawer');
+  const price = drawer(d).querySelector('input[aria-label="Precio"]');
+  price.value = '330'; price.dispatchEvent(new w.Event('input', { bubbles: true }));
+  drawer(d).querySelector('button.uploader.phdesk').click();
+  await settle();
+  await choose(d, w, mkFile(w));
+  await until(() => drawer(d).querySelector('.phcrop'), 'the crop step');
+  drawer(d).querySelector('.dwh .dwx').click(); await settle();
+  assert.ok(drawer(d).querySelector('.mk-cf'), 'U-PHOTO-CLOSE-DISCARD: the confirm is shown over the photo step');
+  btnText(drawer(d).querySelector('.mk-cf'), 'Descartar').click(); await settle();
+  assert.equal(drawer(d).classList.contains('show'), false, 'U-PHOTO-CLOSE-DISCARD: «Descartar» closes the drawer');
+  assert.deepStrictEqual([pep().price, pep().display.price], [310, 310], 'U-PHOTO-CLOSE-DISCARD: the draft never took the unsaved price');
+});
+

@@ -547,10 +547,20 @@ const card = (p) => p.drawer().querySelector('.mk-cf');
 const cardBtn = (p, t) => [...card(p).querySelectorAll('button')].find((b) => b.textContent.trim() === t);
 const headClose = (p) => p.drawer().querySelector('.dwh .dwx');
 const priceIn = (p) => p.drawer().querySelector('input[aria-label="Precio"]');
-const fieldsNow = (p) => ({ name: p.fld('Nombre').querySelector('input').value, desc: p.fld('Descripción').querySelector('textarea').value,
-  cat: p.fld('Categoría').querySelector('select').value, price: priceIn(p).value, save: !p.btn('Guardar').disabled });
+// the WHOLE open copy as the drawer shows it: every control's value (inputs, selects, text, checkboxes), the change marks, «Guardar»'s
+// state and title, the «Cambios sin guardar» mark — plus the identity of every control node (a rebuilt copy would make new nodes)
+const ctrls = (p) => [...p.drawer().querySelectorAll('.dwb input, .dwb textarea, .dwb select')];
+const fieldsNow = (p) => ({ values: ctrls(p).map((c) => [c.getAttribute('aria-label') || c.tagName, c.type === 'checkbox' ? c.checked : c.value]),
+  chg: [...p.drawer().querySelectorAll('.dwb .fld')].map((f) => f.classList.contains('chg')),
+  save: [p.btn('Guardar').disabled, p.btn('Guardar').title], mark: p.drawer().querySelector('.dwf .mk-dirty').hidden });
+const keepAssert = (p, f0, nodes0, draft0, L) => {
+  assert.deepStrictEqual(fieldsNow(p), f0, `${L}: every control, mark and «Guardar» exactly as before`);
+  const nodes = ctrls(p);
+  assert.ok(nodes.length === nodes0.length && nodes.every((n, i) => n === nodes0[i]), `${L}: the SAME control nodes (the copy was not rebuilt)`);
+  assert.strictEqual(JSON.stringify(p.src()), draft0, `${L}: the whole draft untouched`);
+};
 // the confirm, exactly as frame 2 draws it
-function assertCard(p, L) {
+function assertCard(p, L, { pageScrim = false } = {}) {
   const c = card(p);
   assert.ok(c, `${L}: the in-page confirm is shown`);
   assert.equal(c.getAttribute('role'), 'dialog', `${L}: role dialog`);
@@ -561,7 +571,8 @@ function assertCard(p, L) {
   assert.ok(cardBtn(p, 'Descartar').classList.contains('mk-quiet-danger'), `${L}: «Descartar» is the quiet destructive action`);
   assert.ok(cardBtn(p, 'Seguir editando').classList.contains('accent'), `${L}: «Seguir editando» is the primary`);
   assert.equal(p.d.activeElement, cardBtn(p, 'Seguir editando'), `${L}: «Seguir editando» holds focus (Enter keeps the work)`);
-  assert.equal(p.d.querySelector('.dscrim.show, #scrim.show'), null, `${L}: no page backdrop is added (the real drawer has none)`);
+  assert.equal(p.d.querySelector('.dscrim.show'), null, `${L}: no page backdrop is added (the real drawer has none)`);
+  assert.equal(p.d.getElementById('scrim').classList.contains('show'), pageScrim, `${L}: the page scrim is exactly as it was (the review panel's own, when open)`);
 }
 
 test('U-MARK-AND-BAR — an unsaved edit: «Cambios sin guardar» beside «Guardar»; the whole bar waits (Revisar + Descartar disabled, the hint); live again after «Guardar»', async () => {
@@ -620,19 +631,23 @@ test('U-CERRAR-DIRTY — «Cerrar» with unsaved edits asks; «Seguir editando»
   await p.open('dimsum_01');
   const nm = p.fld('Nombre').querySelector('input');
   p.type(nm, 'Wonton picante'); p.type(priceIn(p), '285');
-  const f0 = fieldsNow(p);
+  const f0 = fieldsNow(p), nodes0 = ctrls(p);
   headClose(p).click(); await settle(10);
   assertCard(p, 'U-CERRAR-DIRTY');
   assert.ok(p.drawer().classList.contains('show'), 'U-CERRAR-DIRTY: the drawer stays while asking');
   cardBtn(p, 'Seguir editando').click(); await settle(10);
   assert.equal(card(p), null, 'U-CERRAR-DIRTY: «Seguir editando» dismisses the confirm');
-  assert.deepEqual(fieldsNow(p), f0, 'U-KEEP-EDITING-BYTE-IDENTICAL (Cerrar): every field and «Guardar» exactly as before');
+  keepAssert(p, f0, nodes0, draft0, 'U-KEEP-EDITING-BYTE-IDENTICAL (Cerrar)');
   assert.equal(p.fld('Nombre').querySelector('input'), nm, 'U-KEEP-EDITING-BYTE-IDENTICAL (Cerrar): the SAME input node (no rebuild)');
-  assert.equal(JSON.stringify(p.src()), draft0, 'U-CERRAR-DIRTY: the draft never saw the copy');
+  p.btn('Guardar').click(); await settle(30);
+  const saved = p.src().items.find((i) => i.key === 'dimsum_01');
+  assert.deepStrictEqual([saved.price, saved.display.name], [285, 'Wonton picante'], 'U-KEEP-EDITING-BYTE-IDENTICAL (Cerrar): the kept copy saves exactly the typed edits');
+  await p.open('dimsum_01'); p.type(priceIn(p), '286');
   headClose(p).click(); await settle(10);
   cardBtn(p, 'Descartar').click(); await settle(10);
   assert.equal(p.drawer().classList.contains('show'), false, 'U-CERRAR-DIRTY: «Descartar» closes the drawer');
-  assert.equal(JSON.stringify(p.src()), draft0, 'U-CERRAR-DIRTY: frame 3 — the draft byte-for-byte as before the drawer opened');
+  const draft1 = JSON.stringify(JSON.parse(draft0)); void draft1;
+  assert.equal(p.src().items.find((i) => i.key === 'dimsum_01').price, 285, 'U-CERRAR-DIRTY: frame 3 — the draft keeps only what was saved (285), never the discarded 286');
   assert.equal(p.d.getElementById('review').disabled, false, 'U-CERRAR-DIRTY: the bar is live again');
 });
 
@@ -654,12 +669,12 @@ test('U-OTHER-ROW-DIRTY — opening another product asks; «Seguir editando» st
   const draft0 = JSON.stringify(p.src());
   await p.open('dimsum_01');
   p.type(priceIn(p), '285');
-  const f0 = fieldsNow(p); const pin = priceIn(p);
+  const f0 = fieldsNow(p), nodes0 = ctrls(p); const pin = priceIn(p);
   await p.open('dimsum_02');
   assertCard(p, 'U-OTHER-ROW-DIRTY');
   assert.equal(p.drawer().querySelector('.dwt').textContent, 'Sichuan Spicy Wonton', 'U-OTHER-ROW-DIRTY: still the first product while asking');
   cardBtn(p, 'Seguir editando').click(); await settle(10);
-  assert.deepEqual(fieldsNow(p), f0, 'U-KEEP-EDITING-BYTE-IDENTICAL (other row): the copy exactly as before');
+  keepAssert(p, f0, nodes0, draft0, 'U-KEEP-EDITING-BYTE-IDENTICAL (other row)');
   assert.equal(priceIn(p), pin, 'U-KEEP-EDITING-BYTE-IDENTICAL (other row): the SAME input node');
   await p.open('dimsum_02');
   cardBtn(p, 'Descartar').click(); await settle(10);
@@ -681,3 +696,92 @@ test('U-RELOAD-DIRTY-COPY — the self-update / branch-switch guard counts a dir
   assert.equal(p.mods.app.editorCanLeave(), true, 'U-RELOAD-DIRTY-COPY: «Cancelar» releases it');
 });
 
+
+test('U-CANCEL-REPAINT — footer «Cancelar» on a dirty copy: both bar buttons live again and the hint gone (also with a saved draft change)', async () => {
+  const p = await page();
+  await p.signIn();
+  const rev = p.d.getElementById('review'), dis = p.d.getElementById('discard');
+  const hint = () => p.d.querySelector('#rbar .mk-rbhint');
+  await p.open('dimsum_01');
+  p.type(priceIn(p), '285');
+  assert.equal(rev.disabled, true, 'premise: the bar waits');
+  p.btn('Cancelar').click(); await settle(10);
+  assert.deepStrictEqual([rev.disabled, dis.disabled, !hint() || hint().hidden], [false, false, true], 'U-CANCEL-REPAINT: live again after «Cancelar»');
+  await p.open('dimsum_01'); p.type(priceIn(p), '260'); p.btn('Guardar').click(); await settle(30);
+  await p.open('dimsum_02'); p.type(priceIn(p), '199');
+  assert.deepStrictEqual([rev.disabled, dis.disabled], [true, true], 'premise: with a saved change, the bar still waits for the open copy');
+  p.btn('Cancelar').click(); await settle(10);
+  assert.deepStrictEqual([rev.disabled, dis.disabled, dis.classList.contains('hidden'), !hint() || hint().hidden], [false, false, false, true], 'U-CANCEL-REPAINT (saved change): Revisar and Descartar live, the hint gone');
+});
+
+test('U-FOCUS — the confirm holds focus: Tab / Shift+Tab stay inside, the background is inert, Esc anywhere returns the caret and selection to the last edited field', async () => {
+  const p = await page();
+  await p.signIn();
+  await p.open('dimsum_01');
+  const pr = priceIn(p);
+  pr.focus(); p.type(pr, '2850'); pr.setSelectionRange(1, 3);
+  headClose(p).focus(); headClose(p).click(); await settle(10);
+  const keep = cardBtn(p, 'Seguir editando'), drop = cardBtn(p, 'Descartar');
+  assert.equal(p.d.activeElement, keep, 'U-FOCUS: «Seguir editando» holds focus');
+  const tab = (shift) => p.d.activeElement.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Tab', shiftKey: shift, bubbles: true, cancelable: true }));
+  tab(false); assert.equal(p.d.activeElement, drop, 'U-FOCUS: Tab moves inside the card');
+  tab(false); assert.equal(p.d.activeElement, keep, 'U-FOCUS: Tab wraps inside the card');
+  tab(true); assert.equal(p.d.activeElement, drop, 'U-FOCUS: Shift+Tab stays inside the card');
+  assert.ok(p.drawer().querySelector('.dwb').hasAttribute('inert') && p.drawer().querySelector('.dwf').hasAttribute('inert'), 'U-FOCUS: the drawer behind the card is inert');
+  assert.ok(p.d.getElementById('rbar').closest('[inert]'), 'U-FOCUS: the page behind is inert');
+  p.d.body.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  await settle(10);
+  assert.equal(card(p), null, 'U-FOCUS: Esc anywhere = «Seguir editando»');
+  assert.equal(p.d.activeElement, pr, 'U-FOCUS: the caret returns to the last edited field, not the close button');
+  assert.deepStrictEqual([pr.selectionStart, pr.selectionEnd, pr.value], [1, 3, '2850'], 'U-FOCUS: with its selection');
+  assert.ok(!p.drawer().querySelector('.dwb').hasAttribute('inert') && !p.d.getElementById('rbar').closest('[inert]'), 'U-FOCUS: the background is live again');
+});
+
+test('U-RECOVERY-RELOAD — «Recargar y reaplicar» with an open dirty copy asks; «Seguir editando» keeps the copy and the recovery panel; «Descartar» reloads', async () => {
+  const p = await page({ on: { editCatalog: () => errJson(409, { error: 'stale_edit', detail: 'base moved' }) } });
+  await p.signIn();
+  await p.open('dimsum_01'); p.type(priceIn(p), '260'); p.btn('Guardar').click(); await settle(30);
+  p.d.getElementById('review').click(); await settle(60);
+  const reload = () => [...p.d.querySelectorAll('#mbody button')].find((b) => b.textContent.trim() === 'Recargar y reaplicar');
+  assert.ok(reload(), 'premise: the stale_edit recovery panel offers «Recargar y reaplicar»');
+  await p.open('dimsum_02'); p.type(priceIn(p), '285');
+  const f0 = fieldsNow(p), nodes0 = ctrls(p), draft0 = JSON.stringify(p.src()), loads = p.n('getEditableCatalog').length;
+  reload().click(); await settle(30);
+  assertCard(p, 'U-RECOVERY-RELOAD', { pageScrim: true });
+  cardBtn(p, 'Seguir editando').click(); await settle(30);
+  keepAssert(p, f0, nodes0, draft0, 'U-RECOVERY-RELOAD');
+  assert.ok(p.d.getElementById('scrim').classList.contains('show') && reload(), 'U-RECOVERY-RELOAD: the recovery panel stays');
+  assert.equal(p.n('getEditableCatalog').length, loads, 'U-RECOVERY-RELOAD: nothing reloaded');
+  reload().click(); await settle(30);
+  cardBtn(p, 'Descartar').click(); await settle(80);
+  assert.equal(p.n('getEditableCatalog').length, loads + 1, 'U-RECOVERY-RELOAD: «Descartar» proceeds with the reload');
+});
+
+test('U-RESET-TO-LIVE — «Volver al menú publicado» (the callout and the recovery action) with an open dirty copy asks first', async () => {
+  const p = await page({ read: () => editable({ draft_unpublishable: { code: 'existing_item_changed', detail: 'x' } }) });
+  await p.signIn();
+  const calloutBtn = () => [...p.d.querySelectorAll('#detail button')].find((b) => b.textContent.trim() === 'Volver al menú publicado');
+  assert.ok(calloutBtn(), 'premise: the unpublishable-draft callout offers the reset');
+  await p.open('dimsum_01'); p.type(priceIn(p), '285');
+  calloutBtn().click(); await settle(20);
+  assertCard(p, 'U-RESET-TO-LIVE');
+  cardBtn(p, 'Seguir editando').click(); await settle(10);
+  assert.equal(p.n('resetDraftToLive').length, 0, 'U-RESET-TO-LIVE: «Seguir editando» resets nothing');
+  calloutBtn().click(); await settle(20);
+  cardBtn(p, 'Descartar').click(); await settle(60);
+  assert.equal(p.n('resetDraftToLive').length, 1, 'U-RESET-TO-LIVE: «Descartar» proceeds with the reset');
+});
+
+test('U-RESET-RECOVERY — the recovery panel\'s «Volver al menú publicado» with an open dirty copy asks first', async () => {
+  const p = await page({ on: { editCatalog: () => errJson(409, { error: 'existing_item_changed', detail: 'x' }) } });
+  await p.signIn();
+  await p.open('dimsum_01'); p.type(priceIn(p), '260'); p.btn('Guardar').click(); await settle(30);
+  p.d.getElementById('review').click(); await settle(60);
+  const reset = () => [...p.d.querySelectorAll('#mbody button')].find((b) => b.textContent.trim() === 'Volver al menú publicado');
+  assert.ok(reset(), 'premise: the recovery panel offers the reset');
+  await p.open('dimsum_02'); p.type(priceIn(p), '285');
+  reset().click(); await settle(20);
+  assertCard(p, 'U-RESET-RECOVERY', { pageScrim: true });
+  cardBtn(p, 'Seguir editando').click(); await settle(10);
+  assert.equal(p.n('resetDraftToLive').length, 0, 'U-RESET-RECOVERY: «Seguir editando» resets nothing');
+});

@@ -1101,7 +1101,7 @@ function offerResetToLive(host, rid, rev) {
   p.textContent = 'Tu borrador guardado no se puede publicar tal como está. Podés volver al menú publicado y aplicar tus cambios de nuevo.';
   const resetBtn = document.createElement('button');
   resetBtn.type = 'button'; resetBtn.className = 'btn accent'; resetBtn.textContent = 'Volver al menú publicado';
-  resetBtn.addEventListener('click', bound(() => resetToLive(rid, rev)));
+  resetBtn.addEventListener('click', bound(() => requestClose(() => resetToLive(rid, rev))));   // unsaved edits: ask first
   box.append(p, resetBtn);
   host.prepend(box);
 }
@@ -1396,13 +1396,16 @@ let editRefs = null;      // the built nodes `syncEdit` updates in place
 const UNSAVED_HINT = 'Guardá o cancelá los cambios del producto abierto';
 const copyDirty = () => !!editSess && !editSess.closed && IE.isDirty(editSess);
 // Frame 2 — an in-page confirm anchored to the drawer (its scrim covers the drawer only; the page gets no backdrop). «Seguir
-// editando» is the primary and holds focus (Enter / Esc keep the work and return the caret); «Descartar» drops the copy, then runs
-// `next` (close, or open the other product). Clean → `next` at once: nothing asks twice.
+// editando» is the primary and holds focus; Enter, or Esc ANYWHERE, keeps the work and returns the caret (and its selection) to the
+// last edited field. Tab / Shift+Tab stay inside the card, and everything behind it is inert while it is open. «Descartar» drops the
+// copy, then runs `next` (close, reload, reset, or open the other product). Clean → `next` at once: nothing asks twice.
 function requestClose(next) {
-  if (!copyDirty()) { next(); return; }
+  if (!copyDirty()) return next();   // clean: the exit itself (its promise, for an async one)
   const d = $('drawer');
   if (d.querySelector('.mk-cfscrim')) return;
-  const back = document.activeElement;
+  // the last edited field, with the selection it holds right now (a field keeps its selection while the close button has focus)
+  const lastEl = editRefs && editRefs.lastEdit && editRefs.lastEdit.el.isConnected ? editRefs.lastEdit.el : document.activeElement;
+  const last = { el: lastEl, s: lastEl && typeof lastEl.selectionStart === 'number' ? lastEl.selectionStart : null, e: lastEl && typeof lastEl.selectionEnd === 'number' ? lastEl.selectionEnd : null };
   const mkEl = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
   const scrim = mkEl('div', 'mk-cfscrim');
   const cfCard = mkEl('div', 'mk-cf');
@@ -1413,14 +1416,42 @@ function requestClose(next) {
   const acts = mkEl('div', 'mk-cfa');
   const cfDrop = document.createElement('button'); cfDrop.className = 'btn ghost mk-quiet-danger'; cfDrop.type = 'button'; cfDrop.textContent = 'Descartar';
   const cfKeep = document.createElement('button'); cfKeep.className = 'btn accent'; cfKeep.type = 'button'; cfKeep.textContent = 'Seguir editando';
-  const dismiss = () => { scrim.remove(); if (back && back.isConnected && typeof back.focus === 'function') back.focus(); };
+  // the background, inert while the card is open (restored exactly: an element already inert stays inert)
+  const inerted = [];
+  for (const el of [...d.children, ...document.body.children]) {
+    if (el === d || el.hasAttribute('inert')) continue;
+    el.setAttribute('inert', ''); inerted.push(el);
+  }
+  const close = () => {
+    scrim.remove();
+    for (const el of inerted) el.removeAttribute('inert');
+    document.removeEventListener('keydown', onDocKey, true);
+  };
+  const dismiss = () => {
+    close();
+    const el = last.el;
+    if (el && el.isConnected && typeof el.focus === 'function') {
+      el.focus();
+      if (last.s !== null && typeof el.setSelectionRange === 'function') { try { el.setSelectionRange(last.s, last.e); } catch (_) { /* not a text control */ } }
+    }
+  };
+  const onDocKey = bound((e) => {
+    if (e.key === 'Escape') { e.preventDefault(); dismiss(); return; }
+    if (e.key === 'Tab') {   // contained: the card's two buttons, in order
+      e.preventDefault();
+      const order = [cfDrop, cfKeep];
+      const at = order.indexOf(document.activeElement);
+      const to = e.shiftKey ? (at <= 0 ? order.length - 1 : at - 1) : (at === order.length - 1 ? 0 : at + 1);
+      order[to].focus();
+    }
+  });
   cfKeep.addEventListener('click', bound(() => dismiss()));
-  cfDrop.addEventListener('click', bound(() => { scrim.remove(); endEditSession(); next(); syncUi(); }));   // the bar is live again (frame 3)
-  cfCard.addEventListener('keydown', bound((e) => { if (e.key === 'Escape') { e.preventDefault(); dismiss(); } }));
+  cfDrop.addEventListener('click', bound(() => { close(); endEditSession(); next(); syncUi(); }));   // the bar is live again (frame 3)
   acts.append(cfDrop, cfKeep);
   cfCard.append(h, p, acts);
   scrim.append(cfCard);
   d.append(scrim);
+  document.addEventListener('keydown', onDocKey, true);
   cfKeep.focus();
 }
 function endEditSession() {
@@ -1627,7 +1658,7 @@ function renderEditDrawer(d, it, keepScroll) {
 
   const foot = mk('div', 'dwf');
   const ieCancel = document.createElement('button'); ieCancel.className = 'btn ghost'; ieCancel.type = 'button'; ieCancel.textContent = 'Cancelar';
-  ieCancel.addEventListener('click', bound(() => closeDrawer()));
+  ieCancel.addEventListener('click', bound(() => { closeDrawer(); syncUi(); }));   // the bar is live again once the copy is gone
   const ieSave = document.createElement('button'); ieSave.className = 'btn accent'; ieSave.type = 'button'; ieSave.textContent = 'Guardar';
   ieSave.addEventListener('click', bound(() => saveEdit()));
   R.save = ieSave;
@@ -1635,6 +1666,7 @@ function renderEditDrawer(d, it, keepScroll) {
   R.dirty.hidden = true;
   foot.append(ieCancel, mk('span', 'mk-sp'), R.dirty, ieSave);
 
+  R.body = body;
   editRefs = R;
   d.setAttribute('aria-label', 'Editar producto');
   d.append(head, body, foot);
@@ -1701,6 +1733,9 @@ function syncEdit() {
   if (v.save.title) R.save.title = v.save.title; else R.save.removeAttribute('title');
   const dirty = IE.isDirty(s);
   R.dirty.hidden = !dirty;
+  // the field the merchant is editing, with its selection — where «Seguir editando» returns the caret
+  const ae = document.activeElement;
+  if (R.body && ae && R.body.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) R.lastEdit = { el: ae };
   // the bar waits while the copy is dirty — repainted by syncUi (the one derivation) only when that changes: syncUi → setDrawerInert →
   // syncEdit would otherwise loop
   if (R.lastDirty !== dirty) { R.lastDirty = dirty; syncUi(); }
@@ -2646,9 +2681,8 @@ function showOutcome(outcome) {
   // one gets missed. Bound like every other write-listener.
   renderOutcome($('mbody'), outcome, bound(async (id) => {
     if (id === PUBLISH_ACTIONS.RELOAD) {
-      // the DRAFT moved under us: refetch it and start over
-      $('scrim').classList.remove('show');
-      await loadMenu(state.currentRid);
+      // the DRAFT moved under us: refetch it and start over — after asking, if an open product holds unsaved edits
+      await requestClose(async () => { $('scrim').classList.remove('show'); await loadMenu(state.currentRid); });
       return;
     }
     if (id === PUBLISH_ACTIONS.REREVIEW) {
@@ -2714,9 +2748,7 @@ function showOutcome(outcome) {
     }
     if (id === PUBLISH_ACTIONS.RESET) {
       // 1D add-product A §0.1 — "Volver al menú publicado"
-      $('scrim').classList.remove('show');
-      clearReview();
-      await resetToLive(state.draftRid, state.sourceUpdateTime);
+      await requestClose(async () => { $('scrim').classList.remove('show'); clearReview(); await resetToLive(state.draftRid, state.sourceUpdateTime); });   // unsaved edits: ask first
       return;
     }
     // An action id nothing handles must do NOTHING rather than fall through into a publish. Every id

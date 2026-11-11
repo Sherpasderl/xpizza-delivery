@@ -1279,7 +1279,7 @@ const LISTENERS = {
   // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html) — the in-page confirm before an exit would drop a dirty working copy
   "cfKeep::click":                ['bound', [], 'unsaved edits — «Seguir editando»: dismisses the confirm; the working copy stays exactly as it was'],
   "cfDrop::click":                ['bound', [], 'unsaved edits — «Descartar»: drops the working copy (endEditSession), then the exit it held (close / open the other product); the draft is untouched'],
-  "cfCard::keydown":              ['bound', [], 'unsaved edits — Esc on the confirm = «Seguir editando» (keeps the work)'],
+  "document::keydown":            ['view', ['onDocKey'], 'unsaved edits — while the confirm is open only (added on open, removed on close): onDocKey is built with bound(); Esc anywhere = «Seguir editando» (the copy is untouched), Tab / Shift+Tab move focus inside the card — no shared state written'],
 };
 
 test('🔴 every listener that writes is bound, or ruled — and nothing else is registered', () => {
