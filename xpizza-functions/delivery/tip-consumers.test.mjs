@@ -53,7 +53,7 @@ const HUB = { lat: 14.1, lng: -87.2 };
 const RAW = { policy_version: 1, bands: [{ max_km: 2, cents: 3000 }, { max_km: 5, cents: 5000 }], restaurants: { x_pizza: { active: true, free_delivery: true } } };
 const PIN = { lat: HUB.lat + 4 / 111.195, lng: HUB.lng, confirmed: true };
 const getIdentity = async () => ({ hub_lat: HUB.lat, hub_lng: HUB.lng });
-const dqFor = async (W, { uid = null, tip, active = true } = {}) => W.deliveryFor(null, { rid: 'x_pizza', mode: 'delivery', pin: PIN, customerUid: uid, getIdentity,
+const dqFor = async (W, { uid = null, tip, active = true } = {}) => W.deliveryFor(null, { rid: 'x_pizza', mode: 'delivery', pin: PIN, customerUid: uid, getIdentity, app: true,
   pricingP: Promise.resolve({ pricing: active ? P.readPricing(RAW, 'x_pizza') : null }), ...(tip !== undefined ? { tip } : {}) });
 async function realOrder({ dq = null, W = DW, payment_method = 'cash', tendered = 50000, id = null } = {}) {
   const food = 340;

@@ -29,12 +29,12 @@ async function loadPricing(db, rid) {
 /* S2 (§3.1): `tip` is the request's raw tip_cents (already validated by the handler's early TIP.orderRefusal). A tip needs an
    ACTIVE restaurant (dark + tip → 409 tip_not_enabled) and a delivery (pickup + tip → 400 tip_pickup); otherwise it rides the
    server ctx (P.withTip), so the breakdown, the gate's recompute and the record all carry it. No tip → byte-identical. */
-async function deliveryFor(db, { rid, mode, pin, customerUid, getIdentity, pricingP, tip }) {
+async function deliveryFor(db, { rid, mode, pin, customerUid, getIdentity, pricingP, tip, app }) {
   const t = TIP.normTip(tip);
   if (Number.isNaN(t)) return { refusal: 'tip_invalid', httpStatus: 400 };
   const lp = await (pricingP || loadPricing(db, rid));   // pricingP: the handler started the read in parallel with its first reads
   if (lp.failed) return { refusal: 'delivery_pricing_unavailable', httpStatus: 503 };
-  if (!lp.pricing) return t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;
+  if (!lp.pricing || app !== true) return t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;   // owner 2026-11-10: envío + tip are APP-only; any other request (the frozen forms) is dark
   let identity = null;
   try { identity = await getIdentity(db, rid); } catch (_) { return { refusal: 'delivery_pricing_unavailable', httpStatus: 503 }; }
   const hub = identity && { lat: identity.hub_lat, lng: identity.hub_lng };
@@ -136,7 +136,7 @@ async function quoteDeliveryFor(req, db, rid, body, { getIdentity, getAuth, attr
   if (t > 0 && body.redeem != null) return { refuse: { ok: false, error: 'tip_reward_unsupported' }, httpStatus: 409 };
   const lp = await (pricingP || loadPricing(db, rid));
   if (lp.failed) return { refuse: { ok: false, error: 'delivery_pricing_unavailable', retryable: true }, httpStatus: 503 };
-  if (!lp.pricing) return t > 0 ? { refuse: { ok: false, error: 'tip_not_enabled' }, httpStatus: 409 } : { ctx: null, uid: knownUid === undefined ? null : knownUid };
+  if (!lp.pricing || !isApp(body)) return t > 0 ? { refuse: { ok: false, error: 'tip_not_enabled' }, httpStatus: 409 } : { ctx: null, uid: knownUid === undefined ? null : knownUid };   // owner 2026-11-10: APP-only
   let uid = knownUid === undefined ? null : knownUid;
   if (knownUid === undefined) {
     const idTok = req.get && req.get('x-firebase-id-token');
@@ -178,4 +178,4 @@ function quoteOutcome(dq) {
 // The additive quote response fields (absent when dark → byte-identical response).
 const quoteFields = (ctx) => (ctx ? { delivery: { delivery_cents: ctx.delivery_cents, promo_discount_cents: ctx.promo_discount_cents, policy_version: ctx.policy_version, mode: ctx.mode, ...(PUBLIC.get(ctx) || {}) } } : {});   // S2 §3.6: + { from_cents, max_km }
 
-module.exports = { loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf };
+module.exports = { loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf, isApp };

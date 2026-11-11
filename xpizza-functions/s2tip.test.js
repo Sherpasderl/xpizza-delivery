@@ -194,7 +194,7 @@ const seq = (...ids) => { let i = 0; return () => ids[i++]; };
   // ── 5. deliveryFor / quoteDeliveryFor: the refusals, the app coverage, the public facts ──
   {
     const getIdentity = async () => ({ hub_lat: HUB.lat, hub_lng: HUB.lng, delivery_radius_km: 3.5 });
-    const df = (args) => DW.deliveryFor(null, { rid: RID, mode: 'delivery', pin: PIN, customerUid: null, getIdentity, pricingP: Promise.resolve({ pricing: pr }), ...args });
+    const df = (args) => DW.deliveryFor(null, { rid: RID, mode: 'delivery', pin: PIN, customerUid: null, getIdentity, pricingP: Promise.resolve({ pricing: pr }), app: true, ...args });
     assert.deepStrictEqual(await DW.deliveryFor(null, { rid: RID, mode: 'delivery', pin: PIN, getIdentity, pricingP: Promise.resolve({ pricing: null }), tip: 500 }), { refusal: 'tip_not_enabled', httpStatus: 409 }, 'dark + tip → 409 tip_not_enabled');
     assert.strictEqual(await DW.deliveryFor(null, { rid: RID, mode: 'delivery', pin: PIN, getIdentity, pricingP: Promise.resolve({ pricing: null }), tip: 0 }), null, 'dark + no tip → null (dark, unchanged)');
     assert.deepStrictEqual(await df({ mode: 'pickup', tip: 500 }), { refusal: 'tip_pickup', httpStatus: 400 }, 'order pickup + tip → 400 tip_pickup');
@@ -208,19 +208,19 @@ const seq = (...ids) => { let i = 0; return () => ids[i++]; };
     assert.deepStrictEqual(await q(body({ tip_cents: 1.5 })), { refuse: { ok: false, error: 'tip_invalid' }, httpStatus: 400 });
     assert.deepStrictEqual(await q(body({ tip_cents: 500, redeem: {} })), { refuse: { ok: false, error: 'tip_reward_unsupported' }, httpStatus: 409 }, 'quote tip + reward → 409');
     assert.deepStrictEqual(await dq(body({ tip_cents: 500 })), { refuse: { ok: false, error: 'tip_not_enabled' }, httpStatus: 409 }, 'quote dark + tip → 409 tip_not_enabled');
-    assert.deepStrictEqual(await q({ mode: 'pickup', tip_cents: 500 }), { refuse: { ok: false, error: 'tip_pickup' }, httpStatus: 400 }, 'quote pickup + tip → 400 tip_pickup');
+    assert.deepStrictEqual(await q({ mode: 'pickup', tip_cents: 500, entry_mode: 'app' }), { refuse: { ok: false, error: 'tip_pickup' }, httpStatus: 400 }, 'quote pickup + tip → 400 tip_pickup');
     // app coverage: the pin is 4 km; bands reach 6 km; the restaurant's radius is 3.5 km
     const appOut = await q(body({ entry_mode: 'app' }));
     assert.strictEqual(appOut.refuse && appOut.refuse.error, 'outside_delivery_bands', 'APP: a pin between the radius and the last band is refused');
-    const legacy = await q(body({}));
-    assert.ok(legacy.ctx && legacy.ctx.delivery_cents === 5000, 'legacy (no entry_mode): unchanged — priced at the band');
-    assert.deepStrictEqual(DW.quoteFields(legacy.ctx).delivery, { delivery_cents: 5000, promo_discount_cents: 0, policy_version: 1, mode: 'delivery', from_cents: 3000, max_km: 6 }, 'public facts: from_cents = the lowest band, max_km = the last band');
+    assert.deepStrictEqual(await q(body({})), { ctx: null, uid: null }, 'legacy (no entry_mode): DARK on an active restaurant (owner 2026-11-10: envío is app-only)');
+    const wide = await q(body({ entry_mode: 'app' }), async () => ({ hub_lat: HUB.lat, hub_lng: HUB.lng }));
+    assert.deepStrictEqual(DW.quoteFields(wide.ctx).delivery, { delivery_cents: 5000, promo_discount_cents: 0, policy_version: 1, mode: 'delivery', from_cents: 3000, max_km: 6 }, 'public facts: from_cents = the lowest band, max_km = the last band');
     const near = { lat: HUB.lat + 1 / 111.195, lng: HUB.lng, confirmed: true };
     const app = await q({ mode: 'delivery', pin: near, entry_mode: 'app' });
     assert.strictEqual(DW.quoteFields(app.ctx).delivery.max_km, 3.5, 'APP: max_km reports min(last band, radius)');
     const noRadius = await q({ mode: 'delivery', pin: near, entry_mode: 'app' }, async () => ({ hub_lat: HUB.lat, hub_lng: HUB.lng }));
     assert.strictEqual(DW.quoteFields(noRadius.ctx).delivery.max_km, 6, 'APP with no radius on the identity → the bands');
-    const tq = await q(body({ tip_cents: 2000 }));
+    const tq = await q(body({ tip_cents: 2000, entry_mode: 'app' }), async () => ({ hub_lat: HUB.lat, hub_lng: HUB.lng }));
     assert.strictEqual(issueQuote({ items: ITEMS, rid: RID, tables: TABLES, deliveryContext: tq.ctx, nowMs: NOW }).net_total_cents, computeServerNet({ items: ITEMS, deliveryContext: ctxT, rid: RID, tables: TABLES }).net_total_cents, 'a tipped quote\'s net = food + envío + tip');
     assert.deepStrictEqual(DW.quoteFields(null), {}, 'dark quote: no delivery block');
     // codex r1 P2: an ACTIVE but INVALID config ({invalid:true}, no bands) refuses exactly as before S2 — byte-equal to the base,
@@ -231,6 +231,7 @@ const seq = (...ids) => { let i = 0; return () => ids[i++]; };
     for (const extra of [{}, { tip_cents: 0 }, { entry_mode: 'app' }, { tip_cents: 0, entry_mode: 'app' }]) {
       const args = [req, null, RID, body(extra), { getIdentity, pricingP: Promise.resolve({ pricing: bad }) }];
       const now = await DW.quoteDeliveryFor(...args);
+      if (extra.entry_mode !== 'app') { assert.deepStrictEqual(now, { ctx: null, uid: null }, `invalid active pricing ${JSON.stringify(extra)}, legacy: DARK (owner 2026-11-10: app-only)`); continue; }
       assert.deepStrictEqual(now, await DWb.quoteDeliveryFor(...args), `invalid active pricing ${JSON.stringify(extra)}: byte-equal to the base refusal`);
       assert.deepStrictEqual(now, { refuse: { ok: false, error: 'delivery_pricing_invalid' }, httpStatus: 200 }, `invalid active pricing ${JSON.stringify(extra)} → 200 delivery_pricing_invalid`);
     }

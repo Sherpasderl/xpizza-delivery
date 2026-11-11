@@ -22,7 +22,7 @@ const req = (tok, body) => ({ get: (h) => (String(h).toLowerCase() === 'authoriz
 let AT = 1762800000000;
 function world(init = {}, { registry, adminReadFails = false } = {}) {
   const db = fakeRtdb({ platform_admins: { tb_owner: true }, ...init }, { strict: true });
-  if (adminReadFails) { const ref = db.ref; db.ref = (p) => (String(p).startsWith('platform_admins') ? { get: async () => { throw new Error('down'); } } : ref(p)); }
+  if (adminReadFails) { const ref = db.ref; db.ref = (p) => (String(p).startsWith('platform_admins') ? { once: async () => { throw new Error('down'); }, get: async () => { throw new Error('down'); } } : ref(p)); }
   const deps = {
     db, verifyIdToken: async (t) => { if (!TOKENS[t]) throw new Error('bad'); return TOKENS[t]; },
     readRegistry: registry || (async () => ({ ok: true, fresh: true, ids: IDS })),
