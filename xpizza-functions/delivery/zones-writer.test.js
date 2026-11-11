@@ -183,6 +183,30 @@ const node = (w) => w.db.get(PATH);
     assert.strictEqual((await world({ identities: { tb_r1: ID('Uno', OPEN), tb_r2: ID('Dos', CLOSED) } }).get()).body.zones_editable, false, `${L}: one open → not editable`);
   });
 
+  // ── F8: the order path's read size at caps, from the REAL writer's committed output ──
+  await cell('ZWR-READ-BYTES-AT-CAPS', async (L) => {
+    // 8 valid, unique, normalized 24-point shapes at the WORST legal encoding: negative coordinates with the longest integer parts,
+    // six significant decimals each; 30-unit names of 3-byte characters (lone surrogates are refused, so 3 bytes is the ceiling)
+    const r6 = (x) => Math.round(x * 1e6) / 1e6;
+    const worst = (x) => { let v = r6(x); while (Math.abs(Math.round(v * 1e6)) % 10 === 0) v = r6(v - 1e-6); return v; };
+    const shapes = Array.from({ length: 8 }, (_, z) => ({ id: `z_${String(z).padStart(8, '0')}`, name: '\u20ac'.repeat(29) + String.fromCharCode(0x4e00 + z),
+      points: Array.from({ length: 24 }, (_, i) => { const a = (2 * Math.PI * i) / 24; return { lat: worst(-89.123457 - z * 0.03 + 0.009 * Math.sin(a)), lng: worst(-179.123457 + 0.009 * Math.cos(a)) }; }) }));
+    const w = world();
+    const r = await w.set(body({ no_delivery_zones: shapes }));
+    assert.strictEqual(r.status, 200, `${L}: premise — the writer accepts the 8 × 24 worst-case shapes (${JSON.stringify(r.body)})`);
+    const committed = node(w).no_delivery_zones;
+    assert.deepStrictEqual([committed.length, committed.every((z) => z.points.length === 24)], [8, true], `${L}: 8 × 24 committed`);
+    // the rest of the node at its step-1 caps (20 bands, 10 history entries with 128-unit uids at 6 JSON bytes, safe-int clocks,
+    // the largest versions, both flags) — every history entry now carrying the zones' { count, sha256 } (never the shapes)
+    const twenty = Array.from({ length: 20 }, (_, i) => ({ max_km: (i + 1) / 2, cents: 15000 }));
+    const U = '\u0001'.repeat(128);
+    const zs = { count: 8, sha256: Z.sha(committed) };
+    const e = { actor_uid: U, prev_version: 1e15 - 2, new_version: 1e15 - 1, new: { bands: twenty, zones: zs }, at: Number.MAX_SAFE_INTEGER, prev_malformed: true, history_reset: true };
+    const atCaps = { policy_version: 1e15, bands: twenty, no_delivery_zones: committed, history: [{ ...e, prev_version: 1e15 - 1, new_version: 1e15 }, ...Array(9).fill(e)], updated_at: Number.MAX_SAFE_INTEGER, updated_by: U };
+    const bytes = Buffer.byteLength(JSON.stringify(atCaps), 'utf8');
+    assert.strictEqual(bytes, A.READ_BYTES_AT_CAPS, `${L}: the pinned worst case of every order read (got ${bytes})`);
+  });
+
   if (fails.length) { console.log(`zones-writer FAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }
   console.log(`zones-writer: OK (${n})`);
 })();

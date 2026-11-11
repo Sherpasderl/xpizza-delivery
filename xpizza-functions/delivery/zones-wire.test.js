@@ -95,6 +95,17 @@ const PRICING = 'platform_config/delivery_pricing';
     assert.strictEqual(await DW.zoneResumeRefusalFor(fakeDb({ [PRICING]: RAW({ no_delivery_zones: ZONES }) }), 'nope'), null, `${L}: no stored order → null`);
   });
 
+  await cell('ZW-READ-COUNT-PINNED', async (L) => {
+    // F8: zones add NO read to the order path — one pricing read per order and per quote, as step 1
+    const counting = (paths) => { const reads = []; return { reads, db: { ref: (p) => ({ get: async () => { reads.push(p); return { val: () => (p in paths ? paths[p] : null), exists: () => paths[p] != null }; } }) } }; };
+    const o = counting({ [PRICING]: RAW({ no_delivery_zones: ZONES }) });
+    await DW.deliveryFor(o.db, { rid: 'tb_r1', mode: 'delivery', pin: { ...north(1), confirmed: true }, getIdentity, app: true });
+    assert.deepStrictEqual(o.reads, [PRICING], `${L}: an order reads the pricing node once (${JSON.stringify(o.reads)})`);
+    const q = counting({ [PRICING]: RAW({ no_delivery_zones: ZONES }) });
+    await DW.quoteDeliveryFor({ get: () => null }, q.db, 'tb_r1', { mode: 'delivery', pin: { ...north(1), confirmed: true }, entry_mode: 'app' }, { getIdentity, knownUid: null });
+    assert.deepStrictEqual(q.reads, [PRICING], `${L}: a quote reads the pricing node once (${JSON.stringify(q.reads)})`);
+  });
+
   if (fails.length) { console.log(`zones-wire FAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }
   console.log(`zones-wire: OK (${n})`);
 })();
