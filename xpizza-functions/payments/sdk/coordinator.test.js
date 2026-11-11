@@ -16,11 +16,12 @@ const order = (o = {}) => ({ restaurant_id: 'tb_rest', payment_flow: 'sdk_auth_v
 const REV = (cents) => ({ items: [{ name: 'tb_item', qty: 1, unit: cents / 100 }], total_cents: cents, delivery_cents: 0 });
 // the REAL go-live: confirmAndMaterialize through its explicit SDK admission (no refund wiring → a closed kitchen parks)
 const realGoLive = (db, clock, extra = {}) => (dp, id) => require('../../pixelpay-confirm').confirmAndMaterialize({ db, buildMaterializeUpdates: require('../../materialize').buildMaterializeUpdates, restaurant: { lat: 14.1, lng: -87.2, name: 'tb R', phone: '+50400000000' }, ...extra }, { orderId: id, attemptId: null, now: clock(), trackingToken: 'TT-tb', sdkGoLive: true });
-function world({ seed = {}, script = {}, hooks = {}, eligible = () => false, t0 = 100000, goLiveDeps = {} } = {}) {
+function world({ seed = {}, script = {}, hooks = {}, eligible = () => false, cancelEligible, t0 = 100000, goLiveDeps = {} } = {}) {
   let t = t0;
   const db = makeHonestDb({ orders: { [OID]: order() }, ...seed }, { now: () => t, ...hooks });
   const fake = makeFakePsp(script);
   const deps = { db, psp: makeAdapter(fake.impl), clock: () => t, voidEligible: eligible, releaseResources: async () => { deps.released = (deps.released || 0) + 1; }, goLive: realGoLive(db, () => t, goLiveDeps) };
+  if (cancelEligible) deps.cancelVoidEligible = cancelEligible;
   return { db, fake, deps, rec: () => db.getAt(`payment_sdk/${OID}`), ord: () => db.getAt(`orders/${OID}`), tick: (ms) => { t += ms; }, at: () => t };
 }
 const legs = (rec) => Object.values((rec && rec.legs) || {});
@@ -350,6 +351,115 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     const leg = { kind: 'original', amount_cents: 1, state: 'approved', created_at: Date.now(), hold_expires_at: Date.now() + R.HOLD_MS };
     for (const now of [0, leg.created_at, leg.created_at + 60 * 1000, leg.created_at + 23 * 3600 * 1000]) assert.strictEqual(voidEligible(leg, now), false, `${L}: the production rule is NOT eligible for any input until §7.V (now ${now})`);
     assert.strictEqual(require('./deps').productionDeps({}).voidEligible, voidEligible, `${L}: production deps use exactly that stub`);
+  });
+  // owner 2026-11-10 «release it right away when possible» (NOTE-sdk-cancel-void r0): on CANCEL a hold is voided while it is still
+  // voidable — the same Honduras day as its authorization, before 21:50 — else it expires, never captured; adjustments stay fail-closed
+  const CVE = require('./void-eligibility').cancelVoidEligible;
+  const HN = (h, m = 0, day = 0) => Date.UTC(2026, 10, 10, h + 6, m) + day * 86400000;   // Honduras local → epoch (UTC−6)
+  const placedAt = async (opts = {}) => { const w = await placed({ t0: HN(12), cancelEligible: CVE, ...opts }); await live(w); return w; };
+  const cancel = (w) => C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
+  await cell('SDK-CANCEL-VOID-ELIGIBILITY-RULE', async (L) => {
+    const leg = (at) => ({ kind: 'original', amount_cents: 1, state: 'approved', created_at: at, hold_expires_at: at + R.HOLD_MS });
+    const rows = [
+      ['morning hold, 21:49', HN(9), HN(21, 49), true],
+      ['morning hold, 21:50', HN(9), HN(21, 50), false],
+      ['morning hold, 23:00', HN(9), HN(23), false],
+      ['morning hold, next day 09:00', HN(9), HN(9, 0, 1), false],
+      ['hold at 22:30, 22:40', HN(22, 30), HN(22, 40), false],
+      ['hold at 23:59, next day 00:10', HN(23, 59), HN(0, 10, 1), false],
+      ['hold at 00:00 HN (06:00 UTC), 21:49', HN(0), HN(21, 49), true],
+      ['hold at 05:59 UTC (23:59 HN the day before), 06:01 UTC', Date.UTC(2026, 10, 10, 5, 59), Date.UTC(2026, 10, 10, 6, 1), false],
+      ['now before the hold', HN(12), HN(11), false],
+    ];
+    for (const [label, at, now, want] of rows) assert.strictEqual(typeof CVE === 'function' && CVE(leg(at), now), want, `${L}: ${label}`);
+    for (const bad of [null, {}, { created_at: 'x' }]) assert.strictEqual(CVE(bad, HN(12)), false, `${L}: a malformed leg is never eligible (${JSON.stringify(bad)})`);
+    const pd = require('./deps').productionDeps({});
+    assert.strictEqual(pd.cancelVoidEligible, CVE, `${L}: production deps use exactly that rule for cancel`);
+    assert.strictEqual(pd.voidEligible, require('./void-eligibility').voidEligible, `${L}: adjustments keep the fail-closed rule`);
+  });
+  await cell('SDK-CANCEL-VOIDS-SAME-DAY', async (L) => {
+    const w = await placedAt();
+    w.tick(3600 * 1000);   // 13:00 HN
+    const r = await cancel(w);
+    assert.strictEqual(r.outcome, 'cancelled', `${L}: cancelled (got ${JSON.stringify(r)})`);
+    assert.deepStrictEqual(w.fake.calls.filter((c) => c.action === 'void').map((c) => c.uuid), [w.rec().legs.L1.pp_uuid], `${L}: ONE void, by the hold's uuid`);
+    assert.deepStrictEqual([w.rec().legs.L1.role, w.rec().legs.L1.state, !!w.rec().lock, w.fake.callCount('capture')], ['surplus', 'voided', false, 0], `${L}: the hold is released at once — voided, no lock, no capture`);
+    await cancel(w);
+    assert.strictEqual(w.fake.callCount('void'), 1, `${L}: a resumed cancel never voids twice`);
+  });
+  await cell('SDK-CANCEL-AFTER-CUTOFF-EXPIRES', async (L) => {
+    for (const [label, ms] of [['21:50 the same day', HN(21, 50) - HN(12)], ['the next day 09:00', HN(9, 0, 1) - HN(12)]]) {
+      const w = await placedAt({ script: { status: [{ state: 'expired' }] } });
+      w.tick(ms);
+      await cancel(w);
+      assert.strictEqual(w.fake.callCount('void'), 0, `${L}: ${label}: no void after the cutoff`);
+      assert.deepStrictEqual([w.rec().legs.L1.role, w.rec().legs.L1.state], ['surplus', 'approved'], `${L}: ${label}: the hold is surplus, tracked`);
+      // the 15-day tracking, by explicit elapsed-day boundaries (Codex r1 #3c)
+      const at = w.rec().legs.L1.created_at, DAY = 86400000;
+      assert.strictEqual(w.rec().legs.L1.hold_expires_at, at + 15 * DAY, `${L}: ${label}: the hold is tracked for 15 days`);
+      w.tick(at + 15 * DAY - 1 - w.at());
+      await C().trackExpiry(w.deps, OID);
+      assert.deepStrictEqual([w.rec().legs.L1.state, w.fake.callCount('status')], ['approved', 0], `${L}: ${label}: 15 days minus 1 ms — still tracked, no status asked`);
+      w.tick(1);
+      await C().trackExpiry(w.deps, OID);
+      assert.deepStrictEqual([w.rec().legs.L1.state, w.fake.callCount('capture')], ['expired', 0], `${L}: ${label}: it expires, never captured`);
+    }
+  });
+  await cell('SDK-CANCEL-VOID-UNKNOWN-LOCKS-THEN-STATUS', async (L) => {
+    const w = await placedAt({ script: { void: [{ lost: true }] } });
+    w.tick(3600 * 1000);
+    await cancel(w);
+    assert.ok(w.rec().lock && w.rec().lock.reason === 'unknown_op' && w.rec().legs.L1.state === 'approved', `${L}: an unknown void answer LOCKS, the leg not guessed (got ${JSON.stringify(w.rec().lock)})`);
+    w.tick(3 * 60 * 1000); await C().reconcileSdkOps(w.deps, { orderId: OID });
+    assert.deepStrictEqual([w.rec().legs.L1.state, w.fake.callCount('void')], ['voided', 1], `${L}: the bound status 'voided' resolves it; one void only`);
+    const w2 = await placedAt({ script: { void: [{ lost: true, outcome: 'refused' }] } });
+    w2.tick(3600 * 1000);
+    await cancel(w2);
+    w2.tick(3 * 60 * 1000); await C().reconcileSdkOps(w2.deps, { orderId: OID });
+    await cancel(w2);
+    assert.deepStrictEqual([w2.rec().legs.L1.role, w2.rec().legs.L1.state, w2.fake.callCount('void'), w2.fake.callCount('capture')], ['surplus', 'approved', 1, 0], `${L}: status 'authorized' → refused: surplus, tracked to expiry, never voided again`);
+  });
+  // Codex r1 #1/#2: the prior-void check and the cancel rule are re-checked INSIDE the journal transaction, right before the call
+  const atJournal = (getW, fn) => { let fired = false; return { beforeTx: async (p, api) => {
+    const legsNow = api.getAt(`payment_sdk/${OID}/legs`) || {}; const opsNow = Object.values(api.getAt(`payment_sdk/${OID}/ops`) || {});
+    if (!fired && p === `payment_sdk/${OID}` && legsNow.L1 && legsNow.L1.role === 'surplus' && !opsNow.some((o) => o.action === 'void')) { fired = true; await fn(getW()); }
+  } }; };
+  await cell('SDK-CANCEL-CONCURRENT-NEVER-VOIDS-TWICE', async (L) => {
+    let wRef = null;
+    const w = await placedAt({ script: { void: [{ outcome: 'refused' }, { outcome: 'refused' }] }, hooks: atJournal(() => wRef, (x) => cancel(x)) });
+    wRef = w; w.tick(3600 * 1000);
+    await cancel(w);   // a second cancel runs to its end between this one's read and its journal
+    assert.strictEqual(w.fake.callCount('void'), 1, `${L}: two overlapping cancels send ONE void (got ${w.fake.callCount('void')})`);
+    assert.deepStrictEqual([w.rec().legs.L1.role, w.rec().legs.L1.state, w.fake.callCount('capture')], ['surplus', 'approved', 0], `${L}: refused → surplus, tracked, never captured`);
+  });
+  await cell('SDK-CANCEL-CUTOFF-CROSSED-BEFORE-THE-CALL', async (L) => {
+    let wRef = null;
+    const w = await placedAt({ hooks: atJournal(() => wRef, async (x) => { x.tick(1000); }) });   // 21:49:59 → 21:50:00 at the journal
+    wRef = w; w.tick(HN(21, 49) + 59 * 1000 - w.at());
+    await cancel(w);
+    assert.strictEqual(w.fake.callCount('void'), 0, `${L}: the cutoff passed before the call → no void sent`);
+    assert.deepStrictEqual([w.rec().legs.L1.role, w.rec().legs.L1.state, !!w.rec().lock], ['surplus', 'approved', false], `${L}: the hold stays tracked, no lock`);
+  });
+  // Codex r1 #3a/#3b: the two rules never stand in for each other
+  await cell('SDK-CANCEL-WITHOUT-ITS-RULE-NEVER-VOIDS', async (L) => {
+    const w = await placed({ t0: HN(12), eligible: ELIGIBLE }); await live(w);
+    w.tick(3600 * 1000);
+    await cancel(w);
+    assert.strictEqual(w.fake.callCount('void'), 0, `${L}: no cancel rule → never voided, even when the adjustment rule would allow it`);
+  });
+  await cell('SDK-SURPLUS-CLEANUP-KEEPS-THE-ADJUSTMENT-RULE', async (L) => {
+    const w = await placedAt({ eligible: ELIGIBLE, cancelEligible: () => false });
+    const r = await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 9000, revision: REV(9000) });
+    assert.strictEqual(r.outcome, 'replaced', `${L}: PREMISE — the replacement path (got ${JSON.stringify(r)})`);
+    assert.deepStrictEqual([w.fake.callCount('void'), w.rec().legs.L1.state], [1, 'voided'], `${L}: the adjustment's surplus is voided by the adjustment rule, never the cancel rule`);
+  });
+  await cell('SDK-DECREASE-UNCHANGED-WITH-PRODUCTION-DEPS', async (L) => {
+    const pd = require('./deps').productionDeps({});
+    const w = await placedAt({ eligible: pd.voidEligible, cancelEligible: pd.cancelVoidEligible });
+    w.tick(3600 * 1000);
+    const r = await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 8000, revision: REV(8000) });
+    assert.strictEqual(r.outcome, 'rule4', `${L}: a same-day decrease still takes rule 4 (got ${JSON.stringify(r)})`);
+    assert.deepStrictEqual([w.fake.callCount('authorize'), w.fake.callCount('void')], [1, 0], `${L}: no second authorize, no void`);
   });
   await cell('SDK-NO-OBLIGATION-WHILE-CAPTURE-UNCONFIRMED', async (L) => {
     const w = await placed({ script: { capture: [{ lost: true }], status: [{ state: 'inconclusive' }] } }); await live(w);
