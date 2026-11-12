@@ -327,6 +327,38 @@ async function reverseRedemptionForRefund(db, { uid, rid, orderId, disposition =
   return res;
 }
 
+// ── CORE-Δ row 24 (D4 PLAN-sdk-d4-r11 §A0000 / §A00000) — a RESERVED hold whose order is an SDK card order ───────────────
+// SDK card orders never redeem (§A00), so such a hold is a hosted request's orphan on an id the SDK order took:
+//   adopted (order.redemption STRUCTURALLY equal to rec.canonical) ⇒ the coordinator's (today's skip);
+//   present but UNEQUAL ⇒ HELD + one create-once points-obligation alert; never released, never consumed;
+//   NOT adopted ⇒ released only when the hold is past its expiry AND the SDK order is TERMINAL; otherwise HELD (audited);
+//   r11 repair: an expired non-adopted hold whose SDK order is still pending (unplaced) past its pay_deadline_at gets ONE
+//   create-once payment_sdk_due entry and nothing else, so the SDK sweeper expires the order and a later sweep releases.
+// Cash / hosted / absent orders never reach here (byte-identical to before).
+const SDK_TERMINAL_STATUS = new Set(['cancelled', 'delivered', 'completed']);
+// type-sensitive structural equality: the same keys, the same JSON types and values, arrays in order (1 ≠ '1')
+function sameJson(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) return a.length === b.length && a.every((x, i) => sameJson(x, b[i]));
+  const ka = Object.keys(a); const kb = Object.keys(b);
+  return ka.length === kb.length && ka.every((k) => Object.prototype.hasOwnProperty.call(b, k) && sameJson(a[k], b[k]));
+}
+async function sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired, released, audited }) {
+  if (order.redemption != null) {
+    if (sameJson(order.redemption, rec.canonical)) { audited.push({ uid, rid, orderId, kind: 'sdk_flow_coordinator' }); return; }
+    await db.ref(`dispatcher_alerts/reward_binding_mismatch_${orderId}`).transaction((cur) => (cur == null ? { type: 'payment_sdk_reward_binding_mismatch', detail: { orderId, uid, rid }, created_at: now } : undefined)).catch(() => {});
+    audited.push({ uid, rid, orderId, kind: 'sdk_binding_mismatch_held' });
+    return;
+  }
+  const terminal = !!order.payment_cancel || SDK_TERMINAL_STATUS.has(order.status);
+  if (expired && terminal) { await releaseRedemption(db, { uid, rid, orderId, now }); released.push({ uid, rid, orderId, kind: 'sdk_nonadopted_released' }); return; }
+  if (expired && order.status === 'pending_payment' && !order.payment_placed && Number(order.pay_deadline_at) < now) {
+    await db.ref(`payment_sdk_due/${orderId}`).transaction((cur) => (cur == null ? now : undefined)).catch(() => {});   // create-once
+  }
+  audited.push({ uid, rid, orderId, kind: 'sdk_nonadopted_held' });
+}
+
 // ── sweepStaleReservations — release RESERVED orphans (never touches held_paid/consumed) ────────────────
 // online: past hosted_expires_at → release. cash (no attempt): order absent/cancelled → release; still-live
 // but aged past CASH_STALE_MS → audit only (never auto-release a possibly-live order). Returns the actions.
@@ -348,7 +380,7 @@ async function sweepStaleReservations(db, { now }) {
               // Expired ≠ necessarily abandoned: a PAID order whose primary consume fail-opened ALSO has an
               // expired expiry + a reserved hold. Consult the order — if it realized (paid + live/terminal),
               // do NOT release (leave it for consume-recovery).
-              const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { audited.push({ uid, rid, orderId, kind: 'sdk_flow_coordinator' }); continue; }
+              const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: true, released, audited }); continue; }
               if (consumeEligible(order)) continue;                       // paid + live → realized, not abandoned
               // [C] CONSERVATIVE: release ONLY a DEFINITIVELY-not-captured hold. An AMBIGUOUS one
               // (manual_reconciliation / still pending / unknown) MIGHT be paid-but-lost → releasing it risks a
@@ -361,7 +393,7 @@ async function sweepStaleReservations(db, { now }) {
             continue;
           }
           // cash / scheduled (no hosted expiry): consult the FULL order (need release_at / materialized_at too).
-          const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { audited.push({ uid, rid, orderId, kind: 'sdk_flow_coordinator' }); continue; }
+          const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: now - (Number(rec.created_at) || 0) > CASH_STALE_MS, released, audited }); continue; }
           const status = order && order.status;
           if (status == null || TERMINAL_CANCEL.has(status)) { await releaseRedemption(db, { uid, rid, orderId, now }); await db.ref(`dispatcher_alerts/reward_hold_stale_${orderId}`).remove().catch(() => {}); released.push({ uid, rid, orderId, kind: status == null ? 'cash_orphan' : 'cash_cancelled' }); continue; }
           // [F/#22] Scheduled: LEGITIMATE until its slot — NEVER flag before release_at. Only stale when PAST
