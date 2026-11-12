@@ -601,7 +601,7 @@
   .mk-grp.mk-open .mk-chev{color:var(--ink)}
   .mk-gb{padding:2px 0 4px}
   .mk-gsum{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 14px 5px;font-size:11.5px;color:var(--mute2)}
-  .mk-gsumt{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .mk-gsumt{display:inline-flex;align-items:center;gap:2px 8px;flex-wrap:wrap}   /* MOCKUP v4 frame A's own gap (SBS 11-12: the wrapped «Solo en la app Sherpa» sat 10 px low) */
   .mk-lnk{background:var(--card);border:none;padding:0;color:var(--accent);font-weight:650;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap}
   .mk-lnk:disabled{color:var(--mute2);cursor:default}
   .mk-apponly{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--mute2);white-space:nowrap}
@@ -638,8 +638,17 @@
   .mk-xwarn .mgshared{margin:0}
   .mk-xrow .nm{flex-wrap:wrap;row-gap:3px}
   .irow.mk-added{background:var(--green-soft)}
+  button.del{border:none;background:none;font:inherit}
+  /* X3 «Crear grupo» (SBS 11-12 vs MOCKUP x2/X3): the explain box framed, the extras rows' pitch — scoped to the sheet, so the
+     approved drawers' .mopt rows keep their own height */
+  #xcreate .gexplain{border:1px solid var(--line2);border-radius:10px;padding:11px 13px}
+  #xcreate .fld .mopt{margin-top:2px}
+  #xcreate .mopt .moname{min-height:38px}   /* MOCKUP frame X: the trash is a plain icon button (the UA border reset) */
   /* B «Agregar grupo de extras» (MOCKUP frame B): the dish action, the sheet's rows, the quiet «Crealo en Extras» line */
-  .mk-bscrim{cursor:pointer}
+  .mk-bscrim{cursor:pointer;z-index:30}   /* over the drawer (26): the sheet opens FROM it (SBS 11-12 vs MOCKUP b) */
+  #xattach .optrow .ogname{display:flex;flex-direction:column;gap:2px}
+  #xattach .optrow .ogname .ogsub{font-weight:400}
+  #xattach .mb .optrow:last-child{margin-bottom:0}
   .mk-bscrim .modal{cursor:auto}
   /* S2 frame A: an extras card's read-only prices, «Editar en Extras», «Quitar de este producto» */
   .mk-mp{font-variant-numeric:tabular-nums;font-size:12.5px;font-weight:650;color:var(--mute);white-space:nowrap}
@@ -657,6 +666,11 @@
   .rrow > .railitem{padding-left:37px}
   .rrow > .rgrip{position:absolute;left:7px;top:19px;height:24px;width:24px;display:flex;align-items:center;justify-content:center;border:0;padding:0;margin:0;opacity:0;transition:opacity .15s;border-radius:4px}
   button.rgrip{cursor:grab;background:none;color:var(--mute2)}
+  /* a drag handle owns its touch: without it the browser takes the move as a scroll (pointercancel) and the long press never drags */
+  .rrow > .rgrip{touch-action:none}
+  /* the grip sits ABOVE its row (a sibling under the lifted .railitem would vanish mid-drag — SBS 11-12 vs MOCKUP x4) and lifts with it */
+  .rrow > .rgrip{z-index:3}
+  .rrow > .rgrip.mk-gripon{transform:translateY(-10px) rotate(-.3deg)}
   .rrow > .rgrip svg{width:13px;height:13px;fill:currentColor;stroke:none}
   .rrow:hover > .rgrip,.rrow > .rgrip[aria-expanded="true"],.rrow > .rgrip:focus-visible,.rrow > .rgrip.mk-gripon{opacity:1}
   /* the open row (aria-expanded on its grip): the grip inked, the row lifted — on class compounds, the look grammar's pinned form */
@@ -698,6 +712,12 @@
   .mk-subh .mk-sn{letter-spacing:.06em}
   .mk-subh .mk-n{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:650;letter-spacing:0}
   .mk-pick .mk-subh{padding:8px 14px}
+  /* SBS 11-12 vs MOCKUP x4 X3b: the dish rows' padding, the subsection apart from the name (rule 16b: «Pizza MargaritaClásicas» was
+     crammed), a refused row's checkbox dimmed and inert */
+  .mk-pick .modopt{padding:10px 14px}
+  .mk-pick .mognm .mogsub{margin-left:7px}
+  .mk-pick .modopt.mk-dis{cursor:default}
+  .mk-pick .modopt.mk-dis input{opacity:.45;cursor:default}
   .mk-pick .mk-subh .mk-lnk{text-transform:none;letter-spacing:0;margin-left:12px}
   .mk-pick .modopt:last-child{border-bottom:0}
   .mk-pick .modopt.mk-dis .mognm{color:var(--mute2);font-weight:500}

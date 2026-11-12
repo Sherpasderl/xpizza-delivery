@@ -323,8 +323,9 @@ test('B — the sheet: every EXISTING group in the ONE order, its extras joined 
   const s = drawer(d, 'dimsum_01');
   const b = IE.attachSheet(d, s);
   const src = draftSource(d);
-  assert.deepEqual(b.rows.map((r) => r.group), src.structure.extra_categories, 'the ONE order');
   const onDish = new Set(offered(src, 'dimsum_01') || []);
+  const ec = src.structure.extra_categories;
+  assert.deepEqual(b.rows.map((r) => r.group), [...ec.filter((g) => !onDish.has(g)), ...ec.filter((g) => onDish.has(g))], 'the groups to pick in the ONE order, the dish\u2019s own at the foot (frame B)');
   for (const r of b.rows) {
     assert.equal(r.extras, src.extras.filter((e) => e.display.cat === r.group).map((e) => e.display.name).join(' · '), `${r.group}: its extras`);
     assert.equal(r.have, onDish.has(r.group), `${r.group}: «Ya está en este producto» exactly when the dish offers it`);
@@ -400,4 +401,16 @@ test('A — detachRefusal is a PURE reader (the wiring guards rule it so): a dee
   deepFreeze(d); deepFreeze(s);
   assert.doesNotThrow(() => IE.detachRefusal(d, s, 'Salsas'), 'no write into a frozen draft or copy');
   assert.equal(JSON.stringify([d, s]), before, 'the draft and the copy are byte-identical after');
+});
+test('Estructura — an extra removed and one added: the «Quitado» / «Nuevo» rows ONLY; never ALSO a «Se eliminan» / «Se agregan» line (SBS 11-12: «Elimina rice_chinese» showed a raw key twice)', async () => {
+  const live = seed('la_musa'); const d = createDraft(clone(live));
+  const gone = clone(draftSource(d).extras.find((e) => e.display.cat === 'Acompañamientos'));
+  assert.equal(applyExposureOps(d, [{ op: 'extra.remove', key: gone.key }, { op: 'extra.add', group: 'Salsas', ref: 'tmp:sbs-new-0001', name: 'Salsa de mango', price: 25 }], ON).ok, true);
+  const diff = await realSaveDiff('la_musa', live, draftSource(d));
+  if (process.env.S2_DUMP) console.log(JSON.stringify({ removed: diff.removed, added: diff.added, extras: diff.extras }));
+  const m = reviewModel(diff, ctxOf(draftSource(d)));
+  assert.deepEqual(rowsText(m).filter((t) => /Quitado|Nuevo/.test(t)).length, 2, 'premise: the two Estructura rows');
+  assert.equal(m.removed.filter((r) => r && (r.key === gone.key || r.name === gone.display.name || r.label === gone.display.name)).length, 0, 'the removed extra is its «Quitado» row, not ALSO a «Se eliminan» line');
+  assert.equal(m.added.filter((r) => r && /Salsa de mango/.test(JSON.stringify(r))).length, 0, 'the new extra is its «Nuevo» row, not ALSO a «Se agregan» line');
+  assert.equal(m.total, 2, 'it counts each fact once');
 });

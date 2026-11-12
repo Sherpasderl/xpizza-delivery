@@ -1498,7 +1498,10 @@ test('S2 B — the sheet: «Agregar grupo de extras» · «Para {plato} · eleg�
   assert.equal(m.querySelector('.ms').textContent, `Para ${p.drawer().querySelector('.dwt').textContent} · elegí los grupos que ya tenés`);
   assert.equal(m.querySelector('.attach-note').textContent, 'Grupos de extras existentes');
   const src = p.src();
-  assert.deepEqual(bRows(p).map((r) => r.querySelector('.ogname').firstChild.textContent), src.structure.extra_categories, 'the ONE order');
+  const names = bRows(p).map((r) => r.querySelector('.ogname').firstChild.textContent);
+  const haves = bRows(p).filter((r) => r.classList.contains('have')).map((r) => r.querySelector('.ogname').firstChild.textContent);
+  const ec = src.structure.extra_categories;
+  assert.deepEqual(names, [...ec.filter((g) => !haves.includes(g)), ...ec.filter((g) => haves.includes(g))], 'the groups to pick in the ONE order, the dish\u2019s own at the foot (frame B)');
   for (const r of bRows(p)) {
     const g = r.querySelector('.ogname').firstChild.textContent, cb = r.querySelector('input[type=checkbox]');
     const have = r.classList.contains('have');

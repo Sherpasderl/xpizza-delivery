@@ -298,7 +298,9 @@ export function attachSheet(draft, s) {
   };
   return {
     canAdd: !refused, reason: refusalReason(refused),
-    rows: groups.map((g) => ({ group: g, extras: xs.filter((e) => String(e.display.cat) === g).map((e) => e.display.name).join(' \u00b7 '), reach: reach.has(g) ? reach.get(g) : null, section: sectionOf(g), have: mine.includes(g) })),
+    // the groups to pick in the ONE order, then the dish's own (checked + inert) at the foot — as MOCKUP frame B draws them
+    rows: [...groups.filter((g) => !mine.includes(g)), ...groups.filter((g) => mine.includes(g))]
+      .map((g) => ({ group: g, extras: xs.filter((e) => String(e.display.cat) === g).map((e) => e.display.name).join(' \u00b7 '), reach: reach.has(g) ? reach.get(g) : null, section: sectionOf(g), have: mine.includes(g) })),
   };
 }
 

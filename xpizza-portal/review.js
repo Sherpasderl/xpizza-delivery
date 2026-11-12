@@ -178,8 +178,12 @@ export function reviewModel(diff, ctx = {}) {
   const repricedKeys = new Set((Array.isArray(d.extras) ? d.extras : []).filter((x) => x && x.change === 'repriced').map((x) => x.key));
   const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c) && !(c.surface === 'extra' && c.field === 'price' && repricedKeys.has(c.key)));
   const photos = all.filter(isPhotoLine);
-  const added = Array.isArray(d.added) ? d.added : [];
-  const removed = Array.isArray(d.removed) ? d.removed : [];
+  // an extra added / removed on the Extras page is its «Estructura» row («Nuevo» / «Quitado»): not ALSO a «Se agregan» / «Se eliminan»
+  // line (SBS 11-12: the generic line showed the raw key, twice) — every server fact shown once
+  const s2Extras = new Set((Array.isArray(d.extras) ? d.extras : []).filter((x) => x && (x.change === 'added' || x.change === 'removed')).map((x) => `${x.change}\u0000${x.key}`));
+  const notS2 = (change) => (e) => !(e && e.surface === 'extra' && s2Extras.has(`${change}\u0000${e.key}`));
+  const added = (Array.isArray(d.added) ? d.added : []).filter(notS2('added'));
+  const removed = (Array.isArray(d.removed) ? d.removed : []).filter(notS2('removed'));
   const renamed = Array.isArray(d.renamed) ? d.renamed : [];
   const flagged = new Set(ackSetFrom(d).map(idOf));
   // PLAN-public-menu-display T1 — a SECTION'S NAME is the server's `{surface:'category', field:'name'}` line. It is shown
