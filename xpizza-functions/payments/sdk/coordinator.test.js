@@ -998,6 +998,17 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     release(); await first;
     assert.deepStrictEqual([mid.outcome, w2.fake.callCount('authorize')], ['replay', 1], `${L}: a retransmission while the first is in flight is a replay — zero new PSP calls`);
   });
+  await cell('SDK-D4-REPLAY-STALE-READ', async (L) => {
+    // a retransmission whose first record read is STALE (the first try completes, declined, between that read and the claim):
+    // the claim CAS itself must recognise the known attempt — never a second authorization for one attempt
+    const w = deadlineWorld({ script: { authorize: [{ outcome: 'definitive_decline', code: 'X' }] } });
+    const first = await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.strictEqual(first.outcome, 'declined', `${L}: premise — the first try declined`);
+    let staleOnce = true;
+    const staleDb = { ref: (p) => { const r = w.db.ref(p); if (p !== `payment_sdk/${OID}`) return r; return { ...r, transaction: (...a) => r.transaction(...a), once: async (...a) => { if (staleOnce) { staleOnce = false; return { val: () => null }; } return r.once(...a); } }; } };
+    const again = await C().placeOriginal({ ...w.deps, db: staleDb }, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.deepStrictEqual([again.outcome, w.fake.callCount('authorize')], ['replay', 1], `${L}: the claim CAS recognises the known attempt — still ONE authorize (got ${JSON.stringify(again)})`);
+  });
   await cell('SDK-D4-RETRY-AFTER-DECLINE', async (L) => {
     const w = deadlineWorld({ script: { authorize: [{ outcome: 'definitive_decline', code: 'X' }] } });
     const d1 = await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
