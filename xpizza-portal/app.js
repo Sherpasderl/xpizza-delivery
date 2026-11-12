@@ -1368,6 +1368,15 @@ function bPaint(first) {
   if (back) back.focus();
 }
 
+// rule 16b (SBS 11-12): a card's subtitle wraps BETWEEN its « · » parts, never inside one — «en 4 pro…» hid the count once «Editar en
+// Extras» shared the header line at 390 px, and a free wrap would orphan a word («en 4 / productos»)
+function setSegs(host, text) {
+  const parts = String(text).split(' \u00b7 ');
+  host.replaceChildren();
+  // the « ·» stays at the END of its part (a line never starts with «·»); the space after it is the only break
+  parts.forEach((p, i) => { if (i) host.append(document.createTextNode(' ')); const sp = document.createElement('span'); sp.className = 'mk-seg'; sp.textContent = i < parts.length - 1 ? `${p} \u00b7` : p; host.append(sp); });
+}
+
 function svgPlusIcon() {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
   const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', 'M12 5v14M5 12h14'); s.append(p);
@@ -1931,7 +1940,7 @@ function renderEditDrawer(d, it, keepScroll) {
       const gh = mk('div', 'mk-gh');
       const ieFoldName = document.createElement('button'); ieFoldName.type = 'button'; ieFoldName.className = 'mk-gt';
       ieFoldName.setAttribute('aria-expanded', String(open));
-      const st = mk('span', subCls, sub);
+      const st = mk('span', subCls); setSegs(st, sub);
       ieFoldName.append(mk('b', 'mk-gtn', name), st);
       ieFoldName.addEventListener('click', bound(() => fold(id)));
       focusKey(ieFoldName, `ie-fold::${id}`);
@@ -2181,7 +2190,7 @@ function syncEdit() {
     for (const ref of R.opc.cards) {
       const c = v.extras.cards.find((x) => x.cat === ref.cat);
       if (!c) continue;
-      ref.st.textContent = opcExtSub(c, ref.open);
+      setSegs(ref.st, opcExtSub(c, ref.open));
       if (!ref.open) continue;
       const custom = c.active < c.size;
       ref.sum.firstChild.textContent = custom ? `${c.active} de ${c.size} activos en este producto` : OPC_COPY.allOn;

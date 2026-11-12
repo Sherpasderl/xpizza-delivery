@@ -287,7 +287,10 @@ export function renderCreateGroup(modal, v, on) {
   const radio = (mode, text, sub) => {
     const l = el('label'); const i = el('input'); i.type = 'radio'; i.name = 'xcg-to'; i.checked = v.mode === mode; i.dataset.k = `xcg:m:${mode}`;
     i.addEventListener('change', () => { if (i.checked) on.mode(mode); });
-    l.append(i, document.createTextNode(text)); if (sub) l.append(el('span', null, sub));
+    // rule 16b (SBS 11-12, 390 px): the label and its grey line are ONE text block, so they wrap together under the radio (as two flex
+    // items they split into two cramped columns)
+    const tx = el('b', 'mk-rtext', text); if (sub) tx.append(document.createTextNode(' '), el('span', null, sub));
+    l.append(i, tx);
     return l;
   };
   radios.append(radio('none', 'Todavía a ninguno', '· lo agregás desde cada producto'), radio('cat', 'A toda una categoría'));
@@ -345,7 +348,11 @@ export function renderAttachSheet(modal, v, on) {
     const row = el('label', `optrow${r.have ? ' have' : ''}${r.checked && !r.have ? ' sel' : ''}`);
     const cb = el('input'); cb.type = 'checkbox'; cb.checked = r.have || r.checked; cb.disabled = r.have; cb.dataset.k = `xat:${r.group}`;
     cb.addEventListener('change', () => on.toggle(r.group, cb.checked));
-    const nm = el('span', 'ogname', r.group); nm.append(el('span', 'ogsub', r.have ? 'Ya está en este producto' : r.extras));
+    const nm = el('span', 'ogname', r.group); const og = el('span', 'ogsub');
+    // rule 16b: the extras line wraps between extras, never inside a name (the « ·» stays at the end of its part)
+    if (r.have) og.textContent = 'Ya está en este producto';
+    else { const parts = r.extras.split(' · '); parts.forEach((p, i) => { if (i) og.append(document.createTextNode(' ')); og.append(el('span', 'mk-seg', i < parts.length - 1 ? `${p} ·` : p)); }); }
+    nm.append(og);
     row.append(cb, nm, el('span', 'mk-ogn', r.reach === null ? '' : `${enProductos(r.reach)}${r.section ? ` · ${r.section}` : ''}`));
     list.append(row);
     if (!r.have && !first) first = cb;

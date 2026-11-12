@@ -591,7 +591,9 @@
   .mk-grp.mk-open .mk-gh{border-bottom:1px solid var(--line2)}
   .mk-gt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;text-align:left;background:var(--board-2);border:none;padding:0;font-family:inherit;color:var(--ink);cursor:pointer}
   .mk-gtn{font-size:13.5px;font-weight:700;letter-spacing:-.01em;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .mk-gts{font-size:11.5px;color:var(--mute2);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mk-gts{font-size:11.5px;color:var(--mute2);display:block;line-height:1.4}   /* rule 16b: wraps between its parts (.mk-seg), never «…» */
+  .mk-seg{white-space:nowrap}
+  .mk-rtext{font-weight:inherit;min-width:0;line-height:1.4}
   .mk-gts.mk-greq{color:var(--accent);font-weight:650}
   .mk-gact{display:flex;gap:1px;flex:none;align-items:center}
   .mk-ib{width:30px;height:30px;border:none;background:var(--board-2);border-radius:8px;color:var(--mute2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;padding:0}
@@ -658,7 +660,7 @@
   .mk-adds{display:flex;flex-direction:column;gap:2px}
   .mk-adds .railadd{margin-top:2px}
   .optrow.have{opacity:.55;cursor:default}
-  .mk-ogn{margin-left:auto;font-size:12px;color:var(--mute2);white-space:nowrap;flex:none}
+  .mk-ogn{margin-left:auto;font-size:12px;color:var(--mute2);flex:none;max-width:42%;text-align:right;line-height:1.4}   /* rule 16b: wraps inside the row at 390 px (it ran past the edge) */
   .mk-nogroup{font-size:12.5px;color:var(--mute);margin:2px 0 0;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
   .mk-nogroup .mk-lnk{font-size:12.5px}
   /* X4 / X4b (MOCKUP x4 / x4b): the Extras rail row = the select button + the grip as siblings; «Subir / Bajar»; the drag */
@@ -690,7 +692,11 @@
   .mk-xnew .nm{flex-wrap:nowrap}
   .mk-xnew .mk-xname{flex:1;min-width:0;background:var(--board-2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:13px;color:var(--ink);font-family:inherit}
   .mk-xnew .mk-xname:focus{outline:none;border-color:var(--accent)}
-  .mk-xnewlines{display:flex;flex-direction:column;gap:2px;padding:0 0 8px}
+  .mk-xnewlines{display:flex;flex-direction:column;gap:2px;padding:0 20px 10px}   /* aligned to the row's own padding (SBS 11-12) */
+  /* rule 16b (SBS 11-12, 390 px): the Extras detail's head — the group name on its own line, then its count and «Agregar extra»;
+     the button never breaks its label */
+  #xdetail .dhead .dright .btn{white-space:nowrap}
+  @media(max-width:560px){#xdetail .dhead{flex-wrap:wrap;row-gap:6px}#xdetail .dhead .dtitle{flex:1 1 100%}}
   .mk-xnewlines:empty{display:none}
   .irow.mk-xgone{opacity:.45}
   .mk-xgone-p{font-variant-numeric:tabular-nums;color:var(--mute);font-weight:650}
