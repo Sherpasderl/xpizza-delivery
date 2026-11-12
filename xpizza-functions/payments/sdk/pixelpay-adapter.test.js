@@ -339,6 +339,66 @@ const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓
     assert.deepStrictEqual([ok.message, ok.data.response_code, ok.data.response_reason], ['Transacción anulada exitosamente', '00', 'Transacción completada exitosamente'], `${L}: catalogue messages and a 2-digit code are kept`);
   });
 
+  await cell('SDK-D4-PP-STATUS-SHAPE', async (L) => {
+    // Codex S0/S1 r2 P1: ONLY the recorded amount-less shape {status, attemps, history} is amount-less; a returned amount / uuid is
+    // passed through for boundStatus to compare; anything malformed ⇒ inconclusive. Through the REAL adapter + the REAL coordinator.
+    const { makeHonestDb } = require('../../_honest-rtdb-model');
+    const C = require('./coordinator');
+    const run = async (statusBody) => {
+      const srv = await server((r) => (r.url.endsWith('/auth') ? { status: 200, body: { success: true, data: { payment_uuid: 'P-st-1', transaction_approved_amount: 1, response_approved: true } } }
+        : r.url.endsWith('/capture') ? { destroy: true } : { status: 200, body: statusBody }));
+      try {
+        let t = 1_000_000;
+        const OID = 'tb_status_shape';
+        const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tb_rest', customer_name: 'Ana Pérez', pay_deadline_at: t + 900000 } } }, { now: () => t });
+        const deps = { db, clock: () => t, psp: makeAdapter(A().makePixelPayImpl(cfgOf(srv.url), { log: { info: () => {} } })), ppNamespace: 'sandbox', voidEligible: () => false, releaseResources: async () => {}, goLive: async () => {} };
+        await C.placeOriginal(deps, { orderId: OID, attempt_id: 'att_status_shape_001', token: 'T-s', amount_cents: 100 });
+        db.setAt(`orders/${OID}/status`, 'delivered');
+        await C.settleTerminal(deps, { orderId: OID });   // the capture's answer is lost ⇒ unknown, locked
+        t += C.RECONCILE_AFTER_MS + 1;
+        await C.reconcileSdkOps(deps, { orderId: OID });
+        return { leg: db.getAt(`payment_sdk/${OID}/legs/L1`), lock: db.getAt(`payment_sdk/${OID}/lock`) };
+      } finally { await srv.close(); }
+    };
+    const ok = await run({ success: true, message: 'Información obtenida con exito', data: { status: 'paid', attemps: 1, history: {} } });
+    assert.strictEqual(ok.leg.state, 'captured', `${L}: the RECORDED amount-less shape binds a verified uuid`);
+    const cases = [
+      [{ success: true, data: { status: 'paid', attemps: 1, history: {}, transaction_approved_amount: 0.99 } }, 'a returned amount 0.99 on a 100-cent leg'],
+      [{ success: true, data: { status: 'paid', attemps: 1, history: {}, payment_uuid: 'P-other', transaction_approved_amount: 1 } }, 'a different returned uuid'],
+      [{ success: true, data: { status: 'paid', attemps: 1, history: {}, transaction_approved_amount: null } }, 'a null amount'],
+      [{ success: true, data: { status: 'paid', attemps: 1, history: {}, transaction_approved_amount: '1,00' } }, 'a malformed amount'],
+      [{ success: true, data: { status: 'paid', attemps: 1, history: {}, extra: 'x' } }, 'an unrecorded shape without an amount'],
+    ];
+    for (const [body, what] of cases) {
+      const r = await run(body);
+      assert.ok(r.leg.state !== 'captured' && r.lock, `${L}: ${what} ⇒ NOT captured, the lock stays (got ${JSON.stringify(r.leg.state)})`);
+    }
+  });
+
+  await cell('SDK-D4-PP-DECLINE-CODES', async (L) => {
+    // Codex S0/S1 r2 P1: definitive ONLY for evidence-proven codes ('05', response_incomplete false, response_approved false)
+    const decl = (data) => ({ status: 402, body: { success: false, message: 'Transacción denegada', data: { transaction_type: 'auth', response_approved: false, response_incomplete: false, response_code: '05', ...data } } });
+    const cases = [[decl({}), 'definitive_decline'], [decl({ response_code: '91', response_incomplete: true }), 'unknown'], [decl({ response_code: '91' }), 'unknown'], [decl({ response_incomplete: true }), 'unknown'], [decl({ response_approved: true }), 'unknown'], [decl({ response_incomplete: undefined }), 'unknown']];
+    for (const [reply, want] of cases) {
+      const srv = await server(() => reply);
+      try {
+        const out = await makeAdapter(A().makePixelPayImpl(cfgOf(srv.url), { log: { info: () => {} } })).pspAuthorize(AUTH_IN);
+        assert.strictEqual(out.outcome, want, `${L}: ${JSON.stringify(reply.body.data)} ⇒ ${want} — 91 / incomplete is never a definitive decline (got ${out.outcome})`);
+      } finally { await srv.close(); }
+    }
+  });
+
+  await cell('SDK-D4-PP-REDACT-KEYS', async (L) => {
+    // Codex S0/S1 r2 P1: an UNKNOWN property name never survives (a sensitive value used as a key); both probes use the shared redactor
+    const { redact } = require('./fixtures/redact-pixelpay');
+    const out = JSON.stringify(redact({ success: true, [SENTINEL.pan]: 1, data: { [SENTINEL.name]: 'x', [SENTINEL.email]: { [SENTINEL.token]: 2 }, transaction_type: 'auth' } }));
+    for (const [k, v] of Object.entries(SENTINEL)) assert.ok(!out.includes(v), `${L}: a sensitive value used as a KEY (${k}) never survives (${out.slice(0, 160)})`);
+    for (const f of ['probe-d4-fixtures.js', 'probe-d4-status.js']) {
+      const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'payments-probe', f), 'utf8');
+      assert.ok(/require\('\.\.\/xpizza-functions\/payments\/sdk\/fixtures\/redact-pixelpay'\)/.test(src) && !/const redact = \(/.test(src) && !/const KEEP = /.test(src), `${L}: ${f} uses the SHARED schema redactor, no local one`);
+    }
+  });
+
   // RED until the sandbox evidence exists (STOP 11-11: Cloudflare challenged the sandbox transaction API) — never satisfied by
   // a hand-written fixture
   await cell('SDK-D4-PP-FIXTURES', async (L) => {

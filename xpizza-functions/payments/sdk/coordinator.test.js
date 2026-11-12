@@ -1160,6 +1160,23 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     await C().reconcileSdkOps(w.deps, { orderId: OID });
     assert.strictEqual(w.rec().legs.L1.state, 'captured', `${L}: amount-bearing evidence still binds it (today's rule)`);
   });
+
+  await cell('SDK-D4-FAKE-PARITY', async (L) => {
+    // Codex S0/S1 r2 P2: the fake's DEFAULT answers must be ones the REAL adapter can produce from the recorded evidence.
+    // Contract cells may still INJECT other states explicitly (they are marked contract-only).
+    const PRODUCIBLE = { authorize: ['approved', 'definitive_decline', 'requires_action', 'unknown'], capture: ['captured', 'declined', 'unknown'], void: ['voided', 'unknown'], status: ['authorized', 'captured', 'inconclusive'] };
+    const fake = makeFakePsp({});
+    const ad = makeAdapter(fake.impl);
+    const a = await ad.pspAuthorize({ token: 'T', amount_cents: 100, op_id: 'o1', ref: 'sdkx' });
+    const sAuth = await ad.pspStatus({ uuid: a.uuid });
+    const c = await ad.pspCapture({ uuid: a.uuid, amount_cents: 100, op_id: 'o2' });
+    const sCap = await ad.pspStatus({ uuid: a.uuid });
+    const a2 = await ad.pspAuthorize({ token: 'T', amount_cents: 100, op_id: 'o3', ref: 'sdky' });
+    const v = await ad.pspVoid({ uuid: a2.uuid, op_id: 'o4', ref: 'sdky' });
+    const sVoid = await ad.pspStatus({ uuid: a2.uuid });
+    const got = [['authorize', a.outcome], ['status', sAuth.state], ['capture', c.outcome], ['status', sCap.state], ['void', v.outcome], ['status', sVoid.state]];
+    for (const [op, o] of got) assert.ok(PRODUCIBLE[op].includes(o), `${L}: the fake's default ${op} answer «${o}» is one the real adapter can produce (status after a void is 412 ⇒ inconclusive in production)`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
