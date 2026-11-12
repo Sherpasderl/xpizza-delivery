@@ -13,6 +13,8 @@ const assert = require('assert');
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 const SW = { on: false };
 { const p = require.resolve('./platform-removal'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { removalCapabilities: () => ({ productRemoval: SW.on }) } }; }
+const EXTRAS = { authoring: false };   // the per-product extras authoring switch (shipped OFF), settable for Codex r3's deny_extras repro
+{ const p = require.resolve('./platform-extras'); const real = require(p); require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, extrasCapabilities: () => ({ ...real.extrasCapabilities(), authoring: EXTRAS.authoring }) } }; }
 const fs = require('fs'); const path = require('path');
 const { editCatalogCore } = require('./edit-catalog-handler');
 const { getEditableCatalogCore } = require('./portal-reads');
@@ -159,6 +161,59 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 200)}`;
     const { r } = await save(rid, removed(base(rid), 'Carnivora'), [stamp(rid, 'Carnivora')]);
     assert.ok(r.status === 200 && !('fiscalAckRequired' in r.body), `${L}: OFF → absent (today's bytes)`);
   });
+  // ── Codex r3 (advisor 11-12) ──
+  await cell('A3: the waiver is whole-document equality — a removal beside a deny_extras change (x_pizza) or a badge_priority reversal (la_musa) asks the ack; a pure removal is waived', async (L) => {
+    await ON(async () => {
+      EXTRAS.authoring = true;
+      try {
+        const d = removed(base('x_pizza'), 'Carnivora'); d.structure.exposure.item_overrides['Crispy Bacon'] = { deny_extras: ['Salsa Roja'] };
+        const { r, saved } = await save('x_pizza', d, [stamp('x_pizza', 'Carnivora')]);
+        assert.strictEqual(r.status, 200, `${L}: premise — the save accepts it (${show(r)})`);
+        assert.ok(!('fiscalAckRequired' in r.body), `${L}: deny_extras beside a removal → not waived`);
+        const p = await publishOf('x_pizza', saved, r.body.token);
+        assert.deepStrictEqual([p.r.status, p.r.body.error], [403, 'fiscal_ack_required'], `${L}: publish asks the ack (${show(p.r)})`);
+      } finally { EXTRAS.authoring = false; }
+      const b = removed(base('la_musa'), 'soft_01'); b.structure.badge_priority = [...b.structure.badge_priority].reverse();
+      const { r: r2 } = await save('la_musa', b, [stamp('la_musa', 'soft_01')]);
+      assert.strictEqual(r2.status, 200, `${L}: premise — the save accepts it (${show(r2)})`);
+      assert.ok(!('fiscalAckRequired' in r2.body), `${L}: badge_priority beside a removal → not waived`);
+      const { r: r3 } = await save('la_musa', removed(base('la_musa'), 'soft_01'), [stamp('la_musa', 'soft_01')]);
+      assert.strictEqual(r3.body.fiscalAckRequired, false, `${L}: a pure removal (its reward entry leaving) is waived`);
+    });
+  });
+  await cell('A5: a waived publish logs no fiscal_ack_by; an acknowledged one does (the publisher is the actor)', () => ON(async () => {
+    const rid = 'x_pizza'; const lines = [];
+    const { r, saved } = await save(rid, removed(base(rid), 'Carnivora'), [stamp(rid, 'Carnivora')]);
+    const l = console.log; console.log = (...a) => { lines.push(a.join(' ')); };
+    try { await publishOf(rid, saved, r.body.token); await publishOf(rid, saved, r.body.token, { ack: true }); } finally { console.log = l; }
+    const pub = lines.filter((x) => x.startsWith('catalog_edit_published')).map((x) => JSON.parse(x.slice('catalog_edit_published '.length)));
+    assert.strictEqual(pub.length, 2, 'premise: both publishes logged');
+    assert.ok(!('fiscal_ack_by' in pub[0]) && pub[0].actor, `waived: no fiscal_ack_by, the actor logged (${JSON.stringify(pub[0])})`);
+    assert.strictEqual(pub[1].fiscal_ack_by, pub[1].actor, 'acknowledged: fiscal_ack_by = the acknowledging owner');
+  }));
+  await cell('A4: withdrawing a saved removal restores THAT dish\'s active photo with uploads off; another pid for it, or an unrelated photo change, stays refused', () => ON(async () => {
+    const rid = 'la_musa'; const pid = 'c'.repeat(32);
+    const active = PS.versionPhotosDoc({ rice_03: { state: 'pid', pid } }, (q) => `https://cdn.test/${q}.jpg`).entries;
+    const photos = { enabled: async () => false, readActive: async () => active, attach: async () => ({ ok: true }) };
+    const stored = removed(base(rid), 'rice_03'); stored.deleted_ids = { ids: [stamp(rid, 'rice_03')], base_version: ACTIVE, base_generation: 0 };
+    const back = base(rid); back.photos = { rice_03: { state: 'pid', pid } };
+    const { r } = await save(rid, back, null, { photos, stored });
+    assert.strictEqual(r.status, 200, `restore: ${show(r)}`);
+    const wrong = base(rid); wrong.photos = { rice_03: { state: 'pid', pid: 'd'.repeat(32) } };
+    const { r: r2 } = await save(rid, wrong, null, { photos, stored });
+    assert.deepStrictEqual([r2.status, r2.body.error], [409, 'photo_change_disabled'], 'another pid stays refused');
+    const other = base(rid); other.photos = { rice_03: { state: 'pid', pid }, noodle_02: { state: 'removed' } };
+    const { r: r3 } = await save(rid, other, null, { photos, stored });
+    assert.deepStrictEqual([r3.status, r3.body.error], [409, 'photo_change_disabled'], 'an unrelated photo change stays refused');
+  }));
+  await cell('LIVE-ORDER: with pendingRemovals the editor read serves the live item_order and reward order ONCE (liveOrder); absent without removals', () => ON(async () => {
+    const rid = 'la_musa'; const live = activeOf(rid).built;
+    const { saved } = await save(rid, removed(removed(base(rid), 'soft_01'), 'dimsum_01'), [stamp(rid, 'soft_01'), stamp(rid, 'dimsum_01')]);
+    const e = await editor(rid, saved);
+    assert.deepStrictEqual(e.body.liveOrder, { items: live.structure.item_order, rewards: live.structure.redeem_eligible_items });
+    const e0 = await editor(rid, canonicalize(base(rid)));
+    assert.ok(!('liveOrder' in e0.body), 'no removals → absent');
+  }));
   await cell('A1+B2: pendingRemovals carries the ACTIVE photo entry (draft shape) and the dish\'s own refs (override, extras_by_item, reward position)', () => ON(async () => {
     const rid = 'la_musa'; const live = activeOf(rid).built;
     const pid = 'a'.repeat(32);
