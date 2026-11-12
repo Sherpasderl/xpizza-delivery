@@ -15,7 +15,7 @@ const CALLS = { quoteDelivery: /(?<![A-Za-z_])(?:P\.)?quoteDelivery\(/g, deliver
 const DEF = /(?:async\s+)?function\s+(quoteDelivery|deliveryFor|quoteDeliveryFor|chargeContext|deliveryResumeRefusal|preBookkeepingRefusal)\(/g;
 const EXPECTED = {
   'delivery/delivery-wire.js': { quoteDelivery: 2, deliveryResumeRefusal: 1 },
-  'index.js': { deliveryFor: 2, quoteDeliveryFor: 2, chargeContext: 1, deliveryResumeRefusal: 2, preBookkeepingRefusal: 1 },
+  'index.js': { deliveryFor: 2, quoteDeliveryFor: 2, chargeContext: 1, deliveryResumeRefusal: 4, preBookkeepingRefusal: 1 },   // +2 D4 asm7 gate: the SDK reuse's stored admission (P2, before the bookkeeping) and finishSdk's injected guard (P1, B4)
   'delivery/zone-resume.js': { deliveryResumeRefusal: 1 },   // inside preBookkeepingRefusal (the null-dq route's guard)
   'pixelpay-hosted-charge.js': { reuseGuard: 1 },
 };
@@ -36,5 +36,7 @@ assert.deepStrictEqual(got, EXPECTED, `🔴 the delivery seam's caller graph cha
 const total = Object.values(got).reduce((a, m) => a + Object.values(m).reduce((x, y) => x + y, 0), 0);
 // 13 call expressions = the plan's 11 invocations: the reuseGuard is ONE invocation written twice (index.js's injected lambda →
 // pixelpay-hosted-charge.js's call), and so is the pre-bookkeeping check (index.js → its guard call in delivery/zone-resume.js)
-assert.strictEqual(total, 13, 'thirteen call expressions = eleven invocations');
-console.log(`  ✓ 1 the eleven-invocation caller graph (${total} call expressions), exactly (nine existing + reuseGuard + the pre-bookkeeping check)\nenvlim-callers.guard: OK (1)`);
+// + D4 (asm7 gate P1/P2): two more invocations, each one call expression in index.js (the SDK path's stored admission, before the
+// bookkeeping; B4's injected guard, run by payments/sdk/finish.js through payments/sdk/stored-admission.js)
+assert.strictEqual(total, 15, 'fifteen call expressions = thirteen invocations');
+console.log(`  ✓ 1 the thirteen-invocation caller graph (${total} call expressions), exactly (nine existing + reuseGuard + the pre-bookkeeping check + D4's SDK stored admission ×2)\nenvlim-callers.guard: OK (1)`);

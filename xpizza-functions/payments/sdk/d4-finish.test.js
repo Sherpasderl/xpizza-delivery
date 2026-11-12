@@ -13,6 +13,7 @@ const { makeHonestDb } = require('../../_honest-rtdb-model');
 const { makeAdapter } = require('./psp-adapter');
 const { makeFakePsp } = require('./fake-adapter');
 const C = require('./coordinator');
+const DW = require('../../delivery/delivery-wire');
 
 let pass = 0; const fails = [];
 const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓ ${L}`); } catch (e) { fails.push(L); console.log(`  ✗ ${L}: ${String((e && e.message) || e).split('\n')[0]}`); } };
@@ -38,7 +39,9 @@ const answers = [];
 const answerRefusal = (r) => { answers.push(r); return { status: 'REFUSAL', body: r }; };
 const ctx = (w, o = {}) => ({ orderId: OID, kind: 'member', uid: 'uid_A', guestPhoneHash: null, attemptId: ATT, card: NEW_CARD, replacesOrderId: null,
   pendingOrderRecord: pending({ customer_uid: 'uid_A' }), fingerprint: 'fp_cart_1', tipCents: 0, flags: NO_FLAGS, nowTs: T0,
-  runGate: async () => ({ refuse: null, provenance: null }), answerRefusal, ...o });
+  runGate: async () => ({ refuse: null, provenance: null }), answerRefusal,
+  deliveryResume: (ord) => DW.deliveryResumeRefusal(w.db, ord, DW.loadPricing(w.db)),   // production's injection: the REAL guard (pickup orders / no pricing node ⇒ null)
+  ...o });
 const FINISH = (w, o) => FIN().finishSdk(w.deps, ctx(w, o));
 const snap = (w) => JSON.stringify(w.db.root);
 

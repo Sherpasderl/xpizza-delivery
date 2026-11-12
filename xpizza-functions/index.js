@@ -1872,6 +1872,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // NOT burn rate-limit quota. Run checkRateLimit ONLY on the unblocked path (cartBlocked === []), where a
   // fresh write may proceed and must be throttled. So a state-drift-blocked fresh attempt writes NOTHING —
   // no order, no payment_attempt, AND no rate_limits.
+  if (SDK_MODE) { const sa = await require('./payments/sdk/stored-admission').storedAdmission(db, orderId, (o) => DW.deliveryResumeRefusal(db, o, dpP)); if (sa.refusal) return res.status(sa.refusal.status).json(sa.refusal.body); }   // D4 asm7 gate P2: an SDK reuse's STORED delivery facts (Envío's guard; dq exists, so the pre-bookkeeping check below skips it) BEFORE any stamp / prune / rate write; B4 re-checks (the race backstop)
   { const lr = await DW.preBookkeepingRefusal(db, orderId, dq, dpP); if (lr) return res.status(lr.httpStatus).json({ error: lr.refusal, ...(lr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); } if (cartBlocked.length === 0) {   // envío limit r5 §2.4: a resume refusal BEFORE any stamp / prune / rate / reserve / acquire write
     // Layer 2 — content-aware phone rate limit (same as createOrder): a same-phone same-content re-tap within
     // the window does NOT consume a phone token. Best-effort + FAIL-SAFE. ip still counts every submit.
@@ -2233,6 +2234,7 @@ chargeOnlineApp.all('*', async (req, res) => {
       pendingOrderRecord, fingerprint, tipCents: TIP.ofBody(body), nowTs,
       flags: { controlRefuseFresh: controlArmed !== null, menuRefuseFresh: menuArmed, choiceRefuseFresh: choiceArmed, extrasRefuseFresh: extrasArmed, cartBlocked, refuseFresh: floorBelow, payerRefuseFresh: false },
       runGate: (recordedTotalCents) => runGate(recordedTotalCents, async () => {}),   // no hold to release (§A00)
+      deliveryResume: (o) => DW.deliveryResumeRefusal(db, o, dpP),   // asm7 gate P1: the stored order's delivery facts, Envío's ONE guard, the request's ONE pricing read
       answerRefusal: (r) => ({ respond: acquireRefusal(r) }),
     });
     return fin.respond ? fin.respond(res) : res.status(fin.status).json(fin.body);

@@ -33,6 +33,31 @@ const rec = (o = {}) => ({ flow: 'sdk_auth_v1', phase: 'open', ttl_at: T0 + 15 *
     assert.ok(Object.isFrozen(B().TABLE), `${L}: frozen`);
   });
 
+  await cell('SDK-D4-SDKPAY-RID', async (L) => {
+    // advisor Q2 RULED 2026-11-12: ?restaurant_id ⇒ THAT restaurant's availability (the flag ∩ its allowlist entry); without it ⇒ the
+    // global answer, byte-identical; a malformed / unknown rid ⇒ unavailable (no existence oracle)
+    const db = makeHonestDb({});
+    const F = FLAG();
+    const NODE = { available: true, retry_after_s: 60, restaurants: { tb_rest: true, tb_off: false } };
+    db.setAt('platform_config/sdk_pay', NODE);
+    assert.strictEqual(JSON.stringify(await F.sdkPayStatusCore(db)), JSON.stringify({ available: true, retry_after_s: 60 }), `${L}: no rid ⇒ the global answer, byte-identical`);
+    assert.strictEqual(JSON.stringify(await F.sdkPayStatusCore(db, undefined)), JSON.stringify({ available: true, retry_after_s: 60 }), `${L}: an absent query ⇒ global`);
+    assert.deepStrictEqual(await F.sdkPayStatusCore(db, 'tb_rest'), { available: true, retry_after_s: 60 }, `${L}: an allowlisted rid ⇒ available`);
+    for (const rid of ['tb_off', 'tb_unknown', 'TB_REST', 'tb rest', '', 'x', 'a'.repeat(41), ['tb_rest'], { a: 1 }, null, 7]) {
+      assert.deepStrictEqual(await F.sdkPayStatusCore(db, rid), { available: false, retry_after_s: 60 }, `${L}: ${JSON.stringify(rid)} ⇒ unavailable`);
+    }
+    // the grammar is enforced, not just implied by the allowlist: a malformed key written into the allowlist by mistake is never «available»
+    db.setAt('platform_config/sdk_pay', { ...NODE, restaurants: { ...NODE.restaurants, 'TB REST': true, 'Tb-Rest': true } });
+    for (const rid of ['TB REST', 'Tb-Rest']) assert.deepStrictEqual(await F.sdkPayStatusCore(db, rid), { available: false, retry_after_s: 60 }, `${L}: a malformed allowlist key ${JSON.stringify(rid)} ⇒ unavailable (the rid grammar)`);
+    db.setAt('platform_config/sdk_pay', { ...NODE, available: false });
+    assert.deepStrictEqual(await F.sdkPayStatusCore(db, 'tb_rest'), { available: false, retry_after_s: 60 }, `${L}: the flag off ⇒ unavailable for every rid`);
+    db.setAt('platform_config/sdk_pay', null);
+    assert.deepStrictEqual(await F.sdkPayStatusCore(db, 'tb_rest'), { available: false, retry_after_s: 300 }, `${L}: absent ⇒ unavailable, default retry`);
+    // the per-rid answer equals the placement gate (one rule)
+    db.setAt('platform_config/sdk_pay', NODE);
+    for (const rid of ['tb_rest', 'tb_off', 'tb_unknown']) assert.strictEqual((await F.sdkPayStatusCore(db, rid)).available, await F.newAttemptsAllowed(db, rid), `${L}: ${rid}: status ≡ the placement gate`);
+  });
+
   await cell('SDK-D4-SDKPAY-FLAG', async (L) => {
     const db = makeHonestDb({});
     const F = FLAG();

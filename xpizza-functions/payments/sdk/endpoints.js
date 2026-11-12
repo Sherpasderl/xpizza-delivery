@@ -26,7 +26,7 @@ function makeHandlers(depsOf) {
     cancelSdkPending: http('cancelSdkPending', 'POST', (d, req) => require('./switch-endpoint').cancelSdkPendingCore(d, { headers: headersOf(req), body: req.body || {} })),
     listCards: http('listCards', 'GET', (d, req) => require('./cards').listCardsCore(d, { headers: headersOf(req) })),
     removeCard: http('removeCard', 'POST', (d, req) => require('./cards').removeCardCore(d, { headers: headersOf(req), body: req.body || {} })),
-    sdkPayStatus: http('sdkPayStatus', 'GET', async (d) => ({ status: 200, body: await require('./sdk-pay-flag').sdkPayStatusCore(d.db) })),
+    sdkPayStatus: http('sdkPayStatus', 'GET', async (d, req) => ({ status: 200, body: await require('./sdk-pay-flag').sdkPayStatusCore(d.db, req.query ? req.query.restaurant_id : undefined) })),   // ?restaurant_id (Q2): absent ⇒ global
     recoverOrderAccess: http('recoverOrderAccess', 'POST', (d, req) => require('./recovery').recoverOrderAccessCore(d, { ip: req.ip, body: req.body || {} })),
     processSdkRecovery: async (event) => { try { await require('./recovery').processRecoveryEntry(depsOf(), event.params.id); } catch (e) { console.error('processSdkRecovery: failed', e && e.name); } },
     sweepSdkRecovery: async () => { try { await require('./recovery').processRecoveryQueue(depsOf()); } catch (e) { console.error('sweepSdkRecovery: failed', e && e.name); } },

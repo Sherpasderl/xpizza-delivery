@@ -14,6 +14,7 @@ const CARDS = require('./cards');
 const { REVISIT_MS } = require('./sweeper');
 const { answerOrder } = require('./status-endpoint');
 const { UNRESOLVED } = require('./replaces');
+const SA = require('./stored-admission');
 
 const RP = require('./replaces');
 const ownedBy = (c, o) => RP.ownedBy(c, o);
@@ -35,6 +36,9 @@ async function finishSdk(deps, c) {
   if (fresh) return c.answerRefusal(fresh);
   // 2. BEFORE any write: the order this one replaces (A2), and the card (A3)
   { const rr = await RP.replacesRefusal(deps, { orderId: c.orderId, replacesOrderId: c.replacesOrderId, uid: c.uid, pendingOrderRecord: c.pendingOrderRecord }); if (rr) return rr; }
+  // asm7 gate P1: an EXISTING order's stored delivery facts, by Envío's resume guard (c.deliveryResume), BEFORE enrol / claim / dispatch
+  const seen = await SA.storedAdmission(deps.db, c.orderId, c.deliveryResume);
+  if (seen.refusal) return seen.refusal;
   let token; let card; let authenticationIdentifier = null;
   if (c.card.kind === 'saved') {
     const s = await CARDS.resolveSavedCard(deps, c.uid, c.card.card_id);
@@ -48,9 +52,9 @@ async function finishSdk(deps, c) {
   // 3. enrol-first (C4)  4. the create-once order  5. re-enrol immediately after the commit
   const enrol = () => deps.db.ref(`payment_sdk_due/${c.orderId}`).set(deps.clock() + REVISIT_MS);
   await enrol();
-  let refusal = null;
+  let refusal = null; let reused = false;
   const tx = await deps.db.ref(`orders/${c.orderId}`).transaction((cur) => {
-    refusal = null;
+    refusal = null; reused = cur !== null;
     if (cur === null) return { ...c.pendingOrderRecord, payment_flow: F.SDK_FLOW, pay_deadline_at: c.nowTs + R.TTL_MS, payment_fingerprint: c.fingerprint };
     refusal = bindingRefusal(c, cur);
     return undefined;   // a reuse or a refusal writes nothing
@@ -58,6 +62,9 @@ async function finishSdk(deps, c) {
   const stored = tx.snapshot.val();
   const post = refusal || (stored ? bindingRefusal(c, stored) : { outcome: 'conflict', reason: 'conflict' });   // hosted's post-commit re-check
   if (post) return c.answerRefusal(post);
+  // the race backstop: the txn REUSED an order the first read did not see (a concurrent same-owner create) ⇒ admitted here, still before
+  // the claim and any dispatch (its only write so far is enrol's sweeper due entry)
+  if (reused && seen.order == null) { const late = await SA.admitOrder(stored, c.orderId, c.deliveryResume); if (late) return late; }
   await enrol();
   // 6. the hosted gate, at the STORED total (no hold to release: §A00)
   const applied = await c.runGate(stored.total_cents);

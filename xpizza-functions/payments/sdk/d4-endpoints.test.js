@@ -55,6 +55,8 @@ const call = async (h, rq) => { const r = res(); await h(rq, r); return r; };
       ['listCards', req('GET', { headers: { authorization: 'Bearer idt_A' } }), (d) => require('./cards').listCardsCore(d, { headers: { authorization: 'Bearer idt_A' } })],
       ['removeCard', req('POST', { headers: { authorization: 'Bearer idt_A' }, body: { card_id: 'c'.repeat(20) } }), (d) => require('./cards').removeCardCore(d, { headers: { authorization: 'Bearer idt_A' }, body: { card_id: 'c'.repeat(20) } })],
       ['sdkPayStatus', req('GET'), async (d) => ({ status: 200, body: await require('./sdk-pay-flag').sdkPayStatusCore(d.db) })],
+      ['sdkPayStatus', req('GET', { query: { restaurant_id: 'tb_rest' } }), async (d) => ({ status: 200, body: await require('./sdk-pay-flag').sdkPayStatusCore(d.db, 'tb_rest') })],
+      ['sdkPayStatus', req('GET', { query: { restaurant_id: 'tb_other' } }), async (d) => ({ status: 200, body: await require('./sdk-pay-flag').sdkPayStatusCore(d.db, 'tb_other') })],
       // an attacker-supplied body.ip must never steer the caller-keyed IP budget (req.ip is the caller)
       ['recoverOrderAccess', req('POST', { body: { order_id: 'sdk_guest', ip: '1.2.3.4' }, ip: '10.0.0.7' }), (d) => require('./recovery').recoverOrderAccessCore(d, { ip: '10.0.0.7', body: { order_id: 'sdk_guest', ip: '1.2.3.4' } })],
       // the GUEST path: the order ticket travels in X-Sherpa-Order-Ticket (a REAL ticket record, minted in both worlds below)
@@ -70,6 +72,14 @@ const call = async (h, rq) => { const r = res(); await h(rq, r); return r; };
       const canonQ = (root) => JSON.stringify({ ...root, ...(root.sdk_recovery_queue ? { sdk_recovery_queue: Object.values(root.sdk_recovery_queue) } : {}) });
       assert.strictEqual(canonQ(a.db.root), canonQ(b.db.root), `${L}: ${name} writes exactly what its core writes`);
     }
+  });
+
+  await cell('SDK-D4-EP-SDKPAY-RID', async (L) => {
+    const w = world(); const H = EP().makeHandlers(() => w.deps);
+    const on = await call(H.sdkPayStatus, req('GET', { query: { restaurant_id: 'tb_rest' } }));
+    const off = await call(H.sdkPayStatus, req('GET', { query: { restaurant_id: 'tb_other' } }));
+    const glob = await call(H.sdkPayStatus, req('GET'));
+    assert.deepStrictEqual([on.payload.available, off.payload.available, glob.payload.available], [true, false, true], `${L}: the query reaches the core: allowlisted / not / global (${JSON.stringify([on.payload, off.payload, glob.payload])})`);
   });
 
   await cell('SDK-D4-EP-NO-LEAK', async (L) => {
