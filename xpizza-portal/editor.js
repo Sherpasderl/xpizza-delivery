@@ -1034,7 +1034,7 @@ export function pendingStructure(draft) {
   const ca = xa.category_allow || {}, cb = xb.category_allow || {};
   for (const c of [...new Set([...Object.keys(ca), ...Object.keys(cb)])].sort()) if (JSON.stringify(ca[c] || []) !== JSON.stringify(cb[c] || [])) out.push({ kind: 'category', cat: c });
   const oa = xa.item_overrides || {}, ob = xb.item_overrides || {};
-  const own2 = (o) => { if (!o || typeof o !== 'object') return '{}'; const r = {}; for (const k of Object.keys(o).sort()) if (k !== 'deny_extras') r[k] = o[k]; return JSON.stringify(r); };
+  const own2 = (ov) => { if (!ov || typeof ov !== 'object') return '{}'; const r = {}; for (const k of Object.keys(ov).sort()) if (k !== 'deny_extras') r[k] = ov[k]; return JSON.stringify(r); };
   const keys = new Set([...Object.keys(oa), ...Object.keys(ob)]);
   const docOrder = rowsOf(draft.state, 'item').map((r) => r && r.key);
   for (const k of [...keys].sort((x, y) => docOrder.indexOf(x) - docOrder.indexOf(y))) if (own2(oa[k]) !== own2(ob[k])) out.push({ kind: 'dish', key: k });
