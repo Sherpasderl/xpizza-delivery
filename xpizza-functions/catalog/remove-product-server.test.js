@@ -21,6 +21,8 @@ const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { sourceToBuildInputs, canonicalize } = require('./source-store');
 const { buildCatalogV2 } = require('./form-menu-source');
 const { NO_STAMP } = require('../test/_no-stamp');
+const { publishEditedCore } = require('./publish-edited-handler');
+const PS = require('../photos/photo-state');
 let n = 0; const fails = [];
 async function cell(label, fn) { try { await fn(label); console.log(`  ✓ ${++n} ${label}`); } catch (e) { fails.push(label); console.log(`  ✗ ${label}: ${e.message}`); } }
 const ON = async (fn) => { SW.on = true; try { return await fn(); } finally { SW.on = false; } };
@@ -44,8 +46,8 @@ function saveDb(rid) {
   });
   return { state, collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }) };
 }
-const save = async (rid, source, ids) => { const db = saveDb(rid); const r = await editCatalogCore({ db, authorize: owner, readActiveBuilt: async () => activeOf(rid) },
-  { restaurantId: rid, source: { ...source, deleted_ids: { ids } }, baseSourceUpdateTime: T0, deleted_ids_loaded_base: { version: ACTIVE, generation: 0 } }, {}); return { r, saved: db.state.source.data }; };
+const save = async (rid, source, ids, { live = activeOf(rid), photos = null, stored = null } = {}) => { const db = saveDb(rid); if (stored) db.state.source.data = clone(stored); const r = await editCatalogCore({ db, authorize: owner, readActiveBuilt: async () => live, ...(photos ? { photos } : {}) },
+  { restaurantId: rid, source: ids ? { ...source, deleted_ids: { ids } } : source, baseSourceUpdateTime: T0, ...(ids ? { deleted_ids_loaded_base: { version: ACTIVE, generation: 0 } } : {}) }, {}); return { r, saved: db.state.source.data, db }; };
 function removed(src, key) {
   const s = clone(src);
   s.items = s.items.filter((i) => i.key !== key);
@@ -56,8 +58,8 @@ function removed(src, key) {
   return s;
 }
 const stamp = (rid, key) => base(rid).items.find((i) => i.key === key).display.identity_id;
-const editor = (rid, source) => getEditableCatalogCore({ db: { ref: () => ({ get: async () => ({ val: () => 'Nombre' }) }) }, fsdb: NO_STAMP, authorize: owner,
-  readActiveVersionId: async () => ACTIVE, readActiveBuilt: async () => activeOf(rid),
+const editor = (rid, source, extra = {}) => getEditableCatalogCore({ db: { ref: () => ({ get: async () => ({ val: () => 'Nombre' }) }) }, fsdb: NO_STAMP, authorize: owner,
+  readActiveVersionId: async () => ACTIVE, readActiveBuilt: async () => activeOf(rid), ...extra,
   _sourceRefOf: () => ({ get: async () => ({ exists: true, data: () => source, updateTime: { seconds: 1788754374, nanoseconds: 0 } }) }) },
 { method: 'GET', query: { restaurantId: rid }, get: () => 'Bearer tok' });
 const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 200)}`;
@@ -118,6 +120,78 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 200)}`;
       const withOpt = (src.match(/catalogDiff\([^\n]*removalDiffOptions\(/g) || []).length;
       assert.ok(calls >= 1 && withOpt === calls, `${f}: every catalogDiff call passes removalDiffOptions (${withOpt}/${calls})`);
     }
+  });
+  // ── Codex r2 (advisor 11-12) ──
+  const publishOf = async (rid, saved, token, { ack, role = 'owner' } = {}) => { const pubs = [];
+    const r = await publishEditedCore({ db: saveDb(rid), authorize: async () => ({ ok: true, uid: `u_${role}`, role, actor: `${role}@x.hn` }), readActiveBuilt: async () => activeOf(rid), readDraft: async () => ({ source: saved, updateTime: T1 }),
+      publishVersion: async (_db, _r, input) => { pubs.push(input); return { versionId: 'v-new', item_count: input.items.length, extra_count: Object.keys(input.extras).length }; } },
+    { restaurantId: rid, token, ...(ack ? { fiscalAck: true } : {}) }, {}); return { r, pubs }; };
+  await cell('B1: a removal-only publish needs no fiscalAck (ON); removal + a reprice still needs it; a non-owner is still refused; OFF is today', async (L) => {
+    const rid = 'x_pizza';
+    await ON(async () => {
+      const { r, saved } = await save(rid, removed(base(rid), 'Carnivora'), [stamp(rid, 'Carnivora')]);
+      assert.strictEqual(r.status, 200, show(r));
+      const p = await publishOf(rid, saved, r.body.token);
+      assert.deepStrictEqual([p.r.status, p.pubs.length], [200, 1], `${L}: removal-only publishes without the ack (${show(p.r)})`);
+      const d = await publishOf(rid, saved, r.body.token, { role: 'dispatcher' });
+      assert.deepStrictEqual([d.r.status, d.r.body.error], [403, 'not_owner'], `${L}: the owner rule stands (${show(d.r)})`);
+      const both = removed(base(rid), 'Carnivora'); const o = both.items.find((i) => i.key !== 'Carnivora' && !i.display.variantOf); o.price += 5; o.display.price = o.price;
+      const { r: r2, saved: s2 } = await save(rid, both, [stamp(rid, 'Carnivora')]);
+      assert.strictEqual(r2.status, 200, show(r2));
+      const q = await publishOf(rid, s2, r2.body.token);
+      assert.deepStrictEqual([q.r.status, q.r.body.error], [403, 'fiscal_ack_required'], `${L}: removal + a reprice keeps the ack (${show(q.r)})`);
+    });
+    // OFF: the switch's removal path is today's — a plain removal publish still needs the ack
+    const { r, saved } = await save(rid, removed(base(rid), 'Carnivora'), [stamp(rid, 'Carnivora')]);
+    assert.strictEqual(r.status, 200, show(r));
+    const p = await publishOf(rid, saved, r.body.token);
+    assert.deepStrictEqual([p.r.status, p.r.body.error], [403, 'fiscal_ack_required'], `${L}: OFF — today's ack (${show(p.r)})`);
+  });
+  await cell('A1+B2: pendingRemovals carries the ACTIVE photo entry (draft shape) and the dish\'s own refs (override, extras_by_item, reward position)', () => ON(async () => {
+    const rid = 'la_musa'; const live = activeOf(rid).built;
+    const pid = 'a'.repeat(32);
+    const activeEntries = PS.versionPhotosDoc({ rice_03: { state: 'pid', pid } }, (p) => `https://cdn.test/${p}.jpg`).entries;
+    const { r, saved } = await save(rid, removed(removed(base(rid), 'soft_01'), 'rice_03'), [stamp(rid, 'soft_01'), stamp(rid, 'rice_03')]);
+    assert.strictEqual(r.status, 200, show(r));
+    const e = await editor(rid, saved, { photoReads: { fieldsFor: async () => ({}), readActive: async (rr, vid) => { assert.strictEqual(vid, ACTIVE); return activeEntries; } } });
+    const by = new Map(e.body.pendingRemovals.map((x) => [x.key, x]));
+    assert.deepStrictEqual(by.get('rice_03').photo, { state: 'pid', pid }, 'A1: the active photo, as the draft map holds it');
+    assert.strictEqual(by.get('soft_01').photo, null, 'A1: no photo → null');
+    assert.deepStrictEqual(by.get('rice_03').refs, { item_override: live.structure.exposure.item_overrides.rice_03, extras_by_item: live.structure.extras_by_item.rice_03, redeem_index: null }, 'B2: rice_03 refs');
+    assert.deepStrictEqual(by.get('soft_01').refs, { item_override: null, extras_by_item: null, redeem_index: live.structure.redeem_eligible_items.indexOf('soft_01') }, 'B2: soft_01 refs');
+  }));
+  await cell('B3: the source keeps its authored extras_by_item: {} — keeping the emptied map saves; deleting the field is structure_changed (assertSameAuthoredFields)', () => ON(async () => {
+    const rid = 'la_musa';
+    const keep = removed(base(rid), 'rice_03'); assert.deepStrictEqual(keep.structure.extras_by_item, {}, 'premise: the emptied authored map');
+    const { r } = await save(rid, keep, [stamp(rid, 'rice_03')]);
+    assert.strictEqual(r.status, 200, show(r));
+    const drop = clone(keep); delete drop.structure.extras_by_item;
+    const { r: r2 } = await save(rid, drop, [stamp(rid, 'rice_03')]);
+    assert.deepStrictEqual([r2.status, r2.body.error], [400, 'structure_changed'], show(r2));
+  }));
+  await cell('A2: an extras_by_item: {} already published stays editable with the switch OFF (an ordinary description edit saves)', async () => {
+    const rid = 'la_musa'; const src = removed(base(rid), 'rice_03');
+    const live = activeOf(rid, src); live.built.structure.extras_by_item = {};   // what an ON removal published
+    const ed = clone(src); ed.items.find((i) => i.key === 'noodle_02').display.desc = 'Otra';
+    const { r } = await save(rid, ed, null, { live, stored: src });
+    assert.strictEqual(r.status, 200, show(r));
+  });
+  await cell('B5: a declared removal\'s OWN photo entry may leave with uploads disabled (ON; OFF is today\'s photo_change_disabled), and the diff shows only «Quitado» (no photo line)', async (L) => {
+    const rid = 'la_musa'; const pid = 'b'.repeat(32);
+    const stored = base(rid); stored.photos = { rice_03: { state: 'pid', pid } };
+    const photos = { enabled: async () => false, readActive: async () => PS.versionPhotosDoc({ rice_03: { state: 'pid', pid } }, (p) => `https://cdn.test/${p}.jpg`).entries, attach: async () => ({ ok: true }) };
+    const draft = removed(stored, 'rice_03'); delete draft.photos;
+    await ON(async () => {
+      const { r } = await save(rid, draft, [stamp(rid, 'rice_03')], { photos, stored });
+      assert.strictEqual(r.status, 200, `${L}: ${show(r)}`);
+      assert.deepStrictEqual(r.body.diff.removed.map((x) => x.key), ['rice_03']);
+      assert.deepStrictEqual(r.body.diff.changed.filter((c) => c.field === 'photo'), [], `${L}: no separate photo line`);
+      const other = clone(draft); other.photos = { noodle_02: { state: 'removed' } };
+      const { r: r2 } = await save(rid, other, [stamp(rid, 'rice_03')], { photos, stored });
+      assert.deepStrictEqual([r2.status, r2.body.error], [409, 'photo_change_disabled'], `${L}: any OTHER photo change is still refused`);
+    });
+    const { r } = await save(rid, draft, [stamp(rid, 'rice_03')], { photos, stored });
+    assert.deepStrictEqual([r.status, r.body.error], [409, 'photo_change_disabled'], `${L}: OFF — today (${show(r)})`);
   });
   if (fails.length) { console.error(`remove-product-server FAILED ${fails.length} cell(s): ${fails.join(' | ')}`); process.exit(1); }
   console.log(`remove-product-server: OK (${n})`);
