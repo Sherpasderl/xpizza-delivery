@@ -149,6 +149,33 @@ for (const rid of ['x_pizza', 'la_musa']) {
     assert.deepStrictEqual(judge(rid, price, tables), MISMATCH, 'a line price that is not the server\'s');
   });
 }
+// Codex S2b r2 P1-3: (a) a prototype-less instance map — an extra_id "__proto__" can never make a charged extra vanish from the text;
+// (b) RULED: the restrictions apply ONLY to lines that carry an affected extra — every other line keeps today's handling; (c) one app key
+// for two server identities across lines (an unkeyed renamed extra beside a minted one keyed "null") is refused
+for (const rid of ['x_pizza', 'la_musa']) {
+  test(`PT-R2 ${rid}: __proto__ app key refused; unaffected lines (qty 5, no app key, shared app keys) keep today; unkeyed + "null" app keys refused`, async () => {
+    const { s, renamed } = recorded(rid);
+    const { menu, tables } = await served(rid, s);
+    const body = honest(menu, [renamed.key, MK]);
+    const one = honest1(menu, MK); const proto = clone(one);
+    for (const it of proto.items) for (const e of it.extras) e.extra_id = '__proto__';
+    proto.items_text = proto.items_text.replace(' [Reusado S2b]', '');   // the text a vanished extra would leave
+    assert.deepStrictEqual(judge(rid, proto, tables), MISMATCH, '(a) a charged extra keyed "__proto__" never vanishes from the derived text');
+    // (b) the honest affected cart + unaffected lines today's text cannot be re-derived from
+    const other = menu.dishes.find((x) => !x.launcher && !body.items.some((l) => l.name === x.name));
+    const mixed = clone(body);
+    mixed.items.push({ id: other.id, name: other.name, dish_id: other.dish_id, qty: 5, price: other.price, subtotal: other.price * 5, extras: [], extrasTotal: 0 });
+    const plainEx = menu.extras.find((e) => !e.extra_key && menu.extrasFor(other.key).some((x) => x.key === e.key));
+    if (plainEx) mixed.items.push({ id: other.id, name: other.name, dish_id: other.dish_id, qty: 1, price: other.price, subtotal: other.price + plainEx.price, extras: [{ name: plainEx.name, qty: 1 }, { name: plainEx.name, qty: 1, extra_id: 'shared' }], extrasTotal: plainEx.price * 2 });
+    mixed.items_text = `${mixed.items_text} | 5x ${other.name} (L${other.price})`;
+    assert.equal(judge(rid, mixed, tables), null, `(b) unaffected lines keep today's handling (${JSON.stringify(judge(rid, mixed, tables))})`);
+    // (c) two lines of one dish: the renamed extra with NO app key, the minted one keyed "null"; the text names the minted label twice
+    const d = menu.dishes.find((x) => !x.launcher && menu.extrasFor(x.key).some((e) => e.extra_key === MK) && menu.extrasFor(x.key).some((e) => e.extra_key === renamed.key));
+    const L = (ek, extra) => ({ ...(d.item_key && String(d.id) !== d.item_key ? {} : { id: d.id }), name: d.name, dish_id: d.dish_id, qty: 1, price: d.price, extras: [{ name: ek === MK ? 'Reusado S2b' : 'Renombrado S2b', qty: 1, instance: 0, extra_key: ek, ...extra }], ...(d.item_key ? { item_key: d.item_key } : {}) });
+    const nul = { items: [L(renamed.key, {}), L(MK, { extra_id: 'null', id: 'null' })], items_text: `2x ${d.name} (L${d.price}) [Reusado S2b]` };
+    assert.deepStrictEqual(judge(rid, nul, tables), MISMATCH, '(c) an unkeyed affected extra beside one keyed "null"');
+  });
+}
 // SERVED-ID (§2.5): the identity overlay decorates an affected extra by its ACTUAL key — the renamed (x_pizza: its name is no longer
 // its key) and the minted extra carry their extra_id on the served body
 for (const rid of ['x_pizza', 'la_musa']) {
