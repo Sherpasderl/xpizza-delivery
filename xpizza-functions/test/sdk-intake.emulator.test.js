@@ -240,6 +240,22 @@ async function mintTicket(b) {
     }); }
   ok('competing refusals beyond the pause (86\'d, unknown key, closed): the SDK answers exactly as hosted (status + full body), no money');
 
+  // Codex r3 P2-3: REAL competing combinations — two failures at once ⇒ the SAME winning refusal (status + full body) through both
+  const closedPair = async (hb, sb) => {
+    await rtdb.ref(`orders/${hb.order_id}`).set({ order_id: hb.order_id, restaurant_id: 'x_pizza', status: 'cancelled', payment_method: 'online', payment_status: 'pending', created_at: 1 });
+    await rtdb.ref(`orders/${sb.order_id}`).set({ order_id: sb.order_id, restaurant_id: 'x_pizza', status: 'cancelled', payment_flow: 'sdk_auth_v1', payment_method: 'online', payment_status: 'pending', customer_uid: 'uid_member', payment_cancel: { kind: 'cancel', at: 1 }, created_at: 1 });
+  };
+  const set86 = (on) => rtdb.ref(`restaurants/x_pizza/item_availability/${M86}`).set({ available: !on, updated_at: Date.now() });
+  const both = { items: [{ name: 'NoSuchDishAnywhere', qty: 1, price: 0 }, { name: 'Margherita', qty: 1, price: 0 }], items_text: '1x NoSuchDishAnywhere, 1x Margherita' };
+  { const hb = orderBody('x_pizza'); const sb = sdkBody('x_pizza');
+    await sameRefusal('86\'d + closed', hb, sb, async () => { await closedPair(hb, sb); await set86(true); }, () => set86(false)); }
+  await sameRefusal('unknown key + 86\'d', orderBody('x_pizza', both), sdkBody('x_pizza', both), () => set86(true), () => set86(false));
+  { const hb = orderBody('x_pizza', unknown); const sb = sdkBody('x_pizza', unknown);
+    await sameRefusal('closed + unknown key', hb, sb, () => closedPair(hb, sb)); }
+  { const hb = orderBody('x_pizza', both); const sb = sdkBody('x_pizza', both);
+    await sameRefusal('closed + unknown key + 86\'d', hb, sb, async () => { await closedPair(hb, sb); await set86(true); }, () => set86(false)); }
+  ok('competing COMBINATIONS (86\'d + closed, unknown + 86\'d, closed + unknown, all three): the same winning refusal through both exports');
+
   // 9. SDK-D4-UNAVAILABLE / SCHEDULED — before any write
   await rtdb.ref('platform_config/sdk_pay/restaurants/x_pizza').remove();
   const ub = sdkBody('x_pizza'); const u = await SDK(ub);

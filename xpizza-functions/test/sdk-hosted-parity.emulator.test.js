@@ -97,7 +97,11 @@ function post(handler, body, headers = {}) {
       try {
         const r = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
         const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
-        const hdr = {}; r.headers.forEach((v, k) => { if (!['date', 'connection', 'keep-alive', 'etag'].includes(k)) hdr[k] = v; });   // etag = a hash of the RAW body (random ids): the normalised body is compared instead
+        const hdr = {}; r.headers.forEach((v, k) => { if (!['date', 'connection', 'keep-alive', 'etag'].includes(k)) hdr[k] = v; });
+        // Codex r3 P2-2: the ETag is a hash of the RAW body (random ids), so its VALUE differs per run; it is VALIDATED here against
+        // this response's own raw body with the same library Express uses, and its presence + weak/strong semantics are compared
+        const tag = r.headers.get('etag');
+        if (tag != null) { const weak = tag.startsWith('W/'); hdr.etag = { present: true, weak, matchesBody: tag === require('etag')(t, { weak }) }; }
         s.close(() => resolve({ status: r.status, json: j, text: t, headers: hdr }));
       } catch (e) { s.close(() => reject(e)); }
     });
@@ -119,9 +123,32 @@ function canon(x) {
   for (const e of (x.writes || [])) { const m = e.path.match(/^(?:payment_attempts|order_tracking)\/([^/]+)/); if (m) toks.add(m[1]); const p = e.path.match(/\/(-[A-Za-z0-9_-]{19})/); if (p) toks.add(p[1]); }
   const sorted = [...toks].filter(Boolean).sort((p, q) => q.length - p.length);
   const fix = (s) => { let o = s; for (const t of sorted) if (o.includes(t)) o = o.split(t).join(rename(t)); return o; };
-  // a NUMERIC created_at in a recorded value is the emulator's echo of a server-resolved timestamp (real time; the code always
-  // writes the {'.sv'} sentinel, which stays as is) — it is canonicalised, the sentinel vs number distinction is kept
-  return JSON.parse(fix(JSON.stringify(x)), (k, v) => (k === 'created_at' && typeof v === 'number' ? '<server-ts>' : v));
+  return JSON.parse(fix(JSON.stringify(x)));
+}
+// Codex r3 P2-1: a numeric created_at is canonicalised ONLY when it is an IDENTIFIED server-timestamp echo — the database held that
+// EXACT value at that path BEFORE the request (a server-resolved {'.sv'} from an earlier write) and this write PRESERVES it.
+// Every other number (application-clock timestamps included, e.g. rewards-reserve's) is compared EXACTLY.
+const at = (root, p) => p.split('/').filter(Boolean).reduce((o, k) => (o && typeof o === 'object' ? o[k] : undefined), root);
+function markEchoes(writes, before) {
+  for (const e of writes) {
+    const visit = (v, p) => {
+      if (!v || typeof v !== 'object') return v;
+      for (const [k, x] of Object.entries(v)) {
+        const q = `${p}/${k}`;
+        if (k === 'created_at' && typeof x === 'number') { if (at(before, q) === x) v[k] = '<server-ts-echo>'; }
+        else visit(x, q);
+      }
+      return v;
+    };
+    if (e.op === 'update' && e.value && typeof e.value === 'object') {   // a multi-path patch: each key is a path below e.path
+      for (const [k, x] of Object.entries(e.value)) {
+        const q = `${e.path}/${k}`;
+        if (/(^|\/)created_at$/.test(k) && typeof x === 'number') { if (at(before, q) === x) e.value[k] = '<server-ts-echo>'; }
+        else visit(x, q);
+      }
+    } else visit(e.value, e.path);
+  }
+  return writes;
 }
 const OPENH = { open: true, start: '00:00', end: '24:00' };
 const HOURS = { sun: OPENH, mon: OPENH, tue: OPENH, wed: OPENH, thu: OPENH, fri: OPENH, sat: OPENH };
@@ -138,6 +165,15 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('sdk-hoste
 
 (async () => {
   try {
+    { // the canonicaliser's own rule (Codex r3 P2-1), proven every run: ONLY a preserved server echo is canonicalised
+      const before = { orders: { o1: { created_at: 1794000000000 } } };
+      const w = markEchoes([{ op: 'transaction', path: 'orders/o1', value: { created_at: 1794000000000 } }, { op: 'transaction', path: 'orders/o1', value: { created_at: 0 } },
+        { op: 'set', path: 'orders/o2', value: { created_at: 1794000000000 } }, { op: 'update', path: '', value: { 'orders/o1/created_at': 1794000000000, 'user_rewards/u/r/reservations/o1': { created_at: 1794000000123 } } }], before);
+      assert.deepStrictEqual(w.map((e) => e.value), [{ created_at: '<server-ts-echo>' }, { created_at: 0 }, { created_at: 1794000000000 }, { 'orders/o1/created_at': '<server-ts-echo>', 'user_rewards/u/r/reservations/o1': { created_at: 1794000000123 } }],
+        'premise — markEchoes canonicalises ONLY a preserved echo; a changed number (0), a new path and an application-clock value stay exact');
+      const E = require('etag'); const body = '{"a":1}';
+      assert.ok(E(body, { weak: true }).startsWith('W/') && E(body, { weak: true }) !== E('{"a":2}', { weak: true }), 'premise — the etag validator distinguishes bodies');
+    }
     await wipe();
     const { publishVersion } = require('../catalog/catalog-publish');
     const { buildPublishCandidate } = require('../tools/publish-version');
@@ -189,10 +225,11 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('sdk-hoste
           const req = typeof st === 'function' ? await st(h) : st;
           if (!req) continue;   // a state step (unrecorded)
           const [kind, b, hdr] = req;
+          const before = (await rtdb.ref().get()).val() || {};   // unrecorded: the state the echo test compares against
           REC = [];
           const r = await post(kind === 'cash' ? h.createOrder : h.chargeOnlineOrder, b, hdr);
           await new Promise((res) => setTimeout(res, 400));   // fire-and-forget writes settle
-          out.push({ status: r.status, headers: r.headers, body: r.json, writes: REC });
+          out.push({ status: r.status, headers: r.headers, body: r.json, writes: markEchoes(REC, before) });
           REC = null;
         }
         return canon({ out });
