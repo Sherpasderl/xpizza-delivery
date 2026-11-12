@@ -2,7 +2,9 @@
 // TEST / SANDBOX ONLY — a scriptable PSP behind the adapter contract. Never moves real money. Every invocation is logged with
 // its ARGUMENTS (calls), so cells assert real provider calls. script[action] is a queue of outcomes or functions; a step may be
 // { lost: true, ...outcome } (the PSP acts, the caller sees a throw → unknown) or { pause: Promise } (resolve to continue).
-function makeFakePsp(script = {}) {
+// opts.contractOnlyStatus (TEST CONTRACT ONLY, Codex S0/S1 r2 P2): the status default reports whatever state the fake holds
+// (voided / expired too) — states production CANNOT produce from the recorded evidence. Only a cell that names it may use it.
+function makeFakePsp(script = {}, opts = {}) {
   const calls = [];
   const state = {};   // uuid → { state, amount_cents } (what the PSP "knows")
   let seq = 0;
@@ -26,7 +28,10 @@ function makeFakePsp(script = {}) {
     pspCapture: (a) => run('capture', a, () => ({ outcome: 'captured', uuid: a.uuid, amount_cents: a.amount_cents, effect: (st, args, o) => { if (o.outcome === 'captured' && st[args.uuid]) st[args.uuid].state = 'captured'; } })),
     // like production (Codex r1 P1-1): a void without the provider order id (`ref`) is never sent — the call fails (⇒ unknown)
     pspVoid: (a) => (typeof a.ref !== 'string' || !a.ref ? Promise.reject(new Error('fake-psp: a void needs the provider order id (ref)')) : run('void', a, () => ({ outcome: 'voided', uuid: a.uuid, effect: (st, args, o) => { if (o.outcome === 'voided' && st[args.uuid]) st[args.uuid].state = 'voided'; } }))),
-    pspStatus: (a) => run('status', a, () => (state[a.uuid] ? { state: state[a.uuid].state, uuid: a.uuid, amount_cents: state[a.uuid].amount_cents } : { state: 'inconclusive', uuid: a.uuid })),
+    // PRODUCTION PARITY (Codex S0/S1 r2 P2): the DEFAULT status answer is only one the real adapter can produce from the recorded
+    // evidence — `authorized` / `captured` (production returns 412 ⇒ inconclusive after a void, and for an unknown uuid). A contract
+    // cell that needs voided / expired / declined evidence INJECTS it explicitly (and is marked contract-only).
+    pspStatus: (a) => run('status', a, () => (state[a.uuid] && (opts.contractOnlyStatus === true || state[a.uuid].state === 'authorized' || state[a.uuid].state === 'captured') ? { state: state[a.uuid].state, uuid: a.uuid, amount_cents: state[a.uuid].amount_cents } : { state: 'inconclusive', uuid: a.uuid })),
   };
   const callCount = (action) => calls.filter((c) => c.action === action).length;
   return { impl, calls, state, callCount };

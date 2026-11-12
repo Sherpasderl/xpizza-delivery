@@ -16,10 +16,10 @@ const order = (o = {}) => ({ restaurant_id: 'tb_rest', payment_flow: 'sdk_auth_v
 const REV = (cents) => ({ items: [{ name: 'tb_item', qty: 1, unit: cents / 100 }], total_cents: cents, delivery_cents: 0 });
 // the REAL go-live: confirmAndMaterialize through its explicit SDK admission (no refund wiring → a closed kitchen parks)
 const realGoLive = (db, clock, extra = {}) => (dp, id) => require('../../pixelpay-confirm').confirmAndMaterialize({ db, buildMaterializeUpdates: require('../../materialize').buildMaterializeUpdates, restaurant: { lat: 14.1, lng: -87.2, name: 'tb R', phone: '+50400000000' }, ...extra }, { orderId: id, attemptId: null, now: clock(), trackingToken: 'TT-tb', sdkGoLive: true });
-function world({ seed = {}, script = {}, hooks = {}, eligible = () => false, cancelEligible, t0 = 100000, goLiveDeps = {} } = {}) {
+function world({ seed = {}, script = {}, hooks = {}, eligible = () => false, cancelEligible, t0 = 100000, goLiveDeps = {}, contractOnlyStatus = false } = {}) {
   let t = t0;
   const db = makeHonestDb({ orders: { [OID]: order() }, ...seed }, { now: () => t, ...hooks });
-  const fake = makeFakePsp(script);
+  const fake = makeFakePsp(script, { contractOnlyStatus });
   const deps = { db, psp: makeAdapter(fake.impl), clock: () => t, voidEligible: eligible, releaseResources: async () => { deps.released = (deps.released || 0) + 1; }, goLive: realGoLive(db, () => t, goLiveDeps) };
   if (cancelEligible) deps.cancelVoidEligible = cancelEligible;
   return { db, fake, deps, rec: () => db.getAt(`payment_sdk/${OID}`), ord: () => db.getAt(`orders/${OID}`), tick: (ms) => { t += ms; }, at: () => t };
@@ -188,7 +188,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   // test-only injected eligibility: reach the replacement-B path (production stays fail-closed)
   const ELIGIBLE = () => true;
   await cell('SDK-B-REPLACES-WHOLE-SET-NEVER-REVERTS', async (L) => {
-    const w = await placed({ eligible: ELIGIBLE, script: { void: [{ lost: true }] } }); await live(w);
+    const w = await placed({ eligible: ELIGIBLE, script: { void: [{ lost: true }] }, contractOnlyStatus: true }); await live(w);   // CONTRACT-ONLY: a 'voided' status production cannot produce (it answers 412)
     const r = await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 9000, revision: REV(9000) });
     assert.strictEqual(r.outcome, 'replaced', `${L}: replaced (got ${JSON.stringify(r)})`);
     const lastAuth = w.fake.calls.filter((c) => c.action === 'authorize').pop();
@@ -406,7 +406,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     }
   });
   await cell('SDK-CANCEL-VOID-UNKNOWN-LOCKS-THEN-STATUS', async (L) => {
-    const w = await placedAt({ script: { void: [{ lost: true }] } });
+    const w = await placedAt({ script: { void: [{ lost: true }] }, contractOnlyStatus: true });   // CONTRACT-ONLY: a 'voided' status production cannot produce (it answers 412)
     w.tick(3600 * 1000);
     await cancel(w);
     assert.ok(w.rec().lock && w.rec().lock.reason === 'unknown_op' && w.rec().legs.L1.state === 'approved', `${L}: an unknown void answer LOCKS, the leg not guessed (got ${JSON.stringify(w.rec().lock)})`);
@@ -520,7 +520,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.ok(w.ord().status === 'cancelled' && w.ord().payment_cancel.kind === 'expire' && w.deps.released === 1, `${L}: expired by the sweeper, released once`);
   });
   await cell('SDK-SWEEP-SURPLUS-EXPIRY-CONFIRMED', async (L) => {
-    const w = await placed(); await live(w);
+    const w = await placed({ contractOnlyStatus: true }); await live(w);   // CONTRACT-ONLY: an 'expired' status production cannot produce from the recorded evidence
     await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     const uuid = w.rec().legs.L1.pp_uuid;
     w.tick(R.HOLD_MS + 1);

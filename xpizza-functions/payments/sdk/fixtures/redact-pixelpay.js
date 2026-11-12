@@ -29,20 +29,34 @@ const DATA = Object.freeze({
   type: enumOf(['credit', 'debit', 'prepaid'], true),
 });
 const TOP = Object.freeze({ success: bool, message });
+// Codex S0/S1 r2: property NAMES are allowlisted too — a key never seen in a recorded envelope is DROPPED (never echoed into a
+// placeholder), counted under the fixed label `_dropped_keys`. Known keys whose values are not in the schema become `<key>`.
+const KNOWN_TOP = Object.freeze(['success', 'message', 'data', 'errors', 'action']);
+const KNOWN_DATA = Object.freeze([...Object.keys(DATA), 'response_cvn', 'response_avs', 'response_cavv', 'transaction_id', 'transaction_time',
+  'transaction_date', 'response_time', 'transaction_auth', 'transaction_reference', 'transaction_terminal', 'transaction_merchant', 'installment_type',
+  'installment_months', 'payment_uuid', 'payment_hash', 'payload', 'history',
+  // tokenization (tokenize-*.json)
+  'address', 'bin', 'city', 'country', 'hash', 'last', 'mask', 'phone', 'state', 'token', 'zip']);
 
 const placeholder = (k, v) => (v === null ? null : `<${k}>`);
-function redactObject(obj, schema) {
-  const out = {};
-  for (const [k, v] of Object.entries(obj)) out[k] = Object.prototype.hasOwnProperty.call(schema, k) && schema[k](v) ? v : placeholder(k, v);
+function redactObject(obj, schema, known) {
+  const out = {}; let dropped = 0;
+  for (const [k, v] of Object.entries(obj)) {
+    if (!known.includes(k)) { dropped += 1; continue; }
+    out[k] = Object.prototype.hasOwnProperty.call(schema, k) && schema[k](v) ? v : placeholder(k, v);
+  }
+  if (dropped) out._dropped_keys = dropped;
   return out;
 }
 function redact(envelope) {
   if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) return '<body>';
-  const out = {};
+  const out = {}; let dropped = 0;
   for (const [k, v] of Object.entries(envelope)) {
-    if (k === 'data') out.data = v && typeof v === 'object' && !Array.isArray(v) ? redactObject(v, DATA) : placeholder('data', v);
+    if (!KNOWN_TOP.includes(k)) { dropped += 1; continue; }
+    if (k === 'data') out.data = v && typeof v === 'object' && !Array.isArray(v) ? redactObject(v, DATA, KNOWN_DATA) : placeholder('data', v);
     else out[k] = Object.prototype.hasOwnProperty.call(TOP, k) && TOP[k](v) ? v : placeholder(k, v);
   }
+  if (dropped) out._dropped_keys = dropped;
   return out;
 }
 module.exports = { redact, MESSAGES, MESSAGE_PATTERNS };

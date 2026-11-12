@@ -31,15 +31,8 @@ const sig = (fields) => crypto.createHmac('sha3-512', SECRET).update(fields.map(
 const ref = (tag) => `sdkprobe${tag}${Date.now().toString(36)}`.slice(0, 29);
 let challenged = false;
 
-// ── redaction: keep the SHAPE, drop every value that identifies a card, a person, a transaction or a credential ─────────────
-const KEEP = new Set(['success', 'message', 'status', 'action', 'transaction_type', 'transaction_approved_amount', 'transaction_amount', 'response_approved', 'response_code', 'response_reason', 'response_message', 'code', 'type', 'network', 'attemps', 'errors']);
-const redact = (v, k = '') => {
-  if (v == null || typeof v === 'boolean' || typeof v === 'number') return v;
-  if (Array.isArray(v)) return v.map((x) => redact(x, k));
-  if (typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([kk, vv]) => [kk, redact(vv, kk)]));
-  if (KEEP.has(k)) return /@|\d{12,}/.test(v) ? '<redacted>' : v;
-  return `<${k || 'value'}>`;
-};
+// ── redaction: the SHARED schema allowlist (Codex S0/S1 r2) — the same redactor the committed fixtures pass through ───────
+const { redact } = require('../xpizza-functions/payments/sdk/fixtures/redact-pixelpay');
 const write = (name, rec) => fs.writeFileSync(path.join(outDir, `${name}.json`), JSON.stringify({ provenance: { recorded: new Date().toISOString().slice(0, 10), host: HOST, sdk: '@pixelpay/sdk-core 2.5.2', gateway_token: 'sent (value not recorded)' }, ...rec }, null, 1));
 const stop = (step) => { if (!challenged) { challenged = true; console.log(`CHALLENGED with token at ${step}`); } };
 
@@ -71,7 +64,8 @@ async function tokenize(name, number, cvv) {
   const c = new PixelPay.Requests.CardTokenization();
   Object.assign(c, { number, cvv2: cvv, expire_month: '12', expire_year: '2028', cardholder: 'Prueba Sherpa', address: 'Col. Prueba 123', country: 'HN', state: 'HN-CR', city: 'San Pedro Sula', zip: '21101', phone: '50400000000', email: 'cliente.prueba@gmail.com' });
   let res = null; try { res = await svc.vaultCard(c); } catch (_) { res = null; }
-  if (!res || res.status === 403) { stop(name); return null; }
+  if (!res) { console.log(`${name}: tokenization failed (no token)`); return null; }   // advisor nit: a failure is not a challenge
+  if (res.status === 403) { stop(name); return null; }
   const token = res.data && res.data.token;
   write(name, { name, sdk: 'Tokenization.vaultCard', http_status: res.status, response: redact({ success: res.success, message: res.message, data: res.data }) });
   console.log(`${name}: HTTP ${res.status}`);

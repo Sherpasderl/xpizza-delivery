@@ -20,16 +20,31 @@ const isObjJ = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const keysAre = (o, ks) => isObjJ(o) && Object.keys(o).length === ks.length && ks.every((k) => Object.prototype.hasOwnProperty.call(o, k));
 // status words PROVEN by a fixture (status-authorized.json, status-captured.json); a 412 «Error al encontrar el cobro» is never evidence
 const STATUS_WORDS = Object.freeze({ authorized: 'authorized', paid: 'captured' });
+// decline codes PROVEN by a fixture (auth-declined.json: '05'); a code is added only from recorded evidence
+const DECLINE_CODES = Object.freeze(['05']);
+// the RECORDED amount-less status shape (status-authorized.json / status-captured.json): exactly these data keys
+const AMOUNTLESS_STATUS_KEYS = Object.freeze(['attemps', 'history', 'status']);
 const EVIDENCE = Object.freeze({
   // fixtures/pixelpay/auth-challenge.json: a server token auth the bank challenges
   challenge: Object.freeze([(status, j) => status === 202 && isObjJ(j) && j.success === true && keysAre(j.data, ['payment_uuid', 'transaction_type', 'payload']) && j.data.transaction_type === 'songbird' && isStr(j.data.payment_uuid)]),
-  // fixtures/pixelpay/auth-declined.json
-  decline: Object.freeze([(status, j) => (status === 402 && isObjJ(j) && j.success === false && isObjJ(j.data) && j.data.transaction_type === 'auth' && j.data.response_approved === false && typeof j.data.response_code === 'string' && /^\d{2}$/.test(j.data.response_code) ? { code: j.data.response_code } : null)]),
+  // fixtures/pixelpay/auth-declined.json — definitive ONLY for an evidence-proven code with response_incomplete false (Codex r2):
+  // any other code, an incomplete or an approved flag ⇒ unknown (locked for a person / the status path), never a decline
+  decline: Object.freeze([(status, j) => (status === 402 && isObjJ(j) && j.success === false && isObjJ(j.data) && j.data.transaction_type === 'auth' && j.data.response_approved === false && j.data.response_incomplete === false && DECLINE_CODES.includes(j.data.response_code) ? { code: j.data.response_code } : null)]),
   // fixtures/pixelpay/capture-over-auth.json
   captureDecline: Object.freeze([(status, j) => (status === 402 && isObjJ(j) && j.success === false && j.message === 'El monto enviado es mayor al monto autorizado' && j.data == null ? { code: 'over_authorized' } : null)]),
   voidRefused: Object.freeze([]),   // none recorded: a refused void stays unknown (a person)
-  // the recorded status envelope carries NO amount and NO uuid: the state only (bound to the requested uuid; row 19)
-  status: (j) => (isObjJ(j) && j.success === true && isObjJ(j.data) && Object.prototype.hasOwnProperty.call(STATUS_WORDS, j.data.status) ? { state: STATUS_WORDS[j.data.status] } : null),
+  // Codex r2: ONLY the recorded amount-less shape is amount-less (the state only, bound to the requested uuid; row 19). Any other
+  // shape must CARRY a well-formed amount (and, if present, a uuid) — passed through so boundStatus compares it; else null.
+  status: (j) => {
+    if (!isObjJ(j) || j.success !== true || !isObjJ(j.data) || !Object.prototype.hasOwnProperty.call(STATUS_WORDS, j.data.status)) return null;
+    const d = j.data;
+    const state = STATUS_WORDS[d.status];
+    if (Object.keys(d).sort().join(',') === AMOUNTLESS_STATUS_KEYS.join(',')) return { state };
+    const cents = parseLempiras(d.transaction_approved_amount);
+    if (cents == null) return null;
+    if (d.payment_uuid !== undefined && !isStr(d.payment_uuid)) return null;
+    return { state, amount_cents: cents, ...(d.payment_uuid !== undefined ? { uuid: d.payment_uuid } : {}) };
+  },
 });
 
 const isStr = (v) => typeof v === 'string' && v.length > 0;
@@ -127,7 +142,9 @@ function makePixelPayImpl(cfg, { fetchImpl = fetch, deadlineMs = DEADLINE_MS, lo
       const { status, json } = await post('status', { payment_uuid: uuid }, [cfg.key_id, uuid, cfg.app_url]);
       let out = { state: 'inconclusive', uuid };
       const ev = status === 200 && EVIDENCE.status ? EVIDENCE.status(json) : null;
-      if (ev) out = { state: ev.state, uuid };   // no amount_cents: boundStatus binds it only to a VERIFIED uuid (row 19)
+      // the requested uuid unless the provider named one (then it must equal it: the wrapper rejects any other); an amount, when
+      // present, is passed through for boundStatus to compare; absent only for the recorded amount-less shape (row 19)
+      if (ev) out = { state: ev.state, uuid: ev.uuid !== undefined ? ev.uuid : uuid, ...(ev.amount_cents !== undefined ? { amount_cents: ev.amount_cents } : {}) };
       diag('status', status, out.state, null, null);
       return out;
     },
