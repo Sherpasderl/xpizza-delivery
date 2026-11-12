@@ -108,7 +108,7 @@ function classifyItems(incoming, activeKeys) {
 // validator that runs after allocation still refuses — this only names the field).
 // authoring — the ONE platform authoring switch (catalog/platform-groups.js, §0c.7). Off ⇒ a new required-choice group is
 // refused for EVERY brand (choices_not_supported_yet); on ⇒ a group arrives as ONE atomic unit (see allocateGroups).
-function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, registryHasKey, fieldProblem = () => null, authoring = false, mint = null }) {
+function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, registryHasKey, fieldProblem = () => null, authoring = false, mint = null, prepareExisting = null }) {
   const source = JSON.parse(JSON.stringify(incoming));
   // S1a: every frozen key — active or inert — stays TAKEN, and every frozen display id stays USED, so a renamed product's key is
   // never minted for another product and its id is never handed to a new one (D1 ruling condition 1).
@@ -168,7 +168,7 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
 
   // 1D add-product B (rev 6): required-choice GROUPS — validated as one unit and their derived fields set, BEFORE allocation
   // (a variant's key derives from its full name). Refused for every brand while the authoring switch is off.
-  const group = prepareGroups(source, fresh, { authoring, fieldProblem });
+  const group = prepareGroups(source, fresh, { authoring, fieldProblem, choiceRefs: prepareExisting ? prepareExisting(source, { fieldProblem }) : null });   // S3: options new under an EXISTING dish are prepared by the injected choice-compare.prepareExistingGroups (choiceEdit ON)
 
   // Allocate.
   const numericIds = [];
@@ -213,7 +213,7 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
     allocatedNow.push(key);
   }
   // 1D add-product B (§0b.2): the DISPLAY-id namespace, rewritten atomically and separately from the pricing keys below.
-  if (group.units.length) rewriteGroupRefs(source, refToId);
+  if (group.units.length || (prepareExisting && isObj(source.structure) && isObj(source.structure.variant_items))) rewriteGroupRefs(source, refToId);   // S3: options new under an existing dish too
 
   // item_order: every temporary reference appears exactly once and becomes its key.
   const order = (source.structure && Array.isArray(source.structure.item_order)) ? source.structure.item_order : null;
@@ -316,10 +316,10 @@ function prospectiveAdditionNames(source) {
    holds and the field. Off the authoring switch, any group in an edit is refused for every brand. */
 const isGroupVariant = (item) => isObj(item) && isObj(item.display) && (own(item.display, 'variantOf') || own(item.display, 'choice'));
 
-function prepareGroups(source, fresh, { authoring, fieldProblem }) {
+function prepareGroups(source, fresh, { authoring, fieldProblem, choiceRefs = null }) {
   const vi = isObj(source.structure) && isObj(source.structure.variant_items) ? source.structure.variant_items : null;
   const tmpLaunchers = vi ? Object.keys(vi).filter((k) => k.startsWith('tmp:')) : [];
-  const freshVariants = fresh.map(({ item }) => item).filter(isGroupVariant);
+  const freshVariants = fresh.map(({ item }) => item).filter((v) => isGroupVariant(v) && !(choiceRefs && choiceRefs.has(v.ref)));   // S3: those prepared by choice-compare are not a new group's
   if (!tmpLaunchers.length && !freshVariants.length) return { units: [] };
   if (!authoring) {
     const ref = (freshVariants[0] && freshVariants[0].ref) || tmpLaunchers[0];

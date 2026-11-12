@@ -33,7 +33,7 @@ function saveDb(rid) {
   const doc = (path) => ({
     get: async () => {
       if (path === `restaurants/${rid}/meta/source`) { const frozen = clone(state.source.data); return { exists: true, data: () => frozen, updateTime: state.source.updateTime }; }
-      if (path === `restaurants/${rid}/meta/active_version`) return { exists: true, data: () => ({ version: ACTIVE }) };
+      if (path === `restaurants/${rid}/meta/active_version`) return { exists: true, data: () => ({ version: ACTIVE, generation: 0 }) };
       return { exists: false, data: () => ({}) };
     },
     set: async (data) => { state.source = { data, updateTime: T1 }; return { writeTime: T1 }; },
@@ -42,13 +42,15 @@ function saveDb(rid) {
       state.source = { data, updateTime: T1 }; return { writeTime: T1 };
     },
   });
-  return { state, collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }) };
+  // a new option moves the display-id high-water mark: the save commits the draft and the mark in ONE batch (each conditional)
+  const batch = () => { const ops = []; return { update: (r, data, pre) => ops.push(() => r.update(data, pre)), create: (r, data) => ops.push(async () => { state.hwm = data; }), commit: async () => { const out = []; for (const op of ops) out.push(await op()); return out; } }; };
+  return { state, batch, collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }) };
 }
 const addProductOf = (rid) => ({ readKeyMode: async () => (rid === 'la_musa' ? 'id' : 'name'), hwmRef: () => ({ path: null, get: async () => ({ exists: false, data: () => undefined }), set: async () => {} }), registryKeysTaken: async () => new Set(), syncKds: async () => ({ pending: false, written: false, reason: 'superseded' }), readReservedKeys: async () => require('./reserved-keys').reservedKeySet(undefined) });
 const save = (rid, source, deletedIds) => {
   const db = saveDb(rid);
   const src = deletedIds ? { ...source, deleted_ids: { ids: deletedIds } } : source;
-  return editCatalogCore({ db, authorize: owner, readActiveBuilt: liveRead(rid), addProduct: addProductOf(rid) }, { restaurantId: rid, source: src, baseSourceUpdateTime: T0 }, {}).then((r) => ({ r, db }));
+  return editCatalogCore({ db, authorize: owner, readActiveBuilt: liveRead(rid), addProduct: addProductOf(rid) }, { restaurantId: rid, source: src, baseSourceUpdateTime: T0, ...(deletedIds ? { deleted_ids_loaded_base: { version: ACTIVE, generation: 0 } } : {}) }, {}).then((r) => ({ r, db }));
 };
 const apply = (src, op) => CT.apply(src, op).source;
 const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 220)}`;
