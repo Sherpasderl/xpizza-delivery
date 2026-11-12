@@ -95,6 +95,8 @@ const releases = (w) => Object.values(w.db.getAt(`${RES}/ledger`) || {}).filter(
       await hostedReserve(w);
       if (label === 'cancelled') { const c = await C.cancelSdkOrder(w.deps, { orderId: X, kind: 'cancel' }); assert.ok(w.db.getAt(`orders/${X}/payment_cancel/kind`) === 'cancel', `${L}: premise — the REAL cancel (${JSON.stringify(c)})`); }
       w.at(T0 + 60 * MIN);
+      const cr = await RR.sweepConsumeRecovery(w.db, { now: w.now() });
+      assert.ok(state(w) === 'reserved' && cr.consumed.length === 0, `${L}: ${label}: consume-recovery NEVER consumes a non-adopted SDK hold (${JSON.stringify(cr)})`);
       const out = await sweep(w);
       assert.ok(state(w) === 'released' && releases(w) === 1 && out.released.length === 1, `${L}: ${label} SDK order + an expired non-adopted hold ⇒ released once (${JSON.stringify(out)})`);
       await sweep(w);
