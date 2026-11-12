@@ -86,6 +86,26 @@ const HUNKS = Object.freeze([
   "was": "  return { items, extras, structure, ...(opts.keyMode == null ? {} : { key_mode: opts.keyMode }), ...(opts.frozenKeys == null ? {} : { frozen_keys: opts.frozenKeys }) };\n"
  },
  {
+  "file": "catalog/identity-overlay.js",
+  "now": "async function applyIdentityToServedBody(db, rid, body, { timeoutMs = OVERLAY_TIMEOUT_MS, keyById = null, extraKeyById = null } = {}) {\n",
+  "was": "async function applyIdentityToServedBody(db, rid, body, { timeoutMs = OVERLAY_TIMEOUT_MS, keyById = null } = {}) {\n"
+ },
+ {
+  "file": "catalog/identity-overlay.js",
+  "now": "    const extraKeys = extras ? extras.map((r) => keyOfServed(rid, r, extraKeyById)).filter(Boolean) : [];   // S2b §2.5: by the ACTUAL key\n",
+  "was": "    const extraKeys = extras ? extras.map((r) => keyOf(rid, r)).filter(Boolean) : [];\n"
+ },
+ {
+  "file": "catalog/identity-overlay.js",
+  "now": "    if (extras) next.extras = decorate(extras, rid, extraMap, 'extra_id', extraKeyById);\n",
+  "was": "    if (extras) next.extras = decorate(extras, rid, extraMap, 'extra_id');\n"
+ },
+ {
+  "file": "catalog/public-menu.js",
+  "now": "  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, require('./extra-key-overlay').withServedExtraKeys(require('./identity-overlay').withServedItemKeys(restaurantId, body, require('./identity-overlay').servedKeyMap(menu)), require('./extra-key-overlay').servedExtraKeyMap(menu)), { keyById: require('./identity-overlay').servedKeyMap(menu), extraKeyById: require('./extra-key-overlay').servedExtraKeyMap(menu) });   // S1d: keyed by display.id; item_key on the endpoint body only\n",
+  "was": "  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, require('./identity-overlay').withServedItemKeys(restaurantId, body, require('./identity-overlay').servedKeyMap(menu)), { keyById: require('./identity-overlay').servedKeyMap(menu) });   // S1d: keyed by display.id; item_key on the endpoint body only\n"
+ },
+ {
   "file": "catalog/publish-edited-handler.js",
   "now": "      source_sha: sourceSha || 'portal-edit', ...(draftBuilt.key_mode == null ? {} : { key_mode: draftBuilt.key_mode }), ...(draftBuilt.frozen_keys == null ? {} : { frozen_keys: draftBuilt.frozen_keys }), ...(draftBuilt.frozen_extra_keys == null ? {} : { frozen_extra_keys: draftBuilt.frozen_extra_keys }),   // S0 + S1a: the draft's server-owned mode, snapshotted into the version\n",
   "was": "      source_sha: sourceSha || 'portal-edit', ...(draftBuilt.key_mode == null ? {} : { key_mode: draftBuilt.key_mode }), ...(draftBuilt.frozen_keys == null ? {} : { frozen_keys: draftBuilt.frozen_keys }),   // S0 + S1a: the draft's server-owned mode, snapshotted into the version\n"

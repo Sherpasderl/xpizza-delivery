@@ -2567,6 +2567,7 @@
   "catalog/exposure-transitions.js",
   "catalog/extra-identity.js",
   "catalog/extra-key-intake.js",
+  "catalog/extra-key-overlay.js",
   "catalog/extra-labels.js",
   "catalog/extras-allocate.js",
   "catalog/extras-consequences.js",
@@ -3205,6 +3206,10 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/extra-key-overlay.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/extra-labels.js": {
    "pins": [],
    "lifts": []
@@ -3392,6 +3397,7 @@
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js",
       "tools/s1d-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     },
@@ -3401,6 +3407,7 @@
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js",
       "tools/s1d-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     },
@@ -3408,6 +3415,7 @@
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
       "tools/s1d-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     }

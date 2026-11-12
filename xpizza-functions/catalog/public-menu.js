@@ -252,7 +252,7 @@ async function buildPublicMenu(db, rid, deps = {}) {
      exactly the menu served today, because in D1 nothing reads them. */
   // PLAN 4 r3 §4: the reconciler compares the DEPLOYED bundle (baked, overlay-free) with the published menu read with
   // `overlayIdentity: false` — the same body minus the overlay. Every other caller (the endpoint) gets the overlay, unchanged.
-  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, require('./identity-overlay').withServedItemKeys(restaurantId, body, require('./identity-overlay').servedKeyMap(menu)), { keyById: require('./identity-overlay').servedKeyMap(menu) });   // S1d: keyed by display.id; item_key on the endpoint body only
+  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, require('./extra-key-overlay').withServedExtraKeys(require('./identity-overlay').withServedItemKeys(restaurantId, body, require('./identity-overlay').servedKeyMap(menu)), require('./extra-key-overlay').servedExtraKeyMap(menu)), { keyById: require('./identity-overlay').servedKeyMap(menu), extraKeyById: require('./extra-key-overlay').servedExtraKeyMap(menu) });   // S1d: keyed by display.id; item_key on the endpoint body only
   body = enriched.body;
   if (!enriched.applied) {
     // A diagnostic, never a decision — no caller branches on it and no response changes shape.
