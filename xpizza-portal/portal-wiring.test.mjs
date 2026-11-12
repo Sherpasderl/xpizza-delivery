@@ -1645,6 +1645,16 @@ test('🔴 every reference to `state` in app.js reduces to a proven-safe shape',
   assert.deepStrictEqual(bad, [], `🔴 app.js reaches state in ways the analysis cannot prove safe:\n  ${bad.join('\n  ')}`);
 });
 
+test('🔴 S2 (advisor 11-12): «version» / «generation» are PRIMITIVE leaves only — an object reached through them is still flagged', () => {
+  const mod = (body) => `export const state = { deletionBase: null };\nfunction f() {\n  ${body}\n}\n`;
+  const flagged = (body) => stateViolations(mod(body), 'probe.js');
+  assert.deepStrictEqual(flagged('return { version: state.deletionBase.version, generation: state.deletionBase.generation };'), [], 'the two primitive leaves may be copied');
+  assert.ok(flagged('return { base: state.deletionBase };').some((v) => /escapes/.test(v)), 'the baseline OBJECT placed into a literal is flagged');
+  assert.ok(flagged('return { v: state.deletionBase.version.inner };').some((v) => /escapes/.test(v)), 'a member BENEATH «version» (an object there) is flagged');
+  assert.ok(flagged('return { g: state.deletionBase.generation.parts };').some((v) => /escapes/.test(v)), 'a member beneath «generation» is flagged');
+  assert.ok(flagged('const b = state.deletionBase; return b;').length > 0, 'handing the baseline object out is flagged');
+});
+
 test('🔴 the AST guard rejects constructs nobody told it about', () => {
   const mod = (body) => `import { setItemPrice, draftSource } from './editor.js';\nexport const state = { review: null, groups: [], publishGen: 0 };\nfunction f(obj) {\n  ${body}\n}\n`;   // the imports make a RESOLVED consumer available, so a local of the same name shadows it
   const REJECTED = [
