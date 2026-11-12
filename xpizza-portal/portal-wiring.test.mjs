@@ -11,7 +11,7 @@ import assert from 'node:assert';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { stateViolations, writerFunctions } from './wiring-ast.mjs';
+import { stateViolations, writerFunctions, MUTATING_IMPORTS } from './wiring-ast.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const OPS_TOAST_OK = new Set(['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'team.js', 'pubreq.js', 'equipos.js']);   // PORTAL-UI 1a: success toasts only (see the write-path rule)
@@ -1930,36 +1930,59 @@ test('🔴 RULING A (narrowed at S2): only mergeDeletionClaim may name the remov
 // … }) and call them later, so the listener census never sees them. Every such handler that writes (the tree's writer set) must be
 // bound() — generation-checked like a listener — or a stale page's control writes into the next world. A mutant unbinding
 // `create: bound(x3Create)` survived all 37 wiring tests before this.
-test('🔴 a writer passed as a handler-object callback (a render call’s `on`) is bound()', async () => {
+// ruled exceptions, by handler key + writer (never by line): NOT a merchant's control on a page that can go stale
+const CALLBACK_ALLOW = {
+  'changed:photoChanged': 'DISH PHOTOS B — the uploader\u2019s own progress / landing callback (not a control): repaints from the draft; an ended world aborts its uploads (endPhotoWorld)',
+  'onImgError:onPhotoImgError': 'DISH PHOTOS B — an <img> error repaint; previews merge only behind the tenant-world check (refreshPreviews)',
+  'onOpen:openDrawer': 'opening a product\u2019s drawer is view state (state.drawerKey); openDrawer asks before leaving unsaved edits and writes no draft',
+};
+// Every object-literal handler whose value is a writer (or a function that calls one) must be ITS OWN bound(…) — Codex S2 UI r2 P2-10:
+// an enclosing bound() exempts nothing. `remove: bound(() => openRemoveConfirm({ onConfirm: … }))` binds OPENING the confirm; the
+// confirm calls onConfirm later, on its own, so onConfirm needs its own wrapper. A writer call inside a NESTED bound() is that
+// wrapper's, not the enclosing function's.
+async function unboundHandouts(src) {
   const acorn = await import('acorn');
-  const src = readFileSync(join(DIR, 'app.js'), 'utf8');
-  const writers = new Set(writerFunctions(src).names);
-  // ruled exceptions, by handler key + writer (never by line): NOT a merchant's control on a page that can go stale
-  const CALLBACK_ALLOW = {
-    'changed:photoChanged': 'DISH PHOTOS B — the uploader\u2019s own progress / landing callback (not a control): repaints from the draft; an ended world aborts its uploads (endPhotoWorld)',
-    'onImgError:onPhotoImgError': 'DISH PHOTOS B — an <img> error repaint; previews merge only behind the tenant-world check (refreshPreviews)',
-    'onOpen:openDrawer': 'opening a product\u2019s drawer is view state (state.drawerKey); openDrawer asks before leaving unsaved edits and writes no draft',
-  };
+  // the tree's writers AND the imported mutators themselves (a handler may call applyExposureOps directly)
+  const writers = new Set([...writerFunctions(src).names, ...MUTATING_IMPORTS]);
   const ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module', locations: true });
-  const callsWriter = (n) => { let hit = null; const go = (x) => { if (!x || typeof x.type !== 'string' || hit) return;
+  const isBound = (x) => x && x.type === 'CallExpression' && x.callee.type === 'Identifier' && x.callee.name === 'bound';
+  const callsWriter = (n) => { let hit = null; const go = (x) => { if (!x || typeof x.type !== 'string' || hit || isBound(x)) return;
     if (x.type === 'CallExpression' && x.callee.type === 'Identifier' && writers.has(x.callee.name)) { hit = x.callee.name; return; }
     for (const k of Object.keys(x)) { const v = x[k]; if (Array.isArray(v)) v.forEach(go); else if (v && typeof v.type === 'string' && k !== 'loc') go(v); } }; go(n); return hit; };
   const bad = []; let seen = 0; const used = new Set();
-  const walk = (n, inBound) => {
+  const walk = (n) => {
     if (!n || typeof n.type !== 'string') return;
-    if (n.type === 'CallExpression' && n.callee.type === 'Identifier' && n.callee.name === 'bound') { n.arguments.forEach((a) => walk(a, true)); return; }
-    if (n.type === 'Property' && !n.computed && !inBound) {
-      const v = n.value;
-      const w = v.type === 'Identifier' && writers.has(v.name) ? v.name
+    if (n.type === 'Property' && !n.computed) {
+      const v = n.value, key = n.key.name || n.key.value;
+      const w = isBound(v) ? null : v.type === 'Identifier' && writers.has(v.name) ? v.name
         : (v.type === 'ArrowFunctionExpression' || v.type === 'FunctionExpression') ? callsWriter(v.body) : null;
-      if (w && Object.prototype.hasOwnProperty.call(CALLBACK_ALLOW, `${n.key.name || n.key.value}:${w}`)) { seen++; used.add(`${n.key.name || n.key.value}:${w}`); }
-      else if (w) { seen++; bad.push(`app.js:${n.loc.start.line} — \`${n.key.name || n.key.value}\` hands out ${w} unbound`); }
-      else if (v.type === 'Identifier' || v.type === 'ArrowFunctionExpression') seen++;
+      if (w && Object.prototype.hasOwnProperty.call(CALLBACK_ALLOW, `${key}:${w}`)) { seen++; used.add(`${key}:${w}`); }
+      else if (w) { seen++; bad.push(`app.js:${n.loc.start.line} — \`${key}\` hands out ${w} unbound`); }
+      else if (isBound(v) || v.type === 'Identifier' || v.type === 'ArrowFunctionExpression') seen++;
     }
-    for (const k of Object.keys(n)) { if (k === 'loc') continue; const v = n[k]; if (Array.isArray(v)) v.forEach((x) => walk(x, inBound)); else if (v && typeof v.type === 'string') walk(v, inBound); }
+    for (const k of Object.keys(n)) { if (k === 'loc') continue; const v = n[k]; if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v.type === 'string') walk(v); }
   };
-  walk(ast, false);
+  walk(ast);
+  return { bad, seen, used };
+}
+test('🔴 a writer passed as a handler-object callback (a render call’s `on`) is bound()', async () => {
+  const { bad, seen, used } = await unboundHandouts(readFileSync(join(DIR, 'app.js'), 'utf8'));
   assert.ok(seen > 20, `non-vacuity: the scan must see the handler objects (${seen})`);
   assert.deepStrictEqual(bad, [], `writers handed out as callbacks without bound():\n  ${bad.join('\n  ')}`);
   assert.deepStrictEqual([...used].sort(), Object.keys(CALLBACK_ALLOW).sort(), 'every ruled exception is still in use (no stale ruling)');
+});
+test('🔴 Codex S2 UI r2 P2-10 — an enclosing bound() exempts nothing: a NESTED handed-out callback needs its own wrapper', async () => {
+  const src = readFileSync(join(DIR, 'app.js'), 'utf8');
+  // Codex's mutant: only the inner bound() of the X2 confirm removed (the outer `remove: bound(…)` stays)
+  const INNER = '        onConfirm: bound(() => {\n          const r = applyExposureOps(';
+  assert.equal(src.split(INNER).length, 2, 'premise: the X2 confirm hands out onConfirm through its own bound()');
+  const m = src.replace(INNER, '        onConfirm: (() => {\n          const r = applyExposureOps(');
+  const { bad } = await unboundHandouts(m);
+  assert.ok(bad.some((b) => b.includes('`onConfirm` hands out applyExposureOps unbound')), `the nested onConfirm, unbound inside a bound() handler, is named:\n  ${bad.join('\n  ')}`);
+  // the converse: only the OUTER wrapper removed — the write sits inside onConfirm's own bound(), so `remove` (which only opens the
+  // confirm) is not blamed for it; each callback answers for its own wrapper
+  const OUTER = '    remove: bound((row, trash) => {';
+  assert.equal(src.split(OUTER).length, 2, 'premise: the X2 trash handler');
+  const { bad: outer } = await unboundHandouts(src.replace(OUTER, '    remove: ((row, trash) => {'));
+  assert.ok(!outer.some((b) => b.includes('`remove` hands out applyExposureOps')), `a writer inside a NESTED bound() belongs to that wrapper:\n  ${outer.join('\n  ')}`);
 });
