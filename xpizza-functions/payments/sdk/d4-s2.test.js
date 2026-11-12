@@ -155,6 +155,65 @@ const rec = (o = {}) => ({ flow: 'sdk_auth_v1', phase: 'open', ttl_at: T0 + 15 *
     assert.deepStrictEqual(await A({}, 'ord_guest'), { ok: false, status: 401, error: 'guest_auth_required' }, `${L}: no credential ⇒ 401`);
     assert.deepStrictEqual(await A({ ticket: 'ct_good' }, 'no_such_order'), { ok: false, status: 401, error: 'guest_auth_required' }, `${L}: a ticket for an absent order ⇒ the same 401`);
   });
+
+  // ── placeSdkStatus (§4 + the advisor's attempt_unknown ruling 11-12) ──
+  const { makeAdapter } = require('./psp-adapter');
+  const { makeFakePsp } = require('./fake-adapter');
+  const ATT = 'att_status_cell_0001';
+  const statusWorld = (script = {}, ord = {}) => {
+    let t = T0;
+    const db = makeHonestDb({ orders: { [OID]: order({ customer_uid: 'uid_A', customer_name: 'Ana Pérez', ...ord }) } }, { now: () => t });
+    const fake = makeFakePsp(script);
+    const golive = [];
+    const deps = { db, psp: makeAdapter(fake.impl), clock: () => t, voidEligible: () => false, ppNamespace: 'sandbox', verifyIdToken: async (x) => (x === 'idt_A' ? { uid: 'uid_A' } : x === 'idt_B' ? { uid: 'uid_B' } : (() => { throw new Error('bad'); })()), goLive: async (dp, id) => { golive.push(id); } };
+    return { db, fake, deps, golive, tick: (ms) => { t += ms; } };
+  };
+  const STATUS = (w, q, h = { authorization: 'Bearer idt_A' }) => require('./status-endpoint').placeSdkStatusCore(w.deps, { headers: h, query: q });
+  await cell('SDK-D4-STATUS-ATTEMPT-UNKNOWN', async (L) => {
+    const w = statusWorld();
+    const r = await STATUS(w, { order_id: OID });
+    assert.deepStrictEqual(r, { status: 409, body: { error: 'attempt_unknown' } }, `${L}: no attempt AND no PSP-call record ⇒ 409 attempt_unknown, exactly {error} (got ${JSON.stringify(r)})`);
+    assert.ok(w.db.getAt(`payment_sdk_due/${OID}`) != null, `${L}: a status read re-enrols the pending order (W1)`);
+  });
+  await cell('SDK-D4-STATUS-RACE-NEVER-UNKNOWN', async (L) => {
+    let release; const gate = new Promise((r) => { release = r; });
+    const w = statusWorld({ authorize: [{ pause: gate }] });
+    const placing = require('./coordinator').placeOriginal(w.deps, { orderId: OID, attempt_id: ATT, token: 'T-1', amount_cents: 10000 });
+    await new Promise((r) => setTimeout(r, 20));
+    const r = await STATUS(w, { order_id: OID });
+    release(); await placing;
+    assert.deepStrictEqual([r.status, r.body.outcome, r.body.attempt_id], [200, 'bank_pending', ATT], `${L}: a claimed attempt in flight ⇒ bank_pending with its id, never attempt_unknown (got ${JSON.stringify(r)})`);
+    assert.strictEqual(PC.readPlacement(r.body).outcome, 'bank_pending', `${L}: the client reads it`);
+  });
+  await cell('SDK-D4-JOURNAL-BEFORE-CALL', async (L) => {
+    // the precondition attempt_unknown relies on: the attempt (and its op) are durable BEFORE the adapter is invoked
+    let seenAtCall = null; let crash;
+    const crashed = new Promise((r) => { crash = r; });
+    const w = statusWorld();
+    w.fake.impl.pspAuthorize = async () => { seenAtCall = w.db.getAt(`payment_sdk/${OID}`); crash(); return new Promise(() => {}); };   // the process dies inside the call
+    require('./coordinator').placeOriginal(w.deps, { orderId: OID, attempt_id: ATT, token: 'T-1', amount_cents: 10000 });
+    await crashed;
+    assert.ok(seenAtCall && seenAtCall.attempts && seenAtCall.attempts[ATT] && Object.values(seenAtCall.ops || {}).some((o) => o.action === 'auth'), `${L}: at the adapter call the attempt and its op are already journaled`);
+    const r = await STATUS(w, { order_id: OID });
+    assert.deepStrictEqual([r.status, r.body.outcome], [200, 'bank_pending'], `${L}: a crash between journal and call ⇒ bank_pending, never attempt_unknown (got ${JSON.stringify(r)})`);
+  });
+  await cell('SDK-D4-STATUS-AUTH', async (L) => {
+    const w = statusWorld();
+    assert.deepStrictEqual(await STATUS(w, { order_id: OID }, { authorization: 'Bearer idt_B' }), await STATUS(w, { order_id: 'no_such_order' }, { authorization: 'Bearer idt_B' }), `${L}: foreign ≡ absent`);
+    assert.strictEqual((await STATUS(w, { order_id: OID }, { authorization: 'Bearer junk' })).status, 401, `${L}: a bad token ⇒ 401`);
+    assert.strictEqual((await STATUS(w, { order_id: 'bad id!' })).status, 400, `${L}: a malformed order_id ⇒ 400`);
+    const w2 = statusWorld({}, { payment_flow: undefined });
+    assert.strictEqual((await STATUS(w2, { order_id: OID })).status, 404, `${L}: a non-SDK order ⇒ the same 404`);
+  });
+  await cell('SDK-D4-STATUS-DECIDES', async (L) => {
+    const w = statusWorld();
+    // an approved original found by reconciliation, never placed: the status read runs decidePlacement
+    await require('./record').createRecord(w.db, OID, { flow: 'sdk_auth_v1', phase: 'open', committed_revision: 0, fulfillment_total_cents: 10000, created_at: T0, ttl_at: T0 + 15 * 60 * 1000 });
+    await require('./record').casRecord(w.db, OID, (r) => { r.legs = { L1: { kind: 'original', amount_cents: 10000, role: 'committed', state: 'approved', pp_uuid: 'P-1', attempt_id: ATT, created_at: T0, hold_expires_at: T0 + 1e9 } }; r.attempts = { [ATT]: att('L1', T0) }; r.ops = op('L1', 1, { kind: 'approved' }); return r; });
+    const r = await STATUS(w, { order_id: OID });
+    assert.ok(w.db.getAt(`orders/${OID}/payment_placed/leg_id`) === 'L1' && w.golive.length === 1, `${L}: the status read placed it and drove go-live`);
+    assert.deepStrictEqual([r.status, r.body.outcome, r.body.attempt_id], [200, 'bank_pending', ATT], `${L}: placed, not yet live (no tracking token) ⇒ bank_pending with the winning attempt (got ${JSON.stringify(r)})`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nd4-s2: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
