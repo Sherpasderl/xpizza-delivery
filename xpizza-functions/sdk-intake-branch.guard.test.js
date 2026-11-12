@@ -4,8 +4,9 @@
 //   · the ONLY write to res.locals.sdkMode is the literal `= true` inside placeSdkApp's middleware, which reads nothing from req;
 //   · exports.placeSdkOrder is bound to placeSdkApp, exports.chargeOnlineOrder to chargeOnlineApp;
 //   · in the handler: ONE read (`const SDK_MODE = res.locals.sdkMode === true`), no alias / destructuring / computed access of
-//     res.locals, and SDK_MODE is referenced only as the test of exactly FOUR if statements, at their pinned positions:
-//     B1 before the intake-key compare (process.env.MAKE_SECRET); B2 before BR.probeBoundReuse; B3 whose ELSE holds exactly the
+//     res.locals, and SDK_MODE is referenced only as the test of exactly FIVE if statements, at their pinned positions:
+//     B1 before the intake-key compare (process.env.MAKE_SECRET); B2 before BR.probeBoundReuse; B2b (D4 post-merge, asm7 gate P2) the
+//     stored-order delivery admission, before the pre-bookkeeping check (so before every stamp / prune / rate write); B3 whose ELSE holds exactly the
 //     hosted-provider setup (resolvePixelPayConfig, resolveReturnBaseForCharge, PE.refusesFresh); B4 before acquireHostedAttempt,
 //     its last statement a return;
 //   · the runGate hoist: `const runGate = (recordedTotalCents, releaseHold) => …` in the handler, hosted passing releaseHoldIfOwned.
@@ -73,9 +74,9 @@ assert.strictEqual(all(AST, (x) => x.type === 'AssignmentExpression' && x.right 
 ok('ONE read of the mode; no alias, destructuring or computed access of res.locals');
 const refs = all(H.body, (x, p) => x.type === 'Identifier' && x.name === 'SDK_MODE' && !(p && p.type === 'VariableDeclarator' && p.id === x));
 const ifs = all(H.body, (x) => x.type === 'IfStatement' && x.test.type === 'Identifier' && x.test.name === 'SDK_MODE').map((i) => i.node).sort((a, b) => a.start - b.start);
-assert.ok(refs.length === 4 && ifs.length === 4 && refs.every((r) => ifs.some((i) => i.test === r.node)), `SIB-BRANCHES: SDK_MODE is referenced ONLY as the test of exactly FOUR if statements (refs ${refs.length}, ifs ${ifs.length})`);
+assert.ok(refs.length === 5 && ifs.length === 5 && refs.every((r) => ifs.some((i) => i.test === r.node)), `SIB-BRANCHES: SDK_MODE is referenced ONLY as the test of exactly FIVE if statements (refs ${refs.length}, ifs ${ifs.length})`);
 const at = (re) => { const m = re.exec(SRC.slice(H.start, H.end)); assert.ok(m, `SIB-POSITIONS: anchor ${re} present in the handler`); return H.start + m.index; };
-const [b1, b2, b3, b4] = ifs;
+const [b1, b2, b2b, b3, b4] = ifs;
 assert.ok(b1.start < at(/process\.env\.MAKE_SECRET/), 'SIB-POSITIONS: B1 before the intake-key compare');
 assert.ok(b2.start < at(/BR\.probeBoundReuse\(/), 'SIB-POSITIONS: B2 before BR.probeBoundReuse');
 assert.ok(b3.alternate, 'SIB-POSITIONS: B3 has an ELSE (the hosted-provider setup)');
@@ -86,7 +87,8 @@ for (const call of [/resolvePixelPayConfig\(\)/, /resolveReturnBaseForCharge\(/,
 assert.ok(b4.start < at(/acquireHostedAttempt\(db,/), 'SIB-POSITIONS: B4 before acquireHostedAttempt');
 const last = b4.consequent.type === 'BlockStatement' ? b4.consequent.body[b4.consequent.body.length - 1] : b4.consequent;
 assert.ok(last && last.type === 'ReturnStatement', 'SIB-POSITIONS: B4\'s last statement is a return');
-assert.ok(b1.start < b2.start && b2.start < b3.start && b3.start < b4.start, 'SIB-POSITIONS: B1 < B2 < B3 < B4');
+assert.ok(b2b.start < at(/DW\.preBookkeepingRefusal\(/) && b2b.start < at(/checkRateLimit\(/), 'SIB-POSITIONS: B2b before the pre-bookkeeping check and every rate-limit write');
+assert.ok(b1.start < b2.start && b2.start < b2b.start && b2b.start < b3.start && b3.start < b4.start, 'SIB-POSITIONS: B1 < B2 < B2b < B3 < B4');
 // Codex handler r1 P2: the branch CONTENTS (never an empty branch; B3's hosted side is EXACTLY its four statements)
 const body = (st) => (st && st.type === 'BlockStatement' ? st.body : st ? [st] : []);
 const txt = (st) => src(st).replace(/\s+/g, ' ');
@@ -95,12 +97,14 @@ const txt = (st) => src(st).replace(/\s+/g, ' ');
   assert.ok(b1.alternate && /process\.env\.MAKE_SECRET/.test(src(b1.alternate)), 'SIB-B1: the hosted intake-key compare is B1\'s else'); }
 { const c = body(b2.consequent); const t = c.map(txt).join(' ');
   assert.ok(/SDKI\.replay\(sdkDeps,/.test(t) && /SDKI\.admit\(sdkDeps,/.test(t) && /^if \(b2\) return res\.status\(b2\.status\)\.json\(b2\.body\);$/.test(txt(c[c.length - 1])), 'SIB-B2: B2 is the replay lookup then the admit, returning its answer'); }
+{ const c = body(b2b.consequent);
+  assert.ok(!b2b.alternate && c.length === 2 && /^const sa = await require\('\.\/payments\/sdk\/stored-admission'\)\.storedAdmission\(db, orderId, \(o\) => DW\.deliveryResumeRefusal\(db, o, dpP\)\);$/.test(txt(c[0])) && /^if \(sa\.refusal\) return res\.status\(sa\.refusal\.status\)\.json\(sa\.refusal\.body\);$/.test(txt(c[1])), 'SIB-B2b: B2b is exactly the stored admission (Envío\'s guard, the request\'s ONE dpP) and its refusal'); }
 { assert.strictEqual(body(b3.consequent).length, 0, 'SIB-B3: B3\'s SDK side does nothing (it only SKIPS the hosted-provider setup)');
   const a = body(b3.alternate).map(txt);
   assert.ok(a.length === 4 && /^try \{ pp = resolvePixelPayConfig\(\);/.test(a[0]) && /^returnBase = await resolveReturnBaseForCharge\(/.test(a[1]) && /^if \(returnBase\.error\) \{/.test(a[2]) && /^if \(await PE\.refusesFresh\(/.test(a[3]), `SIB-B3: B3\'s hosted side is EXACTLY the four provider statements (got ${a.length})`); }
 { const c = body(b4.consequent);
   assert.ok(c.length === 2 && /^const fin = await require\('\.\/payments\/sdk\/finish'\)\.finishSdk\(/.test(txt(c[0])) && c[1].type === 'ReturnStatement', 'SIB-B4: B4 is exactly the SDK finish + its return'); }
-ok('B1 / B2 / B3 / B4 at their pinned positions; B3 skips exactly the hosted-provider setup; B4 returns');
+ok('B1 / B2 / B2b / B3 / B4 at their pinned positions; B3 skips exactly the hosted-provider setup; B4 returns');
 ok('the branch CONTENTS are pinned (no empty branch; B3\'s hosted side is exactly its four statements)');
 
 // ── the runGate hoist (r7: the release is a parameter; hosted passes releaseHoldIfOwned) ──

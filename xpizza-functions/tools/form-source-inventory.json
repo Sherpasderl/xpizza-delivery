@@ -2642,6 +2642,7 @@
   "payments/sdk/secrets.js",
   "payments/sdk/status-endpoint.js",
   "payments/sdk/status.js",
+  "payments/sdk/stored-admission.js",
   "payments/sdk/subject.js",
   "payments/sdk/sweeper.js",
   "payments/sdk/switch-endpoint.js",
@@ -6570,6 +6571,10 @@
    "lifts": []
   },
   "payments/sdk/status.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/stored-admission.js": {
    "pins": [],
    "lifts": []
   },
