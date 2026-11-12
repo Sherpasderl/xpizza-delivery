@@ -19,6 +19,7 @@ const { rendererContract } = req('./catalog/source-store');
 // the page's classic script: the PORTAL'S OWN copy (tools/sync-client.js), run as the browser runs it — it defines ExtrasEligibility
 import { runInThisContext } from 'node:vm';
 runInThisContext(readFileSync(join(DIR, 'extras-eligibility.js'), 'utf8'));   // once per process, as once per page load
+runInThisContext(readFileSync(join(DIR, 'exposure-transitions.js'), 'utf8'));   // STRUCTURE S2: the writer, the page's next classic script (index.html order)
 const EE = globalThis.ExtrasEligibility;
 const HTML = readFileSync(join(DIR, 'index.html'), 'utf8');
 const RID = 'la_musa';
@@ -1055,4 +1056,154 @@ test('S1 r1 #9 — the required choice\'s helper line is table H\'s, with the di
   assert.equal(line(), 'En el menú cada opción se llama «Pad Thai - Sin Proteína», «… - Pollo»: el nombre se arma solo.');
   p.type(p.fld('Nombre').querySelector('input'), 'Pad Thai Especial');
   assert.equal(line(), 'En el menú cada opción se llama «Pad Thai Especial - Sin Proteína», «… - Pollo»: el nombre se arma solo.');
+});
+
+// ── STRUCTURE S2 — the «Extras» page (PLAN-portal-structure-S2-ui r3 §2 items 1–3; MOCKUP frame X; names TEXT in S2-core) ─────
+const XON = () => editable({ extrasAuthoring: true, extrasCatalog: true });
+const tabs = (p) => p.d.getElementById('prodtabs');
+const tabBtn = (p, label) => [...tabs(p).querySelectorAll('[role=tab]')].find((t) => t.textContent === label);
+const xpage = (p) => p.d.getElementById('xsplit');
+const railRows = (p) => [...xpage(p).querySelectorAll('.rail .railitem')];
+const xrows = (p) => [...xpage(p).querySelectorAll('.detail .irow.mk-xrow')];
+const extrasIn = (src, g) => src.extras.filter((e) => e.display.cat === g);
+
+test('S2 X — switch OFF (extrasCatalog absent): no «Menú / Extras» tabs, no Extras page; today\'s Productos', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  assert.ok(tabs(p).classList.contains('hidden'), 'no tab bar without the server’s extrasCatalog');
+  assert.ok(xpage(p).classList.contains('hidden'), 'no Extras page');
+});
+
+test('S2 X — switch ON: «Menú» selected; «Extras» shows the rail (the ONE order, «en N productos», the count) and the first group\'s detail', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  assert.ok(!tabs(p).classList.contains('hidden'), 'the tab bar shows');
+  assert.equal(tabs(p).querySelector('[role=tablist]').getAttribute('role'), 'tablist');
+  assert.equal(tabBtn(p, 'Menú').getAttribute('aria-selected'), 'true', '«Menú» is the default tab');
+  tabBtn(p, 'Extras').click(); await settle(10);
+  assert.equal(tabBtn(p, 'Extras').getAttribute('aria-selected'), 'true');
+  assert.ok(!xpage(p).classList.contains('hidden') && p.d.querySelector('#viewmenu > .split:not(#xsplit)').classList.contains('hidden'), 'the Extras page replaces the menu split');
+  const src = p.src(); const groups = src.structure.extra_categories;
+  assert.deepEqual(railRows(p).map((r) => r.querySelector('.rtext b').textContent), groups, 'the rail: every group in the ONE order');
+  const r0 = railRows(p)[0];
+  assert.match(r0.querySelector('.rtext span').textContent, /^en \d+ productos?$/, '«en N productos»');
+  assert.equal(r0.querySelector('.rcount').textContent, String(extrasIn(src, groups[0]).length), 'its extras');
+  assert.ok(r0.classList.contains('on'), 'the first group is selected');
+  const head = xpage(p).querySelector('.dhead');
+  assert.equal(head.querySelector('.dtitle').textContent, groups[0]);
+  assert.equal(head.querySelector('.dtitle').getAttribute('contenteditable'), null, 'S2-core: the group name is TEXT (no rename)');
+  assert.match(head.querySelector('.dcount').textContent, /^\d+ extras? · en \d+ productos?$/, '«{n} extras · en {N} productos»');
+  const warn = xpage(p).querySelector('.mk-xwarn');
+  assert.ok(warn && /^Este grupo se usa en \d+ productos — los cambios aplican a todos\.$/.test(warn.textContent.trim()), 'the shared warning (frame X)');
+  assert.equal(xrows(p).length, extrasIn(src, groups[0]).length, 'one row per extra');
+  const x0 = extrasIn(src, groups[0])[0];
+  const row = xrows(p)[0];
+  assert.equal(row.querySelector('.nm').textContent.trim(), x0.display.name);
+  assert.equal(row.querySelector('[contenteditable]'), null, 'S2-core: the extra’s name is TEXT');
+  assert.equal(row.querySelector('.price input').getAttribute('aria-label'), `Precio de ${x0.display.name}`);
+  assert.equal(row.querySelector('button.del').getAttribute('aria-label'), `Quitar ${x0.display.name}`);
+});
+
+test('S2 X — a price typed on the Extras page lands in the draft (the guarded setter); the row is marked «Cambios sin publicar»', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const g = p.src().structure.extra_categories[0];
+  const x0 = extrasIn(p.src(), g)[0];
+  const inp = xrows(p)[0].querySelector('.price input');
+  p.type(inp, String(x0.price + 7)); await settle(10);
+  assert.equal(p.src().extras.find((e) => e.key === x0.key).price, x0.price + 7, 'the price is in the draft');
+  const row = xrows(p)[0];
+  assert.ok(row.querySelector('.price').classList.contains('chg'), 'the changed price is marked');
+  assert.equal(row.querySelector('.tag.mk-ftag').textContent, 'Cambios sin publicar');
+});
+
+test('S2 X — another group in the rail: its detail; back to «Menú» shows the menu again', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const groups = p.src().structure.extra_categories;
+  railRows(p)[1].click(); await settle(10);
+  assert.ok(railRows(p)[1].classList.contains('on'));
+  assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, groups[1]);
+  tabBtn(p, 'Menú').click(); await settle(10);
+  assert.ok(xpage(p).classList.contains('hidden') && !p.d.querySelector('#viewmenu > .split:not(#xsplit)').classList.contains('hidden'), 'the menu is back');
+});
+
+// ── STRUCTURE S2 — X2 the remove confirm (MOCKUP frame X2; plan §2 item 4, §5.2) ──────────────────────────────────────────────
+const x2 = (p) => p.d.querySelector('#xscrim.show .modal');
+async function newExtraOnPage(p, name, price) {
+  // the page's own write path: a keyless extra added through the ONE mutator (the inline «Agregar extra» row lands in its own step)
+  const g = p.src().structure.extra_categories[0];
+  const E = await import('./editor.js');
+  assert.equal(E.applyExposureOps(p.mods.app.state.draft, [{ op: 'extra.add', group: g, ref: 'tmp:x2-new-0001', name, price }], { extrasCatalog: true }).ok, true);
+  tabBtn(p, 'Extras').click(); await settle(10);   // re-selecting the tab repaints from the live draft, as a user's click does
+  return g;
+}
+test('S2 X2 — the trash opens «¿Quitar {extra} de {grupo}?»: focus on «Cancelar», Tab stays inside, Escape cancels and focus returns to the trash', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const g = p.src().structure.extra_categories[0];
+  const x0 = extrasIn(p.src(), g)[0];
+  const trash = xrows(p)[0].querySelector('button.del');
+  trash.click(); await settle(5);
+  const m = x2(p);
+  assert.ok(m, 'the confirm is open');
+  assert.equal(m.querySelector('.mt').textContent, `¿Quitar ${x0.display.name} de ${g}?`);
+  assert.match(m.querySelector('.ms').textContent, /^Extras · en \d+ productos?$/);
+  assert.match(m.querySelector('.eqbody').textContent, /^Desaparece del menú en (los \d+ productos que usan|el producto que usa) este grupo\. Tus pedidos pasados no cambian\.$/);
+  const [cancel, quitar] = [...m.querySelectorAll('.mf button')];
+  assert.deepEqual([cancel.textContent, quitar.textContent, quitar.className], ['Cancelar', 'Quitar', 'btn ghost mk-quiet-danger']);
+  assert.equal(p.d.activeElement, cancel, 'focus on «Cancelar»');
+  quitar.focus();
+  quitar.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  assert.equal(p.d.activeElement, cancel, 'Tab from the last button wraps to the first (focus stays inside)');
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+  assert.equal(x2(p), null, 'Escape closes it');
+  assert.equal(p.d.activeElement && p.d.activeElement.getAttribute('aria-label'), `Quitar ${x0.display.name}`, 'focus returns to the trash');
+  assert.ok(p.src().extras.some((e) => e.key === x0.key), 'nothing written');
+});
+test('S2 X2 — «Quitar» on a NEW (unsaved) extra removes it through the one mutator; nothing is claimed; the row is gone', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  await newExtraOnPage(p, 'Arroz frito', 40);
+  const row = xrows(p).find((r) => r.querySelector('.nm').textContent.startsWith('Arroz frito'));
+  assert.ok(row.querySelector('.tag.new'), 'premise: «Nuevo»');
+  row.querySelector('button.del').click(); await settle(5);
+  [...x2(p).querySelectorAll('.mf button')][1].click(); await settle(10);
+  assert.equal(x2(p), null, 'the confirm closed');
+  assert.ok(!p.src().extras.some((e) => e.ref === 'tmp:x2-new-0001'), 'the new extra is gone from the draft');
+  assert.ok(!xrows(p).some((r) => r.querySelector('.nm').textContent.startsWith('Arroz frito')), 'and from the page');
+  assert.equal(p.src().deleted_ids, undefined, 'a never-published extra claims nothing');
+});
+test('S2 X2 — the LAST extra of a group cannot be removed: its trash is disabled with «Un grupo necesita al menos un extra»', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  // a group of one: created through the one mutator (the writer refuses removing a group's last extra: extras_group_empty)
+  const E = await import('./editor.js');
+  assert.equal(E.applyExposureOps(p.mods.app.state.draft, [{ op: 'group.create', group: 'Uno solo', extras: [{ ref: 'tmp:one-0001', name: 'Único', price: 10 }], attach: { mode: 'none' } }], { extrasCatalog: true }).ok, true);
+  tabBtn(p, 'Extras').click(); await settle(10);   // re-selecting the tab repaints from the live draft, as a user's click does
+  railRows(p).find((r) => r.querySelector('.rtext b').textContent === 'Uno solo').click(); await settle(10);
+  const del = xrows(p)[0].querySelector('button.del');
+  assert.equal(del.disabled, true, 'the last extra’s trash is disabled');
+  assert.equal(del.title, 'Un grupo necesita al menos un extra');
+});
+test('S2 §3.4 — a draft carrying a removal claim (stored by 5f’s REAL persistDeletionClaim) saves WITH the served baseline; without a claim, none', async () => {
+  const { persistDeletionClaim } = req('./catalog/identity-partition');
+  const base = { version: 'v-live', generation: 3 };
+  const { claim } = persistDeletionClaim({ ids: ['xid_rice_white'], live: base });
+  const withClaim = () => { const b = editable({ extrasAuthoring: true, extrasCatalog: true, deletionBase: base }); b.source.deleted_ids = claim; return b; };
+  for (const [read, want] of [[withClaim, base], [() => editable({ extrasAuthoring: true, extrasCatalog: true, deletionBase: base }), undefined]]) {
+    const p = await page({ read, on: { editCatalog: () => okJson({ token: 'ET', updateTime: 'T2', baseActiveVersionId: 'v-live', sourceHash: 'h', diff: { added: [], removed: [], renamed: [], largeChangeSet: [], changed: [] } }) } });
+    await p.signIn();
+    const x = p.src().extras[0];
+    p.mods.app.state.draft.state.extras.find((e) => e.key === x.key).price += 1;   // any edit, so there is something to save
+    p.d.getElementById('review').click(); await settle(80);
+    const save = p.calls.filter((c) => c.fn === 'editCatalog').pop();
+    assert.ok(save, 'premise: the review saved');
+    assert.deepEqual(save.body.deleted_ids_loaded_base, want, want ? 'a claim ⇒ the served baseline rides the save' : 'no claim ⇒ no baseline field');
+  }
 });

@@ -402,7 +402,7 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   assert.deepStrictEqual(exported, [
     'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'applyExposureOps', 'attachRefusal', 'canEditDraft', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
     'commit', 'commitDish', 'commitTo', 'composeDish', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
-    'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'optionGroups', 'optionParentId',
+    'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'mergeDeletionClaim', 'optionGroups', 'optionParentId',
     'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRenames', 'pendingStructure', 'pendingTexts',
     'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
     'setChoiceRecommended', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
@@ -1036,6 +1036,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     //    set ONLY in applyAddProductFacts on the generation-checked settle paths; the server re-judges every save and publish
     'state.extrasAuthoring':     [2, 'guarded', 'STRUCTURE S1 (R5) — the server\u2019s per-product extras switch (getEditableCatalog extrasAuthoring); fail closed (the checklist and «Sin extras» dark, prices as today) until a load sets it'],
     'state.extrasCatalog':       [2, 'guarded', 'advisor Q8 (11-11) — whether the server serves the Extras page (getEditableCatalog extrasCatalog); fail closed (S1\u2019s «Opciones» line) until a load sets it; presentational'],
+    'state.deletionBase':        [2, 'guarded', 'STRUCTURE S2 (§3.4, P-1) — the deletion baseline getEditableCatalog serves (version, generation), set on the load settle path and reset with the edit facts; it only RIDES a save whose draft carries a removal claim (LEDGER R-A clause 3)'],
     'state.textEditEnabled':     [2, 'guarded', 'S4 — whether an existing product\u2019s drawer is the text-edit working copy (getEditableCatalog textEditEnabled); fail closed (today\u2019s drawer) until a load sets it'],
     'state.reservedNames':       [2, 'guarded', 'S4 — the names a rename may not take (server-normalized), for the live C5 line only; advisory — the save and the publish re-judge'],
     'state.savedTexts':          [2, 'guarded', 'S4 — the SAVED draft\u2019s unpublished text edits (pendingTexts), for the row tags and the bar count after a reload; presentational'],
@@ -1295,6 +1296,10 @@ const LISTENERS = {
   // written ONLY by «Guardar» (IE.save → editItem, canEdit + the server's extras switch)
   "ieFoldName::click":            ['bound', [], 'S1 — folds / unfolds one «Opciones» card: view state (opcFolded, per drawer session) and a drawer re-render'],
   "ieFoldChev::click":            ['bound', [], 'S1 — the card\u2019s chevron: the same fold'],
+  "$('tabmenu')::click":          ['view', ['setProdTab'], 'S2 — «Menú»: which page shows (view state), never a write'],
+  "$('tabextras')::click":        ['view', ['setProdTab'], 'S2 — «Extras»: which page shows (view state), never a write'],
+  "$('tabmenu')::keydown":        ['view', ['setProdTab'], 'S2 — ← / → between the two tabs (the tablist pattern); view state only'],
+  "$('tabextras')::keydown":      ['view', ['setProdTab'], 'S2 — ← / → between the two tabs (the tablist pattern); view state only'],
   "ieNoExtras::click":            ['bound', [], 'S1 — «Sin extras», into the working copy (IE.set extrasNone; inert while the server switch is off); the drawer re-lays out'],
   "ieAllExtras::click":           ['bound', [], 'S1 — «Marcar todos» / «Ninguno» for one group, into the working copy (IE.set extraGroupOn: that group\u2019s current keys)'],
   "ieExtraOn::change":            ['bound', [], 'S1 — one extra\u2019s check, into the working copy (IE.set extraOn)'],
@@ -1542,6 +1547,9 @@ const ALLOWED_CONSUMERS = new Set([
   // and editor.js pendingTexts: a pure reader (the draft's text edits against what was loaded — the row tags and the bar)
   'pendingTexts', 'loadedName',
   // (STRUCTURE S1's draftExtrasChanges / extrasOfReview are gone — advisor 11-12: the checklist review lines are the SERVER's)
+  // STRUCTURE S2 — the Extras page's model is a pure READER of the draft; applyExposureOps is the ONE Extras writer (canEditContent-
+  // guarded, all or nothing, the server switch) — the draft is passed in, never kept
+  'extrasPageModel', 'applyExposureOps',
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.
@@ -1866,8 +1874,10 @@ test('🔴 RULING A (narrowed at S2): only mergeDeletionClaim may name the remov
   const planted = (f, extra) => (g) => (g === f ? codeOf(g) + extra : codeOf(g));
   assert.deepStrictEqual(claimHits(planted('app.js', '\nfunction sneaky(s) { s.deleted_ids = []; }\n')), ['app.js'], 'non-vacuity: a claim named in app.js');
   assert.deepStrictEqual(claimHits(planted('editor.js', '\nexport function other(r) { return r.deletedIds; }\n')), ['editor.js'], 'non-vacuity: a SECOND editor function naming the claim');
-  assert.deepStrictEqual(claimHits(planted('editor.js', '\nexport function mergeDeletionClaim(d, ids) {\n  d.state.deleted_ids = ids;\n}\n')), [], 'the one named function may');
-  assert.equal(saveCarriesBase(planted('editor.js', '\nexport function mergeDeletionClaim(d, ids) {\n  d.state.deleted_ids = ids;\n}\n')), false, 'non-vacuity: a merged claim without the baseline on the save');
+  // the REAL mergeDeletionClaim (S2 §3.4) is the one that may; dropping the baseline from the save turns clause 3 red
+  assert.ok(codeOf('editor.js').includes(CLAIM_FN) && !claimHits(codeOf).includes('editor.js'), 'the one named function may');
+  assert.equal(saveCarriesBase((g) => (g === 'api.js' ? codeOf(g).replace(/deleted_ids_loaded_base/g, 'nothing') : codeOf(g))), false, 'non-vacuity: a merged claim without the baseline on the save');
+  assert.equal(saveCarriesBase((g) => (g === 'app.js' ? codeOf(g).replace(/\bloadedBase\b/g, 'x') : codeOf(g))), false, 'non-vacuity: a save call site without the baseline');
   assert.equal(CLAIM.test('body.deleted_ids_loaded_base'), false, 'the baseline field is not the claim');
   assert.ok(JS.length >= 8, `the portal modules were actually read (${JS.length})`);
 });

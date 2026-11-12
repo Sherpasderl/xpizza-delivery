@@ -101,6 +101,8 @@
       <div><h1>Productos</h1><p class="lede" id="menulede">Tu menú, como lo ven tus clientes.</p></div>
       <div class="topact ops hidden" id="menulock"><span class="lock"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Solo lectura · agotados sí</span></div>
     </div>
+    <!-- STRUCTURE S2: «Menú» / «Extras» (MOCKUP frame X) — shown only with the server's extrasCatalog switch -->
+    <div class="bar hidden" id="prodtabs"><div class="tabs" role="tablist" aria-label="Productos"><button class="tab on" type="button" role="tab" aria-selected="true" id="tabmenu">Menú</button><button class="tab" type="button" role="tab" aria-selected="false" id="tabextras">Extras</button></div></div>
     <!-- PLAN-portal-team-invites T-d: the owner's «… envió N cambios para publicar» banner (pubreq.js) -->
     <div class="hidden" id="pubreq"></div>
     <!-- PORTAL-UI 1a: «Agotados ahora» per branch (availability.js) -->
@@ -112,6 +114,13 @@
       <div class="detail" id="detail">
         <div class="empty" id="detailempty"><b>Cargando tu menú…</b>Un momento.</div>
       </div>
+    </div>
+    <!-- STRUCTURE S2: X2, the remove confirm (extras-view.js openRemoveConfirm) -->
+    <div class="scrim" id="xscrim"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="xcf-t" aria-describedby="xcf-d"></div></div>
+    <!-- STRUCTURE S2: the «Extras» page (extras-view.js) — its own rail + detail, in place of the menu's -->
+    <div class="split hidden" id="xsplit">
+      <div class="rail" id="xrail"></div>
+      <div class="detail" id="xdetail"></div>
     </div>
   </main>
 

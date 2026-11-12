@@ -105,11 +105,13 @@ export async function apiFetch(fnName, { rid, body, token, params, assertLive } 
 // what buildRequest does for every call and the server ignores it — but the body is what is read.
 
 // Save the draft and get back the server's diff + the edit token bound to it. Does NOT publish.
-export async function editCatalog({ rid, source, baseSourceUpdateTime, token }) {
+// STRUCTURE S2 (§3.4; LEDGER R-A): `loadedBase` — the deletion baseline getEditableCatalog served — rides as
+// deleted_ids_loaded_base whenever the caller passes one (it does whenever the draft carries a removal claim)
+export async function editCatalog({ rid, source, baseSourceUpdateTime, token, loadedBase = null }) {
   return apiFetch('editCatalog', {
     rid,
     token,
-    body: { restaurantId: rid, source, baseSourceUpdateTime },
+    body: { restaurantId: rid, source, baseSourceUpdateTime, ...(loadedBase ? { deleted_ids_loaded_base: loadedBase } : {}) },
   });
 }
 

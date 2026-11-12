@@ -969,10 +969,10 @@ export function applyExposureOps(draft, ops, { extrasCatalog = false } = {}) {
   if (!canEditContent(draft)) return { ok: false, code: 'not_editable' };
   if (!writer() || typeof writer().apply !== 'function') return { ok: false, code: 'writer_unavailable' };
   if (!Array.isArray(ops) || !ops.length) return { ok: false, code: 'unknown_op' };
-  let cur = draft.state;
-  try { for (const op of ops) cur = writer().apply(cur, op).source; }
+  let cur = draft.state; const results = [];
+  try { for (const op of ops) { const r = writer().apply(cur, op); results.push(r); cur = r.source; } }
   catch (err) { return refusedBy(err); }
-  draft.state = cur;
+  draft.state = mergeDeletionClaim(cur, results);
   return { ok: true };
 }
 // §3.2 — the drawer's ONE composition, for the preview (strict: false — what the copy WOULD save, a move not yet valid included)
@@ -1012,6 +1012,20 @@ export function composeDish(draft, key, edit = {}, ops = [], { reserved = null, 
   }
   if (Object.keys(e).length && !editItem(scratch, key, e, { reserved, extrasAuthoring })) return { ok: false, code: 'invalid' };
   return { ok: true, source: scratch.state };
+}
+// RULING A, narrowed at S2 (LEDGER R-A): the ONE portal function that names the removal claim. It reads the writer's removal output
+// from the op results and writes `deleted_ids` as ONE sorted array — the claim already carried by the source (either stored shape)
+// ∪ the newly removed identities (5f contract §4b). A never-published extra claims nothing.
+// `results === null` asks only whether `src` carries a claim (no write) — the one place that reads it, so the save can send the baseline.
+export function mergeDeletionClaim(src, results) {
+  if (results === null) { const c = src && src.deleted_ids; return Array.isArray(c) ? c.length > 0 : !!(c && typeof c === 'object' && Array.isArray(c.ids) && c.ids.length); }
+  const add = [];
+  for (const r of results) for (const id of (r && Array.isArray(r.deletedIds) ? r.deletedIds : [])) add.push(String(id));
+  if (!add.length) return src;
+  const cur = src.deleted_ids;
+  const have = Array.isArray(cur) ? cur : (cur && typeof cur === 'object' && Array.isArray(cur.ids) ? cur.ids : []);
+  src.deleted_ids = [...new Set([...have.map(String), ...add])].sort();
+  return src;
 }
 // «Guardar» on the drawer: the strict composition, swapped in ONCE (all or nothing).
 export function commitDish(draft, key, edit, ops, opts = {}) {

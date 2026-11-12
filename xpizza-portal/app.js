@@ -77,6 +77,10 @@ function showEmpty(title, detail) {
 import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 // a drawer's top-right close: the approved 32×32 X icon box (aria-label «Cerrar», no text) — ONE builder (ops-dom), shared with photo.js; availability.js's .adwx is the same button + icon('close')
 import { closeIcon } from './ops-dom.js';
+// STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
+import { extrasPageModel } from './extras-logic.js';
+import { renderExtrasPage, openRemoveConfirm, enProductos } from './extras-view.js';
+import { applyExposureOps, mergeDeletionClaim } from './editor.js';
 
 function renderSwitcher() {
   const cur = state.restaurants.find((r) => r.rid === state.currentRid);
@@ -559,6 +563,9 @@ function applyAddProductFacts(data) {
   state.extrasAuthoring = !!(data && data.extrasAuthoring === true);
   // advisor Q8 (11-11): whether the server serves the Extras page (getEditableCatalog extrasCatalog); absent ⇒ OFF — S1's «Opciones» line
   state.extrasCatalog = !!(data && data.extrasCatalog === true);
+  // STRUCTURE S2 (§3.4, P-1): the deletion baseline the save checks a removal claim against — served verbatim, null when unreadable
+  const db0 = data && data.deletionBase;
+  state.deletionBase = db0 && typeof db0 === 'object' && typeof db0.version === 'string' && Number.isInteger(db0.generation) ? { version: db0.version, generation: db0.generation } : null;
   state.reservedNames = state.textEditEnabled && data && Array.isArray(data.reservedNames) ? data.reservedNames.filter((n) => typeof n === 'string') : null;
   state.savedTexts = Array.isArray(data && data.pendingTexts) ? data.pendingTexts.filter((t) => t && typeof t.key === 'string' && Array.isArray(t.fields)) : [];
 }
@@ -1184,7 +1191,60 @@ function cellChanged(changed, k) {
   return !!(g && g.options.some((o) => changed.has(`item::${rowId(o)}`)));
 }
 
+// ── STRUCTURE S2 — «Menú» / «Extras» (PLAN-portal-structure-S2-ui r3 §2 items 1–3; MOCKUP frame X) ─────────────────────────────
+// Which tab and which group are VIEW state (never the draft). The tabs exist only with the server's extrasCatalog switch; without it
+// Productos is today's page exactly.
+let prodTab = 'menu';
+// a source that carries a removal claim must save with the served baseline (LEDGER R-A clause 3; the claim is read only by
+// editor.js mergeDeletionClaim)
+const baseFor = (src) => (mergeDeletionClaim(src, null) && state.deletionBase ? { version: state.deletionBase.version, generation: state.deletionBase.generation } : null);
+let extrasGroup = null;
+function setProdTab(t) { prodTab = t === 'xpage' ? 'xpage' : 'menu'; paint(); }
+function paintProductTabs() {
+  if (!$('prodtabs') || !$('xsplit')) return;   // a page without the S2 markup (and today's tests' trimmed shells): Productos as today
+  const on = state.extrasCatalog === true && !!state.draft;
+  if (!on) prodTab = 'menu';
+  $('prodtabs').classList.toggle('hidden', !on);
+  for (const [id, t] of [['tabmenu', 'menu'], ['tabextras', 'xpage']]) {
+    const b = $(id); const sel = prodTab === t; b.classList.toggle('on', sel); b.setAttribute('aria-selected', sel ? 'true' : 'false');
+  }
+  const menuSplit = $('rail').parentElement;
+  const onXpage = prodTab === 'xpage';
+  menuSplit.classList.toggle('hidden', onXpage);
+  $('xsplit').classList.toggle('hidden', !onXpage);
+  if (!onXpage) return;
+  const model = extrasPageModel(state.draft, { group: extrasGroup });
+  extrasGroup = model.selected;
+  renderExtrasPage($('xrail'), $('xdetail'), model, {
+    select: bound((g) => { extrasGroup = g; paint(); }),
+    // a price on the Extras page: today's guarded setter (a new, keyless extra by its ref); repainted, the caret kept in its field
+    price: bound((id, raw, input) => {
+      const at = input.selectionStart; const k = input.dataset.k;
+      setExtraPrice(state.draft, id, raw);
+      paint(); refreshBar();
+      const back = [...$('xdetail').querySelectorAll('.price input')].find((x) => x.dataset.k === k);
+      if (back) { back.focus(); try { back.setSelectionRange(at, at); } catch (_) { /* not a text field */ } }
+    }),
+    // X2: «¿Quitar {extra} de {grupo}?» — «Quitar» removes it through the ONE mutator (a published extra's identity joins the claim)
+    remove: bound((row, trash) => {
+      const g = model.detail.group, n = model.detail.reach;
+      openRemoveConfirm({ title: `¿Quitar ${row.name} de ${g}?`, sub: `Extras \u00b7 ${enProductos(n || 0)}`,
+        body: n === 1 ? 'Desaparece del menú en el producto que usa este grupo. Tus pedidos pasados no cambian.'
+          : `Desaparece del menú en los ${n || 0} productos que usan este grupo. Tus pedidos pasados no cambian.`,
+        returnTo: trash,
+        onConfirm: bound(() => {
+          const r = applyExposureOps(state.draft, [{ op: 'extra.remove', ...row.id }], { extrasCatalog: state.extrasCatalog === true });
+          paint(); refreshBar();
+          const back = $('xrail').querySelector('.railitem.on'); if (back) back.focus();
+          return r.ok === true;
+        }),
+      });
+    }),
+  }, { canEdit: canEditDraft(state.draft) });
+}
+
 function paint() {
+  paintProductTabs();
   // the held-state mockup (Codex r1): the drawer's hold follows the pending name on EVERY paint — publish, discard and undo all
   // repaint — not only on a drawer render, so it can never outlive the name change it marks
   $('drawer').classList.toggle('namehold', renamesPending());
@@ -1519,6 +1579,7 @@ function resetEditFacts() {
   state.textEditEnabled = false;
   state.extrasAuthoring = false;
   state.extrasCatalog = false;
+  state.deletionBase = null;
   state.reservedNames = null;
   state.savedTexts = [];
   endEditSession();
@@ -2448,6 +2509,7 @@ async function openReviewFlow() {
       source: submitted,
       baseSourceUpdateTime: state.sourceUpdateTime,
       token,
+      loadedBase: baseFor(submitted),   // S2 §3.4
     });
     if (gen !== opGeneration) return;        // auth changed, tenant switched, or a newer review began
     // Everything the publish will need, kept exactly as the server sent it. The ack set is captured
@@ -2783,7 +2845,7 @@ async function sendToOwnerFlow() {
     const submitted = JSON.parse(JSON.stringify(draftSource(state.draft)));
     writeId = beginWrite(lock);
     const rid = state.draftRid;
-    const res = await editCatalog({ rid, source: submitted, baseSourceUpdateTime: state.sourceUpdateTime, token });
+    const res = await editCatalog({ rid, source: submitted, baseSourceUpdateTime: state.sourceUpdateTime, token, loadedBase: baseFor(submitted) });   // S2 §3.4
     if (gen !== opGeneration) return;
     if (res && res.source) {
       adopt(state.draft, res.source);
@@ -3003,3 +3065,18 @@ export const editorCanLeave = () => portalCanReload(portalReloadFacts());
 // PLAN-portal-shell-no-shift (Codex r2 P1): shell.js presents its recovery box after a boot failure / the discovery deadline;
 // the editor's held catalog LOAD belongs to an abandoned world and must not repaint over it — reads only (Codex r3).
 document.addEventListener('portal:abandon', () => { readGeneration += 1; });
+// STRUCTURE S2: the «Menú» / «Extras» tabs — VIEW state only (which page shows), never a write, so not world-bound; ← / → move between
+// them (the tablist pattern)
+const tabKey = (t) => (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  e.preventDefault();
+  const next = t === 'menu' ? 'xpage' : 'menu';
+  setProdTab(next);
+  const nb = $(next === 'menu' ? 'tabmenu' : 'tabextras'); if (nb) nb.focus();
+};
+if ($('tabmenu') && $('tabextras')) {
+  $('tabmenu').addEventListener('click', () => setProdTab('menu'));
+  $('tabextras').addEventListener('click', () => setProdTab('xpage'));
+  $('tabmenu').addEventListener('keydown', tabKey('menu'));
+  $('tabextras').addEventListener('keydown', tabKey('xpage'));
+}

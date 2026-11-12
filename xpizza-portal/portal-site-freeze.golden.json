@@ -34,6 +34,9 @@
   "equipos.js",
   "exposure-transitions.js",
   "extras-eligibility.js",
+  "extras-logic.js",
+  "extras-logic.test.mjs",
+  "extras-view.js",
   "firebase.js",
   "fonts/OFL.txt",
   "fonts/archivo-latin-ext.a999e009fd.woff2",
@@ -131,8 +134,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "4611b286ed1ca64cdb2239b50d6d4ef0a262385bdfcfdcf63d3641cca7b65d1a",
-   "bytes": 12780
+   "sha256": "ac4b2484b5c6114d939805026d6da82641aaa733cbf8ed3e821d49d44ae4149e",
+   "bytes": 13697
   },
   "netlify.toml": {
    "sha256": "6398e8dec6883e51292f9754d59d4eb97a378ac957b9deaffd5a1970fc79b520",
@@ -159,8 +162,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "d300b491b5666dcbc20f8fab95b4becf98ee3ae9baa19f562a3ace093513dc39",
-   "bytes": 121651
+   "sha256": "032bdbe6fc24f6190b1d9597407a0be2e95fd8a9782391ba427e6e85483ecc86",
+   "bytes": 122133
   }
  },
  "diff_aid": {
@@ -1873,6 +1876,12 @@
     ".mk-sub",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-xgone-p",
+    "color",
+    "var(--mute)"
    ],
    [
     "",

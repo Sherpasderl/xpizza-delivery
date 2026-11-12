@@ -632,6 +632,15 @@
      row's wrap (a long change wraps under the name), the plain «now» text */
   .bchip.chg{background:var(--card-2);color:var(--mute);border:1px solid var(--line2)}
   .prow.mk-srow{gap:10px 14px}
+  /* STRUCTURE S2 — the «Extras» page (frame X): the shared warning's inset, a row's wrap, an extra removed in this draft (greyed, its
+     price as text), the X2 backdrop (a click on it cancels) */
+  .mk-xwarn{padding:14px 20px 4px}
+  .mk-xwarn .mgshared{margin:0}
+  .mk-xrow .nm{flex-wrap:wrap;row-gap:3px}
+  .irow.mk-xgone{opacity:.45}
+  .mk-xgone-p{font-variant-numeric:tabular-nums;color:var(--mute);font-weight:650}
+  #xscrim{cursor:pointer}
+  #xscrim .modal{cursor:auto}
   .prow.mk-srow .pmain{flex:1 1 180px}
   .prow.mk-srow .pval{white-space:normal;text-align:right;flex:0 1 auto;max-width:100%;line-height:1.5}
   .prow.mk-srow .pval .arr{white-space:nowrap}

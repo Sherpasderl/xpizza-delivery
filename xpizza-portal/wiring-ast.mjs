@@ -132,6 +132,9 @@ export const ALLOWED_CONSUMERS = new Set([
   // the server returned or the removed / restored states) and its pure readers
   'setPhoto', 'draftPhotos', 'origPhotos', 'pendingPhotos',
   // (STRUCTURE S1's draftExtrasChanges / extrasOfReview are gone — advisor 11-12: the checklist review lines are the SERVER's)
+  // STRUCTURE S2 — the Extras page's model is a pure READER of the draft; applyExposureOps is the ONE Extras writer (canEditContent-
+  // guarded, all or nothing, the server switch) — the draft is passed in, never kept
+  'extrasPageModel', 'applyExposureOps',
 ]);
 // Method calls on a state property, by FULL CHAIN — so a mutating method is permitted on exactly the
 // collection it was ruled for and nowhere else.
@@ -156,6 +159,8 @@ export const PRIMITIVE_PROPS = new Set([
   'currentRid', 'draftRid', 'sourceUpdateTime', 'usesPlatformFactura', 'menuLoading',
   'selectedCat', 'drawerKey', 'uid', 'publishGen', 'reviewLock',
   'editToken', 'acknowledged', 'rid', 'length', 'id', 'name',
+  // STRUCTURE S2 (§3.4): the deletion baseline's two leaves — a version id (string) and a generation (integer) — copied into a save
+  'version', 'generation',
 ]);
 
 // Parent contexts in which a state reference is being READ and cannot escape: the value is consumed to
