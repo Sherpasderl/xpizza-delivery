@@ -1,10 +1,9 @@
 'use strict';
 // D4 S7 (a) (NOTE-sdk-d4-S7-plan.md) — the SDK payment HTTP / trigger wrappers. THIN by design: a wrapper checks the method, hands
 // its core exactly its inputs and answers the core's { status, body }; every decision is in the core. A core that throws answers
-// 500 { error: 'internal' } (logged by name, never the message). makeHandlers(depsOf) is the testable seam; the exports below bind
-// it to productionDeps + the ID-token verifier + the recovery sender (SDK_OTP_SENDER). placeSdkOrder is index.js's (the hosted
+// 500 { error: 'internal' } (logged by name, never the message). makeHandlers(depsOf) is the testable seam; functions.js binds it
+// per handler (PSP deps ONLY for status and switch; plain deps + the SDK_OTP_SENDER sender elsewhere). placeSdkOrder is index.js's (the hosted
 // card handler's SDK branch), not here.
-const { getDatabase } = require('firebase-admin/database');
 
 // the SDK_OTP_SENDER secret: { instance_id, token } as JSON; anything else ⇒ null (the recovery core answers 503)
 function parseSender(raw) {
@@ -34,11 +33,4 @@ function makeHandlers(depsOf) {
   };
 }
 
-// production deps: the coordinator's + the ID-token verifier + the recovery sender (read from the secret at call time)
-function productionEndpointDeps() {
-  const { SDK_OTP_SENDER } = require('./secrets');
-  let sender = null; try { sender = parseSender(SDK_OTP_SENDER.value()); } catch (_) { sender = null; }
-  return { ...require('./deps').productionDeps(getDatabase()), verifyIdToken: (t) => require('firebase-admin/auth').getAuth().verifyIdToken(t), senderConfig: () => sender };
-}
-
-module.exports = { makeHandlers, parseSender, productionEndpointDeps };
+module.exports = { makeHandlers, parseSender };

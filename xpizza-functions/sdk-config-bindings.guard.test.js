@@ -24,8 +24,7 @@ const RECOVERY = ['processSdkRecovery', 'recoverOrderAccess', 'sweepSdkRecovery'
 // the reviewed call sites: file → the call texts it may contain (counted), each serving REACH exports
 const SITES = {
   'index.js': { 'productionDeps(': 2, 'cancelOrderCore(': 2 },                       // B2 + B4 (placeSdkOrder); cancelPaidOrder + the merchant cancel binding
-  'payments/sdk/functions.js': { 'productionDeps(': 2 },                             // sweepSdkPayments, settleSdkOnStatus
-  'payments/sdk/endpoints.js': { 'productionDeps(': 1 },                             // the PSP deps: placeSdkStatus, cancelSdkPending ONLY
+  'payments/sdk/functions.js': { 'productionDeps(': 3 },                             // sweepSdkPayments, settleSdkOnStatus, depsFor (placeSdkStatus + cancelSdkPending ONLY)
   'merchant/merchant-wiring.js': { 'cancelCore()': 1 },                              // merchantReject (the injected cancelOrderCore)
   'cancel-order-core.js': { 'productionDeps(': 1, 'cancelSdkOrder(': 1 },            // its SDK route — reached only through cancelOrderCore (above)
   'payments/sdk/finish.js': { 'cancelSdkOrder(': 1 },                                // inside placeSdkOrder

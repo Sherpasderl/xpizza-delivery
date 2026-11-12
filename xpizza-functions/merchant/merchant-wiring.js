@@ -40,7 +40,7 @@ module.exports = {
   merchantReady: orderAction('ready'),
   merchantHanded: orderAction('handed'),
   // A-R1: synchronous reject → cancel; the invocation awaits the core to completion (codex r1 P1-1), bounded by 120 s.
-  merchantReject: onCall({ region: REGION, timeoutSeconds: 120 },
+  merchantReject: onCall({ region: REGION, timeoutSeconds: 120, ...(B.rejectSecrets().length ? { secrets: B.rejectSecrets() } : {}) },   // D4 row 16: the injected deploy secrets
     (request) => R.runReject(rejectDeps(), request.auth || null, request.data, O.runOrderActionDetailed)),
   merchantOrderState: call(O.orderState),
   merchantSetBusy: call(L.setBusy),

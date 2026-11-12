@@ -2547,6 +2547,7 @@
   "payments/sdk/decline-buckets.js",
   "payments/sdk/deps.js",
   "payments/sdk/display.js",
+  "payments/sdk/endpoints.js",
   "payments/sdk/fake-adapter.js",
   "payments/sdk/finish.js",
   "payments/sdk/fixtures/redact-pixelpay.js",
@@ -6150,6 +6151,10 @@
    "lifts": []
   },
   "payments/sdk/display.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/endpoints.js": {
    "pins": [],
    "lifts": []
   },

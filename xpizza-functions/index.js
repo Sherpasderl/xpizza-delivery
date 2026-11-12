@@ -3104,7 +3104,7 @@ exports.sweepStalePending = onSchedule(
     catch (e) { console.error('sweepStalePending: ledger-repair retry failed', e && e.message); } try { await require('./extra-payment-repair').repairPendingExtraPayments({ db, now }); } catch (e) { console.warn('sweepStalePending: extra-payment repair failed', e && e.message); }
     console.log(`sweepStalePending: manual_flagged=${flagged} left=${left} paid_strand_recovered=${recovered} ledger_healed=${repair.healed} ledger_pending=${repair.pending}`);
   }
-); const SDK_PAY_FUNCTIONS = require('./payments/sdk/functions'); exports.sweepSdkPayments = SDK_PAY_FUNCTIONS.sweepSdkPayments; exports.settleSdkOnStatus = SDK_PAY_FUNCTIONS.settleSdkOnStatus; require('./payments/sdk/deps').setSdkGoLive((db, orderId) => { const { voidOrRefund, client, ...sdkConfirm } = confirmDeps(db); return confirmAndMaterialize(sdkConfirm, { orderId, attemptId: null, now: Date.now(), trackingToken: generateTrackingToken(), sdkGoLive: true }); });
+); const SDK_PAY_FUNCTIONS = require('./payments/sdk/functions'); exports.sweepSdkPayments = SDK_PAY_FUNCTIONS.sweepSdkPayments; exports.settleSdkOnStatus = SDK_PAY_FUNCTIONS.settleSdkOnStatus; for (const k of SDK_PAY_FUNCTIONS.ENDPOINT_EXPORTS) exports[k] = SDK_PAY_FUNCTIONS[k]; require('./payments/sdk/deps').setSdkGoLive((db, orderId) => { const { voidOrRefund, client, ...sdkConfirm } = confirmDeps(db); return confirmAndMaterialize(sdkConfirm, { orderId, attemptId: null, now: Date.now(), trackingToken: generateTrackingToken(), sdkGoLive: true }); });
 
 // ============================================================
 // resetItemAvailability — KDS Phase 2b: end-of-business-day availability auto-reset
@@ -3702,7 +3702,7 @@ exports.unassignOrder = onRequest(
 // pixelpay-confirm.js step 5b), never materializing. Online-only; cash orders use the
 // dispatch app's client cancelOrder (the RTDB rules block client cancel of paid online).
 exports.cancelPaidOrder = onRequest(
-  { region: 'us-central1', cors: true, timeoutSeconds: 60, memory: '256MiB', maxInstances: 5 },
+  { region: 'us-central1', cors: true, timeoutSeconds: 60, memory: '256MiB', maxInstances: 5, secrets: [require('./payments/sdk/secrets').SDK_PP_CONFIG] },   // D4 row 16: cancelOrderCore routes an SDK order to its void
   async (req, res) => {
     if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).json({ error: 'Method Not Allowed' }); }
     const auth = await authorizeDispatcherAction(req);
@@ -7739,6 +7739,7 @@ exports.prepStatsDaily = onSchedule(
 // H1a (PLAN-H1a r2) — the SUNMI merchant handheld: device-scoped, atomic, idempotent order actions; busy / pause / agotado;
 // device pairing + revocation; reject → the existing cancel core (A-R1). DARK until A1 sets the gates (merchant/merchant-gate.js).
 require('./merchant/merchant-core-binding').bindCancelCore((args) => cancelOrderCore(cancelDeps(getDatabase()), args));
+require('./merchant/merchant-core-binding').bindRejectSecrets([require('./payments/sdk/secrets').SDK_PP_CONFIG]);   // D4 row 16: the reject reaches the SDK void through that core
 const merchantFunctions = require('./merchant/merchant-wiring');
 const merchantHooks = require('./merchant/merchant-hooks');
 exports.merchantAccept = merchantFunctions.merchantAccept;

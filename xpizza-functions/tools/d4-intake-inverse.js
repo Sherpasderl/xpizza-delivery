@@ -86,6 +86,21 @@ const HUNKS = Object.freeze([
   "was": ");\n\n"
  },
  {
+  "file": "index.js",
+  "now": "  }\n); const SDK_PAY_FUNCTIONS = require('./payments/sdk/functions'); exports.sweepSdkPayments = SDK_PAY_FUNCTIONS.sweepSdkPayments; exports.settleSdkOnStatus = SDK_PAY_FUNCTIONS.settleSdkOnStatus; for (const k of SDK_PAY_FUNCTIONS.ENDPOINT_EXPORTS) exports[k] = SDK_PAY_FUNCTIONS[k]; require('./payments/sdk/deps').setSdkGoLive((db, orderId) => { const { voidOrRefund, client, ...sdkConfirm } = confirmDeps(db); return confirmAndMaterialize(sdkConfirm, { orderId, attemptId: null, now: Date.now(), trackingToken: generateTrackingToken(), sdkGoLive: true }); });\n\n",
+  "was": "  }\n); const SDK_PAY_FUNCTIONS = require('./payments/sdk/functions'); exports.sweepSdkPayments = SDK_PAY_FUNCTIONS.sweepSdkPayments; exports.settleSdkOnStatus = SDK_PAY_FUNCTIONS.settleSdkOnStatus; require('./payments/sdk/deps').setSdkGoLive((db, orderId) => { const { voidOrRefund, client, ...sdkConfirm } = confirmDeps(db); return confirmAndMaterialize(sdkConfirm, { orderId, attemptId: null, now: Date.now(), trackingToken: generateTrackingToken(), sdkGoLive: true }); });\n\n"
+ },
+ {
+  "file": "index.js",
+  "now": "exports.cancelPaidOrder = onRequest(\n  { region: 'us-central1', cors: true, timeoutSeconds: 60, memory: '256MiB', maxInstances: 5, secrets: [require('./payments/sdk/secrets').SDK_PP_CONFIG] },   // D4 row 16: cancelOrderCore routes an SDK order to its void\n  async (req, res) => {\n",
+  "was": "exports.cancelPaidOrder = onRequest(\n  { region: 'us-central1', cors: true, timeoutSeconds: 60, memory: '256MiB', maxInstances: 5 },\n  async (req, res) => {\n"
+ },
+ {
+  "file": "index.js",
+  "now": "require('./merchant/merchant-core-binding').bindCancelCore((args) => cancelOrderCore(cancelDeps(getDatabase()), args));\nrequire('./merchant/merchant-core-binding').bindRejectSecrets([require('./payments/sdk/secrets').SDK_PP_CONFIG]);   // D4 row 16: the reject reaches the SDK void through that core\nconst merchantFunctions = require('./merchant/merchant-wiring');\n",
+  "was": "require('./merchant/merchant-core-binding').bindCancelCore((args) => cancelOrderCore(cancelDeps(getDatabase()), args));\nconst merchantFunctions = require('./merchant/merchant-wiring');\n"
+ },
+ {
   "file": "catalog/charge-inputs.js",
   "now": "  tip_choice: 'PLAN-capp-tip-step §1: the capp tip step\\'s explicit-choice marker, read only by tip-pref (a member UX hint, after acceptance); never priced (tip_cents is)',\n  attempt_id: 'D4 (CONTRACT-sdk-checkout §2.1): the SDK placement\\'s idempotency key for ONE card attempt; read by placeSdkOrder only; never priced',\n  card: 'D4 (CONTRACT-sdk-checkout §2.1): the SDK payment instrument (a saved card id or a new SDK token + its display); read by placeSdkOrder only; never priced',\n  replaces_order_id: 'D4 (CONTRACT-sdk-checkout §2.2, A2): the SDK order a new order replaces after a switch; a link only, never priced',\n});\n",
   "was": "  tip_choice: 'PLAN-capp-tip-step §1: the capp tip step\\'s explicit-choice marker, read only by tip-pref (a member UX hint, after acceptance); never priced (tip_cents is)',\n});\n"

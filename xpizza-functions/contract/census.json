@@ -62,7 +62,7 @@
    "application-sleep": 2
   },
   "clocks": {
-   "business-sample": 198,
+   "business-sample": 199,
    "display": 41,
    "persisted-stamp": 62,
    "business-comparison": 14,
@@ -15632,7 +15632,7 @@
   },
   {
    "id": "xpizza-functions/index.js#formSignal#status#0",
-   "line": 7825,
+   "line": 7826,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -15645,7 +15645,7 @@
   },
   {
    "id": "xpizza-functions/index.js#post>anon#status#0",
-   "line": 7858,
+   "line": 7859,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -15658,7 +15658,7 @@
   },
   {
    "id": "xpizza-functions/index.js#getText>anon#status#0",
-   "line": 7860,
+   "line": 7861,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -15671,7 +15671,7 @@
   },
   {
    "id": "xpizza-functions/index.js#stampRatingFulfilment#order_id#0",
-   "line": 7927,
+   "line": 7928,
    "kind": "projection",
    "facts": [
     "NUM"
@@ -18331,7 +18331,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/endpoints.js#http>anon#status#0",
-   "line": 19,
+   "line": 18,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -18344,7 +18344,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/endpoints.js#http>anon#status#1",
-   "line": 21,
+   "line": 20,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -18357,7 +18357,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/endpoints.js#http>anon#status#2",
-   "line": 22,
+   "line": 21,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -18370,7 +18370,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/endpoints.js#http>anon#status#3",
-   "line": 22,
+   "line": 21,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -18383,7 +18383,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/endpoints.js#makeHandlers>anon#order_id#0",
-   "line": 26,
+   "line": 25,
    "kind": "member",
    "facts": [
     "NUM"
@@ -57057,37 +57057,37 @@
   },
   {
    "key": "xpizza-functions/index.js:alertOnDriverProblem:Date.now()",
-   "line": 7778,
+   "line": 7779,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:notifyArrivedOnTap:Date.now()",
-   "line": 7796,
+   "line": 7797,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:now:Date.now()",
-   "line": 7847,
+   "line": 7848,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:pruneCheckoutState:Date.now()",
-   "line": 7897,
+   "line": 7898,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:stampRatingFulfilment:Date.now()",
-   "line": 7927,
+   "line": 7928,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:drainRatingRedactions:Date.now()",
-   "line": 7936,
+   "line": 7937,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:publishRatingAggregates:Date.now()",
-   "line": 7960,
+   "line": 7961,
    "class": "business-sample"
   },
   {
@@ -57163,6 +57163,11 @@
   {
    "key": "xpizza-functions/payments/sdk/deps.js:clock:Date.now()",
    "line": 41,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/payments/sdk/functions.js:clock:Date.now()",
+   "line": 30,
    "class": "business-sample"
   },
   {

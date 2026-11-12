@@ -11,4 +11,13 @@ function cancelCore() {
   if (!core) throw new Error('merchant-core-binding: cancel core not bound');
   return core;
 }
-module.exports = { bindCancelCore, cancelCore };
+// D4 row 16 (advisor 11-12): the reject's DEPLOY secrets, injected by index.js beside the cancel core (the reject reaches the SDK
+// void through that core). Read at merchant-wiring's load; unbound ⇒ [] (an isolated loader) — sdk-config-bindings.guard enforces
+// the production binding from the real manifest.
+let rejectSecretList = null;
+function bindRejectSecrets(list) {
+  if (!Array.isArray(list)) throw new Error('merchant-core-binding: reject secrets must be an array');
+  rejectSecretList = list.slice();
+}
+const rejectSecrets = () => (rejectSecretList ? rejectSecretList.slice() : []);
+module.exports = { bindCancelCore, cancelCore, bindRejectSecrets, rejectSecrets };
