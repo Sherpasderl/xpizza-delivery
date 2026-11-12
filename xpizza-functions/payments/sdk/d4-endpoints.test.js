@@ -28,6 +28,10 @@ function world({ sender = { instance_id: 'inst', token: 'tok' }, extra = {} } = 
     senderConfig: () => sender, fetchImpl: async (url, init) => { sends.push({ url, body: new URLSearchParams(init.body) }); return { ok: true, json: async () => ({ sent: 'true', id: 'm1' }) }; } };
   return { db, deps, sends, tick: (ms) => { t += ms; } };
 }
+// a REAL checkout ticket record for the guest order (checkout-guest-lib.ticketRecord, the writer's own shape)
+const G = require('../../checkout-guest-lib');
+const GUEST_TICKET = 'ct_' + 'e'.repeat(32);
+const mintGuestTicket = (w) => w.db.setAt(`checkout_tickets/${G.ticketKey(GUEST_TICKET)}`, G.ticketRecord({ phone: GUEST_PHONE, phoneHash: OTP.phoneHash(GUEST_PHONE), rid: 'tb_rest', cartFp: 'f'.repeat(64), orderId: 'sdk_guest', now: T0 }));
 // a minimal express-shaped req / res
 const req = (method, { headers = {}, query = {}, body = {}, ip = '10.0.0.1' } = {}) => ({ method, headers, query, body, ip, get: (k) => headers[String(k).toLowerCase()] });
 function res() { const r = { statusCode: 200, headers: {}, payload: undefined, status(c) { r.statusCode = c; return r; }, set(k, v) { r.headers[k] = v; return r; }, json(b) { r.payload = b; return r; } }; return r; }
@@ -51,13 +55,17 @@ const call = async (h, rq) => { const r = res(); await h(rq, r); return r; };
       ['listCards', req('GET', { headers: { authorization: 'Bearer idt_A' } }), (d) => require('./cards').listCardsCore(d, { headers: { authorization: 'Bearer idt_A' } })],
       ['removeCard', req('POST', { headers: { authorization: 'Bearer idt_A' }, body: { card_id: 'c'.repeat(20) } }), (d) => require('./cards').removeCardCore(d, { headers: { authorization: 'Bearer idt_A' }, body: { card_id: 'c'.repeat(20) } })],
       ['sdkPayStatus', req('GET'), async (d) => ({ status: 200, body: await require('./sdk-pay-flag').sdkPayStatusCore(d.db) })],
-      ['recoverOrderAccess', req('POST', { body: { order_id: 'sdk_guest' }, ip: '10.0.0.7' }), (d) => require('./recovery').recoverOrderAccessCore(d, { ip: '10.0.0.7', body: { order_id: 'sdk_guest' } })],
+      // an attacker-supplied body.ip must never steer the caller-keyed IP budget (req.ip is the caller)
+      ['recoverOrderAccess', req('POST', { body: { order_id: 'sdk_guest', ip: '1.2.3.4' }, ip: '10.0.0.7' }), (d) => require('./recovery').recoverOrderAccessCore(d, { ip: '10.0.0.7', body: { order_id: 'sdk_guest', ip: '1.2.3.4' } })],
+      // the GUEST path: the order ticket travels in X-Sherpa-Order-Ticket (a REAL ticket record, minted in both worlds below)
+      ['placeSdkStatus', req('GET', { headers: { 'x-sherpa-order-ticket': GUEST_TICKET }, query: { order_id: 'sdk_guest' } }), (d) => require('./status-endpoint').placeSdkStatusCore(d, { headers: { 'x-sherpa-order-ticket': GUEST_TICKET }, query: { order_id: 'sdk_guest' } })],
     ];
     for (const [name, rq, core] of pairs) {
-      const a = world(); const b = world();
+      const a = world(); const b = world(); mintGuestTicket(a); mintGuestTicket(b);
       const r = await call(EP().makeHandlers(() => a.deps)[name], rq);
       const want = await core(b.deps);
       assert.deepStrictEqual({ status: r.statusCode, body: r.payload }, { status: want.status, body: want.body }, `${L}: ${name} answers exactly its core`);
+      if (rq.headers['x-sherpa-order-ticket']) assert.notStrictEqual(r.statusCode, 401, `${L}: premise — the guest ticket really authorized (${r.statusCode})`);
       // the recovery queue's entry id is RANDOM (crypto) — canonicalised; the entries' contents are compared
       const canonQ = (root) => JSON.stringify({ ...root, ...(root.sdk_recovery_queue ? { sdk_recovery_queue: Object.values(root.sdk_recovery_queue) } : {}) });
       assert.strictEqual(canonQ(a.db.root), canonQ(b.db.root), `${L}: ${name} writes exactly what its core writes`);
