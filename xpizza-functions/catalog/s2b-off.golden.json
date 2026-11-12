@@ -70,6 +70,614 @@
    "items_text": "2x Carnivora (L340) [Salsa Roja] | 1x Carnivora (L340) [Salsa Blanca] | 1x Crispy Bacon (L337)",
    "subtotal_cents": 147400
   },
+  "EXTRA_ALLOC": {
+   "fresh": {
+    "ok": true,
+    "source": {
+     "extras": [
+      {
+       "display": {
+        "cat": "Salsas & Queso",
+        "id": "e1",
+        "name": "Salsa Roja",
+        "price": 39
+       },
+       "key": "Salsa Roja",
+       "price": 39
+      },
+      {
+       "display": {
+        "cat": "Salsas & Queso",
+        "id": "e2",
+        "name": "Salsa Blanca",
+        "price": 39
+       },
+       "key": "Salsa Blanca",
+       "price": 39
+      },
+      {
+       "display": {
+        "cat": "Salsas & Queso",
+        "id": "e3",
+        "name": "Salsa Calabrian Chili",
+        "price": 49
+       },
+       "key": "Salsa Calabrian Chili",
+       "price": 49
+      },
+      {
+       "display": {
+        "cat": "Salsas & Queso",
+        "id": "e4",
+        "name": "Mozzarella",
+        "price": 50
+       },
+       "key": "Mozzarella",
+       "price": 50
+      },
+      {
+       "display": {
+        "cat": "Salsas & Queso",
+        "id": "e5",
+        "name": "Whipped Ricotta",
+        "price": 65
+       },
+       "key": "Whipped Ricotta",
+       "price": 65
+      },
+      {
+       "display": {
+        "cat": "Carnes",
+        "id": "e6",
+        "name": "Salchicha Italiana",
+        "price": 50
+       },
+       "key": "Salchicha Italiana",
+       "price": 50
+      },
+      {
+       "display": {
+        "cat": "Carnes",
+        "id": "e7",
+        "name": "Pepperoni",
+        "price": 50
+       },
+       "key": "Pepperoni",
+       "price": 50
+      },
+      {
+       "display": {
+        "cat": "Carnes",
+        "id": "e8",
+        "name": "Jamón",
+        "price": 39
+       },
+       "key": "Jamón",
+       "price": 39
+      },
+      {
+       "display": {
+        "cat": "Carnes",
+        "id": "e9",
+        "name": "Prosciutto",
+        "price": 94
+       },
+       "key": "Prosciutto",
+       "price": 94
+      },
+      {
+       "display": {
+        "cat": "Carnes",
+        "id": "e10",
+        "name": "Mortadella",
+        "price": 85
+       },
+       "key": "Mortadella",
+       "price": 85
+      },
+      {
+       "display": {
+        "cat": "Vegetales & Hierbas",
+        "id": "e11",
+        "name": "Espinaca",
+        "price": 33
+       },
+       "key": "Espinaca",
+       "price": 33
+      },
+      {
+       "display": {
+        "cat": "Vegetales & Hierbas",
+        "id": "e12",
+        "name": "Maíz",
+        "price": 45
+       },
+       "key": "Maíz",
+       "price": 45
+      },
+      {
+       "display": {
+        "cat": "Vegetales & Hierbas",
+        "id": "e13",
+        "name": "Hongos",
+        "price": 61
+       },
+       "key": "Hongos",
+       "price": 61
+      },
+      {
+       "display": {
+        "cat": "Vegetales & Hierbas",
+        "id": "e14",
+        "name": "Basil Pesto",
+        "price": 33
+       },
+       "key": "Basil Pesto",
+       "price": 33
+      },
+      {
+       "display": {
+        "cat": "Salsas & Queso",
+        "id": "e15",
+        "name": "Nueva Salsa Off",
+        "price": 15
+       },
+       "key": "Nueva Salsa Off",
+       "price": 15
+      },
+      {
+       "display": {
+        "cat": "Salsas & Queso",
+        "id": "e16",
+        "name": "i_abcdefghijkl",
+        "price": 16
+       },
+       "key": "i_abcdefghijkl",
+       "price": 16
+      }
+     ],
+     "items": [
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#7A2515",
+        "desc": "Mixed meats, rich tomato sauce",
+        "emoji": "🥩",
+        "id": 2,
+        "img": "images/02-carnivora.jpg",
+        "name": "Carnivora",
+        "price": 340,
+        "reward_icon": "meat"
+       },
+       "key": "Carnivora",
+       "price": 340
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#6B3020",
+        "desc": "Crispy bacon, mozzarella",
+        "emoji": "🥓",
+        "id": 3,
+        "img": "images/03-crispy-bacon.jpg",
+        "name": "Crispy Bacon",
+        "price": 337,
+        "reward_icon": "bacon"
+       },
+       "key": "Crispy Bacon",
+       "price": 337
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#B8860B",
+        "desc": "Sweet corn, spicy calabrian chili",
+        "emoji": "🌽",
+        "id": 4,
+        "img": "images/04-sweet-corn.jpg",
+        "name": "Sweet Corn & Calabrian Chili",
+        "price": 314,
+        "reward_icon": "chili"
+       },
+       "key": "Sweet Corn & Calabrian Chili",
+       "price": 314
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#5A4A3A",
+        "desc": "Wild mushrooms, garlic, herbs",
+        "emoji": "🍄",
+        "id": 5,
+        "img": "images/05-mushroom.jpg",
+        "name": "Mushroom",
+        "price": 323,
+        "reward_icon": "mushroom"
+       },
+       "key": "Mushroom",
+       "price": 323
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#2D5A27",
+        "desc": "Fresh spinach, ricotta, garlic",
+        "emoji": "🌿",
+        "id": 6,
+        "img": "images/06-spinach.jpg",
+        "name": "Spinach",
+        "price": 307,
+        "reward_icon": "leaf"
+       },
+       "key": "Spinach",
+       "price": 307
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#A0321A",
+        "desc": "Pancetta, creamy vodka tomato sauce",
+        "emoji": "🍅",
+        "id": 7,
+        "img": "images/07-pancetta-vodka.jpg",
+        "name": "Pancetta Vodka Sauce",
+        "price": 328,
+        "reward_icon": "tomato"
+       },
+       "key": "Pancetta Vodka Sauce",
+       "price": 328
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#C8321A",
+        "desc": "San Marzano tomato, fresh mozzarella",
+        "emoji": "🍅",
+        "id": 8,
+        "img": "images/08-margherita.jpg",
+        "name": "Margherita",
+        "price": 299,
+        "reward_icon": "tomato"
+       },
+       "key": "Margherita",
+       "price": 299
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#9E2412",
+        "desc": "Classic pepperoni, mozzarella",
+        "emoji": "🔴",
+        "id": 9,
+        "img": "images/09-pepperoni.jpg",
+        "name": "Pepperoni",
+        "price": 307,
+        "reward_icon": "slice"
+       },
+       "key": "Pepperoni",
+       "price": 307
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#3A5A7A",
+        "desc": "Salted anchovies, capers, olives",
+        "emoji": "🐟",
+        "id": 10,
+        "img": "images/10-anchovies.jpg",
+        "name": "Anchovies",
+        "price": 418,
+        "reward_icon": "fish"
+       },
+       "key": "Anchovies",
+       "price": 418
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#C87A3A",
+        "desc": "Garlic shrimp, lemon, white wine",
+        "emoji": "🍤",
+        "id": 11,
+        "img": "images/11-shrimp-scampi.jpg",
+        "name": "Shrimp Scampi",
+        "price": 412,
+        "reward_icon": "fish"
+       },
+       "key": "Shrimp Scampi",
+       "price": 412
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#3A6A2A",
+        "desc": "Pistachio cream, mortadella, stracciatella",
+        "emoji": "💚",
+        "id": 12,
+        "img": "images/12-pistaccio-mortadella.jpg",
+        "name": "Pistaccio Mortadella",
+        "price": 409,
+        "reward_icon": "meat"
+       },
+       "key": "Pistaccio Mortadella",
+       "price": 409
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#8A3A2A",
+        "desc": "Prosciutto crudo, arugula, parmesan",
+        "emoji": "🥩",
+        "id": 13,
+        "img": "images/13-prosciutto.jpg",
+        "name": "Prosciutto",
+        "price": 402,
+        "reward_icon": "meat"
+       },
+       "key": "Prosciutto",
+       "price": 402
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#7A6A3A",
+        "desc": "Roasted potato, dill, house sausage",
+        "emoji": "🥔",
+        "id": 14,
+        "img": "images/14-potato-sausage.jpg",
+        "name": "Potato & Dill Sausage",
+        "price": 299,
+        "reward_icon": "meat"
+       },
+       "key": "Potato & Dill Sausage",
+       "price": 299
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#8A7A5A",
+        "desc": "Pecorino, black pepper, olive oil",
+        "emoji": "🧀",
+        "id": 15,
+        "img": "images/15-cacio-pepe.jpg",
+        "name": "Cacio e Pepe",
+        "price": 297,
+        "reward_icon": "cheese"
+       },
+       "key": "Cacio e Pepe",
+       "price": 297
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#C87A8A",
+        "desc": "Classic ham, mozzarella",
+        "emoji": "🐷",
+        "id": 16,
+        "img": "images/16-ham.jpg",
+        "name": "Ham",
+        "price": 282,
+        "reward_icon": "meat"
+       },
+       "key": "Ham",
+       "price": 282
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#8B3A1A",
+        "desc": "Sopressatta, chili, honey drizzle",
+        "emoji": "🍕",
+        "id": 1,
+        "name": "Sopressatta Chili Honey",
+        "price": 385,
+        "reward_icon": "meat"
+       },
+       "key": "Sopressatta Chili Honey",
+       "price": 385
+      },
+      {
+       "display": {
+        "cat": "individual",
+        "color": "#5A3A20",
+        "desc": "Nutella, powdered sugar, banana option",
+        "emoji": "🍫",
+        "extras_policy": "none",
+        "id": 17,
+        "img": "images/17-nutella.jpg",
+        "name": "Nutella",
+        "price": 251,
+        "reward_icon": "slice"
+       },
+       "key": "Nutella",
+       "price": 251
+      },
+      {
+       "display": {
+        "cat": "ny",
+        "color": "#7A2515",
+        "desc": "6 massive slices, mixed meats",
+        "emoji": "🥩",
+        "id": 18,
+        "name": "Carnivora NY",
+        "price": 685
+       },
+       "key": "Carnivora NY",
+       "price": 685
+      },
+      {
+       "display": {
+        "cat": "ny",
+        "color": "#C8321A",
+        "desc": "6 slices, classic tomato & mozzarella",
+        "emoji": "🍅",
+        "id": 19,
+        "name": "Margherita NY",
+        "price": 624
+       },
+       "key": "Margherita NY",
+       "price": 624
+      },
+      {
+       "display": {
+        "cat": "ny",
+        "color": "#8A7A5A",
+        "desc": "6 slices, pecorino & black pepper",
+        "emoji": "🧀",
+        "id": 20,
+        "name": "Cacio e Pepe NY",
+        "price": 641
+       },
+       "key": "Cacio e Pepe NY",
+       "price": 641
+      },
+      {
+       "display": {
+        "cat": "ny",
+        "color": "#5A4A3A",
+        "desc": "6 slices, wild mushrooms & herbs",
+        "emoji": "🍄",
+        "id": 21,
+        "name": "Mushroom NY",
+        "price": 702
+       },
+       "key": "Mushroom NY",
+       "price": 702
+      },
+      {
+       "display": {
+        "cat": "ny",
+        "color": "#9E2412",
+        "desc": "6 slices, ham",
+        "emoji": "🍖",
+        "id": 22,
+        "name": "Jamon NY",
+        "price": 641
+       },
+       "key": "Jamon NY",
+       "price": 641
+      },
+      {
+       "display": {
+        "cat": "ny",
+        "color": "#9E2412",
+        "desc": "6 slices, pepperoni",
+        "emoji": "🔴",
+        "id": 24,
+        "name": "Pepperoni NY",
+        "price": 641
+       },
+       "key": "Pepperoni NY",
+       "price": 641
+      },
+      {
+       "display": {
+        "cat": "ny",
+        "color": "#6B3020",
+        "desc": "6 slices, crispy bacon",
+        "emoji": "🥓",
+        "id": 23,
+        "name": "Crispy Bacon NY",
+        "price": 662
+       },
+       "key": "Crispy Bacon NY",
+       "price": 662
+      }
+     ],
+     "key_mode": "name",
+     "restaurant_id": "x_pizza",
+     "schema_version": 2,
+     "structure": {
+      "categories": [
+       {
+        "id": "individual"
+       },
+       {
+        "id": "ny"
+       }
+      ],
+      "exposure": {
+       "category_allow": {
+        "individual": [
+         "Salsas & Queso",
+         "Carnes",
+         "Vegetales & Hierbas"
+        ],
+        "ny": [
+         "Salsas & Queso",
+         "Carnes",
+         "Vegetales & Hierbas"
+        ]
+       },
+       "item_overrides": {
+        "Nutella": {
+         "deny": [
+          "*"
+         ]
+        }
+       }
+      },
+      "extra_categories": [
+       "Salsas & Queso",
+       "Carnes",
+       "Vegetales & Hierbas"
+      ],
+      "extras_by_category": {
+       "individual": [
+        "Salsas & Queso",
+        "Carnes",
+        "Vegetales & Hierbas"
+       ],
+       "ny": [
+        "Salsas & Queso",
+        "Carnes",
+        "Vegetales & Hierbas"
+       ]
+      },
+      "item_order": [
+       "Carnivora",
+       "Crispy Bacon",
+       "Sweet Corn & Calabrian Chili",
+       "Mushroom",
+       "Spinach",
+       "Pancetta Vodka Sauce",
+       "Margherita",
+       "Pepperoni",
+       "Anchovies",
+       "Shrimp Scampi",
+       "Pistaccio Mortadella",
+       "Prosciutto",
+       "Potato & Dill Sausage",
+       "Cacio e Pepe",
+       "Ham",
+       "Sopressatta Chili Honey",
+       "Nutella",
+       "Carnivora NY",
+       "Margherita NY",
+       "Cacio e Pepe NY",
+       "Mushroom NY",
+       "Jamon NY",
+       "Pepperoni NY",
+       "Crispy Bacon NY"
+      ],
+      "pickup_only_cats": [
+       "ny"
+      ],
+      "redeem_eligible_cats": [
+       "individual"
+      ],
+      "schema_version": 1,
+      "weekend_only_cats": [
+       "ny"
+      ]
+     }
+    }
+   },
+   "retired": {
+    "code": "name_needs_new_id",
+    "ok": false
+   }
+  },
   "FACTURA": {
    "error": null,
    "items": [
@@ -108,6 +716,80 @@
     "error": null,
     "total": 1474
    }
+  },
+  "LAST_GOOD": {
+   "extras": {
+    "Basil Pesto": 33,
+    "Espinaca": 33,
+    "Hongos": 61,
+    "Jamón": 39,
+    "Maíz": 45,
+    "Mortadella": 85,
+    "Mozzarella": 50,
+    "Pepperoni": 50,
+    "Prosciutto": 94,
+    "Salchicha Italiana": 50,
+    "Salsa Blanca": 39,
+    "Salsa Calabrian Chili": 49,
+    "Salsa Roja": 39,
+    "Whipped Ricotta": 65
+   },
+   "keyMode": "name",
+   "labels": {
+    "Anchovies": "Anchovies",
+    "Cacio e Pepe": "Cacio e Pepe",
+    "Cacio e Pepe NY": "Cacio e Pepe NY",
+    "Carnivora": "Carnivora",
+    "Carnivora NY": "Carnivora NY",
+    "Crispy Bacon": "Crispy Bacon",
+    "Crispy Bacon NY": "Crispy Bacon NY",
+    "Ham": "Ham",
+    "Jamon NY": "Jamon NY",
+    "Margherita": "Margherita",
+    "Margherita NY": "Margherita NY",
+    "Mushroom": "Mushroom",
+    "Mushroom NY": "Mushroom NY",
+    "Nutella": "Nutella",
+    "Pancetta Vodka Sauce": "Pancetta Vodka Sauce",
+    "Pepperoni": "Pepperoni",
+    "Pepperoni NY": "Pepperoni NY",
+    "Pistaccio Mortadella": "Pistaccio Mortadella",
+    "Potato & Dill Sausage": "Potato & Dill Sausage",
+    "Prosciutto": "Prosciutto",
+    "Shrimp Scampi": "Shrimp Scampi",
+    "Sopressatta Chili Honey": "Sopressatta Chili Honey",
+    "Spinach": "Spinach",
+    "Sweet Corn & Calabrian Chili": "Sweet Corn & Calabrian Chili"
+   },
+   "menu": {
+    "Anchovies": 418,
+    "Cacio e Pepe": 297,
+    "Cacio e Pepe NY": 641,
+    "Carnivora": 340,
+    "Carnivora NY": 685,
+    "Crispy Bacon": 337,
+    "Crispy Bacon NY": 662,
+    "Ham": 282,
+    "Jamon NY": 641,
+    "Margherita": 299,
+    "Margherita NY": 624,
+    "Mushroom": 323,
+    "Mushroom NY": 702,
+    "Nutella": 251,
+    "Pancetta Vodka Sauce": 328,
+    "Pepperoni": 307,
+    "Pepperoni NY": 641,
+    "Pistaccio Mortadella": 409,
+    "Potato & Dill Sausage": 299,
+    "Prosciutto": 402,
+    "Shrimp Scampi": 412,
+    "Sopressatta Chili Honey": 385,
+    "Spinach": 307,
+    "Sweet Corn & Calabrian Chili": 314
+   },
+   "seq": 1,
+   "source": "last_good",
+   "versionId": "v-off"
   },
   "PUBLISH": {
    "mirrors": [
@@ -184,6 +866,85 @@
      "rid": "x_pizza",
      "seq": 1,
      "version": "v#1"
+    }
+   ],
+   "rtdb": [
+    {
+     "path": "catalog_snapshot/x_pizza",
+     "value": {
+      "extras": {
+       "Basil Pesto": 33,
+       "Espinaca": 33,
+       "Hongos": 61,
+       "Jamón": 39,
+       "Maíz": 45,
+       "Mortadella": 85,
+       "Mozzarella": 50,
+       "Pepperoni": 50,
+       "Prosciutto": 94,
+       "Salchicha Italiana": 50,
+       "Salsa Blanca": 39,
+       "Salsa Calabrian Chili": 49,
+       "Salsa Roja": 39,
+       "Whipped Ricotta": 65
+      },
+      "key_mode": "name",
+      "labels": {
+       "Anchovies": "Anchovies",
+       "Cacio e Pepe": "Cacio e Pepe",
+       "Cacio e Pepe NY": "Cacio e Pepe NY",
+       "Carnivora": "Carnivora",
+       "Carnivora NY": "Carnivora NY",
+       "Crispy Bacon": "Crispy Bacon",
+       "Crispy Bacon NY": "Crispy Bacon NY",
+       "Ham": "Ham",
+       "Jamon NY": "Jamon NY",
+       "Margherita": "Margherita",
+       "Margherita NY": "Margherita NY",
+       "Mushroom": "Mushroom",
+       "Mushroom NY": "Mushroom NY",
+       "Nutella": "Nutella",
+       "Pancetta Vodka Sauce": "Pancetta Vodka Sauce",
+       "Pepperoni": "Pepperoni",
+       "Pepperoni NY": "Pepperoni NY",
+       "Pistaccio Mortadella": "Pistaccio Mortadella",
+       "Potato & Dill Sausage": "Potato & Dill Sausage",
+       "Prosciutto": "Prosciutto",
+       "Shrimp Scampi": "Shrimp Scampi",
+       "Sopressatta Chili Honey": "Sopressatta Chili Honey",
+       "Spinach": "Spinach",
+       "Sweet Corn & Calabrian Chili": "Sweet Corn & Calabrian Chili"
+      },
+      "menu": {
+       "Anchovies": 418,
+       "Cacio e Pepe": 297,
+       "Cacio e Pepe NY": 641,
+       "Carnivora": 340,
+       "Carnivora NY": 685,
+       "Crispy Bacon": 337,
+       "Crispy Bacon NY": 662,
+       "Ham": 282,
+       "Jamon NY": 641,
+       "Margherita": 299,
+       "Margherita NY": 624,
+       "Mushroom": 323,
+       "Mushroom NY": 702,
+       "Nutella": 251,
+       "Pancetta Vodka Sauce": 328,
+       "Pepperoni": 307,
+       "Pepperoni NY": 641,
+       "Pistaccio Mortadella": 409,
+       "Potato & Dill Sausage": 299,
+       "Prosciutto": 402,
+       "Shrimp Scampi": 412,
+       "Sopressatta Chili Honey": 385,
+       "Spinach": 307,
+       "Sweet Corn & Calabrian Chili": 314
+      },
+      "rid": "x_pizza",
+      "seq": 1,
+      "version": "v#1"
+     }
     }
    ],
    "store": {
@@ -3045,6 +3806,162 @@
      "rid": "x_pizza",
      "seq": 1,
      "version": "v#1"
+    }
+   ],
+   "rtdb": [
+    {
+     "path": "catalog_snapshot/x_pizza",
+     "value": {
+      "extras": {
+       "Basil Pesto": 33,
+       "Espinaca": 33,
+       "Hongos": 61,
+       "Jamón": 39,
+       "Maíz": 45,
+       "Mortadella": 85,
+       "Mozzarella": 50,
+       "Pepperoni": 50,
+       "Prosciutto": 94,
+       "Salchicha Italiana": 50,
+       "Salsa Blanca": 39,
+       "Salsa Calabrian Chili": 49,
+       "Salsa Roja": 39,
+       "Whipped Ricotta": 65
+      },
+      "key_mode": "name",
+      "labels": {
+       "Anchovies": "Anchovies",
+       "Cacio e Pepe": "Cacio e Pepe",
+       "Cacio e Pepe NY": "Cacio e Pepe NY",
+       "Carnivora": "Carnivora",
+       "Carnivora NY": "Carnivora NY",
+       "Crispy Bacon": "Crispy Bacon",
+       "Crispy Bacon NY": "Crispy Bacon NY",
+       "Ham": "Ham",
+       "Jamon NY": "Jamon NY",
+       "Margherita": "Margherita",
+       "Margherita NY": "Margherita NY",
+       "Mushroom": "Mushroom",
+       "Mushroom NY": "Mushroom NY",
+       "Nutella": "Nutella",
+       "Pancetta Vodka Sauce": "Pancetta Vodka Sauce",
+       "Pepperoni": "Pepperoni",
+       "Pepperoni NY": "Pepperoni NY",
+       "Pistaccio Mortadella": "Pistaccio Mortadella",
+       "Potato & Dill Sausage": "Potato & Dill Sausage",
+       "Prosciutto": "Prosciutto",
+       "Shrimp Scampi": "Shrimp Scampi",
+       "Sopressatta Chili Honey": "Sopressatta Chili Honey",
+       "Spinach": "Spinach",
+       "Sweet Corn & Calabrian Chili": "Sweet Corn & Calabrian Chili"
+      },
+      "menu": {
+       "Anchovies": 418,
+       "Cacio e Pepe": 297,
+       "Cacio e Pepe NY": 641,
+       "Carnivora": 350,
+       "Carnivora NY": 685,
+       "Crispy Bacon": 337,
+       "Crispy Bacon NY": 662,
+       "Ham": 282,
+       "Jamon NY": 641,
+       "Margherita": 299,
+       "Margherita NY": 624,
+       "Mushroom": 323,
+       "Mushroom NY": 702,
+       "Nutella": 251,
+       "Pancetta Vodka Sauce": 328,
+       "Pepperoni": 307,
+       "Pepperoni NY": 641,
+       "Pistaccio Mortadella": 409,
+       "Potato & Dill Sausage": 299,
+       "Prosciutto": 402,
+       "Shrimp Scampi": 412,
+       "Sopressatta Chili Honey": 385,
+       "Spinach": 307,
+       "Sweet Corn & Calabrian Chili": 314
+      },
+      "rid": "x_pizza",
+      "seq": 2,
+      "version": "v#2"
+     }
+    },
+    {
+     "path": "catalog_snapshot/x_pizza",
+     "value": {
+      "extras": {
+       "Basil Pesto": 33,
+       "Espinaca": 33,
+       "Hongos": 61,
+       "Jamón": 39,
+       "Maíz": 45,
+       "Mortadella": 85,
+       "Mozzarella": 50,
+       "Pepperoni": 50,
+       "Prosciutto": 94,
+       "Salchicha Italiana": 50,
+       "Salsa Blanca": 39,
+       "Salsa Calabrian Chili": 49,
+       "Salsa Roja": 39,
+       "Whipped Ricotta": 65
+      },
+      "key_mode": "name",
+      "labels": {
+       "Anchovies": "Anchovies",
+       "Cacio e Pepe": "Cacio e Pepe",
+       "Cacio e Pepe NY": "Cacio e Pepe NY",
+       "Carnivora": "Carnivora",
+       "Carnivora NY": "Carnivora NY",
+       "Crispy Bacon": "Crispy Bacon",
+       "Crispy Bacon NY": "Crispy Bacon NY",
+       "Ham": "Ham",
+       "Jamon NY": "Jamon NY",
+       "Margherita": "Margherita",
+       "Margherita NY": "Margherita NY",
+       "Mushroom": "Mushroom",
+       "Mushroom NY": "Mushroom NY",
+       "Nutella": "Nutella",
+       "Pancetta Vodka Sauce": "Pancetta Vodka Sauce",
+       "Pepperoni": "Pepperoni",
+       "Pepperoni NY": "Pepperoni NY",
+       "Pistaccio Mortadella": "Pistaccio Mortadella",
+       "Potato & Dill Sausage": "Potato & Dill Sausage",
+       "Prosciutto": "Prosciutto",
+       "Shrimp Scampi": "Shrimp Scampi",
+       "Sopressatta Chili Honey": "Sopressatta Chili Honey",
+       "Spinach": "Spinach",
+       "Sweet Corn & Calabrian Chili": "Sweet Corn & Calabrian Chili"
+      },
+      "menu": {
+       "Anchovies": 418,
+       "Cacio e Pepe": 297,
+       "Cacio e Pepe NY": 641,
+       "Carnivora": 340,
+       "Carnivora NY": 685,
+       "Crispy Bacon": 337,
+       "Crispy Bacon NY": 662,
+       "Ham": 282,
+       "Jamon NY": 641,
+       "Margherita": 299,
+       "Margherita NY": 624,
+       "Mushroom": 323,
+       "Mushroom NY": 702,
+       "Nutella": 251,
+       "Pancetta Vodka Sauce": 328,
+       "Pepperoni": 307,
+       "Pepperoni NY": 641,
+       "Pistaccio Mortadella": 409,
+       "Potato & Dill Sausage": 299,
+       "Prosciutto": 402,
+       "Shrimp Scampi": 412,
+       "Sopressatta Chili Honey": 385,
+       "Spinach": 307,
+       "Sweet Corn & Calabrian Chili": 314
+      },
+      "rid": "x_pizza",
+      "seq": 1,
+      "version": "v#1"
+     }
     }
    ],
    "store": {
@@ -7917,6 +8834,33 @@
    "representation_version": "1d.3"
   },
   "TABLES": {
+   "keyMode": "name",
+   "labels": {
+    "Anchovies": "Anchovies",
+    "Cacio e Pepe": "Cacio e Pepe",
+    "Cacio e Pepe NY": "Cacio e Pepe NY",
+    "Carnivora": "Carnivora",
+    "Carnivora NY": "Carnivora NY",
+    "Crispy Bacon": "Crispy Bacon",
+    "Crispy Bacon NY": "Crispy Bacon NY",
+    "Ham": "Ham",
+    "Jamon NY": "Jamon NY",
+    "Margherita": "Margherita",
+    "Margherita NY": "Margherita NY",
+    "Mushroom": "Mushroom",
+    "Mushroom NY": "Mushroom NY",
+    "Nutella": "Nutella",
+    "Pancetta Vodka Sauce": "Pancetta Vodka Sauce",
+    "Pepperoni": "Pepperoni",
+    "Pepperoni NY": "Pepperoni NY",
+    "Pistaccio Mortadella": "Pistaccio Mortadella",
+    "Potato & Dill Sausage": "Potato & Dill Sausage",
+    "Prosciutto": "Prosciutto",
+    "Shrimp Scampi": "Shrimp Scampi",
+    "Sopressatta Chili Honey": "Sopressatta Chili Honey",
+    "Spinach": "Spinach",
+    "Sweet Corn & Calabrian Chili": "Sweet Corn & Calabrian Chili"
+   },
    "mirror": {
     "extras": {
      "Basil Pesto": 33,
@@ -7933,6 +8877,32 @@
      "Salsa Calabrian Chili": 49,
      "Salsa Roja": 39,
      "Whipped Ricotta": 65
+    },
+    "labels": {
+     "Anchovies": "Anchovies",
+     "Cacio e Pepe": "Cacio e Pepe",
+     "Cacio e Pepe NY": "Cacio e Pepe NY",
+     "Carnivora": "Carnivora",
+     "Carnivora NY": "Carnivora NY",
+     "Crispy Bacon": "Crispy Bacon",
+     "Crispy Bacon NY": "Crispy Bacon NY",
+     "Ham": "Ham",
+     "Jamon NY": "Jamon NY",
+     "Margherita": "Margherita",
+     "Margherita NY": "Margherita NY",
+     "Mushroom": "Mushroom",
+     "Mushroom NY": "Mushroom NY",
+     "Nutella": "Nutella",
+     "Pancetta Vodka Sauce": "Pancetta Vodka Sauce",
+     "Pepperoni": "Pepperoni",
+     "Pepperoni NY": "Pepperoni NY",
+     "Pistaccio Mortadella": "Pistaccio Mortadella",
+     "Potato & Dill Sausage": "Potato & Dill Sausage",
+     "Prosciutto": "Prosciutto",
+     "Shrimp Scampi": "Shrimp Scampi",
+     "Sopressatta Chili Honey": "Sopressatta Chili Honey",
+     "Spinach": "Spinach",
+     "Sweet Corn & Calabrian Chili": "Sweet Corn & Calabrian Chili"
     },
     "menu": {
      "Anchovies": 418,
@@ -8083,6 +9053,1143 @@
    "items_text": "2x Sichuan Spicy Wonton (L249) [Arroz Blanco] | 1x Sichuan Spicy Wonton (L249) [Arroz Chino] | 1x Pork Belly Buns (L248)",
    "subtotal_cents": 118000
   },
+  "EXTRA_ALLOC": {
+   "fresh": {
+    "ok": true,
+    "source": {
+     "extras": [
+      {
+       "display": {
+        "cat": "Acompañamientos",
+        "id": "ID<extra:rice_white>",
+        "name": "Arroz Blanco",
+        "price": 50,
+        "reward_icon": "rice"
+       },
+       "key": "ID<extra:rice_white>",
+       "price": 50
+      },
+      {
+       "display": {
+        "cat": "Acompañamientos",
+        "id": "ID<extra:rice_chinese>",
+        "name": "Arroz Chino",
+        "price": 85,
+        "reward_icon": "rice"
+       },
+       "key": "ID<extra:rice_chinese>",
+       "price": 85
+      },
+      {
+       "display": {
+        "cat": "Acompañamientos",
+        "id": "ID<extra:papas_fritas>",
+        "name": "Papas Fritas",
+        "price": 75,
+        "reward_icon": "rice"
+       },
+       "key": "ID<extra:papas_fritas>",
+       "price": 75
+      },
+      {
+       "display": {
+        "cat": "Salsas",
+        "id": "ID<extra:sauce_chili_oil>",
+        "name": "Aceite Hot Chili",
+        "price": 30
+       },
+       "key": "ID<extra:sauce_chili_oil>",
+       "price": 30
+      },
+      {
+       "display": {
+        "cat": "Salsas",
+        "id": "ID<extra:sauce_aioli>",
+        "name": "Salsa Aioli",
+        "price": 30
+       },
+       "key": "ID<extra:sauce_aioli>",
+       "price": 30
+      },
+      {
+       "display": {
+        "cat": "Salsas",
+        "id": "ID<extra:sauce_chipotle>",
+        "name": "Salsa Chipotle",
+        "price": 30
+       },
+       "key": "ID<extra:sauce_chipotle>",
+       "price": 30
+      },
+      {
+       "display": {
+        "cat": "Salsas",
+        "id": "ID<extra:sauce_dumpling>",
+        "name": "Salsa Dumplings",
+        "price": 30
+       },
+       "key": "ID<extra:sauce_dumpling>",
+       "price": 30
+      },
+      {
+       "display": {
+        "cat": "Salsas",
+        "id": "ID<extra:sauce_wonton>",
+        "name": "Salsa Wontons",
+        "price": 30
+       },
+       "key": "ID<extra:sauce_wonton>",
+       "price": 30
+      },
+      {
+       "display": {
+        "cat": "Salsas",
+        "id": "ID<extra:sauce_pad_thai>",
+        "name": "Salsa Pad Thai",
+        "price": 30
+       },
+       "key": "ID<extra:sauce_pad_thai>",
+       "price": 30
+      },
+      {
+       "display": {
+        "cat": "Salsas",
+        "id": "ID<extra:sauce_spicy_mayo>",
+        "name": "Salsa Spicy Mayo",
+        "price": 30
+       },
+       "key": "ID<extra:sauce_spicy_mayo>",
+       "price": 30
+      },
+      {
+       "display": {
+        "cat": "Salsas",
+        "id": "ID<extra:sauce_tuna_tartar>",
+        "name": "Salsa Tuna Tartar",
+        "price": 30
+       },
+       "key": "ID<extra:sauce_tuna_tartar>",
+       "price": 30
+      },
+      {
+       "display": {
+        "cat": "Proteínas",
+        "id": "ID<extra:protein_chicken>",
+        "name": "Extra Pollo",
+        "price": 65
+       },
+       "key": "ID<extra:protein_chicken>",
+       "price": 65
+      },
+      {
+       "display": {
+        "cat": "Proteínas",
+        "id": "ID<extra:protein_beef>",
+        "name": "Extra Filete Res",
+        "price": 155
+       },
+       "key": "ID<extra:protein_beef>",
+       "price": 155
+      },
+      {
+       "display": {
+        "cat": "Proteínas",
+        "id": "ID<extra:protein_shrimp>",
+        "name": "Extra Camaron",
+        "price": 135
+       },
+       "key": "ID<extra:protein_shrimp>",
+       "price": 135
+      },
+      {
+       "display": {
+        "cat": "Acompañamientos",
+        "id": "nueva_salsa_off",
+        "name": "Nueva Salsa Off",
+        "price": 15
+       },
+       "key": "nueva_salsa_off",
+       "price": 15
+      },
+      {
+       "display": {
+        "cat": "Acompañamientos",
+        "id": "i_abcdefghijkl",
+        "name": "i_abcdefghijkl",
+        "price": 16
+       },
+       "key": "i_abcdefghijkl",
+       "price": 16
+      }
+     ],
+     "items": [
+      {
+       "display": {
+        "cat": "dim_sum",
+        "color": "#A8814E",
+        "desc": "Wonton de cerdo, aceite de chili, vinagre Chinkiang y soya",
+        "emoji": "🥟",
+        "id": "ID<dish:dimsum_01>",
+        "name": "Sichuan Spicy Wonton",
+        "price": 249,
+        "reward_icon": "dumpling",
+        "tags": [
+         "chefs_pick",
+         "most_ordered"
+        ]
+       },
+       "has_photo": true,
+       "key": "ID<dish:dimsum_01>",
+       "price": 249
+      },
+      {
+       "display": {
+        "cat": "dim_sum",
+        "color": "#A8814E",
+        "desc": "Bao al vapor, panceta braseada, hoisin, daikon encurtido",
+        "emoji": "🥟",
+        "id": "ID<dish:dimsum_02>",
+        "name": "Pork Belly Buns",
+        "price": 248,
+        "reward_icon": "dumpling",
+        "tags": [
+         "must_try"
+        ]
+       },
+       "has_photo": true,
+       "key": "ID<dish:dimsum_02>",
+       "price": 248
+      },
+      {
+       "display": {
+        "cat": "dim_sum",
+        "color": "#A8814E",
+        "desc": "Dumplings al vapor, camaron, hongo shiitake, sésamo, soya con jengibre",
+        "emoji": "🥟",
+        "id": "ID<dish:dimsum_03>",
+        "name": "Shrimp Dumplings",
+        "price": 286,
+        "reward_icon": "dumpling",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:dimsum_03>",
+       "price": 286
+      },
+      {
+       "display": {
+        "cat": "dim_sum",
+        "color": "#A8814E",
+        "desc": "Wonton frito de cerdo, hongos shiitake, salsa sweet chili",
+        "emoji": "🥟",
+        "id": "ID<dish:dimsum_04>",
+        "name": "Fried Wontons",
+        "price": 288,
+        "reward_icon": "dumpling",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:dimsum_04>",
+       "price": 288
+      },
+      {
+       "display": {
+        "cat": "dim_sum",
+        "color": "#A8814E",
+        "desc": "Bao al vapor, tempura crocante, sriracha mayo",
+        "emoji": "🥟",
+        "id": "ID<dish:dimsum_05>",
+        "name": "Shrimp Tempura Buns",
+        "price": 260,
+        "reward_icon": "dumpling",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:dimsum_05>",
+       "price": 260
+      },
+      {
+       "display": {
+        "cat": "starters",
+        "color": "#13100E",
+        "desc": "Glaseadas con gochujang, sésamo, cebollín, kewpie",
+        "emoji": "🍢",
+        "id": "ID<dish:starter_01>",
+        "name": "Korean BBQ Wings",
+        "price": 262,
+        "reward_icon": "skewer",
+        "tags": [
+         "crowd_favourite"
+        ]
+       },
+       "has_photo": true,
+       "key": "ID<dish:starter_01>",
+       "price": 262
+      },
+      {
+       "display": {
+        "cat": "starters",
+        "color": "#13100E",
+        "desc": "A la parrilla, mostaza dijon",
+        "emoji": "🍢",
+        "id": "ID<dish:starter_02>",
+        "name": "Chorizo Parrillero",
+        "price": 252,
+        "reward_icon": "skewer",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:starter_02>",
+       "price": 252
+      },
+      {
+       "display": {
+        "cat": "starters",
+        "color": "#13100E",
+        "desc": "Costillas de cerdo glaseadas, hoisin, cinco especias, sésamo",
+        "emoji": "🍢",
+        "id": "ID<dish:starter_03>",
+        "name": "Costillitas Chinas",
+        "price": 265,
+        "reward_icon": "skewer",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:starter_03>",
+       "price": 265
+      },
+      {
+       "display": {
+        "cat": "starters",
+        "color": "#13100E",
+        "desc": "A la parrilla, aji amarillo",
+        "emoji": "🍢",
+        "id": "ID<dish:starter_04>",
+        "name": "Camaron Que Se Duerme",
+        "price": 378,
+        "reward_icon": "skewer",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:starter_04>",
+       "price": 378
+      },
+      {
+       "display": {
+        "cat": "starters",
+        "color": "#13100E",
+        "desc": "Camarones salteados, frijol negro, ajo, chile",
+        "emoji": "🍢",
+        "id": "ID<dish:starter_05>",
+        "name": "Camaron Asiatico",
+        "price": 413,
+        "reward_icon": "skewer",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:starter_05>",
+       "price": 413
+      },
+      {
+       "display": {
+        "cat": "starters",
+        "color": "#13100E",
+        "desc": "Camarones tempura crocantes, mayo picante, cítricos",
+        "emoji": "🍢",
+        "id": "ID<dish:starter_06>",
+        "name": "Spicy Camaron Tempura",
+        "price": 409,
+        "reward_icon": "skewer",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:starter_06>",
+       "price": 409
+      },
+      {
+       "display": {
+        "cat": "house_specials",
+        "color": "#B61218",
+        "desc": "Langosta al wok, jengibre, cebollín, salsa de ostras, crispy garlic",
+        "emoji": "✦",
+        "id": "ID<dish:special_01>",
+        "name": "Cantonese Lobster Tail",
+        "price": 588,
+        "reward_icon": "star",
+        "tags": [
+         "signature_special"
+        ]
+       },
+       "has_photo": true,
+       "key": "ID<dish:special_01>",
+       "price": 588
+      },
+      {
+       "display": {
+        "cat": "house_specials",
+        "color": "#B61218",
+        "desc": "Atún yellowfin, aceite de sésamo, aguacate, jengibre, chips wonton",
+        "emoji": "✦",
+        "id": "ID<dish:special_02>",
+        "name": "Tuna Tartare",
+        "price": 478,
+        "reward_icon": "star",
+        "tags": [
+         "must_try"
+        ]
+       },
+       "has_photo": true,
+       "key": "ID<dish:special_02>",
+       "price": 478
+      },
+      {
+       "display": {
+        "cat": "house_specials",
+        "color": "#B61218",
+        "desc": "Costilla corta braseada, adobo asiático, ají amarillo",
+        "emoji": "✦",
+        "id": "ID<dish:special_04>",
+        "name": "Asado de Tira",
+        "price": 624,
+        "reward_icon": "star",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:special_04>",
+       "price": 624
+      },
+      {
+       "display": {
+        "cat": "house_specials",
+        "color": "#B61218",
+        "desc": "Filete sellado, mantequilla miso, jengibre encurtido, microverdes",
+        "emoji": "✦",
+        "id": "ID<dish:special_05>",
+        "name": "Filete La Muse",
+        "price": 384,
+        "reward_icon": "star",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:special_05>",
+       "price": 384
+      },
+      {
+       "display": {
+        "cat": "crudo",
+        "color": "#2D5447",
+        "desc": "Atún laminado, leche de tigre, ají amarillo, microverdes",
+        "emoji": "🐟",
+        "id": "ID<dish:crudo_01>",
+        "name": "Tuna Crudo",
+        "price": 452,
+        "reward_icon": "fish",
+        "tags": [
+         "must_try"
+        ]
+       },
+       "has_photo": true,
+       "key": "ID<dish:crudo_01>",
+       "price": 452
+      },
+      {
+       "display": {
+        "cat": "crudo",
+        "color": "#2D5447",
+        "desc": "Pescado fresco, leche de tigre, cebolla morada, camote, choclo",
+        "emoji": "🐟",
+        "id": "ID<dish:crudo_02>",
+        "name": "Ceviche Peruano",
+        "price": 346,
+        "reward_icon": "fish",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:crudo_02>",
+       "price": 346
+      },
+      {
+       "display": {
+        "cat": "crudo",
+        "color": "#2D5447",
+        "desc": "Camarones tigre, leche de tigre, ají amarillo, pepino",
+        "emoji": "🐟",
+        "id": "ID<dish:crudo_03>",
+        "name": "Ceviche de Camaron",
+        "price": 337,
+        "reward_icon": "fish",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:crudo_03>",
+       "price": 337
+      },
+      {
+       "display": {
+        "cat": "noodles",
+        "color": "#8A7B6B",
+        "desc": "Fideos wok, tamarindo, maní, brotes, huevo",
+        "emoji": "🍜",
+        "id": "ID<dish:noodle_01>",
+        "name": "Pad Thai",
+        "price": 414,
+        "reward_icon": "noodle",
+        "tags": [
+         "most_ordered"
+        ]
+       },
+       "has_photo": true,
+       "key": "ID<dish:noodle_01>",
+       "price": 414
+      },
+      {
+       "display": {
+        "cat": "noodles",
+        "choice": "Sin Proteína",
+        "color": "#8A7B6B",
+        "emoji": "🍜",
+        "id": "ID<dish:ID<dish:noodle_01>_sin>",
+        "name": "Pad Thai - Sin Proteína",
+        "price": 307,
+        "reward_icon": "noodle",
+        "variantOf": "ID<dish:noodle_01>"
+       },
+       "has_photo": false,
+       "key": "ID<dish:ID<dish:noodle_01>_sin>",
+       "price": 307
+      },
+      {
+       "display": {
+        "cat": "noodles",
+        "choice": "Pollo",
+        "color": "#8A7B6B",
+        "emoji": "🍜",
+        "id": "ID<dish:ID<dish:noodle_01>_pollo>",
+        "name": "Pad Thai - Pollo",
+        "price": 342,
+        "reward_icon": "noodle",
+        "variantOf": "ID<dish:noodle_01>"
+       },
+       "has_photo": false,
+       "key": "ID<dish:ID<dish:noodle_01>_pollo>",
+       "price": 342
+      },
+      {
+       "display": {
+        "cat": "noodles",
+        "choice": "Camarones",
+        "color": "#8A7B6B",
+        "emoji": "🍜",
+        "id": "ID<dish:ID<dish:noodle_01>_camaron>",
+        "name": "Pad Thai - Camarones",
+        "price": 414,
+        "reward_icon": "noodle",
+        "variantOf": "ID<dish:noodle_01>"
+       },
+       "has_photo": false,
+       "key": "ID<dish:ID<dish:noodle_01>_camaron>",
+       "price": 414
+      },
+      {
+       "display": {
+        "cat": "noodles",
+        "color": "#8A7B6B",
+        "desc": "Res tierna, brócoli, salsa de ostras y jengibre",
+        "emoji": "🍜",
+        "id": "ID<dish:noodle_02>",
+        "name": "Broccoli Beef",
+        "price": 492,
+        "reward_icon": "noodle",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:noodle_02>",
+       "price": 492
+      },
+      {
+       "display": {
+        "cat": "noodles",
+        "color": "#8A7B6B",
+        "desc": "Pollo salteado, chiles secos, frijol negro, bok choy",
+        "emoji": "🍜",
+        "id": "ID<dish:noodle_03>",
+        "name": "Hunan Chicken",
+        "price": 340,
+        "reward_icon": "noodle",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:noodle_03>",
+       "price": 340
+      },
+      {
+       "display": {
+        "cat": "rice",
+        "color": "#A8814E",
+        "desc": "Pollo crocante al wok, salsa Tso dulce-picante, sésamo, arroz jazmín",
+        "emoji": "🍚",
+        "id": "ID<dish:rice_01>",
+        "name": "General Tso Chicken",
+        "price": 270,
+        "reward_icon": "rice",
+        "tags": [
+         "most_ordered"
+        ]
+       },
+       "has_photo": true,
+       "key": "ID<dish:rice_01>",
+       "price": 270
+      },
+      {
+       "display": {
+        "cat": "rice",
+        "color": "#A8814E",
+        "desc": "Res al wok, hoisin, jengibre, cebollín, arroz",
+        "emoji": "🍚",
+        "id": "ID<dish:rice_02>",
+        "name": "Mongolian Beef",
+        "price": 456,
+        "reward_icon": "rice",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:rice_02>",
+       "price": 456
+      },
+      {
+       "display": {
+        "cat": "rice",
+        "color": "#A8814E",
+        "desc": "Arroz jazmín al wok, huevo, vegetales, salsa de ostras",
+        "emoji": "🍚",
+        "id": "ID<dish:rice_03>",
+        "name": "Chicken Fried Rice",
+        "price": 448,
+        "reward_icon": "rice",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:rice_03>",
+       "price": 448
+      },
+      {
+       "display": {
+        "cat": "rice",
+        "color": "#A8814E",
+        "desc": "lascas de pollo, brócoli salteado, salsa de ostras preparada",
+        "emoji": "🍚",
+        "id": "ID<dish:rice_04>",
+        "name": "Broccoli Chicken",
+        "price": 392,
+        "reward_icon": "rice",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:rice_04>",
+       "price": 392
+      },
+      {
+       "display": {
+        "cat": "rice",
+        "color": "#A8814E",
+        "desc": "longaniza china, arroz blanco, arvejas chinas salteadas",
+        "emoji": "🍚",
+        "id": "ID<dish:rice_05>",
+        "name": "Lap Cheong",
+        "price": 292,
+        "reward_icon": "rice",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:rice_05>",
+       "price": 292
+      },
+      {
+       "display": {
+        "cat": "soups_salads",
+        "color": "#2D5447",
+        "desc": "Caldo de huesos, fideos de huevo, char siu, bok choy",
+        "emoji": "🥣",
+        "id": "ID<dish:soup_01>",
+        "name": "Cantonese Noodle Soup",
+        "price": 255,
+        "reward_icon": "soup",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:soup_01>",
+       "price": 255
+      },
+      {
+       "display": {
+        "cat": "soups_salads",
+        "color": "#2D5447",
+        "desc": "Wonton de cerdo y camarón, caldo de la casa, jengibre, cebollín",
+        "emoji": "🥣",
+        "id": "ID<dish:soup_02>",
+        "name": "Wonton Soup",
+        "price": 288,
+        "reward_icon": "soup",
+        "tags": []
+       },
+       "has_photo": false,
+       "key": "ID<dish:soup_02>",
+       "price": 288
+      },
+      {
+       "display": {
+        "cat": "soups_salads",
+        "color": "#2D5447",
+        "desc": "Pepino japonés, wakame, sésamo, vinagre de arroz",
+        "emoji": "🥣",
+        "id": "ID<dish:soup_03>",
+        "name": "Sunomono Salad",
+        "price": 192,
+        "reward_icon": "soup",
+        "tags": []
+       },
+       "has_photo": true,
+       "key": "ID<dish:soup_03>",
+       "price": 192
+      },
+      {
+       "display": {
+        "cat": "bebidas",
+        "color": "#13100E",
+        "desc": "",
+        "emoji": "🍺",
+        "id": "ID<dish:beer_01>",
+        "name": "Corona",
+        "price": 102,
+        "subcat": "Cervezas",
+        "tags": []
+       },
+       "has_photo": false,
+       "key": "ID<dish:beer_01>",
+       "price": 102
+      },
+      {
+       "display": {
+        "cat": "bebidas",
+        "color": "#13100E",
+        "desc": "",
+        "emoji": "🍺",
+        "id": "ID<dish:beer_02>",
+        "name": "Miller Draft",
+        "price": 102,
+        "subcat": "Cervezas",
+        "tags": []
+       },
+       "has_photo": false,
+       "key": "ID<dish:beer_02>",
+       "price": 102
+      },
+      {
+       "display": {
+        "cat": "bebidas",
+        "color": "#13100E",
+        "desc": "",
+        "emoji": "🍺",
+        "id": "ID<dish:beer_03>",
+        "name": "Miller Lite",
+        "price": 102,
+        "subcat": "Cervezas",
+        "tags": []
+       },
+       "has_photo": false,
+       "key": "ID<dish:beer_03>",
+       "price": 102
+      },
+      {
+       "display": {
+        "cat": "bebidas",
+        "color": "#13100E",
+        "desc": "",
+        "emoji": "🍺",
+        "id": "ID<dish:beer_04>",
+        "name": "Toña",
+        "price": 98,
+        "subcat": "Cervezas",
+        "tags": []
+       },
+       "has_photo": false,
+       "key": "ID<dish:beer_04>",
+       "price": 98
+      },
+      {
+       "display": {
+        "cat": "bebidas",
+        "color": "#13100E",
+        "desc": "",
+        "emoji": "🍺",
+        "id": "ID<dish:beer_05>",
+        "name": "Michelob Ultra",
+        "price": 102,
+        "subcat": "Cervezas",
+        "tags": []
+       },
+       "has_photo": false,
+       "key": "ID<dish:beer_05>",
+       "price": 102
+      },
+      {
+       "display": {
+        "cat": "bebidas",
+        "color": "#13100E",
+        "desc": "",
+        "emoji": "🍺",
+        "id": "ID<dish:beer_06>",
+        "name": "Coors Light",
+        "price": 102,
+        "subcat": "Cervezas",
+        "tags": []
+       },
+       "has_photo": false,
+       "key": "ID<dish:beer_06>",
+       "price": 102
+      },
+      {
+       "display": {
+        "cat": "bebidas",
+        "color": "#13100E",
+        "desc": "",
+        "emoji": "🍺",
+        "id": "ID<dish:beer_07>",
+        "name": "Salvavida",
+        "price": 81,
+        "subcat": "Cervezas",
+        "tags": []
+       },
+       "has_photo": false,
+       "key": "ID<dish:beer_07>",
+       "price": 81
+      },
+      {
+       "display": {
+        "cat": "bebidas",
+        "color": "#13100E",
+        "desc": "",
+        "emoji": "🍺",
+        "id": "ID<dish:beer_08>",
+        "name": "Imperial",
+        "price": 81,
+        "subcat": "Cervezas",
+        "tags": []
+       },
+       "has_photo": false,
+       "key": "ID<dish:beer_08>",
+       "price": 81
+      },
+      {
+       "display": {
+        "cat": "bebidas",
+        "color": "#8A7B6B",
+        "desc": "",
+        "emoji": "🥤",
+        "id": "ID<dish:soft_01>",
+        "name": "Coca Cola",
+        "price": 40,
+        "reward_icon": "glass",
+        "subcat": "Sodas",
+        "tags": []
+       },
+       "has_photo": false,
+       "key": "ID<dish:soft_01>",
+       "price": 40
+      },
+      {
+       "display": {
+        "cat": "bebidas",
+        "color": "#8A7B6B",
+        "desc": "",
+        "emoji": "🥤",
+        "id": "ID<dish:soft_02>",
+        "name": "Coca Cola Zero",
+        "price": 40,
+        "reward_icon": "glass",
+        "subcat": "Sodas",
+        "tags": []
+       },
+       "has_photo": false,
+       "key": "ID<dish:soft_02>",
+       "price": 40
+      },
+      {
+       "display": {
+        "cat": "bebidas",
+        "color": "#8A7B6B",
+        "desc": "",
+        "emoji": "🥤",
+        "id": "ID<dish:soft_03>",
+        "name": "Sprite",
+        "price": 40,
+        "reward_icon": "glass",
+        "subcat": "Sodas",
+        "tags": []
+       },
+       "has_photo": false,
+       "key": "ID<dish:soft_03>",
+       "price": 40
+      },
+      {
+       "display": {
+        "cat": "bebidas",
+        "color": "#8A7B6B",
+        "desc": "",
+        "emoji": "🥤",
+        "id": "ID<dish:soft_04>",
+        "name": "Agua",
+        "price": 40,
+        "reward_icon": "glass",
+        "subcat": "Sodas",
+        "tags": []
+       },
+       "has_photo": false,
+       "key": "ID<dish:soft_04>",
+       "price": 40
+      }
+     ],
+     "key_mode": "id",
+     "restaurant_id": "la_musa",
+     "schema_version": 2,
+     "structure": {
+      "badge_priority": [
+       "signature_special",
+       "chefs_pick",
+       "must_try",
+       "crowd_favourite",
+       "most_ordered",
+       "price_pending"
+      ],
+      "badges": {
+       "chefs_pick": {
+        "cls": "menu-badge--bronze",
+        "label": "Selección del chef"
+       },
+       "crowd_favourite": {
+        "cls": "menu-badge--red",
+        "label": "Favorito"
+       },
+       "most_ordered": {
+        "cls": "menu-badge--jade",
+        "label": "Más pedido"
+       },
+       "must_try": {
+        "cls": "menu-badge--red",
+        "label": "Imperdible"
+       },
+       "price_pending": {
+        "cls": "menu-badge--muted",
+        "label": "Precio próximamente"
+       },
+       "signature_special": {
+        "cls": "menu-badge--bronze",
+        "label": "Especial de la casa"
+       }
+      },
+      "categories": [
+       {
+        "id": "dim_sum",
+        "name": "Dim Sum"
+       },
+       {
+        "id": "starters",
+        "name": "Starters"
+       },
+       {
+        "id": "house_specials",
+        "name": "House Specials"
+       },
+       {
+        "id": "crudo",
+        "name": "Crudo"
+       },
+       {
+        "id": "noodles",
+        "name": "Noodles"
+       },
+       {
+        "id": "rice",
+        "name": "Rice"
+       },
+       {
+        "id": "soups_salads",
+        "name": "Soups & Salads"
+       },
+       {
+        "id": "bebidas",
+        "layout": "list",
+        "name": "Bebidas",
+        "subcats": [
+         "Sodas",
+         "Cervezas"
+        ]
+       }
+      ],
+      "exposure": {
+       "category_allow": {
+        "crudo": [
+         "Acompañamientos",
+         "Salsas"
+        ],
+        "dim_sum": [
+         "Acompañamientos",
+         "Salsas"
+        ],
+        "house_specials": [
+         "Acompañamientos",
+         "Salsas"
+        ],
+        "noodles": [
+         "Acompañamientos",
+         "Salsas"
+        ],
+        "rice": [
+         "Acompañamientos",
+         "Salsas"
+        ],
+        "soups_salads": [
+         "Acompañamientos",
+         "Salsas"
+        ],
+        "starters": [
+         "Acompañamientos",
+         "Salsas"
+        ]
+       },
+       "item_overrides": {
+        "ID<dish:rice_03>": {
+         "add": [
+          "Proteínas"
+         ]
+        }
+       }
+      },
+      "extra_categories": [
+       "Acompañamientos",
+       "Salsas",
+       "Proteínas"
+      ],
+      "extras_by_category": {
+       "crudo": [
+        "Acompañamientos",
+        "Salsas"
+       ],
+       "dim_sum": [
+        "Acompañamientos",
+        "Salsas"
+       ],
+       "house_specials": [
+        "Acompañamientos",
+        "Salsas"
+       ],
+       "noodles": [
+        "Acompañamientos",
+        "Salsas"
+       ],
+       "rice": [
+        "Acompañamientos",
+        "Salsas"
+       ],
+       "soups_salads": [
+        "Acompañamientos",
+        "Salsas"
+       ],
+       "starters": [
+        "Acompañamientos",
+        "Salsas"
+       ]
+      },
+      "extras_by_item": {
+       "ID<dish:rice_03>": [
+        "Proteínas"
+       ]
+      },
+      "item_order": [
+       "ID<dish:dimsum_01>",
+       "ID<dish:dimsum_02>",
+       "ID<dish:dimsum_03>",
+       "ID<dish:dimsum_04>",
+       "ID<dish:dimsum_05>",
+       "ID<dish:starter_01>",
+       "ID<dish:starter_02>",
+       "ID<dish:starter_03>",
+       "ID<dish:starter_04>",
+       "ID<dish:starter_05>",
+       "ID<dish:starter_06>",
+       "ID<dish:special_01>",
+       "ID<dish:special_02>",
+       "ID<dish:special_04>",
+       "ID<dish:special_05>",
+       "ID<dish:crudo_01>",
+       "ID<dish:crudo_02>",
+       "ID<dish:crudo_03>",
+       "ID<dish:noodle_01>",
+       "ID<dish:ID<dish:noodle_01>_sin>",
+       "ID<dish:ID<dish:noodle_01>_pollo>",
+       "ID<dish:ID<dish:noodle_01>_camaron>",
+       "ID<dish:noodle_02>",
+       "ID<dish:noodle_03>",
+       "ID<dish:rice_01>",
+       "ID<dish:rice_02>",
+       "ID<dish:rice_03>",
+       "ID<dish:rice_04>",
+       "ID<dish:rice_05>",
+       "ID<dish:soup_01>",
+       "ID<dish:soup_02>",
+       "ID<dish:soup_03>",
+       "ID<dish:beer_01>",
+       "ID<dish:beer_02>",
+       "ID<dish:beer_03>",
+       "ID<dish:beer_04>",
+       "ID<dish:beer_05>",
+       "ID<dish:beer_06>",
+       "ID<dish:beer_07>",
+       "ID<dish:beer_08>",
+       "ID<dish:soft_01>",
+       "ID<dish:soft_02>",
+       "ID<dish:soft_03>",
+       "ID<dish:soft_04>"
+      ],
+      "redeem_eligible_cats": [
+       "crudo",
+       "dim_sum",
+       "house_specials",
+       "noodles",
+       "rice",
+       "soups_salads",
+       "starters"
+      ],
+      "redeem_eligible_extras": [
+       "ID<extra:papas_fritas>",
+       "ID<extra:rice_chinese>",
+       "ID<extra:rice_white>"
+      ],
+      "redeem_eligible_items": [
+       "ID<dish:soft_01>",
+       "ID<dish:soft_02>",
+       "ID<dish:soft_03>",
+       "ID<dish:soft_04>"
+      ],
+      "schema_version": 1,
+      "variant_items": {
+       "ID<dish:noodle_01>": {
+        "label": "Proteína",
+        "variantIds": [
+         "ID<dish:ID<dish:noodle_01>_sin>",
+         "ID<dish:ID<dish:noodle_01>_pollo>",
+         "ID<dish:ID<dish:noodle_01>_camaron>"
+        ]
+       }
+      }
+     }
+    }
+   },
+   "retired": {
+    "code": "name_needs_new_id",
+    "ok": false
+   }
+  },
   "FACTURA": {
    "error": "unknown menu item: Sichuan Spicy Wonton",
    "items": null
@@ -8096,6 +10203,120 @@
     "error": null,
     "total": 1180
    }
+  },
+  "LAST_GOOD": {
+   "extras": {
+    "ID<extra:papas_fritas>": 75,
+    "ID<extra:protein_beef>": 155,
+    "ID<extra:protein_chicken>": 65,
+    "ID<extra:protein_shrimp>": 135,
+    "ID<extra:rice_chinese>": 85,
+    "ID<extra:rice_white>": 50,
+    "ID<extra:sauce_aioli>": 30,
+    "ID<extra:sauce_chili_oil>": 30,
+    "ID<extra:sauce_chipotle>": 30,
+    "ID<extra:sauce_dumpling>": 30,
+    "ID<extra:sauce_pad_thai>": 30,
+    "ID<extra:sauce_spicy_mayo>": 30,
+    "ID<extra:sauce_tuna_tartar>": 30,
+    "ID<extra:sauce_wonton>": 30
+   },
+   "keyMode": "id",
+   "labels": {
+    "ID<dish:ID<dish:noodle_01>_camaron>": "Pad Thai - Camarones",
+    "ID<dish:ID<dish:noodle_01>_pollo>": "Pad Thai - Pollo",
+    "ID<dish:ID<dish:noodle_01>_sin>": "Pad Thai - Sin Proteína",
+    "ID<dish:beer_01>": "Corona",
+    "ID<dish:beer_02>": "Miller Draft",
+    "ID<dish:beer_03>": "Miller Lite",
+    "ID<dish:beer_04>": "Toña",
+    "ID<dish:beer_05>": "Michelob Ultra",
+    "ID<dish:beer_06>": "Coors Light",
+    "ID<dish:beer_07>": "Salvavida",
+    "ID<dish:beer_08>": "Imperial",
+    "ID<dish:crudo_01>": "Tuna Crudo",
+    "ID<dish:crudo_02>": "Ceviche Peruano",
+    "ID<dish:crudo_03>": "Ceviche de Camaron",
+    "ID<dish:dimsum_01>": "Sichuan Spicy Wonton",
+    "ID<dish:dimsum_02>": "Pork Belly Buns",
+    "ID<dish:dimsum_03>": "Shrimp Dumplings",
+    "ID<dish:dimsum_04>": "Fried Wontons",
+    "ID<dish:dimsum_05>": "Shrimp Tempura Buns",
+    "ID<dish:noodle_01>": "Pad Thai",
+    "ID<dish:noodle_02>": "Broccoli Beef",
+    "ID<dish:noodle_03>": "Hunan Chicken",
+    "ID<dish:rice_01>": "General Tso Chicken",
+    "ID<dish:rice_02>": "Mongolian Beef",
+    "ID<dish:rice_03>": "Chicken Fried Rice",
+    "ID<dish:rice_04>": "Broccoli Chicken",
+    "ID<dish:rice_05>": "Lap Cheong",
+    "ID<dish:soft_01>": "Coca Cola",
+    "ID<dish:soft_02>": "Coca Cola Zero",
+    "ID<dish:soft_03>": "Sprite",
+    "ID<dish:soft_04>": "Agua",
+    "ID<dish:soup_01>": "Cantonese Noodle Soup",
+    "ID<dish:soup_02>": "Wonton Soup",
+    "ID<dish:soup_03>": "Sunomono Salad",
+    "ID<dish:special_01>": "Cantonese Lobster Tail",
+    "ID<dish:special_02>": "Tuna Tartare",
+    "ID<dish:special_04>": "Asado de Tira",
+    "ID<dish:special_05>": "Filete La Muse",
+    "ID<dish:starter_01>": "Korean BBQ Wings",
+    "ID<dish:starter_02>": "Chorizo Parrillero",
+    "ID<dish:starter_03>": "Costillitas Chinas",
+    "ID<dish:starter_04>": "Camaron Que Se Duerme",
+    "ID<dish:starter_05>": "Camaron Asiatico",
+    "ID<dish:starter_06>": "Spicy Camaron Tempura"
+   },
+   "menu": {
+    "ID<dish:ID<dish:noodle_01>_camaron>": 414,
+    "ID<dish:ID<dish:noodle_01>_pollo>": 342,
+    "ID<dish:ID<dish:noodle_01>_sin>": 307,
+    "ID<dish:beer_01>": 102,
+    "ID<dish:beer_02>": 102,
+    "ID<dish:beer_03>": 102,
+    "ID<dish:beer_04>": 98,
+    "ID<dish:beer_05>": 102,
+    "ID<dish:beer_06>": 102,
+    "ID<dish:beer_07>": 81,
+    "ID<dish:beer_08>": 81,
+    "ID<dish:crudo_01>": 452,
+    "ID<dish:crudo_02>": 346,
+    "ID<dish:crudo_03>": 337,
+    "ID<dish:dimsum_01>": 249,
+    "ID<dish:dimsum_02>": 248,
+    "ID<dish:dimsum_03>": 286,
+    "ID<dish:dimsum_04>": 288,
+    "ID<dish:dimsum_05>": 260,
+    "ID<dish:noodle_01>": 414,
+    "ID<dish:noodle_02>": 492,
+    "ID<dish:noodle_03>": 340,
+    "ID<dish:rice_01>": 270,
+    "ID<dish:rice_02>": 456,
+    "ID<dish:rice_03>": 448,
+    "ID<dish:rice_04>": 392,
+    "ID<dish:rice_05>": 292,
+    "ID<dish:soft_01>": 40,
+    "ID<dish:soft_02>": 40,
+    "ID<dish:soft_03>": 40,
+    "ID<dish:soft_04>": 40,
+    "ID<dish:soup_01>": 255,
+    "ID<dish:soup_02>": 288,
+    "ID<dish:soup_03>": 192,
+    "ID<dish:special_01>": 588,
+    "ID<dish:special_02>": 478,
+    "ID<dish:special_04>": 624,
+    "ID<dish:special_05>": 384,
+    "ID<dish:starter_01>": 262,
+    "ID<dish:starter_02>": 252,
+    "ID<dish:starter_03>": 265,
+    "ID<dish:starter_04>": 378,
+    "ID<dish:starter_05>": 413,
+    "ID<dish:starter_06>": 409
+   },
+   "seq": 1,
+   "source": "last_good",
+   "versionId": "v-off"
   },
   "PUBLISH": {
    "mirrors": [
@@ -8212,6 +10433,125 @@
      "rid": "la_musa",
      "seq": 1,
      "version": "v#1"
+    }
+   ],
+   "rtdb": [
+    {
+     "path": "catalog_snapshot/la_musa",
+     "value": {
+      "extras": {
+       "ID<extra:papas_fritas>": 75,
+       "ID<extra:protein_beef>": 155,
+       "ID<extra:protein_chicken>": 65,
+       "ID<extra:protein_shrimp>": 135,
+       "ID<extra:rice_chinese>": 85,
+       "ID<extra:rice_white>": 50,
+       "ID<extra:sauce_aioli>": 30,
+       "ID<extra:sauce_chili_oil>": 30,
+       "ID<extra:sauce_chipotle>": 30,
+       "ID<extra:sauce_dumpling>": 30,
+       "ID<extra:sauce_pad_thai>": 30,
+       "ID<extra:sauce_spicy_mayo>": 30,
+       "ID<extra:sauce_tuna_tartar>": 30,
+       "ID<extra:sauce_wonton>": 30
+      },
+      "key_mode": "id",
+      "labels": {
+       "ID<dish:ID<dish:noodle_01>_camaron>": "Pad Thai - Camarones",
+       "ID<dish:ID<dish:noodle_01>_pollo>": "Pad Thai - Pollo",
+       "ID<dish:ID<dish:noodle_01>_sin>": "Pad Thai - Sin Proteína",
+       "ID<dish:beer_01>": "Corona",
+       "ID<dish:beer_02>": "Miller Draft",
+       "ID<dish:beer_03>": "Miller Lite",
+       "ID<dish:beer_04>": "Toña",
+       "ID<dish:beer_05>": "Michelob Ultra",
+       "ID<dish:beer_06>": "Coors Light",
+       "ID<dish:beer_07>": "Salvavida",
+       "ID<dish:beer_08>": "Imperial",
+       "ID<dish:crudo_01>": "Tuna Crudo",
+       "ID<dish:crudo_02>": "Ceviche Peruano",
+       "ID<dish:crudo_03>": "Ceviche de Camaron",
+       "ID<dish:dimsum_01>": "Sichuan Spicy Wonton",
+       "ID<dish:dimsum_02>": "Pork Belly Buns",
+       "ID<dish:dimsum_03>": "Shrimp Dumplings",
+       "ID<dish:dimsum_04>": "Fried Wontons",
+       "ID<dish:dimsum_05>": "Shrimp Tempura Buns",
+       "ID<dish:noodle_01>": "Pad Thai",
+       "ID<dish:noodle_02>": "Broccoli Beef",
+       "ID<dish:noodle_03>": "Hunan Chicken",
+       "ID<dish:rice_01>": "General Tso Chicken",
+       "ID<dish:rice_02>": "Mongolian Beef",
+       "ID<dish:rice_03>": "Chicken Fried Rice",
+       "ID<dish:rice_04>": "Broccoli Chicken",
+       "ID<dish:rice_05>": "Lap Cheong",
+       "ID<dish:soft_01>": "Coca Cola",
+       "ID<dish:soft_02>": "Coca Cola Zero",
+       "ID<dish:soft_03>": "Sprite",
+       "ID<dish:soft_04>": "Agua",
+       "ID<dish:soup_01>": "Cantonese Noodle Soup",
+       "ID<dish:soup_02>": "Wonton Soup",
+       "ID<dish:soup_03>": "Sunomono Salad",
+       "ID<dish:special_01>": "Cantonese Lobster Tail",
+       "ID<dish:special_02>": "Tuna Tartare",
+       "ID<dish:special_04>": "Asado de Tira",
+       "ID<dish:special_05>": "Filete La Muse",
+       "ID<dish:starter_01>": "Korean BBQ Wings",
+       "ID<dish:starter_02>": "Chorizo Parrillero",
+       "ID<dish:starter_03>": "Costillitas Chinas",
+       "ID<dish:starter_04>": "Camaron Que Se Duerme",
+       "ID<dish:starter_05>": "Camaron Asiatico",
+       "ID<dish:starter_06>": "Spicy Camaron Tempura"
+      },
+      "menu": {
+       "ID<dish:ID<dish:noodle_01>_camaron>": 414,
+       "ID<dish:ID<dish:noodle_01>_pollo>": 342,
+       "ID<dish:ID<dish:noodle_01>_sin>": 307,
+       "ID<dish:beer_01>": 102,
+       "ID<dish:beer_02>": 102,
+       "ID<dish:beer_03>": 102,
+       "ID<dish:beer_04>": 98,
+       "ID<dish:beer_05>": 102,
+       "ID<dish:beer_06>": 102,
+       "ID<dish:beer_07>": 81,
+       "ID<dish:beer_08>": 81,
+       "ID<dish:crudo_01>": 452,
+       "ID<dish:crudo_02>": 346,
+       "ID<dish:crudo_03>": 337,
+       "ID<dish:dimsum_01>": 249,
+       "ID<dish:dimsum_02>": 248,
+       "ID<dish:dimsum_03>": 286,
+       "ID<dish:dimsum_04>": 288,
+       "ID<dish:dimsum_05>": 260,
+       "ID<dish:noodle_01>": 414,
+       "ID<dish:noodle_02>": 492,
+       "ID<dish:noodle_03>": 340,
+       "ID<dish:rice_01>": 270,
+       "ID<dish:rice_02>": 456,
+       "ID<dish:rice_03>": 448,
+       "ID<dish:rice_04>": 392,
+       "ID<dish:rice_05>": 292,
+       "ID<dish:soft_01>": 40,
+       "ID<dish:soft_02>": 40,
+       "ID<dish:soft_03>": 40,
+       "ID<dish:soft_04>": 40,
+       "ID<dish:soup_01>": 255,
+       "ID<dish:soup_02>": 288,
+       "ID<dish:soup_03>": 192,
+       "ID<dish:special_01>": 588,
+       "ID<dish:special_02>": 478,
+       "ID<dish:special_04>": 624,
+       "ID<dish:special_05>": 384,
+       "ID<dish:starter_01>": 262,
+       "ID<dish:starter_02>": 252,
+       "ID<dish:starter_03>": 265,
+       "ID<dish:starter_04>": 378,
+       "ID<dish:starter_05>": 413,
+       "ID<dish:starter_06>": 409
+      },
+      "rid": "la_musa",
+      "seq": 1,
+      "version": "v#1"
+     }
     }
    ],
    "store": {
@@ -12939,6 +15279,242 @@
      "rid": "la_musa",
      "seq": 1,
      "version": "v#1"
+    }
+   ],
+   "rtdb": [
+    {
+     "path": "catalog_snapshot/la_musa",
+     "value": {
+      "extras": {
+       "ID<extra:papas_fritas>": 75,
+       "ID<extra:protein_beef>": 155,
+       "ID<extra:protein_chicken>": 65,
+       "ID<extra:protein_shrimp>": 135,
+       "ID<extra:rice_chinese>": 85,
+       "ID<extra:rice_white>": 50,
+       "ID<extra:sauce_aioli>": 30,
+       "ID<extra:sauce_chili_oil>": 30,
+       "ID<extra:sauce_chipotle>": 30,
+       "ID<extra:sauce_dumpling>": 30,
+       "ID<extra:sauce_pad_thai>": 30,
+       "ID<extra:sauce_spicy_mayo>": 30,
+       "ID<extra:sauce_tuna_tartar>": 30,
+       "ID<extra:sauce_wonton>": 30
+      },
+      "key_mode": "id",
+      "labels": {
+       "ID<dish:ID<dish:noodle_01>_camaron>": "Pad Thai - Camarones",
+       "ID<dish:ID<dish:noodle_01>_pollo>": "Pad Thai - Pollo",
+       "ID<dish:ID<dish:noodle_01>_sin>": "Pad Thai - Sin Proteína",
+       "ID<dish:beer_01>": "Corona",
+       "ID<dish:beer_02>": "Miller Draft",
+       "ID<dish:beer_03>": "Miller Lite",
+       "ID<dish:beer_04>": "Toña",
+       "ID<dish:beer_05>": "Michelob Ultra",
+       "ID<dish:beer_06>": "Coors Light",
+       "ID<dish:beer_07>": "Salvavida",
+       "ID<dish:beer_08>": "Imperial",
+       "ID<dish:crudo_01>": "Tuna Crudo",
+       "ID<dish:crudo_02>": "Ceviche Peruano",
+       "ID<dish:crudo_03>": "Ceviche de Camaron",
+       "ID<dish:dimsum_01>": "Sichuan Spicy Wonton",
+       "ID<dish:dimsum_02>": "Pork Belly Buns",
+       "ID<dish:dimsum_03>": "Shrimp Dumplings",
+       "ID<dish:dimsum_04>": "Fried Wontons",
+       "ID<dish:dimsum_05>": "Shrimp Tempura Buns",
+       "ID<dish:noodle_01>": "Pad Thai",
+       "ID<dish:noodle_02>": "Broccoli Beef",
+       "ID<dish:noodle_03>": "Hunan Chicken",
+       "ID<dish:rice_01>": "General Tso Chicken",
+       "ID<dish:rice_02>": "Mongolian Beef",
+       "ID<dish:rice_03>": "Chicken Fried Rice",
+       "ID<dish:rice_04>": "Broccoli Chicken",
+       "ID<dish:rice_05>": "Lap Cheong",
+       "ID<dish:soft_01>": "Coca Cola",
+       "ID<dish:soft_02>": "Coca Cola Zero",
+       "ID<dish:soft_03>": "Sprite",
+       "ID<dish:soft_04>": "Agua",
+       "ID<dish:soup_01>": "Cantonese Noodle Soup",
+       "ID<dish:soup_02>": "Wonton Soup",
+       "ID<dish:soup_03>": "Sunomono Salad",
+       "ID<dish:special_01>": "Cantonese Lobster Tail",
+       "ID<dish:special_02>": "Tuna Tartare",
+       "ID<dish:special_04>": "Asado de Tira",
+       "ID<dish:special_05>": "Filete La Muse",
+       "ID<dish:starter_01>": "Korean BBQ Wings",
+       "ID<dish:starter_02>": "Chorizo Parrillero",
+       "ID<dish:starter_03>": "Costillitas Chinas",
+       "ID<dish:starter_04>": "Camaron Que Se Duerme",
+       "ID<dish:starter_05>": "Camaron Asiatico",
+       "ID<dish:starter_06>": "Spicy Camaron Tempura"
+      },
+      "menu": {
+       "ID<dish:ID<dish:noodle_01>_camaron>": 414,
+       "ID<dish:ID<dish:noodle_01>_pollo>": 342,
+       "ID<dish:ID<dish:noodle_01>_sin>": 307,
+       "ID<dish:beer_01>": 102,
+       "ID<dish:beer_02>": 102,
+       "ID<dish:beer_03>": 102,
+       "ID<dish:beer_04>": 98,
+       "ID<dish:beer_05>": 102,
+       "ID<dish:beer_06>": 102,
+       "ID<dish:beer_07>": 81,
+       "ID<dish:beer_08>": 81,
+       "ID<dish:crudo_01>": 452,
+       "ID<dish:crudo_02>": 346,
+       "ID<dish:crudo_03>": 337,
+       "ID<dish:dimsum_01>": 259,
+       "ID<dish:dimsum_02>": 248,
+       "ID<dish:dimsum_03>": 286,
+       "ID<dish:dimsum_04>": 288,
+       "ID<dish:dimsum_05>": 260,
+       "ID<dish:noodle_01>": 414,
+       "ID<dish:noodle_02>": 492,
+       "ID<dish:noodle_03>": 340,
+       "ID<dish:rice_01>": 270,
+       "ID<dish:rice_02>": 456,
+       "ID<dish:rice_03>": 448,
+       "ID<dish:rice_04>": 392,
+       "ID<dish:rice_05>": 292,
+       "ID<dish:soft_01>": 40,
+       "ID<dish:soft_02>": 40,
+       "ID<dish:soft_03>": 40,
+       "ID<dish:soft_04>": 40,
+       "ID<dish:soup_01>": 255,
+       "ID<dish:soup_02>": 288,
+       "ID<dish:soup_03>": 192,
+       "ID<dish:special_01>": 588,
+       "ID<dish:special_02>": 478,
+       "ID<dish:special_04>": 624,
+       "ID<dish:special_05>": 384,
+       "ID<dish:starter_01>": 262,
+       "ID<dish:starter_02>": 252,
+       "ID<dish:starter_03>": 265,
+       "ID<dish:starter_04>": 378,
+       "ID<dish:starter_05>": 413,
+       "ID<dish:starter_06>": 409
+      },
+      "rid": "la_musa",
+      "seq": 2,
+      "version": "v#2"
+     }
+    },
+    {
+     "path": "catalog_snapshot/la_musa",
+     "value": {
+      "extras": {
+       "ID<extra:papas_fritas>": 75,
+       "ID<extra:protein_beef>": 155,
+       "ID<extra:protein_chicken>": 65,
+       "ID<extra:protein_shrimp>": 135,
+       "ID<extra:rice_chinese>": 85,
+       "ID<extra:rice_white>": 50,
+       "ID<extra:sauce_aioli>": 30,
+       "ID<extra:sauce_chili_oil>": 30,
+       "ID<extra:sauce_chipotle>": 30,
+       "ID<extra:sauce_dumpling>": 30,
+       "ID<extra:sauce_pad_thai>": 30,
+       "ID<extra:sauce_spicy_mayo>": 30,
+       "ID<extra:sauce_tuna_tartar>": 30,
+       "ID<extra:sauce_wonton>": 30
+      },
+      "key_mode": "id",
+      "labels": {
+       "ID<dish:ID<dish:noodle_01>_camaron>": "Pad Thai - Camarones",
+       "ID<dish:ID<dish:noodle_01>_pollo>": "Pad Thai - Pollo",
+       "ID<dish:ID<dish:noodle_01>_sin>": "Pad Thai - Sin Proteína",
+       "ID<dish:beer_01>": "Corona",
+       "ID<dish:beer_02>": "Miller Draft",
+       "ID<dish:beer_03>": "Miller Lite",
+       "ID<dish:beer_04>": "Toña",
+       "ID<dish:beer_05>": "Michelob Ultra",
+       "ID<dish:beer_06>": "Coors Light",
+       "ID<dish:beer_07>": "Salvavida",
+       "ID<dish:beer_08>": "Imperial",
+       "ID<dish:crudo_01>": "Tuna Crudo",
+       "ID<dish:crudo_02>": "Ceviche Peruano",
+       "ID<dish:crudo_03>": "Ceviche de Camaron",
+       "ID<dish:dimsum_01>": "Sichuan Spicy Wonton",
+       "ID<dish:dimsum_02>": "Pork Belly Buns",
+       "ID<dish:dimsum_03>": "Shrimp Dumplings",
+       "ID<dish:dimsum_04>": "Fried Wontons",
+       "ID<dish:dimsum_05>": "Shrimp Tempura Buns",
+       "ID<dish:noodle_01>": "Pad Thai",
+       "ID<dish:noodle_02>": "Broccoli Beef",
+       "ID<dish:noodle_03>": "Hunan Chicken",
+       "ID<dish:rice_01>": "General Tso Chicken",
+       "ID<dish:rice_02>": "Mongolian Beef",
+       "ID<dish:rice_03>": "Chicken Fried Rice",
+       "ID<dish:rice_04>": "Broccoli Chicken",
+       "ID<dish:rice_05>": "Lap Cheong",
+       "ID<dish:soft_01>": "Coca Cola",
+       "ID<dish:soft_02>": "Coca Cola Zero",
+       "ID<dish:soft_03>": "Sprite",
+       "ID<dish:soft_04>": "Agua",
+       "ID<dish:soup_01>": "Cantonese Noodle Soup",
+       "ID<dish:soup_02>": "Wonton Soup",
+       "ID<dish:soup_03>": "Sunomono Salad",
+       "ID<dish:special_01>": "Cantonese Lobster Tail",
+       "ID<dish:special_02>": "Tuna Tartare",
+       "ID<dish:special_04>": "Asado de Tira",
+       "ID<dish:special_05>": "Filete La Muse",
+       "ID<dish:starter_01>": "Korean BBQ Wings",
+       "ID<dish:starter_02>": "Chorizo Parrillero",
+       "ID<dish:starter_03>": "Costillitas Chinas",
+       "ID<dish:starter_04>": "Camaron Que Se Duerme",
+       "ID<dish:starter_05>": "Camaron Asiatico",
+       "ID<dish:starter_06>": "Spicy Camaron Tempura"
+      },
+      "menu": {
+       "ID<dish:ID<dish:noodle_01>_camaron>": 414,
+       "ID<dish:ID<dish:noodle_01>_pollo>": 342,
+       "ID<dish:ID<dish:noodle_01>_sin>": 307,
+       "ID<dish:beer_01>": 102,
+       "ID<dish:beer_02>": 102,
+       "ID<dish:beer_03>": 102,
+       "ID<dish:beer_04>": 98,
+       "ID<dish:beer_05>": 102,
+       "ID<dish:beer_06>": 102,
+       "ID<dish:beer_07>": 81,
+       "ID<dish:beer_08>": 81,
+       "ID<dish:crudo_01>": 452,
+       "ID<dish:crudo_02>": 346,
+       "ID<dish:crudo_03>": 337,
+       "ID<dish:dimsum_01>": 249,
+       "ID<dish:dimsum_02>": 248,
+       "ID<dish:dimsum_03>": 286,
+       "ID<dish:dimsum_04>": 288,
+       "ID<dish:dimsum_05>": 260,
+       "ID<dish:noodle_01>": 414,
+       "ID<dish:noodle_02>": 492,
+       "ID<dish:noodle_03>": 340,
+       "ID<dish:rice_01>": 270,
+       "ID<dish:rice_02>": 456,
+       "ID<dish:rice_03>": 448,
+       "ID<dish:rice_04>": 392,
+       "ID<dish:rice_05>": 292,
+       "ID<dish:soft_01>": 40,
+       "ID<dish:soft_02>": 40,
+       "ID<dish:soft_03>": 40,
+       "ID<dish:soft_04>": 40,
+       "ID<dish:soup_01>": 255,
+       "ID<dish:soup_02>": 288,
+       "ID<dish:soup_03>": 192,
+       "ID<dish:special_01>": 588,
+       "ID<dish:special_02>": 478,
+       "ID<dish:special_04>": 624,
+       "ID<dish:special_05>": 384,
+       "ID<dish:starter_01>": 262,
+       "ID<dish:starter_02>": 252,
+       "ID<dish:starter_03>": 265,
+       "ID<dish:starter_04>": 378,
+       "ID<dish:starter_05>": 413,
+       "ID<dish:starter_06>": 409
+      },
+      "rid": "la_musa",
+      "seq": 1,
+      "version": "v#1"
+     }
     }
    ],
    "store": {
@@ -21352,6 +23928,53 @@
    "representation_version": "1d.3"
   },
   "TABLES": {
+   "keyMode": "id",
+   "labels": {
+    "ID<dish:ID<dish:noodle_01>_camaron>": "Pad Thai - Camarones",
+    "ID<dish:ID<dish:noodle_01>_pollo>": "Pad Thai - Pollo",
+    "ID<dish:ID<dish:noodle_01>_sin>": "Pad Thai - Sin Proteína",
+    "ID<dish:beer_01>": "Corona",
+    "ID<dish:beer_02>": "Miller Draft",
+    "ID<dish:beer_03>": "Miller Lite",
+    "ID<dish:beer_04>": "Toña",
+    "ID<dish:beer_05>": "Michelob Ultra",
+    "ID<dish:beer_06>": "Coors Light",
+    "ID<dish:beer_07>": "Salvavida",
+    "ID<dish:beer_08>": "Imperial",
+    "ID<dish:crudo_01>": "Tuna Crudo",
+    "ID<dish:crudo_02>": "Ceviche Peruano",
+    "ID<dish:crudo_03>": "Ceviche de Camaron",
+    "ID<dish:dimsum_01>": "Sichuan Spicy Wonton",
+    "ID<dish:dimsum_02>": "Pork Belly Buns",
+    "ID<dish:dimsum_03>": "Shrimp Dumplings",
+    "ID<dish:dimsum_04>": "Fried Wontons",
+    "ID<dish:dimsum_05>": "Shrimp Tempura Buns",
+    "ID<dish:noodle_01>": "Pad Thai",
+    "ID<dish:noodle_02>": "Broccoli Beef",
+    "ID<dish:noodle_03>": "Hunan Chicken",
+    "ID<dish:rice_01>": "General Tso Chicken",
+    "ID<dish:rice_02>": "Mongolian Beef",
+    "ID<dish:rice_03>": "Chicken Fried Rice",
+    "ID<dish:rice_04>": "Broccoli Chicken",
+    "ID<dish:rice_05>": "Lap Cheong",
+    "ID<dish:soft_01>": "Coca Cola",
+    "ID<dish:soft_02>": "Coca Cola Zero",
+    "ID<dish:soft_03>": "Sprite",
+    "ID<dish:soft_04>": "Agua",
+    "ID<dish:soup_01>": "Cantonese Noodle Soup",
+    "ID<dish:soup_02>": "Wonton Soup",
+    "ID<dish:soup_03>": "Sunomono Salad",
+    "ID<dish:special_01>": "Cantonese Lobster Tail",
+    "ID<dish:special_02>": "Tuna Tartare",
+    "ID<dish:special_04>": "Asado de Tira",
+    "ID<dish:special_05>": "Filete La Muse",
+    "ID<dish:starter_01>": "Korean BBQ Wings",
+    "ID<dish:starter_02>": "Chorizo Parrillero",
+    "ID<dish:starter_03>": "Costillitas Chinas",
+    "ID<dish:starter_04>": "Camaron Que Se Duerme",
+    "ID<dish:starter_05>": "Camaron Asiatico",
+    "ID<dish:starter_06>": "Spicy Camaron Tempura"
+   },
    "mirror": {
     "extras": {
      "ID<extra:papas_fritas>": 75,
@@ -21368,6 +23991,52 @@
      "ID<extra:sauce_spicy_mayo>": 30,
      "ID<extra:sauce_tuna_tartar>": 30,
      "ID<extra:sauce_wonton>": 30
+    },
+    "labels": {
+     "ID<dish:ID<dish:noodle_01>_camaron>": "Pad Thai - Camarones",
+     "ID<dish:ID<dish:noodle_01>_pollo>": "Pad Thai - Pollo",
+     "ID<dish:ID<dish:noodle_01>_sin>": "Pad Thai - Sin Proteína",
+     "ID<dish:beer_01>": "Corona",
+     "ID<dish:beer_02>": "Miller Draft",
+     "ID<dish:beer_03>": "Miller Lite",
+     "ID<dish:beer_04>": "Toña",
+     "ID<dish:beer_05>": "Michelob Ultra",
+     "ID<dish:beer_06>": "Coors Light",
+     "ID<dish:beer_07>": "Salvavida",
+     "ID<dish:beer_08>": "Imperial",
+     "ID<dish:crudo_01>": "Tuna Crudo",
+     "ID<dish:crudo_02>": "Ceviche Peruano",
+     "ID<dish:crudo_03>": "Ceviche de Camaron",
+     "ID<dish:dimsum_01>": "Sichuan Spicy Wonton",
+     "ID<dish:dimsum_02>": "Pork Belly Buns",
+     "ID<dish:dimsum_03>": "Shrimp Dumplings",
+     "ID<dish:dimsum_04>": "Fried Wontons",
+     "ID<dish:dimsum_05>": "Shrimp Tempura Buns",
+     "ID<dish:noodle_01>": "Pad Thai",
+     "ID<dish:noodle_02>": "Broccoli Beef",
+     "ID<dish:noodle_03>": "Hunan Chicken",
+     "ID<dish:rice_01>": "General Tso Chicken",
+     "ID<dish:rice_02>": "Mongolian Beef",
+     "ID<dish:rice_03>": "Chicken Fried Rice",
+     "ID<dish:rice_04>": "Broccoli Chicken",
+     "ID<dish:rice_05>": "Lap Cheong",
+     "ID<dish:soft_01>": "Coca Cola",
+     "ID<dish:soft_02>": "Coca Cola Zero",
+     "ID<dish:soft_03>": "Sprite",
+     "ID<dish:soft_04>": "Agua",
+     "ID<dish:soup_01>": "Cantonese Noodle Soup",
+     "ID<dish:soup_02>": "Wonton Soup",
+     "ID<dish:soup_03>": "Sunomono Salad",
+     "ID<dish:special_01>": "Cantonese Lobster Tail",
+     "ID<dish:special_02>": "Tuna Tartare",
+     "ID<dish:special_04>": "Asado de Tira",
+     "ID<dish:special_05>": "Filete La Muse",
+     "ID<dish:starter_01>": "Korean BBQ Wings",
+     "ID<dish:starter_02>": "Chorizo Parrillero",
+     "ID<dish:starter_03>": "Costillitas Chinas",
+     "ID<dish:starter_04>": "Camaron Que Se Duerme",
+     "ID<dish:starter_05>": "Camaron Asiatico",
+     "ID<dish:starter_06>": "Spicy Camaron Tempura"
     },
     "menu": {
      "ID<dish:ID<dish:noodle_01>_camaron>": 414,
