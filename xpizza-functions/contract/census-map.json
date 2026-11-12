@@ -508,8 +508,6 @@
   "index.js#chargeOnlineApp.all>anon": "intake",
   "index.js#a8FpG": "intake",
   "index.js#chargeOnlineApp.use": "intake",
-  "index.js#confirmOnlineApp.all": "intake",
-  "index.js#confirmOnlineApp.use": "intake",
   "index.js#createOrderApp.all": "intake",
   "index.js#createOrderApp.use": "intake",
   "index.js#deleteAccount": "infra",
