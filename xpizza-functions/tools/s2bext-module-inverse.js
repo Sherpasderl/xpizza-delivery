@@ -91,6 +91,11 @@ const HUNKS = Object.freeze([
   "was": "  const projected = canonicalize({ ...candidateSource(rid, { items: preview.items, extras: preview.extras, structure: preview.structure, key_mode: preview.record && preview.record.key_mode, frozen_keys: preview.record && preview.record.frozen_keys }), deleted_ids: null, ...(photoMap ? { photos: photoMap } : {}) });\n"
  },
  {
+  "file": "catalog/resolve-lines.js",
+  "now": "  { const rk = keyedRewardRefusal(rid, body.redeem, tables); if (rk) return rk; } { const xk = require('./extra-key-intake').extraKeyRefusal(rid, body, tables); if (xk) return xk; }   // S2b §2.1: a cart extra's extra_key, before any money step\n",
+  "was": "  { const rk = keyedRewardRefusal(rid, body.redeem, tables); if (rk) return rk; }\n"
+ },
+ {
   "file": "catalog/source-accounting.js",
   "now": "const TOP = new Set(['restaurant_id', 'schema_version', 'key_mode', 'items', 'extras', 'structure', 'frozen_keys', 'photos', 'deleted_ids', 'frozen_extra_keys']);\n",
   "was": "const TOP = new Set(['restaurant_id', 'schema_version', 'key_mode', 'items', 'extras', 'structure', 'frozen_keys', 'photos', 'deleted_ids']);\n"
@@ -114,6 +119,21 @@ const HUNKS = Object.freeze([
   "file": "catalog/structure-gate.js",
   "now": "    require('./extras-validate').validateNewExtras({ extras: draftRecords.extras, activeExtras: active.extras, activeItems: live.items, keyMode, reserved, frozenExtraKeys: draft.frozen_extra_keys, mintExtras: require('./extra-identity').extraIdentityCapabilities().mintExtras });   // S2b: a minted row only with its recorded reuse\n",
   "was": "    require('./extras-validate').validateNewExtras({ extras: draftRecords.extras, activeExtras: active.extras, activeItems: live.items, keyMode, reserved });\n"
+ },
+ {
+  "file": "menu-pricing.js",
+  "now": "  return ex && typeof ex.extra_key === 'string' && ex.extra_key ? ex.extra_key : (effectiveKeyMode(restaurantId, keyMode) === 'id' ? (ex && ex.id) : (ex && ex.name));   // S2b §2: a validated extra_key (resolveLines) decides first\n",
+  "was": "  return effectiveKeyMode(restaurantId, keyMode) === 'id' ? (ex && ex.id) : (ex && ex.name);\n"
+ },
+ {
+  "file": "quote-token.js",
+  "now": "const { itemPricingKey, extraPricingKey } = require('./menu-pricing');\n",
+  "was": "const { itemPricingKey } = require('./menu-pricing');\n"
+ },
+ {
+  "file": "quote-token.js",
+  "now": "        const ek = (() => { try { const r = extraPricingKey(e, rid, keyMode); return r === undefined || r === null || String(r) === '' ? null : String(r); } catch (_) { return null; } })();   // S2b §2.4: an extra binds by the key it is priced by\n",
+  "was": "        const ek = key(e);\n"
  },
  {
   "file": "tools/publish-version.js",

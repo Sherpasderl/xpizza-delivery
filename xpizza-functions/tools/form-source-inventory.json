@@ -183,6 +183,7 @@
     "xpizza-functions/catalog/s2b-alloc.test.js",
     "xpizza-functions/catalog/s2b-build.test.js",
     "xpizza-functions/catalog/s2b-lifecycle.test.js",
+    "xpizza-functions/catalog/s2b-resolve.test.js",
     "xpizza-functions/catalog/s2b-save.test.js",
     "xpizza-functions/catalog/s2b-writer.test.js",
     "xpizza-functions/catalog/s2core-compare.test.js",
@@ -562,6 +563,7 @@
     "xpizza-functions/catalog/s2b-alloc.test.js",
     "xpizza-functions/catalog/s2b-build.test.js",
     "xpizza-functions/catalog/s2b-lifecycle.test.js",
+    "xpizza-functions/catalog/s2b-resolve.test.js",
     "xpizza-functions/catalog/s2b-save.test.js",
     "xpizza-functions/catalog/s2core-compare.test.js",
     "xpizza-functions/catalog/s2core-editable.test.js",
@@ -969,6 +971,7 @@
     "xpizza-functions/catalog/s2b-alloc.test.js",
     "xpizza-functions/catalog/s2b-build.test.js",
     "xpizza-functions/catalog/s2b-lifecycle.test.js",
+    "xpizza-functions/catalog/s2b-resolve.test.js",
     "xpizza-functions/catalog/s2b-save.test.js",
     "xpizza-functions/catalog/s2b-writer.test.js",
     "xpizza-functions/catalog/s2core-compare.test.js",
@@ -1346,6 +1349,7 @@
     "xpizza-functions/catalog/s2b-alloc.test.js",
     "xpizza-functions/catalog/s2b-build.test.js",
     "xpizza-functions/catalog/s2b-lifecycle.test.js",
+    "xpizza-functions/catalog/s2b-resolve.test.js",
     "xpizza-functions/catalog/s2b-save.test.js",
     "xpizza-functions/catalog/s2core-compare.test.js",
     "xpizza-functions/catalog/s2core-editable.test.js",
@@ -2558,6 +2562,7 @@
   "catalog/exposure-source.js",
   "catalog/exposure-transitions.js",
   "catalog/extra-identity.js",
+  "catalog/extra-key-intake.js",
   "catalog/extras-allocate.js",
   "catalog/extras-consequences.js",
   "catalog/extras-eligibility-store.js",
@@ -3189,6 +3194,10 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/extra-key-intake.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/extras-allocate.js": {
    "pins": [],
    "lifts": []
@@ -3510,9 +3519,7 @@
   },
   "catalog/source-accounting.js": {
    "pins": [],
-   "lifts": [
-    "xpizza-functions/s2bext-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "catalog/source-store.js": {
    "pins": [
@@ -3570,8 +3577,7 @@
     }
    ],
    "lifts": [
-    "xpizza-functions/frozenkeys-wiring.guard.test.js",
-    "xpizza-functions/s2bext-wiring.guard.test.js"
+    "xpizza-functions/frozenkeys-wiring.guard.test.js"
    ]
   },
   "catalog/structure-budget.js": {
@@ -6180,7 +6186,8 @@
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
-      "tools/s2-module-inverse.js"
+      "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js"
      ]
     },
     {
@@ -6192,19 +6199,22 @@
       "tools/price-sync-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
-      "tools/s2-module-inverse.js"
+      "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
       "tools/s1d-module-inverse.js",
-      "tools/s2-module-inverse.js"
+      "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "xpizza-functions/keymode-wiring.guard.test.js"
+    "xpizza-functions/keymode-wiring.guard.test.js",
+    "xpizza-functions/s2bext-wiring.guard.test.js"
    ]
   },
   "merchant/_fake-db.js": {
@@ -6695,7 +6705,8 @@
   "quote-token.js": {
    "pins": [],
    "lifts": [
-    "xpizza-functions/quote-token.test.js"
+    "xpizza-functions/quote-token.test.js",
+    "xpizza-functions/s2bext-wiring.guard.test.js"
    ]
   },
   "ratings/aggregate-producer.js": {

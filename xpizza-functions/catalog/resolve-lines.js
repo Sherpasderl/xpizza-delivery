@@ -72,7 +72,7 @@ function keyedRewardRefusal(rid, redeem, tables) {
 
 function resolveLines(rid, body, tables) {
   if (!isObj(body) || !isObj(tables) || !isObj(tables.menu)) return { ok: true };
-  { const rk = keyedRewardRefusal(rid, body.redeem, tables); if (rk) return rk; }
+  { const rk = keyedRewardRefusal(rid, body.redeem, tables); if (rk) return rk; } { const xk = require('./extra-key-intake').extraKeyRefusal(rid, body, tables); if (xk) return xk; }   // S2b §2.1: a cart extra's extra_key, before any money step
   const items = body.items;
   if (!Array.isArray(items) || items.length === 0 || !items.every(isObj)) return { ok: true };
   const field = availIdentityField(rid, keyModeOfTables(tables));
