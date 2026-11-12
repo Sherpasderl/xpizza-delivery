@@ -26,9 +26,9 @@ const TMP_RE = /^tmp:[A-Za-z0-9-]{8,64}$/;
 const KEY_MODES = new Set(['name', 'id']);
 
 class AddProductError extends Error {
-  constructor(code, detail, { status = 400, field = null, ref = null, key = null } = {}) {
+  constructor(code, detail, { status = 400, field = null, ref = null, key = null, group = null } = {}) {
     super(`${code}: ${detail}`);
-    this.code = code; this.detail = detail; this.status = status; this.field = field; this.ref = ref; this.key = key;
+    this.code = code; this.detail = detail; this.status = status; this.field = field; this.ref = ref; this.key = key; if (group != null) this.group = group;
   }
 }
 const refuse = (code, detail, opts) => { throw new AddProductError(code, detail, opts); };
@@ -576,7 +576,7 @@ function extrasCatalogClaims({ draftBuilt, activeBuilt, ae, de }) {
   const ds = draftBuilt.structure || {}, as = activeBuilt.structure || {};
   const draftGroups = new Set([...de.values()].map((e) => e && e.display && e.display.cat));
   for (const g of (Array.isArray(as.extra_categories) ? as.extra_categories : [])) {
-    if (!draftGroups.has(g)) refuse('extras_group_empty', `the group ${JSON.stringify(g)} would be left with no options`, { field: 'extras' });
+    if (!draftGroups.has(g)) refuse('extras_group_empty', `the group ${JSON.stringify(g)} would be left with no options`, { field: 'extras', group: g });
   }
   const added = (draftBuilt.extras || []).map((e) => e.key).filter((k) => !ae.has(k));
   const kept = (Array.isArray(as.extra_order) ? as.extra_order : []).filter((k) => de.has(k));

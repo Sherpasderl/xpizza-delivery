@@ -49,7 +49,7 @@ function assessDraft(rid, source, activeRes) {
     const other = !AP.changesNothingElse(draftBuilt, activeBuilt, r.additions, r.removals);
     return { publishable: true, additions: r.additions, removals: r.removals, renames, other };
   } catch (e) {
-    if (e instanceof AP.AddProductError) return { publishable: false, code: e.code, detail: e.detail, ...(e.key ? { key: e.key } : {}), ...(e.field ? { field: e.field } : {}) };
+    if (e instanceof AP.AddProductError) return { publishable: false, code: e.code, detail: e.detail, ...(e.key ? { key: e.key } : {}), ...(e.field ? { field: e.field } : {}), ...(e.group != null ? { group: e.group } : {}) };
     return { publishable: false, code: 'assessment_failed', detail: String((e && e.message) || e).slice(0, 300) };
   }
 }

@@ -87,7 +87,7 @@ async function requestPublishCore(deps, ctx, body) {
     void gi;
     if (g.unavailable) return reply(503, { error: 'store_unavailable', retryable: true });
   } catch (e) {
-    if (e instanceof require('./add-product').AddProductError) return reply(e.status || 400, { error: e.code, detail: e.detail, ...(e.field ? { field: e.field } : {}), ...(e.key ? { key: e.key } : {}) });
+    if (e instanceof require('./add-product').AddProductError) return reply(e.status || 400, { error: e.code, detail: e.detail, ...(e.field ? { field: e.field } : {}), ...(e.key ? { key: e.key } : {}), ...(e.group != null ? { group: e.group } : {}) });
     return reply(500, { error: 'structural_check_failed' });
   }
   // NOTHING TO PUBLISH (codex plan r2 P1-1): a request exists only while draft ≠ active. Getting back to equality then
