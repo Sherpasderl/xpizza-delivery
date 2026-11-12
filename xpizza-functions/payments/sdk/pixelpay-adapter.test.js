@@ -363,6 +363,9 @@ const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓
     assert.strictEqual((await replay('status-captured', (a) => a.pspStatus({ uuid: U }))).state, 'captured', `${L}: status «paid» ⇒ captured`);
     assert.strictEqual((await replay('status-voided', (a) => a.pspStatus({ uuid: U }))).state, 'inconclusive', `${L}: the 412 after a void ⇒ inconclusive (never void evidence)`);
     assert.strictEqual((await replay('auth-duplicate-ref', (a) => a.pspAuthorize({ ...AUTH_IN, amount_cents: 100 }))).outcome, 'approved', `${L}: PixelPay ACCEPTS a duplicate reference (we never rely on its dedupe)`);
+    // the owner's status re-run: «not found» is 412 everywhere — never evidence of anything
+    for (const n of ['status-unknown-uuid', 'status-challenged-uuid']) assert.strictEqual((await replay(n, (a) => a.pspStatus({ uuid: U }))).state, 'inconclusive', `${L}: ${n} (412) ⇒ inconclusive`);
+    for (const n of ['status-by-order-id', 'status-challenged-by-order-id']) assert.strictEqual(F(n).http_status, 412, `${L}: ${n} — status BY order_id does not work (412 even for a fresh approval): lost-auth recovery stays manual`);
   });
 
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\npixelpay-adapter: OK (${pass})`);

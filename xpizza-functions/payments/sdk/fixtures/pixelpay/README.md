@@ -29,7 +29,8 @@ every one of them through the real impl.
   the panel).
 - Every transaction call needs the gateway token (the token-less run was Cloudflare-challenged); tokenization through the SDK did not.
 
-## Not yet recorded (a one-step owner re-run is ruled; status reads only)
-- The status of an unknown uuid. The last call returned 403, unclassified.
-- The status by `order_id` / our reference.
-- The status of a challenged (never completed) uuid.
+## The owner's status re-run (2026-11-12; two sandbox auths of L 1.00, no capture / void)
+- **An unknown uuid ⇒ HTTP 412 «Error al encontrar el cobro»** (`status-unknown-uuid.json`). The first run's 403 at that step was a gateway quirk; «not found» is 412 across the board.
+- **Status BY `order_id` does NOT work:** 412 even for a fresh approved authorization (`status-by-order-id.json`, `status-challenged-by-order-id.json`). Lost-auth recovery (no uuid) stays MANUAL (`manual_reconciliation` + an alert), never a resend. No automatic row.
+- **A never-completed challenge uuid ⇒ 412** (`status-challenged-uuid.json`) ⇒ `inconclusive`, never evidence of a decline or an expiry. W3 keeps its sweeper / alert path to a person.
+- Every status read maps 412 (and anything not a recorded 200 word) to `inconclusive`.
