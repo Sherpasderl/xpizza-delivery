@@ -34,6 +34,7 @@
   "editor.test.mjs",
   "envio-field-focus.test.mjs",
   "envio-geometry.test.mjs",
+  "envio-limit.test.mjs",
   "envio-logic.js",
   "envio-logic.test.mjs",
   "envio-map-protocol.js",
