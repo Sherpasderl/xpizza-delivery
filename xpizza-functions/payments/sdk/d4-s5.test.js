@@ -15,18 +15,21 @@ const T0 = 1_000_000;
 const GUEST_PHONE = '50499990000';
 const PH = OTP.phoneHash(GUEST_PHONE);
 const SENDER = { instance_id: 'inst_test', token: 'tok_test_sender' };
-function world({ sender = SENDER, reply = { sent: 'true', id: 'msg-1' }, extra = {} } = {}) {
+function world({ sender = SENDER, reply = { sent: 'true', id: 'msg-1' }, extra = {}, hooks = {}, hang = false } = {}) {
   let t = T0;
   const sends = [];
   const db = makeHonestDb({ orders: {
     ord_guest: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', restaurant_id: 'tb_rest', guest_verified: { phone: GUEST_PHONE, phone_hash: PH }, pay_deadline_at: T0 + 9e5 },
     ord_member: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', restaurant_id: 'tb_rest', customer_uid: 'uid_A', pay_deadline_at: T0 + 9e5 },
-  }, ...extra }, { now: () => t });
-  const fetchImpl = async (url, init) => { sends.push({ url, body: new URLSearchParams(init.body) }); return { ok: true, json: async () => reply }; };
+  }, ...extra }, { now: () => t, ...hooks });
+  const fetchImpl = async (url, init) => { sends.push({ url, body: new URLSearchParams(init.body) }); if (hang) await new Promise(() => {}); return { ok: true, json: async () => reply }; };
   const deps = { db, clock: () => t, OTP, fetchImpl, senderConfig: () => sender };
   return { db, deps, sends, tick: (ms) => { t += ms; } };
 }
-const ASK = (w, body, ip = '10.0.0.1') => REC().recoverOrderAccessCore(w.deps, { ip, body });
+// the bare request (uniform by design: no target work) …
+const REQ = (w, body, ip = '10.0.0.1') => REC().recoverOrderAccessCore(w.deps, { ip, body });
+// … and a request followed by the background processor (as the queue trigger runs it), for the end-to-end cells
+const ASK = async (w, body, ip = '10.0.0.1') => { const r = await REQ(w, body, ip); if (body && body.code === undefined) await REC().processRecoveryQueue(w.deps); return r; };
 const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.body.get('body').match(/(\d{6})/); return m && m[1]; };
 
 (async () => {
@@ -48,8 +51,8 @@ const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.
   });
 
   await cell('SDK-D4-REC-BUDGET-SHARED', async (L) => {
-    // the per-phone budget is the SAME otp_budget checkout uses (3 sends / 10 min)
-    const w = world({ extra: { otp_budget: { [PH]: { sends: [T0 - 120000, T0 - 90000, T0 - 60000] } } } });
+    // the recovery's OWN per-phone budget (Codex r5: never checkout's otp_budget), the same 3 sends / 10 min
+    const w = world({ extra: { recovery_phone_budget: { [PH]: { sends: [T0 - 120000, T0 - 90000, T0 - 60000] } } } });
     const r = await ASK(w, { order_id: 'ord_guest' });
     assert.ok(r.status === 200 && JSON.stringify(r.body) === '{"ok":true}' && w.sends.length === 0, `${L}: the checkout sends count — the 4th in the window sends NOTHING, and the answer is the same 200 as for any target (Codex r5) (got ${JSON.stringify(r)})`);
   });
@@ -105,7 +108,7 @@ const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.
     for (const sender of [null, { instance_id: '', token: '' }]) {
       const w = world({ sender });
       const r = await ASK(w, { order_id: 'ord_guest' });
-      assert.ok(r.status === 503 && w.sends.length === 0 && w.db.getAt(`otp_budget/${PH}`) == null && w.db.getAt('order_recovery_otp/ord_guest') == null, `${L}: ${JSON.stringify(sender)} ⇒ 503 BEFORE any reservation or code write (got ${JSON.stringify(r)})`);
+      assert.ok(r.status === 503 && w.sends.length === 0 && w.db.getAt(`recovery_phone_budget/${PH}`) == null && w.db.getAt('sdk_recovery_queue') == null && w.db.getAt('order_recovery_otp/ord_guest') == null, `${L}: ${JSON.stringify(sender)} ⇒ 503 BEFORE any reservation or code write (got ${JSON.stringify(r)})`);
     }
   });
 
@@ -169,6 +172,43 @@ const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.
     assert.ok(same(req, { status: 200, body: { ok: true } }) && w.sends.length === sendsBefore, `${L}: a claimed order never gets a recovery code (the same 200, nothing sent)`);
     const A = await require('./order-auth').authorizeExistingOrder({ ...w.deps, verifyIdToken: async () => { throw new Error('x'); } }, { ticket: order_ticket }, 'ord_guest');
     assert.strictEqual(A.ok, false, `${L}: a guest ticket minted BEFORE the claim is refused once the order is a member's (order-auth checks the CURRENT order)`);
+  });
+
+  // ── Codex build r5: the request path is UNIFORM by design (a queue entry; the target work in the background processor) ──
+  await cell('SDK-D4-REC-REQUEST-UNIFORM', async (L) => {
+    const reads = [];
+    const w = world({ hang: true, hooks: { beforeRead: async (p) => { if (p.startsWith('orders/')) reads.push(p); } } });
+    const t0 = Date.now();
+    const g = await REQ(w, { order_id: 'ord_guest' }); const a = await REQ(w, { order_id: 'no_such_order' }, '10.0.0.3');
+    assert.ok(Date.now() - t0 < 1000 && JSON.stringify(g) === JSON.stringify(a) && JSON.stringify(g) === '{"status":200,"body":{"ok":true}}', `${L}: a provider that never answers does not delay the request (no awaited send); identical bytes`);
+    assert.deepStrictEqual([reads.length, w.sends.length, Object.keys(w.db.getAt('sdk_recovery_queue') || {}).length], [0, 0, 2], `${L}: ZERO reads of orders/*, ZERO sends, ONE queue entry each on the request path`);
+  });
+  await cell('SDK-D4-REC-PROCESSOR-DROPS', async (L) => {
+    const w = world({ extra: { user_profiles: { uid_M: { phone_hash: PH } } } });
+    w.db.setAt('orders/ord_claimed', { payment_flow: 'sdk_auth_v1', status: 'pending_payment', restaurant_id: 'tb_rest', customer_uid: 'uid_M', guest_verified: { phone: '50499990001', phone_hash: OTP.phoneHash('50499990001') }, pay_deadline_at: T0 + 9e5 });
+    for (const id of ['no_such_order', 'ord_member', 'ord_claimed']) await REQ(w, { order_id: id });
+    await REC().processRecoveryQueue(w.deps);
+    assert.deepStrictEqual([w.sends.length, w.db.getAt('sdk_recovery_queue')], [0, null], `${L}: absent / member / claimed ⇒ dropped silently, nothing sent, the queue drained`);
+    await REQ(w, { order_id: 'ord_guest' }); await REC().processRecoveryQueue(w.deps);
+    assert.ok(w.sends.length === 1 && w.sends[0].body.get('to') === GUEST_PHONE, `${L}: a guest ⇒ one send to the stored phone`);
+  });
+  await cell('SDK-D4-REC-PROCESSOR-STORAGE-FAILURE', async (L) => {
+    const w = world({ hooks: { beforeTx: async (p) => { if (p.startsWith('recovery_phone_budget/')) throw new Error('injected storage failure'); } } });
+    const r = await REQ(w, { order_id: 'ord_guest' });
+    const warned = []; const ow = console.warn; console.warn = (...x) => warned.push(x.join(' '));
+    try { await REC().processRecoveryQueue(w.deps); } finally { console.warn = ow; }
+    assert.ok(JSON.stringify(r) === '{"status":200,"body":{"ok":true}}' && warned.some((x) => x.startsWith('sdk_recovery_suppressed')), `${L}: a processor storage failure ⇒ the request had already answered 200; the processor records it, never throws (${JSON.stringify(warned)})`);
+  });
+  await cell('SDK-D4-REC-OWN-BUDGET', async (L) => {
+    const w = world();
+    await ASK(w, { order_id: 'ord_guest' });
+    assert.ok(w.db.getAt(`otp_budget/${PH}`) == null && w.db.getAt(`recovery_phone_budget/${PH}`), `${L}: a recovery spends ONLY its own budget — checkout's otp_budget is untouched, so a checkout-OTP follow-up is identical for every target`);
+  });
+  await cell('SDK-D4-REC-SINGLE-PROCESSOR', async (L) => {
+    const w = world();
+    await REQ(w, { order_id: 'ord_guest' });
+    await Promise.all([REC().processRecoveryQueue(w.deps), REC().processRecoveryQueue(w.deps)]);
+    assert.strictEqual(w.sends.length, 1, `${L}: two concurrent processors ⇒ ONE send`);
   });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nd4-s5: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
