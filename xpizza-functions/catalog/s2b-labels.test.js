@@ -6,7 +6,7 @@
 // before any money step; factura describes an affected extra by its label. Real publish on the Firestore fake. Run: node catalog/s2b-labels.test.js
 const assert = require('assert');
 const { makeDb } = require('./firestore-fake');
-const { publishVersion } = require('./catalog-publish');
+const { publishVersion, rollbackVersion } = require('./catalog-publish');
 const { buildSourceCandidate } = require('./candidate-validate');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { createCatalogReader } = require('./catalog');
@@ -62,6 +62,28 @@ async function tablesOf(rid, src) {
     assert.deepStrictEqual(RL.resolveLines(rid, cart(MK), bare), { ok: true }, `S2BLB-NO-METADATA ${rid}: «affected» comes ONLY from the recorded marker — an opaque-looking key with none is not label-required (Codex S2b r1 P1-1)`);
     assert.deepStrictEqual(RL.resolutionRefusal(r1), { status: 503, body: { error: 'labels_unavailable', retryable: true } }, `S2BLB-503 ${rid}`);
     ok(`${rid}: labels + markers ride the tables and the mirror codec; nothing added without an affected extra; a missing required label → labels_unavailable (503); no marker → not required`);
+  }
+  // P1-2 (Codex S2b r1): EVERY carrier the publish writes holds the affected extras' labels + markers — the publish mirror (the same as the
+  // rollback mirror), the active snapshot — and a cart resolved against the publish MIRROR (decoded, the Firestore-independent fallback) passes
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const { s, renamedKey } = recorded(rid);
+    const db = makeDb(); const mirrors = [];
+    const v1 = (await quiet(() => publishVersion(db, rid, inputOf(rid, buildSourceFromCode(rid)), { expected: { activeVersionId: null } }))).versionId;
+    const v2 = (await quiet(() => publishVersion(db, rid, inputOf(rid, s), { mirror: (r, p) => { mirrors.push(clone(p)); }, expected: { activeVersionId: v1 } }))).versionId;
+    const want = { [`x:${renamedKey}`]: 'Renombrado S2b', [`x?:${renamedKey}`]: '1', [`x:${MK}`]: 'Reusado S2b', [`x?:${MK}`]: '1' };
+    const xOf = (L) => Object.fromEntries(Object.entries(L || {}).filter(([k]) => /^x\??:/.test(k)));
+    assert.deepStrictEqual(xOf(mirrors[0].labels), want, `S2BLB-PUBLISH-MIRROR ${rid}: the publish mirror carries the extra labels + markers`);
+    const snap = (await db.collection('restaurants').doc(rid).collection('meta').doc('active_snapshot').get()).data();
+    assert.deepStrictEqual(xOf(snap.extra_labels), want, `S2BLB-SNAPSHOT ${rid}: the active snapshot carries them`);
+    await quiet(() => rollbackVersion(db, rid, v1, { expected: { activeVersionId: v2 } }));
+    await quiet(() => rollbackVersion(db, rid, v2, { mirror: (r, p) => { mirrors.push(clone(p)); }, expected: { activeVersionId: v1 } }));
+    assert.deepStrictEqual(xOf(mirrors[1].labels), xOf(mirrors[0].labels), `S2BLB-ROLLBACK-MIRROR ${rid}: publish and rollback write the same extra labels`);
+    const T = await tablesOf(rid, s);
+    const mt = MP.attachTablesLabels(MP.attachTablesKeyMode({ restaurantId: rid, menu: mirrors[0].menu, extras: mirrors[0].extras }, MP.keyModeOfTables(T)), mirrors[0].labels);
+    const dish = Object.keys(T.menu).find((k) => !/^i_/.test(k));
+    const cart = { items: [{ ...(rid === 'la_musa' ? { id: dish } : {}), name: dish, qty: 1, extras: [{ ...(rid === 'la_musa' ? { id: MK } : { name: MK }), qty: 1, extra_key: MK }] }] };
+    assert.deepStrictEqual(RL.resolveLines(rid, cart, mt), { ok: true }, `S2BLB-MIRROR-RESOLVE ${rid}: a minted extra resolves against the publish mirror`);
+    ok(`${rid}: the publish mirror (= the rollback mirror) and the snapshot carry the extra labels + markers; a minted extra resolves against the mirror`);
   }
   { // P1-1 (Codex S2b r1): OFF, an ORDINARY extra whose name/key merely looks opaque (i_abcdefghijkl) resolves exactly as today
     const s = clone(buildSourceFromCode('x_pizza')); const e = s.extras[2]; const old = e.key; const K = 'i_abcdefghijkl';
