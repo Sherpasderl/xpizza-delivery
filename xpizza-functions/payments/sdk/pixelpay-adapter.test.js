@@ -26,7 +26,7 @@ function server(reply) {
       seen.push(rec);
       const r = reply(rec) || { status: 500, body: {} };
       if (r.destroy) { req.socket.destroy(); return; }
-      res.writeHead(r.status, { 'content-type': 'application/json' });
+      res.writeHead(r.status || 200, { 'content-type': 'application/json' });
       if (r.stall) { res.write('{"success":'); return; }   // headers + a partial body, then nothing
       res.end(typeof r.body === 'string' ? r.body : JSON.stringify(r.body));
     });
