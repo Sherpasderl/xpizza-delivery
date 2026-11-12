@@ -492,7 +492,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-SWEEP-NO-STARVATION-60-UNKNOWNS', async (L) => {
     const ids = Array.from({ length: 60 }, (_, i) => `tb_lock_${String(i).padStart(2, '0')}`);
-    const orders = Object.fromEntries(ids.map((id) => [id, order()]));
+    const orders = Object.fromEntries(ids.map((id) => [id, order({ total_cents: 1000 })]));   // row 20: the stored total is what is placed
     const w = world({ seed: { orders }, script: { authorize: ids.map(() => ({ lost: true })) } });
     for (const id of ids) await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00013', orderId: id, token: TOKEN, amount_cents: 1000 });
     w.tick(3 * 60 * 1000);

@@ -306,7 +306,7 @@ const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓
     try {
       let t = 1_000_000;
       const OID = 'tb_prod_void';
-      const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tb_rest', customer_name: 'Ana Pérez', pay_deadline_at: t + 900000 } } }, { now: () => t });
+      const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tb_rest', customer_name: 'Ana Pérez', total_cents: 100, pay_deadline_at: t + 900000 } } }, { now: () => t });
       const cfg = cfgOf(srv.url, { mode: 'production', namespace: 'prod', merchant_email: 'Owner@Example.HN' });
       const deps = { db, clock: () => t, psp: makeAdapter(A().makePixelPayImpl(cfg, { log: { info: () => {} } })), ppNamespace: 'prod', voidEligible: () => false, cancelVoidEligible: () => true, releaseResources: async () => {}, goLive: async () => {} };
       const p = await C.placeOriginal(deps, { orderId: OID, attempt_id: 'att_prod_void_00001', token: 'T-prod', amount_cents: 100 });
@@ -350,7 +350,7 @@ const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓
       try {
         let t = 1_000_000;
         const OID = 'tb_status_shape';
-        const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tb_rest', customer_name: 'Ana Pérez', pay_deadline_at: t + 900000 } } }, { now: () => t });
+        const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tb_rest', customer_name: 'Ana Pérez', total_cents: 100, pay_deadline_at: t + 900000 } } }, { now: () => t });
         const deps = { db, clock: () => t, psp: makeAdapter(A().makePixelPayImpl(cfgOf(srv.url), { log: { info: () => {} } })), ppNamespace: 'sandbox', voidEligible: () => false, releaseResources: async () => {}, goLive: async () => {} };
         await C.placeOriginal(deps, { orderId: OID, attempt_id: 'att_status_shape_001', token: 'T-s', amount_cents: 100 });
         db.setAt(`orders/${OID}/status`, 'delivered');

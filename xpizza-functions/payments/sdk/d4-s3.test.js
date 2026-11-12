@@ -157,7 +157,7 @@ const save = (d, uid, token, gen) => K().completeVault(d, { uid, token, token_ha
   const C = require('./coordinator');
   const OID = 'tb_vault_1';
   const vworld = (script = {}, hooks = {}) => {
-    const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tb_rest', customer_uid: 'uid_A', customer_name: 'Ana Pérez', pay_deadline_at: T0 + 900000 } } }, { now: () => T0, ...hooks });
+    const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tb_rest', customer_uid: 'uid_A', customer_name: 'Ana Pérez', total_cents: 100, pay_deadline_at: T0 + 900000 } } }, { now: () => T0, ...hooks });
     const fake = makeFakePsp(script);
     return { db, fake, deps: { db, psp: makeAdapter(fake.impl), clock: () => T0, voidEligible: () => false, ppNamespace: 'sandbox', goLive: async () => {}, verifyIdToken: async () => ({ uid: 'uid_A' }) } };
   };

@@ -17,7 +17,7 @@ const ST = () => require('./status');
 const C = () => require('./coordinator');
 
 const T0 = 1_000_000;
-const order = (o = {}) => ({ payment_flow: 'sdk_auth_v1', status: 'pending_payment', pay_deadline_at: T0 + 15 * 60 * 1000, restaurant_id: 'tb_rest', ...o });
+const order = (o = {}) => ({ payment_flow: 'sdk_auth_v1', status: 'pending_payment', pay_deadline_at: T0 + 15 * 60 * 1000, restaurant_id: 'tb_rest', total_cents: 10000, ...o });
 const att = (leg_id, at, extra = {}) => ({ leg_id, token_hash: 'h', card_ref: 'new', display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 }, save: false, amount_cents: 10000, at, ...extra });
 const op = (leg_id, n, result) => ({ [`${OID}:${leg_id}:auth:${n}`]: { leg_id, action: 'auth', amount_cents: 10000, dispatched_at: T0, ...(result === undefined ? {} : { result }) } });
 const rec = (o = {}) => ({ flow: 'sdk_auth_v1', phase: 'open', ttl_at: T0 + 15 * 60 * 1000, legs: {}, ops: {}, attempts: {}, ...o });

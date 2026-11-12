@@ -19,7 +19,7 @@ const ATT = 'att_switch_cell_0001';
 const NO_SDK = { status: 200, body: { cancelled: false, safe_to_switch: true, reason: 'no_sdk_order' } };
 function world({ script = {}, order = {}, contractOnlyStatus = false, extra = {} } = {}) {
   let t = T0;
-  const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tb_rest', customer_uid: 'uid_A', customer_name: 'Ana Pérez', pay_deadline_at: T0 + 900000, ...order } }, ...extra }, { now: () => t });
+  const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tb_rest', customer_uid: 'uid_A', customer_name: 'Ana Pérez', total_cents: 100, pay_deadline_at: T0 + 900000, ...order } }, ...extra }, { now: () => t });
   const fake = makeFakePsp(script, { contractOnlyStatus });
   const deps = { db, psp: makeAdapter(fake.impl), clock: () => t, voidEligible: () => false, ppNamespace: 'sandbox', goLive: async () => {}, releaseResources: async () => {},
     verifyIdToken: async (x) => (x === 'idt_A' ? { uid: 'uid_A' } : x === 'idt_B' ? { uid: 'uid_B' } : (() => { throw new Error('bad'); })()) };
