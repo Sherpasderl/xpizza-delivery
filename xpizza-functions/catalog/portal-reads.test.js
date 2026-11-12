@@ -500,8 +500,8 @@ const TWO = {
     // when the saved draft cannot publish (asserted in its own cell below).
     // T-d adds publish_via_request (always present, a boolean; false for the owner — asserted in its own test)
     // S2-5 (S2-DESIGN §1.1, the ONE declared additive field): textEditEnabled is always present (false while the switch is off)
-    assert.deepStrictEqual(Object.keys(r.body).sort(), ['activeVersionId', 'choiceBadges', 'extrasAuthoring', 'extrasCatalog', 'groupAuthoring', 'publish_via_request', 'renderedCategories', 'restaurantName', 'source', 'sourceUpdateTime', 'textEditEnabled', 'usesPlatformFactura'],
-      'the four existing fields plus add-product A\'s two, add-product B\'s two, T-d\'s one, S2\'s one, S1\'s extrasAuthoring and S2-core\'s extrasCatalog — nothing else appeared');
+    assert.deepStrictEqual(Object.keys(r.body).sort(), ['activeVersionId', 'choiceBadges', 'deletionBase', 'deletionClaim', 'extrasAuthoring', 'extrasCatalog', 'groupAuthoring', 'publish_via_request', 'renderedCategories', 'restaurantName', 'source', 'sourceUpdateTime', 'textEditEnabled', 'usesPlatformFactura'],
+      'the four existing fields plus add-product A\'s two, add-product B\'s two, T-d\'s one, S2\'s one and S2-core\'s extrasCatalog + deletionBase + deletionClaim — nothing else appeared');
     assert.strictEqual(r.body.publish_via_request, false, 'the owner publishes: never offered the send-to-owner path');
     assert.deepStrictEqual(r.body.source, src, 'the source is untouched');
     assert.strictEqual(r.body.sourceUpdateTime, '1788754374.634000000', 'the CAS baseline is byte-identical to before');
@@ -707,8 +707,8 @@ const TWO = {
       const same = await call(rid, live, act);
       assert.strictEqual(same.status, 200);
       assert.ok(!('pendingRenames' in same.body) && !('pendingOther' in same.body), `${rid}: nothing pending → no new field`);
-      assert.deepStrictEqual(Object.keys(same.body).sort(), ['activeVersionId', 'choiceBadges', 'extrasAuthoring', 'extrasCatalog', 'groupAuthoring', 'publish_via_request', 'renderedCategories', 'restaurantName', 'source', 'sourceUpdateTime', 'textEditEnabled', 'usesPlatformFactura'].filter((k) => k in same.body).sort(),
-        `${rid}: the response keys are exactly today's (+ S2's declared textEditEnabled, S2-core's extrasCatalog)`);
+      assert.deepStrictEqual(Object.keys(same.body).sort(), ['activeVersionId', 'choiceBadges', 'deletionBase', 'deletionClaim', 'extrasAuthoring', 'extrasCatalog', 'groupAuthoring', 'publish_via_request', 'renderedCategories', 'restaurantName', 'source', 'sourceUpdateTime', 'textEditEnabled', 'usesPlatformFactura'].filter((k) => k in same.body).sort(),
+        `${rid}: the response keys are exactly today's (+ S2's declared textEditEnabled, S1's extrasAuthoring, S2-core's extrasCatalog / deletionBase / deletionClaim)`);
       // rename-only (every section named: x_pizza's names are all-or-nothing)
       const ren = JSON.parse(JSON.stringify(live)); ren.structure.categories.forEach((c, i) => { c.name = `Sección ${i + 1}`; });
       const r1 = await call(rid, ren, act);

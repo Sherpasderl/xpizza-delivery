@@ -24,6 +24,10 @@ process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 's2core-edit-se
 process.env.PIXELPAY_RETURN_URL_LA_MUSA = process.env.PIXELPAY_RETURN_URL_LA_MUSA || 'https://lamusa.test';
 const stub = (rel, exportsOf) => { const p = require.resolve(rel); const real = require(rel); require.cache[p] = { id: p, filename: p, loaded: true, children: [], paths: [], exports: exportsOf(real) }; };
 const CHARGED = [];
+const READ = { fail: false };   // T26: the live reader's Firestore pointer probe and doc read fail while set (index.js destructures them at load)
+stub('../catalog/catalog-firestore', (r) => ({ ...r,
+  getActiveVersionId: async (...a) => { if (READ.fail) throw Object.assign(new Error('UNAVAILABLE (T26)'), { code: 14 }); return r.getActiveVersionId(...a); },
+  getRestaurantDocs: async (...a) => { if (READ.fail) throw Object.assign(new Error('UNAVAILABLE (T26)'), { code: 14 }); return r.getRestaurantDocs(...a); } }));
 stub('../catalog/platform-structure', (r) => ({ ...r, structureCapabilities: () => ({ ...r.structureCapabilities(), extrasCatalog: true }) }));
 stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
 stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CHARGED.push(q.pixelpayOrderId); return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
@@ -70,8 +74,9 @@ const readActiveBuilt = (rid) => async () => {
 const readDraft = (rid) => async () => { const s = await sourceRefOf(db, rid).get(); return { source: s.data(), updateTime: encodeUpdateTime(s.updateTime) }; };
 const rev = async (rid) => encodeUpdateTime((await sourceRefOf(db, rid).get()).updateTime);
 const draft = async (rid) => (await sourceRefOf(db, rid).get()).data();
-const save = async (rid, source) => editCatalogCore({ db, authorize: owner, readActiveBuilt: readActiveBuilt(rid), toPrecondition, addProduct: io },
-  { restaurantId: rid, source, baseSourceUpdateTime: await rev(rid) }, {});
+const save = async (rid, source, body = {}) => editCatalogCore({ db, authorize: owner, readActiveBuilt: readActiveBuilt(rid), toPrecondition, addProduct: io },
+  { restaurantId: rid, source, baseSourceUpdateTime: await rev(rid), ...body }, {});
+const loadedBase = async (rid) => { const p = await getActivePointer(db, rid); return { deleted_ids_loaded_base: { version: p.version, generation: p.generation } }; };
 const publish = (rid, saved) => publishEditedCore({ db, authorize: owner, readActiveBuilt: readActiveBuilt(rid), readDraft: readDraft(rid), publishVersion,
   mirror: makeRtdbMirror(rtdb), sourceSha: 's2core', addProduct: io },
 { restaurantId: rid, token: saved.body.token, acknowledgedChanges: saved.body.diff.largeChangeSet, fiscalAck: true }, {});
@@ -111,14 +116,36 @@ async function seedBrand(rid) {
   const { input } = require('../tools/publish-version').buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: 'seed' });
   await publishVersion(db, rid, input, { expected: { activeVersionId: null }, mirror: makeRtdbMirror(rtdb) });
   await backfillIdentities(db, rid, catalogSnapshot(rid), { captured: await getActivePointer(db, rid) });
-  const b = await bootstrapIdentityStamps(db, rid); assert.ok(b.stamped, `${rid}: certified baseline ${JSON.stringify(b)}`);
   await rtdb.ref(`restaurants/${rid}/identity`).set(identityFor(rid));
   await rtdb.ref(`user_rewards/${UID}/${rid}`).set({ balance: 100000, reserved: 0 });
+  if (rid === 'la_musa') await removedOptionCells(rid);   // before certification: an option leaves through a plain re-publish (S2-core has no option op)
+  const b = await bootstrapIdentityStamps(db, rid); assert.ok(b.stamped, `${rid}: certified baseline ${JSON.stringify(b)}`);
 }
 
-// T9's four endpoints on a cart that carries `extra`, with ZERO effects
-async function typedEverywhere(rid, extra, tag) {
-  const line = lineWith(rid, extra);
+// T9 (removed OPTION, PLAN §1.4: options are items, so the stage's menu_changed covers them — proven anyway on all four endpoints): the
+// launcher noodle_01 loses its «Pollo» option in a new active version; a cart still naming it is typed everywhere with zero effects
+const OPTION = 'noodle_01_pollo';
+let optionCellAt = 0;
+async function removedOptionCells(rid) {
+  const src = canonicalize(buildSourceFromCode(rid));
+  const opt = src.items.find((i) => i.key === OPTION);
+  assert.ok(opt, 'premise: the option exists today');
+  src.items = src.items.filter((i) => i.key !== OPTION);
+  src.structure.item_order = src.structure.item_order.filter((k) => k !== OPTION);
+  for (const g of Object.values(src.structure.variant_items || {})) if (Array.isArray(g.variantIds)) g.variantIds = g.variantIds.filter((k) => k !== OPTION);
+  for (const f of ['redeem_eligible_items']) if (Array.isArray(src.structure[f])) src.structure[f] = src.structure[f].filter((k) => k !== OPTION);
+  const { inputs, built } = buildSourceCandidate(rid, src);
+  const ptr = await getActivePointer(db, rid);
+  await publishVersion(db, rid, { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha: 's2core-option', key_mode: built.key_mode, frozen_keys: built.frozen_keys }, { expected: { activeVersionId: ptr.version }, mirror: makeRtdbMirror(rtdb) });
+  await sourceRefOf(db, rid).set(src);
+  const line = { id: OPTION, name: opt.display.name, cat: opt.display.cat, qty: 1, price: opt.price, extras: [] };
+  await typedEverywhere(rid, line, `T9-OPTION ${rid}`);
+  optionCellAt = Date.now();
+  ok(`T9-OPTION ${rid}: a cart still naming a removed option is menu_changed at createOrder / the charge (409), quoteOrder (200), quoteRedemption (409), zero effects`);
+}
+
+// T9's four endpoints on a cart line (a removed extra's or a removed option's), with ZERO effects
+async function typedEverywhere(rid, line, tag) {
   const f = await fresh(); const before = JSON.stringify((await rtdb.ref().get()).val()); const charged = CHARGED.length;
   const co = await post(app.createOrder, bodyFor(rid, f.oid, f.phone, [line]), { 'x-firebase-id-token': UID });
   assert.deepStrictEqual([co.status, co.json], [409, MENU_CHANGED], `${tag} createOrder 409 menu_changed (${co.text.slice(0, 160)})`);
@@ -162,7 +189,7 @@ async function typedEverywhere(rid, extra, tag) {
       assert.match(String(outcome), /identity_partition_unaccounted/, `T7 ${rid}: an unclaimed activation refuses identity_partition_unaccounted (${outcome})`);
       assert.strictEqual((await getActivePointer(db, rid)).version, ptr0.version, `T7 ${rid}: the pointer did not move`);
     }
-    const claimed = await save(rid, { ...r.source, deleted_ids: r.deletedIds });
+    const claimed = await save(rid, { ...r.source, deleted_ids: r.deletedIds }, await loadedBase(rid));   // the baseline the merchant reviewed the deletion against (the real save contract)
     assert.strictEqual(claimed.status, 200, `T7 ${rid}: claimed, the save passes (${JSON.stringify(claimed.body).slice(0, 300)})`);
     assert.ok(claimed.body.diff.extras.some((x) => x.key === X.key && x.change === 'removed'), `T7 ${rid}: the review lists the removal`);
     const p = await publish(rid, claimed);
@@ -181,11 +208,22 @@ async function typedEverywhere(rid, extra, tag) {
       const q1 = await post(app.quoteOrder, { restaurant_id: rid, items: [lineWith(rid, X)], order_type: 'pickup' });
       assert.ok(q1.status === 200 && q1.json && q1.json.ok === true, `T10 ${rid} STALE-WINDOW-RESIDUAL: inside the cache window the warmed reader still prices the old version (${q1.text.slice(0, 160)})`);
       console.log(`      T10 ${rid}: residual recorded — the warmed reader quoted the removed extra ok inside the window`);
-      await new Promise((res) => setTimeout(res, 46000));   // the active-pointer cache (45 s)
+      // T26 FALLBACK-RESIDUAL-RECORDED (§1.5): past the TTL with the reader's Firestore reads FAILING, the fallback ladder has no elapsed-time
+      // expiry — whatever it answers is recorded (the honest residual), and it never writes
+      READ.fail = true;
+      try {
+        await new Promise((res) => setTimeout(res, 46000));
+        const q2 = await post(app.quoteOrder, { restaurant_id: rid, items: [lineWith(rid, X)], order_type: 'pickup' });
+        assert.strictEqual(q2.status, 200, `T26 ${rid}: the quote answers while reads fail (${q2.text.slice(0, 160)})`);
+        console.log(`      T26 ${rid} FALLBACK-RESIDUAL-RECORDED: reads failing past the TTL → quoteOrder ${JSON.stringify(q2.json).slice(0, 120)}`);
+      } finally { READ.fail = false; }
+      ok(`T26 ${rid}: past the TTL with reads failing the fallback answers (recorded residual, no expiry by time)`);
+      await new Promise((res) => setTimeout(res, 46000));   // reads healthy again: the next pointer probe moves the reader to the removing version
       ok(`T10 ${rid}: inside the active-pointer cache window a warmed reader still prices the removed extra (the accepted residual, §1.5); past the TTL —`);
     }
     // ── T9: typed at all four endpoints, zero effects ──
-    await typedEverywhere(rid, X, `T9 ${rid}${warm ? ' POST-TTL-TYPED' : ''}`);
+    if (!warm && optionCellAt) { const wait = optionCellAt + 46000 - Date.now(); if (wait > 0) await new Promise((res) => setTimeout(res, wait)); }   // the option cell warmed this reader
+    await typedEverywhere(rid, lineWith(rid, X), `T9 ${rid}${warm ? ' POST-TTL-TYPED' : ''}`);
     ok(`T9 ${rid}: a cart still carrying the removed extra is menu_changed at createOrder / the charge (409), quoteOrder (200 fail-soft), quoteRedemption (409 { ok:false }), with zero effects`);
   }
 
@@ -196,8 +234,10 @@ async function typedEverywhere(rid, extra, tag) {
     assert.strictEqual(a.status, 200, `T12: the attach saves (${JSON.stringify(a.body).slice(0, 200)})`);
     assert.strictEqual((await publish(rid, a)).status, 200, 'T12: the attach publishes');
     const on = await served(rid);
-    assert.deepStrictEqual(on.extras_by_item, { dimsum_01: ['Proteínas'] }, `T12 premise: the served map carries the attachment (${JSON.stringify(on.extras_by_item)})`);
-    const d = await save(rid, XT.apply(await draft(rid), { op: 'detach.item', item: 'dimsum_01', group: 'Proteínas' }).source);
+    assert.deepStrictEqual(on.extras_by_item, { dimsum_01: ['Proteínas'], rice_03: ['Proteínas'] }, `T12 premise: the served map carries both item-level attachments (${JSON.stringify(on.extras_by_item)})`);
+    let off0 = XT.apply(await draft(rid), { op: 'detach.item', item: 'dimsum_01', group: 'Proteínas' }).source;
+    off0 = XT.apply(off0, { op: 'detach.item', item: 'rice_03', group: 'Proteínas' }).source;   // today's own item-level attachment, so the map truly empties
+    const d = await save(rid, off0);
     assert.strictEqual(d.status, 200, `T12: the detach saves (${JSON.stringify(d.body).slice(0, 200)})`);
     assert.strictEqual((await publish(rid, d)).status, 200, 'T12: the detach publishes');
     const off = await served(rid);

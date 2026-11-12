@@ -33,6 +33,21 @@ const SCALE = { x_pizza: scaledSource('x_pizza'), la_musa: scaledSource('la_musa
       console.log(`      ${rid} at caps: source ${(m.sourceBytes / 1024).toFixed(1)} KiB · eligibility ${(m.eligibilityBytes / 1024).toFixed(1)} KiB · served ${(m.servedBytes / 1024).toFixed(1)} KiB · judged in ${ms.toFixed(0)} ms`);
     });
   }
+  await cell('SERVED-COMPLETE (Codex build r1 P2-8): the served measure includes the public eligibility and item_keys, above the bare body', (L) => {
+    const s = SCALE.x_pizza; const d = records('x_pizza', s);
+    const elig = require('./extras-eligibility-store').buildEligibilityDoc(d);
+    const bare = Buffer.byteLength(JSON.stringify(require('./public-menu').composeServedMenu('x_pizza', d)));
+    const m = judge('x_pizza', s);
+    assert.ok(m.servedBytes >= bare + Buffer.byteLength(JSON.stringify(elig.public_deny)), `${L}: ${m.servedBytes} covers ${bare} + the deny lists`);
+    console.log(`      x_pizza at caps: bare body ${(bare / 1024).toFixed(1)} KiB → complete upper bound ${(m.servedBytes / 1024).toFixed(1)} KiB (limit 768)`);
+  });
+  await cell('SERVED-BOUNDARY: a served bound exactly AT the limit passes; one byte over is structure_bytes (served)', (L) => {
+    const s = SCALE.la_musa; const d = records('la_musa', s);
+    const b = SB.servedUpperBound({ rid: 'la_musa', draft: d, elig: require('./extras-eligibility-store').buildEligibilityDoc(d), keyMode: s.key_mode });
+    const at = (limit) => SB.enforce({ rid: 'la_musa', source: s, draft: d, active: d, extrasCatalog: true, limits: { ...SB.LIMITS, servedBytes: limit } });
+    assert.strictEqual(at(b).servedBytes, b, `${L}: at the limit`);
+    refused(() => at(b - 1), 'structure_bytes', 'served');
+  });
   await cell('CAPS-GROUPS: a 21st group is structure_caps (extra_categories)', () => {
     const s = allocate(XT.apply(SCALE.la_musa, { op: 'group.create', group: 'Grupo 20', extras: [{ ref: 'tmp:grp20-ex0-xx', name: 'Uno', price: 10 }], attach: { mode: 'none' } }).source);
     refused(() => judge('la_musa', s), 'structure_caps', 'extra_categories');

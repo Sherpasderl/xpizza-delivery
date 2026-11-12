@@ -529,9 +529,11 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
   // and normalizing an override left empty by that removal (an existing `add` is never deleted by the normalization)
   if (authored.has('exposure')) {
     const de = draftBuilt.structure.exposure; const ae = activeBuilt.structure.exposure;
-    const shape = (x) => (extrasCatalog && isObj(x) ? without(x, ['category_allow', 'item_overrides']) : exposureWithoutDenyExtras(x));   // S2-core: attach / detach are claimed; nothing else in the exposure
-    if (!sameJson(shape(de), shape(ae))) refuse('structure_changed', "the menu's exposure cannot change here", { field: 'exposure' });
-    if (!sameJson(denyExtrasOf(de), denyExtrasOf(ae)) && !extrasAuthoring) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
+    if (extrasCatalog) s2ExposureClaims({ dx: de, ax: ae, draftBuilt, activeBuilt, extrasAuthoring });   // S2-core: claimed per transition (Codex build r1 P1-4)
+    else {
+      if (!sameJson(exposureWithoutDenyExtras(de), exposureWithoutDenyExtras(ae))) refuse('structure_changed', "the menu's exposure cannot change here", { field: 'exposure' });
+      if (!sameJson(denyExtrasOf(de), denyExtrasOf(ae)) && !extrasAuthoring) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
+    }
   }
   accountResidual({ draftBuilt, activeBuilt, authored });
   return { additions: additions.map((it) => it.key), removals };
@@ -628,6 +630,55 @@ function samePhotoStates(a, b) {
 
 // exposure minus the typed deny_extras: each override without the field, and an override left EMPTY by that removal
 // dropped (it said only deny_extras). `deny` / `add` / everything else stays — so any other difference is still caught.
+/* S2-core (PLAN-structure-S2core-r3 §3.2 / §3.3; Codex build r1 P1-4) — under the extrasCatalog switch the exposure is claimed PER
+   TRANSITION, never as a whole object. Exactly these changes are explained (exposure-transitions.js writes nothing else):
+     · category_allow[C] GAINS a group (attach.cat, group.create «A toda una categoría»); nothing ever leaves a category's list
+     · a dish's add / deny gains or loses a GROUP entry (attach.item / detach.item) — on a plain dish or a launcher, never an option
+     · the op's own cleanup: a single-extra add / deny entry, or an unticked extra (deny_extras), LEAVES a dish when its extra was removed
+       or its group was attached / detached on that dish (directly or through its category) — whatever S1's switch says
+     · deny_extras GROWS only with S1's per-dish authoring on (extras_not_supported_yet otherwise)
+   Anything else — a new single-extra or '*' entry, an entry leaving for no op, an option's override, an unknown override field — is
+   structure_changed. */
+function s2ExposureClaims({ dx, ax, draftBuilt, activeBuilt, extrasAuthoring }) {
+  const bad = (field) => refuse('structure_changed', "the menu's exposure cannot change here", { field });
+  const d0 = isObj(dx) ? dx : {}; const a0 = isObj(ax) ? ax : {};
+  if (!sameJson(without(d0, ['category_allow', 'item_overrides']), without(a0, ['category_allow', 'item_overrides']))) bad('exposure');
+  const list = (v) => (Array.isArray(v) ? v.map(String) : v === undefined || v === null ? [] : [String(v)]);
+  const groups = new Set([...list((draftBuilt.structure || {}).extra_categories), ...list((activeBuilt.structure || {}).extra_categories)]);
+  const allExtras = [...(activeBuilt.extras || []), ...(draftBuilt.extras || [])].filter(isObj);
+  const catOfKey = new Map(allExtras.map((e) => [String(e.key), e.display && e.display.cat]));
+  for (const e of allExtras) if (isObj(e.display) && e.display.id != null && !catOfKey.has(String(e.display.id))) catOfKey.set(String(e.display.id), e.display.cat);
+  const keyOfId = new Map(allExtras.filter((e) => isObj(e.display) && e.display.id != null).map((e) => [String(e.display.id), String(e.key)]));
+  const draftKeys = new Set((draftBuilt.extras || []).filter(isObj).map((e) => String(e.key)));
+  const removedExtra = (v) => catOfKey.has(v) && !draftKeys.has(keyOfId.get(v) || v);   // an entry naming an extra (by key or UI id) the draft no longer has
+  const dca = isObj(d0.category_allow) ? d0.category_allow : {}; const aca = isObj(a0.category_allow) ? a0.category_allow : {};
+  const gained = new Map();
+  for (const c of new Set([...Object.keys(dca), ...Object.keys(aca)])) {
+    const A = list(aca[c]); const D = list(dca[c]);
+    if (A.some((g) => !D.includes(g))) bad('category_allow');
+    for (const g of D) if (!A.includes(g)) { if (!groups.has(g)) bad('category_allow'); if (!gained.has(c)) gained.set(c, new Set()); gained.get(c).add(g); }
+  }
+  const items = new Map([...(activeBuilt.items || []), ...(draftBuilt.items || [])].filter(isObj).map((it) => [it.key, it]));
+  const dov = isObj(d0.item_overrides) ? d0.item_overrides : {}; const aov = isObj(a0.item_overrides) ? a0.item_overrides : {};
+  for (const k of new Set([...Object.keys(dov), ...Object.keys(aov)])) {
+    const a = isObj(aov[k]) ? aov[k] : {}; const d = isObj(dov[k]) ? dov[k] : {};
+    if (sameJson(a, d)) continue;
+    const it = items.get(k);
+    if (!it || !isObj(it.display) || (it.display.variantOf !== undefined && it.display.variantOf !== null)) bad('item_overrides');
+    if (!sameJson(without(a, ['add', 'deny', 'deny_extras']), without(d, ['add', 'deny', 'deny_extras']))) bad('item_overrides');
+    const touched = new Set(gained.get(String(it.display.cat)) || []);
+    for (const f of ['add', 'deny']) { const A = list(a[f]); const D = list(d[f]); for (const v of [...A, ...D]) if (groups.has(v) && (A.includes(v) !== D.includes(v))) touched.add(v); }
+    for (const f of ['add', 'deny']) {
+      const A = list(a[f]); const D = list(d[f]);
+      for (const v of D) if (!A.includes(v) && !groups.has(v)) bad('item_overrides');   // a new single-extra or '*' entry
+      for (const v of A) if (!D.includes(v) && !groups.has(v) && !(removedExtra(v) || touched.has(catOfKey.get(v)))) bad('item_overrides');
+    }
+    const A = list(a.deny_extras); const D = list(d.deny_extras);
+    if (D.some((v) => !A.includes(v)) && !extrasAuthoring) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
+    for (const v of A) if (!D.includes(v) && !extrasAuthoring && !(removedExtra(v) || touched.has(catOfKey.get(v)))) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
+  }
+}
+
 function exposureWithoutDenyExtras(ex) {
   if (!isObj(ex)) return ex;
   const out = { ...ex };

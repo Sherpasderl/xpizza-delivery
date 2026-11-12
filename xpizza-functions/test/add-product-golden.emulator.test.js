@@ -236,6 +236,14 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
       assert.strictEqual(body.textEditEnabled, true, `${c.name}: textEditEnabled:true (S2, the switch is ON)`);
       delete body.textEditEnabled; declared.body.add(`${c.name}: textEditEnabled (S2)`);
     }
+    // S2-core (declared): the Extras-page switch (shipped OFF) and the deletion fields the Extras page's removal needs — the baseline
+    // is the active pointer's {version, generation}, the claim the stored one's ids, normalized
+    if (/getEditableCatalog/.test(c.name) && c.status === 200 && body && !(g.body && Object.prototype.hasOwnProperty.call(g.body, 'extrasCatalog'))) {
+      assert.strictEqual(body.extrasCatalog, false, `${c.name}: extrasCatalog:false (S2-core, shipped OFF)`);
+      assert.ok(body.deletionBase === null || (typeof body.deletionBase.version === 'string' && Number.isInteger(body.deletionBase.generation)), `${c.name}: deletionBase shape`);
+      assert.ok(body.deletionClaim && Array.isArray(body.deletionClaim.ids), `${c.name}: deletionClaim shape`);
+      delete body.extrasCatalog; delete body.deletionBase; delete body.deletionClaim; declared.body.add(`${c.name}: extrasCatalog / deletionBase / deletionClaim (S2-core)`);
+    }
     // S2-5 (declared, switch ON): the restaurant's reserved names — asserted EQUAL to the stored docs at the call, then dropped
     if (/getEditableCatalog/.test(c.name) && c.status === 200 && body && !(g.body && Object.prototype.hasOwnProperty.call(g.body, 'reservedNames'))) {
       const rid = c.name.split(':')[0];

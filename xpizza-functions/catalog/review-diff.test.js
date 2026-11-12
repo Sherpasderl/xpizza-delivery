@@ -30,6 +30,10 @@ const TODAY_EDITS = {
   'item text': (s) => { s.items[1].display.desc = 'Nueva descripción'; },
   'item deletion': (s) => { const k = s.items.find((i) => i.display.variantOf == null && !s.items.some((o) => String(o.display.variantOf) === String(i.display.id))).key; s.items = s.items.filter((i) => i.key !== k); s.structure.item_order = (s.structure.item_order || []).filter((x) => x !== k); for (const f of ['redeem_eligible_items']) if (Array.isArray(s.structure[f])) s.structure[f] = s.structure[f].filter((x) => x !== k); },
   'category name': (s) => { s.structure.categories[0].name = `${s.structure.categories[0].name} Nuevo`; },
+  // Codex build r1 P2-7: an S1 «Sin extras» toggle and an ordinary section move change which groups a dish is offered, yet are NOT
+  // Extras-page ops — today's diff, byte for byte, with the switch ON
+  'S1 extras_policy none': (s) => { const d = s.items.find((i) => i.display.variantOf == null && i.display.extras_policy !== 'none' && !s.items.some((o) => String(o.display.variantOf) === String(i.display.id))); d.display.extras_policy = 'none'; },
+  'section move': (s) => { const cats = s.structure.categories.map((c) => c.id); const d = s.items.find((i) => i.display.variantOf == null && !s.items.some((o) => String(o.display.variantOf) === String(i.display.id)) && !i.display.subcat); d.display.cat = cats.find((c) => c !== d.display.cat && s.items.some((o) => o.display.cat === c && !o.display.subcat)); },
   'S1 deny_extras': (s) => { const d = s.items.find((i) => i.display.variantOf == null && i.display.extras_policy !== 'none' && XT.effectiveGroups(require('./extras-eligibility').projectEligibility(s))[i.key]?.length); const g = XT.effectiveGroups(require('./extras-eligibility').projectEligibility(s))[d.key][0]; const k = s.extras.find((e) => e.display.cat === g).key; s.structure.exposure.item_overrides[d.key] = { ...(s.structure.exposure.item_overrides[d.key] || {}), deny_extras: [k] }; },
 };
 
@@ -102,6 +106,28 @@ cell('S2-DETACH la_musa: an attach / detach reaches the review as consequences (
   const d = canon(L, D, true);
   assert.deepStrictEqual(d.consequences, [{ key: 'dimsum_01', kind: 'extras', gained: [], lost: ['Salsas'] }], `${Lb}: consequences`);
   assert.deepStrictEqual(d.extras, [], `${Lb}: no extras rows`);
+});
+
+// S2 UI plan review (#3): the authored attachment transitions are in the token-bound diff even when they change no effective extra, with
+// the authoritative reach («en N productos») of every changed group
+cell('S2-ATTACH-ROWS la_musa: detaching «Salsas» from a dish whose Salsas extras are all unticked has no consequence yet is a reviewed row', (Lb) => {
+  const s0 = buildSourceFromCode('la_musa');
+  s0.structure.exposure.item_overrides.dimsum_01 = { deny_extras: s0.extras.filter((e) => e.display.cat === 'Salsas').map((e) => e.key) };
+  const s = XT.apply(s0, { op: 'detach.item', item: 'dimsum_01', group: 'Salsas' }).source;
+  const L = sides('la_musa', s0); const D = sides('la_musa', s);
+  const d = canon(L, D, true);
+  assert.deepStrictEqual(d.consequences || [], [], `${Lb}: premise — no effective consequence`);
+  assert.deepStrictEqual(d.attachments, [{ group: 'Salsas', scope: 'item', target: 'dimsum_01', change: 'detached' }], `${Lb}: the row`);
+  const P = require('./extras-eligibility').projectEligibility({ items: D.diffSide.items, extras: D.records, structure: D.diffSide.structure });
+  const E = XT.effectiveGroups(P); const want = Object.keys(E).filter((k) => !P.items[k].launcherKey && E[k] && E[k].includes('Salsas')).length;
+  assert.deepStrictEqual(d.reach, { Salsas: want }, `${Lb}: reach counts the sellable products (launchers once) offered Salsas`);
+});
+cell('S2-ATTACH-CAT la_musa: a category attach is one category row; reach of the group', (Lb) => {
+  const s0 = buildSourceFromCode('la_musa');
+  const s = XT.apply(s0, { op: 'attach.cat', cat: 'dim_sum', group: 'Proteínas' }).source;
+  const d = canon(sides('la_musa', s0), sides('la_musa', s), true);
+  assert.deepStrictEqual(d.attachments, [{ group: 'Proteínas', scope: 'category', target: 'dim_sum', change: 'attached' }], Lb);
+  assert.ok(Number.isInteger(d.reach['Proteínas']) && d.reach['Proteínas'] > 1, `${Lb}: reach ${JSON.stringify(d.reach)}`);
 });
 
 if (fails.length) { console.log(`review-diff FAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }

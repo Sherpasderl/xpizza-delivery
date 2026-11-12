@@ -77,6 +77,19 @@ async function requestPublishCore(deps, ctx, body) {
   const sourceHash = sha256(draft);
   const v = verifyEditToken(token, { rid, baseActiveVersionId, sourceUpdateTime, sourceHash, diff });
   if (!v.ok) return reply(409, { error: 'edit_superseded', reason: v.reason });
+  // S2-core (Codex build r1 P2-6): the SAME current-state judgment the owner publish runs — the typed switch refusal, accounting and the
+  // claims (compareToActive), every new extra, the caps and budgets — before anything is written; a request is never a draft the owner's
+  // publish would refuse
+  try {
+    const { inputs: gi, built: gb } = buildSourceCandidate(rid, draft);
+    const g = await require('./structure-gate').judge({ rid, draft, draftRecords: { items: gb.items, extras: gb.extras, structure: gb.structure }, live, liveExtraRecords,
+      addProduct: deps.addProduct, compare: true, photos: photos ? { active: activePhotos, draft: draftPhotos } : null });
+    void gi;
+    if (g.unavailable) return reply(503, { error: 'store_unavailable', retryable: true });
+  } catch (e) {
+    if (e instanceof require('./add-product').AddProductError) return reply(e.status || 400, { error: e.code, detail: e.detail, ...(e.field ? { field: e.field } : {}), ...(e.key ? { key: e.key } : {}) });
+    return reply(500, { error: 'structural_check_failed' });
+  }
   // NOTHING TO PUBLISH (codex plan r2 P1-1): a request exists only while draft ≠ active. Getting back to equality then
   // needs a source change (a new updateTime) or an activation (a new generation), and either retires the request, so a
   // no-op reset (Firestore keeps the updateTime of an unchanged document) can never resurrect one.

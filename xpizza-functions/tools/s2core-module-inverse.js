@@ -17,8 +17,13 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/edit-catalog-handler.js",
-  "now": "  let refOfKey = {}; { const xa = await require('./extras-allocate').forSave({ candidate, stored, live, extrasLive: liveRes.extraRecords, addProduct, rid, switchOn: require('./platform-structure').structureCapabilities().extrasCatalog }); if (xa.error) return refusal(xa.error); if (xa.unavailable) return reply(503, { error: 'store_unavailable', retryable: true }); candidate = xa.source; }   // fresh additions: allocated key → the tmp reference the portal still holds · S2-core §3.1: new extras allocated (switch-gated)\n",
+  "now": "  let extraRefs = {}; let refOfKey = {}; { const xa = await require('./extras-allocate').forSave({ candidate, stored, live, extrasLive: liveRes.extraRecords, addProduct, rid, switchOn: require('./platform-structure').structureCapabilities().extrasCatalog }); if (xa.error) return refusal(xa.error); if (xa.unavailable) return reply(503, { error: 'store_unavailable', retryable: true }); candidate = xa.source; extraRefs = xa.refs || {}; }   // fresh additions: allocated key → the tmp reference the portal still holds · S2-core §3.1: new extras allocated (switch-gated)\n",
   "was": "  let refOfKey = {};          // fresh additions: allocated key → the tmp reference the portal still holds\n"
+ },
+ {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "    require('./source-accounting').accountAuthored({ next, stored, draftRecords: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined });   // S2-core (Codex build r1 P1-3): the AUTHORED source is accounted first\n",
+  "was": "    AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined });\n"
  },
  {
   "file": "catalog/edit-catalog-handler.js",
@@ -29,6 +34,11 @@ const HUNKS = Object.freeze([
   "file": "catalog/edit-catalog-handler.js",
   "now": "  const diff = require('./review-diff').reviewDiff({ live, liveExtraRecords: liveRes.extraRecords, draftBuilt, draftExtraRecords, photos: photos ? { active: activePhotos, draft: photoMap } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog });   // S2-core §1.6: THE one canonical review diff (consequences ungated; the publish and the manager request compute the same)\n",
   "was": "  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: photoMap } : draftBuilt); if (textEdit) { const xc = require('./extras-consequences').extrasConsequences({ live: { items: live.items, extras: liveRes.extraRecords, structure: live.structure }, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); if (xc.length) diff.consequences = xc; }   // S2-6: the extras consequences ride the reviewed (token-bound) diff; the publish recomputes them identically\n"
+ },
+ {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next, ...(Object.keys(extraRefs).length ? { extraRefs } : {}) });   // S2-core (P-6): { tmp ref: key } for the extras this save allocated\n",
+  "was": "  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next });\n"
  },
  {
   "file": "catalog/draft-assess.js",
@@ -42,7 +52,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/publish-edited-handler.js",
-  "now": "        extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras: judged on PUBLISH too, not only on save\n      }); require('./structure-budget').enforce({ rid, source: draft, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure }, active: { items: live.items, extras: liveExtraRecords, structure: live.structure }, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog });   // S2-core §4: caps + byte budgets, before the publish\n",
+  "now": "        extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras: judged on PUBLISH too, not only on save\n      }); { const g = await require('./structure-gate').judge({ rid, draft, draftRecords: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure }, live, liveExtraRecords, addProduct }); if (g.unavailable) return reply(503, { error: 'store_unavailable', retryable: true }); }   // S2-core: the ONE current-state gate (new extras, caps, budgets, derived maps), before the publish\n",
   "was": "        extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled,   // per-product extras: judged on PUBLISH too, not only on save\n      });\n"
  },
  {

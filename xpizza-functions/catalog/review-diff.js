@@ -7,25 +7,34 @@
 //       · extras: [{ key, name, group, price, change: 'added' | 'removed' | 'repriced' }]
 //       · structure: { extra_categories: { old, new } } when the group order / set changed
 //       · fiscal: { added: [{ surface, key, name, price }], repriced: [{ surface, key, name, old, new }] } — the seal, no duplicates
+//       · attachments: [{ group, scope: 'category' | 'item', target, change: 'attached' | 'detached' }] — the authored transitions
+//       · reach: { [group]: N } — the sellable products (a launcher once) each changed group is offered to in the draft
 //   Without an S2 op the diff object is today's, byte for byte, so every token issued before the deploy verifies after it.
-// An S2 op is present when an extra is added or removed, the group order / set changed, or any dish's offered GROUPS changed
-// (attach / detach). A per-dish unticked extra (S1 deny_extras) changes no group: today's edit, today's diff. Pure.
+// An S2 op is present when an extra is added or removed, the group order / set changed, a category's group list changed, or a dish's
+// group add / deny changed (attach / detach). An S1 edit (a dish's unticked extras, «Sin extras») and an ordinary section move are not
+// S2 ops: today's edit, today's diff. Pure.
 const { catalogDiff } = require('./catalog-edit');
 const { withConsequences } = require('./extras-consequences');
+const { canonicalize } = require('./source-store');
 const { projectEligibility } = require('./extras-eligibility');
 const { effectiveGroups } = require('./exposure-transitions');
-const { canonicalize } = require('./source-store');
 
 const same = (a, b) => JSON.stringify(canonicalize(a === undefined ? null : a)) === JSON.stringify(canonicalize(b === undefined ? null : b));
-const recs = (built, records) => ({ items: (built && built.items) || [], extras: records || [], structure: (built && built.structure) || {} });
 
 function s2OpPresent({ live, liveExtraRecords, draftBuilt, draftExtraRecords }) {
   const lk = new Set((liveExtraRecords || []).map((e) => e.key)); const dk = new Set((draftExtraRecords || []).map((e) => e.key));
   if (lk.size !== dk.size || [...dk].some((k) => !lk.has(k))) return true;
-  if (!same(live.structure && live.structure.extra_categories, draftBuilt.structure && draftBuilt.structure.extra_categories)) return true;
-  const gL = effectiveGroups(projectEligibility(recs(live, liveExtraRecords)));
-  const gD = effectiveGroups(projectEligibility(recs(draftBuilt, draftExtraRecords)));
-  return Object.keys(gD).some((k) => Object.prototype.hasOwnProperty.call(gL, k) && !same(gL[k], gD[k]));
+  const ls = live.structure || {}, ds = draftBuilt.structure || {};
+  if (!same(ls.extra_categories, ds.extra_categories)) return true;
+  // the Extras page's own exposure writes (Codex build r1 P2-7): category_allow, and a dish's add / deny — never an S1 edit (the per-dish
+  // checklist deny_extras, extras_policy) nor an ordinary move of a dish to another section, whose consequences stay today's diff
+  const lx = ls.exposure || {}, dx = ds.exposure || {};
+  if (!same(lx.category_allow, dx.category_allow)) return true;
+  const lo = lx.item_overrides || {}, dov = dx.item_overrides || {};
+  for (const k of new Set([...Object.keys(lo), ...Object.keys(dov)])) {
+    for (const f of ['add', 'deny']) if (!same((lo[k] || {})[f], (dov[k] || {})[f])) return true;
+  }
+  return false;
 }
 
 function reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords, photos = null, extrasCatalog = false }) {
@@ -50,6 +59,37 @@ function reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords, pho
   const added = diff.added.filter((a) => a.surface === 'item' || a.surface === 'extra').map((a) => ({ surface: a.surface, key: a.key, name: nameOf(a.surface, a.key), price: a.price }));
   const repriced = diff.changed.filter((c) => c.field === 'price' && (c.surface === 'item' || c.surface === 'extra')).map((c) => ({ surface: c.surface, key: c.key, name: nameOf(c.surface, c.key), old: c.old, new: c.new }));
   out.fiscal = { added, repriced };
+  // the AUTHORED attachment transitions (S2 UI plan review #3) — token-bound even when no effective extra moves (a group detached from a
+  // dish whose extras were all unticked still changes what the forms offer): one row per group entering / leaving a category's list or a
+  // dish's add / deny, sorted; and the authoritative reach of every changed group: the sellable products (a launcher once, its options
+  // inside it) the draft offers it to — «en N productos»
+  const list = (v) => (Array.isArray(v) ? v.map(String) : v === undefined || v === null ? [] : [String(v)]);
+  const groupsAll = new Set([...list(lc), ...list(dc)]);
+  const lexp = (live.structure && live.structure.exposure) || {}; const dxp = (draftBuilt.structure && draftBuilt.structure.exposure) || {};
+  const attachments = [];
+  const lca = lexp.category_allow || {}; const dca = dxp.category_allow || {};
+  for (const c of new Set([...Object.keys(lca), ...Object.keys(dca)])) {
+    for (const g of list(dca[c])) if (!list(lca[c]).includes(g)) attachments.push({ group: g, scope: 'category', target: c, change: 'attached' });
+    for (const g of list(lca[c])) if (!list(dca[c]).includes(g)) attachments.push({ group: g, scope: 'category', target: c, change: 'detached' });
+  }
+  const lov = lexp.item_overrides || {}; const dov = dxp.item_overrides || {};
+  for (const k of new Set([...Object.keys(lov), ...Object.keys(dov)])) {
+    const a = lov[k] || {}; const d = dov[k] || {};
+    for (const g of groupsAll) {
+      const was = list(a.add).includes(g) ? 'attached' : list(a.deny).includes(g) ? 'detached' : null;
+      const now = list(d.add).includes(g) ? 'attached' : list(d.deny).includes(g) ? 'detached' : null;
+      if (was !== now) attachments.push({ group: g, scope: 'item', target: k, change: now || (was === 'attached' ? 'detached' : 'attached') });
+    }
+  }
+  const key = (r) => `${r.group}\u0000${r.scope}\u0000${r.target}`;
+  out.attachments = attachments.sort((x, y) => (key(x) < key(y) ? -1 : key(x) > key(y) ? 1 : 0));
+  const changedGroups = new Set([...attachments.map((r) => r.group), ...extras.map((r) => r.group)]);
+  if (out.structure) for (const g of list(dc)) if (!list(lc).includes(g)) changedGroups.add(g);
+  const P = projectEligibility({ items: draftBuilt.items || [], extras: draftExtraRecords || [], structure: draftBuilt.structure || {} });
+  const E = effectiveGroups(P);
+  const reach = {};
+  for (const g of [...changedGroups].sort()) reach[g] = Object.keys(E).filter((k) => !P.items[k].launcherKey && E[k] && E[k].includes(g)).length;
+  out.reach = reach;
   return out;
 }
 

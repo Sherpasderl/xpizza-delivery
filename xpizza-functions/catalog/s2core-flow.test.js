@@ -55,10 +55,10 @@ function saveDb(rid) {
   });
   return { state, collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }) };
 }
+const addProductOf = (rid) => ({ readKeyMode: async () => (rid === 'la_musa' ? 'id' : 'name'), hwmRef: () => ({ path: null, get: async () => ({ exists: false, data: () => undefined }) }), registryKeysTaken: async () => new Set(), syncKds: async () => ({ pending: false, written: false, reason: 'superseded' }), readReservedKeys: async () => require('./reserved-keys').reservedKeySet(undefined) });
 const save = (rid, source, { authorize = owner } = {}) => {
   const db = saveDb(rid);
-  const addProduct = { readKeyMode: async () => (rid === 'la_musa' ? 'id' : 'name'), hwmRef: () => ({ path: null, get: async () => ({ exists: false, data: () => undefined }) }), registryKeysTaken: async () => new Set(), syncKds: async () => ({ pending: false, written: false, reason: 'superseded' }), readReservedKeys: async () => require('./reserved-keys').reservedKeySet(undefined) };
-  return editCatalogCore({ db, authorize, readActiveBuilt: liveRead(rid), addProduct }, { restaurantId: rid, source, baseSourceUpdateTime: T0 }, {}).then((r) => ({ r, db }));
+  return editCatalogCore({ db, authorize, readActiveBuilt: liveRead(rid), addProduct: addProductOf(rid) }, { restaurantId: rid, source, baseSourceUpdateTime: T0 }, {}).then((r) => ({ r, db }));
 };
 // The publish side: the draft the save wrote, the live version, and every publish attempt recorded.
 const publishDeps = (rid, draft, { authorize = owner, draftUpdateTime = T1 } = {}) => {
@@ -66,7 +66,7 @@ const publishDeps = (rid, draft, { authorize = owner, draftUpdateTime = T1 } = {
   return {
     state,
     deps: {
-      db: {}, authorize, readActiveBuilt: liveRead(rid),
+      db: {}, authorize, readActiveBuilt: liveRead(rid), addProduct: addProductOf(rid),   // production wires the add-product I/O (portal/functions.js)
       readDraft: async () => ({ source: draft, updateTime: draftUpdateTime }),
       publishVersion: async (_db, r, input, opts) => { state.publishes.push({ r, input, opts }); return { versionId: 'v-new-2', item_count: input.items.length, extra_count: Object.keys(input.extras).length }; },
     },

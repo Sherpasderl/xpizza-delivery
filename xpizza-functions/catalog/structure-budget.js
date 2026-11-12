@@ -31,9 +31,22 @@ function opsOf(draft, active) {
   return ops;
 }
 
+// Codex build r1 P2-8 — the COMPLETE served response, bounded from above before any write: the composed body WITH its public extras
+// eligibility (the deny lists the endpoint serves) and its item_keys map, exactly as the endpoint builds them, plus a fixed allowance per
+// served dish for the decorations read at serve time (photo URLs, identity fields: measured ≤ 400 bytes, allowed 768) and a fixed header
+// allowance (avail_identity, versions). Over-counting is the safe side.
+const PER_DISH_DECORATION = 768; const HEADER_ALLOWANCE = 4096;
+function servedUpperBound({ rid, draft, elig, keyMode }) {
+  const PM = require('./public-menu');
+  const body = PM.composeServedMenu(rid, { items: draft.items, structure: draft.structure || {}, extras: draft.extras, keyMode, eligibility: { version: elig.version, deny: elig.public_deny } });
+  const withKeys = require('./identity-overlay').withServedItemKeys(rid, body, null);
+  const dishes = Array.isArray(body && body.dishes) ? body.dishes.length : (draft.items || []).length;
+  return bytes(withKeys) + dishes * PER_DISH_DECORATION + HEADER_ALLOWANCE;
+}
+
 // rid, source (the draft as it will be stored), draft / active: the built RECORDS { items, extras, structure }. Returns the measurements
 // (null when the switch is off); throws AddProductError structure_caps / structure_bytes { field }.
-function enforce({ rid, source, draft, active, extrasCatalog }) {
+function enforce({ rid, source, draft, active, extrasCatalog, limits = LIMITS }) {
   if (!extrasCatalog) return null;
   const st = draft.structure || {};
   // T21 (§1.3 DERIVED-CLAIM-EXACT): under the switch compareToActive CLAIMS the two maps (they move with every attach / detach), so the
@@ -51,12 +64,13 @@ function enforce({ rid, source, draft, active, extrasCatalog }) {
   const ops = opsOf(draft, active);
   if (ops > LIMITS.ops) refuse('structure_caps', 'ops', `at most ${LIMITS.ops} Extras changes in one publish (${ops}) — publish part of them first`);
   const sourceBytes = bytes(source);
-  if (sourceBytes > LIMITS.sourceBytes) refuse('structure_bytes', 'source', `the menu would be ${Math.ceil(sourceBytes / 1024)} KiB (at most ${LIMITS.sourceBytes / 1024})`);
-  const eligibilityBytes = bytes(require('./extras-eligibility-store').buildEligibilityDoc({ items: draft.items, extras: draft.extras, structure: st }));
-  if (eligibilityBytes > LIMITS.eligibilityBytes) refuse('structure_bytes', 'eligibility', `the extras rules would be ${Math.ceil(eligibilityBytes / 1024)} KiB (at most ${LIMITS.eligibilityBytes / 1024})`);
-  const servedBytes = bytes(require('./public-menu').composeServedMenu(rid, { items: draft.items, structure: st, extras: draft.extras }));
-  if (servedBytes > LIMITS.servedBytes) refuse('structure_bytes', 'served', `the served menu would be ${Math.ceil(servedBytes / 1024)} KiB (at most ${LIMITS.servedBytes / 1024})`);
+  if (sourceBytes > limits.sourceBytes) refuse('structure_bytes', 'source', `the menu would be ${Math.ceil(sourceBytes / 1024)} KiB (at most ${limits.sourceBytes / 1024})`);
+  const elig = require('./extras-eligibility-store').buildEligibilityDoc({ items: draft.items, extras: draft.extras, structure: st });
+  const eligibilityBytes = bytes(elig);
+  if (eligibilityBytes > limits.eligibilityBytes) refuse('structure_bytes', 'eligibility', `the extras rules would be ${Math.ceil(eligibilityBytes / 1024)} KiB (at most ${limits.eligibilityBytes / 1024})`);
+  const servedBytes = servedUpperBound({ rid, draft, elig, keyMode: source && source.key_mode });
+  if (servedBytes > limits.servedBytes) refuse('structure_bytes', 'served', `the served menu would be ${Math.ceil(servedBytes / 1024)} KiB (at most ${limits.servedBytes / 1024})`);
   return { ops, sourceBytes, eligibilityBytes, servedBytes };
 }
 
-module.exports = { enforce, opsOf, LIMITS };
+module.exports = { enforce, opsOf, servedUpperBound, LIMITS };

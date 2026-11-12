@@ -60,10 +60,10 @@ function world() {
     assert.strictEqual(r.status, 200, `premise: the REAL save accepts the draft (${JSON.stringify(r.body).slice(0, 200)})`);
     return r.body;
   };
-  const request = (token) => PR.requestPublishCore({ fs, db: rtdb(), now: () => 5000, readActiveBuilt, readDraft: (rid) => PR.readDraftFrom(fs, rid) }, as('mgrOn01'), { restaurantId: FISCAL, token });
+  const request = (token) => PR.requestPublishCore({ fs, db: rtdb(), now: () => 5000, readActiveBuilt, addProduct: ADD_PRODUCT, readDraft: (rid) => PR.readDraftFrom(fs, rid) }, as('mgrOn01'), { restaurantId: FISCAL, token });
   const ownerPublish = async (token) => {
     const { source, updateTime } = await PR.readDraftFrom(fs, FISCAL);
-    return publishEditedCore({ db: {}, authorize: owner, readActiveBuilt, readDraft: async () => ({ source, updateTime }),
+    return publishEditedCore({ db: {}, authorize: owner, readActiveBuilt, addProduct: ADD_PRODUCT, readDraft: async () => ({ source, updateTime }),
       publishVersion: async (_db, _r, input) => ({ versionId: 'v2', item_count: input.items.length, extra_count: Object.keys(input.extras).length }) },
     { restaurantId: FISCAL, token, fiscalAck: true, acknowledgedChanges: ACK.list }, {});
   };

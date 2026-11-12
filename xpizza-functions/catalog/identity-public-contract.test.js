@@ -534,6 +534,7 @@ function cartAdapterOf(rid, itemKeys) {
     'catalog/catalog-edit.js': 'the merchant diff, which must EXCLUDE identity from content',
     'catalog/add-product.js': "1D add-product A ADD-ONLY structural check: an existing item must keep its stamp, a NEW item may not carry one (client stamps refused), and a removal is licensed only by the D4-P1 deletion claim's ids (advisor ruling A); keys no price/cart/quote/redemption/factura",
     'catalog/content-hash.js': 'excludes identity from the content fingerprint',
+    'catalog/extras-validate.js': "S2-core THE new-extra validator (save, publish, manager request): a NEW extra may not carry an identity stamp (client_supplied_key) — reads only its presence; keys no price/cart/quote/redemption/factura",
     'catalog/extras-allocate.js': "S2-core extra allocator, the add-product A ADD-ONLY check for extras: a NEW extra may not carry a stamp (client stamps refused, client_supplied_key); keys no price/cart/quote/redemption/factura",
     'catalog/exposure-transitions.js': "S2-core Extras-page writer: extra.remove names the removed extra's own stamp for the D4-P1 reviewed deletion claim (advisor ruling A mechanics); keys no price/cart/quote/redemption/factura",
     'catalog/catalog-context.js': "D4-a resolved context: the single gateway mapping a certified version's own stamp to canonicalId; reported only; keys no price/cart/quote/redemption/factura; not in the public payload",

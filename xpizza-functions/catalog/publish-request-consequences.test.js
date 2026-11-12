@@ -98,7 +98,9 @@ const moveToNy = (...keys) => (d) => { for (const k of keys) d.items.find((i) =>
     assert.ok(diff.consequences && diff.consequences.length, `${L}: premise — the draft carries a consequence`);
     const state = { rid: FISCAL, baseActiveVersionId: 'v1', sourceUpdateTime: updateTime, sourceHash: sha256(stored) };
     const r = await w.request(issueEditToken({ ...state, diff }));
-    assert.deepStrictEqual([r.status, r.body.ok], [200, true], `${L}: with the switch OFF the request verifies the folded (canonical) diff (got ${JSON.stringify(r)})`);
+    // the folded token VERIFIES (it gets past the re-match), and then the request's current-state gate (S2-core Codex build r1 P2-6) judges
+    // the draft as the owner's publish would: with item_text_edit OFF a section move is not an edit this switch allows
+    assert.deepStrictEqual([r.status, r.body.error], [400, 'existing_item_changed'], `${L}: with the switch OFF the folded token verifies and the gate refuses the move (got ${JSON.stringify(r)})`);
     const stale = await w.request(issueEditToken({ ...state, diff: plain }));
     assert.deepStrictEqual([stale.status, stale.body.error], [409, 'edit_superseded'], `${L}: a plain-diff token is superseded (got ${JSON.stringify(stale)})`);
     SWITCH.enabled = true;

@@ -112,7 +112,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   // same commit as the draft below.
   let candidate = canonicalize(FK.withFrozenKeys(withServerKeyMode(source, keyModeOwn.key_mode), fkOwn.frozen_keys)); if (textEdit) { candidate = canonicalize(AP.rederiveOptionNames(candidate)); const rec = FK.recordRenames({ draft: candidate, live, stored, textEdit }); if (!rec.ok) return reply(409, rec.key ? require('./edit-preflight').attributor(candidate)(rec.key, 'name', rec.error) : { error: rec.error }); candidate = canonicalize(FK.withFrozenKeys(candidate, rec.frozen_keys)); }   // S1a: with the switch on, a group renames as one unit, new text is capped, and every rename is recorded under its kept key
   let hwmPlan = null; { const op = RK.opaqueNameProblems({ items: candidate.items, activeItems: live.items })[0]; if (op) return reply(400, { error: 'name_previously_used', field: 'name', ...op }); }   // S1c (codex r1): never a name in the minted-key syntax
-  let refOfKey = {}; { const xa = await require('./extras-allocate').forSave({ candidate, stored, live, extrasLive: liveRes.extraRecords, addProduct, rid, switchOn: require('./platform-structure').structureCapabilities().extrasCatalog }); if (xa.error) return refusal(xa.error); if (xa.unavailable) return reply(503, { error: 'store_unavailable', retryable: true }); candidate = xa.source; }   // fresh additions: allocated key → the tmp reference the portal still holds · S2-core §3.1: new extras allocated (switch-gated)
+  let extraRefs = {}; let refOfKey = {}; { const xa = await require('./extras-allocate').forSave({ candidate, stored, live, extrasLive: liveRes.extraRecords, addProduct, rid, switchOn: require('./platform-structure').structureCapabilities().extrasCatalog }); if (xa.error) return refusal(xa.error); if (xa.unavailable) return reply(503, { error: 'store_unavailable', retryable: true }); candidate = xa.source; extraRefs = xa.refs || {}; }   // fresh additions: allocated key → the tmp reference the portal still holds · S2-core §3.1: new extras allocated (switch-gated)
   if (hasAdditions) {
     if (!addProduct) return reply(503, { error: 'add_product_unavailable', retryable: false });
     try {
@@ -359,7 +359,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
     try { activePhotos = await photos.readActive(rid, baseActiveVersionId); } catch (_) { return reply(503, { error: 'live_version_unavailable', retryable: true }); }
   }
   try {
-    AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined });
+    require('./source-accounting').accountAuthored({ next, stored, draftRecords: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined });   // S2-core (Codex build r1 P1-3): the AUTHORED source is accounted first
     AP.compareToActive({
       draftBuilt: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure, ...(photos ? { photos: photoMap } : {}) },
       activeBuilt: { items: live.items, extras: liveRes.extraRecords, structure: live.structure, ...(photos ? { photos: activePhotos } : {}) },
@@ -446,7 +446,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   }));
   // 1D add-product A §3: the CANONICAL saved source comes back, so the portal adopts server truth (allocated
   // keys and ids, canonical order) before it builds the review.
-  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next });
+  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next, ...(Object.keys(extraRefs).length ? { extraRefs } : {}) });   // S2-core (P-6): { tmp ref: key } for the extras this save allocated
 }
 
 module.exports = { editCatalogCore, isPreconditionFailure, encodeUpdateTime };
