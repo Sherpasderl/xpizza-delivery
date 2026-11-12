@@ -256,6 +256,23 @@ async function mintTicket(b) {
     await sameRefusal('closed + unknown key + 86\'d', hb, sb, async () => { await closedPair(hb, sb); await set86(true); }, () => set86(false)); }
   ok('competing COMBINATIONS (86\'d + closed, unknown + 86\'d, closed + unknown, all three): the same winning refusal through both exports');
 
+  // 8c. SDK-D4-CASH-NEEDS-SAFE (S4 / S7 c, A2) — cash replacing the member's own SDK order: refused while it is unresolved, admitted
+  // once the REAL switch (the cancelSdkPending export) made it safe_to_switch
+  { FAKE = makeFakePsp({ authorize: [{ outcome: 'definitive_decline', code: '05' }] });
+    const sb = sdkBody('x_pizza');
+    const placed = await SDK(sb);
+    assert.ok(placed.status === 200 && placed.json.outcome === 'declined', `CASH-NEEDS-SAFE premise: the SDK attempt declined, the order unresolved (${placed.text.slice(0, 120)})`);
+    const cash = () => orderBody('x_pizza', { payment_method: 'cash', replaces_order_id: sb.order_id });
+    await fresh();
+    const c1b = cash(); const c1 = await post(app.createOrder, c1b, { Authorization: `Bearer ${process.env.MAKE_SECRET}`, 'x-firebase-id-token': 'idt_member' });
+    assert.ok(c1.status === 409 && c1.json.error === 'previous_payment_unresolved' && (await val(`orders/${c1b.order_id}`)) === null, `CASH-NEEDS-SAFE: unresolved ⇒ 409, nothing written (${c1.text.slice(0, 120)})`);
+    const sw = await post(app.cancelSdkPending, { order_id: sb.order_id }, MEMBER);
+    assert.ok(sw.status === 200 && sw.json.safe_to_switch === true, `CASH-NEEDS-SAFE: the REAL switch ⇒ safe_to_switch (${sw.text.slice(0, 120)})`);
+    await fresh();
+    const c2b = cash(); const c2 = await post(app.createOrder, c2b, { Authorization: `Bearer ${process.env.MAKE_SECRET}`, 'x-firebase-id-token': 'idt_member' });
+    assert.ok(c2.status === 200 && (await val(`orders/${c2b.order_id}`)), `CASH-NEEDS-SAFE: once safe ⇒ the cash order is admitted (${c2.text.slice(0, 120)})`);
+    ok('cash replacing the member\'s own SDK order: 409 while unresolved, admitted after the real switch made it safe'); }
+
   // 9. SDK-D4-UNAVAILABLE / SCHEDULED — before any write
   await rtdb.ref('platform_config/sdk_pay/restaurants/x_pizza').remove();
   const ub = sdkBody('x_pizza'); const u = await SDK(ub);

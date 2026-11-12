@@ -939,6 +939,9 @@ createOrderApp.all('*', async (req, res) => {
     console.warn(`createOrder: ${orderId} below the client floor reached the create decision — client_update_race`);
     return res.status(409).json(OE.orderExistsBody('client_update_race', orderId));
   }
+  // D4 S4 (A2): a cash order that REPLACES the caller's own SDK order (a switch) requires it placed or safe_to_switch; anything else
+  // ignored. The ONE rule the SDK finish uses (payments/sdk/replaces.js) — before any reserve, rate-limit token or write.
+  { const rr = await require('./payments/sdk/replaces').replacesRefusal({ db }, { orderId, replacesOrderId: body.replaces_order_id, uid: customer_uid }); if (rr) { console.warn(`createOrder: ${orderId} — 409 previous_payment_unresolved (replaces an unresolved SDK order)`); return res.status(rr.status).json(rr.body); } }
 
   // D4-c4 §3/§0.5 — "Pausar pedidos": this request is NEW work (every existing-order answer and the :839 race returned
   // above, unchanged). The control read starts HERE, alongside the identity read just below; it is decided after it.

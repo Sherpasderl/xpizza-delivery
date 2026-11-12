@@ -13,18 +13,11 @@ const SUB = require('./subject');
 const CARDS = require('./cards');
 const { REVISIT_MS } = require('./sweeper');
 const { answerOrder } = require('./status-endpoint');
-const UNRESOLVED = Object.freeze({ status: 409, body: Object.freeze({ error: 'previous_payment_unresolved' }) });
+const { UNRESOLVED } = require('./replaces');
 
-// an order of THIS caller: the verified member, or a guest whose verified phone is the order's (never a member's / claimed order)
-const ownedBy = (c, o) => (c.uid ? o.customer_uid === c.uid
-  : !o.customer_uid && !!(c.pendingOrderRecord && c.pendingOrderRecord.guest_verified) && !HC.guestForeign(o, c.pendingOrderRecord));
-// placed, or safe_to_switch from durable state (§5)
-async function resolvedOrder(deps, orderId, order) {
-  const o = order || await C.readOrder(deps.db, orderId);
-  if (!o) return true;
-  if (o.payment_placed) return true;
-  return C.safeToSwitch(await C.readRecord(deps.db, orderId), o);
-}
+const RP = require('./replaces');
+const ownedBy = (c, o) => RP.ownedBy(c, o);
+const resolvedOrder = RP.resolvedOrder;
 // hosted acquisition's checks, on the order held under this id (null ⇒ reusable by THIS request)
 function bindingRefusal(c, o) {
   if (!F.isSdkOrder(o)) return { outcome: 'conflict', reason: 'conflict' };          // a hosted / cash order under the id
@@ -41,10 +34,7 @@ async function finishSdk(deps, c) {
   const fresh = HC.freshIssueRefusal(c.flags);
   if (fresh) return c.answerRefusal(fresh);
   // 2. BEFORE any write: the order this one replaces (A2), and the card (A3)
-  if (typeof c.replacesOrderId === 'string' && c.replacesOrderId !== c.orderId) {
-    const prev = await C.readOrder(deps.db, c.replacesOrderId);
-    if (F.isSdkOrder(prev) && ownedBy(c, prev) && !(await resolvedOrder(deps, c.replacesOrderId, prev))) return { status: UNRESOLVED.status, body: { ...UNRESOLVED.body } };
-  }
+  { const rr = await RP.replacesRefusal(deps, { orderId: c.orderId, replacesOrderId: c.replacesOrderId, uid: c.uid, pendingOrderRecord: c.pendingOrderRecord }); if (rr) return rr; }
   let token; let card; let authenticationIdentifier = null;
   if (c.card.kind === 'saved') {
     const s = await CARDS.resolveSavedCard(deps, c.uid, c.card.card_id);
