@@ -30,6 +30,17 @@ function world({ sender = SENDER, reply = { sent: 'true', id: 'msg-1' }, extra =
 const REQ = (w, body, ip = '10.0.0.1') => REC().recoverOrderAccessCore(w.deps, { ip, body });
 // … and a request followed by the background processor (as the queue trigger runs it), for the end-to-end cells
 const ASK = async (w, body, ip = '10.0.0.1') => { const r = await REQ(w, body, ip); if (body && body.code === undefined) await REC().processRecoveryQueue(w.deps); return r; };
+// Codex S5b r1 (advisor ruling): the DB OPERATIONS a call makes — reads, transaction calls, transaction-function passes (the
+// Admin SDK's speculative pass + any re-run), commits and plain writes — counted over the honest model; paths are NOT part of the
+// signature (only the shape of the work), so every target class must produce the identical signature
+function counting(db) {
+  const c = { reads: 0, tx: 0, passes: 0, commits: 0, writes: 0 };
+  const wrap = (r) => ({ ...r,
+    once: async (...a) => { c.reads += 1; return r.once(...a); }, get: async (...a) => { c.reads += 1; return r.get(...a); },
+    transaction: async (fn) => { c.tx += 1; const res = await r.transaction((cur) => { c.passes += 1; return fn(cur); }); if (res.committed) c.commits += 1; return res; },
+    set: async (...a) => { c.writes += 1; return r.set(...a); }, update: async (...a) => { c.writes += 1; return r.update(...a); }, remove: async (...a) => { c.writes += 1; return r.remove(...a); } });
+  return { db: { ...db, ref: (p) => wrap(db.ref(p)) }, c, reset: () => { for (const k of Object.keys(c)) c[k] = 0; } };
+}
 const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.body.get('body').match(/(\d{6})/); return m && m[1]; };
 
 (async () => {
@@ -219,6 +230,55 @@ const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.
     assert.deepStrictEqual(outs, ['none', 'sent'], `${L}: exactly one processor CLAIMS the entry; the other finds nothing (${JSON.stringify(outs)})`);
     assert.strictEqual(w.sends.length, 1, `${L}: two concurrent processors ⇒ ONE send`);
   });
+  // ── Codex S5b r1 (advisor ruling): UNIFORM work — equal DB-operation counts across target classes (not wall-clock) ──
+  await cell('SDK-D4-REC-VERIFY-OP-COUNT', async (L) => {
+    const sig = async (setup, orderId) => {
+      const w = world({ extra: { user_profiles: { uid_M: { phone_hash: PH } } } });
+      w.db.setAt('orders/ord_claimed', { payment_flow: 'sdk_auth_v1', status: 'pending_payment', restaurant_id: 'tb_rest', customer_uid: 'uid_M', guest_verified: { phone: GUEST_PHONE, phone_hash: PH }, pay_deadline_at: T0 + 9e5 });
+      await setup(w);
+      const k = counting(w.db); const deps = { ...w.deps, db: k.db };
+      await REC().recoverOrderAccessCore(deps, { ip: '10.0.0.1', body: { order_id: 'warm_up_order', code: '123456' } });   // any one-time setup is not a target signal
+      k.reset();
+      const r = await REC().recoverOrderAccessCore(deps, { ip: '10.0.0.1', body: { order_id: orderId, code: '999999' } });
+      assert.ok(same(r, { status: 400, body: { error: 'code_invalid' } }), `${L}: premise — the generic failure for ${orderId} (${JSON.stringify(r)})`);
+      return JSON.stringify(k.c);
+    };
+    const live = async (w) => { await ASK(w, { order_id: 'ord_guest' }); if (codeOf(w) === '999999') throw new Error('code collision'); };
+    const sigs = {
+      absent: await sig(async () => {}, 'no_such_order'),
+      member: await sig(async () => {}, 'ord_member'),
+      claimed: await sig(async (w) => w.db.setAt('order_recovery_otp/ord_claimed', { code_hash: 'x', expires_at: T0 + 3e5, attempts: 0, phone_hash: PH }), 'ord_claimed'),
+      guest_no_challenge: await sig(async () => {}, 'ord_guest'),
+      guest_live_wrong: await sig(live, 'ord_guest'),
+      guest_locked: await sig(async (w) => { await live(w); w.db.setAt('order_recovery_otp/ord_guest/attempts', 5); }, 'ord_guest'),
+      guest_expired: await sig(async (w) => { await live(w); w.tick(6 * 60 * 1000); }, 'ord_guest'),
+    };
+    assert.strictEqual(new Set(Object.values(sigs)).size, 1, `${L}: verify does the SAME DB operations for every target class (${JSON.stringify(sigs)})`);
+  });
+  await cell('SDK-D4-ORDER-AUTH-OP-COUNT', async (L) => {
+    const sig = async (orderId) => {
+      const w = world();
+      w.db.setAt('orders/ord_claimed', { payment_flow: 'sdk_auth_v1', status: 'pending_payment', restaurant_id: 'tb_rest', customer_uid: 'uid_M', guest_verified: { phone: GUEST_PHONE, phone_hash: PH }, pay_deadline_at: T0 + 9e5 });
+      const k = counting(w.db);
+      const r = await require('./order-auth').authorizeExistingOrder({ ...w.deps, db: k.db, verifyIdToken: async () => { throw new Error('x'); } }, { ticket: 'not_a_real_ticket' }, orderId);
+      assert.strictEqual(r.ok, false, `${L}: premise — refused`);
+      return JSON.stringify(k.c);
+    };
+    const sigs = { absent: await sig('no_such_order'), member: await sig('ord_member'), claimed: await sig('ord_claimed'), guest: await sig('ord_guest') };
+    assert.strictEqual(new Set(Object.values(sigs)).size, 1, `${L}: a guest-ticket check does the SAME DB operations for every target class — the ticket reads run FIRST for every request (${JSON.stringify(sigs)})`);
+  });
+  await cell('SDK-D4-REC-PROCESSOR-CLAIM-FAILURE', async (L) => {
+    const w = world({ hooks: { beforeTx: async (p) => { if (p.startsWith('sdk_recovery_queue/') && armed) throw new Error('injected claim failure'); } } });
+    let armed = false;
+    await REQ(w, { order_id: 'ord_guest' });
+    armed = true;
+    const [id] = Object.keys(w.db.getAt('sdk_recovery_queue'));
+    const warned = []; const ow = console.warn; console.warn = (...x) => warned.push(x.join(' '));
+    let threw = null; let out = null;
+    try { out = await REC().processRecoveryEntry(w.deps, id); } catch (e) { threw = e; } finally { console.warn = ow; }
+    assert.ok(!threw && out && warned.some((x) => x.startsWith('sdk_recovery_suppressed')), `${L}: a failed CLAIM transaction is suppressed and recorded, never a rejection (threw ${threw && threw.message})`);
+  });
+
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nd4-s5: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
