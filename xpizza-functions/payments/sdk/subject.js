@@ -25,8 +25,8 @@ async function claimSubject(deps, subject, orderId, isResolved) {
     return { order_id: orderId, at: deps.clock() };
   });
   if (swapped) return { ok: true };
-  const now = (await ref.once('value')).val();
-  return now && now.order_id === orderId ? { ok: true } : { ok: false, held: now ? now.order_id : null };
+  const current = (await ref.once('value')).val();
+  return current && current.order_id === orderId ? { ok: true } : { ok: false, held: current ? current.order_id : null };
 }
 async function releaseSubject(deps, subject, orderId) {
   let released = false;
