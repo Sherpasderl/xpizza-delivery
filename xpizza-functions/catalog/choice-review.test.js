@@ -74,5 +74,18 @@ cell('CR-NO-S3: ON, a draft with no S3 edit (a dish description) is today\'s dif
   assert.strictEqual(ON(() => JSON.stringify(diffOf('la_musa', LM, d))), JSON.stringify(diffOf('la_musa', LM, d)));
 });
 
+cell('CR-RENAME-ONLY (Codex build r1 P2-3): ON, an option-only rename in a group that already has its one mark IS an S3 edit — pairing off, the fiscal seal present; a same-price dish replacement beside it shows as removed + added', () => ON(() => {
+  const live = mark(LM, opts[0]);
+  const d0 = apply(live, { op: 'option.rename', key: opts[1], choice: 'Pollo al Wok' });
+  // + a same-price replacement of an ordinary dish (noodle_02 out, a new dish at its price in)
+  const d = clone(d0); const old = d.items.find((i) => i.key === 'noodle_02'); d.items = d.items.filter((i) => i.key !== 'noodle_02');
+  d.items.push({ key: 'noodle_nuevo', price: old.price, display: { ...old.display, id: 'noodle_nuevo', name: 'Noodle Nuevo' } });
+  d.structure.item_order = d.structure.item_order.map((k) => (k === 'noodle_02' ? 'noodle_nuevo' : k));
+  const r = diffOf('la_musa', live, d);
+  assert.ok('fiscal' in r, 'the fiscal seal is present');
+  assert.deepStrictEqual(r.renamed, [], 'no pairing');
+  assert.deepStrictEqual([r.removed.map((x) => x.key), r.added.map((x) => x.key)], [['noodle_02'], ['noodle_nuevo']]);
+}));
+
 if (fails.length) { console.error(`choice-review FAILED ${fails.length} cell(s): ${fails.join(' | ')}`); process.exit(1); }
 console.log(`choice-review: OK (${n})`);
