@@ -148,6 +148,28 @@ async function mintTicket(b) {
   assert.ok(hostedNs.status === 400 && /order_id_namespace/.test(hostedNs.text) && (await val(`orders/${nsId}`)) === null && (await val('rate_limits')) === null && (await val('recent_order_content')) === null, `NAMESPACE: hosted chargeOnlineOrder refuses an sdk_ id, nothing written (${hostedNs.text.slice(0, 120)})`);
   ok('createOrder (cash) and hosted chargeOnlineOrder refuse an SDK-namespaced id before any write');
 
+  // 4b'. Codex handler r2 P1 — a NON-STRING id never reaches the namespace test (String(['sdk_…']) would persist as sdk_…): array,
+  // nested array, number, object ⇒ 400 on BOTH creators, nothing written; and the cash-vs-SDK OVERWRITE interleaving
+  for (const bad of [[nsId], [[nsId]], 261112, { id: nsId }]) {
+    await fresh();
+    const c = await post(app.createOrder, { ...orderBody('x_pizza', { payment_method: 'cash' }), order_id: bad }, { Authorization: `Bearer ${process.env.MAKE_SECRET}` });
+    await fresh();
+    const h = await post(app.chargeOnlineOrder, { ...orderBody('x_pizza'), order_id: bad }, { Authorization: `Bearer ${process.env.MAKE_SECRET}` });
+    assert.ok(c.status === 400 && /order_id must be a string/.test(c.text) && h.status === 400 && /order_id must be a string/.test(h.text), `NON-STRING ${JSON.stringify(bad)}: both creators ⇒ 400 (${c.text.slice(0, 80)} | ${h.text.slice(0, 80)})`);
+    assert.ok((await val(`orders/${nsId}`)) === null && (await val('rate_limits')) === null && (await val('recent_order_content')) === null, `NON-STRING ${JSON.stringify(bad)}: nothing written`);
+  }
+  FAKE = makeFakePsp({ authorize: [{ outcome: 'approved' }] });
+  const ov = sdkBody('x_pizza');
+  assert.strictEqual((await SDK(ov)).status, 200, 'premise — the SDK order exists');
+  const ovBefore = JSON.stringify(await val(`orders/${ov.order_id}`));
+  for (const bad of [ov.order_id, [ov.order_id], [[ov.order_id]]]) {
+    await fresh();
+    const c = await post(app.createOrder, { ...orderBody('x_pizza', { payment_method: 'cash' }), order_id: bad }, { Authorization: `Bearer ${process.env.MAKE_SECRET}` });
+    assert.ok(c.status === 400, `OVERWRITE: a cash request naming the SDK order as ${JSON.stringify(bad)} ⇒ 400 (${c.text.slice(0, 100)})`);
+  }
+  assert.strictEqual(JSON.stringify(await val(`orders/${ov.order_id}`)), ovBefore, 'OVERWRITE: the SDK order is byte-identical after every cash attempt');
+  ok('a non-string order_id is refused by both creators before any write; a cash request can never overwrite an SDK order (string, array, nested)');
+
   // 4c. the hosted-vs-SDK creation RACE on one id: structurally impossible now (the namespaces are disjoint) — proven concurrently
   FAKE = makeFakePsp({ authorize: [{ outcome: 'approved' }] });
   const rb = sdkBody('x_pizza');

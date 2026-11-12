@@ -16,7 +16,8 @@ const acorn = require('acorn');
 const SRC = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');   // RAW — never an inverse layer
 const AST = acorn.parse(SRC, { ecmaVersion: 'latest', sourceType: 'script', allowHashBang: true, allowReturnOutsideFunction: true });
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const REFUSAL = "if (require('./payments/sdk/order-id').inSdkNamespace((req.body || {}).order_id)) return badRequest(res, 'order_id_namespace');";
+const TYPE_REFUSAL = "if ((req.body || {}).order_id != null && typeof req.body.order_id !== 'string') return badRequest(res, 'order_id must be a string');";
+const REFUSAL = "if (require('./payments/sdk/order-id').inSdkNamespace(req.body.order_id)) return badRequest(res, 'order_id_namespace');";
 
 // A. the creation sinks (the same inventory order-creators.guard reads)
 const census = JSON.parse(fs.readFileSync(path.join(__dirname, 'contract', 'census.json'), 'utf8'));
@@ -41,7 +42,10 @@ const firstOf = (h, re, from = h.start) => { const m = re.exec(SRC.slice(from, h
   const st = h.body.body;
   const i = st.findIndex((x) => x.type === 'IfStatement' && /!presented \|\| (presented !== SECRET|!constantTimeEqual\(presented, SECRET\))/.test(SRC.slice(x.start, x.end)));
   assert.ok(i !== -1, 'NS-B: the bearer check');
-  assert.strictEqual(norm(st[i + 1]).replace(/ \/\/.*/, ''), REFUSAL, `NS-B: createOrder's FIRST statement after the bearer check is the namespace refusal (got ${norm(st[i + 1]).slice(0, 120)})`);
+  // Codex handler r2 P1: «typeof === 'string' FIRST» — an array / object / number id never reaches the namespace test (which
+  // must see EXACTLY the value persistence uses: String(order_id) of a string is itself)
+  assert.strictEqual(norm(st[i + 1]).replace(/ \/\/.*/, ''), TYPE_REFUSAL, `NS-B: createOrder's FIRST statement after the bearer check is the non-string refusal (got ${norm(st[i + 1]).slice(0, 120)})`);
+  assert.strictEqual(norm(st[i + 2]).replace(/ \/\/.*/, ''), REFUSAL, `NS-B: the SECOND is the namespace refusal (got ${norm(st[i + 2]).slice(0, 120)})`);
   const at = st[i + 1].start;
   for (const re of [/getDatabase\(\)/, /resolveRestaurantId\(/, /existingOrderProbe\(/, /reserveRedemption\(/, /checkRateLimit\(/]) assert.ok(at < firstOf(h, re), `NS-B: the refusal precedes ${re}`);
   ok('B: createOrder refuses a namespaced id first — before any read, reserve or write');
@@ -52,8 +56,9 @@ const firstOf = (h, re, from = h.start) => { const m = re.exec(SRC.slice(from, h
   const b1 = h.body.body.find((x) => x.type === 'IfStatement' && x.test.type === 'Identifier' && x.test.name === 'SDK_MODE');
   assert.ok(b1 && b1.alternate && b1.alternate.type === 'BlockStatement', 'NS-C: B1 has the hosted (else) branch');
   const alt = b1.alternate.body;
-  assert.strictEqual(norm(alt[alt.length - 1]).replace(/ \/\/.*/, ''), REFUSAL, 'NS-C: the hosted branch ends with the namespace refusal (after the intake-key compare)');
-  for (const re of [/CF\.liveCheckoutProbe\(/, /resolveRestaurantId\(/, /reserveRedemption\(/, /checkRateLimit\(/, /acquireHostedAttempt\(db,/]) assert.ok(alt[alt.length - 1].start < firstOf(h, re, b1.end), `NS-C: on the hosted path the refusal precedes ${re}`);
+  assert.strictEqual(norm(alt[alt.length - 2]).replace(/ \/\/.*/, ''), TYPE_REFUSAL, 'NS-C: the hosted branch refuses a non-string id (after the intake-key compare)');
+  assert.strictEqual(norm(alt[alt.length - 1]).replace(/ \/\/.*/, ''), REFUSAL, 'NS-C: …then ends with the namespace refusal');
+  for (const re of [/CF\.liveCheckoutProbe\(/, /resolveRestaurantId\(/, /reserveRedemption\(/, /checkRateLimit\(/, /acquireHostedAttempt\(db,/]) assert.ok(alt[alt.length - 2].start < firstOf(h, re, b1.end), `NS-C: on the hosted path the refusal precedes ${re}`);
   ok('C: hosted chargeOnlineOrder refuses a namespaced id before any read or write; the SDK branch admits only the namespace');
 }
 // D. one definition

@@ -91,6 +91,8 @@ const AUTH = (w, r) => I().authorize(r, w.deps);
     const BAD = { status: 400, body: { error: 'order_id_namespace' } };
     for (const id of ['XPZ261112-1015-ABCDEFGH', 'tb_intake_1', 'sdk_', 'sdk_261112-101500-abcdefgh', 'sdk_261112-101500-ABCDEFGI', 'SDK_261112-101500-ABCDEFGH', 'sdk_261112-1015-ABCDEFGH', 'xsdk_261112-101500-ABCDEFGH'])
       assert.deepStrictEqual((await AUTH(w, req({ authorization: 'Bearer idt_A' }, baseBody({ order_id: id })))).refuse, BAD, `${L}: ${id} ⇒ 400 order_id_namespace`);
+    for (const id of [['sdk_261112-101500-ABCDEFGH'], [['sdk_261112-101500-ABCDEFGH']], 261112, { id: 'sdk_261112-101500-ABCDEFGH' }])
+      assert.deepStrictEqual((await AUTH(w, req({ authorization: 'Bearer idt_A' }, baseBody({ order_id: id })))).refuse, BAD, `${L}: a NON-STRING id ${JSON.stringify(id)} ⇒ 400 (Codex r2 P1)`);
     assert.ok((await AUTH(w, req({ authorization: 'Bearer idt_A' }, baseBody()))).ok, `${L}: a namespaced id is admitted`);
   });
 
