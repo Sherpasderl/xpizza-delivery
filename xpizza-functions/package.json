@@ -224,6 +224,7 @@
     "test:s3a-envio": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/s3a-envio.emulator.test.js\"",
     "test:dpao": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/dpao.emulator.test.js\"",
     "test:zones": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/zones.emulator.test.js\"",
+    "test:envlim": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/envlim.emulator.test.js\"",
     "test:s2tip": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/s2tip.emulator.test.js\"",
     "test:s3b-return": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/s3b-return.emulator.test.js\"",
     "test:capp-s2a": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/capp-s2a.emulator.test.js\"",

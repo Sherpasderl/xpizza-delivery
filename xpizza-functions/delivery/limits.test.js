@@ -292,6 +292,24 @@ const deliver = (w, rid, pin, mode = 'delivery') => DW.deliveryFor(w.reader, { r
     assert.deepStrictEqual(w.db.get(PATH).restaurants, { tb_r2: { max_km: 5 } }, `${L}: an entry of a deregistered branch is pruned by the next save`);
   });
 
+  await cell('RECOVERY-REQUESTED-ROW-MISSING', async (L) => {
+    // A's competing-save counterexample (r5 §1, shared with portal-ui): A requests X and Y; B's save wins and X is deregistered, so B
+    // prunes X; A is superseded — and the refreshed GET (A's recovery evidence) LACKS the requested X: unresolved, never «saved»
+    let ids = ['tb_r1', 'tb_r2', 'tb_r3'];
+    const w = world({}, { registry: async () => ({ ok: true, fresh: true, ids }) });
+    await save(w, { limits: [{ rid: 'tb_r1', km: 4 }] });
+    const pvA = w.db.get(PATH).policy_version;
+    ids = ['tb_r2', 'tb_r3'];
+    await save(w, {});   // B wins (and prunes the deregistered tb_r1)
+    const a = await w.set({ expected_policy_version: pvA, bands: BANDS, limits: [{ rid: 'tb_r1', km: 5 }, { rid: 'tb_r2', km: 5 }] });
+    assert.deepStrictEqual([a.status, a.body.error], [400, 'bad_request'], `${L}: …or, re-validated against the fresh registry, A's tb_r1 is directory_changed (${JSON.stringify(a.body)})`);
+    const raced = await w.set({ expected_policy_version: pvA, bands: BANDS, limits: [{ rid: 'tb_r2', km: 5 }] });
+    assert.deepStrictEqual([raced.status, raced.body.error], [409, 'superseded'], `${L}: A (stale version) is superseded`);
+    const g = await w.get();
+    const rows = Object.fromEntries(g.body.branches.map((b) => [b.rid, b.max_km]));
+    assert.deepStrictEqual(['tb_r1' in rows, rows.tb_r2], [false, null], `${L}: the refreshed GET lacks the requested tb_r1 and tb_r2 is unchanged — A's mutations are unresolved (the page shows the conflict)`);
+  });
+
   if (fails.length) { console.log(`limits FAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }
   console.log(`limits: OK (${n})`);
 })();
