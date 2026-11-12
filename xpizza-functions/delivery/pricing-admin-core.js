@@ -29,9 +29,10 @@ const RID_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
 // the REAL writer commits: one save at the top version (VERSION_LIMIT − 1) by a 128-unit admin uid of 3-byte characters, over the worst
 // history the writer RETAINS (9 entries entryOk accepts: 128-unit uids JSON-escaping to 6 bytes each, both flags, top versions, safe-int
 // clocks, 20 band caps, an 8-zone summary), with 20 bands at the caps and 8 × 24-point zones at the worst legal encoding within
-// |lat| ≤ 60, plus (envío restaurant limit r5 §6) the per-branch map at its cap (300 × the longest registry id with max_km 9.5) and each
-// retained entry's limits summary at its bounds — UTF-8 bytes of the JSON; pinned by delivery/zones-writer.test.js.
-const READ_BYTES_AT_CAPS = 40894;
+// |lat| ≤ 60, plus (envío restaurant limit r5 §6) the per-branch map at its cap (300 × the longest registry id with max_km 9.5) after the
+// worst LEGAL request (200 mutations: 100 deletions + 100 new entries → 3-digit summary counts), each retained entry's limits summary at its
+// bounds — UTF-8 bytes of the JSON; pinned by delivery/zones-writer.test.js.
+const READ_BYTES_AT_CAPS = 40898;
 
 const reply = (status, body) => ({ status, body });
 const UNAVAILABLE = () => reply(503, { error: 'unavailable', retryable: true });
@@ -253,8 +254,10 @@ async function setDeliveryPricingCore(deps, req) {
   // pruned, then `limits` applied (km null deletes); the RESULT is capped. → false (d.why set) | true (d.map, d.summary set)
   function mapOf(d, curMap) {
     const m = {};
-    if (isObj(curMap)) for (const [rid, e] of Object.entries(curMap)) if (DP.limitEntry(e) !== undefined && reg && reg.has(rid)) m[rid] = e;
     let set = 0, deleted = 0;
+    // a stored limit (valid or malformed) of a branch no longer in the fresh registry is PRUNED — a deletion the history records
+    // (Codex build r1 P2-4); a legacy {active, free_delivery} entry is not a limit and leaves without a trace
+    if (isObj(curMap)) for (const [rid, e] of Object.entries(curMap)) if (DP.limitEntry(e) !== undefined) { if (reg && reg.has(rid)) m[rid] = e; else deleted++; }
     for (const { rid, km } of limits || []) {
       if (km === null) { if (rid in m) { delete m[rid]; deleted++; } continue; }
       if (!(isObj(m[rid]) && m[rid].max_km === km && Object.keys(m[rid]).length === 1)) set++;
