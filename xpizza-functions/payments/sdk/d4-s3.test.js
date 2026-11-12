@@ -28,14 +28,19 @@ const save = (d, uid, token, gen) => K().completeVault(d, { uid, token, token_ha
     const foreign = await K().resolveSavedCard(d, 'uid_B', idA);
     const absent = await K().resolveSavedCard(d, 'uid_B', 'nonexistent_card_000');
     assert.deepStrictEqual([foreign, absent], [null, null], `${L}: B's token with A's card_id, and a nonexistent id ⇒ the SAME null (one identical 409 at the handler)`);
+    db.setAt(`customer_cards/uid_A/cards/${idA}/expired_at`, T0);
+    assert.strictEqual(await K().resolveSavedCard(d, 'uid_A', idA), null, `${L}: an EXPIRED card of the owner is not usable ⇒ the same null`);
     assert.deepStrictEqual(K().SAVED_CARD_UNAVAILABLE, { status: 409, body: { error: 'saved_card_unavailable' } }, `${L}: the one refusal body`);
   });
 
   await cell('SDK-D4-DUP-SAVE', async (L) => {
     const db = makeHonestDb({});
     const d = deps(db);
+    await save(d, 'uid_A', 'T-other', 0);   // an unrelated card the member already has
     await Promise.all([save(d, 'uid_A', 'T-dup', 0), save(d, 'uid_A', 'T-dup', 0)]);
-    assert.strictEqual(Object.keys(db.getAt('customer_cards/uid_A/cards') || {}).length, 1, `${L}: two concurrent completions of the same token ⇒ ONE card`);
+    const cards = Object.values(db.getAt('customer_cards/uid_A/cards') || {});
+    assert.strictEqual(cards.filter((c) => c.token === 'T-dup').length, 1, `${L}: two concurrent completions of the same token ⇒ ONE card`);
+    assert.strictEqual(cards.filter((c) => c.token === 'T-other').length, 1, `${L}: and the member's other card survives (no lost update)`);
   });
 
   await cell('SDK-D4-DELETE-VS-COMPLETE', async (L) => {
@@ -60,6 +65,17 @@ const save = (d, uid, token, gen) => K().completeVault(d, { uid, token, token_ha
     assert.deepStrictEqual(Object.keys(db2.getAt('customer_cards/uid_A/cards') || {}), [], `${L}: complete-then-remove ⇒ no card`);
   });
 
+  await cell('SDK-D4-COMPLETE-VS-REMOVE-CONCURRENT', async (L) => {
+    // a completion of ANOTHER card racing a removal: the completion must never write back a stale node (that would resurrect X)
+    const db = makeHonestDb({});
+    const d = deps(db);
+    await save(d, 'uid_A', 'T-x', 0);
+    const X = Object.keys(db.getAt('customer_cards/uid_A/cards'))[0];
+    await Promise.all([save(d, 'uid_A', 'T-new', 0), K().removeCard(d, 'uid_A', X)]);
+    const cards = db.getAt('customer_cards/uid_A/cards') || {};
+    assert.ok(!cards[X] && db.getAt(`customer_cards/uid_A/tomb/${H('T-x')}/gen`) === 1, `${L}: the removed card stays removed — never resurrected by a concurrent completion (cards ${JSON.stringify(Object.values(cards).map((c) => c.last4 + ':' + c.token))})`);
+    assert.ok(Object.values(cards).some((c) => c.token === 'T-new'), `${L}: the concurrent new card is saved`);
+  });
   await cell('SDK-D4-GEN-MONOTONIC', async (L) => {
     const db = makeHonestDb({});
     const d = deps(db);
