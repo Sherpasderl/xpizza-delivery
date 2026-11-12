@@ -31,6 +31,16 @@ const HUNKS = Object.freeze([
   "was": "  const freshVariants = fresh.map(({ item }) => item).filter(isGroupVariant);\n"
  },
  {
+  "file": "catalog/catalog-edit.js",
+  "now": "function catalogDiff(liveBuilt, draftBuilt, { pairExtras = true, pairItems = true } = {}) {\n",
+  "was": "function catalogDiff(liveBuilt, draftBuilt, { pairExtras = true } = {}) {\n"
+ },
+ {
+  "file": "catalog/catalog-edit.js",
+  "now": "  const itemPairs = pairItems ? pairRenames(rawRemovedItems, rawAddedItems, 'item') : { renamed: [], removed: rawRemovedItems, added: rawAddedItems };   // S3 §4: an option replaced at the same price is a removal + an addition\n",
+  "was": "  const itemPairs = pairRenames(rawRemovedItems, rawAddedItems, 'item');\n"
+ },
+ {
   "file": "catalog/catalog-publish.js",
   "now": "    await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode); await require('./choice-rollback').assertRollbackChoices(db, rid, targetVersionId, expected);   // S3 §1c: a rollback is an activation\n",
   "was": "    await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode);\n"

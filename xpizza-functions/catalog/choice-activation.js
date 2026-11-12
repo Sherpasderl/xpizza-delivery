@@ -80,4 +80,32 @@ function choiceActivation({ rid, baseline, target, choiceEdit }) {
   return null;
 }
 
-module.exports = { choiceActivation, TAG };
+// The review rows (§4): one per EXISTING dish whose group changed — its label, its membership, its «Recomendada» option(s), or the
+// dish gaining (became: 'launcher') / losing (became: 'plain') its group. A price-only change is no row. A dish new to the menu is
+// an addition (today's diff). [] when either index cannot be read (the judgment refuses that draft before any token).
+function choiceRows({ baseline, target }) {
+  const ib = groupIndexFrom(baseline); const it = groupIndexFrom(target);
+  if (!ib.ok || !it.ok) return [];
+  const bItems = new Map(baseline.items.map((i) => [i.key, i]));
+  const tItems = new Map(target.items.map((i) => [i.key, i]));
+  const markedOf = (index, items, k) => membersOf(index, k).filter((v) => marked(items.get(v)));
+  const rows = [];
+  for (const k of [...new Set([...ib.launchers, ...it.launchers])].sort()) {
+    if (!bItems.has(k) || !tItems.has(k)) continue;
+    const inB = ib.launchers.has(k); const inT = it.launchers.has(k);
+    const row = { launcher: k, name: (tItems.get(k).display || {}).name };
+    if (!inB) row.became = 'launcher';
+    if (!inT) row.became = 'plain';
+    const bl = inB ? (specOf(baseline, k) || {}).label : null; const tl = inT ? (specOf(target, k) || {}).label : null;
+    if (bl !== tl) row.label = { old: bl === undefined ? null : bl, new: tl === undefined ? null : tl };
+    const bm = inB ? membersOf(ib, k) : []; const tm = inT ? membersOf(it, k) : [];
+    const added = tm.filter((v) => !bm.includes(v)); const removed = bm.filter((v) => !tm.includes(v));
+    if (added.length || removed.length) row.members = { added, removed };
+    const br = inB ? markedOf(ib, bItems, k) : []; const tr = inT ? markedOf(it, tItems, k) : [];
+    if (JSON.stringify(br) !== JSON.stringify(tr)) row.recommended = { old: br, new: tr };
+    if (Object.keys(row).length > 2) rows.push(row);
+  }
+  return rows;
+}
+
+module.exports = { choiceActivation, choiceRows, TAG };

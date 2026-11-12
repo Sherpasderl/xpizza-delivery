@@ -423,6 +423,7 @@
   "catalog/choice-transitions.js#rowOf": "catalog",
   "catalog/choice-activation.js#choiceActivation": "catalog",
   "catalog/choice-activation.js#specOf": "catalog",
+  "catalog/choice-activation.js#choiceRows": "catalog",
   "catalog/choice-compare.js#compareToActive": "catalog",
   "catalog/choice-compare.js#prepareExistingGroups": "catalog",
   "catalog/choice-rollback.js#built": "catalog",

@@ -101,7 +101,7 @@ function pairRenames(removed, added, surface) {
 
 // opts.pairExtras (default true = today): S2-core (PLAN-structure-S2core-r3 §1.6) passes false — an extra cannot be renamed there,
 // so a different key is a different extra (review-diff.js).
-function catalogDiff(liveBuilt, draftBuilt, { pairExtras = true } = {}) {
+function catalogDiff(liveBuilt, draftBuilt, { pairExtras = true, pairItems = true } = {}) {
   const added = [], removed = [], changed = [], largeChangeSet = [];
 
   // ── items
@@ -173,7 +173,7 @@ function catalogDiff(liveBuilt, draftBuilt, { pairExtras = true } = {}) {
   // Same field order as every other `changed` line. Never in largeChangeSet.
   for (const l of PS.photoDiffLines(liveBuilt.photos, draftBuilt.photos)) changed.push({ key: l.key, surface: l.surface, field: l.field, old: l.old, new: l.new });
 
-  const itemPairs = pairRenames(rawRemovedItems, rawAddedItems, 'item');
+  const itemPairs = pairItems ? pairRenames(rawRemovedItems, rawAddedItems, 'item') : { renamed: [], removed: rawRemovedItems, added: rawAddedItems };   // S3 §4: an option replaced at the same price is a removal + an addition
   const extraPairs = pairExtras ? pairRenames(rawRemovedEx, rawAddedEx, 'extra') : { renamed: [], removed: rawRemovedEx, added: rawAddedEx };
   added.push(...itemPairs.added, ...extraPairs.added);
   removed.push(...itemPairs.removed, ...extraPairs.removed);
