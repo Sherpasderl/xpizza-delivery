@@ -24,12 +24,12 @@ const clone = (x) => JSON.parse(JSON.stringify(x));
 // certified rows (identity stamps) in the live AND the stored draft, so a removal can be declared
 const base = (rid) => { const s = clone(buildSourceFromCode(rid)); for (const it of s.items) it.display.identity_id = `id_${String(it.key).replace(/[^A-Za-z0-9]/g, '_')}`; return s; };
 const builtOf = (src, rid) => { const i = sourceToBuildInputs(src); return { ...buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable }), extras: i.extras }; };
-const liveRead = (rid) => async () => {
-  const src = base(rid); const i = sourceToBuildInputs(src);
+const liveRead = (rid, liveSrc = null) => async () => {
+  const src = liveSrc ? clone(liveSrc) : base(rid); const i = sourceToBuildInputs(src);
   return { built: builtOf(src, rid), versionId: ACTIVE, extraRecords: buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable }).extras };
 };
-function saveDb(rid) {
-  const state = { source: { data: base(rid), updateTime: T0 } };
+function saveDb(rid, liveSrc = null) {
+  const state = { source: { data: liveSrc ? clone(liveSrc) : base(rid), updateTime: T0 } };
   const doc = (path) => ({
     get: async () => {
       if (path === `restaurants/${rid}/meta/source`) { const frozen = clone(state.source.data); return { exists: true, data: () => frozen, updateTime: state.source.updateTime }; }
@@ -47,10 +47,10 @@ function saveDb(rid) {
   return { state, batch, collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }) };
 }
 const addProductOf = (rid) => ({ readKeyMode: async () => (rid === 'la_musa' ? 'id' : 'name'), hwmRef: () => ({ path: null, get: async () => ({ exists: false, data: () => undefined }), set: async () => {} }), registryKeysTaken: async () => new Set(), syncKds: async () => ({ pending: false, written: false, reason: 'superseded' }), readReservedKeys: async () => require('./reserved-keys').reservedKeySet(undefined) });
-const save = (rid, source, deletedIds) => {
-  const db = saveDb(rid);
+const save = (rid, source, deletedIds, liveSrc = null) => {
+  const db = saveDb(rid, liveSrc);
   const src = deletedIds ? { ...source, deleted_ids: { ids: deletedIds } } : source;
-  return editCatalogCore({ db, authorize: owner, readActiveBuilt: liveRead(rid), addProduct: addProductOf(rid) }, { restaurantId: rid, source: src, baseSourceUpdateTime: T0, ...(deletedIds ? { deleted_ids_loaded_base: { version: ACTIVE, generation: 0 } } : {}) }, {}).then((r) => ({ r, db }));
+  return editCatalogCore({ db, authorize: owner, readActiveBuilt: liveRead(rid, liveSrc), addProduct: addProductOf(rid) }, { restaurantId: rid, source: src, baseSourceUpdateTime: T0, ...(deletedIds ? { deleted_ids_loaded_base: { version: ACTIVE, generation: 0 } } : {}) }, {}).then((r) => ({ r, db }));
 };
 const apply = (src, op) => CT.apply(src, op).source;
 const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 220)}`;
@@ -110,6 +110,21 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 220)}`;
     assert.strictEqual(r.status, 200, `S3F-D3: ${show(r)}`);
     assert.ok(!db.state.source.data.items.some((i) => padOpts.includes(i.key)), 'S3F-D3: the options left');
     ok('ON: a group removed with its declared options saves; the dish is plain at the chosen option\'s price');
+  }
+  {   // x_pizza (name mode): an option rename keeps its key — the composed old name — RECORDED as a frozen key by the save
+    const { r: r1, db: d1 } = await save('x_pizza', apply(XP, D2(plain)));
+    assert.strictEqual(r1.status, 200, `S3F-RENAME-XP premise: ${show(r1)}`);
+    const live = d1.state.source.data;
+    const dish = live.items.find((i) => i.key === plain);
+    const optKey = live.structure.variant_items[String(dish.display.id)].variantIds.map((id) => live.items.find((i) => String(i.display.id) === String(id)).key)[0];
+    const d = apply(apply(live, { op: 'option.rename', key: optKey, choice: 'Mediana' }), { op: 'choice.recommended', launcher: plain, option: optKey });
+    const { r, db } = await save('x_pizza', d, null, live);
+    assert.strictEqual(r.status, 200, `S3F-RENAME-XP: ${show(r)}`);
+    const saved = db.state.source.data;
+    const o = saved.items.find((i) => i.key === optKey);
+    assert.ok(o && o.display.name === `${dish.display.name} - Mediana`, 'S3F-RENAME-XP: the option keeps its key under its new name');
+    assert.ok(Object.values(saved.frozen_keys || {}).includes(optKey), `S3F-RENAME-XP: the kept key is recorded (${JSON.stringify(saved.frozen_keys)})`);
+    ok('ON: an x_pizza option rename keeps its name-mode key, recorded as a frozen key by the save');
   }
   STRUCT.choiceEdit = false;
   FINISHED = true;
