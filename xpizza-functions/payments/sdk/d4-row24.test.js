@@ -122,6 +122,7 @@ const releases = (w) => Object.values(w.db.getAt(`${RES}/ledger`) || {}).filter(
       w.at(at);
       const out = await sweep(w);
       assert.ok(state(w) === 'reserved' && out.released.length === 0, `${L}: ${label}: a TERMINAL SDK order but the hold not yet past its expiry ⇒ held (${JSON.stringify(out)})`);
+      assert.ok(out.audited.some((a) => a.kind === 'sdk_nonadopted_held'), `${L}: ${label}: the unexpired non-adopted hold is AUDITED (Codex row24 r1 P2-1) (${JSON.stringify(out)})`);
     }
     // non-vacuity: the cash-shaped hold IS released once past CASH_STALE_MS
     const w = world({ order: sdkOrder({ status: 'cancelled', payment_cancel: { kind: 'cancel', at: T0 + MIN } }) });
@@ -146,6 +147,38 @@ const releases = (w) => Object.values(w.db.getAt(`${RES}/ledger`) || {}).filter(
       const rec = await RR.sweepConsumeRecovery(w.db, { now: w.now() });
       assert.ok(state(w) === 'reserved' && rec.consumed.length === 0, `${L}: ${label}: never consumed`);
     }
+  });
+
+  await cell('SDK-D4-MISMATCH-BEFORE-EXPIRY', async (L) => {
+    // Codex row24 r1 P2-1: an unequal redemption is alerted as soon as the sweep sees it, not only after the hold's expiry
+    const w = world({ order: sdkOrder({ redemption: { ...CANON, cost: '8' } }) });
+    await hostedReserve(w, { hostedExpiresAt: T0 + 120 * MIN });
+    w.at(T0 + 10 * MIN);
+    const out = await sweep(w);
+    const alert = w.db.getAt(`dispatcher_alerts/reward_binding_mismatch_${X}`);
+    assert.ok(state(w) === 'reserved' && alert && alert.type === 'payment_sdk_reward_binding_mismatch' && out.audited.some((a) => a.kind === 'sdk_binding_mismatch_held'),
+      `${L}: a mismatch BEFORE the hold's expiry ⇒ the alert + the audit, still held (${JSON.stringify({ out, alert })})`);
+  });
+  await cell('SDK-D4-RELEASE-REPORTED-ONCE', async (L) => {
+    // Codex row24 r1 P2-2: a release is REPORTED only when the transition applied
+    const w = world({ order: sdkOrder({ status: 'cancelled', payment_cancel: { kind: 'cancel', at: T0 + MIN } }) });
+    await hostedReserve(w);
+    w.at(T0 + 60 * MIN);
+    const outs = await Promise.all([sweep(w), sweep(w)]);
+    const reported = outs.reduce((n, o) => n + o.released.length, 0);
+    assert.ok(reported === 1 && releases(w) === 1, `${L}: two concurrent sweeps ⇒ exactly ONE released report and one ledger release (${JSON.stringify(outs)})`);
+  });
+  await cell('SDK-D4-RELEASE-REFUSED-AUDITED', async (L) => {
+    // a concurrent held_paid lands between the sweep's read and its release transaction ⇒ the transition is refused
+    let raced = false;
+    const w = world({ order: sdkOrder({ status: 'cancelled', payment_cancel: { kind: 'cancel', at: T0 + MIN } }) });
+    await hostedReserve(w);
+    const db0 = w.db; const tx0 = db0.ref;
+    w.at(T0 + 60 * MIN);
+    const db = { ...db0, ref: (p) => { const r = tx0(p); if (p === RES && !raced) return { ...r, transaction: async (fn) => { raced = true; db0.setAt(`${RES}/reservations/${X}/state`, 'held_paid'); return r.transaction(fn); } }; return r; } };
+    const out = await RR.sweepStaleReservations(db, { now: w.now() });
+    assert.ok(raced && out.released.length === 0 && out.audited.some((a) => a.kind === 'sdk_release_refused') && state(w) === 'held_paid',
+      `${L}: a held_paid race ⇒ NO released report; the refused transition is audited (${JSON.stringify(out)})`);
   });
 
   await cell('SDK-D4-ADOPTED-EQUAL-C1', async (L) => {
