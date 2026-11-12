@@ -83,14 +83,15 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
     w.append(s); detailHost.append(w);
   }
   const lastOne = d.rows.filter((x) => !x.removed).length === 1;   // the writer refuses a group's last extra (extras_group_empty)
-  for (const r of d.rows) {
+  d.rows.forEach((r, i) => {
     const row = el('div', `irow mk-xrow${r.isNew ? ' mk-added' : ''}${r.removed ? ' mk-xgone' : ''}`);
     const info = el('div', 'iinfo'); const nm = el('div', 'nm');
     // a KEYLESS row (no key yet: never saved): the inline row's own name field (advisor 11-12). A row the save keyed stays «Nuevo»
     // until it is published, but its name is text — setExtraName writes keyless rows only (Codex S2 UI r1 P2-7)
     const keyless = !!r.id && typeof r.id.key !== 'string';
+    let ni = null;
     if (keyless && !r.removed && on.name) {
-      const ni = el('input', 'mk-xname'); ni.type = 'text'; ni.value = r.name; ni.placeholder = 'Nombre del extra'; ni.setAttribute('aria-label', 'Nombre del extra');
+      ni = el('input', 'mk-xname'); ni.type = 'text'; ni.value = r.name; ni.placeholder = 'Nombre del extra'; ni.setAttribute('aria-label', 'Nombre del extra');
       ni.disabled = !canEdit; ni.dataset.k = `xnm:${JSON.stringify(r.id)}`;
       ni.addEventListener('input', () => on.name(r.id, ni.value, ni));
       ni.addEventListener('blur', () => { if (ni.value !== ni.value.trim()) on.name(r.id, ni.value.trim(), ni); });
@@ -100,9 +101,10 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
     else if (r.removed) nm.append(el('span', 'tag mk-ftag', 'Se quita al publicar'));
     else if (r.priceChanged) nm.append(el('span', 'tag mk-ftag', 'Cambios sin publicar'));
     info.append(nm); row.append(info);
-    if (r.removed) { row.append(el('div', 'price mk-xgone-p', `L ${r.price}`)); detailHost.append(row); continue; }
+    if (r.removed) { row.append(el('div', 'price mk-xgone-p', `L ${r.price}`)); detailHost.append(row); return; }
     const price = el('div', `price${r.priceChanged ? ' chg' : ''}`);
-    const inp = el('input'); inp.type = 'text'; inp.inputMode = 'numeric'; inp.placeholder = 'Sin precio'; inp.value = String(r.price ?? '');
+    const held = typeof model.heldPrice === 'function' ? model.heldPrice(r.id, r.price) : null;   // P2-8: what was typed, kept
+    const inp = el('input'); inp.type = 'text'; inp.inputMode = 'numeric'; inp.placeholder = 'Sin precio'; inp.value = held ? held.raw : String(r.price ?? '');
     inp.setAttribute('aria-label', `Precio de ${r.name}`); inp.disabled = !canEdit;
     inp.dataset.k = JSON.stringify(r.id);
     inp.addEventListener('input', () => on.price(r.id, inp.value, inp));
@@ -112,11 +114,18 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
     del.addEventListener('click', () => on.remove(r, del));
     row.append(price, del);
     detailHost.append(row);
-    // a line under the row: a «Nuevo» row left without a name (the inline row's own line), or the server's line FIX-EXTRA brought here
-    const line = model.rowError && JSON.stringify(model.rowError.id) === JSON.stringify(r.id) ? model.rowError.text
-      : (keyless && !r.removed && !String(r.name).trim() ? 'Escribí el nombre.' : null);
-    if (line) { const lid = `xrow-e-${detailHost.children.length}`; const ln = fieldLine(lid, line); ln.classList.add('mk-xrowline'); detailHost.append(ln); }
-  }
+    // a line under the row: the server's line FIX-EXTRA brought here (about the name: the name field, else the price), a held price's
+    // line (the price field), or a «Nuevo» row left without a name (its name field). Codex S2 UI r1 P2-13: the field it is about names it
+    // (aria-describedby, by the row's place: stable across a repaint and a P-6 adoption)
+    const own = model.rowError && JSON.stringify(model.rowError.id) === JSON.stringify(r.id);
+    const [line, field] = own ? [model.rowError.text, ni || inp]
+      : held && held.line ? [held.line, inp]
+        : (keyless && !String(r.name).trim() ? ['Escribí el nombre.', ni] : [null, null]);
+    if (line) {
+      const lid = `xrow-e-${i}`; const ln = fieldLine(lid, line); ln.classList.add('mk-xrowline'); detailHost.append(ln);
+      if (field) field.setAttribute('aria-describedby', lid);
+    }
+  });
   if (model.adding) renderAddRow(detailHost, model.adding, on);
 }
 

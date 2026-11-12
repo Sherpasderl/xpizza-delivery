@@ -1707,6 +1707,7 @@ test('S2 §5.2 — FIX-EXTRA «Corregir el nombre»: the Extras tab, the new ext
   const nm = row.querySelector('input[aria-label="Nombre del extra"]');
   assert.equal(p.d.activeElement, nm, 'focus in its name');
   assert.equal(row.nextElementSibling && row.nextElementSibling.textContent, 'Elegí otro nombre para el extra nuevo.', 'the server’s line under the row');
+  assert.equal(nm.getAttribute('aria-describedby'), row.nextElementSibling.id, 'Codex r1 P2-13: the name field names the server’s line');
   assert.equal(JSON.stringify(p.src()), before, 'the draft byte-identical');
   assert.ok(ref && ref.startsWith('tmp:'), 'premise: the refusal named the new extra by its ref');
 });
@@ -2001,4 +2002,50 @@ test('S2 Codex r1 P2-7 — a saved, unpublished extra (keyed by the save, still 
     assert.equal(after.querySelector('input.mk-xname'), null, 'keyed: no name field');
     assert.equal(after.querySelector('.nm > span').textContent, 'Probe extra', 'keyed: the name as text, beside its «Nuevo» tag');
   } finally { S2_SERVER.on = false; }
+});
+
+test('S2 Codex r1 P2-8 — an invalid price on the Extras page keeps what was typed and says «El precio debe ser al menos L 1.» under its row; a valid one clears it', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const priceOf = () => xrows(p)[0].querySelector('.price input');
+  const k = priceOf().dataset.k;
+  const lineOf = () => { const r = xrows(p)[0]; const n = r.nextElementSibling; return n && n.classList.contains('mk-xrowline') ? n.textContent : null; };
+  for (const bad of ['12.5', '0', '']) {
+    p.type(priceOf(), bad); await settle(5);
+    assert.equal(priceOf().dataset.k, k, 'premise: the same row');
+    assert.equal(priceOf().value, bad, `«${bad}»: the field keeps what was typed`);
+    assert.equal(lineOf(), 'El precio debe ser al menos L 1.', `«${bad}»: the row's line`);
+    assert.equal(p.d.activeElement, priceOf(), `«${bad}»: focus stays in the field`);
+  }
+  p.type(priceOf(), '15'); await settle(5);
+  assert.equal(priceOf().value, '15');
+  assert.equal(lineOf(), null, 'a valid price clears the line');
+  assert.equal(p.src().extras.find((e) => JSON.stringify({ key: e.key }) === k).price, 15, 'the draft holds the valid price');
+});
+
+test('S2 Codex r1 P2-13 — a row’s line is named by its field (aria-describedby): the held price’s line by the price, «Escribí el nombre.» by the name; kept through a repaint', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const priceOf = () => xrows(p)[0].querySelector('.price input');
+  const lineEl = (r) => (r.nextElementSibling && r.nextElementSibling.classList.contains('mk-xrowline') ? r.nextElementSibling : null);
+  p.type(priceOf(), '12.5'); await settle(5);
+  assert.ok(lineEl(xrows(p)[0]), 'premise: the line');
+  assert.equal(priceOf().getAttribute('aria-describedby'), lineEl(xrows(p)[0]).id, 'the price names its line');
+  p.type(priceOf(), '12.50'); await settle(5);   // a repaint
+  assert.equal(priceOf().getAttribute('aria-describedby'), lineEl(xrows(p)[0]).id, 'kept through the repaint');
+  assert.equal(p.d.getElementById(priceOf().getAttribute('aria-describedby')).textContent, 'El precio debe ser al menos L 1.');
+  p.type(priceOf(), '15'); await settle(5);
+  assert.equal(priceOf().getAttribute('aria-describedby'), null, 'no line, no reference');
+  // a «Nuevo» row's name emptied: its name field names «Escribí el nombre.»
+  addBtn(p).click(); await settle(5);
+  p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'Tmp'); await settle(5);
+  const pr = newRow(p).querySelector('.price input'); pr.focus(); p.type(pr, '20'); await settle(5);
+  key(p, newRow(p).querySelector('.price input'), 'Enter'); await settle(10);
+  const nRow = () => xrows(p).find((r) => r.querySelector('input.mk-xname'));
+  p.type(nRow().querySelector('input.mk-xname'), ''); await settle(5);
+  const ln = lineEl(nRow());
+  assert.equal(ln && ln.textContent, 'Escribí el nombre.', 'premise: the name line');
+  assert.equal(nRow().querySelector('input.mk-xname').getAttribute('aria-describedby'), ln.id, 'the name field names its line');
 });

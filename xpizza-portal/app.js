@@ -1278,6 +1278,8 @@ function paintCreateGroup(first) {
 }
 
 // ── «Agregar extra» (plan §2 item 3, §3.5 row 2): the inline row is LOCAL state until it commits ONE extra.add ─────────────────
+// an extra row's held price text (Codex S2 UI r1 P2-8), in the per-load state.rawPrice beside the Menú page's
+const extraPriceK = (id) => `extra::${JSON.stringify(id)}`;
 let extraAdd = null;
 let extraAddK = null;
 let extraAddError = null;
@@ -1422,6 +1424,13 @@ function paintProductTabs() {
   model.open = railOpen && model.rail.some((r) => r.group === railOpen) ? railOpen : null;
   model.railError = railError;
   model.rowError = extrasRowError;
+  // Codex S2 UI r1 P2-8: a price typed that is not a price stays in its field with the row's line, while the draft's price is not one
+  model.heldPrice = (id, price) => {
+    const k = extraPriceK(id);
+    if (!state.rawPrice.has(k) || (Number.isInteger(price) && price >= 1)) return null;
+    const raw = String(state.rawPrice.get(k));   // a copy of the held text (a string), never the map's reference
+    return { raw: `${raw}`, line: extraRowCheck({ name: '-', raw: `${raw}` }).priceError };
+  };
   model.adding = extraAdd ? { name: extraAdd.name, raw: extraAdd.raw, check: { ...extraRowCheck(extraAdd), error: extraAddError } } : null;
   // a repaint keeps the focused field (a typed price, the inline row) or the focused rail group
   const ae = document.activeElement;
@@ -1447,6 +1456,7 @@ function paintProductTabs() {
     price: bound((id, raw, input) => {
       const at = input.selectionStart; const k = input.dataset.k;
       if (extrasRowError && JSON.stringify(extrasRowError.id) === JSON.stringify(id)) extrasRowError = null;
+      if (extraRowCheck({ name: '-', raw }).priceError) state.rawPrice.set(extraPriceK(id), String(raw)); else state.rawPrice.delete(extraPriceK(id));
       setExtraPrice(state.draft, id, raw);
       paint(); refreshBar();
       const back = [...$('xdetail').querySelectorAll('.price input')].find((x) => x.dataset.k === k);
@@ -3240,6 +3250,12 @@ function rekeyK(k, extraRefs) {   // a detail field's restore key ('{"ref":…}'
   return next ? JSON.stringify(next) : null;   // a keyed row has no name field: its price
 }
 function adoptExtraRefs(extraRefs) {
+  for (const ref of Object.keys(extraRefs && typeof extraRefs === 'object' ? extraRefs : {})) {   // a held price text follows its row to the key (P2-8)
+    const from = extraPriceK({ ref });
+    if (!state.rawPrice.has(from)) continue;
+    const v = String(state.rawPrice.get(from));
+    state.rawPrice.delete(from); const next = rekeyId({ ref }, extraRefs); if (next) state.rawPrice.set(extraPriceK(next), v);
+  }
   if (extrasRowError) { const id = rekeyId(extrasRowError.id, extraRefs); extrasRowError = id ? { id, text: extrasRowError.text } : null; }
   if (xFocusK) xFocusK = rekeyK(xFocusK, extraRefs);
   const ae = document.activeElement;
