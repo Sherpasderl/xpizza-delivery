@@ -511,7 +511,9 @@ test('every clickable element actually gets a pointer cursor', () => {
     const i = line.indexOf('{');
     if (i === -1 || !line.includes('}')) continue;
     const decls = line.slice(i + 1, line.lastIndexOf('}'));
-    if (!/(^|;)\s*cursor\s*:\s*pointer/.test(decls)) continue;
+    // `grab` counts: it is the approved affordance of a DRAG HANDLE (MOCKUP x4b `.rgrip{cursor:grab}` — the Extras rail's grip is
+    // clicked to reveal «Subir / Bajar» and dragged to reorder); `default`, `auto` or no cursor still fail
+    if (!/(^|;)\s*cursor\s*:\s*(pointer|grab)\b/.test(decls)) continue;
     for (const part of line.slice(0, i).split(',')) {
       const bits = part.trim().split(/\s+/);
       // SINGLE COMPOUND ONLY. Reducing a descendant selector to its last part drops the ancestor it
@@ -1552,6 +1554,8 @@ const ALLOWED_CONSUMERS = new Set([
   'extrasPageModel', 'applyExposureOps',
   // X3: the «Crear grupo» form's view and its ONE op are pure READERS of the draft (the op is applied by applyExposureOps)
   'createGroupView', 'createGroupOp',
+  // X4: the published and the draft group orders for the bar's «· N grupos» — a pure reader (cell «groupOrders is a PURE reader»)
+  'groupOrders',
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.

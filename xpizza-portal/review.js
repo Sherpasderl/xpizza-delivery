@@ -116,7 +116,7 @@ function productsOf(lines, optionParent, optionIndex, extraName) {
 const S2_CHIP = { Nuevo: 'add', Quitado: 'rem', Cambio: 'chg', Orden: 'chg' };
 const enN = (n) => (Number.isInteger(n) ? `Extras \u00b7 en ${n} ${n === 1 ? 'producto' : 'productos'}` : 'Extras');
 // the groups that MOVED: those outside the longest run kept in their old relative order (one move ⇒ one row, not every shifted group)
-function movedGroups(was, now) {
+export function movedGroups(was, now) {
   const kept = now.filter((g) => was.includes(g));
   const idx = kept.map((g) => was.indexOf(g));
   const best = []; const prev = new Array(idx.length).fill(-1); const tails = [];

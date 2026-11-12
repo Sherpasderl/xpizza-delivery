@@ -176,3 +176,27 @@ export function createGroupOp(draft, f0) {
   const attach = f.mode === 'cat' ? { mode: 'cat', cat: f.cat } : f.mode === 'items' ? { mode: 'items', items: sectionsOf(src, f).marked } : { mode: 'none' };
   return { op: 'group.create', group: f.name.replace(/\s+/g, ' ').trim(), extras, attach };
 }
+
+// the published order and the draft's (the bar's «· N grupos» reads review.js movedGroups over these — the review's own rule)
+export function groupOrders(draft) {
+  return { was: groupsOf(draft && draft.orig), now: groupsOf(draftSource(draft)) };
+}
+
+// ── X4 / X4b — the ONE group order (plan r3 §2 item 8). Every move builds the WHOLE order (every group once), rebuilt from the
+// draft's current groups on each move, so the writer's structure_changed is unreachable by construction. null = nothing to write.
+export function moveGroupOrder(order, g, delta) {
+  const i = order.indexOf(g), j = i + delta;
+  if (i < 0 || j < 0 || j >= order.length) return null;
+  const n = order.slice(); n.splice(i, 1); n.splice(j, 0, g);
+  return n;
+}
+// the drop: `index` is the place among the OTHER groups (the dragged one taken out)
+export function groupOrderTo(order, g, index) {
+  if (!order.includes(g)) return null;
+  const rest = order.filter((x) => x !== g);
+  const at = Math.max(0, Math.min(rest.length, index));
+  const n = [...rest.slice(0, at), g, ...rest.slice(at)];
+  return JSON.stringify(n) === JSON.stringify(order) ? null : n;
+}
+// the pointer's y against the other rows' midlines → the drop index
+export function dropIndexAt(mids, y) { return mids.filter((m) => m < y).length; }

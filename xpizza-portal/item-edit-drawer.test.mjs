@@ -1378,3 +1378,86 @@ test('S2 X+ — leaving with a DIRTY row (another group, «Menú») asks «¿Des
   assert.equal(newRow(p), null, 'the row is gone');
   assert.ok(!extrasIn(p.src(), groups[1]).some((e) => e.display.name === 'Maní'), 'nothing written');
 });
+
+// ── STRUCTURE S2 — X4 / X4b, the ONE group order on the Extras rail (plan r3 §2 item 8; MOCKUP x4 / x4b) ─────────────────────
+const rrows = (p) => [...xpage(p).querySelectorAll('.rail .rrow')];
+const gripOf = (p, g) => rrows(p).find((r) => r.querySelector('.railitem').dataset.group === g).querySelector(':scope > button.rgrip');
+const pairOf = (p, g) => rrows(p).find((r) => r.querySelector('.railitem').dataset.group === g).querySelector('.mk-updown');
+const pairBtn = (p, g, label) => [...pairOf(p, g).querySelectorAll('button')].find((b) => b.textContent === label);
+async function onExtras(p) { await p.signIn(); tabBtn(p, 'Extras').click(); await settle(10); return p.src().structure.extra_categories.slice(); }
+test('S2 X4b — each rail row is a .rrow: the select button and the grip are SIBLINGS (no button inside a button); the grip «Mover {G}», collapsed, «Arrastrá para ordenar»', async () => {
+  const p = await page({ read: XON });
+  const groups = await onExtras(p);
+  assert.equal(rrows(p).length, groups.length);
+  assert.equal(xpage(p).querySelectorAll('.rail button button').length, 0, 'no button inside a button');
+  for (const g of groups) {
+    const grip = gripOf(p, g);
+    assert.deepEqual([grip.getAttribute('aria-label'), grip.getAttribute('aria-expanded'), grip.title], [`Mover ${g}`, 'false', 'Arrastrá para ordenar']);
+  }
+  assert.equal(xpage(p).querySelector('.mk-updown'), null, 'the pair is hidden until a grip is activated');
+});
+test('S2 X4b — the grip reveals «Subir» / «Bajar» (aria-expanded): at the top «Subir» is disabled and a press there writes nothing; Escape or the grip again closes them, focus back on the grip', async () => {
+  const p = await page({ read: XON });
+  const groups = await onExtras(p);
+  gripOf(p, groups[0]).click(); await settle(5);
+  assert.equal(gripOf(p, groups[0]).getAttribute('aria-expanded'), 'true');
+  assert.equal(pairOf(p, groups[0]).getAttribute('aria-label'), `Mover ${groups[0]}`);
+  assert.deepEqual([...pairOf(p, groups[0]).querySelectorAll('button')].map((b) => [b.textContent, b.disabled]), [['Subir', true], ['Bajar', false]], 'at the top «Subir» is disabled');
+  pairBtn(p, groups[0], 'Subir').click(); await settle(5);
+  assert.deepEqual(p.src().structure.extra_categories, groups, 'a boundary press writes nothing');
+  assert.equal(p.d.getElementById('rbtxt').textContent, 'Revisá si hay algo sin publicar', 'and dirties nothing');
+  key(p, pairBtn(p, groups[0], 'Bajar'), 'Escape'); await settle(5);
+  assert.equal(pairOf(p, groups[0]), null, 'Escape closes them');
+  assert.equal(p.d.activeElement, gripOf(p, groups[0]), 'focus back on the grip');
+  gripOf(p, groups[0]).click(); await settle(5);
+  gripOf(p, groups[0]).click(); await settle(5);
+  assert.equal(pairOf(p, groups[0]), null, 'the grip again closes them');
+  assert.equal(p.d.activeElement, gripOf(p, groups[0]));
+});
+test('S2 X4b — «Bajar» moves the group one place through ONE group.order: the pair stays on the moved row, focus stays on the moved group’s «Bajar»; announced; the bar «1 cambio sin publicar · 1 grupo»', async () => {
+  const p = await page({ read: XON });
+  const groups = await onExtras(p);
+  const g = groups[0];
+  gripOf(p, g).click(); await settle(5);
+  pairBtn(p, g, 'Bajar').click(); await settle(10);
+  assert.deepEqual(p.src().structure.extra_categories, [groups[1], g, ...groups.slice(2)], 'one place down');
+  assert.equal(rrows(p)[1].querySelector('.railitem').dataset.group, g, 'the rail follows');
+  assert.ok(pairOf(p, g), 'the pair stays open on the moved row');
+  assert.equal(p.d.activeElement, pairBtn(p, g, 'Bajar'), 'focus stays on the moved group');
+  assert.equal(p.d.getElementById('xlive').textContent, `${g} · 2.º lugar`, 'announced politely');
+  assert.equal(p.d.getElementById('rbtxt').textContent, '1 cambio sin publicar · 1 grupo', 'the bar counts the group');
+  pairBtn(p, g, 'Subir').click(); await settle(10);
+  assert.deepEqual(p.src().structure.extra_categories, groups, 'back up: the original order');
+  assert.ok(p.d.activeElement && p.d.activeElement.textContent === 'Bajar' && pairOf(p, g).contains(p.d.activeElement), 'at the top «Subir» is disabled: focus on its pair’s «Bajar»');
+});
+test('S2 X4 — the keyboard on the grip: ArrowDown / ArrowUp move the group one place (the same op), focus stays on its grip', async () => {
+  const p = await page({ read: XON });
+  const groups = await onExtras(p);
+  const g = groups[1];
+  gripOf(p, g).focus();
+  key(p, gripOf(p, g), 'ArrowDown'); await settle(10);
+  assert.equal(p.src().structure.extra_categories.indexOf(g), 2, 'ArrowDown moves it one place');
+  assert.equal(p.d.activeElement, gripOf(p, g), 'focus stays on its grip');
+  key(p, gripOf(p, g), 'ArrowUp'); key(p, gripOf(p, g), 'ArrowUp'); await settle(10);
+  assert.equal(p.src().structure.extra_categories[0], g);
+  key(p, gripOf(p, g), 'ArrowUp'); await settle(10);
+  assert.equal(p.src().structure.extra_categories[0], g, 'at the top: nothing');
+});
+test('S2 X4 — the drag (rows laid out by a stubbed box — jsdom has no layout; the real drag is the SBS): the lift, ONE drop line, the drop → ONE group.order', async () => {
+  const p = await page({ read: XON });
+  const groups = await onExtras(p);
+  const lay = () => rrows(p).forEach((r, i) => { r.getBoundingClientRect = () => ({ top: i * 50, height: 50, bottom: i * 50 + 50, left: 0, right: 200, width: 200 }); });
+  lay();
+  const last = groups[groups.length - 1];
+  const grip = gripOf(p, last);
+  const ev = (type, y) => grip.dispatchEvent(new p.w.MouseEvent(type, { bubbles: true, clientY: y, clientX: 10, button: 0 }));
+  ev('pointerdown', (groups.length - 1) * 50 + 25);
+  ev('pointermove', 100); ev('pointermove', 130); await settle(2);   // two moves: the line MOVES, it is never a second one
+  assert.ok(rrows(p).find((r) => r.querySelector('.railitem').dataset.group === last).querySelector('.railitem').classList.contains('mk-drag'), 'the dragged group lifts');
+  assert.equal(xpage(p).querySelectorAll('.rail .mk-dropline').length, 1, 'ONE drop line');
+  ev('pointermove', 5); await settle(2);
+  ev('pointerup', 5); await settle(10);
+  assert.deepEqual(p.src().structure.extra_categories, [last, ...groups.slice(0, -1)], 'dropped at the first place');
+  assert.equal(xpage(p).querySelector('.mk-dropline'), null, 'the line goes with the drop');
+  assert.equal(xpage(p).querySelector('.mk-updown'), null, 'a drag is not a click: the pair stays closed');
+});

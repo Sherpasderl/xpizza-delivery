@@ -12,7 +12,7 @@ import { pendingTexts, loadedName } from './editor.js';   // S4 — the session'
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
-import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
+import { movedGroups, reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
 // DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
 import * as PL from './photo-logic.js';
@@ -78,7 +78,7 @@ import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 // a drawer's top-right close: the approved 32×32 X icon box (aria-label «Cerrar», no text) — ONE builder (ops-dom), shared with photo.js; availability.js's .adwx is the same button + icon('close')
 import { closeIcon } from './ops-dom.js';
 // STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
-import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp } from './extras-logic.js';
+import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders } from './extras-logic.js';
 import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, enProductos } from './extras-view.js';
 import { applyExposureOps, mergeDeletionClaim } from './editor.js';
 
@@ -1144,6 +1144,10 @@ function refreshBar() {
   // DISH PHOTOS B (P7) — «1 cambio sin publicar · 1 foto»: the photo share of the count, said where the count is
   const nPhotos = state.draft ? pendingPhotos(state.draft).length : 0;
   if (nPhotos) { const sfx = document.createElement('span'); sfx.textContent = PL.COPY.barSuffix(nPhotos); $('rbtxt').append(sfx); }
+  // X4 (MOCKUP x4) — «1 cambio sin publicar · 1 grupo»: the groups that moved, by the review's own «Orden» rule
+  const go = n > 0 && state.draft ? groupOrders(state.draft) : null;
+  const nGroups = go ? movedGroups(go.was, go.now).length : 0;
+  if (nGroups) { const sfx = document.createElement('span'); sfx.textContent = ` · ${nGroups} ${nGroups === 1 ? 'grupo' : 'grupos'}`; $('rbtxt').append(sfx); }
   // S4 (mockup B) — «1 cambio sin publicar · 1 producto»: the products with unpublished text, said where the count is
   const nTexts = n > 0 ? textEditedKeys().size : 0;
   if (nTexts) { const sfx = document.createElement('span'); sfx.textContent = ` · ${nTexts} ${nTexts === 1 ? 'producto' : 'productos'}`; $('rbtxt').append(sfx); }
@@ -1295,6 +1299,31 @@ function leaveExtras(go) {
   openDiscardConfirm({ onDiscard: () => { extraAdd = null; extraAddK = null; extraAddError = null; go(); }, onKeep: () => focusDetail(extraAddK || 'xadd:n') });
 }
 
+// ── X4 / X4b — the ONE group order (plan §2 item 8): every move is ONE group.order naming every group, rebuilt from the draft ────
+let railOpen = null;
+let railError = null;
+const focusGrip = (g) => { const x = [...$('xrail').querySelectorAll('button.rgrip')].find((n) => n.dataset.grip === g); if (x) x.focus(); };
+function x4Write(next, g, from) {
+  const r = applyExposureOps(state.draft, [{ op: 'group.order', order: next }], { extrasCatalog: state.extrasCatalog === true });
+  if (!r.ok) { railError = { group: g, text: 'No pudimos aplicar el cambio. Recargá la página.' }; railOpen = null; paint(); focusGrip(g); return; }
+  railError = null;
+  paint(); refreshBar();
+  $('xlive').textContent = `${g} · ${next.indexOf(g) + 1}.\u00ba lugar`;
+  // focus STAYS on the pressed control of the moved group's row; a boundary just reached disables it — then its pair's other button
+  if (from === 'up' || from === 'down') {
+    const k = (d) => `x4:${d}:${g}`;
+    const mine = from === 'up' ? 'up' : 'dn', other = from === 'up' ? 'dn' : 'up';
+    const at = [...$('xrail').querySelectorAll('[data-k]')];
+    const pick = at.find((n) => n.dataset.k === k(mine) && !n.disabled) || at.find((n) => n.dataset.k === k(other));
+    if (pick) pick.focus();
+  } else focusGrip(g);
+}
+const railOrder = () => groupOrders(state.draft).now;
+function x4Move(g, delta, from) { const next = moveGroupOrder(railOrder(), g, delta); if (next) x4Write(next, g, from); }
+function x4Drop(g, index) { const next = groupOrderTo(railOrder(), g, index); if (next) x4Write(next, g, 'drop'); else focusGrip(g); }
+function x4Toggle(g) { railOpen = railOpen === g ? null : g; railError = null; paint(); focusGrip(g); }
+function x4Close(g) { railOpen = null; paint(); focusGrip(g); }
+
 function setProdTab(t) {
   const next = t === 'xpage' ? 'xpage' : 'menu';
   if (prodTab === 'xpage' && next !== 'xpage') { leaveExtras(() => { prodTab = next; paint(); }); return; }
@@ -1316,14 +1345,19 @@ function paintProductTabs() {
   const model = extrasPageModel(state.draft, { group: extrasGroup });
   extrasGroup = model.selected;
   if (extraAdd && extraAdd.group !== extrasGroup) extraAdd = null;
+  model.open = railOpen && model.rail.some((r) => r.group === railOpen) ? railOpen : null;
+  model.railError = railError;
   model.adding = extraAdd ? { name: extraAdd.name, raw: extraAdd.raw, check: { ...extraRowCheck(extraAdd), error: extraAddError } } : null;
   // a repaint keeps the focused field (a typed price, the inline row) or the focused rail group
   const ae = document.activeElement;
   const keepK = ae && ae.dataset && $('xdetail').contains(ae) ? ae.dataset.k : null;
   const keepG = ae && ae.dataset && $('xrail').contains(ae) ? ae.dataset.group : null;
+  const keepGrip = ae && ae.dataset && $('xrail').contains(ae) ? ae.dataset.grip : null;
+  const keepRailK = ae && ae.dataset && $('xrail').contains(ae) ? ae.dataset.k : null;
   renderExtrasPage($('xrail'), $('xdetail'), model, {
     select: bound((g) => leaveExtras(() => { extrasGroup = g; paint(); })),
     create: bound(() => openCreateGroup()),
+    move: bound(x4Move), drop: bound(x4Drop), gripToggle: bound(x4Toggle), gripClose: bound(x4Close),
     addOpen: bound(addOpen), addInput, addCommit: bound(() => addCommit(true)), addCancel: bound(addCancel), addLeave: bound(addLeave),
     // a price on the Extras page: today's guarded setter (a new, keyless extra by its ref); repainted, the caret kept in its field
     price: bound((id, raw, input) => {
@@ -1350,6 +1384,8 @@ function paintProductTabs() {
     }),
   }, { canEdit: canEditDraft(state.draft) });
   if (keepK) focusDetail(keepK);
+  else if (keepRailK) { const x = [...$('xrail').querySelectorAll('[data-k]')].find((n) => n.dataset.k === keepRailK); if (x) x.focus(); }
+  else if (keepGrip) focusGrip(keepGrip);
   else if (keepG !== null && keepG !== undefined) { const g = [...$('xrail').querySelectorAll('.railitem')].find((n) => n.dataset.group === keepG); if (g) g.focus(); }
 }
 

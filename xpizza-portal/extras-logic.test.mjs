@@ -205,3 +205,51 @@ test('«Agregar extra» — a complete row is ONE extra.add (tmp ref, trimmed na
   const rows = extrasPageModel(d, { group: g }).detail.rows.filter((r) => !r.removed);
   assert.deepEqual(rows[rows.length - 1], { id: { ref: r0.ref }, name: 'Arroz frito', price: 40, isNew: true, priceChanged: false, removed: false }, 'the new row, «Nuevo», last');
 });
+
+// ── X4 / X4b — the ONE group order (plan r3 §2 item 8; MOCKUP x4 / x4b) ──────────────────────────────────────────────────────
+import { moveGroupOrder, groupOrderTo, dropIndexAt } from './extras-logic.js';
+test('X4 — moveGroupOrder: one place up / down; at the top «Subir» and at the bottom «Bajar» build nothing (a boundary press writes nothing); the input is never mutated', () => {
+  const o = Object.freeze(['A', 'B', 'C']);
+  assert.deepEqual(moveGroupOrder(o, 'B', -1), ['B', 'A', 'C']);
+  assert.deepEqual(moveGroupOrder(o, 'B', 1), ['A', 'C', 'B']);
+  assert.equal(moveGroupOrder(o, 'A', -1), null, 'a boundary press writes nothing');
+  assert.equal(moveGroupOrder(o, 'C', 1), null, 'a boundary press writes nothing');
+  assert.equal(moveGroupOrder(o, 'Z', 1), null);
+});
+test('X4 — groupOrderTo (the drop): the group lands at the index among the OTHERS; the same place builds nothing; the result names every group once and the REAL writer applies it', () => {
+  const d = createDraft(seed('la_musa'));
+  const o = draftSource(d).structure.extra_categories.slice();
+  const last = o[o.length - 1];
+  const next = groupOrderTo(o, last, 0);
+  assert.deepEqual(next, [last, ...o.slice(0, -1)], 'dragged to the first place');
+  assert.equal(groupOrderTo(o, o[0], 0), null, 'dropped where it was: nothing');
+  assert.deepEqual([...next].sort(), [...o].sort(), 'every group once');
+  assert.equal(applyExposureOps(d, [{ op: 'group.order', order: next }], ON).ok, true);
+  assert.deepEqual(draftSource(d).structure.extra_categories, next);
+});
+test('X4 — an invalid order (not every group once) writes nothing: the draft is byte-identical', () => {
+  const d = createDraft(seed('la_musa'));
+  const before = JSON.stringify(draftSource(d));
+  const o = draftSource(d).structure.extra_categories;
+  assert.equal(applyExposureOps(d, [{ op: 'group.order', order: o.slice(1) }], ON).ok, false);
+  assert.equal(JSON.stringify(draftSource(d)), before, 'an invalid order writes nothing');
+});
+test('X4 — dropIndexAt: the pointer’s y against the other rows’ midlines', () => {
+  const mids = [10, 30, 50];
+  assert.deepEqual([dropIndexAt(mids, 0), dropIndexAt(mids, 20), dropIndexAt(mids, 45), dropIndexAt(mids, 99)], [0, 1, 2, 3]);
+});
+import { groupOrders } from './extras-logic.js';
+test('X4 — groupOrders is a PURE reader (the bar’s «· N grupos»): the published order and the draft’s; a deep-frozen draft is byte-identical after', () => {
+  'use strict';
+  const deepFreeze = (o) => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) deepFreeze(v); } return o; };
+  const d = createDraft(seed('la_musa'));
+  const o = draftSource(d).structure.extra_categories.slice();
+  const next = groupOrderTo(o, o[o.length - 1], 0);
+  assert.equal(applyExposureOps(d, [{ op: 'group.order', order: next }], ON).ok, true);
+  const before = JSON.stringify(d);
+  deepFreeze(d);
+  let r;
+  assert.doesNotThrow(() => { r = groupOrders(d); }, 'no write into a frozen draft');
+  assert.deepEqual(r, { was: o, now: next }, 'the published order and the draft’s');
+  assert.equal(JSON.stringify(d), before, 'the draft is byte-identical after');
+});

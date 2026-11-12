@@ -137,6 +137,8 @@ export const ALLOWED_CONSUMERS = new Set([
   'extrasPageModel', 'applyExposureOps',
   // X3: the «Crear grupo» form's view and its ONE op are pure READERS of the draft (the op is applied by applyExposureOps)
   'createGroupView', 'createGroupOp',
+  // X4: the published and the draft group orders for the bar's «· N grupos» — a pure reader (cell «groupOrders is a PURE reader»)
+  'groupOrders',
 ]);
 // Method calls on a state property, by FULL CHAIN — so a mutating method is permitted on exactly the
 // collection it was ruled for and nowhere else.

@@ -637,7 +637,27 @@
   .mk-xwarn{padding:14px 20px 4px}
   .mk-xwarn .mgshared{margin:0}
   .mk-xrow .nm{flex-wrap:wrap;row-gap:3px}
-  .irow.mk-added{background:var(--green-soft)}   /* MOCKUP frame X: a new («Nuevo») row */
+  .irow.mk-added{background:var(--green-soft)}
+  /* X4 / X4b (MOCKUP x4 / x4b): the Extras rail row = the select button + the grip as siblings; «Subir / Bajar»; the drag */
+  .rrow{position:relative;display:flex;flex-direction:column}
+  .rrow > .railitem{padding-left:37px}
+  .rrow > .rgrip{position:absolute;left:7px;top:19px;height:24px;width:24px;display:flex;align-items:center;justify-content:center;border:0;padding:0;margin:0;opacity:0;transition:opacity .15s;border-radius:4px}
+  button.rgrip{cursor:grab;background:none;color:var(--mute2)}
+  .rrow > .rgrip svg{width:13px;height:13px;fill:currentColor;stroke:none}
+  .rrow:hover > .rgrip,.rrow > .rgrip[aria-expanded="true"],.rrow > .rgrip:focus-visible,.rrow > .rgrip.mk-gripon{opacity:1}
+  /* the open row (aria-expanded on its grip): the grip inked, the row lifted — on class compounds, the look grammar's pinned form */
+  button.rgrip.mk-xopen{color:var(--ink)}
+  .railitem.mk-xopen{background:var(--card)}
+  @media(hover:none){.rrow > .rgrip{opacity:1}}
+  .mk-updown{display:flex;gap:6px;padding:2px 13px 8px 37px}
+  .btn.mk-ud{min-height:32px;padding:5px 11px;font-size:12px;color:var(--mute)}
+  .btn.mk-ud:hover{color:var(--ink)}
+  .btn.mk-ud:disabled{opacity:.42;cursor:not-allowed}
+  .btn.mk-ud:disabled:hover{background:transparent;border-color:var(--line);color:var(--mute)}
+  .railitem.mk-drag{background:var(--card);box-shadow:var(--shadow-lg);outline:1px solid var(--accent-line);position:relative;z-index:2;transform:translateY(-10px) rotate(-.3deg)}
+  .mk-dropline{height:3px;background:var(--accent);margin:3px 8px 1px;border-radius:2px;position:relative;z-index:1}
+  .mk-dropdot{position:absolute;left:-5px;top:-3px;width:9px;height:9px;border-radius:50%;background:var(--accent)}   /* the mockup's ::before dot, as an element (the look grammar) */
+  .rail > .mk-ferr{padding:0 13px 8px 37px}   /* MOCKUP frame X: a new («Nuevo») row */
   /* «Agregar extra»: the inline new row — X3's name field (.moname) in the list row; R6's lines under it, aligned to the name */
   .mk-xnew .nm{flex-wrap:nowrap}
   .mk-xnew .mk-xname{flex:1;min-width:0;background:var(--board-2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:13px;color:var(--ink);font-family:inherit}

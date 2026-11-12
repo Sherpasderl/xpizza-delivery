@@ -2,6 +2,7 @@
 // extras-logic.js's model and calls back; it never writes the draft (the caller's guarded setters do). createElement + textContent only.
 // Names are TEXT in S2-core (no rename control: S2b). Built from the approved classes: .railitem / .rtext / .rcount, .dhead / .dtitle /
 // .dcount, .mk-xwarn > .mgshared, .irow.mk-xrow > .iinfo .nm (+ .tag), .price (.chg) > .cur + input, button.del.
+import { dropIndexAt } from './extras-logic.js';
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
 const svg = (paths) => { const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
@@ -13,20 +14,50 @@ const fieldLine = (id, text) => { const p = el('div', 'ferr mk-ferr', text); p.i
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 export const enProductos = (n) => `en ${plural(n, 'producto', 'productos')}`;
 
-// rail + detail into their hosts; `on`: { select(group), price(id, raw, input), remove(row), create(btn), and the inline «Agregar extra»
+// rail + detail into their hosts; `on`: { select(group), move(group, ±1, from) / gripToggle / gripClose / drop(group, index) (X4), price(id, raw, input), remove(row), create(btn), and the inline «Agregar extra»
 // row's addOpen() / addInput(field, value) → its check / addCommit() / addCancel() / addLeave() }; `canEdit`: the draft is editable now
 export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = true } = {}) {
   railHost.replaceChildren();
-  for (const r of model.rail) {
+  // X4b (plan §2 item 8): each row is a .rrow — the select button and the grip are SIBLINGS (no button inside a button), plus the
+  // revealed «Subir» / «Bajar» pair of the open row; X4: the grip drags (the lift + ONE green drop line)
+  const open = model.open || null;
+  model.rail.forEach((r, i) => {
+    const rr = el('div', `rrow${open === r.group ? ' mk-open' : ''}`);
     const b = el('button', `railitem${r.group === model.selected ? ' on' : ''}`);
     b.type = 'button';
     b.dataset.group = r.group;
+    if (open === r.group) b.classList.add('mk-xopen');
     const t = el('div', 'rtext');
     t.append(el('b', null, r.group), el('span', null, r.reach === null ? '' : enProductos(r.reach)));
     b.append(t, el('div', 'rcount', String(r.count)));
     b.addEventListener('click', () => on.select(r.group));
-    railHost.append(b);
-  }
+    rr.append(b);
+    if (on.move) {
+      const grip = el('button', 'rgrip'); grip.type = 'button'; grip.dataset.grip = r.group; grip.disabled = !canEdit;
+      grip.setAttribute('aria-label', `Mover ${r.group}`); grip.setAttribute('aria-expanded', open === r.group ? 'true' : 'false');
+      grip.title = 'Arrastrá para ordenar';
+      if (open === r.group) grip.classList.add('mk-xopen');
+      grip.append(dots());
+      const drag = dragOn(grip, rr, r.group, railHost, on);
+      grip.addEventListener('click', () => { if (!drag.consumed()) on.gripToggle(r.group); });
+      grip.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); on.move(r.group, e.key === 'ArrowUp' ? -1 : 1, 'grip'); }
+        else if (e.key === 'Escape' && open === r.group) { e.preventDefault(); e.stopPropagation(); on.gripClose(r.group); }
+      });
+      rr.append(grip);
+      if (open === r.group) {
+        const pair = el('div', 'mk-updown'); pair.setAttribute('role', 'group'); pair.setAttribute('aria-label', `Mover ${r.group}`);
+        const up = el('button', 'btn', 'Subir'); up.type = 'button'; up.classList.add('ghost', 'sm', 'mk-ud'); up.dataset.k = `x4:up:${r.group}`; up.disabled = !canEdit || i === 0;
+        const dn = el('button', 'btn', 'Bajar'); dn.type = 'button'; dn.classList.add('ghost', 'sm', 'mk-ud'); dn.dataset.k = `x4:dn:${r.group}`; dn.disabled = !canEdit || i === model.rail.length - 1;
+        up.addEventListener('click', () => on.move(r.group, -1, 'up'));
+        dn.addEventListener('click', () => on.move(r.group, 1, 'down'));
+        pair.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); on.gripClose(r.group); } });
+        pair.append(up, dn); rr.append(pair);
+      }
+    }
+    railHost.append(rr);
+    if (model.railError && model.railError.group === r.group) railHost.append(fieldLine('x4-err', model.railError.text));
+  });
   if (on.create) {   // X3: «Crear grupo» at the rail's foot (frame X)
     const add = el('button', 'railadd'); add.type = 'button'; add.disabled = !canEdit;
     add.append(svg(['M12 5v14M5 12h14']), document.createTextNode('Crear grupo'));
@@ -74,6 +105,55 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
     detailHost.append(row);
   }
   if (model.adding) renderAddRow(detailHost, model.adding, on);
+}
+
+// the grip's six dots (MOCKUP x4b)
+function dots() {
+  const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
+  for (const cx of [9, 15]) for (const cy of [6, 12, 18]) { const c = document.createElementNS(NS, 'circle'); c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', '1.6'); s.append(c); }
+  return s;
+}
+// X4 the drag on a grip: a mouse / pen drags after 4px of travel; a touch after a long press (450 ms, the phone's grip is always
+// shown); the dragged group lifts (.mk-drag, the grip .mk-gripon), ONE .mk-dropline marks where it lands; the drop → on.drop(group,
+// index among the others). A drag is not a click: the click that follows it is consumed.
+function dragOn(grip, rr, g, railHost, on) {
+  let st = null, eat = false;
+  const mid = (n) => { const b = n.getBoundingClientRect(); return b.top + b.height / 2; };
+  const others = () => [...railHost.querySelectorAll('.rrow')].filter((x) => x !== rr);
+  const begin = () => { st.live = true; rr.querySelector('.railitem').classList.add('mk-drag'); grip.classList.add('mk-gripon'); };
+  const end = (commit) => {
+    if (!st) return;
+    clearTimeout(st.timer);
+    const s = st; st = null;
+    const ln = railHost.querySelector('.mk-dropline'); if (ln) ln.remove();
+    rr.querySelector('.railitem').classList.remove('mk-drag'); grip.classList.remove('mk-gripon');
+    if (!s.live) return;
+    eat = true; setTimeout(() => { eat = false; }, 0);
+    if (commit && s.idx !== undefined) on.drop(g, s.idx);
+  };
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || grip.disabled) return;
+    st = { y0: e.clientY, live: false, touch: e.pointerType === 'touch', timer: null };
+    if (st.touch) st.timer = setTimeout(() => { if (st) begin(); }, 450);
+    if (typeof grip.setPointerCapture === 'function' && e.pointerId !== undefined) { try { grip.setPointerCapture(e.pointerId); } catch (_) { /* not capturable */ } }
+  });
+  grip.addEventListener('pointermove', (e) => {
+    if (!st) return;
+    if (!st.live) {
+      if (st.touch) { if (Math.abs(e.clientY - st.y0) > 8) { clearTimeout(st.timer); st = null; } return; }   // a scroll, not a press
+      if (Math.abs(e.clientY - st.y0) < 4) return;
+      begin();
+    }
+    e.preventDefault();
+    const os = others(); const idx = dropIndexAt(os.map(mid), e.clientY);
+    let ln = railHost.querySelector('.mk-dropline');
+    if (!ln) { ln = el('div', 'mk-dropline'); ln.setAttribute('aria-hidden', 'true'); ln.append(el('span', 'mk-dropdot')); }
+    railHost.insertBefore(ln, idx < os.length ? os[idx] : railHost.querySelector('.railadd'));
+    st.idx = idx;
+  });
+  grip.addEventListener('pointerup', () => end(true));
+  grip.addEventListener('pointercancel', () => end(false));
+  return { consumed: () => eat };
 }
 
 // the inline new row (plan §2 item 3: the ONLY name input in S2-core): the committed row's shell (.irow.mk-xrow.mk-added) with X3's row
