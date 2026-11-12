@@ -136,7 +136,8 @@ const releases = (w) => Object.values(w.db.getAt(`${RES}/ledger`) || {}).filter(
       w.at(T0 + 60 * MIN);
       const out = await sweep(w);
       const alert = w.db.getAt(`dispatcher_alerts/reward_binding_mismatch_${X}`);
-      assert.ok(state(w) === 'reserved' && out.released.length === 0 && alert && alert.kind === 'reward_binding_mismatch', `${L}: ${label} ⇒ HELD + the alert, never released (${JSON.stringify({ out, alert })})`);
+      assert.ok(state(w) === 'reserved' && out.released.length === 0 && alert && alert.type === 'payment_sdk_reward_binding_mismatch' && alert.detail && alert.detail.orderId === X, `${L}: ${label} ⇒ HELD + the alert, never released (${JSON.stringify({ out, alert })})`);
+      assert.ok(!require('../../alert-prune').alertsToPrune(w.db.getAt('dispatcher_alerts'), { [X]: w.db.getAt(`orders/${X}`) }).length, `${L}: ${label}: the mismatch alert is a points obligation — never auto-pruned on the resolved order`);
       w.at(T0 + 70 * MIN);
       await sweep(w);
       assert.deepStrictEqual(w.db.getAt(`dispatcher_alerts/reward_binding_mismatch_${X}`), alert, `${L}: ${label}: the alert is create-once (a later sweep leaves it as it is)`);
