@@ -10,7 +10,7 @@
 //   choice.recommended  { launcher, option }                   ATOMIC: that option gains 'recommended', every sibling loses it
 //   choice.add          { key, label, options: [{ ref, choice, price? }] }   a plain dish gains a group (≥ 2 options); the FIRST option
 //                                                              takes the dish's price when it names none and is «Recomendada»
-//   choice.remove       { launcher, price_from }               every option leaves; the dish is plain at price_from's price
+//   choice.remove       { launcher, price_from }               every option leaves; the dish is plain at price_from's price (an emptied map stays {})
 // `launcher` / `key` / `option` / `price_from` name rows by KEY (an existing row) or by REF (a row new in this draft). A group lives in
 // structure.variant_items under its dish's DISPLAY id, listing display ids / refs (the namespace group-index.js joins to keys).
 // UMD-lite (the exposure-transitions.js pattern): CommonJS here, a global in the portal's classic script — the SAME bytes write the
@@ -141,7 +141,7 @@
         const price = from.price;
         for (const m of membersOf(g)) if (m) removeRow(m);
         delete st.variant_items[String(g.id)];
-        if (!Object.keys(st.variant_items).length) delete st.variant_items;   // the map goes back to ABSENT when it empties (the drawer's dropGroup rule)
+        // an emptied map stays {}: the structure field stays authored (assertSameAuthoredFields), and {} reads as "no groups"
         g.l.price = price;
         g.l.display.price = price;
         break;
