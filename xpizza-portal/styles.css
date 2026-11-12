@@ -16,6 +16,8 @@
     --accent:#0A6E3E; --accent-2:#095C34; --accent-ink:#fff; --accent-line:#BEE6CE;
     --gold:#8A6A12; --gold-line:#E3D2A0; --gold-soft:#FBF4E1;
     --green:#0E9F5B; --green-soft:#E7F5EC; --green-line:#BEE6CE;
+    /* MOCKUP-pastel-chips (owner 2026-11-12, no amber): sand = caution, sky = pending / unpublished */
+    --sand-text:#7A4A24; --sand-soft:#F7EEE5; --sand-line:#E6D2BE; --sky-text:#1E4E99; --sky-soft:#E6F0FB; --sky-line:#B7D2F3;
     --red:#D23425; --red-soft:#FCEBE9; --red-line:#EFC9C2;
     /* TEXT on the -soft fills (WCAG AA ≥ 4.5:1): darker than the fill/stroke greens and reds above */
     --green-text:#0B7C47; --red-text:#C73123;
@@ -34,6 +36,7 @@
     --accent:#3FD98A; --accent-2:#33C77B; --accent-ink:#06130C; --accent-line:rgba(63,217,138,.32);
     --gold:#E3B54A; --gold-line:#4E4126; --gold-soft:#241D0E;
     --green:#3FD98A; --green-soft:#122419; --green-line:#274A34;
+    --sand-text:#E6BC93; --sand-soft:#2B2119; --sand-line:#51402F; --sky-text:#95BFF6; --sky-soft:#13213A; --sky-line:#24406C;
     --red:#F0685A; --red-soft:#2A1512; --red-line:#5A2B24;
     --green-text:#3FD98A; --red-text:#F0685A;
     --amber:#E8A23E; --amber-soft:#251C10; --amber-line:#4E3D1E;
@@ -47,6 +50,7 @@
     --accent:#3FD98A; --accent-2:#33C77B; --accent-ink:#06130C; --accent-line:rgba(63,217,138,.32);
     --gold:#E3B54A; --gold-line:#4E4126; --gold-soft:#241D0E;
     --green:#3FD98A; --green-soft:#122419; --green-line:#274A34;
+    --sand-text:#E6BC93; --sand-soft:#2B2119; --sand-line:#51402F; --sky-text:#95BFF6; --sky-soft:#13213A; --sky-line:#24406C;
     --red:#F0685A; --red-soft:#2A1512; --red-line:#5A2B24;
     --green-text:#3FD98A; --red-text:#F0685A;
     --amber:#E8A23E; --amber-soft:#251C10; --amber-line:#4E3D1E;
@@ -307,6 +311,7 @@
   .mgbody{padding:2px 14px 14px 43px;display:flex;flex-direction:column;gap:8px}
   .mgshared{display:flex;gap:7px;align-items:flex-start;font-size:12px;color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber-line);border-radius:9px;padding:8px 10px;line-height:1.45}
   .mgshared svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;flex:none;margin-top:1px}
+  .mgshared.mk-sand{color:var(--sand-text);background:var(--sand-soft);border-color:var(--sand-line)}   /* S2 Extras page (Codex S2 UI r1 P2-14) */
   .mopt{display:flex;align-items:center;gap:8px}
   .mopt .moname{flex:1;min-width:0;background:var(--board-2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:13px;color:var(--ink);font-family:inherit}
   .mopt .moname:focus{outline:none;border-color:var(--accent)}
@@ -621,6 +626,8 @@
   .mk-gsub{padding:7px 14px 11px;font-size:12px;color:var(--mute2);line-height:1.45}
   .mk-ferr{display:flex;align-items:flex-start;gap:6px}
   .tag.mk-ftag{font-weight:650;letter-spacing:0;white-space:nowrap}
+  .tag.mk-sky{color:var(--sky-text);background:var(--sky-soft);border-color:var(--sky-line)}   /* «Cambios sin publicar» — pending (MOCKUP-pastel-chips) */
+  .tag.mk-sand{color:var(--sand-text);background:var(--sand-soft);border-color:var(--sand-line)}   /* «Se quita al publicar» — caution (MOCKUP-portal-remove-product R3) */
   .nm:has(.mk-ftag){flex-wrap:wrap;row-gap:3px}
   .thumb.mk-chg{border:1.5px solid var(--accent);box-shadow:0 0 0 3px var(--tint2)}
   .mk-ferr svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;flex:none;margin-top:1px}

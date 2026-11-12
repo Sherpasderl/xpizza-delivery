@@ -2074,3 +2074,29 @@ test('S2 Codex r1 P2-9 — the published menu unreadable (deletionBase null): an
   assert.equal(trash(xrows(q)[0]).disabled, false, 'a readable base: the trash is on');
   assert.ok(![...xpage(q).querySelectorAll('.detail .ferr')].some((x) => /No pudimos leer/.test(x.textContent)), 'and no line');
 });
+
+test('S2 Codex r1 P2-14 — NO AMBER on the Extras page (MOCKUP-pastel-chips): the shared note is sand, «Cambios sin publicar» sky, «Se quita al publicar» sand; «Nuevo» stays green', async () => {
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
+  const rule = (sel) => { const m = css.match(new RegExp(`(^|\\n)\\s*${sel.replace(/\./g, '\\.')}\\{([^}]*)\\}`)); return m ? m[2] : null; };
+  for (const [sel, fam] of [['.mgshared.mk-sand', 'sand'], ['.tag.mk-sand', 'sand'], ['.tag.mk-sky', 'sky']]) {
+    const r = rule(sel);
+    assert.ok(r, `${sel}: a rule`);
+    for (const p of ['color', 'background', 'border-color']) assert.match(r, new RegExp(`${p}:var\\(--${fam}-(text|soft|line)\\)`), `${sel}: ${p} from the ${fam} family`);
+    assert.ok(!/amber|gold/.test(r), `${sel}: nothing amber`);
+  }
+  for (const fam of ['sand', 'sky']) for (const t of ['text', 'soft', 'line']) assert.equal((css.match(new RegExp(`--${fam}-${t}:#`, 'g')) || []).length, 3, `--${fam}-${t}: light, the dark toggle and the system dark`);
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const shared = xpage(p).querySelector('.mgshared');
+  assert.ok(shared, 'premise: a shared group');
+  assert.ok(shared.classList.contains('mk-sand'), 'the shared note: sand');
+  p.type(xrows(p)[0].querySelector('.price input'), String(Number(xrows(p)[0].querySelector('.price input').value) + 1)); await settle(5);
+  const chg = [...xpage(p).querySelectorAll('.tag')].find((t) => t.textContent === 'Cambios sin publicar');
+  assert.ok(chg && chg.classList.contains('mk-sky'), '«Cambios sin publicar»: sky');
+  xrows(p)[1].querySelector('button.del').click(); await settle(5);
+  [...p.d.querySelectorAll('#xscrim .mf button')].find((b) => b.textContent === 'Quitar').click(); await settle(10);
+  const gone = [...xpage(p).querySelectorAll('.tag')].find((t) => t.textContent === 'Se quita al publicar');
+  assert.ok(gone && gone.classList.contains('mk-sand'), '«Se quita al publicar»: sand');
+  for (const t of xpage(p).querySelectorAll('.tag.new')) assert.ok(!t.classList.contains('mk-sky') && !t.classList.contains('mk-sand'), '«Nuevo» stays green');
+});

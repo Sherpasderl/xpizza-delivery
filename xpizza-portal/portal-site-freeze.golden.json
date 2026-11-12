@@ -162,8 +162,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "ba1b68b5d05483c9983401b4d127d147567d5450349cf425784fe79c15acd9b5",
-   "bytes": 129936
+   "sha256": "83540f965b5a8a9935940d1464b656eb6853115a2f123b2d2def74cc69f08ca8",
+   "bytes": 130905
   }
  },
  "diff_aid": {
@@ -190,6 +190,12 @@
    "--green": "#0E9F5B",
    "--green-soft": "#E7F5EC",
    "--green-line": "#BEE6CE",
+   "--sand-text": "#7A4A24",
+   "--sand-soft": "#F7EEE5",
+   "--sand-line": "#E6D2BE",
+   "--sky-text": "#1E4E99",
+   "--sky-soft": "#E6F0FB",
+   "--sky-line": "#B7D2F3",
    "--red": "#D23425",
    "--red-soft": "#FCEBE9",
    "--red-line": "#EFC9C2",
@@ -1642,6 +1648,24 @@
     ".mgshared",
     "color",
     "var(--amber)"
+   ],
+   [
+    "",
+    ".mgshared.mk-sand",
+    "background",
+    "var(--sand-soft)"
+   ],
+   [
+    "",
+    ".mgshared.mk-sand",
+    "border-color",
+    "var(--sand-line)"
+   ],
+   [
+    "",
+    ".mgshared.mk-sand",
+    "color",
+    "var(--sand-text)"
    ],
    [
     "",
@@ -4108,6 +4132,42 @@
     ".tag",
     "color",
     "var(--amber)"
+   ],
+   [
+    "",
+    ".tag.mk-sand",
+    "background",
+    "var(--sand-soft)"
+   ],
+   [
+    "",
+    ".tag.mk-sand",
+    "border-color",
+    "var(--sand-line)"
+   ],
+   [
+    "",
+    ".tag.mk-sand",
+    "color",
+    "var(--sand-text)"
+   ],
+   [
+    "",
+    ".tag.mk-sky",
+    "background",
+    "var(--sky-soft)"
+   ],
+   [
+    "",
+    ".tag.mk-sky",
+    "border-color",
+    "var(--sky-line)"
+   ],
+   [
+    "",
+    ".tag.mk-sky",
+    "color",
+    "var(--sky-text)"
    ],
    [
     "",

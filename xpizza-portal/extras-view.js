@@ -78,7 +78,7 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
   }
   detailHost.append(head);
   if (d.shared) {
-    const w = el('div', 'mk-xwarn'); const s = el('div', 'mgshared');
+    const w = el('div', 'mk-xwarn'); const s = el('div', 'mgshared mk-sand');
     s.append(svg(WARN), el('span', null, `Este grupo se usa en ${plural(d.reach, 'producto', 'productos')} — los cambios aplican a todos.`));
     w.append(s); detailHost.append(w);
   }
@@ -103,8 +103,8 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
       nm.append(ni);
     } else nm.append(el('span', null, r.name));
     if (r.isNew) nm.append(el('span', 'tag new mk-ftag', 'Nuevo'));
-    else if (r.removed) nm.append(el('span', 'tag mk-ftag', 'Se quita al publicar'));
-    else if (r.priceChanged) nm.append(el('span', 'tag mk-ftag', 'Cambios sin publicar'));
+    else if (r.removed) nm.append(el('span', 'tag mk-ftag mk-sand', 'Se quita al publicar'));
+    else if (r.priceChanged) nm.append(el('span', 'tag mk-ftag mk-sky', 'Cambios sin publicar'));
     info.append(nm); row.append(info);
     if (r.removed) { row.append(el('div', 'price mk-xgone-p', `L ${r.price}`)); detailHost.append(row); return; }
     const price = el('div', `price${r.priceChanged ? ' chg' : ''}`);
