@@ -250,6 +250,8 @@ export function postClaim(res) {
   if (!res || res.transport) return null;
   const b = res.body;
   if (res.status === 409 && plain(b) && (b.error === 'superseded' || b.error === 'current_malformed')) return b.error;
+  // ENVÍO v3 §1e (5f r4): a requested rid no longer registered / identity-less — the directory moved, not a client bug
+  if (res.status === 400 && plain(b) && b.field === 'limits' && b.reason === 'directory_changed') return 'directory_changed';
   return { 400: 'refused', 401: 'unauthenticated', 403: 'forbidden' }[res.status] || null;
 }
 
@@ -263,7 +265,7 @@ export function classifyRecovery(attempt, res, claim = null) {
   if (b.current_malformed === true) return 'conflict';
   if (!okVersion(b.policy_version) || !Array.isArray(b.bands)) return 'unknown';
   if (b.policy_version === attempt.expectedVersion + 1) return sameBands(b.bands, attempt.sentBands) && limitsLanded(attempt.sentLimits, b.branches) ? 'saved' : 'conflict';
-  if (b.policy_version === attempt.expectedVersion) return claim === 'refused' ? 'refused' : 'not_landed';
+  if (b.policy_version === attempt.expectedVersion) return claim === 'refused' ? 'refused' : claim === 'directory_changed' ? 'conflict' : 'not_landed';
   return 'conflict';
 }
 

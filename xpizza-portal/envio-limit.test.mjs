@@ -164,3 +164,21 @@ test('L2 — the picker sub-line «{n} sucursal(es) · hasta {km} km»: each bra
   const sub = (rid) => e.find((x) => x.rid === rid).sub;
   assert.deepEqual([sub('r1'), sub('r2'), sub('r3')], ['2 sucursales · hasta 5 km', '2 sucursales · hasta 8 km', '1 sucursal · hasta 8 km'], 'its own; capped at the top; none stored = the top');
 });
+
+// ── stage 3a — §1e: a 400 `reason: directory_changed` is the v2 conflict / refresh, NOT the client-bug save-error; other limit reasons stay errors ──
+import { postClaim } from './envio-logic.js';
+test('L3a — directory_changed (5f’s REAL refusal: a requested rid no longer registered) → conflict after the fresh GET; a malformed-rid refusal stays «refused»', async () => {
+  const w = await seeded();
+  const v = (await w.get()).body.policy_version;
+  // r3 deregistered between the page's read and its save: the REAL writer answers 400 directory_changed
+  const gone = world({ ids: ['r1', 'r2', 'r9'] });
+  copyNode(gone, w);
+  const res = await gone.set({ expected_policy_version: v, bands: BANDS, limits: [{ rid: 'r3', km: 6 }] });
+  assert.deepEqual([res.status, res.body.field, res.body.reason], [400, 'limits', 'directory_changed'], `premise: the real refusal (${JSON.stringify(res.body)})`);
+  const att = startAttempt({ uid: 'u', sessionGen: 1, expectedVersion: v, bands: BANDS, limits: [{ rid: 'r3', km: 6 }] });
+  assert.equal(postClaim(res), 'directory_changed');
+  assert.equal(classifyRecovery(att, await gone.get(), postClaim(res)), 'conflict', 'nothing landed, the directory moved: the refresh panel');
+  const bad = await w.set({ expected_policy_version: v, bands: BANDS, limits: [{ rid: 'Not A Rid!', km: 6 }] });
+  assert.equal(bad.status, 400, `premise: a malformed rid refused (${JSON.stringify(bad.body)})`);
+  assert.equal(classifyRecovery(att, await w.get(), postClaim(bad)), 'refused', 'a client bug: the save-error box (the draft kept)');
+});
