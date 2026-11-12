@@ -80,7 +80,11 @@ for (const op of ['set', 'update', 'remove', 'push', 'transaction', 'setWithPrio
   refProto[op] = function (...a) {
     if (!REC) return orig.apply(this, a);
     const entry = { op, path: pathOf(this) };
-    if (op === 'transaction') { REC.push(entry); return orig.apply(this, a).then((res) => { entry.committed = !!(res && res.committed); entry.value = res && res.snapshot ? res.snapshot.val() : null; return res; }); }
+    if (op === 'transaction') {   // the CLIENT value: the update function's last return (the server resolves {'.sv'} on commit — real time)
+      REC.push(entry); const fn = a[0]; let last;
+      const wrapped = (cur) => { const v = fn(cur); last = v === undefined ? '<abort>' : JSON.parse(JSON.stringify(v === null ? null : v)); return v; };
+      return orig.apply(this, [wrapped, ...a.slice(1)]).then((res) => { entry.committed = !!(res && res.committed); entry.value = last === undefined ? null : last; return res; });
+    }
     entry.value = a[0] === undefined ? null : JSON.parse(JSON.stringify(a[0]));
     REC.push(entry);
     return orig.apply(this, a);
@@ -93,7 +97,7 @@ function post(handler, body, headers = {}) {
       try {
         const r = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
         const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
-        const hdr = {}; r.headers.forEach((v, k) => { if (!['date', 'connection', 'keep-alive'].includes(k)) hdr[k] = v; });
+        const hdr = {}; r.headers.forEach((v, k) => { if (!['date', 'connection', 'keep-alive', 'etag'].includes(k)) hdr[k] = v; });   // etag = a hash of the RAW body (random ids): the normalised body is compared instead
         s.close(() => resolve({ status: r.status, json: j, text: t, headers: hdr }));
       } catch (e) { s.close(() => reject(e)); }
     });
@@ -115,7 +119,9 @@ function canon(x) {
   for (const e of (x.writes || [])) { const m = e.path.match(/^(?:payment_attempts|order_tracking)\/([^/]+)/); if (m) toks.add(m[1]); const p = e.path.match(/\/(-[A-Za-z0-9_-]{19})/); if (p) toks.add(p[1]); }
   const sorted = [...toks].filter(Boolean).sort((p, q) => q.length - p.length);
   const fix = (s) => { let o = s; for (const t of sorted) if (o.includes(t)) o = o.split(t).join(rename(t)); return o; };
-  return JSON.parse(fix(JSON.stringify(x)));
+  // a NUMERIC created_at in a recorded value is the emulator's echo of a server-resolved timestamp (real time; the code always
+  // writes the {'.sv'} sentinel, which stays as is) — it is canonicalised, the sentinel vs number distinction is kept
+  return JSON.parse(fix(JSON.stringify(x)), (k, v) => (k === 'created_at' && typeof v === 'number' ? '<server-ts>' : v));
 }
 const OPENH = { open: true, start: '00:00', end: '24:00' };
 const HOURS = { sun: OPENH, mon: OPENH, tue: OPENH, wed: OPENH, thu: OPENH, fri: OPENH, sat: OPENH };
@@ -148,7 +154,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('sdk-hoste
     const S0 = (await rtdb.ref().get()).val();
     const M = availKey('Margherita');
     const T0 = CLOCK;
-    const slot = (() => { const d = new Date(T0 + 3 * 3600e3); d.setMinutes(0, 0, 0); return d.getTime(); })();
+    const slotFrom = (now) => { const d = new Date(now + 3 * 3600e3); d.setMinutes(0, 0, 0); return d.getTime(); };   // 2–3 h ahead, on the hour
     const REWARD = { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' };
     const PAID = { name: 'Carnivora', qty: 1, price: 0, extras: [] };
     // [name, setup, steps (a request [kind, body, headers] | an async (h) => body-builder step), the BASE's intended statuses]
@@ -163,7 +169,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('sdk-hoste
       ['an unknown restaurant', null, [['charge', body('x_pizza', 'par_rid', { restaurant_id: 'no_such_rid' }), BEARER]], [400]],
       ['cash: fresh + its retry', null, [['cash', body('x_pizza', 'par_cash', { payment_method: 'cash' }), BEARER], ['cash', body('x_pizza', 'par_cash', { payment_method: 'cash' }), BEARER]], [200, 200]],
       ['delivery', null, [['charge', body('x_pizza', 'par_deliv', { order_type: 'delivery', lat: PIN.lat, lng: PIN.lng, pin_confirmed: true, address_detected: 'Calle Principal', address_details: 'portón' }), BEARER]], [200]],
-      ['scheduled', null, [['charge', body('x_pizza', 'par_sched', { scheduled_for: slot }), BEARER]], [200]],
+      ['scheduled', null, [async () => ['charge', body('x_pizza', 'par_sched', { scheduled_for: slotFrom(CLOCK) }), BEARER]], [200]],   // the slot from THIS scenario's pinned clock
       ['redemption (quote-token path)', null, [async (h) => {
         const items = [PAID]; const q = await post(h.quoteRedemption, { restaurant_id: 'x_pizza', items, redeem: REWARD, mode: 'pickup' }, BEARER);
         return ['charge', body('x_pizza', 'par_redeem', { items, items_text: '1x Carnivora', redeem: REWARD, quote_token: q.json && q.json.quote_token, expected_net_cents: q.json && q.json.net_total_cents }), { ...BEARER, 'x-firebase-id-token': 'u_par' }];
