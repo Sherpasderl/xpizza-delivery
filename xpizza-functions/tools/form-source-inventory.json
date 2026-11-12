@@ -179,6 +179,7 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2b-writer.test.js",
     "xpizza-functions/catalog/s2core-compare.test.js",
     "xpizza-functions/catalog/s2core-editable.test.js",
     "xpizza-functions/catalog/s2core-flow.test.js",
@@ -954,6 +955,7 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2b-writer.test.js",
     "xpizza-functions/catalog/s2core-compare.test.js",
     "xpizza-functions/catalog/s2core-editable.test.js",
     "xpizza-functions/catalog/s2core-flow.test.js",
@@ -2533,6 +2535,7 @@
   "catalog/edit-preflight.js",
   "catalog/exposure-source.js",
   "catalog/exposure-transitions.js",
+  "catalog/extra-identity.js",
   "catalog/extras-allocate.js",
   "catalog/extras-consequences.js",
   "catalog/extras-eligibility-store.js",
@@ -3150,6 +3153,10 @@
    "lifts": []
   },
   "catalog/exposure-transitions.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/extra-identity.js": {
    "pins": [],
    "lifts": []
   },
