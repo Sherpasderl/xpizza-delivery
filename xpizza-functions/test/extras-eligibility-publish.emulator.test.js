@@ -1,6 +1,7 @@
 'use strict';
 // PER-PRODUCT EXTRAS, stage 2 (catalog half) — on the emulator, through the REAL publisher and the REAL public-menu builder:
-//   • every publish writes the version's eligibility document (versions/{vid}/meta/extras_eligibility), DENSE, from the
+//   • every publish writes the version's eligibility document (versions/{vid}/meta/extras_eligibility), DENSE per item (each list NARROWED to
+//     the groups the served maps offer it — S2-core ruling R3), from the
 //     same docs the version carries — x_pizza: Nutella denied every extra (legacy '*'), every other item []; la_musa:
 //     rice_03 has the proteins, rice_02 does not;
 //   • getPublicMenu's body carries `extras_eligibility` = { version, deny } for that version, exactly the document;
@@ -70,7 +71,11 @@ const deps = { known: new Set(['x_pizza', 'la_musa']), isActive: async () => tru
       assert.deepStrictEqual(doc.public_deny.Margherita, [], 'x_pizza: an ordinary pizza is unrestricted ([])');
     } else {
       assert.ok(!doc.public_deny.rice_03.some((k) => /^protein_/.test(k)), 'la_musa: rice_03 takes the proteins');
-      assert.ok(['protein_chicken', 'protein_beef', 'protein_shrimp'].every((k) => doc.public_deny.rice_02.includes(k)), 'la_musa: rice_02 does not');
+      // rice_02 does not take them: the served maps never OFFER it «Proteínas», so its narrowed deny need not list them (ruling R3) — the
+      // dense complement still does, and the capp renders nothing of a group it is not offered
+      const rice02 = src.items.find((i) => i.key === 'rice_02');
+      assert.ok(!(maps.byCategory[rice02.display.cat] || []).includes('Proteínas') && !(maps.byItem[String(rice02.display.id)] || []).includes('Proteínas'), 'la_musa: rice_02 is not offered «Proteínas»');
+      assert.ok(['protein_chicken', 'protein_beef', 'protein_shrimp'].every((k) => dense.rice_02.includes(k) && !doc.public_deny.rice_02.includes(k)), 'la_musa: rice_02 does not take the proteins (dense) and the narrowed list omits the unoffered group');
     }
     // the public body carries exactly that document
     const pub = await buildPublicMenu(db, rid, deps);
