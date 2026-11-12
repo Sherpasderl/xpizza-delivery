@@ -1,5 +1,5 @@
 'use strict';
-// D4 §A2 B1 + B2 (PLAN-sdk-d4-r11) — the SDK intake's request-facing steps, called by chargeOnlineOrder's handler in SDK mode
+// D4 §A2 B1 + B2 (PLAN-sdk-d4-r11) — the SDK intake's request-facing steps, called by the hosted card handler (chargeOnlineApp) in SDK mode
 // (res.locals.sdkMode, set ONLY by placeSdkApp's middleware). Pure over its deps; mutates req.headers / req.body as B1 specifies.
 //   authorize(req, deps) ⇒ { ok: true, kind: 'member', uid } | { ok: true, kind: 'guest' } | { refuse: { status, body } }
 //   replay(deps, { orderId, attemptId, uid, guestPhoneHash }) ⇒ { status, body } | null (fall through)
@@ -44,7 +44,9 @@ async function authorize(req, deps) {
     if (tHdr != null && tBody != null && tHdr !== tBody) return refuse(401, 'guest_auth_required');   // CONTRACT-Δ C2
     const ticket = tHdr != null ? tHdr : tBody;
     if (typeof ticket !== 'string' || !TICKET_RE.test(ticket)) return refuse(401, 'guest_ticket_invalid');
-    const { restaurantId } = await deps.ridOf(body);
+    // the request's OWN restaurant_id string (exact match to the ticket's rid — never a default); the downstream checkout guest
+    // gate re-validates this ticket against the handler's resolved restaurant id
+    const restaurantId = typeof body.restaurant_id === 'string' && body.restaurant_id ? body.restaurant_id : null;
     const orderId = typeof body.order_id === 'string' ? body.order_id : null;
     const digits = typeof body.customer_phone === 'string' ? deps.normalizePhone(body.customer_phone) : null;
     const phoneHash = digits ? deps.phoneHash(digits) : null;
@@ -62,7 +64,7 @@ async function authorize(req, deps) {
   return out;
 }
 
-// CONTRACT-Δ C1: the SDK envelope is exact-keyed (the priced order body is validated as chargeOnlineOrder validates it, which
+// CONTRACT-Δ C1: the SDK envelope is exact-keyed (the priced order body is validated as the hosted card handler validates it, which
 // ignores unknown ORDER keys). A saved card is a member's only. The display is the client's mask, schema-checked.
 const exactKeys = (o, keys) => !!o && typeof o === 'object' && !Array.isArray(o) && Object.keys(o).length === keys.length && keys.every((k) => Object.prototype.hasOwnProperty.call(o, k));
 const SAVED_ID_RE = /^[A-Za-z0-9]{20}$/;

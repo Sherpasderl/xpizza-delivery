@@ -24,7 +24,7 @@ const rec = (o = {}) => ({ flow: 'sdk_auth_v1', phase: 'open', ttl_at: T0 + 15 *
 
 (async () => {
   await cell('SDK-D4-BUCKETS', async (L) => {
-    const b = B().bucketOf;
+    const b = B().declineBucketOf;
     assert.strictEqual(b({ kind: 'definitive_decline', code: 'ANY-UNMAPPED' }), 'hard', `${L}: an unmapped code ⇒ hard`);
     assert.strictEqual(b({ kind: 'definitive_decline', code: null }), 'hard', `${L}: no code ⇒ hard`);
     assert.strictEqual(b({ kind: 'token_expired_confirmed' }), 'token_expired', `${L}: token_expired_confirmed ⇒ token_expired`);

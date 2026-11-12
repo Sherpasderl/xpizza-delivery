@@ -37,7 +37,6 @@ async function world({ hang = false, tomb = false, nonCustomer = false, extra = 
   const reads = [];
   const deps = {
     db, clock: () => t, deadlineMs: 50, attributionUid, normalizePhone, phoneHash: (d) => OTP.phoneHash(d), cartFpFromBody: G.cartFpFromBody,
-    ridOf: (b) => ({ restaurantId: typeof b.restaurant_id === 'string' ? b.restaurant_id : null }),
     isTombstoned: async () => tomb,
     verifyIdToken: async (x) => { if (hang) await new Promise(() => {}); if (x === 'idt_A') return { uid: 'uid_A', customer: !nonCustomer }; throw new Error('bad token'); },
     psp: makeAdapter(makeFakePsp({}).impl), voidEligible: () => false, ppNamespace: 'sandbox', goLive: async () => {}, releaseResources: async () => {},

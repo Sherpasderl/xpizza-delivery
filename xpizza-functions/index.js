@@ -1501,7 +1501,6 @@ chargeOnlineApp.all('*', async (req, res) => {
       db: getDatabase(), clock: () => Date.now(), deadlineMs: 1500, attributionUid,
       verifyIdToken: (t) => getAuth().verifyIdToken(t), isTombstoned: async (uid) => (await getDatabase().ref('deleted_uids/' + uid).get()).exists(),
       normalizePhone: require('./whatsapp').normalizePhone, phoneHash: (d) => require('./otp-lib').phoneHash(d), cartFpFromBody: require('./checkout-guest-lib').cartFpFromBody,
-      ridOf: async (b) => { await restaurantRegistry().ready(); return resolveRestaurantId(b.restaurant_id, restaurantRegistry().known()); },
     });
     if (b1.refuse) return res.status(b1.refuse.status).json(b1.refuse.body);
   } else {
@@ -2447,7 +2446,7 @@ exports.chargeOnlineOrder = onRequest(
   chargeOnlineApp
 );
 // D4 §A1 (PLAN-sdk-d4-r11): the in-app card payment intake is the SAME handler — a second export whose ONLY middleware marks the
-// mode server-side (nothing in the request can set it); every gate, price and check is chargeOnlineOrder's own (B1–B4 branch it)
+// mode server-side (nothing in the request can set it); every gate, price and check is the hosted card handler's own (B1–B4 branch it)
 const placeSdkApp = express();
 placeSdkApp.use((req, res, next) => { res.locals.sdkMode = true; next(); });
 placeSdkApp.use(chargeOnlineApp);

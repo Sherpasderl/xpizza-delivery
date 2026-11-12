@@ -4,7 +4,7 @@
 // a replay applies them to THAT attempt, a status read to the order's latest attempt. Payment state always outranks
 // `unavailable` (never produced here). No status AMOUNT is relied on anywhere (advisor 11-11).
 const R = require('./record');
-const { bucketOf } = require('./decline-buckets');
+const { declineBucketOf } = require('./decline-buckets');
 const { safeToSwitch } = require('./coordinator');
 
 const latestAttempt = (rec) => {
@@ -42,7 +42,7 @@ function resolveStatus(orderId, order, rec, { now, attempt_id } = {}) {
   // 6. a challenged original ended its attempt (Q3): declined / hard — never bank_pending
   if (leg.state === 'requires_action') return out({ outcome: 'declined', order_id: orderId, attempt_id: pick.id, decline: 'hard', pay_deadline_at: deadline });
   // 7. a definitive decline + its bucket (never the raw code)
-  if (leg.state === 'declined' && op && op.result) return out({ outcome: 'declined', order_id: orderId, attempt_id: pick.id, decline: bucketOf(op.result) || 'hard', pay_deadline_at: deadline });
+  if (leg.state === 'declined' && op && op.result) return out({ outcome: 'declined', order_id: orderId, attempt_id: pick.id, decline: declineBucketOf(op.result) || 'hard', pay_deadline_at: deadline });
   // 5. unanswered / unknown / anything still open ⇒ bank_pending (reconcileSdkOps owns the evidence)
   return out({ outcome: 'bank_pending', order_id: orderId, attempt_id: pick.id });
 }

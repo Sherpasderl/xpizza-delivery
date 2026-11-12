@@ -1,5 +1,5 @@
 'use strict';
-// D4 §A2 B4 + §A4 (PLAN-sdk-d4-r11) — the SDK finish, called by chargeOnlineOrder's handler in SDK mode exactly where hosted calls
+// D4 §A2 B4 + §A4 (PLAN-sdk-d4-r11) — the SDK finish, called by the hosted card handler (chargeOnlineApp) in SDK mode exactly where hosted calls
 // acquireHostedAttempt, with hosted's intake snapshot (the same captured flags, the same pending record, the same fingerprint).
 // Hosted's order: refusal → create → gate; no reward hold exists for an SDK order (§A00), so nothing is reserved or released.
 const crypto = require('crypto');
