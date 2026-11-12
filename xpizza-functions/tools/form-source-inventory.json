@@ -3070,6 +3070,7 @@
     {
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
+      "tools/grpid-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2core-module-inverse.js"
@@ -3303,6 +3304,7 @@
     {
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
+      "tools/grpid-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2core-module-inverse.js"
