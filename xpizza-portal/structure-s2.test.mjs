@@ -10,7 +10,7 @@ import { runInThisContext } from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { createDraft, draftSource, pendingCount, setExtraPrice, applyExposureOps, composeDish, pendingStructure, attachRefusal } from './editor.js';
 import * as IE from './item-edit-logic.js';
-import { reviewModel, renderReview } from './review.js';
+import { reviewModel, renderReview, attestationModel, renderAttestation } from './review.js';
 
 const req = createRequire(import.meta.url);
 const { buildSourceFromCode } = req('../xpizza-functions/tools/seed-source-store');
@@ -315,6 +315,47 @@ test('Estructura — rendered as frame F: the FIRST group «Estructura N», one 
     assert.deepEqual(rows.map((r) => [r.querySelector('.pname').textContent, chip(r).className, chip(r).textContent]),
       [[draftSource(d).items.find((x) => x.key === 'dimsum_01').display.name, 'bchip rem', 'Quitado'], ['Salsas', 'bchip chg', 'Orden']], 'frame F’s rows and chips');
     assert.equal(rows[1].querySelector('.pval .now.plain').textContent, 'pasa al 1.º lugar');
+  } finally { globalThis.document = saved; }
+});
+
+// ── Codex S2 UI r1 P1-3 — the fiscal seal from the SERVER's `diff.fiscal` (MOCKUP frame F's seal): every new priced extra and every
+// changed price, named, EXACTLY once; the drawn sentence, rows and «Autorizo» line. x_pizza (the platform-factura brand) on 5f's REAL save.
+async function fiscalSave() {
+  const live = seed('x_pizza'); const d = createDraft(clone(live));
+  const group = 'Toppings dulces';
+  assert.equal(applyExposureOps(d, [{ op: 'group.create', group, extras: [{ ref: 'tmp:seal-new-1', name: 'Miel', price: 17 }], attach: { mode: 'items', items: ['Carnivora'] } }], ON).ok, true);
+  const rx = clone(draftSource(d).extras.find((e) => e.display.cat !== group));
+  setExtraPrice(d, rx.key, String(rx.price + 5));
+  const diff = await realSaveDiff('x_pizza', live, draftSource(d));
+  assert.ok(diff.fiscal && diff.fiscal.added.some((a) => a.surface === 'extra' && a.name === 'Miel'), 'premise: the server puts the new extra in diff.fiscal.added');
+  return { diff, rx, group };
+}
+test('P1-3 — attestationModel: the seal consumes diff.fiscal — the new extra and the extra reprice, named, each ONCE; L 0 still blocks', async () => {
+  const { diff, rx, group } = await fiscalSave();
+  const att = attestationModel(diff, { usesPlatformFactura: true });
+  const all = [...att.sealRows, ...(att.addedRows || [])];
+  assert.deepEqual(all.filter((r) => r.key === rx.key).map((r) => [r.surface, r.name, r.group, r.was, r.now]),
+    [['extra', rx.display.name, rx.display.cat, rx.price, rx.price + 5]], 'the reprice: one row, its name and group');
+  const miel = all.filter((r) => r.name === 'Miel');
+  assert.deepEqual(miel.map((r) => [r.surface, r.group, r.now]), [['extra', group, 17]], 'the new extra: one row, its group and price');
+  assert.equal(att.hasZero, false);
+  const zero = clone(diff); zero.fiscal.added.find((a) => a.name === 'Miel').price = 0;
+  assert.equal(attestationModel(zero, { usesPlatformFactura: true }).hasZero, true, 'a new extra the factura would print at L 0 blocks the publish');
+});
+test('P1-3 — the rendered seal is frame F’s: header, the drawn sentence, «{extra} ({grupo})» rows («L n · nuevo», «L a → L b»), «Autorizo esta edición…»', async () => {
+  const { JSDOM } = req('../xpizza-functions/node_modules/jsdom');
+  const w = new JSDOM('<!doctype html><div id="r"></div>').window;
+  const saved = globalThis.document; globalThis.document = w.document;
+  try {
+    const { diff, rx, group } = await fiscalSave();
+    const root = w.document.getElementById('r');
+    renderAttestation(root, attestationModel(diff, { usesPlatformFactura: true }), () => {}, {});
+    const seal = root.querySelector('.seal');
+    assert.equal(seal.querySelector('.sealh span').textContent, 'Esta publicación requiere tu autorización como propietario', 'frame F’s seal header');
+    assert.equal(seal.querySelector('.sealbody p').textContent, 'Como propietario, autorizás esta publicación. Agrega opciones con precio y cambia un precio: aparecen en la factura.', 'frame F’s sentence');
+    const rows = [...seal.querySelectorAll('.seachg')].map((c) => [c.querySelector('.sn').textContent, c.querySelector('.sv').textContent]);
+    assert.deepEqual(rows, [[`Miel (${group})`, 'L 17 · nuevo'], [`${rx.display.name} (${rx.display.cat})`, `L ${rx.price} → L ${rx.price + 5}`]], 'frame F’s rows, each fact once');
+    assert.equal(seal.querySelector('.attest .at').textContent, 'Autorizo esta edición en la factura fiscal.', 'frame F’s «Autorizo» line');
   } finally { globalThis.document = saved; }
 });
 

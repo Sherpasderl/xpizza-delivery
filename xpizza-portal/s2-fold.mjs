@@ -276,6 +276,46 @@ export const S2_FOLD = {
    ""
   ],
   [
+   "// Codex S2 UI r1 P1-3 — with an S2 op the server's token-bound diff carries the seal's list itself (`fiscal`: every new priced line and\n// every changed price, named, no duplicates — catalog/review-diff.js): consumed AS-IS, exactly once, an extra with its group (from the\n// same diff's `extras`). Without it (no S2 op) the seal is today's derivation, byte for byte.\nfunction serverFiscal(diff) {\n  const f = diff && diff.fiscal;\n  if (!f || !Array.isArray(f.added) || !Array.isArray(f.repriced)) return null;\n  const ex = Array.isArray(diff.extras) ? diff.extras : [];\n  const groupOf = (r) => { if (r.surface !== 'extra') return null; const e = ex.find((x) => x && x.key === r.key); return e && e.group != null ? String(e.group) : null; };\n  return {\n    repriced: f.repriced.filter(Boolean).map((r) => ({ surface: r.surface, key: r.key, name: r.name == null ? null : String(r.name), group: groupOf(r), was: r.old, now: r.new })),\n    added: f.added.filter(Boolean).map((r) => ({ surface: r.surface, key: r.key, name: r.name == null ? null : String(r.name), group: groupOf(r), now: r.price })),\n  };\n}\n",
+   ""
+  ],
+  [
+   "  const sf = serverFiscal(diff);\n  const sealRows = sf ? sf.repriced : fiscalPriceChanges(diff);\n",
+   "  const sealRows = fiscalPriceChanges(diff);\n"
+  ],
+  [
+   "  // S2 (P1-3): the server's new priced lines — products AND extras — from diff.fiscal\n  const addedRows = sf ? sf.added : ((diff && Array.isArray(diff.added)) ? diff.added : []).filter((a) => a && a.surface === 'item')\n",
+   "  const addedRows = ((diff && Array.isArray(diff.added)) ? diff.added : []).filter((a) => a && a.surface === 'item')\n"
+  ],
+  [
+   "    // S2 (MOCKUP frame F's seal; Codex S2 UI r1 P1-3): the new priced EXTRAS from the server's diff.fiscal, «{extra} ({grupo})» · «L n · nuevo»\n    const extraAdds = (Array.isArray(model.addedRows) ? model.addedRows : []).filter((r) => r && r.surface === 'extra');\n    ht.append(el('span', null, namesOnly || renames.length || extraAdds.length ? 'Esta publicación requiere tu autorización como propietario' : 'Estos precios se imprimen en tu factura fiscal'));\n",
+   "    ht.append(el('span', null, namesOnly || renames.length ? 'Esta publicación requiere tu autorización como propietario' : 'Estos precios se imprimen en tu factura fiscal'));\n"
+  ],
+  [
+   "    if (extraAdds.length) {\n      // frame F's sentence, verbatim for new extras + one price; the other counts compose its parts with frame E's\n      const N = model.sealRows.length, M = renames.length;\n      const parts = ['Agrega opciones con precio'];\n      if (N) parts.push(N === 1 ? 'cambia un precio' : `cambia ${N} precios`);\n      if (M) parts.push(M === 1 ? 'cambia el nombre de un producto' : `cambia el nombre de ${M} productos`);\n      const said = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}`;\n      body.append(el('p', null, `Como propietario, autorizás esta publicación. ${said}: aparecen en la factura.`));\n    } else if (renames.length) {\n",
+   "    if (renames.length) {\n"
+  ],
+  [
+   "    // frame F: an extra's row is «{extra} ({grupo})»; the new ones first («L n · nuevo»), then the changed prices\n    const extraName = (r) => (r.group ? `${r.name || r.key} (${r.group})` : String(r.name || r.key));\n    for (const r of extraAdds) {\n      const c = el('div', 'seachg');\n      c.append(el('span', 'sn', extraName(r)));\n      const v = el('span', 'sv');\n      v.append(el('b', null, shown(r.now)), ' · nuevo');\n      c.append(v);\n      body.append(c);\n    }\n",
+   ""
+  ],
+  [
+   "      if (r.surface === 'extra' && r.name != null) {\n        c.append(el('span', 'sn', extraName(r)));\n        const v = el('span', 'sv');\n        v.append(el('span', 'was', shown(r.was)), ' \\u2192 ', el('b', null, shown(r.now)));\n        c.append(v);\n        body.append(c);\n        continue;\n      }\n",
+   ""
+  ],
+  [
+   "    const added = (Array.isArray(model.addedRows) ? model.addedRows : []).filter((r) => r && r.surface !== 'extra');   // the new PRODUCTS\n",
+   "    const added = Array.isArray(model.addedRows) ? model.addedRows : [];\n"
+  ],
+  [
+   "    if (!model.sealRows.length && !added.length && !renames.length && !extraAdds.length) {\n",
+   "    if (!model.sealRows.length && !added.length && !renames.length) {\n"
+  ],
+  [
+   "      t.append(renames.length || extraAdds.length ? ' esta edición en la factura fiscal.' : a === 0\n",
+   "      t.append(renames.length ? ' esta edición en la factura fiscal.' : a === 0\n"
+  ],
+  [
    "  FIX_EXTRA: 'fix_extra', // STRUCTURE S2 §5.2: an EXTRA needs a correction — the «Extras» tab, its group, its row (FIX keeps its product-only meaning)\n  REVIEW_DELETIONS: 'review_deletions',   // S2 §5.2: the published menu moved under a removal claim — re-read, re-show the list, resend acknowledged\n",
    ""
   ],

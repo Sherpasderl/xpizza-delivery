@@ -553,9 +553,23 @@ export function fiscalPriceChanges(diff) {
 // `rid === 'x_pizza'` literal is accidentally correct for every restaurant that exists today, which is
 // exactly what makes it survive review — and wrong the day a third merchant joins the platform
 // factura. Strictly `=== true`, so an absent or non-boolean flag is not read as a capability.
+// Codex S2 UI r1 P1-3 — with an S2 op the server's token-bound diff carries the seal's list itself (`fiscal`: every new priced line and
+// every changed price, named, no duplicates — catalog/review-diff.js): consumed AS-IS, exactly once, an extra with its group (from the
+// same diff's `extras`). Without it (no S2 op) the seal is today's derivation, byte for byte.
+function serverFiscal(diff) {
+  const f = diff && diff.fiscal;
+  if (!f || !Array.isArray(f.added) || !Array.isArray(f.repriced)) return null;
+  const ex = Array.isArray(diff.extras) ? diff.extras : [];
+  const groupOf = (r) => { if (r.surface !== 'extra') return null; const e = ex.find((x) => x && x.key === r.key); return e && e.group != null ? String(e.group) : null; };
+  return {
+    repriced: f.repriced.filter(Boolean).map((r) => ({ surface: r.surface, key: r.key, name: r.name == null ? null : String(r.name), group: groupOf(r), was: r.old, now: r.new })),
+    added: f.added.filter(Boolean).map((r) => ({ surface: r.surface, key: r.key, name: r.name == null ? null : String(r.name), group: groupOf(r), now: r.price })),
+  };
+}
 export function attestationModel(diff, ctx = {}) {
   const isFiscal = ctx.usesPlatformFactura === true;
-  const sealRows = fiscalPriceChanges(diff);
+  const sf = serverFiscal(diff);
+  const sealRows = sf ? sf.repriced : fiscalPriceChanges(diff);
   const ackSet = ackSetFrom(diff);
   // 🔴 NOTHING TO PUBLISH IS ITS OWN ANSWER — and only since #7-B, which made the review reachable on a
   // draft that may turn out to equal live. It is NOT the same as "changed, but no price changed": that
@@ -569,7 +583,8 @@ export function attestationModel(diff, ctx = {}) {
   // A price we cannot vouch for blocks the publish outright, ahead of any acknowledgement — the server
   // would refuse it anyway, and no signature should be collected for something that cannot go live.
   // 1D add-product A — NEW products are priced lines too: they join the zero-price refusal and the attestation copy.
-  const addedRows = ((diff && Array.isArray(diff.added)) ? diff.added : []).filter((a) => a && a.surface === 'item')
+  // S2 (P1-3): the server's new priced lines — products AND extras — from diff.fiscal
+  const addedRows = sf ? sf.added : ((diff && Array.isArray(diff.added)) ? diff.added : []).filter((a) => a && a.surface === 'item')
     .map((a) => ({ key: a.key, now: a.price }));
   const hasZero = sealRows.some((r) => !(Number.isInteger(r.now) && r.now > 0)) || addedRows.some((r) => !(Number.isInteger(r.now) && r.now > 0));
   // DISH PHOTOS B (§2.4) — a publish whose EVERY diff line is a photo line gets the photos seal copy (client-side, like the
@@ -667,7 +682,9 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
     // the seal says what is true — the publish needs the owner's authorization — and never that the name is on the factura.
     const namesOnly = (model.sectionRows || []).length > 0 && !model.sealRows.length && !(model.addedRows || []).length;
     const renames = Array.isArray(model.nameRows) ? model.nameRows : [];
-    ht.append(el('span', null, namesOnly || renames.length ? 'Esta publicación requiere tu autorización como propietario' : 'Estos precios se imprimen en tu factura fiscal'));
+    // S2 (MOCKUP frame F's seal; Codex S2 UI r1 P1-3): the new priced EXTRAS from the server's diff.fiscal, «{extra} ({grupo})» · «L n · nuevo»
+    const extraAdds = (Array.isArray(model.addedRows) ? model.addedRows : []).filter((r) => r && r.surface === 'extra');
+    ht.append(el('span', null, namesOnly || renames.length || extraAdds.length ? 'Esta publicación requiere tu autorización como propietario' : 'Estos precios se imprimen en tu factura fiscal'));
     h.append(ht);
     seal.append(h);
 
@@ -695,7 +712,15 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
       root.append(seal);
       return root;
     }
-    if (renames.length) {
+    if (extraAdds.length) {
+      // frame F's sentence, verbatim for new extras + one price; the other counts compose its parts with frame E's
+      const N = model.sealRows.length, M = renames.length;
+      const parts = ['Agrega opciones con precio'];
+      if (N) parts.push(N === 1 ? 'cambia un precio' : `cambia ${N} precios`);
+      if (M) parts.push(M === 1 ? 'cambia el nombre de un producto' : `cambia el nombre de ${M} productos`);
+      const said = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}`;
+      body.append(el('p', null, `Como propietario, autorizás esta publicación. ${said}: aparecen en la factura.`));
+    } else if (renames.length) {
       // the owner-approved sentences (11-10): 1 price + 1 name is frame E's, verbatim
       const N = model.sealRows.length, M = renames.length;
       const names = M === 1 ? 'el nombre de un producto' : `el nombre de ${M} productos`;
@@ -707,8 +732,26 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
     }
     // S4 (frame E): with the products lookup a price row reads the product's CURRENT name (as printed after this publish)
     const nowName = (k) => (opts.products && typeof opts.products.nameOf === 'function' ? opts.products.nameOf(k) : String(k));
+    // frame F: an extra's row is «{extra} ({grupo})»; the new ones first («L n · nuevo»), then the changed prices
+    const extraName = (r) => (r.group ? `${r.name || r.key} (${r.group})` : String(r.name || r.key));
+    for (const r of extraAdds) {
+      const c = el('div', 'seachg');
+      c.append(el('span', 'sn', extraName(r)));
+      const v = el('span', 'sv');
+      v.append(el('b', null, shown(r.now)), ' · nuevo');
+      c.append(v);
+      body.append(c);
+    }
     for (const r of model.sealRows) {
       const c = el('div', 'seachg');
+      if (r.surface === 'extra' && r.name != null) {
+        c.append(el('span', 'sn', extraName(r)));
+        const v = el('span', 'sv');
+        v.append(el('span', 'was', shown(r.was)), ' \u2192 ', el('b', null, shown(r.now)));
+        c.append(v);
+        body.append(c);
+        continue;
+      }
       c.append(el('span', 'sn', nowName(r.key)));          // textContent: a dish name is data
       const v = el('span', 'sv');
       v.append(el('span', 'was', shown(r.was)));
@@ -731,7 +774,7 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
     // 1D add-product A — the NEW products, with the prices the factura will print for them.
     // 1D add-product B (§0d.5) — a product with a required choice is never a factura line itself: each OPTION is, under its
     // full name ("{product} - {choice}"), so the seal lists every option with its price, under its product.
-    const added = Array.isArray(model.addedRows) ? model.addedRows : [];
+    const added = (Array.isArray(model.addedRows) ? model.addedRows : []).filter((r) => r && r.surface !== 'extra');   // the new PRODUCTS
     const desc = (k) => (typeof opts.describe === 'function' ? opts.describe({ surface: 'item', key: k }) : null);
     const addedKeys = new Set(added.map((r) => r.key));
     const optionOf = (r) => { const d = desc(r.key); return d && d.option && addedKeys.has(d.parent) ? d : null; };
@@ -759,7 +802,7 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
         }
       }
     }
-    if (!model.sealRows.length && !added.length && !renames.length) {
+    if (!model.sealRows.length && !added.length && !renames.length && !extraAdds.length) {
       // Honest, and clearable: the merchant is fiscal, so the server will demand the attestation even
       // though this particular edit moves no price.
       body.append(el('p', 'seachg', 'Esta edición no cambia ningún precio, pero afecta el documento fiscal.'));
@@ -776,7 +819,7 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
       const a = products.length;
       const prices = n === 1 ? 'este cambio de precio' : `estos ${n} cambios de precio`;
       const adds = (a === 1 ? '1 producto nuevo' : `${a} productos nuevos`) + (optionCount ? ` y sus ${optionCount} opciones` : '');
-      t.append(renames.length ? ' esta edición en la factura fiscal.' : a === 0
+      t.append(renames.length || extraAdds.length ? ' esta edición en la factura fiscal.' : a === 0
         ? (n === 1 ? ' este cambio de precio en la factura fiscal.' : (n === 0 ? ' esta edición en la factura fiscal.' : ` estos ${n} cambios de precio en la factura fiscal.`))
         : (n === 0 ? ` ${adds} con sus precios en la factura fiscal.` : ` ${prices} y ${adds} en la factura fiscal.`));
       return t;
