@@ -23,7 +23,7 @@ let pass = 0; const fails = [];
 const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓ ${L}`); } catch (e) { fails.push(L); console.log(`  ✗ ${L}: ${String((e && e.message) || e).split('\n')[0]}`); } };
 const I = () => require('./intake');
 const T0 = 1_000_000;
-const OID = 'tb_intake_1';
+const OID = 'sdk_261112-101500-ABCDEFGH';   // the SDK order-id namespace (B1 refuses any other id)
 const RID = 'tb_rest';
 const PHONE = '+504 9999-0000';
 const ATT = 'att_intake_cell_0001';
@@ -85,6 +85,15 @@ const AUTH = (w, r) => I().authorize(r, w.deps);
     }
   });
 
+  await cell('SDK-D4-NAMESPACE-B1', async (L) => {
+    // advisor ruling (gate 0 replaced): placeSdkOrder admits ONLY the reserved SDK namespace — any other id ⇒ 400
+    const w = await world();
+    const BAD = { status: 400, body: { error: 'order_id_namespace' } };
+    for (const id of ['XPZ261112-1015-ABCDEFGH', 'tb_intake_1', 'sdk_', 'sdk_261112-101500-abcdefgh', 'sdk_261112-101500-ABCDEFGI', 'SDK_261112-101500-ABCDEFGH', 'sdk_261112-1015-ABCDEFGH', 'xsdk_261112-101500-ABCDEFGH'])
+      assert.deepStrictEqual((await AUTH(w, req({ authorization: 'Bearer idt_A' }, baseBody({ order_id: id })))).refuse, BAD, `${L}: ${id} ⇒ 400 order_id_namespace`);
+    assert.ok((await AUTH(w, req({ authorization: 'Bearer idt_A' }, baseBody()))).ok, `${L}: a namespaced id is admitted`);
+  });
+
   await cell('SDK-D4-DEPLOYMENT-FORCED', async (L) => {
     const w = await world();
     for (const dep of [undefined, 'forms', 'orders-app', 'whatever']) {
@@ -106,7 +115,7 @@ const AUTH = (w, r) => I().authorize(r, w.deps);
       ['a malformed ticket', req({ 'x-sherpa-order-ticket': 'not-a-ticket' }, baseBody())],
       ['another phone', req({ 'x-sherpa-order-ticket': ticket }, baseBody({ customer_phone: '+504 9999-0001' }))],
       ['another cart', req({ 'x-sherpa-order-ticket': ticket }, baseBody({ items: [{ id: 'tb_pizza', name: 'Pizza', qty: 2, price: 100 }], items_text: '2x Pizza' }))],
-      ['another order id', req({ 'x-sherpa-order-ticket': ticket }, baseBody({ order_id: 'tb_intake_2' }))],
+      ['another order id', req({ 'x-sherpa-order-ticket': ticket }, baseBody({ order_id: 'sdk_261112-101500-ABCDEFGJ' }))],
       ['another restaurant', req({ 'x-sherpa-order-ticket': ticket }, baseBody({ restaurant_id: 'tb_other' }))],
     ]) assert.deepStrictEqual((await AUTH(w, r)).refuse, bad, `${L}: ${label} ⇒ 401 guest_ticket_invalid`);
     // CONTRACT-Δ C2: a header and a body ticket must be EQUAL, else 401 guest_auth_required
