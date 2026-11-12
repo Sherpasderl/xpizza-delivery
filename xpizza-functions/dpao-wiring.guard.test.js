@@ -10,7 +10,7 @@ const { BASE, HUNKS, FILES, unapplyDpaoModule } = require('./tools/dpao-module-i
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['delivery/delivery-wire.js', 'index.js'], 'the owned files');
 for (const f of FILES) {
-  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+  const src = require('./tools/d4-intake-inverse').unapplyD4Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));   // D4: the newer layer innermost
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyDpaoModule(f, src), b, `🔴 ${f} minus the app-only hunks is not ${BASE}:${f}`);

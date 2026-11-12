@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => require('./tools/dpao-module-inverse').unapplyDpaoModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));
+const read = (f) => require('./tools/dpao-module-inverse').unapplyDpaoModule(f, require('./tools/d4-intake-inverse').unapplyD4Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8')));
 const peelTip = (f, s) => (f === 'index.js' ? require('./tools/tippref-inverse').unapplyTipprefIndex(s) : s);   /* DRYRUN R-WIRE (2e asm5): tip C's tippref layer is newer than this pin's base — peeled first */
 const src = read('index.js');
 const STAGE = 'RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); }';
