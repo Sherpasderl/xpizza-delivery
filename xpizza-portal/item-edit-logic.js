@@ -11,7 +11,7 @@
 // hold (the merchant may save the rest, then retry or remove it).
 import {
   draftSource, choiceGroup, editItem, itemNameProblem, itemDescProblem, itemCategoryProblem, tidyItemName, parsePrice,
-  draftPhotos, ITEM_NAME_MAX, ITEM_DESC_MAX, extrasBaseline, dishDenyExtras,
+  draftPhotos, ITEM_NAME_MAX, ITEM_DESC_MAX, extrasBaseline, dishDenyExtras, composeDish, commitDish,
 } from './editor.js';
 
 export const COPY = {
@@ -73,7 +73,9 @@ export function open(draft, key, reservedNames = null, opts = {}) {
   const reserved = Array.isArray(reservedNames) ? new Set(reservedNames.map(String)) : null;
   return { id: ++seq, draft, key, group: !!g, base, work: JSON.parse(JSON.stringify({ ...base, photo: base.photo === undefined ? null : base.photo })),
     photoTouched: false, upload: null, closed: false, reserved, same: null, serverError: null,
-    extrasAuthoring: !!(opts && opts.extrasAuthoring === true) };
+    extrasAuthoring: !!(opts && opts.extrasAuthoring === true),
+    // STRUCTURE S2 (§3.2): the Extras page's switch, and this copy's attach / detach ops IN CLICK ORDER (replayed as such)
+    extrasCatalog: !!(opts && opts.extrasCatalog === true), ops: [] };
 }
 
 // One field of the copy. A section change clears the subsection (moving INTO one with subsections asks for a choice: no preselect).
@@ -114,6 +116,18 @@ export function set(s, field, value) {
   return s;
 }
 
+// STRUCTURE S2 (§3.2, Codex S2 plan r2 #4) — attach / detach a group on THIS dish in the copy («Agregar grupo de extras» /
+// «Quitar de este producto»). The op is recorded in order, and the copy's checklist follows it exactly as the writer will: the
+// group's extras leave the exclusions (attach = all ticked; detach = the group is gone), so the composition never replays an untick
+// from before a reattach. Dark without the server's extrasCatalog switch.
+export function setGroupAttached(s, group, attached) {
+  if (!s || s.closed || !s.extrasCatalog || typeof group !== 'string') return s;
+  s.ops.push({ op: attached ? 'attach.item' : 'detach.item', group });
+  const inGroup = new Set((draftSource(s.draft).extras || []).filter((x) => x && x.display && x.display.cat === group).map((x) => x.key));
+  s.work.denyExtras = s.work.denyExtras.filter((k) => !inGroup.has(k));
+  return s;
+}
+
 const catChanged = (s) => s.work.cat !== s.base.cat || s.work.subcat !== s.base.subcat;
 // The fields the merchant changed, in drawer order (the change marks).
 function changed(s) {
@@ -129,6 +143,7 @@ function changed(s) {
   const was = new Set(b.denyExtras);
   if (w.denyExtras.length !== was.size || w.denyExtras.some((k) => !was.has(k))) out.push('denyExtras');
   if (w.extrasNone !== b.extrasNone) out.push('extrasNone');
+  if (s.ops.length) out.push('ops');
   return out;
 }
 
@@ -136,25 +151,20 @@ function changed(s) {
 // copy's move — recomputed on every read (the draft is mutable: no memo by object identity). null: the evaluator is absent.
 // ONE prospect (Codex build r1 #4): the draft with this copy's section, checklist and «Sin extras» applied to the dish and its options
 // — the cards, the move consequences and the reach all read it, so they never disagree.
-function prospectSource(draft, s) {
-  const after = JSON.parse(JSON.stringify(draftSource(draft)));
-  const g = choiceGroup(draft, s.key);
-  const members = new Set([s.key, ...(g ? g.options.map((o) => o.key) : [])]);
-  for (const r of after.items || []) {
-    if (!r || !members.has(r.key) || !r.display) continue;
-    if (catChanged(s)) { r.display.cat = s.work.cat; if (s.work.subcat == null) delete r.display.subcat; else r.display.subcat = s.work.subcat; }
-    if (s.work.extrasNone) r.display.extras_policy = 'none'; else delete r.display.extras_policy;
-  }
-  const expo = after.structure && after.structure.exposure;
-  if (expo && typeof expo === 'object') {
-    if (!expo.item_overrides || typeof expo.item_overrides !== 'object') expo.item_overrides = {};
-    const io = expo.item_overrides;
-    if (s.work.denyExtras.length) io[s.key] = { ...(io[s.key] || {}), deny_extras: s.work.denyExtras.slice() };
-    else if (io[s.key]) { delete io[s.key].deny_extras; if (!Object.keys(io[s.key]).length) delete io[s.key]; }
-  }
-  return after;
+// STRUCTURE S2 (§3.2): the prospect IS the drawer's composition (editor.js composeDish) in preview mode — the same function
+// «Guardar» commits, so the preview and the commit never disagree. null when the copy cannot compose (nothing is guessed).
+function structuralEdit(s) {
+  const ch = changed(s), w = s.work, e = {};
+  if (ch.includes('cat') || ch.includes('subcat')) { e.cat = w.cat; e.subcat = w.subcat; }
+  if (ch.includes('denyExtras')) e.denyExtras = w.denyExtras.slice();
+  if (ch.includes('extrasNone')) e.extrasPolicy = w.extrasNone ? 'none' : null;
+  return e;
 }
-const prospectBaseline = (s) => extrasBaseline(prospectSource(s.draft, s), s.key, null);
+function prospectSource(draft, s) {
+  const r = composeDish(draft, s.key, structuralEdit(s), s.ops, { extrasAuthoring: s.extrasAuthoring, extrasCatalog: s.extrasCatalog, strict: false });
+  return r.ok ? r.source : null;
+}
+const prospectBaseline = (s) => { const p = prospectSource(s.draft, s); return p ? extrasBaseline(p, s.key, null) : null; };
 // «en N productos»: the dishes (not options) whose own baseline offers the group — every dish's exclusions and «Sin extras»
 // set aside, legacy rules kept; one clone + one projection per read
 function extrasGroupReach(src0) {
@@ -179,7 +189,7 @@ function extrasCards(draft, s) {
   // Codex build r1 #8: the evaluator missing is SAID (the block stays, «No pudimos cargar los extras.»), never a silent absence
   if (!b) return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: true };
   let used;
-  try { used = extrasGroupReach(prospectSource(draft, s)); } catch (_) { return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: true }; }
+  try { const p = prospectSource(draft, s); if (!p) throw new Error('no prospect'); used = extrasGroupReach(p); } catch (_) { return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: true }; }
   const deny = new Set(w.denyExtras);
   const byKey = new Map((draftSource(draft).extras || []).map((x) => [x && x.key, x]));
   const cards = b.groups.map((g) => {
@@ -203,6 +213,7 @@ function extrasChange(draft, s) {
   const src = draftSource(draft);
   // STRUCTURE S1 (Codex build r1 #4): the move's consequences come from THE prospect — section, checklist and «Sin extras» of this copy
   const after = prospectSource(draft, s);
+  if (!after) return null;
   const g = choiceGroup(draft, s.key);
   const members = [s.key, ...(g ? g.options.map((o) => o.key) : [])];
   try {
@@ -287,7 +298,7 @@ export function view(draft, s) {
   else if (se) title = seTitle;
   else if (consequenceGap) title = COPY.save.otherCat;
   const extras = extrasCards(draft, s);
-  const extrasGap = (ch.includes('denyExtras') || ch.includes('extrasNone')) && extras.gap;
+  const extrasGap = (ch.includes('denyExtras') || ch.includes('extrasNone') || ch.includes('ops')) && extras.gap;
   if (!title && extrasGap) title = COPY.save.none;
   const blocked = !ch.length || nameP || descP || catP || errors.price || badOption || badExtra || uploading || !!se || consequenceGap || extrasGap;
   return {
@@ -318,7 +329,8 @@ export function save(draft, s) {
   // and «Sin extras» as the server's field; absent = untouched
   if (ch.includes('denyExtras')) e.denyExtras = w.denyExtras.slice();
   if (ch.includes('extrasNone')) e.extrasPolicy = w.extrasNone ? 'none' : null;
-  if (!editItem(draft, s.key, e, { reserved: s.reserved, extrasAuthoring: s.extrasAuthoring })) return { ok: false, error: 'invalid' };
+  // STRUCTURE S2 (§3.2): ONE composition — «Sin extras» off, the move, the copy's ops, then the rest — swapped in once
+  if (!commitDish(draft, s.key, e, s.ops, { reserved: s.reserved, extrasAuthoring: s.extrasAuthoring, extrasCatalog: s.extrasCatalog }).ok) return { ok: false, error: 'invalid' };
   s.closed = true;
   return { ok: true };
 }

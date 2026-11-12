@@ -1910,7 +1910,9 @@ function saveEdit() {
   if (!r.ok) { syncEdit(); return; }
   editSess = null; editUpload = null; editRefs = null;
   closeDrawer();
-  paint(); refreshBar();
+  // STRUCTURE S2 (§3.2): «Guardar» swaps in the composed document (the writer returns a new one), so the list is re-derived from
+  // the draft — never painted from row objects the swap replaced
+  repaintFromDraft();
 }
 
 // ── A PUBLISHED group's choices, price-only (advisor ruling on portal A) ──────────────────────────────────────────────

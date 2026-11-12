@@ -395,11 +395,15 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // STRUCTURE S1 (PLAN-portal-structure-S1-ui r3) — a dish's extras checklist + «Sin extras» ride editItem (denyExtras /
   // extrasPolicy, only with the server's extras switch); the read-only extrasBaseline (the checklist's universe, THE ONE rule),
   // dishDenyExtras and pendingDishExtras (in pendingCount). No new mutator.
+  // STRUCTURE S2 (PLAN-portal-structure-S2-ui r3, APPROVED 11-11) — the Extras page writes ONLY through 5f's writer (the byte copy
+  // exposure-transitions.js): applyExposureOps (an ordered op list, all or nothing, with the server's extrasCatalog switch) and the
+  // drawer's ONE composition, composeDish (pure; the preview) / commitDish (strict; «Guardar»); the read-only pendingStructure (in
+  // pendingCount) and attachRefusal (the writer's own dry run for X3b / category mode). No key, id or identity stamp is written.
   assert.deepStrictEqual(exported, [
-    'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'canEditDraft', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
-    'commit', 'commitTo', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
+    'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'applyExposureOps', 'attachRefusal', 'canEditDraft', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
+    'commit', 'commitDish', 'commitTo', 'composeDish', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
     'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'optionGroups', 'optionParentId',
-    'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRenames', 'pendingTexts',
+    'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRenames', 'pendingStructure', 'pendingTexts',
     'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
     'setChoiceRecommended', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
     'tidyItemName',
@@ -408,6 +412,12 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // ruling A: setPhoto asks canEditContent — owned-for-editing (canEditDraft) AND no section name waiting (local or saved)
   assert.ok(/if \(!canEditContent\(draft\)\) return draft;/.test(setPhotoBody), 'setPhoto refuses when the draft is not owned for editing, or a name waits');
   assert.ok(/const canEditContent = \(draft\) => canEditDraft\(draft\) && pendingRenames\(draft\)\.length === 0 && draft\.held\(\) !== 'names';/.test(editor), 'canEditContent still includes canEditDraft');
+  // STRUCTURE S2: both S2 writers ask the same boundary first (the composition's strict mode is the one «Guardar» uses)
+  const aeoBody = editor.slice(editor.indexOf('export function applyExposureOps('), editor.indexOf('export function applyExposureOps(') + 400);
+  assert.ok(/if \(!canEditContent\(draft\)\) return \{ ok: false, code: 'not_editable' \};/.test(aeoBody), 'applyExposureOps refuses when the draft is not owned for editing');
+  const cdBody = editor.slice(editor.indexOf('export function composeDish('), editor.indexOf('export function composeDish(') + 400);
+  assert.ok(/if \(strict && !canEditContent\(draft\)\) return \{ ok: false, code: 'not_editable' \};/.test(cdBody), 'the strict composition refuses when the draft is not owned for editing');
+  assert.ok(/export function commitDish\([^)]*\) \{\n  const r = composeDish\(draft, key, edit, ops, \{ \.\.\.opts, strict: true \}\);/.test(editor), 'commitDish is the STRICT composition');
   // commit and discard are OPPOSITE operations on the same draft, and confusing them reverted a
   // published price. Both must exist, and the publish path must use commit.
   assert.ok(/export function commit\(/.test(editor) && /export function discard\(/.test(editor), 'both baseline operations exist');
@@ -1823,9 +1833,41 @@ test('🔴 the evidence has ONE home — nothing renders from the pre-mint local
 });
 
 
-test('🔴 RULING A: no portal module names deleted_ids — removal claims are server-owned; the portal adds only', () => {
-  const hits = JS.filter((f) => /deleted_?ids/i.test(codeOf(f)));
-  assert.deepStrictEqual(hits, [], 'a portal module that names the claim could author one');
-  assert.ok(/deleted_?ids/i.test("x.deleted_ids = []") && /deleted_?ids/i.test('deletedIds'), 'non-vacuity: the detector fires on planted code');
+// 🔴 RULING A — narrowed at STRUCTURE S2 (advisor ruling 2026-11-11; D4c-grill/review-portal/structure-s2/LEDGER.md R-A). Its intent
+// stands: the portal never INVENTS a removal claim. Before S2 no portal module could name the claim at all; S2's Extras page removes
+// published extras, so (1) the server writer's byte copy (exposure-transitions.js — the sync guard owns its bytes) is exempt; (2) the
+// ONLY portal code that may name the claim is ONE editor function, mergeDeletionClaim (the §3.4 merge of the writer's removal
+// output, bound to the served baseline); (3) once it exists, every save carries the baseline: api.js editCatalog sends
+// deleted_ids_loaded_base and every app.js editCatalog( call passes loadedBase. The request fields the server defines
+// (deleted_ids_loaded_base / deleted_ids_reviewed) are not the claim.
+const CLAIM = /deleted_ids(?!_loaded_base|_reviewed)|deletedIds/i;
+const CLAIM_FN = 'export function mergeDeletionClaim(';
+const WRITER_COPY = 'exposure-transitions.js';
+const outsideClaimFn = (f, code) => {
+  if (f !== 'editor.js' || !code.includes(CLAIM_FN)) return code;
+  const i = code.indexOf(CLAIM_FN), j = code.indexOf('\n}\n', i);
+  return code.slice(0, i) + code.slice(j < 0 ? code.length : j + 3);
+};
+const claimHits = (read) => JS.filter((f) => f !== WRITER_COPY && CLAIM.test(outsideClaimFn(f, read(f))));
+const saveCarriesBase = (read) => {
+  if (!read('editor.js').includes(CLAIM_FN)) return true;
+  const api = read('api.js'); const i = api.indexOf('export async function editCatalog(');
+  if (i < 0 || !api.slice(i, api.indexOf('\n}\n', i)).includes('deleted_ids_loaded_base')) return false;
+  const app = read('app.js'); const sites = [...app.matchAll(/editCatalog\(\{/g)].map((m) => app.slice(m.index, m.index + 400));
+  return sites.length > 0 && sites.every((w) => /\bloadedBase\b/.test(w));
+};
+test('🔴 RULING A (narrowed at S2): only mergeDeletionClaim may name the removal claim; every save then carries its baseline', () => {
+  assert.deepStrictEqual(claimHits(codeOf), [], 'a portal module outside mergeDeletionClaim names the claim');
+  assert.ok(codeOf('editor.js').split(CLAIM_FN).length <= 2, 'mergeDeletionClaim is defined at most once');
+  assert.ok(saveCarriesBase(codeOf), 'a claim is merged, so every save carries deleted_ids_loaded_base');
+  // the exemption is for a VERIFIED copy: byte-identical to the server's writer (the sync guard's rule, restated here)
+  assert.equal(readFileSync(join(DIR, WRITER_COPY), 'utf8'), readFileSync(join(DIR, '..', 'xpizza-functions', 'catalog', WRITER_COPY), 'utf8'), 'the exempt copy is the server writer, byte for byte');
+  // non-vacuity — each planted defect turns the rule red
+  const planted = (f, extra) => (g) => (g === f ? codeOf(g) + extra : codeOf(g));
+  assert.deepStrictEqual(claimHits(planted('app.js', '\nfunction sneaky(s) { s.deleted_ids = []; }\n')), ['app.js'], 'non-vacuity: a claim named in app.js');
+  assert.deepStrictEqual(claimHits(planted('editor.js', '\nexport function other(r) { return r.deletedIds; }\n')), ['editor.js'], 'non-vacuity: a SECOND editor function naming the claim');
+  assert.deepStrictEqual(claimHits(planted('editor.js', '\nexport function mergeDeletionClaim(d, ids) {\n  d.state.deleted_ids = ids;\n}\n')), [], 'the one named function may');
+  assert.equal(saveCarriesBase(planted('editor.js', '\nexport function mergeDeletionClaim(d, ids) {\n  d.state.deleted_ids = ids;\n}\n')), false, 'non-vacuity: a merged claim without the baseline on the save');
+  assert.equal(CLAIM.test('body.deleted_ids_loaded_base'), false, 'the baseline field is not the claim');
   assert.ok(JS.length >= 8, `the portal modules were actually read (${JS.length})`);
 });

@@ -19,6 +19,7 @@ import { PP_FOLD } from './pp-fold.mjs';
 import { S4_BASE, S4_FOLD } from './s4-fold.mjs';
 import { UNSAVED_BASE, UNSAVED_FOLD } from './unsaved-fold.mjs';
 import { S1_BASE, S1_FOLD } from './s1-fold.mjs';
+import { S2_BASE, S2_FOLD } from './s2-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
@@ -27,7 +28,18 @@ const BASE = '613f7e08';
 // layer itself on the file on disk (an edit outside or inside one of its hunks fails).
 // STRUCTURE S1 (PLAN-portal-structure-S1-ui r3) is the NEWEST layer above UNSAVED: its named hunks are folded out at the very
 // lowest read, so UNSAVED and every older pin judge exactly what they judged before; the S1 test pins the layer itself on disk.
-const fileRead = (f) => readFileSync(join(DIR, f), 'utf8');
+// STRUCTURE S2 (PLAN-portal-structure-S2-ui r3) is the NEWEST layer of all, above S1: folded out at the very lowest read, so S1,
+// UNSAVED and every older pin judge exactly what they judged before; the S2 test pins the layer itself on disk.
+const portalOnDisk = (f) => readFileSync(join(DIR, f), 'utf8');
+function withoutS2(f, src) {
+  let out = src;
+  for (const [now, was] of S2_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `S2 hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const fileRead = (f) => withoutS2(f, portalOnDisk(f));
 function withoutS1(f, src) {
   let out = src;
   for (const [now, was] of S1_FOLD[f] || []) {
@@ -372,6 +384,18 @@ test('STRUCTURE S1: app.js / editor.js / item-edit-logic.js gain exactly the nam
   const inside = S1_FOLD['editor.js'].map(([now]) => now).find((t) => t.includes('export function extrasBaseline('));
   assert.ok(inside, 'premise: the baseline is one of the hunks');
   assert.throws(() => withoutS1('editor.js', fileRead('editor.js').replace(inside, inside.replace('legacy rules still applied', 'legacy rules still appliedX'))), 'an edit inside a hunk breaks it');
+});
+
+test('STRUCTURE S2: app.js / editor.js / item-edit-logic.js gain exactly the named hunks — folding them out gives S2_BASE byte-for-byte', () => {
+  for (const f of Object.keys(S2_FOLD)) {
+    const was = execFileSync('git', ['show', `${S2_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.notEqual(withoutS2(f, portalOnDisk(f)), portalOnDisk(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(withoutS2(f, portalOnDisk(f)), was, `${f} minus the S2 hunks ≠ ${S2_BASE}`);
+    assert.notEqual(withoutS2(f, portalOnDisk(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+  }
+  const inside = S2_FOLD['editor.js'].map(([now]) => now).find((t) => t.includes('export function composeDish('));
+  assert.ok(inside, 'premise: the composition is one of the hunks');
+  assert.throws(() => withoutS2('editor.js', portalOnDisk('editor.js').replace(inside, inside.replace('before any exposure op', 'before any exposure opX'))), 'an edit inside a hunk breaks it');
 });
 
 test('UNSAVED EDITS: app.js / item-edit-logic.js gain exactly the named hunks — folding them out gives UNSAVED_BASE byte-for-byte', () => {

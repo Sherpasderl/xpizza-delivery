@@ -32,6 +32,7 @@
   "editor.js",
   "editor.test.mjs",
   "equipos.js",
+  "exposure-transitions.js",
   "extras-eligibility.js",
   "firebase.js",
   "fonts/OFL.txt",
@@ -74,6 +75,7 @@
   "review.js",
   "review.test.mjs",
   "s1-fold.mjs",
+  "s2-fold.mjs",
   "s4-fold.mjs",
   "shell-dom.test.mjs",
   "shell-wait-writes.test.mjs",
@@ -82,6 +84,7 @@
   "shell.test.mjs",
   "sherpa-client.js",
   "structure-s1.test.mjs",
+  "structure-s2.test.mjs",
   "styles.css",
   "team-logic.js",
   "team.js",
@@ -128,8 +131,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "877712302c677225d6ed50eb4359f20cef740c4538a53a08515e1752acc0f486",
-   "bytes": 12607
+   "sha256": "4611b286ed1ca64cdb2239b50d6d4ef0a262385bdfcfdcf63d3641cca7b65d1a",
+   "bytes": 12780
   },
   "netlify.toml": {
    "sha256": "6398e8dec6883e51292f9754d59d4eb97a378ac957b9deaffd5a1970fc79b520",

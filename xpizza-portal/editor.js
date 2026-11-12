@@ -134,6 +134,9 @@ export function draftSource(draft) {
 
 // A row's identity on the screen: its key once the server allocated one, its temporary reference until then.
 export const rowId = (row) => (row && typeof row.key === 'string' ? row.key : (row && typeof row.ref === 'string' ? row.ref : undefined));
+const rowMatches = (r, id) => (id && typeof id === 'object'
+  ? (typeof id.key === 'string' ? r.key === id.key : (typeof id.ref === 'string' && typeof r.key !== 'string' && r.ref === id.ref))
+  : r.key === id);
 const isTmp = (row) => !!(row && typeof row.ref === 'string' && row.ref.startsWith('tmp:') && !('key' in row));
 
 const rowsOf = (src, surface) => (surface === 'item'
@@ -144,7 +147,7 @@ function setPrice(draft, surface, key, raw) {
   // THE BOUNDARY. A mutation arriving while the draft is not owned for editing — from a detached
   // listener, a retained reference, a stray dispatch — is refused here, whatever the DOM looks like.
   if (!canEditContent(draft)) return draft;
-  const row = rowsOf(draft.state, surface).find((r) => r && r.key === key);
+  const row = rowsOf(draft.state, surface).find((r) => r && rowMatches(r, key));
   // An unknown key is a NO-OP, never a new row. Creating one here would be an accidental back door to
   // "add item", which writes a pricing key and belongs to 2b-2c.
   if (!row) return draft;
@@ -162,7 +165,10 @@ function setPrice(draft, surface, key, raw) {
 }
 
 export const setItemPrice = (draft, key, raw) => setPrice(draft, 'item', key, raw);
-export const setExtraPrice = (draft, key, raw) => setPrice(draft, 'extra', key, raw);
+// STRUCTURE S2 (PLAN-portal-structure-S2-ui r3 §3.3): an extra by its key (a string, S1's callers, or { key }) OR — a new one the
+// server has not allocated yet — by { ref }, which matches ONLY a keyless row (the writer's own predicate, exposure-transitions.js
+// extra.remove); a new row never gets a key, id or stamp here
+export const setExtraPrice = (draft, id, raw) => setPrice(draft, 'extra', id, raw);
 
 // ── 1D add-product A — ADDING A PLAIN PRODUCT ──────────────────────────────────────────────────────────────────
 // A new row: the temporary reference the caller minted, the section it goes in, and nothing the server owns (no
@@ -326,7 +332,8 @@ function foldNewGroups(draft, entries, saved) {
 // STRUCTURE S1 — and so is a dish's extras checklist or «Sin extras» (Codex S1 plan r1 #1): a SAVED one is pending work after the
 // drawer closed, so the reload / branch-switch / self-update guard (portalReloadFacts) still holds it.
 export const pendingCount = (draft, savedAdditions) => pendingChanges(draft, savedAdditions).length + pendingPhotos(draft).length
-  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.sentences, 0);
+  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.sentences, 0)
+  + pendingStructure(draft).length;
 
 // ── DISH PHOTOS B (PLAN-dish-photos §2.1 / §2.2) — THE DRAFT PHOTO MAP ────────────────────────────────────────────────
 // `source.photos` = {[itemKey]: {state:'pid', pid} | {state:'removed'}}; an absent key is LEGACY. It is part of the document
@@ -784,6 +791,17 @@ export function itemCategoryProblem(draft, key, { cat, subcat = null } = {}) {
 // The whole drawer, once. `edit`: any of { name, desc, cat, subcat, price, optionPrices: {[optionKey]: raw}, photo,
 // extraPrices: {[extraKey]: raw} }; an absent field is unchanged. `reserved`: the served reservedNames (itemNameProblem).
 // Returns true when written, false when refused (and then NOTHING was written).
+// The section an edit moves a product to (a section change without a subsection clears it), and the move itself: the product
+// and every option move together. One rule for editItem and the drawer's composition (S2 §3.2).
+function resolveMove(d, e) {
+  const moving = own(e, 'cat') || own(e, 'subcat');
+  const cat = own(e, 'cat') ? e.cat : d.cat;
+  const subcat = own(e, 'subcat') ? (e.subcat == null || e.subcat === '' ? null : String(e.subcat)) : (own(e, 'cat') && String(e.cat) !== String(d.cat) ? null : (d.subcat == null ? null : d.subcat));
+  return { moving, cat, subcat };
+}
+function writeMove(members, cat, subcat) {
+  for (const r of members) { r.display.cat = cat; if (subcat == null) delete r.display.subcat; else r.display.subcat = subcat; }
+}
 export function editItem(draft, key, edit = {}, { reserved = null, extrasAuthoring = false } = {}) {
   if (!canEditContent(draft)) return false;
   const row = existingRow(draft.state, key);
@@ -795,9 +813,7 @@ export function editItem(draft, key, edit = {}, { reserved = null, extrasAuthori
   if (own(e, 'name') && itemNameProblem(draft, key, e.name, reserved) !== null) return false;
   const desc = own(e, 'desc') ? (typeof e.desc === 'string' ? e.desc : '') : undefined;
   if (desc !== undefined && itemDescProblem(draft, key, desc) !== null) return false;
-  const moving = own(e, 'cat') || own(e, 'subcat');
-  const cat = own(e, 'cat') ? e.cat : d.cat;
-  const subcat = own(e, 'subcat') ? (e.subcat == null || e.subcat === '' ? null : String(e.subcat)) : (own(e, 'cat') && String(e.cat) !== String(d.cat) ? null : (d.subcat == null ? null : d.subcat));
+  const { moving, cat, subcat } = resolveMove(d, e);
   if (moving && itemCategoryProblem(draft, key, { cat, subcat }) !== null) return false;
   const price = own(e, 'price') ? parsePrice(e.price) : undefined;
   if (price === null || (price !== undefined && opts.length)) return false;   // a group's price lives on its options
@@ -845,9 +861,7 @@ export function editItem(draft, key, edit = {}, { reserved = null, extrasAuthori
   // every field judged: write
   if (own(e, 'name')) { d.name = name; for (const o of opts) o.display.name = derivedName(name, o); }
   if (desc !== undefined) { if (desc.trim()) d.desc = desc; else delete d.desc; }
-  if (moving) {
-    for (const r of [row, ...opts]) { r.display.cat = cat; if (subcat == null) delete r.display.subcat; else r.display.subcat = subcat; }
-  }
+  if (moving) writeMove([row, ...opts], cat, subcat);
   if (price !== undefined) setRowPrice(row, price);
   for (const [o, p] of optPrices) setRowPrice(o, p);
   if (photo !== undefined) setPhoto(draft, key, photo);
@@ -938,4 +952,106 @@ export function pendingTexts(draft) {
     if (fields.length) out.push({ key: row.key, fields });
   }
   return out;
+}
+
+// ── STRUCTURE S2 — THE EXTRAS PAGE'S WRITES (PLAN-portal-structure-S2-ui r3, APPROVED 2026-11-11) ───────────────────────────
+// ONE writer: 5f's catalog/exposure-transitions.js, byte-copied to xpizza-portal/exposure-transitions.js (tools/sync-client.js) and
+// loaded as a classic script after extras-eligibility.js (the ExposureTransitions global). Nothing below edits exposure, the group
+// order or the extras rows by hand.
+const writer = () => globalThis.ExposureTransitions;
+const refusedBy = (err) => ({ ok: false, code: (err && err.code) || 'unknown_op', ...((err && err.detail) || {}) });
+// §3.1 — the one mutator: an ORDERED op list folded through the writer on ONE copy; any refusal leaves the draft untouched (no
+// half-applied list); success replaces the draft's document. Only with the server's switch (getEditableCatalog extrasCatalog).
+// The removal claim (§3.4, bound to the served baseline) lands with that step, after the advisor's ruling on portal-wiring
+// RULING A; until then nothing here reads the writer's removal output.
+export function applyExposureOps(draft, ops, { extrasCatalog = false } = {}) {
+  if (extrasCatalog !== true) return { ok: false, code: 'extras_catalog_off' };
+  if (!canEditContent(draft)) return { ok: false, code: 'not_editable' };
+  if (!writer() || typeof writer().apply !== 'function') return { ok: false, code: 'writer_unavailable' };
+  if (!Array.isArray(ops) || !ops.length) return { ok: false, code: 'unknown_op' };
+  let cur = draft.state;
+  try { for (const op of ops) cur = writer().apply(cur, op).source; }
+  catch (err) { return refusedBy(err); }
+  draft.state = cur;
+  return { ok: true };
+}
+// §3.2 — the drawer's ONE composition, for the preview (strict: false — what the copy WOULD save, a move not yet valid included)
+// and the commit (strict: true — every field judged by the editor's rules). Never writes `draft`:
+//   1. «Sin extras» OFF first (an attach needs a dish that offers extras);
+//   2. the prospective MOVE (section / subsection) — before any exposure op (Codex S2 plan r2 #4);
+//   3. the copy's attach / detach ops, in order, through the writer, on the moved copy;
+//   4. the rest (text, price, photo, the checklist, «Sin extras» ON) through editItem, the checklist judged against THAT prospect.
+// → { ok: true, source } | { ok: false, code, … }. (attach / detach never remove an extra.)
+export function composeDish(draft, key, edit = {}, ops = [], { reserved = null, extrasAuthoring = false, extrasCatalog = false, strict = true } = {}) {
+  if (strict && !canEditContent(draft)) return { ok: false, code: 'not_editable' };
+  if (!Array.isArray(ops) || ops.some((o) => !o || (o.op !== 'attach.item' && o.op !== 'detach.item'))) return { ok: false, code: 'unknown_op' };
+  if (ops.length && extrasCatalog !== true) return { ok: false, code: 'extras_catalog_off' };
+  if (ops.length && (!writer() || typeof writer().apply !== 'function')) return { ok: false, code: 'writer_unavailable' };
+  const row = existingRow(draft.state, key);
+  if (!row || !row.display) return { ok: false, code: 'unknown_item' };
+  const e = { ...(edit && typeof edit === 'object' ? edit : {}) };
+  // a scratch draft: the commit judges names against what was loaded; the preview has no rename to hold
+  const scratch = createDraft(clone(draft.state));
+  scratch.orig = clone(strict ? draft.orig : draft.state);
+  if (own(e, 'extrasPolicy') && e.extrasPolicy === null) {
+    if (!editItem(scratch, key, { extrasPolicy: null }, { extrasAuthoring })) return { ok: false, code: 'invalid', field: 'extrasPolicy' };
+    delete e.extrasPolicy;
+  }
+  const mv = resolveMove(row.display, e);
+  if (mv.moving) {
+    if (strict && itemCategoryProblem(draft, key, { cat: mv.cat, subcat: mv.subcat }) !== null) return { ok: false, code: 'invalid', field: 'cat' };
+    const sr = existingRow(scratch.state, key);
+    writeMove([sr, ...membersOf(scratch.state, sr)], mv.cat, mv.subcat);
+    delete e.cat; delete e.subcat;
+  }
+  if (ops.length) {
+    let cur = scratch.state;
+    try { for (const op of ops) cur = writer().apply(cur, { op: op.op, item: key, group: op.group }).source; }
+    catch (err) { return refusedBy(err); }
+    scratch.state = cur;
+  }
+  if (Object.keys(e).length && !editItem(scratch, key, e, { reserved, extrasAuthoring })) return { ok: false, code: 'invalid' };
+  return { ok: true, source: scratch.state };
+}
+// «Guardar» on the drawer: the strict composition, swapped in ONCE (all or nothing).
+export function commitDish(draft, key, edit, ops, opts = {}) {
+  const r = composeDish(draft, key, edit, ops, { ...opts, strict: true });
+  if (!r.ok) return r;
+  draft.state = r.source;
+  return { ok: true };
+}
+// §3.6 — the exposure and order work this draft holds against what it loaded: the group ORDER (the same groups, another order;
+// a new or removed group is its extras rows' pending work), each section's offered groups, each dish's own add / deny (its
+// checklist and «Sin extras» are S1's lines, never counted twice). → [{ kind: 'order' } | { kind: 'category', cat } |
+// { kind: 'dish', key }].
+export function pendingStructure(draft) {
+  const out = [];
+  const st = (src) => (src && src.structure) || {};
+  const a = st(draft.orig), b = st(draft.state);
+  const ga = Array.isArray(a.extra_categories) ? a.extra_categories : [], gb = Array.isArray(b.extra_categories) ? b.extra_categories : [];
+  if (ga.length === gb.length && ga.every((g) => gb.includes(g)) && ga.some((g, i) => g !== gb[i])) out.push({ kind: 'order' });
+  const xa = a.exposure || {}, xb = b.exposure || {};
+  const ca = xa.category_allow || {}, cb = xb.category_allow || {};
+  for (const c of [...new Set([...Object.keys(ca), ...Object.keys(cb)])].sort()) if (JSON.stringify(ca[c] || []) !== JSON.stringify(cb[c] || [])) out.push({ kind: 'category', cat: c });
+  const oa = xa.item_overrides || {}, ob = xb.item_overrides || {};
+  const own2 = (o) => { if (!o || typeof o !== 'object') return '{}'; const r = {}; for (const k of Object.keys(o).sort()) if (k !== 'deny_extras') r[k] = o[k]; return JSON.stringify(r); };
+  const keys = new Set([...Object.keys(oa), ...Object.keys(ob)]);
+  const docOrder = rowsOf(draft.state, 'item').map((r) => r && r.key);
+  for (const k of [...keys].sort((x, y) => docOrder.indexOf(x) - docOrder.indexOf(y))) if (own2(oa[k]) !== own2(ob[k])) out.push({ kind: 'dish', key: k });
+  return out;
+}
+// §2 item 5b — may a NEW group be offered there? Decided by the WRITER itself: a dry run of group.create with that destination on
+// a copy (attach.cat runs the option-override check on every launcher of the section; attach.item the «Sin extras» / deny-all
+// check). → null (allowed) | { code } | { code, reason: 'none' | 'deny_all' | 'option_override' | 'unsaved' } for the row's line.
+const PROBE_GROUP = '\u0000probe';
+export function attachRefusal(src, attach) {
+  if (!writer() || typeof writer().apply !== 'function') return { code: 'writer_unavailable' };
+  try { writer().apply(src, { op: 'group.create', group: PROBE_GROUP, extras: [{ ref: 'tmp:probe', name: 'probe', price: 1 }], attach }); return null; }
+  catch (err) {
+    const code = (err && err.code) || 'unknown_op', d = (err && err.detail) || {};
+    if (code === 'exposure_dish_no_extras') { const r = existingRow(src, d.item); return { code, reason: r && r.display && r.display.extras_policy === 'none' ? 'none' : 'deny_all' }; }
+    if (code === 'exposure_option_override') return { code, reason: 'option_override' };
+    if (code === 'unknown_item' && rowsOf(src, 'item').some((r) => r && isTmp(r) && r.ref === d.item)) return { code, reason: 'unsaved' };
+    return { code };
+  }
 }
