@@ -10,7 +10,7 @@ const { BASE, HUNKS, FILES, unapplyConfirmRetireModule } = require('./tools/conf
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['index.js'], 'the owned files');
 for (const f of FILES) {
-  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');   // the NEWEST layer: the file on disk
+  const src = require('./tools/zones-module-inverse').unapplyZonesModule(f, require('./tools/envlim-module-inverse').unapplyEnvlimModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')));   // train asm7 (2e): Envío (f13dc7de) landed after this lane — its two layers (envlim newest) are peeled first
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyConfirmRetireModule(f, src), b, `🔴 ${f} minus the confirmretire hunks is not ${BASE}:${f}`);

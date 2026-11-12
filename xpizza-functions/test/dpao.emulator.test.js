@@ -242,7 +242,7 @@ async function formRun(seedSnap) {
   assert.deepStrictEqual([cust.status, cust.json.error], [403, 'not_authorized'], 'a customer token is refused');
   const g = await post(app.getDeliveryPricing, {}, W);
   assert.deepStrictEqual([g.status, g.json.policy_version, g.json.branches.map((b) => b.rid)], [200, 2, ['la_musa', 'x_pizza']], `G2: every registry branch for the picker (${g.text.slice(0, 200)})`);
-  assert.deepStrictEqual(Object.keys(g.json.branches[0]).sort(), ['brand_id', 'brand_name', 'hub', 'location_name', 'rid'], 'G2: no other field (no PII)');
+  assert.deepStrictEqual(Object.keys(g.json.branches[0]).sort(), ['above_top', 'brand_id', 'brand_name', 'effective_km', 'hub', 'limit_editable', 'limit_invalid', 'location_name', 'max_km', 'rid'], 'G2: no other field (no PII) — + the envío limit row fields (r5 §3)');
   ok('C WRITER (real SDK): null-first first save; the server timestamp resolves inside the transaction; the order path reads the saved table for any restaurant; a gap-keyed history is reset; a customer is refused; G2 lists every branch');
 
   // ── D. PAID → MATERIALIZED (a FORM card order): the real paid callback + the tracking projection; the legacy capture path ──

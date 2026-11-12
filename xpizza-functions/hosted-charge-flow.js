@@ -40,7 +40,7 @@ async function retireUnissuedAttempt(db, attemptId, reason, now) {
  *   retireAttempt(id)  — retire a claimed-but-unissued attempt
  *   runGate()          — the confirmed-net gate (applyConfirmedNetGate, pre-bound by the caller)
  */
-async function resolveHostedAttemptAction({ acq, orderId, totalCents, releaseHold, retireAttempt, runGate, log = console }) {
+async function resolveHostedAttemptAction({ acq, orderId, totalCents, releaseHold, retireAttempt, runGate, log = console, dropOwnStamps }) {
   /* 🔴 THESE TWO RETURN BEFORE THE GATE IS EVEN CONSULTED, and that is the guarantee — not an
      accident of where the call happens to sit. A customer resuming from PixelPay is holding a checkout
      that was already minted at an already-agreed amount; re-deciding it against a price that moved
@@ -57,7 +57,7 @@ async function resolveHostedAttemptAction({ acq, orderId, totalCents, releaseHol
     try { log.log(`chargeOnlineOrder: reuse live hosted checkout ${orderId}-${acq.attempt_id}`); } catch (_) {}
     return { respond: { status: 200, body: { ok: true, order_id: orderId, attempt_id: acq.attempt_id, poll_token: acq.poll_token, checkout_url: acq.checkout_url, payment_status: 'pending' } } };
   }
-  if (acq.outcome !== 'claimed') {
+  if (acq.outcome === 'delivery_refused') { await releaseHold(); if (dropOwnStamps) await dropOwnStamps(); const r = acq.refusal; return { respond: { status: r.httpStatus, body: { error: r.refusal, ...(r.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId } } }; } if (acq.outcome !== 'claimed') {   // envío limit r5 §2.4: the acquire BACKSTOP (an order-state race) — owned hold only, own stamps removed; never the generic 503
     await releaseHold();                       // abandoned: no fresh attempt minted
     return { respond: { status: 503, body: { error: 'Could not start payment', detail: 'please retry', order_id: orderId } } };
   }

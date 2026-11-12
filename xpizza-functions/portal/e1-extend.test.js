@@ -54,7 +54,7 @@ const adminOf = (fake) => ({ ref: (p) => { const r = fake.ref(p); return { ...r,
 const world = () => { const fake = createFakeDb(seed()); const db = adminOf(fake); db.fake = fake; return db; };
 const deps = (db) => ({ db, verifyIdToken: async (tok) => ({ uid: tok }), now: () => NOW, log: { warn() {}, log() {} } });
 const get = (uid) => ({ method: 'GET', body: {}, get: (h) => (h === 'authorization' ? `Bearer ${uid}` : undefined) });
-const ROW_ADDED = ['lifecycle', 'profile', 'location', 'legacy', 'version', 'readiness'];
+const ROW_ADDED = ['lifecycle', 'profile', 'location', 'legacy', 'version', 'readiness', 'app_max_km', 'limit_invalid'];   // + the envío limit (r5 §5)
 const BRAND_ADDED = ['caps', 'activation', 'drafts'];
 const strip = (body) => ({ ...body, brands: body.brands.map((b) => Object.fromEntries(Object.entries(b).filter(([k]) => !BRAND_ADDED.includes(k)))),
   branches: body.branches.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !ROW_ADDED.includes(k)))) });

@@ -297,6 +297,17 @@
     "reason": "G2 admin picker: name/location/brand/hub only, no hours (advisor 2026-11-11)"
   },
   {
+    "file": "delivery/zones-lock.js",
+    "line_sha256": "a38b49279097e5410c61e1bfc0a71c913379a9795f24c8f9d60b04d87c5af9e3",
+    "occurrence": 1,
+    "rules": [
+      "R1"
+    ],
+    "line": 44,
+    "text": "else if (SCHED.isWithinGrace(s.hours, now, graceMin)) branches.push({ rid, location_name, reason: 'open' });",
+    "reason": "zones lock (owner D1): evaluates loadSchedule's validated hours with isWithinGrace; no other hours reading (advisor 2026-11-11)"
+  },
+  {
     "file": "deploy/check-seed-readiness.js",
     "line_sha256": "df4cf5d4b7f9187daa8165bb2ebf55b6c547787693d0cd1f51131b4680c4215f",
     "occurrence": 1,
