@@ -63,6 +63,7 @@
     "reorder-price-snapshot-reader.test.mjs",
     "reorder-whole-page.test.mjs",
     "s2-stash-cleanup.test.mjs",
+    "s3-served.test.mjs",
     "s5-baseline.golden.test.mjs",
     "s5-confirmation.test.mjs",
     "s5-live-status.test.mjs",
@@ -836,6 +837,7 @@
     "reorder-price-snapshot-reader.test.mjs",
     "reorder-whole-page.test.mjs",
     "s2-stash-cleanup.test.mjs",
+    "s3-served.test.mjs",
     "s5-baseline.golden.test.mjs",
     "s5-confirmation.test.mjs",
     "s5-live-status.test.mjs",
@@ -3130,6 +3132,7 @@
     }
    ],
    "lifts": [
+    "s3-served.test.mjs",
     "xpizza-functions/s2-wiring.guard.test.js"
    ]
   },
