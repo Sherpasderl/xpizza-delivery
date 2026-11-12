@@ -162,7 +162,8 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 220)}`;
     const judge = (src) => SG.judge({ rid: 'x_pizza', draft: src, draftRecords: draftOf(src), live: live.built, liveExtraRecords: live.extraRecords, addProduct: addProductOf('x_pizza'), compare: true });
     const settled = async (src) => { const { r, db } = await save('x_pizza', src); assert.strictEqual(r.status === 200 || r.status === 409, true, show(r)); return r.status === 200 ? db.state.source.data : null; };
     const okDraft = await settled(apply(XP, D2(plain)));
-    assert.deepStrictEqual(await judge(okDraft), { ok: true }, 'S3F-REQUEST: a non-reward D2 passes the request judgment');
+    let g; try { g = await judge(okDraft); } catch (e) { assert.fail(`S3F-REQUEST: a non-reward D2 must pass the request judgment (${e.code}: ${String(e.message).slice(0, 100)})`); }
+    assert.deepStrictEqual(g, { ok: true }, 'S3F-REQUEST: a non-reward D2 passes the request judgment');
     // a reward-dish D2, allocated the way the save would (the save itself refuses it): hand the request a draft that carries it
     const AP = require('./add-product'); const CC = require('./choice-compare');
     const rewardDraft = AP.allocateAdditions({ incoming: apply(XP, D2(reward)), stored: XP, activeItems: XP.items, keyMode: 'name', hwm: null, registryHasKey: () => false, authoring: true, prepareExisting: CC.prepareExistingGroups }).source;
