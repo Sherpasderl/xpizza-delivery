@@ -1803,7 +1803,10 @@ function productReviewCtx() {
   // server sends S2 fields only for an S2 op
   const structure = { nameOf: (k) => { const r = items.find((x) => x.key === k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },
     categoryName, sectionOf: (k) => { const r = items.find((x) => x.key === k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; } };
-  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extraName: (k) => extraNames.get(k) || null, structure };
+  // Codex S2 UI r1 P1-4: each extra's group, so a checklist key its group's detach drops folds into that «Estructura» row
+  const extraGroups = new Map((draftSource(state.draft).extras || []).filter((x) => x && typeof x.key === 'string' && x.display && x.display.cat != null).map((x) => [x.key, `${x.display.cat}`]));
+  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extraName: (k) => extraNames.get(k) || null,
+    extraGroup: (k) => extraGroups.get(k) || null, structure };
 }
 function productReviewOpts() {
   if (state.textEditEnabled !== true) return null;   // switch off: today's review rows exactly

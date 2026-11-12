@@ -52,10 +52,11 @@ const isExtrasConsequence = (c) => !!c && c.kind === 'extras' && typeof c.key ==
 // { field:'deny_extras', old:[keys], new:[keys] } and { field:'extras_policy', old, new } — read here as the product's sentences
 const DISH_EXTRAS = ['deny_extras', 'extras_policy'];
 const dishExtrasLines = (c, extraName) => {
-  const nm = (k) => { const n = typeof extraName === 'function' ? extraName(k) : null; return typeof n === 'string' && n ? n : String(k); };
+  // Codex S2 UI r1 P1-4: an extra is named, never shown by its raw key — an unnamed key is left out of the sentence
+  const nm = (k) => { const n = typeof extraName === 'function' ? extraName(k) : null; return typeof n === 'string' && n ? n : null; };
   if (c.field === 'extras_policy') return c.new === 'none' ? ['Sin extras'] : (c.old === 'none' ? ['Vuelve a ofrecer extras'] : []);
   const was = Array.isArray(c.old) ? c.old.map(String) : [], now = Array.isArray(c.new) ? c.new.map(String) : [];
-  const denied = now.filter((k) => !was.includes(k)), restored = was.filter((k) => !now.includes(k));
+  const denied = now.filter((k) => !was.includes(k) && nm(k)), restored = was.filter((k) => !now.includes(k) && nm(k));
   return [...(denied.length ? [`Sin ${denied.map(nm).join(', ')} (solo en la app Sherpa)`] : []), ...(restored.length ? [`Vuelve a ofrecer ${restored.map(nm).join(', ')}`] : [])];
 };
 const isProductLine = (c) => !!c && c.surface === 'item' && (TEXT_FIELDS.includes(c.field) || GATES.some(([f]) => f === c.field) || DISH_EXTRAS.includes(c.field));
@@ -157,12 +158,47 @@ function structureRowsOf(d, names = {}) {
   return rows;
 }
 
+// Codex S2 UI r1 P1-4 — a checklist key a dish stops denying BECAUSE of a structural change is that change's cleanup, already its
+// «Estructura» row: the extra is removed (diff.extras), or its group leaves the dish (an authored detach of the dish or its section, the
+// group gone from extra_categories, or the server's consequence: the dish no longer takes the group). It is never ALSO «Vuelve a ofrecer
+// {extra}» (it says the opposite) nor a product count; a line left with nothing to say is dropped. Any other restore is real and stays.
+function foldChecklistCleanup(lines, d, ctx) {
+  const xs = Array.isArray(d.extras) ? d.extras : [];
+  const removedKeys = new Set(xs.filter((x) => x && x.change === 'removed').map((x) => String(x.key)));
+  const groupOf = (k) => {
+    const g = ctx && typeof ctx.extraGroup === 'function' ? ctx.extraGroup(k) : null;
+    if (g != null) return String(g);
+    const x = xs.find((e) => e && String(e.key) === k); return x && x.group != null ? String(x.group) : null;
+  };
+  const parentOf = ctx && typeof ctx.optionParent === 'function' ? ctx.optionParent : () => null;
+  const sectionOf = ctx && ctx.structure && typeof ctx.structure.sectionOf === 'function' ? ctx.structure.sectionOf : () => ({ cat: null });
+  const lost = new Map((Array.isArray(d.consequences) ? d.consequences : []).filter(isExtrasConsequence).map((c) => [c.key, new Set(c.lost.map(String))]));
+  const detached = (Array.isArray(d.attachments) ? d.attachments : []).filter((a) => a && a.change === 'detached');
+  const ec = d.structure && d.structure.extra_categories;
+  const gone = new Set(ec && Array.isArray(ec.old) && Array.isArray(ec.new) ? ec.old.map(String).filter((g) => !ec.new.map(String).includes(g)) : []);
+  const leaves = (dish, g) => {
+    if (g == null) return false;
+    const head = parentOf(dish) || dish; const cat = (sectionOf(head) || {}).cat;
+    return gone.has(g) || (lost.get(head) || new Set()).has(g)
+      || detached.some((a) => String(a.group) === g && ((a.scope === 'item' && (a.target === head || a.target === dish)) || (a.scope === 'category' && cat != null && String(a.target) === String(cat))));
+  };
+  const out = [];
+  for (const c of lines) {
+    if (!(c && c.field === 'deny_extras' && Array.isArray(c.old))) { out.push(c); continue; }
+    const now = Array.isArray(c.new) ? c.new.map(String) : [];
+    const old = c.old.map(String).filter((k) => now.includes(k) || !(removedKeys.has(k) || leaves(c.key, groupOf(k))));
+    if (old.length === now.length && old.every((k) => now.includes(k))) continue;   // only cleanup: the structural row says it
+    out.push(old.length === c.old.length ? c : { ...c, old });
+  }
+  return out;
+}
+
 export function reviewModel(diff, ctx = {}) {
   const d = diff || {};
   // DISH PHOTOS B (§2.1) — the server's photo lines ({field:'photo', old, new} three-state) are their own group, «Fotos»;
   // arranged, never derived: every line the server sent is shown exactly once.
   const all = Array.isArray(d.changed) ? d.changed : [];
-  const productLines = all.filter((c) => !isPhotoLine(c) && isProductLine(c));
+  const productLines = foldChecklistCleanup(all.filter((c) => !isPhotoLine(c) && isProductLine(c)), d, ctx);
   const products = productsOf(productLines, ctx && ctx.optionParent, ctx && ctx.optionIndex, ctx && ctx.extraName);
   // STRUCTURE S2: an authored attach / detach is its «Estructura» row — the same group's consequence on that dish is not shown twice
   const authored = new Set((Array.isArray(d.attachments) ? d.attachments : []).filter((a) => a && a.scope === 'item').map((a) => `${a.target}\u0000${a.group}`));

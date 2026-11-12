@@ -968,11 +968,13 @@ process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 const S2_SERVER = { on: false };
 { const ps = req.resolve('./catalog/platform-structure'); const real = req('./catalog/platform-structure');
   req.cache[ps] = { id: ps, filename: ps, loaded: true, exports: { structureCapabilities: () => ({ ...real.structureCapabilities(), extrasCatalog: S2_SERVER.on }) } }; }
+// the published menu realSave saves against: the seed, unless a cell serves another one (built by the portal's own writer)
+const REAL_LIVE = { src: null };
 const realSave = (call) => (async () => {
   const { editCatalogCore } = req('./catalog/edit-catalog-handler');
   const { sourceToBuildInputs } = req('./catalog/source-store');
   const { buildCatalogV2 } = req('./catalog/form-menu-source');
-  const live = JSON.parse(JSON.stringify(SRC)), T0 = '1700000000.000000001', T1 = '1700000001.000000001';
+  const live = JSON.parse(JSON.stringify(REAL_LIVE.src || SRC)), T0 = '1700000000.000000001', T1 = '1700000001.000000001';
   const st = { data: JSON.parse(JSON.stringify(live)), updateTime: T0 };
   const doc = (path) => ({
     get: async () => (path.endsWith('/meta/source') ? { exists: true, data: () => JSON.parse(JSON.stringify(st.data)), updateTime: st.updateTime }
@@ -1921,4 +1923,30 @@ test('S2 Codex r1 P1-2 — the auth / restaurant boundary: A\u2019s half-typed i
     const sent = p.n('editCatalog');
     assert.ok(sent.every((c) => !JSON.stringify(c.body).includes('De A') && !JSON.stringify(c.body).includes('Grupo de A')), `${edge}: nothing of A\u2019s is ever sent`);
   }
+});
+
+test('S2 Codex r1 P1-4 — the portal’s review: detaching a group whose extra the dish had unticked says ONLY «Quitado · grupo Salsas» — no «Vuelve a ofrecer», no raw key', async () => {
+  // the published menu: dimsum_01 with one Salsas extra unticked — written by the portal's own drawer, not by hand
+  const p1 = await page({ read: XON });
+  await p1.signIn();
+  await p1.open('dimsum_01');
+  const cb = rowsOfCard(cardOf(p1, 'Salsas'))[1].querySelector('input[type=checkbox]');
+  cb.checked = false; cb.dispatchEvent(new p1.w.Event('change', { bubbles: true }));
+  p1.btn('Guardar').click(); await settle(10);
+  const live = p1.src();
+  const xk = live.structure.exposure.item_overrides.dimsum_01.deny_extras[0];
+  assert.ok(xk, 'premise: the live menu carries the dish’s untick');
+  REAL_LIVE.src = live; S2_SERVER.on = true;
+  try {
+    const p = await page({ read: () => editable({ source: JSON.parse(JSON.stringify(live)), extrasAuthoring: true, extrasCatalog: true }), on: { editCatalog: realSave } });
+    await p.signIn();
+    await p.open('dimsum_01');
+    quitar(cardOf(p, 'Salsas')).click(); await settle(10);
+    p.btn('Guardar').click(); await settle(10);
+    p.d.getElementById('review').click(); await settle(80);
+    const body = p.d.getElementById('mbody').textContent;
+    assert.ok(body.includes('grupo Salsas'), `premise: the review shows the detach (${body.slice(0, 200)})`);
+    assert.ok(!body.includes('Vuelve a ofrecer'), `no «Vuelve a ofrecer» beside the detach (${body.slice(0, 300)})`);
+    assert.ok(!body.includes(xk), 'never the raw key');
+  } finally { S2_SERVER.on = false; REAL_LIVE.src = null; }
 });

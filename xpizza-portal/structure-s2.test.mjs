@@ -318,6 +318,67 @@ test('Estructura — rendered as frame F: the FIRST group «Estructura N», one 
   } finally { globalThis.document = saved; }
 });
 
+// ── Codex S2 UI r1 P1-4 — a checklist key the dish drops BECAUSE of a structural change (the extra removed, its group detached) is that
+// change's cleanup: folded into its «Estructura» row, never ALSO «Vuelve a ofrecer …», never a raw key, never an extra count
+const fullCtx = (src) => ({ ...ctxOf(src),
+  extraName: (k) => { const x = src.extras.find((e) => e.key === k); return x && x.display ? x.display.name : null; },
+  extraGroup: (k) => { const x = src.extras.find((e) => e.key === k); return x && x.display ? x.display.cat : null; } });
+function untickedLive() {
+  const d0 = createDraft(seed('la_musa')); const s = drawer(d0, 'dimsum_01');
+  assert.ok(offered(draftSource(d0), 'dimsum_01').includes('Salsas'), 'premise: dimsum_01 offers Salsas');
+  const x = extrasOfGroup(draftSource(d0), 'Salsas')[0];
+  IE.set(s, 'extraOn', { key: x, on: false });
+  assert.deepEqual(IE.save(d0, s), { ok: true }, 'premise: the untick saved (the drawer writer)');
+  assert.deepEqual(denyOf(draftSource(d0), 'dimsum_01'), [x]);
+  return { live: clone(draftSource(d0)), x };
+}
+const modelText = (m) => JSON.stringify(m);
+for (const [what, ops] of [['the unticked extra removed', (x) => [{ op: 'extra.remove', key: x }]], ['its group detached from the dish', () => [{ op: 'detach.item', item: 'dimsum_01', group: 'Salsas' }]]]) {
+  test(`P1-4 — ${what}: the dish’s checklist cleanup is folded into the «Estructura» row — no «Vuelve a ofrecer», no raw key, counted once`, async () => {
+    const { live, x } = untickedLive();
+    const d = createDraft(clone(live));
+    assert.equal(applyExposureOps(d, ops(x), ON).ok, true, 'premise: the op applies');
+    const diff = await realSaveDiff('la_musa', live, draftSource(d));
+    assert.ok((diff.changed || []).some((c) => c.key === 'dimsum_01' && c.field === 'deny_extras'), 'premise: the server diff carries the dish’s checklist cleanup');
+    // names from the live menu too: a removed extra is NAMED here, so only the structural fold (not the raw-key floor) can hide it
+    const ctx = fullCtx(draftSource(d)); const named = ctx.extraName;
+    ctx.extraName = (k) => named(k) || ((live.extras.find((e) => e.key === k) || {}).display || {}).name || null;
+    const m = reviewModel(diff, ctx);
+    const p = m.products.find((y) => y.key === 'dimsum_01');
+    const lines = p ? [...p.lines.map((l) => l.text || l), ...p.consequences].map(String) : [];
+    assert.ok(!lines.some((t) => /Vuelve a ofrecer/.test(t)), `${what}: no «Vuelve a ofrecer» (${JSON.stringify(lines)})`);
+    assert.ok(!modelText(m).includes(`Vuelve a ofrecer ${x}`), `${what}: never the raw key`);
+    assert.ok(m.structure.length >= 1, `${what}: the structural change is its «Estructura» row`);
+    assert.equal(m.total, m.structure.length + m.rows.length + m.products.reduce((n, q) => n + q.count, 0) + m.added.length + m.removed.length + m.renamed.length + m.photos.length + m.sections.length, `${what}: the total counts the rendered facts`);
+    assert.ok(!p || p.count === 0, `${what}: the cleanup adds no product count`);
+  });
+}
+
+test('P1-4 — the raw-key floor: a checklist key the caller cannot name is left out, never printed (the S2 fields absent from the diff)', async () => {
+  const { live, x } = untickedLive();
+  const d = createDraft(clone(live));
+  assert.equal(applyExposureOps(d, [{ op: 'extra.remove', key: x }], ON).ok, true);
+  const diff = await realSaveDiff('la_musa', live, draftSource(d));
+  const { extras: _s2, ...noS2 } = diff;   // without its S2 rows the fold cannot see the removal: only the floor stands
+  const m = reviewModel(noS2, fullCtx(draftSource(d)));
+  const p = m.products.find((y) => y.key === 'dimsum_01');
+  assert.ok(p, 'premise: the dish’s checklist line reached the model');
+  assert.ok(!JSON.stringify([...p.lines, ...p.consequences]).includes(x), 'the raw key is never in the dish’s sentences');
+});
+test('P1-4 — a REAL re-tick beside an S2 removal stays «Vuelve a ofrecer {extra}» (named): only a structural cleanup folds', async () => {
+  const { live, x } = untickedLive();
+  const d = createDraft(clone(live));
+  const s = drawer(d, 'dimsum_01'); IE.set(s, 'extraOn', { key: x, on: true });
+  assert.deepEqual(IE.save(d, s), { ok: true }, 'premise: the re-tick saved (the drawer writer)');
+  const other = extrasOfGroup(draftSource(d), 'Acompañamientos')[0];
+  assert.equal(applyExposureOps(d, [{ op: 'extra.remove', key: other }], ON).ok, true, 'premise: another group’s extra removed (an S2 op)');
+  const diff = await realSaveDiff('la_musa', live, draftSource(d));
+  const m = reviewModel(diff, fullCtx(draftSource(d)));
+  const p = m.products.find((y) => y.key === 'dimsum_01');
+  const name = draftSource(d).extras.find((e) => e.key === x).display.name;
+  assert.deepEqual(p && p.consequences, [`Vuelve a ofrecer ${name}`], 'the real restore is still said, by name');
+});
+
 // ── Codex S2 UI r1 P1-3 — the fiscal seal from the SERVER's `diff.fiscal` (MOCKUP frame F's seal): every new priced extra and every
 // changed price, named, EXACTLY once; the drawn sentence, rows and «Autorizo» line. x_pizza (the platform-factura brand) on 5f's REAL save.
 async function fiscalSave() {

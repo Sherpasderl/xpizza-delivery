@@ -51100,7 +51100,7 @@
   },
   {
    "id": "xpizza-portal/app.js#productReviewOpts#items#0",
-   "line": 1810,
+   "line": 1813,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -51110,7 +51110,7 @@
   },
   {
    "id": "xpizza-portal/app.js#renderAddDrawer>anon#items#0",
-   "line": 2430,
+   "line": 2433,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -51120,7 +51120,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#0",
-   "line": 2579,
+   "line": 2582,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -51130,7 +51130,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#1",
-   "line": 2614,
+   "line": 2617,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -51140,7 +51140,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#2",
-   "line": 2632,
+   "line": 2635,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -51150,7 +51150,7 @@
   },
   {
    "id": "xpizza-portal/app.js#productRefusal#items#0",
-   "line": 3186,
+   "line": 3189,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -51160,7 +51160,7 @@
   },
   {
    "id": "xpizza-portal/app.js#showOutcome>anon#items#0",
-   "line": 3323,
+   "line": 3326,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -51170,7 +51170,7 @@
   },
   {
    "id": "xpizza-portal/app.js#showOutcome>anon#items#1",
-   "line": 3342,
+   "line": 3345,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -51180,7 +51180,7 @@
   },
   {
    "id": "xpizza-portal/app.js#showOutcome>anon#items#2",
-   "line": 3347,
+   "line": 3350,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -51799,7 +51799,7 @@
   },
   {
    "id": "xpizza-portal/review.js#renderReview#total#0",
-   "line": 251,
+   "line": 287,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -51811,7 +51811,7 @@
   },
   {
    "id": "xpizza-portal/review.js#attestationModel#total#0",
-   "line": 582,
+   "line": 618,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -51823,7 +51823,7 @@
   },
   {
    "id": "xpizza-portal/review.js#serverAnswered#status#0",
-   "line": 1156,
+   "line": 1192,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -51836,7 +51836,7 @@
   },
   {
    "id": "xpizza-portal/review.js#serverAnswered#status#1",
-   "line": 1156,
+   "line": 1192,
    "kind": "member",
    "facts": [
     "STATUS",
