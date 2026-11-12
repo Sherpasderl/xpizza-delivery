@@ -50,4 +50,7 @@ function paidTextRefusal(rid, body, tables) {
   return body.items_text === derived ? null : MISMATCH;
 }
 
-module.exports = { paidTextRefusal };
+// prepareRedemption's FREE kitchen line: a redeemed affected extra is named by its server label (null → today's name)
+function freeLineLabel(tables, itemId) { const labels = MP.labelsOfTables(tables); return extraLabelRequired(labels, itemId) ? extraLabelOf(labels, itemId) : null; }
+
+module.exports = { paidTextRefusal, freeLineLabel };

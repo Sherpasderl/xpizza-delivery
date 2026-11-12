@@ -64,7 +64,7 @@ async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, t
   const nameMap = nameMapFrom(redeem);
   const freeItems = redemption.freeItems.map((fi) => ({
     item_id: fi.item_id, qty: fi.qty, price_cents: fi.price_cents,
-    name: nameMap[fi.item_id] || sanitizeName(fi.item_id, 80),
+    name: require('./catalog/paid-text').freeLineLabel(tables, fi.item_id) != null ? sanitizeName(require('./catalog/paid-text').freeLineLabel(tables, fi.item_id), 80) : (nameMap[fi.item_id] || sanitizeName(fi.item_id, 80)),
     ...(fi.cost_pts != null ? { cost_pts: fi.cost_pts } : {}),
   }));
 

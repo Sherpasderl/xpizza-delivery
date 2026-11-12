@@ -176,6 +176,11 @@ const HUNKS = Object.freeze([
   "was": "        const ek = key(e);\n"
  },
  {
+  "file": "rewards-redeem-intake.js",
+  "now": "    name: require('./catalog/paid-text').freeLineLabel(tables, fi.item_id) != null ? sanitizeName(require('./catalog/paid-text').freeLineLabel(tables, fi.item_id), 80) : (nameMap[fi.item_id] || sanitizeName(fi.item_id, 80)),\n",
+  "was": "    name: nameMap[fi.item_id] || sanitizeName(fi.item_id, 80),\n"
+ },
+ {
   "file": "tools/publish-version.js",
   "now": "    return { input: { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha, ...(built.key_mode == null ? {} : { key_mode: built.key_mode }), ...(built.frozen_keys == null ? {} : { frozen_keys: built.frozen_keys }), ...(built.frozen_extra_keys == null ? {} : { frozen_extra_keys: built.frozen_extra_keys }) }, expected };\n",
   "was": "    return { input: { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha, ...(built.key_mode == null ? {} : { key_mode: built.key_mode }), ...(built.frozen_keys == null ? {} : { frozen_keys: built.frozen_keys }) }, expected };\n"

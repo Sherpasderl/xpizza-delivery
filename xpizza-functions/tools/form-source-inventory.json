@@ -3621,9 +3621,7 @@
      ]
     }
    ],
-   "lifts": [
-    "xpizza-functions/s2bext-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "catalog/text-version.js": {
    "pins": [],
@@ -3831,9 +3829,7 @@
   },
   "factura/pricing.js": {
    "pins": [],
-   "lifts": [
-    "xpizza-functions/s2bext-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "form-signal.js": {
    "pins": [],
@@ -6868,6 +6864,7 @@
      "inverses": [
       "tools/a1-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
@@ -6877,6 +6874,7 @@
      "inverses": [
       "tools/a1-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
@@ -6885,6 +6883,7 @@
    "lifts": [
     "s2b-paid-text.test.mjs",
     "xpizza-functions/rewards-catalog-cutover.test.js",
+    "xpizza-functions/s2bext-wiring.guard.test.js",
     "xpizza-functions/serial3-wiring.guard.test.js"
    ]
   },
