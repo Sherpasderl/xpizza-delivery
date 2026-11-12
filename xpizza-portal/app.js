@@ -1308,7 +1308,7 @@ function addLeave() { if (extraAdd && addExtraOp(extraAdd)) addCommit(false); }
 // a leave path on the Extras page: a complete row commits first (focus left it); a dirty one asks the portal's discard confirm
 function leaveExtras(go) {
   addLeave();
-  if (!localDirty()) { extraAdd = null; go(); return; }
+  if (!localDirty()) { extraAdd = null; return go(); }   // the continuation's own result (the review flow's promise): callers may await it
   openDiscardConfirm({ onDiscard: () => { extraAdd = null; extraAddK = null; extraAddError = null; go(); }, onKeep: () => focusDetail(extraAddK || 'xadd:n') });
 }
 
