@@ -181,6 +181,20 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 200)}`;
       assert.strictEqual(r3.body.fiscalAckRequired, false, `${L}: a pure removal (its reward entry leaving) is waived`);
     });
   });
+  await cell('A3-RESIDUAL (advisor RULED ACCEPTED, r4): source-only fields the BUILDER discards (structure.schema_version, an item\'s has_photo) may ride a waived removal, and never reach the published payload', () => ON(async () => {
+    const rid = 'x_pizza';
+    const d = removed(base(rid), 'Carnivora'); const other = d.items.find((i) => i.key !== 'Carnivora' && !i.display.variantOf);
+    other.has_photo = true; d.structure.schema_version = 99;
+    const { r, saved } = await save(rid, d, [stamp(rid, 'Carnivora')]);
+    assert.strictEqual(r.status, 200, show(r));
+    assert.strictEqual(r.body.fiscalAckRequired, false, 'the residual is waived (accepted)');
+    const p = await publishOf(rid, saved, r.body.token);
+    assert.deepStrictEqual([p.r.status, p.pubs.length], [200, 1], show(p.r));
+    const input = p.pubs[0];
+    assert.strictEqual(input.items.find((i) => i.key === other.key).has_photo, activeOf(rid).built.items.find((i) => i.key === other.key).has_photo, 'has_photo: the published item is the live one\'s');
+    assert.strictEqual(input.structure.schema_version, activeOf(rid).built.structure.schema_version, 'schema_version: never published from the draft');
+    assert.ok(!JSON.stringify(input).includes('"schema_version":99'), 'the draft value appears nowhere in the published payload');
+  }));
   await cell('A5: a waived publish logs no fiscal_ack_by; an acknowledged one does (the publisher is the actor)', () => ON(async () => {
     const rid = 'x_pizza'; const lines = [];
     const { r, saved } = await save(rid, removed(base(rid), 'Carnivora'), [stamp(rid, 'Carnivora')]);
