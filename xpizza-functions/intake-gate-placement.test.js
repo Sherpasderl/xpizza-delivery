@@ -82,20 +82,26 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
      land. Two changes: comments are stripped before counting, and — far more importantly — the four
      post-claim bailouts moved into hosted-charge-flow.js where hosted-charge-flow.test.js RUNS them
      and asserts the release per branch with a spy. Deleting any one of them now fails by execution.
-     WHAT REMAINS HERE (5, all pre-claim acquire outcomes, still inline in the handler):
-       acquire-throw, item_unavailable, already_paid, conflict, closed.
+     WHAT REMAINS HERE (all pre-claim acquire outcomes, still inline in the handler): acquire-throw, and — D4 §A3, Codex
+       handler r1 — ONE folded branch for item_unavailable / already_paid / conflict / closed: it releases FIRST, then answers
+       through the shared acquireRefusal responder (which itself never releases: the SDK finish answers through it with no hold).
+       So 2 releases in code, and the folded branch's exact shape is pinned below.
      WHAT MOVED (and is executed): !claimed, every gate refusal, the amount mismatch, hosted-create
      throw, hosted-create rejected, persist-fail. */
   const codeOnly = body
     .replace(/\/\*[\s\S]*?\*\//g, '')          // block comments
     .replace(/(^|[^:])\/\/[^\n]*/g, '$1');     // line comments (the [^:] keeps https:// intact)
   const releaseCount = (codeOnly.match(/releaseHoldIfOwned\(\)/g) || []).length;
-  assert.strictEqual(releaseCount, 5, `expected releaseHoldIfOwned() on all 5 pre-claim abandoned branches, got ${releaseCount}`);
+  assert.strictEqual(releaseCount, 2, `expected releaseHoldIfOwned() on the acquire-throw branch + the ONE folded abandoned branch, got ${releaseCount}`);
+  // the folded branch: all four abandoned outcomes, the release FIRST, then the shared responder
+  const FOLD = "  if (['item_unavailable', 'already_paid', 'conflict', 'closed'].includes(acq.outcome)) {\n    await releaseHoldIfOwned();\n    return acquireRefusal(acq)(res);\n  }";
+  assert.strictEqual(codeOnly.split(FOLD).length - 1, 1, '🔴 the four pre-claim abandoned outcomes release the owned hold, THEN answer (the folded branch, exactly once)');
+  { const a = body.indexOf('const acquireRefusal = (acq) => (res) => {'); const b = body.indexOf('\n  };', a);
+    assert.ok(a !== -1 && b !== -1 && !/releaseHold|releaseRedemption/.test(body.slice(a, b)), '🔴 the shared responder never releases (the hosted caller owns its release; the SDK has no hold)'); }
   // Non-vacuity for the comment-stripping itself: a commented-out release must NOT be counted.
-  const poisoned = body.replace('await releaseHoldIfOwned();   // abandoned: order is in a terminal-closed state',
-                                '// await releaseHoldIfOwned();   // abandoned: order is in a terminal-closed state');
+  const poisoned = body.replace("    await releaseHoldIfOwned();\n    return acquireRefusal(acq)(res);", "    // await releaseHoldIfOwned();\n    return acquireRefusal(acq)(res);");
   const poisonedCount = (poisoned.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1').match(/releaseHoldIfOwned\(\)/g) || []).length;
-  assert.strictEqual(poisonedCount, 4, '🔴 the stripper must not count a commented-out release — that bug is what let a deleted release pass');
+  assert.strictEqual(poisonedCount, 1, '🔴 the stripper must not count a commented-out release — that bug is what let a deleted release pass');
   // …and the post-claim bailouts really did move somewhere that executes them.
   assert.ok(/createCheckout: createHostedCharge/.test(body), 'the gateway call is injected into the flow module, where the bailouts are run');
   assert.ok(/releaseHold: releaseHoldIfOwned/.test(body), 'and the flow module gets the SAME owned-only release, not an open-coded one');
