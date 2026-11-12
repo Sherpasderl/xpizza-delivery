@@ -204,6 +204,10 @@ function renderAddRow(host, a, on) {
   host.append(row, lines);
 }
 
+// the ONE confirm open on #xscrim (X2, the discard confirm, X2b) — its close, so an ended world (the auth boundary) can drop it
+// with NO continuation and no refocus
+let xscrimClose = null;
+export function closeXConfirm() { const c = xscrimClose; xscrimClose = null; if (c) c(); }
 // A small confirm on #xscrim (.modal.sm): X2 «¿Quitar …?» and the discard confirm. Tab stays inside; Escape and the backdrop take the
 // cancel path; the cancel path returns focus to `returnTo`. `buttons`: [{ label, mods (classes on top of .btn), act: 'cancel' | 'go', focus }] in DOM order.
 function openSmallConfirm(o) {
@@ -217,6 +221,7 @@ function openSmallConfirm(o) {
   const focusables = [];
   let first = null;
   const close = (refocus) => {
+    xscrimClose = null;
     scrim.classList.remove('show'); modal.replaceChildren();
     document.removeEventListener('keydown', onKey, true); scrim.removeEventListener('click', onScrim);
     if (refocus && returnTo && returnTo.isConnected) returnTo.focus();
@@ -238,6 +243,7 @@ function openSmallConfirm(o) {
   }
   modal.replaceChildren(...parts);
   document.addEventListener('keydown', onKey, true); scrim.addEventListener('click', onScrim);
+  xscrimClose = () => close(false);
   scrim.classList.add('show');
   (first || focusables[0]).focus();
 }
@@ -406,7 +412,7 @@ export function openDeletionsReview({ rows, line = null, onGo, onCancel, returnT
   mf.append(cancelBtn, goBtn);
   modal.replaceChildren(mh, mb, mf);
   const focusables = () => [cancelBtn, goBtn].filter((b) => !b.disabled);
-  const close = () => { scrim.classList.remove('show'); modal.replaceChildren(); document.removeEventListener('keydown', onKey, true); scrim.removeEventListener('click', onScrim); };
+  const close = () => { xscrimClose = null; scrim.classList.remove('show'); modal.replaceChildren(); document.removeEventListener('keydown', onKey, true); scrim.removeEventListener('click', onScrim); };
   const cancel = () => { close(); if (returnTo && returnTo.isConnected) returnTo.focus(); onCancel(); };
   const onKey = (e) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); return; }
@@ -418,6 +424,7 @@ export function openDeletionsReview({ rows, line = null, onGo, onCancel, returnT
   cancelBtn.addEventListener('click', cancel);
   goBtn.addEventListener('click', () => { close(); onGo(); });
   document.addEventListener('keydown', onKey, true); scrim.addEventListener('click', onScrim);
+  xscrimClose = close;
   scrim.classList.add('show');
   (goBtn.disabled ? cancelBtn : goBtn).focus();
 }

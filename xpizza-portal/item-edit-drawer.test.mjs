@@ -1878,3 +1878,47 @@ test('S2 §3.5 — the branch switch and the self-update (shell.js / SherpaClien
   const x0 = xrows(p)[0].querySelector('.price input'); x0.focus(); p.type(x0, '99'); await settle(10);
   assert.equal(unload(), true, 'a pending (unsaved) change holds the reload too');
 });
+test('S2 §5.2 Codex r1 P1-1 — «Cancelar» on the recovery sheet keeps the PREVIOUS baseline: the fresh one is the sheet’s own until «Confirmar y seguir»; an ordinary review after Cancel never sends it', async () => {
+  let edits = 0;
+  const p = await page({ read: CLAIMED, on: {
+    editCatalog: () => (++edits === 1 ? errJson(409, { error: 'deleted_ids_base_moved' }) : errJson(409, { error: 'deleted_ids_base_moved' })),
+    getEditableCatalog: (() => { let n = 0; return () => (n++ ? okJson({ ...CLAIMED(), deletionBase: { version: 'v-fresh', generation: 9 } }) : null); })(),
+  } });
+  await p.signIn();
+  p.d.getElementById('review').click(); await settle(80);
+  assert.ok(x2b(p), 'premise: the sheet (the fresh base was read)');
+  [...x2b(p).querySelectorAll('.mf button')][0].click(); await settle(10);   // «Cancelar»
+  p.d.getElementById('review').click(); await settle(80);
+  const second = p.n('editCatalog')[1];
+  assert.deepEqual(second.body.deleted_ids_loaded_base, { version: 'v-live', generation: 1 }, 'Cancel kept the previous baseline: the fresh one never rides an unreviewed save');
+  assert.equal(second.body.deleted_ids_reviewed, undefined);
+});
+test('S2 Codex r1 P1-2 — the auth / restaurant boundary: A\u2019s half-typed inline row, open X3 sheet and open discard confirm are GONE (state, DOM, listeners); nothing of A\u2019s can be committed after', async () => {
+  for (const edge of ['another person', 'a restaurant load']) {
+    const p = await page({ read: XON });
+    await p.signIn();
+    tabBtn(p, 'Extras').click(); await settle(10);
+    addBtn(p).click(); await settle(5);
+    p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'De A'); await settle(5);
+    await openX3(p);
+    p.type(x3(p).querySelector('#xcg-name'), 'Grupo de A'); await settle(5);
+    p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+    assert.ok(p.d.querySelector('#xscrim.show'), `premise (${edge}): A has the discard confirm open over X3`);
+    if (edge === 'another person') p.d.dispatchEvent(new p.w.CustomEvent('portal:auth', { detail: { uid: 'uSomeoneElse' } }));
+    else p.d.dispatchEvent(new p.w.CustomEvent('portal:restaurant', { detail: { rid: RID } }));
+    await settle(80);
+    assert.equal(x3(p), null, `${edge}: A\u2019s «Crear grupo» sheet is closed`);
+    assert.equal(p.d.querySelector('#xscrim.show'), null, `${edge}: A\u2019s discard confirm is closed`);
+    assert.equal(p.d.querySelector('#xsplit .irow.mk-xnew'), null, `${edge}: A\u2019s inline row is gone from the page (not just hidden)`);
+    p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+    assert.equal(p.d.querySelector('#xscrim.show'), null, `${edge}: no stale listener reopens a confirm`);
+    if (edge === 'a restaurant load') {
+      tabBtn(p, 'Extras').click(); await settle(10);
+      assert.ok(xpage(p).querySelector('.rail .railitem'), 'premise: the reloaded Extras page is painted (the next check is not vacuous)');
+      assert.equal(newRow(p), null, 'a restaurant load: the reloaded page opens with no inline row');
+      assert.equal(p.d.querySelector('#xcreate.show'), null, 'a restaurant load: no sheet reopened');
+    }
+    const sent = p.n('editCatalog');
+    assert.ok(sent.every((c) => !JSON.stringify(c.body).includes('De A') && !JSON.stringify(c.body).includes('Grupo de A')), `${edge}: nothing of A\u2019s is ever sent`);
+  }
+});

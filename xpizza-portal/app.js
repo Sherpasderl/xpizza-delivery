@@ -79,7 +79,7 @@ import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 import { closeIcon } from './ops-dom.js';
 // STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
 import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders, extrasOutcomeCtx, deletionRows, rekeyId } from './extras-logic.js';
-import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, openDeletionsReview, enProductos } from './extras-view.js';
+import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, openDeletionsReview, enProductos, closeXConfirm } from './extras-view.js';
 import { applyExposureOps, mergeDeletionClaim } from './editor.js';
 
 function renderSwitcher() {
@@ -1812,6 +1812,23 @@ function productReviewOpts() {
   return { nameOf: (k) => { const r = items.find((x) => x.key === k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },
     categoryName, sectionOf: section };
 }
+// Codex S2 r1 P1-2 — the auth boundary ends the Extras page's LOCAL world too: every local editor (the inline row, X3, B, the rail
+// pair), every open sheet / confirm on #xscrim with its document listeners, the armed acknowledged resend and the view state. Nothing
+// person A typed, opened or acknowledged survives for person B; no continuation runs (the confirms close without onGo / onCancel).
+function resetExtrasLocal() {
+  closeXConfirm();
+  // a page without the S2 markup (today's trimmed shells) has no sheets to close
+  if ($('xcreate') && (createForm || $('xcreate').classList.contains('show'))) closeCreateGroup(false);
+  if ($('xattach') && (attachPick || $('xattach').classList.contains('show'))) bClose(false);
+  createForm = null; createError = null; attachPick = null;
+  extraAdd = null; extraAddK = null; extraAddError = null;
+  railOpen = null; railError = null; extrasRowError = null;
+  reviewAck = false; xFocusK = null; xPaintedCanEdit = null;
+  extrasGroup = null; prodTab = 'menu';
+  // A's painted page goes too (a hidden #xsplit still holds A's rows and their handlers until a repaint)
+  if ($('xrail')) $('xrail').replaceChildren();
+  if ($('xdetail')) $('xdetail').replaceChildren();
+}
 function resetEditFacts() {
   state.textEditEnabled = false;
   state.extrasAuthoring = false;
@@ -1819,6 +1836,7 @@ function resetEditFacts() {
   state.deletionBase = null;
   state.reservedNames = null;
   state.savedTexts = [];
+  resetExtrasLocal();
   endEditSession();
 }
 // The product's photo as this drawer shows it: the draft's map with the copy's entry in place of the stored one.
@@ -3190,14 +3208,16 @@ async function reviewDeletions(outcome) {
   if (gen !== opGeneration || rid !== state.draftRid) return;   // another world now
   const base = fresh && fresh.deletionBase;
   const read = !!(base && typeof base.version === 'string' && base.version && Number.isInteger(base.generation));
-  if (read) state.deletionBase = { version: base.version, generation: base.generation };
+  // Codex r1 P1-1: the fresh baseline is the SHEET's until «Confirmar y seguir» — «Cancelar» keeps the previous one (an unreviewed save never
+  // carries a base the merchant did not confirm the deletion list against)
+  const freshBase = read ? { version: base.version, generation: base.generation } : null;
   const served = read && fresh.deletionClaim && Array.isArray(fresh.deletionClaim.ids) ? fresh.deletionClaim.ids : [];
   const ids = [...served, ...(Array.isArray(outcome.existingIds) ? outcome.existingIds : []), ...mergeDeletionClaim(draftSource(state.draft), 'ids')];
   openDeletionsReview({
     rows: deletionRows(state.draft, ids),
     line: read ? null : 'No pudimos leer el menú publicado. Recargá la página.',
     onCancel: () => { reviewAck = false; },
-    onGo: bound(() => { reviewAck = true; if (state.publishViaRequest) sendToOwnerFlow(); else openReviewFlow(); }),
+    onGo: bound(() => { if (freshBase) state.deletionBase = freshBase; reviewAck = true; if (state.publishViaRequest) sendToOwnerFlow(); else openReviewFlow(); }),
   });
 }
 // P-6 (plan r3 §3.3, Codex r2 #5): after a save is adopted, the view state keyed by a NEW extra's ref follows it to its allocated key —
