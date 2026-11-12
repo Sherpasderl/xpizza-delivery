@@ -30,7 +30,9 @@ async function visitDueOrder(deps, orderId) {
   else if (R.TERMINAL.includes(order.status) || order.payment_terminal) await C.settleTerminal(deps, { orderId });
   else if (order.status === 'pending_payment' && !order.payment_placed) {
     const rec = await C.readRecord(deps.db, orderId);
-    if (rec && now >= rec.ttl_at) await C.expirePending(deps, { orderId });
+    // D4 row 11: the record's ttl_at, else (an orphan with no record yet) the ORDER's pay_deadline_at
+    const deadline = rec ? rec.ttl_at : order.pay_deadline_at;
+    if (Number.isFinite(deadline) && now >= deadline) await C.expirePending(deps, { orderId });
   } else if (F.goLiveRedrivable(order)) {
     // placed, not live: re-drive the shared go-live (idempotent); a parked order (manual_reconciliation) is left to a person
     try { await deps.goLive(deps, orderId); } catch (e) { console.error(`sdk go-live re-drive failed for ${orderId}: ${e && e.message}`); }

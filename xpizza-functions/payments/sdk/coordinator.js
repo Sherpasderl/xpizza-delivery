@@ -610,7 +610,8 @@ async function applyIncrease(deps, { orderId, adjustment_id, order_revision, new
 
 // ── cancellation / TTL expiry (§8) ───────────────────────────────────────────────────────────────────────────────────────
 const CLEANUP_STALE_MS = 2 * 60 * 1000;
-async function cancelSdkOrder(deps, { orderId, kind = 'cancel' }) {
+// D4 row 8: `pendingOnly` (the switch, §5) — the decision commits ONLY on a pending, unplaced order; every other caller unchanged.
+async function cancelSdkOrder(deps, { orderId, kind = 'cancel', pendingOnly = false }) {
   const now = deps.clock();
   let order = await readOrder(deps.db, orderId);
   if (!isSdk(order)) return { outcome: 'refused', reason: 'not_sdk' };
@@ -629,7 +630,10 @@ async function cancelSdkOrder(deps, { orderId, kind = 'cancel' }) {
       if (cur == null) return null;
       if (R.TERMINAL.includes(cur.status) || cur.payment_terminal || cur.payment_cancel || F.markerFault(cur)) return undefined;
       if (F.goLiveInFlight(cur)) return undefined;
-      if (kind === 'expire' && (cur.status !== 'pending_payment' || cur.payment_placed || !rec0 || now < rec0.ttl_at)) return undefined;
+      if (pendingOnly && (cur.status !== 'pending_payment' || cur.payment_placed)) return undefined;
+      // row 8: the expiry deadline is the record's ttl_at, else (no record yet) the ORDER's immutable pay_deadline_at
+      const deadline = rec0 ? rec0.ttl_at : cur.pay_deadline_at;
+      if (kind === 'expire' && (cur.status !== 'pending_payment' || cur.payment_placed || !Number.isFinite(deadline) || now < deadline)) return undefined;
       box.won = true;
       return { ...cur, payment_cancel: { kind, at: now }, status: 'cancelled', cancelled_at: now };
     }), box);

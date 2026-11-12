@@ -56,8 +56,9 @@ const SWITCH = (w, id = OID, h = { authorization: 'Bearer idt_A' }) => SW().canc
   });
 
   await cell('SDK-D4-SWITCH-UNKNOWN-OP', async (L) => {
-    // CONTRACT-ONLY: the bank's real answer is injected as a status (production would reconcile a lost decline through a person)
-    const w = world({ script: { authorize: [{ lost: true, outcome: 'definitive_decline' }], status: [(a) => ({ state: 'declined', uuid: a.uuid, amount_cents: 100 })] } });
+    // an UNKNOWN answer that carries a uuid (a LOST answer has none ⇒ manual reconciliation, never safe — production behaviour).
+    // CONTRACT-ONLY: the bank's later answer is injected as an amount-bearing status (binds the unverified uuid by its amount)
+    const w = world({ script: { authorize: [{ outcome: 'unknown', uuid: 'P-u1' }], status: [(a) => ({ state: 'inconclusive', uuid: a.uuid }), (a) => ({ state: 'declined', uuid: a.uuid, amount_cents: 100 })] } });   // the cancel's own reconcile reads inconclusive first
     await C.placeOriginal(w.deps, { orderId: OID, attempt_id: ATT, token: 'T', amount_cents: 100 });
     const r1 = await SWITCH(w);
     assert.deepStrictEqual(r1, { status: 200, body: { cancelled: true, safe_to_switch: false } }, `${L}: an unanswered op ⇒ cancelled, NOT safe (got ${JSON.stringify(r1)})`);
