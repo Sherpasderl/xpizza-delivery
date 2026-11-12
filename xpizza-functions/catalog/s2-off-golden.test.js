@@ -110,8 +110,9 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
   for (const k of Object.keys(g)) {
     if (k === 'editor-read') {
       assert.strictEqual(out[k].body.textEditEnabled, false, 'S2OFF-READ textEditEnabled:false is present');
-      const { textEditEnabled: _t, ...rest } = out[k].body;   // eslint-disable-line no-unused-vars
-      assert.deepStrictEqual({ status: out[k].status, body: rest }, g[k], 'S2OFF-READ the editor read is the base\'s, plus ONLY textEditEnabled:false');
+      assert.strictEqual(out[k].body.extrasAuthoring, false, 'S2OFF-READ S1 extrasAuthoring:false is present (switch off)');
+      const { textEditEnabled: _t, extrasAuthoring: _x, ...rest } = out[k].body;   // eslint-disable-line no-unused-vars
+      assert.deepStrictEqual({ status: out[k].status, body: rest }, g[k], 'S2OFF-READ the editor read is the base\'s, plus ONLY textEditEnabled:false and S1 extrasAuthoring:false');
     } else {
       assert.deepStrictEqual(out[k], g[k], `S2OFF-${k} switch OFF answers byte-identically to the base`);
     }

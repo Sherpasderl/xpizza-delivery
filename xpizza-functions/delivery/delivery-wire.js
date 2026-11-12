@@ -178,4 +178,4 @@ function quoteOutcome(dq) {
 // The additive quote response fields (absent when dark → byte-identical response).
 const quoteFields = (ctx) => (ctx ? { delivery: { delivery_cents: ctx.delivery_cents, promo_discount_cents: ctx.promo_discount_cents, policy_version: ctx.policy_version, mode: ctx.mode, ...(PUBLIC.get(ctx) || {}) } } : {});   // S2 §3.6: + { from_cents, max_km }
 
-module.exports = { loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf };
+module.exports = { loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf, isApp };

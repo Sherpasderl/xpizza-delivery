@@ -413,7 +413,7 @@ function extrasModeReader() {
 }
 const extrasEnvelopeOf = (tables) => require('./catalog/pricing-tables').envelopeOf(tables);
 const extrasReadEligibility = (rid, versionId) => require('./catalog/extras-eligibility-store').readEligibility(getFirestore(), rid, versionId);
-const extrasCheckFor = async (restaurantId, tables, items) => EI.extrasCheck({ mode: await extrasModeReader().getMode(), tables, items, rid: restaurantId,
+const extrasCheckFor = async (restaurantId, tables, items, body) => EI.extrasCheck({ mode: await require('./catalog/extras-entry').modeFor(body, () => extrasModeReader().getMode()), tables, items, rid: restaurantId,
   envelopeOf: extrasEnvelopeOf, readEligibility: extrasReadEligibility });
 /* extras:end wiring */
 /* serial3:begin wiring */
@@ -1009,7 +1009,7 @@ createOrderApp.all('*', async (req, res) => {
     if (groupRefusal) { if (groupRefusal.retryAfter) res.set('Retry-After', String(groupRefusal.retryAfter)); return res.status(groupRefusal.status).json(groupRefusal.body); } { const pk = await require('./catalog/pickup-backstop').pickupRefusal({ restaurantId, versionId: menuOrderVersionOf(pricingTables), keyMode: keyModeOfTables(pricingTables), kind: 'binding', body, gates: gateReader() }); if (pk) { if (pk.status === 503) res.set('Retry-After', '2'); return res.status(pk.status).json(pk.body); } }   // S2-8: pickup-only items on a delivery order, before any write or reserve
     /* extras:begin cash */
     {   // per-product extras: after the dedupe and the group rules, before any write or reserve
-      const xr = await extrasCheckFor(restaurantId, pricingTables, body.items);
+      const xr = await extrasCheckFor(restaurantId, pricingTables, body.items, body);
       EI.logShadow('createOrder', restaurantId, xr, EI.ordersClientGen(clientHdr));
       if (EI.refuses(xr)) { if (xr.outcome === 'unavailable') res.set('Retry-After', '2'); return res.status(EI.refusalStatus(xr)).json({ ...EI.refusalBody(xr), order_id: orderId }); }
     }
@@ -1823,7 +1823,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     }
     /* extras:begin card */
     {   // per-product extras (§5): refused here when the classification says FRESH (or cannot say); a reuse only arms the guard
-      const xr = await extrasCheckFor(restaurantId, pricingTables, body.items);
+      const xr = await extrasCheckFor(restaurantId, pricingTables, body.items, body);
       EI.logShadow('chargeOnlineOrder', restaurantId, xr, EI.ordersClientGen(clientHdr));
       if (EI.refuses(xr)) {
         if (!clsForMenu || clsForMenu.willIssueFreshUrl || xr.outcome === 'malformed') { if (xr.outcome === 'unavailable') res.set('Retry-After', '2'); return res.status(EI.refusalStatus(xr)).json({ ...EI.refusalBody(xr), order_id: orderId }); }   // malformed: refused even on reuse
@@ -7445,7 +7445,7 @@ exports.quoteOrder = onRequest(
       }
       /* extras:begin quote */
       {   // per-product extras: refused BEFORE a quote (and its signed token) is issued — the order would refuse it anyway
-        const xr = await extrasCheckFor(restaurantId, tables, body.items);
+        const xr = await extrasCheckFor(restaurantId, tables, body.items, body);
         EI.logShadow('quoteOrder', restaurantId, xr, EI.ordersClientGen(clientHdr));
         if (EI.refuses(xr)) return EI.sendRefusal(res, xr, { ok: false });   // 409 / 503 like the other intakes
       }
@@ -7518,7 +7518,7 @@ exports.quoteRedemption = onRequest(
       }
       /* extras:begin quote-redemption */
       {   // per-product extras: the paid lines' extras (reward items are reward lines, never judged by a product's list)
-        const xr = await extrasCheckFor(restaurantId, quoteTables, body.items);
+        const xr = await extrasCheckFor(restaurantId, quoteTables, body.items, body);
         EI.logShadow('quoteRedemption', restaurantId, xr, EI.ordersClientGen(clientHdr));
         if (EI.refuses(xr)) return EI.sendRefusal(res, xr, { ok: false });
       }
