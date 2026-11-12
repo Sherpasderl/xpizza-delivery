@@ -1439,6 +1439,14 @@
    "class": "lifecycle",
    "reason": "SDK go-live bookkeeping (Codex r2 P1-A): the server-only list of the go-live's remaining CREATE-ONLY paths (tasks, tracking, history) written in the same guarded orders transaction as the live order fields; replayed by the sweeper after a crash and then cleared; never displayed, never a money fact"
   },
+  "payment_flow": {
+   "class": "lifecycle",
+   "reason": "SDK card payments (D4 §A4): the server-only, rules-immutable discriminator 'sdk_auth_v1' written ONCE by the SDK finish's create-once orders transaction; every legacy money path refuses an order carrying it (payments/sdk/flow.js isSdkOrder) — payment bookkeeping, not a contract fact"
+  },
+  "pay_deadline_at": {
+   "class": "lifecycle",
+   "reason": "SDK card payments (D4 §3 / CORE-Δ): the order's immutable payment deadline (created + 15 min), written ONCE by the create-once orders transaction; the claim CAS, the status resolver and the sweeper's expiry read it — payment bookkeeping, not a contract fact"
+  },
   "paid_strand_seen_at": {
    "class": "stamp",
    "reason": "audit / notification timestamp — bookkeeping"
@@ -1700,6 +1708,15 @@
  },
  "opaqueWriteResolutions": [
   {
+   "file": "xpizza-functions/payments/sdk/finish.js",
+   "fn": "finishSdk",
+   "how": "spread-in-order-write",
+   "detail": "c.pendingOrderRecord",
+   "fields": [],
+   "reason": "D4 §A2 B4: the spread is the handler's pendingOrderRecord — the SAME object hosted's acquireHostedAttempt writes, built and census-resolved at index.js chargeOnlineApp.all; finishSdk adds only the literal payment_flow / pay_deadline_at / payment_fingerprint (direct writes, counted as such)",
+   "count": 1
+  },
+  {
    "file": "xpizza-functions/index.js",
    "fn": "createOrderApp.all",
    "how": "dynamic-field-segment",
@@ -1924,6 +1941,10 @@
   }
  ],
  "moneyPathNonFactReads": {
+  "payment_cancel@xpizza-functions/payments/sdk/coordinator.js#placeOriginal": "SDK card payments (D4): a PRESENCE test of the server-only decision marker — a placed or cancelled SDK order admits no new attempt / is never reused by a new placement; never an amount or an identity",
+  "payment_placed@xpizza-functions/payments/sdk/coordinator.js#placeOriginal": "SDK card payments (D4): a PRESENCE test of the server-only decision marker — a placed or cancelled SDK order admits no new attempt / is never reused by a new placement; never an amount or an identity",
+  "payment_placed@xpizza-functions/payments/sdk/finish.js#bindingRefusal": "SDK card payments (D4): a PRESENCE test of the server-only decision marker — a placed or cancelled SDK order admits no new attempt / is never reused by a new placement; never an amount or an identity",
+  "payment_cancel@xpizza-functions/payments/sdk/finish.js#bindingRefusal": "SDK card payments (D4): a PRESENCE test of the server-only decision marker — a placed or cancelled SDK order admits no new attempt / is never reused by a new placement; never an amount or an identity",
   "was@xpizza-portal/review.js#renderReview": "S4 «Editar producto» (MOCKUP-portal-item-edit frame E): the review's «Opciones (n)» row reads a group option's `was` from the SERVER diff (catalog-edit.js changed lines) to show its derived NAME old → new; a display string / the option's key, never a price, charge or total (prices stay in the «Precios» rows, unchanged)",
   "now@xpizza-portal/review.js#renderReview": "S4 «Editar producto» (MOCKUP-portal-item-edit frame E): the review's «Opciones (n)» row reads a group option's `now` from the SERVER diff (catalog-edit.js changed lines) to show its derived NAME old → new; a display string / the option's key, never a price, charge or total (prices stay in the «Precios» rows, unchanged)",
   "key@xpizza-portal/review.js#renderReview": "S4 «Editar producto» (MOCKUP-portal-item-edit frame E): the review's «Opciones (n)» row reads a group option's `key` from the SERVER diff (catalog-edit.js changed lines) to show its derived NAME old → new; a display string / the option's key, never a price, charge or total (prices stay in the «Precios» rows, unchanged)",

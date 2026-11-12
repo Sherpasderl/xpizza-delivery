@@ -58513,7 +58513,7 @@
   },
   {
    "field": "pay_deadline_at",
-   "class": null
+   "class": "lifecycle"
   },
   {
    "field": "payment_cancel",
@@ -58533,7 +58533,7 @@
   },
   {
    "field": "payment_flow",
-   "class": null
+   "class": "lifecycle"
   },
   {
    "field": "payment_method",
@@ -58886,7 +58886,7 @@
    "how": "spread-in-order-write",
    "line": 62,
    "detail": "c.pendingOrderRecord",
-   "resolved": null
+   "resolved": []
   },
   {
    "file": "xpizza-functions/payments/sdk/materialize-sdk.js",
