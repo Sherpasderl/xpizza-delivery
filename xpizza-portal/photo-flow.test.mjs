@@ -5,10 +5,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { DIR, loadModules, okJson, errJson } from './ventas-harness.mjs';
-import { createPhotoFake, DEFAULT_BUCKET, PUBLIC_BUCKET } from './photo-contract-fake.mjs';
+import { createPhotoFake, useServerOpIdRe, DEFAULT_BUCKET, PUBLIC_BUCKET } from './photo-contract-fake.mjs';
+// LIVE 2026-11-12: the fake applies the SERVER's op_id shape check, read from the server's source (no copy, no laxer rule)
+useServerOpIdRe(new RegExp(/const OP_ID_RE = \/(.+)\/;/.exec(readFileSync(join(DIR, '..', 'xpizza-functions', 'photos', 'upload-start.js'), 'utf8'))[1]));
 import * as L from './photo-logic.js';
 
 const { JSDOM } = createRequire(join(DIR, '..', 'xpizza-functions', 'package.json'))('jsdom');
@@ -413,7 +416,7 @@ test('CSP (P2-10) — the URLs the contract emits are exactly the path-scoped so
   const admits = (list, url) => list.some((s) => s.endsWith('/') && url.startsWith(s));
   const fake = createPhotoFake({ items: ITEMS() });
   fake.caps.add('catalog.edit');
-  const up = fake.fetchHandler('photoUploadStart', { rid: fake.rid, op_id: 'op:1', contentType: 'image/png', bytes: 10 });
+  const up = fake.fetchHandler('photoUploadStart', { rid: fake.rid, op_id: 'op_00000001', contentType: 'image/png', bytes: 10 });
   return up.then((r) => {
     assert.ok(admits(connect, r.body.url), `the signed PUT URL is admitted: ${r.body.url}`);
     assert.ok(!admits(img, r.body.url), 'an upload URL is not an image source');
@@ -583,7 +586,7 @@ test('codex r1 #6 — the fake\'s pid is a real content hash: same bytes + same 
   const fake = createPhotoFake({ items: ITEMS() });
   const w = new JSDOM('').window;
   const put = async (name, crops) => {
-    const s = await fake.fetchHandler('photoUploadStart', { rid: fake.rid, op_id: `op:${name}:${JSON.stringify(crops)}`, contentType: 'image/jpeg', bytes: 300000 });
+    const s = await fake.fetchHandler('photoUploadStart', { rid: fake.rid, op_id: `op_${createHash('sha1').update(`${name}|${JSON.stringify(crops)}`).digest('hex').slice(0, 24)}`, contentType: 'image/jpeg', bytes: 300000 });
     const x = new fake.XHR(); x.open('PUT', s.body.url);
     for (const [k, v] of Object.entries(s.body.headers)) x.setRequestHeader(k, v);
     await new Promise((r) => { x.onload = r; x.send(mkFile(w, { name })); });
@@ -781,12 +784,12 @@ test('codex ruleA r1 #2 — with a name pending, the renewal and image-error red
 test('5f review — the fake\'s rate limit is the server\'s: the 31st new start is 429 rate_limited (retryable); a known op is not charged', async () => {
   const fake = createPhotoFake({ items: ITEMS() });
   const start = (op) => fake.fetchHandler('photoUploadStart', { rid: fake.rid, op_id: op, contentType: 'image/jpeg', bytes: 1000 });
-  for (let i = 0; i < 30; i++) assert.equal((await start(`op:${i}`)).status, 200, `start ${i + 1} of 30`);
-  const r = await start('op:30');
+  for (let i = 0; i < 30; i++) assert.equal((await start(`op_${String(i).padStart(8, '0')}`)).status, 200, `start ${i + 1} of 30`);
+  const r = await start(`op_${String(30).padStart(8, '0')}`);
   assert.equal(r.status, 429, 'the server sends 429 (photos/errors.js), not 503');
   assert.equal(r.body.error, 'rate_limited');
   assert.equal(r.body.retryable, true);
-  assert.equal((await start('op:0')).status, 200, 'an existing op is a retry, never rate-charged');
+  assert.equal((await start(`op_${String(0).padStart(8, '0')}`)).status, 200, 'an existing op is a retry, never rate-charged');
 });
 
 // OWNER BUG (2026-11-01, «make it look perfect»): every drawer's top-right close is the APPROVED icon box — `.dwx` is a 32×32

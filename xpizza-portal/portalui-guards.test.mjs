@@ -18,13 +18,25 @@ import { PB_FOLD } from './photos-b-fold.mjs';
 import { PP_FOLD } from './pp-fold.mjs';
 import { S4_BASE, S4_FOLD } from './s4-fold.mjs';
 import { UNSAVED_BASE, UNSAVED_FOLD } from './unsaved-fold.mjs';
+import { HF_BASE, HF_FOLD } from './hotfix-1112-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
 // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html, owner-approved 2026-11-11) is the NEWEST layer of all: its named hunks are
 // folded out at the lowest read, so every layer and pin below judges exactly what it judged before; the UNSAVED test pins the
 // layer itself on the file on disk (an edit outside or inside one of its hunks fails).
-const diskRead = (f) => readFileSync(join(DIR, f), 'utf8');
+// LIVE HOTFIX 2026-11-12 (hotfix-1112-fold.mjs) is the NEWEST layer of all, above UNSAVED: folded out at the very lowest read, so
+// every older pin judges exactly what it judged before; the HOTFIX cell pins the layer itself on disk.
+const hotfixBytes = (f) => readFileSync(join(DIR, f), 'utf8');
+function withoutHotfix(f, src) {
+  let out = src;
+  for (const [now, was] of HF_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `HOTFIX hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const diskRead = (f) => withoutHotfix(f, hotfixBytes(f));
 function withoutUnsaved(f, src) {
   let out = src;
   for (const [now, was] of UNSAVED_FOLD[f] || []) {
@@ -347,6 +359,15 @@ test('slice 2: app.js and ventas.js are byte-identical to the approved stack tip
   for (const f of ['app.js', 'ventas.js']) {
     const was = execFileSync('git', ['show', `${SLICE2_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
     assert.equal(f === 'app.js' ? appJs() : read(f), was, `${f} changed since ${SLICE2_BASE}`);
+  }
+});
+
+test('LIVE HOTFIX 11-12: app.js gains exactly the named hunk (the uploader\u2019s op_ id) — folding it out gives HF_BASE byte-for-byte', () => {
+  for (const f of Object.keys(HF_FOLD)) {
+    const was = execFileSync('git', ['show', `${HF_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.notEqual(withoutHotfix(f, hotfixBytes(f)), hotfixBytes(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(withoutHotfix(f, hotfixBytes(f)), was, `${f} minus the HOTFIX hunk ≠ ${HF_BASE}`);
+    assert.notEqual(withoutHotfix(f, hotfixBytes(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
   }
 });
 
