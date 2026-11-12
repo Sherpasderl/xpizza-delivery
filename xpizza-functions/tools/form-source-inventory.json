@@ -3011,9 +3011,17 @@
    "lifts": []
   },
   "catalog/charge-inputs.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/tools/d4-intake-inverse.js",
+     "inverses": [
+      "tools/d4-intake-inverse.js"
+     ]
+    }
+   ],
    "lifts": [
-    "xpizza-functions/addproduct-b-wiring.guard.test.js"
+    "xpizza-functions/addproduct-b-wiring.guard.test.js",
+    "xpizza-functions/d4-wiring.guard.test.js"
    ]
   },
   "catalog/draft-assess.js": {
