@@ -222,12 +222,14 @@ const groupOf = (rid) => buildSourceFromCode(rid).structure.extra_categories[0];
       ['ATTACH-INHERITED-UNTICKED', { deny_extras: [salsas[0]] }, { op: 'attach.item', item: 'dimsum_01', group: 'Salsas' }, [200]],
       ['ATTACH-CAT-LEGACY-SINGLE', { deny: [salsas[0]] }, { op: 'attach.cat', cat: 'dim_sum', group: 'Salsas' }, [200]],
       ['ATTACH-ITEM-LEGACY-SINGLE', { deny: [salsas[0]] }, { op: 'attach.item', item: 'dimsum_01', group: 'Salsas' }, [200]],
+      ['DETACH-STALE-UNTICKED', { deny_extras: [salsas[0]] }, { op: 'detach.item', item: 'dimsum_01', group: 'Salsas' }, [200]],
     ]) {
       await cell(`R2-4-${tag} la_musa: the writer's cleanup saves (S1 OFF)`, async (L) => {
         H.SW.extrasCatalog = true; H.SW.extrasAuthoring = false;
         const r = await H.world('la_musa', { live: liveWith(ov) }).save(via(op));
         assert.deepStrictEqual([r.status], want, `${L}: ${JSON.stringify(r.body).slice(0, 200)}`);
-        assert.strictEqual(r.body.source.structure.exposure.item_overrides.dimsum_01, undefined, `${L}: the dish's Salsas entries are all gone`);
+        const left = r.body.source.structure.exposure.item_overrides.dimsum_01;
+        assert.ok(left === undefined || (op.op === 'detach.item' && JSON.stringify(left) === JSON.stringify({ deny: ['Salsas'] })), `${L}: only the transition's own entry is left (${JSON.stringify(left)})`);
       });
     }
     for (const [tag, ov, mutate, code] of [
