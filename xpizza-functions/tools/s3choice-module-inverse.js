@@ -42,7 +42,12 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/catalog-publish.js",
-  "now": "    await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode); await require('./choice-rollback').assertRollbackChoices(db, rid, targetVersionId, expected);   // S3 §1c: a rollback is an activation\n",
+  "now": "    await verifyVersionStructure(db, rid, versionId); await require('./choice-rollback').assertActivationChoices(db, rid, versionId, expected); if (input && input.photos) await input.photos.commit(db, rid, versionId); // throws on a broken menu_structure bijection; DISH PHOTOS A2 step 10: meta/photos + registry refs in ONE transaction, BEFORE the flip\n",
+  "was": "    await verifyVersionStructure(db, rid, versionId); if (input && input.photos) await input.photos.commit(db, rid, versionId); // throws on a broken menu_structure bijection; DISH PHOTOS A2 step 10: meta/photos + registry refs in ONE transaction, BEFORE the flip\n"
+ },
+ {
+  "file": "catalog/catalog-publish.js",
+  "now": "    await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode); await require('./choice-rollback').assertActivationChoices(db, rid, targetVersionId, expected);   // S3 §1c: a rollback is an activation\n",
   "was": "    await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode);\n"
  },
  {

@@ -53,8 +53,10 @@ const pointerOf = async (db) => { const s = await db.collection('restaurants').d
   }
   {   // ON: the reverse direction (rollback that REMOVES a group) is judged like a D3 publish — allowed
     const db = makeDb();
+    STRUCT.choiceEdit = false;   // the HISTORY (a group regained) is set up as today; only the rollback is under test
     const v1 = (await publishVersion(db, RID, inputOf(D3, 's3rb3'), { expected: { activeVersionId: null } })).versionId;
     const v2 = (await publishVersion(db, RID, inputOf(LM, 's3rb4'), { expected: { activeVersionId: v1 } })).versionId;
+    STRUCT.choiceEdit = true;
     await rollbackVersion(db, RID, v1, { expected: { activeVersionId: v2 } });
     assert.strictEqual(await pointerOf(db), v1);
     ok('ON: a rollback that removes a group (the dish keeps an option\'s price) is allowed');

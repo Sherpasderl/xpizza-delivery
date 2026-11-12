@@ -1589,7 +1589,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
       db, rid, { ...input, stamps: draftStamps, baseline: baselineAtBuild, stampsResolvedAgainst: partitionBaseline }, nowServer);
     // VERIFY by re-reading via the REAL reader path (proves counts + BOTH hashes + structure BEFORE the flip).
     await readVersionDocs(db, rid, versionId);        // throws on completeness fail (counts + both hashes)
-    await verifyVersionStructure(db, rid, versionId); if (input && input.photos) await input.photos.commit(db, rid, versionId); // throws on a broken menu_structure bijection; DISH PHOTOS A2 step 10: meta/photos + registry refs in ONE transaction, BEFORE the flip
+    await verifyVersionStructure(db, rid, versionId); await require('./choice-rollback').assertActivationChoices(db, rid, versionId, expected); if (input && input.photos) await input.photos.commit(db, rid, versionId); // throws on a broken menu_structure bijection; DISH PHOTOS A2 step 10: meta/photos + registry refs in ONE transaction, BEFORE the flip
     const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable, input && input.key_mode);
     /* READ ONCE, OUTSIDE THE TRANSACTION (identity-flags.js explains why once). */
     const renameOn = await renameEnabled(db, rid);
@@ -1718,7 +1718,7 @@ async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm, expect
     await verifyVersionStructure(db, rid, targetVersionId);
     // per-product extras §4: never a pre-baseline target while non-off — judged only once the target is known to EXIST and
     // verify (a missing / torn target keeps its own refusal), and before the pointer moves
-    await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode); await require('./choice-rollback').assertRollbackChoices(db, rid, targetVersionId, expected);   // S3 §1c: a rollback is an activation
+    await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode); await require('./choice-rollback').assertActivationChoices(db, rid, targetVersionId, expected);   // S3 §1c: a rollback is an activation
     const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable, targetDocs.keyMode);
     await flipPointer(db, rid, token, targetVersionId, snapshot, expected, { rollback: true });
     const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable, ...(targetDocs.keyMode != null ? { keyMode: targetDocs.keyMode } : {}), labels: targetDocs.itemLabels || null });
