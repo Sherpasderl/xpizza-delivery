@@ -62,7 +62,7 @@ const HIST = { la_musa: { withGroup: LM, d3: LM_D3, dish: PAD }, x_pizza: { with
     STRUCT.choiceEdit = on;
     for (const rid of ['la_musa', 'x_pizza']) {
       const db = makeDb(); const v1 = await publish(db, rid, HIST[rid].withGroup, null); await publish(db, rid, HIST[rid].d3, v1);
-      const env = await served(db, rid);
+      let env; try { env = await served(db, rid); } catch (e) { assert.fail(`(a) ${rid} choiceEdit=${on}: the endpoint refused the post-D3 menu (${String(e && e.message).slice(0, 120)})`); }
       assert.ok(hasField(env), `(a) ${rid} choiceEdit=${on}: the served body keeps variant_items after D3`);
       assert.deepStrictEqual(env.menu.variant_items, {}, `(a) ${rid}: it is {}`);
     }
