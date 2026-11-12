@@ -155,6 +155,7 @@ async function placeOriginal(deps, { orderId, attempt_id, token, amount_cents, a
     return { outcome: 'refused', reason: 'order_state' };
   }
   if (order.scheduled_for != null) return { outcome: 'refused', reason: 'scheduled_unsupported' };   // a LOGGED card-launch gate (ruling #9)
+  if (amount_cents !== order.total_cents) return { outcome: 'refused', reason: 'amount_mismatch' };   // CORE-Δ row 20: ONLY the stored total, before any record / journal / PSP call
   const deadline = deadlineOf(order, null);   // enforced IN the claim CAS below (the one authoritative check)
   await enrol(deps, orderId);
   await R.createRecord(deps.db, orderId, { flow: 'sdk_auth_v1', phase: 'open', committed_revision: 0, fulfillment_total_cents: amount_cents, created_at: now, ttl_at: deadline != null ? deadline : now + R.TTL_MS });
