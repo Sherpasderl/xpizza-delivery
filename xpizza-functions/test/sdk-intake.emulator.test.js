@@ -76,7 +76,14 @@ const NEW_CARD = { kind: 'new', sdk_token: 'tok_emu', save: false, authenticatio
 let ATT = 0;
 // an SDK placement mints in the reserved namespace (sdk_ + the app's grammar); every other creator refuses it
 let NSN = 0; const sdkId = () => `sdk_261112-${String(101500 + (NSN += 1)).padStart(6, '0')}-ABCDEFGH`;
-const sdkBody = (rid, extra = {}) => orderBody(rid, { order_id: sdkId(), attempt_id: `att_emu_${String(ATT += 1).padStart(12, '0')}`, card: NEW_CARD, ...extra });
+// Codex handler r1 P1: the SDK body is the CLIENT's — built by the real capp-pay-card placeBody (exact envelope, never an amount)
+const PC = require('../../customer-app/capp-pay-card.js');
+const sdkBody = (rid, extra = {}, ctx = { guest: false }) => {
+  const { card = NEW_CARD, attempt_id: attemptId = `att_emu_${String(ATT += 1).padStart(12, '0')}`, replaces_order_id: rep = null, ...base } = extra;
+  const b = PC.placeBody(orderBody(rid, { order_id: sdkId(), ...base }), card, attemptId, ctx, rep);
+  assert.ok(b, `premise — the client builds the SDK body (${JSON.stringify(extra).slice(0, 120)})`);
+  return b;
+};
 const MEMBER = { Authorization: 'Bearer idt_member' };
 const fresh = async () => { await rtdb.ref('rate_limits').remove(); await rtdb.ref('recent_order_content').remove(); HOSTED.length = 0; };
 const SDK = async (b, h = MEMBER, q = '') => { await fresh(); return post(app.placeSdkOrder, b, h, q); };
@@ -141,6 +148,15 @@ async function mintTicket(b) {
   assert.ok(hostedNs.status === 400 && /order_id_namespace/.test(hostedNs.text) && (await val(`orders/${nsId}`)) === null && (await val('rate_limits')) === null && (await val('recent_order_content')) === null, `NAMESPACE: hosted chargeOnlineOrder refuses an sdk_ id, nothing written (${hostedNs.text.slice(0, 120)})`);
   ok('createOrder (cash) and hosted chargeOnlineOrder refuse an SDK-namespaced id before any write');
 
+  // 4c. the hosted-vs-SDK creation RACE on one id: structurally impossible now (the namespaces are disjoint) — proven concurrently
+  FAKE = makeFakePsp({ authorize: [{ outcome: 'approved' }] });
+  const rb = sdkBody('x_pizza');
+  await fresh();
+  const [rh, rs] = await Promise.all([post(app.chargeOnlineOrder, { ...orderBody('x_pizza'), order_id: rb.order_id }, { Authorization: `Bearer ${process.env.MAKE_SECRET}` }), post(app.placeSdkOrder, rb, MEMBER)]);
+  const ro = await val(`orders/${rb.order_id}`);
+  assert.ok(rh.status === 400 && /order_id_namespace/.test(rh.text) && rs.status === 200 && ro && ro.payment_flow === 'sdk_auth_v1' && !ro.active_attempt_id && FAKE.callCount('authorize') === 1, `RACE: hosted refused, ONE SDK order, one authorization (${rh.status} ${rh.text.slice(0, 80)} | ${rs.status} ${rs.text.slice(0, 80)})`);
+  ok('a concurrent hosted + SDK request on one id: hosted refused (namespace), exactly one SDK order and one authorization');
+
   // 5. SDK-D4-AUTH-MIXED / GUEST-FORGED / VERIFY-TIMEOUT / NO-REDEEM / APP-SEMANTICS through the export
   const st = async (b, h) => { const r = await SDK(b, h); return [r.status, r.json && r.json.error]; };
   assert.deepStrictEqual(await st(sdkBody('x_pizza'), { ...MEMBER, 'X-Sherpa-Order-Ticket': 'ct_' + '1'.repeat(32) }), [401, 'mixed_credentials'], 'AUTH-MIXED: Bearer + ticket ⇒ 401');
@@ -161,7 +177,7 @@ async function mintTicket(b) {
 
   // 7. SDK-D4-PLACE-GUEST — the REAL ticket record; the order carries the verified phone
   FAKE = makeFakePsp({ authorize: [{ outcome: 'approved' }] });
-  const gb = sdkBody('x_pizza'); const ticket = await mintTicket(gb);
+  const gb = sdkBody('x_pizza', {}, { guest: true }); const ticket = await mintTicket(gb);
   const g1 = await SDK({ ...gb, checkout_ticket: ticket }, { 'X-Sherpa-Order-Ticket': ticket });
   const go = await val(`orders/${gb.order_id}`);
   assert.ok(g1.status === 200 && go && go.payment_placed && go.guest_verified && go.guest_verified.phone_hash === OTP.phoneHash(normalizePhone(gb.customer_phone)) && !go.customer_uid, `PLACE-GUEST: placed with the verified phone (${g1.text.slice(0, 200)})`);
