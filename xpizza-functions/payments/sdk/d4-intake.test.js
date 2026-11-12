@@ -92,12 +92,13 @@ const AUTH = (w, r) => I().authorize(r, w.deps);
     for (const [label, r] of [
       ['a forged ticket', req({ 'x-sherpa-order-ticket': 'ct_' + 'a'.repeat(32) }, baseBody())],
       ['a malformed ticket', req({ 'x-sherpa-order-ticket': 'not-a-ticket' }, baseBody())],
-      ['header ≠ body', req({ 'x-sherpa-order-ticket': ticket }, baseBody({ checkout_ticket: 'ct_' + 'b'.repeat(32) }))],
       ['another phone', req({ 'x-sherpa-order-ticket': ticket }, baseBody({ customer_phone: '+504 9999-0001' }))],
       ['another cart', req({ 'x-sherpa-order-ticket': ticket }, baseBody({ items: [{ id: 'tb_pizza', name: 'Pizza', qty: 2, price: 100 }], items_text: '2x Pizza' }))],
       ['another order id', req({ 'x-sherpa-order-ticket': ticket }, baseBody({ order_id: 'tb_intake_2' }))],
       ['another restaurant', req({ 'x-sherpa-order-ticket': ticket }, baseBody({ restaurant_id: 'tb_other' }))],
     ]) assert.deepStrictEqual((await AUTH(w, r)).refuse, bad, `${L}: ${label} ⇒ 401 guest_ticket_invalid`);
+    // CONTRACT-Δ C2: a header and a body ticket must be EQUAL, else 401 guest_auth_required
+    assert.deepStrictEqual((await AUTH(w, req({ 'x-sherpa-order-ticket': ticket }, baseBody({ checkout_ticket: 'ct_' + 'b'.repeat(32) })))).refuse, { status: 401, body: { error: 'guest_auth_required' } }, `${L}: header ≠ body ⇒ 401 guest_auth_required (C2)`);
     w.tick(G.TICKET_TTL_MS + 1);
     assert.deepStrictEqual((await AUTH(w, req({ 'x-sherpa-order-ticket': ticket }, baseBody()))).refuse, bad, `${L}: an expired ticket ⇒ 401`);
     const w2 = await world(); const t2 = await mintTicket(w2, body);
