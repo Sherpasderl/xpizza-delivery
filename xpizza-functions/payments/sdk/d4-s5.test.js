@@ -114,7 +114,9 @@ const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.
     assert.strictEqual((await ASK(ok, { order_id: 'ord_guest' })).status, 200, `${L}: a confirmed provider body (the REAL isSendConfirmed) ⇒ ok: true`);
     assert.ok(ok.db.getAt('order_recovery_otp/ord_guest/code_hash'), `${L}: a code is stored`);
     const bad = world({ reply: {} });
-    const r = await ASK(bad, { order_id: 'ord_guest' });
+    const warned = []; const ow = console.warn; console.warn = (...a) => warned.push(a.join(' '));
+    let r; try { r = await ASK(bad, { order_id: 'ord_guest' }); } finally { console.warn = ow; }
+    assert.ok(warned.includes('sdk_recovery_suppressed {"reason":"send_unconfirmed"}'), `${L}: an unconfirmed send is RECORDED internally (the real isSendConfirmed decided it) — ${JSON.stringify(warned)}`);
     assert.ok(r.status === 200 && JSON.stringify(r.body) === '{"ok":true}', `${L}: an UNCONFIRMED send fails closed internally (no ticket path opens) but answers the same 200 as any target (Codex r5) (got ${JSON.stringify(r)})`);
   });
 
