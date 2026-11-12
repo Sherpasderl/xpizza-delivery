@@ -50,11 +50,11 @@ const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.
     assert.strictEqual(w.sends.length, 1, `${L}: only the guest order's stored phone gets a code`);
   });
 
-  await cell('SDK-D4-REC-BUDGET-SHARED', async (L) => {
+  await cell('SDK-D4-REC-PHONE-BUDGET', async (L) => {
     // the recovery's OWN per-phone budget (Codex r5: never checkout's otp_budget), the same 3 sends / 10 min
     const w = world({ extra: { recovery_phone_budget: { [PH]: { sends: [T0 - 120000, T0 - 90000, T0 - 60000] } } } });
     const r = await ASK(w, { order_id: 'ord_guest' });
-    assert.ok(r.status === 200 && JSON.stringify(r.body) === '{"ok":true}' && w.sends.length === 0, `${L}: the checkout sends count — the 4th in the window sends NOTHING, and the answer is the same 200 as for any target (Codex r5) (got ${JSON.stringify(r)})`);
+    assert.ok(r.status === 200 && JSON.stringify(r.body) === '{"ok":true}' && w.sends.length === 0, `${L}: the recovery's own sends count — the 4th in the window sends NOTHING, and the answer is the same 200 as for any target (Codex r5) (got ${JSON.stringify(r)})`);
   });
 
   await cell('SDK-D4-REC-SINGLE-USE-EXPIRY', async (L) => {

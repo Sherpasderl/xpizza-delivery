@@ -4,8 +4,10 @@
 //                         whether the order exists, is a member's or a guest's (no existence oracle)
 //   { order_id, code }  ⇒ { order_ticket }: 30 minutes, status / cancel of THAT order only (order_access_tickets/{sha256});
 //                         never a checkout ticket, so never a placement
-// Limits: the SHARED otp_ip + otp_budget reservations (checkout's), a 5-minute single-use code, 5 attempts. The sender (one secret,
-// SDK_OTP_SENDER) is checked BEFORE any reservation; the send runs the existing sendPlatformOtp with the REAL isSendConfirmed.
+// The request is UNIFORM (Codex build r5): the caller-keyed otp_ip budget + ONE create-once sdk_recovery_queue entry, nothing else.
+// The background processor reads the target, spends the recovery's OWN recovery_phone_budget (never checkout's otp_budget), and
+// sends through the existing sendPlatformOtp with the REAL isSendConfirmed. A 5-minute single-use code, 5 attempts. The sender
+// (one secret, SDK_OTP_SENDER) is checked BEFORE any reservation.
 // The template is owner-approved copy (OWNER 11-11). Configuration never comes from the plain environment.
 const crypto = require('crypto');
 const G = require('../../checkout-guest-lib');
