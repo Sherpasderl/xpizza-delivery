@@ -19,7 +19,10 @@ async function authorizeExistingOrder(deps, { authorization, ticket } = {}, orde
     return { ok: true, uid };
   }
   if (typeof ticket !== 'string' || !ticket) return { ...GUEST_REQUIRED };
-  // the checkout ticket, or (S5) a recovery-issued ORDER ticket (order_access_tickets) — both bound to this order + its phone hash
+  // the checkout ticket, or (S5) a recovery-issued ORDER ticket (order_access_tickets) — both bound to this order + its phone hash.
+  // Codex S5 r5: an order with customer_uid (a member's, or CLAIMED by a member) is NEVER guest-authorizable — checked on the
+  // CURRENT order, so a ticket minted before the claim is refused too.
+  if (order && order.customer_uid) return { ...GUEST_REQUIRED };
   const gv = order && order.guest_verified;
   const valid = (rec) => !!rec && Number.isFinite(rec.exp) && deps.clock() < rec.exp && rec.order_id === orderId && !!gv && typeof gv.phone_hash === 'string' && rec.phone_hash === gv.phone_hash;
   const key = ticketKey(ticket);

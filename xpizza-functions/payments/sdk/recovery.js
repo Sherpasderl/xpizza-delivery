@@ -14,13 +14,19 @@ const RECOVERY_OTP_TEMPLATE = 'El código para ver tu pedido en Sherpa es {code}
 const ORDER_TICKET_TTL_MS = 30 * 60 * 1000;
 const CODE_RE = /^\d{6}$/;
 const OK = Object.freeze({ ok: true });
+// Codex S5 r5: every UNAUTHENTICATED answer is target-independent — the request answers the same 200 for an absent, a member's,
+// a claimed or a guest order (a budget hit / an unconfirmed send is recorded internally, never surfaced); the verify answers ONE
+// generic failure for wrong / expired / locked / absent / member. Only a CALLER-keyed limit (the IP budget) may answer 429.
+const CODE_INVALID = Object.freeze({ status: 400, body: Object.freeze({ error: 'code_invalid' }) });
+const suppressed = (reason) => { try { console.warn(`sdk_recovery_suppressed ${JSON.stringify({ reason })}`); } catch (_) { /* never decides */ } };
 const ticketKey = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
 
 function senderEnv(cfg) {
   const ok = !!cfg && typeof cfg.instance_id === 'string' && cfg.instance_id && typeof cfg.token === 'string' && cfg.token;
   return ok ? { ULTRAMSG_INSTANCE_ID_PLATFORM: cfg.instance_id, ULTRAMSG_TOKEN_PLATFORM: cfg.token, RECOVERY_OTP_TEMPLATE } : null;
 }
-const guestTarget = (order) => (order && order.payment_flow === 'sdk_auth_v1' && order.guest_verified && typeof order.guest_verified.phone === 'string'
+// a GUEST target only: an order with customer_uid (a member's, or a guest order a member has CLAIMED) is never guest-recoverable
+const guestTarget = (order) => (order && order.payment_flow === 'sdk_auth_v1' && !order.customer_uid && order.guest_verified && typeof order.guest_verified.phone === 'string'
   && typeof order.guest_verified.phone_hash === 'string' ? { digits: order.guest_verified.phone, h: order.guest_verified.phone_hash } : null);
 
 async function recoverOrderAccessCore(deps, { ip, body } = {}) {
@@ -44,21 +50,21 @@ async function recoverOrderAccessCore(deps, { ip, body } = {}) {
     try { const s = await db.ref('otp/' + target.h + '/sends').once('value'); const v = s.val(); signupSends = Array.isArray(v) ? v : []; } catch (_) { signupSends = []; }
     let verdict = null;
     const bTx = await db.ref('otp_budget/' + target.h).transaction((cur) => { verdict = G.budgetReserve(cur, t, signupSends); return verdict.next; });
-    if (!bTx.committed || !verdict || !verdict.ok) return { status: 429, body: { error: 'rate_limited', retry_in_s: Math.max(1, Math.ceil(((verdict && verdict.retryInMs) || 1000) / 1000)) } };
+    if (!bTx.committed || !verdict || !verdict.ok) { suppressed('phone_budget'); return { status: 200, body: { ...OK } }; }
     const code = OTP.genCode();
     await db.ref(`order_recovery_otp/${orderId}`).set({ code_hash: OTP.hashCode(code), expires_at: t + OTP.LIMITS.CODE_TTL, attempts: 0, phone_hash: target.h });
     const sent = await sendPlatformOtp(target.digits, code, { env, fetchImpl: deps.fetchImpl, isSendConfirmed: wa.isSendConfirmed, templateKey: 'RECOVERY_OTP_TEMPLATE' });
-    return sent.ok ? { status: 200, body: { ...OK } } : { status: 502, body: { error: 'send_failed' } };
+    if (!sent.ok) suppressed('send_unconfirmed');
+    return { status: 200, body: { ...OK } };
   }
   // ── verify the code ⇒ an order ticket ──
-  if (typeof b.code !== 'string' || !CODE_RE.test(b.code)) return { status: 400, body: { error: 'code_wrong' } };
+  if (typeof b.code !== 'string' || !CODE_RE.test(b.code)) return { status: CODE_INVALID.status, body: { ...CODE_INVALID.body } };
   const target = guestTarget((await db.ref(`orders/${orderId}`).once('value')).val());
-  let outcome = null; let expiresAt = 0;
+  let outcome = null;
   await db.ref(`order_recovery_otp/${orderId}`).transaction((v) => {
     outcome = null;
     if (v === null) { outcome = 'code_expired'; return null; }   // the speculative first pass: null stays null
     if (typeof v !== 'object' || !target || v.phone_hash !== target.h) { outcome = 'code_wrong'; return undefined; }
-    expiresAt = v.expires_at;
     if (!(t < v.expires_at)) { outcome = 'code_expired'; return null; }
     if ((v.attempts || 0) >= OTP.LIMITS.MAX_ATTEMPTS) { outcome = 'too_many_attempts'; return undefined; }
     if (!OTP.constEq(v.code_hash, OTP.hashCode(b.code))) {
@@ -69,8 +75,7 @@ async function recoverOrderAccessCore(deps, { ip, body } = {}) {
     outcome = 'ok';
     return null;   // consumed on success (single use)
   });
-  if (outcome === 'too_many_attempts') return { status: 429, body: { error: 'too_many_attempts', retry_in_s: Math.max(1, Math.ceil((expiresAt - t) / 1000)) } };
-  if (outcome !== 'ok') return { status: 400, body: { error: outcome || 'code_wrong' } };
+  if (outcome !== 'ok' || !target) return { status: CODE_INVALID.status, body: { ...CODE_INVALID.body } };   // one generic failure (no retry hint)
   const ticket = 'ot_' + crypto.randomBytes(16).toString('hex');
   await db.ref(`order_access_tickets/${ticketKey(ticket)}`).set({ order_id: orderId, phone_hash: target.h, exp: t + ORDER_TICKET_TTL_MS });
   return { status: 200, body: { order_ticket: ticket } };
