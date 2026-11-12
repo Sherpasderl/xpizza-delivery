@@ -95,7 +95,11 @@ const moveToNy = (...keys) => (d) => { for (const k of keys) d.items.find((i) =>
     const diff = catalogDiff({ ...live.built, extras: live.inputs.extras }, { ...d.built, extras: d.inputs.extras });
     const token = issueEditToken({ rid: FISCAL, baseActiveVersionId: 'v1', sourceUpdateTime: updateTime, sourceHash: sha256(stored), diff });
     const r = await w.request(token);
-    assert.deepStrictEqual([r.status, r.body.ok], [200, true], `${L}: with the switch OFF the request folds nothing and verifies the plain diff (got ${JSON.stringify(r)})`);
+    // the plain diff VERIFIES (never edit_superseded); with the switch OFF a category move is not editable, so — since the request runs the
+    // owner publish's structural assessment (Codex remove-refs r1 P2-2) — it answers exactly what the owner publish answers
+    const p = await w.ownerPublish(token);
+    assert.deepStrictEqual([p.status, p.body.error], [400, 'existing_item_changed'], `${L}: premise — the owner publish refuses the OFF category move (${JSON.stringify(p.body).slice(0, 160)})`);
+    assert.deepStrictEqual([r.status, r.body.error], [400, 'existing_item_changed'], `${L}: with the switch OFF the token verifies and the request refuses as the owner publish does (got ${JSON.stringify(r)})`);
     SWITCH.enabled = true;
   });
 

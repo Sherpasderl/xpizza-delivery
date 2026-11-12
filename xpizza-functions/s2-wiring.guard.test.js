@@ -12,7 +12,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => require('./tools/dpao-module-inverse').unapplyDpaoModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));
+const read = (f) => require('./tools/dpao-module-inverse').unapplyDpaoModule(f, require('./tools/rdr-module-inverse').unapplyRdrModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')));
 const peelTip = (f, s) => (f === 'index.js' ? require('./tools/tippref-inverse').unapplyTipprefIndex(s) : s);   /* DRYRUN R-WIRE (2e asm5): tip C's tippref layer is newer than this pin's base — peeled first */
 const idx = read('index.js');
 

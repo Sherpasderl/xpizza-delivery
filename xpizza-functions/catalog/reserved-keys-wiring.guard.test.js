@@ -76,7 +76,7 @@ const POINTER = 'tx.set(pointerRef, {';
   assert.deepStrictEqual([...I.FILES].sort(), Object.keys(BASE_SHA).sort(), 'RKW-INVERSE the slice edits exactly these pinned files');
   for (const [f, want] of Object.entries(BASE_SHA)) {
     const now = fs.readFileSync(path.join(__dirname, '..', f));
-    const back = Buffer.from(I.unapplyReservedKeysModule(f, require('../tools/s1d-module-inverse').unapplyS1dModule(f, require('../tools/s2-module-inverse').unapplyS2Module(f, now.toString('utf8')))), 'utf8');
+    const back = Buffer.from(I.unapplyReservedKeysModule(f, require('../tools/s1d-module-inverse').unapplyS1dModule(f, require('../tools/s2-module-inverse').unapplyS2Module(f, require('../tools/rdr-module-inverse').unapplyRdrModule(f, now.toString('utf8'))))), 'utf8');
     assert.strictEqual(require('crypto').createHash('sha256').update(back).digest('hex'), want, `🔴 RKW-INVERSE ${f} round trip to 43cfdf11`);
     assert.strictEqual(back.toString('utf8').split('\n').length, now.toString('utf8').split('\n').length, `🔴 RKW-SAME-LINE ${f}: no line added`);
   }

@@ -112,7 +112,8 @@ function formPrepare(rid, inForce) {
     assert.strictEqual(pub.status, 200, `RDR-CLEAR publish: ${show(pub)}`);
     assert.deepStrictEqual(publishes[0].input.structure.extras_by_item, {}, 'RDR-CLEAR: the published version carries extras_by_item: {} (an explicit clear)');
     const sdb = makeDb(); const quiet = async (f) => { const l = console.log; console.log = () => {}; try { return await f(); } finally { console.log = l; } };
-    await quiet(() => publishVersion(sdb, rid, publishes[0].input, { expected: { activeVersionId: null } }));
+    const fresh = clone(publishes[0].input); for (const it of fresh.items) delete it.display.identity_id;   // a fresh store certifies nothing: the stamps are the harness's
+    await quiet(() => publishVersion(sdb, rid, fresh, { expected: { activeVersionId: null } }));
     const body = (await quiet(() => buildPublicMenu(sdb, rid, { known: new Set(['x_pizza', 'la_musa']), isActive: async () => true }))).body;
     assert.deepStrictEqual(body.extras_by_item, {}, 'RDR-CLEAR: the served body carries extras_by_item: {}');
     // the form's OWN liveMenuPrepare, with the map it held before the removal in force

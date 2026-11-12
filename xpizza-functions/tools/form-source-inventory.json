@@ -516,7 +516,6 @@
     "xpizza-functions/catalog/publish-request.test.js",
     "xpizza-functions/catalog/redeem-eligibility.test.js",
     "xpizza-functions/catalog/redeem-exclusion.test.js",
-    "xpizza-functions/catalog/remove-dish-refs.test.js",
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
@@ -1252,7 +1251,6 @@
     "xpizza-functions/catalog/publish-request.test.js",
     "xpizza-functions/catalog/redeem-eligibility.test.js",
     "xpizza-functions/catalog/redeem-exclusion.test.js",
-    "xpizza-functions/catalog/remove-dish-refs.test.js",
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
@@ -2873,6 +2871,7 @@
    "pins": [],
    "lifts": [
     "xpizza-functions/addproduct-b-wiring.guard.test.js",
+    "xpizza-functions/rdr-wiring.guard.test.js",
     "xpizza-portal/review.test.mjs"
    ]
   },
@@ -3215,6 +3214,7 @@
     {
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
+      "tools/rdr-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s2-module-inverse.js"
      ]
@@ -3222,6 +3222,7 @@
    ],
    "lifts": [
     "xpizza-functions/catalog/publish-paths.test.js",
+    "xpizza-functions/rdr-wiring.guard.test.js",
     "xpizza-functions/s2-wiring.guard.test.js"
    ]
   },

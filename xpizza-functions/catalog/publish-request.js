@@ -22,6 +22,21 @@ const { resolveAccess, refuseContext } = require('../access/membership');
 const { textEditCapabilities } = require('./item-text-edit');
 const { withConsequences } = require('./extras-consequences');
 
+// THE OWNER PUBLISH'S STRUCTURAL ASSESSMENT (publish-edited-handler.js: the same compareToActive call, the same inputs, the same switches
+// and the honoured deletion claim). Additions are judged structurally here; the add-product permission and the key registry stay the
+// owner publish's (it re-runs everything). → null | the refusal reply.
+function structuralRefusal({ rid, draft, draftBuilt, activeBuilt }) {
+  const AP = require('./add-product');
+  try {
+    AP.compareToActive({ draftBuilt, activeBuilt, draftAuthored: Object.keys(draft.structure || {}), renderedCategories: require('./source-store').rendererContract(rid).renderedCategories,
+      deletedIds: draft.deleted_ids && Array.isArray(draft.deleted_ids.ids) ? draft.deleted_ids.ids : [], authoring: require('./platform-groups').groupCapabilities().authoring,
+      extrasAuthoring: require('./platform-extras').extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled });
+    return null;
+  } catch (e) {
+    if (e instanceof AP.AddProductError) return reply(e.status || 400, { error: e.code, detail: e.detail, ...(e.field ? { field: e.field } : {}), ...(e.key ? { key: e.key } : {}) });
+    throw e;
+  }
+}
 const MAX_AGE_MS = 14 * 24 * 3600 * 1000;   // an older request is ignored (never shown)
 const requestRefOf = (fs, rid) => fs.collection('restaurants').doc(rid).collection('meta').doc('publish_request');
 const reply = (status, body) => ({ status, body });
@@ -68,7 +83,7 @@ async function requestPublishCore(deps, ctx, body) {
     draftPhotos = draft.photos && typeof draft.photos === 'object' && !Array.isArray(draft.photos) && Object.keys(draft.photos).length ? draft.photos : null;
     try { activePhotos = await photos.readActive(rid, baseActiveVersionId); } catch (_) { return reply(503, { error: 'store_unavailable', retryable: true }); }
   }
-  let diff, sameStructure;
+  let diff, sameStructure, structural = null;
   try {
     const { inputs, built } = buildSourceCandidate(rid, draft);
     const draftBuilt = { ...built, extras: inputs.extras };   // as the save builds it (edit-catalog-handler.js)
@@ -76,10 +91,14 @@ async function requestPublishCore(deps, ctx, body) {
     // with item_text_edit ON the save and the owner publish fold the extras consequences into the token-bound diff; recompute it the same way
     if (textEditCapabilities().enabled) diff = withConsequences(diff, { live, liveExtraRecords, draftBuilt, draftExtraRecords: built.extras });
     sameStructure = JSON.stringify(canonicalize(built.structure || null)) === JSON.stringify(canonicalize((live && live.structure) || null));
+    structural = structuralRefusal({ rid, draft, draftBuilt: { items: draftBuilt.items, extras: built.extras, structure: draftBuilt.structure, ...(photos ? { photos: draftPhotos } : {}) },
+      activeBuilt: { items: live.items, extras: liveExtraRecords, structure: live.structure, ...(photos ? { photos: activePhotos } : {}) } });
   } catch (_) { return reply(500, { error: 'draft_build_failed' }); }
   const sourceHash = sha256(draft);
   const v = verifyEditToken(token, { rid, baseActiveVersionId, sourceUpdateTime, sourceHash, diff });
   if (!v.ok) return reply(409, { error: 'edit_superseded', reason: v.reason });
+  // «Quitar del menú» Codex r1 P2-2: the owner publish's structural assessment, before anything is written — a draft it refuses is refused here
+  if (structural) return structural;
   // NOTHING TO PUBLISH (codex plan r2 P1-1): a request exists only while draft ≠ active. Getting back to equality then
   // needs a source change (a new updateTime) or an activation (a new generation), and either retires the request, so a
   // no-op reset (Firestore keeps the updateTime of an unchanged document) can never resurrect one.

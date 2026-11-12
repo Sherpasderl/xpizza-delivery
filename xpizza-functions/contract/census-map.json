@@ -823,6 +823,8 @@
   "access/membership-admin-core.js#runMembershipAdmin": "access",
   "access/membership-admin-core.js#publishFixture": "catalog",
   "catalog/publish-request.js#readActiveBuiltFrom": "catalog",
+  "catalog/publish-request.js#requestPublishCore": "catalog",
+  "catalog/publish-request.js#structuralRefusal": "catalog",
   "access/membership-admin-core.js#publishFixture>anon": "catalog",
   "access/team-http-core.js#handle": "infra",
   "access/team-http.js#endpoint>anon": "infra",
