@@ -100,6 +100,7 @@
     "xpizza-functions/catalog/catalog-verifier.test.js",
     "xpizza-functions/catalog/category-rename-flow.test.js",
     "xpizza-functions/catalog/category-rename.test.js",
+    "xpizza-functions/catalog/choice-activation.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
     "xpizza-functions/catalog/choice-transitions.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
@@ -474,6 +475,7 @@
     "xpizza-functions/catalog/catalog-verifier.test.js",
     "xpizza-functions/catalog/category-rename-flow.test.js",
     "xpizza-functions/catalog/category-rename.test.js",
+    "xpizza-functions/catalog/choice-activation.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
     "xpizza-functions/catalog/choice-transitions.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
@@ -863,6 +865,7 @@
     "xpizza-functions/catalog/catalog-verifier.test.js",
     "xpizza-functions/catalog/category-rename-flow.test.js",
     "xpizza-functions/catalog/category-rename.test.js",
+    "xpizza-functions/catalog/choice-activation.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
     "xpizza-functions/catalog/choice-transitions.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
@@ -1232,6 +1235,7 @@
     "xpizza-functions/catalog/catalog-verifier.test.js",
     "xpizza-functions/catalog/category-rename-flow.test.js",
     "xpizza-functions/catalog/category-rename.test.js",
+    "xpizza-functions/catalog/choice-activation.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
     "xpizza-functions/catalog/choice-transitions.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
@@ -1984,6 +1988,7 @@
   "xpizza-functions/catalog/catalog-edit.js",
   "xpizza-functions/catalog/catalog-menu.js",
   "xpizza-functions/catalog/catalog-publish.js",
+  "xpizza-functions/catalog/choice-activation.js",
   "xpizza-functions/catalog/context-source.js",
   "xpizza-functions/catalog/context-writer.js",
   "xpizza-functions/catalog/display-safety.js",
@@ -2495,6 +2500,7 @@
   "catalog/catalog-transform.js",
   "catalog/catalog.js",
   "catalog/charge-inputs.js",
+  "catalog/choice-activation.js",
   "catalog/choice-transitions.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
@@ -3065,6 +3071,10 @@
    "lifts": [
     "xpizza-functions/addproduct-b-wiring.guard.test.js"
    ]
+  },
+  "catalog/choice-activation.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/choice-transitions.js": {
    "pins": [],

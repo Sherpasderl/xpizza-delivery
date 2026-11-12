@@ -421,6 +421,8 @@
   "catalog/choice-transitions.js#membersOf>anon": "catalog",
   "catalog/choice-transitions.js#removeRow": "catalog",
   "catalog/choice-transitions.js#rowOf": "catalog",
+  "catalog/choice-activation.js#choiceActivation": "catalog",
+  "catalog/choice-activation.js#specOf": "catalog",
   "catalog/extras-projection.js#projectExtrasMaps": "catalog",
   "catalog/extras-allocate.js#allocateExtras": "catalog",
   "catalog/extras-allocate.js#forSave": "catalog",
