@@ -2,7 +2,7 @@
 // S2_BASE (S1 99477204 + 5f's S2-core, the merge it is built on). Folded out FIRST by portalui-guards (the newest layer, above S1),
 // so S1 and every older pin judge exactly what they judged before. Regenerated only from the change's diff
 // (D4c-grill/review-portal/structure-s2/gen_s2_fold.py); an edit outside these hunks, or inside one, fails.
-export const S2_BASE = '4cd31483';
+export const S2_BASE = 'a2b1764b';
 export const S2_FOLD = {
  "app.js": [
   [
