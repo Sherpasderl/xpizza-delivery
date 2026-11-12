@@ -970,6 +970,8 @@ const S2_SERVER = { on: false };
   req.cache[ps] = { id: ps, filename: ps, loaded: true, exports: { structureCapabilities: () => ({ ...real.structureCapabilities(), extrasCatalog: S2_SERVER.on }) } }; }
 // the published menu realSave saves against: the seed, unless a cell serves another one (built by the portal's own writer)
 const REAL_LIVE = { src: null, pointer: null };   // pointer: the live active_version {version, generation} (an activation moves it)
+// OWNER-ONLY (Codex S2 UI r2 P2-11): every page that uses it signs in as the owner (E1). A manager path uses realBackend (5f's real
+// authorizeCatalogEdit resolves the caller; the real requestPublishCore records the request).
 const realSave = (call) => (async () => {
   const { editCatalogCore } = req('./catalog/edit-catalog-handler');
   const { sourceToBuildInputs } = req('./catalog/source-store');
@@ -997,6 +999,61 @@ const realSave = (call) => (async () => {
   return r.status === 200 ? okJson(r.body) : errJson(r.status, r.body);
 })();
 realSave.statuses = [];
+// ── S2 Codex r2 P2-11 — ONE real backend over ONE store: 5f's REAL getEditableCatalogCore, editCatalogCore and requestPublishCore over
+// 5f's own Firestore double (catalog/firestore-fake: every write stamps a new updateTime; update() enforces its precondition) and the
+// membership double its publish-request suite uses (merchant/_fake-db). The caller is resolved by 5f's REAL authorizeCatalogEdit /
+// resolveAccess from the bearer, so a manager is a manager; the body travels VERBATIM (nothing in the harness forwards or drops a field);
+// the stored deletion claim persists across requests; an activation is a real pointer write.
+const UID = { owner: 'uOwner01', manager: 'uMgr01' };
+function realBackend({ rid, live, pointer }) {
+  const { makeDb } = req('./catalog/firestore-fake');
+  const { createFakeDb } = req('./merchant/_fake-db');
+  const { Timestamp } = req('firebase-admin/firestore');
+  const { buildSourceCandidate } = req('./catalog/candidate-validate');
+  const { sourceToBuildInputs } = req('./catalog/source-store');
+  const { buildCatalogV2 } = req('./catalog/form-menu-source');
+  const { getActiveVersionId } = req('./catalog/catalog-firestore');
+  const { authorizeCatalogEdit } = req('./catalog/catalog-edit-auth');
+  const { editCatalogCore } = req('./catalog/edit-catalog-handler');
+  const { getEditableCatalogCore } = req('./catalog/portal-reads');
+  const PR = req('./catalog/publish-request');
+  const fs = makeDb();
+  const rtdb = createFakeDb({
+    brands: { [rid]: { name: rid, active: true, locations: { [rid]: 'member' }, activation: { state: 'legacy', since: 1 } } },
+    restaurants: { [rid]: { identity: { name: rid } } },
+    brand_members: { [rid]: { owners: { [UID.owner]: { granted_at: 1 } }, managers: { [rid]: { [UID.manager]: { granted_at: 1 } } },
+      manager_perms: { [UID.manager]: { can_edit_menu: true } }, profiles: { [UID.manager]: { name: 'Dania Reyes', email: 'dania@m.hn' } } } },
+  });
+  const meta = (id) => fs.collection('restaurants').doc(rid).collection('meta').doc(id);
+  meta('source').set(JSON.parse(JSON.stringify(live)));
+  meta('active_version').set({ ...pointer });
+  // the production reader's shape (publish-request.js readActiveBuiltFrom / 5f's suite builtOf): the built catalog AND the live extra RECORDS
+  const li = sourceToBuildInputs(live);
+  const liveBuilt = { ...buildCatalogV2(rid, { formData: li.formData, priceTable: li.priceTable }), extras: li.extras };
+  const liveRecords = buildSourceCandidate(rid, live).built.extras;
+  const readActiveBuilt = async () => ({ built: liveBuilt, versionId: await getActiveVersionId(fs, rid), extraRecords: liveRecords });
+  // portal/functions.js decodeUpdateTimeForEdit (not exported): the inverse of encodeUpdateTime, nanoseconds kept
+  const toPrecondition = (v) => { if (typeof v !== 'string') return v; const [a, b] = v.split('.'); return /^\d+$/.test(a || '') && /^\d+$/.test(b || '') ? new Timestamp(Number(a), Number(b)) : v; };
+  // 5f's REAL add-product I/O over the same store; the profile's pricing_key_mode is the seeded source's own key_mode (tools/seed-source-store:
+  // «the legacy code-seeded brands' mode is their default (= their seeded profile pricing_key_mode)») — data, never a rid literal
+  fs.collection('restaurants').doc(rid).set({ pricing_key_mode: live.key_mode });
+  const addProduct = req('./catalog/add-product-io').addProductIo({ fs, rtdb });
+  const B = { who: 'owner', statuses: [], fs, rid };
+  const rq = (call, method) => ({ method, query: { restaurantId: rid }, get: (h) => (String(h).toLowerCase() === 'authorization' ? call.auth : undefined) });
+  const authorize = (r, q) => authorizeCatalogEdit({ db: rtdb, verifyIdToken: async () => ({ uid: UID[B.who] }) }, q, r);
+  const out = (r) => (r.status === 200 ? okJson(r.body) : errJson(r.status, r.body));
+  B.on = {
+    getEditableCatalog: (call) => (async () => out(await getEditableCatalogCore({ db: rtdb, fsdb: fs, readActiveVersionId: getActiveVersionId, readActiveBuilt, authorize, now: () => 6000 }, rq(call, 'GET'))))(),
+    editCatalog: (call) => (async () => { const r = await editCatalogCore({ db: fs, authorize, readActiveBuilt, toPrecondition, addProduct }, call.body, rq(call, 'POST')); B.statuses.push(r.status); return out(r); })(),
+    catalogRequestPublish: (call) => (async () => { const r = await PR.requestPublishCore({ fs, db: rtdb, now: () => 5000, readActiveBuilt, readDraft: (x) => PR.readDraftFrom(fs, x), addProduct }, { uid: UID[B.who], token: {} }, call.body); B.statuses.push(`request ${r.status}`); return out(r); })(),
+    getMyBranches: () => okJson({ brands: [{ brand_id: rid, name: rid }], membership_writes_enabled: false,
+      branches: [{ ...E1().branches[0], rid, brand_id: rid, role: B.who, caps: [...req('./access/membership').capsFor(B.who === 'owner' ? { owner: true } : { manager: true, manager_menu: true }, 'member')] }] }),
+  };
+  B.activate = (p) => meta('active_version').set({ ...p });
+  B.claim = async () => { const d = (await meta('source').get()).data(); return d && d.deleted_ids ? JSON.parse(JSON.stringify(d.deleted_ids)) : null; };
+  B.request = async () => { const d = await PR.requestRefOf(fs, rid).get(); return d.exists ? d.data() : null; };
+  return B;
+}
 const salsaName = (i) => SRC.extras.filter((x) => x.display.cat === 'Salsas')[i].display.name;
 test('S1 r1 #1 — a checklist-only change reaches the REVIEW: its line is shown, it counts, «Publicar» is enabled', async () => {
   const p = await page({ read: ON, on: { editCatalog: realSave } });
@@ -1821,7 +1878,9 @@ test('S2 P-6 — the owner\u2019s save adopts the server\u2019s keys: the SAME r
 test('S2 P-6 — the manager\u2019s send: focus stays in the SAME row\u2019s price across the adoption (its restore key re-keyed by extraRefs); without the map the view state is dropped, nothing mis-keyed', async () => {
   S2_SERVER.on = true;
   try {
-    const p = await page({ read: () => editable({ extrasAuthoring: true, extrasCatalog: true, publish_via_request: true }), on: { editCatalog: realSave, catalogRequestPublish: () => okJson({ ok: true, counts: { changed: 0, added: 1, removed: 0, large: 0 } }) } });
+    // Codex S2 UI r2 P2-11: a REAL manager on a platform-factura brand — 5f's real read, save and request handler (realBackend), no canned success
+    const B = realBackend({ rid: 'x_pizza', live: buildSourceFromCode('x_pizza'), pointer: { version: 'v1', generation: 1 } }); B.who = 'manager';
+    const p = await page({ on: B.on });
     const row = await probeOnPage(p, 34);
     row.querySelector('.price input').focus();
     p.d.getElementById('review').click(); await settle(80);
@@ -1831,9 +1890,12 @@ test('S2 P-6 — the manager\u2019s send: focus stays in the SAME row\u2019s pri
     assert.ok(typeof k.key === 'string' && p.src().extras.find((e) => e.key === k.key).display.name === 'Probe extra', 'the SAME row, now keyed');
     assert.equal(ae.value, '34');
     assert.equal(addBtn(p).disabled, false, 'the Extras page is editable again after the send (it kept its write-time disabled controls before)');
+    assert.deepEqual(B.statuses, [200, 'request 200'], 'the REAL save, then the REAL request handler recorded the manager’s request');
+    assert.ok((await B.request()).by === UID.manager, 'the request is the manager’s');
     // a stubbed answer WITHOUT extraRefs: 5f's real handler with the map removed (never laxer) — nothing is re-keyed by a guess
-    const noMap = (call) => realSave(call).then(async (r) => { const b = await r.json(); if (!r.ok) return errJson(r.status, b); delete b.extraRefs; return okJson(b); });
-    const q = await page({ read: () => editable({ extrasAuthoring: true, extrasCatalog: true, publish_via_request: true }), on: { editCatalog: noMap, catalogRequestPublish: () => okJson({ ok: true, counts: { changed: 0, added: 1, removed: 0, large: 0 } }) } });
+    const B2 = realBackend({ rid: 'x_pizza', live: buildSourceFromCode('x_pizza'), pointer: { version: 'v1', generation: 1 } }); B2.who = 'manager';
+    const noMap = (call) => B2.on.editCatalog(call).then(async (r) => { const b = await r.json(); if (!r.ok) return errJson(r.status, b); delete b.extraRefs; return okJson(b); });
+    const q = await page({ on: { ...B2.on, editCatalog: noMap } });
     const row2 = await probeOnPage(q, 35);
     row2.querySelector('.price input').focus();
     q.d.getElementById('review').click(); await settle(80);
@@ -2104,53 +2166,71 @@ test('S2 Codex r1 P2-14 — NO AMBER on the Extras page (MOCKUP-pastel-chips): t
   for (const t of xpage(p).querySelectorAll('.tag.new')) assert.ok(!t.classList.contains('mk-sky') && !t.classList.contains('mk-sand'), '«Nuevo» stays green');
 });
 
-// ── S2 Codex r1 P2-11 — the stale-claim recovery against 5f's REAL editCatalogCore (no canned success): an activation moves the live
-// pointer under the merchant's claim → the server's own deleted_ids_base_moved → the sheet → «Confirmar y seguir» resends the SAME
-// request acknowledged with the fresh base → the server accepts. The owner's save and the manager's request; «Cancelar» sends nothing
-// and the next ordinary review is refused AGAIN by the server (the sheet again, never a silent resend).
+// ── S2 Codex r2 P2-11 — a STORED stale claim, recovered against 5f's REAL read / save / request over ONE store (realBackend): the
+// merchant's first removal is SAVED (the claim is stored against v1@1); an activation moves live to v2@2; a second removal changes the
+// claim → the server refuses (its own code) → the sheet → «Confirmar y seguir» resends ACKNOWLEDGED with the fresh base → the server
+// REBINDS the stored claim to v2@2 (persistDeletionClaim: an existing claim on a moved base is rebound only with the acknowledgement).
+// The owner saves; the manager (x_pizza, a platform-factura brand) saves and the REAL requestPublishCore records the request.
+// «Cancelar» sends nothing: the stored claim stays as it was, and the next review is refused AGAIN by the server.
+const FISCAL_RID = 'x_pizza';
 for (const who of ['owner', 'manager']) {
   for (const path of ['confirm', 'cancel']) {
-    test(`S2 Codex r1 P2-11 — ${who}: a real stale claim → «${path === 'confirm' ? 'Confirmar y seguir' : 'Cancelar'}» (5f's real handler decides)`, async () => {
-      // the CERTIFIED live menu, stamped exactly as 5f's own S2-core suite certifies the seed (catalog/s2core-compare.test.js activeOf):
-      // a removed extra's identity joins the claim, so the server's loaded-base guard is reached
-      const certified = JSON.parse(JSON.stringify(SRC)); certified.extras.forEach((e, i) => { e.display.identity_id = `xid_${i}`; });
-      S2_SERVER.on = true; REAL_LIVE.src = certified; REAL_LIVE.pointer = { version: 'v-live', generation: 1 }; realSave.statuses = [];
+    test(`S2 Codex r2 P2-11 — ${who}: a STORED claim on a moved base → «${path === 'confirm' ? 'Confirmar y seguir' : 'Cancelar'}» (5f's real read, save and request decide)`, async () => {
+      // the CERTIFIED live menu, stamped as 5f's own S2-core suite certifies a seed (catalog/s2core-compare.test.js activeOf)
+      const live = buildSourceFromCode(FISCAL_RID); live.extras.forEach((e, i) => { e.display.identity_id = `xid_${i}`; });
+      S2_SERVER.on = true;
       try {
-        let reads = 0;
-        const read = () => editable({ source: JSON.parse(JSON.stringify(certified)), extrasAuthoring: true, extrasCatalog: true, deletionBase: { version: 'v-live', generation: 1 }, publish_via_request: who === 'manager' });
-        const p = await page({ read, on: {
-          editCatalog: realSave,
-          catalogRequestPublish: () => okJson({ ok: true, counts: { changed: 0, added: 0, removed: 1, large: 0 } }),
-          getEditableCatalog: () => (reads++ ? okJson({ ...read(), deletionBase: { ...REAL_LIVE.pointer } }) : null),
-        } });
+        const B = realBackend({ rid: FISCAL_RID, live, pointer: { version: 'v1', generation: 1 } }); B.who = who;
+        const p = await page({ on: B.on });
         await p.signIn();
         tabBtn(p, 'Extras').click(); await settle(10);
-        xrows(p)[1].querySelector('button.del').click(); await settle(5);
-        [...p.d.querySelectorAll('#xscrim .mf button')].find((b) => b.textContent === 'Quitar').click(); await settle(10);
-        REAL_LIVE.pointer = { version: 'v-new', generation: 2 };   // an activation lands after the merchant loaded the menu
-        p.d.getElementById('review').click(); await settle(80);
-        assert.deepEqual(realSave.statuses, [409], 'premise: the REAL server refused the moved base');
+        const removeOne = async () => {
+          const r = xrows(p).find((x) => { const b = x.querySelector('button.del'); return b && !b.disabled && !x.classList.contains('mk-xgone'); });
+          assert.ok(r, 'premise: a removable published extra');
+          r.querySelector('button.del').click(); await settle(5);
+          [...p.d.querySelectorAll('#xscrim .mf button')].find((b) => b.textContent === 'Quitar').click(); await settle(10);
+        };
+        const review = async () => { p.d.getElementById('review').click(); await settle(120); };
+        // 1) the first removal, saved: the server STORES the claim against the base the merchant loaded
+        await removeOne();
+        await review();
+        assert.deepEqual(B.statuses, who === 'manager' ? [200, 'request 200'] : [200], 'premise: the first removal saved for real');
+        const c1 = await B.claim();
+        assert.ok(c1 && c1.ids.length === 1 && c1.base_version === 'v1' && c1.base_generation === 1, `premise: the claim is STORED against v1@1 (${JSON.stringify(c1)})`);
+        if (who === 'owner') { p.d.getElementById('pubback').click(); await settle(20); }
+        // 2) an activation lands; 3) a second removal changes the claim
+        await B.activate({ version: 'v2', generation: 2 });
+        await removeOne();
+        const before = B.statuses.length;
+        await review();
+        assert.equal(B.statuses[before], 409, 'premise: the REAL server refuses the changed claim on the moved base');
         assert.ok(x2b(p), 'the recovery sheet');
         const [cancel, go] = [...x2b(p).querySelectorAll('.mf button')];
         if (path === 'confirm') {
-          go.click(); await settle(80);
-          const sent = p.n('editCatalog');
-          assert.equal(sent.length, 2, 'ONE resend');
-          assert.equal(sent[1].body.deleted_ids_reviewed, true, 'acknowledged');
-          assert.deepEqual(sent[1].body.deleted_ids_loaded_base, { version: 'v-new', generation: 2 }, 'the fresh base');
-          assert.deepEqual(realSave.statuses, [409, 200], 'the REAL server accepted the acknowledged resend');
-          if (who === 'manager') assert.equal(p.n('catalogRequestPublish').length, 1, 'the manager’s request went to the owner once');
-          else assert.ok(p.d.getElementById('scrim').classList.contains('show') && !panel(p), 'the owner is back at the review, no refusal panel');
+          go.click(); await settle(150);
+          const last = p.n('editCatalog').at(-1);
+          assert.equal(last.body.deleted_ids_reviewed, true, 'acknowledged');
+          assert.deepEqual(last.body.deleted_ids_loaded_base, { version: 'v2', generation: 2 }, 'the fresh base');
+          assert.equal(B.statuses[before + 1], 200, 'the REAL server accepted the acknowledged resend');
+          const c2 = await B.claim();
+          assert.ok(c2 && c2.ids.length === 2 && c1.ids.every((x) => c2.ids.includes(x)), `the stored claim now holds BOTH removals (${JSON.stringify(c2)})`);
+          assert.deepEqual([c2.base_version, c2.base_generation], ['v2', 2], 'the acknowledgement REBOUND the stored claim to the live base');
+          if (who === 'manager') {
+            assert.equal(B.statuses[before + 2], 'request 200', 'the REAL request handler recorded the manager’s request');
+            const slot = await B.request();
+            assert.ok(slot && slot.by === UID.manager && slot.base_active_version === 'v2' && slot.base_generation === 2, `the request is bound to the rebound draft (${JSON.stringify(slot)})`);
+          } else assert.ok(p.d.getElementById('scrim').classList.contains('show') && !panel(p), 'the owner is back at the review, no refusal panel');
         } else {
-          cancel.click(); await settle(20);
-          assert.equal(p.n('editCatalog').length, 1, '«Cancelar»: nothing resent');
-          p.d.getElementById('review').click(); await settle(80);
-          assert.deepEqual(p.n('editCatalog')[1].body.deleted_ids_loaded_base, { version: 'v-live', generation: 1 }, 'the PREVIOUS base (P1-1)');
-          assert.deepEqual(realSave.statuses, [409, 409], 'the REAL server refuses it again');
+          const sent = p.n('editCatalog').length, asked = p.n('catalogRequestPublish').length;
+          cancel.click(); await settle(30);
+          assert.equal(p.n('editCatalog').length, sent, '«Cancelar»: nothing resent');
+          assert.deepEqual(await B.claim(), c1, '«Cancelar»: the stored claim is untouched (still v1@1, one removal)');
+          await review();
+          assert.equal(B.statuses.at(-1), 409, 'the REAL server refuses it again');
           assert.ok(x2b(p), 'the sheet again — never a silent resend');
-          if (who === 'manager') assert.equal(p.n('catalogRequestPublish').length, 0, 'nothing reached the owner');
+          assert.equal(p.n('catalogRequestPublish').length, asked, 'nothing more reached the owner');
         }
-      } finally { S2_SERVER.on = false; REAL_LIVE.pointer = null; REAL_LIVE.src = null; }
+      } finally { S2_SERVER.on = false; }
     });
   }
 }
