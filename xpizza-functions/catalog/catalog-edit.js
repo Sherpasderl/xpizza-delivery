@@ -79,13 +79,19 @@ function priceSanity(key, surface, old, next, out) {
 
 // «Quitar del menú» P-R1: the editor read's rows for the live dishes a SAVED draft removes (the comparator's honoured removals) —
 // { key, identity_id, row: the live item, after: its live item_order predecessor or null, photo: its live photo entry or null }, sorted
-// by key. Here (not in portal-reads) because the stamp is identity: this module already owns reading it for the diff.
-function pendingRemovalRows(liveBuilt, keys) {
+// by key, plus its own refs (B-2). Here (not in portal-reads) because the stamp is identity: this module already owns reading it.
+function pendingRemovalRows(liveBuilt, keys, photoMap = null) {
   const items = new Map(((liveBuilt && liveBuilt.items) || []).map((it) => [it && it.key, it]));
   const order = (liveBuilt && liveBuilt.structure && liveBuilt.structure.item_order) || [];
-  const photos = new Map(liveBuilt && liveBuilt.photos && typeof liveBuilt.photos === 'object' ? Object.entries(liveBuilt.photos) : []);
+  const photos = new Map(photoMap && typeof photoMap === 'object' ? Object.entries(photoMap) : []);   // A-1: the ACTIVE entries in the draft map's shape (portal-reads)
+  const st = (liveBuilt && liveBuilt.structure) || {};
+  const ov = new Map(Object.entries(st.exposure && st.exposure.item_overrides && typeof st.exposure.item_overrides === 'object' ? st.exposure.item_overrides : {}));
+  const ebi = new Map(Object.entries(st.extras_by_item && typeof st.extras_by_item === 'object' ? st.extras_by_item : {}));
+  const rei = Array.isArray(st.redeem_eligible_items) ? st.redeem_eligible_items : [];
   return [...keys].sort().map((key) => { const row = items.get(key) || null; const i = order.indexOf(key);
-    return { key, identity_id: row && row.display && row.display.identity_id !== undefined ? row.display.identity_id : null, row, after: i > 0 ? order.slice(i - 1, i).pop() : null, photo: photos.has(key) ? photos.get(key) : null }; });
+    return { key, identity_id: row && row.display && row.display.identity_id !== undefined ? row.display.identity_id : null, row, after: i > 0 ? order.slice(i - 1, i).pop() : null, photo: photos.has(key) ? photos.get(key) : null,
+      // B-2: the dish's OWN refs, so a reload «Deshacer» restores them exactly (the entries P-R4 lets a removal take)
+      refs: { item_override: ov.has(key) ? ov.get(key) : null, extras_by_item: ebi.has(key) ? ebi.get(key) : null, redeem_index: rei.includes(key) ? rei.indexOf(key) : null } }; });
 }
 // «Quitar del menú» P-R3 (switch P-R5): the diff option for a draft whose deletion claim names live dishes — { declared: Set<live key> },
 // the live dishes whose identity stamp is in `draft.deleted_ids.ids` and whose key the draft no longer has. Switch OFF, or no claim → null
@@ -97,6 +103,22 @@ function removalDiffOptions(liveBuilt, draft) {
   const inDraft = new Set(((draft && draft.items) || []).map((it) => it && it.key));
   const declared = new Set(((liveBuilt && liveBuilt.items) || []).filter((it) => it && it.display && ids.has(it.display.identity_id) && !inDraft.has(it.key)).map((it) => it.key));
   return declared.size ? { declared } : null;
+}
+// B-1 (advisor RULED): the reviewed diff changes NOTHING but declared removals (their own cleanup is not a line) — no added, renamed or
+// changed line, no sanity line, no consequence, and every removed line is a declared dish. Then no factura price moves.
+function removalOnlyDiff(diff, opts) {
+  const declared = opts && opts.declared instanceof Set ? opts.declared : null;
+  if (!declared || !diff) return false;
+  const none = (a) => !Array.isArray(a) || a.length === 0;
+  return none(diff.added) && none(diff.renamed) && none(diff.changed) && none(diff.largeChangeSet) && none(diff.consequences)
+    && Array.isArray(diff.removed) && diff.removed.length > 0 && diff.removed.every((r) => r && r.surface === 'item' && declared.has(r.key));
+}
+// B-5 (advisor RULED): with photo uploads off, the draft map may differ from the stored one ONLY by the declared removals' own entries leaving
+function onlyRemovedPhotosLeave(map, stored, opts) {
+  const declared = opts && opts.declared instanceof Set ? opts.declared : null;
+  if (!declared) return false;
+  const rest = Object.fromEntries(Object.entries(stored || {}).filter(([k]) => !declared.has(k)));
+  return PS.sameStates(map, Object.keys(rest).length ? rest : null);
 }
 // Pair removals with additions ONLY when the pairing is unambiguous: exactly one of each at that price.
 // Guessing is worse than not pairing. A deletion mislabelled as a "rename" is a deletion nobody reviewed,
@@ -184,6 +206,7 @@ function catalogDiff(liveBuilt, draftBuilt, opts = null) {
   const declared = opts && opts.declared instanceof Set ? opts.declared : null;
   const itemPairs = pairRenames(declared ? rawRemovedItems.filter((r) => !declared.has(r.key)) : rawRemovedItems, rawAddedItems, 'item');
   if (declared) itemPairs.removed.push(...rawRemovedItems.filter((r) => declared.has(r.key)));
+  if (declared) for (let i = changed.length - 1; i >= 0; i--) if (changed[i].field === 'photo' && declared.has(changed[i].key)) changed.splice(i, 1);   // B-5: the photo cleanup folds into the one «Quitado» row
   const extraPairs = pairRenames(rawRemovedEx, rawAddedEx, 'extra');
   added.push(...itemPairs.added, ...extraPairs.added);
   removed.push(...itemPairs.removed, ...extraPairs.removed);
@@ -241,4 +264,4 @@ function verifyEditToken(token, state) {
   return { ok: true, reason: null };
 }
 
-module.exports = { catalogDiff, issueEditToken, verifyEditToken, gateFlagsOf, sha256, SWING_LIMIT, removalDiffOptions, pendingRemovalRows };
+module.exports = { catalogDiff, issueEditToken, verifyEditToken, gateFlagsOf, sha256, SWING_LIMIT, removalDiffOptions, pendingRemovalRows, removalOnlyDiff, onlyRemovedPhotosLeave };

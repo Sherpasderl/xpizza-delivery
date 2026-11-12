@@ -214,7 +214,7 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
         if (a.other === true) pendingOther = true;
         /* P-R1: the live dishes the SAVED draft removes (a declared, honoured claim) — so a reloaded editor still lists them as pending
            («Deshacer» restores the live row at its live place) and the review names them. Sorted by key; present only when there are some. */
-        if (productRemoval && Array.isArray(a.removals) && a.removals.length) pendingRemovals = require('./catalog-edit').pendingRemovalRows(activeRes.built, a.removals);
+        if (productRemoval && Array.isArray(a.removals) && a.removals.length) pendingRemovals = require('./catalog-edit').pendingRemovalRows(activeRes.built, a.removals, photoReads && typeof photoReads.readActive === 'function' ? require('../photos/photo-state').resetMapFromActive(await photoReads.readActive(rid, activeVersionId)) : null);   // A-1: the ACTIVE photo entries
         // S2-4 (§1.1, G5): the saved-but-unpublished TEXT edits per product against live — a launcher or plain product, never an
         // option row; served only for a publishable draft and only while the switch is on (pendingOther keeps its meaning)
         if (textEditEnabled) {

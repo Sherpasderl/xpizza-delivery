@@ -418,7 +418,7 @@ function rewriteGroupRefs(source, refToId) {
 const TEXT_FIELDS = Object.freeze(['name', 'desc', 'cat', 'subcat']);
 const ALWAYS_COMPARED = ['categories', 'variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extra_order'];
 const COMPARED_WHEN_AUTHORED = ['extra_categories', 'badges', 'exposure', 'extras_by_category', 'extras_by_item',
-  'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']; function keepClearedMaps(structure, activeStructure) { return activeStructure && activeStructure.extras_by_item !== undefined && structure && structure.extras_by_item === undefined ? { ...structure, extras_by_item: {} } : structure; }   // «Quitar del menú» (Codex remove-refs r1 P2-1, RULED): a derived extras_by_item that EMPTIES is an explicit clear `{}` (the forms keep an ABSENT map in force) — compared and published as `{}` while the active carries the map; sticky
+  'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']; function keepClearedMaps(structure, activeStructure) { return activeStructure && activeStructure.extras_by_item !== undefined && structure && structure.extras_by_item === undefined ? { ...structure, extras_by_item: {} } : structure; } function clearedMapsFor(structure, activeStructure, productRemoval) { const a = activeStructure && activeStructure.extras_by_item; return productRemoval || (isObj(a) && !Object.keys(a).length) ? keepClearedMaps(structure, activeStructure) : structure; }   // A-2 (Codex remove r2): a {} already published stays the clear whatever the switch — «Quitar del menú» (Codex remove-refs r1 P2-1, RULED): a derived extras_by_item that EMPTIES is an explicit clear `{}` (the forms keep an ABSENT map in force) — compared and published as `{}` while the active carries the map; sticky
 
 function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null, authoring = false, extrasAuthoring = false, textEdit = false, productRemoval = false }) {
   const active = new Map(activeBuilt.items.map((it) => [it.key, it]));
@@ -507,7 +507,7 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
   }
   const authored = draftAuthored instanceof Set ? draftAuthored : new Set(draftAuthored || []);
   for (const f of [...ALWAYS_COMPARED.filter((x) => x !== 'variant_items' && x !== 'categories'), ...COMPARED_WHEN_AUTHORED.filter((x) => authored.has(x) && x !== 'exposure')]) {   // variant_items, categories, exposure: their own rules
-    if (!sameJson((productRemoval ? keepClearedMaps(draftBuilt.structure, activeBuilt.structure) : draftBuilt.structure)[f], AS[f])) refuse('structure_changed', `the menu's ${f} cannot change here`, { field: f });
+    if (!sameJson(clearedMapsFor(draftBuilt.structure, activeBuilt.structure, productRemoval)[f], AS[f])) refuse('structure_changed', `the menu's ${f} cannot change here`, { field: f });
   }
   // categories (PLAN-public-menu-display r2 T1): frozen except each category's display `name` — same count, the same id
   // at every index, every other field equal. A draft that renames must change NOTHING else (rename_not_alone), so the
@@ -657,5 +657,5 @@ module.exports = {
   resolveKeyMode, classifyItems, allocateAdditions, compareToActive, assertSameAuthoredFields, isGroupVariant, optionName, prospectiveAdditionNames,
   samePhotoStates,      // DISH PHOTOS A2: parity-tested against photos/photo-state.js
   changesNothingElse,   // PLAN-public-menu-display T1 (portal r1 #3): the SAME «anything but a category name» rule, read by draft-assess
-  ALWAYS_COMPARED, COMPARED_WHEN_AUTHORED, keepClearedMaps,
+  ALWAYS_COMPARED, COMPARED_WHEN_AUTHORED, keepClearedMaps, clearedMapsFor,
 };

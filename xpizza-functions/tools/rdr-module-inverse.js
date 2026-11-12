@@ -7,7 +7,7 @@ const BASE = '7407138c';
 const HUNKS = Object.freeze([
  {
   "file": "catalog/add-product.js",
-  "now": "  'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']; function keepClearedMaps(structure, activeStructure) { return activeStructure && activeStructure.extras_by_item !== undefined && structure && structure.extras_by_item === undefined ? { ...structure, extras_by_item: {} } : structure; }   // «Quitar del menú» (Codex remove-refs r1 P2-1, RULED): a derived extras_by_item that EMPTIES is an explicit clear `{}` (the forms keep an ABSENT map in force) — compared and published as `{}` while the active carries the map; sticky\n",
+  "now": "  'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']; function keepClearedMaps(structure, activeStructure) { return activeStructure && activeStructure.extras_by_item !== undefined && structure && structure.extras_by_item === undefined ? { ...structure, extras_by_item: {} } : structure; } function clearedMapsFor(structure, activeStructure, productRemoval) { const a = activeStructure && activeStructure.extras_by_item; return productRemoval || (isObj(a) && !Object.keys(a).length) ? keepClearedMaps(structure, activeStructure) : structure; }   // A-2 (Codex remove r2): a {} already published stays the clear whatever the switch — «Quitar del menú» (Codex remove-refs r1 P2-1, RULED): a derived extras_by_item that EMPTIES is an explicit clear `{}` (the forms keep an ABSENT map in force) — compared and published as `{}` while the active carries the map; sticky\n",
   "was": "  'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras'];\n"
  },
  {
@@ -22,7 +22,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/add-product.js",
-  "now": "    if (!sameJson((productRemoval ? keepClearedMaps(draftBuilt.structure, activeBuilt.structure) : draftBuilt.structure)[f], AS[f])) refuse('structure_changed', `the menu's ${f} cannot change here`, { field: f });\n",
+  "now": "    if (!sameJson(clearedMapsFor(draftBuilt.structure, activeBuilt.structure, productRemoval)[f], AS[f])) refuse('structure_changed', `the menu's ${f} cannot change here`, { field: f });\n",
   "was": "    if (!sameJson(draftBuilt.structure[f], activeBuilt.structure[f])) refuse('structure_changed', `the menu's ${f} cannot change here`, { field: f });\n"
  },
  {
@@ -32,13 +32,18 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/add-product.js",
-  "now": "  ALWAYS_COMPARED, COMPARED_WHEN_AUTHORED, keepClearedMaps,\n",
+  "now": "  ALWAYS_COMPARED, COMPARED_WHEN_AUTHORED, keepClearedMaps, clearedMapsFor,\n",
   "was": "  ALWAYS_COMPARED, COMPARED_WHEN_AUTHORED,\n"
  },
  {
   "file": "catalog/draft-assess.js",
   "now": "      extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled, productRemoval: require('./platform-removal').removalCapabilities().productRemoval,   // per-product extras (the narrow deny_extras / extras_policy exception)\n",
   "was": "      extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled,   // per-product extras (the narrow deny_extras / extras_policy exception)\n"
+ },
+ {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "    if (!enabled && !PS.sameStates(photoMap, stored.photos || null) && !require('./catalog-edit').onlyRemovedPhotosLeave(photoMap, stored.photos || null, require('./catalog-edit').removalDiffOptions(live, candidate))) {   // B-5 (RULED): a declared removal's own photo entry leaving is cleanup, not an upload\n",
+  "was": "    if (!enabled && !PS.sameStates(photoMap, stored.photos || null)) {\n"
  },
  {
   "file": "catalog/edit-catalog-handler.js",
@@ -62,8 +67,23 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/publish-edited-handler.js",
-  "now": "      items: draftBuilt.items, structure: require('./platform-removal').removalCapabilities().productRemoval ? AP.keepClearedMaps(draftBuilt.structure, live.structure) : draftBuilt.structure, extras: inputs.extras,\n",
+  "now": "  { const g = fiscalPublishGate(rid, auth, body, !(require('./platform-removal').removalCapabilities().productRemoval && require('./catalog-edit').removalOnlyDiff(diff, require('./catalog-edit').removalDiffOptions(live, draft)))); if (g) return g; }   // B-1 (advisor RULED): a removal-only publish changes no factura price — the owner rule stands, the ack is not asked\n",
+  "was": "  { const g = fiscalPublishGate(rid, auth, body); if (g) return g; }\n"
+ },
+ {
+  "file": "catalog/publish-edited-handler.js",
+  "now": "      items: draftBuilt.items, structure: AP.clearedMapsFor(draftBuilt.structure, live.structure, require('./platform-removal').removalCapabilities().productRemoval), extras: inputs.extras,\n",
   "was": "      items: draftBuilt.items, structure: draftBuilt.structure, extras: inputs.extras,\n"
+ },
+ {
+  "file": "catalog/publish-edited-handler.js",
+  "now": "function fiscalPublishGate(rid, auth, body, ackNeeded = true) {\n",
+  "was": "function fiscalPublishGate(rid, auth, body) {\n"
+ },
+ {
+  "file": "catalog/publish-edited-handler.js",
+  "now": "    if (ackNeeded && (body && body.fiscalAck) !== true) {\n",
+  "was": "    if ((body && body.fiscalAck) !== true) {\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

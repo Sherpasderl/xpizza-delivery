@@ -84,7 +84,7 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 200)}`;
     assert.strictEqual(r.status, 200, show(r));
     const e = await editor(rid, saved);
     const order = live.structure.item_order; const before = (k) => { const i = order.indexOf(k); return i > 0 ? order[i - 1] : null; };
-    assert.deepStrictEqual(e.body.pendingRemovals, ['rice_03', 'soft_01'].map((k) => ({ key: k, identity_id: stamp(rid, k), row: live.items.find((it) => it.key === k), after: before(k), photo: null })));
+    assert.deepStrictEqual(e.body.pendingRemovals.map(({ refs, ...rest }) => rest), ['rice_03', 'soft_01'].map((k) => ({ key: k, identity_id: stamp(rid, k), row: live.items.find((it) => it.key === k), after: before(k), photo: null })));
   }));
   await cell('PR1-NONE: a draft that removes nothing serves no pendingRemovals', () => ON(async () => {
     const e = await editor('la_musa', canonicalize(base('la_musa')));

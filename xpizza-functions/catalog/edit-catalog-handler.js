@@ -160,7 +160,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
     }
     let enabled;
     try { enabled = (await photos.enabled()) === true; } catch (_) { enabled = false; }
-    if (!enabled && !PS.sameStates(photoMap, stored.photos || null)) {
+    if (!enabled && !PS.sameStates(photoMap, stored.photos || null) && !require('./catalog-edit').onlyRemovedPhotosLeave(photoMap, stored.photos || null, require('./catalog-edit').removalDiffOptions(live, candidate))) {   // B-5 (RULED): a declared removal's own photo entry leaving is cleanup, not an upload
       return reply(409, { error: 'photo_change_disabled', detail: 'photo changes are switched off; the photos already in the draft are kept' });
     }
   }
