@@ -179,7 +179,8 @@ const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.
     const reads = [];
     const w = world({ hang: true, hooks: { beforeRead: async (p) => { if (p.startsWith('orders/')) reads.push(p); } } });
     const t0 = Date.now();
-    const g = await REQ(w, { order_id: 'ord_guest' }); const a = await REQ(w, { order_id: 'no_such_order' }, '10.0.0.3');
+    const within = (p) => Promise.race([p, new Promise((r) => setTimeout(() => r('HUNG'), 1000))]);   // a hung request fails the cell, never the run
+    const g = await within(REQ(w, { order_id: 'ord_guest' })); const a = await within(REQ(w, { order_id: 'no_such_order' }, '10.0.0.3'));
     assert.ok(Date.now() - t0 < 1000 && JSON.stringify(g) === JSON.stringify(a) && JSON.stringify(g) === '{"status":200,"body":{"ok":true}}', `${L}: a provider that never answers does not delay the request (no awaited send); identical bytes`);
     assert.deepStrictEqual([reads.length, w.sends.length, Object.keys(w.db.getAt('sdk_recovery_queue') || {}).length], [0, 0, 2], `${L}: ZERO reads of orders/*, ZERO sends, ONE queue entry each on the request path`);
   });
@@ -196,8 +197,9 @@ const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.
     const w = world({ hooks: { beforeTx: async (p) => { if (p.startsWith('recovery_phone_budget/')) throw new Error('injected storage failure'); } } });
     const r = await REQ(w, { order_id: 'ord_guest' });
     const warned = []; const ow = console.warn; console.warn = (...x) => warned.push(x.join(' '));
-    try { await REC().processRecoveryQueue(w.deps); } finally { console.warn = ow; }
-    assert.ok(JSON.stringify(r) === '{"status":200,"body":{"ok":true}}' && warned.some((x) => x.startsWith('sdk_recovery_suppressed')), `${L}: a processor storage failure ⇒ the request had already answered 200; the processor records it, never throws (${JSON.stringify(warned)})`);
+    let threw = null;
+    try { await REC().processRecoveryQueue(w.deps); } catch (e) { threw = e; } finally { console.warn = ow; }
+    assert.ok(JSON.stringify(r) === '{"status":200,"body":{"ok":true}}' && !threw && warned.some((x) => x.startsWith('sdk_recovery_suppressed')), `${L}: a processor storage failure ⇒ the request had already answered 200; the processor records it, never throws (${JSON.stringify(warned)})`);
   });
   await cell('SDK-D4-REC-OWN-BUDGET', async (L) => {
     const w = world();
@@ -205,9 +207,16 @@ const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.
     assert.ok(w.db.getAt(`otp_budget/${PH}`) == null && w.db.getAt(`recovery_phone_budget/${PH}`), `${L}: a recovery spends ONLY its own budget — checkout's otp_budget is untouched, so a checkout-OTP follow-up is identical for every target`);
   });
   await cell('SDK-D4-REC-SINGLE-PROCESSOR', async (L) => {
-    const w = world();
+    // a BARRIER: both processors reach the entry before either proceeds, so only the CLAIM decides who sends
+    let armed = false, arrived = 0, open; const gate = new Promise((r) => { open = r; });
+    const y = async (p) => { if (armed && p.startsWith('sdk_recovery_queue/')) { arrived += 1; if (arrived === 2) open(); await gate; } };
+    const w = world({ hooks: { beforeRead: y, beforeTx: y } });
     await REQ(w, { order_id: 'ord_guest' });
-    await Promise.all([REC().processRecoveryQueue(w.deps), REC().processRecoveryQueue(w.deps)]);
+    armed = true;
+    const [id] = Object.keys(w.db.getAt('sdk_recovery_queue'));
+    const outs = (await Promise.all([REC().processRecoveryEntry(w.deps, id), REC().processRecoveryEntry(w.deps, id)])).map((o) => o.outcome).sort();
+    // the per-phone cooldown alone would also stop a second SEND; the claim must stop the second processor before any budget work
+    assert.deepStrictEqual(outs, ['none', 'sent'], `${L}: exactly one processor CLAIMS the entry; the other finds nothing (${JSON.stringify(outs)})`);
     assert.strictEqual(w.sends.length, 1, `${L}: two concurrent processors ⇒ ONE send`);
   });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nd4-s5: OK (${pass})`);
