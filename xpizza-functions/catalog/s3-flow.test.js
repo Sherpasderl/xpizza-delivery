@@ -155,6 +155,19 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 220)}`;
     assert.ok(off.status >= 400 && p2.state.publishes.length === 0, `S3F-PUBLISH-OFF: refused, nothing published (${show(off)})`);
     ok('ON: the owner publish re-judges the draft — published ON with its group; saved ON, published OFF is refused, nothing written');
   }
+  {   // the owner PUBLISH refuses a reward-dish D2 on its own (Codex build r1 P2-4): a stored draft carrying it, a token over its canonical diff
+    const AP = require('./add-product'); const CC = require('./choice-compare');
+    const { buildSourceCandidate } = require('./candidate-validate');
+    const { issueEditToken, sha256 } = require('./catalog-edit');
+    const stored = AP.allocateAdditions({ incoming: apply(XP, D2(reward)), stored: XP, activeItems: XP.items, keyMode: 'name', hwm: null, registryHasKey: () => false, authoring: true, prepareExisting: CC.prepareExistingGroups }).source;
+    const L = await liveRead('x_pizza')(); const { inputs: i, built: b } = buildSourceCandidate('x_pizza', stored);
+    const diff = require('./review-diff').reviewDiff({ live: L.built, liveExtraRecords: L.extraRecords, draftBuilt: { ...b, extras: i.extras }, draftExtraRecords: b.extras, extrasCatalog: false });
+    const token = issueEditToken({ rid: 'x_pizza', baseActiveVersionId: ACTIVE, sourceUpdateTime: T1, sourceHash: sha256(stored), diff });
+    const p = publishDeps('x_pizza', stored);
+    const pub = await publishEditedCore(p.deps, { restaurantId: 'x_pizza', token, acknowledgedChanges: diff.largeChangeSet, fiscalAck: true }, {});
+    assert.deepStrictEqual([pub.status, pub.body.error, pub.body.key, p.state.publishes.length], [409, 'choice_on_reward_dish', reward, 0], `S3F-PUBLISH-REWARD: refused, nothing published (${show(pub)})`);
+    ok('ON: the owner publish refuses a reward-dish D2 on its own (409, its key), nothing published');
+  }
   {   // the MANAGER REQUEST's judgment (structure-gate, compare on): the same classifier through the same wrapper
     const SG = require('./structure-gate');
     const { buildSourceCandidate } = require('./candidate-validate');
